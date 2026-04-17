@@ -97,6 +97,7 @@ jobs:
           # Test with stdlib import (stdlib.moon installed to /usr/lib/sun/)
           cat > test.sun << 'EOF'
           import "stdlib.moon";
+          using sun;
           function main() i32 {
               println("Hello from Sun!");
               return 0;
