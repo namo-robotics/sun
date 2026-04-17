@@ -1,0 +1,8 @@
+// import_math.sun - Imports and uses the math module
+
+import "tests/programs/math_module.sun";
+
+function main() i32 {
+    var result: i32 = add(3, 4);
+    return result;
+};

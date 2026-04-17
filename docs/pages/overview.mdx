@@ -1,0 +1,50 @@
+# Language Overview
+
+import { Callout } from 'nextra/components'
+
+Sun uses a C-style syntax with explicit type annotations and modern features. Functions are declared with the `function` keyword, types follow variable names after a colon, and blocks are delimited by curly braces. The language prioritizes readability and unambiguity — there are no implicit conversions, no operator overloading, and no macros.
+
+## Identifier Naming
+
+<Callout type="warning">
+  Identifiers starting with `_` (underscore) are **reserved for compiler builtins** and cannot be used for user-defined names.
+</Callout>
+
+```sun
+function _helper() i32 { ... }  // ❌ ERROR: reserved identifier
+var _count: i32 = 0;            // ❌ ERROR: reserved identifier
+
+function helper() i32 { ... }   // ✓ OK
+var count: i32 = 0;             // ✓ OK
+```
+
+## Primitive Types
+
+Sun provides the following primitive types:
+
+| Type | Description |
+|------|-------------|
+| `i8`, `i16`, `i32`, `i64` | Signed integers |
+| `u8`, `u16`, `u32`, `u64` | Unsigned integers |
+| `f32`, `f64` | Floating-point numbers |
+| `bool` | Boolean (`true` or `false`) |
+| `void` | No return value |
+
+## Variable Declaration
+
+Variables are declared with `var` and require explicit type annotations:
+
+```sun
+var x: i32 = 42;
+var name: ptr<i8> = "Sun";
+var flag: bool = true;
+```
+
+## Comments
+
+Sun supports single-line comments:
+
+```sun
+// This is a comment
+var x: i32 = 42;  // Inline comment
+```

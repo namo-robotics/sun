@@ -1,0 +1,262 @@
+# Classes
+
+Classes define custom types with fields and methods.
+
+import { Callout } from 'nextra/components'
+
+## Defining a Class
+
+```sun
+class Point {
+    var x: i32;
+    var y: i32;
+
+    function init(px: i32, py: i32) {
+        this.x = px;
+        this.y = py;
+    }
+
+    function magnitude_squared() i32 {
+        return this.x * this.x + this.y * this.y;
+    }
+}
+```
+
+## Key Features
+
+- **Fields**: Declared with `var name: type;` inside the class body
+- **Constructor**: A method named `init` is called automatically during instantiation
+- **Methods**: Functions inside the class that can access `this`
+- **Member access**: Use `.` to access fields and call methods
+- **Interfaces**: Classes can implement one or more interfaces
+
+## Implementing Interfaces
+
+Classes can implement interfaces using the `implements` keyword:
+
+```sun
+interface Printable {
+    function print() void;
+}
+
+class Point implements Printable {
+    var x: i32;
+    var y: i32;
+
+    function init(px: i32, py: i32) {
+        this.x = px;
+        this.y = py;
+    }
+
+    function print() void {
+        println_i32(this.x);
+        println_i32(this.y);
+    }
+}
+```
+
+### Implementing Multiple Interfaces
+
+Separate multiple interfaces with commas:
+
+```sun
+interface Named {
+    var name: i32;
+}
+
+interface Runnable {
+    function run() void;
+}
+
+class Task implements Named, Runnable {
+    // 'name' field comes from Named interface
+    
+    function init(n: i32) {
+        this.name = n;
+    }
+
+    function run() void {
+        println_i32(this.name);
+    }
+}
+```
+
+### Implementing Generic Interfaces
+
+Generic classes can implement generic interfaces with matching type parameters:
+
+```sun
+class Box<T> implements IIterator<T> {
+    var value: T;
+    var returned: bool;
+
+    function init(v: T) {
+        this.value = v;
+        this.returned = false;
+    }
+
+    function hasNext() bool {
+        return this.returned == false;
+    }
+
+    function next() T {
+        this.returned = true;
+        return this.value;
+    }
+}
+```
+
+See [Interfaces](/syntax/interfaces) for more details on interface definitions.
+
+## Creating Instances
+
+### Stack Allocation (Value Types)
+
+Classes are **value types** in Sun. Create instances by calling the class name with constructor arguments:
+
+```sun
+function main() i32 {
+    var p = Point(3, 4);  // Create a Point on the stack
+    return p.magnitude_squared();  // 25
+}
+```
+
+With explicit type annotation:
+
+```sun
+function main() i32 {
+    var p: Point = Point(3, 4);
+    return p.x + p.y;  // 7
+}
+```
+
+<Callout type="info">
+  The `init` method is called automatically when you create an instance. Arguments passed to `ClassName(args...)` are forwarded to the `init` method.
+</Callout>
+
+### Heap Allocation (Using Allocator)
+
+For heap-allocated objects, use an allocator from the standard library:
+
+```sun
+import "stdlib/allocator.sun";
+
+function main() i32 {
+    var allocator = make_heap_allocator();
+    
+    // Create a Point on the heap
+    var p: raw_ptr<Point> = allocator.create<Point>(3, 4);
+    
+    var result = p.magnitude_squared();  // 25
+    
+    // Manual cleanup required for raw_ptr
+    _free(p);
+    
+    return result;
+}
+```
+
+### Automatic Cleanup with Unique
+
+For automatic memory management, wrap the raw pointer in `Unique<T>`:
+
+```sun
+import "stdlib/allocator.sun";
+import "stdlib/unique.sun";
+
+function main() i32 {
+    var allocator = make_heap_allocator();
+    var p = Unique<Point>(allocator.create<Point>(3, 4));
+    
+    return p.get().magnitude_squared();  // 25
+}  // p.deinit() called automatically, memory freed
+```
+
+### Comparison
+
+| Allocation | Syntax | Type | Memory | Cleanup |
+|------------|--------|------|--------|---------|
+| Stack | `Point(...)` | `Point` | Stack | Automatic (scope exit) |
+| Heap (manual) | `allocator.create<Point>(...)` | `raw_ptr<Point>` | Heap | Manual (`_free`) |
+| Heap (auto) | `Unique<Point>(allocator.create<Point>(...))` | `Unique<Point>` | Heap | Automatic (`deinit`) |
+
+## Passing Objects to Functions
+
+### By Value
+
+By default, objects are passed by value (copied):
+
+```sun
+function modify_point(p: Point) {
+    p.x = 100;  // Modifies the copy
+}
+
+function main() i32 {
+    var p = Point(1, 2);
+    modify_point(p);
+    return p.x;  // Still 1 - original unchanged
+}
+```
+
+### By Reference (Borrowing)
+
+Use `ref` to pass a reference that allows reading without copying:
+
+```sun
+function read_point(p: ref Point) i32 {
+    return p.x + p.y;
+}
+
+function main() i32 {
+    var p = Point(3, 4);
+    return read_point(p);  // 7
+}
+```
+
+## Returning Objects from Functions
+
+Functions can return class instances by value:
+
+```sun
+function make_point(x: i32, y: i32) Point {
+    return Point(x, y);
+}
+
+function main() i32 {
+    var p = make_point(5, 6);
+    return p.magnitude_squared();  // 61
+}
+```
+
+## Counter Example
+
+```sun
+class Counter {
+    var value: i32;
+
+    function init(start: i32) {
+        this.value = start;
+    }
+
+    function increment() {
+        this.value = this.value + 1;
+    }
+
+    function get() i32 {
+        return this.value;
+    }
+}
+
+function main() i32 {
+    var c1 = Counter(10);
+    c1.increment();
+    c1.increment();
+    var result1 = c1.get();  // 12
+    
+    var c2 = Counter(0);
+    c2.increment();
+    var result2 = c2.get();  // 1
+    
+    return result1 + result2;  // 13
+}
+```

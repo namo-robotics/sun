@@ -1,0 +1,40 @@
+# Generics
+
+Generic classes are parameterized by type, allowing you to write reusable code that works with different types.
+
+## Basic Generic Class
+
+```sun
+class Box<T> {
+  var value: T;
+
+  function init(v: T) {
+    this.value = v;
+  }
+
+  function get() T {
+    return this.value;
+  }
+}
+
+function main() i32 {
+    var intBox = Box<i32>(42);
+    var floatBox = Box<f64>(3.14);
+    return intBox.get();  // 42
+}
+```
+
+## Type Parameters
+
+Type parameters are specified in angle brackets after the class name. When instantiating a generic class, you must provide concrete types:
+
+```sun
+var intBox = Box<i32>(42);      // T = i32
+var floatBox = Box<f64>(3.14);  // T = f64
+```
+
+import { Callout } from 'nextra/components'
+
+<Callout type="info">
+  Generic classes are monomorphized at compile time, meaning a separate version is generated for each type combination used.
+</Callout>

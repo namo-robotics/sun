@@ -1,0 +1,19 @@
+{
+  "index": "Introduction",
+  "getting-started": "Examples",
+  "overview": "Overview",
+  "builtin-types": "Builtin Types",
+  "functions": "Functions & Lambdas",
+  "control-flow": "Control Flow",
+  "match": "Match Expressions",
+  "enums": "Enums",
+  "matrices": "Matrices",
+  "ownership": "Ownership & Borrowing",
+  "modules": "Modules & Namespaces",
+  "classes": "Classes",
+  "interfaces": "Interfaces",
+  "generics": "Generics",
+  "errors": "Error Handling",
+  "intrinsics": "Compiler Intrinsics",
+  "architecture": "Architecture"
+}

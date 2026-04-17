@@ -1,0 +1,7 @@
+// import_transitive.sun - Tests transitive imports
+
+import "tests/programs/uses_math.sun";
+
+function main() i32 {
+    return add_and_square(2, 3);
+};

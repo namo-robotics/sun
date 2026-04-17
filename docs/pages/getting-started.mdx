@@ -1,0 +1,307 @@
+# Examples
+
+import { Callout } from 'nextra/components'
+
+This page provides complete, runnable examples demonstrating Sun's key features.
+
+## Inspecting LLVM IR
+
+Use `--emit-ir` to see the generated LLVM IR for your program:
+
+```sun filename="hello.sun"
+import "stdlib.moon";
+using sun;
+
+function main() {
+    println("Hello, Sun!");
+}
+```
+
+```bash
+sun --emit-ir hello.sun
+```
+
+```llvm
+; LLVM IR (user-defined only):
+@str = private unnamed_addr constant [12 x i8] c"Hello, Sun!\00", align 1
+define void @main() {
+entry:
+  call void @println(%static_ptr_struct { ptr @str, i64 11 })
+  ret void
+}
+
+Hello, Sun!
+```
+
+## Command-Line Arguments
+
+Programs can accept command-line arguments by defining `main` with `argc` and `argv` parameters:
+
+```sun
+function main(argc: i32, argv: ptr<ptr<i8>>) i32 {
+    println("Number of arguments received:");
+    println_i32(argc);
+    return 0;
+}
+```
+
+```bash
+sun echo.sun hello world
+Number of arguments received:
+3
+```
+
+### Echo Example
+
+A complete program that echoes all command-line arguments:
+
+```sun
+function main(argc: i32, argv: ptr<ptr<i8>>) i32 {
+    for (var i: i32 = 0; i < argc; i = i + 1) {
+        println(argv[i]);
+    }
+    return 0;
+}
+```
+
+```bash
+./echo a b c
+./echo
+a
+b
+c
+```
+
+## Matrix Operations
+
+### Creating and Indexing Matrices
+
+Using the standard library `Matrix<T>` class:
+
+```sun
+import "build/stdlib.moon";
+
+function main() i32 {
+    var allocator = make_heap_allocator();
+    
+    // Create a 3x3 matrix
+    var m = Matrix<i32>(allocator, [3, 3]);
+    
+    // Use bracket syntax for indexing
+    m[0, 0] = 1;  m[0, 1] = 2;  m[0, 2] = 3;
+    m[1, 0] = 4;  m[1, 1] = 5;  m[1, 2] = 6;
+    m[2, 0] = 7;  m[2, 1] = 8;  m[2, 2] = 9;
+    
+    // Read elements
+    var sum = m[0, 0] + m[1, 1] + m[2, 2];  // Diagonal sum: 15
+    
+    return sum;
+}
+```
+
+### Multi-dimensional Matrices
+
+```sun
+import "build/stdlib.moon";
+
+function main() i32 {
+    var allocator = make_heap_allocator();
+    
+    // 1D array (vector)
+    var v = Matrix<i32>(allocator, [5]);
+    v[0] = 10; v[1] = 20; v[2] = 30; v[3] = 40; v[4] = 50;
+    
+    // 3D tensor (2x2x2)
+    var t = Matrix<f64>(allocator, [2, 2, 2]);
+    t[0, 0, 0] = 1.0;
+    t[1, 1, 1] = 8.0;
+    
+    return v[2];  // 30
+}
+```
+
+## Classes and Constructors
+
+### Basic Class
+
+```sun
+class Point {
+    var x: f64;
+    var y: f64;
+    
+    function init(x_: f64, y_: f64) {
+        this.x = x_;
+        this.y = y_;
+    }
+    
+    function distance(other: ref Point) f64 {
+        var dx = this.x - other.x;
+        var dy = this.y - other.y;
+        return _sqrt(dx * dx + dy * dy);
+    }
+}
+
+function main() i32 {
+    var p1 = Point(0.0, 0.0);
+    var p2 = Point(3.0, 4.0);
+    
+    var dist = p1.distance(p2);  // 5.0
+    println_f64(dist);
+    
+    return 0;
+}
+```
+
+### Generic Class
+
+```sun
+class Pair<T> {
+    var first: T;
+    var second: T;
+    
+    function init(a: T, b: T) {
+        this.first = a;
+        this.second = b;
+    }
+    
+    function swap() {
+        var temp = this.first;
+        this.first = this.second;
+        this.second = temp;
+    }
+}
+
+function main() i32 {
+    var p = Pair<i32>(10, 20);
+    p.swap();
+    return p.first;  // 20
+}
+```
+
+## Interfaces
+
+```sun
+interface Drawable {
+    function draw() void;
+}
+
+class Circle implements Drawable {
+    var radius: f64;
+    
+    function init(r: f64) {
+        this.radius = r;
+    }
+    
+    function draw() void {
+        println("Drawing circle with radius:");
+        println_f64(this.radius);
+    }
+}
+
+class Square implements Drawable {
+    var side: f64;
+    
+    function init(s: f64) {
+        this.side = s;
+    }
+    
+    function draw() void {
+        println("Drawing square with side:");
+        println_f64(this.side);
+    }
+}
+
+function render(shape: ref Drawable) {
+    shape.draw();
+}
+
+function main() i32 {
+    var c = Circle(5.0);
+    var s = Square(10.0);
+    
+    render(c);  // "Drawing circle with radius: 5.0"
+    render(s);  // "Drawing square with side: 10.0"
+    
+    return 0;
+}
+```
+
+## Error Handling
+
+```sun
+function parse_positive(s: static_ptr<u8>) i32, IError {
+    var val = parse_int(s);
+    if (val < 0) {
+        throw 1;  // Negative number error
+    }
+    return val;
+}
+
+function main() i32 {
+    try {
+        var x = parse_positive("42");
+        var y = parse_positive("-5");  // Throws
+        return x + y;
+    } catch (e: IError) {
+        println("Error: expected positive number");
+        return -1;
+    }
+}
+```
+
+## Lambdas and Closures
+
+```sun
+function main() i32 {
+    var multiplier: i32 = 10;
+    
+    // Lambda capturing 'multiplier' from environment
+    var scale = lambda (x: i32) i32 {
+        return x * multiplier;
+    };
+    
+    var result: i32 = 0;
+    result = result + scale(1);  // 10
+    result = result + scale(2);  // 20
+    result = result + scale(3);  // 30
+    result = result + scale(4);  // 40
+    result = result + scale(5);  // 50
+    
+    return result;  // 150
+}
+```
+
+## Memory Management
+
+### Owning Pointers
+
+```sun
+import "build/stdlib.moon";
+
+function main() i32 {
+    var allocator = make_heap_allocator();
+    
+    // ptr<T> is an owning pointer - automatically freed at scope exit
+    var p: ptr<Point> = allocator.create<Point>(3.0, 4.0);
+    
+    println_f64(p.x);  // 3.0
+    println_f64(p.y);  // 4.0
+    
+    return 0;
+    // p is automatically freed here
+}
+```
+
+### Reference Parameters
+
+```sun
+function double_value(x: ref i32) {
+    x = x * 2;  // Modifies the original
+}
+
+function main() i32 {
+    var value: i32 = 21;
+    double_value(value);
+    return value;  // 42
+}
+```

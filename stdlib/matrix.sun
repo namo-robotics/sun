@@ -1,0 +1,242 @@
+// stdlib/matrix.sun - N-dimensional Matrix class with slicing support
+// 
+// Matrix<T> is a generic n-dimensional array backed by contiguous memory.
+// Supports arbitrary dimensions via shape array at construction time.
+//
+// Usage:
+//   import "stdlib/allocator.sun";
+//   import "stdlib/matrix.sun";
+//   using sun;
+//   
+//   var allocator = make_heap_allocator();
+//   var shape: array<i64, 2> = [10, 10];
+//   var m = Matrix<f32>(allocator, shape);  // 10x10 matrix
+//   m.set([0, 0], 1.0);
+//   var val = m.get([0, 0]);
+//   
+//   // Indexing with [] syntax (calls __index__/__setindex__)
+//   var val2 = m[0, 0];        // Same as m.get([0, 0])
+//   m[0, 0] = 1.0;             // Same as m.set([0, 0], 1.0)
+//   
+//   // Slicing returns a view (calls __slice__)
+//   // var row = m[0, :];      // First row as view
+//   // var sub = m[1:5, 2:8];  // Submatrix view
+
+// Import allocator for HeapAllocator type used in Matrix::init
+import "allocator.sun";
+// Import SliceRange for slicing support
+import "slice.sun";
+using sun;
+
+module sun {
+
+// Interface for types that support indexed access and slicing
+// Any class implementing this interface can use bracket indexing syntax
+// NOTE: Generic interfaces not yet supported, so this is just documentation
+// interface IIndexable<T> {
+//     function get(indices: array<i64>) T;
+//     function set(indices: array<i64>, value: T) void;
+//     function shape() array<i64>;
+//     function size() i64;
+//     function ndims() i64;
+// }
+
+// N-dimensional matrix with contiguous row-major storage
+class Matrix<T> {
+    var data: raw_ptr<i8>;         // Contiguous element storage (as bytes for _free compat)
+    var dims: array<i64>;          // Shape of each dimension
+    var ndims_: i64;               // Number of dimensions
+    var total_size: i64;           // Total number of elements
+    
+    // Constructor: allocates memory for matrix of given shape
+    // shape is an array of dimension sizes: [rows, cols, ...] 
+    function init(alloc: ref HeapAllocator, shape: ref array<i64>) {
+        this.dims = shape;
+        var shape_dims = shape.shape();
+        this.ndims_ = shape_dims[0];
+        
+        // Compute total size (product of all dimensions)
+        this.total_size = 1;
+        for (var i: i64 = 0; i < this.ndims_; i = i + 1) {
+            this.total_size = this.total_size * shape[i];
+        }
+        
+        // Allocate memory for elements
+        this.data = alloc.alloc_raw(this.total_size * _sizeof<T>());
+    }
+    
+    // Destructor: free allocated memory
+    function deinit() void {
+        if (this.data != null) {
+            _free(this.data);
+            this.data = null;
+        }
+    }
+    
+    // Compute linear index from n-dimensional indices (row-major order)
+    function linearIndex(indices: ref array<i64>) i64 {
+        var offset: i64 = 0;
+        var stride: i64 = 1;
+        
+        // Work backwards from last dimension
+        for (var i: i64 = this.ndims_ - 1; i >= 0; i = i - 1) {
+            offset = offset + indices[i] * stride;
+            stride = stride * this.dims[i];
+        }
+        
+        return offset;
+    }
+    
+    // Get element at indices
+    function get(indices: ref array<i64>) T {
+        var idx: i64 = this.linearIndex(indices);
+        return _load<T>(this.data, idx);
+    }
+    
+    // Set element at indices
+    function set(indices: ref array<i64>, value: T) void {
+        var idx: i64 = this.linearIndex(indices);
+        _store<T>(this.data, idx, value);
+    }
+    
+    // Get shape array
+    function shape() array<i64> {
+        return this.dims;
+    }
+    
+    // Get total element count
+    function size() i64 {
+        return this.total_size;
+    }
+    
+    // Get number of dimensions
+    function ndims() i64 {
+        return this.ndims_;
+    }
+    
+    // Operator overload for indexing: m[i, j] calls __index__([i, j])
+    // Enables M[i, j] syntax for element access
+    function __index__(indices: ref array<i64>) T {
+        return this.get(indices);
+    }
+    
+    // Operator overload for indexed assignment: m[i, j] = val calls __setindex__([i, j], val)
+    // Enables M[i, j] = value syntax for element assignment
+    function __setindex__(indices: ref array<i64>, value: T) void {
+        this.set(indices, value);
+    }
+    
+    // Slicing via __slice__ method: m[a:b] -> MatrixView<T>
+    // Returns a non-owning view into the matrix data
+    // NOTE: Currently only supports 1D slicing (single range)
+    function __slice__(ranges: ref array<SliceRange>) MatrixView<T> {
+        // For 1D matrices, slicing is straightforward
+        var range: SliceRange = ranges[0];
+        var start: i64 = range.getStart();
+        var end: i64 = range.getEnd(this.dims[0]);
+        
+        // Build shape and strides for the view
+        var new_shape: array<i64, 1> = [end - start];
+        var strides: array<i64, 1> = [1];  // 1D contiguous
+        
+        return MatrixView<T>(this.data, start, new_shape, strides);
+    }
+}
+
+// MatrixView<T> - non-owning view into a Matrix or another view
+// Supports slicing operations that return views without copying data
+// Views have their own shape and strides but point to parent's data
+class MatrixView<T> {
+    var data: raw_ptr<i8>;        // Pointer to underlying Matrix data (non-owning, as bytes)
+    var base_offset: i64;         // Offset into data for start of view
+    var dims: array<i64>;         // Shape of this view
+    var strides: array<i64>;      // Stride in each dimension
+    var ndims_: i64;              // Number of dimensions
+    var total_size: i64;          // Total elements in view
+    
+    // Constructor from raw components
+    function init(data_ptr: raw_ptr<i8>, offset: i64, shape: ref array<i64>, strides_arr: ref array<i64>) {
+        this.data = data_ptr;
+        this.base_offset = offset;
+        this.dims = shape;
+        this.strides = strides_arr;
+        var shape_dims = shape.shape();
+        this.ndims_ = shape_dims[0];
+        
+        // Compute total size
+        this.total_size = 1;
+        for (var i: i64 = 0; i < this.ndims_; i = i + 1) {
+            this.total_size = this.total_size * shape[i];
+        }
+    }
+    
+    // Compute linear index using strides (includes base offset)
+    function linearIndex(indices: ref array<i64>) i64 {
+        var offset: i64 = this.base_offset;
+        for (var i: i64 = 0; i < this.ndims_; i = i + 1) {
+            offset = offset + indices[i] * this.strides[i];
+        }
+        return offset;
+    }
+    
+    // Get element at indices
+    function get(indices: ref array<i64>) T {
+        var idx: i64 = this.linearIndex(indices);
+        return _load<T>(this.data, idx);
+    }
+    
+    // Set element at indices (views allow modification)
+    function set(indices: ref array<i64>, value: T) void {
+        var idx: i64 = this.linearIndex(indices);
+        _store<T>(this.data, idx, value);
+    }
+    
+    // Get shape array
+    function shape() array<i64> {
+        return this.dims;
+    }
+    
+    // Get total element count
+    function size() i64 {
+        return this.total_size;
+    }
+    
+    // Get number of dimensions
+    function ndims() i64 {
+        return this.ndims_;
+    }
+    
+    // Operator overload for indexing: v[i, j] calls __index__([i, j])
+    // Enables View[i, j] syntax for element access
+    function __index__(indices: ref array<i64>) T {
+        return this.get(indices);
+    }
+    
+    // Operator overload for indexed assignment: v[i, j] = val calls __setindex__([i, j], val)
+    // Enables View[i, j] = value syntax for element assignment
+    function __setindex__(indices: ref array<i64>, value: T) void {
+        this.set(indices, value);
+    }
+}
+
+// Precompiled specializations for common primitive types
+// These declarations trigger generic instantiation during stdlib compilation
+// MatrixView specializations (must be declared before Matrix because Matrix.__slice__ returns MatrixView)
+declare MatrixView_i8 = MatrixView<i8>;
+declare MatrixView_i16 = MatrixView<i16>;
+declare MatrixView_i32 = MatrixView<i32>;
+declare MatrixView_i64 = MatrixView<i64>;
+declare MatrixView_u8 = MatrixView<u8>;
+declare MatrixView_f32 = MatrixView<f32>;
+declare MatrixView_f64 = MatrixView<f64>;
+
+// Matrix specializations
+declare Matrix_i8 = Matrix<i8>;
+declare Matrix_i16 = Matrix<i16>;
+declare Matrix_i32 = Matrix<i32>;
+declare Matrix_i64 = Matrix<i64>;
+declare Matrix_u8 = Matrix<u8>;
+declare Matrix_f32 = Matrix<f32>;
+declare Matrix_f64 = Matrix<f64>;
+
+} // module sun

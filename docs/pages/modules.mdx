@@ -1,0 +1,280 @@
+# Modules and Namespaces
+
+import { Callout } from 'nextra/components'
+
+## Modules
+
+Programs can be split across multiple source files using `import`:
+
+**math.sun**
+```sun
+function add(a: i32, b: i32) i32 {
+    return a + b;
+}
+
+function square(x: i32) i32 {
+    return x * x;
+}
+```
+
+**main.sun**
+```sun
+import "math.sun";
+
+function main() i32 {
+    var result: i32 = add(3, 4);
+    println_i32(square(result));
+    return 0;
+}
+```
+
+```bash
+sun main.sun
+49
+```
+
+Import paths are resolved relative to the importing file. Circular imports are detected and prevented.
+
+## Precompiled Libraries (.moon)
+
+Sun supports precompiled library bundles with the `.moon` extension. These bundles contain compiled code and type information, enabling faster compilation and reliable distribution of libraries.
+
+<Callout type="info">
+  Sun is designed to work with **Moon**, a safety-critical package manager (coming soon) that pins dependencies to the exact hash of the binary and compiler version. Every change is a breaking change — Moon prioritizes reproducibility over convenience.
+</Callout>
+
+### Using Moon Files
+
+Import a moon just like a regular source file:
+
+```sun
+import "build/stdlib.moon";
+
+function main() i32 {
+    var allocator = make_heap_allocator();
+    var m = Matrix<i32>(allocator, [3, 3]);
+    m[0, 0] = 42;
+    return m[0, 0];
+}
+```
+
+The compiler automatically detects the `.moon` extension and loads both the precompiled code and type information.
+
+### Creating Moon Files
+
+Bundle multiple source files into a moon using the `--emit-moon --bundle` flags:
+
+```bash
+# Bundle allocator.sun and matrix.sun into stdlib.moon
+sun --emit-moon --bundle -o stdlib.moon allocator.sun matrix.sun
+```
+
+The bundler:
+1. Parses and compiles each source file
+2. Serializes AST and type information for each module
+3. Packages everything into a single binary file
+
+### The Standard Library
+
+Sun's standard library is distributed as `stdlib.moon` containing:
+
+| Module | Contents |
+|--------|----------|
+| `allocator.sun` | Memory allocators (`HeapAllocator`, `IAllocator` interface) |
+| `slice.sun` | `SliceRange` type for slice syntax |
+| `matrix.sun` | `Matrix<T>` and `MatrixView<T>` classes |
+
+When building from source, the stdlib is automatically compiled:
+
+```bash
+cmake -B build && cmake --build build
+# Creates build/stdlib.moon
+```
+
+### SUN_PATH Environment Variable
+
+The compiler searches for moon files in:
+1. Relative to the importing file
+2. The directory specified by `SUN_PATH` environment variable
+
+```bash
+export SUN_PATH=/path/to/sun
+sun myprogram.sun  # Can find build/stdlib.moon
+```
+
+### Example: Building a Custom Moon
+
+Here's a complete example of creating and using a custom library.
+
+**Step 1: Create library source files**
+
+**mylib/vec2.sun**
+```sun
+class Vec2 {
+    var x: f64;
+    var y: f64;
+    
+    function init(x_: f64, y_: f64) {
+        this.x = x_;
+        this.y = y_;
+    }
+    
+    function add(other: ref Vec2) Vec2 {
+        return Vec2(this.x + other.x, this.y + other.y);
+    }
+    
+    function dot(other: ref Vec2) f64 {
+        return this.x * other.x + this.y * other.y;
+    }
+    
+    function length() f64 {
+        return _sqrt(this.x * this.x + this.y * this.y);
+    }
+}
+```
+
+**mylib/utils.sun**
+```sun
+function clamp(val: f64, min: f64, max: f64) f64 {
+    if (val < min) { return min; }
+    if (val > max) { return max; }
+    return val;
+}
+
+function lerp(a: f64, b: f64, t: f64) f64 {
+    return a + (b - a) * t;
+}
+```
+
+**Step 2: Bundle into a moon**
+
+```bash
+sun --emit-moon --bundle -o mylib.moon mylib/vec2.sun mylib/utils.sun
+```
+
+**Step 3: Use the library**
+
+```sun
+import "mylib.moon";
+
+function main() i32 {
+    var a = Vec2(3.0, 4.0);
+    var b = Vec2(1.0, 2.0);
+    
+    var c = a.add(b);           // Vec2(4.0, 6.0)
+    var d = a.dot(b);           // 11.0
+    var len = a.length();       // 5.0
+    
+    var t = clamp(1.5, 0.0, 1.0);  // 1.0
+    var mid = lerp(0.0, 10.0, 0.5); // 5.0
+    
+    return 0;
+}
+```
+
+### Installing Moon Files
+
+Moon files can be installed system-wide or per-project:
+
+**Per-project installation:**
+```bash
+# Copy moon to your project
+cp mylib.moon myproject/libs/
+
+# Import with relative path
+# import "libs/mylib.moon";
+```
+
+**System-wide installation:**
+```bash
+# Create a Sun libraries directory
+mkdir -p ~/.sun/lib
+
+# Copy the moon
+cp mylib.moon ~/.sun/lib/
+
+# Set SUN_PATH in your shell profile (~/.bashrc or ~/.zshrc)
+export SUN_PATH=~/.sun/lib
+
+# Now any program can import it
+# import "mylib.moon";
+```
+
+**Multiple search paths:**
+```bash
+# SUN_PATH can contain multiple directories (colon-separated on Unix)
+export SUN_PATH=/usr/local/lib/sun:~/.sun/lib:./libs
+```
+
+### Moon Best Practices
+
+1. **Version your moons** — Include version in filename: `mylib-1.0.moon`
+2. **Document dependencies** — List required moons in a README
+3. **Keep related code together** — One moon per logical library
+4. **Rebuild after compiler updates** — Moons contain compiled code tied to compiler version
+
+## Modules (Namespaces)
+
+Modules group related types and functions to avoid naming conflicts. The standard library uses the `sun` module:
+
+```sun
+module sun {
+    class Vec<T> {
+        // ...
+    }
+    
+    function make_heap_allocator() HeapAllocator {
+        return HeapAllocator();
+    }
+}
+```
+
+Symbols inside a module are mangled with the module name as a prefix (e.g., `sun_Vec`, `sun_make_heap_allocator`).
+
+### Using Statements
+
+Use `using` statements to import all symbols from a module into the current scope:
+
+```sun
+import "build/stdlib.moon";
+using sun;   // Import all symbols from the sun module
+
+function main() i32 {
+    var allocator = make_heap_allocator();  // No qualification needed
+    var v = Vec<i32>(allocator, 8);
+    v.push(42);
+    return v.get(0);
+}
+```
+
+Without `using`, you would need to reference symbols by their fully qualified mangled name.
+
+### Module Scope Resolution
+
+Inside a module, you can reference other symbols in the same module without qualification:
+
+```sun
+module math {
+    function square(x: i32) i32 {
+        return x * x;
+    }
+
+    function sum_of_squares(a: i32, b: i32) i32 {
+        // Can call square() directly - same module
+        return square(a) + square(b);
+    }
+}
+```
+
+### Nested Module Access
+
+For qualified access to module members, use dot notation:
+
+```sun
+import "mylib.moon";
+
+function main() i32 {
+    // Access through module path
+    return math.square(5);
+}
+```

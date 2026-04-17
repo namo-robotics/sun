@@ -1,0 +1,218 @@
+# Interfaces
+
+Interfaces define contracts that classes can implement.
+
+## Basic Interface
+
+```sun
+interface Printable {
+  function print() void;
+}
+
+interface HasValue {
+  var value: i32;
+}
+
+class Counter implements Printable, HasValue {
+  function init(v: i32) {
+    this.value = v;
+  }
+
+  function print() void {
+    println_i32(this.value);
+  }
+}
+```
+
+## Interface Fields
+
+Interfaces can declare fields that implementing classes must have:
+
+```sun
+interface Named {
+    var name: i32;  // Implementing class must have this field
+}
+
+class Person implements Named {
+    // 'name' field is inherited from Named interface
+    
+    function init(n: i32) {
+        this.name = n;
+    }
+}
+```
+
+## Default Implementations
+
+Interfaces can provide default method implementations:
+
+```sun
+interface Answerable {
+  function answer() i32 {
+    return 42;
+  }
+}
+
+class Thinker implements Answerable {
+  function init() {}
+}
+
+function main() i32 {
+    var t = Thinker();
+    return t.answer();  // Uses default: returns 42
+}
+```
+
+Classes can override default implementations:
+
+```sun
+class DeepThinker implements Answerable {
+    function init() {}
+
+    function answer() i32 {
+        return 43;  // Override default
+    }
+}
+```
+
+## Generic Interfaces
+
+Interfaces can have type parameters, allowing generic contracts:
+
+```sun
+interface Container<T> {
+    function get() T;
+    function set(value: T) void;
+}
+
+class Box<T> implements Container<T> {
+    var value: T;
+
+    function init(v: T) {
+        this.value = v;
+    }
+
+    function get() T {
+        return this.value;
+    }
+
+    function set(v: T) void {
+        this.value = v;
+    }
+}
+```
+
+### Implementing Generic Interfaces with Concrete Types
+
+A non-generic class can implement a generic interface with a specific type:
+
+```sun
+interface Wrapper<T> {
+    function unwrap() T;
+}
+
+class IntWrapper implements Wrapper<i32> {
+    var value: i32;
+
+    function init(v: i32) {
+        this.value = v;
+    }
+
+    function unwrap() i32 {
+        return this.value;
+    }
+}
+```
+
+### Generic Class Implementing Generic Interface
+
+When a generic class implements a generic interface, the type parameters flow through:
+
+```sun
+interface Mappable<T, U> {
+    function map(f: fn(T) U) U;
+}
+
+class Value<T> implements Mappable<T, T> {
+    var data: T;
+
+    function init(d: T) {
+        this.data = d;
+    }
+
+    function map(f: fn(T) T) T {
+        return f(this.data);
+    }
+}
+```
+
+## Multiple Interfaces
+
+Classes can implement multiple interfaces:
+
+```sun
+interface Runnable {
+    function run() void;
+}
+
+interface Stoppable {
+    function stop() void;
+}
+
+class Service implements Runnable, Stoppable {
+    var running: bool;
+
+    function init() {
+        this.running = false;
+    }
+
+    function run() void {
+        this.running = true;
+    }
+
+    function stop() void {
+        this.running = false;
+    }
+}
+```
+
+## Builtin Interfaces
+
+Sun provides several builtin interfaces that cannot be redefined. See [Builtin Types](/syntax/builtin-types) for details:
+
+- **`IError`** - Error handling interface
+- **`IIterator<T>`** - Iterator interface with `hasNext()` and `next()` methods
+- **`IIterable<T>`** - Iterable interface with `iter()` method
+
+```sun
+// Implementing a builtin interface
+class NumberIterator implements IIterator<i32> {
+    var current: i32;
+    var max: i32;
+
+    function init(start: i32, end: i32) {
+        this.current = start;
+        this.max = end;
+    }
+
+    function hasNext() bool {
+        return this.current < this.max;
+    }
+
+    function next() i32 {
+        var result = this.current;
+        this.current = this.current + 1;
+        return result;
+    }
+}
+```
+
+import { Callout } from 'nextra/components'
+
+<Callout type="info">
+  Classes can implement multiple interfaces by separating them with commas.
+</Callout>
+
+<Callout type="warning">
+  Attempting to redefine builtin interfaces like `IError`, `IIterator`, or `IIterable` will result in a compilation error.
+</Callout>

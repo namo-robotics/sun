@@ -1,0 +1,265 @@
+# Compiler Intrinsics
+
+import { Callout } from 'nextra/components'
+
+Compiler intrinsics are low-level functions built directly into the Sun compiler. They provide direct access to memory operations, type information, and other primitives that cannot be expressed in regular Sun code.
+
+<Callout type="warning">
+  Intrinsics are **unsafe** operations intended for implementing standard library primitives like `Vec<T>` and `Map<K,V>`. Most user code should use the standard library instead.
+</Callout>
+
+## Generic Intrinsics
+
+These intrinsics require a type parameter `<T>`.
+
+### `_sizeof<T>()`
+
+Returns the byte size of type `T` as `i64`.
+
+```sun
+var size = _sizeof<i32>();   // 4
+var size2 = _sizeof<i64>();  // 8
+
+class Point { x: f64; y: f64; }
+var pointSize = _sizeof<Point>();  // 16 (two 8-byte floats)
+```
+
+### `_init<T>(ptr, args...)`
+
+Constructs an instance of type `T` at the memory location pointed to by `ptr`, forwarding `args` to the constructor.
+
+```sun
+// Allocate raw memory for a Point
+var mem = _malloc(_sizeof<Point>());
+
+// Construct Point at that location
+_init<Point>(mem, 3.0, 4.0);
+
+// mem now points to an initialized Point
+```
+
+<Callout type="info">
+  For non-class types, `_init` is a no-op since primitives don't have constructors.
+</Callout>
+
+### `_load<T>(ptr, index)`
+
+Loads an element of type `T` from `ptr` at the given element index. Equivalent to `ptr[index]` in C.
+
+```sun
+// Assuming data points to an array of i32
+var value = _load<i32>(data, 5);  // Load data[5]
+```
+
+### `_store<T>(ptr, index, value)`
+
+Stores `value` of type `T` at `ptr[index]`.
+
+```sun
+// Store 42 at data[5]
+_store<i32>(data, 5, 42);
+```
+
+### `_static_ptr_data<T>(static_ptr<T>)`
+
+Extracts the raw data pointer from a `static_ptr<T>` fat pointer.
+
+```sun
+var s: static_ptr<i8> = "hello";
+var rawPtr = _static_ptr_data<i8>(s);  // raw_ptr<i8> to the string data
+```
+
+### `_static_ptr_len<T>(static_ptr<T>)`
+
+Extracts the length from a `static_ptr<T>` fat pointer.
+
+```sun
+var s: static_ptr<i8> = "hello";
+var len = _static_ptr_len<i8>(s);  // 5
+```
+
+### `_ptr_as_raw<T>(ptr<T>)`
+
+Converts an owning `ptr<T>` to a non-owning `raw_ptr<T>` without transferring ownership. Similar to C++'s `unique_ptr::get()`.
+
+```sun
+var owned: ptr<Point> = new Point(1.0, 2.0);
+var raw: raw_ptr<Point> = _ptr_as_raw<Point>(owned);
+// raw points to the same memory, but owned still manages lifetime
+```
+
+<Callout type="warning">
+  Be careful: the raw pointer becomes invalid if the owning pointer is freed or goes out of scope.
+</Callout>
+
+### `_is<T>(value)`
+
+Compile-time type check that returns `true` or `false` based on whether the type of `value` matches `T`. This intrinsic is always resolved at compile time — no runtime overhead.
+
+`T` can be:
+- **A concrete type** (e.g., `i32`, `f64`, `Point`) — exact type match
+- **A type trait** — checks type category (see below)
+- **An interface** — checks if a class implements the interface
+
+```sun
+function example(x: i32, y: f64) {
+    _is<i32>(x);      // true - exact type match
+    _is<i64>(x);      // false - i32 is not i64
+    _is<_Integer>(x); // true - i32 is an integer
+    _is<_Float>(y);   // true - f64 is a float
+}
+```
+
+#### Type Traits
+
+Type traits are pseudo-types that categorize primitives:
+
+| Trait | Matches |
+|-------|---------|
+| `_Integer` | `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64` |
+| `_Signed` | `i8`, `i16`, `i32`, `i64` |
+| `_Unsigned` | `u8`, `u16`, `u32`, `u64` |
+| `_Float` | `f32`, `f64` |
+| `_Numeric` | All integers and floats |
+| `_Primitive` | All numeric types plus `bool` |
+
+#### Use in Generic Code
+
+`_is<T>` is particularly useful in generic functions to branch based on type:
+
+```sun
+function processValue<T>(x: T) i32 {
+    if (_is<_Integer>(x)) {
+        // Integer-specific logic
+        return 1;
+    }
+    if (_is<_Float>(x)) {
+        // Float-specific logic
+        return 2;
+    }
+    return 0;
+}
+
+function main() i32 {
+    var a = processValue<i32>(42);    // Returns 1
+    var b = processValue<f64>(3.14);  // Returns 2
+    return a + b;  // 3
+}
+```
+
+Since Sun uses monomorphization, each instantiation of `processValue` compiles to code with the dead branches eliminated by LLVM.
+
+#### Interface Checks
+
+For class types, `_is<T>` can check interface implementation:
+
+```sun
+interface IHashable {
+    function hash() i64;
+}
+
+class MyKey implements IHashable {
+    function hash() i64 { return 42; }
+}
+
+function example(key: MyKey) bool {
+    return _is<IHashable>(key);  // true
+}
+```
+
+## Non-Generic Intrinsics
+
+These intrinsics operate on specific, fixed types.
+
+### `_malloc(size)`
+
+Allocates `size` bytes of heap memory and returns a `raw_ptr<i8>`. This is a direct wrapper around the C library's `malloc`.
+
+```sun
+var mem = _malloc(1024);  // Allocate 1024 bytes
+```
+
+<Callout type="error">
+  **Prefer using allocators.** Direct `_malloc` calls bypass Sun's memory management. Use `HeapAllocator.alloc_raw(size)` in standard library code.
+</Callout>
+
+### `_free(ptr)`
+
+Frees memory previously allocated with `_malloc`. Direct wrapper around C's `free`.
+
+```sun
+var mem = _malloc(1024);
+// ... use memory ...
+_free(mem);
+```
+
+### `_load_i64(ptr, index)`
+
+Loads an `i64` from `ptr` at element offset `index`. A non-generic version of `_load<i64>`.
+
+```sun
+var value = _load_i64(data, 0);  // Load first i64
+```
+
+### `_store_i64(ptr, index, value)`
+
+Stores an `i64` value at `ptr[index]`. A non-generic version of `_store<i64>`.
+
+```sun
+_store_i64(data, 0, 42);  // Store 42 at first position
+```
+
+## Usage in Standard Library
+
+The standard library uses intrinsics to implement generic containers. Here's a simplified example of how `Vec<T>` might use them:
+
+```sun
+class Vec<T> {
+    data: raw_ptr<i8>;
+    len: i64;
+    cap: i64;
+    alloc: HeapAllocator;
+
+    function get(index: i64) T {
+        return _load<T>(this.data, index);
+    }
+
+    function set(index: i64, value: T) {
+        _store<T>(this.data, index, value);
+    }
+
+    function push(value: T) {
+        if (this.len >= this.cap) {
+            this.grow();
+        }
+        _store<T>(this.data, this.len, value);
+        this.len = this.len + 1;
+    }
+
+    function grow() {
+        var newCap = this.cap * 2;
+        var newData = this.alloc.alloc_raw(newCap * _sizeof<T>());
+        // Copy old data to new buffer...
+        _free(this.data);
+        this.data = newData;
+        this.cap = newCap;
+    }
+}
+```
+
+## Summary Table
+
+| Intrinsic | Parameters | Returns | Description |
+|-----------|------------|---------|-------------|
+| `_sizeof<T>` | none | `i64` | Byte size of type T |
+| `_init<T>` | `ptr, args...` | `i32` | Construct T at ptr |
+| `_load<T>` | `ptr, index` | `T` | Load element at index |
+| `_store<T>` | `ptr, index, value` | `T` | Store element at index |
+| `_static_ptr_data<T>` | `static_ptr<T>` | `raw_ptr<T>` | Extract data pointer |
+| `_static_ptr_len<T>` | `static_ptr<T>` | `i64` | Extract length |
+| `_ptr_as_raw<T>` | `ptr<T>` | `raw_ptr<T>` | Get raw pointer without ownership transfer |
+| `_is<T>` | `value` | `bool` | Compile-time type check |
+| `_malloc` | `size: i64` | `raw_ptr<i8>` | Allocate heap memory |
+| `_free` | `ptr` | `i32` | Free heap memory |
+| `_load_i64` | `ptr, index` | `i64` | Load i64 at index |
+| `_store_i64` | `ptr, index, value` | `i64` | Store i64 at index |

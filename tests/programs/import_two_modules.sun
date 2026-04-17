@@ -1,0 +1,10 @@
+// import_two_modules.sun - Imports from two different modules
+
+import "tests/programs/math_module.sun";
+import "tests/programs/helper_module.sun";
+
+function main() i32 {
+    var a: i32 = add(5, 3);
+    var b: i32 = double_val(a);
+    return b;
+};

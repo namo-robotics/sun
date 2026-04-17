@@ -1,0 +1,8 @@
+// uses_math.sun - A module that imports math_module transitively
+
+import "tests/programs/math_module.sun";
+
+function add_and_square(a: i32, b: i32) i32 {
+    var sum: i32 = add(a, b);
+    return square(sum);
+};

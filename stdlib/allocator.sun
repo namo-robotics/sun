@@ -1,0 +1,81 @@
+// stdlib/allocator.sun - Memory allocator interface and implementations
+// Following Zig-style allocator pattern: allocator.create<Type>(args...)
+//
+// Use raw_ptr<T> for manual memory management.
+// Use Unique<T> for automatic cleanup via deinit().
+
+// Memory allocation intrinsics:
+// _malloc(size: i64) raw_ptr<i8> - allocate size bytes
+// _free(ptr: raw_ptr<i8>) void - free previously allocated memory
+// _sizeof<T>() i64 - size of type T in bytes
+// _init<T>(ptr, args...) - call T's constructor at ptr
+
+module sun {
+
+// Interface for memory allocators
+// All allocators must implement this interface
+interface IAllocator {
+    // Allocate an array of count elements of type T
+    // Returns raw_ptr<T> - caller is responsible for freeing
+    function alloc<T>(count: i64) raw_ptr<T>;
+    
+    // Low-level raw allocation - returns raw_ptr<i8>
+    function alloc_raw(size: i64) raw_ptr<i8>;
+    
+    // Free previously allocated memory
+    function dealloc(p: raw_ptr<i8>, size: i64) void;
+    
+    // Create a single instance of T, calling its constructor
+    // Returns raw_ptr<T> - caller manages lifetime
+    function create<T>(args...: _init_args<T>) raw_ptr<T>;
+}
+
+// Default heap allocator using malloc/free
+// This is the standard allocator for most use cases
+class HeapAllocator implements IAllocator {
+    function init() {
+        // No initialization needed for system malloc
+    }
+    
+    // Allocate array of count elements, returns typed raw pointer
+    function alloc<T>(count: i64) raw_ptr<T> {
+        var size: i64 = count * _sizeof<T>();
+        return _malloc(size);
+    }
+    
+    // Low-level raw byte allocation
+    function alloc_raw(size: i64) raw_ptr<i8> {
+        return _malloc(size);
+    }
+    
+    function dealloc(p: raw_ptr<i8>, size: i64) void {
+        _free(p);
+    }
+    
+    // Create a single instance of T
+    // Allocates memory, calls T's constructor, returns raw_ptr<T>
+    function create<T>(args...: _init_args<T>) raw_ptr<T> {
+        var size: i64 = _sizeof<T>();
+        var memory: raw_ptr<i8> = this.alloc_raw(size);
+        _init<T>(memory, args...);
+        return memory;
+    }
+    
+    // Create a copy of this allocator
+    // Since HeapAllocator has no state, this just returns a new instance
+    function copy() HeapAllocator {
+        return HeapAllocator();
+    }
+}
+
+// Factory function to create a heap allocator
+// Usage: import "stdlib/allocator.sun"; 
+//        using sun;
+//        var allocator = make_heap_allocator();
+//        var p = allocator.create<Point>(3, 4);
+//        // p.deinit() called automatically at scope exit
+function make_heap_allocator() HeapAllocator {
+    return HeapAllocator();
+}
+
+} // module sun

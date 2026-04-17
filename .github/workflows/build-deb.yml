@@ -1,0 +1,105 @@
+name: Build Debian Package
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v[0-9]*'  # Sequential version tags: v0, v1, v2, ...
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-deb:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for version detection
+
+      - name: Install LLVM 20 and build dependencies
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 20
+          sudo apt-get install -y \
+            llvm-20-dev \
+            libzstd-dev \
+            devscripts \
+            debhelper \
+            build-essential
+
+      - name: Build Debian package
+        run: |
+          chmod +x ./scripts/build-deb.sh
+          ./scripts/build-deb.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sun-deb-package-${{ github.sha }}
+          path: dist/*.deb
+          retention-days: 30
+
+      - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update dev release
+        if: github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dev
+          name: Development Build
+          prerelease: true
+          files: dist/*.deb
+          body: |
+            Latest development build from main branch.
+            
+            Commit: ${{ github.sha }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  test-install:
+    needs: build-deb
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sun-deb-package-${{ github.sha }}
+          path: dist/
+
+      - name: Install LLVM 20 runtime
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 20
+
+      - name: Install package
+        run: |
+          sudo apt-get update
+          sudo dpkg -i dist/*.deb || sudo apt-get install -f -y
+
+      - name: Test installation
+        run: |
+          which sun
+          sun --help || true
+          # Test with stdlib import (stdlib.moon installed to /usr/lib/sun/)
+          cat > test.sun << 'EOF'
+          import "stdlib.moon";
+          function main() i32 {
+              println("Hello from Sun!");
+              return 0;
+          }
+          EOF
+          sun test.sun

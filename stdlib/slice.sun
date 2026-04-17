@@ -1,0 +1,85 @@
+// stdlib/slice.sun - SliceRange type for indexing/slicing syntax
+//
+// SliceRange represents a single dimension's slice bounds.
+// Used by __slice__ methods to receive parsed slice syntax like M[a:b, :, 1:].
+//
+// The compiler translates slice syntax to SliceRange values:
+//   a:b  -> SliceRange(a, b, true, true)
+//   a:   -> SliceRange(a, 0, true, false)
+//   :b   -> SliceRange(0, b, false, true)
+//   :    -> SliceRange(0, 0, false, false)
+//
+// When hasStart=false, start should be treated as 0 (beginning of dimension).
+// When hasEnd=false, end should be treated as dimension size (end of dimension).
+
+module sun {
+
+class SliceRange {
+    var start: i64;      // Start index (ignored if hasStart=false)
+    var end: i64;        // End index, exclusive (ignored if hasEnd=false)
+    var hasStart: bool;  // true if explicit start was provided
+    var hasEnd: bool;    // true if explicit end was provided
+    
+    // Constructor with all fields
+    function init(start_: i64, end_: i64, hasStart_: bool, hasEnd_: bool) {
+        this.start = start_;
+        this.end = end_;
+        this.hasStart = hasStart_;
+        this.hasEnd = hasEnd_;
+    }
+    
+    // Get effective start index (0 if not specified)
+    function getStart() i64 {
+        if (this.hasStart) {
+            return this.start;
+        }
+        return 0;
+    }
+    
+    // Get effective end index, given dimension size
+    function getEnd(dimSize: i64) i64 {
+        if (this.hasEnd) {
+            return this.end;
+        }
+        return dimSize;
+    }
+    
+    // Check if this is a full-range slice (:)
+    function isFullRange() bool {
+        if (this.hasStart) { return false; }
+        if (this.hasEnd) { return false; }
+        return true;
+    }
+    
+    // Compute the size of this slice given dimension size
+    function size(dimSize: i64) i64 {
+        var s: i64 = this.getStart();
+        var e: i64 = this.getEnd(dimSize);
+        return e - s;
+    }
+}
+
+// Helper function to create a full-range slice (:)
+function SliceRange_full() SliceRange {
+    var zero: i64 = 0;
+    return SliceRange(zero, zero, false, false);
+}
+
+// Helper function to create an explicit range slice (a:b)
+function SliceRange_range(start: i64, end: i64) SliceRange {
+    return SliceRange(start, end, true, true);
+}
+
+// Helper function to create a from-start slice (a:)
+function SliceRange_from(start: i64) SliceRange {
+    var zero: i64 = 0;
+    return SliceRange(start, zero, true, false);
+}
+
+// Helper function to create a to-end slice (:b)
+function SliceRange_to(end: i64) SliceRange {
+    var zero: i64 = 0;
+    return SliceRange(zero, end, false, true);
+}
+
+} // module sun

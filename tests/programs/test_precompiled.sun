@@ -1,0 +1,6 @@
+// Test using precompiled simple_math module
+import "stdlib/simple_math.sun";
+
+function main() i32 {
+    return add(3, 4);
+}

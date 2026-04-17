@@ -1,0 +1,6 @@
+import "stdlib.moon";
+using sun;
+
+function main() {
+    println("Hello, Sun!");
+}

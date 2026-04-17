@@ -1,0 +1,47 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug CTest (Selected Test)",
+      "type": "lldb", // ← This is the key change: use CodeLLDB's type
+      "request": "launch",
+      "program": "${cmake.testProgram}", // Resolved by CMake Tools to the test executable
+      "args": [
+        "${cmake.testArgs}" // Passes the selected test name/filter (e.g. -R MyTest)
+      ],
+      "cwd": "${cmake.testWorkingDirectory}", // Usually the build dir — important for finding data files
+      "env": {}, // Add any needed env vars here if required
+      "stopOnEntry": false,
+      "initCommands": [ // Optional: useful defaults for better experience
+        "settings set target.x86-disassembly-flavor intel", // or "att" if you prefer AT&T
+        "breakpoint set -n main -N entry" // Auto breakpoint at main (helps when test has no obvious entry)
+      ],
+      "exitCommands": [
+        "breakpoint delete entry" // Cleanup the temp breakpoint
+      ]
+    },
+    {
+      "name": "Debug Script",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/sun",
+      "args": [
+        "test.sun"
+      ],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "/usr/bin/gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "CMake: build"
+    }
+  ]
+}

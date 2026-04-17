@@ -1,0 +1,71 @@
+# Functions and Lambdas
+
+Sun supports both named functions and anonymous lambda expressions.
+
+## Named Functions
+
+Functions are defined using the `function` keyword. They are hoisted and available throughout their scope:
+
+```sun
+function add(a: i32, b: i32) i32 {
+    return a + b;
+}
+
+function main() i32 {
+    println_i32(add(3, 4));  // 7
+    return 0;
+}
+```
+
+## Lambdas
+
+Lambdas are anonymous functions created with the `lambda` keyword. They must be assigned to a variable or used immediately:
+
+```sun
+function main() i32 {
+    var square = lambda (x: i32) i32 { return x * x; };
+    println_i32(square(5));  // 25
+    return 0;
+}
+```
+
+## Semantic Differences
+
+| Aspect | `function` | `lambda` |
+|--------|-----------|----------|
+| Name | Required, becomes the function's identity | Anonymous (empty name internally) |
+| Declaration | Top-level or nested statement | Expression (must assign to variable) |
+| First-class | No—cannot be assigned or passed | Yes—can be assigned, passed, returned |
+| Recursion | Can call itself by name | Must reference the variable it's assigned to |
+| Hoisting | Available throughout scope | Only after assignment |
+
+import { Callout } from 'nextra/components'
+
+<Callout type="info">
+  **When to use which:**
+  - Use `function` for named, top-level operations called directly
+  - Use `lambda` for callbacks, higher-order function arguments, or when you need to store/pass functions
+</Callout>
+
+## First-Class Lambdas
+
+Only lambdas are first-class values—they can be assigned to variables, passed as arguments, and returned from functions:
+
+```sun
+// Assign a lambda to a variable
+var double = lambda (x: i32) i32 { return x * 2; };
+println_i32(double(5));  // 10
+
+// Pass a lambda as an argument
+function apply(fn: (i32) i32, x: i32) i32 {
+    return fn(x);
+}
+println_i32(apply(double, 3));  // 6
+
+// Return a lambda from a function
+function makeAdder(n: i32) (i32) i32 {
+    return lambda (x: i32) i32 { return x + n; };
+}
+var add5 = makeAdder(5);
+println_i32(add5(10));  // 15
+```

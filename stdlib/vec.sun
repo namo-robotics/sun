@@ -1,0 +1,227 @@
+// stdlib/vec.sun - Dynamic growable array
+//
+// Vec<T> is a generic growable array backed by contiguous memory.
+// Automatically resizes when capacity is exceeded.
+// Uses HeapAllocator for memory management.
+//
+// Usage:
+//   import "stdlib/vec.sun";
+//   using sun;
+//   
+//   var allocator = make_heap_allocator();
+//   var v = Vec<i32>(allocator);
+//   v.push(10);
+//   v.push(20);
+//   v.push(30);
+//   var val = v.get(0);      // 10
+//   v.set(1, 25);            // Update index 1 to 25
+//   var last = v.pop();      // 30, size decreases
+//   var len = v.size();      // 2
+
+import "allocator.sun";
+using sun;
+
+// ============================================================================
+// Vec<T> - Dynamic Growable Array
+// ============================================================================
+
+module sun {
+
+class Vec<T> implements IIterable<T, Vec<T>> {
+    var data: raw_ptr<i8>;         // Element storage (as bytes for _free compat)
+    var alloc: HeapAllocator;      // Allocator (stored via copy)
+    var capacity_: i64;            // Allocated capacity
+    var size_: i64;                // Current number of elements
+    
+    // Constructor with allocator and capacity
+    function init(allocator: ref HeapAllocator, capacity: i64) {
+        this.alloc = allocator.copy();
+        this.capacity_ = capacity;
+        this.size_ = 0;
+        this.data = this.alloc.alloc_raw(capacity * _sizeof<T>());
+    }
+    
+    // Destructor
+    function deinit() void {
+        if (this.data != null) {
+            _free(this.data);
+            this.data = null;
+        }
+    }
+    
+    // ========================================================================
+    // Core Operations
+    // ========================================================================
+    
+    // Append element to end, grows if needed
+    function push(value: T) void {
+        if (this.size_ >= this.capacity_) {
+            this.grow();
+        }
+        _store<T>(this.data, this.size_, value);
+        this.size_ = this.size_ + 1;
+    }
+    
+    // Remove and return last element
+    function pop() T, IError {
+        if (this.size_ == 0) {
+            throw 1;  // Empty vec
+        }
+        this.size_ = this.size_ - 1;
+        return _load<T>(this.data, this.size_);
+    }
+    
+    // Get element at index
+    function get(index: i64) T {
+        return _load<T>(this.data, index);
+    }
+    
+    // Set element at index
+    function set(index: i64, value: T) void {
+        _store<T>(this.data, index, value);
+    }
+    
+    // Get current size
+    function size() i64 {
+        return this.size_;
+    }
+    
+    // Get current capacity
+    function capacity() i64 {
+        return this.capacity_;
+    }
+    
+    // Check if empty
+    function isEmpty() bool {
+        return this.size_ == 0;
+    }
+    
+    // Reserve capacity for at least n elements (doesn't change size)
+    function reserve(n: i64) void {
+        if (n > this.capacity_) {
+            var old_data = this.data;
+            this.data = this.alloc.alloc_raw(n * _sizeof<T>());
+            // Copy existing elements
+            for (var i: i64 = 0; i < this.size_; i = i + 1) {
+                var value: T = _load<T>(old_data, i);
+                _store<T>(this.data, i, value);
+            }
+            _free(old_data);
+            this.capacity_ = n;
+        }
+    }
+    
+    // Clear all elements (doesn't deallocate)
+    function clear() void {
+        this.size_ = 0;
+    }
+    
+    // Get raw data pointer (for iteration)
+    function rawData() raw_ptr<i8> {
+        return this.data;
+    }
+    
+    // Get last element without removing
+    function last() T, IError {
+        if (this.size_ == 0) {
+            throw 1;  // Empty vec
+        }
+        return _load<T>(this.data, this.size_ - 1);
+    }
+    
+    // Get first element
+    function first() T, IError {
+        if (this.size_ == 0) {
+            throw 1;  // Empty vec
+        }
+        return _load<T>(this.data, 0);
+    }
+    
+    // ========================================================================
+    // Internal Methods
+    // ========================================================================
+    
+    // Double capacity and copy elements
+    function grow() void {
+        var old_data = this.data;
+        
+        // Double capacity
+        var new_capacity: i64 = this.capacity_ * 2;
+        this.data = this.alloc.alloc_raw(new_capacity * _sizeof<T>());
+        this.capacity_ = new_capacity;
+        
+        // Copy elements
+        for (var i: i64 = 0; i < this.size_; i = i + 1) {
+            var value: T = _load<T>(old_data, i);
+            _store<T>(this.data, i, value);
+        }
+        
+        // Free old storage
+        _free(old_data);
+    }
+    
+    // ========================================================================
+    // Indexing Support
+    // ========================================================================
+    
+    // Operator overload for indexing: v[i] calls __index__([i])
+    function __index__(indices: ref array<i64>) T {
+        return this.get(indices[0]);
+    }
+    
+    // Operator overload for indexed assignment: v[i] = val calls __setindex__([i], val)
+    function __setindex__(indices: ref array<i64>, value: T) void {
+        this.set(indices[0], value);
+    }
+    
+    // ========================================================================
+    // Iteration Support
+    // ========================================================================
+    
+    // Return iterator over elements
+    function iter() VecIterator<T> {
+        return VecIterator<T>();
+    }
+}
+
+// ============================================================================
+// VecIterator<T> - Iterator over Vec elements
+// ============================================================================
+
+class VecIterator<T> implements IIterator<T, Vec<T>> {
+    var current: i64;
+    
+    function init() {
+        this.current = 0;
+    }
+    
+    function hasNext(vec: ref Vec<T>) bool {
+        return this.current < vec.size();
+    }
+    
+    function next(vec: ref Vec<T>) T {
+        var value: T = vec.get(this.current);
+        this.current = this.current + 1;
+        return value;
+    }
+}
+
+// ============================================================================
+// Precompiled Specializations
+// ============================================================================
+
+// Vec specializations (must be declared before VecIterator since VecIterator<T> references Vec<T>)
+declare Vec_i8 = Vec<i8>;
+declare Vec_i32 = Vec<i32>;
+declare Vec_i64 = Vec<i64>;
+declare Vec_f32 = Vec<f32>;
+declare Vec_f64 = Vec<f64>;
+
+// VecIterator specializations
+declare VecIterator_i8 = VecIterator<i8>;
+declare VecIterator_i32 = VecIterator<i32>;
+declare VecIterator_i64 = VecIterator<i64>;
+declare VecIterator_f32 = VecIterator<f32>;
+declare VecIterator_f64 = VecIterator<f64>;
+
+} // module sun

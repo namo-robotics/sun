@@ -1,0 +1,150 @@
+# Enums
+
+Enums define a type with a fixed set of named variants.
+
+import { Callout } from 'nextra/components'
+
+## Defining an Enum
+
+```sun
+enum Color { Red, Green, Blue }
+```
+
+Each variant is automatically assigned an integer value starting from 0:
+- `Red` = 0
+- `Green` = 1
+- `Blue` = 2
+
+## Using Enums
+
+### Variables
+
+Declare variables with an enum type and access variants using dot notation:
+
+```sun
+var c: Color = Color.Green;
+```
+
+### Comparison
+
+Enum values can be compared with `==` and `!=`:
+
+```sun
+function is_red(c: Color) bool {
+    return c == Color.Red;
+}
+
+function main() i32 {
+    var c: Color = Color.Blue;
+    if (c != Color.Red) {
+        return 1;
+    }
+    return 0;
+}
+```
+
+## Enums as Function Parameters
+
+Enums can be passed to and returned from functions:
+
+```sun
+enum Direction { Up, Down, Left, Right }
+
+function opposite(d: Direction) Direction {
+    if (d == Direction.Up) { return Direction.Down; }
+    if (d == Direction.Down) { return Direction.Up; }
+    if (d == Direction.Left) { return Direction.Right; }
+    return Direction.Left;
+}
+
+function main() i32 {
+    var dir: Direction = Direction.Up;
+    var opp: Direction = opposite(dir);
+    if (opp == Direction.Down) {
+        return 1;
+    }
+    return 0;
+}
+```
+
+## Multiple Enums
+
+You can define multiple enums in the same file:
+
+```sun
+enum Status { Pending, Running, Completed }
+enum Priority { Low, Medium, High }
+
+function main() i32 {
+    var s: Status = Status.Running;
+    var p: Priority = Priority.High;
+    return 0;
+}
+```
+
+## Enums in Classes
+
+Enums can be used as field types in classes:
+
+```sun
+enum TaskStatus { Pending, InProgress, Done }
+
+class Task {
+    var status: TaskStatus;
+
+    function init() {
+        this.status = TaskStatus.Pending;
+    }
+
+    function start() {
+        this.status = TaskStatus.InProgress;
+    }
+
+    function complete() {
+        this.status = TaskStatus.Done;
+    }
+
+    function is_done() bool {
+        return this.status == TaskStatus.Done;
+    }
+}
+```
+
+## Pattern Matching with Enums
+
+Combine enums with `match` expressions for clean branching:
+
+```sun
+enum Color { Red, Green, Blue }
+
+function to_rgb(c: Color) i32 {
+    return match c {
+        Color.Red => 0xFF0000,
+        Color.Green => 0x00FF00,
+        Color.Blue => 0x0000FF,
+        _ => 0
+    };
+}
+```
+
+See [Match Expressions](/syntax/match) for more details.
+
+<Callout type="info">
+  Sun enums are currently simple tagged values without associated data. Support for enums with associated data (like Rust's `Option<T>` or `Result<T, E>`) is planned for a future release.
+</Callout>
+
+## Trailing Commas
+
+Trailing commas are allowed in enum definitions:
+
+```sun
+enum Days {
+    Monday,
+    Tuesday,
+    Wednesday,
+    Thursday,
+    Friday,
+    Saturday,
+    Sunday,
+}
+```

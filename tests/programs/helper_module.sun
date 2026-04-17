@@ -1,0 +1,5 @@
+// helper_module.sun - Another module for testing multi-import
+
+function double_val(x: i32) i32 {
+    return x * 2;
+};

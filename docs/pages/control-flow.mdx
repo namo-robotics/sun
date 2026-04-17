@@ -1,0 +1,284 @@
+# Control Flow
+
+Sun provides C-style control flow statements for branching and iteration.
+
+import { Callout } from 'nextra/components'
+
+## Conditionals
+
+### If-Else
+
+Use `if` and `else` for conditional execution:
+
+```sun
+function abs(x: i32) i32 {
+    if (x < 0) {
+        return -x;
+    } else {
+        return x;
+    }
+}
+```
+
+The condition must be wrapped in parentheses. The else branch is optional:
+
+```sun
+function clamp_positive(x: i32) i32 {
+    if (x < 0) {
+        return 0;
+    }
+    return x;
+}
+```
+
+### Else-If Chains
+
+Chain multiple conditions with `else if`:
+
+```sun
+function sign(x: i32) i32 {
+    if (x > 0) {
+        return 1;
+    } else if (x < 0) {
+        return -1;
+    } else {
+        return 0;
+    }
+}
+```
+
+## Loops
+
+### For Loop
+
+The `for` loop uses traditional C-style syntax with initialization, condition, and increment:
+
+```sun
+for (initialization; condition; increment) {
+    // body
+}
+```
+
+**Basic example** - sum numbers 0 to 4:
+
+```sun
+function main() i32 {
+    var sum: i32 = 0;
+    for (var i: i32 = 0; i < 5; i = i + 1) {
+        sum = sum + i;
+    }
+    return sum;  // Returns 10
+}
+```
+
+**Step by 2:**
+
+```sun
+var sum: i32 = 0;
+for (var i: i32 = 0; i < 10; i = i + 2) {
+    sum = sum + i;
+}
+// sum = 0 + 2 + 4 + 6 + 8 = 20
+```
+
+**Countdown:**
+
+```sun
+for (var i: i32 = 5; i > 0; i = i - 1) {
+    println_i32(i);
+}
+// Prints: 5 4 3 2 1
+```
+
+**Nested loops:**
+
+```sun
+function main() i32 {
+    var count: i32 = 0;
+    for (var i: i32 = 0; i < 3; i = i + 1) {
+        for (var j: i32 = 0; j < 4; j = j + 1) {
+            count = count + 1;
+        }
+    }
+    return count;  // Returns 12 (3 * 4)
+}
+```
+
+<Callout type="info">
+  Each part of the for loop header is optional. An empty condition creates an infinite loop: `for (;;) { ... }`
+</Callout>
+
+### While Loop
+
+The `while` loop executes as long as its condition is true:
+
+```sun
+function main() i32 {
+    var sum: i32 = 0;
+    var i: i32 = 0;
+    while (i < 5) {
+        sum = sum + i;
+        i = i + 1;
+    }
+    return sum;  // Returns 10
+}
+```
+
+**Convergence example:**
+
+```sun
+function main() f64 {
+    var x: f64 = 1.0;
+    while (x > 0.01) {
+        x = x / 2.0;
+    }
+    return x;  // Returns a value <= 0.01
+}
+```
+
+## Break and Continue
+
+### Break
+
+Exit a loop early using `break`:
+
+```sun
+function find_first_multiple_of_7(limit: i32) i32 {
+    var result: i32 = -1;
+    for (var i: i32 = 1; i < limit; i = i + 1) {
+        if (i % 7 == 0) {
+            result = i;
+            break;
+        }
+    }
+    return result;
+}
+```
+
+### Continue
+
+Skip to the next iteration using `continue`:
+
+```sun
+function sum_even_numbers(limit: i32) i32 {
+    var sum: i32 = 0;
+    for (var i: i32 = 0; i < limit; i = i + 1) {
+        if (i % 2 != 0) {
+            continue;  // Skip odd numbers
+        }
+        sum = sum + i;
+    }
+    return sum;
+}
+```
+
+### Nested Loop Control
+
+`break` and `continue` only affect the innermost loop:
+
+```sun
+function main() i32 {
+    var count: i32 = 0;
+    for (var i: i32 = 0; i < 5; i = i + 1) {
+        for (var j: i32 = 0; j < 5; j = j + 1) {
+            if (j == 2) {
+                break;  // Only breaks inner loop
+            }
+            count = count + 1;
+        }
+    }
+    return count;  // Returns 10 (5 outer * 2 inner iterations)
+}
+```
+
+## For-In Loop
+
+The `for-in` loop iterates over objects that implement the iterator pattern (have `hasNext()` and `next()` methods):
+
+```sun
+for (var element: Type in iterator) {
+    // body
+}
+```
+
+**Basic example** - sum using a custom iterator:
+
+```sun
+class RangeIterator implements IIterator<i32> {
+    var current: i32;
+    var end: i32;
+
+    function init(start: i32, stop: i32) {
+        this.current = start;
+        this.end = stop;
+    }
+
+    function hasNext() bool {
+        return this.current < this.end;
+    }
+
+    function next() i32 {
+        var result = this.current;
+        this.current = this.current + 1;
+        return result;
+    }
+}
+
+function main() i32 {
+    var iter = RangeIterator(0, 5);
+    var sum: i32 = 0;
+    for (var x: i32 in iter) {
+        sum = sum + x;
+    }
+    return sum;  // Returns 10 (0+1+2+3+4)
+}
+```
+
+<Callout type="info">
+  The `in` keyword is contextual - you can still use `in` as a variable name: `var in: i32 = 5;`
+</Callout>
+
+**Break and continue** work with for-in loops:
+
+```sun
+function sum_until_five(iter: RangeIterator) i32 {
+    var sum: i32 = 0;
+    for (var x: i32 in iter) {
+        if (x == 5) {
+            break;  // Exit early
+        }
+        if (x == 3) {
+            continue;  // Skip 3
+        }
+        sum = sum + x;
+    }
+    return sum;
+}
+```
+
+**Nested for-in loops:**
+
+```sun
+function main() i32 {
+    var sum: i32 = 0;
+    var outer = RangeIterator(1, 4);
+    for (var i: i32 in outer) {
+        var inner = RangeIterator(1, 4);
+        for (var j: i32 in inner) {
+            sum = sum + i * j;
+        }
+    }
+    return sum;  // (1*1+1*2+1*3) + (2*1+2*2+2*3) + (3*1+3*2+3*3) = 36
+}
+```
+
+## Comparison with Other Languages
+
+| Feature | Sun | C/C++ | Rust |
+|---------|-----|-------|------|
+| For loop syntax | `for (init; cond; incr)` | `for (init; cond; incr)` | — |
+| For-in loop | `for (var x: T in iter)` | — (range-for in C++11) | `for x in iterator` |
+| While loop | `while (cond)` | `while (cond)` | `while cond` |
+| Break/Continue | ✓ | ✓ | ✓ |
+| Labeled breaks | Not yet | ✗ (goto) | ✓ |
+| Loop expressions | ✗ | ✗ | ✓ |

@@ -1,0 +1,31 @@
+// Unique ownership smart pointer with automatic cleanup via deinit
+// Wraps a raw_ptr from allocator.create<T>() and frees on deinit
+// Usage: var ptr = allocator.create<Point>(3, 4);
+//        var p = Unique<Point>(ptr);
+
+module sun {
+
+class Unique<T> {
+    var data: raw_ptr<T>;
+    
+    function init(p: raw_ptr<T>) {
+        this.data = p;
+    }
+    
+    function get() raw_ptr<T> {
+        return this.data;
+    }
+    
+    function is_null() bool {
+        return this.data == null;
+    }
+    
+    function deinit() void {
+        if (this.data != null) {
+            _free(this.data);
+            this.data = null;
+        }
+    }
+}
+
+} // module sun

@@ -1,0 +1,238 @@
+# Matrices
+
+Sun provides N-dimensional matrices through the standard library `Matrix<T>` class. Matrices support bracket indexing syntax and are backed by contiguous heap memory.
+
+import { Callout } from 'nextra/components'
+
+## Importing the Standard Library
+
+```sun
+import "build/stdlib.moon";
+```
+
+## Creating Matrices
+
+Use `Matrix<T>(allocator, shape)` to create a matrix with the specified dimensions:
+
+```sun
+function main() i32 {
+    var allocator = make_heap_allocator();
+    
+    // 1D array (vector) of 10 elements
+    var v = Matrix<i32>(allocator, [10]);
+    
+    // 2D matrix (3x4)
+    var m = Matrix<i32>(allocator, [3, 4]);
+    
+    // 3D tensor (2x3x4)
+    var t = Matrix<f64>(allocator, [2, 3, 4]);
+    
+    return 0;
+}
+```
+
+## Indexing
+
+Access elements using comma-separated indices in brackets:
+
+```sun
+function main() i32 {
+    var allocator = make_heap_allocator();
+    var m = Matrix<i32>(allocator, [3, 3]);
+    
+    // Assignment
+    m[0, 0] = 1;
+    m[1, 1] = 5;
+    m[2, 2] = 9;
+    
+    // Reading
+    var diag = m[0, 0] + m[1, 1] + m[2, 2];  // 15
+    
+    return diag;
+}
+```
+
+For 1D matrices:
+
+```sun
+function main() i32 {
+    var allocator = make_heap_allocator();
+    var arr = Matrix<i32>(allocator, [5]);
+    
+    arr[0] = 10;
+    arr[1] = 20;
+    arr[2] = 30;
+    
+    return arr[0] + arr[1] + arr[2];  // 60
+}
+```
+
+## Matrix Methods
+
+### `get(indices)` / `set(indices, value)`
+
+Direct method access (equivalent to bracket syntax):
+
+```sun
+var val = m.get([i, j]);     // Same as m[i, j]
+m.set([i, j], value);        // Same as m[i, j] = value
+```
+
+### `shape()`
+
+Returns the dimensions of the matrix:
+
+```sun
+function main() i64 {
+    var allocator = make_heap_allocator();
+    var m = Matrix<i32>(allocator, [3, 4]);
+    
+    var s = m.shape();
+    println_i64(s[0]);  // 3
+    println_i64(s[1]);  // 4
+    
+    return s[0];
+}
+```
+
+### `size()`
+
+Returns the total number of elements:
+
+```sun
+function main() i64 {
+    var allocator = make_heap_allocator();
+    var m = Matrix<i32>(allocator, [3, 4]);
+    
+    return m.size();  // 12
+}
+```
+
+### `ndims()`
+
+Returns the number of dimensions:
+
+```sun
+function main() i64 {
+    var allocator = make_heap_allocator();
+    var t = Matrix<f32>(allocator, [2, 3, 4]);
+    
+    return t.ndims();  // 3
+}
+```
+
+## Matrix Views
+
+`MatrixView<T>` provides a non-owning view into a `Matrix<T>` or another view. Views share memory with the original matrix.
+
+### Creating Views
+
+Views are created via slicing or explicitly:
+
+```sun
+function main() i32 {
+    var allocator = make_heap_allocator();
+    var m = Matrix<i32>(allocator, [3, 3]);
+    
+    // Fill matrix
+    m[0, 0] = 1; m[0, 1] = 2; m[0, 2] = 3;
+    m[1, 0] = 4; m[1, 1] = 5; m[1, 2] = 6;
+    m[2, 0] = 7; m[2, 1] = 8; m[2, 2] = 9;
+    
+    // Create view (shares memory with m)
+    var view = MatrixView<i32>(m);
+    
+    return view[1, 1];  // 5
+}
+```
+
+<Callout type="info">
+  Views do not own their data. The original matrix must remain valid while the view is in use.
+</Callout>
+
+## How Operator Overloading Works
+
+When you write `m[i, j]`, the compiler translates it to method calls:
+
+| Syntax | Compiler Translation |
+|--------|---------------------|
+| `m[i, j]` (read) | `m.__index__([i, j])` |
+| `m[i, j] = v` (write) | `m.__setindex__([i, j], v)` |
+
+To make your own class indexable, implement `__index__` and `__setindex__`:
+
+```sun
+class MyArray {
+    var data: ptr<i32>;
+    var len: i64;
+    
+    function init(allocator: ref HeapAllocator, size: i64) {
+        this.data = allocator.alloc<i32>(size);
+        this.len = size;
+    }
+    
+    // Called for arr[i]
+    function __index__(indices: ref array<i64>) i32 {
+        return _load<i32>(this.data, indices[0]);
+    }
+    
+    // Called for arr[i] = value
+    function __setindex__(indices: ref array<i64>, value: i32) void {
+        _store<i32>(this.data, indices[0], value);
+    }
+}
+
+function main() i32 {
+    var allocator = make_heap_allocator();
+    var arr = MyArray(allocator, 10);
+    
+    arr[0] = 42;      // Calls __setindex__
+    return arr[0];    // Calls __index__, returns 42
+}
+```
+
+## Complete Example
+
+```sun
+import "build/stdlib.moon";
+
+function main() i32 {
+    var allocator = make_heap_allocator();
+    
+    // Create a 3x3 identity matrix
+    var identity = Matrix<i32>(allocator, [3, 3]);
+    
+    // Initialize to zero
+    for (var i: i64 = 0; i < 3; i = i + 1) {
+        for (var j: i64 = 0; j < 3; j = j + 1) {
+            identity[i, j] = 0;
+        }
+    }
+    
+    // Set diagonal to 1
+    identity[0, 0] = 1;
+    identity[1, 1] = 1;
+    identity[2, 2] = 1;
+    
+    // Sum the diagonal
+    var trace = identity[0, 0] + identity[1, 1] + identity[2, 2];
+    
+    return trace;  // 3
+}
+```
+
+## Memory Management
+
+`Matrix<T>` uses an owning pointer (`ptr<T>`) for its data, which is automatically freed when the matrix goes out of scope. The allocator is only used during construction.
+
+```sun
+function createMatrix() i32 {
+    var allocator = make_heap_allocator();
+    var m = Matrix<i32>(allocator, [100, 100]);
+    
+    m[50, 50] = 42;
+    return m[50, 50];
+    
+    // m is automatically freed here
+}
+```

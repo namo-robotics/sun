@@ -1,0 +1,31 @@
+#!/usr/bin/make -f
+
+# See debhelper(7) for more information
+export DH_VERBOSE = 1
+
+# Hardening flags
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+# Disable debug symbols package (avoids permission issues with parent dir)
+export DEB_BUILD_OPTIONS = nostrip noddebs
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+	dh_auto_configure -- \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DBUILD_TESTING=OFF
+
+override_dh_auto_install:
+	dh_auto_install
+	# Install the sun binary to /usr/bin
+	install -D -m 755 obj-*/sun debian/sun/usr/bin/sun
+	# Install the precompiled stdlib
+	install -D -m 644 obj-*/stdlib.moon debian/sun/usr/lib/sun/stdlib.moon
+	# Install stdlib source files (for reference/debugging)
+	install -d debian/sun/usr/share/sun/stdlib
+	install -m 644 stdlib/*.sun debian/sun/usr/share/sun/stdlib/
+
+override_dh_shlibdeps:
+	dh_shlibdeps --dpkg-shlibdeps-params=--ignore-missing-info

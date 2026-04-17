@@ -1,0 +1,358 @@
+// stdlib/map.sun - Hash map (unordered) with open addressing
+//
+// Map<K, V> is a generic hash map using open addressing with linear probing.
+// Supports i32, i64, and String keys. Values can be any type.
+// Uses HeapAllocator for memory management.
+//
+// Usage:
+//   import "stdlib/map.sun";
+//   using sun;
+//   
+//   var allocator = make_heap_allocator();
+//   var m = Map<i64, i32>(allocator);
+//   m.insert(42, 100);
+//   var val = m.get(42);              // Returns 100, throws if not found
+//   var val2 = m.getOrDefault(99, 0); // Returns 0 (default) since 99 not in map
+//   m.remove(42);                     // Removes and returns value
+//
+//   // Check existence
+//   if (m.contains(42)) { ... }
+//
+//   // Iteration over values
+//   for (var v: i32 in m) { ... }
+
+import "vec.sun";
+import "string.sun";
+using sun;
+
+module sun {
+
+// Entry states for open addressing
+// 0 = EMPTY (never used)
+// 1 = OCCUPIED (has key-value)
+// 2 = DELETED (tombstone for linear probing)
+
+// ============================================================================
+// Hash Functions
+// ============================================================================
+
+// Simple multiplicative hash for integers
+// Uses Knuth's multiplicative method
+function hash_i64(key: i64) i64 {
+    // Knuth's multiplicative constant (golden ratio based)
+    // 2654435769 = floor(2^32 / phi)
+    var multiplier: i64 = 2654435769;
+    
+    var hash: i64 = key * multiplier;
+    
+    // Ensure positive result
+    if (hash < 0) {
+        hash = 0 - hash;
+    }
+    return hash;
+}
+
+// Hash for 32-bit integers
+function hash_i32(key: i32) i64 {
+    return hash_i64(key);
+}
+
+// Hash for String (simple polynomial rolling hash)
+function hash_string(s: ref String) i64 {
+    var hash: i64 = 0;
+    var base: i64 = 31;  // Prime base
+    var multiplier: i64 = 1;
+    
+    var len: i64 = s.length();
+    for (var i: i64 = 0; i < len; i = i + 1) {
+        var byte: i64 = s.at(i);
+        hash = hash + byte * multiplier;
+        multiplier = multiplier * base;
+    }
+    
+    if (hash < 0) {
+        hash = 0 - hash;
+    }
+    return hash;
+}
+
+// Modulo operation (a mod b)
+function mod(a: i64, b: i64) i64 {
+    return a - (a / b) * b;
+}
+
+// ============================================================================
+// Map<K, V> - Generic Hash Map
+// ============================================================================
+
+class Map<K, V> implements IIterable<V, Map<K, V>> {
+    var keys: Vec<K>;              // Key storage
+    var values: Vec<V>;            // Value storage  
+    var states: Vec<i8>;           // State array: 0=empty, 1=occupied, 2=deleted
+    var alloc: HeapAllocator;      // Allocator (stored via copy)
+    var capacity_: i64;            // Number of buckets
+    var size_: i64;                // Number of occupied entries
+    
+    // Constructor with allocator and capacity
+    function init(allocator: ref HeapAllocator, capacity: i64) {
+        this.alloc = allocator.copy();
+        this.capacity_ = capacity;
+        this.size_ = 0;
+        
+        // Allocate Vec storage with sufficient capacity
+        this.keys = Vec<K>(allocator, capacity);
+        this.values = Vec<V>(allocator, capacity);
+        this.states = Vec<i8>(allocator, capacity);
+        
+        // Initialize all states to EMPTY (0) by pushing
+        for (var i: i64 = 0; i < capacity; i = i + 1) {
+            this.states.push(0);
+        }
+    }
+    
+    // ========================================================================
+    // Core Operations
+    // ========================================================================
+    
+    // Insert or update a key-value pair
+    function insert(key: K, value: V) void {
+        // Check load factor and grow if needed (> 70%)
+        var threshold: i64 = (this.capacity_ * 7) / 10;
+        if (this.size_ >= threshold) {
+            this.grow();
+        }
+        
+        var hash: i64 = hash_i64(key);
+        var start: i64 = mod(hash, this.capacity_);
+        var first_deleted: i64 = -1;
+        
+        // Linear probing
+        for (var i: i64 = 0; i < this.capacity_; i = i + 1) {
+            var probe: i64 = mod(start + i, this.capacity_);
+            var state: i8 = this.states.get(probe);
+            
+            if (state == 0) {
+                // EMPTY slot - insert here (or at first deleted if found)
+                if (first_deleted >= 0) {
+                    probe = first_deleted;
+                }
+                this.keys.set(probe, key);
+                this.values.set(probe, value);
+                this.states.set(probe, 1);
+                this.size_ = this.size_ + 1;
+                return;
+            }
+            
+            if (state == 2) {
+                // DELETED slot - remember first one for reuse
+                if (first_deleted < 0) {
+                    first_deleted = probe;
+                }
+            }
+            
+            if (state == 1) {
+                // OCCUPIED - check if same key (update)
+                var existing_key: K = this.keys.get(probe);
+                if (existing_key == key) {
+                    // Update value
+                    this.values.set(probe, value);
+                    return;
+                }
+            }
+        }
+        
+        // Should not reach here if load factor is maintained
+        // But if we do, use first deleted slot
+        if (first_deleted >= 0) {
+            this.keys.set(first_deleted, key);
+            this.values.set(first_deleted, value);
+            this.states.set(first_deleted, 1);
+            this.size_ = this.size_ + 1;
+        }
+    }
+    
+    // Get value by key, throws IError if not found
+    function get(key: K) V, IError {
+        var probe: i64 = this.findIndex(key);
+        if (probe < 0) {
+            throw 1;  // Key not found
+        }
+        return this.values.get(probe);
+    }
+    
+    // Get value by key, returns default if not found
+    function getOrDefault(key: K, default_value: V) V {
+        var probe: i64 = this.findIndex(key);
+        if (probe < 0) {
+            return default_value;
+        }
+        return this.values.get(probe);
+    }
+    
+    // Remove key and return its value, throws IError if not found
+    function remove(key: K) V, IError {
+        var probe: i64 = this.findIndex(key);
+        if (probe < 0) {
+            throw 1;  // Key not found
+        }
+        
+        var value: V = this.values.get(probe);
+        this.states.set(probe, 2);  // Mark as DELETED
+        this.size_ = this.size_ - 1;
+        return value;
+    }
+    
+    // Check if key exists
+    function contains(key: K) bool {
+        return this.findIndex(key) >= 0;
+    }
+    
+    // Get number of elements
+    function size() i64 {
+        return this.size_;
+    }
+    
+    // Get bucket count
+    function capacity() i64 {
+        return this.capacity_;
+    }
+    
+    // Check if map is empty
+    function isEmpty() bool {
+        return this.size_ == 0;
+    }
+    
+    // Clear all entries
+    function clear() void {
+        for (var i: i64 = 0; i < this.capacity_; i = i + 1) {
+            this.states.set(i, 0);
+        }
+        this.size_ = 0;
+    }
+    
+    // ========================================================================
+    // Internal Methods
+    // ========================================================================
+    
+    // Find index of key, returns -1 if not found
+    function findIndex(key: K) i64 {
+        var hash: i64 = hash_i64(key);
+        var start: i64 = mod(hash, this.capacity_);
+        
+        for (var i: i64 = 0; i < this.capacity_; i = i + 1) {
+            var probe: i64 = mod(start + i, this.capacity_);
+            var state: i8 = this.states.get(probe);
+            
+            if (state == 0) {
+                // EMPTY - key not in map
+                return -1;
+            }
+            
+            if (state == 1) {
+                // OCCUPIED - check key
+                var existing_key: K = this.keys.get(probe);
+                if (existing_key == key) {
+                    return probe;
+                }
+            }
+            // state == 2 (DELETED) - continue probing
+        }
+        
+        return -1;
+    }
+    
+    // Grow capacity and rehash all entries
+    function grow() void {
+        // Move old Vecs out of this (move semantics: old_* now owns the data,
+        // this.keys/values/states are zeroed to prevent double-free)
+        var old_keys = this.keys;
+        var old_values = this.values;
+        var old_states = this.states;
+        var old_capacity = this.capacity_;
+        
+        // Double capacity
+        var new_capacity: i64 = old_capacity * 2;
+        this.capacity_ = new_capacity;
+        
+        // Allocate new Vec storage
+        this.keys = Vec<K>(this.alloc, new_capacity);
+        this.values = Vec<V>(this.alloc, new_capacity);
+        this.states = Vec<i8>(this.alloc, new_capacity);
+        
+        // Initialize new states to EMPTY
+        for (var i: i64 = 0; i < new_capacity; i = i + 1) {
+            this.states.push(0);
+        }
+        
+        // Rehash occupied entries from old Vecs
+        this.size_ = 0;
+        
+        for (var i: i64 = 0; i < old_capacity; i = i + 1) {
+            var state: i8 = old_states.get(i);
+            if (state == 1) {
+                // OCCUPIED - rehash into new table
+                var key: K = old_keys.get(i);
+                var value: V = old_values.get(i);
+                this.insert(key, value);
+            }
+        }
+        
+        // old_* go out of scope - their deinit frees the old memory
+    }
+    
+    // ========================================================================
+    // Iteration Support
+    // ========================================================================
+    
+    // Return iterator over values
+    function iter() MapIterator<K, V> {
+        return MapIterator<K, V>();
+    }
+}
+
+// ============================================================================
+// MapIterator<K, V> - Iterator over map values
+// ============================================================================
+
+class MapIterator<K, V> implements IIterator<V, Map<K, V>> {
+    var current: i64;
+    
+    function init() {
+        this.current = 0;
+    }
+    
+    function hasNext(map: ref Map<K, V>) bool {
+        // Find next occupied slot starting from current
+        var capacity: i64 = map.capacity();
+        while (this.current < capacity) {
+            var state: i8 = map.states.get(this.current);
+            if (state == 1) {
+                return true;
+            }
+            this.current = this.current + 1;
+        }
+        return false;
+    }
+    
+    function next(map: ref Map<K, V>) V {
+        // Current should already point to an occupied slot (from hasNext)
+        var value: V = map.values.get(this.current);
+        this.current = this.current + 1;  // Move past current
+        return value;
+    }
+}
+
+// ============================================================================
+// Precompiled Specializations
+// ============================================================================
+
+// Map specializations - must be declared before MapIterator since MapIterator<K, V> references Map<K, V>
+// (only i64 keys supported - hash_i64 requires i64)
+declare Map_i64_i32 = Map<i64, i32>;
+declare Map_i64_i64 = Map<i64, i64>;
+
+// MapIterator specializations
+declare MapIterator_i64_i32 = MapIterator<i64, i32>;
+declare MapIterator_i64_i64 = MapIterator<i64, i64>;
+
+} // module sun

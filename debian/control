@@ -1,0 +1,26 @@
+Source: sun
+Section: devel
+Priority: optional
+Maintainer: Sun Language Team <davewbrwn@gmail.com>
+Build-Depends: debhelper-compat (= 13),
+               cmake (>= 3.20),
+               llvm-20-dev,
+               libllvm20,
+               g++ (>= 11) | clang (>= 14)
+Standards-Version: 4.6.2
+Homepage: https://namo-robotics.github.io/sun/
+Vcs-Git: https://github.com/namo-robotics/sun.git
+Vcs-Browser: https://github.com/namo-robotics/sun
+Rules-Requires-Root: no
+
+Package: sun
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, libllvm20
+Description: The Sun Programming Language Compiler
+ Sun is a statically compiled programming language optimized with LLVM.
+ .
+ Features:
+  - Fast: Statically compiled and optimized with LLVM
+  - Designed for AI: N-D matrices and linear algebra built-in
+  - Memory safe: Rust-style borrow checking (in development)
+  - Readable: Straightforward syntax for humans and AIs

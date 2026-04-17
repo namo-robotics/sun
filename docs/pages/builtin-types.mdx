@@ -1,0 +1,286 @@
+# Builtin Types
+
+Sun provides several builtin types that are available without explicit definition.
+
+import { Callout } from 'nextra/components'
+
+## Primitive Types
+
+Sun supports the following primitive types:
+
+| Type | Description | Size |
+|------|-------------|------|
+| `i8`, `i16`, `i32`, `i64` | Signed integers | 1, 2, 4, 8 bytes |
+| `u8`, `u16`, `u32`, `u64` | Unsigned integers | 1, 2, 4, 8 bytes |
+| `f32`, `f64` | Floating-point numbers | 4, 8 bytes |
+| `bool` | Boolean (`true` or `false`) | 1 byte |
+| `void` | No value (for functions with no return) | — |
+
+```sun
+var a: i32 = 42;
+var b: f64 = 3.14159;
+var c: bool = true;
+var d: u8 = 255;
+```
+
+## Arrays
+
+Arrays are fixed-size collections of elements of the same type.
+
+### Declaration and Initialization
+
+```sun
+// Array literals
+var arr = [1, 2, 3, 4, 5];
+
+// With explicit type annotation
+var arr: array<i32> = [10, 20, 30];
+
+// Multidimensional arrays
+var matrix: array<f64, 2, 3> = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
+```
+
+### Indexing
+
+```sun
+var arr = [10, 20, 30, 40, 50];
+var first = arr[0];   // 10
+var third = arr[2];   // 30
+
+// Multidimensional indexing
+var matrix = [[1, 2], [3, 4]];
+var element = matrix[1, 0];  // 3
+```
+
+<Callout type="warning">
+  Array bounds are checked at runtime. Accessing an out-of-bounds index will cause a runtime error.
+</Callout>
+
+## Pointer Types
+
+Sun provides pointer types for working with memory:
+
+### `raw_ptr<T>` - Raw Pointer
+
+A non-owning raw pointer for low-level memory operations.
+
+```sun
+var raw: raw_ptr<i32> = get_raw_pointer();
+// Manual memory management required
+```
+
+### `static_ptr<T>` - Static Pointer
+
+A pointer to immortal/static data, such as string literals.
+
+```sun
+var s: static_ptr<u8> = "hello world";
+// Points to static data that lives for the entire program
+```
+
+<Callout type="info">
+  Classes in Sun are value types. Use `ref` to pass references to functions without copying.
+</Callout>
+
+## Builtin Interfaces
+
+Sun provides builtin interfaces for common patterns. These interfaces are always available and **cannot be redefined**.
+
+### IError
+
+The error interface used with the `try`/`catch`/`throw` error handling system.
+
+```sun
+// IError is automatically used by the error system
+function divide(a: i32, b: i32) i32, IError {
+    if (b == 0) {
+        throw 1;  // Error code
+    }
+    return a / b;
+}
+
+function main() i32 {
+    try {
+        var result = divide(10, 0);
+        return result;
+    } catch (e: IError) {
+        return -1;  // Handle error
+    }
+}
+```
+
+### IIterator&lt;T, Container&gt;
+
+The generic iterator interface for defining custom iterators. The `Container` type parameter specifies the type of the container being iterated over.
+
+```sun
+// IIterator<T, Container> defines:
+//   - hasNext(container: ref Container) bool   - returns true if more elements exist
+//   - next(container: ref Container) T         - returns the next element
+
+class RangeIterator implements IIterator<i32, Range> {
+    var current: i32;
+
+    function init(start: i32) {
+        this.current = start;
+    }
+
+    function hasNext(range: ref Range) bool {
+        return this.current < range.end;
+    }
+
+    function next(range: ref Range) i32 {
+        var result = this.current;
+        this.current = this.current + 1;
+        return result;
+    }
+}
+```
+
+### IIterable&lt;T, Self&gt;
+
+The generic iterable interface for objects that can produce an iterator. The `Self` type parameter should be the implementing class itself.
+
+```sun
+// IIterable<T, Self> defines:
+//   - iter() IIterator<T, Self>  - returns an iterator over the collection
+
+class Range implements IIterable<i32, Range> {
+    var start: i32;
+    var end: i32;
+
+    function init(s: i32, e: i32) {
+        this.start = s;
+        this.end = e;
+    }
+
+    function iter() RangeIterator {
+        return RangeIterator(this.start);
+    }
+}
+
+// Using with for-in loop
+function main() i32 {
+    var range = Range(1, 5);
+    var sum: i32 = 0;
+    for (var x: i32 in range) {
+        sum = sum + x;
+    }
+    return sum;  // 1 + 2 + 3 + 4 = 10
+}
+```
+
+<Callout type="info">
+  Classes implementing `IIterator<T, Container>` or `IIterable<T, Self>` can be used with `for-in` loops for convenient iteration. The for-in loop automatically passes the container reference to hasNext() and next().
+</Callout>
+
+## Using Builtin Interfaces
+
+### Implementing IIterator
+
+To create a custom iterator, implement `IIterator<T, Container>`:
+
+```sun
+class Countdown implements IIterable<i32, Countdown> {
+    var start: i32;
+
+    function init(s: i32) {
+        this.start = s;
+    }
+
+    function iter() CountdownIterator {
+        return CountdownIterator(this.start);
+    }
+}
+
+class CountdownIterator implements IIterator<i32, Countdown> {
+    var value: i32;
+
+    function init(start: i32) {
+        this.value = start;
+    }
+
+    function hasNext(c: ref Countdown) bool {
+        return this.value > 0;
+    }
+
+    function next(c: ref Countdown) i32 {
+        this.value = this.value - 1;
+        return this.value + 1;
+    }
+}
+
+function main() i32 {
+    var sum: i32 = 0;
+    var countdown = Countdown(5);
+    
+    for (var x: i32 in countdown) {
+        sum = sum + x;
+    }
+    
+    return sum;  // 5 + 4 + 3 + 2 + 1 = 15
+}
+```
+
+### Generic Classes with Builtin Interfaces
+
+Generic classes can implement builtin interfaces using type parameter forwarding:
+
+```sun
+class ArrayWrapper<T> implements IIterable<T, ArrayWrapper<T>> {
+    var items: array<T>;
+    var size: i32;
+
+    function init(arr: ref array<T>, sz: i32) {
+        this.items = arr;
+        this.size = sz;
+    }
+    
+    function getSize() i32 {
+        return this.size;
+    }
+    
+    function getItem(index: i32) T {
+        return this.items[index];
+    }
+
+    function iter() ArrayIterator<T> {
+        return ArrayIterator<T>();
+    }
+}
+
+class ArrayIterator<T> implements IIterator<T, ArrayWrapper<T>> {
+    var index: i32;
+
+    function init() {
+        this.index = 0;
+    }
+
+    function hasNext(arr: ref ArrayWrapper<T>) bool {
+        return this.index < arr.getSize();
+    }
+
+    function next(arr: ref ArrayWrapper<T>) T {
+        var result = arr.getItem(this.index);
+        this.index = this.index + 1;
+        return result;
+    }
+}
+```
+
+## Reserved Type Names
+
+The following type names are reserved and cannot be redefined:
+
+- `IError` - Error handling interface
+- `IIterator` - Iterator interface
+- `IIterable` - Iterable interface
+
+Attempting to define a class or interface with these names will result in a compilation error:
+
+```sun
+// ❌ ERROR: Cannot redefine builtin interface 'IIterator'
+interface IIterator<T> {
+    function next() T;
+}
+```

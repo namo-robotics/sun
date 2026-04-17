@@ -1,0 +1,51 @@
+# Error Handling
+
+Sun uses error unions for explicit error handling with `try/catch` blocks.
+
+## Error-Returning Functions
+
+Functions declare they may error with `, IError` suffix:
+
+```sun
+function divide(a: i32, b: i32) i32, IError {
+    if (b == 0) { throw 1; }
+    return a / b;
+}
+```
+
+## Handling Errors with try/catch
+
+Use `try/catch` to handle potential errors:
+
+```sun
+function main() i32 {
+    try {
+        var result = divide(10, 2);
+        return result;  // Success: returns 5
+    } catch (e: IError) {
+        return -1;  // Error path
+    }
+}
+```
+
+import { Callout } from 'nextra/components'
+
+<Callout type="warning">
+  The `IError` type matches any error. Division by zero in error-returning functions automatically throws.
+</Callout>
+
+## Error Unions
+
+Internally, error-returning functions return an error union struct:
+
+```
+{ i1 isError, T value }
+```
+
+This allows the caller to check if an error occurred and handle it appropriately.
+
+## Best Practices
+
+1. **Always handle errors**: Use `try/catch` when calling functions that may error
+2. **Propagate errors**: If your function can't handle an error, declare it as error-returning and let the caller handle it
+3. **Use meaningful error codes**: The `throw` statement accepts an error code that can be checked in the catch block

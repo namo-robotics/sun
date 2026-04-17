@@ -1,0 +1,57 @@
+{
+    "C_Cpp.formatting": "clangFormat",
+    "[cpp]": {
+        "editor.formatOnSave": true,
+        "editor.formatOnPaste": false,
+    },
+    "C_Cpp.clang_format_style": "file",
+    "C_Cpp.clang_format_fallbackStyle": "Google",
+    "editor.rulers": [
+        80,
+        120
+    ],
+    "testMate.cpp.test.stderrDecorator": false,
+    "testMate.cpp.test.workingDirectory": "${workspaceFolder}",
+    "files.associations": {
+        "debian/rules": "makefile",
+        "debian/control": "plaintext",
+        "debian/copyright": "plaintext",
+        "debian/changelog": "plaintext",
+        "debian/source/format": "plaintext",
+        "debian/install": "plaintext"
+    },
+    "editor.formatOnSave": true,
+    "[plaintext]": {
+        "editor.formatOnSave": false
+    },
+    "[makefile]": {
+        "editor.formatOnSave": false
+    },
+    "chat.tools.terminal.autoApprove": {
+        "cmake": true,
+        "nproc": true,
+        "^git\\b": false
+    },
+    "editor.tokenColorCustomizations": {
+        "textMateRules": [
+            {
+                "scope": "googletest.failed",
+                "settings": {
+                    "foreground": "#f00"
+                }
+            },
+            {
+                "scope": "googletest.passed",
+                "settings": {
+                    "foreground": "#0f0"
+                }
+            },
+            {
+                "scope": "googletest.run",
+                "settings": {
+                    "foreground": "#0f0"
+                }
+            }
+        ]
+    }
+}

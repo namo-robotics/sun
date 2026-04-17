@@ -1,0 +1,9 @@
+// import_multi_func.sun - Uses multiple functions from an imported module
+
+import "tests/programs/math_module.sun";
+
+function main() i32 {
+    var a: i32 = add(2, 3);
+    var b: i32 = multiply(a, 4);
+    return b;
+};

@@ -1,0 +1,210 @@
+// stdlib/string.sun - Heap-allocated mutable String class
+//
+// String wraps Matrix<u8> for heap storage with automatic cleanup.
+// Mutable with growth via methods. Sliceable via __slice__ returning StringView.
+//
+// Usage:
+//   import "stdlib/allocator.sun";
+//   import "stdlib/string.sun";
+//   using sun;
+//   
+//   var allocator = make_heap_allocator();
+//   var s = String(allocator, "Hello");
+//   println_i64(s.length());  // 5
+//   var ch = s.at(0);         // 'H' (72)
+//   s.append_char(33);        // Append '!'
+//   
+//   // Slicing returns a view (no copy)
+//   var view = s[1:4];        // "ell"
+
+import "allocator.sun";
+import "matrix.sun";
+import "slice.sun";
+using sun;
+
+module sun {
+
+// Non-owning view into a String
+// Provides read-only access to a substring without copying
+// WARNING: StringView must not outlive the parent String!
+// NOTE: Defined before String because String.__slice__ returns StringView
+class StringView {
+    var view: MatrixView<u8>;       // Underlying 1D matrix view
+    
+    function init(mat_view: ref MatrixView<u8>) {
+        this.view = mat_view;
+    }
+    
+    // Get view length
+    function length() i64 {
+        return this.view.size();
+    }
+    
+    // Get byte at index (relative to view start)
+    function at(i: i64) u8 {
+        var idx: array<i64, 1> = [i];
+        return this.view.get(idx);
+    }
+    
+    // Check if view equals a literal
+    function equals_literal(literal: static_ptr<u8>) bool {
+        var srcData: raw_ptr<u8> = _static_ptr_data<u8>(literal);
+        var srcLen: i64 = _static_ptr_len<u8>(literal);
+        
+        var myLen: i64 = this.length();
+        if (myLen != srcLen) {
+            return false;
+        }
+        
+        for (var i: i64 = 0; i < srcLen; i = i + 1) {
+            var a: u8 = this.at(i);
+            var b: u8 = _load<u8>(srcData, i);
+            if (a != b) {
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
+// Heap-allocated mutable string backed by Matrix<u8>
+class String {
+    var data: Matrix<u8>;           // 1D Matrix for byte storage (owns ptr<u8>)
+    var len: i64;                   // Current string length (<= data.size())
+    
+    // Construct from string literal
+    // Copies bytes from static_ptr<u8> (fat pointer) to heap
+    function init(alloc: ref HeapAllocator, literal: static_ptr<u8>) {
+        // Extract data pointer and length from fat pointer struct
+        var srcData: raw_ptr<u8> = _static_ptr_data<u8>(literal);
+        var srcLen: i64 = _static_ptr_len<u8>(literal);
+        
+        // Allocate with some extra capacity for growth
+        var capacity: i64 = srcLen + 16;
+        var shape: array<i64, 1> = [capacity];
+        this.data = Matrix<u8>(alloc, shape);
+        this.len = srcLen;
+        
+        // Copy bytes from literal to heap
+        for (var i: i64 = 0; i < srcLen; i = i + 1) {
+            var byte: u8 = _load<u8>(srcData, i);
+            var idx: array<i64, 1> = [i];
+            this.data.set(idx, byte);
+        }
+    }
+    
+    // Construct empty string with given capacity
+    function init_empty(alloc: ref HeapAllocator, capacity: i64) {
+        var shape: array<i64, 1> = [capacity];
+        this.data = Matrix<u8>(alloc, shape);
+        this.len = 0;
+    }
+    
+    // Get current string length
+    function length() i64 {
+        return this.len;
+    }
+    
+    // Get allocated capacity
+    function capacity() i64 {
+        return this.data.size();
+    }
+    
+    // Get byte at index (no bounds checking)
+    function at(i: i64) u8 {
+        var idx: array<i64, 1> = [i];
+        return this.data.get(idx);
+    }
+    
+    // Set byte at index (no bounds checking, must be within len)
+    function set_at(i: i64, val: u8) void {
+        var idx: array<i64, 1> = [i];
+        this.data.set(idx, val);
+    }
+    
+    // Append a single byte/character
+    function append_char(ch: u8) void {
+        // Check if we need to grow
+        if (this.len >= this.data.size()) {
+            // For now, error - growth requires reallocating Matrix
+            // TODO: implement _grow when Matrix field reassignment works
+            return;
+        }
+        var idx: array<i64, 1> = [this.len];
+        this.data.set(idx, ch);
+        this.len = this.len + 1;
+    }
+    
+    // Append another string
+    function append(other: ref String) void {
+        var otherLen: i64 = other.length();
+        for (var i: i64 = 0; i < otherLen; i = i + 1) {
+            var ch: u8 = other.at(i);
+            this.append_char(ch);
+        }
+    }
+    
+    // Append string literal
+    function append_literal(literal: static_ptr<u8>) void {
+        var srcData: raw_ptr<u8> = _static_ptr_data<u8>(literal);
+        var srcLen: i64 = _static_ptr_len<u8>(literal);
+        
+        for (var i: i64 = 0; i < srcLen; i = i + 1) {
+            var byte: u8 = _load<u8>(srcData, i);
+            this.append_char(byte);
+        }
+    }
+    
+    // Check if string equals a literal
+    function equals_literal(literal: static_ptr<u8>) bool {
+        var srcData: raw_ptr<u8> = _static_ptr_data<u8>(literal);
+        var srcLen: i64 = _static_ptr_len<u8>(literal);
+        
+        if (this.len != srcLen) {
+            return false;
+        }
+        
+        for (var i: i64 = 0; i < srcLen; i = i + 1) {
+            var a: u8 = this.at(i);
+            var b: u8 = _load<u8>(srcData, i);
+            if (a != b) {
+                return false;
+            }
+        }
+        return true;
+    }
+    
+    // Slicing via __slice__ method: s[a:b] -> StringView
+    function __slice__(ranges: ref array<SliceRange>) StringView {
+        // For strings, we only support 1D slicing
+        var range: SliceRange = ranges[0];
+        var start: i64 = range.getStart();
+        var end: i64 = range.getEnd(this.len);
+        // Use matrix slicing under the hood
+        var matView: MatrixView<u8> = this.data[start:end];
+        return StringView(matView);
+    }
+    
+    // Print string to stdout
+    function print() void {
+        _print_bytes(this.data.data, this.len);
+    }
+    
+    // Print string followed by newline
+    function println() void {
+        this.print();
+        _print_newline();
+    }
+}
+
+// Standalone function to print a String object
+function print_string(s: ref String) void {
+    s.print();
+}
+
+// Standalone function to print a String object with newline
+function println_string(s: ref String) void {
+    s.println();
+}
+
+} // module sun

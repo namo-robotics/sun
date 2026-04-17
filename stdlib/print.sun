@@ -1,0 +1,55 @@
+// stdlib/print.sun - Print functions for primitive types
+//
+// Usage:
+//   import "print.sun";
+//   using sun;
+//   print_i32(42);        // prints "42"
+//   println_i64(100);     // prints "100\n"
+//   println("Hello");     // prints "Hello\n"
+
+module sun {
+
+// Print i32 value
+function print_i32(value: i32) void {
+    _print_i32(value);
+}
+
+// Print i32 value with newline
+function println_i32(value: i32) void {
+    _print_i32(value);
+    _print_newline();
+}
+
+// Print i64 value
+function print_i64(value: i64) void {
+    _print_i64(value);
+}
+
+// Print i64 value with newline
+function println_i64(value: i64) void {
+    _print_i64(value);
+    _print_newline();
+}
+
+// Print f64 value
+function print_f64(value: f64) void {
+    _print_f64(value);
+}
+
+// Print f64 value with newline
+function println_f64(value: f64) void {
+    _print_f64(value);
+    _print_newline();
+}
+
+// Print newline
+function print_newline() void {
+    _print_newline();
+}
+
+// Print string literal with newline
+function println(s: static_ptr<u8>) void {
+    _println_str(s);
+}
+
+} // module sun

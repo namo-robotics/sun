@@ -1,0 +1,23 @@
+build/
+regex
+echo
+hello_world
+hello
+
+# Debian packaging artifacts
+debian/.debhelper/
+debian/sun/
+debian/files
+debian/changelog
+debian/*.debhelper
+debian/*.debhelper.log
+debian/*.substvars
+debian/debhelper-build-stamp
+obj-*/
+dist/
+build-tmp/
+*.deb
+*.buildinfo
+*.changes
+
+Testing/
