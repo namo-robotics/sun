@@ -34,8 +34,8 @@ Full documentation is available at **[namo-robotics.github.io/sun](https://namo-
 Download and install the latest dev build:
 
 ```bash
-curl -LO https://github.com/namo-robotics/sun/releases/download/dev/sun_0~dev_amd64.deb
-sudo dpkg -i sun_0~dev_amd64.deb
+curl -LO https://github.com/namo-robotics/sun/releases/download/dev/sun_0.dev_amd64.deb
+sudo dpkg -i sun_0.dev_amd64.deb
 ```
 
 To update, download and install the new package.

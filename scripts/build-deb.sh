@@ -37,8 +37,10 @@ check_dependencies() {
 }
 
 # Compute dev version
+# Use dot instead of tilde for GitHub release compatibility
+# (dpkg-buildpackage preserves the version, GitHub filename issues with ~)
 compute_dev_version() {
-    echo "0~dev"
+    echo "0.dev"
 }
 
 # Update version in changelog from git tag or argument
