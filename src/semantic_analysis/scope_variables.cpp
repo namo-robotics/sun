@@ -1,5 +1,6 @@
 // semantic_analysis/scope_variables.cpp — Scope and variable management
 
+#include <algorithm>
 #include <cstdint>
 
 #include "error.h"
@@ -36,6 +37,23 @@ std::string SemanticAnalyzer::getCurrentModulePrefix() const {
   }
   if (!prefix.empty()) prefix += "_";
   return prefix;
+}
+
+std::string SemanticAnalyzer::getCurrentModulePath() const {
+  // Walk scope stack collecting module names with dot separators
+  std::string path;
+  for (const auto& scope : scopeStack) {
+    if (scope.type == ScopeType::Module && !scope.moduleName.empty()) {
+      if (!path.empty()) path += ".";
+      path += scope.moduleName;
+    }
+  }
+  return path;
+}
+
+sun::QualifiedName SemanticAnalyzer::makeQualifiedName(
+    const std::string& baseName) const {
+  return sun::QualifiedName(getCurrentModulePath(), baseName);
 }
 
 std::string SemanticAnalyzer::qualifyNameInCurrentModule(
@@ -349,11 +367,6 @@ void SemanticAnalyzer::registerNamespacedVariable(
   namespacedVariables[qualifiedName] = {type, 0, false};
 }
 
-void SemanticAnalyzer::registerNamespacedFunction(
-    const std::string& qualifiedName, const FunctionInfo& info) {
-  namespacedFunctions[qualifiedName] = info;
-}
-
 VariableInfo* SemanticAnalyzer::lookupQualifiedVariable(
     const std::string& qualifiedName) {
   auto it = namespacedVariables.find(qualifiedName);
@@ -365,79 +378,93 @@ VariableInfo* SemanticAnalyzer::lookupQualifiedVariable(
 
 const FunctionInfo* SemanticAnalyzer::lookupQualifiedFunction(
     const std::string& qualifiedName) const {
-  auto it = namespacedFunctions.find(qualifiedName);
-  if (it != namespacedFunctions.end()) {
-    return &it->second;
+  // Search functionTable for any signature starting with qualifiedName(
+  std::string prefix = qualifiedName + "(";
+  for (const auto& [sig, info] : functionTable) {
+    if (sig.compare(0, prefix.size(), prefix) == 0) {
+      return &info;
+    }
   }
   return nullptr;
 }
 
-std::string SemanticAnalyzer::resolveNameWithUsings(
+sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
     const std::string& name) const {
-  // Helper to check if a function with given name exists in functionTable
-  auto functionExists = [this](const std::string& funcName) -> bool {
-    std::string prefix = funcName + "(";
+  // Helper to check if a symbol exists (function, variable, or class)
+  auto symbolExists = [this](const std::string& candidate) -> bool {
+    // Check namespaced variables
+    if (namespacedVariables.contains(candidate)) return true;
+    // Check functions
+    std::string prefix = candidate + "(";
     for (const auto& [sig, info] : functionTable) {
-      if (sig.compare(0, prefix.size(), prefix) == 0) {
-        return true;
-      }
+      if (sig.compare(0, prefix.size(), prefix) == 0) return true;
     }
-    return false;
-  };
-
-  // Helper to check if a class or generic class exists
-  auto classExists = [this](const std::string& className) -> bool {
-    return classTable.contains(className) ||
-           genericClassTable.contains(className);
+    // Check classes
+    return classTable.contains(candidate) ||
+           genericClassTable.contains(candidate);
   };
 
   // First, if we're inside a module, check for the name with module prefix
   // This allows code inside `module sun { }` to reference other symbols
   // in the same module without needing `using sun;`
-  std::string modulePrefix = getCurrentModulePrefix();
-  if (!modulePrefix.empty()) {
-    std::string candidate = modulePrefix + name;
-    if (namespacedVariables.contains(candidate) ||
-        namespacedFunctions.contains(candidate) || functionExists(candidate) ||
-        classExists(candidate)) {
+  // Also check parent module prefixes: A_B_foo, then A_foo
+  std::string modulePath = getCurrentModulePath();
+  while (!modulePath.empty()) {
+    sun::QualifiedName candidate(modulePath, name);
+    if (symbolExists(candidate.mangled())) {
       return candidate;
     }
+    // Try parent module: "A.B" -> "A"
+    size_t lastDot = modulePath.rfind('.');
+    if (lastDot == std::string::npos) {
+      break;  // No more parent modules
+    }
+    modulePath = modulePath.substr(0, lastDot);
   }
 
   // Get all active using imports from scope stack
   auto activeImports = getActiveUsingImports();
 
-  // Then check using imports
+  // Collect all matching candidates from using imports
+  std::vector<sun::QualifiedName> matches;
   for (const auto& import : activeImports) {
+    sun::QualifiedName candidate;
     if (import.isWildcard) {
-      // Wildcard import: try namespacePath_name (mangled)
-      std::string candidate = import.namespacePath + "_" + name;
-      // Check if this qualified name exists (in namespaced tables,
-      // functionTable, or classTable)
-      if (namespacedVariables.contains(candidate) ||
-          namespacedFunctions.contains(candidate) ||
-          functionExists(candidate) || classExists(candidate)) {
-        return candidate;
-      }
+      candidate = sun::QualifiedName(import.namespacePath, name);
     } else if (import.isPrefixWildcard) {
-      // Prefix wildcard: check if name starts with prefix
       if (name.size() >= import.prefix.size() &&
           name.substr(0, import.prefix.size()) == import.prefix) {
-        std::string candidate = import.namespacePath + "_" + name;
-        if (namespacedVariables.contains(candidate) ||
-            namespacedFunctions.contains(candidate) ||
-            functionExists(candidate) || classExists(candidate)) {
-          return candidate;
-        }
+        candidate = sun::QualifiedName(import.namespacePath, name);
       }
     } else if (import.target == name) {
-      // Specific import: return the fully qualified (mangled) name
-      return import.namespacePath + "_" + name;
+      candidate = sun::QualifiedName(import.namespacePath, name);
+    }
+
+    if (!candidate.empty() && symbolExists(candidate.mangled())) {
+      // Only add if not already in matches (same candidate from different
+      // imports)
+      if (std::find(matches.begin(), matches.end(), candidate) ==
+          matches.end()) {
+        matches.push_back(candidate);
+      }
     }
   }
 
-  // Return original name if no using import applies
-  return name;
+  if (matches.size() > 1) {
+    std::string msg = "Ambiguous reference to '" + name + "'. Could be: ";
+    for (size_t i = 0; i < matches.size(); ++i) {
+      if (i > 0) msg += " or ";
+      msg += matches[i].display();
+    }
+    logAndThrowError(msg);
+  }
+
+  if (matches.size() == 1) {
+    return matches[0];
+  }
+
+  // Return unqualified name if no using import applies
+  return sun::QualifiedName("", name);
 }
 
 void SemanticAnalyzer::addUsingImport(const UsingImport& import) {

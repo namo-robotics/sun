@@ -234,7 +234,7 @@ sun::TypePtr SemanticAnalyzer::typeAnnotationToType(
     }
 
     // Resolve the base name through using imports (Vec -> sun_Vec)
-    std::string resolvedName = resolveNameWithUsings(annot.baseName);
+    std::string resolvedName = resolveNameWithUsings(annot.baseName).mangled();
 
     // Try to instantiate the generic class
     auto specializedClass = instantiateGenericClass(resolvedName, typeArgs);
@@ -255,7 +255,7 @@ sun::TypePtr SemanticAnalyzer::typeAnnotationToType(
   }
 
   // Resolve the base name through using imports (Vec -> sun_Vec)
-  std::string resolvedName = resolveNameWithUsings(annot.baseName);
+  std::string resolvedName = resolveNameWithUsings(annot.baseName).mangled();
 
   // Check for type aliases (lexically scoped)
   auto aliasType = findTypeAlias(resolvedName);

@@ -308,6 +308,32 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
 
     const std::string& methodName = memberAccess->getMemberName();
 
+    // Handle qualified function call on module: mymod.foo() -> mymod_foo()
+    if (objectType && objectType->isModule()) {
+      auto* moduleType = static_cast<sun::ModuleType*>(objectType.get());
+      std::string qualifiedName =
+          moduleType->getModulePath() + "_" + methodName;
+
+      // Build argument list
+      std::vector<Value*> argValues;
+      for (const auto& arg : expr.getArgs()) {
+        Value* val = codegen(*arg);
+        if (!val) return nullptr;
+        argValues.push_back(val);
+      }
+
+      // Get or declare the function
+      Function* func = module->getFunction(qualifiedName);
+      if (!func) {
+        logAndThrowError("Unknown function: " + qualifiedName);
+        return nullptr;
+      }
+
+      Value* result = ctx.builder->CreateCall(func, argValues, "calltmp");
+      result = unwrapCallErrorUnion(result);
+      return materializeStructReturn(result);
+    }
+
     // Handle array.shape() builtin
     if (objectType && (objectType->isArray() ||
                        (objectType->isReference() &&

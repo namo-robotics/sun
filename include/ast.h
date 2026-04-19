@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "lexer.h"
+#include "qualified_name.h"
 #include "types.h"
 
 // Forward declaration for type annotation
@@ -452,7 +453,7 @@ class IndexAST : public ExprAST {
 
 class VariableReferenceAST : public ExprAST {
   std::string Name;
-  std::string qualifiedName_;  // Qualified name after semantic analysis
+  sun::QualifiedName qualifiedName_;  // Qualified name after semantic analysis
 
  public:
   explicit VariableReferenceAST(std::string Name) : Name(std::move(Name)) {}
@@ -464,10 +465,21 @@ class VariableReferenceAST : public ExprAST {
   const std::string& getName() const { return Name; }
 
   // Qualified name (after semantic analysis qualifies it)
-  const std::string& getQualifiedName() const {
-    return qualifiedName_.empty() ? Name : qualifiedName_;
+  // Returns mangled form for backward compatibility with codegen
+  std::string getQualifiedName() const {
+    return qualifiedName_.empty() ? Name : qualifiedName_.mangled();
   }
-  void setQualifiedName(std::string name) { qualifiedName_ = std::move(name); }
+  // Full qualified name info for display/error messages
+  const sun::QualifiedName& getQualifiedNameInfo() const {
+    return qualifiedName_;
+  }
+  void setQualifiedName(sun::QualifiedName qname) {
+    qualifiedName_ = std::move(qname);
+  }
+  // Backward compat: set from mangled string (loses display info)
+  void setQualifiedName(std::string name) {
+    qualifiedName_ = sun::QualifiedName::fromMangled(std::move(name));
+  }
   bool hasQualifiedName() const { return !qualifiedName_.empty(); }
 };
 
@@ -623,7 +635,8 @@ class PackExpansionAST : public ExprAST {
 // Top-level nodes (not derived from ExprAST)
 class PrototypeAST {
   std::string Name;  // Source name as written by user (for error messages)
-  std::string qualifiedName_;  // Fully qualified name set by semantic analyzer
+  sun::QualifiedName
+      qualifiedName_;  // Fully qualified name set by semantic analyzer
   std::vector<std::string> typeParameters;  // Generic type parameters: <T, U>
   std::vector<std::pair<std::string, TypeAnnotation>> args;
   std::optional<TypeAnnotation> returnType;
@@ -665,11 +678,20 @@ class PrototypeAST {
   const std::string& getName() const { return Name; }
   void setName(std::string name) { Name = std::move(name); }
   // Get fully qualified name (for codegen/symbol lookup)
-  const std::string& getQualifiedName() const {
-    return qualifiedName_.empty() ? Name : qualifiedName_;
+  // Returns mangled form for backward compatibility with codegen
+  std::string getQualifiedName() const {
+    return qualifiedName_.empty() ? Name : qualifiedName_.mangled();
   }
-  void setQualifiedName(std::string qname) {
+  // Full qualified name info for display/error messages
+  const sun::QualifiedName& getQualifiedNameInfo() const {
+    return qualifiedName_;
+  }
+  void setQualifiedName(sun::QualifiedName qname) {
     qualifiedName_ = std::move(qname);
+  }
+  // Backward compat: set from mangled string (loses display info)
+  void setQualifiedName(std::string name) {
+    qualifiedName_ = sun::QualifiedName::fromMangled(std::move(name));
   }
   bool hasQualifiedName() const { return !qualifiedName_.empty(); }
 
@@ -1327,7 +1349,8 @@ struct ImplementedInterfaceAST {
 // fields and methods }
 class ClassDefinitionAST : public ExprAST {
   std::string name;  // Source name as written by user (for error messages)
-  std::string qualifiedName_;  // Fully qualified name set by semantic analyzer
+  sun::QualifiedName
+      qualifiedName_;  // Fully qualified name set by semantic analyzer
   std::vector<std::string>
       typeParameters;  // Generic type parameters: T, U, etc.
   std::vector<ImplementedInterfaceAST>
@@ -1382,12 +1405,20 @@ class ClassDefinitionAST : public ExprAST {
 
   const std::string& getName() const { return name; }
   // Get fully qualified name (for codegen/symbol lookup)
-  // Returns qualifiedName_ if set, otherwise falls back to source name
-  const std::string& getQualifiedName() const {
-    return qualifiedName_.empty() ? name : qualifiedName_;
+  // Returns mangled form for backward compatibility with codegen
+  std::string getQualifiedName() const {
+    return qualifiedName_.empty() ? name : qualifiedName_.mangled();
   }
-  void setQualifiedName(std::string qname) {
+  // Full qualified name info for display/error messages
+  const sun::QualifiedName& getQualifiedNameInfo() const {
+    return qualifiedName_;
+  }
+  void setQualifiedName(sun::QualifiedName qname) {
     qualifiedName_ = std::move(qname);
+  }
+  // Backward compat: set from mangled string (loses display info)
+  void setQualifiedName(std::string name) {
+    qualifiedName_ = sun::QualifiedName::fromMangled(std::move(name));
   }
   bool hasQualifiedName() const { return !qualifiedName_.empty(); }
   const std::vector<std::string>& getTypeParameters() const {
@@ -1452,7 +1483,8 @@ struct InterfaceMethodDecl {
 // Interface definition: interface Name<T, U> { fields and methods }
 class InterfaceDefinitionAST : public ExprAST {
   std::string name;  // Source name as written by user (for error messages)
-  std::string qualifiedName_;  // Fully qualified name set by semantic analyzer
+  sun::QualifiedName
+      qualifiedName_;  // Fully qualified name set by semantic analyzer
   std::vector<std::string>
       typeParameters;  // Generic type parameters: T, U, etc.
   std::vector<InterfaceFieldDecl> fields;
@@ -1489,11 +1521,20 @@ class InterfaceDefinitionAST : public ExprAST {
 
   const std::string& getName() const { return name; }
   // Get fully qualified name (for codegen/symbol lookup)
-  const std::string& getQualifiedName() const {
-    return qualifiedName_.empty() ? name : qualifiedName_;
+  // Returns mangled form for backward compatibility with codegen
+  std::string getQualifiedName() const {
+    return qualifiedName_.empty() ? name : qualifiedName_.mangled();
   }
-  void setQualifiedName(std::string qname) {
+  // Full qualified name info for display/error messages
+  const sun::QualifiedName& getQualifiedNameInfo() const {
+    return qualifiedName_;
+  }
+  void setQualifiedName(sun::QualifiedName qname) {
     qualifiedName_ = std::move(qname);
+  }
+  // Backward compat: set from mangled string (loses display info)
+  void setQualifiedName(std::string name) {
+    qualifiedName_ = sun::QualifiedName::fromMangled(std::move(name));
   }
   bool hasQualifiedName() const { return !qualifiedName_.empty(); }
   const std::vector<std::string>& getTypeParameters() const {

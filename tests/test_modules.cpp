@@ -232,3 +232,108 @@ TEST(ModuleTest, nested_modules_nested_classes_method_chain) {
   )");
   EXPECT_EQ(value, 42);
 }
+
+TEST(ModuleTest, same_module_in_multiple_files_merges) {
+  // Two files declare the same module with different functions - they merge
+  auto value = executeString(R"(
+    import "tests/programs/same_mod_a.sun";
+    import "tests/programs/same_mod_b.sun";
+
+    function main() i32 {
+      return mymod.foo() + mymod.bar();
+    }
+  )");
+  EXPECT_EQ(value, 3);  // foo() returns 1, bar() returns 2
+}
+
+TEST(ModuleTest, nested_module_qualified_function_call) {
+  // Call functions in nested modules using qualified names without using
+  auto value = executeString(R"(
+    import "tests/programs/reversed_mods_AB.sun";
+    import "tests/programs/reversed_mods_BA.sun";
+
+    function main() i32 {
+      return A.B.foo() + B.A.foo();
+    }
+  )");
+  EXPECT_EQ(value, 3);  // A.B.foo() returns 2, B.A.foo() returns 1
+}
+
+TEST(ModuleTest, submod_fn_calls_mod_fn) {
+  // Call functions in nested modules using qualified names without using
+  auto value = executeString(R"(
+    import "tests/programs/submod_fn_calls_mod_fn.sun";
+
+    function main() i32 {
+      return A.foo() + A.B.bar();
+    }
+  )");
+  EXPECT_EQ(value, 2);  // A.B.foo() returns 2, B.A.foo() returns 1
+}
+
+TEST(ModuleTest, submod_duplicates_fn) {
+  // When two modules define the same symbol and both are wildcard imported,
+  // using the unqualified name is ambiguous and errors
+  EXPECT_THROW(executeString(R"(
+    module A {
+      function foo() i32 {
+        return 1;
+      }
+    }
+    module B {
+      function foo() i32 {
+        return 2;
+      }
+    }
+    using A;
+    using B;
+    function main() i32 {
+      return foo();
+    }
+  )"),
+               std::exception);
+}
+
+TEST(ModuleTest, using_nested_module_as_wildcard) {
+  // "using A.B;" where B is a nested module should import all from A.B
+  auto value = executeString(R"(
+    module A {
+      function foo() i32 {
+        return 1;
+      }
+      module B {
+        function bar() i32 {
+          return 2;
+        }
+      }
+    }
+    using A.B;
+    function main() i32 {
+      return bar();
+    }
+  )");
+  EXPECT_EQ(value, 2);
+}
+
+TEST(ModuleTest, nested_module_ambiguity) {
+  // When parent and nested module both define foo(), using both causes
+  // ambiguity
+  EXPECT_THROW(executeString(R"(
+    module A {
+      function foo() i32 {
+        return 1;
+      }
+      module B {
+        function foo() i32 {
+          return 2;
+        }
+      }
+    }
+    using A;
+    using A.B;
+    function main() i32 {
+      return foo();
+    }
+  )"),
+               std::exception);
+}

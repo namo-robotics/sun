@@ -179,7 +179,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       }
 
       // Resolve the name through using imports (e.g., Vec -> sun_Vec)
-      std::string resolvedName = resolveNameWithUsings(name);
+      std::string resolvedName = resolveNameWithUsings(name).mangled();
 
       // Check if it's a named function
       auto funcs = getAllFunctions(resolvedName);
@@ -258,7 +258,8 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
         const auto& varRef =
             static_cast<const VariableReferenceAST&>(*callExpr.getCallee());
         // Resolve the name through using imports (e.g., Vec -> sun_Vec)
-        std::string resolvedName = resolveNameWithUsings(varRef.getName());
+        std::string resolvedName =
+            resolveNameWithUsings(varRef.getName()).mangled();
         // Infer argument types for overload resolution
         std::vector<sun::TypePtr> argTypes;
         for (const auto& arg : callExpr.getArgs()) {
@@ -526,7 +527,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
 
       // Resolve the function/class name through using imports (MatrixView ->
       // sun_MatrixView)
-      std::string resolvedName = resolveNameWithUsings(funcName);
+      std::string resolvedName = resolveNameWithUsings(funcName).mangled();
 
       // Analyze all arguments
       for (const auto& arg : genericCall.getArgs()) {

@@ -296,9 +296,9 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
       // If this reference resolves to a qualified name (via using imports),
       // store it so codegen doesn't need to do name resolution
-      std::string qualifiedName = resolveNameWithUsings(varRef.getName());
-      if (qualifiedName != varRef.getName()) {
-        varRef.setQualifiedName(qualifiedName);
+      sun::QualifiedName resolved = resolveNameWithUsings(varRef.getName());
+      if (resolved.mangled() != varRef.getName()) {
+        varRef.setQualifiedName(resolved);
       }
       break;
     }
@@ -695,7 +695,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
             // Register with qualified name - build FunctionInfo from analyzed
             // function
-            std::string qualifiedName = qualifyNameInCurrentModule(funcName);
+            sun::QualifiedName qualifiedName = makeQualifiedName(funcName);
             // Set qualified name on prototype for codegen
             const_cast<PrototypeAST&>(func.getProto())
                 .setQualifiedName(qualifiedName);
@@ -710,8 +710,9 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
             FunctionInfo funcInfo = {funcReturnType, funcParamTypes,
                                      func.getProto().getCaptures()};
             // Register in functionTable so the qualified name can be found
-            // via using imports (resolveNameWithUsings checks functionTable)
-            registerFunction(qualifiedName, funcInfo);
+            // via using imports and qualified access (resolveNameWithUsings
+            // and lookupQualifiedFunction both search functionTable)
+            registerFunction(qualifiedName.mangled(), funcInfo);
           }
         } else if (bodyExpr->getType() == ASTNodeType::VARIABLE_CREATION) {
           // Analyze the variable creation
@@ -737,10 +738,34 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
     case ASTNodeType::USING: {
       auto& usingDecl = static_cast<UsingAST&>(expr);
-      // Add the using import to our list for name resolution
-      // Use dot-separated path and target (may be "*" or "prefix*")
-      UsingImport import(usingDecl.getNamespacePathString(),
-                         usingDecl.getTarget());
+      // Check if this is "using A.B;" where A_B is actually a module name
+      // In that case, treat it as "import all from A_B" (wildcard)
+      std::string namespacePath = usingDecl.getNamespacePathString();
+      std::string target = usingDecl.getTarget();
+
+      if (!usingDecl.isWildcardImport() &&
+          !usingDecl.isPrefixWildcardImport()) {
+        // Build the full path in mangled form: "A.B" -> "A_B"
+        std::string mangledPath =
+            namespacePath.empty() ? target : namespacePath + "_" + target;
+        // Convert dots to underscores for module lookup
+        for (char& c : mangledPath) {
+          if (c == '.') c = '_';
+        }
+        if (isModuleName(mangledPath)) {
+          // Target is a module, convert to wildcard import from that module
+          // Store dot-separated path for display: "A.B"
+          std::string displayPath =
+              namespacePath.empty() ? target : namespacePath + "." + target;
+          UsingImport import(displayPath, "*");
+          addUsingImport(import);
+          expr.setResolvedType(sun::Types::Void());
+          break;
+        }
+      }
+
+      // Normal case: import symbol or wildcard from namespace
+      UsingImport import(namespacePath, target);
       addUsingImport(import);
       expr.setResolvedType(sun::Types::Void());
       break;
@@ -774,9 +799,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       auto& classDef = static_cast<ClassDefinitionAST&>(expr);
 
       // Qualify class name with module prefix if inside a module
-      std::string className = qualifyNameInCurrentModule(classDef.getName());
+      sun::QualifiedName qualifiedClass = makeQualifiedName(classDef.getName());
+      std::string className = qualifiedClass.mangled();
       // Set qualified name on AST for codegen (source name stays for errors)
-      classDef.setQualifiedName(className);
+      classDef.setQualifiedName(qualifiedClass);
 
       // Validate class name
       if (isReservedIdentifier(classDef.getName())) {
@@ -955,10 +981,11 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       auto& interfaceDef = static_cast<InterfaceDefinitionAST&>(expr);
 
       // Qualify interface name with module prefix if inside a module
-      std::string interfaceName =
-          qualifyNameInCurrentModule(interfaceDef.getName());
+      sun::QualifiedName qualifiedInterface =
+          makeQualifiedName(interfaceDef.getName());
+      std::string interfaceName = qualifiedInterface.mangled();
       // Set qualified name on AST for codegen (source name stays for errors)
-      interfaceDef.setQualifiedName(interfaceName);
+      interfaceDef.setQualifiedName(qualifiedInterface);
 
       // Validate interface name
       if (isReservedIdentifier(interfaceDef.getName())) {
@@ -1195,7 +1222,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
       // Resolve the function/class name through using imports (MatrixView ->
       // sun_MatrixView)
-      std::string resolvedName = resolveNameWithUsings(funcName);
+      std::string resolvedName = resolveNameWithUsings(funcName).mangled();
 
       // Resolve type arguments to sun::TypePtr
       std::vector<sun::TypePtr> typeArgs;
@@ -1840,7 +1867,8 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
         static_cast<const VariableReferenceAST&>(*callExpr.getCallee());
     // Resolve the name through using imports (e.g., make_heap_allocator ->
     // sun_make_heap_allocator)
-    std::string resolvedName = resolveNameWithUsings(varRef.getName());
+    std::string resolvedName =
+        resolveNameWithUsings(varRef.getName()).mangled();
     // Try to look up function parameters
     auto allFuncs = getAllFunctions(resolvedName);
     if (!allFuncs.empty()) {
@@ -1896,11 +1924,12 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
     auto& varRef = static_cast<VariableReferenceAST&>(
         const_cast<ExprAST&>(*callExpr.getCallee()));
     // Resolve the name through using imports (e.g., Vec -> sun_Vec)
-    std::string resolvedName = resolveNameWithUsings(varRef.getName());
+    sun::QualifiedName resolved = resolveNameWithUsings(varRef.getName());
+    std::string resolvedName = resolved.mangled();
 
     // Store the qualified name so codegen doesn't need to do name resolution
     if (resolvedName != varRef.getName()) {
-      varRef.setQualifiedName(resolvedName);
+      varRef.setQualifiedName(resolved);
     }
 
     resolvedFunc = lookupFunction(resolvedName, argTypes);

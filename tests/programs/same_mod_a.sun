@@ -1,0 +1,5 @@
+module mymod {
+    function foo() i32 {
+        return 1;
+    }
+}

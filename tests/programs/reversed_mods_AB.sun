@@ -1,0 +1,7 @@
+module A {
+    module B {
+        function foo() i32 {
+            return 2;
+        }
+    }
+}

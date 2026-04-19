@@ -10,7 +10,11 @@
 #include <vector>
 
 #include "ast.h"
+#include "qualified_name.h"
 #include "types.h"
+
+// Alias for use in this header and semantic analyzer implementations
+using QualifiedName = sun::QualifiedName;
 
 // Information about a variable in the symbol table
 struct VariableInfo {
@@ -156,9 +160,6 @@ class SemanticAnalyzer {
 
   // Namespace-qualified variables: "sun_PI" -> VariableInfo
   std::map<std::string, VariableInfo> namespacedVariables;
-
-  // Namespace-qualified functions: "sun_sin" -> FunctionInfo
-  std::map<std::string, FunctionInfo> namespacedFunctions;
 
   // Declared module names for qualified name resolution (mod_x.mod_y.var)
   // Stores full paths like "mod_x", "mod_x_mod_y"
@@ -310,8 +311,6 @@ class SemanticAnalyzer {
   // Register namespaced symbols (used during namespace analysis)
   void registerNamespacedVariable(const std::string& qualifiedName,
                                   sun::TypePtr type);
-  void registerNamespacedFunction(const std::string& qualifiedName,
-                                  const FunctionInfo& info);
 
   // Lookup functions that handle using statements and namespace resolution
   VariableInfo* lookupQualifiedVariable(const std::string& qualifiedName);
@@ -319,7 +318,7 @@ class SemanticAnalyzer {
       const std::string& qualifiedName) const;
 
   // Resolve a name considering using statements
-  std::string resolveNameWithUsings(const std::string& name) const;
+  sun::QualifiedName resolveNameWithUsings(const std::string& name) const;
 
   // Add a using import
   void addUsingImport(const UsingImport& import);
@@ -349,6 +348,14 @@ class SemanticAnalyzer {
   // Get the current module prefix for name mangling (e.g., "sun_")
   // Returns empty string if not inside any module scope
   std::string getCurrentModulePrefix() const;
+
+  // Get the current module path in display form (dot-separated)
+  // e.g., inside "module A { module B { } }", returns "A.B"
+  std::string getCurrentModulePath() const;
+
+  // Create a QualifiedName for a symbol in the current module scope
+  // Preserves module path in display form for proper error messages
+  sun::QualifiedName makeQualifiedName(const std::string& baseName) const;
 
   // Get the fully qualified name for a symbol in current scope
   // e.g., inside "module sun { }", qualifyName("Vec") returns "sun_Vec"

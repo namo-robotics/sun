@@ -1,0 +1,5 @@
+module mymod {
+    function bar() i32 {
+        return 2;
+    }
+}
