@@ -88,6 +88,7 @@ Value* CodegenVisitor::codegen(const ReturnExprAST& expr) {
         retVal = ctx.builder->CreateFPCast(retVal, retType, "fpcast");
       }
     }
+
     ctx.builder->CreateRet(retVal);
   } else {
     // Void return - clean up and return

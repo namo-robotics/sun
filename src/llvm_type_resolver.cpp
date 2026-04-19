@@ -12,7 +12,7 @@ using namespace llvm;
 
 StructType* LLVMTypeResolver::getClosureType() {
   if (!closureType) {
-    closureType = StructType::create(ctx, "closure");
+    closureType = StructType::create(ctx, sun::StructNames::Closure);
     closureType->setBody({
         PointerType::getUnqual(ctx),  // func*
         PointerType::getUnqual(ctx)   // env*
@@ -24,9 +24,9 @@ StructType* LLVMTypeResolver::getClosureType() {
 StructType* LLVMTypeResolver::getStaticPtrType() {
   if (!staticPtrType) {
     // Check if the type already exists in the context (e.g., from linked code)
-    staticPtrType = StructType::getTypeByName(ctx, "static_ptr_struct");
+    staticPtrType = StructType::getTypeByName(ctx, sun::StructNames::StaticPtr);
     if (!staticPtrType) {
-      staticPtrType = StructType::create(ctx, "static_ptr_struct");
+      staticPtrType = StructType::create(ctx, sun::StructNames::StaticPtr);
       staticPtrType->setBody({
           PointerType::getUnqual(ctx),  // data ptr
           Type::getInt64Ty(ctx)         // length

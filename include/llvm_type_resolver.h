@@ -11,6 +11,7 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
+#include "struct_names.h"
 #include "types.h"
 
 /**

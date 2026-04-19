@@ -5,8 +5,70 @@
 #include <llvm/Linker/Linker.h>
 
 #include "module_types.h"
+#include "struct_names.h"
 
 namespace sun {
+
+namespace {
+
+/// Remap a type from a loaded module to the target module's equivalent type.
+/// Handles renaming of known struct types like static_ptr_struct.N ->
+/// static_ptr_struct
+llvm::Type* remapTypeToTarget(llvm::Type* srcType, llvm::LLVMContext& ctx) {
+  if (!srcType) return nullptr;
+
+  // Handle struct types with numbered suffixes (e.g., static_ptr_struct.19)
+  if (auto* structTy = llvm::dyn_cast<llvm::StructType>(srcType)) {
+    if (structTy->hasName()) {
+      llvm::StringRef name = structTy->getName();
+
+      // Check against all well-known struct types
+      for (const auto& info : sun::StructNames::All) {
+        if (name.starts_with(info.name)) {
+          // Get or create the canonical type in the context
+          llvm::StructType* canonical =
+              llvm::StructType::getTypeByName(ctx, info.name);
+          if (!canonical) {
+            canonical = llvm::StructType::create(ctx, info.name);
+            auto* ptrTy = llvm::PointerType::getUnqual(ctx);
+            switch (info.layout) {
+              case sun::StructNames::Layout::PtrPtr:
+                canonical->setBody({ptrTy, ptrTy});
+                break;
+              case sun::StructNames::Layout::PtrI64:
+                canonical->setBody({ptrTy, llvm::Type::getInt64Ty(ctx)});
+                break;
+              case sun::StructNames::Layout::PtrI32Ptr:
+                canonical->setBody({ptrTy, llvm::Type::getInt32Ty(ctx), ptrTy});
+                break;
+            }
+          }
+          return canonical;
+        }
+      }
+    }
+  }
+
+  // No remapping needed
+  return srcType;
+}
+
+/// Create a function type with remapped parameter and return types
+llvm::FunctionType* remapFunctionType(llvm::FunctionType* srcFuncType,
+                                      llvm::LLVMContext& ctx) {
+  // Remap return type
+  llvm::Type* retType = remapTypeToTarget(srcFuncType->getReturnType(), ctx);
+
+  // Remap parameter types
+  llvm::SmallVector<llvm::Type*, 8> paramTypes;
+  for (llvm::Type* paramType : srcFuncType->params()) {
+    paramTypes.push_back(remapTypeToTarget(paramType, ctx));
+  }
+
+  return llvm::FunctionType::get(retType, paramTypes, srcFuncType->isVarArg());
+}
+
+}  // namespace
 
 ModuleLinker::ModuleLinker(llvm::Module& targetModule)
     : target_(targetModule) {}
@@ -93,10 +155,13 @@ void ModuleLinker::declareAvailableFunctions() {
       // Skip if already declared in target
       if (target_.getFunction(funcName)) continue;
 
-      // Clone the function type and create an external declaration
-      llvm::FunctionType* funcType = func.getFunctionType();
+      // Clone the function type and remap struct types to target module's types
+      // This fixes type mismatches like static_ptr_struct vs
+      // static_ptr_struct.19
+      llvm::FunctionType* funcType =
+          remapFunctionType(func.getFunctionType(), ctx);
 
-      // Create external declaration with the same signature
+      // Create external declaration with the remapped signature
       llvm::Function::Create(funcType, llvm::Function::ExternalLinkage,
                              funcName, &target_);
 

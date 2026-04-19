@@ -931,3 +931,76 @@ Value* CodegenVisitor::codegenClassSetIndex(const IndexAST& indexExpr,
 
   return valueVal;
 }
+
+// -------------------------------------------------------------------
+// Copy array to caller's stack after function return
+// -------------------------------------------------------------------
+//
+// Arrays are fat structs { ptr data, i32 ndims, ptr dims } where the
+// data and dims pointers in a returned array point to the callee's stack,
+// which is invalid after return. This function copies data and dims to
+// the caller's stack and returns a new fat struct with valid pointers.
+//
+// This is called at the call site after receiving a returned array.
+
+Value* CodegenVisitor::copyArrayToCallerStack(Value* arrayFat,
+                                              const sun::ArrayType* arrayType) {
+  if (!arrayFat || !arrayType) return arrayFat;
+
+  const auto& dims = arrayType->getDimensions();
+  if (dims.empty()) {
+    // Unsized arrays cannot be copied - caller doesn't know the size
+    // This shouldn't happen for return-by-value (semantic error)
+    return arrayFat;
+  }
+
+  auto& builder = *ctx.builder;
+  auto& llvmCtx = ctx.getContext();
+  Function* currentFunc = builder.GetInsertBlock()->getParent();
+
+  // Extract components from returned fat struct
+  Value* srcDataPtr = builder.CreateExtractValue(arrayFat, 0, "src.data.ptr");
+  Value* ndims = builder.CreateExtractValue(arrayFat, 1, "ndims");
+  Value* srcDimsPtr = builder.CreateExtractValue(arrayFat, 2, "src.dims.ptr");
+
+  // Allocate data storage on caller's stack
+  llvm::Type* dataStorageType = arrayType->getDataStorageType(llvmCtx);
+  AllocaInst* dataAlloca =
+      createEntryBlockAlloca(currentFunc, "ret.arr.data", dataStorageType);
+
+  // Allocate dims storage on caller's stack: [ndims x i64]
+  llvm::Type* i64Ty = Type::getInt64Ty(llvmCtx);
+  llvm::ArrayType* dimsArrayType = llvm::ArrayType::get(i64Ty, dims.size());
+  AllocaInst* dimsAlloca =
+      createEntryBlockAlloca(currentFunc, "ret.arr.dims", dimsArrayType);
+
+  // Calculate data size
+  const llvm::DataLayout& DL = module->getDataLayout();
+  uint64_t dataSizeBytes = DL.getTypeAllocSize(dataStorageType);
+  uint64_t dimsSizeBytes = dims.size() * 8;
+
+  // Copy data
+  builder.CreateMemCpy(dataAlloca, MaybeAlign(8), srcDataPtr, MaybeAlign(8),
+                       dataSizeBytes);
+
+  // Copy dims
+  builder.CreateMemCpy(dimsAlloca, MaybeAlign(8), srcDimsPtr, MaybeAlign(8),
+                       dimsSizeBytes);
+
+  // Get pointers to first elements
+  Value* dataPtr = builder.CreateGEP(dataStorageType, dataAlloca,
+                                     {builder.getInt64(0), builder.getInt64(0)},
+                                     "ret.data.ptr");
+  Value* dimsPtr = builder.CreateGEP(dimsArrayType, dimsAlloca,
+                                     {builder.getInt64(0), builder.getInt64(0)},
+                                     "ret.dims.ptr");
+
+  // Build new fat struct with caller's stack pointers
+  StructType* fatType = sun::ArrayType::getArrayStructType(llvmCtx);
+  Value* newFat = UndefValue::get(fatType);
+  newFat = builder.CreateInsertValue(newFat, dataPtr, 0, "ret.fat.data");
+  newFat = builder.CreateInsertValue(newFat, ndims, 1, "ret.fat.ndims");
+  newFat = builder.CreateInsertValue(newFat, dimsPtr, 2, "ret.fat.dims");
+
+  return newFat;
+}

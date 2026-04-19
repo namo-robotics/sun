@@ -561,6 +561,18 @@ class CodegenVisitor {
   llvm::Value* materializeStructReturn(llvm::Value* callResult);
 
   /**
+   * Copies a returned array's data/dims to caller's stack.
+   * Arrays returned by value have pointers to callee's stack which become
+   * dangling after return. This allocates storage on the caller's stack
+   * and copies the contents, returning a new fat struct with valid pointers.
+   * @param arrayFat The array fat struct { ptr data, i32 ndims, ptr dims }
+   * @param arrayType The Sun ArrayType for size calculation (must be sized)
+   * @return New fat struct with caller's stack pointers
+   */
+  llvm::Value* copyArrayToCallerStack(llvm::Value* arrayFat,
+                                      const sun::ArrayType* arrayType);
+
+  /**
    * Prepares an argument value for a reference parameter.
    * Handles variable references, member access, arrays, and raw_ptr auto-deref.
    * @param argExpr The argument expression.

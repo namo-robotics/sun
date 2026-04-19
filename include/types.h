@@ -15,6 +15,7 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
+#include "struct_names.h"
 
 namespace sun {
 
@@ -432,7 +433,7 @@ class StaticPointerType : public Type {
     if (!cachedLLVMType) {
       cachedLLVMType = llvm::StructType::create(
           ctx, {llvm::PointerType::getUnqual(ctx), llvm::Type::getInt64Ty(ctx)},
-          "static_ptr_struct");
+          sun::StructNames::StaticPtr);
     }
     return cachedLLVMType;
   }
@@ -670,13 +671,19 @@ class ArrayType : public Type {
   // - ndims: number of dimensions
   // - dims: pointer to i64 array of dimension sizes
   static llvm::StructType* getArrayStructType(llvm::LLVMContext& ctx) {
-    return llvm::StructType::get(
+    // Check for existing named type to avoid duplicates
+    if (auto* existing = llvm::StructType::getTypeByName(
+            ctx, sun::StructNames::ArrayStruct)) {
+      return existing;
+    }
+    return llvm::StructType::create(
         ctx,
         {
             llvm::PointerType::getUnqual(ctx),  // data ptr
             llvm::Type::getInt32Ty(ctx),        // ndims
             llvm::PointerType::getUnqual(ctx)   // dims ptr (points to i64[])
-        });
+        },
+        sun::StructNames::ArrayStruct);
   }
 
   // Array is represented as a fat struct: { ptr data, i32 ndims, ptr dims }
@@ -1160,12 +1167,13 @@ class InterfaceType : public Type {
   // - vtable: pointer to the implementing class's vtable for this interface
   static llvm::StructType* getFatPointerType(llvm::LLVMContext& ctx) {
     // Check for existing named type to avoid duplicates
-    if (auto* existing =
-            llvm::StructType::getTypeByName(ctx, "interface_fat")) {
+    if (auto* existing = llvm::StructType::getTypeByName(
+            ctx, sun::StructNames::InterfaceFat)) {
       return existing;
     }
     auto* ptrTy = llvm::PointerType::getUnqual(ctx);
-    return llvm::StructType::create(ctx, {ptrTy, ptrTy}, "interface_fat");
+    return llvm::StructType::create(ctx, {ptrTy, ptrTy},
+                                    sun::StructNames::InterfaceFat);
   }
 
   // Get the vtable struct type for this interface.

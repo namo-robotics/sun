@@ -205,19 +205,14 @@ Value* CodegenVisitor::materializeStructReturn(Value* callResult) {
     return callResult;
   }
 
-  // Check that it's not an array fat struct { ptr, i32, ptr }
-  bool isArrayFat = structType->getNumElements() == 3 &&
-                    structType->getElementType(1)->isIntegerTy(32);
-  if (isArrayFat) {
-    return callResult;
-  }
-
-  // Check that it's not a closure struct { ptr, ptr } (named "closure")
-  // or a static pointer struct { ptr, i64 } (named "static_ptr_struct")
+  // Check that it's not a well-known internal struct type
+  // (closure, static_ptr, interface_fat, array_struct)
   if (structType->hasName()) {
     StringRef name = structType->getName();
-    if (name == "closure" || name == "static_ptr_struct") {
-      return callResult;
+    for (const auto& info : sun::StructNames::All) {
+      if (name == info.name) {
+        return callResult;
+      }
     }
   }
 
@@ -657,14 +652,29 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
   }
 
   // Handle Lambda type: fat pointer call with closure
+  Value* result;
   if (calleeSunType->isLambda()) {
-    return codegenLambdaCall(
+    result = codegenLambdaCall(
         expr, calleeName, static_cast<const sun::LambdaType&>(*calleeSunType));
+  } else {
+    // Handle Function type: direct call
+    result = codegenFunctionCall(
+        expr, calleeName,
+        static_cast<const sun::FunctionType&>(*calleeSunType));
   }
 
-  // Handle Function type: direct call
-  return codegenFunctionCall(
-      expr, calleeName, static_cast<const sun::FunctionType&>(*calleeSunType));
+  // Handle array returns: copy data/dims to caller's stack
+  // Arrays returned by value have pointers to callee's stack which become
+  // dangling after return. Copy to caller's stack to fix this.
+  sun::TypePtr returnType = expr.getResolvedType();
+  if (returnType && returnType->isArray() && result) {
+    auto* arrayType = static_cast<sun::ArrayType*>(returnType.get());
+    if (!arrayType->getDimensions().empty()) {
+      result = copyArrayToCallerStack(result, arrayType);
+    }
+  }
+
+  return result;
 }
 
 // -------------------------------------------------------------------

@@ -174,3 +174,18 @@ TEST(Arrays, index_array_ref) {
   )");
   EXPECT_EQ(value, 15);  // 1+2+3+4+5 = 15
 }
+
+TEST(Arrays, return_array_by_value) {
+  auto value = executeString(R"(
+    function make_array() array<i32, 3> {
+        var arr: array<i32, 3> = [10, 20, 30];
+        return arr;
+    }
+
+    function main() i32 {
+        var result = make_array();
+        return result[0] + result[1] + result[2];
+    }
+  )");
+  EXPECT_EQ(value, 60);  // 10+20+30 = 60
+}
