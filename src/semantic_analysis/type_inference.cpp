@@ -631,15 +631,13 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       }
 
       // Check for user-defined generic functions
-      auto genFuncIt = genericFunctionTable.find(resolvedName);
-      if (genFuncIt != genericFunctionTable.end()) {
-        const auto& genFunc = genFuncIt->second;
-
+      auto* genFuncInfo = lookupGenericFunction(resolvedName);
+      if (genFuncInfo) {
         // Store the generic function AST on the call node for codegen
-        genericCall.setGenericFunctionAST(genFunc.AST);
+        genericCall.setGenericFunctionAST(genFuncInfo->AST);
 
         // Resolve return type with type parameter substitution
-        auto resolvedType = genFunc.AST->getResolvedType();
+        auto resolvedType = genFuncInfo->AST->getResolvedType();
         if (resolvedType) {
           auto genericFuncType =
               static_cast<sun::FunctionType*>(resolvedType.get());

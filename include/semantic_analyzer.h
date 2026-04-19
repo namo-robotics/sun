@@ -93,6 +93,10 @@ struct SpecializedFunctionInfo {
 struct SemanticScope {
   ScopeType type = ScopeType::Global;
   std::string moduleName;  // For module scopes: the module name (e.g., "sun")
+  // For function scopes: the function signature (e.g., "outer(i32)")
+  // Used to create unique qualified names for nested functions in generic
+  // instantiations
+  std::string functionSignature;
   std::map<std::string, VariableInfo> variables;
   std::map<std::string, sun::TypePtr> typeParameters;
   std::map<std::string, sun::TypePtr> typeAliases;
@@ -139,8 +143,9 @@ class SemanticAnalyzer {
   // recursion)
   std::set<std::string> classesBeingInstantiated;
 
-  // Generic function definitions: funcName → GenericFunctionInfo
-  std::map<std::string, GenericFunctionInfo> genericFunctionTable;
+  // Generic function definitions: QualifiedName → GenericFunctionInfo
+  // Key includes module path + function context + base name for nested generics
+  std::map<sun::QualifiedName, GenericFunctionInfo> genericFunctionTable;
 
   // Cache of specialized (monomorphized) functions: mangledName →
   // SpecializedFunctionInfo
@@ -256,6 +261,10 @@ class SemanticAnalyzer {
       const std::string& baseName, const std::vector<sun::TypePtr>& typeArgs);
 
   // Generic function support
+  // Lookup a generic function by name. Tries direct name first, then falls back
+  // to enclosing function prefix + name (for nested generic functions).
+  const GenericFunctionInfo* lookupGenericFunction(
+      const std::string& name) const;
   std::optional<SpecializedFunctionInfo> instantiateGenericFunction(
       const FunctionAST* genericFunc,
       const std::vector<sun::TypePtr>& typeArgs);
@@ -343,6 +352,9 @@ class SemanticAnalyzer {
   // Scope management - typed scopes
   void enterScope(ScopeType type = ScopeType::Block);
   void enterModuleScope(const std::string& moduleName);
+  // Enter a function scope with the function's signature for nested function
+  // qualified names. The signature should be "funcName(paramType1,paramType2)".
+  void enterFunctionScope(const std::string& funcSig);
   void exitScope();
 
   // Get the current module prefix for name mangling (e.g., "sun_")
@@ -363,6 +375,14 @@ class SemanticAnalyzer {
 
   // Check if currently inside a module scope
   bool isInModuleScope() const;
+
+  // Check if currently inside a function scope (for detecting nested functions)
+  bool isInFunctionScope() const;
+
+  // Get the function context for nested function names from enclosing scopes.
+  // Returns empty string if not inside any function scope.
+  // Example: inside "outer(i32)" and "middle(f64)" -> "outer(i32)::middle(f64)"
+  std::string getCurrentFunctionContext() const;
 
   // Module name registration for qualified name resolution (mod_x.mod_y.var)
   void registerModule(const std::string& modulePath);

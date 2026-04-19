@@ -20,6 +20,11 @@ void SemanticAnalyzer::enterModuleScope(const std::string& moduleName) {
   scopeStack.emplace_back(ScopeType::Module, moduleName);
 }
 
+void SemanticAnalyzer::enterFunctionScope(const std::string& funcSig) {
+  scopeStack.emplace_back(ScopeType::Function);
+  scopeStack.back().functionSignature = funcSig;
+}
+
 void SemanticAnalyzer::exitScope() {
   if (scopeStack.size() > 1) {
     scopeStack.pop_back();
@@ -71,6 +76,28 @@ bool SemanticAnalyzer::isInModuleScope() const {
   return false;
 }
 
+bool SemanticAnalyzer::isInFunctionScope() const {
+  for (const auto& scope : scopeStack) {
+    if (scope.type == ScopeType::Function) {
+      return true;
+    }
+  }
+  return false;
+}
+
+std::string SemanticAnalyzer::getCurrentFunctionContext() const {
+  // Build context from all enclosing function scopes' signatures
+  // e.g., "outer(i32)::middle(f64)" for doubly-nested functions
+  std::string context;
+  for (const auto& scope : scopeStack) {
+    if (scope.type == ScopeType::Function && !scope.functionSignature.empty()) {
+      if (!context.empty()) context += "::";
+      context += scope.functionSignature;
+    }
+  }
+  return context;
+}
+
 void SemanticAnalyzer::registerModule(const std::string& modulePath) {
   declaredModules.insert(modulePath);
 }
@@ -99,6 +126,17 @@ void SemanticAnalyzer::declareVariable(const std::string& name,
     logAndThrowError(
         "Identifier '" + name +
         "' is invalid: names starting with '_' are reserved for builtins");
+  }
+  // Check for shadowing of global/module variables
+  for (const auto& scope : scopeStack) {
+    if (scope.type == ScopeType::Global || scope.type == ScopeType::Module) {
+      if (scope.variables.contains(name)) {
+        logAndThrowError(
+            "Cannot shadow " +
+            std::string(scope.type == ScopeType::Global ? "global" : "module") +
+            " variable '" + name + "'");
+      }
+    }
   }
   scopeStack.back().variables[name] = {
       type, static_cast<int>(scopeStack.size() - 1), isParam, false};
@@ -202,16 +240,74 @@ std::string SemanticAnalyzer::getFunctionSignature(
 
 void SemanticAnalyzer::registerFunction(const std::string& name,
                                         const FunctionInfo& info) {
-  std::string sig = getFunctionSignature(name, info.paramTypes);
+  // For nested functions, prepend enclosing function context to create
+  // unique qualified names. This ensures each generic instantiation of an
+  // outer function gets its own copy of nested functions.
+  // e.g., outer<i32>'s inner -> "outer(i32)::inner(i32)"
+  std::string funcContext = getCurrentFunctionContext();
+  std::string qualifiedName =
+      funcContext.empty() ? name : funcContext + "::" + name;
+  std::string sig = getFunctionSignature(qualifiedName, info.paramTypes);
+  // Check for redeclaration of function with same signature
+  if (functionTable.contains(sig)) {
+    logAndThrowError("Cannot redeclare function '" + name +
+                     "' with the same parameter types");
+  }
   functionTable[sig] = info;
+}
+
+const GenericFunctionInfo* SemanticAnalyzer::lookupGenericFunction(
+    const std::string& name) const {
+  std::string modPath = getCurrentModulePath();
+
+  // Build QualifiedName with current module path
+  sun::QualifiedName qname(modPath, "", name);
+
+  // Try direct name first (top-level generic function in current module)
+  auto it = genericFunctionTable.find(qname);
+  if (it != genericFunctionTable.end()) {
+    return &it->second;
+  }
+
+  // Try with current function context (for nested generic functions)
+  std::string funcContext = getCurrentFunctionContext();
+  if (!funcContext.empty()) {
+    sun::QualifiedName nestedQname(modPath, funcContext, name);
+    it = genericFunctionTable.find(nestedQname);
+    if (it != genericFunctionTable.end()) {
+      return &it->second;
+    }
+  }
+
+  // If we're in a module, also try global scope (empty module path)
+  if (!modPath.empty()) {
+    sun::QualifiedName globalQname("", "", name);
+    it = genericFunctionTable.find(globalQname);
+    if (it != genericFunctionTable.end()) {
+      return &it->second;
+    }
+  }
+
+  return nullptr;
 }
 
 std::vector<FunctionInfo> SemanticAnalyzer::getAllFunctions(
     const std::string& name) const {
   std::vector<FunctionInfo> results;
   std::string prefix = name + "(";
+
+  // Also try with current function context for nested functions
+  std::string funcContext = getCurrentFunctionContext();
+  std::string nestedPrefix;
+  if (!funcContext.empty()) {
+    nestedPrefix = funcContext + "::" + name + "(";
+  }
+
   for (const auto& [sig, info] : functionTable) {
     if (sig.compare(0, prefix.size(), prefix) == 0) {
+      results.push_back(info);
+    } else if (!nestedPrefix.empty() &&
+               sig.compare(0, nestedPrefix.size(), nestedPrefix) == 0) {
       results.push_back(info);
     }
   }
@@ -227,10 +323,30 @@ std::optional<FunctionInfo> SemanticAnalyzer::lookupFunction(
     return it->second;
   }
 
+  // Also try with current function context for nested functions
+  std::string funcContext = getCurrentFunctionContext();
+  if (!funcContext.empty()) {
+    std::string nestedSig =
+        getFunctionSignature(funcContext + "::" + name, argTypes);
+    it = functionTable.find(nestedSig);
+    if (it != functionTable.end()) {
+      return it->second;
+    }
+  }
+
   // Try to find a compatible overload
   std::string prefix = name + "(";
+  std::string nestedPrefix;
+  if (!funcContext.empty()) {
+    nestedPrefix = funcContext + "::" + name + "(";
+  }
+
   for (const auto& [funcSig, info] : functionTable) {
-    if (funcSig.compare(0, prefix.size(), prefix) != 0) continue;
+    bool matchesPrefix = funcSig.compare(0, prefix.size(), prefix) == 0;
+    bool matchesNestedPrefix =
+        !nestedPrefix.empty() &&
+        funcSig.compare(0, nestedPrefix.size(), nestedPrefix) == 0;
+    if (!matchesPrefix && !matchesNestedPrefix) continue;
     if (info.paramTypes.size() != argTypes.size()) continue;
 
     bool compatible = true;

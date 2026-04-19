@@ -13,11 +13,18 @@ namespace sun {
 // Keeps module path and symbol name separate to avoid lossy conversion
 struct QualifiedName {
   std::string modulePath;  // "A.B" (dot-separated) or "" for global scope
-  std::string baseName;    // "my_func" (the original identifier, may contain _)
+  // Function context for nested functions: "outer(i32)::middle(f64)"
+  // Empty for top-level functions
+  std::string functionContext;
+  std::string baseName;  // "my_func" (the original identifier, may contain _)
 
   QualifiedName() = default;
   QualifiedName(std::string mod, std::string name)
       : modulePath(std::move(mod)), baseName(std::move(name)) {}
+  QualifiedName(std::string mod, std::string funcCtx, std::string name)
+      : modulePath(std::move(mod)),
+        functionContext(std::move(funcCtx)),
+        baseName(std::move(name)) {}
 
   // Construct from a mangled name when we only have the mangled form
   // This is a fallback - prefer constructing with module path + base name
@@ -25,26 +32,47 @@ struct QualifiedName {
     return QualifiedName("", mangledName);
   }
 
-  // Get mangled form for codegen/lookup: "A_B_my_func"
+  // Create a new QualifiedName with the given function context added
+  QualifiedName withFunctionContext(const std::string& funcCtx) const {
+    if (funcCtx.empty()) return *this;
+    std::string newCtx = functionContext;
+    if (!newCtx.empty()) newCtx += "::";
+    newCtx += funcCtx;
+    return QualifiedName(modulePath, newCtx, baseName);
+  }
+
+  // Get mangled form for codegen/lookup: "A_B_outer(i32)::my_func"
   std::string mangled() const {
-    if (modulePath.empty()) return baseName;
-    std::string path = modulePath;
-    for (char& c : path) {
-      if (c == '.') c = '_';
+    std::string result;
+    if (!modulePath.empty()) {
+      result = modulePath;
+      for (char& c : result) {
+        if (c == '.') c = '_';
+      }
+      result += "_";
     }
-    return path + "_" + baseName;
+    if (!functionContext.empty()) {
+      result += functionContext + "::";
+    }
+    result += baseName;
+    return result;
   }
 
   // Get display form for error messages: "A.B.my_func"
+  // Note: functionContext is not shown in display form (internal detail)
   std::string display() const {
     if (modulePath.empty()) return baseName;
     return modulePath + "." + baseName;
   }
 
-  bool empty() const { return modulePath.empty() && baseName.empty(); }
+  bool empty() const {
+    return modulePath.empty() && functionContext.empty() && baseName.empty();
+  }
 
   bool operator==(const QualifiedName& other) const {
-    return modulePath == other.modulePath && baseName == other.baseName;
+    return modulePath == other.modulePath &&
+           functionContext == other.functionContext &&
+           baseName == other.baseName;
   }
 
   bool operator!=(const QualifiedName& other) const {
@@ -53,6 +81,8 @@ struct QualifiedName {
 
   bool operator<(const QualifiedName& other) const {
     if (modulePath != other.modulePath) return modulePath < other.modulePath;
+    if (functionContext != other.functionContext)
+      return functionContext < other.functionContext;
     return baseName < other.baseName;
   }
 };

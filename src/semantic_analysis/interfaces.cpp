@@ -10,6 +10,10 @@
 void SemanticAnalyzer::registerInterface(
     const std::string& name,
     std::shared_ptr<sun::InterfaceType> interfaceType) {
+  // Check for redeclaration of interface
+  if (interfaceTable.contains(name)) {
+    logAndThrowError("Cannot redeclare interface '" + name + "'");
+  }
   interfaceTable[name] = std::move(interfaceType);
 }
 
@@ -25,6 +29,10 @@ std::shared_ptr<sun::InterfaceType> SemanticAnalyzer::lookupInterface(
 
 void SemanticAnalyzer::registerGenericInterface(
     const std::string& name, const GenericInterfaceInfo& info) {
+  // Check for redeclaration of generic interface
+  if (genericInterfaceTable.contains(name)) {
+    logAndThrowError("Cannot redeclare generic interface '" + name + "'");
+  }
   genericInterfaceTable[name] = info;
 }
 

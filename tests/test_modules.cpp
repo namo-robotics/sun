@@ -337,3 +337,104 @@ TEST(ModuleTest, nested_module_ambiguity) {
   )"),
                std::exception);
 }
+
+TEST(ModuleTest, extend_existing_module) {
+  // Adding new functions to an existing module (declared earlier) works
+  auto value = executeString(R"(
+    module sun {
+      function foo() i32 {
+        return 1;
+      }
+    }
+    
+    module sun {
+      function bar() i32 {
+        return 2;
+      }
+    }
+
+    function main() i32 {
+        return sun.foo() + sun.bar();
+    }
+  )");
+  EXPECT_EQ(value, 3);
+}
+
+// === Shadowing prevention tests ===
+
+TEST(ModuleTest, redeclare_function_same_signature_errors) {
+  // Defining two functions with same name and parameter types is an error
+  EXPECT_THROW(executeString(R"(
+    function foo(x: i32) i32 {
+      return x;
+    }
+    function foo(x: i32) i32 {
+      return x * 2;
+    }
+    function main() i32 {
+      return foo(1);
+    }
+  )"),
+               std::exception);
+}
+
+TEST(ModuleTest, redeclare_class_errors) {
+  // Defining two classes with same name is an error
+  EXPECT_THROW(executeString(R"(
+    class Foo {
+      var x: i32;
+      function init() { this.x = 1; }
+    }
+    class Foo {
+      var y: i32;
+      function init() { this.y = 2; }
+    }
+    function main() i32 {
+      return 0;
+    }
+  )"),
+               std::exception);
+}
+
+TEST(ModuleTest, redeclare_interface_errors) {
+  // Defining two interfaces with same name is an error
+  EXPECT_THROW(executeString(R"(
+    interface IFoo {
+      function bar() i32;
+    }
+    interface IFoo {
+      function baz() i32;
+    }
+    function main() i32 {
+      return 0;
+    }
+  )"),
+               std::exception);
+}
+
+TEST(ModuleTest, shadow_global_variable_errors) {
+  // Shadowing a global variable from within a function is an error
+  EXPECT_THROW(executeString(R"(
+    var x: i32 = 10;
+    function main() i32 {
+      var x: i32 = 20;
+      return x;
+    }
+  )"),
+               std::exception);
+}
+
+TEST(ModuleTest, local_shadowing_allowed) {
+  // Shadowing local variables within nested scopes is allowed
+  auto value = executeString(R"(
+    function main() i32 {
+      var x: i32 = 10;
+      if (true) {
+        var x: i32 = 20;
+        x = x + 1;
+      }
+      return x;
+    }
+  )");
+  EXPECT_EQ(value, 10);
+}

@@ -432,10 +432,16 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // Get function signature info (sets captures, converts param types)
       FunctionInfo funcInfo = getFunctionInfo(func);
 
+      // Compute qualified name (inside module: "sun_foo", outside: "foo")
+      sun::QualifiedName qualifiedName = makeQualifiedName(proto.getName());
+      proto.setQualifiedName(qualifiedName);
+
       // Register function BEFORE analyzing body to support recursive calls
-      // (only if named function with explicit return type)
+      // For nested functions, registerFunction prepends the enclosing
+      // function's signature to create unique qualified names per generic
+      // instantiation
       if (funcInfo.returnType) {
-        registerFunction(proto.getName(), funcInfo);
+        registerFunction(qualifiedName.mangled(), funcInfo);
       }
 
       // Analyze the function body
@@ -447,8 +453,9 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
             proto.hasReturnType() ? typeAnnotationToType(*proto.getReturnType())
                                   : sun::Types::Void();
         proto.setResolvedReturnType(inferredReturn);
-        registerFunction(proto.getName(), {inferredReturn, funcInfo.paramTypes,
-                                           funcInfo.captures});
+        registerFunction(
+            qualifiedName.mangled(),
+            {inferredReturn, funcInfo.paramTypes, funcInfo.captures});
       }
 
       // Set the function type on the function node
@@ -683,46 +690,15 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       registerModule(modulePrefix);
 
       // Analyze the body of the namespace
+      // Functions handle their own qualified name registration in FUNCTION case
       for (const auto& bodyExpr : nsDecl.getBody().getBody()) {
-        // For functions declared in the namespace, register them with
-        // qualified names
-        if (bodyExpr->isFunction()) {
-          auto& func = static_cast<FunctionAST&>(*bodyExpr);
-          const std::string& funcName = func.getProto().getName();
-          if (!funcName.empty()) {
-            // Analyze the function first
-            analyzeExpr(*bodyExpr);
-
-            // Register with qualified name - build FunctionInfo from analyzed
-            // function
-            sun::QualifiedName qualifiedName = makeQualifiedName(funcName);
-            // Set qualified name on prototype for codegen
-            const_cast<PrototypeAST&>(func.getProto())
-                .setQualifiedName(qualifiedName);
-            std::vector<sun::TypePtr> funcParamTypes;
-            for (const auto& [argName, argType] : func.getProto().getArgs()) {
-              funcParamTypes.push_back(typeAnnotationToType(argType));
-            }
-            sun::TypePtr funcReturnType =
-                func.getProto().hasReturnType()
-                    ? typeAnnotationToType(*func.getProto().getReturnType())
-                    : sun::Types::Void();
-            FunctionInfo funcInfo = {funcReturnType, funcParamTypes,
-                                     func.getProto().getCaptures()};
-            // Register in functionTable so the qualified name can be found
-            // via using imports and qualified access (resolveNameWithUsings
-            // and lookupQualifiedFunction both search functionTable)
-            registerFunction(qualifiedName.mangled(), funcInfo);
-          }
-        } else if (bodyExpr->getType() == ASTNodeType::VARIABLE_CREATION) {
-          // Analyze the variable creation
+        if (bodyExpr->getType() == ASTNodeType::VARIABLE_CREATION) {
+          // Variables need special handling to register in namespacedVariables
           analyzeExpr(*bodyExpr);
-
           auto& varCreate = static_cast<VariableCreationAST&>(*bodyExpr);
           std::string qualifiedName =
               qualifyNameInCurrentModule(varCreate.getName());
-          sun::TypePtr type = varCreate.getResolvedType();
-          if (type) {
+          if (auto type = varCreate.getResolvedType()) {
             registerNamespacedVariable(qualifiedName, type);
           }
         } else {
@@ -1244,14 +1220,15 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // Skip for intrinsics - they're handled at codegen time
       std::vector<std::string> typeParams;
       auto* genericClassInfo = lookupGenericClass(resolvedName);
+      auto* genFuncInfo = lookupGenericFunction(resolvedName);
       bool isIntrinsicCall = sun::isIntrinsic(funcName);
+
       if (genericClassInfo) {
         typeParams = genericClassInfo->typeParameters;
-      } else if (genericFunctionTable.contains(resolvedName)) {
-        auto it = genericFunctionTable.find(resolvedName);
-        typeParams = it->second.typeParameters;
+      } else if (genFuncInfo) {
+        typeParams = genFuncInfo->typeParameters;
         // Store the generic function AST on the call node for codegen
-        genericCall.setGenericFunctionAST(it->second.AST);
+        genericCall.setGenericFunctionAST(genFuncInfo->AST);
       } else if (!isIntrinsicCall) {
         logAndThrowError("Unknown generic function or class '" + funcName +
                          "'");
@@ -1276,20 +1253,18 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
             }
           }
         }
-      } else if (genericFunctionTable.contains(resolvedName)) {
+      } else if (genFuncInfo) {
         // Only instantiate if all type arguments are concrete (not type
-        // parameters) If we're inside a generic function and T is still a type
-        // parameter, we can't create a real specialization yet - it will be
-        // created when the outer generic function is instantiated with concrete
-        // types.
+        // parameters) If we're inside a generic function and T is still a
+        // type parameter, we can't create a real specialization yet - it will
+        // be created when the outer generic function is instantiated with
+        // concrete types.
         bool allConcrete = std::all_of(
             typeArgs.begin(), typeArgs.end(),
             [](const sun::TypePtr& t) { return !t->isTypeParameter(); });
         if (allConcrete) {
-          auto it = genericFunctionTable.find(resolvedName);
-          auto genericFuncAST = it->second.AST;
           auto specializedFunc =
-              instantiateGenericFunction(genericFuncAST, typeArgs);
+              instantiateGenericFunction(genFuncInfo->AST, typeArgs);
           if (specializedFunc) {
             expectedParamTypes = specializedFunc->paramTypes;
           }
@@ -1429,6 +1404,8 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
 
   // For generic FREE functions (not methods), register in genericFunctionTable
   // so they can be looked up when called with type arguments.
+  // For nested functions, include function context in the qualified name
+  // to avoid collisions across different generic instantiations.
   // We do NOT skip body analysis — codegen needs resolved types on all nodes.
   if (proto.isGeneric() && !currentClass) {
     GenericFunctionInfo genInfo;
@@ -1438,7 +1415,10 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
       genInfo.returnType = *proto.getReturnType();
     }
     genInfo.params = proto.getArgs();
-    genericFunctionTable[proto.getName()] = std::move(genInfo);
+    // Build QualifiedName with module path and function context
+    sun::QualifiedName qname(getCurrentModulePath(),
+                             getCurrentFunctionContext(), proto.getName());
+    genericFunctionTable[qname] = std::move(genInfo);
   }
 
   // Validate and resolve parameter types using shared helper
@@ -1472,8 +1452,13 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
     return;
   }
 
-  // Enter function scope
-  enterScope(ScopeType::Function);
+  // Compute function signature from qualified name and resolved param types
+  // This signature is used to create unique names for nested functions
+  std::string funcSig = getFunctionSignature(proto.getQualifiedName(),
+                                             proto.getResolvedParamTypes());
+
+  // Enter function scope with signature for nested function qualification
+  enterFunctionScope(funcSig);
 
   // If this is a generic function/method, bind its type parameters
   if (proto.isGeneric()) {
@@ -1545,8 +1530,9 @@ FunctionInfo SemanticAnalyzer::getLambdaInfo(LambdaAST& lambda) {
 void SemanticAnalyzer::analyzeLambda(LambdaAST& lambda) {
   PrototypeAST& proto = const_cast<PrototypeAST&>(lambda.getProto());
 
-  // Enter function scope
-  enterScope(ScopeType::Function);
+  // Enter function scope (empty signature - lambdas are anonymous)
+  // Nested functions in lambdas will still get outer function prefixes
+  enterFunctionScope("");
 
   // Lambdas don't have type parameters (no generic lambdas)
 
@@ -1824,17 +1810,26 @@ void SemanticAnalyzer::lazyParseAndAnalyzeMethod(
   }
 
   // Step 4: Enter method scope and declare 'this' parameter
-  enterScope(ScopeType::Function);
+  // Compute method signature with substituted param types for nested function
+  // qualification
+  const auto& proto = methodFunc.getProto();
+  std::vector<sun::TypePtr> substitutedParamTypes;
+  for (const auto& [argName, argType] : proto.getArgs()) {
+    sun::TypePtr paramType = typeAnnotationToType(argType);
+    paramType = substituteTypeParameters(paramType);
+    substitutedParamTypes.push_back(paramType);
+  }
+  std::string methodSig = getFunctionSignature(
+      classType->getMangledMethodName(proto.getName()), substitutedParamTypes);
+  enterFunctionScope(methodSig);
   if (classType) {
     declareVariable("this", classType, /*isParam=*/true);
   }
 
   // Step 5: Declare method parameters with substituted types
-  const auto& proto = methodFunc.getProto();
-  for (const auto& [argName, argType] : proto.getArgs()) {
-    sun::TypePtr paramType = typeAnnotationToType(argType);
-    paramType = substituteTypeParameters(paramType);
-    declareVariable(argName, paramType, /*isParam=*/true);
+  for (size_t i = 0; i < proto.getArgs().size(); ++i) {
+    const auto& [argName, argType] = proto.getArgs()[i];
+    declareVariable(argName, substitutedParamTypes[i], /*isParam=*/true);
   }
 
   // Step 5.5: Clear old resolved types before re-analysis

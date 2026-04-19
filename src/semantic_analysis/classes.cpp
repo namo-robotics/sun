@@ -10,6 +10,10 @@
 
 void SemanticAnalyzer::registerClass(
     const std::string& name, std::shared_ptr<sun::ClassType> classType) {
+  // Check for redeclaration of class
+  if (classTable.contains(name)) {
+    logAndThrowError("Cannot redeclare class '" + name + "'");
+  }
   classTable[name] = std::move(classType);
 }
 
@@ -34,6 +38,10 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::getCurrentClass() const {
 
 void SemanticAnalyzer::registerGenericClass(const std::string& name,
                                             const GenericClassInfo& info) {
+  // Check for redeclaration of generic class
+  if (genericClassTable.contains(name)) {
+    logAndThrowError("Cannot redeclare generic class '" + name + "'");
+  }
   genericClassTable[name] = info;
 }
 
@@ -456,8 +464,11 @@ SemanticAnalyzer::instantiateGenericFunction(
     // Clear resolved types for fresh analysis
     clearResolvedTypes(*clonedFunc);
 
+    // Compute function signature for nested function qualification
+    std::string funcSig = getFunctionSignature(mangledName, paramTypes);
+
     // Declare parameters in scope for body analysis
-    enterScope(ScopeType::Function);
+    enterFunctionScope(funcSig);
     for (size_t i = 0; i < paramTypes.size(); ++i) {
       const auto& [argName, argType] = proto.getArgs()[i];
       declareVariable(argName, paramTypes[i], /*isParam=*/true);
@@ -720,8 +731,11 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
     addUsingImport(UsingImport(modulePrefix, "*"));
   }
 
+  // Compute method signature for nested function qualification
+  std::string methodSig = getFunctionSignature(mangledName, paramTypes);
+
   // Enter method scope and declare parameters
-  enterScope(ScopeType::Function);
+  enterFunctionScope(methodSig);
 
   // Declare 'this' parameter
   declareVariable("this", classType, /*isParam=*/true);

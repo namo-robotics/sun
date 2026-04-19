@@ -43,7 +43,10 @@ Value* CodegenVisitor::codegen(const IfExprAST& expr) {
   // Emit then value.
   ctx.builder->SetInsertPoint(ThenBB);
 
+  // Push scope for then block (variables declared here are local to this block)
+  pushScope();
   Value* ThenV = codegen(*expr.getThen());
+  popScope();
 
   // Check if the Then block was terminated (e.g., by a return statement)
   bool thenTerminated =
@@ -67,7 +70,11 @@ Value* CodegenVisitor::codegen(const IfExprAST& expr) {
     TheFunction->insert(TheFunction->end(), ElseBB);
     ctx.builder->SetInsertPoint(ElseBB);
 
+    // Push scope for else block (variables declared here are local to this
+    // block)
+    pushScope();
     ElseV = codegen(*expr.getElse());
+    popScope();
 
     elseTerminated = ctx.builder->GetInsertBlock()->getTerminator() != nullptr;
 
