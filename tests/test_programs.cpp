@@ -35,6 +35,26 @@ function fib(n: i32) i32 {
   EXPECT_EQ(value, 55);
 }
 
+TEST(ProgramTest, mutual_recursion) {
+  auto value = executeString(R"(
+    function isEven(n: i32) bool {
+        if (n == 0) { return true; }
+        return isOdd(n - 1);
+    }
+
+    function isOdd(n: i32) bool {
+        if (n == 0) { return false; }
+        return isEven(n - 1);
+    }
+
+    function main() i32 {
+        if (isEven(4)) { return 1; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 1);
+}
+
 TEST(ProgramTest, square_lambda) {
   auto value = executeString(R"(
     var square = lambda (x: i32) i32 {
