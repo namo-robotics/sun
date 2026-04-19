@@ -412,6 +412,39 @@ class Lexer {
     return buffer.substr(startOffset, endOffset - startOffset);
   }
 
+  // Get a specific line from the source buffer (1-indexed)
+  std::string getSourceLine(int lineNum) const {
+    if (lineNum < 1 || buffer.empty()) return "";
+
+    int currentLine = 1;
+    size_t lineStart = 0;
+
+    // Find the start of the requested line
+    for (size_t i = 0; i < buffer.size(); ++i) {
+      if (currentLine == lineNum) {
+        lineStart = i;
+        break;
+      }
+      if (buffer[i] == '\n') {
+        ++currentLine;
+        if (currentLine == lineNum) {
+          lineStart = i + 1;
+          break;
+        }
+      }
+    }
+
+    if (currentLine < lineNum) return "";  // Line not found
+
+    // Find the end of the line
+    size_t lineEnd = lineStart;
+    while (lineEnd < buffer.size() && buffer[lineEnd] != '\n') {
+      ++lineEnd;
+    }
+
+    return buffer.substr(lineStart, lineEnd - lineStart);
+  }
+
  private:
   // Build the full regex string once (expensive string operations)
   static const std::string& getStaticFullRegex() {
