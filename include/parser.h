@@ -40,10 +40,30 @@ class Parser {
   // Base directory for resolving relative imports
   std::string baseDir;
 
+  // Current file being parsed (for error messages)
+  std::string currentFilePath;
+
+  // Helper: throw parsing error with source context
+  [[noreturn]] void parsingError(const std::string& msg) {
+    std::string sourceLine = lexer.getSourceLine(curTok.start.line);
+    std::string prevLine =
+        curTok.start.line > 1 ? lexer.getSourceLine(curTok.start.line - 1) : "";
+    Position loc{curTok.start.line, curTok.start.column, curTok.start.offset,
+                 currentFilePath.empty()
+                     ? std::nullopt
+                     : std::optional<std::string>(currentFilePath)};
+    logParsingError(loc, msg, sourceLine, prevLine);
+  }
+
  public:
   Parser() : lexer(std::cin) {}
   // Updated constructor: takes both input stream and codegen context
   Parser(std::istream& input) : lexer(input) {}
+
+  // Set the file path for error messages
+  void setFilePath(const std::string& path) { currentFilePath = path; }
+  const std::string& getFilePath() const { return currentFilePath; }
+
   unique_ptr<BlockExprAST> parseProgram();
   // Convenience constructors (optional but recommended)
 

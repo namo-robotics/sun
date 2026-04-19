@@ -73,15 +73,19 @@ class Driver {
       const std::string& moduleName = "module");
 
   /// Execute a source string with optional command-line arguments
+  /// filePath is used for error messages (optional)
   sun::SunValue executeString(const std::string& source, int argc = 0,
-                              char** argv = nullptr);
+                              char** argv = nullptr,
+                              const std::string& filePath = "");
 
   /// Execute a file with optional command-line arguments
   void executeFile(const std::string& filename, int argc = 0,
                    char** argv = nullptr);
 
   /// Compile a source string to IR without executing
-  void compileString(const std::string& source);
+  /// filePath is used for error messages (optional)
+  void compileString(const std::string& source,
+                     const std::string& filePath = "");
 
   /// Compile a file to IR without executing
   void compileFile(const std::string& filename);

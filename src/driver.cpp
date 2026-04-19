@@ -421,10 +421,13 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
 }
 
 sun::SunValue Driver::executeString(const std::string& source, int argc,
-                                    char** argv) {
+                                    char** argv, const std::string& filePath) {
   auto parser = Parser::createStringParser(source);
   parser.setImportedFiles(importedFiles);
   parser.setBaseDir(baseDir);
+  if (!filePath.empty()) {
+    parser.setFilePath(filePath);
+  }
 
   auto blockAst = parser.parseProgram();
   return runPipeline(std::move(blockAst), parser, true, argc, argv);
@@ -444,13 +447,17 @@ void Driver::executeFile(const std::string& filename, int argc, char** argv) {
   buffer << file.rdbuf();
   std::string source = buffer.str();
 
-  executeString(source, argc, argv);
+  executeString(source, argc, argv, filePath.string());
 }
 
-void Driver::compileString(const std::string& source) {
+void Driver::compileString(const std::string& source,
+                           const std::string& filePath) {
   auto parser = Parser::createStringParser(source);
   parser.setImportedFiles(importedFiles);
   parser.setBaseDir(baseDir);
+  if (!filePath.empty()) {
+    parser.setFilePath(filePath);
+  }
 
   auto blockAst = parser.parseProgram();
   runPipeline(std::move(blockAst), parser, false);
@@ -470,5 +477,5 @@ void Driver::compileFile(const std::string& filename) {
   buffer << file.rdbuf();
   std::string source = buffer.str();
 
-  compileString(source);
+  compileString(source, filePath.string());
 }

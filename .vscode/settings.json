@@ -10,7 +10,8 @@
         80,
         120
     ],
-    "testMate.cpp.test.stderrDecorator": false,
+    "testMate.cpp.test.stderrDecorator": true,
+    "testMate.cpp.log.logpanel": true,
     "testMate.cpp.test.workingDirectory": "${workspaceFolder}",
     "files.associations": {
         "debian/rules": "makefile",

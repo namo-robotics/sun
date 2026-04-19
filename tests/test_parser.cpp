@@ -11,6 +11,7 @@
 
 // Include your public headers
 #include "ast.h"     // Needed to inspect the parsed AST nodes
+#include "error.h"   // For SunError exception type
 #include "lexer.h"   // If needed for Token checks
 #include "parser.h"  // This should be in include/ (or include/SunCompiler/)
 
@@ -447,6 +448,217 @@ TEST(ParserTest, ParseLargeCodeBlock) {
     EXPECT_EQ(func->getProto().getName(), expectedNames[i])
         << "Function " << i << " should be named '" << expectedNames[i] << "'";
   }
+}
+
+// ------------------------------------------------------------------
+// Parsing error tests - verify enhanced error messages
+// ------------------------------------------------------------------
+
+TEST(ParserErrorTest, MissingSemicolonAfterVarDecl) {
+  // Missing semicolon after variable declaration
+  EXPECT_THROW(
+      {
+        try {
+          parseString(R"(
+function main() i32 {
+    var x: i32 = 42
+    return x;
+}
+)");
+        } catch (const SunError& e) {
+          // Print error to stdout for test explorer visibility
+          std::cout << "\n--- Error Message ---\n"
+                    << e.what() << "\n---------------------\n";
+          // Verify it's a parse error with source context
+          EXPECT_EQ(e.getKind(), SunError::Kind::Parse);
+          EXPECT_TRUE(e.getLocation().has_value());
+          std::string what = e.what();
+          // Should contain source line preview
+          EXPECT_TRUE(what.find("|") != std::string::npos)
+              << "Error should contain source preview with '|': " << what;
+          EXPECT_TRUE(what.find("^") != std::string::npos)
+              << "Error should contain caret '^': " << what;
+          throw;  // Re-throw to satisfy EXPECT_THROW
+        }
+      },
+      SunError);
+}
+
+TEST(ParserErrorTest, MissingClosingBrace) {
+  // Missing closing brace in function body
+  EXPECT_THROW(
+      {
+        try {
+          parseString(R"(
+function test() i32 {
+    return 1;
+
+function main() i32 {
+    return 0;
+}
+)");
+        } catch (const SunError& e) {
+          // Print error to stdout for test explorer visibility
+          std::cout << "\n--- Error Message ---\n"
+                    << e.what() << "\n---------------------\n";
+          EXPECT_EQ(e.getKind(), SunError::Kind::Parse);
+          std::string what = e.what();
+          // Should mention expected '}'
+          EXPECT_TRUE(what.find("}") != std::string::npos ||
+                      what.find("brace") != std::string::npos)
+              << "Error should mention missing brace: " << what;
+          throw;
+        }
+      },
+      SunError);
+}
+
+TEST(ParserErrorTest, MissingTypeAnnotation) {
+  // Missing type annotation with colon but no type
+  EXPECT_THROW(
+      {
+        try {
+          parseString(R"(
+function main() i32 {
+    var x: = 42;
+    return x;
+}
+)");
+        } catch (const SunError& e) {
+          // Print error to stdout for test explorer visibility
+          std::cout << "\n--- Error Message ---\n"
+                    << e.what() << "\n---------------------\n";
+          EXPECT_EQ(e.getKind(), SunError::Kind::Parse);
+          std::string what = e.what();
+          // Should have source preview with line number and caret
+          EXPECT_TRUE(what.find("|") != std::string::npos);
+          EXPECT_TRUE(what.find("^") != std::string::npos);
+          throw;
+        }
+      },
+      SunError);
+}
+
+TEST(ParserErrorTest, InvalidExpressionInParens) {
+  // Empty parentheses
+  EXPECT_THROW(
+      {
+        try {
+          parseString(R"(
+function main() i32 {
+    var x: i32 = ();
+    return x;
+}
+)");
+        } catch (const SunError& e) {
+          // Print error to stdout for test explorer visibility
+          std::cout << "\n--- Error Message ---\n"
+                    << e.what() << "\n---------------------\n";
+          EXPECT_EQ(e.getKind(), SunError::Kind::Parse);
+          throw;
+        }
+      },
+      SunError);
+}
+
+// ------------------------------------------------------------------
+// Driver-based parsing error tests - these log errors to stderr
+// Uses compileString which goes through the full driver pipeline
+// ------------------------------------------------------------------
+
+#include "execution_utils.h"
+
+TEST(ParserErrorDriverTest, MissingSemicolonLogsEnhancedError) {
+  // This test verifies that parsing errors through the driver
+  // include enhanced error messages with source context
+  testing::internal::CaptureStderr();
+
+  bool threw = false;
+  try {
+    compileString(R"(
+function main() i32 {
+    var x: i32 = 42
+    return x;
+}
+)");
+  } catch (const SunError& e) {
+    threw = true;
+    std::cerr << e.what() << std::endl;
+  }
+
+  std::string output = testing::internal::GetCapturedStderr();
+
+  // Print the error to stdout so it's visible in test explorer
+  std::cout << "\n--- Captured Error Message ---\n"
+            << output << "------------------------------\n";
+
+  EXPECT_TRUE(threw) << "Should have thrown SunError";
+
+  // Verify the error output contains source context markers
+  EXPECT_TRUE(output.find("|") != std::string::npos)
+      << "Error output should contain '|' for source preview: " << output;
+  EXPECT_TRUE(output.find("^") != std::string::npos)
+      << "Error output should contain '^' caret: " << output;
+  EXPECT_TRUE(output.find("Parse Error") != std::string::npos)
+      << "Error output should identify as Parse Error: " << output;
+}
+
+TEST(ParserErrorDriverTest, MissingColonInArgLogsError) {
+  testing::internal::CaptureStderr();
+
+  bool threw = false;
+  try {
+    compileString(R"(
+function add(a i32, b: i32) i32 {
+    return a + b;
+}
+function main() i32 { return 0; }
+)");
+  } catch (const SunError& e) {
+    threw = true;
+    std::cerr << e.what() << std::endl;
+  }
+
+  std::string output = testing::internal::GetCapturedStderr();
+
+  // Print the error to stdout so it's visible in test explorer
+  std::cout << "\n--- Captured Error Message ---\n"
+            << output << "------------------------------\n";
+
+  EXPECT_TRUE(threw) << "Should have thrown SunError";
+  // Should show the problematic line with function signature
+  EXPECT_TRUE(output.find("|") != std::string::npos)
+      << "Should have source preview: " << output;
+  EXPECT_TRUE(output.find("^") != std::string::npos)
+      << "Should have caret: " << output;
+}
+
+TEST(ParserErrorDriverTest, UnexpectedTokenLogsError) {
+  testing::internal::CaptureStderr();
+
+  bool threw = false;
+  try {
+    compileString(R"(
+function main() i32 {
+    var x: i32 = 10 +;
+    return x;
+}
+)");
+  } catch (const SunError& e) {
+    threw = true;
+    std::cerr << e.what() << std::endl;
+  }
+
+  std::string output = testing::internal::GetCapturedStderr();
+
+  // Print the error to stdout so it's visible in test explorer
+  std::cout << "\n--- Captured Error Message ---\n"
+            << output << "------------------------------\n";
+
+  EXPECT_TRUE(threw) << "Should have thrown SunError";
+  // Should contain source preview
+  EXPECT_TRUE(output.find("|") != std::string::npos)
+      << "Should have source preview: " << output;
 }
 
 int main(int argc, char** argv) {
