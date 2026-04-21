@@ -228,6 +228,16 @@ class SemanticAnalyzer {
   // silently since Pass 1 already registered the symbol.
   bool collectingDeclarations = false;
 
+  // RAII guard to set collectingDeclarations and restore on scope exit
+  struct CollectingGuard {
+    bool& flag;
+    bool prev;
+    CollectingGuard(bool& f, bool val) : flag(f), prev(f) { flag = val; }
+    ~CollectingGuard() { flag = prev; }
+    CollectingGuard(const CollectingGuard&) = delete;
+    CollectingGuard& operator=(const CollectingGuard&) = delete;
+  };
+
  public:
   explicit SemanticAnalyzer(std::shared_ptr<sun::TypeRegistry> registry)
       : typeRegistry(std::move(registry)) {
