@@ -1351,11 +1351,25 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 // -------------------------------------------------------------------
 
 void SemanticAnalyzer::analyzeBlock(BlockExprAST& block) {
-  // Pass 1: Collect all declarations (functions, classes, interfaces, enums)
-  // This enables forward references within the block.
+  // Pass 1a: Collect type declarations (classes, interfaces, enums, modules)
+  // so that function signatures in Pass 1b can reference them.
   collectingDeclarations = true;
   for (const auto& expr : block.getBody()) {
-    collectDeclarations(*expr);
+    auto type = expr->getType();
+    if (type == ASTNodeType::CLASS_DEFINITION ||
+        type == ASTNodeType::INTERFACE_DEFINITION ||
+        type == ASTNodeType::ENUM_DEFINITION ||
+        type == ASTNodeType::NAMESPACE) {
+      collectDeclarations(*expr);
+    }
+  }
+
+  // Pass 1b: Collect function prototypes (can now resolve types from 1a)
+  for (const auto& expr : block.getBody()) {
+    auto type = expr->getType();
+    if (type == ASTNodeType::FUNCTION) {
+      collectDeclarations(*expr);
+    }
   }
   collectingDeclarations = false;
 
