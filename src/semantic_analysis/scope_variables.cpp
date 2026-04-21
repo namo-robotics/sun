@@ -850,6 +850,12 @@ sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
   }
 
   if (matches.size() == 1) {
+    // Check if the bare (unqualified) name also exists — that's ambiguous
+    if (symbolExists(name)) {
+      std::string msg = "Ambiguous reference to '" + name +
+                        "'. Could be: " + name + " or " + matches[0].display();
+      logAndThrowError(msg);
+    }
     return matches[0];
   }
 

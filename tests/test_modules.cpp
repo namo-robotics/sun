@@ -438,3 +438,41 @@ TEST(ModuleTest, local_shadowing_allowed) {
   )");
   EXPECT_EQ(value, 10);
 }
+
+TEST(ModuleTest, using_is_lexically_scoped) {
+  // A 'using' inside a function should not leak to a sibling function
+  auto value = executeString(R"(
+    module math {
+      function square(x: i32) i32 { return x * x; }
+    }
+    function helper() i32 {
+      using math;
+      return square(3);
+    }
+    function main() i32 {
+      return helper();
+    }
+  )");
+  EXPECT_EQ(value, 9);
+}
+
+TEST(ModuleTest, using_causes_ambiguity) {
+  // A 'using' inside a function should not leak to a sibling function
+  EXPECT_THROW(executeString(R"(
+    module math {
+      function foo() i32 { return 1; }
+    }
+
+    function foo() i32 {
+      return 2;
+    }
+    function helper() i32 {
+      using math;
+      return foo(); // which foo, math.foo or global foo?
+    }
+    function main() i32 {
+      return foo() + helper();
+    }
+  )"),
+               std::exception);
+}
