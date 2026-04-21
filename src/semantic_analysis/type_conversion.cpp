@@ -166,6 +166,7 @@ sun::TypePtr SemanticAnalyzer::typeAnnotationToType(
       return nullptr;
     }
     sun::TypePtr referencedType = typeAnnotationToType(*annot.elementType);
+    if (!referencedType) return nullptr;
     return sun::Types::Reference(referencedType);
   }
 

@@ -850,8 +850,26 @@ sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
   }
 
   if (matches.size() == 1) {
-    // Check if the bare (unqualified) name also exists — that's ambiguous
-    if (symbolExists(name)) {
+    // Check if the bare (unqualified) name also exists as a direct symbol
+    // (not via childModules — those are exactly what 'using' imports resolve).
+    // Only flag ambiguity for true top-level symbols conflicting with an
+    // import.
+    auto directSymbolExists = [this](const std::string& candidate) -> bool {
+      for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
+        if (it->namespacedVariables.contains(candidate)) return true;
+        if (it->classes.contains(candidate)) return true;
+        if (it->genericClasses.contains(candidate)) return true;
+        if (it->interfaces.contains(candidate)) return true;
+        if (it->genericInterfaces.contains(candidate)) return true;
+        if (it->enums.contains(candidate)) return true;
+        std::string prefix = candidate + "(";
+        for (const auto& [sig, info] : it->functions) {
+          if (sig.compare(0, prefix.size(), prefix) == 0) return true;
+        }
+      }
+      return false;
+    };
+    if (directSymbolExists(name)) {
       std::string msg = "Ambiguous reference to '" + name +
                         "'. Could be: " + name + " or " + matches[0].display();
       logAndThrowError(msg);

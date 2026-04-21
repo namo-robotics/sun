@@ -47,14 +47,26 @@ void SemanticAnalyzer::collectDeclarations(ExprAST& expr) {
       // Only pre-register if return type is explicitly specified.
       // We resolve param types and return type here without calling
       // getFunctionInfo (which needs full scope for captures).
+      // Skip if any type fails to resolve (e.g., generic types requiring
+      // 'using' that hasn't been processed yet in Pass 1).
       if (proto.hasReturnType()) {
         std::vector<sun::TypePtr> paramTypes;
+        bool allResolved = true;
         for (auto& [argName, argType] : proto.getMutableArgs()) {
-          paramTypes.push_back(typeAnnotationToType(argType));
+          auto pt = typeAnnotationToType(argType);
+          if (!pt) {
+            allResolved = false;
+            break;
+          }
+          paramTypes.push_back(pt);
         }
-        sun::TypePtr returnType = typeAnnotationToType(*proto.getReturnType());
-        FunctionInfo funcInfo{returnType, paramTypes, {}};
-        registerFunction(qualifiedName.mangled(), funcInfo);
+        sun::TypePtr returnType =
+            allResolved ? typeAnnotationToType(*proto.getReturnType())
+                        : nullptr;
+        if (allResolved && returnType) {
+          FunctionInfo funcInfo{returnType, paramTypes, {}};
+          registerFunction(qualifiedName.mangled(), funcInfo);
+        }
       }
       break;
     }
@@ -153,8 +165,16 @@ void SemanticAnalyzer::collectDeclarations(ExprAST& expr) {
       break;
     }
 
+    case ASTNodeType::USING:
+      // Using statements are NOT processed in Pass 1 — they are handled in
+      // Pass 2 only. Processing them here would enable generic type resolution
+      // in function signatures, which can trigger instantiateGenericClass.
+      // That in turn analyzes method bodies that depend on class methods
+      // populated in Pass 2, causing failures or dirty scope state on error.
+      break;
+
     default:
-      // Other node types (variables, expressions, imports, using, etc.)
+      // Other node types (variables, expressions, imports, etc.)
       // don't need pre-declaration — handled in Pass 2.
       break;
   }
