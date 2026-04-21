@@ -10,17 +10,28 @@
 
 void SemanticAnalyzer::registerClass(
     const std::string& name, std::shared_ptr<sun::ClassType> classType) {
-  // Check for redeclaration of class
-  if (classTable.contains(name)) {
+  // Check for redeclaration in global scope
+  if (!scopeStack.empty() && scopeStack.front().classes.contains(name)) {
+    if (!collectingDeclarations) return;  // Pass 2: skip, already registered
     logAndThrowError("Cannot redeclare class '" + name + "'");
   }
-  classTable[name] = std::move(classType);
+  // Register in current scope AND global scope (for reachability)
+  if (!scopeStack.empty()) {
+    scopeStack.back().classes[name] = classType;
+    if (scopeStack.size() > 1) {
+      scopeStack.front().classes[name] = classType;
+    }
+  }
 }
 
 std::shared_ptr<sun::ClassType> SemanticAnalyzer::lookupClass(
     const std::string& name) const {
-  auto it = classTable.find(name);
-  return it != classTable.end() ? it->second : nullptr;
+  // Walk scope chain from innermost to outermost, including child modules
+  for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
+    auto result = it->findClass(name);
+    if (result) return result;
+  }
+  return nullptr;
 }
 
 void SemanticAnalyzer::setCurrentClass(
@@ -38,17 +49,27 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::getCurrentClass() const {
 
 void SemanticAnalyzer::registerGenericClass(const std::string& name,
                                             const GenericClassInfo& info) {
-  // Check for redeclaration of generic class
-  if (genericClassTable.contains(name)) {
+  if (!scopeStack.empty() && scopeStack.front().genericClasses.contains(name)) {
+    if (!collectingDeclarations) return;  // Pass 2: skip
     logAndThrowError("Cannot redeclare generic class '" + name + "'");
   }
-  genericClassTable[name] = info;
+  // Register in current scope AND global scope (for reachability)
+  if (!scopeStack.empty()) {
+    scopeStack.back().genericClasses[name] = info;
+    if (scopeStack.size() > 1) {
+      scopeStack.front().genericClasses[name] = info;
+    }
+  }
 }
 
 const GenericClassInfo* SemanticAnalyzer::lookupGenericClass(
     const std::string& name) const {
-  auto it = genericClassTable.find(name);
-  return it != genericClassTable.end() ? &it->second : nullptr;
+  // Walk scope chain from innermost to outermost, including child modules
+  for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
+    auto result = it->findGenericClass(name);
+    if (result) return result;
+  }
+  return nullptr;
 }
 
 void SemanticAnalyzer::addTypeParameterBindings(
@@ -541,30 +562,29 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   // (not the base generic class), because that's what codegen will iterate over
   if (classType->isSpecialized()) {
     const std::string& baseName = classType->getBaseGenericName();
-    auto genericIt = genericClassTable.find(baseName);
-    if (genericIt != genericClassTable.end() && genericIt->second.AST) {
+    auto* genericInfo = lookupGenericClass(baseName);
+    if (genericInfo && genericInfo->AST) {
       // Get the specialized class AST - this is what codegen will process
-      auto specAST =
-          genericIt->second.AST->getSpecialization(classType->getName());
+      auto specAST = genericInfo->AST->getSpecialization(classType->getName());
       if (specAST) {
         classDef = specAST.get();
       } else {
         // Fallback to base definition if specialization not found yet
-        classDef = genericIt->second.AST;
+        classDef = genericInfo->AST;
       }
     }
   } else if (classType->isGenericDefinition()) {
     // Generic class definition - look up directly
-    auto genericIt = genericClassTable.find(classType->getName());
-    if (genericIt != genericClassTable.end()) {
-      classDef = genericIt->second.AST;
+    auto* genericInfo = lookupGenericClass(classType->getName());
+    if (genericInfo) {
+      classDef = genericInfo->AST;
     }
   } else {
     // Non-generic class - look up in generic table anyway (might have generic
     // methods)
-    auto genericIt = genericClassTable.find(classType->getName());
-    if (genericIt != genericClassTable.end()) {
-      classDef = genericIt->second.AST;
+    auto* genericInfo = lookupGenericClass(classType->getName());
+    if (genericInfo) {
+      classDef = genericInfo->AST;
     }
   }
 
@@ -604,9 +624,9 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   // Collect class-level type parameter bindings for specialized generic classes
   if (classType->isSpecialized()) {
     const std::string& baseName = classType->getBaseGenericName();
-    auto genericIt = genericClassTable.find(baseName);
-    if (genericIt != genericClassTable.end()) {
-      const auto& classTypeParams = genericIt->second.typeParameters;
+    auto* genericInfo = lookupGenericClass(baseName);
+    if (genericInfo) {
+      const auto& classTypeParams = genericInfo->typeParameters;
       const auto& classTypeArgs = classType->getTypeArguments();
       for (size_t i = 0; i < classTypeParams.size() && i < classTypeArgs.size();
            ++i) {

@@ -57,6 +57,7 @@ add_library(sun_lib
     src/semantic_analysis/type_inference.cpp
     src/semantic_analysis/captures.cpp
     src/semantic_analysis/analysis.cpp
+    src/semantic_analysis/declaration_collection.cpp
     src/llvm_type_resolver.cpp
     src/borrow_checker/borrow_state.cpp
     src/borrow_checker/borrow_checker.cpp

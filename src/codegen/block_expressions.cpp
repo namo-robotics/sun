@@ -9,6 +9,39 @@ using namespace llvm;
 Value* CodegenVisitor::codegen(const BlockExprAST& block) {
   if (block.isEmpty()) return ConstantFP::get(ctx.getContext(), APFloat(0.0));
 
+  // Pre-pass: emit forward declarations for all named functions in this block.
+  // This enables mutual recursion: isEven can call isOdd before isOdd is
+  // fully generated.
+  for (const auto& expr : block.getBody()) {
+    if (!expr->isFunction()) continue;
+    auto& funcAST = static_cast<FunctionAST&>(*expr);
+    const PrototypeAST& proto = funcAST.getProto();
+
+    // Skip lambdas, generics, externs, closures, and functions already declared
+    if (proto.getName().empty()) continue;
+    if (proto.isGeneric()) continue;
+    if (funcAST.isExtern()) continue;
+    if (proto.hasClosure()) continue;
+
+    std::string funcName = getMangledName(proto.getName());
+    if (module->getFunction(funcName)) continue;
+
+    // Build LLVM function type from resolved semantic types
+    if (!proto.hasResolvedReturnType() || !proto.hasResolvedParamTypes())
+      continue;
+
+    llvm::Type* retType =
+        typeResolver.resolveForReturn(proto.getResolvedReturnType());
+    std::vector<llvm::Type*> paramTypes;
+    for (const auto& sunType : proto.getResolvedParamTypes()) {
+      paramTypes.push_back(typeResolver.resolve(sunType));
+    }
+    llvm::FunctionType* funcType =
+        llvm::FunctionType::get(retType, paramTypes, false);
+    llvm::Function::Create(funcType, llvm::Function::ExternalLinkage, funcName,
+                           module);
+  }
+
   Value* lastValue = nullptr;
   bool encounteredReturn = false;
 

@@ -219,9 +219,16 @@ std::pair<Function*, llvm::StructType*> CodegenVisitor::codegen(
     funcName = getMangledName(funcName);
   }
 
-  // Step 1: Remove any previous version of this function in the current module
-  if (Function* oldFunc = module->getFunction(funcName)) {
-    oldFunc->eraseFromParent();
+  // Step 1: Reuse any existing forward declaration of this function.
+  // The block pre-pass creates declarations for mutual recursion; erasing
+  // them would invalidate call instructions already emitted.
+  if (Function* existingFunc = module->getFunction(funcName)) {
+    if (!existingFunc->empty()) {
+      // Already has a body — this is a genuine redefinition error.
+      logAndThrowError("Redefinition of function: " + funcName);
+    }
+    // It's a declaration only — we'll check if its type matches after
+    // building the full signature below, and either reuse or replace it.
   }
 
   // Determine return type: use resolved type from semantic analysis
@@ -284,9 +291,25 @@ std::pair<Function*, llvm::StructType*> CodegenVisitor::codegen(
   // Create the function type
   FunctionType* funcType = FunctionType::get(returnType, argTypes, false);
 
-  // Create the function itself
-  Function* func =
-      Function::Create(funcType, Function::ExternalLinkage, funcName, module);
+  // Reuse existing forward declaration if type matches, otherwise replace it
+  Function* func = module->getFunction(funcName);
+  if (func) {
+    if (func->getFunctionType() == funcType) {
+      // Type matches — reuse the forward declaration (preserves call uses)
+    } else if (func->use_empty()) {
+      // Type mismatch but no uses — safe to erase and recreate
+      // (e.g., error union functions where pre-pass type differs from actual)
+      func->eraseFromParent();
+      func = Function::Create(funcType, Function::ExternalLinkage, funcName,
+                              module);
+    } else {
+      logAndThrowError(
+          "Forward declaration type mismatch with existing uses: " + funcName);
+    }
+  } else {
+    func =
+        Function::Create(funcType, Function::ExternalLinkage, funcName, module);
+  }
 
   // Name the arguments
   unsigned argIdx = 0;
