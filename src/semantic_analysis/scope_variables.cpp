@@ -2,11 +2,123 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <sstream>
 
 #include "error.h"
 #include "semantic_analyzer.h"
 
 using sun::unwrapRef;
+
+// -------------------------------------------------------------------
+// SemanticScope helpers
+// -------------------------------------------------------------------
+
+bool SemanticScope::hasSymbol(const std::string& name) const {
+  if (classes.contains(name)) return true;
+  if (genericClasses.contains(name)) return true;
+  if (interfaces.contains(name)) return true;
+  if (genericInterfaces.contains(name)) return true;
+  if (enums.contains(name)) return true;
+  // Functions use signature keys, check by prefix "name("
+  std::string prefix = name + "(";
+  for (const auto& [sig, info] : functions) {
+    if (sig.compare(0, prefix.size(), prefix) == 0) return true;
+  }
+  // Recurse into child module scopes
+  for (const auto& [modName, child] : childModules) {
+    if (child && child->hasSymbol(name)) return true;
+  }
+  return false;
+}
+
+std::shared_ptr<sun::ClassType> SemanticScope::findClass(
+    const std::string& name) const {
+  auto it = classes.find(name);
+  if (it != classes.end()) return it->second;
+  for (const auto& [modName, child] : childModules) {
+    if (child) {
+      auto result = child->findClass(name);
+      if (result) return result;
+    }
+  }
+  return nullptr;
+}
+
+const GenericClassInfo* SemanticScope::findGenericClass(
+    const std::string& name) const {
+  auto it = genericClasses.find(name);
+  if (it != genericClasses.end()) return &it->second;
+  for (const auto& [modName, child] : childModules) {
+    if (child) {
+      auto result = child->findGenericClass(name);
+      if (result) return result;
+    }
+  }
+  return nullptr;
+}
+
+std::shared_ptr<sun::InterfaceType> SemanticScope::findInterface(
+    const std::string& name) const {
+  auto it = interfaces.find(name);
+  if (it != interfaces.end()) return it->second;
+  for (const auto& [modName, child] : childModules) {
+    if (child) {
+      auto result = child->findInterface(name);
+      if (result) return result;
+    }
+  }
+  return nullptr;
+}
+
+const GenericInterfaceInfo* SemanticScope::findGenericInterface(
+    const std::string& name) const {
+  auto it = genericInterfaces.find(name);
+  if (it != genericInterfaces.end()) return &it->second;
+  for (const auto& [modName, child] : childModules) {
+    if (child) {
+      auto result = child->findGenericInterface(name);
+      if (result) return result;
+    }
+  }
+  return nullptr;
+}
+
+std::shared_ptr<sun::EnumType> SemanticScope::findEnum(
+    const std::string& name) const {
+  auto it = enums.find(name);
+  if (it != enums.end()) return it->second;
+  for (const auto& [modName, child] : childModules) {
+    if (child) {
+      auto result = child->findEnum(name);
+      if (result) return result;
+    }
+  }
+  return nullptr;
+}
+
+const FunctionInfo* SemanticScope::findFunction(const std::string& sig) const {
+  auto it = functions.find(sig);
+  if (it != functions.end()) return &it->second;
+  for (const auto& [modName, child] : childModules) {
+    if (child) {
+      auto result = child->findFunction(sig);
+      if (result) return result;
+    }
+  }
+  return nullptr;
+}
+
+void SemanticScope::collectFunctions(const std::string& prefix,
+                                     std::vector<FunctionInfo>& results) const {
+  for (const auto& [sig, info] : functions) {
+    if (sig.compare(0, prefix.size(), prefix) == 0) {
+      results.push_back(info);
+    }
+  }
+  for (const auto& [modName, child] : childModules) {
+    if (child) child->collectFunctions(prefix, results);
+  }
+}
 
 // -------------------------------------------------------------------
 // Scope management - typed scopes
@@ -17,7 +129,15 @@ void SemanticAnalyzer::enterScope(ScopeType type) {
 }
 
 void SemanticAnalyzer::enterModuleScope(const std::string& moduleName) {
-  scopeStack.emplace_back(ScopeType::Module, moduleName);
+  // Create or reuse a child module scope in the current scope's tree
+  auto& parentScope = scopeStack.back();
+  auto& child = parentScope.childModules[moduleName];
+  if (!child) {
+    child = std::make_shared<SemanticScope>(ScopeType::Module, moduleName);
+    child->parent = &parentScope;
+  }
+  scopeStack.push_back(*child);  // Push copy onto stack
+  scopeStack.back().parent = &parentScope;
 }
 
 void SemanticAnalyzer::enterFunctionScope(const std::string& funcSig) {
@@ -27,6 +147,24 @@ void SemanticAnalyzer::enterFunctionScope(const std::string& funcSig) {
 
 void SemanticAnalyzer::exitScope() {
   if (scopeStack.size() > 1) {
+    auto& top = scopeStack.back();
+    // Sync module scope symbols back to the canonical childModules entry
+    if (top.type == ScopeType::Module && scopeStack.size() >= 2) {
+      auto& parent = scopeStack[scopeStack.size() - 2];
+      auto it = parent.childModules.find(top.moduleName);
+      if (it != parent.childModules.end()) {
+        // Copy persistent symbol tables back (but not transient state)
+        auto& canonical = *it->second;
+        canonical.functions = top.functions;
+        canonical.classes = top.classes;
+        canonical.genericClasses = top.genericClasses;
+        canonical.interfaces = top.interfaces;
+        canonical.genericInterfaces = top.genericInterfaces;
+        canonical.enums = top.enums;
+        canonical.genericFunctions = top.genericFunctions;
+        canonical.childModules = top.childModules;
+      }
+    }
     scopeStack.pop_back();
   }
 }
@@ -104,6 +242,22 @@ void SemanticAnalyzer::registerModule(const std::string& modulePath) {
 
 bool SemanticAnalyzer::isModuleName(const std::string& name) const {
   return declaredModules.count(name) > 0;
+}
+
+SemanticScope* SemanticAnalyzer::lookupModuleScope(
+    const std::string& dotPath) const {
+  if (dotPath.empty() || scopeStack.empty()) return nullptr;
+  // Start from global scope (first in stack)
+  const SemanticScope* current = &scopeStack.front();
+  // Split dot-separated path and traverse childModules
+  std::string segment;
+  std::istringstream stream(dotPath);
+  while (std::getline(stream, segment, '.')) {
+    auto it = current->childModules.find(segment);
+    if (it == current->childModules.end()) return nullptr;
+    current = it->second.get();
+  }
+  return const_cast<SemanticScope*>(current);
 }
 
 std::vector<UsingImport> SemanticAnalyzer::getActiveUsingImports() const {
@@ -248,12 +402,19 @@ void SemanticAnalyzer::registerFunction(const std::string& name,
   std::string qualifiedName =
       funcContext.empty() ? name : funcContext + "::" + name;
   std::string sig = getFunctionSignature(qualifiedName, info.paramTypes);
-  // Check for redeclaration of function with same signature
-  if (functionTable.contains(sig)) {
+  // During Pass 2, skip re-registration of functions already declared in Pass 1
+  if (!scopeStack.empty() && scopeStack.front().functions.contains(sig)) {
+    if (!collectingDeclarations) return;  // Pass 2: skip
     logAndThrowError("Cannot redeclare function '" + name +
                      "' with the same parameter types");
   }
-  functionTable[sig] = info;
+  // Register in current scope AND global scope (for reachability)
+  if (!scopeStack.empty()) {
+    scopeStack.back().functions[sig] = info;
+    if (scopeStack.size() > 1) {
+      scopeStack.front().functions[sig] = info;
+    }
+  }
 }
 
 const GenericFunctionInfo* SemanticAnalyzer::lookupGenericFunction(
@@ -263,28 +424,36 @@ const GenericFunctionInfo* SemanticAnalyzer::lookupGenericFunction(
   // Build QualifiedName with current module path
   sun::QualifiedName qname(modPath, "", name);
 
-  // Try direct name first (top-level generic function in current module)
-  auto it = genericFunctionTable.find(qname);
-  if (it != genericFunctionTable.end()) {
-    return &it->second;
-  }
-
-  // Try with current function context (for nested generic functions)
-  std::string funcContext = getCurrentFunctionContext();
-  if (!funcContext.empty()) {
-    sun::QualifiedName nestedQname(modPath, funcContext, name);
-    it = genericFunctionTable.find(nestedQname);
-    if (it != genericFunctionTable.end()) {
-      return &it->second;
+  // Walk scope chain from innermost to outermost, including child modules
+  for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
+    auto found = it->genericFunctions.find(qname);
+    if (found != it->genericFunctions.end()) {
+      return &found->second;
     }
-  }
-
-  // If we're in a module, also try global scope (empty module path)
-  if (!modPath.empty()) {
-    sun::QualifiedName globalQname("", "", name);
-    it = genericFunctionTable.find(globalQname);
-    if (it != genericFunctionTable.end()) {
-      return &it->second;
+    // Try with current function context (for nested generic functions)
+    std::string funcContext = getCurrentFunctionContext();
+    if (!funcContext.empty()) {
+      sun::QualifiedName nestedQname(modPath, funcContext, name);
+      found = it->genericFunctions.find(nestedQname);
+      if (found != it->genericFunctions.end()) {
+        return &found->second;
+      }
+    }
+    // If we're in a module, also try global scope (empty module path)
+    if (!modPath.empty()) {
+      sun::QualifiedName globalQname("", "", name);
+      found = it->genericFunctions.find(globalQname);
+      if (found != it->genericFunctions.end()) {
+        return &found->second;
+      }
+    }
+    // Search child module scopes
+    for (const auto& [modName, child] : it->childModules) {
+      if (!child) continue;
+      auto childFound = child->genericFunctions.find(qname);
+      if (childFound != child->genericFunctions.end()) {
+        return &childFound->second;
+      }
     }
   }
 
@@ -303,12 +472,11 @@ std::vector<FunctionInfo> SemanticAnalyzer::getAllFunctions(
     nestedPrefix = funcContext + "::" + name + "(";
   }
 
-  for (const auto& [sig, info] : functionTable) {
-    if (sig.compare(0, prefix.size(), prefix) == 0) {
-      results.push_back(info);
-    } else if (!nestedPrefix.empty() &&
-               sig.compare(0, nestedPrefix.size(), nestedPrefix) == 0) {
-      results.push_back(info);
+  // Walk scope chain from innermost to outermost, including child modules
+  for (auto sit = scopeStack.rbegin(); sit != scopeStack.rend(); ++sit) {
+    sit->collectFunctions(prefix, results);
+    if (!nestedPrefix.empty()) {
+      sit->collectFunctions(nestedPrefix, results);
     }
   }
   return results;
@@ -316,103 +484,118 @@ std::vector<FunctionInfo> SemanticAnalyzer::getAllFunctions(
 
 std::optional<FunctionInfo> SemanticAnalyzer::lookupFunction(
     const std::string& name, const std::vector<sun::TypePtr>& argTypes) const {
-  // First try exact match
   std::string sig = getFunctionSignature(name, argTypes);
-  auto it = functionTable.find(sig);
-  if (it != functionTable.end()) {
-    return it->second;
-  }
-
-  // Also try with current function context for nested functions
   std::string funcContext = getCurrentFunctionContext();
+  std::string nestedSig;
   if (!funcContext.empty()) {
-    std::string nestedSig =
-        getFunctionSignature(funcContext + "::" + name, argTypes);
-    it = functionTable.find(nestedSig);
-    if (it != functionTable.end()) {
-      return it->second;
-    }
+    nestedSig = getFunctionSignature(funcContext + "::" + name, argTypes);
   }
-
-  // Try to find a compatible overload
   std::string prefix = name + "(";
   std::string nestedPrefix;
   if (!funcContext.empty()) {
     nestedPrefix = funcContext + "::" + name + "(";
   }
 
-  for (const auto& [funcSig, info] : functionTable) {
-    bool matchesPrefix = funcSig.compare(0, prefix.size(), prefix) == 0;
-    bool matchesNestedPrefix =
-        !nestedPrefix.empty() &&
-        funcSig.compare(0, nestedPrefix.size(), nestedPrefix) == 0;
-    if (!matchesPrefix && !matchesNestedPrefix) continue;
-    if (info.paramTypes.size() != argTypes.size()) continue;
+  // Helper lambda to check compatible overloads in a function map
+  auto findCompatible = [&](const std::map<std::string, FunctionInfo>& funcs)
+      -> std::optional<FunctionInfo> {
+    // Try exact match first
+    auto it = funcs.find(sig);
+    if (it != funcs.end()) return it->second;
+    if (!nestedSig.empty()) {
+      it = funcs.find(nestedSig);
+      if (it != funcs.end()) return it->second;
+    }
 
-    bool compatible = true;
-    for (size_t i = 0; i < argTypes.size(); ++i) {
-      if (!argTypes[i] || !info.paramTypes[i]) {
+    // Try compatible overload
+    for (const auto& [funcSig, info] : funcs) {
+      bool matchesPrefix = funcSig.compare(0, prefix.size(), prefix) == 0;
+      bool matchesNestedPrefix =
+          !nestedPrefix.empty() &&
+          funcSig.compare(0, nestedPrefix.size(), nestedPrefix) == 0;
+      if (!matchesPrefix && !matchesNestedPrefix) continue;
+      if (info.paramTypes.size() != argTypes.size()) continue;
+
+      bool compatible = true;
+      for (size_t i = 0; i < argTypes.size(); ++i) {
+        if (!argTypes[i] || !info.paramTypes[i]) {
+          compatible = false;
+          break;
+        }
+        if (info.paramTypes[i]->equals(*argTypes[i])) continue;
+
+        if (info.paramTypes[i]->isReference()) {
+          auto* refType =
+              static_cast<const sun::ReferenceType*>(info.paramTypes[i].get());
+          if (refType->getReferencedType()->equals(*argTypes[i])) continue;
+          if (refType->getReferencedType()->isArray() &&
+              argTypes[i]->isArray()) {
+            auto* paramArray = static_cast<const sun::ArrayType*>(
+                refType->getReferencedType().get());
+            auto* argArray =
+                static_cast<const sun::ArrayType*>(argTypes[i].get());
+            if (paramArray->isUnsized() && paramArray->getElementType()->equals(
+                                               *argArray->getElementType()))
+              continue;
+          }
+        }
+
+        if (argTypes[i]->isReference()) {
+          auto* refType =
+              static_cast<const sun::ReferenceType*>(argTypes[i].get());
+          if (info.paramTypes[i]->equals(*refType->getReferencedType()))
+            continue;
+        }
+
+        if (argTypes[i]->isNullPointer() &&
+            info.paramTypes[i]->isAnyPointer()) {
+          continue;
+        }
+
+        if (argTypes[i]->isStaticPointer() &&
+            info.paramTypes[i]->isRawPointer()) {
+          auto* staticPtr =
+              static_cast<const sun::StaticPointerType*>(argTypes[i].get());
+          auto* rawPtr =
+              static_cast<const sun::RawPointerType*>(info.paramTypes[i].get());
+          if (staticPtr->getPointeeType()->equals(*rawPtr->getPointeeType())) {
+            continue;
+          }
+        }
+
+        if (isAssignableTo(argTypes[i], info.paramTypes[i])) {
+          continue;
+        }
+
         compatible = false;
         break;
       }
-      if (info.paramTypes[i]->equals(*argTypes[i])) continue;
 
-      // Check implicit conversions
-      // Reference parameter accepts the referenced type directly
-      if (info.paramTypes[i]->isReference()) {
-        auto* refType =
-            static_cast<const sun::ReferenceType*>(info.paramTypes[i].get());
-        if (refType->getReferencedType()->equals(*argTypes[i])) continue;
-
-        // ref array<T> (unsized) accepts any array<T, dims...>
-        if (refType->getReferencedType()->isArray() && argTypes[i]->isArray()) {
-          auto* paramArray = static_cast<const sun::ArrayType*>(
-              refType->getReferencedType().get());
-          auto* argArray =
-              static_cast<const sun::ArrayType*>(argTypes[i].get());
-          if (paramArray->isUnsized() &&
-              paramArray->getElementType()->equals(*argArray->getElementType()))
-            continue;
-        }
+      if (compatible) {
+        return info;
       }
-
-      // Value parameter accepts a reference (implicit dereference)
-      if (argTypes[i]->isReference()) {
-        auto* refType =
-            static_cast<const sun::ReferenceType*>(argTypes[i].get());
-        if (info.paramTypes[i]->equals(*refType->getReferencedType())) continue;
-      }
-
-      // Null is compatible with any pointer type
-      if (argTypes[i]->isNullPointer() && info.paramTypes[i]->isAnyPointer()) {
-        continue;
-      }
-
-      // static_ptr<T> is compatible with raw_ptr<T>
-      if (argTypes[i]->isStaticPointer() &&
-          info.paramTypes[i]->isRawPointer()) {
-        auto* staticPtr =
-            static_cast<const sun::StaticPointerType*>(argTypes[i].get());
-        auto* rawPtr =
-            static_cast<const sun::RawPointerType*>(info.paramTypes[i].get());
-        if (staticPtr->getPointeeType()->equals(*rawPtr->getPointeeType())) {
-          continue;
-        }
-      }
-
-      // Class-to-interface compatibility:
-      // A class C is compatible with interface I if C implements I
-      if (isAssignableTo(argTypes[i], info.paramTypes[i])) {
-        continue;
-      }
-
-      compatible = false;
-      break;
     }
+    return std::nullopt;
+  };
 
-    if (compatible) {
-      return info;
+  // Helper: recursively search a scope and its childModules
+  std::function<std::optional<FunctionInfo>(const SemanticScope&)> findInScope =
+      [&](const SemanticScope& scope) -> std::optional<FunctionInfo> {
+    auto result = findCompatible(scope.functions);
+    if (result) return result;
+    for (const auto& [modName, child] : scope.childModules) {
+      if (child) {
+        result = findInScope(*child);
+        if (result) return result;
+      }
     }
+    return std::nullopt;
+  };
+
+  // Walk scope chain from innermost to outermost
+  for (auto sit = scopeStack.rbegin(); sit != scopeStack.rend(); ++sit) {
+    auto result = findInScope(*sit);
+    if (result) return result;
   }
 
   return std::nullopt;
@@ -494,12 +677,27 @@ VariableInfo* SemanticAnalyzer::lookupQualifiedVariable(
 
 const FunctionInfo* SemanticAnalyzer::lookupQualifiedFunction(
     const std::string& qualifiedName) const {
-  // Search functionTable for any signature starting with qualifiedName(
   std::string prefix = qualifiedName + "(";
-  for (const auto& [sig, info] : functionTable) {
-    if (sig.compare(0, prefix.size(), prefix) == 0) {
-      return &info;
+  // Recursive helper to search a scope and its child modules
+  std::function<const FunctionInfo*(const SemanticScope&)> searchScope =
+      [&](const SemanticScope& scope) -> const FunctionInfo* {
+    for (const auto& [sig, info] : scope.functions) {
+      if (sig.compare(0, prefix.size(), prefix) == 0) {
+        return &info;
+      }
     }
+    for (const auto& [modName, child] : scope.childModules) {
+      if (child) {
+        auto* result = searchScope(*child);
+        if (result) return result;
+      }
+    }
+    return nullptr;
+  };
+  // Walk scope chain
+  for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
+    auto* result = searchScope(*it);
+    if (result) return result;
   }
   return nullptr;
 }
@@ -507,17 +705,16 @@ const FunctionInfo* SemanticAnalyzer::lookupQualifiedFunction(
 sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
     const std::string& name) const {
   // Helper to check if a symbol exists (function, variable, or class)
+  // Searches scope chain including child module scopes
   auto symbolExists = [this](const std::string& candidate) -> bool {
     // Check namespaced variables
     if (namespacedVariables.contains(candidate)) return true;
-    // Check functions
-    std::string prefix = candidate + "(";
-    for (const auto& [sig, info] : functionTable) {
-      if (sig.compare(0, prefix.size(), prefix) == 0) return true;
+
+    // Check scope chain, including child module scopes via hasSymbol
+    for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
+      if (it->hasSymbol(candidate)) return true;
     }
-    // Check classes
-    return classTable.contains(candidate) ||
-           genericClassTable.contains(candidate);
+    return false;
   };
 
   // First, if we're inside a module, check for the name with module prefix
@@ -566,6 +763,58 @@ sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
     }
   }
 
+  // Also check scope-based ImportBindings (new system, for local modules)
+  for (const auto& scope : scopeStack) {
+    for (const auto& binding : scope.importBindings) {
+      if (!binding.sourceScope) continue;
+      if (binding.isWildcard) {
+        // Check if name exists in the source scope
+        if (binding.sourceScope->hasSymbol(name)) {
+          // Reconstruct the QualifiedName from the module path
+          sun::QualifiedName candidate(binding.sourceScope->moduleName.empty()
+                                           ? ""
+                                           : binding.sourceScope->moduleName,
+                                       name);
+          // Build full module path by walking parent chain
+          std::string modPath;
+          const SemanticScope* s = binding.sourceScope;
+          while (s && s->type == ScopeType::Module) {
+            if (modPath.empty())
+              modPath = s->moduleName;
+            else
+              modPath = s->moduleName + "." + modPath;
+            s = s->parent;
+          }
+          if (!modPath.empty()) {
+            candidate = sun::QualifiedName(modPath, name);
+          }
+          if (std::find(matches.begin(), matches.end(), candidate) ==
+              matches.end()) {
+            matches.push_back(candidate);
+          }
+        }
+      } else if (binding.localName == name) {
+        if (binding.sourceScope->hasSymbol(binding.sourceName)) {
+          // Reconstruct QualifiedName
+          std::string modPath;
+          const SemanticScope* s = binding.sourceScope;
+          while (s && s->type == ScopeType::Module) {
+            if (modPath.empty())
+              modPath = s->moduleName;
+            else
+              modPath = s->moduleName + "." + modPath;
+            s = s->parent;
+          }
+          sun::QualifiedName candidate(modPath, binding.sourceName);
+          if (std::find(matches.begin(), matches.end(), candidate) ==
+              matches.end()) {
+            matches.push_back(candidate);
+          }
+        }
+      }
+    }
+  }
+
   if (matches.size() > 1) {
     std::string msg = "Ambiguous reference to '" + name + "'. Could be: ";
     for (size_t i = 0; i < matches.size(); ++i) {
@@ -587,5 +836,11 @@ void SemanticAnalyzer::addUsingImport(const UsingImport& import) {
   // Add using import to the current scope
   if (!scopeStack.empty()) {
     scopeStack.back().usingImports.push_back(import);
+  }
+}
+
+void SemanticAnalyzer::addImportBinding(const ImportBinding& binding) {
+  if (!scopeStack.empty()) {
+    scopeStack.back().importBindings.push_back(binding);
   }
 }

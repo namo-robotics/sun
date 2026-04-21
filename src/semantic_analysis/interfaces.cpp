@@ -10,17 +10,27 @@
 void SemanticAnalyzer::registerInterface(
     const std::string& name,
     std::shared_ptr<sun::InterfaceType> interfaceType) {
-  // Check for redeclaration of interface
-  if (interfaceTable.contains(name)) {
+  if (!scopeStack.empty() && scopeStack.front().interfaces.contains(name)) {
+    if (!collectingDeclarations) return;  // Pass 2: skip
     logAndThrowError("Cannot redeclare interface '" + name + "'");
   }
-  interfaceTable[name] = std::move(interfaceType);
+  // Register in current scope AND global scope (for reachability)
+  if (!scopeStack.empty()) {
+    scopeStack.back().interfaces[name] = interfaceType;
+    if (scopeStack.size() > 1) {
+      scopeStack.front().interfaces[name] = interfaceType;
+    }
+  }
 }
 
 std::shared_ptr<sun::InterfaceType> SemanticAnalyzer::lookupInterface(
     const std::string& name) const {
-  auto it = interfaceTable.find(name);
-  return it != interfaceTable.end() ? it->second : nullptr;
+  // Walk scope chain from innermost to outermost, including child modules
+  for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
+    auto result = it->findInterface(name);
+    if (result) return result;
+  }
+  return nullptr;
 }
 
 // -------------------------------------------------------------------
@@ -29,17 +39,28 @@ std::shared_ptr<sun::InterfaceType> SemanticAnalyzer::lookupInterface(
 
 void SemanticAnalyzer::registerGenericInterface(
     const std::string& name, const GenericInterfaceInfo& info) {
-  // Check for redeclaration of generic interface
-  if (genericInterfaceTable.contains(name)) {
+  if (!scopeStack.empty() &&
+      scopeStack.front().genericInterfaces.contains(name)) {
+    if (!collectingDeclarations) return;  // Pass 2: skip
     logAndThrowError("Cannot redeclare generic interface '" + name + "'");
   }
-  genericInterfaceTable[name] = info;
+  // Register in current scope AND global scope (for reachability)
+  if (!scopeStack.empty()) {
+    scopeStack.back().genericInterfaces[name] = info;
+    if (scopeStack.size() > 1) {
+      scopeStack.front().genericInterfaces[name] = info;
+    }
+  }
 }
 
 const GenericInterfaceInfo* SemanticAnalyzer::lookupGenericInterface(
     const std::string& name) const {
-  auto it = genericInterfaceTable.find(name);
-  return it != genericInterfaceTable.end() ? &it->second : nullptr;
+  // Walk scope chain from innermost to outermost, including child modules
+  for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
+    auto result = it->findGenericInterface(name);
+    if (result) return result;
+  }
+  return nullptr;
 }
 
 std::shared_ptr<sun::InterfaceType>
@@ -187,13 +208,23 @@ SemanticAnalyzer::instantiateGenericInterface(
 
 void SemanticAnalyzer::registerEnum(const std::string& name,
                                     std::shared_ptr<sun::EnumType> enumType) {
-  enumTable[name] = std::move(enumType);
+  // Register in current scope AND global scope (for reachability)
+  if (!scopeStack.empty()) {
+    scopeStack.back().enums[name] = enumType;
+    if (scopeStack.size() > 1) {
+      scopeStack.front().enums[name] = enumType;
+    }
+  }
 }
 
 std::shared_ptr<sun::EnumType> SemanticAnalyzer::lookupEnum(
     const std::string& name) const {
-  auto it = enumTable.find(name);
-  return it != enumTable.end() ? it->second : nullptr;
+  // Walk scope chain from innermost to outermost, including child modules
+  for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
+    auto result = it->findEnum(name);
+    if (result) return result;
+  }
+  return nullptr;
 }
 
 // -------------------------------------------------------------------

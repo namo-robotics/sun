@@ -735,6 +735,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
               namespacePath.empty() ? target : namespacePath + "." + target;
           UsingImport import(displayPath, "*");
           addUsingImport(import);
+          // Also create scope-based ImportBinding
+          if (auto* modScope = lookupModuleScope(displayPath)) {
+            addImportBinding(ImportBinding::wildcard(modScope));
+          }
           expr.setResolvedType(sun::Types::Void());
           break;
         }
@@ -743,6 +747,14 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // Normal case: import symbol or wildcard from namespace
       UsingImport import(namespacePath, target);
       addUsingImport(import);
+      // Also create scope-based ImportBinding
+      if (auto* modScope = lookupModuleScope(namespacePath)) {
+        if (import.isWildcard) {
+          addImportBinding(ImportBinding::wildcard(modScope));
+        } else {
+          addImportBinding(ImportBinding(target, modScope, target));
+        }
+      }
       expr.setResolvedType(sun::Types::Void());
       break;
     }
@@ -1339,6 +1351,15 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 // -------------------------------------------------------------------
 
 void SemanticAnalyzer::analyzeBlock(BlockExprAST& block) {
+  // Pass 1: Collect all declarations (functions, classes, interfaces, enums)
+  // This enables forward references within the block.
+  collectingDeclarations = true;
+  for (const auto& expr : block.getBody()) {
+    collectDeclarations(*expr);
+  }
+  collectingDeclarations = false;
+
+  // Pass 2: Analyze all expressions (bodies, variable bindings, etc.)
   for (const auto& expr : block.getBody()) {
     analyzeExpr(*expr);
   }
@@ -1418,7 +1439,12 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
     // Build QualifiedName with module path and function context
     sun::QualifiedName qname(getCurrentModulePath(),
                              getCurrentFunctionContext(), proto.getName());
-    genericFunctionTable[qname] = std::move(genInfo);
+    if (!scopeStack.empty()) {
+      scopeStack.back().genericFunctions[qname] = genInfo;
+      if (scopeStack.size() > 1) {
+        scopeStack.front().genericFunctions[qname] = genInfo;
+      }
+    }
   }
 
   // Validate and resolve parameter types using shared helper

@@ -40,7 +40,8 @@ enum class ScopeType {
   Block      // Block scope (if, while, for, etc.)
 };
 
-// Alias import from a using statement
+// Alias import from a using statement (legacy — being replaced by
+// ImportBinding)
 struct UsingImport {
   std::string namespacePath;  // "sun" or "sun.nested"
   std::string target;         // "Vec", "*" for wildcard, or "Mat*" for prefix
@@ -57,6 +58,30 @@ struct UsingImport {
       isPrefixWildcard = true;
       prefix = target.substr(0, target.size() - 1);
     }
+  }
+};
+
+// Forward declaration for scope pointer in ImportBinding
+struct SemanticScope;
+
+// Scope-based import binding — a reference to a symbol in another scope
+struct ImportBinding {
+  std::string localName;       // How the symbol is referred to locally ("Vec")
+  SemanticScope* sourceScope;  // Pointer to the scope it was imported from
+  std::string sourceName;      // Name in the source scope ("Vec")
+  bool isWildcard;  // true for "using sun.*" (localName/sourceName unused)
+
+  ImportBinding() : sourceScope(nullptr), isWildcard(false) {}
+  ImportBinding(std::string local, SemanticScope* src, std::string srcName)
+      : localName(std::move(local)),
+        sourceScope(src),
+        sourceName(std::move(srcName)),
+        isWildcard(false) {}
+  static ImportBinding wildcard(SemanticScope* src) {
+    ImportBinding b;
+    b.sourceScope = src;
+    b.isWildcard = true;
+    return b;
   }
 };
 
@@ -97,19 +122,71 @@ struct SemanticScope {
   // Used to create unique qualified names for nested functions in generic
   // instantiations
   std::string functionSignature;
+
+  // ===== Symbol tables (persistent — serialized to .moon for module scopes)
+  // =====
+
+  // Functions declared in this scope (key = signature string
+  // "name(type1,type2)")
+  std::map<std::string, FunctionInfo> functions;
+  // Classes declared in this scope
+  std::map<std::string, std::shared_ptr<sun::ClassType>> classes;
+  // Generic class templates declared in this scope
+  std::map<std::string, GenericClassInfo> genericClasses;
+  // Interfaces declared in this scope
+  std::map<std::string, std::shared_ptr<sun::InterfaceType>> interfaces;
+  // Generic interface templates declared in this scope
+  std::map<std::string, GenericInterfaceInfo> genericInterfaces;
+  // Enums declared in this scope
+  std::map<std::string, std::shared_ptr<sun::EnumType>> enums;
+  // Generic function templates declared in this scope
+  std::map<sun::QualifiedName, GenericFunctionInfo> genericFunctions;
+  // Child module scopes (for nested modules)
+  std::map<std::string, std::shared_ptr<SemanticScope>> childModules;
+
+  // ===== Transient state (not serialized) =====
+
   std::map<std::string, VariableInfo> variables;
   std::map<std::string, sun::TypePtr> typeParameters;
   std::map<std::string, sun::TypePtr> typeAliases;
   // Type narrowing from _is<T>(var) type guards in conditionals
   // Maps variable name to narrowed type (interface or concrete type)
   std::map<std::string, sun::TypePtr> narrowedTypes;
-  // Using imports active in this scope
+  // Using imports active in this scope (legacy string-based)
   std::vector<UsingImport> usingImports;
+  // Scope-based import bindings (new)
+  std::vector<ImportBinding> importBindings;
+  // Parent scope pointer (not serialized, reconstructed on load)
+  SemanticScope* parent = nullptr;
+  // True if this scope was loaded from an external .moon file
+  bool isExternal = false;
 
   SemanticScope() = default;
   SemanticScope(ScopeType t) : type(t) {}
   SemanticScope(ScopeType t, std::string name)
       : type(t), moduleName(std::move(name)) {}
+
+  // Check if a symbol with the given name exists in this scope (any kind)
+  // Recurses into child module scopes.
+  bool hasSymbol(const std::string& name) const;
+
+  // Find a class by name in this scope or child module scopes
+  std::shared_ptr<sun::ClassType> findClass(const std::string& name) const;
+  // Find a generic class by name in this scope or child module scopes
+  const GenericClassInfo* findGenericClass(const std::string& name) const;
+  // Find an interface by name in this scope or child module scopes
+  std::shared_ptr<sun::InterfaceType> findInterface(
+      const std::string& name) const;
+  // Find a generic interface by name in this scope or child module scopes
+  const GenericInterfaceInfo* findGenericInterface(
+      const std::string& name) const;
+  // Find an enum by name in this scope or child module scopes
+  std::shared_ptr<sun::EnumType> findEnum(const std::string& name) const;
+  // Find a function by signature in this scope or child module scopes
+  const FunctionInfo* findFunction(const std::string& sig) const;
+  // Find functions matching a name prefix in this scope or child module scopes
+  void collectFunctions(const std::string& prefix,
+                        std::vector<FunctionInfo>& results) const;
 };
 
 /**
@@ -130,35 +207,13 @@ class SemanticAnalyzer {
   // and scope type (Global, Module, Class, Function, Block)
   std::vector<SemanticScope> scopeStack = {SemanticScope(ScopeType::Global)};
 
-  // Function prototypes (for return type lookup during calls)
-  std::map<std::string, FunctionInfo> functionTable;
-
-  // Class table: className → ClassType
-  std::map<std::string, std::shared_ptr<sun::ClassType>> classTable;
-
-  // Generic class definitions: className → GenericClassInfo
-  std::map<std::string, GenericClassInfo> genericClassTable;
-
   // Track classes currently being instantiated (to detect/break mutual
   // recursion)
   std::set<std::string> classesBeingInstantiated;
 
-  // Generic function definitions: QualifiedName → GenericFunctionInfo
-  // Key includes module path + function context + base name for nested generics
-  std::map<sun::QualifiedName, GenericFunctionInfo> genericFunctionTable;
-
   // Cache of specialized (monomorphized) functions: mangledName →
   // SpecializedFunctionInfo
   std::map<std::string, SpecializedFunctionInfo> specializedFunctionCache;
-
-  // Interface table: interfaceName → InterfaceType
-  std::map<std::string, std::shared_ptr<sun::InterfaceType>> interfaceTable;
-
-  // Generic interface definitions: interfaceName → GenericInterfaceInfo
-  std::map<std::string, GenericInterfaceInfo> genericInterfaceTable;
-
-  // Enum table: enumName → EnumType
-  std::map<std::string, std::shared_ptr<sun::EnumType>> enumTable;
 
   // Current class being analyzed (for 'this' resolution)
   std::shared_ptr<sun::ClassType> currentClass = nullptr;
@@ -170,6 +225,11 @@ class SemanticAnalyzer {
   // Stores full paths like "mod_x", "mod_x_mod_y"
   std::set<std::string> declaredModules;
 
+  // True during Pass 1 (collectDeclarations). When true, registration
+  // functions throw on redeclaration. When false (Pass 2), they skip
+  // silently since Pass 1 already registered the symbol.
+  bool collectingDeclarations = false;
+
  public:
   explicit SemanticAnalyzer(std::shared_ptr<sun::TypeRegistry> registry)
       : typeRegistry(std::move(registry)) {
@@ -178,6 +238,10 @@ class SemanticAnalyzer {
 
   // Main entry point: analyze a top-level expression/statement
   void analyze(ExprAST& expr);
+
+  // Pass 1: Pre-register declarations (functions, classes, interfaces, enums)
+  // in the current scope without analyzing bodies. Enables forward references.
+  void collectDeclarations(ExprAST& expr);
 
   // Extract function signature info (param types, captures, explicit return
   // type) Sets captures on the prototype and handles auto-ref conversion for
@@ -329,8 +393,10 @@ class SemanticAnalyzer {
   // Resolve a name considering using statements
   sun::QualifiedName resolveNameWithUsings(const std::string& name) const;
 
-  // Add a using import
+  // Add a using import (legacy string-based)
   void addUsingImport(const UsingImport& import);
+  // Add a scope-based import binding
+  void addImportBinding(const ImportBinding& binding);
 
  private:
   // Check if an identifier starts with underscore (reserved for builtins)
@@ -387,6 +453,10 @@ class SemanticAnalyzer {
   // Module name registration for qualified name resolution (mod_x.mod_y.var)
   void registerModule(const std::string& modulePath);
   bool isModuleName(const std::string& name) const;
+
+  // Traverse childModules from global scope to find a module by dot-separated
+  // path (e.g., "sun" or "sun.collections"). Returns nullptr if not found.
+  SemanticScope* lookupModuleScope(const std::string& dotPath) const;
 
   // Get all active using imports (from all enclosing scopes)
   std::vector<UsingImport> getActiveUsingImports() const;
