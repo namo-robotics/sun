@@ -143,6 +143,10 @@ struct SemanticScope {
   std::map<sun::QualifiedName, GenericFunctionInfo> genericFunctions;
   // Child module scopes (for nested modules)
   std::map<std::string, std::shared_ptr<SemanticScope>> childModules;
+  // Namespace-qualified variables: "sun_PI" -> VariableInfo
+  std::map<std::string, VariableInfo> namespacedVariables;
+  // Declared module names for qualified name resolution
+  std::set<std::string> declaredModules;
 
   // ===== Transient state (not serialized) =====
 
@@ -217,13 +221,6 @@ class SemanticAnalyzer {
 
   // Current class being analyzed (for 'this' resolution)
   std::shared_ptr<sun::ClassType> currentClass = nullptr;
-
-  // Namespace-qualified variables: "sun_PI" -> VariableInfo
-  std::map<std::string, VariableInfo> namespacedVariables;
-
-  // Declared module names for qualified name resolution (mod_x.mod_y.var)
-  // Stores full paths like "mod_x", "mod_x_mod_y"
-  std::set<std::string> declaredModules;
 
   // True during Pass 1 (collectDeclarations). When true, registration
   // functions throw on redeclaration. When false (Pass 2), they skip

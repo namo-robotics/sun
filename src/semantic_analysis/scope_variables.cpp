@@ -19,6 +19,7 @@ bool SemanticScope::hasSymbol(const std::string& name) const {
   if (interfaces.contains(name)) return true;
   if (genericInterfaces.contains(name)) return true;
   if (enums.contains(name)) return true;
+  if (namespacedVariables.contains(name)) return true;
   // Functions use signature keys, check by prefix "name("
   std::string prefix = name + "(";
   for (const auto& [sig, info] : functions) {
@@ -163,6 +164,8 @@ void SemanticAnalyzer::exitScope() {
         canonical.enums = top.enums;
         canonical.genericFunctions = top.genericFunctions;
         canonical.childModules = top.childModules;
+        canonical.namespacedVariables = top.namespacedVariables;
+        canonical.declaredModules = top.declaredModules;
       }
     }
     scopeStack.pop_back();
@@ -237,11 +240,20 @@ std::string SemanticAnalyzer::getCurrentFunctionContext() const {
 }
 
 void SemanticAnalyzer::registerModule(const std::string& modulePath) {
-  declaredModules.insert(modulePath);
+  scopeStack.front().declaredModules.insert(modulePath);
+  if (scopeStack.size() > 1) {
+    scopeStack.back().declaredModules.insert(modulePath);
+  }
 }
 
 bool SemanticAnalyzer::isModuleName(const std::string& name) const {
-  return declaredModules.count(name) > 0;
+  for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
+    if (it->declaredModules.count(name) > 0) return true;
+    for (const auto& [modName, child] : it->childModules) {
+      if (child && child->declaredModules.count(name) > 0) return true;
+    }
+  }
+  return false;
 }
 
 SemanticScope* SemanticAnalyzer::lookupModuleScope(
@@ -663,14 +675,28 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
 
 void SemanticAnalyzer::registerNamespacedVariable(
     const std::string& qualifiedName, sun::TypePtr type) {
-  namespacedVariables[qualifiedName] = {type, 0, false};
+  scopeStack.front().namespacedVariables[qualifiedName] = {type, 0, false};
+  if (scopeStack.size() > 1) {
+    scopeStack.back().namespacedVariables[qualifiedName] = {type, 0, false};
+  }
 }
 
 VariableInfo* SemanticAnalyzer::lookupQualifiedVariable(
     const std::string& qualifiedName) {
-  auto it = namespacedVariables.find(qualifiedName);
-  if (it != namespacedVariables.end()) {
-    return &it->second;
+  for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
+    auto found = it->namespacedVariables.find(qualifiedName);
+    if (found != it->namespacedVariables.end()) {
+      return &found->second;
+    }
+    // Also search child module scopes
+    for (const auto& [modName, child] : it->childModules) {
+      if (child) {
+        auto cFound = child->namespacedVariables.find(qualifiedName);
+        if (cFound != child->namespacedVariables.end()) {
+          return &cFound->second;
+        }
+      }
+    }
   }
   return nullptr;
 }
@@ -707,11 +733,10 @@ sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
   // Helper to check if a symbol exists (function, variable, or class)
   // Searches scope chain including child module scopes
   auto symbolExists = [this](const std::string& candidate) -> bool {
-    // Check namespaced variables
-    if (namespacedVariables.contains(candidate)) return true;
-
     // Check scope chain, including child module scopes via hasSymbol
+    // and namespaced variables
     for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
+      if (it->namespacedVariables.contains(candidate)) return true;
       if (it->hasSymbol(candidate)) return true;
     }
     return false;
