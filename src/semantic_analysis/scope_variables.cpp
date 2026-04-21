@@ -136,6 +136,10 @@ void SemanticAnalyzer::enterModuleScope(const std::string& moduleName) {
   if (!child) {
     child = std::make_shared<SemanticScope>(ScopeType::Module, moduleName);
     child->parent = &parentScope;
+    // Compute full dot-separated module path
+    std::string parentPath = parentScope.modulePath;
+    child->modulePath =
+        parentPath.empty() ? moduleName : parentPath + "." + moduleName;
   }
   scopeStack.push_back(*child);  // Push copy onto stack
   scopeStack.back().parent = &parentScope;
@@ -414,11 +418,12 @@ void SemanticAnalyzer::registerFunction(const std::string& name,
   std::string qualifiedName =
       funcContext.empty() ? name : funcContext + "::" + name;
   std::string sig = getFunctionSignature(qualifiedName, info.paramTypes);
-  // During Pass 2, skip re-registration of functions already declared in Pass 1
-  if (!scopeStack.empty() && scopeStack.front().functions.contains(sig)) {
-    if (!collectingDeclarations) return;  // Pass 2: skip
-    logAndThrowError("Cannot redeclare function '" + name +
-                     "' with the same parameter types");
+  // Pass 1: detect redeclarations of the same function signature
+  if (collectingDeclarations) {
+    if (!scopeStack.empty() && scopeStack.front().functions.contains(sig)) {
+      logAndThrowError("Cannot redeclare function '" + name +
+                       "' with the same parameter types");
+    }
   }
   // Register in current scope AND global scope (for reachability)
   if (!scopeStack.empty()) {
@@ -793,26 +798,8 @@ sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
     for (const auto& binding : scope.importBindings) {
       if (!binding.sourceScope) continue;
       if (binding.isWildcard) {
-        // Check if name exists in the source scope
         if (binding.sourceScope->hasSymbol(name)) {
-          // Reconstruct the QualifiedName from the module path
-          sun::QualifiedName candidate(binding.sourceScope->moduleName.empty()
-                                           ? ""
-                                           : binding.sourceScope->moduleName,
-                                       name);
-          // Build full module path by walking parent chain
-          std::string modPath;
-          const SemanticScope* s = binding.sourceScope;
-          while (s && s->type == ScopeType::Module) {
-            if (modPath.empty())
-              modPath = s->moduleName;
-            else
-              modPath = s->moduleName + "." + modPath;
-            s = s->parent;
-          }
-          if (!modPath.empty()) {
-            candidate = sun::QualifiedName(modPath, name);
-          }
+          sun::QualifiedName candidate(binding.sourceScope->modulePath, name);
           if (std::find(matches.begin(), matches.end(), candidate) ==
               matches.end()) {
             matches.push_back(candidate);
@@ -820,17 +807,8 @@ sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
         }
       } else if (binding.localName == name) {
         if (binding.sourceScope->hasSymbol(binding.sourceName)) {
-          // Reconstruct QualifiedName
-          std::string modPath;
-          const SemanticScope* s = binding.sourceScope;
-          while (s && s->type == ScopeType::Module) {
-            if (modPath.empty())
-              modPath = s->moduleName;
-            else
-              modPath = s->moduleName + "." + modPath;
-            s = s->parent;
-          }
-          sun::QualifiedName candidate(modPath, binding.sourceName);
+          sun::QualifiedName candidate(binding.sourceScope->modulePath,
+                                       binding.sourceName);
           if (std::find(matches.begin(), matches.end(), candidate) ==
               matches.end()) {
             matches.push_back(candidate);

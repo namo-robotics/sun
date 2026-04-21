@@ -117,7 +117,8 @@ struct SpecializedFunctionInfo {
 // All are lexically scoped just like variables
 struct SemanticScope {
   ScopeType type = ScopeType::Global;
-  std::string moduleName;  // For module scopes: the module name (e.g., "sun")
+  std::string moduleName;  // For module scopes: the local name (e.g., "sun")
+  std::string modulePath;  // Full dot-separated path (e.g., "sun.matrix")
   // For function scopes: the function signature (e.g., "outer(i32)")
   // Used to create unique qualified names for nested functions in generic
   // instantiations
