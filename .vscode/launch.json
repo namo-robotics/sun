@@ -42,6 +42,18 @@
         }
       ],
       "preLaunchTask": "CMake: build"
+    },
+    {
+      "name": "Run Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/extensions/vscode-sun"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/extensions/vscode-sun/out/**/*.js"
+      ],
+      "preLaunchTask": "sun-extension: compile"
     }
   ]
 }

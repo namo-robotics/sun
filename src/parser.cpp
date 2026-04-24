@@ -2055,6 +2055,12 @@ void Parser::collectImports(
       resolved = std::filesystem::path(baseDir) / importPath;
     }
   }
+
+  if (!std::filesystem::exists(resolved)) {
+    logAndThrowError("Could not find imported file: " + importPath);
+    return;
+  }
+
   resolved = std::filesystem::canonical(resolved);
   std::string resolvedStr = resolved.string();
 

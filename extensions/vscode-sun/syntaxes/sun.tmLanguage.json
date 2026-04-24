@@ -1,0 +1,110 @@
+{
+    "name": "Sun",
+    "scopeName": "source.sun",
+    "patterns": [
+        {
+            "include": "#comments"
+        },
+        {
+            "include": "#strings"
+        },
+        {
+            "include": "#numbers"
+        },
+        {
+            "include": "#keywords"
+        },
+        {
+            "include": "#types"
+        },
+        {
+            "include": "#functions"
+        }
+    ],
+    "repository": {
+        "comments": {
+            "patterns": [
+                {
+                    "name": "comment.line.double-slash.sun",
+                    "begin": "//",
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.comment.sun"
+                        }
+                    },
+                    "end": "$"
+                },
+                {
+                    "name": "comment.block.sun",
+                    "begin": "/\\*",
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.comment.begin.sun"
+                        }
+                    },
+                    "end": "\\*/",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.comment.end.sun"
+                        }
+                    }
+                }
+            ]
+        },
+        "strings": {
+            "patterns": [
+                {
+                    "name": "string.quoted.double.sun",
+                    "begin": "\"",
+                    "end": "\"",
+                    "patterns": [
+                        {
+                            "name": "constant.character.escape.sun",
+                            "match": "\\\\."
+                        }
+                    ]
+                }
+            ]
+        },
+        "numbers": {
+            "patterns": [
+                {
+                    "name": "constant.numeric.sun",
+                    "match": "\\b\\d+(?:\\.\\d+)?\\b"
+                }
+            ]
+        },
+        "keywords": {
+            "patterns": [
+                {
+                    "name": "keyword.control.sun",
+                    "match": "\\b(?:if|else|for|while|break|continue|match|return|try|catch|throw|import|using|namespace|new|extern)\\b"
+                },
+                {
+                    "name": "storage.modifier.sun",
+                    "match": "\\b(?:function|class|interface|enum|var|ref|declare|static|public|private)\\b"
+                },
+                {
+                    "name": "constant.language.sun",
+                    "match": "\\b(?:true|false|null)\\b"
+                }
+            ]
+        },
+        "types": {
+            "patterns": [
+                {
+                    "name": "storage.type.sun",
+                    "match": "\\b(?:void|bool|i8|i16|i32|i64|u8|u16|u32|u64|f32|f64|string|slice|IError|array|raw_ptr|static_ptr|ref|fn|lambda)\\b"
+                }
+            ]
+        },
+        "functions": {
+            "patterns": [
+                {
+                    "name": "entity.name.function.sun",
+                    "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()"
+                }
+            ]
+        }
+    }
+}
