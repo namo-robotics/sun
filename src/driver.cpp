@@ -422,6 +422,16 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
 
 sun::SunValue Driver::executeString(const std::string& source, int argc,
                                     char** argv, const std::string& filePath) {
+  if (!filePath.empty()) {
+    std::filesystem::path sourcePath = std::filesystem::absolute(filePath);
+    baseDir = sourcePath.parent_path().string();
+    if (std::filesystem::exists(sourcePath)) {
+      importedFiles->insert(std::filesystem::canonical(sourcePath).string());
+    } else {
+      importedFiles->insert(sourcePath.lexically_normal().string());
+    }
+  }
+
   auto parser = Parser::createStringParser(source);
   parser.setImportedFiles(importedFiles);
   parser.setBaseDir(baseDir);
@@ -452,6 +462,16 @@ void Driver::executeFile(const std::string& filename, int argc, char** argv) {
 
 void Driver::compileString(const std::string& source,
                            const std::string& filePath) {
+  if (!filePath.empty()) {
+    std::filesystem::path sourcePath = std::filesystem::absolute(filePath);
+    baseDir = sourcePath.parent_path().string();
+    if (std::filesystem::exists(sourcePath)) {
+      importedFiles->insert(std::filesystem::canonical(sourcePath).string());
+    } else {
+      importedFiles->insert(sourcePath.lexically_normal().string());
+    }
+  }
+
   auto parser = Parser::createStringParser(source);
   parser.setImportedFiles(importedFiles);
   parser.setBaseDir(baseDir);

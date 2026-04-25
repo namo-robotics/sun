@@ -1,0 +1,19 @@
+# Source and development-only files
+src/**
+.vscode/**
+.vscode-test/**
+
+# Local/build artifacts
+node_modules/.cache/**
+**/*.map
+**/*.tsbuildinfo
+
+# Project metadata not needed at runtime
+tsconfig.json
+package-lock.json
+sun-language.vsix
+
+# Keep packaged output minimal when running in VSIX:
+# - out/** (compiled extension) is required
+# - node_modules/** runtime deps are required
+# - syntaxes/**, language-configuration.json, images/**, assets/** are required

@@ -1,0 +1,85 @@
+{
+    "name": "sun-language",
+    "displayName": "Sun Language",
+    "description": "Syntax highlighting and language server integration for Sun",
+    "icon": "images/sun-logo.png",
+    "version": "0.1.2",
+    "publisher": "namo-robotics",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/namo-robotics/sun"
+    },
+    "engines": {
+        "vscode": "^1.90.0"
+    },
+    "categories": [
+        "Programming Languages"
+    ],
+    "activationEvents": [
+        "onLanguage:sun"
+    ],
+    "main": "./out/extension.js",
+    "contributes": {
+        "languages": [
+            {
+                "id": "sun",
+                "aliases": [
+                    "Sun",
+                    "sun"
+                ],
+                "extensions": [
+                    ".sun"
+                ],
+                "icon": {
+                    "light": "./images/sun.svg",
+                    "dark": "./images/sun.svg"
+                },
+                "configuration": "./language-configuration.json"
+            },
+            {
+                "id": "moon",
+                "aliases": [
+                    "Moon",
+                    "moon"
+                ],
+                "extensions": [
+                    ".moon"
+                ],
+                "icon": {
+                    "light": "./images/moon.svg",
+                    "dark": "./images/moon.svg"
+                }
+            }
+        ],
+        "grammars": [
+            {
+                "language": "sun",
+                "scopeName": "source.sun",
+                "path": "./syntaxes/sun.tmLanguage.json"
+            }
+        ],
+        "configuration": {
+            "title": "Sun",
+            "properties": {
+                "sun.lsp.path": {
+                    "type": "string",
+                    "default": "sun-lsp",
+                    "description": "Path to the sun-lsp executable"
+                }
+            }
+        }
+    },
+    "scripts": {
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./"
+    },
+    "devDependencies": {
+        "@types/node": "^20.14.0",
+        "@types/vscode": "^1.90.0",
+        "typescript": "^5.5.0"
+    },
+    "dependencies": {
+        "vscode-languageclient": "^9.0.1"
+    }
+}

@@ -21,6 +21,8 @@ override_dh_auto_install:
 	dh_auto_install
 	# Install the sun binary to /usr/bin
 	install -D -m 755 obj-*/sun debian/sun/usr/bin/sun
+	# Install the sun language server binary to /usr/bin
+	install -D -m 755 obj-*/sun-lsp debian/sun/usr/bin/sun-lsp
 	# Install the precompiled stdlib
 	install -D -m 644 obj-*/stdlib.moon debian/sun/usr/lib/sun/stdlib.moon
 	# Install stdlib source files (for reference/debugging)

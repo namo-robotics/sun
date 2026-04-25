@@ -92,6 +92,12 @@ add_executable(sun src/main.cpp)
 target_link_libraries(sun PRIVATE sun_lib)
 
 # ------------------------------------------------------------------
+# Language Server Protocol executable
+# ------------------------------------------------------------------
+add_executable(sun-lsp src/lsp/main.cpp)
+target_link_libraries(sun-lsp PRIVATE sun_lib)
+
+# ------------------------------------------------------------------
 # Precompile stdlib as .moon for faster test imports
 # ------------------------------------------------------------------
 set(STDLIB_MOON ${CMAKE_BINARY_DIR}/stdlib.moon)
