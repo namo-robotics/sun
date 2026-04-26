@@ -3,6 +3,8 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdlib>
+#include <filesystem>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
@@ -294,7 +296,7 @@ TEST(ModuleTest, submod_duplicates_fn) {
                std::exception);
 }
 
-TEST(ModuleTest, using_nested_module_as_wildcard) {
+TEST(ModuleTest, using_nest_module) {
   // "using A.B;" where B is a nested module should import all from A.B
   auto value = executeString(R"(
     module A {
@@ -472,6 +474,134 @@ TEST(ModuleTest, using_causes_ambiguity) {
     }
     function main() i32 {
       return foo() + helper();
+    }
+  )"),
+               std::exception);
+}
+
+// =============================================================================
+// DiamondDependencyTest - Tests for diamond dependency version conflicts
+// =============================================================================
+//
+// This test demonstrates the diamond dependency problem:
+//   B_v1 defines module b { get_version() -> 1 }
+//   B_v2 defines module b { get_version() -> 2 }
+//   A depends on B_v1, exports call_b_from_a() which calls b.get_version()
+//   C imports both A and B_v2
+//
+// Both versions use the SAME namespace "b", so they have the same mangled
+// symbol name (b_get_version). When both are linked, LLVM's OverrideFromSrc
+// means the last-linked version wins for ALL calls.
+
+class DiamondDependencyTest : public ::testing::Test {
+ protected:
+  static constexpr const char* kTestDir = "tests/programs/diamond";
+
+  void SetUp() override {
+    ensureSunPathSet();
+
+    // Use SUN_PATH for the sun binary (set by ensureSunPathSet to cwd)
+    const char* sunPath = std::getenv("SUN_PATH");
+    std::string sunBin = std::string(sunPath) + "/build/sun";
+
+    // Compile B v1 to moon (in same directory as source for relative imports)
+    std::string cmd = sunBin + " --emit-moon -o " + kTestDir + "/b_v1.moon " +
+                      kTestDir + "/b_v1.sun 2>&1";
+    int ret = std::system(cmd.c_str());
+    ASSERT_EQ(ret, 0) << "Failed to compile b_v1.sun";
+
+    // Compile B v2 to moon (defines module b - same namespace!)
+    cmd = sunBin + " --emit-moon -o " + kTestDir + "/b_v2.moon " + kTestDir +
+          "/b_v2.sun 2>&1";
+    ret = std::system(cmd.c_str());
+    ASSERT_EQ(ret, 0) << "Failed to compile b_v2.sun";
+
+    // Compile A (which imports B v1 via relative path "b_v1.moon")
+    cmd = sunBin + " --emit-moon -o " + kTestDir + "/a.moon " + kTestDir +
+          "/a.sun 2>&1";
+    ret = std::system(cmd.c_str());
+    ASSERT_EQ(ret, 0) << "Failed to compile a.sun";
+  }
+
+  void TearDown() override {
+    // Clean up moon files
+    std::string testDir = kTestDir;
+    std::filesystem::remove(testDir + "/a.moon");
+    std::filesystem::remove(testDir + "/b_v1.moon");
+    std::filesystem::remove(testDir + "/b_v2.moon");
+  }
+};
+
+TEST_F(DiamondDependencyTest, module_version_isolation) {
+  auto value = executeString(R"(
+    import "build/stdlib.moon";
+    import "tests/programs/diamond/a.moon";
+    using a;
+    function main() i32 {
+        sun.print_i32(call_b_from_a());
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST_F(DiamondDependencyTest, compile_a_sun) {
+  // Minimal test: just compile a.sun (which imports b_v1.moon)
+  // Useful for stepping through the compiler in a debugger.
+  EXPECT_NO_THROW(compileFile("tests/programs/diamond/a.sun"));
+}
+
+TEST_F(DiamondDependencyTest, module_version_isolation_2) {
+  // Same test with reversed import order
+  // Now A.moon (containing B_v1) is linked last, so v1 wins
+
+  auto value = executeString(R"(
+    import "tests/programs/diamond/b_v2.moon";
+    import "tests/programs/diamond/a.moon";
+
+    function main() i32 {
+      var from_a: i32 = a.call_b_from_a();
+      var direct: i32 = b.get_version();
+      return from_a * 10 + direct;
+    }
+  )");
+
+  // With content-hash prefixing, each version is isolated
+  // from_a uses v1 (embedded in a.moon), direct uses v2 (from b_v2.moon)
+  EXPECT_EQ(value, 12) << "from_a should use v1 (1), direct should use v2 (2). "
+                       << "Content-hash prefixes isolate different versions.";
+}
+
+TEST_F(DiamondDependencyTest, ambiguous_call_due_to_version_conflict) {
+  EXPECT_THROW(executeString(R"(
+    import "tests/programs/diamond/b_v1.moon";
+    import "tests/programs/diamond/b_v2.moon";
+
+    function main() i32 {
+      var x: i32 = b.get_version();
+      return x;
+    }
+  )"),
+               std::exception);
+}
+
+TEST_F(DiamondDependencyTest, scoped_imports_not_supported) {
+  // Imports inside function bodies are not supported - imports are top-level
+  // only. Each moon import creates a global module scope during parsing.
+  EXPECT_THROW(executeString(R"(
+    function v1() i32 {
+      import "tests/programs/diamond/b_v1.moon";
+      return b.get_version();
+    }
+    
+    function v2() i32 {
+      import "tests/programs/diamond/b_v2.moon";
+      return b.get_version();
+    }
+
+    function main() i32 {
+      var x: i32 = v1() * 10 + v2();
+      return x;
     }
   )"),
                std::exception);

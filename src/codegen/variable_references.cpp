@@ -177,7 +177,7 @@ Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
     // Check for global class variables
     GlobalVariable* gv = module->getGlobalVariable(expr.getName());
     if (!gv) {
-      gv = module->getGlobalVariable(getMangledName(expr.getName()));
+      gv = module->getGlobalVariable(expr.getQualifiedName());
     }
     if (gv) {
       // Return the global variable pointer directly (same semantics as alloca)
@@ -196,7 +196,7 @@ Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
     }
     GlobalVariable* gv = module->getGlobalVariable(expr.getName());
     if (!gv) {
-      gv = module->getGlobalVariable(getMangledName(expr.getName()));
+      gv = module->getGlobalVariable(expr.getQualifiedName());
     }
     if (gv) {
       return gv;
@@ -219,35 +219,6 @@ Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
   const std::string& funcName = expr.getQualifiedName();
   if (Function* func = module->getFunction(funcName)) {
     return func;
-  }
-
-  // Fallback: Check for using imports (e.g., using Math::square brings square
-  // into scope) This handles cases where semantic analysis didn't set the
-  // qualified name
-  auto it = usingImports.find(expr.getName());
-  if (it != usingImports.end()) {
-    // Try to find the mangled name as a function
-    if (Function* func = module->getFunction(it->second)) {
-      return func;
-    }
-    // Try to find the mangled name as a global variable
-    if (GlobalVariable* gv = module->getGlobalVariable(it->second)) {
-      return ctx.builder->CreateLoad(gv->getValueType(), gv,
-                                     expr.getName().c_str());
-    }
-  }
-
-  // Fallback: Check wildcard imports (e.g., using Math::* brings everything
-  // into scope)
-  for (const auto& nsPrefix : wildcardImports) {
-    std::string mangledName = nsPrefix + expr.getName();
-    if (Function* func = module->getFunction(mangledName)) {
-      return func;
-    }
-    if (GlobalVariable* gv = module->getGlobalVariable(mangledName)) {
-      return ctx.builder->CreateLoad(gv->getValueType(), gv,
-                                     expr.getName().c_str());
-    }
   }
 
   logAndThrowError("Global variable not found in module: " + expr.getName());

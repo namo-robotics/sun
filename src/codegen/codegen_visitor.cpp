@@ -13,22 +13,6 @@ static ExitOnError ExitOnErr;
 using namespace llvm;
 
 // -------------------------------------------------------------------
-// Namespace support helpers
-// -------------------------------------------------------------------
-
-std::string CodegenVisitor::getMangledName(const std::string& name) const {
-  if (namespaceStack.empty()) {
-    return name;
-  }
-  std::string mangled;
-  for (const auto& ns : namespaceStack) {
-    mangled += ns + "_";
-  }
-  mangled += name;
-  return mangled;
-}
-
-// -------------------------------------------------------------------
 // Expression dispatch
 // -------------------------------------------------------------------
 Value* CodegenVisitor::codegen(const ExprAST& expr) {
@@ -125,36 +109,13 @@ Value* CodegenVisitor::codegen(const ExprAST& expr) {
     }
     case ASTNodeType::NAMESPACE: {
       // Module declarations: generate code for all declarations inside
+      // Name mangling is handled by semantic analysis (qualified names on AST)
       const auto& ns = static_cast<const NamespaceAST&>(expr);
-      // Enter the module for name mangling
-      enterNamespace(ns.getName());
-      Value* result = codegen(ns.getBody());
-      exitNamespace();
-      return result;
+      return codegen(ns.getBody());
     }
     case ASTNodeType::USING: {
-      // Record the using import for name resolution
-      const auto& usingStmt = static_cast<const UsingAST&>(expr);
-      // Build the mangled module prefix
-      std::string nsPrefix;
-      for (const auto& part : usingStmt.getNamespacePath()) {
-        if (!nsPrefix.empty()) nsPrefix += "_";
-        nsPrefix += part;
-      }
-      nsPrefix += "_";  // Add trailing underscore for the module scope
-
-      if (usingStmt.isWildcardImport()) {
-        // Wildcard import: using sun; or using sun.*
-        wildcardImports.push_back(nsPrefix);
-      } else if (usingStmt.isPrefixWildcardImport()) {
-        // Prefix wildcard: using sun.Mat* imports symbols starting with "Mat"
-        prefixWildcardImports.push_back({nsPrefix, usingStmt.getPrefix()});
-      } else {
-        // Specific import: using sun.Vec
-        std::string simpleName = usingStmt.getTarget();
-        std::string mangledName = nsPrefix + simpleName;
-        usingImports[simpleName] = mangledName;
-      }
+      // Using imports are resolved by semantic analysis and stored on AST
+      // nodes. Codegen doesn't need to track them separately.
       return ConstantFP::get(ctx.getContext(), APFloat(0.0));
     }
     case ASTNodeType::QUALIFIED_NAME: {

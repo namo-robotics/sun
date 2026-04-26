@@ -215,8 +215,8 @@ std::pair<Function*, llvm::StructType*> CodegenVisitor::codegen(
   if (funcName.empty()) {
     funcName = "lambda" + std::to_string(lambdaCounter++);
   } else {
-    // Apply namespace mangling for named functions
-    funcName = getMangledName(funcName);
+    // Use qualified name from semantic analysis
+    funcName = proto.getQualifiedName();
   }
 
   // Step 1: Reuse any existing forward declaration of this function.

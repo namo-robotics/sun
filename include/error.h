@@ -6,6 +6,7 @@
 #include <string>
 
 #include "position.h"
+#include "source_manager.h"
 
 // ANSI color codes for terminal output
 namespace ansi {
@@ -110,12 +111,24 @@ class SunError : public std::exception {
 
 [[noreturn]] inline void logAndThrowError(
     const std::string& str, std::optional<Position> loc = std::nullopt) {
-  throw SunError(SunError::Kind::Compile, str, loc);
+  std::string sourceLine, prevLine;
+  if (loc && loc->filePath) {
+    auto [current, prev] = SourceManager::instance().getLineWithContext(*loc);
+    sourceLine = current;
+    prevLine = prev;
+  }
+  throw SunError(SunError::Kind::Compile, str, loc, sourceLine, prevLine);
 }
 
 [[noreturn]] inline void logTypeError(
     const std::string& str, std::optional<Position> loc = std::nullopt) {
-  throw SunError(SunError::Kind::Type, str, loc);
+  std::string sourceLine, prevLine;
+  if (loc && loc->filePath) {
+    auto [current, prev] = SourceManager::instance().getLineWithContext(*loc);
+    sourceLine = current;
+    prevLine = prev;
+  }
+  throw SunError(SunError::Kind::Type, str, loc, sourceLine, prevLine);
 }
 
 [[noreturn]] inline void logParsingError(int line, int column,
@@ -138,7 +151,13 @@ class SunError : public std::exception {
 
 [[noreturn]] inline void logSemanticError(
     const std::string& str, std::optional<Position> loc = std::nullopt) {
-  throw SunError(SunError::Kind::Semantic, str, loc);
+  std::string sourceLine, prevLine;
+  if (loc && loc->filePath) {
+    auto [current, prev] = SourceManager::instance().getLineWithContext(*loc);
+    sourceLine = current;
+    prevLine = prev;
+  }
+  throw SunError(SunError::Kind::Semantic, str, loc, sourceLine, prevLine);
 }
 
 // Log error without throwing - useful for non-fatal diagnostics

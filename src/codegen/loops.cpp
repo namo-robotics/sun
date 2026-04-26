@@ -215,11 +215,13 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
   // Keep track of the container object for passing to hasNext/next
   Value* containerObj = iterableObj;
 
-  // Get the iterable class name for method lookup
+  // Get the iterable class name for method lookup (includes hash prefix for
+  // imported types, e.g., "$ac9ed853$_sun_Vec_i64")
   std::string iterableTypeName;
-  if (auto* classType =
-          std::dynamic_pointer_cast<sun::ClassType>(iterableType).get()) {
-    iterableTypeName = classType->getName();
+  std::shared_ptr<sun::ClassType> iterableClassType;
+  if (auto ct = std::dynamic_pointer_cast<sun::ClassType>(iterableType)) {
+    iterableTypeName = ct->getName();
+    iterableClassType = ct;
   } else {
     logAndThrowError(
         "Iterator in for-in loop must be a class type with hasNext() method");
@@ -264,13 +266,23 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
     ctx.builder->CreateStore(actualIterator, iterAlloca);
     iteratorObj = iterAlloca;
 
-    // Get the iterator type name from the struct name
-    StringRef structName = iterStructType->getName();
-    // Struct names are like "VecIterator_i64_struct" - extract the base name
-    if (structName.ends_with("_struct")) {
-      iteratorTypeName = structName.drop_back(7).str();  // Remove "_struct"
+    // Get the iterator type name from the iter() method's return type in
+    // the sun type system (has the correct hash prefix, unlike LLVM struct
+    // names)
+    const auto* iterMethod = iterableClassType->getMethod("iter");
+    if (iterMethod && iterMethod->returnType &&
+        iterMethod->returnType->isClass()) {
+      iteratorTypeName =
+          static_cast<const sun::ClassType*>(iterMethod->returnType.get())
+              ->getName();
     } else {
-      iteratorTypeName = structName.str();
+      // Fallback: extract from LLVM struct name
+      StringRef structName = iterStructType->getName();
+      if (structName.ends_with("_struct")) {
+        iteratorTypeName = structName.drop_back(7).str();
+      } else {
+        iteratorTypeName = structName.str();
+      }
     }
 
     // Now look up hasNext on the actual iterator type

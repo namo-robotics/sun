@@ -2,6 +2,7 @@
 
 #include <llvm/IR/Module.h>
 
+#include <map>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -50,15 +51,6 @@ class ModuleLinker {
 
   /// Get error message if linking failed
   const std::string& getError() const { return error_; }
-
-  /// Get all symbols that come from precompiled/library modules
-  std::set<std::string> getLibrarySymbols() const {
-    std::set<std::string> symbols;
-    for (const auto& [name, path] : symbolToModule_) {
-      symbols.insert(name);
-    }
-    return symbols;
-  }
 
  private:
   /// Link a module and its dependencies recursively

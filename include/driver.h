@@ -35,9 +35,6 @@ class Driver {
   // Whether to print LLVM IR to stdout (controlled by --emit-ir)
   bool dumpIR = false;
 
-  // Track symbols from precompiled libraries (to filter out from IR output)
-  std::set<std::string> librarySymbols;
-
   // Private constructor - use factory methods
   Driver(std::unique_ptr<CodegenContext> ctx,
          std::shared_ptr<sun::TypeRegistry> typeRegistry,

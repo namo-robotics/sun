@@ -2186,6 +2186,24 @@ void Parser::collectMoonImport(
       continue;
     }
 
+    // Note: Dependencies are already linked into the bitcode when the moon file
+    // was created. The deps list in metadata is for informational purposes only
+    // (e.g., tracking which libraries a module depends on). We do NOT try to
+    // load them here because:
+    // 1. The bitcode is self-contained
+    // 2. The dependency paths are from the original build machine
+
+    // Get symbol prefix from content hash for moon library isolation
+    std::string symbolPrefix = metadata->getSymbolPrefix();
+
+    // Namespace prefix for stripping from type signatures in V3 backward compat
+    // In V4+, baseName is available directly
+    std::string nsPrefix =
+        metadata->moduleName.empty() ? "" : metadata->moduleName + "_";
+
+    // Collect AST stubs for this module - may be wrapped in a namespace
+    std::vector<std::unique_ptr<ExprAST>> moduleAST;
+
     // Create AST stubs from metadata
     // IMPORTANT: Process interfaces FIRST (before classes that implement them)
     for (const auto& ifaceInfo : metadata->interfaces) {
@@ -2198,15 +2216,16 @@ void Parser::collectMoonImport(
         // instantiated
         std::vector<std::pair<std::string, TypeAnnotation>> params;
         for (size_t i = 0; i < method.paramNames.size(); ++i) {
-          params.push_back({method.paramNames[i],
-                            parseTypeFromString(method.paramTypeSigs[i])});
+          params.push_back(
+              {method.paramNames[i],
+               parseTypeFromString(method.paramTypeSigs[i], nsPrefix)});
         }
 
         auto returnType =
             method.returnTypeSig.empty() || method.returnTypeSig == "void"
                 ? std::nullopt
                 : std::optional<TypeAnnotation>(
-                      parseTypeFromString(method.returnTypeSig));
+                      parseTypeFromString(method.returnTypeSig, nsPrefix));
 
         // Handle variadic parameter
         std::optional<std::string> variadicParam;
@@ -2214,7 +2233,8 @@ void Parser::collectMoonImport(
         if (!method.variadicParamName.empty()) {
           variadicParam = method.variadicParamName;
           if (!method.variadicConstraint.empty()) {
-            variadicConstraint = parseTypeFromString(method.variadicConstraint);
+            variadicConstraint =
+                parseTypeFromString(method.variadicConstraint, nsPrefix);
           }
         }
 
@@ -2237,21 +2257,23 @@ void Parser::collectMoonImport(
         methods.push_back({std::move(func), hasDefaultImpl});
       }
 
+      // Use baseName directly - no stripping needed
       auto ifaceDef = std::make_unique<InterfaceDefinitionAST>(
-          ifaceInfo.name,
+          ifaceInfo.baseName,
           std::vector<std::string>{},         // TODO: deserialize type params
           std::vector<InterfaceFieldDecl>{},  // No fields for now
           std::move(methods),
           true);  // precompiled = true
 
-      collectedAST.push_back(std::move(ifaceDef));
+      moduleAST.push_back(std::move(ifaceDef));
     }
 
     // Classes (after interfaces so interface lookups work)
     for (const auto& classInfo : metadata->classes) {
       std::vector<ClassFieldDecl> fields;
       for (const auto& field : classInfo.fields) {
-        fields.push_back({field.name, parseTypeFromString(field.typeSig)});
+        fields.push_back(
+            {field.name, parseTypeFromString(field.typeSig, nsPrefix)});
       }
 
       std::vector<ClassMethodDecl> methods;
@@ -2262,15 +2284,16 @@ void Parser::collectMoonImport(
         // instantiated
         std::vector<std::pair<std::string, TypeAnnotation>> params;
         for (size_t i = 0; i < method.paramNames.size(); ++i) {
-          params.push_back({method.paramNames[i],
-                            parseTypeFromString(method.paramTypeSigs[i])});
+          params.push_back(
+              {method.paramNames[i],
+               parseTypeFromString(method.paramTypeSigs[i], nsPrefix)});
         }
 
         auto returnType =
             method.returnTypeSig.empty() || method.returnTypeSig == "void"
                 ? std::nullopt
                 : std::optional<TypeAnnotation>(
-                      parseTypeFromString(method.returnTypeSig));
+                      parseTypeFromString(method.returnTypeSig, nsPrefix));
 
         // Handle variadic parameter
         std::optional<std::string> variadicParam;
@@ -2278,7 +2301,8 @@ void Parser::collectMoonImport(
         if (!method.variadicParamName.empty()) {
           variadicParam = method.variadicParamName;
           if (!method.variadicConstraint.empty()) {
-            variadicConstraint = parseTypeFromString(method.variadicConstraint);
+            variadicConstraint =
+                parseTypeFromString(method.variadicConstraint, nsPrefix);
           }
         }
 
@@ -2329,7 +2353,8 @@ void Parser::collectMoonImport(
                   argStr = argStr.substr(first, last - first + 1);
                 }
                 if (!argStr.empty()) {
-                  iface.typeArguments.push_back(parseTypeFromString(argStr));
+                  iface.typeArguments.push_back(
+                      parseTypeFromString(argStr, nsPrefix));
                 }
                 start = i + 1;
               } else if (argsStr[i] == '<') {
@@ -2343,26 +2368,63 @@ void Parser::collectMoonImport(
           iface.name = ifaceStr;
         }
 
+        // Strip namespace prefix from interface name if present
+        // (interfaces are stored qualified in metadata)
+        if (!nsPrefix.empty() && iface.name.rfind(nsPrefix, 0) == 0) {
+          iface.name = iface.name.substr(nsPrefix.size());
+        }
+
         interfaces.push_back(std::move(iface));
       }
 
+      // Use baseName directly - no stripping needed
       auto classDef = std::make_unique<ClassDefinitionAST>(
-          classInfo.name, classInfo.typeParams, std::move(interfaces),
+          classInfo.baseName, classInfo.typeParams, std::move(interfaces),
           std::move(fields), std::move(methods),
           true);  // precompiled = true
 
-      collectedAST.push_back(std::move(classDef));
+      moduleAST.push_back(std::move(classDef));
     }
 
     // Functions (extern declarations)
     for (const auto& sym : metadata->exports) {
       if (sym.kind == sun::ExportedSymbol::Kind::Function) {
+        // Use baseName directly - no stripping needed
         // Parse function signature from typeSignature: "(i32, i32) -> i32"
-        auto funcAST = parseFunctionSignature(sym.name, sym.typeSignature);
+        // Pass nsPrefix to strip namespace from types in the signature
+        auto funcAST =
+            parseFunctionSignature(sym.baseName, sym.typeSignature, nsPrefix);
         if (funcAST) {
-          collectedAST.push_back(std::move(funcAST));
+          moduleAST.push_back(std::move(funcAST));
         }
       }
+    }
+
+    // Wrap all stubs in a library scope namespace (using content hash)
+    // This creates: $hash$ { module { ... } } structure for isolation
+    if (!moduleAST.empty()) {
+      std::vector<std::unique_ptr<ExprAST>> libraryContent;
+
+      // If module has a namespace, wrap stubs in inner NamespaceAST
+      if (!metadata->moduleName.empty()) {
+        auto nsBody = std::make_unique<BlockExprAST>(std::move(moduleAST));
+        auto nsAST = std::make_unique<NamespaceAST>(metadata->moduleName,
+                                                    std::move(nsBody));
+        nsAST->setPrecompiled(true);
+        libraryContent.push_back(std::move(nsAST));
+      } else {
+        // No module namespace - add stubs directly to library scope
+        for (auto& ast : moduleAST) {
+          libraryContent.push_back(std::move(ast));
+        }
+      }
+
+      // Wrap in outer library scope namespace using content hash
+      auto libBody = std::make_unique<BlockExprAST>(std::move(libraryContent));
+      auto libAST =
+          std::make_unique<NamespaceAST>(symbolPrefix, std::move(libBody));
+      libAST->setPrecompiled(true);
+      collectedAST.push_back(std::move(libAST));
     }
   }
   PARSER_TIMER_END(process_modules);
@@ -2371,8 +2433,10 @@ void Parser::collectMoonImport(
   sun::LibraryCache::instance().addBundle(resolved);
 }
 
-// Helper to parse a type string back into TypeAnnotation
-TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
+// Helper to parse a type string back into TypeAnnotation.
+// If nsPrefix is provided (e.g., "sun_"), it will be stripped from type names.
+TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr,
+                                           const std::string& nsPrefix) {
   // Check for ", error" suffix indicating error union type
   bool canError = false;
   std::string cleanType = typeStr;
@@ -2445,8 +2509,8 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
     if (end != std::string::npos) {
       std::string inner = cleanType.substr(4, end - 4);
       TypeAnnotation result("ptr");
-      result.elementType =
-          std::make_unique<TypeAnnotation>(parseTypeFromString(inner));
+      result.elementType = std::make_unique<TypeAnnotation>(
+          parseTypeFromString(inner, nsPrefix));
       result.canError = canError;
       return result;
     }
@@ -2456,8 +2520,8 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
     if (end != std::string::npos) {
       std::string inner = cleanType.substr(4, end - 4);
       TypeAnnotation result("ptr");
-      result.elementType =
-          std::make_unique<TypeAnnotation>(parseTypeFromString(inner));
+      result.elementType = std::make_unique<TypeAnnotation>(
+          parseTypeFromString(inner, nsPrefix));
       result.canError = canError;
       return result;
     }
@@ -2469,8 +2533,8 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
     if (end != std::string::npos) {
       std::string inner = cleanType.substr(8, end - 8);
       TypeAnnotation result("raw_ptr");
-      result.elementType =
-          std::make_unique<TypeAnnotation>(parseTypeFromString(inner));
+      result.elementType = std::make_unique<TypeAnnotation>(
+          parseTypeFromString(inner, nsPrefix));
       result.canError = canError;
       return result;
     }
@@ -2480,8 +2544,8 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
     if (end != std::string::npos) {
       std::string inner = cleanType.substr(8, end - 8);
       TypeAnnotation result("raw_ptr");
-      result.elementType =
-          std::make_unique<TypeAnnotation>(parseTypeFromString(inner));
+      result.elementType = std::make_unique<TypeAnnotation>(
+          parseTypeFromString(inner, nsPrefix));
       result.canError = canError;
       return result;
     }
@@ -2492,7 +2556,7 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
     std::string inner = cleanType.substr(4);
     TypeAnnotation result("ref");
     result.elementType =
-        std::make_unique<TypeAnnotation>(parseTypeFromString(inner));
+        std::make_unique<TypeAnnotation>(parseTypeFromString(inner, nsPrefix));
     result.canError = canError;
     return result;
   }
@@ -2501,8 +2565,8 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
     if (end != std::string::npos) {
       std::string inner = cleanType.substr(4, end - 4);
       TypeAnnotation result("ref");
-      result.elementType =
-          std::make_unique<TypeAnnotation>(parseTypeFromString(inner));
+      result.elementType = std::make_unique<TypeAnnotation>(
+          parseTypeFromString(inner, nsPrefix));
       result.canError = canError;
       return result;
     }
@@ -2532,13 +2596,13 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
       TypeAnnotation result("array");
       if (firstComma == std::string::npos) {
         // Unsized array: array<T>
-        result.elementType =
-            std::make_unique<TypeAnnotation>(parseTypeFromString(inner));
+        result.elementType = std::make_unique<TypeAnnotation>(
+            parseTypeFromString(inner, nsPrefix));
       } else {
         // Sized array: array<T, dim1, dim2, ...>
         std::string elemType = inner.substr(0, firstComma);
-        result.elementType =
-            std::make_unique<TypeAnnotation>(parseTypeFromString(elemType));
+        result.elementType = std::make_unique<TypeAnnotation>(
+            parseTypeFromString(elemType, nsPrefix));
 
         // Parse dimensions
         std::string dims = inner.substr(firstComma + 1);
@@ -2565,8 +2629,8 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
     if (end != std::string::npos) {
       std::string inner = cleanType.substr(11, end - 11);
       TypeAnnotation result("static_ptr");
-      result.elementType =
-          std::make_unique<TypeAnnotation>(parseTypeFromString(inner));
+      result.elementType = std::make_unique<TypeAnnotation>(
+          parseTypeFromString(inner, nsPrefix));
       result.canError = canError;
       return result;
     }
@@ -2576,8 +2640,8 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
     if (end != std::string::npos) {
       std::string inner = cleanType.substr(11, end - 11);
       TypeAnnotation result("static_ptr");
-      result.elementType =
-          std::make_unique<TypeAnnotation>(parseTypeFromString(inner));
+      result.elementType = std::make_unique<TypeAnnotation>(
+          parseTypeFromString(inner, nsPrefix));
       result.canError = canError;
       return result;
     }
@@ -2589,7 +2653,11 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
   if (angleBracketPos != std::string::npos && angleBracketPos > 0) {
     // Make sure it's not a built-in type we already handled (ptr<, raw_ptr<,
     // etc.)
-    std::string baseName = typeStr.substr(0, angleBracketPos);
+    std::string baseName = cleanType.substr(0, angleBracketPos);
+    // Strip namespace prefix from base name if present
+    if (!nsPrefix.empty() && baseName.rfind(nsPrefix, 0) == 0) {
+      baseName = baseName.substr(nsPrefix.size());
+    }
     if (baseName != "ptr" && baseName != "raw_ptr" &&
         baseName != "static_ptr" && baseName != "array" && baseName != "ref") {
       // This looks like a generic class type
@@ -2620,7 +2688,7 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
             }
             if (!argStr.empty()) {
               result.typeArguments.push_back(std::make_unique<TypeAnnotation>(
-                  parseTypeFromString(argStr)));
+                  parseTypeFromString(argStr, nsPrefix)));
             }
             argStart = i + 1;
           }
@@ -2633,15 +2701,22 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
   }
 
   // Default: treat as a class/interface name or type parameter
-  TypeAnnotation result(cleanType);
+  // Strip namespace prefix if present
+  std::string typeName = cleanType;
+  if (!nsPrefix.empty() && typeName.rfind(nsPrefix, 0) == 0) {
+    typeName = typeName.substr(nsPrefix.size());
+  }
+  TypeAnnotation result(typeName);
   result.canError = canError;
   return result;
 }
 
 // Parse a function signature string like "(i32, i32) -> i32" into an extern
-// FunctionAST
+// FunctionAST. If nsPrefix is provided, strip it from type names in the
+// signature.
 std::unique_ptr<FunctionAST> Parser::parseFunctionSignature(
-    const std::string& name, const std::string& signature) {
+    const std::string& name, const std::string& signature,
+    const std::string& nsPrefix) {
   // Parse signature: "(param1, param2, ...) -> returnType"
   // Find the arrow
   size_t arrowPos = signature.find(") -> ");
@@ -2694,7 +2769,7 @@ std::unique_ptr<FunctionAST> Parser::parseFunctionSignature(
 
       if (!typeStr.empty()) {
         std::string paramName = "arg" + std::to_string(paramIndex++);
-        params.push_back({paramName, parseTypeFromString(typeStr)});
+        params.push_back({paramName, parseTypeFromString(typeStr, nsPrefix)});
       }
 
       pos = end;
@@ -2712,7 +2787,7 @@ std::unique_ptr<FunctionAST> Parser::parseFunctionSignature(
 
     // For extern functions, void must be explicit
     if (!retStr.empty()) {
-      returnType = parseTypeFromString(retStr);
+      returnType = parseTypeFromString(retStr, nsPrefix);
     }
   }
 
