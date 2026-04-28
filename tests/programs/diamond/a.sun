@@ -1,0 +1,10 @@
+// Module A depends on B v1
+// Uses b_v1 namespace - completely isolated from b_v2
+
+import "b_v1.moon";
+
+module a {
+    function call_b_from_a() i32 {
+        return b.get_version();
+    }
+}

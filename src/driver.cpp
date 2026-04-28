@@ -12,6 +12,7 @@
 #include "error.h"
 #include "library_cache.h"
 #include "module_linker.h"
+#include "source_manager.h"
 
 static llvm::ExitOnError ExitOnErr;
 using llvm::orc::ThreadSafeModule;
@@ -74,13 +75,13 @@ void Driver::printUserDefinedIR() {
   // Print user-defined global variables (skip library globals)
   for (auto& gv : ctx->mainModule->globals()) {
     std::string name = gv.getName().str();
-    // Skip library symbols and internal symbols
-    if (librarySymbols.count(name) > 0) continue;
     if (name.empty()) continue;
     // Skip internal symbols starting with _
     if (name[0] == '_') continue;
     // Skip library module globals (vtables, etc.)
     if (name.rfind("sun_", 0) == 0) continue;
+    // Skip prefixed symbols (from moon imports)
+    if (name.rfind("$", 0) == 0) continue;
     gv.print(llvm::outs());
     llvm::outs() << "\n";
   }
@@ -158,14 +159,11 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
     // Create forward declarations for all functions from bitcode so codegen
     // can reference them before actual linking
     linker.declareAvailableFunctions();
-    // Collect library symbols for IR filtering (exclude from "user-defined"
-    // output). Must be AFTER declareAvailableFunctions() to include
-    // pre-declared specializations (e.g., sun_VecIterator_i32_init).
-    librarySymbols = linker.getLibrarySymbols();
   }
 
-  // Pass library symbols to codegen for skipping pre-declared specializations
-  codegenVisitor->setLibrarySymbols(&librarySymbols);
+  // Snapshot precompiled function declarations before codegen starts
+  // This lets codegen distinguish bitcode declarations from forward decls
+  codegenVisitor->snapshotPrecompiledFunctions();
 
   // Generate code into single module
   codegenVisitor->codegen(*unifiedAST);
@@ -422,14 +420,24 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
 
 sun::SunValue Driver::executeString(const std::string& source, int argc,
                                     char** argv, const std::string& filePath) {
+  std::string effectivePath = filePath;
   if (!filePath.empty()) {
     std::filesystem::path sourcePath = std::filesystem::absolute(filePath);
     baseDir = sourcePath.parent_path().string();
+    effectivePath = sourcePath.string();
     if (std::filesystem::exists(sourcePath)) {
       importedFiles->insert(std::filesystem::canonical(sourcePath).string());
     } else {
       importedFiles->insert(sourcePath.lexically_normal().string());
     }
+  } else {
+    // Anonymous source (e.g., from executeString in tests)
+    effectivePath = SourceManager::instance().addAnonymousSource(source);
+  }
+
+  // Register source for error reporting
+  if (!filePath.empty()) {
+    SourceManager::instance().addSource(effectivePath, source);
   }
 
   auto parser = Parser::createStringParser(source);
@@ -437,6 +445,8 @@ sun::SunValue Driver::executeString(const std::string& source, int argc,
   parser.setBaseDir(baseDir);
   if (!filePath.empty()) {
     parser.setFilePath(filePath);
+  } else {
+    parser.setFilePath(effectivePath);
   }
 
   auto blockAst = parser.parseProgram();
@@ -462,21 +472,31 @@ void Driver::executeFile(const std::string& filename, int argc, char** argv) {
 
 void Driver::compileString(const std::string& source,
                            const std::string& filePath) {
+  std::string effectivePath = filePath;
   if (!filePath.empty()) {
     std::filesystem::path sourcePath = std::filesystem::absolute(filePath);
     baseDir = sourcePath.parent_path().string();
+    effectivePath = sourcePath.string();
     if (std::filesystem::exists(sourcePath)) {
       importedFiles->insert(std::filesystem::canonical(sourcePath).string());
     } else {
       importedFiles->insert(sourcePath.lexically_normal().string());
     }
+  } else {
+    // Anonymous source
+    effectivePath = SourceManager::instance().addAnonymousSource(source);
   }
+
+  // Register source for error reporting
+  SourceManager::instance().addSource(effectivePath, source);
 
   auto parser = Parser::createStringParser(source);
   parser.setImportedFiles(importedFiles);
   parser.setBaseDir(baseDir);
   if (!filePath.empty()) {
     parser.setFilePath(filePath);
+  } else {
+    parser.setFilePath(effectivePath);
   }
 
   auto blockAst = parser.parseProgram();

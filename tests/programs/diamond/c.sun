@@ -1,0 +1,12 @@
+import "a.moon";
+import "b_v2.moon";
+using b;
+using a;
+
+function call_b_from_c() i32 {
+    return b.get_version();
+}
+
+function call_a_from_c() i32 {
+    return a.call_b_from_a();
+}

@@ -20,7 +20,8 @@ void SemanticAnalyzer::collectDeclarations(ExprAST& expr) {
       // Validate function name
       if (isReservedIdentifier(proto.getName())) break;  // Will error in Pass 2
 
-      // Compute qualified name
+      // Compute qualified name from current module path (includes library hash
+      // for moon imports since library scope uses hash as module name)
       sun::QualifiedName qualifiedName = makeQualifiedName(proto.getName());
       proto.setQualifiedName(qualifiedName);
 

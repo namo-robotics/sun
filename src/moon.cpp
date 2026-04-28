@@ -6,9 +6,32 @@
 #include <llvm/Support/raw_ostream.h>
 
 #include <fstream>
+#include <iomanip>
 #include <sstream>
 
 namespace sun {
+
+namespace {
+
+/// Compute FNV-1a hash of data, return as 8-char hex string
+std::string computeContentHash(const std::string& data) {
+  // FNV-1a 64-bit hash
+  constexpr uint64_t FNV_OFFSET = 14695981039346656037ULL;
+  constexpr uint64_t FNV_PRIME = 1099511628211ULL;
+
+  uint64_t hash = FNV_OFFSET;
+  for (unsigned char c : data) {
+    hash ^= c;
+    hash *= FNV_PRIME;
+  }
+
+  // Convert to 8-char hex (32 bits)
+  std::ostringstream oss;
+  oss << std::hex << std::setfill('0') << std::setw(8) << (hash & 0xFFFFFFFF);
+  return oss.str();
+}
+
+}  // namespace
 
 //===----------------------------------------------------------------------===//
 // FieldInfo serialization
@@ -149,7 +172,8 @@ MethodInfo MethodInfo::deserialize(const std::string& data) {
 
 std::string ClassInfo::serialize() const {
   std::ostringstream oss;
-  oss << "CLASS:" << name << "\n";
+  oss << "CLASS:" << baseName << "\n";
+  oss << "QUALIFIEDNAME:" << qualifiedName << "\n";
   oss << "SOURCE:" << sourceFile << "\n";
 
   oss << "TYPEPARAMS:" << typeParams.size() << "\n";
@@ -180,9 +204,14 @@ ClassInfo ClassInfo::deserialize(const std::string& data) {
   std::istringstream iss(data);
   std::string line;
 
-  // CLASS:name
+  // CLASS:baseName
   if (std::getline(iss, line) && line.substr(0, 6) == "CLASS:") {
-    info.name = line.substr(6);
+    info.baseName = line.substr(6);
+  }
+
+  // QUALIFIEDNAME:qualifiedName
+  if (std::getline(iss, line) && line.substr(0, 14) == "QUALIFIEDNAME:") {
+    info.qualifiedName = line.substr(14);
   }
 
   // SOURCE:path
@@ -239,7 +268,8 @@ ClassInfo ClassInfo::deserialize(const std::string& data) {
 
 std::string InterfaceInfo::serialize() const {
   std::ostringstream oss;
-  oss << "INTERFACE:" << name << "\n";
+  oss << "INTERFACE:" << baseName << "\n";
+  oss << "QUALIFIEDNAME:" << qualifiedName << "\n";
   oss << "METHODS:" << methods.size() << "\n";
   for (const auto& method : methods) {
     oss << method.serialize() << "\n";
@@ -252,10 +282,17 @@ InterfaceInfo InterfaceInfo::deserialize(const std::string& data) {
   std::istringstream iss(data);
   std::string line;
 
+  // INTERFACE:baseName
   if (std::getline(iss, line) && line.substr(0, 10) == "INTERFACE:") {
-    info.name = line.substr(10);
+    info.baseName = line.substr(10);
   }
 
+  // QUALIFIEDNAME:qualifiedName
+  if (std::getline(iss, line) && line.substr(0, 14) == "QUALIFIEDNAME:") {
+    info.qualifiedName = line.substr(14);
+  }
+
+  // METHODS:count
   if (std::getline(iss, line) && line.substr(0, 8) == "METHODS:") {
     int count = std::stoi(line.substr(8));
     for (int i = 0; i < count; ++i) {
@@ -274,8 +311,8 @@ InterfaceInfo InterfaceInfo::deserialize(const std::string& data) {
 
 std::string ExportedSymbol::serialize() const {
   std::ostringstream oss;
-  oss << static_cast<int>(kind) << "|" << name << "|" << mangledName << "|"
-      << typeSignature << "|" << (isPublic ? "1" : "0");
+  oss << static_cast<int>(kind) << "|" << baseName << "|" << qualifiedName
+      << "|" << typeSignature << "|" << (isPublic ? "1" : "0");
   return oss.str();
 }
 
@@ -288,13 +325,13 @@ ExportedSymbol ExportedSymbol::deserialize(const std::string& data) {
   if (std::getline(iss, token, '|')) {
     sym.kind = static_cast<Kind>(std::stoi(token));
   }
-  // Name
+  // baseName
   if (std::getline(iss, token, '|')) {
-    sym.name = token;
+    sym.baseName = token;
   }
-  // Mangled name
+  // qualifiedName
   if (std::getline(iss, token, '|')) {
-    sym.mangledName = token;
+    sym.qualifiedName = token;
   }
   // Type signature
   if (std::getline(iss, token, '|')) {
@@ -314,9 +351,11 @@ ExportedSymbol ExportedSymbol::deserialize(const std::string& data) {
 
 std::string ModuleMetadata::serialize() const {
   std::ostringstream oss;
-  oss << "SUNLIB_META_V2\n";
+  oss << "SUNLIB_META_V3\n";
   oss << "path:" << importPath << "\n";
+  oss << "module:" << moduleName << "\n";
   oss << "version:" << version << "\n";
+  oss << "hash:" << contentHash << "\n";
 
   oss << "deps:" << dependencies.size() << "\n";
   for (const auto& dep : dependencies) {
@@ -352,10 +391,11 @@ ModuleMetadata ModuleMetadata::deserialize(const std::string& data) {
   std::istringstream iss(data);
   std::string line;
 
-  // Header - support both V1 and V2
+  // Header - support V1, V2, and V3
   std::getline(iss, line);
   bool isV2 = (line == "SUNLIB_META_V2");
-  if (line != "SUNLIB_META_V1" && !isV2) {
+  bool isV3 = (line == "SUNLIB_META_V3");
+  if (line != "SUNLIB_META_V1" && !isV2 && !isV3) {
     return meta;  // Invalid format
   }
 
@@ -365,10 +405,26 @@ ModuleMetadata ModuleMetadata::deserialize(const std::string& data) {
     meta.importPath = line.substr(5);
   }
 
+  // Module name (V3 only)
+  if (isV3) {
+    std::getline(iss, line);
+    if (line.substr(0, 7) == "module:") {
+      meta.moduleName = line.substr(7);
+    }
+  }
+
   // Version
   std::getline(iss, line);
   if (line.substr(0, 8) == "version:") {
     meta.version = line.substr(8);
+  }
+
+  // Content hash (V3 only)
+  if (isV3) {
+    std::getline(iss, line);
+    if (line.substr(0, 5) == "hash:") {
+      meta.contentHash = line.substr(5);
+    }
   }
 
   // Dependencies
@@ -391,8 +447,8 @@ ModuleMetadata ModuleMetadata::deserialize(const std::string& data) {
     }
   }
 
-  // V2 format: classes and interfaces
-  if (isV2) {
+  // V2/V3 format: classes and interfaces
+  if (isV2 || isV3) {
     // Classes
     if (std::getline(iss, line) && line.substr(0, 8) == "classes:") {
       int count = std::stoi(line.substr(8));
@@ -440,8 +496,8 @@ void SunLibWriter::addModule(const std::string& importPath,
   llvm::WriteBitcodeToFile(module, bitcodeStream);
   bitcodeStream.flush();
 
-  // Serialize metadata
-  data.metadata = metadata.serialize();
+  // Store metadata (hash will be computed in write() from combined content)
+  data.metadata = metadata;
 
   modules_.push_back(std::move(data));
 }
@@ -453,6 +509,14 @@ bool SunLibWriter::write(const std::filesystem::path& outputPath) {
     return false;
   }
 
+  // Compute a single content hash from ALL bitcodes in the bundle
+  // This ensures all modules share the same symbol prefix
+  std::string combinedContent;
+  for (const auto& mod : modules_) {
+    combinedContent += mod.bitcode;
+  }
+  std::string bundleHash = computeContentHash(combinedContent);
+
   // Write header (will update indexOffset later)
   SunLibHeader header;
   header.moduleCount = static_cast<uint32_t>(modules_.size());
@@ -462,7 +526,7 @@ bool SunLibWriter::write(const std::filesystem::path& outputPath) {
   // Write module data and build index
   std::vector<ModuleIndexEntry> index;
 
-  for (const auto& mod : modules_) {
+  for (auto& mod : modules_) {
     ModuleIndexEntry entry;
     entry.importPath = mod.importPath;
 
@@ -472,11 +536,15 @@ bool SunLibWriter::write(const std::filesystem::path& outputPath) {
     out.write(mod.bitcode.data(),
               static_cast<std::streamsize>(mod.bitcode.size()));
 
+    // Set shared bundle hash and serialize metadata
+    mod.metadata.contentHash = bundleHash;
+    std::string metadataStr = mod.metadata.serialize();
+
     // Write metadata
     entry.metadataOffset = static_cast<uint64_t>(out.tellp());
-    entry.metadataSize = mod.metadata.size();
-    out.write(mod.metadata.data(),
-              static_cast<std::streamsize>(mod.metadata.size()));
+    entry.metadataSize = metadataStr.size();
+    out.write(metadataStr.data(),
+              static_cast<std::streamsize>(metadataStr.size()));
 
     index.push_back(entry);
   }
@@ -534,8 +602,8 @@ std::unique_ptr<SunLibReader> SunLibReader::open(
   if (header.magic != SunLibHeader::MAGIC) {
     return nullptr;
   }
-  // Accept V1 and V2 formats
-  if (header.version != 1 && header.version != 2) {
+  // Accept V1, V2, and V3 formats
+  if (header.version != 1 && header.version != 2 && header.version != 3) {
     return nullptr;
   }
 

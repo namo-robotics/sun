@@ -156,8 +156,9 @@ static void extractFunction(const FunctionAST& func,
 
   sun::ExportedSymbol sym;
   sym.kind = sun::ExportedSymbol::Kind::Function;
-  sym.name = nsPrefix.empty() ? proto.getName() : nsPrefix + proto.getName();
-  sym.mangledName = sym.name;  // Qualified name for namespaced functions
+  sym.baseName = proto.getName();  // Simple source name
+  sym.qualifiedName =
+      nsPrefix.empty() ? proto.getName() : nsPrefix + proto.getName();
 
   // Get type parameters for this function
   std::vector<std::string> typeParams = proto.getTypeParameters();
@@ -183,7 +184,8 @@ static void extractClass(const ClassDefinitionAST& classDef,
                          const std::string& nsPrefix,
                          const std::string& importPath) {
   sun::ClassInfo classInfo;
-  classInfo.name =
+  classInfo.baseName = classDef.getName();
+  classInfo.qualifiedName =
       nsPrefix.empty() ? classDef.getName() : nsPrefix + classDef.getName();
   classInfo.sourceFile = importPath;
   classInfo.typeParams = classDef.getTypeParameters();
@@ -263,8 +265,8 @@ static void extractClass(const ClassDefinitionAST& classDef,
   // Also add class as an exported symbol
   sun::ExportedSymbol sym;
   sym.kind = sun::ExportedSymbol::Kind::Class;
-  sym.name = classInfo.name;
-  sym.mangledName = classInfo.name + "_struct";
+  sym.baseName = classInfo.baseName;
+  sym.qualifiedName = classInfo.qualifiedName + "_struct";
   sym.isPublic = true;
   metadata.exports.push_back(sym);
 }
@@ -274,7 +276,8 @@ static void extractInterface(const InterfaceDefinitionAST& ifaceDef,
                              sun::ModuleMetadata& metadata,
                              const std::string& nsPrefix) {
   sun::InterfaceInfo ifaceInfo;
-  ifaceInfo.name =
+  ifaceInfo.baseName = ifaceDef.getName();
+  ifaceInfo.qualifiedName =
       nsPrefix.empty() ? ifaceDef.getName() : nsPrefix + ifaceDef.getName();
 
   // Get interface type parameters for qualification context
@@ -323,8 +326,8 @@ static void extractInterface(const InterfaceDefinitionAST& ifaceDef,
   // Also add interface as an exported symbol
   sun::ExportedSymbol sym;
   sym.kind = sun::ExportedSymbol::Kind::Interface;
-  sym.name = ifaceInfo.name;
-  sym.mangledName = ifaceInfo.name;
+  sym.baseName = ifaceInfo.baseName;
+  sym.qualifiedName = ifaceInfo.qualifiedName;
   sym.isPublic = true;
   metadata.exports.push_back(sym);
 }
@@ -354,6 +357,10 @@ static void extractFromStatements(
       std::string newPrefix = nsPrefix.empty()
                                   ? nsDecl.getName() + "_"
                                   : nsPrefix + nsDecl.getName() + "_";
+      // Record the top-level module name (only for root-level namespaces)
+      if (nsPrefix.empty() && metadata.moduleName.empty()) {
+        metadata.moduleName = nsDecl.getName();
+      }
       // Recursively extract from namespace body
       extractFromStatements(nsDecl.getBody().getBody(), metadata, newPrefix,
                             moduleDir);
@@ -580,6 +587,9 @@ int main(int argc, char* argv[]) {
       } catch (const SunError& e) {
         llvm::errs() << "Error compiling " << file << ": " << e.what() << "\n";
         return 1;
+      } catch (const std::exception& e) {
+        llvm::errs() << "Error compiling " << file << ": " << e.what() << "\n";
+        return 1;
       }
     }
 
@@ -637,6 +647,9 @@ int main(int argc, char* argv[]) {
       llvm::outs() << "Successfully created: " << outputFile << "\n";
       return 0;
     } catch (const SunError& e) {
+      llvm::errs() << "Error: " << e.what() << "\n";
+      return 1;
+    } catch (const std::exception& e) {
       llvm::errs() << "Error: " << e.what() << "\n";
       return 1;
     }
@@ -713,6 +726,9 @@ int main(int argc, char* argv[]) {
     } catch (const SunError& e) {
       std::cerr << e.what() << std::endl;
       return 1;
+    } catch (const std::exception& e) {
+      std::cerr << "Error: " << e.what() << std::endl;
+      return 1;
     }
   }
 
@@ -723,6 +739,9 @@ int main(int argc, char* argv[]) {
     driver->executeFile(inputFile, programArgc, programArgv.data());
   } catch (const SunError& e) {
     std::cerr << e.what() << std::endl;
+    return 1;
+  } catch (const std::exception& e) {
+    std::cerr << "Error: " << e.what() << std::endl;
     return 1;
   }
 

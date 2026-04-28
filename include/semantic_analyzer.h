@@ -9,190 +9,10 @@
 #include <string>
 #include <vector>
 
-#include "ast.h"
-#include "qualified_name.h"
-#include "types.h"
+#include "semantic_scope.h"
 
 // Alias for use in this header and semantic analyzer implementations
 using QualifiedName = sun::QualifiedName;
-
-// Information about a variable in the symbol table
-struct VariableInfo {
-  sun::TypePtr type;
-  int scopeDepth;        // Which scope level declared it
-  bool isFunctionParam;  // Is it a parameter vs let binding
-  bool isMoved = false;  // Has ownership been transferred (move semantics)
-};
-
-// Information about a declared function
-struct FunctionInfo {
-  sun::TypePtr returnType;
-  std::vector<sun::TypePtr> paramTypes;
-  std::vector<Capture> captures;
-};
-
-// Type of scope in the scope stack
-enum class ScopeType {
-  Global,    // Top-level (program) scope
-  Module,    // Module scope (has optional name for qualified names)
-  Class,     // Class definition scope
-  Function,  // Function or lambda body scope
-  Block      // Block scope (if, while, for, etc.)
-};
-
-// Alias import from a using statement (legacy — being replaced by
-// ImportBinding)
-struct UsingImport {
-  std::string namespacePath;  // "sun" or "sun.nested"
-  std::string target;         // "Vec", "*" for wildcard, or "Mat*" for prefix
-  bool isWildcard;            // true if target == "*"
-  bool isPrefixWildcard;      // true if target ends with '*' (e.g., "Mat*")
-  std::string prefix;         // For prefix wildcards, the prefix without '*'
-
-  UsingImport(std::string nsPath, std::string t)
-      : namespacePath(std::move(nsPath)),
-        target(std::move(t)),
-        isWildcard(target == "*"),
-        isPrefixWildcard(false) {
-    if (!isWildcard && target.size() > 1 && target.back() == '*') {
-      isPrefixWildcard = true;
-      prefix = target.substr(0, target.size() - 1);
-    }
-  }
-};
-
-// Forward declaration for scope pointer in ImportBinding
-struct SemanticScope;
-
-// Scope-based import binding — a reference to a symbol in another scope
-struct ImportBinding {
-  std::string localName;       // How the symbol is referred to locally ("Vec")
-  SemanticScope* sourceScope;  // Pointer to the scope it was imported from
-  std::string sourceName;      // Name in the source scope ("Vec")
-  bool isWildcard;  // true for "using sun.*" (localName/sourceName unused)
-
-  ImportBinding() : sourceScope(nullptr), isWildcard(false) {}
-  ImportBinding(std::string local, SemanticScope* src, std::string srcName)
-      : localName(std::move(local)),
-        sourceScope(src),
-        sourceName(std::move(srcName)),
-        isWildcard(false) {}
-  static ImportBinding wildcard(SemanticScope* src) {
-    ImportBinding b;
-    b.sourceScope = src;
-    b.isWildcard = true;
-    return b;
-  }
-};
-
-// Information about a generic class definition (template)
-struct GenericClassInfo {
-  const ClassDefinitionAST* AST;            // Original AST node
-  std::vector<std::string> typeParameters;  // ["T", "U", etc.]
-};
-
-// Information about a generic interface definition (template)
-struct GenericInterfaceInfo {
-  const InterfaceDefinitionAST* AST;        // Original AST node
-  std::vector<std::string> typeParameters;  // ["T", "U", etc.]
-};
-
-// Information about a generic function definition (template)
-struct GenericFunctionInfo {
-  const FunctionAST* AST;                    // Original AST node
-  std::vector<std::string> typeParameters;   // ["T", "U", etc.]
-  std::optional<TypeAnnotation> returnType;  // Return type annotation
-  std::vector<std::pair<std::string, TypeAnnotation>> params;  // Parameters
-};
-
-// Information about a specialized (monomorphized) generic function
-struct SpecializedFunctionInfo {
-  sun::TypePtr returnType;
-  std::vector<sun::TypePtr> paramTypes;
-  std::vector<Capture> captures;  // Captures with substituted types
-  std::shared_ptr<FunctionAST> specializedAST;  // The analyzed clone
-};
-
-// Scope object containing variables, type parameter bindings, and type aliases
-// All are lexically scoped just like variables
-struct SemanticScope {
-  ScopeType type = ScopeType::Global;
-  std::string moduleName;  // For module scopes: the local name (e.g., "sun")
-  std::string modulePath;  // Full dot-separated path (e.g., "sun.matrix")
-  // For function scopes: the function signature (e.g., "outer(i32)")
-  // Used to create unique qualified names for nested functions in generic
-  // instantiations
-  std::string functionSignature;
-
-  // ===== Symbol tables (persistent — serialized to .moon for module scopes)
-  // =====
-
-  // Functions declared in this scope (key = signature string
-  // "name(type1,type2)")
-  std::map<std::string, FunctionInfo> functions;
-  // Classes declared in this scope
-  std::map<std::string, std::shared_ptr<sun::ClassType>> classes;
-  // Generic class templates declared in this scope
-  std::map<std::string, GenericClassInfo> genericClasses;
-  // Interfaces declared in this scope
-  std::map<std::string, std::shared_ptr<sun::InterfaceType>> interfaces;
-  // Generic interface templates declared in this scope
-  std::map<std::string, GenericInterfaceInfo> genericInterfaces;
-  // Enums declared in this scope
-  std::map<std::string, std::shared_ptr<sun::EnumType>> enums;
-  // Generic function templates declared in this scope
-  std::map<sun::QualifiedName, GenericFunctionInfo> genericFunctions;
-  // Child module scopes (for nested modules)
-  std::map<std::string, std::shared_ptr<SemanticScope>> childModules;
-  // Namespace-qualified variables: "sun_PI" -> VariableInfo
-  std::map<std::string, VariableInfo> namespacedVariables;
-  // Declared module names for qualified name resolution
-  std::set<std::string> declaredModules;
-
-  // ===== Transient state (not serialized) =====
-
-  std::map<std::string, VariableInfo> variables;
-  std::map<std::string, sun::TypePtr> typeParameters;
-  std::map<std::string, sun::TypePtr> typeAliases;
-  // Type narrowing from _is<T>(var) type guards in conditionals
-  // Maps variable name to narrowed type (interface or concrete type)
-  std::map<std::string, sun::TypePtr> narrowedTypes;
-  // Using imports active in this scope (legacy string-based)
-  std::vector<UsingImport> usingImports;
-  // Scope-based import bindings (new)
-  std::vector<ImportBinding> importBindings;
-  // Parent scope pointer (not serialized, reconstructed on load)
-  SemanticScope* parent = nullptr;
-  // True if this scope was loaded from an external .moon file
-  bool isExternal = false;
-
-  SemanticScope() = default;
-  SemanticScope(ScopeType t) : type(t) {}
-  SemanticScope(ScopeType t, std::string name)
-      : type(t), moduleName(std::move(name)) {}
-
-  // Check if a symbol with the given name exists in this scope (any kind)
-  // Recurses into child module scopes.
-  bool hasSymbol(const std::string& name) const;
-
-  // Find a class by name in this scope or child module scopes
-  std::shared_ptr<sun::ClassType> findClass(const std::string& name) const;
-  // Find a generic class by name in this scope or child module scopes
-  const GenericClassInfo* findGenericClass(const std::string& name) const;
-  // Find an interface by name in this scope or child module scopes
-  std::shared_ptr<sun::InterfaceType> findInterface(
-      const std::string& name) const;
-  // Find a generic interface by name in this scope or child module scopes
-  const GenericInterfaceInfo* findGenericInterface(
-      const std::string& name) const;
-  // Find an enum by name in this scope or child module scopes
-  std::shared_ptr<sun::EnumType> findEnum(const std::string& name) const;
-  // Find a function by signature in this scope or child module scopes
-  const FunctionInfo* findFunction(const std::string& sig) const;
-  // Find functions matching a name prefix in this scope or child module scopes
-  void collectFunctions(const std::string& prefix,
-                        std::vector<FunctionInfo>& results) const;
-};
 
 /**
  * Semantic analyzer that runs before codegen to:
@@ -320,14 +140,16 @@ class SemanticAnalyzer {
 
   // Class support
   void registerClass(const std::string& name,
-                     std::shared_ptr<sun::ClassType> classType);
+                     std::shared_ptr<sun::ClassType> classType,
+                     std::optional<Position> loc = std::nullopt);
   std::shared_ptr<sun::ClassType> lookupClass(const std::string& name) const;
   void setCurrentClass(std::shared_ptr<sun::ClassType> classType);
   std::shared_ptr<sun::ClassType> getCurrentClass() const;
 
   // Generic class support
   void registerGenericClass(const std::string& name,
-                            const GenericClassInfo& info);
+                            const GenericClassInfo& info,
+                            std::optional<Position> loc = std::nullopt);
   const GenericClassInfo* lookupGenericClass(const std::string& name) const;
   std::shared_ptr<sun::ClassType> instantiateGenericClass(
       const std::string& baseName, const std::vector<sun::TypePtr>& typeArgs);
@@ -359,13 +181,15 @@ class SemanticAnalyzer {
 
   // Interface support
   void registerInterface(const std::string& name,
-                         std::shared_ptr<sun::InterfaceType> interfaceType);
+                         std::shared_ptr<sun::InterfaceType> interfaceType,
+                         std::optional<Position> loc = std::nullopt);
   std::shared_ptr<sun::InterfaceType> lookupInterface(
       const std::string& name) const;
 
   // Generic interface support
   void registerGenericInterface(const std::string& name,
-                                const GenericInterfaceInfo& info);
+                                const GenericInterfaceInfo& info,
+                                std::optional<Position> loc = std::nullopt);
   const GenericInterfaceInfo* lookupGenericInterface(
       const std::string& name) const;
   std::shared_ptr<sun::InterfaceType> instantiateGenericInterface(
@@ -418,7 +242,8 @@ class SemanticAnalyzer {
   // Validate parameter names and resolve their types from prototype
   // Throws if any parameter name is reserved; applies auto-ref conversion
   // Returns the resolved param types and sets them on the prototype
-  std::vector<sun::TypePtr> validateAndResolveParamTypes(PrototypeAST& proto);
+  std::vector<sun::TypePtr> validateAndResolveParamTypes(
+      PrototypeAST& proto, std::optional<Position> loc = std::nullopt);
 
   // Register built-in functions (print, println, file I/O, etc.)
   void registerBuiltinFunctions();
@@ -460,11 +285,34 @@ class SemanticAnalyzer {
 
   // Module name registration for qualified name resolution (mod_x.mod_y.var)
   void registerModule(const std::string& modulePath);
+
   bool isModuleName(const std::string& name) const;
 
   // Traverse childModules from global scope to find a module by dot-separated
   // path (e.g., "sun" or "sun.collections"). Returns nullptr if not found.
   SemanticScope* lookupModuleScope(const std::string& dotPath) const;
+
+  // Get the full module path including library scope hashes
+  // e.g., "b" -> "$hash$.b" if b is inside a library scope
+  std::string getFullModulePath(const std::string& visiblePath) const;
+
+  // -------------------------------------------------------------------
+  // Unified symbol lookup - traverses library scopes transparently
+  // Throws on ambiguity (same name in multiple library scopes)
+  // -------------------------------------------------------------------
+
+  // Find any symbol by unqualified name (searches current scope chain)
+  // Library scopes are transparent - looks through $hash$ scopes automatically
+  SymbolMatch findSymbol(const std::string& name,
+                         SymbolKind filterKind = SymbolKind::None) const;
+
+  // Find a symbol in a specific module path (dot-separated, user-visible)
+  // e.g., findSymbolInModule("b", "get_version") finds b.get_version
+  // even if b is inside a library scope like $hash$.b
+  // Optional filterKind restricts to specific symbol type (None = any)
+  SymbolMatch findSymbolInModule(
+      const std::string& modulePath, const std::string& name,
+      SymbolKind filterKind = SymbolKind::None) const;
 
   // Get all active using imports (from all enclosing scopes)
   std::vector<UsingImport> getActiveUsingImports() const;

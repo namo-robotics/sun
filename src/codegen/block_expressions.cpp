@@ -23,7 +23,7 @@ Value* CodegenVisitor::codegen(const BlockExprAST& block) {
     if (funcAST.isExtern()) continue;
     if (proto.hasClosure()) continue;
 
-    std::string funcName = getMangledName(proto.getName());
+    std::string funcName = proto.getQualifiedName();
     if (module->getFunction(funcName)) continue;
 
     // Build LLVM function type from resolved semantic types

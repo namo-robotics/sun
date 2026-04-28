@@ -9,6 +9,8 @@
 
 using sun::unwrapRef;
 
+// isLibraryScope() and mangleModulePath() are provided by semantic_scope.h
+
 // -------------------------------------------------------------------
 // SemanticScope helpers
 // -------------------------------------------------------------------
@@ -20,11 +22,41 @@ bool SemanticScope::hasSymbol(const std::string& name) const {
   if (genericInterfaces.contains(name)) return true;
   if (enums.contains(name)) return true;
   if (namespacedVariables.contains(name)) return true;
+
   // Functions use signature keys, check by prefix "name("
+  // Also check for qualified names: if scope has modulePath, symbols may be
+  // registered with that path prefix (e.g., "$hash$_sun_name")
   std::string prefix = name + "(";
+  std::string qualifiedPrefix;
+  if (!modulePath.empty()) {
+    // Convert dot path to underscore: "$hash$.sun" -> "$hash$_sun_"
+    std::string mangledPath = modulePath;
+    for (char& c : mangledPath) {
+      if (c == '.') c = '_';
+    }
+    qualifiedPrefix = mangledPath + "_" + name + "(";
+  }
+
   for (const auto& [sig, info] : functions) {
     if (sig.compare(0, prefix.size(), prefix) == 0) return true;
+    if (!qualifiedPrefix.empty() &&
+        sig.compare(0, qualifiedPrefix.size(), qualifiedPrefix) == 0)
+      return true;
   }
+
+  // Also check classes/interfaces with qualified names
+  if (!qualifiedPrefix.empty()) {
+    std::string mangledPath = modulePath;
+    for (char& c : mangledPath) {
+      if (c == '.') c = '_';
+    }
+    std::string qualifiedName = mangledPath + "_" + name;
+    if (classes.contains(qualifiedName)) return true;
+    if (genericClasses.contains(qualifiedName)) return true;
+    if (interfaces.contains(qualifiedName)) return true;
+    if (genericInterfaces.contains(qualifiedName)) return true;
+  }
+
   // Recurse into child module scopes
   for (const auto& [modName, child] : childModules) {
     if (child && child->hasSymbol(name)) return true;
@@ -178,6 +210,7 @@ void SemanticAnalyzer::exitScope() {
 
 std::string SemanticAnalyzer::getCurrentModulePrefix() const {
   // Walk scope stack from innermost to outermost, collecting module names
+  // All segments are joined with underscores: $hash$_sun_
   std::string prefix;
   for (const auto& scope : scopeStack) {
     if (scope.type == ScopeType::Module && !scope.moduleName.empty()) {
@@ -203,6 +236,8 @@ std::string SemanticAnalyzer::getCurrentModulePath() const {
 
 sun::QualifiedName SemanticAnalyzer::makeQualifiedName(
     const std::string& baseName) const {
+  // Module path includes library hash for moon imports (library scope uses
+  // hash as its module name, e.g., "$hash$.sun.submodule")
   return sun::QualifiedName(getCurrentModulePath(), baseName);
 }
 
@@ -251,11 +286,26 @@ void SemanticAnalyzer::registerModule(const std::string& modulePath) {
 }
 
 bool SemanticAnalyzer::isModuleName(const std::string& name) const {
-  for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
-    if (it->declaredModules.count(name) > 0) return true;
-    for (const auto& [modName, child] : it->childModules) {
-      if (child && child->declaredModules.count(name) > 0) return true;
+  // Helper to recursively check scopes, traversing through library scopes
+  // Library scopes are transparent - we look through them to find nested
+  // modules
+  std::function<bool(const SemanticScope&)> checkScope =
+      [&](const SemanticScope& scope) -> bool {
+    // Check if this scope has a direct child module with this name
+    if (scope.childModules.count(name) > 0) return true;
+
+    // Search through library scopes transparently
+    for (const auto& [modName, child] : scope.childModules) {
+      if (!child) continue;
+      if (isLibraryScope(modName)) {
+        if (checkScope(*child)) return true;
+      }
     }
+    return false;
+  };
+
+  for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
+    if (checkScope(*it)) return true;
   }
   return false;
 }
@@ -263,15 +313,69 @@ bool SemanticAnalyzer::isModuleName(const std::string& name) const {
 SemanticScope* SemanticAnalyzer::lookupModuleScope(
     const std::string& dotPath) const {
   if (dotPath.empty() || scopeStack.empty()) return nullptr;
-  // Start from global scope (first in stack)
+
+  // Helper to find a segment in a scope, traversing through library scopes
+  // Returns nullptr if not found, or the found scope
+  // Throws if ambiguous (same name found in multiple library scopes)
+  std::function<SemanticScope*(const SemanticScope&, const std::string&)>
+      findInScope = [&](const SemanticScope& scope,
+                        const std::string& segment) -> SemanticScope* {
+    // Direct child lookup — always succeeds for explicit library scope names
+    // and for non-library-scope names
+    auto it = scope.childModules.find(segment);
+    if (it != scope.childModules.end()) {
+      // If this IS a library scope name ($hash$), navigate into it directly
+      if (isLibraryScope(segment)) {
+        return it->second.get();
+      }
+      // Non-library direct child
+      return it->second.get();
+    }
+
+    // Search inside library scopes (transparent lookup for non-library names)
+    // Track all matches to detect ambiguity
+    SemanticScope* found = nullptr;
+    std::string foundInLib;
+
+    for (const auto& [modName, child] : scope.childModules) {
+      if (!child || !isLibraryScope(modName)) continue;
+
+      // Check if this library scope has the segment as direct child
+      auto childIt = child->childModules.find(segment);
+      if (childIt != child->childModules.end()) {
+        if (found) {
+          // Ambiguity: same module name in multiple library scopes
+          logAndThrowError("Ambiguous module reference '" + segment +
+                           "': found in both library '" + foundInLib +
+                           "' and '" + modName + "'");
+        }
+        found = childIt->second.get();
+        foundInLib = modName;
+      }
+
+      // Also recursively check nested library scopes
+      auto* nested = findInScope(*child, segment);
+      if (nested) {
+        if (found && found != nested) {
+          logAndThrowError("Ambiguous module reference '" + segment +
+                           "': found in multiple library scopes");
+        }
+        found = nested;
+      }
+    }
+    return found;
+  };
+
+  // Start from global scope
   const SemanticScope* current = &scopeStack.front();
-  // Split dot-separated path and traverse childModules
+
+  // Split dot-separated path and traverse
   std::string segment;
   std::istringstream stream(dotPath);
   while (std::getline(stream, segment, '.')) {
-    auto it = current->childModules.find(segment);
-    if (it == current->childModules.end()) return nullptr;
-    current = it->second.get();
+    auto* found = findInScope(*current, segment);
+    if (!found) return nullptr;
+    current = found;
   }
   return const_cast<SemanticScope*>(current);
 }
@@ -283,6 +387,305 @@ std::vector<UsingImport> SemanticAnalyzer::getActiveUsingImports() const {
                   scope.usingImports.end());
   }
   return result;
+}
+
+// -------------------------------------------------------------------
+// Unified Symbol Lookup
+// Library scopes ($hash$) are transparent - we look through them
+// Throws on ambiguity (same name in multiple library scopes)
+// -------------------------------------------------------------------
+
+SymbolMatch SemanticAnalyzer::findSymbol(const std::string& name,
+                                         SymbolKind filterKind) const {
+  std::vector<SymbolMatch> matches;
+
+  // Helper to extract library hash from a module path
+  auto extractLibraryHash = [](const std::string& path) -> std::string {
+    if (path.empty()) return "";
+    size_t dollarPos = path.find('$');
+    if (dollarPos == std::string::npos) return "";
+    size_t endDollar = path.find('$', dollarPos + 1);
+    if (endDollar == std::string::npos) return "";
+    return path.substr(dollarPos, endDollar - dollarPos + 1);
+  };
+
+  // Helper to check if a kind matches the filter
+  auto matchesFilter = [filterKind](SymbolKind kind) {
+    return filterKind == SymbolKind::None || filterKind == kind;
+  };
+
+  // Recursive helper to search a scope and its children
+  // Library scopes are traversed transparently
+  std::function<void(const SemanticScope&, const std::string&)> searchScope =
+      [&](const SemanticScope& scope, const std::string& currentPath) {
+        std::string libHash = extractLibraryHash(currentPath);
+
+        // Check classes
+        if (matchesFilter(SymbolKind::Class)) {
+          auto classIt = scope.classes.find(name);
+          if (classIt != scope.classes.end()) {
+            SymbolMatch match;
+            match.kind = SymbolKind::Class;
+            match.name = name;
+            match.modulePath = currentPath;
+            match.libraryHash = libHash;
+            match.classType = classIt->second;
+            matches.push_back(match);
+          }
+        }
+
+        // Check generic classes
+        if (matchesFilter(SymbolKind::GenericClass)) {
+          auto genClassIt = scope.genericClasses.find(name);
+          if (genClassIt != scope.genericClasses.end()) {
+            SymbolMatch match;
+            match.kind = SymbolKind::GenericClass;
+            match.name = name;
+            match.modulePath = currentPath;
+            match.libraryHash = libHash;
+            match.genericClassInfo = &genClassIt->second;
+            matches.push_back(match);
+          }
+        }
+
+        // Check interfaces
+        if (matchesFilter(SymbolKind::Interface)) {
+          auto ifaceIt = scope.interfaces.find(name);
+          if (ifaceIt != scope.interfaces.end()) {
+            SymbolMatch match;
+            match.kind = SymbolKind::Interface;
+            match.name = name;
+            match.modulePath = currentPath;
+            match.libraryHash = libHash;
+            match.interfaceType = ifaceIt->second;
+            matches.push_back(match);
+          }
+        }
+
+        // Check generic interfaces
+        if (matchesFilter(SymbolKind::GenericInterface)) {
+          auto genIfaceIt = scope.genericInterfaces.find(name);
+          if (genIfaceIt != scope.genericInterfaces.end()) {
+            SymbolMatch match;
+            match.kind = SymbolKind::GenericInterface;
+            match.name = name;
+            match.modulePath = currentPath;
+            match.libraryHash = libHash;
+            match.genericInterfaceInfo = &genIfaceIt->second;
+            matches.push_back(match);
+          }
+        }
+
+        // Check enums
+        if (matchesFilter(SymbolKind::Enum)) {
+          auto enumIt = scope.enums.find(name);
+          if (enumIt != scope.enums.end()) {
+            SymbolMatch match;
+            match.kind = SymbolKind::Enum;
+            match.name = name;
+            match.modulePath = currentPath;
+            match.libraryHash = libHash;
+            match.enumType = enumIt->second;
+            matches.push_back(match);
+          }
+        }
+
+        // Check functions (by prefix)
+        if (matchesFilter(SymbolKind::Function)) {
+          std::string funcPrefix = name + "(";
+          for (const auto& [sig, info] : scope.functions) {
+            if (sig.compare(0, funcPrefix.size(), funcPrefix) == 0) {
+              SymbolMatch match;
+              match.kind = SymbolKind::Function;
+              match.name = name;
+              match.modulePath = currentPath;
+              match.libraryHash = libHash;
+              match.functionInfo = &info;
+              matches.push_back(match);
+              break;  // Only need one function match per scope
+            }
+          }
+        }
+
+        // Recurse into child modules
+        for (const auto& [modName, child] : scope.childModules) {
+          if (!child) continue;
+          std::string childPath =
+              currentPath.empty() ? modName : currentPath + "." + modName;
+          // Library scopes are transparent - continue search inside them
+          if (isLibraryScope(modName)) {
+            searchScope(*child, childPath);
+          }
+        }
+      };
+
+  // Search from each scope in the stack
+  for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
+    searchScope(*it, it->modulePath);
+  }
+
+  // Check for ambiguity - same symbol from different library scopes
+  if (matches.size() > 1) {
+    // Remove duplicates (same libraryHash)
+    std::vector<SymbolMatch> uniqueMatches;
+    std::set<std::string> seenHashes;
+    for (const auto& m : matches) {
+      std::string key = m.libraryHash.empty() ? "__local__" : m.libraryHash;
+      if (seenHashes.insert(key).second) {
+        uniqueMatches.push_back(m);
+      }
+    }
+
+    if (uniqueMatches.size() > 1) {
+      std::string msg = "Ambiguous symbol '" + name + "': found in ";
+      for (size_t i = 0; i < uniqueMatches.size(); ++i) {
+        if (i > 0) msg += " and ";
+        msg += uniqueMatches[i].display();
+      }
+      logAndThrowError(msg);
+    }
+    matches = uniqueMatches;
+  }
+
+  return matches.empty() ? SymbolMatch{} : matches[0];
+}
+
+SymbolMatch SemanticAnalyzer::findSymbolInModule(const std::string& modulePath,
+                                                 const std::string& name,
+                                                 SymbolKind filterKind) const {
+  // Get full module path including library hashes
+  std::string fullPath = getFullModulePath(modulePath);
+
+  // Find the module scope
+  SemanticScope* modScope = lookupModuleScope(fullPath);
+  if (!modScope) {
+    return SymbolMatch{};
+  }
+
+  std::string libHash;
+  if (fullPath.size() >= 2 && fullPath.front() == '$') {
+    size_t endDollar = fullPath.find('$', 1);
+    if (endDollar != std::string::npos) {
+      libHash = fullPath.substr(0, endDollar + 1);
+    }
+  }
+
+  // Helper to check if a kind matches the filter
+  auto matchesFilter = [filterKind](SymbolKind kind) {
+    return filterKind == SymbolKind::None || filterKind == kind;
+  };
+
+  // Check classes
+  if (matchesFilter(SymbolKind::Class)) {
+    auto classIt = modScope->classes.find(name);
+    if (classIt != modScope->classes.end()) {
+      SymbolMatch match;
+      match.kind = SymbolKind::Class;
+      match.name = name;
+      match.modulePath = fullPath;
+      match.libraryHash = libHash;
+      match.classType = classIt->second;
+      return match;
+    }
+  }
+
+  // Check generic classes
+  if (matchesFilter(SymbolKind::GenericClass)) {
+    auto genClassIt = modScope->genericClasses.find(name);
+    if (genClassIt != modScope->genericClasses.end()) {
+      SymbolMatch match;
+      match.kind = SymbolKind::GenericClass;
+      match.name = name;
+      match.modulePath = fullPath;
+      match.libraryHash = libHash;
+      match.genericClassInfo = &genClassIt->second;
+      return match;
+    }
+  }
+
+  // Check interfaces
+  if (matchesFilter(SymbolKind::Interface)) {
+    auto ifaceIt = modScope->interfaces.find(name);
+    if (ifaceIt != modScope->interfaces.end()) {
+      SymbolMatch match;
+      match.kind = SymbolKind::Interface;
+      match.name = name;
+      match.modulePath = fullPath;
+      match.libraryHash = libHash;
+      match.interfaceType = ifaceIt->second;
+      return match;
+    }
+  }
+
+  // Check generic interfaces
+  if (matchesFilter(SymbolKind::GenericInterface)) {
+    auto genIfaceIt = modScope->genericInterfaces.find(name);
+    if (genIfaceIt != modScope->genericInterfaces.end()) {
+      SymbolMatch match;
+      match.kind = SymbolKind::GenericInterface;
+      match.name = name;
+      match.modulePath = fullPath;
+      match.libraryHash = libHash;
+      match.genericInterfaceInfo = &genIfaceIt->second;
+      return match;
+    }
+  }
+
+  // Check enums
+  if (matchesFilter(SymbolKind::Enum)) {
+    auto enumIt = modScope->enums.find(name);
+    if (enumIt != modScope->enums.end()) {
+      SymbolMatch match;
+      match.kind = SymbolKind::Enum;
+      match.name = name;
+      match.modulePath = fullPath;
+      match.libraryHash = libHash;
+      match.enumType = enumIt->second;
+      return match;
+    }
+  }
+
+  // Check functions - need to look for mangled name in the scope
+  // The function is registered with the full mangled path
+  if (matchesFilter(SymbolKind::Function)) {
+    std::string mangledPath = mangleModulePath(fullPath);
+    std::string funcPrefix = mangledPath + "_" + name + "(";
+
+    // Search the entire scope chain for the function
+    for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
+      for (const auto& [sig, info] : it->functions) {
+        if (sig.compare(0, funcPrefix.size(), funcPrefix) == 0) {
+          SymbolMatch match;
+          match.kind = SymbolKind::Function;
+          match.name = name;
+          match.modulePath = fullPath;
+          match.libraryHash = libHash;
+          match.functionInfo = &info;
+          return match;
+        }
+      }
+    }
+  }
+
+  // Check namespaced variables
+  if (matchesFilter(SymbolKind::Variable)) {
+    std::string mangledPath = mangleModulePath(fullPath);
+    std::string qualifiedVarName = mangledPath + "_" + name;
+    for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
+      auto varIt = it->namespacedVariables.find(qualifiedVarName);
+      if (varIt != it->namespacedVariables.end()) {
+        SymbolMatch match;
+        match.kind = SymbolKind::Variable;
+        match.name = name;
+        match.modulePath = fullPath;
+        match.libraryHash = libHash;
+        match.variableInfo = &varIt->second;
+        return match;
+      }
+    }
+  }
+
+  return SymbolMatch{};
 }
 
 // -------------------------------------------------------------------
@@ -706,9 +1109,90 @@ VariableInfo* SemanticAnalyzer::lookupQualifiedVariable(
   return nullptr;
 }
 
+// Helper: Get the full module path including library scope hashes
+// e.g., "b" -> "$hash$.b" if b is inside a library scope
+std::string SemanticAnalyzer::getFullModulePath(
+    const std::string& visiblePath) const {
+  if (visiblePath.empty() || scopeStack.empty()) return visiblePath;
+
+  // Helper to find a segment and return its full path including library scopes
+  // Throws on ambiguity (same name found in multiple library scopes)
+  std::function<std::string(const SemanticScope&, const std::string&,
+                            const std::string&)>
+      findFullPath = [&](const SemanticScope& scope, const std::string& segment,
+                         const std::string& currentPath) -> std::string {
+    // Direct child lookup
+    auto it = scope.childModules.find(segment);
+    if (it != scope.childModules.end() && !isLibraryScope(segment)) {
+      return currentPath.empty() ? segment : currentPath + "." + segment;
+    }
+
+    // Search inside library scopes, tracking all matches for ambiguity
+    std::string found;
+    std::string foundInLib;
+
+    for (const auto& [modName, child] : scope.childModules) {
+      if (!child || !isLibraryScope(modName)) continue;
+
+      // Check if this library scope has the segment as direct child
+      auto childIt = child->childModules.find(segment);
+      if (childIt != child->childModules.end()) {
+        std::string libPath =
+            currentPath.empty() ? modName : currentPath + "." + modName;
+        std::string candidate = libPath + "." + segment;
+        if (!found.empty()) {
+          logAndThrowError("Ambiguous module reference '" + segment +
+                           "': found in both library '" + foundInLib +
+                           "' and '" + modName + "'");
+        }
+        found = candidate;
+        foundInLib = modName;
+      }
+
+      // Recursively check nested library scopes
+      std::string libPath =
+          currentPath.empty() ? modName : currentPath + "." + modName;
+      auto result = findFullPath(*child, segment, libPath);
+      if (!result.empty()) {
+        if (!found.empty() && found != result) {
+          logAndThrowError("Ambiguous module reference '" + segment +
+                           "': found in multiple library scopes");
+        }
+        found = result;
+      }
+    }
+    return found;
+  };
+
+  // Start from global scope and traverse the visible path
+  std::string fullPath;
+  const SemanticScope* current = &scopeStack.front();
+
+  std::string segment;
+  std::istringstream stream(visiblePath);
+  while (std::getline(stream, segment, '.')) {
+    // Find full path for this segment
+    std::string segmentFullPath = findFullPath(*current, segment, fullPath);
+    if (segmentFullPath.empty()) {
+      // Segment not found, return original
+      return visiblePath;
+    }
+    fullPath = segmentFullPath;
+
+    // Navigate to that scope for next segment
+    SemanticScope* nextScope = lookupModuleScope(fullPath);
+    if (!nextScope) return visiblePath;
+    current = nextScope;
+  }
+
+  return fullPath;
+}
+
 const FunctionInfo* SemanticAnalyzer::lookupQualifiedFunction(
     const std::string& qualifiedName) const {
+  // First, try direct lookup with the given name
   std::string prefix = qualifiedName + "(";
+
   // Recursive helper to search a scope and its child modules
   std::function<const FunctionInfo*(const SemanticScope&)> searchScope =
       [&](const SemanticScope& scope) -> const FunctionInfo* {
@@ -725,11 +1209,36 @@ const FunctionInfo* SemanticAnalyzer::lookupQualifiedFunction(
     }
     return nullptr;
   };
-  // Walk scope chain
+
+  // Walk scope chain with direct name
   for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
     auto* result = searchScope(*it);
     if (result) return result;
   }
+
+  // If not found, try resolving through library scopes
+  // Split qualified name into module path and function name
+  size_t lastDot = qualifiedName.rfind('.');
+  if (lastDot != std::string::npos) {
+    std::string modulePath = qualifiedName.substr(0, lastDot);
+    std::string funcName = qualifiedName.substr(lastDot + 1);
+
+    // Get full module path including library scope hashes
+    std::string fullModulePath = getFullModulePath(modulePath);
+    if (fullModulePath != modulePath) {
+      // Mangle the full path: "$hash$.b" -> "$hash$_b"
+      std::string mangledPath = mangleModulePath(fullModulePath);
+      std::string fullQualifiedName = mangledPath + "_" + funcName;
+      prefix = fullQualifiedName + "(";
+
+      // Search again with resolved name
+      for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
+        auto* result = searchScope(*it);
+        if (result) return result;
+      }
+    }
+  }
+
   return nullptr;
 }
 
@@ -772,15 +1281,17 @@ sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
   std::vector<sun::QualifiedName> matches;
   for (const auto& import : activeImports) {
     sun::QualifiedName candidate;
+    // Resolve to full path including library hash prefixes
+    std::string fullNsPath = getFullModulePath(import.namespacePath);
     if (import.isWildcard) {
-      candidate = sun::QualifiedName(import.namespacePath, name);
+      candidate = sun::QualifiedName(fullNsPath, name);
     } else if (import.isPrefixWildcard) {
       if (name.size() >= import.prefix.size() &&
           name.substr(0, import.prefix.size()) == import.prefix) {
-        candidate = sun::QualifiedName(import.namespacePath, name);
+        candidate = sun::QualifiedName(fullNsPath, name);
       }
     } else if (import.target == name) {
-      candidate = sun::QualifiedName(import.namespacePath, name);
+      candidate = sun::QualifiedName(fullNsPath, name);
     }
 
     if (!candidate.empty() && symbolExists(candidate.mangled())) {

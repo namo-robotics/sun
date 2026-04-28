@@ -27,3 +27,5 @@ extensions/vscode-sun/node_modules/
 extensions/vscode-sun/out/
 extensions/vscode-sun/*.vsix
 extensions/vscode-sun/.vscode-test/
+
+*.moon

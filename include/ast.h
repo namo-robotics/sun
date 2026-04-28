@@ -73,6 +73,7 @@ class ExprAST {
   mutable sun::TypePtr resolvedType;  // Populated by semantic analyzer
   Position location_;                 // Original source location
   bool precompiled_ = false;          // True if from precompiled library
+  std::string symbolPrefix_;          // Hash prefix for moon symbol isolation
 
  public:
   virtual ~ExprAST() = default;
@@ -113,6 +114,10 @@ class ExprAST {
   // Precompiled flag (for definitions loaded from .moon files)
   bool isPrecompiled() const { return precompiled_; }
   void setPrecompiled(bool value) { precompiled_ = value; }
+
+  // Symbol prefix for moon library isolation (content hash)
+  const std::string& getSymbolPrefix() const { return symbolPrefix_; }
+  void setSymbolPrefix(const std::string& prefix) { symbolPrefix_ = prefix; }
 
  protected:
   ExprAST() = default;
@@ -511,6 +516,21 @@ class VariableCreationAST : public ExprAST {
   }
   bool hasTypeAnnotation() const { return typeAnnotation.has_value(); }
   std::unique_ptr<ExprAST> clone() const override;
+
+  // Qualified name (after semantic analysis qualifies it)
+  std::string getQualifiedName() const {
+    return qualifiedName_.empty() ? name : qualifiedName_.mangled();
+  }
+  void setQualifiedName(sun::QualifiedName qname) {
+    qualifiedName_ = std::move(qname);
+  }
+  void setQualifiedName(std::string n) {
+    qualifiedName_ = sun::QualifiedName::fromMangled(std::move(n));
+  }
+  bool hasQualifiedName() const { return !qualifiedName_.empty(); }
+
+ private:
+  sun::QualifiedName qualifiedName_;
 };
 
 class VariableAssignmentAST : public ExprAST {
@@ -558,6 +578,21 @@ class ReferenceCreationAST : public ExprAST {
   const ExprAST* getTarget() const { return target.get(); }
   bool isMutable() const { return mutable_; }
   std::unique_ptr<ExprAST> clone() const override;
+
+  // Qualified name (after semantic analysis qualifies it)
+  std::string getQualifiedName() const {
+    return qualifiedName_.empty() ? name : qualifiedName_.mangled();
+  }
+  void setQualifiedName(sun::QualifiedName qname) {
+    qualifiedName_ = std::move(qname);
+  }
+  void setQualifiedName(std::string n) {
+    qualifiedName_ = sun::QualifiedName::fromMangled(std::move(n));
+  }
+  bool hasQualifiedName() const { return !qualifiedName_.empty(); }
+
+ private:
+  sun::QualifiedName qualifiedName_;
 };
 
 class BinaryExprAST : public ExprAST {
@@ -1212,6 +1247,9 @@ class ImportAST : public ExprAST {
 class QualifiedNameAST : public ExprAST {
   std::vector<std::string> parts;  // ["sun", "Vec"] for sun.Vec
 
+  // Resolved mangled name (set by semantic analyzer) including library hash
+  mutable std::string resolvedMangledName_;
+
  public:
   explicit QualifiedNameAST(std::vector<std::string> parts)
       : parts(std::move(parts)) {}
@@ -1241,7 +1279,10 @@ class QualifiedNameAST : public ExprAST {
   }
 
   // Get mangled name for LLVM symbols (e.g., "sun_Vec")
+  // Uses resolved name if set by semantic analyzer, otherwise computes from
+  // parts
   std::string getMangledName() const {
+    if (!resolvedMangledName_.empty()) return resolvedMangledName_;
     std::string result;
     for (size_t i = 0; i < parts.size(); ++i) {
       if (i > 0) result += "_";
@@ -1249,6 +1290,11 @@ class QualifiedNameAST : public ExprAST {
     }
     return result;
   }
+
+  void setResolvedMangledName(std::string name) const {
+    resolvedMangledName_ = std::move(name);
+  }
+
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -1629,6 +1675,10 @@ class MemberAccessAST : public ExprAST {
   // These are the concrete types after type parameter substitution
   mutable std::vector<sun::TypePtr> resolvedTypeArgs_;
 
+  // Resolved qualified name for module member access (set by semantic analyzer)
+  // e.g., "$d9b854ae$_b_get_version" for b.get_version() from a library
+  mutable std::string resolvedQualifiedName_;
+
  public:
   MemberAccessAST(std::unique_ptr<ExprAST> obj, std::string member,
                   std::vector<std::unique_ptr<TypeAnnotation>> typeArgs = {})
@@ -1665,6 +1715,17 @@ class MemberAccessAST : public ExprAST {
     return resolvedTypeArgs_;
   }
   bool hasResolvedTypeArgs() const { return !resolvedTypeArgs_.empty(); }
+
+  // Resolved qualified name for module member access (set by semantic analyzer)
+  void setResolvedQualifiedName(std::string name) const {
+    resolvedQualifiedName_ = std::move(name);
+  }
+  const std::string& getResolvedQualifiedName() const {
+    return resolvedQualifiedName_;
+  }
+  bool hasResolvedQualifiedName() const {
+    return !resolvedQualifiedName_.empty();
+  }
 
   std::unique_ptr<ExprAST> clone() const override;
 };

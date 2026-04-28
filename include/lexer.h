@@ -11,6 +11,7 @@
 #include <string_view>
 #include <variant>
 
+#include "error.h"
 #include "nfa.h"
 
 enum class TokenKind {
@@ -550,10 +551,12 @@ class Lexer {
       if (currentChar == EOF) {
         return Token::eof(currentPos);
       }
-      throw std::runtime_error("Unrecognized token '" +
-                               std::string(1, currentChar) + "' at line " +
-                               std::to_string(currentPos.line) + ", column " +
-                               std::to_string(currentPos.column));
+      std::string sourceLine = getSourceLine(currentPos.line);
+      logParsingError(
+          currentPos,
+          "Unrecognized token '" + std::string(1, currentChar) + "'",
+          sourceLine,
+          currentPos.line > 1 ? getSourceLine(currentPos.line - 1) : "");
     }
 
     auto RegexCapture = getLongestRegexCapture(stepResult.captures);
@@ -591,8 +594,9 @@ class Lexer {
           return Token::make(kind, startPos, endPos);
       }
     }
-    throw std::runtime_error("Unrecognized token at line " +
-                             std::to_string(currentPos.line) + ", column " +
-                             std::to_string(currentPos.column));
+    std::string sourceLine = getSourceLine(currentPos.line);
+    logParsingError(
+        currentPos, "Unrecognized token", sourceLine,
+        currentPos.line > 1 ? getSourceLine(currentPos.line - 1) : "");
   }
 };

@@ -4,6 +4,7 @@
 #include "codegen.h"
 #include "codegen_visitor.h"
 #include "llvm/IR/InlineAsm.h"
+#include "semantic_scope.h"
 
 using namespace llvm;
 
@@ -117,8 +118,9 @@ Value* CodegenVisitor::createInterfaceFatPointer(
   auto vtableIt =
       vtableGlobals.find({classType->getName(), ifaceType->getName()});
   if (vtableIt == vtableGlobals.end()) {
-    logAndThrowError("Vtable not found for class " + classType->getName() +
-                     " implementing interface " + ifaceType->getName());
+    logAndThrowError("Vtable not found for class " +
+                     classType->getDisplayName() + " implementing interface " +
+                     ifaceType->getName());
     return nullptr;
   }
   GlobalVariable* vtableGlobal = vtableIt->second;
@@ -310,9 +312,15 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
 
     // Handle qualified function call on module: mymod.foo() -> mymod_foo()
     if (objectType && objectType->isModule()) {
-      auto* moduleType = static_cast<sun::ModuleType*>(objectType.get());
-      std::string qualifiedName =
-          moduleType->getModulePath() + "_" + methodName;
+      // Use resolved name from semantic analysis (includes library hash prefix)
+      std::string qualifiedName;
+      if (memberAccess->hasResolvedQualifiedName()) {
+        qualifiedName = memberAccess->getResolvedQualifiedName();
+      } else {
+        auto* moduleType = static_cast<sun::ModuleType*>(objectType.get());
+        qualifiedName =
+            mangleModulePath(moduleType->getModulePath()) + "_" + methodName;
+      }
 
       // Build argument list
       std::vector<Value*> argValues;
@@ -530,7 +538,7 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
     const sun::ClassMethod* method = classType->getMethod(methodName);
     if (!method) {
       logAndThrowError("Unknown method: " + methodName + " on class " +
-                       classType->getName());
+                       classType->getDisplayName());
       return nullptr;
     }
 
@@ -556,7 +564,8 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
       }
 
       // Look up the specialized method function
-      Function* specializedFunc = module->getFunction(mangledName);
+      std::string resolvedName = mangledName;
+      Function* specializedFunc = module->getFunction(resolvedName);
 
       // If not already generated, look up from pre-computed specializations
       if (!specializedFunc) {
@@ -591,7 +600,8 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
     std::string mangledName = classType->getMangledMethodName(methodName);
     Function* methodFunc = module->getFunction(mangledName);
     if (!methodFunc) {
-      logAndThrowError("Method function not found: " + mangledName);
+      logAndThrowError("Method function not found: " +
+                       classType->getDisplayName() + "." + methodName);
     }
 
     // Build arguments: this pointer first, then user arguments
@@ -721,24 +731,8 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
   if (auto* varRef =
           dynamic_cast<const VariableReferenceAST*>(expr.getCallee())) {
     // Use qualified name from semantic analysis (handles using imports)
-    func = module->getFunction(varRef->getQualifiedName());
-
-    // Fallback: If not found with qualified name, check using imports
-    if (!func) {
-      auto it = usingImports.find(varRef->getName());
-      if (it != usingImports.end()) {
-        func = module->getFunction(it->second);
-      }
-    }
-
-    // Fallback: If still not found, check wildcard imports
-    if (!func) {
-      for (const auto& nsPrefix : wildcardImports) {
-        std::string mangledName = nsPrefix + varRef->getName();
-        func = module->getFunction(mangledName);
-        if (func) break;
-      }
-    }
+    std::string resolvedName = varRef->getQualifiedName();
+    func = module->getFunction(resolvedName);
   } else if (auto* qualName =
                  dynamic_cast<const QualifiedNameAST*>(expr.getCallee())) {
     // Qualified name - use the mangled name (calleeName already has :: replaced

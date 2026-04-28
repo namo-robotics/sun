@@ -751,7 +751,7 @@ class SliceType : public Type {
 // Used in semantic analysis when accessing module-scoped variables/functions
 // e.g., in "mod_x.mod_y.a", mod_x and mod_x.mod_y have ModuleType
 class ModuleType : public Type {
-  std::string modulePath;  // e.g., "mod_x" or "mod_x_mod_y"
+  std::string modulePath;  // e.g., "mod_x" or "$hash$_mod_x"
 
  public:
   explicit ModuleType(std::string path) : modulePath(std::move(path)) {}
@@ -809,7 +809,7 @@ struct ClassMethod {
 // Generic classes have type parameters (e.g., class List<T>)
 // Specialized classes have type arguments (e.g., List<i32>)
 class ClassType : public Type {
-  std::string name;  // Fully qualified name (e.g., "sun_Unique_Point")
+  std::string name;  // Fully qualified name (e.g., "$hash$_sun_Vec")
   std::string
       baseName_;  // User-written base name (e.g., "Unique") for error messages
   std::vector<std::string>
@@ -997,6 +997,7 @@ class ClassType : public Type {
   }
 
   // Get mangled method name: ClassName_methodName
+  // Class name already includes module path and library hash
   std::string getMangledMethodName(const std::string& methodName) const {
     return name + "_" + methodName;
   }
@@ -1026,7 +1027,7 @@ using InterfaceTypePtr = std::shared_ptr<InterfaceType>;
 // Interface type for user-defined interfaces
 // Interfaces define a contract that classes must implement
 class InterfaceType : public Type {
-  std::string name;       // Fully qualified name
+  std::string name;       // Fully qualified name (includes library hash)
   std::string baseName_;  // User-written base name for error messages
   std::vector<std::string> typeParameters;  // Generic type params: T, U, etc.
   std::vector<TypePtr>
@@ -1152,7 +1153,7 @@ class InterfaceType : public Type {
   }
 
   // Get mangled method name for default implementation:
-  // InterfaceName_default_methodName
+  // InterfaceName_default_methodName (name already includes library hash)
   std::string getMangledDefaultMethodName(const std::string& methodName) const {
     return name + "_default_" + methodName;
   }

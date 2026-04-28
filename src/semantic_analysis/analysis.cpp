@@ -55,8 +55,9 @@ static bool tryCoerceIntegerLiteral(ExprAST* expr, sun::TypePtr targetType,
 
   if (throwOnFail) {
     logAndThrowError("Integer literal " + std::to_string(val) +
-                     " cannot be represented as '" + targetType->toString() +
-                     "'");
+                         " cannot be represented as '" +
+                         targetType->toString() + "'",
+                     expr->getLocation());
   }
   return false;
 }
@@ -432,7 +433,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // Get function signature info (sets captures, converts param types)
       FunctionInfo funcInfo = getFunctionInfo(func);
 
-      // Compute qualified name (inside module: "sun_foo", outside: "foo")
+      // Compute qualified name from current module path (includes library hash
+      // for moon imports since library scope uses hash as module name)
       sun::QualifiedName qualifiedName = makeQualifiedName(proto.getName());
       proto.setQualifiedName(qualifiedName);
 
@@ -591,12 +593,14 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
           logAndThrowError(
               "for-in loop requires type that implements IIterator<T> or "
               "IIterable<T>, but '" +
-              classType->getDisplayName() + "' does not implement either");
+                  classType->getDisplayName() + "' does not implement either",
+              forInExpr.getLocation());
         }
       } else {
         logAndThrowError(
             "for-in loop requires a class type that implements IIterator<T> "
-            "or IIterable<T>");
+            "or IIterable<T>",
+            forInExpr.getLocation());
       }
 
       // Convert loop variable type annotation to type
@@ -698,9 +702,16 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
           auto& varCreate = static_cast<VariableCreationAST&>(*bodyExpr);
           std::string qualifiedName =
               qualifyNameInCurrentModule(varCreate.getName());
+          varCreate.setQualifiedName(qualifiedName);
           if (auto type = varCreate.getResolvedType()) {
             registerNamespacedVariable(qualifiedName, type);
           }
+        } else if (bodyExpr->getType() == ASTNodeType::REFERENCE_CREATION) {
+          analyzeExpr(*bodyExpr);
+          auto& refCreate = static_cast<ReferenceCreationAST&>(*bodyExpr);
+          std::string qualifiedName =
+              qualifyNameInCurrentModule(refCreate.getName());
+          refCreate.setQualifiedName(qualifiedName);
         } else {
           analyzeExpr(*bodyExpr);
         }
@@ -721,18 +732,12 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
       if (!usingDecl.isWildcardImport() &&
           !usingDecl.isPrefixWildcardImport()) {
-        // Build the full path in mangled form: "A.B" -> "A_B"
-        std::string mangledPath =
-            namespacePath.empty() ? target : namespacePath + "_" + target;
-        // Convert dots to underscores for module lookup
-        for (char& c : mangledPath) {
-          if (c == '.') c = '_';
-        }
-        if (isModuleName(mangledPath)) {
+        // Build the dot-separated path: "A.B"
+        std::string displayPath =
+            namespacePath.empty() ? target : namespacePath + "." + target;
+        // Check if this path refers to a module (handles nested modules)
+        if (lookupModuleScope(displayPath)) {
           // Target is a module, convert to wildcard import from that module
-          // Store dot-separated path for display: "A.B"
-          std::string displayPath =
-              namespacePath.empty() ? target : namespacePath + "." + target;
           UsingImport import(displayPath, "*");
           addUsingImport(import);
           // Also create scope-based ImportBinding
@@ -762,6 +767,23 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
     case ASTNodeType::QUALIFIED_NAME: {
       auto& qualName = static_cast<QualifiedNameAST&>(expr);
       std::string fullName = qualName.getFullName();
+
+      // Resolve the module path to include library hash prefixes
+      // e.g., "sun.Vec" -> getFullModulePath("sun") = "$hash$.sun" -> mangled
+      // "$hash$_sun_Vec"
+      auto nsParts = qualName.getNamespacePath();
+      if (!nsParts.empty()) {
+        std::string nsPath;
+        for (size_t i = 0; i < nsParts.size(); ++i) {
+          if (i > 0) nsPath += ".";
+          nsPath += nsParts[i];
+        }
+        std::string fullPath = getFullModulePath(nsPath);
+        if (fullPath != nsPath) {
+          qualName.setResolvedMangledName(mangleModulePath(fullPath) + "_" +
+                                          qualName.getName());
+        }
+      }
 
       // Look up in namespaced variables first
       VariableInfo* varInfo = lookupQualifiedVariable(fullName);
@@ -794,15 +816,17 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
       // Validate class name
       if (isReservedIdentifier(classDef.getName())) {
-        logAndThrowError(
-            "Class name '" + classDef.getName() +
-            "' is invalid: names starting with '_' are reserved for builtins");
+        logAndThrowError("Class name '" + classDef.getName() +
+                             "' is invalid: names starting with '_' are "
+                             "reserved for builtins",
+                         classDef.getLocation());
       }
 
       // Check for redefinition of builtin types
       if (typeRegistry->isBuiltinTypeName(classDef.getName())) {
-        logAndThrowError("Cannot redefine builtin type '" + classDef.getName() +
-                         "'");
+        logAndThrowError(
+            "Cannot redefine builtin type '" + classDef.getName() + "'",
+            classDef.getLocation());
       }
 
       // Validate field names
@@ -820,9 +844,11 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
         const std::string& methodName =
             methodDecl.function->getProto().getName();
         if (isReservedIdentifier(methodName)) {
-          logAndThrowError("Method name '" + methodName +
-                           "' is invalid: names starting with '_' are reserved "
-                           "for builtins");
+          logAndThrowError(
+              "Method name '" + methodName +
+                  "' is invalid: names starting with '_' are reserved "
+                  "for builtins",
+              methodDecl.function->getLocation());
         }
       }
 
@@ -977,23 +1003,27 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
       // Validate interface name
       if (isReservedIdentifier(interfaceDef.getName())) {
-        logAndThrowError(
-            "Interface name '" + interfaceDef.getName() +
-            "' is invalid: names starting with '_' are reserved for builtins");
+        logAndThrowError("Interface name '" + interfaceDef.getName() +
+                             "' is invalid: names starting with '_' are "
+                             "reserved for builtins",
+                         interfaceDef.getLocation());
       }
 
       // Check for redefinition of builtin types
       if (typeRegistry->isBuiltinTypeName(interfaceDef.getName())) {
         logAndThrowError("Cannot redefine builtin interface '" +
-                         interfaceDef.getName() + "'");
+                             interfaceDef.getName() + "'",
+                         interfaceDef.getLocation());
       }
 
       // Validate field names
       for (const auto& field : interfaceDef.getFields()) {
         if (isReservedIdentifier(field.name)) {
-          logAndThrowError("Interface field name '" + field.name +
-                           "' is invalid: names starting with '_' are reserved "
-                           "for builtins");
+          logAndThrowError(
+              "Interface field name '" + field.name +
+                  "' is invalid: names starting with '_' are reserved "
+                  "for builtins",
+              field.location);
         }
       }
 
@@ -1002,9 +1032,11 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
         const std::string& methodName =
             methodDecl.function->getProto().getName();
         if (isReservedIdentifier(methodName)) {
-          logAndThrowError("Interface method name '" + methodName +
-                           "' is invalid: names starting with '_' are reserved "
-                           "for builtins");
+          logAndThrowError(
+              "Interface method name '" + methodName +
+                  "' is invalid: names starting with '_' are reserved "
+                  "for builtins",
+              methodDecl.function->getLocation());
         }
       }
 
@@ -1086,9 +1118,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
       // Validate enum name
       if (isReservedIdentifier(enumDef.getName())) {
-        logAndThrowError(
-            "Enum name '" + enumDef.getName() +
-            "' is invalid: names starting with '_' are reserved for builtins");
+        logAndThrowError("Enum name '" + enumDef.getName() +
+                             "' is invalid: names starting with '_' are "
+                             "reserved for builtins",
+                         enumDef.getLocation());
       }
 
       // Validate variant names and check for duplicates
@@ -1175,8 +1208,9 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       if (!catchClause.bindingName.empty()) {
         if (!catchClause.bindingType.has_value()) {
           logAndThrowError("catch binding '" + catchClause.bindingName +
-                           "' requires a type annotation, e.g., catch (" +
-                           catchClause.bindingName + ": IError) { ... }");
+                               "' requires a type annotation, e.g., catch (" +
+                               catchClause.bindingName + ": IError) { ... }",
+                           tryCatchExpr.getLocation());
         }
         sun::TypePtr bindingType =
             typeAnnotationToType(*catchClause.bindingType);
@@ -1242,8 +1276,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
         // Store the generic function AST on the call node for codegen
         genericCall.setGenericFunctionAST(genFuncInfo->AST);
       } else if (!isIntrinsicCall) {
-        logAndThrowError("Unknown generic function or class '" + funcName +
-                         "'");
+        logAndThrowError("Unknown generic function or class '" + funcName + "'",
+                         genericCall.getLocation());
       }
 
       // Enter scope and bind type parameters
@@ -1329,8 +1363,9 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
         // Check current scope only for redefinition (shadowing is allowed)
         if (scopeStack.back().typeAliases.find(aliasName) !=
             scopeStack.back().typeAliases.end()) {
-          logAndThrowError("Type alias '" + aliasName +
-                           "' is already defined in this scope");
+          logAndThrowError(
+              "Type alias '" + aliasName + "' is already defined in this scope",
+              declareExpr.getLocation());
         }
         if (resolvedType) {
           scopeStack.back().typeAliases[aliasName] = resolvedType;
@@ -1386,13 +1421,14 @@ void SemanticAnalyzer::analyzeBlock(BlockExprAST& block) {
 // -------------------------------------------------------------------
 
 std::vector<sun::TypePtr> SemanticAnalyzer::validateAndResolveParamTypes(
-    PrototypeAST& proto) {
+    PrototypeAST& proto, std::optional<Position> loc) {
   // Validate parameter names
   for (const auto& argName : proto.getArgNames()) {
     if (isReservedIdentifier(argName)) {
       logAndThrowError(
           "Parameter name '" + argName +
-          "' is invalid: names starting with '_' are reserved for builtins");
+              "' is invalid: names starting with '_' are reserved for builtins",
+          loc);
     }
   }
 
@@ -1406,9 +1442,10 @@ std::vector<sun::TypePtr> SemanticAnalyzer::validateAndResolveParamTypes(
       if (paramType && paramType->isCompound()) {
         // Error: compound types must be passed by reference
         logAndThrowError("Parameter '" + argName + "' has compound type '" +
-                         paramType->toString() +
-                         "' which cannot be passed by value. Use 'ref " +
-                         paramType->toString() + "' instead.");
+                             paramType->toString() +
+                             "' which cannot be passed by value. Use 'ref " +
+                             paramType->toString() + "' instead.",
+                         loc);
       }
     }
     // When REQUIRE_REF_FOR_COMPOUND_PARAMS is false, compound types are
@@ -1432,7 +1469,8 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
   if (!proto.getName().empty() && isReservedIdentifier(proto.getName())) {
     logAndThrowError(
         "Function name '" + proto.getName() +
-        "' is invalid: names starting with '_' are reserved for builtins");
+            "' is invalid: names starting with '_' are reserved for builtins",
+        func.getLocation());
   }
 
   // Build captures using current scope information
@@ -1489,7 +1527,8 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
   if (func.isExtern()) {
     if (!proto.hasReturnType()) {
       logAndThrowError("Extern function '" + proto.getName() +
-                       "' must have an explicit return type");
+                           "' must have an explicit return type",
+                       func.getLocation());
     }
     return;
   }
@@ -1812,7 +1851,8 @@ void SemanticAnalyzer::lazyParseAndAnalyzeMethod(
         Parser::lazyParseFunctionSource(methodFunc.getSourceText());
     if (!parsedFunc) {
       logAndThrowError("Failed to parse lazy method body for: " +
-                       methodFunc.getProto().getName());
+                           methodFunc.getProto().getName(),
+                       methodFunc.getLocation());
     }
     // Transfer the parsed body to the existing FunctionAST
     methodFunc.setBody(std::make_unique<BlockExprAST>(
@@ -2033,8 +2073,9 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
                      .getName();
     }
     logAndThrowError("Function '" + funcName + "' expects " +
-                     std::to_string(paramTypes.size()) + " arguments, got " +
-                     std::to_string(args.size()));
+                         std::to_string(paramTypes.size()) +
+                         " arguments, got " + std::to_string(args.size()),
+                     callExpr.getLocation());
   }
 
   // If we found a function via overload resolution, types are already

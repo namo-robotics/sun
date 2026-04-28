@@ -8,8 +8,8 @@
 // -------------------------------------------------------------------
 
 void SemanticAnalyzer::registerInterface(
-    const std::string& name,
-    std::shared_ptr<sun::InterfaceType> interfaceType) {
+    const std::string& name, std::shared_ptr<sun::InterfaceType> interfaceType,
+    std::optional<Position> loc) {
   if (!scopeStack.empty() && scopeStack.front().interfaces.contains(name)) {
     if (!collectingDeclarations) return;  // Pass 2: skip
     logAndThrowError("Cannot redeclare interface '" + name + "'");
@@ -38,11 +38,12 @@ std::shared_ptr<sun::InterfaceType> SemanticAnalyzer::lookupInterface(
 // -------------------------------------------------------------------
 
 void SemanticAnalyzer::registerGenericInterface(
-    const std::string& name, const GenericInterfaceInfo& info) {
+    const std::string& name, const GenericInterfaceInfo& info,
+    std::optional<Position> loc) {
   if (!scopeStack.empty() &&
       scopeStack.front().genericInterfaces.contains(name)) {
     if (!collectingDeclarations) return;  // Pass 2: skip
-    logAndThrowError("Cannot redeclare generic interface '" + name + "'");
+    logAndThrowError("Cannot redeclare generic interface '" + name + "'", loc);
   }
   // Register in current scope AND global scope (for reachability)
   if (!scopeStack.empty()) {
@@ -252,8 +253,9 @@ void SemanticAnalyzer::inheritInterfaceFields(
       interfaceType = instantiateGenericInterface(ifaceRef.name, typeArgs);
       if (!interfaceType) {
         logAndThrowError("Class '" + classDef.getName() +
-                         "' implements unknown generic interface '" +
-                         ifaceRef.name + "'");
+                             "' implements unknown generic interface '" +
+                             ifaceRef.name + "'",
+                         classDef.getLocation());
       }
       interfaceDisplayName = interfaceType->toString();
     } else {
@@ -261,8 +263,9 @@ void SemanticAnalyzer::inheritInterfaceFields(
       interfaceType = lookupInterface(ifaceRef.name);
       if (!interfaceType) {
         logAndThrowError("Class '" + classDef.getName() +
-                         "' implements unknown interface '" + ifaceRef.name +
-                         "'");
+                             "' implements unknown interface '" +
+                             ifaceRef.name + "'",
+                         classDef.getLocation());
       }
     }
 
@@ -273,11 +276,13 @@ void SemanticAnalyzer::inheritInterfaceFields(
       if (existingField) {
         // Field already declared in class - verify type matches
         if (!existingField->type->equals(*field.type)) {
-          logAndThrowError("Class '" + classDef.getName() +
-                           "' declares field '" + field.name + "' with type '" +
-                           existingField->type->toString() +
-                           "' but interface '" + interfaceDisplayName +
-                           "' requires type '" + field.type->toString() + "'");
+          logAndThrowError(
+              "Class '" + classDef.getName() + "' declares field '" +
+                  field.name + "' with type '" +
+                  existingField->type->toString() + "' but interface '" +
+                  interfaceDisplayName + "' requires type '" +
+                  field.type->toString() + "'",
+              classDef.getLocation());
         }
         continue;
       }
@@ -335,34 +340,39 @@ void SemanticAnalyzer::validateInterfaceImplementation(
         if (classMethodInfo->returnType && interfaceMethod.returnType &&
             !classMethodInfo->returnType->equals(*interfaceMethod.returnType)) {
           logAndThrowError("Class '" + classDef.getName() + "' method '" +
-                           interfaceMethod.name + "' has return type '" +
-                           classMethodInfo->returnType->toString() +
-                           "' but interface '" + interfaceDisplayName +
-                           "' requires return type '" +
-                           interfaceMethod.returnType->toString() + "'");
+                               interfaceMethod.name + "' has return type '" +
+                               classMethodInfo->returnType->toString() +
+                               "' but interface '" + interfaceDisplayName +
+                               "' requires return type '" +
+                               interfaceMethod.returnType->toString() + "'",
+                           classDef.getLocation());
         }
         // Verify parameter count matches
         if (classMethodInfo->paramTypes.size() !=
             interfaceMethod.paramTypes.size()) {
-          logAndThrowError("Class '" + classDef.getName() + "' method '" +
-                           interfaceMethod.name + "' has " +
-                           std::to_string(classMethodInfo->paramTypes.size()) +
-                           " parameters but interface '" +
-                           interfaceDisplayName + "' requires " +
-                           std::to_string(interfaceMethod.paramTypes.size()) +
-                           " parameters");
+          logAndThrowError(
+              "Class '" + classDef.getName() + "' method '" +
+                  interfaceMethod.name + "' has " +
+                  std::to_string(classMethodInfo->paramTypes.size()) +
+                  " parameters but interface '" + interfaceDisplayName +
+                  "' requires " +
+                  std::to_string(interfaceMethod.paramTypes.size()) +
+                  " parameters",
+              classDef.getLocation());
         } else {
           // Verify each parameter type matches
           for (size_t i = 0; i < classMethodInfo->paramTypes.size(); ++i) {
             if (!classMethodInfo->paramTypes[i]->equals(
                     *interfaceMethod.paramTypes[i])) {
               logAndThrowError("Class '" + classDef.getName() + "' method '" +
-                               interfaceMethod.name + "' parameter " +
-                               std::to_string(i + 1) + " has type '" +
-                               classMethodInfo->paramTypes[i]->toString() +
-                               "' but interface '" + interfaceDisplayName +
-                               "' requires type '" +
-                               interfaceMethod.paramTypes[i]->toString() + "'");
+                                   interfaceMethod.name + "' parameter " +
+                                   std::to_string(i + 1) + " has type '" +
+                                   classMethodInfo->paramTypes[i]->toString() +
+                                   "' but interface '" + interfaceDisplayName +
+                                   "' requires type '" +
+                                   interfaceMethod.paramTypes[i]->toString() +
+                                   "'",
+                               classDef.getLocation());
             }
           }
         }
@@ -388,9 +398,10 @@ void SemanticAnalyzer::validateInterfaceImplementation(
         } else {
           // Required method not implemented
           logAndThrowError("Class '" + classDef.getName() +
-                           "' does not implement required method '" +
-                           interfaceMethod.name + "' from interface '" +
-                           interfaceDisplayName + "'");
+                               "' does not implement required method '" +
+                               interfaceMethod.name + "' from interface '" +
+                               interfaceDisplayName + "'",
+                           classDef.getLocation());
         }
       }
     }

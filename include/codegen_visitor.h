@@ -7,6 +7,7 @@
 #include <llvm/IR/Value.h>
 #include <llvm/IR/Verifier.h>
 
+#include <map>
 #include <set>
 
 #include "ast.h"                 // Your pure AST header with ASTNodeType
@@ -121,21 +122,6 @@ class CodegenVisitor {
   // This includes class instances, function call results, etc.
   std::vector<StaticInitInfo> staticInits;
 
-  // Stack of namespace names for qualified name generation
-  std::vector<std::string> namespaceStack;
-
-  // Using imports: map from simple name to mangled name
-  // E.g., "Vec" -> "sun_Vec" when using sun.Vec
-  std::map<std::string, std::string> usingImports;
-
-  // Wildcard imports: list of module prefixes for wildcard using statements
-  // E.g., "sun_" when using sun;
-  std::vector<std::string> wildcardImports;
-
-  // Prefix wildcard imports: list of (module prefix, name prefix) pairs
-  // E.g., ("sun_", "Mat") for using sun.Mat* imports sun.Matrix, sun.MatrixView
-  std::vector<std::pair<std::string, std::string>> prefixWildcardImports;
-
   // Track which classes have actually been code-generated
   std::set<std::string> codegenedClasses;
 
@@ -171,9 +157,9 @@ class CodegenVisitor {
   std::vector<std::pair<std::string, std::vector<const ExprAST*>>>
       variadicArgsStack;
 
-  // Library symbols from precompiled modules (for skipping pre-declared
-  // specializations)
-  const std::set<std::string>* librarySymbols_ = nullptr;
+  // Functions declared from precompiled bitcode (before codegen starts)
+  // Used to distinguish library declarations from codegen-created forward decls
+  std::set<std::string> precompiledFunctions_;
 
  public:
   explicit CodegenVisitor(CodegenContext& ctx,
@@ -183,9 +169,19 @@ class CodegenVisitor {
         typeRegistry(std::move(registry)),
         typeResolver(ctx.getContext()) {}
 
-  // Set library symbols for checking pre-declared specializations
-  void setLibrarySymbols(const std::set<std::string>* symbols) {
-    librarySymbols_ = symbols;
+  // Snapshot the module's current function declarations.
+  // Call after declareAvailableFunctions() but before codegen().
+  void snapshotPrecompiledFunctions() {
+    for (auto& F : *module) {
+      if (!F.getName().empty()) {
+        precompiledFunctions_.insert(F.getName().str());
+      }
+    }
+  }
+
+  // Check if a function was declared from precompiled bitcode
+  bool isPrecompiledFunction(const std::string& name) const {
+    return precompiledFunctions_.count(name) > 0;
   }
 
   // Emit static initialization function for globals that need runtime init
@@ -202,15 +198,6 @@ class CodegenVisitor {
   llvm::Value* codegen(const ForExprAST& expr);
   llvm::Value* codegen(const ForInExprAST& expr);
   llvm::Value* codegen(const WhileExprAST& expr);
-
-  // Namespace support
-  void enterNamespace(const std::string& name) {
-    namespaceStack.push_back(name);
-  }
-  void exitNamespace() {
-    if (!namespaceStack.empty()) namespaceStack.pop_back();
-  }
-  std::string getMangledName(const std::string& name) const;
 
   std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionProtos;
 

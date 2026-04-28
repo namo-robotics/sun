@@ -8,12 +8,13 @@
 // Class support
 // -------------------------------------------------------------------
 
-void SemanticAnalyzer::registerClass(
-    const std::string& name, std::shared_ptr<sun::ClassType> classType) {
+void SemanticAnalyzer::registerClass(const std::string& name,
+                                     std::shared_ptr<sun::ClassType> classType,
+                                     std::optional<Position> loc) {
   // Check for redeclaration in global scope
   if (!scopeStack.empty() && scopeStack.front().classes.contains(name)) {
     if (!collectingDeclarations) return;  // Pass 2: skip, already registered
-    logAndThrowError("Cannot redeclare class '" + name + "'");
+    logAndThrowError("Cannot redeclare class '" + name + "'", loc);
   }
   // Register in current scope AND global scope (for reachability)
   if (!scopeStack.empty()) {
@@ -48,10 +49,11 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::getCurrentClass() const {
 // -------------------------------------------------------------------
 
 void SemanticAnalyzer::registerGenericClass(const std::string& name,
-                                            const GenericClassInfo& info) {
+                                            const GenericClassInfo& info,
+                                            std::optional<Position> loc) {
   if (!scopeStack.empty() && scopeStack.front().genericClasses.contains(name)) {
     if (!collectingDeclarations) return;  // Pass 2: skip
-    logAndThrowError("Cannot redeclare generic class '" + name + "'");
+    logAndThrowError("Cannot redeclare generic class '" + name + "'", loc);
   }
   // Register in current scope AND global scope (for reachability)
   if (!scopeStack.empty()) {
@@ -426,9 +428,10 @@ SemanticAnalyzer::instantiateGenericFunction(
     // If a type parameter resolved to a compound type, error - must use ref
     if (paramType && paramType->isCompound() && !paramType->isReference()) {
       logAndThrowError("Parameter '" + argName + "' has compound type '" +
-                       paramType->toString() +
-                       "' which cannot be passed by value. Use 'ref " +
-                       paramType->toString() + "' instead.");
+                           paramType->toString() +
+                           "' which cannot be passed by value. Use 'ref " +
+                           paramType->toString() + "' instead.",
+                       genericFunc->getLocation());
     }
 
     paramTypes.push_back(paramType);
@@ -609,8 +612,9 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   const auto& methodTypeParams = proto.getTypeParameters();
 
   if (methodTypeArgs.size() != methodTypeParams.size()) {
-    logAndThrowError("Type argument count mismatch for generic method " +
-                     methodName);
+    logAndThrowError(
+        "Type argument count mismatch for generic method " + methodName,
+        genericMethodAST->getLocation());
     return nullptr;
   }
 
@@ -721,7 +725,8 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
     if (!parsedFunc) {
       exitScope();
       logAndThrowError("Failed to parse lazy method body for: " +
-                       genericMethodAST->getProto().getName());
+                           genericMethodAST->getProto().getName(),
+                       genericMethodAST->getLocation());
     }
     // Transfer the parsed body to the cloned FunctionAST
     clonedFunc->setBody(std::make_unique<BlockExprAST>(

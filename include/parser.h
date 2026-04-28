@@ -169,13 +169,18 @@ class Parser {
   void collectMoonImport(const std::string& moonPath,
                          std::vector<std::unique_ptr<ExprAST>>& collectedAST);
 
-  // Parse a type annotation from its string representation
-  TypeAnnotation parseTypeFromString(const std::string& typeStr);
+  // Parse a type annotation from its string representation.
+  // If nsPrefix is provided, it will be stripped from type names.
+  TypeAnnotation parseTypeFromString(const std::string& typeStr,
+                                     const std::string& nsPrefix = "");
 
   // Parse a function signature string (e.g., "(i32, i32) -> i32") into an
-  // extern FunctionAST
+  // extern FunctionAST. If nsPrefix is provided, it will be stripped from
+  // type names in the signature (used when importing from moon files where
+  // types are stored qualified but need to be unqualified inside a namespace).
   std::unique_ptr<FunctionAST> parseFunctionSignature(
-      const std::string& name, const std::string& signature);
+      const std::string& name, const std::string& signature,
+      const std::string& nsPrefix = "");
 
   // Parse a method from its source text (for loading from moon)
   std::unique_ptr<FunctionAST> parseFunctionFromSource(

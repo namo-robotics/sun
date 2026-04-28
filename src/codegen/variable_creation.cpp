@@ -51,8 +51,8 @@ Value* CodegenVisitor::codegen(const VariableCreationAST& expr) {
         expr.getName());
   }
 
-  // Apply namespace mangling to the variable name
-  std::string varName = getMangledName(expr.getName());
+  // Use qualified name from semantic analysis
+  std::string varName = expr.getQualifiedName();
 
   // Check if we're creating a global variable and if it already exists
   if (scopes.empty()) {
@@ -112,8 +112,8 @@ Value* CodegenVisitor::genFunctionVariable(const VariableCreationAST& expr) {
                      expr.getName());
   }
 
-  // Apply namespace mangling to the variable name
-  std::string varName = getMangledName(expr.getName());
+  // Use qualified name from semantic analysis
+  std::string varName = expr.getQualifiedName();
 
   // Generate the lambda
   auto& lambdaAst =
@@ -484,7 +484,7 @@ llvm::Constant* CodegenVisitor::genGlobalArray(
   }
 
   // Create global variable for data storage
-  std::string varName = getMangledName(expr.getName());
+  std::string varName = expr.getQualifiedName();
   llvm::GlobalVariable* dataGV = new llvm::GlobalVariable(
       *module, dataConst->getType(), /*isConstant=*/false,
       llvm::GlobalValue::InternalLinkage, dataConst, varName + ".data");
@@ -586,8 +586,7 @@ llvm::Constant* CodegenVisitor::genGlobalVarForConstantExpr(
   }
 
   // Create global variable with the constant initializer
-  // Apply namespace mangling to the variable name
-  std::string varName = getMangledName(expr.getName());
+  std::string varName = expr.getQualifiedName();
   createGlobalVariable(varName, varType, constValue);
   return constValue;
 }
@@ -849,7 +848,7 @@ Value* CodegenVisitor::codegen(const ReferenceCreationAST& expr) {
   }
 
   // Create an alloca that holds a pointer to the target
-  std::string refName = getMangledName(expr.getName());
+  std::string refName = expr.getQualifiedName();
   llvm::Type* ptrType = llvm::PointerType::getUnqual(ctx.getContext());
   Function* func = ctx.builder->GetInsertBlock()->getParent();
   AllocaInst* refAlloca = createEntryBlockAlloca(func, refName, ptrType);
@@ -874,7 +873,7 @@ GlobalVariable* CodegenVisitor::genGlobalClassVar(
   llvm::StructType* structType = classType.getStructType(ctx.getContext());
 
   // Create zero-initialized global variable for the class instance
-  std::string varName = getMangledName(expr.getName());
+  std::string varName = expr.getQualifiedName();
   llvm::Constant* zeroInit = llvm::ConstantAggregateZero::get(structType);
   GlobalVariable* gv = new GlobalVariable(
       *module, structType,
@@ -903,7 +902,7 @@ GlobalVariable* CodegenVisitor::genGlobalVarWithRuntimeInit(
          "genGlobalVarWithRuntimeInit should only be called at top-level");
 
   // Create zero-initialized global variable
-  std::string varName = getMangledName(expr.getName());
+  std::string varName = expr.getQualifiedName();
   llvm::Constant* zeroInit = Constant::getNullValue(varType);
   GlobalVariable* gv = new GlobalVariable(
       *module, varType,

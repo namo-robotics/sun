@@ -8,6 +8,7 @@
 #include "codegen_visitor.h"
 #include "intrinsics.h"
 #include "parser.h"
+#include "semantic_scope.h"
 
 using namespace llvm;
 
@@ -64,11 +65,11 @@ Value* CodegenVisitor::codegenPrecompiledClass(const ClassDefinitionAST& expr,
 
       // Check if this specialization already exists in the precompiled library.
       // Pre-declared specializations (e.g., Vec_i32, Matrix_f64) have their
-      // methods in librarySymbols_ from the bitcode metadata.
+      // methods declared from the bitcode metadata.
       // New user-triggered specializations (e.g., Vec<u32>, Vec<MyClass>) won't
-      // be in librarySymbols_ and need codegen.
+      // have declarations and need codegen.
       std::string initMethodName = mangledName + "_init";
-      if (librarySymbols_ && librarySymbols_->count(initMethodName)) {
+      if (isPrecompiledFunction(initMethodName)) {
         // Pre-declared library specialization - skip, bitcode will be linked
         continue;
       }
@@ -601,7 +602,14 @@ Value* CodegenVisitor::codegen(const MemberAccessAST& expr) {
   sun::TypePtr objectType = expr.getObject()->getResolvedType();
   if (objectType && objectType->isModule()) {
     auto* moduleType = static_cast<sun::ModuleType*>(objectType.get());
-    std::string qualifiedName = moduleType->getModulePath() + "_" + memberName;
+    // Use resolved name from semantic analysis (includes library hash prefix)
+    std::string qualifiedName;
+    if (expr.hasResolvedQualifiedName()) {
+      qualifiedName = expr.getResolvedQualifiedName();
+    } else {
+      qualifiedName =
+          mangleModulePath(moduleType->getModulePath()) + "_" + memberName;
+    }
 
     // Check if the result type is also a module (nested module access)
     sun::TypePtr resultType = expr.getResolvedType();
@@ -1363,7 +1371,8 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
       const sun::ClassMethod* initMethod = classType->getMethod("init");
 
       // Try to find existing function in module
-      Function* candidate = module->getFunction(baseCtorName);
+      std::string resolvedCtorName = baseCtorName;
+      Function* candidate = module->getFunction(resolvedCtorName);
 
       // If not found but init method exists in class type, create declaration
       // This handles cases where the class codegen hasn't run yet
@@ -1377,7 +1386,7 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
         FunctionType* funcType = FunctionType::get(
             Type::getVoidTy(ctx.getContext()), paramLLVMTypes, false);
         candidate = Function::Create(funcType, Function::ExternalLinkage,
-                                     baseCtorName, module);
+                                     resolvedCtorName, module);
       }
 
       if (candidate && candidate->arg_size() == argCount + 1) {

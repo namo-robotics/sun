@@ -365,7 +365,7 @@ Value* CodegenVisitor::codegen(const IndexedAssignmentAST& expr) {
       return codegenClassSetIndex(indexExpr, expr.getValue(), classType);
     }
     // If no __setindex__, fall through to error (classes need explicit method)
-    logAndThrowError("Class " + classType->getName() +
+    logAndThrowError("Class " + classType->getDisplayName() +
                      " does not implement __setindex__ for indexed assignment");
     return nullptr;
   }
@@ -530,7 +530,7 @@ Value* CodegenVisitor::codegenClassIndex(const IndexAST& expr, Value* objectPtr,
   // Look up the __index__ method
   const sun::ClassMethod* method = classType->getMethod("__index__");
   if (!method) {
-    logAndThrowError("Class " + classType->getName() +
+    logAndThrowError("Class " + classType->getDisplayName() +
                      " does not have __index__ method");
     return nullptr;
   }
@@ -646,7 +646,7 @@ Value* CodegenVisitor::codegenClassSlice(const IndexAST& expr, Value* objectPtr,
   // Look up the __slice__ method
   const sun::ClassMethod* method = classType->getMethod("__slice__");
   if (!method) {
-    logAndThrowError("Class " + classType->getName() +
+    logAndThrowError("Class " + classType->getDisplayName() +
                      " does not have __slice__ method");
     return nullptr;
   }
@@ -838,7 +838,7 @@ Value* CodegenVisitor::codegenClassSetIndex(const IndexAST& indexExpr,
   // Look up the __setindex__ method
   const sun::ClassMethod* method = classType->getMethod("__setindex__");
   if (!method) {
-    logAndThrowError("Class " + classType->getName() +
+    logAndThrowError("Class " + classType->getDisplayName() +
                      " does not have __setindex__ method");
     return nullptr;
   }

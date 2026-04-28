@@ -1,0 +1,7 @@
+import "/workspaces/sun/build/stdlib.moon";
+import "/workspaces/sun/tests/programs/diamond/a.moon";
+using a;
+function main() i32 {
+    sun.print_i32(call_b_from_a());
+    return 0;
+}

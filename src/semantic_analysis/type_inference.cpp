@@ -42,7 +42,8 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
     case ASTNodeType::ARRAY_LITERAL: {
       const auto& arrLit = static_cast<const ArrayLiteralAST&>(expr);
       if (arrLit.getElements().empty()) {
-        logAndThrowError("Cannot infer type of empty array literal");
+        logAndThrowError("Cannot infer type of empty array literal",
+                         arrLit.getLocation());
         return nullptr;
       }
 
@@ -58,7 +59,8 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       // Infer element type from first element
       sun::TypePtr elemType = inferType(*arrLit.getElements()[0]);
       if (!elemType) {
-        logAndThrowError("Cannot infer array element type");
+        logAndThrowError("Cannot infer array element type",
+                         arrLit.getLocation());
         return nullptr;
       }
 
@@ -117,7 +119,8 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
             return sliceMethod->returnType;
           }
           logAndThrowError("Class " + classType->getName() +
-                           " does not implement __slice__ for slicing");
+                               " does not implement __slice__ for slicing",
+                           arrIdx.getLocation());
           return nullptr;
         } else {
           // Look for __index__ method
@@ -127,13 +130,14 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
             return indexMethod->returnType;
           }
           logAndThrowError("Class " + classType->getName() +
-                           " does not implement __index__ for indexing");
+                               " does not implement __index__ for indexing",
+                           arrIdx.getLocation());
           return nullptr;
         }
       }
 
       if (!targetType || !targetType->isArray()) {
-        logAndThrowError("Cannot index non-array type");
+        logAndThrowError("Cannot index non-array type", arrIdx.getLocation());
         return nullptr;
       }
 
@@ -144,7 +148,8 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       if (!arrayType->isUnsized()) {
         // Check dimension count matches for sized arrays
         if (arrIdx.getIndices().size() != arrayType->getDimensions().size()) {
-          logAndThrowError("Array index count does not match dimensions");
+          logAndThrowError("Array index count does not match dimensions",
+                           arrIdx.getLocation());
           return nullptr;
         }
       }
@@ -188,16 +193,18 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       }
       if (funcs.size() > 1) {
         logAndThrowError("Cannot reference overloaded function '" + name +
-                         "' as a value; call it with arguments instead");
+                             "' as a value; call it with arguments instead",
+                         varRef.getLocation());
       }
 
       // Check if it's a module name (for mod_x.mod_y.var access)
       if (isModuleName(name)) {
-        return sun::Types::Module(name);
+        return sun::Types::Module(getFullModulePath(name));
       }
 
       // Unknown variable - error in strongly typed language
-      logAndThrowError("Unknown variable: '" + name + "'");
+      logAndThrowError("Unknown variable: '" + name + "'",
+                       varRef.getLocation());
     }
 
     case ASTNodeType::VARIABLE_CREATION: {
@@ -322,7 +329,8 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
         }
       }
       // Unknown function - error in strongly typed language
-      logAndThrowError("Cannot infer return type for call expression");
+      logAndThrowError("Cannot infer return type for call expression",
+                       callExpr.getLocation());
     }
 
     case ASTNodeType::IF: {
@@ -466,8 +474,9 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       }
 
       // Unknown qualified name - error in strongly typed language
-      logAndThrowError("Unknown qualified name: '" + qualName.getFullName() +
-                       "'");
+      logAndThrowError(
+          "Unknown qualified name: '" + qualName.getFullName() + "'",
+          qualName.getLocation());
     }
 
     case ASTNodeType::NAMESPACE:
@@ -538,7 +547,8 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       if (funcName == "_sizeof") {
         // _sizeof<T>() returns i64 - the byte size of type T
         if (!genericCall.getArgs().empty()) {
-          logAndThrowError("_sizeof<T>() takes no arguments");
+          logAndThrowError("_sizeof<T>() takes no arguments",
+                           genericCall.getLocation());
           return sun::Types::Void();
         }
         return sun::Types::Int64();
@@ -548,7 +558,8 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
         // _init<T>(ptr) constructs T at ptr with forwarded arguments
         // Returns void
         if (genericCall.getArgs().empty()) {
-          logAndThrowError("_init<T>() requires a pointer argument");
+          logAndThrowError("_init<T>() requires a pointer argument",
+                           genericCall.getLocation());
           return sun::Types::Void();
         }
         return sun::Types::Void();
@@ -558,12 +569,14 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
         // _load<T>(ptr, index) loads element T at ptr[index]
         // Returns T
         if (genericCall.getArgs().size() != 2) {
-          logAndThrowError("_load<T>(ptr, index) requires 2 arguments");
+          logAndThrowError("_load<T>(ptr, index) requires 2 arguments",
+                           genericCall.getLocation());
         }
         sun::TypePtr targetType = typeAnnotationToType(*typeArgsVec[0]);
         targetType = substituteTypeParameters(targetType);
         if (!targetType) {
-          logAndThrowError("Failed to resolve type argument for _load<T>");
+          logAndThrowError("Failed to resolve type argument for _load<T>",
+                           genericCall.getLocation());
         }
         return targetType;
       }
@@ -572,7 +585,8 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
         // _store<T>(ptr, index, value) stores value at ptr[index]
         // Returns void
         if (genericCall.getArgs().size() != 3) {
-          logAndThrowError("_store<T>(ptr, index, value) requires 3 arguments");
+          logAndThrowError("_store<T>(ptr, index, value) requires 3 arguments",
+                           genericCall.getLocation());
           return sun::Types::Void();
         }
         return sun::Types::Void();
@@ -582,13 +596,15 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
         // _static_ptr_data<T>(static_ptr<T>) extracts data pointer as
         // raw_ptr<T>
         if (genericCall.getArgs().size() != 1) {
-          logAndThrowError("_static_ptr_data<T>(ptr) requires 1 argument");
+          logAndThrowError("_static_ptr_data<T>(ptr) requires 1 argument",
+                           genericCall.getLocation());
         }
         sun::TypePtr targetType = typeAnnotationToType(*typeArgsVec[0]);
         targetType = substituteTypeParameters(targetType);
         if (!targetType) {
           logAndThrowError(
-              "Failed to resolve type argument for _static_ptr_data<T>");
+              "Failed to resolve type argument for _static_ptr_data<T>",
+              genericCall.getLocation());
         }
         return sun::Types::RawPointer(targetType);
       }
@@ -596,7 +612,8 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       if (funcName == "_static_ptr_len") {
         // _static_ptr_len<T>(static_ptr<T>) extracts length as i64
         if (genericCall.getArgs().size() != 1) {
-          logAndThrowError("_static_ptr_len<T>(ptr) requires 1 argument");
+          logAndThrowError("_static_ptr_len<T>(ptr) requires 1 argument",
+                           genericCall.getLocation());
         }
         return sun::Types::Int64();
       }
@@ -605,13 +622,14 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
         // _ptr_as_raw<T>(ptr<T>) returns raw_ptr<T> without transferring
         // ownership Equivalent to unique_ptr::get() in C++
         if (genericCall.getArgs().size() != 1) {
-          logAndThrowError("_ptr_as_raw<T>(ptr) requires 1 argument");
+          logAndThrowError("_ptr_as_raw<T>(ptr) requires 1 argument",
+                           genericCall.getLocation());
         }
         sun::TypePtr targetType = typeAnnotationToType(*typeArgsVec[0]);
         targetType = substituteTypeParameters(targetType);
         if (!targetType) {
-          logAndThrowError(
-              "Failed to resolve type argument for _ptr_as_raw<T>");
+          logAndThrowError("Failed to resolve type argument for _ptr_as_raw<T>",
+                           genericCall.getLocation());
         }
         return sun::Types::RawPointer(targetType);
       }
@@ -624,7 +642,8 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
         //   _Numeric, _Primitive)
         //   - A user-defined interface (IHashable, IIterable)
         if (genericCall.getArgs().size() != 1) {
-          logAndThrowError("_is<T>(value) requires exactly 1 argument");
+          logAndThrowError("_is<T>(value) requires exactly 1 argument",
+                           genericCall.getLocation());
         }
         // Type argument is validated at codegen time
         return sun::Types::Bool();
@@ -647,7 +666,8 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
           return funcType->getReturnType();
         } else {
           logAndThrowError("Generic function '" + funcName +
-                           "' has unresolved return type for inference");
+                               "' has unresolved return type for inference",
+                           genericCall.getLocation());
         }
       }
 
@@ -670,7 +690,8 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
         }
       }
 
-      logAndThrowError("Unknown generic intrinsic: " + funcName);
+      logAndThrowError("Unknown generic intrinsic: " + funcName,
+                       genericCall.getLocation());
       return sun::Types::Void();
     }
 
@@ -683,7 +704,8 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
 
     default:
       logAndThrowError("Cannot infer type for expression of kind " +
-                       std::to_string(static_cast<int>(expr.getType())));
+                           std::to_string(static_cast<int>(expr.getType())),
+                       expr.getLocation());
   }
 }
 
@@ -706,8 +728,9 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
   objectType = unwrapRef(objectType);
 
   if (!objectType) {
-    logAndThrowError("Cannot access member '" + memberName +
-                     "' on unknown type");
+    logAndThrowError(
+        "Cannot access member '" + memberName + "' on unknown type",
+        memberAccess.getLocation());
   }
 
   // Unwrap raw_ptr<Class> to Class for member access
@@ -724,34 +747,49 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
     case sun::Type::Kind::Module: {
       // Module member access: mod_x.mod_y or mod_x.varName
       auto* moduleType = static_cast<sun::ModuleType*>(objectType.get());
-      std::string qualifiedName =
-          moduleType->getModulePath() + "_" + memberName;
+      std::string modPath = moduleType->getModulePath();
 
-      // Check if it's a nested module (mod_x.mod_y)
-      if (isModuleName(qualifiedName)) {
-        return sun::Types::Module(qualifiedName);
+      // Check if it's a nested module first
+      std::string nestedModPath = modPath + "." + memberName;
+      if (lookupModuleScope(nestedModPath)) {
+        return sun::Types::Module(nestedModPath);
       }
 
-      // Check if it's a variable in this module
-      VariableInfo* varInfo = lookupQualifiedVariable(qualifiedName);
-      if (varInfo) {
-        return varInfo->type;
+      // Use unified symbol lookup to find the member in this module
+      SymbolMatch match = findSymbolInModule(modPath, memberName);
+      if (match) {
+        // Set the resolved qualified name on the AST for codegen
+        // e.g., "$d9b854ae$_sun_make_heap_allocator" for
+        // sun.make_heap_allocator
+        std::string resolvedName =
+            mangleModulePath(match.modulePath) + "_" + memberName;
+        memberAccess.setResolvedQualifiedName(resolvedName);
+
+        switch (match.kind) {
+          case SymbolKind::Class:
+            return match.classType;
+          case SymbolKind::GenericClass:
+            // Return a placeholder - actual instantiation happens at call site
+            return sun::Types::Void();  // TODO: better handling
+          case SymbolKind::Interface:
+            return match.interfaceType;
+          case SymbolKind::GenericInterface:
+            return sun::Types::Void();  // TODO: better handling
+          case SymbolKind::Enum:
+            return match.enumType;
+          case SymbolKind::Function:
+            return sun::Types::Function(match.functionInfo->returnType,
+                                        match.functionInfo->paramTypes);
+          case SymbolKind::Variable:
+            return match.variableInfo->type;
+          default:
+            break;
+        }
       }
 
-      // Check if it's a function in this module
-      const FunctionInfo* funcInfo = lookupQualifiedFunction(qualifiedName);
-      if (funcInfo) {
-        return sun::Types::Function(funcInfo->returnType, funcInfo->paramTypes);
-      }
-
-      // Check if it's a class in this module
-      auto classType = lookupClass(qualifiedName);
-      if (classType) {
-        return classType;
-      }
-
-      logAndThrowError("Unknown member '" + memberName + "' in module '" +
-                       moduleType->getModulePath() + "'");
+      logAndThrowError(
+          "Unknown member '" + memberName + "' in module '" + modPath + "'",
+          memberAccess.getLocation());
     }
 
     case sun::Type::Kind::Enum: {
@@ -761,7 +799,8 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
         return objectType;  // Enum variant has the enum type
       }
       logAndThrowError("Unknown variant '" + memberName + "' in enum '" +
-                       enumType->getName() + "'");
+                           enumType->getName() + "'",
+                       memberAccess.getLocation());
     }
 
     case sun::Type::Kind::Array: {
@@ -773,8 +812,9 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
         size_t ndims = arrayType->getDimensions().size();
         return sun::Types::Array(sun::Types::Int64(), {ndims});
       }
-      logAndThrowError("Array has no member '" + memberName +
-                       "'; available: 'shape'");
+      logAndThrowError(
+          "Array has no member '" + memberName + "'; available: 'shape'",
+          memberAccess.getLocation());
     }
 
     case sun::Type::Kind::StaticPointer: {
@@ -790,7 +830,8 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
         return staticPtrType->getPointeeType();
       }
       logAndThrowError("static_ptr has no member '" + memberName +
-                       "'; available: 'length', 'data', '_get'");
+                           "'; available: 'length', 'data', '_get'",
+                       memberAccess.getLocation());
     }
 
     case sun::Type::Kind::RawPointer: {
@@ -799,8 +840,9 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
       if (memberName == "_get") {
         return ptrType->getPointeeType();
       }
-      logAndThrowError("raw_ptr has no member '" + memberName +
-                       "'; available: '_get'");
+      logAndThrowError(
+          "raw_ptr has no member '" + memberName + "'; available: '_get'",
+          memberAccess.getLocation());
     }
 
     case sun::Type::Kind::Class: {
@@ -863,7 +905,8 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
       }
 
       logAndThrowError("Unknown member '" + memberName + "' on class '" +
-                       classType->getName() + "'");
+                           classType->getName() + "'",
+                       memberAccess.getLocation());
     }
 
     case sun::Type::Kind::Interface: {
@@ -883,7 +926,8 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
       }
 
       logAndThrowError("Unknown member '" + memberName + "' on interface '" +
-                       ifaceType->getName() + "'");
+                           ifaceType->getName() + "'",
+                       memberAccess.getLocation());
     }
 
     case sun::Type::Kind::TypeParameter: {
@@ -909,7 +953,8 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
               return sun::Types::Function(method->returnType,
                                           method->paramTypes);
             logAndThrowError("Unknown member '" + memberName + "' on class '" +
-                             classType->getName() + "'");
+                                 classType->getName() + "'",
+                             memberAccess.getLocation());
           }
           if (narrowedType->isInterface()) {
             const auto* ifaceType =
@@ -922,18 +967,22 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
               return sun::Types::Function(method->returnType,
                                           method->paramTypes);
             logAndThrowError("Unknown member '" + memberName +
-                             "' on interface '" + ifaceType->getName() + "'");
+                                 "' on interface '" + ifaceType->getName() +
+                                 "'",
+                             memberAccess.getLocation());
           }
         }
       }
       // No narrowing available - type parameter has no known members
       logAndThrowError("Cannot access member '" + memberName +
-                       "' on unconstrained type parameter '" +
-                       objectType->toString() + "'");
+                           "' on unconstrained type parameter '" +
+                           objectType->toString() + "'",
+                       memberAccess.getLocation());
     }
 
     default:
       logAndThrowError("Cannot access member '" + memberName + "' on type '" +
-                       objectType->toString() + "'");
+                           objectType->toString() + "'",
+                       memberAccess.getLocation());
   }
 }

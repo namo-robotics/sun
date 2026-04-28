@@ -190,7 +190,7 @@ std::unordered_map<std::string, TypePtr> ModuleTypeResolver::buildExportTable(
     if (sym.kind == ExportedSymbol::Kind::Function) {
       auto type = parseTypeSignature(sym.typeSignature);
       if (type) {
-        exports[sym.name] = type;
+        exports[sym.baseName] = type;
       }
     }
   }
