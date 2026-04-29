@@ -7,425 +7,12 @@
 #include <string>
 #include <vector>
 
-#include "ast.h"
 #include "compiler.h"
 #include "driver.h"
 #include "error.h"
 #include "library_cache.h"
-#include "module_linker.h"
+#include "metadata_extractor.h"
 #include "moon.h"
-#include "parser.h"
-
-/// Extract type signature from an AST type annotation
-static std::string typeAnnotationToString(const TypeAnnotation& ta) {
-  return ta.toString();
-}
-
-/// Extract type signature from an optional type annotation
-static std::string optTypeAnnotationToString(
-    const std::optional<TypeAnnotation>& ta) {
-  return ta ? ta->toString() : "void";
-}
-
-/// Check if a type name is a primitive or built-in type (should not be
-/// qualified)
-static bool isPrimitiveOrBuiltinType(const std::string& name) {
-  static const std::set<std::string> primitives = {
-      "void", "bool", "i8",  "i16", "i32",    "i64",   "u8",    "u16",
-      "u32",  "u64",  "f32", "f64", "string", "slice", "IError"};
-  static const std::set<std::string> typeKeywords = {
-      "raw_ptr", "static_ptr", "ref", "fn", "lambda", "array"};
-  return primitives.count(name) > 0 || typeKeywords.count(name) > 0;
-}
-
-/// Qualify a type annotation string with namespace prefix
-/// User-defined types get the prefix, primitives and type params don't
-static std::string qualifyTypeAnnotation(
-    const TypeAnnotation& ta, const std::string& nsPrefix,
-    const std::set<std::string>& typeParams) {
-  // Handle array types
-  if (ta.isArray() && ta.elementType) {
-    std::string result =
-        "array<" + qualifyTypeAnnotation(*ta.elementType, nsPrefix, typeParams);
-    for (size_t dim : ta.arrayDimensions) {
-      result += ", " + std::to_string(dim);
-    }
-    result += ">";
-    if (ta.canError) result += ", error";
-    return result;
-  }
-
-  // Handle pointer types
-  if (ta.isRawPointer() && ta.elementType) {
-    return "raw_ptr(" +
-           qualifyTypeAnnotation(*ta.elementType, nsPrefix, typeParams) + ")";
-  }
-  if (ta.isStaticPointer() && ta.elementType) {
-    return "static_ptr(" +
-           qualifyTypeAnnotation(*ta.elementType, nsPrefix, typeParams) + ")";
-  }
-  if (ta.isReference() && ta.elementType) {
-    return "ref(" +
-           qualifyTypeAnnotation(*ta.elementType, nsPrefix, typeParams) + ")";
-  }
-
-  // Handle function types
-  if (ta.isFunction()) {
-    std::string result = "_(";
-    for (size_t i = 0; i < ta.paramTypes.size(); ++i) {
-      if (i > 0) result += ", ";
-      result += qualifyTypeAnnotation(*ta.paramTypes[i], nsPrefix, typeParams);
-    }
-    result += ") -> ";
-    result += ta.returnType
-                  ? qualifyTypeAnnotation(*ta.returnType, nsPrefix, typeParams)
-                  : "void";
-    return result;
-  }
-
-  // Handle lambda types
-  if (ta.isLambda()) {
-    std::string result = "(";
-    for (size_t i = 0; i < ta.paramTypes.size(); ++i) {
-      if (i > 0) result += ", ";
-      result += qualifyTypeAnnotation(*ta.paramTypes[i], nsPrefix, typeParams);
-    }
-    result += ") -> ";
-    result += ta.returnType
-                  ? qualifyTypeAnnotation(*ta.returnType, nsPrefix, typeParams)
-                  : "void";
-    return result;
-  }
-
-  // Handle generic types: ClassName<T, U>
-  if (!ta.typeArguments.empty()) {
-    // Qualify the base name if it's not a primitive/keyword and not a type
-    // param
-    std::string baseName = ta.baseName;
-    if (!nsPrefix.empty() && !isPrimitiveOrBuiltinType(baseName) &&
-        typeParams.count(baseName) == 0) {
-      baseName = nsPrefix + baseName;
-    }
-    std::string result = baseName + "<";
-    for (size_t i = 0; i < ta.typeArguments.size(); ++i) {
-      if (i > 0) result += ", ";
-      result +=
-          qualifyTypeAnnotation(*ta.typeArguments[i], nsPrefix, typeParams);
-    }
-    result += ">";
-    if (ta.canError) result += ", error";
-    return result;
-  }
-
-  // Simple type name: qualify if it's a user-defined type
-  std::string result = ta.baseName;
-  if (!nsPrefix.empty() && !isPrimitiveOrBuiltinType(result) &&
-      typeParams.count(result) == 0) {
-    result = nsPrefix + result;
-  }
-  if (ta.canError) result += ", error";
-  return result;
-}
-
-/// Qualify a type annotation with namespace prefix (convenience overload)
-static std::string qualifyTypeAnnotation(
-    const TypeAnnotation& ta, const std::string& nsPrefix,
-    const std::vector<std::string>& typeParamVec) {
-  std::set<std::string> typeParams(typeParamVec.begin(), typeParamVec.end());
-  return qualifyTypeAnnotation(ta, nsPrefix, typeParams);
-}
-
-/// Qualify optional type annotation
-static std::string qualifyOptTypeAnnotation(
-    const std::optional<TypeAnnotation>& ta, const std::string& nsPrefix,
-    const std::vector<std::string>& typeParams) {
-  return ta ? qualifyTypeAnnotation(*ta, nsPrefix, typeParams) : "void";
-}
-
-// Forward declaration for recursive extraction
-static void extractFromStatements(
-    const std::vector<std::unique_ptr<ExprAST>>& stmts,
-    sun::ModuleMetadata& metadata, const std::string& nsPrefix,
-    const std::filesystem::path& moduleDir);
-
-/// Extract a function definition from AST with optional namespace prefix
-static void extractFunction(const FunctionAST& func,
-                            sun::ModuleMetadata& metadata,
-                            const std::string& nsPrefix) {
-  const auto& proto = func.getProto();
-
-  sun::ExportedSymbol sym;
-  sym.kind = sun::ExportedSymbol::Kind::Function;
-  sym.baseName = proto.getName();  // Simple source name
-  sym.qualifiedName =
-      nsPrefix.empty() ? proto.getName() : nsPrefix + proto.getName();
-
-  // Get type parameters for this function
-  std::vector<std::string> typeParams = proto.getTypeParameters();
-
-  // Build type signature: (param1, param2) -> return
-  std::string sig = "(";
-  const auto& args = proto.getArgs();
-  for (size_t i = 0; i < args.size(); ++i) {
-    if (i > 0) sig += ", ";
-    sig += qualifyTypeAnnotation(args[i].second, nsPrefix, typeParams);
-  }
-  sig += ") -> " +
-         qualifyOptTypeAnnotation(proto.getReturnType(), nsPrefix, typeParams);
-  sym.typeSignature = sig;
-  sym.isPublic = true;
-
-  metadata.exports.push_back(sym);
-}
-
-/// Extract a class definition from AST with optional namespace prefix
-static void extractClass(const ClassDefinitionAST& classDef,
-                         sun::ModuleMetadata& metadata,
-                         const std::string& nsPrefix,
-                         const std::string& importPath) {
-  sun::ClassInfo classInfo;
-  classInfo.baseName = classDef.getName();
-  classInfo.qualifiedName =
-      nsPrefix.empty() ? classDef.getName() : nsPrefix + classDef.getName();
-  classInfo.sourceFile = importPath;
-  classInfo.typeParams = classDef.getTypeParameters();
-
-  // Get class type parameters for qualification context
-  std::vector<std::string> classTypeParams = classDef.getTypeParameters();
-
-  // Convert ImplementedInterfaceAST to strings for serialization
-  // Interface names should also be qualified with the namespace prefix
-  for (const auto& iface : classDef.getImplementedInterfaces()) {
-    // Qualify the interface name with the namespace prefix
-    std::string ifaceStr =
-        nsPrefix.empty() ? iface.name : nsPrefix + iface.name;
-    if (!iface.typeArguments.empty()) {
-      ifaceStr += "<";
-      for (size_t i = 0; i < iface.typeArguments.size(); ++i) {
-        if (i > 0) ifaceStr += ", ";
-        ifaceStr += qualifyTypeAnnotation(iface.typeArguments[i], nsPrefix,
-                                          classTypeParams);
-      }
-      ifaceStr += ">";
-    }
-    classInfo.interfaces.push_back(ifaceStr);
-  }
-
-  // Extract fields
-  for (const auto& field : classDef.getFields()) {
-    sun::FieldInfo fieldInfo;
-    fieldInfo.name = field.name;
-    fieldInfo.typeSig =
-        qualifyTypeAnnotation(field.type, nsPrefix, classTypeParams);
-    classInfo.fields.push_back(fieldInfo);
-  }
-
-  // Extract methods
-  for (const auto& method : classDef.getMethods()) {
-    sun::MethodInfo methodInfo;
-    const auto& proto = method.function->getProto();
-    methodInfo.name = proto.getName();
-
-    // Combine class type params with method type params for qualification
-    std::vector<std::string> methodTypeParams = classTypeParams;
-    for (const auto& tp : proto.getTypeParameters()) {
-      methodTypeParams.push_back(tp);
-      methodInfo.typeParams.push_back(tp);
-    }
-
-    methodInfo.returnTypeSig = qualifyOptTypeAnnotation(
-        proto.getReturnType(), nsPrefix, methodTypeParams);
-    methodInfo.isStatic = false;
-
-    // Capture variadic parameter info
-    if (proto.hasVariadicParam()) {
-      methodInfo.variadicParamName = proto.getVariadicParamName().value_or("");
-      if (proto.hasVariadicConstraint()) {
-        methodInfo.variadicConstraint = qualifyTypeAnnotation(
-            *proto.getVariadicConstraint(), nsPrefix, methodTypeParams);
-      }
-    }
-
-    // For generic methods, capture the source text
-    if (method.function->hasSourceText()) {
-      methodInfo.bodySource = method.function->getSourceText();
-    }
-
-    for (const auto& param : proto.getArgs()) {
-      methodInfo.paramNames.push_back(param.first);
-      methodInfo.paramTypeSigs.push_back(
-          qualifyTypeAnnotation(param.second, nsPrefix, methodTypeParams));
-    }
-
-    classInfo.methods.push_back(methodInfo);
-  }
-
-  metadata.classes.push_back(classInfo);
-
-  // Also add class as an exported symbol
-  sun::ExportedSymbol sym;
-  sym.kind = sun::ExportedSymbol::Kind::Class;
-  sym.baseName = classInfo.baseName;
-  sym.qualifiedName = classInfo.qualifiedName + "_struct";
-  sym.isPublic = true;
-  metadata.exports.push_back(sym);
-}
-
-/// Extract an interface definition from AST with optional namespace prefix
-static void extractInterface(const InterfaceDefinitionAST& ifaceDef,
-                             sun::ModuleMetadata& metadata,
-                             const std::string& nsPrefix) {
-  sun::InterfaceInfo ifaceInfo;
-  ifaceInfo.baseName = ifaceDef.getName();
-  ifaceInfo.qualifiedName =
-      nsPrefix.empty() ? ifaceDef.getName() : nsPrefix + ifaceDef.getName();
-
-  // Get interface type parameters for qualification context
-  std::vector<std::string> ifaceTypeParams = ifaceDef.getTypeParameters();
-
-  for (const auto& method : ifaceDef.getMethods()) {
-    sun::MethodInfo methodInfo;
-    const auto& proto = method.function->getProto();
-    methodInfo.name = proto.getName();
-
-    // Combine interface type params with method type params for qualification
-    std::vector<std::string> methodTypeParams = ifaceTypeParams;
-    for (const auto& tp : proto.getTypeParameters()) {
-      methodTypeParams.push_back(tp);
-      methodInfo.typeParams.push_back(tp);
-    }
-
-    methodInfo.returnTypeSig = qualifyOptTypeAnnotation(
-        proto.getReturnType(), nsPrefix, methodTypeParams);
-
-    // Capture variadic parameter info
-    if (proto.hasVariadicParam()) {
-      methodInfo.variadicParamName = proto.getVariadicParamName().value_or("");
-      if (proto.hasVariadicConstraint()) {
-        methodInfo.variadicConstraint = qualifyTypeAnnotation(
-            *proto.getVariadicConstraint(), nsPrefix, methodTypeParams);
-      }
-    }
-
-    // For generic methods with default impl, capture the source text
-    if (method.function->hasSourceText()) {
-      methodInfo.bodySource = method.function->getSourceText();
-    }
-
-    for (const auto& param : proto.getArgs()) {
-      methodInfo.paramNames.push_back(param.first);
-      methodInfo.paramTypeSigs.push_back(
-          qualifyTypeAnnotation(param.second, nsPrefix, methodTypeParams));
-    }
-
-    ifaceInfo.methods.push_back(methodInfo);
-  }
-
-  metadata.interfaces.push_back(ifaceInfo);
-
-  // Also add interface as an exported symbol
-  sun::ExportedSymbol sym;
-  sym.kind = sun::ExportedSymbol::Kind::Interface;
-  sym.baseName = ifaceInfo.baseName;
-  sym.qualifiedName = ifaceInfo.qualifiedName;
-  sym.isPublic = true;
-  metadata.exports.push_back(sym);
-}
-
-/// Recursively extract metadata from statements, handling namespaces
-static void extractFromStatements(
-    const std::vector<std::unique_ptr<ExprAST>>& stmts,
-    sun::ModuleMetadata& metadata, const std::string& nsPrefix,
-    const std::filesystem::path& moduleDir) {
-  for (const auto& stmt : stmts) {
-    if (!stmt) continue;
-
-    // Extract imports as dependencies (only at top level)
-    if (stmt->isImport() && nsPrefix.empty()) {
-      const auto& importStmt = static_cast<const ImportAST&>(*stmt);
-      std::filesystem::path depPath = importStmt.getPath();
-      if (depPath.is_relative()) {
-        depPath = std::filesystem::weakly_canonical(moduleDir / depPath);
-      }
-      metadata.dependencies.push_back(depPath.string());
-    }
-
-    // Handle namespace/module blocks
-    if (stmt->getType() == ASTNodeType::NAMESPACE) {
-      const auto& nsDecl = static_cast<const NamespaceAST&>(*stmt);
-      // Build qualified prefix: parent_child_
-      std::string newPrefix = nsPrefix.empty()
-                                  ? nsDecl.getName() + "_"
-                                  : nsPrefix + nsDecl.getName() + "_";
-      // Record the top-level module name (only for root-level namespaces)
-      if (nsPrefix.empty() && metadata.moduleName.empty()) {
-        metadata.moduleName = nsDecl.getName();
-      }
-      // Recursively extract from namespace body
-      extractFromStatements(nsDecl.getBody().getBody(), metadata, newPrefix,
-                            moduleDir);
-    }
-
-    // Extract function definitions
-    if (stmt->getType() == ASTNodeType::FUNCTION) {
-      extractFunction(static_cast<const FunctionAST&>(*stmt), metadata,
-                      nsPrefix);
-    }
-
-    // Extract class definitions
-    if (stmt->getType() == ASTNodeType::CLASS_DEFINITION) {
-      extractClass(static_cast<const ClassDefinitionAST&>(*stmt), metadata,
-                   nsPrefix, metadata.importPath);
-    }
-
-    // Extract interface definitions
-    if (stmt->getType() == ASTNodeType::INTERFACE_DEFINITION) {
-      extractInterface(static_cast<const InterfaceDefinitionAST&>(*stmt),
-                       metadata, nsPrefix);
-    }
-  }
-}
-
-/// Extract module metadata from parsed AST
-static sun::ModuleMetadata extractMetadata(const std::string& importPath,
-                                           const BlockExprAST& ast) {
-  sun::ModuleMetadata metadata;
-  metadata.importPath = importPath;
-  metadata.version = "1.0.0";
-
-  // Get the directory of the current module for resolving relative imports
-  std::filesystem::path moduleDir =
-      std::filesystem::path(importPath).parent_path();
-
-  // Extract metadata from all statements, handling namespaces recursively
-  extractFromStatements(ast.getBody(), metadata, "", moduleDir);
-
-  return metadata;
-}
-
-/// Parse a file and extract metadata without full compilation
-static std::optional<sun::ModuleMetadata> parseAndExtractMetadata(
-    const std::string& filename) {
-  std::ifstream file(filename);
-  if (!file.is_open()) {
-    return std::nullopt;
-  }
-  std::stringstream buffer;
-  buffer << file.rdbuf();
-  std::string source = buffer.str();
-
-  std::istringstream ss(source);
-  Parser parser(ss);
-  parser.setBaseDir(std::filesystem::path(filename).parent_path().string());
-  parser.getNextToken();
-
-  auto ast = parser.parseProgram();
-  if (!ast) {
-    return std::nullopt;
-  }
-
-  return extractMetadata(filename, *ast);
-}
 
 static void printUsage(const char* programName) {
   llvm::errs() << "Usage: " << programName
@@ -570,8 +157,7 @@ int main(int argc, char* argv[]) {
       llvm::outs() << "  Processing: " << file << "\n";
 
       try {
-        // First, parse to extract metadata
-        auto metadataOpt = parseAndExtractMetadata(file);
+        auto metadataOpt = sun::extractMetadataFromFile(file);
         if (!metadataOpt) {
           llvm::errs() << "Error: Failed to parse " << file
                        << " for metadata\n";
@@ -579,11 +165,10 @@ int main(int argc, char* argv[]) {
         }
         auto metadata = *metadataOpt;
 
-        // Then compile to get LLVM IR
         auto driver = Driver::createForAOT("bundle_module");
         driver->compileFile(file);
 
-        bundleWriter.addModule(file, driver->getModule(), metadata);
+        bundleWriter.addModule(driver->getModule(), metadata);
       } catch (const SunError& e) {
         llvm::errs() << "Error compiling " << file << ": " << e.what() << "\n";
         return 1;
@@ -623,8 +208,7 @@ int main(int argc, char* argv[]) {
                  << "\n";
 
     try {
-      // First, parse to extract metadata
-      auto metadataOpt = parseAndExtractMetadata(inputFiles[0]);
+      auto metadataOpt = sun::extractMetadataFromFile(inputFiles[0]);
       if (!metadataOpt) {
         llvm::errs() << "Error: Failed to parse " << inputFiles[0]
                      << " for metadata\n";
@@ -632,12 +216,11 @@ int main(int argc, char* argv[]) {
       }
       auto metadata = *metadataOpt;
 
-      // Then compile to get LLVM IR
       auto driver = Driver::createForAOT("moon_module");
       driver->compileFile(inputFiles[0]);
 
       sun::SunLibWriter writer;
-      writer.addModule(inputFiles[0], driver->getModule(), metadata);
+      writer.addModule(driver->getModule(), metadata);
 
       if (!writer.write(outputFile)) {
         llvm::errs() << "Error writing moon: " << writer.getError() << "\n";

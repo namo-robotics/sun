@@ -43,7 +43,7 @@ struct MethodInfo {
 struct ClassInfo {
   std::string baseName;       // Unqualified name: "HeapAllocator"
   std::string qualifiedName;  // Namespace-prefixed: "sun_HeapAllocator"
-  std::string sourceFile;  // Original source file (for generic method parsing)
+  std::string sourceHash;     // SHA-256 hash of source file contents
   std::vector<std::string> typeParams;  // Generic type parameters
   std::vector<std::string> interfaces;  // Implemented interfaces
   std::vector<FieldInfo> fields;
@@ -85,7 +85,7 @@ struct ExportedSymbol {
 
 /// Metadata for a single module within a .moon bundle
 struct ModuleMetadata {
-  std::string importPath;  // "stdlib/allocator.sun"
+  std::string sourceHash;  // SHA-256 hash of source file contents
   std::string
       moduleName;       // Module namespace: "sun" or "b" (empty if no module)
   std::string version;  // "1.0.0"
@@ -107,8 +107,7 @@ struct ModuleMetadata {
 /// Binary header for .moon format
 struct SunLibHeader {
   static constexpr uint32_t MAGIC = 0x53554E4C;  // "SUNL"
-  static constexpr uint32_t VERSION =
-      3;  // V3: Added content hash for symbol isolation
+  static constexpr uint32_t VERSION = 1;         // V1: Only version 1 supported
 
   uint32_t magic = MAGIC;
   uint32_t version = VERSION;
@@ -118,7 +117,7 @@ struct SunLibHeader {
 
 /// Index entry for a module in the bundle
 struct ModuleIndexEntry {
-  std::string importPath;
+  std::string moduleKey;  // Source hash used as module identifier
   uint64_t bitcodeOffset;
   uint64_t bitcodeSize;
   uint64_t metadataOffset;
@@ -131,11 +130,9 @@ class SunLibWriter {
   SunLibWriter();
 
   /// Add a compiled module to the bundle
-  /// @param importPath The import path (e.g., "stdlib/allocator.sun")
   /// @param module The compiled LLVM module
-  /// @param metadata Module metadata including exports
-  void addModule(const std::string& importPath, llvm::Module& module,
-                 const ModuleMetadata& metadata);
+  /// @param metadata Module metadata including exports (sourceHash used as key)
+  void addModule(llvm::Module& module, const ModuleMetadata& metadata);
 
   /// Write the bundle to disk
   /// @param outputPath Path to write the .moon file
@@ -147,7 +144,6 @@ class SunLibWriter {
 
  private:
   struct ModuleData {
-    std::string importPath;
     std::string bitcode;
     ModuleMetadata
         metadata;  // Store object, serialize in write() with shared hash
@@ -166,22 +162,22 @@ class SunLibReader {
   static std::unique_ptr<SunLibReader> open(const std::filesystem::path& path);
 
   /// Check if a module exists in this bundle
-  /// @param importPath The import path (e.g., "stdlib/allocator.sun")
-  bool hasModule(const std::string& importPath) const;
+  /// @param moduleKey The module key (source hash)
+  bool hasModule(const std::string& moduleKey) const;
 
   /// List all modules in the bundle
   std::vector<std::string> listModules() const;
 
   /// Get metadata for a module without loading bitcode
-  /// @param importPath The import path
+  /// @param moduleKey The module key (source hash)
   /// @return Metadata, or nullptr if not found
-  const ModuleMetadata* getMetadata(const std::string& importPath);
+  const ModuleMetadata* getMetadata(const std::string& moduleKey);
 
   /// Load a module's LLVM bitcode
-  /// @param importPath The import path
+  /// @param moduleKey The module key (source hash)
   /// @param context LLVM context to create module in
   /// @return LLVM module, or nullptr on failure
-  std::unique_ptr<llvm::Module> loadModule(const std::string& importPath,
+  std::unique_ptr<llvm::Module> loadModule(const std::string& moduleKey,
                                            llvm::LLVMContext& context);
 
   /// Get error message if an operation failed
@@ -195,7 +191,7 @@ class SunLibReader {
 
   std::filesystem::path path_;
   std::vector<ModuleIndexEntry> index_;
-  std::unordered_map<std::string, size_t> indexMap_;  // importPath -> index
+  std::unordered_map<std::string, size_t> indexMap_;  // moduleKey -> index
   std::unordered_map<std::string, ModuleMetadata> metadataCache_;
   std::string error_;
 

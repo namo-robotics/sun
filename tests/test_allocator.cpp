@@ -66,7 +66,7 @@ TEST(AllocatorTest, heap_allocator_create_simple_class) {
 
     function main() i32 {
         var alloc = make_heap_allocator();
-        var rawPtr: raw_ptr<Point> = alloc.create<Point>(3, 4);
+      var rawPtr = alloc.create<Point>(3, 4);
         var p = Unique<Point>(rawPtr);
         return p.get().sum();
     }

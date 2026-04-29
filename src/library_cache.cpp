@@ -117,9 +117,9 @@ void LibraryCache::discoverBundles() {
   discovered_ = true;
 }
 
-SunLibReader* LibraryCache::findBundleForModule(const std::string& importPath) {
+SunLibReader* LibraryCache::findBundleForModule(const std::string& moduleKey) {
   // Check cache first
-  auto it = moduleToBundle_.find(importPath);
+  auto it = moduleToBundle_.find(moduleKey);
   if (it != moduleToBundle_.end()) {
     return it->second;
   }
@@ -128,7 +128,7 @@ SunLibReader* LibraryCache::findBundleForModule(const std::string& importPath) {
   discoverBundles();
 
   // Check again after discovery
-  it = moduleToBundle_.find(importPath);
+  it = moduleToBundle_.find(moduleKey);
   if (it != moduleToBundle_.end()) {
     return it->second;
   }
@@ -136,32 +136,32 @@ SunLibReader* LibraryCache::findBundleForModule(const std::string& importPath) {
   return nullptr;
 }
 
-bool LibraryCache::hasModule(const std::string& importPath) {
+bool LibraryCache::hasModule(const std::string& moduleKey) {
   std::lock_guard<std::mutex> lock(mutex_);
-  return findBundleForModule(importPath) != nullptr;
+  return findBundleForModule(moduleKey) != nullptr;
 }
 
-const ModuleMetadata* LibraryCache::getMetadata(const std::string& importPath) {
+const ModuleMetadata* LibraryCache::getMetadata(const std::string& moduleKey) {
   std::lock_guard<std::mutex> lock(mutex_);
 
-  auto* bundle = findBundleForModule(importPath);
+  auto* bundle = findBundleForModule(moduleKey);
   if (!bundle) {
     return nullptr;
   }
 
-  return bundle->getMetadata(importPath);
+  return bundle->getMetadata(moduleKey);
 }
 
 std::unique_ptr<llvm::Module> LibraryCache::loadModule(
-    const std::string& importPath, llvm::LLVMContext& context) {
+    const std::string& moduleKey, llvm::LLVMContext& context) {
   std::lock_guard<std::mutex> lock(mutex_);
 
-  auto* bundle = findBundleForModule(importPath);
+  auto* bundle = findBundleForModule(moduleKey);
   if (!bundle) {
     return nullptr;
   }
 
-  return bundle->loadModule(importPath, context);
+  return bundle->loadModule(moduleKey, context);
 }
 
 const std::vector<std::filesystem::path>& LibraryCache::getSearchPaths() const {

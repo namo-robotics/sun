@@ -66,6 +66,7 @@ add_library(sun_lib
     src/library_cache.cpp
     src/module_linker.cpp
     src/module_types.cpp
+    src/metadata_extractor.cpp
     # Add other implementation files here (but NOT main.cpp)
 )
 

@@ -658,8 +658,6 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
         // Resolve return type with type parameter substitution
         auto resolvedType = genFuncInfo->AST->getResolvedType();
         if (resolvedType) {
-          auto genericFuncType =
-              static_cast<sun::FunctionType*>(resolvedType.get());
           auto substitutedType = substituteTypeParameters(resolvedType);
           auto funcType =
               static_cast<sun::FunctionType*>(substitutedType.get());
@@ -879,9 +877,6 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
           if (typeArgPtrs.size() == typeParams.size()) {
             // Instantiate the generic method - this creates and stores the
             // specialized FunctionAST on the generic method for codegen access
-            auto classTypeShared = std::const_pointer_cast<sun::ClassType>(
-                std::shared_ptr<const sun::ClassType>(
-                    std::shared_ptr<const sun::ClassType>{}, classType));
             // Need non-const ClassType - look it up from class table
             auto mutableClassType = lookupClass(classType->getName());
             if (mutableClassType) {

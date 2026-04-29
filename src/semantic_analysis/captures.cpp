@@ -15,14 +15,8 @@ std::set<std::string> SemanticAnalyzer::collectFreeVariables(
 
   switch (expr.getType()) {
     case ASTNodeType::NUMBER:
-      break;
-
     case ASTNodeType::STRING_LITERAL:
-      break;
-
     case ASTNodeType::NULL_LITERAL:
-      break;
-
     case ASTNodeType::BOOL_LITERAL:
       break;
 

@@ -73,13 +73,13 @@ llvm::FunctionType* remapFunctionType(llvm::FunctionType* srcFuncType,
 ModuleLinker::ModuleLinker(llvm::Module& targetModule)
     : target_(targetModule) {}
 
-bool ModuleLinker::linkModule(const std::string& importPath) {
-  return linkModuleRecursive(importPath);
+bool ModuleLinker::linkModule(const std::string& moduleKey) {
+  return linkModuleRecursive(moduleKey);
 }
 
-bool ModuleLinker::linkModules(const std::vector<std::string>& importPaths) {
-  for (const auto& path : importPaths) {
-    if (!linkModuleRecursive(path)) {
+bool ModuleLinker::linkModules(const std::vector<std::string>& moduleKeys) {
+  for (const auto& key : moduleKeys) {
+    if (!linkModuleRecursive(key)) {
       return false;
     }
   }
@@ -87,18 +87,18 @@ bool ModuleLinker::linkModules(const std::vector<std::string>& importPaths) {
 }
 
 void ModuleLinker::registerAvailableModules(
-    const std::vector<std::string>& importPaths) {
-  for (const auto& path : importPaths) {
-    if (availableModules_.count(path)) {
+    const std::vector<std::string>& moduleKeys) {
+  for (const auto& key : moduleKeys) {
+    if (availableModules_.count(key)) {
       continue;
     }
-    availableModules_.insert(path);
-    buildSymbolMap(path);
+    availableModules_.insert(key);
+    buildSymbolMap(key);
   }
 }
 
-void ModuleLinker::buildSymbolMap(const std::string& importPath) {
-  auto* metadata = LibraryCache::instance().getMetadata(importPath);
+void ModuleLinker::buildSymbolMap(const std::string& moduleKey) {
+  auto* metadata = LibraryCache::instance().getMetadata(moduleKey);
   if (!metadata) {
     return;
   }
@@ -106,7 +106,7 @@ void ModuleLinker::buildSymbolMap(const std::string& importPath) {
   // Map exported functions to this module
   for (const auto& exp : metadata->exports) {
     if (!exp.qualifiedName.empty()) {
-      symbolToModule_[exp.qualifiedName] = importPath;
+      symbolToModule_[exp.qualifiedName] = moduleKey;
     }
   }
 
@@ -122,7 +122,7 @@ void ModuleLinker::buildSymbolMap(const std::string& importPath) {
       if (!method.typeParams.empty()) continue;
 
       std::string mangledName = className + "_" + method.name;
-      symbolToModule_[mangledName] = importPath;
+      symbolToModule_[mangledName] = moduleKey;
     }
   }
 }
@@ -130,14 +130,14 @@ void ModuleLinker::buildSymbolMap(const std::string& importPath) {
 void ModuleLinker::declareAvailableFunctions() {
   auto& ctx = target_.getContext();
 
-  for (const auto& modulePath : availableModules_) {
+  for (const auto& moduleKey : availableModules_) {
     // Get metadata to retrieve content hash for symbol prefixing
-    auto* metadata = LibraryCache::instance().getMetadata(modulePath);
+    auto* metadata = LibraryCache::instance().getMetadata(moduleKey);
     std::string prefix = metadata ? metadata->getSymbolPrefix() : "";
 
     // Load the bitcode module to scan its functions directly
     // This captures all concrete functions including generic specializations
-    auto libModule = LibraryCache::instance().loadModule(modulePath, ctx);
+    auto libModule = LibraryCache::instance().loadModule(moduleKey, ctx);
     if (!libModule) continue;
 
     // Scan all defined functions in the bitcode and create declarations
@@ -177,7 +177,7 @@ void ModuleLinker::declareAvailableFunctions() {
                              prefixedName, &target_);
 
       // Map prefixed name to module for linking
-      symbolToModule_[prefixedName] = modulePath;
+      symbolToModule_[prefixedName] = moduleKey;
     }
   }
 }
@@ -217,16 +217,16 @@ bool ModuleLinker::linkOnlyUsedSymbols() {
   return true;
 }
 
-bool ModuleLinker::linkModuleRecursive(const std::string& importPath) {
+bool ModuleLinker::linkModuleRecursive(const std::string& moduleKey) {
   // Already linked?
-  if (linkedModules_.count(importPath)) {
+  if (linkedModules_.count(moduleKey)) {
     return true;
   }
 
   // Get metadata to find dependencies and content hash
-  auto* metadata = LibraryCache::instance().getMetadata(importPath);
+  auto* metadata = LibraryCache::instance().getMetadata(moduleKey);
   if (!metadata) {
-    error_ = "Module not found in library cache: " + importPath;
+    error_ = "Module not found in library cache: " + moduleKey;
     return false;
   }
 
@@ -241,16 +241,16 @@ bool ModuleLinker::linkModuleRecursive(const std::string& importPath) {
 
   // Load the module bitcode
   auto libModule =
-      LibraryCache::instance().loadModule(importPath, target_.getContext());
+      LibraryCache::instance().loadModule(moduleKey, target_.getContext());
   if (!libModule) {
     // Get detailed error from the reader
-    auto* bundle = LibraryCache::instance().findBundleForModule(importPath);
+    auto* bundle = LibraryCache::instance().findBundleForModule(moduleKey);
     if (bundle) {
-      error_ = "Failed to load bitcode for: " + importPath + " - " +
+      error_ = "Failed to load bitcode for: " + moduleKey + " - " +
                bundle->getError();
     } else {
       error_ =
-          "Failed to load bitcode for: " + importPath + " (bundle not found)";
+          "Failed to load bitcode for: " + moduleKey + " (bundle not found)";
     }
     return false;
   }
@@ -317,11 +317,11 @@ bool ModuleLinker::linkModuleRecursive(const std::string& importPath) {
   // Using Linker::linkModules with OverrideFromSrc to handle duplicate symbols
   if (llvm::Linker::linkModules(target_, std::move(libModule),
                                 llvm::Linker::Flags::OverrideFromSrc)) {
-    error_ = "LLVM linker failed for: " + importPath;
+    error_ = "LLVM linker failed for: " + moduleKey;
     return false;
   }
 
-  linkedModules_.insert(importPath);
+  linkedModules_.insert(moduleKey);
   return true;
 }
 

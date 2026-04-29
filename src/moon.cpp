@@ -174,7 +174,7 @@ std::string ClassInfo::serialize() const {
   std::ostringstream oss;
   oss << "CLASS:" << baseName << "\n";
   oss << "QUALIFIEDNAME:" << qualifiedName << "\n";
-  oss << "SOURCE:" << sourceFile << "\n";
+  oss << "SOURCEHASH:" << sourceHash << "\n";
 
   oss << "TYPEPARAMS:" << typeParams.size() << "\n";
   for (const auto& tp : typeParams) {
@@ -214,9 +214,9 @@ ClassInfo ClassInfo::deserialize(const std::string& data) {
     info.qualifiedName = line.substr(14);
   }
 
-  // SOURCE:path
-  if (std::getline(iss, line) && line.substr(0, 7) == "SOURCE:") {
-    info.sourceFile = line.substr(7);
+  // SOURCE:path (legacy) or SOURCEHASH:hash
+  if (std::getline(iss, line) && line.substr(0, 11) == "SOURCEHASH:") {
+    info.sourceHash = line.substr(11);
   }
 
   // TYPEPARAMS:count
@@ -351,8 +351,8 @@ ExportedSymbol ExportedSymbol::deserialize(const std::string& data) {
 
 std::string ModuleMetadata::serialize() const {
   std::ostringstream oss;
-  oss << "SUNLIB_META_V3\n";
-  oss << "path:" << importPath << "\n";
+  oss << "SUNLIB_META_V1\n";
+  oss << "sourcehash:" << sourceHash << "\n";
   oss << "module:" << moduleName << "\n";
   oss << "version:" << version << "\n";
   oss << "hash:" << contentHash << "\n";
@@ -391,26 +391,21 @@ ModuleMetadata ModuleMetadata::deserialize(const std::string& data) {
   std::istringstream iss(data);
   std::string line;
 
-  // Header - support V1, V2, and V3
   std::getline(iss, line);
-  bool isV2 = (line == "SUNLIB_META_V2");
-  bool isV3 = (line == "SUNLIB_META_V3");
-  if (line != "SUNLIB_META_V1" && !isV2 && !isV3) {
+  if (line != "SUNLIB_META_V1") {
     return meta;  // Invalid format
   }
 
-  // Path
+  // Source hash
   std::getline(iss, line);
-  if (line.substr(0, 5) == "path:") {
-    meta.importPath = line.substr(5);
+  if (line.substr(0, 11) == "sourcehash:") {
+    meta.sourceHash = line.substr(11);
   }
 
-  // Module name (V3 only)
-  if (isV3) {
-    std::getline(iss, line);
-    if (line.substr(0, 7) == "module:") {
-      meta.moduleName = line.substr(7);
-    }
+  // Module name
+  std::getline(iss, line);
+  if (line.substr(0, 7) == "module:") {
+    meta.moduleName = line.substr(7);
   }
 
   // Version
@@ -419,12 +414,10 @@ ModuleMetadata ModuleMetadata::deserialize(const std::string& data) {
     meta.version = line.substr(8);
   }
 
-  // Content hash (V3 only)
-  if (isV3) {
-    std::getline(iss, line);
-    if (line.substr(0, 5) == "hash:") {
-      meta.contentHash = line.substr(5);
-    }
+  // Content hash
+  std::getline(iss, line);
+  if (line.substr(0, 5) == "hash:") {
+    meta.contentHash = line.substr(5);
   }
 
   // Dependencies
@@ -447,31 +440,28 @@ ModuleMetadata ModuleMetadata::deserialize(const std::string& data) {
     }
   }
 
-  // V2/V3 format: classes and interfaces
-  if (isV2 || isV3) {
-    // Classes
-    if (std::getline(iss, line) && line.substr(0, 8) == "classes:") {
-      int count = std::stoi(line.substr(8));
-      for (int i = 0; i < count; ++i) {
-        if (std::getline(iss, line) && line.substr(0, 12) == "CLASS_START:") {
-          size_t size = std::stoul(line.substr(12));
-          std::string clsData(size, '\0');
-          iss.read(clsData.data(), static_cast<std::streamsize>(size));
-          meta.classes.push_back(ClassInfo::deserialize(clsData));
-        }
+  // Classes
+  if (std::getline(iss, line) && line.substr(0, 8) == "classes:") {
+    int count = std::stoi(line.substr(8));
+    for (int i = 0; i < count; ++i) {
+      if (std::getline(iss, line) && line.substr(0, 12) == "CLASS_START:") {
+        size_t size = std::stoul(line.substr(12));
+        std::string clsData(size, '\0');
+        iss.read(clsData.data(), static_cast<std::streamsize>(size));
+        meta.classes.push_back(ClassInfo::deserialize(clsData));
       }
     }
+  }
 
-    // Interfaces
-    if (std::getline(iss, line) && line.substr(0, 11) == "interfaces:") {
-      int count = std::stoi(line.substr(11));
-      for (int i = 0; i < count; ++i) {
-        if (std::getline(iss, line) && line.substr(0, 12) == "IFACE_START:") {
-          size_t size = std::stoul(line.substr(12));
-          std::string ifaceData(size, '\0');
-          iss.read(ifaceData.data(), static_cast<std::streamsize>(size));
-          meta.interfaces.push_back(InterfaceInfo::deserialize(ifaceData));
-        }
+  // Interfaces
+  if (std::getline(iss, line) && line.substr(0, 11) == "interfaces:") {
+    int count = std::stoi(line.substr(11));
+    for (int i = 0; i < count; ++i) {
+      if (std::getline(iss, line) && line.substr(0, 12) == "IFACE_START:") {
+        size_t size = std::stoul(line.substr(12));
+        std::string ifaceData(size, '\0');
+        iss.read(ifaceData.data(), static_cast<std::streamsize>(size));
+        meta.interfaces.push_back(InterfaceInfo::deserialize(ifaceData));
       }
     }
   }
@@ -485,11 +475,9 @@ ModuleMetadata ModuleMetadata::deserialize(const std::string& data) {
 
 SunLibWriter::SunLibWriter() = default;
 
-void SunLibWriter::addModule(const std::string& importPath,
-                             llvm::Module& module,
+void SunLibWriter::addModule(llvm::Module& module,
                              const ModuleMetadata& metadata) {
   ModuleData data;
-  data.importPath = importPath;
 
   // Serialize LLVM bitcode
   llvm::raw_string_ostream bitcodeStream(data.bitcode);
@@ -528,7 +516,7 @@ bool SunLibWriter::write(const std::filesystem::path& outputPath) {
 
   for (auto& mod : modules_) {
     ModuleIndexEntry entry;
-    entry.importPath = mod.importPath;
+    entry.moduleKey = mod.metadata.sourceHash;
 
     // Write bitcode
     entry.bitcodeOffset = static_cast<uint64_t>(out.tellp());
@@ -553,15 +541,15 @@ bool SunLibWriter::write(const std::filesystem::path& outputPath) {
   header.indexOffset = static_cast<uint32_t>(out.tellp());
 
   // Index format: count, then for each entry:
-  // pathLen(4), path, bitcodeOffset(8), bitcodeSize(8), metadataOffset(8),
+  // keyLen(4), key, bitcodeOffset(8), bitcodeSize(8), metadataOffset(8),
   // metadataSize(8)
   uint32_t indexCount = static_cast<uint32_t>(index.size());
   out.write(reinterpret_cast<const char*>(&indexCount), sizeof(indexCount));
 
   for (const auto& entry : index) {
-    uint32_t pathLen = static_cast<uint32_t>(entry.importPath.size());
-    out.write(reinterpret_cast<const char*>(&pathLen), sizeof(pathLen));
-    out.write(entry.importPath.data(), pathLen);
+    uint32_t keyLen = static_cast<uint32_t>(entry.moduleKey.size());
+    out.write(reinterpret_cast<const char*>(&keyLen), sizeof(keyLen));
+    out.write(entry.moduleKey.data(), keyLen);
     out.write(reinterpret_cast<const char*>(&entry.bitcodeOffset),
               sizeof(entry.bitcodeOffset));
     out.write(reinterpret_cast<const char*>(&entry.bitcodeSize),
@@ -602,8 +590,8 @@ std::unique_ptr<SunLibReader> SunLibReader::open(
   if (header.magic != SunLibHeader::MAGIC) {
     return nullptr;
   }
-  // Accept V1, V2, and V3 formats
-  if (header.version != 1 && header.version != 2 && header.version != 3) {
+  // Only accept V1 format
+  if (header.version != 1) {
     return nullptr;
   }
 
@@ -619,11 +607,11 @@ std::unique_ptr<SunLibReader> SunLibReader::open(
   for (uint32_t i = 0; i < indexCount; ++i) {
     ModuleIndexEntry entry;
 
-    uint32_t pathLen;
-    in.read(reinterpret_cast<char*>(&pathLen), sizeof(pathLen));
+    uint32_t keyLen;
+    in.read(reinterpret_cast<char*>(&keyLen), sizeof(keyLen));
 
-    entry.importPath.resize(pathLen);
-    in.read(entry.importPath.data(), pathLen);
+    entry.moduleKey.resize(keyLen);
+    in.read(entry.moduleKey.data(), keyLen);
 
     in.read(reinterpret_cast<char*>(&entry.bitcodeOffset),
             sizeof(entry.bitcodeOffset));
@@ -634,22 +622,22 @@ std::unique_ptr<SunLibReader> SunLibReader::open(
     in.read(reinterpret_cast<char*>(&entry.metadataSize),
             sizeof(entry.metadataSize));
 
-    reader->indexMap_[entry.importPath] = reader->index_.size();
+    reader->indexMap_[entry.moduleKey] = reader->index_.size();
     reader->index_.push_back(entry);
   }
 
   return reader;
 }
 
-bool SunLibReader::hasModule(const std::string& importPath) const {
-  return indexMap_.find(importPath) != indexMap_.end();
+bool SunLibReader::hasModule(const std::string& moduleKey) const {
+  return indexMap_.find(moduleKey) != indexMap_.end();
 }
 
 std::vector<std::string> SunLibReader::listModules() const {
   std::vector<std::string> result;
   result.reserve(index_.size());
   for (const auto& entry : index_) {
-    result.push_back(entry.importPath);
+    result.push_back(entry.moduleKey);
   }
   return result;
 }
@@ -674,17 +662,17 @@ bool SunLibReader::readBytes(uint64_t offset, uint64_t size,
   return true;
 }
 
-const ModuleMetadata* SunLibReader::getMetadata(const std::string& importPath) {
+const ModuleMetadata* SunLibReader::getMetadata(const std::string& moduleKey) {
   // Check cache
-  auto cacheIt = metadataCache_.find(importPath);
+  auto cacheIt = metadataCache_.find(moduleKey);
   if (cacheIt != metadataCache_.end()) {
     return &cacheIt->second;
   }
 
   // Find index entry
-  auto it = indexMap_.find(importPath);
+  auto it = indexMap_.find(moduleKey);
   if (it == indexMap_.end()) {
-    error_ = "Module not found: " + importPath;
+    error_ = "Module not found: " + moduleKey;
     return nullptr;
   }
 
@@ -697,17 +685,17 @@ const ModuleMetadata* SunLibReader::getMetadata(const std::string& importPath) {
   }
 
   std::string metadataStr(buffer.begin(), buffer.end());
-  metadataCache_[importPath] = ModuleMetadata::deserialize(metadataStr);
+  metadataCache_[moduleKey] = ModuleMetadata::deserialize(metadataStr);
 
-  return &metadataCache_[importPath];
+  return &metadataCache_[moduleKey];
 }
 
 std::unique_ptr<llvm::Module> SunLibReader::loadModule(
-    const std::string& importPath, llvm::LLVMContext& context) {
+    const std::string& moduleKey, llvm::LLVMContext& context) {
   // Find index entry
-  auto it = indexMap_.find(importPath);
+  auto it = indexMap_.find(moduleKey);
   if (it == indexMap_.end()) {
-    error_ = "Module not found in index: " + importPath + " (available: ";
+    error_ = "Module not found in index: " + moduleKey + " (available: ";
     for (const auto& [k, v] : indexMap_) {
       error_ += k + ", ";
     }
@@ -728,7 +716,7 @@ std::unique_ptr<llvm::Module> SunLibReader::loadModule(
 
   // Parse bitcode
   auto memBuffer = llvm::MemoryBuffer::getMemBuffer(
-      llvm::StringRef(buffer.data(), buffer.size()), importPath,
+      llvm::StringRef(buffer.data(), buffer.size()), moduleKey,
       false  // RequiresNullTerminator
   );
 
@@ -738,7 +726,7 @@ std::unique_ptr<llvm::Module> SunLibReader::loadModule(
     std::string errStr;
     llvm::raw_string_ostream errOS(errStr);
     errOS << moduleOrErr.takeError();
-    error_ = "Failed to parse bitcode for: " + importPath + " - " + errStr;
+    error_ = "Failed to parse bitcode for: " + moduleKey + " - " + errStr;
     return nullptr;
   }
 

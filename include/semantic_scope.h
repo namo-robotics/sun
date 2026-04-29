@@ -99,7 +99,6 @@ enum class SymbolKind {
   GenericInterface,
   Enum,
   Function,
-  GenericFunction,
   Variable
 };
 
@@ -123,7 +122,6 @@ struct SymbolMatch {
   const GenericClassInfo* genericClassInfo = nullptr;
   const GenericInterfaceInfo* genericInterfaceInfo = nullptr;
   const FunctionInfo* functionInfo = nullptr;
-  const GenericFunctionInfo* genericFunctionInfo = nullptr;
   const VariableInfo* variableInfo = nullptr;
 
   bool empty() const { return kind == SymbolKind::None; }
@@ -262,8 +260,6 @@ struct SemanticScope {
       const std::string& name) const;
   // Find an enum by name in this scope or child module scopes
   std::shared_ptr<sun::EnumType> findEnum(const std::string& name) const;
-  // Find a function by signature in this scope or child module scopes
-  const FunctionInfo* findFunction(const std::string& sig) const;
   // Find functions matching a name prefix in this scope or child module scopes
   void collectFunctions(const std::string& prefix,
                         std::vector<FunctionInfo>& results) const;

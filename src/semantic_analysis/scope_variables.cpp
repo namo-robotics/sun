@@ -129,18 +129,6 @@ std::shared_ptr<sun::EnumType> SemanticScope::findEnum(
   return nullptr;
 }
 
-const FunctionInfo* SemanticScope::findFunction(const std::string& sig) const {
-  auto it = functions.find(sig);
-  if (it != functions.end()) return &it->second;
-  for (const auto& [modName, child] : childModules) {
-    if (child) {
-      auto result = child->findFunction(sig);
-      if (result) return result;
-    }
-  }
-  return nullptr;
-}
-
 void SemanticScope::collectFunctions(const std::string& prefix,
                                      std::vector<FunctionInfo>& results) const {
   for (const auto& [sig, info] : functions) {
@@ -245,24 +233,6 @@ std::string SemanticAnalyzer::qualifyNameInCurrentModule(
     const std::string& name) const {
   std::string prefix = getCurrentModulePrefix();
   return prefix + name;
-}
-
-bool SemanticAnalyzer::isInModuleScope() const {
-  for (const auto& scope : scopeStack) {
-    if (scope.type == ScopeType::Module) {
-      return true;
-    }
-  }
-  return false;
-}
-
-bool SemanticAnalyzer::isInFunctionScope() const {
-  for (const auto& scope : scopeStack) {
-    if (scope.type == ScopeType::Function) {
-      return true;
-    }
-  }
-  return false;
 }
 
 std::string SemanticAnalyzer::getCurrentFunctionContext() const {
@@ -394,161 +364,6 @@ std::vector<UsingImport> SemanticAnalyzer::getActiveUsingImports() const {
 // Library scopes ($hash$) are transparent - we look through them
 // Throws on ambiguity (same name in multiple library scopes)
 // -------------------------------------------------------------------
-
-SymbolMatch SemanticAnalyzer::findSymbol(const std::string& name,
-                                         SymbolKind filterKind) const {
-  std::vector<SymbolMatch> matches;
-
-  // Helper to extract library hash from a module path
-  auto extractLibraryHash = [](const std::string& path) -> std::string {
-    if (path.empty()) return "";
-    size_t dollarPos = path.find('$');
-    if (dollarPos == std::string::npos) return "";
-    size_t endDollar = path.find('$', dollarPos + 1);
-    if (endDollar == std::string::npos) return "";
-    return path.substr(dollarPos, endDollar - dollarPos + 1);
-  };
-
-  // Helper to check if a kind matches the filter
-  auto matchesFilter = [filterKind](SymbolKind kind) {
-    return filterKind == SymbolKind::None || filterKind == kind;
-  };
-
-  // Recursive helper to search a scope and its children
-  // Library scopes are traversed transparently
-  std::function<void(const SemanticScope&, const std::string&)> searchScope =
-      [&](const SemanticScope& scope, const std::string& currentPath) {
-        std::string libHash = extractLibraryHash(currentPath);
-
-        // Check classes
-        if (matchesFilter(SymbolKind::Class)) {
-          auto classIt = scope.classes.find(name);
-          if (classIt != scope.classes.end()) {
-            SymbolMatch match;
-            match.kind = SymbolKind::Class;
-            match.name = name;
-            match.modulePath = currentPath;
-            match.libraryHash = libHash;
-            match.classType = classIt->second;
-            matches.push_back(match);
-          }
-        }
-
-        // Check generic classes
-        if (matchesFilter(SymbolKind::GenericClass)) {
-          auto genClassIt = scope.genericClasses.find(name);
-          if (genClassIt != scope.genericClasses.end()) {
-            SymbolMatch match;
-            match.kind = SymbolKind::GenericClass;
-            match.name = name;
-            match.modulePath = currentPath;
-            match.libraryHash = libHash;
-            match.genericClassInfo = &genClassIt->second;
-            matches.push_back(match);
-          }
-        }
-
-        // Check interfaces
-        if (matchesFilter(SymbolKind::Interface)) {
-          auto ifaceIt = scope.interfaces.find(name);
-          if (ifaceIt != scope.interfaces.end()) {
-            SymbolMatch match;
-            match.kind = SymbolKind::Interface;
-            match.name = name;
-            match.modulePath = currentPath;
-            match.libraryHash = libHash;
-            match.interfaceType = ifaceIt->second;
-            matches.push_back(match);
-          }
-        }
-
-        // Check generic interfaces
-        if (matchesFilter(SymbolKind::GenericInterface)) {
-          auto genIfaceIt = scope.genericInterfaces.find(name);
-          if (genIfaceIt != scope.genericInterfaces.end()) {
-            SymbolMatch match;
-            match.kind = SymbolKind::GenericInterface;
-            match.name = name;
-            match.modulePath = currentPath;
-            match.libraryHash = libHash;
-            match.genericInterfaceInfo = &genIfaceIt->second;
-            matches.push_back(match);
-          }
-        }
-
-        // Check enums
-        if (matchesFilter(SymbolKind::Enum)) {
-          auto enumIt = scope.enums.find(name);
-          if (enumIt != scope.enums.end()) {
-            SymbolMatch match;
-            match.kind = SymbolKind::Enum;
-            match.name = name;
-            match.modulePath = currentPath;
-            match.libraryHash = libHash;
-            match.enumType = enumIt->second;
-            matches.push_back(match);
-          }
-        }
-
-        // Check functions (by prefix)
-        if (matchesFilter(SymbolKind::Function)) {
-          std::string funcPrefix = name + "(";
-          for (const auto& [sig, info] : scope.functions) {
-            if (sig.compare(0, funcPrefix.size(), funcPrefix) == 0) {
-              SymbolMatch match;
-              match.kind = SymbolKind::Function;
-              match.name = name;
-              match.modulePath = currentPath;
-              match.libraryHash = libHash;
-              match.functionInfo = &info;
-              matches.push_back(match);
-              break;  // Only need one function match per scope
-            }
-          }
-        }
-
-        // Recurse into child modules
-        for (const auto& [modName, child] : scope.childModules) {
-          if (!child) continue;
-          std::string childPath =
-              currentPath.empty() ? modName : currentPath + "." + modName;
-          // Library scopes are transparent - continue search inside them
-          if (isLibraryScope(modName)) {
-            searchScope(*child, childPath);
-          }
-        }
-      };
-
-  // Search from each scope in the stack
-  for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
-    searchScope(*it, it->modulePath);
-  }
-
-  // Check for ambiguity - same symbol from different library scopes
-  if (matches.size() > 1) {
-    // Remove duplicates (same libraryHash)
-    std::vector<SymbolMatch> uniqueMatches;
-    std::set<std::string> seenHashes;
-    for (const auto& m : matches) {
-      std::string key = m.libraryHash.empty() ? "__local__" : m.libraryHash;
-      if (seenHashes.insert(key).second) {
-        uniqueMatches.push_back(m);
-      }
-    }
-
-    if (uniqueMatches.size() > 1) {
-      std::string msg = "Ambiguous symbol '" + name + "': found in ";
-      for (size_t i = 0; i < uniqueMatches.size(); ++i) {
-        if (i > 0) msg += " and ";
-        msg += uniqueMatches[i].display();
-      }
-      logAndThrowError(msg);
-    }
-    matches = uniqueMatches;
-  }
-
-  return matches.empty() ? SymbolMatch{} : matches[0];
-}
 
 SymbolMatch SemanticAnalyzer::findSymbolInModule(const std::string& modulePath,
                                                  const std::string& name,
@@ -724,11 +539,6 @@ VariableInfo* SemanticAnalyzer::lookupVariable(const std::string& name) {
     }
   }
   return nullptr;
-}
-
-bool SemanticAnalyzer::isVariableLocal(const std::string& name) const {
-  if (scopeStack.size() <= 1) return false;
-  return scopeStack.back().variables.contains(name);
 }
 
 // -------------------------------------------------------------------
