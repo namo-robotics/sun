@@ -174,7 +174,7 @@ std::string ClassInfo::serialize() const {
   std::ostringstream oss;
   oss << "CLASS:" << baseName << "\n";
   oss << "QUALIFIEDNAME:" << qualifiedName << "\n";
-  oss << "SOURCE:" << sourceFile << "\n";
+  oss << "SOURCEHASH:" << sourceHash << "\n";
 
   oss << "TYPEPARAMS:" << typeParams.size() << "\n";
   for (const auto& tp : typeParams) {
@@ -214,9 +214,9 @@ ClassInfo ClassInfo::deserialize(const std::string& data) {
     info.qualifiedName = line.substr(14);
   }
 
-  // SOURCE:path
-  if (std::getline(iss, line) && line.substr(0, 7) == "SOURCE:") {
-    info.sourceFile = line.substr(7);
+  // SOURCE:path (legacy) or SOURCEHASH:hash
+  if (std::getline(iss, line) && line.substr(0, 11) == "SOURCEHASH:") {
+    info.sourceHash = line.substr(11);
   }
 
   // TYPEPARAMS:count
@@ -351,8 +351,8 @@ ExportedSymbol ExportedSymbol::deserialize(const std::string& data) {
 
 std::string ModuleMetadata::serialize() const {
   std::ostringstream oss;
-  oss << "SUNLIB_META_V3\n";
-  oss << "path:" << importPath << "\n";
+  oss << "SUNLIB_META_V1\n";
+  oss << "sourcehash:" << sourceHash << "\n";
   oss << "module:" << moduleName << "\n";
   oss << "version:" << version << "\n";
   oss << "hash:" << contentHash << "\n";
@@ -391,26 +391,21 @@ ModuleMetadata ModuleMetadata::deserialize(const std::string& data) {
   std::istringstream iss(data);
   std::string line;
 
-  // Header - support V1, V2, and V3
   std::getline(iss, line);
-  bool isV2 = (line == "SUNLIB_META_V2");
-  bool isV3 = (line == "SUNLIB_META_V3");
-  if (line != "SUNLIB_META_V1" && !isV2 && !isV3) {
+  if (line != "SUNLIB_META_V1") {
     return meta;  // Invalid format
   }
 
-  // Path
+  // Source hash
   std::getline(iss, line);
-  if (line.substr(0, 5) == "path:") {
-    meta.importPath = line.substr(5);
+  if (line.substr(0, 11) == "sourcehash:") {
+    meta.sourceHash = line.substr(11);
   }
 
-  // Module name (V3 only)
-  if (isV3) {
-    std::getline(iss, line);
-    if (line.substr(0, 7) == "module:") {
-      meta.moduleName = line.substr(7);
-    }
+  // Module name
+  std::getline(iss, line);
+  if (line.substr(0, 7) == "module:") {
+    meta.moduleName = line.substr(7);
   }
 
   // Version
@@ -419,12 +414,10 @@ ModuleMetadata ModuleMetadata::deserialize(const std::string& data) {
     meta.version = line.substr(8);
   }
 
-  // Content hash (V3 only)
-  if (isV3) {
-    std::getline(iss, line);
-    if (line.substr(0, 5) == "hash:") {
-      meta.contentHash = line.substr(5);
-    }
+  // Content hash
+  std::getline(iss, line);
+  if (line.substr(0, 5) == "hash:") {
+    meta.contentHash = line.substr(5);
   }
 
   // Dependencies
@@ -447,31 +440,28 @@ ModuleMetadata ModuleMetadata::deserialize(const std::string& data) {
     }
   }
 
-  // V2/V3 format: classes and interfaces
-  if (isV2 || isV3) {
-    // Classes
-    if (std::getline(iss, line) && line.substr(0, 8) == "classes:") {
-      int count = std::stoi(line.substr(8));
-      for (int i = 0; i < count; ++i) {
-        if (std::getline(iss, line) && line.substr(0, 12) == "CLASS_START:") {
-          size_t size = std::stoul(line.substr(12));
-          std::string clsData(size, '\0');
-          iss.read(clsData.data(), static_cast<std::streamsize>(size));
-          meta.classes.push_back(ClassInfo::deserialize(clsData));
-        }
+  // Classes
+  if (std::getline(iss, line) && line.substr(0, 8) == "classes:") {
+    int count = std::stoi(line.substr(8));
+    for (int i = 0; i < count; ++i) {
+      if (std::getline(iss, line) && line.substr(0, 12) == "CLASS_START:") {
+        size_t size = std::stoul(line.substr(12));
+        std::string clsData(size, '\0');
+        iss.read(clsData.data(), static_cast<std::streamsize>(size));
+        meta.classes.push_back(ClassInfo::deserialize(clsData));
       }
     }
+  }
 
-    // Interfaces
-    if (std::getline(iss, line) && line.substr(0, 11) == "interfaces:") {
-      int count = std::stoi(line.substr(11));
-      for (int i = 0; i < count; ++i) {
-        if (std::getline(iss, line) && line.substr(0, 12) == "IFACE_START:") {
-          size_t size = std::stoul(line.substr(12));
-          std::string ifaceData(size, '\0');
-          iss.read(ifaceData.data(), static_cast<std::streamsize>(size));
-          meta.interfaces.push_back(InterfaceInfo::deserialize(ifaceData));
-        }
+  // Interfaces
+  if (std::getline(iss, line) && line.substr(0, 11) == "interfaces:") {
+    int count = std::stoi(line.substr(11));
+    for (int i = 0; i < count; ++i) {
+      if (std::getline(iss, line) && line.substr(0, 12) == "IFACE_START:") {
+        size_t size = std::stoul(line.substr(12));
+        std::string ifaceData(size, '\0');
+        iss.read(ifaceData.data(), static_cast<std::streamsize>(size));
+        meta.interfaces.push_back(InterfaceInfo::deserialize(ifaceData));
       }
     }
   }
@@ -602,8 +592,8 @@ std::unique_ptr<SunLibReader> SunLibReader::open(
   if (header.magic != SunLibHeader::MAGIC) {
     return nullptr;
   }
-  // Accept V1, V2, and V3 formats
-  if (header.version != 1 && header.version != 2 && header.version != 3) {
+  // Only accept V1 format
+  if (header.version != 1) {
     return nullptr;
   }
 

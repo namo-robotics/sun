@@ -272,12 +272,6 @@ class SemanticAnalyzer {
   // e.g., inside "module sun { }", qualifyName("Vec") returns "sun_Vec"
   std::string qualifyNameInCurrentModule(const std::string& name) const;
 
-  // Check if currently inside a module scope
-  bool isInModuleScope() const;
-
-  // Check if currently inside a function scope (for detecting nested functions)
-  bool isInFunctionScope() const;
-
   // Get the function context for nested function names from enclosing scopes.
   // Returns empty string if not inside any function scope.
   // Example: inside "outer(i32)" and "middle(f64)" -> "outer(i32)::middle(f64)"
@@ -301,11 +295,6 @@ class SemanticAnalyzer {
   // Throws on ambiguity (same name in multiple library scopes)
   // -------------------------------------------------------------------
 
-  // Find any symbol by unqualified name (searches current scope chain)
-  // Library scopes are transparent - looks through $hash$ scopes automatically
-  SymbolMatch findSymbol(const std::string& name,
-                         SymbolKind filterKind = SymbolKind::None) const;
-
   // Find a symbol in a specific module path (dot-separated, user-visible)
   // e.g., findSymbolInModule("b", "get_version") finds b.get_version
   // even if b is inside a library scope like $hash$.b
@@ -320,7 +309,6 @@ class SemanticAnalyzer {
   // Variable management
   void declareVariable(const std::string& name, sun::TypePtr type,
                        bool isParam = false);
-  bool isVariableLocal(const std::string& name) const;
 
   // Type narrowing (from _is<T> type guards in conditionals)
   void narrowVariable(const std::string& varName, sun::TypePtr narrowedType);

@@ -43,7 +43,7 @@ struct MethodInfo {
 struct ClassInfo {
   std::string baseName;       // Unqualified name: "HeapAllocator"
   std::string qualifiedName;  // Namespace-prefixed: "sun_HeapAllocator"
-  std::string sourceFile;  // Original source file (for generic method parsing)
+  std::string sourceHash;     // SHA-256 hash of source file contents
   std::vector<std::string> typeParams;  // Generic type parameters
   std::vector<std::string> interfaces;  // Implemented interfaces
   std::vector<FieldInfo> fields;
@@ -85,7 +85,7 @@ struct ExportedSymbol {
 
 /// Metadata for a single module within a .moon bundle
 struct ModuleMetadata {
-  std::string importPath;  // "stdlib/allocator.sun"
+  std::string sourceHash;  // SHA-256 hash of source file contents
   std::string
       moduleName;       // Module namespace: "sun" or "b" (empty if no module)
   std::string version;  // "1.0.0"
@@ -107,8 +107,7 @@ struct ModuleMetadata {
 /// Binary header for .moon format
 struct SunLibHeader {
   static constexpr uint32_t MAGIC = 0x53554E4C;  // "SUNL"
-  static constexpr uint32_t VERSION =
-      3;  // V3: Added content hash for symbol isolation
+  static constexpr uint32_t VERSION = 1;         // V1: Only version 1 supported
 
   uint32_t magic = MAGIC;
   uint32_t version = VERSION;

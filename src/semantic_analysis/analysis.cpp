@@ -736,14 +736,12 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
         std::string displayPath =
             namespacePath.empty() ? target : namespacePath + "." + target;
         // Check if this path refers to a module (handles nested modules)
-        if (lookupModuleScope(displayPath)) {
+        if (auto* modScope = lookupModuleScope(displayPath)) {
           // Target is a module, convert to wildcard import from that module
           UsingImport import(displayPath, "*");
           addUsingImport(import);
           // Also create scope-based ImportBinding
-          if (auto* modScope = lookupModuleScope(displayPath)) {
-            addImportBinding(ImportBinding::wildcard(modScope));
-          }
+          addImportBinding(ImportBinding::wildcard(modScope));
           expr.setResolvedType(sun::Types::Void());
           break;
         }
@@ -924,8 +922,6 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       setCurrentClass(classType);
 
       // PASS 1: Register all methods first (so methods can call each other)
-      // Store FunctionInfo for each method for use in pass 2
-      std::vector<FunctionInfo> methodInfos;
       for (const auto& methodDecl : classDef.getMethods()) {
         // Enter a scope for getFunctionInfo (to access 'this' for captures)
         enterScope();
@@ -933,7 +929,6 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
         // Get method signature info (sets captures, converts param types)
         FunctionInfo methodInfo = getFunctionInfo(*methodDecl.function);
-        methodInfos.push_back(methodInfo);
 
         const PrototypeAST& proto = methodDecl.function->getProto();
 
@@ -1258,7 +1253,6 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
       // validate type args
       for (auto& typeArg : typeArgs) {
-        auto kind = typeArg->getKind();
         validateTypeParameter(typeArg, genericCall);
       }
 
@@ -1292,11 +1286,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
         // Instantiate the generic class to get init method parameters
         auto specializedClass = instantiateGenericClass(resolvedName, typeArgs);
         if (specializedClass) {
-          if (auto* classType =
-                  dynamic_cast<sun::ClassType*>(specializedClass.get())) {
-            if (auto* initMethod = classType->getMethod("init")) {
-              expectedParamTypes = initMethod->paramTypes;
-            }
+          if (auto* initMethod = specializedClass->getMethod("init")) {
+            expectedParamTypes = initMethod->paramTypes;
           }
         }
       } else if (genFuncInfo) {
@@ -1554,7 +1545,6 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
   // Declare parameters
   for (const auto& [argName, argType] : proto.getArgs()) {
     sun::TypePtr paramType = typeAnnotationToType(argType);
-    auto kind = paramType->getKind();
     declareVariable(argName, paramType, /*isParam=*/true);
   }
 
@@ -2030,9 +2020,6 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
     }
   } else if (calleeASTType == ASTNodeType::MEMBER_ACCESS) {
     // Handle method calls: object.method(args...)
-    const auto& memberAccess =
-        static_cast<const MemberAccessAST&>(*callExpr.getCallee());
-    const std::string& methodName = memberAccess.getMemberName();
     // Analyze the object expression to get its type
     analyzeExpr(const_cast<ExprAST&>(*callExpr.getCallee()));
   } else {
