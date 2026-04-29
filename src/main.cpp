@@ -168,7 +168,7 @@ int main(int argc, char* argv[]) {
         auto driver = Driver::createForAOT("bundle_module");
         driver->compileFile(file);
 
-        bundleWriter.addModule(file, driver->getModule(), metadata);
+        bundleWriter.addModule(driver->getModule(), metadata);
       } catch (const SunError& e) {
         llvm::errs() << "Error compiling " << file << ": " << e.what() << "\n";
         return 1;
@@ -220,7 +220,7 @@ int main(int argc, char* argv[]) {
       driver->compileFile(inputFiles[0]);
 
       sun::SunLibWriter writer;
-      writer.addModule(inputFiles[0], driver->getModule(), metadata);
+      writer.addModule(driver->getModule(), metadata);
 
       if (!writer.write(outputFile)) {
         llvm::errs() << "Error writing moon: " << writer.getError() << "\n";

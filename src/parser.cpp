@@ -2167,21 +2167,21 @@ void Parser::collectMoonImport(
   // Process each module in the bundle
   PARSER_TIMER_START(process_modules);
   int parsedMethods = 0;
-  for (const auto& modulePath : reader->listModules()) {
+  for (const auto& moduleKey : reader->listModules()) {
     // Record for linking
     bool alreadyRecorded = false;
-    for (const auto& path : *precompiledImports) {
-      if (path == modulePath) {
+    for (const auto& key : *precompiledImports) {
+      if (key == moduleKey) {
         alreadyRecorded = true;
         break;
       }
     }
     if (!alreadyRecorded) {
-      precompiledImports->push_back(modulePath);
+      precompiledImports->push_back(moduleKey);
     }
 
     // Get metadata for this module
-    const auto* metadata = reader->getMetadata(modulePath);
+    const auto* metadata = reader->getMetadata(moduleKey);
     if (!metadata) {
       continue;
     }

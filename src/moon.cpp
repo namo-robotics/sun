@@ -475,11 +475,9 @@ ModuleMetadata ModuleMetadata::deserialize(const std::string& data) {
 
 SunLibWriter::SunLibWriter() = default;
 
-void SunLibWriter::addModule(const std::string& importPath,
-                             llvm::Module& module,
+void SunLibWriter::addModule(llvm::Module& module,
                              const ModuleMetadata& metadata) {
   ModuleData data;
-  data.importPath = importPath;
 
   // Serialize LLVM bitcode
   llvm::raw_string_ostream bitcodeStream(data.bitcode);
@@ -518,7 +516,7 @@ bool SunLibWriter::write(const std::filesystem::path& outputPath) {
 
   for (auto& mod : modules_) {
     ModuleIndexEntry entry;
-    entry.importPath = mod.importPath;
+    entry.moduleKey = mod.metadata.sourceHash;
 
     // Write bitcode
     entry.bitcodeOffset = static_cast<uint64_t>(out.tellp());
@@ -543,15 +541,15 @@ bool SunLibWriter::write(const std::filesystem::path& outputPath) {
   header.indexOffset = static_cast<uint32_t>(out.tellp());
 
   // Index format: count, then for each entry:
-  // pathLen(4), path, bitcodeOffset(8), bitcodeSize(8), metadataOffset(8),
+  // keyLen(4), key, bitcodeOffset(8), bitcodeSize(8), metadataOffset(8),
   // metadataSize(8)
   uint32_t indexCount = static_cast<uint32_t>(index.size());
   out.write(reinterpret_cast<const char*>(&indexCount), sizeof(indexCount));
 
   for (const auto& entry : index) {
-    uint32_t pathLen = static_cast<uint32_t>(entry.importPath.size());
-    out.write(reinterpret_cast<const char*>(&pathLen), sizeof(pathLen));
-    out.write(entry.importPath.data(), pathLen);
+    uint32_t keyLen = static_cast<uint32_t>(entry.moduleKey.size());
+    out.write(reinterpret_cast<const char*>(&keyLen), sizeof(keyLen));
+    out.write(entry.moduleKey.data(), keyLen);
     out.write(reinterpret_cast<const char*>(&entry.bitcodeOffset),
               sizeof(entry.bitcodeOffset));
     out.write(reinterpret_cast<const char*>(&entry.bitcodeSize),
@@ -609,11 +607,11 @@ std::unique_ptr<SunLibReader> SunLibReader::open(
   for (uint32_t i = 0; i < indexCount; ++i) {
     ModuleIndexEntry entry;
 
-    uint32_t pathLen;
-    in.read(reinterpret_cast<char*>(&pathLen), sizeof(pathLen));
+    uint32_t keyLen;
+    in.read(reinterpret_cast<char*>(&keyLen), sizeof(keyLen));
 
-    entry.importPath.resize(pathLen);
-    in.read(entry.importPath.data(), pathLen);
+    entry.moduleKey.resize(keyLen);
+    in.read(entry.moduleKey.data(), keyLen);
 
     in.read(reinterpret_cast<char*>(&entry.bitcodeOffset),
             sizeof(entry.bitcodeOffset));
@@ -624,22 +622,22 @@ std::unique_ptr<SunLibReader> SunLibReader::open(
     in.read(reinterpret_cast<char*>(&entry.metadataSize),
             sizeof(entry.metadataSize));
 
-    reader->indexMap_[entry.importPath] = reader->index_.size();
+    reader->indexMap_[entry.moduleKey] = reader->index_.size();
     reader->index_.push_back(entry);
   }
 
   return reader;
 }
 
-bool SunLibReader::hasModule(const std::string& importPath) const {
-  return indexMap_.find(importPath) != indexMap_.end();
+bool SunLibReader::hasModule(const std::string& moduleKey) const {
+  return indexMap_.find(moduleKey) != indexMap_.end();
 }
 
 std::vector<std::string> SunLibReader::listModules() const {
   std::vector<std::string> result;
   result.reserve(index_.size());
   for (const auto& entry : index_) {
-    result.push_back(entry.importPath);
+    result.push_back(entry.moduleKey);
   }
   return result;
 }
@@ -664,17 +662,17 @@ bool SunLibReader::readBytes(uint64_t offset, uint64_t size,
   return true;
 }
 
-const ModuleMetadata* SunLibReader::getMetadata(const std::string& importPath) {
+const ModuleMetadata* SunLibReader::getMetadata(const std::string& moduleKey) {
   // Check cache
-  auto cacheIt = metadataCache_.find(importPath);
+  auto cacheIt = metadataCache_.find(moduleKey);
   if (cacheIt != metadataCache_.end()) {
     return &cacheIt->second;
   }
 
   // Find index entry
-  auto it = indexMap_.find(importPath);
+  auto it = indexMap_.find(moduleKey);
   if (it == indexMap_.end()) {
-    error_ = "Module not found: " + importPath;
+    error_ = "Module not found: " + moduleKey;
     return nullptr;
   }
 
@@ -687,17 +685,17 @@ const ModuleMetadata* SunLibReader::getMetadata(const std::string& importPath) {
   }
 
   std::string metadataStr(buffer.begin(), buffer.end());
-  metadataCache_[importPath] = ModuleMetadata::deserialize(metadataStr);
+  metadataCache_[moduleKey] = ModuleMetadata::deserialize(metadataStr);
 
-  return &metadataCache_[importPath];
+  return &metadataCache_[moduleKey];
 }
 
 std::unique_ptr<llvm::Module> SunLibReader::loadModule(
-    const std::string& importPath, llvm::LLVMContext& context) {
+    const std::string& moduleKey, llvm::LLVMContext& context) {
   // Find index entry
-  auto it = indexMap_.find(importPath);
+  auto it = indexMap_.find(moduleKey);
   if (it == indexMap_.end()) {
-    error_ = "Module not found in index: " + importPath + " (available: ";
+    error_ = "Module not found in index: " + moduleKey + " (available: ";
     for (const auto& [k, v] : indexMap_) {
       error_ += k + ", ";
     }
@@ -718,7 +716,7 @@ std::unique_ptr<llvm::Module> SunLibReader::loadModule(
 
   // Parse bitcode
   auto memBuffer = llvm::MemoryBuffer::getMemBuffer(
-      llvm::StringRef(buffer.data(), buffer.size()), importPath,
+      llvm::StringRef(buffer.data(), buffer.size()), moduleKey,
       false  // RequiresNullTerminator
   );
 
@@ -728,7 +726,7 @@ std::unique_ptr<llvm::Module> SunLibReader::loadModule(
     std::string errStr;
     llvm::raw_string_ostream errOS(errStr);
     errOS << moduleOrErr.takeError();
-    error_ = "Failed to parse bitcode for: " + importPath + " - " + errStr;
+    error_ = "Failed to parse bitcode for: " + moduleKey + " - " + errStr;
     return nullptr;
   }
 

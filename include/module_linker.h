@@ -19,20 +19,20 @@ class ModuleLinker {
   /// @param targetModule The module to link into
   explicit ModuleLinker(llvm::Module& targetModule);
 
-  /// Link a precompiled module by import path
-  /// @param importPath The import path (e.g., "stdlib/allocator.sun")
+  /// Link a precompiled module by module key (source hash)
+  /// @param moduleKey The module key (source hash)
   /// @return true on success
-  bool linkModule(const std::string& importPath);
+  bool linkModule(const std::string& moduleKey);
 
   /// Link multiple modules, resolving dependencies transitively
-  /// @param importPaths List of import paths
+  /// @param moduleKeys List of module keys
   /// @return true if all modules linked successfully
-  bool linkModules(const std::vector<std::string>& importPaths);
+  bool linkModules(const std::vector<std::string>& moduleKeys);
 
   /// Register available modules without linking their bitcode
   /// Builds symbol-to-module mapping for deferred linking
-  /// @param importPaths List of import paths to make available
-  void registerAvailableModules(const std::vector<std::string>& importPaths);
+  /// @param moduleKeys List of module keys to make available
+  void registerAvailableModules(const std::vector<std::string>& moduleKeys);
 
   /// Declare all exported functions as external declarations in target module
   /// This allows codegen to reference functions before actual linking
@@ -54,16 +54,16 @@ class ModuleLinker {
 
  private:
   /// Link a module and its dependencies recursively
-  bool linkModuleRecursive(const std::string& importPath);
+  bool linkModuleRecursive(const std::string& moduleKey);
 
   /// Build symbol-to-module mapping from module metadata
-  void buildSymbolMap(const std::string& importPath);
+  void buildSymbolMap(const std::string& moduleKey);
 
   llvm::Module& target_;
   std::set<std::string> linkedModules_;
   std::set<std::string> availableModules_;
   std::unordered_map<std::string, std::string>
-      symbolToModule_;  // mangled name -> importPath
+      symbolToModule_;  // mangled name -> moduleKey
   std::string error_;
 };
 
