@@ -16,6 +16,11 @@ using namespace llvm;
 // Expression dispatch
 // -------------------------------------------------------------------
 Value* CodegenVisitor::codegen(const ExprAST& expr) {
+  // Skip nodes marked by semantic analyzer (e.g. diamond dependency duplicates)
+  if (expr.shouldSkipCodegen()) {
+    return ConstantFP::get(ctx.getContext(), APFloat(0.0));
+  }
+
   switch (expr.getType()) {
     case ASTNodeType::NUMBER:
       return codegen(static_cast<const NumberExprAST&>(expr));
@@ -70,12 +75,10 @@ Value* CodegenVisitor::codegen(const ExprAST& expr) {
       // Nothing to generate - return a void/zero value.
       return ConstantFP::get(ctx.getContext(), APFloat(0.0));
     case ASTNodeType::IMPORT_SCOPE: {
-      // Expanded import scope — generate code for all declarations inside
+      // Expanded import scope — generate code for all declarations inside.
+      // Diamond dependency duplicates are already marked skipCodegen by SA.
       const auto& importScope = static_cast<const ImportScopeAST&>(expr);
-      importScopeDepth++;
-      auto* result = codegen(importScope.getBody());
-      importScopeDepth--;
-      return result;
+      return codegen(importScope.getBody());
     }
     case ASTNodeType::DECLARE_TYPE: {
       // Declare statements trigger generic class instantiation.

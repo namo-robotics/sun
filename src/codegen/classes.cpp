@@ -126,11 +126,10 @@ Value* CodegenVisitor::codegen(const ClassDefinitionAST& expr) {
     return ConstantFP::get(ctx.getContext(), APFloat(0.0));
   }
 
-  // Skip duplicate class definitions from imports (diamond dependency)
+  // Error if codegen sees an unmarked duplicate — this is a compiler bug
   if (codegenedClasses.count(className)) {
-    if (importScopeDepth > 0) {
-      return ConstantFP::get(ctx.getContext(), APFloat(0.0));
-    }
+    logAndThrowError("Duplicate class definition reached codegen: " +
+                     className);
   }
 
   // Mark this class as being codegenned

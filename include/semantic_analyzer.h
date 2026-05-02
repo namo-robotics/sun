@@ -56,6 +56,21 @@ class SemanticAnalyzer {
   // Classes already fully analyzed in Pass 2 (used to skip diamond duplicates)
   std::unordered_set<std::string> analyzedClasses_;
 
+  // Functions already fully analyzed in Pass 2 (used to skip diamond
+  // duplicates)
+  std::unordered_set<std::string> analyzedFunctions_;
+
+  // Global variables already analyzed in Pass 2 (used to skip diamond
+  // duplicates)
+  std::unordered_set<std::string> analyzedGlobals_;
+
+  // True when not inside any function scope (i.e. at module/global level)
+  bool isAtModuleLevel() const {
+    for (auto& s : scopeStack)
+      if (s.type == ScopeType::Function) return false;
+    return true;
+  }
+
   // RAII guard to set collectingDeclarations and restore on scope exit
   struct CollectingGuard {
     bool& flag;

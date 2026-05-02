@@ -74,7 +74,8 @@ class ExprAST {
   mutable sun::TypePtr resolvedType;  // Populated by semantic analyzer
   Position location_;                 // Original source location
   bool precompiled_ = false;          // True if from precompiled library
-  std::string symbolPrefix_;          // Hash prefix for moon symbol isolation
+  bool skipCodegen_ = false;  // Set by semantic analyzer for diamond duplicates
+  std::string symbolPrefix_;  // Hash prefix for moon symbol isolation
 
  public:
   virtual ~ExprAST() = default;
@@ -115,6 +116,10 @@ class ExprAST {
   // Precompiled flag (for definitions loaded from .moon files)
   bool isPrecompiled() const { return precompiled_; }
   void setPrecompiled(bool value) { precompiled_ = value; }
+
+  // Skip codegen flag (set by semantic analyzer for diamond import duplicates)
+  bool shouldSkipCodegen() const { return skipCodegen_; }
+  void setSkipCodegen(bool value) { skipCodegen_ = value; }
 
   // Symbol prefix for moon library isolation (content hash)
   const std::string& getSymbolPrefix() const { return symbolPrefix_; }

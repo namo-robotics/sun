@@ -306,6 +306,15 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
     case ASTNodeType::VARIABLE_CREATION: {
       auto& varCreate = static_cast<VariableCreationAST&>(expr);
+
+      // Inside an import scope, skip if global variable already analyzed
+      // (diamond dependency duplicate).
+      if (importScopeDepth_ > 0 && isAtModuleLevel() &&
+          analyzedGlobals_.count(varCreate.getName())) {
+        expr.setSkipCodegen(true);
+        break;
+      }
+
       // Determine type first (before analyzing value, for array literals)
       sun::TypePtr declaredType;
       if (varCreate.hasTypeAnnotation()) {
@@ -357,6 +366,11 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       declareVariable(varCreate.getName(), type);
       // Set the resolved type on the variable creation node itself
       expr.setResolvedType(type);
+
+      // Track global variables for diamond duplicate detection
+      if (importScopeDepth_ > 0 && isAtModuleLevel()) {
+        analyzedGlobals_.insert(varCreate.getName());
+      }
       break;
     }
 
@@ -438,6 +452,15 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       sun::QualifiedName qualifiedName = makeQualifiedName(proto.getName());
       proto.setQualifiedName(qualifiedName);
 
+      // Inside an import scope, skip if function already fully analyzed
+      // (diamond dependency duplicate).
+      if (importScopeDepth_ > 0 &&
+          analyzedFunctions_.count(qualifiedName.mangled())) {
+        expr.setResolvedType(inferType(expr));
+        expr.setSkipCodegen(true);
+        break;
+      }
+
       // Register function BEFORE analyzing body to support recursive calls
       // For nested functions, registerFunction prepends the enclosing
       // function's signature to create unique qualified names per generic
@@ -459,6 +482,9 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
             qualifiedName.mangled(),
             {inferredReturn, funcInfo.paramTypes, funcInfo.captures});
       }
+
+      // Mark function as analyzed for diamond duplicate detection
+      analyzedFunctions_.insert(qualifiedName.mangled());
 
       // Set the function type on the function node
       expr.setResolvedType(inferType(expr));
@@ -828,7 +854,14 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       if (importScopeDepth_ > 0 && analyzedClasses_.count(className)) {
         // Set resolved type to the class so codegen can get the qualified name
         expr.setResolvedType(typeRegistry->getClass(className));
+        expr.setSkipCodegen(true);
         return;
+      }
+
+      // Forbid redefinition of class in same module (depth 0)
+      if (importScopeDepth_ == 0 && analyzedClasses_.count(className)) {
+        logAndThrowError("Redefinition of class '" + classDef.getName() + "'",
+                         classDef.getLocation());
       }
 
       // Validate class name
@@ -1021,7 +1054,15 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // Inside an import scope, skip if interface already fully analyzed
       if (importScopeDepth_ > 0 && analyzedClasses_.count(interfaceName)) {
         expr.setResolvedType(sun::Types::Void());
+        expr.setSkipCodegen(true);
         return;
+      }
+
+      // Forbid redefinition of interface in same module (depth 0)
+      if (importScopeDepth_ == 0 && analyzedClasses_.count(interfaceName)) {
+        logAndThrowError(
+            "Redefinition of interface '" + interfaceDef.getName() + "'",
+            interfaceDef.getLocation());
       }
 
       // Validate interface name
@@ -1145,7 +1186,14 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // Inside an import scope, skip if enum already fully analyzed
       if (importScopeDepth_ > 0 && analyzedClasses_.count(enumDef.getName())) {
         expr.setResolvedType(sun::Types::Void());
+        expr.setSkipCodegen(true);
         return;
+      }
+
+      // Forbid redefinition of enum in same module (depth 0)
+      if (importScopeDepth_ == 0 && analyzedClasses_.count(enumDef.getName())) {
+        logAndThrowError("Redefinition of enum '" + enumDef.getName() + "'",
+                         enumDef.getLocation());
       }
 
       // Validate enum name

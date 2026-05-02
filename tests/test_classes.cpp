@@ -466,3 +466,39 @@ TEST(ClassTest, constructor_wrong_argument_count) {
   )"),
                SunError);
 }
+
+TEST(ClassTest, class_redefinition_error) {
+  try {
+    executeString(R"(
+    class Foo {
+      var x: i32;
+    }
+
+    class Foo {
+      var x: i32;
+    }
+
+    function main() i32 { return 0; }
+  )");
+    FAIL() << "Expected SunError for class redefinition";
+  } catch (const SunError& e) {
+    std::string msg = e.what();
+    EXPECT_TRUE(msg.find("redecl") != std::string::npos ||
+                msg.find("Redefinition") != std::string::npos)
+        << "Error should mention redefinition/redeclaration, got: " << msg;
+    EXPECT_TRUE(msg.find("Foo") != std::string::npos)
+        << "Error should mention class name 'Foo', got: " << msg;
+  }
+}
+
+TEST(ClassTest, diamond_import_class_no_error) {
+  // Diamond dependency: two imports bring the same class - should compile fine
+  auto value = executeString(R"(
+    import "tests/programs/diamond/left_class.sun";
+    import "tests/programs/diamond/right_class.sun";
+    function main() i32 {
+      return left_get() + right_get();
+    }
+  )");
+  EXPECT_EQ(value, 30);
+}
