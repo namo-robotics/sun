@@ -10,6 +10,7 @@
 #include "ast.h"
 #include "error.h"
 #include "lexer.h"
+#include "moon.h"
 
 using std::unique_ptr;
 
@@ -160,13 +161,19 @@ class Parser {
   // Parse a qualified name: Namespace::name or Namespace::Nested::name
   unique_ptr<ExprAST> parseQualifiedOrSimpleName();
 
-  // Collect AST nodes from an imported file (unified AST approach)
-  // Recursively parses imports and returns all non-import statements
-  void collectImports(const std::string& importPath,
-                      std::vector<std::unique_ptr<ExprAST>>& collectedAST);
+  // Expand an import into an ImportScopeAST (non-transitive import system)
+  // cycleStack tracks ancestors on the current import path to detect cycles.
+  // precompiledImports is shared for .moon registration.
+  std::unique_ptr<ImportScopeAST> expandImport(
+      const std::string& importPath, std::set<std::string>& cycleStack);
 
   // Collect AST stubs from a precompiled .moon file
   void collectMoonImport(const std::string& moonPath,
+                         std::vector<std::unique_ptr<ExprAST>>& collectedAST);
+
+  // Create AST stubs from module metadata and append to collectedAST
+  // Used by both .moon imports and .sun metadata-driven imports
+  void createModuleStubs(const sun::ModuleMetadata& metadata,
                          std::vector<std::unique_ptr<ExprAST>>& collectedAST);
 
   // Parse a type annotation from its string representation.
@@ -195,7 +202,6 @@ class Parser {
       std::shared_ptr<std::vector<std::string>> imports) {
     precompiledImports = imports;
   }
-
   // Get the list of precompiled imports discovered during parsing
   const std::vector<std::string>& getPrecompiledImports() const {
     return *precompiledImports;

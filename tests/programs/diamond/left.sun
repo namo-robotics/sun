@@ -1,0 +1,6 @@
+// left.sun - Imports base.sun and adds its own function
+import "tests/programs/diamond/base.sun";
+
+function left_add(x: i32) i32 {
+    return base_value() + x;
+}

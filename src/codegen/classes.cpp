@@ -126,6 +126,12 @@ Value* CodegenVisitor::codegen(const ClassDefinitionAST& expr) {
     return ConstantFP::get(ctx.getContext(), APFloat(0.0));
   }
 
+  // Error if codegen sees an unmarked duplicate — this is a compiler bug
+  if (codegenedClasses.count(className)) {
+    logAndThrowError("Duplicate class definition reached codegen: " +
+                     className);
+  }
+
   // Mark this class as being codegenned
   codegenedClasses.insert(className);
 

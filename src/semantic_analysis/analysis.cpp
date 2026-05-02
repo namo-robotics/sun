@@ -306,6 +306,15 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
     case ASTNodeType::VARIABLE_CREATION: {
       auto& varCreate = static_cast<VariableCreationAST&>(expr);
+
+      // Inside an import scope, skip if global variable already analyzed
+      // (diamond dependency duplicate).
+      if (importScopeDepth_ > 0 && isAtModuleLevel() &&
+          analyzedGlobals_.count(varCreate.getName())) {
+        expr.setSkipCodegen(true);
+        break;
+      }
+
       // Determine type first (before analyzing value, for array literals)
       sun::TypePtr declaredType;
       if (varCreate.hasTypeAnnotation()) {
@@ -357,6 +366,11 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       declareVariable(varCreate.getName(), type);
       // Set the resolved type on the variable creation node itself
       expr.setResolvedType(type);
+
+      // Track global variables for diamond duplicate detection
+      if (importScopeDepth_ > 0 && isAtModuleLevel()) {
+        analyzedGlobals_.insert(varCreate.getName());
+      }
       break;
     }
 
@@ -438,6 +452,15 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       sun::QualifiedName qualifiedName = makeQualifiedName(proto.getName());
       proto.setQualifiedName(qualifiedName);
 
+      // Inside an import scope, skip if function already fully analyzed
+      // (diamond dependency duplicate).
+      if (importScopeDepth_ > 0 &&
+          analyzedFunctions_.count(qualifiedName.mangled())) {
+        expr.setResolvedType(inferType(expr));
+        expr.setSkipCodegen(true);
+        break;
+      }
+
       // Register function BEFORE analyzing body to support recursive calls
       // For nested functions, registerFunction prepends the enclosing
       // function's signature to create unique qualified names per generic
@@ -459,6 +482,9 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
             qualifiedName.mangled(),
             {inferredReturn, funcInfo.paramTypes, funcInfo.captures});
       }
+
+      // Mark function as analyzed for diamond duplicate detection
+      analyzedFunctions_.insert(qualifiedName.mangled());
 
       // Set the function type on the function node
       expr.setResolvedType(inferType(expr));
@@ -680,6 +706,17 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       break;
     }
 
+    case ASTNodeType::IMPORT_SCOPE: {
+      // Expanded import scope — analyze the body (classes, functions, etc.)
+      // This makes the imported file's declarations available for use.
+      auto& importScope = static_cast<ImportScopeAST&>(expr);
+      importScopeDepth_++;
+      analyzeBlock(const_cast<BlockExprAST&>(importScope.getBody()));
+      importScopeDepth_--;
+      expr.setResolvedType(sun::Types::Void());
+      break;
+    }
+
     case ASTNodeType::NAMESPACE: {
       auto& nsDecl = static_cast<NamespaceAST&>(expr);
       // Enter the namespace scope
@@ -811,6 +848,21 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       std::string className = qualifiedClass.mangled();
       // Set qualified name on AST for codegen (source name stays for errors)
       classDef.setQualifiedName(qualifiedClass);
+
+      // Inside an import scope, skip if class already fully analyzed
+      // (diamond dependency duplicate).
+      if (importScopeDepth_ > 0 && analyzedClasses_.count(className)) {
+        // Set resolved type to the class so codegen can get the qualified name
+        expr.setResolvedType(typeRegistry->getClass(className));
+        expr.setSkipCodegen(true);
+        return;
+      }
+
+      // Forbid redefinition of class in same module (depth 0)
+      if (importScopeDepth_ == 0 && analyzedClasses_.count(className)) {
+        logAndThrowError("Redefinition of class '" + classDef.getName() + "'",
+                         classDef.getLocation());
+      }
 
       // Validate class name
       if (isReservedIdentifier(classDef.getName())) {
@@ -980,6 +1032,9 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // Restore old class context
       setCurrentClass(savedClass);
 
+      // Mark class as fully analyzed (for diamond import dedup)
+      analyzedClasses_.insert(className);
+
       // Set resolved type to the class type so codegen can get the qualified
       // name
       expr.setResolvedType(classType);
@@ -995,6 +1050,20 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       std::string interfaceName = qualifiedInterface.mangled();
       // Set qualified name on AST for codegen (source name stays for errors)
       interfaceDef.setQualifiedName(qualifiedInterface);
+
+      // Inside an import scope, skip if interface already fully analyzed
+      if (importScopeDepth_ > 0 && analyzedClasses_.count(interfaceName)) {
+        expr.setResolvedType(sun::Types::Void());
+        expr.setSkipCodegen(true);
+        return;
+      }
+
+      // Forbid redefinition of interface in same module (depth 0)
+      if (importScopeDepth_ == 0 && analyzedClasses_.count(interfaceName)) {
+        logAndThrowError(
+            "Redefinition of interface '" + interfaceDef.getName() + "'",
+            interfaceDef.getLocation());
+      }
 
       // Validate interface name
       if (isReservedIdentifier(interfaceDef.getName())) {
@@ -1104,12 +1173,28 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // Register the interface
       registerInterface(interfaceDef.getName(), interfaceType);
 
+      // Mark interface as fully analyzed (for diamond import dedup)
+      analyzedClasses_.insert(interfaceName);
+
       expr.setResolvedType(sun::Types::Void());
       break;
     }
 
     case ASTNodeType::ENUM_DEFINITION: {
       auto& enumDef = static_cast<EnumDefinitionAST&>(expr);
+
+      // Inside an import scope, skip if enum already fully analyzed
+      if (importScopeDepth_ > 0 && analyzedClasses_.count(enumDef.getName())) {
+        expr.setResolvedType(sun::Types::Void());
+        expr.setSkipCodegen(true);
+        return;
+      }
+
+      // Forbid redefinition of enum in same module (depth 0)
+      if (importScopeDepth_ == 0 && analyzedClasses_.count(enumDef.getName())) {
+        logAndThrowError("Redefinition of enum '" + enumDef.getName() + "'",
+                         enumDef.getLocation());
+      }
 
       // Validate enum name
       if (isReservedIdentifier(enumDef.getName())) {
@@ -1146,6 +1231,9 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
       // Register the enum in the namespace
       registerEnum(enumDef.getName(), enumType);
+
+      // Mark enum as fully analyzed (for diamond import dedup)
+      analyzedClasses_.insert(enumDef.getName());
 
       expr.setResolvedType(sun::Types::Void());
       break;
@@ -1387,7 +1475,7 @@ void SemanticAnalyzer::analyzeBlock(BlockExprAST& block) {
       if (type == ASTNodeType::CLASS_DEFINITION ||
           type == ASTNodeType::INTERFACE_DEFINITION ||
           type == ASTNodeType::ENUM_DEFINITION ||
-          type == ASTNodeType::NAMESPACE) {
+          type == ASTNodeType::NAMESPACE || type == ASTNodeType::IMPORT_SCOPE) {
         collectDeclarations(*expr);
       }
     }

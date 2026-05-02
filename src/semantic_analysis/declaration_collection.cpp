@@ -174,6 +174,17 @@ void SemanticAnalyzer::collectDeclarations(ExprAST& expr) {
       // populated in Pass 2, causing failures or dirty scope state on error.
       break;
 
+    case ASTNodeType::IMPORT_SCOPE: {
+      // Recurse into expanded import scopes to collect their declarations
+      auto& importScope = static_cast<ImportScopeAST&>(expr);
+      importScopeDepth_++;
+      for (const auto& bodyExpr : importScope.getBody().getBody()) {
+        collectDeclarations(const_cast<ExprAST&>(*bodyExpr));
+      }
+      importScopeDepth_--;
+      break;
+    }
+
     default:
       // Other node types (variables, expressions, imports, etc.)
       // don't need pre-declaration — handled in Pass 2.

@@ -14,6 +14,8 @@ void SemanticAnalyzer::registerClass(const std::string& name,
   // Check for redeclaration in global scope
   if (!scopeStack.empty() && scopeStack.front().classes.contains(name)) {
     if (!collectingDeclarations) return;  // Pass 2: skip, already registered
+    // Allow re-registration of same class from duplicate imports (diamond deps)
+    if (importScopeDepth_ > 0) return;
     logAndThrowError("Cannot redeclare class '" + name + "'", loc);
   }
   // Register in current scope AND global scope (for reachability)
@@ -53,6 +55,8 @@ void SemanticAnalyzer::registerGenericClass(const std::string& name,
                                             std::optional<Position> loc) {
   if (!scopeStack.empty() && scopeStack.front().genericClasses.contains(name)) {
     if (!collectingDeclarations) return;  // Pass 2: skip
+    // Allow re-registration from duplicate imports (diamond deps)
+    if (importScopeDepth_ > 0) return;
     logAndThrowError("Cannot redeclare generic class '" + name + "'", loc);
   }
   // Register in current scope AND global scope (for reachability)

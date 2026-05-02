@@ -45,6 +45,7 @@ enum class ASTNodeType {
   INDEXED_ASSIGNMENT,
   RETURN,
   IMPORT,                // import "file.sun";
+  IMPORT_SCOPE,          // Expanded import scope (contains imported file's AST)
   NAMESPACE,             // namespace Name { ... }
   USING,                 // using Namespace::name; or using Namespace::*;
   QUALIFIED_NAME,        // Namespace::name
@@ -73,7 +74,8 @@ class ExprAST {
   mutable sun::TypePtr resolvedType;  // Populated by semantic analyzer
   Position location_;                 // Original source location
   bool precompiled_ = false;          // True if from precompiled library
-  std::string symbolPrefix_;          // Hash prefix for moon symbol isolation
+  bool skipCodegen_ = false;  // Set by semantic analyzer for diamond duplicates
+  std::string symbolPrefix_;  // Hash prefix for moon symbol isolation
 
  public:
   virtual ~ExprAST() = default;
@@ -114,6 +116,10 @@ class ExprAST {
   // Precompiled flag (for definitions loaded from .moon files)
   bool isPrecompiled() const { return precompiled_; }
   void setPrecompiled(bool value) { precompiled_ = value; }
+
+  // Skip codegen flag (set by semantic analyzer for diamond import duplicates)
+  bool shouldSkipCodegen() const { return skipCodegen_; }
+  void setSkipCodegen(bool value) { skipCodegen_ = value; }
 
   // Symbol prefix for moon library isolation (content hash)
   const std::string& getSymbolPrefix() const { return symbolPrefix_; }
@@ -1241,6 +1247,26 @@ class ImportAST : public ExprAST {
 
   std::unique_ptr<ExprAST> clone() const override;
   const std::string& getPath() const { return path; }
+};
+
+// Expanded import scope: contains the AST of an imported file.
+// Nested ImportScopeASTs represent that file's own imports (transitive deps).
+class ImportScopeAST : public ExprAST {
+  std::string sourceFile;
+  std::unique_ptr<BlockExprAST> body;
+
+ public:
+  ImportScopeAST(std::string sourceFile, std::unique_ptr<BlockExprAST> body)
+      : sourceFile(std::move(sourceFile)), body(std::move(body)) {}
+
+  ASTNodeType getType() const override { return ASTNodeType::IMPORT_SCOPE; }
+  std::string toString() const override {
+    return "import_scope(\"" + sourceFile + "\") " + body->toString();
+  }
+
+  const std::string& getSourceFile() const { return sourceFile; }
+  const BlockExprAST& getBody() const { return *body; }
+  std::unique_ptr<ExprAST> clone() const override;
 };
 
 // Qualified name expression: Module.name or Namespace::name

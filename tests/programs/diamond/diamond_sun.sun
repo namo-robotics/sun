@@ -1,0 +1,7 @@
+// diamond_sun.sun - Diamond dependency: both left and right import base.sun
+import "tests/programs/diamond/left.sun";
+import "tests/programs/diamond/right.sun";
+
+function main() i32 {
+    return left_add(3) + right_mul(2);
+}

@@ -23,6 +23,7 @@
 
 import "vec.sun";
 import "string.sun";
+import "allocator.sun";
 using sun;
 
 module sun {

@@ -225,6 +225,8 @@ std::pair<Function*, llvm::StructType*> CodegenVisitor::codegen(
   if (Function* existingFunc = module->getFunction(funcName)) {
     if (!existingFunc->empty()) {
       // Already has a body — this is a genuine redefinition error.
+      // Diamond dependency duplicates should have been marked skipCodegen
+      // by the semantic analyzer and caught earlier in codegenFunc.
       logAndThrowError("Redefinition of function: " + funcName);
     }
     // It's a declaration only — we'll check if its type matches after
@@ -331,6 +333,8 @@ std::pair<Function*, llvm::StructType*> CodegenVisitor::codegen(
 // -------------------------------------------------------------------
 
 Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
+  if (funcAst.shouldSkipCodegen()) return nullptr;
+
   if (funcAst.getProto().isGeneric()) {
     // Save current insertion point - specialization codegen will change it
     saveInsertPoint();
