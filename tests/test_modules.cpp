@@ -536,9 +536,9 @@ class DiamondDependencyTest : public ::testing::Test {
   static constexpr const char* kTestDir = "tests/programs/diamond";
 
   void SetUp() override {
-    ensureSunPathSet();
+    initTestEnvironment();
 
-    // Use SUN_PATH for the sun binary (set by ensureSunPathSet to cwd)
+    // Use SUN_PATH for the sun binary (set by initTestEnvironment to cwd)
     const char* sunPath = std::getenv("SUN_PATH");
     std::string sunBin = std::string(sunPath) + "/build/sun";
 

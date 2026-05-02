@@ -15,6 +15,7 @@
 #include "library_cache.h"
 #include "llvm/Support/raw_ostream.h"
 #include "metadata_extractor.h"
+#include "sun_path.h"
 
 #define PARSER_TIMER_START(name) \
   auto parser_timer_##name = std::chrono::high_resolution_clock::now()
@@ -2002,6 +2003,7 @@ unique_ptr<ExprAST> Parser::parseQualifiedOrSimpleName() {
 
 // Collect AST nodes from an imported file (metadata-driven approach)
 // Extracts metadata from .sun files and creates namespace-isolated stubs
+
 // instead of flattening all transitive AST nodes into the importer's scope
 void Parser::collectImports(
     const std::string& importPath,
@@ -2018,14 +2020,8 @@ void Parser::collectImports(
   if (std::filesystem::path(importPath).is_absolute()) {
     resolved = importPath;
   } else {
-    // Check SUN_PATH environment variable first
-    const char* sunPath = std::getenv("SUN_PATH");
-    if (sunPath && std::strlen(sunPath) > 0) {
-      auto sunPathResolved = std::filesystem::path(sunPath) / importPath;
-      if (std::filesystem::exists(sunPathResolved)) {
-        resolved = sunPathResolved;
-      }
-    }
+    // Check SUN_PATH directories
+    resolved = sun::SunPath::resolve(importPath);
     // Check system-wide installation paths
     if (resolved.empty()) {
       auto sysPath =
@@ -2116,13 +2112,8 @@ std::unique_ptr<ImportScopeAST> Parser::expandImport(
   if (std::filesystem::path(importPath).is_absolute()) {
     resolved = importPath;
   } else {
-    const char* sunPath = std::getenv("SUN_PATH");
-    if (sunPath && std::strlen(sunPath) > 0) {
-      auto sunPathResolved = std::filesystem::path(sunPath) / importPath;
-      if (std::filesystem::exists(sunPathResolved)) {
-        resolved = sunPathResolved;
-      }
-    }
+    // Check SUN_PATH directories
+    resolved = sun::SunPath::resolve(importPath);
     if (resolved.empty()) {
       auto sysPath =
           std::filesystem::path("/usr/share/sun/stdlib") / importPath;
@@ -2200,14 +2191,8 @@ void Parser::collectMoonImport(
   if (std::filesystem::path(moonPath).is_absolute()) {
     resolved = moonPath;
   } else {
-    // Check SUN_PATH environment variable first
-    const char* sunPath = std::getenv("SUN_PATH");
-    if (sunPath && std::strlen(sunPath) > 0) {
-      auto sunPathResolved = std::filesystem::path(sunPath) / moonPath;
-      if (std::filesystem::exists(sunPathResolved)) {
-        resolved = sunPathResolved;
-      }
-    }
+    // Check SUN_PATH directories
+    resolved = sun::SunPath::resolve(moonPath);
     // Check system-wide installation paths
     if (resolved.empty()) {
       auto sysPath = std::filesystem::path("/usr/lib/sun") / moonPath;
