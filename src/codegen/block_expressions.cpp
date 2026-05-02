@@ -77,10 +77,9 @@ Value* CodegenVisitor::codegen(const BlockExprAST& block) {
       continue;
     }
 
-    // Import scopes and class definitions may generate functions/methods
-    // that change the IR builder insertion point. Save/restore around them.
-    if (expr->getType() == ASTNodeType::IMPORT_SCOPE ||
-        expr->getType() == ASTNodeType::CLASS_DEFINITION ||
+    // Class/interface definitions generate functions/methods that change
+    // the IR builder insertion point. Save/restore around them.
+    if (expr->getType() == ASTNodeType::CLASS_DEFINITION ||
         expr->getType() == ASTNodeType::INTERFACE_DEFINITION) {
       auto currentBlock = ctx.builder->GetInsertBlock();
 

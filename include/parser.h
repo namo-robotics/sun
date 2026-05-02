@@ -161,11 +161,6 @@ class Parser {
   // Parse a qualified name: Namespace::name or Namespace::Nested::name
   unique_ptr<ExprAST> parseQualifiedOrSimpleName();
 
-  // Collect AST nodes from an imported file (unified AST approach)
-  // Recursively parses imports and returns all non-import statements
-  void collectImports(const std::string& importPath,
-                      std::vector<std::unique_ptr<ExprAST>>& collectedAST);
-
   // Expand an import into an ImportScopeAST (non-transitive import system)
   // cycleStack tracks ancestors on the current import path to detect cycles.
   // precompiledImports is shared for .moon registration.

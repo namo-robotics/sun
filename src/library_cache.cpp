@@ -1,7 +1,6 @@
 #include "library_cache.h"
 
 #include <algorithm>
-#include <cstdlib>
 
 #include "sun_path.h"
 

@@ -35,19 +35,6 @@ inline sun::SunValue executeString(const std::string& source, int argc = 0,
   }
 }
 
-inline sun::SunValue executeFile(const std::string& filename, int argc = 0,
-                                 char** argv = nullptr) {
-  try {
-    auto driver = Driver::createForJIT();
-    driver->executeFile(std::filesystem::absolute(filename).string(), argc,
-                        argv);
-    return sun::VoidValue{};
-  } catch (const SunError& e) {
-    std::cerr << e.what() << std::endl;
-    throw;
-  }
-}
-
 inline void compileFile(const std::string& filename) {
   try {
     initTestEnvironment();
@@ -60,6 +47,7 @@ inline void compileFile(const std::string& filename) {
 }
 
 inline void compileString(const std::string& source) {
+  initTestEnvironment();
   try {
     Driver::createForAOT("test_compile")->compileString(source);
   } catch (const SunError& e) {

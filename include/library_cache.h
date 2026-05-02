@@ -27,7 +27,7 @@ class LibraryCache {
   void addBundle(const std::filesystem::path& bundlePath);
 
   /// Initialize from environment
-  /// Loads SUN_PATH/lib/ and SUN_PATH/build/ if SUN_PATH is set
+  /// Loads lib/ and build/ subdirectories for each SUN_PATH entry
   void initFromEnvironment();
 
   /// Check if a precompiled module exists
