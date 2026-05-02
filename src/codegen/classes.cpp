@@ -126,6 +126,13 @@ Value* CodegenVisitor::codegen(const ClassDefinitionAST& expr) {
     return ConstantFP::get(ctx.getContext(), APFloat(0.0));
   }
 
+  // Skip duplicate class definitions from imports (diamond dependency)
+  if (codegenedClasses.count(className)) {
+    if (importScopeDepth > 0) {
+      return ConstantFP::get(ctx.getContext(), APFloat(0.0));
+    }
+  }
+
   // Mark this class as being codegenned
   codegenedClasses.insert(className);
 

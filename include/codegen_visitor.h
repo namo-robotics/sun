@@ -125,6 +125,10 @@ class CodegenVisitor {
   // Track which classes have actually been code-generated
   std::set<std::string> codegenedClasses;
 
+  // Track nesting depth inside ImportScopeAST nodes.
+  // When > 0, duplicate definitions are silently skipped (import dedup).
+  int importScopeDepth = 0;
+
   // Track user-defined functions (for IR filtering - excludes library code)
   std::set<std::string> userDefinedFunctions;
 

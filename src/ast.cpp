@@ -385,6 +385,16 @@ std::unique_ptr<ExprAST> ImportAST::clone() const {
   return copy;
 }
 
+std::unique_ptr<ExprAST> ImportScopeAST::clone() const {
+  auto bodyClone = std::unique_ptr<BlockExprAST>(
+      static_cast<BlockExprAST*>(body->clone().release()));
+  auto copy =
+      std::make_unique<ImportScopeAST>(sourceFile, std::move(bodyClone));
+  copy->setLocation(location_);
+  copy->setResolvedType(resolvedType);
+  return copy;
+}
+
 std::unique_ptr<ExprAST> QualifiedNameAST::clone() const {
   auto copy = std::make_unique<QualifiedNameAST>(parts);
   copy->setLocation(location_);

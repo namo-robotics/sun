@@ -35,6 +35,44 @@ TEST(ModuleTest, import_transitive) {
   EXPECT_NO_THROW(compileFile("tests/programs/import_transitive.sun"));
 }
 
+TEST(ModuleTest, diamond_sun_import) {
+  // Diamond dependency: left.sun and right.sun both import base.sun
+  // base_value() returns 7, left_add(3) = 7+3 = 10, right_mul(2) = 7*2 = 14
+  // main returns 10 + 14 = 24
+  auto value = executeString(R"(
+    import "tests/programs/diamond/left.sun";
+    import "tests/programs/diamond/right.sun";
+    function main() i32 {
+      return left_add(3) + right_mul(2);
+    }
+  )");
+  EXPECT_EQ(value, 24);
+}
+
+TEST(ModuleTest, diamond_sun_import_with_class) {
+  // Diamond dependency with class: both importers use a shared class
+  auto value = executeString(R"(
+    import "tests/programs/diamond/left_class.sun";
+    import "tests/programs/diamond/right_class.sun";
+    function main() i32 {
+      return left_get() + right_get();
+    }
+  )");
+  EXPECT_EQ(value, 30);
+}
+
+TEST(ModuleTest, transitive_import_function_call) {
+  // Transitive import: main imports A which imports B.
+  // Currently all symbols are visible transitively (no enforcement yet).
+  auto value = executeString(R"(
+    import "tests/programs/uses_math.sun";
+    function main() i32 {
+      return add_and_square(2, 3);
+    }
+  )");
+  EXPECT_EQ(value, 25);
+}
+
 // === Parser tests ===
 
 TEST(ModuleTest, parse_import_statement) {
@@ -585,10 +623,10 @@ TEST_F(DiamondDependencyTest, ambiguous_call_due_to_version_conflict) {
                std::exception);
 }
 
-TEST_F(DiamondDependencyTest, scoped_imports_not_supported) {
-  // Imports inside function bodies are not supported - imports are top-level
-  // only. Each moon import creates a global module scope during parsing.
-  EXPECT_THROW(executeString(R"(
+TEST_F(DiamondDependencyTest, scoped_imports) {
+  // Imports inside function bodies are supported - each function gets its own
+  // version of module b via content-hash isolation.
+  auto value = executeString(R"(
     function v1() i32 {
       import "tests/programs/diamond/b_v1.moon";
       return b.get_version();
@@ -603,6 +641,6 @@ TEST_F(DiamondDependencyTest, scoped_imports_not_supported) {
       var x: i32 = v1() * 10 + v2();
       return x;
     }
-  )"),
-               std::exception);
+  )");
+  EXPECT_EQ(value, 12);
 }

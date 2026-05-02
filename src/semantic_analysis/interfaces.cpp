@@ -12,6 +12,8 @@ void SemanticAnalyzer::registerInterface(
     std::optional<Position> loc) {
   if (!scopeStack.empty() && scopeStack.front().interfaces.contains(name)) {
     if (!collectingDeclarations) return;  // Pass 2: skip
+    // Allow re-registration from duplicate imports (diamond deps)
+    if (importScopeDepth_ > 0) return;
     logAndThrowError("Cannot redeclare interface '" + name + "'");
   }
   // Register in current scope AND global scope (for reachability)
@@ -43,6 +45,8 @@ void SemanticAnalyzer::registerGenericInterface(
   if (!scopeStack.empty() &&
       scopeStack.front().genericInterfaces.contains(name)) {
     if (!collectingDeclarations) return;  // Pass 2: skip
+    // Allow re-registration from duplicate imports (diamond deps)
+    if (importScopeDepth_ > 0) return;
     logAndThrowError("Cannot redeclare generic interface '" + name + "'", loc);
   }
   // Register in current scope AND global scope (for reachability)

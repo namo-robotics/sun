@@ -7,6 +7,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "semantic_scope.h"
@@ -47,6 +48,13 @@ class SemanticAnalyzer {
   // functions throw on redeclaration. When false (Pass 2), they skip
   // silently since Pass 1 already registered the symbol.
   bool collectingDeclarations = false;
+
+  // Track nesting inside ImportScopeAST during analysis.
+  // When > 0, duplicate symbol registration is allowed (diamond imports).
+  int importScopeDepth_ = 0;
+
+  // Classes already fully analyzed in Pass 2 (used to skip diamond duplicates)
+  std::unordered_set<std::string> analyzedClasses_;
 
   // RAII guard to set collectingDeclarations and restore on scope exit
   struct CollectingGuard {

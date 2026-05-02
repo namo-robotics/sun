@@ -45,6 +45,7 @@ enum class ASTNodeType {
   INDEXED_ASSIGNMENT,
   RETURN,
   IMPORT,                // import "file.sun";
+  IMPORT_SCOPE,          // Expanded import scope (contains imported file's AST)
   NAMESPACE,             // namespace Name { ... }
   USING,                 // using Namespace::name; or using Namespace::*;
   QUALIFIED_NAME,        // Namespace::name
@@ -1241,6 +1242,26 @@ class ImportAST : public ExprAST {
 
   std::unique_ptr<ExprAST> clone() const override;
   const std::string& getPath() const { return path; }
+};
+
+// Expanded import scope: contains the AST of an imported file.
+// Nested ImportScopeASTs represent that file's own imports (transitive deps).
+class ImportScopeAST : public ExprAST {
+  std::string sourceFile;
+  std::unique_ptr<BlockExprAST> body;
+
+ public:
+  ImportScopeAST(std::string sourceFile, std::unique_ptr<BlockExprAST> body)
+      : sourceFile(std::move(sourceFile)), body(std::move(body)) {}
+
+  ASTNodeType getType() const override { return ASTNodeType::IMPORT_SCOPE; }
+  std::string toString() const override {
+    return "import_scope(\"" + sourceFile + "\") " + body->toString();
+  }
+
+  const std::string& getSourceFile() const { return sourceFile; }
+  const BlockExprAST& getBody() const { return *body; }
+  std::unique_ptr<ExprAST> clone() const override;
 };
 
 // Qualified name expression: Module.name or Namespace::name

@@ -57,6 +57,10 @@ Value* CodegenVisitor::codegen(const VariableCreationAST& expr) {
   // Check if we're creating a global variable and if it already exists
   if (scopes.empty()) {
     if (module->getGlobalVariable(varName)) {
+      if (importScopeDepth > 0) {
+        // Skip duplicate global from import (diamond dependency)
+        return ConstantFP::get(ctx.getContext(), APFloat(0.0));
+      }
       logAndThrowError("Cannot redeclare global variable: " + varName);
     }
   }

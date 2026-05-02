@@ -336,18 +336,26 @@ SemanticScope* SemanticAnalyzer::lookupModuleScope(
     return found;
   };
 
-  // Start from global scope
-  const SemanticScope* current = &scopeStack.front();
+  // Search from innermost scope outward (back to front) so that modules
+  // registered inside function bodies (via scoped imports) are found.
+  for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
+    const SemanticScope* current = &(*it);
 
-  // Split dot-separated path and traverse
-  std::string segment;
-  std::istringstream stream(dotPath);
-  while (std::getline(stream, segment, '.')) {
-    auto* found = findInScope(*current, segment);
-    if (!found) return nullptr;
-    current = found;
+    // Split dot-separated path and traverse
+    std::string segment;
+    std::istringstream stream(dotPath);
+    bool resolved = true;
+    while (std::getline(stream, segment, '.')) {
+      auto* found = findInScope(*current, segment);
+      if (!found) {
+        resolved = false;
+        break;
+      }
+      current = found;
+    }
+    if (resolved) return const_cast<SemanticScope*>(current);
   }
-  return const_cast<SemanticScope*>(current);
+  return nullptr;
 }
 
 std::vector<UsingImport> SemanticAnalyzer::getActiveUsingImports() const {
@@ -627,13 +635,19 @@ void SemanticAnalyzer::registerFunction(const std::string& name,
   // unique qualified names. This ensures each generic instantiation of an
   // outer function gets its own copy of nested functions.
   // e.g., outer<i32>'s inner -> "outer(i32)::inner(i32)"
-  std::string funcContext = getCurrentFunctionContext();
+  // Skip function context for imported functions (inside import scopes)
+  // since those are module-level functions regardless of where the import
+  // appears in the source.
+  std::string funcContext =
+      importScopeDepth_ > 0 ? "" : getCurrentFunctionContext();
   std::string qualifiedName =
       funcContext.empty() ? name : funcContext + "::" + name;
   std::string sig = getFunctionSignature(qualifiedName, info.paramTypes);
   // Pass 1: detect redeclarations of the same function signature
   if (collectingDeclarations) {
     if (!scopeStack.empty() && scopeStack.front().functions.contains(sig)) {
+      // Allow re-registration from duplicate imports (diamond deps)
+      if (importScopeDepth_ > 0) return;
       logAndThrowError("Cannot redeclare function '" + name +
                        "' with the same parameter types");
     }
@@ -974,28 +988,37 @@ std::string SemanticAnalyzer::getFullModulePath(
     return found;
   };
 
-  // Start from global scope and traverse the visible path
-  std::string fullPath;
-  const SemanticScope* current = &scopeStack.front();
+  // Search from innermost scope outward (back to front) so that modules
+  // registered in function scopes (via scoped imports) are resolved correctly.
+  for (auto scopeIt = scopeStack.rbegin(); scopeIt != scopeStack.rend();
+       ++scopeIt) {
+    std::string fullPath;
+    const SemanticScope* current = &(*scopeIt);
 
-  std::string segment;
-  std::istringstream stream(visiblePath);
-  while (std::getline(stream, segment, '.')) {
-    // Find full path for this segment
-    std::string segmentFullPath = findFullPath(*current, segment, fullPath);
-    if (segmentFullPath.empty()) {
-      // Segment not found, return original
-      return visiblePath;
+    std::string segment;
+    std::istringstream stream(visiblePath);
+    bool resolved = true;
+    while (std::getline(stream, segment, '.')) {
+      // Find full path for this segment
+      std::string segmentFullPath = findFullPath(*current, segment, fullPath);
+      if (segmentFullPath.empty()) {
+        resolved = false;
+        break;
+      }
+      fullPath = segmentFullPath;
+
+      // Navigate to that scope for next segment
+      SemanticScope* nextScope = lookupModuleScope(fullPath);
+      if (!nextScope) {
+        resolved = false;
+        break;
+      }
+      current = nextScope;
     }
-    fullPath = segmentFullPath;
-
-    // Navigate to that scope for next segment
-    SemanticScope* nextScope = lookupModuleScope(fullPath);
-    if (!nextScope) return visiblePath;
-    current = nextScope;
+    if (resolved && !fullPath.empty()) return fullPath;
   }
 
-  return fullPath;
+  return visiblePath;
 }
 
 const FunctionInfo* SemanticAnalyzer::lookupQualifiedFunction(

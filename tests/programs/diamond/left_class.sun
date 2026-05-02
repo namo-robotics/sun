@@ -1,0 +1,7 @@
+// left_class.sun - Uses shared Point class
+import "tests/programs/diamond/base_class.sun";
+
+function left_get() i32 {
+    var p = Point(3, 7);
+    return p.sum();
+}
