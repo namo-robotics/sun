@@ -36,11 +36,9 @@ void SemanticAnalyzer::collectDeclarations(ExprAST& expr) {
         genInfo.params = proto.getArgs();
         sun::QualifiedName qname(getCurrentModulePath(),
                                  getCurrentFunctionContext(), proto.getName());
-        if (!scopeStack.empty()) {
-          scopeStack.back().genericFunctions[qname] = genInfo;
-          if (scopeStack.size() > 1) {
-            scopeStack.front().genericFunctions[qname] = genInfo;
-          }
+        currentScope->genericFunctions[qname] = genInfo;
+        if (importScopeDepth_ == 0 && currentScope != rootScope.get()) {
+          rootScope->genericFunctions[qname] = genInfo;
         }
         break;
       }
@@ -176,12 +174,15 @@ void SemanticAnalyzer::collectDeclarations(ExprAST& expr) {
 
     case ASTNodeType::IMPORT_SCOPE: {
       // Recurse into expanded import scopes to collect their declarations
+      // inside an import scope for non-transitive import isolation
       auto& importScope = static_cast<ImportScopeAST&>(expr);
+      enterImportScope(importScope.getSourceFile());
       importScopeDepth_++;
       for (const auto& bodyExpr : importScope.getBody().getBody()) {
         collectDeclarations(const_cast<ExprAST&>(*bodyExpr));
       }
       importScopeDepth_--;
+      exitScope();
       break;
     }
 

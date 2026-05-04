@@ -29,9 +29,10 @@ class SemanticAnalyzer {
   // Type registry for class/interface types (shared with codegen)
   std::shared_ptr<sun::TypeRegistry> typeRegistry;
 
-  // Stack of scopes - each scope contains variables, type parameter bindings,
-  // and scope type (Global, Module, Class, Function, Block)
-  std::vector<SemanticScope> scopeStack = {SemanticScope(ScopeType::Global)};
+  // Scope tree — rootScope is the global scope, currentScope walks the tree
+  std::shared_ptr<SemanticScope> rootScope =
+      std::make_shared<SemanticScope>(ScopeType::Global);
+  SemanticScope* currentScope = rootScope.get();
 
   // Track classes currently being instantiated (to detect/break mutual
   // recursion)
@@ -66,8 +67,8 @@ class SemanticAnalyzer {
 
   // True when not inside any function scope (i.e. at module/global level)
   bool isAtModuleLevel() const {
-    for (auto& s : scopeStack)
-      if (s.type == ScopeType::Function) return false;
+    for (auto* s = currentScope; s != nullptr; s = s->parent)
+      if (s->type == ScopeType::Function) return false;
     return true;
   }
 
@@ -277,6 +278,9 @@ class SemanticAnalyzer {
   // Enter a function scope with the function's signature for nested function
   // qualified names. The signature should be "funcName(paramType1,paramType2)".
   void enterFunctionScope(const std::string& funcSig);
+  // Enter an import scope for an imported .sun file.
+  // Uses a hash of the source file path for deduplication.
+  void enterImportScope(const std::string& sourceFile);
   void exitScope();
 
   // Get the current module prefix for name mangling (e.g., "sun_")

@@ -707,12 +707,15 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
     }
 
     case ASTNodeType::IMPORT_SCOPE: {
-      // Expanded import scope — analyze the body (classes, functions, etc.)
-      // This makes the imported file's declarations available for use.
+      // Expanded import scope — analyze the body inside an import scope
+      // to enforce non-transitive imports. Direct imports are visible
+      // (one level of transparency), but their nested imports are not.
       auto& importScope = static_cast<ImportScopeAST&>(expr);
+      enterImportScope(importScope.getSourceFile());
       importScopeDepth_++;
       analyzeBlock(const_cast<BlockExprAST&>(importScope.getBody()));
       importScopeDepth_--;
+      exitScope();
       expr.setResolvedType(sun::Types::Void());
       break;
     }
@@ -1440,14 +1443,14 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       if (declareExpr.hasAlias()) {
         const std::string& aliasName = declareExpr.getAliasName();
         // Check current scope only for redefinition (shadowing is allowed)
-        if (scopeStack.back().typeAliases.find(aliasName) !=
-            scopeStack.back().typeAliases.end()) {
+        if (currentScope->typeAliases.find(aliasName) !=
+            currentScope->typeAliases.end()) {
           logAndThrowError(
               "Type alias '" + aliasName + "' is already defined in this scope",
               declareExpr.getLocation());
         }
         if (resolvedType) {
-          scopeStack.back().typeAliases[aliasName] = resolvedType;
+          currentScope->typeAliases[aliasName] = resolvedType;
         }
       }
 
@@ -1572,11 +1575,9 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
     // Build QualifiedName with module path and function context
     sun::QualifiedName qname(getCurrentModulePath(),
                              getCurrentFunctionContext(), proto.getName());
-    if (!scopeStack.empty()) {
-      scopeStack.back().genericFunctions[qname] = genInfo;
-      if (scopeStack.size() > 1) {
-        scopeStack.front().genericFunctions[qname] = genInfo;
-      }
+    currentScope->genericFunctions[qname] = genInfo;
+    if (importScopeDepth_ == 0 && currentScope != rootScope.get()) {
+      rootScope->genericFunctions[qname] = genInfo;
     }
   }
 
