@@ -644,3 +644,40 @@ TEST_F(DiamondDependencyTest, scoped_imports) {
   )");
   EXPECT_EQ(value, 12);
 }
+
+class InstantiateGenericTest : public ::testing::Test {
+ protected:
+  static constexpr const char* kTestDir = "tests/programs/moon_libs";
+
+  void SetUp() override {
+    initTestEnvironment();
+
+    // Use SUN_PATH for the sun binary (set by initTestEnvironment to cwd)
+    const char* sunPath = std::getenv("SUN_PATH");
+    std::string sunBin = std::string(sunPath) + "/build/sun";
+
+    // Compile B v1 to moon (in same directory as source for relative imports)
+    std::string cmd = sunBin + " --emit-moon -o " + kTestDir + "/box.moon " +
+                      kTestDir + "/box.sun 2>&1";
+    int ret = std::system(cmd.c_str());
+    ASSERT_EQ(ret, 0) << "Failed to compile box.sun";
+  }
+
+  void TearDown() override {
+    // Clean up moon files
+    std::string testDir = kTestDir;
+    std::filesystem::remove(testDir + "/box.moon");
+  }
+};
+
+TEST_F(InstantiateGenericTest, instantiate_generic_in_moon_lib) {
+  auto value = executeString(R"(
+    import "tests/programs/moon_libs/box.moon";
+
+    function main() i32 {
+        var b = Box<i32>(42);
+        return b.value;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}

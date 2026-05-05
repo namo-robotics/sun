@@ -168,8 +168,10 @@ class Parser {
       const std::string& importPath, std::set<std::string>& cycleStack);
 
   // Collect AST stubs from a precompiled .moon file
-  void collectMoonImport(const std::string& moonPath,
-                         std::vector<std::unique_ptr<ExprAST>>& collectedAST);
+  // Returns the content hash (symbol prefix) for the bundle
+  std::string collectMoonImport(
+      const std::string& moonPath,
+      std::vector<std::unique_ptr<ExprAST>>& collectedAST);
 
   // Create AST stubs from module metadata and append to collectedAST
   // Used by both .moon imports and .sun metadata-driven imports

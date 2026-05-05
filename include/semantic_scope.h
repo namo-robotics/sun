@@ -29,10 +29,11 @@ struct FunctionInfo {
   std::vector<Capture> captures;
 };
 
-// Type of scope in the scope stack
+// Type of scope in the scope tree
 enum class ScopeType {
   Global,    // Top-level (program) scope
   Module,    // Module scope (has optional name for qualified names)
+  Import,    // Import scope (wraps an imported .sun file's declarations)
   Class,     // Class definition scope
   Function,  // Function or lambda body scope
   Block      // Block scope (if, while, for, etc.)
@@ -234,8 +235,11 @@ struct SemanticScope {
   std::vector<UsingImport> usingImports;
   // Scope-based import bindings (new)
   std::vector<ImportBinding> importBindings;
-  // Parent scope pointer (not serialized, reconstructed on load)
+  // Parent scope pointer (tree structure)
   SemanticScope* parent = nullptr;
+  // Non-module child scopes (for scope tree traversal)
+  // Module children use childModules; this holds Block/Function/Import/Class
+  std::vector<std::shared_ptr<SemanticScope>> children;
   // True if this scope was loaded from an external .moon file
   bool isExternal = false;
 
@@ -268,6 +272,12 @@ struct SemanticScope {
 // Helper to check if a module name represents a library scope ($hash$)
 inline bool isLibraryScope(const std::string& name) {
   return name.size() >= 2 && name.front() == '$' && name.back() == '$';
+}
+
+// Helper to check if a module name represents an import scope ($import_...$)
+inline bool isImportScope(const std::string& name) {
+  return name.size() > 9 && name.substr(0, 8) == "$import_" &&
+         name.back() == '$';
 }
 
 // Mangle a dot-separated module path to underscore-separated

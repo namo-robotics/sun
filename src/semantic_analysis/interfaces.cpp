@@ -10,17 +10,24 @@
 void SemanticAnalyzer::registerInterface(
     const std::string& name, std::shared_ptr<sun::InterfaceType> interfaceType,
     std::optional<Position> loc) {
-  if (!scopeStack.empty() && scopeStack.front().interfaces.contains(name)) {
+  if (rootScope->interfaces.contains(name) ||
+      currentScope->interfaces.contains(name)) {
     if (!collectingDeclarations) return;  // Pass 2: skip
     // Allow re-registration from duplicate imports (diamond deps)
     if (importScopeDepth_ > 0) return;
     logAndThrowError("Cannot redeclare interface '" + name + "'");
   }
-  // Register in current scope AND global scope (for reachability)
-  if (!scopeStack.empty()) {
-    scopeStack.back().interfaces[name] = interfaceType;
-    if (scopeStack.size() > 1) {
-      scopeStack.front().interfaces[name] = interfaceType;
+  // Register in current scope (and globally for non-import scopes)
+  currentScope->interfaces[name] = interfaceType;
+  if (importScopeDepth_ == 0 && currentScope != rootScope.get()) {
+    rootScope->interfaces[name] = interfaceType;
+  } else if (importScopeDepth_ > 0) {
+    for (auto* s = currentScope->parent; s != nullptr; s = s->parent) {
+      if (s->type == ScopeType::Module || s->type == ScopeType::Import ||
+          s->type == ScopeType::Global) {
+        s->interfaces[name] = interfaceType;
+        break;
+      }
     }
   }
 }
@@ -28,9 +35,16 @@ void SemanticAnalyzer::registerInterface(
 std::shared_ptr<sun::InterfaceType> SemanticAnalyzer::lookupInterface(
     const std::string& name) const {
   // Walk scope chain from innermost to outermost, including child modules
-  for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
-    auto result = it->findInterface(name);
+  for (auto* s = currentScope; s != nullptr; s = s->parent) {
+    auto result = s->findInterface(name);
     if (result) return result;
+    // Search direct import-scope children (one level of transparency)
+    for (const auto& [childName, child] : s->childModules) {
+      if (child && child->type == ScopeType::Import) {
+        result = child->findInterface(name);
+        if (result) return result;
+      }
+    }
   }
   return nullptr;
 }
@@ -42,18 +56,24 @@ std::shared_ptr<sun::InterfaceType> SemanticAnalyzer::lookupInterface(
 void SemanticAnalyzer::registerGenericInterface(
     const std::string& name, const GenericInterfaceInfo& info,
     std::optional<Position> loc) {
-  if (!scopeStack.empty() &&
-      scopeStack.front().genericInterfaces.contains(name)) {
+  if (rootScope->genericInterfaces.contains(name) ||
+      currentScope->genericInterfaces.contains(name)) {
     if (!collectingDeclarations) return;  // Pass 2: skip
     // Allow re-registration from duplicate imports (diamond deps)
     if (importScopeDepth_ > 0) return;
     logAndThrowError("Cannot redeclare generic interface '" + name + "'", loc);
   }
-  // Register in current scope AND global scope (for reachability)
-  if (!scopeStack.empty()) {
-    scopeStack.back().genericInterfaces[name] = info;
-    if (scopeStack.size() > 1) {
-      scopeStack.front().genericInterfaces[name] = info;
+  // Register in current scope (and globally for non-import scopes)
+  currentScope->genericInterfaces[name] = info;
+  if (importScopeDepth_ == 0 && currentScope != rootScope.get()) {
+    rootScope->genericInterfaces[name] = info;
+  } else if (importScopeDepth_ > 0) {
+    for (auto* s = currentScope->parent; s != nullptr; s = s->parent) {
+      if (s->type == ScopeType::Module || s->type == ScopeType::Import ||
+          s->type == ScopeType::Global) {
+        s->genericInterfaces[name] = info;
+        break;
+      }
     }
   }
 }
@@ -61,9 +81,16 @@ void SemanticAnalyzer::registerGenericInterface(
 const GenericInterfaceInfo* SemanticAnalyzer::lookupGenericInterface(
     const std::string& name) const {
   // Walk scope chain from innermost to outermost, including child modules
-  for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
-    auto result = it->findGenericInterface(name);
+  for (auto* s = currentScope; s != nullptr; s = s->parent) {
+    auto result = s->findGenericInterface(name);
     if (result) return result;
+    // Search direct import-scope children (one level of transparency)
+    for (const auto& [childName, child] : s->childModules) {
+      if (child && child->type == ScopeType::Import) {
+        result = child->findGenericInterface(name);
+        if (result) return result;
+      }
+    }
   }
   return nullptr;
 }
@@ -71,18 +98,24 @@ const GenericInterfaceInfo* SemanticAnalyzer::lookupGenericInterface(
 std::shared_ptr<sun::InterfaceType>
 SemanticAnalyzer::instantiateGenericInterface(
     const std::string& baseName, const std::vector<sun::TypePtr>& typeArgs) {
+  // Look up the generic interface definition first
+  auto* genericInfo = lookupGenericInterface(baseName);
+
+  // Use the AST's qualified name for mangling if available.
+  std::string effectiveBase = baseName;
+  if (genericInfo && genericInfo->AST && genericInfo->AST->hasQualifiedName()) {
+    effectiveBase = genericInfo->AST->getQualifiedName();
+  }
+
   // Generate mangled name for the specialized interface
   std::string mangledName =
-      sun::Types::mangleGenericClassName(baseName, typeArgs);
+      sun::Types::mangleGenericClassName(effectiveBase, typeArgs);
 
   // Check if already instantiated
   auto existing = lookupInterface(mangledName);
   if (existing) {
     return existing;
   }
-
-  // Look up the generic interface definition
-  auto* genericInfo = lookupGenericInterface(baseName);
 
   // If not found in analyzer's table, check if it's a builtin interface
   // (IIterator<T>, IIterable<T>)
@@ -213,11 +246,17 @@ SemanticAnalyzer::instantiateGenericInterface(
 
 void SemanticAnalyzer::registerEnum(const std::string& name,
                                     std::shared_ptr<sun::EnumType> enumType) {
-  // Register in current scope AND global scope (for reachability)
-  if (!scopeStack.empty()) {
-    scopeStack.back().enums[name] = enumType;
-    if (scopeStack.size() > 1) {
-      scopeStack.front().enums[name] = enumType;
+  // Register in current scope (and globally for non-import scopes)
+  currentScope->enums[name] = enumType;
+  if (importScopeDepth_ == 0 && currentScope != rootScope.get()) {
+    rootScope->enums[name] = enumType;
+  } else if (importScopeDepth_ > 0) {
+    for (auto* s = currentScope->parent; s != nullptr; s = s->parent) {
+      if (s->type == ScopeType::Module || s->type == ScopeType::Import ||
+          s->type == ScopeType::Global) {
+        s->enums[name] = enumType;
+        break;
+      }
     }
   }
 }
@@ -225,9 +264,16 @@ void SemanticAnalyzer::registerEnum(const std::string& name,
 std::shared_ptr<sun::EnumType> SemanticAnalyzer::lookupEnum(
     const std::string& name) const {
   // Walk scope chain from innermost to outermost, including child modules
-  for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
-    auto result = it->findEnum(name);
+  for (auto* s = currentScope; s != nullptr; s = s->parent) {
+    auto result = s->findEnum(name);
     if (result) return result;
+    // Search direct import-scope children (one level of transparency)
+    for (const auto& [childName, child] : s->childModules) {
+      if (child && child->type == ScopeType::Import) {
+        result = child->findEnum(name);
+        if (result) return result;
+      }
+    }
   }
   return nullptr;
 }
