@@ -176,7 +176,8 @@ void SemanticAnalyzer::collectDeclarations(ExprAST& expr) {
       // Recurse into expanded import scopes to collect their declarations
       // inside an import scope for non-transitive import isolation
       auto& importScope = static_cast<ImportScopeAST&>(expr);
-      enterImportScope(importScope.getSourceFile());
+      enterImportScope(importScope.getSourceFile(),
+                       importScope.getContentHash());
       importScopeDepth_++;
       for (const auto& bodyExpr : importScope.getBody().getBody()) {
         collectDeclarations(const_cast<ExprAST&>(*bodyExpr));

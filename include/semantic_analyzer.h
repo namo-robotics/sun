@@ -280,7 +280,8 @@ class SemanticAnalyzer {
   void enterFunctionScope(const std::string& funcSig);
   // Enter an import scope for an imported .sun file.
   // Uses a hash of the source file path for deduplication.
-  void enterImportScope(const std::string& sourceFile);
+  void enterImportScope(const std::string& sourceFile,
+                        const std::string& contentHash = "");
   void exitScope();
 
   // Get the current module prefix for name mangling (e.g., "sun_")

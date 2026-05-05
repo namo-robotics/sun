@@ -21,6 +21,14 @@ void SemanticAnalyzer::registerInterface(
   currentScope->interfaces[name] = interfaceType;
   if (importScopeDepth_ == 0 && currentScope != rootScope.get()) {
     rootScope->interfaces[name] = interfaceType;
+  } else if (importScopeDepth_ > 0) {
+    for (auto* s = currentScope->parent; s != nullptr; s = s->parent) {
+      if (s->type == ScopeType::Module || s->type == ScopeType::Import ||
+          s->type == ScopeType::Global) {
+        s->interfaces[name] = interfaceType;
+        break;
+      }
+    }
   }
 }
 
@@ -59,6 +67,14 @@ void SemanticAnalyzer::registerGenericInterface(
   currentScope->genericInterfaces[name] = info;
   if (importScopeDepth_ == 0 && currentScope != rootScope.get()) {
     rootScope->genericInterfaces[name] = info;
+  } else if (importScopeDepth_ > 0) {
+    for (auto* s = currentScope->parent; s != nullptr; s = s->parent) {
+      if (s->type == ScopeType::Module || s->type == ScopeType::Import ||
+          s->type == ScopeType::Global) {
+        s->genericInterfaces[name] = info;
+        break;
+      }
+    }
   }
 }
 
@@ -82,18 +98,24 @@ const GenericInterfaceInfo* SemanticAnalyzer::lookupGenericInterface(
 std::shared_ptr<sun::InterfaceType>
 SemanticAnalyzer::instantiateGenericInterface(
     const std::string& baseName, const std::vector<sun::TypePtr>& typeArgs) {
+  // Look up the generic interface definition first
+  auto* genericInfo = lookupGenericInterface(baseName);
+
+  // Use the AST's qualified name for mangling if available.
+  std::string effectiveBase = baseName;
+  if (genericInfo && genericInfo->AST && genericInfo->AST->hasQualifiedName()) {
+    effectiveBase = genericInfo->AST->getQualifiedName();
+  }
+
   // Generate mangled name for the specialized interface
   std::string mangledName =
-      sun::Types::mangleGenericClassName(baseName, typeArgs);
+      sun::Types::mangleGenericClassName(effectiveBase, typeArgs);
 
   // Check if already instantiated
   auto existing = lookupInterface(mangledName);
   if (existing) {
     return existing;
   }
-
-  // Look up the generic interface definition
-  auto* genericInfo = lookupGenericInterface(baseName);
 
   // If not found in analyzer's table, check if it's a builtin interface
   // (IIterator<T>, IIterable<T>)
@@ -228,6 +250,14 @@ void SemanticAnalyzer::registerEnum(const std::string& name,
   currentScope->enums[name] = enumType;
   if (importScopeDepth_ == 0 && currentScope != rootScope.get()) {
     rootScope->enums[name] = enumType;
+  } else if (importScopeDepth_ > 0) {
+    for (auto* s = currentScope->parent; s != nullptr; s = s->parent) {
+      if (s->type == ScopeType::Module || s->type == ScopeType::Import ||
+          s->type == ScopeType::Global) {
+        s->enums[name] = enumType;
+        break;
+      }
+    }
   }
 }
 

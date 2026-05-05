@@ -711,7 +711,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // to enforce non-transitive imports. Direct imports are visible
       // (one level of transparency), but their nested imports are not.
       auto& importScope = static_cast<ImportScopeAST&>(expr);
-      enterImportScope(importScope.getSourceFile());
+      enterImportScope(importScope.getSourceFile(),
+                       importScope.getContentHash());
       importScopeDepth_++;
       analyzeBlock(const_cast<BlockExprAST&>(importScope.getBody()));
       importScopeDepth_--;

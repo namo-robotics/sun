@@ -23,6 +23,16 @@ void SemanticAnalyzer::registerClass(const std::string& name,
   currentScope->classes[name] = classType;
   if (importScopeDepth_ == 0 && currentScope != rootScope.get()) {
     rootScope->classes[name] = classType;
+  } else if (importScopeDepth_ > 0) {
+    // Also register in nearest persistent ancestor so the class survives
+    // transient scope deletion (Class/Function scopes are deleted on exit)
+    for (auto* s = currentScope->parent; s != nullptr; s = s->parent) {
+      if (s->type == ScopeType::Module || s->type == ScopeType::Import ||
+          s->type == ScopeType::Global) {
+        s->classes[name] = classType;
+        break;
+      }
+    }
   }
 }
 
@@ -125,12 +135,23 @@ sun::TypePtr SemanticAnalyzer::findTypeAlias(const std::string& name) const {
 // Instantiate a generic class with specific type arguments
 std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
     const std::string& baseName, const std::vector<sun::TypePtr>& typeArgs) {
+  // Look up the generic class definition first
+  auto* genericClassInfo = lookupGenericClass(baseName);
+
+  // Use the AST's qualified name for mangling if available.
+  // This ensures that looking up "MatrixView" (short name) produces the same
+  // mangledName as "$hash$_sun_MatrixView" (qualified name from within module).
+  std::string effectiveBase = baseName;
+  if (genericClassInfo && genericClassInfo->AST &&
+      genericClassInfo->AST->hasQualifiedName()) {
+    effectiveBase = genericClassInfo->AST->getQualifiedName();
+  }
+
   // Generate mangled name for the specialized class
   std::string mangledName =
-      sun::Types::mangleGenericClassName(baseName, typeArgs);
+      sun::Types::mangleGenericClassName(effectiveBase, typeArgs);
 
   // Check if already instantiated (both class type AND AST specialization)
-  auto* genericClassInfo = lookupGenericClass(baseName);
   auto existing = lookupClass(mangledName);
   if (existing && genericClassInfo &&
       genericClassInfo->AST->hasSpecialization(mangledName)) {

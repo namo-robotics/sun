@@ -2010,9 +2010,10 @@ std::unique_ptr<ImportScopeAST> Parser::expandImport(
   if (importPath.size() > 5 &&
       importPath.substr(importPath.size() - 5) == ".moon") {
     std::vector<std::unique_ptr<ExprAST>> stubs;
-    collectMoonImport(importPath, stubs);
+    std::string contentHash = collectMoonImport(importPath, stubs);
     auto body = std::make_unique<BlockExprAST>(std::move(stubs));
-    return std::make_unique<ImportScopeAST>(importPath, std::move(body));
+    return std::make_unique<ImportScopeAST>(importPath, std::move(body),
+                                            std::move(contentHash));
   }
 
   // Resolve the import path
@@ -2091,9 +2092,10 @@ std::unique_ptr<ImportScopeAST> Parser::expandImport(
 }
 
 // Handle import of a precompiled .moon file
-void Parser::collectMoonImport(
+std::string Parser::collectMoonImport(
     const std::string& moonPath,
     std::vector<std::unique_ptr<ExprAST>>& collectedAST) {
+  std::string contentHash;
   // Resolve the moon path
   std::filesystem::path resolved;
   if (std::filesystem::path(moonPath).is_absolute()) {
@@ -2116,14 +2118,14 @@ void Parser::collectMoonImport(
 
   if (!std::filesystem::exists(resolved)) {
     logAndThrowError("Could not find moon file: " + moonPath);
-    return;
+    return contentHash;
   }
   resolved = std::filesystem::canonical(resolved);
   std::string resolvedStr = resolved.string();
 
   // Check if already imported
   if (importedFiles->count(resolvedStr)) {
-    return;
+    return contentHash;
   }
   importedFiles->insert(resolvedStr);
 
@@ -2132,7 +2134,7 @@ void Parser::collectMoonImport(
   auto reader = sun::SunLibReader::open(resolved);
   if (!reader) {
     logAndThrowError("Failed to open moon: " + resolvedStr);
-    return;
+    return contentHash;
   }
   PARSER_TIMER_END(open_moon);
 
@@ -2158,6 +2160,11 @@ void Parser::collectMoonImport(
       continue;
     }
 
+    // Capture content hash from first module (all share the same hash)
+    if (contentHash.empty()) {
+      contentHash = metadata->getSymbolPrefix();
+    }
+
     // Create AST stubs from metadata and add to collectedAST
     createModuleStubs(*metadata, collectedAST);
   }
@@ -2165,17 +2172,14 @@ void Parser::collectMoonImport(
 
   // Store the moon reader in the cache for later linking
   sun::LibraryCache::instance().addBundle(resolved);
+  return contentHash;
 }
 
 // Create AST stubs from module metadata
 // Builds interface, class, and function stubs, wraps them in namespace
-// isolation
 void Parser::createModuleStubs(
     const sun::ModuleMetadata& metadata,
     std::vector<std::unique_ptr<ExprAST>>& collectedAST) {
-  // Get symbol prefix from content hash for library isolation
-  std::string symbolPrefix = metadata.getSymbolPrefix();
-
   // Collect AST stubs for this module - may be wrapped in a namespace
   std::vector<std::unique_ptr<ExprAST>> moduleAST;
 
@@ -2362,32 +2366,16 @@ void Parser::createModuleStubs(
 
   // Wrap all stubs in appropriate namespace structure
   if (!moduleAST.empty()) {
-    std::vector<std::unique_ptr<ExprAST>> libraryContent;
-
-    // If module has a namespace, wrap stubs in inner NamespaceAST
+    // If module has a namespace, wrap stubs in NamespaceAST
     if (!metadata.moduleName.empty()) {
       auto nsBody = std::make_unique<BlockExprAST>(std::move(moduleAST));
       auto nsAST = std::make_unique<NamespaceAST>(metadata.moduleName,
                                                   std::move(nsBody));
       nsAST->setPrecompiled(true);
-      libraryContent.push_back(std::move(nsAST));
+      collectedAST.push_back(std::move(nsAST));
     } else {
-      // No module namespace - add stubs directly to library scope
+      // No module namespace - add stubs directly
       for (auto& ast : moduleAST) {
-        libraryContent.push_back(std::move(ast));
-      }
-    }
-
-    // If we have a symbol prefix (hash isolation), wrap in outer namespace
-    if (!symbolPrefix.empty()) {
-      auto libBody = std::make_unique<BlockExprAST>(std::move(libraryContent));
-      auto libAST =
-          std::make_unique<NamespaceAST>(symbolPrefix, std::move(libBody));
-      libAST->setPrecompiled(true);
-      collectedAST.push_back(std::move(libAST));
-    } else {
-      // No isolation - add content directly (used by .sun imports)
-      for (auto& ast : libraryContent) {
         collectedAST.push_back(std::move(ast));
       }
     }
