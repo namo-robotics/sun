@@ -74,6 +74,10 @@ void SemanticAnalyzer::collectDeclarations(ExprAST& expr) {
       auto& classDef = static_cast<ClassDefinitionAST&>(expr);
       std::string className = qualifyNameInCurrentModule(classDef.getName());
 
+      // Set qualified name early so instantiateGenericClass can use it
+      // (it checks genericInfo->AST->hasQualifiedName() for mangling)
+      classDef.setQualifiedName(makeQualifiedName(classDef.getName()));
+
       // Generic classes: register template only
       if (classDef.isGeneric()) {
         GenericClassInfo genericInfo;

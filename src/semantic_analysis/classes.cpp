@@ -168,7 +168,8 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
       return existing;
     }
     // Create and register a placeholder class type
-    auto placeholder = typeRegistry->getSpecializedClass(baseName, typeArgs);
+    auto placeholder =
+        typeRegistry->getSpecializedClass(effectiveBase, typeArgs);
     registerClass(mangledName, placeholder);
     return placeholder;
   }
@@ -200,7 +201,8 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
   if (astOnlyMode) {
     specializedClass = existing;
   } else {
-    specializedClass = typeRegistry->getSpecializedClass(baseName, typeArgs);
+    specializedClass =
+        typeRegistry->getSpecializedClass(effectiveBase, typeArgs);
   }
 
   // Push a scope for class-level type parameter bindings
@@ -396,8 +398,6 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
       false);                   // NOT precompiled - needs codegen
 
   // Store specialization on the generic class AST for codegen access
-  llvm::errs() << "DEBUG: addSpecialization " << mangledName
-               << " on AST addr=" << (void*)genericClassInfo->AST << "\n";
   genericClassInfo->AST->addSpecialization(mangledName, specializedAST);
 
   // Restore old class context
@@ -776,20 +776,36 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   auto savedClass = currentClass;
   setCurrentClass(classType);
 
-  // Extract module prefix from class name (e.g., "sun_Vec" -> "sun")
-  // This ensures types used in method bodies resolve correctly
+  // Extract module path from class context for type resolution.
+  // For specialized generic classes, look up the generic class definition's
+  // qualified name to get the module path.
   std::string modulePrefix;
-  const std::string& className = classType->getName();
-  size_t underscorePos = className.find('_');
-  if (underscorePos != std::string::npos) {
-    modulePrefix = className.substr(0, underscorePos);
+  int moduleScopesEntered = 0;
+  if (classType->isSpecialized()) {
+    const std::string& baseName = classType->getBaseGenericName();
+    auto* genericInfo = lookupGenericClass(baseName);
+    if (genericInfo && genericInfo->AST &&
+        genericInfo->AST->hasQualifiedName()) {
+      modulePrefix = genericInfo->AST->getQualifiedNameInfo().modulePath;
+    }
+  }
+  if (modulePrefix.empty()) {
+    const std::string& className = classType->getName();
+    size_t underscorePos = className.find('_');
+    if (underscorePos != std::string::npos) {
+      modulePrefix = className.substr(0, underscorePos);
+    }
   }
 
   // Enter module scope if class is from a namespace (for correct type
   // resolution)
-  bool inModuleScope = !modulePrefix.empty();
-  if (inModuleScope) {
-    enterModuleScope(modulePrefix);
+  if (!modulePrefix.empty()) {
+    std::string segment;
+    std::istringstream stream(modulePrefix);
+    while (std::getline(stream, segment, '.')) {
+      enterModuleScope(segment);
+      moduleScopesEntered++;
+    }
     // Add implicit using import for the module so unqualified names resolve
     addUsingImport(UsingImport(modulePrefix, "*"));
   }
@@ -814,8 +830,8 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
 
   exitScope();  // method scope
   setCurrentClass(savedClass);
-  if (inModuleScope) {
-    exitScope();  // module scope
+  for (int i = 0; i < moduleScopesEntered; ++i) {
+    exitScope();  // module scope(s)
   }
   exitScope();  // type parameter scope
 

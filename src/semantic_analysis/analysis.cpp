@@ -1483,8 +1483,21 @@ void SemanticAnalyzer::analyzeBlock(BlockExprAST& block) {
         collectDeclarations(*expr);
       }
     }
+  }
 
-    // Pass 1b: Collect function prototypes (can now resolve types from 1a)
+  // Pass 1.5: Fully analyze import scopes so their class types have methods
+  // and fields populated. This must happen before Pass 1b because function
+  // prototypes may reference generic types (e.g., ref Matrix<i64>) which
+  // triggers instantiation that needs other classes to be complete.
+  for (const auto& expr : block.getBody()) {
+    if (expr->getType() == ASTNodeType::IMPORT_SCOPE) {
+      analyzeExpr(*expr);
+    }
+  }
+
+  // Pass 1b: Collect function prototypes (can now resolve types from imports)
+  {
+    CollectingGuard guard(collectingDeclarations, true);
     for (const auto& expr : block.getBody()) {
       auto type = expr->getType();
       if (type == ASTNodeType::FUNCTION) {
@@ -1493,9 +1506,11 @@ void SemanticAnalyzer::analyzeBlock(BlockExprAST& block) {
     }
   }
 
-  // Pass 2: Analyze all expressions (bodies, variable bindings, etc.)
+  // Pass 2: Analyze all expressions (skip import scopes already analyzed)
   for (const auto& expr : block.getBody()) {
-    analyzeExpr(*expr);
+    if (expr->getType() != ASTNodeType::IMPORT_SCOPE) {
+      analyzeExpr(*expr);
+    }
   }
 }
 
@@ -1940,22 +1955,49 @@ void SemanticAnalyzer::lazyParseAndAnalyzeMethod(
             parsedFunc->getBody().getBody()))));
   }
 
-  // Step 1.5: Extract module prefix from class name (e.g., "sun_Vec" -> "sun")
-  // This ensures types used in method bodies resolve correctly
+  // Step 1.5: Extract module path from class context for type resolution.
+  // For specialized generic classes (e.g., "$hash$_sun_Matrix_i64"), look up
+  // the generic class definition's qualified name to get the module path
+  // (e.g., "$hash$.sun"). This ensures types like HeapAllocator resolve to
+  // their full qualified form ($hash$_sun_HeapAllocator) in method bodies.
   std::string modulePrefix;
-  bool inModuleScope = false;
+  int moduleScopesEntered = 0;
   if (classType) {
-    const std::string& className = classType->getName();
-    size_t underscorePos = className.find('_');
-    if (underscorePos != std::string::npos) {
-      modulePrefix = className.substr(0, underscorePos);
+    std::string modulePath;
+
+    // For specialized classes, look up the generic class to get module path
+    if (classType->isSpecialized()) {
+      const std::string& baseName = classType->getBaseGenericName();
+      auto* genericInfo = lookupGenericClass(baseName);
+      if (genericInfo && genericInfo->AST &&
+          genericInfo->AST->hasQualifiedName()) {
+        modulePath = genericInfo->AST->getQualifiedNameInfo().modulePath;
+      }
     }
+
+    // For non-specialized classes, use the first underscore-separated segment
+    // as a fallback (works for "sun_HeapAllocator" -> "sun")
+    if (modulePath.empty()) {
+      const std::string& className = classType->getName();
+      size_t underscorePos = className.find('_');
+      if (underscorePos != std::string::npos) {
+        modulePrefix = className.substr(0, underscorePos);
+      }
+    } else {
+      modulePrefix = modulePath;
+    }
+
     // Enter module scope if class is from a namespace
     if (!modulePrefix.empty()) {
-      enterModuleScope(modulePrefix);
+      // For dot-separated paths, enter each segment as a module scope
+      std::string segment;
+      std::istringstream stream(modulePrefix);
+      while (std::getline(stream, segment, '.')) {
+        enterModuleScope(segment);
+        moduleScopesEntered++;
+      }
       // Add implicit using import for the module so unqualified names resolve
       addUsingImport(UsingImport(modulePrefix, "*"));
-      inModuleScope = true;
     }
   }
 
@@ -2005,8 +2047,8 @@ void SemanticAnalyzer::lazyParseAndAnalyzeMethod(
   // Step 7: Pop scopes and restore context
   exitScope();  // method scope
   exitScope();  // type param scope
-  if (inModuleScope) {
-    exitScope();  // module scope
+  for (int i = 0; i < moduleScopesEntered; ++i) {
+    exitScope();  // module scope(s)
   }
   setCurrentClass(savedClass);
 }
