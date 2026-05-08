@@ -263,6 +263,16 @@ class SemanticAnalyzer {
   // if C implements I. Also handles ref unwrapping and exact equality.
   static bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to);
 
+  // Try to coerce an integer literal to a target primitive type.
+  // Returns true if coercion happened. If throwOnFail, throws on mismatch.
+  static bool tryCoerceIntegerLiteral(ExprAST* expr, sun::TypePtr targetType,
+                                      bool throwOnFail = false);
+
+  // Extract type guard pattern from condition (_is<T>(var)).
+  // Returns (varName, narrowedType) if matched.
+  std::optional<std::pair<std::string, sun::TypePtr>> extractTypeGuard(
+      const ExprAST& cond);
+
   // Validate parameter names and resolve their types from prototype
   // Throws if any parameter name is reserved; applies auto-ref conversion
   // Returns the resolved param types and sets them on the prototype
