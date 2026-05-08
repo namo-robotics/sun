@@ -197,6 +197,22 @@ TEST(MemorySafety, matrix_ref_borrow) {
   EXPECT_EQ(value, 10);
 }
 
+// Matrix ref borrow is fine
+TEST(MemorySafety, matrix_okay) {
+  auto value = executeString(R"(
+    import "build/stdlib.moon";
+    using sun;
+    
+    function main() i64 {
+        var allocator = make_heap_allocator();
+        var shape: array<i64, 1> = [10];
+        var m = Matrix<i32>(allocator, shape);
+        return m.size();       // OK: m still valid
+    }
+  )");
+  EXPECT_EQ(value, 10);
+}
+
 // ============================================================================
 // Allocator Move Semantics
 // ============================================================================

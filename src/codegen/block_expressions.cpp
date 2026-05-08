@@ -77,6 +77,20 @@ Value* CodegenVisitor::codegen(const BlockExprAST& block) {
       continue;
     }
 
+    // Class/interface definitions generate functions/methods that change
+    // the IR builder insertion point. Save/restore around them.
+    if (expr->getType() == ASTNodeType::CLASS_DEFINITION ||
+        expr->getType() == ASTNodeType::INTERFACE_DEFINITION) {
+      auto currentBlock = ctx.builder->GetInsertBlock();
+
+      lastValue = codegen(*expr);
+
+      if (currentBlock) {
+        ctx.builder->SetInsertPoint(currentBlock);
+      }
+      continue;
+    }
+
     if (expr->isReturn()) {
       // Generate the return - this will terminate the current basic block
       codegen(*expr);

@@ -1,0 +1,5 @@
+import "tests/programs/minimal_import_b.sun";
+
+function a() i32 {
+    return b();
+};

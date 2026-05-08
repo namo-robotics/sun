@@ -57,9 +57,16 @@ Value* CodegenVisitor::codegenPrecompiledClass(const ClassDefinitionAST& expr,
     // Some may be library specializations (already in bitcode) - skip those.
     // Others may be user specializations (e.g., Vec<MyUserClass>) - codegen
     // those.
+    llvm::errs() << "DEBUG: codegenPrecompiledClass generic: " << className
+                 << " specializations=" << expr.getSpecializations().size()
+                 << " addr=" << (void*)&expr << "\n";
     for (const auto& [mangledName, specializedAST] :
          expr.getSpecializations()) {
       if (!specializedAST || codegenedClasses.count(mangledName)) {
+        llvm::errs() << "DEBUG: skip spec " << mangledName
+                     << " null=" << !specializedAST
+                     << " already=" << codegenedClasses.count(mangledName)
+                     << "\n";
         continue;
       }
 
@@ -70,9 +77,13 @@ Value* CodegenVisitor::codegenPrecompiledClass(const ClassDefinitionAST& expr,
       // have declarations and need codegen.
       std::string initMethodName = mangledName + "_init";
       if (isPrecompiledFunction(initMethodName)) {
+        llvm::errs() << "DEBUG: skip precompiled " << mangledName
+                     << " (init=" << initMethodName << ")\n";
         // Pre-declared library specialization - skip, bitcode will be linked
         continue;
       }
+
+      llvm::errs() << "DEBUG: codegen spec " << mangledName << "\n";
 
       // New specialization - needs codegen
       // Mark as library specialization for IR filtering (still comes from
@@ -124,6 +135,12 @@ Value* CodegenVisitor::codegen(const ClassDefinitionAST& expr) {
 
     // Return a void value - generic class templates don't generate code
     return ConstantFP::get(ctx.getContext(), APFloat(0.0));
+  }
+
+  // Error if codegen sees an unmarked duplicate — this is a compiler bug
+  if (codegenedClasses.count(className)) {
+    logAndThrowError("Duplicate class definition reached codegen: " +
+                     className);
   }
 
   // Mark this class as being codegenned

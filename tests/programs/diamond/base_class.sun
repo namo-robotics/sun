@@ -1,0 +1,12 @@
+// base_class.sun - Shared class imported by left_class and right_class
+class Point {
+    function init(x: i32, y: i32) {
+        this.x = x;
+        this.y = y;
+    }
+    function sum() i32 {
+        return this.x + this.y;
+    }
+    var x: i32;
+    var y: i32;
+}

@@ -1,7 +1,8 @@
 #include "library_cache.h"
 
 #include <algorithm>
-#include <cstdlib>
+
+#include "sun_path.h"
 
 namespace sun {
 
@@ -46,20 +47,9 @@ void LibraryCache::initFromEnvironment() {
 
   if (initialized_) return;
 
-  const char* sunPath = std::getenv("SUN_PATH");
-  if (sunPath) {
-    std::filesystem::path basePath(sunPath);
-
-    // Add standard search paths
-    auto libPath = basePath / "lib";
-    auto buildPath = basePath / "build";
-
-    if (std::filesystem::exists(libPath)) {
-      searchPaths_.push_back(libPath);
-    }
-    if (std::filesystem::exists(buildPath)) {
-      searchPaths_.push_back(buildPath);
-    }
+  // Add lib/ and build/ subdirectories from each SUN_PATH entry
+  for (const auto& path : SunPath::getLibrarySearchPaths()) {
+    searchPaths_.push_back(path);
   }
 
   // Also check current directory

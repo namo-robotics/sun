@@ -10,10 +10,13 @@
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_map>
 #include <vector>
 
 #include "library_cache.h"
 #include "llvm/Support/raw_ostream.h"
+#include "metadata_extractor.h"
+#include "sun_path.h"
 
 #define PARSER_TIMER_START(name) \
   auto parser_timer_##name = std::chrono::high_resolution_clock::now()
@@ -1999,34 +2002,19 @@ unique_ptr<ExprAST> Parser::parseQualifiedOrSimpleName() {
   return std::make_unique<VariableReferenceAST>(std::move(firstName));
 }
 
-// Collect AST nodes from an imported file (unified AST approach)
-// Recursively parses imports and collects all non-import statements
-void Parser::collectImports(
-    const std::string& importPath,
-    std::vector<std::unique_ptr<ExprAST>>& collectedAST) {
-  // Check if this is a .moon import (precompiled library)
+// Expand an import into an ImportScopeAST node.
+// This creates a tree structure where each file's own imports are nested
+// ImportScopeASTs, making transitive deps private to the importing file.
+std::unique_ptr<ImportScopeAST> Parser::expandImport(
+    const std::string& importPath, std::set<std::string>& cycleStack) {
+  // Handle .moon imports: wrap stubs in ImportScopeAST
   if (importPath.size() > 5 &&
       importPath.substr(importPath.size() - 5) == ".moon") {
-    collectMoonImport(importPath, collectedAST);
-    return;
-  }
-
-  // Check if this import is available as a precompiled library
-  // If so, we'll still parse for type info but link precompiled bitcode later
-  if (sun::LibraryCache::instance().hasModule(importPath)) {
-    // Record this as a precompiled import for later linking
-    bool alreadyRecorded = false;
-    for (const auto& path : *precompiledImports) {
-      if (path == importPath) {
-        alreadyRecorded = true;
-        break;
-      }
-    }
-    if (!alreadyRecorded) {
-      precompiledImports->push_back(importPath);
-    }
-    // Continue to parse source for type information
-    // The codegen will be skipped and precompiled bitcode linked instead
+    std::vector<std::unique_ptr<ExprAST>> stubs;
+    std::string contentHash = collectMoonImport(importPath, stubs);
+    auto body = std::make_unique<BlockExprAST>(std::move(stubs));
+    return std::make_unique<ImportScopeAST>(importPath, std::move(body),
+                                            std::move(contentHash));
   }
 
   // Resolve the import path
@@ -2034,15 +2022,8 @@ void Parser::collectImports(
   if (std::filesystem::path(importPath).is_absolute()) {
     resolved = importPath;
   } else {
-    // Check SUN_PATH environment variable first
-    const char* sunPath = std::getenv("SUN_PATH");
-    if (sunPath && std::strlen(sunPath) > 0) {
-      auto sunPathResolved = std::filesystem::path(sunPath) / importPath;
-      if (std::filesystem::exists(sunPathResolved)) {
-        resolved = sunPathResolved;
-      }
-    }
-    // Check system-wide installation paths
+    // Check SUN_PATH directories
+    resolved = sun::SunPath::resolve(importPath);
     if (resolved.empty()) {
       auto sysPath =
           std::filesystem::path("/usr/share/sun/stdlib") / importPath;
@@ -2050,7 +2031,6 @@ void Parser::collectImports(
         resolved = sysPath;
       }
     }
-    // Fall back to resolving relative to current file's directory
     if (resolved.empty()) {
       resolved = std::filesystem::path(baseDir) / importPath;
     }
@@ -2058,77 +2038,72 @@ void Parser::collectImports(
 
   if (!std::filesystem::exists(resolved)) {
     logAndThrowError("Could not find imported file: " + importPath);
-    return;
   }
 
   resolved = std::filesystem::canonical(resolved);
   std::string resolvedStr = resolved.string();
 
-  // Check for circular imports
-  if (importedFiles->count(resolvedStr)) {
-    return;  // Already imported, skip
+  // Cycle detection (per-branch, not global)
+  if (cycleStack.count(resolvedStr)) {
+    logAndThrowError("Circular import detected: " + importPath);
   }
-  importedFiles->insert(resolvedStr);
+  cycleStack.insert(resolvedStr);
 
-  // Read the imported file
+  // Parse the file
   std::ifstream file(resolvedStr);
   if (!file.is_open()) {
     logAndThrowError("Could not open imported file: " + resolvedStr);
-    return;
   }
   std::stringstream buffer;
   buffer << file.rdbuf();
   std::string source = buffer.str();
 
-  // Create a sub-parser for the imported file, sharing import tracking state
   std::istringstream ss(source);
   Parser importParser(ss);
   importParser.baseDir = resolved.parent_path().string();
-  importParser.importedFiles = importedFiles;  // Share cycle detection
-  importParser.setFilePath(resolvedStr);  // Set file path for error messages
-  importParser.getNextToken();            // Prime the first token
+  importParser.importedFiles = importedFiles;  // Share for .moon dedup
+  importParser.setPrecompiledImports(precompiledImports);
+  importParser.setFilePath(resolvedStr);
+  importParser.getNextToken();
 
-  // Parse the imported file
   auto blockAst = importParser.parseProgram();
   if (!blockAst) {
     logAndThrowError("Failed to parse imported file: " + resolvedStr);
-    return;
   }
 
-  // Recursively collect any nested imports first
-  for (const auto& stmt : blockAst->getBody()) {
-    if (stmt->isImport()) {
-      const auto& importStmt = static_cast<const ImportAST&>(*stmt);
-      importParser.collectImports(importStmt.getPath(), collectedAST);
-    }
-  }
+  // Build the body: nested ImportScopeASTs for this file's imports,
+  // then the file's own non-import statements
+  std::vector<std::unique_ptr<ExprAST>> scopeBody;
 
-  // Collect all non-import statements from this file
   for (auto& stmt : const_cast<std::vector<std::unique_ptr<ExprAST>>&>(
            blockAst->getBody())) {
-    if (stmt && !stmt->isImport()) {
-      collectedAST.push_back(std::move(stmt));
+    if (stmt && stmt->isImport()) {
+      const auto& importStmt = static_cast<const ImportAST&>(*stmt);
+      scopeBody.push_back(
+          importParser.expandImport(importStmt.getPath(), cycleStack));
+    } else if (stmt) {
+      scopeBody.push_back(std::move(stmt));
     }
   }
+
+  cycleStack.erase(resolvedStr);
+
+  auto body = std::make_unique<BlockExprAST>(std::move(scopeBody));
+  return std::make_unique<ImportScopeAST>(resolvedStr, std::move(body));
 }
 
 // Handle import of a precompiled .moon file
-void Parser::collectMoonImport(
+std::string Parser::collectMoonImport(
     const std::string& moonPath,
     std::vector<std::unique_ptr<ExprAST>>& collectedAST) {
+  std::string contentHash;
   // Resolve the moon path
   std::filesystem::path resolved;
   if (std::filesystem::path(moonPath).is_absolute()) {
     resolved = moonPath;
   } else {
-    // Check SUN_PATH environment variable first
-    const char* sunPath = std::getenv("SUN_PATH");
-    if (sunPath && std::strlen(sunPath) > 0) {
-      auto sunPathResolved = std::filesystem::path(sunPath) / moonPath;
-      if (std::filesystem::exists(sunPathResolved)) {
-        resolved = sunPathResolved;
-      }
-    }
+    // Check SUN_PATH directories
+    resolved = sun::SunPath::resolve(moonPath);
     // Check system-wide installation paths
     if (resolved.empty()) {
       auto sysPath = std::filesystem::path("/usr/lib/sun") / moonPath;
@@ -2144,14 +2119,14 @@ void Parser::collectMoonImport(
 
   if (!std::filesystem::exists(resolved)) {
     logAndThrowError("Could not find moon file: " + moonPath);
-    return;
+    return contentHash;
   }
   resolved = std::filesystem::canonical(resolved);
   std::string resolvedStr = resolved.string();
 
   // Check if already imported
   if (importedFiles->count(resolvedStr)) {
-    return;
+    return contentHash;
   }
   importedFiles->insert(resolvedStr);
 
@@ -2160,7 +2135,7 @@ void Parser::collectMoonImport(
   auto reader = sun::SunLibReader::open(resolved);
   if (!reader) {
     logAndThrowError("Failed to open moon: " + resolvedStr);
-    return;
+    return contentHash;
   }
   PARSER_TIMER_END(open_moon);
 
@@ -2186,232 +2161,226 @@ void Parser::collectMoonImport(
       continue;
     }
 
-    // Note: Dependencies are already linked into the bitcode when the moon file
-    // was created. The deps list in metadata is for informational purposes only
-    // (e.g., tracking which libraries a module depends on). We do NOT try to
-    // load them here because:
-    // 1. The bitcode is self-contained
-    // 2. The dependency paths are from the original build machine
-
-    // Get symbol prefix from content hash for moon library isolation
-    std::string symbolPrefix = metadata->getSymbolPrefix();
-
-    // Collect AST stubs for this module - may be wrapped in a namespace
-    std::vector<std::unique_ptr<ExprAST>> moduleAST;
-
-    // Create AST stubs from metadata
-    // IMPORTANT: Process interfaces FIRST (before classes that implement them)
-    for (const auto& ifaceInfo : metadata->interfaces) {
-      std::vector<InterfaceMethodDecl> methods;
-      for (const auto& method : ifaceInfo.methods) {
-        std::unique_ptr<FunctionAST> func;
-        bool hasDefaultImpl = false;
-
-        // Create stub with prototype - body will be parsed lazily when
-        // instantiated
-        std::vector<std::pair<std::string, TypeAnnotation>> params;
-        for (size_t i = 0; i < method.paramNames.size(); ++i) {
-          params.push_back({method.paramNames[i],
-                            parseTypeFromString(method.paramTypeSigs[i])});
-        }
-
-        auto returnType =
-            method.returnTypeSig.empty() || method.returnTypeSig == "void"
-                ? std::nullopt
-                : std::optional<TypeAnnotation>(
-                      parseTypeFromString(method.returnTypeSig));
-
-        // Handle variadic parameter
-        std::optional<std::string> variadicParam;
-        std::optional<TypeAnnotation> variadicConstraint;
-        if (!method.variadicParamName.empty()) {
-          variadicParam = method.variadicParamName;
-          if (!method.variadicConstraint.empty()) {
-            variadicConstraint = parseTypeFromString(method.variadicConstraint);
-          }
-        }
-
-        auto proto = std::make_unique<PrototypeAST>(
-            method.name, std::move(params), returnType, method.typeParams,
-            variadicParam, variadicConstraint);
-
-        // Create empty body - will be parsed lazily from sourceText
-        auto body = std::make_unique<BlockExprAST>(
-            std::vector<std::unique_ptr<ExprAST>>());
-
-        func = std::make_unique<FunctionAST>(std::move(proto), std::move(body));
-
-        // Store source for lazy parsing if available
-        if (!method.bodySource.empty()) {
-          func->setSourceText(method.bodySource);
-          hasDefaultImpl = true;
-        }
-
-        methods.push_back({std::move(func), hasDefaultImpl});
-      }
-
-      // Use baseName directly - no stripping needed
-      auto ifaceDef = std::make_unique<InterfaceDefinitionAST>(
-          ifaceInfo.baseName,
-          std::vector<std::string>{},         // TODO: deserialize type params
-          std::vector<InterfaceFieldDecl>{},  // No fields for now
-          std::move(methods),
-          true);  // precompiled = true
-
-      moduleAST.push_back(std::move(ifaceDef));
+    // Capture content hash from first module (all share the same hash)
+    if (contentHash.empty()) {
+      contentHash = metadata->getSymbolPrefix();
     }
 
-    // Classes (after interfaces so interface lookups work)
-    for (const auto& classInfo : metadata->classes) {
-      std::vector<ClassFieldDecl> fields;
-      for (const auto& field : classInfo.fields) {
-        fields.push_back({field.name, parseTypeFromString(field.typeSig)});
-      }
-
-      std::vector<ClassMethodDecl> methods;
-      for (const auto& method : classInfo.methods) {
-        std::unique_ptr<FunctionAST> func;
-
-        // Create stub with prototype - body will be parsed lazily when
-        // instantiated
-        std::vector<std::pair<std::string, TypeAnnotation>> params;
-        for (size_t i = 0; i < method.paramNames.size(); ++i) {
-          params.push_back({method.paramNames[i],
-                            parseTypeFromString(method.paramTypeSigs[i])});
-        }
-
-        auto returnType =
-            method.returnTypeSig.empty() || method.returnTypeSig == "void"
-                ? std::nullopt
-                : std::optional<TypeAnnotation>(
-                      parseTypeFromString(method.returnTypeSig));
-
-        // Handle variadic parameter
-        std::optional<std::string> variadicParam;
-        std::optional<TypeAnnotation> variadicConstraint;
-        if (!method.variadicParamName.empty()) {
-          variadicParam = method.variadicParamName;
-          if (!method.variadicConstraint.empty()) {
-            variadicConstraint = parseTypeFromString(method.variadicConstraint);
-          }
-        }
-
-        auto proto = std::make_unique<PrototypeAST>(
-            method.name, std::move(params), returnType, method.typeParams,
-            variadicParam, variadicConstraint);
-
-        // Create empty body - will be parsed lazily from sourceText
-        auto body = std::make_unique<BlockExprAST>(
-            std::vector<std::unique_ptr<ExprAST>>());
-
-        func = std::make_unique<FunctionAST>(std::move(proto), std::move(body));
-
-        // Store source for lazy parsing if available
-        if (!method.bodySource.empty()) {
-          func->setSourceText(method.bodySource);
-        }
-
-        methods.push_back({std::move(func)});
-      }
-
-      // Convert string interfaces to ImplementedInterfaceAST
-      // Format: "InterfaceName" or "InterfaceName<T, U>" for generic interfaces
-      std::vector<ImplementedInterfaceAST> interfaces;
-      for (const auto& ifaceStr : classInfo.interfaces) {
-        ImplementedInterfaceAST iface;
-
-        // Check for generic interface: "IIterable<V>"
-        auto angleBracket = ifaceStr.find('<');
-        if (angleBracket != std::string::npos) {
-          iface.name = ifaceStr.substr(0, angleBracket);
-          // Parse type arguments from "<T, U>"
-          auto closeAngle = ifaceStr.rfind('>');
-          if (closeAngle != std::string::npos &&
-              closeAngle > angleBracket + 1) {
-            std::string argsStr = ifaceStr.substr(
-                angleBracket + 1, closeAngle - angleBracket - 1);
-            // Split by comma (handling nested generics)
-            int depth = 0;
-            size_t start = 0;
-            for (size_t i = 0; i <= argsStr.size(); ++i) {
-              if (i == argsStr.size() || (argsStr[i] == ',' && depth == 0)) {
-                std::string argStr = argsStr.substr(start, i - start);
-                // Trim whitespace
-                size_t first = argStr.find_first_not_of(' ');
-                size_t last = argStr.find_last_not_of(' ');
-                if (first != std::string::npos) {
-                  argStr = argStr.substr(first, last - first + 1);
-                }
-                if (!argStr.empty()) {
-                  iface.typeArguments.push_back(parseTypeFromString(argStr));
-                }
-                start = i + 1;
-              } else if (argsStr[i] == '<') {
-                depth++;
-              } else if (argsStr[i] == '>') {
-                depth--;
-              }
-            }
-          }
-        } else {
-          iface.name = ifaceStr;
-        }
-
-        interfaces.push_back(std::move(iface));
-      }
-
-      // Use baseName directly - no stripping needed
-      auto classDef = std::make_unique<ClassDefinitionAST>(
-          classInfo.baseName, classInfo.typeParams, std::move(interfaces),
-          std::move(fields), std::move(methods),
-          true);  // precompiled = true
-
-      moduleAST.push_back(std::move(classDef));
-    }
-
-    // Functions (extern declarations)
-    for (const auto& sym : metadata->exports) {
-      if (sym.kind == sun::ExportedSymbol::Kind::Function) {
-        // Use baseName directly - no stripping needed
-        // Parse function signature from typeSignature: "(i32, i32) -> i32"
-        auto funcAST = parseFunctionSignature(sym.baseName, sym.typeSignature);
-        if (funcAST) {
-          moduleAST.push_back(std::move(funcAST));
-        }
-      }
-    }
-
-    // Wrap all stubs in a library scope namespace (using content hash)
-    // This creates: $hash$ { module { ... } } structure for isolation
-    if (!moduleAST.empty()) {
-      std::vector<std::unique_ptr<ExprAST>> libraryContent;
-
-      // If module has a namespace, wrap stubs in inner NamespaceAST
-      if (!metadata->moduleName.empty()) {
-        auto nsBody = std::make_unique<BlockExprAST>(std::move(moduleAST));
-        auto nsAST = std::make_unique<NamespaceAST>(metadata->moduleName,
-                                                    std::move(nsBody));
-        nsAST->setPrecompiled(true);
-        libraryContent.push_back(std::move(nsAST));
-      } else {
-        // No module namespace - add stubs directly to library scope
-        for (auto& ast : moduleAST) {
-          libraryContent.push_back(std::move(ast));
-        }
-      }
-
-      // Wrap in outer library scope namespace using content hash
-      auto libBody = std::make_unique<BlockExprAST>(std::move(libraryContent));
-      auto libAST =
-          std::make_unique<NamespaceAST>(symbolPrefix, std::move(libBody));
-      libAST->setPrecompiled(true);
-      collectedAST.push_back(std::move(libAST));
-    }
+    // Create AST stubs from metadata and add to collectedAST
+    createModuleStubs(*metadata, collectedAST);
   }
   PARSER_TIMER_END(process_modules);
 
   // Store the moon reader in the cache for later linking
   sun::LibraryCache::instance().addBundle(resolved);
+  return contentHash;
+}
+
+// Create AST stubs from module metadata
+// Builds interface, class, and function stubs, wraps them in namespace
+void Parser::createModuleStubs(
+    const sun::ModuleMetadata& metadata,
+    std::vector<std::unique_ptr<ExprAST>>& collectedAST) {
+  // Collect AST stubs for this module - may be wrapped in a namespace
+  std::vector<std::unique_ptr<ExprAST>> moduleAST;
+
+  // Create AST stubs from metadata
+  // IMPORTANT: Process interfaces FIRST (before classes that implement them)
+  for (const auto& ifaceInfo : metadata.interfaces) {
+    std::vector<InterfaceMethodDecl> methods;
+    for (const auto& method : ifaceInfo.methods) {
+      std::unique_ptr<FunctionAST> func;
+      bool hasDefaultImpl = false;
+
+      // Create stub with prototype - body will be parsed lazily when
+      // instantiated
+      std::vector<std::pair<std::string, TypeAnnotation>> params;
+      for (size_t i = 0; i < method.paramNames.size(); ++i) {
+        params.push_back({method.paramNames[i],
+                          parseTypeFromString(method.paramTypeSigs[i])});
+      }
+
+      auto returnType =
+          method.returnTypeSig.empty() || method.returnTypeSig == "void"
+              ? std::nullopt
+              : std::optional<TypeAnnotation>(
+                    parseTypeFromString(method.returnTypeSig));
+
+      // Handle variadic parameter
+      std::optional<std::string> variadicParam;
+      std::optional<TypeAnnotation> variadicConstraint;
+      if (!method.variadicParamName.empty()) {
+        variadicParam = method.variadicParamName;
+        if (!method.variadicConstraint.empty()) {
+          variadicConstraint = parseTypeFromString(method.variadicConstraint);
+        }
+      }
+
+      auto proto = std::make_unique<PrototypeAST>(
+          method.name, std::move(params), returnType, method.typeParams,
+          variadicParam, variadicConstraint);
+
+      // Create empty body - will be parsed lazily from sourceText
+      auto body = std::make_unique<BlockExprAST>(
+          std::vector<std::unique_ptr<ExprAST>>());
+
+      func = std::make_unique<FunctionAST>(std::move(proto), std::move(body));
+
+      // Store source for lazy parsing if available
+      if (!method.bodySource.empty()) {
+        func->setSourceText(method.bodySource);
+        hasDefaultImpl = true;
+      }
+
+      methods.push_back({std::move(func), hasDefaultImpl});
+    }
+
+    // Use baseName directly - no stripping needed
+    auto ifaceDef = std::make_unique<InterfaceDefinitionAST>(
+        ifaceInfo.baseName,
+        std::vector<std::string>{},         // TODO: deserialize type params
+        std::vector<InterfaceFieldDecl>{},  // No fields for now
+        std::move(methods),
+        true);  // precompiled = true
+
+    moduleAST.push_back(std::move(ifaceDef));
+  }
+
+  // Classes (after interfaces so interface lookups work)
+  for (const auto& classInfo : metadata.classes) {
+    std::vector<ClassFieldDecl> fields;
+    for (const auto& field : classInfo.fields) {
+      fields.push_back({field.name, parseTypeFromString(field.typeSig)});
+    }
+
+    std::vector<ClassMethodDecl> methods;
+    for (const auto& method : classInfo.methods) {
+      std::unique_ptr<FunctionAST> func;
+
+      // Create stub with prototype - body will be parsed lazily when
+      // instantiated
+      std::vector<std::pair<std::string, TypeAnnotation>> params;
+      for (size_t i = 0; i < method.paramNames.size(); ++i) {
+        params.push_back({method.paramNames[i],
+                          parseTypeFromString(method.paramTypeSigs[i])});
+      }
+
+      auto returnType =
+          method.returnTypeSig.empty() || method.returnTypeSig == "void"
+              ? std::nullopt
+              : std::optional<TypeAnnotation>(
+                    parseTypeFromString(method.returnTypeSig));
+
+      // Handle variadic parameter
+      std::optional<std::string> variadicParam;
+      std::optional<TypeAnnotation> variadicConstraint;
+      if (!method.variadicParamName.empty()) {
+        variadicParam = method.variadicParamName;
+        if (!method.variadicConstraint.empty()) {
+          variadicConstraint = parseTypeFromString(method.variadicConstraint);
+        }
+      }
+
+      auto proto = std::make_unique<PrototypeAST>(
+          method.name, std::move(params), returnType, method.typeParams,
+          variadicParam, variadicConstraint);
+
+      // Create empty body - will be parsed lazily from sourceText
+      auto body = std::make_unique<BlockExprAST>(
+          std::vector<std::unique_ptr<ExprAST>>());
+
+      func = std::make_unique<FunctionAST>(std::move(proto), std::move(body));
+
+      // Store source for lazy parsing if available
+      if (!method.bodySource.empty()) {
+        func->setSourceText(method.bodySource);
+      }
+
+      methods.push_back({std::move(func)});
+    }
+
+    // Convert string interfaces to ImplementedInterfaceAST
+    // Format: "InterfaceName" or "InterfaceName<T, U>" for generic interfaces
+    std::vector<ImplementedInterfaceAST> interfaces;
+    for (const auto& ifaceStr : classInfo.interfaces) {
+      ImplementedInterfaceAST iface;
+
+      // Check for generic interface: "IIterable<V>"
+      auto angleBracket = ifaceStr.find('<');
+      if (angleBracket != std::string::npos) {
+        iface.name = ifaceStr.substr(0, angleBracket);
+        // Parse type arguments from "<T, U>"
+        auto closeAngle = ifaceStr.rfind('>');
+        if (closeAngle != std::string::npos && closeAngle > angleBracket + 1) {
+          std::string argsStr =
+              ifaceStr.substr(angleBracket + 1, closeAngle - angleBracket - 1);
+          // Split by comma (handling nested generics)
+          int depth = 0;
+          size_t start = 0;
+          for (size_t i = 0; i <= argsStr.size(); ++i) {
+            if (i == argsStr.size() || (argsStr[i] == ',' && depth == 0)) {
+              std::string argStr = argsStr.substr(start, i - start);
+              // Trim whitespace
+              size_t first = argStr.find_first_not_of(' ');
+              size_t last = argStr.find_last_not_of(' ');
+              if (first != std::string::npos) {
+                argStr = argStr.substr(first, last - first + 1);
+              }
+              if (!argStr.empty()) {
+                iface.typeArguments.push_back(parseTypeFromString(argStr));
+              }
+              start = i + 1;
+            } else if (argsStr[i] == '<') {
+              depth++;
+            } else if (argsStr[i] == '>') {
+              depth--;
+            }
+          }
+        }
+      } else {
+        iface.name = ifaceStr;
+      }
+
+      interfaces.push_back(std::move(iface));
+    }
+
+    // Use baseName directly - no stripping needed
+    auto classDef = std::make_unique<ClassDefinitionAST>(
+        classInfo.baseName, classInfo.typeParams, std::move(interfaces),
+        std::move(fields), std::move(methods),
+        true);  // precompiled = true
+
+    moduleAST.push_back(std::move(classDef));
+  }
+
+  // Functions (extern declarations)
+  for (const auto& sym : metadata.exports) {
+    if (sym.kind == sun::ExportedSymbol::Kind::Function) {
+      // Use baseName directly - no stripping needed
+      // Parse function signature from typeSignature: "(i32, i32) -> i32"
+      auto funcAST = parseFunctionSignature(sym.baseName, sym.typeSignature);
+      if (funcAST) {
+        moduleAST.push_back(std::move(funcAST));
+      }
+    }
+  }
+
+  // Wrap all stubs in appropriate namespace structure
+  if (!moduleAST.empty()) {
+    // If module has a namespace, wrap stubs in NamespaceAST
+    if (!metadata.moduleName.empty()) {
+      auto nsBody = std::make_unique<BlockExprAST>(std::move(moduleAST));
+      auto nsAST = std::make_unique<NamespaceAST>(metadata.moduleName,
+                                                  std::move(nsBody));
+      nsAST->setPrecompiled(true);
+      collectedAST.push_back(std::move(nsAST));
+    } else {
+      // No module namespace - add stubs directly
+      for (auto& ast : moduleAST) {
+        collectedAST.push_back(std::move(ast));
+      }
+    }
+  }
 }
 
 // Helper to parse a type string back into TypeAnnotation.
@@ -2812,6 +2781,21 @@ std::unique_ptr<FunctionAST> Parser::parseFunctionFromSource(
 // NFA on every call. This centralizes lazy parsing logic for use by codegen.
 std::unique_ptr<FunctionAST> Parser::lazyParseFunctionSource(
     const std::string& source) {
+  // Cache parsed ASTs by source text — avoids re-lexing identical method bodies
+  // across generic specializations (e.g. Vec<i32>, Vec<f64> share method
+  // source)
+  static thread_local std::unordered_map<std::string,
+                                         std::unique_ptr<FunctionAST>>
+      cache;
+
+  auto it = cache.find(source);
+  if (it != cache.end()) {
+    // Return a clone of the cached AST
+    auto clone = it->second->clone();
+    return std::unique_ptr<FunctionAST>(
+        static_cast<FunctionAST*>(clone.release()));
+  }
+
   // Thread-local parser and stream for efficient NFA reuse
   static thread_local std::unique_ptr<std::istringstream> lazyStream;
   static thread_local std::unique_ptr<Parser> lazyParser;
@@ -2824,8 +2808,16 @@ std::unique_ptr<FunctionAST> Parser::lazyParseFunctionSource(
     lazyParser = std::make_unique<Parser>(*lazyStream);
   }
 
-  // Reuse existing parser's NFA via parseFunctionFromSource
-  return lazyParser->parseFunctionFromSource(source);
+  // Parse and cache
+  auto result = lazyParser->parseFunctionFromSource(source);
+
+  if (result) {
+    // Store a clone in cache, return the original
+    cache[source] = std::unique_ptr<FunctionAST>(
+        static_cast<FunctionAST*>(result->clone().release()));
+  }
+
+  return result;
 }
 
 // Parse class definition: class ClassName implements Interface1, Interface2 {

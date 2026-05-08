@@ -1,0 +1,6 @@
+// right.sun - Imports base.sun and adds its own function
+import "tests/programs/diamond/base.sun";
+
+function right_mul(x: i32) i32 {
+    return base_value() * x;
+}

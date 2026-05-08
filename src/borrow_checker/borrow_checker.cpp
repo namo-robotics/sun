@@ -111,6 +111,10 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
       checkTryCatch(static_cast<const TryCatchExprAST&>(expr));
       break;
 
+    case ASTNodeType::IMPORT_SCOPE:
+      checkBlockExpr(static_cast<const ImportScopeAST&>(expr).getBody());
+      break;
+
     // These don't need borrow checking
     case ASTNodeType::NUMBER:
     case ASTNodeType::STRING_LITERAL:

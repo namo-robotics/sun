@@ -67,9 +67,17 @@ export async function activate(_context: vscode.ExtensionContext): Promise<void>
     return;
   }
 
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const env = { ...process.env };
+  if (workspaceFolder) {
+    // Append workspace folder to SUN_PATH (colon-separated list)
+    const existing = env.SUN_PATH;
+    env.SUN_PATH = existing ? `${existing}:${workspaceFolder}` : workspaceFolder;
+  }
+
   const serverOptions: ServerOptions = {
-    run: { command, transport: TransportKind.stdio },
-    debug: { command, transport: TransportKind.stdio },
+    run: { command, transport: TransportKind.stdio, options: { env } },
+    debug: { command, transport: TransportKind.stdio, options: { env } },
   };
 
   const clientOptions: LanguageClientOptions = {

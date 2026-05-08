@@ -1,0 +1,4 @@
+// base.sun - Shared base imported by both left.sun and right.sun
+function base_value() i32 {
+    return 7;
+}

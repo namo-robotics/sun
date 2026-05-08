@@ -1,0 +1,7 @@
+class Box<T> {
+    var value: T;
+
+    function init(value: T) {
+        this.value = value;
+    }
+}

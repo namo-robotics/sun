@@ -306,6 +306,15 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
     case ASTNodeType::VARIABLE_CREATION: {
       auto& varCreate = static_cast<VariableCreationAST&>(expr);
+
+      // Inside an import scope, skip if global variable already analyzed
+      // (diamond dependency duplicate).
+      if (importScopeDepth_ > 0 && isAtModuleLevel() &&
+          analyzedGlobals_.count(varCreate.getName())) {
+        expr.setSkipCodegen(true);
+        break;
+      }
+
       // Determine type first (before analyzing value, for array literals)
       sun::TypePtr declaredType;
       if (varCreate.hasTypeAnnotation()) {
@@ -357,6 +366,11 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       declareVariable(varCreate.getName(), type);
       // Set the resolved type on the variable creation node itself
       expr.setResolvedType(type);
+
+      // Track global variables for diamond duplicate detection
+      if (importScopeDepth_ > 0 && isAtModuleLevel()) {
+        analyzedGlobals_.insert(varCreate.getName());
+      }
       break;
     }
 
@@ -438,6 +452,15 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       sun::QualifiedName qualifiedName = makeQualifiedName(proto.getName());
       proto.setQualifiedName(qualifiedName);
 
+      // Inside an import scope, skip if function already fully analyzed
+      // (diamond dependency duplicate).
+      if (importScopeDepth_ > 0 &&
+          analyzedFunctions_.count(qualifiedName.mangled())) {
+        expr.setResolvedType(inferType(expr));
+        expr.setSkipCodegen(true);
+        break;
+      }
+
       // Register function BEFORE analyzing body to support recursive calls
       // For nested functions, registerFunction prepends the enclosing
       // function's signature to create unique qualified names per generic
@@ -459,6 +482,9 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
             qualifiedName.mangled(),
             {inferredReturn, funcInfo.paramTypes, funcInfo.captures});
       }
+
+      // Mark function as analyzed for diamond duplicate detection
+      analyzedFunctions_.insert(qualifiedName.mangled());
 
       // Set the function type on the function node
       expr.setResolvedType(inferType(expr));
@@ -680,6 +706,21 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       break;
     }
 
+    case ASTNodeType::IMPORT_SCOPE: {
+      // Expanded import scope — analyze the body inside an import scope
+      // to enforce non-transitive imports. Direct imports are visible
+      // (one level of transparency), but their nested imports are not.
+      auto& importScope = static_cast<ImportScopeAST&>(expr);
+      enterImportScope(importScope.getSourceFile(),
+                       importScope.getContentHash());
+      importScopeDepth_++;
+      analyzeBlock(const_cast<BlockExprAST&>(importScope.getBody()));
+      importScopeDepth_--;
+      exitScope();
+      expr.setResolvedType(sun::Types::Void());
+      break;
+    }
+
     case ASTNodeType::NAMESPACE: {
       auto& nsDecl = static_cast<NamespaceAST&>(expr);
       // Enter the namespace scope
@@ -811,6 +852,21 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       std::string className = qualifiedClass.mangled();
       // Set qualified name on AST for codegen (source name stays for errors)
       classDef.setQualifiedName(qualifiedClass);
+
+      // Inside an import scope, skip if class already fully analyzed
+      // (diamond dependency duplicate).
+      if (importScopeDepth_ > 0 && analyzedClasses_.count(className)) {
+        // Set resolved type to the class so codegen can get the qualified name
+        expr.setResolvedType(typeRegistry->getClass(className));
+        expr.setSkipCodegen(true);
+        return;
+      }
+
+      // Forbid redefinition of class in same module (depth 0)
+      if (importScopeDepth_ == 0 && analyzedClasses_.count(className)) {
+        logAndThrowError("Redefinition of class '" + classDef.getName() + "'",
+                         classDef.getLocation());
+      }
 
       // Validate class name
       if (isReservedIdentifier(classDef.getName())) {
@@ -980,6 +1036,9 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // Restore old class context
       setCurrentClass(savedClass);
 
+      // Mark class as fully analyzed (for diamond import dedup)
+      analyzedClasses_.insert(className);
+
       // Set resolved type to the class type so codegen can get the qualified
       // name
       expr.setResolvedType(classType);
@@ -995,6 +1054,20 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       std::string interfaceName = qualifiedInterface.mangled();
       // Set qualified name on AST for codegen (source name stays for errors)
       interfaceDef.setQualifiedName(qualifiedInterface);
+
+      // Inside an import scope, skip if interface already fully analyzed
+      if (importScopeDepth_ > 0 && analyzedClasses_.count(interfaceName)) {
+        expr.setResolvedType(sun::Types::Void());
+        expr.setSkipCodegen(true);
+        return;
+      }
+
+      // Forbid redefinition of interface in same module (depth 0)
+      if (importScopeDepth_ == 0 && analyzedClasses_.count(interfaceName)) {
+        logAndThrowError(
+            "Redefinition of interface '" + interfaceDef.getName() + "'",
+            interfaceDef.getLocation());
+      }
 
       // Validate interface name
       if (isReservedIdentifier(interfaceDef.getName())) {
@@ -1104,12 +1177,28 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // Register the interface
       registerInterface(interfaceDef.getName(), interfaceType);
 
+      // Mark interface as fully analyzed (for diamond import dedup)
+      analyzedClasses_.insert(interfaceName);
+
       expr.setResolvedType(sun::Types::Void());
       break;
     }
 
     case ASTNodeType::ENUM_DEFINITION: {
       auto& enumDef = static_cast<EnumDefinitionAST&>(expr);
+
+      // Inside an import scope, skip if enum already fully analyzed
+      if (importScopeDepth_ > 0 && analyzedClasses_.count(enumDef.getName())) {
+        expr.setResolvedType(sun::Types::Void());
+        expr.setSkipCodegen(true);
+        return;
+      }
+
+      // Forbid redefinition of enum in same module (depth 0)
+      if (importScopeDepth_ == 0 && analyzedClasses_.count(enumDef.getName())) {
+        logAndThrowError("Redefinition of enum '" + enumDef.getName() + "'",
+                         enumDef.getLocation());
+      }
 
       // Validate enum name
       if (isReservedIdentifier(enumDef.getName())) {
@@ -1146,6 +1235,9 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
       // Register the enum in the namespace
       registerEnum(enumDef.getName(), enumType);
+
+      // Mark enum as fully analyzed (for diamond import dedup)
+      analyzedClasses_.insert(enumDef.getName());
 
       expr.setResolvedType(sun::Types::Void());
       break;
@@ -1352,14 +1444,14 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       if (declareExpr.hasAlias()) {
         const std::string& aliasName = declareExpr.getAliasName();
         // Check current scope only for redefinition (shadowing is allowed)
-        if (scopeStack.back().typeAliases.find(aliasName) !=
-            scopeStack.back().typeAliases.end()) {
+        if (currentScope->typeAliases.find(aliasName) !=
+            currentScope->typeAliases.end()) {
           logAndThrowError(
               "Type alias '" + aliasName + "' is already defined in this scope",
               declareExpr.getLocation());
         }
         if (resolvedType) {
-          scopeStack.back().typeAliases[aliasName] = resolvedType;
+          currentScope->typeAliases[aliasName] = resolvedType;
         }
       }
 
@@ -1387,12 +1479,36 @@ void SemanticAnalyzer::analyzeBlock(BlockExprAST& block) {
       if (type == ASTNodeType::CLASS_DEFINITION ||
           type == ASTNodeType::INTERFACE_DEFINITION ||
           type == ASTNodeType::ENUM_DEFINITION ||
-          type == ASTNodeType::NAMESPACE) {
+          type == ASTNodeType::NAMESPACE || type == ASTNodeType::IMPORT_SCOPE) {
         collectDeclarations(*expr);
       }
     }
+  }
 
-    // Pass 1b: Collect function prototypes (can now resolve types from 1a)
+  // Pass 1.5: Fully analyze import scopes so their class types have methods
+  // and fields populated. This must happen before Pass 1b because function
+  // prototypes may reference generic types (e.g., ref Matrix<i64>) which
+  // triggers instantiation that needs other classes to be complete.
+  for (const auto& expr : block.getBody()) {
+    if (expr->getType() == ASTNodeType::IMPORT_SCOPE) {
+      analyzeExpr(*expr);
+    }
+  }
+
+  // Pass 1c: Process using statements so cross-module types are visible
+  // for function signature resolution in Pass 1b.
+  {
+    CollectingGuard guard(collectingDeclarations, true);
+    for (const auto& expr : block.getBody()) {
+      if (expr->getType() == ASTNodeType::USING) {
+        collectDeclarations(*expr);
+      }
+    }
+  }
+
+  // Pass 1b: Collect function prototypes (can now resolve types from imports)
+  {
+    CollectingGuard guard(collectingDeclarations, true);
     for (const auto& expr : block.getBody()) {
       auto type = expr->getType();
       if (type == ASTNodeType::FUNCTION) {
@@ -1401,9 +1517,11 @@ void SemanticAnalyzer::analyzeBlock(BlockExprAST& block) {
     }
   }
 
-  // Pass 2: Analyze all expressions (bodies, variable bindings, etc.)
+  // Pass 2: Analyze all expressions (skip import scopes already analyzed)
   for (const auto& expr : block.getBody()) {
-    analyzeExpr(*expr);
+    if (expr->getType() != ASTNodeType::IMPORT_SCOPE) {
+      analyzeExpr(*expr);
+    }
   }
 }
 
@@ -1484,12 +1602,7 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
     // Build QualifiedName with module path and function context
     sun::QualifiedName qname(getCurrentModulePath(),
                              getCurrentFunctionContext(), proto.getName());
-    if (!scopeStack.empty()) {
-      scopeStack.back().genericFunctions[qname] = genInfo;
-      if (scopeStack.size() > 1) {
-        scopeStack.front().genericFunctions[qname] = genInfo;
-      }
-    }
+    currentScope->genericFunctions[qname] = genInfo;
   }
 
   // Validate and resolve parameter types using shared helper
@@ -1850,22 +1963,49 @@ void SemanticAnalyzer::lazyParseAndAnalyzeMethod(
             parsedFunc->getBody().getBody()))));
   }
 
-  // Step 1.5: Extract module prefix from class name (e.g., "sun_Vec" -> "sun")
-  // This ensures types used in method bodies resolve correctly
+  // Step 1.5: Extract module path from class context for type resolution.
+  // For specialized generic classes (e.g., "$hash$_sun_Matrix_i64"), look up
+  // the generic class definition's qualified name to get the module path
+  // (e.g., "$hash$.sun"). This ensures types like HeapAllocator resolve to
+  // their full qualified form ($hash$_sun_HeapAllocator) in method bodies.
   std::string modulePrefix;
-  bool inModuleScope = false;
+  int moduleScopesEntered = 0;
   if (classType) {
-    const std::string& className = classType->getName();
-    size_t underscorePos = className.find('_');
-    if (underscorePos != std::string::npos) {
-      modulePrefix = className.substr(0, underscorePos);
+    std::string modulePath;
+
+    // For specialized classes, look up the generic class to get module path
+    if (classType->isSpecialized()) {
+      const std::string& baseName = classType->getBaseGenericName();
+      auto* genericInfo = lookupGenericClass(baseName);
+      if (genericInfo && genericInfo->AST &&
+          genericInfo->AST->hasQualifiedName()) {
+        modulePath = genericInfo->AST->getQualifiedNameInfo().modulePath;
+      }
     }
+
+    // For non-specialized classes, use the first underscore-separated segment
+    // as a fallback (works for "sun_HeapAllocator" -> "sun")
+    if (modulePath.empty()) {
+      const std::string& className = classType->getName();
+      size_t underscorePos = className.find('_');
+      if (underscorePos != std::string::npos) {
+        modulePrefix = className.substr(0, underscorePos);
+      }
+    } else {
+      modulePrefix = modulePath;
+    }
+
     // Enter module scope if class is from a namespace
     if (!modulePrefix.empty()) {
-      enterModuleScope(modulePrefix);
+      // For dot-separated paths, enter each segment as a module scope
+      std::string segment;
+      std::istringstream stream(modulePrefix);
+      while (std::getline(stream, segment, '.')) {
+        enterModuleScope(segment);
+        moduleScopesEntered++;
+      }
       // Add implicit using import for the module so unqualified names resolve
       addUsingImport(UsingImport(modulePrefix, "*"));
-      inModuleScope = true;
     }
   }
 
@@ -1915,8 +2055,8 @@ void SemanticAnalyzer::lazyParseAndAnalyzeMethod(
   // Step 7: Pop scopes and restore context
   exitScope();  // method scope
   exitScope();  // type param scope
-  if (inModuleScope) {
-    exitScope();  // module scope
+  for (int i = 0; i < moduleScopesEntered; ++i) {
+    exitScope();  // module scope(s)
   }
   setCurrentClass(savedClass);
 }

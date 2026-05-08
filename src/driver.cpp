@@ -100,6 +100,127 @@ void Driver::printUserDefinedIR() {
   llvm::outs() << reset;
 }
 
+// -------------------------------------------------------------------
+// Recursively expand all ImportAST nodes in the AST tree into
+// ImportScopeAST nodes, at any depth (top-level, inside functions, etc.)
+// -------------------------------------------------------------------
+static void expandAllImports(ExprAST& expr, Parser& parser,
+                             std::set<std::string>& cycleStack);
+
+static void expandImportsInBlock(BlockExprAST& block, Parser& parser,
+                                 std::set<std::string>& cycleStack) {
+  auto& body =
+      const_cast<std::vector<std::unique_ptr<ExprAST>>&>(block.getBody());
+
+  for (size_t i = 0; i < body.size(); ++i) {
+    if (body[i] && body[i]->isImport()) {
+      const auto& importStmt = static_cast<const ImportAST&>(*body[i]);
+      body[i] = parser.expandImport(importStmt.getPath(), cycleStack);
+    }
+    if (body[i]) {
+      expandAllImports(*body[i], parser, cycleStack);
+    }
+  }
+}
+
+static void expandAllImports(ExprAST& expr, Parser& parser,
+                             std::set<std::string>& cycleStack) {
+  switch (expr.getType()) {
+    case ASTNodeType::BLOCK: {
+      expandImportsInBlock(static_cast<BlockExprAST&>(expr), parser,
+                           cycleStack);
+      break;
+    }
+    case ASTNodeType::FUNCTION: {
+      auto& func = static_cast<FunctionAST&>(expr);
+      if (func.hasBody()) {
+        expandImportsInBlock(const_cast<BlockExprAST&>(func.getBody()), parser,
+                             cycleStack);
+      }
+      break;
+    }
+    case ASTNodeType::LAMBDA: {
+      auto& lambda = static_cast<LambdaAST&>(expr);
+      if (lambda.hasBody()) {
+        expandImportsInBlock(const_cast<BlockExprAST&>(lambda.getBody()),
+                             parser, cycleStack);
+      }
+      break;
+    }
+    case ASTNodeType::IMPORT_SCOPE: {
+      auto& scope = static_cast<ImportScopeAST&>(expr);
+      expandImportsInBlock(const_cast<BlockExprAST&>(scope.getBody()), parser,
+                           cycleStack);
+      break;
+    }
+    case ASTNodeType::NAMESPACE: {
+      auto& ns = static_cast<NamespaceAST&>(expr);
+      expandImportsInBlock(const_cast<BlockExprAST&>(ns.getBody()), parser,
+                           cycleStack);
+      break;
+    }
+    case ASTNodeType::CLASS_DEFINITION: {
+      auto& classDef = static_cast<ClassDefinitionAST&>(expr);
+      for (const auto& method : classDef.getMethods()) {
+        if (method.function && method.function->hasBody()) {
+          expandImportsInBlock(
+              const_cast<BlockExprAST&>(method.function->getBody()), parser,
+              cycleStack);
+        }
+      }
+      break;
+    }
+    case ASTNodeType::IF: {
+      auto& ifExpr = static_cast<IfExprAST&>(expr);
+      if (ifExpr.getThen())
+        expandAllImports(*ifExpr.getThen(), parser, cycleStack);
+      if (ifExpr.getElse())
+        expandAllImports(*ifExpr.getElse(), parser, cycleStack);
+      break;
+    }
+    case ASTNodeType::WHILE_LOOP: {
+      auto& whileExpr = static_cast<WhileExprAST&>(expr);
+      if (whileExpr.getBody())
+        expandAllImports(*const_cast<ExprAST*>(whileExpr.getBody()), parser,
+                         cycleStack);
+      break;
+    }
+    case ASTNodeType::FOR_LOOP: {
+      auto& forExpr = static_cast<ForExprAST&>(expr);
+      if (forExpr.getBody())
+        expandAllImports(*const_cast<ExprAST*>(forExpr.getBody()), parser,
+                         cycleStack);
+      break;
+    }
+    case ASTNodeType::FOR_IN_LOOP: {
+      auto& forInExpr = static_cast<ForInExprAST&>(expr);
+      if (forInExpr.getBody())
+        expandAllImports(*const_cast<ExprAST*>(forInExpr.getBody()), parser,
+                         cycleStack);
+      break;
+    }
+    case ASTNodeType::TRY_CATCH: {
+      auto& tryCatch = static_cast<TryCatchExprAST&>(expr);
+      expandImportsInBlock(const_cast<BlockExprAST&>(tryCatch.getTryBlock()),
+                           parser, cycleStack);
+      expandImportsInBlock(
+          const_cast<BlockExprAST&>(*tryCatch.getCatchClause().body), parser,
+          cycleStack);
+      break;
+    }
+    case ASTNodeType::MATCH: {
+      auto& matchExpr = static_cast<MatchExprAST&>(expr);
+      for (const auto& arm : matchExpr.getArms()) {
+        if (arm.body) expandAllImports(*arm.body, parser, cycleStack);
+      }
+      break;
+    }
+    default:
+      // Other node types don't contain blocks with imports
+      break;
+  }
+}
+
 sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
                                   Parser& parser, bool execute, int argc,
                                   char** argv) {
@@ -110,37 +231,17 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
     return result;
   }
 
-  // Collect all imported AST nodes into a unified AST (before semantic
-  // analysis)
-  std::vector<std::unique_ptr<ExprAST>> importedAST;
-  for (const auto& stmt : blockAst->getBody()) {
-    if (stmt->isImport()) {
-      const auto& importStmt = static_cast<const ImportAST&>(*stmt);
-      parser.collectImports(importStmt.getPath(), importedAST);
-    }
-  }
-
-  // Build unified AST: imported code first, then main program
-  std::vector<std::unique_ptr<ExprAST>> unifiedBody;
-  for (auto& imported : importedAST) {
-    unifiedBody.push_back(std::move(imported));
-  }
-  // Add main program statements (skip import statements)
-  for (auto& stmt : const_cast<std::vector<std::unique_ptr<ExprAST>>&>(
-           blockAst->getBody())) {
-    if (stmt && !stmt->isImport()) {
-      unifiedBody.push_back(std::move(stmt));
-    }
-  }
-  auto unifiedAST = std::make_unique<BlockExprAST>(std::move(unifiedBody));
+  // Expand imports in-place into ImportScopeAST nodes (at any AST depth)
+  std::set<std::string> cycleStack;
+  expandImportsInBlock(*blockAst, parser, cycleStack);
 
   // Run semantic analysis on the unified AST
-  analyzer->analyzeBlock(*unifiedAST);
+  analyzer->analyzeBlock(*blockAst);
 
   // Run borrow checking on the unified AST
   // Uses compile-time settings from sun::Config
   sun::BorrowChecker borrowChecker;
-  auto borrowErrors = borrowChecker.check(*unifiedAST);
+  auto borrowErrors = borrowChecker.check(*blockAst);
   if (!borrowErrors.empty()) {
     for (const auto& err : borrowErrors) {
       std::cerr << err.format() << "\n";
@@ -153,6 +254,7 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
   // Register precompiled modules for lazy linking
   // This builds the symbol-to-module map without loading bitcode yet
   const auto& precompiledImports = parser.getPrecompiledImports();
+
   sun::ModuleLinker linker(*ctx->mainModule);
   if (!precompiledImports.empty()) {
     linker.registerAvailableModules(precompiledImports);
@@ -166,7 +268,7 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
   codegenVisitor->snapshotPrecompiledFunctions();
 
   // Generate code into single module
-  codegenVisitor->codegen(*unifiedAST);
+  codegenVisitor->codegen(*blockAst);
   // Emit static initialization function for globals that need runtime init
   codegenVisitor->emitStaticInitFunction();
 

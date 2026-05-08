@@ -11,26 +11,60 @@
 void SemanticAnalyzer::registerClass(const std::string& name,
                                      std::shared_ptr<sun::ClassType> classType,
                                      std::optional<Position> loc) {
-  // Check for redeclaration in global scope
-  if (!scopeStack.empty() && scopeStack.front().classes.contains(name)) {
+  // Check for redeclaration in current scope
+  if (currentScope->classes.contains(name)) {
     if (!collectingDeclarations) return;  // Pass 2: skip, already registered
+    // Allow re-registration of same class from duplicate imports (diamond deps)
+    if (importScopeDepth_ > 0) return;
     logAndThrowError("Cannot redeclare class '" + name + "'", loc);
   }
-  // Register in current scope AND global scope (for reachability)
-  if (!scopeStack.empty()) {
-    scopeStack.back().classes[name] = classType;
-    if (scopeStack.size() > 1) {
-      scopeStack.front().classes[name] = classType;
+  // Register in current scope
+  currentScope->classes[name] = classType;
+  if (importScopeDepth_ > 0) {
+    // Also register in nearest persistent ancestor so the class survives
+    // transient scope deletion (Class/Function scopes are deleted on exit)
+    for (auto* s = currentScope->parent; s != nullptr; s = s->parent) {
+      if (s->type == ScopeType::Module || s->type == ScopeType::Import ||
+          s->type == ScopeType::Global) {
+        s->classes[name] = classType;
+        break;
+      }
     }
   }
 }
 
 std::shared_ptr<sun::ClassType> SemanticAnalyzer::lookupClass(
     const std::string& name) const {
-  // Walk scope chain from innermost to outermost, including child modules
-  for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
-    auto result = it->findClass(name);
+  // Walk scope chain from innermost to outermost
+  for (auto* s = currentScope; s != nullptr; s = s->parent) {
+    auto result = s->findClass(name);
     if (result) return result;
+    // Search direct import-scope children (one level of transparency)
+    // Also recurse into their module children to find types inside modules
+    // of imported files (e.g., module sun { class X {} } in imported file)
+    for (const auto& [childName, child] : s->childModules) {
+      if (child && child->type == ScopeType::Import) {
+        result = child->findClass(name);
+        if (result) return result;
+        for (const auto& [modName, modChild] : child->childModules) {
+          if (modChild && modChild->type == ScopeType::Module) {
+            result = modChild->findClass(name);
+            if (result) return result;
+          }
+        }
+      }
+    }
+    // Search import bindings from using statements
+    for (const auto& binding : s->importBindings) {
+      if (!binding.sourceScope) continue;
+      if (binding.isWildcard) {
+        auto result2 = binding.sourceScope->findClass(name);
+        if (result2) return result2;
+      } else if (binding.localName == name) {
+        auto result2 = binding.sourceScope->findClass(binding.sourceName);
+        if (result2) return result2;
+      }
+    }
   }
   return nullptr;
 }
@@ -51,25 +85,47 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::getCurrentClass() const {
 void SemanticAnalyzer::registerGenericClass(const std::string& name,
                                             const GenericClassInfo& info,
                                             std::optional<Position> loc) {
-  if (!scopeStack.empty() && scopeStack.front().genericClasses.contains(name)) {
+  if (currentScope->genericClasses.contains(name)) {
     if (!collectingDeclarations) return;  // Pass 2: skip
+    // Allow re-registration from duplicate imports (diamond deps)
+    if (importScopeDepth_ > 0) return;
     logAndThrowError("Cannot redeclare generic class '" + name + "'", loc);
   }
-  // Register in current scope AND global scope (for reachability)
-  if (!scopeStack.empty()) {
-    scopeStack.back().genericClasses[name] = info;
-    if (scopeStack.size() > 1) {
-      scopeStack.front().genericClasses[name] = info;
-    }
-  }
+  // Register in current scope
+  currentScope->genericClasses[name] = info;
 }
 
 const GenericClassInfo* SemanticAnalyzer::lookupGenericClass(
     const std::string& name) const {
-  // Walk scope chain from innermost to outermost, including child modules
-  for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
-    auto result = it->findGenericClass(name);
+  // Walk scope chain from innermost to outermost
+  for (auto* s = currentScope; s != nullptr; s = s->parent) {
+    auto result = s->findGenericClass(name);
     if (result) return result;
+    // Search direct import-scope children (one level of transparency)
+    for (const auto& [childName, child] : s->childModules) {
+      if (child && child->type == ScopeType::Import) {
+        result = child->findGenericClass(name);
+        if (result) return result;
+        for (const auto& [modName, modChild] : child->childModules) {
+          if (modChild && modChild->type == ScopeType::Module) {
+            result = modChild->findGenericClass(name);
+            if (result) return result;
+          }
+        }
+      }
+    }
+    // Search import bindings from using statements
+    for (const auto& binding : s->importBindings) {
+      if (!binding.sourceScope) continue;
+      if (binding.isWildcard) {
+        auto result2 = binding.sourceScope->findGenericClass(name);
+        if (result2) return result2;
+      } else if (binding.localName == name) {
+        auto result2 =
+            binding.sourceScope->findGenericClass(binding.sourceName);
+        if (result2) return result2;
+      }
+    }
   }
   return nullptr;
 }
@@ -77,8 +133,7 @@ const GenericClassInfo* SemanticAnalyzer::lookupGenericClass(
 void SemanticAnalyzer::addTypeParameterBindings(
     const std::vector<std::string>& params,
     const std::vector<sun::TypePtr>& args) {
-  if (scopeStack.empty()) return;
-  auto& scope = scopeStack.back();
+  auto& scope = *currentScope;
   for (size_t i = 0; i < params.size() && i < args.size(); ++i) {
     scope.typeParameters[params[i]] = args[i];
   }
@@ -87,9 +142,9 @@ void SemanticAnalyzer::addTypeParameterBindings(
 sun::TypePtr SemanticAnalyzer::findTypeParameter(
     const std::string& name) const {
   // Search from innermost to outermost scope
-  for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
-    auto found = it->typeParameters.find(name);
-    if (found != it->typeParameters.end()) {
+  for (auto* s = currentScope; s != nullptr; s = s->parent) {
+    auto found = s->typeParameters.find(name);
+    if (found != s->typeParameters.end()) {
       return found->second;
     }
   }
@@ -98,9 +153,9 @@ sun::TypePtr SemanticAnalyzer::findTypeParameter(
 
 sun::TypePtr SemanticAnalyzer::findTypeAlias(const std::string& name) const {
   // Search from innermost to outermost scope
-  for (auto it = scopeStack.rbegin(); it != scopeStack.rend(); ++it) {
-    auto found = it->typeAliases.find(name);
-    if (found != it->typeAliases.end()) {
+  for (auto* s = currentScope; s != nullptr; s = s->parent) {
+    auto found = s->typeAliases.find(name);
+    if (found != s->typeAliases.end()) {
       return found->second;
     }
   }
@@ -110,12 +165,23 @@ sun::TypePtr SemanticAnalyzer::findTypeAlias(const std::string& name) const {
 // Instantiate a generic class with specific type arguments
 std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
     const std::string& baseName, const std::vector<sun::TypePtr>& typeArgs) {
+  // Look up the generic class definition first
+  auto* genericClassInfo = lookupGenericClass(baseName);
+
+  // Use the AST's qualified name for mangling if available.
+  // This ensures that looking up "MatrixView" (short name) produces the same
+  // mangledName as "$hash$_sun_MatrixView" (qualified name from within module).
+  std::string effectiveBase = baseName;
+  if (genericClassInfo && genericClassInfo->AST &&
+      genericClassInfo->AST->hasQualifiedName()) {
+    effectiveBase = genericClassInfo->AST->getQualifiedName();
+  }
+
   // Generate mangled name for the specialized class
   std::string mangledName =
-      sun::Types::mangleGenericClassName(baseName, typeArgs);
+      sun::Types::mangleGenericClassName(effectiveBase, typeArgs);
 
   // Check if already instantiated (both class type AND AST specialization)
-  auto* genericClassInfo = lookupGenericClass(baseName);
   auto existing = lookupClass(mangledName);
   if (existing && genericClassInfo &&
       genericClassInfo->AST->hasSpecialization(mangledName)) {
@@ -132,7 +198,8 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
       return existing;
     }
     // Create and register a placeholder class type
-    auto placeholder = typeRegistry->getSpecializedClass(baseName, typeArgs);
+    auto placeholder =
+        typeRegistry->getSpecializedClass(effectiveBase, typeArgs);
     registerClass(mangledName, placeholder);
     return placeholder;
   }
@@ -164,7 +231,11 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
   if (astOnlyMode) {
     specializedClass = existing;
   } else {
-    specializedClass = typeRegistry->getSpecializedClass(baseName, typeArgs);
+    specializedClass =
+        typeRegistry->getSpecializedClass(effectiveBase, typeArgs);
+
+    // Register the specialized class so methods can reference it
+    registerClass(mangledName, specializedClass);
   }
 
   // Push a scope for class-level type parameter bindings
@@ -178,9 +249,6 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
       fieldType = substituteTypeParameters(fieldType);
       specializedClass->addField(field.name, fieldType);
     }
-
-    // Register the specialized class early so methods can reference it
-    registerClass(mangledName, specializedClass);
   }
 
   // Handle implemented interfaces from the generic class definition
@@ -738,20 +806,36 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   auto savedClass = currentClass;
   setCurrentClass(classType);
 
-  // Extract module prefix from class name (e.g., "sun_Vec" -> "sun")
-  // This ensures types used in method bodies resolve correctly
+  // Extract module path from class context for type resolution.
+  // For specialized generic classes, look up the generic class definition's
+  // qualified name to get the module path.
   std::string modulePrefix;
-  const std::string& className = classType->getName();
-  size_t underscorePos = className.find('_');
-  if (underscorePos != std::string::npos) {
-    modulePrefix = className.substr(0, underscorePos);
+  int moduleScopesEntered = 0;
+  if (classType->isSpecialized()) {
+    const std::string& baseName = classType->getBaseGenericName();
+    auto* genericInfo = lookupGenericClass(baseName);
+    if (genericInfo && genericInfo->AST &&
+        genericInfo->AST->hasQualifiedName()) {
+      modulePrefix = genericInfo->AST->getQualifiedNameInfo().modulePath;
+    }
+  }
+  if (modulePrefix.empty()) {
+    const std::string& className = classType->getName();
+    size_t underscorePos = className.find('_');
+    if (underscorePos != std::string::npos) {
+      modulePrefix = className.substr(0, underscorePos);
+    }
   }
 
   // Enter module scope if class is from a namespace (for correct type
   // resolution)
-  bool inModuleScope = !modulePrefix.empty();
-  if (inModuleScope) {
-    enterModuleScope(modulePrefix);
+  if (!modulePrefix.empty()) {
+    std::string segment;
+    std::istringstream stream(modulePrefix);
+    while (std::getline(stream, segment, '.')) {
+      enterModuleScope(segment);
+      moduleScopesEntered++;
+    }
     // Add implicit using import for the module so unqualified names resolve
     addUsingImport(UsingImport(modulePrefix, "*"));
   }
@@ -776,8 +860,8 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
 
   exitScope();  // method scope
   setCurrentClass(savedClass);
-  if (inModuleScope) {
-    exitScope();  // module scope
+  for (int i = 0; i < moduleScopesEntered; ++i) {
+    exitScope();  // module scope(s)
   }
   exitScope();  // type parameter scope
 

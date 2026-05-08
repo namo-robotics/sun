@@ -582,3 +582,31 @@ TEST(ProgramTest, ref_to_global) {
   )");
   EXPECT_EQ(value, 200);
 }
+
+TEST(ProgramTest, minimal_transitive_import) {
+  // Test minimal transitive import
+  // main imports a which imports b
+  auto value = executeString(R"(
+      
+    import "tests/programs/minimal_import_a.sun";
+
+    function main() i32 {
+        return a();
+    };
+  )");
+  EXPECT_EQ(value, 1);
+}
+
+TEST(ProgramTest, minimal_transitive_import_error) {
+  // Test minimal transitive import
+  // main imports a which imports b
+  EXPECT_THROW(executeString(R"(
+      
+    import "tests/programs/minimal_import_a.sun";
+
+    function main() i32 {
+        return b();
+    };
+  )"),
+               SunError);
+}
