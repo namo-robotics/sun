@@ -710,10 +710,7 @@ void SemanticAnalyzer::declareVariable(const std::string& name,
       }
     }
   }
-  // Compute scope depth by counting ancestors
-  int depth = 0;
-  for (auto* s = currentScope; s != nullptr; s = s->parent) depth++;
-  currentScope->variables[name] = {type, depth - 1, isParam, false};
+  currentScope->variables[name] = {type, isAtModuleLevel(), isParam, false};
 }
 
 VariableInfo* SemanticAnalyzer::lookupVariable(const std::string& name) {
@@ -722,6 +719,25 @@ VariableInfo* SemanticAnalyzer::lookupVariable(const std::string& name) {
     auto found = s->variables.find(name);
     if (found != s->variables.end()) {
       return &found->second;
+    }
+    // Search direct import-scope children (mirrors lookupFunction behavior)
+    for (const auto& [childName, child] : s->childModules) {
+      if (child && child->type == ScopeType::Import) {
+        auto childFound = child->variables.find(name);
+        if (childFound != child->variables.end()) {
+          return &childFound->second;
+        }
+      }
+    }
+    // Search import bindings from using statements
+    for (const auto& binding : s->importBindings) {
+      if (!binding.sourceScope) continue;
+      if (binding.isWildcard) {
+        auto bindingFound = binding.sourceScope->variables.find(name);
+        if (bindingFound != binding.sourceScope->variables.end()) {
+          return &bindingFound->second;
+        }
+      }
     }
   }
   return nullptr;
@@ -1095,7 +1111,7 @@ std::optional<FunctionInfo> SemanticAnalyzer::lookupFunction(
 
 void SemanticAnalyzer::registerGlobal(const std::string& name,
                                       sun::TypePtr type) {
-  rootScope->variables[name] = {type, 0, false, false};
+  rootScope->variables[name] = {type, true, false, false};
 }
 
 // -------------------------------------------------------------------
@@ -1155,9 +1171,9 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
 
 void SemanticAnalyzer::registerNamespacedVariable(
     const std::string& qualifiedName, sun::TypePtr type) {
-  rootScope->namespacedVariables[qualifiedName] = {type, 0, false};
+  rootScope->namespacedVariables[qualifiedName] = {type, true, false};
   if (currentScope != rootScope.get()) {
-    currentScope->namespacedVariables[qualifiedName] = {type, 0, false};
+    currentScope->namespacedVariables[qualifiedName] = {type, true, false};
   }
 }
 

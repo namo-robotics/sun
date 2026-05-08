@@ -96,13 +96,19 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
     case ASTNodeType::VARIABLE_CREATION: {
       auto& varCreate = static_cast<VariableCreationAST&>(expr);
-
-      // Inside an import scope, skip if global variable already analyzed
-      // (diamond dependency duplicate).
-      if (importScopeDepth_ > 0 && isAtModuleLevel() &&
-          analyzedGlobals_.count(varCreate.getName())) {
-        expr.setSkipCodegen(true);
-        break;
+      auto varName = varCreate.getName();
+      auto qualifiedName = makeQualifiedName(varCreate.getName()).mangled();
+      // Inside an import scope, skip codegen if global variable already
+      // analyzed (diamond dependency duplicate). But still declare the variable
+      // so functions in this import scope can reference it.
+      if (importScopeDepth_ > 0 && isAtModuleLevel()) {
+        auto it = analyzedGlobals_.find(qualifiedName);
+        if (it != analyzedGlobals_.end()) {
+          expr.setSkipCodegen(true);
+          declareVariable(varName, it->second);
+          expr.setResolvedType(it->second);
+          break;
+        }
       }
 
       // Determine type first (before analyzing value, for array literals)
@@ -159,7 +165,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
       // Track global variables for diamond duplicate detection
       if (importScopeDepth_ > 0 && isAtModuleLevel()) {
-        analyzedGlobals_.insert(varCreate.getName());
+        analyzedGlobals_[qualifiedName] = type;
       }
       break;
     }

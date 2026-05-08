@@ -62,8 +62,8 @@ class SemanticAnalyzer {
   std::unordered_set<std::string> analyzedFunctions_;
 
   // Global variables already analyzed in Pass 2 (used to skip diamond
-  // duplicates)
-  std::unordered_set<std::string> analyzedGlobals_;
+  // duplicates). Maps variable name to its resolved type.
+  std::unordered_map<std::string, sun::TypePtr> analyzedGlobals_;
 
   // True when not inside any function scope (i.e. at module/global level)
   bool isAtModuleLevel() const {

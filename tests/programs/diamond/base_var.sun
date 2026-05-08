@@ -1,0 +1,8 @@
+// base_var.sun - Shared base with a global variable
+module shared_module_1 {
+    var shared_value: i32 = 42;
+}
+
+module shared_module_2 {
+    var shared_value: i32 = 24;
+}

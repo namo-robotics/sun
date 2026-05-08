@@ -233,7 +233,7 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const FunctionAST& func) {
     // Look up the variable's type
     VariableInfo* varInfo = lookupVariable(var);
     if (varInfo && varInfo->type) {
-      if (varInfo->scopeDepth == 0) {
+      if (varInfo->isGlobal) {
         continue;  // Skip global variables - they don't need to be captured
       }
       captures.push_back({var, varInfo->type});
@@ -260,7 +260,7 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const LambdaAST& lambda) {
     // Look up the variable's type
     VariableInfo* varInfo = lookupVariable(var);
     if (varInfo && varInfo->type) {
-      if (varInfo->scopeDepth == 0) {
+      if (varInfo->isGlobal) {
         continue;  // Skip global variables - they don't need to be captured
       }
       captures.push_back({var, varInfo->type});

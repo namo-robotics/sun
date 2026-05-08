@@ -18,7 +18,7 @@
 // Information about a variable in the symbol table
 struct VariableInfo {
   sun::TypePtr type;
-  int scopeDepth;        // Which scope level declared it
+  bool isGlobal;         // Declared at module level (not inside a function)
   bool isFunctionParam;  // Is it a parameter vs let binding
   bool isMoved = false;  // Has ownership been transferred (move semantics)
 };
