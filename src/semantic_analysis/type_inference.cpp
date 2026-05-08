@@ -877,12 +877,9 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
           if (typeArgPtrs.size() == typeParams.size()) {
             // Instantiate the generic method - this creates and stores the
             // specialized FunctionAST on the generic method for codegen access
-            // Need non-const ClassType - look it up from class table
-            auto mutableClassType = lookupClass(classType->getName());
-            if (mutableClassType) {
-              instantiateGenericMethod(mutableClassType, memberName,
-                                       typeArgPtrs);
-            }
+            auto mutableClassType =
+                std::static_pointer_cast<sun::ClassType>(objectType);
+            instantiateGenericMethod(mutableClassType, memberName, typeArgPtrs);
 
             enterScope();
             addTypeParameterBindings(typeParams, typeArgPtrs);

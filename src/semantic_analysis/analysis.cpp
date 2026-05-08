@@ -1495,6 +1495,17 @@ void SemanticAnalyzer::analyzeBlock(BlockExprAST& block) {
     }
   }
 
+  // Pass 1c: Process using statements so cross-module types are visible
+  // for function signature resolution in Pass 1b.
+  {
+    CollectingGuard guard(collectingDeclarations, true);
+    for (const auto& expr : block.getBody()) {
+      if (expr->getType() == ASTNodeType::USING) {
+        collectDeclarations(*expr);
+      }
+    }
+  }
+
   // Pass 1b: Collect function prototypes (can now resolve types from imports)
   {
     CollectingGuard guard(collectingDeclarations, true);
@@ -1592,9 +1603,6 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
     sun::QualifiedName qname(getCurrentModulePath(),
                              getCurrentFunctionContext(), proto.getName());
     currentScope->genericFunctions[qname] = genInfo;
-    if (importScopeDepth_ == 0 && currentScope != rootScope.get()) {
-      rootScope->genericFunctions[qname] = genInfo;
-    }
   }
 
   // Validate and resolve parameter types using shared helper

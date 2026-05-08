@@ -8,6 +8,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "ast.h"
@@ -27,6 +28,67 @@ struct FunctionInfo {
   sun::TypePtr returnType;
   std::vector<sun::TypePtr> paramTypes;
   std::vector<Capture> captures;
+};
+
+// Indexed function table: O(1) name-based overload lookup + O(1) exact sig
+// lookup. Replaces std::map<string, FunctionInfo> which required O(n) prefix
+// scans to find overloads by name.
+class FunctionTable {
+ public:
+  using iterator = std::unordered_map<std::string, FunctionInfo>::iterator;
+  using const_iterator =
+      std::unordered_map<std::string, FunctionInfo>::const_iterator;
+
+  FunctionInfo& operator[](const std::string& sig) {
+    auto [it, inserted] = bySig_.emplace(sig, FunctionInfo{});
+    if (inserted) {
+      std::string name = extractName(sig);
+      byName_[name].push_back(&it->second);
+    }
+    return it->second;
+  }
+
+  bool contains(const std::string& sig) const { return bySig_.count(sig) > 0; }
+
+  const_iterator find(const std::string& sig) const { return bySig_.find(sig); }
+
+  const_iterator end() const { return bySig_.end(); }
+  const_iterator begin() const { return bySig_.begin(); }
+  iterator end() { return bySig_.end(); }
+  iterator begin() { return bySig_.begin(); }
+  bool empty() const { return bySig_.empty(); }
+  size_t size() const { return bySig_.size(); }
+
+  // Check if any function with this base name exists (O(1))
+  bool hasName(const std::string& name) const {
+    return byName_.count(name) > 0;
+  }
+
+  // Check if any function with this base name exists, also trying qualified
+  bool hasNameOrQualified(const std::string& name,
+                          const std::string& qualifiedName) const {
+    if (byName_.count(name) > 0) return true;
+    if (!qualifiedName.empty() && byName_.count(qualifiedName) > 0) return true;
+    return false;
+  }
+
+  // Get all overloads for a given base name (O(1) lookup)
+  const std::vector<FunctionInfo*>* getOverloads(
+      const std::string& name) const {
+    auto it = byName_.find(name);
+    if (it != byName_.end()) return &it->second;
+    return nullptr;
+  }
+
+ private:
+  std::unordered_map<std::string, FunctionInfo> bySig_;
+  std::unordered_map<std::string, std::vector<FunctionInfo*>> byName_;
+
+  // Extract function name from signature "name(type1,type2)"
+  static std::string extractName(const std::string& sig) {
+    auto paren = sig.find('(');
+    return paren != std::string::npos ? sig.substr(0, paren) : sig;
+  }
 };
 
 // Type of scope in the scope tree
@@ -201,9 +263,8 @@ struct SemanticScope {
   // ===== Symbol tables (persistent — serialized to .moon for module scopes)
   // =====
 
-  // Functions declared in this scope (key = signature string
-  // "name(type1,type2)")
-  std::map<std::string, FunctionInfo> functions;
+  // Functions declared in this scope (indexed by signature and name)
+  FunctionTable functions;
   // Classes declared in this scope
   std::map<std::string, std::shared_ptr<sun::ClassType>> classes;
   // Generic class templates declared in this scope

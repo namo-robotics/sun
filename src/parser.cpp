@@ -10,6 +10,7 @@
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_map>
 #include <vector>
 
 #include "library_cache.h"
@@ -2780,6 +2781,21 @@ std::unique_ptr<FunctionAST> Parser::parseFunctionFromSource(
 // NFA on every call. This centralizes lazy parsing logic for use by codegen.
 std::unique_ptr<FunctionAST> Parser::lazyParseFunctionSource(
     const std::string& source) {
+  // Cache parsed ASTs by source text — avoids re-lexing identical method bodies
+  // across generic specializations (e.g. Vec<i32>, Vec<f64> share method
+  // source)
+  static thread_local std::unordered_map<std::string,
+                                         std::unique_ptr<FunctionAST>>
+      cache;
+
+  auto it = cache.find(source);
+  if (it != cache.end()) {
+    // Return a clone of the cached AST
+    auto clone = it->second->clone();
+    return std::unique_ptr<FunctionAST>(
+        static_cast<FunctionAST*>(clone.release()));
+  }
+
   // Thread-local parser and stream for efficient NFA reuse
   static thread_local std::unique_ptr<std::istringstream> lazyStream;
   static thread_local std::unique_ptr<Parser> lazyParser;
@@ -2792,8 +2808,16 @@ std::unique_ptr<FunctionAST> Parser::lazyParseFunctionSource(
     lazyParser = std::make_unique<Parser>(*lazyStream);
   }
 
-  // Reuse existing parser's NFA via parseFunctionFromSource
-  return lazyParser->parseFunctionFromSource(source);
+  // Parse and cache
+  auto result = lazyParser->parseFunctionFromSource(source);
+
+  if (result) {
+    // Store a clone in cache, return the original
+    cache[source] = std::unique_ptr<FunctionAST>(
+        static_cast<FunctionAST*>(result->clone().release()));
+  }
+
+  return result;
 }
 
 // Parse class definition: class ClassName implements Interface1, Interface2 {

@@ -37,9 +37,6 @@ void SemanticAnalyzer::collectDeclarations(ExprAST& expr) {
         sun::QualifiedName qname(getCurrentModulePath(),
                                  getCurrentFunctionContext(), proto.getName());
         currentScope->genericFunctions[qname] = genInfo;
-        if (importScopeDepth_ == 0 && currentScope != rootScope.get()) {
-          rootScope->genericFunctions[qname] = genInfo;
-        }
         break;
       }
 
@@ -168,13 +165,36 @@ void SemanticAnalyzer::collectDeclarations(ExprAST& expr) {
       break;
     }
 
-    case ASTNodeType::USING:
-      // Using statements are NOT processed in Pass 1 — they are handled in
-      // Pass 2 only. Processing them here would enable generic type resolution
-      // in function signatures, which can trigger instantiateGenericClass.
-      // That in turn analyzes method bodies that depend on class methods
-      // populated in Pass 2, causing failures or dirty scope state on error.
+    case ASTNodeType::USING: {
+      // Process using statements in Pass 1 so cross-module types can be
+      // resolved during function signature collection (Pass 1b).
+      auto& usingDecl = static_cast<UsingAST&>(expr);
+      std::string namespacePath = usingDecl.getNamespacePathString();
+      std::string target = usingDecl.getTarget();
+
+      if (!usingDecl.isWildcardImport() &&
+          !usingDecl.isPrefixWildcardImport()) {
+        std::string displayPath =
+            namespacePath.empty() ? target : namespacePath + "." + target;
+        if (auto* modScope = lookupModuleScope(displayPath)) {
+          UsingImport import(displayPath, "*");
+          addUsingImport(import);
+          addImportBinding(ImportBinding::wildcard(modScope));
+          break;
+        }
+      }
+
+      UsingImport import(namespacePath, target);
+      addUsingImport(import);
+      if (auto* modScope = lookupModuleScope(namespacePath)) {
+        if (import.isWildcard) {
+          addImportBinding(ImportBinding::wildcard(modScope));
+        } else {
+          addImportBinding(ImportBinding(target, modScope, target));
+        }
+      }
       break;
+    }
 
     case ASTNodeType::IMPORT_SCOPE: {
       // Recurse into expanded import scopes to collect their declarations
