@@ -314,7 +314,6 @@ class SemanticAnalyzer {
   std::string getCurrentFunctionContext() const;
 
   // Module name registration for qualified name resolution (mod_x.mod_y.var)
-  void registerModule(const std::string& modulePath);
 
   bool isModuleName(const std::string& name) const;
 

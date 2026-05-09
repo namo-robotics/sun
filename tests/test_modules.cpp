@@ -200,21 +200,6 @@ TEST(ModuleTest, parse_using_specific_symbol) {
   EXPECT_EQ(usingNode->getTarget(), "Vec");
 }
 
-TEST(ModuleTest, parse_using_prefix_wildcard) {
-  auto parser = Parser::createStringParser(R"(
-    using sun.Mat*;
-  )");
-  auto ast = parser.parseProgram();
-  ASSERT_NE(ast, nullptr);
-  ASSERT_EQ(ast->getBody().size(), 1);
-  EXPECT_EQ(ast->getBody()[0]->getType(), ASTNodeType::USING);
-
-  auto* usingNode = static_cast<const UsingAST*>(ast->getBody()[0].get());
-  EXPECT_FALSE(usingNode->isWildcardImport());
-  EXPECT_TRUE(usingNode->isPrefixWildcardImport());
-  EXPECT_EQ(usingNode->getPrefix(), "Mat");
-}
-
 TEST(ModuleTest, parse_using_nested_module) {
   auto parser = Parser::createStringParser(R"(
     using sun.matrix.types;
@@ -530,6 +515,22 @@ TEST(ModuleTest, using_causes_ambiguity) {
     }
   )"),
                std::exception);
+}
+
+TEST(ModuleTest, module_imports_global_function) {
+  auto value = executeString(R"(
+    module A {
+      import "tests/programs/diamond/foo.sun";
+      function bar() i32 {
+        return foo();
+      }
+    }
+
+    function main() i32 {
+      return A.bar();
+    }
+  )");
+  EXPECT_EQ(value, 123);
 }
 
 // =============================================================================

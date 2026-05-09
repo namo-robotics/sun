@@ -804,6 +804,68 @@ struct ClassMethod {
   bool isGeneric() const { return !typeParameters.empty(); }
 };
 
+// Method info for ClassType/InterfaceType method tables.
+// Lightweight alternative to FunctionInfo (no Capture dependency).
+// Stores enough for overload resolution and codegen name lookup.
+struct ScopeMethodInfo {
+  TypePtr returnType;
+  std::vector<TypePtr> paramTypes;  // Excludes implicit 'this' parameter
+  std::string qualifiedName;  // Mangled name for LLVM codegen (e.g., "MyClass_foo")
+  std::string baseName;       // User-written method name (e.g., "foo")
+};
+
+// Indexed method table: O(1) name-based overload lookup + O(1) exact sig
+// lookup. Used on ClassType and InterfaceType for method resolution.
+class ScopeMethodTable {
+ public:
+  using iterator = std::unordered_map<std::string, ScopeMethodInfo>::iterator;
+  using const_iterator =
+      std::unordered_map<std::string, ScopeMethodInfo>::const_iterator;
+
+  ScopeMethodInfo& operator[](const std::string& sig) {
+    auto [it, inserted] = bySig_.emplace(sig, ScopeMethodInfo{});
+    if (inserted) {
+      std::string name = extractName(sig);
+      byName_[name].push_back(&it->second);
+    }
+    return it->second;
+  }
+
+  bool contains(const std::string& sig) const { return bySig_.count(sig) > 0; }
+
+  const_iterator find(const std::string& sig) const { return bySig_.find(sig); }
+
+  const_iterator end() const { return bySig_.end(); }
+  const_iterator begin() const { return bySig_.begin(); }
+  iterator end() { return bySig_.end(); }
+  iterator begin() { return bySig_.begin(); }
+  bool empty() const { return bySig_.empty(); }
+  size_t size() const { return bySig_.size(); }
+
+  // Check if any method with this base name exists (O(1))
+  bool hasName(const std::string& name) const {
+    return byName_.count(name) > 0;
+  }
+
+  // Get all overloads for a given base name (O(1) lookup)
+  const std::vector<ScopeMethodInfo*>* getOverloads(
+      const std::string& name) const {
+    auto it = byName_.find(name);
+    if (it != byName_.end()) return &it->second;
+    return nullptr;
+  }
+
+ private:
+  std::unordered_map<std::string, ScopeMethodInfo> bySig_;
+  std::unordered_map<std::string, std::vector<ScopeMethodInfo*>> byName_;
+
+  // Extract method name from signature "name(type1,type2)"
+  static std::string extractName(const std::string& sig) {
+    auto paren = sig.find('(');
+    return paren != std::string::npos ? sig.substr(0, paren) : sig;
+  }
+};
+
 // Class type for user-defined classes
 // Classes are represented as LLVM structs with methods as separate functions
 // Generic classes have type parameters (e.g., class List<T>)
@@ -819,6 +881,7 @@ class ClassType : public Type {
   std::string baseGenericName;  // For specialized: original generic class name
   std::vector<ClassField> fields;
   std::vector<ClassMethod> methods;
+  ScopeMethodTable methodTable_;  // Indexed method table for overload resolution
   std::vector<std::string>
       implementedInterfaces;  // Names of interfaces this class implements
   mutable llvm::StructType* cachedLLVMType = nullptr;
@@ -1001,6 +1064,28 @@ class ClassType : public Type {
   std::string getMangledMethodName(const std::string& methodName) const {
     return name + "_" + methodName;
   }
+
+  // --- ScopeMethodTable accessors ---
+  ScopeMethodTable& getMethodTable() { return methodTable_; }
+  const ScopeMethodTable& getMethodTable() const { return methodTable_; }
+
+  // Register a method in the indexed method table (by signature)
+  void registerMethod(const std::string& sig, ScopeMethodInfo info) {
+    methodTable_[sig] = std::move(info);
+  }
+
+  // Look up a method by exact signature
+  const ScopeMethodInfo* lookupMethod(const std::string& sig) const {
+    auto it = methodTable_.find(sig);
+    if (it != methodTable_.end()) return &it->second;
+    return nullptr;
+  }
+
+  // Get all overloads for a method name
+  const std::vector<ScopeMethodInfo*>* getMethodOverloads(
+      const std::string& methodName) const {
+    return methodTable_.getOverloads(methodName);
+  }
 };
 
 // Interface field information
@@ -1036,6 +1121,7 @@ class InterfaceType : public Type {
       baseGenericName;  // For specialized: original generic interface name
   std::vector<InterfaceField> fields;
   std::vector<InterfaceMethod> methods;
+  ScopeMethodTable methodTable_;  // Indexed method table for default implementations
 
  public:
   InterfaceType(std::string interfaceName) : name(std::move(interfaceName)) {}
@@ -1207,6 +1293,28 @@ class InterfaceType : public Type {
     }
     return -1;  // Method not found or is generic
   }
+
+  // --- ScopeMethodTable accessors ---
+  ScopeMethodTable& getMethodTable() { return methodTable_; }
+  const ScopeMethodTable& getMethodTable() const { return methodTable_; }
+
+  // Register a method in the indexed method table (by signature)
+  void registerMethod(const std::string& sig, ScopeMethodInfo info) {
+    methodTable_[sig] = std::move(info);
+  }
+
+  // Look up a method by exact signature
+  const ScopeMethodInfo* lookupMethod(const std::string& sig) const {
+    auto it = methodTable_.find(sig);
+    if (it != methodTable_.end()) return &it->second;
+    return nullptr;
+  }
+
+  // Get all overloads for a method name
+  const std::vector<ScopeMethodInfo*>* getMethodOverloads(
+      const std::string& methodName) const {
+    return methodTable_.getOverloads(methodName);
+  }
 };
 
 // Enum variant information
@@ -1223,18 +1331,40 @@ using EnumTypePtr = std::shared_ptr<EnumType>;
 // Enums are represented as i32 values, with variants as named constants
 // Example: enum Color { Red, Green, Blue }
 class EnumType : public Type {
-  std::string name;
+  std::string qualifiedName_;  // Fully qualified name (e.g., "$hash$_sun_Color")
+  std::string baseName_;       // User-written base name (e.g., "Color")
   std::vector<EnumVariant> variants;
 
  public:
-  EnumType(std::string enumName) : name(std::move(enumName)) {}
+  EnumType(std::string qualifiedName, std::string baseName = "")
+      : qualifiedName_(std::move(qualifiedName)),
+        baseName_(std::move(baseName)) {}
 
-  EnumType(std::string enumName, std::vector<EnumVariant> vars)
-      : name(std::move(enumName)), variants(std::move(vars)) {}
+  EnumType(std::string qualifiedName, std::vector<EnumVariant> vars,
+           std::string baseName = "")
+      : qualifiedName_(std::move(qualifiedName)),
+        variants(std::move(vars)),
+        baseName_(std::move(baseName)) {}
 
   Kind getKind() const override { return Kind::Enum; }
-  const std::string& getName() const { return name; }
+  const std::string& getName() const { return qualifiedName_; }
   const std::vector<EnumVariant>& getVariants() const { return variants; }
+
+  // Base name accessor
+  const std::string& getBaseName() const {
+    return baseName_.empty() ? qualifiedName_ : baseName_;
+  }
+  bool hasBaseName() const { return !baseName_.empty(); }
+
+  // Get user-friendly display name for error messages
+  std::string getDisplayName() const {
+    if (!baseName_.empty()) return baseName_;
+    std::string base = qualifiedName_;
+    for (size_t i = 0; i < base.size(); ++i) {
+      if (base[i] == '_') base[i] = '.';
+    }
+    return base;
+  }
 
   void addVariant(const std::string& variantName, int64_t value) {
     variants.push_back({variantName, value});
@@ -1255,11 +1385,11 @@ class EnumType : public Type {
   // Get the number of variants
   size_t getNumVariants() const { return variants.size(); }
 
-  std::string toString() const override { return name; }
+  std::string toString() const override { return qualifiedName_; }
 
   bool equals(const Type& other) const override {
     if (auto* e = dynamic_cast<const EnumType*>(&other)) {
-      return name == e->name;
+      return qualifiedName_ == e->qualifiedName_;
     }
     return false;
   }
@@ -1271,7 +1401,7 @@ class EnumType : public Type {
 
   // Get the mangled variant name: EnumName_VariantName
   std::string getMangledVariantName(const std::string& variantName) const {
-    return name + "_" + variantName;
+    return qualifiedName_ + "_" + variantName;
   }
 };
 

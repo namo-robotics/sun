@@ -646,14 +646,14 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
     }
   } else if (classType->isGenericDefinition()) {
     // Generic class definition - look up directly
-    auto* genericInfo = lookupGenericClass(classType->getName());
+    auto* genericInfo = lookupGenericClass(classType->getBaseName());
     if (genericInfo) {
       classDef = genericInfo->AST;
     }
   } else {
     // Non-generic class - look up in generic table anyway (might have generic
     // methods)
-    auto* genericInfo = lookupGenericClass(classType->getName());
+    auto* genericInfo = lookupGenericClass(classType->getBaseName());
     if (genericInfo) {
       classDef = genericInfo->AST;
     }

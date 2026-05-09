@@ -21,6 +21,9 @@ struct VariableInfo {
   bool isGlobal;         // Declared at module level (not inside a function)
   bool isFunctionParam;  // Is it a parameter vs let binding
   bool isMoved = false;  // Has ownership been transferred (move semantics)
+  std::string qualifiedName;  // Mangled name for codegen (e.g., "sun_PI").
+                              // Empty for locals.
+  std::string baseName;       // User-written name (e.g., "PI"). For debugging.
 };
 
 // Information about a declared function
@@ -28,6 +31,9 @@ struct FunctionInfo {
   sun::TypePtr returnType;
   std::vector<sun::TypePtr> paramTypes;
   std::vector<Capture> captures;
+  std::string qualifiedName;  // Mangled name for codegen (e.g., "sun_square").
+                              // Empty for builtins.
+  std::string baseName;  // User-written name (e.g., "square"). For debugging.
 };
 
 // Indexed function table: O(1) name-based overload lookup + O(1) exact sig
@@ -105,21 +111,13 @@ enum class ScopeType {
 // ImportBinding)
 struct UsingImport {
   std::string namespacePath;  // "sun" or "sun.nested"
-  std::string target;         // "Vec", "*" for wildcard, or "Mat*" for prefix
-  bool isWildcard;            // true if target == "*"
-  bool isPrefixWildcard;      // true if target ends with '*' (e.g., "Mat*")
-  std::string prefix;         // For prefix wildcards, the prefix without '*'
+  std::string target;         // "Vec" for specific, "*" for wildcard
+  bool isWildcard;            // true if target == "*" (using sun;)
 
   UsingImport(std::string nsPath, std::string t)
       : namespacePath(std::move(nsPath)),
         target(std::move(t)),
-        isWildcard(target == "*"),
-        isPrefixWildcard(false) {
-    if (!isWildcard && target.size() > 1 && target.back() == '*') {
-      isPrefixWildcard = true;
-      prefix = target.substr(0, target.size() - 1);
-    }
-  }
+        isWildcard(target == "*") {}
 };
 
 // Forward declaration for scope pointer in ImportBinding
@@ -130,7 +128,7 @@ struct ImportBinding {
   std::string localName;       // How the symbol is referred to locally ("Vec")
   SemanticScope* sourceScope;  // Pointer to the scope it was imported from
   std::string sourceName;      // Name in the source scope ("Vec")
-  bool isWildcard;  // true for "using sun.*" (localName/sourceName unused)
+  bool isWildcard;  // true for "using sun;" (localName/sourceName unused)
 
   ImportBinding() : sourceScope(nullptr), isWildcard(false) {}
   ImportBinding(std::string local, SemanticScope* src, std::string srcName)
@@ -281,8 +279,6 @@ struct SemanticScope {
   std::map<std::string, std::shared_ptr<SemanticScope>> childModules;
   // Namespace-qualified variables: "sun_PI" -> VariableInfo
   std::map<std::string, VariableInfo> namespacedVariables;
-  // Declared module names for qualified name resolution
-  std::set<std::string> declaredModules;
 
   // ===== Transient state (not serialized) =====
 
