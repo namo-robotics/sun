@@ -1384,7 +1384,7 @@ unique_ptr<ExprAST> Parser::parseStatement() {
 
     case TokenKind::MODULE:
     case TokenKind::NAMESPACE:
-      return parseNamespaceDecl();
+      return parseModuleDecl();
 
     case TokenKind::USING:
       return parseUsingStatement();
@@ -1864,9 +1864,9 @@ unique_ptr<DeclareTypeAST> Parser::parseDeclareStatement() {
   return std::make_unique<DeclareTypeAST>(std::move(typeAnnot), alias);
 }
 
-// Parse namespace/module declaration: module Name { declarations... }
+// Parse module declaration: module Name { declarations... }
 // Supports both 'module' (preferred) and 'namespace' (legacy) keywords
-unique_ptr<NamespaceAST> Parser::parseNamespaceDecl() {
+unique_ptr<ModuleAST> Parser::parseModuleDecl() {
   getNextToken();  // eat 'module' or 'namespace'
 
   if (curTok.kind != TokenKind::IDENTIFIER) {
@@ -1885,7 +1885,7 @@ unique_ptr<NamespaceAST> Parser::parseNamespaceDecl() {
   auto body = parseBlock();
   if (!body) return nullptr;
 
-  return std::make_unique<NamespaceAST>(std::move(name), std::move(body));
+  return std::make_unique<ModuleAST>(std::move(name), std::move(body));
 }
 
 // Parse using statement with dot-based syntax:
@@ -2353,11 +2353,11 @@ void Parser::createModuleStubs(
 
   // Wrap all stubs in appropriate namespace structure
   if (!moduleAST.empty()) {
-    // If module has a namespace, wrap stubs in NamespaceAST
+    // If module has a module declaration, wrap stubs in ModuleAST
     if (!metadata.moduleName.empty()) {
       auto nsBody = std::make_unique<BlockExprAST>(std::move(moduleAST));
-      auto nsAST = std::make_unique<NamespaceAST>(metadata.moduleName,
-                                                  std::move(nsBody));
+      auto nsAST =
+          std::make_unique<ModuleAST>(metadata.moduleName, std::move(nsBody));
       nsAST->setPrecompiled(true);
       collectedAST.push_back(std::move(nsAST));
     } else {

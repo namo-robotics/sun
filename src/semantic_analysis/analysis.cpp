@@ -494,14 +494,14 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
                        importScope.getContentHash());
       importScopeDepth_++;
 
-      // Skip entire body if this file was already fully analyzed
-      // (diamond dependency). The scope is reused by enterImportScope,
-      // so all symbols are already registered and accessible.
-      if (importedFiles_.count(scopeKey)) {
+      // Skip entire body if this import was already fully analyzed
+      // (diamond dependency). The scope was cloned by enterImportScope,
+      // so all symbols are already accessible.
+      if (analyzedImports_.count(scopeKey)) {
         expr.setSkipCodegen(true);
       } else {
         analyzeBlock(const_cast<BlockExprAST&>(importScope.getBody()));
-        importedFiles_.insert(scopeKey);
+        analyzedImports_.insert(scopeKey);
       }
 
       importScopeDepth_--;
@@ -510,8 +510,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       break;
     }
 
-    case ASTNodeType::NAMESPACE: {
-      auto& nsDecl = static_cast<NamespaceAST&>(expr);
+    case ASTNodeType::MODULE: {
+      auto& nsDecl = static_cast<ModuleAST&>(expr);
       // Enter the namespace scope
       enterModuleScope(nsDecl.getName());
 
@@ -1242,8 +1242,8 @@ void SemanticAnalyzer::analyzeBlock(BlockExprAST& block) {
       auto type = expr->getType();
       if (type == ASTNodeType::CLASS_DEFINITION ||
           type == ASTNodeType::INTERFACE_DEFINITION ||
-          type == ASTNodeType::ENUM_DEFINITION ||
-          type == ASTNodeType::NAMESPACE || type == ASTNodeType::IMPORT_SCOPE) {
+          type == ASTNodeType::ENUM_DEFINITION || type == ASTNodeType::MODULE ||
+          type == ASTNodeType::IMPORT_SCOPE) {
         collectDeclarations(*expr);
       }
     }

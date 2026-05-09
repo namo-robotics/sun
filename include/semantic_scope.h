@@ -45,6 +45,26 @@ class FunctionTable {
   using const_iterator =
       std::unordered_map<std::string, FunctionInfo>::const_iterator;
 
+  FunctionTable() = default;
+
+  // Copy constructor - rebuild byName_ with valid pointers
+  FunctionTable(const FunctionTable& other) : bySig_(other.bySig_) {
+    rebuildByName();
+  }
+
+  // Copy assignment - rebuild byName_ with valid pointers
+  FunctionTable& operator=(const FunctionTable& other) {
+    if (this != &other) {
+      bySig_ = other.bySig_;
+      rebuildByName();
+    }
+    return *this;
+  }
+
+  // Move operations can use defaults
+  FunctionTable(FunctionTable&&) = default;
+  FunctionTable& operator=(FunctionTable&&) = default;
+
   FunctionInfo& operator[](const std::string& sig) {
     auto [it, inserted] = bySig_.emplace(sig, FunctionInfo{});
     if (inserted) {
@@ -89,6 +109,15 @@ class FunctionTable {
  private:
   std::unordered_map<std::string, FunctionInfo> bySig_;
   std::unordered_map<std::string, std::vector<FunctionInfo*>> byName_;
+
+  // Rebuild byName_ index from bySig_ (used after copy)
+  void rebuildByName() {
+    byName_.clear();
+    for (auto& [sig, info] : bySig_) {
+      std::string name = extractName(sig);
+      byName_[name].push_back(&info);
+    }
+  }
 
   // Extract function name from signature "name(type1,type2)"
   static std::string extractName(const std::string& sig) {
@@ -324,6 +353,12 @@ struct SemanticScope {
   // Find functions matching a name prefix in this scope or child module scopes
   void collectFunctions(const std::string& prefix,
                         std::vector<FunctionInfo>& results) const;
+
+  // Create a shallow clone of this scope's symbol tables.
+  // The clone has independent copies of all symbol maps but shares the
+  // underlying type objects (ClassType, InterfaceType, etc.).
+  // Parent pointer and transient state are NOT copied — caller sets those.
+  std::shared_ptr<SemanticScope> cloneSymbols(SemanticScope* newParent) const;
 };
 
 // Helper to check if a module name represents a library scope ($hash$)

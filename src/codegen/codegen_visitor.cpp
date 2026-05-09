@@ -118,10 +118,10 @@ Value* CodegenVisitor::codegen(const ExprAST& expr) {
           "Pack expansion '...' can only be used in function call arguments");
       return nullptr;
     }
-    case ASTNodeType::NAMESPACE: {
+    case ASTNodeType::MODULE: {
       // Module declarations: generate code for all declarations inside
       // Name mangling is handled by semantic analysis (qualified names on AST)
-      const auto& ns = static_cast<const NamespaceAST&>(expr);
+      const auto& ns = static_cast<const ModuleAST&>(expr);
       return codegen(ns.getBody());
     }
     case ASTNodeType::USING: {

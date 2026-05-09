@@ -46,8 +46,8 @@ enum class ASTNodeType {
   RETURN,
   IMPORT,                // import "file.sun";
   IMPORT_SCOPE,          // Expanded import scope (contains imported file's AST)
-  NAMESPACE,             // namespace Name { ... }
-  USING,                 // using Namespace::name; or using Namespace::*;
+  MODULE,                // module Name { ... }
+  USING,                 // using Module::name; or using Module::*;
   QUALIFIED_NAME,        // Namespace::name
   CLASS_DEFINITION,      // class Name { ... }
   INTERFACE_DEFINITION,  // interface Name { ... }
@@ -1329,19 +1329,19 @@ class QualifiedNameAST : public ExprAST {
   std::unique_ptr<ExprAST> clone() const override;
 };
 
-// Module/Namespace declaration: module Name { declarations... }
+// Module declaration: module Name { declarations... }
 // Also supports legacy 'namespace' keyword
-class NamespaceAST : public ExprAST {
+class ModuleAST : public ExprAST {
   std::string name;
   std::unique_ptr<BlockExprAST> body;
 
  public:
-  NamespaceAST(std::string name, std::unique_ptr<BlockExprAST> body)
+  ModuleAST(std::string name, std::unique_ptr<BlockExprAST> body)
       : name(std::move(name)), body(std::move(body)) {}
 
-  ASTNodeType getType() const override { return ASTNodeType::NAMESPACE; }
+  ASTNodeType getType() const override { return ASTNodeType::MODULE; }
   std::string toString() const override {
-    return "namespace " + name + " " + body->toString();
+    return "module " + name + " " + body->toString();
   }
 
   const std::string& getName() const { return name; }

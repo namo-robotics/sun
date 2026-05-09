@@ -152,8 +152,8 @@ class Parser {
   // Declare type statement parsing: declare [Alias =] Type<Args>;
   unique_ptr<DeclareTypeAST> parseDeclareStatement();
 
-  // Namespace declaration parsing: namespace Name { ... }
-  unique_ptr<NamespaceAST> parseNamespaceDecl();
+  // Module declaration parsing: module Name { ... }
+  unique_ptr<ModuleAST> parseModuleDecl();
 
   // Using statement parsing: using Namespace::name; or using Namespace::*;
   unique_ptr<UsingAST> parseUsingStatement();

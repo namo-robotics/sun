@@ -295,8 +295,8 @@ void extractFromStatements(const std::vector<std::unique_ptr<ExprAST>>& stmts,
       metadata.dependencies.push_back(depPath.string());
     }
 
-    if (stmt->getType() == ASTNodeType::NAMESPACE) {
-      const auto& nsDecl = static_cast<const NamespaceAST&>(*stmt);
+    if (stmt->getType() == ASTNodeType::MODULE) {
+      const auto& nsDecl = static_cast<const ModuleAST&>(*stmt);
       std::string newPrefix = nsPrefix.empty()
                                   ? nsDecl.getName() + "_"
                                   : nsPrefix + nsDecl.getName() + "_";

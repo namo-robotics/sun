@@ -81,6 +81,27 @@ void SemanticScope::collectFunctions(const std::string& prefix,
 // Scope management - tree-based scopes
 // -------------------------------------------------------------------
 
+std::shared_ptr<SemanticScope> SemanticScope::cloneSymbols(
+    SemanticScope* newParent) const {
+  auto clone = std::make_shared<SemanticScope>(type, moduleName);
+  clone->modulePath = modulePath;
+  clone->parent = newParent;
+  // Copy all symbol tables (shallow — shares type objects)
+  clone->functions = functions;
+  clone->classes = classes;
+  clone->genericClasses = genericClasses;
+  clone->interfaces = interfaces;
+  clone->genericInterfaces = genericInterfaces;
+  clone->enums = enums;
+  clone->genericFunctions = genericFunctions;
+  clone->childModules = childModules;
+  clone->namespacedVariables = namespacedVariables;
+  clone->variables = variables;
+  clone->usingImports = usingImports;
+  clone->importBindings = importBindings;
+  return clone;
+}
+
 void SemanticAnalyzer::enterScope(ScopeType type) {
   auto child = std::make_shared<SemanticScope>(type);
   child->parent = currentScope;
@@ -124,10 +145,22 @@ void SemanticAnalyzer::enterImportScope(const std::string& sourceFile,
     scopeName = "$import_" + std::to_string(hash & 0xFFFFFFFF) + "$";
   }
 
-  // Reuse existing import scope if same file already imported (diamond deps)
+  // Check if this scope already exists as a direct child of current scope
+  // (Pass 1 → Pass 2 reuse). Reuse same scope object.
   auto it = currentScope->childModules.find(scopeName);
   if (it != currentScope->childModules.end()) {
     currentScope = it->second.get();
+    return;
+  }
+
+  // Check global map for diamond import — if this file was already processed
+  // under a different parent, clone the original scope's symbols into a new
+  // scope with the correct parent pointer.
+  auto globalIt = importScopesByKey_.find(scopeName);
+  if (globalIt != importScopesByKey_.end()) {
+    auto child = globalIt->second->cloneSymbols(currentScope);
+    currentScope->childModules[scopeName] = child;
+    currentScope = child.get();
     return;
   }
 
@@ -144,6 +177,7 @@ void SemanticAnalyzer::enterImportScope(const std::string& sourceFile,
 
   currentScope->childModules[scopeName] = child;
   currentScope = child.get();
+  importScopesByKey_[scopeName] = child;
 }
 
 void SemanticAnalyzer::exitScope() {
@@ -1283,6 +1317,7 @@ sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
   // current module scope (not the global scope). Symbols are keyed by
   // base name, and the module scope tree provides namespace isolation.
   std::string modulePath = getCurrentModulePath();
+
   if (!modulePath.empty()) {
     // Walk up through all enclosing module scopes (handles nested modules
     // where a symbol is defined in a parent module, e.g., foo() in A
@@ -1313,6 +1348,7 @@ sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
     sun::QualifiedName candidate;
     // Resolve to full path including library hash prefixes
     std::string fullNsPath = getFullModulePath(import.namespacePath);
+
     if (import.isWildcard) {
       candidate = sun::QualifiedName(fullNsPath, name);
     } else if (import.target == name) {
@@ -1320,9 +1356,19 @@ sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
     }
 
     if (!candidate.empty()) {
-      // Check if symbol exists specifically in the target module scope
-      SemanticScope* modScope = lookupModuleScope(fullNsPath);
-      if (modScope && modScope->hasSymbol(name)) {
+      // Check if symbol exists in ANY module scope with this path
+      // (handles multiple .sun files declaring the same module)
+      auto allScopes = collectAllModuleScopes(currentScope, fullNsPath);
+
+      bool symbolFound = false;
+      for (auto* modScope : allScopes) {
+        if (modScope->hasSymbol(name)) {
+          symbolFound = true;
+          break;
+        }
+      }
+
+      if (symbolFound) {
         // Only add if not already in matches (same candidate from different
         // imports)
         if (std::find(matches.begin(), matches.end(), candidate) ==
@@ -1337,6 +1383,7 @@ sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
   for (auto* s = currentScope; s != nullptr; s = s->parent) {
     for (const auto& binding : s->importBindings) {
       if (!binding.sourceScope) continue;
+
       if (binding.isWildcard) {
         if (binding.sourceScope->hasSymbol(name)) {
           sun::QualifiedName candidate(binding.sourceScope->modulePath, name);

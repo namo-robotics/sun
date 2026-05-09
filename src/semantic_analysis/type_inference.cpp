@@ -478,7 +478,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
           qualName.getLocation());
     }
 
-    case ASTNodeType::NAMESPACE:
+    case ASTNodeType::MODULE:
     case ASTNodeType::USING:
     case ASTNodeType::IMPORT:
     case ASTNodeType::DECLARE_TYPE:

@@ -54,10 +54,17 @@ class SemanticAnalyzer {
   // When > 0, duplicate symbol registration is allowed (diamond imports).
   int importScopeDepth_ = 0;
 
-  // Files already fully analyzed (used to skip entire reimported bodies
-  // in diamond dependency scenarios). Keyed by scope name (content hash
-  // for .moon, hashed path for .sun).
-  std::unordered_set<std::string> importedFiles_;
+  // Global map of import scope keys to scope shared_ptrs — enables scope
+  // cloning for diamond imports regardless of where in the tree they appear.
+  std::unordered_map<std::string, std::shared_ptr<SemanticScope>>
+      importScopesByKey_;
+
+  // Import scopes whose declarations have been collected (Pass 1a).
+  std::unordered_set<std::string> collectedImports_;
+
+  // Import scopes whose bodies have been fully analyzed (Pass 1.5/2).
+  // Used to skip re-analysis for diamond dependencies.
+  std::unordered_set<std::string> analyzedImports_;
 
   // Symbols defined at module level (depth 0) — used to detect
   // redefinition errors for classes, interfaces, and enums.

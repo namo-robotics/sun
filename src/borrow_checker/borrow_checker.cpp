@@ -126,7 +126,7 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
     case ASTNodeType::PROTOTYPE:
     case ASTNodeType::IMPORT:
     case ASTNodeType::DECLARE_TYPE:
-    case ASTNodeType::NAMESPACE:
+    case ASTNodeType::MODULE:
     case ASTNodeType::USING:
     case ASTNodeType::QUALIFIED_NAME:
     case ASTNodeType::INTERFACE_DEFINITION:

@@ -402,11 +402,11 @@ std::unique_ptr<ExprAST> QualifiedNameAST::clone() const {
   return copy;
 }
 
-std::unique_ptr<ExprAST> NamespaceAST::clone() const {
+std::unique_ptr<ExprAST> ModuleAST::clone() const {
   auto bodyClone = body->clone();
   std::unique_ptr<BlockExprAST> bodyBlockClone(
       static_cast<BlockExprAST*>(bodyClone.release()));
-  auto copy = std::make_unique<NamespaceAST>(name, std::move(bodyBlockClone));
+  auto copy = std::make_unique<ModuleAST>(name, std::move(bodyBlockClone));
   copy->setLocation(location_);
   copy->setResolvedType(resolvedType);
   return copy;

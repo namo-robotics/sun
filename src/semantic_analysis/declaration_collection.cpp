@@ -156,8 +156,8 @@ void SemanticAnalyzer::collectDeclarations(ExprAST& expr) {
       break;
     }
 
-    case ASTNodeType::NAMESPACE: {
-      auto& nsDecl = static_cast<NamespaceAST&>(expr);
+    case ASTNodeType::MODULE: {
+      auto& nsDecl = static_cast<ModuleAST&>(expr);
       enterModuleScope(nsDecl.getName());
 
       // Recurse into namespace body
@@ -217,12 +217,14 @@ void SemanticAnalyzer::collectDeclarations(ExprAST& expr) {
                        importScope.getContentHash());
       importScopeDepth_++;
 
-      // Skip if this file was already collected (diamond dependency).
-      // The scope is reused, so all declarations are already registered.
-      if (!importedFiles_.count(scopeKey)) {
+      // Skip if declarations were already collected (diamond dependency).
+      // The scope was cloned by enterImportScope, so all declarations
+      // are already accessible.
+      if (!collectedImports_.count(scopeKey)) {
         for (const auto& bodyExpr : importScope.getBody().getBody()) {
           collectDeclarations(const_cast<ExprAST&>(*bodyExpr));
         }
+        collectedImports_.insert(scopeKey);
       }
 
       importScopeDepth_--;
