@@ -97,20 +97,6 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
     case ASTNodeType::VARIABLE_CREATION: {
       auto& varCreate = static_cast<VariableCreationAST&>(expr);
       auto varName = varCreate.getName();
-      auto qualifiedName = makeQualifiedName(varCreate.getName()).mangled();
-      // Inside an import scope, skip codegen if global variable already
-      // analyzed (diamond dependency duplicate). But still declare the variable
-      // so functions in this import scope can reference it.
-      if (importScopeDepth_ > 0 && isAtModuleLevel()) {
-        auto it = analyzedGlobals_.find(qualifiedName);
-        if (it != analyzedGlobals_.end()) {
-          expr.setSkipCodegen(true);
-          declareVariable(varName, it->second);
-          expr.setResolvedType(it->second);
-          break;
-        }
-      }
-
       // Determine type first (before analyzing value, for array literals)
       sun::TypePtr declaredType;
       if (varCreate.hasTypeAnnotation()) {
@@ -163,10 +149,6 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // Set the resolved type on the variable creation node itself
       expr.setResolvedType(type);
 
-      // Track global variables for diamond duplicate detection
-      if (importScopeDepth_ > 0 && isAtModuleLevel()) {
-        analyzedGlobals_[qualifiedName] = type;
-      }
       break;
     }
 
@@ -248,15 +230,6 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       sun::QualifiedName qualifiedName = makeQualifiedName(proto.getName());
       proto.setQualifiedName(qualifiedName);
 
-      // Inside an import scope, skip if function already fully analyzed
-      // (diamond dependency duplicate).
-      if (importScopeDepth_ > 0 &&
-          analyzedFunctions_.count(qualifiedName.mangled())) {
-        expr.setResolvedType(inferType(expr));
-        expr.setSkipCodegen(true);
-        break;
-      }
-
       // Register function BEFORE analyzing body to support recursive calls
       // For nested functions, registerFunction prepends the enclosing
       // function's signature to create unique qualified names per generic
@@ -278,9 +251,6 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
             qualifiedName.mangled(),
             {inferredReturn, funcInfo.paramTypes, funcInfo.captures});
       }
-
-      // Mark function as analyzed for diamond duplicate detection
-      analyzedFunctions_.insert(qualifiedName.mangled());
 
       // Set the function type on the function node
       expr.setResolvedType(inferType(expr));
@@ -507,10 +477,30 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // to enforce non-transitive imports. Direct imports are visible
       // (one level of transparency), but their nested imports are not.
       auto& importScope = static_cast<ImportScopeAST&>(expr);
+
+      // Compute scope key the same way as enterImportScope
+      std::string scopeKey;
+      if (!importScope.getContentHash().empty()) {
+        scopeKey = importScope.getContentHash();
+      } else {
+        auto hash = std::hash<std::string>{}(importScope.getSourceFile());
+        scopeKey = "$import_" + std::to_string(hash & 0xFFFFFFFF) + "$";
+      }
+
       enterImportScope(importScope.getSourceFile(),
                        importScope.getContentHash());
       importScopeDepth_++;
-      analyzeBlock(const_cast<BlockExprAST&>(importScope.getBody()));
+
+      // Skip entire body if this file was already fully analyzed
+      // (diamond dependency). The scope is reused by enterImportScope,
+      // so all symbols are already registered and accessible.
+      if (importedFiles_.count(scopeKey)) {
+        expr.setSkipCodegen(true);
+      } else {
+        analyzeBlock(const_cast<BlockExprAST&>(importScope.getBody()));
+        importedFiles_.insert(scopeKey);
+      }
+
       importScopeDepth_--;
       exitScope();
       expr.setResolvedType(sun::Types::Void());
@@ -649,17 +639,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // Set qualified name on AST for codegen (source name stays for errors)
       classDef.setQualifiedName(qualifiedClass);
 
-      // Inside an import scope, skip if class already fully analyzed
-      // (diamond dependency duplicate).
-      if (importScopeDepth_ > 0 && analyzedClasses_.count(className)) {
-        // Set resolved type to the class so codegen can get the qualified name
-        expr.setResolvedType(typeRegistry->getClass(className));
-        expr.setSkipCodegen(true);
-        return;
-      }
-
       // Forbid redefinition of class in same module (depth 0)
-      if (importScopeDepth_ == 0 && analyzedClasses_.count(className)) {
+      if (importScopeDepth_ == 0 && definedSymbols_.count(className)) {
         logAndThrowError("Redefinition of class '" + classDef.getName() + "'",
                          classDef.getLocation());
       }
@@ -832,8 +813,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // Restore old class context
       setCurrentClass(savedClass);
 
-      // Mark class as fully analyzed (for diamond import dedup)
-      analyzedClasses_.insert(className);
+      // Track symbol for redefinition detection
+      if (importScopeDepth_ == 0) {
+        definedSymbols_.insert(className);
+      }
 
       // Set resolved type to the class type so codegen can get the qualified
       // name
@@ -851,15 +834,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // Set qualified name on AST for codegen (source name stays for errors)
       interfaceDef.setQualifiedName(qualifiedInterface);
 
-      // Inside an import scope, skip if interface already fully analyzed
-      if (importScopeDepth_ > 0 && analyzedClasses_.count(interfaceName)) {
-        expr.setResolvedType(sun::Types::Void());
-        expr.setSkipCodegen(true);
-        return;
-      }
-
       // Forbid redefinition of interface in same module (depth 0)
-      if (importScopeDepth_ == 0 && analyzedClasses_.count(interfaceName)) {
+      if (importScopeDepth_ == 0 && definedSymbols_.count(interfaceName)) {
         logAndThrowError(
             "Redefinition of interface '" + interfaceDef.getName() + "'",
             interfaceDef.getLocation());
@@ -973,8 +949,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // Register the interface
       registerInterface(interfaceDef.getName(), interfaceType);
 
-      // Mark interface as fully analyzed (for diamond import dedup)
-      analyzedClasses_.insert(interfaceName);
+      // Track symbol for redefinition detection
+      if (importScopeDepth_ == 0) {
+        definedSymbols_.insert(interfaceName);
+      }
 
       expr.setResolvedType(sun::Types::Void());
       break;
@@ -983,15 +961,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
     case ASTNodeType::ENUM_DEFINITION: {
       auto& enumDef = static_cast<EnumDefinitionAST&>(expr);
 
-      // Inside an import scope, skip if enum already fully analyzed
-      if (importScopeDepth_ > 0 && analyzedClasses_.count(enumDef.getName())) {
-        expr.setResolvedType(sun::Types::Void());
-        expr.setSkipCodegen(true);
-        return;
-      }
-
       // Forbid redefinition of enum in same module (depth 0)
-      if (importScopeDepth_ == 0 && analyzedClasses_.count(enumDef.getName())) {
+      if (importScopeDepth_ == 0 && definedSymbols_.count(enumDef.getName())) {
         logAndThrowError("Redefinition of enum '" + enumDef.getName() + "'",
                          enumDef.getLocation());
       }
@@ -1032,8 +1003,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // Register the enum in the namespace
       registerEnum(enumDef.getName(), enumType);
 
-      // Mark enum as fully analyzed (for diamond import dedup)
-      analyzedClasses_.insert(enumDef.getName());
+      // Track symbol for redefinition detection
+      if (importScopeDepth_ == 0) {
+        definedSymbols_.insert(enumDef.getName());
+      }
 
       expr.setResolvedType(sun::Types::Void());
       break;

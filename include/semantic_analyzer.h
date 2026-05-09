@@ -54,16 +54,14 @@ class SemanticAnalyzer {
   // When > 0, duplicate symbol registration is allowed (diamond imports).
   int importScopeDepth_ = 0;
 
-  // Classes already fully analyzed in Pass 2 (used to skip diamond duplicates)
-  std::unordered_set<std::string> analyzedClasses_;
+  // Files already fully analyzed (used to skip entire reimported bodies
+  // in diamond dependency scenarios). Keyed by scope name (content hash
+  // for .moon, hashed path for .sun).
+  std::unordered_set<std::string> importedFiles_;
 
-  // Functions already fully analyzed in Pass 2 (used to skip diamond
-  // duplicates)
-  std::unordered_set<std::string> analyzedFunctions_;
-
-  // Global variables already analyzed in Pass 2 (used to skip diamond
-  // duplicates). Maps variable name to its resolved type.
-  std::unordered_map<std::string, sun::TypePtr> analyzedGlobals_;
+  // Symbols defined at module level (depth 0) — used to detect
+  // redefinition errors for classes, interfaces, and enums.
+  std::unordered_set<std::string> definedSymbols_;
 
   // True when not inside any function scope (i.e. at module/global level)
   bool isAtModuleLevel() const {
