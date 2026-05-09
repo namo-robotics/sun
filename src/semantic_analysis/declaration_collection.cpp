@@ -200,12 +200,28 @@ void SemanticAnalyzer::collectDeclarations(ExprAST& expr) {
       // Recurse into expanded import scopes to collect their declarations
       // inside an import scope for non-transitive import isolation
       auto& importScope = static_cast<ImportScopeAST&>(expr);
+
+      // Compute scope key the same way as enterImportScope
+      std::string scopeKey;
+      if (!importScope.getContentHash().empty()) {
+        scopeKey = importScope.getContentHash();
+      } else {
+        auto hash = std::hash<std::string>{}(importScope.getSourceFile());
+        scopeKey = "$import_" + std::to_string(hash & 0xFFFFFFFF) + "$";
+      }
+
       enterImportScope(importScope.getSourceFile(),
                        importScope.getContentHash());
       importScopeDepth_++;
-      for (const auto& bodyExpr : importScope.getBody().getBody()) {
-        collectDeclarations(const_cast<ExprAST&>(*bodyExpr));
+
+      // Skip if this file was already collected (diamond dependency).
+      // The scope is reused, so all declarations are already registered.
+      if (!importedFiles_.count(scopeKey)) {
+        for (const auto& bodyExpr : importScope.getBody().getBody()) {
+          collectDeclarations(const_cast<ExprAST&>(*bodyExpr));
+        }
       }
+
       importScopeDepth_--;
       exitScope();
       break;

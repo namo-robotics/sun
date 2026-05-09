@@ -1,0 +1,6 @@
+// right_var.sun - Imports base_var.sun and uses the global variable
+import "tests/programs/diamond/base_var.sun";
+
+function right_val() i32 {
+    return shared_module_1.shared_value + shared_module_2.shared_value;
+}

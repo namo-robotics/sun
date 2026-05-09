@@ -54,16 +54,14 @@ class SemanticAnalyzer {
   // When > 0, duplicate symbol registration is allowed (diamond imports).
   int importScopeDepth_ = 0;
 
-  // Classes already fully analyzed in Pass 2 (used to skip diamond duplicates)
-  std::unordered_set<std::string> analyzedClasses_;
+  // Files already fully analyzed (used to skip entire reimported bodies
+  // in diamond dependency scenarios). Keyed by scope name (content hash
+  // for .moon, hashed path for .sun).
+  std::unordered_set<std::string> importedFiles_;
 
-  // Functions already fully analyzed in Pass 2 (used to skip diamond
-  // duplicates)
-  std::unordered_set<std::string> analyzedFunctions_;
-
-  // Global variables already analyzed in Pass 2 (used to skip diamond
-  // duplicates)
-  std::unordered_set<std::string> analyzedGlobals_;
+  // Symbols defined at module level (depth 0) — used to detect
+  // redefinition errors for classes, interfaces, and enums.
+  std::unordered_set<std::string> definedSymbols_;
 
   // True when not inside any function scope (i.e. at module/global level)
   bool isAtModuleLevel() const {
@@ -262,6 +260,16 @@ class SemanticAnalyzer {
   // Handles interface assignability: class C can be assigned to interface I
   // if C implements I. Also handles ref unwrapping and exact equality.
   static bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to);
+
+  // Try to coerce an integer literal to a target primitive type.
+  // Returns true if coercion happened. If throwOnFail, throws on mismatch.
+  static bool tryCoerceIntegerLiteral(ExprAST* expr, sun::TypePtr targetType,
+                                      bool throwOnFail = false);
+
+  // Extract type guard pattern from condition (_is<T>(var)).
+  // Returns (varName, narrowedType) if matched.
+  std::optional<std::pair<std::string, sun::TypePtr>> extractTypeGuard(
+      const ExprAST& cond);
 
   // Validate parameter names and resolve their types from prototype
   // Throws if any parameter name is reserved; applies auto-ref conversion

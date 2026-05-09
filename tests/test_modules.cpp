@@ -61,6 +61,21 @@ TEST(ModuleTest, diamond_sun_import_with_class) {
   EXPECT_EQ(value, 30);
 }
 
+TEST(ModuleTest, diamond_sun_import_with_global_var) {
+  // Diamond dependency with a global variable: both importers bring in the same
+  // top-level var from base_var.sun. The duplicate var creation in the second
+  // import scope must be skipped (setSkipCodegen) to avoid LLVM duplicate defs.
+  // left_val() = 66, right_val() = 66, total = 132
+  auto value = executeString(R"(
+    import "tests/programs/diamond/left_var.sun";
+    import "tests/programs/diamond/right_var.sun";
+    function main() i32 {
+      return left_val() + right_val();
+    }
+  )");
+  EXPECT_EQ(value, 132);
+}
+
 TEST(ModuleTest, transitive_import_function_call) {
   // Transitive import: main imports A which imports B.
   // Currently all symbols are visible transitively (no enforcement yet).
