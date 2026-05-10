@@ -643,6 +643,12 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
       ++methodArgIdx;
     }
 
+    // If this is an explicit deinit() call, mark the class allocation as
+    // already deinited so emitScopeCleanup doesn't double-free
+    if (methodName == "deinit") {
+      markClassAllocationAsDeinited(objectPtr);
+    }
+
     // Don't name void-returning calls
     if (methodFunc->getReturnType()->isVoidTy()) {
       return ctx.builder->CreateCall(methodFunc, argValues);

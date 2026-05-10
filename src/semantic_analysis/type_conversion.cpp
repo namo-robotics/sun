@@ -234,18 +234,18 @@ sun::TypePtr SemanticAnalyzer::typeAnnotationToType(
       typeArgs.push_back(argType);
     }
 
-    // Resolve the base name through using imports (Vec -> sun_Vec)
-    std::string resolvedName = resolveNameWithUsings(annot.baseName).mangled();
+    // Resolve the base name through using imports
+    sun::QualifiedName resolved = resolveNameWithUsings(annot.baseName);
 
-    // Try to instantiate the generic class
-    auto specializedClass = instantiateGenericClass(resolvedName, typeArgs);
+    // Try to instantiate the generic class (use base name for scope lookup)
+    auto specializedClass = instantiateGenericClass(resolved.baseName, typeArgs);
     if (specializedClass) {
       return specializedClass;
     }
 
     // Try to instantiate as a generic interface (e.g., IIterator<i32>)
     auto specializedInterface =
-        instantiateGenericInterface(resolvedName, typeArgs);
+        instantiateGenericInterface(resolved.baseName, typeArgs);
     if (specializedInterface) {
       return specializedInterface;
     }
@@ -255,24 +255,25 @@ sun::TypePtr SemanticAnalyzer::typeAnnotationToType(
     return nullptr;
   }
 
-  // Resolve the base name through using imports (Vec -> sun_Vec)
-  std::string resolvedName = resolveNameWithUsings(annot.baseName).mangled();
+  // Resolve the base name through using imports
+  sun::QualifiedName resolved = resolveNameWithUsings(annot.baseName);
+  const std::string& lookupName = resolved.baseName;
 
   // Check for type aliases (lexically scoped)
-  auto aliasType = findTypeAlias(resolvedName);
+  auto aliasType = findTypeAlias(lookupName);
   if (aliasType) {
     return aliasType;
   }
 
   // Check for user-defined class types
-  auto classType = lookupClass(resolvedName);
+  auto classType = lookupClass(lookupName);
   if (classType) {
     return classType;
   }
 
   // Check for generic class definitions (used as type parameter in nested
   // generics)
-  auto* genericInfo = lookupGenericClass(resolvedName);
+  auto* genericInfo = lookupGenericClass(lookupName);
   if (genericInfo) {
     // This is a reference to a generic class without type arguments
     // Return a type parameter type (this should really be an error in most
@@ -281,13 +282,13 @@ sun::TypePtr SemanticAnalyzer::typeAnnotationToType(
   }
 
   // Check for user-defined interface types
-  auto interfaceType = lookupInterface(resolvedName);
+  auto interfaceType = lookupInterface(lookupName);
   if (interfaceType) {
     return interfaceType;
   }
 
   // Check for user-defined enum types
-  auto enumType = lookupEnum(resolvedName);
+  auto enumType = lookupEnum(lookupName);
   if (enumType) {
     return enumType;
   }

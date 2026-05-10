@@ -425,6 +425,18 @@ class CodegenVisitor {
     }
   }
 
+  // Mark a class allocation as moved/deinited (don't auto-deinit at scope exit)
+  void markClassAllocationAsDeinited(llvm::Value* alloca) {
+    for (auto& scope : classAllocations) {
+      for (auto& alloc : scope) {
+        if (alloc.alloca == alloca) {
+          alloc.moved = true;
+          return;
+        }
+      }
+    }
+  }
+
   // Mark an allocation as moved (ownership transferred, don't free)
   void markAsMoved(const std::string& name) {
     for (auto& scope : ownedAllocations) {

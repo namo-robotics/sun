@@ -153,8 +153,8 @@ static void expandAllImports(ExprAST& expr, Parser& parser,
                            cycleStack);
       break;
     }
-    case ASTNodeType::NAMESPACE: {
-      auto& ns = static_cast<NamespaceAST&>(expr);
+    case ASTNodeType::MODULE: {
+      auto& ns = static_cast<ModuleAST&>(expr);
       expandImportsInBlock(const_cast<BlockExprAST&>(ns.getBody()), parser,
                            cycleStack);
       break;

@@ -221,7 +221,9 @@ Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
     return func;
   }
 
-  logAndThrowError("Global variable not found in module: " + expr.getName());
+  // Enhanced error with both names for debugging
+  logAndThrowError("Global variable not found in module: " + expr.getName() +
+                   " (qualifiedName='" + expr.getQualifiedName() + "')");
 }
 
 // -------------------------------------------------------------------

@@ -234,8 +234,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // For nested functions, registerFunction prepends the enclosing
       // function's signature to create unique qualified names per generic
       // instantiation
+      funcInfo.qualifiedName = qualifiedName.mangled();
+      funcInfo.baseName = proto.getName();
       if (funcInfo.returnType) {
-        registerFunction(qualifiedName.mangled(), funcInfo);
+        registerFunction(proto.getName(), funcInfo);
       }
 
       // Analyze the function body
@@ -248,8 +250,9 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
                                   : sun::Types::Void();
         proto.setResolvedReturnType(inferredReturn);
         registerFunction(
-            qualifiedName.mangled(),
-            {inferredReturn, funcInfo.paramTypes, funcInfo.captures});
+            proto.getName(),
+            {inferredReturn, funcInfo.paramTypes, funcInfo.captures,
+             qualifiedName.mangled(), proto.getName()});
       }
 
       // Set the function type on the function node
@@ -491,14 +494,14 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
                        importScope.getContentHash());
       importScopeDepth_++;
 
-      // Skip entire body if this file was already fully analyzed
-      // (diamond dependency). The scope is reused by enterImportScope,
-      // so all symbols are already registered and accessible.
-      if (importedFiles_.count(scopeKey)) {
+      // Skip entire body if this import was already fully analyzed
+      // (diamond dependency). The scope was cloned by enterImportScope,
+      // so all symbols are already accessible.
+      if (analyzedImports_.count(scopeKey)) {
         expr.setSkipCodegen(true);
       } else {
         analyzeBlock(const_cast<BlockExprAST&>(importScope.getBody()));
-        importedFiles_.insert(scopeKey);
+        analyzedImports_.insert(scopeKey);
       }
 
       importScopeDepth_--;
@@ -507,18 +510,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       break;
     }
 
-    case ASTNodeType::NAMESPACE: {
-      auto& nsDecl = static_cast<NamespaceAST&>(expr);
+    case ASTNodeType::MODULE: {
+      auto& nsDecl = static_cast<ModuleAST&>(expr);
       // Enter the namespace scope
       enterModuleScope(nsDecl.getName());
-
-      // Register this module name for qualified name resolution
-      // Removes trailing underscore from prefix (e.g., "mod_x_" -> "mod_x")
-      std::string modulePrefix = getCurrentModulePrefix();
-      if (!modulePrefix.empty() && modulePrefix.back() == '_') {
-        modulePrefix.pop_back();
-      }
-      registerModule(modulePrefix);
 
       // Analyze the body of the namespace
       // Functions handle their own qualified name registration in FUNCTION case
@@ -557,8 +552,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       std::string namespacePath = usingDecl.getNamespacePathString();
       std::string target = usingDecl.getTarget();
 
-      if (!usingDecl.isWildcardImport() &&
-          !usingDecl.isPrefixWildcardImport()) {
+      if (!usingDecl.isWildcardImport()) {
         // Build the dot-separated path: "A.B"
         std::string displayPath =
             namespacePath.empty() ? target : namespacePath + "." + target;
@@ -632,16 +626,17 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
     case ASTNodeType::CLASS_DEFINITION: {
       auto& classDef = static_cast<ClassDefinitionAST&>(expr);
+      const std::string& baseName = classDef.getName();
 
       // Qualify class name with module prefix if inside a module
-      sun::QualifiedName qualifiedClass = makeQualifiedName(classDef.getName());
+      sun::QualifiedName qualifiedClass = makeQualifiedName(baseName);
       std::string className = qualifiedClass.mangled();
       // Set qualified name on AST for codegen (source name stays for errors)
       classDef.setQualifiedName(qualifiedClass);
 
       // Forbid redefinition of class in same module (depth 0)
       if (importScopeDepth_ == 0 && definedSymbols_.count(className)) {
-        logAndThrowError("Redefinition of class '" + classDef.getName() + "'",
+        logAndThrowError("Redefinition of class '" + baseName + "'",
                          classDef.getLocation());
       }
 
@@ -689,7 +684,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
         GenericClassInfo genericInfo;
         genericInfo.AST = &classDef;
         genericInfo.typeParameters = classDef.getTypeParameters();
-        registerGenericClass(className, genericInfo);
+        registerGenericClass(baseName, genericInfo);
         expr.setResolvedType(sun::Types::Void());
         return;
       }
@@ -708,14 +703,14 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
         GenericClassInfo genericInfo;
         genericInfo.AST = &classDef;
         genericInfo.typeParameters = {};  // Non-generic class, no type params
-        registerGenericClass(className, genericInfo);
+        registerGenericClass(baseName, genericInfo);
       }
 
       // Create the class type with the qualified name
       auto classType = typeRegistry->getClass(className);
       // Store the user-written base name for error messages
-      if (className != classDef.getName()) {
-        classType->setBaseName(classDef.getName());
+      if (className != baseName) {
+        classType->setBaseName(baseName);
       }
 
       // Add fields to the class type
@@ -743,8 +738,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
         classType->addField(field.name, fieldType);
       }
 
-      // Register the class so methods can reference it (use qualified name)
-      registerClass(className, classType);
+      // Register the class so methods can reference it (use base name)
+      registerClass(baseName, classType);
 
       // Inherit interface fields BEFORE analyzing methods
       // This adds interface fields to the class, which methods may access
@@ -1098,9 +1093,9 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       const std::string& funcName = genericCall.getFunctionName();
       const auto& args = genericCall.getArgs();
 
-      // Resolve the function/class name through using imports (MatrixView ->
-      // sun_MatrixView)
-      std::string resolvedName = resolveNameWithUsings(funcName).mangled();
+      // Resolve the function/class name through using imports
+      sun::QualifiedName resolved = resolveNameWithUsings(funcName);
+      const std::string& lookupName = resolved.baseName;
 
       // Resolve type arguments to sun::TypePtr
       std::vector<sun::TypePtr> typeArgs;
@@ -1120,8 +1115,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // Get type parameters from the generic function or class
       // Skip for intrinsics - they're handled at codegen time
       std::vector<std::string> typeParams;
-      auto* genericClassInfo = lookupGenericClass(resolvedName);
-      auto* genFuncInfo = lookupGenericFunction(resolvedName);
+      auto* genericClassInfo = lookupGenericClass(lookupName);
+      auto* genFuncInfo = lookupGenericFunction(lookupName);
       bool isIntrinsicCall = sun::isIntrinsic(funcName);
 
       if (genericClassInfo) {
@@ -1145,7 +1140,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       std::vector<sun::TypePtr> expectedParamTypes;
       if (genericClassInfo) {
         // Instantiate the generic class to get init method parameters
-        auto specializedClass = instantiateGenericClass(resolvedName, typeArgs);
+        auto specializedClass = instantiateGenericClass(lookupName, typeArgs);
         if (specializedClass) {
           if (auto* initMethod = specializedClass->getMethod("init")) {
             expectedParamTypes = initMethod->paramTypes;
@@ -1247,8 +1242,8 @@ void SemanticAnalyzer::analyzeBlock(BlockExprAST& block) {
       auto type = expr->getType();
       if (type == ASTNodeType::CLASS_DEFINITION ||
           type == ASTNodeType::INTERFACE_DEFINITION ||
-          type == ASTNodeType::ENUM_DEFINITION ||
-          type == ASTNodeType::NAMESPACE || type == ASTNodeType::IMPORT_SCOPE) {
+          type == ASTNodeType::ENUM_DEFINITION || type == ASTNodeType::MODULE ||
+          type == ASTNodeType::IMPORT_SCOPE) {
         collectDeclarations(*expr);
       }
     }
@@ -1744,8 +1739,22 @@ void SemanticAnalyzer::lazyParseAndAnalyzeMethod(
 
     // For specialized classes, look up the generic class to get module path
     if (classType->isSpecialized()) {
-      const std::string& baseName = classType->getBaseGenericName();
-      auto* genericInfo = lookupGenericClass(baseName);
+      const std::string& baseGenericName = classType->getBaseGenericName();
+      // The base generic name may be qualified (e.g., "$hash$_sun_Vec").
+      // Generic classes are keyed by base name ("Vec"), so extract it.
+      std::string lookupName = baseGenericName;
+      // Strip module prefix: find last underscore that precedes a letter
+      // e.g., "$hash$_sun_Vec" -> "Vec"
+      for (size_t i = lookupName.size(); i > 0; --i) {
+        if (lookupName[i - 1] == '_' && i < lookupName.size()) {
+          std::string candidate = lookupName.substr(i);
+          if (lookupGenericClass(candidate)) {
+            lookupName = candidate;
+            break;
+          }
+        }
+      }
+      auto* genericInfo = lookupGenericClass(lookupName);
       if (genericInfo && genericInfo->AST &&
           genericInfo->AST->hasQualifiedName()) {
         modulePath = genericInfo->AST->getQualifiedNameInfo().modulePath;
@@ -1764,16 +1773,12 @@ void SemanticAnalyzer::lazyParseAndAnalyzeMethod(
       modulePrefix = modulePath;
     }
 
-    // Enter module scope if class is from a namespace
+    // Make module symbols visible for method body analysis.
+    // We add a using import rather than entering module scopes, because
+    // entering module scopes from the current context (which may be inside
+    // an instantiation's class scope) would create empty shadow scopes
+    // instead of finding the existing module scope with registered types.
     if (!modulePrefix.empty()) {
-      // For dot-separated paths, enter each segment as a module scope
-      std::string segment;
-      std::istringstream stream(modulePrefix);
-      while (std::getline(stream, segment, '.')) {
-        enterModuleScope(segment);
-        moduleScopesEntered++;
-      }
-      // Add implicit using import for the module so unqualified names resolve
       addUsingImport(UsingImport(modulePrefix, "*"));
     }
   }
@@ -1841,18 +1846,16 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
   if (calleeASTType == ASTNodeType::VARIABLE_REFERENCE) {
     const auto& varRef =
         static_cast<const VariableReferenceAST&>(*callExpr.getCallee());
-    // Resolve the name through using imports (e.g., make_heap_allocator ->
-    // sun_make_heap_allocator)
-    std::string resolvedName =
-        resolveNameWithUsings(varRef.getName()).mangled();
+    // Resolve the name through using imports
+    sun::QualifiedName resolved = resolveNameWithUsings(varRef.getName());
     // Try to look up function parameters
-    auto allFuncs = getAllFunctions(resolvedName);
+    auto allFuncs = getAllFunctions(resolved.baseName);
     if (!allFuncs.empty()) {
       // Use first overload's param types for type propagation
       expectedParamTypes = allFuncs[0].paramTypes;
     } else {
-      // Check if this is a class constructor
-      auto classType = lookupClass(resolvedName);
+      // Check if this is a class constructor (use base name for lookup)
+      auto classType = lookupClass(resolved.baseName);
       if (classType) {
         // Get init method parameters
         if (auto* initMethod = classType->getMethod("init")) {
@@ -1901,14 +1904,13 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
         const_cast<ExprAST&>(*callExpr.getCallee()));
     // Resolve the name through using imports (e.g., Vec -> sun_Vec)
     sun::QualifiedName resolved = resolveNameWithUsings(varRef.getName());
-    std::string resolvedName = resolved.mangled();
 
     // Store the qualified name so codegen doesn't need to do name resolution
-    if (resolvedName != varRef.getName()) {
+    if (resolved.mangled() != varRef.getName()) {
       varRef.setQualifiedName(resolved);
     }
 
-    resolvedFunc = lookupFunction(resolvedName, argTypes);
+    resolvedFunc = lookupFunction(resolved.baseName, argTypes);
     if (resolvedFunc) {
       // Set resolved type on the callee directly
       varRef.setResolvedType(sun::Types::Function(resolvedFunc->returnType,
@@ -1916,7 +1918,7 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
     } else {
       // Check if this is a class constructor call: ClassName(args...)
       // This creates a stack-allocated class instance
-      classType = lookupClass(resolvedName);
+      classType = lookupClass(resolved.baseName);
       if (classType) {
         // Set resolved type on the callee to indicate this is a class
         // constructor call (stack-allocated)

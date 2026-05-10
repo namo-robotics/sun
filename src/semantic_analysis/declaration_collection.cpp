@@ -60,8 +60,12 @@ void SemanticAnalyzer::collectDeclarations(ExprAST& expr) {
             allResolved ? typeAnnotationToType(*proto.getReturnType())
                         : nullptr;
         if (allResolved && returnType) {
-          FunctionInfo funcInfo{returnType, paramTypes, {}};
-          registerFunction(qualifiedName.mangled(), funcInfo);
+          FunctionInfo funcInfo{returnType,
+                                paramTypes,
+                                {},
+                                qualifiedName.mangled(),
+                                proto.getName()};
+          registerFunction(proto.getName(), funcInfo);
         }
       }
       break;
@@ -69,18 +73,20 @@ void SemanticAnalyzer::collectDeclarations(ExprAST& expr) {
 
     case ASTNodeType::CLASS_DEFINITION: {
       auto& classDef = static_cast<ClassDefinitionAST&>(expr);
-      std::string className = qualifyNameInCurrentModule(classDef.getName());
+      std::string qualifiedName =
+          qualifyNameInCurrentModule(classDef.getName());
+      const std::string& baseName = classDef.getName();
 
       // Set qualified name early so instantiateGenericClass can use it
       // (it checks genericInfo->AST->hasQualifiedName() for mangling)
-      classDef.setQualifiedName(makeQualifiedName(classDef.getName()));
+      classDef.setQualifiedName(makeQualifiedName(baseName));
 
       // Generic classes: register template only
       if (classDef.isGeneric()) {
         GenericClassInfo genericInfo;
         genericInfo.AST = &classDef;
         genericInfo.typeParameters = classDef.getTypeParameters();
-        registerGenericClass(className, genericInfo);
+        registerGenericClass(baseName, genericInfo);
         break;
       }
 
@@ -96,65 +102,63 @@ void SemanticAnalyzer::collectDeclarations(ExprAST& expr) {
         GenericClassInfo genericInfo;
         genericInfo.AST = &classDef;
         genericInfo.typeParameters = {};
-        registerGenericClass(className, genericInfo);
+        registerGenericClass(baseName, genericInfo);
       }
 
       // Create and register the class type so other declarations can reference
       // it. Fields and methods will be fully populated in Pass 2.
-      auto classType = typeRegistry->getClass(className);
-      if (className != classDef.getName()) {
-        classType->setBaseName(classDef.getName());
+      auto classType = typeRegistry->getClass(qualifiedName);
+      if (qualifiedName != baseName) {
+        classType->setBaseName(baseName);
       }
-      registerClass(className, classType);
+      registerClass(baseName, classType);
       break;
     }
 
     case ASTNodeType::INTERFACE_DEFINITION: {
       auto& interfaceDef = static_cast<InterfaceDefinitionAST&>(expr);
-      std::string ifaceName =
+      std::string qualifiedName =
           qualifyNameInCurrentModule(interfaceDef.getName());
+      const std::string& baseName = interfaceDef.getName();
 
       if (interfaceDef.isGeneric()) {
         GenericInterfaceInfo genericInfo;
         genericInfo.AST = &interfaceDef;
         genericInfo.typeParameters = interfaceDef.getTypeParameters();
-        // Generic interfaces register with unqualified name (matches Pass 2)
-        registerGenericInterface(interfaceDef.getName(), genericInfo);
+        registerGenericInterface(baseName, genericInfo);
         auto interfaceType = typeRegistry->getGenericInterface(
-            interfaceDef.getName(), interfaceDef.getTypeParameters());
-        registerInterface(interfaceDef.getName(), interfaceType);
+            baseName, interfaceDef.getTypeParameters());
+        registerInterface(baseName, interfaceType);
         break;
       }
 
-      // Create via typeRegistry (idempotent) and register
-      auto interfaceType = typeRegistry->getInterface(ifaceName);
-      if (ifaceName != interfaceDef.getName()) {
-        interfaceType->setBaseName(interfaceDef.getName());
+      // Create via typeRegistry (idempotent) and register by base name
+      auto interfaceType = typeRegistry->getInterface(qualifiedName);
+      if (qualifiedName != baseName) {
+        interfaceType->setBaseName(baseName);
       }
-      registerInterface(ifaceName, interfaceType);
+      registerInterface(baseName, interfaceType);
       break;
     }
 
     case ASTNodeType::ENUM_DEFINITION: {
       auto& enumDef = static_cast<EnumDefinitionAST&>(expr);
-      std::string enumName = qualifyNameInCurrentModule(enumDef.getName());
+      std::string qualifiedName = qualifyNameInCurrentModule(enumDef.getName());
+      const std::string& baseName = enumDef.getName();
 
-      // Create via typeRegistry (idempotent) and register
-      auto enumType = typeRegistry->getEnum(enumName);
-      registerEnum(enumName, enumType);
+      // Create via typeRegistry (idempotent) and register by base name
+      auto enumType = typeRegistry->getEnum(qualifiedName);
+      if (qualifiedName != baseName) {
+        enumType = std::make_shared<sun::EnumType>(
+            qualifiedName, std::vector<sun::EnumVariant>{}, baseName);
+      }
+      registerEnum(baseName, enumType);
       break;
     }
 
-    case ASTNodeType::NAMESPACE: {
-      auto& nsDecl = static_cast<NamespaceAST&>(expr);
+    case ASTNodeType::MODULE: {
+      auto& nsDecl = static_cast<ModuleAST&>(expr);
       enterModuleScope(nsDecl.getName());
-
-      // Register module name
-      std::string modulePrefix = getCurrentModulePrefix();
-      if (!modulePrefix.empty() && modulePrefix.back() == '_') {
-        modulePrefix.pop_back();
-      }
-      registerModule(modulePrefix);
 
       // Recurse into namespace body
       for (const auto& bodyExpr : nsDecl.getBody().getBody()) {
@@ -172,8 +176,7 @@ void SemanticAnalyzer::collectDeclarations(ExprAST& expr) {
       std::string namespacePath = usingDecl.getNamespacePathString();
       std::string target = usingDecl.getTarget();
 
-      if (!usingDecl.isWildcardImport() &&
-          !usingDecl.isPrefixWildcardImport()) {
+      if (!usingDecl.isWildcardImport()) {
         std::string displayPath =
             namespacePath.empty() ? target : namespacePath + "." + target;
         if (auto* modScope = lookupModuleScope(displayPath)) {
@@ -214,12 +217,14 @@ void SemanticAnalyzer::collectDeclarations(ExprAST& expr) {
                        importScope.getContentHash());
       importScopeDepth_++;
 
-      // Skip if this file was already collected (diamond dependency).
-      // The scope is reused, so all declarations are already registered.
-      if (!importedFiles_.count(scopeKey)) {
+      // Skip if declarations were already collected (diamond dependency).
+      // The scope was cloned by enterImportScope, so all declarations
+      // are already accessible.
+      if (!collectedImports_.count(scopeKey)) {
         for (const auto& bodyExpr : importScope.getBody().getBody()) {
           collectDeclarations(const_cast<ExprAST&>(*bodyExpr));
         }
+        collectedImports_.insert(scopeKey);
       }
 
       importScopeDepth_--;

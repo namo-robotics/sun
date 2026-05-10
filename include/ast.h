@@ -46,8 +46,8 @@ enum class ASTNodeType {
   RETURN,
   IMPORT,                // import "file.sun";
   IMPORT_SCOPE,          // Expanded import scope (contains imported file's AST)
-  NAMESPACE,             // namespace Name { ... }
-  USING,                 // using Namespace::name; or using Namespace::*;
+  MODULE,                // module Name { ... }
+  USING,                 // using Module::name; or using Module::*;
   QUALIFIED_NAME,        // Namespace::name
   CLASS_DEFINITION,      // class Name { ... }
   INTERFACE_DEFINITION,  // interface Name { ... }
@@ -1329,19 +1329,19 @@ class QualifiedNameAST : public ExprAST {
   std::unique_ptr<ExprAST> clone() const override;
 };
 
-// Module/Namespace declaration: module Name { declarations... }
+// Module declaration: module Name { declarations... }
 // Also supports legacy 'namespace' keyword
-class NamespaceAST : public ExprAST {
+class ModuleAST : public ExprAST {
   std::string name;
   std::unique_ptr<BlockExprAST> body;
 
  public:
-  NamespaceAST(std::string name, std::unique_ptr<BlockExprAST> body)
+  ModuleAST(std::string name, std::unique_ptr<BlockExprAST> body)
       : name(std::move(name)), body(std::move(body)) {}
 
-  ASTNodeType getType() const override { return ASTNodeType::NAMESPACE; }
+  ASTNodeType getType() const override { return ASTNodeType::MODULE; }
   std::string toString() const override {
-    return "namespace " + name + " " + body->toString();
+    return "module " + name + " " + body->toString();
   }
 
   const std::string& getName() const { return name; }
@@ -1350,28 +1350,17 @@ class NamespaceAST : public ExprAST {
 };
 
 // Using declaration: using Namespace::name; or using Namespace::*;
-// Also supports: using Module; (imports all), using Module.prefix*; (prefix)
+// Also supports: using Module; (imports all from module)
 class UsingAST : public ExprAST {
   std::vector<std::string> namespacePath;  // The namespace path
-  std::string target;  // The specific name, "*" for wildcard, or "prefix*" for
-                       // prefix wildcard
+  std::string target;  // The specific name, or "*" for wildcard (using sun;)
   bool isWildcard;
-  bool isPrefixWildcard;
-  std::string prefix;  // For prefix wildcards, the prefix without '*'
 
  public:
-  // For using Namespace::name; or using Module.prefix*;
   UsingAST(std::vector<std::string> nsPath, std::string targetName)
       : namespacePath(std::move(nsPath)),
         target(std::move(targetName)),
-        isWildcard(target == "*"),
-        isPrefixWildcard(false) {
-    // Check for prefix wildcard (e.g., "Mat*")
-    if (!isWildcard && target.size() > 1 && target.back() == '*') {
-      isPrefixWildcard = true;
-      prefix = target.substr(0, target.size() - 1);
-    }
-  }
+        isWildcard(target == "*") {}
 
   ASTNodeType getType() const override { return ASTNodeType::USING; }
   std::string toString() const override {
@@ -1383,8 +1372,6 @@ class UsingAST : public ExprAST {
   }
   const std::string& getTarget() const { return target; }
   bool isWildcardImport() const { return isWildcard; }
-  bool isPrefixWildcardImport() const { return isPrefixWildcard; }
-  const std::string& getPrefix() const { return prefix; }
 
   // Get the full path as string (e.g., "Math.Trig" or "Math::Trig")
   std::string getNamespacePathString() const {

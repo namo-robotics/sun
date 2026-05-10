@@ -35,4 +35,4 @@ jobs:
           cd build
           ctest --output-on-failure
         env:
-          SUN_PATH: ${{ github.workspace }}/build
+          SUN_PATH: ${{ github.workspace }}

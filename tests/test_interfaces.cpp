@@ -882,7 +882,6 @@ TEST(DynamicDispatchTest, for_in_over_vec_of_interfaces) {
       for (var item: IValue in items) {
         sum = sum + item.get();
       }
-      items.deinit();
       return sum;
     }
   )");

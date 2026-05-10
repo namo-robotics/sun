@@ -1384,7 +1384,7 @@ unique_ptr<ExprAST> Parser::parseStatement() {
 
     case TokenKind::MODULE:
     case TokenKind::NAMESPACE:
-      return parseNamespaceDecl();
+      return parseModuleDecl();
 
     case TokenKind::USING:
       return parseUsingStatement();
@@ -1864,9 +1864,9 @@ unique_ptr<DeclareTypeAST> Parser::parseDeclareStatement() {
   return std::make_unique<DeclareTypeAST>(std::move(typeAnnot), alias);
 }
 
-// Parse namespace/module declaration: module Name { declarations... }
+// Parse module declaration: module Name { declarations... }
 // Supports both 'module' (preferred) and 'namespace' (legacy) keywords
-unique_ptr<NamespaceAST> Parser::parseNamespaceDecl() {
+unique_ptr<ModuleAST> Parser::parseModuleDecl() {
   getNextToken();  // eat 'module' or 'namespace'
 
   if (curTok.kind != TokenKind::IDENTIFIER) {
@@ -1885,14 +1885,12 @@ unique_ptr<NamespaceAST> Parser::parseNamespaceDecl() {
   auto body = parseBlock();
   if (!body) return nullptr;
 
-  return std::make_unique<NamespaceAST>(std::move(name), std::move(body));
+  return std::make_unique<ModuleAST>(std::move(name), std::move(body));
 }
 
 // Parse using statement with dot-based syntax:
 //   using sun;           -> import all from sun
 //   using sun.Vec;       -> import specific symbol Vec from sun
-//   using sun.Mat*;      -> prefix wildcard: import all starting with "Mat"
-// Also supports legacy :: syntax for backward compatibility
 unique_ptr<UsingAST> Parser::parseUsingStatement() {
   getNextToken();  // eat 'using'
 
@@ -1908,7 +1906,7 @@ unique_ptr<UsingAST> Parser::parseUsingStatement() {
   std::string firstName = curTok.getIdentifier().value();
   getNextToken();  // eat identifier
 
-  // Check what follows: ';', '.', or '::'
+  // Check what follows: ';' or '.'
   if (curTok.kind == TokenKind::SEMI_COLON) {
     // Simple form: "using sun;" means import all from sun
     namespacePath.push_back(std::move(firstName));
@@ -1918,24 +1916,18 @@ unique_ptr<UsingAST> Parser::parseUsingStatement() {
                                       std::move(target));
   }
 
-  // Dot-based path: using sun.Vec; or using sun.nested.Vec; or using sun.Mat*;
+  // Dot-based path: using sun.Vec; or using sun.nested.Vec;
   if (curTok.kind == TokenKind::DOT) {
     namespacePath.push_back(std::move(firstName));
 
     while (curTok.kind == TokenKind::DOT) {
       getNextToken();  // eat '.'
 
-      // Check for prefix wildcard: using sun.Mat*;
       if (curTok.kind == TokenKind::IDENTIFIER) {
         std::string part = curTok.getIdentifier().value();
         getNextToken();  // eat identifier
 
-        if (curTok.kind == TokenKind::STAR) {
-          // Prefix wildcard: "using sun.Mat*;" imports all starting with "Mat"
-          target = part + "*";
-          getNextToken();  // eat '*'
-          break;
-        } else if (curTok.kind == TokenKind::DOT) {
+        if (curTok.kind == TokenKind::DOT) {
           // More path components: sun.nested.deeper
           namespacePath.push_back(std::move(part));
         } else {
@@ -1943,14 +1935,8 @@ unique_ptr<UsingAST> Parser::parseUsingStatement() {
           target = std::move(part);
           break;
         }
-      } else if (curTok.kind == TokenKind::STAR) {
-        // Explicit wildcard after dot: "using sun.*;" (rare, same as "using
-        // sun;")
-        target = "*";
-        getNextToken();  // eat '*'
-        break;
       } else {
-        parsingError("expected identifier or '*' after '.' in using statement");
+        parsingError("expected identifier after '.' in using statement");
         return nullptr;
       }
     }
@@ -2367,11 +2353,11 @@ void Parser::createModuleStubs(
 
   // Wrap all stubs in appropriate namespace structure
   if (!moduleAST.empty()) {
-    // If module has a namespace, wrap stubs in NamespaceAST
+    // If module has a module declaration, wrap stubs in ModuleAST
     if (!metadata.moduleName.empty()) {
       auto nsBody = std::make_unique<BlockExprAST>(std::move(moduleAST));
-      auto nsAST = std::make_unique<NamespaceAST>(metadata.moduleName,
-                                                  std::move(nsBody));
+      auto nsAST =
+          std::make_unique<ModuleAST>(metadata.moduleName, std::move(nsBody));
       nsAST->setPrecompiled(true);
       collectedAST.push_back(std::move(nsAST));
     } else {

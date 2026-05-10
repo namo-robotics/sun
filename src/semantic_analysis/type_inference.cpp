@@ -184,10 +184,10 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       }
 
       // Resolve the name through using imports (e.g., Vec -> sun_Vec)
-      std::string resolvedName = resolveNameWithUsings(name).mangled();
+      auto resolved = resolveNameWithUsings(name);
 
       // Check if it's a named function
-      auto funcs = getAllFunctions(resolvedName);
+      auto funcs = getAllFunctions(resolved.baseName);
       if (funcs.size() == 1) {
         return sun::Types::Function(funcs[0].returnType, funcs[0].paramTypes);
       }
@@ -264,20 +264,19 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       if (callExpr.getCallee()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
         const auto& varRef =
             static_cast<const VariableReferenceAST&>(*callExpr.getCallee());
-        // Resolve the name through using imports (e.g., Vec -> sun_Vec)
-        std::string resolvedName =
-            resolveNameWithUsings(varRef.getName()).mangled();
+        // Resolve the name through using imports
+        sun::QualifiedName resolved = resolveNameWithUsings(varRef.getName());
         // Infer argument types for overload resolution
         std::vector<sun::TypePtr> argTypes;
         for (const auto& arg : callExpr.getArgs()) {
           argTypes.push_back(inferType(*arg));
         }
-        auto funcInfo = lookupFunction(resolvedName, argTypes);
+        auto funcInfo = lookupFunction(resolved.baseName, argTypes);
         if (funcInfo && funcInfo->returnType) {
           return funcInfo->returnType;
         }
         // Check if this is a stack-allocated class constructor call
-        auto classType = lookupClass(resolvedName);
+        auto classType = lookupClass(resolved.baseName);
         if (classType) {
           // Stack-allocated class instantiation: ClassName(args...)
           return classType;
@@ -479,7 +478,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
           qualName.getLocation());
     }
 
-    case ASTNodeType::NAMESPACE:
+    case ASTNodeType::MODULE:
     case ASTNodeType::USING:
     case ASTNodeType::IMPORT:
     case ASTNodeType::DECLARE_TYPE:
@@ -534,9 +533,9 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       const std::string& funcName = genericCall.getFunctionName();
       const auto& typeArgsVec = genericCall.getTypeArguments();
 
-      // Resolve the function/class name through using imports (MatrixView ->
-      // sun_MatrixView)
-      std::string resolvedName = resolveNameWithUsings(funcName).mangled();
+      // Resolve the function/class name through using imports
+      sun::QualifiedName resolved = resolveNameWithUsings(funcName);
+      const std::string& lookupName = resolved.baseName;
 
       // Analyze all arguments
       for (const auto& arg : genericCall.getArgs()) {
@@ -650,7 +649,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       }
 
       // Check for user-defined generic functions
-      auto* genFuncInfo = lookupGenericFunction(resolvedName);
+      auto* genFuncInfo = lookupGenericFunction(lookupName);
       if (genFuncInfo) {
         // Store the generic function AST on the call node for codegen
         genericCall.setGenericFunctionAST(genFuncInfo->AST);
@@ -670,7 +669,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       }
 
       // Check for generic class constructor: Box<i32>(42)
-      auto* genericClassInfo = lookupGenericClass(resolvedName);
+      auto* genericClassInfo = lookupGenericClass(lookupName);
       if (genericClassInfo) {
         // Resolve type arguments
         std::vector<sun::TypePtr> typeArgs;
@@ -682,7 +681,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
         }
 
         // Instantiate the generic class and return the specialized type
-        auto specializedClass = instantiateGenericClass(resolvedName, typeArgs);
+        auto specializedClass = instantiateGenericClass(lookupName, typeArgs);
         if (specializedClass) {
           return specializedClass;
         }
