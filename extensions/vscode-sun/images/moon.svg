@@ -1,3 +1,101 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <text x="32" y="46" text-anchor="middle" font-size="42">🌙</text>
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!-- Generator: Adobe Illustrator 19.0.0, SVG Export Plug-In . SVG Version: 6.00 Build 0)  -->
+<svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+	 viewBox="0 0 499.6 499.6" style="enable-background:new 0 0 499.6 499.6;" xml:space="preserve">
+<circle style="fill:#063F66;" cx="249.6" cy="250" r="249.6"/>
+<path style="fill:#022730;" d="M72.8,73.2c97.6-97.6,256-97.6,353.6,0s97.6,256,0,353.6"/>
+<g>
+	<ellipse style="fill:#DCF9F6;" cx="133.6" cy="425.2" rx="2.4" ry="21.6"/>
+	<ellipse style="fill:#DCF9F6;" cx="133.6" cy="426" rx="21.6" ry="2.4"/>
+	
+		<ellipse transform="matrix(0.7054 -0.7088 0.7088 0.7054 18.6212 346.765)" style="fill:#DCF9F6;" cx="426.474" cy="150.981" rx="21.6" ry="2.4"/>
+	
+		<ellipse transform="matrix(0.7054 0.7088 -0.7088 0.7054 232.7671 -257.5539)" style="fill:#DCF9F6;" cx="426.225" cy="151.245" rx="21.6" ry="2.4"/>
+	<ellipse style="fill:#DCF9F6;" cx="366.4" cy="84.4" rx="0.8" ry="9.6"/>
+	<ellipse style="fill:#DCF9F6;" cx="366.4" cy="84.4" rx="9.6" ry="0.8"/>
+	
+		<ellipse transform="matrix(-0.7107 -0.7035 0.7035 -0.7107 232.771 301.5383)" style="fill:#DCF9F6;" cx="178.387" cy="102.907" rx="10.4" ry="0.8"/>
+	
+		<ellipse transform="matrix(0.7107 -0.7035 0.7035 0.7107 -20.6411 155.2913)" style="fill:#DCF9F6;" cx="178.491" cy="102.742" rx="10.4" ry="0.8"/>
+	
+		<ellipse transform="matrix(-0.7089 -0.7053 0.7053 -0.7089 -92.7171 692.6153)" style="fill:#DCF9F6;" cx="96.571" cy="365.441" rx="10.4" ry="0.8"/>
+	
+		<ellipse transform="matrix(0.7089 -0.7053 0.7053 0.7089 -229.2989 174.8202)" style="fill:#DCF9F6;" cx="97.139" cy="365.198" rx="10.4" ry="0.8"/>
+	
+		<ellipse transform="matrix(0.6999 -0.7143 0.7143 0.6999 37.5702 239.1812)" style="fill:#DCF9F6;" cx="303.395" cy="74.884" rx="4.8" ry="0.8"/>
+	
+		<ellipse transform="matrix(0.6999 0.7143 -0.7143 0.6999 144.8238 -194.2028)" style="fill:#DCF9F6;" cx="303.501" cy="75.23" rx="4.8" ry="0.8"/>
+	
+		<ellipse transform="matrix(0.7035 -0.7107 0.7107 0.7035 -253.5927 285.6034)" style="fill:#DCF9F6;" cx="215.49" cy="446.725" rx="4.8" ry="0.8"/>
+	
+		<ellipse transform="matrix(0.7035 0.7107 -0.7107 0.7035 381.818 -20.7724)" style="fill:#DCF9F6;" cx="215.804" cy="447.211" rx="4.8" ry="0.8"/>
+	<path style="fill:#DCF9F6;" d="M325.6,339.6c-88,0-160-72-160-160c0-27.2,7.2-52.8,19.2-75.2c-56,24.8-95.2,80.8-95.2,145.6
+		c0,88,72,160,160,160c60.8,0,114.4-34.4,140.8-84.8C371.2,334,348.8,339.6,325.6,339.6z"/>
+</g>
+<g>
+	<circle style="fill:#78A8A0;" cx="138.4" cy="165.2" r="9.6"/>
+	<circle style="fill:#78A8A0;" cx="124.8" cy="201.2" r="1.6"/>
+</g>
+<circle style="fill:#DCF9F6;" cx="202.4" cy="157.2" r="8"/>
+<circle style="fill:#C3E5E0;" cx="257.6" cy="153.2" r="2.4"/>
+<circle style="fill:#78A8A0;" cx="278.4" cy="126" r="2.4"/>
+<circle style="fill:#DCF9F6;" cx="201.6" cy="127.6" r="4"/>
+<circle style="fill:#95BFB9;" cx="233.6" cy="114" r="1.6"/>
+<g>
+	<circle style="fill:#C3E5E0;" cx="270.4" cy="206" r="6.4"/>
+	<circle style="fill:#C3E5E0;" cx="318.4" cy="202" r="4"/>
+	<circle style="fill:#C3E5E0;" cx="328.8" cy="156.4" r="6.4"/>
+</g>
+<g>
+	<circle style="fill:#DCF9F6;" cx="156" cy="295.6" r="5.6"/>
+	<circle style="fill:#DCF9F6;" cx="213.6" cy="271.6" r="2.4"/>
+	<circle style="fill:#DCF9F6;" cx="241.6" cy="331.6" r="9.6"/>
+</g>
+<circle style="fill:#78A8A0;" cx="124.8" cy="254.8" r="6.4"/>
+<circle style="fill:#C3E5E0;" cx="267.2" cy="250.8" r="1.6"/>
+<circle style="fill:#95BFB9;" cx="344" cy="254" r="4"/>
+<g>
+	<circle style="fill:#DCF9F6;" cx="174.4" cy="339.6" r="9.6"/>
+	<circle style="fill:#DCF9F6;" cx="193.6" cy="305.2" r="3.2"/>
+</g>
+<circle style="fill:#C3E5E0;" cx="292.8" cy="342.8" r="3.2"/>
+<g>
+	<circle style="fill:#95BFB9;" cx="241.6" cy="369.2" r="2.4"/>
+	<circle style="fill:#95BFB9;" cx="201.6" cy="365.2" r="1.6"/>
+	<circle style="fill:#95BFB9;" cx="332.8" cy="328.4" r="6.4"/>
+</g>
+<circle style="fill:#C3E5E0;" cx="284" cy="375.6" r="4"/>
+<circle style="fill:#DCF9F6;" cx="245.6" cy="289.2" r="3.2"/>
+<circle style="fill:#95BFB9;" cx="353.6" cy="300.4" r="6.4"/>
+<circle style="fill:#78A8A0;" cx="134.4" cy="323.6" r="5.6"/>
+<g>
+</g>
+<g>
+</g>
+<g>
+</g>
+<g>
+</g>
+<g>
+</g>
+<g>
+</g>
+<g>
+</g>
+<g>
+</g>
+<g>
+</g>
+<g>
+</g>
+<g>
+</g>
+<g>
+</g>
+<g>
+</g>
+<g>
+</g>
+<g>
+</g>
 </svg>
