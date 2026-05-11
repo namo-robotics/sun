@@ -26,7 +26,6 @@
 import "allocator.sun";
 // Import SliceRange for slicing support
 import "slice.sun";
-using sun;
 
 module sun {
 

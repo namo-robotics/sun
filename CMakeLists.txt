@@ -102,28 +102,32 @@ target_link_libraries(sun-lsp PRIVATE sun_lib)
 # ------------------------------------------------------------------
 # Precompile stdlib as .moon for faster test imports
 # ------------------------------------------------------------------
-set(STDLIB_MOON ${CMAKE_BINARY_DIR}/stdlib.moon)
-set(STDLIB_SOURCES
-    ${CMAKE_SOURCE_DIR}/stdlib/print.sun
-    ${CMAKE_SOURCE_DIR}/stdlib/allocator.sun
-    ${CMAKE_SOURCE_DIR}/stdlib/unique.sun
-    ${CMAKE_SOURCE_DIR}/stdlib/slice.sun
-    ${CMAKE_SOURCE_DIR}/stdlib/matrix.sun
-    ${CMAKE_SOURCE_DIR}/stdlib/string.sun
-    ${CMAKE_SOURCE_DIR}/stdlib/vec.sun
-    ${CMAKE_SOURCE_DIR}/stdlib/map.sun
-)
+option(SKIP_STDLIB "Skip building the precompiled stdlib.moon" OFF)
 
-add_custom_command(
-    OUTPUT ${STDLIB_MOON}
-    COMMAND $<TARGET_FILE:sun> --emit-moon --bundle -o ${STDLIB_MOON} ${STDLIB_SOURCES}
-    DEPENDS sun ${STDLIB_SOURCES}
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMENT "Building precompiled stdlib.moon"
-    VERBATIM
-)
+if(NOT SKIP_STDLIB)
+    set(STDLIB_MOON ${CMAKE_BINARY_DIR}/stdlib.moon)
+    set(STDLIB_SOURCES
+        ${CMAKE_SOURCE_DIR}/stdlib/print.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/allocator.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/unique.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/slice.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/matrix.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/string.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/vec.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/map.sun
+    )
 
-add_custom_target(stdlib_moon ALL DEPENDS ${STDLIB_MOON})
+    add_custom_command(
+        OUTPUT ${STDLIB_MOON}
+        COMMAND $<TARGET_FILE:sun> --emit-moon --bundle -o ${STDLIB_MOON} ${STDLIB_SOURCES}
+        DEPENDS sun ${STDLIB_SOURCES}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Building precompiled stdlib.moon"
+        VERBATIM
+    )
+
+    add_custom_target(stdlib_moon ALL DEPENDS ${STDLIB_MOON})
+endif()
 
 # ------------------------------------------------------------------
 # Testing (optional, can be disabled)

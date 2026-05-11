@@ -19,7 +19,6 @@
 //   var len = v.size();      // 2
 
 import "allocator.sun";
-using sun;
 
 // ============================================================================
 // Vec<T> - Dynamic Growable Array

@@ -46,7 +46,9 @@ target_link_libraries(sun_tests
 )
 
 # Ensure stdlib.moon is built before tests run
-add_dependencies(sun_tests stdlib_moon)
+if(NOT SKIP_STDLIB)
+    add_dependencies(sun_tests stdlib_moon)
+endif()
 
 # Discover tests automatically (nice per-test reporting in ctest)
 include(GoogleTest)

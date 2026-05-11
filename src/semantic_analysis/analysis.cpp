@@ -587,33 +587,26 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       auto& qualName = static_cast<QualifiedNameAST&>(expr);
       std::string fullName = qualName.getFullName();
 
-      // Resolve the module path to include library hash prefixes
-      // e.g., "sun.Vec" -> getFullModulePath("sun") = "$hash$.sun" -> mangled
-      // "$hash$_sun_Vec"
-      auto nsParts = qualName.getNamespacePath();
-      if (!nsParts.empty()) {
-        std::string nsPath;
-        for (size_t i = 0; i < nsParts.size(); ++i) {
-          if (i > 0) nsPath += ".";
-          nsPath += nsParts[i];
-        }
-        std::string fullPath = getFullModulePath(nsPath);
-        if (fullPath != nsPath) {
-          qualName.setResolvedMangledName(mangleModulePath(fullPath) + "_" +
-                                          qualName.getName());
-        }
-      }
-
       // Look up in namespaced variables first
       VariableInfo* varInfo = lookupQualifiedVariable(fullName);
       if (varInfo) {
+        // Set resolved mangled name from the variable's qualified name
+        if (!varInfo->qualifiedName.empty()) {
+          qualName.setResolvedMangledName(varInfo->qualifiedName);
+        }
         expr.setResolvedType(varInfo->type);
         break;
       }
 
-      // Look up in namespaced functions
+      // Look up in namespaced functions - this searches all matching module
+      // scopes (including same-named modules in different import scopes)
       const FunctionInfo* funcInfo = lookupQualifiedFunction(fullName);
       if (funcInfo) {
+        // Set resolved mangled name from the function's actual qualified name
+        // This handles same-named modules in different import scopes correctly
+        if (!funcInfo->qualifiedName.empty()) {
+          qualName.setResolvedMangledName(funcInfo->qualifiedName);
+        }
         expr.setResolvedType(
             sun::Types::Function(funcInfo->returnType, funcInfo->paramTypes));
         break;
@@ -1915,6 +1908,10 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
       // Set resolved type on the callee directly
       varRef.setResolvedType(sun::Types::Function(resolvedFunc->returnType,
                                                   resolvedFunc->paramTypes));
+      // Set qualified name from the resolved function (handles import scopes)
+      if (!resolvedFunc->qualifiedName.empty()) {
+        varRef.setQualifiedName(resolvedFunc->qualifiedName);
+      }
     } else {
       // Check if this is a class constructor call: ClassName(args...)
       // This creates a stack-allocated class instance
