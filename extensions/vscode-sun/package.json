@@ -3,7 +3,7 @@
     "displayName": "Sun Language",
     "description": "Syntax highlighting and language server integration for Sun",
     "icon": "images/sun-logo.png",
-    "version": "0.1.3",
+    "version": "0.1.4",
     "publisher": "namo-robotics",
     "license": "MIT",
     "repository": {

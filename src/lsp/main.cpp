@@ -85,12 +85,14 @@ int tokenKindToLSPType(TokenKind kind) {
     case TokenKind::TYPE_F64:
     case TokenKind::TYPE_BOOL:
     case TokenKind::TYPE_VOID:
+    case TokenKind::ARRAY:
+      return LSPTokenType::Type;
+
     case TokenKind::REF:
     case TokenKind::RAW_PTR:
     case TokenKind::STATIC_PTR:
     case TokenKind::PTR:
-    case TokenKind::ARRAY:
-      return LSPTokenType::Type;
+      return LSPTokenType::Modifier;
 
     case TokenKind::INTEGER:
     case TokenKind::FLOAT:

@@ -85,7 +85,7 @@
                 },
                 {
                     "name": "storage.modifier.sun",
-                    "match": "\\b(?:module|function|class|interface|enum|var|ref|declare|static|public|private)\\b"
+                    "match": "\\b(?:module|function|class|interface|enum|var|ref|raw_ptr|static_ptr|declare|static|public|private)\\b"
                 },
                 {
                     "name": "constant.language.sun",
@@ -97,7 +97,7 @@
             "patterns": [
                 {
                     "name": "storage.type.sun",
-                    "match": "\\b(?:void|bool|i8|i16|i32|i64|u8|u16|u32|u64|f32|f64|string|slice|IError|array|raw_ptr|static_ptr|ref|fn|lambda)\\b"
+                    "match": "\\b(?:void|bool|i8|i16|i32|i64|u8|u16|u32|u64|f32|f64|string|slice|IError|array|fn|lambda)\\b"
                 }
             ]
         },
