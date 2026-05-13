@@ -149,8 +149,10 @@ class Parser {
   // Import statement parsing: import "file.sun";
   unique_ptr<ImportAST> parseImportStatement();
 
-  // Declare type statement parsing: declare [Alias =] Type<Args>;
-  unique_ptr<DeclareTypeAST> parseDeclareStatement();
+  // Declare statement parsing:
+  // - Forward function declaration: declare function name(args) RetType;
+  // - Type declaration: declare [Alias =] Type<Args>;
+  unique_ptr<ExprAST> parseDeclareStatement();
 
   // Module declaration parsing: module Name { ... }
   unique_ptr<ModuleAST> parseModuleDecl();

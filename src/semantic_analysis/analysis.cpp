@@ -1225,59 +1225,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 // -------------------------------------------------------------------
 
 void SemanticAnalyzer::analyzeBlock(BlockExprAST& block) {
-  // Pass 1a: Collect type declarations (classes, interfaces, enums, modules)
-  // so that function signatures in Pass 1b can reference them.
-  // RAII guard ensures collectingDeclarations is restored even on exception.
-  {
-    CollectingGuard guard(collectingDeclarations, true);
-    for (const auto& expr : block.getBody()) {
-      auto type = expr->getType();
-      if (type == ASTNodeType::CLASS_DEFINITION ||
-          type == ASTNodeType::INTERFACE_DEFINITION ||
-          type == ASTNodeType::ENUM_DEFINITION || type == ASTNodeType::MODULE ||
-          type == ASTNodeType::IMPORT_SCOPE) {
-        collectDeclarations(*expr);
-      }
-    }
-  }
-
-  // Pass 1.5: Fully analyze import scopes so their class types have methods
-  // and fields populated. This must happen before Pass 1b because function
-  // prototypes may reference generic types (e.g., ref Matrix<i64>) which
-  // triggers instantiation that needs other classes to be complete.
   for (const auto& expr : block.getBody()) {
-    if (expr->getType() == ASTNodeType::IMPORT_SCOPE) {
-      analyzeExpr(*expr);
-    }
-  }
-
-  // Pass 1c: Process using statements so cross-module types are visible
-  // for function signature resolution in Pass 1b.
-  {
-    CollectingGuard guard(collectingDeclarations, true);
-    for (const auto& expr : block.getBody()) {
-      if (expr->getType() == ASTNodeType::USING) {
-        collectDeclarations(*expr);
-      }
-    }
-  }
-
-  // Pass 1b: Collect function prototypes (can now resolve types from imports)
-  {
-    CollectingGuard guard(collectingDeclarations, true);
-    for (const auto& expr : block.getBody()) {
-      auto type = expr->getType();
-      if (type == ASTNodeType::FUNCTION) {
-        collectDeclarations(*expr);
-      }
-    }
-  }
-
-  // Pass 2: Analyze all expressions (skip import scopes already analyzed)
-  for (const auto& expr : block.getBody()) {
-    if (expr->getType() != ASTNodeType::IMPORT_SCOPE) {
-      analyzeExpr(*expr);
-    }
+    analyzeExpr(*expr);
   }
 }
 
