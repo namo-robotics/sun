@@ -213,8 +213,7 @@ void SemanticAnalyzer::collectDeclarations(ExprAST& expr) {
         scopeKey = "$import_" + std::to_string(hash & 0xFFFFFFFF) + "$";
       }
 
-      enterImportScope(importScope.getSourceFile(),
-                       importScope.getContentHash());
+      enterImportScope(importScope.getSourceFile(), scopeKey);
       importScopeDepth_++;
 
       // Skip if declarations were already collected (diamond dependency).

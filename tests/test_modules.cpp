@@ -35,6 +35,16 @@ TEST(ModuleTest, import_transitive) {
   EXPECT_NO_THROW(compileFile("tests/programs/import_transitive.sun"));
 }
 
+TEST(ModuleTest, import_global_var) {
+  auto value = executeString(R"(
+    import "tests/programs/global_var.sun";
+    function main() i32 {
+      return x;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
 TEST(ModuleTest, diamond_sun_import) {
   // Diamond dependency: left.sun and right.sun both import base.sun
   // base_value() returns 7, left_add(3) = 7+3 = 10, right_mul(2) = 7*2 = 14

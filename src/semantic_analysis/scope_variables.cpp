@@ -134,52 +134,26 @@ void SemanticAnalyzer::enterFunctionScope(const std::string& funcSig) {
 }
 
 void SemanticAnalyzer::enterImportScope(const std::string& sourceFile,
-                                        const std::string& contentHash) {
+                                        const std::string& scopeKey) {
   // For .moon imports with a content hash, use the hash as scope name.
   // This unifies the import scope with the library hash scope — the content
   // hash provides both symbol isolation (via modulePath) and diamond-dep dedup.
   // For .sun imports (no content hash), use a hash of the source file path.
-  std::string scopeName;
-  if (!contentHash.empty()) {
-    scopeName = contentHash;
-  } else {
-    auto hash = std::hash<std::string>{}(sourceFile);
-    scopeName = "$import_" + std::to_string(hash & 0xFFFFFFFF) + "$";
-  }
-
-  // Check if this scope already exists as a direct child of current scope
-  // (Pass 1 → Pass 2 reuse). Reuse same scope object.
-  auto it = currentScope->childModules.find(scopeName);
-  if (it != currentScope->childModules.end()) {
-    currentScope = it->second.get();
-    return;
-  }
-
-  // Check global map for diamond import — if this file was already processed
-  // under a different parent, clone the original scope's symbols into a new
-  // scope with the correct parent pointer.
-  auto globalIt = importScopesByKey_.find(scopeName);
+  auto globalIt = importScopesByKey_.find(scopeKey);
   if (globalIt != importScopesByKey_.end()) {
     auto child = globalIt->second->cloneSymbols(currentScope);
-    currentScope->childModules[scopeName] = child;
+    currentScope->childModules[scopeKey] = child;
     currentScope = child.get();
     return;
   }
 
-  auto child = std::make_shared<SemanticScope>(ScopeType::Import, scopeName);
+  auto child = std::make_shared<SemanticScope>(ScopeType::Import, scopeKey);
   child->parent = currentScope;
+  child->modulePath = scopeKey;
 
-  if (!contentHash.empty()) {
-    // .moon import: content hash contributes to modulePath for symbol mangling
-    child->modulePath = contentHash;
-  } else {
-    // .sun import: transparent for module path (inherit parent's)
-    child->modulePath = scopeName;
-  }
-
-  currentScope->childModules[scopeName] = child;
+  currentScope->childModules[scopeKey] = child;
   currentScope = child.get();
-  importScopesByKey_[scopeName] = child;
+  importScopesByKey_[scopeKey] = child;
 }
 
 void SemanticAnalyzer::exitScope() {
