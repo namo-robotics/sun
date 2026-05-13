@@ -37,6 +37,8 @@ function fib(n: i32) i32 {
 
 TEST(ProgramTest, mutual_recursion) {
   auto value = executeString(R"(
+    declare function isOdd(n: i32) bool;
+
     function isEven(n: i32) bool {
         if (n == 0) { return true; }
         return isOdd(n - 1);

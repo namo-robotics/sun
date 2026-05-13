@@ -1799,10 +1799,25 @@ unique_ptr<ImportAST> Parser::parseImportStatement() {
   return std::make_unique<ImportAST>(std::move(path));
 }
 
-// Parse declare statement: declare [Alias =] Type<Args>;
-// Used for explicit generic instantiation and optional type aliasing
-unique_ptr<DeclareTypeAST> Parser::parseDeclareStatement() {
+// Parse declare statement:
+// - Forward function declaration: declare function name(args) RetType;
+// - Type declaration: declare [Alias =] Type<Args>;
+unique_ptr<ExprAST> Parser::parseDeclareStatement() {
   getNextToken();  // eat 'declare'
+
+  // Check for forward function declaration: declare function name(args)
+  // RetType;
+  if (curTok.kind == TokenKind::FUNCTION) {
+    getNextToken();  // eat 'function'
+    auto proto = parsePrototype();
+    if (curTok.kind != TokenKind::SEMI_COLON) {
+      parsingError("expected ';' after forward function declaration");
+      return nullptr;
+    }
+    getNextToken();  // eat ';'
+    // Return FunctionAST with no body (forward declaration)
+    return std::make_unique<FunctionAST>(std::move(proto), nullptr);
+  }
 
   std::optional<std::string> alias;
 
@@ -1850,6 +1865,9 @@ unique_ptr<DeclareTypeAST> Parser::parseDeclareStatement() {
 
       return std::make_unique<DeclareTypeAST>(std::move(typeAnnot), alias);
     }
+  } else {
+    parsingError("expected 'function' or type name after 'declare'");
+    return nullptr;
   }
 
   // Parse the type annotation
