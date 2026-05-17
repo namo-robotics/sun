@@ -60,11 +60,9 @@ void SemanticAnalyzer::collectDeclarations(ExprAST& expr) {
             allResolved ? typeAnnotationToType(*proto.getReturnType())
                         : nullptr;
         if (allResolved && returnType) {
-          FunctionInfo funcInfo{returnType,
-                                paramTypes,
-                                {},
-                                qualifiedName.mangled(),
-                                proto.getName()};
+          FunctionInfo funcInfo{
+              returnType,      paramTypes,      {}, qualifiedName.mangled(),
+              proto.getName(), proto.canThrow()};
           registerFunction(proto.getName(), funcInfo);
         }
       }

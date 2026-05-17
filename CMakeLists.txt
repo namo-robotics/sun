@@ -113,6 +113,7 @@ if(NOT SKIP_STDLIB)
         ${CMAKE_SOURCE_DIR}/stdlib/slice.sun
         ${CMAKE_SOURCE_DIR}/stdlib/matrix.sun
         ${CMAKE_SOURCE_DIR}/stdlib/string.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/errors.sun
         ${CMAKE_SOURCE_DIR}/stdlib/vec.sun
         ${CMAKE_SOURCE_DIR}/stdlib/map.sun
     )

@@ -60,6 +60,13 @@ std::shared_ptr<sun::InterfaceType> SemanticAnalyzer::lookupInterface(
       }
     }
   }
+
+  // Check builtin interfaces in type registry (IError, IIterator, IIterable)
+  if (typeRegistry) {
+    auto builtinInterface = typeRegistry->lookupInterface(name);
+    if (builtinInterface) return builtinInterface;
+  }
+
   return nullptr;
 }
 

@@ -19,6 +19,7 @@
 //   var len = v.size();      // 2
 
 import "allocator.sun";
+import "errors.sun";
 
 // ============================================================================
 // Vec<T> - Dynamic Growable Array
@@ -64,7 +65,7 @@ class Vec<T> implements IIterable<T, Vec<T>> {
     // Remove and return last element
     function pop() T, IError {
         if (this.size_ == 0) {
-            throw 1;  // Empty vec
+            throw EmptyError();
         }
         this.size_ = this.size_ - 1;
         return _load<T>(this.data, this.size_);
@@ -123,7 +124,7 @@ class Vec<T> implements IIterable<T, Vec<T>> {
     // Get last element without removing
     function last() T, IError {
         if (this.size_ == 0) {
-            throw 1;  // Empty vec
+            throw EmptyError();
         }
         return _load<T>(this.data, this.size_ - 1);
     }
@@ -131,7 +132,7 @@ class Vec<T> implements IIterable<T, Vec<T>> {
     // Get first element
     function first() T, IError {
         if (this.size_ == 0) {
-            throw 1;  // Empty vec
+            throw EmptyError();
         }
         return _load<T>(this.data, 0);
     }

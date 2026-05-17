@@ -24,6 +24,7 @@
 import "vec.sun";
 import "string.sun";
 import "allocator.sun";
+import "errors.sun";
 
 module sun {
 
@@ -175,7 +176,7 @@ class Map<K, V> implements IIterable<V, Map<K, V>> {
     function get(key: K) V, IError {
         var probe: i64 = this.findIndex(key);
         if (probe < 0) {
-            throw 1;  // Key not found
+            throw NotFoundError();
         }
         return this.values.get(probe);
     }
@@ -193,7 +194,7 @@ class Map<K, V> implements IIterable<V, Map<K, V>> {
     function remove(key: K) V, IError {
         var probe: i64 = this.findIndex(key);
         if (probe < 0) {
-            throw 1;  // Key not found
+            throw NotFoundError();
         }
         
         var value: V = this.values.get(probe);

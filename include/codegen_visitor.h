@@ -326,6 +326,15 @@ class CodegenVisitor {
   llvm::Value* codegen(const TryCatchExprAST& expr);
   llvm::Value* codegen(const ThrowExprAST& expr);
 
+  // LLVM Exception Handling helpers
+  // Get or declare C++ ABI exception handling functions
+  llvm::FunctionCallee getCxaAllocateException();
+  llvm::FunctionCallee getCxaThrow();
+  llvm::FunctionCallee getCxaBeginCatch();
+  llvm::FunctionCallee getCxaEndCatch();
+  llvm::Constant* getPersonalityFunction();
+  llvm::Constant* getSunExceptionTypeInfo();
+
   // Generic function call codegen: create<T>(allocator, args...)
   llvm::Value* codegen(const GenericCallAST& expr);
 

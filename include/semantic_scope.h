@@ -33,7 +33,9 @@ struct FunctionInfo {
   std::vector<Capture> captures;
   std::string qualifiedName;  // Mangled name for codegen (e.g., "sun_square").
                               // Empty for builtins.
-  std::string baseName;  // User-written name (e.g., "square"). For debugging.
+  std::string baseName;   // User-written name (e.g., "square"). For debugging.
+  bool canThrow = false;  // Whether this function can throw (declared with ,
+                          // IError)
 };
 
 // Indexed function table: O(1) name-based overload lookup + O(1) exact sig
@@ -286,6 +288,12 @@ struct SemanticScope {
   // Used to create unique qualified names for nested functions in generic
   // instantiations
   std::string functionSignature;
+  // For function scopes: whether the function can throw (declared with ,
+  // IError)
+  bool functionCanThrow = false;
+  // Try block depth: incremented when entering a try block, decremented when
+  // exiting Used to check if we need to catch or propagate errors from calls
+  int tryBlockDepth = 0;
 
   // ===== Symbol tables (persistent — serialized to .moon for module scopes)
   // =====

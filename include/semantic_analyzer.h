@@ -292,7 +292,7 @@ class SemanticAnalyzer {
   void enterModuleScope(const std::string& moduleName);
   // Enter a function scope with the function's signature for nested function
   // qualified names. The signature should be "funcName(paramType1,paramType2)".
-  void enterFunctionScope(const std::string& funcSig);
+  void enterFunctionScope(const std::string& funcSig, bool canThrow = false);
   // Enter an import scope for an imported .sun file.
   // Uses a hash of the source file path for deduplication.
   void enterImportScope(const std::string& sourceFile,
@@ -319,6 +319,17 @@ class SemanticAnalyzer {
   // Returns empty string if not inside any function scope.
   // Example: inside "outer(i32)" and "middle(f64)" -> "outer(i32)::middle(f64)"
   std::string getCurrentFunctionContext() const;
+
+  // Check if we're currently inside a function declared with ", IError"
+  // Traverses parent scopes to find the nearest function scope
+  bool isInThrowingFunction() const;
+
+  // Check if we're currently inside a try block
+  bool isInTryBlock() const;
+
+  // Enter/exit a try block (increments/decrements try depth counter)
+  void enterTryBlock();
+  void exitTryBlock();
 
   // Module name registration for qualified name resolution (mod_x.mod_y.var)
 
