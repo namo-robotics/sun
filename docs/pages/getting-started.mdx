@@ -12,7 +12,7 @@ Use `--emit-ir` to see the generated LLVM IR for your program:
 import "stdlib.moon";
 using sun;
 
-function main() {
+function main() void {
     println("Hello, Sun!");
 }
 ```
@@ -164,7 +164,7 @@ class Pair<T> {
         this.second = b;
     }
     
-    function swap() {
+    function swap() void {
         var temp = this.first;
         this.first = this.second;
         this.second = temp;
@@ -211,7 +211,7 @@ class Square implements Drawable {
     }
 }
 
-function render(shape: ref Drawable) {
+function render(shape: ref Drawable) void {
     shape.draw();
 }
 
@@ -295,7 +295,7 @@ function main() i32 {
 ### Reference Parameters
 
 ```sun
-function double_value(x: ref i32) {
+function double_value(x: ref i32) void {
     x = x * 2;  // Modifies the original
 }
 

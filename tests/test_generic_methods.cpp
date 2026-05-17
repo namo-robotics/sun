@@ -50,7 +50,7 @@ TEST(GenericMethods, generic_class_with_generic_method) {
 
 TEST(GenericMethods, normal_method_calls_generic_function) {
   auto value = executeString(R"(
-    function foo<T>(x: T) {
+    function foo<T>(x: T) void {
       return;
     }
 

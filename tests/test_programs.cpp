@@ -496,15 +496,15 @@ TEST(ProgramTest, raw_ptr_type_parsing) {
 }
 
 TEST(ProgramTest, main_void_return) {
-  // Test that function main() can have no return type (defaults to void)
+  // Test that function main() void works (return type is now required)
   auto value = executeString(R"(
     import "build/stdlib.moon";
     using sun;
-    function main() {
+    function main() void {
         println("Hello from void main!");
     };
   )");
-  // function main() with no return type returns void
+  // function main() void returns void
   EXPECT_TRUE(std::holds_alternative<sun::VoidValue>(value));
 }
 

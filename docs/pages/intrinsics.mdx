@@ -224,11 +224,11 @@ class Vec<T> {
         return _load<T>(this.data, index);
     }
 
-    function set(index: i64, value: T) {
+    function set(index: i64, value: T) void {
         _store<T>(this.data, index, value);
     }
 
-    function push(value: T) {
+    function push(value: T) void {
         if (this.len >= this.cap) {
             this.grow();
         }
@@ -236,7 +236,7 @@ class Vec<T> {
         this.len = this.len + 1;
     }
 
-    function grow() {
+    function grow() void {
         var newCap = this.cap * 2;
         var newData = this.alloc.alloc_raw(newCap * _sizeof<T>());
         // Copy old data to new buffer...

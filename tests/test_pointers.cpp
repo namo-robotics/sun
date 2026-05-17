@@ -16,8 +16,8 @@ TEST(PointerTest, pass_static_ptr_to_function) {
   auto value = executeString(R"(
     import "build/stdlib.moon";
     using sun;
-    function foo(p: static_ptr<u8>) {
-        return println(p);
+    function foo(p: static_ptr<u8>) void {
+        println(p);
     };
 
     function main() i32 {

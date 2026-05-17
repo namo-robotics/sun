@@ -332,6 +332,7 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
 
   // Check for return type (no arrow, type comes directly after parentheses)
   // Syntax: function foo(args) ReturnType, IError { ... }
+  // Return type is required for all functions except 'init' methods
   std::optional<TypeAnnotation> retType;
   if (curTok.kind != TokenKind::BRACE_OPEN) {
     retType = parseTypeAnnotation();
@@ -352,6 +353,16 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
       if (retType.has_value()) {
         retType->canError = true;
       }
+    }
+  } else {
+    // No return type specified - only allowed for 'init' methods
+    if (name == "init") {
+      // init methods implicitly return void
+      retType = TypeAnnotation("void");
+    } else if (isLambda) {
+      parsingError("Return type is required for lambda expression");
+    } else {
+      parsingError("Return type is required for function '" + name + "'");
     }
   }
 

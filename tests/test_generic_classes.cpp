@@ -182,7 +182,7 @@ TEST(GenericClass, generic_method_returns_field) {
         return this.value;
       }
 
-      function setValue(v: T) {
+      function setValue(v: T) void {
         this.value = v;
       }
     }

@@ -373,7 +373,7 @@ TEST(RefTest, two_refs_comparison) {
 
 TEST(RefTest, i32_ref_arg) {
   auto value = executeString(R"(
-    function foo(x: ref i32) {
+    function foo(x: ref i32) void {
         x = 100;
     };
     function main() i32 {
@@ -387,7 +387,7 @@ TEST(RefTest, i32_ref_arg) {
 
 TEST(RefTest, pass_i32_by_ref) {
   auto value = executeString(R"(
-    function foo(x: ref i32) {
+    function foo(x: ref i32) void {
         x = 100;
     };
     function main() i32 {
