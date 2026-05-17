@@ -230,7 +230,7 @@ TEST(ParserTest, ParseNestedFunction) {
 
 TEST(ParserTest, ParseCloser) {
   auto ast = parseString(
-      "var outer = 42; var closure = lambda () { outer; }; closure();");
+      "var outer = 42; var closure = lambda () i32 { outer; }; closure();");
   ASSERT_NE(ast, nullptr);
 }
 
@@ -659,6 +659,76 @@ function main() i32 {
   // Should contain source preview
   EXPECT_TRUE(output.find("|") != std::string::npos)
       << "Should have source preview: " << output;
+}
+
+// ------------------------------------------------------------------
+// Return type requirement tests
+// ------------------------------------------------------------------
+
+TEST(ParserErrorTest, MissingReturnTypeFunction) {
+  // Function without return type should error
+  EXPECT_THROW(
+      {
+        try {
+          parseString(R"(
+function test() {
+    return 1;
+}
+)");
+        } catch (const SunError& e) {
+          std::cout << "\n--- Error Message ---\n"
+                    << e.what() << "\n---------------------\n";
+          EXPECT_EQ(e.getKind(), SunError::Kind::Parse);
+          std::string what = e.what();
+          EXPECT_TRUE(what.find("Return type is required") != std::string::npos)
+              << "Error should mention return type requirement: " << what;
+          throw;
+        }
+      },
+      SunError);
+}
+
+TEST(ParserErrorTest, MissingReturnTypeLambda) {
+  // Lambda without return type should error
+  EXPECT_THROW(
+      {
+        try {
+          parseString(R"(
+function main() i32 {
+    var f = lambda (x: i32) { return x + 1; };
+    return f(1);
+}
+)");
+        } catch (const SunError& e) {
+          std::cout << "\n--- Error Message ---\n"
+                    << e.what() << "\n---------------------\n";
+          EXPECT_EQ(e.getKind(), SunError::Kind::Parse);
+          std::string what = e.what();
+          EXPECT_TRUE(what.find("Return type is required") != std::string::npos)
+              << "Error should mention return type requirement: " << what;
+          throw;
+        }
+      },
+      SunError);
+}
+
+TEST(ParserTest, InitMethodWithoutReturnType) {
+  // init methods should be allowed without explicit return type
+  auto ast = parseString(R"(
+class Point {
+    var x: i32;
+    var y: i32;
+    function init(px: i32, py: i32) {
+        this.x = px;
+        this.y = py;
+    }
+}
+function main() i32 {
+    var p = Point(1, 2);
+    return p.x;
+}
+)");
+  ASSERT_NE(ast, nullptr);
 }
 
 int main(int argc, char** argv) {

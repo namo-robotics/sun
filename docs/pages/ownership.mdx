@@ -100,7 +100,7 @@ function main() i32 {
 References allow you to access and modify variables without copying or moving:
 
 ```sun
-function increment(x: ref i32) {
+function increment(x: ref i32) void {
     x = x + 1;
 }
 
@@ -426,7 +426,7 @@ function main() i32 {
 References can be passed to functions that accept `ref` parameters:
 
 ```sun
-function swap(a: ref i32, b: ref i32) {
+function swap(a: ref i32, b: ref i32) void {
     var temp: i32 = a;
     a = b;
     b = temp;
@@ -574,7 +574,7 @@ These restrictions handle ~80% of common use cases while being significantly eas
 ### Do: Use References for In-Place Modification
 
 ```sun
-function double_array(arr: ref matrix<i32, 10>) {
+function double_array(arr: ref matrix<i32, 10>) void {
     for (var i: i32 = 0; i < 10; i = i + 1) {
         arr[i] = arr[i] * 2;
     }
@@ -584,7 +584,7 @@ function double_array(arr: ref matrix<i32, 10>) {
 ### Do: Keep Borrows Short-Lived
 
 ```sun
-function process(data: ref i32) {
+function process(data: ref i32) void {
     // Use data immediately
     var result = data * 2;
     // Don't hold onto the reference longer than needed

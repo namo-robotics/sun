@@ -560,7 +560,7 @@ SemanticAnalyzer::instantiateGenericFunction(
     std::string funcSig = getFunctionSignature(mangledName, paramTypes);
 
     // Declare parameters in scope for body analysis
-    enterFunctionScope(funcSig);
+    enterFunctionScope(funcSig, proto.canThrow());
     for (size_t i = 0; i < paramTypes.size(); ++i) {
       const auto& [argName, argType] = proto.getArgs()[i];
       declareVariable(argName, paramTypes[i], /*isParam=*/true);
@@ -844,7 +844,7 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   std::string methodSig = getFunctionSignature(mangledName, paramTypes);
 
   // Enter method scope and declare parameters
-  enterFunctionScope(methodSig);
+  enterFunctionScope(methodSig, proto.canThrow());
 
   // Declare 'this' parameter
   declareVariable("this", classType, /*isParam=*/true);

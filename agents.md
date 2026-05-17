@@ -5,7 +5,7 @@ Sun is a compiled language with an LLVM 20 backend (C++20).
 ## Pipeline
 
 ```
-Lexer → Parser → AST → SemanticAnalyzer → CodegenVisitor → LLVM IR
+Lexer → Parser → AST → SemanticAnalyzer → BorrowChecker → CodegenVisitor → LLVM IR
 ```
 
 ## Build & Test

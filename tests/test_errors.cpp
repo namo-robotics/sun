@@ -28,9 +28,15 @@ TEST(ErrorTest, basic_function_call) {
 
 TEST(ErrorTest, throw_basic) {
   auto value = executeString(R"(
+    class TestError implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "test error"; }
+    }
+
     function mayThrow(x: i32) i32, IError {
       if (x < 0) {
-        throw 1;
+        throw TestError();
       }
       return x * 2;
     }
@@ -48,9 +54,15 @@ TEST(ErrorTest, throw_basic) {
 
 TEST(ErrorTest, throw_triggers_catch) {
   auto value = executeString(R"(
+    class TestError implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "test error"; }
+    }
+
     function mayThrow(x: i32) i32, IError {
       if (x < 0) {
-        throw 1;
+        throw TestError();
       }
       return x * 2;
     }
@@ -68,9 +80,15 @@ TEST(ErrorTest, throw_triggers_catch) {
 
 TEST(ErrorTest, try_catch_success_path) {
   auto value = executeString(R"(
+    class TestError implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "test error"; }
+    }
+
     function compute(a: i32, b: i32) i32, IError {
       if (b == 0) {
-        throw 1;
+        throw TestError();
       }
       return a / b;
     }
@@ -88,9 +106,15 @@ TEST(ErrorTest, try_catch_success_path) {
 
 TEST(ErrorTest, try_catch_error_path) {
   auto value = executeString(R"(
+    class TestError implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "test error"; }
+    }
+
     function compute(a: i32, b: i32) i32, IError {
       if (b == 0) {
-        throw 1;
+        throw TestError();
       }
       return a / b;
     }
@@ -112,9 +136,15 @@ TEST(ErrorTest, try_catch_error_path) {
 
 TEST(ErrorTest, nested_try_catch) {
   auto value = executeString(R"(
+    class TestError implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "test error"; }
+    }
+
     function inner(x: i32) i32, IError {
       if (x == 0) {
-        throw 1;
+        throw TestError();
       }
       return x;
     }
@@ -137,9 +167,15 @@ TEST(ErrorTest, nested_try_catch) {
 
 TEST(ErrorTest, nested_error_propagation) {
   auto value = executeString(R"(
+    class TestError implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "test error"; }
+    }
+
     function inner(x: i32) i32, IError {
       if (x == 0) {
-        throw 1;
+        throw TestError();
       }
       return x;
     }
@@ -162,9 +198,15 @@ TEST(ErrorTest, nested_error_propagation) {
 
 TEST(ErrorTest, pass_mayThrow_to_function) {
   auto value = executeString(R"(
+    class TestError implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "test error"; }
+    }
+
     function mayThrow(x: i32) i32, IError {
       if (x < 0) {
-        throw 1;
+        throw TestError();
       }
       return x;
     }
@@ -186,9 +228,15 @@ TEST(ErrorTest, pass_mayThrow_to_function) {
 
 TEST(ErrorTest, pass_mayThrow_success) {
   auto value = executeString(R"(
+    class TestError implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "test error"; }
+    }
+
     function mayThrow(x: i32) i32, IError {
       if (x < 0) {
-        throw 1;
+        throw TestError();
       }
       return x;
     }
@@ -214,9 +262,15 @@ TEST(ErrorTest, pass_mayThrow_success) {
 
 TEST(ErrorTest, safe_divide_success) {
   auto value = executeString(R"(
+    class TestError implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "test error"; }
+    }
+
     function safeDivide(a: i32, b: i32) i32, IError {
       if (b == 0) {
-        throw 1;
+        throw TestError();
       }
       return a / b;
     }
@@ -234,9 +288,15 @@ TEST(ErrorTest, safe_divide_success) {
 
 TEST(ErrorTest, safe_divide_by_zero) {
   auto value = executeString(R"(
+    class TestError implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "test error"; }
+    }
+
     function safeDivide(a: i32, b: i32) i32, IError {
       if (b == 0) {
-        throw 1;
+        throw TestError();
       }
       return a / b;
     }
@@ -294,9 +354,15 @@ TEST(ErrorTest, auto_safe_division_by_zero) {
 
 TEST(ErrorTest, try_catch_with_computation) {
   auto value = executeString(R"(
+    class TestError implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "test error"; }
+    }
+
     function compute(x: i32) i32, IError {
       if (x < 0) {
-        throw 1;
+        throw TestError();
       }
       return x * 2;
     }
@@ -315,16 +381,22 @@ TEST(ErrorTest, try_catch_with_computation) {
 
 TEST(ErrorTest, try_catch_with_multiple_calls) {
   auto value = executeString(R"(
+    class TestError implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "test error"; }
+    }
+
     function add(a: i32, b: i32) i32, IError {
       if (a < 0) {
-        throw 1;
+        throw TestError();
       }
       return a + b;
     }
 
     function mul(a: i32, b: i32) i32, IError {
       if (b < 0) {
-        throw 1;
+        throw TestError();
       }
       return a * b;
     }
@@ -343,9 +415,15 @@ TEST(ErrorTest, try_catch_with_multiple_calls) {
 
 TEST(ErrorTest, try_catch_with_variable_args) {
   auto value = executeString(R"(
+    class TestError implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "test error"; }
+    }
+
     function combine(a: i32, b: i32, c: i32) i32, IError {
       if (a < 0) {
-        throw 1;
+        throw TestError();
       }
       return a + b + c;
     }
@@ -370,9 +448,15 @@ TEST(ErrorTest, try_catch_with_variable_args) {
 
 TEST(ErrorTest, catch_returns_different_value) {
   auto value = executeString(R"(
+    class TestError implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "test error"; }
+    }
+
     function mayFail(x: i32) i32, IError {
       if (x == 0) {
-        throw 1;
+        throw TestError();
       }
       return x * 10;
     }
@@ -390,9 +474,15 @@ TEST(ErrorTest, catch_returns_different_value) {
 
 TEST(ErrorTest, success_returns_original_value) {
   auto value = executeString(R"(
+    class TestError implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "test error"; }
+    }
+
     function mayFail(x: i32) i32, IError {
       if (x == 0) {
-        throw 1;
+        throw TestError();
       }
       return x * 10;
     }
@@ -414,12 +504,18 @@ TEST(ErrorTest, success_returns_original_value) {
 
 TEST(ErrorTest, multiple_throw_conditions) {
   auto value = executeString(R"(
+    class TestError implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "test error"; }
+    }
+
     function validate(x: i32) i32, IError {
       if (x < 0) {
-        throw 1;
+        throw TestError();
       }
       if (x > 100) {
-        throw 2;
+        throw TestError();
       }
       return x;
     }
@@ -437,12 +533,18 @@ TEST(ErrorTest, multiple_throw_conditions) {
 
 TEST(ErrorTest, first_condition_throws) {
   auto value = executeString(R"(
+    class TestError implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "test error"; }
+    }
+
     function validate(x: i32) i32, IError {
       if (x < 0) {
-        throw 1;
+        throw TestError();
       }
       if (x > 100) {
-        throw 2;
+        throw TestError();
       }
       return x;
     }
@@ -460,12 +562,18 @@ TEST(ErrorTest, first_condition_throws) {
 
 TEST(ErrorTest, second_condition_throws) {
   auto value = executeString(R"(
+    class TestError implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "test error"; }
+    }
+
     function validate(x: i32) i32, IError {
       if (x < 0) {
-        throw 1;
+        throw TestError();
       }
       if (x > 100) {
-        throw 2;
+        throw TestError();
       }
       return x;
     }
@@ -487,9 +595,15 @@ TEST(ErrorTest, second_condition_throws) {
 
 TEST(ErrorTest, throw_inside_for_loop) {
   auto value = executeString(R"(
+    class TestError implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "test error"; }
+    }
+
     function mayThrow(x: i32) i32, IError {
       if (x == 5) {
-        throw 1;
+        throw TestError();
       }
       return x;
     }
@@ -512,9 +626,15 @@ TEST(ErrorTest, throw_inside_for_loop) {
 
 TEST(ErrorTest, throw_inside_while_loop) {
   auto value = executeString(R"(
+    class TestError implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "test error"; }
+    }
+
     function mayThrow(x: i32) i32, IError {
       if (x == 5) {
-        throw 1;
+        throw TestError();
       }
       return x;
     }
@@ -539,9 +659,15 @@ TEST(ErrorTest, throw_inside_while_loop) {
 
 TEST(ErrorTest, for_loop_completes_without_throw) {
   auto value = executeString(R"(
+    class TestError implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "test error"; }
+    }
+
     function mayThrow(x: i32) i32, IError {
       if (x < 0) {
-        throw 1;
+        throw TestError();
       }
       return x;
     }
@@ -564,9 +690,15 @@ TEST(ErrorTest, for_loop_completes_without_throw) {
 
 TEST(ErrorTest, while_loop_completes_without_throw) {
   auto value = executeString(R"(
+    class TestError implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "test error"; }
+    }
+
     function mayThrow(x: i32) i32, IError {
       if (x < 0) {
-        throw 1;
+        throw TestError();
       }
       return x;
     }
@@ -591,10 +723,16 @@ TEST(ErrorTest, while_loop_completes_without_throw) {
 
 TEST(ErrorTest, throw_inside_nested_for_loops) {
   auto value = executeString(R"(
+    class TestError implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "test error"; }
+    }
+
     function mayThrow(x: i32, y: i32) i32, IError {
       if (x == 2) {
         if (y == 3) {
-          throw 1;
+          throw TestError();
         };
       };
       return x + y;
@@ -620,9 +758,15 @@ TEST(ErrorTest, throw_inside_nested_for_loops) {
 
 TEST(ErrorTest, throw_inside_for_loop_with_break) {
   auto value = executeString(R"(
+    class TestError implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "test error"; }
+    }
+
     function mayThrow(x: i32) i32, IError {
       if (x == 8) {
-        throw 1;
+        throw TestError();
       }
       return x;
     }
@@ -649,9 +793,15 @@ TEST(ErrorTest, throw_inside_for_loop_with_break) {
 
 TEST(ErrorTest, throw_inside_while_loop_with_continue) {
   auto value = executeString(R"(
+    class TestError implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "test error"; }
+    }
+
     function mayThrow(x: i32) i32, IError {
       if (x == 10) {
-        throw 1;
+        throw TestError();
       }
       return x;
     }
@@ -679,9 +829,15 @@ TEST(ErrorTest, throw_inside_while_loop_with_continue) {
 
 TEST(ErrorTest, throw_after_loop_iteration) {
   auto value = executeString(R"(
+    class TestError implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "test error"; }
+    }
+
     function process(x: i32) i32, IError {
       if (x > 20) {
-        throw 1;
+        throw TestError();
       }
       return x;
     }
@@ -704,9 +860,15 @@ TEST(ErrorTest, throw_after_loop_iteration) {
 
 TEST(ErrorTest, throw_after_loop_exceeds_limit) {
   auto value = executeString(R"(
+    class TestError implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "test error"; }
+    }
+
     function process(x: i32) i32, IError {
       if (x > 20) {
-        throw 1;
+        throw TestError();
       }
       return x;
     }

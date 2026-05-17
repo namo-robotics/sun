@@ -431,9 +431,16 @@ class StaticPointerType : public Type {
   // Returns fat pointer struct: { ptr data, i64 length }
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
     if (!cachedLLVMType) {
-      cachedLLVMType = llvm::StructType::create(
-          ctx, {llvm::PointerType::getUnqual(ctx), llvm::Type::getInt64Ty(ctx)},
-          sun::StructNames::StaticPtr);
+      // Check if the type already exists in the context (avoids creating
+      // duplicates like static_ptr_struct.0, static_ptr_struct.1, etc.)
+      cachedLLVMType =
+          llvm::StructType::getTypeByName(ctx, sun::StructNames::StaticPtr);
+      if (!cachedLLVMType) {
+        cachedLLVMType = llvm::StructType::create(
+            ctx,
+            {llvm::PointerType::getUnqual(ctx), llvm::Type::getInt64Ty(ctx)},
+            sun::StructNames::StaticPtr);
+      }
     }
     return cachedLLVMType;
   }
@@ -810,8 +817,9 @@ struct ClassMethod {
 struct ScopeMethodInfo {
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;  // Excludes implicit 'this' parameter
-  std::string qualifiedName;  // Mangled name for LLVM codegen (e.g., "MyClass_foo")
-  std::string baseName;       // User-written method name (e.g., "foo")
+  std::string
+      qualifiedName;     // Mangled name for LLVM codegen (e.g., "MyClass_foo")
+  std::string baseName;  // User-written method name (e.g., "foo")
 };
 
 // Indexed method table: O(1) name-based overload lookup + O(1) exact sig
@@ -881,7 +889,8 @@ class ClassType : public Type {
   std::string baseGenericName;  // For specialized: original generic class name
   std::vector<ClassField> fields;
   std::vector<ClassMethod> methods;
-  ScopeMethodTable methodTable_;  // Indexed method table for overload resolution
+  ScopeMethodTable
+      methodTable_;  // Indexed method table for overload resolution
   std::vector<std::string>
       implementedInterfaces;  // Names of interfaces this class implements
   mutable llvm::StructType* cachedLLVMType = nullptr;
@@ -1121,7 +1130,8 @@ class InterfaceType : public Type {
       baseGenericName;  // For specialized: original generic interface name
   std::vector<InterfaceField> fields;
   std::vector<InterfaceMethod> methods;
-  ScopeMethodTable methodTable_;  // Indexed method table for default implementations
+  ScopeMethodTable
+      methodTable_;  // Indexed method table for default implementations
 
  public:
   InterfaceType(std::string interfaceName) : name(std::move(interfaceName)) {}
@@ -1331,8 +1341,9 @@ using EnumTypePtr = std::shared_ptr<EnumType>;
 // Enums are represented as i32 values, with variants as named constants
 // Example: enum Color { Red, Green, Blue }
 class EnumType : public Type {
-  std::string qualifiedName_;  // Fully qualified name (e.g., "$hash$_sun_Color")
-  std::string baseName_;       // User-written base name (e.g., "Color")
+  std::string
+      qualifiedName_;     // Fully qualified name (e.g., "$hash$_sun_Color")
+  std::string baseName_;  // User-written base name (e.g., "Color")
   std::vector<EnumVariant> variants;
 
  public:

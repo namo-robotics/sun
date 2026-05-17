@@ -817,6 +817,11 @@ class PrototypeAST {
   }
   bool hasTypeBindings() const { return !typeBindings_.empty(); }
 
+  // Check if this function can throw (declared with ", IError")
+  bool canThrow() const {
+    return returnType.has_value() && returnType->canError;
+  }
+
   // Clone the prototype (deep copy)
   std::unique_ptr<PrototypeAST> clone() const;
 };

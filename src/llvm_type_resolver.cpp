@@ -23,15 +23,9 @@ StructType* LLVMTypeResolver::getClosureType() {
 
 StructType* LLVMTypeResolver::getStaticPtrType() {
   if (!staticPtrType) {
-    // Check if the type already exists in the context (e.g., from linked code)
-    staticPtrType = StructType::getTypeByName(ctx, sun::StructNames::StaticPtr);
-    if (!staticPtrType) {
-      staticPtrType = StructType::create(ctx, sun::StructNames::StaticPtr);
-      staticPtrType->setBody({
-          PointerType::getUnqual(ctx),  // data ptr
-          Type::getInt64Ty(ctx)         // length
-      });
-    }
+    // Delegate to StaticPointerType::toLLVMType which handles deduplication
+    sun::StaticPointerType tempType(sun::Types::UInt8());
+    staticPtrType = llvm::cast<StructType>(tempType.toLLVMType(ctx));
   }
   return staticPtrType;
 }

@@ -125,9 +125,11 @@ void SemanticAnalyzer::enterModuleScope(const std::string& moduleName) {
   currentScope = child.get();
 }
 
-void SemanticAnalyzer::enterFunctionScope(const std::string& funcSig) {
+void SemanticAnalyzer::enterFunctionScope(const std::string& funcSig,
+                                          bool canThrow) {
   auto child = std::make_shared<SemanticScope>(ScopeType::Function);
   child->functionSignature = funcSig;
+  child->functionCanThrow = canThrow;
   child->parent = currentScope;
   currentScope->children.push_back(child);
   currentScope = child.get();
@@ -230,6 +232,42 @@ std::string SemanticAnalyzer::getCurrentFunctionContext() const {
     }
   }
   return context;
+}
+
+bool SemanticAnalyzer::isInThrowingFunction() const {
+  // Find the nearest enclosing function scope and check if it can throw
+  for (auto* s = currentScope; s != nullptr; s = s->parent) {
+    if (s->type == ScopeType::Function) {
+      return s->functionCanThrow;
+    }
+  }
+  return false;
+}
+
+bool SemanticAnalyzer::isInTryBlock() const {
+  // Check if any scope in the chain has tryBlockDepth > 0
+  for (auto* s = currentScope; s != nullptr; s = s->parent) {
+    if (s->tryBlockDepth > 0) {
+      return true;
+    }
+    // Stop at function boundary - try blocks don't cross functions
+    if (s->type == ScopeType::Function) {
+      break;
+    }
+  }
+  return false;
+}
+
+void SemanticAnalyzer::enterTryBlock() {
+  if (currentScope) {
+    currentScope->tryBlockDepth++;
+  }
+}
+
+void SemanticAnalyzer::exitTryBlock() {
+  if (currentScope && currentScope->tryBlockDepth > 0) {
+    currentScope->tryBlockDepth--;
+  }
 }
 
 bool SemanticAnalyzer::isModuleName(const std::string& name) const {

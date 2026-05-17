@@ -1,0 +1,198 @@
+// stdlib/errors.sun - Standard error types implementing IError
+//
+// All error types implement the IError interface with:
+//   - code() -> i32: numeric error code
+//   - message() -> static_ptr<u8>: error description
+//
+// Usage:
+//   import "stdlib/errors.sun";
+//   using sun;
+//   
+//   function pop() T, IError {
+//       if (this.isEmpty()) {
+//           throw EmptyError();
+//       }
+//       // ...
+//   }
+
+module sun {
+
+// ============================================================================
+// Generic Error - base error with custom message
+// ============================================================================
+
+class Error implements IError {
+    var code_: i32;
+    var message_: static_ptr<u8>;
+    
+    function init(code: i32, message: static_ptr<u8>) {
+        this.code_ = code;
+        this.message_ = message;
+    }
+    
+    function code() i32 {
+        return this.code_;
+    }
+    
+    function message() static_ptr<u8> {
+        return this.message_;
+    }
+}
+
+// ============================================================================
+// EmptyError - for operations on empty containers
+// ============================================================================
+
+class EmptyError implements IError {
+    function init() {}
+    
+    function code() i32 {
+        return 1;
+    }
+    
+    function message() static_ptr<u8> {
+        return "container is empty";
+    }
+}
+
+// ============================================================================
+// NotFoundError - for failed lookups
+// ============================================================================
+
+class NotFoundError implements IError {
+    function init() {}
+    
+    function code() i32 {
+        return 2;
+    }
+    
+    function message() static_ptr<u8> {
+        return "element not found";
+    }
+}
+
+// ============================================================================
+// IndexOutOfBoundsError - for invalid array/vector indices
+// ============================================================================
+
+class IndexOutOfBoundsError implements IError {
+    var index_: i64;
+    
+    function init(index: i64) {
+        this.index_ = index;
+    }
+    
+    function code() i32 {
+        return 3;
+    }
+    
+    function message() static_ptr<u8> {
+        return "index out of bounds";
+    }
+    
+    function index() i64 {
+        return this.index_;
+    }
+}
+
+// ============================================================================
+// DivisionByZeroError - for division by zero
+// ============================================================================
+
+class DivisionByZeroError implements IError {
+    function init() {}
+    
+    function code() i32 {
+        return 4;
+    }
+    
+    function message() static_ptr<u8> {
+        return "division by zero";
+    }
+}
+
+// ============================================================================
+// OverflowError - for arithmetic overflow
+// ============================================================================
+
+class OverflowError implements IError {
+    function init() {}
+    
+    function code() i32 {
+        return 5;
+    }
+    
+    function message() static_ptr<u8> {
+        return "arithmetic overflow";
+    }
+}
+
+// ============================================================================
+// InvalidArgumentError - for invalid function arguments
+// ============================================================================
+
+class InvalidArgumentError implements IError {
+    var message_: static_ptr<u8>;
+    
+    function init(message: static_ptr<u8>) {
+        this.message_ = message;
+    }
+    
+    function code() i32 {
+        return 6;
+    }
+    
+    function message() static_ptr<u8> {
+        return this.message_;
+    }
+}
+
+// ============================================================================
+// IOError - for I/O operations
+// ============================================================================
+
+class IOError implements IError {
+    var errno_: i32;
+    
+    function init(errno: i32) {
+        this.errno_ = errno;
+    }
+    
+    function code() i32 {
+        return this.errno_;
+    }
+    
+    function message() static_ptr<u8> {
+        return "I/O error";
+    }
+    
+    function errno() i32 {
+        return this.errno_;
+    }
+}
+
+// ============================================================================
+// AllocationError - for memory allocation failures
+// ============================================================================
+
+class AllocationError implements IError {
+    var size_: i64;
+    
+    function init(size: i64) {
+        this.size_ = size;
+    }
+    
+    function code() i32 {
+        return 7;
+    }
+    
+    function message() static_ptr<u8> {
+        return "memory allocation failed";
+    }
+    
+    function requestedSize() i64 {
+        return this.size_;
+    }
+}
+
+} // module sun

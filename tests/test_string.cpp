@@ -39,15 +39,6 @@ TEST(StringTest, construct_empty) {
   EXPECT_EQ(value, 0);
 }
 
-TEST(StringTest, construct_empty_with_capacity) {
-  // TODO: This test needs a factory function since Sun doesn't support
-  // declaring uninitialized class variables. Skip for now.
-  // The init_empty constructor exists but needs to be called via
-  // allocator.create or the class needs a default constructor + separate init
-  // method.
-  GTEST_SKIP() << "init_empty needs allocator.create pattern";
-}
-
 // ============================================================================
 // Character Access Tests
 // ============================================================================

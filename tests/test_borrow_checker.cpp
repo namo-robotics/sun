@@ -77,7 +77,7 @@ TEST(BorrowCheckerTest, refs_to_different_vars) {
 TEST(BorrowCheckerTest, ref_passed_to_function) {
   // Passing a ref to a function works
   auto value = executeString(R"(
-    function increment(x: ref i32) {
+    function increment(x: ref i32) void {
         x = x + 1;
     };
 
@@ -93,7 +93,7 @@ TEST(BorrowCheckerTest, ref_passed_to_function) {
 TEST(BorrowCheckerTest, nested_function_with_ref_param) {
   // Function taking ref parameter, called from main
   auto value = executeString(R"(
-    function double_it(x: ref i32) {
+    function double_it(x: ref i32) void {
         x = x * 2;
     };
 
@@ -211,7 +211,7 @@ TEST(BorrowCheckerTest, error_on_string_use_after_move) {
     import "build/stdlib.moon";
     using sun;
 
-    function consume(s: ref String) {
+    function consume(s: ref String) void {
     }
 
     function main() i32 {

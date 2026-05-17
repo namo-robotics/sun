@@ -1038,8 +1038,15 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
     case ASTNodeType::TRY_CATCH: {
       auto& tryCatchExpr = static_cast<TryCatchExprAST&>(expr);
+
+      // Track that we're inside a try block for error propagation checking
+      enterTryBlock();
+
       // Analyze the try block
       analyzeBlock(const_cast<BlockExprAST&>(tryCatchExpr.getTryBlock()));
+
+      // Exit try block tracking
+      exitTryBlock();
 
       // Analyze the catch clause
       const auto& catchClause = tryCatchExpr.getCatchClause();
@@ -1073,8 +1080,45 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
     case ASTNodeType::THROW: {
       auto& throwExpr = static_cast<ThrowExprAST&>(expr);
+
+      // Validate that throw is used inside a function declared with ", IError"
+      if (!isInThrowingFunction()) {
+        logAndThrowError(
+            "throw can only be used in functions declared with ', IError'",
+            throwExpr.getLocation());
+      }
+
       // Analyze the error expression being thrown
       analyzeExpr(const_cast<ExprAST&>(throwExpr.getErrorExpr()));
+
+      // Validate that the thrown expression implements IError
+      sun::TypePtr errorType = inferType(throwExpr.getErrorExpr());
+      if (errorType) {
+        bool implementsIError = false;
+
+        // Check if it's a class that implements IError
+        if (errorType->isClass()) {
+          auto* classType = static_cast<sun::ClassType*>(errorType.get());
+          implementsIError = classType->implementsInterface("IError");
+        }
+        // Check if it's a reference to a class that implements IError
+        else if (errorType->isReference()) {
+          auto* refType = static_cast<sun::ReferenceType*>(errorType.get());
+          sun::TypePtr innerType = refType->getReferencedType();
+          if (innerType && innerType->isClass()) {
+            auto* classType = static_cast<sun::ClassType*>(innerType.get());
+            implementsIError = classType->implementsInterface("IError");
+          }
+        }
+
+        if (!implementsIError) {
+          logAndThrowError(
+              "throw expression must be a type implementing IError, got '" +
+                  errorType->toString() + "'",
+              throwExpr.getLocation());
+        }
+      }
+
       // Throw doesn't return a value
       expr.setResolvedType(sun::Types::Void());
       break;
@@ -1348,7 +1392,8 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
                                              proto.getResolvedParamTypes());
 
   // Enter function scope with signature for nested function qualification
-  enterFunctionScope(funcSig);
+  // Pass canThrow flag so throw expressions can be validated
+  enterFunctionScope(funcSig, proto.canThrow());
 
   // If this is a generic function/method, bind its type parameters
   if (proto.isGeneric()) {
@@ -1421,7 +1466,8 @@ void SemanticAnalyzer::analyzeLambda(LambdaAST& lambda) {
 
   // Enter function scope (empty signature - lambdas are anonymous)
   // Nested functions in lambdas will still get outer function prefixes
-  enterFunctionScope("");
+  // Pass canThrow flag from the lambda's prototype
+  enterFunctionScope("", proto.canThrow());
 
   // Lambdas don't have type parameters (no generic lambdas)
 
@@ -1748,7 +1794,7 @@ void SemanticAnalyzer::lazyParseAndAnalyzeMethod(
   }
   std::string methodSig = getFunctionSignature(
       classType->getMangledMethodName(proto.getName()), substitutedParamTypes);
-  enterFunctionScope(methodSig);
+  enterFunctionScope(methodSig, proto.canThrow());
   if (classType) {
     declareVariable("this", classType, /*isParam=*/true);
   }
@@ -2063,6 +2109,24 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
                            argType->toString());
         }
       }
+    }
+  }
+
+  // Check for error propagation: calling a throwing function requires either
+  // being inside a try block or being in a function declared with ", IError"
+  if (resolvedFunc && resolvedFunc->canThrow) {
+    if (!isInTryBlock() && !isInThrowingFunction()) {
+      std::string funcName = "<unknown>";
+      if (calleeASTType == ASTNodeType::VARIABLE_REFERENCE) {
+        funcName =
+            static_cast<const VariableReferenceAST&>(*callExpr.getCallee())
+                .getName();
+      }
+      logAndThrowError(
+          "Call to throwing function '" + funcName +
+              "' must be in a try block or in a function declared with ', "
+              "IError'",
+          callExpr.getLocation());
     }
   }
 

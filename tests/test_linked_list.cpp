@@ -29,7 +29,7 @@ TEST(LinkedListTest, two_nodes_linked) {
             return this.value;
         }
 
-        function setNext(n: raw_ptr<Node>) {
+        function setNext(n: raw_ptr<Node>) void {
             this.next = n;
         }
 
@@ -66,7 +66,7 @@ TEST(LinkedListTest, three_nodes_chain) {
             return this.value;
         }
 
-        function setNext(n: raw_ptr<Node>) {
+        function setNext(n: raw_ptr<Node>) void {
             this.next = n;
         }
 
@@ -114,11 +114,11 @@ TEST(LinkedListTest, modify_through_pointer) {
             return this.value;
         }
 
-        function setValue(v: i32) {
+        function setValue(v: i32) void {
             this.value = v;
         }
 
-        function setNext(n: raw_ptr<Node>) {
+        function setNext(n: raw_ptr<Node>) void {
             this.next = n;
         }
 
@@ -163,7 +163,7 @@ TEST(LinkedListTest, access_deep_chain) {
             return this.value;
         }
 
-        function setNext(n: raw_ptr<Node>) {
+        function setNext(n: raw_ptr<Node>) void {
             this.next = n;
         }
 
@@ -209,7 +209,7 @@ TEST(LinkedListTest, null_terminated_list) {
             return this.value;
         }
 
-        function setNext(n: raw_ptr<Node>) {
+        function setNext(n: raw_ptr<Node>) void {
             this.next = n;
         }
 
@@ -266,7 +266,7 @@ TEST(LinkedListTest, while_loop_traversal) {
             return this.value;
         }
 
-        function setNext(n: raw_ptr<Node>) {
+        function setNext(n: raw_ptr<Node>) void {
             this.next = n;
         }
 
@@ -323,7 +323,7 @@ TEST(LinkedListTest, list_class_with_methods) {
             return this.value;
         }
 
-        function setNext(n: raw_ptr<Node>) {
+        function setNext(n: raw_ptr<Node>) void {
             this.next = n;
         }
 
@@ -349,7 +349,7 @@ TEST(LinkedListTest, list_class_with_methods) {
             this.tail = null;
         }
 
-        function append(alloc: ref HeapAllocator, v: i32) {
+        function append(alloc: ref HeapAllocator, v: i32) void {
             if (this.tail != null) {
                 // Append to existing list - create node and link via tail
                 this.tail.setNext(createNode(alloc, v));

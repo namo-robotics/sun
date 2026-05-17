@@ -92,13 +92,6 @@ class String {
         }
     }
     
-    // Construct empty string with given capacity
-    function init_empty(alloc: ref HeapAllocator, capacity: i64) {
-        var shape: array<i64, 1> = [capacity];
-        this.data = Matrix<u8>(alloc, shape);
-        this.len = 0;
-    }
-    
     // Get current string length
     function length() i64 {
         return this.len;

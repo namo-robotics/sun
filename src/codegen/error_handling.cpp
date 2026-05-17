@@ -264,3 +264,76 @@ Value* CodegenVisitor::codegen(const TryCatchExprAST& expr) {
   // No results (all branches return or have void type)
   return Constant::getNullValue(valueType);
 }
+
+// =============================================================================
+// LLVM Exception Handling Helpers
+// =============================================================================
+// These functions declare/get the C++ ABI exception handling functions
+// needed for LLVM's native exception handling mechanism.
+
+// Get or declare: void* __cxa_allocate_exception(size_t)
+FunctionCallee CodegenVisitor::getCxaAllocateException() {
+  auto* i8PtrTy = PointerType::getUnqual(ctx.getContext());
+  auto* i64Ty = Type::getInt64Ty(ctx.getContext());
+  FunctionType* fnType = FunctionType::get(i8PtrTy, {i64Ty}, false);
+  return module->getOrInsertFunction("__cxa_allocate_exception", fnType);
+}
+
+// Get or declare: void __cxa_throw(void* exception, void* tinfo, void* dest)
+FunctionCallee CodegenVisitor::getCxaThrow() {
+  auto* voidTy = Type::getVoidTy(ctx.getContext());
+  auto* i8PtrTy = PointerType::getUnqual(ctx.getContext());
+  FunctionType* fnType =
+      FunctionType::get(voidTy, {i8PtrTy, i8PtrTy, i8PtrTy}, false);
+  auto fn = module->getOrInsertFunction("__cxa_throw", fnType);
+  // Mark __cxa_throw as noreturn
+  if (auto* func = dyn_cast<Function>(fn.getCallee())) {
+    func->addFnAttr(Attribute::NoReturn);
+  }
+  return fn;
+}
+
+// Get or declare: void* __cxa_begin_catch(void* exception)
+FunctionCallee CodegenVisitor::getCxaBeginCatch() {
+  auto* i8PtrTy = PointerType::getUnqual(ctx.getContext());
+  FunctionType* fnType = FunctionType::get(i8PtrTy, {i8PtrTy}, false);
+  return module->getOrInsertFunction("__cxa_begin_catch", fnType);
+}
+
+// Get or declare: void __cxa_end_catch()
+FunctionCallee CodegenVisitor::getCxaEndCatch() {
+  auto* voidTy = Type::getVoidTy(ctx.getContext());
+  FunctionType* fnType = FunctionType::get(voidTy, {}, false);
+  return module->getOrInsertFunction("__cxa_end_catch", fnType);
+}
+
+// Get the personality function for exception handling
+// We use __gxx_personality_v0 for C++ ABI compatibility
+Constant* CodegenVisitor::getPersonalityFunction() {
+  auto* i32Ty = Type::getInt32Ty(ctx.getContext());
+  // Personality function signature: i32 (i32, i32, i64, ptr, ptr)
+  // But we just need a function pointer, so declare it minimally
+  FunctionType* fnType = FunctionType::get(i32Ty, true);  // varargs
+  auto fn = module->getOrInsertFunction("__gxx_personality_v0", fnType);
+  return cast<Constant>(fn.getCallee());
+}
+
+// Get or create the type info for Sun exceptions
+// This is a global constant that identifies our exception type
+Constant* CodegenVisitor::getSunExceptionTypeInfo() {
+  // Look for existing type info
+  if (GlobalVariable* existing =
+          module->getGlobalVariable("_ZTIP7IError", true)) {
+    return existing;
+  }
+
+  // Create a minimal type info structure for IError*
+  // In practice, we'll catch all exceptions and check the type ourselves
+  // For simplicity, we use a null catch clause (catch-all) in landing pads
+  auto* i8PtrTy = PointerType::getUnqual(ctx.getContext());
+
+  // Create external type info reference (will be provided by C++ runtime)
+  // For a catch-all, we can use null, but for typed catches we need real RTTI
+  // For now, return null pointer to indicate catch-all semantics
+  return ConstantPointerNull::get(i8PtrTy);
+}

@@ -187,7 +187,7 @@ function main() i32 {
 By default, objects are passed by value (copied):
 
 ```sun
-function modify_point(p: Point) {
+function modify_point(p: Point) void {
     p.x = 100;  // Modifies the copy
 }
 
@@ -238,7 +238,7 @@ class Counter {
         this.value = start;
     }
 
-    function increment() {
+    function increment() void {
         this.value = this.value + 1;
     }
 
