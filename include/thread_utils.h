@@ -183,6 +183,8 @@ class ThreadUtils {
   static constexpr int64_t DEFAULT_STACK_SIZE = 2 * 1024 * 1024;
 
   /// Clone flags for creating a thread (shares everything with parent)
+  /// Note: We don't use CLONE_CHILD_CLEARTID because it races with our
+  /// manual futex signaling (kernel clears to 0 after we set to 1).
   static constexpr int64_t THREAD_FLAGS =
       0x00000100 |  // CLONE_VM - Share memory space
       0x00000200 |  // CLONE_FS - Share filesystem info
@@ -190,6 +192,5 @@ class ThreadUtils {
       0x00000800 |  // CLONE_SIGHAND - Share signal handlers
       0x00010000 |  // CLONE_THREAD - Same thread group
       0x00040000 |  // CLONE_SYSVSEM - Share SysV semaphores
-      0x00100000 |  // CLONE_PARENT_SETTID - Set TID in parent
-      0x00200000;   // CLONE_CHILD_CLEARTID - Clear TID in child on exit
+      0x00100000;   // CLONE_PARENT_SETTID - Set TID in parent
 };
