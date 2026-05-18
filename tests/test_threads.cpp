@@ -91,42 +91,35 @@ TEST(ThreadTest, thread_type_inferred) {
 // Runtime Tests (Basic)
 // ============================================================================
 
-// Note: Full thread execution tests require the clone syscall to be properly
-// implemented with child stack setup. These are placeholder tests for when
-// that is complete.
+TEST(ThreadTest, spawn_and_join_basic) {
+  auto value = executeString(R"(
+    function main() i32 {
+      var t = spawn(lambda() i32 { return 42; });
+      return t.join();
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
 
-// TODO: Enable this test when thread execution is fully implemented
-// TEST(ThreadTest, spawn_and_join_basic) {
-//   auto value = executeString(R"(
-//     function main() i32 {
-//       var t = spawn(lambda() i32 { return 42; });
-//       return t.join();
-//     }
-//   )");
-//   EXPECT_EQ(value, 42);
-// }
+TEST(ThreadTest, spawn_with_captured_value) {
+  auto value = executeString(R"(
+    function main() i32 {
+      var x: i32 = 10;
+      var t = spawn(lambda() i32 { return x * 2; });
+      return t.join();
+    }
+  )");
+  EXPECT_EQ(value, 20);
+}
 
-// TODO: Enable this test when thread execution is fully implemented
-// TEST(ThreadTest, spawn_with_captured_value) {
-//   auto value = executeString(R"(
-//     function main() i32 {
-//       var x: i32 = 10;
-//       var t = spawn(lambda() i32 { return x * 2; });
-//       return t.join();
-//     }
-//   )");
-//   EXPECT_EQ(value, 20);
-// }
-
-// TODO: Enable this test when thread execution is fully implemented
-// TEST(ThreadTest, multiple_threads) {
-//   auto value = executeString(R"(
-//     function main() i32 {
-//       var t1 = spawn(lambda() i32 { return 10; });
-//       var t2 = spawn(lambda() i32 { return 20; });
-//       var t3 = spawn(lambda() i32 { return 30; });
-//       return t1.join() + t2.join() + t3.join();
-//     }
-//   )");
-//   EXPECT_EQ(value, 60);
-// }
+TEST(ThreadTest, multiple_threads) {
+  auto value = executeString(R"(
+    function main() i32 {
+      var t1 = spawn(lambda() i32 { return 10; });
+      var t2 = spawn(lambda() i32 { return 20; });
+      var t3 = spawn(lambda() i32 { return 30; });
+      return t1.join() + t2.join() + t3.join();
+    }
+  )");
+  EXPECT_EQ(value, 60);
+}

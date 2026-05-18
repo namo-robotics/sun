@@ -993,6 +993,17 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
                        memberAccess.getLocation());
     }
 
+    case sun::Type::Kind::Thread: {
+      // Thread<T>.join() returns T
+      auto* threadType = static_cast<sun::ThreadType*>(objectType.get());
+      if (memberName == "join") {
+        return threadType->getResultType();
+      }
+      logAndThrowError(
+          "Thread has no member '" + memberName + "'; available: 'join'",
+          memberAccess.getLocation());
+    }
+
     default:
       logAndThrowError("Cannot access member '" + memberName + "' on type '" +
                            objectType->toString() + "'",
