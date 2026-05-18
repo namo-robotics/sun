@@ -35,6 +35,7 @@ add_executable(sun_tests
     test_refs.cpp
     test_regex_parser.cpp
     test_string.cpp
+    test_threads.cpp
     test_vec.cpp
     # Add more test files
 )

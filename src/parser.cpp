@@ -653,6 +653,9 @@ unique_ptr<ExprAST> Parser::parsePrimary() {
     case TokenKind::THROW:
       base = parseThrow();
       break;
+    case TokenKind::SPAWN:
+      base = parseSpawn();
+      break;
     case TokenKind::NULL_LITERAL:
       base = std::make_unique<NullLiteralAST>();
       getNextToken();  // eat 'null'
@@ -3341,6 +3344,38 @@ unique_ptr<ExprAST> Parser::parseThrow() {
   }
 
   return std::make_unique<ThrowExprAST>(std::move(errorExpr));
+}
+
+// Parse spawn expression: spawn(lambda)
+// Creates an OS thread that runs the lambda and returns Thread<T>
+unique_ptr<ExprAST> Parser::parseSpawn() {
+  Position loc = curTok.start;
+  getNextToken();  // eat 'spawn'
+
+  // Expect '('
+  if (curTok.kind != TokenKind::PAREN_OPEN) {
+    parsingError("expected '(' after 'spawn'");
+    return nullptr;
+  }
+  getNextToken();  // eat '('
+
+  // Parse the lambda expression
+  auto lambdaExpr = parseExpression();
+  if (!lambdaExpr) {
+    parsingError("expected lambda expression in 'spawn'");
+    return nullptr;
+  }
+
+  // Expect ')'
+  if (curTok.kind != TokenKind::PAREN_CLOSE) {
+    parsingError("expected ')' after spawn argument");
+    return nullptr;
+  }
+  getNextToken();  // eat ')'
+
+  auto spawn = std::make_unique<SpawnExprAST>(std::move(lambdaExpr));
+  spawn->setLocation(loc);
+  return spawn;
 }
 
 // Parse try-catch expression: try { ... } catch (e: IError) { ... }

@@ -141,6 +141,12 @@ Type* LLVMTypeResolver::resolve(const sun::Type& type) {
       break;
     }
 
+    case sun::Type::Kind::Thread: {
+      // Thread handle type: { ptr context, ptr stack_base, i64 stack_size }
+      result = type.toLLVMType(ctx);
+      break;
+    }
+
     case sun::Type::Kind::TypeParameter: {
       // Type parameters should be substituted before codegen
       // This is an error condition - return nullptr

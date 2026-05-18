@@ -296,6 +296,437 @@ Value* CodegenVisitor::prepareRefArgument(const ExprAST* argExpr,
 }
 
 // -------------------------------------------------------------------
+// Builtin type method dispatch
+// Handles: Thread.join(), array.shape(), raw_ptr._get(), static_ptr methods
+// Returns nullptr if not a builtin type method (caller should continue).
+// -------------------------------------------------------------------
+
+Value* CodegenVisitor::codegenBuiltinTypeMethod(const CallExprAST& expr,
+                                                Value* objectPtr,
+                                                sun::TypePtr objectType,
+                                                const std::string& methodName) {
+  if (!objectType) return nullptr;
+
+  // Handle Thread<T>.join()
+  if (objectType->isThread()) {
+    if (methodName == "join") {
+      if (!expr.getArgs().empty()) {
+        logAndThrowError("Thread.join() takes no arguments");
+        return nullptr;
+      }
+      auto* threadType = static_cast<sun::ThreadType*>(objectType.get());
+      sun::TypePtr resultType = threadType->getResultType();
+      return codegenThreadJoin(objectPtr, resultType);
+    }
+    logAndThrowError("Unknown method on Thread: " + methodName);
+    return nullptr;
+  }
+
+  // Handle pointer type methods: raw_ptr._get(),
+  // static_ptr._get()/.length/.data
+  if (objectType->isRawPointer() || objectType->isStaticPointer()) {
+    sun::TypePtr pointeeType = nullptr;
+    if (objectType->isRawPointer()) {
+      pointeeType =
+          static_cast<sun::RawPointerType*>(objectType.get())->getPointeeType();
+    } else {
+      pointeeType = static_cast<sun::StaticPointerType*>(objectType.get())
+                        ->getPointeeType();
+    }
+
+    // Handle ._get() method for pointer dereferencing
+    if (methodName == "_get") {
+      if (!expr.getArgs().empty()) {
+        logAndThrowError("_get() takes no arguments");
+        return nullptr;
+      }
+
+      if (objectType->isStaticPointer()) {
+        // static_ptr is a fat pointer struct { ptr, i64 }
+        // objectPtr is the struct value, extract data ptr and load
+        Value* dataPtr =
+            ctx.builder->CreateExtractValue(objectPtr, 0, "static_ptr.data");
+        auto* staticPtrType =
+            static_cast<sun::StaticPointerType*>(objectType.get());
+        llvm::Type* pointeeLLVMType =
+            staticPtrType->getPointeeType()->toLLVMType(ctx.getContext());
+        return ctx.builder->CreateLoad(pointeeLLVMType, dataPtr,
+                                       "static_ptr._get");
+      } else {
+        auto* ptrType = static_cast<sun::RawPointerType*>(objectType.get());
+        llvm::Type* pointeeLLVMType =
+            ptrType->getPointeeType()->toLLVMType(ctx.getContext());
+        return ctx.builder->CreateLoad(pointeeLLVMType, objectPtr,
+                                       "raw_ptr._get");
+      }
+    }
+
+    // For pointer-to-class, we don't handle other methods here - return nullptr
+    // to continue with class method dispatch
+    if (pointeeType && pointeeType->isClass()) {
+      return nullptr;  // Let caller handle as class method
+    }
+  }
+
+  // Not a builtin type method
+  return nullptr;
+}
+
+// -------------------------------------------------------------------
+// Module-qualified function call: mymod.foo() -> mymod_foo()
+// -------------------------------------------------------------------
+
+Value* CodegenVisitor::codegenModuleFunctionCall(
+    const CallExprAST& expr, sun::ModuleType* moduleType,
+    const std::string& funcName, const MemberAccessAST& memberAccess) {
+  // Use resolved name from semantic analysis (includes library hash prefix)
+  std::string qualifiedName;
+  if (memberAccess.hasResolvedQualifiedName()) {
+    qualifiedName = memberAccess.getResolvedQualifiedName();
+  } else {
+    qualifiedName =
+        mangleModulePath(moduleType->getModulePath()) + "_" + funcName;
+  }
+
+  // Build argument list
+  std::vector<Value*> argValues;
+  for (const auto& arg : expr.getArgs()) {
+    Value* val = codegen(*arg);
+    if (!val) return nullptr;
+    argValues.push_back(val);
+  }
+
+  // Get or declare the function
+  Function* func = module->getFunction(qualifiedName);
+  if (!func) {
+    logAndThrowError("Unknown function: " + qualifiedName);
+    return nullptr;
+  }
+
+  Value* result = ctx.builder->CreateCall(func, argValues, "calltmp");
+  result = unwrapCallErrorUnion(result);
+  return materializeStructReturn(result);
+}
+
+// -------------------------------------------------------------------
+// Interface method dispatch via vtable
+// -------------------------------------------------------------------
+
+Value* CodegenVisitor::codegenInterfaceMethodCall(
+    const CallExprAST& expr, Value* objectPtr, sun::InterfaceType* ifaceType,
+    const std::string& methodName) {
+  // Get the method info from the interface
+  const sun::InterfaceMethod* ifaceMethod = ifaceType->getMethod(methodName);
+  if (!ifaceMethod) {
+    logAndThrowError("Unknown method: " + methodName + " on interface " +
+                     ifaceType->getName());
+    return nullptr;
+  }
+
+  // Generic interface methods cannot be dispatched via vtable
+  if (ifaceMethod->isGeneric()) {
+    logAndThrowError(
+        "Cannot dynamically dispatch generic method '" + methodName +
+        "' on interface type '" + ifaceType->getName() +
+        "'. Generic methods require compile-time type information.");
+    return nullptr;
+  }
+
+  // Get the vtable slot index for this method
+  int methodIndex = ifaceType->getMethodIndex(methodName);
+  if (methodIndex < 0) {
+    logAndThrowError("Method not in vtable: " + methodName + " on interface " +
+                     ifaceType->getName());
+    return nullptr;
+  }
+
+  // Load the fat pointer from objectPtr (which is an alloca to the fat struct)
+  llvm::StructType* fatPtrType =
+      sun::InterfaceType::getFatPointerType(ctx.getContext());
+  Value* fatPtr = ctx.builder->CreateLoad(fatPtrType, objectPtr, "iface.fat");
+
+  // Extract data_ptr (element 0) and vtable_ptr (element 1)
+  Value* dataPtr = ctx.builder->CreateExtractValue(fatPtr, 0, "iface.data");
+  Value* vtablePtr = ctx.builder->CreateExtractValue(fatPtr, 1, "iface.vtable");
+
+  // GEP into vtable to get the function pointer at the method slot
+  llvm::Type* ptrTy = PointerType::getUnqual(ctx.getContext());
+  Value* funcPtrSlot = ctx.builder->CreateGEP(
+      ptrTy, vtablePtr,
+      ConstantInt::get(Type::getInt32Ty(ctx.getContext()), methodIndex),
+      "vtable.slot");
+
+  // Load the function pointer from the vtable
+  Value* funcPtr = ctx.builder->CreateLoad(ptrTy, funcPtrSlot, "iface.func");
+
+  // Build the function type for the indirect call
+  // Parameters: this pointer (ptr), then method params
+  std::vector<llvm::Type*> paramTypes;
+  paramTypes.push_back(ptrTy);  // 'this' pointer
+  for (const auto& pt : ifaceMethod->paramTypes) {
+    paramTypes.push_back(typeResolver.resolve(pt));
+  }
+  llvm::Type* returnType =
+      typeResolver.resolveForReturn(ifaceMethod->returnType);
+  llvm::FunctionType* funcType =
+      FunctionType::get(returnType, paramTypes, false);
+
+  // Build argument list: data_ptr as 'this', then user arguments
+  std::vector<Value*> argValues;
+  argValues.push_back(dataPtr);  // 'this' pointer
+
+  for (const auto& argExpr : expr.getArgs()) {
+    sun::TypePtr argSunType = argExpr->getResolvedType();
+    Value* argVal = codegen(*argExpr);
+    if (!argVal) return nullptr;
+    argVal = applyMoveSemantics(argVal, argSunType);
+    argValues.push_back(argVal);
+  }
+
+  // Make the indirect call
+  Value* result;
+  if (returnType->isVoidTy()) {
+    result = ctx.builder->CreateCall(funcType, funcPtr, argValues);
+  } else {
+    result =
+        ctx.builder->CreateCall(funcType, funcPtr, argValues, "iface.call");
+  }
+
+  // Handle error union unwrapping and struct materialization
+  result = unwrapCallErrorUnion(result);
+  return materializeStructReturn(result);
+}
+
+// -------------------------------------------------------------------
+// Class method dispatch (regular and generic methods)
+// -------------------------------------------------------------------
+
+Value* CodegenVisitor::codegenClassMethodCall(
+    const CallExprAST& expr, Value* objectPtr, sun::ClassType* classType,
+    const std::string& methodName, const MemberAccessAST* memberAccess) {
+  // Look up the method
+  const sun::ClassMethod* method = classType->getMethod(methodName);
+  if (!method) {
+    logAndThrowError("Unknown method: " + methodName + " on class " +
+                     classType->getDisplayName());
+    return nullptr;
+  }
+
+  // Handle generic method calls with type arguments
+  // e.g., allocator.create<Point>(3, 4)
+  if (memberAccess && memberAccess->hasTypeArguments() && method->isGeneric()) {
+    // Type arguments must be resolved by semantic analysis
+    if (!memberAccess->hasResolvedTypeArgs()) {
+      logAndThrowError(
+          "Generic method type arguments not resolved by semantic analysis: " +
+          methodName);
+      return nullptr;
+    }
+    const std::vector<sun::TypePtr>& typeArgs =
+        memberAccess->getResolvedTypeArgs();
+
+    // Build the specialized mangled name
+    std::string baseMangledName = classType->getMangledMethodName(methodName);
+    std::string mangledName = baseMangledName;
+    for (const auto& typeArg : typeArgs) {
+      mangledName += "_" + typeArg->toString();
+    }
+
+    // Look up the specialized method function
+    Function* specializedFunc = module->getFunction(mangledName);
+    if (!specializedFunc) {
+      logAndThrowError("Generic method specialization not found: " +
+                       mangledName);
+      return nullptr;
+    }
+
+    // Build arguments: this pointer first, then user arguments
+    std::vector<Value*> argValues;
+    argValues.push_back(objectPtr);
+
+    for (const auto& argExpr : expr.getArgs()) {
+      sun::TypePtr argSunType = argExpr->getResolvedType();
+      Value* argVal = codegen(*argExpr);
+      if (!argVal) return nullptr;
+      argVal = applyMoveSemantics(argVal, argSunType);
+      argValues.push_back(argVal);
+    }
+
+    if (specializedFunc->getReturnType()->isVoidTy()) {
+      return ctx.builder->CreateCall(specializedFunc, argValues);
+    }
+    Value* result =
+        ctx.builder->CreateCall(specializedFunc, argValues, "method.call");
+    result = unwrapCallErrorUnion(result);
+    return materializeStructReturn(result);
+  }
+
+  // Get the mangled method name for regular (non-generic) call
+  std::string mangledName = classType->getMangledMethodName(methodName);
+  Function* methodFunc = module->getFunction(mangledName);
+  if (!methodFunc) {
+    logAndThrowError("Method function not found: " +
+                     classType->getDisplayName() + "." + methodName);
+    return nullptr;
+  }
+
+  // Build arguments: this pointer first, then user arguments
+  std::vector<Value*> argValues;
+  argValues.push_back(objectPtr);
+
+  const auto& methodParamTypes = method->paramTypes;
+  size_t methodArgIdx = 0;
+  for (const auto& argExpr : expr.getArgs()) {
+    sun::TypePtr argSunType = argExpr->getResolvedType();
+    sun::TypePtr paramType = methodArgIdx < methodParamTypes.size()
+                                 ? methodParamTypes[methodArgIdx]
+                                 : nullptr;
+
+    bool isRefParam = paramType && paramType->isReference();
+
+    if (isRefParam) {
+      Value* refArg = prepareRefArgument(argExpr.get(), argSunType);
+      if (!refArg) return nullptr;
+      argValues.push_back(refArg);
+    } else {
+      Value* argVal = codegen(*argExpr);
+      if (!argVal) return nullptr;
+
+      argVal = convertToInterfaceIfNeeded(argVal, argSunType, paramType);
+      if (!argVal) return nullptr;
+
+      if (!paramType || !paramType->isInterface()) {
+        argVal = applyMoveSemantics(argVal, argSunType);
+        argVal = widenNumericIfNeeded(argVal, paramType);
+      }
+
+      argValues.push_back(argVal);
+    }
+    ++methodArgIdx;
+  }
+
+  // If this is an explicit deinit() call, mark as already deinited
+  if (methodName == "deinit") {
+    markClassAllocationAsDeinited(objectPtr);
+  }
+
+  if (methodFunc->getReturnType()->isVoidTy()) {
+    return ctx.builder->CreateCall(methodFunc, argValues);
+  }
+  Value* result = ctx.builder->CreateCall(methodFunc, argValues, "method.call");
+  result = unwrapCallErrorUnion(result);
+  return materializeStructReturn(result);
+}
+
+// -------------------------------------------------------------------
+// Top-level method call handler
+// Orchestrates: module calls → builtin type methods → interface → class
+// -------------------------------------------------------------------
+
+Value* CodegenVisitor::codegenMethodCall(const CallExprAST& expr,
+                                         const MemberAccessAST& memberAccess) {
+  sun::TypePtr objectType = memberAccess.getObject()->getResolvedType();
+  const std::string& methodName = memberAccess.getMemberName();
+
+  // Handle module-qualified function call: mymod.foo()
+  if (objectType && objectType->isModule()) {
+    return codegenModuleFunctionCall(
+        expr, static_cast<sun::ModuleType*>(objectType.get()), methodName,
+        memberAccess);
+  }
+
+  // Handle array.shape() builtin
+  if (objectType && (objectType->isArray() ||
+                     (objectType->isReference() &&
+                      static_cast<sun::ReferenceType*>(objectType.get())
+                          ->getReferencedType()
+                          ->isArray()))) {
+    if (methodName == "shape") {
+      if (!expr.getArgs().empty()) {
+        logAndThrowError("shape() takes no arguments");
+        return nullptr;
+      }
+      return codegenArrayShape(memberAccess);
+    }
+  }
+
+  // Generate object pointer
+  Value* objectPtr = codegen(*memberAccess.getObject());
+  if (!objectPtr) {
+    logAndThrowError("Failed to generate object for method call");
+    return nullptr;
+  }
+
+  // For generic method bodies, 'this' may have a type parameter type.
+  // In that case, use the currentClass which is the specialized type.
+  if (dynamic_cast<const ThisExprAST*>(memberAccess.getObject()) &&
+      currentClass) {
+    objectType = currentClass;
+  }
+
+  // Try builtin type methods first (Thread.join(), ptr._get(), etc.)
+  // Note: For pointer-to-class, this returns nullptr to continue with class
+  // dispatch
+  if (Value* builtinResult =
+          codegenBuiltinTypeMethod(expr, objectPtr, objectType, methodName)) {
+    return builtinResult;
+  }
+
+  // Handle pointer-to-class: unwrap to get the underlying class type
+  if (objectType &&
+      (objectType->isRawPointer() || objectType->isStaticPointer())) {
+    sun::TypePtr pointeeType = nullptr;
+    if (objectType->isRawPointer()) {
+      pointeeType =
+          static_cast<sun::RawPointerType*>(objectType.get())->getPointeeType();
+    } else {
+      pointeeType = static_cast<sun::StaticPointerType*>(objectType.get())
+                        ->getPointeeType();
+    }
+
+    if (pointeeType && pointeeType->isClass()) {
+      auto* cls = static_cast<sun::ClassType*>(pointeeType.get());
+      auto registeredClass = typeRegistry->getClass(cls->getName());
+      if (!registeredClass) {
+        logAndThrowError("Class not found in type registry: " + cls->getName());
+        return nullptr;
+      }
+      objectType = registeredClass;
+    }
+  }
+
+  // Handle reference types - unwrap to get the underlying type
+  if (objectType && objectType->isReference()) {
+    objectType =
+        static_cast<sun::ReferenceType*>(objectType.get())->getReferencedType();
+  }
+
+  // Handle interface dispatch
+  if (objectType && objectType->isInterface()) {
+    return codegenInterfaceMethodCall(
+        expr, objectPtr, static_cast<sun::InterfaceType*>(objectType.get()),
+        methodName);
+  }
+
+  // Handle Thread type (if not caught by builtin method handler)
+  if (objectType && objectType->isThread()) {
+    logAndThrowError("Unknown method on Thread: " + methodName);
+    return nullptr;
+  }
+
+  // Must be a class method call
+  if (!objectType || !objectType->isClass()) {
+    logAndThrowError("Method call on non-class type: " +
+                     (objectType ? objectType->toString() : "null"));
+    return nullptr;
+  }
+
+  return codegenClassMethodCall(expr, objectPtr,
+                                static_cast<sun::ClassType*>(objectType.get()),
+                                methodName, &memberAccess);
+}
+
+// -------------------------------------------------------------------
 // Call expression dispatch
 // -------------------------------------------------------------------
 
@@ -305,358 +736,7 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
   // Check if this is a method call (MemberAccessAST as callee)
   if (auto* memberAccess =
           dynamic_cast<const MemberAccessAST*>(expr.getCallee())) {
-    // Get the object's type (resolved by semantic analyzer)
-    sun::TypePtr objectType = memberAccess->getObject()->getResolvedType();
-
-    const std::string& methodName = memberAccess->getMemberName();
-
-    // Handle qualified function call on module: mymod.foo() -> mymod_foo()
-    if (objectType && objectType->isModule()) {
-      // Use resolved name from semantic analysis (includes library hash prefix)
-      std::string qualifiedName;
-      if (memberAccess->hasResolvedQualifiedName()) {
-        qualifiedName = memberAccess->getResolvedQualifiedName();
-      } else {
-        auto* moduleType = static_cast<sun::ModuleType*>(objectType.get());
-        qualifiedName =
-            mangleModulePath(moduleType->getModulePath()) + "_" + methodName;
-      }
-
-      // Build argument list
-      std::vector<Value*> argValues;
-      for (const auto& arg : expr.getArgs()) {
-        Value* val = codegen(*arg);
-        if (!val) return nullptr;
-        argValues.push_back(val);
-      }
-
-      // Get or declare the function
-      Function* func = module->getFunction(qualifiedName);
-      if (!func) {
-        logAndThrowError("Unknown function: " + qualifiedName);
-        return nullptr;
-      }
-
-      Value* result = ctx.builder->CreateCall(func, argValues, "calltmp");
-      result = unwrapCallErrorUnion(result);
-      return materializeStructReturn(result);
-    }
-
-    // Handle array.shape() builtin
-    if (objectType && (objectType->isArray() ||
-                       (objectType->isReference() &&
-                        static_cast<sun::ReferenceType*>(objectType.get())
-                            ->getReferencedType()
-                            ->isArray()))) {
-      if (methodName == "shape") {
-        if (!expr.getArgs().empty()) {
-          logAndThrowError("shape() takes no arguments");
-          return nullptr;
-        }
-        return codegenArrayShape(*memberAccess);
-      }
-    }
-
-    // Method call: object.method(args)
-    Value* objectPtr = codegen(*memberAccess->getObject());
-    if (!objectPtr) {
-      logAndThrowError("Failed to generate object for method call");
-      return nullptr;
-    }
-
-    // For generic method bodies, 'this' may have a type parameter type.
-    // In that case, use the currentClass which is the specialized type.
-    if (dynamic_cast<const ThisExprAST*>(memberAccess->getObject()) &&
-        currentClass) {
-      objectType = currentClass;
-    }
-
-    // Handle pointer-to-class types: raw_ptr<ClassName>.method() or
-    // static_ptr<ClassName>.method()
-    // The pointer value is already the 'this' pointer
-    if (objectType &&
-        (objectType->isRawPointer() || objectType->isStaticPointer())) {
-      // Get the pointee type for unwrapping pointer-to-class calls
-      sun::TypePtr pointeeType = nullptr;
-      if (objectType->isRawPointer()) {
-        pointeeType = static_cast<sun::RawPointerType*>(objectType.get())
-                          ->getPointeeType();
-      } else {
-        pointeeType = static_cast<sun::StaticPointerType*>(objectType.get())
-                          ->getPointeeType();
-      }
-
-      // Handle ._get() method for pointer dereferencing
-      // Users cannot define methods starting with _ so no conflict possible
-      if (methodName == "_get") {
-        if (expr.getArgs().size() != 0) {
-          logAndThrowError("_get() takes no arguments");
-          return nullptr;
-        }
-
-        if (objectType->isStaticPointer()) {
-          // static_ptr is a fat pointer struct { ptr, i64 }
-          // objectPtr is the struct value, extract data ptr and load
-          Value* dataPtr =
-              ctx.builder->CreateExtractValue(objectPtr, 0, "static_ptr.data");
-          auto* staticPtrType =
-              static_cast<sun::StaticPointerType*>(objectType.get());
-          llvm::Type* pointeeLLVMType =
-              staticPtrType->getPointeeType()->toLLVMType(ctx.getContext());
-          return ctx.builder->CreateLoad(pointeeLLVMType, dataPtr,
-                                         "static_ptr._get");
-        } else {
-          auto* ptrType = static_cast<sun::RawPointerType*>(objectType.get());
-          llvm::Type* pointeeLLVMType =
-              ptrType->getPointeeType()->toLLVMType(ctx.getContext());
-          return ctx.builder->CreateLoad(pointeeLLVMType, objectPtr,
-                                         "raw_ptr._get");
-        }
-      }
-
-      // Unwrap pointer-to-class for method calls
-      if (pointeeType && pointeeType->isClass()) {
-        auto* cls = static_cast<sun::ClassType*>(pointeeType.get());
-        std::string className = cls->getName();
-
-        // Look up the class from type registry
-        auto registeredClass = typeRegistry->getClass(className);
-        if (!registeredClass) {
-          logAndThrowError("Class not found in type registry: " + className);
-          return nullptr;
-        }
-        objectType = registeredClass;
-      }
-    }
-
-    // Handle reference types - unwrap to get the underlying class type
-    if (objectType && objectType->isReference()) {
-      objectType = static_cast<sun::ReferenceType*>(objectType.get())
-                       ->getReferencedType();
-    }
-
-    // For interface types, use dynamic dispatch via vtable lookup
-    if (objectType && objectType->isInterface()) {
-      auto* ifaceType = static_cast<sun::InterfaceType*>(objectType.get());
-
-      // Get the method info from the interface
-      const sun::InterfaceMethod* ifaceMethod =
-          ifaceType->getMethod(methodName);
-      if (!ifaceMethod) {
-        logAndThrowError("Unknown method: " + methodName + " on interface " +
-                         ifaceType->getName());
-        return nullptr;
-      }
-
-      // Generic interface methods cannot be dispatched via vtable
-      if (ifaceMethod->isGeneric()) {
-        logAndThrowError(
-            "Cannot dynamically dispatch generic method '" + methodName +
-            "' on interface type '" + ifaceType->getName() +
-            "'. Generic methods require compile-time type information.");
-        return nullptr;
-      }
-
-      // Get the vtable slot index for this method
-      int methodIndex = ifaceType->getMethodIndex(methodName);
-      if (methodIndex < 0) {
-        logAndThrowError("Method not in vtable: " + methodName +
-                         " on interface " + ifaceType->getName());
-        return nullptr;
-      }
-
-      // Load the fat pointer from objectPtr (which is an alloca to the fat
-      // struct)
-      llvm::StructType* fatPtrType =
-          sun::InterfaceType::getFatPointerType(ctx.getContext());
-      Value* fatPtr =
-          ctx.builder->CreateLoad(fatPtrType, objectPtr, "iface.fat");
-
-      // Extract data_ptr (element 0) and vtable_ptr (element 1)
-      Value* dataPtr = ctx.builder->CreateExtractValue(fatPtr, 0, "iface.data");
-      Value* vtablePtr =
-          ctx.builder->CreateExtractValue(fatPtr, 1, "iface.vtable");
-
-      // GEP into vtable to get the function pointer at the method slot
-      // Vtable is laid out as an array of function pointers (all ptr type)
-      llvm::Type* ptrTy = PointerType::getUnqual(ctx.getContext());
-      Value* funcPtrSlot = ctx.builder->CreateGEP(
-          ptrTy, vtablePtr,
-          ConstantInt::get(Type::getInt32Ty(ctx.getContext()), methodIndex),
-          "vtable.slot");
-
-      // Load the function pointer from the vtable
-      Value* funcPtr =
-          ctx.builder->CreateLoad(ptrTy, funcPtrSlot, "iface.func");
-
-      // Build the function type for the indirect call
-      // Parameters: this pointer (ptr), then method params
-      std::vector<llvm::Type*> paramTypes;
-      paramTypes.push_back(ptrTy);  // 'this' pointer
-      for (const auto& pt : ifaceMethod->paramTypes) {
-        paramTypes.push_back(typeResolver.resolve(pt));
-      }
-      llvm::Type* returnType =
-          typeResolver.resolveForReturn(ifaceMethod->returnType);
-      llvm::FunctionType* funcType =
-          FunctionType::get(returnType, paramTypes, false);
-
-      // Build argument list: data_ptr as 'this', then user arguments
-      std::vector<Value*> argValues;
-      argValues.push_back(dataPtr);  // 'this' pointer
-
-      for (const auto& argExpr : expr.getArgs()) {
-        sun::TypePtr argSunType = argExpr->getResolvedType();
-        Value* argVal = codegen(*argExpr);
-        if (!argVal) return nullptr;
-        argVal = applyMoveSemantics(argVal, argSunType);
-        argValues.push_back(argVal);
-      }
-
-      // Make the indirect call
-      Value* result;
-      if (returnType->isVoidTy()) {
-        result = ctx.builder->CreateCall(funcType, funcPtr, argValues);
-      } else {
-        result =
-            ctx.builder->CreateCall(funcType, funcPtr, argValues, "iface.call");
-      }
-
-      // Handle error union unwrapping and struct materialization
-      result = unwrapCallErrorUnion(result);
-      return materializeStructReturn(result);
-    }
-
-    if (!objectType || !objectType->isClass()) {
-      logAndThrowError("Method call on non-class type: " +
-                       (objectType ? objectType->toString() : "null"));
-      return nullptr;
-    }
-    auto* classType = static_cast<sun::ClassType*>(objectType.get());
-
-    // Look up the method
-    const sun::ClassMethod* method = classType->getMethod(methodName);
-    if (!method) {
-      logAndThrowError("Unknown method: " + methodName + " on class " +
-                       classType->getDisplayName());
-      return nullptr;
-    }
-
-    // Handle generic method calls with type arguments
-    // e.g., allocator.create<Point>(3, 4)
-    if (memberAccess->hasTypeArguments() && method->isGeneric()) {
-      // Type arguments must be resolved by semantic analysis
-      if (!memberAccess->hasResolvedTypeArgs()) {
-        logAndThrowError(
-            "Generic method type arguments not resolved by semantic "
-            "analysis: " +
-            methodName);
-        return nullptr;
-      }
-      const std::vector<sun::TypePtr>& typeArgs =
-          memberAccess->getResolvedTypeArgs();
-
-      // Build the specialized mangled name
-      std::string baseMangledName = classType->getMangledMethodName(methodName);
-      std::string mangledName = baseMangledName;
-      for (const auto& typeArg : typeArgs) {
-        mangledName += "_" + typeArg->toString();
-      }
-
-      // Look up the specialized method function
-      std::string resolvedName = mangledName;
-      Function* specializedFunc = module->getFunction(resolvedName);
-
-      // If not already generated, look up from pre-computed specializations
-      if (!specializedFunc) {
-        logAndThrowError("Generic method specialization not found: " +
-                         mangledName);
-      }
-
-      // Build arguments: this pointer first, then user arguments
-      std::vector<Value*> argValues;
-      argValues.push_back(objectPtr);  // 'this' pointer
-
-      for (const auto& argExpr : expr.getArgs()) {
-        sun::TypePtr argSunType = argExpr->getResolvedType();
-        Value* argVal = codegen(*argExpr);
-        if (!argVal) return nullptr;
-        // Apply move semantics for class arguments passed by value
-        argVal = applyMoveSemantics(argVal, argSunType);
-        argValues.push_back(argVal);
-      }
-
-      // Don't name void-returning calls
-      if (specializedFunc->getReturnType()->isVoidTy()) {
-        return ctx.builder->CreateCall(specializedFunc, argValues);
-      }
-      Value* result =
-          ctx.builder->CreateCall(specializedFunc, argValues, "method.call");
-      result = unwrapCallErrorUnion(result);
-      return materializeStructReturn(result);
-    }
-
-    // Get the mangled method name
-    std::string mangledName = classType->getMangledMethodName(methodName);
-    Function* methodFunc = module->getFunction(mangledName);
-    if (!methodFunc) {
-      logAndThrowError("Method function not found: " +
-                       classType->getDisplayName() + "." + methodName);
-    }
-
-    // Build arguments: this pointer first, then user arguments
-    std::vector<Value*> argValues;
-    argValues.push_back(objectPtr);  // 'this' pointer
-
-    const auto& methodParamTypes = method->paramTypes;
-    size_t methodArgIdx = 0;
-    for (const auto& argExpr : expr.getArgs()) {
-      sun::TypePtr argSunType = argExpr->getResolvedType();
-      sun::TypePtr paramType = methodArgIdx < methodParamTypes.size()
-                                   ? methodParamTypes[methodArgIdx]
-                                   : nullptr;
-
-      // Check if this method parameter is a reference type
-      bool isRefParam = paramType && paramType->isReference();
-
-      if (isRefParam) {
-        Value* refArg = prepareRefArgument(argExpr.get(), argSunType);
-        if (!refArg) return nullptr;
-        argValues.push_back(refArg);
-      } else {
-        Value* argVal = codegen(*argExpr);
-        if (!argVal) return nullptr;
-
-        // Handle class-to-interface conversion (must come before move
-        // semantics)
-        argVal = convertToInterfaceIfNeeded(argVal, argSunType, paramType);
-        if (!argVal) return nullptr;
-
-        // Skip move semantics for interface args (already handled)
-        if (!paramType || !paramType->isInterface()) {
-          argVal = applyMoveSemantics(argVal, argSunType);
-          argVal = widenNumericIfNeeded(argVal, paramType);
-        }
-
-        argValues.push_back(argVal);
-      }
-      ++methodArgIdx;
-    }
-
-    // If this is an explicit deinit() call, mark the class allocation as
-    // already deinited so emitScopeCleanup doesn't double-free
-    if (methodName == "deinit") {
-      markClassAllocationAsDeinited(objectPtr);
-    }
-
-    // Don't name void-returning calls
-    if (methodFunc->getReturnType()->isVoidTy()) {
-      return ctx.builder->CreateCall(methodFunc, argValues);
-    }
-    Value* result =
-        ctx.builder->CreateCall(methodFunc, argValues, "method.call");
-    result = unwrapCallErrorUnion(result);
-    return materializeStructReturn(result);
+    return codegenMethodCall(expr, *memberAccess);
   }
 
   if (auto* varRef =

@@ -321,6 +321,14 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
           }
         }
 
+        // Thread<T>.join() returns T
+        if (memberName == "join") {
+          if (objectType && objectType->isThread()) {
+            return static_cast<sun::ThreadType*>(objectType.get())
+                ->getResultType();
+          }
+        }
+
         // If calleeType is non-null but not a function, it might be the return
         // type of a builtin method (e.g., static_ptr.length returns i64)
         if (calleeType) {
@@ -526,6 +534,20 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       // Throw expressions don't return a value (they transfer control)
       // We return Void but in practice this is a noreturn
       return sun::Types::Void();
+    }
+
+    case ASTNodeType::SPAWN: {
+      // spawn(lambda) returns Thread<T> where T is the lambda's return type
+      const auto& spawnExpr = static_cast<const SpawnExprAST&>(expr);
+      sun::TypePtr lambdaType = inferType(spawnExpr.getLambda());
+      if (lambdaType && lambdaType->isLambda()) {
+        auto* lambda = static_cast<sun::LambdaType*>(lambdaType.get());
+        return std::make_shared<sun::ThreadType>(lambda->getReturnType());
+      }
+      logAndThrowError("spawn requires a lambda expression, got '" +
+                           (lambdaType ? lambdaType->toString() : "unknown") +
+                           "'",
+                       spawnExpr.getLocation());
     }
 
     case ASTNodeType::GENERIC_CALL: {

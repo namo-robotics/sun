@@ -322,6 +322,14 @@ std::unique_ptr<ExprAST> LambdaAST::clone() const {
   return copy;
 }
 
+std::unique_ptr<ExprAST> SpawnExprAST::clone() const {
+  auto copy = std::make_unique<SpawnExprAST>(Lambda->clone());
+  copy->setLocation(location_);
+  copy->setResolvedType(resolvedType);
+  copy->setPrecompiled(precompiled_);
+  return copy;
+}
+
 std::unique_ptr<ExprAST> ReturnExprAST::clone() const {
   auto copy = std::make_unique<ReturnExprAST>(Value ? Value->clone() : nullptr);
   copy->setLocation(location_);

@@ -14,6 +14,7 @@
 #include "codegen.h"             // Your CodegenContext definition
 #include "error.h"               // Error handling
 #include "llvm_type_resolver.h"  // LLVM type resolution
+#include "thread_utils.h"        // Thread support utilities
 #include "types.h"               // Type system
 
 using NamedValueMap = std::map<std::string, llvm::AllocaInst*>;
@@ -161,13 +162,17 @@ class CodegenVisitor {
   // Used to distinguish library declarations from codegen-created forward decls
   std::set<std::string> precompiledFunctions_;
 
+  // Thread support utilities (syscalls, types)
+  ThreadUtils threadUtils;
+
  public:
   explicit CodegenVisitor(CodegenContext& ctx,
                           std::shared_ptr<sun::TypeRegistry> registry)
       : ctx(ctx),
         module(ctx.mainModule.get()),
         typeRegistry(std::move(registry)),
-        typeResolver(ctx.getContext()) {}
+        typeResolver(ctx.getContext()),
+        threadUtils(ctx, ctx.mainModule.get()) {}
 
   // Snapshot the module's current function declarations.
   // Call after declareAvailableFunctions() but before codegen().
@@ -230,6 +235,37 @@ class CodegenVisitor {
   llvm::Value* codegenLambdaCall(const CallExprAST& expr,
                                  const std::string& calleeName,
                                  const sun::LambdaType& lambdaType);
+
+  // Method call dispatch helpers (in call_expressions.cpp)
+  // Top-level method call handler: dispatches to appropriate sub-handler
+  llvm::Value* codegenMethodCall(const CallExprAST& expr,
+                                 const MemberAccessAST& memberAccess);
+
+  // Handles builtin type methods: Thread.join(), array.shape(), ptr._get(),
+  // etc. Returns nullptr if not a builtin type method (caller should continue).
+  llvm::Value* codegenBuiltinTypeMethod(const CallExprAST& expr,
+                                        llvm::Value* objectPtr,
+                                        sun::TypePtr objectType,
+                                        const std::string& methodName);
+
+  // Handles interface method dispatch via vtable
+  llvm::Value* codegenInterfaceMethodCall(const CallExprAST& expr,
+                                          llvm::Value* objectPtr,
+                                          sun::InterfaceType* ifaceType,
+                                          const std::string& methodName);
+
+  // Handles class method dispatch (regular and generic)
+  llvm::Value* codegenClassMethodCall(const CallExprAST& expr,
+                                      llvm::Value* objectPtr,
+                                      sun::ClassType* classType,
+                                      const std::string& methodName,
+                                      const MemberAccessAST* memberAccess);
+
+  // Handles module-qualified function calls: mymod.foo()
+  llvm::Value* codegenModuleFunctionCall(const CallExprAST& expr,
+                                         sun::ModuleType* moduleType,
+                                         const std::string& funcName,
+                                         const MemberAccessAST& memberAccess);
 
   // Class codegen
   llvm::Value* codegen(const ClassDefinitionAST& expr);
@@ -663,6 +699,47 @@ class CodegenVisitor {
   llvm::Value* codegenFileClose(const CallExprAST& expr);
   llvm::Value* codegenFileWrite(const CallExprAST& expr);
   llvm::Value* codegenFileRead(const CallExprAST& expr);
+
+  // -------------------------------------------------------------------
+  // Thread support (uses ThreadUtils for syscalls and types)
+  // -------------------------------------------------------------------
+
+  /**
+   * Generates IR for a spawn(lambda) expression.
+   *
+   * Emits code that:
+   *   1. Allocates a stack for the child thread (via mmap)
+   *   2. Allocates and initializes a ThreadContext struct
+   *   3. Allocates space for the result value
+   *   4. Copies the lambda's captures into the context
+   *   5. Calls clone() to create the child thread
+   *   6. In the child: jumps to the trampoline
+   *   7. In the parent: builds and returns the ThreadHandle
+   *
+   * @param expr The SpawnExprAST containing the lambda to spawn.
+   * @return ThreadHandle struct value for use with join().
+   */
+  llvm::Value* codegen(const SpawnExprAST& expr);
+
+  /**
+   * Generates IR for Thread<T>.join() method call.
+   *
+   * Emits code that:
+   *   1. Extracts the ThreadContext pointer from the handle
+   *   2. Loops on futex_wait until context->futex_word != 1
+   *   3. Loads the result from context->result_slot
+   *   4. Frees the thread's stack and context memory (munmap)
+   *   5. Returns the result value
+   *
+   * After join() returns, the thread resources are fully cleaned up
+   * and the handle should not be used again.
+   *
+   * @param threadHandle The ThreadHandle returned by spawn().
+   * @param resultType Sun type of the thread's result (T in Thread<T>).
+   * @return The value returned by the spawned lambda.
+   */
+  llvm::Value* codegenThreadJoin(llvm::Value* threadHandle,
+                                 sun::TypePtr resultType);
 
   // Error handling context: tracks if current function can return errors
   bool currentFunctionCanError = false;

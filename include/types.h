@@ -55,7 +55,8 @@ class Type {
     ErrorUnion,     // Type that can be a value or an error
     Array,          // Fixed-size array: array<T, N, M, ...>
     Slice,          // Builtin slice type: { start: i64, end: i64 }
-    Module          // Module/namespace reference (for mod_x.mod_y.var access)
+    Module,         // Module/namespace reference (for mod_x.mod_y.var access)
+    Thread          // Thread handle: Thread<T> for OS thread returning T
   };
 
   virtual ~Type() = default;
@@ -113,6 +114,7 @@ class Type {
   bool isArray() const { return getKind() == Kind::Array; }
   bool isSlice() const { return getKind() == Kind::Slice; }
   bool isCallable() const { return isFunction() || isLambda(); }
+  bool isThread() const { return getKind() == Kind::Thread; }
   // Compound types must be passed by reference (classes, interfaces, arrays)
   // Note: Enums are NOT compound - they are i32 values and passed by value
   bool isCompound() const {
@@ -1947,5 +1949,52 @@ inline bool RawPointerType::equals(const Type& other) const {
   }
   return false;
 }
+
+// Thread type for OS threads
+// Type annotation: Thread<T> where T is the return type of the thread function
+// Represented as a handle struct: { ptr context, ptr stack_base, i64 stack_size
+// } Create with spawn(lambda), join with thread.join() -> T
+class ThreadType : public Type {
+  TypePtr resultType;  // The return type of the thread function
+  mutable llvm::StructType* cachedLLVMType = nullptr;
+
+ public:
+  explicit ThreadType(TypePtr result) : resultType(std::move(result)) {}
+
+  Kind getKind() const override { return Kind::Thread; }
+  const TypePtr& getResultType() const { return resultType; }
+
+  std::string toString() const override {
+    return "Thread<" + resultType->toString() + ">";
+  }
+
+  bool equals(const Type& other) const override {
+    if (auto* t = dynamic_cast<const ThreadType*>(&other)) {
+      return resultType->equals(*t->resultType);
+    }
+    return false;
+  }
+
+  // Thread handle struct: { ptr context, ptr stack_base, i64 stack_size }
+  llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
+    if (!cachedLLVMType) {
+      cachedLLVMType = llvm::StructType::getTypeByName(ctx, "thread_handle");
+      if (!cachedLLVMType) {
+        cachedLLVMType = llvm::StructType::create(
+            ctx,
+            {llvm::PointerType::getUnqual(ctx),  // context ptr
+             llvm::PointerType::getUnqual(ctx),  // stack_base ptr
+             llvm::Type::getInt64Ty(ctx)},       // stack_size
+            "thread_handle");
+      }
+    }
+    return cachedLLVMType;
+  }
+
+  // Get the LLVM type for the result (for join)
+  llvm::Type* getResultLLVMType(llvm::LLVMContext& ctx) const {
+    return resultType->toLLVMType(ctx);
+  }
+};
 
 }  // namespace sun
