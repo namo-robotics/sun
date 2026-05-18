@@ -1173,6 +1173,30 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
   // _free(ptr) - free previously allocated memory
   registerFunction("_free",
                    {Types::Void(), {Types::RawPointer(Types::Int8())}, {}});
+
+  // Atomic intrinsics
+  // _atomic_cmpxchg_i32(ptr, expected, desired) - atomic compare-and-swap
+  registerFunction("_atomic_cmpxchg_i32",
+                   {Types::Int32(),
+                    {Types::RawPointer(Types::Int32()), Types::Int32(),
+                     Types::Int32()},
+                    {}});
+  // _atomic_store_i32(ptr, value) - atomic store with release ordering
+  registerFunction(
+      "_atomic_store_i32",
+      {Types::Void(), {Types::RawPointer(Types::Int32()), Types::Int32()}, {}});
+  // _atomic_load_i32(ptr) - atomic load with acquire ordering
+  registerFunction("_atomic_load_i32",
+                   {Types::Int32(), {Types::RawPointer(Types::Int32())}, {}});
+
+  // Futex intrinsics (Linux-specific thread synchronization)
+  // _futex_wait(ptr, expected) - block if *ptr == expected
+  registerFunction(
+      "_futex_wait",
+      {Types::Void(), {Types::RawPointer(Types::Int32()), Types::Int32()}, {}});
+  // _futex_wake(ptr) - wake one waiter
+  registerFunction("_futex_wake",
+                   {Types::Void(), {Types::RawPointer(Types::Int32())}, {}});
 }
 
 // -------------------------------------------------------------------

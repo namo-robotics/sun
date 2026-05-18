@@ -1101,7 +1101,12 @@ bool CodegenVisitor::isBuiltinFunction(const std::string& name) {
          // Pointer intrinsics
          name == "_load_i64" || name == "_store_i64" ||
          // Memory allocation intrinsics
-         name == "_malloc" || name == "_free";
+         name == "_malloc" || name == "_free" ||
+         // Atomic intrinsics
+         name == "_atomic_cmpxchg_i32" || name == "_atomic_store_i32" ||
+         name == "_atomic_load_i32" ||
+         // Futex intrinsics
+         name == "_futex_wait" || name == "_futex_wake";
 }
 
 Value* CodegenVisitor::codegenBuiltin(const std::string& name,
@@ -1151,6 +1156,23 @@ Value* CodegenVisitor::codegenBuiltin(const std::string& name,
   }
   if (name == "_free") {
     return codegenFreeIntrinsic(expr);
+  }
+  // Atomic intrinsics
+  if (name == "_atomic_cmpxchg_i32") {
+    return codegenAtomicCmpxchgI32Intrinsic(expr);
+  }
+  if (name == "_atomic_store_i32") {
+    return codegenAtomicStoreI32Intrinsic(expr);
+  }
+  if (name == "_atomic_load_i32") {
+    return codegenAtomicLoadI32Intrinsic(expr);
+  }
+  // Futex intrinsics
+  if (name == "_futex_wait") {
+    return codegenFutexWaitIntrinsic(expr);
+  }
+  if (name == "_futex_wake") {
+    return codegenFutexWakeIntrinsic(expr);
   }
   return nullptr;
 }

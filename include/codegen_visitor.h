@@ -327,6 +327,8 @@ class CodegenVisitor {
       const std::vector<std::unique_ptr<ExprAST>>& args);
   llvm::Value* codegenPtrAsRawIntrinsic(
       const std::vector<std::unique_ptr<ExprAST>>& args);
+  llvm::Value* codegenAddressOfIntrinsic(
+      const std::vector<std::unique_ptr<ExprAST>>& args);
   llvm::Value* codegenIsIntrinsic(
       const std::string& targetName,
       const std::vector<std::unique_ptr<ExprAST>>& args);
@@ -334,6 +336,15 @@ class CodegenVisitor {
   llvm::Value* codegenStoreI64Intrinsic(const CallExprAST& expr);
   llvm::Value* codegenMallocIntrinsic(const CallExprAST& expr);
   llvm::Value* codegenFreeIntrinsic(const CallExprAST& expr);
+
+  // Atomic intrinsics (in intrinsics.cpp)
+  llvm::Value* codegenAtomicCmpxchgI32Intrinsic(const CallExprAST& expr);
+  llvm::Value* codegenAtomicStoreI32Intrinsic(const CallExprAST& expr);
+  llvm::Value* codegenAtomicLoadI32Intrinsic(const CallExprAST& expr);
+
+  // Futex intrinsics (in intrinsics.cpp)
+  llvm::Value* codegenFutexWaitIntrinsic(const CallExprAST& expr);
+  llvm::Value* codegenFutexWakeIntrinsic(const CallExprAST& expr);
 
   // Pointer member access codegen (in pointers.cpp)
   llvm::Value* codegenStaticPtrMemberAccess(const MemberAccessAST& expr,

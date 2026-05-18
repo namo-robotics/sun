@@ -655,6 +655,22 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
         return sun::Types::RawPointer(targetType);
       }
 
+      if (funcName == "_address_of") {
+        // _address_of<T>(ref T) returns raw_ptr<T> - gets the address of a
+        // variable or field
+        if (genericCall.getArgs().size() != 1) {
+          logAndThrowError("_address_of<T>(value) requires 1 argument",
+                           genericCall.getLocation());
+        }
+        sun::TypePtr targetType = typeAnnotationToType(*typeArgsVec[0]);
+        targetType = substituteTypeParameters(targetType);
+        if (!targetType) {
+          logAndThrowError("Failed to resolve type argument for _address_of<T>",
+                           genericCall.getLocation());
+        }
+        return sun::Types::RawPointer(targetType);
+      }
+
       if (funcName == "_is") {
         // _is<T>(value) returns bool - compile-time type check
         // T can be:

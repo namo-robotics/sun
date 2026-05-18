@@ -1265,6 +1265,8 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
       return codegenStaticPtrLenIntrinsic(expr.getArgs());
     case sun::Intrinsic::PtrAsRaw:
       return codegenPtrAsRawIntrinsic(expr.getArgs());
+    case sun::Intrinsic::AddressOf:
+      return codegenAddressOfIntrinsic(expr.getArgs());
     case sun::Intrinsic::Is:
       // _is<T> uses the type name for type trait checks (e.g., "_Integer")
       return codegenIsIntrinsic(typeArgs[0]->baseName, expr.getArgs());

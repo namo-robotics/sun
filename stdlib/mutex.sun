@@ -1,0 +1,95 @@
+// Mutex for thread synchronization
+// Provides mutual exclusion using atomic compare-and-swap and futex syscalls
+// 
+// Usage:
+//   var m = Mutex();
+//   m.lock();
+//   // critical section
+//   m.unlock();
+//
+// State values:
+//   0 = unlocked
+//   1 = locked (no waiters)
+//   2 = locked (with waiters)
+
+module sun {
+
+class Mutex {
+    // Lock state: 0=unlocked, 1=locked, 2=locked+waiters
+    var state: i32;
+
+    function init() {
+        this.state = 0;
+    }
+
+    // Acquire the lock. Blocks until the lock is available.
+    function lock() void {
+        // Fast path: try to acquire uncontended lock (0 -> 1)
+        var old = _atomic_cmpxchg_i32(_address_of<i32>(this.state), 0, 1);
+        if (old == 0) {
+            // Successfully acquired lock
+            return;
+        }
+
+        // Slow path: lock is contended
+        this.lock_slow();
+    }
+
+    // Slow path for lock acquisition with futex waiting
+    function lock_slow() void {
+        // Spin a few times before blocking (helps on short critical sections)
+        var spin_count = 0;
+        while (spin_count < 100) {
+            var current = _atomic_load_i32(_address_of<i32>(this.state));
+            if (current == 0) {
+                // Lock appears free, try to acquire
+                var old = _atomic_cmpxchg_i32(_address_of<i32>(this.state), 0, 2);
+                if (old == 0) {
+                    return;
+                }
+            }
+            spin_count = spin_count + 1;
+        }
+
+        // Set state to 2 (locked with waiters) and wait
+        while (true) {
+            // If state is 1, change to 2 to indicate waiters
+            var old = _atomic_cmpxchg_i32(_address_of<i32>(this.state), 1, 2);
+            
+            // If state was 0, we got the lock
+            if (old == 0) {
+                // Lock was free, acquire it
+                _atomic_store_i32(_address_of<i32>(this.state), 2);
+                return;
+            }
+
+            // Try to acquire if it's unlocked (state == 0)
+            old = _atomic_cmpxchg_i32(_address_of<i32>(this.state), 0, 2);
+            if (old == 0) {
+                return;
+            }
+
+            // State is 1 or 2 (locked), wait on futex
+            // Only wait if state is still 2 (locked with waiters)
+            _futex_wait(_address_of<i32>(this.state), 2);
+        }
+    }
+
+    // Release the lock. Must only be called by the thread holding the lock.
+    function unlock() void {
+        // Get the old state and set to 0 (unlocked)
+        var old = _atomic_cmpxchg_i32(_address_of<i32>(this.state), 1, 0);
+        
+        if (old == 1) {
+            // No waiters, we're done
+            return;
+        }
+
+        // There might be waiters (old was 2 or cmpxchg failed)
+        // Force state to 0 and wake one waiter
+        _atomic_store_i32(_address_of<i32>(this.state), 0);
+        _futex_wake(_address_of<i32>(this.state));
+    }
+}
+
+} // module sun
