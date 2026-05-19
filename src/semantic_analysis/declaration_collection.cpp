@@ -71,9 +71,17 @@ void SemanticAnalyzer::collectDeclarations(ExprAST& expr) {
 
     case ASTNodeType::CLASS_DEFINITION: {
       auto& classDef = static_cast<ClassDefinitionAST&>(expr);
+      const std::string& baseName = classDef.getName();
+
+      // Partial classes are collected for later merging, not registered as new
+      // classes
+      if (classDef.isPartial()) {
+        pendingExtensions_[baseName].push_back(&classDef);
+        break;
+      }
+
       std::string qualifiedName =
           qualifyNameInCurrentModule(classDef.getName());
-      const std::string& baseName = classDef.getName();
 
       // Set qualified name early so instantiateGenericClass can use it
       // (it checks genericInfo->AST->hasQualifiedName() for mangling)

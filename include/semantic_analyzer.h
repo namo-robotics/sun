@@ -70,6 +70,11 @@ class SemanticAnalyzer {
   // redefinition errors for classes, interfaces, and enums.
   std::unordered_set<std::string> definedSymbols_;
 
+  // Pending class extensions collected during import processing.
+  // Maps class name → list of extension ASTs to merge when primary is analyzed.
+  std::unordered_map<std::string, std::vector<ClassDefinitionAST*>>
+      pendingExtensions_;
+
   // True when not inside any function scope (i.e. at module/global level)
   bool isAtModuleLevel() const {
     for (auto* s = currentScope; s != nullptr; s = s->parent)

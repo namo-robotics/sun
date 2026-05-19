@@ -1447,6 +1447,7 @@ class ClassDefinitionAST : public ExprAST {
       implementedInterfaces;  // Interfaces with type args
   std::vector<ClassFieldDecl> fields;
   std::vector<ClassMethodDecl> methods;
+  bool isPartial_ = false;  // True for "partial class X {}" (methods only)
 
   // Specialized versions of this generic class, keyed by mangled type args
   // (e.g., "Vec_i32"). Mutable because specializations are added during
@@ -1548,6 +1549,13 @@ class ClassDefinitionAST : public ExprAST {
     auto it = specializations_.find(mangledName);
     return it != specializations_.end() ? it->second : nullptr;
   }
+
+  // Partial class support: "partial class X {}" adds methods to existing class
+  bool isPartial() const { return isPartial_; }
+  void setIsPartial(bool v) { isPartial_ = v; }
+
+  // Allow adding methods from extensions (mutable for merging)
+  std::vector<ClassMethodDecl>& getMutableMethods() { return methods; }
 
   std::unique_ptr<ExprAST> clone() const override;
 };

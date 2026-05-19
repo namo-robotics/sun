@@ -502,3 +502,111 @@ TEST(ClassTest, diamond_import_class_no_error) {
   )");
   EXPECT_EQ(value, 30);
 }
+
+// ============================================================================
+// Partial Class Tests
+// ============================================================================
+
+TEST(ClassTest, partial_class_adds_methods) {
+  // Partial class methods should work alongside primary methods
+  auto value = executeString(R"(
+    import "tests/programs/class_x_part_a.sun";
+    function main() i32 {
+      var x = X(10, 20);
+      return x.get_a() + x.get_b();  // get_a from primary, get_b from partial
+    }
+  )");
+  EXPECT_EQ(value, 30);
+}
+
+TEST(ClassTest, partial_class_mutual_calls) {
+  // Primary can call partial methods and vice versa
+  auto value = executeString(R"(
+    import "tests/programs/class_x_part_a.sun";
+    function main() i32 {
+      var x = X(10, 20);
+      // sum() in partial calls get_a() from primary
+      // double_b() in primary calls get_b() from partial
+      return x.sum() + x.double_b();  // (10+20) + (20*2) = 70
+    }
+  )");
+  EXPECT_EQ(value, 70);
+}
+
+TEST(ClassTest, partial_class_no_fields_error) {
+  // Partial classes cannot define fields
+  try {
+    executeString(R"(
+      class Foo { var x: i32; function init() { this.x = 0; } }
+      partial class Foo { var y: i32; }
+      function main() i32 { return 0; }
+    )");
+    FAIL() << "Expected parsing error for field in partial class";
+  } catch (const SunError& e) {
+    std::string msg = e.what();
+    EXPECT_TRUE(msg.find("cannot define fields") != std::string::npos)
+        << "Error should mention 'cannot define fields', got: " << msg;
+  }
+}
+
+TEST(ClassTest, partial_class_no_constructor_error) {
+  // Partial classes cannot define constructors
+  try {
+    executeString(R"(
+      class Foo { var x: i32; function init() { this.x = 0; } }
+      partial class Foo { function init() { this.x = 1; } }
+      function main() i32 { return 0; }
+    )");
+    FAIL() << "Expected parsing error for constructor in partial class";
+  } catch (const SunError& e) {
+    std::string msg = e.what();
+    EXPECT_TRUE(msg.find("cannot define constructors") != std::string::npos)
+        << "Error should mention 'cannot define constructors', got: " << msg;
+  }
+}
+
+TEST(ClassTest, partial_class_duplicate_method_error) {
+  // Partial classes cannot redefine methods from primary
+  try {
+    executeString(R"(
+      class Foo { 
+        var x: i32; 
+        function init() { this.x = 0; }
+        function get() i32 { return this.x; }
+      }
+      partial class Foo { 
+        function get() i32 { return this.x + 1; }
+      }
+      function main() i32 { return 0; }
+    )");
+    FAIL() << "Expected error for duplicate method in partial class";
+  } catch (const SunError& e) {
+    std::string msg = e.what();
+    EXPECT_TRUE(msg.find("already defined") != std::string::npos)
+        << "Error should mention 'already defined', got: " << msg;
+  }
+}
+
+TEST(ClassTest, partial_class_inline_simple) {
+  // Simple inline partial class test (no file imports)
+  auto value = executeString(R"(
+    class Counter {
+      var value: i32;
+      function init(v: i32) { this.value = v; }
+      function get() i32 { return this.value; }
+    }
+    
+    partial class Counter {
+      function increment() void { this.value = this.value + 1; }
+      function add(n: i32) void { this.value = this.value + n; }
+    }
+    
+    function main() i32 {
+      var c = Counter(10);
+      c.increment();      // value = 11
+      c.add(5);           // value = 16
+      return c.get();
+    }
+  )");
+  EXPECT_EQ(value, 16);
+}

@@ -620,6 +620,13 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       auto& classDef = static_cast<ClassDefinitionAST&>(expr);
       const std::string& baseName = classDef.getName();
 
+      // Partial classes are skipped here - they're merged into the primary
+      // class when the primary is analyzed (see below)
+      if (classDef.isPartial()) {
+        expr.setResolvedType(sun::Types::Void());
+        return;
+      }
+
       // Qualify class name with module prefix if inside a module
       sun::QualifiedName qualifiedClass = makeQualifiedName(baseName);
       std::string className = qualifiedClass.mangled();
@@ -736,6 +743,38 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // Inherit interface fields BEFORE analyzing methods
       // This adds interface fields to the class, which methods may access
       inheritInterfaceFields(classDef, classType);
+
+      // Merge methods from any pending class extensions
+      // Extensions are collected during import processing and merged here
+      // so all methods (primary + extensions) can call each other
+      auto extIt = pendingExtensions_.find(baseName);
+      if (extIt != pendingExtensions_.end()) {
+        for (ClassDefinitionAST* extDef : extIt->second) {
+          // Validate: check for duplicate methods
+          for (const auto& extMethod : extDef->getMethods()) {
+            const std::string& methodName =
+                extMethod.function->getProto().getName();
+            // Check against primary's methods
+            for (const auto& primaryMethod : classDef.getMethods()) {
+              if (primaryMethod.function->getProto().getName() == methodName) {
+                logAndThrowError("Method '" + methodName +
+                                     "' already defined in class '" + baseName +
+                                     "'",
+                                 extMethod.function->getLocation());
+              }
+            }
+            // Check against other extension methods already merged
+            // (The getMutableMethods approach handles this via sequential
+            // merge)
+          }
+          // Merge extension methods into the primary class definition
+          for (auto& extMethod : extDef->getMutableMethods()) {
+            classDef.getMutableMethods().push_back(std::move(extMethod));
+          }
+        }
+        // Clear the pending extensions for this class (they're now merged)
+        pendingExtensions_.erase(extIt);
+      }
 
       // Save old class context and set new one
       auto savedClass = currentClass;
@@ -1300,6 +1339,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 // -------------------------------------------------------------------
 
 void SemanticAnalyzer::analyzeBlock(BlockExprAST& block) {
+  // Simple iteration - collectDeclarations should have already been called
+  // at the top level by the driver
   for (const auto& expr : block.getBody()) {
     analyzeExpr(*expr);
   }

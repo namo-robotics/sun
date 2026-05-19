@@ -1403,6 +1403,34 @@ unique_ptr<ExprAST> Parser::parseStatement() {
     case TokenKind::USING:
       return parseUsingStatement();
 
+    case TokenKind::PARTIAL: {
+      // partial class X { ... } - partial class (methods only)
+      getNextToken();  // eat 'partial'
+      if (curTok.kind != TokenKind::CLASS) {
+        parsingError("expected 'class' after 'partial'");
+        return nullptr;
+      }
+      auto classDef = parseClassDefinition();
+      if (classDef) {
+        classDef->setIsPartial(true);
+        // Validate: no fields allowed in partial class
+        if (!classDef->getFields().empty()) {
+          parsingError("partial class cannot define fields");
+          return nullptr;
+        }
+        // Validate: no constructors allowed in partial class
+        for (const auto& method : classDef->getMethods()) {
+          if (method.isConstructor) {
+            parsingError("partial class cannot define constructors");
+            return nullptr;
+          }
+        }
+      }
+      while (curTok.kind == TokenKind::SEMI_COLON)
+        getNextToken();  // optional semicolons
+      return classDef;
+    }
+
     case TokenKind::CLASS: {
       auto classDef = parseClassDefinition();
       while (curTok.kind == TokenKind::SEMI_COLON)
@@ -2062,8 +2090,13 @@ std::unique_ptr<ImportScopeAST> Parser::expandImport(
   std::string resolvedStr = resolved.string();
 
   // Cycle detection (per-branch, not global)
+  // Instead of erroring, skip the cyclic import - the file is already being
+  // processed higher in the stack. This enables bidirectional imports
+  // (e.g., primary ↔ extension) like Python/TypeScript handle cycles.
   if (cycleStack.count(resolvedStr)) {
-    logAndThrowError("Circular import detected: " + importPath);
+    return std::make_unique<ImportScopeAST>(
+        resolvedStr, std::make_unique<BlockExprAST>(
+                         std::vector<std::unique_ptr<ExprAST>>{}));
   }
   cycleStack.insert(resolvedStr);
 

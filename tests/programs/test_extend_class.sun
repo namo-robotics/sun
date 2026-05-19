@@ -1,0 +1,10 @@
+// Test: class extension with mutual method visibility
+import "class_x_part_a.sun";
+
+function main() i32 {
+    var x = X(10, 20);
+    // get_a() is from primary, get_b() is from extension
+    // sum() in extension calls get_a() from primary
+    // double_b() in primary calls get_b() from extension
+    return x.sum() + x.double_b();  // (10 + 20) + (20 * 2) = 30 + 40 = 70
+}
