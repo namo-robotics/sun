@@ -82,16 +82,6 @@ class SemanticAnalyzer {
     return true;
   }
 
-  // RAII guard to set collectingDeclarations and restore on scope exit
-  struct CollectingGuard {
-    bool& flag;
-    bool prev;
-    CollectingGuard(bool& f, bool val) : flag(f), prev(f) { flag = val; }
-    ~CollectingGuard() { flag = prev; }
-    CollectingGuard(const CollectingGuard&) = delete;
-    CollectingGuard& operator=(const CollectingGuard&) = delete;
-  };
-
  public:
   explicit SemanticAnalyzer(std::shared_ptr<sun::TypeRegistry> registry)
       : typeRegistry(std::move(registry)) {
