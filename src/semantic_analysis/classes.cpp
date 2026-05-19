@@ -11,12 +11,9 @@
 void SemanticAnalyzer::registerClass(const std::string& name,
                                      std::shared_ptr<sun::ClassType> classType,
                                      std::optional<Position> loc) {
-  // Check for redeclaration in current scope
+  // Skip if already registered (diamond import re-registration)
   if (currentScope->classes.contains(name)) {
-    if (!collectingDeclarations) return;  // Pass 2: skip, already registered
-    // Allow re-registration of same class from duplicate imports (diamond deps)
-    if (importScopeDepth_ > 0) return;
-    logAndThrowError("Cannot redeclare class '" + name + "'", loc);
+    return;
   }
   // Register in current scope
   currentScope->classes[name] = classType;
@@ -85,11 +82,9 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::getCurrentClass() const {
 void SemanticAnalyzer::registerGenericClass(const std::string& name,
                                             const GenericClassInfo& info,
                                             std::optional<Position> loc) {
+  // Skip if already registered (diamond import re-registration)
   if (currentScope->genericClasses.contains(name)) {
-    if (!collectingDeclarations) return;  // Pass 2: skip
-    // Allow re-registration from duplicate imports (diamond deps)
-    if (importScopeDepth_ > 0) return;
-    logAndThrowError("Cannot redeclare generic class '" + name + "'", loc);
+    return;
   }
   // Register in current scope
   currentScope->genericClasses[name] = info;

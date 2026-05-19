@@ -26,6 +26,7 @@ enum class TokenKind {
   NAMESPACE,      // namespace keyword (deprecated, use module)
   USING,          // using keyword for namespace imports
   CLASS,          // class keyword
+  PARTIAL,        // partial keyword for class extensions
   INTERFACE,      // interface keyword
   ENUM,           // enum keyword
   IMPLEMENTS,     // implements keyword
@@ -111,6 +112,7 @@ static const std::map<TokenKind, std::string> tokenRegexes = {
     {TokenKind::NAMESPACE, "namespace"},
     {TokenKind::USING, "using"},
     {TokenKind::CLASS, "class"},
+    {TokenKind::PARTIAL, "partial"},
     {TokenKind::INTERFACE, "interface"},
     {TokenKind::ENUM, "enum"},
     {TokenKind::IMPLEMENTS, "implements"},

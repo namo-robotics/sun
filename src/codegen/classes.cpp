@@ -104,6 +104,11 @@ Value* CodegenVisitor::codegen(const ClassDefinitionAST& expr) {
     return codegenPrecompiledClass(expr, className);
   }
 
+  // Skip partial classes - their methods are merged into the primary class
+  if (expr.isPartial()) {
+    return ConstantFP::get(ctx.getContext(), APFloat(0.0));
+  }
+
   // Skip generic class definitions (templates) - they are instantiated on
   // demand
   if (expr.isGeneric()) {

@@ -79,4 +79,6 @@ Module tests require `SUN_PATH` env var pointing to workspace root.
 - Namespace: `sun::` for type system classes.
 - Errors: `logError()` / `logAndThrowError()` for compilation errors.
 - Lambdas use closure structs; named functions use direct calls.
-- Never `cd` out of workspace root. Absotely no `git` commands except for `git diff`. Use relative paths.
+- Never `cd` out of workspace root. 
+- Absotely NEVER use `git` commands except for `git diff`.
+- Run all commands from the workspace folder.

@@ -1,0 +1,21 @@
+// Primary class definition - imports extension for method merging
+import "class_x_part_b.sun";
+
+class X {
+    var a: i32;
+    var b: i32;
+
+    function init(a: i32, b: i32) {
+        this.a = a;
+        this.b = b;
+    }
+
+    function get_a() i32 {
+        return this.a;
+    }
+    
+    // This method calls an extension method - tests mutual visibility
+    function double_b() i32 {
+        return this.get_b() * 2;
+    }
+}

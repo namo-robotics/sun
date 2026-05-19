@@ -302,6 +302,8 @@ struct SemanticScope {
   FunctionTable functions;
   // Classes declared in this scope
   std::map<std::string, std::shared_ptr<sun::ClassType>> classes;
+  // Primary class definition ASTs (for partial class merging)
+  std::map<std::string, ClassDefinitionAST*> classDefinitions;
   // Generic class templates declared in this scope
   std::map<std::string, GenericClassInfo> genericClasses;
   // Interfaces declared in this scope
