@@ -193,18 +193,18 @@ function main() i32 {
 
 ## For-In Loop
 
-The `for-in` loop iterates over objects that implement the iterator pattern (have `hasNext()` and `next()` methods):
+The `for-in` loop iterates over objects that implement `IIterator<T, Container>`. The iterator's `hasNext` and `next` methods receive a reference to the container being iterated:
 
 ```sun
-for (var element: Type in iterator) {
+for (var element: Type in iterable) {
     // body
 }
 ```
 
-**Basic example** - sum using a custom iterator:
+**Basic example** - sum using a self-iterating pattern:
 
 ```sun
-class RangeIterator implements IIterator<i32> {
+class RangeIterator implements IIterator<i32, RangeIterator> {
     var current: i32;
     var end: i32;
 
@@ -213,11 +213,11 @@ class RangeIterator implements IIterator<i32> {
         this.end = stop;
     }
 
-    function hasNext() bool {
+    function hasNext(self: ref RangeIterator) bool {
         return this.current < this.end;
     }
 
-    function next() i32 {
+    function next(self: ref RangeIterator) i32 {
         var result = this.current;
         this.current = this.current + 1;
         return result;
@@ -241,7 +241,7 @@ function main() i32 {
 **Break and continue** work with for-in loops:
 
 ```sun
-function sum_until_five(iter: RangeIterator) i32 {
+function sum_until_five(iter: ref RangeIterator) i32 {
     var sum: i32 = 0;
     for (var x: i32 in iter) {
         if (x == 5) {

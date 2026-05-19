@@ -20,9 +20,9 @@ Source → Lexer → Parser → AST → Semantic Analyzer → Borrow Checker →
 | **Borrow Checker** | `borrow_checker/*.h/cpp` | Rust-style ownership and borrowing analysis (WIP) |
 | **Codegen Visitor** | `codegen_visitor.h`, `src/codegen/*.cpp` | Visitor pattern for AST-to-LLVM-IR translation |
 | **LLVM Codegen** | `codegen.h/cpp`, `llvm_type_resolver.h/cpp` | LLVM context, module, and type management |
-| **Matrix Codegen** | `matrix_codegen.h/cpp` | Specialized code generation for matrix operations |
 | **Compiler** | `compiler.h` | AOT compilation: emit object files, link executables |
 | **SunJIT** | `sun_jit.h` | LLVM ORC-based JIT compiler for immediate execution |
+| **Moon** | `moon.h/cpp`, `library_cache.h/cpp` | Precompiled library format (.moon) and caching |
 
 ## Codegen Structure
 
@@ -37,24 +37,32 @@ The code generation is split across multiple files by expression type:
 | `variable_creation.cpp` | Variable declarations (`var`, `let`) |
 | `variable_references.cpp` | Variable loads, assignments |
 | `if_expressions.cpp` | Conditionals, ternary expressions |
-| `loops.cpp` | `for` and `while` loops |
+| `loops.cpp` | `for`, `while`, and `for-in` loops |
+| `match_expressions.cpp` | Pattern matching (`match` expressions) |
 | `block_expressions.cpp` | Block scoping |
 | `return_statements.cpp` | Return value handling |
 | `error_handling.cpp` | `try`/`catch`/`throw` codegen |
-| `matrices.cpp` | Matrix operations and indexing |
+| `arrays.cpp` | Array literals and indexing |
+| `pointers.cpp` | Pointer member access (`raw_ptr`, `static_ptr`) |
+| `intrinsics.cpp` | Compiler intrinsic codegen (`_sizeof`, `_load`, etc.) |
+| `threads.cpp` | OS thread spawning and joining |
+| `thread_utils.cpp` | Thread utility helpers |
 
 ## Type System
 
 The type system (`types.h`) includes:
 
-- **Primitives**: `i8`, `i16`, `i32`, `i64`, `f32`, `f64`, `bool`, `void`
-- **Matrices**: N-dimensional matrices with compile-time or runtime dimensions
+- **Primitives**: `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `f32`, `f64`, `bool`, `void`
+- **Arrays**: Fixed-size arrays with N-dimensional indexing
 - **Functions/Lambdas**: First-class function types with closure support
-- **Pointers**: `ptr<T>` owning pointers, `raw_ptr<T>` for C interop, `static_ptr<T>` for static data
-- **Classes**: User-defined types with methods and fields
-- **Interfaces**: Contracts for polymorphism
+- **Pointers**: `ptr<T>` owning pointers (RAII), `raw_ptr<T>` for C interop, `static_ptr<T>` for static data
+- **References**: `ref T` for borrowing without ownership transfer
+- **Classes**: User-defined value types with methods and fields
+- **Interfaces**: Contracts for polymorphism (including builtin `IIterator`, `IIterable`, `IError`)
+- **Enums**: Named integer variants with pattern matching support
 - **Generics**: Parameterized types with monomorphization
 - **Error Unions**: `T, IError` for explicit error handling
+- **Threads**: `Thread<T>` for OS thread handles via `spawn`
 
 ## Execution Modes
 

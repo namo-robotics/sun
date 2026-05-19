@@ -65,8 +65,8 @@ _store<i32>(data, 5, 42);
 Extracts the raw data pointer from a `static_ptr<T>` fat pointer.
 
 ```sun
-var s: static_ptr<i8> = "hello";
-var rawPtr = _static_ptr_data<i8>(s);  // raw_ptr<i8> to the string data
+var s: static_ptr<u8> = "hello";
+var rawPtr = _static_ptr_data<u8>(s);  // raw_ptr<u8> to the string data
 ```
 
 ### `_static_ptr_len<T>(static_ptr<T>)`
@@ -74,8 +74,8 @@ var rawPtr = _static_ptr_data<i8>(s);  // raw_ptr<i8> to the string data
 Extracts the length from a `static_ptr<T>` fat pointer.
 
 ```sun
-var s: static_ptr<i8> = "hello";
-var len = _static_ptr_len<i8>(s);  // 5
+var s: static_ptr<u8> = "hello";
+var len = _static_ptr_len<u8>(s);  // 5
 ```
 
 ### `_ptr_as_raw<T>(ptr<T>)`
@@ -193,6 +193,19 @@ var mem = _malloc(1024);
 _free(mem);
 ```
 
+### `_address_of<T>(ref T)`
+
+Returns a `raw_ptr<T>` pointing to the memory location of a reference. Useful for interfacing with low-level operations that require a pointer (e.g., atomics).
+
+```sun
+var x: i32 = 42;
+var ptr = _address_of<i32>(x);  // raw_ptr<i32> to x's memory
+```
+
+<Callout type="warning">
+  The returned pointer is only valid while the referenced variable is in scope. Do not store it beyond the variable's lifetime.
+</Callout>
+
 ### `_load_i64(ptr, index)`
 
 Loads an `i64` from `ptr` at element offset `index`. A non-generic version of `_load<i64>`.
@@ -208,6 +221,97 @@ Stores an `i64` value at `ptr[index]`. A non-generic version of `_store<i64>`.
 ```sun
 _store_i64(data, 0, 42);  // Store 42 at first position
 ```
+
+## Print Intrinsics
+
+These intrinsics provide low-level output capabilities. They are used internally by the standard library's `print.sun` module.
+
+### `_print_i32(value)`
+
+Prints an `i32` value to stdout (no newline).
+
+### `_print_i64(value)`
+
+Prints an `i64` value to stdout (no newline).
+
+### `_print_f64(value)`
+
+Prints an `f64` value to stdout (no newline).
+
+### `_print_newline()`
+
+Prints a newline character to stdout.
+
+### `_print_bytes(ptr, len)`
+
+Prints `len` bytes from the memory at `ptr` to stdout.
+
+```sun
+var s: static_ptr<u8> = "hello";
+_print_bytes(_static_ptr_data<u8>(s), 5);  // Prints "hello"
+```
+
+### `_println_str(str)`
+
+Prints a `static_ptr<u8>` string followed by a newline.
+
+```sun
+_println_str("Hello, world!");
+```
+
+## Atomic Intrinsics
+
+Atomic intrinsics provide lock-free thread-safe operations. Used internally by `Mutex` and other synchronization primitives.
+
+### `_atomic_cmpxchg_i32(ptr, expected, desired)`
+
+Atomic compare-and-exchange on an `i32`. If the value at `ptr` equals `expected`, it is replaced with `desired`. Returns the old value at `ptr`.
+
+```sun
+var state: i32 = 0;
+var old = _atomic_cmpxchg_i32(_address_of<i32>(state), 0, 1);
+// If state was 0, it's now 1. old == 0
+```
+
+### `_atomic_store_i32(ptr, value)`
+
+Atomically stores `value` at the memory location `ptr`.
+
+```sun
+_atomic_store_i32(_address_of<i32>(state), 0);  // Reset to 0
+```
+
+### `_atomic_load_i32(ptr)`
+
+Atomically loads the `i32` value at `ptr`.
+
+```sun
+var current = _atomic_load_i32(_address_of<i32>(state));
+```
+
+## Futex Intrinsics
+
+Linux-specific thread synchronization primitives. Used by `Mutex` for efficient blocking.
+
+### `_futex_wait(ptr, expected)`
+
+Blocks the calling thread if the value at `ptr` equals `expected`. The thread sleeps until woken by `_futex_wake`.
+
+```sun
+_futex_wait(_address_of<i32>(state), 2);  // Sleep if state == 2
+```
+
+### `_futex_wake(ptr)`
+
+Wakes one thread blocked on `_futex_wait` at the given address.
+
+```sun
+_futex_wake(_address_of<i32>(state));  // Wake one waiter
+```
+
+<Callout type="warning">
+  Atomic and futex intrinsics are **platform-specific** (Linux) and intended for implementing synchronization primitives. Use `Mutex` from the standard library instead.
+</Callout>
 
 ## Usage in Standard Library
 
@@ -252,14 +356,26 @@ class Vec<T> {
 | Intrinsic | Parameters | Returns | Description |
 |-----------|------------|---------|-------------|
 | `_sizeof<T>` | none | `i64` | Byte size of type T |
-| `_init<T>` | `ptr, args...` | `i32` | Construct T at ptr |
+| `_init<T>` | `ptr, args...` | `void` | Construct T at ptr |
 | `_load<T>` | `ptr, index` | `T` | Load element at index |
-| `_store<T>` | `ptr, index, value` | `T` | Store element at index |
+| `_store<T>` | `ptr, index, value` | `void` | Store element at index |
 | `_static_ptr_data<T>` | `static_ptr<T>` | `raw_ptr<T>` | Extract data pointer |
 | `_static_ptr_len<T>` | `static_ptr<T>` | `i64` | Extract length |
 | `_ptr_as_raw<T>` | `ptr<T>` | `raw_ptr<T>` | Get raw pointer without ownership transfer |
 | `_is<T>` | `value` | `bool` | Compile-time type check |
+| `_address_of<T>` | `ref T` | `raw_ptr<T>` | Get pointer to referenced memory |
 | `_malloc` | `size: i64` | `raw_ptr<i8>` | Allocate heap memory |
-| `_free` | `ptr` | `i32` | Free heap memory |
+| `_free` | `ptr` | `void` | Free heap memory |
 | `_load_i64` | `ptr, index` | `i64` | Load i64 at index |
-| `_store_i64` | `ptr, index, value` | `i64` | Store i64 at index |
+| `_store_i64` | `ptr, index, value` | `void` | Store i64 at index |
+| `_print_i32` | `value: i32` | `void` | Print i32 to stdout |
+| `_print_i64` | `value: i64` | `void` | Print i64 to stdout |
+| `_print_f64` | `value: f64` | `void` | Print f64 to stdout |
+| `_print_newline` | none | `void` | Print newline |
+| `_print_bytes` | `ptr, len` | `void` | Print bytes to stdout |
+| `_println_str` | `static_ptr<u8>` | `void` | Print string with newline |
+| `_atomic_cmpxchg_i32` | `ptr, expected, desired` | `i32` | Atomic compare-and-exchange |
+| `_atomic_store_i32` | `ptr, value` | `void` | Atomic store |
+| `_atomic_load_i32` | `ptr` | `i32` | Atomic load |
+| `_futex_wait` | `ptr, expected` | `void` | Block until woken |
+| `_futex_wake` | `ptr` | `void` | Wake one blocked thread |

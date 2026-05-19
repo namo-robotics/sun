@@ -1,0 +1,130 @@
+# Threads
+
+Sun provides OS-level threading via the `spawn` keyword and synchronization via the `Mutex` class.
+
+import { Callout } from 'nextra/components'
+
+## Spawning Threads
+
+Use `spawn` with a lambda to create a new OS thread. The lambda must take no arguments and return a value:
+
+```sun
+function main() i32 {
+    var t = spawn(lambda() i32 { return 42; });
+    return t.join();  // Wait for thread, returns 42
+}
+```
+
+The `spawn` expression returns a `Thread<T>` handle, where `T` is the lambda's return type.
+
+## Thread Handles
+
+### `Thread<T>`
+
+A thread handle representing a running OS thread. The type parameter `T` matches the return type of the spawned lambda.
+
+| Method | Description |
+|--------|-------------|
+| `join()` | Block until the thread completes, returns the result of type `T` |
+
+```sun
+function main() i32 {
+    var t = spawn(lambda() i64 { return 100; });
+    // t is inferred as Thread<i64>
+    var result: i64 = t.join();
+    return 0;
+}
+```
+
+## Capturing Variables
+
+Spawned lambdas can capture variables from the enclosing scope:
+
+```sun
+function main() i32 {
+    var x: i32 = 10;
+    var t = spawn(lambda() i32 { return x * 2; });
+    return t.join();  // Returns 20
+}
+```
+
+<Callout type="warning">
+  Captured variables are copied into the lambda's closure. Modifications to the captured variable inside the thread do not affect the original.
+</Callout>
+
+## Multiple Threads
+
+You can spawn multiple threads and join them independently:
+
+```sun
+function main() i32 {
+    var t1 = spawn(lambda() i32 { return 10; });
+    var t2 = spawn(lambda() i32 { return 20; });
+    var t3 = spawn(lambda() i32 { return 30; });
+    return t1.join() + t2.join() + t3.join();  // 60
+}
+```
+
+## Synchronization with Mutex
+
+For shared mutable state between threads, use `Mutex` from the standard library:
+
+```sun
+import "build/stdlib.moon";
+using sun;
+
+function main() i32 {
+    var m = Mutex();
+    
+    m.lock();
+    // Critical section - only one thread can be here at a time
+    m.unlock();
+    
+    return 0;
+}
+```
+
+The `Mutex` implementation uses atomic compare-and-swap with futex-based blocking for efficient contention handling.
+
+| Method | Description |
+|--------|-------------|
+| `lock()` | Acquire the mutex (blocks if held by another thread) |
+| `unlock()` | Release the mutex |
+
+<Callout type="info">
+  `Mutex` uses a fast path (single atomic CAS) for uncontended locks and falls back to futex-based blocking only when contention is detected.
+</Callout>
+
+## Constraints
+
+- `spawn` requires a lambda expression (not a named function reference)
+- The lambda must take **no arguments**
+- The lambda must have a return type (cannot be `void`)
+- Thread handles must be joined before going out of scope
+
+## Example: Parallel Computation
+
+```sun
+function main() i32 {
+    // Compute two independent values in parallel
+    var t1 = spawn(lambda() i32 {
+        var sum: i32 = 0;
+        for (var i: i32 = 0; i < 1000; i = i + 1) {
+            sum = sum + i;
+        }
+        return sum;
+    });
+
+    var t2 = spawn(lambda() i32 {
+        var product: i32 = 1;
+        for (var i: i32 = 1; i < 10; i = i + 1) {
+            product = product * i;
+        }
+        return product;
+    });
+
+    var sum = t1.join();
+    var product = t2.join();
+    return sum + product;
+}
+```

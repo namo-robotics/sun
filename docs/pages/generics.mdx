@@ -1,8 +1,68 @@
 # Generics
 
-Generic classes are parameterized by type, allowing you to write reusable code that works with different types.
+Sun supports generic classes and functions, parameterized by type. This allows you to write reusable code that works with different types while maintaining type safety.
 
-## Basic Generic Class
+import { Callout } from 'nextra/components'
+
+## Generic Functions
+
+Generic functions are declared with type parameters in angle brackets after the function name:
+
+```sun
+function identity<T>(x: T) T {
+    return x;
+}
+
+function main() i32 {
+    var a = identity<i32>(42);     // T = i32, returns 42
+    var b = identity<f64>(3.14);   // T = f64, returns 3.14
+    return a;
+}
+```
+
+### Multiple Type Parameters
+
+Functions can have multiple type parameters:
+
+```sun
+function pair_sum<A, B>(a: A, b: B) A {
+    return a + b;
+}
+
+function main() i32 {
+    return pair_sum<i32, i32>(10, 20);  // 30
+}
+```
+
+### Generic Functions with Type Checking
+
+Combine generic functions with `_is<T>` for type-specific behavior:
+
+```sun
+function processValue<T>(x: T) i32 {
+    if (_is<_Integer>(x)) {
+        return 1;
+    }
+    if (_is<_Float>(x)) {
+        return 2;
+    }
+    return 0;
+}
+
+function main() i32 {
+    var a = processValue<i32>(42);    // Returns 1
+    var b = processValue<f64>(3.14);  // Returns 2
+    return a + b;  // 3
+}
+```
+
+<Callout type="info">
+  Since Sun uses monomorphization, each instantiation of a generic function compiles to specialized code with dead branches eliminated by LLVM.
+</Callout>
+
+## Generic Classes
+
+### Basic Generic Class
 
 ```sun
 class Box<T> {
@@ -24,7 +84,7 @@ function main() i32 {
 }
 ```
 
-## Type Parameters
+### Type Parameters
 
 Type parameters are specified in angle brackets after the class name. When instantiating a generic class, you must provide concrete types:
 
@@ -33,8 +93,71 @@ var intBox = Box<i32>(42);      // T = i32
 var floatBox = Box<f64>(3.14);  // T = f64
 ```
 
-import { Callout } from 'nextra/components'
+### Multiple Type Parameters
+
+Classes can have multiple type parameters:
+
+```sun
+class Pair<A, B> {
+    var first: A;
+    var second: B;
+
+    function init(a: A, b: B) {
+        this.first = a;
+        this.second = b;
+    }
+
+    function getFirst() A {
+        return this.first;
+    }
+
+    function getSecond() B {
+        return this.second;
+    }
+}
+
+function main() i32 {
+    var p = Pair<i32, f64>(42, 3.14);
+    return p.getFirst();  // 42
+}
+```
+
+### Generic Classes Implementing Interfaces
+
+Generic classes can implement interfaces, forwarding type parameters:
+
+```sun
+class Container<T> implements IIterator<T, Container<T>> {
+    var items: array<T>;
+    var index: i32;
+    var size: i32;
+
+    function init(arr: ref array<T>, sz: i32) {
+        this.items = arr;
+        this.index = 0;
+        this.size = sz;
+    }
+
+    function hasNext(self: ref Container<T>) bool {
+        return this.index < this.size;
+    }
+
+    function next(self: ref Container<T>) T {
+        var result = this.items[this.index];
+        this.index = this.index + 1;
+        return result;
+    }
+}
+```
+
+## Monomorphization
 
 <Callout type="info">
-  Generic classes are monomorphized at compile time, meaning a separate version is generated for each type combination used.
+  All generics in Sun are monomorphized at compile time. A separate version of the class or function is generated for each type combination used. This provides zero-cost abstractions — generic code runs at the same speed as hand-written type-specific code.
 </Callout>
+
+```sun
+// Using Box<i32> and Box<f64> generates two separate struct types:
+var a = Box<i32>(42);     // Generates Box_i32
+var b = Box<f64>(3.14);   // Generates Box_f64
+```

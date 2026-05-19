@@ -60,23 +60,49 @@ var element = matrix[1, 0];  // 3
 
 Sun provides pointer types for working with memory:
 
+### `ptr<T>` - Owning Pointer
+
+An owning pointer with RAII semantics. Memory is automatically freed when the pointer goes out of scope.
+
+```sun
+var allocator = make_heap_allocator();
+var p: ptr<Point> = allocator.create<Point>(3, 4);
+// p.x, p.y accessible directly
+// Memory freed automatically at scope exit
+```
+
 ### `raw_ptr<T>` - Raw Pointer
 
 A non-owning raw pointer for low-level memory operations.
 
 ```sun
-var raw: raw_ptr<i32> = get_raw_pointer();
+var raw: raw_ptr<i32> = allocator.alloc<i32>(10);
 // Manual memory management required
+_free(raw);
 ```
 
 ### `static_ptr<T>` - Static Pointer
 
-A pointer to immortal/static data, such as string literals.
+A pointer to immortal/static data, such as string literals. Represented as a fat pointer `{ ptr data, i64 length }`.
 
 ```sun
 var s: static_ptr<u8> = "hello world";
 // Points to static data that lives for the entire program
+// s.length == 11, s.data == raw pointer to bytes
 ```
+
+## Thread Type
+
+### `Thread<T>`
+
+A handle to a spawned OS thread that will return a value of type `T`. Created via the `spawn` keyword.
+
+```sun
+var t: Thread<i32> = spawn(lambda() i32 { return 42; });
+var result: i32 = t.join();  // Blocks until thread completes
+```
+
+See [Threads](/threads) for detailed documentation.
 
 <Callout type="info">
   Classes in Sun are value types. Use `ref` to pass references to functions without copying.

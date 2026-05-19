@@ -81,8 +81,16 @@ Sun's standard library is distributed as `stdlib.moon` containing:
 | Module | Contents |
 |--------|----------|
 | `allocator.sun` | Memory allocators (`HeapAllocator`, `IAllocator` interface) |
+| `errors.sun` | Standard error types (`EmptyError`, `NotFoundError`, `IndexOutOfBoundsError`, etc.) |
+| `map.sun` | Generic hash map `Map<K, V>` with open addressing |
+| `matrix.sun` | `Matrix<T>` and `MatrixView<T>` N-dimensional array classes |
+| `mutex.sun` | `Mutex` for thread synchronization (atomic + futex) |
+| `print.sun` | Print functions (`println`, `println_i32`, `println_i64`, `println_f64`) |
+| `simple_math.sun` | Basic math utilities (`add`, `multiply`) |
 | `slice.sun` | `SliceRange` type for slice syntax |
-| `matrix.sun` | `Matrix<T>` and `MatrixView<T>` classes |
+| `string.sun` | Heap-allocated `String` and `StringView` classes |
+| `unique.sun` | `Unique<T>` smart pointer with automatic cleanup via `deinit` |
+| `vec.sun` | Generic growable array `Vec<T>` with iterator support |
 
 When building from source, the stdlib is automatically compiled:
 

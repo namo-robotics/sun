@@ -229,21 +229,20 @@ function main() i32 {
 ## Error Handling
 
 ```sun
-function parse_positive(s: static_ptr<u8>) i32, IError {
-    var val = parse_int(s);
-    if (val < 0) {
-        throw 1;  // Negative number error
+function divide(a: i32, b: i32) i32, IError {
+    if (b == 0) {
+        throw 1;  // Division by zero error
     }
-    return val;
+    return a / b;
 }
 
 function main() i32 {
     try {
-        var x = parse_positive("42");
-        var y = parse_positive("-5");  // Throws
+        var x = divide(10, 2);   // OK: 5
+        var y = divide(10, 0);   // Throws
         return x + y;
     } catch (e: IError) {
-        println("Error: expected positive number");
+        println("Error: division by zero");
         return -1;
     }
 }
@@ -273,22 +272,33 @@ function main() i32 {
 
 ## Memory Management
 
-### Owning Pointers
+### Heap Allocation with Unique
 
 ```sun
 import "build/stdlib.moon";
+using sun;
+
+class Point {
+    var x: f64;
+    var y: f64;
+    
+    function init(px: f64, py: f64) {
+        this.x = px;
+        this.y = py;
+    }
+}
 
 function main() i32 {
     var allocator = make_heap_allocator();
     
-    // ptr<T> is an owning pointer - automatically freed at scope exit
-    var p: ptr<Point> = allocator.create<Point>(3.0, 4.0);
+    // Allocate on heap, wrap in Unique<T> for automatic cleanup
+    var p = Unique<Point>(allocator.create<Point>(3.0, 4.0));
     
-    println_f64(p.x);  // 3.0
-    println_f64(p.y);  // 4.0
+    println_f64(p.get().x);  // 3.0
+    println_f64(p.get().y);  // 4.0
     
     return 0;
-    // p is automatically freed here
+    // p.deinit() called automatically, memory freed
 }
 ```
 

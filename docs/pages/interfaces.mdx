@@ -178,15 +178,15 @@ class Service implements Runnable, Stoppable {
 
 ## Builtin Interfaces
 
-Sun provides several builtin interfaces that cannot be redefined. See [Builtin Types](/syntax/builtin-types) for details:
+Sun provides several builtin interfaces that cannot be redefined. See [Builtin Types](/builtin-types) for details:
 
-- **`IError`** - Error handling interface
-- **`IIterator<T>`** - Iterator interface with `hasNext()` and `next()` methods
-- **`IIterable<T>`** - Iterable interface with `iter()` method
+- **`IError`** - Error handling interface with `code()` and `message()` methods
+- **`IIterator<T, Container>`** - Iterator interface with `hasNext(c: ref Container) bool` and `next(c: ref Container) T`
+- **`IIterable<T, Self>`** - Iterable interface with `iter()` method returning an iterator
 
 ```sun
-// Implementing a builtin interface
-class NumberIterator implements IIterator<i32> {
+// Implementing a builtin interface (self-iterating pattern)
+class NumberIterator implements IIterator<i32, NumberIterator> {
     var current: i32;
     var max: i32;
 
@@ -195,11 +195,11 @@ class NumberIterator implements IIterator<i32> {
         this.max = end;
     }
 
-    function hasNext() bool {
+    function hasNext(self: ref NumberIterator) bool {
         return this.current < this.max;
     }
 
-    function next() i32 {
+    function next(self: ref NumberIterator) i32 {
         var result = this.current;
         this.current = this.current + 1;
         return result;

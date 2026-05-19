@@ -7,13 +7,15 @@
   "control-flow": "Control Flow",
   "match": "Match Expressions",
   "enums": "Enums",
-  "matrices": "Matrices",
-  "ownership": "Ownership & Borrowing",
-  "modules": "Modules & Namespaces",
   "classes": "Classes",
   "interfaces": "Interfaces",
   "generics": "Generics",
   "errors": "Error Handling",
+  "ownership": "Ownership & Borrowing",
+  "threads": "Threads",
+  "matrices": "Matrices",
+  "modules": "Modules & Namespaces",
+  "stdlib": "Standard Library",
   "intrinsics": "Compiler Intrinsics",
   "architecture": "Architecture"
 }

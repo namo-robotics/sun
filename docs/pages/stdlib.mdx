@@ -1,0 +1,275 @@
+# Standard Library
+
+The Sun standard library is distributed as a precompiled `stdlib.moon` file. Import it and use the `sun` module namespace:
+
+```sun
+import "build/stdlib.moon";
+using sun;
+```
+
+import { Callout } from 'nextra/components'
+
+<Callout type="info">
+  When installed via the Debian package, use `import "stdlib.moon";` with `SUN_PATH` set to the installation directory. When building from source, use `import "build/stdlib.moon";`.
+</Callout>
+
+## HeapAllocator
+
+The standard memory allocator using system `malloc`/`free`. Many stdlib types require an allocator for construction.
+
+```sun
+var allocator = make_heap_allocator();
+```
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `alloc<T>(count)` | `(i64) raw_ptr<T>` | Allocate array of `count` elements |
+| `alloc_raw(size)` | `(i64) raw_ptr<i8>` | Allocate `size` raw bytes |
+| `dealloc(ptr, size)` | `(raw_ptr<i8>, i64) void` | Free allocated memory |
+| `create<T>(args...)` | `(...) raw_ptr<T>` | Allocate and construct a single T |
+| `copy()` | `() HeapAllocator` | Create a copy of the allocator |
+
+```sun
+var allocator = make_heap_allocator();
+var p: raw_ptr<Point> = allocator.create<Point>(3, 4);
+// p points to a heap-allocated, initialized Point
+_free(p);  // Manual cleanup
+```
+
+## Unique\<T\>
+
+A smart pointer that automatically frees its data when `deinit` is called (at scope exit).
+
+```sun
+var allocator = make_heap_allocator();
+var p = Unique<Point>(allocator.create<Point>(3, 4));
+p.get().x;     // Access the underlying value
+p.is_null();   // Check if null
+// p.deinit() called automatically at scope exit
+```
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `get()` | `() raw_ptr<T>` | Get the underlying raw pointer |
+| `is_null()` | `() bool` | Check if pointer is null |
+| `deinit()` | `() void` | Free memory (called automatically) |
+
+## Vec\<T\>
+
+A generic growable array backed by contiguous memory. Implements `IIterable<T, Vec<T>>` for use with for-in loops.
+
+```sun
+var allocator = make_heap_allocator();
+var v = Vec<i32>(allocator, 8);  // Initial capacity 8
+v.push(10);
+v.push(20);
+v.push(30);
+var val = v.get(0);       // 10
+v.set(1, 25);             // Update index 1
+var last = v.pop();       // 30 (removes last element)
+var len = v.size();       // 2
+```
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `push(value)` | `(T) void` | Append element (grows if needed) |
+| `pop()` | `() T, IError` | Remove and return last element |
+| `get(index)` | `(i64) T` | Get element at index |
+| `set(index, value)` | `(i64, T) void` | Set element at index |
+| `size()` | `() i64` | Current number of elements |
+| `capacity()` | `() i64` | Current allocated capacity |
+| `isEmpty()` | `() bool` | Check if empty |
+| `reserve(n)` | `(i64) void` | Ensure capacity for at least n elements |
+| `clear()` | `() void` | Remove all elements (doesn't deallocate) |
+| `first()` | `() T, IError` | Get first element |
+| `last()` | `() T, IError` | Get last element |
+| `iter()` | `() VecIterator<T>` | Get iterator for for-in loops |
+
+### Indexing
+
+`Vec<T>` supports bracket indexing syntax:
+
+```sun
+v[0] = 42;       // Calls __setindex__
+var x = v[0];    // Calls __index__
+```
+
+### Iteration
+
+```sun
+var v = Vec<i32>(allocator, 4);
+v.push(1); v.push(2); v.push(3);
+
+for (var x: i32 in v) {
+    println_i32(x);
+}
+```
+
+## Map\<K, V\>
+
+A generic hash map using open addressing with linear probing. Implements `IIterable<V, Map<K, V>>` for iterating over values. Supports `i32`, `i64`, and `String` keys.
+
+```sun
+var allocator = make_heap_allocator();
+var m = Map<i64, i32>(allocator, 16);  // Initial capacity 16
+m.insert(42, 100);
+var val = m.getOrDefault(42, 0);   // 100
+m.remove(42);
+```
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `insert(key, value)` | `(K, V) void` | Insert or update a key-value pair |
+| `get(key)` | `(K) V, IError` | Get value by key (throws if not found) |
+| `getOrDefault(key, default)` | `(K, V) V` | Get value or return default |
+| `remove(key)` | `(K) V, IError` | Remove and return value (throws if not found) |
+| `contains(key)` | `(K) bool` | Check if key exists |
+| `size()` | `() i64` | Number of entries |
+| `capacity()` | `() i64` | Number of buckets |
+| `isEmpty()` | `() bool` | Check if empty |
+| `clear()` | `() void` | Remove all entries |
+| `iter()` | `() MapIterator<K, V>` | Get iterator over values |
+
+### Iteration
+
+```sun
+var m = Map<i64, i32>(allocator, 16);
+m.insert(1, 10);
+m.insert(2, 20);
+
+for (var v: i32 in m) {
+    println_i32(v);  // Iterates over values
+}
+```
+
+<Callout type="warning">
+  The map automatically grows when load factor exceeds 70%. Initial capacity should be chosen based on expected size for best performance.
+</Callout>
+
+## String
+
+A heap-allocated mutable string backed by `Matrix<u8>`. Supports slicing via the `[start:end]` syntax which returns a `StringView`.
+
+```sun
+var allocator = make_heap_allocator();
+var s = String(allocator, "Hello");
+println_i64(s.length());   // 5
+var ch = s.at(0);          // 72 ('H')
+s.append_char(33);         // Append '!'
+```
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `length()` | `() i64` | Current string length |
+| `capacity()` | `() i64` | Allocated capacity |
+| `at(i)` | `(i64) u8` | Get byte at index |
+| `set_at(i, val)` | `(i64, u8) void` | Set byte at index |
+| `append_char(ch)` | `(u8) void` | Append a single byte |
+| `append(other)` | `(ref String) void` | Append another String |
+| `append_literal(s)` | `(static_ptr<u8>) void` | Append a string literal |
+| `equals_literal(s)` | `(static_ptr<u8>) bool` | Compare with a string literal |
+| `print()` | `() void` | Print string to stdout |
+
+### Slicing
+
+String slicing returns a `StringView` (non-owning view, no copy):
+
+```sun
+var s = String(allocator, "Hello, World!");
+var view = s[0:5];   // StringView of "Hello"
+println_i64(view.length());  // 5
+```
+
+## StringView
+
+A non-owning view into a `String`. Provides read-only access to a substring without copying.
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `length()` | `() i64` | View length |
+| `at(i)` | `(i64) u8` | Get byte at index (relative to view) |
+| `equals_literal(s)` | `(static_ptr<u8>) bool` | Compare with a string literal |
+
+<Callout type="warning">
+  A `StringView` must not outlive the parent `String`. The view holds a reference to the String's internal memory.
+</Callout>
+
+## Matrix\<T\>
+
+N-dimensional matrices backed by contiguous heap memory. Supports bracket indexing and slicing.
+
+```sun
+var allocator = make_heap_allocator();
+var m = Matrix<i32>(allocator, [3, 3]);   // 3x3 matrix
+m[0, 0] = 1;
+m[1, 1] = 5;
+var val = m[1, 1];  // 5
+```
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `get(indices)` | `(ref array<i64>) T` | Get element at indices |
+| `set(indices, value)` | `(ref array<i64>, T) void` | Set element at indices |
+| `shape()` | `() array<i64>` | Get dimensions |
+| `size()` | `() i64` | Total number of elements |
+| `ndims()` | `() i64` | Number of dimensions |
+
+See [Matrices](/matrices) for detailed documentation.
+
+## Mutex
+
+Thread synchronization primitive using atomic compare-and-swap with futex-based blocking.
+
+```sun
+var m = Mutex();
+m.lock();
+// Critical section
+m.unlock();
+```
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `lock()` | `() void` | Acquire the lock (blocks if contended) |
+| `unlock()` | `() void` | Release the lock |
+
+See [Threads](/threads) for usage with spawned threads.
+
+## Error Types
+
+All error types implement `IError` with `code() i32` and `message() static_ptr<u8>` methods.
+
+| Error Type | Code | Description |
+|------------|------|-------------|
+| `Error` | custom | Generic error with custom code and message |
+| `EmptyError` | 1 | Operations on empty containers |
+| `NotFoundError` | 2 | Failed lookups |
+| `IndexOutOfBoundsError` | 3 | Invalid array/vector indices |
+| `DivisionByZeroError` | 4 | Division by zero |
+| `OverflowError` | 5 | Numeric overflow |
+| `InvalidArgumentError` | 6 | Invalid function arguments |
+| `IOError` | 7 | I/O operations |
+| `AllocationError` | 8 | Memory allocation failures |
+
+```sun
+function pop_first(v: ref Vec<i32>) i32, IError {
+    if (v.isEmpty()) {
+        throw EmptyError();
+    }
+    return v.get(0);
+}
+```
+
+## Print Functions
+
+Convenience wrappers around print intrinsics (from `print.sun`):
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `print_i32(value)` | `(i32) void` | Print i32 |
+| `println_i32(value)` | `(i32) void` | Print i32 with newline |
+| `print_i64(value)` | `(i64) void` | Print i64 |
+| `println_i64(value)` | `(i64) void` | Print i64 with newline |
+| `print_f64(value)` | `(f64) void` | Print f64 |
+| `println_f64(value)` | `(f64) void` | Print f64 with newline |
+| `print_newline()` | `() void` | Print newline |
+| `println(s)` | `(static_ptr<u8>) void` | Print string literal with newline |
