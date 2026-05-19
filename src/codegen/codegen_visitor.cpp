@@ -109,6 +109,8 @@ Value* CodegenVisitor::codegen(const ExprAST& expr) {
       return codegen(static_cast<const TryCatchExprAST&>(expr));
     case ASTNodeType::THROW:
       return codegen(static_cast<const ThrowExprAST&>(expr));
+    case ASTNodeType::SPAWN:
+      return codegen(static_cast<const SpawnExprAST&>(expr));
     case ASTNodeType::GENERIC_CALL:
       return codegen(static_cast<const GenericCallAST&>(expr));
     case ASTNodeType::PACK_EXPANSION: {

@@ -24,6 +24,7 @@ enum class Intrinsic {
   StaticPtrLen,   // _static_ptr_len<T>(static_ptr<T>) -> i64
   PtrAsRaw,       // _ptr_as_raw<T>(ptr<T>) -> raw_ptr<T>
   Is,             // _is<T>(value) -> bool (compile-time type check)
+  AddressOf,      // _address_of<T>(ref T) -> raw_ptr<T>
 
   // Non-generic intrinsics
   LoadI64,   // _load_i64(ptr, index) -> i64
@@ -38,6 +39,15 @@ enum class Intrinsic {
   PrintNewline,  // _print_newline() -> void
   PrintBytes,    // _print_bytes(ptr, len) -> void
   PrintlnStr,    // _println_str(str) -> void
+
+  // Atomic intrinsics
+  AtomicCmpxchgI32,  // _atomic_cmpxchg_i32(ptr, expected, desired) -> old_value
+  AtomicStoreI32,    // _atomic_store_i32(ptr, value) -> void
+  AtomicLoadI32,     // _atomic_load_i32(ptr) -> i32
+
+  // Futex intrinsics (Linux-specific thread synchronization)
+  FutexWait,  // _futex_wait(ptr, expected) -> void
+  FutexWake,  // _futex_wake(ptr) -> void
 };
 
 // Convert intrinsic function name to enum
@@ -52,6 +62,7 @@ inline Intrinsic getIntrinsic(const std::string& name) {
   if (name == "_static_ptr_len") return Intrinsic::StaticPtrLen;
   if (name == "_ptr_as_raw") return Intrinsic::PtrAsRaw;
   if (name == "_is") return Intrinsic::Is;
+  if (name == "_address_of") return Intrinsic::AddressOf;
 
   // Non-generic intrinsics
   if (name == "_load_i64") return Intrinsic::LoadI64;
@@ -67,6 +78,15 @@ inline Intrinsic getIntrinsic(const std::string& name) {
   if (name == "_print_bytes") return Intrinsic::PrintBytes;
   if (name == "_println_str") return Intrinsic::PrintlnStr;
 
+  // Atomic intrinsics
+  if (name == "_atomic_cmpxchg_i32") return Intrinsic::AtomicCmpxchgI32;
+  if (name == "_atomic_store_i32") return Intrinsic::AtomicStoreI32;
+  if (name == "_atomic_load_i32") return Intrinsic::AtomicLoadI32;
+
+  // Futex intrinsics
+  if (name == "_futex_wait") return Intrinsic::FutexWait;
+  if (name == "_futex_wake") return Intrinsic::FutexWake;
+
   return Intrinsic::None;
 }
 
@@ -81,6 +101,7 @@ inline bool isGenericIntrinsic(Intrinsic i) {
     case Intrinsic::StaticPtrLen:
     case Intrinsic::PtrAsRaw:
     case Intrinsic::Is:
+    case Intrinsic::AddressOf:
       return true;
     default:
       return false;

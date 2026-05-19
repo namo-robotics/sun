@@ -30,6 +30,7 @@ constexpr StructInfo All[] = {
     {"static_ptr_struct", Layout::PtrI64},  // { ptr data, i64 length }
     {"interface_fat", Layout::PtrPtr},      // { ptr data, ptr vtable }
     {"array_struct", Layout::PtrI32Ptr},    // { ptr data, i32 ndims, ptr dims }
+    {"thread_handle", Layout::PtrI32Ptr},   // { ptr context, ptr stack_base, i64 stack_size }
 };
 
 constexpr size_t Count = sizeof(All) / sizeof(All[0]);
@@ -39,6 +40,7 @@ constexpr const char* Closure = "closure";
 constexpr const char* StaticPtr = "static_ptr_struct";
 constexpr const char* InterfaceFat = "interface_fat";
 constexpr const char* ArrayStruct = "array_struct";
+constexpr const char* Thread = "thread_handle";
 
 }  // namespace StructNames
 }  // namespace sun

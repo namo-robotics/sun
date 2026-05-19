@@ -49,6 +49,8 @@ add_library(sun_lib
     src/codegen/block_expressions.cpp
     src/codegen/classes.cpp
     src/codegen/error_handling.cpp
+    src/codegen/threads.cpp
+    src/codegen/thread_utils.cpp
     src/semantic_analyzer.cpp
     src/semantic_analysis/scope_variables.cpp
     src/semantic_analysis/classes.cpp
@@ -116,6 +118,7 @@ if(NOT SKIP_STDLIB)
         ${CMAKE_SOURCE_DIR}/stdlib/errors.sun
         ${CMAKE_SOURCE_DIR}/stdlib/vec.sun
         ${CMAKE_SOURCE_DIR}/stdlib/map.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/mutex.sun
     )
 
     add_custom_command(

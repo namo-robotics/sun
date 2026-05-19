@@ -159,6 +159,14 @@ std::set<std::string> SemanticAnalyzer::collectFreeVariables(
       // Lambdas define their own scope - handled separately
       break;
 
+    case ASTNodeType::SPAWN: {
+      // spawn(lambda) - analyze the lambda for captures
+      const auto& spawnExpr = static_cast<const SpawnExprAST&>(expr);
+      auto lambdaFree = collectFreeVariables(spawnExpr.getLambda(), bound);
+      free.insert(lambdaFree.begin(), lambdaFree.end());
+      break;
+    }
+
     case ASTNodeType::INDEXED_ASSIGNMENT: {
       const auto& assignment = static_cast<const IndexedAssignmentAST&>(expr);
       auto targetFree = collectFreeVariables(*assignment.getTarget(), bound);

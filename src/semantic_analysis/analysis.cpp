@@ -1124,6 +1124,37 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       break;
     }
 
+    case ASTNodeType::SPAWN: {
+      auto& spawnExpr = static_cast<SpawnExprAST&>(expr);
+
+      // Analyze the lambda expression being spawned
+      analyzeExpr(const_cast<ExprAST&>(spawnExpr.getLambda()));
+
+      // Validate that the argument is a lambda
+      sun::TypePtr lambdaType = inferType(spawnExpr.getLambda());
+      if (!lambdaType || !lambdaType->isLambda()) {
+        logAndThrowError("spawn requires a lambda expression, got '" +
+                             (lambdaType ? lambdaType->toString() : "unknown") +
+                             "'",
+                         spawnExpr.getLocation());
+      }
+
+      // The lambda should take no arguments (for now)
+      auto* lambda = static_cast<sun::LambdaType*>(lambdaType.get());
+      if (!lambda->getParamTypes().empty()) {
+        logAndThrowError("spawn lambda must take no arguments, got " +
+                             std::to_string(lambda->getParamTypes().size()) +
+                             " parameter(s)",
+                         spawnExpr.getLocation());
+      }
+
+      // Set the spawn expression type to Thread<T> where T is the lambda's
+      // return type
+      sun::TypePtr returnType = lambda->getReturnType();
+      expr.setResolvedType(std::make_shared<sun::ThreadType>(returnType));
+      break;
+    }
+
     case ASTNodeType::GENERIC_CALL: {
       auto& genericCall = static_cast<GenericCallAST&>(expr);
       const std::string& funcName = genericCall.getFunctionName();
@@ -1658,6 +1689,11 @@ void SemanticAnalyzer::clearResolvedTypes(ExprAST& expr) {
       if (th.hasErrorExpr()) {
         clearResolvedTypes(const_cast<ExprAST&>(th.getErrorExpr()));
       }
+      break;
+    }
+    case ASTNodeType::SPAWN: {
+      auto& sp = static_cast<SpawnExprAST&>(expr);
+      clearResolvedTypes(const_cast<ExprAST&>(sp.getLambda()));
       break;
     }
     case ASTNodeType::ARRAY_LITERAL: {

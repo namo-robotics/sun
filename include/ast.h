@@ -61,7 +61,8 @@ enum class ASTNodeType {
   CONTINUE_STMT,         // continue statement
   GENERIC_CALL,          // Generic function call: create<Type>(args...)
   PACK_EXPANSION,        // args... - expand a variadic parameter pack
-  DECLARE_TYPE           // declare [Alias =] Type<Args>;
+  DECLARE_TYPE,          // declare [Alias =] Type<Args>;
+  SPAWN                  // spawn(lambda) - create OS thread
 };
 
 struct Capture {
@@ -1139,6 +1140,26 @@ class LambdaAST : public ExprAST {
   const BlockExprAST& getBody() const { return *Body; }
   bool hasBody() const { return Body != nullptr; }
 
+  std::unique_ptr<ExprAST> clone() const override;
+};
+
+// Spawn expression: spawn(lambda) - creates an OS thread
+// Takes a lambda expression and returns Thread<T> where T is the lambda's
+// return type The thread executes the lambda concurrently; use thread.join() to
+// wait and get result
+class SpawnExprAST : public ExprAST {
+  std::unique_ptr<ExprAST> Lambda;  // The lambda to execute in the new thread
+
+ public:
+  explicit SpawnExprAST(std::unique_ptr<ExprAST> lambda)
+      : Lambda(std::move(lambda)) {}
+
+  ASTNodeType getType() const override { return ASTNodeType::SPAWN; }
+  std::string toString() const override {
+    return "spawn(" + Lambda->toString() + ")";
+  }
+
+  const ExprAST& getLambda() const { return *Lambda; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 

@@ -133,6 +133,7 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
     case ASTNodeType::ENUM_DEFINITION:
     case ASTNodeType::GENERIC_CALL:
     case ASTNodeType::THROW:
+    case ASTNodeType::SPAWN:
     case ASTNodeType::BREAK_STMT:
     case ASTNodeType::CONTINUE_STMT:
     case ASTNodeType::UNARY:

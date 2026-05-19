@@ -321,6 +321,14 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
           }
         }
 
+        // Thread<T>.join() returns T
+        if (memberName == "join") {
+          if (objectType && objectType->isThread()) {
+            return static_cast<sun::ThreadType*>(objectType.get())
+                ->getResultType();
+          }
+        }
+
         // If calleeType is non-null but not a function, it might be the return
         // type of a builtin method (e.g., static_ptr.length returns i64)
         if (calleeType) {
@@ -528,6 +536,20 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       return sun::Types::Void();
     }
 
+    case ASTNodeType::SPAWN: {
+      // spawn(lambda) returns Thread<T> where T is the lambda's return type
+      const auto& spawnExpr = static_cast<const SpawnExprAST&>(expr);
+      sun::TypePtr lambdaType = inferType(spawnExpr.getLambda());
+      if (lambdaType && lambdaType->isLambda()) {
+        auto* lambda = static_cast<sun::LambdaType*>(lambdaType.get());
+        return std::make_shared<sun::ThreadType>(lambda->getReturnType());
+      }
+      logAndThrowError("spawn requires a lambda expression, got '" +
+                           (lambdaType ? lambdaType->toString() : "unknown") +
+                           "'",
+                       spawnExpr.getLocation());
+    }
+
     case ASTNodeType::GENERIC_CALL: {
       const auto& genericCall = static_cast<const GenericCallAST&>(expr);
       const std::string& funcName = genericCall.getFunctionName();
@@ -628,6 +650,22 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
         targetType = substituteTypeParameters(targetType);
         if (!targetType) {
           logAndThrowError("Failed to resolve type argument for _ptr_as_raw<T>",
+                           genericCall.getLocation());
+        }
+        return sun::Types::RawPointer(targetType);
+      }
+
+      if (funcName == "_address_of") {
+        // _address_of<T>(ref T) returns raw_ptr<T> - gets the address of a
+        // variable or field
+        if (genericCall.getArgs().size() != 1) {
+          logAndThrowError("_address_of<T>(value) requires 1 argument",
+                           genericCall.getLocation());
+        }
+        sun::TypePtr targetType = typeAnnotationToType(*typeArgsVec[0]);
+        targetType = substituteTypeParameters(targetType);
+        if (!targetType) {
+          logAndThrowError("Failed to resolve type argument for _address_of<T>",
                            genericCall.getLocation());
         }
         return sun::Types::RawPointer(targetType);
@@ -969,6 +1007,17 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
                            "' on unconstrained type parameter '" +
                            objectType->toString() + "'",
                        memberAccess.getLocation());
+    }
+
+    case sun::Type::Kind::Thread: {
+      // Thread<T>.join() returns T
+      auto* threadType = static_cast<sun::ThreadType*>(objectType.get());
+      if (memberName == "join") {
+        return threadType->getResultType();
+      }
+      logAndThrowError(
+          "Thread has no member '" + memberName + "'; available: 'join'",
+          memberAccess.getLocation());
     }
 
     default:

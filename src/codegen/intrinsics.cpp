@@ -4,11 +4,14 @@
 // - Generic intrinsics: _sizeof<T>, _init<T>, _load<T>, _store<T>,
 //                       _static_ptr_data<T>, _static_ptr_len<T>, _ptr_as_raw<T>
 // - Non-generic intrinsics: _load_i64, _store_i64, _malloc, _free
+// - Atomic intrinsics: _atomic_cmpxchg_i32, _atomic_store_i32, _atomic_load_i32
+// - Futex intrinsics: _futex_wait, _futex_wake
 
 #include "intrinsics.h"
 
 #include "codegen_visitor.h"
 #include "error.h"
+#include "thread_utils.h"
 
 using namespace llvm;
 
@@ -313,6 +316,96 @@ Value* CodegenVisitor::codegenPtrAsRawIntrinsic(
   return ownedPtr;
 }
 
+Value* CodegenVisitor::codegenAddressOfIntrinsic(
+    const std::vector<std::unique_ptr<ExprAST>>& args) {
+  // _address_of<T>(ref T) returns raw_ptr<T> - the address of the argument
+  // Works on any lvalue: variables, fields, array elements, etc.
+  if (args.size() != 1) {
+    logAndThrowError("_address_of<T>() requires exactly one argument");
+    return nullptr;
+  }
+
+  const ExprAST* argExpr = args[0].get();
+
+  // Handle VariableReferenceAST - get the alloca directly
+  if (auto* varRef = dynamic_cast<const VariableReferenceAST*>(argExpr)) {
+    const std::string& varName = varRef->getName();
+
+    // Check for local variable first
+    llvm::AllocaInst* alloca = findVariable(varName);
+    if (alloca) {
+      return alloca;
+    }
+
+    // Check for global variable
+    llvm::GlobalVariable* globalVar = module->getGlobalVariable(varName);
+    if (globalVar) {
+      return globalVar;
+    }
+
+    logAndThrowError("_address_of: Cannot find variable '" + varName + "'");
+    return nullptr;
+  }
+
+  // Handle MemberAccessAST - get the field pointer without loading
+  if (auto* memberAccess = dynamic_cast<const MemberAccessAST*>(argExpr)) {
+    const std::string& memberName = memberAccess->getMemberName();
+
+    // Get the object pointer
+    llvm::Value* objectPtr = codegen(*memberAccess->getObject());
+    if (!objectPtr) return nullptr;
+
+    // Get the object type
+    sun::TypePtr objectType = memberAccess->getObject()->getResolvedType();
+
+    // Handle reference types
+    if (objectType && objectType->isReference()) {
+      objectType = static_cast<sun::ReferenceType*>(objectType.get())
+                       ->getReferencedType();
+    }
+
+    // Handle pointer types (raw_ptr, static_ptr)
+    if (objectType && objectType->isRawPointer()) {
+      objectType =
+          static_cast<sun::RawPointerType*>(objectType.get())->getPointeeType();
+    }
+
+    if (!objectType || !objectType->isClass()) {
+      logAndThrowError("_address_of: Member access on non-class type");
+      return nullptr;
+    }
+
+    auto* classType = static_cast<sun::ClassType*>(objectType.get());
+    const sun::ClassField* field = classType->getField(memberName);
+    if (!field) {
+      logAndThrowError("_address_of: Cannot find field '" + memberName + "'");
+      return nullptr;
+    }
+
+    // Generate GEP to access the field
+    llvm::StructType* structType = classType->getStructType(ctx.getContext());
+    return ctx.builder->CreateStructGEP(structType, objectPtr, field->index,
+                                        memberName + ".addr");
+  }
+
+  // Handle ThisExprAST - return the this pointer
+  if (dynamic_cast<const ThisExprAST*>(argExpr)) {
+    llvm::AllocaInst* thisAlloca = findVariable("this");
+    if (thisAlloca) {
+      // Load the this pointer (alloca holds a pointer to the instance)
+      return ctx.builder->CreateLoad(
+          llvm::PointerType::getUnqual(ctx.getContext()), thisAlloca, "this");
+    }
+    logAndThrowError("_address_of: 'this' not available in current context");
+    return nullptr;
+  }
+
+  logAndThrowError(
+      "_address_of<T>() requires an addressable expression (variable, field, "
+      "or this)");
+  return nullptr;
+}
+
 Value* CodegenVisitor::codegenIsIntrinsic(
     const std::string& targetName,
     const std::vector<std::unique_ptr<ExprAST>>& args) {
@@ -472,5 +565,135 @@ Value* CodegenVisitor::codegenFreeIntrinsic(const CallExprAST& expr) {
   llvm::FunctionCallee freeFunc = module->getOrInsertFunction("free", freeType);
 
   ctx.builder->CreateCall(freeFunc, {ptr});
+  return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
+}
+
+// -------------------------------------------------------------------
+// Atomic intrinsics: _atomic_cmpxchg_i32, _atomic_store_i32, _atomic_load_i32
+// -------------------------------------------------------------------
+
+Value* CodegenVisitor::codegenAtomicCmpxchgI32Intrinsic(
+    const CallExprAST& expr) {
+  // _atomic_cmpxchg_i32(ptr, expected, desired) -> old_value
+  // Returns the old value. Success if old == expected.
+  const auto& args = expr.getArgs();
+  if (args.size() != 3) {
+    logAndThrowError(
+        "_atomic_cmpxchg_i32 expects 3 arguments: (ptr, expected, desired)");
+    return nullptr;
+  }
+
+  llvm::Value* ptr = codegen(*args[0]);
+  llvm::Value* expected = codegen(*args[1]);
+  llvm::Value* desired = codegen(*args[2]);
+  if (!ptr || !expected || !desired) return nullptr;
+
+  auto* i32Ty = llvm::Type::getInt32Ty(ctx.getContext());
+
+  // Ensure expected and desired are i32
+  expected = ctx.builder->CreateTrunc(expected, i32Ty, "cmpxchg.expected");
+  desired = ctx.builder->CreateTrunc(desired, i32Ty, "cmpxchg.desired");
+
+  // LLVM cmpxchg: returns { old_value, success_flag }
+  // Use acquire ordering for success (read-acquire), monotonic for failure
+  llvm::Value* result = ctx.builder->CreateAtomicCmpXchg(
+      ptr, expected, desired, llvm::MaybeAlign(),
+      llvm::AtomicOrdering::AcquireRelease, llvm::AtomicOrdering::Acquire);
+
+  // Extract just the old value (element 0)
+  return ctx.builder->CreateExtractValue(result, 0, "cmpxchg.old");
+}
+
+Value* CodegenVisitor::codegenAtomicStoreI32Intrinsic(const CallExprAST& expr) {
+  // _atomic_store_i32(ptr, value) -> void
+  // Performs an atomic store with release ordering
+  const auto& args = expr.getArgs();
+  if (args.size() != 2) {
+    logAndThrowError("_atomic_store_i32 expects 2 arguments: (ptr, value)");
+    return nullptr;
+  }
+
+  llvm::Value* ptr = codegen(*args[0]);
+  llvm::Value* value = codegen(*args[1]);
+  if (!ptr || !value) return nullptr;
+
+  auto* i32Ty = llvm::Type::getInt32Ty(ctx.getContext());
+
+  // Ensure value is i32
+  value = ctx.builder->CreateTrunc(value, i32Ty, "atomic.store.val");
+
+  // Create atomic store with release ordering
+  llvm::StoreInst* store = ctx.builder->CreateStore(value, ptr);
+  store->setAtomic(llvm::AtomicOrdering::Release);
+
+  return llvm::ConstantInt::get(i32Ty, 0);
+}
+
+Value* CodegenVisitor::codegenAtomicLoadI32Intrinsic(const CallExprAST& expr) {
+  // _atomic_load_i32(ptr) -> i32
+  // Performs an atomic load with acquire ordering
+  const auto& args = expr.getArgs();
+  if (args.size() != 1) {
+    logAndThrowError("_atomic_load_i32 expects 1 argument: (ptr)");
+    return nullptr;
+  }
+
+  llvm::Value* ptr = codegen(*args[0]);
+  if (!ptr) return nullptr;
+
+  auto* i32Ty = llvm::Type::getInt32Ty(ctx.getContext());
+
+  // Create atomic load with acquire ordering
+  llvm::LoadInst* load = ctx.builder->CreateLoad(i32Ty, ptr, "atomic.load.val");
+  load->setAtomic(llvm::AtomicOrdering::Acquire);
+
+  return load;
+}
+
+// -------------------------------------------------------------------
+// Futex intrinsics: _futex_wait, _futex_wake
+// -------------------------------------------------------------------
+
+Value* CodegenVisitor::codegenFutexWaitIntrinsic(const CallExprAST& expr) {
+  // _futex_wait(ptr, expected) -> void
+  // Blocks if *ptr == expected, until woken by _futex_wake
+  const auto& args = expr.getArgs();
+  if (args.size() != 2) {
+    logAndThrowError("_futex_wait expects 2 arguments: (ptr, expected)");
+    return nullptr;
+  }
+
+  llvm::Value* ptr = codegen(*args[0]);
+  llvm::Value* expected = codegen(*args[1]);
+  if (!ptr || !expected) return nullptr;
+
+  auto* i32Ty = llvm::Type::getInt32Ty(ctx.getContext());
+
+  // Ensure expected is i32
+  expected = ctx.builder->CreateTrunc(expected, i32Ty, "futex.expected");
+
+  // Use ThreadUtils to emit the futex syscall
+  ThreadUtils threadUtils(ctx, module);
+  threadUtils.emitSyscallFutexWait(ptr, expected);
+
+  return llvm::ConstantInt::get(i32Ty, 0);
+}
+
+Value* CodegenVisitor::codegenFutexWakeIntrinsic(const CallExprAST& expr) {
+  // _futex_wake(ptr) -> void
+  // Wakes one thread waiting on the futex at ptr
+  const auto& args = expr.getArgs();
+  if (args.size() != 1) {
+    logAndThrowError("_futex_wake expects 1 argument: (ptr)");
+    return nullptr;
+  }
+
+  llvm::Value* ptr = codegen(*args[0]);
+  if (!ptr) return nullptr;
+
+  // Use ThreadUtils to emit the futex syscall
+  ThreadUtils threadUtils(ctx, module);
+  threadUtils.emitSyscallFutexWake(ptr);
+
   return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
 }

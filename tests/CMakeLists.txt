@@ -29,12 +29,14 @@ add_executable(sun_tests
     test_matrix.cpp
     test_memory_safety.cpp
     test_modules.cpp
+    test_mutex.cpp
     test_parser.cpp
     test_pointers.cpp
     test_programs.cpp
     test_refs.cpp
     test_regex_parser.cpp
     test_string.cpp
+    test_threads.cpp
     test_vec.cpp
     # Add more test files
 )

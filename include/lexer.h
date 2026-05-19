@@ -46,6 +46,7 @@ enum class TokenKind {
   TRY,       // try keyword for error handling
   CATCH,     // catch keyword for exception handling
   THROW,     // throw keyword for throwing exceptions
+  SPAWN,     // spawn keyword for OS thread creation
   // Type keywords (must come before IDENTIFIER for priority)
   STATIC_PTR,            // static_ptr (pointer to immortal static data)
   PTR,                   // ptr (unique/owning pointer with RAII)
@@ -129,6 +130,7 @@ static const std::map<TokenKind, std::string> tokenRegexes = {
     {TokenKind::TRY, "try"},
     {TokenKind::CATCH, "catch"},
     {TokenKind::THROW, "throw"},
+    {TokenKind::SPAWN, "spawn"},
     {TokenKind::FAT_ARROW, "=>"},
     {TokenKind::ARROW, "->"},
     {TokenKind::UNDERSCORE, "_"},

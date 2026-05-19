@@ -134,6 +134,9 @@ class Parser {
   // Throw expression parsing: throw <expr>
   unique_ptr<ExprAST> parseThrow();
 
+  // Spawn expression parsing: spawn(lambda) - creates OS thread
+  unique_ptr<ExprAST> parseSpawn();
+
   // Class definition parsing: class Name { fields and methods }
   unique_ptr<ClassDefinitionAST> parseClassDefinition();
 
