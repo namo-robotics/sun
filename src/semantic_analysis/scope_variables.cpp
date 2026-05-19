@@ -91,6 +91,7 @@ std::shared_ptr<SemanticScope> SemanticScope::cloneSymbols(
   // Copy all symbol tables (shallow — shares type objects)
   clone->functions = functions;
   clone->classes = classes;
+  clone->classDefinitions = classDefinitions;
   clone->genericClasses = genericClasses;
   clone->interfaces = interfaces;
   clone->genericInterfaces = genericInterfaces;
@@ -846,14 +847,9 @@ void SemanticAnalyzer::registerFunction(const std::string& name,
   std::string qualifiedName =
       funcContext.empty() ? name : funcContext + "::" + name;
   std::string sig = getFunctionSignature(qualifiedName, info.paramTypes);
-  // Pass 1: detect redeclarations of the same function signature
-  if (collectingDeclarations) {
-    if (currentScope->functions.contains(sig)) {
-      // Allow re-registration from duplicate imports (diamond deps)
-      if (importScopeDepth_ > 0) return;
-      logAndThrowError("Cannot redeclare function '" + name +
-                       "' with the same parameter types");
-    }
+  // Skip if already registered (diamond import re-registration)
+  if (currentScope->functions.contains(sig)) {
+    return;
   }
   // Register in current scope
   currentScope->functions[sig] = info;
@@ -1176,11 +1172,10 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
 
   // Atomic intrinsics
   // _atomic_cmpxchg_i32(ptr, expected, desired) - atomic compare-and-swap
-  registerFunction("_atomic_cmpxchg_i32",
-                   {Types::Int32(),
-                    {Types::RawPointer(Types::Int32()), Types::Int32(),
-                     Types::Int32()},
-                    {}});
+  registerFunction("_atomic_cmpxchg_i32", {Types::Int32(),
+                                           {Types::RawPointer(Types::Int32()),
+                                            Types::Int32(), Types::Int32()},
+                                           {}});
   // _atomic_store_i32(ptr, value) - atomic store with release ordering
   registerFunction(
       "_atomic_store_i32",

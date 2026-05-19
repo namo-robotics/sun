@@ -501,6 +501,15 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       } else {
         analyzeBlock(const_cast<BlockExprAST&>(importScope.getBody()));
         analyzedImports_.insert(scopeKey);
+        // Update the canonical scope so subsequent diamond-dep clones
+        // include all symbols (functions, classes, etc.) registered during
+        // analysis of this import scope.
+        if (currentScope->parent) {
+          auto it = currentScope->parent->childModules.find(scopeKey);
+          if (it != currentScope->parent->childModules.end()) {
+            importScopesByKey_[scopeKey] = it->second;
+          }
+        }
       }
 
       importScopeDepth_--;
@@ -620,9 +629,75 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       auto& classDef = static_cast<ClassDefinitionAST&>(expr);
       const std::string& baseName = classDef.getName();
 
-      // Partial classes are skipped here - they're merged into the primary
-      // class when the primary is analyzed (see below)
+      // Partial classes: add methods to the primary class.
+      // If the primary has already been analyzed, merge immediately.
+      // If not yet seen (partial imported before primary), stash for later.
       if (classDef.isPartial()) {
+        auto existingClass = lookupClass(baseName);
+        if (existingClass) {
+          // Primary already analyzed — validate and merge methods now
+          for (const auto& extMethod : classDef.getMethods()) {
+            const std::string& methodName =
+                extMethod.function->getProto().getName();
+            if (existingClass->getMethod(methodName)) {
+              logAndThrowError("Method '" + methodName +
+                                   "' already defined in class '" + baseName +
+                                   "'",
+                               extMethod.function->getLocation());
+            }
+          }
+
+          // Register and analyze extension methods on the existing class
+          auto savedClass = currentClass;
+          setCurrentClass(existingClass);
+
+          // Register all extension methods first
+          for (const auto& methodDecl : classDef.getMethods()) {
+            enterScope();
+            declareVariable("this", existingClass, /*isParam=*/true);
+            FunctionInfo methodInfo = getFunctionInfo(*methodDecl.function);
+            const PrototypeAST& proto = methodDecl.function->getProto();
+            sun::TypePtr returnType = methodInfo.returnType
+                                          ? methodInfo.returnType
+                                          : sun::Types::Void();
+            existingClass->addMethod(
+                proto.getName(), returnType, methodInfo.paramTypes,
+                methodDecl.isConstructor, proto.getTypeParameters());
+            std::string mangledName =
+                existingClass->getMangledMethodName(proto.getName());
+            std::vector<sun::TypePtr> methodParamTypes;
+            methodParamTypes.push_back(existingClass);
+            for (const auto& pt : methodInfo.paramTypes) {
+              methodParamTypes.push_back(pt);
+            }
+            registerFunction(mangledName, {returnType, methodParamTypes, {}});
+            exitScope();
+          }
+
+          // Analyze extension method bodies
+          for (const auto& methodDecl : classDef.getMethods()) {
+            enterScope(ScopeType::Function);
+            declareVariable("this", existingClass, /*isParam=*/true);
+            analyzeFunction(*methodDecl.function);
+            exitScope();
+          }
+
+          // Merge methods into primary AST so codegen generates them
+          for (auto* s = currentScope; s != nullptr; s = s->parent) {
+            auto it = s->classDefinitions.find(baseName);
+            if (it != s->classDefinitions.end()) {
+              for (auto& extMethod : classDef.getMutableMethods()) {
+                it->second->getMutableMethods().push_back(std::move(extMethod));
+              }
+              break;
+            }
+          }
+
+          setCurrentClass(savedClass);
+        } else {
+          // Primary not yet seen — stash for merging when primary is analyzed
+          pendingExtensions_[baseName].push_back(&classDef);
+        }
         expr.setResolvedType(sun::Types::Void());
         return;
       }
@@ -843,6 +918,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       if (importScopeDepth_ == 0) {
         definedSymbols_.insert(className);
       }
+
+      // Store primary AST for partial class merging (if a partial appears
+      // later)
+      currentScope->classDefinitions[baseName] = &classDef;
 
       // Set resolved type to the class type so codegen can get the qualified
       // name
@@ -1339,8 +1418,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 // -------------------------------------------------------------------
 
 void SemanticAnalyzer::analyzeBlock(BlockExprAST& block) {
-  // Simple iteration - collectDeclarations should have already been called
-  // at the top level by the driver
+  // Sequential analysis — no hoisting. Types and functions must be
+  // defined before use.
   for (const auto& expr : block.getBody()) {
     analyzeExpr(*expr);
   }

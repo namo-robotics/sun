@@ -10,11 +10,9 @@
 void SemanticAnalyzer::registerInterface(
     const std::string& name, std::shared_ptr<sun::InterfaceType> interfaceType,
     std::optional<Position> loc) {
+  // Skip if already registered (diamond import re-registration)
   if (currentScope->interfaces.contains(name)) {
-    if (!collectingDeclarations) return;  // Pass 2: skip
-    // Allow re-registration from duplicate imports (diamond deps)
-    if (importScopeDepth_ > 0) return;
-    logAndThrowError("Cannot redeclare interface '" + name + "'");
+    return;
   }
   // Register in current scope
   currentScope->interfaces[name] = interfaceType;
@@ -77,11 +75,9 @@ std::shared_ptr<sun::InterfaceType> SemanticAnalyzer::lookupInterface(
 void SemanticAnalyzer::registerGenericInterface(
     const std::string& name, const GenericInterfaceInfo& info,
     std::optional<Position> loc) {
+  // Skip if already registered (diamond import re-registration)
   if (currentScope->genericInterfaces.contains(name)) {
-    if (!collectingDeclarations) return;  // Pass 2: skip
-    // Allow re-registration from duplicate imports (diamond deps)
-    if (importScopeDepth_ > 0) return;
-    logAndThrowError("Cannot redeclare generic interface '" + name + "'", loc);
+    return;
   }
   // Register in current scope
   currentScope->genericInterfaces[name] = info;

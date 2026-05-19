@@ -236,11 +236,6 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
   expandImportsInBlock(*blockAst, parser, cycleStack);
 
   // Run semantic analysis on the unified AST
-  // Pass 1: Collect declarations (forward references, class extensions)
-  for (const auto& expr : blockAst->getBody()) {
-    analyzer->collectDeclarations(*expr);
-  }
-  // Pass 2: Full analysis
   analyzer->analyzeBlock(*blockAst);
 
   // Run borrow checking on the unified AST

@@ -45,11 +45,6 @@ class SemanticAnalyzer {
   // Current class being analyzed (for 'this' resolution)
   std::shared_ptr<sun::ClassType> currentClass = nullptr;
 
-  // True during Pass 1 (collectDeclarations). When true, registration
-  // functions throw on redeclaration. When false (Pass 2), they skip
-  // silently since Pass 1 already registered the symbol.
-  bool collectingDeclarations = false;
-
   // Track nesting inside ImportScopeAST during analysis.
   // When > 0, duplicate symbol registration is allowed (diamond imports).
   int importScopeDepth_ = 0;
@@ -59,10 +54,7 @@ class SemanticAnalyzer {
   std::unordered_map<std::string, std::shared_ptr<SemanticScope>>
       importScopesByKey_;
 
-  // Import scopes whose declarations have been collected (Pass 1a).
-  std::unordered_set<std::string> collectedImports_;
-
-  // Import scopes whose bodies have been fully analyzed (Pass 1.5/2).
+  // Import scopes whose bodies have been fully analyzed.
   // Used to skip re-analysis for diamond dependencies.
   std::unordered_set<std::string> analyzedImports_;
 
@@ -90,10 +82,6 @@ class SemanticAnalyzer {
 
   // Main entry point: analyze a top-level expression/statement
   void analyze(ExprAST& expr);
-
-  // Pass 1: Pre-register declarations (functions, classes, interfaces, enums)
-  // in the current scope without analyzing bodies. Enables forward references.
-  void collectDeclarations(ExprAST& expr);
 
   // Extract function signature info (param types, captures, explicit return
   // type) Sets captures on the prototype and handles auto-ref conversion for
