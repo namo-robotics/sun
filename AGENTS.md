@@ -1,6 +1,6 @@
 # Sun Language Compiler
 
-Sun is a compiled language with an LLVM 20 backend (C++20).
+Sun is a compiled language with an LLVM 20 backend (C++20). Sun ensures memory-safety without runtime overhead via Rust-style borrow checking.
 
 ## Pipeline
 

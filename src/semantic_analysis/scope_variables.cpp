@@ -108,6 +108,10 @@ std::shared_ptr<SemanticScope> SemanticScope::cloneSymbols(
 void SemanticAnalyzer::enterScope(ScopeType type) {
   auto child = std::make_shared<SemanticScope>(type);
   child->parent = currentScope;
+  // Inherit unsafe context only for block scopes (not function/module/import)
+  if (type == ScopeType::Block) {
+    child->inUnsafeContext = currentScope->inUnsafeContext;
+  }
   currentScope->children.push_back(child);
   currentScope = child.get();
 }
@@ -268,6 +272,30 @@ void SemanticAnalyzer::enterTryBlock() {
 void SemanticAnalyzer::exitTryBlock() {
   if (currentScope && currentScope->tryBlockDepth > 0) {
     currentScope->tryBlockDepth--;
+  }
+}
+
+bool SemanticAnalyzer::isInUnsafeBlock() const {
+  return currentScope && currentScope->inUnsafeContext;
+}
+
+void SemanticAnalyzer::enterUnsafeBlock() {
+  if (currentScope) {
+    currentScope->unsafeBlockDepth++;
+    currentScope->inUnsafeContext = true;
+  }
+}
+
+void SemanticAnalyzer::exitUnsafeBlock() {
+  if (currentScope && currentScope->unsafeBlockDepth > 0) {
+    currentScope->unsafeBlockDepth--;
+    if (currentScope->unsafeBlockDepth == 0) {
+      // Restore based on parent (if we inherited from parent, stay in unsafe)
+      // For function/module/import scopes, parent's context doesn't matter
+      currentScope->inUnsafeContext = currentScope->parent &&
+                                      currentScope->type == ScopeType::Block &&
+                                      currentScope->parent->inUnsafeContext;
+    }
   }
 }
 

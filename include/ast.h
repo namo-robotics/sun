@@ -62,7 +62,8 @@ enum class ASTNodeType {
   GENERIC_CALL,          // Generic function call: create<Type>(args...)
   PACK_EXPANSION,        // args... - expand a variadic parameter pack
   DECLARE_TYPE,          // declare [Alias =] Type<Args>;
-  SPAWN                  // spawn(lambda) - create OS thread
+  SPAWN,                 // spawn(lambda) - create OS thread
+  UNSAFE_BLOCK           // unsafe { ... } - unsafe operations block
 };
 
 struct Capture {
@@ -1017,6 +1018,23 @@ class BlockExprAST : public ExprAST {
   const ExprAST* getLastExpr() const {
     return Body.empty() ? nullptr : Body.back().get();
   }
+  std::unique_ptr<ExprAST> clone() const override;
+};
+
+// Unsafe block: unsafe { ... }
+// Marks a block where unsafe operations (raw pointer ops, intrinsics) are allowed
+class UnsafeBlockAST : public ExprAST {
+  std::unique_ptr<BlockExprAST> body;
+
+ public:
+  explicit UnsafeBlockAST(std::unique_ptr<BlockExprAST> b)
+      : body(std::move(b)) {}
+
+  ASTNodeType getType() const override { return ASTNodeType::UNSAFE_BLOCK; }
+  std::string toString() const override { return "unsafe { ... }"; }
+
+  const BlockExprAST& getBody() const { return *body; }
+  BlockExprAST& getBody() { return *body; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 

@@ -237,6 +237,15 @@ std::unique_ptr<ExprAST> BlockExprAST::clone() const {
   return copy;
 }
 
+std::unique_ptr<ExprAST> UnsafeBlockAST::clone() const {
+  auto bodyClone = std::unique_ptr<BlockExprAST>(
+      static_cast<BlockExprAST*>(body->clone().release()));
+  auto copy = std::make_unique<UnsafeBlockAST>(std::move(bodyClone));
+  copy->setLocation(location_);
+  copy->setResolvedType(resolvedType);
+  return copy;
+}
+
 std::unique_ptr<ExprAST> IndexedAssignmentAST::clone() const {
   auto copy =
       std::make_unique<IndexedAssignmentAST>(target->clone(), value->clone());

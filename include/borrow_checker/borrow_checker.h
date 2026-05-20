@@ -73,6 +73,7 @@ class BorrowChecker {
   void checkMemberAssignment(const MemberAssignmentAST& assign);
   void checkIndexedAssignment(const IndexedAssignmentAST& assign);
   void checkTryCatch(const TryCatchExprAST& tryCatch);
+  void checkUnsafeBlock(const UnsafeBlockAST& unsafeBlock);
 
   // Scope management
   void enterScope();

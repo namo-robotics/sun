@@ -116,6 +116,10 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
       checkTryCatch(static_cast<const TryCatchExprAST&>(expr));
       break;
 
+    case ASTNodeType::UNSAFE_BLOCK:
+      checkUnsafeBlock(static_cast<const UnsafeBlockAST&>(expr));
+      break;
+
     case ASTNodeType::IMPORT_SCOPE:
       checkBlockExpr(static_cast<const ImportScopeAST&>(expr).getBody());
       break;
@@ -612,6 +616,13 @@ void BorrowChecker::checkTryCatch(const TryCatchExprAST& tryCatch) {
   if (clause.body) {
     checkBlockExpr(*clause.body);
   }
+  exitScope();
+}
+
+void BorrowChecker::checkUnsafeBlock(const UnsafeBlockAST& unsafeBlock) {
+  // Unsafe blocks are just scoped blocks - check the body normally
+  enterScope();
+  checkBlockExpr(unsafeBlock.getBody());
   exitScope();
 }
 

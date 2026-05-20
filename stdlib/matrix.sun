@@ -67,7 +67,7 @@ class Matrix<T> {
     // Destructor: free allocated memory
     function deinit() void {
         if (this.data != null) {
-            _free(this.data);
+            unsafe { _free(this.data); };
             this.data = null;
         }
     }
@@ -89,13 +89,13 @@ class Matrix<T> {
     // Get element at indices
     function get(indices: ref array<i64>) T {
         var idx: i64 = this.linearIndex(indices);
-        return _load<T>(this.data, idx);
+        return unsafe { _load<T>(this.data, idx); };
     }
     
     // Set element at indices
     function set(indices: ref array<i64>, value: T) void {
         var idx: i64 = this.linearIndex(indices);
-        _store<T>(this.data, idx, value);
+        unsafe { _store<T>(this.data, idx, value); };
     }
     
     // Get shape array
@@ -181,13 +181,13 @@ class MatrixView<T> {
     // Get element at indices
     function get(indices: ref array<i64>) T {
         var idx: i64 = this.linearIndex(indices);
-        return _load<T>(this.data, idx);
+        return unsafe { _load<T>(this.data, idx); };
     }
     
     // Set element at indices (views allow modification)
     function set(indices: ref array<i64>, value: T) void {
         var idx: i64 = this.linearIndex(indices);
-        _store<T>(this.data, idx, value);
+        unsafe { _store<T>(this.data, idx, value); };
     }
     
     // Get shape array

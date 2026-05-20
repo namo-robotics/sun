@@ -136,16 +136,16 @@ TEST(GenericSpecializationTest, simplified_vec_with_class) {
 
         function init() {
             this.size_ = 0;
-            this.data = _malloc(_sizeof<T>() * 4);
+            this.data = unsafe { _malloc(_sizeof<T>() * 4); };
         }
 
         function push(value: ref T) void {
-            _store<T>(this.data, this.size_, value);
+            unsafe { _store<T>(this.data, this.size_, value); };
             this.size_ = this.size_ + 1;
         }
 
         function get(index: i64) T {
-            return _load<T>(this.data, index);
+            return unsafe { _load<T>(this.data, index); };
         }
 
         function size() i64 {

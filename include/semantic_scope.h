@@ -294,6 +294,12 @@ struct SemanticScope {
   // Try block depth: incremented when entering a try block, decremented when
   // exiting Used to check if we need to catch or propagate errors from calls
   int tryBlockDepth = 0;
+  // Unsafe block depth: incremented when entering an unsafe block
+  // Used to check if unsafe operations (raw pointers, intrinsics) are allowed
+  int unsafeBlockDepth = 0;
+  // Whether this scope is in an unsafe context (inherited from parent for
+  // block scopes only - not inherited across function/module/import boundaries)
+  bool inUnsafeContext = false;
 
   // ===== Symbol tables (persistent — serialized to .moon for module scopes)
   // =====

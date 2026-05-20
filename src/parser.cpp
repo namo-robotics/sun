@@ -656,6 +656,9 @@ unique_ptr<ExprAST> Parser::parsePrimary() {
     case TokenKind::SPAWN:
       base = parseSpawn();
       break;
+    case TokenKind::UNSAFE:
+      base = parseUnsafeBlock();
+      break;
     case TokenKind::NULL_LITERAL:
       base = std::make_unique<NullLiteralAST>();
       getNextToken();  // eat 'null'
@@ -3409,6 +3412,27 @@ unique_ptr<ExprAST> Parser::parseSpawn() {
   auto spawn = std::make_unique<SpawnExprAST>(std::move(lambdaExpr));
   spawn->setLocation(loc);
   return spawn;
+}
+
+// Parse unsafe block: unsafe { ... }
+unique_ptr<ExprAST> Parser::parseUnsafeBlock() {
+  Position loc = curTok.start;
+  getNextToken();  // eat 'unsafe'
+
+  if (curTok.kind != TokenKind::BRACE_OPEN) {
+    parsingError("expected '{' after 'unsafe'");
+    return nullptr;
+  }
+
+  auto body = parseBlock();
+  if (!body) {
+    parsingError("expected block after 'unsafe'");
+    return nullptr;
+  }
+
+  auto unsafeBlock = std::make_unique<UnsafeBlockAST>(std::move(body));
+  unsafeBlock->setLocation(loc);
+  return unsafeBlock;
 }
 
 // Parse try-catch expression: try { ... } catch (e: IError) { ... }

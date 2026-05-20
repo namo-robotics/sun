@@ -367,8 +367,8 @@ TEST(MemorySafety, raw_ptr_null_check_pattern) {
         var p: raw_ptr<i32> = alloc.alloc<i32>(1);
         // In real code you'd check if p is null before use
         // This test just verifies the allocation works
-        _store<i32>(p, 0, 42);
-        var loaded: i32 = _load<i32>(p, 0);
+        unsafe { _store<i32>(p, 0, 42); };
+        var loaded: i32 = unsafe { _load<i32>(p, 0); };
         alloc.dealloc(p, 4);
         return loaded;
     }
