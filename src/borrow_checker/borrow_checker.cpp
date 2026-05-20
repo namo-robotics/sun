@@ -20,6 +20,11 @@ std::vector<BorrowError> BorrowChecker::check(const BlockExprAST& program) {
   refVariables_.clear();
   movedVariables_.clear();
   refTypedParams_.clear();
+  functionScopeDepth_ = 0;
+  currentFunctionReturnsRef_ = false;
+  paramLifetimes_.clear();
+  nextLifetimeId_ = 0;
+  classesWithRefFields_.clear();
 
   // Check all statements
   for (const auto& stmt : program.getBody()) {
@@ -454,21 +459,23 @@ void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
   // Check the return value expression
   checkExpr(*value);
 
-  // Note: Returning a reference variable like `return r` actually returns the
-  // dereferenced VALUE, not the reference itself. This is fine because the
-  // value is copied. The only restriction is on functions declared with ref
-  // return types, which is checked in checkFunctionDef.
+  // Check lifetime safety for reference returns
+  checkReturnLifetime(ret);
 }
 
 void BorrowChecker::checkFunctionDef(const FunctionAST& func) {
   const auto& proto = func.getProto();
   const std::string& funcName = proto.getName();
 
-  // Rule: Return type cannot be a reference
-  if constexpr (Config::FORBID_REF_RETURNS) {
-    if (proto.hasReturnType()) {
-      const auto& retType = *proto.getReturnType();
-      if (retType.isReference()) {
+  // Check if function returns a reference type
+  bool returnsRef = false;
+  if (proto.hasReturnType()) {
+    const auto& retType = *proto.getReturnType();
+    returnsRef = retType.isReference();
+
+    // Rule: Return type cannot be a reference (when config enabled)
+    if constexpr (Config::FORBID_REF_RETURNS) {
+      if (returnsRef) {
         reportError(
             "function '" + funcName + "' cannot return a reference type", 0, 0);
       }
@@ -477,11 +484,16 @@ void BorrowChecker::checkFunctionDef(const FunctionAST& func) {
 
   // Enter function scope
   enterFunctionScope(funcName);
+  currentFunctionReturnsRef_ = returnsRef;
 
-  // Track reference parameters
+  // Track reference parameters and their lifetimes
   for (const auto& [argName, argType] : proto.getArgs()) {
     if (argType.isReference()) {
       refTypedParams_.insert(argName);
+      // Assign param lifetime - outlives the function body
+      Lifetime paramLt = Lifetime::param(argName);
+      paramLifetimes_[argName] = paramLt;
+      state_.setLifetime(argName, paramLt);
     }
   }
 
@@ -497,11 +509,15 @@ void BorrowChecker::checkFunctionDef(const FunctionAST& func) {
 void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
   const auto& proto = lambda.getProto();
 
-  // Rule: Return type cannot be a reference
-  if constexpr (Config::FORBID_REF_RETURNS) {
-    if (proto.hasReturnType()) {
-      const auto& retType = *proto.getReturnType();
-      if (retType.isReference()) {
+  // Check if lambda returns a reference type
+  bool returnsRef = false;
+  if (proto.hasReturnType()) {
+    const auto& retType = *proto.getReturnType();
+    returnsRef = retType.isReference();
+
+    // Rule: Return type cannot be a reference (when config enabled)
+    if constexpr (Config::FORBID_REF_RETURNS) {
+      if (returnsRef) {
         reportError("lambda cannot return a reference type", 0, 0);
       }
     }
@@ -509,11 +525,16 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
 
   // Enter function scope (anonymous)
   enterFunctionScope("<lambda>");
+  currentFunctionReturnsRef_ = returnsRef;
 
-  // Track reference parameters
+  // Track reference parameters and their lifetimes
   for (const auto& [argName, argType] : proto.getArgs()) {
     if (argType.isReference()) {
       refTypedParams_.insert(argName);
+      // Assign param lifetime - outlives the lambda body
+      Lifetime paramLt = Lifetime::param(argName);
+      paramLifetimes_[argName] = paramLt;
+      state_.setLifetime(argName, paramLt);
     }
   }
 
@@ -527,16 +548,25 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
 }
 
 void BorrowChecker::checkClassDef(const ClassDefinitionAST& classDef) {
-  // Rule: Classes cannot have reference-type fields (without lifetimes)
-  if constexpr (Config::FORBID_REF_FIELDS_IN_CLASSES) {
-    for (const auto& field : classDef.getFields()) {
-      if (field.type.isReference()) {
+  // Check for reference-type fields
+  bool hasRefFields = false;
+  for (const auto& field : classDef.getFields()) {
+    if (field.type.isReference()) {
+      hasRefFields = true;
+
+      // Rule: Classes cannot have reference-type fields (when config enabled)
+      if constexpr (Config::FORBID_REF_FIELDS_IN_CLASSES) {
         reportError("class '" + classDef.getName() +
                         "' cannot have reference field '" + field.name +
                         "' - references cannot be stored in structs",
                     0, 0);
       }
     }
+  }
+
+  // Track classes with ref fields for lifetime checking
+  if (hasRefFields) {
+    classesWithRefFields_.insert(classDef.getName());
   }
 
   // Check methods
@@ -598,7 +628,9 @@ void BorrowChecker::exitScope() {
 void BorrowChecker::enterFunctionScope(const std::string& funcName) {
   currentFunction_ = funcName;
   enterScope();
+  functionScopeDepth_ = currentScope_;  // Record where function body starts
   refTypedParams_.clear();
+  paramLifetimes_.clear();
 }
 
 void BorrowChecker::exitFunctionScope() {
@@ -606,7 +638,10 @@ void BorrowChecker::exitFunctionScope() {
   refVariables_.clear();
   movedVariables_.clear();
   refTypedParams_.clear();
+  paramLifetimes_.clear();
   currentFunction_.clear();
+  functionScopeDepth_ = 0;
+  currentFunctionReturnsRef_ = false;
 }
 
 void BorrowChecker::reportError(const std::string& msg, int line, int col) {
@@ -688,6 +723,123 @@ BorrowChecker::RefTargetInfo BorrowChecker::resolveRefTarget(
   // Direct variable reference
   info.actualTarget = targetVarName;
   return info;
+}
+
+// ============================================================================
+// Lifetime Inference
+// ============================================================================
+
+Lifetime BorrowChecker::inferExprLifetime(const ExprAST& expr) {
+  switch (expr.getType()) {
+    case ASTNodeType::VARIABLE_REFERENCE: {
+      const auto& varRef = static_cast<const VariableReferenceAST&>(expr);
+      const std::string& name = varRef.getName();
+
+      // Check if it's a reference variable - return the lifetime of its target
+      auto refIt = refVariables_.find(name);
+      if (refIt != refVariables_.end()) {
+        // Get the lifetime of what it points to
+        const std::string& target = refIt->second.first;
+        auto targetLt = state_.getLifetime(target);
+        if (targetLt) {
+          return *targetLt;
+        }
+        // Fall back to inferring from the target name
+        if (target.substr(0, 6) == "param:") {
+          return Lifetime::param(target.substr(6));
+        }
+        return Lifetime::local(target, currentScope_);
+      }
+
+      // Check if it's a ref-typed function parameter
+      auto paramIt = paramLifetimes_.find(name);
+      if (paramIt != paramLifetimes_.end()) {
+        return paramIt->second;
+      }
+
+      // Check stored lifetime
+      auto storedLt = state_.getLifetime(name);
+      if (storedLt) {
+        return *storedLt;
+      }
+
+      // Local variable - bound to current scope
+      return Lifetime::local(name, currentScope_);
+    }
+
+    case ASTNodeType::MEMBER_ACCESS: {
+      // Field access inherits the object's lifetime
+      const auto& access = static_cast<const MemberAccessAST&>(expr);
+      if (access.getObject()) {
+        return inferExprLifetime(*access.getObject());
+      }
+      break;
+    }
+
+    case ASTNodeType::INDEX: {
+      // Array index inherits the array's lifetime
+      const auto& idx = static_cast<const IndexAST&>(expr);
+      if (idx.getTarget()) {
+        return inferExprLifetime(*idx.getTarget());
+      }
+      break;
+    }
+
+    case ASTNodeType::THIS: {
+      // 'this' is implicitly a parameter - has param lifetime
+      return Lifetime::param("this");
+    }
+
+    default:
+      break;
+  }
+
+  // Default: temporary at current scope
+  return Lifetime::local("$temp", currentScope_);
+}
+
+void BorrowChecker::checkReturnLifetime(const ReturnExprAST& ret) {
+  const ExprAST* value = ret.getValue();
+  if (!value) return;
+
+  // Only check lifetime if the function is declared to return a reference type.
+  // If the function returns a value type (e.g., i32), returning through a ref
+  // variable is fine because the value gets copied/dereferenced.
+  if (!currentFunctionReturnsRef_) return;
+
+  // Infer the lifetime of the returned expression
+  Lifetime exprLifetime = inferExprLifetime(*value);
+
+  // A reference return is safe if:
+  // 1. It's a static lifetime (string literals, globals)
+  // 2. It's a parameter lifetime (caller owns the data)
+  // 3. It's derived from a parameter (member access on param, etc.)
+  //
+  // It's NOT safe if:
+  // - It's a local lifetime with scope >= functionScopeDepth_
+  //   (local to this function - would dangle after return)
+
+  if (exprLifetime.isLocal()) {
+    // Check if the local is within this function (would dangle)
+    if (exprLifetime.getScopeDepth() >= functionScopeDepth_) {
+      const auto& pos = ret.getLocation();
+      reportDanglingRef(exprLifetime.getName(), pos.line, pos.column);
+    }
+  }
+}
+
+void BorrowChecker::reportDanglingRef(const std::string& varName, int line,
+                                      int col) {
+  std::string msg;
+  if (varName == "$temp") {
+    msg =
+        "cannot return reference to temporary value - it would be a "
+        "dangling reference";
+  } else {
+    msg = "cannot return reference to local variable '" + varName +
+          "' - it would be a dangling reference after the function returns";
+  }
+  reportError(msg, line, col);
 }
 
 }  // namespace sun

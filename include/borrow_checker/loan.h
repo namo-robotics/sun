@@ -5,6 +5,8 @@
 
 #include <string>
 
+#include "borrow_checker/lifetime.h"
+
 namespace sun {
 
 /// The kind of borrow - determines what operations are allowed
@@ -36,16 +38,18 @@ struct Loan {
   BorrowKind kind;          // Shared or Mutable
   size_t scopeDepth;        // Scope level where borrow was created
   SourceLoc location;       // Where the borrow occurred (for error messages)
+  Lifetime lifetime;        // Lifetime of the borrowed reference
   bool isActive = true;     // False when ref goes out of scope
 
   Loan() = default;
   Loan(std::string borrowed, std::string ref, BorrowKind k, size_t depth,
-       SourceLoc loc)
+       SourceLoc loc, Lifetime lt = Lifetime())
       : borrowedVar(std::move(borrowed)),
         refName(std::move(ref)),
         kind(k),
         scopeDepth(depth),
-        location(std::move(loc)) {}
+        location(std::move(loc)),
+        lifetime(std::move(lt)) {}
 
   bool isMutable() const { return kind == BorrowKind::Mutable; }
   bool isShared() const { return kind == BorrowKind::Shared; }

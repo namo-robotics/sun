@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -58,6 +59,12 @@ class BorrowState {
   /// Get the variable that a reference points to (if it's an active ref)
   const std::string* getRefTarget(const std::string& refName) const;
 
+  /// Set the lifetime for a variable or reference
+  void setLifetime(const std::string& name, const Lifetime& lt);
+
+  /// Get the lifetime for a variable or reference (if known)
+  std::optional<Lifetime> getLifetime(const std::string& name) const;
+
   /// Clear all state (for testing)
   void clear();
 
@@ -67,6 +74,9 @@ class BorrowState {
 
   /// Maps reference name -> target variable (for quick lookup)
   std::unordered_map<std::string, std::string> refToTarget_;
+
+  /// Maps variable/reference name -> its lifetime
+  std::unordered_map<std::string, Lifetime> lifetimes_;
 };
 
 }  // namespace sun

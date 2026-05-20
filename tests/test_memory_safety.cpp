@@ -438,3 +438,154 @@ TEST(MemorySafety, owned_value_local_use) {
   )");
   EXPECT_EQ(value, 5);
 }
+
+// ============================================================================
+// Lifetime Inference - Reference Returns
+// ============================================================================
+
+// Returning ref to parameter is safe (caller owns the data)
+// Note: Sun doesn't allow binding ref to function call result directly,
+// so we test by returning through the ref and using immediately
+TEST(LifetimeInference, ref_return_from_param_ok) {
+  auto value = executeString(R"(
+    function add_via_ref(p: ref i32, v: i32) ref i32 {
+        p = p + v;
+        return p;
+    }
+    
+    function main() i32 {
+        var x: i32 = 40;
+        // Call directly - ref return gets dereferenced automatically
+        return add_via_ref(x, 2);
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// Returning ref to local variable is REJECTED (would dangle)
+TEST(LifetimeInference, ref_return_from_local_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      function bad() ref i32 {
+          var x: i32 = 42;
+          return x;  // ERROR: x doesn't outlive function
+      }
+      function main() i32 { return 0; }
+    )"),
+                                "Borrow check failed");
+}
+
+// Returning ref to member of parameter is safe
+TEST(LifetimeInference, ref_return_member_of_param_ok) {
+  auto value = executeString(R"(
+    class Point {
+        var x: i32;
+        var y: i32;
+        function init(a: i32, b: i32) {
+            this.x = a;
+            this.y = b;
+        }
+        function get_x() ref i32 {
+            return this.x;
+        }
+    }
+    
+    function main() i32 {
+        var p = Point(10, 20);
+        // Use method that returns ref directly
+        return p.get_x();
+    }
+  )");
+  EXPECT_EQ(value, 10);
+}
+
+// Returning ref through 'this' is safe (method returns ref to own field)
+TEST(LifetimeInference, ref_return_from_this_ok) {
+  auto value = executeString(R"(
+    class Container {
+        var value: i32;
+        
+        function init(v: i32) {
+            this.value = v;
+        }
+        
+        function get_and_inc() ref i32 {
+            this.value = this.value + 1;
+            return this.value;
+        }
+    }
+    
+    function main() i32 {
+        var c = Container(98);
+        // Call directly - ref return gets dereferenced
+        return c.get_and_inc();
+    }
+  )");
+  EXPECT_EQ(value, 99);
+}
+
+// Returning ref to nested local is REJECTED
+TEST(LifetimeInference, ref_return_nested_local_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      function bad() ref i32 {
+          if (true) {
+              var x: i32 = 10;
+              return x;  // ERROR: x dies at block end
+          };
+          var y: i32 = 0;
+          return y;  // Also would be error
+      }
+      function main() i32 { return 0; }
+    )"),
+                                "Borrow check failed");
+}
+
+// Multiple ref params - returning any is safe
+TEST(LifetimeInference, ref_return_multiple_params_ok) {
+  auto value = executeString(R"(
+    function pick(a: ref i32, b: ref i32, flag: bool) ref i32 {
+        if (flag) {
+            return a;
+        };
+        return b;
+    }
+    
+    function main() i32 {
+        var x: i32 = 100;
+        var y: i32 = 200;
+        // Use ref return directly
+        return pick(x, y, true);
+    }
+  )");
+  EXPECT_EQ(value, 100);
+}
+
+// Ref to array element through param is safe
+TEST(LifetimeInference, ref_return_array_element_ok) {
+  auto value = executeString(R"(
+    function get_and_modify(arr: ref array<i32, 3>, i: i64, v: i32) ref i32 {
+        arr[i] = v;
+        return arr[i];
+    }
+    
+    function main() i32 {
+        var data: array<i32, 3> = [10, 0, 30];
+        // Use ref return directly
+        return get_and_modify(data, 1, 20);
+    }
+  )");
+  EXPECT_EQ(value, 20);
+}
+
+// Lambda returning ref from local is REJECTED
+TEST(LifetimeInference, lambda_ref_return_local_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      function main() i32 {
+          var bad_lambda = lambda () ref i32 {
+              var x: i32 = 5;
+              return x;  // ERROR: local would dangle
+          };
+          return 0;
+      }
+    )"),
+                                "Borrow check failed");
+}

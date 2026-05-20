@@ -133,6 +133,41 @@ class BorrowChecker {
 
   // Track function return types to validate no ref returns
   std::unordered_map<std::string, TypePtr> functionReturnTypes_;
+
+  // =========================================================================
+  // Lifetime Inference
+  // =========================================================================
+
+  /// Infer the lifetime of an expression.
+  /// - Variable references return the variable's lifetime
+  /// - Member access inherits the object's lifetime
+  /// - Parameters have param lifetimes (outlive function body)
+  /// - Locals have local lifetimes (bound to their scope)
+  Lifetime inferExprLifetime(const ExprAST& expr);
+
+  /// Check that a return statement's lifetime is valid.
+  /// A ref return is only valid if the returned value's lifetime
+  /// is tied to a parameter (not a local variable).
+  void checkReturnLifetime(const ReturnExprAST& ret);
+
+  /// Report a dangling reference error
+  void reportDanglingRef(const std::string& varName, int line, int col);
+
+  // Scope depth when current function was entered (for lifetime comparison)
+  size_t functionScopeDepth_ = 0;
+
+  // True if current function has a reference return type
+  bool currentFunctionReturnsRef_ = false;
+
+  // Track lifetimes for parameters in current function
+  // paramName -> Lifetime
+  std::unordered_map<std::string, Lifetime> paramLifetimes_;
+
+  // Counter for generating unique anonymous lifetime IDs
+  uint32_t nextLifetimeId_ = 0;
+
+  // Track classes that have reference fields (need special handling)
+  std::unordered_set<std::string> classesWithRefFields_;
 };
 
 }  // namespace sun
