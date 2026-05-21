@@ -9,7 +9,8 @@
 		"dockerfile": "../Dockerfile"
 	},
 	"mounts": [
-		"source=vscode-user-data,target=/home/vscode/.vscode-server/data/User,type=volume"
+		"source=vscode-user-data,target=/home/vscode/.vscode-server/data/User,type=volume",
+		"source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/home/ubuntu/.ssh,type=bind,readonly"
 	],
 	"remoteUser": "ubuntu",
 	"updateRemoteUserUID": true,
