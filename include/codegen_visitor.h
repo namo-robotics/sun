@@ -373,6 +373,9 @@ class CodegenVisitor {
   llvm::Value* codegen(const TryCatchExprAST& expr);
   llvm::Value* codegen(const ThrowExprAST& expr);
 
+  // Unsafe block codegen (pass-through to body)
+  llvm::Value* codegen(const UnsafeBlockAST& expr);
+
   // LLVM Exception Handling helpers
   // Get or declare C++ ABI exception handling functions
   llvm::FunctionCallee getCxaAllocateException();

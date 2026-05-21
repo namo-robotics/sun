@@ -57,7 +57,7 @@ class StringView {
         
         for (var i: i64 = 0; i < srcLen; i = i + 1) {
             var a: u8 = this.at(i);
-            var b: u8 = _load<u8>(srcData, i);
+            var b: u8 = unsafe { _load<u8>(srcData, i); };
             if (a != b) {
                 return false;
             }
@@ -86,7 +86,7 @@ class String {
         
         // Copy bytes from literal to heap
         for (var i: i64 = 0; i < srcLen; i = i + 1) {
-            var byte: u8 = _load<u8>(srcData, i);
+            var byte: u8 = unsafe { _load<u8>(srcData, i); };
             var idx: array<i64, 1> = [i];
             this.data.set(idx, byte);
         }
@@ -142,7 +142,7 @@ class String {
         var srcLen: i64 = _static_ptr_len<u8>(literal);
         
         for (var i: i64 = 0; i < srcLen; i = i + 1) {
-            var byte: u8 = _load<u8>(srcData, i);
+            var byte: u8 = unsafe { _load<u8>(srcData, i); };
             this.append_char(byte);
         }
     }
@@ -158,7 +158,7 @@ class String {
         
         for (var i: i64 = 0; i < srcLen; i = i + 1) {
             var a: u8 = this.at(i);
-            var b: u8 = _load<u8>(srcData, i);
+            var b: u8 = unsafe { _load<u8>(srcData, i); };
             if (a != b) {
                 return false;
             }

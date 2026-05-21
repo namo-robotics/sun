@@ -17,7 +17,7 @@ TEST(MutexTest, atomic_cmpxchg_compiles) {
   EXPECT_NO_THROW(compileString(R"(
     function main() i32 {
       var x: i32 = 0;
-      var old = _atomic_cmpxchg_i32(_address_of<i32>(x), 0, 1);
+      var old = unsafe { _atomic_cmpxchg_i32(_address_of<i32>(x), 0, 1); };
       return old;
     }
   )"));
@@ -27,7 +27,7 @@ TEST(MutexTest, atomic_store_compiles) {
   EXPECT_NO_THROW(compileString(R"(
     function main() i32 {
       var x: i32 = 0;
-      _atomic_store_i32(_address_of<i32>(x), 42);
+      unsafe { _atomic_store_i32(_address_of<i32>(x), 42); };
       return 0;
     }
   )"));
@@ -37,7 +37,7 @@ TEST(MutexTest, atomic_load_compiles) {
   EXPECT_NO_THROW(compileString(R"(
     function main() i32 {
       var x: i32 = 42;
-      var val = _atomic_load_i32(_address_of<i32>(x));
+      var val = unsafe { _atomic_load_i32(_address_of<i32>(x)); };
       return val;
     }
   )"));
@@ -62,7 +62,7 @@ TEST(MutexTest, futex_wake_compiles) {
   EXPECT_NO_THROW(compileString(R"(
     function main() i32 {
       var x: i32 = 0;
-      _futex_wake(_address_of<i32>(x));
+      unsafe { _futex_wake(_address_of<i32>(x)); };
       return 0;
     }
   )"));
@@ -76,7 +76,7 @@ TEST(MutexTest, atomic_cmpxchg_success) {
   auto value = executeString(R"(
     function main() i32 {
       var x: i32 = 0;
-      var old = _atomic_cmpxchg_i32(_address_of<i32>(x), 0, 1);
+      var old = unsafe { _atomic_cmpxchg_i32(_address_of<i32>(x), 0, 1); };
       // old should be 0 (the original value)
       // x should now be 1
       return old;
@@ -90,7 +90,7 @@ TEST(MutexTest, atomic_cmpxchg_fail) {
     function main() i32 {
       var x: i32 = 5;
       // Expected is 0, but x is 5, so cmpxchg should fail
-      var old = _atomic_cmpxchg_i32(_address_of<i32>(x), 0, 1);
+      var old = unsafe { _atomic_cmpxchg_i32(_address_of<i32>(x), 0, 1); };
       // old should be 5 (the actual value, not changed)
       return old;
     }
@@ -102,8 +102,8 @@ TEST(MutexTest, atomic_store_and_load) {
   auto value = executeString(R"(
     function main() i32 {
       var x: i32 = 0;
-      _atomic_store_i32(_address_of<i32>(x), 42);
-      var val = _atomic_load_i32(_address_of<i32>(x));
+      unsafe { _atomic_store_i32(_address_of<i32>(x), 42); };
+      var val = unsafe { _atomic_load_i32(_address_of<i32>(x)); };
       return val;
     }
   )");

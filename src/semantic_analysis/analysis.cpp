@@ -1,6 +1,7 @@
 // analysis.cpp — Main analysis entry points for semantic analyzer
 
 #include <set>
+#include <unordered_set>
 
 #include "config.h"
 #include "error.h"
@@ -1196,6 +1197,24 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       break;
     }
 
+    case ASTNodeType::UNSAFE_BLOCK: {
+      auto& unsafeBlock = static_cast<UnsafeBlockAST&>(expr);
+
+      // Track that we're inside an unsafe block
+      enterUnsafeBlock();
+
+      // Analyze the body
+      analyzeBlock(unsafeBlock.getBody());
+
+      // Exit unsafe block tracking
+      exitUnsafeBlock();
+
+      // Infer the result type (inferType handles unsafe context internally)
+      sun::TypePtr resultType = inferType(expr);
+      expr.setResolvedType(resultType ? resultType : sun::Types::Void());
+      break;
+    }
+
     case ASTNodeType::THROW: {
       auto& throwExpr = static_cast<ThrowExprAST&>(expr);
 
@@ -1804,6 +1823,11 @@ void SemanticAnalyzer::clearResolvedTypes(ExprAST& expr) {
       clearResolvedTypes(*clause.body);
       break;
     }
+    case ASTNodeType::UNSAFE_BLOCK: {
+      auto& ub = static_cast<UnsafeBlockAST&>(expr);
+      clearResolvedTypes(ub.getBody());
+      break;
+    }
     case ASTNodeType::THROW: {
       auto& th = static_cast<ThrowExprAST&>(expr);
       if (th.hasErrorExpr()) {
@@ -1983,9 +2007,33 @@ void SemanticAnalyzer::lazyParseAndAnalyzeMethod(
 // -------------------------------------------------------------------
 
 void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
+  // Check for unsafe intrinsic calls (non-generic)
+  // Generic intrinsics (_load<T>, _store<T>, _address_of<T>) are checked in
+  // type_inference.cpp
+  static const std::unordered_set<std::string> unsafeIntrinsics = {
+      "_malloc",
+      "_free",
+      "_load_i64",
+      "_store_i64",
+      "_atomic_cmpxchg_i32",
+      "_atomic_store_i32",
+      "_atomic_load_i32",
+      "_futex_wait",
+      "_futex_wake"};
+
+  auto calleeASTType = callExpr.getCallee()->getType();
+  if (calleeASTType == ASTNodeType::VARIABLE_REFERENCE) {
+    const auto& varRef =
+        static_cast<const VariableReferenceAST&>(*callExpr.getCallee());
+    const std::string& funcName = varRef.getName();
+    if (unsafeIntrinsics.count(funcName) && !isInUnsafeBlock()) {
+      logAndThrowError("'" + funcName + "' can only be used in an unsafe block",
+                       callExpr.getLocation());
+    }
+  }
+
   // Get parameter types early for array literal type propagation
   std::vector<sun::TypePtr> expectedParamTypes;
-  auto calleeASTType = callExpr.getCallee()->getType();
   if (calleeASTType == ASTNodeType::VARIABLE_REFERENCE) {
     const auto& varRef =
         static_cast<const VariableReferenceAST&>(*callExpr.getCallee());

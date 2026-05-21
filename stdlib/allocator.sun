@@ -40,16 +40,16 @@ class HeapAllocator implements IAllocator {
     // Allocate array of count elements, returns typed raw pointer
     function alloc<T>(count: i64) raw_ptr<T> {
         var size: i64 = count * _sizeof<T>();
-        return _malloc(size);
+        return unsafe { _malloc(size); };
     }
     
     // Low-level raw byte allocation
     function alloc_raw(size: i64) raw_ptr<i8> {
-        return _malloc(size);
+        return unsafe { _malloc(size); };
     }
     
     function dealloc(p: raw_ptr<i8>, size: i64) void {
-        _free(p);
+        unsafe { _free(p); };
     }
     
     // Create a single instance of T

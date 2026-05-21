@@ -22,7 +22,7 @@ class Unique<T> {
     
     function deinit() void {
         if (this.data != null) {
-            _free(this.data);
+            unsafe { _free(this.data); };
             this.data = null;
         }
     }

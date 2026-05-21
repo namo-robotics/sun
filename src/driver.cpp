@@ -208,6 +208,11 @@ static void expandAllImports(ExprAST& expr, Parser& parser,
           cycleStack);
       break;
     }
+    case ASTNodeType::UNSAFE_BLOCK: {
+      auto& unsafeBlock = static_cast<UnsafeBlockAST&>(expr);
+      expandImportsInBlock(unsafeBlock.getBody(), parser, cycleStack);
+      break;
+    }
     case ASTNodeType::MATCH: {
       auto& matchExpr = static_cast<MatchExprAST&>(expr);
       for (const auto& arm : matchExpr.getArms()) {

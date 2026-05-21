@@ -131,6 +131,9 @@ class Parser {
   // Try-catch expression parsing: try { ... } catch (e: IError) { ... }
   unique_ptr<ExprAST> parseTryCatch();
 
+  // Unsafe block parsing: unsafe { ... }
+  unique_ptr<ExprAST> parseUnsafeBlock();
+
   // Throw expression parsing: throw <expr>
   unique_ptr<ExprAST> parseThrow();
 

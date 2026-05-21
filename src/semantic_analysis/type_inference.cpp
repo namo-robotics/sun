@@ -1,5 +1,7 @@
 // semantic_analysis/type_inference.cpp — Type inference
 
+#include <unordered_set>
+
 #include "error.h"
 #include "semantic_analyzer.h"
 
@@ -530,6 +532,32 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       return inferType(tryCatchExpr.getTryBlock());
     }
 
+    case ASTNodeType::UNSAFE_BLOCK: {
+      const auto& unsafeBlock = static_cast<const UnsafeBlockAST&>(expr);
+      const auto& body = unsafeBlock.getBody();
+
+      // Set unsafe context for type inference of the body
+      const_cast<SemanticAnalyzer*>(this)->enterUnsafeBlock();
+
+      sun::TypePtr resultType;
+      // For unsafe blocks, the type is the type of the last expression
+      // This allows patterns like: return unsafe { _load<T>(ptr, idx); };
+      if (body.getType() == ASTNodeType::BLOCK) {
+        const auto& block = static_cast<const BlockExprAST&>(body);
+        if (!block.isEmpty()) {
+          // Return type of last statement (expression statement)
+          const auto& lastStmt = *block.getBody().back();
+          resultType = inferType(lastStmt);
+        }
+      }
+      if (!resultType) {
+        resultType = inferType(body);
+      }
+
+      const_cast<SemanticAnalyzer*>(this)->exitUnsafeBlock();
+      return resultType;
+    }
+
     case ASTNodeType::THROW: {
       // Throw expressions don't return a value (they transfer control)
       // We return Void but in practice this is a noreturn
@@ -584,6 +612,15 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
           return sun::Types::Void();
         }
         return sun::Types::Void();
+      }
+
+      // Check for unsafe intrinsics - these require an unsafe block
+      static const std::unordered_set<std::string> unsafeGenericIntrinsics = {
+          "_load", "_store", "_address_of"};
+      if (unsafeGenericIntrinsics.count(funcName) && !isInUnsafeBlock()) {
+        logAndThrowError(
+            "'" + funcName + "' can only be used in an unsafe block",
+            genericCall.getLocation());
       }
 
       if (funcName == "_load") {

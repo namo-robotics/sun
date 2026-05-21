@@ -202,9 +202,23 @@ const std::string* BorrowState::getRefTarget(const std::string& refName) const {
   return it != refToTarget_.end() ? &it->second : nullptr;
 }
 
+void BorrowState::setLifetime(const std::string& name, const Lifetime& lt) {
+  lifetimes_[name] = lt;
+}
+
+std::optional<Lifetime> BorrowState::getLifetime(
+    const std::string& name) const {
+  auto it = lifetimes_.find(name);
+  if (it != lifetimes_.end()) {
+    return it->second;
+  }
+  return std::nullopt;
+}
+
 void BorrowState::clear() {
   loans_.clear();
   refToTarget_.clear();
+  lifetimes_.clear();
 }
 
 }  // namespace sun

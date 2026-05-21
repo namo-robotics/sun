@@ -26,7 +26,7 @@ TEST(AllocatorTest, variadic_method_local_allocator) {
         function init() {}
         function create<T>(args...: _init_args<T>) raw_ptr<T> {
             var size: i64 = _sizeof<T>();
-            var memory: raw_ptr<i8> = _malloc(size);
+            var memory: raw_ptr<i8> = unsafe { _malloc(size); };
             _init<T>(memory, args...);
             return memory;
         }

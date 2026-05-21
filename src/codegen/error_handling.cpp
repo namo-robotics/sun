@@ -98,6 +98,12 @@ Value* CodegenVisitor::codegen(const ThrowExprAST& expr) {
   return nullptr;
 }
 
+// Codegen for unsafe block: unsafe { ... }
+// Simply generates code for the body - safety checks are done at semantic analysis
+Value* CodegenVisitor::codegen(const UnsafeBlockAST& expr) {
+  return codegen(expr.getBody());
+}
+
 // Codegen for try-catch expression: try { ... } catch (e: IError) { ... }
 // Errors can be caught at any point during the try block (not just at the end)
 Value* CodegenVisitor::codegen(const TryCatchExprAST& expr) {

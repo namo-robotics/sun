@@ -314,6 +314,13 @@ class SemanticAnalyzer {
   void enterTryBlock();
   void exitTryBlock();
 
+  // Check if we're currently inside an unsafe block
+  bool isInUnsafeBlock() const;
+
+  // Enter/exit an unsafe block (increments/decrements unsafe depth counter)
+  void enterUnsafeBlock();
+  void exitUnsafeBlock();
+
   // Module name registration for qualified name resolution (mod_x.mod_y.var)
 
   bool isModuleName(const std::string& name) const;
