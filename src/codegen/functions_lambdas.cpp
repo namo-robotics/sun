@@ -450,11 +450,13 @@ Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
     if (valueType->isVoidTy()) {
       // void, IError -> just { i1 } error flag, no value field
       returnType = llvm::StructType::get(
-          ctx.getContext(), {llvm::Type::getInt1Ty(ctx.getContext())});
+          ctx.getContext(),
+          std::vector<llvm::Type*>{llvm::Type::getInt1Ty(ctx.getContext())});
       valueType = nullptr;  // Mark that there's no value field
     } else {
       returnType = llvm::StructType::get(
-          ctx.getContext(), {llvm::Type::getInt1Ty(ctx.getContext()), valueType});
+          ctx.getContext(),
+          {llvm::Type::getInt1Ty(ctx.getContext()), valueType});
     }
   }
 
@@ -657,11 +659,13 @@ llvm::Value* CodegenVisitor::codegenLambda(LambdaAST& lambdaAst) {
     if (valueType->isVoidTy()) {
       // void, IError -> just { i1 } error flag, no value field
       returnType = llvm::StructType::get(
-          ctx.getContext(), {llvm::Type::getInt1Ty(ctx.getContext())});
+          ctx.getContext(),
+          std::vector<llvm::Type*>{llvm::Type::getInt1Ty(ctx.getContext())});
       valueType = nullptr;  // Mark that there's no value field
     } else {
       returnType = llvm::StructType::get(
-          ctx.getContext(), {llvm::Type::getInt1Ty(ctx.getContext()), valueType});
+          ctx.getContext(),
+          {llvm::Type::getInt1Ty(ctx.getContext()), valueType});
     }
   }
 

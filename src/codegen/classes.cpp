@@ -436,7 +436,8 @@ Function* CodegenVisitor::declareMethodFromAST(
     if (returnType->isVoidTy()) {
       // void, IError -> just { i1 } error flag, no value field
       returnType = llvm::StructType::get(
-          ctx.getContext(), {llvm::Type::getInt1Ty(ctx.getContext())});
+          ctx.getContext(),
+          std::vector<llvm::Type*>{llvm::Type::getInt1Ty(ctx.getContext())});
       valueType = nullptr;  // Mark that there's no value field
     } else {
       returnType = llvm::StructType::get(
