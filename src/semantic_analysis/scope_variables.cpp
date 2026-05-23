@@ -1164,10 +1164,9 @@ std::optional<FunctionInfo> SemanticAnalyzer::lookupFunction(
     // Search import bindings from using statements
     for (const auto& binding : s->importBindings) {
       if (!binding.sourceScope) continue;
-      if (binding.isWildcard) {
-        result = findInScope(*binding.sourceScope);
-        if (result) return result;
-      }
+      // Search both wildcard and specific bindings
+      result = findInScope(*binding.sourceScope);
+      if (result) return result;
     }
   }
 
