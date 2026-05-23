@@ -1075,6 +1075,18 @@ std::optional<FunctionInfo> SemanticAnalyzer::lookupFunction(
             }
           }
 
+          // raw_ptr<T> is compatible with raw_ptr<i8> (like C's void*)
+          // Only for intrinsics (functions starting with '_') to avoid
+          // accidental type erasure in user code
+          if (argTypes[i]->isRawPointer() &&
+              info->paramTypes[i]->isRawPointer() && isIntrinsic(baseName)) {
+            auto* paramRawPtr = static_cast<const sun::RawPointerType*>(
+                info->paramTypes[i].get());
+            if (paramRawPtr->getPointeeType()->isInt8()) {
+              continue;
+            }
+          }
+
           if (isAssignableTo(argTypes[i], info->paramTypes[i])) {
             continue;
           }

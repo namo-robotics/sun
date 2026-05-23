@@ -692,7 +692,7 @@ TEST(DynamicDispatchTest, interface_param_dispatch) {
         return this.radius * this.radius * 3;
       }
     }
-    function compute_area(s: IShape) i32 {
+    function compute_area(s: ref IShape) i32 {
       return s.area();
     }
     function main() i32 {
@@ -720,7 +720,7 @@ TEST(DynamicDispatchTest, multiple_classes_same_interface) {
       function init(w: i32, h: i32) { this.width = w; this.height = h; }
       function area() i32 { return this.width * this.height; }
     }
-    function get_area(s: IShape) i32 {
+    function get_area(s: ref IShape) i32 {
       return s.area();
     }
     function main() i32 {
@@ -746,7 +746,7 @@ TEST(DynamicDispatchTest, interface_with_multiple_methods) {
       function value() i32 { return this.val; }
       function name() i32 { return this.id; }
     }
-    function sum_info(c: ICounter) i32 {
+    function sum_info(c: ref ICounter) i32 {
       return c.value() + c.name();
     }
     function main() i32 {
@@ -772,7 +772,7 @@ TEST(DynamicDispatchTest, interface_with_default_method_override) {
         return 100 + this.bonus;
       }
     }
-    function get_greeting(g: IGreeter) i32 {
+    function get_greeting(g: ref IGreeter) i32 {
       return g.greet();
     }
     function main() i32 {
@@ -794,7 +794,7 @@ TEST(DynamicDispatchTest, interface_with_default_method_no_override) {
     class DefaultGreeter implements IGreeter {
       function init() {}
     }
-    function get_greeting(g: IGreeter) i32 {
+    function get_greeting(g: ref IGreeter) i32 {
       return g.greet();
     }
     function main() i32 {
@@ -816,7 +816,7 @@ TEST(DynamicDispatchTest, generic_interface_dispatch) {
       function init(v: i32) { this.val = v; }
       function get() i32 { return this.val; }
     }
-    function unbox(b: IBox<i32>) i32 {
+    function unbox(b: ref IBox<i32>) i32 {
       return b.get();
     }
     function main() i32 {

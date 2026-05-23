@@ -2119,6 +2119,32 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
         // constructor call (stack-allocated)
         varRef.setResolvedType(classType);
       } else {
+        // Check if there are overloads for this function name - if so,
+        // report a helpful "no matching overload" error
+        auto allOverloads = getAllFunctions(resolved.baseName);
+        if (!allOverloads.empty()) {
+          // Build error message with arg types and available overloads
+          std::string argTypesStr;
+          for (size_t i = 0; i < argTypes.size(); ++i) {
+            if (i > 0) argTypesStr += ", ";
+            argTypesStr += argTypes[i] ? argTypes[i]->toString() : "unknown";
+          }
+          std::string overloadsStr;
+          for (const auto& overload : allOverloads) {
+            overloadsStr += "\n  - " + resolved.baseName + "(";
+            for (size_t i = 0; i < overload.paramTypes.size(); ++i) {
+              if (i > 0) overloadsStr += ", ";
+              overloadsStr += overload.paramTypes[i]
+                                  ? overload.paramTypes[i]->toString()
+                                  : "unknown";
+            }
+            overloadsStr += ")";
+          }
+          logAndThrowError("No matching overload of '" + resolved.baseName +
+                               "' for argument types (" + argTypesStr +
+                               "). Available overloads:" + overloadsStr,
+                           callExpr.getLocation());
+        }
         // Not a function or class - analyze normally (will check variables,
         // etc.)
         analyzeExpr(varRef);
@@ -2291,7 +2317,10 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
         }
 
         // raw_ptr<T> is compatible with raw_ptr<i8> (like C's void*)
-        if (argType->isRawPointer() && paramType->isRawPointer()) {
+        // Only for intrinsics (functions starting with '_') to avoid
+        // accidental type erasure in user code
+        if (argType->isRawPointer() && paramType->isRawPointer() &&
+            isIntrinsic(funcName)) {
           auto* paramRawPtr =
               static_cast<const sun::RawPointerType*>(paramType.get());
           if (paramRawPtr->getPointeeType()->isInt8()) {

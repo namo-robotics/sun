@@ -246,6 +246,11 @@ class SemanticAnalyzer {
   // Check if an identifier starts with underscore (reserved for builtins)
   static bool isReservedIdentifier(const std::string& name);
 
+  // Check if a function name is an intrinsic (starts with '_')
+  static bool isIntrinsic(const std::string& name) {
+    return !name.empty() && name[0] == '_';
+  }
+
   // Check if a type can be assigned to another type.
   // Handles interface assignability: class C can be assigned to interface I
   // if C implements I. Also handles ref unwrapping and exact equality.

@@ -13,7 +13,7 @@ struct Config {
   /// If true, compound types (classes, interfaces) cannot be passed by value
   /// to functions - they must use `ref T` or pointer types.
   /// If false, compound types are passed by value with move semantics.
-  static constexpr bool REQUIRE_REF_FOR_COMPOUND_PARAMS = false;
+  static constexpr bool REQUIRE_REF_FOR_COMPOUND_PARAMS = true;
 
   /// If true, reference types (ref T) cannot be stored in class fields.
   /// References are meant for parameter passing, not storage.
