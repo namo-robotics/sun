@@ -85,7 +85,7 @@ TEST(GenericSpecializationTest, generic_method_new_specialization) {
     function main() i32 {
         var allocator = make_heap_allocator();
         var counter_ptr = allocator.create<Counter>(42);
-        return counter_ptr.get();
+        return unsafe { counter_ptr.get(); };
     }
   )");
   EXPECT_EQ(value, 42);

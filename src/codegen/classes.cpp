@@ -431,10 +431,18 @@ Function* CodegenVisitor::declareMethodFromAST(
   }
 
   // Wrap in error union if needed
-  if (canError && returnType && !returnType->isVoidTy()) {
-    returnType = llvm::StructType::get(
-        ctx.getContext(),
-        {llvm::Type::getInt1Ty(ctx.getContext()), returnType});
+  llvm::Type* valueType = returnType;
+  if (canError && returnType) {
+    if (returnType->isVoidTy()) {
+      // void, IError -> just { i1 } error flag, no value field
+      returnType = llvm::StructType::get(
+          ctx.getContext(), {llvm::Type::getInt1Ty(ctx.getContext())});
+      valueType = nullptr;  // Mark that there's no value field
+    } else {
+      returnType = llvm::StructType::get(
+          ctx.getContext(),
+          {llvm::Type::getInt1Ty(ctx.getContext()), returnType});
+    }
   }
 
   // Create the function declaration
@@ -573,14 +581,21 @@ void CodegenVisitor::generateMethodBody(const FunctionAST& methodFunc,
   // Generate the method body
   codegen(methodFunc.getBody());
 
-  // Add return void if no explicit return and function returns void
-  if (returnType->isVoidTy()) {
-    if (!ctx.builder->GetInsertBlock()->getTerminator()) {
+  // Add implicit return if no explicit return
+  if (!ctx.builder->GetInsertBlock()->getTerminator()) {
+    if (returnType->isVoidTy()) {
       ctx.builder->CreateRetVoid();
+    } else if (canError && !valueType) {
+      // void, IError method: return { i1 = false } to indicate success
+      Value* successStruct = UndefValue::get(returnType);
+      successStruct = ctx.builder->CreateInsertValue(
+          successStruct, ConstantInt::getFalse(ctx.getContext()), 0);
+      ctx.builder->CreateRet(successStruct);
     }
   }
 
   popScope();
+  ;
 
   // Restore error handling context
   currentFunctionCanError = savedCanError;

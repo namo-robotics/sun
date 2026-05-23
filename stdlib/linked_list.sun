@@ -94,8 +94,8 @@ class LinkedList<T> implements IIterable<T, LinkedList<T>> {
     function push_back(value: T) void {
         var node: raw_ptr<LinkedListNode<T>> = this.alloc.create<LinkedListNode<T>>(value);
         if (this.tail != null) {
-            this.tail.setNext(node);
-            node.setPrev(this.tail);
+            unsafe { this.tail.setNext(node); };
+            unsafe { node.setPrev(this.tail); };
             this.tail = node;
         } else {
             this.head = node;
@@ -108,8 +108,8 @@ class LinkedList<T> implements IIterable<T, LinkedList<T>> {
     function push_front(value: T) void {
         var node: raw_ptr<LinkedListNode<T>> = this.alloc.create<LinkedListNode<T>>(value);
         if (this.head != null) {
-            this.head.setPrev(node);
-            node.setNext(this.head);
+            unsafe { this.head.setPrev(node); };
+            unsafe { node.setNext(this.head); };
             this.head = node;
         } else {
             this.head = node;
@@ -124,10 +124,10 @@ class LinkedList<T> implements IIterable<T, LinkedList<T>> {
             throw EmptyError();
         }
         var node: raw_ptr<LinkedListNode<T>> = this.tail;
-        var value: T = node.getValue();
-        this.tail = node.getPrev();
+        var value: T = unsafe { node.getValue(); };
+        this.tail = unsafe { node.getPrev(); };
         if (this.tail != null) {
-            this.tail.setNext(null);
+            unsafe { this.tail.setNext(null); };
         } else {
             this.head = null;
         }
@@ -142,10 +142,10 @@ class LinkedList<T> implements IIterable<T, LinkedList<T>> {
             throw EmptyError();
         }
         var node: raw_ptr<LinkedListNode<T>> = this.head;
-        var value: T = node.getValue();
-        this.head = node.getNext();
+        var value: T = unsafe { node.getValue(); };
+        this.head = unsafe { node.getNext(); };
         if (this.head != null) {
-            this.head.setPrev(null);
+            unsafe { this.head.setPrev(null); };
         } else {
             this.tail = null;
         }
@@ -163,7 +163,7 @@ class LinkedList<T> implements IIterable<T, LinkedList<T>> {
             throw NotFoundError();
         }
         var node: raw_ptr<LinkedListNode<T>> = this.nodeAt(index);
-        return node.getValue();
+        return unsafe { node.getValue(); };
     }
 
     // Set element at index
@@ -175,7 +175,7 @@ class LinkedList<T> implements IIterable<T, LinkedList<T>> {
             throw NotFoundError();
         }
         var node: raw_ptr<LinkedListNode<T>> = this.nodeAt(index);
-        node.setValue(value);
+        unsafe { node.setValue(value); };
     }
 
     // Remove element at index and return its value
@@ -187,7 +187,7 @@ class LinkedList<T> implements IIterable<T, LinkedList<T>> {
             throw NotFoundError();
         }
         var node: raw_ptr<LinkedListNode<T>> = this.nodeAt(index);
-        var value: T = node.getValue();
+        var value: T = unsafe { node.getValue(); };
         this.unlinkNode(node);
         unsafe { _free(node); };
         this.size_ = this.size_ - 1;
@@ -199,7 +199,7 @@ class LinkedList<T> implements IIterable<T, LinkedList<T>> {
         if (this.head == null) {
             throw EmptyError();
         }
-        return this.head.getValue();
+        return unsafe { this.head.getValue(); };
     }
 
     // Get last element without removing
@@ -207,7 +207,7 @@ class LinkedList<T> implements IIterable<T, LinkedList<T>> {
         if (this.tail == null) {
             throw EmptyError();
         }
-        return this.tail.getValue();
+        return unsafe { this.tail.getValue(); };
     }
 
     // Get current size
@@ -224,7 +224,7 @@ class LinkedList<T> implements IIterable<T, LinkedList<T>> {
     function clear() void {
         var curr: raw_ptr<LinkedListNode<T>> = this.head;
         while (curr != null) {
-            var next: raw_ptr<LinkedListNode<T>> = curr.getNext();
+            var next: raw_ptr<LinkedListNode<T>> = unsafe { curr.getNext(); };
             unsafe { _free(curr); };
             curr = next;
         }
@@ -243,29 +243,29 @@ class LinkedList<T> implements IIterable<T, LinkedList<T>> {
             // Traverse from head
             var node: raw_ptr<LinkedListNode<T>> = this.head;
             for (var i: i64 = 0; i < index; i = i + 1) {
-                node = node.getNext();
+                node = unsafe { node.getNext(); };
             }
             return node;
         }
         // Traverse from tail
         var node: raw_ptr<LinkedListNode<T>> = this.tail;
         for (var i: i64 = this.size_ - 1; i > index; i = i - 1) {
-            node = node.getPrev();
+            node = unsafe { node.getPrev(); };
         }
         return node;
     }
 
     // Unlink a node from the list (does not free or adjust size)
     function unlinkNode(node: raw_ptr<LinkedListNode<T>>) void {
-        var prev: raw_ptr<LinkedListNode<T>> = node.getPrev();
-        var next: raw_ptr<LinkedListNode<T>> = node.getNext();
+        var prev: raw_ptr<LinkedListNode<T>> = unsafe { node.getPrev(); };
+        var next: raw_ptr<LinkedListNode<T>> = unsafe { node.getNext(); };
         if (prev != null) {
-            prev.setNext(next);
+            unsafe { prev.setNext(next); };
         } else {
             this.head = next;
         }
         if (next != null) {
-            next.setPrev(prev);
+            unsafe { next.setPrev(prev); };
         } else {
             this.tail = prev;
         }
@@ -301,7 +301,7 @@ class LinkedListIterator<T> implements IIterator<T, LinkedList<T>> {
         if (this.current == null) {
             return false;
         }
-        return this.current.getNext() != null;
+        return unsafe { this.current.getNext(); } != null;
     }
 
     function next(list: ref LinkedList<T>) T {
@@ -309,9 +309,9 @@ class LinkedListIterator<T> implements IIterator<T, LinkedList<T>> {
             this.current = list.head;
             this.started = true;
         } else {
-            this.current = this.current.getNext();
+            this.current = unsafe { this.current.getNext(); };
         }
-        return this.current.getValue();
+        return unsafe { this.current.getValue(); };
     }
 }
 

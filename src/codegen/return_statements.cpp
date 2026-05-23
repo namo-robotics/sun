@@ -93,7 +93,17 @@ Value* CodegenVisitor::codegen(const ReturnExprAST& expr) {
   } else {
     // Void return - clean up and return
     emitScopeCleanup();
-    ctx.builder->CreateRetVoid();
+    
+    // Handle void, IError case: return { i1 = false } to indicate success
+    if (currentFunctionCanError && !currentFunctionValueType) {
+      Value* errorUnion = UndefValue::get(retType);
+      errorUnion = ctx.builder->CreateInsertValue(
+          errorUnion, ConstantInt::getFalse(ctx.getContext()), 0,
+          "success.flag");
+      ctx.builder->CreateRet(errorUnion);
+    } else {
+      ctx.builder->CreateRetVoid();
+    }
   }
 
   // Return nullptr to indicate this expression doesn't produce a value

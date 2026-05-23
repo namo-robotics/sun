@@ -446,9 +446,16 @@ Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
   // struct
   llvm::Type* valueType = returnType;  // Save the underlying value type
   if (canError) {
-    // Error union: { i1 isError, T value }
-    returnType = llvm::StructType::get(
-        ctx.getContext(), {llvm::Type::getInt1Ty(ctx.getContext()), valueType});
+    // Error union: { i1 isError, T value } or just { i1 } for void return type
+    if (valueType->isVoidTy()) {
+      // void, IError -> just { i1 } error flag, no value field
+      returnType = llvm::StructType::get(
+          ctx.getContext(), {llvm::Type::getInt1Ty(ctx.getContext())});
+      valueType = nullptr;  // Mark that there's no value field
+    } else {
+      returnType = llvm::StructType::get(
+          ctx.getContext(), {llvm::Type::getInt1Ty(ctx.getContext()), valueType});
+    }
   }
 
   // Create closure env struct type
@@ -574,6 +581,12 @@ Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
     if (retType->isVoidTy()) {
       // Void functions get an implicit return
       ctx.builder->CreateRetVoid();
+    } else if (canError && !valueType) {
+      // void, IError function: return { i1 = false } to indicate success
+      Value* successStruct = UndefValue::get(retType);
+      successStruct = ctx.builder->CreateInsertValue(
+          successStruct, ConstantInt::getFalse(ctx.getContext()), 0);
+      ctx.builder->CreateRet(successStruct);
     } else if (bodyValue && bodyValue->getType() == retType) {
       // Non-void functions: use the body's value as implicit return
       ctx.builder->CreateRet(bodyValue);
@@ -640,8 +653,16 @@ llvm::Value* CodegenVisitor::codegenLambda(LambdaAST& lambdaAst) {
   // If function can return errors, wrap the return type in an error union
   llvm::Type* valueType = returnType;
   if (canError) {
-    returnType = llvm::StructType::get(
-        ctx.getContext(), {llvm::Type::getInt1Ty(ctx.getContext()), valueType});
+    // Error union: { i1 isError, T value } or just { i1 } for void return type
+    if (valueType->isVoidTy()) {
+      // void, IError -> just { i1 } error flag, no value field
+      returnType = llvm::StructType::get(
+          ctx.getContext(), {llvm::Type::getInt1Ty(ctx.getContext())});
+      valueType = nullptr;  // Mark that there's no value field
+    } else {
+      returnType = llvm::StructType::get(
+          ctx.getContext(), {llvm::Type::getInt1Ty(ctx.getContext()), valueType});
+    }
   }
 
   // Create closure env struct type
@@ -727,9 +748,15 @@ llvm::Value* CodegenVisitor::codegenLambda(LambdaAST& lambdaAst) {
     llvm::Type* funcRetType = func->getReturnType();
     if (funcRetType->isVoidTy()) {
       ctx.builder->CreateRetVoid();
+    } else if (canError && !valueType) {
+      // void, IError function: return { i1 = false } to indicate success
+      llvm::Value* resultStruct = llvm::UndefValue::get(funcRetType);
+      resultStruct = ctx.builder->CreateInsertValue(
+          resultStruct, ctx.builder->getInt1(false), {0});
+      ctx.builder->CreateRet(resultStruct);
     } else if (bodyValue && bodyValue->getType() == funcRetType) {
       ctx.builder->CreateRet(bodyValue);
-    } else if (canError && bodyValue) {
+    } else if (canError && bodyValue && valueType) {
       // Wrap success value in error union
       llvm::Value* resultStruct = llvm::UndefValue::get(funcRetType);
       resultStruct = ctx.builder->CreateInsertValue(

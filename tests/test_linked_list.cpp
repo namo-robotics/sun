@@ -42,8 +42,8 @@ TEST(LinkedListTest, two_nodes_linked) {
         var allocator = make_heap_allocator();
         var first = allocator.create<Node>(10);
         var second = allocator.create<Node>(20);
-        first.setNext(second);
-        return first.getValue() + first.getNext().getValue();
+        unsafe { first.setNext(second); };
+        return unsafe { first.getValue(); } + unsafe { first.getNext().getValue(); };
     }
   )");
   EXPECT_EQ(value, 30);
@@ -84,13 +84,13 @@ TEST(LinkedListTest, three_nodes_chain) {
         var n1 = allocator.create<Node>(1);
         // Build chain: n1 -> n2 -> n3
         // After setNext, access through the chain, not original vars
-        n1.setNext(createNode(allocator, 2));
-        n1.getNext().setNext(createNode(allocator, 3));
+        unsafe { n1.setNext(createNode(allocator, 2)); };
+        unsafe { n1.getNext().setNext(createNode(allocator, 3)); };
 
         // Traverse: n1 -> n2 -> n3
-        var sum = n1.getValue();
-        sum = sum + n1.getNext().getValue();
-        sum = sum + n1.getNext().getNext().getValue();
+        var sum = unsafe { n1.getValue(); };
+        sum = sum + unsafe { n1.getNext().getValue(); };
+        sum = sum + unsafe { n1.getNext().getNext().getValue(); };
         return sum;
     }
   )");
@@ -134,13 +134,13 @@ TEST(LinkedListTest, modify_through_pointer) {
     function main() i32 {
         var allocator = make_heap_allocator();
         var head = allocator.create<Node>(100);
-        head.setNext(createNode(allocator, 200));
+        unsafe { head.setNext(createNode(allocator, 200)); };
 
         // Modify tail through head's next pointer
-        head.getNext().setValue(999);
+        unsafe { head.getNext().setValue(999); };
 
         // Access through the chain (not through moved var)
-        return head.getNext().getValue();
+        return unsafe { head.getNext().getValue(); };
     }
   )");
   EXPECT_EQ(value, 999);
@@ -180,12 +180,12 @@ TEST(LinkedListTest, access_deep_chain) {
         var allocator = make_heap_allocator();
         var a = allocator.create<Node>(1);
         // Build chain: a -> b -> c -> d
-        a.setNext(createNode(allocator, 2));
-        a.getNext().setNext(createNode(allocator, 3));
-        a.getNext().getNext().setNext(createNode(allocator, 4));
+        unsafe { a.setNext(createNode(allocator, 2)); };
+        unsafe { a.getNext().setNext(createNode(allocator, 3)); };
+        unsafe { a.getNext().getNext().setNext(createNode(allocator, 4)); };
 
         // Access 4th element: a -> b -> c -> d
-        return a.getNext().getNext().getNext().getValue();
+        return unsafe { a.getNext().getNext().getNext().getValue(); };
     }
   )");
   EXPECT_EQ(value, 4);
@@ -230,16 +230,16 @@ TEST(LinkedListTest, null_terminated_list) {
         var allocator = make_heap_allocator();
         var n1 = allocator.create<Node>(10);
         // Build chain without reusing moved vars
-        n1.setNext(createNode(allocator, 20));
-        n1.getNext().setNext(createNode(allocator, 30));
+        unsafe { n1.setNext(createNode(allocator, 20)); };
+        unsafe { n1.getNext().setNext(createNode(allocator, 30)); };
         // n3.next is null by default from init
 
         // Sum all values by checking for null
-        var sum = n1.getValue();
-        if (n1.hasNext()) {
-            sum = sum + n1.getNext().getValue();
-            if (n1.getNext().hasNext()) {
-                sum = sum + n1.getNext().getNext().getValue();
+        var sum = unsafe { n1.getValue(); };
+        if (unsafe { n1.hasNext(); }) {
+            sum = sum + unsafe { n1.getNext().getValue(); };
+            if (unsafe { n1.getNext().hasNext(); }) {
+                sum = sum + unsafe { n1.getNext().getNext().getValue(); };
             }
         }
         return sum;
@@ -287,17 +287,17 @@ TEST(LinkedListTest, while_loop_traversal) {
         var allocator = make_heap_allocator();
         // Build list: 1 -> 2 -> 3 -> 4 -> 5 -> null
         var head = allocator.create<Node>(1);
-        head.setNext(createNode(allocator, 2));
-        head.getNext().setNext(createNode(allocator, 3));
-        head.getNext().getNext().setNext(createNode(allocator, 4));
-        head.getNext().getNext().getNext().setNext(createNode(allocator, 5));
+        unsafe { head.setNext(createNode(allocator, 2)); };
+        unsafe { head.getNext().setNext(createNode(allocator, 3)); };
+        unsafe { head.getNext().getNext().setNext(createNode(allocator, 4)); };
+        unsafe { head.getNext().getNext().getNext().setNext(createNode(allocator, 5)); };
 
         // Traverse with while loop
         var sum = 0;
         var curr: raw_ptr<Node> = head;
         while (curr != null) {
-            sum = sum + curr.getValue();
-            curr = curr.getNext();
+            sum = sum + unsafe { curr.getValue(); };
+            curr = unsafe { curr.getNext(); };
         }
         return sum;
     }
@@ -352,8 +352,8 @@ TEST(LinkedListTest, list_class_with_methods) {
         function append(alloc: ref HeapAllocator, v: i32) void {
             if (this.tail != null) {
                 // Append to existing list - create node and link via tail
-                this.tail.setNext(createNode(alloc, v));
-                this.tail = this.tail.getNext();
+                unsafe { this.tail.setNext(createNode(alloc, v)); };
+                this.tail = unsafe { this.tail.getNext(); };
             } else {
                 // First node - set both head and tail
                 this.head = createNode(alloc, v);
@@ -365,8 +365,8 @@ TEST(LinkedListTest, list_class_with_methods) {
             var total = 0;
             var curr: raw_ptr<Node> = this.head;
             while (curr != null) {
-                total = total + curr.getValue();
-                curr = curr.getNext();
+                total = total + unsafe { curr.getValue(); };
+                curr = unsafe { curr.getNext(); };
             }
             return total;
         }
@@ -375,12 +375,12 @@ TEST(LinkedListTest, list_class_with_methods) {
     function main() i32 {
         var allocator = make_heap_allocator();
         var list = allocator.create<List>();
-        list.append(allocator, 1);
-        list.append(allocator, 2);
-        list.append(allocator, 3);
-        list.append(allocator, 4);
-        list.append(allocator, 5);
-        return list.sum();
+        unsafe { list.append(allocator, 1); };
+        unsafe { list.append(allocator, 2); };
+        unsafe { list.append(allocator, 3); };
+        unsafe { list.append(allocator, 4); };
+        unsafe { list.append(allocator, 5); };
+        return unsafe { list.sum(); };
     }
   )");
   EXPECT_EQ(value, 15);

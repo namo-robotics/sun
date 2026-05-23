@@ -89,7 +89,8 @@ TEST(ClassTest, class_that_allocates) {
     function main() i32 {
         var allocator = make_heap_allocator();
         var a: raw_ptr<A> = allocator.create<A>(allocator);
-        return a.b.c;
+        var b: raw_ptr<B> = unsafe { a.b; };
+        return unsafe { b.c; };
     }
   )");
   EXPECT_EQ(value, 42);
@@ -113,7 +114,7 @@ TEST(ClassTest, object_field_access) {
     function main() i32 {
         var allocator = make_heap_allocator();
         var p = allocator.create<Point>(10, 20);
-        return p.x;
+        return unsafe { p.x; };
     }
   )");
   EXPECT_EQ(value, 10);
@@ -137,7 +138,7 @@ TEST(ClassTest, object_field_read_y) {
     function main() i32 {
         var allocator = make_heap_allocator();
         var p = allocator.create<Point>(10, 20);
-        return p.y;
+        return unsafe { p.y; };
     }
   )");
   EXPECT_EQ(value, 20);
@@ -167,7 +168,7 @@ TEST(ClassTest, method_call_no_args) {
     function main() i32 {
         var allocator = make_heap_allocator();
         var c = allocator.create<Counter>(42);
-        return c.get();
+        return unsafe { c.get(); };
     }
   )");
   EXPECT_EQ(value, 42);
@@ -193,7 +194,7 @@ TEST(ClassTest, method_call_with_args) {
     function main() i32 {
         var allocator = make_heap_allocator();
         var calc = allocator.create<Calculator>(10);
-        return calc.add(5);
+        return unsafe { calc.add(5); };
     }
   )");
   EXPECT_EQ(value, 15);
@@ -219,7 +220,7 @@ TEST(ClassTest, chained_method_calls) {
     function main() i32 {
         var allocator = make_heap_allocator();
         var v1 = allocator.create<Value>(5);
-        return v1.double();
+        return unsafe { v1.double(); };
     }
   )");
   EXPECT_EQ(value, 10);
@@ -249,7 +250,7 @@ TEST(ClassTest, constructor_with_no_args) {
     function main() i32 {
         var allocator = make_heap_allocator();
         var c = allocator.create<Counter>();
-        return c.get();
+        return unsafe { c.get(); };
     }
   )");
   EXPECT_EQ(value, 100);
@@ -275,7 +276,7 @@ TEST(ClassTest, constructor_initializes_fields) {
     function main() i32 {
         var allocator = make_heap_allocator();
         var p = allocator.create<Point3D>(1, 2, 3);
-        return p.x + p.y + p.z;
+        return unsafe { p.x; } + unsafe { p.y; } + unsafe { p.z; };
     }
   )");
   EXPECT_EQ(value, 6);
@@ -311,7 +312,7 @@ TEST(ClassTest, multiple_methods) {
     function main() i32 {
         var allocator = make_heap_allocator();
         var box = allocator.create<Box>(3, 4);
-        return box.area();
+        return unsafe { box.area(); };
     }
   )");
   EXPECT_EQ(value, 12);
@@ -338,7 +339,7 @@ TEST(ClassTest, multiple_objects_same_class) {
         var allocator = make_heap_allocator();
         var n1 = allocator.create<Number>(10);
         var n2 = allocator.create<Number>(20);
-        return n1.get() + n2.get();
+        return unsafe { n1.get(); } + unsafe { n2.get(); };
     }
   )");
   EXPECT_EQ(value, 30);
@@ -367,7 +368,7 @@ TEST(ClassTest, multiple_classes) {
         var allocator = make_heap_allocator();
         var f = allocator.create<First>(5);
         var s = allocator.create<Second>(7);
-        return f.a + s.b;
+        return unsafe { f.a; } + unsafe { s.b; };
     }
   )");
   EXPECT_EQ(value, 12);
@@ -395,7 +396,7 @@ TEST(ClassTest, float_fields) {
     function main() f64 {
         var allocator = make_heap_allocator();
         var p = allocator.create<PointF>(1.5, 2.5);
-        return p.x + p.y;
+        return unsafe { p.x; } + unsafe { p.y; };
     }
   )");
   EXPECT_TRUE(std::holds_alternative<double>(value));
