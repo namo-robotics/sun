@@ -35,6 +35,7 @@ add_executable(sun_tests
     test_programs.cpp
     test_refs.cpp
     test_regex_parser.cpp
+    test_stdlib_linked_list.cpp
     test_string.cpp
     test_threads.cpp
     test_vec.cpp

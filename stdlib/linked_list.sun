@@ -1,0 +1,331 @@
+// stdlib/linked_list.sun - Doubly-linked list
+//
+// LinkedList<T> is a generic doubly-linked list backed by heap-allocated nodes.
+// Supports O(1) push/pop at both ends, O(n) indexed access.
+// Uses HeapAllocator for memory management.
+//
+// Usage:
+//   import "stdlib/linked_list.sun";
+//   using sun;
+//
+//   var allocator = make_heap_allocator();
+//   var list = LinkedList<i32>(allocator);
+//   list.push_back(10);
+//   list.push_back(20);
+//   list.push_front(5);
+//   var val = list.first();     // 5
+//   var last = list.last();     // 20
+//   var popped = list.pop_front(); // 5
+//   var len = list.size();      // 2
+
+import "allocator.sun";
+import "errors.sun";
+
+// ============================================================================
+// LinkedListNode<T> - Doubly-linked node
+// ============================================================================
+
+module sun {
+
+class LinkedListNode<T> {
+    var value: T;
+    var next: raw_ptr<LinkedListNode<T>>;
+    var prev: raw_ptr<LinkedListNode<T>>;
+
+    function init(v: T) {
+        this.value = v;
+        this.next = null;
+        this.prev = null;
+    }
+
+    function getValue() T {
+        return this.value;
+    }
+
+    function setValue(v: T) void {
+        this.value = v;
+    }
+
+    function getNext() raw_ptr<LinkedListNode<T>> {
+        return this.next;
+    }
+
+    function getPrev() raw_ptr<LinkedListNode<T>> {
+        return this.prev;
+    }
+
+    function setNext(n: raw_ptr<LinkedListNode<T>>) void {
+        this.next = n;
+    }
+
+    function setPrev(p: raw_ptr<LinkedListNode<T>>) void {
+        this.prev = p;
+    }
+}
+
+// ============================================================================
+// LinkedList<T> - Doubly-Linked List
+// ============================================================================
+
+class LinkedList<T> implements IIterable<T, LinkedList<T>> {
+    var head: raw_ptr<LinkedListNode<T>>;
+    var tail: raw_ptr<LinkedListNode<T>>;
+    var alloc: HeapAllocator;
+    var size_: i64;
+
+    // Constructor with allocator
+    function init(allocator: ref HeapAllocator) {
+        this.alloc = allocator.copy();
+        this.head = null;
+        this.tail = null;
+        this.size_ = 0;
+    }
+
+    // Destructor - free all nodes
+    function deinit() void {
+        this.clear();
+    }
+
+    // ========================================================================
+    // Core Operations
+    // ========================================================================
+
+    // Append element to the back
+    function push_back(value: T) void {
+        var node: raw_ptr<LinkedListNode<T>> = this.alloc.create<LinkedListNode<T>>(value);
+        if (this.tail != null) {
+            this.tail.setNext(node);
+            node.setPrev(this.tail);
+            this.tail = node;
+        } else {
+            this.head = node;
+            this.tail = node;
+        }
+        this.size_ = this.size_ + 1;
+    }
+
+    // Prepend element to the front
+    function push_front(value: T) void {
+        var node: raw_ptr<LinkedListNode<T>> = this.alloc.create<LinkedListNode<T>>(value);
+        if (this.head != null) {
+            this.head.setPrev(node);
+            node.setNext(this.head);
+            this.head = node;
+        } else {
+            this.head = node;
+            this.tail = node;
+        }
+        this.size_ = this.size_ + 1;
+    }
+
+    // Remove and return the last element
+    function pop_back() T, IError {
+        if (this.tail == null) {
+            throw EmptyError();
+        }
+        var node: raw_ptr<LinkedListNode<T>> = this.tail;
+        var value: T = node.getValue();
+        this.tail = node.getPrev();
+        if (this.tail != null) {
+            this.tail.setNext(null);
+        } else {
+            this.head = null;
+        }
+        unsafe { _free(node); };
+        this.size_ = this.size_ - 1;
+        return value;
+    }
+
+    // Remove and return the first element
+    function pop_front() T, IError {
+        if (this.head == null) {
+            throw EmptyError();
+        }
+        var node: raw_ptr<LinkedListNode<T>> = this.head;
+        var value: T = node.getValue();
+        this.head = node.getNext();
+        if (this.head != null) {
+            this.head.setPrev(null);
+        } else {
+            this.tail = null;
+        }
+        unsafe { _free(node); };
+        this.size_ = this.size_ - 1;
+        return value;
+    }
+
+    // Get element at index (traverses from nearest end)
+    function get(index: i64) T, IError {
+        if (index < 0) {
+            throw NotFoundError();
+        }
+        if (index >= this.size_) {
+            throw NotFoundError();
+        }
+        var node: raw_ptr<LinkedListNode<T>> = this.nodeAt(index);
+        return node.getValue();
+    }
+
+    // Set element at index
+    function set(index: i64, value: T) void, IError {
+        if (index < 0) {
+            throw NotFoundError();
+        }
+        if (index >= this.size_) {
+            throw NotFoundError();
+        }
+        var node: raw_ptr<LinkedListNode<T>> = this.nodeAt(index);
+        node.setValue(value);
+    }
+
+    // Remove element at index and return its value
+    function remove(index: i64) T, IError {
+        if (index < 0) {
+            throw NotFoundError();
+        }
+        if (index >= this.size_) {
+            throw NotFoundError();
+        }
+        var node: raw_ptr<LinkedListNode<T>> = this.nodeAt(index);
+        var value: T = node.getValue();
+        this.unlinkNode(node);
+        unsafe { _free(node); };
+        this.size_ = this.size_ - 1;
+        return value;
+    }
+
+    // Get first element without removing
+    function first() T, IError {
+        if (this.head == null) {
+            throw EmptyError();
+        }
+        return this.head.getValue();
+    }
+
+    // Get last element without removing
+    function last() T, IError {
+        if (this.tail == null) {
+            throw EmptyError();
+        }
+        return this.tail.getValue();
+    }
+
+    // Get current size
+    function size() i64 {
+        return this.size_;
+    }
+
+    // Check if empty
+    function isEmpty() bool {
+        return this.size_ == 0;
+    }
+
+    // Remove all elements and free nodes
+    function clear() void {
+        var curr: raw_ptr<LinkedListNode<T>> = this.head;
+        while (curr != null) {
+            var next: raw_ptr<LinkedListNode<T>> = curr.getNext();
+            unsafe { _free(curr); };
+            curr = next;
+        }
+        this.head = null;
+        this.tail = null;
+        this.size_ = 0;
+    }
+
+    // ========================================================================
+    // Internal Methods
+    // ========================================================================
+
+    // Get node at index, traversing from nearest end
+    function nodeAt(index: i64) raw_ptr<LinkedListNode<T>> {
+        if (index < this.size_ / 2) {
+            // Traverse from head
+            var node: raw_ptr<LinkedListNode<T>> = this.head;
+            for (var i: i64 = 0; i < index; i = i + 1) {
+                node = node.getNext();
+            }
+            return node;
+        }
+        // Traverse from tail
+        var node: raw_ptr<LinkedListNode<T>> = this.tail;
+        for (var i: i64 = this.size_ - 1; i > index; i = i - 1) {
+            node = node.getPrev();
+        }
+        return node;
+    }
+
+    // Unlink a node from the list (does not free or adjust size)
+    function unlinkNode(node: raw_ptr<LinkedListNode<T>>) void {
+        var prev: raw_ptr<LinkedListNode<T>> = node.getPrev();
+        var next: raw_ptr<LinkedListNode<T>> = node.getNext();
+        if (prev != null) {
+            prev.setNext(next);
+        } else {
+            this.head = next;
+        }
+        if (next != null) {
+            next.setPrev(prev);
+        } else {
+            this.tail = prev;
+        }
+    }
+
+    // ========================================================================
+    // Iteration Support
+    // ========================================================================
+
+    // Return iterator over elements
+    function iter() LinkedListIterator<T> {
+        return LinkedListIterator<T>();
+    }
+}
+
+// ============================================================================
+// LinkedListIterator<T> - Iterator over LinkedList elements
+// ============================================================================
+
+class LinkedListIterator<T> implements IIterator<T, LinkedList<T>> {
+    var current: raw_ptr<LinkedListNode<T>>;
+    var started: bool;
+
+    function init() {
+        this.current = null;
+        this.started = false;
+    }
+
+    function hasNext(list: ref LinkedList<T>) bool {
+        if (this.started == false) {
+            return list.head != null;
+        }
+        if (this.current == null) {
+            return false;
+        }
+        return this.current.getNext() != null;
+    }
+
+    function next(list: ref LinkedList<T>) T {
+        if (this.started == false) {
+            this.current = list.head;
+            this.started = true;
+        } else {
+            this.current = this.current.getNext();
+        }
+        return this.current.getValue();
+    }
+}
+
+// ============================================================================
+// Precompiled Specializations
+// ============================================================================
+
+declare LinkedListNode_i32 = LinkedListNode<i32>;
+declare LinkedListNode_i64 = LinkedListNode<i64>;
+
+declare LinkedList_i32 = LinkedList<i32>;
+declare LinkedList_i64 = LinkedList<i64>;
+
+declare LinkedListIterator_i32 = LinkedListIterator<i32>;
+declare LinkedListIterator_i64 = LinkedListIterator<i64>;
+
+} // module sun
