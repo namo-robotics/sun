@@ -5,6 +5,7 @@
 #include <functional>
 #include <map>
 #include <optional>
+#include <set>
 #include <sstream>
 
 #include "error.h"
@@ -954,25 +955,37 @@ std::vector<FunctionInfo> SemanticAnalyzer::getAllFunctions(
     nestedPrefix = funcContext + "::" + name + "(";
   }
 
+  // Track seen signatures to avoid duplicates
+  std::set<std::string> seenSignatures;
+  auto addIfUnique = [&](const FunctionInfo& info) {
+    std::string sig = getFunctionSignature(name, info.paramTypes);
+    if (seenSignatures.insert(sig).second) {
+      results.push_back(info);
+    }
+  };
+
+  // Collect all functions, then filter for uniqueness
+  std::vector<FunctionInfo> allResults;
+
   // Walk scope chain from innermost to outermost
   for (auto* s = currentScope; s != nullptr; s = s->parent) {
-    s->collectFunctions(prefix, results);
+    s->collectFunctions(prefix, allResults);
     if (!nestedPrefix.empty()) {
-      s->collectFunctions(nestedPrefix, results);
+      s->collectFunctions(nestedPrefix, allResults);
     }
     // Search direct import-scope children (one level of transparency)
     for (const auto& [childName, child] : s->childModules) {
       if (child && child->type == ScopeType::Import) {
-        child->collectFunctions(prefix, results);
+        child->collectFunctions(prefix, allResults);
         if (!nestedPrefix.empty()) {
-          child->collectFunctions(nestedPrefix, results);
+          child->collectFunctions(nestedPrefix, allResults);
         }
         // Also search import scope's module children
         for (const auto& [modName, modChild] : child->childModules) {
           if (modChild && modChild->type == ScopeType::Module) {
-            modChild->collectFunctions(prefix, results);
+            modChild->collectFunctions(prefix, allResults);
             if (!nestedPrefix.empty()) {
-              modChild->collectFunctions(nestedPrefix, results);
+              modChild->collectFunctions(nestedPrefix, allResults);
             }
           }
         }
@@ -984,12 +997,18 @@ std::vector<FunctionInfo> SemanticAnalyzer::getAllFunctions(
       // Search source scope for both wildcard and specific bindings.
       // For specific bindings, the caller already resolved the qualified name
       // (e.g., "math_square"), so the prefix match naturally filters correctly.
-      binding.sourceScope->collectFunctions(prefix, results);
+      binding.sourceScope->collectFunctions(prefix, allResults);
       if (!nestedPrefix.empty()) {
-        binding.sourceScope->collectFunctions(nestedPrefix, results);
+        binding.sourceScope->collectFunctions(nestedPrefix, allResults);
       }
     }
   }
+
+  // Deduplicate by signature
+  for (const auto& info : allResults) {
+    addIfUnique(info);
+  }
+
   return results;
 }
 
