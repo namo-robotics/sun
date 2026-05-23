@@ -2127,7 +2127,8 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
           std::string argTypesStr;
           for (size_t i = 0; i < argTypes.size(); ++i) {
             if (i > 0) argTypesStr += ", ";
-            argTypesStr += argTypes[i] ? argTypes[i]->toString() : "unknown";
+            argTypesStr +=
+                argTypes[i] ? argTypes[i]->toDisplayString() : "unknown";
           }
           std::string overloadsStr;
           for (const auto& overload : allOverloads) {
@@ -2135,7 +2136,7 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
             for (size_t i = 0; i < overload.paramTypes.size(); ++i) {
               if (i > 0) overloadsStr += ", ";
               overloadsStr += overload.paramTypes[i]
-                                  ? overload.paramTypes[i]->toString()
+                                  ? overload.paramTypes[i]->toDisplayString()
                                   : "unknown";
             }
             overloadsStr += ")";

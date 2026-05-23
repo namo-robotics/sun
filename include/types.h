@@ -62,6 +62,8 @@ class Type {
   virtual ~Type() = default;
   virtual Kind getKind() const = 0;
   virtual std::string toString() const = 0;
+  // User-friendly name for error messages (strips internal prefixes)
+  virtual std::string toDisplayString() const { return toString(); }
   virtual bool equals(const Type& other) const = 0;
   virtual llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const = 0;
 
@@ -509,6 +511,13 @@ class ReferenceType : public Type {
       return "ref(" + referencedType->toString() + ")";
     }
     return "ref const(" + referencedType->toString() + ")";
+  }
+
+  std::string toDisplayString() const override {
+    if (mutable_) {
+      return "ref(" + referencedType->toDisplayString() + ")";
+    }
+    return "ref const(" + referencedType->toDisplayString() + ")";
   }
 
   bool equals(const Type& other) const override {
@@ -1038,6 +1047,8 @@ class ClassType : public Type {
     return name;
   }
 
+  std::string toDisplayString() const override { return getDisplayName(); }
+
   bool equals(const Type& other) const override {
     if (auto* c = dynamic_cast<const ClassType*>(&other)) {
       // For specialized types, compare by mangled name
@@ -1234,6 +1245,33 @@ class InterfaceType : public Type {
       return result;
     }
     return name;
+  }
+
+  std::string toDisplayString() const override {
+    std::string base;
+    if (!baseName_.empty()) {
+      base = baseName_;
+    } else if (!baseGenericName.empty()) {
+      base = baseGenericName;
+      for (size_t i = 0; i < base.size(); ++i) {
+        if (base[i] == '_') base[i] = '.';
+      }
+    } else {
+      base = name;
+      for (size_t i = 0; i < base.size(); ++i) {
+        if (base[i] == '_') base[i] = '.';
+      }
+    }
+    if (isSpecialized() && !typeArguments.empty()) {
+      std::string result = base + "<";
+      for (size_t i = 0; i < typeArguments.size(); ++i) {
+        if (i > 0) result += ", ";
+        result += typeArguments[i]->toDisplayString();
+      }
+      result += ">";
+      return result;
+    }
+    return base;
   }
 
   bool equals(const Type& other) const override {
