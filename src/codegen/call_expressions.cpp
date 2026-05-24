@@ -161,6 +161,42 @@ Value* CodegenVisitor::convertToInterfaceIfNeeded(Value* argVal,
 }
 
 // -------------------------------------------------------------------
+// Helper: Prepare class argument for ref Interface parameter
+// Creates fat pointer on stack and returns pointer to it
+// -------------------------------------------------------------------
+
+Value* CodegenVisitor::prepareClassForRefInterface(Value* classPtr,
+                                                   sun::TypePtr argType,
+                                                   sun::TypePtr paramType) {
+  // Check if conversion is needed: param is ref Interface and arg is class
+  if (!paramType || !paramType->isReference()) {
+    return nullptr;  // Not a ref param
+  }
+  auto* refType = static_cast<sun::ReferenceType*>(paramType.get());
+  sun::TypePtr innerType = refType->getReferencedType();
+  if (!innerType || !innerType->isInterface()) {
+    return nullptr;  // Not ref Interface
+  }
+  if (!argType || !argType->isClass()) {
+    return nullptr;  // Arg is not a class
+  }
+
+  auto* classType = static_cast<sun::ClassType*>(argType.get());
+  auto* ifaceType = static_cast<sun::InterfaceType*>(innerType.get());
+
+  // Create interface fat pointer value
+  Value* fatPtr = createInterfaceFatPointer(classPtr, classType, ifaceType);
+
+  // Allocate space on stack for the fat pointer and store it there
+  // ref Interface expects a pointer to the fat pointer
+  llvm::Type* fatPtrType = ifaceType->getFatPointerType(ctx.getContext());
+  AllocaInst* fatPtrAlloca =
+      ctx.builder->CreateAlloca(fatPtrType, nullptr, "iface.ref.tmp");
+  ctx.builder->CreateStore(fatPtr, fatPtrAlloca);
+  return fatPtrAlloca;
+}
+
+// -------------------------------------------------------------------
 // Helper: Widen numeric types if needed (i32->i64, f32->f64)
 // -------------------------------------------------------------------
 
@@ -585,6 +621,17 @@ Value* CodegenVisitor::codegenClassMethodCall(
     bool isRefParam = paramType && paramType->isReference();
 
     if (isRefParam) {
+      // Check for class -> ref Interface conversion first
+      if (argSunType && argSunType->isClass()) {
+        Value* classPtr = prepareRefArgument(argExpr.get(), argSunType);
+        Value* ifaceRef =
+            prepareClassForRefInterface(classPtr, argSunType, paramType);
+        if (ifaceRef) {
+          argValues.push_back(ifaceRef);
+          ++methodArgIdx;
+          continue;
+        }
+      }
       Value* refArg = prepareRefArgument(argExpr.get(), argSunType);
       if (!refArg) return nullptr;
       argValues.push_back(refArg);
@@ -888,6 +935,19 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
     sun::TypePtr argSunType = argExpr->getResolvedType();
 
     if (isRefParam) {
+      // Check for class -> ref Interface conversion first
+      sun::TypePtr paramType =
+          argIdx < paramTypes.size() ? paramTypes[argIdx] : nullptr;
+      if (argSunType && argSunType->isClass()) {
+        Value* classPtr = prepareRefArgument(argExpr.get(), argSunType);
+        Value* ifaceRef =
+            prepareClassForRefInterface(classPtr, argSunType, paramType);
+        if (ifaceRef) {
+          argValues.push_back(ifaceRef);
+          ++argIdx;
+          continue;
+        }
+      }
       Value* refArg = prepareRefArgument(argExpr.get(), argSunType);
       if (!refArg) return nullptr;
       argValues.push_back(refArg);

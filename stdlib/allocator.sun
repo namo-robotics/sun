@@ -22,8 +22,11 @@ interface IAllocator {
     // Low-level raw allocation - returns raw_ptr<i8>
     function alloc_raw(size: i64) raw_ptr<i8>;
     
-    // Free previously allocated memory
-    function dealloc(p: raw_ptr<i8>, size: i64) void;
+    // Free previously allocated memory (typed version)
+    function dealloc<T>(p: raw_ptr<T>, count: i64) void;
+    
+    // Free previously allocated memory (raw bytes)
+    function dealloc_raw(p: raw_ptr<i8>, size: i64) void;
     
     // Create a single instance of T, calling its constructor
     // Returns raw_ptr<T> - caller manages lifetime
@@ -48,7 +51,13 @@ class HeapAllocator implements IAllocator {
         return unsafe { _malloc(size); };
     }
     
-    function dealloc(p: raw_ptr<i8>, size: i64) void {
+    // Free typed memory allocated with alloc<T>
+    function dealloc<T>(p: raw_ptr<T>, count: i64) void {
+        unsafe { _free(p); };
+    }
+    
+    // Free raw bytes allocated with alloc_raw
+    function dealloc_raw(p: raw_ptr<i8>, size: i64) void {
         unsafe { _free(p); };
     }
     

@@ -226,14 +226,13 @@ TEST(BorrowCheckerTest, error_on_string_use_after_move) {
 }
 
 // ============================================================================
-// Move Semantics for By-Value Passing
+// Compound Types Must Use ref
 // ============================================================================
 
-// When REQUIRE_REF_FOR_COMPOUND_PARAMS is false, classes can be passed by value
-// and the source is automatically moved (cannot be used afterward)
-TEST(BorrowCheckerTest, use_after_move_on_byval_pass) {
-  // Passing a class by value should move it - using the source after is an
-  // error
+// REQUIRE_REF_FOR_COMPOUND_PARAMS is true, so passing classes by value is an
+// error
+TEST(BorrowCheckerTest, compound_type_requires_ref) {
+  // Passing a class by value should be a compile error
   EXPECT_THROW(executeString(R"(
     class Point {
         var x: i32;
@@ -250,15 +249,14 @@ TEST(BorrowCheckerTest, use_after_move_on_byval_pass) {
 
     function main() i32 {
         var p = Point(3, 4);
-        var result = consume(p);  // p is moved here
-        return p.x;  // ERROR: use of moved variable 'p'
+        return consume(p);
     }
   )"),
                std::exception);
 }
 
-TEST(BorrowCheckerTest, byval_pass_moves_ownership) {
-  // Passing by value should work - moved value is consumed by function
+TEST(BorrowCheckerTest, compound_type_with_ref_works) {
+  // Passing by ref should work
   auto value = executeString(R"(
     class Counter {
         var count: i32;
@@ -267,14 +265,14 @@ TEST(BorrowCheckerTest, byval_pass_moves_ownership) {
         }
     }
 
-    function sum_counters(a: Counter, b: Counter) i32 {
+    function sum_counters(a: ref Counter, b: ref Counter) i32 {
         return a.count + b.count;
     }
 
     function main() i32 {
         var c1 = Counter(10);
         var c2 = Counter(20);
-        return sum_counters(c1, c2);  // Both are moved, result is 30
+        return sum_counters(c1, c2);
     }
   )");
   EXPECT_EQ(value, 30);

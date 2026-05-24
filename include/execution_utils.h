@@ -1,6 +1,7 @@
 // Test utility functions that delegate to Driver
 // This file provides convenient free functions for tests
 
+#include <cstring>
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -10,6 +11,20 @@
 #include "library_cache.h"
 #include "sun_path.h"
 #include "sun_value.h"
+
+// Helper macro for testing SunError with message content
+#define EXPECT_SUN_ERROR_WITH_MESSAGE(stmt, expected_substr)            \
+  do {                                                                  \
+    try {                                                               \
+      stmt;                                                             \
+      FAIL() << "Expected SunError to be thrown";                       \
+    } catch (const SunError& e) {                                       \
+      EXPECT_NE(std::strstr(e.what(), expected_substr), nullptr)        \
+          << "Expected error message to contain: \"" << expected_substr \
+          << "\"\n"                                                     \
+          << "Actual message: \"" << e.what() << "\"";                  \
+    }                                                                   \
+  } while (0)
 
 // Set SUN_PATH to cwd if not already set (for VS Code Test Explorer)
 inline void initTestEnvironment() {

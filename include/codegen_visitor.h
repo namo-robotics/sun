@@ -307,6 +307,13 @@ class CodegenVisitor {
                                           sun::TypePtr argType,
                                           sun::TypePtr paramType);
 
+  // Prepares a class argument for a ref Interface parameter by creating a
+  // fat pointer on the stack. Returns nullptr if not a class->ref Interface
+  // conversion, otherwise returns pointer to the fat pointer on stack.
+  llvm::Value* prepareClassForRefInterface(llvm::Value* classPtr,
+                                           sun::TypePtr argType,
+                                           sun::TypePtr paramType);
+
   // Widens integer or float arguments to match parameter type if needed.
   // Handles i32->i64, f32->f64, etc. Returns the original value if no widening
   // needed.

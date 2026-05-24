@@ -3,26 +3,9 @@
 
 #include <gtest/gtest.h>
 
-#include <cstring>
-#include <memory>
 #include <string>
 
-#include "error.h"
 #include "execution_utils.h"
-
-// Helper macro for testing SunError with message content
-#define EXPECT_SUN_ERROR_WITH_MESSAGE(stmt, expected_substr)            \
-  do {                                                                  \
-    try {                                                               \
-      stmt;                                                             \
-      FAIL() << "Expected SunError to be thrown";                       \
-    } catch (const SunError& e) {                                       \
-      EXPECT_NE(std::strstr(e.what(), expected_substr), nullptr)        \
-          << "Expected error message to contain: \"" << expected_substr \
-          << "\"\n"                                                     \
-          << "Actual message: \"" << e.what() << "\"";                  \
-    }                                                                   \
-  } while (0)
 
 // ============================================================================
 // Use After Move - Basic Cases
@@ -369,7 +352,7 @@ TEST(MemorySafety, raw_ptr_null_check_pattern) {
         // This test just verifies the allocation works
         unsafe { _store<i32>(p, 0, 42); };
         var loaded: i32 = unsafe { _load<i32>(p, 0); };
-        alloc.dealloc(p, 4);
+        alloc.dealloc<i32>(p, 1);
         return loaded;
     }
   )");

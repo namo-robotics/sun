@@ -196,6 +196,18 @@ bool SemanticAnalyzer::isAssignableTo(const sun::TypePtr& from,
     return classType->implementsInterface(ifaceType->getName());
   }
 
+  // Class -> ref Interface (class can be passed as ref to interface it
+  // implements)
+  if (to->isReference() && from->isClass()) {
+    auto* toRef = static_cast<sun::ReferenceType*>(to.get());
+    sun::TypePtr innerTo = toRef->getReferencedType();
+    if (innerTo && innerTo->isInterface()) {
+      auto* ifaceType = static_cast<sun::InterfaceType*>(innerTo.get());
+      auto* classType = static_cast<sun::ClassType*>(from.get());
+      return classType->implementsInterface(ifaceType->getName());
+    }
+  }
+
   // ref Class -> Interface (unwrap ref, check class implements interface)
   if (to->isInterface() && from->isReference()) {
     auto* fromRef = static_cast<sun::ReferenceType*>(from.get());

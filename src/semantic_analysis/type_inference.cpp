@@ -314,6 +314,11 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
         // raw_ptr<T>.get(), static_ptr<T>.get() return T
         if (memberName == "get") {
           if (objectType && objectType->isRawPointer()) {
+            if (!isInUnsafeBlock()) {
+              logAndThrowError(
+                  "Dereferencing 'raw_ptr' can only be done in an unsafe block",
+                  memberAccess.getLocation());
+            }
             return static_cast<sun::RawPointerType*>(objectType.get())
                 ->getPointeeType();
           }
@@ -805,11 +810,16 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
         memberAccess.getLocation());
   }
 
-  // Unwrap raw_ptr<Class> to Class for member access
+  // Unwrap raw_ptr<Class> to Class for member access (requires unsafe)
   if (objectType->isRawPointer()) {
     sun::TypePtr pointeeType =
         static_cast<sun::RawPointerType*>(objectType.get())->getPointeeType();
     if (pointeeType && pointeeType->isClass()) {
+      if (!isInUnsafeBlock()) {
+        logAndThrowError(
+            "Dereferencing 'raw_ptr' can only be done in an unsafe block",
+            memberAccess.getLocation());
+      }
       objectType = pointeeType;
     }
   }
@@ -910,6 +920,11 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
       // raw_ptr<T> where T is not a class (class case handled above)
       auto* ptrType = static_cast<sun::RawPointerType*>(objectType.get());
       if (memberName == "_get") {
+        if (!isInUnsafeBlock()) {
+          logAndThrowError(
+              "Dereferencing 'raw_ptr' can only be done in an unsafe block",
+              memberAccess.getLocation());
+        }
         return ptrType->getPointeeType();
       }
       logAndThrowError(

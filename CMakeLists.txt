@@ -118,6 +118,7 @@ if(NOT SKIP_STDLIB)
         ${CMAKE_SOURCE_DIR}/stdlib/errors.sun
         ${CMAKE_SOURCE_DIR}/stdlib/vec.sun
         ${CMAKE_SOURCE_DIR}/stdlib/map.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/linked_list.sun
         ${CMAKE_SOURCE_DIR}/stdlib/mutex.sun
     )
 
