@@ -352,7 +352,7 @@ TEST(MemorySafety, raw_ptr_null_check_pattern) {
         // This test just verifies the allocation works
         unsafe { _store<i32>(p, 0, 42); };
         var loaded: i32 = unsafe { _load<i32>(p, 0); };
-        alloc.dealloc(p, 4);
+        unsafe { _free(p); };
         return loaded;
     }
   )");
