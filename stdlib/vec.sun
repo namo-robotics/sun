@@ -20,6 +20,7 @@
 
 import "allocator.sun";
 import "errors.sun";
+import "unique.sun";
 
 // ============================================================================
 // Vec<T> - Dynamic Growable Array
@@ -28,7 +29,7 @@ import "errors.sun";
 module sun {
 
 class Vec<T> implements IIterable<T, Vec<T>> {
-    var data: raw_ptr<i8>;         // Element storage (as bytes for _free compat)
+    var data: Unique<i8>;          // Element storage (managed by Unique)
     var alloc: HeapAllocator;      // Allocator (stored via copy)
     var capacity_: i64;            // Allocated capacity
     var size_: i64;                // Current number of elements
@@ -38,15 +39,12 @@ class Vec<T> implements IIterable<T, Vec<T>> {
         this.alloc = allocator.copy();
         this.capacity_ = capacity;
         this.size_ = 0;
-        this.data = this.alloc.alloc_raw(capacity * _sizeof<T>());
+        this.data = Unique<i8>(this.alloc.alloc_raw(capacity * _sizeof<T>()));
     }
     
     // Destructor
     function deinit() void {
-        if (this.data != null) {
-            unsafe { _free(this.data); };
-            this.data = null;
-        }
+        // Unique handles freeing in its deinit
     }
     
     // ========================================================================
@@ -58,7 +56,7 @@ class Vec<T> implements IIterable<T, Vec<T>> {
         if (this.size_ >= this.capacity_) {
             this.grow();
         }
-        unsafe { _store<T>(this.data, this.size_, value); };
+        unsafe { _store<T>(this.data.raw(), this.size_, value); };
         this.size_ = this.size_ + 1;
     }
     
@@ -68,17 +66,17 @@ class Vec<T> implements IIterable<T, Vec<T>> {
             throw EmptyError();
         }
         this.size_ = this.size_ - 1;
-        return unsafe { _load<T>(this.data, this.size_); };
+        return unsafe { _load<T>(this.data.raw(), this.size_); };
     }
     
     // Get element at index
     function get(index: i64) T {
-        return unsafe { _load<T>(this.data, index); };
+        return unsafe { _load<T>(this.data.raw(), index); };
     }
     
     // Set element at index
     function set(index: i64, value: T) void {
-        unsafe { _store<T>(this.data, index, value); };
+        unsafe { _store<T>(this.data.raw(), index, value); };
     }
     
     // Get current size
@@ -97,14 +95,15 @@ class Vec<T> implements IIterable<T, Vec<T>> {
     }
     
     // Reserve capacity for at least n elements (doesn't change size)
+    // Reserve capacity for at least n elements (doesn't change size)
     function reserve(n: i64) void {
         if (n > this.capacity_) {
-            var old_data = this.data;
-            this.data = this.alloc.alloc_raw(n * _sizeof<T>());
+            var old_data = this.data.release();
+            this.data = Unique<i8>(this.alloc.alloc_raw(n * _sizeof<T>()));
             // Copy existing elements
             for (var i: i64 = 0; i < this.size_; i = i + 1) {
                 var value: T = unsafe { _load<T>(old_data, i); };
-                unsafe { _store<T>(this.data, i, value); };
+                unsafe { _store<T>(this.data.raw(), i, value); };
             }
             unsafe { _free(old_data); };
             this.capacity_ = n;
@@ -118,7 +117,7 @@ class Vec<T> implements IIterable<T, Vec<T>> {
     
     // Get raw data pointer (for iteration)
     function rawData() raw_ptr<i8> {
-        return this.data;
+        return this.data.raw();
     }
     
     // Get last element without removing
@@ -126,7 +125,7 @@ class Vec<T> implements IIterable<T, Vec<T>> {
         if (this.size_ == 0) {
             throw EmptyError();
         }
-        return unsafe { _load<T>(this.data, this.size_ - 1); };
+        return unsafe { _load<T>(this.data.raw(), this.size_ - 1); };
     }
     
     // Get first element
@@ -134,7 +133,7 @@ class Vec<T> implements IIterable<T, Vec<T>> {
         if (this.size_ == 0) {
             throw EmptyError();
         }
-        return unsafe { _load<T>(this.data, 0); };
+        return unsafe { _load<T>(this.data.raw(), 0); };
     }
     
     // ========================================================================
@@ -143,17 +142,17 @@ class Vec<T> implements IIterable<T, Vec<T>> {
     
     // Double capacity and copy elements
     function grow() void {
-        var old_data = this.data;
+        var old_data = this.data.release();
         
         // Double capacity
         var new_capacity: i64 = this.capacity_ * 2;
-        this.data = this.alloc.alloc_raw(new_capacity * _sizeof<T>());
+        this.data = Unique<i8>(this.alloc.alloc_raw(new_capacity * _sizeof<T>()));
         this.capacity_ = new_capacity;
         
         // Copy elements
         for (var i: i64 = 0; i < this.size_; i = i + 1) {
             var value: T = unsafe { _load<T>(old_data, i); };
-            unsafe { _store<T>(this.data, i, value); };
+            unsafe { _store<T>(this.data.raw(), i, value); };
         }
         
         // Free old storage

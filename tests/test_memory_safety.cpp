@@ -572,3 +572,61 @@ TEST(LifetimeInference, lambda_ref_return_local_rejected) {
     )"),
                                 "Borrow check failed");
 }
+
+// =============================================================================
+// raw_ptr._get() lifetime propagation for smart pointers
+// =============================================================================
+
+// Returning ref from raw_ptr field via _get() is safe when raw_ptr is a field
+// of 'this'. This enables smart pointers like Unique<T> to return ref T.
+TEST(LifetimeInference, ref_return_from_raw_ptr_field_ok) {
+  auto value = executeString(R"(
+    import "stdlib/allocator.sun";
+    using sun;
+
+    class Wrapper<T> {
+        var data: raw_ptr<T>;
+
+        function init(allocator: ref HeapAllocator) {
+            this.data = allocator.alloc<T>(1);
+            unsafe { _store<T>(this.data, 0, 42); };
+        }
+
+        function get() ref T {
+            return unsafe { this.data._get(); };
+        }
+
+        function deinit() void {
+            if (this.data != null) {
+                unsafe { _free(this.data); };
+            };
+        }
+    }
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        var w = Wrapper<i32>(alloc);
+        return w.get();
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// Returning ref from local raw_ptr._get() is REJECTED - would dangle
+TEST(LifetimeInference, ref_return_from_local_raw_ptr_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    import "stdlib/allocator.sun";
+    using sun;
+
+    function bad(allocator: ref HeapAllocator) ref i32 {
+        var local_ptr: raw_ptr<i32> = allocator.alloc<i32>(1);
+        return unsafe { local_ptr._get(); };  // ERROR: local_ptr dies at scope end
+    }
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        return 0;
+    }
+  )"),
+                                "Borrow check failed");
+}

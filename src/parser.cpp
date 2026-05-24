@@ -758,7 +758,10 @@ unique_ptr<ExprAST> Parser::parsePostfixExpr(unique_ptr<ExprAST> base) {
     } else if (curTok.kind == TokenKind::DOT) {
       getNextToken();  // eat '.'
 
-      if (curTok.kind != TokenKind::IDENTIFIER) {
+      // Accept both regular identifiers and intrinsic identifiers (e.g., _get)
+      // as member names. This allows raw_ptr._get() and similar patterns.
+      if (curTok.kind != TokenKind::IDENTIFIER &&
+          curTok.kind != TokenKind::INTRINSIC_IDENTIFIER) {
         parsingError("expected member name after '.'");
         return nullptr;
       }

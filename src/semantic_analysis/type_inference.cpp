@@ -810,6 +810,18 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
         memberAccess.getLocation());
   }
 
+  // Handle raw_ptr._get() BEFORE unwrapping raw_ptr<Class> to Class.
+  // This allows Unique<T>.get() to return ref T via this.data._get().
+  if (objectType->isRawPointer() && memberName == "_get") {
+    if (!isInUnsafeBlock()) {
+      logAndThrowError(
+          "Dereferencing 'raw_ptr' can only be done in an unsafe block",
+          memberAccess.getLocation());
+    }
+    auto* ptrType = static_cast<sun::RawPointerType*>(objectType.get());
+    return ptrType->getPointeeType();
+  }
+
   // Unwrap raw_ptr<Class> to Class for member access (requires unsafe)
   if (objectType->isRawPointer()) {
     sun::TypePtr pointeeType =

@@ -1,7 +1,8 @@
 // Unique ownership smart pointer with automatic cleanup via deinit
 // Wraps a raw_ptr from allocator.create<T>() and frees on deinit
 // Usage: var ptr = allocator.create<Point>(3, 4);
-//        var p = Unique<Point>(ptr);
+//        var u = Unique<Point>(ptr);
+//        var val = u.get();  // Returns ref T for safe access
 
 module sun {
 
@@ -12,8 +13,25 @@ class Unique<T> {
         this.data = p;
     }
     
-    function get() raw_ptr<T> {
+    // Returns a reference to the contained value
+    // Safe: Unique owns the memory, so ref is valid while Unique exists
+    // raw_ptr<T> auto-converts to ref T when returned from a ref-returning function
+    function get() ref T {
         return this.data;
+    }
+    
+    // Returns the raw pointer (for C interop or low-level operations)
+    function raw() raw_ptr<T> {
+        return this.data;
+    }
+    
+    // Releases ownership and returns the raw pointer
+    // After calling release(), this Unique is null and won't free the memory
+    // Caller takes responsibility for freeing the returned pointer
+    function release() raw_ptr<T> {
+        var p = this.data;
+        this.data = null;
+        return p;
     }
     
     function is_null() bool {

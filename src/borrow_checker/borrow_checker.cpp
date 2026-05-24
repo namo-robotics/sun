@@ -801,6 +801,46 @@ Lifetime BorrowChecker::inferExprLifetime(const ExprAST& expr) {
       return Lifetime::param("this");
     }
 
+    case ASTNodeType::CALL: {
+      // Special case: raw_ptr._get() and static_ptr._get() inherit receiver
+      // lifetime. This allows Unique<T>.get() to return ref T safely, since
+      // the pointer field has the same lifetime as 'this'.
+      const auto& call = static_cast<const CallExprAST&>(expr);
+      const ExprAST* callee = call.getCallee();
+      if (callee && callee->getType() == ASTNodeType::MEMBER_ACCESS) {
+        const auto& memberAccess = static_cast<const MemberAccessAST&>(*callee);
+        // _get is the dereference method for raw_ptr/static_ptr
+        // The semantic analyzer ensures _get is only valid on pointer types
+        if (memberAccess.getMemberName() == "_get") {
+          const ExprAST* receiver = memberAccess.getObject();
+          if (receiver) {
+            return inferExprLifetime(*receiver);
+          }
+        }
+      }
+      break;
+    }
+
+    case ASTNodeType::UNSAFE_BLOCK: {
+      // Unsafe block's value is its last expression
+      const auto& unsafeBlock = static_cast<const UnsafeBlockAST&>(expr);
+      const ExprAST* lastExpr = unsafeBlock.getBody().getLastExpr();
+      if (lastExpr) {
+        return inferExprLifetime(*lastExpr);
+      }
+      break;
+    }
+
+    case ASTNodeType::BLOCK: {
+      // Block's value is its last expression
+      const auto& block = static_cast<const BlockExprAST&>(expr);
+      const ExprAST* lastExpr = block.getLastExpr();
+      if (lastExpr) {
+        return inferExprLifetime(*lastExpr);
+      }
+      break;
+    }
+
     default:
       break;
   }

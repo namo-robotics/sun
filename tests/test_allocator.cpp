@@ -129,6 +129,42 @@ TEST(AllocatorTest, unique_ptr_automatic_cleanup) {
   EXPECT_EQ(value, 7);
 }
 
+TEST(AllocatorTest, unique_ptr_release) {
+  // Unique<T>.release() transfers ownership out without freeing
+  auto value = executeString(R"(
+    import "build/stdlib.moon";
+    using sun;
+    
+    class Counter {
+        var value: i32;
+        function init(v: i32) { this.value = v; }
+    }
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        var u = Unique<Counter>(alloc.create<Counter>(42));
+        
+        // Release ownership - u becomes null, we get the raw pointer
+        var released: raw_ptr<Counter> = u.release();
+        
+        // u should now be null
+        var is_null_after = u.is_null();
+        if (is_null_after == false) {
+            return -1;
+        };
+        
+        // We can still use the released pointer
+        var result = unsafe { released.value; };
+        
+        // We must manually free since u won't do it
+        unsafe { _free(released); };
+        
+        return result;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
 // ============================================================================
 // Multiple Heap Allocations
 // ============================================================================
