@@ -12,7 +12,14 @@ class Unique<T> {
         this.data = p;
     }
     
-    function get() raw_ptr<T> {
+    // Safe dereference - returns a reference to the underlying value
+    // Caller should check is_null() first if pointer validity is uncertain
+    function get() ref T {
+        return unsafe { _to_ref<T>(this.data); };
+    }
+    
+    // Get the raw pointer (for low-level operations like _free or null checks)
+    function get_raw() raw_ptr<T> {
         return this.data;
     }
     

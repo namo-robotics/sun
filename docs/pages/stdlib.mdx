@@ -38,19 +38,21 @@ _free(p);  // Manual cleanup
 
 ## Unique\<T\>
 
-A smart pointer that automatically frees its data when `deinit` is called (at scope exit).
+A smart pointer that automatically frees its data when `deinit` is called (at scope exit). Provides safe access to heap-allocated objects without manual `unsafe` blocks.
 
 ```sun
 var allocator = make_heap_allocator();
 var p = Unique<Point>(allocator.create<Point>(3, 4));
-p.get().x;     // Access the underlying value
+p.get().x;     // Safe access - returns ref T
+p.get_raw();   // Get raw pointer for low-level operations
 p.is_null();   // Check if null
 // p.deinit() called automatically at scope exit
 ```
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `get()` | `() raw_ptr<T>` | Get the underlying raw pointer |
+| `get()` | `() ref T` | Safe dereference - returns a reference to the value |
+| `get_raw()` | `() raw_ptr<T>` | Get the underlying raw pointer |
 | `is_null()` | `() bool` | Check if pointer is null |
 | `deinit()` | `() void` | Free memory (called automatically) |
 

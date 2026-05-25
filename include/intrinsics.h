@@ -25,6 +25,7 @@ enum class Intrinsic {
   PtrAsRaw,       // _ptr_as_raw<T>(ptr<T>) -> raw_ptr<T>
   Is,             // _is<T>(value) -> bool (compile-time type check)
   AddressOf,      // _address_of<T>(ref T) -> raw_ptr<T>
+  ToRef,          // _to_ref<T>(raw_ptr<T>) -> ref T (unsafe dereference)
 
   // Non-generic intrinsics
   LoadI64,   // _load_i64(ptr, index) -> i64
@@ -63,6 +64,7 @@ inline Intrinsic getIntrinsic(const std::string& name) {
   if (name == "_ptr_as_raw") return Intrinsic::PtrAsRaw;
   if (name == "_is") return Intrinsic::Is;
   if (name == "_address_of") return Intrinsic::AddressOf;
+  if (name == "_to_ref") return Intrinsic::ToRef;
 
   // Non-generic intrinsics
   if (name == "_load_i64") return Intrinsic::LoadI64;
@@ -102,6 +104,7 @@ inline bool isGenericIntrinsic(Intrinsic i) {
     case Intrinsic::PtrAsRaw:
     case Intrinsic::Is:
     case Intrinsic::AddressOf:
+    case Intrinsic::ToRef:
       return true;
     default:
       return false;

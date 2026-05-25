@@ -621,7 +621,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
 
       // Check for unsafe intrinsics - these require an unsafe block
       static const std::unordered_set<std::string> unsafeGenericIntrinsics = {
-          "_load", "_store", "_address_of"};
+          "_load", "_store", "_address_of", "_to_ref"};
       if (unsafeGenericIntrinsics.count(funcName) && !isInUnsafeBlock()) {
         logAndThrowError(
             "'" + funcName + "' can only be used in an unsafe block",
@@ -711,6 +711,22 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
                            genericCall.getLocation());
         }
         return sun::Types::RawPointer(targetType);
+      }
+
+      if (funcName == "_to_ref") {
+        // _to_ref<T>(raw_ptr<T>) returns ref T - unsafe dereference
+        // Converts a raw pointer to a reference for safe member access
+        if (genericCall.getArgs().size() != 1) {
+          logAndThrowError("_to_ref<T>(ptr) requires 1 argument",
+                           genericCall.getLocation());
+        }
+        sun::TypePtr targetType = typeAnnotationToType(*typeArgsVec[0]);
+        targetType = substituteTypeParameters(targetType);
+        if (!targetType) {
+          logAndThrowError("Failed to resolve type argument for _to_ref<T>",
+                           genericCall.getLocation());
+        }
+        return sun::Types::Reference(targetType);
       }
 
       if (funcName == "_is") {
