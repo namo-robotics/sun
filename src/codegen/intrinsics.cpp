@@ -406,6 +406,28 @@ Value* CodegenVisitor::codegenAddressOfIntrinsic(
   return nullptr;
 }
 
+Value* CodegenVisitor::codegenToRefIntrinsic(
+    const std::vector<std::unique_ptr<ExprAST>>& args) {
+  // _to_ref<T>(raw_ptr<T>) -> ref T
+  // Converts a raw pointer to a reference (unsafe operation)
+  // At LLVM level, both are pointers - this is just a type system operation
+  if (args.size() != 1) {
+    logAndThrowError("_to_ref<T>() requires exactly one argument");
+    return nullptr;
+  }
+
+  // Generate the pointer value
+  llvm::Value* ptrVal = codegen(*args[0]);
+  if (!ptrVal) {
+    logAndThrowError("_to_ref<T>(): Failed to generate pointer argument");
+    return nullptr;
+  }
+
+  // At LLVM level, raw_ptr<T> and ref T are both pointers
+  // Just return the value - the type system handles the semantic difference
+  return ptrVal;
+}
+
 Value* CodegenVisitor::codegenIsIntrinsic(
     const std::string& targetName,
     const std::vector<std::unique_ptr<ExprAST>>& args) {

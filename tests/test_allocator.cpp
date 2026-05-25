@@ -68,7 +68,7 @@ TEST(AllocatorTest, heap_allocator_create_simple_class) {
         var alloc = make_heap_allocator();
       var rawPtr = alloc.create<Point>(3, 4);
         var p = Unique<Point>(rawPtr);
-        return unsafe { p.get().sum(); };
+        return p.get().sum();
     }
   )");
   EXPECT_EQ(value, 7);
@@ -95,7 +95,7 @@ TEST(AllocatorTest, heap_allocator_create_generic_class) {
         var alloc = make_heap_allocator();
         var rawPtr = alloc.create<Box<i32>>(42);
         var p = Unique<Box<i32>>(rawPtr);
-        return unsafe { p.get().get(); };
+        return p.get().get();
     }
   )");
   EXPECT_EQ(value, 42);
@@ -121,7 +121,7 @@ TEST(AllocatorTest, unique_ptr_automatic_cleanup) {
         var alloc = make_heap_allocator();
         var rawPtr = alloc.create<Point>(3, 4);
         var p = Unique<Point>(rawPtr);
-        var result = unsafe { p.get().x; } + unsafe { p.get().y; };
+        var result = p.get().x + p.get().y;
         // p.deinit() is automatically called at scope exit
         return result;
     }
@@ -151,7 +151,7 @@ TEST(AllocatorTest, multiple_heap_allocations) {
         var c1 = Unique<Counter>(alloc.create<Counter>(10));
         var c2 = Unique<Counter>(alloc.create<Counter>(20));
         var c3 = Unique<Counter>(alloc.create<Counter>(30));
-        return unsafe { c1.get().value; } + unsafe { c2.get().value; } + unsafe { c3.get().value; };
+        return c1.get().value + c2.get().value + c3.get().value;
     }
   )");
   EXPECT_EQ(value, 60);
@@ -183,7 +183,7 @@ TEST(AllocatorTest, allocator_as_parameter) {
     function main() i32 {
         var alloc = make_heap_allocator();
         var p = Unique<Point>(create_point(alloc, 5, 7));
-        return unsafe { p.get().x; } + unsafe { p.get().y; };
+        return p.get().x + p.get().y;
     }
   )");
   EXPECT_EQ(value, 12);

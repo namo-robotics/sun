@@ -336,6 +336,8 @@ class CodegenVisitor {
       const std::vector<std::unique_ptr<ExprAST>>& args);
   llvm::Value* codegenAddressOfIntrinsic(
       const std::vector<std::unique_ptr<ExprAST>>& args);
+  llvm::Value* codegenToRefIntrinsic(
+      const std::vector<std::unique_ptr<ExprAST>>& args);
   llvm::Value* codegenIsIntrinsic(
       const std::string& targetName,
       const std::vector<std::unique_ptr<ExprAST>>& args);
