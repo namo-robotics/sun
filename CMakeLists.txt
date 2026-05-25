@@ -113,9 +113,10 @@ if(NOT SKIP_STDLIB)
         ${CMAKE_SOURCE_DIR}/stdlib/allocator.sun
         ${CMAKE_SOURCE_DIR}/stdlib/unique.sun
         ${CMAKE_SOURCE_DIR}/stdlib/slice.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/errors.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/buffer.sun
         ${CMAKE_SOURCE_DIR}/stdlib/matrix.sun
         ${CMAKE_SOURCE_DIR}/stdlib/string.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/errors.sun
         ${CMAKE_SOURCE_DIR}/stdlib/vec.sun
         ${CMAKE_SOURCE_DIR}/stdlib/map.sun
         ${CMAKE_SOURCE_DIR}/stdlib/linked_list.sun
