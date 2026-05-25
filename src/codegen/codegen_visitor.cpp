@@ -42,6 +42,8 @@ Value* CodegenVisitor::codegen(const ExprAST& expr) {
       return codegen(static_cast<const UnaryExprAST&>(expr));
     case ASTNodeType::BINARY:
       return codegen(static_cast<const BinaryExprAST&>(expr));
+    case ASTNodeType::LOGICAL:
+      return codegen(static_cast<const LogicalExprAST&>(expr));
     case ASTNodeType::CALL:
       return codegen(static_cast<const CallExprAST&>(expr));
     case ASTNodeType::IF:
@@ -388,4 +390,81 @@ Value* CodegenVisitor::codegen(const UnaryExprAST& expr) {
 
   logAndThrowError("Unknown unary operator: " + expr.getOp().text,
                    expr.getLocation());
+}
+
+// Logical expressions with short-circuit evaluation
+Value* CodegenVisitor::codegen(const LogicalExprAST& expr) {
+  // Get the current function for creating basic blocks
+  Function* TheFunction = ctx.builder->GetInsertBlock()->getParent();
+
+  // Create basic blocks for short-circuit evaluation
+  BasicBlock* RhsBB = BasicBlock::Create(*ctx.context, "rhs", TheFunction);
+  BasicBlock* MergeBB = BasicBlock::Create(*ctx.context, "merge", TheFunction);
+
+  // Evaluate LHS first
+  Value* LHS = codegen(*expr.getLHS());
+  if (!LHS) return nullptr;
+
+  // Ensure LHS is a boolean (i1)
+  if (!LHS->getType()->isIntegerTy(1)) {
+    // Convert to bool: compare != 0
+    if (LHS->getType()->isIntegerTy()) {
+      LHS = ctx.builder->CreateICmpNE(LHS, ConstantInt::get(LHS->getType(), 0),
+                                      "tobool");
+    } else {
+      logAndThrowError("Logical operators require boolean operands",
+                       expr.getLocation());
+    }
+  }
+
+  // Get the block where we evaluated LHS (may differ from entry due to nested
+  // exprs)
+  BasicBlock* LhsBB = ctx.builder->GetInsertBlock();
+
+  if (expr.isOr()) {
+    // For 'or': if LHS is true, short-circuit to merge with true
+    // Otherwise, evaluate RHS
+    ctx.builder->CreateCondBr(LHS, MergeBB, RhsBB);
+  } else {
+    // For 'and': if LHS is false, short-circuit to merge with false
+    // Otherwise, evaluate RHS
+    ctx.builder->CreateCondBr(LHS, RhsBB, MergeBB);
+  }
+
+  // Emit RHS block
+  ctx.builder->SetInsertPoint(RhsBB);
+  Value* RHS = codegen(*expr.getRHS());
+  if (!RHS) return nullptr;
+
+  // Ensure RHS is a boolean (i1)
+  if (!RHS->getType()->isIntegerTy(1)) {
+    if (RHS->getType()->isIntegerTy()) {
+      RHS = ctx.builder->CreateICmpNE(RHS, ConstantInt::get(RHS->getType(), 0),
+                                      "tobool");
+    } else {
+      logAndThrowError("Logical operators require boolean operands",
+                       expr.getLocation());
+    }
+  }
+
+  // Get the block where we evaluated RHS
+  BasicBlock* RhsEndBB = ctx.builder->GetInsertBlock();
+  ctx.builder->CreateBr(MergeBB);
+
+  // Emit merge block with PHI node
+  ctx.builder->SetInsertPoint(MergeBB);
+  PHINode* PN =
+      ctx.builder->CreatePHI(Type::getInt1Ty(*ctx.context), 2, "logical");
+
+  if (expr.isOr()) {
+    // For 'or': coming from LHS means LHS was true
+    PN->addIncoming(ConstantInt::getTrue(*ctx.context), LhsBB);
+    PN->addIncoming(RHS, RhsEndBB);
+  } else {
+    // For 'and': coming from LHS means LHS was false
+    PN->addIncoming(ConstantInt::getFalse(*ctx.context), LhsBB);
+    PN->addIncoming(RHS, RhsEndBB);
+  }
+
+  return PN;
 }

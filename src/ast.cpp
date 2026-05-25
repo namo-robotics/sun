@@ -158,6 +158,12 @@ std::unique_ptr<ExprAST> BinaryExprAST::clone() const {
   return copy;
 }
 
+std::unique_ptr<ExprAST> LogicalExprAST::clone() const {
+  auto copy = std::make_unique<LogicalExprAST>(op, LHS->clone(), RHS->clone());
+  copy->setResolvedType(resolvedType);
+  return copy;
+}
+
 std::unique_ptr<ExprAST> UnaryExprAST::clone() const {
   auto copy = std::make_unique<UnaryExprAST>(op, Operand->clone());
   copy->setResolvedType(resolvedType);

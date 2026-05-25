@@ -125,6 +125,7 @@ class Parser {
   // Type parsing
   TypeAnnotation parseTypeAnnotation();
   bool isTypeToken(TokenKind kind);
+  bool isKeyword(TokenKind kind);  // Check if token is a reserved keyword
 
   unique_ptr<ExprAST> parseAssignmentOrExpression();
 

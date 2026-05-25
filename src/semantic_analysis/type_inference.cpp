@@ -253,6 +253,11 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       }
     }
 
+    case ASTNodeType::LOGICAL: {
+      // Logical operators (and, or) always return bool
+      return sun::Types::Bool();
+    }
+
     case ASTNodeType::UNARY: {
       const auto& unaryExpr = static_cast<const UnaryExprAST&>(expr);
       return inferType(*unaryExpr.getOperand());

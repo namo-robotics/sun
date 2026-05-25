@@ -55,6 +55,15 @@ std::set<std::string> SemanticAnalyzer::collectFreeVariables(
       break;
     }
 
+    case ASTNodeType::LOGICAL: {
+      const auto& logExpr = static_cast<const LogicalExprAST&>(expr);
+      auto lhsFree = collectFreeVariables(*logExpr.getLHS(), bound);
+      auto rhsFree = collectFreeVariables(*logExpr.getRHS(), bound);
+      free.insert(lhsFree.begin(), lhsFree.end());
+      free.insert(rhsFree.begin(), rhsFree.end());
+      break;
+    }
+
     case ASTNodeType::UNARY: {
       const auto& unaryExpr = static_cast<const UnaryExprAST&>(expr);
       auto operandFree = collectFreeVariables(*unaryExpr.getOperand(), bound);

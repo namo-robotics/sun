@@ -429,6 +429,14 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       break;
     }
 
+    case ASTNodeType::LOGICAL: {
+      auto& logExpr = static_cast<LogicalExprAST&>(expr);
+      analyzeExpr(const_cast<ExprAST&>(*logExpr.getLHS()));
+      analyzeExpr(const_cast<ExprAST&>(*logExpr.getRHS()));
+      expr.setResolvedType(sun::Types::Bool());
+      break;
+    }
+
     case ASTNodeType::UNARY: {
       auto& unaryExpr = static_cast<UnaryExprAST&>(expr);
       analyzeExpr(const_cast<ExprAST&>(*unaryExpr.getOperand()));
@@ -1710,6 +1718,12 @@ void SemanticAnalyzer::clearResolvedTypes(ExprAST& expr) {
       auto& bin = static_cast<BinaryExprAST&>(expr);
       clearResolvedTypes(const_cast<ExprAST&>(*bin.getLHS()));
       clearResolvedTypes(const_cast<ExprAST&>(*bin.getRHS()));
+      break;
+    }
+    case ASTNodeType::LOGICAL: {
+      auto& log = static_cast<LogicalExprAST&>(expr);
+      clearResolvedTypes(const_cast<ExprAST&>(*log.getLHS()));
+      clearResolvedTypes(const_cast<ExprAST&>(*log.getRHS()));
       break;
     }
     case ASTNodeType::UNARY: {

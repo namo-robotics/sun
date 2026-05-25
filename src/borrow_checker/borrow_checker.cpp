@@ -56,6 +56,10 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
       checkBinaryExpr(static_cast<const BinaryExprAST&>(expr));
       break;
 
+    case ASTNodeType::LOGICAL:
+      checkLogicalExpr(static_cast<const LogicalExprAST&>(expr));
+      break;
+
     case ASTNodeType::CALL:
       checkCallExpr(static_cast<const CallExprAST&>(expr));
       break;
@@ -302,6 +306,15 @@ void BorrowChecker::checkBinaryExpr(const BinaryExprAST& binary) {
   }
   if (binary.getRHS()) {
     checkExpr(*binary.getRHS());
+  }
+}
+
+void BorrowChecker::checkLogicalExpr(const LogicalExprAST& logical) {
+  if (logical.getLHS()) {
+    checkExpr(*logical.getLHS());
+  }
+  if (logical.getRHS()) {
+    checkExpr(*logical.getRHS());
   }
 }
 

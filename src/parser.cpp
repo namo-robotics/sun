@@ -325,8 +325,13 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
     }
   }
 
-  if (curTok.kind != TokenKind::PAREN_CLOSE)
+  if (curTok.kind != TokenKind::PAREN_CLOSE) {
+    // Check if user tried to use a keyword as parameter name
+    if (isKeyword(curTok.kind)) {
+      parsingError("'" + curTok.text + "' is a reserved keyword and cannot be used as a parameter name");
+    }
     parsingError("Expected ')' in function literal");
+  }
 
   getNextToken();  // eat ')'
 
@@ -876,6 +881,50 @@ bool Parser::isTypeToken(TokenKind kind) {
   }
 }
 
+// Check if a token is a reserved keyword (for better error messages)
+bool Parser::isKeyword(TokenKind kind) {
+  switch (kind) {
+    case TokenKind::PTR:
+    case TokenKind::RAW_PTR:
+    case TokenKind::STATIC_PTR:
+    case TokenKind::REF:
+    case TokenKind::ARRAY:
+    case TokenKind::THIS:
+    case TokenKind::FUNCTION:
+    case TokenKind::LAMBDA:
+    case TokenKind::VAR:
+    case TokenKind::IF:
+    case TokenKind::ELSE:
+    case TokenKind::FOR:
+    case TokenKind::WHILE:
+    case TokenKind::RETURN:
+    case TokenKind::BREAK:
+    case TokenKind::CONTINUE:
+    case TokenKind::CLASS:
+    case TokenKind::INTERFACE:
+    case TokenKind::ENUM:
+    case TokenKind::MODULE:
+    case TokenKind::NAMESPACE:
+    case TokenKind::IMPORT:
+    case TokenKind::USING:
+    case TokenKind::EXTERN:
+    case TokenKind::TRY:
+    case TokenKind::CATCH:
+    case TokenKind::THROW:
+    case TokenKind::MATCH:
+    case TokenKind::SPAWN:
+    case TokenKind::UNSAFE:
+    case TokenKind::DECLARE:
+    case TokenKind::PARTIAL:
+    case TokenKind::NULL_LITERAL:
+    case TokenKind::TRUE_LITERAL:
+    case TokenKind::FALSE_LITERAL:
+      return true;
+    default:
+      return false;
+  }
+}
+
 // Parse type annotation: i32, f64, matrix(i32, 2, 3), _(param_types)
 // return_type (function), (param_types) return_type (lambda)
 TypeAnnotation Parser::parseTypeAnnotation() {
@@ -1233,8 +1282,12 @@ std::unique_ptr<ExprAST> Parser::parseBinOpRhs(int exprPrec,
       if (!rhs) return nullptr;
     }
 
-    lhs =
-        std::make_unique<BinaryExprAST>(binOp, std::move(lhs), std::move(rhs));
+    // Use LogicalExprAST for 'or' and 'and' (short-circuit evaluation)
+    if (binOp.kind == TokenKind::OR || binOp.kind == TokenKind::AND) {
+      lhs = std::make_unique<LogicalExprAST>(binOp, std::move(lhs), std::move(rhs));
+    } else {
+      lhs = std::make_unique<BinaryExprAST>(binOp, std::move(lhs), std::move(rhs));
+    }
   }
 }
 

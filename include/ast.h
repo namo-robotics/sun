@@ -30,6 +30,7 @@ enum class ASTNodeType {
   VARIABLE_ASSIGNMENT,
   REFERENCE_CREATION,  // ref x = y - creates a reference to y
   BINARY,
+  LOGICAL,  // Logical and/or with short-circuit evaluation
   UNARY,
   CALL,  // Unified call - callee is an expression (can be var ref, function
          // literal, etc.)
@@ -618,6 +619,27 @@ class BinaryExprAST : public ExprAST {
   Token getOp() const { return op; }
   const ExprAST* getLHS() const { return LHS.get(); }
   const ExprAST* getRHS() const { return RHS.get(); }
+  std::unique_ptr<ExprAST> clone() const override;
+};
+
+// Logical expression with short-circuit evaluation (and, or)
+class LogicalExprAST : public ExprAST {
+  Token op;  // OR or AND token
+  std::unique_ptr<ExprAST> LHS, RHS;
+
+ public:
+  LogicalExprAST(Token Op, std::unique_ptr<ExprAST> LHS,
+                 std::unique_ptr<ExprAST> RHS)
+      : ExprAST(Op.start), op(Op), LHS(std::move(LHS)), RHS(std::move(RHS)) {}
+  ASTNodeType getType() const override { return ASTNodeType::LOGICAL; }
+  std::string toString() const override {
+    return "(" + LHS->toString() + " " + op.text + " " + RHS->toString() + ")";
+  }
+  Token getOp() const { return op; }
+  const ExprAST* getLHS() const { return LHS.get(); }
+  const ExprAST* getRHS() const { return RHS.get(); }
+  bool isOr() const { return op.kind == TokenKind::OR; }
+  bool isAnd() const { return op.kind == TokenKind::AND; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 

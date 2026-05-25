@@ -1,0 +1,94 @@
+import "allocator.sun";
+import "errors.sun";
+import "unique.sun";
+
+module sun {
+    class ContiguousBuffer<T> {
+        var data: Unique<i8>;
+        var len: i64;
+
+        function init(alloc: ref HeapAllocator, length: i64) {
+            this.len = length;
+            this.data = Unique<i8>(alloc.alloc_raw(length * _sizeof<T>()));
+        }
+
+        function init_from_raw(data_ptr: raw_ptr<i8>, length: i64) void {
+            this.data = Unique<i8>(data_ptr);
+            this.len = length;
+        }
+
+        function deinit() void {
+            // Unique will handle deallocation
+        }
+
+        function get(index: i64) T, IError {
+            if (index < 0 or index >= this.len) {
+                throw IndexOutOfBoundsError(index);
+            }
+            return unsafe { _load<T>(this.data.raw(), index); };
+        }
+
+        function set(index: i64, value: T) void, IError {
+            if (index < 0 or index >= this.len) {
+                throw IndexOutOfBoundsError(index);
+            }
+            unsafe { _store<T>(this.data.raw(), index, value); };
+        }
+
+        function get_unchecked(index: i64) T {
+            return unsafe { _load<T>(this.data.raw(), index); };
+        }
+
+        function set_unchecked(index: i64, value: T) void {
+            unsafe { _store<T>(this.data.raw(), index, value); };
+        }
+
+        function size() i64 {
+            return this.len;
+        }
+
+        function isEmpty() bool {
+            return this.len == 0;
+        }
+
+        function rawPtr() raw_ptr<i8> {
+            return this.data.raw();
+        }
+
+        function copy_from(src: ref ContiguousBuffer<T>, src_offset: i64, dst_offset: i64, n: i64) void, IError {
+            if (src_offset < 0 or src_offset + n > src.len) {
+                throw IndexOutOfBoundsError(src_offset);
+            }
+            if (dst_offset < 0 or dst_offset + n > this.len) {
+                throw IndexOutOfBoundsError(dst_offset);
+            }
+            for (var i: i64 = 0; i < n; i = i + 1) {
+                var val: T = unsafe { _load<T>(src.data.raw(), src_offset + i); };
+                unsafe { _store<T>(this.data.raw(), dst_offset + i, val); };
+            }
+        }
+
+        function fill(value: T) void {
+            for (var i: i64 = 0; i < this.len; i = i + 1) {
+                unsafe { _store<T>(this.data.raw(), i, value); };
+            }
+        }
+
+        function fill_range(start: i64, end: i64, value: T) void, IError {
+            if (start < 0 or end > this.len or start > end) {
+                throw IndexOutOfBoundsError(start);
+            }
+            for (var i: i64 = start; i < end; i = i + 1) {
+                unsafe { _store<T>(this.data.raw(), i, value); };
+            }
+        }
+    }
+
+    declare ContiguousBuffer_i8 = ContiguousBuffer<i8>;
+    declare ContiguousBuffer_i16 = ContiguousBuffer<i16>;
+    declare ContiguousBuffer_i32 = ContiguousBuffer<i32>;
+    declare ContiguousBuffer_i64 = ContiguousBuffer<i64>;
+    declare ContiguousBuffer_u8 = ContiguousBuffer<u8>;
+    declare ContiguousBuffer_f32 = ContiguousBuffer<f32>;
+    declare ContiguousBuffer_f64 = ContiguousBuffer<f64>;
+}

@@ -49,6 +49,8 @@ enum class TokenKind {
   THROW,     // throw keyword for throwing exceptions
   SPAWN,     // spawn keyword for OS thread creation
   UNSAFE,    // unsafe keyword for unsafe blocks
+  OR,        // or keyword for logical or
+  AND,       // and keyword for logical and
   // Type keywords (must come before IDENTIFIER for priority)
   STATIC_PTR,            // static_ptr (pointer to immortal static data)
   PTR,                   // ptr (unique/owning pointer with RAII)
@@ -135,6 +137,8 @@ static const std::map<TokenKind, std::string> tokenRegexes = {
     {TokenKind::THROW, "throw"},
     {TokenKind::SPAWN, "spawn"},
     {TokenKind::UNSAFE, "unsafe"},
+    {TokenKind::OR, "or"},
+    {TokenKind::AND, "and"},
     {TokenKind::FAT_ARROW, "=>"},
     {TokenKind::ARROW, "->"},
     {TokenKind::UNDERSCORE, "_"},
@@ -270,6 +274,8 @@ inline const std::map<TokenKind, TokenInfo>& getTokenInfo() {
       {TokenKind::GREATER_EQUAL, {">=", 10}},
       {TokenKind::EQUAL_EQUAL, {"==", 10}},
       {TokenKind::NOT_EQUAL, {"!=", 10}},
+      {TokenKind::AND, {"and", 7}},
+      {TokenKind::OR, {"or", 5}},
   };
   return tokenInfo;
 }

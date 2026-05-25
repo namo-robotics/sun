@@ -26,8 +26,10 @@
 import "allocator.sun";
 // Import SliceRange for slicing support
 import "slice.sun";
-// Import Unique for managed memory
-import "unique.sun";
+// Import ContiguousBuffer for safe memory access
+import "buffer.sun";
+// Import errors for IndexOutOfBoundsError
+import "errors.sun";
 
 module sun {
 
@@ -44,7 +46,7 @@ module sun {
 
 // N-dimensional matrix with contiguous row-major storage
 class Matrix<T> {
-    var data: Unique<i8>;          // Contiguous element storage (managed by Unique)
+    var data: ContiguousBuffer<T>;  // Contiguous element storage (bounds-checked)
     var dims: array<i64>;          // Shape of each dimension
     var ndims_: i64;               // Number of dimensions
     var total_size: i64;           // Total number of elements
@@ -62,11 +64,11 @@ class Matrix<T> {
             this.total_size = this.total_size * shape[i];
         }
         
-        // Allocate memory for elements
-        this.data = Unique<i8>(alloc.alloc_raw(this.total_size * _sizeof<T>()));
+        // Allocate memory for elements via ContiguousBuffer
+        this.data = ContiguousBuffer<T>(alloc, this.total_size);
     }
     
-    // Destructor: Unique handles freeing in its deinit
+    // Destructor: ContiguousBuffer handles freeing in its deinit
     function deinit() void {
     }
     
@@ -84,16 +86,32 @@ class Matrix<T> {
         return offset;
     }
     
-    // Get element at indices
-    function get(indices: ref array<i64>) T {
+    // Get element at indices (bounds-checked)
+    // Throws IndexOutOfBoundsError if index is out of range
+    function get(indices: ref array<i64>) T, IError {
         var idx: i64 = this.linearIndex(indices);
-        return unsafe { _load<T>(this.data.raw(), idx); };
+        return this.data.get(idx);
     }
     
-    // Set element at indices
-    function set(indices: ref array<i64>, value: T) void {
+    // Get element at indices without bounds checking (performance API)
+    // SAFETY: caller must ensure indices are valid
+    function get_unchecked(indices: ref array<i64>) T {
         var idx: i64 = this.linearIndex(indices);
-        unsafe { _store<T>(this.data.raw(), idx, value); };
+        return this.data.get_unchecked(idx);
+    }
+    
+    // Set element at indices (bounds-checked)
+    // Throws IndexOutOfBoundsError if index is out of range
+    function set(indices: ref array<i64>, value: T) void, IError {
+        var idx: i64 = this.linearIndex(indices);
+        this.data.set(idx, value);
+    }
+    
+    // Set element at indices without bounds checking (performance API)
+    // SAFETY: caller must ensure indices are valid
+    function set_unchecked(indices: ref array<i64>, value: T) void {
+        var idx: i64 = this.linearIndex(indices);
+        this.data.set_unchecked(idx, value);
     }
     
     // Get shape array
@@ -113,18 +131,18 @@ class Matrix<T> {
     
     // Get raw data pointer (for low-level operations)
     function rawData() raw_ptr<i8> {
-        return this.data.raw();
+        return this.data.rawPtr();
     }
     
     // Operator overload for indexing: m[i, j] calls __index__([i, j])
-    // Enables M[i, j] syntax for element access
-    function __index__(indices: ref array<i64>) T {
+    // Enables M[i, j] syntax for element access (bounds-checked)
+    function __index__(indices: ref array<i64>) T, IError {
         return this.get(indices);
     }
     
     // Operator overload for indexed assignment: m[i, j] = val calls __setindex__([i, j], val)
-    // Enables M[i, j] = value syntax for element assignment
-    function __setindex__(indices: ref array<i64>, value: T) void {
+    // Enables M[i, j] = value syntax for element assignment (bounds-checked)
+    function __setindex__(indices: ref array<i64>, value: T) void, IError {
         this.set(indices, value);
     }
     
@@ -141,7 +159,7 @@ class Matrix<T> {
         var new_shape: array<i64, 1> = [end - start];
         var strides: array<i64, 1> = [1];  // 1D contiguous
         
-        return MatrixView<T>(this.data.raw(), start, new_shape, strides);
+        return MatrixView<T>(this.data.rawPtr(), start, new_shape, strides);
     }
 }
 
@@ -181,14 +199,41 @@ class MatrixView<T> {
         return offset;
     }
     
-    // Get element at indices
-    function get(indices: ref array<i64>) T {
+    // Validate indices are within bounds, throws if not
+    function validateBounds(indices: ref array<i64>) void, IError {
+        for (var i: i64 = 0; i < this.ndims_; i = i + 1) {
+            if (indices[i] < 0 or indices[i] >= this.dims[i]) {
+                throw IndexOutOfBoundsError(indices[i]);
+            }
+        }
+    }
+    
+    // Get element at indices (bounds-checked)
+    // Throws IndexOutOfBoundsError if index is out of range
+    function get(indices: ref array<i64>) T, IError {
+        this.validateBounds(indices);
         var idx: i64 = this.linearIndex(indices);
         return unsafe { _load<T>(this.data, idx); };
     }
     
-    // Set element at indices (views allow modification)
-    function set(indices: ref array<i64>, value: T) void {
+    // Get element at indices without bounds checking (performance API)
+    // SAFETY: caller must ensure indices are valid
+    function get_unchecked(indices: ref array<i64>) T {
+        var idx: i64 = this.linearIndex(indices);
+        return unsafe { _load<T>(this.data, idx); };
+    }
+    
+    // Set element at indices (bounds-checked)
+    // Throws IndexOutOfBoundsError if index is out of range
+    function set(indices: ref array<i64>, value: T) void, IError {
+        this.validateBounds(indices);
+        var idx: i64 = this.linearIndex(indices);
+        unsafe { _store<T>(this.data, idx, value); };
+    }
+    
+    // Set element at indices without bounds checking (performance API)
+    // SAFETY: caller must ensure indices are valid
+    function set_unchecked(indices: ref array<i64>, value: T) void {
         var idx: i64 = this.linearIndex(indices);
         unsafe { _store<T>(this.data, idx, value); };
     }
@@ -209,14 +254,14 @@ class MatrixView<T> {
     }
     
     // Operator overload for indexing: v[i, j] calls __index__([i, j])
-    // Enables View[i, j] syntax for element access
-    function __index__(indices: ref array<i64>) T {
+    // Enables View[i, j] syntax for element access (bounds-checked)
+    function __index__(indices: ref array<i64>) T, IError {
         return this.get(indices);
     }
     
     // Operator overload for indexed assignment: v[i, j] = val calls __setindex__([i, j], val)
-    // Enables View[i, j] = value syntax for element assignment
-    function __setindex__(indices: ref array<i64>, value: T) void {
+    // Enables View[i, j] = value syntax for element assignment (bounds-checked)
+    function __setindex__(indices: ref array<i64>, value: T) void, IError {
         this.set(indices, value);
     }
 }

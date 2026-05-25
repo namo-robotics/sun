@@ -58,6 +58,7 @@ class BorrowChecker {
   void checkVariableAssignment(const VariableAssignmentAST& assign);
   void checkVariableReference(const VariableReferenceAST& varRef);
   void checkBinaryExpr(const BinaryExprAST& binary);
+  void checkLogicalExpr(const LogicalExprAST& logical);
   void checkCallExpr(const CallExprAST& call);
   void checkIfExpr(const IfExprAST& ifExpr);
   void checkMatchExpr(const MatchExprAST& matchExpr);
