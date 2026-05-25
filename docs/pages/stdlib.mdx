@@ -43,14 +43,16 @@ A smart pointer that automatically frees its data when `deinit` is called (at sc
 ```sun
 var allocator = make_heap_allocator();
 var p = Unique<Point>(allocator.create<Point>(3, 4));
-p.get().x;     // Access the underlying value
+p.get().x;     // Access the underlying value (returns ref T)
 p.is_null();   // Check if null
 // p.deinit() called automatically at scope exit
 ```
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `get()` | `() raw_ptr<T>` | Get the underlying raw pointer |
+| `get()` | `() ref T` | Get a reference to the underlying value |
+| `raw()` | `() raw_ptr<T>` | Get the underlying raw pointer (for C interop) |
+| `release()` | `() raw_ptr<T>` | Release ownership and return raw pointer |
 | `is_null()` | `() bool` | Check if pointer is null |
 | `deinit()` | `() void` | Free memory (called automatically) |
 
@@ -74,8 +76,10 @@ var len = v.size();       // 2
 |--------|-----------|-------------|
 | `push(value)` | `(T) void` | Append element (grows if needed) |
 | `pop()` | `() T, IError` | Remove and return last element |
-| `get(index)` | `(i64) T` | Get element at index |
-| `set(index, value)` | `(i64, T) void` | Set element at index |
+| `get(index)` | `(i64) T, IError` | Get element at index (bounds-checked) |
+| `get_unchecked(index)` | `(i64) T` | Get element without bounds checking |
+| `set(index, value)` | `(i64, T) void, IError` | Set element at index (bounds-checked) |
+| `set_unchecked(index, value)` | `(i64, T) void` | Set element without bounds checking |
 | `size()` | `() i64` | Current number of elements |
 | `capacity()` | `() i64` | Current allocated capacity |
 | `isEmpty()` | `() bool` | Check if empty |
@@ -84,6 +88,10 @@ var len = v.size();       // 2
 | `first()` | `() T, IError` | Get first element |
 | `last()` | `() T, IError` | Get last element |
 | `iter()` | `() VecIterator<T>` | Get iterator for for-in loops |
+
+<Callout type="info">
+  Use `get_unchecked` and `set_unchecked` in performance-critical code when you can guarantee valid indices. These skip bounds checking.
+</Callout>
 
 ### Indexing
 
@@ -144,6 +152,53 @@ for (var v: i32 in m) {
 
 <Callout type="warning">
   The map automatically grows when load factor exceeds 70%. Initial capacity should be chosen based on expected size for best performance.
+</Callout>
+
+## LinkedList\<T\>
+
+A generic doubly-linked list backed by heap-allocated nodes. Supports O(1) push/pop at both ends and O(n) indexed access. Implements `IIterable<T, LinkedList<T>>` for use with for-in loops.
+
+```sun
+var allocator = make_heap_allocator();
+var list = LinkedList<i32>(allocator);
+list.push_back(10);
+list.push_back(20);
+list.push_front(5);
+var val = list.first();     // 5
+var last = list.last();     // 20
+var popped = list.pop_front(); // 5
+var len = list.size();      // 2
+```
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `push_back(value)` | `(T) void` | Append element to the back |
+| `push_front(value)` | `(T) void` | Prepend element to the front |
+| `pop_back()` | `() T, IError` | Remove and return last element |
+| `pop_front()` | `() T, IError` | Remove and return first element |
+| `get(index)` | `(i64) T, IError` | Get element at index (O(n) traversal) |
+| `set(index, value)` | `(i64, T) void, IError` | Set element at index |
+| `remove(index)` | `(i64) T, IError` | Remove and return element at index |
+| `first()` | `() T, IError` | Get first element without removing |
+| `last()` | `() T, IError` | Get last element without removing |
+| `size()` | `() i64` | Current number of elements |
+| `isEmpty()` | `() bool` | Check if empty |
+| `clear()` | `() void` | Remove all elements and free nodes |
+| `iter()` | `() LinkedListIterator<T>` | Get iterator for for-in loops |
+
+### Iteration
+
+```sun
+var list = LinkedList<i32>(allocator);
+list.push_back(1); list.push_back(2); list.push_back(3);
+
+for (var x: i32 in list) {
+    println_i32(x);
+}
+```
+
+<Callout type="info">
+  Use `LinkedList` when you need efficient insertions/removals at both ends. For random access patterns, prefer `Vec<T>` which has O(1) indexing.
 </Callout>
 
 ## String

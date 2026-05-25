@@ -93,24 +93,24 @@ export SUN_PATH=`pwd`/build
 ```
 
 ```bash
-ubuntu@5b8bc57b626b:/workspaces/sun$ sun hello.sun
+$ sun hello.sun
 Hello, Sun!
 ```
 
 ### Compile to native executable
 
 ```bash
-ubuntu@5b8bc57b626b:/workspaces/sun$ sun --compile -o hello hello.sun
+$ sun --compile -o hello hello.sun
 Compiling: hello.sun -> hello
 Successfully compiled to: hello
-ubuntu@5b8bc57b626b:/workspaces/sun$ ./hello 
+$ ./hello 
 Hello, Sun!
 ```
 
 ### Inspect generated LLVM IR
 
 ```bash
-ubuntu@5b8bc57b626b:/workspaces/sun$ sun --emit-ir hello.sun 
+$ sun --emit-ir hello.sun 
 ; LLVM IR (user-defined only):
 @str = private unnamed_addr constant [12 x i8] c"Hello, Sun!\00", align 1
 define void @main() {

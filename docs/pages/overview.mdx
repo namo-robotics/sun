@@ -2,7 +2,11 @@
 
 import { Callout } from 'nextra/components'
 
-Sun uses a C-style syntax with explicit type annotations and modern features. Functions are declared with the `function` keyword, types follow variable names after a colon, and blocks are delimited by curly braces. The language prioritizes readability and unambiguity — there are no implicit conversions, no operator overloading, and no macros.
+Sun uses a C-style syntax with explicit type annotations and modern features. Functions are declared with the `function` keyword, types follow variable names after a colon, and blocks are delimited by curly braces. The language prioritizes readability and unambiguity — there are no implicit conversions, no arbitrary operator overloading, and no macros.
+
+<Callout type="info">
+  Sun supports **indexing operators** (`__index__`, `__setindex__`, `__slice__`) for bracket syntax on custom types like `Vec<T>` and `Matrix<T>`. This is distinct from general operator overloading — only indexing is supported.
+</Callout>
 
 ## Identifier Naming
 

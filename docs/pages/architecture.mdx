@@ -17,7 +17,7 @@ Source → Lexer → Parser → AST → Semantic Analyzer → Borrow Checker →
 | **Parser** | `parser.h/cpp` | Recursive descent parser producing AST nodes |
 | **AST** | `ast.h/cpp` | Expression/statement nodes with type annotations |
 | **Semantic Analyzer** | `semantic_analyzer.h/cpp` | Type inference, scope analysis, closure capture detection |
-| **Borrow Checker** | `borrow_checker/*.h/cpp` | Rust-style ownership and borrowing analysis (WIP) |
+| **Borrow Checker** | `borrow_checker/*.h/cpp` | Rust-style ownership and borrowing analysis |
 | **Codegen Visitor** | `codegen_visitor.h`, `src/codegen/*.cpp` | Visitor pattern for AST-to-LLVM-IR translation |
 | **LLVM Codegen** | `codegen.h/cpp`, `llvm_type_resolver.h/cpp` | LLVM context, module, and type management |
 | **Compiler** | `compiler.h` | AOT compilation: emit object files, link executables |
@@ -95,7 +95,7 @@ flowchart TB
     subgraph Analysis["Semantic Analysis"]
         SEM["Semantic Analyzer<br/>Type inference & checking"]
         SYM["Symbol Table<br/>Scoping & captures"]
-        BC["Borrow Checker<br/>Ownership analysis (WIP)"]
+        BC["Borrow Checker<br/>Ownership analysis"]
     end
 
     subgraph Backend["Backend (Code Generation)"]
