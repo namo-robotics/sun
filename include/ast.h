@@ -77,6 +77,8 @@ class ExprAST {
   Position location_;                 // Original source location
   bool precompiled_ = false;          // True if from precompiled library
   bool skipCodegen_ = false;  // Set by semantic analyzer for diamond duplicates
+  mutable bool consumed_ =
+      false;                  // Set by borrow checker when temporary is moved
   std::string symbolPrefix_;  // Hash prefix for moon symbol isolation
 
  public:
@@ -119,7 +121,8 @@ class ExprAST {
   /// destroyed at the end of the statement. Temporaries include:
   /// - Constructor/function calls that return class values (CALL, GENERIC_CALL)
   /// - Literals that produce class values
-  /// Named variables (VARIABLE_REFERENCE) and member accesses are NOT temporaries.
+  /// Named variables (VARIABLE_REFERENCE) and member accesses are NOT
+  /// temporaries.
   bool isTemporary() const {
     ASTNodeType t = getType();
     // CALL and GENERIC_CALL produce temporaries when returning class values
@@ -132,8 +135,7 @@ class ExprAST {
   bool isLvalue() const {
     ASTNodeType t = getType();
     return t == ASTNodeType::VARIABLE_REFERENCE ||
-           t == ASTNodeType::MEMBER_ACCESS ||
-           t == ASTNodeType::INDEX;
+           t == ASTNodeType::MEMBER_ACCESS || t == ASTNodeType::INDEX;
   }
 
   // Precompiled flag (for definitions loaded from .moon files)
@@ -147,6 +149,12 @@ class ExprAST {
   // Symbol prefix for moon library isolation (content hash)
   const std::string& getSymbolPrefix() const { return symbolPrefix_; }
   void setSymbolPrefix(const std::string& prefix) { symbolPrefix_ = prefix; }
+
+  // Consumed flag: set by borrow checker when a temporary's ownership
+  // is transferred (moved to a variable or field). Consumed temporaries
+  // should not have deinit called on them - the destination owns the data.
+  bool isConsumed() const { return consumed_; }
+  void setConsumed(bool value) const { consumed_ = value; }
 
  protected:
   ExprAST() = default;
@@ -1043,7 +1051,8 @@ class BlockExprAST : public ExprAST {
 };
 
 // Unsafe block: unsafe { ... }
-// Marks a block where unsafe operations (raw pointer ops, intrinsics) are allowed
+// Marks a block where unsafe operations (raw pointer ops, intrinsics) are
+// allowed
 class UnsafeBlockAST : public ExprAST {
   std::unique_ptr<BlockExprAST> body;
 

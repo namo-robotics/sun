@@ -124,6 +124,10 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
       checkBlockExpr(static_cast<const ImportScopeAST&>(expr).getBody());
       break;
 
+    case ASTNodeType::MODULE:
+      checkBlockExpr(static_cast<const ModuleAST&>(expr).getBody());
+      break;
+
     // These don't need borrow checking
     case ASTNodeType::NUMBER:
     case ASTNodeType::STRING_LITERAL:
@@ -135,7 +139,6 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
     case ASTNodeType::PROTOTYPE:
     case ASTNodeType::IMPORT:
     case ASTNodeType::DECLARE_TYPE:
-    case ASTNodeType::MODULE:
     case ASTNodeType::USING:
     case ASTNodeType::QUALIFIED_NAME:
     case ASTNodeType::INTERFACE_DEFINITION:
@@ -161,15 +164,20 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
     checkExpr(*var.getValue());
   }
 
-  // Move semantics: if initializing from a compound-typed variable, mark source
-  // as moved. Compound types (classes, interfaces) get moved, not copied.
-  if (var.getValue() &&
-      var.getValue()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
-    const auto& srcRef =
-        static_cast<const VariableReferenceAST&>(*var.getValue());
-    // Get the resolved type from the source expression
+  // Move semantics for temporaries and compound types
+  if (var.getValue()) {
     auto srcType = var.getValue()->getResolvedType();
-    if (srcType && srcType->isCompound()) {
+
+    // Mark ALL temporaries as consumed when assigned to a variable.
+    // The variable takes ownership, so the temporary's deinit must be skipped.
+    if (var.getValue()->isTemporary()) {
+      var.getValue()->setConsumed(true);
+    }
+    // For variable references of compound types, mark as moved
+    else if (srcType && srcType->isCompound() &&
+             var.getValue()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
+      const auto& srcRef =
+          static_cast<const VariableReferenceAST&>(*var.getValue());
       movedVariables_.insert(srcRef.getName());
     }
   }
@@ -593,9 +601,16 @@ void BorrowChecker::checkClassDef(const ClassDefinitionAST& classDef) {
 
   // Check methods
   for (const auto& method : classDef.getMethods()) {
+    std::cerr << "Checking method: " << method.function->getProto().getName()
+              << " in class: " << classDef.getName() << std::endl;
     if (method.function) {
       checkFunctionDef(*method.function);
     }
+  }
+
+  // Check specializations (for generic classes)
+  for (const auto& [name, specializedClass] : classDef.getSpecializations()) {
+    checkClassDef(*specializedClass);
   }
 }
 
@@ -612,14 +627,19 @@ void BorrowChecker::checkMemberAssignment(const MemberAssignmentAST& assign) {
   if (assign.getValue()) {
     checkExpr(*assign.getValue());
 
-    // Move semantics: compound types (classes, interfaces) get moved, not copied
-    if (assign.getValue()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
+    auto srcType = assign.getValue()->getResolvedType();
+
+    // Mark ALL temporaries as consumed when assigned to a field.
+    // The field takes ownership, so the temporary's deinit must be skipped.
+    if (assign.getValue()->isTemporary()) {
+      assign.getValue()->setConsumed(true);
+    }
+    // For variable references of compound types, mark as moved
+    else if (srcType && srcType->isCompound() &&
+             assign.getValue()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
       const auto& srcRef =
           static_cast<const VariableReferenceAST&>(*assign.getValue());
-      auto srcType = assign.getValue()->getResolvedType();
-      if (srcType && srcType->isCompound()) {
-        movedVariables_.insert(srcRef.getName());
-      }
+      movedVariables_.insert(srcRef.getName());
     }
   }
 }
@@ -834,6 +854,27 @@ Lifetime BorrowChecker::inferExprLifetime(const ExprAST& expr) {
       // whether temporaries were passed to ref parameters
       const auto& call = static_cast<const CallExprAST&>(expr);
       return inferCallReturnLifetime(call);
+    }
+
+    case ASTNodeType::GENERIC_CALL: {
+      // For _to_ref<T>(ptr), the returned ref has the lifetime of the ptr arg
+      const auto& genericCall = static_cast<const GenericCallAST&>(expr);
+      const std::string& funcName = genericCall.getFunctionName();
+      if (funcName == "_to_ref" && !genericCall.getArgs().empty()) {
+        return inferExprLifetime(*genericCall.getArgs()[0]);
+      }
+      // Other generic calls: treat as temporary
+      break;
+    }
+
+    case ASTNodeType::UNSAFE_BLOCK: {
+      // Unsafe block: return the lifetime of the inner expression
+      const auto& unsafeBlock = static_cast<const UnsafeBlockAST&>(expr);
+      const auto& body = unsafeBlock.getBody().getBody();
+      if (!body.empty()) {
+        return inferExprLifetime(*body.back());
+      }
+      break;
     }
 
     default:
