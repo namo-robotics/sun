@@ -612,13 +612,18 @@ void BorrowChecker::checkMemberAssignment(const MemberAssignmentAST& assign) {
   if (assign.getValue()) {
     checkExpr(*assign.getValue());
 
-    // Move semantics: compound types (classes, interfaces) get moved, not copied
-    if (assign.getValue()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
-      const auto& srcRef =
-          static_cast<const VariableReferenceAST&>(*assign.getValue());
-      auto srcType = assign.getValue()->getResolvedType();
-      if (srcType && srcType->isCompound()) {
+    auto srcType = assign.getValue()->getResolvedType();
+    if (srcType && srcType->isCompound()) {
+      // Move semantics: compound types (classes, interfaces) get moved, not
+      // copied
+      if (assign.getValue()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
+        const auto& srcRef =
+            static_cast<const VariableReferenceAST&>(*assign.getValue());
         movedVariables_.insert(srcRef.getName());
+      } else if (assign.getValue()->isTemporary()) {
+        // Temporary compound value assigned to field: mark as consumed
+        // so codegen knows to zero it out after copy (prevents double-free)
+        assign.getValue()->markAsConsumed();
       }
     }
   }

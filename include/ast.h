@@ -77,6 +77,7 @@ class ExprAST {
   Position location_;                 // Original source location
   bool precompiled_ = false;          // True if from precompiled library
   bool skipCodegen_ = false;  // Set by semantic analyzer for diamond duplicates
+  mutable bool consumed_ = false;  // Set by borrow checker when value is moved
   std::string symbolPrefix_;  // Hash prefix for moon symbol isolation
 
  public:
@@ -143,6 +144,11 @@ class ExprAST {
   // Skip codegen flag (set by semantic analyzer for diamond import duplicates)
   bool shouldSkipCodegen() const { return skipCodegen_; }
   void setSkipCodegen(bool value) { skipCodegen_ = value; }
+
+  // Consumed flag: set by borrow checker when this temp's ownership is transferred
+  // (e.g., assigned to a field). Codegen should zero out consumed temps after copy.
+  bool isConsumed() const { return consumed_; }
+  void markAsConsumed() const { consumed_ = true; }
 
   // Symbol prefix for moon library isolation (content hash)
   const std::string& getSymbolPrefix() const { return symbolPrefix_; }
