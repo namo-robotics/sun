@@ -17,6 +17,7 @@
 
 import "allocator.sun";
 import "errors.sun";
+import "unique.sun";
 
 // ============================================================================
 // ContiguousBuffer<T> - Fixed-size Bounds-checked Array
@@ -25,7 +26,7 @@ import "errors.sun";
 module sun {
 
 class ContiguousBuffer<T> implements IIterable<T, ContiguousBuffer<T>> {
-    var data: raw_ptr<i8>;         // Element storage (as bytes for _free compat)
+    var data: Unique<i8>;          // Element storage (owned, auto-freed)
     var alloc: HeapAllocator;      // Allocator (stored via copy)
     var size_: i64;                // Number of elements (fixed after init)
     
@@ -33,15 +34,7 @@ class ContiguousBuffer<T> implements IIterable<T, ContiguousBuffer<T>> {
     function init(allocator: ref HeapAllocator, size: i64) {
         this.alloc = allocator.copy();
         this.size_ = size;
-        this.data = this.alloc.alloc_raw(size * _sizeof<T>());
-    }
-    
-    // Destructor
-    function deinit() void {
-        if (this.data != null) {
-            unsafe { _free(this.data); };
-            this.data = null;
-        }
+        this.data = Unique<i8>(this.alloc.alloc_raw(size * _sizeof<T>()));
     }
     
     // ========================================================================
@@ -56,7 +49,7 @@ class ContiguousBuffer<T> implements IIterable<T, ContiguousBuffer<T>> {
         if (index >= this.size_) {
             throw IndexOutOfBoundsError(index);
         }
-        return unsafe { _load<T>(this.data, index); };
+        return unsafe { _load<T>(this.data.get_raw(), index); };
     }
     
     // Set element at index (bounds-checked)
@@ -67,7 +60,7 @@ class ContiguousBuffer<T> implements IIterable<T, ContiguousBuffer<T>> {
         if (index >= this.size_) {
             throw IndexOutOfBoundsError(index);
         }
-        unsafe { _store<T>(this.data, index, value); };
+        unsafe { _store<T>(this.data.get_raw(), index, value); };
     }
     
     // ========================================================================
@@ -76,12 +69,12 @@ class ContiguousBuffer<T> implements IIterable<T, ContiguousBuffer<T>> {
     
     // Get element at index (no bounds check)
     function get_unchecked(index: i64) T {
-        return unsafe { _load<T>(this.data, index); };
+        return unsafe { _load<T>(this.data.get_raw(), index); };
     }
     
     // Set element at index (no bounds check)
     function set_unchecked(index: i64, value: T) void {
-        unsafe { _store<T>(this.data, index, value); };
+        unsafe { _store<T>(this.data.get_raw(), index, value); };
     }
     
     // ========================================================================
@@ -101,7 +94,7 @@ class ContiguousBuffer<T> implements IIterable<T, ContiguousBuffer<T>> {
     // Fill entire buffer with value
     function fill(value: T) void {
         for (var i: i64 = 0; i < this.size_; i = i + 1) {
-            unsafe { _store<T>(this.data, i, value); };
+            unsafe { _store<T>(this.data.get_raw(), i, value); };
         }
     }
     
@@ -124,13 +117,13 @@ class ContiguousBuffer<T> implements IIterable<T, ContiguousBuffer<T>> {
         // Copy elements
         for (var i: i64 = 0; i < count; i = i + 1) {
             var value: T = unsafe { _load<T>(source.rawData(), src_offset + i); };
-            unsafe { _store<T>(this.data, dst_offset + i, value); };
+            unsafe { _store<T>(this.data.get_raw(), dst_offset + i, value); };
         }
     }
     
     // Get raw data pointer (escape hatch for interop)
     function rawData() raw_ptr<i8> {
-        return this.data;
+        return this.data.get_raw();
     }
     
     // Get first element (bounds-checked)
@@ -138,7 +131,7 @@ class ContiguousBuffer<T> implements IIterable<T, ContiguousBuffer<T>> {
         if (this.size_ == 0) {
             throw IndexOutOfBoundsError(0);
         }
-        return unsafe { _load<T>(this.data, 0); };
+        return unsafe { _load<T>(this.data.get_raw(), 0); };
     }
     
     // Get last element (bounds-checked)
@@ -146,7 +139,7 @@ class ContiguousBuffer<T> implements IIterable<T, ContiguousBuffer<T>> {
         if (this.size_ == 0) {
             throw IndexOutOfBoundsError(0);
         }
-        return unsafe { _load<T>(this.data, this.size_ - 1); };
+        return unsafe { _load<T>(this.data.get_raw(), this.size_ - 1); };
     }
     
     // ========================================================================
