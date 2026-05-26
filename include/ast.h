@@ -115,6 +115,27 @@ class ExprAST {
   bool isReturn() const { return getType() == ASTNodeType::RETURN; }
   bool isImport() const { return getType() == ASTNodeType::IMPORT; }
 
+  /// Returns true if this expression is a temporary (rvalue) that will be
+  /// destroyed at the end of the statement. Temporaries include:
+  /// - Constructor/function calls that return class values (CALL, GENERIC_CALL)
+  /// - Literals that produce class values
+  /// Named variables (VARIABLE_REFERENCE) and member accesses are NOT temporaries.
+  bool isTemporary() const {
+    ASTNodeType t = getType();
+    // CALL and GENERIC_CALL produce temporaries when returning class values
+    // The resolved type should be checked by the caller to confirm it's a class
+    return t == ASTNodeType::CALL || t == ASTNodeType::GENERIC_CALL;
+  }
+
+  /// Returns true if this expression is an lvalue (can be assigned to,
+  /// has a stable address). Includes variables, member access, and indexing.
+  bool isLvalue() const {
+    ASTNodeType t = getType();
+    return t == ASTNodeType::VARIABLE_REFERENCE ||
+           t == ASTNodeType::MEMBER_ACCESS ||
+           t == ASTNodeType::INDEX;
+  }
+
   // Precompiled flag (for definitions loaded from .moon files)
   bool isPrecompiled() const { return precompiled_; }
   void setPrecompiled(bool value) { precompiled_ = value; }

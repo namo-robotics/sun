@@ -326,6 +326,54 @@ Value* CodegenVisitor::prepareRefArgument(const ExprAST* argExpr,
     return tempAlloca;
   }
 
+  // Class temporary passed by ref: create a temporary alloca to hold the value
+  // The caller owns this temporary and will deinit it at scope exit.
+  // Borrow checker ensures the callee can't escape refs to this temporary.
+  if (argSunType && argSunType->isClass()) {
+    auto* classType = dynamic_cast<const sun::ClassType*>(argSunType.get());
+    if (classType) {
+      // Generate the temporary value
+      Value* tempVal = codegen(*argExpr);
+      if (!tempVal) return nullptr;
+
+      // Get LLVM type for the class
+      llvm::Type* llvmType = typeResolver.resolve(argSunType);
+
+      // Create alloca and store the temporary
+      AllocaInst* tempAlloca =
+          ctx.builder->CreateAlloca(llvmType, nullptr, "ref.temp");
+
+      // If codegen returned a struct value, store it
+      if (!tempVal->getType()->isPointerTy()) {
+        ctx.builder->CreateStore(tempVal, tempAlloca);
+      } else {
+        // Codegen returned a pointer - need to copy the struct
+        llvm::Value* loadedVal =
+            ctx.builder->CreateLoad(llvmType, tempVal, "temp.load");
+        ctx.builder->CreateStore(loadedVal, tempAlloca);
+      }
+
+      // Track for cleanup - caller owns the temporary
+      auto classTypePtr = std::dynamic_pointer_cast<sun::ClassType>(argSunType);
+      if (classTypePtr) {
+        trackClassAllocation(tempAlloca, "ref.temp", classTypePtr);
+      }
+
+      return tempAlloca;
+    }
+  }
+
+  // Other temporary expressions - create alloca for the value
+  if (argExpr->isTemporary()) {
+    Value* tempVal = codegen(*argExpr);
+    if (!tempVal) return nullptr;
+
+    AllocaInst* tempAlloca =
+        ctx.builder->CreateAlloca(tempVal->getType(), nullptr, "ref.temp");
+    ctx.builder->CreateStore(tempVal, tempAlloca);
+    return tempAlloca;
+  }
+
   logAndThrowError(
       "Reference parameter must be passed a variable, not an expression");
   return nullptr;

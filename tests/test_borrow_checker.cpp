@@ -277,3 +277,97 @@ TEST(BorrowCheckerTest, compound_type_with_ref_works) {
   )");
   EXPECT_EQ(value, 30);
 }
+
+// ============================================================================
+// Temporary Ownership Transfer
+// ============================================================================
+
+TEST(BorrowCheckerTest, temporary_passed_to_ref_param) {
+  // Passing a class temporary to a ref param should work
+  auto value = executeString(R"(
+    class Wrapper {
+        var value: i32;
+        function init(v: i32) {
+            this.value = v;
+        }
+    }
+
+    function get_value(w: ref Wrapper) i32 {
+        return w.value;
+    }
+
+    function main() i32 {
+        return get_value(Wrapper(42));
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(BorrowCheckerTest, temporary_passed_to_ref_param_with_deinit) {
+  // Temporary with deinit passed to ref param - deinit should run after call
+  auto value = executeString(R"(
+    class Counter {
+        var count: i32;
+        function init(n: i32) {
+            this.count = n;
+        }
+        function deinit() void {
+            // deinit called when temporary is destroyed
+        }
+    }
+
+    function double_count(c: ref Counter) i32 {
+        return c.count * 2;
+    }
+
+    function main() i32 {
+        return double_count(Counter(21));
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(BorrowCheckerTest, multiple_temporaries_to_ref_params) {
+  // Multiple temporaries passed to different ref params
+  auto value = executeString(R"(
+    class Num {
+        var n: i32;
+        function init(v: i32) {
+            this.n = v;
+        }
+    }
+
+    function add_nums(a: ref Num, b: ref Num) i32 {
+        return a.n + b.n;
+    }
+
+    function main() i32 {
+        return add_nums(Num(17), Num(25));
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(BorrowCheckerTest, temporary_with_method_call) {
+  // Call method on temporary then pass to ref param
+  auto value = executeString(R"(
+    class Box {
+        var val: i32;
+        function init(v: i32) {
+            this.val = v;
+        }
+        function get() i32 {
+            return this.val;
+        }
+    }
+
+    function extract(b: ref Box) i32 {
+        return b.get();
+    }
+
+    function main() i32 {
+        return extract(Box(42));
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}

@@ -169,6 +169,19 @@ class BorrowChecker {
 
   // Track classes that have reference fields (need special handling)
   std::unordered_set<std::string> classesWithRefFields_;
+
+  // =========================================================================
+  // Temporary Ownership Tracking (for ref params)
+  // =========================================================================
+
+  /// When a function returns ref and any ref param received a temporary,
+  /// the return value has local lifetime (can't be stored).
+  /// This tracks whether the current expression being analyzed came from
+  /// a call where temporaries were passed to ref params.
+
+  /// Infer the lifetime of a call expression's return value,
+  /// considering whether temporaries were passed to ref params.
+  Lifetime inferCallReturnLifetime(const CallExprAST& call);
 };
 
 }  // namespace sun

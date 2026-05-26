@@ -161,16 +161,34 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
     checkExpr(*var.getValue());
   }
 
-  // Move semantics: if initializing from a class-typed variable, mark source as
-  // moved. Classes are value types that get moved, not copied.
+  // Move semantics: if initializing from a compound-typed variable, mark source
+  // as moved. Compound types (classes, interfaces) get moved, not copied.
   if (var.getValue() &&
       var.getValue()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
     const auto& srcRef =
         static_cast<const VariableReferenceAST&>(*var.getValue());
     // Get the resolved type from the source expression
     auto srcType = var.getValue()->getResolvedType();
-    if (srcType && srcType->isClass()) {
+    if (srcType && srcType->isCompound()) {
       movedVariables_.insert(srcRef.getName());
+    }
+  }
+
+  // Check for storing a reference with local lifetime (from call with temp
+  // args) This catches: var r = foo(ref Temp()); where foo returns ref
+  if (var.getValue()) {
+    TypePtr varType = var.getValue()->getResolvedType();
+    if (varType && varType->isReference()) {
+      // Variable is being initialized with a reference type
+      Lifetime lt = inferExprLifetime(*var.getValue());
+      if (lt.isLocal()) {
+        const auto& pos = var.getLocation();
+        reportError("cannot store reference with local lifetime in variable '" +
+                        var.getName() +
+                        "' - the referenced value will be destroyed after this "
+                        "statement",
+                    pos.line, pos.column);
+      }
     }
   }
 }
@@ -237,14 +255,14 @@ void BorrowChecker::checkVariableAssignment(
     checkExpr(*assign.getValue());
   }
 
-  // Move semantics: if assigning from a class-typed variable, mark source as
-  // moved. Classes are value types that get moved, not copied.
+  // Move semantics: if assigning from a compound-typed variable, mark source as
+  // moved. Compound types (classes, interfaces) get moved, not copied.
   if (assign.getValue() &&
       assign.getValue()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
     const auto& srcRef =
         static_cast<const VariableReferenceAST&>(*assign.getValue());
     auto srcType = assign.getValue()->getResolvedType();
-    if (srcType && srcType->isClass()) {
+    if (srcType && srcType->isCompound()) {
       movedVariables_.insert(srcRef.getName());
     }
   }
@@ -593,6 +611,16 @@ void BorrowChecker::checkMemberAssignment(const MemberAssignmentAST& assign) {
   }
   if (assign.getValue()) {
     checkExpr(*assign.getValue());
+
+    // Move semantics: compound types (classes, interfaces) get moved, not copied
+    if (assign.getValue()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
+      const auto& srcRef =
+          static_cast<const VariableReferenceAST&>(*assign.getValue());
+      auto srcType = assign.getValue()->getResolvedType();
+      if (srcType && srcType->isCompound()) {
+        movedVariables_.insert(srcRef.getName());
+      }
+    }
   }
 }
 
@@ -801,6 +829,13 @@ Lifetime BorrowChecker::inferExprLifetime(const ExprAST& expr) {
       return Lifetime::param("this");
     }
 
+    case ASTNodeType::CALL: {
+      // Call expression: use specialized logic that considers
+      // whether temporaries were passed to ref parameters
+      const auto& call = static_cast<const CallExprAST&>(expr);
+      return inferCallReturnLifetime(call);
+    }
+
     default:
       break;
   }
@@ -851,6 +886,60 @@ void BorrowChecker::reportDanglingRef(const std::string& varName, int line,
           "' - it would be a dangling reference after the function returns";
   }
   reportError(msg, line, col);
+}
+
+// ============================================================================
+// Temporary Ownership Tracking
+// ============================================================================
+
+Lifetime BorrowChecker::inferCallReturnLifetime(const CallExprAST& call) {
+  const ExprAST* callee = call.getCallee();
+  if (!callee) {
+    return Lifetime::local("$temp", currentScope_);
+  }
+
+  TypePtr calleeType = callee->getResolvedType();
+  if (!calleeType) {
+    return Lifetime::local("$temp", currentScope_);
+  }
+
+  // Check if function returns a reference type
+  auto* funcType = dynamic_cast<const FunctionType*>(calleeType.get());
+  if (!funcType) {
+    return Lifetime::local("$temp", currentScope_);
+  }
+
+  TypePtr returnType = funcType->getReturnType();
+  if (!returnType || !returnType->isReference()) {
+    // Non-ref return: always local (value is copied)
+    return Lifetime::local("$temp", currentScope_);
+  }
+
+  // Function returns a reference. The lifetime depends on what was passed
+  // to ref parameters. If ANY ref param received a temporary, the return
+  // has local lifetime (can't outlive the call expression).
+
+  const auto& paramTypes = funcType->getParamTypes();
+  const auto& args = call.getArgs();
+
+  // Check each ref parameter to see if it received a class temporary
+  for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
+    const auto& arg = args[i];
+    const auto& paramType = paramTypes[i];
+
+    if (!arg || !paramType->isReference()) continue;
+
+    // If this ref param received a temporary, return has local lifetime
+    // The temporary dies at end of statement, so any ref to it would dangle
+    if (arg->isTemporary()) {
+      return Lifetime::local("$temp.from_call", currentScope_);
+    }
+  }
+
+  // No temporaries passed to ref params - return lifetime is param lifetime
+  // (tied to the arguments' lifetimes, which the caller controls)
+  // For simplicity, we treat it as having param lifetime
+  return Lifetime::param("$call_return");
 }
 
 }  // namespace sun
