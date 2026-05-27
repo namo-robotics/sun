@@ -695,6 +695,14 @@ Value* CodegenVisitor::codegenClassMethodCall(
         argVal = widenNumericIfNeeded(argVal, paramType);
       }
 
+      // Interface args: load fat pointer struct if value is still a pointer
+      if (paramType && paramType->isInterface() &&
+          argVal->getType()->isPointerTy()) {
+        llvm::StructType* fatPtrType =
+            sun::InterfaceType::getFatPointerType(ctx.getContext());
+        argVal = ctx.builder->CreateLoad(fatPtrType, argVal, "iface.arg.load");
+      }
+
       argValues.push_back(argVal);
     }
     ++methodArgIdx;
@@ -1032,6 +1040,14 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
         }
 
         argVal = widenNumericIfNeeded(argVal, paramType);
+      }
+
+      // Interface args: load fat pointer struct if value is still a pointer
+      if (paramType && paramType->isInterface() &&
+          argVal->getType()->isPointerTy()) {
+        llvm::StructType* fatPtrType =
+            sun::InterfaceType::getFatPointerType(ctx.getContext());
+        argVal = ctx.builder->CreateLoad(fatPtrType, argVal, "iface.arg.load");
       }
 
       argValues.push_back(argVal);
