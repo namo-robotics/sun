@@ -1,0 +1,8 @@
+    import "a.sun";
+    using sun;
+    
+    function main() i32 {
+        import "b.sun";
+        var x = sun.a(); + sun.b();
+        return x;
+    }

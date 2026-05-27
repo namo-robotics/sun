@@ -13,7 +13,7 @@
 // ============================================================================
 
 TEST(ContiguousBufferTest, basic_allocation_and_size) {
-  auto value = executeString(R"(
+  auto value = executeStringWithReachableIR(R"(
     import "build/stdlib.moon";
     using sun;
     

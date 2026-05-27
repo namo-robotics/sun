@@ -157,7 +157,18 @@ void SemanticAnalyzer::enterImportScope(const std::string& sourceFile,
 
   auto child = std::make_shared<SemanticScope>(ScopeType::Import, scopeKey);
   child->parent = currentScope;
-  child->modulePath = scopeKey;
+
+  // For .sun imports (scopeKey starts with $import_), don't add to modulePath
+  // to avoid creating redundant prefixes during bundle compilation.
+  // Only .moon imports (content hash starting with non-$import) should affect
+  // the modulePath for symbol isolation between library versions.
+  if (scopeKey.starts_with("$import_")) {
+    // .sun import - no module path prefix (shares namespace with importer)
+    child->modulePath = "";
+  } else {
+    // .moon import - use content hash for symbol isolation
+    child->modulePath = scopeKey;
+  }
 
   currentScope->childModules[scopeKey] = child;
   currentScope = child.get();

@@ -145,12 +145,6 @@ class ExprAST {
   bool shouldSkipCodegen() const { return skipCodegen_; }
   void setSkipCodegen(bool value) { skipCodegen_ = value; }
 
-  // Consumed flag: set by borrow checker when this temp's ownership is
-  // transferred (e.g., assigned to a field). Codegen should zero out consumed
-  // temps after copy.
-  bool isConsumed() const { return consumed_; }
-  void markAsConsumed() const { consumed_ = true; }
-
   // Symbol prefix for moon library isolation (content hash)
   const std::string& getSymbolPrefix() const { return symbolPrefix_; }
   void setSymbolPrefix(const std::string& prefix) { symbolPrefix_ = prefix; }

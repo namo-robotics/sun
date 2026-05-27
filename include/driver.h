@@ -35,6 +35,9 @@ class Driver {
   // Whether to print LLVM IR to stdout (controlled by --emit-ir)
   bool dumpIR = false;
 
+  // If true, dump all reachable functions; if false, only user-defined
+  bool dumpReachable = false;
+
   // Private constructor - use factory methods
   Driver(std::unique_ptr<CodegenContext> ctx,
          std::shared_ptr<sun::TypeRegistry> typeRegistry,
@@ -96,6 +99,12 @@ class Driver {
   /// Enable/disable LLVM IR dumping to stdout
   void setDumpIR(bool dump) { dumpIR = dump; }
 
+  /// Enable dumping all reachable functions (includes stdlib)
+  void setDumpReachable(bool dump) { dumpReachable = dump; }
+
   /// Print only user-defined IR (filters out imports and linked libraries)
   void printUserDefinedIR();
+
+  /// Print IR for all functions reachable from main() (includes stdlib)
+  void printReachableIR();
 };

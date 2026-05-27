@@ -42,7 +42,23 @@ inline sun::SunValue executeString(const std::string& source, int argc = 0,
   initTestEnvironment();
   try {
     auto driver = Driver::createForJIT();
-    driver->setDumpIR(true);  // Dump IR for debugging
+    driver->setDumpReachable(true);  // Dump IR for debugging
+    return driver->executeString(source, argc, argv);
+  } catch (const SunError& e) {
+    std::cerr << e.what() << std::endl;
+    throw;
+  }
+}
+
+// Execute and dump all reachable IR (includes stdlib functions)
+inline sun::SunValue executeStringWithReachableIR(const std::string& source,
+                                                  int argc = 0,
+                                                  char** argv = nullptr) {
+  initTestEnvironment();
+  try {
+    auto driver = Driver::createForJIT();
+    driver->setDumpIR(true);
+    driver->setDumpReachable(true);  // Include stdlib functions
     return driver->executeString(source, argc, argv);
   } catch (const SunError& e) {
     std::cerr << e.what() << std::endl;

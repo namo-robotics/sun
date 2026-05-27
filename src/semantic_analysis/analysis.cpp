@@ -704,10 +704,19 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       }
 
       // Qualify class name with module prefix if inside a module
-      sun::QualifiedName qualifiedClass = makeQualifiedName(baseName);
+      // For precompiled classes (from .moon), use the qualified name from
+      // metadata
+      sun::QualifiedName qualifiedClass;
+      if (classDef.hasQualifiedName()) {
+        // Use pre-set qualified name from metadata (includes content hash
+        // prefix)
+        qualifiedClass = classDef.getQualifiedNameInfo();
+      } else {
+        qualifiedClass = makeQualifiedName(baseName);
+        // Set qualified name on AST for codegen (source name stays for errors)
+        classDef.setQualifiedName(qualifiedClass);
+      }
       std::string className = qualifiedClass.mangled();
-      // Set qualified name on AST for codegen (source name stays for errors)
-      classDef.setQualifiedName(qualifiedClass);
 
       // Forbid redefinition of class in same module (depth 0)
       if (importScopeDepth_ == 0 && definedSymbols_.count(className)) {
@@ -934,11 +943,19 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       auto& interfaceDef = static_cast<InterfaceDefinitionAST&>(expr);
 
       // Qualify interface name with module prefix if inside a module
-      sun::QualifiedName qualifiedInterface =
-          makeQualifiedName(interfaceDef.getName());
+      // For precompiled interfaces (from .moon), use the qualified name from
+      // metadata
+      sun::QualifiedName qualifiedInterface;
+      if (interfaceDef.hasQualifiedName()) {
+        // Use pre-set qualified name from metadata (includes content hash
+        // prefix)
+        qualifiedInterface = interfaceDef.getQualifiedNameInfo();
+      } else {
+        qualifiedInterface = makeQualifiedName(interfaceDef.getName());
+        // Set qualified name on AST for codegen (source name stays for errors)
+        interfaceDef.setQualifiedName(qualifiedInterface);
+      }
       std::string interfaceName = qualifiedInterface.mangled();
-      // Set qualified name on AST for codegen (source name stays for errors)
-      interfaceDef.setQualifiedName(qualifiedInterface);
 
       // Forbid redefinition of interface in same module (depth 0)
       if (importScopeDepth_ == 0 && definedSymbols_.count(interfaceName)) {

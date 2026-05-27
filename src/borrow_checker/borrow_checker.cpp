@@ -601,8 +601,6 @@ void BorrowChecker::checkClassDef(const ClassDefinitionAST& classDef) {
 
   // Check methods
   for (const auto& method : classDef.getMethods()) {
-    std::cerr << "Checking method: " << method.function->getProto().getName()
-              << " in class: " << classDef.getName() << std::endl;
     if (method.function) {
       checkFunctionDef(*method.function);
     }

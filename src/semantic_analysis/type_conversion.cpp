@@ -238,7 +238,8 @@ sun::TypePtr SemanticAnalyzer::typeAnnotationToType(
     sun::QualifiedName resolved = resolveNameWithUsings(annot.baseName);
 
     // Try to instantiate the generic class (use base name for scope lookup)
-    auto specializedClass = instantiateGenericClass(resolved.baseName, typeArgs);
+    auto specializedClass =
+        instantiateGenericClass(resolved.baseName, typeArgs);
     if (specializedClass) {
       return specializedClass;
     }
