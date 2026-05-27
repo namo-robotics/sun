@@ -2297,6 +2297,9 @@ void Parser::createModuleStubs(
         std::move(methods),
         true);  // precompiled = true
 
+    // Set the qualified name from metadata (includes content hash prefix)
+    ifaceDef->setQualifiedName(ifaceInfo.qualifiedName);
+
     moduleAST.push_back(std::move(ifaceDef));
   }
 
@@ -2403,6 +2406,9 @@ void Parser::createModuleStubs(
         classInfo.baseName, classInfo.typeParams, std::move(interfaces),
         std::move(fields), std::move(methods),
         true);  // precompiled = true
+
+    // Set the qualified name from metadata (includes content hash prefix)
+    classDef->setQualifiedName(classInfo.qualifiedName);
 
     moduleAST.push_back(std::move(classDef));
   }

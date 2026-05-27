@@ -77,7 +77,8 @@ class ExprAST {
   Position location_;                 // Original source location
   bool precompiled_ = false;          // True if from precompiled library
   bool skipCodegen_ = false;  // Set by semantic analyzer for diamond duplicates
-  std::string symbolPrefix_;  // Hash prefix for moon symbol isolation
+  mutable bool consumed_ = false;  // Set by borrow checker when value is moved
+  std::string symbolPrefix_;       // Hash prefix for moon symbol isolation
 
  public:
   virtual ~ExprAST() = default;
@@ -115,6 +116,27 @@ class ExprAST {
   bool isReturn() const { return getType() == ASTNodeType::RETURN; }
   bool isImport() const { return getType() == ASTNodeType::IMPORT; }
 
+  /// Returns true if this expression is a temporary (rvalue) that will be
+  /// destroyed at the end of the statement. Temporaries include:
+  /// - Constructor/function calls that return class values (CALL, GENERIC_CALL)
+  /// - Literals that produce class values
+  /// Named variables (VARIABLE_REFERENCE) and member accesses are NOT
+  /// temporaries.
+  bool isTemporary() const {
+    ASTNodeType t = getType();
+    // CALL and GENERIC_CALL produce temporaries when returning class values
+    // The resolved type should be checked by the caller to confirm it's a class
+    return t == ASTNodeType::CALL || t == ASTNodeType::GENERIC_CALL;
+  }
+
+  /// Returns true if this expression is an lvalue (can be assigned to,
+  /// has a stable address). Includes variables, member access, and indexing.
+  bool isLvalue() const {
+    ASTNodeType t = getType();
+    return t == ASTNodeType::VARIABLE_REFERENCE ||
+           t == ASTNodeType::MEMBER_ACCESS || t == ASTNodeType::INDEX;
+  }
+
   // Precompiled flag (for definitions loaded from .moon files)
   bool isPrecompiled() const { return precompiled_; }
   void setPrecompiled(bool value) { precompiled_ = value; }
@@ -126,6 +148,12 @@ class ExprAST {
   // Symbol prefix for moon library isolation (content hash)
   const std::string& getSymbolPrefix() const { return symbolPrefix_; }
   void setSymbolPrefix(const std::string& prefix) { symbolPrefix_ = prefix; }
+
+  // Consumed flag: set by borrow checker when a temporary's ownership
+  // is transferred (moved to a variable or field). Consumed temporaries
+  // should not have deinit called on them - the destination owns the data.
+  bool isConsumed() const { return consumed_; }
+  void setConsumed(bool value) const { consumed_ = value; }
 
  protected:
   ExprAST() = default;
@@ -1022,7 +1050,8 @@ class BlockExprAST : public ExprAST {
 };
 
 // Unsafe block: unsafe { ... }
-// Marks a block where unsafe operations (raw pointer ops, intrinsics) are allowed
+// Marks a block where unsafe operations (raw pointer ops, intrinsics) are
+// allowed
 class UnsafeBlockAST : public ExprAST {
   std::unique_ptr<BlockExprAST> body;
 

@@ -2,12 +2,16 @@
 
 #include <llvm/Bitcode/BitcodeReader.h>
 #include <llvm/Bitcode/BitcodeWriter.h>
+#include <llvm/IR/Module.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/raw_ostream.h>
 
 #include <fstream>
 #include <iomanip>
+#include <set>
 #include <sstream>
+
+#include "struct_names.h"
 
 namespace sun {
 
@@ -490,6 +494,82 @@ void SunLibWriter::addModule(llvm::Module& module,
   modules_.push_back(std::move(data));
 }
 
+namespace {
+
+// Known external C runtime functions that should NOT be prefixed
+bool shouldSkipRename(const std::string& name) {
+  static const std::set<std::string> cRuntimeFunctions = {
+      "malloc",    "free",     "realloc", "calloc",  "memset",  "memcpy",
+      "memmove",   "memcmp",   "strlen",  "strcpy",  "strncpy", "strcmp",
+      "strncmp",   "strcat",   "strncat", "printf",  "fprintf", "sprintf",
+      "snprintf",  "puts",     "putchar", "getchar", "fopen",   "fclose",
+      "fread",     "fwrite",   "fseek",   "ftell",   "fflush",  "exit",
+      "abort",     "atexit",   "atoi",    "atof",    "atol",    "strtol",
+      "strtod",    "qsort",    "bsearch", "rand",    "srand",   "time",
+      "clock",     "difftime", "mktime",  "asctime", "ctime",   "gmtime",
+      "localtime", "strftime", "sin",     "cos",     "tan",     "asin",
+      "acos",      "atan",     "atan2",   "sinh",    "cosh",    "tanh",
+      "exp",       "log",      "log10",   "pow",     "sqrt",    "ceil",
+      "floor",     "fabs",     "fmod",    "frexp",   "ldexp",   "modf"};
+
+  // Skip LLVM intrinsics
+  if (name.starts_with("llvm.")) return true;
+  // Skip already-prefixed symbols
+  if (name.starts_with("$")) return true;
+  // Skip known C runtime functions
+  if (cRuntimeFunctions.count(name)) return true;
+  // Skip functions starting with underscore (C runtime convention)
+  if (!name.empty() && name[0] == '_') return true;
+  return false;
+}
+
+// Apply content hash prefix to all symbols in a module for isolation
+void applySymbolPrefix(llvm::Module& module, const std::string& prefix) {
+  // Rename all functions (definitions AND declarations for cross-module refs)
+  for (auto& func : module.functions()) {
+    if (!func.hasName() || func.getName().empty()) continue;
+    if (func.isIntrinsic()) continue;
+    std::string originalName = func.getName().str();
+    if (!shouldSkipRename(originalName)) {
+      func.setName(prefix + "_" + originalName);
+    }
+  }
+
+  // Rename all global variables
+  for (auto& global : module.globals()) {
+    if (!global.hasName() || global.getName().empty()) continue;
+    std::string originalName = global.getName().str();
+    if (!shouldSkipRename(originalName)) {
+      global.setName(prefix + "_" + originalName);
+    }
+  }
+
+  // Rename all struct types to avoid type merging conflicts
+  // This is critical for generic class specializations which have similar
+  // layouts but must remain distinct (e.g., ContiguousBuffer<i32> vs <f32>)
+  for (auto* structTy : module.getIdentifiedStructTypes()) {
+    if (!structTy->hasName()) continue;
+    llvm::StringRef name = structTy->getName();
+    // Skip LLVM internal types
+    if (name.starts_with("llvm.")) continue;
+    // Skip already-prefixed types
+    if (name.starts_with("$")) continue;
+    // Skip well-known runtime types (static_ptr, array_struct, etc.)
+    bool isRuntimeType = false;
+    for (const auto& info : sun::StructNames::All) {
+      if (name.starts_with(info.name)) {
+        isRuntimeType = true;
+        break;
+      }
+    }
+    if (isRuntimeType) continue;
+
+    structTy->setName(prefix + "_" + name.str());
+  }
+}
+
+}  // namespace
+
 bool SunLibWriter::write(const std::filesystem::path& outputPath) {
   std::ofstream out(outputPath, std::ios::binary);
   if (!out) {
@@ -497,13 +577,15 @@ bool SunLibWriter::write(const std::filesystem::path& outputPath) {
     return false;
   }
 
-  // Compute a single content hash from ALL bitcodes in the bundle
-  // This ensures all modules share the same symbol prefix
+  // Compute a single content hash from ALL original bitcodes in the bundle
+  // This ensures all modules share the same symbol prefix and provides
+  // integrity verification - if the bitcode is modified, symbols won't match
   std::string combinedContent;
   for (const auto& mod : modules_) {
     combinedContent += mod.bitcode;
   }
   std::string bundleHash = computeContentHash(combinedContent);
+  std::string prefix = "$" + bundleHash + "$";
 
   // Write header (will update indexOffset later)
   SunLibHeader header;
@@ -514,15 +596,61 @@ bool SunLibWriter::write(const std::filesystem::path& outputPath) {
   // Write module data and build index
   std::vector<ModuleIndexEntry> index;
 
+  // Create a context for re-parsing modules
+  llvm::LLVMContext tempContext;
+
   for (auto& mod : modules_) {
     ModuleIndexEntry entry;
     entry.moduleKey = mod.metadata.sourceHash;
 
-    // Write bitcode
+    // Re-parse the bitcode to apply symbol prefixes
+    auto memBuffer = llvm::MemoryBuffer::getMemBuffer(
+        llvm::StringRef(mod.bitcode.data(), mod.bitcode.size()),
+        mod.metadata.sourceHash, false);
+
+    auto moduleOrErr =
+        llvm::parseBitcodeFile(memBuffer->getMemBufferRef(), tempContext);
+    if (!moduleOrErr) {
+      llvm::consumeError(moduleOrErr.takeError());
+      error_ = "Failed to re-parse bitcode for symbol prefixing";
+      return false;
+    }
+
+    auto& parsedModule = *moduleOrErr;
+
+    // Apply symbol prefixes to all functions, globals, and struct types
+    applySymbolPrefix(*parsedModule, prefix);
+
+    // Re-serialize the prefixed module
+    std::string prefixedBitcode;
+    llvm::raw_string_ostream bitcodeStream(prefixedBitcode);
+    llvm::WriteBitcodeToFile(*parsedModule, bitcodeStream);
+    bitcodeStream.flush();
+
+    // Write prefixed bitcode
     entry.bitcodeOffset = static_cast<uint64_t>(out.tellp());
-    entry.bitcodeSize = mod.bitcode.size();
-    out.write(mod.bitcode.data(),
-              static_cast<std::streamsize>(mod.bitcode.size()));
+    entry.bitcodeSize = prefixedBitcode.size();
+    out.write(prefixedBitcode.data(),
+              static_cast<std::streamsize>(prefixedBitcode.size()));
+
+    // Apply prefix to qualified names in metadata to match bitcode symbols
+    // This ensures method lookups find the correct prefixed function names
+    for (auto& cls : mod.metadata.classes) {
+      if (!cls.qualifiedName.empty() && !cls.qualifiedName.starts_with("$")) {
+        cls.qualifiedName = prefix + "_" + cls.qualifiedName;
+      }
+    }
+    for (auto& iface : mod.metadata.interfaces) {
+      if (!iface.qualifiedName.empty() &&
+          !iface.qualifiedName.starts_with("$")) {
+        iface.qualifiedName = prefix + "_" + iface.qualifiedName;
+      }
+    }
+    for (auto& exp : mod.metadata.exports) {
+      if (!exp.qualifiedName.empty() && !exp.qualifiedName.starts_with("$")) {
+        exp.qualifiedName = prefix + "_" + exp.qualifiedName;
+      }
+    }
 
     // Set shared bundle hash and serialize metadata
     mod.metadata.contentHash = bundleHash;

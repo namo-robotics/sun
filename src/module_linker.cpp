@@ -131,12 +131,10 @@ void ModuleLinker::declareAvailableFunctions() {
   auto& ctx = target_.getContext();
 
   for (const auto& moduleKey : availableModules_) {
-    // Get metadata to retrieve content hash for symbol prefixing
-    auto* metadata = LibraryCache::instance().getMetadata(moduleKey);
-    std::string prefix = metadata ? metadata->getSymbolPrefix() : "";
-
     // Load the bitcode module to scan its functions directly
     // This captures all concrete functions including generic specializations
+    // NOTE: Symbols in the bitcode are ALREADY prefixed with the content hash
+    // (done at moon bundle creation time), so we don't add prefixes here.
     auto libModule = LibraryCache::instance().loadModule(moduleKey, ctx);
     if (!libModule) continue;
 
@@ -149,22 +147,15 @@ void ModuleLinker::declareAvailableFunctions() {
       // Skip unnamed functions
       if (!func.hasName() || func.getName().empty()) continue;
 
-      std::string originalName = func.getName().str();
+      std::string funcName = func.getName().str();
 
       // Skip internal helper functions (start with underscore or llvm.)
-      if (originalName[0] == '_' && originalName.size() > 1 &&
-          originalName[1] == '_') {
+      if (funcName[0] == '_' && funcName.size() > 1 && funcName[1] == '_') {
         continue;  // Skip __sun_* helper functions
       }
 
-      // Apply content hash prefix for symbol isolation
-      // Use underscore separator: $hash$ + sun_foo -> $hash$_sun_foo
-      std::string prefixedName =
-          prefix.empty() ? originalName : prefix + "_" + originalName;
-
-      // Skip if already declared in target (with either name)
-      if (target_.getFunction(prefixedName)) continue;
-      if (target_.getFunction(originalName)) continue;
+      // Skip if already declared in target
+      if (target_.getFunction(funcName)) continue;
 
       // Clone the function type and remap struct types to target module's types
       // This fixes type mismatches like static_ptr_struct vs
@@ -172,12 +163,13 @@ void ModuleLinker::declareAvailableFunctions() {
       llvm::FunctionType* funcType =
           remapFunctionType(func.getFunctionType(), ctx);
 
-      // Create external declaration with prefixed name
+      // Create external declaration with the same name as in bitcode
+      // (already prefixed with content hash)
       llvm::Function::Create(funcType, llvm::Function::ExternalLinkage,
-                             prefixedName, &target_);
+                             funcName, &target_);
 
-      // Map prefixed name to module for linking
-      symbolToModule_[prefixedName] = moduleKey;
+      // Map name to module for linking
+      symbolToModule_[funcName] = moduleKey;
     }
   }
 }
@@ -230,9 +222,6 @@ bool ModuleLinker::linkModuleRecursive(const std::string& moduleKey) {
     return false;
   }
 
-  // Get the symbol prefix for this module
-  std::string prefix = metadata->getSymbolPrefix();
-
   // Note: We do NOT recursively load dependencies here.
   // Moon files are self-contained - when a.moon was created from a.sun
   // (which imported b_v1.moon), the bitcode from b_v1 was already linked
@@ -240,6 +229,11 @@ bool ModuleLinker::linkModuleRecursive(const std::string& moduleKey) {
   // only (tracking what the module depends on), not for runtime loading.
 
   // Load the module bitcode
+  // NOTE: All symbols in the bitcode are already prefixed with the content hash
+  // (done at moon bundle creation time). This provides:
+  // 1. Symbol isolation between different library versions
+  // 2. Integrity verification - if bitcode is modified, symbols won't match
+  // 3. Struct type isolation to prevent LLVM type merging issues
   auto libModule =
       LibraryCache::instance().loadModule(moduleKey, target_.getContext());
   if (!libModule) {
@@ -259,58 +253,6 @@ bool ModuleLinker::linkModuleRecursive(const std::string& moduleKey) {
   // This avoids "Linking two modules of different data layouts" warnings
   if (libModule->getDataLayoutStr().empty()) {
     libModule->setDataLayout(target_.getDataLayout());
-  }
-
-  // Apply content hash prefix to all symbols for isolation
-  // This prevents symbol conflicts when multiple versions of a dependency are
-  // linked
-  if (!prefix.empty()) {
-    // Known external C runtime functions that should NOT be prefixed
-    static const std::set<std::string> cRuntimeFunctions = {
-        "malloc",    "free",     "realloc", "calloc",  "memset",  "memcpy",
-        "memmove",   "memcmp",   "strlen",  "strcpy",  "strncpy", "strcmp",
-        "strncmp",   "strcat",   "strncat", "printf",  "fprintf", "sprintf",
-        "snprintf",  "puts",     "putchar", "getchar", "fopen",   "fclose",
-        "fread",     "fwrite",   "fseek",   "ftell",   "fflush",  "exit",
-        "abort",     "atexit",   "atoi",    "atof",    "atol",    "strtol",
-        "strtod",    "qsort",    "bsearch", "rand",    "srand",   "time",
-        "clock",     "difftime", "mktime",  "asctime", "ctime",   "gmtime",
-        "localtime", "strftime", "sin",     "cos",     "tan",     "asin",
-        "acos",      "atan",     "atan2",   "sinh",    "cosh",    "tanh",
-        "exp",       "log",      "log10",   "pow",     "sqrt",    "ceil",
-        "floor",     "fabs",     "fmod",    "frexp",   "ldexp",   "modf"};
-
-    auto shouldSkipRename = [&](const std::string& name) {
-      // Skip LLVM intrinsics
-      if (name.starts_with("llvm.")) return true;
-      // Skip already-prefixed symbols
-      if (name.starts_with("$")) return true;
-      // Skip known C runtime functions
-      if (cRuntimeFunctions.count(name)) return true;
-      // Skip functions starting with underscore (C runtime convention)
-      if (!name.empty() && name[0] == '_') return true;
-      return false;
-    };
-
-    // Rename all functions (definitions AND declarations for cross-module refs)
-    // Skip only C runtime functions
-    for (auto& func : libModule->functions()) {
-      if (!func.hasName() || func.getName().empty()) continue;
-      if (func.isIntrinsic()) continue;
-      std::string originalName = func.getName().str();
-      if (!shouldSkipRename(originalName)) {
-        func.setName(prefix + "_" + originalName);
-      }
-    }
-
-    // Rename all global variables (but not C runtime globals)
-    for (auto& global : libModule->globals()) {
-      if (!global.hasName() || global.getName().empty()) continue;
-      std::string originalName = global.getName().str();
-      if (!shouldSkipRename(originalName)) {
-        global.setName(prefix + "_" + originalName);
-      }
-    }
   }
 
   // Link into target

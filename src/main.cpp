@@ -285,7 +285,7 @@ int main(int argc, char* argv[]) {
 
       // Print IR if requested (only user-defined, not imports)
       if (emitIR) {
-        driver->printUserDefinedIR();
+        driver->printReachableIR();
       }
 
       // Emit executable

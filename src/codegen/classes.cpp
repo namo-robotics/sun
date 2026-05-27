@@ -852,6 +852,16 @@ Value* CodegenVisitor::codegenStackClassInstance(const CallExprAST& expr,
     ctx.builder->CreateCall(ctorFunc, ctorArgs);
   }
 
+  // Track the temporary for deinit ONLY if not consumed (ownership
+  // transferred). The borrow checker marks temporaries as consumed when
+  // assigned to a variable or field. Consumed temporaries are owned by the
+  // destination, which will call deinit. Non-consumed temporaries must be
+  // deinited here.
+  if (!expr.isConsumed()) {
+    auto classTypePtr = std::make_shared<sun::ClassType>(classType);
+    trackClassAllocation(alloca, "stack.obj", classTypePtr);
+  }
+
   return alloca;
 }
 
@@ -1433,6 +1443,13 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
         ctx.builder->CreateCall(ctorFunc, ctorArgs);
       }
 
+      // Track the temporary for deinit ONLY if not consumed (ownership
+      // transferred)
+      if (!expr.isConsumed()) {
+        auto classTypePtr = std::make_shared<sun::ClassType>(*classType);
+        trackClassAllocation(alloca, "stack.obj", classTypePtr);
+      }
+
       return alloca;
     }
   }
@@ -1501,6 +1518,13 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
       std::vector<Value*> ctorArgs =
           generateCtorArgs(alloca, expr.getArgs(), paramTypes);
       ctx.builder->CreateCall(ctorFunc, ctorArgs);
+    }
+
+    // Track the temporary for deinit ONLY if not consumed (ownership
+    // transferred)
+    if (!expr.isConsumed()) {
+      auto classTypePtr = std::make_shared<sun::ClassType>(*fallbackClassType);
+      trackClassAllocation(alloca, "stack.obj", classTypePtr);
     }
 
     return alloca;

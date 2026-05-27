@@ -549,6 +549,7 @@ std::unique_ptr<ExprAST> GenericCallAST::clone() const {
   copy->setResolvedType(resolvedType);
   copy->setGenericFunctionAST(genericFunctionAST_);
   copy->setResolvedTypeArgs(resolvedTypeArgs_);
+  copy->setConsumed(consumed_);
   return copy;
 }
 
@@ -557,6 +558,7 @@ std::unique_ptr<ExprAST> MemberAssignmentAST::clone() const {
                                                     value->clone());
   copy->setLocation(location_);
   copy->setResolvedType(resolvedType);
+  copy->setConsumed(consumed_);
   return copy;
 }
 

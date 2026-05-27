@@ -1,0 +1,211 @@
+// stdlib/contiguous_buffer.sun - Bounds-checked contiguous memory buffer
+//
+// ContiguousBuffer<T> is a fixed-size, bounds-checked array backed by contiguous memory.
+// Unlike Vec, it has fixed capacity (no grow/push); resizing requires explicit reallocation.
+// All get/set operations perform bounds checking and throw IndexOutOfBoundsError on violation.
+// Uses HeapAllocator for memory management.
+//
+// Usage:
+//   import "stdlib/contiguous_buffer.sun";
+//   using sun;
+//   
+//   var allocator = make_heap_allocator();
+//   var buf = ContiguousBuffer<i32>(allocator, 10);
+//   try { buf.set(0, 42); } catch (e: IError) { }
+//   try { var val = buf.get(0); } catch (e: IError) { }  // 42
+//   var len = buf.size();  // 10
+
+import "allocator.sun";
+import "errors.sun";
+import "unique.sun";
+
+// ============================================================================
+// ContiguousBuffer<T> - Fixed-size Bounds-checked Array
+// ============================================================================
+
+module sun {
+
+class ContiguousBuffer<T> implements IIterable<T, ContiguousBuffer<T>> {
+    var data: Unique<i8>;          // Element storage (owned, auto-freed)
+    var alloc: HeapAllocator;      // Allocator (stored via copy)
+    var size_: i64;                // Number of elements (fixed after init)
+    
+    // Constructor with allocator and size
+    function init(allocator: ref HeapAllocator, size: i64) {
+        this.alloc = allocator.copy();
+        this.size_ = size;
+        this.data = Unique<i8>(this.alloc.alloc_raw(size * _sizeof<T>()));
+    }
+    
+    // ========================================================================
+    // Bounds-checked Accessors
+    // ========================================================================
+    
+    // Get element at index (bounds-checked)
+    function get(index: i64) T, IError {
+        if (index < 0) {
+            throw IndexOutOfBoundsError(index);
+        }
+        if (index >= this.size_) {
+            throw IndexOutOfBoundsError(index);
+        }
+        return unsafe { _load<T>(this.data.get_raw(), index); };
+    }
+    
+    // Set element at index (bounds-checked)
+    function set(index: i64, value: T) void, IError {
+        if (index < 0) {
+            throw IndexOutOfBoundsError(index);
+        }
+        if (index >= this.size_) {
+            throw IndexOutOfBoundsError(index);
+        }
+        unsafe { _store<T>(this.data.get_raw(), index, value); };
+    }
+    
+    // ========================================================================
+    // Unchecked Accessors (for performance-critical code)
+    // ========================================================================
+    
+    // Get element at index (no bounds check)
+    function get_unchecked(index: i64) T {
+        return unsafe { _load<T>(this.data.get_raw(), index); };
+    }
+    
+    // Set element at index (no bounds check)
+    function set_unchecked(index: i64, value: T) void {
+        unsafe { _store<T>(this.data.get_raw(), index, value); };
+    }
+    
+    // ========================================================================
+    // Utility Methods
+    // ========================================================================
+    
+    // Get buffer size
+    function size() i64 {
+        return this.size_;
+    }
+    
+    // Check if buffer is empty
+    function isEmpty() bool {
+        return this.size_ == 0;
+    }
+    
+    // Fill entire buffer with value
+    function fill(value: T) void {
+        for (var i: i64 = 0; i < this.size_; i = i + 1) {
+            unsafe { _store<T>(this.data.get_raw(), i, value); };
+        }
+    }
+    
+    // Copy elements from another buffer (bounds-checked)
+    function copy_from(source: ref ContiguousBuffer<T>, src_offset: i64, dst_offset: i64, count: i64) void, IError {
+        // Validate source bounds
+        if (src_offset < 0) {
+            throw IndexOutOfBoundsError(src_offset);
+        }
+        if (src_offset + count > source.size()) {
+            throw IndexOutOfBoundsError(src_offset);
+        }
+        // Validate destination bounds
+        if (dst_offset < 0) {
+            throw IndexOutOfBoundsError(dst_offset);
+        }
+        if (dst_offset + count > this.size_) {
+            throw IndexOutOfBoundsError(dst_offset);
+        }
+        // Copy elements
+        for (var i: i64 = 0; i < count; i = i + 1) {
+            var value: T = unsafe { _load<T>(source.rawData(), src_offset + i); };
+            unsafe { _store<T>(this.data.get_raw(), dst_offset + i, value); };
+        }
+    }
+    
+    // Get raw data pointer (escape hatch for interop)
+    function rawData() raw_ptr<i8> {
+        return this.data.get_raw();
+    }
+    
+    // Get first element (bounds-checked)
+    function first() T, IError {
+        if (this.size_ == 0) {
+            throw IndexOutOfBoundsError(0);
+        }
+        return unsafe { _load<T>(this.data.get_raw(), 0); };
+    }
+    
+    // Get last element (bounds-checked)
+    function last() T, IError {
+        if (this.size_ == 0) {
+            throw IndexOutOfBoundsError(0);
+        }
+        return unsafe { _load<T>(this.data.get_raw(), this.size_ - 1); };
+    }
+    
+    // ========================================================================
+    // Indexing Support
+    // ========================================================================
+    
+    // Operator overload for indexing: buf[i] calls __index__([i])
+    // Note: Uses unchecked access for performance; use get() for bounds checking
+    function __index__(indices: ref array<i64>) T {
+        return this.get_unchecked(indices[0]);
+    }
+    
+    // Operator overload for indexed assignment: buf[i] = val calls __setindex__([i], val)
+    // Note: Uses unchecked access for performance; use set() for bounds checking
+    function __setindex__(indices: ref array<i64>, value: T) void {
+        this.set_unchecked(indices[0], value);
+    }
+    
+    // ========================================================================
+    // Iteration Support
+    // ========================================================================
+    
+    // Return iterator over elements
+    function iter() ContiguousBufferIterator<T> {
+        return ContiguousBufferIterator<T>();
+    }
+}
+
+// ============================================================================
+// ContiguousBufferIterator<T> - Iterator over ContiguousBuffer elements
+// ============================================================================
+
+class ContiguousBufferIterator<T> implements IIterator<T, ContiguousBuffer<T>> {
+    var current: i64;
+    
+    function init() {
+        this.current = 0;
+    }
+    
+    function hasNext(buf: ref ContiguousBuffer<T>) bool {
+        return this.current < buf.size();
+    }
+    
+    function next(buf: ref ContiguousBuffer<T>) T {
+        var value: T = buf.get_unchecked(this.current);
+        this.current = this.current + 1;
+        return value;
+    }
+}
+
+// ============================================================================
+// Precompiled Specializations
+// ============================================================================
+
+// ContiguousBuffer specializations
+declare ContiguousBuffer_i8 = ContiguousBuffer<i8>;
+declare ContiguousBuffer_i32 = ContiguousBuffer<i32>;
+declare ContiguousBuffer_i64 = ContiguousBuffer<i64>;
+declare ContiguousBuffer_f32 = ContiguousBuffer<f32>;
+declare ContiguousBuffer_f64 = ContiguousBuffer<f64>;
+
+// ContiguousBufferIterator specializations
+declare ContiguousBufferIterator_i8 = ContiguousBufferIterator<i8>;
+declare ContiguousBufferIterator_i32 = ContiguousBufferIterator<i32>;
+declare ContiguousBufferIterator_i64 = ContiguousBufferIterator<i64>;
+declare ContiguousBufferIterator_f32 = ContiguousBufferIterator<f32>;
+declare ContiguousBufferIterator_f64 = ContiguousBufferIterator<f64>;
+
+} // module sun

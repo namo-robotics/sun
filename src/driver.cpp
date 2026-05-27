@@ -100,6 +100,63 @@ void Driver::printUserDefinedIR() {
   llvm::outs() << reset;
 }
 
+// Helper: recursively collect all functions reachable from a given function
+static void collectReachableFunctions(llvm::Function* func,
+                                      std::set<llvm::Function*>& visited) {
+  if (!func || func->isDeclaration() || visited.count(func)) return;
+  visited.insert(func);
+
+  for (auto& BB : *func) {
+    for (auto& I : BB) {
+      // Direct calls
+      if (auto* call = llvm::dyn_cast<llvm::CallInst>(&I)) {
+        if (auto* callee = call->getCalledFunction()) {
+          collectReachableFunctions(callee, visited);
+        }
+      }
+      // Invoke instructions (for exception handling)
+      if (auto* invoke = llvm::dyn_cast<llvm::InvokeInst>(&I)) {
+        if (auto* callee = invoke->getCalledFunction()) {
+          collectReachableFunctions(callee, visited);
+        }
+      }
+    }
+  }
+}
+
+// Print IR for all functions reachable from main() (includes stdlib)
+void Driver::printReachableIR() {
+  const char* cyan = "\033[36m";
+  const char* reset = "\033[0m";
+
+  llvm::outs() << cyan << "; LLVM IR (reachable from main):\n";
+
+  // Start from main and collect all reachable functions
+  std::set<llvm::Function*> reachable;
+  if (auto* mainFunc = ctx->mainModule->getFunction("main")) {
+    collectReachableFunctions(mainFunc, reachable);
+  }
+
+  // Also check __sun_static_init for global initializers
+  if (auto* initFunc = ctx->mainModule->getFunction("__sun_static_init")) {
+    collectReachableFunctions(initFunc, reachable);
+  }
+
+  // Print reachable functions (sorted by name for stable output)
+  std::vector<llvm::Function*> sorted(reachable.begin(), reachable.end());
+  std::sort(sorted.begin(), sorted.end(),
+            [](llvm::Function* a, llvm::Function* b) {
+              return a->getName() < b->getName();
+            });
+
+  for (auto* func : sorted) {
+    func->print(llvm::outs());
+    llvm::outs() << "\n";
+  }
+
+  llvm::outs() << reset;
+}
+
 // -------------------------------------------------------------------
 // Recursively expand all ImportAST nodes in the AST tree into
 // ImportScopeAST nodes, at any depth (top-level, inside functions, etc.)
@@ -339,7 +396,11 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
 
   // JIT execution mode - print IR if requested
   if (dumpIR) {
-    printUserDefinedIR();
+    if (dumpReachable) {
+      printReachableIR();
+    } else {
+      printUserDefinedIR();
+    }
   }
 
   llvm::Function* func = ctx->mainModule->getFunction("main");

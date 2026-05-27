@@ -231,14 +231,24 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
 
     // Register the specialized class so methods can reference it
     registerClass(mangledName, specializedClass);
+
+    // If this class was already fully instantiated in another scope
+    // (fields populated + specialization AST created), just register in
+    // current scope and return - avoids duplicating fields/methods/interfaces
+    if (!specializedClass->getFields().empty() &&
+        genericClassInfo->AST->hasSpecialization(mangledName)) {
+      classesBeingInstantiated.erase(mangledName);
+      return specializedClass;
+    }
   }
 
   // Push a scope for class-level type parameter bindings
   enterScope(ScopeType::Class);
   addTypeParameterBindings(genericClassInfo->typeParameters, typeArgs);
 
-  // Add fields with substituted types (skip if type already exists)
-  if (!astOnlyMode) {
+  // Add fields with substituted types (skip if type already exists or already
+  // has fields from a previous instantiation in another scope)
+  if (!astOnlyMode && specializedClass->getFields().empty()) {
     for (const auto& field : genericClassInfo->AST->getFields()) {
       auto fieldType = typeAnnotationToType(field.type);
       fieldType = substituteTypeParameters(fieldType);

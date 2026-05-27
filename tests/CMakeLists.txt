@@ -13,6 +13,7 @@ add_executable(sun_tests
     test_borrow_checker.cpp
     test_classes.cpp
     test_compilation.cpp
+    test_contiguous_buffer.cpp
     test_enums.cpp
     test_errors.cpp
     test_file_io.cpp
