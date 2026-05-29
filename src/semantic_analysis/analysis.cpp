@@ -561,7 +561,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       std::string namespacePath = usingDecl.getNamespacePathString();
       std::string target = usingDecl.getTarget();
 
-      if (!usingDecl.isWildcardImport()) {
+      if (!usingDecl.isModuleImport()) {
         // Build the dot-separated path: "A.B"
         std::string displayPath =
             namespacePath.empty() ? target : namespacePath + "." + target;

@@ -1477,17 +1477,20 @@ class ModuleAST : public ExprAST {
 // Also supports: using Module; (imports all from module)
 class UsingAST : public ExprAST {
   std::vector<std::string> namespacePath;  // The namespace path
-  std::string target;  // The specific name, or "*" for wildcard (using sun;)
-  bool isWildcard;
+  std::string target;  // The specific symbol name, or "*" for module import (using sun;)
+  bool isModuleImport_;  // true for "using sun;" (imports whole module)
 
  public:
   UsingAST(std::vector<std::string> nsPath, std::string targetName)
       : namespacePath(std::move(nsPath)),
         target(std::move(targetName)),
-        isWildcard(target == "*") {}
+        isModuleImport_(target == "*") {}
 
   ASTNodeType getType() const override { return ASTNodeType::USING; }
   std::string toString() const override {
+    if (isModuleImport_) {
+      return "using " + getNamespacePathString();
+    }
     return "using " + getNamespacePathString() + "." + target;
   }
 
@@ -1495,7 +1498,7 @@ class UsingAST : public ExprAST {
     return namespacePath;
   }
   const std::string& getTarget() const { return target; }
-  bool isWildcardImport() const { return isWildcard; }
+  bool isModuleImport() const { return isModuleImport_; }
 
   // Get the full path as string (e.g., "Math.Trig" or "Math::Trig")
   std::string getNamespacePathString() const {
@@ -1507,6 +1510,9 @@ class UsingAST : public ExprAST {
     return result;
   }
   std::string dotLabel() const override {
+    if (isModuleImport_) {
+      return "Using\n" + getNamespacePathString();
+    }
     return "Using\n" + getNamespacePathString() + "." + target;
   }
   std::unique_ptr<ExprAST> clone() const override;
