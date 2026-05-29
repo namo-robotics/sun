@@ -87,6 +87,9 @@ class ExprAST {
   // Debug representation of this AST node
   virtual std::string toString() const = 0;
 
+  // Label for DOT graph visualization (includes type name)
+  virtual std::string dotLabel() const = 0;
+
   // Print to stderr (easier to call from debugger than toString())
   void dump() const { std::cerr << toString() << "\n"; }
 
@@ -321,6 +324,7 @@ class NumberExprAST : public ExprAST {
     if (isInteger()) return std::to_string(getIntVal());
     return std::to_string(getFloatVal());
   }
+  std::string dotLabel() const override { return "Number\n" + toString(); }
   std::unique_ptr<ExprAST> clone() const override;
 
   bool isInteger() const { return std::holds_alternative<int64_t>(value_); }
@@ -343,6 +347,7 @@ class StringLiteralAST : public ExprAST {
   explicit StringLiteralAST(std::string Value) : Value(std::move(Value)) {}
   ASTNodeType getType() const override { return ASTNodeType::STRING_LITERAL; }
   std::string toString() const override { return "\"" + Value + "\""; }
+  std::string dotLabel() const override { return "String\n" + toString(); }
   std::unique_ptr<ExprAST> clone() const override;
   const std::string& getValue() const { return Value; }
 };
@@ -352,6 +357,7 @@ class NullLiteralAST : public ExprAST {
   NullLiteralAST() = default;
   ASTNodeType getType() const override { return ASTNodeType::NULL_LITERAL; }
   std::string toString() const override { return "null"; }
+  std::string dotLabel() const override { return "null"; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -362,6 +368,7 @@ class BoolLiteralAST : public ExprAST {
   explicit BoolLiteralAST(bool Value) : Value(Value) {}
   ASTNodeType getType() const override { return ASTNodeType::BOOL_LITERAL; }
   std::string toString() const override { return Value ? "true" : "false"; }
+  std::string dotLabel() const override { return "Bool\n" + toString(); }
   std::unique_ptr<ExprAST> clone() const override;
   bool getValue() const { return Value; }
 };
@@ -386,6 +393,7 @@ class ArrayLiteralAST : public ExprAST {
     return elements;
   }
   size_t size() const { return elements.size(); }
+  std::string dotLabel() const override { return "ArrayLiteral"; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -413,6 +421,7 @@ class ArrayIndexAST : public ExprAST {
     return indices;
   }
   size_t numIndices() const { return indices.size(); }
+  std::string dotLabel() const override { return "ArrayIndex"; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -449,6 +458,7 @@ class SliceExprAST : public ExprAST {
   bool isRange() const { return isRange_; }
   bool hasStart() const { return start_ != nullptr; }
   bool hasEnd() const { return end_ != nullptr; }
+  std::string dotLabel() const override { return "Slice\n" + toString(); }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -489,6 +499,7 @@ class IndexAST : public ExprAST {
     }
     return false;
   }
+  std::string dotLabel() const override { return "Index"; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -502,6 +513,7 @@ class VariableReferenceAST : public ExprAST {
     return ASTNodeType::VARIABLE_REFERENCE;
   }
   std::string toString() const override { return Name; }
+  std::string dotLabel() const override { return "VarRef\n" + Name; }
   std::unique_ptr<ExprAST> clone() const override;
   const std::string& getName() const { return Name; }
 
@@ -551,6 +563,11 @@ class VariableCreationAST : public ExprAST {
     return typeAnnotation;
   }
   bool hasTypeAnnotation() const { return typeAnnotation.has_value(); }
+  std::string dotLabel() const override {
+    std::string label = "VarCreate\n" + name;
+    if (typeAnnotation) label += ": " + typeAnnotation->toString();
+    return label;
+  }
   std::unique_ptr<ExprAST> clone() const override;
 
   // Qualified name (after semantic analysis qualifies it)
@@ -585,6 +602,7 @@ class VariableAssignmentAST : public ExprAST {
   }
   const std::string& getName() const { return name; }
   const ExprAST* getValue() const { return value.get(); }
+  std::string dotLabel() const override { return "VarAssign\n" + name; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -613,6 +631,7 @@ class ReferenceCreationAST : public ExprAST {
   const std::string& getName() const { return name; }
   const ExprAST* getTarget() const { return target.get(); }
   bool isMutable() const { return mutable_; }
+  std::string dotLabel() const override { return "RefCreate\n" + name; }
   std::unique_ptr<ExprAST> clone() const override;
 
   // Qualified name (after semantic analysis qualifies it)
@@ -646,6 +665,7 @@ class BinaryExprAST : public ExprAST {
   Token getOp() const { return op; }
   const ExprAST* getLHS() const { return LHS.get(); }
   const ExprAST* getRHS() const { return RHS.get(); }
+  std::string dotLabel() const override { return "Binary\n" + op.text; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -662,8 +682,12 @@ class UnaryExprAST : public ExprAST {
   }
   Token getOp() const { return op; }
   const ExprAST* getOperand() const { return Operand.get(); }
+  std::string dotLabel() const override { return "Unary\n" + op.text; }
   std::unique_ptr<ExprAST> clone() const override;
 };
+
+// Forward declaration for dotLabel() in CallExprAST
+class MemberAccessAST;
 
 // Unified call expression - callee is any expression that evaluates to a
 // function This handles both direct calls (foo(x)) and indirect calls
@@ -687,6 +711,7 @@ class CallExprAST : public ExprAST {
   }
   const ExprAST* getCallee() const { return Callee.get(); }
   const std::vector<std::unique_ptr<ExprAST>>& getArgs() const { return Args; }
+  std::string dotLabel() const override;
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -699,6 +724,7 @@ class PackExpansionAST : public ExprAST {
   explicit PackExpansionAST(std::string name) : packName(std::move(name)) {}
   ASTNodeType getType() const override { return ASTNodeType::PACK_EXPANSION; }
   std::string toString() const override { return packName + "..."; }
+  std::string dotLabel() const override { return "PackExpand\n..."; }
   std::unique_ptr<ExprAST> clone() const override;
   const std::string& getPackName() const { return packName; }
 };
@@ -872,6 +898,7 @@ class IfExprAST : public ExprAST {
   ExprAST* getCond() const { return Cond.get(); }
   ExprAST* getThen() const { return Then.get(); }
   ExprAST* getElse() const { return Else.get(); }
+  std::string dotLabel() const override { return "If"; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -924,6 +951,7 @@ class MatchExprAST : public ExprAST {
 
   const ExprAST* getDiscriminant() const { return discriminant.get(); }
   const std::vector<MatchArm>& getArms() const { return arms; }
+  std::string dotLabel() const override { return "Match"; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -957,6 +985,7 @@ class ForExprAST : public ExprAST {
   const ExprAST* getCondition() const { return Condition.get(); }
   const ExprAST* getIncrement() const { return Increment.get(); }
   const ExprAST* getBody() const { return Body.get(); }
+  std::string dotLabel() const override { return "For"; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -1000,6 +1029,7 @@ class ForInExprAST : public ExprAST {
     return resolvedLoopVarType_ != nullptr;
   }
 
+  std::string dotLabel() const override { return "ForIn\n" + LoopVar; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -1018,6 +1048,7 @@ class WhileExprAST : public ExprAST {
 
   const ExprAST* getCondition() const { return Condition.get(); }
   const ExprAST* getBody() const { return Body.get(); }
+  std::string dotLabel() const override { return "While"; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -1046,6 +1077,7 @@ class BlockExprAST : public ExprAST {
   const ExprAST* getLastExpr() const {
     return Body.empty() ? nullptr : Body.back().get();
   }
+  std::string dotLabel() const override { return "Block"; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -1061,6 +1093,7 @@ class UnsafeBlockAST : public ExprAST {
 
   ASTNodeType getType() const override { return ASTNodeType::UNSAFE_BLOCK; }
   std::string toString() const override { return "unsafe { ... }"; }
+  std::string dotLabel() const override { return "Unsafe"; }
 
   const BlockExprAST& getBody() const { return *body; }
   BlockExprAST& getBody() { return *body; }
@@ -1085,6 +1118,7 @@ class IndexedAssignmentAST : public ExprAST {
   }
   const ExprAST* getTarget() const { return target.get(); }
   const ExprAST* getValue() const { return value.get(); }
+  std::string dotLabel() const override { return "IndexedAssign"; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -1155,6 +1189,12 @@ class FunctionAST : public ExprAST {
     return it != specializations_.end() ? it->second : nullptr;
   }
 
+  std::string dotLabel() const override {
+    std::string label = "Function\n" + Proto->getName();
+    if (Proto->hasReturnType())
+      label += " -> " + Proto->getReturnType()->toString();
+    return label;
+  }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -1187,6 +1227,7 @@ class LambdaAST : public ExprAST {
   const BlockExprAST& getBody() const { return *Body; }
   bool hasBody() const { return Body != nullptr; }
 
+  std::string dotLabel() const override { return "Lambda"; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -1207,6 +1248,7 @@ class SpawnExprAST : public ExprAST {
   }
 
   const ExprAST& getLambda() const { return *Lambda; }
+  std::string dotLabel() const override { return "Spawn"; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -1227,6 +1269,7 @@ class ReturnExprAST : public ExprAST {
 
   const ExprAST* getValue() const { return Value.get(); }
   bool hasValue() const { return Value != nullptr; }
+  std::string dotLabel() const override { return "Return"; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -1238,6 +1281,7 @@ class BreakAST : public ExprAST {
 
   ASTNodeType getType() const override { return ASTNodeType::BREAK_STMT; }
   std::string toString() const override { return "break"; }
+  std::string dotLabel() const override { return "Break"; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -1249,6 +1293,7 @@ class ContinueAST : public ExprAST {
 
   ASTNodeType getType() const override { return ASTNodeType::CONTINUE_STMT; }
   std::string toString() const override { return "continue"; }
+  std::string dotLabel() const override { return "Continue"; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -1268,6 +1313,7 @@ class ThrowExprAST : public ExprAST {
 
   const ExprAST& getErrorExpr() const { return *errorExpr; }
   bool hasErrorExpr() const { return errorExpr != nullptr; }
+  std::string dotLabel() const override { return "Throw"; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -1305,6 +1351,7 @@ class TryCatchExprAST : public ExprAST {
 
   const BlockExprAST& getTryBlock() const { return *tryBlock; }
   const CatchClause& getCatchClause() const { return catchClause; }
+  std::string dotLabel() const override { return "TryCatch"; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -1317,6 +1364,7 @@ class ImportAST : public ExprAST {
 
   ASTNodeType getType() const override { return ASTNodeType::IMPORT; }
   std::string toString() const override { return "import \"" + path + "\""; }
+  std::string dotLabel() const override { return "Import\n" + path; }
 
   std::unique_ptr<ExprAST> clone() const override;
   const std::string& getPath() const { return path; }
@@ -1344,6 +1392,7 @@ class ImportScopeAST : public ExprAST {
   const std::string& getSourceFile() const { return sourceFile; }
   const std::string& getContentHash() const { return contentHash; }
   const BlockExprAST& getBody() const { return *body; }
+  std::string dotLabel() const override { return "ImportScope\n" + sourceFile; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -1399,6 +1448,7 @@ class QualifiedNameAST : public ExprAST {
     resolvedMangledName_ = std::move(name);
   }
 
+  std::string dotLabel() const override { return "QualName\n" + getFullName(); }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -1419,6 +1469,7 @@ class ModuleAST : public ExprAST {
 
   const std::string& getName() const { return name; }
   const BlockExprAST& getBody() const { return *body; }
+  std::string dotLabel() const override { return "Module\n" + name; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -1454,6 +1505,9 @@ class UsingAST : public ExprAST {
       result += namespacePath[i];
     }
     return result;
+  }
+  std::string dotLabel() const override {
+    return "Using\n" + getNamespacePathString() + "." + target;
   }
   std::unique_ptr<ExprAST> clone() const override;
 };
@@ -1604,6 +1658,7 @@ class ClassDefinitionAST : public ExprAST {
   // Allow adding methods from extensions (mutable for merging)
   std::vector<ClassMethodDecl>& getMutableMethods() { return methods; }
 
+  std::string dotLabel() const override { return "Class\n" + name; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -1706,6 +1761,7 @@ class InterfaceDefinitionAST : public ExprAST {
     }
     return required;
   }
+  std::string dotLabel() const override { return "Interface\n" + name; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -1757,6 +1813,7 @@ class EnumDefinitionAST : public ExprAST {
 
   // Get the number of variants
   size_t getNumVariants() const { return variants.size(); }
+  std::string dotLabel() const override { return "Enum\n" + name; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -1826,6 +1883,9 @@ class MemberAccessAST : public ExprAST {
     return !resolvedQualifiedName_.empty();
   }
 
+  std::string dotLabel() const override {
+    return "MemberAccess\n." + memberName;
+  }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -1836,6 +1896,7 @@ class ThisExprAST : public ExprAST {
 
   ASTNodeType getType() const override { return ASTNodeType::THIS; }
   std::string toString() const override { return "this"; }
+  std::string dotLabel() const override { return "this"; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -1906,6 +1967,9 @@ class GenericCallAST : public ExprAST {
   }
   bool hasGenericFunctionAST() const { return genericFunctionAST_ != nullptr; }
 
+  std::string dotLabel() const override {
+    return "GenericCall\n" + functionName + "<...>()";
+  }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -1932,6 +1996,9 @@ class MemberAssignmentAST : public ExprAST {
   const ExprAST* getObject() const { return object.get(); }
   const std::string& getMemberName() const { return memberName; }
   const ExprAST* getValue() const { return value.get(); }
+  std::string dotLabel() const override {
+    return "MemberAssign\n." + memberName;
+  }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -1969,5 +2036,10 @@ class DeclareTypeAST : public ExprAST {
     return resolvedDeclaredType_ != nullptr;
   }
 
+  std::string dotLabel() const override {
+    std::string label = "DeclareType";
+    if (aliasName) label += "\n" + *aliasName;
+    return label;
+  }
   std::unique_ptr<ExprAST> clone() const override;
 };

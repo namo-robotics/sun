@@ -172,6 +172,19 @@ std::unique_ptr<ExprAST> CallExprAST::clone() const {
   return copy;
 }
 
+std::string CallExprAST::dotLabel() const {
+  // Try to get a readable name from the callee
+  if (Callee->getType() == ASTNodeType::VARIABLE_REFERENCE) {
+    const auto* ref = static_cast<const VariableReferenceAST*>(Callee.get());
+    return "Call\n" + ref->getName() + "()";
+  }
+  if (Callee->getType() == ASTNodeType::MEMBER_ACCESS) {
+    const auto* ma = static_cast<const MemberAccessAST*>(Callee.get());
+    return "Call\n." + ma->getMemberName() + "()";
+  }
+  return "Call";
+}
+
 std::unique_ptr<ExprAST> PackExpansionAST::clone() const {
   auto copy = std::make_unique<PackExpansionAST>(packName);
   copy->setLocation(location_);

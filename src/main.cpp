@@ -25,6 +25,8 @@ static void printUsage(const char* programName) {
   llvm::errs() << "  -S                Emit assembly file\n";
   llvm::errs() << "  --emit-obj        Emit object file only (do not link)\n";
   llvm::errs() << "  --emit-ir         Print LLVM IR to stdout\n";
+  llvm::errs() << "  --debug           Generate debug output (ast.dot, ir.ll) "
+                  "in <input>_debug/\n";
   llvm::errs() << "  --emit-moon     Compile to .moon precompiled library\n";
   llvm::errs()
       << "  --bundle          Bundle multiple .sun files into one .moon\n";
@@ -77,6 +79,7 @@ int main(int argc, char* argv[]) {
   bool emitMoon = false;
   bool bundleMode = false;
   bool emitIR = false;
+  bool debugMode = false;
   int programArgStart = -1;  // Index where program arguments start
 
   for (int i = 1; i < argc; ++i) {
@@ -98,6 +101,8 @@ int main(int argc, char* argv[]) {
       emitMoon = true;
     } else if (arg == "--emit-ir") {
       emitIR = true;
+    } else if (arg == "--debug") {
+      debugMode = true;
     } else if (arg == "--bundle") {
       bundleMode = true;
     } else if (arg == "--lib-path" && i + 1 < argc) {
@@ -281,6 +286,9 @@ int main(int argc, char* argv[]) {
 
     try {
       auto driver = Driver::createForAOT("main_module");
+      if (debugMode) {
+        driver->setDebugMode(true, inputFile);
+      }
       driver->compileFile(inputFile);
 
       // Print IR if requested (only user-defined, not imports)
@@ -319,6 +327,9 @@ int main(int argc, char* argv[]) {
   try {
     auto driver = Driver::createForJIT("main_module");
     driver->setDumpIR(emitIR);
+    if (debugMode) {
+      driver->setDebugMode(true, inputFile);
+    }
     driver->executeFile(inputFile, programArgc, programArgv.data());
   } catch (const SunError& e) {
     std::cerr << e.what() << std::endl;

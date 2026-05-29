@@ -70,6 +70,8 @@ add_library(sun_lib
     src/module_linker.cpp
     src/module_types.cpp
     src/metadata_extractor.cpp
+    # Debug utilities
+    src/ast_dot_generator.cpp
     # Add other implementation files here (but NOT main.cpp)
 )
 

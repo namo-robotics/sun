@@ -38,6 +38,10 @@ class Driver {
   // If true, dump all reachable functions; if false, only user-defined
   bool dumpReachable = false;
 
+  // Debug mode: generate AST DOT graph and IR dump
+  bool debugMode_ = false;
+  std::string debugFolder_;
+
   // Private constructor - use factory methods
   Driver(std::unique_ptr<CodegenContext> ctx,
          std::shared_ptr<sun::TypeRegistry> typeRegistry,
@@ -101,6 +105,10 @@ class Driver {
 
   /// Enable dumping all reachable functions (includes stdlib)
   void setDumpReachable(bool dump) { dumpReachable = dump; }
+
+  /// Enable debug mode and set the debug output folder
+  /// Creates <basename>_debug/ folder with ast.dot and ir.ll
+  void setDebugMode(bool enable, const std::string& inputFile = "");
 
   /// Print only user-defined IR (filters out imports and linked libraries)
   void printUserDefinedIR();
