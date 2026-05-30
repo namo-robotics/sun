@@ -654,7 +654,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
           // Enter a Class scope to contain extension method scopes
           enterScope(ScopeType::Class);
-          currentScope->moduleName = baseName;
+          currentScope->scopeName = baseName;
 
           // Register all extension methods first
           for (const auto& methodDecl : classDef.getMethods()) {
@@ -867,7 +867,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
       // Enter a Class scope to contain all method scopes in the tree
       enterScope(ScopeType::Class);
-      currentScope->moduleName = baseName;
+      currentScope->scopeName = baseName;
 
       // PASS 1: Register all methods first (so methods can call each other)
       for (const auto& methodDecl : classDef.getMethods()) {
@@ -1050,7 +1050,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
       // Enter Interface scope to contain method scopes
       enterScope(ScopeType::Interface);
-      currentScope->moduleName = interfaceDef.getName();
+      currentScope->scopeName = interfaceDef.getName();
 
       // Analyze default method bodies
       for (const auto& methodDecl : interfaceDef.getMethods()) {
@@ -1972,9 +1972,12 @@ void SemanticAnalyzer::lazyParseAndAnalyzeMethod(
     }
   }
 
-  // Step 2: Set up scope with type parameter bindings
-  enterScope();
-  if (typeParams.size() == typeArgs.size()) {
+  // Step 2: Set up scope with type parameter bindings (only if needed)
+  // For generic class methods, type bindings are already in the Class scope
+  bool needsTypeParamScope =
+      !typeParams.empty() && typeParams.size() == typeArgs.size();
+  if (needsTypeParamScope) {
+    enterScope(ScopeType::TypeParams);
     addTypeParameterBindings(typeParams, typeArgs);
   }
 
@@ -2018,7 +2021,9 @@ void SemanticAnalyzer::lazyParseAndAnalyzeMethod(
 
   // Step 7: Pop scopes and restore context
   exitScope();  // method scope
-  exitScope();  // type param scope
+  if (needsTypeParamScope) {
+    exitScope();  // type param scope
+  }
   for (int i = 0; i < moduleScopesEntered; ++i) {
     exitScope();  // module scope(s)
   }

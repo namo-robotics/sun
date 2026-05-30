@@ -136,7 +136,8 @@ enum class ScopeType {
   Class,      // Class definition scope
   Interface,  // Interface definition scope
   Function,   // Function or lambda body scope
-  Block       // Block scope (if, while, for, etc.)
+  Block,      // Block scope (if, while, for, etc.)
+  TypeParams  // Type parameter binding scope (for generic instantiation)
 };
 
 // Alias import from a using statement (legacy — being replaced by
@@ -283,8 +284,8 @@ struct SpecializedFunctionInfo {
 // All are lexically scoped just like variables
 struct SemanticScope {
   ScopeType type = ScopeType::Global;
-  std::string moduleName;  // For module scopes: the local name (e.g., "sun")
-  std::string modulePath;  // Full dot-separated path (e.g., "sun.matrix")
+  std::string scopeName;  // Display name (class name, source file, etc.)
+  std::string scopeKey;   // Lookup key / qualified path for symbol isolation
   // For function scopes: the function signature (e.g., "outer(i32)")
   // Used to create unique qualified names for nested functions in generic
   // instantiations
@@ -351,7 +352,7 @@ struct SemanticScope {
   SemanticScope() = default;
   SemanticScope(ScopeType t) : type(t) {}
   SemanticScope(ScopeType t, std::string name)
-      : type(t), moduleName(std::move(name)) {}
+      : type(t), scopeName(std::move(name)) {}
 
   // Check if a symbol with the given name exists in this scope (any kind)
   // Recurses into child module scopes.

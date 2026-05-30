@@ -86,8 +86,8 @@ void SemanticScope::collectFunctions(const std::string& prefix,
 
 std::shared_ptr<SemanticScope> SemanticScope::cloneSymbols(
     SemanticScope* newParent) const {
-  auto clone = std::make_shared<SemanticScope>(type, moduleName);
-  clone->modulePath = modulePath;
+  auto clone = std::make_shared<SemanticScope>(type, scopeName);
+  clone->scopeKey = scopeKey;
   clone->parent = newParent;
   // Copy all symbol tables (shallow — shares type objects)
   clone->functions = functions;
@@ -123,9 +123,9 @@ void SemanticAnalyzer::enterModuleScope(const std::string& moduleName) {
   if (!child) {
     child = std::make_shared<SemanticScope>(ScopeType::Module, moduleName);
     child->parent = currentScope;
-    // Compute full dot-separated module path
-    std::string parentPath = currentScope->modulePath;
-    child->modulePath =
+    // Compute full dot-separated scope key path
+    std::string parentPath = currentScope->scopeKey;
+    child->scopeKey =
         parentPath.empty() ? moduleName : parentPath + "." + moduleName;
   }
   currentScope = child.get();
@@ -158,20 +158,20 @@ void SemanticAnalyzer::enterImportScope(const std::string& sourceFile,
   }
 
   auto child = std::make_shared<SemanticScope>(ScopeType::Import);
-  // Store user-friendly import path in moduleName for display
-  child->moduleName = sourceFile;
+  // Store user-friendly import path in scopeName for display
+  child->scopeName = sourceFile;
   child->parent = currentScope;
 
-  // For .sun imports (scopeKey starts with $import_), don't add to modulePath
+  // For .sun imports (scopeKey starts with $import_), don't add to scopeKey
   // to avoid creating redundant prefixes during bundle compilation.
   // Only .moon imports (content hash starting with non-$import) should affect
-  // the modulePath for symbol isolation between library versions.
+  // the scopeKey for symbol isolation between library versions.
   if (scopeKey.starts_with("$import_")) {
-    // .sun import - no module path prefix (shares namespace with importer)
-    child->modulePath = "";
+    // .sun import - no scope key prefix (shares namespace with importer)
+    child->scopeKey = "";
   } else {
     // .moon import - use content hash for symbol isolation
-    child->modulePath = scopeKey;
+    child->scopeKey = scopeKey;
   }
 
   currentScope->childModules[scopeKey] = child;
@@ -189,8 +189,8 @@ void SemanticAnalyzer::exitScope() {
 }
 
 std::string SemanticAnalyzer::getCurrentModulePrefix() const {
-  // Find the nearest scope with a module path and mangle it to underscore form
-  // modulePath is pre-computed (e.g., "$hash$.sun") so we just convert dots
+  // Find the nearest scope with a scope key and mangle it to underscore form
+  // scopeKey is pre-computed (e.g., "$hash$.sun") so we just convert dots
   std::string path = getCurrentModulePath();
   if (path.empty()) return "";
   for (char& c : path) {
@@ -200,12 +200,12 @@ std::string SemanticAnalyzer::getCurrentModulePrefix() const {
 }
 
 std::string SemanticAnalyzer::getCurrentModulePath() const {
-  // Walk up to find the nearest Module or Import scope with a modulePath
-  // The modulePath field already accumulates the full dot-separated path
+  // Walk up to find the nearest Module or Import scope with a scopeKey
+  // The scopeKey field already accumulates the full dot-separated path
   for (auto* s = currentScope; s != nullptr; s = s->parent) {
     if ((s->type == ScopeType::Module || s->type == ScopeType::Import) &&
-        !s->modulePath.empty()) {
-      return s->modulePath;
+        !s->scopeKey.empty()) {
+      return s->scopeKey;
     }
   }
   return "";
@@ -503,13 +503,13 @@ static std::vector<SemanticScope*> collectAllModuleScopes(
       }
 
       // Also check ImportBindings for matching module scopes (from using
-      // statements) Compare the binding's source scope's moduleName against
+      // statements) Compare the binding's source scope's scopeName against
       // path
       for (const auto& binding : s->importBindings) {
         if (!binding.sourceScope || !binding.isWildcard) continue;
-        // moduleName is the simple name like "sun", not the full path with
+        // scopeName is the simple name like "sun", not the full path with
         // import prefixes
-        if (binding.sourceScope->moduleName == path) {
+        if (binding.sourceScope->scopeName == path) {
           addUnique(binding.sourceScope);
         }
       }
@@ -559,7 +559,7 @@ SymbolMatch SemanticAnalyzer::findSymbolInModule(const std::string& modulePath,
 
   // Helper to search a single scope for all symbol types
   auto searchInScope = [&](SemanticScope* scope) -> std::optional<SymbolMatch> {
-    std::string fullPath = scope->modulePath;
+    std::string fullPath = scope->scopeKey;
     std::string libHash;
     if (fullPath.size() >= 2 && fullPath.front() == '$') {
       size_t endDollar = fullPath.find('$', 1);
@@ -1451,10 +1451,10 @@ sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
   std::map<std::string, std::pair<std::string, SemanticScope*>> candidates;
 
   auto addCandidate = [&](SemanticScope* scope) {
-    std::string visPath = getVisibleModulePath(scope->modulePath);
+    std::string visPath = getVisibleModulePath(scope->scopeKey);
     // Only add if not already present (first match for each visible path wins)
     if (candidates.find(visPath) == candidates.end()) {
-      candidates[visPath] = {scope->modulePath, scope};
+      candidates[visPath] = {scope->scopeKey, scope};
     }
   };
 
