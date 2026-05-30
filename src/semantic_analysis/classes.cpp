@@ -244,8 +244,8 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
 
   // Push a scope for class-level type parameter bindings
   enterScope(ScopeType::Class);
-  currentScope->scopeName =
-      mangledName;  // Set specialized class name for scope viewer
+  currentScope->scopeName = baseName;
+  currentScope->scopeKey = mangledName;
   addTypeParameterBindings(genericClassInfo->typeParameters, typeArgs);
 
   // Add fields with substituted types (skip if type already exists or already
