@@ -42,7 +42,7 @@ class Mutex {
         while (spin_count < 100) {
             var current = unsafe { _atomic_load_i32(_address_of<i32>(this.state)); };
             if (current == 0) {
-                // Lock appears free, try to acquire
+                // Lock appears free, try to acquire (set to 2 since we're in slow path)
                 var old = unsafe { _atomic_cmpxchg_i32(_address_of<i32>(this.state), 0, 2); };
                 if (old == 0) {
                     return;
@@ -51,26 +51,21 @@ class Mutex {
             spin_count = spin_count + 1;
         }
 
-        // Set state to 2 (locked with waiters) and wait
+        // Must wait - set state to 2 (locked with waiters) and block
         while (true) {
-            // If state is 1, change to 2 to indicate waiters
-            var old = unsafe { _atomic_cmpxchg_i32(_address_of<i32>(this.state), 1, 2); };
-            
-            // If state was 0, we got the lock
+            // Try to acquire lock directly (state 0 -> 2)
+            var old = unsafe { _atomic_cmpxchg_i32(_address_of<i32>(this.state), 0, 2); };
             if (old == 0) {
-                // Lock was free, acquire it
-                unsafe { _atomic_store_i32(_address_of<i32>(this.state), 2); };
+                // Got the lock
                 return;
             }
 
-            // Try to acquire if it's unlocked (state == 0)
-            old = unsafe { _atomic_cmpxchg_i32(_address_of<i32>(this.state), 0, 2); };
-            if (old == 0) {
-                return;
+            // Lock is held. If state is 1, change to 2 to mark waiters exist
+            if (old == 1) {
+                unsafe { _atomic_cmpxchg_i32(_address_of<i32>(this.state), 1, 2); };
             }
 
-            // State is 1 or 2 (locked), wait on futex
-            // Only wait if state is still 2 (locked with waiters)
+            // Wait until state changes (futex_wait only blocks if state == 2)
             unsafe { _futex_wait(_address_of<i32>(this.state), 2); };
         }
     }
