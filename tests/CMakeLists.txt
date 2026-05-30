@@ -14,6 +14,7 @@ add_executable(sun_tests
     test_classes.cpp
     test_compilation.cpp
     test_contiguous_buffer.cpp
+    test_debug.cpp
     test_enums.cpp
     test_errors.cpp
     test_file_io.cpp

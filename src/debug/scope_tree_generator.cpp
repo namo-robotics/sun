@@ -90,7 +90,7 @@ std::string ScopeTreeGenerator::generateJson(const SemanticScope& scope,
   out << "{\n";
 
   // Scope type
-  out << pad2 << "\"type\": \"" << scopeTypeToString(scope.type) << "\"";
+  out << pad2 << "\"type\": \"" << scopeTypeToString(scope.getType()) << "\"";
 
   // Always output scopeName and scopeKey for full transparency
   if (!scope.scopeName.empty()) {
@@ -102,15 +102,28 @@ std::string ScopeTreeGenerator::generateJson(const SemanticScope& scope,
         << pad2 << "\"scopeKey\": \"" << escapeJson(scope.scopeKey) << "\"";
   }
 
+  // For class/interface scopes, show baseName and mangledName
+  if ((scope.getType() == ScopeType::Class || scope.getType() == ScopeType::Interface) &&
+      !scope.classBaseName.empty()) {
+    out << ",\n"
+        << pad2 << "\"className\": \"" << escapeJson(scope.classBaseName)
+        << "\"";
+    if (!scope.classMangledName.empty()) {
+      out << ",\n"
+          << pad2 << "\"mangledName\": \"" << escapeJson(scope.classMangledName)
+          << "\"";
+    }
+  }
+
   // For function scopes, also show the function signature
-  if (scope.type == ScopeType::Function && !scope.functionSignature.empty()) {
+  if (scope.getType() == ScopeType::Function && !scope.functionSignature.empty()) {
     out << ",\n"
         << pad2 << "\"functionSignature\": \""
         << escapeJson(scope.functionSignature) << "\"";
   }
 
   // For function scopes, show the fully qualified mangled name
-  if (scope.type == ScopeType::Function &&
+  if (scope.getType() == ScopeType::Function &&
       !scope.functionName.baseName.empty()) {
     out << ",\n"
         << pad2 << "\"functionMangled\": \""

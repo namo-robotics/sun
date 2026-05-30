@@ -154,22 +154,22 @@ struct UsingImport {
 };
 
 // Forward declaration for scope pointer in ImportBinding
-struct SemanticScope;
+struct SemanticScopeBase;
 
 // Scope-based import binding — a reference to a symbol in another scope
 struct ImportBinding {
-  std::string localName;       // How the symbol is referred to locally ("Vec")
-  SemanticScope* sourceScope;  // Pointer to the scope it was imported from
-  std::string sourceName;      // Name in the source scope ("Vec")
+  std::string localName;  // How the symbol is referred to locally ("Vec")
+  SemanticScopeBase* sourceScope;  // Pointer to the scope it was imported from
+  std::string sourceName;          // Name in the source scope ("Vec")
   bool isWildcard;  // true for "using sun;" (localName/sourceName unused)
 
   ImportBinding() : sourceScope(nullptr), isWildcard(false) {}
-  ImportBinding(std::string local, SemanticScope* src, std::string srcName)
+  ImportBinding(std::string local, SemanticScopeBase* src, std::string srcName)
       : localName(std::move(local)),
         sourceScope(src),
         sourceName(std::move(srcName)),
         isWildcard(false) {}
-  static ImportBinding wildcard(SemanticScope* src) {
+  static ImportBinding wildcard(SemanticScopeBase* src) {
     ImportBinding b;
     b.sourceScope = src;
     b.isWildcard = true;
@@ -280,106 +280,206 @@ struct SpecializedFunctionInfo {
   std::shared_ptr<FunctionAST> specializedAST;  // The analyzed clone
 };
 
-// Scope object containing variables, type parameter bindings, and type aliases
-// All are lexically scoped just like variables
-struct SemanticScope {
-  ScopeType type = ScopeType::Global;
-  std::string scopeName;  // Display name (class name, source file, etc.)
+// Forward declarations
+struct SemanticScopeBase;
+struct GlobalScope;
+struct ModuleScope;
+struct ImportScope;
+struct FunctionScope;
+struct ClassScope;
+struct InterfaceScope;
+struct BlockScope;
+struct TypeParamsScope;
+
+// Alias for backward compatibility
+using SemanticScope = SemanticScopeBase;
+
+// ===================================================================
+// SemanticScopeBase - Base class for all scope types
+// Contains all fields for backward compatibility during incremental refactor.
+// ===================================================================
+struct SemanticScopeBase {
+  virtual ~SemanticScopeBase() = default;
+
+  // Get the scope type (virtual - each subclass returns its type)
+  virtual ScopeType getType() const = 0;
+
+  // ===== Identification (for persistent scopes) =====
+  std::string scopeName;  // Display name (module name, source file, etc.)
   std::string scopeKey;   // Lookup key / qualified path for symbol isolation
-  // For function scopes: the function signature (e.g., "outer(i32)")
-  // Used to create unique qualified names for nested functions in generic
-  // instantiations
-  std::string functionSignature;
-  // For function scopes: the qualified name of the function
-  sun::QualifiedName functionName;
-  // For function scopes: whether the function can throw (declared with ,
-  // IError)
-  bool functionCanThrow = false;
-  // Try block depth: incremented when entering a try block, decremented when
-  // exiting Used to check if we need to catch or propagate errors from calls
-  int tryBlockDepth = 0;
-  // Unsafe block depth: incremented when entering an unsafe block
-  // Used to check if unsafe operations (raw pointers, intrinsics) are allowed
-  int unsafeBlockDepth = 0;
-  // Whether this scope is in an unsafe context (inherited from parent for
-  // block scopes only - not inherited across function/module/import boundaries)
-  bool inUnsafeContext = false;
 
-  // ===== Symbol tables (persistent — serialized to .moon for module scopes)
+  // ===== Symbol tables (used by persistent scopes - Global/Module/Import)
   // =====
-
-  // Functions declared in this scope (indexed by signature and name)
   FunctionTable functions;
-  // Classes declared in this scope
   std::map<std::string, std::shared_ptr<sun::ClassType>> classes;
-  // Primary class definition ASTs (for partial class merging)
   std::map<std::string, ClassDefinitionAST*> classDefinitions;
-  // Generic class templates declared in this scope
   std::map<std::string, GenericClassInfo> genericClasses;
-  // Interfaces declared in this scope
   std::map<std::string, std::shared_ptr<sun::InterfaceType>> interfaces;
-  // Generic interface templates declared in this scope
   std::map<std::string, GenericInterfaceInfo> genericInterfaces;
-  // Enums declared in this scope
   std::map<std::string, std::shared_ptr<sun::EnumType>> enums;
-  // Generic function templates declared in this scope
   std::map<sun::QualifiedName, GenericFunctionInfo> genericFunctions;
-  // Child module scopes (for nested modules)
-  std::map<std::string, std::shared_ptr<SemanticScope>> childModules;
-  // Namespace-qualified variables: "sun_PI" -> VariableInfo
+  std::map<std::string, std::shared_ptr<SemanticScopeBase>> childModules;
   std::map<std::string, VariableInfo> namespacedVariables;
 
-  // ===== Transient state (not serialized) =====
-
+  // ===== Transient state (all scopes) =====
   std::map<std::string, VariableInfo> variables;
   std::map<std::string, sun::TypePtr> typeParameters;
   std::map<std::string, sun::TypePtr> typeAliases;
-  // Type narrowing from _is<T>(var) type guards in conditionals
-  // Maps variable name to narrowed type (interface or concrete type)
   std::map<std::string, sun::TypePtr> narrowedTypes;
-  // Using imports active in this scope (legacy string-based)
   std::vector<UsingImport> usingImports;
-  // Scope-based import bindings (new)
   std::vector<ImportBinding> importBindings;
+
   // Parent scope pointer (tree structure)
-  SemanticScope* parent = nullptr;
+  SemanticScopeBase* parent = nullptr;
   // Non-module child scopes (for scope tree traversal)
-  // Module children use childModules; this holds Block/Function/Import/Class
-  std::vector<std::shared_ptr<SemanticScope>> children;
+  std::vector<std::shared_ptr<SemanticScopeBase>> children;
+
   // True if this scope was loaded from an external .moon file
   bool isExternal = false;
 
-  SemanticScope() = default;
-  SemanticScope(ScopeType t) : type(t) {}
-  SemanticScope(ScopeType t, std::string name)
-      : type(t), scopeName(std::move(name)) {}
+  // ===== Function scope fields =====
+  std::string functionSignature;  // e.g., "outer(i32)"
+  sun::QualifiedName functionName;
+  bool functionCanThrow = false;
+  int tryBlockDepth = 0;
+  int unsafeBlockDepth = 0;
+  bool inUnsafeContext = false;
 
-  // Check if a symbol with the given name exists in this scope (any kind)
-  // Recurses into child module scopes.
+  // ===== Class/Interface scope fields =====
+  std::string classBaseName;     // Display name (e.g., "Vec")
+  std::string classMangledName;  // Full mangled name (e.g., "sun_Vec_i32")
+
+  // ===== Symbol lookup methods (delegate to persistent scope impl) =====
   bool hasSymbol(const std::string& name) const;
-
-  // Find a class by name in this scope or child module scopes
   std::shared_ptr<sun::ClassType> findClass(const std::string& name) const;
-  // Find a generic class by name in this scope or child module scopes
   const GenericClassInfo* findGenericClass(const std::string& name) const;
-  // Find an interface by name in this scope or child module scopes
   std::shared_ptr<sun::InterfaceType> findInterface(
       const std::string& name) const;
-  // Find a generic interface by name in this scope or child module scopes
   const GenericInterfaceInfo* findGenericInterface(
       const std::string& name) const;
-  // Find an enum by name in this scope or child module scopes
   std::shared_ptr<sun::EnumType> findEnum(const std::string& name) const;
-  // Find functions matching a name prefix in this scope or child module scopes
   void collectFunctions(const std::string& prefix,
                         std::vector<FunctionInfo>& results) const;
 
-  // Create a shallow clone of this scope's symbol tables.
-  // The clone has independent copies of all symbol maps but shares the
-  // underlying type objects (ClassType, InterfaceType, etc.).
-  // Parent pointer and transient state are NOT copied — caller sets those.
-  std::shared_ptr<SemanticScope> cloneSymbols(SemanticScope* newParent) const;
+  // Clone symbol tables (for diamond import handling)
+  std::shared_ptr<SemanticScopeBase> cloneSymbols(
+      SemanticScopeBase* newParent) const;
+
+  // ===== Downcasting helpers =====
+  FunctionScope* asFunction();
+  const FunctionScope* asFunction() const;
+  ClassScope* asClass();
+  const ClassScope* asClass() const;
+  InterfaceScope* asInterface();
+  const InterfaceScope* asInterface() const;
+  BlockScope* asBlock();
+  const BlockScope* asBlock() const;
+
+  // Check if this is a persistent scope type
+  bool isPersistent() const {
+    auto t = getType();
+    return t == ScopeType::Global || t == ScopeType::Module ||
+           t == ScopeType::Import;
+  }
 };
+
+// ===================================================================
+// GlobalScope - Top-level program scope
+// ===================================================================
+struct GlobalScope : SemanticScopeBase {
+  ScopeType getType() const override { return ScopeType::Global; }
+};
+
+// ===================================================================
+// ModuleScope - Module/namespace scope
+// ===================================================================
+struct ModuleScope : SemanticScopeBase {
+  ScopeType getType() const override { return ScopeType::Module; }
+};
+
+// ===================================================================
+// ImportScope - Wraps an imported file's declarations
+// ===================================================================
+struct ImportScope : SemanticScopeBase {
+  ScopeType getType() const override { return ScopeType::Import; }
+};
+
+// ===================================================================
+// FunctionScope - Function or lambda body scope
+// ===================================================================
+struct FunctionScope : SemanticScopeBase {
+  ScopeType getType() const override { return ScopeType::Function; }
+};
+
+// ===================================================================
+// ClassScope - Class definition scope (for method analysis)
+// ===================================================================
+struct ClassScope : SemanticScopeBase {
+  ScopeType getType() const override { return ScopeType::Class; }
+};
+
+// ===================================================================
+// InterfaceScope - Interface definition scope
+// ===================================================================
+struct InterfaceScope : SemanticScopeBase {
+  ScopeType getType() const override { return ScopeType::Interface; }
+};
+
+// ===================================================================
+// BlockScope - Block scope (if, while, for, etc.)
+// ===================================================================
+struct BlockScope : SemanticScopeBase {
+  ScopeType getType() const override { return ScopeType::Block; }
+};
+
+// ===================================================================
+// TypeParamsScope - Type parameter binding scope (for generic instantiation)
+// ===================================================================
+struct TypeParamsScope : SemanticScopeBase {
+  ScopeType getType() const override { return ScopeType::TypeParams; }
+};
+
+// ===================================================================
+// Inline downcasting implementations
+// ===================================================================
+inline FunctionScope* SemanticScopeBase::asFunction() {
+  if (getType() == ScopeType::Function)
+    return static_cast<FunctionScope*>(this);
+  return nullptr;
+}
+inline const FunctionScope* SemanticScopeBase::asFunction() const {
+  if (getType() == ScopeType::Function)
+    return static_cast<const FunctionScope*>(this);
+  return nullptr;
+}
+inline ClassScope* SemanticScopeBase::asClass() {
+  if (getType() == ScopeType::Class) return static_cast<ClassScope*>(this);
+  return nullptr;
+}
+inline const ClassScope* SemanticScopeBase::asClass() const {
+  if (getType() == ScopeType::Class)
+    return static_cast<const ClassScope*>(this);
+  return nullptr;
+}
+inline InterfaceScope* SemanticScopeBase::asInterface() {
+  if (getType() == ScopeType::Interface)
+    return static_cast<InterfaceScope*>(this);
+  return nullptr;
+}
+inline const InterfaceScope* SemanticScopeBase::asInterface() const {
+  if (getType() == ScopeType::Interface)
+    return static_cast<const InterfaceScope*>(this);
+  return nullptr;
+}
+inline BlockScope* SemanticScopeBase::asBlock() {
+  if (getType() == ScopeType::Block) return static_cast<BlockScope*>(this);
+  return nullptr;
+}
+inline const BlockScope* SemanticScopeBase::asBlock() const {
+  if (getType() == ScopeType::Block)
+    return static_cast<const BlockScope*>(this);
+  return nullptr;
+}
 
 // Helper to check if a module name represents a library scope ($hash$)
 inline bool isLibraryScope(const std::string& name) {

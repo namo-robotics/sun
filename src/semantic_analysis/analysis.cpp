@@ -654,8 +654,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
           // Enter a Class scope to contain extension method scopes
           enterScope(ScopeType::Class);
-          currentScope->scopeName = baseName;
-          currentScope->scopeKey = existingClass->getMangledName();
+          currentScope->classBaseName = baseName;
+          currentScope->classMangledName = existingClass->getMangledName();
 
           // Register all extension methods first
           for (const auto& methodDecl : classDef.getMethods()) {
@@ -868,8 +868,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
       // Enter a Class scope to contain all method scopes in the tree
       enterScope(ScopeType::Class);
-      currentScope->scopeName = baseName;
-      currentScope->scopeKey = mangledClassName;
+      currentScope->classBaseName = baseName;
+      currentScope->classMangledName = mangledClassName;
 
       // PASS 1: Register all methods first (so methods can call each other)
       for (const auto& methodDecl : classDef.getMethods()) {
@@ -1058,8 +1058,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
       // Enter Interface scope to contain method scopes
       enterScope(ScopeType::Interface);
-      currentScope->scopeName = interfaceDef.getName();
-      currentScope->scopeKey = interfaceName;
+      currentScope->classBaseName = interfaceDef.getName();
+      currentScope->classMangledName = interfaceName;
 
       // Analyze default method bodies
       for (const auto& methodDecl : interfaceDef.getMethods()) {

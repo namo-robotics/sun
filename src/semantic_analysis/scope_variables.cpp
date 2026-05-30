@@ -84,9 +84,24 @@ void SemanticScope::collectFunctions(const std::string& prefix,
 // Scope management - tree-based scopes
 // -------------------------------------------------------------------
 
-std::shared_ptr<SemanticScope> SemanticScope::cloneSymbols(
-    SemanticScope* newParent) const {
-  auto clone = std::make_shared<SemanticScope>(type, scopeName);
+std::shared_ptr<SemanticScopeBase> SemanticScopeBase::cloneSymbols(
+    SemanticScopeBase* newParent) const {
+  std::shared_ptr<SemanticScopeBase> clone;
+  switch (getType()) {
+    case ScopeType::Global:
+      clone = std::make_shared<GlobalScope>();
+      break;
+    case ScopeType::Module:
+      clone = std::make_shared<ModuleScope>();
+      break;
+    case ScopeType::Import:
+      clone = std::make_shared<ImportScope>();
+      break;
+    default:
+      // Should never happen - only persistent scopes can clone
+      return nullptr;
+  }
+  clone->scopeName = scopeName;
   clone->scopeKey = scopeKey;
   clone->parent = newParent;
   // Copy all symbol tables (shallow — shares type objects)
@@ -107,12 +122,38 @@ std::shared_ptr<SemanticScope> SemanticScope::cloneSymbols(
 }
 
 void SemanticAnalyzer::enterScope(ScopeType type) {
-  auto child = std::make_shared<SemanticScope>(type);
-  child->parent = currentScope;
-  // Inherit unsafe context only for block scopes (not function/module/import)
-  if (type == ScopeType::Block) {
-    child->inUnsafeContext = currentScope->inUnsafeContext;
+  std::shared_ptr<SemanticScopeBase> child;
+  switch (type) {
+    case ScopeType::Global:
+      child = std::make_shared<GlobalScope>();
+      break;
+    case ScopeType::Module:
+      child = std::make_shared<ModuleScope>();
+      break;
+    case ScopeType::Import:
+      child = std::make_shared<ImportScope>();
+      break;
+    case ScopeType::Function:
+      child = std::make_shared<FunctionScope>();
+      break;
+    case ScopeType::Class:
+      child = std::make_shared<ClassScope>();
+      break;
+    case ScopeType::Interface:
+      child = std::make_shared<InterfaceScope>();
+      break;
+    case ScopeType::Block: {
+      auto block = std::make_shared<BlockScope>();
+      // Inherit unsafe context only for block scopes
+      block->inUnsafeContext = currentScope->inUnsafeContext;
+      child = block;
+      break;
+    }
+    case ScopeType::TypeParams:
+      child = std::make_shared<TypeParamsScope>();
+      break;
   }
+  child->parent = currentScope;
   currentScope->children.push_back(child);
   currentScope = child.get();
 }
@@ -121,12 +162,14 @@ void SemanticAnalyzer::enterModuleScope(const std::string& moduleName) {
   // Create or reuse a child module scope in the current scope's tree
   auto& child = currentScope->childModules[moduleName];
   if (!child) {
-    child = std::make_shared<SemanticScope>(ScopeType::Module, moduleName);
-    child->parent = currentScope;
+    auto modScope = std::make_shared<ModuleScope>();
+    modScope->scopeName = moduleName;
+    modScope->parent = currentScope;
     // Compute full dot-separated scope key path
     std::string parentPath = currentScope->scopeKey;
-    child->scopeKey =
+    modScope->scopeKey =
         parentPath.empty() ? moduleName : parentPath + "." + moduleName;
+    child = modScope;
   }
   currentScope = child.get();
 }
@@ -134,13 +177,13 @@ void SemanticAnalyzer::enterModuleScope(const std::string& moduleName) {
 void SemanticAnalyzer::enterFunctionScope(const std::string& funcSig,
                                           const sun::QualifiedName& funcName,
                                           bool canThrow) {
-  auto child = std::make_shared<SemanticScope>(ScopeType::Function);
-  child->functionSignature = funcSig;
-  child->functionName = funcName;
-  child->functionCanThrow = canThrow;
-  child->parent = currentScope;
-  currentScope->children.push_back(child);
-  currentScope = child.get();
+  auto funcScope = std::make_shared<FunctionScope>();
+  funcScope->functionSignature = funcSig;
+  funcScope->functionName = funcName;
+  funcScope->functionCanThrow = canThrow;
+  funcScope->parent = currentScope;
+  currentScope->children.push_back(funcScope);
+  currentScope = funcScope.get();
 }
 
 void SemanticAnalyzer::enterImportScope(const std::string& sourceFile,
@@ -157,10 +200,10 @@ void SemanticAnalyzer::enterImportScope(const std::string& sourceFile,
     return;
   }
 
-  auto child = std::make_shared<SemanticScope>(ScopeType::Import);
+  auto importScope = std::make_shared<ImportScope>();
   // Store user-friendly import path in scopeName for display
-  child->scopeName = sourceFile;
-  child->parent = currentScope;
+  importScope->scopeName = sourceFile;
+  importScope->parent = currentScope;
 
   // For .sun imports (scopeKey starts with $import_), don't add to scopeKey
   // to avoid creating redundant prefixes during bundle compilation.
@@ -168,15 +211,15 @@ void SemanticAnalyzer::enterImportScope(const std::string& sourceFile,
   // the scopeKey for symbol isolation between library versions.
   if (scopeKey.starts_with("$import_")) {
     // .sun import - no scope key prefix (shares namespace with importer)
-    child->scopeKey = "";
+    importScope->scopeKey = "";
   } else {
     // .moon import - use content hash for symbol isolation
-    child->scopeKey = scopeKey;
+    importScope->scopeKey = scopeKey;
   }
 
-  currentScope->childModules[scopeKey] = child;
-  currentScope = child.get();
-  importScopesByKey_[scopeKey] = child;
+  currentScope->childModules[scopeKey] = importScope;
+  currentScope = importScope.get();
+  importScopesByKey_[scopeKey] = importScope;
 }
 
 void SemanticAnalyzer::exitScope() {
@@ -203,7 +246,8 @@ std::string SemanticAnalyzer::getCurrentScopeKey() const {
   // Walk up to find the nearest Module or Import scope with a scopeKey
   // The scopeKey field already accumulates the full dot-separated path
   for (auto* s = currentScope; s != nullptr; s = s->parent) {
-    if ((s->type == ScopeType::Module || s->type == ScopeType::Import) &&
+    if ((s->getType() == ScopeType::Module ||
+         s->getType() == ScopeType::Import) &&
         !s->scopeKey.empty()) {
       return s->scopeKey;
     }
@@ -233,7 +277,7 @@ std::string SemanticAnalyzer::getCurrentFunctionContext() const {
     ancestors.push_back(s);
   }
   for (auto it = ancestors.rbegin(); it != ancestors.rend(); ++it) {
-    if ((*it)->type == ScopeType::Function &&
+    if ((*it)->getType() == ScopeType::Function &&
         !(*it)->functionSignature.empty()) {
       if (!context.empty()) context += "::";
       context += (*it)->functionSignature;
@@ -245,7 +289,7 @@ std::string SemanticAnalyzer::getCurrentFunctionContext() const {
 bool SemanticAnalyzer::isInThrowingFunction() const {
   // Find the nearest enclosing function scope and check if it can throw
   for (auto* s = currentScope; s != nullptr; s = s->parent) {
-    if (s->type == ScopeType::Function) {
+    if (s->getType() == ScopeType::Function) {
       return s->functionCanThrow;
     }
   }
@@ -259,7 +303,7 @@ bool SemanticAnalyzer::isInTryBlock() const {
       return true;
     }
     // Stop at function boundary - try blocks don't cross functions
-    if (s->type == ScopeType::Function) {
+    if (s->getType() == ScopeType::Function) {
       break;
     }
   }
@@ -295,9 +339,9 @@ void SemanticAnalyzer::exitUnsafeBlock() {
     if (currentScope->unsafeBlockDepth == 0) {
       // Restore based on parent (if we inherited from parent, stay in unsafe)
       // For function/module/import scopes, parent's context doesn't matter
-      currentScope->inUnsafeContext = currentScope->parent &&
-                                      currentScope->type == ScopeType::Block &&
-                                      currentScope->parent->inUnsafeContext;
+      currentScope->inUnsafeContext =
+          currentScope->parent && currentScope->getType() == ScopeType::Block &&
+          currentScope->parent->inUnsafeContext;
     }
   }
 }
@@ -743,12 +787,14 @@ void SemanticAnalyzer::declareVariable(const std::string& name,
   }
   // Check for shadowing of global/module variables
   for (auto* s = currentScope; s != nullptr; s = s->parent) {
-    if (s->type == ScopeType::Global || s->type == ScopeType::Module) {
+    if (s->getType() == ScopeType::Global ||
+        s->getType() == ScopeType::Module) {
       if (s->variables.contains(name)) {
-        logAndThrowError(
-            "Cannot shadow " +
-            std::string(s->type == ScopeType::Global ? "global" : "module") +
-            " variable '" + name + "'");
+        logAndThrowError("Cannot shadow " +
+                         std::string(s->getType() == ScopeType::Global
+                                         ? "global"
+                                         : "module") +
+                         " variable '" + name + "'");
       }
     }
   }
@@ -764,7 +810,7 @@ VariableInfo* SemanticAnalyzer::lookupVariable(const std::string& name) {
     }
     // Search direct import-scope children (mirrors lookupFunction behavior)
     for (const auto& [childName, child] : s->childModules) {
-      if (child && child->type == ScopeType::Import) {
+      if (child && child->getType() == ScopeType::Import) {
         auto childFound = child->variables.find(name);
         if (childFound != child->variables.end()) {
           return &childFound->second;
@@ -918,14 +964,14 @@ const GenericFunctionInfo* SemanticAnalyzer::lookupGenericFunction(
     }
     // Search direct import-scope children (one level of transparency)
     for (const auto& [modName, child] : s->childModules) {
-      if (!child || child->type != ScopeType::Import) continue;
+      if (!child || child->getType() != ScopeType::Import) continue;
       auto childFound = child->genericFunctions.find(qname);
       if (childFound != child->genericFunctions.end()) {
         return &childFound->second;
       }
       // Also search import scope's non-import children (modules within)
       for (const auto& [subName, subChild] : child->childModules) {
-        if (!subChild || subChild->type == ScopeType::Import) continue;
+        if (!subChild || subChild->getType() == ScopeType::Import) continue;
         auto subFound = subChild->genericFunctions.find(qname);
         if (subFound != subChild->genericFunctions.end()) {
           return &subFound->second;
@@ -977,14 +1023,14 @@ std::vector<FunctionInfo> SemanticAnalyzer::getAllFunctions(
     }
     // Search direct import-scope children (one level of transparency)
     for (const auto& [childName, child] : s->childModules) {
-      if (child && child->type == ScopeType::Import) {
+      if (child && child->getType() == ScopeType::Import) {
         child->collectFunctions(prefix, allResults);
         if (!nestedPrefix.empty()) {
           child->collectFunctions(nestedPrefix, allResults);
         }
         // Also search import scope's module children
         for (const auto& [modName, modChild] : child->childModules) {
-          if (modChild && modChild->type == ScopeType::Module) {
+          if (modChild && modChild->getType() == ScopeType::Module) {
             modChild->collectFunctions(prefix, allResults);
             if (!nestedPrefix.empty()) {
               modChild->collectFunctions(nestedPrefix, allResults);
@@ -1151,12 +1197,12 @@ std::optional<FunctionInfo> SemanticAnalyzer::lookupFunction(
     if (result) return result;
     // Search direct import-scope children (one level of transparency)
     for (const auto& [childName, child] : s->childModules) {
-      if (child && child->type == ScopeType::Import) {
+      if (child && child->getType() == ScopeType::Import) {
         result = findInScope(*child);
         if (result) return result;
         // Also search import scope's module children
         for (const auto& [modName, modChild] : child->childModules) {
-          if (modChild && modChild->type == ScopeType::Module) {
+          if (modChild && modChild->getType() == ScopeType::Module) {
             result = findInScope(*modChild);
             if (result) return result;
           }
@@ -1386,7 +1432,7 @@ const FunctionInfo* SemanticAnalyzer::lookupQualifiedFunction(
       if (!overloads->empty()) return overloads->front();
     }
     for (const auto& [modName, child] : scope.childModules) {
-      if (child && child->type != ScopeType::Import) {
+      if (child && child->getType() != ScopeType::Import) {
         auto* result = searchScope(*child, lookupName);
         if (result) return result;
       }
@@ -1399,7 +1445,7 @@ const FunctionInfo* SemanticAnalyzer::lookupQualifiedFunction(
     auto* result = searchScope(*s, qualifiedName);
     if (result) return result;
     for (const auto& [childName, child] : s->childModules) {
-      if (child && child->type == ScopeType::Import) {
+      if (child && child->getType() == ScopeType::Import) {
         result = searchScope(*child, qualifiedName);
         if (result) return result;
       }
@@ -1491,7 +1537,7 @@ sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
     rootScope = rootScope->parent;
   }
   // Root scope type should be Global - check for symbol defined there directly
-  if (rootScope->type == ScopeType::Global && rootScope->hasSymbol(name)) {
+  if (rootScope->getType() == ScopeType::Global && rootScope->hasSymbol(name)) {
     // Add as global (empty visible path)
     if (candidates.find("") == candidates.end()) {
       candidates[""] = {"", nullptr};

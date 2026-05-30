@@ -21,8 +21,8 @@ void SemanticAnalyzer::registerClass(const std::string& name,
     // Also register in nearest persistent ancestor so the class survives
     // transient scope deletion (Class/Function scopes are deleted on exit)
     for (auto* s = currentScope->parent; s != nullptr; s = s->parent) {
-      if (s->type == ScopeType::Module || s->type == ScopeType::Import ||
-          s->type == ScopeType::Global) {
+      if (s->getType() == ScopeType::Module || s->getType() == ScopeType::Import ||
+          s->getType() == ScopeType::Global) {
         s->classes[name] = classType;
         break;
       }
@@ -40,11 +40,11 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::lookupClass(
     // Also recurse into their module children to find types inside modules
     // of imported files (e.g., module sun { class X {} } in imported file)
     for (const auto& [childName, child] : s->childModules) {
-      if (child && child->type == ScopeType::Import) {
+      if (child && child->getType() == ScopeType::Import) {
         result = child->findClass(name);
         if (result) return result;
         for (const auto& [modName, modChild] : child->childModules) {
-          if (modChild && modChild->type == ScopeType::Module) {
+          if (modChild && modChild->getType() == ScopeType::Module) {
             result = modChild->findClass(name);
             if (result) return result;
           }
@@ -98,11 +98,11 @@ const GenericClassInfo* SemanticAnalyzer::lookupGenericClass(
     if (result) return result;
     // Search direct import-scope children (one level of transparency)
     for (const auto& [childName, child] : s->childModules) {
-      if (child && child->type == ScopeType::Import) {
+      if (child && child->getType() == ScopeType::Import) {
         result = child->findGenericClass(name);
         if (result) return result;
         for (const auto& [modName, modChild] : child->childModules) {
-          if (modChild && modChild->type == ScopeType::Module) {
+          if (modChild && modChild->getType() == ScopeType::Module) {
             result = modChild->findGenericClass(name);
             if (result) return result;
           }
@@ -244,8 +244,8 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
 
   // Push a scope for class-level type parameter bindings
   enterScope(ScopeType::Class);
-  currentScope->scopeName = baseName;
-  currentScope->scopeKey = mangledName;
+  currentScope->classBaseName = baseName;
+  currentScope->classMangledName = mangledName;
   addTypeParameterBindings(genericClassInfo->typeParameters, typeArgs);
 
   // Add fields with substituted types (skip if type already exists or already

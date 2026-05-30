@@ -30,8 +30,7 @@ class SemanticAnalyzer {
   std::shared_ptr<sun::TypeRegistry> typeRegistry;
 
   // Scope tree — rootScope is the global scope, currentScope walks the tree
-  std::shared_ptr<SemanticScope> rootScope =
-      std::make_shared<SemanticScope>(ScopeType::Global);
+  std::shared_ptr<GlobalScope> rootScope = std::make_shared<GlobalScope>();
   SemanticScope* currentScope = rootScope.get();
 
   // Track classes currently being instantiated (to detect/break mutual
@@ -51,7 +50,7 @@ class SemanticAnalyzer {
 
   // Global map of import scope keys to scope shared_ptrs — enables scope
   // cloning for diamond imports regardless of where in the tree they appear.
-  std::unordered_map<std::string, std::shared_ptr<SemanticScope>>
+  std::unordered_map<std::string, std::shared_ptr<SemanticScopeBase>>
       importScopesByKey_;
 
   // Import scopes whose bodies have been fully analyzed.
@@ -70,7 +69,7 @@ class SemanticAnalyzer {
   // True when not inside any function scope (i.e. at module/global level)
   bool isAtModuleLevel() const {
     for (auto* s = currentScope; s != nullptr; s = s->parent)
-      if (s->type == ScopeType::Function) return false;
+      if (s->getType() == ScopeType::Function) return false;
     return true;
   }
 
