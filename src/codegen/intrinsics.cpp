@@ -492,7 +492,7 @@ Value* CodegenVisitor::codegenIsIntrinsic(
           result = true;
         } else {
           // Check for exact class name match
-          result = classType->getName() == targetName;
+          result = classType->getMangledName() == targetName;
         }
       } else {
         // For non-class types, check exact type name match

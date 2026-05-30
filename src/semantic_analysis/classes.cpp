@@ -244,6 +244,8 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
 
   // Push a scope for class-level type parameter bindings
   enterScope(ScopeType::Class);
+  currentScope->scopeName =
+      mangledName;  // Set specialized class name for scope viewer
   addTypeParameterBindings(genericClassInfo->typeParameters, typeArgs);
 
   // Add fields with substituted types (skip if type already exists or already
@@ -641,7 +643,8 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
     auto* genericInfo = lookupGenericClass(baseName);
     if (genericInfo && genericInfo->AST) {
       // Get the specialized class AST - this is what codegen will process
-      auto specAST = genericInfo->AST->getSpecialization(classType->getName());
+      auto specAST =
+          genericInfo->AST->getSpecialization(classType->getMangledName());
       if (specAST) {
         classDef = specAST.get();
       } else {
@@ -821,11 +824,11 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
     auto* genericInfo = lookupGenericClass(baseName);
     if (genericInfo && genericInfo->AST &&
         genericInfo->AST->hasQualifiedName()) {
-      modulePrefix = genericInfo->AST->getQualifiedNameInfo().modulePath;
+      modulePrefix = genericInfo->AST->getQualifiedNameInfo().scopeKey;
     }
   }
   if (modulePrefix.empty()) {
-    const std::string& className = classType->getName();
+    const std::string& className = classType->getMangledName();
     size_t underscorePos = className.find('_');
     if (underscorePos != std::string::npos) {
       modulePrefix = className.substr(0, underscorePos);
@@ -849,7 +852,8 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   std::string methodSig = getFunctionSignature(mangledName, paramTypes);
 
   // Enter method scope and declare parameters
-  enterFunctionScope(methodSig, sun::QualifiedName("", "", methodName),
+  enterFunctionScope(methodSig,
+                     sun::QualifiedName(modulePrefix, "", mangledName),
                      proto.canThrow());
 
   // Declare 'this' parameter

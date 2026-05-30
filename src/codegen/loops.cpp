@@ -220,7 +220,7 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
   std::string iterableTypeName;
   std::shared_ptr<sun::ClassType> iterableClassType;
   if (auto ct = std::dynamic_pointer_cast<sun::ClassType>(iterableType)) {
-    iterableTypeName = ct->getName();
+    iterableTypeName = ct->getMangledName();
     iterableClassType = ct;
   } else {
     logAndThrowError(
@@ -274,7 +274,7 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
         iterMethod->returnType->isClass()) {
       iteratorTypeName =
           static_cast<const sun::ClassType*>(iterMethod->returnType.get())
-              ->getName();
+              ->getMangledName();
     } else {
       // Fallback: extract from LLVM struct name
       StringRef structName = iterStructType->getName();

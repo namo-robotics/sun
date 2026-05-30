@@ -191,7 +191,7 @@ void SemanticAnalyzer::exitScope() {
 std::string SemanticAnalyzer::getCurrentModulePrefix() const {
   // Find the nearest scope with a scope key and mangle it to underscore form
   // scopeKey is pre-computed (e.g., "$hash$.sun") so we just convert dots
-  std::string path = getCurrentModulePath();
+  std::string path = getCurrentScopeKey();
   if (path.empty()) return "";
   for (char& c : path) {
     if (c == '.') c = '_';
@@ -199,7 +199,7 @@ std::string SemanticAnalyzer::getCurrentModulePrefix() const {
   return path + "_";
 }
 
-std::string SemanticAnalyzer::getCurrentModulePath() const {
+std::string SemanticAnalyzer::getCurrentScopeKey() const {
   // Walk up to find the nearest Module or Import scope with a scopeKey
   // The scopeKey field already accumulates the full dot-separated path
   for (auto* s = currentScope; s != nullptr; s = s->parent) {
@@ -215,7 +215,7 @@ sun::QualifiedName SemanticAnalyzer::makeQualifiedName(
     const std::string& baseName) const {
   // Module path includes library hash for moon imports (library scope uses
   // hash as its module name, e.g., "$hash$.sun.submodule")
-  return sun::QualifiedName(getCurrentModulePath(), baseName);
+  return sun::QualifiedName(getCurrentScopeKey(), baseName);
 }
 
 std::string SemanticAnalyzer::qualifyNameInCurrentModule(
@@ -888,7 +888,7 @@ void SemanticAnalyzer::registerFunction(const std::string& name,
 
 const GenericFunctionInfo* SemanticAnalyzer::lookupGenericFunction(
     const std::string& name) const {
-  std::string modPath = getCurrentModulePath();
+  std::string modPath = getCurrentScopeKey();
 
   // Build QualifiedName with current module path
   sun::QualifiedName qname(modPath, "", name);
@@ -1458,7 +1458,7 @@ sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
     }
   };
 
-  std::string modulePath = getCurrentModulePath();
+  std::string modulePath = getCurrentScopeKey();
   std::string visiblePath = getVisibleModulePath(modulePath);
 
   // 1. If inside a module, check the module scope hierarchy (self + parents)

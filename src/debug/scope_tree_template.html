@@ -216,7 +216,6 @@
             if (scope.scopeName) parts.push(`scopeName=${escapeHtml(scope.scopeName)}`);
             if (scope.scopeKey) parts.push(`scopeKey=${escapeHtml(scope.scopeKey)}`);
             if (scope.functionSignature) parts.push(`signature=${escapeHtml(scope.functionSignature)}`);
-            if (scope.functionMangled) parts.push(`mangled=${escapeHtml(scope.functionMangled)}`);
             header.innerHTML = parts.join(', ');
 
             // Badges

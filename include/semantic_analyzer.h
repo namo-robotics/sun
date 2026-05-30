@@ -299,7 +299,7 @@ class SemanticAnalyzer {
 
   // Get the current module path in display form (dot-separated)
   // e.g., inside "module A { module B { } }", returns "A.B"
-  std::string getCurrentModulePath() const;
+  std::string getCurrentScopeKey() const;
 
   // Create a QualifiedName for a symbol in the current module scope
   // Preserves module path in display form for proper error messages

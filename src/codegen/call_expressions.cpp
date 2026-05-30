@@ -116,7 +116,7 @@ Value* CodegenVisitor::createInterfaceFatPointer(
     sun::InterfaceType* ifaceType) {
   // Look up the vtable for this (class, interface) pair
   auto vtableIt =
-      vtableGlobals.find({classType->getName(), ifaceType->getName()});
+      vtableGlobals.find({classType->getMangledName(), ifaceType->getName()});
   if (vtableIt == vtableGlobals.end()) {
     logAndThrowError("Vtable not found for class " +
                      classType->getDisplayName() + " implementing interface " +
@@ -789,9 +789,10 @@ Value* CodegenVisitor::codegenMethodCall(const CallExprAST& expr,
 
     if (pointeeType && pointeeType->isClass()) {
       auto* cls = static_cast<sun::ClassType*>(pointeeType.get());
-      auto registeredClass = typeRegistry->getClass(cls->getName());
+      auto registeredClass = typeRegistry->getClass(cls->getMangledName());
       if (!registeredClass) {
-        logAndThrowError("Class not found in type registry: " + cls->getName());
+        logAndThrowError("Class not found in type registry: " +
+                         cls->getMangledName());
         return nullptr;
       }
       objectType = registeredClass;

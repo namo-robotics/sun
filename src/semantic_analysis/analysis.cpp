@@ -716,10 +716,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
         // Set qualified name on AST for codegen (source name stays for errors)
         classDef.setQualifiedName(qualifiedClass);
       }
-      std::string className = qualifiedClass.mangled();
+      std::string mangledClassName = qualifiedClass.mangled();
 
       // Forbid redefinition of class in same module (depth 0)
-      if (importScopeDepth_ == 0 && definedSymbols_.count(className)) {
+      if (importScopeDepth_ == 0 && definedSymbols_.count(mangledClassName)) {
         logAndThrowError("Redefinition of class '" + baseName + "'",
                          classDef.getLocation());
       }
@@ -791,9 +791,9 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       }
 
       // Create the class type with the qualified name
-      auto classType = typeRegistry->getClass(className);
+      auto classType = typeRegistry->getClass(mangledClassName);
       // Store the user-written base name for error messages
-      if (className != baseName) {
+      if (mangledClassName != baseName) {
         classType->setBaseName(baseName);
       }
 
@@ -905,6 +905,12 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // PASS 2: Analyze all method bodies
       for (size_t i = 0; i < classDef.getMethods().size(); ++i) {
         const auto& methodDecl = classDef.getMethods()[i];
+        // Set qualified name: modulePath for module, className for class
+        // context, method name as base
+        PrototypeAST& proto =
+            const_cast<PrototypeAST&>(methodDecl.function->getProto());
+        proto.setQualifiedName(sun::QualifiedName(
+            qualifiedClass.scopeKey, mangledClassName, proto.getName()));
         analyzeFunction(*methodDecl.function);
       }
 
@@ -918,7 +924,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
       // Track symbol for redefinition detection
       if (importScopeDepth_ == 0) {
-        definedSymbols_.insert(className);
+        definedSymbols_.insert(mangledClassName);
       }
 
       // Store primary AST for partial class merging (if a partial appears
@@ -1536,8 +1542,8 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
     }
     genInfo.params = proto.getArgs();
     // Build QualifiedName with module path and function context
-    sun::QualifiedName qname(getCurrentModulePath(),
-                             getCurrentFunctionContext(), proto.getName());
+    sun::QualifiedName qname(getCurrentScopeKey(), getCurrentFunctionContext(),
+                             proto.getName());
     currentScope->genericFunctions[qname] = genInfo;
   }
 
@@ -1946,14 +1952,14 @@ void SemanticAnalyzer::lazyParseAndAnalyzeMethod(
       auto* genericInfo = lookupGenericClass(lookupName);
       if (genericInfo && genericInfo->AST &&
           genericInfo->AST->hasQualifiedName()) {
-        modulePath = genericInfo->AST->getQualifiedNameInfo().modulePath;
+        modulePath = genericInfo->AST->getQualifiedNameInfo().scopeKey;
       }
     }
 
     // For non-specialized classes, use the first underscore-separated segment
     // as a fallback (works for "sun_HeapAllocator" -> "sun")
     if (modulePath.empty()) {
-      const std::string& className = classType->getName();
+      const std::string& className = classType->getMangledName();
       size_t underscorePos = className.find('_');
       if (underscorePos != std::string::npos) {
         modulePrefix = className.substr(0, underscorePos);
@@ -1999,7 +2005,9 @@ void SemanticAnalyzer::lazyParseAndAnalyzeMethod(
   }
   std::string methodSig = getFunctionSignature(
       classType->getMangledMethodName(proto.getName()), substitutedParamTypes);
-  enterFunctionScope(methodSig, sun::QualifiedName("", "", proto.getName()),
+  std::string mangledMethodName =
+      classType->getMangledMethodName(proto.getName());
+  enterFunctionScope(methodSig, sun::QualifiedName("", "", mangledMethodName),
                      proto.canThrow());
   if (classType) {
     declareVariable("this", classType, /*isParam=*/true);

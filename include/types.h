@@ -890,7 +890,7 @@ class ScopeMethodTable {
 // Generic classes have type parameters (e.g., class List<T>)
 // Specialized classes have type arguments (e.g., List<i32>)
 class ClassType : public Type {
-  std::string name;  // Fully qualified name (e.g., "$hash$_sun_Vec")
+  std::string mangledName;  // Fully qualified name (e.g., "$hash$_sun_Vec")
   std::string
       baseName_;  // User-written base name (e.g., "Unique") for error messages
   std::vector<std::string>
@@ -907,25 +907,26 @@ class ClassType : public Type {
   mutable llvm::StructType* cachedLLVMType = nullptr;
 
  public:
-  ClassType(std::string className) : name(std::move(className)) {}
+  ClassType(std::string className) : mangledName(std::move(className)) {}
 
   // Constructor for generic class definition
   ClassType(std::string className, std::vector<std::string> typeParams)
-      : name(std::move(className)), typeParameters(std::move(typeParams)) {}
+      : mangledName(std::move(className)),
+        typeParameters(std::move(typeParams)) {}
 
   // Constructor for specialized generic class
   ClassType(std::string mangledName, std::string baseName,
             std::vector<TypePtr> typeArgs)
-      : name(std::move(mangledName)),
+      : mangledName(std::move(mangledName)),
         typeArguments(std::move(typeArgs)),
         baseGenericName(std::move(baseName)) {}
 
   Kind getKind() const override { return Kind::Class; }
-  const std::string& getName() const { return name; }
+  const std::string& getMangledName() const { return mangledName; }
 
   // Base name accessors (user-written name for error messages)
   const std::string& getBaseName() const {
-    return baseName_.empty() ? name : baseName_;
+    return baseName_.empty() ? mangledName : baseName_;
   }
   void setBaseName(std::string bn) { baseName_ = std::move(bn); }
   bool hasBaseName() const { return !baseName_.empty(); }
@@ -944,7 +945,7 @@ class ClassType : public Type {
         if (base[i] == '_') base[i] = '.';
       }
     } else {
-      base = name;
+      base = mangledName;
       for (size_t i = 0; i < base.size(); ++i) {
         if (base[i] == '_') base[i] = '.';
       }
@@ -1036,7 +1037,7 @@ class ClassType : public Type {
     }
     if (isGenericDefinition()) {
       // Show generic definition like "List<T>"
-      std::string result = name + "<";
+      std::string result = mangledName + "<";
       for (size_t i = 0; i < typeParameters.size(); ++i) {
         if (i > 0) result += ", ";
         result += typeParameters[i];
@@ -1044,7 +1045,7 @@ class ClassType : public Type {
       result += ">";
       return result;
     }
-    return name;
+    return mangledName;
   }
 
   std::string toDisplayString() const override { return getDisplayName(); }
@@ -1052,7 +1053,7 @@ class ClassType : public Type {
   bool equals(const Type& other) const override {
     if (auto* c = dynamic_cast<const ClassType*>(&other)) {
       // For specialized types, compare by mangled name
-      return name == c->name;
+      return mangledName == c->mangledName;
     }
     return false;
   }
@@ -1077,14 +1078,14 @@ class ClassType : public Type {
       }
     }
     cachedLLVMType =
-        llvm::StructType::create(ctx, fieldTypes, name + "_struct");
+        llvm::StructType::create(ctx, fieldTypes, mangledName + "_struct");
     return cachedLLVMType;
   }
 
   // Get mangled method name: ClassName_methodName
   // Class name already includes module path and library hash
   std::string getMangledMethodName(const std::string& methodName) const {
-    return name + "_" + methodName;
+    return mangledName + "_" + methodName;
   }
 
   // --- ScopeMethodTable accessors ---
@@ -1631,7 +1632,7 @@ class Types {
     }
     if (type->isClass()) {
       auto* cls = dynamic_cast<const ClassType*>(type.get());
-      return cls->getName();  // Already mangled if specialized
+      return cls->getMangledName();  // Already mangled if specialized
     }
     if (type->isTypeParameter()) {
       auto* tp = dynamic_cast<const TypeParameterType*>(type.get());
