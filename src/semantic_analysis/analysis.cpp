@@ -658,8 +658,6 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
           // Register all extension methods first
           for (const auto& methodDecl : classDef.getMethods()) {
-            enterScope();
-            declareVariable("this", existingClass, /*isParam=*/true);
             FunctionInfo methodInfo = getFunctionInfo(*methodDecl.function);
             const PrototypeAST& proto = methodDecl.function->getProto();
             sun::TypePtr returnType = methodInfo.returnType
@@ -676,7 +674,6 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
               methodParamTypes.push_back(pt);
             }
             registerFunction(mangledName, {returnType, methodParamTypes, {}});
-            exitScope();
           }
 
           // Analyze extension method bodies
@@ -874,11 +871,9 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
       // PASS 1: Register all methods first (so methods can call each other)
       for (const auto& methodDecl : classDef.getMethods()) {
-        // Enter a scope for getFunctionInfo (to access 'this' for captures)
-        enterScope();
-        declareVariable("this", classType, /*isParam=*/true);
-
-        // Get method signature info (sets captures, converts param types)
+        // Get method signature info (converts param types)
+        // Note: captures aren't needed here since methods receive 'this' as
+        // parameter
         FunctionInfo methodInfo = getFunctionInfo(*methodDecl.function);
 
         const PrototypeAST& proto = methodDecl.function->getProto();
@@ -905,8 +900,6 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
           methodParamTypes.push_back(pt);
         }
         registerFunction(mangledName, {returnType, methodParamTypes, {}});
-
-        exitScope();
       }
 
       // PASS 2: Analyze all method bodies
