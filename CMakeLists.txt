@@ -71,7 +71,8 @@ add_library(sun_lib
     src/module_types.cpp
     src/metadata_extractor.cpp
     # Debug utilities
-    src/ast_dot_generator.cpp
+    src/debug/ast_dot_generator.cpp
+    src/debug/scope_tree_generator.cpp
     # Add other implementation files here (but NOT main.cpp)
 )
 

@@ -1,6 +1,6 @@
 // ast_dot_generator.cpp — Generate Graphviz DOT representation of AST
 
-#include "ast_dot_generator.h"
+#include "debug/ast_dot_generator.h"
 
 #include <sstream>
 

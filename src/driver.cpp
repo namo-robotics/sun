@@ -8,8 +8,9 @@
 #include <fstream>
 #include <sstream>
 
-#include "ast_dot_generator.h"
 #include "borrow_checker/borrow_checker.h"
+#include "debug/ast_dot_generator.h"
+#include "debug/scope_tree_generator.h"
 #include "error.h"
 #include "library_cache.h"
 #include "module_linker.h"
@@ -330,6 +331,20 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
 
   // Run semantic analysis on the unified AST
   analyzer->analyzeBlock(*blockAst);
+
+  // Debug mode: generate scope tree HTML after semantic analysis
+  if (debugMode_ && !debugFolder_.empty()) {
+    ScopeTreeGenerator scopeGen;
+    std::string html = scopeGen.generateHtml(analyzer->getRootScope());
+    std::string scopePath = debugFolder_ + "/scope_tree.html";
+    std::ofstream scopeFile(scopePath);
+    if (scopeFile) {
+      scopeFile << html;
+      llvm::outs() << "  Generated: " << scopePath << "\n";
+    } else {
+      llvm::errs() << "Warning: Could not write " << scopePath << "\n";
+    }
+  }
 
   // Run borrow checking on the unified AST
   // Uses compile-time settings from sun::Config

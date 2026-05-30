@@ -80,6 +80,9 @@ class SemanticAnalyzer {
     registerBuiltinFunctions();
   }
 
+  // Get the root scope for debugging/visualization
+  const SemanticScope& getRootScope() const { return *rootScope; }
+
   // Main entry point: analyze a top-level expression/statement
   void analyze(ExprAST& expr);
 
@@ -280,7 +283,10 @@ class SemanticAnalyzer {
   void enterModuleScope(const std::string& moduleName);
   // Enter a function scope with the function's signature for nested function
   // qualified names. The signature should be "funcName(paramType1,paramType2)".
-  void enterFunctionScope(const std::string& funcSig, bool canThrow = false);
+  // funcName is the qualified name of the function.
+  void enterFunctionScope(const std::string& funcSig,
+                          const sun::QualifiedName& funcName,
+                          bool canThrow = false);
   // Enter an import scope for an imported .sun file.
   // Uses a hash of the source file path for deduplication.
   void enterImportScope(const std::string& sourceFile,

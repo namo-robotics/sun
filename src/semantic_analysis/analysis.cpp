@@ -652,6 +652,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
           auto savedClass = currentClass;
           setCurrentClass(existingClass);
 
+          // Enter a Class scope to contain extension method scopes
+          enterScope(ScopeType::Class);
+          currentScope->moduleName = baseName;
+
           // Register all extension methods first
           for (const auto& methodDecl : classDef.getMethods()) {
             enterScope();
@@ -677,11 +681,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
           // Analyze extension method bodies
           for (const auto& methodDecl : classDef.getMethods()) {
-            enterScope(ScopeType::Function);
-            declareVariable("this", existingClass, /*isParam=*/true);
             analyzeFunction(*methodDecl.function);
-            exitScope();
           }
+
+          exitScope();  // Class scope
 
           // Merge methods into primary AST so codegen generates them
           for (auto* s = currentScope; s != nullptr; s = s->parent) {
@@ -865,6 +868,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       auto savedClass = currentClass;
       setCurrentClass(classType);
 
+      // Enter a Class scope to contain all method scopes in the tree
+      enterScope(ScopeType::Class);
+      currentScope->moduleName = baseName;
+
       // PASS 1: Register all methods first (so methods can call each other)
       for (const auto& methodDecl : classDef.getMethods()) {
         // Enter a scope for getFunctionInfo (to access 'this' for captures)
@@ -905,21 +912,13 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // PASS 2: Analyze all method bodies
       for (size_t i = 0; i < classDef.getMethods().size(); ++i) {
         const auto& methodDecl = classDef.getMethods()[i];
-
-        // Enter a scope for the method
-        enterScope(ScopeType::Function);
-
-        // Declare 'this' as a parameter with the class type
-        declareVariable("this", classType, /*isParam=*/true);
-
-        // Analyze the method body
         analyzeFunction(*methodDecl.function);
-
-        exitScope();
       }
 
       // Validate interface implementations
       validateInterfaceImplementation(classDef, classType);
+
+      exitScope();  // Class scope
 
       // Restore old class context
       setCurrentClass(savedClass);
@@ -1054,8 +1053,14 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
         interfaceType->addMethod(
             proto.getName(), returnType, methodInfo.paramTypes,
             methodDecl.hasDefaultImpl, proto.getTypeParameters());
+      }
 
-        // Analyze default method body if present
+      // Enter Interface scope to contain method scopes
+      enterScope(ScopeType::Interface);
+      currentScope->moduleName = interfaceDef.getName();
+
+      // Analyze default method bodies
+      for (const auto& methodDecl : interfaceDef.getMethods()) {
         if (methodDecl.hasDefaultImpl) {
           // Set pseudo-class as currentClass so 'this' works
           auto savedClass = currentClass;
@@ -1068,6 +1073,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
           currentClass = savedClass;
         }
       }
+
+      exitScope();  // Interface scope
 
       // Register the interface
       registerInterface(interfaceDef.getName(), interfaceType);
@@ -1580,7 +1587,12 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
 
   // Enter function scope with signature for nested function qualification
   // Pass canThrow flag so throw expressions can be validated
-  enterFunctionScope(funcSig, proto.canThrow());
+  enterFunctionScope(funcSig, proto.getQualifiedNameInfo(), proto.canThrow());
+
+  // Declare 'this' for methods (when we're inside a class context)
+  if (currentClass) {
+    declareVariable("this", currentClass, /*isParam=*/true);
+  }
 
   // If this is a generic function/method, bind its type parameters
   if (proto.isGeneric()) {
@@ -1654,7 +1666,7 @@ void SemanticAnalyzer::analyzeLambda(LambdaAST& lambda) {
   // Enter function scope (empty signature - lambdas are anonymous)
   // Nested functions in lambdas will still get outer function prefixes
   // Pass canThrow flag from the lambda's prototype
-  enterFunctionScope("", proto.canThrow());
+  enterFunctionScope("", sun::QualifiedName(), proto.canThrow());
 
   // Lambdas don't have type parameters (no generic lambdas)
 
@@ -1991,7 +2003,8 @@ void SemanticAnalyzer::lazyParseAndAnalyzeMethod(
   }
   std::string methodSig = getFunctionSignature(
       classType->getMangledMethodName(proto.getName()), substitutedParamTypes);
-  enterFunctionScope(methodSig, proto.canThrow());
+  enterFunctionScope(methodSig, sun::QualifiedName("", "", proto.getName()),
+                     proto.canThrow());
   if (classType) {
     declareVariable("this", classType, /*isParam=*/true);
   }

@@ -130,12 +130,13 @@ class FunctionTable {
 
 // Type of scope in the scope tree
 enum class ScopeType {
-  Global,    // Top-level (program) scope
-  Module,    // Module scope (has optional name for qualified names)
-  Import,    // Import scope (wraps an imported .sun file's declarations)
-  Class,     // Class definition scope
-  Function,  // Function or lambda body scope
-  Block      // Block scope (if, while, for, etc.)
+  Global,     // Top-level (program) scope
+  Module,     // Module scope (has optional name for qualified names)
+  Import,     // Import scope (wraps an imported .sun file's declarations)
+  Class,      // Class definition scope
+  Interface,  // Interface definition scope
+  Function,   // Function or lambda body scope
+  Block       // Block scope (if, while, for, etc.)
 };
 
 // Alias import from a using statement (legacy — being replaced by
@@ -288,6 +289,8 @@ struct SemanticScope {
   // Used to create unique qualified names for nested functions in generic
   // instantiations
   std::string functionSignature;
+  // For function scopes: the qualified name of the function
+  sun::QualifiedName functionName;
   // For function scopes: whether the function can throw (declared with ,
   // IError)
   bool functionCanThrow = false;

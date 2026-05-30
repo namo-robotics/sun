@@ -32,3 +32,4 @@ tmp
 test
 *.dot
 *.ll
+*_debug/

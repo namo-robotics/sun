@@ -1190,7 +1190,7 @@ class FunctionAST : public ExprAST {
   }
 
   std::string dotLabel() const override {
-    std::string label = "Function\n" + Proto->getName();
+    std::string label = "function \n" + Proto->getName();
     if (Proto->hasReturnType())
       label += " -> " + Proto->getReturnType()->toString();
     return label;
@@ -1392,7 +1392,7 @@ class ImportScopeAST : public ExprAST {
   const std::string& getSourceFile() const { return sourceFile; }
   const std::string& getContentHash() const { return contentHash; }
   const BlockExprAST& getBody() const { return *body; }
-  std::string dotLabel() const override { return "ImportScope\n" + sourceFile; }
+  std::string dotLabel() const override { return "import\n" + sourceFile; }
   std::unique_ptr<ExprAST> clone() const override;
 };
 
@@ -1477,7 +1477,8 @@ class ModuleAST : public ExprAST {
 // Also supports: using Module; (imports all from module)
 class UsingAST : public ExprAST {
   std::vector<std::string> namespacePath;  // The namespace path
-  std::string target;  // The specific symbol name, or "*" for module import (using sun;)
+  std::string target;    // The specific symbol name, or "*" for module import
+                         // (using sun;)
   bool isModuleImport_;  // true for "using sun;" (imports whole module)
 
  public:

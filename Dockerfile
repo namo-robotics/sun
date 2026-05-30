@@ -32,6 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgtest-dev \
     openssh-client \
     sudo \
+    bash-completion \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Grant sudo to existing ubuntu user (UID 1000 already exists in Ubuntu 25.10+)

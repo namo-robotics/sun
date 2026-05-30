@@ -132,9 +132,11 @@ void SemanticAnalyzer::enterModuleScope(const std::string& moduleName) {
 }
 
 void SemanticAnalyzer::enterFunctionScope(const std::string& funcSig,
+                                          const sun::QualifiedName& funcName,
                                           bool canThrow) {
   auto child = std::make_shared<SemanticScope>(ScopeType::Function);
   child->functionSignature = funcSig;
+  child->functionName = funcName;
   child->functionCanThrow = canThrow;
   child->parent = currentScope;
   currentScope->children.push_back(child);
@@ -155,7 +157,9 @@ void SemanticAnalyzer::enterImportScope(const std::string& sourceFile,
     return;
   }
 
-  auto child = std::make_shared<SemanticScope>(ScopeType::Import, scopeKey);
+  auto child = std::make_shared<SemanticScope>(ScopeType::Import);
+  // Store user-friendly import path in moduleName for display
+  child->moduleName = sourceFile;
   child->parent = currentScope;
 
   // For .sun imports (scopeKey starts with $import_), don't add to modulePath
@@ -178,21 +182,8 @@ void SemanticAnalyzer::enterImportScope(const std::string& sourceFile,
 void SemanticAnalyzer::exitScope() {
   if (currentScope->parent) {
     auto* parent = currentScope->parent;
-    auto type = currentScope->type;
-
-    // For transient scopes (Function, Block, Class), remove from parent's
-    // children list to free memory. Module and Import scopes are persistent.
-    if (type == ScopeType::Function || type == ScopeType::Block ||
-        type == ScopeType::Class) {
-      auto& children = parent->children;
-      for (auto it = children.begin(); it != children.end(); ++it) {
-        if (it->get() == currentScope) {
-          children.erase(it);
-          break;
-        }
-      }
-    }
-
+    // Keep all scopes in the tree for debugging/visualization.
+    // Symbol lookups already don't descend into Function scopes.
     currentScope = parent;
   }
 }
