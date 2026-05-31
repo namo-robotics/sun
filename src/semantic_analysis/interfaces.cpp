@@ -18,8 +18,8 @@ void SemanticAnalyzer::registerInterface(
   currentScope->interfaces[name] = interfaceType;
   if (importScopeDepth_ > 0) {
     for (auto* s = currentScope->parent; s != nullptr; s = s->parent) {
-      if (s->type == ScopeType::Module || s->type == ScopeType::Import ||
-          s->type == ScopeType::Global) {
+      if (s->getType() == ScopeType::Module || s->getType() == ScopeType::Import ||
+          s->getType() == ScopeType::Global) {
         s->interfaces[name] = interfaceType;
         break;
       }
@@ -35,11 +35,11 @@ std::shared_ptr<sun::InterfaceType> SemanticAnalyzer::lookupInterface(
     if (result) return result;
     // Search direct import-scope children (one level of transparency)
     for (const auto& [childName, child] : s->childModules) {
-      if (child && child->type == ScopeType::Import) {
+      if (child && child->getType() == ScopeType::Import) {
         result = child->findInterface(name);
         if (result) return result;
         for (const auto& [modName, modChild] : child->childModules) {
-          if (modChild && modChild->type == ScopeType::Module) {
+          if (modChild && modChild->getType() == ScopeType::Module) {
             result = modChild->findInterface(name);
             if (result) return result;
           }
@@ -83,8 +83,8 @@ void SemanticAnalyzer::registerGenericInterface(
   currentScope->genericInterfaces[name] = info;
   if (importScopeDepth_ > 0) {
     for (auto* s = currentScope->parent; s != nullptr; s = s->parent) {
-      if (s->type == ScopeType::Module || s->type == ScopeType::Import ||
-          s->type == ScopeType::Global) {
+      if (s->getType() == ScopeType::Module || s->getType() == ScopeType::Import ||
+          s->getType() == ScopeType::Global) {
         s->genericInterfaces[name] = info;
         break;
       }
@@ -100,11 +100,11 @@ const GenericInterfaceInfo* SemanticAnalyzer::lookupGenericInterface(
     if (result) return result;
     // Search direct import-scope children (one level of transparency)
     for (const auto& [childName, child] : s->childModules) {
-      if (child && child->type == ScopeType::Import) {
+      if (child && child->getType() == ScopeType::Import) {
         result = child->findGenericInterface(name);
         if (result) return result;
         for (const auto& [modName, modChild] : child->childModules) {
-          if (modChild && modChild->type == ScopeType::Module) {
+          if (modChild && modChild->getType() == ScopeType::Module) {
             result = modChild->findGenericInterface(name);
             if (result) return result;
           }
@@ -282,8 +282,8 @@ void SemanticAnalyzer::registerEnum(const std::string& name,
   currentScope->enums[name] = enumType;
   if (importScopeDepth_ > 0) {
     for (auto* s = currentScope->parent; s != nullptr; s = s->parent) {
-      if (s->type == ScopeType::Module || s->type == ScopeType::Import ||
-          s->type == ScopeType::Global) {
+      if (s->getType() == ScopeType::Module || s->getType() == ScopeType::Import ||
+          s->getType() == ScopeType::Global) {
         s->enums[name] = enumType;
         break;
       }
@@ -299,11 +299,11 @@ std::shared_ptr<sun::EnumType> SemanticAnalyzer::lookupEnum(
     if (result) return result;
     // Search direct import-scope children (one level of transparency)
     for (const auto& [childName, child] : s->childModules) {
-      if (child && child->type == ScopeType::Import) {
+      if (child && child->getType() == ScopeType::Import) {
         result = child->findEnum(name);
         if (result) return result;
         for (const auto& [modName, modChild] : child->childModules) {
-          if (modChild && modChild->type == ScopeType::Module) {
+          if (modChild && modChild->getType() == ScopeType::Module) {
             result = modChild->findEnum(name);
             if (result) return result;
           }

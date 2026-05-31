@@ -96,7 +96,7 @@ Value* CodegenVisitor::codegen(const ClassDefinitionAST& expr) {
   if (expr.getResolvedType() && expr.getResolvedType()->isClass()) {
     auto* resolvedClass =
         static_cast<sun::ClassType*>(expr.getResolvedType().get());
-    className = resolvedClass->getName();
+    className = resolvedClass->getMangledName();
   }
 
   // Skip precompiled classes - they come from linked bitcode
@@ -1375,8 +1375,8 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
   // qualified names from using imports (e.g., Unique -> sun_Unique)
   std::string baseName = funcName;
   if (expr.getResolvedType() && expr.getResolvedType()->isClass()) {
-    baseName =
-        static_cast<sun::ClassType*>(expr.getResolvedType().get())->getName();
+    baseName = static_cast<sun::ClassType*>(expr.getResolvedType().get())
+                   ->getMangledName();
     // Strip any trailing template params that may already be in the name
     size_t parenPos = baseName.find('_');
     // Actually the ClassType name should already be the full mangled name

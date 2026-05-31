@@ -16,17 +16,17 @@ namespace sun {
 // Keeps module path and symbol name separate to avoid lossy conversion
 struct QualifiedName {
   std::string
-      modulePath;  // "A.B" or "$hash$.A.B" (dot-separated) or "" for global
+      scopeKey;  // "A.B" or "$hash$.A.B" (dot-separated) or "" for global
   // Function context for nested functions: "outer(i32)::middle(f64)"
   // Empty for top-level functions
   std::string functionContext;
   std::string baseName;  // "my_func" (the original identifier, may contain _)
 
   QualifiedName() = default;
-  QualifiedName(std::string mod, std::string name)
-      : modulePath(std::move(mod)), baseName(std::move(name)) {}
+  QualifiedName(std::string modPath, std::string name)
+      : scopeKey(std::move(modPath)), baseName(std::move(name)) {}
   QualifiedName(std::string mod, std::string funcCtx, std::string name)
-      : modulePath(std::move(mod)),
+      : scopeKey(std::move(mod)),
         functionContext(std::move(funcCtx)),
         baseName(std::move(name)) {}
 
@@ -42,16 +42,16 @@ struct QualifiedName {
     std::string newCtx = functionContext;
     if (!newCtx.empty()) newCtx += "::";
     newCtx += funcCtx;
-    return QualifiedName(modulePath, newCtx, baseName);
+    return QualifiedName(scopeKey, newCtx, baseName);
   }
 
   // Get mangled form for codegen/lookup: "$hash$_A_B_outer(i32)::my_func"
   // Simply replaces dots with underscores
   std::string mangled() const {
     std::string result;
-    if (!modulePath.empty()) {
+    if (!scopeKey.empty()) {
       // Replace dots with underscores
-      result = modulePath;
+      result = scopeKey;
       for (char& c : result) {
         if (c == '.') c = '_';
       }
@@ -68,32 +68,32 @@ struct QualifiedName {
   // Note: Library hash scopes (starting with $) are filtered out for cleaner
   // display
   std::string display() const {
-    if (modulePath.empty()) return baseName;
+    if (scopeKey.empty()) return baseName;
     // Filter out library hash scopes from display (they start with $)
     std::string displayPath;
     size_t pos = 0;
-    while (pos < modulePath.size()) {
-      size_t dot = modulePath.find('.', pos);
+    while (pos < scopeKey.size()) {
+      size_t dot = scopeKey.find('.', pos);
       std::string segment = (dot == std::string::npos)
-                                ? modulePath.substr(pos)
-                                : modulePath.substr(pos, dot - pos);
+                                ? scopeKey.substr(pos)
+                                : scopeKey.substr(pos, dot - pos);
       // Skip hash segments (start with $)
       if (!segment.empty() && segment[0] != '$') {
         if (!displayPath.empty()) displayPath += ".";
         displayPath += segment;
       }
-      pos = (dot == std::string::npos) ? modulePath.size() : dot + 1;
+      pos = (dot == std::string::npos) ? scopeKey.size() : dot + 1;
     }
     if (displayPath.empty()) return baseName;
     return displayPath + "." + baseName;
   }
 
   bool empty() const {
-    return modulePath.empty() && functionContext.empty() && baseName.empty();
+    return scopeKey.empty() && functionContext.empty() && baseName.empty();
   }
 
   bool operator==(const QualifiedName& other) const {
-    return modulePath == other.modulePath &&
+    return scopeKey == other.scopeKey &&
            functionContext == other.functionContext &&
            baseName == other.baseName;
   }
@@ -103,7 +103,7 @@ struct QualifiedName {
   }
 
   bool operator<(const QualifiedName& other) const {
-    if (modulePath != other.modulePath) return modulePath < other.modulePath;
+    if (scopeKey != other.scopeKey) return scopeKey < other.scopeKey;
     if (functionContext != other.functionContext)
       return functionContext < other.functionContext;
     return baseName < other.baseName;

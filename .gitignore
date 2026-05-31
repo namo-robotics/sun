@@ -30,3 +30,6 @@ extensions/vscode-sun/.vscode-test/
 *.moon
 tmp
 test
+*.dot
+*.ll
+*_debug/

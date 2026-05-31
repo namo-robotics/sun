@@ -120,7 +120,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
           if (sliceMethod) {
             return sliceMethod->returnType;
           }
-          logAndThrowError("Class " + classType->getName() +
+          logAndThrowError("Class " + classType->getMangledName() +
                                " does not implement __slice__ for slicing",
                            arrIdx.getLocation());
           return nullptr;
@@ -131,7 +131,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
           if (indexMethod) {
             return indexMethod->returnType;
           }
-          logAndThrowError("Class " + classType->getName() +
+          logAndThrowError("Class " + classType->getMangledName() +
                                " does not implement __index__ for indexing",
                            arrIdx.getLocation());
           return nullptr;
@@ -1002,7 +1002,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
       }
 
       logAndThrowError("Unknown member '" + memberName + "' on class '" +
-                           classType->getName() + "'",
+                           classType->getMangledName() + "'",
                        memberAccess.getLocation());
     }
 
@@ -1050,7 +1050,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
               return sun::Types::Function(method->returnType,
                                           method->paramTypes);
             logAndThrowError("Unknown member '" + memberName + "' on class '" +
-                                 classType->getName() + "'",
+                                 classType->getMangledName() + "'",
                              memberAccess.getLocation());
           }
           if (narrowedType->isInterface()) {

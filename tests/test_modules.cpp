@@ -191,7 +191,7 @@ TEST(ModuleTest, parse_using_wildcard) {
   EXPECT_EQ(ast->getBody()[0]->getType(), ASTNodeType::USING);
 
   auto* usingNode = static_cast<const UsingAST*>(ast->getBody()[0].get());
-  EXPECT_TRUE(usingNode->isWildcardImport());
+  EXPECT_TRUE(usingNode->isModuleImport());
   EXPECT_EQ(usingNode->getNamespacePathString(), "sun");
 }
 
@@ -205,7 +205,7 @@ TEST(ModuleTest, parse_using_specific_symbol) {
   EXPECT_EQ(ast->getBody()[0]->getType(), ASTNodeType::USING);
 
   auto* usingNode = static_cast<const UsingAST*>(ast->getBody()[0].get());
-  EXPECT_FALSE(usingNode->isWildcardImport());
+  EXPECT_FALSE(usingNode->isModuleImport());
   EXPECT_EQ(usingNode->getNamespacePathString(), "sun");
   EXPECT_EQ(usingNode->getTarget(), "Vec");
 }
@@ -220,7 +220,7 @@ TEST(ModuleTest, parse_using_nested_module) {
   EXPECT_EQ(ast->getBody()[0]->getType(), ASTNodeType::USING);
 
   auto* usingNode = static_cast<const UsingAST*>(ast->getBody()[0].get());
-  EXPECT_FALSE(usingNode->isWildcardImport());
+  EXPECT_FALSE(usingNode->isModuleImport());
   EXPECT_EQ(usingNode->getNamespacePathString(), "sun.matrix");
   EXPECT_EQ(usingNode->getTarget(), "types");
 }

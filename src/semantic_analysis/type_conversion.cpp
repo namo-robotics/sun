@@ -98,7 +98,7 @@ sun::TypePtr SemanticAnalyzer::substituteTypeParameters(sun::TypePtr type) {
         if (baseName.empty()) {
           // Might be an unresolved generic reference, extract base name from
           // class name
-          baseName = ct->getName();
+          baseName = ct->getMangledName();
         }
         return instantiateGenericClass(baseName, newArgs);
       }

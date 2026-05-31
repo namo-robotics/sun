@@ -9,6 +9,8 @@
 #include <sstream>
 
 #include "borrow_checker/borrow_checker.h"
+#include "debug/ast_dot_generator.h"
+#include "debug/scope_tree_generator.h"
 #include "error.h"
 #include "library_cache.h"
 #include "module_linker.h"
@@ -59,6 +61,22 @@ std::unique_ptr<Driver> Driver::createForAOT(const std::string& moduleName) {
   return std::unique_ptr<Driver>(new Driver(std::move(ctx), typeRegistry,
                                             std::move(codegenVisitor),
                                             std::move(analyzer)));
+}
+
+// Set debug mode and create the debug output folder
+void Driver::setDebugMode(bool enable, const std::string& inputFile) {
+  debugMode_ = enable;
+  if (enable && !inputFile.empty()) {
+    // Create debug folder: <basename>_debug/
+    std::filesystem::path inputPath(inputFile);
+    std::string basename = inputPath.stem().string();
+    debugFolder_ = (inputPath.parent_path() / (basename + "_debug")).string();
+    if (debugFolder_.empty() || debugFolder_ == "_debug") {
+      debugFolder_ = basename + "_debug";
+    }
+    std::filesystem::create_directories(debugFolder_);
+    llvm::outs() << "Debug output folder: " << debugFolder_ << "/\n";
+  }
 }
 
 // Print only IR for user-defined functions (filter out library code)
@@ -297,8 +315,36 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
   std::set<std::string> cycleStack;
   expandImportsInBlock(*blockAst, parser, cycleStack);
 
+  // Debug mode: generate AST DOT graph after import expansion
+  if (debugMode_ && !debugFolder_.empty()) {
+    AstDotGenerator dotGen;
+    std::string dot = dotGen.generate(blockAst.get());
+    std::string dotPath = debugFolder_ + "/ast.dot";
+    std::ofstream dotFile(dotPath);
+    if (dotFile) {
+      dotFile << dot;
+      llvm::outs() << "  Generated: " << dotPath << "\n";
+    } else {
+      llvm::errs() << "Warning: Could not write " << dotPath << "\n";
+    }
+  }
+
   // Run semantic analysis on the unified AST
   analyzer->analyzeBlock(*blockAst);
+
+  // Debug mode: generate scope tree HTML after semantic analysis
+  if (debugMode_ && !debugFolder_.empty()) {
+    ScopeTreeGenerator scopeGen;
+    std::string html = scopeGen.generateHtml(analyzer->getRootScope());
+    std::string scopePath = debugFolder_ + "/scope_tree.html";
+    std::ofstream scopeFile(scopePath);
+    if (scopeFile) {
+      scopeFile << html;
+      llvm::outs() << "  Generated: " << scopePath << "\n";
+    } else {
+      llvm::errs() << "Warning: Could not write " << scopePath << "\n";
+    }
+  }
 
   // Run borrow checking on the unified AST
   // Uses compile-time settings from sun::Config
@@ -340,6 +386,20 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
     if (!linker.linkOnlyUsedSymbols()) {
       throw SunError(SunError::Kind::Semantic,
                      "Failed to link precompiled module: " + linker.getError());
+    }
+  }
+
+  // Debug mode: dump full IR after codegen
+  if (debugMode_ && !debugFolder_.empty()) {
+    std::string irPath = debugFolder_ + "/ir.ll";
+    std::error_code EC;
+    llvm::raw_fd_ostream irFile(irPath, EC);
+    if (!EC) {
+      ctx->mainModule->print(irFile, nullptr);
+      llvm::outs() << "  Generated: " << irPath << "\n";
+    } else {
+      llvm::errs() << "Warning: Could not write " << irPath << ": "
+                   << EC.message() << "\n";
     }
   }
 
