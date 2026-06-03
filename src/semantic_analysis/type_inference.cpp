@@ -3,6 +3,7 @@
 #include <unordered_set>
 
 #include "error.h"
+#include "intrinsics.h"
 #include "semantic_analyzer.h"
 
 using sun::unwrapRef;
@@ -584,208 +585,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
     }
 
     case ASTNodeType::GENERIC_CALL: {
-      const auto& genericCall = static_cast<const GenericCallAST&>(expr);
-      const std::string& funcName = genericCall.getFunctionName();
-      const auto& typeArgsVec = genericCall.getTypeArguments();
-
-      // Resolve the function/class name through using imports
-      sun::QualifiedName resolved = resolveNameWithUsings(funcName);
-      const std::string& lookupName = resolved.baseName;
-
-      // Analyze all arguments
-      for (const auto& arg : genericCall.getArgs()) {
-        inferType(*arg);
-      }
-
-      // Handle compiler intrinsics (start with underscore)
-      if (funcName == "_sizeof") {
-        // _sizeof<T>() returns i64 - the byte size of type T
-        if (!genericCall.getArgs().empty()) {
-          logAndThrowError("_sizeof<T>() takes no arguments",
-                           genericCall.getLocation());
-          return sun::Types::Void();
-        }
-        return sun::Types::Int64();
-      }
-
-      if (funcName == "_init") {
-        // _init<T>(ptr) constructs T at ptr with forwarded arguments
-        // Returns void
-        if (genericCall.getArgs().empty()) {
-          logAndThrowError("_init<T>() requires a pointer argument",
-                           genericCall.getLocation());
-          return sun::Types::Void();
-        }
-        return sun::Types::Void();
-      }
-
-      // Check for unsafe intrinsics - these require an unsafe block
-      static const std::unordered_set<std::string> unsafeGenericIntrinsics = {
-          "_load", "_store", "_address_of", "_to_ref"};
-      if (unsafeGenericIntrinsics.count(funcName) && !isInUnsafeBlock()) {
-        logAndThrowError(
-            "'" + funcName + "' can only be used in an unsafe block",
-            genericCall.getLocation());
-      }
-
-      if (funcName == "_load") {
-        // _load<T>(ptr, index) loads element T at ptr[index]
-        // Returns T
-        if (genericCall.getArgs().size() != 2) {
-          logAndThrowError("_load<T>(ptr, index) requires 2 arguments",
-                           genericCall.getLocation());
-        }
-        sun::TypePtr targetType = typeAnnotationToType(*typeArgsVec[0]);
-        targetType = substituteTypeParameters(targetType);
-        if (!targetType) {
-          logAndThrowError("Failed to resolve type argument for _load<T>",
-                           genericCall.getLocation());
-        }
-        return targetType;
-      }
-
-      if (funcName == "_store") {
-        // _store<T>(ptr, index, value) stores value at ptr[index]
-        // Returns void
-        if (genericCall.getArgs().size() != 3) {
-          logAndThrowError("_store<T>(ptr, index, value) requires 3 arguments",
-                           genericCall.getLocation());
-          return sun::Types::Void();
-        }
-        return sun::Types::Void();
-      }
-
-      if (funcName == "_static_ptr_data") {
-        // _static_ptr_data<T>(static_ptr<T>) extracts data pointer as
-        // raw_ptr<T>
-        if (genericCall.getArgs().size() != 1) {
-          logAndThrowError("_static_ptr_data<T>(ptr) requires 1 argument",
-                           genericCall.getLocation());
-        }
-        sun::TypePtr targetType = typeAnnotationToType(*typeArgsVec[0]);
-        targetType = substituteTypeParameters(targetType);
-        if (!targetType) {
-          logAndThrowError(
-              "Failed to resolve type argument for _static_ptr_data<T>",
-              genericCall.getLocation());
-        }
-        return sun::Types::RawPointer(targetType);
-      }
-
-      if (funcName == "_static_ptr_len") {
-        // _static_ptr_len<T>(static_ptr<T>) extracts length as i64
-        if (genericCall.getArgs().size() != 1) {
-          logAndThrowError("_static_ptr_len<T>(ptr) requires 1 argument",
-                           genericCall.getLocation());
-        }
-        return sun::Types::Int64();
-      }
-
-      if (funcName == "_ptr_as_raw") {
-        // _ptr_as_raw<T>(ptr<T>) returns raw_ptr<T> without transferring
-        // ownership Equivalent to unique_ptr::get() in C++
-        if (genericCall.getArgs().size() != 1) {
-          logAndThrowError("_ptr_as_raw<T>(ptr) requires 1 argument",
-                           genericCall.getLocation());
-        }
-        sun::TypePtr targetType = typeAnnotationToType(*typeArgsVec[0]);
-        targetType = substituteTypeParameters(targetType);
-        if (!targetType) {
-          logAndThrowError("Failed to resolve type argument for _ptr_as_raw<T>",
-                           genericCall.getLocation());
-        }
-        return sun::Types::RawPointer(targetType);
-      }
-
-      if (funcName == "_address_of") {
-        // _address_of<T>(ref T) returns raw_ptr<T> - gets the address of a
-        // variable or field
-        if (genericCall.getArgs().size() != 1) {
-          logAndThrowError("_address_of<T>(value) requires 1 argument",
-                           genericCall.getLocation());
-        }
-        sun::TypePtr targetType = typeAnnotationToType(*typeArgsVec[0]);
-        targetType = substituteTypeParameters(targetType);
-        if (!targetType) {
-          logAndThrowError("Failed to resolve type argument for _address_of<T>",
-                           genericCall.getLocation());
-        }
-        return sun::Types::RawPointer(targetType);
-      }
-
-      if (funcName == "_to_ref") {
-        // _to_ref<T>(raw_ptr<T>) returns ref T - unsafe dereference
-        // Converts a raw pointer to a reference for safe member access
-        if (genericCall.getArgs().size() != 1) {
-          logAndThrowError("_to_ref<T>(ptr) requires 1 argument",
-                           genericCall.getLocation());
-        }
-        sun::TypePtr targetType = typeAnnotationToType(*typeArgsVec[0]);
-        targetType = substituteTypeParameters(targetType);
-        if (!targetType) {
-          logAndThrowError("Failed to resolve type argument for _to_ref<T>",
-                           genericCall.getLocation());
-        }
-        return sun::Types::Reference(targetType);
-      }
-
-      if (funcName == "_is") {
-        // _is<T>(value) returns bool - compile-time type check
-        // T can be:
-        //   - A concrete type (i32, Point, String)
-        //   - A built-in type trait (_Integer, _Signed, _Unsigned, _Float,
-        //   _Numeric, _Primitive)
-        //   - A user-defined interface (IHashable, IIterable)
-        if (genericCall.getArgs().size() != 1) {
-          logAndThrowError("_is<T>(value) requires exactly 1 argument",
-                           genericCall.getLocation());
-        }
-        // Type argument is validated at codegen time
-        return sun::Types::Bool();
-      }
-
-      // Check for user-defined generic functions
-      auto* genFuncInfo = lookupGenericFunction(lookupName);
-      if (genFuncInfo) {
-        // Store the generic function AST on the call node for codegen
-        genericCall.setGenericFunctionAST(genFuncInfo->AST);
-
-        // Resolve return type with type parameter substitution
-        auto resolvedType = genFuncInfo->AST->getResolvedType();
-        if (resolvedType) {
-          auto substitutedType = substituteTypeParameters(resolvedType);
-          auto funcType =
-              static_cast<sun::FunctionType*>(substitutedType.get());
-          return funcType->getReturnType();
-        } else {
-          logAndThrowError("Generic function '" + funcName +
-                               "' has unresolved return type for inference",
-                           genericCall.getLocation());
-        }
-      }
-
-      // Check for generic class constructor: Box<i32>(42)
-      auto* genericClassInfo = lookupGenericClass(lookupName);
-      if (genericClassInfo) {
-        // Resolve type arguments
-        std::vector<sun::TypePtr> typeArgs;
-        const auto& typeArgsVec = genericCall.getTypeArguments();
-        if (!typeArgsVec.empty()) {
-          for (const auto& ta : typeArgsVec) {
-            typeArgs.push_back(typeAnnotationToType(*ta));
-          }
-        }
-
-        // Instantiate the generic class and return the specialized type
-        auto specializedClass = instantiateGenericClass(lookupName, typeArgs);
-        if (specializedClass) {
-          return specializedClass;
-        }
-      }
-
-      logAndThrowError("Unknown generic intrinsic: " + funcName,
-                       genericCall.getLocation());
-      return sun::Types::Void();
+      return inferGenericCallType(static_cast<const GenericCallAST&>(expr));
     }
 
     case ASTNodeType::PACK_EXPANSION: {
@@ -1093,4 +893,140 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
                            objectType->toString() + "'",
                        memberAccess.getLocation());
   }
+}
+
+sun::TypePtr SemanticAnalyzer::inferGenericCallType(
+    const GenericCallAST& genericCall) {
+  const std::string& funcName = genericCall.getFunctionName();
+  sun::QualifiedName resolved = resolveNameWithUsings(funcName);
+  const std::string& lookupName = resolved.baseName;
+
+  // Dispatch based on call type: intrinsic, generic function, or generic class
+  bool isIntrinsicCall = sun::isIntrinsic(funcName);
+  auto* genericClassInfo = lookupGenericClass(lookupName);
+  auto* genFuncInfo = lookupGenericFunction(lookupName);
+
+  if (isIntrinsicCall) {
+    return inferIntrinsicCallType(genericCall);
+  } else if (genFuncInfo) {
+    return inferGenericFunctionCallType(genericCall);
+  } else if (genericClassInfo) {
+    return inferGenericClassConstructionType(genericCall);
+  }
+
+  logAndThrowError("Unknown generic function or class: '" + funcName + "'",
+                   genericCall.getLocation());
+}
+
+// -------------------------------------------------------------------
+// Intrinsic call type inference
+// -------------------------------------------------------------------
+
+sun::TypePtr SemanticAnalyzer::inferIntrinsicCallType(
+    const GenericCallAST& genericCall) {
+  const auto& typeArgs = genericCall.getResolvedTypeArgs();
+  const std::string& funcName = genericCall.getFunctionName();
+
+  if (funcName == "_sizeof" || funcName == "_static_ptr_len") {
+    return sun::Types::Int64();
+  }
+  if (funcName == "_load") {
+    return typeArgs.empty() ? nullptr : typeArgs[0];
+  }
+  if (funcName == "_store" || funcName == "_init") {
+    return sun::Types::Void();
+  }
+  if (funcName == "_static_ptr_data" || funcName == "_ptr_as_raw" ||
+      funcName == "_address_of") {
+    return typeArgs.empty() ? nullptr : sun::Types::RawPointer(typeArgs[0]);
+  }
+  if (funcName == "_to_ref") {
+    return typeArgs.empty() ? nullptr : sun::Types::Reference(typeArgs[0]);
+  }
+  if (funcName == "_is") {
+    return sun::Types::Bool();
+  }
+
+  // Unknown intrinsic - return void as fallback
+  return sun::Types::Void();
+}
+
+// -------------------------------------------------------------------
+// Generic function call type inference
+// -------------------------------------------------------------------
+
+sun::TypePtr SemanticAnalyzer::inferGenericFunctionCallType(
+    const GenericCallAST& genericCall) {
+  const auto& typeArgs = genericCall.getResolvedTypeArgs();
+  const std::string& funcName = genericCall.getFunctionName();
+  sun::QualifiedName resolved = resolveNameWithUsings(funcName);
+  const std::string& lookupName = resolved.baseName;
+
+  auto* genFuncInfo = lookupGenericFunction(lookupName);
+  if (!genFuncInfo) {
+    logAndThrowError("Unknown generic function: '" + funcName + "'",
+                     genericCall.getLocation());
+  }
+
+  // Generate mangled name for specialization lookup
+  std::string mangledName = funcName;
+  for (const auto& typeArg : typeArgs) {
+    mangledName += "_" + typeArg->toString();
+  }
+
+  // If specialization exists (type args were concrete), use its return type
+  if (genFuncInfo->AST && genFuncInfo->AST->hasSpecialization(mangledName)) {
+    const auto& funcAST = genFuncInfo->AST->getSpecialization(mangledName);
+    return funcAST->getProto().getResolvedReturnType();
+  }
+
+  // No specialization - type args contain type parameters
+  // Compute return type from generic function's declared return type
+  if (genFuncInfo->returnType.has_value()) {
+    const auto& typeParams = genFuncInfo->typeParameters;
+    enterScope();
+    addTypeParameterBindings(typeParams, typeArgs);
+    sun::TypePtr returnType = typeAnnotationToType(*genFuncInfo->returnType);
+    returnType = substituteTypeParameters(returnType);
+    exitScope();
+    return returnType;
+  }
+
+  // No declared return type - can't infer without instantiation
+  logAndThrowError("Generic function '" + funcName +
+                       "' called with unresolved type parameters requires a "
+                       "declared return type",
+                   genericCall.getLocation());
+}
+
+// -------------------------------------------------------------------
+// Generic class construction type inference
+// -------------------------------------------------------------------
+
+sun::TypePtr SemanticAnalyzer::inferGenericClassConstructionType(
+    const GenericCallAST& genericCall) {
+  const auto& typeArgs = genericCall.getResolvedTypeArgs();
+  const std::string& funcName = genericCall.getFunctionName();
+  sun::QualifiedName resolved = resolveNameWithUsings(funcName);
+  const std::string& lookupName = resolved.baseName;
+
+  auto* genericClassInfo = lookupGenericClass(lookupName);
+  if (!genericClassInfo) {
+    logAndThrowError("Unknown generic class: '" + funcName + "'",
+                     genericCall.getLocation());
+  }
+
+  std::string genericMangledName = genericClassInfo->AST->getQualifiedName();
+  std::string specializedMangledName =
+      sun::Types::mangleGenericClassName(genericMangledName, typeArgs);
+
+  auto existing = lookupClass(specializedMangledName);
+  if (existing &&
+      genericClassInfo->AST->hasSpecialization(specializedMangledName)) {
+    return existing;
+  }
+
+  // Class not yet instantiated - instantiate it now
+  auto specializedClass = instantiateGenericClass(lookupName, typeArgs);
+  return specializedClass;
 }

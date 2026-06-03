@@ -1323,7 +1323,6 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
     case ASTNodeType::GENERIC_CALL: {
       auto& genericCall = static_cast<GenericCallAST&>(expr);
       const std::string& funcName = genericCall.getFunctionName();
-      const auto& args = genericCall.getArgs();
 
       // Resolve the function/class name through using imports
       sun::QualifiedName resolved = resolveNameWithUsings(funcName);
@@ -1336,89 +1335,29 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       }
 
       // Store resolved type arguments on the AST for codegen
-      // This ensures codegen doesn't need to resolve type parameters
       genericCall.setResolvedTypeArgs(typeArgs);
 
-      // validate type args
+      // Validate type args
       for (auto& typeArg : typeArgs) {
         validateTypeParameter(typeArg, genericCall);
       }
 
-      // Get type parameters from the generic function or class
-      // Skip for intrinsics - they're handled at codegen time
-      std::vector<std::string> typeParams;
+      // Dispatch based on call type: intrinsic, generic class, or generic
+      // function
+      bool isIntrinsicCall = sun::isIntrinsic(funcName);
       auto* genericClassInfo = lookupGenericClass(lookupName);
       auto* genFuncInfo = lookupGenericFunction(lookupName);
-      bool isIntrinsicCall = sun::isIntrinsic(funcName);
 
-      if (genericClassInfo) {
-        typeParams = genericClassInfo->typeParameters;
+      if (isIntrinsicCall) {
+        analyzeIntrinsicCall(genericCall);
+      } else if (genericClassInfo) {
+        analyzeGenericClassConstruction(genericCall);
       } else if (genFuncInfo) {
-        typeParams = genFuncInfo->typeParameters;
-        // Store the generic function AST on the call node for codegen
-        genericCall.setGenericFunctionAST(genFuncInfo->AST);
-      } else if (!isIntrinsicCall) {
+        analyzeGenericFunctionCall(genericCall);
+      } else {
         logAndThrowError("Unknown generic function or class '" + funcName + "'",
                          genericCall.getLocation());
       }
-
-      // Enter scope and bind type parameters
-      enterScope();
-      if (typeParams.size() == typeArgs.size()) {
-        addTypeParameterBindings(typeParams, typeArgs);
-      }
-
-      // Try to get expected parameter types for array literal type propagation
-      std::vector<sun::TypePtr> expectedParamTypes;
-      if (genericClassInfo) {
-        // Instantiate the generic class to get init method parameters
-        auto specializedClass = instantiateGenericClass(lookupName, typeArgs);
-        if (specializedClass) {
-          if (auto* initMethod = specializedClass->getMethod("init")) {
-            expectedParamTypes = initMethod->paramTypes;
-          }
-        }
-      } else if (genFuncInfo) {
-        // Only instantiate if all type arguments are concrete (not type
-        // parameters) If we're inside a generic function and T is still a
-        // type parameter, we can't create a real specialization yet - it will
-        // be created when the outer generic function is instantiated with
-        // concrete types.
-        bool allConcrete = std::all_of(
-            typeArgs.begin(), typeArgs.end(),
-            [](const sun::TypePtr& t) { return !t->isTypeParameter(); });
-        if (allConcrete) {
-          auto specializedFunc =
-              instantiateGenericFunction(genFuncInfo->AST, typeArgs);
-          if (specializedFunc) {
-            expectedParamTypes = specializedFunc->paramTypes;
-          }
-        }
-      }
-
-      // Propagate expected types to array literal arguments before analysis
-      for (size_t i = 0; i < args.size() && i < expectedParamTypes.size();
-           ++i) {
-        if (args[i]->getType() == ASTNodeType::ARRAY_LITERAL) {
-          sun::TypePtr paramType = expectedParamTypes[i];
-          // Handle ref array<T> -> array<T>
-          if (paramType && paramType->isReference()) {
-            auto* refType =
-                static_cast<const sun::ReferenceType*>(paramType.get());
-            paramType = refType->getReferencedType();
-          }
-          if (paramType && paramType->isArray()) {
-            const_cast<ExprAST&>(*args[i]).setResolvedType(paramType);
-          }
-        }
-      }
-
-      // Analyze all arguments
-      for (const auto& arg : genericCall.getArgs()) {
-        analyzeExpr(const_cast<ExprAST&>(*arg));
-      }
-      expr.setResolvedType(inferType(expr));
-      exitScope();
       break;
     }
 
@@ -2408,4 +2347,130 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
   // Note: Move semantics for ptr<T> arguments are tracked by the borrow checker
 
   callExpr.setResolvedType(inferType(callExpr));
+}
+
+// -------------------------------------------------------------------
+// Intrinsic call analysis (e.g., _load<T>, _store<T>, _address_of<T>)
+// -------------------------------------------------------------------
+
+void SemanticAnalyzer::analyzeIntrinsicCall(GenericCallAST& genericCall) {
+  // Intrinsics are handled at codegen time - just analyze arguments
+  for (const auto& arg : genericCall.getArgs()) {
+    analyzeExpr(const_cast<ExprAST&>(*arg));
+  }
+  genericCall.setResolvedType(inferGenericCallType(genericCall));
+}
+
+// -------------------------------------------------------------------
+// Generic function call analysis
+// -------------------------------------------------------------------
+
+void SemanticAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
+  const std::string& funcName = genericCall.getFunctionName();
+  const auto& args = genericCall.getArgs();
+  const auto& typeArgs = genericCall.getResolvedTypeArgs();
+
+  // Resolve the function name through using imports
+  sun::QualifiedName resolved = resolveNameWithUsings(funcName);
+  const std::string& lookupName = resolved.baseName;
+
+  auto* genFuncInfo = lookupGenericFunction(lookupName);
+  if (!genFuncInfo) {
+    logAndThrowError("Unknown generic function '" + funcName + "'",
+                     genericCall.getLocation());
+  }
+
+  // Store the generic function AST on the call node for codegen
+  genericCall.setGenericFunctionAST(genFuncInfo->AST);
+
+  // Try to get expected parameter types for array literal type propagation
+  // Only instantiate if all type arguments are concrete (not type parameters)
+  // If we're inside a generic function and T is still a type parameter,
+  // we can't create a real specialization yet - it will be created when
+  // the outer generic function is instantiated with concrete types.
+  std::vector<sun::TypePtr> expectedParamTypes;
+  bool allConcrete =
+      std::all_of(typeArgs.begin(), typeArgs.end(),
+                  [](const sun::TypePtr& t) { return !t->isTypeParameter(); });
+  if (allConcrete) {
+    auto specializedFunc =
+        instantiateGenericFunction(genFuncInfo->AST, typeArgs);
+    if (specializedFunc) {
+      expectedParamTypes = specializedFunc->paramTypes;
+    }
+  }
+
+  // Propagate expected types to array literal arguments before analysis
+  for (size_t i = 0; i < args.size() && i < expectedParamTypes.size(); ++i) {
+    if (args[i]->getType() == ASTNodeType::ARRAY_LITERAL) {
+      sun::TypePtr paramType = expectedParamTypes[i];
+      // Handle ref array<T> -> array<T>
+      if (paramType && paramType->isReference()) {
+        auto* refType = static_cast<const sun::ReferenceType*>(paramType.get());
+        paramType = refType->getReferencedType();
+      }
+      if (paramType && paramType->isArray()) {
+        const_cast<ExprAST&>(*args[i]).setResolvedType(paramType);
+      }
+    }
+  }
+
+  // Analyze all arguments
+  for (const auto& arg : args) {
+    analyzeExpr(const_cast<ExprAST&>(*arg));
+  }
+
+  genericCall.setResolvedType(inferGenericCallType(genericCall));
+}
+
+// -------------------------------------------------------------------
+// Generic class construction analysis
+// -------------------------------------------------------------------
+
+void SemanticAnalyzer::analyzeGenericClassConstruction(
+    GenericCallAST& genericCall) {
+  const std::string& funcName = genericCall.getFunctionName();
+  const auto& args = genericCall.getArgs();
+  const auto& typeArgs = genericCall.getResolvedTypeArgs();
+
+  // Resolve the class name through using imports
+  sun::QualifiedName resolved = resolveNameWithUsings(funcName);
+  const std::string& lookupName = resolved.baseName;
+
+  auto* genericClassInfo = lookupGenericClass(lookupName);
+  if (!genericClassInfo) {
+    logAndThrowError("Unknown generic class '" + funcName + "'",
+                     genericCall.getLocation());
+  }
+
+  // Instantiate the generic class to get init method parameters
+  std::vector<sun::TypePtr> expectedParamTypes;
+  auto specializedClass = instantiateGenericClass(lookupName, typeArgs);
+  if (specializedClass) {
+    if (auto* initMethod = specializedClass->getMethod("init")) {
+      expectedParamTypes = initMethod->paramTypes;
+    }
+  }
+
+  // Propagate expected types to array literal arguments before analysis
+  for (size_t i = 0; i < args.size() && i < expectedParamTypes.size(); ++i) {
+    if (args[i]->getType() == ASTNodeType::ARRAY_LITERAL) {
+      sun::TypePtr paramType = expectedParamTypes[i];
+      // Handle ref array<T> -> array<T>
+      if (paramType && paramType->isReference()) {
+        auto* refType = static_cast<const sun::ReferenceType*>(paramType.get());
+        paramType = refType->getReferencedType();
+      }
+      if (paramType && paramType->isArray()) {
+        const_cast<ExprAST&>(*args[i]).setResolvedType(paramType);
+      }
+    }
+  }
+
+  // Analyze all arguments
+  for (const auto& arg : args) {
+    analyzeExpr(const_cast<ExprAST&>(*arg));
+  }
+
+  genericCall.setResolvedType(inferGenericCallType(genericCall));
 }

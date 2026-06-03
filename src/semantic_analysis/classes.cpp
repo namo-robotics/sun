@@ -310,17 +310,10 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
         break;
       }
     }
-    std::cerr << "[DEBUG] instantiateGenericClass: baseName=" << baseName
-              << " defScope=" << defScope.get()
-              << " isAncestor=" << isAncestor << "\n";
     if (!isAncestor) {
       // Add the definition scope as an accessible import scope for type lookups
       currentScope->childModules["__definition__"] = defScope;
-      std::cerr << "[DEBUG]   added __definition__ scope\n";
     }
-  } else {
-    std::cerr << "[DEBUG] instantiateGenericClass: baseName=" << baseName
-              << " defScope is NULL (weak_ptr expired or never set)\n";
   }
 
   // Add fields with substituted types (skip if type already exists or already

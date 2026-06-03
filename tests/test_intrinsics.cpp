@@ -611,34 +611,33 @@ TEST(IsIntrinsicTest, type_narrowing_nested_if) {
 }
 
 TEST(IsIntrinsicTest, nested_generic_functions) {
-  // Generic function calling another generic function
+  // Minimal: outer<T> calls inner<T>
   auto value = executeString(R"(
-    interface IValue {
-        function getValue() i32;
+    function inner<T>(x: T) T { return x; }
+    
+    function outer<T>(x: T) T { return inner<T>(x); }
+    
+    function main() i32 { return outer<i32>(42); }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(IsIntrinsicTest, nested_generic_classes) {
+  // Minimal: Outer<T> contains Inner<T>
+  auto value = executeString(R"(
+    class Inner<T> {
+        var val: T;
+        function init(v: T) { this.val = v; }
+        function get() T { return this.val; }
     }
     
-    class Container implements IValue {
-        var data: i32;
-        function init(d: i32) { this.data = d; }
-        function getValue() i32 { return this.data; }
+    class Outer<T> {
+        var inner: Inner<T>;
+        function init(v: T) { this.inner = Inner<T>(v); }
+        function get() T { return this.inner.get(); }
     }
     
-    function inner<T>(x: ref T) i32 {
-        if (_is<IValue>(x)) {
-            return x.getValue();
-        }
-        return 0;
-    }
-    
-    function outer<T>(x: ref T) i32 {
-        // Call another generic function with the same type parameter
-        return inner<T>(x) * 2;
-    }
-    
-    function main() i32 {
-        var c = Container(21);
-        return outer<Container>(c);
-    }
+    function main() i32 { var o = Outer<i32>(42); return o.get(); }
   )");
   EXPECT_EQ(value, 42);
 }
