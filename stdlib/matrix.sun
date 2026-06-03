@@ -22,9 +22,8 @@
 //   // var row = m[0, :];      // First row as view
 //   // var sub = m[1:5, 2:8];  // Submatrix view
 
-// Import allocator for HeapAllocator type used in Matrix::init
 import "allocator.sun";
-// Import SliceRange for slicing support
+import "contiguous_buffer.sun";
 import "slice.sun";
 
 module sun {
@@ -42,7 +41,7 @@ module sun {
 
 // N-dimensional matrix with contiguous row-major storage
 class Matrix<T> {
-    var data: raw_ptr<i8>;         // Contiguous element storage (as bytes for _free compat)
+    var data: ContiguousBuffer<T>; // Contiguous element storage (bounds-checked, auto-freed)
     var dims: array<i64>;          // Shape of each dimension
     var ndims_: i64;               // Number of dimensions
     var total_size: i64;           // Total number of elements
@@ -60,16 +59,8 @@ class Matrix<T> {
             this.total_size = this.total_size * shape[i];
         }
         
-        // Allocate memory for elements
-        this.data = alloc.alloc_raw(this.total_size * _sizeof<T>());
-    }
-    
-    // Destructor: free allocated memory
-    function deinit() void {
-        if (this.data != null) {
-            unsafe { _free(this.data); };
-            this.data = null;
-        }
+        // Allocate memory for elements via ContiguousBuffer
+        this.data = ContiguousBuffer<T>(alloc, this.total_size);
     }
     
     // Compute linear index from n-dimensional indices (row-major order)
@@ -89,13 +80,13 @@ class Matrix<T> {
     // Get element at indices
     function get(indices: ref array<i64>) T {
         var idx: i64 = this.linearIndex(indices);
-        return unsafe { _load<T>(this.data, idx); };
+        return this.data.get_unchecked(idx);
     }
     
     // Set element at indices
     function set(indices: ref array<i64>, value: T) void {
         var idx: i64 = this.linearIndex(indices);
-        unsafe { _store<T>(this.data, idx, value); };
+        this.data.set_unchecked(idx, value);
     }
     
     // Get shape array
@@ -138,7 +129,13 @@ class Matrix<T> {
         var new_shape: array<i64, 1> = [end - start];
         var strides: array<i64, 1> = [1];  // 1D contiguous
         
-        return MatrixView<T>(this.data, start, new_shape, strides);
+        // Pass raw pointer to MatrixView (non-owning view over our data)
+        return MatrixView<T>(this.data.rawData(), start, new_shape, strides);
+    }
+    
+    // Get raw data pointer (escape hatch for interop)
+    function rawData() raw_ptr<i8> {
+        return this.data.rawData();
     }
 }
 

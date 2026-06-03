@@ -21,7 +21,8 @@ void SemanticAnalyzer::registerClass(const std::string& name,
     // Also register in nearest persistent ancestor so the class survives
     // transient scope deletion (Class/Function scopes are deleted on exit)
     for (auto* s = currentScope->parent; s != nullptr; s = s->parent) {
-      if (s->getType() == ScopeType::Module || s->getType() == ScopeType::Import ||
+      if (s->getType() == ScopeType::Module ||
+          s->getType() == ScopeType::Import ||
           s->getType() == ScopeType::Global) {
         s->classes[name] = classType;
         break;
@@ -47,6 +48,30 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::lookupClass(
           if (modChild && modChild->getType() == ScopeType::Module) {
             result = modChild->findClass(name);
             if (result) return result;
+          }
+        }
+      }
+    }
+    // Search the __definition__ scope (for transitive deps during generic
+    // instantiation). Walk up the definition scope's parent chain to reach
+    // imports at the file scope level.
+    auto defIt = s->childModules.find("__definition__");
+    if (defIt != s->childModules.end() && defIt->second) {
+      for (auto* defS = defIt->second.get(); defS != nullptr;
+           defS = defS->parent) {
+        result = defS->findClass(name);
+        if (result) return result;
+        // Search its import-scope children
+        for (const auto& [childName, child] : defS->childModules) {
+          if (child && child->getType() == ScopeType::Import) {
+            result = child->findClass(name);
+            if (result) return result;
+            for (const auto& [modName, modChild] : child->childModules) {
+              if (modChild && modChild->getType() == ScopeType::Module) {
+                result = modChild->findClass(name);
+                if (result) return result;
+              }
+            }
           }
         }
       }
@@ -105,6 +130,30 @@ const GenericClassInfo* SemanticAnalyzer::lookupGenericClass(
           if (modChild && modChild->getType() == ScopeType::Module) {
             result = modChild->findGenericClass(name);
             if (result) return result;
+          }
+        }
+      }
+    }
+    // Search the __definition__ scope (for transitive deps during generic
+    // instantiation). Walk up the definition scope's parent chain to reach
+    // imports at the file scope level.
+    auto defIt = s->childModules.find("__definition__");
+    if (defIt != s->childModules.end() && defIt->second) {
+      for (auto* defS = defIt->second.get(); defS != nullptr;
+           defS = defS->parent) {
+        result = defS->findGenericClass(name);
+        if (result) return result;
+        // Search its import-scope children
+        for (const auto& [childName, child] : defS->childModules) {
+          if (child && child->getType() == ScopeType::Import) {
+            result = child->findGenericClass(name);
+            if (result) return result;
+            for (const auto& [modName, modChild] : child->childModules) {
+              if (modChild && modChild->getType() == ScopeType::Module) {
+                result = modChild->findGenericClass(name);
+                if (result) return result;
+              }
+            }
           }
         }
       }
@@ -247,6 +296,25 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
   currentScope->classBaseName = baseName;
   currentScope->classMangledName = mangledName;
   addTypeParameterBindings(genericClassInfo->typeParameters, typeArgs);
+
+  // Link definition scope so transitive dependencies (types from imports in the
+  // generic's source file) are accessible during instantiation. This allows
+  // ContiguousBuffer<T> to resolve Unique<i8> even when instantiated from
+  // matrix.sun which doesn't directly import unique.sun.
+  if (auto defScope = genericClassInfo->definitionScope.lock()) {
+    // Only add if definition scope is not already an ancestor (avoids cycle)
+    bool isAncestor = false;
+    for (auto* s = currentScope->parent; s != nullptr; s = s->parent) {
+      if (s == defScope.get()) {
+        isAncestor = true;
+        break;
+      }
+    }
+    if (!isAncestor) {
+      // Add the definition scope as an accessible import scope for type lookups
+      currentScope->childModules["__definition__"] = defScope;
+    }
+  }
 
   // Add fields with substituted types (skip if type already exists or already
   // has fields from a previous instantiation in another scope)

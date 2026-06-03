@@ -21,7 +21,7 @@
 //   // Iteration over values
 //   for (var v: i32 in m) { ... }
 
-import "vec.sun";
+import "contiguous_buffer.sun";
 import "string.sun";
 import "allocator.sun";
 import "errors.sun";
@@ -87,12 +87,12 @@ function mod(a: i64, b: i64) i64 {
 // ============================================================================
 
 class Map<K, V> implements IIterable<V, Map<K, V>> {
-    var keys: Vec<K>;              // Key storage
-    var values: Vec<V>;            // Value storage  
-    var states: Vec<i8>;           // State array: 0=empty, 1=occupied, 2=deleted
-    var alloc: HeapAllocator;      // Allocator (stored via copy)
-    var capacity_: i64;            // Number of buckets
-    var size_: i64;                // Number of occupied entries
+    var keys: ContiguousBuffer<K>;     // Key storage
+    var values: ContiguousBuffer<V>;   // Value storage  
+    var states: ContiguousBuffer<i8>;  // State array: 0=empty, 1=occupied, 2=deleted
+    var alloc: HeapAllocator;          // Allocator (stored via copy)
+    var capacity_: i64;                // Number of buckets
+    var size_: i64;                    // Number of occupied entries
     
     // Constructor with allocator and capacity
     function init(allocator: ref HeapAllocator, capacity: i64) {
@@ -100,15 +100,13 @@ class Map<K, V> implements IIterable<V, Map<K, V>> {
         this.capacity_ = capacity;
         this.size_ = 0;
         
-        // Allocate Vec storage with sufficient capacity
-        this.keys = Vec<K>(allocator, capacity);
-        this.values = Vec<V>(allocator, capacity);
-        this.states = Vec<i8>(allocator, capacity);
+        // Allocate ContiguousBuffer storage - size equals capacity
+        this.keys = ContiguousBuffer<K>(allocator, capacity);
+        this.values = ContiguousBuffer<V>(allocator, capacity);
+        this.states = ContiguousBuffer<i8>(allocator, capacity);
         
-        // Initialize all states to EMPTY (0) by pushing
-        for (var i: i64 = 0; i < capacity; i = i + 1) {
-            this.states.push(0);
-        }
+        // Initialize all states to EMPTY (0)
+        this.states.fill(0);
     }
     
     // ========================================================================
@@ -264,7 +262,7 @@ class Map<K, V> implements IIterable<V, Map<K, V>> {
     
     // Grow capacity and rehash all entries
     function grow() void {
-        // Move old Vecs out of this (move semantics: old_* now owns the data,
+        // Move old buffers out of this (move semantics: old_* now owns the data,
         // this.keys/values/states are zeroed to prevent double-free)
         var old_keys = this.keys;
         var old_values = this.values;
@@ -275,17 +273,15 @@ class Map<K, V> implements IIterable<V, Map<K, V>> {
         var new_capacity: i64 = old_capacity * 2;
         this.capacity_ = new_capacity;
         
-        // Allocate new Vec storage
-        this.keys = Vec<K>(this.alloc, new_capacity);
-        this.values = Vec<V>(this.alloc, new_capacity);
-        this.states = Vec<i8>(this.alloc, new_capacity);
+        // Allocate new ContiguousBuffer storage
+        this.keys = ContiguousBuffer<K>(this.alloc, new_capacity);
+        this.values = ContiguousBuffer<V>(this.alloc, new_capacity);
+        this.states = ContiguousBuffer<i8>(this.alloc, new_capacity);
         
         // Initialize new states to EMPTY
-        for (var i: i64 = 0; i < new_capacity; i = i + 1) {
-            this.states.push(0);
-        }
+        this.states.fill(0);
         
-        // Rehash occupied entries from old Vecs
+        // Rehash occupied entries from old buffers
         this.size_ = 0;
         
         for (var i: i64 = 0; i < old_capacity; i = i + 1) {
@@ -298,7 +294,7 @@ class Map<K, V> implements IIterable<V, Map<K, V>> {
             }
         }
         
-        // old_* go out of scope - their deinit frees the old memory
+        // old_* go out of scope - their destructor frees the old memory
     }
     
     // ========================================================================

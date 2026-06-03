@@ -132,6 +132,14 @@ class SemanticAnalyzer {
   sun::TypePtr inferType(const ExprAST& expr);
   sun::TypePtr inferType(const MemberAccessAST& expr);
 
+  // Infer type for generic call using pre-resolved type arguments
+  sun::TypePtr inferGenericCallType(const GenericCallAST& call);
+
+  // Generic call type inference helpers
+  sun::TypePtr inferIntrinsicCallType(const GenericCallAST& call);
+  sun::TypePtr inferGenericFunctionCallType(const GenericCallAST& call);
+  sun::TypePtr inferGenericClassConstructionType(const GenericCallAST& call);
+
   void registerGlobal(const std::string& name, sun::TypePtr type);
 
   // Register a function prototype (key = name + param types for overloads)
@@ -280,6 +288,9 @@ class SemanticAnalyzer {
   // Scope management - typed scopes
   void enterScope(ScopeType type = ScopeType::Block);
   void enterModuleScope(const std::string& moduleName);
+  // Enter a class scope with base and mangled names for debug visibility
+  void enterClassScope(const std::string& baseName,
+                       const std::string& mangledName);
   // Enter a function scope with the function's signature for nested function
   // qualified names. The signature should be "funcName(paramType1,paramType2)".
   // funcName is the qualified name of the function.
@@ -389,4 +400,9 @@ class SemanticAnalyzer {
   // Analyze expressions (populates captures, validates types)
   void analyzeExpr(ExprAST& expr);
   void analyzeCall(CallExprAST& callExpr);
+
+  // Generic call analysis helpers
+  void analyzeIntrinsicCall(GenericCallAST& genericCall);
+  void analyzeGenericFunctionCall(GenericCallAST& genericCall);
+  void analyzeGenericClassConstruction(GenericCallAST& genericCall);
 };

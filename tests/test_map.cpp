@@ -413,7 +413,6 @@ TEST(MapTest, iteration_sum_values) {
         
         var sum: i32 = 0;
         for (var v: i32 in m) {
-            println_i32(v);
             sum = sum + v;
         }
         return sum;
@@ -433,7 +432,6 @@ TEST(MapTest, iteration_empty_map) {
         
         var count: i32 = 0;
         for (var v: i32 in m) {
-            println_i32(v);
             count = count + 1;
         }
         return count;

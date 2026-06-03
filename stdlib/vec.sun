@@ -19,6 +19,7 @@
 //   var len = v.size();      // 2
 
 import "allocator.sun";
+import "contiguous_buffer.sun";
 import "errors.sun";
 
 // ============================================================================
@@ -28,25 +29,15 @@ import "errors.sun";
 module sun {
 
 class Vec<T> implements IIterable<T, Vec<T>> {
-    var data: raw_ptr<i8>;         // Element storage (as bytes for _free compat)
-    var alloc: HeapAllocator;      // Allocator (stored via copy)
+    var data: ContiguousBuffer<T>; // Element storage (bounds-checked, auto-freed)
     var capacity_: i64;            // Allocated capacity
     var size_: i64;                // Current number of elements
     
     // Constructor with allocator and capacity
     function init(allocator: ref HeapAllocator, capacity: i64) {
-        this.alloc = allocator.copy();
+        this.data = ContiguousBuffer<T>(allocator, capacity);
         this.capacity_ = capacity;
         this.size_ = 0;
-        this.data = this.alloc.alloc_raw(capacity * _sizeof<T>());
-    }
-    
-    // Destructor
-    function deinit() void {
-        if (this.data != null) {
-            unsafe { _free(this.data); };
-            this.data = null;
-        }
     }
     
     // ========================================================================
@@ -58,7 +49,7 @@ class Vec<T> implements IIterable<T, Vec<T>> {
         if (this.size_ >= this.capacity_) {
             this.grow();
         }
-        unsafe { _store<T>(this.data, this.size_, value); };
+        this.data.set_unchecked(this.size_, value);
         this.size_ = this.size_ + 1;
     }
     
@@ -68,17 +59,39 @@ class Vec<T> implements IIterable<T, Vec<T>> {
             throw EmptyError();
         }
         this.size_ = this.size_ - 1;
-        return unsafe { _load<T>(this.data, this.size_); };
+        return this.data.get_unchecked(this.size_);
     }
     
-    // Get element at index
-    function get(index: i64) T {
-        return unsafe { _load<T>(this.data, index); };
+    // Get element at index (bounds-checked against size)
+    function get(index: i64) T, IError {
+        if (index < 0) {
+            throw IndexOutOfBoundsError(index);
+        }
+        if (index >= this.size_) {
+            throw IndexOutOfBoundsError(index);
+        }
+        return this.data.get_unchecked(index);
     }
     
-    // Set element at index
-    function set(index: i64, value: T) void {
-        unsafe { _store<T>(this.data, index, value); };
+    // Get element at index (no bounds check)
+    function get_unchecked(index: i64) T {
+        return this.data.get_unchecked(index);
+    }
+    
+    // Set element at index (bounds-checked against size)
+    function set(index: i64, value: T) void, IError {
+        if (index < 0) {
+            throw IndexOutOfBoundsError(index);
+        }
+        if (index >= this.size_) {
+            throw IndexOutOfBoundsError(index);
+        }
+        this.data.set_unchecked(index, value);
+    }
+    
+    // Set element at index (no bounds check)
+    function set_unchecked(index: i64, value: T) void {
+        this.data.set_unchecked(index, value);
     }
     
     // Get current size
@@ -99,14 +112,7 @@ class Vec<T> implements IIterable<T, Vec<T>> {
     // Reserve capacity for at least n elements (doesn't change size)
     function reserve(n: i64) void {
         if (n > this.capacity_) {
-            var old_data = this.data;
-            this.data = this.alloc.alloc_raw(n * _sizeof<T>());
-            // Copy existing elements
-            for (var i: i64 = 0; i < this.size_; i = i + 1) {
-                var value: T = unsafe { _load<T>(old_data, i); };
-                unsafe { _store<T>(this.data, i, value); };
-            }
-            unsafe { _free(old_data); };
+            this.data.resize_to(n);
             this.capacity_ = n;
         }
     }
@@ -116,9 +122,9 @@ class Vec<T> implements IIterable<T, Vec<T>> {
         this.size_ = 0;
     }
     
-    // Get raw data pointer (for iteration)
+    // Get raw data pointer (for interop)
     function rawData() raw_ptr<i8> {
-        return this.data;
+        return this.data.rawData();
     }
     
     // Get last element without removing
@@ -126,7 +132,7 @@ class Vec<T> implements IIterable<T, Vec<T>> {
         if (this.size_ == 0) {
             throw EmptyError();
         }
-        return unsafe { _load<T>(this.data, this.size_ - 1); };
+        return this.data.get_unchecked(this.size_ - 1);
     }
     
     // Get first element
@@ -134,7 +140,7 @@ class Vec<T> implements IIterable<T, Vec<T>> {
         if (this.size_ == 0) {
             throw EmptyError();
         }
-        return unsafe { _load<T>(this.data, 0); };
+        return this.data.get_unchecked(0);
     }
     
     // ========================================================================
@@ -143,21 +149,9 @@ class Vec<T> implements IIterable<T, Vec<T>> {
     
     // Double capacity and copy elements
     function grow() void {
-        var old_data = this.data;
-        
-        // Double capacity
         var new_capacity: i64 = this.capacity_ * 2;
-        this.data = this.alloc.alloc_raw(new_capacity * _sizeof<T>());
+        this.data.resize_to(new_capacity);
         this.capacity_ = new_capacity;
-        
-        // Copy elements
-        for (var i: i64 = 0; i < this.size_; i = i + 1) {
-            var value: T = unsafe { _load<T>(old_data, i); };
-            unsafe { _store<T>(this.data, i, value); };
-        }
-        
-        // Free old storage
-        unsafe { _free(old_data); };
     }
     
     // ========================================================================
@@ -165,13 +159,15 @@ class Vec<T> implements IIterable<T, Vec<T>> {
     // ========================================================================
     
     // Operator overload for indexing: v[i] calls __index__([i])
+    // Uses unchecked access for performance; use get() for bounds checking
     function __index__(indices: ref array<i64>) T {
-        return this.get(indices[0]);
+        return this.data.get_unchecked(indices[0]);
     }
     
     // Operator overload for indexed assignment: v[i] = val calls __setindex__([i], val)
+    // Uses unchecked access for performance; use set() for bounds checking
     function __setindex__(indices: ref array<i64>, value: T) void {
-        this.set(indices[0], value);
+        this.data.set_unchecked(indices[0], value);
     }
     
     // ========================================================================
@@ -200,7 +196,8 @@ class VecIterator<T> implements IIterator<T, Vec<T>> {
     }
     
     function next(vec: ref Vec<T>) T {
-        var value: T = vec.get(this.current);
+        // Safe to use unchecked: hasNext already verified bounds
+        var value: T = vec.get_unchecked(this.current);
         this.current = this.current + 1;
         return value;
     }
