@@ -39,4 +39,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN echo "ubuntu ALL=(root) NOPASSWD:ALL" > /etc/sudoers.d/ubuntu \
     && chmod 0440 /etc/sudoers.d/ubuntu
 
+# Eager-load git completion (needed for alias completion)
+RUN echo '[ -f /usr/share/bash-completion/completions/git ] && . /usr/share/bash-completion/completions/git' > /etc/profile.d/git-completion.sh
+
 CMD ["/bin/bash"]

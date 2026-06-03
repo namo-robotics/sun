@@ -179,7 +179,7 @@ class String {
     
     // Print string to stdout
     function print() void {
-        _print_bytes(this.data.data, this.len);
+        _print_bytes(this.data.rawData(), this.len);
     }
     
     // Print string followed by newline

@@ -126,6 +126,31 @@ class ContiguousBuffer<T> implements IIterable<T, ContiguousBuffer<T>> {
         return this.data.get_raw();
     }
     
+    // Resize buffer to new size, preserving min(old_size, new_size) elements
+    // New elements (if growing) are uninitialized
+    function resize_to(new_size: i64) void {
+        if (new_size == this.size_) {
+            return;
+        }
+        
+        // Allocate new buffer
+        var new_data: raw_ptr<i8> = this.alloc.alloc_raw(new_size * _sizeof<T>());
+        
+        // Copy existing elements (up to min of old and new size)
+        var copy_count: i64 = this.size_;
+        if (new_size < copy_count) {
+            copy_count = new_size;
+        }
+        for (var i: i64 = 0; i < copy_count; i = i + 1) {
+            var value: T = unsafe { _load<T>(this.data.get_raw(), i); };
+            unsafe { _store<T>(new_data, i, value); };
+        }
+        
+        // Replace old data with new (Unique handles freeing old buffer)
+        this.data = Unique<i8>(new_data);
+        this.size_ = new_size;
+    }
+
     // Get first element (bounds-checked)
     function first() T, IError {
         if (this.size_ == 0) {

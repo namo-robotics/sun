@@ -769,6 +769,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
         GenericClassInfo genericInfo;
         genericInfo.AST = &classDef;
         genericInfo.typeParameters = classDef.getTypeParameters();
+        genericInfo.definitionScope = currentScope->shared_from_this();
         registerGenericClass(baseName, genericInfo);
         expr.setResolvedType(sun::Types::Void());
         return;
@@ -788,6 +789,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
         GenericClassInfo genericInfo;
         genericInfo.AST = &classDef;
         genericInfo.typeParameters = {};  // Non-generic class, no type params
+        genericInfo.definitionScope = currentScope->shared_from_this();
         registerGenericClass(baseName, genericInfo);
       }
 

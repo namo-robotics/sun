@@ -35,4 +35,11 @@ class Unique<T> {
     }
 }
 
+// ============================================================================
+// Precompiled Specializations
+// ============================================================================
+
+// Unique specializations for common types
+declare Unique_i8 = Unique<i8>;
+
 } // module sun

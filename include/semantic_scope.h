@@ -256,6 +256,9 @@ struct SymbolMatch {
 struct GenericClassInfo {
   const ClassDefinitionAST* AST;            // Original AST node
   std::vector<std::string> typeParameters;  // ["T", "U", etc.]
+  std::weak_ptr<SemanticScopeBase> definitionScope;  // Scope where generic was
+                                                     // defined (weak to avoid
+                                                     // circular refs)
 };
 
 // Information about a generic interface definition (template)
@@ -297,8 +300,11 @@ using SemanticScope = SemanticScopeBase;
 // ===================================================================
 // SemanticScopeBase - Base class for all scope types
 // Contains all fields for backward compatibility during incremental refactor.
+// Inherits enable_shared_from_this to allow weak_ptr references from
+// GenericClassInfo without creating circular ownership.
 // ===================================================================
-struct SemanticScopeBase {
+struct SemanticScopeBase
+    : public std::enable_shared_from_this<SemanticScopeBase> {
   virtual ~SemanticScopeBase() = default;
 
   // Get the scope type (virtual - each subclass returns its type)
