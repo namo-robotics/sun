@@ -223,38 +223,27 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       auto& func = static_cast<FunctionAST&>(expr);
       PrototypeAST& proto = const_cast<PrototypeAST&>(func.getProto());
 
-      // Get function signature info (sets captures, converts param types)
+      // Get function signature info (includes qualified name with function
+      // context)
       FunctionInfo funcInfo = getFunctionInfo(func);
 
-      // Compute qualified name from current module path (includes library hash
-      // for moon imports since library scope uses hash as module name)
-      sun::QualifiedName qualifiedName = makeQualifiedName(proto.getName());
-      proto.setQualifiedName(qualifiedName);
+      // Apply computed info to prototype
+      applyFunctionInfoToProto(proto, funcInfo);
+      proto.setQualifiedName(funcInfo.qualifiedNameInfo);
 
-      // Register function BEFORE analyzing body to support recursive calls
-      // For nested functions, registerFunction prepends the enclosing
-      // function's signature to create unique qualified names per generic
-      // instantiation
-      funcInfo.qualifiedName = qualifiedName.mangled();
-      funcInfo.baseName = proto.getName();
-      if (funcInfo.returnType) {
-        registerFunction(proto.getName(), funcInfo);
+      // Register generic functions for later instantiation
+      if (proto.isGeneric() && !currentClass) {
+        registerGenericFunctionInCurrentScope(func);
+      }
+
+      // Only register non-generic functions in the normal function table.
+      // Generic functions are looked up via genericFunctions table instead.
+      if (!proto.isGeneric()) {
+        registernFunctionInCurrentScope(funcInfo.baseName, funcInfo);
       }
 
       // Analyze the function body
       analyzeFunction(func);
-
-      // If return type was inferred (not explicit), register now
-      if (!funcInfo.returnType) {
-        sun::TypePtr inferredReturn =
-            proto.hasReturnType() ? typeAnnotationToType(*proto.getReturnType())
-                                  : sun::Types::Void();
-        proto.setResolvedReturnType(inferredReturn);
-        registerFunction(
-            proto.getName(),
-            {inferredReturn, funcInfo.paramTypes, funcInfo.captures,
-             qualifiedName.mangled(), proto.getName()});
-      }
 
       // Set the function type on the function node
       expr.setResolvedType(inferType(expr));
@@ -265,19 +254,14 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       auto& lambda = static_cast<LambdaAST&>(expr);
       PrototypeAST& proto = const_cast<PrototypeAST&>(lambda.getProto());
 
-      // Get lambda signature info (sets captures, converts param types)
+      // Get lambda signature info (pure computation)
       FunctionInfo lambdaInfo = getLambdaInfo(lambda);
+
+      // Apply computed info to prototype
+      applyFunctionInfoToProto(proto, lambdaInfo);
 
       // Analyze the lambda body
       analyzeLambda(lambda);
-
-      // If return type was inferred (not explicit), update prototype
-      if (!lambdaInfo.returnType) {
-        sun::TypePtr inferredReturn =
-            proto.hasReturnType() ? typeAnnotationToType(*proto.getReturnType())
-                                  : sun::Types::Void();
-        proto.setResolvedReturnType(inferredReturn);
-      }
 
       // Set the lambda type on the lambda node
       expr.setResolvedType(inferType(expr));
@@ -660,12 +644,14 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
           // Register all extension methods first
           for (const auto& methodDecl : classDef.getMethods()) {
             FunctionInfo methodInfo = getFunctionInfo(*methodDecl.function);
-            const PrototypeAST& proto = methodDecl.function->getProto();
-            sun::TypePtr returnType = methodInfo.returnType
-                                          ? methodInfo.returnType
-                                          : sun::Types::Void();
+            PrototypeAST& proto =
+                const_cast<PrototypeAST&>(methodDecl.function->getProto());
+
+            // Apply computed info to prototype
+            applyFunctionInfoToProto(proto, methodInfo);
+
             existingClass->addMethod(
-                proto.getName(), returnType, methodInfo.paramTypes,
+                proto.getName(), methodInfo.returnType, methodInfo.paramTypes,
                 methodDecl.isConstructor, proto.getTypeParameters());
             std::string mangledName =
                 existingClass->getMangledMethodName(proto.getName());
@@ -674,7 +660,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
             for (const auto& pt : methodInfo.paramTypes) {
               methodParamTypes.push_back(pt);
             }
-            registerFunction(mangledName, {returnType, methodParamTypes, {}});
+            registernFunctionInCurrentScope(
+                mangledName, {methodInfo.returnType, methodParamTypes, {}});
           }
 
           // Analyze extension method bodies
@@ -875,22 +862,18 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
       // PASS 1: Register all methods first (so methods can call each other)
       for (const auto& methodDecl : classDef.getMethods()) {
-        // Get method signature info (converts param types)
-        // Note: captures aren't needed here since methods receive 'this' as
-        // parameter
+        // Get method signature info (pure computation)
         FunctionInfo methodInfo = getFunctionInfo(*methodDecl.function);
 
-        const PrototypeAST& proto = methodDecl.function->getProto();
+        PrototypeAST& proto =
+            const_cast<PrototypeAST&>(methodDecl.function->getProto());
 
-        // For methods with explicit return type, we can register now
-        // For methods needing inference, use Void as placeholder (will update
-        // after analysis)
-        sun::TypePtr returnType =
-            methodInfo.returnType ? methodInfo.returnType : sun::Types::Void();
+        // Apply computed info to prototype
+        applyFunctionInfoToProto(proto, methodInfo);
 
         // Add method to class type (include generic type parameters)
-        classType->addMethod(proto.getName(), returnType, methodInfo.paramTypes,
-                             methodDecl.isConstructor,
+        classType->addMethod(proto.getName(), methodInfo.returnType,
+                             methodInfo.paramTypes, methodDecl.isConstructor,
                              proto.getTypeParameters());
 
         // Register the method as a function with mangled name
@@ -903,18 +886,22 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
         for (const auto& pt : methodInfo.paramTypes) {
           methodParamTypes.push_back(pt);
         }
-        registerFunction(mangledName, {returnType, methodParamTypes, {}});
+        registernFunctionInCurrentScope(
+            mangledName, {methodInfo.returnType, methodParamTypes, {}});
       }
 
       // PASS 2: Analyze all method bodies
       for (size_t i = 0; i < classDef.getMethods().size(); ++i) {
         const auto& methodDecl = classDef.getMethods()[i];
-        // Set qualified name: modulePath for module, className for class
-        // context, method name as base
+        // Set qualified name: scopeKey includes module and class context
         PrototypeAST& proto =
             const_cast<PrototypeAST&>(methodDecl.function->getProto());
-        proto.setQualifiedName(sun::QualifiedName(
-            qualifiedClass.scopeKey, mangledClassName, proto.getName()));
+        std::string methodScopeKey =
+            qualifiedClass.scopeKey.empty()
+                ? mangledClassName
+                : qualifiedClass.scopeKey + "." + mangledClassName;
+        proto.setQualifiedName(
+            sun::QualifiedName(methodScopeKey, proto.getName()));
         analyzeFunction(*methodDecl.function);
       }
 
@@ -1044,17 +1031,17 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
       // Add methods to the interface type
       for (const auto& methodDecl : interfaceDef.getMethods()) {
-        // Get method signature info (sets captures, converts param types)
+        // Get method signature info (pure computation)
         FunctionInfo methodInfo = getFunctionInfo(*methodDecl.function);
-        const PrototypeAST& proto = methodDecl.function->getProto();
+        PrototypeAST& proto =
+            const_cast<PrototypeAST&>(methodDecl.function->getProto());
 
-        // Get return type
-        sun::TypePtr returnType =
-            methodInfo.returnType ? methodInfo.returnType : sun::Types::Void();
+        // Apply computed info to prototype
+        applyFunctionInfoToProto(proto, methodInfo);
 
         // Add method to interface type (include generic type parameters)
         interfaceType->addMethod(
-            proto.getName(), returnType, methodInfo.paramTypes,
+            proto.getName(), methodInfo.returnType, methodInfo.paramTypes,
             methodDecl.hasDefaultImpl, proto.getTypeParameters());
       }
 
@@ -1449,12 +1436,11 @@ std::vector<sun::TypePtr> SemanticAnalyzer::validateAndResolveParamTypes(
     paramTypes.push_back(paramType);
   }
 
-  proto.setResolvedParamTypes(paramTypes);
   return paramTypes;
 }
 
 // -------------------------------------------------------------------
-// Function info extraction
+// Function info extraction (pure computation, no side effects)
 // -------------------------------------------------------------------
 
 FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
@@ -1470,40 +1456,45 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
 
   // Build captures using current scope information
   std::vector<Capture> captures = buildCaptures(func);
-  proto.setCaptures(captures);
 
-  // For generic FREE functions (not methods), register in genericFunctionTable
-  // so they can be looked up when called with type arguments.
-  // For nested functions, include function context in the qualified name
-  // to avoid collisions across different generic instantiations.
-  // We do NOT skip body analysis — codegen needs resolved types on all nodes.
-  if (proto.isGeneric() && !currentClass) {
-    GenericFunctionInfo genInfo;
-    genInfo.AST = &func;
-    genInfo.typeParameters = proto.getTypeParameters();
-    if (proto.hasReturnType()) {
-      genInfo.returnType = *proto.getReturnType();
-    }
-    genInfo.params = proto.getArgs();
-    // Build QualifiedName with module path and function context
-    sun::QualifiedName qname(getCurrentScopeKey(), getCurrentFunctionContext(),
-                             proto.getName());
-    currentScope->genericFunctions[qname] = genInfo;
-  }
-
-  // Validate and resolve parameter types using shared helper
+  // Validate and resolve parameter types
   std::vector<sun::TypePtr> paramTypes = validateAndResolveParamTypes(proto);
 
-  // Get return type if explicitly specified (Void if not)
-  sun::TypePtr returnType;
+  // Resolve return type if specified; Void for constructors (no return type)
+  sun::TypePtr returnType = sun::Types::Void();
   if (proto.hasReturnType()) {
     returnType = typeAnnotationToType(*proto.getReturnType());
-  } else {
-    returnType = sun::Types::Void();
+    if (!returnType) {
+      logAndThrowError("Failed to resolve return type for function '" +
+                           proto.getName() + "'",
+                       func.getLocation());
+    }
   }
-  proto.setResolvedReturnType(returnType);
 
-  return {returnType, paramTypes, captures};
+  // Compute qualified name (includes module path and function context for
+  // nested functions)
+  sun::QualifiedName qualifiedName = makeQualifiedName(proto.getName());
+
+  FunctionInfo info;
+  info.returnType = returnType;
+  info.paramTypes = std::move(paramTypes);
+  info.captures = std::move(captures);
+  info.qualifiedNameInfo = qualifiedName;
+  info.qualifiedName = qualifiedName.mangled();
+  info.baseName = proto.getName();
+  info.canThrow = proto.canThrow();
+  return info;
+}
+
+// -------------------------------------------------------------------
+// Apply FunctionInfo to prototype
+// -------------------------------------------------------------------
+
+void SemanticAnalyzer::applyFunctionInfoToProto(PrototypeAST& proto,
+                                                const FunctionInfo& info) {
+  proto.setCaptures(info.captures);
+  proto.setResolvedParamTypes(info.paramTypes);
+  proto.setResolvedReturnType(info.returnType);
 }
 
 // -------------------------------------------------------------------
@@ -1561,20 +1552,11 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
   // Analyze the function body
   analyzeBlock(const_cast<BlockExprAST&>(func.getBody()));
 
-  // Infer return type if not specified
-  if (!proto.hasReturnType()) {
-    sun::TypePtr returnType = inferType(func.getBody());
-    // Populate the inferred return type on the prototype
-    if (returnType) {
-      proto.setReturnType(TypeAnnotation(returnType->toString()));
-    }
-  }
-
   exitScope();
 }
 
 // -------------------------------------------------------------------
-// Lambda signature extraction
+// Lambda signature extraction (pure computation, no side effects)
 // -------------------------------------------------------------------
 
 FunctionInfo SemanticAnalyzer::getLambdaInfo(LambdaAST& lambda) {
@@ -1582,19 +1564,20 @@ FunctionInfo SemanticAnalyzer::getLambdaInfo(LambdaAST& lambda) {
 
   // Build captures using current scope information
   std::vector<Capture> captures = buildCaptures(lambda);
-  proto.setCaptures(captures);
 
-  // Validate and resolve parameter types using shared helper
+  // Validate and resolve parameter types
   std::vector<sun::TypePtr> paramTypes = validateAndResolveParamTypes(proto);
 
-  // Get return type if explicitly specified (Void if not)
-  sun::TypePtr returnType;
+  // Resolve return type (Sun requires return type annotations on lambdas,
+  // parser enforces this, but check defensively)
+  sun::TypePtr returnType = sun::Types::Void();
   if (proto.hasReturnType()) {
     returnType = typeAnnotationToType(*proto.getReturnType());
-  } else {
-    returnType = sun::Types::Void();
+    if (!returnType) {
+      logAndThrowError("Failed to resolve return type for lambda",
+                       lambda.getLocation());
+    }
   }
-  proto.setResolvedReturnType(returnType);
 
   return {returnType, paramTypes, captures};
 }
@@ -1626,14 +1609,6 @@ void SemanticAnalyzer::analyzeLambda(LambdaAST& lambda) {
 
   // Analyze the lambda body
   analyzeBlock(const_cast<BlockExprAST&>(lambda.getBody()));
-
-  // Infer return type if not specified
-  if (!proto.hasReturnType()) {
-    sun::TypePtr returnType = inferType(lambda.getBody());
-    if (returnType) {
-      proto.setReturnType(TypeAnnotation(returnType->toString()));
-    }
-  }
 
   exitScope();
 }
@@ -1951,7 +1926,7 @@ void SemanticAnalyzer::lazyParseAndAnalyzeMethod(
       classType->getMangledMethodName(proto.getName()), substitutedParamTypes);
   std::string mangledMethodName =
       classType->getMangledMethodName(proto.getName());
-  enterFunctionScope(methodSig, sun::QualifiedName("", "", mangledMethodName),
+  enterFunctionScope(methodSig, sun::QualifiedName("", mangledMethodName),
                      proto.canThrow());
   if (classType) {
     declareVariable("this", classType, /*isParam=*/true);

@@ -182,6 +182,11 @@ void SemanticAnalyzer::enterFunctionScope(const std::string& funcSig,
   funcScope->functionName = funcName;
   funcScope->functionCanThrow = canThrow;
   funcScope->parent = currentScope;
+
+  // Function scopes inherit the parent's scopeKey (module path only).
+  // Function-specific info is in functionSignature and functionName fields.
+  funcScope->scopeKey = getCurrentScopeKey();
+
   currentScope->children.push_back(funcScope);
   currentScope = funcScope.get();
 }
@@ -232,23 +237,21 @@ void SemanticAnalyzer::exitScope() {
 }
 
 std::string SemanticAnalyzer::getCurrentModulePrefix() const {
-  // Find the nearest scope with a scope key and mangle it to underscore form
-  // scopeKey is pre-computed (e.g., "$hash$.sun") so we just convert dots
-  std::string path = getCurrentScopeKey();
-  if (path.empty()) return "";
-  for (char& c : path) {
+  // Get module path from scope key and mangle it for symbol prefixing
+  std::string modulePath = getCurrentScopeKey();
+  if (modulePath.empty()) return "";
+
+  // Mangle module path: convert dots to underscores
+  for (char& c : modulePath) {
     if (c == '.') c = '_';
   }
-  return path + "_";
+  return modulePath + "_";
 }
 
 std::string SemanticAnalyzer::getCurrentScopeKey() const {
-  // Walk up to find the nearest Module or Import scope with a scopeKey
-  // The scopeKey field already accumulates the full dot-separated path
+  // Walk up to find the nearest scope with a scopeKey (Module or Import).
   for (auto* s = currentScope; s != nullptr; s = s->parent) {
-    if ((s->getType() == ScopeType::Module ||
-         s->getType() == ScopeType::Import) &&
-        !s->scopeKey.empty()) {
+    if (!s->scopeKey.empty()) {
       return s->scopeKey;
     }
   }
@@ -257,8 +260,6 @@ std::string SemanticAnalyzer::getCurrentScopeKey() const {
 
 sun::QualifiedName SemanticAnalyzer::makeQualifiedName(
     const std::string& baseName) const {
-  // Module path includes library hash for moon imports (library scope uses
-  // hash as its module name, e.g., "$hash$.sun.submodule")
   return sun::QualifiedName(getCurrentScopeKey(), baseName);
 }
 
@@ -266,24 +267,6 @@ std::string SemanticAnalyzer::qualifyNameInCurrentModule(
     const std::string& name) const {
   std::string prefix = getCurrentModulePrefix();
   return prefix + name;
-}
-
-std::string SemanticAnalyzer::getCurrentFunctionContext() const {
-  // Build context from all enclosing function scopes' signatures
-  // Need root-to-current order, so collect ancestors then reverse
-  std::string context;
-  std::vector<const SemanticScope*> ancestors;
-  for (auto* s = currentScope; s != nullptr; s = s->parent) {
-    ancestors.push_back(s);
-  }
-  for (auto it = ancestors.rbegin(); it != ancestors.rend(); ++it) {
-    if ((*it)->getType() == ScopeType::Function &&
-        !(*it)->functionSignature.empty()) {
-      if (!context.empty()) context += "::";
-      context += (*it)->functionSignature;
-    }
-  }
-  return context;
 }
 
 bool SemanticAnalyzer::isInThrowingFunction() const {
@@ -486,12 +469,21 @@ static std::vector<SemanticScope*> collectAllModuleScopes(
     }
   };
 
+  // Track visited scopes to prevent infinite recursion
+  std::set<const SemanticScope*> visitedScopes;
+
   // Helper lambda to find ALL scopes for a segment (not just the first)
   std::function<void(const SemanticScope&, const std::string&,
                      std::vector<SemanticScope*>&)>
       findAllInScope = [&](const SemanticScope& scope,
                            const std::string& segment,
                            std::vector<SemanticScope*>& out) {
+        // Skip function signatures (segments with parentheses)
+        if (segment.find('(') != std::string::npos) return;
+        // Prevent infinite recursion by tracking visited scopes
+        if (visitedScopes.count(&scope)) return;
+        visitedScopes.insert(&scope);
+
         // Direct child lookup
         auto it = scope.childModules.find(segment);
         if (it != scope.childModules.end() && !isLibraryScope(segment)) {
@@ -910,20 +902,12 @@ std::string SemanticAnalyzer::getFunctionSignature(
   return sig;
 }
 
-void SemanticAnalyzer::registerFunction(const std::string& name,
-                                        const FunctionInfo& info) {
-  // For nested functions, prepend enclosing function context to create
-  // unique qualified names. This ensures each generic instantiation of an
-  // outer function gets its own copy of nested functions.
-  // e.g., outer<i32>'s inner -> "outer(i32)::inner(i32)"
-  // Skip function context for imported functions (inside import scopes)
-  // since those are module-level functions regardless of where the import
-  // appears in the source.
-  std::string funcContext =
-      importScopeDepth_ > 0 ? "" : getCurrentFunctionContext();
-  std::string qualifiedName =
-      funcContext.empty() ? name : funcContext + "::" + name;
-  std::string sig = getFunctionSignature(qualifiedName, info.paramTypes);
+void SemanticAnalyzer::registernFunctionInCurrentScope(
+    const std::string& name, const FunctionInfo& info) {
+  // Functions are registered in their enclosing scope. For nested functions,
+  // this is the parent function's scope - the scope hierarchy naturally
+  // disambiguates between different generic instantiations.
+  std::string sig = getFunctionSignature(name, info.paramTypes);
   // Skip if already registered (diamond import re-registration)
   if (currentScope->functions.contains(sig)) {
     return;
@@ -932,12 +916,26 @@ void SemanticAnalyzer::registerFunction(const std::string& name,
   currentScope->functions[sig] = info;
 }
 
+void SemanticAnalyzer::registerGenericFunctionInCurrentScope(
+    FunctionAST& func) {
+  PrototypeAST& proto = const_cast<PrototypeAST&>(func.getProto());
+
+  GenericFunctionInfo genInfo;
+  genInfo.AST = &func;
+  genInfo.typeParameters = proto.getTypeParameters();
+  if (proto.hasReturnType()) {
+    genInfo.returnType = *proto.getReturnType();
+  }
+  genInfo.params = proto.getArgs();
+
+  sun::QualifiedName qname(getCurrentScopeKey(), proto.getName());
+  currentScope->genericFunctions[qname] = genInfo;
+}
+
 const GenericFunctionInfo* SemanticAnalyzer::lookupGenericFunction(
     const std::string& name) const {
-  std::string modPath = getCurrentScopeKey();
-
-  // Build QualifiedName with current module path
-  sun::QualifiedName qname(modPath, "", name);
+  std::string scopeKey = getCurrentScopeKey();
+  sun::QualifiedName qname(scopeKey, name);
 
   // Walk scope chain from innermost to outermost, including child modules
   for (auto* s = currentScope; s != nullptr; s = s->parent) {
@@ -945,18 +943,9 @@ const GenericFunctionInfo* SemanticAnalyzer::lookupGenericFunction(
     if (found != s->genericFunctions.end()) {
       return &found->second;
     }
-    // Try with current function context (for nested generic functions)
-    std::string funcContext = getCurrentFunctionContext();
-    if (!funcContext.empty()) {
-      sun::QualifiedName nestedQname(modPath, funcContext, name);
-      found = s->genericFunctions.find(nestedQname);
-      if (found != s->genericFunctions.end()) {
-        return &found->second;
-      }
-    }
-    // If we're in a module, also try global scope (empty module path)
-    if (!modPath.empty()) {
-      sun::QualifiedName globalQname("", "", name);
+    // If we're in a module, also try global scope (empty scope key)
+    if (!scopeKey.empty()) {
+      sun::QualifiedName globalQname("", name);
       found = s->genericFunctions.find(globalQname);
       if (found != s->genericFunctions.end()) {
         return &found->second;
@@ -996,13 +985,6 @@ std::vector<FunctionInfo> SemanticAnalyzer::getAllFunctions(
   std::vector<FunctionInfo> results;
   std::string prefix = name + "(";
 
-  // Also try with current function context for nested functions
-  std::string funcContext = getCurrentFunctionContext();
-  std::string nestedPrefix;
-  if (!funcContext.empty()) {
-    nestedPrefix = funcContext + "::" + name + "(";
-  }
-
   // Track seen signatures to avoid duplicates
   std::set<std::string> seenSignatures;
   auto addIfUnique = [&](const FunctionInfo& info) {
@@ -1018,23 +1000,14 @@ std::vector<FunctionInfo> SemanticAnalyzer::getAllFunctions(
   // Walk scope chain from innermost to outermost
   for (auto* s = currentScope; s != nullptr; s = s->parent) {
     s->collectFunctions(prefix, allResults);
-    if (!nestedPrefix.empty()) {
-      s->collectFunctions(nestedPrefix, allResults);
-    }
     // Search direct import-scope children (one level of transparency)
     for (const auto& [childName, child] : s->childModules) {
       if (child && child->getType() == ScopeType::Import) {
         child->collectFunctions(prefix, allResults);
-        if (!nestedPrefix.empty()) {
-          child->collectFunctions(nestedPrefix, allResults);
-        }
         // Also search import scope's module children
         for (const auto& [modName, modChild] : child->childModules) {
           if (modChild && modChild->getType() == ScopeType::Module) {
             modChild->collectFunctions(prefix, allResults);
-            if (!nestedPrefix.empty()) {
-              modChild->collectFunctions(nestedPrefix, allResults);
-            }
           }
         }
       }
@@ -1046,9 +1019,6 @@ std::vector<FunctionInfo> SemanticAnalyzer::getAllFunctions(
       // For specific bindings, the caller already resolved the qualified name
       // (e.g., "math_square"), so the prefix match naturally filters correctly.
       binding.sourceScope->collectFunctions(prefix, allResults);
-      if (!nestedPrefix.empty()) {
-        binding.sourceScope->collectFunctions(nestedPrefix, allResults);
-      }
     }
   }
 
@@ -1063,16 +1033,7 @@ std::vector<FunctionInfo> SemanticAnalyzer::getAllFunctions(
 std::optional<FunctionInfo> SemanticAnalyzer::lookupFunction(
     const std::string& name, const std::vector<sun::TypePtr>& argTypes) const {
   std::string sig = getFunctionSignature(name, argTypes);
-  std::string funcContext = getCurrentFunctionContext();
-  std::string nestedSig;
-  if (!funcContext.empty()) {
-    nestedSig = getFunctionSignature(funcContext + "::" + name, argTypes);
-  }
   std::string prefix = name + "(";
-  std::string nestedPrefix;
-  if (!funcContext.empty()) {
-    nestedPrefix = funcContext + "::" + name + "(";
-  }
 
   // Helper lambda to check compatible overloads in a FunctionTable
   auto findCompatible =
@@ -1080,10 +1041,6 @@ std::optional<FunctionInfo> SemanticAnalyzer::lookupFunction(
     // Try exact match first
     auto it = funcs.find(sig);
     if (it != funcs.end()) return it->second;
-    if (!nestedSig.empty()) {
-      it = funcs.find(nestedSig);
-      if (it != funcs.end()) return it->second;
-    }
 
     // Try compatible overload — look up by base name
     auto checkOverloads =
@@ -1171,18 +1128,7 @@ std::optional<FunctionInfo> SemanticAnalyzer::lookupFunction(
 
     // Check with base name
     std::string baseName = prefix.substr(0, prefix.size() - 1);
-    auto result = checkOverloads(baseName);
-    if (result) return result;
-
-    // Check with nested name
-    if (!nestedPrefix.empty()) {
-      std::string nestedBaseName =
-          nestedPrefix.substr(0, nestedPrefix.size() - 1);
-      result = checkOverloads(nestedBaseName);
-      if (result) return result;
-    }
-
-    return std::nullopt;
+    return checkOverloads(baseName);
   };
 
   // Helper: search a scope's function map (no child recursion)
@@ -1234,70 +1180,78 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
   using sun::Types;
 
   // Low-level print intrinsics (used by stdlib print functions)
-  registerFunction("_print_i32", {Types::Void(), {Types::Int32()}, {}});
-  registerFunction("_print_i64", {Types::Void(), {Types::Int64()}, {}});
-  registerFunction("_print_f64", {Types::Void(), {Types::Float64()}, {}});
-  registerFunction("_print_newline", {Types::Void(), {}, {}});
+  registernFunctionInCurrentScope("_print_i32",
+                                  {Types::Void(), {Types::Int32()}, {}});
+  registernFunctionInCurrentScope("_print_i64",
+                                  {Types::Void(), {Types::Int64()}, {}});
+  registernFunctionInCurrentScope("_print_f64",
+                                  {Types::Void(), {Types::Float64()}, {}});
+  registernFunctionInCurrentScope("_print_newline", {Types::Void(), {}, {}});
   // _print_bytes intrinsic: write raw bytes to stdout
-  registerFunction(
+  registernFunctionInCurrentScope(
       "_print_bytes",
       {Types::Void(), {Types::RawPointer(Types::Int8()), Types::Int64()}, {}});
   // _println_str: print string literal with newline
-  registerFunction("_println_str", {Types::Void(), {Types::String()}, {}});
-  registerFunction("_println_str",
-                   {Types::Void(), {Types::RawPointer(Types::UInt8())}, {}});
+  registernFunctionInCurrentScope("_println_str",
+                                  {Types::Void(), {Types::String()}, {}});
+  registernFunctionInCurrentScope(
+      "_println_str", {Types::Void(), {Types::RawPointer(Types::UInt8())}, {}});
 
   // File I/O builtins
-  registerFunction("file_open",
-                   {Types::Int32(), {Types::String(), Types::Int32()}, {}});
-  registerFunction("file_close", {Types::Int32(), {Types::Int32()}, {}});
-  registerFunction("file_write",
-                   {Types::Int32(), {Types::Int32(), Types::String()}, {}});
-  registerFunction(
+  registernFunctionInCurrentScope(
+      "file_open", {Types::Int32(), {Types::String(), Types::Int32()}, {}});
+  registernFunctionInCurrentScope("file_close",
+                                  {Types::Int32(), {Types::Int32()}, {}});
+  registernFunctionInCurrentScope(
+      "file_write", {Types::Int32(), {Types::Int32(), Types::String()}, {}});
+  registernFunctionInCurrentScope(
       "file_read",
       {Types::RawPointer(Types::Int8()), {Types::Int32(), Types::Int32()}, {}});
 
   // Low-level memory access intrinsics
   // _load_i64(ptr, index) - load i64 from ptr at byte offset index*8
-  registerFunction(
+  registernFunctionInCurrentScope(
       "_load_i64",
       {Types::Int64(), {Types::RawPointer(Types::Int8()), Types::Int64()}, {}});
   // _store_i64(ptr, index, value) - store i64 to ptr at byte offset index*8
-  registerFunction("_store_i64", {Types::Void(),
-                                  {Types::RawPointer(Types::Int8()),
-                                   Types::Int64(), Types::Int64()},
-                                  {}});
+  registernFunctionInCurrentScope(
+      "_store_i64",
+      {Types::Void(),
+       {Types::RawPointer(Types::Int8()), Types::Int64(), Types::Int64()},
+       {}});
 
   // Memory allocation intrinsics
   // _malloc(size) - allocate size bytes, returns raw_ptr<i8>
-  registerFunction("_malloc",
-                   {Types::RawPointer(Types::Int8()), {Types::Int64()}, {}});
+  registernFunctionInCurrentScope(
+      "_malloc", {Types::RawPointer(Types::Int8()), {Types::Int64()}, {}});
   // _free(ptr) - free previously allocated memory
-  registerFunction("_free",
-                   {Types::Void(), {Types::RawPointer(Types::Int8())}, {}});
+  registernFunctionInCurrentScope(
+      "_free", {Types::Void(), {Types::RawPointer(Types::Int8())}, {}});
 
   // Atomic intrinsics
   // _atomic_cmpxchg_i32(ptr, expected, desired) - atomic compare-and-swap
-  registerFunction("_atomic_cmpxchg_i32", {Types::Int32(),
-                                           {Types::RawPointer(Types::Int32()),
-                                            Types::Int32(), Types::Int32()},
-                                           {}});
+  registernFunctionInCurrentScope(
+      "_atomic_cmpxchg_i32",
+      {Types::Int32(),
+       {Types::RawPointer(Types::Int32()), Types::Int32(), Types::Int32()},
+       {}});
   // _atomic_store_i32(ptr, value) - atomic store with release ordering
-  registerFunction(
+  registernFunctionInCurrentScope(
       "_atomic_store_i32",
       {Types::Void(), {Types::RawPointer(Types::Int32()), Types::Int32()}, {}});
   // _atomic_load_i32(ptr) - atomic load with acquire ordering
-  registerFunction("_atomic_load_i32",
-                   {Types::Int32(), {Types::RawPointer(Types::Int32())}, {}});
+  registernFunctionInCurrentScope(
+      "_atomic_load_i32",
+      {Types::Int32(), {Types::RawPointer(Types::Int32())}, {}});
 
   // Futex intrinsics (Linux-specific thread synchronization)
   // _futex_wait(ptr, expected) - block if *ptr == expected
-  registerFunction(
+  registernFunctionInCurrentScope(
       "_futex_wait",
       {Types::Void(), {Types::RawPointer(Types::Int32()), Types::Int32()}, {}});
   // _futex_wake(ptr) - wake one waiter
-  registerFunction("_futex_wake",
-                   {Types::Void(), {Types::RawPointer(Types::Int32())}, {}});
+  registernFunctionInCurrentScope(
+      "_futex_wake", {Types::Void(), {Types::RawPointer(Types::Int32())}, {}});
 }
 
 // -------------------------------------------------------------------

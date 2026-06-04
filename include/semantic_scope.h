@@ -31,6 +31,7 @@ struct FunctionInfo {
   sun::TypePtr returnType;
   std::vector<sun::TypePtr> paramTypes;
   std::vector<Capture> captures;
+  sun::QualifiedName qualifiedNameInfo;  // Full qualified name object
   std::string qualifiedName;  // Mangled name for codegen (e.g., "sun_square").
                               // Empty for builtins.
   std::string baseName;   // User-written name (e.g., "square"). For debugging.
@@ -254,8 +255,8 @@ struct SymbolMatch {
 
 // Information about a generic class definition (template)
 struct GenericClassInfo {
-  const ClassDefinitionAST* AST;            // Original AST node
-  std::vector<std::string> typeParameters;  // ["T", "U", etc.]
+  const ClassDefinitionAST* AST;                     // Original AST node
+  std::vector<std::string> typeParameters;           // ["T", "U", etc.]
   std::weak_ptr<SemanticScopeBase> definitionScope;  // Scope where generic was
                                                      // defined (weak to avoid
                                                      // circular refs)

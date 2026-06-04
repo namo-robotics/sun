@@ -18,7 +18,8 @@ void SemanticAnalyzer::registerInterface(
   currentScope->interfaces[name] = interfaceType;
   if (importScopeDepth_ > 0) {
     for (auto* s = currentScope->parent; s != nullptr; s = s->parent) {
-      if (s->getType() == ScopeType::Module || s->getType() == ScopeType::Import ||
+      if (s->getType() == ScopeType::Module ||
+          s->getType() == ScopeType::Import ||
           s->getType() == ScopeType::Global) {
         s->interfaces[name] = interfaceType;
         break;
@@ -83,7 +84,8 @@ void SemanticAnalyzer::registerGenericInterface(
   currentScope->genericInterfaces[name] = info;
   if (importScopeDepth_ > 0) {
     for (auto* s = currentScope->parent; s != nullptr; s = s->parent) {
-      if (s->getType() == ScopeType::Module || s->getType() == ScopeType::Import ||
+      if (s->getType() == ScopeType::Module ||
+          s->getType() == ScopeType::Import ||
           s->getType() == ScopeType::Global) {
         s->genericInterfaces[name] = info;
         break;
@@ -282,7 +284,8 @@ void SemanticAnalyzer::registerEnum(const std::string& name,
   currentScope->enums[name] = enumType;
   if (importScopeDepth_ > 0) {
     for (auto* s = currentScope->parent; s != nullptr; s = s->parent) {
-      if (s->getType() == ScopeType::Module || s->getType() == ScopeType::Import ||
+      if (s->getType() == ScopeType::Module ||
+          s->getType() == ScopeType::Import ||
           s->getType() == ScopeType::Global) {
         s->enums[name] = enumType;
         break;
@@ -490,8 +493,8 @@ void SemanticAnalyzer::validateInterfaceImplementation(
           for (const auto& pt : interfaceMethod.paramTypes) {
             methodParamTypes.push_back(pt);
           }
-          registerFunction(mangledName,
-                           {interfaceMethod.returnType, methodParamTypes, {}});
+          registernFunctionInCurrentScope(
+              mangledName, {interfaceMethod.returnType, methodParamTypes, {}});
         } else {
           // Required method not implemented
           logAndThrowError("Class '" + classDef.getName() +

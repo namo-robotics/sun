@@ -93,6 +93,9 @@ class SemanticAnalyzer {
   FunctionInfo getFunctionInfo(FunctionAST& func);
   FunctionInfo getLambdaInfo(LambdaAST& lambda);
 
+  // Apply FunctionInfo to a prototype (sets captures, param types, return type)
+  void applyFunctionInfoToProto(PrototypeAST& proto, const FunctionInfo& info);
+
   // Analyze a function body. Call getFunctionInfo first to get signature info.
   // If return type was not explicit, this infers it and updates the prototype.
   // Does NOT register the function - caller is responsible for that.
@@ -143,7 +146,8 @@ class SemanticAnalyzer {
   void registerGlobal(const std::string& name, sun::TypePtr type);
 
   // Register a function prototype (key = name + param types for overloads)
-  void registerFunction(const std::string& name, const FunctionInfo& info);
+  void registernFunctionInCurrentScope(const std::string& name,
+                                       const FunctionInfo& info);
 
   // Lookup function by name and exact argument types (returns nullopt if no
   // match)
@@ -177,6 +181,8 @@ class SemanticAnalyzer {
       const std::string& baseName, const std::vector<sun::TypePtr>& typeArgs);
 
   // Generic function support
+  // Register a generic function template in current scope
+  void registerGenericFunctionInCurrentScope(FunctionAST& func);
   // Lookup a generic function by name. Tries direct name first, then falls back
   // to enclosing function prefix + name (for nested generic functions).
   const GenericFunctionInfo* lookupGenericFunction(
@@ -318,11 +324,6 @@ class SemanticAnalyzer {
   // Get the fully qualified name for a symbol in current scope
   // e.g., inside "module sun { }", qualifyName("Vec") returns "sun_Vec"
   std::string qualifyNameInCurrentModule(const std::string& name) const;
-
-  // Get the function context for nested function names from enclosing scopes.
-  // Returns empty string if not inside any function scope.
-  // Example: inside "outer(i32)" and "middle(f64)" -> "outer(i32)::middle(f64)"
-  std::string getCurrentFunctionContext() const;
 
   // Check if we're currently inside a function declared with ", IError"
   // Traverses parent scopes to find the nearest function scope

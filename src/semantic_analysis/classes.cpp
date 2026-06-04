@@ -448,7 +448,8 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
       for (const auto& pt : paramTypes) {
         methodParamTypes.push_back(pt);
       }
-      registerFunction(methodMangledName, {returnType, methodParamTypes, {}});
+      registernFunctionInCurrentScope(methodMangledName,
+                                      {returnType, methodParamTypes, {}});
     }
   }
 
@@ -920,8 +921,7 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   std::string methodSig = getFunctionSignature(mangledName, paramTypes);
 
   // Enter method scope and declare parameters
-  enterFunctionScope(methodSig,
-                     sun::QualifiedName(modulePrefix, "", mangledName),
+  enterFunctionScope(methodSig, sun::QualifiedName(modulePrefix, mangledName),
                      proto.canThrow());
 
   // Declare 'this' parameter
