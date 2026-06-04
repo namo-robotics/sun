@@ -56,4 +56,5 @@
         ]
     },
     "git.addAICoAuthor": "off",
+    "lldb-dap.executable-path": "/usr/lib/llvm-20/bin/lldb-dap"
 }

@@ -2,35 +2,36 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Debug CTest (GDB)",
-      "type": "cppdbg",
+      "name": "Debug CTest (LLDB-DAP)",
+      "type": "lldb-dap",
       "request": "launch",
       "program": "${cmake.testProgram}",
-      "args": "${cmake.testArgs}",
+      "args": [
+        "${cmake.testArgs}"
+      ],
       "cwd": "${workspaceFolder}",
-      "stopAtEntry": false,
-      "environment": [
-        {
-          "name": "SUN_PATH",
-          "value": "${workspaceFolder}"
-        }
+      "env": {
+        "SUN_PATH": "${workspaceFolder}"
+      },
+      // === LLDB-specific settings ===
+      "initCommands": [
+        "settings set target.load-cwd-lldbinit true",
+        "settings set disassembly-flavor intel",
+        "settings set target.prefer-dynamic-value no-dynamic-values",
+        "settings set target.skip-prologue true",
+        "settings set target.disable-aslr false"
       ],
-      "externalConsole": false,
-      "MIMode": "gdb",
-      "miDebuggerPath": "/usr/bin/gdb",
-      "setupCommands": [
-        {
-          "description": "Enable pretty-printing for gdb",
-          "text": "-enable-pretty-printing",
-          "ignoreFailures": true
-        },
-        {
-          "description": "Set disassembly flavor to Intel",
-          "text": "-gdb-set disassembly-flavor intel",
-          "ignoreFailures": true
-        }
+      "preRunCommands": [
+        "settings set target.process.thread.step-in-avoid-nodebug true",
+        "settings set target.process.thread.step-out-avoid-nodebug true"
       ],
-      "showDisplayString": true
+      // === Critical fix for containers ===
+      "disableASLR": false,
+      "disableSTDIO": false,
+      // Stability for large LLVM/C++ projects
+      "timeout": 60,
+      "enableAutoVariableSummaries": false,
+      "enableSyntheticChildDebugging": true
     },
     {
       "name": "Debug CTest (LLDB)",

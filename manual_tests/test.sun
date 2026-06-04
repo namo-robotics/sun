@@ -1,9 +1,5 @@
-import "stdlib.moon";
-import "a.sun";
-using sun;
+function inner<T>(x: T) T { return x; }
 
-function main() i32 {
-    import "b.sun";
-    var x = sun.a(); + sun.b();
-    return x;
-}
+function outer<T>(x: T) T { return inner<T>(x); }
+
+function main() i32 { return outer<i32>(42); }
