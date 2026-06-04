@@ -1323,7 +1323,9 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
         expr.getResolvedTypeArgs();
 
     // Build mangled name to look up the correct specialization
-    std::string mangledName = funcName;
+    // Use qualified name to include enclosing function context (e.g.,
+    // outer_i32_inner)
+    std::string mangledName = genericFuncAST->getProto().getQualifiedName();
     for (const auto& typeArg : resolvedTypeArgs) {
       mangledName += "_" + typeArg->toString();
     }

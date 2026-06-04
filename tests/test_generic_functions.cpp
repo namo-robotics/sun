@@ -84,3 +84,35 @@ TEST(GenericFunctions, generic_function_capture_multiple_calls) {
   // a = 10 + 1 = 11, b = 20 + 1 = 21, total = 32
   EXPECT_EQ(value, 32);
 }
+
+TEST(GenericFunctions, nested_generic_function) {
+  auto value = executeString(R"(
+    function main() i32 {
+        function outer<T>(x: T) T {
+            function inner<U>(y: U) U {
+                return y + y;
+            }
+            return x + inner<T>(x);
+        }
+        return outer<i32>(5);
+    }
+  )");
+  // inner(5) = 5+5 = 10, outer = 5 + 10 = 15
+  EXPECT_EQ(value, 15);
+}
+
+TEST(GenericFunctions, inner_generic_function_with_capture) {
+  auto value = executeString(R"(
+    function main() i32 {
+        function outer<T>(x: T) T {
+            function inner<U>(y: U) U {
+                return y + x;
+            }
+            return inner<i8>(3);
+        }
+        return outer<i32>(5);
+    }
+  )");
+  // inner(3) = 3+5 = 8, outer = 8
+  EXPECT_EQ(value, 8);
+}

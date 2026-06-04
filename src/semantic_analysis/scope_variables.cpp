@@ -183,9 +183,10 @@ void SemanticAnalyzer::enterFunctionScope(const std::string& funcSig,
   funcScope->functionCanThrow = canThrow;
   funcScope->parent = currentScope;
 
-  // Function scopes inherit the parent's scopeKey (module path only).
-  // Function-specific info is in functionSignature and functionName fields.
-  funcScope->scopeKey = getCurrentScopeKey();
+  // Set scopeKey to the function's mangled name so nested functions
+  // get unique qualified names (e.g., inner inside outer_i32 ->
+  // outer_i32_inner)
+  funcScope->scopeKey = funcName.mangled();
 
   currentScope->children.push_back(funcScope);
   currentScope = funcScope.get();

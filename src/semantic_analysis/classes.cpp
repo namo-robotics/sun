@@ -530,7 +530,9 @@ SemanticAnalyzer::instantiateGenericFunction(
   }
 
   const PrototypeAST& proto = genericFunc->getProto();
-  const std::string& funcName = proto.getName();
+  // Use qualified name to include enclosing function context (e.g.,
+  // outer_i32_inner)
+  std::string funcName = proto.getQualifiedName();
   const auto& typeParams = proto.getTypeParameters();
 
   // Generate mangled name for cache lookup
@@ -615,6 +617,9 @@ SemanticAnalyzer::instantiateGenericFunction(
     PrototypeAST& clonedProto =
         const_cast<PrototypeAST&>(clonedFunc->getProto());
     clonedProto.setName(mangledName);
+    // Update qualified name to the mangled name so nested functions get correct
+    // scopeKey (e.g., outer_i32 instead of outer)
+    clonedProto.setQualifiedName(sun::QualifiedName::fromMangled(mangledName));
 
     // Build and store type parameter bindings (e.g., T -> i32)
     // These are used by codegen to resolve nested generic calls
@@ -635,8 +640,10 @@ SemanticAnalyzer::instantiateGenericFunction(
     // Compute function signature for nested function qualification
     std::string funcSig = getFunctionSignature(mangledName, paramTypes);
 
-    // Declare parameters in scope for body analysis
-    enterFunctionScope(funcSig, proto.getQualifiedNameInfo(), proto.canThrow());
+    // Declare parameters in scope for body analysis - use the mangled qualified
+    // name so nested functions get correct context
+    enterFunctionScope(funcSig, clonedProto.getQualifiedNameInfo(),
+                       proto.canThrow());
     for (size_t i = 0; i < paramTypes.size(); ++i) {
       const auto& [argName, argType] = proto.getArgs()[i];
       declareVariable(argName, paramTypes[i], /*isParam=*/true);
