@@ -559,8 +559,7 @@ SemanticAnalyzer::instantiateGenericFunction(
   }
 
   // Enter scope and bind type parameters
-  enterScope();
-  addTypeParameterBindings(typeParams, typeArgs);
+  enterTypeParamScope(typeParams, typeArgs);
 
   // Substitute parameter types
   std::vector<sun::TypePtr> paramTypes;
@@ -796,8 +795,7 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   }
 
   // Enter scope and add all type bindings
-  enterScope();
-  addTypeParameterBindings(allTypeParams, allTypeArgs);
+  enterTypeParamScope(allTypeParams, allTypeArgs);
 
   // Substitute types in parameters
   std::vector<sun::TypePtr> paramTypes;

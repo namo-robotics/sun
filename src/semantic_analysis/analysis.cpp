@@ -1860,8 +1860,7 @@ void SemanticAnalyzer::lazyParseAndAnalyzeMethod(
   bool needsTypeParamScope =
       !typeParams.empty() && typeParams.size() == typeArgs.size();
   if (needsTypeParamScope) {
-    enterScope(ScopeType::TypeParams);
-    addTypeParameterBindings(typeParams, typeArgs);
+    enterTypeParamScope(typeParams, typeArgs);
   }
 
   // Step 3: Set class context for 'this' member access resolution

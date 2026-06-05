@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <cassert>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -1154,7 +1155,10 @@ class FunctionAST : public ExprAST {
   std::unique_ptr<PrototypeAST> releaseProto() { return std::move(Proto); }
 
   const PrototypeAST& getProto() const { return *Proto; }
-  const BlockExprAST& getBody() const { return *Body; }
+  const BlockExprAST& getBody() const {
+    assert(Body && "getBody() called on extern function with no body");
+    return *Body;
+  }
 
   // Set body (for lazy parsing - replace empty stub with parsed body)
   void setBody(std::unique_ptr<BlockExprAST> newBody) {

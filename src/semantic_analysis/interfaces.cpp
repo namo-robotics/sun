@@ -180,8 +180,7 @@ SemanticAnalyzer::instantiateGenericInterface(
           typeRegistry->getSpecializedInterface(baseName, typeArgs);
 
       // Push a scope for type parameter bindings
-      enterScope();
-      addTypeParameterBindings(builtinInterface->getTypeParameters(), typeArgs);
+      enterTypeParamScope(builtinInterface->getTypeParameters(), typeArgs);
 
       // Add fields with substituted types
       for (const auto& field : builtinInterface->getFields()) {
@@ -227,8 +226,7 @@ SemanticAnalyzer::instantiateGenericInterface(
       typeRegistry->getSpecializedInterface(baseName, typeArgs);
 
   // Push a scope for type parameter bindings
-  enterScope();
-  addTypeParameterBindings(genericInfo->typeParameters, typeArgs);
+  enterTypeParamScope(genericInfo->typeParameters, typeArgs);
 
   // Add fields with substituted types
   for (const auto& field : genericInfo->AST->getFields()) {

@@ -303,6 +303,9 @@ class SemanticAnalyzer {
 
   // Scope management - typed scopes
   void enterScope(ScopeType type = ScopeType::Block);
+  // Enter a type parameter scope with bindings (combines enterScope + addTypeParameterBindings)
+  void enterTypeParamScope(const std::vector<std::string>& params,
+                           const std::vector<sun::TypePtr>& args);
   void enterModuleScope(const std::string& moduleName);
   // Enter a class scope with base and mangled names for debug visibility
   void enterClassScope(const std::string& baseName,

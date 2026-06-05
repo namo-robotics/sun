@@ -121,6 +121,13 @@ std::shared_ptr<SemanticScopeBase> SemanticScopeBase::cloneSymbols(
   return clone;
 }
 
+void SemanticAnalyzer::enterTypeParamScope(
+    const std::vector<std::string>& params,
+    const std::vector<sun::TypePtr>& args) {
+  enterScope(ScopeType::TypeParams);
+  addTypeParameterBindings(params, args);
+}
+
 void SemanticAnalyzer::enterScope(ScopeType type) {
   std::shared_ptr<SemanticScopeBase> child;
   switch (type) {

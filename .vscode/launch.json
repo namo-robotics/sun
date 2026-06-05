@@ -19,7 +19,10 @@
         "settings set disassembly-flavor intel",
         "settings set target.prefer-dynamic-value no-dynamic-values",
         "settings set target.skip-prologue true",
-        "settings set target.disable-aslr false"
+        "settings set target.disable-aslr false",
+        "settings set target.max-children-count 20",
+        "settings set target.max-string-summary-length 128",
+        "settings set target.max-memory-read-size 1024"
       ],
       "preRunCommands": [
         "settings set target.process.thread.step-in-avoid-nodebug true",
@@ -31,7 +34,7 @@
       // Stability for large LLVM/C++ projects
       "timeout": 60,
       "enableAutoVariableSummaries": false,
-      "enableSyntheticChildDebugging": true
+      "enableSyntheticChildDebugging": false,
     },
     {
       "name": "Debug CTest (LLDB)",

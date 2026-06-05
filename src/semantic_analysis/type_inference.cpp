@@ -786,8 +786,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
                 std::static_pointer_cast<sun::ClassType>(objectType);
             instantiateGenericMethod(mutableClassType, memberName, typeArgPtrs);
 
-            enterScope();
-            addTypeParameterBindings(typeParams, typeArgPtrs);
+            enterTypeParamScope(typeParams, typeArgPtrs);
             returnType = substituteTypeParameters(returnType);
             std::vector<sun::TypePtr> substitutedParams;
             for (const auto& pt : method->paramTypes) {
@@ -984,8 +983,7 @@ sun::TypePtr SemanticAnalyzer::inferGenericFunctionCallType(
   // Compute return type from generic function's declared return type
   if (genFuncInfo->returnType.has_value()) {
     const auto& typeParams = genFuncInfo->typeParameters;
-    enterScope();
-    addTypeParameterBindings(typeParams, typeArgs);
+    enterTypeParamScope(typeParams, typeArgs);
     sun::TypePtr returnType = typeAnnotationToType(*genFuncInfo->returnType);
     returnType = substituteTypeParameters(returnType);
     exitScope();
