@@ -174,6 +174,32 @@ void SemanticAnalyzer::enterModuleScope(const std::string& moduleName) {
   currentScope = child.get();
 }
 
+void SemanticAnalyzer::enterClassScope(const std::string& baseName,
+                                       const std::string& mangledName) {
+  // Get parent scopeKey before entering new scope
+  std::string parentScopeKey = getCurrentScopeKey();
+
+  enterScope(ScopeType::Class);
+  currentScope->classBaseName = baseName;
+  currentScope->classMangledName = mangledName;
+  currentScope->scopeKey = parentScopeKey.empty()
+                               ? mangledName
+                               : parentScopeKey + "." + mangledName;
+}
+
+void SemanticAnalyzer::enterInterfaceScope(const std::string& baseName,
+                                           const std::string& mangledName) {
+  // Get parent scopeKey before entering new scope
+  std::string parentScopeKey = getCurrentScopeKey();
+
+  enterScope(ScopeType::Interface);
+  currentScope->classBaseName = baseName;
+  currentScope->classMangledName = mangledName;
+  currentScope->scopeKey = parentScopeKey.empty()
+                               ? mangledName
+                               : parentScopeKey + "." + mangledName;
+}
+
 void SemanticAnalyzer::enterFunctionScope(const std::string& funcSig,
                                           const sun::QualifiedName& funcName,
                                           bool canThrow) {

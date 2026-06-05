@@ -102,9 +102,19 @@ class SemanticAnalyzer {
   void analyzeFunction(FunctionAST& func);
   void analyzeLambda(LambdaAST& lambda);
 
+  // Analyze a partial class definition. Partial classes add methods to an
+  // existing primary class. If the primary has been analyzed, merges now;
+  // otherwise stashes for later merging.
+  void analyzePartialClass(ClassDefinitionAST& classDef, ExprAST& expr);
+
   // Validate that a type parameter exists when the type is a TypeParameterType.
   // Throws an error with source location if the type parameter is not found.
   void validateTypeParameter(const sun::TypePtr& type, const ExprAST& node);
+
+  // Validate that an identifier name is not reserved (doesn't start with '_').
+  // Throws an error if the name is reserved.
+  void validateNotReserved(const std::string& name, const std::string& kind,
+                           std::optional<Position> location);
 
   // Lazy parse and analyze a method body from source text.
   // This is a unified helper for precompiled generic class methods:
@@ -297,6 +307,9 @@ class SemanticAnalyzer {
   // Enter a class scope with base and mangled names for debug visibility
   void enterClassScope(const std::string& baseName,
                        const std::string& mangledName);
+  // Enter an interface scope with base and mangled names for debug visibility
+  void enterInterfaceScope(const std::string& baseName,
+                           const std::string& mangledName);
   // Enter a function scope with the function's signature for nested function
   // qualified names. The signature should be "funcName(paramType1,paramType2)".
   // funcName is the qualified name of the function.

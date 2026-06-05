@@ -1624,6 +1624,12 @@ class ClassDefinitionAST : public ExprAST {
     return typeParameters;
   }
   bool isGeneric() const { return !typeParameters.empty(); }
+  bool hasGenericMethods() const {
+    for (const auto& method : methods) {
+      if (method.function->getProto().isGeneric()) return true;
+    }
+    return false;
+  }
   const std::vector<ImplementedInterfaceAST>& getImplementedInterfaces() const {
     return implementedInterfaces;
   }

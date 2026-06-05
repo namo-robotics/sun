@@ -212,13 +212,12 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
   // Look up the generic class definition first
   auto* genericClassInfo = lookupGenericClass(baseName);
 
-  // Use the AST's qualified name for mangling if available.
+  // Use the stored qualified name for mangling.
   // This ensures that looking up "MatrixView" (short name) produces the same
   // mangledName as "$hash$_sun_MatrixView" (qualified name from within module).
   std::string effectiveBase = baseName;
-  if (genericClassInfo && genericClassInfo->AST &&
-      genericClassInfo->AST->hasQualifiedName()) {
-    effectiveBase = genericClassInfo->AST->getQualifiedName();
+  if (genericClassInfo && !genericClassInfo->qualifiedName.mangled().empty()) {
+    effectiveBase = genericClassInfo->qualifiedName.mangled();
   }
 
   // Generate mangled name for the specialized class
@@ -292,9 +291,7 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
   }
 
   // Push a scope for class-level type parameter bindings
-  enterScope(ScopeType::Class);
-  currentScope->classBaseName = baseName;
-  currentScope->classMangledName = mangledName;
+  enterClassScope(baseName, mangledName);
   addTypeParameterBindings(genericClassInfo->typeParameters, typeArgs);
 
   // Link definition scope so transitive dependencies (types from imports in the
@@ -898,9 +895,8 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   if (classType->isSpecialized()) {
     const std::string& baseName = classType->getBaseGenericName();
     auto* genericInfo = lookupGenericClass(baseName);
-    if (genericInfo && genericInfo->AST &&
-        genericInfo->AST->hasQualifiedName()) {
-      modulePrefix = genericInfo->AST->getQualifiedNameInfo().scopeKey;
+    if (genericInfo && !genericInfo->qualifiedName.scopeKey.empty()) {
+      modulePrefix = genericInfo->qualifiedName.scopeKey;
     }
   }
   if (modulePrefix.empty()) {

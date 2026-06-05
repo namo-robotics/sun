@@ -615,79 +615,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       const std::string& baseName = classDef.getName();
 
       // Partial classes: add methods to the primary class.
-      // If the primary has already been analyzed, merge immediately.
-      // If not yet seen (partial imported before primary), stash for later.
       if (classDef.isPartial()) {
-        auto existingClass = lookupClass(baseName);
-        if (existingClass) {
-          // Primary already analyzed — validate and merge methods now
-          for (const auto& extMethod : classDef.getMethods()) {
-            const std::string& methodName =
-                extMethod.function->getProto().getName();
-            if (existingClass->getMethod(methodName)) {
-              logAndThrowError("Method '" + methodName +
-                                   "' already defined in class '" + baseName +
-                                   "'",
-                               extMethod.function->getLocation());
-            }
-          }
-
-          // Register and analyze extension methods on the existing class
-          auto savedClass = currentClass;
-          setCurrentClass(existingClass);
-
-          // Enter a Class scope to contain extension method scopes
-          enterScope(ScopeType::Class);
-          currentScope->classBaseName = baseName;
-          currentScope->classMangledName = existingClass->getMangledName();
-
-          // Register all extension methods first
-          for (const auto& methodDecl : classDef.getMethods()) {
-            FunctionInfo methodInfo = getFunctionInfo(*methodDecl.function);
-            PrototypeAST& proto =
-                const_cast<PrototypeAST&>(methodDecl.function->getProto());
-
-            // Apply computed info to prototype
-            applyFunctionInfoToProto(proto, methodInfo);
-
-            existingClass->addMethod(
-                proto.getName(), methodInfo.returnType, methodInfo.paramTypes,
-                methodDecl.isConstructor, proto.getTypeParameters());
-            std::string mangledName =
-                existingClass->getMangledMethodName(proto.getName());
-            std::vector<sun::TypePtr> methodParamTypes;
-            methodParamTypes.push_back(existingClass);
-            for (const auto& pt : methodInfo.paramTypes) {
-              methodParamTypes.push_back(pt);
-            }
-            registernFunctionInCurrentScope(
-                mangledName, {methodInfo.returnType, methodParamTypes, {}});
-          }
-
-          // Analyze extension method bodies
-          for (const auto& methodDecl : classDef.getMethods()) {
-            analyzeFunction(*methodDecl.function);
-          }
-
-          exitScope();  // Class scope
-
-          // Merge methods into primary AST so codegen generates them
-          for (auto* s = currentScope; s != nullptr; s = s->parent) {
-            auto it = s->classDefinitions.find(baseName);
-            if (it != s->classDefinitions.end()) {
-              for (auto& extMethod : classDef.getMutableMethods()) {
-                it->second->getMutableMethods().push_back(std::move(extMethod));
-              }
-              break;
-            }
-          }
-
-          setCurrentClass(savedClass);
-        } else {
-          // Primary not yet seen — stash for merging when primary is analyzed
-          pendingExtensions_[baseName].push_back(&classDef);
-        }
-        expr.setResolvedType(sun::Types::Void());
+        analyzePartialClass(classDef, expr);
         return;
       }
 
@@ -713,12 +642,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       }
 
       // Validate class name
-      if (isReservedIdentifier(classDef.getName())) {
-        logAndThrowError("Class name '" + classDef.getName() +
-                             "' is invalid: names starting with '_' are "
-                             "reserved for builtins",
-                         classDef.getLocation());
-      }
+      validateNotReserved(classDef.getName(), "Class name",
+                          classDef.getLocation());
 
       // Check for redefinition of builtin types
       if (typeRegistry->isBuiltinTypeName(classDef.getName())) {
@@ -729,55 +654,32 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
       // Validate field names
       for (const auto& field : classDef.getFields()) {
-        if (isReservedIdentifier(field.name)) {
-          logAndThrowError("Field name '" + field.name +
-                               "' is invalid: names starting with '_' are "
-                               "reserved for builtins",
-                           field.location);
-        }
+        validateNotReserved(field.name, "Field name", field.location);
       }
 
       // Validate method names
       for (const auto& methodDecl : classDef.getMethods()) {
         const std::string& methodName =
             methodDecl.function->getProto().getName();
-        if (isReservedIdentifier(methodName)) {
-          logAndThrowError(
-              "Method name '" + methodName +
-                  "' is invalid: names starting with '_' are reserved "
-                  "for builtins",
-              methodDecl.function->getLocation());
-        }
+        validateNotReserved(methodName, "Method name",
+                            methodDecl.function->getLocation());
       }
 
-      // Check if this is a generic class definition
-      if (classDef.isGeneric()) {
-        // Register as a generic class template (not instantiated yet)
+      // Register in generic class table if this is a generic class or has
+      // generic methods (needed for instantiateGenericMethod to find the def)
+      if (classDef.isGeneric() || classDef.hasGenericMethods()) {
         GenericClassInfo genericInfo;
         genericInfo.AST = &classDef;
         genericInfo.typeParameters = classDef.getTypeParameters();
         genericInfo.definitionScope = currentScope->shared_from_this();
+        genericInfo.qualifiedName = qualifiedClass;
         registerGenericClass(baseName, genericInfo);
-        expr.setResolvedType(sun::Types::Void());
-        return;
-      }
 
-      // Check if this non-generic class has any generic methods
-      // If so, register it in genericClassTable so instantiateGenericMethod can
-      // find its definition
-      bool hasGenericMethods = false;
-      for (const auto& methodDecl : classDef.getMethods()) {
-        if (methodDecl.function->getProto().isGeneric()) {
-          hasGenericMethods = true;
-          break;
+        // Generic class templates are not analyzed further until instantiated
+        if (classDef.isGeneric()) {
+          expr.setResolvedType(sun::Types::Void());
+          return;
         }
-      }
-      if (hasGenericMethods) {
-        GenericClassInfo genericInfo;
-        genericInfo.AST = &classDef;
-        genericInfo.typeParameters = {};  // Non-generic class, no type params
-        genericInfo.definitionScope = currentScope->shared_from_this();
-        registerGenericClass(baseName, genericInfo);
       }
 
       // Create the class type with the qualified name
@@ -856,9 +758,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       setCurrentClass(classType);
 
       // Enter a Class scope to contain all method scopes in the tree
-      enterScope(ScopeType::Class);
-      currentScope->classBaseName = baseName;
-      currentScope->classMangledName = mangledClassName;
+      enterClassScope(baseName, mangledClassName);
 
       // PASS 1: Register all methods first (so methods can call each other)
       for (const auto& methodDecl : classDef.getMethods()) {
@@ -954,12 +854,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       }
 
       // Validate interface name
-      if (isReservedIdentifier(interfaceDef.getName())) {
-        logAndThrowError("Interface name '" + interfaceDef.getName() +
-                             "' is invalid: names starting with '_' are "
-                             "reserved for builtins",
-                         interfaceDef.getLocation());
-      }
+      validateNotReserved(interfaceDef.getName(), "Interface name",
+                          interfaceDef.getLocation());
 
       // Check for redefinition of builtin types
       if (typeRegistry->isBuiltinTypeName(interfaceDef.getName())) {
@@ -970,26 +866,15 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
       // Validate field names
       for (const auto& field : interfaceDef.getFields()) {
-        if (isReservedIdentifier(field.name)) {
-          logAndThrowError(
-              "Interface field name '" + field.name +
-                  "' is invalid: names starting with '_' are reserved "
-                  "for builtins",
-              field.location);
-        }
+        validateNotReserved(field.name, "Interface field name", field.location);
       }
 
       // Validate method names
       for (const auto& methodDecl : interfaceDef.getMethods()) {
         const std::string& methodName =
             methodDecl.function->getProto().getName();
-        if (isReservedIdentifier(methodName)) {
-          logAndThrowError(
-              "Interface method name '" + methodName +
-                  "' is invalid: names starting with '_' are reserved "
-                  "for builtins",
-              methodDecl.function->getLocation());
-        }
+        validateNotReserved(methodName, "Interface method name",
+                            methodDecl.function->getLocation());
       }
 
       // Handle generic interfaces differently
@@ -1046,9 +931,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       }
 
       // Enter Interface scope to contain method scopes
-      enterScope(ScopeType::Interface);
-      currentScope->classBaseName = interfaceDef.getName();
-      currentScope->classMangledName = interfaceName;
+      enterInterfaceScope(interfaceDef.getName(), interfaceName);
 
       // Analyze default method bodies
       for (const auto& methodDecl : interfaceDef.getMethods()) {
@@ -1089,22 +972,14 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       }
 
       // Validate enum name
-      if (isReservedIdentifier(enumDef.getName())) {
-        logAndThrowError("Enum name '" + enumDef.getName() +
-                             "' is invalid: names starting with '_' are "
-                             "reserved for builtins",
-                         enumDef.getLocation());
-      }
+      validateNotReserved(enumDef.getName(), "Enum name",
+                          enumDef.getLocation());
 
       // Validate variant names and check for duplicates
       std::set<std::string> seenVariants;
       for (const auto& variant : enumDef.getVariants()) {
-        if (isReservedIdentifier(variant.name)) {
-          logAndThrowError("Enum variant name '" + variant.name +
-                               "' is invalid: names starting with '_' are "
-                               "reserved for builtins",
-                           variant.location);
-        }
+        validateNotReserved(variant.name, "Enum variant name",
+                            variant.location);
         if (seenVariants.count(variant.name)) {
           logAndThrowError("Duplicate enum variant '" + variant.name +
                                "' in enum '" + enumDef.getName() + "'",
@@ -1399,6 +1274,21 @@ void SemanticAnalyzer::analyzeBlock(BlockExprAST& block) {
 }
 
 // -------------------------------------------------------------------
+// Identifier validation
+// -------------------------------------------------------------------
+
+void SemanticAnalyzer::validateNotReserved(const std::string& name,
+                                           const std::string& kind,
+                                           std::optional<Position> location) {
+  if (isReservedIdentifier(name)) {
+    logAndThrowError(kind + " '" + name +
+                         "' is invalid: names starting with '_' are "
+                         "reserved for builtins",
+                     location);
+  }
+}
+
+// -------------------------------------------------------------------
 // Helper: resolve parameter types from prototype
 // -------------------------------------------------------------------
 
@@ -1406,12 +1296,7 @@ std::vector<sun::TypePtr> SemanticAnalyzer::validateAndResolveParamTypes(
     PrototypeAST& proto, std::optional<Position> loc) {
   // Validate parameter names
   for (const auto& argName : proto.getArgNames()) {
-    if (isReservedIdentifier(argName)) {
-      logAndThrowError(
-          "Parameter name '" + argName +
-              "' is invalid: names starting with '_' are reserved for builtins",
-          loc);
-    }
+    validateNotReserved(argName, "Parameter name", loc);
   }
 
   // Resolve parameter types
@@ -1447,11 +1332,8 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
   PrototypeAST& proto = const_cast<PrototypeAST&>(func.getProto());
 
   // Validate function name (if named function, not lambda)
-  if (!proto.getName().empty() && isReservedIdentifier(proto.getName())) {
-    logAndThrowError(
-        "Function name '" + proto.getName() +
-            "' is invalid: names starting with '_' are reserved for builtins",
-        func.getLocation());
+  if (!proto.getName().empty()) {
+    validateNotReserved(proto.getName(), "Function name", func.getLocation());
   }
 
   // Build captures using current scope information
@@ -1495,6 +1377,82 @@ void SemanticAnalyzer::applyFunctionInfoToProto(PrototypeAST& proto,
   proto.setCaptures(info.captures);
   proto.setResolvedParamTypes(info.paramTypes);
   proto.setResolvedReturnType(info.returnType);
+}
+
+// -------------------------------------------------------------------
+// Partial class analysis
+// -------------------------------------------------------------------
+
+void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
+                                           ExprAST& expr) {
+  const std::string& baseName = classDef.getName();
+
+  auto existingClass = lookupClass(baseName);
+  if (existingClass) {
+    // Primary already analyzed — validate and merge methods now
+    for (const auto& extMethod : classDef.getMethods()) {
+      const std::string& methodName = extMethod.function->getProto().getName();
+      if (existingClass->getMethod(methodName)) {
+        logAndThrowError("Method '" + methodName +
+                             "' already defined in class '" + baseName + "'",
+                         extMethod.function->getLocation());
+      }
+    }
+
+    // Register and analyze extension methods on the existing class
+    auto savedClass = currentClass;
+    setCurrentClass(existingClass);
+
+    // Enter a Class scope to contain extension method scopes
+    enterClassScope(baseName, existingClass->getMangledName());
+
+    // Register all extension methods first
+    for (const auto& methodDecl : classDef.getMethods()) {
+      FunctionInfo methodInfo = getFunctionInfo(*methodDecl.function);
+      PrototypeAST& proto =
+          const_cast<PrototypeAST&>(methodDecl.function->getProto());
+
+      // Apply computed info to prototype
+      applyFunctionInfoToProto(proto, methodInfo);
+
+      existingClass->addMethod(proto.getName(), methodInfo.returnType,
+                               methodInfo.paramTypes, methodDecl.isConstructor,
+                               proto.getTypeParameters());
+      std::string mangledName =
+          existingClass->getMangledMethodName(proto.getName());
+      std::vector<sun::TypePtr> methodParamTypes;
+      methodParamTypes.push_back(existingClass);
+      for (const auto& pt : methodInfo.paramTypes) {
+        methodParamTypes.push_back(pt);
+      }
+      registernFunctionInCurrentScope(
+          mangledName, {methodInfo.returnType, methodParamTypes, {}});
+    }
+
+    // Analyze extension method bodies
+    for (const auto& methodDecl : classDef.getMethods()) {
+      analyzeFunction(*methodDecl.function);
+    }
+
+    exitScope();  // Class scope
+
+    // Merge methods into primary AST so codegen generates them
+    for (auto* s = currentScope; s != nullptr; s = s->parent) {
+      auto it = s->classDefinitions.find(baseName);
+      if (it != s->classDefinitions.end()) {
+        for (auto& extMethod : classDef.getMutableMethods()) {
+          it->second->getMutableMethods().push_back(std::move(extMethod));
+        }
+        break;
+      }
+    }
+
+    setCurrentClass(savedClass);
+  } else {
+    // Primary not yet seen — stash for merging when primary is analyzed
+    pendingExtensions_[baseName].push_back(&classDef);
+  }
+  expr.setResolvedType(sun::Types::Void());
 }
 
 // -------------------------------------------------------------------

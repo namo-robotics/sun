@@ -260,6 +260,7 @@ struct GenericClassInfo {
   std::weak_ptr<SemanticScopeBase> definitionScope;  // Scope where generic was
                                                      // defined (weak to avoid
                                                      // circular refs)
+  sun::QualifiedName qualifiedName;                  // Captured at registration
 };
 
 // Information about a generic interface definition (template)

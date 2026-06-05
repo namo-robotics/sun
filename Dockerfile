@@ -33,7 +33,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     openssh-client \
     sudo \
     bash-completion \
+    locales \
+    && locale-gen en_US.UTF-8 \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+ENV LANG=en_US.UTF-8 \
+    LC_ALL=en_US.UTF-8
 
 # Grant sudo to existing ubuntu user (UID 1000 already exists in Ubuntu 25.10+)
 RUN echo "ubuntu ALL=(root) NOPASSWD:ALL" > /etc/sudoers.d/ubuntu \
