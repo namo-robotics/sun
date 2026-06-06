@@ -585,7 +585,9 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
     }
 
     case ASTNodeType::GENERIC_CALL: {
-      return inferGenericCallType(static_cast<const GenericCallAST&>(expr));
+      const auto& genericCall = static_cast<const GenericCallAST&>(expr);
+      sun::TypePtr type = inferGenericCallType(genericCall);
+      return type;
     }
 
     case ASTNodeType::PACK_EXPANSION: {
@@ -896,6 +898,9 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
 
 sun::TypePtr SemanticAnalyzer::inferGenericCallType(
     const GenericCallAST& genericCall) {
+  if (genericCall.hasResolvedType()) {
+    return genericCall.getResolvedType();
+  }
   const std::string& funcName = genericCall.getFunctionName();
   sun::QualifiedName resolved = resolveNameWithUsings(funcName);
   const std::string& lookupName = resolved.baseName;

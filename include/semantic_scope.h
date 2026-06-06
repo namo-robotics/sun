@@ -314,7 +314,8 @@ struct SemanticScopeBase
 
   // ===== Identification (for persistent scopes) =====
   std::string scopeName;  // Display name (module name, source file, etc.)
-  std::string scopeKey;   // Lookup key / qualified path for symbol isolation
+  std::string fullyQualifiedScopeName;  // Lookup key / qualified path for
+                                        // symbol isolation
 
   // ===== Symbol tables (used by persistent scopes - Global/Module/Import)
   // =====
@@ -345,17 +346,10 @@ struct SemanticScopeBase
   // True if this scope was loaded from an external .moon file
   bool isExternal = false;
 
-  // ===== Function scope fields =====
-  std::string functionSignature;  // e.g., "outer(i32)"
-  sun::QualifiedName functionName;
-  bool functionCanThrow = false;
+  // ===== Try/unsafe block tracking (used on any scope) =====
   int tryBlockDepth = 0;
   int unsafeBlockDepth = 0;
   bool inUnsafeContext = false;
-
-  // ===== Class/Interface scope fields =====
-  std::string classBaseName;     // Display name (e.g., "Vec")
-  std::string classMangledName;  // Full mangled name (e.g., "sun_Vec_i32")
 
   // ===== Symbol lookup methods (delegate to persistent scope impl) =====
   bool hasSymbol(const std::string& name) const;
@@ -417,6 +411,10 @@ struct ImportScope : SemanticScopeBase {
 // ===================================================================
 struct FunctionScope : SemanticScopeBase {
   ScopeType getType() const override { return ScopeType::Function; }
+
+  std::string functionSignature;  // e.g., "outer(i32)"
+  sun::QualifiedName functionName;
+  bool functionCanThrow = false;
 };
 
 // ===================================================================
@@ -424,6 +422,9 @@ struct FunctionScope : SemanticScopeBase {
 // ===================================================================
 struct ClassScope : SemanticScopeBase {
   ScopeType getType() const override { return ScopeType::Class; }
+
+  std::string classBaseName;     // Display name (e.g., "Vec")
+  std::string classMangledName;  // Full mangled name (e.g., "sun_Vec_i32")
 };
 
 // ===================================================================
@@ -431,6 +432,9 @@ struct ClassScope : SemanticScopeBase {
 // ===================================================================
 struct InterfaceScope : SemanticScopeBase {
   ScopeType getType() const override { return ScopeType::Interface; }
+
+  std::string interfaceBaseName;     // Display name (e.g., "IShape")
+  std::string interfaceMangledName;  // Full mangled name
 };
 
 // ===================================================================

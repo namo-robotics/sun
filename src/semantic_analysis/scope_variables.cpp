@@ -102,7 +102,7 @@ std::shared_ptr<SemanticScopeBase> SemanticScopeBase::cloneSymbols(
       return nullptr;
   }
   clone->scopeName = scopeName;
-  clone->scopeKey = scopeKey;
+  clone->fullyQualifiedScopeName = fullyQualifiedScopeName;
   clone->parent = newParent;
   // Copy all symbol tables (shallow — shares type objects)
   clone->functions = functions;
@@ -173,8 +173,8 @@ void SemanticAnalyzer::enterModuleScope(const std::string& moduleName) {
     modScope->scopeName = moduleName;
     modScope->parent = currentScope;
     // Compute full dot-separated scope key path
-    std::string parentPath = currentScope->scopeKey;
-    modScope->scopeKey =
+    std::string parentPath = currentScope->fullyQualifiedScopeName;
+    modScope->fullyQualifiedScopeName =
         parentPath.empty() ? moduleName : parentPath + "." + moduleName;
     child = modScope;
   }
@@ -186,12 +186,14 @@ void SemanticAnalyzer::enterClassScope(const std::string& baseName,
   // Get parent scopeKey before entering new scope
   std::string parentScopeKey = getCurrentScopeKey();
 
-  enterScope(ScopeType::Class);
-  currentScope->classBaseName = baseName;
-  currentScope->classMangledName = mangledName;
-  currentScope->scopeKey = parentScopeKey.empty()
-                               ? mangledName
-                               : parentScopeKey + "." + mangledName;
+  auto classScope = std::make_shared<ClassScope>();
+  classScope->classBaseName = baseName;
+  classScope->classMangledName = mangledName;
+  classScope->fullyQualifiedScopeName =
+      parentScopeKey.empty() ? mangledName : parentScopeKey + "." + mangledName;
+  classScope->parent = currentScope;
+  currentScope->children.push_back(classScope);
+  currentScope = classScope.get();
 }
 
 void SemanticAnalyzer::enterInterfaceScope(const std::string& baseName,
@@ -199,12 +201,14 @@ void SemanticAnalyzer::enterInterfaceScope(const std::string& baseName,
   // Get parent scopeKey before entering new scope
   std::string parentScopeKey = getCurrentScopeKey();
 
-  enterScope(ScopeType::Interface);
-  currentScope->classBaseName = baseName;
-  currentScope->classMangledName = mangledName;
-  currentScope->scopeKey = parentScopeKey.empty()
-                               ? mangledName
-                               : parentScopeKey + "." + mangledName;
+  auto ifaceScope = std::make_shared<InterfaceScope>();
+  ifaceScope->interfaceBaseName = baseName;
+  ifaceScope->interfaceMangledName = mangledName;
+  ifaceScope->fullyQualifiedScopeName =
+      parentScopeKey.empty() ? mangledName : parentScopeKey + "." + mangledName;
+  ifaceScope->parent = currentScope;
+  currentScope->children.push_back(ifaceScope);
+  currentScope = ifaceScope.get();
 }
 
 void SemanticAnalyzer::enterFunctionScope(const std::string& funcSig,
@@ -219,7 +223,7 @@ void SemanticAnalyzer::enterFunctionScope(const std::string& funcSig,
   // Set scopeKey to the function's mangled name so nested functions
   // get unique qualified names (e.g., inner inside outer_i32 ->
   // outer_i32_inner)
-  funcScope->scopeKey = funcName.mangled();
+  funcScope->fullyQualifiedScopeName = funcName.mangled();
 
   currentScope->children.push_back(funcScope);
   currentScope = funcScope.get();
@@ -250,10 +254,10 @@ void SemanticAnalyzer::enterImportScope(const std::string& sourceFile,
   // the scopeKey for symbol isolation between library versions.
   if (scopeKey.starts_with("$import_")) {
     // .sun import - no scope key prefix (shares namespace with importer)
-    importScope->scopeKey = "";
+    importScope->fullyQualifiedScopeName = "";
   } else {
     // .moon import - use content hash for symbol isolation
-    importScope->scopeKey = scopeKey;
+    importScope->fullyQualifiedScopeName = scopeKey;
   }
 
   currentScope->childModules[scopeKey] = importScope;
@@ -285,8 +289,8 @@ std::string SemanticAnalyzer::getCurrentModulePrefix() const {
 std::string SemanticAnalyzer::getCurrentScopeKey() const {
   // Walk up to find the nearest scope with a scopeKey (Module or Import).
   for (auto* s = currentScope; s != nullptr; s = s->parent) {
-    if (!s->scopeKey.empty()) {
-      return s->scopeKey;
+    if (!s->fullyQualifiedScopeName.empty()) {
+      return s->fullyQualifiedScopeName;
     }
   }
   return "";
@@ -306,8 +310,8 @@ std::string SemanticAnalyzer::qualifyNameInCurrentModule(
 bool SemanticAnalyzer::isInThrowingFunction() const {
   // Find the nearest enclosing function scope and check if it can throw
   for (auto* s = currentScope; s != nullptr; s = s->parent) {
-    if (s->getType() == ScopeType::Function) {
-      return s->functionCanThrow;
+    if (auto* funcScope = s->asFunction()) {
+      return funcScope->functionCanThrow;
     }
   }
   return false;
@@ -629,7 +633,7 @@ SymbolMatch SemanticAnalyzer::findSymbolInModule(const std::string& modulePath,
 
   // Helper to search a single scope for all symbol types
   auto searchInScope = [&](SemanticScope* scope) -> std::optional<SymbolMatch> {
-    std::string fullPath = scope->scopeKey;
+    std::string fullPath = scope->fullyQualifiedScopeName;
     std::string libHash;
     if (fullPath.size() >= 2 && fullPath.front() == '$') {
       size_t endDollar = fullPath.find('$', 1);
@@ -1485,10 +1489,10 @@ sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
   std::map<std::string, std::pair<std::string, SemanticScope*>> candidates;
 
   auto addCandidate = [&](SemanticScope* scope) {
-    std::string visPath = getVisibleModulePath(scope->scopeKey);
+    std::string visPath = getVisibleModulePath(scope->fullyQualifiedScopeName);
     // Only add if not already present (first match for each visible path wins)
     if (candidates.find(visPath) == candidates.end()) {
-      candidates[visPath] = {scope->scopeKey, scope};
+      candidates[visPath] = {scope->fullyQualifiedScopeName, scope};
     }
   };
 

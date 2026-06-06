@@ -17,12 +17,12 @@ namespace sun {
 // Keeps scope key and symbol name separate to avoid lossy conversion
 struct QualifiedName {
   // Module path using "." separators, or empty for global scope.
-  std::string scopeKey;
+  std::string fullyQualifiedScopeName;
   std::string baseName;  // "my_func" (the original identifier, may contain _)
 
   QualifiedName() = default;
   QualifiedName(std::string key, std::string name)
-      : scopeKey(std::move(key)), baseName(std::move(name)) {}
+      : fullyQualifiedScopeName(std::move(key)), baseName(std::move(name)) {}
 
   // Construct from a mangled name when we only have the mangled form
   // This is a fallback - prefer constructing with scope key + base name
@@ -33,12 +33,12 @@ struct QualifiedName {
   // Get mangled form for codegen/lookup: "$hash$_A_B_my_func"
   // Replaces dots with underscores in module path
   std::string mangled() const {
-    if (scopeKey.empty()) {
+    if (fullyQualifiedScopeName.empty()) {
       return baseName;
     }
 
     // Mangle module path: replace dots with underscores
-    std::string result = scopeKey;
+    std::string result = fullyQualifiedScopeName;
     for (char& c : result) {
       if (c == '.') c = '_';
     }
@@ -49,31 +49,36 @@ struct QualifiedName {
   // Note: Library hash scopes (starting with $) are filtered out for cleaner
   // display
   std::string display() const {
-    if (scopeKey.empty()) return baseName;
+    if (fullyQualifiedScopeName.empty()) return baseName;
 
     // Filter out library hash scopes from display (they start with $)
     std::string displayPath;
     size_t pos = 0;
-    while (pos < scopeKey.size()) {
-      size_t dot = scopeKey.find('.', pos);
-      std::string segment = (dot == std::string::npos)
-                                ? scopeKey.substr(pos)
-                                : scopeKey.substr(pos, dot - pos);
+    while (pos < fullyQualifiedScopeName.size()) {
+      size_t dot = fullyQualifiedScopeName.find('.', pos);
+      std::string segment =
+          (dot == std::string::npos)
+              ? fullyQualifiedScopeName.substr(pos)
+              : fullyQualifiedScopeName.substr(pos, dot - pos);
       // Skip hash segments (start with $)
       if (!segment.empty() && segment[0] != '$') {
         if (!displayPath.empty()) displayPath += ".";
         displayPath += segment;
       }
-      pos = (dot == std::string::npos) ? scopeKey.size() : dot + 1;
+      pos =
+          (dot == std::string::npos) ? fullyQualifiedScopeName.size() : dot + 1;
     }
     if (displayPath.empty()) return baseName;
     return displayPath + "." + baseName;
   }
 
-  bool empty() const { return scopeKey.empty() && baseName.empty(); }
+  bool empty() const {
+    return fullyQualifiedScopeName.empty() && baseName.empty();
+  }
 
   bool operator==(const QualifiedName& other) const {
-    return scopeKey == other.scopeKey && baseName == other.baseName;
+    return fullyQualifiedScopeName == other.fullyQualifiedScopeName &&
+           baseName == other.baseName;
   }
 
   bool operator!=(const QualifiedName& other) const {
@@ -81,7 +86,8 @@ struct QualifiedName {
   }
 
   bool operator<(const QualifiedName& other) const {
-    if (scopeKey != other.scopeKey) return scopeKey < other.scopeKey;
+    if (fullyQualifiedScopeName != other.fullyQualifiedScopeName)
+      return fullyQualifiedScopeName < other.fullyQualifiedScopeName;
     return baseName < other.baseName;
   }
 };

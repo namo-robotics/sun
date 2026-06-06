@@ -97,42 +97,59 @@ std::string ScopeTreeGenerator::generateJson(const SemanticScope& scope,
     out << ",\n"
         << pad2 << "\"scopeName\": \"" << escapeJson(scope.scopeName) << "\"";
   }
-  if (!scope.scopeKey.empty()) {
+  if (!scope.fullyQualifiedScopeName.empty()) {
     out << ",\n"
-        << pad2 << "\"scopeKey\": \"" << escapeJson(scope.scopeKey) << "\"";
+        << pad2 << "\"scopeKey\": \""
+        << escapeJson(scope.fullyQualifiedScopeName) << "\"";
   }
 
-  // For class/interface scopes, show baseName and mangledName
-  if ((scope.getType() == ScopeType::Class || scope.getType() == ScopeType::Interface) &&
-      !scope.classBaseName.empty()) {
-    out << ",\n"
-        << pad2 << "\"className\": \"" << escapeJson(scope.classBaseName)
-        << "\"";
-    if (!scope.classMangledName.empty()) {
+  // For class scopes, show baseName and mangledName
+  if (auto* classScope = scope.asClass()) {
+    if (!classScope->classBaseName.empty()) {
       out << ",\n"
-          << pad2 << "\"mangledName\": \"" << escapeJson(scope.classMangledName)
-          << "\"";
+          << pad2 << "\"className\": \""
+          << escapeJson(classScope->classBaseName) << "\"";
+    }
+    if (!classScope->classMangledName.empty()) {
+      out << ",\n"
+          << pad2 << "\"mangledName\": \""
+          << escapeJson(classScope->classMangledName) << "\"";
+    }
+  }
+
+  // For interface scopes, show baseName and mangledName
+  if (auto* ifaceScope = scope.asInterface()) {
+    if (!ifaceScope->interfaceBaseName.empty()) {
+      out << ",\n"
+          << pad2 << "\"interfaceName\": \""
+          << escapeJson(ifaceScope->interfaceBaseName) << "\"";
+    }
+    if (!ifaceScope->interfaceMangledName.empty()) {
+      out << ",\n"
+          << pad2 << "\"mangledName\": \""
+          << escapeJson(ifaceScope->interfaceMangledName) << "\"";
     }
   }
 
   // For function scopes, also show the function signature
-  if (scope.getType() == ScopeType::Function && !scope.functionSignature.empty()) {
-    out << ",\n"
-        << pad2 << "\"functionSignature\": \""
-        << escapeJson(scope.functionSignature) << "\"";
-  }
+  if (auto* funcScope = scope.asFunction()) {
+    if (!funcScope->functionSignature.empty()) {
+      out << ",\n"
+          << pad2 << "\"functionSignature\": \""
+          << escapeJson(funcScope->functionSignature) << "\"";
+    }
 
-  // For function scopes, show the fully qualified mangled name
-  if (scope.getType() == ScopeType::Function &&
-      !scope.functionName.baseName.empty()) {
-    out << ",\n"
-        << pad2 << "\"functionMangled\": \""
-        << escapeJson(scope.functionName.mangled()) << "\"";
-  }
+    // For function scopes, show the fully qualified mangled name
+    if (!funcScope->functionName.baseName.empty()) {
+      out << ",\n"
+          << pad2 << "\"functionMangled\": \""
+          << escapeJson(funcScope->functionName.mangled()) << "\"";
+    }
 
-  // Function can throw
-  if (scope.functionCanThrow) {
-    out << ",\n" << pad2 << "\"canThrow\": true";
+    // Function can throw
+    if (funcScope->functionCanThrow) {
+      out << ",\n" << pad2 << "\"canThrow\": true";
+    }
   }
 
   // Unsafe context

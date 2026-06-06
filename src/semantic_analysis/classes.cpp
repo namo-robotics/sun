@@ -893,8 +893,9 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   if (classType->isSpecialized()) {
     const std::string& baseName = classType->getBaseGenericName();
     auto* genericInfo = lookupGenericClass(baseName);
-    if (genericInfo && !genericInfo->qualifiedName.scopeKey.empty()) {
-      modulePrefix = genericInfo->qualifiedName.scopeKey;
+    if (genericInfo &&
+        !genericInfo->qualifiedName.fullyQualifiedScopeName.empty()) {
+      modulePrefix = genericInfo->qualifiedName.fullyQualifiedScopeName;
     }
   }
   if (modulePrefix.empty()) {

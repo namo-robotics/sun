@@ -797,9 +797,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
         PrototypeAST& proto =
             const_cast<PrototypeAST&>(methodDecl.function->getProto());
         std::string methodScopeKey =
-            qualifiedClass.scopeKey.empty()
+            qualifiedClass.fullyQualifiedScopeName.empty()
                 ? mangledClassName
-                : qualifiedClass.scopeKey + "." + mangledClassName;
+                : qualifiedClass.fullyQualifiedScopeName + "." +
+                      mangledClassName;
         proto.setQualifiedName(
             sun::QualifiedName(methodScopeKey, proto.getName()));
         analyzeFunction(*methodDecl.function);
@@ -1829,7 +1830,8 @@ void SemanticAnalyzer::lazyParseAndAnalyzeMethod(
       auto* genericInfo = lookupGenericClass(lookupName);
       if (genericInfo && genericInfo->AST &&
           genericInfo->AST->hasQualifiedName()) {
-        modulePath = genericInfo->AST->getQualifiedNameInfo().scopeKey;
+        modulePath =
+            genericInfo->AST->getQualifiedNameInfo().fullyQualifiedScopeName;
       }
     }
 

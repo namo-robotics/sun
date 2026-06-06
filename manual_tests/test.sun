@@ -1,5 +1,9 @@
-function inner<T>(x: T) T { return x; }
-
-function outer<T>(x: T) T { return inner<T>(x); }
-
-function main() i32 { return outer<i32>(42); }
+function main() i32 {
+    function outer<T>(x: T) T {
+        function inner<U>(y: U) U {
+            return y + y;
+        }
+        return x + inner<T>(x);
+    }
+    return outer<i32>(5);
+}
