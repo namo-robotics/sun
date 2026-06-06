@@ -15,6 +15,7 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
+#include "qualified_name.h"
 #include "struct_names.h"
 
 namespace sun {
@@ -893,6 +894,7 @@ class ClassType : public Type {
   std::string mangledName;  // Fully qualified name (e.g., "$hash$_sun_Vec")
   std::string
       baseName_;  // User-written base name (e.g., "Unique") for error messages
+  sun::QualifiedName qualifiedName_;  // Structured qualified name for scoping
   std::vector<std::string>
       typeParameters;  // Type params: ["T", "U"] for generic definitions
   std::vector<TypePtr>
@@ -930,6 +932,13 @@ class ClassType : public Type {
   }
   void setBaseName(std::string bn) { baseName_ = std::move(bn); }
   bool hasBaseName() const { return !baseName_.empty(); }
+
+  // Qualified name accessors
+  const sun::QualifiedName& getQualifiedName() const { return qualifiedName_; }
+  void setQualifiedName(sun::QualifiedName qn) {
+    qualifiedName_ = std::move(qn);
+  }
+  bool hasQualifiedName() const { return !qualifiedName_.baseName.empty(); }
 
   // Get user-friendly display name for error messages
   // For specialized classes: "Vec<i32>" or "sun.Vec<i32>"
@@ -1792,7 +1801,23 @@ class TypeRegistry {
   TypeRegistry(TypeRegistry&&) = default;
   TypeRegistry& operator=(TypeRegistry&&) = default;
 
-  // Get or create a class type by name
+  // Get or create a class type by qualified name
+  // Sets the qualified name and base name on the class type automatically
+  std::shared_ptr<ClassType> getClass(const sun::QualifiedName& qualifiedName) {
+    std::string name = qualifiedName.mangled();
+    auto classType = getClass(name);
+    // Set qualified name if not already set
+    if (!classType->hasQualifiedName()) {
+      classType->setQualifiedName(qualifiedName);
+    }
+    // Set base name for error messages if there's a scope path
+    if (!classType->hasBaseName() && !qualifiedName.scopePath.empty()) {
+      classType->setBaseName(qualifiedName.baseName);
+    }
+    return classType;
+  }
+
+  // Get or create a class type by mangled name
   // Also checks specializedClassCache for generic instantiations
   std::shared_ptr<ClassType> getClass(const std::string& name) {
     // First check specialized class cache (for generic instantiations like

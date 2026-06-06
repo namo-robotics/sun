@@ -137,6 +137,24 @@ sun::TypePtr SemanticAnalyzer::substituteTypeParameters(sun::TypePtr type) {
 }
 
 // -------------------------------------------------------------------
+// Type argument resolution helper
+// -------------------------------------------------------------------
+
+std::vector<sun::TypePtr> SemanticAnalyzer::resolveTypeArguments(
+    const std::vector<std::unique_ptr<TypeAnnotation>>& typeAnnotations,
+    const std::optional<Position>& location, const std::string& context) {
+  std::vector<sun::TypePtr> typeArgs;
+  for (const auto& typeArg : typeAnnotations) {
+    auto argType = typeAnnotationToType(*typeArg);
+    if (!argType) {
+      logAndThrowError("Invalid type argument in " + context, location);
+    }
+    typeArgs.push_back(argType);
+  }
+  return typeArgs;
+}
+
+// -------------------------------------------------------------------
 // Type annotation to type conversion
 // -------------------------------------------------------------------
 

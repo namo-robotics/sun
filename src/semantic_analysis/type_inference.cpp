@@ -668,13 +668,53 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
         switch (match.kind) {
           case SymbolKind::Class:
             return match.classType;
-          case SymbolKind::GenericClass:
-            // Return a placeholder - actual instantiation happens at call site
-            return sun::Types::Void();  // TODO: better handling
+          case SymbolKind::GenericClass: {
+            // If type arguments are provided, instantiate the generic class
+            if (memberAccess.hasTypeArguments() && match.genericClassInfo) {
+              auto typeArgs = resolveTypeArguments(
+                  memberAccess.getTypeArguments(), memberAccess.getLocation(),
+                  "generic class instantiation");
+              // Store resolved type args on the AST for codegen
+              memberAccess.setResolvedTypeArgs(typeArgs);
+              // Instantiate the generic class with module-qualified name
+              // (modPath.memberName so lookupGenericClass can find it)
+              std::string qualifiedName = modPath + "." + memberName;
+              auto specializedClass =
+                  instantiateGenericClass(qualifiedName, typeArgs);
+              if (specializedClass) {
+                return specializedClass;
+              }
+              logAndThrowError(
+                  "Failed to instantiate generic class '" + memberName + "'",
+                  memberAccess.getLocation());
+            }
+            // No type arguments - return void as placeholder
+            return sun::Types::Void();
+          }
           case SymbolKind::Interface:
             return match.interfaceType;
-          case SymbolKind::GenericInterface:
-            return sun::Types::Void();  // TODO: better handling
+          case SymbolKind::GenericInterface: {
+            // If type arguments are provided, instantiate the generic interface
+            if (memberAccess.hasTypeArguments() && match.genericInterfaceInfo) {
+              auto typeArgs = resolveTypeArguments(
+                  memberAccess.getTypeArguments(), memberAccess.getLocation(),
+                  "generic interface instantiation");
+              // Store resolved type args on the AST for codegen
+              memberAccess.setResolvedTypeArgs(typeArgs);
+              // Instantiate the generic interface with module-qualified name
+              std::string qualifiedName = modPath + "." + memberName;
+              auto specializedInterface =
+                  instantiateGenericInterface(qualifiedName, typeArgs);
+              if (specializedInterface) {
+                return specializedInterface;
+              }
+              logAndThrowError("Failed to instantiate generic interface '" +
+                                   memberName + "'",
+                               memberAccess.getLocation());
+            }
+            // No type arguments - return void as placeholder
+            return sun::Types::Void();
+          }
           case SymbolKind::Enum:
             return match.enumType;
           case SymbolKind::Function:

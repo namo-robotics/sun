@@ -117,61 +117,10 @@ void SemanticAnalyzer::registerGenericClass(const std::string& name,
 
 const GenericClassInfo* SemanticAnalyzer::lookupGenericClass(
     const std::string& name) const {
-  // Walk scope chain from innermost to outermost
-  for (auto* s = currentScope; s != nullptr; s = s->parent) {
-    auto result = s->findGenericClass(name);
-    if (result) return result;
-    // Search direct import-scope children (one level of transparency)
-    for (const auto& [childName, child] : s->childModules) {
-      if (child && child->getType() == ScopeType::Import) {
-        result = child->findGenericClass(name);
-        if (result) return result;
-        for (const auto& [modName, modChild] : child->childModules) {
-          if (modChild && modChild->getType() == ScopeType::Module) {
-            result = modChild->findGenericClass(name);
-            if (result) return result;
-          }
-        }
-      }
-    }
-    // Search the __definition__ scope (for transitive deps during generic
-    // instantiation). Walk up the definition scope's parent chain to reach
-    // imports at the file scope level.
-    auto defIt = s->childModules.find("__definition__");
-    if (defIt != s->childModules.end() && defIt->second) {
-      for (auto* defS = defIt->second.get(); defS != nullptr;
-           defS = defS->parent) {
-        result = defS->findGenericClass(name);
-        if (result) return result;
-        // Search its import-scope children
-        for (const auto& [childName, child] : defS->childModules) {
-          if (child && child->getType() == ScopeType::Import) {
-            result = child->findGenericClass(name);
-            if (result) return result;
-            for (const auto& [modName, modChild] : child->childModules) {
-              if (modChild && modChild->getType() == ScopeType::Module) {
-                result = modChild->findGenericClass(name);
-                if (result) return result;
-              }
-            }
-          }
-        }
-      }
-    }
-    // Search import bindings from using statements
-    for (const auto& binding : s->importBindings) {
-      if (!binding.sourceScope) continue;
-      if (binding.isWildcard) {
-        auto result2 = binding.sourceScope->findGenericClass(name);
-        if (result2) return result2;
-      } else if (binding.localName == name) {
-        auto result2 =
-            binding.sourceScope->findGenericClass(binding.sourceName);
-        if (result2) return result2;
-      }
-    }
-  }
-  return nullptr;
+  return lookupGenericSymbol<const GenericClassInfo*>(
+      name, [](SemanticScope* scope, const std::string& n) {
+        return scope->findGenericClass(n);
+      });
 }
 
 void SemanticAnalyzer::addTypeParameterBindings(
@@ -212,22 +161,36 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
   // Look up the generic class definition first
   auto* genericClassInfo = lookupGenericClass(baseName);
 
-  // Use the stored qualified name for mangling.
-  // This ensures that looking up "MatrixView" (short name) produces the same
-  // mangledName as "$hash$_sun_MatrixView" (qualified name from within module).
-  std::string effectiveBase = baseName;
-  if (genericClassInfo && !genericClassInfo->qualifiedName.mangled().empty()) {
-    effectiveBase = genericClassInfo->qualifiedName.mangled();
+  // Look up the generic class definition
+  if (!genericClassInfo || !genericClassInfo->AST) {
+    llvm::errs() << "Error: Unknown generic class '" << baseName << "'\n";
+    return nullptr;
   }
 
-  // Generate mangled name for the specialized class
-  std::string mangledName =
-      sun::Types::mangleGenericClassName(effectiveBase, typeArgs);
+  // Verify type argument count matches
+  if (typeArgs.size() != genericClassInfo->typeParameters.size()) {
+    llvm::errs() << "Error: Generic class '" << baseName << "' expects "
+                 << genericClassInfo->typeParameters.size()
+                 << " type arguments, got " << typeArgs.size() << "\n";
+    return nullptr;
+  }
+
+  // Construct the specialized QualifiedName from the generic's qualified name
+  // with type arguments mangled into the base name
+  sun::QualifiedName specializedQName;
+  specializedQName.scopePath = genericClassInfo->qualifiedName.scopePath;
+  std::string specializedBaseName = genericClassInfo->qualifiedName.baseName;
+  for (const auto& arg : typeArgs) {
+    specializedBaseName += "_" + sun::Types::mangleTypeName(arg);
+  }
+  specializedQName.baseName = specializedBaseName;
+
+  // Derive the mangled name from the qualified name
+  std::string mangledName = specializedQName.mangled();
 
   // Check if already instantiated (both class type AND AST specialization)
-  auto existing = lookupClass(mangledName);
-  if (existing && genericClassInfo &&
-      genericClassInfo->AST->hasSpecialization(mangledName)) {
+  auto existing = lookupClass(specializedQName.baseName);
+  if (existing && genericClassInfo->AST->hasSpecialization(mangledName)) {
     // Both type and AST exist - nothing more to do
     return existing;
   }
@@ -241,16 +204,9 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
       return existing;
     }
     // Create and register a placeholder class type
-    auto placeholder =
-        typeRegistry->getSpecializedClass(effectiveBase, typeArgs);
-    registerClass(mangledName, placeholder);
+    auto placeholder = typeRegistry->getClass(specializedQName);
+    registerClass(specializedQName.baseName, placeholder);
     return placeholder;
-  }
-
-  // Look up the generic class definition
-  if (!genericClassInfo || !genericClassInfo->AST) {
-    llvm::errs() << "Error: Unknown generic class '" << baseName << "'\n";
-    return nullptr;
   }
 
   // Track if we're only creating the AST (type already exists but AST doesn't)
@@ -261,24 +217,25 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
   // Mark this class as being instantiated to break mutual recursion
   classesBeingInstantiated.insert(mangledName);
 
-  // Verify type argument count matches
-  if (typeArgs.size() != genericClassInfo->typeParameters.size()) {
-    llvm::errs() << "Error: Generic class '" << baseName << "' expects "
-                 << genericClassInfo->typeParameters.size()
-                 << " type arguments, got " << typeArgs.size() << "\n";
-    return nullptr;
-  }
-
   // Create or reuse the specialized class type
   std::shared_ptr<sun::ClassType> specializedClass;
   if (astOnlyMode) {
     specializedClass = existing;
   } else {
-    specializedClass =
-        typeRegistry->getSpecializedClass(effectiveBase, typeArgs);
+    specializedClass = typeRegistry->getClass(specializedQName);
+
+    // Set type arguments for specialized class tracking
+    // (getClass sets qualifiedName and baseName, but not type args)
+    if (!specializedClass->isSpecialized()) {
+      // This is a new class type - need to configure it as specialized
+      // Get or create via getSpecializedClass for proper setup
+      specializedClass = typeRegistry->getSpecializedClass(
+          genericClassInfo->qualifiedName.mangled(), typeArgs);
+      specializedClass->setQualifiedName(specializedQName);
+    }
 
     // Register the specialized class so methods can reference it
-    registerClass(mangledName, specializedClass);
+    registerClass(specializedQName.baseName, specializedClass);
 
     // If this class was already fully instantiated in another scope
     // (fields populated + specialization AST created), just register in
@@ -291,7 +248,7 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
   }
 
   // Push a scope for class-level type parameter bindings
-  enterClassScope(baseName, mangledName);
+  enterClassScope(specializedQName);
   addTypeParameterBindings(genericClassInfo->typeParameters, typeArgs);
 
   // Link definition scope so transitive dependencies (types from imports in the
@@ -614,8 +571,8 @@ SemanticAnalyzer::instantiateGenericFunction(
         const_cast<PrototypeAST&>(clonedFunc->getProto());
     clonedProto.setName(mangledName);
     // Update qualified name to the mangled name so nested functions get correct
-    // scopeKey (e.g., outer_i32 instead of outer)
-    clonedProto.setQualifiedName(sun::QualifiedName::fromMangled(mangledName));
+    // scopePath (e.g., outer_i32 instead of outer)
+    clonedProto.setQualifiedName(sun::QualifiedName({}, mangledName));
 
     // Build and store type parameter bindings (e.g., T -> i32)
     // These are used by codegen to resolve nested generic calls
@@ -888,42 +845,39 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   // Extract module path from class context for type resolution.
   // For specialized generic classes, look up the generic class definition's
   // qualified name to get the module path.
-  std::string modulePrefix;
+  std::vector<std::string> modulePath;
   int moduleScopesEntered = 0;
   if (classType->isSpecialized()) {
     const std::string& baseName = classType->getBaseGenericName();
     auto* genericInfo = lookupGenericClass(baseName);
-    if (genericInfo &&
-        !genericInfo->qualifiedName.fullyQualifiedScopeName.empty()) {
-      modulePrefix = genericInfo->qualifiedName.fullyQualifiedScopeName;
+    if (genericInfo && !genericInfo->qualifiedName.scopePath.empty()) {
+      modulePath = genericInfo->qualifiedName.scopePath;
     }
   }
-  if (modulePrefix.empty()) {
+  if (modulePath.empty()) {
     const std::string& className = classType->getMangledName();
     size_t underscorePos = className.find('_');
     if (underscorePos != std::string::npos) {
-      modulePrefix = className.substr(0, underscorePos);
+      modulePath.push_back(className.substr(0, underscorePos));
     }
   }
 
   // Enter module scope if class is from a namespace (for correct type
   // resolution)
-  if (!modulePrefix.empty()) {
-    std::string segment;
-    std::istringstream stream(modulePrefix);
-    while (std::getline(stream, segment, '.')) {
-      enterModuleScope(segment);
-      moduleScopesEntered++;
-    }
+  for (const auto& segment : modulePath) {
+    enterModuleScope(segment);
+    moduleScopesEntered++;
+  }
+  if (!modulePath.empty()) {
     // Add implicit using import for the module so unqualified names resolve
-    addUsingImport(UsingImport(modulePrefix, "*"));
+    addUsingImport(UsingImport(sun::QualifiedName::joinPath(modulePath), "*"));
   }
 
   // Compute method signature for nested function qualification
   std::string methodSig = getFunctionSignature(mangledName, paramTypes);
 
   // Enter method scope and declare parameters
-  enterFunctionScope(methodSig, sun::QualifiedName(modulePrefix, mangledName),
+  enterFunctionScope(methodSig, sun::QualifiedName(modulePath, mangledName),
                      proto.canThrow());
 
   // Declare 'this' parameter

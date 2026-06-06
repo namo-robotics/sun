@@ -731,6 +731,15 @@ Value* CodegenVisitor::codegenMethodCall(const CallExprAST& expr,
   sun::TypePtr objectType = memberAccess.getObject()->getResolvedType();
   const std::string& methodName = memberAccess.getMemberName();
 
+  // Check if the full member access resolves to a class type (constructor call)
+  // This handles module-qualified generic class instantiation like
+  // Test.Inner<T>(v)
+  sun::TypePtr memberAccessType = memberAccess.getResolvedType();
+  if (memberAccessType && memberAccessType->isClass()) {
+    return codegenStackClassInstance(
+        expr, methodName, static_cast<sun::ClassType&>(*memberAccessType));
+  }
+
   // Handle module-qualified function call: mymod.foo()
   if (objectType && objectType->isModule()) {
     return codegenModuleFunctionCall(

@@ -102,7 +102,7 @@ std::shared_ptr<SemanticScopeBase> SemanticScopeBase::cloneSymbols(
       return nullptr;
   }
   clone->scopeName = scopeName;
-  clone->fullyQualifiedScopeName = fullyQualifiedScopeName;
+  clone->scopePath = scopePath;
   clone->parent = newParent;
   // Copy all symbol tables (shallow — shares type objects)
   clone->functions = functions;
@@ -172,40 +172,34 @@ void SemanticAnalyzer::enterModuleScope(const std::string& moduleName) {
     auto modScope = std::make_shared<ModuleScope>();
     modScope->scopeName = moduleName;
     modScope->parent = currentScope;
-    // Compute full dot-separated scope key path
-    std::string parentPath = currentScope->fullyQualifiedScopeName;
-    modScope->fullyQualifiedScopeName =
-        parentPath.empty() ? moduleName : parentPath + "." + moduleName;
+    // Compute full scope path by extending parent's path
+    modScope->scopePath = currentScope->scopePath;
+    modScope->scopePath.push_back(moduleName);
     child = modScope;
   }
   currentScope = child.get();
 }
 
-void SemanticAnalyzer::enterClassScope(const std::string& baseName,
-                                       const std::string& mangledName) {
-  // Get parent scopeKey before entering new scope
-  std::string parentScopeKey = getCurrentScopeKey();
-
+void SemanticAnalyzer::enterClassScope(const sun::QualifiedName& className) {
   auto classScope = std::make_shared<ClassScope>();
-  classScope->classBaseName = baseName;
-  classScope->classMangledName = mangledName;
-  classScope->fullyQualifiedScopeName =
-      parentScopeKey.empty() ? mangledName : parentScopeKey + "." + mangledName;
+  classScope->classBaseName = className.baseName;
+  classScope->classMangledName = className.mangled();
+  // Use the class's scope path directly
+  classScope->scopePath = className.scopePath;
+  classScope->scopePath.push_back(className.baseName);
   classScope->parent = currentScope;
   currentScope->children.push_back(classScope);
   currentScope = classScope.get();
 }
 
-void SemanticAnalyzer::enterInterfaceScope(const std::string& baseName,
-                                           const std::string& mangledName) {
-  // Get parent scopeKey before entering new scope
-  std::string parentScopeKey = getCurrentScopeKey();
-
+void SemanticAnalyzer::enterInterfaceScope(
+    const sun::QualifiedName& interfaceName) {
   auto ifaceScope = std::make_shared<InterfaceScope>();
-  ifaceScope->interfaceBaseName = baseName;
-  ifaceScope->interfaceMangledName = mangledName;
-  ifaceScope->fullyQualifiedScopeName =
-      parentScopeKey.empty() ? mangledName : parentScopeKey + "." + mangledName;
+  ifaceScope->interfaceBaseName = interfaceName.baseName;
+  ifaceScope->interfaceMangledName = interfaceName.mangled();
+  // Use the interface's scope path directly
+  ifaceScope->scopePath = interfaceName.scopePath;
+  ifaceScope->scopePath.push_back(interfaceName.baseName);
   ifaceScope->parent = currentScope;
   currentScope->children.push_back(ifaceScope);
   currentScope = ifaceScope.get();
@@ -220,10 +214,10 @@ void SemanticAnalyzer::enterFunctionScope(const std::string& funcSig,
   funcScope->functionCanThrow = canThrow;
   funcScope->parent = currentScope;
 
-  // Set scopeKey to the function's mangled name so nested functions
+  // Set scopePath to include the function's mangled name so nested functions
   // get unique qualified names (e.g., inner inside outer_i32 ->
   // outer_i32_inner)
-  funcScope->fullyQualifiedScopeName = funcName.mangled();
+  funcScope->scopePath = {funcName.mangled()};
 
   currentScope->children.push_back(funcScope);
   currentScope = funcScope.get();
@@ -248,16 +242,16 @@ void SemanticAnalyzer::enterImportScope(const std::string& sourceFile,
   importScope->scopeName = sourceFile;
   importScope->parent = currentScope;
 
-  // For .sun imports (scopeKey starts with $import_), don't add to scopeKey
+  // For .sun imports (scopeKey starts with $import_), don't add to scopePath
   // to avoid creating redundant prefixes during bundle compilation.
   // Only .moon imports (content hash starting with non-$import) should affect
-  // the scopeKey for symbol isolation between library versions.
+  // the scopePath for symbol isolation between library versions.
   if (scopeKey.starts_with("$import_")) {
-    // .sun import - no scope key prefix (shares namespace with importer)
-    importScope->fullyQualifiedScopeName = "";
+    // .sun import - no scope path prefix (shares namespace with importer)
+    importScope->scopePath = {};
   } else {
     // .moon import - use content hash for symbol isolation
-    importScope->fullyQualifiedScopeName = scopeKey;
+    importScope->scopePath = {scopeKey};
   }
 
   currentScope->childModules[scopeKey] = importScope;
@@ -275,30 +269,32 @@ void SemanticAnalyzer::exitScope() {
 }
 
 std::string SemanticAnalyzer::getCurrentModulePrefix() const {
-  // Get module path from scope key and mangle it for symbol prefixing
-  std::string modulePath = getCurrentScopeKey();
-  if (modulePath.empty()) return "";
+  // Get module path from scope and mangle it for symbol prefixing
+  auto scopePath = getCurrentScopePath();
+  if (scopePath.empty()) return "";
 
-  // Mangle module path: convert dots to underscores
-  for (char& c : modulePath) {
-    if (c == '.') c = '_';
+  // Join path segments with underscores for mangled name prefix
+  std::string result;
+  for (const auto& seg : scopePath) {
+    if (!result.empty()) result += "_";
+    result += seg;
   }
-  return modulePath + "_";
+  return result + "_";
 }
 
-std::string SemanticAnalyzer::getCurrentScopeKey() const {
-  // Walk up to find the nearest scope with a scopeKey (Module or Import).
+std::vector<std::string> SemanticAnalyzer::getCurrentScopePath() const {
+  // Walk up to find the nearest scope with a scopePath (Module or Import).
   for (auto* s = currentScope; s != nullptr; s = s->parent) {
-    if (!s->fullyQualifiedScopeName.empty()) {
-      return s->fullyQualifiedScopeName;
+    if (!s->scopePath.empty()) {
+      return s->scopePath;
     }
   }
-  return "";
+  return {};
 }
 
 sun::QualifiedName SemanticAnalyzer::makeQualifiedName(
     const std::string& baseName) const {
-  return sun::QualifiedName(getCurrentScopeKey(), baseName);
+  return sun::QualifiedName(getCurrentScopePath(), baseName);
 }
 
 std::string SemanticAnalyzer::qualifyNameInCurrentModule(
@@ -633,13 +629,11 @@ SymbolMatch SemanticAnalyzer::findSymbolInModule(const std::string& modulePath,
 
   // Helper to search a single scope for all symbol types
   auto searchInScope = [&](SemanticScope* scope) -> std::optional<SymbolMatch> {
-    std::string fullPath = scope->fullyQualifiedScopeName;
+    std::string fullPath = sun::QualifiedName::joinPath(scope->scopePath);
     std::string libHash;
-    if (fullPath.size() >= 2 && fullPath.front() == '$') {
-      size_t endDollar = fullPath.find('$', 1);
-      if (endDollar != std::string::npos) {
-        libHash = fullPath.substr(0, endDollar + 1);
-      }
+    if (!scope->scopePath.empty() && scope->scopePath[0].size() >= 2 &&
+        scope->scopePath[0].front() == '$') {
+      libHash = scope->scopePath[0];
     }
 
     auto matchesFilter = [filterKind](SymbolKind kind) {
@@ -966,14 +960,14 @@ void SemanticAnalyzer::registerGenericFunctionInCurrentScope(
   }
   genInfo.params = proto.getArgs();
 
-  sun::QualifiedName qname(getCurrentScopeKey(), proto.getName());
+  sun::QualifiedName qname(getCurrentScopePath(), proto.getName());
   currentScope->genericFunctions[qname] = genInfo;
 }
 
 const GenericFunctionInfo* SemanticAnalyzer::lookupGenericFunction(
     const std::string& name) const {
-  std::string scopeKey = getCurrentScopeKey();
-  sun::QualifiedName qname(scopeKey, name);
+  auto scopePath = getCurrentScopePath();
+  sun::QualifiedName qname(scopePath, name);
 
   // Walk scope chain from innermost to outermost, including child modules
   for (auto* s = currentScope; s != nullptr; s = s->parent) {
@@ -981,9 +975,9 @@ const GenericFunctionInfo* SemanticAnalyzer::lookupGenericFunction(
     if (found != s->genericFunctions.end()) {
       return &found->second;
     }
-    // If we're in a module, also try global scope (empty scope key)
-    if (!scopeKey.empty()) {
-      sun::QualifiedName globalQname("", name);
+    // If we're in a module, also try global scope (empty scope path)
+    if (!scopePath.empty()) {
+      sun::QualifiedName globalQname({}, name);
       found = s->genericFunctions.find(globalQname);
       if (found != s->genericFunctions.end()) {
         return &found->second;
@@ -1465,43 +1459,40 @@ const FunctionInfo* SemanticAnalyzer::lookupQualifiedFunction(
 
 sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
     const std::string& name) const {
-  // Helper to extract visible module name by stripping $...$ prefixes
-  auto getVisibleModulePath = [](const std::string& path) -> std::string {
-    std::string result;
-    size_t pos = 0;
-    while (pos < path.size()) {
-      size_t dot = path.find('.', pos);
-      std::string segment = (dot == std::string::npos)
-                                ? path.substr(pos)
-                                : path.substr(pos, dot - pos);
+  // Helper to filter out $...$ hash segments from scope path (for display/ambiguity check)
+  auto getVisiblePath = [](const std::vector<std::string>& path)
+      -> std::vector<std::string> {
+    std::vector<std::string> result;
+    for (const auto& segment : path) {
       // Skip segments starting with $ (import scopes, library hashes)
       if (!segment.empty() && segment[0] != '$') {
-        if (!result.empty()) result += ".";
-        result += segment;
+        result.push_back(segment);
       }
-      pos = (dot == std::string::npos) ? path.size() : dot + 1;
     }
     return result;
   };
 
   // Collect ALL candidate matches, keyed by visible module path to detect
-  // ambiguity. Map from visible path to (full modulePath, scope).
-  std::map<std::string, std::pair<std::string, SemanticScope*>> candidates;
+  // ambiguity. Map from visible path to (full scopePath, scope).
+  std::map<std::vector<std::string>,
+           std::pair<std::vector<std::string>, SemanticScope*>>
+      candidates;
 
   auto addCandidate = [&](SemanticScope* scope) {
-    std::string visPath = getVisibleModulePath(scope->fullyQualifiedScopeName);
+    auto visPath = getVisiblePath(scope->scopePath);
     // Only add if not already present (first match for each visible path wins)
     if (candidates.find(visPath) == candidates.end()) {
-      candidates[visPath] = {scope->fullyQualifiedScopeName, scope};
+      candidates[visPath] = {scope->scopePath, scope};
     }
   };
 
-  std::string modulePath = getCurrentScopeKey();
-  std::string visiblePath = getVisibleModulePath(modulePath);
+  auto scopePath = getCurrentScopePath();
+  auto visiblePath = getVisiblePath(scopePath);
 
   // 1. If inside a module, check the module scope hierarchy (self + parents)
   if (!visiblePath.empty()) {
-    auto allScopes = collectAllModuleScopes(currentScope, visiblePath);
+    std::string visPathStr = sun::QualifiedName::joinPath(visiblePath);
+    auto allScopes = collectAllModuleScopes(currentScope, visPathStr);
     for (auto* modScope : allScopes) {
       if (modScope->hasSymbol(name)) {
         addCandidate(modScope);
@@ -1531,8 +1522,9 @@ sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
   // Root scope type should be Global - check for symbol defined there directly
   if (rootScope->getType() == ScopeType::Global && rootScope->hasSymbol(name)) {
     // Add as global (empty visible path)
-    if (candidates.find("") == candidates.end()) {
-      candidates[""] = {"", nullptr};
+    std::vector<std::string> emptyPath;
+    if (candidates.find(emptyPath) == candidates.end()) {
+      candidates[emptyPath] = {emptyPath, nullptr};
     }
   }
 
@@ -1541,7 +1533,8 @@ sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
     std::string paths;
     for (const auto& [visPath, info] : candidates) {
       if (!paths.empty()) paths += " or ";
-      paths += visPath.empty() ? "<global>" : visPath;
+      paths += visPath.empty() ? "<global>"
+                               : sun::QualifiedName::joinPath(visPath);
     }
     logAndThrowError("Ambiguous reference to '" + name +
                      "'. Could be: " + paths);
@@ -1554,7 +1547,7 @@ sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
   }
 
   // No match found - return unqualified name
-  return sun::QualifiedName("", name);
+  return sun::QualifiedName(std::vector<std::string>{}, name);
 }
 
 void SemanticAnalyzer::addUsingImport(const UsingImport& import) {

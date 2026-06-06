@@ -229,7 +229,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
       // Apply computed info to prototype
       applyFunctionInfoToProto(proto, funcInfo);
-      proto.setQualifiedName(funcInfo.qualifiedNameInfo);
+      proto.setQualifiedName(funcInfo.qualifiedName);
 
       // Register generic functions for later instantiation
       if (proto.isGeneric() && !currentClass) {
@@ -239,7 +239,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // Only register non-generic functions in the normal function table.
       // Generic functions are looked up via genericFunctions table instead.
       if (!proto.isGeneric()) {
-        registernFunctionInCurrentScope(funcInfo.baseName, funcInfo);
+        registernFunctionInCurrentScope(funcInfo.qualifiedName.baseName,
+                                        funcInfo);
       }
 
       // Analyze the function body
@@ -515,17 +516,17 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
           // Variables need special handling to register in namespacedVariables
           analyzeExpr(*bodyExpr);
           auto& varCreate = static_cast<VariableCreationAST&>(*bodyExpr);
-          std::string qualifiedName =
-              qualifyNameInCurrentModule(varCreate.getName());
+          sun::QualifiedName qualifiedName =
+              makeQualifiedName(varCreate.getName());
           varCreate.setQualifiedName(qualifiedName);
           if (auto type = varCreate.getResolvedType()) {
-            registerNamespacedVariable(qualifiedName, type);
+            registerNamespacedVariable(qualifiedName.mangled(), type);
           }
         } else if (bodyExpr->getType() == ASTNodeType::REFERENCE_CREATION) {
           analyzeExpr(*bodyExpr);
           auto& refCreate = static_cast<ReferenceCreationAST&>(*bodyExpr);
-          std::string qualifiedName =
-              qualifyNameInCurrentModule(refCreate.getName());
+          sun::QualifiedName qualifiedName =
+              makeQualifiedName(refCreate.getName());
           refCreate.setQualifiedName(qualifiedName);
         } else {
           analyzeExpr(*bodyExpr);
@@ -585,7 +586,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       if (varInfo) {
         // Set resolved mangled name from the variable's qualified name
         if (!varInfo->qualifiedName.empty()) {
-          qualName.setResolvedMangledName(varInfo->qualifiedName);
+          qualName.setResolvedMangledName(varInfo->qualifiedName.mangled());
         }
         expr.setResolvedType(varInfo->type);
         break;
@@ -598,7 +599,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
         // Set resolved mangled name from the function's actual qualified name
         // This handles same-named modules in different import scopes correctly
         if (!funcInfo->qualifiedName.empty()) {
-          qualName.setResolvedMangledName(funcInfo->qualifiedName);
+          qualName.setResolvedMangledName(funcInfo->qualifiedName.mangled());
         }
         expr.setResolvedType(
             sun::Types::Function(funcInfo->returnType, funcInfo->paramTypes));
@@ -683,11 +684,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       }
 
       // Create the class type with the qualified name
-      auto classType = typeRegistry->getClass(mangledClassName);
-      // Store the user-written base name for error messages
-      if (mangledClassName != baseName) {
-        classType->setBaseName(baseName);
-      }
+      auto classType = typeRegistry->getClass(qualifiedClass);
 
       // Add fields to the class type
       for (const auto& field : classDef.getFields()) {
@@ -758,7 +755,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       setCurrentClass(classType);
 
       // Enter a Class scope to contain all method scopes in the tree
-      enterClassScope(baseName, mangledClassName);
+      enterClassScope(qualifiedClass);
 
       // PASS 1: Register all methods first (so methods can call each other)
       for (const auto& methodDecl : classDef.getMethods()) {
@@ -793,16 +790,13 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // PASS 2: Analyze all method bodies
       for (size_t i = 0; i < classDef.getMethods().size(); ++i) {
         const auto& methodDecl = classDef.getMethods()[i];
-        // Set qualified name: scopeKey includes module and class context
+        // Set qualified name: scopePath includes module and class context
         PrototypeAST& proto =
             const_cast<PrototypeAST&>(methodDecl.function->getProto());
-        std::string methodScopeKey =
-            qualifiedClass.fullyQualifiedScopeName.empty()
-                ? mangledClassName
-                : qualifiedClass.fullyQualifiedScopeName + "." +
-                      mangledClassName;
+        std::vector<std::string> methodScopePath = qualifiedClass.scopePath;
+        methodScopePath.push_back(mangledClassName);
         proto.setQualifiedName(
-            sun::QualifiedName(methodScopeKey, proto.getName()));
+            sun::QualifiedName(methodScopePath, proto.getName()));
         analyzeFunction(*methodDecl.function);
       }
 
@@ -932,7 +926,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       }
 
       // Enter Interface scope to contain method scopes
-      enterInterfaceScope(interfaceDef.getName(), interfaceName);
+      enterInterfaceScope(qualifiedInterface);
 
       // Analyze default method bodies
       for (const auto& methodDecl : interfaceDef.getMethods()) {
@@ -1362,9 +1356,7 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
   info.returnType = returnType;
   info.paramTypes = std::move(paramTypes);
   info.captures = std::move(captures);
-  info.qualifiedNameInfo = qualifiedName;
-  info.qualifiedName = qualifiedName.mangled();
-  info.baseName = proto.getName();
+  info.qualifiedName = qualifiedName;
   info.canThrow = proto.canThrow();
   return info;
 }
@@ -1405,7 +1397,7 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
     setCurrentClass(existingClass);
 
     // Enter a Class scope to contain extension method scopes
-    enterClassScope(baseName, existingClass->getMangledName());
+    enterClassScope(existingClass->getQualifiedName());
 
     // Register all extension methods first
     for (const auto& methodDecl : classDef.getMethods()) {
@@ -1830,8 +1822,7 @@ void SemanticAnalyzer::lazyParseAndAnalyzeMethod(
       auto* genericInfo = lookupGenericClass(lookupName);
       if (genericInfo && genericInfo->AST &&
           genericInfo->AST->hasQualifiedName()) {
-        modulePath =
-            genericInfo->AST->getQualifiedNameInfo().fullyQualifiedScopeName;
+        modulePath = genericInfo->AST->getQualifiedNameInfo().scopePathString();
       }
     }
 
@@ -1885,8 +1876,10 @@ void SemanticAnalyzer::lazyParseAndAnalyzeMethod(
       classType->getMangledMethodName(proto.getName()), substitutedParamTypes);
   std::string mangledMethodName =
       classType->getMangledMethodName(proto.getName());
-  enterFunctionScope(methodSig, sun::QualifiedName("", mangledMethodName),
-                     proto.canThrow());
+  enterFunctionScope(
+      methodSig,
+      sun::QualifiedName(std::vector<std::string>{}, mangledMethodName),
+      proto.canThrow());
   if (classType) {
     declareVariable("this", classType, /*isParam=*/true);
   }

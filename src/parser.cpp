@@ -2297,8 +2297,9 @@ void Parser::createModuleStubs(
         std::move(methods),
         true);  // precompiled = true
 
-    // Set the qualified name from metadata (includes content hash prefix)
-    ifaceDef->setQualifiedName(ifaceInfo.qualifiedName);
+    // Don't set qualified name here - let semantic analysis compute it
+    // based on the ImportScope's scopePath (which includes content hash)
+    // and the ModuleAST wrapping (which adds the module name).
 
     moduleAST.push_back(std::move(ifaceDef));
   }
@@ -2407,8 +2408,9 @@ void Parser::createModuleStubs(
         std::move(fields), std::move(methods),
         true);  // precompiled = true
 
-    // Set the qualified name from metadata (includes content hash prefix)
-    classDef->setQualifiedName(classInfo.qualifiedName);
+    // Don't set qualified name here - let semantic analysis compute it
+    // based on the ImportScope's scopePath (which includes content hash)
+    // and the ModuleAST wrapping (which adds the module name).
 
     moduleAST.push_back(std::move(classDef));
   }

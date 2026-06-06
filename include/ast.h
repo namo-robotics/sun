@@ -530,10 +530,6 @@ class VariableReferenceAST : public ExprAST {
   void setQualifiedName(sun::QualifiedName qname) {
     qualifiedName_ = std::move(qname);
   }
-  // Backward compat: set from mangled string (loses display info)
-  void setQualifiedName(std::string name) {
-    qualifiedName_ = sun::QualifiedName::fromMangled(std::move(name));
-  }
   bool hasQualifiedName() const { return !qualifiedName_.empty(); }
 };
 
@@ -577,9 +573,6 @@ class VariableCreationAST : public ExprAST {
   }
   void setQualifiedName(sun::QualifiedName qname) {
     qualifiedName_ = std::move(qname);
-  }
-  void setQualifiedName(std::string n) {
-    qualifiedName_ = sun::QualifiedName::fromMangled(std::move(n));
   }
   bool hasQualifiedName() const { return !qualifiedName_.empty(); }
 
@@ -641,9 +634,6 @@ class ReferenceCreationAST : public ExprAST {
   }
   void setQualifiedName(sun::QualifiedName qname) {
     qualifiedName_ = std::move(qname);
-  }
-  void setQualifiedName(std::string n) {
-    qualifiedName_ = sun::QualifiedName::fromMangled(std::move(n));
   }
   bool hasQualifiedName() const { return !qualifiedName_.empty(); }
 
@@ -786,10 +776,6 @@ class PrototypeAST {
   }
   void setQualifiedName(sun::QualifiedName qname) {
     qualifiedName_ = std::move(qname);
-  }
-  // Backward compat: set from mangled string (loses display info)
-  void setQualifiedName(std::string name) {
-    qualifiedName_ = sun::QualifiedName::fromMangled(std::move(name));
   }
   bool hasQualifiedName() const { return !qualifiedName_.empty(); }
 
@@ -1619,10 +1605,6 @@ class ClassDefinitionAST : public ExprAST {
   void setQualifiedName(sun::QualifiedName qname) {
     qualifiedName_ = std::move(qname);
   }
-  // Backward compat: set from mangled string (loses display info)
-  void setQualifiedName(std::string name) {
-    qualifiedName_ = sun::QualifiedName::fromMangled(std::move(name));
-  }
   bool hasQualifiedName() const { return !qualifiedName_.empty(); }
   const std::vector<std::string>& getTypeParameters() const {
     return typeParameters;
@@ -1748,10 +1730,6 @@ class InterfaceDefinitionAST : public ExprAST {
   }
   void setQualifiedName(sun::QualifiedName qname) {
     qualifiedName_ = std::move(qname);
-  }
-  // Backward compat: set from mangled string (loses display info)
-  void setQualifiedName(std::string name) {
-    qualifiedName_ = sun::QualifiedName::fromMangled(std::move(name));
   }
   bool hasQualifiedName() const { return !qualifiedName_.empty(); }
   const std::vector<std::string>& getTypeParameters() const {

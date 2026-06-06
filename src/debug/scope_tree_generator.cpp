@@ -97,10 +97,10 @@ std::string ScopeTreeGenerator::generateJson(const SemanticScope& scope,
     out << ",\n"
         << pad2 << "\"scopeName\": \"" << escapeJson(scope.scopeName) << "\"";
   }
-  if (!scope.fullyQualifiedScopeName.empty()) {
+  if (!scope.scopePath.empty()) {
     out << ",\n"
         << pad2 << "\"scopeKey\": \""
-        << escapeJson(scope.fullyQualifiedScopeName) << "\"";
+        << escapeJson(sun::QualifiedName::joinPath(scope.scopePath)) << "\"";
   }
 
   // For class scopes, show baseName and mangledName

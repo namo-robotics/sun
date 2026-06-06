@@ -12,6 +12,9 @@
 
 #include "semantic_scope.h"
 
+// Forward declarations
+struct Position;
+
 // Alias for use in this header and semantic analyzer implementations
 using QualifiedName = sun::QualifiedName;
 
@@ -272,6 +275,11 @@ class SemanticAnalyzer {
   // Check if an identifier starts with underscore (reserved for builtins)
   static bool isReservedIdentifier(const std::string& name);
 
+  // Helper template for generic class/interface lookup
+  // Finder takes (SemanticScope*, const std::string&) and returns ResultPtr
+  template <typename ResultPtr, typename Finder>
+  ResultPtr lookupGenericSymbol(const std::string& name, Finder finder) const;
+
   // Check if a function name is an intrinsic (starts with '_')
   static bool isIntrinsic(const std::string& name) {
     return !name.empty() && name[0] == '_';
@@ -303,16 +311,15 @@ class SemanticAnalyzer {
 
   // Scope management - typed scopes
   void enterScope(ScopeType type = ScopeType::Block);
-  // Enter a type parameter scope with bindings (combines enterScope + addTypeParameterBindings)
+  // Enter a type parameter scope with bindings (combines enterScope +
+  // addTypeParameterBindings)
   void enterTypeParamScope(const std::vector<std::string>& params,
                            const std::vector<sun::TypePtr>& args);
   void enterModuleScope(const std::string& moduleName);
-  // Enter a class scope with base and mangled names for debug visibility
-  void enterClassScope(const std::string& baseName,
-                       const std::string& mangledName);
-  // Enter an interface scope with base and mangled names for debug visibility
-  void enterInterfaceScope(const std::string& baseName,
-                           const std::string& mangledName);
+  // Enter a class scope with qualified name for proper scope path
+  void enterClassScope(const sun::QualifiedName& className);
+  // Enter an interface scope with qualified name for proper scope path
+  void enterInterfaceScope(const sun::QualifiedName& interfaceName);
   // Enter a function scope with the function's signature for nested function
   // qualified names. The signature should be "funcName(paramType1,paramType2)".
   // funcName is the qualified name of the function.
@@ -329,9 +336,9 @@ class SemanticAnalyzer {
   // Returns empty string if not inside any module scope
   std::string getCurrentModulePrefix() const;
 
-  // Get the current module path in display form (dot-separated)
-  // e.g., inside "module A { module B { } }", returns "A.B"
-  std::string getCurrentScopeKey() const;
+  // Get the current scope path as a vector of segments
+  // e.g., inside "module A { module B { } }", returns {"A", "B"}
+  std::vector<std::string> getCurrentScopePath() const;
 
   // Create a QualifiedName for a symbol in the current module scope
   // Preserves module path in display form for proper error messages
@@ -398,6 +405,9 @@ class SemanticAnalyzer {
 
   // Type inference helpers
   sun::TypePtr typeAnnotationToType(const TypeAnnotation& annot);
+  std::vector<sun::TypePtr> resolveTypeArguments(
+      const std::vector<std::unique_ptr<TypeAnnotation>>& typeAnnotations,
+      const std::optional<Position>& location, const std::string& context);
   sun::TypePtr substituteTypeParameters(
       sun::TypePtr type);  // Substitute type params with bindings
 
@@ -423,3 +433,95 @@ class SemanticAnalyzer {
   void analyzeGenericFunctionCall(GenericCallAST& genericCall);
   void analyzeGenericClassConstruction(GenericCallAST& genericCall);
 };
+
+// -------------------------------------------------------------------
+// Template implementation: lookupGenericSymbol
+// Finder signature: ResultPtr finder(SemanticScope*, const std::string&)
+// -------------------------------------------------------------------
+
+template <typename ResultPtr, typename Finder>
+ResultPtr SemanticAnalyzer::lookupGenericSymbol(const std::string& name,
+                                                Finder finder) const {
+  // Handle module-qualified names like "Test.Inner"
+  size_t dotPos = name.find('.');
+  if (dotPos != std::string::npos) {
+    std::string moduleName = name.substr(0, dotPos);
+    std::string symbolName = name.substr(dotPos + 1);
+
+    // Search for the module scope and look up the symbol there
+    for (auto* s = currentScope; s != nullptr; s = s->parent) {
+      // Check child modules of current scope
+      auto modIt = s->childModules.find(moduleName);
+      if (modIt != s->childModules.end() && modIt->second) {
+        auto result = finder(modIt->second.get(), symbolName);
+        if (result) return result;
+      }
+      // Also check inside import scopes for module definitions
+      for (const auto& [childName, child] : s->childModules) {
+        if (child && child->getType() == ScopeType::Import) {
+          auto innerModIt = child->childModules.find(moduleName);
+          if (innerModIt != child->childModules.end() && innerModIt->second) {
+            auto result = finder(innerModIt->second.get(), symbolName);
+            if (result) return result;
+          }
+        }
+      }
+    }
+    // Fall through to regular lookup if module not found
+  }
+
+  // Walk scope chain from innermost to outermost
+  for (auto* s = currentScope; s != nullptr; s = s->parent) {
+    auto result = finder(s, name);
+    if (result) return result;
+    // Search direct import-scope children (one level of transparency)
+    for (const auto& [childName, child] : s->childModules) {
+      if (child && child->getType() == ScopeType::Import) {
+        result = finder(child.get(), name);
+        if (result) return result;
+        for (const auto& [modName, modChild] : child->childModules) {
+          if (modChild && modChild->getType() == ScopeType::Module) {
+            result = finder(modChild.get(), name);
+            if (result) return result;
+          }
+        }
+      }
+    }
+    // Search the __definition__ scope (for transitive deps during generic
+    // instantiation). Walk up the definition scope's parent chain to reach
+    // imports at the file scope level.
+    auto defIt = s->childModules.find("__definition__");
+    if (defIt != s->childModules.end() && defIt->second) {
+      for (auto* defS = defIt->second.get(); defS != nullptr;
+           defS = defS->parent) {
+        result = finder(defS, name);
+        if (result) return result;
+        // Search its import-scope children
+        for (const auto& [childName, child] : defS->childModules) {
+          if (child && child->getType() == ScopeType::Import) {
+            result = finder(child.get(), name);
+            if (result) return result;
+            for (const auto& [modName, modChild] : child->childModules) {
+              if (modChild && modChild->getType() == ScopeType::Module) {
+                result = finder(modChild.get(), name);
+                if (result) return result;
+              }
+            }
+          }
+        }
+      }
+    }
+    // Search import bindings from using statements
+    for (const auto& binding : s->importBindings) {
+      if (!binding.sourceScope) continue;
+      if (binding.isWildcard) {
+        auto result2 = finder(binding.sourceScope, name);
+        if (result2) return result2;
+      } else if (binding.localName == name) {
+        auto result2 = finder(binding.sourceScope, binding.sourceName);
+        if (result2) return result2;
+      }
+    }
+  }
+  return ResultPtr{};
+}

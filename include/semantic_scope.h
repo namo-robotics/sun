@@ -21,9 +21,7 @@ struct VariableInfo {
   bool isGlobal;         // Declared at module level (not inside a function)
   bool isFunctionParam;  // Is it a parameter vs let binding
   bool isMoved = false;  // Has ownership been transferred (move semantics)
-  std::string qualifiedName;  // Mangled name for codegen (e.g., "sun_PI").
-                              // Empty for locals.
-  std::string baseName;       // User-written name (e.g., "PI"). For debugging.
+  sun::QualifiedName qualifiedName;  // Full qualified name (empty for locals)
 };
 
 // Information about a declared function
@@ -31,10 +29,7 @@ struct FunctionInfo {
   sun::TypePtr returnType;
   std::vector<sun::TypePtr> paramTypes;
   std::vector<Capture> captures;
-  sun::QualifiedName qualifiedNameInfo;  // Full qualified name object
-  std::string qualifiedName;  // Mangled name for codegen (e.g., "sun_square").
-                              // Empty for builtins.
-  std::string baseName;   // User-written name (e.g., "square"). For debugging.
+  sun::QualifiedName qualifiedName;  // Full qualified name
   bool canThrow = false;  // Whether this function can throw (declared with ,
                           // IError)
 };
@@ -314,8 +309,7 @@ struct SemanticScopeBase
 
   // ===== Identification (for persistent scopes) =====
   std::string scopeName;  // Display name (module name, source file, etc.)
-  std::string fullyQualifiedScopeName;  // Lookup key / qualified path for
-                                        // symbol isolation
+  std::vector<std::string> scopePath;  // Scope path segments for qualified names
 
   // ===== Symbol tables (used by persistent scopes - Global/Module/Import)
   // =====
