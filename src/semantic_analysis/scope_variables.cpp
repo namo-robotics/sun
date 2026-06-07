@@ -986,14 +986,18 @@ const GenericFunctionInfo* SemanticAnalyzer::lookupGenericFunction(
     // Search direct import-scope children (one level of transparency)
     for (const auto& [modName, child] : s->childModules) {
       if (!child || child->getType() != ScopeType::Import) continue;
-      auto childFound = child->genericFunctions.find(qname);
+      // Search with child's scope path, not caller's scope path
+      sun::QualifiedName childQname(child->scopePath, name);
+      auto childFound = child->genericFunctions.find(childQname);
       if (childFound != child->genericFunctions.end()) {
         return &childFound->second;
       }
       // Also search import scope's non-import children (modules within)
       for (const auto& [subName, subChild] : child->childModules) {
         if (!subChild || subChild->getType() == ScopeType::Import) continue;
-        auto subFound = subChild->genericFunctions.find(qname);
+        // Search with subChild's scope path
+        sun::QualifiedName subQname(subChild->scopePath, name);
+        auto subFound = subChild->genericFunctions.find(subQname);
         if (subFound != subChild->genericFunctions.end()) {
           return &subFound->second;
         }
@@ -1002,7 +1006,10 @@ const GenericFunctionInfo* SemanticAnalyzer::lookupGenericFunction(
     // Search import bindings from using statements
     for (const auto& binding : s->importBindings) {
       if (!binding.sourceScope || !binding.isWildcard) continue;
-      auto bindingFound = binding.sourceScope->genericFunctions.find(qname);
+      // Search with binding source's scope path
+      sun::QualifiedName bindingQname(binding.sourceScope->scopePath, name);
+      auto bindingFound =
+          binding.sourceScope->genericFunctions.find(bindingQname);
       if (bindingFound != binding.sourceScope->genericFunctions.end()) {
         return &bindingFound->second;
       }
@@ -1459,9 +1466,10 @@ const FunctionInfo* SemanticAnalyzer::lookupQualifiedFunction(
 
 sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
     const std::string& name) const {
-  // Helper to filter out $...$ hash segments from scope path (for display/ambiguity check)
-  auto getVisiblePath = [](const std::vector<std::string>& path)
-      -> std::vector<std::string> {
+  // Helper to filter out $...$ hash segments from scope path (for
+  // display/ambiguity check)
+  auto getVisiblePath =
+      [](const std::vector<std::string>& path) -> std::vector<std::string> {
     std::vector<std::string> result;
     for (const auto& segment : path) {
       // Skip segments starting with $ (import scopes, library hashes)
@@ -1533,8 +1541,8 @@ sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
     std::string paths;
     for (const auto& [visPath, info] : candidates) {
       if (!paths.empty()) paths += " or ";
-      paths += visPath.empty() ? "<global>"
-                               : sun::QualifiedName::joinPath(visPath);
+      paths +=
+          visPath.empty() ? "<global>" : sun::QualifiedName::joinPath(visPath);
     }
     logAndThrowError("Ambiguous reference to '" + name +
                      "'. Could be: " + paths);

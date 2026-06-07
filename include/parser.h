@@ -189,10 +189,15 @@ class Parser {
   // Parse a type annotation from its string representation.
   TypeAnnotation parseTypeFromString(const std::string& typeStr);
 
-  // Parse a function signature string (e.g., "(i32, i32) -> i32") into an
-  // extern FunctionAST.
+  // Parse a function signature string (e.g., "(i32, i32) -> i32") into a
+  // FunctionAST. For generic functions, typeParams and bodySource enable
+  // lazy parsing when instantiated.
   std::unique_ptr<FunctionAST> parseFunctionSignature(
-      const std::string& name, const std::string& signature);
+      const std::string& name, const std::string& signature,
+      const std::vector<std::string>& typeParams = {},
+      const std::string& bodySource = "",
+      const std::string& variadicParamName = "",
+      const std::string& variadicConstraint = "");
 
   // Parse a method from its source text (for loading from moon)
   std::unique_ptr<FunctionAST> parseFunctionFromSource(

@@ -130,6 +130,9 @@ void extractFunction(const FunctionAST& func, ModuleMetadata& metadata,
 
   std::vector<std::string> typeParams = proto.getTypeParameters();
 
+  // Store type parameters for generic functions
+  sym.typeParams = typeParams;
+
   // Use empty prefix for type signatures - types use base names in metadata
   std::string sig = "(";
   const auto& args = proto.getArgs();
@@ -141,6 +144,20 @@ void extractFunction(const FunctionAST& func, ModuleMetadata& metadata,
       ") -> " + qualifyOptTypeAnnotation(proto.getReturnType(), "", typeParams);
   sym.typeSignature = sig;
   sym.isPublic = true;
+
+  // Store variadic info for generic functions
+  if (proto.hasVariadicParam()) {
+    sym.variadicParamName = proto.getVariadicParamName().value_or("");
+    if (proto.hasVariadicConstraint()) {
+      sym.variadicConstraint =
+          qualifyTypeAnnotation(*proto.getVariadicConstraint(), "", typeParams);
+    }
+  }
+
+  // Store body source for generic functions (needed for lazy parsing)
+  if (!typeParams.empty() && func.hasSourceText()) {
+    sym.bodySource = func.getSourceText();
+  }
 
   metadata.exports.push_back(sym);
 }

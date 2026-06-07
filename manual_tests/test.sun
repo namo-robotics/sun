@@ -1,9 +1,6 @@
+import "build/stdlib.moon";
+using sun;
+
 function main() i32 {
-    function outer<T>(x: T) T {
-        function inner<U>(y: U) U {
-            return y + y;
-        }
-        return x + inner<T>(x);
-    }
-    return outer<i32>(5);
+    return min<i32>(10, 5);
 }

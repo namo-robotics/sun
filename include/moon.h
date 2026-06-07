@@ -79,6 +79,14 @@ struct ExportedSymbol {
   std::string typeSignature;  // Serialized type: "(i32) -> i32"
   bool isPublic = true;
 
+  // Generic function support (like MethodInfo)
+  std::vector<std::string> typeParams;  // Type parameters: <T, U>
+  std::string bodySource;               // Source code for lazy parsing
+  std::string variadicParamName;        // Name of variadic param (empty if none)
+  std::string variadicConstraint;       // Type constraint for variadic
+
+  bool isGeneric() const { return !typeParams.empty(); }
+
   std::string serialize() const;
   static ExportedSymbol deserialize(const std::string& data);
 };

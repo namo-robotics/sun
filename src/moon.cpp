@@ -317,6 +317,15 @@ std::string ExportedSymbol::serialize() const {
   std::ostringstream oss;
   oss << static_cast<int>(kind) << "|" << baseName << "|" << qualifiedName
       << "|" << typeSignature << "|" << (isPublic ? "1" : "0");
+  // Add type parameters for generic functions
+  oss << "|" << typeParams.size();
+  for (const auto& tp : typeParams) {
+    oss << "|" << tp;
+  }
+  // Add variadic info
+  oss << "|" << variadicParamName << "|" << variadicConstraint;
+  // Add body source (escaped to handle newlines) - read as rest of line
+  oss << "|" << escapeForStorage(bodySource);
   return oss.str();
 }
 
@@ -344,6 +353,22 @@ ExportedSymbol ExportedSymbol::deserialize(const std::string& data) {
   // isPublic
   if (std::getline(iss, token, '|')) {
     sym.isPublic = (token == "1");
+  }
+  // Type parameters
+  if (std::getline(iss, token, '|')) {
+    int count = std::stoi(token);
+    for (int i = 0; i < count; ++i) {
+      if (std::getline(iss, token, '|')) {
+        sym.typeParams.push_back(token);
+      }
+    }
+  }
+  // Variadic info
+  if (std::getline(iss, token, '|')) sym.variadicParamName = token;
+  if (std::getline(iss, token, '|')) sym.variadicConstraint = token;
+  // Body source (escaped string - read rest of input)
+  if (std::getline(iss, token)) {
+    sym.bodySource = unescapeFromStorage(token);
   }
 
   return sym;

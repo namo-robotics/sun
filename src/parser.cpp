@@ -1481,8 +1481,16 @@ unique_ptr<ExprAST> Parser::parseStatement() {
       return std::make_unique<FunctionAST>(std::move(proto), nullptr);
     }
     case TokenKind::FUNCTION: {
+      // Capture start position for source text extraction (generic functions)
+      int startOffset = curTok.start.offset;
       // Function definitions don't need trailing semicolons
       auto func = parseFunction();
+      // For generic functions, capture source text for lazy parsing
+      if (func && func->getProto().isGeneric()) {
+        int endOffset = curTok.start.offset;
+        std::string sourceText = getSourceText(startOffset, endOffset);
+        func->setSourceText(sourceText);
+      }
       while (curTok.kind == TokenKind::SEMI_COLON)
         getNextToken();  // optional semicolons
       return func;
@@ -2415,12 +2423,16 @@ void Parser::createModuleStubs(
     moduleAST.push_back(std::move(classDef));
   }
 
-  // Functions (extern declarations)
+  // Functions (extern declarations or generic function stubs)
   for (const auto& sym : metadata.exports) {
     if (sym.kind == sun::ExportedSymbol::Kind::Function) {
       // Use baseName directly - no stripping needed
       // Parse function signature from typeSignature: "(i32, i32) -> i32"
-      auto funcAST = parseFunctionSignature(sym.baseName, sym.typeSignature);
+      // For generic functions, pass type params and body source for lazy
+      // parsing
+      auto funcAST = parseFunctionSignature(
+          sym.baseName, sym.typeSignature, sym.typeParams, sym.bodySource,
+          sym.variadicParamName, sym.variadicConstraint);
       if (funcAST) {
         moduleAST.push_back(std::move(funcAST));
       }
@@ -2713,10 +2725,14 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
   return result;
 }
 
-// Parse a function signature string like "(i32, i32) -> i32" into an extern
-// FunctionAST.
+// Parse a function signature string like "(i32, i32) -> i32" into a FunctionAST.
+// For generic functions, typeParams and bodySource enable lazy parsing when
+// instantiated.
 std::unique_ptr<FunctionAST> Parser::parseFunctionSignature(
-    const std::string& name, const std::string& signature) {
+    const std::string& name, const std::string& signature,
+    const std::vector<std::string>& typeParams, const std::string& bodySource,
+    const std::string& variadicParamName,
+    const std::string& variadicConstraint) {
   // Parse signature: "(param1, param2, ...) -> returnType"
   // Find the arrow
   size_t arrowPos = signature.find(") -> ");
@@ -2791,12 +2807,38 @@ std::unique_ptr<FunctionAST> Parser::parseFunctionSignature(
     }
   }
 
-  // Create extern prototype (no body)
-  auto proto =
-      std::make_unique<PrototypeAST>(name, std::move(params), returnType);
+  // Handle variadic parameter
+  std::optional<std::string> variadicParam;
+  std::optional<TypeAnnotation> variadicConstr;
+  if (!variadicParamName.empty()) {
+    variadicParam = variadicParamName;
+    if (!variadicConstraint.empty()) {
+      variadicConstr = parseTypeFromString(variadicConstraint);
+    }
+  }
 
-  // Extern function - null body
-  return std::make_unique<FunctionAST>(std::move(proto), nullptr);
+  // Create prototype with type parameters and variadic info
+  auto proto = std::make_unique<PrototypeAST>(
+      name, std::move(params), returnType, typeParams, variadicParam,
+      variadicConstr);
+
+  // For generic functions, create stub with empty body for lazy parsing
+  // For non-generic, create extern declaration (null body)
+  std::unique_ptr<FunctionAST> func;
+  if (!typeParams.empty()) {
+    // Generic function - create empty body, store source for lazy parsing
+    auto body = std::make_unique<BlockExprAST>(
+        std::vector<std::unique_ptr<ExprAST>>());
+    func = std::make_unique<FunctionAST>(std::move(proto), std::move(body));
+    if (!bodySource.empty()) {
+      func->setSourceText(bodySource);
+    }
+  } else {
+    // Non-generic extern function - null body
+    func = std::make_unique<FunctionAST>(std::move(proto), nullptr);
+  }
+
+  return func;
 }
 
 // In parser.cpp (implementation)
