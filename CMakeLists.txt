@@ -31,7 +31,53 @@ message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 # ------------------------------------------------------------------
 add_library(sun_lib
     src/parser.cpp
-    src/ast.cpp
+    # AST node implementations (in src/ast/)
+    src/ast/array_index_ast.cpp
+    src/ast/array_literal_ast.cpp
+    src/ast/binary_expr_ast.cpp
+    src/ast/block_expr_ast.cpp
+    src/ast/bool_literal_ast.cpp
+    src/ast/break_ast.cpp
+    src/ast/call_expr_ast.cpp
+    src/ast/class_definition_ast.cpp
+    src/ast/continue_ast.cpp
+    src/ast/declare_type_ast.cpp
+    src/ast/enum_definition_ast.cpp
+    src/ast/for_expr_ast.cpp
+    src/ast/for_in_expr_ast.cpp
+    src/ast/function_ast.cpp
+    src/ast/generic_call_ast.cpp
+    src/ast/if_expr_ast.cpp
+    src/ast/import_ast.cpp
+    src/ast/import_scope_ast.cpp
+    src/ast/index_ast.cpp
+    src/ast/indexed_assignment_ast.cpp
+    src/ast/interface_definition_ast.cpp
+    src/ast/lambda_ast.cpp
+    src/ast/match_expr_ast.cpp
+    src/ast/member_access_ast.cpp
+    src/ast/member_assignment_ast.cpp
+    src/ast/module_ast.cpp
+    src/ast/null_literal_ast.cpp
+    src/ast/number_expr_ast.cpp
+    src/ast/pack_expansion_ast.cpp
+    src/ast/prototype_ast.cpp
+    src/ast/qualified_name_ast.cpp
+    src/ast/reference_creation_ast.cpp
+    src/ast/return_expr_ast.cpp
+    src/ast/slice_expr_ast.cpp
+    src/ast/spawn_expr_ast.cpp
+    src/ast/string_literal_ast.cpp
+    src/ast/this_expr_ast.cpp
+    src/ast/throw_expr_ast.cpp
+    src/ast/try_catch_expr_ast.cpp
+    src/ast/unary_expr_ast.cpp
+    src/ast/unsafe_block_ast.cpp
+    src/ast/using_ast.cpp
+    src/ast/variable_assignment_ast.cpp
+    src/ast/variable_creation_ast.cpp
+    src/ast/variable_reference_ast.cpp
+    src/ast/while_expr_ast.cpp
     src/codegen.cpp
     src/driver.cpp
     src/codegen/codegen_visitor.cpp
