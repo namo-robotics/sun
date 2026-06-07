@@ -486,7 +486,7 @@ SemanticAnalyzer::instantiateGenericFunction(
   const PrototypeAST& proto = genericFunc->getProto();
   // Use qualified name to include enclosing function context (e.g.,
   // outer_i32_inner)
-  std::string funcName = proto.getQualifiedName();
+  std::string funcName = proto.getMangledName();
   const auto& typeParams = proto.getTypeParameters();
 
   // Generate mangled name for cache lookup
@@ -624,7 +624,7 @@ SemanticAnalyzer::instantiateGenericFunction(
 
     // Declare parameters in scope for body analysis - use the mangled qualified
     // name so nested functions get correct context
-    enterFunctionScope(funcSig, clonedProto.getQualifiedNameInfo(),
+    enterFunctionScope(funcSig, clonedProto.getQualifiedName(),
                        proto.canThrow());
     for (size_t i = 0; i < paramTypes.size(); ++i) {
       // Use parsed parameter names if available (from lazy parsing),

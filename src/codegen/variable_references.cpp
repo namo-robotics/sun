@@ -177,7 +177,7 @@ Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
     // Check for global class variables
     GlobalVariable* gv = module->getGlobalVariable(expr.getName());
     if (!gv) {
-      gv = module->getGlobalVariable(expr.getQualifiedName());
+      gv = module->getGlobalVariable(expr.getMangledName());
     }
     if (gv) {
       // Return the global variable pointer directly (same semantics as alloca)
@@ -196,7 +196,7 @@ Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
     }
     GlobalVariable* gv = module->getGlobalVariable(expr.getName());
     if (!gv) {
-      gv = module->getGlobalVariable(expr.getQualifiedName());
+      gv = module->getGlobalVariable(expr.getMangledName());
     }
     if (gv) {
       return gv;
@@ -216,14 +216,14 @@ Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
 
   // Check for named functions using qualified name from semantic analysis
   // The qualified name handles using imports (e.g., hash_i64 -> sun_hash_i64)
-  const std::string& funcName = expr.getQualifiedName();
+  const std::string& funcName = expr.getMangledName();
   if (Function* func = module->getFunction(funcName)) {
     return func;
   }
 
   // Enhanced error with both names for debugging
   logAndThrowError("Global variable not found in module: " + expr.getName() +
-                   " (qualifiedName='" + expr.getQualifiedName() + "')");
+                   " (qualifiedName='" + expr.getMangledName() + "')");
 }
 
 // -------------------------------------------------------------------

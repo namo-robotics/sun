@@ -930,7 +930,7 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
   if (auto* varRef =
           dynamic_cast<const VariableReferenceAST*>(expr.getCallee())) {
     // Use qualified name from semantic analysis (handles using imports)
-    std::string resolvedName = varRef->getQualifiedName();
+    std::string resolvedName = varRef->getMangledName();
     func = module->getFunction(resolvedName);
   } else if (auto* qualName =
                  dynamic_cast<const QualifiedNameAST*>(expr.getCallee())) {

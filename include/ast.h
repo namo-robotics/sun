@@ -14,8 +14,135 @@
 #include "qualified_name.h"
 #include "types.h"
 
-// Forward declaration for type annotation
+// Forward declarations
 struct TypeAnnotation;
+class FunctionAST;
+class ClassDefinitionAST;
+
+// ============================================================================
+// Analysis structures - populated by semantic analyzer, borrow checker, etc.
+// These encapsulate all metadata added to AST nodes during analysis passes.
+// ============================================================================
+
+/// Base analysis data for all expression nodes
+struct ExprAnalysis {
+  sun::TypePtr resolvedType;  // Type determined by semantic analyzer
+  bool consumed = false;      // Set by borrow checker when value is moved
+
+  ExprAnalysis() = default;
+  ExprAnalysis(const ExprAnalysis&) = default;
+  ExprAnalysis& operator=(const ExprAnalysis&) = default;
+  ExprAnalysis(ExprAnalysis&&) = default;
+  ExprAnalysis& operator=(ExprAnalysis&&) = default;
+};
+
+/// Analysis data for nodes with qualified names (variables, classes, etc.)
+struct QualifiedNameAnalysis {
+  sun::QualifiedName qualifiedName;
+
+  QualifiedNameAnalysis() = default;
+  QualifiedNameAnalysis(const QualifiedNameAnalysis&) = default;
+  QualifiedNameAnalysis& operator=(const QualifiedNameAnalysis&) = default;
+};
+
+/// Analysis data for PrototypeAST (function signatures)
+struct PrototypeAnalysis {
+  sun::QualifiedName qualifiedName;
+  std::vector<sun::TypePtr> resolvedParamTypes;
+  bool resolvedParamTypesSet = false;
+  sun::TypePtr resolvedReturnType;
+  std::vector<sun::TypePtr> resolvedVariadicTypes;
+  std::vector<std::pair<std::string, sun::TypePtr>> typeBindings;
+
+  PrototypeAnalysis() = default;
+  PrototypeAnalysis(const PrototypeAnalysis&) = default;
+  PrototypeAnalysis& operator=(const PrototypeAnalysis&) = default;
+};
+
+/// Analysis data for FunctionAST (includes specializations)
+struct FunctionAnalysis : public ExprAnalysis {
+  std::map<std::string, std::shared_ptr<FunctionAST>> specializations;
+
+  FunctionAnalysis() = default;
+  FunctionAnalysis(const FunctionAnalysis&) = default;
+  FunctionAnalysis& operator=(const FunctionAnalysis&) = default;
+};
+
+/// Analysis data for ClassDefinitionAST
+struct ClassAnalysis : public ExprAnalysis {
+  sun::QualifiedName qualifiedName;
+  std::map<std::string, std::shared_ptr<ClassDefinitionAST>> specializations;
+
+  ClassAnalysis() = default;
+  ClassAnalysis(const ClassAnalysis&) = default;
+  ClassAnalysis& operator=(const ClassAnalysis&) = default;
+};
+
+/// Analysis data for InterfaceDefinitionAST
+struct InterfaceAnalysis : public ExprAnalysis {
+  sun::QualifiedName qualifiedName;
+
+  InterfaceAnalysis() = default;
+  InterfaceAnalysis(const InterfaceAnalysis&) = default;
+  InterfaceAnalysis& operator=(const InterfaceAnalysis&) = default;
+};
+
+/// Analysis data for ForInExprAST
+struct ForInAnalysis : public ExprAnalysis {
+  sun::TypePtr resolvedLoopVarType;
+
+  ForInAnalysis() = default;
+  ForInAnalysis(const ForInAnalysis&) = default;
+  ForInAnalysis& operator=(const ForInAnalysis&) = default;
+};
+
+/// Analysis data for QualifiedNameAST
+struct QualifiedNameExprAnalysis : public ExprAnalysis {
+  std::string resolvedMangledName;
+
+  QualifiedNameExprAnalysis() = default;
+  QualifiedNameExprAnalysis(const QualifiedNameExprAnalysis&) = default;
+  QualifiedNameExprAnalysis& operator=(const QualifiedNameExprAnalysis&) =
+      default;
+};
+
+/// Analysis data for MemberAccessAST
+struct MemberAccessAnalysis : public ExprAnalysis {
+  std::vector<sun::TypePtr> resolvedTypeArgs;
+  std::string resolvedQualifiedName;
+
+  MemberAccessAnalysis() = default;
+  MemberAccessAnalysis(const MemberAccessAnalysis&) = default;
+  MemberAccessAnalysis& operator=(const MemberAccessAnalysis&) = default;
+};
+
+/// Analysis data for GenericCallAST
+struct GenericCallAnalysis : public ExprAnalysis {
+  std::vector<sun::TypePtr> resolvedTypeArgs;
+  const FunctionAST* genericFunctionAST = nullptr;
+
+  GenericCallAnalysis() = default;
+  GenericCallAnalysis(const GenericCallAnalysis&) = default;
+  GenericCallAnalysis& operator=(const GenericCallAnalysis&) = default;
+};
+
+/// Analysis data for DeclareTypeAST
+struct DeclareTypeAnalysis : public ExprAnalysis {
+  sun::TypePtr resolvedDeclaredType;
+
+  DeclareTypeAnalysis() = default;
+  DeclareTypeAnalysis(const DeclareTypeAnalysis&) = default;
+  DeclareTypeAnalysis& operator=(const DeclareTypeAnalysis&) = default;
+};
+
+/// Analysis data for variable nodes (VarRef, VarCreate, RefCreate)
+struct VariableAnalysis : public ExprAnalysis {
+  sun::QualifiedName qualifiedName;
+
+  VariableAnalysis() = default;
+  VariableAnalysis(const VariableAnalysis&) = default;
+  VariableAnalysis& operator=(const VariableAnalysis&) = default;
+};
 
 enum class ASTNodeType {
   NUMBER,
@@ -74,12 +201,25 @@ struct Capture {
 
 class ExprAST {
  protected:
-  mutable sun::TypePtr resolvedType;  // Populated by semantic analyzer
-  Position location_;                 // Original source location
-  bool precompiled_ = false;          // True if from precompiled library
+  mutable std::unique_ptr<ExprAnalysis> analysis_;  // Analysis metadata
+  Position location_;                               // Original source location
+  bool precompiled_ = false;  // True if from precompiled library
   bool skipCodegen_ = false;  // Set by semantic analyzer for diamond duplicates
-  mutable bool consumed_ = false;  // Set by borrow checker when value is moved
-  std::string symbolPrefix_;       // Hash prefix for moon symbol isolation
+  std::string symbolPrefix_;  // Hash prefix for moon symbol isolation
+
+  // Virtual method to ensure analysis is allocated with the correct type
+  // Derived classes with specialized analysis types should override this
+  virtual void ensureAnalysis() const {
+    if (!analysis_) {
+      analysis_ = std::make_unique<ExprAnalysis>();
+    }
+  }
+
+  // Accessor for analysis data - calls ensureAnalysis to allocate correct type
+  ExprAnalysis& analysis() const {
+    ensureAnalysis();
+    return *analysis_;
+  }
 
  public:
   virtual ~ExprAST() = default;
@@ -97,11 +237,23 @@ class ExprAST {
   // Clone this AST node (deep copy)
   virtual std::unique_ptr<ExprAST> clone() const = 0;
 
-  // Type annotation set by semantic analyzer
-  void setResolvedType(sun::TypePtr type) const { resolvedType = type; }
-  sun::TypePtr getResolvedType() const { return resolvedType; }
-  bool hasResolvedType() const { return resolvedType != nullptr; }
-  void clearResolvedType() const { resolvedType = nullptr; }
+  // Analysis data access
+  bool hasAnalysis() const { return analysis_ != nullptr; }
+  void clearAnalysis() const { analysis_.reset(); }
+
+  // Type annotation set by semantic analyzer (delegates to analysis)
+  void setResolvedType(sun::TypePtr type) const {
+    analysis().resolvedType = std::move(type);
+  }
+  sun::TypePtr getResolvedType() const {
+    return analysis_ ? analysis_->resolvedType : nullptr;
+  }
+  bool hasResolvedType() const {
+    return analysis_ && analysis_->resolvedType != nullptr;
+  }
+  void clearResolvedType() const {
+    if (analysis_) analysis_->resolvedType = nullptr;
+  }
 
   // Source location tracking
   void setLocation(Position loc) { location_ = loc; }
@@ -156,8 +308,8 @@ class ExprAST {
   // Consumed flag: set by borrow checker when a temporary's ownership
   // is transferred (moved to a variable or field). Consumed temporaries
   // should not have deinit called on them - the destination owns the data.
-  bool isConsumed() const { return consumed_; }
-  void setConsumed(bool value) const { consumed_ = value; }
+  bool isConsumed() const { return analysis_ && analysis_->consumed; }
+  void setConsumed(bool value) const { analysis().consumed = value; }
 
  protected:
   ExprAST() = default;
@@ -506,7 +658,21 @@ class IndexAST : public ExprAST {
 
 class VariableReferenceAST : public ExprAST {
   std::string Name;
-  sun::QualifiedName qualifiedName_;  // Qualified name after semantic analysis
+
+ protected:
+  // Override to allocate VariableAnalysis instead of base ExprAnalysis
+  void ensureAnalysis() const override {
+    if (!analysis_) {
+      analysis_ = std::make_unique<VariableAnalysis>();
+    }
+  }
+
+ private:
+  // Access as VariableAnalysis
+  VariableAnalysis& varAnalysis() const {
+    ensureAnalysis();
+    return static_cast<VariableAnalysis&>(*analysis_);
+  }
 
  public:
   explicit VariableReferenceAST(std::string Name) : Name(std::move(Name)) {}
@@ -519,24 +685,42 @@ class VariableReferenceAST : public ExprAST {
   const std::string& getName() const { return Name; }
 
   // Qualified name (after semantic analysis qualifies it)
-  // Returns mangled form for backward compatibility with codegen
-  std::string getQualifiedName() const {
-    return qualifiedName_.empty() ? Name : qualifiedName_.mangled();
+  const sun::QualifiedName& getQualifiedName() const {
+    return varAnalysis().qualifiedName;
   }
-  // Full qualified name info for display/error messages
-  const sun::QualifiedName& getQualifiedNameInfo() const {
-    return qualifiedName_;
+  // Returns mangled form for codegen symbol lookup
+  std::string getMangledName() const {
+    auto& qn = varAnalysis().qualifiedName;
+    return qn.empty() ? Name : qn.mangled();
   }
   void setQualifiedName(sun::QualifiedName qname) {
-    qualifiedName_ = std::move(qname);
+    varAnalysis().qualifiedName = std::move(qname);
   }
-  bool hasQualifiedName() const { return !qualifiedName_.empty(); }
+  bool hasQualifiedName() const {
+    return analysis_ &&
+           !static_cast<VariableAnalysis&>(*analysis_).qualifiedName.empty();
+  }
 };
 
 class VariableCreationAST : public ExprAST {
   std::string name;
   std::unique_ptr<ExprAST> value;
   std::optional<TypeAnnotation> typeAnnotation;
+
+ protected:
+  // Override to allocate VariableAnalysis instead of base ExprAnalysis
+  void ensureAnalysis() const override {
+    if (!analysis_) {
+      analysis_ = std::make_unique<VariableAnalysis>();
+    }
+  }
+
+ private:
+  // Access as VariableAnalysis
+  VariableAnalysis& varAnalysis() const {
+    ensureAnalysis();
+    return static_cast<VariableAnalysis&>(*analysis_);
+  }
 
  public:
   explicit VariableCreationAST(
@@ -568,16 +752,21 @@ class VariableCreationAST : public ExprAST {
   std::unique_ptr<ExprAST> clone() const override;
 
   // Qualified name (after semantic analysis qualifies it)
-  std::string getQualifiedName() const {
-    return qualifiedName_.empty() ? name : qualifiedName_.mangled();
+  const sun::QualifiedName& getQualifiedName() const {
+    return varAnalysis().qualifiedName;
+  }
+  // Returns mangled form for codegen symbol lookup
+  std::string getMangledName() const {
+    auto& qn = varAnalysis().qualifiedName;
+    return qn.empty() ? name : qn.mangled();
   }
   void setQualifiedName(sun::QualifiedName qname) {
-    qualifiedName_ = std::move(qname);
+    varAnalysis().qualifiedName = std::move(qname);
   }
-  bool hasQualifiedName() const { return !qualifiedName_.empty(); }
-
- private:
-  sun::QualifiedName qualifiedName_;
+  bool hasQualifiedName() const {
+    return analysis_ &&
+           !static_cast<VariableAnalysis&>(*analysis_).qualifiedName.empty();
+  }
 };
 
 class VariableAssignmentAST : public ExprAST {
@@ -607,6 +796,21 @@ class ReferenceCreationAST : public ExprAST {
   std::unique_ptr<ExprAST> target;  // The expression being referenced
   bool mutable_;                    // true = mutable ref, false = immutable ref
 
+ protected:
+  // Override to allocate VariableAnalysis instead of base ExprAnalysis
+  void ensureAnalysis() const override {
+    if (!analysis_) {
+      analysis_ = std::make_unique<VariableAnalysis>();
+    }
+  }
+
+ private:
+  // Access as VariableAnalysis
+  VariableAnalysis& varAnalysis() const {
+    ensureAnalysis();
+    return static_cast<VariableAnalysis&>(*analysis_);
+  }
+
  public:
   explicit ReferenceCreationAST(std::string name,
                                 std::unique_ptr<ExprAST> target,
@@ -629,16 +833,21 @@ class ReferenceCreationAST : public ExprAST {
   std::unique_ptr<ExprAST> clone() const override;
 
   // Qualified name (after semantic analysis qualifies it)
-  std::string getQualifiedName() const {
-    return qualifiedName_.empty() ? name : qualifiedName_.mangled();
+  const sun::QualifiedName& getQualifiedName() const {
+    return varAnalysis().qualifiedName;
+  }
+  // Returns mangled form for codegen symbol lookup
+  std::string getMangledName() const {
+    auto& qn = varAnalysis().qualifiedName;
+    return qn.empty() ? name : qn.mangled();
   }
   void setQualifiedName(sun::QualifiedName qname) {
-    qualifiedName_ = std::move(qname);
+    varAnalysis().qualifiedName = std::move(qname);
   }
-  bool hasQualifiedName() const { return !qualifiedName_.empty(); }
-
- private:
-  sun::QualifiedName qualifiedName_;
+  bool hasQualifiedName() const {
+    return analysis_ &&
+           !static_cast<VariableAnalysis&>(*analysis_).qualifiedName.empty();
+  }
 };
 
 class BinaryExprAST : public ExprAST {
@@ -723,8 +932,6 @@ class PackExpansionAST : public ExprAST {
 // Top-level nodes (not derived from ExprAST)
 class PrototypeAST {
   std::string Name;  // Source name as written by user (for error messages)
-  sun::QualifiedName
-      qualifiedName_;  // Fully qualified name set by semantic analyzer
   std::vector<std::string> typeParameters;  // Generic type parameters: <T, U>
   std::vector<std::pair<std::string, TypeAnnotation>> args;
   std::optional<TypeAnnotation> returnType;
@@ -733,17 +940,16 @@ class PrototypeAST {
       variadicParamName_;  // Name of variadic param if present
   std::optional<TypeAnnotation> variadicConstraint_;  // e.g., _init_args<T>
 
-  // Resolved types for specialized generic functions (set during instantiation)
-  // When set, codegen uses these instead of converting type annotations
-  std::vector<sun::TypePtr> resolvedParamTypes_;
-  bool resolvedParamTypesSet_ = false;  // Track if setResolvedParamTypes called
-  sun::TypePtr resolvedReturnType_;
-  // Resolved variadic param types (for methods with _init_args<T> constraint)
-  // When set, these are the concrete types for the variadic pack
-  std::vector<sun::TypePtr> resolvedVariadicTypes_;
-  // Type parameter bindings for specialized functions (T -> i32, U -> f64)
-  // Used by codegen to resolve type parameters in nested generic calls
-  std::vector<std::pair<std::string, sun::TypePtr>> typeBindings_;
+  // Analysis data populated by semantic analyzer
+  mutable std::unique_ptr<PrototypeAnalysis> analysis_;
+
+  // Lazy accessor for analysis data
+  PrototypeAnalysis& analysis() const {
+    if (!analysis_) {
+      analysis_ = std::make_unique<PrototypeAnalysis>();
+    }
+    return *analysis_;
+  }
 
  public:
   PrototypeAST(std::string Name,
@@ -765,19 +971,27 @@ class PrototypeAST {
   ASTNodeType getType() const { return ASTNodeType::PROTOTYPE; }
   const std::string& getName() const { return Name; }
   void setName(std::string name) { Name = std::move(name); }
-  // Get fully qualified name (for codegen/symbol lookup)
-  // Returns mangled form for backward compatibility with codegen
-  std::string getQualifiedName() const {
-    return qualifiedName_.empty() ? Name : qualifiedName_.mangled();
+
+  // Analysis data access
+  bool hasAnalysis() const { return analysis_ != nullptr; }
+  void clearAnalysis() const { analysis_.reset(); }
+  const PrototypeAnalysis* getAnalysis() const { return analysis_.get(); }
+
+  // Qualified name (after semantic analysis qualifies it)
+  const sun::QualifiedName& getQualifiedName() const {
+    return analysis().qualifiedName;
   }
-  // Full qualified name info for display/error messages
-  const sun::QualifiedName& getQualifiedNameInfo() const {
-    return qualifiedName_;
+  // Returns mangled form for codegen symbol lookup
+  std::string getMangledName() const {
+    auto& qn = analysis().qualifiedName;
+    return qn.empty() ? Name : qn.mangled();
   }
   void setQualifiedName(sun::QualifiedName qname) {
-    qualifiedName_ = std::move(qname);
+    analysis().qualifiedName = std::move(qname);
   }
-  bool hasQualifiedName() const { return !qualifiedName_.empty(); }
+  bool hasQualifiedName() const {
+    return analysis_ && !analysis_->qualifiedName.empty();
+  }
 
   // Generic method support
   const std::vector<std::string>& getTypeParameters() const {
@@ -824,41 +1038,49 @@ class PrototypeAST {
   // Set during instantiation, used by codegen to skip type annotation
   // conversion
   void setResolvedParamTypes(std::vector<sun::TypePtr> types) {
-    resolvedParamTypes_ = std::move(types);
-    resolvedParamTypesSet_ = true;
+    analysis().resolvedParamTypes = std::move(types);
+    analysis().resolvedParamTypesSet = true;
   }
   const std::vector<sun::TypePtr>& getResolvedParamTypes() const {
-    return resolvedParamTypes_;
+    return analysis().resolvedParamTypes;
   }
-  bool hasResolvedParamTypes() const { return resolvedParamTypesSet_; }
+  bool hasResolvedParamTypes() const {
+    return analysis_ && analysis_->resolvedParamTypesSet;
+  }
 
   void setResolvedReturnType(sun::TypePtr type) {
-    resolvedReturnType_ = std::move(type);
+    analysis().resolvedReturnType = std::move(type);
   }
-  sun::TypePtr getResolvedReturnType() const { return resolvedReturnType_; }
-  bool hasResolvedReturnType() const { return resolvedReturnType_ != nullptr; }
+  sun::TypePtr getResolvedReturnType() const {
+    return analysis_ ? analysis_->resolvedReturnType : nullptr;
+  }
+  bool hasResolvedReturnType() const {
+    return analysis_ && analysis_->resolvedReturnType != nullptr;
+  }
 
   // Resolved variadic param types for _init_args<T> expansion
   void setResolvedVariadicTypes(std::vector<sun::TypePtr> types) {
-    resolvedVariadicTypes_ = std::move(types);
+    analysis().resolvedVariadicTypes = std::move(types);
   }
   const std::vector<sun::TypePtr>& getResolvedVariadicTypes() const {
-    return resolvedVariadicTypes_;
+    return analysis().resolvedVariadicTypes;
   }
   bool hasResolvedVariadicTypes() const {
-    return !resolvedVariadicTypes_.empty();
+    return analysis_ && !analysis_->resolvedVariadicTypes.empty();
   }
 
   // Type parameter bindings for specialized generic functions
   void setTypeBindings(
       std::vector<std::pair<std::string, sun::TypePtr>> bindings) {
-    typeBindings_ = std::move(bindings);
+    analysis().typeBindings = std::move(bindings);
   }
   const std::vector<std::pair<std::string, sun::TypePtr>>& getTypeBindings()
       const {
-    return typeBindings_;
+    return analysis().typeBindings;
   }
-  bool hasTypeBindings() const { return !typeBindings_.empty(); }
+  bool hasTypeBindings() const {
+    return analysis_ && !analysis_->typeBindings.empty();
+  }
 
   // Check if this function can throw (declared with ", IError")
   bool canThrow() const {
@@ -985,8 +1207,20 @@ class ForInExprAST : public ExprAST {
   std::unique_ptr<ExprAST> Iterable;  // Expression that yields an iterable
   std::unique_ptr<ExprAST> Body;
 
-  // Resolved loop variable type (set by semantic analyzer)
-  mutable sun::TypePtr resolvedLoopVarType_;
+ protected:
+  // Override to allocate ForInAnalysis instead of base ExprAnalysis
+  void ensureAnalysis() const override {
+    if (!analysis_) {
+      analysis_ = std::make_unique<ForInAnalysis>();
+    }
+  }
+
+ private:
+  // Access as ForInAnalysis
+  ForInAnalysis& forInAnalysis() const {
+    ensureAnalysis();
+    return static_cast<ForInAnalysis&>(*analysis_);
+  }
 
  public:
   ForInExprAST(std::string LoopVar, TypeAnnotation LoopVarType,
@@ -1009,11 +1243,17 @@ class ForInExprAST : public ExprAST {
 
   // Resolved loop variable type (set by semantic analyzer)
   void setResolvedLoopVarType(sun::TypePtr type) const {
-    resolvedLoopVarType_ = std::move(type);
+    forInAnalysis().resolvedLoopVarType = std::move(type);
   }
-  sun::TypePtr getResolvedLoopVarType() const { return resolvedLoopVarType_; }
+  sun::TypePtr getResolvedLoopVarType() const {
+    return analysis_
+               ? static_cast<ForInAnalysis&>(*analysis_).resolvedLoopVarType
+               : nullptr;
+  }
   bool hasResolvedLoopVarType() const {
-    return resolvedLoopVarType_ != nullptr;
+    return analysis_ &&
+           static_cast<ForInAnalysis&>(*analysis_).resolvedLoopVarType !=
+               nullptr;
   }
 
   std::string dotLabel() const override { return "ForIn\n" + LoopVar; }
@@ -1113,9 +1353,21 @@ class FunctionAST : public ExprAST {
   std::unique_ptr<PrototypeAST> Proto;
   std::unique_ptr<BlockExprAST> Body;
   std::string sourceText_;  // Original source code (for generic method storage)
-  // Specialized versions of this generic function, keyed by mangled type args
-  // Mutable because specializations are added during semantic analysis of calls
-  mutable std::map<std::string, std::shared_ptr<FunctionAST>> specializations_;
+
+ protected:
+  // Override to allocate FunctionAnalysis instead of base ExprAnalysis
+  void ensureAnalysis() const override {
+    if (!analysis_) {
+      analysis_ = std::make_unique<FunctionAnalysis>();
+    }
+  }
+
+ private:
+  // Access as FunctionAnalysis
+  FunctionAnalysis& funcAnalysis() const {
+    ensureAnalysis();
+    return static_cast<FunctionAnalysis&>(*analysis_);
+  }
 
  public:
   FunctionAST(std::unique_ptr<PrototypeAST> Proto,
@@ -1164,19 +1416,24 @@ class FunctionAST : public ExprAST {
   // Called by semantic analyzer when a generic function is instantiated
   void addSpecialization(const std::string& mangledName,
                          std::shared_ptr<FunctionAST> specializedAST) const {
-    specializations_[mangledName] = std::move(specializedAST);
+    funcAnalysis().specializations[mangledName] = std::move(specializedAST);
   }
   const std::map<std::string, std::shared_ptr<FunctionAST>>&
   getSpecializations() const {
-    return specializations_;
+    return funcAnalysis().specializations;
   }
   bool hasSpecialization(const std::string& mangledName) const {
-    return specializations_.find(mangledName) != specializations_.end();
+    return analysis_ &&
+           static_cast<FunctionAnalysis&>(*analysis_)
+                   .specializations.find(mangledName) !=
+               static_cast<FunctionAnalysis&>(*analysis_).specializations.end();
   }
   std::shared_ptr<FunctionAST> getSpecialization(
       const std::string& mangledName) const {
-    auto it = specializations_.find(mangledName);
-    return it != specializations_.end() ? it->second : nullptr;
+    if (!analysis_) return nullptr;
+    auto& specs = static_cast<FunctionAnalysis&>(*analysis_).specializations;
+    auto it = specs.find(mangledName);
+    return it != specs.end() ? it->second : nullptr;
   }
 
   std::string dotLabel() const override {
@@ -1390,8 +1647,20 @@ class ImportScopeAST : public ExprAST {
 class QualifiedNameAST : public ExprAST {
   std::vector<std::string> parts;  // ["sun", "Vec"] for sun.Vec
 
-  // Resolved mangled name (set by semantic analyzer) including library hash
-  mutable std::string resolvedMangledName_;
+ protected:
+  // Override to allocate QualifiedNameExprAnalysis instead of base ExprAnalysis
+  void ensureAnalysis() const override {
+    if (!analysis_) {
+      analysis_ = std::make_unique<QualifiedNameExprAnalysis>();
+    }
+  }
+
+ private:
+  // Access as QualifiedNameExprAnalysis
+  QualifiedNameExprAnalysis& qnAnalysis() const {
+    ensureAnalysis();
+    return static_cast<QualifiedNameExprAnalysis&>(*analysis_);
+  }
 
  public:
   explicit QualifiedNameAST(std::vector<std::string> parts)
@@ -1425,7 +1694,11 @@ class QualifiedNameAST : public ExprAST {
   // Uses resolved name if set by semantic analyzer, otherwise computes from
   // parts
   std::string getMangledName() const {
-    if (!resolvedMangledName_.empty()) return resolvedMangledName_;
+    if (analysis_ && !static_cast<QualifiedNameExprAnalysis&>(*analysis_)
+                          .resolvedMangledName.empty()) {
+      return static_cast<QualifiedNameExprAnalysis&>(*analysis_)
+          .resolvedMangledName;
+    }
     std::string result;
     for (size_t i = 0; i < parts.size(); ++i) {
       if (i > 0) result += "_";
@@ -1435,7 +1708,7 @@ class QualifiedNameAST : public ExprAST {
   }
 
   void setResolvedMangledName(std::string name) const {
-    resolvedMangledName_ = std::move(name);
+    qnAnalysis().resolvedMangledName = std::move(name);
   }
 
   std::string dotLabel() const override { return "QualName\n" + getFullName(); }
@@ -1537,8 +1810,6 @@ struct ImplementedInterfaceAST {
 // fields and methods }
 class ClassDefinitionAST : public ExprAST {
   std::string name;  // Source name as written by user (for error messages)
-  sun::QualifiedName
-      qualifiedName_;  // Fully qualified name set by semantic analyzer
   std::vector<std::string>
       typeParameters;  // Generic type parameters: T, U, etc.
   std::vector<ImplementedInterfaceAST>
@@ -1547,11 +1818,20 @@ class ClassDefinitionAST : public ExprAST {
   std::vector<ClassMethodDecl> methods;
   bool isPartial_ = false;  // True for "partial class X {}" (methods only)
 
-  // Specialized versions of this generic class, keyed by mangled type args
-  // (e.g., "Vec_i32"). Mutable because specializations are added during
-  // semantic analysis of usages after the generic class AST is created.
-  mutable std::map<std::string, std::shared_ptr<ClassDefinitionAST>>
-      specializations_;
+ protected:
+  // Override to allocate ClassAnalysis instead of base ExprAnalysis
+  void ensureAnalysis() const override {
+    if (!analysis_) {
+      analysis_ = std::make_unique<ClassAnalysis>();
+    }
+  }
+
+ private:
+  // Access as ClassAnalysis
+  ClassAnalysis& classAnalysis() const {
+    ensureAnalysis();
+    return static_cast<ClassAnalysis&>(*analysis_);
+  }
 
  public:
   ClassDefinitionAST(std::string name, std::vector<std::string> typeParams,
@@ -1593,19 +1873,22 @@ class ClassDefinitionAST : public ExprAST {
   }
 
   const std::string& getName() const { return name; }
-  // Get fully qualified name (for codegen/symbol lookup)
-  // Returns mangled form for backward compatibility with codegen
-  std::string getQualifiedName() const {
-    return qualifiedName_.empty() ? name : qualifiedName_.mangled();
+  // Qualified name (after semantic analysis qualifies it)
+  const sun::QualifiedName& getQualifiedName() const {
+    return classAnalysis().qualifiedName;
   }
-  // Full qualified name info for display/error messages
-  const sun::QualifiedName& getQualifiedNameInfo() const {
-    return qualifiedName_;
+  // Returns mangled form for codegen symbol lookup
+  std::string getMangledName() const {
+    auto& qn = classAnalysis().qualifiedName;
+    return qn.empty() ? name : qn.mangled();
   }
   void setQualifiedName(sun::QualifiedName qname) {
-    qualifiedName_ = std::move(qname);
+    classAnalysis().qualifiedName = std::move(qname);
   }
-  bool hasQualifiedName() const { return !qualifiedName_.empty(); }
+  bool hasQualifiedName() const {
+    return analysis_ &&
+           !static_cast<ClassAnalysis&>(*analysis_).qualifiedName.empty();
+  }
   const std::vector<std::string>& getTypeParameters() const {
     return typeParameters;
   }
@@ -1635,19 +1918,24 @@ class ClassDefinitionAST : public ExprAST {
   void addSpecialization(
       const std::string& mangledName,
       std::shared_ptr<ClassDefinitionAST> specializedAST) const {
-    specializations_[mangledName] = std::move(specializedAST);
+    classAnalysis().specializations[mangledName] = std::move(specializedAST);
   }
   const std::map<std::string, std::shared_ptr<ClassDefinitionAST>>&
   getSpecializations() const {
-    return specializations_;
+    return classAnalysis().specializations;
   }
   bool hasSpecialization(const std::string& mangledName) const {
-    return specializations_.find(mangledName) != specializations_.end();
+    return analysis_ &&
+           static_cast<ClassAnalysis&>(*analysis_)
+                   .specializations.find(mangledName) !=
+               static_cast<ClassAnalysis&>(*analysis_).specializations.end();
   }
   std::shared_ptr<ClassDefinitionAST> getSpecialization(
       const std::string& mangledName) const {
-    auto it = specializations_.find(mangledName);
-    return it != specializations_.end() ? it->second : nullptr;
+    if (!analysis_) return nullptr;
+    auto& specs = static_cast<ClassAnalysis&>(*analysis_).specializations;
+    auto it = specs.find(mangledName);
+    return it != specs.end() ? it->second : nullptr;
   }
 
   // Partial class support: "partial class X {}" adds methods to existing class
@@ -1682,12 +1970,25 @@ struct InterfaceMethodDecl {
 // Interface definition: interface Name<T, U> { fields and methods }
 class InterfaceDefinitionAST : public ExprAST {
   std::string name;  // Source name as written by user (for error messages)
-  sun::QualifiedName
-      qualifiedName_;  // Fully qualified name set by semantic analyzer
   std::vector<std::string>
       typeParameters;  // Generic type parameters: T, U, etc.
   std::vector<InterfaceFieldDecl> fields;
   std::vector<InterfaceMethodDecl> methods;
+
+ protected:
+  // Override to allocate InterfaceAnalysis instead of base ExprAnalysis
+  void ensureAnalysis() const override {
+    if (!analysis_) {
+      analysis_ = std::make_unique<InterfaceAnalysis>();
+    }
+  }
+
+ private:
+  // Access as InterfaceAnalysis
+  InterfaceAnalysis& ifaceAnalysis() const {
+    ensureAnalysis();
+    return static_cast<InterfaceAnalysis&>(*analysis_);
+  }
 
  public:
   InterfaceDefinitionAST(std::string name, std::vector<std::string> typeParams,
@@ -1719,19 +2020,22 @@ class InterfaceDefinitionAST : public ExprAST {
   }
 
   const std::string& getName() const { return name; }
-  // Get fully qualified name (for codegen/symbol lookup)
-  // Returns mangled form for backward compatibility with codegen
-  std::string getQualifiedName() const {
-    return qualifiedName_.empty() ? name : qualifiedName_.mangled();
+  // Qualified name (after semantic analysis qualifies it)
+  const sun::QualifiedName& getQualifiedName() const {
+    return ifaceAnalysis().qualifiedName;
   }
-  // Full qualified name info for display/error messages
-  const sun::QualifiedName& getQualifiedNameInfo() const {
-    return qualifiedName_;
+  // Returns mangled form for codegen symbol lookup
+  std::string getMangledName() const {
+    auto& qn = ifaceAnalysis().qualifiedName;
+    return qn.empty() ? name : qn.mangled();
   }
   void setQualifiedName(sun::QualifiedName qname) {
-    qualifiedName_ = std::move(qname);
+    ifaceAnalysis().qualifiedName = std::move(qname);
   }
-  bool hasQualifiedName() const { return !qualifiedName_.empty(); }
+  bool hasQualifiedName() const {
+    return analysis_ &&
+           !static_cast<InterfaceAnalysis&>(*analysis_).qualifiedName.empty();
+  }
   const std::vector<std::string>& getTypeParameters() const {
     return typeParameters;
   }
@@ -1822,13 +2126,20 @@ class MemberAccessAST : public ExprAST {
   std::vector<std::unique_ptr<TypeAnnotation>>
       typeArguments;  // Generic type arguments for methods
 
-  // Resolved type arguments for generic method calls (set by semantic analyzer)
-  // These are the concrete types after type parameter substitution
-  mutable std::vector<sun::TypePtr> resolvedTypeArgs_;
+ protected:
+  // Override to allocate MemberAccessAnalysis instead of base ExprAnalysis
+  void ensureAnalysis() const override {
+    if (!analysis_) {
+      analysis_ = std::make_unique<MemberAccessAnalysis>();
+    }
+  }
 
-  // Resolved qualified name for module member access (set by semantic analyzer)
-  // e.g., "$d9b854ae$_b_get_version" for b.get_version() from a library
-  mutable std::string resolvedQualifiedName_;
+ private:
+  // Access as MemberAccessAnalysis
+  MemberAccessAnalysis& memberAnalysis() const {
+    ensureAnalysis();
+    return static_cast<MemberAccessAnalysis&>(*analysis_);
+  }
 
  public:
   MemberAccessAST(std::unique_ptr<ExprAST> obj, std::string member,
@@ -1860,22 +2171,26 @@ class MemberAccessAST : public ExprAST {
 
   // Resolved type arguments for generic method calls (set by semantic analyzer)
   void setResolvedTypeArgs(std::vector<sun::TypePtr> types) const {
-    resolvedTypeArgs_ = std::move(types);
+    memberAnalysis().resolvedTypeArgs = std::move(types);
   }
   const std::vector<sun::TypePtr>& getResolvedTypeArgs() const {
-    return resolvedTypeArgs_;
+    return memberAnalysis().resolvedTypeArgs;
   }
-  bool hasResolvedTypeArgs() const { return !resolvedTypeArgs_.empty(); }
+  bool hasResolvedTypeArgs() const {
+    return analysis_ && !static_cast<MemberAccessAnalysis&>(*analysis_)
+                             .resolvedTypeArgs.empty();
+  }
 
   // Resolved qualified name for module member access (set by semantic analyzer)
   void setResolvedQualifiedName(std::string name) const {
-    resolvedQualifiedName_ = std::move(name);
+    memberAnalysis().resolvedQualifiedName = std::move(name);
   }
   const std::string& getResolvedQualifiedName() const {
-    return resolvedQualifiedName_;
+    return memberAnalysis().resolvedQualifiedName;
   }
   bool hasResolvedQualifiedName() const {
-    return !resolvedQualifiedName_.empty();
+    return analysis_ && !static_cast<MemberAccessAnalysis&>(*analysis_)
+                             .resolvedQualifiedName.empty();
   }
 
   std::string dotLabel() const override {
@@ -1903,14 +2218,20 @@ class GenericCallAST : public ExprAST {
       typeArguments;                           // All type parameters
   std::vector<std::unique_ptr<ExprAST>> args;  // Function arguments
 
-  // Resolved type arguments (set by semantic analyzer)
-  // These are the concrete types after type parameter substitution
-  mutable std::vector<sun::TypePtr> resolvedTypeArgs_;
+ protected:
+  // Override to allocate GenericCallAnalysis instead of base ExprAnalysis
+  void ensureAnalysis() const override {
+    if (!analysis_) {
+      analysis_ = std::make_unique<GenericCallAnalysis>();
+    }
+  }
 
-  // Generic function AST (set by semantic analyzer for user-defined generic
-  // functions) This allows codegen to access specializations without tracking
-  // a separate map
-  mutable const FunctionAST* genericFunctionAST_ = nullptr;
+ private:
+  // Access as GenericCallAnalysis
+  GenericCallAnalysis& gcAnalysis() const {
+    ensureAnalysis();
+    return static_cast<GenericCallAnalysis&>(*analysis_);
+  }
 
  public:
   GenericCallAST(std::string name,
@@ -1946,21 +2267,30 @@ class GenericCallAST : public ExprAST {
   // Resolved type arguments (set by semantic analyzer after type param
   // substitution)
   void setResolvedTypeArgs(std::vector<sun::TypePtr> types) const {
-    resolvedTypeArgs_ = std::move(types);
+    gcAnalysis().resolvedTypeArgs = std::move(types);
   }
   const std::vector<sun::TypePtr>& getResolvedTypeArgs() const {
-    return resolvedTypeArgs_;
+    return gcAnalysis().resolvedTypeArgs;
   }
-  bool hasResolvedTypeArgs() const { return !resolvedTypeArgs_.empty(); }
+  bool hasResolvedTypeArgs() const {
+    return analysis_ && !static_cast<GenericCallAnalysis&>(*analysis_)
+                             .resolvedTypeArgs.empty();
+  }
 
   // Generic function AST (set by semantic analyzer)
   void setGenericFunctionAST(const FunctionAST* ast) const {
-    genericFunctionAST_ = ast;
+    gcAnalysis().genericFunctionAST = ast;
   }
   const FunctionAST* getGenericFunctionAST() const {
-    return genericFunctionAST_;
+    return analysis_ ? static_cast<GenericCallAnalysis&>(*analysis_)
+                           .genericFunctionAST
+                     : nullptr;
   }
-  bool hasGenericFunctionAST() const { return genericFunctionAST_ != nullptr; }
+  bool hasGenericFunctionAST() const {
+    return analysis_ &&
+           static_cast<GenericCallAnalysis&>(*analysis_).genericFunctionAST !=
+               nullptr;
+  }
 
   std::string dotLabel() const override {
     return "GenericCall\n" + functionName + "<...>()";
@@ -2002,8 +2332,21 @@ class MemberAssignmentAST : public ExprAST {
 class DeclareTypeAST : public ExprAST {
   std::optional<std::string> aliasName;  // Optional alias name
   TypeAnnotation typeAnnotation;         // The type to instantiate
-  mutable sun::TypePtr
-      resolvedDeclaredType_;  // Type resolved by semantic analysis
+
+ protected:
+  // Override to allocate DeclareTypeAnalysis instead of base ExprAnalysis
+  void ensureAnalysis() const override {
+    if (!analysis_) {
+      analysis_ = std::make_unique<DeclareTypeAnalysis>();
+    }
+  }
+
+ private:
+  // Access as DeclareTypeAnalysis
+  DeclareTypeAnalysis& declAnalysis() const {
+    ensureAnalysis();
+    return static_cast<DeclareTypeAnalysis&>(*analysis_);
+  }
 
  public:
   DeclareTypeAST(TypeAnnotation type,
@@ -2024,11 +2367,17 @@ class DeclareTypeAST : public ExprAST {
 
   // Resolved declared type (set by semantic analysis)
   void setResolvedDeclaredType(sun::TypePtr type) const {
-    resolvedDeclaredType_ = std::move(type);
+    declAnalysis().resolvedDeclaredType = std::move(type);
   }
-  sun::TypePtr getResolvedDeclaredType() const { return resolvedDeclaredType_; }
+  sun::TypePtr getResolvedDeclaredType() const {
+    return analysis_ ? static_cast<DeclareTypeAnalysis&>(*analysis_)
+                           .resolvedDeclaredType
+                     : nullptr;
+  }
   bool hasResolvedDeclaredType() const {
-    return resolvedDeclaredType_ != nullptr;
+    return analysis_ &&
+           static_cast<DeclareTypeAnalysis&>(*analysis_).resolvedDeclaredType !=
+               nullptr;
   }
 
   std::string dotLabel() const override {
