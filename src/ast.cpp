@@ -29,43 +29,33 @@ static std::vector<std::unique_ptr<TypeAnnotation>> cloneTypeAnnotationVector(
 // -------------------------------------------------------------------
 
 std::unique_ptr<ExprAST> NumberExprAST::clone() const {
-  if (isInteger()) {
-    auto copy = std::make_unique<NumberExprAST>(getIntVal());
-    copy->setLocation(location_);
-    copy->setResolvedType(getResolvedType());
-    return copy;
-  }
-  auto copy = std::make_unique<NumberExprAST>(getFloatVal());
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  auto copy = isInteger() ? std::make_unique<NumberExprAST>(getIntVal())
+                          : std::make_unique<NumberExprAST>(getFloatVal());
+  cloneBase(*copy);
   return copy;
 }
 
 std::unique_ptr<ExprAST> StringLiteralAST::clone() const {
   auto copy = std::make_unique<StringLiteralAST>(Value);
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
 std::unique_ptr<ExprAST> NullLiteralAST::clone() const {
   auto copy = std::make_unique<NullLiteralAST>();
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
 std::unique_ptr<ExprAST> BoolLiteralAST::clone() const {
   auto copy = std::make_unique<BoolLiteralAST>(Value);
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
 std::unique_ptr<ExprAST> ArrayLiteralAST::clone() const {
   auto copy = std::make_unique<ArrayLiteralAST>(cloneExprVector(elements));
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
@@ -76,23 +66,17 @@ std::unique_ptr<ExprAST> ArrayLiteralAST::clone() const {
 std::unique_ptr<ExprAST> ArrayIndexAST::clone() const {
   auto copy =
       std::make_unique<ArrayIndexAST>(array->clone(), cloneExprVector(indices));
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
 std::unique_ptr<ExprAST> SliceExprAST::clone() const {
   std::unique_ptr<ExprAST> startClone = start_ ? start_->clone() : nullptr;
   std::unique_ptr<ExprAST> endClone = end_ ? end_->clone() : nullptr;
-  std::unique_ptr<SliceExprAST> copy;
-  if (isRange_) {
-    copy = std::make_unique<SliceExprAST>(std::move(startClone),
-                                          std::move(endClone), true);
-  } else {
-    copy = std::make_unique<SliceExprAST>(std::move(startClone));
-  }
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  auto copy = isRange_ ? std::make_unique<SliceExprAST>(
+                             std::move(startClone), std::move(endClone), true)
+                       : std::make_unique<SliceExprAST>(std::move(startClone));
+  cloneBase(*copy);
   return copy;
 }
 
@@ -106,8 +90,7 @@ std::unique_ptr<ExprAST> IndexAST::clone() const {
   }
   auto copy =
       std::make_unique<IndexAST>(target->clone(), std::move(indicesClone));
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
@@ -117,8 +100,7 @@ std::unique_ptr<ExprAST> IndexAST::clone() const {
 
 std::unique_ptr<ExprAST> VariableReferenceAST::clone() const {
   auto copy = std::make_unique<VariableReferenceAST>(Name);
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   if (hasQualifiedName()) {
     copy->setQualifiedName(getQualifiedName());
   }
@@ -132,8 +114,7 @@ std::unique_ptr<ExprAST> VariableCreationAST::clone() const {
   }
   auto copy = std::make_unique<VariableCreationAST>(name, value->clone(),
                                                     std::move(typeClone));
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   if (hasQualifiedName()) {
     copy->setQualifiedName(getQualifiedName());
   }
@@ -142,15 +123,14 @@ std::unique_ptr<ExprAST> VariableCreationAST::clone() const {
 
 std::unique_ptr<ExprAST> VariableAssignmentAST::clone() const {
   auto copy = std::make_unique<VariableAssignmentAST>(name, value->clone());
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
 std::unique_ptr<ExprAST> ReferenceCreationAST::clone() const {
-  auto copy = std::make_unique<ReferenceCreationAST>(name, target->clone(),
-                                                     mutable_, location_);
-  copy->setResolvedType(getResolvedType());
+  auto copy =
+      std::make_unique<ReferenceCreationAST>(name, target->clone(), mutable_);
+  cloneBase(*copy);
   if (hasQualifiedName()) {
     copy->setQualifiedName(getQualifiedName());
   }
@@ -163,21 +143,20 @@ std::unique_ptr<ExprAST> ReferenceCreationAST::clone() const {
 
 std::unique_ptr<ExprAST> BinaryExprAST::clone() const {
   auto copy = std::make_unique<BinaryExprAST>(op, LHS->clone(), RHS->clone());
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
 std::unique_ptr<ExprAST> UnaryExprAST::clone() const {
   auto copy = std::make_unique<UnaryExprAST>(op, Operand->clone());
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
 std::unique_ptr<ExprAST> CallExprAST::clone() const {
   auto copy =
       std::make_unique<CallExprAST>(Callee->clone(), cloneExprVector(Args));
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
@@ -196,8 +175,7 @@ std::string CallExprAST::dotLabel() const {
 
 std::unique_ptr<ExprAST> PackExpansionAST::clone() const {
   auto copy = std::make_unique<PackExpansionAST>(packName);
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
@@ -208,8 +186,7 @@ std::unique_ptr<ExprAST> PackExpansionAST::clone() const {
 std::unique_ptr<ExprAST> IfExprAST::clone() const {
   auto copy = std::make_unique<IfExprAST>(Cond->clone(), Then->clone(),
                                           Else ? Else->clone() : nullptr);
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
@@ -222,8 +199,7 @@ std::unique_ptr<ExprAST> MatchExprAST::clone() const {
   }
   auto copy = std::make_unique<MatchExprAST>(discriminant->clone(),
                                              std::move(armsClone));
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
@@ -231,16 +207,14 @@ std::unique_ptr<ExprAST> ForExprAST::clone() const {
   auto copy = std::make_unique<ForExprAST>(
       Init ? Init->clone() : nullptr, Condition ? Condition->clone() : nullptr,
       Increment ? Increment->clone() : nullptr, Body->clone());
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
 std::unique_ptr<ExprAST> ForInExprAST::clone() const {
   auto copy = std::make_unique<ForInExprAST>(LoopVar, LoopVarType,
                                              Iterable->clone(), Body->clone());
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   if (hasResolvedLoopVarType()) {
     copy->setResolvedLoopVarType(getResolvedLoopVarType());
   }
@@ -249,15 +223,13 @@ std::unique_ptr<ExprAST> ForInExprAST::clone() const {
 
 std::unique_ptr<ExprAST> WhileExprAST::clone() const {
   auto copy = std::make_unique<WhileExprAST>(Condition->clone(), Body->clone());
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
 std::unique_ptr<ExprAST> BlockExprAST::clone() const {
   auto copy = std::make_unique<BlockExprAST>(cloneExprVector(Body));
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
@@ -265,16 +237,14 @@ std::unique_ptr<ExprAST> UnsafeBlockAST::clone() const {
   auto bodyClone = std::unique_ptr<BlockExprAST>(
       static_cast<BlockExprAST*>(body->clone().release()));
   auto copy = std::make_unique<UnsafeBlockAST>(std::move(bodyClone));
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
 std::unique_ptr<ExprAST> IndexedAssignmentAST::clone() const {
   auto copy =
       std::make_unique<IndexedAssignmentAST>(target->clone(), value->clone());
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
@@ -339,10 +309,8 @@ std::unique_ptr<ExprAST> FunctionAST::clone() const {
   }
   auto copy = std::make_unique<FunctionAST>(std::move(protoClone),
                                             std::move(bodyClone));
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   copy->setSourceText(sourceText_);
-  copy->setPrecompiled(precompiled_);
   return copy;
 }
 
@@ -355,38 +323,31 @@ std::unique_ptr<ExprAST> LambdaAST::clone() const {
   }
   auto copy =
       std::make_unique<LambdaAST>(std::move(protoClone), std::move(bodyClone));
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
-  copy->setPrecompiled(precompiled_);
+  cloneBase(*copy);
   return copy;
 }
 
 std::unique_ptr<ExprAST> SpawnExprAST::clone() const {
   auto copy = std::make_unique<SpawnExprAST>(Lambda->clone());
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
-  copy->setPrecompiled(precompiled_);
+  cloneBase(*copy);
   return copy;
 }
 
 std::unique_ptr<ExprAST> ReturnExprAST::clone() const {
   auto copy = std::make_unique<ReturnExprAST>(Value ? Value->clone() : nullptr);
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
 std::unique_ptr<ExprAST> BreakAST::clone() const {
   auto copy = std::make_unique<BreakAST>();
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
 std::unique_ptr<ExprAST> ContinueAST::clone() const {
   auto copy = std::make_unique<ContinueAST>();
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
@@ -396,8 +357,7 @@ std::unique_ptr<ExprAST> ContinueAST::clone() const {
 
 std::unique_ptr<ExprAST> ThrowExprAST::clone() const {
   auto copy = std::make_unique<ThrowExprAST>(errorExpr->clone());
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
@@ -416,8 +376,7 @@ std::unique_ptr<ExprAST> TryCatchExprAST::clone() const {
 
   auto copy = std::make_unique<TryCatchExprAST>(std::move(tryBlockClone),
                                                 std::move(catchClone));
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
@@ -427,8 +386,7 @@ std::unique_ptr<ExprAST> TryCatchExprAST::clone() const {
 
 std::unique_ptr<ExprAST> ImportAST::clone() const {
   auto copy = std::make_unique<ImportAST>(path);
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
@@ -437,15 +395,13 @@ std::unique_ptr<ExprAST> ImportScopeAST::clone() const {
       static_cast<BlockExprAST*>(body->clone().release()));
   auto copy = std::make_unique<ImportScopeAST>(sourceFile, std::move(bodyClone),
                                                contentHash);
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
 std::unique_ptr<ExprAST> QualifiedNameAST::clone() const {
   auto copy = std::make_unique<QualifiedNameAST>(parts);
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   if (hasAnalysis()) {
     copy->setResolvedMangledName(
         static_cast<QualifiedNameExprAnalysis&>(*analysis_)
@@ -459,15 +415,13 @@ std::unique_ptr<ExprAST> ModuleAST::clone() const {
   std::unique_ptr<BlockExprAST> bodyBlockClone(
       static_cast<BlockExprAST*>(bodyClone.release()));
   auto copy = std::make_unique<ModuleAST>(name, std::move(bodyBlockClone));
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
 std::unique_ptr<ExprAST> UsingAST::clone() const {
   auto copy = std::make_unique<UsingAST>(namespacePath, target);
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
@@ -508,9 +462,8 @@ std::unique_ptr<ExprAST> ClassDefinitionAST::clone() const {
 
   auto copy = std::make_unique<ClassDefinitionAST>(
       name, typeParameters, std::move(interfacesClone), std::move(fieldsClone),
-      std::move(methodsClone), precompiled_);
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+      std::move(methodsClone));
+  cloneBase(*copy);
   if (hasQualifiedName()) {
     copy->setQualifiedName(getQualifiedName());
   }
@@ -537,10 +490,8 @@ std::unique_ptr<ExprAST> InterfaceDefinitionAST::clone() const {
   }
 
   auto copy = std::make_unique<InterfaceDefinitionAST>(
-      name, typeParameters, std::move(fieldsClone), std::move(methodsClone),
-      precompiled_);
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+      name, typeParameters, std::move(fieldsClone), std::move(methodsClone));
+  cloneBase(*copy);
   if (hasQualifiedName()) {
     copy->setQualifiedName(getQualifiedName());
   }
@@ -555,10 +506,9 @@ std::unique_ptr<ExprAST> EnumDefinitionAST::clone() const {
     variantsClone.push_back({variant.name, variant.value, variant.location});
   }
 
-  auto copy = std::make_unique<EnumDefinitionAST>(
-      name, std::move(variantsClone), precompiled_);
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  auto copy =
+      std::make_unique<EnumDefinitionAST>(name, std::move(variantsClone));
+  cloneBase(*copy);
   return copy;
 }
 
@@ -569,8 +519,7 @@ std::unique_ptr<ExprAST> EnumDefinitionAST::clone() const {
 std::unique_ptr<ExprAST> MemberAccessAST::clone() const {
   auto copy = std::make_unique<MemberAccessAST>(
       object->clone(), memberName, cloneTypeAnnotationVector(typeArguments));
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   if (hasResolvedTypeArgs()) {
     copy->setResolvedTypeArgs(getResolvedTypeArgs());
   }
@@ -582,8 +531,7 @@ std::unique_ptr<ExprAST> MemberAccessAST::clone() const {
 
 std::unique_ptr<ExprAST> ThisExprAST::clone() const {
   auto copy = std::make_unique<ThisExprAST>();
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   return copy;
 }
 
@@ -591,31 +539,26 @@ std::unique_ptr<ExprAST> GenericCallAST::clone() const {
   auto copy = std::make_unique<GenericCallAST>(
       functionName, cloneTypeAnnotationVector(typeArguments),
       cloneExprVector(args));
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   if (hasGenericFunctionAST()) {
     copy->setGenericFunctionAST(getGenericFunctionAST());
   }
   if (hasResolvedTypeArgs()) {
     copy->setResolvedTypeArgs(getResolvedTypeArgs());
   }
-  copy->setConsumed(isConsumed());
   return copy;
 }
 
 std::unique_ptr<ExprAST> MemberAssignmentAST::clone() const {
   auto copy = std::make_unique<MemberAssignmentAST>(object->clone(), memberName,
                                                     value->clone());
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
-  copy->setConsumed(isConsumed());
+  cloneBase(*copy);
   return copy;
 }
 
 std::unique_ptr<ExprAST> DeclareTypeAST::clone() const {
   auto copy = std::make_unique<DeclareTypeAST>(typeAnnotation, aliasName);
-  copy->setLocation(location_);
-  copy->setResolvedType(getResolvedType());
+  cloneBase(*copy);
   if (hasResolvedDeclaredType()) {
     copy->setResolvedDeclaredType(getResolvedDeclaredType());
   }

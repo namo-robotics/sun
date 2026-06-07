@@ -221,6 +221,18 @@ class ExprAST {
     return *analysis_;
   }
 
+  // Copy base class fields to a cloned node. Called by derived clone() methods.
+  void cloneBase(ExprAST& dest) const {
+    dest.location_ = location_;
+    dest.precompiled_ = precompiled_;
+    dest.skipCodegen_ = skipCodegen_;
+    dest.symbolPrefix_ = symbolPrefix_;
+    if (analysis_) {
+      dest.setResolvedType(getResolvedType());
+      dest.setConsumed(isConsumed());
+    }
+  }
+
  public:
   virtual ~ExprAST() = default;
   virtual ASTNodeType getType() const = 0;
