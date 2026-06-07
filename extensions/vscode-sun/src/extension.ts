@@ -67,12 +67,33 @@ export async function activate(_context: vscode.ExtensionContext): Promise<void>
     return;
   }
 
-  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   const env = { ...process.env };
-  if (workspaceFolder) {
-    // Append workspace folder to SUN_PATH (colon-separated list)
-    const existing = env.SUN_PATH;
-    env.SUN_PATH = existing ? `${existing}:${workspaceFolder}` : workspaceFolder;
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+  // Build SUN_PATH: existing env + configured paths (or workspace folder if not configured)
+  const sunPathParts: string[] = [];
+  if (env.SUN_PATH) {
+    sunPathParts.push(env.SUN_PATH);
+  }
+
+  const configuredPaths = vscode.workspace
+    .getConfiguration('sun')
+    .get<string[]>('sunPath', []);
+
+  if (configuredPaths.length > 0) {
+    for (const p of configuredPaths) {
+      if (path.isAbsolute(p)) {
+        sunPathParts.push(p);
+      } else if (workspaceFolder) {
+        sunPathParts.push(path.join(workspaceFolder, p));
+      }
+    }
+  } else if (workspaceFolder) {
+    sunPathParts.push(workspaceFolder);
+  }
+
+  if (sunPathParts.length > 0) {
+    env.SUN_PATH = sunPathParts.join(':');
   }
 
   const serverOptions: ServerOptions = {

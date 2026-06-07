@@ -64,6 +64,14 @@
                     "type": "string",
                     "default": "sun-lsp",
                     "description": "Path to the sun-lsp executable"
+                },
+                "sun.sunPath": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "Additional paths to include in SUN_PATH for module resolution."
                 }
             }
         }
