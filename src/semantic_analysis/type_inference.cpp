@@ -1059,7 +1059,7 @@ sun::TypePtr SemanticAnalyzer::inferGenericClassConstructionType(
                      genericCall.getLocation());
   }
 
-  std::string genericMangledName = genericClassInfo->AST->getQualifiedName();
+  std::string genericMangledName = genericClassInfo->AST->getMangledName();
   std::string specializedMangledName =
       sun::Types::mangleGenericClassName(genericMangledName, typeArgs);
 

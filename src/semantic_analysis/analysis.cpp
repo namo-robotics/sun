@@ -628,7 +628,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       if (classDef.hasQualifiedName()) {
         // Use pre-set qualified name from metadata (includes content hash
         // prefix)
-        qualifiedClass = classDef.getQualifiedNameInfo();
+        qualifiedClass = classDef.getQualifiedName();
       } else {
         qualifiedClass = makeQualifiedName(baseName);
         // Set qualified name on AST for codegen (source name stays for errors)
@@ -833,7 +833,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       if (interfaceDef.hasQualifiedName()) {
         // Use pre-set qualified name from metadata (includes content hash
         // prefix)
-        qualifiedInterface = interfaceDef.getQualifiedNameInfo();
+        qualifiedInterface = interfaceDef.getQualifiedName();
       } else {
         qualifiedInterface = makeQualifiedName(interfaceDef.getName());
         // Set qualified name on AST for codegen (source name stays for errors)
@@ -1467,12 +1467,12 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
 
   // Compute function signature from qualified name and resolved param types
   // This signature is used to create unique names for nested functions
-  std::string funcSig = getFunctionSignature(proto.getQualifiedName(),
+  std::string funcSig = getFunctionSignature(proto.getMangledName(),
                                              proto.getResolvedParamTypes());
 
   // Enter function scope with signature for nested function qualification
   // Pass canThrow flag so throw expressions can be validated
-  enterFunctionScope(funcSig, proto.getQualifiedNameInfo(), proto.canThrow());
+  enterFunctionScope(funcSig, proto.getQualifiedName(), proto.canThrow());
 
   // Declare 'this' for methods (when we're inside a class context)
   if (currentClass) {
@@ -1820,9 +1820,8 @@ void SemanticAnalyzer::lazyParseAndAnalyzeMethod(
         }
       }
       auto* genericInfo = lookupGenericClass(lookupName);
-      if (genericInfo && genericInfo->AST &&
-          genericInfo->AST->hasQualifiedName()) {
-        modulePath = genericInfo->AST->getQualifiedNameInfo().scopePathString();
+      if (genericInfo && genericInfo->AST) {
+        modulePath = genericInfo->AST->getQualifiedName().scopePathString();
       }
     }
 

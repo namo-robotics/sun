@@ -108,11 +108,10 @@ SemanticAnalyzer::instantiateGenericInterface(
   // Look up the generic interface definition first
   auto* genericInfo = lookupGenericInterface(baseName);
 
-  // Use the AST's qualified name for mangling if available.
-  std::string effectiveBase = baseName;
-  if (genericInfo && genericInfo->AST && genericInfo->AST->hasQualifiedName()) {
-    effectiveBase = genericInfo->AST->getQualifiedName();
-  }
+  // Use the AST's mangled name for generating specialized interface name
+  std::string effectiveBase = (genericInfo && genericInfo->AST)
+                                  ? genericInfo->AST->getMangledName()
+                                  : baseName;
 
   // Generate mangled name for the specialized interface
   std::string mangledName =
