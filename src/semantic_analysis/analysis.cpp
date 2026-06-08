@@ -2323,6 +2323,11 @@ void SemanticAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
         instantiateGenericFunction(genFuncInfo->AST, typeArgs);
     if (specializedFunc) {
       expectedParamTypes = specializedFunc->paramTypes;
+      // genericCall.setResolvedType(specializedFunc->returnType);
+    } else {
+      logAndThrowError("Failed to instantiate generic function '" + funcName +
+                           "' with provided type arguments",
+                       genericCall.getLocation());
     }
   }
 

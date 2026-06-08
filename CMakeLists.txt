@@ -121,6 +121,8 @@ add_library(sun_lib
     # AST serialization
     src/serialization/ast_serializer.cpp
     src/serialization/ast_deserializer.cpp
+    # AST caching
+    src/ast_cache.cpp
     # Add other implementation files here (but NOT main.cpp)
 )
 

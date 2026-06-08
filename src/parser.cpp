@@ -2111,7 +2111,7 @@ std::unique_ptr<ImportScopeAST> Parser::expandImport(
   }
   cycleStack.insert(resolvedStr);
 
-  // Parse the file
+  // Read the file content
   std::ifstream file(resolvedStr);
   if (!file.is_open()) {
     logAndThrowError("Could not open imported file: " + resolvedStr);
@@ -2120,18 +2120,47 @@ std::unique_ptr<ImportScopeAST> Parser::expandImport(
   buffer << file.rdbuf();
   std::string source = buffer.str();
 
-  std::istringstream ss(source);
-  Parser importParser(ss);
-  importParser.baseDir = resolved.parent_path().string();
-  importParser.importedFiles = importedFiles;  // Share for .moon dedup
-  importParser.setPrecompiledImports(precompiledImports);
-  importParser.setFilePath(resolvedStr);
-  importParser.getNextToken();
+  // Compute content hash for caching
+  std::string contentHash = sun::ASTCache::computeHash(source);
 
-  auto blockAst = importParser.parseProgram();
-  if (!blockAst) {
-    logAndThrowError("Failed to parse imported file: " + resolvedStr);
+  std::unique_ptr<BlockExprAST> blockAst;
+
+  // Try to get cached AST if caching is enabled
+  if (enableImportCaching_) {
+    blockAst = sun::ASTCache::instance().get(contentHash);
   }
+
+  if (!blockAst) {
+    // Cache miss - parse the file
+    std::istringstream ss(source);
+    Parser importParser(ss);
+    importParser.baseDir = resolved.parent_path().string();
+    importParser.importedFiles = importedFiles;  // Share for .moon dedup
+    importParser.setPrecompiledImports(precompiledImports);
+    importParser.setFilePath(resolvedStr);
+    importParser.setImportCaching(enableImportCaching_);
+    importParser.getNextToken();
+
+    blockAst = importParser.parseProgram();
+    if (!blockAst) {
+      logAndThrowError("Failed to parse imported file: " + resolvedStr);
+    }
+
+    // Cache the parsed AST (before import expansion)
+    if (enableImportCaching_) {
+      sun::ASTCache::instance().put(contentHash, *blockAst, false);
+    }
+  }
+
+  // Create a temporary parser for expanding nested imports
+  // This is needed because we need proper baseDir context for resolving imports
+  std::istringstream dummyStream("");
+  Parser nestedParser(dummyStream);
+  nestedParser.baseDir = resolved.parent_path().string();
+  nestedParser.importedFiles = importedFiles;
+  nestedParser.setPrecompiledImports(precompiledImports);
+  nestedParser.setFilePath(resolvedStr);
+  nestedParser.setImportCaching(enableImportCaching_);
 
   // Build the body: nested ImportScopeASTs for this file's imports,
   // then the file's own non-import statements
@@ -2142,7 +2171,7 @@ std::unique_ptr<ImportScopeAST> Parser::expandImport(
     if (stmt && stmt->isImport()) {
       const auto& importStmt = static_cast<const ImportAST&>(*stmt);
       scopeBody.push_back(
-          importParser.expandImport(importStmt.getPath(), cycleStack));
+          nestedParser.expandImport(importStmt.getPath(), cycleStack));
     } else if (stmt) {
       scopeBody.push_back(std::move(stmt));
     }
@@ -2151,6 +2180,9 @@ std::unique_ptr<ImportScopeAST> Parser::expandImport(
   cycleStack.erase(resolvedStr);
 
   auto body = std::make_unique<BlockExprAST>(std::move(scopeBody));
+  // Don't pass contentHash for .sun imports - only .moon imports should have
+  // content hash for symbol isolation. Regular .sun imports share namespace
+  // with the importer (scopeKey starts with $import_).
   return std::make_unique<ImportScopeAST>(resolvedStr, std::move(body));
 }
 
@@ -2725,9 +2757,9 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
   return result;
 }
 
-// Parse a function signature string like "(i32, i32) -> i32" into a FunctionAST.
-// For generic functions, typeParams and bodySource enable lazy parsing when
-// instantiated.
+// Parse a function signature string like "(i32, i32) -> i32" into a
+// FunctionAST. For generic functions, typeParams and bodySource enable lazy
+// parsing when instantiated.
 std::unique_ptr<FunctionAST> Parser::parseFunctionSignature(
     const std::string& name, const std::string& signature,
     const std::vector<std::string>& typeParams, const std::string& bodySource,
@@ -2818,17 +2850,17 @@ std::unique_ptr<FunctionAST> Parser::parseFunctionSignature(
   }
 
   // Create prototype with type parameters and variadic info
-  auto proto = std::make_unique<PrototypeAST>(
-      name, std::move(params), returnType, typeParams, variadicParam,
-      variadicConstr);
+  auto proto =
+      std::make_unique<PrototypeAST>(name, std::move(params), returnType,
+                                     typeParams, variadicParam, variadicConstr);
 
   // For generic functions, create stub with empty body for lazy parsing
   // For non-generic, create extern declaration (null body)
   std::unique_ptr<FunctionAST> func;
   if (!typeParams.empty()) {
     // Generic function - create empty body, store source for lazy parsing
-    auto body = std::make_unique<BlockExprAST>(
-        std::vector<std::unique_ptr<ExprAST>>());
+    auto body =
+        std::make_unique<BlockExprAST>(std::vector<std::unique_ptr<ExprAST>>());
     func = std::make_unique<FunctionAST>(std::move(proto), std::move(body));
     if (!bodySource.empty()) {
       func->setSourceText(bodySource);
