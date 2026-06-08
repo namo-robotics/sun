@@ -41,5 +41,4 @@ class SliceExprAST : public ExprAST {
   bool hasStart() const { return start_ != nullptr; }
   bool hasEnd() const { return end_ != nullptr; }
   std::string dotLabel() const override { return "Slice\n" + toString(); }
-  std::unique_ptr<ExprAST> clone() const override;
 };

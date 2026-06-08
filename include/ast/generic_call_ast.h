@@ -97,5 +97,4 @@ class GenericCallAST : public ExprAST {
   std::string dotLabel() const override {
     return "GenericCall\n" + functionName + "<...>()";
   }
-  std::unique_ptr<ExprAST> clone() const override;
 };

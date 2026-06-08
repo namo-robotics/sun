@@ -25,5 +25,4 @@ class SpawnExprAST : public ExprAST {
 
   const ExprAST& getLambda() const { return *Lambda; }
   std::string dotLabel() const override { return "Spawn"; }
-  std::unique_ptr<ExprAST> clone() const override;
 };

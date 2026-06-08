@@ -26,5 +26,4 @@ class ModuleAST : public ExprAST {
   const std::string& getName() const { return name; }
   const BlockExprAST& getBody() const { return *body; }
   std::string dotLabel() const override { return "Module\n" + name; }
-  std::unique_ptr<ExprAST> clone() const override;
 };

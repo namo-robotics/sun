@@ -38,5 +38,4 @@ class ForExprAST : public ExprAST {
   const ExprAST* getIncrement() const { return Increment.get(); }
   const ExprAST* getBody() const { return Body.get(); }
   std::string dotLabel() const override { return "For"; }
-  std::unique_ptr<ExprAST> clone() const override;
 };

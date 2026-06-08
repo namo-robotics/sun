@@ -15,6 +15,5 @@ class BoolLiteralAST : public ExprAST {
   ASTNodeType getType() const override { return ASTNodeType::BOOL_LITERAL; }
   std::string toString() const override { return Value ? "true" : "false"; }
   std::string dotLabel() const override { return "Bool\n" + toString(); }
-  std::unique_ptr<ExprAST> clone() const override;
   bool getValue() const { return Value; }
 };

@@ -68,5 +68,4 @@ class DeclareTypeAST : public ExprAST {
     if (aliasName) label += "\n" + *aliasName;
     return label;
   }
-  std::unique_ptr<ExprAST> clone() const override;
 };

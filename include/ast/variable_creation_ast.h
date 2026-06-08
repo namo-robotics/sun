@@ -58,7 +58,6 @@ class VariableCreationAST : public ExprAST {
     if (typeAnnotation) label += ": " + typeAnnotation->toString();
     return label;
   }
-  std::unique_ptr<ExprAST> clone() const override;
 
   // Qualified name (after semantic analysis qualifies it)
   const sun::QualifiedName& getQualifiedName() const {

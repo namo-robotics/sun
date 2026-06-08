@@ -39,5 +39,4 @@ class LambdaAST : public ExprAST {
   bool hasBody() const { return Body != nullptr; }
 
   std::string dotLabel() const override { return "Lambda"; }
-  std::unique_ptr<ExprAST> clone() const override;
 };

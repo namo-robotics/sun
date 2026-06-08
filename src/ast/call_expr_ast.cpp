@@ -1,17 +1,9 @@
-// call_expr_ast.cpp — CallExprAST clone and dotLabel implementations
+// call_expr_ast.cpp — CallExprAST dotLabel implementation
 
 #include "ast/call_expr_ast.h"
 
-#include "ast/ast_utils.h"
 #include "ast/member_access_ast.h"
 #include "ast/variable_reference_ast.h"
-
-std::unique_ptr<ExprAST> CallExprAST::clone() const {
-  auto copy =
-      std::make_unique<CallExprAST>(Callee->clone(), cloneExprVector(Args));
-  cloneBase(*copy);
-  return copy;
-}
 
 std::string CallExprAST::dotLabel() const {
   // Try to get a readable name from the callee

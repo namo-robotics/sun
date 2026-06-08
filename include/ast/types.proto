@@ -1,0 +1,68 @@
+// types.proto — Core types for AST serialization
+// Colocated with type_annotation.h, position.h
+
+syntax = "proto3";
+
+package sun.ast;
+
+option cc_enable_arenas = true;
+
+// Source location (mirrors Position struct in position.h)
+message Position {
+  int32 line = 1;
+  int32 column = 2;
+  int32 offset = 3;
+  optional string file_path = 4;
+}
+
+// Type annotation (mirrors TypeAnnotation in type_annotation.h)
+// Recursive structure for parsed type syntax
+message TypeAnnotation {
+  string base_name = 1;                         // "i32", "f64", "ptr", "fn", etc.
+  optional TypeAnnotation element_type = 2;     // For ptr/ref/array: element type
+  repeated TypeAnnotation param_types = 3;      // For fn/lambda: parameter types
+  optional TypeAnnotation return_type = 4;      // For fn/lambda: return type
+  repeated TypeAnnotation type_arguments = 5;   // For generics: Vec<i32>
+  repeated uint64 array_dimensions = 6;         // For arrays: array<T, 5, 3>
+  bool can_error = 7;                           // Error union: T, IError
+}
+
+// Lambda capture (mirrors Capture in ast_common.h)
+message Capture {
+  string name = 1;
+  string type_signature = 2;  // Type stored as string signature
+}
+
+// Token kind enumeration (mirrors TokenKind in lexer.h)
+// Only includes kinds used in AST (operators, literals)
+enum TokenKind {
+  TOKEN_KIND_UNKNOWN = 0;
+  
+  // Operators
+  TOKEN_KIND_PLUS = 1;
+  TOKEN_KIND_MINUS = 2;
+  TOKEN_KIND_STAR = 3;
+  TOKEN_KIND_SLASH = 4;
+  TOKEN_KIND_LESS = 5;
+  TOKEN_KIND_LESS_EQUAL = 6;
+  TOKEN_KIND_GREATER = 7;
+  TOKEN_KIND_GREATER_EQUAL = 8;
+  TOKEN_KIND_EQUAL_EQUAL = 9;
+  TOKEN_KIND_NOT_EQUAL = 10;
+  TOKEN_KIND_EQUAL = 11;
+  TOKEN_KIND_AND = 12;
+  TOKEN_KIND_OR = 13;
+  TOKEN_KIND_NOT = 14;
+  TOKEN_KIND_AMPERSAND = 15;
+  TOKEN_KIND_PIPE = 16;
+  TOKEN_KIND_CARET = 17;
+  TOKEN_KIND_PERCENT = 18;
+  TOKEN_KIND_SHIFT_LEFT = 19;
+  TOKEN_KIND_SHIFT_RIGHT = 20;
+}
+
+// Token for operators in binary/unary expressions
+message Token {
+  TokenKind kind = 1;
+  string text = 2;  // Original text representation
+}

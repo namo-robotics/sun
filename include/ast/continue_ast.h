@@ -16,5 +16,4 @@ class ContinueAST : public ExprAST {
   ASTNodeType getType() const override { return ASTNodeType::CONTINUE_STMT; }
   std::string toString() const override { return "continue"; }
   std::string dotLabel() const override { return "Continue"; }
-  std::unique_ptr<ExprAST> clone() const override;
 };

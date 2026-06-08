@@ -51,5 +51,4 @@ class UsingAST : public ExprAST {
     }
     return "Using\n" + getNamespacePathString() + "." + target;
   }
-  std::unique_ptr<ExprAST> clone() const override;
 };

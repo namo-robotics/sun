@@ -34,5 +34,4 @@ class BlockExprAST : public ExprAST {
     return Body.empty() ? nullptr : Body.back().get();
   }
   std::string dotLabel() const override { return "Block"; }
-  std::unique_ptr<ExprAST> clone() const override;
 };

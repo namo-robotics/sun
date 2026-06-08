@@ -33,5 +33,4 @@ class ArrayIndexAST : public ExprAST {
   }
   size_t numIndices() const { return indices.size(); }
   std::string dotLabel() const override { return "ArrayIndex"; }
-  std::unique_ptr<ExprAST> clone() const override;
 };

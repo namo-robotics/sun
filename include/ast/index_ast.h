@@ -47,5 +47,4 @@ class IndexAST : public ExprAST {
     return false;
   }
   std::string dotLabel() const override { return "Index"; }
-  std::unique_ptr<ExprAST> clone() const override;
 };

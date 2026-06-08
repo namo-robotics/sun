@@ -17,6 +17,5 @@ class PackExpansionAST : public ExprAST {
   ASTNodeType getType() const override { return ASTNodeType::PACK_EXPANSION; }
   std::string toString() const override { return packName + "..."; }
   std::string dotLabel() const override { return "PackExpand\n..."; }
-  std::unique_ptr<ExprAST> clone() const override;
   const std::string& getPackName() const { return packName; }
 };

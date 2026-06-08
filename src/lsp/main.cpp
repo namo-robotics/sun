@@ -1,5 +1,6 @@
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/JSON.h>
+#include <llvm/Support/SHA256.h>
 
 #include <cctype>
 #include <cstdlib>
@@ -13,6 +14,62 @@
 #include "driver.h"
 #include "error.h"
 #include "lexer.h"
+
+// =============================================================================
+// Diagnostics Cache
+// =============================================================================
+// Cache compilation diagnostics by content hash to avoid recompiling unchanged
+// files. This dramatically improves LSP responsiveness.
+
+struct CachedDiagnostics {
+  std::string contentHash;
+  llvm::json::Array diagnostics;
+};
+
+class DiagnosticsCache {
+ public:
+  static std::string computeHash(const std::string& content) {
+    llvm::SHA256 sha;
+    sha.update(llvm::StringRef(content));
+    auto hashBytes = sha.final();
+    std::string hash;
+    hash.reserve(64);
+    for (uint8_t b : hashBytes) {
+      char hex[3];
+      snprintf(hex, sizeof(hex), "%02x", b);
+      hash += hex;
+    }
+    return hash;
+  }
+
+  bool has(const std::string& hash) const {
+    return cache_.find(hash) != cache_.end();
+  }
+
+  const llvm::json::Array& get(const std::string& hash) const {
+    return cache_.at(hash);
+  }
+
+  void put(const std::string& hash, llvm::json::Array diagnostics) {
+    // Simple LRU: evict oldest if too many entries
+    if (cache_.size() >= maxEntries_) {
+      cache_.erase(cache_.begin());
+    }
+    cache_[hash] = std::move(diagnostics);
+  }
+
+  void invalidate(const std::string& hash) { cache_.erase(hash); }
+
+  void clear() { cache_.clear(); }
+
+  size_t size() const { return cache_.size(); }
+
+ private:
+  std::unordered_map<std::string, llvm::json::Array> cache_;
+  static constexpr size_t maxEntries_ = 100;
+};
+
+static DiagnosticsCache diagnosticsCache;
 
 // LSP semantic token type indices (must match legend in initialize response)
 namespace LSPTokenType {
@@ -406,6 +463,25 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
 }
 
 llvm::json::Array analyzeDiagnostics(const OpenDocument& document) {
+  // Compute content hash for caching
+  std::string contentHash = DiagnosticsCache::computeHash(document.text);
+
+  // Check cache first - if unchanged, return cached diagnostics
+  if (diagnosticsCache.has(contentHash)) {
+    // Return a copy of cached diagnostics
+    llvm::json::Array result;
+    for (const auto& diag : diagnosticsCache.get(contentHash)) {
+      if (const auto* obj = diag.getAsObject()) {
+        llvm::json::Object copy;
+        for (const auto& kv : *obj) {
+          copy[kv.first] = kv.second;
+        }
+        result.push_back(std::move(copy));
+      }
+    }
+    return result;
+  }
+
   llvm::json::Array diagnostics;
 
   try {
@@ -440,6 +516,19 @@ llvm::json::Array analyzeDiagnostics(const OpenDocument& document) {
     diagnostic["message"] = std::string("Internal error: ") + error.what();
     diagnostics.push_back(std::move(diagnostic));
   }
+
+  // Cache the result (make a copy for the cache)
+  llvm::json::Array cacheEntry;
+  for (const auto& diag : diagnostics) {
+    if (const auto* obj = diag.getAsObject()) {
+      llvm::json::Object copy;
+      for (const auto& kv : *obj) {
+        copy[kv.first] = kv.second;
+      }
+      cacheEntry.push_back(std::move(copy));
+    }
+  }
+  diagnosticsCache.put(contentHash, std::move(cacheEntry));
 
   return diagnostics;
 }

@@ -8,6 +8,7 @@
 #include <sstream>
 
 #include "ast.h"
+#include "ast_cache.h"
 #include "error.h"
 #include "lexer.h"
 #include "moon.h"
@@ -44,6 +45,9 @@ class Parser {
   // Current file being parsed (for error messages)
   std::string currentFilePath;
 
+  // Enable AST caching for imports (default: false until diamond dependency issues resolved)
+  bool enableImportCaching_ = false;
+
   // Helper: throw parsing error with source context
   [[noreturn]] void parsingError(const std::string& msg) {
     std::string sourceLine = lexer.getSourceLine(curTok.start.line);
@@ -64,6 +68,10 @@ class Parser {
   // Set the file path for error messages
   void setFilePath(const std::string& path) { currentFilePath = path; }
   const std::string& getFilePath() const { return currentFilePath; }
+
+  // Enable/disable import caching
+  void setImportCaching(bool enable) { enableImportCaching_ = enable; }
+  bool isImportCachingEnabled() const { return enableImportCaching_; }
 
   unique_ptr<BlockExprAST> parseProgram();
   // Convenience constructors (optional but recommended)

@@ -1,0 +1,465 @@
+// ast.proto — All AST node messages for serialization
+// Colocated with AST node headers
+
+syntax = "proto3";
+
+package sun.ast;
+
+import "types.proto";
+
+option cc_enable_arenas = true;
+
+// =============================================================================
+// Root wrapper for polymorphic AST nodes
+// =============================================================================
+
+message ASTNode {
+  Position location = 1;
+  bool precompiled = 2;
+  bool skip_codegen = 3;
+  string symbol_prefix = 4;
+  
+  oneof node {
+    // Literals
+    NumberExpr number_expr = 10;
+    StringLiteral string_literal = 11;
+    NullLiteral null_literal = 12;
+    BoolLiteral bool_literal = 13;
+    ArrayLiteral array_literal = 14;
+    
+    // Indexing/slicing
+    SliceExpr slice_expr = 20;
+    IndexExpr index_expr = 21;
+    ArrayIndexExpr array_index_expr = 22;
+    
+    // Variables and assignment
+    VariableReference variable_reference = 30;
+    VariableCreation variable_creation = 31;
+    VariableAssignment variable_assignment = 32;
+    ReferenceCreation reference_creation = 33;
+    IndexedAssignment indexed_assignment = 34;
+    MemberAssignment member_assignment = 35;
+    
+    // Expressions
+    BinaryExpr binary_expr = 40;
+    UnaryExpr unary_expr = 41;
+    PackExpansion pack_expansion = 42;
+    
+    // Control flow
+    BlockExpr block_expr = 50;
+    IfExpr if_expr = 51;
+    MatchExpr match_expr = 52;
+    ForExpr for_expr = 53;
+    ForInExpr for_in_expr = 54;
+    WhileExpr while_expr = 55;
+    BreakStmt break_stmt = 56;
+    ContinueStmt continue_stmt = 57;
+    ReturnExpr return_expr = 58;
+    UnsafeBlock unsafe_block = 59;
+    
+    // Functions and calls
+    FunctionDef function_def = 60;
+    LambdaExpr lambda_expr = 61;
+    CallExpr call_expr = 62;
+    GenericCallExpr generic_call_expr = 63;
+    SpawnExpr spawn_expr = 64;
+    
+    // Modules/imports/names
+    ImportStmt import_stmt = 70;
+    ImportScope import_scope = 71;
+    ModuleDef module_def = 72;
+    UsingStmt using_stmt = 73;
+    QualifiedName qualified_name = 74;
+    
+    // Definitions
+    ClassDef class_def = 80;
+    InterfaceDef interface_def = 81;
+    EnumDef enum_def = 82;
+    ThisExpr this_expr = 83;
+    MemberAccess member_access = 84;
+    
+    // Error handling / type declarations
+    TryCatch try_catch = 90;
+    ThrowExpr throw_expr = 91;
+    DeclareType declare_type = 92;
+  }
+  
+  // Optional analysis data (when serializing analyzed AST)
+  optional ExprAnalysis analysis = 100;
+}
+
+// =============================================================================
+// Literal nodes
+// =============================================================================
+
+message NumberExpr {
+  oneof value {
+    int64 int_value = 1;
+    double float_value = 2;
+  }
+}
+
+message StringLiteral {
+  string value = 1;
+}
+
+message NullLiteral {
+  // No fields needed
+}
+
+message BoolLiteral {
+  bool value = 1;
+}
+
+message ArrayLiteral {
+  repeated ASTNode elements = 1;
+}
+
+// =============================================================================
+// Indexing/slicing nodes
+// =============================================================================
+
+message SliceExpr {
+  optional ASTNode start = 1;
+  optional ASTNode end = 2;
+  bool is_range = 3;  // true for start:end, false for single index
+}
+
+message IndexExpr {
+  ASTNode target = 1;
+  repeated SliceExpr indices = 2;  // SliceExpr for each dimension
+}
+
+message ArrayIndexExpr {
+  // Legacy array index node
+  ASTNode array = 1;
+  repeated ASTNode indices = 2;
+}
+
+// =============================================================================
+// Variable nodes
+// =============================================================================
+
+message VariableReference {
+  string name = 1;
+}
+
+message VariableCreation {
+  string name = 1;
+  optional ASTNode value = 2;
+  optional TypeAnnotation type_annotation = 3;
+}
+
+message VariableAssignment {
+  string name = 1;
+  ASTNode value = 2;
+}
+
+message ReferenceCreation {
+  string name = 1;
+  ASTNode target = 2;
+  bool is_mutable = 3;
+}
+
+message IndexedAssignment {
+  ASTNode target = 1;  // The index expression
+  ASTNode value = 2;
+}
+
+message MemberAssignment {
+  ASTNode object = 1;
+  string member_name = 2;
+  ASTNode value = 3;
+}
+
+// =============================================================================
+// Expression nodes
+// =============================================================================
+
+message BinaryExpr {
+  Token op = 1;
+  ASTNode lhs = 2;
+  ASTNode rhs = 3;
+}
+
+message UnaryExpr {
+  Token op = 1;
+  ASTNode operand = 2;
+}
+
+message PackExpansion {
+  string pack_name = 1;
+}
+
+// =============================================================================
+// Control flow nodes
+// =============================================================================
+
+message BlockExpr {
+  repeated ASTNode body = 1;
+}
+
+message IfExpr {
+  ASTNode condition = 1;
+  ASTNode then_branch = 2;
+  optional ASTNode else_branch = 3;
+}
+
+message MatchArm {
+  optional ASTNode pattern = 1;  // null for wildcard (_)
+  bool is_wildcard = 2;
+  ASTNode body = 3;
+}
+
+message MatchExpr {
+  ASTNode discriminant = 1;
+  repeated MatchArm arms = 2;
+}
+
+message ForExpr {
+  optional ASTNode init = 1;
+  optional ASTNode condition = 2;
+  optional ASTNode increment = 3;
+  ASTNode body = 4;
+}
+
+message ForInExpr {
+  string loop_var = 1;
+  TypeAnnotation loop_var_type = 2;
+  ASTNode iterable = 3;
+  ASTNode body = 4;
+}
+
+message WhileExpr {
+  ASTNode condition = 1;
+  ASTNode body = 2;
+}
+
+message BreakStmt {
+  // No fields needed
+}
+
+message ContinueStmt {
+  // No fields needed
+}
+
+message ReturnExpr {
+  optional ASTNode value = 1;
+}
+
+message UnsafeBlock {
+  BlockExpr body = 1;
+}
+
+// =============================================================================
+// Function/call nodes
+// =============================================================================
+
+// Function argument (name + type)
+message FunctionArg {
+  string name = 1;
+  TypeAnnotation type = 2;
+}
+
+// Function prototype (signature)
+message Prototype {
+  string name = 1;
+  repeated string type_parameters = 2;  // Generic type params: T, U, etc.
+  repeated FunctionArg args = 3;
+  optional TypeAnnotation return_type = 4;
+  repeated Capture captures = 5;
+  optional string variadic_param_name = 6;
+  optional TypeAnnotation variadic_constraint = 7;
+  
+  // Optional analysis data
+  optional PrototypeAnalysis analysis = 10;
+}
+
+message FunctionDef {
+  Prototype proto = 1;
+  BlockExpr body = 2;
+  string source_text = 3;  // Original source for generic specialization
+}
+
+message LambdaExpr {
+  Prototype proto = 1;
+  BlockExpr body = 2;
+}
+
+message CallExpr {
+  ASTNode callee = 1;
+  repeated ASTNode args = 2;
+}
+
+message GenericCallExpr {
+  string function_name = 1;
+  repeated TypeAnnotation type_arguments = 2;
+  repeated ASTNode args = 3;
+}
+
+message SpawnExpr {
+  ASTNode lambda = 1;
+}
+
+// =============================================================================
+// Module/import nodes
+// =============================================================================
+
+message ImportStmt {
+  string path = 1;
+}
+
+message ImportScope {
+  string source_file = 1;
+  string content_hash = 2;
+  BlockExpr body = 3;
+}
+
+message ModuleDef {
+  string name = 1;
+  BlockExpr body = 2;
+}
+
+message UsingStmt {
+  repeated string namespace_path = 1;  // ["ModuleName", "SubModule"]
+  string target = 2;                   // "funcName" or "*"
+  bool is_module_import = 3;
+}
+
+message QualifiedName {
+  repeated string parts = 1;  // ["Module", "SubModule", "name"]
+}
+
+// =============================================================================
+// Class/interface/enum definitions
+// =============================================================================
+
+// Class field declaration
+message ClassField {
+  string name = 1;
+  TypeAnnotation type = 2;
+  Position location = 3;
+}
+
+// Class method declaration
+message ClassMethod {
+  FunctionDef function = 1;
+  bool is_constructor = 2;  // true if method name is "init"
+}
+
+// Implemented interface with type arguments
+message ImplementedInterface {
+  string name = 1;
+  repeated TypeAnnotation type_arguments = 2;
+}
+
+message ClassDef {
+  string name = 1;
+  repeated string type_parameters = 2;
+  repeated ImplementedInterface implemented_interfaces = 3;
+  repeated ClassField fields = 4;
+  repeated ClassMethod methods = 5;
+  bool is_partial = 6;
+}
+
+// Interface field declaration
+message InterfaceField {
+  string name = 1;
+  TypeAnnotation type = 2;
+  Position location = 3;
+}
+
+// Interface method declaration
+message InterfaceMethod {
+  FunctionDef function = 1;
+  bool has_default_impl = 2;
+}
+
+message InterfaceDef {
+  string name = 1;
+  repeated string type_parameters = 2;
+  repeated InterfaceField fields = 3;
+  repeated InterfaceMethod methods = 4;
+}
+
+// Enum variant declaration
+message EnumVariant {
+  string name = 1;
+  int64 value = 2;
+  Position location = 3;
+}
+
+message EnumDef {
+  string name = 1;
+  repeated EnumVariant variants = 2;
+}
+
+message ThisExpr {
+  // No fields needed
+}
+
+message MemberAccess {
+  ASTNode object = 1;
+  string member_name = 2;
+  repeated TypeAnnotation type_arguments = 3;  // For generic method calls
+}
+
+// =============================================================================
+// Error handling / type declaration nodes
+// =============================================================================
+
+message CatchClause {
+  string binding_name = 1;
+  optional TypeAnnotation binding_type = 2;
+  BlockExpr body = 3;
+}
+
+message TryCatch {
+  BlockExpr try_block = 1;
+  CatchClause catch_clause = 2;
+}
+
+message ThrowExpr {
+  ASTNode error_expr = 1;
+}
+
+message DeclareType {
+  optional string alias_name = 1;
+  TypeAnnotation type_annotation = 2;
+}
+
+// =============================================================================
+// Analysis metadata messages (for serializing analyzed AST)
+// =============================================================================
+
+// Base expression analysis
+message ExprAnalysis {
+  string resolved_type = 1;  // Type stored as string signature
+  bool consumed = 2;         // Borrow checker consumed flag
+  string qualified_name = 3; // For variable/class/interface nodes
+}
+
+// Prototype-specific analysis
+message PrototypeAnalysis {
+  string qualified_name = 1;
+  repeated string resolved_param_types = 2;
+  string resolved_return_type = 3;
+  repeated string resolved_variadic_types = 4;
+  
+  // Type bindings for generic instantiation
+  message TypeBinding {
+    string param_name = 1;
+    string bound_type = 2;
+  }
+  repeated TypeBinding type_bindings = 5;
+}
+
+// =============================================================================
+// Top-level program message
+// =============================================================================
+
+message Program {
+  uint32 version = 1;        // Schema version for compatibility
+  BlockExpr body = 2;        // Root block containing all declarations
+  bool has_analysis = 3;     // True if analysis data is included
+}

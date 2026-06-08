@@ -24,5 +24,4 @@ class VariableAssignmentAST : public ExprAST {
   const std::string& getName() const { return name; }
   const ExprAST* getValue() const { return value.get(); }
   std::string dotLabel() const override { return "VarAssign\n" + name; }
-  std::unique_ptr<ExprAST> clone() const override;
 };

@@ -78,5 +78,4 @@ class QualifiedNameAST : public ExprAST {
   }
 
   std::string dotLabel() const override { return "QualName\n" + getFullName(); }
-  std::unique_ptr<ExprAST> clone() const override;
 };

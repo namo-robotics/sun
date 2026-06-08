@@ -24,5 +24,4 @@ class UnsafeBlockAST : public ExprAST {
 
   const BlockExprAST& getBody() const { return *body; }
   BlockExprAST& getBody() { return *body; }
-  std::unique_ptr<ExprAST> clone() const override;
 };

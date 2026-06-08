@@ -23,5 +23,4 @@ class WhileExprAST : public ExprAST {
   const ExprAST* getCondition() const { return Condition.get(); }
   const ExprAST* getBody() const { return Body.get(); }
   std::string dotLabel() const override { return "While"; }
-  std::unique_ptr<ExprAST> clone() const override;
 };

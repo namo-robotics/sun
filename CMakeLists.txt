@@ -22,6 +22,46 @@ add_definitions(${LLVM_DEFINITIONS})
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 
+# ------------------------------------------------------------------
+# Find Protobuf (for AST serialization)
+# ------------------------------------------------------------------
+find_package(Protobuf REQUIRED)
+message(STATUS "Found Protobuf ${Protobuf_VERSION}")
+
+# ------------------------------------------------------------------
+# Generate Protobuf sources (AST serialization)
+# ------------------------------------------------------------------
+set(PROTO_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include/ast)
+set(PROTO_FILES
+    ${PROTO_DIR}/types.proto
+    ${PROTO_DIR}/ast.proto
+    ${PROTO_DIR}/analysis.proto
+)
+
+# Generate C++ from proto files with correct import path
+set(PROTO_SRCS)
+set(PROTO_HDRS)
+foreach(PROTO_FILE ${PROTO_FILES})
+    get_filename_component(PROTO_NAME ${PROTO_FILE} NAME_WE)
+    list(APPEND PROTO_SRCS ${CMAKE_CURRENT_BINARY_DIR}/${PROTO_NAME}.pb.cc)
+    list(APPEND PROTO_HDRS ${CMAKE_CURRENT_BINARY_DIR}/${PROTO_NAME}.pb.h)
+    
+    add_custom_command(
+        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${PROTO_NAME}.pb.cc
+               ${CMAKE_CURRENT_BINARY_DIR}/${PROTO_NAME}.pb.h
+        COMMAND protobuf::protoc
+        ARGS --cpp_out=${CMAKE_CURRENT_BINARY_DIR}
+             --proto_path=${PROTO_DIR}
+             ${PROTO_FILE}
+        DEPENDS ${PROTO_FILE}
+        COMMENT "Running protoc on ${PROTO_NAME}.proto"
+        VERBATIM
+    )
+endforeach()
+
+message(STATUS "Proto sources: ${PROTO_SRCS}")
+message(STATUS "Proto headers: ${PROTO_HDRS}")
+
 # LLVM is target-based in modern versions → prefer imported targets
 # add_definitions(${LLVM_DEFINITIONS}) and include_directories(${LLVM_INCLUDE_DIRS})
 # are old-style and should be avoided when possible.
@@ -30,54 +70,13 @@ message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 # Create the core library (recommended)
 # ------------------------------------------------------------------
 add_library(sun_lib
+    # Generated protobuf sources
+    ${PROTO_SRCS}
     src/parser.cpp
     # AST node implementations (in src/ast/)
-    src/ast/array_index_ast.cpp
-    src/ast/array_literal_ast.cpp
-    src/ast/binary_expr_ast.cpp
-    src/ast/block_expr_ast.cpp
-    src/ast/bool_literal_ast.cpp
-    src/ast/break_ast.cpp
-    src/ast/call_expr_ast.cpp
-    src/ast/class_definition_ast.cpp
-    src/ast/continue_ast.cpp
-    src/ast/declare_type_ast.cpp
-    src/ast/enum_definition_ast.cpp
-    src/ast/for_expr_ast.cpp
-    src/ast/for_in_expr_ast.cpp
-    src/ast/function_ast.cpp
-    src/ast/generic_call_ast.cpp
-    src/ast/if_expr_ast.cpp
-    src/ast/import_ast.cpp
-    src/ast/import_scope_ast.cpp
-    src/ast/index_ast.cpp
-    src/ast/indexed_assignment_ast.cpp
-    src/ast/interface_definition_ast.cpp
-    src/ast/lambda_ast.cpp
-    src/ast/match_expr_ast.cpp
-    src/ast/member_access_ast.cpp
-    src/ast/member_assignment_ast.cpp
-    src/ast/module_ast.cpp
-    src/ast/null_literal_ast.cpp
-    src/ast/number_expr_ast.cpp
-    src/ast/pack_expansion_ast.cpp
+    src/ast/expr_ast.cpp
     src/ast/prototype_ast.cpp
-    src/ast/qualified_name_ast.cpp
-    src/ast/reference_creation_ast.cpp
-    src/ast/return_expr_ast.cpp
-    src/ast/slice_expr_ast.cpp
-    src/ast/spawn_expr_ast.cpp
-    src/ast/string_literal_ast.cpp
-    src/ast/this_expr_ast.cpp
-    src/ast/throw_expr_ast.cpp
-    src/ast/try_catch_expr_ast.cpp
-    src/ast/unary_expr_ast.cpp
-    src/ast/unsafe_block_ast.cpp
-    src/ast/using_ast.cpp
-    src/ast/variable_assignment_ast.cpp
-    src/ast/variable_creation_ast.cpp
-    src/ast/variable_reference_ast.cpp
-    src/ast/while_expr_ast.cpp
+    src/ast/call_expr_ast.cpp
     src/codegen.cpp
     src/driver.cpp
     src/codegen/codegen_visitor.cpp
@@ -119,6 +118,11 @@ add_library(sun_lib
     # Debug utilities
     src/debug/ast_dot_generator.cpp
     src/debug/scope_tree_generator.cpp
+    # AST serialization
+    src/serialization/ast_serializer.cpp
+    src/serialization/ast_deserializer.cpp
+    # AST caching
+    src/ast_cache.cpp
     # Add other implementation files here (but NOT main.cpp)
 )
 
@@ -126,13 +130,14 @@ add_library(sun_lib
 target_include_directories(sun_lib
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>  # For generated proto headers
         $<INSTALL_INTERFACE:include>  # For potential installation later
     PRIVATE
         src  # If you have private headers in src/
 )
 
 # Link LLVM the modern way (target-based)
-target_link_libraries(sun_lib PUBLIC LLVM)  # Add more components as needed
+target_link_libraries(sun_lib PUBLIC LLVM protobuf::libprotobuf)  # Add more components as needed
 
 # Ensure the library uses the same definitions/includes as LLVM
 target_compile_definitions(sun_lib PUBLIC ${LLVM_DEFINITIONS})

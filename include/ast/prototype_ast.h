@@ -172,6 +172,6 @@ class PrototypeAST {
     return returnType.has_value() && returnType->canError;
   }
 
-  // Clone the prototype (deep copy)
+  // Clone the prototype via protobuf serialization (deep copy)
   std::unique_ptr<PrototypeAST> clone() const;
 };
