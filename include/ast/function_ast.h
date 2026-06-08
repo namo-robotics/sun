@@ -105,5 +105,4 @@ class FunctionAST : public ExprAST {
       label += " -> " + Proto->getReturnType()->toString();
     return label;
   }
-  std::unique_ptr<ExprAST> clone() const override;
 };

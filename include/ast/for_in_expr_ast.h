@@ -68,5 +68,4 @@ class ForInExprAST : public ExprAST {
   }
 
   std::string dotLabel() const override { return "ForIn\n" + LoopVar; }
-  std::unique_ptr<ExprAST> clone() const override;
 };

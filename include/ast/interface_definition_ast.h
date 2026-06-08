@@ -121,5 +121,4 @@ class InterfaceDefinitionAST : public ExprAST {
     return required;
   }
   std::string dotLabel() const override { return "Interface\n" + name; }
-  std::unique_ptr<ExprAST> clone() const override;
 };

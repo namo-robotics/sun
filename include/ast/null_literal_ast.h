@@ -13,5 +13,4 @@ class NullLiteralAST : public ExprAST {
   ASTNodeType getType() const override { return ASTNodeType::NULL_LITERAL; }
   std::string toString() const override { return "null"; }
   std::string dotLabel() const override { return "null"; }
-  std::unique_ptr<ExprAST> clone() const override;
 };

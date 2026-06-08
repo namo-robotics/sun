@@ -26,5 +26,4 @@ class IndexedAssignmentAST : public ExprAST {
   const ExprAST* getTarget() const { return target.get(); }
   const ExprAST* getValue() const { return value.get(); }
   std::string dotLabel() const override { return "IndexedAssign"; }
-  std::unique_ptr<ExprAST> clone() const override;
 };

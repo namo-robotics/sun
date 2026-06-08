@@ -25,5 +25,4 @@ class ReturnExprAST : public ExprAST {
   const ExprAST* getValue() const { return Value.get(); }
   bool hasValue() const { return Value != nullptr; }
   std::string dotLabel() const override { return "Return"; }
-  std::unique_ptr<ExprAST> clone() const override;
 };

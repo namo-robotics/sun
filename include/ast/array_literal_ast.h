@@ -29,5 +29,4 @@ class ArrayLiteralAST : public ExprAST {
   }
   size_t size() const { return elements.size(); }
   std::string dotLabel() const override { return "ArrayLiteral"; }
-  std::unique_ptr<ExprAST> clone() const override;
 };

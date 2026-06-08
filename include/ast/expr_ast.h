@@ -57,8 +57,10 @@ class ExprAST {
   // Print to stderr (easier to call from debugger than toString())
   void dump() const { std::cerr << toString() << "\n"; }
 
-  // Clone this AST node (deep copy)
-  virtual std::unique_ptr<ExprAST> clone() const = 0;
+  // Clone this AST node (deep copy) via protobuf serialization roundtrip.
+  // This approach is less error-prone than manual cloning as it automatically
+  // handles all fields through the proto schema.
+  std::unique_ptr<ExprAST> clone() const;
 
   // Analysis data access
   bool hasAnalysis() const { return analysis_ != nullptr; }

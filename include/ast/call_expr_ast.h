@@ -35,5 +35,4 @@ class CallExprAST : public ExprAST {
   const ExprAST* getCallee() const { return Callee.get(); }
   const std::vector<std::unique_ptr<ExprAST>>& getArgs() const { return Args; }
   std::string dotLabel() const override;
-  std::unique_ptr<ExprAST> clone() const override;
 };

@@ -16,5 +16,4 @@ class BreakAST : public ExprAST {
   ASTNodeType getType() const override { return ASTNodeType::BREAK_STMT; }
   std::string toString() const override { return "break"; }
   std::string dotLabel() const override { return "Break"; }
-  std::unique_ptr<ExprAST> clone() const override;
 };

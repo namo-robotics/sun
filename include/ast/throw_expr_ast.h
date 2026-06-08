@@ -24,5 +24,4 @@ class ThrowExprAST : public ExprAST {
   const ExprAST& getErrorExpr() const { return *errorExpr; }
   bool hasErrorExpr() const { return errorExpr != nullptr; }
   std::string dotLabel() const override { return "Throw"; }
-  std::unique_ptr<ExprAST> clone() const override;
 };

@@ -30,6 +30,8 @@ RUN update-alternatives --install /usr/bin/clang     clang     /usr/bin/clang-20
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgtest-dev \
+    protobuf-compiler \
+    libprotobuf-dev \
     openssh-client \
     sudo \
     bash-completion \

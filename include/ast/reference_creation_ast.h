@@ -50,7 +50,6 @@ class ReferenceCreationAST : public ExprAST {
   const ExprAST* getTarget() const { return target.get(); }
   bool isMutable() const { return mutable_; }
   std::string dotLabel() const override { return "RefCreate\n" + name; }
-  std::unique_ptr<ExprAST> clone() const override;
 
   // Qualified name (after semantic analysis qualifies it)
   const sun::QualifiedName& getQualifiedName() const {

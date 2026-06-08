@@ -21,7 +21,6 @@ class NumberExprAST : public ExprAST {
     return std::to_string(getFloatVal());
   }
   std::string dotLabel() const override { return "Number\n" + toString(); }
-  std::unique_ptr<ExprAST> clone() const override;
 
   bool isInteger() const { return std::holds_alternative<int64_t>(value_); }
   bool isFloat() const { return std::holds_alternative<double>(value_); }

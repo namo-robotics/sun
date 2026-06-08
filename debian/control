@@ -6,6 +6,8 @@ Build-Depends: debhelper-compat (= 13),
                cmake (>= 3.20),
                llvm-20-dev,
                libllvm20,
+               protobuf-compiler,
+               libprotobuf-dev,
                g++ (>= 11) | clang (>= 14)
 Standards-Version: 4.6.2
 Homepage: https://namo-robotics.github.io/sun/

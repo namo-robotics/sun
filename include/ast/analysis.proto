@@ -1,0 +1,83 @@
+// analysis.proto — Extended analysis metadata messages
+// Colocated with analysis.h
+// These messages extend the basic analysis in ast.proto for specialized node types
+
+syntax = "proto3";
+
+package sun.ast;
+
+option cc_enable_arenas = true;
+
+// =============================================================================
+// Extended analysis types for specific AST nodes
+// These complement the basic ExprAnalysis and PrototypeAnalysis in ast.proto
+// =============================================================================
+
+// Analysis for FunctionAST nodes
+// Note: Specialization maps are serialized by key only, not full AST
+message FunctionAnalysis {
+  string qualified_name = 1;
+  repeated string specialization_keys = 2;  // Mangled names of specializations
+}
+
+// Analysis for ClassDefinitionAST nodes
+message ClassAnalysis {
+  string qualified_name = 1;
+  repeated string specialization_keys = 2;  // Mangled names of specializations
+}
+
+// Analysis for InterfaceDefinitionAST nodes
+message InterfaceAnalysis {
+  string qualified_name = 1;
+}
+
+// Analysis for ForInExprAST nodes
+message ForInAnalysis {
+  string resolved_loop_var_type = 1;  // Type signature
+}
+
+// Analysis for QualifiedNameAST nodes
+message QualifiedNameExprAnalysis {
+  string resolved_mangled_name = 1;
+}
+
+// Analysis for MemberAccessAST nodes
+message MemberAccessAnalysis {
+  repeated string resolved_type_args = 1;  // Type signatures
+  string resolved_qualified_name = 2;
+}
+
+// Analysis for GenericCallAST nodes
+message GenericCallAnalysis {
+  repeated string resolved_type_args = 1;
+  string generic_function_qualified_name = 2;  // Instead of raw pointer
+}
+
+// Analysis for DeclareTypeAST nodes
+message DeclareTypeAnalysis {
+  string resolved_declared_type = 1;  // Type signature
+}
+
+// Analysis for VariableReferenceAST, VariableCreationAST, ReferenceCreationAST
+message VariableAnalysis {
+  string qualified_name = 1;
+}
+
+// =============================================================================
+// Extended analysis wrapper for nodes that need specialized analysis
+// This is used when the basic ExprAnalysis in ast.proto is insufficient
+// =============================================================================
+
+message ExtendedAnalysis {
+  oneof analysis {
+    FunctionAnalysis function_analysis = 1;
+    ClassAnalysis class_analysis = 2;
+    InterfaceAnalysis interface_analysis = 3;
+    ForInAnalysis for_in_analysis = 4;
+    QualifiedNameExprAnalysis qualified_name_analysis = 5;
+    MemberAccessAnalysis member_access_analysis = 6;
+    GenericCallAnalysis generic_call_analysis = 7;
+    DeclareTypeAnalysis declare_type_analysis = 8;
+    VariableAnalysis variable_analysis = 9;
+  }
+}

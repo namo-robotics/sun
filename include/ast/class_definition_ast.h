@@ -174,5 +174,4 @@ class ClassDefinitionAST : public ExprAST {
   std::vector<ClassMethodDecl>& getMutableMethods() { return methods; }
 
   std::string dotLabel() const override { return "Class\n" + name; }
-  std::unique_ptr<ExprAST> clone() const override;
 };

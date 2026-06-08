@@ -34,7 +34,6 @@ class VariableReferenceAST : public ExprAST {
   }
   std::string toString() const override { return Name; }
   std::string dotLabel() const override { return "VarRef\n" + Name; }
-  std::unique_ptr<ExprAST> clone() const override;
   const std::string& getName() const { return Name; }
 
   // Qualified name (after semantic analysis qualifies it)

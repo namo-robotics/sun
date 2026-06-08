@@ -15,5 +15,4 @@ class ThisExprAST : public ExprAST {
   ASTNodeType getType() const override { return ASTNodeType::THIS; }
   std::string toString() const override { return "this"; }
   std::string dotLabel() const override { return "this"; }
-  std::unique_ptr<ExprAST> clone() const override;
 };

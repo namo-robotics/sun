@@ -55,5 +55,4 @@ class EnumDefinitionAST : public ExprAST {
   // Get the number of variants
   size_t getNumVariants() const { return variants.size(); }
   std::string dotLabel() const override { return "Enum\n" + name; }
-  std::unique_ptr<ExprAST> clone() const override;
 };

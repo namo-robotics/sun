@@ -22,5 +22,4 @@ class UnaryExprAST : public ExprAST {
   Token getOp() const { return op; }
   const ExprAST* getOperand() const { return Operand.get(); }
   std::string dotLabel() const override { return "Unary\n" + op.text; }
-  std::unique_ptr<ExprAST> clone() const override;
 };

@@ -15,6 +15,5 @@ class StringLiteralAST : public ExprAST {
   ASTNodeType getType() const override { return ASTNodeType::STRING_LITERAL; }
   std::string toString() const override { return "\"" + Value + "\""; }
   std::string dotLabel() const override { return "String\n" + toString(); }
-  std::unique_ptr<ExprAST> clone() const override;
   const std::string& getValue() const { return Value; }
 };

@@ -24,5 +24,4 @@ class BinaryExprAST : public ExprAST {
   const ExprAST* getLHS() const { return LHS.get(); }
   const ExprAST* getRHS() const { return RHS.get(); }
   std::string dotLabel() const override { return "Binary\n" + op.text; }
-  std::unique_ptr<ExprAST> clone() const override;
 };

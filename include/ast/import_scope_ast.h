@@ -31,5 +31,4 @@ class ImportScopeAST : public ExprAST {
   const std::string& getContentHash() const { return contentHash; }
   const BlockExprAST& getBody() const { return *body; }
   std::string dotLabel() const override { return "import\n" + sourceFile; }
-  std::unique_ptr<ExprAST> clone() const override;
 };

@@ -45,5 +45,4 @@ class TryCatchExprAST : public ExprAST {
   const BlockExprAST& getTryBlock() const { return *tryBlock; }
   const CatchClause& getCatchClause() const { return catchClause; }
   std::string dotLabel() const override { return "TryCatch"; }
-  std::unique_ptr<ExprAST> clone() const override;
 };

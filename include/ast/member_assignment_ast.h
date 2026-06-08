@@ -33,5 +33,4 @@ class MemberAssignmentAST : public ExprAST {
   std::string dotLabel() const override {
     return "MemberAssign\n." + memberName;
   }
-  std::unique_ptr<ExprAST> clone() const override;
 };

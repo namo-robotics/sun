@@ -58,5 +58,4 @@ class MatchExprAST : public ExprAST {
   const ExprAST* getDiscriminant() const { return discriminant.get(); }
   const std::vector<MatchArm>& getArms() const { return arms; }
   std::string dotLabel() const override { return "Match"; }
-  std::unique_ptr<ExprAST> clone() const override;
 };

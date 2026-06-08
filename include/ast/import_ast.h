@@ -18,6 +18,5 @@ class ImportAST : public ExprAST {
   std::string toString() const override { return "import \"" + path + "\""; }
   std::string dotLabel() const override { return "Import\n" + path; }
 
-  std::unique_ptr<ExprAST> clone() const override;
   const std::string& getPath() const { return path; }
 };

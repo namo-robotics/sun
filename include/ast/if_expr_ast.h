@@ -24,5 +24,4 @@ class IfExprAST : public ExprAST {
   ExprAST* getThen() const { return Then.get(); }
   ExprAST* getElse() const { return Else.get(); }
   std::string dotLabel() const override { return "If"; }
-  std::unique_ptr<ExprAST> clone() const override;
 };
