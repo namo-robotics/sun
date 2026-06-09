@@ -8,6 +8,12 @@
   <a href="https://github.com/namo-robotics/sun/actions/workflows/ci.yml">
     <img src="https://github.com/namo-robotics/sun/actions/workflows/ci.yml/badge.svg" alt="CI">
   </a>
+  <a href="https://github.com/namo-robotics/sun/actions/workflows/build-deb.yml">
+    <img src="https://github.com/namo-robotics/sun/actions/workflows/build-deb.yml/badge.svg" alt="Debian Package">
+  </a>
+  <a href="https://github.com/namo-robotics/sun/actions/workflows/docs.yml">
+    <img src="https://github.com/namo-robotics/sun/actions/workflows/docs.yml/badge.svg" alt="Docs">
+  </a>
 </p>
 
 [Documentation](https://namo-robotics.github.io/sun/)
