@@ -226,14 +226,14 @@ TEST(BorrowCheckerTest, error_on_string_use_after_move) {
 }
 
 // ============================================================================
-// Compound Types Must Use ref
+// Compound Types Passed by Value with Move Semantics
 // ============================================================================
 
-// REQUIRE_REF_FOR_COMPOUND_PARAMS is true, so passing classes by value is an
-// error
-TEST(BorrowCheckerTest, compound_type_requires_ref) {
-  // Passing a class by value should be a compile error
-  EXPECT_THROW(executeString(R"(
+// REQUIRE_REF_FOR_COMPOUND_PARAMS is false, so passing classes by value
+// is allowed with move semantics - the original variable becomes invalid
+TEST(BorrowCheckerTest, compound_type_by_value_moves) {
+  // Passing a class by value should work and move the value
+  auto value = executeString(R"(
     class Point {
         var x: i32;
         var y: i32;
@@ -251,8 +251,33 @@ TEST(BorrowCheckerTest, compound_type_requires_ref) {
         var p = Point(3, 4);
         return consume(p);
     }
+  )");
+  EXPECT_EQ(value, 7);
+}
+
+TEST(BorrowCheckerTest, use_after_move_by_value_param) {
+  // Using a variable after passing it by value should be an error
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Point {
+        var x: i32;
+        var y: i32;
+        function init(x: i32, y: i32) {
+            this.x = x;
+            this.y = y;
+        }
+    }
+
+    function consume(p: Point) i32 {
+        return p.x + p.y;
+    }
+
+    function main() i32 {
+        var p = Point(3, 4);
+        var r = consume(p);  // p is moved here
+        return p.x;          // ERROR: use of moved variable
+    }
   )"),
-               std::exception);
+                                "Borrow check failed");
 }
 
 TEST(BorrowCheckerTest, compound_type_with_ref_works) {
