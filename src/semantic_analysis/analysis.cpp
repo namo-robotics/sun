@@ -1049,13 +1049,9 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
             classType->getField(memberAssign.getMemberName());
         if (field) {
           sun::TypePtr rhsType = memberAssign.getValue()->getResolvedType();
-          // Unwrap reference types - if value is ref T and field is T, that's
-          // valid (the reference content will be copied)
-          sun::TypePtr unwrappedRhsType = unwrapRef(rhsType);
           sun::TypePtr fieldType = field->type;
 
-          if (unwrappedRhsType &&
-              !isAssignableTo(unwrappedRhsType, fieldType)) {
+          if (rhsType && !isAssignableTo(rhsType, fieldType)) {
             // Allow integer literal coercion as a fallback
             if (!tryCoerceIntegerLiteral(
                     const_cast<ExprAST*>(memberAssign.getValue()), fieldType,
