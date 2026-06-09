@@ -8,6 +8,8 @@
 #include "intrinsics.h"
 #include "semantic_analyzer.h"
 
+using sun::unwrapRef;
+
 // -------------------------------------------------------------------
 // Main analysis entry point
 // -------------------------------------------------------------------
@@ -1035,6 +1037,38 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // Analyze the object and value expressions
       analyzeExpr(const_cast<ExprAST&>(*memberAssign.getObject()));
       analyzeExpr(const_cast<ExprAST&>(*memberAssign.getValue()));
+
+      // Get the field type for type compatibility check
+      sun::TypePtr objectType = memberAssign.getObject()->getResolvedType();
+      objectType = unwrapRef(objectType);
+
+      if (objectType && objectType->isClass()) {
+        auto* classType = static_cast<sun::ClassType*>(objectType.get());
+        const sun::ClassField* field =
+            classType->getField(memberAssign.getMemberName());
+        if (field) {
+          sun::TypePtr rhsType = memberAssign.getValue()->getResolvedType();
+          // Unwrap reference types - if value is ref T and field is T, that's
+          // valid (the reference content will be copied)
+          sun::TypePtr unwrappedRhsType = unwrapRef(rhsType);
+          sun::TypePtr fieldType = field->type;
+
+          if (unwrappedRhsType &&
+              !isAssignableTo(unwrappedRhsType, fieldType)) {
+            // Allow integer literal coercion as a fallback
+            if (!tryCoerceIntegerLiteral(
+                    const_cast<ExprAST*>(memberAssign.getValue()), fieldType,
+                    false)) {
+              logAndThrowError("Cannot assign value of type '" +
+                                   rhsType->toString() + "' to field '" +
+                                   memberAssign.getMemberName() +
+                                   "' of type '" + fieldType->toString() + "'",
+                               memberAssign.getLocation());
+            }
+          }
+        }
+      }
+
       expr.setResolvedType(sun::Types::Void());
       break;
     }

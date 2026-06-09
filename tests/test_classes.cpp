@@ -611,3 +611,141 @@ TEST(ClassTest, partial_class_inline_simple) {
   )");
   EXPECT_EQ(value, 16);
 }
+
+// ============================================================================
+// Member Assignment Tests
+// ============================================================================
+
+TEST(ClassTest, simple_member_assignment) {
+  // Test a.b = x on a local variable
+  auto value = executeString(R"(
+    class Point {
+      var x: i32;
+      var y: i32;
+      function init() {
+        this.x = 0;
+        this.y = 0;
+      }
+    }
+
+    function main() i32 {
+      var p = Point();
+      p.x = 42;
+      return p.x;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(ClassTest, nested_member_assignment) {
+  // Test a.b.c = x with nested class fields
+  auto value = executeString(R"(
+    class Inner {
+      var value: i32;
+      function init() { this.value = 0; }
+    }
+
+    class Outer {
+      var inner: Inner;
+      function init() { this.inner = Inner(); }
+    }
+
+    function main() i32 {
+      var o = Outer();
+      o.inner.value = 99;
+      return o.inner.value;
+    }
+  )");
+  EXPECT_EQ(value, 99);
+}
+
+TEST(ClassTest, deep_nested_member_assignment) {
+  // Test a.b.c.d = x with multiple levels of nesting
+  auto value = executeString(R"(
+    class Level3 {
+      var data: i32;
+      function init() { this.data = 0; }
+    }
+
+    class Level2 {
+      var l3: Level3;
+      function init() { this.l3 = Level3(); }
+    }
+
+    class Level1 {
+      var l2: Level2;
+      function init() { this.l2 = Level2(); }
+    }
+
+    function main() i32 {
+      var root = Level1();
+      root.l2.l3.data = 123;
+      return root.l2.l3.data;
+    }
+  )");
+  EXPECT_EQ(value, 123);
+}
+
+TEST(ClassTest, this_nested_member_assignment) {
+  // Test this.a.b = x inside a method
+  auto value = executeString(R"(
+    class Inner {
+      var x: i32;
+      function init() { this.x = 0; }
+    }
+
+    class Container {
+      var inner: Inner;
+      
+      function init() {
+        this.inner = Inner();
+      }
+      
+      function setInnerValue(v: i32) void {
+        this.inner.x = v;
+      }
+      
+      function getInnerValue() i32 {
+        return this.inner.x;
+      }
+    }
+
+    function main() i32 {
+      var c = Container();
+      c.setInnerValue(77);
+      return c.getInnerValue();
+    }
+  )");
+  EXPECT_EQ(value, 77);
+}
+
+TEST(ClassTest, nested_member_access_as_argument) {
+  // Test passing a.b.c.d to a function (read access)
+  auto value = executeString(R"(
+    class Level3 {
+      var data: i32;
+      function init(v: i32) { this.data = v; }
+    }
+
+    class Level2 {
+      var l3: Level3;
+      function init(v: i32) { this.l3 = Level3(v); }
+    }
+
+    class Level1 {
+      var l2: Level2;
+      function init(v: i32) { this.l2 = Level2(v); }
+    }
+
+    function double_it(x: i32) i32 {
+      return x * 2;
+    }
+
+    function main() i32 {
+      var root = Level1(21);
+      // Pass deeply nested member to a function
+      return double_it(root.l2.l3.data);
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}

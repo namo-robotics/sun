@@ -58,6 +58,7 @@ class MemberAccessAST : public ExprAST {
   }
 
   const ExprAST* getObject() const { return object.get(); }
+  std::unique_ptr<ExprAST> releaseObject() { return std::move(object); }
   const std::string& getMemberName() const { return memberName; }
   bool hasTypeArguments() const { return !typeArguments.empty(); }
   const std::vector<std::unique_ptr<TypeAnnotation>>& getTypeArguments() const {
