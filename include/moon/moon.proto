@@ -1,0 +1,29 @@
+// moon.proto — Module metadata for .moon library bundles
+// Reuses AST node definitions for type-safe serialization
+
+syntax = "proto3";
+
+package sun.moon;
+
+import "ast.proto";
+
+option cc_enable_arenas = true;
+
+// Module metadata stored in .moon bundle files
+// Contains all information needed to import and instantiate types from a module
+message ModuleMetadata {
+  // Source identification
+  string source_hash = 1;     // SHA-256 hash of original source file
+  string module_name = 2;     // Namespace name (e.g., "sun")
+  string version = 3;         // Semantic version (e.g., "1.0.0")
+  string content_hash = 4;    // Bundle-wide hash for symbol isolation
+
+  // Dependencies
+  repeated string dependencies = 5;  // Paths to imported modules
+
+  // Exported definitions (bodies included only for generics)
+  repeated sun.ast.FunctionDef functions = 6;
+  repeated sun.ast.ClassDef classes = 7;
+  repeated sun.ast.InterfaceDef interfaces = 8;
+  repeated sun.ast.EnumDef enums = 9;
+}

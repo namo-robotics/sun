@@ -29,19 +29,27 @@ find_package(Protobuf REQUIRED)
 message(STATUS "Found Protobuf ${Protobuf_VERSION}")
 
 # ------------------------------------------------------------------
-# Generate Protobuf sources (AST serialization)
+# Generate Protobuf sources (AST serialization + Moon library)
 # ------------------------------------------------------------------
-set(PROTO_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include/ast)
-set(PROTO_FILES
-    ${PROTO_DIR}/types.proto
-    ${PROTO_DIR}/ast.proto
-    ${PROTO_DIR}/analysis.proto
+set(AST_PROTO_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include/ast)
+set(MOON_PROTO_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include/moon)
+
+# AST proto files
+set(AST_PROTO_FILES
+    ${AST_PROTO_DIR}/types.proto
+    ${AST_PROTO_DIR}/ast.proto
+    ${AST_PROTO_DIR}/analysis.proto
 )
 
-# Generate C++ from proto files with correct import path
+# Moon proto files (imports AST protos)
+set(MOON_PROTO_FILES
+    ${MOON_PROTO_DIR}/moon.proto
+)
+
+# Generate C++ from AST proto files
 set(PROTO_SRCS)
 set(PROTO_HDRS)
-foreach(PROTO_FILE ${PROTO_FILES})
+foreach(PROTO_FILE ${AST_PROTO_FILES})
     get_filename_component(PROTO_NAME ${PROTO_FILE} NAME_WE)
     list(APPEND PROTO_SRCS ${CMAKE_CURRENT_BINARY_DIR}/${PROTO_NAME}.pb.cc)
     list(APPEND PROTO_HDRS ${CMAKE_CURRENT_BINARY_DIR}/${PROTO_NAME}.pb.h)
@@ -51,9 +59,29 @@ foreach(PROTO_FILE ${PROTO_FILES})
                ${CMAKE_CURRENT_BINARY_DIR}/${PROTO_NAME}.pb.h
         COMMAND protobuf::protoc
         ARGS --cpp_out=${CMAKE_CURRENT_BINARY_DIR}
-             --proto_path=${PROTO_DIR}
+             --proto_path=${AST_PROTO_DIR}
              ${PROTO_FILE}
         DEPENDS ${PROTO_FILE}
+        COMMENT "Running protoc on ${PROTO_NAME}.proto"
+        VERBATIM
+    )
+endforeach()
+
+# Generate C++ from Moon proto files (needs both proto paths for imports)
+foreach(PROTO_FILE ${MOON_PROTO_FILES})
+    get_filename_component(PROTO_NAME ${PROTO_FILE} NAME_WE)
+    list(APPEND PROTO_SRCS ${CMAKE_CURRENT_BINARY_DIR}/${PROTO_NAME}.pb.cc)
+    list(APPEND PROTO_HDRS ${CMAKE_CURRENT_BINARY_DIR}/${PROTO_NAME}.pb.h)
+    
+    add_custom_command(
+        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${PROTO_NAME}.pb.cc
+               ${CMAKE_CURRENT_BINARY_DIR}/${PROTO_NAME}.pb.h
+        COMMAND protobuf::protoc
+        ARGS --cpp_out=${CMAKE_CURRENT_BINARY_DIR}
+             --proto_path=${AST_PROTO_DIR}
+             --proto_path=${MOON_PROTO_DIR}
+             ${PROTO_FILE}
+        DEPENDS ${PROTO_FILE} ${AST_PROTO_FILES}
         COMMENT "Running protoc on ${PROTO_NAME}.proto"
         VERBATIM
     )
@@ -109,8 +137,8 @@ add_library(sun_lib
     src/llvm_type_resolver.cpp
     src/borrow_checker/borrow_state.cpp
     src/borrow_checker/borrow_checker.cpp
-    # Precompiled library support
-    src/moon.cpp
+    # Precompiled library support (moon format)
+    src/moon/moon.cpp
     src/library_cache.cpp
     src/module_linker.cpp
     src/module_types.cpp

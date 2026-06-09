@@ -11,7 +11,7 @@
 #include "ast_cache.h"
 #include "error.h"
 #include "lexer.h"
-#include "moon.h"
+#include "moon/moon.h"
 
 using std::unique_ptr;
 
@@ -45,7 +45,8 @@ class Parser {
   // Current file being parsed (for error messages)
   std::string currentFilePath;
 
-  // Enable AST caching for imports (default: false until diamond dependency issues resolved)
+  // Enable AST caching for imports (default: false until diamond dependency
+  // issues resolved)
   bool enableImportCaching_ = false;
 
   // Helper: throw parsing error with source context
@@ -191,7 +192,7 @@ class Parser {
 
   // Create AST stubs from module metadata and append to collectedAST
   // Used by both .moon imports and .sun metadata-driven imports
-  void createModuleStubs(const sun::ModuleMetadata& metadata,
+  void createModuleStubs(const sun::moon::ModuleMetadata& metadata,
                          std::vector<std::unique_ptr<ExprAST>>& collectedAST);
 
   // Parse a type annotation from its string representation.

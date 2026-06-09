@@ -1,3 +1,5 @@
+// metadata_extractor.cpp — Extract module metadata as protobuf from source files
+
 #include "metadata_extractor.h"
 
 #include <llvm/Support/SHA256.h>
@@ -5,360 +7,208 @@
 #include <filesystem>
 #include <fstream>
 #include <optional>
-#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
 
 #include "ast.h"
+#include "ast.pb.h"
+#include "ast_serializer.h"
+#include "moon.pb.h"
 #include "parser.h"
 
 namespace sun {
 
 namespace {
 
-bool isPrimitiveOrBuiltinType(const std::string& name) {
-  static const std::set<std::string> primitives = {
-      "void", "bool", "i8",  "i16", "i32",    "i64",   "u8",    "u16",
-      "u32",  "u64",  "f32", "f64", "string", "slice", "IError"};
-  static const std::set<std::string> typeKeywords = {
-      "raw_ptr", "static_ptr", "ref", "fn", "lambda", "array"};
-  return primitives.count(name) > 0 || typeKeywords.count(name) > 0;
+using serialization::ASTSerializer;
+
+// Check if a function/method is generic (has type parameters)
+bool isGeneric(const PrototypeAST& proto) {
+  return !proto.getTypeParameters().empty();
 }
 
-std::string qualifyTypeAnnotation(const TypeAnnotation& ta,
-                                  const std::string& nsPrefix,
-                                  const std::set<std::string>& typeParams) {
-  if (ta.isArray() && ta.elementType) {
-    std::string result =
-        "array<" + qualifyTypeAnnotation(*ta.elementType, nsPrefix, typeParams);
-    for (size_t dim : ta.arrayDimensions) {
-      result += ", " + std::to_string(dim);
-    }
-    result += ">";
-    if (ta.canError) result += ", error";
-    return result;
-  }
-
-  if (ta.isRawPointer() && ta.elementType) {
-    return "raw_ptr(" +
-           qualifyTypeAnnotation(*ta.elementType, nsPrefix, typeParams) + ")";
-  }
-  if (ta.isStaticPointer() && ta.elementType) {
-    return "static_ptr(" +
-           qualifyTypeAnnotation(*ta.elementType, nsPrefix, typeParams) + ")";
-  }
-  if (ta.isReference() && ta.elementType) {
-    return "ref(" +
-           qualifyTypeAnnotation(*ta.elementType, nsPrefix, typeParams) + ")";
-  }
-
-  if (ta.isFunction()) {
-    std::string result = "_(";
-    for (size_t i = 0; i < ta.paramTypes.size(); ++i) {
-      if (i > 0) result += ", ";
-      result += qualifyTypeAnnotation(*ta.paramTypes[i], nsPrefix, typeParams);
-    }
-    result += ") -> ";
-    result += ta.returnType
-                  ? qualifyTypeAnnotation(*ta.returnType, nsPrefix, typeParams)
-                  : "void";
-    return result;
-  }
-
-  if (ta.isLambda()) {
-    std::string result = "(";
-    for (size_t i = 0; i < ta.paramTypes.size(); ++i) {
-      if (i > 0) result += ", ";
-      result += qualifyTypeAnnotation(*ta.paramTypes[i], nsPrefix, typeParams);
-    }
-    result += ") -> ";
-    result += ta.returnType
-                  ? qualifyTypeAnnotation(*ta.returnType, nsPrefix, typeParams)
-                  : "void";
-    return result;
-  }
-
-  if (!ta.typeArguments.empty()) {
-    std::string baseName = ta.baseName;
-    if (!nsPrefix.empty() && !isPrimitiveOrBuiltinType(baseName) &&
-        typeParams.count(baseName) == 0) {
-      baseName = nsPrefix + baseName;
-    }
-    std::string result = baseName + "<";
-    for (size_t i = 0; i < ta.typeArguments.size(); ++i) {
-      if (i > 0) result += ", ";
-      result +=
-          qualifyTypeAnnotation(*ta.typeArguments[i], nsPrefix, typeParams);
-    }
-    result += ">";
-    if (ta.canError) result += ", error";
-    return result;
-  }
-
-  std::string result = ta.baseName;
-  if (!nsPrefix.empty() && !isPrimitiveOrBuiltinType(result) &&
-      typeParams.count(result) == 0) {
-    result = nsPrefix + result;
-  }
-  if (ta.canError) result += ", error";
-  return result;
+// Check if a class is generic
+bool isGeneric(const ClassDefinitionAST& cls) {
+  return !cls.getTypeParameters().empty();
 }
 
-std::string qualifyTypeAnnotation(
-    const TypeAnnotation& ta, const std::string& nsPrefix,
-    const std::vector<std::string>& typeParamVec) {
-  std::set<std::string> typeParams(typeParamVec.begin(), typeParamVec.end());
-  return qualifyTypeAnnotation(ta, nsPrefix, typeParams);
+// Check if an interface is generic
+bool isGeneric(const InterfaceDefinitionAST& iface) {
+  return !iface.getTypeParameters().empty();
 }
 
-std::string qualifyOptTypeAnnotation(
-    const std::optional<TypeAnnotation>& ta, const std::string& nsPrefix,
-    const std::vector<std::string>& typeParams) {
-  return ta ? qualifyTypeAnnotation(*ta, nsPrefix, typeParams) : "void";
+// Clear the body of a FunctionDef proto (keep only signature)
+void clearBody(ast::FunctionDef* func) {
+  func->mutable_body()->clear_body();
+  func->clear_source_text();
 }
 
-void extractFunction(const FunctionAST& func, ModuleMetadata& metadata,
-                     const std::string& nsPrefix) {
-  const auto& proto = func.getProto();
-
-  ExportedSymbol sym;
-  sym.kind = ExportedSymbol::Kind::Function;
-  sym.baseName = proto.getName();
-  sym.qualifiedName =
-      nsPrefix.empty() ? proto.getName() : nsPrefix + proto.getName();
-
-  std::vector<std::string> typeParams = proto.getTypeParameters();
-
-  // Store type parameters for generic functions
-  sym.typeParams = typeParams;
-
-  // Use empty prefix for type signatures - types use base names in metadata
-  std::string sig = "(";
-  const auto& args = proto.getArgs();
-  for (size_t i = 0; i < args.size(); ++i) {
-    if (i > 0) sig += ", ";
-    sig += qualifyTypeAnnotation(args[i].second, "", typeParams);
-  }
-  sig +=
-      ") -> " + qualifyOptTypeAnnotation(proto.getReturnType(), "", typeParams);
-  sym.typeSignature = sig;
-  sym.isPublic = true;
-
-  // Store variadic info for generic functions
-  if (proto.hasVariadicParam()) {
-    sym.variadicParamName = proto.getVariadicParamName().value_or("");
-    if (proto.hasVariadicConstraint()) {
-      sym.variadicConstraint =
-          qualifyTypeAnnotation(*proto.getVariadicConstraint(), "", typeParams);
+// Clear bodies of non-generic methods in a ClassDef
+void clearNonGenericBodies(ast::ClassDef* cls,
+                           const ClassDefinitionAST& original) {
+  const auto& methods = original.getMethods();
+  for (int i = 0; i < cls->methods_size() && i < (int)methods.size(); ++i) {
+    auto* method = cls->mutable_methods(i);
+    const auto& origMethod = methods[i];
+    // Keep body only if method itself is generic OR class is generic
+    bool methodIsGeneric = !origMethod.function->getProto().getTypeParameters().empty();
+    bool classIsGeneric = !original.getTypeParameters().empty();
+    if (!methodIsGeneric && !classIsGeneric) {
+      clearBody(method->mutable_function());
     }
   }
-
-  // Store body source for generic functions (needed for lazy parsing)
-  if (!typeParams.empty() && func.hasSourceText()) {
-    sym.bodySource = func.getSourceText();
-  }
-
-  metadata.exports.push_back(sym);
 }
 
-void extractClass(const ClassDefinitionAST& classDef, ModuleMetadata& metadata,
-                  const std::string& nsPrefix, const std::string& sourceHash) {
-  ClassInfo classInfo;
-  classInfo.baseName = classDef.getName();
-  classInfo.qualifiedName =
-      nsPrefix.empty() ? classDef.getName() : nsPrefix + classDef.getName();
-  classInfo.sourceHash = sourceHash;
-  classInfo.typeParams = classDef.getTypeParameters();
-
-  std::vector<std::string> classTypeParams = classDef.getTypeParameters();
-
-  for (const auto& iface : classDef.getImplementedInterfaces()) {
-    // Use base name - interfaces are loaded inside a namespace block
-    std::string ifaceStr = iface.name;
-    if (!iface.typeArguments.empty()) {
-      ifaceStr += "<";
-      for (size_t i = 0; i < iface.typeArguments.size(); ++i) {
-        if (i > 0) ifaceStr += ", ";
-        ifaceStr +=
-            qualifyTypeAnnotation(iface.typeArguments[i], "", classTypeParams);
-      }
-      ifaceStr += ">";
+// Clear bodies of non-generic methods in an InterfaceDef
+void clearNonGenericBodies(ast::InterfaceDef* iface,
+                           const InterfaceDefinitionAST& original) {
+  const auto& methods = original.getMethods();
+  for (int i = 0; i < iface->methods_size() && i < (int)methods.size(); ++i) {
+    auto* method = iface->mutable_methods(i);
+    const auto& origMethod = methods[i];
+    // Keep body only if method itself is generic OR interface is generic
+    bool methodIsGeneric = !origMethod.function->getProto().getTypeParameters().empty();
+    bool ifaceIsGeneric = !original.getTypeParameters().empty();
+    if (!methodIsGeneric && !ifaceIsGeneric) {
+      clearBody(method->mutable_function());
     }
-    classInfo.interfaces.push_back(ifaceStr);
   }
-
-  for (const auto& field : classDef.getFields()) {
-    FieldInfo fieldInfo;
-    fieldInfo.name = field.name;
-    fieldInfo.typeSig = qualifyTypeAnnotation(field.type, "", classTypeParams);
-    classInfo.fields.push_back(fieldInfo);
-  }
-
-  for (const auto& method : classDef.getMethods()) {
-    MethodInfo methodInfo;
-    const auto& proto = method.function->getProto();
-    methodInfo.name = proto.getName();
-
-    std::vector<std::string> methodTypeParams = classTypeParams;
-    for (const auto& tp : proto.getTypeParameters()) {
-      methodTypeParams.push_back(tp);
-      methodInfo.typeParams.push_back(tp);
-    }
-
-    methodInfo.returnTypeSig =
-        qualifyOptTypeAnnotation(proto.getReturnType(), "", methodTypeParams);
-    methodInfo.isStatic = false;
-
-    if (proto.hasVariadicParam()) {
-      methodInfo.variadicParamName = proto.getVariadicParamName().value_or("");
-      if (proto.hasVariadicConstraint()) {
-        methodInfo.variadicConstraint = qualifyTypeAnnotation(
-            *proto.getVariadicConstraint(), "", methodTypeParams);
-      }
-    }
-
-    if (method.function->hasSourceText()) {
-      methodInfo.bodySource = method.function->getSourceText();
-    }
-
-    for (const auto& param : proto.getArgs()) {
-      methodInfo.paramNames.push_back(param.first);
-      methodInfo.paramTypeSigs.push_back(
-          qualifyTypeAnnotation(param.second, "", methodTypeParams));
-    }
-
-    classInfo.methods.push_back(methodInfo);
-  }
-
-  metadata.classes.push_back(classInfo);
-
-  ExportedSymbol sym;
-  sym.kind = ExportedSymbol::Kind::Class;
-  sym.baseName = classInfo.baseName;
-  sym.qualifiedName = classInfo.qualifiedName + "_struct";
-  sym.isPublic = true;
-  metadata.exports.push_back(sym);
 }
 
-void extractInterface(const InterfaceDefinitionAST& ifaceDef,
-                      ModuleMetadata& metadata, const std::string& nsPrefix) {
-  InterfaceInfo ifaceInfo;
-  ifaceInfo.baseName = ifaceDef.getName();
-  ifaceInfo.qualifiedName =
-      nsPrefix.empty() ? ifaceDef.getName() : nsPrefix + ifaceDef.getName();
-
-  std::vector<std::string> ifaceTypeParams = ifaceDef.getTypeParameters();
-
-  for (const auto& method : ifaceDef.getMethods()) {
-    MethodInfo methodInfo;
-    const auto& proto = method.function->getProto();
-    methodInfo.name = proto.getName();
-
-    std::vector<std::string> methodTypeParams = ifaceTypeParams;
-    for (const auto& tp : proto.getTypeParameters()) {
-      methodTypeParams.push_back(tp);
-      methodInfo.typeParams.push_back(tp);
-    }
-
-    methodInfo.returnTypeSig =
-        qualifyOptTypeAnnotation(proto.getReturnType(), "", methodTypeParams);
-
-    if (proto.hasVariadicParam()) {
-      methodInfo.variadicParamName = proto.getVariadicParamName().value_or("");
-      if (proto.hasVariadicConstraint()) {
-        methodInfo.variadicConstraint = qualifyTypeAnnotation(
-            *proto.getVariadicConstraint(), "", methodTypeParams);
-      }
-    }
-
-    if (method.function->hasSourceText()) {
-      methodInfo.bodySource = method.function->getSourceText();
-    }
-
-    for (const auto& param : proto.getArgs()) {
-      methodInfo.paramNames.push_back(param.first);
-      methodInfo.paramTypeSigs.push_back(
-          qualifyTypeAnnotation(param.second, "", methodTypeParams));
-    }
-
-    ifaceInfo.methods.push_back(methodInfo);
+// Extract a function and add to metadata
+void extractFunction(const FunctionAST& func, moon::ModuleMetadata& metadata,
+                     const ASTSerializer& serializer) {
+  // Serialize the function AST to proto
+  ast::ASTNode node = serializer.serialize(func);
+  
+  // Add to metadata
+  ast::FunctionDef* funcDef = metadata.add_functions();
+  *funcDef = node.function_def();
+  
+  // Clear body if not generic
+  if (!isGeneric(func.getProto())) {
+    clearBody(funcDef);
   }
-
-  metadata.interfaces.push_back(ifaceInfo);
-
-  ExportedSymbol sym;
-  sym.kind = ExportedSymbol::Kind::Interface;
-  sym.baseName = ifaceInfo.baseName;
-  sym.qualifiedName = ifaceInfo.qualifiedName;
-  sym.isPublic = true;
-  metadata.exports.push_back(sym);
 }
 
+// Extract a class and add to metadata
+void extractClass(const ClassDefinitionAST& cls, moon::ModuleMetadata& metadata,
+                  const ASTSerializer& serializer) {
+  // Serialize the class AST to proto
+  ast::ASTNode node = serializer.serialize(cls);
+  
+  // Add to metadata
+  ast::ClassDef* classDef = metadata.add_classes();
+  *classDef = node.class_def();
+  
+  // Clear bodies of non-generic methods
+  clearNonGenericBodies(classDef, cls);
+}
+
+// Extract an interface and add to metadata
+void extractInterface(const InterfaceDefinitionAST& iface,
+                      moon::ModuleMetadata& metadata,
+                      const ASTSerializer& serializer) {
+  // Serialize the interface AST to proto
+  ast::ASTNode node = serializer.serialize(iface);
+  
+  // Add to metadata
+  ast::InterfaceDef* ifaceDef = metadata.add_interfaces();
+  *ifaceDef = node.interface_def();
+  
+  // Clear bodies of non-generic methods
+  clearNonGenericBodies(ifaceDef, iface);
+}
+
+// Extract an enum and add to metadata
+void extractEnum(const EnumDefinitionAST& enumDef, moon::ModuleMetadata& metadata,
+                 const ASTSerializer& serializer) {
+  // Serialize the enum AST to proto
+  ast::ASTNode node = serializer.serialize(enumDef);
+  
+  // Add to metadata
+  ast::EnumDef* enumProto = metadata.add_enums();
+  *enumProto = node.enum_def();
+}
+
+// Recursively extract from statements
 void extractFromStatements(const std::vector<std::unique_ptr<ExprAST>>& stmts,
-                           ModuleMetadata& metadata,
-                           const std::string& nsPrefix,
+                           moon::ModuleMetadata& metadata,
+                           const ASTSerializer& serializer,
                            const std::filesystem::path& moduleDir,
-                           const std::string& sourceHash) {
+                           bool isTopLevel) {
   for (const auto& stmt : stmts) {
     if (!stmt) continue;
 
-    if (stmt->isImport() && nsPrefix.empty()) {
+    // Track dependencies from imports (only at top level)
+    if (stmt->isImport() && isTopLevel) {
       const auto& importStmt = static_cast<const ImportAST&>(*stmt);
       std::filesystem::path depPath = importStmt.getPath();
       if (depPath.is_relative()) {
         depPath = std::filesystem::weakly_canonical(moduleDir / depPath);
       }
-      metadata.dependencies.push_back(depPath.string());
+      metadata.add_dependencies(depPath.string());
     }
 
+    // Handle module/namespace blocks
     if (stmt->getType() == ASTNodeType::MODULE) {
       const auto& nsDecl = static_cast<const ModuleAST&>(*stmt);
-      std::string newPrefix = nsPrefix.empty()
-                                  ? nsDecl.getName() + "_"
-                                  : nsPrefix + nsDecl.getName() + "_";
-      if (nsPrefix.empty() && metadata.moduleName.empty()) {
-        metadata.moduleName = nsDecl.getName();
+      if (isTopLevel && metadata.module_name().empty()) {
+        metadata.set_module_name(nsDecl.getName());
       }
-      extractFromStatements(nsDecl.getBody().getBody(), metadata, newPrefix,
-                            moduleDir, sourceHash);
+      // Recurse into module body
+      extractFromStatements(nsDecl.getBody().getBody(), metadata, serializer,
+                            moduleDir, false);
     }
 
+    // Extract functions
     if (stmt->getType() == ASTNodeType::FUNCTION) {
       extractFunction(static_cast<const FunctionAST&>(*stmt), metadata,
-                      nsPrefix);
+                      serializer);
     }
 
+    // Extract classes
     if (stmt->getType() == ASTNodeType::CLASS_DEFINITION) {
       extractClass(static_cast<const ClassDefinitionAST&>(*stmt), metadata,
-                   nsPrefix, sourceHash);
+                   serializer);
     }
 
+    // Extract interfaces
     if (stmt->getType() == ASTNodeType::INTERFACE_DEFINITION) {
       extractInterface(static_cast<const InterfaceDefinitionAST&>(*stmt),
-                       metadata, nsPrefix);
+                       metadata, serializer);
+    }
+
+    // Extract enums
+    if (stmt->getType() == ASTNodeType::ENUM_DEFINITION) {
+      extractEnum(static_cast<const EnumDefinitionAST&>(*stmt), metadata,
+                  serializer);
     }
   }
 }
 
-ModuleMetadata extractMetadata(const std::string& filePath,
-                               const BlockExprAST& ast,
-                               const std::string& sourceHash) {
-  ModuleMetadata metadata;
-  metadata.sourceHash = sourceHash;
-  metadata.version = "1.0.0";
+moon::ModuleMetadata extractMetadata(const std::string& filePath,
+                                     const BlockExprAST& ast,
+                                     const std::string& sourceHash) {
+  moon::ModuleMetadata metadata;
+  metadata.set_source_hash(sourceHash);
+  metadata.set_version("1.0.0");
 
   std::filesystem::path moduleDir =
       std::filesystem::path(filePath).parent_path();
 
-  extractFromStatements(ast.getBody(), metadata, "", moduleDir, sourceHash);
+  // Create serializer (don't include analysis data, do include locations)
+  ASTSerializer serializer({.include_analysis = false, .include_location = true});
+
+  extractFromStatements(ast.getBody(), metadata, serializer, moduleDir, true);
 
   return metadata;
 }
 
 }  // namespace
 
-std::optional<ModuleMetadata> extractMetadataFromFile(
+std::optional<moon::ModuleMetadata> extractMetadataFromFile(
     const std::string& filename) {
   std::ifstream file(filename);
   if (!file.is_open()) {

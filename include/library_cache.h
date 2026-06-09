@@ -7,7 +7,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "moon.h"
+#include "moon/moon.h"
 
 namespace sun {
 
@@ -37,7 +37,7 @@ class LibraryCache {
   /// Get metadata for a module
   /// @param moduleKey The module key (source hash)
   /// @return Metadata, or nullptr if not found
-  const ModuleMetadata* getMetadata(const std::string& moduleKey);
+  const moon::ModuleMetadata* getMetadata(const std::string& moduleKey);
 
   /// Load a module's LLVM bitcode
   /// @param moduleKey The module key (source hash)

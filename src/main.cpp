@@ -12,7 +12,7 @@
 #include "error.h"
 #include "library_cache.h"
 #include "metadata_extractor.h"
-#include "moon.h"
+#include "moon/moon.h"
 
 static void printUsage(const char* programName) {
   llvm::errs() << "Usage: " << programName
