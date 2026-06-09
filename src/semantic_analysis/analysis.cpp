@@ -687,6 +687,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // Create the class type with the qualified name
       auto classType = typeRegistry->getClass(qualifiedClass);
 
+      // Register the class BEFORE processing fields to allow self-referential
+      // types (e.g., var next: raw_ptr<Node> inside class Node)
+      registerClass(baseName, classType);
+
       // Add fields to the class type
       for (const auto& field : classDef.getFields()) {
         if (classType->hasField(field.name)) {
@@ -711,9 +715,6 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
         classType->addField(field.name, fieldType);
       }
-
-      // Register the class so methods can reference it (use base name)
-      registerClass(baseName, classType);
 
       // Inherit interface fields BEFORE analyzing methods
       // This adds interface fields to the class, which methods may access
