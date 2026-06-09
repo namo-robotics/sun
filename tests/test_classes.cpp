@@ -749,3 +749,239 @@ TEST(ClassTest, nested_member_access_as_argument) {
   )");
   EXPECT_EQ(value, 42);
 }
+
+// ============================================================================
+// Member Access on Temporary Values
+// ============================================================================
+
+TEST(ClassTest, member_access_on_function_return) {
+  // Test accessing a field on the return value of a function
+  auto value = executeString(R"(
+    class Point {
+      var x: i32;
+      var y: i32;
+      function init(px: i32, py: i32) {
+        this.x = px;
+        this.y = py;
+      }
+    }
+
+    function make_point() Point {
+      return Point(10, 20);
+    }
+
+    function main() i32 {
+      var x = make_point().x;
+      var y = make_point().y;
+      return x + y;
+    }
+  )");
+  EXPECT_EQ(value, 30);
+}
+
+TEST(ClassTest, member_access_on_constructor) {
+  // Test accessing a field directly on a constructor call
+  auto value = executeString(R"(
+    class Point {
+      var x: i32;
+      var y: i32;
+      function init(px: i32, py: i32) {
+        this.x = px;
+        this.y = py;
+      }
+    }
+
+    function main() i32 {
+      var x = Point(3, 7).x;
+      var y = Point(3, 7).y;
+      return x + y;
+    }
+  )");
+  EXPECT_EQ(value, 10);
+}
+
+TEST(ClassTest, method_call_on_function_return) {
+  // Test calling a method on the return value of a function
+  auto value = executeString(R"(
+    class Point {
+      var x: i32;
+      var y: i32;
+      function init(px: i32, py: i32) {
+        this.x = px;
+        this.y = py;
+      }
+      function sum() i32 {
+        return this.x + this.y;
+      }
+    }
+
+    function make_point(a: i32, b: i32) Point {
+      return Point(a, b);
+    }
+
+    function main() i32 {
+      return make_point(15, 27).sum();
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(ClassTest, nested_member_access_on_temporary) {
+  // Test nested member access on a temporary value
+  auto value = executeString(R"(
+    class Inner {
+      var value: i32;
+      function init(v: i32) { this.value = v; }
+    }
+
+    class Outer {
+      var inner: Inner;
+      function init(v: i32) { this.inner = Inner(v); }
+    }
+
+    function make_outer(v: i32) Outer {
+      return Outer(v);
+    }
+
+    function main() i32 {
+      return make_outer(42).inner.value;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// ============================================================================
+// Passing Temporaries as Function Arguments
+// ============================================================================
+
+TEST(ClassTest, temporary_as_argument_primitive) {
+  // Test passing a function result (primitive) as an argument
+  auto value = executeString(R"(
+    function get_value() i32 {
+      return 10;
+    }
+
+    function double_it(x: i32) i32 {
+      return x * 2;
+    }
+
+    function main() i32 {
+      return double_it(get_value());
+    }
+  )");
+  EXPECT_EQ(value, 20);
+}
+
+TEST(ClassTest, temporary_class_as_ref_argument) {
+  // Test passing a temporary class as a ref argument
+  auto value = executeString(R"(
+    class Point {
+      var x: i32;
+      var y: i32;
+      function init(px: i32, py: i32) {
+        this.x = px;
+        this.y = py;
+      }
+    }
+
+    function make_point() Point {
+      return Point(5, 7);
+    }
+
+    function sum_point(p: ref Point) i32 {
+      return p.x + p.y;
+    }
+
+    function main() i32 {
+      return sum_point(make_point());
+    }
+  )");
+  EXPECT_EQ(value, 12);
+}
+
+TEST(ClassTest, constructor_as_ref_argument) {
+  // Test passing a constructor call directly as a ref argument
+  auto value = executeString(R"(
+    class Point {
+      var x: i32;
+      var y: i32;
+      function init(px: i32, py: i32) {
+        this.x = px;
+        this.y = py;
+      }
+    }
+
+    function sum_point(p: ref Point) i32 {
+      return p.x + p.y;
+    }
+
+    function main() i32 {
+      return sum_point(Point(13, 29));
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(ClassTest, chained_member_access_as_argument) {
+  // Test passing a chained member access expression as an argument
+  // Pattern: foo(bar().a.b)
+  auto value = executeString(R"(
+    class Inner {
+      var value: i32;
+      function init(v: i32) { this.value = v; }
+    }
+
+    class Outer {
+      var inner: Inner;
+      function init(v: i32) { this.inner = Inner(v); }
+    }
+
+    function make_outer(v: i32) Outer {
+      return Outer(v);
+    }
+
+    function triple(x: i32) i32 {
+      return x * 3;
+    }
+
+    function main() i32 {
+      return triple(make_outer(14).inner.value);
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(ClassTest, chained_method_and_member_as_argument) {
+  // Test passing result of chained method call and member access
+  // Pattern: foo(bar().method().field)
+  auto value = executeString(R"(
+    class Data {
+      var result: i32;
+      function init(v: i32) { this.result = v; }
+    }
+
+    class Builder {
+      var value: i32;
+      function init(v: i32) { this.value = v; }
+      function build() Data {
+        return Data(this.value * 2);
+      }
+    }
+
+    function make_builder(v: i32) Builder {
+      return Builder(v);
+    }
+
+    function add_one(x: i32) i32 {
+      return x + 1;
+    }
+
+    function main() i32 {
+      // make_builder(10) returns Builder
+      // .build() returns Data
+      // .result is a primitive field
+      return add_one(make_builder(10).build().result);
+    }
+  )");
+  EXPECT_EQ(value, 21);
+}

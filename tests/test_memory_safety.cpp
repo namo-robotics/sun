@@ -47,7 +47,7 @@ TEST(MemorySafety, use_after_move_field_access) {
 // Use After Move - Function Calls
 // ============================================================================
 
-// Pass by value (actually ref under the hood) doesn't move
+// Pass by ref doesn't move
 TEST(MemorySafety, ref_param_no_move) {
   auto value = executeString(R"(
     import "build/stdlib.moon";
@@ -65,6 +65,88 @@ TEST(MemorySafety, ref_param_no_move) {
     }
   )");
   EXPECT_EQ(value, 5);
+}
+
+// Pass by value moves the argument
+TEST(MemorySafety, value_param_moves) {
+  auto value = executeString(R"(
+    class Data {
+        var value: i32;
+        function init(v: i32) { this.value = v; }
+    }
+
+    function consume(d: Data) i32 {
+        return d.value * 2;
+    }
+
+    function main() i32 {
+        var d = Data(21);
+        return consume(d);  // d is moved, returns 42
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// Pass temporary value
+TEST(MemorySafety, pass_temporary_by_value) {
+  auto value = executeString(R"(
+    class Data {
+        var value: i32;
+        function init(v: i32) { this.value = v; }
+    }
+
+    function consume(d: Data) i32 {
+        return d.value * 2;
+    }
+
+    function main() i32 {
+        return consume(Data(21));  // Pass temporary by value, returns 42
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// Use after move via by-value parameter
+TEST(MemorySafety, use_after_move_value_param) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Data {
+        var value: i32;
+        function init(v: i32) { this.value = v; }
+    }
+
+    function consume(d: Data) i32 {
+        return d.value;
+    }
+
+    function main() i32 {
+        var d = Data(42);
+        var x = consume(d);  // d is moved here
+        return d.value;      // ERROR: use of moved variable
+    }
+  )"),
+                                "Borrow check failed");
+}
+
+// Calling method on moved variable is an error
+TEST(MemorySafety, method_call_after_move) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Counter {
+        var count: i32;
+        function init(n: i32) { this.count = n; }
+        function get() i32 { return this.count; }
+    }
+
+    function take_counter(c: Counter) i32 {
+        return c.get();
+    }
+
+    function main() i32 {
+        var c = Counter(10);
+        var x = take_counter(c);  // c is moved
+        return c.get();           // ERROR: calling method on moved variable
+    }
+  )"),
+                                "Borrow check failed");
 }
 
 // ============================================================================
