@@ -4,7 +4,6 @@
 #include <string>
 #include <unordered_map>
 
-#include "moon.h"
 #include "types.h"
 
 namespace sun {
@@ -27,12 +26,6 @@ class ModuleTypeResolver {
   /// @param type The type to serialize
   /// @return Type signature string
   static std::string serializeType(const TypePtr& type);
-
-  /// Build a symbol table from module metadata exports
-  /// @param metadata Module metadata containing exports
-  /// @return Map from symbol name to type
-  static std::unordered_map<std::string, TypePtr> buildExportTable(
-      const ModuleMetadata& metadata);
 
  private:
   /// Parse helper - advance position and return parsed type

@@ -11,7 +11,7 @@
 #include "ast_cache.h"
 #include "error.h"
 #include "lexer.h"
-#include "moon.h"
+#include "moon/moon.h"
 
 using std::unique_ptr;
 
@@ -45,7 +45,8 @@ class Parser {
   // Current file being parsed (for error messages)
   std::string currentFilePath;
 
-  // Enable AST caching for imports (default: false until diamond dependency issues resolved)
+  // Enable AST caching for imports (default: false until diamond dependency
+  // issues resolved)
   bool enableImportCaching_ = false;
 
   // Helper: throw parsing error with source context
@@ -191,30 +192,11 @@ class Parser {
 
   // Create AST stubs from module metadata and append to collectedAST
   // Used by both .moon imports and .sun metadata-driven imports
-  void createModuleStubs(const sun::ModuleMetadata& metadata,
+  void createModuleStubs(const sun::moon::ModuleMetadata& metadata,
                          std::vector<std::unique_ptr<ExprAST>>& collectedAST);
 
   // Parse a type annotation from its string representation.
   TypeAnnotation parseTypeFromString(const std::string& typeStr);
-
-  // Parse a function signature string (e.g., "(i32, i32) -> i32") into a
-  // FunctionAST. For generic functions, typeParams and bodySource enable
-  // lazy parsing when instantiated.
-  std::unique_ptr<FunctionAST> parseFunctionSignature(
-      const std::string& name, const std::string& signature,
-      const std::vector<std::string>& typeParams = {},
-      const std::string& bodySource = "",
-      const std::string& variadicParamName = "",
-      const std::string& variadicConstraint = "");
-
-  // Parse a method from its source text (for loading from moon)
-  std::unique_ptr<FunctionAST> parseFunctionFromSource(
-      const std::string& source);
-
-  // Static lazy parsing helper - uses thread-local Parser to avoid NFA rebuild
-  // Call from codegen when a method body needs on-demand parsing
-  static std::unique_ptr<FunctionAST> lazyParseFunctionSource(
-      const std::string& source);
 
   // Setters for import resolution (used by Driver)
   void setBaseDir(const std::string& dir) { baseDir = dir; }

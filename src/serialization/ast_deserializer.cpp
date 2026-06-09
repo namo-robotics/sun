@@ -576,7 +576,6 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeFunction(
   auto body = deserializeBlockExpr(proto.body());
   auto func =
       std::make_unique<FunctionAST>(std::move(prototype), std::move(body));
-  func->setSourceText(proto.source_text());
   return func;
 }
 
@@ -688,7 +687,6 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
     auto body = deserializeBlockExpr(funcProto.body());
     method.function =
         std::make_unique<FunctionAST>(std::move(prototype), std::move(body));
-    method.function->setSourceText(funcProto.source_text());
     method.isConstructor = methodProto.is_constructor();
     methods.push_back(std::move(method));
   }

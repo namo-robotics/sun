@@ -13,9 +13,11 @@
 #include <unordered_map>
 #include <vector>
 
+#include "ast_deserializer.h"
 #include "library_cache.h"
 #include "llvm/Support/raw_ostream.h"
 #include "metadata_extractor.h"
+#include "moon.pb.h"
 #include "sun_path.h"
 
 #define PARSER_TIMER_START(name) \
@@ -1481,16 +1483,8 @@ unique_ptr<ExprAST> Parser::parseStatement() {
       return std::make_unique<FunctionAST>(std::move(proto), nullptr);
     }
     case TokenKind::FUNCTION: {
-      // Capture start position for source text extraction (generic functions)
-      int startOffset = curTok.start.offset;
       // Function definitions don't need trailing semicolons
       auto func = parseFunction();
-      // For generic functions, capture source text for lazy parsing
-      if (func && func->getProto().isGeneric()) {
-        int endOffset = curTok.start.offset;
-        std::string sourceText = getSourceText(startOffset, endOffset);
-        func->setSourceText(sourceText);
-      }
       while (curTok.kind == TokenKind::SEMI_COLON)
         getNextToken();  // optional semicolons
       return func;
@@ -2257,7 +2251,7 @@ std::string Parser::collectMoonImport(
 
     // Capture content hash from first module (all share the same hash)
     if (contentHash.empty()) {
-      contentHash = metadata->getSymbolPrefix();
+      contentHash = sun::getSymbolPrefix(*metadata);
     }
 
     // Create AST stubs from metadata and add to collectedAST
@@ -2270,214 +2264,85 @@ std::string Parser::collectMoonImport(
   return contentHash;
 }
 
-// Create AST stubs from module metadata
-// Builds interface, class, and function stubs, wraps them in namespace
+// Create AST stubs from protobuf module metadata
+// Uses ASTDeserializer to convert proto nodes to AST
 void Parser::createModuleStubs(
-    const sun::ModuleMetadata& metadata,
+    const sun::moon::ModuleMetadata& metadata,
     std::vector<std::unique_ptr<ExprAST>>& collectedAST) {
+  // Use ASTDeserializer to convert proto nodes
+  sun::serialization::ASTDeserializer deserializer;
+
   // Collect AST stubs for this module - may be wrapped in a namespace
   std::vector<std::unique_ptr<ExprAST>> moduleAST;
 
   // Create AST stubs from metadata
   // IMPORTANT: Process interfaces FIRST (before classes that implement them)
-  for (const auto& ifaceInfo : metadata.interfaces) {
-    std::vector<InterfaceMethodDecl> methods;
-    for (const auto& method : ifaceInfo.methods) {
-      std::unique_ptr<FunctionAST> func;
-      bool hasDefaultImpl = false;
+  for (int i = 0; i < metadata.interfaces_size(); ++i) {
+    // Wrap the InterfaceDef in an ASTNode for deserialization
+    sun::ast::ASTNode node;
+    *node.mutable_interface_def() = metadata.interfaces(i);
 
-      // Create stub with prototype - body will be parsed lazily when
-      // instantiated
-      std::vector<std::pair<std::string, TypeAnnotation>> params;
-      for (size_t i = 0; i < method.paramNames.size(); ++i) {
-        params.push_back({method.paramNames[i],
-                          parseTypeFromString(method.paramTypeSigs[i])});
+    auto ast = deserializer.deserialize(node);
+    if (ast) {
+      // Mark as precompiled
+      if (auto* ifaceDef = dynamic_cast<InterfaceDefinitionAST*>(ast.get())) {
+        ifaceDef->setPrecompiled(true);
       }
-
-      auto returnType =
-          method.returnTypeSig.empty() || method.returnTypeSig == "void"
-              ? std::nullopt
-              : std::optional<TypeAnnotation>(
-                    parseTypeFromString(method.returnTypeSig));
-
-      // Handle variadic parameter
-      std::optional<std::string> variadicParam;
-      std::optional<TypeAnnotation> variadicConstraint;
-      if (!method.variadicParamName.empty()) {
-        variadicParam = method.variadicParamName;
-        if (!method.variadicConstraint.empty()) {
-          variadicConstraint = parseTypeFromString(method.variadicConstraint);
-        }
-      }
-
-      auto proto = std::make_unique<PrototypeAST>(
-          method.name, std::move(params), returnType, method.typeParams,
-          variadicParam, variadicConstraint);
-
-      // Create empty body - will be parsed lazily from sourceText
-      auto body = std::make_unique<BlockExprAST>(
-          std::vector<std::unique_ptr<ExprAST>>());
-
-      func = std::make_unique<FunctionAST>(std::move(proto), std::move(body));
-
-      // Store source for lazy parsing if available
-      if (!method.bodySource.empty()) {
-        func->setSourceText(method.bodySource);
-        hasDefaultImpl = true;
-      }
-
-      methods.push_back({std::move(func), hasDefaultImpl});
+      moduleAST.push_back(std::move(ast));
     }
-
-    // Use baseName directly - no stripping needed
-    auto ifaceDef = std::make_unique<InterfaceDefinitionAST>(
-        ifaceInfo.baseName,
-        std::vector<std::string>{},         // TODO: deserialize type params
-        std::vector<InterfaceFieldDecl>{},  // No fields for now
-        std::move(methods),
-        true);  // precompiled = true
-
-    // Don't set qualified name here - let semantic analysis compute it
-    // based on the ImportScope's scopePath (which includes content hash)
-    // and the ModuleAST wrapping (which adds the module name).
-
-    moduleAST.push_back(std::move(ifaceDef));
   }
 
   // Classes (after interfaces so interface lookups work)
-  for (const auto& classInfo : metadata.classes) {
-    std::vector<ClassFieldDecl> fields;
-    for (const auto& field : classInfo.fields) {
-      fields.push_back({field.name, parseTypeFromString(field.typeSig)});
+  for (int i = 0; i < metadata.classes_size(); ++i) {
+    // Wrap the ClassDef in an ASTNode for deserialization
+    sun::ast::ASTNode node;
+    *node.mutable_class_def() = metadata.classes(i);
+
+    auto ast = deserializer.deserialize(node);
+    if (ast) {
+      // Mark as precompiled
+      if (auto* classDef = dynamic_cast<ClassDefinitionAST*>(ast.get())) {
+        classDef->setPrecompiled(true);
+      }
+      moduleAST.push_back(std::move(ast));
     }
-
-    std::vector<ClassMethodDecl> methods;
-    for (const auto& method : classInfo.methods) {
-      std::unique_ptr<FunctionAST> func;
-
-      // Create stub with prototype - body will be parsed lazily when
-      // instantiated
-      std::vector<std::pair<std::string, TypeAnnotation>> params;
-      for (size_t i = 0; i < method.paramNames.size(); ++i) {
-        params.push_back({method.paramNames[i],
-                          parseTypeFromString(method.paramTypeSigs[i])});
-      }
-
-      auto returnType =
-          method.returnTypeSig.empty() || method.returnTypeSig == "void"
-              ? std::nullopt
-              : std::optional<TypeAnnotation>(
-                    parseTypeFromString(method.returnTypeSig));
-
-      // Handle variadic parameter
-      std::optional<std::string> variadicParam;
-      std::optional<TypeAnnotation> variadicConstraint;
-      if (!method.variadicParamName.empty()) {
-        variadicParam = method.variadicParamName;
-        if (!method.variadicConstraint.empty()) {
-          variadicConstraint = parseTypeFromString(method.variadicConstraint);
-        }
-      }
-
-      auto proto = std::make_unique<PrototypeAST>(
-          method.name, std::move(params), returnType, method.typeParams,
-          variadicParam, variadicConstraint);
-
-      // Create empty body - will be parsed lazily from sourceText
-      auto body = std::make_unique<BlockExprAST>(
-          std::vector<std::unique_ptr<ExprAST>>());
-
-      func = std::make_unique<FunctionAST>(std::move(proto), std::move(body));
-
-      // Store source for lazy parsing if available
-      if (!method.bodySource.empty()) {
-        func->setSourceText(method.bodySource);
-      }
-
-      methods.push_back({std::move(func)});
-    }
-
-    // Convert string interfaces to ImplementedInterfaceAST
-    // Format: "InterfaceName" or "InterfaceName<T, U>" for generic interfaces
-    std::vector<ImplementedInterfaceAST> interfaces;
-    for (const auto& ifaceStr : classInfo.interfaces) {
-      ImplementedInterfaceAST iface;
-
-      // Check for generic interface: "IIterable<V>"
-      auto angleBracket = ifaceStr.find('<');
-      if (angleBracket != std::string::npos) {
-        iface.name = ifaceStr.substr(0, angleBracket);
-        // Parse type arguments from "<T, U>"
-        auto closeAngle = ifaceStr.rfind('>');
-        if (closeAngle != std::string::npos && closeAngle > angleBracket + 1) {
-          std::string argsStr =
-              ifaceStr.substr(angleBracket + 1, closeAngle - angleBracket - 1);
-          // Split by comma (handling nested generics)
-          int depth = 0;
-          size_t start = 0;
-          for (size_t i = 0; i <= argsStr.size(); ++i) {
-            if (i == argsStr.size() || (argsStr[i] == ',' && depth == 0)) {
-              std::string argStr = argsStr.substr(start, i - start);
-              // Trim whitespace
-              size_t first = argStr.find_first_not_of(' ');
-              size_t last = argStr.find_last_not_of(' ');
-              if (first != std::string::npos) {
-                argStr = argStr.substr(first, last - first + 1);
-              }
-              if (!argStr.empty()) {
-                iface.typeArguments.push_back(parseTypeFromString(argStr));
-              }
-              start = i + 1;
-            } else if (argsStr[i] == '<') {
-              depth++;
-            } else if (argsStr[i] == '>') {
-              depth--;
-            }
-          }
-        }
-      } else {
-        iface.name = ifaceStr;
-      }
-
-      interfaces.push_back(std::move(iface));
-    }
-
-    // Use baseName directly - no stripping needed
-    auto classDef = std::make_unique<ClassDefinitionAST>(
-        classInfo.baseName, classInfo.typeParams, std::move(interfaces),
-        std::move(fields), std::move(methods),
-        true);  // precompiled = true
-
-    // Don't set qualified name here - let semantic analysis compute it
-    // based on the ImportScope's scopePath (which includes content hash)
-    // and the ModuleAST wrapping (which adds the module name).
-
-    moduleAST.push_back(std::move(classDef));
   }
 
-  // Functions (extern declarations or generic function stubs)
-  for (const auto& sym : metadata.exports) {
-    if (sym.kind == sun::ExportedSymbol::Kind::Function) {
-      // Use baseName directly - no stripping needed
-      // Parse function signature from typeSignature: "(i32, i32) -> i32"
-      // For generic functions, pass type params and body source for lazy
-      // parsing
-      auto funcAST = parseFunctionSignature(
-          sym.baseName, sym.typeSignature, sym.typeParams, sym.bodySource,
-          sym.variadicParamName, sym.variadicConstraint);
-      if (funcAST) {
-        moduleAST.push_back(std::move(funcAST));
+  // Functions
+  for (int i = 0; i < metadata.functions_size(); ++i) {
+    // Wrap the FunctionDef in an ASTNode for deserialization
+    sun::ast::ASTNode node;
+    *node.mutable_function_def() = metadata.functions(i);
+
+    auto ast = deserializer.deserialize(node);
+    if (ast) {
+      // Mark as precompiled
+      if (auto* funcAST = dynamic_cast<FunctionAST*>(ast.get())) {
+        funcAST->setPrecompiled(true);
       }
+      moduleAST.push_back(std::move(ast));
+    }
+  }
+
+  // Enums
+  for (int i = 0; i < metadata.enums_size(); ++i) {
+    // Wrap the EnumDef in an ASTNode for deserialization
+    sun::ast::ASTNode node;
+    *node.mutable_enum_def() = metadata.enums(i);
+
+    auto ast = deserializer.deserialize(node);
+    if (ast) {
+      moduleAST.push_back(std::move(ast));
     }
   }
 
   // Wrap all stubs in appropriate namespace structure
   if (!moduleAST.empty()) {
     // If module has a module declaration, wrap stubs in ModuleAST
-    if (!metadata.moduleName.empty()) {
+    if (!metadata.module_name().empty()) {
       auto nsBody = std::make_unique<BlockExprAST>(std::move(moduleAST));
-      auto nsAST =
-          std::make_unique<ModuleAST>(metadata.moduleName, std::move(nsBody));
+      auto nsAST = std::make_unique<ModuleAST>(metadata.module_name(),
+                                               std::move(nsBody));
       nsAST->setPrecompiled(true);
       collectedAST.push_back(std::move(nsAST));
     } else {
@@ -2757,203 +2622,12 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
   return result;
 }
 
-// Parse a function signature string like "(i32, i32) -> i32" into a
-// FunctionAST. For generic functions, typeParams and bodySource enable lazy
-// parsing when instantiated.
-std::unique_ptr<FunctionAST> Parser::parseFunctionSignature(
-    const std::string& name, const std::string& signature,
-    const std::vector<std::string>& typeParams, const std::string& bodySource,
-    const std::string& variadicParamName,
-    const std::string& variadicConstraint) {
-  // Parse signature: "(param1, param2, ...) -> returnType"
-  // Find the arrow
-  size_t arrowPos = signature.find(") -> ");
-  if (arrowPos == std::string::npos) {
-    // No return type or malformed
-    if (signature.empty() || signature[0] != '(') {
-      return nullptr;
-    }
-    arrowPos = signature.find(")");
-    if (arrowPos == std::string::npos) {
-      return nullptr;
-    }
-  }
-
-  // Extract parameters between parentheses
-  std::vector<std::pair<std::string, TypeAnnotation>> params;
-  if (signature.size() > 2 && signature[0] == '(') {
-    std::string paramStr = signature.substr(1, arrowPos - 1);
-
-    // Parse comma-separated parameters
-    size_t pos = 0;
-    int paramIndex = 0;
-    while (pos < paramStr.size()) {
-      // Skip whitespace
-      while (pos < paramStr.size() &&
-             (paramStr[pos] == ' ' || paramStr[pos] == ',')) {
-        pos++;
-      }
-      if (pos >= paramStr.size()) break;
-
-      // Find end of this type (next comma or end)
-      size_t end = pos;
-      int angleBrackets = 0;
-      while (end < paramStr.size()) {
-        char c = paramStr[end];
-        if (c == '<')
-          angleBrackets++;
-        else if (c == '>')
-          angleBrackets--;
-        else if (c == ',' && angleBrackets == 0)
-          break;
-        end++;
-      }
-
-      std::string typeStr = paramStr.substr(pos, end - pos);
-      // Trim whitespace
-      while (!typeStr.empty() && typeStr.back() == ' ') typeStr.pop_back();
-      while (!typeStr.empty() && typeStr.front() == ' ')
-        typeStr = typeStr.substr(1);
-
-      if (!typeStr.empty()) {
-        std::string paramName = "arg" + std::to_string(paramIndex++);
-        params.push_back({paramName, parseTypeFromString(typeStr)});
-      }
-
-      pos = end;
-    }
-  }
-
-  // Extract return type
-  std::optional<TypeAnnotation> returnType;
-  size_t returnStart = signature.find(") -> ");
-  if (returnStart != std::string::npos) {
-    std::string retStr = signature.substr(returnStart + 5);
-    // Trim whitespace
-    while (!retStr.empty() && retStr.back() == ' ') retStr.pop_back();
-    while (!retStr.empty() && retStr.front() == ' ') retStr = retStr.substr(1);
-
-    // For extern functions, void must be explicit
-    if (!retStr.empty()) {
-      returnType = parseTypeFromString(retStr);
-    }
-  }
-
-  // Handle variadic parameter
-  std::optional<std::string> variadicParam;
-  std::optional<TypeAnnotation> variadicConstr;
-  if (!variadicParamName.empty()) {
-    variadicParam = variadicParamName;
-    if (!variadicConstraint.empty()) {
-      variadicConstr = parseTypeFromString(variadicConstraint);
-    }
-  }
-
-  // Create prototype with type parameters and variadic info
-  auto proto =
-      std::make_unique<PrototypeAST>(name, std::move(params), returnType,
-                                     typeParams, variadicParam, variadicConstr);
-
-  // For generic functions, create stub with empty body for lazy parsing
-  // For non-generic, create extern declaration (null body)
-  std::unique_ptr<FunctionAST> func;
-  if (!typeParams.empty()) {
-    // Generic function - create empty body, store source for lazy parsing
-    auto body =
-        std::make_unique<BlockExprAST>(std::vector<std::unique_ptr<ExprAST>>());
-    func = std::make_unique<FunctionAST>(std::move(proto), std::move(body));
-    if (!bodySource.empty()) {
-      func->setSourceText(bodySource);
-    }
-  } else {
-    // Non-generic extern function - null body
-    func = std::make_unique<FunctionAST>(std::move(proto), nullptr);
-  }
-
-  return func;
-}
-
 // In parser.cpp (implementation)
 std::unique_ptr<BlockExprAST> Parser::parseString(const std::string& source) {
   std::istringstream ss(source);
   lexer = Lexer(ss);
   getNextToken();  // Prime the first token
   return parseProgram();
-}
-
-// Thread-local stream storage for the reusable lexer
-static thread_local std::unique_ptr<std::istringstream> tlMethodSourceStream;
-
-// Parse a function from its source text (for loading generic methods from
-// moon)
-std::unique_ptr<FunctionAST> Parser::parseFunctionFromSource(
-    const std::string& source) {
-  PARSER_TIMER_START(func_parse);
-
-  // Store source in thread-local to keep it alive during parsing
-  tlMethodSourceStream = std::make_unique<std::istringstream>(source);
-
-  // Reuse the existing lexer's NFA by resetting its input
-  PARSER_TIMER_START(reset_input);
-  lexer.resetInput(*tlMethodSourceStream);
-  PARSER_TIMER_END(reset_input);
-
-  getNextToken();  // Prime the first token
-
-  if (curTok.kind != TokenKind::FUNCTION) {
-    parsingError("Expected 'function' keyword in method source");
-    return nullptr;
-  }
-
-  PARSER_TIMER_START(parse_func);
-  auto result = parseFunction();
-  PARSER_TIMER_END(parse_func);
-  PARSER_TIMER_END(func_parse);
-
-  return result;
-}
-
-// Static lazy parsing helper - uses thread-local Parser to avoid rebuilding
-// NFA on every call. This centralizes lazy parsing logic for use by codegen.
-std::unique_ptr<FunctionAST> Parser::lazyParseFunctionSource(
-    const std::string& source) {
-  // Cache parsed ASTs by source text — avoids re-lexing identical method bodies
-  // across generic specializations (e.g. Vec<i32>, Vec<f64> share method
-  // source)
-  static thread_local std::unordered_map<std::string,
-                                         std::unique_ptr<FunctionAST>>
-      cache;
-
-  auto it = cache.find(source);
-  if (it != cache.end()) {
-    // Return a clone of the cached AST
-    auto clone = it->second->clone();
-    return std::unique_ptr<FunctionAST>(
-        static_cast<FunctionAST*>(clone.release()));
-  }
-
-  // Thread-local parser and stream for efficient NFA reuse
-  static thread_local std::unique_ptr<std::istringstream> lazyStream;
-  static thread_local std::unique_ptr<Parser> lazyParser;
-
-  // Keep the source string alive during parsing
-  lazyStream = std::make_unique<std::istringstream>(source);
-
-  if (!lazyParser) {
-    // First call - create parser (builds NFA once)
-    lazyParser = std::make_unique<Parser>(*lazyStream);
-  }
-
-  // Parse and cache
-  auto result = lazyParser->parseFunctionFromSource(source);
-
-  if (result) {
-    // Store a clone in cache, return the original
-    cache[source] = std::unique_ptr<FunctionAST>(
-        static_cast<FunctionAST*>(result->clone().release()));
-  }
-
-  return result;
 }
 
 // Parse class definition: class ClassName implements Interface1, Interface2 {
@@ -3087,20 +2761,8 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
       fields.push_back({std::move(fieldName), std::move(fieldType), fieldLoc});
     } else if (curTok.kind == TokenKind::FUNCTION) {
       // Parse method declaration
-      // Capture start position for source text extraction
-      int startOffset = curTok.start.offset;
-
       auto func = parseFunction();
       if (!func) return nullptr;
-
-      // For generic classes OR generic methods, capture the source text
-      // Generic class methods need source text even if they're not themselves
-      // generic, because they reference the class type parameter T
-      if (!typeParameters.empty() || func->getProto().isGeneric()) {
-        int endOffset = curTok.start.offset;
-        std::string sourceText = getSourceText(startOffset, endOffset);
-        func->setSourceText(sourceText);
-      }
 
       bool isConstructor = (func->getProto().getName() == "init");
 
@@ -3218,9 +2880,6 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
       // 1. Just a signature: function name(args) returnType;
       // 2. Full method with default impl: function name(args) returnType { body
       // }
-
-      // Capture start position for source text extraction (for generic methods)
-      int methodStartOffset = curTok.start.offset;
 
       getNextToken();  // eat 'function'
 
@@ -3349,14 +3008,6 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
           std::move(variadicConstraint));
       auto func =
           std::make_unique<FunctionAST>(std::move(proto), std::move(body));
-
-      // For generic methods with default impl, capture the source text
-      if (func->getProto().isGeneric() && hasDefaultImpl) {
-        int methodEndOffset = curTok.start.offset;
-        std::string sourceText =
-            getSourceText(methodStartOffset, methodEndOffset);
-        func->setSourceText(sourceText);
-      }
 
       InterfaceMethodDecl method;
       method.function = std::move(func);

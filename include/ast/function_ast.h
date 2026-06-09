@@ -15,7 +15,6 @@
 class FunctionAST : public ExprAST {
   std::unique_ptr<PrototypeAST> Proto;
   std::unique_ptr<BlockExprAST> Body;
-  std::string sourceText_;  // Original source code (for generic method storage)
 
  protected:
   // Override to allocate FunctionAnalysis instead of base ExprAnalysis
@@ -61,15 +60,10 @@ class FunctionAST : public ExprAST {
     return *Body;
   }
 
-  // Set body (for lazy parsing - replace empty stub with parsed body)
+  // Set body (for replacing empty stub with parsed body)
   void setBody(std::unique_ptr<BlockExprAST> newBody) {
     Body = std::move(newBody);
   }
-
-  // Source text for serialization (generic methods in moon)
-  void setSourceText(std::string src) { sourceText_ = std::move(src); }
-  const std::string& getSourceText() const { return sourceText_; }
-  bool hasSourceText() const { return !sourceText_.empty(); }
 
   // Check if function is an extern declaration (no body)
   bool isExtern() const { return Body == nullptr; }

@@ -5,6 +5,7 @@
 #include <llvm/Linker/Linker.h>
 
 #include "module_types.h"
+#include "moon/moon.h"
 #include "struct_names.h"
 
 namespace sun {
@@ -103,25 +104,56 @@ void ModuleLinker::buildSymbolMap(const std::string& moduleKey) {
     return;
   }
 
+  // Get symbol prefix for constructing qualified names
+  // Note: getSymbolPrefix returns "$hash$", and bitcode uses "$hash$_name"
+  // format
+  std::string prefix = sun::getSymbolPrefix(*metadata);
+  std::string moduleName = metadata->module_name();
+
   // Map exported functions to this module
-  for (const auto& exp : metadata->exports) {
-    if (!exp.qualifiedName.empty()) {
-      symbolToModule_[exp.qualifiedName] = moduleKey;
+  // Bitcode symbol format: prefix + "_" + moduleName + "_" + funcName
+  for (int i = 0; i < metadata->functions_size(); ++i) {
+    const auto& func = metadata->functions(i);
+    const auto& proto = func.proto();
+    std::string funcName = proto.name();
+
+    // Construct qualified name matching bitcode: $hash$_module_func
+    std::string qualifiedName;
+    if (!moduleName.empty()) {
+      qualifiedName = prefix + "_" + moduleName + "_" + funcName;
+    } else {
+      qualifiedName = prefix + "_" + funcName;
+    }
+
+    if (!qualifiedName.empty()) {
+      symbolToModule_[qualifiedName] = moduleKey;
     }
   }
 
   // Map class methods - only non-generic classes have callable methods
   // Generic class specializations are handled via codegen (not metadata)
-  for (const auto& cls : metadata->classes) {
+  for (int i = 0; i < metadata->classes_size(); ++i) {
+    const auto& cls = metadata->classes(i);
+
     // Skip generic classes - their methods require instantiation
-    if (!cls.typeParams.empty()) continue;
+    if (cls.type_parameters_size() > 0) continue;
 
-    std::string className = cls.qualifiedName;
-    for (const auto& method : cls.methods) {
+    // Construct class qualified name matching bitcode
+    std::string className;
+    if (!moduleName.empty()) {
+      className = prefix + "_" + moduleName + "_" + cls.name();
+    } else {
+      className = prefix + "_" + cls.name();
+    }
+
+    for (int j = 0; j < cls.methods_size(); ++j) {
+      const auto& method = cls.methods(j);
+      const auto& methodProto = method.function().proto();
+
       // Skip generic methods
-      if (!method.typeParams.empty()) continue;
+      if (methodProto.type_parameters_size() > 0) continue;
 
-      std::string mangledName = className + "_" + method.name;
+      std::string mangledName = className + "_" + methodProto.name();
       symbolToModule_[mangledName] = moduleKey;
     }
   }

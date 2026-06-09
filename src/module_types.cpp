@@ -182,20 +182,4 @@ std::string ModuleTypeResolver::serializeType(const TypePtr& type) {
   return type->toString();
 }
 
-std::unordered_map<std::string, TypePtr> ModuleTypeResolver::buildExportTable(
-    const ModuleMetadata& metadata) {
-  std::unordered_map<std::string, TypePtr> exports;
-
-  for (const auto& sym : metadata.exports) {
-    if (sym.kind == ExportedSymbol::Kind::Function) {
-      auto type = parseTypeSignature(sym.typeSignature);
-      if (type) {
-        exports[sym.baseName] = type;
-      }
-    }
-  }
-
-  return exports;
-}
-
 }  // namespace sun

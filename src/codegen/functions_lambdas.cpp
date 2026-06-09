@@ -335,6 +335,22 @@ std::pair<Function*, llvm::StructType*> CodegenVisitor::codegen(
 Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
   if (funcAst.shouldSkipCodegen()) return nullptr;
 
+  // Skip precompiled non-generic functions without bodies - they will be linked
+  // from bitcode. We must generate:
+  // - Generic functions (to process their specializations)
+  // - Specialized functions (they have bodies from clone)
+  // - Extern functions (they're declarations only)
+  // NOTE: hasBody() may be true even with an empty body (deserialized from
+  // proto), so we also check if the body has any statements.
+  bool hasBodyStatements =
+      funcAst.hasBody() && !funcAst.getBody().getBody().empty();
+  if (funcAst.isPrecompiled() && !funcAst.getProto().isGeneric() &&
+      !funcAst.isExtern() && !hasBodyStatements) {
+    // Non-generic precompiled function with no body statements -
+    // rely on linked bitcode
+    return nullptr;
+  }
+
   if (funcAst.getProto().isGeneric()) {
     // Save current insertion point - specialization codegen will change it
     saveInsertPoint();

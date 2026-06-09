@@ -131,7 +131,8 @@ bool LibraryCache::hasModule(const std::string& moduleKey) {
   return findBundleForModule(moduleKey) != nullptr;
 }
 
-const ModuleMetadata* LibraryCache::getMetadata(const std::string& moduleKey) {
+const moon::ModuleMetadata* LibraryCache::getMetadata(
+    const std::string& moduleKey) {
   std::lock_guard<std::mutex> lock(mutex_);
 
   auto* bundle = findBundleForModule(moduleKey);
