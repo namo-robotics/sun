@@ -1193,6 +1193,27 @@ unique_ptr<ExprAST> Parser::parseAssignmentOrExpression() {
                                                   std::move(value));
   }
 
+  // Check for member assignment: a.b = value or a.b.c.d = value
+  if (curTok.kind == TokenKind::EQUAL &&
+      expr->getType() == ASTNodeType::MEMBER_ACCESS) {
+    getNextToken();  // eat '='
+    auto value = parseExpression();
+    if (!value) return nullptr;
+
+    // Extract object and member from MemberAccessAST
+    auto* memberAccess = static_cast<MemberAccessAST*>(expr.get());
+    std::string memberName = memberAccess->getMemberName();
+    auto object = memberAccess->releaseObject();
+
+    if (curTok.kind == TokenKind::SEMI_COLON)
+      getNextToken();
+    else
+      parsingError("expected ';' after member assignment");
+
+    return std::make_unique<MemberAssignmentAST>(
+        std::move(object), std::move(memberName), std::move(value));
+  }
+
   if (curTok.kind == TokenKind::SEMI_COLON)
     getNextToken();
   else
@@ -1516,17 +1537,12 @@ unique_ptr<ExprAST> Parser::parseStatement() {
 
         // Extract object and member from MemberAccessAST
         auto* memberAccess = static_cast<MemberAccessAST*>(lhs.get());
-
-        // We need to move the object out - create a new AST
-        // This is a bit awkward due to unique_ptr ownership
-        // Create MemberAssignmentAST with the member info
         std::string memberName = memberAccess->getMemberName();
+        // Use releaseObject to preserve the full chain (e.g., this.a.b)
+        auto object = memberAccess->releaseObject();
 
-        // The object in memberAccess is 'this' or could be a chain
-        // We need to reconstruct it - for now, handle simple this.field case
         auto assignExpr = std::make_unique<MemberAssignmentAST>(
-            std::make_unique<ThisExprAST>(), std::move(memberName),
-            std::move(value));
+            std::move(object), std::move(memberName), std::move(value));
 
         if (curTok.kind == TokenKind::SEMI_COLON)
           getNextToken();

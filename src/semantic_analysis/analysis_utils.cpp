@@ -219,5 +219,19 @@ bool SemanticAnalyzer::isAssignableTo(const sun::TypePtr& from,
     }
   }
 
+  // ref(T) -> T: value can be extracted from reference (copy semantics)
+  if (!to->isReference() && from->isReference()) {
+    auto* fromRef = static_cast<sun::ReferenceType*>(from.get());
+    return isAssignableTo(fromRef->getReferencedType(), to);
+  }
+
+  // Class-to-class: compare by mangled name (unique identifier)
+  // This handles cases where equals() fails due to different type instances
+  if (to->isClass() && from->isClass()) {
+    auto* toClass = static_cast<sun::ClassType*>(to.get());
+    auto* fromClass = static_cast<sun::ClassType*>(from.get());
+    return toClass->getMangledName() == fromClass->getMangledName();
+  }
+
   return false;
 }

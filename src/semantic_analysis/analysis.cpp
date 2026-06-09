@@ -8,6 +8,8 @@
 #include "intrinsics.h"
 #include "semantic_analyzer.h"
 
+using sun::unwrapRef;
+
 // -------------------------------------------------------------------
 // Main analysis entry point
 // -------------------------------------------------------------------
@@ -685,6 +687,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // Create the class type with the qualified name
       auto classType = typeRegistry->getClass(qualifiedClass);
 
+      // Register the class BEFORE processing fields to allow self-referential
+      // types (e.g., var next: raw_ptr<Node> inside class Node)
+      registerClass(baseName, classType);
+
       // Add fields to the class type
       for (const auto& field : classDef.getFields()) {
         if (classType->hasField(field.name)) {
@@ -709,9 +715,6 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
         classType->addField(field.name, fieldType);
       }
-
-      // Register the class so methods can reference it (use base name)
-      registerClass(baseName, classType);
 
       // Inherit interface fields BEFORE analyzing methods
       // This adds interface fields to the class, which methods may access
@@ -1035,6 +1038,34 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // Analyze the object and value expressions
       analyzeExpr(const_cast<ExprAST&>(*memberAssign.getObject()));
       analyzeExpr(const_cast<ExprAST&>(*memberAssign.getValue()));
+
+      // Get the field type for type compatibility check
+      sun::TypePtr objectType = memberAssign.getObject()->getResolvedType();
+      objectType = unwrapRef(objectType);
+
+      if (objectType && objectType->isClass()) {
+        auto* classType = static_cast<sun::ClassType*>(objectType.get());
+        const sun::ClassField* field =
+            classType->getField(memberAssign.getMemberName());
+        if (field) {
+          sun::TypePtr rhsType = memberAssign.getValue()->getResolvedType();
+          sun::TypePtr fieldType = field->type;
+
+          if (rhsType && !isAssignableTo(rhsType, fieldType)) {
+            // Allow integer literal coercion as a fallback
+            if (!tryCoerceIntegerLiteral(
+                    const_cast<ExprAST*>(memberAssign.getValue()), fieldType,
+                    false)) {
+              logAndThrowError("Cannot assign value of type '" +
+                                   rhsType->toString() + "' to field '" +
+                                   memberAssign.getMemberName() +
+                                   "' of type '" + fieldType->toString() + "'",
+                               memberAssign.getLocation());
+            }
+          }
+        }
+      }
+
       expr.setResolvedType(sun::Types::Void());
       break;
     }
