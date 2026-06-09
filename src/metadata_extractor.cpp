@@ -1,4 +1,5 @@
-// metadata_extractor.cpp — Extract module metadata as protobuf from source files
+// metadata_extractor.cpp — Extract module metadata as protobuf from source
+// files
 
 #include "metadata_extractor.h"
 
@@ -39,10 +40,7 @@ bool isGeneric(const InterfaceDefinitionAST& iface) {
 }
 
 // Clear the body of a FunctionDef proto (keep only signature)
-void clearBody(ast::FunctionDef* func) {
-  func->mutable_body()->clear_body();
-  func->clear_source_text();
-}
+void clearBody(ast::FunctionDef* func) { func->mutable_body()->clear_body(); }
 
 // Clear bodies of non-generic methods in a ClassDef
 void clearNonGenericBodies(ast::ClassDef* cls,
@@ -52,7 +50,8 @@ void clearNonGenericBodies(ast::ClassDef* cls,
     auto* method = cls->mutable_methods(i);
     const auto& origMethod = methods[i];
     // Keep body only if method itself is generic OR class is generic
-    bool methodIsGeneric = !origMethod.function->getProto().getTypeParameters().empty();
+    bool methodIsGeneric =
+        !origMethod.function->getProto().getTypeParameters().empty();
     bool classIsGeneric = !original.getTypeParameters().empty();
     if (!methodIsGeneric && !classIsGeneric) {
       clearBody(method->mutable_function());
@@ -68,7 +67,8 @@ void clearNonGenericBodies(ast::InterfaceDef* iface,
     auto* method = iface->mutable_methods(i);
     const auto& origMethod = methods[i];
     // Keep body only if method itself is generic OR interface is generic
-    bool methodIsGeneric = !origMethod.function->getProto().getTypeParameters().empty();
+    bool methodIsGeneric =
+        !origMethod.function->getProto().getTypeParameters().empty();
     bool ifaceIsGeneric = !original.getTypeParameters().empty();
     if (!methodIsGeneric && !ifaceIsGeneric) {
       clearBody(method->mutable_function());
@@ -81,11 +81,11 @@ void extractFunction(const FunctionAST& func, moon::ModuleMetadata& metadata,
                      const ASTSerializer& serializer) {
   // Serialize the function AST to proto
   ast::ASTNode node = serializer.serialize(func);
-  
+
   // Add to metadata
   ast::FunctionDef* funcDef = metadata.add_functions();
   *funcDef = node.function_def();
-  
+
   // Clear body if not generic
   if (!isGeneric(func.getProto())) {
     clearBody(funcDef);
@@ -97,11 +97,11 @@ void extractClass(const ClassDefinitionAST& cls, moon::ModuleMetadata& metadata,
                   const ASTSerializer& serializer) {
   // Serialize the class AST to proto
   ast::ASTNode node = serializer.serialize(cls);
-  
+
   // Add to metadata
   ast::ClassDef* classDef = metadata.add_classes();
   *classDef = node.class_def();
-  
+
   // Clear bodies of non-generic methods
   clearNonGenericBodies(classDef, cls);
 }
@@ -112,21 +112,22 @@ void extractInterface(const InterfaceDefinitionAST& iface,
                       const ASTSerializer& serializer) {
   // Serialize the interface AST to proto
   ast::ASTNode node = serializer.serialize(iface);
-  
+
   // Add to metadata
   ast::InterfaceDef* ifaceDef = metadata.add_interfaces();
   *ifaceDef = node.interface_def();
-  
+
   // Clear bodies of non-generic methods
   clearNonGenericBodies(ifaceDef, iface);
 }
 
 // Extract an enum and add to metadata
-void extractEnum(const EnumDefinitionAST& enumDef, moon::ModuleMetadata& metadata,
+void extractEnum(const EnumDefinitionAST& enumDef,
+                 moon::ModuleMetadata& metadata,
                  const ASTSerializer& serializer) {
   // Serialize the enum AST to proto
   ast::ASTNode node = serializer.serialize(enumDef);
-  
+
   // Add to metadata
   ast::EnumDef* enumProto = metadata.add_enums();
   *enumProto = node.enum_def();
@@ -199,7 +200,8 @@ moon::ModuleMetadata extractMetadata(const std::string& filePath,
       std::filesystem::path(filePath).parent_path();
 
   // Create serializer (don't include analysis data, do include locations)
-  ASTSerializer serializer({.include_analysis = false, .include_location = true});
+  ASTSerializer serializer(
+      {.include_analysis = false, .include_location = true});
 
   extractFromStatements(ast.getBody(), metadata, serializer, moduleDir, true);
 

@@ -6,7 +6,6 @@
 #include "config.h"
 #include "error.h"
 #include "intrinsics.h"
-#include "parser.h"
 #include "semantic_analyzer.h"
 
 // -------------------------------------------------------------------
@@ -1770,29 +1769,14 @@ void SemanticAnalyzer::clearResolvedTypes(ExprAST& expr) {
 }
 
 // -------------------------------------------------------------------
-// Lazy method parsing and analysis
+// Method analysis with type bindings
 // -------------------------------------------------------------------
 
-void SemanticAnalyzer::lazyParseAndAnalyzeMethod(
+void SemanticAnalyzer::analyzeMethodWithBindings(
     FunctionAST& methodFunc, std::shared_ptr<sun::ClassType> classType,
     const std::vector<std::string>& typeParams,
     const std::vector<sun::TypePtr>& typeArgs) {
-  // Step 1: Lazy parse if body is empty but has source text
-  if (methodFunc.hasSourceText() && methodFunc.getBody().getBody().empty()) {
-    auto parsedFunc =
-        Parser::lazyParseFunctionSource(methodFunc.getSourceText());
-    if (!parsedFunc) {
-      logAndThrowError("Failed to parse lazy method body for: " +
-                           methodFunc.getProto().getName(),
-                       methodFunc.getLocation());
-    }
-    // Transfer the parsed body to the existing FunctionAST
-    methodFunc.setBody(std::make_unique<BlockExprAST>(
-        std::move(const_cast<std::vector<std::unique_ptr<ExprAST>>&>(
-            parsedFunc->getBody().getBody()))));
-  }
-
-  // Step 1.5: Extract module path from class context for type resolution.
+  // Extract module path from class context for type resolution.
   // For specialized generic classes (e.g., "$hash$_sun_Matrix_i64"), look up
   // the generic class definition's qualified name to get the module path
   // (e.g., "$hash$.sun"). This ensures types like HeapAllocator resolve to

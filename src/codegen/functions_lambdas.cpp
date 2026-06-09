@@ -338,15 +338,15 @@ Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
   // Skip precompiled non-generic functions without bodies - they will be linked
   // from bitcode. We must generate:
   // - Generic functions (to process their specializations)
-  // - Specialized functions (they have bodies from clone + lazy parse)
+  // - Specialized functions (they have bodies from clone)
   // - Extern functions (they're declarations only)
   // NOTE: hasBody() may be true even with an empty body (deserialized from
   // proto), so we also check if the body has any statements.
   bool hasBodyStatements =
       funcAst.hasBody() && !funcAst.getBody().getBody().empty();
   if (funcAst.isPrecompiled() && !funcAst.getProto().isGeneric() &&
-      !funcAst.isExtern() && !hasBodyStatements && !funcAst.hasSourceText()) {
-    // Non-generic precompiled function with no body statements or source text -
+      !funcAst.isExtern() && !hasBodyStatements) {
+    // Non-generic precompiled function with no body statements -
     // rely on linked bitcode
     return nullptr;
   }

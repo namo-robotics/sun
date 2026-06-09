@@ -1,7 +1,6 @@
 // semantic_analysis/classes.cpp — Class and generic class support
 
 #include "error.h"
-#include "parser.h"
 #include "semantic_analyzer.h"
 
 // -------------------------------------------------------------------
@@ -442,7 +441,7 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
 
     // Use the unified helper (type params already in outer scope, pass empty)
     // This analyzes the CLONED method, not the shared generic one
-    lazyParseAndAnalyzeMethod(*methodFunc, specializedClass, {}, {});
+    analyzeMethodWithBindings(*methodFunc, specializedClass, {}, {});
   }
 
   // Create the specialized ClassDefinitionAST with cloned/analyzed methods
@@ -590,35 +589,6 @@ SemanticAnalyzer::instantiateGenericFunction(
     // Clear resolved types for fresh analysis
     clearResolvedTypes(*clonedFunc);
 
-    // Lazy parse if body is empty but has source text (for .moon imports)
-    std::vector<std::string> parsedParamNames;
-    if (clonedFunc->hasSourceText() &&
-        clonedFunc->getBody().getBody().empty()) {
-      auto parsedFunc =
-          Parser::lazyParseFunctionSource(clonedFunc->getSourceText());
-      if (!parsedFunc) {
-        logAndThrowError("Failed to parse lazy function body for: " +
-                             clonedFunc->getProto().getName(),
-                         clonedFunc->getLocation());
-      }
-      // Extract real parameter names from parsed function
-      for (const auto& [name, type] : parsedFunc->getProto().getArgs()) {
-        parsedParamNames.push_back(name);
-      }
-      // Update cloned prototype's parameter names to match the parsed body
-      if (!parsedParamNames.empty()) {
-        auto& args = clonedProto.getMutableArgs();
-        for (size_t i = 0; i < args.size() && i < parsedParamNames.size();
-             ++i) {
-          args[i].first = parsedParamNames[i];
-        }
-      }
-      // Transfer the parsed body to the cloned FunctionAST
-      clonedFunc->setBody(std::make_unique<BlockExprAST>(
-          std::move(const_cast<std::vector<std::unique_ptr<ExprAST>>&>(
-              parsedFunc->getBody().getBody()))));
-    }
-
     // Compute function signature for nested function qualification
     std::string funcSig = getFunctionSignature(mangledName, paramTypes);
 
@@ -627,14 +597,8 @@ SemanticAnalyzer::instantiateGenericFunction(
     enterFunctionScope(funcSig, clonedProto.getQualifiedName(),
                        proto.canThrow());
     for (size_t i = 0; i < paramTypes.size(); ++i) {
-      // Use parsed parameter names if available (from lazy parsing),
-      // otherwise use stub names
-      std::string argName;
-      if (i < parsedParamNames.size()) {
-        argName = parsedParamNames[i];
-      } else {
-        argName = proto.getArgs()[i].first;
-      }
+      // Use parameter names from the cloned prototype
+      std::string argName = proto.getArgs()[i].first;
       declareVariable(argName, paramTypes[i], /*isParam=*/true);
     }
 
@@ -857,22 +821,6 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
 
   // Clear any stale resolved types from previous specializations
   clearResolvedTypes(*clonedFunc);
-
-  // Lazy parse if body is empty but has source text (from precompiled .moon)
-  if (clonedFunc->hasSourceText() && clonedFunc->getBody().getBody().empty()) {
-    auto parsedFunc =
-        Parser::lazyParseFunctionSource(clonedFunc->getSourceText());
-    if (!parsedFunc) {
-      exitScope();
-      logAndThrowError("Failed to parse lazy method body for: " +
-                           genericMethodAST->getProto().getName(),
-                       genericMethodAST->getLocation());
-    }
-    // Transfer the parsed body to the cloned FunctionAST
-    clonedFunc->setBody(std::make_unique<BlockExprAST>(
-        std::move(const_cast<std::vector<std::unique_ptr<ExprAST>>&>(
-            parsedFunc->getBody().getBody()))));
-  }
 
   // Analyze the method body
   auto savedClass = currentClass;

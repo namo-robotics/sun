@@ -1483,16 +1483,8 @@ unique_ptr<ExprAST> Parser::parseStatement() {
       return std::make_unique<FunctionAST>(std::move(proto), nullptr);
     }
     case TokenKind::FUNCTION: {
-      // Capture start position for source text extraction (generic functions)
-      int startOffset = curTok.start.offset;
       // Function definitions don't need trailing semicolons
       auto func = parseFunction();
-      // For generic functions, capture source text for lazy parsing
-      if (func && func->getProto().isGeneric()) {
-        int endOffset = curTok.start.offset;
-        std::string sourceText = getSourceText(startOffset, endOffset);
-        func->setSourceText(sourceText);
-      }
       while (curTok.kind == TokenKind::SEMI_COLON)
         getNextToken();  // optional semicolons
       return func;
@@ -2630,203 +2622,12 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
   return result;
 }
 
-// Parse a function signature string like "(i32, i32) -> i32" into a
-// FunctionAST. For generic functions, typeParams and bodySource enable lazy
-// parsing when instantiated.
-std::unique_ptr<FunctionAST> Parser::parseFunctionSignature(
-    const std::string& name, const std::string& signature,
-    const std::vector<std::string>& typeParams, const std::string& bodySource,
-    const std::string& variadicParamName,
-    const std::string& variadicConstraint) {
-  // Parse signature: "(param1, param2, ...) -> returnType"
-  // Find the arrow
-  size_t arrowPos = signature.find(") -> ");
-  if (arrowPos == std::string::npos) {
-    // No return type or malformed
-    if (signature.empty() || signature[0] != '(') {
-      return nullptr;
-    }
-    arrowPos = signature.find(")");
-    if (arrowPos == std::string::npos) {
-      return nullptr;
-    }
-  }
-
-  // Extract parameters between parentheses
-  std::vector<std::pair<std::string, TypeAnnotation>> params;
-  if (signature.size() > 2 && signature[0] == '(') {
-    std::string paramStr = signature.substr(1, arrowPos - 1);
-
-    // Parse comma-separated parameters
-    size_t pos = 0;
-    int paramIndex = 0;
-    while (pos < paramStr.size()) {
-      // Skip whitespace
-      while (pos < paramStr.size() &&
-             (paramStr[pos] == ' ' || paramStr[pos] == ',')) {
-        pos++;
-      }
-      if (pos >= paramStr.size()) break;
-
-      // Find end of this type (next comma or end)
-      size_t end = pos;
-      int angleBrackets = 0;
-      while (end < paramStr.size()) {
-        char c = paramStr[end];
-        if (c == '<')
-          angleBrackets++;
-        else if (c == '>')
-          angleBrackets--;
-        else if (c == ',' && angleBrackets == 0)
-          break;
-        end++;
-      }
-
-      std::string typeStr = paramStr.substr(pos, end - pos);
-      // Trim whitespace
-      while (!typeStr.empty() && typeStr.back() == ' ') typeStr.pop_back();
-      while (!typeStr.empty() && typeStr.front() == ' ')
-        typeStr = typeStr.substr(1);
-
-      if (!typeStr.empty()) {
-        std::string paramName = "arg" + std::to_string(paramIndex++);
-        params.push_back({paramName, parseTypeFromString(typeStr)});
-      }
-
-      pos = end;
-    }
-  }
-
-  // Extract return type
-  std::optional<TypeAnnotation> returnType;
-  size_t returnStart = signature.find(") -> ");
-  if (returnStart != std::string::npos) {
-    std::string retStr = signature.substr(returnStart + 5);
-    // Trim whitespace
-    while (!retStr.empty() && retStr.back() == ' ') retStr.pop_back();
-    while (!retStr.empty() && retStr.front() == ' ') retStr = retStr.substr(1);
-
-    // For extern functions, void must be explicit
-    if (!retStr.empty()) {
-      returnType = parseTypeFromString(retStr);
-    }
-  }
-
-  // Handle variadic parameter
-  std::optional<std::string> variadicParam;
-  std::optional<TypeAnnotation> variadicConstr;
-  if (!variadicParamName.empty()) {
-    variadicParam = variadicParamName;
-    if (!variadicConstraint.empty()) {
-      variadicConstr = parseTypeFromString(variadicConstraint);
-    }
-  }
-
-  // Create prototype with type parameters and variadic info
-  auto proto =
-      std::make_unique<PrototypeAST>(name, std::move(params), returnType,
-                                     typeParams, variadicParam, variadicConstr);
-
-  // For generic functions, create stub with empty body for lazy parsing
-  // For non-generic, create extern declaration (null body)
-  std::unique_ptr<FunctionAST> func;
-  if (!typeParams.empty()) {
-    // Generic function - create empty body, store source for lazy parsing
-    auto body =
-        std::make_unique<BlockExprAST>(std::vector<std::unique_ptr<ExprAST>>());
-    func = std::make_unique<FunctionAST>(std::move(proto), std::move(body));
-    if (!bodySource.empty()) {
-      func->setSourceText(bodySource);
-    }
-  } else {
-    // Non-generic extern function - null body
-    func = std::make_unique<FunctionAST>(std::move(proto), nullptr);
-  }
-
-  return func;
-}
-
 // In parser.cpp (implementation)
 std::unique_ptr<BlockExprAST> Parser::parseString(const std::string& source) {
   std::istringstream ss(source);
   lexer = Lexer(ss);
   getNextToken();  // Prime the first token
   return parseProgram();
-}
-
-// Thread-local stream storage for the reusable lexer
-static thread_local std::unique_ptr<std::istringstream> tlMethodSourceStream;
-
-// Parse a function from its source text (for loading generic methods from
-// moon)
-std::unique_ptr<FunctionAST> Parser::parseFunctionFromSource(
-    const std::string& source) {
-  PARSER_TIMER_START(func_parse);
-
-  // Store source in thread-local to keep it alive during parsing
-  tlMethodSourceStream = std::make_unique<std::istringstream>(source);
-
-  // Reuse the existing lexer's NFA by resetting its input
-  PARSER_TIMER_START(reset_input);
-  lexer.resetInput(*tlMethodSourceStream);
-  PARSER_TIMER_END(reset_input);
-
-  getNextToken();  // Prime the first token
-
-  if (curTok.kind != TokenKind::FUNCTION) {
-    parsingError("Expected 'function' keyword in method source");
-    return nullptr;
-  }
-
-  PARSER_TIMER_START(parse_func);
-  auto result = parseFunction();
-  PARSER_TIMER_END(parse_func);
-  PARSER_TIMER_END(func_parse);
-
-  return result;
-}
-
-// Static lazy parsing helper - uses thread-local Parser to avoid rebuilding
-// NFA on every call. This centralizes lazy parsing logic for use by codegen.
-std::unique_ptr<FunctionAST> Parser::lazyParseFunctionSource(
-    const std::string& source) {
-  // Cache parsed ASTs by source text — avoids re-lexing identical method bodies
-  // across generic specializations (e.g. Vec<i32>, Vec<f64> share method
-  // source)
-  static thread_local std::unordered_map<std::string,
-                                         std::unique_ptr<FunctionAST>>
-      cache;
-
-  auto it = cache.find(source);
-  if (it != cache.end()) {
-    // Return a clone of the cached AST
-    auto clone = it->second->clone();
-    return std::unique_ptr<FunctionAST>(
-        static_cast<FunctionAST*>(clone.release()));
-  }
-
-  // Thread-local parser and stream for efficient NFA reuse
-  static thread_local std::unique_ptr<std::istringstream> lazyStream;
-  static thread_local std::unique_ptr<Parser> lazyParser;
-
-  // Keep the source string alive during parsing
-  lazyStream = std::make_unique<std::istringstream>(source);
-
-  if (!lazyParser) {
-    // First call - create parser (builds NFA once)
-    lazyParser = std::make_unique<Parser>(*lazyStream);
-  }
-
-  // Parse and cache
-  auto result = lazyParser->parseFunctionFromSource(source);
-
-  if (result) {
-    // Store a clone in cache, return the original
-    cache[source] = std::unique_ptr<FunctionAST>(
-        static_cast<FunctionAST*>(result->clone().release()));
-  }
-
-  return result;
 }
 
 // Parse class definition: class ClassName implements Interface1, Interface2 {
@@ -2960,20 +2761,8 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
       fields.push_back({std::move(fieldName), std::move(fieldType), fieldLoc});
     } else if (curTok.kind == TokenKind::FUNCTION) {
       // Parse method declaration
-      // Capture start position for source text extraction
-      int startOffset = curTok.start.offset;
-
       auto func = parseFunction();
       if (!func) return nullptr;
-
-      // For generic classes OR generic methods, capture the source text
-      // Generic class methods need source text even if they're not themselves
-      // generic, because they reference the class type parameter T
-      if (!typeParameters.empty() || func->getProto().isGeneric()) {
-        int endOffset = curTok.start.offset;
-        std::string sourceText = getSourceText(startOffset, endOffset);
-        func->setSourceText(sourceText);
-      }
 
       bool isConstructor = (func->getProto().getName() == "init");
 
@@ -3091,9 +2880,6 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
       // 1. Just a signature: function name(args) returnType;
       // 2. Full method with default impl: function name(args) returnType { body
       // }
-
-      // Capture start position for source text extraction (for generic methods)
-      int methodStartOffset = curTok.start.offset;
 
       getNextToken();  // eat 'function'
 
@@ -3222,14 +3008,6 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
           std::move(variadicConstraint));
       auto func =
           std::make_unique<FunctionAST>(std::move(proto), std::move(body));
-
-      // For generic methods with default impl, capture the source text
-      if (func->getProto().isGeneric() && hasDefaultImpl) {
-        int methodEndOffset = curTok.start.offset;
-        std::string sourceText =
-            getSourceText(methodStartOffset, methodEndOffset);
-        func->setSourceText(sourceText);
-      }
 
       InterfaceMethodDecl method;
       method.function = std::move(func);

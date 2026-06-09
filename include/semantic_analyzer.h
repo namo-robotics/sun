@@ -119,16 +119,13 @@ class SemanticAnalyzer {
   void validateNotReserved(const std::string& name, const std::string& kind,
                            std::optional<Position> location);
 
-  // Lazy parse and analyze a method body from source text.
-  // This is a unified helper for precompiled generic class methods:
-  // 1. Parses the body from sourceText if the body is empty
-  // 2. Runs semantic analysis with 'this' bound to the given class type
-  // 3. Updates the FunctionAST in place with the parsed/analyzed body
-  // @param methodFunc The method to parse/analyze (must have sourceText set)
+  // Analyze a method body with type bindings.
+  // Runs semantic analysis with 'this' bound to the given class type.
+  // @param methodFunc The method to analyze (must have a body)
   // @param classType The class type for 'this' parameter binding
   // @param typeParams Type parameter names to bind
   // @param typeArgs Type argument values for the type parameters
-  void lazyParseAndAnalyzeMethod(FunctionAST& methodFunc,
+  void analyzeMethodWithBindings(FunctionAST& methodFunc,
                                  std::shared_ptr<sun::ClassType> classType,
                                  const std::vector<std::string>& typeParams,
                                  const std::vector<sun::TypePtr>& typeArgs);

@@ -588,7 +588,6 @@ void ASTSerializer::serializeFunction(const FunctionAST& expr,
       *body->add_body() = serialize(*stmt);
     }
   }
-  func->set_source_text(expr.getSourceText());
 }
 
 void ASTSerializer::serializeLambda(const LambdaAST& expr,
@@ -708,7 +707,6 @@ void ASTSerializer::serializeClassDef(const ClassDefinitionAST& expr,
         *body->add_body() = serialize(*stmt);
       }
     }
-    funcProto->set_source_text(method.function->getSourceText());
     methodProto->set_is_constructor(method.isConstructor);
   }
 
