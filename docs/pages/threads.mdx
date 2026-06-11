@@ -70,7 +70,6 @@ function main() i32 {
 For shared mutable state between threads, use `Mutex` from the standard library:
 
 ```sun
-import "build/stdlib.moon";
 using sun;
 
 function main() i32 {
@@ -81,6 +80,10 @@ function main() i32 {
     m.unlock();
     
     return 0;
+}
+
+manifest {
+    moons: ["stdlib.moon"]
 }
 ```
 

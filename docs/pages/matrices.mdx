@@ -4,10 +4,14 @@ Sun provides N-dimensional matrices through the standard library `Matrix<T>` cla
 
 import { Callout } from 'nextra/components'
 
-## Importing the Standard Library
+## Using the Standard Library
+
+Include `stdlib.moon` in your manifest:
 
 ```sun
-import "build/stdlib.moon";
+manifest {
+    moons: ["stdlib.moon"]
+}
 ```
 
 ## Creating Matrices
@@ -15,6 +19,8 @@ import "build/stdlib.moon";
 Use `Matrix<T>(allocator, shape)` to create a matrix with the specified dimensions:
 
 ```sun
+using sun;
+
 function main() i32 {
     var allocator = make_heap_allocator();
     
@@ -29,6 +35,10 @@ function main() i32 {
     
     return 0;
 }
+
+manifest {
+    moons: ["stdlib.moon"]
+}
 ```
 
 ## Indexing
@@ -36,6 +46,8 @@ function main() i32 {
 Access elements using comma-separated indices in brackets:
 
 ```sun
+using sun;
+
 function main() i32 {
     var allocator = make_heap_allocator();
     var m = Matrix<i32>(allocator, [3, 3]);
@@ -50,11 +62,17 @@ function main() i32 {
     
     return diag;
 }
+
+manifest {
+    moons: ["stdlib.moon"]
+}
 ```
 
 For 1D matrices:
 
 ```sun
+using sun;
+
 function main() i32 {
     var allocator = make_heap_allocator();
     var arr = Matrix<i32>(allocator, [5]);
@@ -194,7 +212,7 @@ function main() i32 {
 ## Complete Example
 
 ```sun
-import "build/stdlib.moon";
+using sun;
 
 function main() i32 {
     var allocator = make_heap_allocator();
@@ -219,6 +237,10 @@ function main() i32 {
     
     return trace;  // 3
 }
+
+manifest {
+    moons: ["stdlib.moon"]
+}
 ```
 
 ## Memory Management
@@ -226,6 +248,8 @@ function main() i32 {
 `Matrix<T>` uses an owning pointer (`ptr<T>`) for its data, which is automatically freed when the matrix goes out of scope. The allocator is only used during construction.
 
 ```sun
+using sun;
+
 function createMatrix() i32 {
     var allocator = make_heap_allocator();
     var m = Matrix<i32>(allocator, [100, 100]);
@@ -234,5 +258,9 @@ function createMatrix() i32 {
     return m[50, 50];
     
     // m is automatically freed here
+}
+
+manifest {
+    moons: ["stdlib.moon"]
 }
 ```

@@ -1,43 +1,68 @@
-# Modules and Namespaces
+# Modules and Manifests
 
 import { Callout } from 'nextra/components'
 
-## Modules
+Sun uses a **manifest-based** module system where programs declare their dependencies in a `manifest` block. Multiple source files are merged into a single AST before compilation, enabling efficient cross-file optimization.
 
-Programs can be split across multiple source files using `import`:
+## Manifests
 
-**math.sun**
-```sun
-function add(a: i32, b: i32) i32 {
-    return a + b;
+Every Sun program has an **entrypoint file** containing a `manifest` block that declares all dependencies:
+
+```sun filename="main.sun"
+using sun;
+
+function main() void {
+    println("Hello!");
 }
 
-function square(x: i32) i32 {
-    return x * x;
+manifest {
+    suns: ["utils.sun", "math.sun"]   // Source files to compile together
+    moons: ["stdlib.moon"]             // Precompiled libraries to link
+}
+```
+
+### Manifest Syntax
+
+```sun
+manifest {
+    suns: ["file1.sun", "file2.sun"]   // Optional: additional source files
+    moons: ["lib1.moon", "lib2.moon"]  // Optional: precompiled libraries
 }
 ```
 
-**main.sun**
-```sun
-import "math.sun";
+- **suns** — Source files (`.sun`) to parse and merge with the entrypoint
+- **moons** — Precompiled library bundles (`.moon`) to link
 
-function main() i32 {
-    var result: i32 = add(3, 4);
-    println_i32(square(result));
-    return 0;
-}
-```
+Both fields are optional. A minimal program needs only a `main()` function.
+
+### Path Resolution
+
+Paths in the manifest are resolved in order:
+
+1. **Relative to the entrypoint file** — First, check if the path exists relative to the directory containing the entrypoint
+2. **Via SUN_PATH** — If not found, search in the `SUN_PATH` environment variable
 
 ```bash
-sun main.sun
-49
+export SUN_PATH=/path/to/sun/build
+sun myprogram.sun   # Can find stdlib.moon in SUN_PATH
 ```
 
-Import paths are resolved relative to the importing file. Circular imports are detected and prevented.
+### Compilation Pipeline
+
+When you run `sun main.sun`:
+
+1. **Parse entrypoint** — Parse `main.sun` and extract the manifest
+2. **Parse dependencies** — Parse all files listed in `suns` 
+3. **Merge ASTs** — Combine all parsed ASTs into a single merged AST
+4. **Load moons** — Load type stubs and compiled code from `moons`
+5. **Semantic analysis** — Analyze the merged AST with moon type information
+6. **Code generation** — Generate LLVM IR for the merged AST
+7. **Link** — Link with moon compiled code
+8. **Execute or output** — JIT execute or emit native binary
 
 ## Precompiled Libraries (.moon)
 
-Sun supports precompiled library bundles with the `.moon` extension. These bundles contain compiled code and type information, enabling faster compilation and reliable distribution of libraries.
+**Moon files** (`.moon`) are precompiled library bundles containing compiled code and type information. They enable fast compilation and reliable distribution.
 
 <Callout type="info">
   Sun is designed to work with **Moon**, a safety-critical package manager (coming soon) that pins dependencies to the exact hash of the binary and compiler version. Every change is a breaking change — Moon prioritizes reproducibility over convenience.
@@ -45,10 +70,10 @@ Sun supports precompiled library bundles with the `.moon` extension. These bundl
 
 ### Using Moon Files
 
-Import a moon just like a regular source file:
+Declare moon dependencies in your manifest:
 
 ```sun
-import "build/stdlib.moon";
+using sun;
 
 function main() i32 {
     var allocator = make_heap_allocator();
@@ -56,41 +81,62 @@ function main() i32 {
     m[0, 0] = 42;
     return m[0, 0];
 }
-```
 
-The compiler automatically detects the `.moon` extension and loads both the precompiled code and type information.
+manifest {
+    moons: ["stdlib.moon"]
+}
+```
 
 ### Creating Moon Files
 
-Bundle multiple source files into a moon using the `--emit-moon --bundle` flags:
+Create a moon from an entrypoint file with a manifest:
 
-```bash
-# Bundle allocator.sun and matrix.sun into stdlib.moon
-sun --emit-moon --bundle -o stdlib.moon allocator.sun matrix.sun
+**mylib.sun** (entrypoint)
+```sun
+module mylib {
+    function helper() i32 { return 42; }
+}
+
+manifest {
+    suns: ["vec2.sun", "utils.sun"]
+}
 ```
 
-The bundler:
-1. Parses and compiles each source file
-2. Serializes AST and type information for each module
-3. Packages everything into a single binary file
+```bash
+sun --emit-moon -o mylib.moon mylib.sun
+```
+
+The compiler:
+1. Parses the entrypoint and all files listed in `suns`
+2. Merges them into a single AST
+3. Compiles and serializes the code and type information
+4. Packages everything into `mylib.moon`
 
 ### The Standard Library
 
-Sun's standard library is distributed as `stdlib.moon` containing:
+Sun's standard library is built from `stdlib/stdlib.sun`:
+
+```sun filename="stdlib/stdlib.sun"
+manifest {
+    suns: [
+        "print.sun", "allocator.sun", "unique.sun", "errors.sun",
+        "slice.sun", "contiguous_buffer.sun", "vec.sun", "matrix.sun",
+        "string.sun", "map.sun", "linked_list.sun", "mutex.sun", "math.sun"
+    ]
+}
+```
 
 | Module | Contents |
 |--------|----------|
 | `allocator.sun` | Memory allocators (`HeapAllocator`, `IAllocator` interface) |
-| `errors.sun` | Standard error types (`EmptyError`, `NotFoundError`, `IndexOutOfBoundsError`, etc.) |
-| `map.sun` | Generic hash map `Map<K, V>` with open addressing |
-| `matrix.sun` | `Matrix<T>` and `MatrixView<T>` N-dimensional array classes |
-| `mutex.sun` | `Mutex` for thread synchronization (atomic + futex) |
-| `print.sun` | Print functions (`println`, `println_i32`, `println_i64`, `println_f64`) |
-| `simple_math.sun` | Basic math utilities (`add`, `multiply`) |
-| `slice.sun` | `SliceRange` type for slice syntax |
-| `string.sun` | Heap-allocated `String` and `StringView` classes |
-| `unique.sun` | `Unique<T>` smart pointer with automatic cleanup via `deinit` |
-| `vec.sun` | Generic growable array `Vec<T>` with iterator support |
+| `errors.sun` | Standard error types (`EmptyError`, `NotFoundError`, etc.) |
+| `map.sun` | Generic hash map `Map<K, V>` |
+| `matrix.sun` | `Matrix<T>` and `MatrixView<T>` N-dimensional arrays |
+| `mutex.sun` | `Mutex` for thread synchronization |
+| `print.sun` | Print functions (`println`, `println_i32`, etc.) |
+| `string.sun` | `String` and `StringView` classes |
+| `unique.sun` | `Unique<T>` smart pointer with automatic cleanup |
+| `vec.sun` | Generic growable array `Vec<T>` |
 
 When building from source, the stdlib is automatically compiled:
 
@@ -99,20 +145,7 @@ cmake -B build && cmake --build build
 # Creates build/stdlib.moon
 ```
 
-### SUN_PATH Environment Variable
-
-The compiler searches for moon files in:
-1. Relative to the importing file
-2. The directory specified by `SUN_PATH` environment variable
-
-```bash
-export SUN_PATH=/path/to/sun
-sun myprogram.sun  # Can find build/stdlib.moon
-```
-
 ### Example: Building a Custom Moon
-
-Here's a complete example of creating and using a custom library.
 
 **Step 1: Create library source files**
 
@@ -131,10 +164,6 @@ class Vec2 {
         return Vec2(this.x + other.x, this.y + other.y);
     }
     
-    function dot(other: ref Vec2) f64 {
-        return this.x * other.x + this.y * other.y;
-    }
-    
     function length() f64 {
         return _sqrt(this.x * this.x + this.y * this.y);
     }
@@ -148,103 +177,87 @@ function clamp(val: f64, min: f64, max: f64) f64 {
     if (val > max) { return max; }
     return val;
 }
+```
 
-function lerp(a: f64, b: f64, t: f64) f64 {
-    return a + (b - a) * t;
+**Step 2: Create entrypoint with manifest**
+
+**mylib/mylib.sun**
+```sun
+manifest {
+    suns: ["vec2.sun", "utils.sun"]
 }
 ```
 
-**Step 2: Bundle into a moon**
+**Step 3: Build the moon**
 
 ```bash
-sun --emit-moon --bundle -o mylib.moon mylib/vec2.sun mylib/utils.sun
+sun --emit-moon -o mylib.moon mylib/mylib.sun
 ```
 
-**Step 3: Use the library**
+**Step 4: Use the library**
 
 ```sun
-import "mylib.moon";
-
 function main() i32 {
     var a = Vec2(3.0, 4.0);
-    var b = Vec2(1.0, 2.0);
-    
-    var c = a.add(b);           // Vec2(4.0, 6.0)
-    var d = a.dot(b);           // 11.0
-    var len = a.length();       // 5.0
-    
+    var len = a.length();    // 5.0
     var t = clamp(1.5, 0.0, 1.0);  // 1.0
-    var mid = lerp(0.0, 10.0, 0.5); // 5.0
-    
     return 0;
+}
+
+manifest {
+    moons: ["mylib.moon"]
 }
 ```
 
 ### Installing Moon Files
 
-Moon files can be installed system-wide or per-project:
-
-**Per-project installation:**
+**Per-project:**
 ```bash
-# Copy moon to your project
 cp mylib.moon myproject/libs/
-
-# Import with relative path
-# import "libs/mylib.moon";
 ```
-
-**System-wide installation:**
-```bash
-# Create a Sun libraries directory
-mkdir -p ~/.sun/lib
-
-# Copy the moon
-cp mylib.moon ~/.sun/lib/
-
-# Set SUN_PATH in your shell profile (~/.bashrc or ~/.zshrc)
-export SUN_PATH=~/.sun/lib
-
-# Now any program can import it
-# import "mylib.moon";
-```
-
-**Multiple search paths:**
-```bash
-# SUN_PATH can contain multiple directories (colon-separated on Unix)
-export SUN_PATH=/usr/local/lib/sun:~/.sun/lib:./libs
-```
-
-### Moon Best Practices
-
-1. **Version your moons** — Include version in filename: `mylib-1.0.moon`
-2. **Document dependencies** — List required moons in a README
-3. **Keep related code together** — One moon per logical library
-4. **Rebuild after compiler updates** — Moons contain compiled code tied to compiler version
-
-## Modules (Namespaces)
-
-Modules group related types and functions to avoid naming conflicts. The standard library uses the `sun` module:
 
 ```sun
-module sun {
-    class Vec<T> {
-        // ...
+manifest {
+    moons: ["libs/mylib.moon"]
+}
+```
+
+**System-wide:**
+```bash
+mkdir -p ~/.sun/lib
+cp mylib.moon ~/.sun/lib/
+export SUN_PATH=~/.sun/lib
+```
+
+```sun
+manifest {
+    moons: ["mylib.moon"]   // Found via SUN_PATH
+}
+```
+
+## Namespaces (module blocks)
+
+Use `module` blocks to group related types and functions:
+
+```sun
+module math {
+    function square(x: i32) i32 {
+        return x * x;
     }
     
-    function make_heap_allocator() HeapAllocator {
-        return HeapAllocator();
+    function cube(x: i32) i32 {
+        return x * x * x;
     }
 }
 ```
 
-Symbols inside a module are mangled with the module name as a prefix (e.g., `sun_Vec`, `sun_make_heap_allocator`).
+Symbols inside a module are mangled with the module name prefix (e.g., `math_square`).
 
 ### Using Statements
 
-Use `using` statements to import all symbols from a module into the current scope:
+Use `using` to import all symbols from a module:
 
 ```sun
-import "build/stdlib.moon";
 using sun;   // Import all symbols from the sun module
 
 function main() i32 {
@@ -253,13 +266,17 @@ function main() i32 {
     v.push(42);
     return v.get(0);
 }
+
+manifest {
+    moons: ["stdlib.moon"]
+}
 ```
 
-Without `using`, you would need to reference symbols by their fully qualified mangled name.
+Without `using`, you would need to reference symbols by their mangled names.
 
-### Module Scope Resolution
+### Module Scope
 
-Inside a module, you can reference other symbols in the same module without qualification:
+Inside a module, symbols can reference each other directly:
 
 ```sun
 module math {
@@ -271,18 +288,5 @@ module math {
         // Can call square() directly - same module
         return square(a) + square(b);
     }
-}
-```
-
-### Nested Module Access
-
-For qualified access to module members, use dot notation:
-
-```sun
-import "mylib.moon";
-
-function main() i32 {
-    // Access through module path
-    return math.square(5);
 }
 ```

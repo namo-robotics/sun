@@ -9,28 +9,87 @@ This page provides complete, runnable examples demonstrating Sun's key features.
 Use `--emit-ir` to see the generated LLVM IR for your program:
 
 ```sun filename="hello.sun"
-import "stdlib.moon";
 using sun;
 
 function main() void {
     println("Hello, Sun!");
 }
+
+manifest {
+    moons: ["stdlib.moon"]
+}
 ```
 
 ```bash
-sun --emit-ir hello.sun
-```
-
-```llvm
-; LLVM IR (user-defined only):
-@str = private unnamed_addr constant [12 x i8] c"Hello, Sun!\00", align 1
-define void @main() {
+$ sun --emit-ir -c hello.sun 
+Compiling: hello.sun -> hello
+; LLVM IR (reachable from main):
+define void @"$340e67ad$_sun_println"(%static_ptr_struct %s) {
 entry:
-  call void @println(%static_ptr_struct { ptr @str, i64 11 })
+  %s1 = alloca %static_ptr_struct, align 8
+  store %static_ptr_struct %s, ptr %s1, align 8
+  %s2 = load %static_ptr_struct, ptr %s1, align 8
+  %str.data = extractvalue %static_ptr_struct %s2, 0
+  call void @__sun_print_string(ptr %str.data)
+  call void @__sun_print_newline()
   ret void
 }
 
-Hello, Sun!
+define internal void @__sun_print_newline() {
+entry:
+  %0 = alloca i8, align 1
+  store i8 10, ptr %0, align 1
+  %syscall_write = call i64 asm sideeffect "syscall", "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}"(i64 1, i32 1, ptr %0, i64 1)
+  ret void
+}
+
+define internal void @__sun_print_string(ptr %0) {
+entry:
+  %1 = alloca i64, align 8
+  store i64 0, ptr %1, align 4
+  br label %strlen_loop
+
+strlen_loop:                                      ; preds = %strlen_loop, %entry
+  %2 = load i64, ptr %1, align 4
+  %3 = getelementptr i8, ptr %0, i64 %2
+  %4 = load i8, ptr %3, align 1
+  %5 = icmp eq i8 %4, 0
+  %6 = add i64 %2, 1
+  store i64 %6, ptr %1, align 4
+  br i1 %5, label %write, label %strlen_loop
+
+write:                                            ; preds = %strlen_loop
+  %7 = load i64, ptr %1, align 4
+  %8 = sub i64 %7, 1
+  %syscall_write = call i64 asm sideeffect "syscall", "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}"(i64 1, i32 1, ptr %0, i64 %8)
+  ret void
+}
+
+define void @main() {
+entry:
+  call void @"$340e67ad$_sun_println"(%static_ptr_struct { ptr @str, i64 11 })
+  ret void
+}
+
+Successfully compiled to: hello
+```
+
+## Debug Mode
+
+Use `--debug` to generate debugging artifacts in a `<filename>_debug/` folder:
+
+```bash
+sun --debug hello.sun
+```
+
+This creates:
+- `ast.dot` — GraphViz visualization of the AST
+- `ir.ll` — Full LLVM IR output
+- `scope_tree.html` — HTML visualization of semantic scopes
+
+Visualize the AST:
+```bash
+dot -Tpng hello_debug/ast.dot -o ast.png
 ```
 
 ## Command-Line Arguments
@@ -38,10 +97,16 @@ Hello, Sun!
 Programs can accept command-line arguments by defining `main` with `argc` and `argv` parameters:
 
 ```sun
+using sun;
+
 function main(argc: i32, argv: ptr<ptr<i8>>) i32 {
     println("Number of arguments received:");
     println_i32(argc);
     return 0;
+}
+
+manifest {
+    moons: ["stdlib.moon"]
 }
 ```
 
@@ -56,11 +121,17 @@ Number of arguments received:
 A complete program that echoes all command-line arguments:
 
 ```sun
+using sun;
+
 function main(argc: i32, argv: ptr<ptr<i8>>) i32 {
     for (var i: i32 = 0; i < argc; i = i + 1) {
         println(argv[i]);
     }
     return 0;
+}
+
+manifest {
+    moons: ["stdlib.moon"]
 }
 ```
 
@@ -79,7 +150,7 @@ c
 Using the standard library `Matrix<T>` class:
 
 ```sun
-import "build/stdlib.moon";
+using sun;
 
 function main() i32 {
     var allocator = make_heap_allocator();
@@ -97,12 +168,17 @@ function main() i32 {
     
     return sum;
 }
+
+manifest {
+    moons: ["stdlib.moon"]
+}
+```
 ```
 
 ### Multi-dimensional Matrices
 
 ```sun
-import "build/stdlib.moon";
+using sun;
 
 function main() i32 {
     var allocator = make_heap_allocator();
@@ -118,6 +194,10 @@ function main() i32 {
     
     return v[2];  // 30
 }
+
+manifest {
+    moons: ["stdlib.moon"]
+}
 ```
 
 ## Classes and Constructors
@@ -125,6 +205,8 @@ function main() i32 {
 ### Basic Class
 
 ```sun
+using sun;
+
 class Point {
     var x: f64;
     var y: f64;
@@ -149,6 +231,10 @@ function main() i32 {
     println_f64(dist);
     
     return 0;
+}
+
+manifest {
+    moons: ["stdlib.moon"]
 }
 ```
 
@@ -181,6 +267,8 @@ function main() i32 {
 ## Interfaces
 
 ```sun
+using sun;
+
 interface Drawable {
     function draw() void;
 }
@@ -196,6 +284,10 @@ class Circle implements Drawable {
         println("Drawing circle with radius:");
         println_f64(this.radius);
     }
+}
+
+manifest {
+    moons: ["stdlib.moon"]
 }
 
 class Square implements Drawable {
@@ -275,7 +367,6 @@ function main() i32 {
 ### Heap Allocation with Unique
 
 ```sun
-import "build/stdlib.moon";
 using sun;
 
 class Point {
@@ -299,6 +390,10 @@ function main() i32 {
     
     return 0;
     // p.deinit() called automatically, memory freed
+}
+
+manifest {
+    moons: ["stdlib.moon"]
 }
 ```
 

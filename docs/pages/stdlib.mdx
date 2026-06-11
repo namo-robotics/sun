@@ -1,16 +1,24 @@
 # Standard Library
 
-The Sun standard library is distributed as a precompiled `stdlib.moon` file. Import it and use the `sun` module namespace:
+The Sun standard library is distributed as a precompiled `stdlib.moon` file. Include it in your manifest and import the `sun` namespace:
 
 ```sun
-import "build/stdlib.moon";
 using sun;
+
+function main() void {
+    var allocator = make_heap_allocator();
+    // Use stdlib types...
+}
+
+manifest {
+    moons: ["stdlib.moon"]
+}
 ```
 
 import { Callout } from 'nextra/components'
 
 <Callout type="info">
-  When installed via the Debian package, use `import "stdlib.moon";` with `SUN_PATH` set to the installation directory. When building from source, use `import "build/stdlib.moon";`.
+  Set `SUN_PATH` to the directory containing `stdlib.moon`. When building from source, this is the `build/` directory.
 </Callout>
 
 ## HeapAllocator

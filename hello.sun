@@ -7,7 +7,3 @@ function main() void {
 manifest {
     moons: ["stdlib.moon"]
 }
-
-manifest {
-    moons: [{ path: "stdlib.moon" }]
-}

@@ -21,20 +21,30 @@ import { Callout } from 'nextra/components'
 
 Here's a minimal hello-world program:
 
-```sun
-// hello.sun
-import "stdlib.moon";
+```sun filename="hello.sun"
 using sun;
 
 function main() void {
-  println("Hello, Sun!");
+    println("Hello, Sun!");
+}
+
+manifest {
+    moons: ["stdlib.moon"]
 }
 ```
 
-Compile and run:
+Run directly with JIT:
 
 ```bash
-sun --compile -o hello hello.sun
+export SUN_PATH=/path/to/sun/build
+sun hello.sun
+Hello, Sun!
+```
+
+Or compile to a native executable:
+
+```bash
+sun -c -o hello hello.sun
 ./hello
 Hello, Sun!
 ```
@@ -71,70 +81,149 @@ cd sun
 
 ## Quick Start
 
-Create a Sun program.
+Create a Sun program:
 
-```sun
-// hello.sun
-import "stdlib.moon";
+```sun filename="hello.sun"
 using sun;
 
 function main() i32 {
     println("Hello, Sun!");
     return 0;
 }
+
+manifest {
+    moons: ["stdlib.moon"]
+}
 ```
 
 ### JIT Execution
 
-Set `SUN_PATH` for imports.
+Set `SUN_PATH` to the directory containing `stdlib.moon`:
 
 ```bash
-export SUN_PATH=`pwd`/build
-```
-
-```bash
-ubuntu@5b8bc57b626b:/workspaces/sun$ sun hello.sun
+export SUN_PATH=/path/to/sun/build
+sun hello.sun
 Hello, Sun!
 ```
 
 ### Compile to native executable
 
 ```bash
-ubuntu@5b8bc57b626b:/workspaces/sun$ sun --compile -o hello hello.sun
+sun -c -o hello hello.sun
 Compiling: hello.sun -> hello
 Successfully compiled to: hello
-ubuntu@5b8bc57b626b:/workspaces/sun$ ./hello 
+./hello 
 Hello, Sun!
 ```
 
 ### Inspect generated LLVM IR
 
 ```bash
-ubuntu@5b8bc57b626b:/workspaces/sun$ sun --emit-ir hello.sun 
-; LLVM IR (user-defined only):
-@str = private unnamed_addr constant [12 x i8] c"Hello, Sun!\00", align 1
-define void @main() {
+$ sun --emit-ir -c hello.sun 
+Compiling: hello.sun -> hello
+; LLVM IR (reachable from main):
+define void @"$340e67ad$_sun_println"(%static_ptr_struct %s) {
 entry:
-  call void @sun_println(%static_ptr_struct.20 { ptr @str, i64 11 })
+  %s1 = alloca %static_ptr_struct, align 8
+  store %static_ptr_struct %s, ptr %s1, align 8
+  %s2 = load %static_ptr_struct, ptr %s1, align 8
+  %str.data = extractvalue %static_ptr_struct %s2, 0
+  call void @__sun_print_string(ptr %str.data)
+  call void @__sun_print_newline()
   ret void
 }
 
+define internal void @__sun_print_newline() {
+entry:
+  %0 = alloca i8, align 1
+  store i8 10, ptr %0, align 1
+  %syscall_write = call i64 asm sideeffect "syscall", "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}"(i64 1, i32 1, ptr %0, i64 1)
+  ret void
+}
+
+define internal void @__sun_print_string(ptr %0) {
+entry:
+  %1 = alloca i64, align 8
+  store i64 0, ptr %1, align 4
+  br label %strlen_loop
+
+strlen_loop:                                      ; preds = %strlen_loop, %entry
+  %2 = load i64, ptr %1, align 4
+  %3 = getelementptr i8, ptr %0, i64 %2
+  %4 = load i8, ptr %3, align 1
+  %5 = icmp eq i8 %4, 0
+  %6 = add i64 %2, 1
+  store i64 %6, ptr %1, align 4
+  br i1 %5, label %write, label %strlen_loop
+
+write:                                            ; preds = %strlen_loop
+  %7 = load i64, ptr %1, align 4
+  %8 = sub i64 %7, 1
+  %syscall_write = call i64 asm sideeffect "syscall", "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}"(i64 1, i32 1, ptr %0, i64 %8)
+  ret void
+}
+
+define void @main() {
+entry:
+  call void @"$340e67ad$_sun_println"(%static_ptr_struct { ptr @str, i64 11 })
+  ret void
+}
+
+Successfully compiled to: hello
+```
+
+### Debug Mode
+
+Use `--debug` to generate debugging artifacts in a `<filename>_debug/` folder:
+
+```bash
+sun --debug hello.sun
+Debug output folder: hello_debug/
+  Generated: hello_debug/ast.dot
+  Generated: hello_debug/scope_tree.html
+  Generated: hello_debug/ir.ll
 Hello, Sun!
 ```
 
-## Moons
+This creates:
+- `ast.dot` — GraphViz visualization of the AST
+- `ir.ll` — Full LLVM IR output  
+- `scope_tree.html` — HTML visualization of semantic scopes
 
-Sun programs can import precompiled library bundles called **moons** (`.moon` files). Moons contain compiled code and type information, enabling fast compilation and reliable distribution of libraries.
+Visualize the AST:
+```bash
+dot -Tpng hello_debug/ast.dot -o ast.png
+```
+
+## Manifests
+
+Sun programs declare their dependencies using a `manifest` block:
 
 ```sun
-import "stdlib.moon";
-
-function main() i32 {
-    var allocator = make_heap_allocator();
-    var m = Matrix<i32>(allocator, [3, 3]);
-    m[1, 1] = 42;
-    return m[1, 1];
+manifest {
+    suns: ["utils.sun", "math.sun"]    // Source files to compile together
+    moons: ["stdlib.moon"]              // Precompiled libraries to link
 }
+```
+
+Paths are resolved relative to the source file, then via `SUN_PATH`.
+
+## Moons
+
+**Moons** (`.moon` files) are precompiled library bundles containing compiled code and type information. Create a moon from an entrypoint with a manifest:
+
+```sun filename="mylib.sun"
+module mylib {
+    function helper() i32 { return 42; }
+}
+
+manifest {
+    suns: ["utils.sun", "math.sun"]
+}
+```
+
+```bash
+sun --emit-moon -o mylib.moon mylib.sun
 ```
 
 Sun is designed to work with **Moon**, a safety-critical package manager (coming soon) that will provide:
