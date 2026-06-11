@@ -116,7 +116,6 @@ TEST(MutexTest, atomic_store_and_load) {
 
 TEST(MutexTest, mutex_import_compiles) {
   EXPECT_NO_THROW(compileString(R"(
-    import "build/stdlib.moon";
     using sun;
 
     function main() i32 {
@@ -128,7 +127,6 @@ TEST(MutexTest, mutex_import_compiles) {
 
 TEST(MutexTest, mutex_lock_unlock_compiles) {
   EXPECT_NO_THROW(compileString(R"(
-    import "build/stdlib.moon";
     using sun;
 
     function main() i32 {
@@ -145,8 +143,7 @@ TEST(MutexTest, mutex_lock_unlock_compiles) {
 // ============================================================================
 
 TEST(MutexTest, mutex_single_thread_lock_unlock) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -168,8 +165,7 @@ TEST(MutexTest, mutex_single_thread_lock_unlock) {
 }
 
 TEST(MutexTest, mutex_multiple_lock_unlock) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -195,8 +191,7 @@ TEST(MutexTest, mutex_multiple_lock_unlock) {
 // ============================================================================
 
 TEST(MutexTest, mutex_two_threads_sequential) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     var counter: i32 = 0;
@@ -238,8 +233,7 @@ TEST(MutexTest, mutex_two_threads_sequential) {
 }
 
 TEST(MutexTest, mutex_three_threads) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     var counter: i32 = 0;
@@ -295,8 +289,7 @@ TEST(MutexTest, mutex_three_threads) {
 TEST(MutexTest, mutex_prevents_races) {
   // Run the same test multiple times to increase chance of catching races
   for (int run = 0; run < 5; run++) {
-    auto value = executeString(R"(
-      import "build/stdlib.moon";
+    auto value = executeStringWithStdlib(R"(
       using sun;
 
       var counter: i32 = 0;

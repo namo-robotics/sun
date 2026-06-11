@@ -9,7 +9,7 @@
 #include "execution_utils.h"
 
 TEST(ProgramTest, vars) {
-  auto value = executeString(R"(
+  auto value = executeStringWithStdlib(R"(
     function main() i32 {
         var x: i32 = 1;
         return x + 2;
@@ -328,8 +328,7 @@ TEST(ProgramTest, func_return) {
 }
 
 TEST(ProgramTest, print_i32) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     function main() i32 {
         print_i32(42);
@@ -340,8 +339,7 @@ TEST(ProgramTest, print_i32) {
 }
 
 TEST(ProgramTest, println_i32) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     function main() i32 {
         println_i32(123);
@@ -353,8 +351,7 @@ TEST(ProgramTest, println_i32) {
 }
 
 TEST(ProgramTest, print_multiple) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     function main() i32 {
         var x: i32 = 10;
@@ -369,8 +366,7 @@ TEST(ProgramTest, print_multiple) {
 }
 
 TEST(ProgramTest, hello_world) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     function main() i32 {
         println("hello world");
@@ -381,8 +377,7 @@ TEST(ProgramTest, hello_world) {
 }
 
 TEST(ProgramTest, string_variable) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     function main() i32 {
         var greeting: static_ptr<u8> = "Hello, Sun!";
@@ -497,8 +492,7 @@ TEST(ProgramTest, raw_ptr_type_parsing) {
 
 TEST(ProgramTest, main_void_return) {
   // Test that function main() void works (return type is now required)
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     function main() void {
         println("Hello from void main!");
@@ -510,8 +504,7 @@ TEST(ProgramTest, main_void_return) {
 
 TEST(ProgramTest, main_explicit_void_return) {
   // Test that function main() void works explicitly
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     function main() void {
         println("Explicit void return");
@@ -586,29 +579,40 @@ TEST(ProgramTest, ref_to_global) {
 }
 
 TEST(ProgramTest, minimal_transitive_import) {
-  // Test minimal transitive import
-  // main imports a which imports b
-  auto value = executeString(R"(
-      
+  // Import is now always a parse error
+  EXPECT_THROW(executeString(R"(
     import "tests/programs/minimal_import_a.sun";
-
     function main() i32 {
         return a();
     };
-  )");
-  EXPECT_EQ(value, 1);
+  )"),
+               SunError);
 }
 
 TEST(ProgramTest, minimal_transitive_import_error) {
-  // Test minimal transitive import
-  // main imports a which imports b
+  // Import is now always a parse error
   EXPECT_THROW(executeString(R"(
-      
     import "tests/programs/minimal_import_a.sun";
-
     function main() i32 {
         return b();
     };
   )"),
                SunError);
+}
+
+TEST(ProgramTest, function_order_does_not_matter) {
+  auto value = executeString(R"(
+    function foo() i32 {
+        return bar() + 1;
+    };
+
+    function bar() i32 {
+        return 41;
+    };
+
+    function main() i32 {
+        return foo();
+    };
+  )");
+  EXPECT_EQ(value, 42);
 }

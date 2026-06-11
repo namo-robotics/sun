@@ -6,4 +6,4 @@ cd "$DIR"
 
 export SUN_PATH=${DIR}/..:${DIR}/../build
 
-sun --debug -c test.sun -o test --emit-ir
+sun --debug -c test.sun a.sun b.sun -o test --emit-ir

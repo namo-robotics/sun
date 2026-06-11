@@ -259,12 +259,6 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserialize(
     case ast::ASTNode::kSpawnExpr:
       result = deserializeSpawn(node.spawn_expr());
       break;
-    case ast::ASTNode::kImportStmt:
-      result = deserializeImport(node.import_stmt());
-      break;
-    case ast::ASTNode::kImportScope:
-      result = deserializeImportScope(node.import_scope());
-      break;
     case ast::ASTNode::kModuleDef:
       result = deserializeModule(node.module_def());
       break;
@@ -614,18 +608,6 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeGenericCall(
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeSpawn(
     const ast::SpawnExpr& proto) const {
   return std::make_unique<SpawnExprAST>(deserialize(proto.lambda()));
-}
-
-std::unique_ptr<ExprAST> ASTDeserializer::deserializeImport(
-    const ast::ImportStmt& proto) const {
-  return std::make_unique<ImportAST>(proto.path());
-}
-
-std::unique_ptr<ExprAST> ASTDeserializer::deserializeImportScope(
-    const ast::ImportScope& proto) const {
-  auto body = deserializeBlockExpr(proto.body());
-  return std::make_unique<ImportScopeAST>(proto.source_file(), std::move(body),
-                                          proto.content_hash());
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeModule(

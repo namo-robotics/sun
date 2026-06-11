@@ -18,8 +18,6 @@
 //   var popped = list.pop_front(); // 5
 //   var len = list.size();      // 2
 
-import "allocator.sun";
-import "errors.sun";
 
 // ============================================================================
 // LinkedListNode<T> - Doubly-linked node

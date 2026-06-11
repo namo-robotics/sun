@@ -1,4 +1,3 @@
-import "stdlib.moon";
 using sun;
 
 function main() void {

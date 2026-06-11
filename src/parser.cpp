@@ -11,6 +11,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "ast_deserializer.h"
@@ -1842,24 +1843,13 @@ std::unique_ptr<PrototypeAST> Parser::parseExtern() {
 }
 
 // Parse import statement: import "path/to/file.sun";
-unique_ptr<ImportAST> Parser::parseImportStatement() {
-  getNextToken();  // eat 'import'
-
-  if (curTok.kind != TokenKind::STRING) {
-    parsingError("expected string literal after 'import'");
-    return nullptr;
-  }
-
-  std::string path = curTok.getString().value();
-  getNextToken();  // eat string literal
-
-  if (curTok.kind != TokenKind::SEMI_COLON) {
-    parsingError("expected ';' after import statement");
-    return nullptr;
-  }
-  getNextToken();  // eat ';'
-
-  return std::make_unique<ImportAST>(std::move(path));
+unique_ptr<ExprAST> Parser::parseImportStatement() {
+  // Import statements are no longer supported - use merged compilation instead
+  parsingError(
+      "import statements are no longer supported. "
+      "Use merged compilation with multiple input files on the command line, "
+      "or use 'using' statements to bring module symbols into scope.");
+  return nullptr;  // unreachable (parsingError throws)
 }
 
 // Parse declare statement:
@@ -2069,133 +2059,6 @@ unique_ptr<ExprAST> Parser::parseQualifiedOrSimpleName() {
   return std::make_unique<VariableReferenceAST>(std::move(firstName));
 }
 
-// Expand an import into an ImportScopeAST node.
-// This creates a tree structure where each file's own imports are nested
-// ImportScopeASTs, making transitive deps private to the importing file.
-std::unique_ptr<ImportScopeAST> Parser::expandImport(
-    const std::string& importPath, std::set<std::string>& cycleStack) {
-  // Handle .moon imports: wrap stubs in ImportScopeAST
-  if (importPath.size() > 5 &&
-      importPath.substr(importPath.size() - 5) == ".moon") {
-    std::vector<std::unique_ptr<ExprAST>> stubs;
-    std::string contentHash = collectMoonImport(importPath, stubs);
-    auto body = std::make_unique<BlockExprAST>(std::move(stubs));
-    return std::make_unique<ImportScopeAST>(importPath, std::move(body),
-                                            std::move(contentHash));
-  }
-
-  // Resolve the import path
-  std::filesystem::path resolved;
-  if (std::filesystem::path(importPath).is_absolute()) {
-    resolved = importPath;
-  } else {
-    // Check SUN_PATH directories
-    resolved = sun::SunPath::resolve(importPath);
-    if (resolved.empty()) {
-      auto sysPath =
-          std::filesystem::path("/usr/share/sun/stdlib") / importPath;
-      if (std::filesystem::exists(sysPath)) {
-        resolved = sysPath;
-      }
-    }
-    if (resolved.empty()) {
-      resolved = std::filesystem::path(baseDir) / importPath;
-    }
-  }
-
-  if (!std::filesystem::exists(resolved)) {
-    logAndThrowError("Could not find imported file: " + importPath);
-  }
-
-  resolved = std::filesystem::canonical(resolved);
-  std::string resolvedStr = resolved.string();
-
-  // Cycle detection (per-branch, not global)
-  // Instead of erroring, skip the cyclic import - the file is already being
-  // processed higher in the stack. This enables bidirectional imports
-  // (e.g., primary ↔ extension) like Python/TypeScript handle cycles.
-  if (cycleStack.count(resolvedStr)) {
-    return std::make_unique<ImportScopeAST>(
-        resolvedStr, std::make_unique<BlockExprAST>(
-                         std::vector<std::unique_ptr<ExprAST>>{}));
-  }
-  cycleStack.insert(resolvedStr);
-
-  // Read the file content
-  std::ifstream file(resolvedStr);
-  if (!file.is_open()) {
-    logAndThrowError("Could not open imported file: " + resolvedStr);
-  }
-  std::stringstream buffer;
-  buffer << file.rdbuf();
-  std::string source = buffer.str();
-
-  // Compute content hash for caching
-  std::string contentHash = sun::ASTCache::computeHash(source);
-
-  std::unique_ptr<BlockExprAST> blockAst;
-
-  // Try to get cached AST if caching is enabled
-  if (enableImportCaching_) {
-    blockAst = sun::ASTCache::instance().get(contentHash);
-  }
-
-  if (!blockAst) {
-    // Cache miss - parse the file
-    std::istringstream ss(source);
-    Parser importParser(ss);
-    importParser.baseDir = resolved.parent_path().string();
-    importParser.importedFiles = importedFiles;  // Share for .moon dedup
-    importParser.setPrecompiledImports(precompiledImports);
-    importParser.setFilePath(resolvedStr);
-    importParser.setImportCaching(enableImportCaching_);
-    importParser.getNextToken();
-
-    blockAst = importParser.parseProgram();
-    if (!blockAst) {
-      logAndThrowError("Failed to parse imported file: " + resolvedStr);
-    }
-
-    // Cache the parsed AST (before import expansion)
-    if (enableImportCaching_) {
-      sun::ASTCache::instance().put(contentHash, *blockAst, false);
-    }
-  }
-
-  // Create a temporary parser for expanding nested imports
-  // This is needed because we need proper baseDir context for resolving imports
-  std::istringstream dummyStream("");
-  Parser nestedParser(dummyStream);
-  nestedParser.baseDir = resolved.parent_path().string();
-  nestedParser.importedFiles = importedFiles;
-  nestedParser.setPrecompiledImports(precompiledImports);
-  nestedParser.setFilePath(resolvedStr);
-  nestedParser.setImportCaching(enableImportCaching_);
-
-  // Build the body: nested ImportScopeASTs for this file's imports,
-  // then the file's own non-import statements
-  std::vector<std::unique_ptr<ExprAST>> scopeBody;
-
-  for (auto& stmt : const_cast<std::vector<std::unique_ptr<ExprAST>>&>(
-           blockAst->getBody())) {
-    if (stmt && stmt->isImport()) {
-      const auto& importStmt = static_cast<const ImportAST&>(*stmt);
-      scopeBody.push_back(
-          nestedParser.expandImport(importStmt.getPath(), cycleStack));
-    } else if (stmt) {
-      scopeBody.push_back(std::move(stmt));
-    }
-  }
-
-  cycleStack.erase(resolvedStr);
-
-  auto body = std::make_unique<BlockExprAST>(std::move(scopeBody));
-  // Don't pass contentHash for .sun imports - only .moon imports should have
-  // content hash for symbol isolation. Regular .sun imports share namespace
-  // with the importer (scopeKey starts with $import_).
-  return std::make_unique<ImportScopeAST>(resolvedStr, std::move(body));
-}
-
 // Handle import of a precompiled .moon file
 std::string Parser::collectMoonImport(
     const std::string& moonPath,
@@ -2243,9 +2106,17 @@ std::string Parser::collectMoonImport(
   }
   PARSER_TIMER_END(open_moon);
 
-  // Process each module in the bundle
+  // Process each module in the bundle, grouping by module name
+  // to consolidate stubs and detect name collisions
   PARSER_TIMER_START(process_modules);
-  int parsedMethods = 0;
+
+  // Map module_name -> list of stubs (empty key = global scope)
+  std::unordered_map<std::string, std::vector<std::unique_ptr<ExprAST>>>
+      moduleStubs;
+  // Track defined symbols per module for collision detection
+  std::unordered_map<std::string, std::unordered_set<std::string>>
+      moduleSymbols;
+
   for (const auto& moduleKey : reader->listModules()) {
     // Record for linking
     bool alreadyRecorded = false;
@@ -2270,8 +2141,46 @@ std::string Parser::collectMoonImport(
       contentHash = sun::getSymbolPrefix(*metadata);
     }
 
-    // Create AST stubs from metadata and add to collectedAST
-    createModuleStubs(*metadata, collectedAST);
+    // Create stubs into a temporary vector
+    std::vector<std::unique_ptr<ExprAST>> stubs;
+    createModuleStubs(*metadata, stubs);
+
+    // Check for name collisions and consolidate
+    std::string modName = metadata->module_name();
+    auto& symbols = moduleSymbols[modName];
+    for (auto& stub : stubs) {
+      std::string symbolName;
+      if (auto* cls = dynamic_cast<ClassDefinitionAST*>(stub.get())) {
+        symbolName = cls->getName();
+      } else if (auto* iface =
+                     dynamic_cast<InterfaceDefinitionAST*>(stub.get())) {
+        symbolName = iface->getName();
+      } else if (auto* func = dynamic_cast<FunctionAST*>(stub.get())) {
+        symbolName = func->getProto().getName();
+      }
+      if (!symbolName.empty()) {
+        if (!symbols.insert(symbolName).second) {
+          logAndThrowError("Name collision in moon module '" + modName +
+                           "': duplicate symbol '" + symbolName + "'");
+        }
+      }
+      moduleStubs[modName].push_back(std::move(stub));
+    }
+  }
+
+  // Emit consolidated ModuleAST nodes (one per unique module name)
+  for (auto& [modName, stubs] : moduleStubs) {
+    if (stubs.empty()) continue;
+    if (!modName.empty()) {
+      auto nsBody = std::make_unique<BlockExprAST>(std::move(stubs));
+      auto nsAST = std::make_unique<ModuleAST>(modName, std::move(nsBody));
+      nsAST->setPrecompiled(true);
+      collectedAST.push_back(std::move(nsAST));
+    } else {
+      for (auto& ast : stubs) {
+        collectedAST.push_back(std::move(ast));
+      }
+    }
   }
   PARSER_TIMER_END(process_modules);
 
@@ -2288,21 +2197,32 @@ void Parser::createModuleStubs(
   // Use ASTDeserializer to convert proto nodes
   sun::serialization::ASTDeserializer deserializer;
 
+  // Build the scope path for qualified names:
+  // Content hash ensures symbol isolation between library versions
+  std::string contentHash = sun::getSymbolPrefix(metadata);
+  std::vector<std::string> scopePath;
+  if (!contentHash.empty()) {
+    scopePath.push_back(contentHash);
+  }
+  if (!metadata.module_name().empty()) {
+    scopePath.push_back(metadata.module_name());
+  }
+
   // Collect AST stubs for this module - may be wrapped in a namespace
   std::vector<std::unique_ptr<ExprAST>> moduleAST;
 
   // Create AST stubs from metadata
   // IMPORTANT: Process interfaces FIRST (before classes that implement them)
   for (int i = 0; i < metadata.interfaces_size(); ++i) {
-    // Wrap the InterfaceDef in an ASTNode for deserialization
     sun::ast::ASTNode node;
     *node.mutable_interface_def() = metadata.interfaces(i);
 
     auto ast = deserializer.deserialize(node);
     if (ast) {
-      // Mark as precompiled
       if (auto* ifaceDef = dynamic_cast<InterfaceDefinitionAST*>(ast.get())) {
         ifaceDef->setPrecompiled(true);
+        ifaceDef->setQualifiedName(
+            sun::QualifiedName(scopePath, ifaceDef->getName()));
       }
       moduleAST.push_back(std::move(ast));
     }
@@ -2310,15 +2230,15 @@ void Parser::createModuleStubs(
 
   // Classes (after interfaces so interface lookups work)
   for (int i = 0; i < metadata.classes_size(); ++i) {
-    // Wrap the ClassDef in an ASTNode for deserialization
     sun::ast::ASTNode node;
     *node.mutable_class_def() = metadata.classes(i);
 
     auto ast = deserializer.deserialize(node);
     if (ast) {
-      // Mark as precompiled
       if (auto* classDef = dynamic_cast<ClassDefinitionAST*>(ast.get())) {
         classDef->setPrecompiled(true);
+        classDef->setQualifiedName(
+            sun::QualifiedName(scopePath, classDef->getName()));
       }
       moduleAST.push_back(std::move(ast));
     }
@@ -2326,15 +2246,15 @@ void Parser::createModuleStubs(
 
   // Functions
   for (int i = 0; i < metadata.functions_size(); ++i) {
-    // Wrap the FunctionDef in an ASTNode for deserialization
     sun::ast::ASTNode node;
     *node.mutable_function_def() = metadata.functions(i);
 
     auto ast = deserializer.deserialize(node);
     if (ast) {
-      // Mark as precompiled
       if (auto* funcAST = dynamic_cast<FunctionAST*>(ast.get())) {
         funcAST->setPrecompiled(true);
+        funcAST->getProtoMut().setQualifiedName(
+            sun::QualifiedName(scopePath, funcAST->getProto().getName()));
       }
       moduleAST.push_back(std::move(ast));
     }
@@ -2342,7 +2262,6 @@ void Parser::createModuleStubs(
 
   // Enums
   for (int i = 0; i < metadata.enums_size(); ++i) {
-    // Wrap the EnumDef in an ASTNode for deserialization
     sun::ast::ASTNode node;
     *node.mutable_enum_def() = metadata.enums(i);
 
@@ -2352,21 +2271,9 @@ void Parser::createModuleStubs(
     }
   }
 
-  // Wrap all stubs in appropriate namespace structure
-  if (!moduleAST.empty()) {
-    // If module has a module declaration, wrap stubs in ModuleAST
-    if (!metadata.module_name().empty()) {
-      auto nsBody = std::make_unique<BlockExprAST>(std::move(moduleAST));
-      auto nsAST = std::make_unique<ModuleAST>(metadata.module_name(),
-                                               std::move(nsBody));
-      nsAST->setPrecompiled(true);
-      collectedAST.push_back(std::move(nsAST));
-    } else {
-      // No module namespace - add stubs directly
-      for (auto& ast : moduleAST) {
-        collectedAST.push_back(std::move(ast));
-      }
-    }
+  // Add all stubs directly (consolidation and wrapping is done by the caller)
+  for (auto& ast : moduleAST) {
+    collectedAST.push_back(std::move(ast));
   }
 }
 

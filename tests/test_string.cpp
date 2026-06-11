@@ -12,8 +12,7 @@
 // ============================================================================
 
 TEST(StringTest, construct_from_literal) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -26,8 +25,7 @@ TEST(StringTest, construct_from_literal) {
 }
 
 TEST(StringTest, construct_empty) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -44,8 +42,7 @@ TEST(StringTest, construct_empty) {
 // ============================================================================
 
 TEST(StringTest, at_access) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -62,8 +59,7 @@ TEST(StringTest, at_access) {
 }
 
 TEST(StringTest, set_at_modify) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -83,8 +79,7 @@ TEST(StringTest, set_at_modify) {
 // ============================================================================
 
 TEST(StringTest, equals_literal_true) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i32 {
@@ -100,8 +95,7 @@ TEST(StringTest, equals_literal_true) {
 }
 
 TEST(StringTest, equals_literal_false_content) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i32 {
@@ -117,8 +111,7 @@ TEST(StringTest, equals_literal_false_content) {
 }
 
 TEST(StringTest, equals_literal_false_length) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i32 {
@@ -138,8 +131,7 @@ TEST(StringTest, equals_literal_false_length) {
 // ============================================================================
 
 TEST(StringTest, append_char) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -153,8 +145,7 @@ TEST(StringTest, append_char) {
 }
 
 TEST(StringTest, append_char_content) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -170,8 +161,7 @@ TEST(StringTest, append_char_content) {
 }
 
 TEST(StringTest, append_literal) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -184,8 +174,7 @@ TEST(StringTest, append_literal) {
   EXPECT_EQ(value, 12);  // "Hello, Sun" = 12 chars
 }
 TEST(StringTest, append_string) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -204,8 +193,7 @@ TEST(StringTest, append_string) {
 // ============================================================================
 
 TEST(StringTest, slice_basic) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -219,8 +207,7 @@ TEST(StringTest, slice_basic) {
 }
 
 TEST(StringTest, slice_middle) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -234,8 +221,7 @@ TEST(StringTest, slice_middle) {
 }
 
 TEST(StringTest, slice_content) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -252,8 +238,7 @@ TEST(StringTest, slice_content) {
 }
 
 TEST(StringTest, slice_equals_literal) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i32 {
@@ -274,8 +259,7 @@ TEST(StringTest, slice_equals_literal) {
 // ============================================================================
 
 TEST(StringTest, initial_capacity) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i32 {

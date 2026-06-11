@@ -22,9 +22,6 @@
 //   // var row = m[0, :];      // First row as view
 //   // var sub = m[1:5, 2:8];  // Submatrix view
 
-import "allocator.sun";
-import "contiguous_buffer.sun";
-import "slice.sun";
 
 module sun {
 

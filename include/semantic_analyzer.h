@@ -47,19 +47,6 @@ class SemanticAnalyzer {
   // Current class being analyzed (for 'this' resolution)
   std::shared_ptr<sun::ClassType> currentClass = nullptr;
 
-  // Track nesting inside ImportScopeAST during analysis.
-  // When > 0, duplicate symbol registration is allowed (diamond imports).
-  int importScopeDepth_ = 0;
-
-  // Global map of import scope keys to scope shared_ptrs — enables scope
-  // cloning for diamond imports regardless of where in the tree they appear.
-  std::unordered_map<std::string, std::shared_ptr<SemanticScopeBase>>
-      importScopesByKey_;
-
-  // Import scopes whose bodies have been fully analyzed.
-  // Used to skip re-analysis for diamond dependencies.
-  std::unordered_set<std::string> analyzedImports_;
-
   // Symbols defined at module level (depth 0) — used to detect
   // redefinition errors for classes, interfaces, and enums.
   std::unordered_set<std::string> definedSymbols_;
@@ -87,6 +74,11 @@ class SemanticAnalyzer {
 
   // Main entry point: analyze a top-level expression/statement
   void analyze(ExprAST& expr);
+
+  // Declaration pre-pass: register all functions, classes, interfaces, enums,
+  // and modules in a block before analyzing bodies. This allows forward
+  // references between declarations at the same scope level.
+  void collectDeclarations(BlockExprAST& block);
 
   // Extract function signature info (param types, captures, explicit return
   // type) Sets captures on the prototype and handles auto-ref conversion for
@@ -323,10 +315,6 @@ class SemanticAnalyzer {
   void enterFunctionScope(const std::string& funcSig,
                           const sun::QualifiedName& funcName,
                           bool canThrow = false);
-  // Enter an import scope for an imported .sun file.
-  // Uses a hash of the source file path for deduplication.
-  void enterImportScope(const std::string& sourceFile,
-                        const std::string& contentHash = "");
   void exitScope();
 
   // Get the current module prefix for name mangling (e.g., "sun_")

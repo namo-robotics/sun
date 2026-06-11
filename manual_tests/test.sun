@@ -1,6 +1,5 @@
-import "build/stdlib.moon";
 using sun;
 
 function main() i32 {
-    return min<i32>(10, 5);
+    return sun.a() + sun.b();
 }

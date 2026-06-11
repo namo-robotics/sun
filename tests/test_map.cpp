@@ -13,8 +13,7 @@
 // ============================================================================
 
 TEST(MapTest, create_empty_map) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -27,8 +26,7 @@ TEST(MapTest, create_empty_map) {
 }
 
 TEST(MapTest, insert_and_get) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -42,8 +40,7 @@ TEST(MapTest, insert_and_get) {
 }
 
 TEST(MapTest, insert_multiple_and_get) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -59,8 +56,7 @@ TEST(MapTest, insert_multiple_and_get) {
 }
 
 TEST(MapTest, update_existing_key) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -75,8 +71,7 @@ TEST(MapTest, update_existing_key) {
 }
 
 TEST(MapTest, contains_key) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -98,8 +93,7 @@ TEST(MapTest, contains_key) {
 }
 
 TEST(MapTest, size_tracking) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -125,8 +119,7 @@ TEST(MapTest, size_tracking) {
 // ============================================================================
 
 TEST(MapTest, get_or_default_found) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -140,8 +133,7 @@ TEST(MapTest, get_or_default_found) {
 }
 
 TEST(MapTest, get_or_default_not_found) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -159,8 +151,7 @@ TEST(MapTest, get_or_default_not_found) {
 // ============================================================================
 
 TEST(MapTest, remove_existing) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -181,8 +172,7 @@ TEST(MapTest, remove_existing) {
 }
 
 TEST(MapTest, remove_then_contains) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -201,8 +191,7 @@ TEST(MapTest, remove_then_contains) {
 }
 
 TEST(MapTest, remove_and_reinsert) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -222,8 +211,7 @@ TEST(MapTest, remove_and_reinsert) {
 // ============================================================================
 
 TEST(MapTest, clear) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -250,8 +238,7 @@ TEST(MapTest, clear) {
 
 TEST(MapTest, auto_grow) {
   // Insert more than initial capacity (16) to trigger resize
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -278,8 +265,7 @@ TEST(MapTest, auto_grow) {
 
 TEST(MapTest, many_elements) {
   // Insert 100 elements
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i64 {
@@ -307,8 +293,7 @@ TEST(MapTest, many_elements) {
 // ============================================================================
 
 TEST(MapTest, custom_capacity) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -329,8 +314,7 @@ TEST(MapTest, custom_capacity) {
 // ============================================================================
 
 TEST(MapTest, get_missing_key_throws) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -350,8 +334,7 @@ TEST(MapTest, get_missing_key_throws) {
 }
 
 TEST(MapTest, remove_missing_key_throws) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -376,8 +359,7 @@ TEST(MapTest, remove_missing_key_throws) {
 
 TEST(MapTest, hash_collision_handling) {
   // Insert keys that might collide in small table
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -400,8 +382,7 @@ TEST(MapTest, hash_collision_handling) {
 // ============================================================================
 
 TEST(MapTest, iteration_sum_values) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -422,8 +403,7 @@ TEST(MapTest, iteration_sum_values) {
 }
 
 TEST(MapTest, iteration_empty_map) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {

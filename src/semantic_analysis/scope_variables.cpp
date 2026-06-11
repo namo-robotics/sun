@@ -223,42 +223,6 @@ void SemanticAnalyzer::enterFunctionScope(const std::string& funcSig,
   currentScope = funcScope.get();
 }
 
-void SemanticAnalyzer::enterImportScope(const std::string& sourceFile,
-                                        const std::string& scopeKey) {
-  // For .moon imports with a content hash, use the hash as scope name.
-  // This unifies the import scope with the library hash scope — the content
-  // hash provides both symbol isolation (via modulePath) and diamond-dep dedup.
-  // For .sun imports (no content hash), use a hash of the source file path.
-  auto globalIt = importScopesByKey_.find(scopeKey);
-  if (globalIt != importScopesByKey_.end()) {
-    auto child = globalIt->second->cloneSymbols(currentScope);
-    currentScope->childModules[scopeKey] = child;
-    currentScope = child.get();
-    return;
-  }
-
-  auto importScope = std::make_shared<ImportScope>();
-  // Store user-friendly import path in scopeName for display
-  importScope->scopeName = sourceFile;
-  importScope->parent = currentScope;
-
-  // For .sun imports (scopeKey starts with $import_), don't add to scopePath
-  // to avoid creating redundant prefixes during bundle compilation.
-  // Only .moon imports (content hash starting with non-$import) should affect
-  // the scopePath for symbol isolation between library versions.
-  if (scopeKey.starts_with("$import_")) {
-    // .sun import - no scope path prefix (shares namespace with importer)
-    importScope->scopePath = {};
-  } else {
-    // .moon import - use content hash for symbol isolation
-    importScope->scopePath = {scopeKey};
-  }
-
-  currentScope->childModules[scopeKey] = importScope;
-  currentScope = importScope.get();
-  importScopesByKey_[scopeKey] = importScope;
-}
-
 void SemanticAnalyzer::exitScope() {
   if (currentScope->parent) {
     auto* parent = currentScope->parent;
@@ -940,11 +904,9 @@ void SemanticAnalyzer::registernFunctionInCurrentScope(
   // this is the parent function's scope - the scope hierarchy naturally
   // disambiguates between different generic instantiations.
   std::string sig = getFunctionSignature(name, info.paramTypes);
-  // Skip if already registered (diamond import re-registration)
-  if (currentScope->functions.contains(sig)) {
-    return;
-  }
-  // Register in current scope
+  // Always overwrite: the declaration pre-pass registers with minimal info
+  // (no captures), and the normal pass overwrites with complete info.
+  // This also handles diamond import re-registration gracefully.
   currentScope->functions[sig] = info;
 }
 

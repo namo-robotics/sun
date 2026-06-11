@@ -71,15 +71,8 @@ Value* CodegenVisitor::codegen(const ExprAST& expr) {
     case ASTNodeType::CONTINUE_STMT:
       return codegen(static_cast<const ContinueAST&>(expr));
     case ASTNodeType::IMPORT:
-      // Import statements are processed before codegen (by the parser).
-      // Nothing to generate - return a void/zero value.
+      // Import statements should never reach codegen (parser errors on them)
       return ConstantFP::get(ctx.getContext(), APFloat(0.0));
-    case ASTNodeType::IMPORT_SCOPE: {
-      // Expanded import scope — generate code for all declarations inside.
-      // Diamond dependency duplicates are already marked skipCodegen by SA.
-      const auto& importScope = static_cast<const ImportScopeAST&>(expr);
-      return codegen(importScope.getBody());
-    }
     case ASTNodeType::DECLARE_TYPE: {
       // Declare statements trigger generic class instantiation.
       // Semantic analysis resolved the type; specialized class should already

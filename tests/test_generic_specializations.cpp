@@ -16,8 +16,7 @@
 // Test using Vec<u32> which is NOT pre-declared in stdlib
 // (stdlib only pre-declares Vec<i8/i32/i64/f32/f64>)
 TEST(GenericSpecializationTest, vec_new_primitive_specialization) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -39,8 +38,7 @@ TEST(GenericSpecializationTest, vec_new_primitive_specialization) {
 // This test only verifies that the generic can be instantiated with a custom
 // class type - full functionality (push/get) may have limitations
 TEST(GenericSpecializationTest, vec_with_custom_class) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     class Point {
@@ -68,8 +66,7 @@ TEST(GenericSpecializationTest, vec_with_custom_class) {
 
 // Test using allocator.create<T>() with a custom class type
 TEST(GenericSpecializationTest, generic_method_new_specialization) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     class Counter {
@@ -98,8 +95,7 @@ TEST(GenericSpecializationTest, generic_method_new_specialization) {
 // Test using Map<i32, i32> which is NOT pre-declared in stdlib
 // (stdlib only pre-declares Map<i64, i32> and Map<i64, i64>)
 TEST(GenericSpecializationTest, map_new_key_value_specialization) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {

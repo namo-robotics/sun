@@ -1,0 +1,3 @@
+function main() i32 {
+  return A.B.foo() + B.A.foo();
+}

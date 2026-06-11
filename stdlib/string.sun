@@ -17,9 +17,6 @@
 //   // Slicing returns a view (no copy)
 //   var view = s[1:4];        // "ell"
 
-import "allocator.sun";
-import "matrix.sun";
-import "slice.sun";
 
 module sun {
 

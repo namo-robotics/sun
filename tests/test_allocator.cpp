@@ -46,8 +46,7 @@ TEST(AllocatorTest, variadic_method_local_allocator) {
 // ============================================================================
 
 TEST(AllocatorTest, heap_allocator_create_simple_class) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     class Point {
@@ -75,8 +74,7 @@ TEST(AllocatorTest, heap_allocator_create_simple_class) {
 }
 
 TEST(AllocatorTest, heap_allocator_create_generic_class) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     class Box<T> {
@@ -103,8 +101,7 @@ TEST(AllocatorTest, heap_allocator_create_generic_class) {
 
 TEST(AllocatorTest, unique_ptr_automatic_cleanup) {
   // Unique<T> wraps allocator.create<T>() result for automatic cleanup
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     class Point {
@@ -134,8 +131,7 @@ TEST(AllocatorTest, unique_ptr_automatic_cleanup) {
 // ============================================================================
 
 TEST(AllocatorTest, multiple_heap_allocations) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     class Counter {
@@ -162,8 +158,7 @@ TEST(AllocatorTest, multiple_heap_allocations) {
 // ============================================================================
 
 TEST(AllocatorTest, allocator_as_parameter) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     class Point {
@@ -228,8 +223,7 @@ TEST(AllocatorTest, sizeof_intrinsic_class) {
 
 TEST(AllocatorTest, init_intrinsic_with_allocator) {
   // Test _init<T> with allocator-allocated memory
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     class Point {

@@ -13,6 +13,7 @@
 #include "library_cache.h"
 #include "metadata_extractor.h"
 #include "moon/moon.h"
+#include "moon_import.h"
 
 static void printUsage(const char* programName) {
   llvm::errs() << "Usage: " << programName
@@ -31,6 +32,9 @@ static void printUsage(const char* programName) {
   llvm::errs()
       << "  --bundle          Bundle multiple .sun files into one .moon\n";
   llvm::errs() << "  --lib-path <dir>  Add directory to library search path\n";
+  llvm::errs() << "  --moon <spec>     Load precompiled .moon library\n";
+  llvm::errs() << "                    Format: path.moon or "
+                  "path.moon:module=alias\n";
   llvm::errs() << "  -h, --help        Show this help message\n";
   llvm::errs() << "\nArguments after the script file (or after --) are passed "
                   "to main(argc, argv).\n";
@@ -74,6 +78,7 @@ int main(int argc, char* argv[]) {
   std::string outputFile;
   std::vector<std::string> inputFiles;
   std::vector<std::string> libPaths;
+  std::vector<sun::MoonImport> moonImports;
   bool compileMode = false;
   bool emitObjOnly = false;
   bool emitMoon = false;
@@ -107,6 +112,14 @@ int main(int argc, char* argv[]) {
       bundleMode = true;
     } else if (arg == "--lib-path" && i + 1 < argc) {
       libPaths.push_back(argv[++i]);
+    } else if (arg == "--moon" && i + 1 < argc) {
+      auto moonImport = sun::parseMoonImportSpec(argv[++i]);
+      if (!moonImport) {
+        llvm::errs() << "Invalid --moon format: " << argv[i] << "\n";
+        llvm::errs() << "Expected: path.moon or path.moon:module=alias\n";
+        return 1;
+      }
+      moonImports.push_back(std::move(*moonImport));
     } else if (arg == "-h" || arg == "--help") {
       printUsage(argv[0]);
       return 0;
@@ -158,6 +171,8 @@ int main(int argc, char* argv[]) {
 
     sun::SunLibWriter bundleWriter;
 
+    // Extract metadata from each file (metadata extraction only parses, no SA)
+    std::vector<sun::moon::ModuleMetadata> allMetadata;
     for (const auto& file : expandedFiles) {
       llvm::outs() << "  Processing: " << file << "\n";
 
@@ -168,19 +183,29 @@ int main(int argc, char* argv[]) {
                        << " for metadata\n";
           return 1;
         }
-        auto metadata = *metadataOpt;
-
-        auto driver = Driver::createForAOT("bundle_module");
-        driver->compileFile(file);
-
-        bundleWriter.addModule(driver->getModule(), metadata);
+        allMetadata.push_back(*metadataOpt);
       } catch (const SunError& e) {
-        llvm::errs() << "Error compiling " << file << ": " << e.what() << "\n";
-        return 1;
-      } catch (const std::exception& e) {
-        llvm::errs() << "Error compiling " << file << ": " << e.what() << "\n";
+        llvm::errs() << "Error extracting metadata from " << file << ": "
+                     << e.what() << "\n";
         return 1;
       }
+    }
+
+    // Compile all files together using merged compilation
+    try {
+      auto driver = Driver::createForAOT("bundle_module");
+      driver->compileFiles(expandedFiles, moonImports);
+
+      // Add each module's metadata + the shared compiled LLVM module
+      for (auto& metadata : allMetadata) {
+        bundleWriter.addModule(driver->getModule(), metadata);
+      }
+    } catch (const SunError& e) {
+      llvm::errs() << "Error compiling bundle: " << e.what() << "\n";
+      return 1;
+    } catch (const std::exception& e) {
+      llvm::errs() << "Error compiling bundle: " << e.what() << "\n";
+      return 1;
     }
 
     if (!bundleWriter.write(outputFile)) {
@@ -289,6 +314,7 @@ int main(int argc, char* argv[]) {
       if (debugMode) {
         driver->setDebugMode(true, inputFile);
       }
+      driver->setMoonImports(moonImports);
       driver->compileFile(inputFile);
 
       // Print IR if requested (only user-defined, not imports)
@@ -330,6 +356,7 @@ int main(int argc, char* argv[]) {
     if (debugMode) {
       driver->setDebugMode(true, inputFile);
     }
+    driver->setMoonImports(std::move(moonImports));
     driver->executeFile(inputFile, programArgc, programArgv.data());
   } catch (const SunError& e) {
     std::cerr << e.what() << std::endl;

@@ -170,6 +170,12 @@ void ModuleLinker::declareAvailableFunctions() {
     auto libModule = LibraryCache::instance().loadModule(moduleKey, ctx);
     if (!libModule) continue;
 
+    // Check if this module has aliasing configured
+    auto remapIt = moduleRemaps_.find(moduleKey);
+    bool hasRemap =
+        (remapIt != moduleRemaps_.end() && !remapIt->second.empty());
+    const auto* remap = hasRemap ? &remapIt->second : nullptr;
+
     // Scan all defined functions in the bitcode and create declarations
     for (const auto& func : libModule->functions()) {
       // Skip declarations (external functions the lib depends on)
@@ -186,8 +192,14 @@ void ModuleLinker::declareAvailableFunctions() {
         continue;  // Skip __sun_* helper functions
       }
 
+      // Apply aliasing if configured
+      std::string declaredName = funcName;
+      if (remap) {
+        declaredName = remapSymbolName(funcName, *remap);
+      }
+
       // Skip if already declared in target
-      if (target_.getFunction(funcName)) continue;
+      if (target_.getFunction(declaredName)) continue;
 
       // Clone the function type and remap struct types to target module's types
       // This fixes type mismatches like static_ptr_struct vs
@@ -195,13 +207,12 @@ void ModuleLinker::declareAvailableFunctions() {
       llvm::FunctionType* funcType =
           remapFunctionType(func.getFunctionType(), ctx);
 
-      // Create external declaration with the same name as in bitcode
-      // (already prefixed with content hash)
+      // Create external declaration with the (potentially aliased) name
       llvm::Function::Create(funcType, llvm::Function::ExternalLinkage,
-                             funcName, &target_);
+                             declaredName, &target_);
 
-      // Map name to module for linking
-      symbolToModule_[funcName] = moduleKey;
+      // Map the aliased name to the module for linking
+      symbolToModule_[declaredName] = moduleKey;
     }
   }
 }
@@ -281,6 +292,35 @@ bool ModuleLinker::linkModuleRecursive(const std::string& moduleKey) {
     return false;
   }
 
+  // Check if this module has aliasing configured
+  auto remapIt = moduleRemaps_.find(moduleKey);
+  if (remapIt != moduleRemaps_.end() && !remapIt->second.empty()) {
+    // Rename all functions/globals in the bitcode module to use aliased names
+    const auto& remap = remapIt->second;
+
+    // Rename functions
+    for (auto& func : libModule->functions()) {
+      if (func.hasName() && !func.getName().empty()) {
+        std::string oldName = func.getName().str();
+        std::string newName = remapSymbolName(oldName, remap);
+        if (newName != oldName) {
+          func.setName(newName);
+        }
+      }
+    }
+
+    // Rename globals
+    for (auto& global : libModule->globals()) {
+      if (global.hasName() && !global.getName().empty()) {
+        std::string oldName = global.getName().str();
+        std::string newName = remapSymbolName(oldName, remap);
+        if (newName != oldName) {
+          global.setName(newName);
+        }
+      }
+    }
+  }
+
   // Ensure the library module has same data layout as target
   // This avoids "Linking two modules of different data layouts" warnings
   if (libModule->getDataLayoutStr().empty()) {
@@ -297,6 +337,115 @@ bool ModuleLinker::linkModuleRecursive(const std::string& moduleKey) {
 
   linkedModules_.insert(moduleKey);
   return true;
+}
+
+void ModuleLinker::registerAvailableModulesWithRemap(
+    const MoonImport& moonImport) {
+  // Open the moon file
+  auto reader = SunLibReader::open(moonImport.path);
+  if (!reader) {
+    return;
+  }
+
+  // Register each module in the bundle
+  for (const auto& moduleKey : reader->listModules()) {
+    if (availableModules_.count(moduleKey)) {
+      continue;
+    }
+    availableModules_.insert(moduleKey);
+
+    // Store the remap configuration for this module
+    if (moonImport.hasRemap()) {
+      moduleRemaps_[moduleKey] = moonImport.moduleRemap;
+      buildSymbolMapWithRemap(moduleKey, moonImport.moduleRemap);
+    } else {
+      buildSymbolMap(moduleKey);
+    }
+  }
+}
+
+void ModuleLinker::buildSymbolMapWithRemap(
+    const std::string& moduleKey,
+    const std::unordered_map<std::string, std::string>& moduleRemap) {
+  auto* metadata = LibraryCache::instance().getMetadata(moduleKey);
+  if (!metadata) {
+    return;
+  }
+
+  std::string prefix = sun::getSymbolPrefix(*metadata);
+  std::string originalModuleName = metadata->module_name();
+
+  // Get the aliased module name (if remapped)
+  std::string aliasedModuleName = originalModuleName;
+  auto it = moduleRemap.find(originalModuleName);
+  if (it != moduleRemap.end()) {
+    aliasedModuleName = it->second;
+  }
+
+  // Map exported functions using ALIASED names
+  for (int i = 0; i < metadata->functions_size(); ++i) {
+    const auto& func = metadata->functions(i);
+    const auto& proto = func.proto();
+    std::string funcName = proto.name();
+
+    // Construct qualified name with ALIASED module name
+    std::string aliasedQualifiedName;
+    if (!aliasedModuleName.empty()) {
+      aliasedQualifiedName = prefix + "_" + aliasedModuleName + "_" + funcName;
+    } else {
+      aliasedQualifiedName = prefix + "_" + funcName;
+    }
+
+    if (!aliasedQualifiedName.empty()) {
+      symbolToModule_[aliasedQualifiedName] = moduleKey;
+    }
+  }
+
+  // Map class methods with aliased names
+  for (int i = 0; i < metadata->classes_size(); ++i) {
+    const auto& cls = metadata->classes(i);
+    if (cls.type_parameters_size() > 0) continue;
+
+    std::string className;
+    if (!aliasedModuleName.empty()) {
+      className = prefix + "_" + aliasedModuleName + "_" + cls.name();
+    } else {
+      className = prefix + "_" + cls.name();
+    }
+
+    for (int j = 0; j < cls.methods_size(); ++j) {
+      const auto& method = cls.methods(j);
+      const auto& methodProto = method.function().proto();
+      if (methodProto.type_parameters_size() > 0) continue;
+
+      std::string mangledName = className + "_" + methodProto.name();
+      symbolToModule_[mangledName] = moduleKey;
+    }
+  }
+}
+
+std::string ModuleLinker::remapSymbolName(
+    const std::string& symbol,
+    const std::unordered_map<std::string, std::string>& moduleRemap) const {
+  // Symbol format: $hash$_moduleName_... or prefix_moduleName_...
+  // We need to find and replace the module name portion
+
+  std::string result = symbol;
+
+  for (const auto& [fromModule, toModule] : moduleRemap) {
+    // Look for _fromModule_ pattern (underscore-delimited module name)
+    std::string fromPattern = "_" + fromModule + "_";
+    std::string toPattern = "_" + toModule + "_";
+
+    size_t pos = result.find(fromPattern);
+    if (pos != std::string::npos) {
+      result.replace(pos, fromPattern.size(), toPattern);
+      // Only replace first occurrence (module name appears once in symbol)
+      break;
+    }
+  }
+
+  return result;
 }
 
 }  // namespace sun

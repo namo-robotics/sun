@@ -95,7 +95,6 @@ class ExprAST {
   bool isLambda() const { return getType() == ASTNodeType::LAMBDA; }
   bool isBlock() const { return getType() == ASTNodeType::BLOCK; }
   bool isReturn() const { return getType() == ASTNodeType::RETURN; }
-  bool isImport() const { return getType() == ASTNodeType::IMPORT; }
 
   /// Returns true if this expression is a temporary (rvalue) that will be
   /// destroyed at the end of the statement. Temporaries include:

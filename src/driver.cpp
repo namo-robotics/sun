@@ -175,132 +175,6 @@ void Driver::printReachableIR() {
   llvm::outs() << reset;
 }
 
-// -------------------------------------------------------------------
-// Recursively expand all ImportAST nodes in the AST tree into
-// ImportScopeAST nodes, at any depth (top-level, inside functions, etc.)
-// -------------------------------------------------------------------
-static void expandAllImports(ExprAST& expr, Parser& parser,
-                             std::set<std::string>& cycleStack);
-
-static void expandImportsInBlock(BlockExprAST& block, Parser& parser,
-                                 std::set<std::string>& cycleStack) {
-  auto& body =
-      const_cast<std::vector<std::unique_ptr<ExprAST>>&>(block.getBody());
-
-  for (size_t i = 0; i < body.size(); ++i) {
-    if (body[i] && body[i]->isImport()) {
-      const auto& importStmt = static_cast<const ImportAST&>(*body[i]);
-      body[i] = parser.expandImport(importStmt.getPath(), cycleStack);
-    }
-    if (body[i]) {
-      expandAllImports(*body[i], parser, cycleStack);
-    }
-  }
-}
-
-static void expandAllImports(ExprAST& expr, Parser& parser,
-                             std::set<std::string>& cycleStack) {
-  switch (expr.getType()) {
-    case ASTNodeType::BLOCK: {
-      expandImportsInBlock(static_cast<BlockExprAST&>(expr), parser,
-                           cycleStack);
-      break;
-    }
-    case ASTNodeType::FUNCTION: {
-      auto& func = static_cast<FunctionAST&>(expr);
-      if (func.hasBody()) {
-        expandImportsInBlock(const_cast<BlockExprAST&>(func.getBody()), parser,
-                             cycleStack);
-      }
-      break;
-    }
-    case ASTNodeType::LAMBDA: {
-      auto& lambda = static_cast<LambdaAST&>(expr);
-      if (lambda.hasBody()) {
-        expandImportsInBlock(const_cast<BlockExprAST&>(lambda.getBody()),
-                             parser, cycleStack);
-      }
-      break;
-    }
-    case ASTNodeType::IMPORT_SCOPE: {
-      auto& scope = static_cast<ImportScopeAST&>(expr);
-      expandImportsInBlock(const_cast<BlockExprAST&>(scope.getBody()), parser,
-                           cycleStack);
-      break;
-    }
-    case ASTNodeType::MODULE: {
-      auto& ns = static_cast<ModuleAST&>(expr);
-      expandImportsInBlock(const_cast<BlockExprAST&>(ns.getBody()), parser,
-                           cycleStack);
-      break;
-    }
-    case ASTNodeType::CLASS_DEFINITION: {
-      auto& classDef = static_cast<ClassDefinitionAST&>(expr);
-      for (const auto& method : classDef.getMethods()) {
-        if (method.function && method.function->hasBody()) {
-          expandImportsInBlock(
-              const_cast<BlockExprAST&>(method.function->getBody()), parser,
-              cycleStack);
-        }
-      }
-      break;
-    }
-    case ASTNodeType::IF: {
-      auto& ifExpr = static_cast<IfExprAST&>(expr);
-      if (ifExpr.getThen())
-        expandAllImports(*ifExpr.getThen(), parser, cycleStack);
-      if (ifExpr.getElse())
-        expandAllImports(*ifExpr.getElse(), parser, cycleStack);
-      break;
-    }
-    case ASTNodeType::WHILE_LOOP: {
-      auto& whileExpr = static_cast<WhileExprAST&>(expr);
-      if (whileExpr.getBody())
-        expandAllImports(*const_cast<ExprAST*>(whileExpr.getBody()), parser,
-                         cycleStack);
-      break;
-    }
-    case ASTNodeType::FOR_LOOP: {
-      auto& forExpr = static_cast<ForExprAST&>(expr);
-      if (forExpr.getBody())
-        expandAllImports(*const_cast<ExprAST*>(forExpr.getBody()), parser,
-                         cycleStack);
-      break;
-    }
-    case ASTNodeType::FOR_IN_LOOP: {
-      auto& forInExpr = static_cast<ForInExprAST&>(expr);
-      if (forInExpr.getBody())
-        expandAllImports(*const_cast<ExprAST*>(forInExpr.getBody()), parser,
-                         cycleStack);
-      break;
-    }
-    case ASTNodeType::TRY_CATCH: {
-      auto& tryCatch = static_cast<TryCatchExprAST&>(expr);
-      expandImportsInBlock(const_cast<BlockExprAST&>(tryCatch.getTryBlock()),
-                           parser, cycleStack);
-      expandImportsInBlock(
-          const_cast<BlockExprAST&>(*tryCatch.getCatchClause().body), parser,
-          cycleStack);
-      break;
-    }
-    case ASTNodeType::UNSAFE_BLOCK: {
-      auto& unsafeBlock = static_cast<UnsafeBlockAST&>(expr);
-      expandImportsInBlock(unsafeBlock.getBody(), parser, cycleStack);
-      break;
-    }
-    case ASTNodeType::MATCH: {
-      auto& matchExpr = static_cast<MatchExprAST&>(expr);
-      for (const auto& arm : matchExpr.getArms()) {
-        if (arm.body) expandAllImports(*arm.body, parser, cycleStack);
-      }
-      break;
-    }
-    default:
-      // Other node types don't contain blocks with imports
-      break;
-  }
-}
-
 sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
                                   Parser& parser, bool execute, int argc,
                                   char** argv) {
@@ -311,11 +185,7 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
     return result;
   }
 
-  // Expand imports in-place into ImportScopeAST nodes (at any AST depth)
-  std::set<std::string> cycleStack;
-  expandImportsInBlock(*blockAst, parser, cycleStack);
-
-  // Debug mode: generate AST DOT graph after import expansion
+  // Debug mode: generate AST DOT graph
   if (debugMode_ && !debugFolder_.empty()) {
     AstDotGenerator dotGen;
     std::string dot = dotGen.generate(blockAst.get());
@@ -326,6 +196,17 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
       llvm::outs() << "  Generated: " << dotPath << "\n";
     } else {
       llvm::errs() << "Warning: Could not write " << dotPath << "\n";
+    }
+  }
+
+  // Inject AST stubs from moon imports before semantic analysis
+  if (!moonImports_.empty()) {
+    std::vector<std::unique_ptr<ExprAST>> moonStubs;
+    for (const auto& moonImport : moonImports_) {
+      parser.collectMoonImport(moonImport.path, moonStubs);
+    }
+    if (!moonStubs.empty()) {
+      blockAst->prependExpressions(std::move(moonStubs));
     }
   }
 
@@ -364,8 +245,15 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
   const auto& precompiledImports = parser.getPrecompiledImports();
 
   sun::ModuleLinker linker(*ctx->mainModule);
+  bool hasMoonImports = !precompiledImports.empty() || !moonImports_.empty();
+
   if (!precompiledImports.empty()) {
     linker.registerAvailableModules(precompiledImports);
+  }
+  for (const auto& moonImport : moonImports_) {
+    linker.registerAvailableModulesWithRemap(moonImport);
+  }
+  if (hasMoonImports) {
     // Create forward declarations for all functions from bitcode so codegen
     // can reference them before actual linking
     linker.declareAvailableFunctions();
@@ -382,7 +270,7 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
 
   // Link only the modules that provide symbols actually used by the code
   // This happens AFTER codegen so we know exactly which symbols are needed
-  if (!precompiledImports.empty()) {
+  if (hasMoonImports) {
     if (!linker.linkOnlyUsedSymbols()) {
       throw SunError(SunError::Kind::Semantic,
                      "Failed to link precompiled module: " + linker.getError());
@@ -746,4 +634,267 @@ void Driver::compileFile(const std::string& filename) {
   std::string source = buffer.str();
 
   compileString(source, filePath.string());
+}
+
+// ---------------------------------------------------------------------------
+// Merged-AST compilation: compile multiple source files together
+// ---------------------------------------------------------------------------
+
+/// Merge multiple parsed BlockExprASTs into a single unified AST.
+/// Same-named modules are merged together.
+static std::unique_ptr<BlockExprAST> mergeASTs(
+    std::vector<std::unique_ptr<BlockExprAST>>& parsedFiles,
+    const std::vector<std::string>& filePaths) {
+  std::vector<std::unique_ptr<ExprAST>> mergedBody;
+
+  // Track modules by name so we can merge same-named modules
+  std::unordered_map<std::string, std::vector<std::unique_ptr<ExprAST>>>
+      moduleContents;
+
+  // Track non-module statements separately so we can order them after modules
+  std::vector<std::unique_ptr<ExprAST>> nonModuleStatements;
+
+  for (size_t fileIdx = 0; fileIdx < parsedFiles.size(); ++fileIdx) {
+    auto& fileAST = parsedFiles[fileIdx];
+    if (!fileAST) continue;
+
+    auto& body =
+        const_cast<std::vector<std::unique_ptr<ExprAST>>&>(fileAST->getBody());
+
+    for (auto& stmt : body) {
+      if (!stmt) continue;
+
+      if (stmt->getType() == ASTNodeType::MODULE) {
+        // Collect module contents for merging
+        auto& mod = static_cast<ModuleAST&>(*stmt);
+        const std::string& modName = mod.getName();
+
+        // Move the module body statements to our collection
+        auto& modBody = const_cast<std::vector<std::unique_ptr<ExprAST>>&>(
+            mod.getBody().getBody());
+        for (auto& modStmt : modBody) {
+          if (modStmt) {
+            moduleContents[modName].push_back(std::move(modStmt));
+          }
+        }
+      } else {
+        // Non-module top-level statement - collect separately
+        nonModuleStatements.push_back(std::move(stmt));
+      }
+    }
+  }
+
+  // First add merged modules (so they're defined before using statements)
+  for (auto& [modName, contents] : moduleContents) {
+    auto modBody = std::make_unique<BlockExprAST>(std::move(contents));
+    auto mergedMod = std::make_unique<ModuleAST>(modName, std::move(modBody));
+    mergedBody.push_back(std::move(mergedMod));
+  }
+
+  // Then add non-module statements (using, functions, etc.)
+  for (auto& stmt : nonModuleStatements) {
+    mergedBody.push_back(std::move(stmt));
+  }
+
+  return std::make_unique<BlockExprAST>(std::move(mergedBody));
+}
+
+void Driver::compileFiles(const std::vector<std::string>& sourceFiles,
+                          const std::vector<sun::MoonImport>& moonImports) {
+  if (sourceFiles.empty()) {
+    throw SunError(SunError::Kind::Parse, "No source files specified");
+  }
+
+  // Parse all source files independently
+  std::vector<std::unique_ptr<BlockExprAST>> parsedFiles;
+  std::vector<std::string> canonicalPaths;
+  parsedFiles.reserve(sourceFiles.size());
+  canonicalPaths.reserve(sourceFiles.size());
+
+  for (const auto& filename : sourceFiles) {
+    std::filesystem::path filePath = std::filesystem::absolute(filename);
+    std::string canonical = std::filesystem::canonical(filePath).string();
+    canonicalPaths.push_back(canonical);
+
+    // Track in importedFiles to prevent re-processing
+    importedFiles->insert(canonical);
+
+    // Read file
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+      throw SunError(SunError::Kind::Parse,
+                     "Could not open file '" + filename + "'");
+    }
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    std::string source = buffer.str();
+
+    // Register source for error reporting
+    SourceManager::instance().addSource(canonical, source);
+
+    // Parse (imports always error now - we use merged compilation)
+    auto parser = Parser::createStringParser(source);
+    parser.setImportedFiles(importedFiles);
+    parser.setBaseDir(filePath.parent_path().string());
+    parser.setFilePath(canonical);
+
+    auto blockAst = parser.parseProgram();
+    if (!blockAst) {
+      throw SunError(SunError::Kind::Parse, "Failed to parse " + filename);
+    }
+    parsedFiles.push_back(std::move(blockAst));
+  }
+
+  // Merge all parsed files into a single AST
+  auto mergedAst = mergeASTs(parsedFiles, canonicalPaths);
+
+  // Debug mode: generate AST DOT graph
+  if (debugMode_ && !debugFolder_.empty()) {
+    AstDotGenerator dotGen;
+    std::string dot = dotGen.generate(mergedAst.get());
+    std::string dotPath = debugFolder_ + "/ast.dot";
+    std::ofstream dotFile(dotPath);
+    if (dotFile) {
+      dotFile << dot;
+      llvm::outs() << "  Generated: " << dotPath << "\n";
+    }
+  }
+
+  // Run semantic analysis on the unified AST
+  analyzer->analyzeBlock(*mergedAst);
+
+  // Debug mode: generate scope tree HTML
+  if (debugMode_ && !debugFolder_.empty()) {
+    ScopeTreeGenerator scopeGen;
+    std::string html = scopeGen.generateHtml(analyzer->getRootScope());
+    std::string scopePath = debugFolder_ + "/scope_tree.html";
+    std::ofstream scopeFile(scopePath);
+    if (scopeFile) {
+      scopeFile << html;
+      llvm::outs() << "  Generated: " << scopePath << "\n";
+    }
+  }
+
+  // Run borrow checking
+  sun::BorrowChecker borrowChecker;
+  auto borrowErrors = borrowChecker.check(*mergedAst);
+  if (!borrowErrors.empty()) {
+    for (const auto& err : borrowErrors) {
+      std::cerr << err.format() << "\n";
+    }
+    throw SunError(SunError::Kind::Semantic,
+                   "Borrow check failed with " +
+                       std::to_string(borrowErrors.size()) + " error(s)");
+  }
+
+  // Set up module linker for moon imports (with aliasing support)
+  sun::ModuleLinker linker(*ctx->mainModule);
+  bool hasMoonImports = false;
+
+  for (const auto& moonImport : moonImports) {
+    // Use registerAvailableModulesWithRemap which handles aliasing
+    linker.registerAvailableModulesWithRemap(moonImport);
+    hasMoonImports = true;
+  }
+
+  if (hasMoonImports) {
+    linker.declareAvailableFunctions();
+  }
+
+  // Snapshot precompiled function declarations
+  codegenVisitor->snapshotPrecompiledFunctions();
+
+  // Generate code
+  codegenVisitor->codegen(*mergedAst);
+  codegenVisitor->emitStaticInitFunction();
+
+  // Link only used symbols
+  if (hasMoonImports) {
+    if (!linker.linkOnlyUsedSymbols()) {
+      throw SunError(SunError::Kind::Semantic,
+                     "Failed to link precompiled module: " + linker.getError());
+    }
+  }
+
+  // Debug mode: dump IR
+  if (debugMode_ && !debugFolder_.empty()) {
+    std::string irPath = debugFolder_ + "/ir.ll";
+    std::error_code EC;
+    llvm::raw_fd_ostream irFile(irPath, EC);
+    if (!EC) {
+      ctx->mainModule->print(irFile, nullptr);
+      llvm::outs() << "  Generated: " << irPath << "\n";
+    }
+  }
+
+  // Verify the module
+  if (llvm::verifyModule(*ctx->mainModule, &llvm::errs())) {
+    llvm::errs() << "Error: Module verification failed\n";
+  }
+}
+
+void Driver::executeFiles(const std::vector<std::string>& sourceFiles,
+                          const std::vector<sun::MoonImport>& moonImports,
+                          int argc, char** argv) {
+  // For now, delegate to compileFiles then execute
+  // This can be optimized later to avoid the extra JIT setup
+  compileFiles(sourceFiles, moonImports);
+
+  // JIT execution similar to runPipeline
+  llvm::Function* func = ctx->mainModule->getFunction("main");
+  if (!func) {
+    llvm::errs() << "Error: Could not find 'main' function in module.\n";
+    return;
+  }
+
+  // Get info before cloning
+  llvm::Type* returnType = func->getReturnType();
+  size_t mainArgCount = func->arg_size();
+
+  // Clone module for JIT
+  auto anonContext = std::make_unique<llvm::LLVMContext>();
+  auto moduleClone = llvm::CloneModule(*ctx->mainModule);
+
+  auto RT = ctx->jit->getMainJITDylib().createResourceTracker();
+  llvm::ExitOnError ExitOnErr;
+  ExitOnErr(
+      ctx->jit->addModule(llvm::orc::ThreadSafeModule(std::move(moduleClone),
+                                                      std::move(anonContext)),
+                          RT));
+
+  // Run static init
+  if (auto initSym = ctx->jit->lookup("__sun_static_init")) {
+    void (*initFP)() = initSym->getAddress().toPtr<void (*)()>();
+    initFP();
+  } else {
+    llvm::consumeError(initSym.takeError());
+  }
+
+  // Execute main
+  auto ExprSymbol = ExitOnErr(ctx->jit->lookup("main"));
+  bool mainHasArgs = (mainArgCount == 2);
+
+  if (returnType->isVoidTy()) {
+    if (mainHasArgs) {
+      void (*FP)(int, char**) =
+          ExprSymbol.getAddress().toPtr<void (*)(int, char**)>();
+      FP(argc, argv);
+    } else {
+      void (*FP)() = ExprSymbol.getAddress().toPtr<void (*)()>();
+      FP();
+    }
+  } else if (returnType->isIntegerTy(32)) {
+    int32_t result;
+    if (mainHasArgs) {
+      int32_t (*FP)(int, char**) =
+          ExprSymbol.getAddress().toPtr<int32_t (*)(int, char**)>();
+      result = FP(argc, argv);
+    } else {
+      int32_t (*FP)() = ExprSymbol.getAddress().toPtr<int32_t (*)()>();
+      result = FP();
+    }
+    (void)result;  // Result returned via process exit code
+  }
+
+  ExitOnErr(RT->remove());
 }

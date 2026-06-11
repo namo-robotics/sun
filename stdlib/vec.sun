@@ -18,9 +18,6 @@
 //   var last = v.pop();      // 30, size decreases
 //   var len = v.size();      // 2
 
-import "allocator.sun";
-import "contiguous_buffer.sun";
-import "errors.sun";
 
 // ============================================================================
 // Vec<T> - Dynamic Growable Array

@@ -55,6 +55,7 @@ class FunctionAST : public ExprAST {
   std::unique_ptr<PrototypeAST> releaseProto() { return std::move(Proto); }
 
   const PrototypeAST& getProto() const { return *Proto; }
+  PrototypeAST& getProtoMut() { return *Proto; }
   const BlockExprAST& getBody() const {
     assert(Body && "getBody() called on extern function with no body");
     return *Body;

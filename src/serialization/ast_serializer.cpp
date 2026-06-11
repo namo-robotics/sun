@@ -288,12 +288,6 @@ ast::ASTNode ASTSerializer::serialize(const ExprAST& expr) const {
     case ASTNodeType::SPAWN:
       serializeSpawn(static_cast<const SpawnExprAST&>(expr), &node);
       break;
-    case ASTNodeType::IMPORT:
-      serializeImport(static_cast<const ImportAST&>(expr), &node);
-      break;
-    case ASTNodeType::IMPORT_SCOPE:
-      serializeImportScope(static_cast<const ImportScopeAST&>(expr), &node);
-      break;
     case ASTNodeType::MODULE:
       serializeModule(static_cast<const ModuleAST&>(expr), &node);
       break;
@@ -625,22 +619,6 @@ void ASTSerializer::serializeSpawn(const SpawnExprAST& expr,
                                    ast::ASTNode* node) const {
   auto* spawn = node->mutable_spawn_expr();
   *spawn->mutable_lambda() = serialize(expr.getLambda());
-}
-
-void ASTSerializer::serializeImport(const ImportAST& expr,
-                                    ast::ASTNode* node) const {
-  node->mutable_import_stmt()->set_path(expr.getPath());
-}
-
-void ASTSerializer::serializeImportScope(const ImportScopeAST& expr,
-                                         ast::ASTNode* node) const {
-  auto* scope = node->mutable_import_scope();
-  scope->set_source_file(expr.getSourceFile());
-  scope->set_content_hash(expr.getContentHash());
-  auto* body = scope->mutable_body();
-  for (const auto& stmt : expr.getBody().getBody()) {
-    *body->add_body() = serialize(*stmt);
-  }
 }
 
 void ASTSerializer::serializeModule(const ModuleAST& expr,

@@ -854,8 +854,7 @@ TEST(DynamicDispatchTest, generic_method_dispatch_not_supported) {
 
 TEST(DynamicDispatchTest, for_in_over_vec_of_interfaces) {
   // Iterate over a Vec of interface-typed objects with for-in
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     interface IValue {

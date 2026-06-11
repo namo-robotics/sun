@@ -101,9 +101,6 @@ class ASTSerializer {
                             ast::ASTNode* node) const;
   void serializeSpawn(const SpawnExprAST& expr, ast::ASTNode* node) const;
 
-  void serializeImport(const ImportAST& expr, ast::ASTNode* node) const;
-  void serializeImportScope(const ImportScopeAST& expr,
-                            ast::ASTNode* node) const;
   void serializeModule(const ModuleAST& expr, ast::ASTNode* node) const;
   void serializeUsing(const UsingAST& expr, ast::ASTNode* node) const;
   void serializeQualifiedName(const QualifiedNameAST& expr,

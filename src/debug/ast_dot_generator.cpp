@@ -254,12 +254,6 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       emitEdge(valId, "value");
       break;
     }
-    case ASTNodeType::IMPORT_SCOPE: {
-      const auto* importScope = static_cast<const ImportScopeAST*>(node);
-      int bodyId = visitNode(&importScope->getBody());
-      emitEdge(bodyId, "body");
-      break;
-    }
     case ASTNodeType::MODULE: {
       const auto* mod = static_cast<const ModuleAST*>(node);
       int bodyId = visitNode(&mod->getBody());

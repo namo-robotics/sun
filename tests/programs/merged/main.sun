@@ -1,0 +1,8 @@
+// main.sun - Uses functions from both module files
+using math;
+
+function main() i32 {
+    var sum = add(5, 3);
+    var product = multiply(4, 2);
+    return sum + product;
+}

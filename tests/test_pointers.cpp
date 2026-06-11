@@ -13,8 +13,7 @@
 // ============================================================================
 
 TEST(PointerTest, pass_static_ptr_to_function) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     function foo(p: static_ptr<u8>) void {
         println(p);

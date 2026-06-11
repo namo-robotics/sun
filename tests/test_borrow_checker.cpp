@@ -207,8 +207,7 @@ TEST(BorrowCheckerTest, while_loop_borrow) {
 }
 
 TEST(BorrowCheckerTest, error_on_string_use_after_move) {
-  EXPECT_THROW(executeString(R"(
-    import "build/stdlib.moon";
+  EXPECT_THROW(executeStringWithStdlib(R"(
     using sun;
 
     function consume(s: ref String) void {

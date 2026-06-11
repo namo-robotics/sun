@@ -496,7 +496,6 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
 
     case ASTNodeType::MODULE:
     case ASTNodeType::USING:
-    case ASTNodeType::IMPORT:
     case ASTNodeType::DECLARE_TYPE:
       return sun::Types::Void();
 
