@@ -113,6 +113,8 @@ class ASTDeserializer {
       const ast::GenericCallExpr& proto) const;
   std::unique_ptr<ExprAST> deserializeSpawn(const ast::SpawnExpr& proto) const;
 
+  std::unique_ptr<ExprAST> deserializeManifest(
+      const ast::Manifest& proto) const;
   std::unique_ptr<ExprAST> deserializeModule(const ast::ModuleDef& proto) const;
   std::unique_ptr<ExprAST> deserializeUsing(const ast::UsingStmt& proto) const;
   std::unique_ptr<ExprAST> deserializeQualifiedName(

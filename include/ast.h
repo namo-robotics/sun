@@ -61,7 +61,8 @@
 #include "ast/throw_expr_ast.h"
 #include "ast/try_catch_expr_ast.h"
 
-// Module/import nodes
+// Module nodes
+#include "ast/manifest_ast.h"
 #include "ast/module_ast.h"
 #include "ast/qualified_name_ast.h"
 #include "ast/using_ast.h"

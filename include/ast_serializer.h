@@ -101,6 +101,7 @@ class ASTSerializer {
                             ast::ASTNode* node) const;
   void serializeSpawn(const SpawnExprAST& expr, ast::ASTNode* node) const;
 
+  void serializeManifest(const ManifestAST& expr, ast::ASTNode* node) const;
   void serializeModule(const ModuleAST& expr, ast::ASTNode* node) const;
   void serializeUsing(const UsingAST& expr, ast::ASTNode* node) const;
   void serializeQualifiedName(const QualifiedNameAST& expr,

@@ -18,14 +18,9 @@ function resolveServerCommand(configuredPath: string): string {
 
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   if (workspaceFolder) {
-    const localBuildPath = path.join(workspaceFolder, 'build', configuredPath);
+    const localBuildPath = path.join(workspaceFolder, configuredPath);
     if (fs.existsSync(localBuildPath)) {
       return localBuildPath;
-    }
-
-    const directBuildPath = path.join(workspaceFolder, 'build', 'sun-lsp');
-    if (configuredPath === 'sun-lsp' && fs.existsSync(directBuildPath)) {
-      return directBuildPath;
     }
   }
 

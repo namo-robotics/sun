@@ -35,10 +35,11 @@ enum class ASTNodeType {
   BLOCK,
   INDEXED_ASSIGNMENT,
   RETURN,
-  IMPORT,                // import "file.sun";
-  IMPORT_SCOPE,          // Expanded import scope (contains imported file's AST)
-  MODULE,                // module Name { ... }
-  USING,                 // using Module::name; or using Module::*;
+  IMPORT,        // import "file.sun";
+  IMPORT_SCOPE,  // Expanded import scope (contains imported file's AST)
+  MANIFEST,      // manifest { ... } - defines package metadata and entry point
+  MODULE,        // module Name { ... }
+  USING,         // using Module::name; or using Module::*;
   QUALIFIED_NAME,        // Namespace::name
   CLASS_DEFINITION,      // class Name { ... }
   INTERFACE_DEFINITION,  // interface Name { ... }

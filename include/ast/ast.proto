@@ -65,11 +65,12 @@ message ASTNode {
     SpawnExpr spawn_expr = 64;
     
     // Modules/imports/names
-    ImportStmt import_stmt = 70;
-    ImportScope import_scope = 71;
-    ModuleDef module_def = 72;
-    UsingStmt using_stmt = 73;
-    QualifiedName qualified_name = 74;
+    Manifest manifest = 70;
+    ManifestSunDependency  manifest_sun_dep = 71;
+    ManifestMoonDependency manifest_moon_dep = 72;
+    ModuleDef module_def = 73;
+    UsingStmt using_stmt = 74;
+    QualifiedName qualified_name = 75;
     
     // Definitions
     ClassDef class_def = 80;
@@ -313,6 +314,22 @@ message ImportScope {
   string source_file = 1;
   string content_hash = 2;
   BlockExpr body = 3;
+}
+
+message ManifestMoonDependency {
+  string path = 1;
+  optional string hash = 2;
+  optional string rename_module = 3;
+}
+
+message ManifestSunDependency {
+  string path = 1;
+  optional string hash = 2;
+}
+
+message Manifest {
+  repeated ManifestSunDependency suns = 1;
+  repeated ManifestMoonDependency moons = 2;
 }
 
 message ModuleDef {

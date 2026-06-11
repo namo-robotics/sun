@@ -621,6 +621,34 @@ void ASTSerializer::serializeSpawn(const SpawnExprAST& expr,
   *spawn->mutable_lambda() = serialize(expr.getLambda());
 }
 
+void ASTSerializer::serializeManifest(const ManifestAST& expr,
+                                      ast::ASTNode* node) const {
+  auto* manifest = node->mutable_manifest();
+
+  // Suns
+  auto* suns = manifest->mutable_suns();
+  for (const auto& sun : expr.getSuns()) {
+    auto* sunProto = suns->Add();
+    sunProto->set_path(sun.path);
+    if (sun.hash) {
+      sunProto->set_hash(*sun.hash);
+    }
+  }
+
+  // Moons
+  auto* moons = manifest->mutable_moons();
+  for (const auto& moon : expr.getMoons()) {
+    auto* moonProto = moons->Add();
+    moonProto->set_path(moon.path);
+    if (moon.hash) {
+      moonProto->set_hash(*moon.hash);
+    }
+    if (moon.rename) {
+      moonProto->set_rename_module(*moon.rename);
+    }
+  }
+}
+
 void ASTSerializer::serializeModule(const ModuleAST& expr,
                                     ast::ASTNode* node) const {
   auto* mod = node->mutable_module_def();
