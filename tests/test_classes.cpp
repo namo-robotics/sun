@@ -513,12 +513,12 @@ TEST(ClassTest, partial_class_mutual_calls) {
       var b: i32;
       function init(a_: i32, b_: i32) { this.a = a_; this.b = b_; }
       function get_a() i32 { return this.a; }
-      function double_b() i32 { return this.get_b() * 2; }
     }
 
     partial class X {
       function get_b() i32 { return this.b; }
       function sum() i32 { return this.get_a() + this.get_b(); }
+      function double_b() i32 { return this.get_b() * 2; }
     }
 
     function main() i32 {

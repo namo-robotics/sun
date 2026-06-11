@@ -122,7 +122,8 @@ TEST(MutexTest, mutex_import_compiles) {
       var m = Mutex();
       return 0;
     }
-  )"));
+  )",
+                                true));
 }
 
 TEST(MutexTest, mutex_lock_unlock_compiles) {
@@ -135,7 +136,8 @@ TEST(MutexTest, mutex_lock_unlock_compiles) {
       m.unlock();
       return 0;
     }
-  )"));
+  )",
+                                true));
 }
 
 // ============================================================================

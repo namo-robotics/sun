@@ -128,17 +128,8 @@ int main(int argc, char* argv[]) {
       printUsage(argv[0]);
       return 1;
     } else {
-      // Input file or pattern
+      // Input file
       inputFiles.push_back(arg);
-
-      // For non-bundle/moon modes, stop after first input file
-      if (!bundleMode && !emitMoon && inputFiles.size() == 1) {
-        // Check if next args are program args (not options)
-        if (i + 1 < argc && argv[i + 1][0] != '-') {
-          programArgStart = i + 1;
-          break;
-        }
-      }
     }
   }
 
@@ -315,7 +306,12 @@ int main(int argc, char* argv[]) {
         driver->setDebugMode(true, inputFile);
       }
       driver->setMoonImports(moonImports);
-      driver->compileFile(inputFile);
+
+      if (inputFiles.size() > 1) {
+        driver->compileFiles(inputFiles, moonImports);
+      } else {
+        driver->compileFile(inputFile);
+      }
 
       // Print IR if requested (only user-defined, not imports)
       if (emitIR) {
@@ -357,7 +353,12 @@ int main(int argc, char* argv[]) {
       driver->setDebugMode(true, inputFile);
     }
     driver->setMoonImports(std::move(moonImports));
-    driver->executeFile(inputFile, programArgc, programArgv.data());
+
+    if (inputFiles.size() > 1) {
+      driver->executeFiles(inputFiles, {}, programArgc, programArgv.data());
+    } else {
+      driver->executeFile(inputFile, programArgc, programArgv.data());
+    }
   } catch (const SunError& e) {
     std::cerr << e.what() << std::endl;
     return 1;

@@ -119,11 +119,14 @@ inline void compileFileWithStdlib(const std::string& filename) {
   compileFile(filename, true);
 }
 
-inline void compileString(const std::string& source) {
+inline void compileString(const std::string& source,
+                          bool includeStdlib = false) {
   initTestEnvironment();
   try {
     auto driver = Driver::createForAOT("test_compile");
-    driver->setMoonImports(getStdlibMoonImports());
+    if (includeStdlib) {
+      driver->setMoonImports(getStdlibMoonImports());
+    }
     driver->compileString(source);
   } catch (const SunError& e) {
     std::cerr << e.what() << std::endl;

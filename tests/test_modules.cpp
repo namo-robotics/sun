@@ -176,36 +176,58 @@ TEST(ModuleTest, nested_modules_nested_classes_method_chain) {
 }
 
 TEST(ModuleTest, same_module_in_multiple_files_merges) {
-  // Two files declare the same module with different functions - they merge
+  // Two declarations of the same module merge their functions
   auto value = executeString(R"(
+    module mymod {
+      function foo() i32 { return 1; }
+    }
+    module mymod {
+      function bar() i32 { return 2; }
+    }
 
     function main() i32 {
       return mymod.foo() + mymod.bar();
     }
   )");
-  EXPECT_EQ(value, 3);  // foo() returns 1, bar() returns 2
+  EXPECT_EQ(value, 3);
 }
 
 TEST(ModuleTest, nested_module_qualified_function_call) {
   // Call functions in nested modules using qualified names without using
   auto value = executeString(R"(
+    module A {
+      module B {
+        function foo() i32 { return 2; }
+      }
+    }
+    module B {
+      module A {
+        function foo() i32 { return 1; }
+      }
+    }
 
     function main() i32 {
       return A.B.foo() + B.A.foo();
     }
   )");
-  EXPECT_EQ(value, 3);  // A.B.foo() returns 2, B.A.foo() returns 1
+  EXPECT_EQ(value, 3);
 }
 
 TEST(ModuleTest, submod_fn_calls_mod_fn) {
-  // Call functions in nested modules using qualified names without using
+  // Submodule function can call parent module function
   auto value = executeString(R"(
+    module A {
+      function foo() i32 { return 1; }
+      module B {
+        function bar() i32 { return 1; }
+      }
+    }
 
     function main() i32 {
       return A.foo() + A.B.bar();
     }
   )");
-  EXPECT_EQ(value, 2);  // A.B.foo() returns 2, B.A.foo() returns 1
+  EXPECT_EQ(value, 2);
 }
 
 TEST(ModuleTest, submod_duplicates_fn) {
@@ -415,7 +437,12 @@ TEST(ModuleTest, using_causes_ambiguity) {
 }
 
 TEST(ModuleTest, module_imports_global_function) {
+  // Module function can call a global function defined outside the module
   auto value = executeString(R"(
+    function foo() i32 {
+      return 123;
+    }
+
     module A {
       function bar() i32 {
         return foo();
@@ -443,4 +470,3 @@ TEST(ModuleTest, transitive_call_to_imported_function_fails) {
   )"),
                std::exception);
 }
-
