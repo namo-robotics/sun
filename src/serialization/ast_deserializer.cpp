@@ -259,12 +259,6 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserialize(
     case ast::ASTNode::kSpawnExpr:
       result = deserializeSpawn(node.spawn_expr());
       break;
-    case ast::ASTNode::kImportStmt:
-      result = deserializeImport(node.import_stmt());
-      break;
-    case ast::ASTNode::kImportScope:
-      result = deserializeImportScope(node.import_scope());
-      break;
     case ast::ASTNode::kModuleDef:
       result = deserializeModule(node.module_def());
       break;
@@ -616,16 +610,37 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeSpawn(
   return std::make_unique<SpawnExprAST>(deserialize(proto.lambda()));
 }
 
-std::unique_ptr<ExprAST> ASTDeserializer::deserializeImport(
-    const ast::ImportStmt& proto) const {
-  return std::make_unique<ImportAST>(proto.path());
-}
+std::unique_ptr<ExprAST> ASTDeserializer::deserializeManifest(
+    const ast::Manifest& proto) const {
+  std::vector<ManifestSunDependency> suns;
+  for (const auto& sunProto : proto.suns()) {
+    ManifestSunDependency sun;
+    sun.path = sunProto.path();
 
-std::unique_ptr<ExprAST> ASTDeserializer::deserializeImportScope(
-    const ast::ImportScope& proto) const {
-  auto body = deserializeBlockExpr(proto.body());
-  return std::make_unique<ImportScopeAST>(proto.source_file(), std::move(body),
-                                          proto.content_hash());
+    if (sunProto.has_hash()) {
+      sun.hash = sunProto.hash();
+    }
+
+    suns.push_back(std::move(sun));
+  }
+
+  std::vector<ManifestMoonDependency> moons;
+  for (const auto& moonProto : proto.moons()) {
+    ManifestMoonDependency moon;
+    moon.path = moonProto.path();
+
+    if (moonProto.has_hash()) {
+      moon.hash = moonProto.hash();
+    }
+
+    if (moonProto.has_rename_module()) {
+      moon.rename = moonProto.rename_module();
+    }
+
+    moons.push_back(std::move(moon));
+  }
+
+  return std::make_unique<ManifestAST>(std::move(suns), std::move(moons));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeModule(

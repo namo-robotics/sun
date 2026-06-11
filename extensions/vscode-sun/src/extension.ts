@@ -18,14 +18,9 @@ function resolveServerCommand(configuredPath: string): string {
 
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   if (workspaceFolder) {
-    const localBuildPath = path.join(workspaceFolder, 'build', configuredPath);
+    const localBuildPath = path.join(workspaceFolder, configuredPath);
     if (fs.existsSync(localBuildPath)) {
       return localBuildPath;
-    }
-
-    const directBuildPath = path.join(workspaceFolder, 'build', 'sun-lsp');
-    if (configuredPath === 'sun-lsp' && fs.existsSync(directBuildPath)) {
-      return directBuildPath;
     }
   }
 
@@ -48,7 +43,7 @@ function canLaunchServer(command: string): boolean {
 export async function activate(_context: vscode.ExtensionContext): Promise<void> {
   const configuredPath = vscode.workspace
     .getConfiguration('sun')
-    .get<string>('lsp.path', 'sun-lsp');
+    .get<string>('lsp.path', '/usr/bin/sun-lsp');
 
   const command = resolveServerCommand(configuredPath);
 

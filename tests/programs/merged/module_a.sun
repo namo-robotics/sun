@@ -1,0 +1,6 @@
+// module_a.sun - First file with module declaration
+module math {
+    function add(a: i32, b: i32) i32 {
+        return a + b;
+    };
+}

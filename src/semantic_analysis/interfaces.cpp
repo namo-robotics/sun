@@ -16,16 +16,6 @@ void SemanticAnalyzer::registerInterface(
   }
   // Register in current scope
   currentScope->interfaces[name] = interfaceType;
-  if (importScopeDepth_ > 0) {
-    for (auto* s = currentScope->parent; s != nullptr; s = s->parent) {
-      if (s->getType() == ScopeType::Module ||
-          s->getType() == ScopeType::Import ||
-          s->getType() == ScopeType::Global) {
-        s->interfaces[name] = interfaceType;
-        break;
-      }
-    }
-  }
 }
 
 std::shared_ptr<sun::InterfaceType> SemanticAnalyzer::lookupInterface(
@@ -82,16 +72,6 @@ void SemanticAnalyzer::registerGenericInterface(
   }
   // Register in current scope
   currentScope->genericInterfaces[name] = info;
-  if (importScopeDepth_ > 0) {
-    for (auto* s = currentScope->parent; s != nullptr; s = s->parent) {
-      if (s->getType() == ScopeType::Module ||
-          s->getType() == ScopeType::Import ||
-          s->getType() == ScopeType::Global) {
-        s->genericInterfaces[name] = info;
-        break;
-      }
-    }
-  }
 }
 
 const GenericInterfaceInfo* SemanticAnalyzer::lookupGenericInterface(
@@ -252,16 +232,6 @@ void SemanticAnalyzer::registerEnum(const std::string& name,
                                     std::shared_ptr<sun::EnumType> enumType) {
   // Register in current scope
   currentScope->enums[name] = enumType;
-  if (importScopeDepth_ > 0) {
-    for (auto* s = currentScope->parent; s != nullptr; s = s->parent) {
-      if (s->getType() == ScopeType::Module ||
-          s->getType() == ScopeType::Import ||
-          s->getType() == ScopeType::Global) {
-        s->enums[name] = enumType;
-        break;
-      }
-    }
-  }
 }
 
 std::shared_ptr<sun::EnumType> SemanticAnalyzer::lookupEnum(

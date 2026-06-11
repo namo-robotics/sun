@@ -13,8 +13,7 @@
 // ============================================================================
 
 TEST(VecTest, create_empty_vec) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -27,8 +26,7 @@ TEST(VecTest, create_empty_vec) {
 }
 
 TEST(VecTest, push_and_size) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -44,8 +42,7 @@ TEST(VecTest, push_and_size) {
 }
 
 TEST(VecTest, push_and_get) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -61,8 +58,7 @@ TEST(VecTest, push_and_get) {
 }
 
 TEST(VecTest, set_element) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -78,8 +74,7 @@ TEST(VecTest, set_element) {
 }
 
 TEST(VecTest, pop_element) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -101,8 +96,7 @@ TEST(VecTest, pop_element) {
 }
 
 TEST(VecTest, is_empty) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -118,8 +112,7 @@ TEST(VecTest, is_empty) {
 }
 
 TEST(VecTest, clear) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -136,8 +129,7 @@ TEST(VecTest, clear) {
 }
 
 TEST(VecTest, capacity) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -151,8 +143,7 @@ TEST(VecTest, capacity) {
 }
 
 TEST(VecTest, auto_grow) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -169,8 +160,7 @@ TEST(VecTest, auto_grow) {
 }
 
 TEST(VecTest, auto_grow_values_preserved) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -188,8 +178,7 @@ TEST(VecTest, auto_grow_values_preserved) {
 }
 
 TEST(VecTest, first_and_last) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -210,8 +199,7 @@ TEST(VecTest, first_and_last) {
 }
 
 TEST(VecTest, i32_type) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -226,8 +214,7 @@ TEST(VecTest, i32_type) {
 }
 
 TEST(VecTest, iteration) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -249,8 +236,7 @@ TEST(VecTest, iteration) {
 }
 
 TEST(VecTest, index_operator) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {

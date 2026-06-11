@@ -8,6 +8,7 @@
 #include <sstream>
 
 #include "ast.h"
+#include "ast/manifest_ast.h"
 #include "ast_cache.h"
 #include "error.h"
 #include "lexer.h"
@@ -45,10 +46,6 @@ class Parser {
   // Current file being parsed (for error messages)
   std::string currentFilePath;
 
-  // Enable AST caching for imports (default: false until diamond dependency
-  // issues resolved)
-  bool enableImportCaching_ = false;
-
   // Helper: throw parsing error with source context
   [[noreturn]] void parsingError(const std::string& msg) {
     std::string sourceLine = lexer.getSourceLine(curTok.start.line);
@@ -61,6 +58,13 @@ class Parser {
     logParsingError(loc, msg, sourceLine, prevLine);
   }
 
+  // Helper: expect current token to be a specific kind, or throw error
+  void expectCurrentTokenKind(TokenKind expected, const std::string& msg) {
+    if (curTok.kind != expected) {
+      parsingError(msg);
+    }
+  }
+
  public:
   Parser() : lexer(std::cin) {}
   // Updated constructor: takes both input stream and codegen context
@@ -69,10 +73,6 @@ class Parser {
   // Set the file path for error messages
   void setFilePath(const std::string& path) { currentFilePath = path; }
   const std::string& getFilePath() const { return currentFilePath; }
-
-  // Enable/disable import caching
-  void setImportCaching(bool enable) { enableImportCaching_ = enable; }
-  bool isImportCachingEnabled() const { return enableImportCaching_; }
 
   unique_ptr<BlockExprAST> parseProgram();
   // Convenience constructors (optional but recommended)
@@ -161,8 +161,9 @@ class Parser {
   // New class instance: new ClassName(args...)
   unique_ptr<ExprAST> parseNewClassInstance(const std::string& className);
 
-  // Import statement parsing: import "file.sun";
-  unique_ptr<ImportAST> parseImportStatement();
+  unique_ptr<ManifestAST> parseManifest();
+  std::vector<ManifestSunDependency> parseManifestSuns();
+  std::vector<ManifestMoonDependency> parseManifestMoons();
 
   // Declare statement parsing:
   // - Forward function declaration: declare function name(args) RetType;
@@ -177,12 +178,6 @@ class Parser {
 
   // Parse a qualified name: Namespace::name or Namespace::Nested::name
   unique_ptr<ExprAST> parseQualifiedOrSimpleName();
-
-  // Expand an import into an ImportScopeAST (non-transitive import system)
-  // cycleStack tracks ancestors on the current import path to detect cycles.
-  // precompiledImports is shared for .moon registration.
-  std::unique_ptr<ImportScopeAST> expandImport(
-      const std::string& importPath, std::set<std::string>& cycleStack);
 
   // Collect AST stubs from a precompiled .moon file
   // Returns the content hash (symbol prefix) for the bundle

@@ -288,12 +288,6 @@ ast::ASTNode ASTSerializer::serialize(const ExprAST& expr) const {
     case ASTNodeType::SPAWN:
       serializeSpawn(static_cast<const SpawnExprAST&>(expr), &node);
       break;
-    case ASTNodeType::IMPORT:
-      serializeImport(static_cast<const ImportAST&>(expr), &node);
-      break;
-    case ASTNodeType::IMPORT_SCOPE:
-      serializeImportScope(static_cast<const ImportScopeAST&>(expr), &node);
-      break;
     case ASTNodeType::MODULE:
       serializeModule(static_cast<const ModuleAST&>(expr), &node);
       break;
@@ -627,19 +621,31 @@ void ASTSerializer::serializeSpawn(const SpawnExprAST& expr,
   *spawn->mutable_lambda() = serialize(expr.getLambda());
 }
 
-void ASTSerializer::serializeImport(const ImportAST& expr,
-                                    ast::ASTNode* node) const {
-  node->mutable_import_stmt()->set_path(expr.getPath());
-}
+void ASTSerializer::serializeManifest(const ManifestAST& expr,
+                                      ast::ASTNode* node) const {
+  auto* manifest = node->mutable_manifest();
 
-void ASTSerializer::serializeImportScope(const ImportScopeAST& expr,
-                                         ast::ASTNode* node) const {
-  auto* scope = node->mutable_import_scope();
-  scope->set_source_file(expr.getSourceFile());
-  scope->set_content_hash(expr.getContentHash());
-  auto* body = scope->mutable_body();
-  for (const auto& stmt : expr.getBody().getBody()) {
-    *body->add_body() = serialize(*stmt);
+  // Suns
+  auto* suns = manifest->mutable_suns();
+  for (const auto& sun : expr.getSuns()) {
+    auto* sunProto = suns->Add();
+    sunProto->set_path(sun.path);
+    if (sun.hash) {
+      sunProto->set_hash(*sun.hash);
+    }
+  }
+
+  // Moons
+  auto* moons = manifest->mutable_moons();
+  for (const auto& moon : expr.getMoons()) {
+    auto* moonProto = moons->Add();
+    moonProto->set_path(moon.path);
+    if (moon.hash) {
+      moonProto->set_hash(*moon.hash);
+    }
+    if (moon.rename) {
+      moonProto->set_rename_module(*moon.rename);
+    }
   }
 }
 

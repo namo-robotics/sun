@@ -486,23 +486,8 @@ TEST(SerializationTest, ArrayLiteralRoundtrip) {
 }
 
 // =============================================================================
-// Import/Module Tests
+// Module Tests
 // =============================================================================
-
-TEST(SerializationTest, ImportStmtRoundtrip) {
-  auto ast = std::make_unique<ImportAST>("math");
-
-  ASTSerializer serializer;
-  std::string data = serializer.serializeToString(*ast);
-
-  ASTDeserializer deserializer;
-  auto restored = deserializer.deserializeFromString(data);
-
-  ASSERT_NE(restored, nullptr);
-  ASSERT_EQ(restored->getType(), ASTNodeType::IMPORT);
-  auto* imp = static_cast<ImportAST*>(restored.get());
-  EXPECT_EQ(imp->getPath(), "math");
-}
 
 TEST(SerializationTest, ModuleDefinitionRoundtrip) {
   std::vector<std::unique_ptr<ExprAST>> body;

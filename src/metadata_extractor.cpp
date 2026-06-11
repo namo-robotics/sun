@@ -142,16 +142,6 @@ void extractFromStatements(const std::vector<std::unique_ptr<ExprAST>>& stmts,
   for (const auto& stmt : stmts) {
     if (!stmt) continue;
 
-    // Track dependencies from imports (only at top level)
-    if (stmt->isImport() && isTopLevel) {
-      const auto& importStmt = static_cast<const ImportAST&>(*stmt);
-      std::filesystem::path depPath = importStmt.getPath();
-      if (depPath.is_relative()) {
-        depPath = std::filesystem::weakly_canonical(moduleDir / depPath);
-      }
-      metadata.add_dependencies(depPath.string());
-    }
-
     // Handle module/namespace blocks
     if (stmt->getType() == ASTNodeType::MODULE) {
       const auto& nsDecl = static_cast<const ModuleAST&>(*stmt);

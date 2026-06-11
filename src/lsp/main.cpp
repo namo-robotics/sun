@@ -110,10 +110,9 @@ int tokenKindToLSPType(TokenKind kind) {
     case TokenKind::TRY:
     case TokenKind::CATCH:
     case TokenKind::THROW:
-    case TokenKind::IMPORT:
     case TokenKind::USING:
+    case TokenKind::MANIFEST:
     case TokenKind::MODULE:
-    case TokenKind::NAMESPACE:
     case TokenKind::MATCH:
     case TokenKind::EXTERN:
     case TokenKind::DECLARE:

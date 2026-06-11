@@ -13,8 +13,7 @@
 // ============================================================================
 
 TEST(LinkedListTest, two_nodes_linked) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     class Node {
@@ -50,8 +49,7 @@ TEST(LinkedListTest, two_nodes_linked) {
 }
 
 TEST(LinkedListTest, three_nodes_chain) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     class Node {
@@ -98,8 +96,7 @@ TEST(LinkedListTest, three_nodes_chain) {
 }
 
 TEST(LinkedListTest, modify_through_pointer) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     class Node {
@@ -147,8 +144,7 @@ TEST(LinkedListTest, modify_through_pointer) {
 }
 
 TEST(LinkedListTest, access_deep_chain) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     class Node {
@@ -192,8 +188,7 @@ TEST(LinkedListTest, access_deep_chain) {
 }
 
 TEST(LinkedListTest, null_terminated_list) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     class Node {
@@ -249,8 +244,7 @@ TEST(LinkedListTest, null_terminated_list) {
 }
 
 TEST(LinkedListTest, while_loop_traversal) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     class Node {
@@ -306,8 +300,7 @@ TEST(LinkedListTest, while_loop_traversal) {
 }
 
 TEST(LinkedListTest, list_class_with_methods) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     class Node {

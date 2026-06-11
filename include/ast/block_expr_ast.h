@@ -21,6 +21,12 @@ class BlockExprAST : public ExprAST {
     Body.push_back(std::move(expr));
   }
 
+  void prependExpressions(std::vector<std::unique_ptr<ExprAST>> exprs) {
+    exprs.insert(exprs.end(), std::make_move_iterator(Body.begin()),
+                 std::make_move_iterator(Body.end()));
+    Body = std::move(exprs);
+  }
+
   ASTNodeType getType() const override { return ASTNodeType::BLOCK; }
   std::string toString() const override { return "{ ... }"; }
 

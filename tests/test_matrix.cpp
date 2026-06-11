@@ -9,8 +9,7 @@
 
 // Basic Matrix construction and element access
 TEST(MatrixTest, simple_matrix) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i32 {
@@ -26,8 +25,7 @@ TEST(MatrixTest, simple_matrix) {
 
 // Test matrix dimensions
 TEST(MatrixTest, matrix_ndims_and_size) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -57,8 +55,7 @@ TEST(MatrixTest, parse_slice_syntax) {
 
 // Test Matrix bracket indexing syntax: M[i, j]
 TEST(MatrixTest, bracket_index_syntax) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i32 {
@@ -76,8 +73,7 @@ TEST(MatrixTest, bracket_index_syntax) {
 
 // Test Matrix bracket indexing with multiple dimensions
 TEST(MatrixTest, bracket_index_2d) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i32 {
@@ -98,8 +94,7 @@ TEST(MatrixTest, bracket_index_2d) {
 
 // Test SliceRange class construction
 TEST(MatrixTest, slice_range_construction) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -123,8 +118,7 @@ TEST(MatrixTest, slice_range_construction) {
 
 // Test SliceRange with open-ended ranges
 TEST(MatrixTest, slice_range_open_ends) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -172,8 +166,7 @@ TEST(MatrixTest, slice_syntax_compiles) {
 
 // Test basic 1D matrix slicing
 TEST(MatrixTest, slice_1d_basic) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -195,8 +188,7 @@ TEST(MatrixTest, slice_1d_basic) {
 
 // Test sliced matrix view values
 TEST(MatrixTest, slice_1d_values) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -224,8 +216,7 @@ TEST(MatrixTest, slice_1d_values) {
 
 // Test slice from start (0:n)
 TEST(MatrixTest, slice_1d_from_start) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -252,8 +243,7 @@ TEST(MatrixTest, slice_1d_from_start) {
 
 // Test slice to end (n:size)
 TEST(MatrixTest, slice_1d_to_end) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -279,8 +269,7 @@ TEST(MatrixTest, slice_1d_to_end) {
 
 // Using matrix after creating view is use-after-move error
 TEST(MatrixTest, DISABLED_slice_1d_use_matrix_after_view_error) {
-  EXPECT_THROW(executeString(R"(
-    import "build/stdlib.moon";
+  EXPECT_THROW(executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -307,8 +296,7 @@ TEST(MatrixTest, DISABLED_slice_1d_use_matrix_after_view_error) {
 
 // View can be modified and read - view owns the data after move
 TEST(MatrixTest, slice_1d_modify_through_view) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -338,8 +326,7 @@ TEST(MatrixTest, slice_1d_modify_through_view) {
 
 // Accessing original matrix after view creation is use-after-move error
 TEST(MatrixTest, DISABLED_access_matrix_after_view_is_error) {
-  EXPECT_THROW(executeString(R"(
-    import "build/stdlib.moon";
+  EXPECT_THROW(executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -364,8 +351,7 @@ TEST(MatrixTest, DISABLED_access_matrix_after_view_is_error) {
 
 // Using matrix after creating view is use-after-move error
 TEST(MatrixTest, DISABLED_use_after_view) {
-  EXPECT_THROW(executeString(R"(
-    import "build/stdlib.moon";
+  EXPECT_THROW(executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -390,8 +376,7 @@ TEST(MatrixTest, DISABLED_use_after_view) {
 // Creating a view moves the data pointer from Matrix - using Matrix after is
 // error
 TEST(MatrixTest, DISABLED_use_matrix_after_view_is_move_error) {
-  EXPECT_THROW(executeString(R"(
-    import "build/stdlib.moon";
+  EXPECT_THROW(executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -417,8 +402,7 @@ TEST(MatrixTest, DISABLED_use_matrix_after_view_is_move_error) {
 
 // Creating multiple views from same matrix should fail on second view
 TEST(MatrixTest, DISABLED_second_view_after_move_is_error) {
-  EXPECT_THROW(executeString(R"(
-    import "build/stdlib.moon";
+  EXPECT_THROW(executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -443,8 +427,7 @@ TEST(MatrixTest, DISABLED_second_view_after_move_is_error) {
 
 // View of a view should work (view owns the data it received)
 TEST(MatrixTest, DISABLED_view_of_view_is_valid) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -473,8 +456,7 @@ TEST(MatrixTest, DISABLED_view_of_view_is_valid) {
 
 // Using first view after creating second view from it is use-after-move error
 TEST(MatrixTest, use_view1_after_view2_is_error) {
-  EXPECT_THROW(executeString(R"(
-    import "build/stdlib.moon";
+  EXPECT_THROW(executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {

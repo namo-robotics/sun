@@ -14,7 +14,6 @@
 
 TEST(ContiguousBufferTest, basic_allocation_and_size) {
   auto value = executeStringWithReachableIR(R"(
-    import "build/stdlib.moon";
     using sun;
     
     function main() i64 {
@@ -22,13 +21,12 @@ TEST(ContiguousBufferTest, basic_allocation_and_size) {
         var buf = ContiguousBuffer<i32>(alloc, 10);
         return buf.size();
     }
-  )");
+  )", 0, nullptr, true);
   EXPECT_EQ(value, 10);
 }
 
 TEST(ContiguousBufferTest, empty_buffer) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i32 {
@@ -44,8 +42,7 @@ TEST(ContiguousBufferTest, empty_buffer) {
 }
 
 TEST(ContiguousBufferTest, non_empty_buffer) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i32 {
@@ -65,8 +62,7 @@ TEST(ContiguousBufferTest, non_empty_buffer) {
 // ============================================================================
 
 TEST(ContiguousBufferTest, get_set_valid_index) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i32 {
@@ -93,8 +89,7 @@ TEST(ContiguousBufferTest, get_set_valid_index) {
 }
 
 TEST(ContiguousBufferTest, get_out_of_bounds_throws) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i32 {
@@ -112,8 +107,7 @@ TEST(ContiguousBufferTest, get_out_of_bounds_throws) {
 }
 
 TEST(ContiguousBufferTest, get_negative_index_throws) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i32 {
@@ -133,8 +127,7 @@ TEST(ContiguousBufferTest, get_negative_index_throws) {
 TEST(ContiguousBufferTest, set_out_of_bounds_throws) {
   // Test that valid set operations work correctly
   // Note: void, IError try-catch has limited compiler support
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i32 {
@@ -155,8 +148,7 @@ TEST(ContiguousBufferTest, set_out_of_bounds_throws) {
 // ============================================================================
 
 TEST(ContiguousBufferTest, get_set_unchecked) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i32 {
@@ -176,8 +168,7 @@ TEST(ContiguousBufferTest, get_set_unchecked) {
 // ============================================================================
 
 TEST(ContiguousBufferTest, fill_buffer) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i32 {
@@ -201,8 +192,7 @@ TEST(ContiguousBufferTest, fill_buffer) {
 
 TEST(ContiguousBufferTest, copy_from_valid) {
   // Test that copy_from works correctly using unchecked version
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i32 {
@@ -235,8 +225,7 @@ TEST(ContiguousBufferTest, copy_from_valid) {
 TEST(ContiguousBufferTest, copy_from_out_of_bounds_src) {
   // Test basic buffer operations instead of error throwing
   // (void, IError try-catch has limited support)
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i32 {
@@ -262,8 +251,7 @@ TEST(ContiguousBufferTest, copy_from_out_of_bounds_src) {
 
 TEST(ContiguousBufferTest, copy_from_out_of_bounds_dst) {
   // Test buffer allocation with different sizes
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i32 {
@@ -290,8 +278,7 @@ TEST(ContiguousBufferTest, copy_from_out_of_bounds_dst) {
 // ============================================================================
 
 TEST(ContiguousBufferTest, first_and_last) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i32 {
@@ -317,8 +304,7 @@ TEST(ContiguousBufferTest, first_and_last) {
 }
 
 TEST(ContiguousBufferTest, first_on_empty_throws) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i32 {
@@ -336,8 +322,7 @@ TEST(ContiguousBufferTest, first_on_empty_throws) {
 }
 
 TEST(ContiguousBufferTest, last_on_empty_throws) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i32 {
@@ -359,8 +344,7 @@ TEST(ContiguousBufferTest, last_on_empty_throws) {
 // ============================================================================
 
 TEST(ContiguousBufferTest, index_operator) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i32 {
@@ -380,8 +364,7 @@ TEST(ContiguousBufferTest, index_operator) {
 // ============================================================================
 
 TEST(ContiguousBufferTest, iterator_sum) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i32 {
@@ -408,8 +391,7 @@ TEST(ContiguousBufferTest, iterator_sum) {
 // ============================================================================
 
 TEST(ContiguousBufferTest, f64_buffer) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i32 {
@@ -427,8 +409,7 @@ TEST(ContiguousBufferTest, f64_buffer) {
 }
 
 TEST(ContiguousBufferTest, i64_buffer) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -459,8 +440,7 @@ TEST(ContiguousBufferTest, i64_buffer) {
 // ============================================================================
 
 TEST(ContiguousBufferTest, raw_data_not_null) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i32 {

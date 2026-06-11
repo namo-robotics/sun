@@ -11,8 +11,7 @@
 // ============================================================================
 
 TEST(StdlibLinkedListTest, empty_list) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -32,8 +31,7 @@ TEST(StdlibLinkedListTest, empty_list) {
 // ============================================================================
 
 TEST(StdlibLinkedListTest, push_back) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -56,8 +54,7 @@ TEST(StdlibLinkedListTest, push_back) {
 }
 
 TEST(StdlibLinkedListTest, push_front) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -85,8 +82,7 @@ TEST(StdlibLinkedListTest, push_front) {
 // ============================================================================
 
 TEST(StdlibLinkedListTest, pop_front) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -108,8 +104,7 @@ TEST(StdlibLinkedListTest, pop_front) {
 }
 
 TEST(StdlibLinkedListTest, pop_back) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -131,8 +126,7 @@ TEST(StdlibLinkedListTest, pop_back) {
 }
 
 TEST(StdlibLinkedListTest, pop_empty_throws) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -156,8 +150,7 @@ TEST(StdlibLinkedListTest, pop_empty_throws) {
 }
 
 TEST(StdlibLinkedListTest, drain_list) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -189,8 +182,7 @@ TEST(StdlibLinkedListTest, drain_list) {
 // ============================================================================
 
 TEST(StdlibLinkedListTest, get_and_set) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -216,8 +208,7 @@ TEST(StdlibLinkedListTest, get_and_set) {
 }
 
 TEST(StdlibLinkedListTest, get_out_of_bounds) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -240,8 +231,7 @@ TEST(StdlibLinkedListTest, get_out_of_bounds) {
 // ============================================================================
 
 TEST(StdlibLinkedListTest, remove_nodes) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -272,8 +262,7 @@ TEST(StdlibLinkedListTest, remove_nodes) {
 // ============================================================================
 
 TEST(StdlibLinkedListTest, clear_and_reuse) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -301,8 +290,7 @@ TEST(StdlibLinkedListTest, clear_and_reuse) {
 // ============================================================================
 
 TEST(StdlibLinkedListTest, for_in_iteration) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -328,8 +316,7 @@ TEST(StdlibLinkedListTest, for_in_iteration) {
 }
 
 TEST(StdlibLinkedListTest, iterate_empty) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -350,8 +337,7 @@ TEST(StdlibLinkedListTest, iterate_empty) {
 // ============================================================================
 
 TEST(StdlibLinkedListTest, mixed_push_front_back) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -375,8 +361,7 @@ TEST(StdlibLinkedListTest, mixed_push_front_back) {
 }
 
 TEST(StdlibLinkedListTest, i64_type) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -402,8 +387,7 @@ TEST(StdlibLinkedListTest, i64_type) {
 // ============================================================================
 
 TEST(StdlibLinkedListTest, list_of_class_objects) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     class Point {
@@ -452,8 +436,7 @@ TEST(StdlibLinkedListTest, list_of_class_objects) {
 }
 
 TEST(StdlibLinkedListTest, class_objects_push_front_pop) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     class Pair {
@@ -493,8 +476,7 @@ TEST(StdlibLinkedListTest, class_objects_push_front_pop) {
 }
 
 TEST(StdlibLinkedListTest, iterate_class_objects) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     class Weight {
@@ -540,8 +522,7 @@ TEST(StdlibLinkedListTest, DISABLED_use_after_free_stale_raw_ptr) {
   // This test demonstrates UB that the borrow checker cannot catch.
   // The stale raw_ptr reads freed memory. In practice this may return
   // the old value (memory not yet reclaimed) or garbage.
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -569,8 +550,7 @@ TEST(StdlibLinkedListTest, DISABLED_use_after_free_stale_raw_ptr) {
 TEST(StdlibLinkedListTest, DISABLED_double_free_via_copy) {
   // This test crashes with "free(): invalid pointer" — confirmed double-free.
   // Disabled because it aborts the test process.
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     class ListWrapper {

@@ -48,8 +48,7 @@ TEST(ClassTest, class_with_method) {
 // ============================================================================
 
 TEST(ClassTest, new_class_instance) {
-  auto value = executeString(R"(
-    import "stdlib/allocator.sun";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     class Point {
@@ -68,8 +67,7 @@ TEST(ClassTest, new_class_instance) {
 }
 
 TEST(ClassTest, class_that_allocates) {
-  auto value = executeString(R"(
-    import "stdlib/allocator.sun";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     class B {
@@ -97,8 +95,7 @@ TEST(ClassTest, class_that_allocates) {
 }
 
 TEST(ClassTest, object_field_access) {
-  auto value = executeString(R"(
-    import "stdlib/allocator.sun";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     class Point {
@@ -121,8 +118,7 @@ TEST(ClassTest, object_field_access) {
 }
 
 TEST(ClassTest, object_field_read_y) {
-  auto value = executeString(R"(
-    import "stdlib/allocator.sun";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     class Point {
@@ -149,8 +145,7 @@ TEST(ClassTest, object_field_read_y) {
 // ============================================================================
 
 TEST(ClassTest, method_call_no_args) {
-  auto value = executeString(R"(
-    import "stdlib/allocator.sun";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     class Counter {
@@ -175,8 +170,7 @@ TEST(ClassTest, method_call_no_args) {
 }
 
 TEST(ClassTest, method_call_with_args) {
-  auto value = executeString(R"(
-    import "stdlib/allocator.sun";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     class Calculator {
@@ -201,8 +195,7 @@ TEST(ClassTest, method_call_with_args) {
 }
 
 TEST(ClassTest, chained_method_calls) {
-  auto value = executeString(R"(
-    import "stdlib/allocator.sun";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     class Value {
@@ -231,8 +224,7 @@ TEST(ClassTest, chained_method_calls) {
 // ============================================================================
 
 TEST(ClassTest, constructor_with_no_args) {
-  auto value = executeString(R"(
-    import "stdlib/allocator.sun";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     class Counter {
@@ -257,8 +249,7 @@ TEST(ClassTest, constructor_with_no_args) {
 }
 
 TEST(ClassTest, constructor_initializes_fields) {
-  auto value = executeString(R"(
-    import "stdlib/allocator.sun";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     class Point3D {
@@ -287,8 +278,7 @@ TEST(ClassTest, constructor_initializes_fields) {
 // ============================================================================
 
 TEST(ClassTest, multiple_methods) {
-  auto value = executeString(R"(
-    import "stdlib/allocator.sun";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     class Box {
@@ -319,8 +309,7 @@ TEST(ClassTest, multiple_methods) {
 }
 
 TEST(ClassTest, multiple_objects_same_class) {
-  auto value = executeString(R"(
-    import "stdlib/allocator.sun";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     class Number {
@@ -350,8 +339,7 @@ TEST(ClassTest, multiple_objects_same_class) {
 // ============================================================================
 
 TEST(ClassTest, multiple_classes) {
-  auto value = executeString(R"(
-    import "stdlib/allocator.sun";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     class First {
@@ -379,8 +367,7 @@ TEST(ClassTest, multiple_classes) {
 // ============================================================================
 
 TEST(ClassTest, float_fields) {
-  auto value = executeString(R"(
-    import "stdlib/allocator.sun";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     class PointF {
@@ -492,18 +479,6 @@ TEST(ClassTest, class_redefinition_error) {
   }
 }
 
-TEST(ClassTest, diamond_import_class_no_error) {
-  // Diamond dependency: two imports bring the same class - should compile fine
-  auto value = executeString(R"(
-    import "tests/programs/diamond/left_class.sun";
-    import "tests/programs/diamond/right_class.sun";
-    function main() i32 {
-      return left_get() + right_get();
-    }
-  )");
-  EXPECT_EQ(value, 30);
-}
-
 // ============================================================================
 // Partial Class Tests
 // ============================================================================
@@ -511,10 +486,20 @@ TEST(ClassTest, diamond_import_class_no_error) {
 TEST(ClassTest, partial_class_adds_methods) {
   // Partial class methods should work alongside primary methods
   auto value = executeString(R"(
-    import "tests/programs/class_x_part_a.sun";
+    class X {
+      var a: i32;
+      var b: i32;
+      function init(a_: i32, b_: i32) { this.a = a_; this.b = b_; }
+      function get_a() i32 { return this.a; }
+    }
+
+    partial class X {
+      function get_b() i32 { return this.b; }
+    }
+
     function main() i32 {
       var x = X(10, 20);
-      return x.get_a() + x.get_b();  // get_a from primary, get_b from partial
+      return x.get_a() + x.get_b();
     }
   )");
   EXPECT_EQ(value, 30);
@@ -523,12 +508,22 @@ TEST(ClassTest, partial_class_adds_methods) {
 TEST(ClassTest, partial_class_mutual_calls) {
   // Primary can call partial methods and vice versa
   auto value = executeString(R"(
-    import "tests/programs/class_x_part_a.sun";
+    class X {
+      var a: i32;
+      var b: i32;
+      function init(a_: i32, b_: i32) { this.a = a_; this.b = b_; }
+      function get_a() i32 { return this.a; }
+    }
+
+    partial class X {
+      function get_b() i32 { return this.b; }
+      function sum() i32 { return this.get_a() + this.get_b(); }
+      function double_b() i32 { return this.get_b() * 2; }
+    }
+
     function main() i32 {
       var x = X(10, 20);
-      // sum() in partial calls get_a() from primary
-      // double_b() in primary calls get_b() from partial
-      return x.sum() + x.double_b();  // (10+20) + (20*2) = 70
+      return x.sum() + x.double_b();
     }
   )");
   EXPECT_EQ(value, 70);

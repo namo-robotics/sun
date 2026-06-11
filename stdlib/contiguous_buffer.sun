@@ -15,9 +15,6 @@
 //   try { var val = buf.get(0); } catch (e: IError) { }  // 42
 //   var len = buf.size();  // 10
 
-import "allocator.sun";
-import "errors.sun";
-import "unique.sun";
 
 // ============================================================================
 // ContiguousBuffer<T> - Fixed-size Bounds-checked Array

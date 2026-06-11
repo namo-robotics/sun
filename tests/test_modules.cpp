@@ -1,5 +1,5 @@
 // tests/test_modules.cpp
-// Tests for the module/import system
+// Tests for the module system
 
 #include <gtest/gtest.h>
 
@@ -16,114 +16,6 @@
 #include "lexer.h"
 #include "parser.h"
 #include "semantic_analyzer.h"
-
-// === Compilation tests (AOT) ===
-
-TEST(ModuleTest, import_single_function) {
-  EXPECT_NO_THROW(compileFile("tests/programs/import_math.sun"));
-}
-
-TEST(ModuleTest, import_multiple_functions) {
-  EXPECT_NO_THROW(compileFile("tests/programs/import_multi_func.sun"));
-}
-
-TEST(ModuleTest, import_two_modules) {
-  EXPECT_NO_THROW(compileFile("tests/programs/import_two_modules.sun"));
-}
-
-TEST(ModuleTest, import_transitive) {
-  EXPECT_NO_THROW(compileFile("tests/programs/import_transitive.sun"));
-}
-
-TEST(ModuleTest, import_global_var) {
-  auto value = executeString(R"(
-    import "tests/programs/global_var.sun";
-    function main() i32 {
-      return x;
-    }
-  )");
-  EXPECT_EQ(value, 42);
-}
-
-TEST(ModuleTest, diamond_sun_import) {
-  // Diamond dependency: left.sun and right.sun both import base.sun
-  // base_value() returns 7, left_add(3) = 7+3 = 10, right_mul(2) = 7*2 = 14
-  // main returns 10 + 14 = 24
-  auto value = executeString(R"(
-    import "tests/programs/diamond/left.sun";
-    import "tests/programs/diamond/right.sun";
-    function main() i32 {
-      return left_add(3) + right_mul(2);
-    }
-  )");
-  EXPECT_EQ(value, 24);
-}
-
-TEST(ModuleTest, diamond_sun_import_with_class) {
-  // Diamond dependency with class: both importers use a shared class
-  auto value = executeString(R"(
-    import "tests/programs/diamond/left_class.sun";
-    import "tests/programs/diamond/right_class.sun";
-    function main() i32 {
-      return left_get() + right_get();
-    }
-  )");
-  EXPECT_EQ(value, 30);
-}
-
-TEST(ModuleTest, diamond_sun_import_with_global_var) {
-  // Diamond dependency with a global variable: both importers bring in the same
-  // top-level var from base_var.sun. The duplicate var creation in the second
-  // import scope must be skipped (setSkipCodegen) to avoid LLVM duplicate defs.
-  // left_val() = 66, right_val() = 66, total = 132
-  auto value = executeString(R"(
-    import "tests/programs/diamond/left_var.sun";
-    import "tests/programs/diamond/right_var.sun";
-    function main() i32 {
-      return left_val() + right_val();
-    }
-  )");
-  EXPECT_EQ(value, 132);
-}
-
-TEST(ModuleTest, transitive_import_function_call) {
-  // Transitive import: main imports A which imports B.
-  // Currently all symbols are visible transitively (no enforcement yet).
-  auto value = executeString(R"(
-    import "tests/programs/uses_math.sun";
-    function main() i32 {
-      return add_and_square(2, 3);
-    }
-  )");
-  EXPECT_EQ(value, 25);
-}
-
-// === Parser tests ===
-
-TEST(ModuleTest, parse_import_statement) {
-  auto parser = Parser::createStringParser(R"(
-    import "math_module.sun";
-  )");
-  auto ast = parser.parseProgram();
-  ASSERT_NE(ast, nullptr);
-  ASSERT_EQ(ast->getBody().size(), 1);
-  EXPECT_EQ(ast->getBody()[0]->getType(), ASTNodeType::IMPORT);
-
-  auto* importNode = static_cast<const ImportAST*>(ast->getBody()[0].get());
-  EXPECT_EQ(importNode->getPath(), "math_module.sun");
-}
-
-TEST(ModuleTest, parse_multiple_imports) {
-  auto parser = Parser::createStringParser(R"(
-    import "a.sun";
-    import "b.sun";
-  )");
-  auto ast = parser.parseProgram();
-  ASSERT_NE(ast, nullptr);
-  ASSERT_EQ(ast->getBody().size(), 2);
-  EXPECT_EQ(ast->getBody()[0]->getType(), ASTNodeType::IMPORT);
-  EXPECT_EQ(ast->getBody()[1]->getType(), ASTNodeType::IMPORT);
-}
 
 // === Module declaration tests ===
 
@@ -284,41 +176,58 @@ TEST(ModuleTest, nested_modules_nested_classes_method_chain) {
 }
 
 TEST(ModuleTest, same_module_in_multiple_files_merges) {
-  // Two files declare the same module with different functions - they merge
+  // Two declarations of the same module merge their functions
   auto value = executeString(R"(
-    import "tests/programs/same_mod_a.sun";
-    import "tests/programs/same_mod_b.sun";
+    module mymod {
+      function foo() i32 { return 1; }
+    }
+    module mymod {
+      function bar() i32 { return 2; }
+    }
 
     function main() i32 {
       return mymod.foo() + mymod.bar();
     }
   )");
-  EXPECT_EQ(value, 3);  // foo() returns 1, bar() returns 2
+  EXPECT_EQ(value, 3);
 }
 
 TEST(ModuleTest, nested_module_qualified_function_call) {
   // Call functions in nested modules using qualified names without using
   auto value = executeString(R"(
-    import "tests/programs/reversed_mods_AB.sun";
-    import "tests/programs/reversed_mods_BA.sun";
+    module A {
+      module B {
+        function foo() i32 { return 2; }
+      }
+    }
+    module B {
+      module A {
+        function foo() i32 { return 1; }
+      }
+    }
 
     function main() i32 {
       return A.B.foo() + B.A.foo();
     }
   )");
-  EXPECT_EQ(value, 3);  // A.B.foo() returns 2, B.A.foo() returns 1
+  EXPECT_EQ(value, 3);
 }
 
 TEST(ModuleTest, submod_fn_calls_mod_fn) {
-  // Call functions in nested modules using qualified names without using
+  // Submodule function can call parent module function
   auto value = executeString(R"(
-    import "tests/programs/submod_fn_calls_mod_fn.sun";
+    module A {
+      function foo() i32 { return 1; }
+      module B {
+        function bar() i32 { return 1; }
+      }
+    }
 
     function main() i32 {
       return A.foo() + A.B.bar();
     }
   )");
-  EXPECT_EQ(value, 2);  // A.B.foo() returns 2, B.A.foo() returns 1
+  EXPECT_EQ(value, 2);
 }
 
 TEST(ModuleTest, submod_duplicates_fn) {
@@ -528,9 +437,13 @@ TEST(ModuleTest, using_causes_ambiguity) {
 }
 
 TEST(ModuleTest, module_imports_global_function) {
+  // Module function can call a global function defined outside the module
   auto value = executeString(R"(
+    function foo() i32 {
+      return 123;
+    }
+
     module A {
-      import "tests/programs/diamond/foo.sun";
       function bar() i32 {
         return foo();
       }
@@ -546,7 +459,6 @@ TEST(ModuleTest, module_imports_global_function) {
 TEST(ModuleTest, transitive_call_to_imported_function_fails) {
   EXPECT_THROW(executeString(R"(
     module A {
-      import "tests/programs/diamond/foo.sun";
       function bar() i32 {
         return foo();
       }
@@ -557,169 +469,4 @@ TEST(ModuleTest, transitive_call_to_imported_function_fails) {
     }
   )"),
                std::exception);
-}
-
-// =============================================================================
-// DiamondDependencyTest - Tests for diamond dependency version conflicts
-// =============================================================================
-//
-// This test demonstrates the diamond dependency problem:
-//   B_v1 defines module b { get_version() -> 1 }
-//   B_v2 defines module b { get_version() -> 2 }
-//   A depends on B_v1, exports call_b_from_a() which calls b.get_version()
-//   C imports both A and B_v2
-//
-// Both versions use the SAME namespace "b", so they have the same mangled
-// symbol name (b_get_version). When both are linked, LLVM's OverrideFromSrc
-// means the last-linked version wins for ALL calls.
-
-class DiamondDependencyTest : public ::testing::Test {
- protected:
-  static constexpr const char* kTestDir = "tests/programs/diamond";
-
-  void SetUp() override {
-    initTestEnvironment();
-
-    // Use SUN_PATH for the sun binary (set by initTestEnvironment to cwd)
-    const char* sunPath = std::getenv("SUN_PATH");
-    std::string sunBin = std::string(sunPath) + "/build/sun";
-
-    // Compile B v1 to moon (in same directory as source for relative imports)
-    std::string cmd = sunBin + " --emit-moon -o " + kTestDir + "/b_v1.moon " +
-                      kTestDir + "/b_v1.sun 2>&1";
-    int ret = std::system(cmd.c_str());
-    ASSERT_EQ(ret, 0) << "Failed to compile b_v1.sun";
-
-    // Compile B v2 to moon (defines module b - same namespace!)
-    cmd = sunBin + " --emit-moon -o " + kTestDir + "/b_v2.moon " + kTestDir +
-          "/b_v2.sun 2>&1";
-    ret = std::system(cmd.c_str());
-    ASSERT_EQ(ret, 0) << "Failed to compile b_v2.sun";
-
-    // Compile A (which imports B v1 via relative path "b_v1.moon")
-    cmd = sunBin + " --emit-moon -o " + kTestDir + "/a.moon " + kTestDir +
-          "/a.sun 2>&1";
-    ret = std::system(cmd.c_str());
-    ASSERT_EQ(ret, 0) << "Failed to compile a.sun";
-  }
-
-  void TearDown() override {
-    // Clean up moon files
-    std::string testDir = kTestDir;
-    std::filesystem::remove(testDir + "/a.moon");
-    std::filesystem::remove(testDir + "/b_v1.moon");
-    std::filesystem::remove(testDir + "/b_v2.moon");
-  }
-};
-
-TEST_F(DiamondDependencyTest, module_version_isolation) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
-    import "tests/programs/diamond/a.moon";
-    using a;
-    function main() i32 {
-        sun.print_i32(call_b_from_a());
-        return 0;
-    }
-  )");
-  EXPECT_EQ(value, 0);
-}
-
-TEST_F(DiamondDependencyTest, compile_a_sun) {
-  // Minimal test: just compile a.sun (which imports b_v1.moon)
-  // Useful for stepping through the compiler in a debugger.
-  EXPECT_NO_THROW(compileFile("tests/programs/diamond/a.sun"));
-}
-
-TEST_F(DiamondDependencyTest, module_version_isolation_2) {
-  // Same test with reversed import order
-  // Now A.moon (containing B_v1) is linked last, so v1 wins
-
-  auto value = executeString(R"(
-    import "tests/programs/diamond/b_v2.moon";
-    import "tests/programs/diamond/a.moon";
-
-    function main() i32 {
-      var from_a: i32 = a.call_b_from_a();
-      var direct: i32 = b.get_version();
-      return from_a * 10 + direct;
-    }
-  )");
-
-  // With content-hash prefixing, each version is isolated
-  // from_a uses v1 (embedded in a.moon), direct uses v2 (from b_v2.moon)
-  EXPECT_EQ(value, 12) << "from_a should use v1 (1), direct should use v2 (2). "
-                       << "Content-hash prefixes isolate different versions.";
-}
-
-TEST_F(DiamondDependencyTest, ambiguous_call_due_to_version_conflict) {
-  EXPECT_THROW(executeString(R"(
-    import "tests/programs/diamond/b_v1.moon";
-    import "tests/programs/diamond/b_v2.moon";
-
-    function main() i32 {
-      var x: i32 = b.get_version();
-      return x;
-    }
-  )"),
-               std::exception);
-}
-
-TEST_F(DiamondDependencyTest, scoped_imports) {
-  // Imports inside function bodies are supported - each function gets its own
-  // version of module b via content-hash isolation.
-  auto value = executeString(R"(
-    function v1() i32 {
-      import "tests/programs/diamond/b_v1.moon";
-      return b.get_version();
-    }
-    
-    function v2() i32 {
-      import "tests/programs/diamond/b_v2.moon";
-      return b.get_version();
-    }
-
-    function main() i32 {
-      var x: i32 = v1() * 10 + v2();
-      return x;
-    }
-  )");
-  EXPECT_EQ(value, 12);
-}
-
-class InstantiateGenericTest : public ::testing::Test {
- protected:
-  static constexpr const char* kTestDir = "tests/programs/moon_libs";
-
-  void SetUp() override {
-    initTestEnvironment();
-
-    // Use SUN_PATH for the sun binary (set by initTestEnvironment to cwd)
-    const char* sunPath = std::getenv("SUN_PATH");
-    std::string sunBin = std::string(sunPath) + "/build/sun";
-
-    // Compile B v1 to moon (in same directory as source for relative imports)
-    std::string cmd = sunBin + " --emit-moon -o " + kTestDir + "/box.moon " +
-                      kTestDir + "/box.sun 2>&1";
-    int ret = std::system(cmd.c_str());
-    ASSERT_EQ(ret, 0) << "Failed to compile box.sun";
-  }
-
-  void TearDown() override {
-    // Clean up moon files
-    std::string testDir = kTestDir;
-    std::filesystem::remove(testDir + "/box.moon");
-  }
-};
-
-TEST_F(InstantiateGenericTest, instantiate_generic_in_moon_lib) {
-  auto value = executeString(R"(
-    import "tests/programs/moon_libs/box.moon";
-
-    function main() i32 {
-        var b = Box<i32>(42);
-        return b.value;
-    }
-  )");
-  EXPECT_EQ(value, 42);
 }

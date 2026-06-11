@@ -120,10 +120,6 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
       checkUnsafeBlock(static_cast<const UnsafeBlockAST&>(expr));
       break;
 
-    case ASTNodeType::IMPORT_SCOPE:
-      checkBlockExpr(static_cast<const ImportScopeAST&>(expr).getBody());
-      break;
-
     case ASTNodeType::MODULE:
       checkBlockExpr(static_cast<const ModuleAST&>(expr).getBody());
       break;
@@ -140,6 +136,7 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
     case ASTNodeType::IMPORT:
     case ASTNodeType::DECLARE_TYPE:
     case ASTNodeType::USING:
+    case ASTNodeType::MANIFEST:
     case ASTNodeType::QUALIFIED_NAME:
     case ASTNodeType::INTERFACE_DEFINITION:
     case ASTNodeType::ENUM_DEFINITION:

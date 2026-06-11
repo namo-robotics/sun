@@ -16,18 +16,6 @@ void SemanticAnalyzer::registerClass(const std::string& name,
   }
   // Register in current scope
   currentScope->classes[name] = classType;
-  if (importScopeDepth_ > 0) {
-    // Also register in nearest persistent ancestor so the class survives
-    // transient scope deletion (Class/Function scopes are deleted on exit)
-    for (auto* s = currentScope->parent; s != nullptr; s = s->parent) {
-      if (s->getType() == ScopeType::Module ||
-          s->getType() == ScopeType::Import ||
-          s->getType() == ScopeType::Global) {
-        s->classes[name] = classType;
-        break;
-      }
-    }
-  }
 }
 
 std::shared_ptr<sun::ClassType> SemanticAnalyzer::lookupClass(

@@ -21,9 +21,8 @@ enum class TokenKind {
   DEF,
   EXTERN,
   VAR,
-  IMPORT,         // import keyword for module system
+  MANIFEST,       // manifest keyword for module metadata
   MODULE,         // module keyword (preferred over namespace)
-  NAMESPACE,      // namespace keyword (deprecated, use module)
   USING,          // using keyword for namespace imports
   CLASS,          // class keyword
   PARTIAL,        // partial keyword for class extensions
@@ -108,9 +107,8 @@ static const std::map<TokenKind, std::string> tokenRegexes = {
     {TokenKind::DEF, "def"},
     {TokenKind::EXTERN, "extern"},
     {TokenKind::VAR, "var"},
-    {TokenKind::IMPORT, "import"},
+    {TokenKind::MANIFEST, "manifest"},
     {TokenKind::MODULE, "module"},
-    {TokenKind::NAMESPACE, "namespace"},
     {TokenKind::USING, "using"},
     {TokenKind::CLASS, "class"},
     {TokenKind::PARTIAL, "partial"},
@@ -201,9 +199,8 @@ inline const std::map<TokenKind, TokenInfo>& getTokenInfo() {
       {TokenKind::DEF, {"def"}},
       {TokenKind::EXTERN, {"extern"}},
       {TokenKind::VAR, {"var"}},
-      {TokenKind::IMPORT, {"import"}},
+      {TokenKind::MANIFEST, {"manifest"}},
       {TokenKind::MODULE, {"module"}},
-      {TokenKind::NAMESPACE, {"namespace"}},
       {TokenKind::USING, {"using"}},
       {TokenKind::CLASS, {"class"}},
       {TokenKind::INTERFACE, {"interface"}},

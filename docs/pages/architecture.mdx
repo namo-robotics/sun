@@ -5,8 +5,19 @@ Sun is a compiled language with an LLVM 20 backend.
 ## Compilation Pipeline
 
 ```
-Source → Lexer → Parser → AST → Semantic Analyzer → Borrow Checker → Codegen Visitor → LLVM IR → JIT/AOT
+Source → Lexer → Parser → AST → Manifest Processing → Merged AST → Semantic Analyzer → Borrow Checker → Codegen Visitor → LLVM IR → JIT/AOT
 ```
+
+### Pipeline Steps
+
+1. **Lexer** — Tokenize source file
+2. **Parser** — Build AST from tokens
+3. **Manifest Processing** — Extract manifest, parse additional `suns`, load `moons`
+4. **AST Merging** — Combine all parsed ASTs into a single merged AST
+5. **Semantic Analysis** — Type inference, scope resolution, capture detection
+6. **Borrow Checking** — Ownership and lifetime analysis
+7. **Code Generation** — Emit LLVM IR
+8. **JIT/AOT** — Execute immediately or compile to native binary
 
 ## Component Overview
 
@@ -74,22 +85,38 @@ Uses LLVM ORC JIT for immediate execution without producing binaries.
 
 ### AOT Compilation
 ```bash
-sun --compile -o program program.sun
+sun -c -o program program.sun
 ```
 Emits object file via LLVM, links with system C compiler to produce native executable.
+
+### Debug Mode
+```bash
+sun --debug program.sun
+```
+Generates debugging artifacts in `program_debug/`:
+- `ast.dot` — GraphViz AST visualization
+- `ir.ll` — Full LLVM IR output
+- `scope_tree.html` — Semantic scope visualization
 
 ## Flow Diagram
 
 ```mermaid
 flowchart TB
     subgraph Input
-        SRC[".sun Source File"]
+        SRC[".sun Entrypoint"]
     end
 
     subgraph Frontend["Frontend (Parsing)"]
         LEX["Lexer<br/>NFA-based tokenization"]
         PAR["Parser<br/>Recursive descent"]
         AST["AST<br/>Abstract Syntax Tree"]
+    end
+
+    subgraph Manifest["Manifest Processing"]
+        MAN["Extract Manifest<br/>suns, moons"]
+        DEPS["Parse Dependencies<br/>Additional .sun files"]
+        MOON["Load Moons<br/>Precompiled libraries"]
+        MERGE["Merge ASTs<br/>Single unified AST"]
     end
 
     subgraph Analysis["Semantic Analysis"]
@@ -115,7 +142,12 @@ flowchart TB
     SRC --> LEX
     LEX -->|"Tokens"| PAR
     PAR --> AST
-    AST --> SEM
+    AST --> MAN
+    MAN --> DEPS
+    MAN --> MOON
+    DEPS --> MERGE
+    MOON --> MERGE
+    MERGE --> SEM
     SEM <--> SYM
     SEM --> BC
     BC -->|"Verified AST"| CGV

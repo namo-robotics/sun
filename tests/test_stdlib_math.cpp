@@ -11,8 +11,7 @@
 // ============================================================================
 
 TEST(StdlibMathTest, min_i32) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -23,8 +22,7 @@ TEST(StdlibMathTest, min_i32) {
 }
 
 TEST(StdlibMathTest, min_i32_reversed) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -35,8 +33,7 @@ TEST(StdlibMathTest, min_i32_reversed) {
 }
 
 TEST(StdlibMathTest, min_f64) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -57,8 +54,7 @@ TEST(StdlibMathTest, min_f64) {
 // ============================================================================
 
 TEST(StdlibMathTest, max_i32) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -69,8 +65,7 @@ TEST(StdlibMathTest, max_i32) {
 }
 
 TEST(StdlibMathTest, max_i64) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i64 {
@@ -85,8 +80,7 @@ TEST(StdlibMathTest, max_i64) {
 // ============================================================================
 
 TEST(StdlibMathTest, abs_positive) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -97,8 +91,7 @@ TEST(StdlibMathTest, abs_positive) {
 }
 
 TEST(StdlibMathTest, abs_negative) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -109,8 +102,7 @@ TEST(StdlibMathTest, abs_negative) {
 }
 
 TEST(StdlibMathTest, abs_zero) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -125,8 +117,7 @@ TEST(StdlibMathTest, abs_zero) {
 // ============================================================================
 
 TEST(StdlibMathTest, clamp_within_range) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -137,8 +128,7 @@ TEST(StdlibMathTest, clamp_within_range) {
 }
 
 TEST(StdlibMathTest, clamp_below_min) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -149,8 +139,7 @@ TEST(StdlibMathTest, clamp_below_min) {
 }
 
 TEST(StdlibMathTest, clamp_above_max) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -165,8 +154,7 @@ TEST(StdlibMathTest, clamp_above_max) {
 // ============================================================================
 
 TEST(StdlibMathTest, sign_positive) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -177,8 +165,7 @@ TEST(StdlibMathTest, sign_positive) {
 }
 
 TEST(StdlibMathTest, sign_negative) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -189,8 +176,7 @@ TEST(StdlibMathTest, sign_negative) {
 }
 
 TEST(StdlibMathTest, sign_zero) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -205,8 +191,7 @@ TEST(StdlibMathTest, sign_zero) {
 // ============================================================================
 
 TEST(StdlibMathTest, in_range_true) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -220,8 +205,7 @@ TEST(StdlibMathTest, in_range_true) {
 }
 
 TEST(StdlibMathTest, in_range_at_boundary) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -235,8 +219,7 @@ TEST(StdlibMathTest, in_range_at_boundary) {
 }
 
 TEST(StdlibMathTest, in_range_false) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -254,8 +237,7 @@ TEST(StdlibMathTest, in_range_false) {
 // ============================================================================
 
 TEST(StdlibMathTest, combined_min_max) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {
@@ -273,8 +255,7 @@ TEST(StdlibMathTest, combined_min_max) {
 
 TEST(StdlibMathTest, clamp_uses_minmax_pattern) {
   // Verify clamp behaves like max(lo, min(x, hi))
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
 
     function main() i32 {

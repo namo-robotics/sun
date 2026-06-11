@@ -7,9 +7,11 @@
 #include <mutex>
 #include <set>
 #include <string>
+#include <vector>
 
 #include "codegen.h"
 #include "codegen_visitor.h"
+#include "moon_import.h"
 #include "parser.h"
 #include "semantic_analyzer.h"
 #include "sun_value.h"
@@ -41,6 +43,9 @@ class Driver {
   // Debug mode: generate AST DOT graph and IR dump
   bool debugMode_ = false;
   std::string debugFolder_;
+
+  // Moon libraries to preload for single-file compilation modes
+  std::vector<sun::MoonImport> moonImports_;
 
   // Private constructor - use factory methods
   Driver(std::unique_ptr<CodegenContext> ctx,
@@ -96,6 +101,29 @@ class Driver {
 
   /// Compile a file and return the parsed AST for metadata extraction
   std::unique_ptr<BlockExprAST> compileFileWithAST(const std::string& filename);
+
+  /// Set moon libraries to preload for single-file compilation modes
+  /// (executeString, compileFile, etc.)
+  void setMoonImports(std::vector<sun::MoonImport> imports) {
+    moonImports_ = std::move(imports);
+  }
+
+  /// Compile multiple source files with optional precompiled moon libraries
+  /// This is the merged-AST compilation model: all files are parsed and merged
+  /// into a single AST before semantic analysis and codegen.
+  /// @param sourceFiles List of .sun source files to compile
+  /// @param moonImports Precompiled .moon libraries with optional aliasing
+  void compileFiles(const std::vector<std::string>& sourceFiles,
+                    const std::vector<sun::MoonImport>& moonImports = {});
+
+  /// Execute multiple source files with optional precompiled moon libraries
+  /// @param sourceFiles List of .sun source files to compile and execute
+  /// @param moonImports Precompiled .moon libraries with optional aliasing
+  /// @param argc Argument count for main()
+  /// @param argv Argument vector for main()
+  void executeFiles(const std::vector<std::string>& sourceFiles,
+                    const std::vector<sun::MoonImport>& moonImports = {},
+                    int argc = 0, char** argv = nullptr);
 
   /// Access the underlying module (for emitting object code after compilation)
   llvm::Module& getModule() { return *ctx->mainModule; }

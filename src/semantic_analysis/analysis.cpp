@@ -455,56 +455,6 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       break;
     }
 
-    case ASTNodeType::IMPORT: {
-      // Import statements are handled by the parser before semantic analysis.
-      // Nothing to do here - the imported symbols are already registered.
-      expr.setResolvedType(sun::Types::Void());
-      break;
-    }
-
-    case ASTNodeType::IMPORT_SCOPE: {
-      // Expanded import scope — analyze the body inside an import scope
-      // to enforce non-transitive imports. Direct imports are visible
-      // (one level of transparency), but their nested imports are not.
-      auto& importScope = static_cast<ImportScopeAST&>(expr);
-
-      // Compute scope key the same way as enterImportScope
-      std::string scopeKey;
-      if (!importScope.getContentHash().empty()) {
-        scopeKey = importScope.getContentHash();
-      } else {
-        auto hash = std::hash<std::string>{}(importScope.getSourceFile());
-        scopeKey = "$import_" + std::to_string(hash & 0xFFFFFFFF) + "$";
-      }
-
-      enterImportScope(importScope.getSourceFile(), scopeKey);
-      importScopeDepth_++;
-
-      // Skip entire body if this import was already fully analyzed
-      // (diamond dependency). The scope was cloned by enterImportScope,
-      // so all symbols are already accessible.
-      if (analyzedImports_.count(scopeKey)) {
-        expr.setSkipCodegen(true);
-      } else {
-        analyzeBlock(const_cast<BlockExprAST&>(importScope.getBody()));
-        analyzedImports_.insert(scopeKey);
-        // Update the canonical scope so subsequent diamond-dep clones
-        // include all symbols (functions, classes, etc.) registered during
-        // analysis of this import scope.
-        if (currentScope->parent) {
-          auto it = currentScope->parent->childModules.find(scopeKey);
-          if (it != currentScope->parent->childModules.end()) {
-            importScopesByKey_[scopeKey] = it->second;
-          }
-        }
-      }
-
-      importScopeDepth_--;
-      exitScope();
-      expr.setResolvedType(sun::Types::Void());
-      break;
-    }
-
     case ASTNodeType::MODULE: {
       auto& nsDecl = static_cast<ModuleAST&>(expr);
       // Enter the namespace scope
@@ -624,21 +574,18 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 
       // Qualify class name with module prefix if inside a module
       // For precompiled classes (from .moon), use the qualified name from
-      // metadata
+      // metadata (includes content hash prefix for symbol isolation)
       sun::QualifiedName qualifiedClass;
       if (classDef.hasQualifiedName()) {
-        // Use pre-set qualified name from metadata (includes content hash
-        // prefix)
         qualifiedClass = classDef.getQualifiedName();
       } else {
         qualifiedClass = makeQualifiedName(baseName);
-        // Set qualified name on AST for codegen (source name stays for errors)
         classDef.setQualifiedName(qualifiedClass);
       }
       std::string mangledClassName = qualifiedClass.mangled();
 
-      // Forbid redefinition of class in same module (depth 0)
-      if (importScopeDepth_ == 0 && definedSymbols_.count(mangledClassName)) {
+      // Forbid redefinition of class in same module
+      if (definedSymbols_.count(mangledClassName)) {
         logAndThrowError("Redefinition of class '" + baseName + "'",
                          classDef.getLocation());
       }
@@ -811,9 +758,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       setCurrentClass(savedClass);
 
       // Track symbol for redefinition detection
-      if (importScopeDepth_ == 0) {
-        definedSymbols_.insert(mangledClassName);
-      }
+      definedSymbols_.insert(mangledClassName);
 
       // Store primary AST for partial class merging (if a partial appears
       // later)
@@ -833,18 +778,15 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       // metadata
       sun::QualifiedName qualifiedInterface;
       if (interfaceDef.hasQualifiedName()) {
-        // Use pre-set qualified name from metadata (includes content hash
-        // prefix)
         qualifiedInterface = interfaceDef.getQualifiedName();
       } else {
         qualifiedInterface = makeQualifiedName(interfaceDef.getName());
-        // Set qualified name on AST for codegen (source name stays for errors)
         interfaceDef.setQualifiedName(qualifiedInterface);
       }
       std::string interfaceName = qualifiedInterface.mangled();
 
-      // Forbid redefinition of interface in same module (depth 0)
-      if (importScopeDepth_ == 0 && definedSymbols_.count(interfaceName)) {
+      // Forbid redefinition of interface in same module
+      if (definedSymbols_.count(interfaceName)) {
         logAndThrowError(
             "Redefinition of interface '" + interfaceDef.getName() + "'",
             interfaceDef.getLocation());
@@ -951,9 +893,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       registerInterface(interfaceDef.getName(), interfaceType);
 
       // Track symbol for redefinition detection
-      if (importScopeDepth_ == 0) {
-        definedSymbols_.insert(interfaceName);
-      }
+      definedSymbols_.insert(interfaceName);
 
       expr.setResolvedType(sun::Types::Void());
       break;
@@ -962,8 +902,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
     case ASTNodeType::ENUM_DEFINITION: {
       auto& enumDef = static_cast<EnumDefinitionAST&>(expr);
 
-      // Forbid redefinition of enum in same module (depth 0)
-      if (importScopeDepth_ == 0 && definedSymbols_.count(enumDef.getName())) {
+      // Forbid redefinition of enum in same module
+      if (definedSymbols_.count(enumDef.getName())) {
         logAndThrowError("Redefinition of enum '" + enumDef.getName() + "'",
                          enumDef.getLocation());
       }
@@ -997,9 +937,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       registerEnum(enumDef.getName(), enumType);
 
       // Track symbol for redefinition detection
-      if (importScopeDepth_ == 0) {
-        definedSymbols_.insert(enumDef.getName());
-      }
+      definedSymbols_.insert(enumDef.getName());
 
       expr.setResolvedType(sun::Types::Void());
       break;
@@ -1291,8 +1229,11 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
 // -------------------------------------------------------------------
 
 void SemanticAnalyzer::analyzeBlock(BlockExprAST& block) {
-  // Sequential analysis — no hoisting. Types and functions must be
-  // defined before use.
+  // Declaration pre-pass: register all top-level declarations so that
+  // ordering doesn't matter at module level.
+  collectDeclarations(block);
+
+  // Sequential analysis of all statements (bodies, expressions, etc.)
   for (const auto& expr : block.getBody()) {
     analyzeExpr(*expr);
   }
@@ -1379,8 +1320,14 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
   }
 
   // Compute qualified name (includes module path and function context for
-  // nested functions)
-  sun::QualifiedName qualifiedName = makeQualifiedName(proto.getName());
+  // nested functions). Precompiled stubs have pre-set qualified names with
+  // content hash for symbol isolation.
+  sun::QualifiedName qualifiedName;
+  if (proto.hasQualifiedName()) {
+    qualifiedName = proto.getQualifiedName();
+  } else {
+    qualifiedName = makeQualifiedName(proto.getName());
+  }
 
   FunctionInfo info;
   info.returnType = returnType;

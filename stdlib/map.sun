@@ -21,10 +21,6 @@
 //   // Iteration over values
 //   for (var v: i32 in m) { ... }
 
-import "contiguous_buffer.sun";
-import "string.sun";
-import "allocator.sun";
-import "errors.sun";
 
 module sun {
 

@@ -2,17 +2,23 @@
 #include <glob.h>
 
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
+#include "ast/manifest_ast.h"
 #include "compiler.h"
 #include "driver.h"
 #include "error.h"
 #include "library_cache.h"
 #include "metadata_extractor.h"
 #include "moon/moon.h"
+#include "moon_import.h"
+#include "parser.h"
+#include "sun_path.h"
 
 static void printUsage(const char* programName) {
   llvm::errs() << "Usage: " << programName
@@ -27,10 +33,13 @@ static void printUsage(const char* programName) {
   llvm::errs() << "  --emit-ir         Print LLVM IR to stdout\n";
   llvm::errs() << "  --debug           Generate debug output (ast.dot, ir.ll) "
                   "in <input>_debug/\n";
-  llvm::errs() << "  --emit-moon     Compile to .moon precompiled library\n";
-  llvm::errs()
-      << "  --bundle          Bundle multiple .sun files into one .moon\n";
+  llvm::errs() << "  --emit-moon       Compile to .moon precompiled library\n";
+  llvm::errs() << "                    Use manifest { suns: [...] } to specify "
+                  "files to include\n";
   llvm::errs() << "  --lib-path <dir>  Add directory to library search path\n";
+  llvm::errs() << "  --moon <spec>     Load precompiled .moon library\n";
+  llvm::errs() << "                    Format: path.moon or "
+                  "path.moon:module=alias\n";
   llvm::errs() << "  -h, --help        Show this help message\n";
   llvm::errs() << "\nArguments after the script file (or after --) are passed "
                   "to main(argc, argv).\n";
@@ -38,35 +47,86 @@ static void printUsage(const char* programName) {
   llvm::errs()
       << "  sun program.sun                              # JIT execute\n";
   llvm::errs()
-      << "  sun --emit-moon -o lib.moon module.sun   # Create library\n";
-  llvm::errs()
-      << "  sun --bundle -o stdlib.moon stdlib/*.sun   # Bundle library\n";
+      << "  sun --emit-moon -o lib.moon module.sun       # Create library\n";
   llvm::errs() << "  sun --lib-path build/ program.sun            # Use "
                   "precompiled libs\n";
 }
 
-/// Expand glob patterns in input files (for --bundle)
-static std::vector<std::string> expandGlobs(
-    const std::vector<std::string>& patterns) {
-  std::vector<std::string> result;
+/// Resolve a manifest path - first relative to baseDir, then via SUN_PATH.
+static std::string resolveManifestPath(const std::string& path,
+                                       const std::string& baseDir) {
+  std::filesystem::path p(path);
+  if (p.is_absolute()) {
+    return path;
+  }
+  // First try relative to base directory
+  auto relative = std::filesystem::path(baseDir) / p;
+  if (std::filesystem::exists(relative)) {
+    return relative.lexically_normal().string();
+  }
+  // Then try SUN_PATH
+  auto resolved = sun::SunPath::resolve(path);
+  if (!resolved.empty()) {
+    return resolved.string();
+  }
+  // Return as-is (will error later if not found)
+  return path;
+}
 
-  for (const auto& pattern : patterns) {
-    glob_t globResult;
-    int ret =
-        glob(pattern.c_str(), GLOB_TILDE | GLOB_NOCHECK, nullptr, &globResult);
+/// Extract manifest from a parsed program.
+static const ManifestAST* findManifest(const BlockExprAST& program) {
+  for (const auto& stmt : program.getBody()) {
+    if (stmt && stmt->getType() == ASTNodeType::MANIFEST) {
+      return static_cast<const ManifestAST*>(stmt.get());
+    }
+  }
+  return nullptr;
+}
 
-    if (ret == 0) {
-      for (size_t i = 0; i < globResult.gl_pathc; ++i) {
-        result.push_back(globResult.gl_pathv[i]);
-      }
-      globfree(&globResult);
+/// Parse a file and extract manifest information.
+/// Returns true if manifest found, populates sunFiles and moonImports.
+/// Paths are resolved relative to the file's directory.
+static bool extractManifestFromFile(const std::string& filename,
+                                    std::vector<std::string>& sunFiles,
+                                    std::vector<sun::MoonImport>& moonImports) {
+  std::filesystem::path filePath = std::filesystem::absolute(filename);
+  std::string baseDir = filePath.parent_path().string();
+
+  std::ifstream file(filename);
+  if (!file.is_open()) {
+    return false;
+  }
+  std::stringstream buffer;
+  buffer << file.rdbuf();
+  std::string source = buffer.str();
+
+  auto parser = Parser::createStringParser(source);
+  parser.setFilePath(filename);
+  auto ast = parser.parseProgram();
+
+  const auto* manifest = findManifest(*ast);
+  if (!manifest) {
+    return false;
+  }
+
+  // Process sun dependencies
+  for (const auto& sunDep : manifest->getSuns()) {
+    std::string resolved = resolveManifestPath(sunDep.path, baseDir);
+    sunFiles.push_back(resolved);
+  }
+
+  // Process moon dependencies
+  for (const auto& moonDep : manifest->getMoons()) {
+    std::string resolved = resolveManifestPath(moonDep.path, baseDir);
+    if (moonDep.rename.has_value()) {
+      moonImports.emplace_back(resolved, moonDep.rename.value(),
+                               moonDep.rename.value());
     } else {
-      // If glob fails, keep the original pattern
-      result.push_back(pattern);
+      moonImports.emplace_back(resolved);
     }
   }
 
-  return result;
+  return true;
 }
 
 int main(int argc, char* argv[]) {
@@ -74,10 +134,10 @@ int main(int argc, char* argv[]) {
   std::string outputFile;
   std::vector<std::string> inputFiles;
   std::vector<std::string> libPaths;
+  std::vector<sun::MoonImport> moonImports;
   bool compileMode = false;
   bool emitObjOnly = false;
   bool emitMoon = false;
-  bool bundleMode = false;
   bool emitIR = false;
   bool debugMode = false;
   int programArgStart = -1;  // Index where program arguments start
@@ -103,10 +163,16 @@ int main(int argc, char* argv[]) {
       emitIR = true;
     } else if (arg == "--debug") {
       debugMode = true;
-    } else if (arg == "--bundle") {
-      bundleMode = true;
     } else if (arg == "--lib-path" && i + 1 < argc) {
       libPaths.push_back(argv[++i]);
+    } else if (arg == "--moon" && i + 1 < argc) {
+      auto moonImport = sun::parseMoonImportSpec(argv[++i]);
+      if (!moonImport) {
+        llvm::errs() << "Invalid --moon format: " << argv[i] << "\n";
+        llvm::errs() << "Expected: path.moon or path.moon:module=alias\n";
+        return 1;
+      }
+      moonImports.push_back(std::move(*moonImport));
     } else if (arg == "-h" || arg == "--help") {
       printUsage(argv[0]);
       return 0;
@@ -115,17 +181,8 @@ int main(int argc, char* argv[]) {
       printUsage(argv[0]);
       return 1;
     } else {
-      // Input file or pattern
+      // Input file
       inputFiles.push_back(arg);
-
-      // For non-bundle/moon modes, stop after first input file
-      if (!bundleMode && !emitMoon && inputFiles.size() == 1) {
-        // Check if next args are program args (not options)
-        if (i + 1 < argc && argv[i + 1][0] != '-') {
-          programArgStart = i + 1;
-          break;
-        }
-      }
     }
   }
 
@@ -135,73 +192,21 @@ int main(int argc, char* argv[]) {
     sun::LibraryCache::instance().addSearchPath(libPath);
   }
 
-  // Handle --bundle mode
-  if (bundleMode) {
-    if (inputFiles.empty()) {
-      llvm::errs() << "Error: --bundle requires input files\n";
-      return 1;
-    }
-    if (outputFile.empty()) {
-      llvm::errs() << "Error: --bundle requires -o <output.moon>\n";
-      return 1;
-    }
-
-    // Expand glob patterns
-    std::vector<std::string> expandedFiles = expandGlobs(inputFiles);
-    if (expandedFiles.empty()) {
-      llvm::errs() << "Error: No input files found\n";
-      return 1;
-    }
-
-    llvm::outs() << "Bundling " << expandedFiles.size() << " files into "
-                 << outputFile << "\n";
-
-    sun::SunLibWriter bundleWriter;
-
-    for (const auto& file : expandedFiles) {
-      llvm::outs() << "  Processing: " << file << "\n";
-
-      try {
-        auto metadataOpt = sun::extractMetadataFromFile(file);
-        if (!metadataOpt) {
-          llvm::errs() << "Error: Failed to parse " << file
-                       << " for metadata\n";
-          return 1;
-        }
-        auto metadata = *metadataOpt;
-
-        auto driver = Driver::createForAOT("bundle_module");
-        driver->compileFile(file);
-
-        bundleWriter.addModule(driver->getModule(), metadata);
-      } catch (const SunError& e) {
-        llvm::errs() << "Error compiling " << file << ": " << e.what() << "\n";
-        return 1;
-      } catch (const std::exception& e) {
-        llvm::errs() << "Error compiling " << file << ": " << e.what() << "\n";
-        return 1;
-      }
-    }
-
-    if (!bundleWriter.write(outputFile)) {
-      llvm::errs() << "Error writing bundle: " << bundleWriter.getError()
-                   << "\n";
-      return 1;
-    }
-
-    llvm::outs() << "Successfully created: " << outputFile << "\n";
-    return 0;
-  }
-
-  // Handle --emit-moon mode
+  // Handle --emit-moon mode (create .moon library from entrypoint with
+  // manifest)
   if (emitMoon) {
     if (inputFiles.empty()) {
-      llvm::errs() << "Error: --emit-moon requires an input file\n";
+      llvm::errs() << "Error: --emit-moon requires an entrypoint file\n";
       return 1;
     }
+
+    std::string entrypoint = inputFiles[0];
+    std::filesystem::path entrypointPath =
+        std::filesystem::absolute(entrypoint);
+
     if (outputFile.empty()) {
       // Derive from input file
-      outputFile = inputFiles[0];
+      outputFile = entrypoint;
       size_t dotPos = outputFile.rfind(".sun");
       if (dotPos != std::string::npos) {
         outputFile = outputFile.substr(0, dotPos);
@@ -209,26 +214,54 @@ int main(int argc, char* argv[]) {
       outputFile += ".moon";
     }
 
-    llvm::outs() << "Creating moon: " << inputFiles[0] << " -> " << outputFile
-                 << "\n";
+    // Extract manifest from entrypoint
+    std::vector<std::string> sunFiles;
+    std::vector<sun::MoonImport> manifestMoons;
+
+    if (!extractManifestFromFile(entrypoint, sunFiles, manifestMoons)) {
+      // No manifest - single file mode
+      sunFiles.push_back(entrypointPath.string());
+    } else {
+      // Add entrypoint to the list
+      sunFiles.insert(sunFiles.begin(), entrypointPath.string());
+      // Merge manifest moons with CLI moons
+      for (auto& m : manifestMoons) {
+        moonImports.push_back(std::move(m));
+      }
+    }
+
+    llvm::outs() << "Creating moon: " << outputFile << "\n";
+    for (const auto& f : sunFiles) {
+      llvm::outs() << "  Including: " << f << "\n";
+    }
 
     try {
-      auto metadataOpt = sun::extractMetadataFromFile(inputFiles[0]);
-      if (!metadataOpt) {
-        llvm::errs() << "Error: Failed to parse " << inputFiles[0]
-                     << " for metadata\n";
-        return 1;
+      sun::SunLibWriter bundleWriter;
+
+      // Extract metadata from each file
+      std::vector<sun::moon::ModuleMetadata> allMetadata;
+      for (const auto& file : sunFiles) {
+        auto metadataOpt = sun::extractMetadataFromFile(file);
+        if (!metadataOpt) {
+          llvm::errs() << "Error: Failed to parse " << file
+                       << " for metadata\n";
+          return 1;
+        }
+        allMetadata.push_back(*metadataOpt);
       }
-      auto metadata = *metadataOpt;
 
+      // Compile all files together
       auto driver = Driver::createForAOT("moon_module");
-      driver->compileFile(inputFiles[0]);
+      driver->compileFiles(sunFiles, moonImports);
 
-      sun::SunLibWriter writer;
-      writer.addModule(driver->getModule(), metadata);
+      // Add each module's metadata + the shared compiled LLVM module
+      for (auto& metadata : allMetadata) {
+        bundleWriter.addModule(driver->getModule(), metadata);
+      }
 
-      if (!writer.write(outputFile)) {
-        llvm::errs() << "Error writing moon: " << writer.getError() << "\n";
+      if (!bundleWriter.write(outputFile)) {
+        llvm::errs() << "Error writing moon: " << bundleWriter.getError()
+                     << "\n";
         return 1;
       }
 
@@ -289,7 +322,13 @@ int main(int argc, char* argv[]) {
       if (debugMode) {
         driver->setDebugMode(true, inputFile);
       }
-      driver->compileFile(inputFile);
+      driver->setMoonImports(moonImports);
+
+      if (inputFiles.size() > 1) {
+        driver->compileFiles(inputFiles, moonImports);
+      } else {
+        driver->compileFile(inputFile);
+      }
 
       // Print IR if requested (only user-defined, not imports)
       if (emitIR) {
@@ -330,7 +369,13 @@ int main(int argc, char* argv[]) {
     if (debugMode) {
       driver->setDebugMode(true, inputFile);
     }
-    driver->executeFile(inputFile, programArgc, programArgv.data());
+    driver->setMoonImports(std::move(moonImports));
+
+    if (inputFiles.size() > 1) {
+      driver->executeFiles(inputFiles, {}, programArgc, programArgv.data());
+    } else {
+      driver->executeFile(inputFile, programArgc, programArgv.data());
+    }
   } catch (const SunError& e) {
     std::cerr << e.what() << std::endl;
     return 1;

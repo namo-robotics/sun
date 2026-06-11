@@ -63,8 +63,6 @@ class ThrowExprAST;
 class TryCatchExprAST;
 
 // Module/import nodes
-class ImportAST;
-class ImportScopeAST;
 class ModuleAST;
 class UsingAST;
 class QualifiedNameAST;

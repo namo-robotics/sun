@@ -13,8 +13,7 @@
 
 // Simplest case: move to another variable, then use original
 TEST(MemorySafety, use_after_move_simple) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
-      import "build/stdlib.moon";
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
     using sun;
       
       function main() i64 {
@@ -29,8 +28,7 @@ TEST(MemorySafety, use_after_move_simple) {
 
 // Move then access field directly
 TEST(MemorySafety, use_after_move_field_access) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
-      import "build/stdlib.moon";
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
     using sun;
       
       function main() i64 {
@@ -49,8 +47,7 @@ TEST(MemorySafety, use_after_move_field_access) {
 
 // Pass by ref doesn't move
 TEST(MemorySafety, ref_param_no_move) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function get_len(s: ref String) i64 {
@@ -155,8 +152,7 @@ TEST(MemorySafety, method_call_after_move) {
 
 // Double move should fail on second move
 TEST(MemorySafety, double_move) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
-      import "build/stdlib.moon";
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
     using sun;
       
       function main() i64 {
@@ -176,8 +172,7 @@ TEST(MemorySafety, double_move) {
 
 // Using the moved-to variable is fine
 TEST(MemorySafety, use_moved_to_variable) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -226,8 +221,7 @@ TEST(MemorySafety, ref_scope_ends) {
 
 // Matrix move then use is error
 TEST(MemorySafety, matrix_use_after_move) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
-      import "build/stdlib.moon";
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
     using sun;
       
       function main() i64 {
@@ -243,8 +237,7 @@ TEST(MemorySafety, matrix_use_after_move) {
 
 // Matrix ref borrow is fine
 TEST(MemorySafety, matrix_ref_borrow) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function get_size(m: ref Matrix<i64>) i64 {
@@ -264,8 +257,7 @@ TEST(MemorySafety, matrix_ref_borrow) {
 
 // Matrix ref borrow is fine
 TEST(MemorySafety, matrix_okay) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -284,8 +276,7 @@ TEST(MemorySafety, matrix_okay) {
 
 // Allocator move then use is error
 TEST(MemorySafety, allocator_use_after_move) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
-      import "build/stdlib.moon";
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
     using sun;
       
       function main() i64 {
@@ -300,8 +291,7 @@ TEST(MemorySafety, allocator_use_after_move) {
 
 // Use allocator.copy() to get a new allocator
 TEST(MemorySafety, allocator_copy_valid) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
@@ -423,8 +413,7 @@ TEST(MemorySafety, raw_ptr_null_assignment) {
 
 // raw_ptr null check pattern
 TEST(MemorySafety, raw_ptr_null_check_pattern) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i32 {
@@ -491,8 +480,7 @@ TEST(MemorySafety, nested_borrow_sequential) {
 
 // Creating string and using it locally is fine (no return by value needed)
 TEST(MemorySafety, owned_value_local_use) {
-  auto value = executeString(R"(
-    import "build/stdlib.moon";
+  auto value = executeStringWithStdlib(R"(
     using sun;
     
     function main() i64 {
