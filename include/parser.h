@@ -8,6 +8,7 @@
 #include <sstream>
 
 #include "ast.h"
+#include "ast/manifest_ast.h"
 #include "ast_cache.h"
 #include "error.h"
 #include "lexer.h"
@@ -55,6 +56,13 @@ class Parser {
                      ? std::nullopt
                      : std::optional<std::string>(currentFilePath)};
     logParsingError(loc, msg, sourceLine, prevLine);
+  }
+
+  // Helper: expect current token to be a specific kind, or throw error
+  void expectCurrentTokenKind(TokenKind expected, const std::string& msg) {
+    if (curTok.kind != expected) {
+      parsingError(msg);
+    }
   }
 
  public:
@@ -153,8 +161,9 @@ class Parser {
   // New class instance: new ClassName(args...)
   unique_ptr<ExprAST> parseNewClassInstance(const std::string& className);
 
-  // Import statement parsing (always errors - imports no longer supported)
-  unique_ptr<ExprAST> parseImportStatement();
+  unique_ptr<ManifestAST> parseManifest();
+  std::vector<ManifestSunDependency> parseManifestSuns();
+  std::vector<ManifestMoonDependency> parseManifestMoons();
 
   // Declare statement parsing:
   // - Forward function declaration: declare function name(args) RetType;

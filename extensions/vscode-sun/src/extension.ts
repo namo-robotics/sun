@@ -43,7 +43,7 @@ function canLaunchServer(command: string): boolean {
 export async function activate(_context: vscode.ExtensionContext): Promise<void> {
   const configuredPath = vscode.workspace
     .getConfiguration('sun')
-    .get<string>('lsp.path', 'sun-lsp');
+    .get<string>('lsp.path', '/usr/bin/sun-lsp');
 
   const command = resolveServerCommand(configuredPath);
 

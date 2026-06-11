@@ -126,6 +126,11 @@ Value* CodegenVisitor::codegen(const ExprAST& expr) {
       // nodes. Codegen doesn't need to track them separately.
       return ConstantFP::get(ctx.getContext(), APFloat(0.0));
     }
+    case ASTNodeType::MANIFEST: {
+      // Manifest blocks are processed by the driver before compilation.
+      // Nothing to generate for codegen.
+      return ConstantFP::get(ctx.getContext(), APFloat(0.0));
+    }
     case ASTNodeType::QUALIFIED_NAME: {
       // Qualified name lookup (e.g., sun.Vec)
       const auto& qn = static_cast<const QualifiedNameAST&>(expr);

@@ -3,3 +3,11 @@ using sun;
 function main() void {
     println("Hello, Sun!");
 }
+
+manifest {
+    moons: ["stdlib.moon"]
+}
+
+manifest {
+    moons: [{ path: "stdlib.moon" }]
+}

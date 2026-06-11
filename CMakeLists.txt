@@ -190,7 +190,9 @@ option(SKIP_STDLIB "Skip building the precompiled stdlib.moon" OFF)
 
 if(NOT SKIP_STDLIB)
     set(STDLIB_MOON ${CMAKE_BINARY_DIR}/stdlib.moon)
+    set(STDLIB_ENTRYPOINT ${CMAKE_SOURCE_DIR}/stdlib/stdlib.sun)
     set(STDLIB_SOURCES
+        ${STDLIB_ENTRYPOINT}
         ${CMAKE_SOURCE_DIR}/stdlib/print.sun
         ${CMAKE_SOURCE_DIR}/stdlib/allocator.sun
         ${CMAKE_SOURCE_DIR}/stdlib/unique.sun
@@ -208,7 +210,7 @@ if(NOT SKIP_STDLIB)
 
     add_custom_command(
         OUTPUT ${STDLIB_MOON}
-        COMMAND $<TARGET_FILE:sun> --emit-moon --bundle -o ${STDLIB_MOON} ${STDLIB_SOURCES}
+        COMMAND $<TARGET_FILE:sun> --emit-moon -o ${STDLIB_MOON} ${STDLIB_ENTRYPOINT}
         DEPENDS sun ${STDLIB_SOURCES}
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         COMMENT "Building precompiled stdlib.moon"

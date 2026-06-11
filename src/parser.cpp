@@ -86,7 +86,7 @@ std::unique_ptr<ExprAST> Parser::parseParenExpr() {
   auto v = parseExpression();
   if (!v) return nullptr;
 
-  if (curTok.kind != TokenKind::PAREN_CLOSE) parsingError("expected ')'");
+  expectCurrentTokenKind(TokenKind::PAREN_CLOSE, "expected ')'");
   getNextToken();  // eat )
   return v;
 }
@@ -98,8 +98,8 @@ unique_ptr<IfExprAST> Parser::parseIfStatement() {
   if (!Cond) return nullptr;
 
   // Require curly braces for then block
-  if (curTok.kind != TokenKind::BRACE_OPEN)
-    parsingError("expected '{' after if condition");
+  expectCurrentTokenKind(TokenKind::BRACE_OPEN,
+                         "expected '{' after if condition");
 
   auto ThenBlock = parseBlock();
   if (!ThenBlock) return nullptr;
@@ -127,8 +127,7 @@ unique_ptr<IfExprAST> Parser::parseIfStatement() {
       if (!Else) return nullptr;
     } else {
       // Require curly braces for else block
-      if (curTok.kind != TokenKind::BRACE_OPEN)
-        parsingError("expected '{' after else");
+      expectCurrentTokenKind(TokenKind::BRACE_OPEN, "expected '{' after else");
 
       auto ElseBlock = parseBlock();
       if (!ElseBlock) return nullptr;
@@ -161,10 +160,8 @@ unique_ptr<MatchExprAST> Parser::parseMatchExpression() {
   }
 
   // Expect opening brace
-  if (curTok.kind != TokenKind::BRACE_OPEN) {
-    parsingError("expected '{' after match expression");
-    return nullptr;
-  }
+  expectCurrentTokenKind(TokenKind::BRACE_OPEN,
+                         "expected '{' after match expression");
   getNextToken();  // eat '{'
 
   // Parse match arms
@@ -186,10 +183,8 @@ unique_ptr<MatchExprAST> Parser::parseMatchExpression() {
     }
 
     // Expect =>
-    if (curTok.kind != TokenKind::FAT_ARROW) {
-      parsingError("expected '=>' after pattern in match arm");
-      return nullptr;
-    }
+    expectCurrentTokenKind(TokenKind::FAT_ARROW,
+                           "expected '=>' after pattern in match arm");
     getNextToken();  // eat '=>'
 
     // Parse body expression
@@ -261,9 +256,8 @@ unique_ptr<FunctionAST> Parser::parseFunction() {
       parsingError("expected type parameter name after '<'");
     }
 
-    if (curTok.kind != TokenKind::GREATER) {
-      parsingError("expected '>' after type parameters");
-    }
+    expectCurrentTokenKind(TokenKind::GREATER,
+                           "expected '>' after type parameters");
     getNextToken();  // eat '>'
   }
 
@@ -283,8 +277,8 @@ unique_ptr<LambdaAST> Parser::parseLambda() {
 unique_ptr<ExprAST> Parser::parseFunctionLiteral(
     const std::string& name, std::vector<std::string> typeParameters,
     bool isLambda) {
-  if (curTok.kind != TokenKind::PAREN_OPEN)
-    parsingError("Expected '(' in function literal");
+  expectCurrentTokenKind(TokenKind::PAREN_OPEN,
+                         "Expected '(' in function literal");
 
   std::vector<std::pair<std::string, TypeAnnotation>> args;
   std::optional<std::string> variadicParamName;
@@ -312,10 +306,9 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
       }
 
       // Type annotation is required: arg: type
-      if (curTok.kind != TokenKind::COLON) {
-        parsingError("Expected ':' and type annotation for argument '" +
-                     argName + "'");
-      }
+      expectCurrentTokenKind(
+          TokenKind::COLON,
+          "Expected ':' and type annotation for argument '" + argName + "'");
       getNextToken();  // eat ':'
       auto argType = parseTypeAnnotation();
 
@@ -328,8 +321,8 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
     }
   }
 
-  if (curTok.kind != TokenKind::PAREN_CLOSE)
-    parsingError("Expected ')' in function literal");
+  expectCurrentTokenKind(TokenKind::PAREN_CLOSE,
+                         "Expected ')' in function literal");
 
   getNextToken();  // eat ')'
 
@@ -370,8 +363,8 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
   }
 
   // Parse function body
-  if (curTok.kind != TokenKind::BRACE_OPEN)
-    parsingError("Expected '{' to start function body");
+  expectCurrentTokenKind(TokenKind::BRACE_OPEN,
+                         "Expected '{' to start function body");
 
   auto body = parseBlock();
   if (!body) return nullptr;
@@ -392,9 +385,8 @@ unique_ptr<VariableCreationAST> Parser::parseVarDeclaration() {
   getNextToken();  // eat the 'var'
 
   // At least one variable name is required
-  if (curTok.kind != TokenKind::IDENTIFIER) {
-    parsingError("expected identifier after 'var'");
-  }
+  expectCurrentTokenKind(TokenKind::IDENTIFIER,
+                         "expected identifier after 'var'");
 
   std::string name = std::get<std::string>(curTok.value);
   getNextToken();  // eat identifier
@@ -406,9 +398,8 @@ unique_ptr<VariableCreationAST> Parser::parseVarDeclaration() {
     typeAnnot = parseTypeAnnotation();
   }
 
-  if (curTok.kind != TokenKind::EQUAL) {
-    parsingError("expected '=' after variable declaration");
-  }
+  expectCurrentTokenKind(TokenKind::EQUAL,
+                         "expected '=' after variable declaration");
 
   getNextToken();  // eat '='
 
@@ -425,9 +416,8 @@ unique_ptr<VariableCreationAST> Parser::parseVarDeclaration() {
 unique_ptr<VariableCreationAST> Parser::parseVarStatement() {
   auto decl = parseVarDeclaration();
 
-  if (curTok.kind != TokenKind::SEMI_COLON) {
-    parsingError("expected ';' after variable declaration");
-  }
+  expectCurrentTokenKind(TokenKind::SEMI_COLON,
+                         "expected ';' after variable declaration");
   getNextToken();  // eat ';'
 
   return decl;
@@ -446,16 +436,13 @@ unique_ptr<ReferenceCreationAST> Parser::parseRefStatement() {
   }
 
   // Require identifier
-  if (curTok.kind != TokenKind::IDENTIFIER) {
-    parsingError("expected identifier after 'ref'");
-  }
+  expectCurrentTokenKind(TokenKind::IDENTIFIER,
+                         "expected identifier after 'ref'");
 
   std::string name = std::get<std::string>(curTok.value);
   getNextToken();  // eat identifier
 
-  if (curTok.kind != TokenKind::EQUAL) {
-    parsingError("expected '=' after reference name");
-  }
+  expectCurrentTokenKind(TokenKind::EQUAL, "expected '=' after reference name");
 
   getNextToken();  // eat '='
 
@@ -465,9 +452,8 @@ unique_ptr<ReferenceCreationAST> Parser::parseRefStatement() {
     parsingError("reference target expression expected");
   }
 
-  if (curTok.kind != TokenKind::SEMI_COLON) {
-    parsingError("expected ';' after reference declaration");
-  }
+  expectCurrentTokenKind(TokenKind::SEMI_COLON,
+                         "expected ';' after reference declaration");
   getNextToken();  // eat ';'
 
   return std::make_unique<ReferenceCreationAST>(name, std::move(target),
@@ -835,7 +821,8 @@ unique_ptr<ExprAST> Parser::parsePostfixExpr(unique_ptr<ExprAST> base) {
           if (curTok.kind == TokenKind::PAREN_CLOSE) break;
 
           if (curTok.kind != TokenKind::COMMA)
-            parsingError("Expected ')' or ',' in argument list");
+            expectCurrentTokenKind(TokenKind::PAREN_CLOSE,
+                                   "Expected ')' or ',' in argument list");
 
           getNextToken();  // eat ','
         }
@@ -886,10 +873,8 @@ TypeAnnotation Parser::parseTypeAnnotation() {
     type.baseName = "fn";
     getNextToken();  // eat '_'
 
-    if (curTok.kind != TokenKind::PAREN_OPEN) {
-      parsingError("expected '(' after '_' in function type");
-      return type;
-    }
+    expectCurrentTokenKind(TokenKind::PAREN_OPEN,
+                           "expected '(' after '_' in function type");
     getNextToken();  // eat '('
 
     // Parse parameter types
@@ -907,10 +892,8 @@ TypeAnnotation Parser::parseTypeAnnotation() {
       }
     }
 
-    if (curTok.kind != TokenKind::PAREN_CLOSE) {
-      parsingError("expected ')' in function type");
-      return type;
-    }
+    expectCurrentTokenKind(TokenKind::PAREN_CLOSE,
+                           "expected ')' in function type");
     getNextToken();  // eat ')'
 
     type.returnType = std::make_unique<TypeAnnotation>(parseTypeAnnotation());
@@ -938,10 +921,8 @@ TypeAnnotation Parser::parseTypeAnnotation() {
       }
     }
 
-    if (curTok.kind != TokenKind::PAREN_CLOSE) {
-      parsingError("expected ')' in lambda type");
-      return type;
-    }
+    expectCurrentTokenKind(TokenKind::PAREN_CLOSE,
+                           "expected ')' in lambda type");
     getNextToken();  // eat ')'
 
     type.returnType = std::make_unique<TypeAnnotation>(parseTypeAnnotation());
@@ -954,15 +935,13 @@ TypeAnnotation Parser::parseTypeAnnotation() {
     type.baseName = "ptr";
     getNextToken();  // eat 'ptr'
 
-    if (curTok.kind != TokenKind::LESS)
-      parsingError("expected '<' after 'ptr'");
+    expectCurrentTokenKind(TokenKind::LESS, "expected '<' after 'ptr'");
     getNextToken();  // eat '<'
 
     // Parse pointee type
     type.elementType = std::make_unique<TypeAnnotation>(parseTypeAnnotation());
 
-    if (curTok.kind != TokenKind::GREATER)
-      parsingError("expected '>' after ptr type");
+    expectCurrentTokenKind(TokenKind::GREATER, "expected '>' after ptr type");
     getNextToken();  // eat '>'
 
     return type;
@@ -973,15 +952,14 @@ TypeAnnotation Parser::parseTypeAnnotation() {
     type.baseName = "raw_ptr";
     getNextToken();  // eat 'raw_ptr'
 
-    if (curTok.kind != TokenKind::LESS)
-      parsingError("expected '<' after 'raw_ptr'");
+    expectCurrentTokenKind(TokenKind::LESS, "expected '<' after 'raw_ptr'");
     getNextToken();  // eat '<'
 
     // Parse pointee type
     type.elementType = std::make_unique<TypeAnnotation>(parseTypeAnnotation());
 
-    if (curTok.kind != TokenKind::GREATER)
-      parsingError("expected '>' after raw_ptr type");
+    expectCurrentTokenKind(TokenKind::GREATER,
+                           "expected '>' after raw_ptr type");
     getNextToken();  // eat '>'
 
     return type;
@@ -992,15 +970,14 @@ TypeAnnotation Parser::parseTypeAnnotation() {
     type.baseName = "static_ptr";
     getNextToken();  // eat 'static_ptr'
 
-    if (curTok.kind != TokenKind::LESS)
-      parsingError("expected '<' after 'static_ptr'");
+    expectCurrentTokenKind(TokenKind::LESS, "expected '<' after 'static_ptr'");
     getNextToken();  // eat '<'
 
     // Parse pointee type
     type.elementType = std::make_unique<TypeAnnotation>(parseTypeAnnotation());
 
-    if (curTok.kind != TokenKind::GREATER)
-      parsingError("expected '>' after static_ptr type");
+    expectCurrentTokenKind(TokenKind::GREATER,
+                           "expected '>' after static_ptr type");
     getNextToken();  // eat '>'
 
     return type;
@@ -1022,10 +999,7 @@ TypeAnnotation Parser::parseTypeAnnotation() {
     type.baseName = "array";
     getNextToken();  // eat 'array'
 
-    if (curTok.kind != TokenKind::LESS) {
-      parsingError("expected '<' after 'array'");
-      return type;
-    }
+    expectCurrentTokenKind(TokenKind::LESS, "expected '<' after 'array'");
     getNextToken();  // eat '<'
 
     // Parse element type
@@ -1035,20 +1009,15 @@ TypeAnnotation Parser::parseTypeAnnotation() {
     while (curTok.kind == TokenKind::COMMA) {
       getNextToken();  // eat ','
 
-      if (curTok.kind != TokenKind::INTEGER) {
-        parsingError("expected integer dimension in array type");
-        return type;
-      }
+      expectCurrentTokenKind(TokenKind::INTEGER,
+                             "expected integer dimension in array type");
 
       type.arrayDimensions.push_back(
           static_cast<size_t>(curTok.getInteger().value()));
       getNextToken();  // eat integer
     }
 
-    if (curTok.kind != TokenKind::GREATER) {
-      parsingError("expected '>' after array type");
-      return type;
-    }
+    expectCurrentTokenKind(TokenKind::GREATER, "expected '>' after array type");
     getNextToken();  // eat '>'
 
     // Note: empty arrayDimensions is allowed - means "unsized" array
@@ -1114,10 +1083,8 @@ TypeAnnotation Parser::parseTypeAnnotation() {
     while (curTok.kind == TokenKind::DOT) {
       getNextToken();  // eat '.'
 
-      if (curTok.kind != TokenKind::IDENTIFIER) {
-        parsingError("expected identifier after '.'");
-        return type;
-      }
+      expectCurrentTokenKind(TokenKind::IDENTIFIER,
+                             "expected identifier after '.'");
 
       // Append to baseName with dot separator
       type.baseName += ".";
@@ -1298,8 +1265,7 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
     getNextToken();  // eat '>'
   }
 
-  if (curTok.kind != TokenKind::PAREN_OPEN)
-    parsingError("Expected '(' in prototype");
+  expectCurrentTokenKind(TokenKind::PAREN_OPEN, "Expected '(' in prototype");
 
   std::vector<std::pair<std::string, TypeAnnotation>> args;
 
@@ -1356,11 +1322,10 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
       break;
   }
 
-  if (curTok.kind != TokenKind::PAREN_CLOSE)
-    parsingError("Expected ')' in prototype");
+  expectCurrentTokenKind(TokenKind::PAREN_CLOSE, "Expected ')' in prototype");
 
   // success.
-  getNextToken();  // eat ')'.
+  getNextToken();  // eat ')'."
 
   // Check for return type (only if followed by a type token, not semicolon)
   // Type can start with: type keywords, '(' for lambda type, '_' for fn type
@@ -1380,7 +1345,7 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
 unique_ptr<BlockExprAST> Parser::parseBlock() {
   std::vector<unique_ptr<ExprAST>> body;
 
-  if (curTok.kind != TokenKind::BRACE_OPEN) parsingError("expected '{'");
+  expectCurrentTokenKind(TokenKind::BRACE_OPEN, "expected '{'");
   getNextToken();  // eat {
 
   while (curTok.kind != TokenKind::BRACE_CLOSE &&
@@ -1392,8 +1357,8 @@ unique_ptr<BlockExprAST> Parser::parseBlock() {
     // consumption
   }
 
-  if (curTok.kind != TokenKind::BRACE_CLOSE)
-    parsingError("expected '}' at end of block");
+  expectCurrentTokenKind(TokenKind::BRACE_CLOSE,
+                         "expected '}' at end of block");
 
   getNextToken();  // eat }
 
@@ -1417,14 +1382,13 @@ unique_ptr<BlockExprAST> Parser::parseProgram() {
 
 unique_ptr<ExprAST> Parser::parseStatement() {
   switch (curTok.kind) {
-    case TokenKind::IMPORT:
-      return parseImportStatement();
-
     case TokenKind::DECLARE:
       return parseDeclareStatement();
 
+    case TokenKind::MANIFEST:
+      return parseManifest();
+
     case TokenKind::MODULE:
-    case TokenKind::NAMESPACE:
       return parseModuleDecl();
 
     case TokenKind::USING:
@@ -1619,8 +1583,7 @@ unique_ptr<ExprAST> Parser::parseStatement() {
 unique_ptr<ExprAST> Parser::parseForLoop() {
   getNextToken();  // eat 'for'
 
-  if (curTok.kind != TokenKind::PAREN_OPEN)
-    parsingError("Expected '(' after 'for'");
+  expectCurrentTokenKind(TokenKind::PAREN_OPEN, "Expected '(' after 'for'");
   getNextToken();  // eat '('
 
   // Check for for-in loop: for (var x: T in iterable) { ... }
@@ -1650,17 +1613,13 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
           auto iterable = parseExpression();
           if (!iterable) return nullptr;
 
-          if (curTok.kind != TokenKind::PAREN_CLOSE) {
-            parsingError("Expected ')' after for-in iterable");
-            return nullptr;
-          }
+          expectCurrentTokenKind(TokenKind::PAREN_CLOSE,
+                                 "Expected ')' after for-in iterable");
           getNextToken();  // eat ')'
 
           // Require curly braces for for-in body
-          if (curTok.kind != TokenKind::BRACE_OPEN) {
-            parsingError("Expected '{' for for-in body");
-            return nullptr;
-          }
+          expectCurrentTokenKind(TokenKind::BRACE_OPEN,
+                                 "Expected '{' for for-in body");
 
           auto bodyBlock = parseBlock();
           if (!bodyBlock) return nullptr;
@@ -1702,8 +1661,8 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
     if (!init) return nullptr;
   }
 
-  if (curTok.kind != TokenKind::SEMI_COLON)
-    parsingError("Expected ';' after for loop initialization");
+  expectCurrentTokenKind(TokenKind::SEMI_COLON,
+                         "Expected ';' after for loop initialization");
   getNextToken();  // eat ';'
 
   // Parse condition (can be empty for infinite loop)
@@ -1713,8 +1672,8 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
     if (!condition) return nullptr;
   }
 
-  if (curTok.kind != TokenKind::SEMI_COLON)
-    parsingError("Expected ';' after for loop condition");
+  expectCurrentTokenKind(TokenKind::SEMI_COLON,
+                         "Expected ';' after for loop condition");
   getNextToken();  // eat ';'
 
   // Parse increment (can be empty) - can be assignment or expression
@@ -1746,13 +1705,13 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
     if (!increment) return nullptr;
   }
 
-  if (curTok.kind != TokenKind::PAREN_CLOSE)
-    parsingError("Expected ')' after for loop increment");
+  expectCurrentTokenKind(TokenKind::PAREN_CLOSE,
+                         "Expected ')' after for loop increment");
   getNextToken();  // eat ')'
 
   // Require curly braces for for-loop body
-  if (curTok.kind != TokenKind::BRACE_OPEN)
-    parsingError("Expected '{' for for-loop body");
+  expectCurrentTokenKind(TokenKind::BRACE_OPEN,
+                         "Expected '{' for for-loop body");
 
   auto bodyBlock = parseBlock();
   if (!bodyBlock) return nullptr;
@@ -1775,20 +1734,19 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
 unique_ptr<WhileExprAST> Parser::parseWhileLoop() {
   getNextToken();  // eat 'while'
 
-  if (curTok.kind != TokenKind::PAREN_OPEN)
-    parsingError("Expected '(' after 'while'");
+  expectCurrentTokenKind(TokenKind::PAREN_OPEN, "Expected '(' after 'while'");
   getNextToken();  // eat '('
 
   auto condition = parseExpression();
   if (!condition) return nullptr;
 
-  if (curTok.kind != TokenKind::PAREN_CLOSE)
-    parsingError("Expected ')' after while condition");
+  expectCurrentTokenKind(TokenKind::PAREN_CLOSE,
+                         "Expected ')' after while condition");
   getNextToken();  // eat ')'
 
   // Require curly braces for while-loop body
-  if (curTok.kind != TokenKind::BRACE_OPEN)
-    parsingError("Expected '{' for while-loop body");
+  expectCurrentTokenKind(TokenKind::BRACE_OPEN,
+                         "Expected '{' for while-loop body");
 
   auto bodyBlock = parseBlock();
   if (!bodyBlock) return nullptr;
@@ -1842,14 +1800,188 @@ std::unique_ptr<PrototypeAST> Parser::parseExtern() {
   return parsePrototype();
 }
 
-// Parse import statement: import "path/to/file.sun";
-unique_ptr<ExprAST> Parser::parseImportStatement() {
-  // Import statements are no longer supported - use merged compilation instead
-  parsingError(
-      "import statements are no longer supported. "
-      "Use merged compilation with multiple input files on the command line, "
-      "or use 'using' statements to bring module symbols into scope.");
-  return nullptr;  // unreachable (parsingError throws)
+// Parse manifest block:
+// manifest {
+//   suns = [ "file.sun", { path = "other.sun", hash = "abc" } ]
+//   moons = ( "lib.moon", { path = "x.moon", hash = "def", rename = "y" } )
+// }
+unique_ptr<ManifestAST> Parser::parseManifest() {
+  getNextToken();  // eat 'manifest'
+
+  expectCurrentTokenKind(TokenKind::BRACE_OPEN,
+                         "expected '{' for manifest block");
+  getNextToken();  // eat '{'
+
+  std::vector<ManifestSunDependency> suns;
+  std::vector<ManifestMoonDependency> moons;
+
+  while (curTok.kind == TokenKind::IDENTIFIER) {
+    auto ident = curTok.getIdentifier().value();
+    getNextToken();  // eat identifier
+
+    expectCurrentTokenKind(TokenKind::COLON,
+                           "expected ':' after '" + ident + "' in manifest");
+    getNextToken();  // eat ':'
+
+    if (ident == "suns") {
+      suns = parseManifestSuns();
+    } else if (ident == "moons") {
+      moons = parseManifestMoons();
+    } else {
+      parsingError("unexpected identifier '" + ident +
+                   "' in manifest; expected 'suns' or 'moons'");
+    }
+  }
+
+  expectCurrentTokenKind(TokenKind::BRACE_CLOSE,
+                         "expected '}' at end of manifest block");
+  getNextToken();  // eat '}'
+
+  return std::make_unique<ManifestAST>(std::move(suns), std::move(moons));
+}
+
+// Parse suns array: [ "file.sun", { path: "other.sun", hash: "abc" } ]
+std::vector<ManifestSunDependency> Parser::parseManifestSuns() {
+  expectCurrentTokenKind(TokenKind::BRACKET_OPEN, "expected '[' after 'suns:'");
+  getNextToken();  // eat '['
+
+  std::vector<ManifestSunDependency> suns;
+
+  while (curTok.kind != TokenKind::BRACKET_CLOSE) {
+    ManifestSunDependency dep;
+
+    if (curTok.kind == TokenKind::STRING) {
+      // Simple string form: "path/to/file.sun"
+      dep.path = curTok.getString().value();
+      getNextToken();  // eat string
+    } else if (curTok.kind == TokenKind::BRACE_OPEN) {
+      // Struct form: { path: "...", hash: "..." }
+      getNextToken();  // eat '{'
+
+      while (curTok.kind == TokenKind::IDENTIFIER) {
+        auto fieldName = curTok.getIdentifier().value();
+        getNextToken();  // eat field name
+
+        expectCurrentTokenKind(
+            TokenKind::COLON,
+            "expected ':' after field name in sun dependency");
+        getNextToken();  // eat ':'
+
+        expectCurrentTokenKind(
+            TokenKind::STRING,
+            "expected string value for field '" + fieldName + "'");
+        auto value = curTok.getString().value();
+        getNextToken();  // eat string
+
+        if (fieldName == "path") {
+          dep.path = value;
+        } else if (fieldName == "hash") {
+          dep.hash = value;
+        } else {
+          parsingError("unknown field '" + fieldName + "' in sun dependency");
+        }
+
+        if (curTok.kind == TokenKind::COMMA) {
+          getNextToken();  // eat ','
+        }
+      }
+
+      expectCurrentTokenKind(TokenKind::BRACE_CLOSE,
+                             "expected '}' at end of sun dependency");
+      getNextToken();  // eat '}'
+
+      if (dep.path.empty()) {
+        parsingError("sun dependency missing required 'path' field");
+      }
+    } else {
+      parsingError("expected string or '{' in suns array");
+    }
+
+    suns.push_back(std::move(dep));
+
+    if (curTok.kind == TokenKind::COMMA) {
+      getNextToken();  // eat ','
+    } else if (curTok.kind != TokenKind::BRACKET_CLOSE) {
+      parsingError("expected ',' or ']' in suns array");
+    }
+  }
+
+  getNextToken();  // eat ']'
+  return suns;
+}
+
+// Parse moons array: [ "lib.moon", { path: "x.moon", hash: "def", rename:
+// "y" } ]
+std::vector<ManifestMoonDependency> Parser::parseManifestMoons() {
+  expectCurrentTokenKind(TokenKind::BRACKET_OPEN,
+                         "expected '[' after 'moons:'");
+  getNextToken();  // eat '['
+
+  std::vector<ManifestMoonDependency> moons;
+
+  while (curTok.kind != TokenKind::BRACKET_CLOSE) {
+    ManifestMoonDependency dep;
+
+    if (curTok.kind == TokenKind::STRING) {
+      // Simple string form: "path/to/lib.moon"
+      dep.path = curTok.getString().value();
+      getNextToken();  // eat string
+    } else if (curTok.kind == TokenKind::BRACE_OPEN) {
+      // Struct form: { path: "...", hash: "...", rename: "..." }
+      getNextToken();  // eat '{'
+
+      while (curTok.kind == TokenKind::IDENTIFIER) {
+        auto fieldName = curTok.getIdentifier().value();
+        getNextToken();  // eat field name
+
+        expectCurrentTokenKind(
+            TokenKind::COLON,
+            "expected ':' after field name in moon dependency");
+        getNextToken();  // eat ':'
+
+        expectCurrentTokenKind(
+            TokenKind::STRING,
+            "expected string value for field '" + fieldName + "'");
+        auto value = curTok.getString().value();
+        getNextToken();  // eat string
+
+        if (fieldName == "path") {
+          dep.path = value;
+        } else if (fieldName == "hash") {
+          dep.hash = value;
+        } else if (fieldName == "rename") {
+          dep.rename = value;
+        } else {
+          parsingError("unknown field '" + fieldName + "' in moon dependency");
+        }
+
+        if (curTok.kind == TokenKind::COMMA) {
+          getNextToken();  // eat ','
+        }
+      }
+
+      expectCurrentTokenKind(TokenKind::BRACE_CLOSE,
+                             "expected '}' at end of moon dependency");
+      getNextToken();  // eat '}'
+
+      if (dep.path.empty()) {
+        parsingError("moon dependency missing required 'path' field");
+      }
+    } else {
+      parsingError("expected string or '{' in moons array");
+    }
+
+    moons.push_back(std::move(dep));
+
+    if (curTok.kind == TokenKind::COMMA) {
+      getNextToken();  // eat ','
+    } else if (curTok.kind != TokenKind::BRACKET_CLOSE) {
+      parsingError("expected ',' or ']' in moons array");
+    }
+  }
+
+  getNextToken();  // eat ']'
+  return moons;
 }
 
 // Parse declare statement:
@@ -1910,10 +2042,8 @@ unique_ptr<ExprAST> Parser::parseDeclareStatement() {
         getNextToken();  // eat '>'
       }
 
-      if (curTok.kind != TokenKind::SEMI_COLON) {
-        parsingError("expected ';' after declare statement");
-        return nullptr;
-      }
+      expectCurrentTokenKind(TokenKind::SEMI_COLON,
+                             "expected ';' after declare statement");
       getNextToken();  // eat ';'
 
       return std::make_unique<DeclareTypeAST>(std::move(typeAnnot), alias);
@@ -1926,10 +2056,8 @@ unique_ptr<ExprAST> Parser::parseDeclareStatement() {
   // Parse the type annotation
   auto typeAnnot = parseTypeAnnotation();
 
-  if (curTok.kind != TokenKind::SEMI_COLON) {
-    parsingError("expected ';' after declare statement");
-    return nullptr;
-  }
+  expectCurrentTokenKind(TokenKind::SEMI_COLON,
+                         "expected ';' after declare statement");
   getNextToken();  // eat ';'
 
   return std::make_unique<DeclareTypeAST>(std::move(typeAnnot), alias);
@@ -1940,18 +2068,13 @@ unique_ptr<ExprAST> Parser::parseDeclareStatement() {
 unique_ptr<ModuleAST> Parser::parseModuleDecl() {
   getNextToken();  // eat 'module' or 'namespace'
 
-  if (curTok.kind != TokenKind::IDENTIFIER) {
-    parsingError("expected module name");
-    return nullptr;
-  }
+  expectCurrentTokenKind(TokenKind::IDENTIFIER, "expected module name");
 
   std::string name = curTok.getIdentifier().value();
   getNextToken();  // eat module name
 
-  if (curTok.kind != TokenKind::BRACE_OPEN) {
-    parsingError("expected '{' after module name");
-    return nullptr;
-  }
+  expectCurrentTokenKind(TokenKind::BRACE_OPEN,
+                         "expected '{' after module name");
 
   auto body = parseBlock();
   if (!body) return nullptr;
@@ -1968,10 +2091,8 @@ unique_ptr<UsingAST> Parser::parseUsingStatement() {
   std::vector<std::string> namespacePath;
   std::string target;
 
-  if (curTok.kind != TokenKind::IDENTIFIER) {
-    parsingError("expected identifier after 'using'");
-    return nullptr;
-  }
+  expectCurrentTokenKind(TokenKind::IDENTIFIER,
+                         "expected identifier after 'using'");
 
   // Parse first identifier (module name)
   std::string firstName = curTok.getIdentifier().value();
@@ -2043,10 +2164,8 @@ unique_ptr<ExprAST> Parser::parseQualifiedOrSimpleName() {
     while (curTok.kind == TokenKind::DOT) {
       getNextToken();  // eat '.'
 
-      if (curTok.kind != TokenKind::IDENTIFIER) {
-        parsingError("expected identifier after '.'");
-        return nullptr;
-      }
+      expectCurrentTokenKind(TokenKind::IDENTIFIER,
+                             "expected identifier after '.'");
 
       parts.push_back(curTok.getIdentifier().value());
       getNextToken();  // eat identifier
@@ -2588,10 +2707,8 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
       return nullptr;
     }
 
-    if (curTok.kind != TokenKind::GREATER) {
-      parsingError("expected '>' after type parameters");
-      return nullptr;
-    }
+    expectCurrentTokenKind(TokenKind::GREATER,
+                           "expected '>' after type parameters");
     getNextToken();  // eat '>'
   }
 
@@ -2619,10 +2736,8 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
           iface.typeArguments.push_back(parseTypeAnnotation());
         }
 
-        if (curTok.kind != TokenKind::GREATER) {
-          parsingError("expected '>' after interface type arguments");
-          return nullptr;
-        }
+        expectCurrentTokenKind(TokenKind::GREATER,
+                               "expected '>' after interface type arguments");
         getNextToken();  // eat '>'
       }
 
@@ -2641,10 +2756,8 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
     }
   }
 
-  if (curTok.kind != TokenKind::BRACE_OPEN) {
-    parsingError("expected '{' after class name");
-    return nullptr;
-  }
+  expectCurrentTokenKind(TokenKind::BRACE_OPEN,
+                         "expected '{' after class name");
   getNextToken();  // eat '{'
 
   std::vector<ClassFieldDecl> fields;
@@ -2657,10 +2770,8 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
       // Parse field declaration: var name: type;
       getNextToken();  // eat 'var'
 
-      if (curTok.kind != TokenKind::IDENTIFIER) {
-        parsingError("expected field name in class definition");
-        return nullptr;
-      }
+      expectCurrentTokenKind(TokenKind::IDENTIFIER,
+                             "expected field name in class definition");
 
       Position fieldLoc = curTok.start;  // Capture location before eating token
       std::string fieldName = curTok.getIdentifier().value();
@@ -2703,10 +2814,8 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
     }
   }
 
-  if (curTok.kind != TokenKind::BRACE_CLOSE) {
-    parsingError("expected '}' at end of class definition");
-    return nullptr;
-  }
+  expectCurrentTokenKind(TokenKind::BRACE_CLOSE,
+                         "expected '}' at end of class definition");
   getNextToken();  // eat '}'
 
   return std::make_unique<ClassDefinitionAST>(
@@ -2719,10 +2828,8 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
 unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
   getNextToken();  // eat 'interface'
 
-  if (curTok.kind != TokenKind::IDENTIFIER) {
-    parsingError("expected interface name after 'interface'");
-    return nullptr;
-  }
+  expectCurrentTokenKind(TokenKind::IDENTIFIER,
+                         "expected interface name after 'interface'");
 
   std::string interfaceName = curTok.getIdentifier().value();
   getNextToken();  // eat interface name
@@ -2838,17 +2945,13 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
           return nullptr;
         }
 
-        if (curTok.kind != TokenKind::GREATER) {
-          parsingError("expected '>' after type parameters");
-          return nullptr;
-        }
+        expectCurrentTokenKind(TokenKind::GREATER,
+                               "expected '>' after type parameters");
         getNextToken();  // eat '>'
       }
 
-      if (curTok.kind != TokenKind::PAREN_OPEN) {
-        parsingError("Expected '(' in method declaration");
-        return nullptr;
-      }
+      expectCurrentTokenKind(TokenKind::PAREN_OPEN,
+                             "Expected '(' in method declaration");
 
       std::vector<std::pair<std::string, TypeAnnotation>> args;
       std::optional<std::string> variadicParamName;
@@ -2892,10 +2995,8 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
         }
       }
 
-      if (curTok.kind != TokenKind::PAREN_CLOSE) {
-        parsingError("Expected ')' in method declaration");
-        return nullptr;
-      }
+      expectCurrentTokenKind(TokenKind::PAREN_CLOSE,
+                             "Expected ')' in method declaration");
       getNextToken();  // eat ')'
 
       // Check for return type
@@ -2946,10 +3047,8 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
     }
   }
 
-  if (curTok.kind != TokenKind::BRACE_CLOSE) {
-    parsingError("expected '}' at end of interface definition");
-    return nullptr;
-  }
+  expectCurrentTokenKind(TokenKind::BRACE_CLOSE,
+                         "expected '}' at end of interface definition");
   getNextToken();  // eat '}'
 
   return std::make_unique<InterfaceDefinitionAST>(
@@ -2962,18 +3061,13 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
 unique_ptr<EnumDefinitionAST> Parser::parseEnumDefinition() {
   getNextToken();  // eat 'enum'
 
-  if (curTok.kind != TokenKind::IDENTIFIER) {
-    parsingError("expected enum name after 'enum'");
-    return nullptr;
-  }
+  expectCurrentTokenKind(TokenKind::IDENTIFIER,
+                         "expected enum name after 'enum'");
 
   std::string enumName = curTok.getIdentifier().value();
   getNextToken();  // eat enum name
 
-  if (curTok.kind != TokenKind::BRACE_OPEN) {
-    parsingError("expected '{' after enum name");
-    return nullptr;
-  }
+  expectCurrentTokenKind(TokenKind::BRACE_OPEN, "expected '{' after enum name");
   getNextToken();  // eat '{'
 
   std::vector<EnumVariantDecl> variants;
@@ -2982,10 +3076,8 @@ unique_ptr<EnumDefinitionAST> Parser::parseEnumDefinition() {
   // Parse enum variants: Variant1, Variant2, ...
   while (curTok.kind != TokenKind::BRACE_CLOSE &&
          curTok.kind != TokenKind::TOK_EOF) {
-    if (curTok.kind != TokenKind::IDENTIFIER) {
-      parsingError("expected variant name in enum definition");
-      return nullptr;
-    }
+    expectCurrentTokenKind(TokenKind::IDENTIFIER,
+                           "expected variant name in enum definition");
 
     Position variantLoc = curTok.start;
     std::string variantName = curTok.getIdentifier().value();
@@ -3008,10 +3100,8 @@ unique_ptr<EnumDefinitionAST> Parser::parseEnumDefinition() {
     }
   }
 
-  if (curTok.kind != TokenKind::BRACE_CLOSE) {
-    parsingError("expected '}' at end of enum definition");
-    return nullptr;
-  }
+  expectCurrentTokenKind(TokenKind::BRACE_CLOSE,
+                         "expected '}' at end of enum definition");
   getNextToken();  // eat '}'
 
   if (variants.empty()) {

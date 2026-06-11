@@ -8,6 +8,7 @@
 #include <fstream>
 #include <sstream>
 
+#include "ast/manifest_ast.h"
 #include "borrow_checker/borrow_checker.h"
 #include "debug/ast_dot_generator.h"
 #include "debug/scope_tree_generator.h"
@@ -15,9 +16,71 @@
 #include "library_cache.h"
 #include "module_linker.h"
 #include "source_manager.h"
+#include "sun_path.h"
 
 static llvm::ExitOnError ExitOnErr;
 using llvm::orc::ThreadSafeModule;
+
+// ---------------------------------------------------------------------------
+// Manifest processing helpers
+// ---------------------------------------------------------------------------
+
+/// Extract ManifestAST from a parsed program's top-level statements.
+/// Returns nullptr if no manifest block is found.
+static const ManifestAST* findManifest(const BlockExprAST& program) {
+  for (const auto& stmt : program.getBody()) {
+    if (stmt && stmt->getType() == ASTNodeType::MANIFEST) {
+      return static_cast<const ManifestAST*>(stmt.get());
+    }
+  }
+  return nullptr;
+}
+
+/// Resolve a manifest path - first relative to baseDir, then via SUN_PATH.
+static std::string resolveManifestPath(const std::string& path,
+                                       const std::string& baseDir) {
+  std::filesystem::path p(path);
+  if (p.is_absolute()) {
+    return path;
+  }
+  // First try relative to base directory
+  auto relative = std::filesystem::path(baseDir) / p;
+  if (std::filesystem::exists(relative)) {
+    return relative.lexically_normal().string();
+  }
+  // Then try SUN_PATH
+  auto resolved = sun::SunPath::resolve(path);
+  if (!resolved.empty()) {
+    return resolved.string();
+  }
+  // Fall back to path as-is (will error later if not found)
+  return path;
+}
+
+/// Process manifest and populate source files and moon imports.
+/// baseDir is used to resolve relative paths.
+static void processManifest(const ManifestAST& manifest,
+                            const std::string& baseDir,
+                            std::vector<std::string>& sunFiles,
+                            std::vector<sun::MoonImport>& moonImports) {
+  // Process sun dependencies
+  for (const auto& sunDep : manifest.getSuns()) {
+    std::string resolved = resolveManifestPath(sunDep.path, baseDir);
+    sunFiles.push_back(resolved);
+  }
+
+  // Process moon dependencies
+  for (const auto& moonDep : manifest.getMoons()) {
+    std::string resolved = resolveManifestPath(moonDep.path, baseDir);
+    if (moonDep.rename.has_value()) {
+      // Create moon import with renaming
+      moonImports.emplace_back(resolved, moonDep.rename.value(),
+                               moonDep.rename.value());
+    } else {
+      moonImports.emplace_back(resolved);
+    }
+  }
+}
 
 // Factory method for JIT execution
 std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName) {
@@ -571,8 +634,8 @@ sun::SunValue Driver::executeString(const std::string& source, int argc,
 
 void Driver::executeFile(const std::string& filename, int argc, char** argv) {
   std::filesystem::path filePath = std::filesystem::absolute(filename);
-  baseDir = filePath.parent_path().string();
-  importedFiles->insert(std::filesystem::canonical(filePath).string());
+  std::string baseDirPath = filePath.parent_path().string();
+  std::string canonical = std::filesystem::canonical(filePath).string();
 
   std::ifstream file(filename);
   if (!file.is_open()) {
@@ -583,7 +646,29 @@ void Driver::executeFile(const std::string& filename, int argc, char** argv) {
   buffer << file.rdbuf();
   std::string source = buffer.str();
 
-  executeString(source, argc, argv, filePath.string());
+  // First parse to check for manifest
+  auto preParser = Parser::createStringParser(source);
+  preParser.setFilePath(canonical);
+  auto preAst = preParser.parseProgram();
+
+  if (const auto* manifest = findManifest(*preAst)) {
+    // Manifest found - collect all dependencies
+    std::vector<std::string> sunFiles;
+    std::vector<sun::MoonImport> moonImports = moonImports_;
+
+    processManifest(*manifest, baseDirPath, sunFiles, moonImports);
+
+    // Add the entrypoint file itself
+    sunFiles.insert(sunFiles.begin(), canonical);
+
+    // Use merged compilation
+    executeFiles(sunFiles, moonImports, argc, argv);
+  } else {
+    // No manifest - use single-file execution
+    baseDir = baseDirPath;
+    importedFiles->insert(canonical);
+    executeString(source, argc, argv, filePath.string());
+  }
 }
 
 void Driver::compileString(const std::string& source,
@@ -621,8 +706,8 @@ void Driver::compileString(const std::string& source,
 
 void Driver::compileFile(const std::string& filename) {
   std::filesystem::path filePath = std::filesystem::absolute(filename);
-  baseDir = filePath.parent_path().string();
-  importedFiles->insert(std::filesystem::canonical(filePath).string());
+  std::string baseDirPath = filePath.parent_path().string();
+  std::string canonical = std::filesystem::canonical(filePath).string();
 
   std::ifstream file(filename);
   if (!file.is_open()) {
@@ -633,7 +718,29 @@ void Driver::compileFile(const std::string& filename) {
   buffer << file.rdbuf();
   std::string source = buffer.str();
 
-  compileString(source, filePath.string());
+  // First parse to check for manifest
+  auto preParser = Parser::createStringParser(source);
+  preParser.setFilePath(canonical);
+  auto preAst = preParser.parseProgram();
+
+  if (const auto* manifest = findManifest(*preAst)) {
+    // Manifest found - collect all dependencies
+    std::vector<std::string> sunFiles;
+    std::vector<sun::MoonImport> moonImports = moonImports_;
+
+    processManifest(*manifest, baseDirPath, sunFiles, moonImports);
+
+    // Add the entrypoint file itself
+    sunFiles.insert(sunFiles.begin(), canonical);
+
+    // Use merged compilation
+    compileFiles(sunFiles, moonImports);
+  } else {
+    // No manifest - use single-file compilation
+    baseDir = baseDirPath;
+    importedFiles->insert(canonical);
+    compileString(source, filePath.string());
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -747,6 +854,20 @@ void Driver::compileFiles(const std::vector<std::string>& sourceFiles,
 
   // Merge all parsed files into a single AST
   auto mergedAst = mergeASTs(parsedFiles, canonicalPaths);
+
+  // Inject AST stubs from moon imports before semantic analysis
+  // This allows the semantic analyzer to know about symbols from moon libraries
+  if (!moonImports.empty()) {
+    // Create a temporary parser for collecting moon stubs
+    auto stubParser = Parser::createStringParser("");
+    std::vector<std::unique_ptr<ExprAST>> moonStubs;
+    for (const auto& moonImport : moonImports) {
+      stubParser.collectMoonImport(moonImport.path, moonStubs);
+    }
+    if (!moonStubs.empty()) {
+      mergedAst->prependExpressions(std::move(moonStubs));
+    }
+  }
 
   // Debug mode: generate AST DOT graph
   if (debugMode_ && !debugFolder_.empty()) {

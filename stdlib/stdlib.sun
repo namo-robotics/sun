@@ -1,0 +1,22 @@
+// stdlib.sun - Standard library entrypoint for building stdlib.moon
+//
+// This file serves as the manifest for the standard library bundle.
+// All stdlib modules are listed here.
+
+manifest {
+    suns: [
+        "print.sun",
+        "allocator.sun",
+        "unique.sun",
+        "errors.sun",
+        "slice.sun",
+        "contiguous_buffer.sun",
+        "vec.sun",
+        "matrix.sun",
+        "string.sun",
+        "map.sun",
+        "linked_list.sun",
+        "mutex.sun",
+        "math.sun"
+    ]
+}
