@@ -99,11 +99,14 @@ jobs:
           sun --help || true
           # Test with stdlib import (stdlib.moon installed to /usr/lib/sun/)
           cat > test.sun << 'EOF'
-          import "stdlib.moon";
           using sun;
           function main() i32 {
               println("Hello from Sun!");
               return 0;
           }
+          manifest {
+              moons: ["stdlib.moon"]
+          }
           EOF
+          export SUN_PATH=/usr/lib/sun
           sun test.sun
