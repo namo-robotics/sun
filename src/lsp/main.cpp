@@ -4,6 +4,8 @@
 
 #include <cctype>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <optional>
 #include <sstream>
@@ -11,9 +13,12 @@
 #include <unordered_map>
 #include <vector>
 
+#include "ast/manifest_ast.h"
 #include "driver.h"
 #include "error.h"
 #include "lexer.h"
+#include "parser.h"
+#include "sun_path.h"
 
 // =============================================================================
 // Diagnostics Cache
@@ -70,6 +75,167 @@ class DiagnosticsCache {
 };
 
 static DiagnosticsCache diagnosticsCache;
+
+// =============================================================================
+// Entrypoint Configuration
+// =============================================================================
+// Manages entrypoint files containing manifest blocks. When a file covered by
+// a manifest is opened, the LSP uses the full manifest context for compilation.
+
+/// Configuration for a single entrypoint file with its manifest data
+struct EntrypointConfig {
+  std::string entrypointPath;                // Absolute path to entrypoint
+  std::vector<std::string> sunFiles;         // All .sun files from manifest
+  std::vector<sun::MoonImport> moonImports;  // Moon imports from manifest
+  std::set<std::string> coveredFiles;        // Quick lookup of covered files
+};
+
+/// Global entrypoint configuration state
+class EntrypointManager {
+ public:
+  /// Set entrypoints from configuration and build file mappings
+  void setEntrypoints(const std::vector<std::string>& paths) {
+    entrypoints_.clear();
+    fileToEntrypoint_.clear();
+
+    for (const auto& path : paths) {
+      auto config = parseEntrypoint(path);
+      if (config) {
+        // Map all covered files to this entrypoint
+        for (const auto& file : config->coveredFiles) {
+          // First entrypoint wins if file appears in multiple manifests
+          if (fileToEntrypoint_.find(file) == fileToEntrypoint_.end()) {
+            fileToEntrypoint_[file] = entrypoints_.size();
+          }
+        }
+        entrypoints_.push_back(std::move(*config));
+      }
+    }
+  }
+
+  /// Find entrypoint config for a given file path
+  /// Returns nullptr if file is not covered by any entrypoint
+  const EntrypointConfig* findEntrypointForFile(
+      const std::string& filePath) const {
+    // Normalize the path for lookup
+    std::string normalizedPath = filePath;
+    if (std::filesystem::exists(filePath)) {
+      normalizedPath = std::filesystem::canonical(filePath).string();
+    }
+
+    auto it = fileToEntrypoint_.find(normalizedPath);
+    if (it != fileToEntrypoint_.end()) {
+      return &entrypoints_[it->second];
+    }
+    return nullptr;
+  }
+
+  /// Check if any entrypoints are configured
+  bool hasEntrypoints() const { return !entrypoints_.empty(); }
+
+ private:
+  std::vector<EntrypointConfig> entrypoints_;
+  std::unordered_map<std::string, size_t> fileToEntrypoint_;
+
+  /// Resolve a manifest path - relative to baseDir or via SUN_PATH
+  static std::string resolveManifestPath(const std::string& path,
+                                         const std::string& baseDir) {
+    std::filesystem::path p(path);
+    if (p.is_absolute()) {
+      return path;
+    }
+    // First try relative to base directory
+    auto relative = std::filesystem::path(baseDir) / p;
+    if (std::filesystem::exists(relative)) {
+      return std::filesystem::canonical(relative).string();
+    }
+    // Then try SUN_PATH
+    auto resolved = sun::SunPath::resolve(path);
+    if (!resolved.empty()) {
+      return resolved.string();
+    }
+    // Fall back to path as-is
+    return path;
+  }
+
+  /// Parse an entrypoint file and extract manifest information
+  std::optional<EntrypointConfig> parseEntrypoint(const std::string& path) {
+    std::filesystem::path entrypointPath;
+    try {
+      entrypointPath = std::filesystem::canonical(path);
+    } catch (const std::filesystem::filesystem_error&) {
+      // File doesn't exist
+      return std::nullopt;
+    }
+
+    std::ifstream file(entrypointPath);
+    if (!file.is_open()) {
+      return std::nullopt;
+    }
+
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    std::string source = buffer.str();
+    std::string baseDir = entrypointPath.parent_path().string();
+
+    // Parse the file to find manifest
+    auto parser = Parser::createStringParser(source);
+    parser.setFilePath(entrypointPath.string());
+
+    std::unique_ptr<BlockExprAST> ast;
+    try {
+      ast = parser.parseProgram();
+    } catch (...) {
+      return std::nullopt;
+    }
+
+    // Find manifest block
+    const ManifestAST* manifest = nullptr;
+    for (const auto& stmt : ast->getBody()) {
+      if (stmt && stmt->getType() == ASTNodeType::MANIFEST) {
+        manifest = static_cast<const ManifestAST*>(stmt.get());
+        break;
+      }
+    }
+
+    if (!manifest) {
+      return std::nullopt;
+    }
+
+    // Build entrypoint config
+    EntrypointConfig config;
+    config.entrypointPath = entrypointPath.string();
+
+    // Process sun dependencies
+    for (const auto& sunDep : manifest->getSuns()) {
+      std::string resolved = resolveManifestPath(sunDep.path, baseDir);
+      config.sunFiles.push_back(resolved);
+      if (std::filesystem::exists(resolved)) {
+        config.coveredFiles.insert(
+            std::filesystem::canonical(resolved).string());
+      }
+    }
+
+    // The entrypoint file itself is also covered
+    config.sunFiles.insert(config.sunFiles.begin(), entrypointPath.string());
+    config.coveredFiles.insert(entrypointPath.string());
+
+    // Process moon dependencies
+    for (const auto& moonDep : manifest->getMoons()) {
+      std::string resolved = resolveManifestPath(moonDep.path, baseDir);
+      if (moonDep.rename.has_value()) {
+        config.moonImports.emplace_back(resolved, moonDep.rename.value(),
+                                        moonDep.rename.value());
+      } else {
+        config.moonImports.emplace_back(resolved);
+      }
+    }
+
+    return config;
+  }
+};
+
+static EntrypointManager entrypointManager;
 
 // LSP semantic token type indices (must match legend in initialize response)
 namespace LSPTokenType {
@@ -463,13 +629,15 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
 
 llvm::json::Array analyzeDiagnostics(const OpenDocument& document) {
   // Compute content hash for caching
-  std::string contentHash = DiagnosticsCache::computeHash(document.text);
+  // Include entrypoint info in hash to invalidate when context changes
+  std::string cacheKey =
+      document.path + ":" + DiagnosticsCache::computeHash(document.text);
 
   // Check cache first - if unchanged, return cached diagnostics
-  if (diagnosticsCache.has(contentHash)) {
+  if (diagnosticsCache.has(cacheKey)) {
     // Return a copy of cached diagnostics
     llvm::json::Array result;
-    for (const auto& diag : diagnosticsCache.get(contentHash)) {
+    for (const auto& diag : diagnosticsCache.get(cacheKey)) {
       if (const auto* obj = diag.getAsObject()) {
         llvm::json::Object copy;
         for (const auto& kv : *obj) {
@@ -485,28 +653,83 @@ llvm::json::Array analyzeDiagnostics(const OpenDocument& document) {
 
   try {
     auto driver = Driver::createForAOT("sun-lsp");
-    driver->compileString(document.text, document.path);
+
+    // Check if file is covered by an entrypoint manifest
+    const EntrypointConfig* entrypoint =
+        entrypointManager.findEntrypointForFile(document.path);
+
+    if (entrypoint && !entrypoint->sunFiles.empty()) {
+      // Compile using full manifest context
+      // Note: This uses disk content for all files including the current one.
+      // Unsaved changes won't be reflected until the file is saved.
+      driver->compileFiles(entrypoint->sunFiles, entrypoint->moonImports);
+    } else {
+      // Single-file compilation (existing behavior)
+      driver->compileString(document.text, document.path);
+    }
   } catch (const SunError& error) {
     int startLine = 0;
     int startCharacter = 0;
     int endLine = 0;
     int endCharacter = 1;
 
-    if (error.getLocation()) {
-      const Position& location = *error.getLocation();
-      startLine = std::max(0, location.line - 1);
-      startCharacter = std::max(0, location.column - 1);
-      endLine = startLine;
-      endCharacter = startCharacter + 1;
+    // Check if error is from current file or has no file info
+    bool isFromCurrentFile = true;
+    if (error.getLocation() && error.getLocation()->filePath) {
+      const std::string& errorFile = *error.getLocation()->filePath;
+      // Normalize paths for comparison
+      std::string normalizedErrorFile = errorFile;
+      std::string normalizedDocPath = document.path;
+      try {
+        if (std::filesystem::exists(errorFile)) {
+          normalizedErrorFile = std::filesystem::canonical(errorFile).string();
+        }
+        if (std::filesystem::exists(document.path)) {
+          normalizedDocPath =
+              std::filesystem::canonical(document.path).string();
+        }
+      } catch (...) {
+      }
+      isFromCurrentFile = (normalizedErrorFile == normalizedDocPath);
     }
 
-    llvm::json::Object diagnostic;
-    diagnostic["range"] =
-        makeRange(startLine, startCharacter, endLine, endCharacter);
-    diagnostic["severity"] = 1;
-    diagnostic["source"] = "sun";
-    diagnostic["message"] = error.getMessage();
-    diagnostics.push_back(std::move(diagnostic));
+    if (isFromCurrentFile) {
+      if (error.getLocation()) {
+        const Position& location = *error.getLocation();
+        startLine = std::max(0, location.line - 1);
+        startCharacter = std::max(0, location.column - 1);
+
+        // Use end position if available, otherwise calculate from source
+        if (location.hasEnd()) {
+          endLine = std::max(0, *location.endLine - 1);
+          endCharacter = std::max(0, *location.endColumn - 1);
+        } else {
+          endLine = startLine;
+          // Calculate token length from source line as fallback
+          const std::string& sourceLine = error.getSourceLine();
+          int tokenLength = 1;
+          if (!sourceLine.empty() &&
+              startCharacter < static_cast<int>(sourceLine.size())) {
+            size_t pos = static_cast<size_t>(startCharacter);
+            while (pos < sourceLine.size() &&
+                   (std::isalnum(static_cast<unsigned char>(sourceLine[pos])) ||
+                    sourceLine[pos] == '_')) {
+              pos++;
+            }
+            tokenLength = std::max(1, static_cast<int>(pos) - startCharacter);
+          }
+          endCharacter = startCharacter + tokenLength;
+        }
+      }
+
+      llvm::json::Object diagnostic;
+      diagnostic["range"] =
+          makeRange(startLine, startCharacter, endLine, endCharacter);
+      diagnostic["severity"] = 1;
+      diagnostic["source"] = "sun";
+      diagnostic["message"] = error.getMessage();
+      diagnostics.push_back(std::move(diagnostic));
+    }
   } catch (const std::exception& error) {
     llvm::json::Object diagnostic;
     diagnostic["range"] = makeRange(0, 0, 0, 1);
@@ -527,7 +750,7 @@ llvm::json::Array analyzeDiagnostics(const OpenDocument& document) {
       cacheEntry.push_back(std::move(copy));
     }
   }
-  diagnosticsCache.put(contentHash, std::move(cacheEntry));
+  diagnosticsCache.put(cacheKey, std::move(cacheEntry));
 
   return diagnostics;
 }
@@ -614,9 +837,41 @@ int main() {
     if (methodName == "initialize") {
       if (!id) continue;
 
+      // Parse initializationOptions for entrypoints configuration
+      if (llvm::json::Value* rawParams = message->get("params")) {
+        if (llvm::json::Object* params = rawParams->getAsObject()) {
+          if (llvm::json::Value* rawInitOptions =
+                  params->get("initializationOptions")) {
+            if (llvm::json::Object* initOptions =
+                    rawInitOptions->getAsObject()) {
+              if (llvm::json::Value* rawEntrypoints =
+                      initOptions->get("entrypoints")) {
+                if (llvm::json::Array* entrypoints =
+                        rawEntrypoints->getAsArray()) {
+                  std::vector<std::string> entrypointPaths;
+                  for (const auto& entry : *entrypoints) {
+                    // Support both string and {path: string} formats
+                    if (auto str = entry.getAsString()) {
+                      entrypointPaths.push_back(str->str());
+                    } else if (const llvm::json::Object* entryObj =
+                                   entry.getAsObject()) {
+                      if (auto path = entryObj->getString("path")) {
+                        entrypointPaths.push_back(path->str());
+                      }
+                    }
+                  }
+                  entrypointManager.setEntrypoints(entrypointPaths);
+                }
+              }
+            }
+          }
+        }
+      }
+
       llvm::json::Object textDocumentSync;
       textDocumentSync["openClose"] = true;
       textDocumentSync["change"] = 1;
+      textDocumentSync["save"] = true;
 
       // Semantic tokens legend - token types must match SemanticTokenType enum
       // order
@@ -749,6 +1004,27 @@ int main() {
       continue;
     }
 
+    if (methodName == "textDocument/didSave" && params) {
+      llvm::json::Object* textDocument = nullptr;
+      if (llvm::json::Value* rawTextDocument = params->get("textDocument")) {
+        textDocument = rawTextDocument->getAsObject();
+      }
+      if (!textDocument) continue;
+
+      std::optional<llvm::StringRef> uri = textDocument->getString("uri");
+      if (!uri) continue;
+
+      auto documentIter = openDocuments.find(uri->str());
+      if (documentIter == openDocuments.end()) continue;
+
+      OpenDocument& document = documentIter->second;
+      // Clear cache to force re-read from disk for manifest-based compilation
+      diagnosticsCache.clear();
+      publishDiagnostics(document.uri, analyzeDiagnostics(document),
+                         document.version);
+      continue;
+    }
+
     if (methodName == "textDocument/didClose" && params) {
       llvm::json::Object* textDocument = nullptr;
       if (llvm::json::Value* rawTextDocument = params->get("textDocument")) {
@@ -762,6 +1038,45 @@ int main() {
       std::string uriString = uri->str();
       openDocuments.erase(uriString);
       publishDiagnostics(uriString, llvm::json::Array(), 0);
+      continue;
+    }
+
+    if (methodName == "workspace/didChangeConfiguration" && params) {
+      // Handle configuration changes - extract entrypoints if present
+      if (llvm::json::Value* rawSettings = params->get("settings")) {
+        if (llvm::json::Object* settings = rawSettings->getAsObject()) {
+          if (llvm::json::Value* rawSun = settings->get("sun")) {
+            if (llvm::json::Object* sun = rawSun->getAsObject()) {
+              if (llvm::json::Value* rawEntrypoints = sun->get("entrypoints")) {
+                if (llvm::json::Array* entrypoints =
+                        rawEntrypoints->getAsArray()) {
+                  std::vector<std::string> entrypointPaths;
+                  for (const auto& entry : *entrypoints) {
+                    // Support both string and {path: string} formats
+                    if (auto str = entry.getAsString()) {
+                      entrypointPaths.push_back(str->str());
+                    } else if (const llvm::json::Object* entryObj =
+                                   entry.getAsObject()) {
+                      if (auto path = entryObj->getString("path")) {
+                        entrypointPaths.push_back(path->str());
+                      }
+                    }
+                  }
+                  entrypointManager.setEntrypoints(entrypointPaths);
+                  // Clear diagnostics cache since context may have changed
+                  diagnosticsCache.clear();
+                  // Re-analyze all open documents
+                  for (auto& [docUri, document] : openDocuments) {
+                    publishDiagnostics(document.uri,
+                                       analyzeDiagnostics(document),
+                                       document.version);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
       continue;
     }
 
