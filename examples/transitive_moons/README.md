@@ -2,7 +2,7 @@
 
 This example demonstrates a transitive moon dependency chain: 
 
-```main
+```mermaid
 graph LR
     main[main.sun] --> moon1[moon1.moon]
     main --> stdlib[stdlib.moon]

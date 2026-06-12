@@ -27,7 +27,8 @@
 				"matepek.vscode-catch2-test-adapter",
 				"vadimcn.vscode-lldb",
 				"namo-robotics.sun-language",
-				"llvm-vs-code-extensions.lldb-dap"
+				"llvm-vs-code-extensions.lldb-dap",
+				"MermaidChart.vscode-mermaid-chart"
 			]
 		}
 	}
