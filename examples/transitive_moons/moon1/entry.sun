@@ -1,0 +1,10 @@
+module moon1 {
+    function moon1() i32 {
+        return 1 + moon2.moon2();
+    }
+}
+
+manifest {
+    suns: []
+    moons: [{ path: "moon2.moon"}]
+}

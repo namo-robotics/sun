@@ -13,6 +13,7 @@
 #include "error.h"
 #include "lexer.h"
 #include "moon/moon.h"
+#include "moon_import.h"
 
 using std::unique_ptr;
 
@@ -180,10 +181,10 @@ class Parser {
   unique_ptr<ExprAST> parseQualifiedOrSimpleName();
 
   // Collect AST stubs from a precompiled .moon file
-  // Returns the content hash (symbol prefix) for the bundle
-  std::string collectMoonImport(
-      const std::string& moonPath,
-      std::vector<std::unique_ptr<ExprAST>>& collectedAST);
+  // Returns a MoonScopeAST wrapping all module stubs with content hash
+  // Returns nullptr if the moon was already imported
+  std::unique_ptr<MoonScopeAST> collectMoonImport(
+      const sun::MoonImport& moonImport);
 
   // Create AST stubs from module metadata and append to collectedAST
   // Used by both .moon imports and .sun metadata-driven imports

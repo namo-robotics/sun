@@ -124,6 +124,10 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
       checkBlockExpr(static_cast<const ModuleAST&>(expr).getBody());
       break;
 
+    case ASTNodeType::MOON_SCOPE:
+      checkBlockExpr(static_cast<const MoonScopeAST&>(expr).getBody());
+      break;
+
     // These don't need borrow checking
     case ASTNodeType::NUMBER:
     case ASTNodeType::STRING_LITERAL:

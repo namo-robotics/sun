@@ -121,6 +121,12 @@ Value* CodegenVisitor::codegen(const ExprAST& expr) {
       const auto& ns = static_cast<const ModuleAST&>(expr);
       return codegen(ns.getBody());
     }
+    case ASTNodeType::MOON_SCOPE: {
+      // Moon scope wraps module stubs from a moon import
+      // Generate code for all contained modules
+      const auto& moonScope = static_cast<const MoonScopeAST&>(expr);
+      return codegen(moonScope.getBody());
+    }
     case ASTNodeType::USING: {
       // Using imports are resolved by semantic analysis and stored on AST
       // nodes. Codegen doesn't need to track them separately.

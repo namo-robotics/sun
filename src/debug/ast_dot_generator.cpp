@@ -260,6 +260,11 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       emitEdge(bodyId, "body");
       break;
     }
+    case ASTNodeType::MOON_SCOPE: {
+      // Don't expand MoonScopeAST nodes - they represent imported modules
+      // and expanding them clutters the debug output
+      break;
+    }
     case ASTNodeType::CLASS_DEFINITION: {
       const auto* cls = static_cast<const ClassDefinitionAST*>(node);
       // Visit methods

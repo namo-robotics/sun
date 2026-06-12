@@ -291,6 +291,19 @@ ast::ASTNode ASTSerializer::serialize(const ExprAST& expr) const {
     case ASTNodeType::MODULE:
       serializeModule(static_cast<const ModuleAST&>(expr), &node);
       break;
+    case ASTNodeType::MOON_SCOPE:
+      // MoonScopeAST should never be serialized - it's an ephemeral import
+      // wrapper If we reach here, just serialize the contained modules This
+      // shouldn't happen in normal use since moon stubs are precompiled
+      for (const auto& bodyExpr :
+           static_cast<const MoonScopeAST&>(expr).getBody().getBody()) {
+        // Serialize each contained module (they'll likely be skipped as
+        // precompiled)
+        serialize(*bodyExpr);
+      }
+      // Return empty block_expr as placeholder
+      node.mutable_block_expr();
+      break;
     case ASTNodeType::USING:
       serializeUsing(static_cast<const UsingAST&>(expr), &node);
       break;

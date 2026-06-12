@@ -266,7 +266,9 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
   if (!moonImports_.empty()) {
     std::vector<std::unique_ptr<ExprAST>> moonStubs;
     for (const auto& moonImport : moonImports_) {
-      parser.collectMoonImport(moonImport.path, moonStubs);
+      if (auto moonScope = parser.collectMoonImport(moonImport)) {
+        moonStubs.push_back(std::move(moonScope));
+      }
     }
     if (!moonStubs.empty()) {
       blockAst->prependExpressions(std::move(moonStubs));
@@ -747,6 +749,64 @@ void Driver::compileFile(const std::string& filename) {
 // Merged-AST compilation: compile multiple source files together
 // ---------------------------------------------------------------------------
 
+/// Process MoonScopeASTs: detect hash duplicates, check for module name
+/// collisions, and consolidate same-named modules.
+/// Returns a vector of processed MoonScopeASTs (deduplicated).
+static std::vector<std::unique_ptr<ExprAST>> processMoonScopes(
+    std::vector<std::unique_ptr<ExprAST>>& moonStubs) {
+  std::vector<std::unique_ptr<ExprAST>> result;
+
+  // Track seen content hashes for deduplication
+  std::unordered_set<std::string> seenHashes;
+
+  // Track which moon provides each top-level module name (for collision
+  // detection) Maps module_name -> (moon_path, content_hash)
+  std::unordered_map<std::string, std::pair<std::string, std::string>>
+      moduleProviders;
+
+  for (auto& stub : moonStubs) {
+    if (stub->getType() != ASTNodeType::MOON_SCOPE) {
+      // Pass through non-MoonScope nodes unchanged
+      result.push_back(std::move(stub));
+      continue;
+    }
+
+    auto& moonScope = static_cast<MoonScopeAST&>(*stub);
+    const std::string& hash = moonScope.getContentHash();
+    const std::string& moonPath = moonScope.getMoonPath();
+
+    // Skip duplicate moons (same content hash)
+    if (!seenHashes.insert(hash).second) {
+      continue;
+    }
+
+    // Check for module name collisions
+    for (const auto& bodyExpr : moonScope.getBody().getBody()) {
+      if (bodyExpr->getType() == ASTNodeType::MODULE) {
+        auto& mod = static_cast<ModuleAST&>(*bodyExpr);
+        const std::string& modName = mod.getName();
+
+        auto it = moduleProviders.find(modName);
+        if (it != moduleProviders.end()) {
+          // Check if it's from a different moon (different hash)
+          if (it->second.second != hash) {
+            logAndThrowError("Module name collision: module '" + modName +
+                             "' is provided by both '" + it->second.first +
+                             "' and '" + moonPath +
+                             "'. Use module aliasing to resolve.");
+          }
+        } else {
+          moduleProviders[modName] = {moonPath, hash};
+        }
+      }
+    }
+
+    result.push_back(std::move(stub));
+  }
+
+  return result;
+}
+
 /// Merge multiple parsed BlockExprASTs into a single unified AST.
 /// Same-named modules are merged together.
 static std::unique_ptr<BlockExprAST> mergeASTs(
@@ -859,13 +919,20 @@ void Driver::compileFiles(const std::vector<std::string>& sourceFiles,
   // This allows the semantic analyzer to know about symbols from moon libraries
   if (!moonImports.empty()) {
     // Create a temporary parser for collecting moon stubs
+    // Important: use fresh importedFiles so stubs aren't skipped
     auto stubParser = Parser::createStringParser("");
+    auto freshImportedFiles = std::make_shared<std::set<std::string>>();
+    stubParser.setImportedFiles(freshImportedFiles);
     std::vector<std::unique_ptr<ExprAST>> moonStubs;
     for (const auto& moonImport : moonImports) {
-      stubParser.collectMoonImport(moonImport.path, moonStubs);
+      if (auto moonScope = stubParser.collectMoonImport(moonImport)) {
+        moonStubs.push_back(std::move(moonScope));
+      }
     }
     if (!moonStubs.empty()) {
-      mergedAst->prependExpressions(std::move(moonStubs));
+      // Process: deduplicate by hash, check for collisions
+      auto processed = processMoonScopes(moonStubs);
+      mergedAst->prependExpressions(std::move(processed));
     }
   }
 

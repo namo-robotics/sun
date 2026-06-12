@@ -495,6 +495,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
     }
 
     case ASTNodeType::MODULE:
+    case ASTNodeType::MOON_SCOPE:
     case ASTNodeType::USING:
     case ASTNodeType::DECLARE_TYPE:
       return sun::Types::Void();

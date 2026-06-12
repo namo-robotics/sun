@@ -1,0 +1,10 @@
+module moon2 {
+    function moon2() i32 {
+        return 2 + moon3.moon3();
+    }
+}
+
+manifest {
+    suns: []
+    moons: ["moon3.moon"]
+}

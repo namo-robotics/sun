@@ -234,6 +234,9 @@ int main(int argc, char* argv[]) {
     for (const auto& f : sunFiles) {
       llvm::outs() << "  Including: " << f << "\n";
     }
+    for (const auto& m : moonImports) {
+      llvm::outs() << "  Moon import: " << m.path << "\n";
+    }
 
     try {
       sun::SunLibWriter bundleWriter;
