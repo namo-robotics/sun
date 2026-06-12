@@ -61,5 +61,5 @@
         "build",
         "/workspaces/sun"
     ],
-    "sun.lsp.path": "build/sun-lsp"
+    "sun.lsp.path": "build/sun-lsp",
 }

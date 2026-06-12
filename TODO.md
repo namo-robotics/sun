@@ -5,13 +5,7 @@ This document tracks missing features needed for real-world adoption.
 ## 🔴 P0 — Critical (Foundational)
 
 ### Enums + Pattern Matching
-- [ ] Enums with associated data: `enum Option<T> { Some(T), None }`
 - [ ] Exhaustiveness checking
-
-### Hash Map (stdlib)
-- [ ] `Map<K, V>` generic class
-- [ ] Basic operations: `insert`, `get`, `remove`, `contains`
-- [ ] Iteration support
 
 ---
 

@@ -462,6 +462,12 @@ unique_ptr<ReferenceCreationAST> Parser::parseRefStatement() {
 
 unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
   std::string idName = std::get<std::string>(curTok.value);
+  // Create position with file path and end position
+  Position idLoc{curTok.start.line, curTok.start.column, curTok.start.offset,
+                 currentFilePath.empty()
+                     ? std::nullopt
+                     : std::optional<std::string>(currentFilePath)};
+  idLoc.setEnd(curTok.end.line, curTok.end.column);
 
   getNextToken();  // eat identifier
 
@@ -546,7 +552,9 @@ unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
   // Just return a variable reference - call handling is done in postfix
   // parsing This allows for first-class function support where variables can
   // hold functions
-  return std::make_unique<VariableReferenceAST>(idName);
+  auto varRef = std::make_unique<VariableReferenceAST>(idName);
+  varRef->setLocation(idLoc);
+  return varRef;
 }
 
 unique_ptr<ExprAST> Parser::parsePrimary() {
@@ -830,7 +838,10 @@ unique_ptr<ExprAST> Parser::parsePostfixExpr(unique_ptr<ExprAST> base) {
       getNextToken();  // eat ')'
 
       // Create a unified call expression (callee is an expression)
+      // Use the callee's location for the call
+      Position callLoc = base->getLocation();
       base = std::make_unique<CallExprAST>(std::move(base), std::move(args));
+      base->setLocation(callLoc);
     }
   }
 

@@ -72,6 +72,31 @@
                     },
                     "default": [],
                     "description": "Additional paths to include in SUN_PATH for module resolution."
+                },
+                "sun.entrypoints": {
+                    "type": "array",
+                    "items": {
+                        "oneOf": [
+                            {
+                                "type": "string",
+                                "description": "Path to the entrypoint file containing a manifest block."
+                            },
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "path": {
+                                        "type": "string",
+                                        "description": "Path to the entrypoint file containing a manifest block."
+                                    }
+                                },
+                                "required": [
+                                    "path"
+                                ]
+                            }
+                        ]
+                    },
+                    "default": [],
+                    "description": "List of entrypoint files with manifest blocks. Files listed in an entrypoint's manifest will use the full manifest context for cross-file analysis."
                 }
             }
         }
