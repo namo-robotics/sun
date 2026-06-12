@@ -265,6 +265,15 @@ bool ModuleLinker::linkModuleRecursive(const std::string& moduleKey) {
     return false;
   }
 
+  // Check content hash for deduplication
+  // If we've already linked bitcode with this hash, skip it
+  std::string contentHash = sun::getSymbolPrefix(*metadata);
+  if (!contentHash.empty() && linkedContentHashes_.count(contentHash)) {
+    // Mark as linked (for moduleKey tracking) but don't link bitcode again
+    linkedModules_.insert(moduleKey);
+    return true;
+  }
+
   // Note: We do NOT recursively load dependencies here.
   // Moon files are self-contained - when a.moon was created from a.sun
   // (which imported b_v1.moon), the bitcode from b_v1 was already linked
@@ -336,6 +345,10 @@ bool ModuleLinker::linkModuleRecursive(const std::string& moduleKey) {
   }
 
   linkedModules_.insert(moduleKey);
+  // Record content hash to avoid linking same bitcode via different module keys
+  if (!contentHash.empty()) {
+    linkedContentHashes_.insert(contentHash);
+  }
   return true;
 }
 

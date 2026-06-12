@@ -82,6 +82,19 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
         exitScope();
         break;
       }
+      case ASTNodeType::MOON_SCOPE: {
+        // Process the contained module stubs with content hash prefix
+        auto& moonScope = static_cast<MoonScopeAST&>(*expr);
+        const std::string& contentHash = moonScope.getContentHash();
+        if (!contentHash.empty()) {
+          enterModuleScope(contentHash);
+        }
+        collectDeclarations(const_cast<BlockExprAST&>(moonScope.getBody()));
+        if (!contentHash.empty()) {
+          exitScope();
+        }
+        break;
+      }
       default:
         break;
     }
@@ -168,6 +181,57 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
           }
         }
         exitScope();
+        break;
+      }
+      case ASTNodeType::MOON_SCOPE: {
+        // Process the contained module stubs with content hash prefix
+        auto& moonScope = static_cast<MoonScopeAST&>(*expr);
+        const std::string& contentHash = moonScope.getContentHash();
+        if (!contentHash.empty()) {
+          enterModuleScope(contentHash);
+        }
+        for (const auto& bodyExpr :
+             const_cast<BlockExprAST&>(moonScope.getBody()).getBody()) {
+          if (bodyExpr->getType() == ASTNodeType::MODULE) {
+            auto& nsDecl = static_cast<ModuleAST&>(*bodyExpr);
+            enterModuleScope(nsDecl.getName());
+            // Collect function declarations inside the module
+            for (const auto& moduleExpr :
+                 const_cast<BlockExprAST&>(nsDecl.getBody()).getBody()) {
+              if (moduleExpr->getType() == ASTNodeType::FUNCTION) {
+                auto& func = static_cast<FunctionAST&>(*moduleExpr);
+                PrototypeAST& proto =
+                    const_cast<PrototypeAST&>(func.getProto());
+                if (proto.getName().empty()) continue;
+                if (proto.isGeneric()) {
+                  registerGenericFunctionInCurrentScope(func);
+                  continue;
+                }
+                std::vector<sun::TypePtr> paramTypes;
+                for (auto& [argName, argType] : proto.getMutableArgs()) {
+                  sun::TypePtr paramType = typeAnnotationToType(argType);
+                  paramTypes.push_back(paramType);
+                }
+                sun::TypePtr returnType = sun::Types::Void();
+                if (proto.hasReturnType()) {
+                  returnType = typeAnnotationToType(*proto.getReturnType());
+                }
+                sun::QualifiedName qualifiedName =
+                    makeQualifiedName(proto.getName());
+                FunctionInfo info;
+                info.returnType = returnType;
+                info.paramTypes = std::move(paramTypes);
+                info.qualifiedName = qualifiedName;
+                info.canThrow = proto.canThrow();
+                registernFunctionInCurrentScope(qualifiedName.baseName, info);
+              }
+            }
+            exitScope();
+          }
+        }
+        if (!contentHash.empty()) {
+          exitScope();
+        }
         break;
       }
       default:

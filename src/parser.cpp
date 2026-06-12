@@ -2190,10 +2190,13 @@ unique_ptr<ExprAST> Parser::parseQualifiedOrSimpleName() {
 }
 
 // Handle import of a precompiled .moon file
-std::string Parser::collectMoonImport(
-    const std::string& moonPath,
-    std::vector<std::unique_ptr<ExprAST>>& collectedAST) {
+// Returns a MoonScopeAST wrapping all module stubs, or nullptr if already
+// imported
+std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
+    const sun::MoonImport& moonImport) {
+  const std::string& moonPath = moonImport.path;
   std::string contentHash;
+
   // Resolve the moon path
   std::filesystem::path resolved;
   if (std::filesystem::path(moonPath).is_absolute()) {
@@ -2216,14 +2219,14 @@ std::string Parser::collectMoonImport(
 
   if (!std::filesystem::exists(resolved)) {
     logAndThrowError("Could not find moon file: " + moonPath);
-    return contentHash;
+    return nullptr;
   }
   resolved = std::filesystem::canonical(resolved);
   std::string resolvedStr = resolved.string();
 
   // Check if already imported
   if (importedFiles->count(resolvedStr)) {
-    return contentHash;
+    return nullptr;
   }
   importedFiles->insert(resolvedStr);
 
@@ -2232,7 +2235,7 @@ std::string Parser::collectMoonImport(
   auto reader = sun::SunLibReader::open(resolved);
   if (!reader) {
     logAndThrowError("Failed to open moon: " + resolvedStr);
-    return contentHash;
+    return nullptr;
   }
   PARSER_TIMER_END(open_moon);
 
@@ -2246,6 +2249,9 @@ std::string Parser::collectMoonImport(
   // Track defined symbols per module for collision detection
   std::unordered_map<std::string, std::unordered_set<std::string>>
       moduleSymbols;
+
+  // Track the primary module name (first non-empty module found)
+  std::string primaryModuleName;
 
   for (const auto& moduleKey : reader->listModules()) {
     // Record for linking
@@ -2271,13 +2277,21 @@ std::string Parser::collectMoonImport(
       contentHash = sun::getSymbolPrefix(*metadata);
     }
 
+    // Track primary module name
+    if (primaryModuleName.empty() && !metadata->module_name().empty()) {
+      primaryModuleName = metadata->module_name();
+    }
+
     // Create stubs into a temporary vector
     std::vector<std::unique_ptr<ExprAST>> stubs;
     createModuleStubs(*metadata, stubs);
 
-    // Check for name collisions and consolidate
+    // Get the original module name and apply remapping if configured
     std::string modName = metadata->module_name();
-    auto& symbols = moduleSymbols[modName];
+    std::string effectiveName = moonImport.getAliasedModule(modName);
+
+    // Check for name collisions within this moon
+    auto& symbols = moduleSymbols[effectiveName];
     for (auto& stub : stubs) {
       std::string symbolName;
       if (auto* cls = dynamic_cast<ClassDefinitionAST*>(stub.get())) {
@@ -2290,25 +2304,26 @@ std::string Parser::collectMoonImport(
       }
       if (!symbolName.empty()) {
         if (!symbols.insert(symbolName).second) {
-          logAndThrowError("Name collision in moon module '" + modName +
+          logAndThrowError("Name collision in moon module '" + effectiveName +
                            "': duplicate symbol '" + symbolName + "'");
         }
       }
-      moduleStubs[modName].push_back(std::move(stub));
+      moduleStubs[effectiveName].push_back(std::move(stub));
     }
   }
 
-  // Emit consolidated ModuleAST nodes (one per unique module name)
+  // Build consolidated ModuleAST nodes (one per unique module name)
+  std::vector<std::unique_ptr<ExprAST>> allModuleASTs;
   for (auto& [modName, stubs] : moduleStubs) {
     if (stubs.empty()) continue;
     if (!modName.empty()) {
       auto nsBody = std::make_unique<BlockExprAST>(std::move(stubs));
       auto nsAST = std::make_unique<ModuleAST>(modName, std::move(nsBody));
       nsAST->setPrecompiled(true);
-      collectedAST.push_back(std::move(nsAST));
+      allModuleASTs.push_back(std::move(nsAST));
     } else {
       for (auto& ast : stubs) {
-        collectedAST.push_back(std::move(ast));
+        allModuleASTs.push_back(std::move(ast));
       }
     }
   }
@@ -2316,7 +2331,20 @@ std::string Parser::collectMoonImport(
 
   // Store the moon reader in the cache for later linking
   sun::LibraryCache::instance().addBundle(resolved);
-  return contentHash;
+
+  // Determine the alias if provided (from moduleRemap)
+  std::optional<std::string> alias;
+  if (moonImport.hasRemap() && !primaryModuleName.empty()) {
+    std::string remapped = moonImport.getAliasedModule(primaryModuleName);
+    if (remapped != primaryModuleName) {
+      alias = remapped;
+    }
+  }
+
+  // Wrap everything in a MoonScopeAST
+  auto body = std::make_unique<BlockExprAST>(std::move(allModuleASTs));
+  return std::make_unique<MoonScopeAST>(contentHash, primaryModuleName, alias,
+                                        resolvedStr, std::move(body));
 }
 
 // Create AST stubs from protobuf module metadata

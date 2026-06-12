@@ -79,6 +79,8 @@ class ModuleLinker {
 
   llvm::Module& target_;
   std::set<std::string> linkedModules_;
+  std::set<std::string>
+      linkedContentHashes_;  // Content hashes of linked bitcode
   std::set<std::string> availableModules_;
   std::unordered_map<std::string, std::string>
       symbolToModule_;  // mangled name -> moduleKey

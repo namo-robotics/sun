@@ -55,7 +55,8 @@ enum class ASTNodeType {
   PACK_EXPANSION,        // args... - expand a variadic parameter pack
   DECLARE_TYPE,          // declare [Alias =] Type<Args>;
   SPAWN,                 // spawn(lambda) - create OS thread
-  UNSAFE_BLOCK           // unsafe { ... } - unsafe operations block
+  UNSAFE_BLOCK,          // unsafe { ... } - unsafe operations block
+  MOON_SCOPE             // Wrapper for moon import stubs with content hash
 };
 
 struct Capture {

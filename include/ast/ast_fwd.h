@@ -58,6 +58,9 @@ class MemberAssignmentAST;
 class ThisExprAST;
 class IndexedAssignmentAST;
 
+// Moon import nodes
+class MoonScopeAST;
+
 // Error handling nodes
 class ThrowExprAST;
 class TryCatchExprAST;

@@ -490,6 +490,25 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       break;
     }
 
+    case ASTNodeType::MOON_SCOPE: {
+      // MoonScopeAST wraps module stubs from a moon import
+      // Enter a scope with the content hash prefix for symbol isolation
+      auto& moonScope = static_cast<MoonScopeAST&>(expr);
+      const std::string& contentHash = moonScope.getContentHash();
+      if (!contentHash.empty()) {
+        enterModuleScope(contentHash);
+      }
+      // Analyze contained ModuleAST nodes
+      for (const auto& bodyExpr : moonScope.getBody().getBody()) {
+        analyzeExpr(*bodyExpr);
+      }
+      if (!contentHash.empty()) {
+        exitScope();
+      }
+      expr.setResolvedType(sun::Types::Void());
+      break;
+    }
+
     case ASTNodeType::USING: {
       auto& usingDecl = static_cast<UsingAST&>(expr);
       // Check if this is "using A.B;" where A_B is actually a module name

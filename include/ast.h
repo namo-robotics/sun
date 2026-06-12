@@ -64,6 +64,7 @@
 // Module nodes
 #include "ast/manifest_ast.h"
 #include "ast/module_ast.h"
+#include "ast/moon_scope_ast.h"
 #include "ast/qualified_name_ast.h"
 #include "ast/using_ast.h"
 
