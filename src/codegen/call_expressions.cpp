@@ -1230,8 +1230,9 @@ Value* CodegenVisitor::codegenLambdaCall(const CallExprAST& expr,
 bool CodegenVisitor::isBuiltinFunction(const std::string& name) {
   return name == "_print_i32" || name == "_print_i64" || name == "_print_f64" ||
          name == "_print_newline" || name == "_println_str" ||
-         name == "_print_bytes" || name == "file_open" ||
-         name == "file_close" || name == "file_write" || name == "file_read" ||
+         name == "_print_bytes" || name == "__file_open" ||
+         name == "__file_close" || name == "__file_write" ||
+         name == "__file_read" ||
          // Pointer intrinsics
          name == "_load_i64" || name == "_store_i64" ||
          // Memory allocation intrinsics
@@ -1265,16 +1266,16 @@ Value* CodegenVisitor::codegenBuiltin(const std::string& name,
   if (name == "_print_bytes") {
     return codegenPrintBytes(expr);
   }
-  if (name == "file_open") {
+  if (name == "__file_open") {
     return codegenFileOpen(expr);
   }
-  if (name == "file_close") {
+  if (name == "__file_close") {
     return codegenFileClose(expr);
   }
-  if (name == "file_write") {
+  if (name == "__file_write") {
     return codegenFileWrite(expr);
   }
-  if (name == "file_read") {
+  if (name == "__file_read") {
     return codegenFileRead(expr);
   }
   // Pointer intrinsics (implemented in pointers.cpp)

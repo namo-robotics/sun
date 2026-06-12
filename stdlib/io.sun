@@ -1,0 +1,78 @@
+// stdlib/io.sun - File I/O wrapper over __file_* intrinsics
+//
+// Provides a safe File class for reading and writing files.
+//
+// Usage:
+//   import "stdlib/io.sun";
+//   using sun;
+//
+//   var f = File();
+//   try {
+//       f.open("test.txt", MODE_WRITE);
+//       f.write("Hello, World!");
+//       f.close();
+//   } catch (e: IError) {
+//       // Handle error
+//   }
+
+module sun {
+
+// File open modes
+var MODE_READ: i32 = 0;    // Open for reading (file must exist)
+var MODE_WRITE: i32 = 1;   // Open for writing (creates/truncates)
+var MODE_APPEND: i32 = 2;  // Open for appending (creates if needed)
+
+// File handle wrapper
+// Provides safe access to file operations with automatic resource tracking
+class File {
+    var fd: i32;
+    
+    function init() {
+        this.fd = -1;
+    }
+    
+    // Open a file with the specified mode
+    // Returns error if file cannot be opened
+    function open(path: static_ptr<u8>, mode: i32) void, IError {
+        var result: i32 = unsafe { __file_open(path, mode); };
+        if (result < 0) {
+            throw Error(result, "failed to open file");
+        }
+        this.fd = result;
+    }
+    
+    // Read up to 'size' bytes from the file
+    // Returns a raw pointer to the read data (null-terminated)
+    // Caller is responsible for freeing the returned memory
+    function read(size: i32) raw_ptr<i8> {
+        return unsafe { __file_read(this.fd, size); };
+    }
+    
+    // Write string data to the file
+    // Returns number of bytes written, or negative on error
+    function write(data: static_ptr<u8>) i32 {
+        return unsafe { __file_write(this.fd, data); };
+    }
+    
+    // Close the file
+    // Safe to call multiple times
+    function close() void {
+        if (this.fd >= 0) {
+            unsafe { __file_close(this.fd); };
+            this.fd = -1;
+        }
+    }
+    
+    // Check if file is currently open
+    function is_open() bool {
+        return this.fd >= 0;
+    }
+    
+    // Get the underlying file descriptor
+    // Use with caution - for advanced use cases only
+    function get_fd() i32 {
+        return this.fd;
+    }
+}
+
+} // module sun

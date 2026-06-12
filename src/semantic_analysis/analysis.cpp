@@ -1906,7 +1906,11 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
       "_atomic_store_i32",
       "_atomic_load_i32",
       "_futex_wait",
-      "_futex_wake"};
+      "_futex_wake",
+      "__file_open",
+      "__file_close",
+      "__file_write",
+      "__file_read"};
 
   auto calleeASTType = callExpr.getCallee()->getType();
   if (calleeASTType == ASTNodeType::VARIABLE_REFERENCE) {

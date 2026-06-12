@@ -1198,15 +1198,15 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
   registernFunctionInCurrentScope(
       "_println_str", {Types::Void(), {Types::RawPointer(Types::UInt8())}, {}});
 
-  // File I/O builtins
+  // File I/O intrinsics
   registernFunctionInCurrentScope(
-      "file_open", {Types::Int32(), {Types::String(), Types::Int32()}, {}});
-  registernFunctionInCurrentScope("file_close",
+      "__file_open", {Types::Int32(), {Types::String(), Types::Int32()}, {}});
+  registernFunctionInCurrentScope("__file_close",
                                   {Types::Int32(), {Types::Int32()}, {}});
   registernFunctionInCurrentScope(
-      "file_write", {Types::Int32(), {Types::Int32(), Types::String()}, {}});
+      "__file_write", {Types::Int32(), {Types::Int32(), Types::String()}, {}});
   registernFunctionInCurrentScope(
-      "file_read",
+      "__file_read",
       {Types::RawPointer(Types::Int8()), {Types::Int32(), Types::Int32()}, {}});
 
   // Low-level memory access intrinsics

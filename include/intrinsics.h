@@ -49,6 +49,12 @@ enum class Intrinsic {
   // Futex intrinsics (Linux-specific thread synchronization)
   FutexWait,  // _futex_wait(ptr, expected) -> void
   FutexWake,  // _futex_wake(ptr) -> void
+
+  // File I/O intrinsics
+  FileOpen,   // __file_open(path, flags) -> i32
+  FileClose,  // __file_close(fd) -> i32
+  FileWrite,  // __file_write(fd, data) -> i32
+  FileRead,   // __file_read(fd, size) -> raw_ptr<i8>
 };
 
 // Convert intrinsic function name to enum
@@ -88,6 +94,12 @@ inline Intrinsic getIntrinsic(const std::string& name) {
   // Futex intrinsics
   if (name == "_futex_wait") return Intrinsic::FutexWait;
   if (name == "_futex_wake") return Intrinsic::FutexWake;
+
+  // File I/O intrinsics
+  if (name == "__file_open") return Intrinsic::FileOpen;
+  if (name == "__file_close") return Intrinsic::FileClose;
+  if (name == "__file_write") return Intrinsic::FileWrite;
+  if (name == "__file_read") return Intrinsic::FileRead;
 
   return Intrinsic::None;
 }
