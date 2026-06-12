@@ -244,8 +244,9 @@ class SemanticAnalyzer {
   // enterModuleScope() and exitScope() are used to manage module scopes
 
   // Register namespaced symbols (used during namespace analysis)
-  void registerNamespacedVariable(const std::string& qualifiedName,
-                                  sun::TypePtr type);
+  void registerModuleVariable(const std::string& baseName,
+                              const std::string& qualifiedName,
+                              sun::TypePtr type);
 
   // Lookup functions that handle using statements and namespace resolution
   VariableInfo* lookupQualifiedVariable(const std::string& qualifiedName);

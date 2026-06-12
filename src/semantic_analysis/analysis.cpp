@@ -471,7 +471,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
               makeQualifiedName(varCreate.getName());
           varCreate.setQualifiedName(qualifiedName);
           if (auto type = varCreate.getResolvedType()) {
-            registerNamespacedVariable(qualifiedName.mangled(), type);
+            registerModuleVariable(varCreate.getName(), qualifiedName.mangled(),
+                                   type);
           }
         } else if (bodyExpr->getType() == ASTNodeType::REFERENCE_CREATION) {
           analyzeExpr(*bodyExpr);

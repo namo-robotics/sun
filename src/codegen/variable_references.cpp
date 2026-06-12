@@ -211,7 +211,8 @@ Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
   Value* cv = createLoadVarFromClosure(expr.getName());
   if (cv) return cv;
 
-  llvm::LoadInst* loadInst = createLoadForGlobalVar(expr.getName());
+  // Use qualified name for module-qualified globals
+  llvm::LoadInst* loadInst = createLoadForGlobalVar(expr.getMangledName());
   if (loadInst) return loadInst;
 
   // Check for named functions using qualified name from semantic analysis

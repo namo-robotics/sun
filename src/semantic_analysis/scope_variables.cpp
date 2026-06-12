@@ -1289,12 +1289,16 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
 // Namespace-qualified symbols (separate from scope-based lookup)
 // -------------------------------------------------------------------
 
-void SemanticAnalyzer::registerNamespacedVariable(
-    const std::string& qualifiedName, sun::TypePtr type) {
+void SemanticAnalyzer::registerModuleVariable(const std::string& baseName,
+                                              const std::string& qualifiedName,
+                                              sun::TypePtr type) {
+  // Store with qualified name for codegen lookup
   rootScope->namespacedVariables[qualifiedName] = {type, true, false};
   if (currentScope != rootScope.get()) {
     currentScope->namespacedVariables[qualifiedName] = {type, true, false};
   }
+  // Also store with plain name in current scope for hasSymbol lookup
+  currentScope->namespacedVariables[baseName] = {type, true, false};
 }
 
 VariableInfo* SemanticAnalyzer::lookupQualifiedVariable(
@@ -1489,7 +1493,16 @@ sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
   auto scopePath = getCurrentScopePath();
   auto visiblePath = getVisiblePath(scopePath);
 
-  // 1. If inside a module, check the module scope hierarchy (self + parents)
+  // 1. Check enclosing module scopes by walking up the parent chain
+  //    This handles variables accessed from within class methods
+  for (auto* s = currentScope; s != nullptr; s = s->parent) {
+    if (s->getType() == ScopeType::Module && s->hasSymbol(name)) {
+      addCandidate(s);
+    }
+  }
+
+  // 2. If inside a module, also check the module scope hierarchy via path
+  // lookup
   if (!visiblePath.empty()) {
     std::string visPathStr = sun::QualifiedName::joinPath(visiblePath);
     auto allScopes = collectAllModuleScopes(currentScope, visPathStr);
@@ -1500,7 +1513,7 @@ sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
     }
   }
 
-  // 2. Check using imports (applies whether inside a module or not)
+  // 3. Check using imports (applies whether inside a module or not)
   auto activeImports = getActiveUsingImports();
   for (const auto& import : activeImports) {
     if (!import.isWildcard && import.target != name) continue;
