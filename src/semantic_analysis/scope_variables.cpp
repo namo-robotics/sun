@@ -1209,6 +1209,36 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
       "__file_read",
       {Types::RawPointer(Types::Int8()), {Types::Int32(), Types::Int32()}, {}});
 
+  // Extended file I/O intrinsics
+  registernFunctionInCurrentScope(
+      "__lseek",
+      {Types::Int64(), {Types::Int32(), Types::Int64(), Types::Int32()}, {}});
+  registernFunctionInCurrentScope(
+      "__fstat",
+      {Types::Int32(), {Types::Int32(), Types::RawPointer(Types::Int8())}, {}});
+  registernFunctionInCurrentScope("__fsync",
+                                  {Types::Int32(), {Types::Int32()}, {}});
+  registernFunctionInCurrentScope(
+      "__ftruncate", {Types::Int32(), {Types::Int32(), Types::Int64()}, {}});
+  registernFunctionInCurrentScope("__unlink",
+                                  {Types::Int32(), {Types::String()}, {}});
+  registernFunctionInCurrentScope(
+      "__rename", {Types::Int32(), {Types::String(), Types::String()}, {}});
+  registernFunctionInCurrentScope(
+      "__mkdir", {Types::Int32(), {Types::String(), Types::Int32()}, {}});
+  registernFunctionInCurrentScope("__rmdir",
+                                  {Types::Int32(), {Types::String()}, {}});
+  registernFunctionInCurrentScope(
+      "__write",
+      {Types::Int64(),
+       {Types::Int32(), Types::RawPointer(Types::UInt8()), Types::Int64()},
+       {}});
+  registernFunctionInCurrentScope(
+      "__read",
+      {Types::Int64(),
+       {Types::Int32(), Types::RawPointer(Types::UInt8()), Types::Int64()},
+       {}});
+
   // Low-level memory access intrinsics
   // _load_i64(ptr, index) - load i64 from ptr at byte offset index*8
   registernFunctionInCurrentScope(

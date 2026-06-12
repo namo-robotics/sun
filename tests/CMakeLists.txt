@@ -18,6 +18,7 @@ add_executable(sun_tests
     test_enums.cpp
     test_errors.cpp
     test_file_io.cpp
+    test_sun_io.cpp
     test_generic_classes.cpp
     test_generic_functions.cpp
     test_generic_methods.cpp

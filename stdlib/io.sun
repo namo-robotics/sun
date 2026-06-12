@@ -22,6 +22,11 @@ var MODE_READ: i32 = 0;    // Open for reading (file must exist)
 var MODE_WRITE: i32 = 1;   // Open for writing (creates/truncates)
 var MODE_APPEND: i32 = 2;  // Open for appending (creates if needed)
 
+// Seek whence constants (POSIX)
+var SEEK_SET: i32 = 0;     // Seek from beginning of file
+var SEEK_CUR: i32 = 1;     // Seek from current position
+var SEEK_END: i32 = 2;     // Seek from end of file
+
 // File handle wrapper
 // Provides safe access to file operations with automatic resource tracking
 class File {
@@ -72,6 +77,89 @@ class File {
     // Use with caution - for advanced use cases only
     function get_fd() i32 {
         return this.fd;
+    }
+    
+    // Seek to a position in the file
+    // Returns the new offset from the beginning of the file
+    function seek(offset: i64, whence: i32) i64 {
+        return unsafe { __lseek(this.fd, offset, whence); };
+    }
+    
+    // Get current position in file
+    function tell() i64 {
+        return this.seek(0, SEEK_CUR);
+    }
+    
+    // Flush file data to disk
+    function sync() void, IError {
+        var result: i32 = unsafe { __fsync(this.fd); };
+        if (result < 0) {
+            throw Error(result, "failed to sync file");
+        }
+    }
+    
+    // Truncate or extend file to specified length
+    function truncate(length: i64) void, IError {
+        var result: i32 = unsafe { __ftruncate(this.fd, length); };
+        if (result < 0) {
+            throw Error(result, "failed to truncate file");
+        }
+    }
+    
+    // Get file size by seeking to end and back
+    function size() i64 {
+        var current: i64 = this.tell();
+        var end_pos: i64 = this.seek(0, SEEK_END);
+        this.seek(current, SEEK_SET);
+        return end_pos;
+    }
+    
+    // Write raw bytes to file
+    // Returns number of bytes written
+    function write_bytes(buf: raw_ptr<u8>, len: i64) i64 {
+        return unsafe { __write(this.fd, buf, len); };
+    }
+    
+    // Read raw bytes into provided buffer
+    // Returns number of bytes read
+    function read_into(buf: raw_ptr<u8>, len: i64) i64 {
+        return unsafe { __read(this.fd, buf, len); };
+    }
+}
+
+// -------------------------------------------------------------------
+// Standalone file system functions
+// -------------------------------------------------------------------
+
+// Remove a file
+function remove_file(path: static_ptr<u8>) void, IError {
+    var result: i32 = unsafe { __unlink(path); };
+    if (result < 0) {
+        throw Error(result, "failed to remove file");
+    }
+}
+
+// Rename or move a file
+function rename_file(old_path: static_ptr<u8>, new_path: static_ptr<u8>) void, IError {
+    var result: i32 = unsafe { __rename(old_path, new_path); };
+    if (result < 0) {
+        throw Error(result, "failed to rename file");
+    }
+}
+
+// Create a directory with the specified mode (e.g., 0755 = 493)
+function make_dir(path: static_ptr<u8>, mode: i32) void, IError {
+    var result: i32 = unsafe { __mkdir(path, mode); };
+    if (result < 0) {
+        throw Error(result, "failed to create directory");
+    }
+}
+
+// Remove an empty directory
+function remove_dir(path: static_ptr<u8>) void, IError {
+    var result: i32 = unsafe { __rmdir(path); };
+    if (result < 0) {
+        throw Error(result, "failed to remove directory");
     }
 }
 

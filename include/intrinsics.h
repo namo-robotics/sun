@@ -55,6 +55,16 @@ enum class Intrinsic {
   FileClose,  // __file_close(fd) -> i32
   FileWrite,  // __file_write(fd, data) -> i32
   FileRead,   // __file_read(fd, size) -> raw_ptr<i8>
+  Lseek,      // __lseek(fd, offset, whence) -> i64
+  Fstat,      // __fstat(fd, stat_buf) -> i32
+  Fsync,      // __fsync(fd) -> i32
+  Ftruncate,  // __ftruncate(fd, length) -> i32
+  Unlink,     // __unlink(path) -> i32
+  Rename,     // __rename(old_path, new_path) -> i32
+  Mkdir,      // __mkdir(path, mode) -> i32
+  Rmdir,      // __rmdir(path) -> i32
+  Write,      // __write(fd, buf, len) -> i64
+  Read,       // __read(fd, buf, len) -> i64
 };
 
 // Convert intrinsic function name to enum
@@ -100,6 +110,16 @@ inline Intrinsic getIntrinsic(const std::string& name) {
   if (name == "__file_close") return Intrinsic::FileClose;
   if (name == "__file_write") return Intrinsic::FileWrite;
   if (name == "__file_read") return Intrinsic::FileRead;
+  if (name == "__lseek") return Intrinsic::Lseek;
+  if (name == "__fstat") return Intrinsic::Fstat;
+  if (name == "__fsync") return Intrinsic::Fsync;
+  if (name == "__ftruncate") return Intrinsic::Ftruncate;
+  if (name == "__unlink") return Intrinsic::Unlink;
+  if (name == "__rename") return Intrinsic::Rename;
+  if (name == "__mkdir") return Intrinsic::Mkdir;
+  if (name == "__rmdir") return Intrinsic::Rmdir;
+  if (name == "__write") return Intrinsic::Write;
+  if (name == "__read") return Intrinsic::Read;
 
   return Intrinsic::None;
 }

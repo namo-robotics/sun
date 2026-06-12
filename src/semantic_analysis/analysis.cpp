@@ -1910,7 +1910,17 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
       "__file_open",
       "__file_close",
       "__file_write",
-      "__file_read"};
+      "__file_read",
+      "__lseek",
+      "__fstat",
+      "__fsync",
+      "__ftruncate",
+      "__unlink",
+      "__rename",
+      "__mkdir",
+      "__rmdir",
+      "__write",
+      "__read"};
 
   auto calleeASTType = callExpr.getCallee()->getType();
   if (calleeASTType == ASTNodeType::VARIABLE_REFERENCE) {

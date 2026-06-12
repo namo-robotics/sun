@@ -723,6 +723,18 @@ class CodegenVisitor {
   llvm::Value* codegenFileWrite(const CallExprAST& expr);
   llvm::Value* codegenFileRead(const CallExprAST& expr);
 
+  // Extended file I/O built-ins
+  llvm::Value* codegenLseek(const CallExprAST& expr);
+  llvm::Value* codegenFstat(const CallExprAST& expr);
+  llvm::Value* codegenFsync(const CallExprAST& expr);
+  llvm::Value* codegenFtruncate(const CallExprAST& expr);
+  llvm::Value* codegenUnlink(const CallExprAST& expr);
+  llvm::Value* codegenRename(const CallExprAST& expr);
+  llvm::Value* codegenMkdir(const CallExprAST& expr);
+  llvm::Value* codegenRmdir(const CallExprAST& expr);
+  llvm::Value* codegenWrite(const CallExprAST& expr);
+  llvm::Value* codegenRead(const CallExprAST& expr);
+
   // -------------------------------------------------------------------
   // Thread support (uses ThreadUtils for syscalls and types)
   // -------------------------------------------------------------------
