@@ -46,10 +46,10 @@ TEST_F(FileIOTest, file_open_write_close) {
 
   auto value = executeString(R"(
     function main() i32 {
-        var fd: i32 = file_open(")" +
-                             path + R"(", 1);
-        file_write(fd, "Hello, File!");
-        file_close(fd);
+        var fd: i32 = unsafe { __file_open(")" +
+                             path + R"(", 1); };
+        unsafe { __file_write(fd, "Hello, File!"); };
+        unsafe { __file_close(fd); };
         return 0;
     };
   )");
@@ -69,10 +69,10 @@ TEST_F(FileIOTest, file_open_read_close) {
   // comparison So we just verify the program runs successfully
   auto value = executeString(R"(
     function main() i32 {
-        var fd: i32 = file_open(")" +
-                             path + R"(", 0);
-        var content: raw_ptr<i8> = file_read(fd, 1024);
-        file_close(fd);
+        var fd: i32 = unsafe { __file_open(")" +
+                             path + R"(", 0); };
+        var content: raw_ptr<i8> = unsafe { __file_read(fd, 1024); };
+        unsafe { __file_close(fd); };
         return 0;
     };
   )");
@@ -86,16 +86,16 @@ TEST_F(FileIOTest, file_write_read_roundtrip) {
   auto value = executeString(R"(
     function main() i32 {
         // Write to file
-        var fd1: i32 = file_open(")" +
-                             path + R"(", 1);
-        file_write(fd1, "Roundtrip data");
-        file_close(fd1);
+        var fd1: i32 = unsafe { __file_open(")" +
+                             path + R"(", 1); };
+        unsafe { __file_write(fd1, "Roundtrip data"); };
+        unsafe { __file_close(fd1); };
         
         // Read from file
-        var fd2: i32 = file_open(")" +
-                             path + R"(", 0);
-        var content: raw_ptr<i8> = file_read(fd2, 1024);
-        file_close(fd2);
+        var fd2: i32 = unsafe { __file_open(")" +
+                             path + R"(", 0); };
+        var content: raw_ptr<i8> = unsafe { __file_read(fd2, 1024); };
+        unsafe { __file_close(fd2); };
         
         return 0;
     };
@@ -113,12 +113,12 @@ TEST_F(FileIOTest, file_write_multiple_times) {
 
   auto value = executeString(R"(
     function main() i32 {
-        var fd: i32 = file_open(")" +
-                             path + R"(", 1);
-        file_write(fd, "Line 1");
-        file_write(fd, "Line 2");
-        file_write(fd, "Line 3");
-        file_close(fd);
+        var fd: i32 = unsafe { __file_open(")" +
+                             path + R"(", 1); };
+        unsafe { __file_write(fd, "Line 1"); };
+        unsafe { __file_write(fd, "Line 2"); };
+        unsafe { __file_write(fd, "Line 3"); };
+        unsafe { __file_close(fd); };
         return 0;
     };
   )");
@@ -135,10 +135,10 @@ TEST_F(FileIOTest, file_append_mode) {
   // First write
   auto value1 = executeString(R"(
     function main() i32 {
-        var fd: i32 = file_open(")" +
-                              path + R"(", 1);
-        file_write(fd, "First");
-        file_close(fd);
+        var fd: i32 = unsafe { __file_open(")" +
+                              path + R"(", 1); };
+        unsafe { __file_write(fd, "First"); };
+        unsafe { __file_close(fd); };
         return 0;
     };
   )");
@@ -147,10 +147,10 @@ TEST_F(FileIOTest, file_append_mode) {
   // Append (mode 2)
   auto value2 = executeString(R"(
     function main() i32 {
-        var fd: i32 = file_open(")" +
-                              path + R"(", 2);
-        file_write(fd, "Second");
-        file_close(fd);
+        var fd: i32 = unsafe { __file_open(")" +
+                              path + R"(", 2); };
+        unsafe { __file_write(fd, "Second"); };
+        unsafe { __file_close(fd); };
         return 0;
     };
   )");
@@ -166,10 +166,10 @@ TEST_F(FileIOTest, file_overwrite_mode) {
 
   auto value = executeString(R"(
     function main() i32 {
-        var fd: i32 = file_open(")" +
-                             path + R"(", 1);
-        file_write(fd, "New");
-        file_close(fd);
+        var fd: i32 = unsafe { __file_open(")" +
+                             path + R"(", 1); };
+        unsafe { __file_write(fd, "New"); };
+        unsafe { __file_close(fd); };
         return 0;
     };
   )");
@@ -186,10 +186,10 @@ TEST_F(FileIOTest, file_read_empty_file) {
 
   auto value = executeString(R"(
     function main() i32 {
-        var fd: i32 = file_open(")" +
-                             path + R"(", 0);
-        var content: raw_ptr<i8> = file_read(fd, 1024);
-        file_close(fd);
+        var fd: i32 = unsafe { __file_open(")" +
+                             path + R"(", 0); };
+        var content: raw_ptr<i8> = unsafe { __file_read(fd, 1024); };
+        unsafe { __file_close(fd); };
         return 0;
     };
   )");
@@ -206,10 +206,10 @@ TEST_F(FileIOTest, file_create_new) {
 
   auto value = executeString(R"(
     function main() i32 {
-        var fd: i32 = file_open(")" +
-                             path + R"(", 1);
-        file_write(fd, "Created!");
-        file_close(fd);
+        var fd: i32 = unsafe { __file_open(")" +
+                             path + R"(", 1); };
+        unsafe { __file_write(fd, "Created!"); };
+        unsafe { __file_close(fd); };
         return 0;
     };
   )");
@@ -225,12 +225,12 @@ TEST_F(FileIOTest, file_operations_with_comments) {
   auto value = executeString(R"(
     function main() i32 {
         // Open file for writing
-        var fd: i32 = file_open(")" +
-                             path + R"(", 1);
+        var fd: i32 = unsafe { __file_open(")" +
+                             path + R"(", 1); };
         // Write some data
-        file_write(fd, "With comments");
+        unsafe { __file_write(fd, "With comments"); };
         // Close the file
-        file_close(fd);
+        unsafe { __file_close(fd); };
         // Return success
         return 0;
     };
@@ -246,16 +246,16 @@ TEST_F(FileIOTest, file_read_returns_content) {
   auto value = executeString(R"(
     function main() raw_ptr<i8> {
         // Write test string
-        var fd1: i32 = file_open(")" +
-                             path + R"(", 1);
-        file_write(fd1, "Hello from file!");
-        file_close(fd1);
+        var fd1: i32 = unsafe { __file_open(")" +
+                             path + R"(", 1); };
+        unsafe { __file_write(fd1, "Hello from file!"); };
+        unsafe { __file_close(fd1); };
         
         // Read it back and return
-        var fd2: i32 = file_open(")" +
-                             path + R"(", 0);
-        var content: raw_ptr<i8> = file_read(fd2, 1024);
-        file_close(fd2);
+        var fd2: i32 = unsafe { __file_open(")" +
+                             path + R"(", 0); };
+        var content: raw_ptr<i8> = unsafe { __file_read(fd2, 1024); };
+        unsafe { __file_close(fd2); };
         
         return content;
     };

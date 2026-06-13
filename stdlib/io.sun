@@ -1,0 +1,166 @@
+// stdlib/io.sun - File I/O wrapper over __file_* intrinsics
+//
+// Provides a safe File class for reading and writing files.
+//
+// Usage:
+//   import "stdlib/io.sun";
+//   using sun.io;
+//
+//   var f = File();
+//   try {
+//       f.open("test.txt", MODE_WRITE);
+//       f.write("Hello, World!");
+//       f.close();
+//   } catch (e: IError) {
+//       // Handle error
+//   }
+
+module sun.io {
+
+// File open modes
+var MODE_READ: i32 = 0;    // Open for reading (file must exist)
+var MODE_WRITE: i32 = 1;   // Open for writing (creates/truncates)
+var MODE_APPEND: i32 = 2;  // Open for appending (creates if needed)
+
+// Seek whence constants (POSIX)
+var SEEK_SET: i32 = 0;     // Seek from beginning of file
+var SEEK_CUR: i32 = 1;     // Seek from current position
+var SEEK_END: i32 = 2;     // Seek from end of file
+
+// File handle wrapper
+// Provides safe access to file operations with automatic resource tracking
+class File {
+    var fd: i32;
+    
+    function init() {
+        this.fd = -1;
+    }
+    
+    // Open a file with the specified mode
+    // Returns error if file cannot be opened
+    function open(path: static_ptr<u8>, mode: i32) void, IError {
+        var result: i32 = unsafe { __file_open(path, mode); };
+        if (result < 0) {
+            throw Error(result, "failed to open file");
+        }
+        this.fd = result;
+    }
+    
+    // Read up to 'size' bytes from the file
+    // Returns a raw pointer to the read data (null-terminated)
+    // Caller is responsible for freeing the returned memory
+    function read(size: i32) raw_ptr<i8> {
+        return unsafe { __file_read(this.fd, size); };
+    }
+    
+    // Write string data to the file
+    // Returns number of bytes written, or negative on error
+    function write(data: static_ptr<u8>) i32 {
+        return unsafe { __file_write(this.fd, data); };
+    }
+    
+    // Close the file
+    // Safe to call multiple times
+    function close() void {
+        if (this.fd >= 0) {
+            unsafe { __file_close(this.fd); };
+            this.fd = -1;
+        }
+    }
+    
+    // Check if file is currently open
+    function is_open() bool {
+        return this.fd >= 0;
+    }
+    
+    // Get the underlying file descriptor
+    // Use with caution - for advanced use cases only
+    function get_fd() i32 {
+        return this.fd;
+    }
+    
+    // Seek to a position in the file
+    // Returns the new offset from the beginning of the file
+    function seek(offset: i64, whence: i32) i64 {
+        return unsafe { __lseek(this.fd, offset, whence); };
+    }
+    
+    // Get current position in file
+    function tell() i64 {
+        return this.seek(0, SEEK_CUR);
+    }
+    
+    // Flush file data to disk
+    function sync() void, IError {
+        var result: i32 = unsafe { __fsync(this.fd); };
+        if (result < 0) {
+            throw Error(result, "failed to sync file");
+        }
+    }
+    
+    // Truncate or extend file to specified length
+    function truncate(length: i64) void, IError {
+        var result: i32 = unsafe { __ftruncate(this.fd, length); };
+        if (result < 0) {
+            throw Error(result, "failed to truncate file");
+        }
+    }
+    
+    // Get file size by seeking to end and back
+    function size() i64 {
+        var current: i64 = this.tell();
+        var end_pos: i64 = this.seek(0, SEEK_END);
+        this.seek(current, SEEK_SET);
+        return end_pos;
+    }
+    
+    // Write raw bytes to file
+    // Returns number of bytes written
+    function write_bytes(buf: raw_ptr<u8>, len: i64) i64 {
+        return unsafe { __write(this.fd, buf, len); };
+    }
+    
+    // Read raw bytes into provided buffer
+    // Returns number of bytes read
+    function read_into(buf: raw_ptr<u8>, len: i64) i64 {
+        return unsafe { __read(this.fd, buf, len); };
+    }
+}
+
+// -------------------------------------------------------------------
+// Standalone file system functions
+// -------------------------------------------------------------------
+
+// Remove a file
+function remove_file(path: static_ptr<u8>) void, IError {
+    var result: i32 = unsafe { __unlink(path); };
+    if (result < 0) {
+        throw Error(result, "failed to remove file");
+    }
+}
+
+// Rename or move a file
+function rename_file(old_path: static_ptr<u8>, new_path: static_ptr<u8>) void, IError {
+    var result: i32 = unsafe { __rename(old_path, new_path); };
+    if (result < 0) {
+        throw Error(result, "failed to rename file");
+    }
+}
+
+// Create a directory with the specified mode (e.g., 0755 = 493)
+function make_dir(path: static_ptr<u8>, mode: i32) void, IError {
+    var result: i32 = unsafe { __mkdir(path, mode); };
+    if (result < 0) {
+        throw Error(result, "failed to create directory");
+    }
+}
+
+// Remove an empty directory
+function remove_dir(path: static_ptr<u8>) void, IError {
+    var result: i32 = unsafe { __rmdir(path); };
+    if (result < 0) {
+        throw Error(result, "failed to remove directory");
+    }
+}
+
+} // module sun.io

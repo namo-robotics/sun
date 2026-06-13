@@ -470,3 +470,109 @@ TEST(ModuleTest, transitive_call_to_imported_function_fails) {
   )"),
                std::exception);
 }
+
+// === Dotted module name syntax tests ===
+
+TEST(ModuleTest, parse_dotted_module_name) {
+  // "module a.b { }" should parse as nested modules
+  auto parser = Parser::createStringParser(R"(
+    module outer.inner {
+      function foo() i32 { return 42; }
+    }
+  )");
+  auto ast = parser.parseProgram();
+  ASSERT_NE(ast, nullptr);
+  ASSERT_EQ(ast->getBody().size(), 1);
+  EXPECT_EQ(ast->getBody()[0]->getType(), ASTNodeType::MODULE);
+
+  // Outer module should be "outer"
+  auto* outerModule = static_cast<const ModuleAST*>(ast->getBody()[0].get());
+  EXPECT_EQ(outerModule->getName(), "outer");
+
+  // Inner module should be "inner"
+  const auto& outerBody = outerModule->getBody().getBody();
+  ASSERT_EQ(outerBody.size(), 1);
+  EXPECT_EQ(outerBody[0]->getType(), ASTNodeType::MODULE);
+  auto* innerModule = static_cast<const ModuleAST*>(outerBody[0].get());
+  EXPECT_EQ(innerModule->getName(), "inner");
+}
+
+TEST(ModuleTest, dotted_module_name_execution) {
+  // "module a.b { function foo() }" should be callable as a.b.foo()
+  auto value = executeString(R"(
+    module outer.inner {
+      function foo() i32 { return 42; }
+    }
+    function main() i32 {
+      return outer.inner.foo();
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(ModuleTest, dotted_module_name_three_levels) {
+  // "module a.b.c { }" should create three nested modules
+  auto value = executeString(R"(
+    module a.b.c {
+      function foo() i32 { return 123; }
+    }
+    function main() i32 {
+      return a.b.c.foo();
+    }
+  )");
+  EXPECT_EQ(value, 123);
+}
+
+TEST(ModuleTest, dotted_module_name_with_using) {
+  // Using statement should work with dotted module declaration
+  auto value = executeString(R"(
+    module math.advanced {
+      function cube(x: i32) i32 { return x * x * x; }
+    }
+    using math.advanced;
+    function main() i32 {
+      return cube(3);
+    }
+  )");
+  EXPECT_EQ(value, 27);
+}
+
+TEST(ModuleTest, dotted_module_merges_with_explicit_nesting) {
+  // Dotted syntax and explicit nesting should merge into same module scope
+  auto value = executeString(R"(
+    module sun.io {
+      function read() i32 { return 1; }
+    }
+    module sun {
+      module io {
+        function write() i32 { return 2; }
+      }
+    }
+    function main() i32 {
+      return sun.io.read() + sun.io.write();
+    }
+  )");
+  EXPECT_EQ(value, 3);
+}
+
+TEST(ModuleTest, dotted_module_with_class) {
+  // Dotted module containing a class
+  auto value = executeString(R"(
+    module game.entities {
+      class Player {
+        var health: i32;
+        function init(h: i32) {
+          this.health = h;
+        }
+        function getHealth() i32 {
+          return this.health;
+        }
+      }
+    }
+    function main() i32 {
+      var p = game.entities.Player(100);
+      return p.getHealth();
+    }
+  )");
+  EXPECT_EQ(value, 100);
+}

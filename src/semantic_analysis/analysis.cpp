@@ -471,7 +471,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
               makeQualifiedName(varCreate.getName());
           varCreate.setQualifiedName(qualifiedName);
           if (auto type = varCreate.getResolvedType()) {
-            registerNamespacedVariable(qualifiedName.mangled(), type);
+            registerModuleVariable(varCreate.getName(), qualifiedName.mangled(),
+                                   type);
           }
         } else if (bodyExpr->getType() == ASTNodeType::REFERENCE_CREATION) {
           analyzeExpr(*bodyExpr);
@@ -1906,7 +1907,21 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
       "_atomic_store_i32",
       "_atomic_load_i32",
       "_futex_wait",
-      "_futex_wake"};
+      "_futex_wake",
+      "__file_open",
+      "__file_close",
+      "__file_write",
+      "__file_read",
+      "__lseek",
+      "__fstat",
+      "__fsync",
+      "__ftruncate",
+      "__unlink",
+      "__rename",
+      "__mkdir",
+      "__rmdir",
+      "__write",
+      "__read"};
 
   auto calleeASTType = callExpr.getCallee()->getType();
   if (calleeASTType == ASTNodeType::VARIABLE_REFERENCE) {

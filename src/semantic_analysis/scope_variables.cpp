@@ -1198,16 +1198,46 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
   registernFunctionInCurrentScope(
       "_println_str", {Types::Void(), {Types::RawPointer(Types::UInt8())}, {}});
 
-  // File I/O builtins
+  // File I/O intrinsics
   registernFunctionInCurrentScope(
-      "file_open", {Types::Int32(), {Types::String(), Types::Int32()}, {}});
-  registernFunctionInCurrentScope("file_close",
+      "__file_open", {Types::Int32(), {Types::String(), Types::Int32()}, {}});
+  registernFunctionInCurrentScope("__file_close",
                                   {Types::Int32(), {Types::Int32()}, {}});
   registernFunctionInCurrentScope(
-      "file_write", {Types::Int32(), {Types::Int32(), Types::String()}, {}});
+      "__file_write", {Types::Int32(), {Types::Int32(), Types::String()}, {}});
   registernFunctionInCurrentScope(
-      "file_read",
+      "__file_read",
       {Types::RawPointer(Types::Int8()), {Types::Int32(), Types::Int32()}, {}});
+
+  // Extended file I/O intrinsics
+  registernFunctionInCurrentScope(
+      "__lseek",
+      {Types::Int64(), {Types::Int32(), Types::Int64(), Types::Int32()}, {}});
+  registernFunctionInCurrentScope(
+      "__fstat",
+      {Types::Int32(), {Types::Int32(), Types::RawPointer(Types::Int8())}, {}});
+  registernFunctionInCurrentScope("__fsync",
+                                  {Types::Int32(), {Types::Int32()}, {}});
+  registernFunctionInCurrentScope(
+      "__ftruncate", {Types::Int32(), {Types::Int32(), Types::Int64()}, {}});
+  registernFunctionInCurrentScope("__unlink",
+                                  {Types::Int32(), {Types::String()}, {}});
+  registernFunctionInCurrentScope(
+      "__rename", {Types::Int32(), {Types::String(), Types::String()}, {}});
+  registernFunctionInCurrentScope(
+      "__mkdir", {Types::Int32(), {Types::String(), Types::Int32()}, {}});
+  registernFunctionInCurrentScope("__rmdir",
+                                  {Types::Int32(), {Types::String()}, {}});
+  registernFunctionInCurrentScope(
+      "__write",
+      {Types::Int64(),
+       {Types::Int32(), Types::RawPointer(Types::UInt8()), Types::Int64()},
+       {}});
+  registernFunctionInCurrentScope(
+      "__read",
+      {Types::Int64(),
+       {Types::Int32(), Types::RawPointer(Types::UInt8()), Types::Int64()},
+       {}});
 
   // Low-level memory access intrinsics
   // _load_i64(ptr, index) - load i64 from ptr at byte offset index*8
@@ -1259,12 +1289,16 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
 // Namespace-qualified symbols (separate from scope-based lookup)
 // -------------------------------------------------------------------
 
-void SemanticAnalyzer::registerNamespacedVariable(
-    const std::string& qualifiedName, sun::TypePtr type) {
+void SemanticAnalyzer::registerModuleVariable(const std::string& baseName,
+                                              const std::string& qualifiedName,
+                                              sun::TypePtr type) {
+  // Store with qualified name for codegen lookup
   rootScope->namespacedVariables[qualifiedName] = {type, true, false};
   if (currentScope != rootScope.get()) {
     currentScope->namespacedVariables[qualifiedName] = {type, true, false};
   }
+  // Also store with plain name in current scope for hasSymbol lookup
+  currentScope->namespacedVariables[baseName] = {type, true, false};
 }
 
 VariableInfo* SemanticAnalyzer::lookupQualifiedVariable(
@@ -1459,7 +1493,16 @@ sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
   auto scopePath = getCurrentScopePath();
   auto visiblePath = getVisiblePath(scopePath);
 
-  // 1. If inside a module, check the module scope hierarchy (self + parents)
+  // 1. Check enclosing module scopes by walking up the parent chain
+  //    This handles variables accessed from within class methods
+  for (auto* s = currentScope; s != nullptr; s = s->parent) {
+    if (s->getType() == ScopeType::Module && s->hasSymbol(name)) {
+      addCandidate(s);
+    }
+  }
+
+  // 2. If inside a module, also check the module scope hierarchy via path
+  // lookup
   if (!visiblePath.empty()) {
     std::string visPathStr = sun::QualifiedName::joinPath(visiblePath);
     auto allScopes = collectAllModuleScopes(currentScope, visPathStr);
@@ -1470,7 +1513,7 @@ sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
     }
   }
 
-  // 2. Check using imports (applies whether inside a module or not)
+  // 3. Check using imports (applies whether inside a module or not)
   auto activeImports = getActiveUsingImports();
   for (const auto& import : activeImports) {
     if (!import.isWildcard && import.target != name) continue;
