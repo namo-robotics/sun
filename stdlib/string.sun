@@ -376,38 +376,22 @@ class String {
     // ========================================================================
     
     // Helper: append a decimal digit (0-9)
-    // Note: Can't use match expression because it returns i32, but append_char expects u8
     function appendDecDigit(d: i64) void {
-        if (d == 0) { this.append_char(48); return; }
-        if (d == 1) { this.append_char(49); return; }
-        if (d == 2) { this.append_char(50); return; }
-        if (d == 3) { this.append_char(51); return; }
-        if (d == 4) { this.append_char(52); return; }
-        if (d == 5) { this.append_char(53); return; }
-        if (d == 6) { this.append_char(54); return; }
-        if (d == 7) { this.append_char(55); return; }
-        if (d == 8) { this.append_char(56); return; }
-        this.append_char(57); // 9
+        var ch: u8 = match d {
+            0 => 48, 1 => 49, 2 => 50, 3 => 51, 4 => 52,
+            5 => 53, 6 => 54, 7 => 55, 8 => 56, _ => 57
+        };
+        this.append_char(ch);
     }
     
     // Helper: append a hex digit (0-15)
     function appendHexDigit(d: i64) void {
-        if (d == 0) { this.append_char(48); return; }
-        if (d == 1) { this.append_char(49); return; }
-        if (d == 2) { this.append_char(50); return; }
-        if (d == 3) { this.append_char(51); return; }
-        if (d == 4) { this.append_char(52); return; }
-        if (d == 5) { this.append_char(53); return; }
-        if (d == 6) { this.append_char(54); return; }
-        if (d == 7) { this.append_char(55); return; }
-        if (d == 8) { this.append_char(56); return; }
-        if (d == 9) { this.append_char(57); return; }
-        if (d == 10) { this.append_char(97); return; }  // 'a'
-        if (d == 11) { this.append_char(98); return; }  // 'b'
-        if (d == 12) { this.append_char(99); return; }  // 'c'
-        if (d == 13) { this.append_char(100); return; } // 'd'
-        if (d == 14) { this.append_char(101); return; } // 'e'
-        this.append_char(102); // 'f'
+        var ch: u8 = match d {
+            0 => 48, 1 => 49, 2 => 50, 3 => 51, 4 => 52,
+            5 => 53, 6 => 54, 7 => 55, 8 => 56, 9 => 57,
+            10 => 97, 11 => 98, 12 => 99, 13 => 100, 14 => 101, _ => 102
+        };
+        this.append_char(ch);
     }
     
     // Append an unsigned integer in decimal
