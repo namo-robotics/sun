@@ -4,7 +4,7 @@
 //
 // Usage:
 //   import "stdlib/io.sun";
-//   using sun;
+//   using sun.io;
 //
 //   var f = File();
 //   try {
@@ -15,7 +15,7 @@
 //       // Handle error
 //   }
 
-module sun {
+module sun.io {
 
 // File open modes
 var MODE_READ: i32 = 0;    // Open for reading (file must exist)
@@ -163,4 +163,4 @@ function remove_dir(path: static_ptr<u8>) void, IError {
     }
 }
 
-} // module sun
+} // module sun.io

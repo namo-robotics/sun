@@ -2075,14 +2075,27 @@ unique_ptr<ExprAST> Parser::parseDeclareStatement() {
 }
 
 // Parse module declaration: module Name { declarations... }
+// Supports dotted names as shorthand for nested modules:
+//   module sun.io { } expands to module sun { module io { } }
 // Supports both 'module' (preferred) and 'namespace' (legacy) keywords
 unique_ptr<ModuleAST> Parser::parseModuleDecl() {
   getNextToken();  // eat 'module' or 'namespace'
 
   expectCurrentTokenKind(TokenKind::IDENTIFIER, "expected module name");
 
-  std::string name = curTok.getIdentifier().value();
-  getNextToken();  // eat module name
+  // Collect dotted module path (e.g., "sun.io" becomes ["sun", "io"])
+  std::vector<std::string> names;
+  names.push_back(curTok.getIdentifier().value());
+  getNextToken();  // eat first module name
+
+  // Parse additional dotted segments: .identifier
+  while (curTok.kind == TokenKind::DOT) {
+    getNextToken();  // eat '.'
+    expectCurrentTokenKind(TokenKind::IDENTIFIER,
+                           "expected identifier after '.' in module name");
+    names.push_back(curTok.getIdentifier().value());
+    getNextToken();  // eat identifier
+  }
 
   expectCurrentTokenKind(TokenKind::BRACE_OPEN,
                          "expected '{' after module name");
@@ -2090,7 +2103,24 @@ unique_ptr<ModuleAST> Parser::parseModuleDecl() {
   auto body = parseBlock();
   if (!body) return nullptr;
 
-  return std::make_unique<ModuleAST>(std::move(name), std::move(body));
+  // Build nested modules from innermost to outermost
+  // For "module a.b.c { body }", create:
+  //   ModuleAST("a") { ModuleAST("b") { ModuleAST("c") { body } } }
+  auto innermost =
+      std::make_unique<ModuleAST>(std::move(names.back()), std::move(body));
+  names.pop_back();
+
+  std::unique_ptr<ModuleAST> result = std::move(innermost);
+  for (auto it = names.rbegin(); it != names.rend(); ++it) {
+    // Wrap current result in a new block containing just this module
+    std::vector<std::unique_ptr<ExprAST>> stmts;
+    stmts.push_back(std::move(result));
+    auto wrapperBody = std::make_unique<BlockExprAST>(std::move(stmts));
+    result =
+        std::make_unique<ModuleAST>(std::move(*it), std::move(wrapperBody));
+  }
+
+  return result;
 }
 
 // Parse using statement with dot-based syntax:
