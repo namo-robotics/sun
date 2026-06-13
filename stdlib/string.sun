@@ -63,10 +63,11 @@ class StringView {
     }
 }
 
-// Heap-allocated mutable string backed by Matrix<u8>
+// Heap-allocated mutable string backed by ContiguousBuffer<u8>
 class String {
-    var data: Matrix<u8>;           // 1D Matrix for byte storage (owns ptr<u8>)
-    var len: i64;                   // Current string length (<= data.size())
+    var data: ContiguousBuffer<u8>;   // Byte storage (owns ptr, auto-freed)
+    var capacity_: i64;               // Allocated capacity
+    var len: i64;                     // Current string length
     
     // Construct from string literal
     // Copies bytes from static_ptr<u8> (fat pointer) to heap
@@ -77,15 +78,14 @@ class String {
         
         // Allocate with some extra capacity for growth
         var capacity: i64 = srcLen + 16;
-        var shape: array<i64, 1> = [capacity];
-        this.data = Matrix<u8>(alloc, shape);
+        this.data = ContiguousBuffer<u8>(alloc, capacity);
+        this.capacity_ = capacity;
         this.len = srcLen;
         
         // Copy bytes from literal to heap
         for (var i: i64 = 0; i < srcLen; i = i + 1) {
             var byte: u8 = unsafe { _load<u8>(srcData, i); };
-            var idx: array<i64, 1> = [i];
-            this.data.set(idx, byte);
+            this.data.set_unchecked(i, byte);
         }
     }
     
@@ -96,40 +96,63 @@ class String {
     
     // Get allocated capacity
     function capacity() i64 {
-        return this.data.size();
+        return this.capacity_;
     }
     
     // Get byte at index (no bounds checking)
     function at(i: i64) u8 {
-        var idx: array<i64, 1> = [i];
-        return this.data.get(idx);
+        return this.data.get_unchecked(i);
     }
     
     // Set byte at index (no bounds checking, must be within len)
     function set_at(i: i64, val: u8) void {
-        var idx: array<i64, 1> = [i];
-        this.data.set(idx, val);
+        this.data.set_unchecked(i, val);
+    }
+    
+    // Ensure capacity for at least n bytes (doesn't change len)
+    function reserve(n: i64) void {
+        if (n > this.capacity_) {
+            this.data.resize_to(n);
+            this.capacity_ = n;
+        }
+    }
+    
+    // Double capacity
+    function grow() void {
+        var new_capacity: i64 = this.capacity_ * 2;
+        this.data.resize_to(new_capacity);
+        this.capacity_ = new_capacity;
+    }
+    
+    // Ensure we can add n more bytes
+    function ensure_capacity(additional: i64) void {
+        var needed: i64 = this.len + additional;
+        if (needed > this.capacity_) {
+            // Double until we have enough
+            var new_capacity: i64 = this.capacity_;
+            while (new_capacity < needed) {
+                new_capacity = new_capacity * 2;
+            }
+            this.data.resize_to(new_capacity);
+            this.capacity_ = new_capacity;
+        }
     }
     
     // Append a single byte/character
     function append_char(ch: u8) void {
-        // Check if we need to grow
-        if (this.len >= this.data.size()) {
-            // For now, error - growth requires reallocating Matrix
-            // TODO: implement _grow when Matrix field reassignment works
-            return;
-        }
-        var idx: array<i64, 1> = [this.len];
-        this.data.set(idx, ch);
+        this.ensure_capacity(1);
+        this.data.set_unchecked(this.len, ch);
         this.len = this.len + 1;
     }
     
     // Append another string
     function append(other: ref String) void {
         var otherLen: i64 = other.length();
+        this.ensure_capacity(otherLen);
         for (var i: i64 = 0; i < otherLen; i = i + 1) {
             var ch: u8 = other.at(i);
-            this.append_char(ch);
+            this.data.set_unchecked(this.len, ch);
+            this.len = this.len + 1;
         }
     }
     
@@ -138,9 +161,11 @@ class String {
         var srcData: raw_ptr<u8> = _static_ptr_data<u8>(literal);
         var srcLen: i64 = _static_ptr_len<u8>(literal);
         
+        this.ensure_capacity(srcLen);
         for (var i: i64 = 0; i < srcLen; i = i + 1) {
             var byte: u8 = unsafe { _load<u8>(srcData, i); };
-            this.append_char(byte);
+            this.data.set_unchecked(this.len, byte);
+            this.len = this.len + 1;
         }
     }
     
@@ -163,16 +188,335 @@ class String {
         return true;
     }
     
+    // ========================================================================
+    // Core Manipulation Methods
+    // ========================================================================
+    
+    // Clear string (reset length to 0, keep capacity)
+    function clear() void {
+        this.len = 0;
+    }
+    
+    // Remove and return last byte
+    function pop() u8, IError {
+        if (this.len == 0) {
+            throw EmptyError();
+        }
+        this.len = this.len - 1;
+        return this.data.get_unchecked(this.len);
+    }
+    
+    // Truncate to given length (does nothing if new_len >= len)
+    function truncate(new_len: i64) void {
+        if (new_len < this.len) {
+            this.len = new_len;
+        }
+    }
+    
+    // Remove byte at index, shifting remaining bytes left
+    function remove(index: i64) u8, IError {
+        if (index < 0) {
+            throw IndexOutOfBoundsError(index);
+        }
+        if (index >= this.len) {
+            throw IndexOutOfBoundsError(index);
+        }
+        var removed: u8 = this.data.get_unchecked(index);
+        // Shift remaining bytes left
+        for (var i: i64 = index; i < this.len - 1; i = i + 1) {
+            var next: u8 = this.data.get_unchecked(i + 1);
+            this.data.set_unchecked(i, next);
+        }
+        this.len = this.len - 1;
+        return removed;
+    }
+    
+    // Insert byte at index, shifting remaining bytes right
+    function insert_char(index: i64, ch: u8) void, IError {
+        if (index < 0) {
+            throw IndexOutOfBoundsError(index);
+        }
+        if (index > this.len) {
+            throw IndexOutOfBoundsError(index);
+        }
+        this.ensure_capacity(1);
+        // Shift bytes right from end
+        for (var i: i64 = this.len; i > index; i = i - 1) {
+            var prev: u8 = this.data.get_unchecked(i - 1);
+            this.data.set_unchecked(i, prev);
+        }
+        this.data.set_unchecked(index, ch);
+        this.len = this.len + 1;
+    }
+    
+    // ========================================================================
+    // Search Methods
+    // ========================================================================
+    
+    // Find first occurrence of byte, returns -1 if not found
+    function find_char(ch: u8) i64 {
+        for (var i: i64 = 0; i < this.len; i = i + 1) {
+            if (this.data.get_unchecked(i) == ch) {
+                return i;
+            }
+        }
+        return -1;
+    }
+    
+    // Find last occurrence of byte, returns -1 if not found
+    function rfind_char(ch: u8) i64 {
+        var i: i64 = this.len - 1;
+        while (i >= 0) {
+            if (this.data.get_unchecked(i) == ch) {
+                return i;
+            }
+            i = i - 1;
+        }
+        return -1;
+    }
+    
+    // Check if string contains byte
+    function contains_char(ch: u8) bool {
+        return this.find_char(ch) >= 0;
+    }
+    
+    // Check if string starts with literal
+    function starts_with(literal: static_ptr<u8>) bool {
+        var srcData: raw_ptr<u8> = _static_ptr_data<u8>(literal);
+        var srcLen: i64 = _static_ptr_len<u8>(literal);
+        
+        if (srcLen > this.len) {
+            return false;
+        }
+        
+        for (var i: i64 = 0; i < srcLen; i = i + 1) {
+            var a: u8 = this.data.get_unchecked(i);
+            var b: u8 = unsafe { _load<u8>(srcData, i); };
+            if (a != b) {
+                return false;
+            }
+        }
+        return true;
+    }
+    
+    // Check if string ends with literal
+    function ends_with(literal: static_ptr<u8>) bool {
+        var srcData: raw_ptr<u8> = _static_ptr_data<u8>(literal);
+        var srcLen: i64 = _static_ptr_len<u8>(literal);
+        
+        if (srcLen > this.len) {
+            return false;
+        }
+        
+        var offset: i64 = this.len - srcLen;
+        for (var i: i64 = 0; i < srcLen; i = i + 1) {
+            var a: u8 = this.data.get_unchecked(offset + i);
+            var b: u8 = unsafe { _load<u8>(srcData, i); };
+            if (a != b) {
+                return false;
+            }
+        }
+        return true;
+    }
+    
+    // Compare with another string: -1 if less, 0 if equal, 1 if greater
+    function compare(other: ref String) i64 {
+        var min_len: i64 = this.len;
+        if (other.len < min_len) {
+            min_len = other.len;
+        }
+        
+        for (var i: i64 = 0; i < min_len; i = i + 1) {
+            var a: u8 = this.data.get_unchecked(i);
+            var b: u8 = other.data.get_unchecked(i);
+            if (a < b) {
+                return -1;
+            }
+            if (a > b) {
+                return 1;
+            }
+        }
+        
+        if (this.len < other.len) {
+            return -1;
+        }
+        if (this.len > other.len) {
+            return 1;
+        }
+        return 0;
+    }
+    
+    // Check if equal to another string
+    function equals(other: ref String) bool {
+        return this.compare(other) == 0;
+    }
+    
+    // ========================================================================
+    // Transformation Methods
+    // ========================================================================
+    
+    // Reverse string in-place
+    function reverse() void {
+        if (this.len <= 1) {
+            return;
+        }
+        var left: i64 = 0;
+        var right: i64 = this.len - 1;
+        while (left < right) {
+            var tmp: u8 = this.data.get_unchecked(left);
+            this.data.set_unchecked(left, this.data.get_unchecked(right));
+            this.data.set_unchecked(right, tmp);
+            left = left + 1;
+            right = right - 1;
+        }
+    }
+    
+    // ========================================================================
+    // Numeric Formatting
+    // ========================================================================
+    
+    // Helper: append a decimal digit (0-9)
+    // Note: Can't use match expression because it returns i32, but append_char expects u8
+    function appendDecDigit(d: i64) void {
+        if (d == 0) { this.append_char(48); return; }
+        if (d == 1) { this.append_char(49); return; }
+        if (d == 2) { this.append_char(50); return; }
+        if (d == 3) { this.append_char(51); return; }
+        if (d == 4) { this.append_char(52); return; }
+        if (d == 5) { this.append_char(53); return; }
+        if (d == 6) { this.append_char(54); return; }
+        if (d == 7) { this.append_char(55); return; }
+        if (d == 8) { this.append_char(56); return; }
+        this.append_char(57); // 9
+    }
+    
+    // Helper: append a hex digit (0-15)
+    function appendHexDigit(d: i64) void {
+        if (d == 0) { this.append_char(48); return; }
+        if (d == 1) { this.append_char(49); return; }
+        if (d == 2) { this.append_char(50); return; }
+        if (d == 3) { this.append_char(51); return; }
+        if (d == 4) { this.append_char(52); return; }
+        if (d == 5) { this.append_char(53); return; }
+        if (d == 6) { this.append_char(54); return; }
+        if (d == 7) { this.append_char(55); return; }
+        if (d == 8) { this.append_char(56); return; }
+        if (d == 9) { this.append_char(57); return; }
+        if (d == 10) { this.append_char(97); return; }  // 'a'
+        if (d == 11) { this.append_char(98); return; }  // 'b'
+        if (d == 12) { this.append_char(99); return; }  // 'c'
+        if (d == 13) { this.append_char(100); return; } // 'd'
+        if (d == 14) { this.append_char(101); return; } // 'e'
+        this.append_char(102); // 'f'
+    }
+    
+    // Append an unsigned integer in decimal
+    function append_u64(val: i64) void {
+        if (val == 0) {
+            this.append_char(48); // '0'
+            return;
+        }
+        
+        // Write digits in reverse order, then reverse them
+        var start: i64 = this.len;
+        var n: i64 = val;
+        
+        while (n > 0) {
+            // n % 10 without modulo operator
+            var q: i64 = n / 10;
+            var r: i64 = n - q * 10;
+            this.appendDecDigit(r);
+            n = q;
+        }
+        
+        // Reverse the digits we just wrote
+        var end: i64 = this.len - 1;
+        while (start < end) {
+            var tmp: u8 = this.data.get_unchecked(start);
+            this.data.set_unchecked(start, this.data.get_unchecked(end));
+            this.data.set_unchecked(end, tmp);
+            start = start + 1;
+            end = end - 1;
+        }
+    }
+    
+    // Append a signed integer in decimal
+    function append_i64(val: i64) void {
+        if (val >= 0) {
+            this.append_u64(val);
+            return;
+        }
+        this.append_char(45); // '-'
+        // Handle i64 min value edge case
+        if (val == -9223372036854775808) {
+            this.append_literal("9223372036854775808");
+            return;
+        }
+        this.append_u64(0 - val);
+    }
+    
+    // Append an integer in hexadecimal (lowercase)
+    function append_hex(val: i64) void {
+        if (val == 0) {
+            this.append_char(48); // '0'
+            return;
+        }
+        
+        var start: i64 = this.len;
+        var n: i64 = val;
+        
+        while (n != 0) {
+            // Get lowest 4 bits (0-15)
+            var nibble: i64 = n - (n / 16) * 16;
+            if (nibble < 0) { nibble = nibble + 16; }
+            this.appendHexDigit(nibble);
+            n = n / 16;
+        }
+        
+        // Reverse the hex digits
+        var end: i64 = this.len - 1;
+        while (start < end) {
+            var tmp: u8 = this.data.get_unchecked(start);
+            this.data.set_unchecked(start, this.data.get_unchecked(end));
+            this.data.set_unchecked(end, tmp);
+            start = start + 1;
+            end = end - 1;
+        }
+    }
+    
+    // Append a boolean as "true" or "false"
+    function append_bool(val: bool) void {
+        if (val) {
+            this.append_literal("true");
+            return;
+        }
+        this.append_literal("false");
+    }
+    
+    // ========================================================================
+    // Slicing
+    // ========================================================================
+    
     // Slicing via __slice__ method: s[a:b] -> StringView
+    // Returns a non-owning view into the string data
     function __slice__(ranges: ref array<SliceRange>) StringView {
         // For strings, we only support 1D slicing
         var range: SliceRange = ranges[0];
         var start: i64 = range.getStart();
         var end: i64 = range.getEnd(this.len);
-        // Use matrix slicing under the hood
-        var matView: MatrixView<u8> = this.data[start:end];
+        
+        // Build shape and strides for the view
+        var new_shape: array<i64, 1> = [end - start];
+        var strides: array<i64, 1> = [1];  // 1D contiguous
+        
+        // Create MatrixView from raw pointer
+        var matView: MatrixView<u8> = MatrixView<u8>(this.data.rawData(), start, new_shape, strides);
         return StringView(matView);
     }
+    
+    // ========================================================================
+    // Output Methods
+    // ========================================================================
     
     // Print string to stdout
     function print() void {
