@@ -223,3 +223,26 @@ TEST(InterpolationTest, nested_braces_in_expression) {
   )");
   EXPECT_EQ(value, 8);  // "First: 1"
 }
+
+TEST(InterpolationTest, fails_without_stdlib) {
+  // String interpolation requires stdlib for sun::String
+  EXPECT_THROW(executeString(R"(
+    function main() i64 {
+        var x = 1;
+        var s = `Value: ${x}`;
+        return s.length();
+    }
+  )"),
+               SunError);
+}
+
+TEST(InterpolationTest, works_without_using_sun) {
+  // String interpolation should work with just stdlib, no 'using sun;' needed
+  auto value = executeStringWithStdlib(R"(
+    function main() i64 {
+        var s = `Hello`;
+        return s.length();
+    }
+  )");
+  EXPECT_EQ(value, 5);
+}

@@ -31,6 +31,9 @@ class Parser {
   Token curTok = Token::eof({0, 0, 0});
   std::vector<Token> tokenStack;
 
+  // Track whether string interpolation was used during parsing
+  bool usesStringInterpolation_ = false;
+
   // Track which files have already been imported (for cycle detection)
   // Shared across recursive import calls
   std::shared_ptr<std::set<std::string>> importedFiles =
@@ -215,4 +218,10 @@ class Parser {
 
   // Get current position offset
   int getCurrentOffset() const { return curTok.start.offset; }
+
+  // Check if string interpolation was used during parsing
+  bool usesStringInterpolation() const { return usesStringInterpolation_; }
+  void setUsesStringInterpolation(bool value) {
+    usesStringInterpolation_ = value;
+  }
 };

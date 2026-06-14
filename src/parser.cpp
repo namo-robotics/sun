@@ -621,6 +621,7 @@ unique_ptr<ExprAST> Parser::parsePrimary() {
       std::string content = curTok.getTemplateString().value();
       Position loc = curTok.start;
       getNextToken();  // consume the template string token
+      usesStringInterpolation_ = true;
       base = InterpolatedStringParser::parse(content, loc);
       break;
     }
