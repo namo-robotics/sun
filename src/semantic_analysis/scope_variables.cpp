@@ -381,7 +381,8 @@ SemanticScope* SemanticAnalyzer::lookupModuleScope(
     std::string foundInLib;
 
     for (const auto& [modName, child] : scope.childModules) {
-      if (!child || !isLibraryScope(modName)) continue;
+      if (!child) continue;
+      if (!isLibraryScope(modName) && modName != "__definition__") continue;
 
       // Check if this library scope has the segment as direct child
       auto childIt = child->childModules.find(segment);
@@ -1462,6 +1463,22 @@ const FunctionInfo* SemanticAnalyzer::lookupQualifiedFunction(
 
 sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
     const std::string& name) const {
+  // Handle qualified (dotted) names like "sun.String" by splitting into
+  // module path and symbol name, then looking up in the module scope
+  // (handles MoonScope hash prefixes transparently)
+  size_t lastDot = name.rfind('.');
+  if (lastDot != std::string::npos) {
+    std::string modulePath = name.substr(0, lastDot);
+    std::string symbolName = name.substr(lastDot + 1);
+
+    if (auto* modScope = lookupModuleScope(modulePath)) {
+      if (modScope->hasSymbol(symbolName)) {
+        return sun::QualifiedName(modScope->scopePath, symbolName);
+      }
+    }
+    // Fall through to normal lookup if module scope not found
+  }
+
   // Helper to filter out $...$ hash segments from scope path (for
   // display/ambiguity check)
   auto getVisiblePath =

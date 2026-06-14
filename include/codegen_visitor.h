@@ -261,6 +261,13 @@ class CodegenVisitor {
                                       const std::string& methodName,
                                       const MemberAccessAST* memberAccess);
 
+  // Look up an LLVM Function for a class method by name.
+  // Uses getMangledMethodName (with paramSuffix) first, falls back to plain
+  // "TypeName_methodName" for legacy/simple cases.
+  llvm::Function* findClassMethod(
+      const std::shared_ptr<sun::ClassType>& classType,
+      const std::string& typeName, const std::string& methodName);
+
   // Handles module-qualified function calls: mymod.foo()
   llvm::Value* codegenModuleFunctionCall(const CallExprAST& expr,
                                          sun::ModuleType* moduleType,

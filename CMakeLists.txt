@@ -106,6 +106,7 @@ add_library(sun_lib
     src/ast/expr_ast.cpp
     src/ast/prototype_ast.cpp
     src/ast/call_expr_ast.cpp
+    src/qualified_name.cpp
     src/codegen.cpp
     src/driver.cpp
     src/codegen/codegen_visitor.cpp

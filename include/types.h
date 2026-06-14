@@ -1151,91 +1151,15 @@ class ClassType : public Type {
     return mangledName + "_" + methodName;
   }
 
-  // Extract hash prefix from mangled name (e.g., "$abc$_" from "$abc$_sun_Foo")
-  // Returns empty string if no hash prefix found
-  static std::string extractHashPrefix(const std::string& name) {
-    if (name.size() > 2 && name[0] == '$') {
-      size_t secondDollar = name.find('$', 1);
-      if (secondDollar != std::string::npos && secondDollar + 1 < name.size() &&
-          name[secondDollar + 1] == '_') {
-        return name.substr(0, secondDollar + 2);  // includes "$hash$_"
-      }
-    }
-    return "";
-  }
-
-  // Get canonical type string for method mangling.
-  // - For classes: use mangledName, strip hash prefix if it matches ours
-  // - For references: wrap the inner canonical type
-  // - For other types: use toString()
-  std::string getCanonicalTypeString(const TypePtr& type,
-                                     const std::string& myHashPrefix) const {
-    if (!type) return "void";
-
-    if (type->isClass()) {
-      std::string typeMangledName =
-          static_cast<const ClassType*>(type.get())->getMangledName();
-      // Strip hash prefix only if it matches our library's hash
-      if (!myHashPrefix.empty() &&
-          typeMangledName.substr(0, myHashPrefix.size()) == myHashPrefix) {
-        typeMangledName = typeMangledName.substr(myHashPrefix.size());
-      }
-      return typeMangledName;
-    }
-
-    if (type->isReference()) {
-      auto* refType = static_cast<const ReferenceType*>(type.get());
-      std::string inner =
-          getCanonicalTypeString(refType->getReferencedType(), myHashPrefix);
-      return "ref_" + inner + "_";
-    }
-
-    if (type->isRawPointer()) {
-      auto* ptrType = static_cast<const RawPointerType*>(type.get());
-      std::string inner =
-          getCanonicalTypeString(ptrType->getPointeeType(), myHashPrefix);
-      return "raw_ptr_" + inner + "_";
-    }
-
-    if (type->isStaticPointer()) {
-      auto* ptrType = static_cast<const StaticPointerType*>(type.get());
-      std::string inner =
-          getCanonicalTypeString(ptrType->getPointeeType(), myHashPrefix);
-      return "static_ptr_" + inner + "_";
-    }
-
-    if (type->isArray()) {
-      auto* arrType = static_cast<const ArrayType*>(type.get());
-      std::string inner =
-          getCanonicalTypeString(arrType->getElementType(), myHashPrefix);
-      return "array_" + inner + "_";
-    }
-
-    // For primitives and other types, toString() is stable
-    return type->toString();
-  }
-
   // Get mangled method name with parameter types for overload disambiguation
-  // Format: ClassName_methodName$paramType1$paramType2$...
+  // Delegates to QualifiedName::buildParamSuffix for consistent mangling
   std::string getMangledMethodName(
       const std::string& methodName,
       const std::vector<TypePtr>& paramTypes) const {
-    std::string result = mangledName + "_" + methodName;
-
-    // Extract our hash prefix to strip matching prefixes from param types
-    std::string myHashPrefix = extractHashPrefix(mangledName);
-
-    for (const auto& paramType : paramTypes) {
-      result += "$";
-      std::string typeStr = getCanonicalTypeString(paramType, myHashPrefix);
-      // Sanitize: replace special chars that may cause issues in symbol names
-      for (char& c : typeStr) {
-        if (c == '<' || c == '>' || c == ',' || c == '(' || c == ')') c = '_';
-        if (c == ' ') c = '_';
-      }
-      result += typeStr;
-    }
-    return result;
+    std::string base = mangledName + "_" + methodName;
+    std::string hashPrefix = QualifiedName::extractHashPrefix(mangledName);
+    base += QualifiedName::buildParamSuffix(paramTypes, hashPrefix);
+    return base;
   }
 
   // --- ScopeMethodTable accessors ---

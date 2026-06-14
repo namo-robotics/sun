@@ -8,6 +8,23 @@
 
 using namespace llvm;
 
+// Look up an LLVM Function for a class method by name.
+// Uses getMangledMethodName (with paramSuffix) first, falls back to plain
+// "TypeName_methodName" for legacy/simple cases.
+Function* CodegenVisitor::findClassMethod(
+    const std::shared_ptr<sun::ClassType>& classType,
+    const std::string& typeName, const std::string& methodName) {
+  if (classType) {
+    if (auto* m = classType->getMethod(methodName)) {
+      std::string mangled =
+          classType->getMangledMethodName(methodName, m->paramTypes);
+      if (auto* f = module->getFunction(mangled)) return f;
+    }
+  }
+  // Fallback: try without paramSuffix
+  return module->getFunction(typeName + "_" + methodName);
+}
+
 // -------------------------------------------------------------------
 // Helper for unwrapping error union from call results
 // -------------------------------------------------------------------
@@ -609,6 +626,12 @@ Value* CodegenVisitor::codegenClassMethodCall(
   const auto& paramTypes =
       static_cast<sun::FunctionType*>(resolvedType.get())->getParamTypes();
   method = classType->getMethodForArgs(methodName, paramTypes);
+
+  // Fallback: for generic methods, type parameters won't match concrete args,
+  // so look up by name alone
+  if (!method) {
+    method = classType->getMethod(methodName);
+  }
 
   if (!method) {
     logAndThrowError("Unknown method: " + methodName + " on class " +

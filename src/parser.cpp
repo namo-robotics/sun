@@ -2340,7 +2340,16 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
                      dynamic_cast<InterfaceDefinitionAST*>(stub.get())) {
         symbolName = iface->getName();
       } else if (auto* func = dynamic_cast<FunctionAST*>(stub.get())) {
+        // Use function name + param type annotations to allow overloads
         symbolName = func->getProto().getName();
+        if (!func->getProto().getArgs().empty()) {
+          symbolName += "(";
+          for (size_t i = 0; i < func->getProto().getArgs().size(); ++i) {
+            if (i > 0) symbolName += ",";
+            symbolName += func->getProto().getArgs()[i].second.toString();
+          }
+          symbolName += ")";
+        }
       }
       if (!symbolName.empty()) {
         if (!symbols.insert(symbolName).second) {

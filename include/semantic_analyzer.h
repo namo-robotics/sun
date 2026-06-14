@@ -444,9 +444,12 @@ ResultPtr SemanticAnalyzer::lookupGenericSymbol(const std::string& name,
         auto result = finder(modIt->second.get(), symbolName);
         if (result) return result;
       }
-      // Also check inside import scopes for module definitions
+      // Also check inside import scopes and definition scopes for module
+      // definitions
       for (const auto& [childName, child] : s->childModules) {
-        if (child && child->getType() == ScopeType::Import) {
+        if (!child) continue;
+        if (child->getType() == ScopeType::Import ||
+            childName == "__definition__") {
           auto innerModIt = child->childModules.find(moduleName);
           if (innerModIt != child->childModules.end() && innerModIt->second) {
             auto result = finder(innerModIt->second.get(), symbolName);

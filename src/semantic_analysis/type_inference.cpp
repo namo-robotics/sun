@@ -649,6 +649,16 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
     }
   }
 
+  // Unwrap static_ptr<Class> to Class for member access
+  if (objectType->isStaticPointer()) {
+    sun::TypePtr pointeeType =
+        static_cast<sun::StaticPointerType*>(objectType.get())
+            ->getPointeeType();
+    if (pointeeType && pointeeType->isClass()) {
+      objectType = pointeeType;
+    }
+  }
+
   // Now dispatch based on the resolved object type
   switch (objectType->getKind()) {
     case sun::Type::Kind::Module: {

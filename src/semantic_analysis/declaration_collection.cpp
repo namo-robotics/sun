@@ -135,6 +135,7 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
 
         // Compute qualified name
         sun::QualifiedName qualifiedName = makeQualifiedName(proto.getName());
+        qualifiedName.setParamSuffix(paramTypes);
 
         // Build minimal FunctionInfo (no captures — those require body
         // analysis)
@@ -172,6 +173,7 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
             }
             sun::QualifiedName qualifiedName =
                 makeQualifiedName(proto.getName());
+            qualifiedName.setParamSuffix(paramTypes);
             FunctionInfo info;
             info.returnType = returnType;
             info.paramTypes = std::move(paramTypes);
@@ -218,6 +220,7 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
                 }
                 sun::QualifiedName qualifiedName =
                     makeQualifiedName(proto.getName());
+                qualifiedName.setParamSuffix(paramTypes);
                 FunctionInfo info;
                 info.returnType = returnType;
                 info.paramTypes = std::move(paramTypes);

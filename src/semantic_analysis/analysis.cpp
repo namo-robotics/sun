@@ -1375,6 +1375,11 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
     qualifiedName = makeQualifiedName(proto.getName());
   }
 
+  // Add param type suffix for overload disambiguation (unified with methods)
+  if (qualifiedName.paramSuffix.empty()) {
+    qualifiedName.setParamSuffix(paramTypes);
+  }
+
   FunctionInfo info;
   info.returnType = returnType;
   info.paramTypes = std::move(paramTypes);

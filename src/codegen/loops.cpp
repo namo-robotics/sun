@@ -229,16 +229,17 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
   }
 
   // Check if the iterable has hasNext() directly, or if we need to call iter()
-  std::string hasNextMethodName = iterableTypeName + "_hasNext";
-  Function* hasNextFunc = ctx.mainModule->getFunction(hasNextMethodName);
+  Function* hasNextFunc =
+      findClassMethod(iterableClassType, iterableTypeName, "hasNext");
 
   Value* iteratorObj = iterableObj;
   std::string iteratorTypeName = iterableTypeName;
+  std::shared_ptr<sun::ClassType> iteratorClassType = iterableClassType;
 
   if (!hasNextFunc) {
     // No hasNext() - check if it has an iter() method to get an iterator
-    std::string iterMethodName = iterableTypeName + "_iter";
-    Function* iterFunc = ctx.mainModule->getFunction(iterMethodName);
+    Function* iterFunc =
+        findClassMethod(iterableClassType, iterableTypeName, "iter");
 
     if (!iterFunc) {
       logAndThrowError(
@@ -272,10 +273,11 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
     const auto* iterMethod = iterableClassType->getMethod("iter");
     if (iterMethod && iterMethod->returnType &&
         iterMethod->returnType->isClass()) {
-      iteratorTypeName =
-          static_cast<const sun::ClassType*>(iterMethod->returnType.get())
-              ->getMangledName();
+      iteratorClassType =
+          std::dynamic_pointer_cast<sun::ClassType>(iterMethod->returnType);
+      iteratorTypeName = iteratorClassType->getMangledName();
     } else {
+      iteratorClassType = nullptr;
       // Fallback: extract from LLVM struct name
       StringRef structName = iterStructType->getName();
       if (structName.ends_with("_struct")) {
@@ -286,8 +288,8 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
     }
 
     // Now look up hasNext on the actual iterator type
-    hasNextMethodName = iteratorTypeName + "_hasNext";
-    hasNextFunc = ctx.mainModule->getFunction(hasNextMethodName);
+    hasNextFunc =
+        findClassMethod(iteratorClassType, iteratorTypeName, "hasNext");
     if (!hasNextFunc) {
       logAndThrowError(
           "Iterator returned by iter() must have hasNext() method");
@@ -350,8 +352,8 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
   loopStack.push_back({condBB, afterBB});
 
   // Call iterator.next() and store result in loop variable
-  std::string nextMethodName = iteratorTypeName + "_next";
-  Function* nextFunc = ctx.mainModule->getFunction(nextMethodName);
+  Function* nextFunc =
+      findClassMethod(iteratorClassType, iteratorTypeName, "next");
   if (!nextFunc) {
     logAndThrowError("for-in loop iterator must have next() method");
     return nullptr;
