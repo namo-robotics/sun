@@ -128,6 +128,7 @@ add_library(sun_lib
     src/codegen/thread_utils.cpp
     src/semantic_analyzer.cpp
     src/semantic_analysis/scope_variables.cpp
+    src/semantic_analysis/scope_lookup.cpp
     src/semantic_analysis/classes.cpp
     src/semantic_analysis/interfaces.cpp
     src/semantic_analysis/type_conversion.cpp

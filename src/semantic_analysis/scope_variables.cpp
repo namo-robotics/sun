@@ -328,122 +328,17 @@ void SemanticAnalyzer::exitUnsafeBlock() {
 }
 
 bool SemanticAnalyzer::isModuleName(const std::string& name) const {
-  // Helper to recursively check scopes, traversing through library scopes
-  // Library scopes are transparent - we look through them to find nested
-  // modules
-  std::function<bool(const SemanticScope&)> checkScope =
-      [&](const SemanticScope& scope) -> bool {
-    // Check if this scope has a direct child module with this name
-    if (scope.childModules.count(name) > 0) return true;
-
-    // Search through library scopes transparently
-    for (const auto& [modName, child] : scope.childModules) {
-      if (!child) continue;
-      if (isLibraryScope(modName)) {
-        if (checkScope(*child)) return true;
-      }
-    }
-    return false;
-  };
-
-  for (auto* s = currentScope; s != nullptr; s = s->parent) {
-    if (checkScope(*s)) return true;
-  }
-  return false;
+  return currentScope->isModuleName(name);
 }
 
 SemanticScope* SemanticAnalyzer::lookupModuleScope(
     const std::string& dotPath) const {
-  if (dotPath.empty() || !currentScope) return nullptr;
-
-  // Helper to find a segment in a scope, traversing through library scopes
-  // Returns nullptr if not found, or the found scope
-  // Throws if ambiguous (same name found in multiple library scopes)
-  std::function<SemanticScope*(const SemanticScope&, const std::string&)>
-      findInScope = [&](const SemanticScope& scope,
-                        const std::string& segment) -> SemanticScope* {
-    // Direct child lookup — always succeeds for explicit library scope names
-    // and for non-library-scope names
-    auto it = scope.childModules.find(segment);
-    if (it != scope.childModules.end()) {
-      // If this IS a library scope name ($hash$), navigate into it directly
-      if (isLibraryScope(segment)) {
-        return it->second.get();
-      }
-      // Non-library direct child
-      return it->second.get();
-    }
-
-    // Search inside library/import scopes (transparent lookup)
-    // Track all matches to detect ambiguity (import scopes don't count for
-    // ambiguity — only real library scopes with different hashes do)
-    SemanticScope* found = nullptr;
-    std::string foundInLib;
-
-    for (const auto& [modName, child] : scope.childModules) {
-      if (!child) continue;
-      if (!isLibraryScope(modName) && modName != "__definition__") continue;
-
-      // Check if this library scope has the segment as direct child
-      auto childIt = child->childModules.find(segment);
-      if (childIt != child->childModules.end()) {
-        if (found && !isImportScope(modName) && !isImportScope(foundInLib)) {
-          // Ambiguity: same module name in multiple real library scopes
-          logAndThrowError("Ambiguous module reference '" + segment +
-                           "': found in both library '" + foundInLib +
-                           "' and '" + modName + "'");
-        }
-        if (!found) {
-          found = childIt->second.get();
-          foundInLib = modName;
-        }
-      }
-
-      // Also recursively check nested library scopes
-      auto* nested = findInScope(*child, segment);
-      if (nested) {
-        if (found && found != nested && !isImportScope(modName) &&
-            !isImportScope(foundInLib)) {
-          logAndThrowError("Ambiguous module reference '" + segment +
-                           "': found in multiple library scopes");
-        }
-        if (!found) {
-          found = nested;
-          foundInLib = modName;
-        }
-      }
-    }
-    return found;
-  };
-
-  // Search from currentScope upward so that modules
-  // registered inside function bodies (via scoped imports) are found.
-  for (auto* s = currentScope; s != nullptr; s = s->parent) {
-    const SemanticScope* current = s;
-
-    // Split dot-separated path and traverse
-    std::string segment;
-    std::istringstream stream(dotPath);
-    bool resolved = true;
-    while (std::getline(stream, segment, '.')) {
-      auto* found = findInScope(*current, segment);
-      if (!found) {
-        resolved = false;
-        break;
-      }
-      current = found;
-    }
-    if (resolved) return const_cast<SemanticScope*>(current);
-  }
-  return nullptr;
+  if (!currentScope) return nullptr;
+  return currentScope->lookupModuleScope(dotPath);
 }
 
 std::vector<UsingImport> SemanticAnalyzer::getActiveUsingImports() const {
-  std::vector<UsingImport> result;
-  for (auto* s = currentScope; s != nullptr; s = s->parent) {
-    result.insert(result.end(), s->usingImports.begin(), s->usingImports.end());
-  }
-  return result;
+  return currentScope->getActiveUsingImports();
 }
 
 // -------------------------------------------------------------------
@@ -791,33 +686,7 @@ void SemanticAnalyzer::declareVariable(const std::string& name,
 }
 
 VariableInfo* SemanticAnalyzer::lookupVariable(const std::string& name) {
-  // Search from innermost to outermost scope (handles shadowing)
-  for (auto* s = currentScope; s != nullptr; s = s->parent) {
-    auto found = s->variables.find(name);
-    if (found != s->variables.end()) {
-      return &found->second;
-    }
-    // Search direct import-scope children (mirrors lookupFunction behavior)
-    for (const auto& [childName, child] : s->childModules) {
-      if (child && child->getType() == ScopeType::Import) {
-        auto childFound = child->variables.find(name);
-        if (childFound != child->variables.end()) {
-          return &childFound->second;
-        }
-      }
-    }
-    // Search import bindings from using statements
-    for (const auto& binding : s->importBindings) {
-      if (!binding.sourceScope) continue;
-      if (binding.isWildcard) {
-        auto bindingFound = binding.sourceScope->variables.find(name);
-        if (bindingFound != binding.sourceScope->variables.end()) {
-          return &bindingFound->second;
-        }
-      }
-    }
-  }
-  return nullptr;
+  return currentScope->lookupVariable(name);
 }
 
 // -------------------------------------------------------------------
@@ -929,244 +798,17 @@ void SemanticAnalyzer::registerGenericFunctionInCurrentScope(
 
 const GenericFunctionInfo* SemanticAnalyzer::lookupGenericFunction(
     const std::string& name) const {
-  auto scopePath = getCurrentScopePath();
-  sun::QualifiedName qname(scopePath, name);
-
-  // Walk scope chain from innermost to outermost, including child modules
-  for (auto* s = currentScope; s != nullptr; s = s->parent) {
-    auto found = s->genericFunctions.find(qname);
-    if (found != s->genericFunctions.end()) {
-      return &found->second;
-    }
-    // If we're in a module, also try global scope (empty scope path)
-    if (!scopePath.empty()) {
-      sun::QualifiedName globalQname({}, name);
-      found = s->genericFunctions.find(globalQname);
-      if (found != s->genericFunctions.end()) {
-        return &found->second;
-      }
-    }
-    // Search direct import-scope children (one level of transparency)
-    for (const auto& [modName, child] : s->childModules) {
-      if (!child || child->getType() != ScopeType::Import) continue;
-      // Search with child's scope path, not caller's scope path
-      sun::QualifiedName childQname(child->scopePath, name);
-      auto childFound = child->genericFunctions.find(childQname);
-      if (childFound != child->genericFunctions.end()) {
-        return &childFound->second;
-      }
-      // Also search import scope's non-import children (modules within)
-      for (const auto& [subName, subChild] : child->childModules) {
-        if (!subChild || subChild->getType() == ScopeType::Import) continue;
-        // Search with subChild's scope path
-        sun::QualifiedName subQname(subChild->scopePath, name);
-        auto subFound = subChild->genericFunctions.find(subQname);
-        if (subFound != subChild->genericFunctions.end()) {
-          return &subFound->second;
-        }
-      }
-    }
-    // Search import bindings from using statements
-    for (const auto& binding : s->importBindings) {
-      if (!binding.sourceScope || !binding.isWildcard) continue;
-      // Search with binding source's scope path
-      sun::QualifiedName bindingQname(binding.sourceScope->scopePath, name);
-      auto bindingFound =
-          binding.sourceScope->genericFunctions.find(bindingQname);
-      if (bindingFound != binding.sourceScope->genericFunctions.end()) {
-        return &bindingFound->second;
-      }
-    }
-  }
-
-  return nullptr;
+  return currentScope->lookupGenericFunction(name);
 }
 
 std::vector<FunctionInfo> SemanticAnalyzer::getAllFunctions(
     const std::string& name) const {
-  std::vector<FunctionInfo> results;
-  std::string prefix = name + "(";
-
-  // Track seen signatures to avoid duplicates
-  std::set<std::string> seenSignatures;
-  auto addIfUnique = [&](const FunctionInfo& info) {
-    std::string sig = getFunctionSignature(name, info.paramTypes);
-    if (seenSignatures.insert(sig).second) {
-      results.push_back(info);
-    }
-  };
-
-  // Collect all functions, then filter for uniqueness
-  std::vector<FunctionInfo> allResults;
-
-  // Walk scope chain from innermost to outermost
-  for (auto* s = currentScope; s != nullptr; s = s->parent) {
-    s->collectFunctions(prefix, allResults);
-    // Search direct import-scope children (one level of transparency)
-    for (const auto& [childName, child] : s->childModules) {
-      if (child && child->getType() == ScopeType::Import) {
-        child->collectFunctions(prefix, allResults);
-        // Also search import scope's module children
-        for (const auto& [modName, modChild] : child->childModules) {
-          if (modChild && modChild->getType() == ScopeType::Module) {
-            modChild->collectFunctions(prefix, allResults);
-          }
-        }
-      }
-    }
-    // Search import bindings from using statements
-    for (const auto& binding : s->importBindings) {
-      if (!binding.sourceScope) continue;
-      // Search source scope for both wildcard and specific bindings.
-      // For specific bindings, the caller already resolved the qualified name
-      // (e.g., "math_square"), so the prefix match naturally filters correctly.
-      binding.sourceScope->collectFunctions(prefix, allResults);
-    }
-  }
-
-  // Deduplicate by signature
-  for (const auto& info : allResults) {
-    addIfUnique(info);
-  }
-
-  return results;
+  return currentScope->getAllFunctions(name);
 }
 
 std::optional<FunctionInfo> SemanticAnalyzer::lookupFunction(
     const std::string& name, const std::vector<sun::TypePtr>& argTypes) const {
-  std::string sig = getFunctionSignature(name, argTypes);
-  std::string prefix = name + "(";
-
-  // Helper lambda to check compatible overloads in a FunctionTable
-  auto findCompatible =
-      [&](const FunctionTable& funcs) -> std::optional<FunctionInfo> {
-    // Try exact match first
-    auto it = funcs.find(sig);
-    if (it != funcs.end()) return it->second;
-
-    // Try compatible overload — look up by base name
-    auto checkOverloads =
-        [&](const std::string& baseName) -> std::optional<FunctionInfo> {
-      auto* overloads = funcs.getOverloads(baseName);
-      if (!overloads) return std::nullopt;
-      for (const auto* info : *overloads) {
-        if (info->paramTypes.size() != argTypes.size()) continue;
-
-        bool compatible = true;
-        for (size_t i = 0; i < argTypes.size(); ++i) {
-          if (!argTypes[i] || !info->paramTypes[i]) {
-            compatible = false;
-            break;
-          }
-          if (info->paramTypes[i]->equals(*argTypes[i])) continue;
-
-          if (info->paramTypes[i]->isReference()) {
-            auto* refType = static_cast<const sun::ReferenceType*>(
-                info->paramTypes[i].get());
-            if (refType->getReferencedType()->equals(*argTypes[i])) continue;
-            if (refType->getReferencedType()->isArray() &&
-                argTypes[i]->isArray()) {
-              auto* paramArray = static_cast<const sun::ArrayType*>(
-                  refType->getReferencedType().get());
-              auto* argArray =
-                  static_cast<const sun::ArrayType*>(argTypes[i].get());
-              if (paramArray->isUnsized() &&
-                  paramArray->getElementType()->equals(
-                      *argArray->getElementType()))
-                continue;
-            }
-          }
-
-          if (argTypes[i]->isReference()) {
-            auto* refType =
-                static_cast<const sun::ReferenceType*>(argTypes[i].get());
-            if (info->paramTypes[i]->equals(*refType->getReferencedType()))
-              continue;
-          }
-
-          if (argTypes[i]->isNullPointer() &&
-              info->paramTypes[i]->isAnyPointer()) {
-            continue;
-          }
-
-          if (argTypes[i]->isStaticPointer() &&
-              info->paramTypes[i]->isRawPointer()) {
-            auto* staticPtr =
-                static_cast<const sun::StaticPointerType*>(argTypes[i].get());
-            auto* rawPtr = static_cast<const sun::RawPointerType*>(
-                info->paramTypes[i].get());
-            if (staticPtr->getPointeeType()->equals(
-                    *rawPtr->getPointeeType())) {
-              continue;
-            }
-          }
-
-          // raw_ptr<T> is compatible with raw_ptr<i8> (like C's void*)
-          // Only for intrinsics (functions starting with '_') to avoid
-          // accidental type erasure in user code
-          if (argTypes[i]->isRawPointer() &&
-              info->paramTypes[i]->isRawPointer() && isIntrinsic(baseName)) {
-            auto* paramRawPtr = static_cast<const sun::RawPointerType*>(
-                info->paramTypes[i].get());
-            if (paramRawPtr->getPointeeType()->isInt8()) {
-              continue;
-            }
-          }
-
-          if (isAssignableTo(argTypes[i], info->paramTypes[i])) {
-            continue;
-          }
-
-          compatible = false;
-          break;
-        }
-
-        if (compatible) {
-          return *info;
-        }
-      }
-      return std::nullopt;
-    };
-
-    // Check with base name
-    std::string baseName = prefix.substr(0, prefix.size() - 1);
-    return checkOverloads(baseName);
-  };
-
-  // Helper: search a scope's function map (no child recursion)
-  auto findInScope =
-      [&](const SemanticScope& scope) -> std::optional<FunctionInfo> {
-    return findCompatible(scope.functions);
-  };
-
-  // Walk scope chain from innermost to outermost
-  for (auto* s = currentScope; s != nullptr; s = s->parent) {
-    auto result = findInScope(*s);
-    if (result) return result;
-    // Search direct import-scope children (one level of transparency)
-    for (const auto& [childName, child] : s->childModules) {
-      if (child && child->getType() == ScopeType::Import) {
-        result = findInScope(*child);
-        if (result) return result;
-        // Also search import scope's module children
-        for (const auto& [modName, modChild] : child->childModules) {
-          if (modChild && modChild->getType() == ScopeType::Module) {
-            result = findInScope(*modChild);
-            if (result) return result;
-          }
-        }
-      }
-    }
-    // Search import bindings from using statements
-    for (const auto& binding : s->importBindings) {
-      if (!binding.sourceScope) continue;
-      // Search both wildcard and specific bindings
-      result = findInScope(*binding.sourceScope);
-      if (result) return result;
-    }
-  }
-
-  return std::nullopt;
+  return currentScope->lookupFunction(name, argTypes);
 }
 
 void SemanticAnalyzer::registerGlobal(const std::string& name,
@@ -1304,22 +946,7 @@ void SemanticAnalyzer::registerModuleVariable(const std::string& baseName,
 
 VariableInfo* SemanticAnalyzer::lookupQualifiedVariable(
     const std::string& qualifiedName) {
-  for (auto* s = currentScope; s != nullptr; s = s->parent) {
-    auto found = s->namespacedVariables.find(qualifiedName);
-    if (found != s->namespacedVariables.end()) {
-      return &found->second;
-    }
-    // Also search child module scopes
-    for (const auto& [modName, child] : s->childModules) {
-      if (child) {
-        auto cFound = child->namespacedVariables.find(qualifiedName);
-        if (cFound != child->namespacedVariables.end()) {
-          return &cFound->second;
-        }
-      }
-    }
-  }
-  return nullptr;
+  return currentScope->lookupQualifiedVariable(qualifiedName);
 }
 
 // Helper: Get the full module path including library scope hashes
@@ -1414,180 +1041,12 @@ std::string SemanticAnalyzer::getFullModulePath(
 
 const FunctionInfo* SemanticAnalyzer::lookupQualifiedFunction(
     const std::string& qualifiedName) const {
-  // Recursive helper to search a scope and its non-import child modules
-  std::function<const FunctionInfo*(const SemanticScope&, const std::string&)>
-      searchScope = [&](const SemanticScope& scope,
-                        const std::string& lookupName) -> const FunctionInfo* {
-    if (auto* overloads = scope.functions.getOverloads(lookupName)) {
-      if (!overloads->empty()) return overloads->front();
-    }
-    for (const auto& [modName, child] : scope.childModules) {
-      if (child && child->getType() != ScopeType::Import) {
-        auto* result = searchScope(*child, lookupName);
-        if (result) return result;
-      }
-    }
-    return nullptr;
-  };
-
-  // Try direct lookup first (handles cases where qualified name is the key)
-  for (auto* s = currentScope; s != nullptr; s = s->parent) {
-    auto* result = searchScope(*s, qualifiedName);
-    if (result) return result;
-    for (const auto& [childName, child] : s->childModules) {
-      if (child && child->getType() == ScopeType::Import) {
-        result = searchScope(*child, qualifiedName);
-        if (result) return result;
-      }
-    }
-  }
-
-  // Split qualified name into module path and function name
-  size_t lastDot = qualifiedName.rfind('.');
-  if (lastDot == std::string::npos) return nullptr;
-
-  std::string modulePath = qualifiedName.substr(0, lastDot);
-  std::string funcName = qualifiedName.substr(lastDot + 1);
-
-  // Collect ALL module scopes with the given visible module path
-  // (across all import scopes) and search each for the function
-  auto allModScopes = collectAllModuleScopes(currentScope, modulePath);
-  for (auto* modScope : allModScopes) {
-    if (auto* overloads = modScope->functions.getOverloads(funcName)) {
-      if (!overloads->empty()) return overloads->front();
-    }
-  }
-
-  return nullptr;
+  return currentScope->lookupQualifiedFunction(qualifiedName);
 }
 
 sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
     const std::string& name) const {
-  // Handle qualified (dotted) names like "sun.String" by splitting into
-  // module path and symbol name, then looking up in the module scope
-  // (handles MoonScope hash prefixes transparently)
-  size_t lastDot = name.rfind('.');
-  if (lastDot != std::string::npos) {
-    std::string modulePath = name.substr(0, lastDot);
-    std::string symbolName = name.substr(lastDot + 1);
-
-    if (auto* modScope = lookupModuleScope(modulePath)) {
-      if (modScope->hasSymbol(symbolName)) {
-        return sun::QualifiedName(modScope->scopePath, symbolName);
-      }
-    }
-    // Fall through to normal lookup if module scope not found
-  }
-
-  // Helper to filter out $...$ hash segments from scope path (for
-  // display/ambiguity check)
-  auto getVisiblePath =
-      [](const std::vector<std::string>& path) -> std::vector<std::string> {
-    std::vector<std::string> result;
-    for (const auto& segment : path) {
-      // Skip segments starting with $ (import scopes, library hashes)
-      if (!segment.empty() && segment[0] != '$') {
-        result.push_back(segment);
-      }
-    }
-    return result;
-  };
-
-  // Collect ALL candidate matches, keyed by visible module path to detect
-  // ambiguity. Map from visible path to (full scopePath, scope).
-  std::map<std::vector<std::string>,
-           std::pair<std::vector<std::string>, SemanticScope*>>
-      candidates;
-
-  auto addCandidate = [&](SemanticScope* scope) {
-    auto visPath = getVisiblePath(scope->scopePath);
-    // Only add if not already present (first match for each visible path wins)
-    if (candidates.find(visPath) == candidates.end()) {
-      candidates[visPath] = {scope->scopePath, scope};
-    }
-  };
-
-  auto scopePath = getCurrentScopePath();
-  auto visiblePath = getVisiblePath(scopePath);
-
-  // 1. Check enclosing module scopes by walking up the parent chain
-  //    This handles variables accessed from within class methods
-  for (auto* s = currentScope; s != nullptr; s = s->parent) {
-    if (s->getType() == ScopeType::Module && s->hasSymbol(name)) {
-      addCandidate(s);
-    }
-  }
-
-  // 2. If inside a module, also check the module scope hierarchy via path
-  // lookup
-  if (!visiblePath.empty()) {
-    std::string visPathStr = sun::QualifiedName::joinPath(visiblePath);
-    auto allScopes = collectAllModuleScopes(currentScope, visPathStr);
-    for (auto* modScope : allScopes) {
-      if (modScope->hasSymbol(name)) {
-        addCandidate(modScope);
-      }
-    }
-  }
-
-  // 3. Check using imports (applies whether inside a module or not)
-  auto activeImports = getActiveUsingImports();
-  for (const auto& import : activeImports) {
-    if (!import.isWildcard && import.target != name) continue;
-
-    auto allScopes = collectAllModuleScopes(currentScope, import.namespacePath);
-    for (auto* modScope : allScopes) {
-      if (modScope->hasSymbol(name)) {
-        addCandidate(modScope);
-      }
-    }
-  }
-
-  // 3. Check global scope (functions/classes defined outside any module)
-  //    Only check the root scope for symbols defined at global level
-  const SemanticScope* rootScope = currentScope;
-  while (rootScope->parent != nullptr) {
-    rootScope = rootScope->parent;
-  }
-  // Root scope type should be Global - check for symbol defined there directly
-  if (rootScope->getType() == ScopeType::Global && rootScope->hasSymbol(name)) {
-    // Add as global (empty visible path)
-    std::vector<std::string> emptyPath;
-    if (candidates.find(emptyPath) == candidates.end()) {
-      candidates[emptyPath] = {emptyPath, const_cast<SemanticScope*>(rootScope)};
-    }
-  }
-
-  // Check for ambiguity: multiple distinct visible paths
-  if (candidates.size() > 1) {
-    std::string paths;
-    for (const auto& [visPath, info] : candidates) {
-      if (!paths.empty()) paths += " or ";
-      paths +=
-          visPath.empty() ? "<global>" : sun::QualifiedName::joinPath(visPath);
-    }
-    logAndThrowError("Ambiguous reference to '" + name +
-                     "'. Could be: " + paths);
-  }
-
-  // Return the single match, or unqualified name if no match
-  if (candidates.size() == 1) {
-    const auto& [visPath, info] = *candidates.begin();
-    // If the symbol is a unique function in the matched scope, return its
-    // actual qualified name (which includes paramSuffix for overload mangling)
-    if (info.second) {
-      if (auto* overloads = info.second->functions.getOverloads(name)) {
-        if (overloads->size() == 1 &&
-            !(*overloads)[0]->qualifiedName.empty()) {
-          return (*overloads)[0]->qualifiedName;
-        }
-      }
-    }
-    return sun::QualifiedName(info.first, name);
-  }
-
-  // No match found - return unqualified name
-  return sun::QualifiedName(std::vector<std::string>{}, name);
+  return currentScope->resolveNameWithUsings(name);
 }
 
 void SemanticAnalyzer::addUsingImport(const UsingImport& import) {

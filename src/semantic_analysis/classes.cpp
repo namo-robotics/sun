@@ -20,62 +20,7 @@ void SemanticAnalyzer::registerClass(const std::string& name,
 
 std::shared_ptr<sun::ClassType> SemanticAnalyzer::lookupClass(
     const std::string& name) const {
-  // Walk scope chain from innermost to outermost
-  for (auto* s = currentScope; s != nullptr; s = s->parent) {
-    auto result = s->findClass(name);
-    if (result) return result;
-    // Search direct import-scope children (one level of transparency)
-    // Also recurse into their module children to find types inside modules
-    // of imported files (e.g., module sun { class X {} } in imported file)
-    for (const auto& [childName, child] : s->childModules) {
-      if (child && child->getType() == ScopeType::Import) {
-        result = child->findClass(name);
-        if (result) return result;
-        for (const auto& [modName, modChild] : child->childModules) {
-          if (modChild && modChild->getType() == ScopeType::Module) {
-            result = modChild->findClass(name);
-            if (result) return result;
-          }
-        }
-      }
-    }
-    // Search the __definition__ scope (for transitive deps during generic
-    // instantiation). Walk up the definition scope's parent chain to reach
-    // imports at the file scope level.
-    auto defIt = s->childModules.find("__definition__");
-    if (defIt != s->childModules.end() && defIt->second) {
-      for (auto* defS = defIt->second.get(); defS != nullptr;
-           defS = defS->parent) {
-        result = defS->findClass(name);
-        if (result) return result;
-        // Search its import-scope children
-        for (const auto& [childName, child] : defS->childModules) {
-          if (child && child->getType() == ScopeType::Import) {
-            result = child->findClass(name);
-            if (result) return result;
-            for (const auto& [modName, modChild] : child->childModules) {
-              if (modChild && modChild->getType() == ScopeType::Module) {
-                result = modChild->findClass(name);
-                if (result) return result;
-              }
-            }
-          }
-        }
-      }
-    }
-    // Search import bindings from using statements
-    for (const auto& binding : s->importBindings) {
-      if (!binding.sourceScope) continue;
-      if (binding.isWildcard) {
-        auto result2 = binding.sourceScope->findClass(name);
-        if (result2) return result2;
-      } else if (binding.localName == name) {
-        auto result2 = binding.sourceScope->findClass(binding.sourceName);
-        if (result2) return result2;
-      }
-    }
-  }
-  return nullptr;
+  return currentScope->lookupClass(name);
 }
 
 void SemanticAnalyzer::setCurrentClass(
@@ -104,10 +49,7 @@ void SemanticAnalyzer::registerGenericClass(const std::string& name,
 
 const GenericClassInfo* SemanticAnalyzer::lookupGenericClass(
     const std::string& name) const {
-  return lookupGenericSymbol<const GenericClassInfo*>(
-      name, [](SemanticScope* scope, const std::string& n) {
-        return scope->findGenericClass(n);
-      });
+  return currentScope->lookupGenericClass(name);
 }
 
 void SemanticAnalyzer::addTypeParameterBindings(
