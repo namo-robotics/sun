@@ -1554,7 +1554,7 @@ sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
     // Add as global (empty visible path)
     std::vector<std::string> emptyPath;
     if (candidates.find(emptyPath) == candidates.end()) {
-      candidates[emptyPath] = {emptyPath, nullptr};
+      candidates[emptyPath] = {emptyPath, const_cast<SemanticScope*>(rootScope)};
     }
   }
 
@@ -1573,6 +1573,16 @@ sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
   // Return the single match, or unqualified name if no match
   if (candidates.size() == 1) {
     const auto& [visPath, info] = *candidates.begin();
+    // If the symbol is a unique function in the matched scope, return its
+    // actual qualified name (which includes paramSuffix for overload mangling)
+    if (info.second) {
+      if (auto* overloads = info.second->functions.getOverloads(name)) {
+        if (overloads->size() == 1 &&
+            !(*overloads)[0]->qualifiedName.empty()) {
+          return (*overloads)[0]->qualifiedName;
+        }
+      }
+    }
     return sun::QualifiedName(info.first, name);
   }
 

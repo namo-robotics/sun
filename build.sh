@@ -38,7 +38,7 @@ if [[ ! -f CMakeCache.txt ]] || [[ "$RECONFIGURE" == "true" ]] || [[ "$CACHED_SK
           ..
 fi
 
-make -j$(nproc)
+make -j8
 
 # Add sun to PATH by creating symlink
 sudo ln -sf "$(pwd)/sun" /usr/local/bin/sun

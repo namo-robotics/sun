@@ -1376,7 +1376,8 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
   }
 
   // Add param type suffix for overload disambiguation (unified with methods)
-  if (qualifiedName.paramSuffix.empty()) {
+  // Skip for 'main' — it's an entry point with a fixed ABI name.
+  if (qualifiedName.paramSuffix.empty() && proto.getName() != "main") {
     qualifiedName.setParamSuffix(paramTypes);
   }
 
