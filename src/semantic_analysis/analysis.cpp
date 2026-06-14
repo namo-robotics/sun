@@ -20,9 +20,15 @@ void SemanticAnalyzer::analyze(ExprAST& expr) { analyzeExpr(expr); }
 // Expression analysis
 // -------------------------------------------------------------------
 
-void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
+void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
   switch (expr.getType()) {
     case ASTNodeType::NUMBER: {
+      // If we have an expected type, try to use it for integer literals
+      if (expectedType && expectedType->isPrimitive()) {
+        if (tryCoerceIntegerLiteral(&expr, expectedType, false)) {
+          break;
+        }
+      }
       expr.setResolvedType(inferType(expr));
       break;
     }
@@ -118,8 +124,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
                          varCreate.getLocation());
       }
 
-      // Analyze the value expression
-      analyzeExpr(const_cast<ExprAST&>(*varCreate.getValue()));
+      // Analyze the value expression, passing declared type as expected type
+      analyzeExpr(const_cast<ExprAST&>(*varCreate.getValue()), declaredType);
       sun::TypePtr rhsType = varCreate.getValue()->getResolvedType();
 
       // Determine the final variable type
@@ -164,26 +170,32 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
                          varAssign.getLocation());
       }
 
-      analyzeExpr(const_cast<ExprAST&>(*varAssign.getValue()));
+      // Look up the variable's type first for expected type propagation
+      VariableInfo* varInfo = lookupVariable(varAssign.getName());
+      sun::TypePtr expectedTargetType = nullptr;
+      if (varInfo) {
+        expectedTargetType = varInfo->type;
+        // For reference types, the target is the referenced type
+        if (expectedTargetType && expectedTargetType->isReference()) {
+          auto* refType =
+              static_cast<sun::ReferenceType*>(expectedTargetType.get());
+          expectedTargetType = refType->getReferencedType();
+        }
+      }
+
+      // Analyze the value expression with expected type
+      analyzeExpr(const_cast<ExprAST&>(*varAssign.getValue()),
+                  expectedTargetType);
       sun::TypePtr rhsType = varAssign.getValue()->getResolvedType();
 
-      // Look up the variable's type (important for references)
-      VariableInfo* varInfo = lookupVariable(varAssign.getName());
       if (varInfo) {
-        // For reference types, assignment goes through the reference to the
-        // underlying value. So check assignability to the referenced type.
-        sun::TypePtr targetType = varInfo->type;
-        if (targetType && targetType->isReference()) {
-          auto* refType = static_cast<sun::ReferenceType*>(targetType.get());
-          targetType = refType->getReferencedType();
-        }
-
         // Check type compatibility for interface polymorphism
-        if (rhsType && targetType && !isAssignableTo(rhsType, targetType)) {
+        if (rhsType && expectedTargetType &&
+            !isAssignableTo(rhsType, expectedTargetType)) {
           // Allow integer literal coercion as a fallback
           if (!tryCoerceIntegerLiteral(
-                  const_cast<ExprAST*>(varAssign.getValue()), targetType,
-                  false)) {
+                  const_cast<ExprAST*>(varAssign.getValue()),
+                  expectedTargetType, false)) {
             logAndThrowError("Cannot assign value of type '" +
                                  rhsType->toString() + "' to variable '" +
                                  varAssign.getName() + "' of type '" +
@@ -306,12 +318,26 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr) {
       auto& matchExpr = static_cast<MatchExprAST&>(expr);
       // Analyze the discriminant expression
       analyzeExpr(const_cast<ExprAST&>(*matchExpr.getDiscriminant()));
-      // Analyze each arm
+      // Analyze each arm, propagating expectedType to arm bodies
       for (const auto& arm : matchExpr.getArms()) {
         if (arm.pattern) {
           analyzeExpr(const_cast<ExprAST&>(*arm.pattern));
         }
-        analyzeExpr(const_cast<ExprAST&>(*arm.body));
+        analyzeExpr(const_cast<ExprAST&>(*arm.body), expectedType);
+      }
+      // If we have an expected type and all arms resolved to it, use it
+      if (expectedType) {
+        bool allArmsMatch = true;
+        for (const auto& arm : matchExpr.getArms()) {
+          if (arm.body->getResolvedType() != expectedType) {
+            allArmsMatch = false;
+            break;
+          }
+        }
+        if (allArmsMatch) {
+          expr.setResolvedType(expectedType);
+          break;
+        }
       }
       expr.setResolvedType(inferType(expr));
       break;

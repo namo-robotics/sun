@@ -411,7 +411,9 @@ class SemanticAnalyzer {
   void clearResolvedTypes(ExprAST& expr);
 
   // Analyze expressions (populates captures, validates types)
-  void analyzeExpr(ExprAST& expr);
+  // expectedType: optional type hint for type inference (e.g., from variable
+  // declaration)
+  void analyzeExpr(ExprAST& expr, sun::TypePtr expectedType = nullptr);
   void analyzeCall(CallExprAST& callExpr);
 
   // Generic call analysis helpers

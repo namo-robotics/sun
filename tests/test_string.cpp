@@ -274,3 +274,205 @@ TEST(StringTest, initial_capacity) {
   )");
   EXPECT_EQ(value, 1);
 }
+
+// Test clear()
+TEST(StringTest, clear) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    
+    function main() i32 {
+        var allocator = make_heap_allocator();
+        var s = String(allocator, "Hello");
+        s.clear();
+        return s.length();
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+// Test append_i64 with positive number
+TEST(StringTest, append_i64_positive) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    
+    function main() i32 {
+        var allocator = make_heap_allocator();
+        var s = String(allocator, "");
+        s.append_i64(12345);
+        if (s.equals_literal("12345")) { return 1; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 1);
+}
+
+// Test append_i64 with negative number
+TEST(StringTest, append_i64_negative) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    
+    function main() i32 {
+        var allocator = make_heap_allocator();
+        var s = String(allocator, "");
+        s.append_i64(-42);
+        if (s.equals_literal("-42")) { return 1; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 1);
+}
+
+// Test append_i64 with zero
+TEST(StringTest, append_i64_zero) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    
+    function main() i32 {
+        var allocator = make_heap_allocator();
+        var s = String(allocator, "");
+        s.append_i64(0);
+        if (s.equals_literal("0")) { return 1; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 1);
+}
+
+// Test append_hex
+TEST(StringTest, append_hex) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    
+    function main() i32 {
+        var allocator = make_heap_allocator();
+        var s = String(allocator, "");
+        s.append_hex(255);
+        if (s.equals_literal("ff")) { return 1; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 1);
+}
+
+// Test append_bool
+TEST(StringTest, append_bool_true) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    
+    function main() i32 {
+        var allocator = make_heap_allocator();
+        var s = String(allocator, "");
+        s.append_bool(true);
+        if (s.equals_literal("true")) { return 1; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 1);
+}
+
+// Test append_bool false
+TEST(StringTest, append_bool_false) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    
+    function main() i32 {
+        var allocator = make_heap_allocator();
+        var s = String(allocator, "");
+        s.append_bool(false);
+        if (s.equals_literal("false")) { return 1; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 1);
+}
+
+// Test find_char
+TEST(StringTest, find_char) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    
+    function main() i64 {
+        var allocator = make_heap_allocator();
+        var s = String(allocator, "hello world");
+        return s.find_char(111);  // 'o' at index 4
+    }
+  )");
+  EXPECT_EQ(value, 4);
+}
+
+// Test find_char not found
+TEST(StringTest, find_char_not_found) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    
+    function main() i64 {
+        var allocator = make_heap_allocator();
+        var s = String(allocator, "hello");
+        return s.find_char(120);  // 'x' not in string
+    }
+  )");
+  EXPECT_EQ(value, -1);
+}
+
+// Test starts_with
+TEST(StringTest, starts_with) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    
+    function main() i32 {
+        var allocator = make_heap_allocator();
+        var s = String(allocator, "hello world");
+        if (s.starts_with("hello")) { return 1; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 1);
+}
+
+// Test ends_with
+TEST(StringTest, ends_with) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    
+    function main() i32 {
+        var allocator = make_heap_allocator();
+        var s = String(allocator, "hello world");
+        if (s.ends_with("world")) { return 1; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 1);
+}
+
+// Test reverse
+TEST(StringTest, reverse) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    
+    function main() i32 {
+        var allocator = make_heap_allocator();
+        var s = String(allocator, "abc");
+        s.reverse();
+        if (s.equals_literal("cba")) { return 1; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 1);
+}
+
+// Test dynamic growth beyond initial capacity
+TEST(StringTest, growth_beyond_initial_capacity) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    
+    function main() i64 {
+        var allocator = make_heap_allocator();
+        var s = String(allocator, "");
+        for (var i: i64 = 0; i < 100; i = i + 1) {
+            s.append_char(65);  // 'A'
+        }
+        return s.length();
+    }
+  )");
+  EXPECT_EQ(value, 100);
+}
