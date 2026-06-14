@@ -361,6 +361,68 @@ struct SemanticScopeBase
   std::shared_ptr<SemanticScopeBase> cloneSymbols(
       SemanticScopeBase* newParent) const;
 
+  // ===== Scope-chain lookup methods =====
+  // These traverse the parent chain, import scopes, __definition__ scopes,
+  // and import bindings to find symbols.
+
+  // Generic scope-chain traversal: calls finder(scope) at each scope in chain
+  template <typename ResultT, typename Finder>
+  ResultT lookupInChain(Finder finder) const;
+
+  // Lookup a class by name in the scope chain
+  std::shared_ptr<sun::ClassType> lookupClass(const std::string& name) const;
+
+  // Lookup a generic class by name in the scope chain
+  const GenericClassInfo* lookupGenericClass(const std::string& name) const;
+
+  // Lookup an interface by name in the scope chain
+  std::shared_ptr<sun::InterfaceType> lookupInterface(
+      const std::string& name) const;
+
+  // Lookup a generic interface by name in the scope chain
+  const GenericInterfaceInfo* lookupGenericInterface(
+      const std::string& name) const;
+
+  // Lookup an enum by name in the scope chain
+  std::shared_ptr<sun::EnumType> lookupEnum(const std::string& name) const;
+
+  // Lookup a variable by name in the scope chain
+  VariableInfo* lookupVariable(const std::string& name);
+
+  // Lookup a generic function by name in the scope chain
+  const GenericFunctionInfo* lookupGenericFunction(
+      const std::string& name) const;
+
+  // Get all function overloads with the given name
+  std::vector<FunctionInfo> getAllFunctions(const std::string& name) const;
+
+  // Lookup function by name and exact argument types (overload resolution)
+  std::optional<FunctionInfo> lookupFunction(
+      const std::string& name,
+      const std::vector<sun::TypePtr>& argTypes) const;
+
+  // Lookup module scope by dot-separated path
+  SemanticScopeBase* lookupModuleScope(const std::string& dotPath) const;
+
+  // Get all active using imports from all enclosing scopes
+  std::vector<UsingImport> getActiveUsingImports() const;
+
+  // Resolve a name considering using statements and module scopes
+  sun::QualifiedName resolveNameWithUsings(const std::string& name) const;
+
+  // Lookup a namespaced variable (module-qualified)
+  VariableInfo* lookupQualifiedVariable(const std::string& qualifiedName);
+
+  // Lookup a namespaced function (module-qualified)
+  const FunctionInfo* lookupQualifiedFunction(
+      const std::string& qualifiedName) const;
+
+  // Check if a name refers to a module
+  bool isModuleName(const std::string& name) const;
+
+  // Get the current scope path as a vector of segments
+  std::vector<std::string> getCurrentScopePath() const;
+
   // ===== Downcasting helpers =====
   FunctionScope* asFunction();
   const FunctionScope* asFunction() const;
@@ -506,4 +568,61 @@ inline std::string mangleModulePath(const std::string& dotPath) {
     if (c == '.') c = '_';
   }
   return result;
+}
+
+// -------------------------------------------------------------------
+// Template implementation: lookupInChain
+// Traverses the scope chain (parent + import children + __definition__ +
+// import bindings) calling finder(scope) at each node.
+// finder signature: ResultT finder(const SemanticScopeBase* scope)
+// -------------------------------------------------------------------
+template <typename ResultT, typename Finder>
+ResultT SemanticScopeBase::lookupInChain(Finder finder) const {
+  for (auto* s = this; s != nullptr; s = s->parent) {
+    auto result = finder(s);
+    if (result) return result;
+    // Search direct import-scope children (one level of transparency)
+    for (const auto& [childName, child] : s->childModules) {
+      if (child && child->getType() == ScopeType::Import) {
+        result = finder(child.get());
+        if (result) return result;
+        for (const auto& [modName, modChild] : child->childModules) {
+          if (modChild && modChild->getType() == ScopeType::Module) {
+            result = finder(modChild.get());
+            if (result) return result;
+          }
+        }
+      }
+    }
+    // Search __definition__ scope chain
+    auto defIt = s->childModules.find("__definition__");
+    if (defIt != s->childModules.end() && defIt->second) {
+      for (auto* defS = defIt->second.get(); defS != nullptr;
+           defS = defS->parent) {
+        result = finder(defS);
+        if (result) return result;
+        for (const auto& [childName, child] : defS->childModules) {
+          if (child && child->getType() == ScopeType::Import) {
+            result = finder(child.get());
+            if (result) return result;
+            for (const auto& [modName, modChild] : child->childModules) {
+              if (modChild && modChild->getType() == ScopeType::Module) {
+                result = finder(modChild.get());
+                if (result) return result;
+              }
+            }
+          }
+        }
+      }
+    }
+    // Search import bindings from using statements
+    for (const auto& binding : s->importBindings) {
+      if (!binding.sourceScope) continue;
+      if (binding.isWildcard) {
+        result = finder(binding.sourceScope);
+        if (result) return result;
+      }
+    }
+  }
+  return ResultT{};
 }

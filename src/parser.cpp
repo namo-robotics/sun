@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "ast_deserializer.h"
+#include "interpolated_string_parser.h"
 #include "library_cache.h"
 #include "llvm/Support/raw_ostream.h"
 #include "metadata_extractor.h"
@@ -615,6 +616,15 @@ unique_ptr<ExprAST> Parser::parsePrimary() {
     case TokenKind::STRING:
       base = parseStringLiteral();
       break;
+    case TokenKind::TEMPLATE_STRING: {
+      // Parse interpolated template string: `Hello ${name}!`
+      std::string content = curTok.getTemplateString().value();
+      Position loc = curTok.start;
+      getNextToken();  // consume the template string token
+      usesStringInterpolation_ = true;
+      base = InterpolatedStringParser::parse(content, loc);
+      break;
+    }
     case TokenKind::PAREN_OPEN:
       base = parseParenExpr();
       break;
@@ -2330,7 +2340,16 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
                      dynamic_cast<InterfaceDefinitionAST*>(stub.get())) {
         symbolName = iface->getName();
       } else if (auto* func = dynamic_cast<FunctionAST*>(stub.get())) {
+        // Use function name + param type annotations to allow overloads
         symbolName = func->getProto().getName();
+        if (!func->getProto().getArgs().empty()) {
+          symbolName += "(";
+          for (size_t i = 0; i < func->getProto().getArgs().size(); ++i) {
+            if (i > 0) symbolName += ",";
+            symbolName += func->getProto().getArgs()[i].second.toString();
+          }
+          symbolName += ")";
+        }
       }
       if (!symbolName.empty()) {
         if (!symbols.insert(symbolName).second) {

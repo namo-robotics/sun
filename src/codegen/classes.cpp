@@ -162,9 +162,6 @@ Value* CodegenVisitor::codegen(const ClassDefinitionAST& expr) {
     const PrototypeAST& proto = methodFunc.getProto();
     const std::string& methodName = proto.getName();
 
-    // Create mangled method name: ClassName_methodName
-    std::string mangledName = classType->getMangledMethodName(methodName);
-
     // Skip generic methods during initial class codegen
     // They will be instantiated on-demand when called with specific type args
     if (proto.isGeneric()) {
@@ -178,6 +175,17 @@ Value* CodegenVisitor::codegen(const ClassDefinitionAST& expr) {
 
       continue;
     }
+
+    // Get resolved parameter types for mangled name (overload disambiguation)
+    std::vector<sun::TypePtr> paramTypes;
+    if (proto.hasResolvedParamTypes()) {
+      paramTypes = proto.getResolvedParamTypes();
+    }
+
+    // Create mangled method name with param types:
+    // ClassName_methodName$type1$type2
+    std::string mangledName =
+        classType->getMangledMethodName(methodName, paramTypes);
 
     // Declare the non-generic method using the shared helper
     declareMethodFromAST(methodFunc, mangledName);
@@ -203,8 +211,16 @@ Value* CodegenVisitor::codegen(const ClassDefinitionAST& expr) {
       continue;
     }
 
-    // Create mangled method name: ClassName_methodName
-    std::string mangledName = classType->getMangledMethodName(proto.getName());
+    // Get resolved parameter types for mangled name (overload disambiguation)
+    std::vector<sun::TypePtr> paramTypes;
+    if (proto.hasResolvedParamTypes()) {
+      paramTypes = proto.getResolvedParamTypes();
+    }
+
+    // Create mangled method name with param types:
+    // ClassName_methodName$type1$type2
+    std::string mangledName =
+        classType->getMangledMethodName(proto.getName(), paramTypes);
     generateMethodBody(methodFunc, mangledName);
     // Track user-defined methods for IR filtering
     if (isUserDefined) {
@@ -240,8 +256,9 @@ Value* CodegenVisitor::codegen(const ClassDefinitionAST& expr) {
       if (hasOverride) continue;
 
       // Generate wrapper method that calls the interface default
-      std::string mangledName =
-          classType->getMangledMethodName(interfaceMethod.name);
+      // Include param types for overload disambiguation
+      std::string mangledName = classType->getMangledMethodName(
+          interfaceMethod.name, interfaceMethod.paramTypes);
       std::string defaultMangledName =
           interfaceType->getMangledDefaultMethodName(interfaceMethod.name);
 
@@ -344,8 +361,9 @@ Value* CodegenVisitor::codegen(const ClassDefinitionAST& expr) {
       }
       hasVtableMethods = true;
 
-      std::string methodMangledName =
-          classType->getMangledMethodName(interfaceMethod.name);
+      // Include param types for overload disambiguation
+      std::string methodMangledName = classType->getMangledMethodName(
+          interfaceMethod.name, interfaceMethod.paramTypes);
       Function* methodFunc = module->getFunction(methodMangledName);
       if (!methodFunc) {
         logAndThrowError("Method not found for vtable: " + methodMangledName +
@@ -815,12 +833,19 @@ Value* CodegenVisitor::codegenStackClassInstance(const CallExprAST& expr,
        ConstantInt::get(Type::getInt64Ty(ctx.getContext()), structSize)});
 
   // Call the constructor (init method) if it exists
-  std::string baseCtorName = classType.getMangledMethodName("init");
-  Function* ctorFunc = nullptr;
-  size_t argCount = expr.getArgs().size();
-
   // Get the init method info from the class type
   const sun::ClassMethod* initMethod = classType.getMethod("init");
+
+  std::string baseCtorName;
+  if (initMethod) {
+    baseCtorName =
+        classType.getMangledMethodName("init", initMethod->paramTypes);
+  } else {
+    baseCtorName = classType.getMangledMethodName("init");
+  }
+
+  Function* ctorFunc = nullptr;
+  size_t argCount = expr.getArgs().size();
 
   // Try to find existing function in module
   Function* candidate = module->getFunction(baseCtorName);
@@ -1406,12 +1431,19 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
            ConstantInt::get(Type::getInt64Ty(ctx.getContext()), structSize)});
 
       // Call constructor (init method) if it exists
-      std::string baseCtorName = classType->getMangledMethodName("init");
-      Function* ctorFunc = nullptr;
-      size_t argCount = expr.getArgs().size();
-
       // Get the init method info from the class type
       const sun::ClassMethod* initMethod = classType->getMethod("init");
+
+      std::string baseCtorName;
+      if (initMethod) {
+        baseCtorName =
+            classType->getMangledMethodName("init", initMethod->paramTypes);
+      } else {
+        baseCtorName = classType->getMangledMethodName("init");
+      }
+
+      Function* ctorFunc = nullptr;
+      size_t argCount = expr.getArgs().size();
 
       // Try to find existing function in module
       std::string resolvedCtorName = baseCtorName;
@@ -1485,12 +1517,19 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
          ConstantInt::get(Type::getInt64Ty(ctx.getContext()), structSize)});
 
     // Call constructor (init method) if it exists
-    std::string baseCtorName = fallbackClassType->getMangledMethodName("init");
-    Function* ctorFunc = nullptr;
-    size_t argCount = expr.getArgs().size();
-
     // Get the init method info from the class type
     const sun::ClassMethod* initMethod = fallbackClassType->getMethod("init");
+
+    std::string baseCtorName;
+    if (initMethod) {
+      baseCtorName = fallbackClassType->getMangledMethodName(
+          "init", initMethod->paramTypes);
+    } else {
+      baseCtorName = fallbackClassType->getMangledMethodName("init");
+    }
+
+    Function* ctorFunc = nullptr;
+    size_t argCount = expr.getArgs().size();
 
     // Try to find existing function in module
     Function* candidate = module->getFunction(baseCtorName);

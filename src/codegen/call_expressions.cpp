@@ -8,6 +8,23 @@
 
 using namespace llvm;
 
+// Look up an LLVM Function for a class method by name.
+// Uses getMangledMethodName (with paramSuffix) first, falls back to plain
+// "TypeName_methodName" for legacy/simple cases.
+Function* CodegenVisitor::findClassMethod(
+    const std::shared_ptr<sun::ClassType>& classType,
+    const std::string& typeName, const std::string& methodName) {
+  if (classType) {
+    if (auto* m = classType->getMethod(methodName)) {
+      std::string mangled =
+          classType->getMangledMethodName(methodName, m->paramTypes);
+      if (auto* f = module->getFunction(mangled)) return f;
+    }
+  }
+  // Fallback: try without paramSuffix
+  return module->getFunction(typeName + "_" + methodName);
+}
+
 // -------------------------------------------------------------------
 // Helper for unwrapping error union from call results
 // -------------------------------------------------------------------
@@ -588,8 +605,34 @@ Value* CodegenVisitor::codegenInterfaceMethodCall(
 Value* CodegenVisitor::codegenClassMethodCall(
     const CallExprAST& expr, Value* objectPtr, sun::ClassType* classType,
     const std::string& methodName, const MemberAccessAST* memberAccess) {
-  // Look up the method
-  const sun::ClassMethod* method = classType->getMethod(methodName);
+  // Semantic analysis must have resolved the method overload and stored
+  // its signature in the member access's resolved type (a FunctionType).
+  const sun::ClassMethod* method = nullptr;
+
+  if (!memberAccess) {
+    logAndThrowError("Internal error: method call without member access AST");
+    return nullptr;
+  }
+
+  sun::TypePtr resolvedType = memberAccess->getResolvedType();
+  if (!resolvedType || !resolvedType->isFunction()) {
+    logAndThrowError("Method '" + methodName + "' on class " +
+                     classType->getDisplayName() +
+                     " was not resolved by semantic analysis");
+    return nullptr;
+  }
+
+  // Use the param types from semantic analysis to find the exact method
+  const auto& paramTypes =
+      static_cast<sun::FunctionType*>(resolvedType.get())->getParamTypes();
+  method = classType->getMethodForArgs(methodName, paramTypes);
+
+  // Fallback: for generic methods, type parameters won't match concrete args,
+  // so look up by name alone
+  if (!method) {
+    method = classType->getMethod(methodName);
+  }
+
   if (!method) {
     logAndThrowError("Unknown method: " + methodName + " on class " +
                      classType->getDisplayName());
@@ -646,11 +689,14 @@ Value* CodegenVisitor::codegenClassMethodCall(
   }
 
   // Get the mangled method name for regular (non-generic) call
-  std::string mangledName = classType->getMangledMethodName(methodName);
+  // Include parameter types for overload disambiguation
+  std::string mangledName =
+      classType->getMangledMethodName(methodName, method->paramTypes);
   Function* methodFunc = module->getFunction(mangledName);
   if (!methodFunc) {
-    logAndThrowError("Method function not found: " +
-                     classType->getDisplayName() + "." + methodName);
+    logAndThrowError(
+        "Method function not found: " + classType->getDisplayName() + "." +
+        methodName + " (mangled: " + mangledName + ")");
     return nullptr;
   }
 

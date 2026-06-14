@@ -52,4 +52,10 @@ function println(s: static_ptr<u8>) void {
     _println_str(s);
 }
 
+// Print String class with newline
+function println(s: ref String) void {
+    _print_bytes(s.data.rawData(), s.length());
+    _print_newline();
+}
+
 } // module sun

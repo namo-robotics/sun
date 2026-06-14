@@ -1025,6 +1025,60 @@ class ClassType : public Type {
     return nullptr;
   }
 
+  // Get method with overload resolution based on argument types
+  // Returns the method whose parameter types best match the provided arg types
+  const ClassMethod* getMethodForArgs(
+      const std::string& methodName,
+      const std::vector<TypePtr>& argTypes) const {
+    const ClassMethod* bestMatch = nullptr;
+    bool foundExact = false;
+
+    for (const auto& method : methods) {
+      if (method.name != methodName) continue;
+      if (method.paramTypes.size() != argTypes.size()) continue;
+
+      bool allMatch = true;
+      bool allExact = true;
+      for (size_t i = 0; i < argTypes.size(); ++i) {
+        if (!argTypes[i] || !method.paramTypes[i]) {
+          allMatch = false;
+          break;
+        }
+
+        // Exact type match
+        if (method.paramTypes[i]->equals(*argTypes[i])) {
+          continue;
+        }
+        allExact = false;
+
+        // Reference parameter accepts the referenced type
+        if (method.paramTypes[i]->isReference()) {
+          auto* refType =
+              static_cast<const ReferenceType*>(method.paramTypes[i].get());
+          if (refType->getReferencedType()->equals(*argTypes[i])) {
+            continue;
+          }
+        }
+
+        // No match for this parameter
+        allMatch = false;
+        break;
+      }
+
+      if (allMatch) {
+        // Prefer exact matches over ref-compatible matches
+        if (allExact) {
+          return &method;  // Exact match - return immediately
+        }
+        if (!foundExact) {
+          bestMatch = &method;
+        }
+      }
+    }
+
+    return bestMatch;
+  }
+
   // Get the constructor method (named "init")
   const ClassMethod* getConstructor() const {
     for (const auto& method : methods) {
@@ -1095,6 +1149,17 @@ class ClassType : public Type {
   // Class name already includes module path and library hash
   std::string getMangledMethodName(const std::string& methodName) const {
     return mangledName + "_" + methodName;
+  }
+
+  // Get mangled method name with parameter types for overload disambiguation
+  // Delegates to QualifiedName::buildParamSuffix for consistent mangling
+  std::string getMangledMethodName(
+      const std::string& methodName,
+      const std::vector<TypePtr>& paramTypes) const {
+    std::string base = mangledName + "_" + methodName;
+    std::string hashPrefix = QualifiedName::extractHashPrefix(mangledName);
+    base += QualifiedName::buildParamSuffix(paramTypes, hashPrefix);
+    return base;
   }
 
   // --- ScopeMethodTable accessors ---

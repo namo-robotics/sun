@@ -1375,6 +1375,12 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
     qualifiedName = makeQualifiedName(proto.getName());
   }
 
+  // Add param type suffix for overload disambiguation (unified with methods)
+  // Skip for 'main' — it's an entry point with a fixed ABI name.
+  if (qualifiedName.paramSuffix.empty() && proto.getName() != "main") {
+    qualifiedName.setParamSuffix(paramTypes);
+  }
+
   FunctionInfo info;
   info.returnType = returnType;
   info.paramTypes = std::move(paramTypes);
@@ -2081,8 +2087,41 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
     }
   } else if (calleeASTType == ASTNodeType::MEMBER_ACCESS) {
     // Handle method calls: object.method(args...)
-    // Analyze the object expression to get its type
-    analyzeExpr(const_cast<ExprAST&>(*callExpr.getCallee()));
+    auto& memberAccess = static_cast<MemberAccessAST&>(
+        const_cast<ExprAST&>(*callExpr.getCallee()));
+
+    // First analyze the object expression to get its type
+    analyzeExpr(const_cast<ExprAST&>(*memberAccess.getObject()));
+
+    // Get object type (unwrap references)
+    sun::TypePtr objectType = memberAccess.getObject()->getResolvedType();
+    if (!objectType) {
+      objectType = inferType(*memberAccess.getObject());
+    }
+    objectType = unwrapRef(objectType);
+
+    // For class types, do method overload resolution with argument types
+    if (objectType && objectType->isClass()) {
+      const auto* classType =
+          static_cast<const sun::ClassType*>(objectType.get());
+      const std::string& methodName = memberAccess.getMemberName();
+
+      // Try to find a method overload matching the argument types
+      const sun::ClassMethod* method =
+          classType->getMethodForArgs(methodName, argTypes);
+      if (method) {
+        // Set the resolved type on the member access for later use
+        memberAccess.setResolvedType(
+            sun::Types::Function(method->returnType, method->paramTypes));
+      } else {
+        // Fall back to first method with this name (will error on type
+        // mismatch)
+        analyzeExpr(memberAccess);
+      }
+    } else {
+      // Not a class type - analyze normally
+      analyzeExpr(memberAccess);
+    }
   } else {
     // Not a simple variable reference or method call - analyze the callee
     // expression

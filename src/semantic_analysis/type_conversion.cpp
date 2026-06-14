@@ -255,16 +255,21 @@ sun::TypePtr SemanticAnalyzer::typeAnnotationToType(
     // Resolve the base name through using imports
     sun::QualifiedName resolved = resolveNameWithUsings(annot.baseName);
 
-    // Try to instantiate the generic class (use base name for scope lookup)
-    auto specializedClass =
-        instantiateGenericClass(resolved.baseName, typeArgs);
+    // Try to instantiate the generic class
+    // Use the original dotted name for module-qualified lookups (e.g.,
+    // "Test.Inner") so lookupGenericClass can find it via module path.
+    // Fall back to resolved.baseName for using-imported names.
+    std::string lookupName = annot.baseName.find('.') != std::string::npos
+                                 ? annot.baseName
+                                 : resolved.baseName;
+    auto specializedClass = instantiateGenericClass(lookupName, typeArgs);
     if (specializedClass) {
       return specializedClass;
     }
 
     // Try to instantiate as a generic interface (e.g., IIterator<i32>)
     auto specializedInterface =
-        instantiateGenericInterface(resolved.baseName, typeArgs);
+        instantiateGenericInterface(lookupName, typeArgs);
     if (specializedInterface) {
       return specializedInterface;
     }

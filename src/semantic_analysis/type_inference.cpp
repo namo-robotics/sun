@@ -402,8 +402,15 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
           break;  // Use first return statement for type inference
         }
       }
-      // If no return found, block returns void
-      return returnType ? returnType : sun::Types::Void();
+
+      if (returnType) {
+        return returnType;
+      }
+
+      // No return found - use last expression's type (expression-block
+      // semantics) This enables patterns like: var x = { ...; value };
+      const auto& lastExpr = *block.getBody().back();
+      return inferType(lastExpr);
     }
 
     case ASTNodeType::FUNCTION: {
@@ -638,6 +645,16 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
             "Dereferencing 'raw_ptr' can only be done in an unsafe block",
             memberAccess.getLocation());
       }
+      objectType = pointeeType;
+    }
+  }
+
+  // Unwrap static_ptr<Class> to Class for member access
+  if (objectType->isStaticPointer()) {
+    sun::TypePtr pointeeType =
+        static_cast<sun::StaticPointerType*>(objectType.get())
+            ->getPointeeType();
+    if (pointeeType && pointeeType->isClass()) {
       objectType = pointeeType;
     }
   }

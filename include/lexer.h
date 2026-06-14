@@ -70,6 +70,7 @@ enum class TokenKind {
   TYPE_BOOL,             // bool
   TYPE_VOID,             // void
   STRING,                // string literal "..."
+  TEMPLATE_STRING,       // template string literal `...` (may contain ${expr})
   BRACE_OPEN,            // {
   BRACE_CLOSE,           // }
   BRACKET_OPEN,          // [
@@ -160,6 +161,7 @@ static const std::map<TokenKind, std::string> tokenRegexes = {
     {TokenKind::TYPE_BOOL, "bool"},
     {TokenKind::TYPE_VOID, "void"},
     {TokenKind::STRING, "\"[^\"]*\""},
+    {TokenKind::TEMPLATE_STRING, "`([^`\\\\]|\\\\.)*`"},
     {TokenKind::INTRINSIC_IDENTIFIER, "_[a-zA-Z0-9_]+"},
     {TokenKind::IDENTIFIER, "[a-zA-Z][a-zA-Z0-9_]*"},
     // FLOAT must come before INTEGER so longer match wins (3.0 matches FLOAT,
@@ -321,6 +323,11 @@ struct Token {
     return {TokenKind::STRING, std::move(str), s, e, ""};
   }
 
+  // Template string token factory
+  static Token templateString(std::string str, Position s, Position e) {
+    return {TokenKind::TEMPLATE_STRING, std::move(str), s, e, ""};
+  }
+
   bool isEof() const { return kind == TokenKind::TOK_EOF; }
 
   std::optional<std::string> getIdentifier() const {
@@ -346,6 +353,14 @@ struct Token {
 
   std::optional<std::string> getString() const {
     if (kind == TokenKind::STRING) return std::get<std::string>(value);
+    return std::nullopt;
+  }
+
+  // Get template string content
+  std::optional<std::string> getTemplateString() const {
+    if (kind == TokenKind::TEMPLATE_STRING) {
+      return std::get<std::string>(value);
+    }
     return std::nullopt;
   }
 };
@@ -591,6 +606,11 @@ class Lexer {
           // Remove the surrounding quotes from the matched string
           std::string content = matchedStr.substr(1, matchedStr.size() - 2);
           return Token::stringLiteral(content, startPos, endPos);
+        }
+        case TokenKind::TEMPLATE_STRING: {
+          // Remove the surrounding backticks from the matched string
+          std::string content = matchedStr.substr(1, matchedStr.size() - 2);
+          return Token::templateString(content, startPos, endPos);
         }
         default:
           // All other tokens use the lookup table

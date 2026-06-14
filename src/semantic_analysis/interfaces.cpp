@@ -20,35 +20,8 @@ void SemanticAnalyzer::registerInterface(
 
 std::shared_ptr<sun::InterfaceType> SemanticAnalyzer::lookupInterface(
     const std::string& name) const {
-  // Walk scope chain from innermost to outermost
-  for (auto* s = currentScope; s != nullptr; s = s->parent) {
-    auto result = s->findInterface(name);
-    if (result) return result;
-    // Search direct import-scope children (one level of transparency)
-    for (const auto& [childName, child] : s->childModules) {
-      if (child && child->getType() == ScopeType::Import) {
-        result = child->findInterface(name);
-        if (result) return result;
-        for (const auto& [modName, modChild] : child->childModules) {
-          if (modChild && modChild->getType() == ScopeType::Module) {
-            result = modChild->findInterface(name);
-            if (result) return result;
-          }
-        }
-      }
-    }
-    // Search import bindings from using statements
-    for (const auto& binding : s->importBindings) {
-      if (!binding.sourceScope) continue;
-      if (binding.isWildcard) {
-        auto result2 = binding.sourceScope->findInterface(name);
-        if (result2) return result2;
-      } else if (binding.localName == name) {
-        auto result2 = binding.sourceScope->findInterface(binding.sourceName);
-        if (result2) return result2;
-      }
-    }
-  }
+  auto result = currentScope->lookupInterface(name);
+  if (result) return result;
 
   // Check builtin interfaces in type registry (IError, IIterator, IIterable)
   if (typeRegistry) {
@@ -76,10 +49,7 @@ void SemanticAnalyzer::registerGenericInterface(
 
 const GenericInterfaceInfo* SemanticAnalyzer::lookupGenericInterface(
     const std::string& name) const {
-  return lookupGenericSymbol<const GenericInterfaceInfo*>(
-      name, [](SemanticScope* scope, const std::string& n) {
-        return scope->findGenericInterface(n);
-      });
+  return currentScope->lookupGenericInterface(name);
 }
 
 std::shared_ptr<sun::InterfaceType>
@@ -236,36 +206,7 @@ void SemanticAnalyzer::registerEnum(const std::string& name,
 
 std::shared_ptr<sun::EnumType> SemanticAnalyzer::lookupEnum(
     const std::string& name) const {
-  // Walk scope chain from innermost to outermost
-  for (auto* s = currentScope; s != nullptr; s = s->parent) {
-    auto result = s->findEnum(name);
-    if (result) return result;
-    // Search direct import-scope children (one level of transparency)
-    for (const auto& [childName, child] : s->childModules) {
-      if (child && child->getType() == ScopeType::Import) {
-        result = child->findEnum(name);
-        if (result) return result;
-        for (const auto& [modName, modChild] : child->childModules) {
-          if (modChild && modChild->getType() == ScopeType::Module) {
-            result = modChild->findEnum(name);
-            if (result) return result;
-          }
-        }
-      }
-    }
-    // Search import bindings from using statements
-    for (const auto& binding : s->importBindings) {
-      if (!binding.sourceScope) continue;
-      if (binding.isWildcard) {
-        auto result2 = binding.sourceScope->findEnum(name);
-        if (result2) return result2;
-      } else if (binding.localName == name) {
-        auto result2 = binding.sourceScope->findEnum(binding.sourceName);
-        if (result2) return result2;
-      }
-    }
-  }
-  return nullptr;
+  return currentScope->lookupEnum(name);
 }
 
 // -------------------------------------------------------------------

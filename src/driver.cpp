@@ -82,6 +82,17 @@ static void processManifest(const ManifestAST& manifest,
   }
 }
 
+/// Check if stdlib.moon is included in moon imports
+static bool hasStdlibImport(const std::vector<sun::MoonImport>& moonImports) {
+  for (const auto& moonImport : moonImports) {
+    // Check if the path ends with stdlib.moon
+    if (moonImport.path.find("stdlib.moon") != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Factory method for JIT execution
 std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName) {
   ensureLLVMInitialized();
@@ -246,6 +257,13 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
   if (!blockAst) {
     llvm::errs() << "Error: Failed to parse program.\n";
     return result;
+  }
+
+  // Check if string interpolation is used without stdlib
+  if (parser.usesStringInterpolation() && !hasStdlibImport(moonImports_)) {
+    logAndThrowError(
+        "String interpolation requires the standard library. Add "
+        "'moon \"stdlib.moon\"' to your manifest or use --moon stdlib.moon");
   }
 
   // Debug mode: generate AST DOT graph

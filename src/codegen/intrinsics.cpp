@@ -138,40 +138,38 @@ Value* CodegenVisitor::codegenInitIntrinsic(
   }
 
   // Look up the constructor (init method)
-  std::string ctorMangledName = classType->getMangledMethodName("init");
+  const sun::ClassMethod* initMethod = classType->getMethod("init");
+  std::string ctorMangledName;
+  if (initMethod) {
+    ctorMangledName =
+        classType->getMangledMethodName("init", initMethod->paramTypes);
+  } else {
+    ctorMangledName = classType->getMangledMethodName("init");
+  }
+
   Function* ctorFunc = nullptr;
   size_t ctorArgCount = ctorArgs.size();  // includes 'this' pointer
 
-  // Try to find existing constructor matching argument count
-  for (int i = 0; i < 10; ++i) {
-    std::string ctorName =
-        (i == 0) ? ctorMangledName : ctorMangledName + "." + std::to_string(i);
-    Function* candidate = module->getFunction(ctorName);
-    if (!candidate) break;
-
-    // Constructor takes 'this' + user args
-    if (candidate->arg_size() == ctorArgCount) {
-      ctorFunc = candidate;
-      break;
-    }
+  // Try to find existing constructor
+  Function* candidate = module->getFunction(ctorMangledName);
+  if (candidate && candidate->arg_size() == ctorArgCount) {
+    ctorFunc = candidate;
   }
 
   // If not found, try to create a declaration for it
   // This handles cases where the class is processed later in codegen order
-  if (!ctorFunc) {
-    const sun::ClassMethod* initMethod = classType->getMethod("init");
-    if (initMethod && initMethod->paramTypes.size() + 1 == ctorArgCount) {
-      // Build parameter types for the constructor
-      std::vector<llvm::Type*> paramTypes;
-      paramTypes.push_back(PointerType::getUnqual(ctx.getContext()));  // this
-      for (const auto& paramType : initMethod->paramTypes) {
-        paramTypes.push_back(typeResolver.resolve(paramType));
-      }
-      FunctionType* funcType = FunctionType::get(
-          Type::getVoidTy(ctx.getContext()), paramTypes, false);
-      ctorFunc = Function::Create(funcType, Function::ExternalLinkage,
-                                  ctorMangledName, module);
+  if (!ctorFunc && initMethod &&
+      initMethod->paramTypes.size() + 1 == ctorArgCount) {
+    // Build parameter types for the constructor
+    std::vector<llvm::Type*> paramTypes;
+    paramTypes.push_back(PointerType::getUnqual(ctx.getContext()));  // this
+    for (const auto& paramType : initMethod->paramTypes) {
+      paramTypes.push_back(typeResolver.resolve(paramType));
     }
+    FunctionType* funcType =
+        FunctionType::get(Type::getVoidTy(ctx.getContext()), paramTypes, false);
+    ctorFunc = Function::Create(funcType, Function::ExternalLinkage,
+                                ctorMangledName, module);
   }
 
   if (ctorFunc) {
