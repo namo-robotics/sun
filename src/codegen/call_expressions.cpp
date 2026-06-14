@@ -588,8 +588,28 @@ Value* CodegenVisitor::codegenInterfaceMethodCall(
 Value* CodegenVisitor::codegenClassMethodCall(
     const CallExprAST& expr, Value* objectPtr, sun::ClassType* classType,
     const std::string& methodName, const MemberAccessAST* memberAccess) {
-  // Look up the method
-  const sun::ClassMethod* method = classType->getMethod(methodName);
+  // Semantic analysis must have resolved the method overload and stored
+  // its signature in the member access's resolved type (a FunctionType).
+  const sun::ClassMethod* method = nullptr;
+
+  if (!memberAccess) {
+    logAndThrowError("Internal error: method call without member access AST");
+    return nullptr;
+  }
+
+  sun::TypePtr resolvedType = memberAccess->getResolvedType();
+  if (!resolvedType || !resolvedType->isFunction()) {
+    logAndThrowError("Method '" + methodName + "' on class " +
+                     classType->getDisplayName() +
+                     " was not resolved by semantic analysis");
+    return nullptr;
+  }
+
+  // Use the param types from semantic analysis to find the exact method
+  const auto& paramTypes =
+      static_cast<sun::FunctionType*>(resolvedType.get())->getParamTypes();
+  method = classType->getMethodForArgs(methodName, paramTypes);
+
   if (!method) {
     logAndThrowError("Unknown method: " + methodName + " on class " +
                      classType->getDisplayName());
@@ -646,11 +666,14 @@ Value* CodegenVisitor::codegenClassMethodCall(
   }
 
   // Get the mangled method name for regular (non-generic) call
-  std::string mangledName = classType->getMangledMethodName(methodName);
+  // Include parameter types for overload disambiguation
+  std::string mangledName =
+      classType->getMangledMethodName(methodName, method->paramTypes);
   Function* methodFunc = module->getFunction(mangledName);
   if (!methodFunc) {
-    logAndThrowError("Method function not found: " +
-                     classType->getDisplayName() + "." + methodName);
+    logAndThrowError(
+        "Method function not found: " + classType->getDisplayName() + "." +
+        methodName + " (mangled: " + mangledName + ")");
     return nullptr;
   }
 

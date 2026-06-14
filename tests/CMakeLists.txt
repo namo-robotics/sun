@@ -24,6 +24,7 @@ add_executable(sun_tests
     test_generic_methods.cpp
     test_generic_specializations.cpp
     test_interfaces.cpp
+    test_interpolation.cpp
     test_intrinsics.cpp
     test_linked_list.cpp
     test_loops.cpp

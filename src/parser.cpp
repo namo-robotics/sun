@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "ast_deserializer.h"
+#include "interpolated_string_parser.h"
 #include "library_cache.h"
 #include "llvm/Support/raw_ostream.h"
 #include "metadata_extractor.h"
@@ -615,6 +616,14 @@ unique_ptr<ExprAST> Parser::parsePrimary() {
     case TokenKind::STRING:
       base = parseStringLiteral();
       break;
+    case TokenKind::TEMPLATE_STRING: {
+      // Parse interpolated template string: `Hello ${name}!`
+      std::string content = curTok.getTemplateString().value();
+      Position loc = curTok.start;
+      getNextToken();  // consume the template string token
+      base = InterpolatedStringParser::parse(content, loc);
+      break;
+    }
     case TokenKind::PAREN_OPEN:
       base = parseParenExpr();
       break;

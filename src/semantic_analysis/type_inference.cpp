@@ -402,8 +402,15 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
           break;  // Use first return statement for type inference
         }
       }
-      // If no return found, block returns void
-      return returnType ? returnType : sun::Types::Void();
+
+      if (returnType) {
+        return returnType;
+      }
+
+      // No return found - use last expression's type (expression-block
+      // semantics) This enables patterns like: var x = { ...; value };
+      const auto& lastExpr = *block.getBody().back();
+      return inferType(lastExpr);
     }
 
     case ASTNodeType::FUNCTION: {

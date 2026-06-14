@@ -101,6 +101,7 @@ add_library(sun_lib
     # Generated protobuf sources
     ${PROTO_SRCS}
     src/parser.cpp
+    src/interpolated_string_parser.cpp
     # AST node implementations (in src/ast/)
     src/ast/expr_ast.cpp
     src/ast/prototype_ast.cpp

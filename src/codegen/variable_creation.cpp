@@ -971,7 +971,13 @@ void CodegenVisitor::emitStaticInitFunction() {
 
       // Get the init method info from the class type
       const sun::ClassMethod* initMethod = classType->getMethod("init");
-      std::string baseCtorName = classType->getMangledMethodName("init");
+      std::string baseCtorName;
+      if (initMethod) {
+        baseCtorName =
+            classType->getMangledMethodName("init", initMethod->paramTypes);
+      } else {
+        baseCtorName = classType->getMangledMethodName("init");
+      }
 
       // Try to find the constructor function
       Function* ctorFunc = module->getFunction(baseCtorName);

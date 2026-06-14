@@ -581,8 +581,9 @@ Value* CodegenVisitor::codegenClassIndex(const IndexAST& expr, Value* objectPtr,
   fatVal = ctx.builder->CreateInsertValue(fatVal, dimsAlloca, 2);
   ctx.builder->CreateStore(fatVal, arrAlloca);
 
-  // Get the method function
-  std::string mangledName = classType->getMangledMethodName("__index__");
+  // Get the method function (include param types for overload disambiguation)
+  std::string mangledName =
+      classType->getMangledMethodName("__index__", method->paramTypes);
   Function* methodFunc = module->getFunction(mangledName);
 
   if (!methodFunc) {
@@ -770,8 +771,9 @@ Value* CodegenVisitor::codegenClassSlice(const IndexAST& expr, Value* objectPtr,
   fatVal = ctx.builder->CreateInsertValue(fatVal, dimsAlloca, 2);
   ctx.builder->CreateStore(fatVal, arrAlloca);
 
-  // Get the method function
-  std::string mangledName = classType->getMangledMethodName("__slice__");
+  // Get the method function (include param types for overload disambiguation)
+  std::string mangledName =
+      classType->getMangledMethodName("__slice__", method->paramTypes);
   Function* methodFunc = module->getFunction(mangledName);
 
   if (!methodFunc) {
@@ -896,8 +898,9 @@ Value* CodegenVisitor::codegenClassSetIndex(const IndexAST& indexExpr,
   Value* valueVal = codegen(*valueExpr);
   if (!valueVal) return nullptr;
 
-  // Get the method function
-  std::string mangledName = classType->getMangledMethodName("__setindex__");
+  // Get the method function (include param types for overload disambiguation)
+  std::string mangledName =
+      classType->getMangledMethodName("__setindex__", method->paramTypes);
   Function* methodFunc = module->getFunction(mangledName);
 
   if (!methodFunc) {

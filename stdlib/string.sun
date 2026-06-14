@@ -156,6 +156,44 @@ class String {
         }
     }
     
+    // ========================================================================
+    // Overloaded append() for String Interpolation
+    // These enable `${expr}` interpolation via overload resolution
+    // ========================================================================
+    
+    // Append string literal (overload for interpolation)
+    function append(literal: static_ptr<u8>) void {
+        this.append_literal(literal);
+    }
+    
+    // Append signed 64-bit integer (overload for interpolation)
+    function append(val: i64) void {
+        this.append_i64(val);
+    }
+    
+    // Append signed 32-bit integer (overload for interpolation)
+    function append(val: i32) void {
+        this.append_i64(val);
+    }
+    
+    // Append unsigned 64-bit integer (overload for interpolation)  
+    function append(val: u64) void {
+        this.append_u64(val);
+    }
+    
+    // Append unsigned 32-bit integer (overload for interpolation)
+    function append(val: u32) void {
+        this.append_u64(val);
+    }
+    
+    // Append boolean (overload for interpolation)
+    function append(val: bool) void {
+        this.append_bool(val);
+    }
+    
+    // Note: Float support (f32/f64) requires _f64_to_i64 intrinsic
+    // TODO: Add append(val: f64) and append(val: f32) once intrinsic is available
+    
     // Append string literal
     function append_literal(literal: static_ptr<u8>) void {
         var srcData: raw_ptr<u8> = _static_ptr_data<u8>(literal);
@@ -476,6 +514,9 @@ class String {
         }
         this.append_literal("false");
     }
+    
+    // Note: append_f64() requires f64-to-i64 intrinsic which is not yet available
+    // TODO: Implement once _f64_to_i64 intrinsic is added
     
     // ========================================================================
     // Slicing
