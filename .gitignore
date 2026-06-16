@@ -33,3 +33,4 @@ test
 *.dot
 *.ll
 *_debug/
+.cache/

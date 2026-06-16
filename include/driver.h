@@ -5,7 +5,6 @@
 
 #include <memory>
 #include <mutex>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -29,10 +28,6 @@ class Driver {
 
   // Base directory for resolving relative imports
   std::string baseDir;
-
-  // Track which files have already been imported (for cycle detection)
-  std::shared_ptr<std::set<std::string>> importedFiles =
-      std::make_shared<std::set<std::string>>();
 
   // Whether to print LLVM IR to stdout (controlled by --emit-ir)
   bool dumpIR = false;

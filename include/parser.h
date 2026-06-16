@@ -34,11 +34,6 @@ class Parser {
   // Track whether string interpolation was used during parsing
   bool usesStringInterpolation_ = false;
 
-  // Track which files have already been imported (for cycle detection)
-  // Shared across recursive import calls
-  std::shared_ptr<std::set<std::string>> importedFiles =
-      std::make_shared<std::set<std::string>>();
-
   // Track import paths that should be loaded from precompiled libraries
   // (not parsed from source)
   std::shared_ptr<std::vector<std::string>> precompiledImports =
@@ -199,9 +194,6 @@ class Parser {
 
   // Setters for import resolution (used by Driver)
   void setBaseDir(const std::string& dir) { baseDir = dir; }
-  void setImportedFiles(std::shared_ptr<std::set<std::string>> files) {
-    importedFiles = files;
-  }
   void setPrecompiledImports(
       std::shared_ptr<std::vector<std::string>> imports) {
     precompiledImports = imports;
