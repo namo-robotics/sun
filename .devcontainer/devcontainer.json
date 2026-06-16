@@ -28,7 +28,9 @@
 				"vadimcn.vscode-lldb",
 				"namo-robotics.sun-language",
 				"llvm-vs-code-extensions.lldb-dap",
-				"MermaidChart.vscode-mermaid-chart"
+				"MermaidChart.vscode-mermaid-chart",
+				"ms-vscode.cmake-tools",
+				"llvm-vs-code-extensions.vscode-clangd"
 			]
 		}
 	}

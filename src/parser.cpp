@@ -2264,12 +2264,6 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
   resolved = std::filesystem::canonical(resolved);
   std::string resolvedStr = resolved.string();
 
-  // Check if already imported
-  if (importedFiles->count(resolvedStr)) {
-    return nullptr;
-  }
-  importedFiles->insert(resolvedStr);
-
   // Open the moon bundle
   PARSER_TIMER_START(open_moon);
   auto reader = sun::SunLibReader::open(resolved);

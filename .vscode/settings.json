@@ -1,11 +1,33 @@
 {
+    // === CMake + Build ===
+    "cmake.buildDirectory": "${workspaceFolder}/build",
+    "cmake.configureOnOpen": true,
+    // === IntelliSense (clangd) ===
+    "C_Cpp.intelliSenseEngine": "disabled",
+    "C_Cpp.default.configurationProvider": "",
+    "clangd.arguments": [
+        "--background-index",
+        "--compile-commands-dir=${workspaceFolder}/build",
+        "--header-insertion=iwyu",
+        "--all-scopes-completion",
+        "--completion-style=detailed"
+    ],
+    // === Formatting ===
     "C_Cpp.formatting": "clangFormat",
-    "[cpp]": {
-        "editor.formatOnSave": true,
-        "editor.formatOnPaste": false,
-    },
     "C_Cpp.clang_format_style": "file",
     "C_Cpp.clang_format_fallbackStyle": "Google",
+    "editor.formatOnSave": true,
+    "[cpp]": {
+        "editor.formatOnSave": true,
+        "editor.formatOnPaste": false
+    },
+    "[plaintext]": {
+        "editor.formatOnSave": false
+    },
+    "[makefile]": {
+        "editor.formatOnSave": false
+    },
+    // === Editor UI ===
     "editor.rulers": [
         80,
         120
@@ -19,47 +41,15 @@
         "debian/copyright": "plaintext",
         "debian/changelog": "plaintext",
         "debian/source/format": "plaintext",
-        "debian/install": "plaintext"
+        "debian/install": "plaintext",
+        "*.proto": "proto"
     },
-    "editor.formatOnSave": true,
-    "[plaintext]": {
-        "editor.formatOnSave": false
-    },
-    "[makefile]": {
-        "editor.formatOnSave": false
-    },
-    "chat.tools.terminal.autoApprove": {
-        "cmake": true,
-        "nproc": true,
-        "^git\\b": false
-    },
-    "editor.tokenColorCustomizations": {
-        "textMateRules": [
-            {
-                "scope": "googletest.failed",
-                "settings": {
-                    "foreground": "#f00"
-                }
-            },
-            {
-                "scope": "googletest.passed",
-                "settings": {
-                    "foreground": "#0f0"
-                }
-            },
-            {
-                "scope": "googletest.run",
-                "settings": {
-                    "foreground": "#0f0"
-                }
-            }
-        ]
-    },
-    "git.addAICoAuthor": "off",
-    "lldb-dap.executable-path": "/usr/lib/llvm-20/bin/lldb-dap",
+    // === Project-Specific ===
     "sun.sunPath": [
         "build",
         "/workspaces/sun"
     ],
     "sun.lsp.path": "build/sun-lsp",
+    // === LLDB (for debugging) ===
+    "lldb-dap.executable-path": "/usr/lib/llvm-20/bin/lldb-dap",
 }

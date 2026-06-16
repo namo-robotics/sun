@@ -13,7 +13,6 @@
 #include "debug/ast_dot_generator.h"
 #include "debug/scope_tree_generator.h"
 #include "error.h"
-#include "library_cache.h"
 #include "module_linker.h"
 #include "source_manager.h"
 #include "sun_path.h"
@@ -249,6 +248,91 @@ void Driver::printReachableIR() {
   llvm::outs() << reset;
 }
 
+// ---------------------------------------------------------------------------
+// Moon import processing
+// ---------------------------------------------------------------------------
+
+/// Process moon imports: collect stubs, deduplicate, check for collisions
+/// with source modules and between moons, then prepend to AST.
+static void processMoonImports(
+    BlockExprAST& blockAst,
+    Parser& parser,
+    const std::vector<sun::MoonImport>& moonImports) {
+  if (moonImports.empty()) {
+    return;
+  }
+
+  // Collect top-level module names from source files
+  std::unordered_set<std::string> sourceModuleNames;
+  for (const auto& stmt : blockAst.getBody()) {
+    if (stmt && stmt->getType() == ASTNodeType::MODULE) {
+      auto& mod = static_cast<const ModuleAST&>(*stmt);
+      sourceModuleNames.insert(mod.getName());
+    }
+  }
+
+  // Collect, deduplicate, and check for collisions in one pass
+  std::vector<std::unique_ptr<ExprAST>> finalMoonScopeASTs;
+  std::unordered_set<std::string> seenHashes;
+  std::unordered_map<std::string, std::pair<std::string, std::string>>
+      moduleProviders;  // module_name -> (moon_path, content_hash)
+
+  for (const auto& moonImport : moonImports) {
+    auto stub = parser.collectMoonImport(moonImport);
+    if (!stub) {
+      continue;
+    }
+
+    if (stub->getType() != ASTNodeType::MOON_SCOPE) {
+      finalMoonScopeASTs.push_back(std::move(stub));
+      continue;
+    }
+
+    auto& moonScope = static_cast<MoonScopeAST&>(*stub);
+    const std::string& hash = moonScope.getContentHash();
+    const std::string& moonPath = moonScope.getMoonPath();
+
+    // Skip duplicate moons (same content hash)
+    if (!seenHashes.insert(hash).second) {
+      continue;
+    }
+
+    // Check for module name collisions
+    for (const auto& bodyExpr : moonScope.getBody().getBody()) {
+      if (bodyExpr->getType() == ASTNodeType::MODULE) {
+        auto& mod = static_cast<ModuleAST&>(*bodyExpr);
+        const std::string& modName = mod.getName();
+
+        // Check collision with source file modules
+        if (sourceModuleNames.count(modName)) {
+          logAndThrowError("Module name collision: module '" + modName +
+                           "' from '" + moonPath +
+                           "' conflicts with a module in the source files.");
+        }
+
+        // Check collision with other moon modules
+        auto it = moduleProviders.find(modName);
+        if (it != moduleProviders.end()) {
+          if (it->second.second != hash) {
+            logAndThrowError("Module name collision: module '" + modName +
+                             "' is provided by both '" + it->second.first +
+                             "' and '" + moonPath +
+                             "'. Use module aliasing to resolve.");
+          }
+        } else {
+          moduleProviders[modName] = {moonPath, hash};
+        }
+      }
+    }
+
+    finalMoonScopeASTs.push_back(std::move(stub));
+  }
+
+  if (!finalMoonScopeASTs.empty()) {
+    blockAst.prependExpressions(std::move(finalMoonScopeASTs));
+  }
+}
+
 sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
                                   Parser& parser, bool execute, int argc,
                                   char** argv) {
@@ -281,17 +365,7 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
   }
 
   // Inject AST stubs from moon imports before semantic analysis
-  if (!moonImports_.empty()) {
-    std::vector<std::unique_ptr<ExprAST>> moonStubs;
-    for (const auto& moonImport : moonImports_) {
-      if (auto moonScope = parser.collectMoonImport(moonImport)) {
-        moonStubs.push_back(std::move(moonScope));
-      }
-    }
-    if (!moonStubs.empty()) {
-      blockAst->prependExpressions(std::move(moonStubs));
-    }
-  }
+  processMoonImports(*blockAst, parser, moonImports_);
 
   // Run semantic analysis on the unified AST
   analyzer->analyzeBlock(*blockAst);
@@ -624,11 +698,6 @@ sun::SunValue Driver::executeString(const std::string& source, int argc,
     std::filesystem::path sourcePath = std::filesystem::absolute(filePath);
     baseDir = sourcePath.parent_path().string();
     effectivePath = sourcePath.string();
-    if (std::filesystem::exists(sourcePath)) {
-      importedFiles->insert(std::filesystem::canonical(sourcePath).string());
-    } else {
-      importedFiles->insert(sourcePath.lexically_normal().string());
-    }
   } else {
     // Anonymous source (e.g., from executeString in tests)
     effectivePath = SourceManager::instance().addAnonymousSource(source);
@@ -640,7 +709,6 @@ sun::SunValue Driver::executeString(const std::string& source, int argc,
   }
 
   auto parser = Parser::createStringParser(source);
-  parser.setImportedFiles(importedFiles);
   parser.setBaseDir(baseDir);
   if (!filePath.empty()) {
     parser.setFilePath(filePath);
@@ -671,24 +739,19 @@ void Driver::executeFile(const std::string& filename, int argc, char** argv) {
   preParser.setFilePath(canonical);
   auto preAst = preParser.parseProgram();
 
+  std::vector<std::string> sunFiles;
+  std::vector<sun::MoonImport> moonImports = moonImports_;
+
   if (const auto* manifest = findManifest(*preAst)) {
     // Manifest found - collect all dependencies
-    std::vector<std::string> sunFiles;
-    std::vector<sun::MoonImport> moonImports = moonImports_;
-
     processManifest(*manifest, baseDirPath, sunFiles, moonImports);
-
-    // Add the entrypoint file itself
-    sunFiles.insert(sunFiles.begin(), canonical);
-
-    // Use merged compilation
-    executeFiles(sunFiles, moonImports, argc, argv);
-  } else {
-    // No manifest - use single-file execution
-    baseDir = baseDirPath;
-    importedFiles->insert(canonical);
-    executeString(source, argc, argv, filePath.string());
   }
+
+  // Add the entrypoint file itself
+  sunFiles.insert(sunFiles.begin(), canonical);
+
+  // Use merged compilation
+  executeFiles(sunFiles, moonImports, argc, argv);
 }
 
 void Driver::compileString(const std::string& source,
@@ -698,11 +761,6 @@ void Driver::compileString(const std::string& source,
     std::filesystem::path sourcePath = std::filesystem::absolute(filePath);
     baseDir = sourcePath.parent_path().string();
     effectivePath = sourcePath.string();
-    if (std::filesystem::exists(sourcePath)) {
-      importedFiles->insert(std::filesystem::canonical(sourcePath).string());
-    } else {
-      importedFiles->insert(sourcePath.lexically_normal().string());
-    }
   } else {
     // Anonymous source
     effectivePath = SourceManager::instance().addAnonymousSource(source);
@@ -712,7 +770,6 @@ void Driver::compileString(const std::string& source,
   SourceManager::instance().addSource(effectivePath, source);
 
   auto parser = Parser::createStringParser(source);
-  parser.setImportedFiles(importedFiles);
   parser.setBaseDir(baseDir);
   if (!filePath.empty()) {
     parser.setFilePath(filePath);
@@ -743,87 +800,24 @@ void Driver::compileFile(const std::string& filename) {
   preParser.setFilePath(canonical);
   auto preAst = preParser.parseProgram();
 
+  std::vector<std::string> sunFiles;
+  std::vector<sun::MoonImport> moonImports = moonImports_;
+
   if (const auto* manifest = findManifest(*preAst)) {
     // Manifest found - collect all dependencies
-    std::vector<std::string> sunFiles;
-    std::vector<sun::MoonImport> moonImports = moonImports_;
-
     processManifest(*manifest, baseDirPath, sunFiles, moonImports);
-
-    // Add the entrypoint file itself
-    sunFiles.insert(sunFiles.begin(), canonical);
-
-    // Use merged compilation
-    compileFiles(sunFiles, moonImports);
-  } else {
-    // No manifest - use single-file compilation
-    baseDir = baseDirPath;
-    importedFiles->insert(canonical);
-    compileString(source, filePath.string());
   }
+
+  // Add the entrypoint file itself
+  sunFiles.insert(sunFiles.begin(), canonical);
+
+  // Use merged compilation
+  compileFiles(sunFiles, moonImports);
 }
 
 // ---------------------------------------------------------------------------
 // Merged-AST compilation: compile multiple source files together
 // ---------------------------------------------------------------------------
-
-/// Process MoonScopeASTs: detect hash duplicates, check for module name
-/// collisions, and consolidate same-named modules.
-/// Returns a vector of processed MoonScopeASTs (deduplicated).
-static std::vector<std::unique_ptr<ExprAST>> processMoonScopes(
-    std::vector<std::unique_ptr<ExprAST>>& moonStubs) {
-  std::vector<std::unique_ptr<ExprAST>> result;
-
-  // Track seen content hashes for deduplication
-  std::unordered_set<std::string> seenHashes;
-
-  // Track which moon provides each top-level module name (for collision
-  // detection) Maps module_name -> (moon_path, content_hash)
-  std::unordered_map<std::string, std::pair<std::string, std::string>>
-      moduleProviders;
-
-  for (auto& stub : moonStubs) {
-    if (stub->getType() != ASTNodeType::MOON_SCOPE) {
-      // Pass through non-MoonScope nodes unchanged
-      result.push_back(std::move(stub));
-      continue;
-    }
-
-    auto& moonScope = static_cast<MoonScopeAST&>(*stub);
-    const std::string& hash = moonScope.getContentHash();
-    const std::string& moonPath = moonScope.getMoonPath();
-
-    // Skip duplicate moons (same content hash)
-    if (!seenHashes.insert(hash).second) {
-      continue;
-    }
-
-    // Check for module name collisions
-    for (const auto& bodyExpr : moonScope.getBody().getBody()) {
-      if (bodyExpr->getType() == ASTNodeType::MODULE) {
-        auto& mod = static_cast<ModuleAST&>(*bodyExpr);
-        const std::string& modName = mod.getName();
-
-        auto it = moduleProviders.find(modName);
-        if (it != moduleProviders.end()) {
-          // Check if it's from a different moon (different hash)
-          if (it->second.second != hash) {
-            logAndThrowError("Module name collision: module '" + modName +
-                             "' is provided by both '" + it->second.first +
-                             "' and '" + moonPath +
-                             "'. Use module aliasing to resolve.");
-          }
-        } else {
-          moduleProviders[modName] = {moonPath, hash};
-        }
-      }
-    }
-
-    result.push_back(std::move(stub));
-  }
-
-  return result;
-}
 
 /// Merge multiple parsed BlockExprASTs into a single unified AST.
 /// Same-named modules are merged together.
@@ -901,9 +895,6 @@ void Driver::compileFiles(const std::vector<std::string>& sourceFiles,
     std::string canonical = std::filesystem::canonical(filePath).string();
     canonicalPaths.push_back(canonical);
 
-    // Track in importedFiles to prevent re-processing
-    importedFiles->insert(canonical);
-
     // Read file
     std::ifstream file(filename);
     if (!file.is_open()) {
@@ -919,8 +910,6 @@ void Driver::compileFiles(const std::vector<std::string>& sourceFiles,
 
     // Parse (imports always error now - we use merged compilation)
     auto parser = Parser::createStringParser(source);
-    parser.setImportedFiles(importedFiles);
-    parser.setBaseDir(filePath.parent_path().string());
     parser.setFilePath(canonical);
 
     auto blockAst = parser.parseProgram();
@@ -933,110 +922,14 @@ void Driver::compileFiles(const std::vector<std::string>& sourceFiles,
   // Merge all parsed files into a single AST
   auto mergedAst = mergeASTs(parsedFiles, canonicalPaths);
 
-  // Inject AST stubs from moon imports before semantic analysis
-  // This allows the semantic analyzer to know about symbols from moon libraries
-  if (!moonImports.empty()) {
-    // Create a temporary parser for collecting moon stubs
-    // Important: use fresh importedFiles so stubs aren't skipped
-    auto stubParser = Parser::createStringParser("");
-    auto freshImportedFiles = std::make_shared<std::set<std::string>>();
-    stubParser.setImportedFiles(freshImportedFiles);
-    std::vector<std::unique_ptr<ExprAST>> moonStubs;
-    for (const auto& moonImport : moonImports) {
-      if (auto moonScope = stubParser.collectMoonImport(moonImport)) {
-        moonStubs.push_back(std::move(moonScope));
-      }
-    }
-    if (!moonStubs.empty()) {
-      // Process: deduplicate by hash, check for collisions
-      auto processed = processMoonScopes(moonStubs);
-      mergedAst->prependExpressions(std::move(processed));
-    }
-  }
+  // Create a parser for runPipeline (used for precompiled imports lookup)
+  auto stubParser = Parser::createStringParser("");
 
-  // Debug mode: generate AST DOT graph
-  if (debugMode_ && !debugFolder_.empty()) {
-    AstDotGenerator dotGen;
-    std::string dot = dotGen.generate(mergedAst.get());
-    std::string dotPath = debugFolder_ + "/ast.dot";
-    std::ofstream dotFile(dotPath);
-    if (dotFile) {
-      dotFile << dot;
-      llvm::outs() << "  Generated: " << dotPath << "\n";
-    }
-  }
+  // Set moonImports_ so runPipeline can use them for stub injection and linker setup
+  moonImports_ = moonImports;
 
-  // Run semantic analysis on the unified AST
-  analyzer->analyzeBlock(*mergedAst);
-
-  // Debug mode: generate scope tree HTML
-  if (debugMode_ && !debugFolder_.empty()) {
-    ScopeTreeGenerator scopeGen;
-    std::string html = scopeGen.generateHtml(analyzer->getRootScope());
-    std::string scopePath = debugFolder_ + "/scope_tree.html";
-    std::ofstream scopeFile(scopePath);
-    if (scopeFile) {
-      scopeFile << html;
-      llvm::outs() << "  Generated: " << scopePath << "\n";
-    }
-  }
-
-  // Run borrow checking
-  sun::BorrowChecker borrowChecker;
-  auto borrowErrors = borrowChecker.check(*mergedAst);
-  if (!borrowErrors.empty()) {
-    for (const auto& err : borrowErrors) {
-      std::cerr << err.format() << "\n";
-    }
-    throw SunError(SunError::Kind::Semantic,
-                   "Borrow check failed with " +
-                       std::to_string(borrowErrors.size()) + " error(s)");
-  }
-
-  // Set up module linker for moon imports (with aliasing support)
-  sun::ModuleLinker linker(*ctx->mainModule);
-  bool hasMoonImports = false;
-
-  for (const auto& moonImport : moonImports) {
-    // Use registerAvailableModulesWithRemap which handles aliasing
-    linker.registerAvailableModulesWithRemap(moonImport);
-    hasMoonImports = true;
-  }
-
-  if (hasMoonImports) {
-    linker.declareAvailableFunctions();
-  }
-
-  // Snapshot precompiled function declarations
-  codegenVisitor->snapshotPrecompiledFunctions();
-
-  // Generate code
-  codegenVisitor->codegen(*mergedAst);
-  codegenVisitor->emitStaticInitFunction();
-
-  // Link only used symbols
-  if (hasMoonImports) {
-    if (!linker.linkOnlyUsedSymbols()) {
-      throw SunError(SunError::Kind::Semantic,
-                     "Failed to link precompiled module: " + linker.getError());
-    }
-  }
-
-  // Debug mode: dump IR
-  if (debugMode_ && !debugFolder_.empty()) {
-    std::string irPath = debugFolder_ + "/ir.ll";
-    std::error_code EC;
-    llvm::raw_fd_ostream irFile(irPath, EC);
-    if (!EC) {
-      ctx->mainModule->print(irFile, nullptr);
-      llvm::outs() << "  Generated: " << irPath << "\n";
-    }
-  }
-
-  // Verify the module
-  if (llvm::verifyModule(*ctx->mainModule, &llvm::errs())) {
-    llvm::errs() << "Error: Module verification failed\n";
-  }
+  // Run the shared compilation pipeline
+  runPipeline(std::move(mergedAst), stubParser, false);
 }
 
 void Driver::executeFiles(const std::vector<std::string>& sourceFiles,
