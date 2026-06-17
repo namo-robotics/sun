@@ -255,6 +255,12 @@ Value* CodegenVisitor::codegen(const StringLiteralAST& expr) {
 // -------------------------------------------------------------------
 
 Value* CodegenVisitor::codegen(const BinaryExprAST& expr) {
+  // Handle short-circuit logical operators (and, or)
+  if (expr.getOp().kind == TokenKind::AND ||
+      expr.getOp().kind == TokenKind::OR) {
+    return codegenLogicalOp(expr);
+  }
+
   // Standard scalar binary operations
   Value* L = codegen(*expr.getLHS());
   Value* R = codegen(*expr.getRHS());
@@ -333,6 +339,53 @@ Value* CodegenVisitor::codegen(const BinaryExprAST& expr) {
       }
       return isInteger ? ctx.builder->CreateSDiv(L, R, "divtmp")
                        : ctx.builder->CreateFDiv(L, R, "divtmp");
+    }
+    case TokenKind::PERCENT: {
+      if (!isInteger) {
+        logAndThrowError("Modulo operator (%) requires integer operands",
+                         expr.getLocation());
+      }
+      if (currentFunctionCanError) {
+        // Safe modulo: check for zero and return error if so
+        return codegenSafeDivision(L, R, /*isModulo=*/true);
+      }
+      return ctx.builder->CreateSRem(L, R, "modtmp");
+    }
+    case TokenKind::AMPERSAND: {
+      if (!isInteger) {
+        logAndThrowError("Bitwise AND operator (&) requires integer operands",
+                         expr.getLocation());
+      }
+      return ctx.builder->CreateAnd(L, R, "andtmp");
+    }
+    case TokenKind::PIPE: {
+      if (!isInteger) {
+        logAndThrowError("Bitwise OR operator (|) requires integer operands",
+                         expr.getLocation());
+      }
+      return ctx.builder->CreateOr(L, R, "ortmp");
+    }
+    case TokenKind::CARET: {
+      if (!isInteger) {
+        logAndThrowError("Bitwise XOR operator (^) requires integer operands",
+                         expr.getLocation());
+      }
+      return ctx.builder->CreateXor(L, R, "xortmp");
+    }
+    case TokenKind::LEFT_SHIFT: {
+      if (!isInteger) {
+        logAndThrowError("Left shift operator (<<) requires integer operands",
+                         expr.getLocation());
+      }
+      return ctx.builder->CreateShl(L, R, "shltmp");
+    }
+    case TokenKind::RIGHT_SHIFT: {
+      if (!isInteger) {
+        logAndThrowError("Right shift operator (>>) requires integer operands",
+                         expr.getLocation());
+      }
+      // Arithmetic right shift (sign-extending)
+      return ctx.builder->CreateAShr(L, R, "shrtmp");
     }
     case TokenKind::LESS:
       if (isInteger) {

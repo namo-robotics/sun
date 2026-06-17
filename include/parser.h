@@ -64,6 +64,28 @@ class Parser {
     }
   }
 
+  // Helper: consume a '>' token, handling '>>' split for nested generics
+  // Returns true if consumed, throws error with msg if not
+  void consumeGreater(const std::string& msg) {
+    if (curTok.kind == TokenKind::GREATER) {
+      getNextToken();  // eat '>'
+      return;
+    }
+    if (curTok.kind == TokenKind::RIGHT_SHIFT) {
+      // Split '>>' into '>' and push remaining '>' back
+      Token remainingGreater = Token::make(TokenKind::GREATER, curTok.start, curTok.end);
+      getNextToken();  // eat '>>'
+      pushToken(remainingGreater);  // push '>' to be consumed next
+      return;
+    }
+    parsingError(msg);
+  }
+
+  // Helper: check if current token is '>' or '>>' (for lookahead)
+  bool isGreater() const {
+    return curTok.kind == TokenKind::GREATER || curTok.kind == TokenKind::RIGHT_SHIFT;
+  }
+
  public:
   Parser() : lexer(std::cin) {}
   // Updated constructor: takes both input stream and codegen context

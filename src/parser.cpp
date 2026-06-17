@@ -511,8 +511,16 @@ unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
             std::make_unique<TypeAnnotation>(std::move(nextTypeArg)));
       }
 
-      if (curTok.kind == TokenKind::GREATER) {
-        getNextToken();  // eat '>'
+      // Handle '>' or '>>' (for nested generics)
+      if (isGreater()) {
+        // Consume '>' (splits '>>' if needed)
+        if (curTok.kind == TokenKind::RIGHT_SHIFT) {
+          Token remainingGreater = Token::make(TokenKind::GREATER, curTok.start, curTok.end);
+          getNextToken();  // eat '>>'
+          pushToken(remainingGreater);  // push '>' to be consumed next
+        } else {
+          getNextToken();  // eat '>'
+        }
 
         // Must be followed by '(' for a function call
         if (curTok.kind == TokenKind::PAREN_OPEN) {
@@ -802,8 +810,16 @@ unique_ptr<ExprAST> Parser::parsePostfixExpr(unique_ptr<ExprAST> base) {
                 std::make_unique<TypeAnnotation>(parseTypeAnnotation()));
           }
 
-          if (curTok.kind == TokenKind::GREATER) {
-            getNextToken();  // eat '>'
+          // Handle '>' or '>>' (for nested generics)
+          if (isGreater()) {
+            // Consume '>' (splits '>>' if needed)
+            if (curTok.kind == TokenKind::RIGHT_SHIFT) {
+              Token remainingGreater = Token::make(TokenKind::GREATER, curTok.start, curTok.end);
+              getNextToken();  // eat '>>'
+              pushToken(remainingGreater);  // push '>' to be consumed next
+            } else {
+              getNextToken();  // eat '>'
+            }
 
             // Must be followed by '(' for a method call
             if (curTok.kind == TokenKind::PAREN_OPEN) {
@@ -962,8 +978,7 @@ TypeAnnotation Parser::parseTypeAnnotation() {
     // Parse pointee type
     type.elementType = std::make_unique<TypeAnnotation>(parseTypeAnnotation());
 
-    expectCurrentTokenKind(TokenKind::GREATER, "expected '>' after ptr type");
-    getNextToken();  // eat '>'
+    consumeGreater("expected '>' after ptr type");
 
     return type;
   }
@@ -979,9 +994,7 @@ TypeAnnotation Parser::parseTypeAnnotation() {
     // Parse pointee type
     type.elementType = std::make_unique<TypeAnnotation>(parseTypeAnnotation());
 
-    expectCurrentTokenKind(TokenKind::GREATER,
-                           "expected '>' after raw_ptr type");
-    getNextToken();  // eat '>'
+    consumeGreater("expected '>' after raw_ptr type");
 
     return type;
   }
@@ -997,9 +1010,7 @@ TypeAnnotation Parser::parseTypeAnnotation() {
     // Parse pointee type
     type.elementType = std::make_unique<TypeAnnotation>(parseTypeAnnotation());
 
-    expectCurrentTokenKind(TokenKind::GREATER,
-                           "expected '>' after static_ptr type");
-    getNextToken();  // eat '>'
+    consumeGreater("expected '>' after static_ptr type");
 
     return type;
   }
@@ -1038,8 +1049,7 @@ TypeAnnotation Parser::parseTypeAnnotation() {
       getNextToken();  // eat integer
     }
 
-    expectCurrentTokenKind(TokenKind::GREATER, "expected '>' after array type");
-    getNextToken();  // eat '>'
+    consumeGreater("expected '>' after array type");
 
     // Note: empty arrayDimensions is allowed - means "unsized" array
     // that accepts any array<T, ...> of the same element type
@@ -1130,11 +1140,8 @@ TypeAnnotation Parser::parseTypeAnnotation() {
         }
       }
 
-      if (curTok.kind != TokenKind::GREATER) {
-        parsingError("expected '>' after generic type arguments");
-        return type;
-      }
-      getNextToken();  // eat '>'
+      // Handle '>>' as two '>' for nested generics like Container<Container<T>>
+      consumeGreater("expected '>' after generic type arguments");
     }
   }
 
@@ -2056,11 +2063,7 @@ unique_ptr<ExprAST> Parser::parseDeclareStatement() {
             break;
           }
         }
-        if (curTok.kind != TokenKind::GREATER) {
-          parsingError("expected '>' after type arguments");
-          return nullptr;
-        }
-        getNextToken();  // eat '>'
+        consumeGreater("expected '>' after type arguments");
       }
 
       expectCurrentTokenKind(TokenKind::SEMI_COLON,
@@ -2818,9 +2821,7 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
           iface.typeArguments.push_back(parseTypeAnnotation());
         }
 
-        expectCurrentTokenKind(TokenKind::GREATER,
-                               "expected '>' after interface type arguments");
-        getNextToken();  // eat '>'
+        consumeGreater("expected '>' after interface type arguments");
       }
 
       implementedInterfaces.push_back(std::move(iface));

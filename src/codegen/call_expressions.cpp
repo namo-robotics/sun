@@ -1287,6 +1287,9 @@ bool CodegenVisitor::isBuiltinFunction(const std::string& name) {
          name == "__accept" || name == "__connect" || name == "__send" ||
          name == "__recv" || name == "__shutdown" || name == "__setsockopt" ||
          name == "__getsockopt" ||
+         // High-level IPv4 socket intrinsics
+         name == "__bind_ipv4" || name == "__connect_ipv4" ||
+         name == "__accept_fd" ||
          // Pointer intrinsics
          name == "_load_i64" || name == "_store_i64" ||
          // Memory allocation intrinsics
@@ -1423,6 +1426,16 @@ Value* CodegenVisitor::codegenBuiltin(const std::string& name,
   }
   if (name == "__getsockopt") {
     return codegenGetSockOpt(expr);
+  }
+  // High-level IPv4 socket intrinsics
+  if (name == "__bind_ipv4") {
+    return codegenBindIPv4(expr);
+  }
+  if (name == "__connect_ipv4") {
+    return codegenConnectIPv4(expr);
+  }
+  if (name == "__accept_fd") {
+    return codegenAcceptFd(expr);
   }
   return nullptr;
 }

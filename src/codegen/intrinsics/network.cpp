@@ -816,3 +816,265 @@ Value* CodegenVisitor::codegenGetSockOpt(const CallExprAST& expr) {
   return ctx.builder->CreateCall(helper, {fd, level, optname, optval, optlen},
                                  "getsockopt_result");
 }
+
+// ===================================================================
+// High-level IPv4 socket helpers (build sockaddr_in internally)
+// ===================================================================
+
+// Helper to create __sun_bind_ipv4 function that builds sockaddr_in and calls
+// bind
+static Function* getOrCreateBindIPv4Helper(llvm::Module* module,
+                                           LLVMContext& llvmCtx) {
+  Function* func = module->getFunction("__sun_bind_ipv4");
+  if (func) return func;
+
+  auto* i32Ty = Type::getInt32Ty(llvmCtx);
+  auto* i64Ty = Type::getInt64Ty(llvmCtx);
+  auto* i8Ty = Type::getInt8Ty(llvmCtx);
+  auto* i16Ty = Type::getInt16Ty(llvmCtx);
+  auto* ptrTy = PointerType::get(llvmCtx, 0);
+
+  // __sun_bind_ipv4(fd: i32, ip: i32, port: i32) -> i32
+  FunctionType* funcTy =
+      FunctionType::get(i32Ty, {i32Ty, i32Ty, i32Ty}, false);
+  func = Function::Create(funcTy, Function::InternalLinkage, "__sun_bind_ipv4",
+                          module);
+
+  BasicBlock* entry = BasicBlock::Create(llvmCtx, "entry", func);
+  IRBuilder<> builder(entry);
+
+  auto args = func->arg_begin();
+  Value* fd = args++;
+  Value* ip = args++;
+  Value* port = args++;
+
+  // Allocate 16-byte sockaddr_in on stack
+  Value* sockaddr = builder.CreateAlloca(i8Ty, builder.getInt32(16), "sockaddr");
+  
+  // Zero-initialize
+  builder.CreateMemSet(sockaddr, builder.getInt8(0), 16, MaybeAlign(4));
+
+  // Set sin_family = AF_INET (2) at offset 0 (2 bytes)
+  Value* familyPtr = builder.CreateGEP(i8Ty, sockaddr, builder.getInt32(0));
+  builder.CreateStore(builder.getInt8(2), familyPtr);  // AF_INET = 2
+
+  // Set sin_port at offset 2 (2 bytes, network byte order = big-endian)
+  // port is in host order, need to swap to network order
+  Value* port16 = builder.CreateTrunc(port, i16Ty);
+  Value* portHi = builder.CreateLShr(port16, 8);
+  Value* portLo = builder.CreateShl(port16, 8);
+  Value* portNet = builder.CreateOr(portHi, portLo);  // bswap16
+  Value* portPtr = builder.CreateGEP(i8Ty, sockaddr, builder.getInt32(2));
+  Value* portPtr16 = builder.CreateBitCast(portPtr, PointerType::get(i16Ty, 0));
+  builder.CreateStore(portNet, portPtr16);
+
+  // Set sin_addr at offset 4 (4 bytes, already in network byte order from
+  // caller)
+  Value* addrPtr = builder.CreateGEP(i8Ty, sockaddr, builder.getInt32(4));
+  Value* addrPtr32 = builder.CreateBitCast(addrPtr, PointerType::get(i32Ty, 0));
+  builder.CreateStore(ip, addrPtr32);
+
+  // Call bind syscall
+  Value* sysnum = builder.getInt64(SYS_BIND);
+  Value* fd64 = builder.CreateSExt(fd, i64Ty);
+  Value* addrlen64 = builder.getInt64(16);
+
+  FunctionType* syscallTy =
+      FunctionType::get(i64Ty, {i64Ty, i64Ty, i64Ty, i64Ty}, false);
+  InlineAsm* syscall = InlineAsm::get(
+      syscallTy, "syscall", "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11}",
+      true);
+  Value* sockaddrInt = builder.CreatePtrToInt(sockaddr, i64Ty);
+  Value* result =
+      builder.CreateCall(syscall, {sysnum, fd64, sockaddrInt, addrlen64});
+  Value* result32 = builder.CreateTrunc(result, i32Ty);
+  builder.CreateRet(result32);
+
+  return func;
+}
+
+// Helper to create __sun_connect_ipv4 function
+static Function* getOrCreateConnectIPv4Helper(llvm::Module* module,
+                                              LLVMContext& llvmCtx) {
+  Function* func = module->getFunction("__sun_connect_ipv4");
+  if (func) return func;
+
+  auto* i32Ty = Type::getInt32Ty(llvmCtx);
+  auto* i64Ty = Type::getInt64Ty(llvmCtx);
+  auto* i8Ty = Type::getInt8Ty(llvmCtx);
+  auto* i16Ty = Type::getInt16Ty(llvmCtx);
+
+  // __sun_connect_ipv4(fd: i32, ip: i32, port: i32) -> i32
+  FunctionType* funcTy =
+      FunctionType::get(i32Ty, {i32Ty, i32Ty, i32Ty}, false);
+  func = Function::Create(funcTy, Function::InternalLinkage,
+                          "__sun_connect_ipv4", module);
+
+  BasicBlock* entry = BasicBlock::Create(llvmCtx, "entry", func);
+  IRBuilder<> builder(entry);
+
+  auto args = func->arg_begin();
+  Value* fd = args++;
+  Value* ip = args++;
+  Value* port = args++;
+
+  // Allocate 16-byte sockaddr_in on stack
+  Value* sockaddr = builder.CreateAlloca(i8Ty, builder.getInt32(16), "sockaddr");
+  
+  // Zero-initialize
+  builder.CreateMemSet(sockaddr, builder.getInt8(0), 16, MaybeAlign(4));
+
+  // Set sin_family = AF_INET (2)
+  Value* familyPtr = builder.CreateGEP(i8Ty, sockaddr, builder.getInt32(0));
+  builder.CreateStore(builder.getInt8(2), familyPtr);
+
+  // Set sin_port (network byte order)
+  Value* port16 = builder.CreateTrunc(port, i16Ty);
+  Value* portHi = builder.CreateLShr(port16, 8);
+  Value* portLo = builder.CreateShl(port16, 8);
+  Value* portNet = builder.CreateOr(portHi, portLo);
+  Value* portPtr = builder.CreateGEP(i8Ty, sockaddr, builder.getInt32(2));
+  Value* portPtr16 = builder.CreateBitCast(portPtr, PointerType::get(i16Ty, 0));
+  builder.CreateStore(portNet, portPtr16);
+
+  // Set sin_addr
+  Value* addrPtr = builder.CreateGEP(i8Ty, sockaddr, builder.getInt32(4));
+  Value* addrPtr32 = builder.CreateBitCast(addrPtr, PointerType::get(i32Ty, 0));
+  builder.CreateStore(ip, addrPtr32);
+
+  // Call connect syscall
+  Value* sysnum = builder.getInt64(SYS_CONNECT);
+  Value* fd64 = builder.CreateSExt(fd, i64Ty);
+  Value* addrlen64 = builder.getInt64(16);
+
+  FunctionType* syscallTy =
+      FunctionType::get(i64Ty, {i64Ty, i64Ty, i64Ty, i64Ty}, false);
+  InlineAsm* syscall = InlineAsm::get(
+      syscallTy, "syscall", "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11}",
+      true);
+  Value* sockaddrInt = builder.CreatePtrToInt(sockaddr, i64Ty);
+  Value* result =
+      builder.CreateCall(syscall, {sysnum, fd64, sockaddrInt, addrlen64});
+  Value* result32 = builder.CreateTrunc(result, i32Ty);
+  builder.CreateRet(result32);
+
+  return func;
+}
+
+// Helper to create __sun_accept_fd function (simplified accept, ignores client
+// addr)
+static Function* getOrCreateAcceptFdHelper(llvm::Module* module,
+                                           LLVMContext& llvmCtx) {
+  Function* func = module->getFunction("__sun_accept_fd");
+  if (func) return func;
+
+  auto* i32Ty = Type::getInt32Ty(llvmCtx);
+  auto* i64Ty = Type::getInt64Ty(llvmCtx);
+
+  // __sun_accept_fd(fd: i32) -> i32
+  FunctionType* funcTy = FunctionType::get(i32Ty, {i32Ty}, false);
+  func = Function::Create(funcTy, Function::InternalLinkage, "__sun_accept_fd",
+                          module);
+
+  BasicBlock* entry = BasicBlock::Create(llvmCtx, "entry", func);
+  IRBuilder<> builder(entry);
+
+  Value* fd = func->arg_begin();
+
+  // Call accept with NULL addr and addrlen
+  Value* sysnum = builder.getInt64(SYS_ACCEPT);
+  Value* fd64 = builder.CreateSExt(fd, i64Ty);
+  Value* nullAddr = builder.getInt64(0);
+  Value* nullLen = builder.getInt64(0);
+
+  FunctionType* syscallTy =
+      FunctionType::get(i64Ty, {i64Ty, i64Ty, i64Ty, i64Ty}, false);
+  InlineAsm* syscall = InlineAsm::get(
+      syscallTy, "syscall", "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11}",
+      true);
+  Value* result =
+      builder.CreateCall(syscall, {sysnum, fd64, nullAddr, nullLen});
+  Value* result32 = builder.CreateTrunc(result, i32Ty);
+  builder.CreateRet(result32);
+
+  return func;
+}
+
+// __bind_ipv4(fd: i32, ip: i32, port: i32) -> i32
+Value* CodegenVisitor::codegenBindIPv4(const CallExprAST& expr) {
+  if (expr.getArgs().size() != 3) {
+    logAndThrowError(
+        "__bind_ipv4 expects 3 arguments: (fd: i32, ip: i32, port: i32)");
+    return nullptr;
+  }
+
+  LLVMContext& llvmCtx = ctx.getContext();
+  Value* fd = codegen(*expr.getArgs()[0]);
+  if (!fd) return nullptr;
+  Value* ip = codegen(*expr.getArgs()[1]);
+  if (!ip) return nullptr;
+  Value* port = codegen(*expr.getArgs()[2]);
+  if (!port) return nullptr;
+
+  if (!fd->getType()->isIntegerTy(32)) {
+    fd = ctx.builder->CreateSExtOrTrunc(fd, Type::getInt32Ty(llvmCtx));
+  }
+  if (!ip->getType()->isIntegerTy(32)) {
+    ip = ctx.builder->CreateSExtOrTrunc(ip, Type::getInt32Ty(llvmCtx));
+  }
+  if (!port->getType()->isIntegerTy(32)) {
+    port = ctx.builder->CreateSExtOrTrunc(port, Type::getInt32Ty(llvmCtx));
+  }
+
+  Function* helper = getOrCreateBindIPv4Helper(module, llvmCtx);
+  return ctx.builder->CreateCall(helper, {fd, ip, port}, "bind_ipv4_result");
+}
+
+// __connect_ipv4(fd: i32, ip: i32, port: i32) -> i32
+Value* CodegenVisitor::codegenConnectIPv4(const CallExprAST& expr) {
+  if (expr.getArgs().size() != 3) {
+    logAndThrowError(
+        "__connect_ipv4 expects 3 arguments: (fd: i32, ip: i32, port: i32)");
+    return nullptr;
+  }
+
+  LLVMContext& llvmCtx = ctx.getContext();
+  Value* fd = codegen(*expr.getArgs()[0]);
+  if (!fd) return nullptr;
+  Value* ip = codegen(*expr.getArgs()[1]);
+  if (!ip) return nullptr;
+  Value* port = codegen(*expr.getArgs()[2]);
+  if (!port) return nullptr;
+
+  if (!fd->getType()->isIntegerTy(32)) {
+    fd = ctx.builder->CreateSExtOrTrunc(fd, Type::getInt32Ty(llvmCtx));
+  }
+  if (!ip->getType()->isIntegerTy(32)) {
+    ip = ctx.builder->CreateSExtOrTrunc(ip, Type::getInt32Ty(llvmCtx));
+  }
+  if (!port->getType()->isIntegerTy(32)) {
+    port = ctx.builder->CreateSExtOrTrunc(port, Type::getInt32Ty(llvmCtx));
+  }
+
+  Function* helper = getOrCreateConnectIPv4Helper(module, llvmCtx);
+  return ctx.builder->CreateCall(helper, {fd, ip, port}, "connect_ipv4_result");
+}
+
+// __accept_fd(fd: i32) -> i32
+Value* CodegenVisitor::codegenAcceptFd(const CallExprAST& expr) {
+  if (expr.getArgs().size() != 1) {
+    logAndThrowError("__accept_fd expects 1 argument: (fd: i32)");
+    return nullptr;
+  }
+
+  LLVMContext& llvmCtx = ctx.getContext();
+  Value* fd = codegen(*expr.getArgs()[0]);
+  if (!fd) return nullptr;
+
+  if (!fd->getType()->isIntegerTy(32)) {
+    fd = ctx.builder->CreateSExtOrTrunc(fd, Type::getInt32Ty(llvmCtx));
+  }
+
+  Function* helper = getOrCreateAcceptFdHelper(module, llvmCtx);
+  return ctx.builder->CreateCall(helper, {fd}, "accept_fd_result");
+}

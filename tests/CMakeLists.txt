@@ -8,8 +8,9 @@ find_package(GTest REQUIRED)
 # Create test executable
 add_executable(sun_tests
     test_allocator.cpp
+    test_arithmetic.cpp
     test_arrays.cpp
-    test_binops.cpp
+    test_bitwise.cpp
     test_borrow_checker.cpp
     test_classes.cpp
     test_compilation.cpp
@@ -27,6 +28,7 @@ add_executable(sun_tests
     test_interpolation.cpp
     test_intrinsics.cpp
     test_linked_list.cpp
+    test_logical.cpp
     test_loops.cpp
     test_map.cpp
     test_match.cpp

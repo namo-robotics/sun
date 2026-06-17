@@ -985,6 +985,19 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
        {Types::Int32(), Types::Int32(), Types::Int32(),
         Types::RawPointer(Types::UInt8()), Types::RawPointer(Types::Int32())},
        {}});
+
+  // High-level IPv4 socket intrinsics (build sockaddr_in internally)
+  // __bind_ipv4(fd, ip, port) -> result
+  registernFunctionInCurrentScope(
+      "__bind_ipv4",
+      {Types::Int32(), {Types::Int32(), Types::Int32(), Types::Int32()}, {}});
+  // __connect_ipv4(fd, ip, port) -> result
+  registernFunctionInCurrentScope(
+      "__connect_ipv4",
+      {Types::Int32(), {Types::Int32(), Types::Int32(), Types::Int32()}, {}});
+  // __accept_fd(fd) -> new_fd
+  registernFunctionInCurrentScope("__accept_fd",
+                                  {Types::Int32(), {Types::Int32()}, {}});
 }
 
 // -------------------------------------------------------------------
