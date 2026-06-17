@@ -926,6 +926,65 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
   // _futex_wake(ptr) - wake one waiter
   registernFunctionInCurrentScope(
       "_futex_wake", {Types::Void(), {Types::RawPointer(Types::Int32())}, {}});
+
+  // Network socket intrinsics (Linux-specific raw syscalls)
+  // __socket(domain, type, protocol) -> fd
+  registernFunctionInCurrentScope(
+      "__socket",
+      {Types::Int32(), {Types::Int32(), Types::Int32(), Types::Int32()}, {}});
+  // __bind(fd, addr, addrlen) -> result
+  registernFunctionInCurrentScope(
+      "__bind",
+      {Types::Int32(),
+       {Types::Int32(), Types::RawPointer(Types::UInt8()), Types::Int32()},
+       {}});
+  // __listen(fd, backlog) -> result
+  registernFunctionInCurrentScope(
+      "__listen", {Types::Int32(), {Types::Int32(), Types::Int32()}, {}});
+  // __accept(fd, addr, addrlen_ptr) -> new_fd
+  registernFunctionInCurrentScope(
+      "__accept",
+      {Types::Int32(),
+       {Types::Int32(), Types::RawPointer(Types::UInt8()),
+        Types::RawPointer(Types::Int32())},
+       {}});
+  // __connect(fd, addr, addrlen) -> result
+  registernFunctionInCurrentScope(
+      "__connect",
+      {Types::Int32(),
+       {Types::Int32(), Types::RawPointer(Types::UInt8()), Types::Int32()},
+       {}});
+  // __send(fd, buf, len, flags) -> bytes_sent
+  registernFunctionInCurrentScope(
+      "__send",
+      {Types::Int64(),
+       {Types::Int32(), Types::RawPointer(Types::UInt8()), Types::Int64(),
+        Types::Int32()},
+       {}});
+  // __recv(fd, buf, len, flags) -> bytes_received
+  registernFunctionInCurrentScope(
+      "__recv",
+      {Types::Int64(),
+       {Types::Int32(), Types::RawPointer(Types::UInt8()), Types::Int64(),
+        Types::Int32()},
+       {}});
+  // __shutdown(fd, how) -> result
+  registernFunctionInCurrentScope(
+      "__shutdown", {Types::Int32(), {Types::Int32(), Types::Int32()}, {}});
+  // __setsockopt(fd, level, optname, optval, optlen) -> result
+  registernFunctionInCurrentScope(
+      "__setsockopt",
+      {Types::Int32(),
+       {Types::Int32(), Types::Int32(), Types::Int32(),
+        Types::RawPointer(Types::UInt8()), Types::Int32()},
+       {}});
+  // __getsockopt(fd, level, optname, optval, optlen_ptr) -> result
+  registernFunctionInCurrentScope(
+      "__getsockopt",
+      {Types::Int32(),
+       {Types::Int32(), Types::Int32(), Types::Int32(),
+        Types::RawPointer(Types::UInt8()), Types::RawPointer(Types::Int32())},
+       {}});
 }
 
 // -------------------------------------------------------------------

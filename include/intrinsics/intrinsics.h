@@ -1,0 +1,215 @@
+// intrinsics/intrinsics.h — Compiler intrinsic function definitions
+//
+// Intrinsics are built-in functions that the compiler handles specially.
+// They start with underscore and are recognized during parsing/codegen.
+//
+// Organization:
+//   generic.h  — Type-parameterized intrinsics: _sizeof<T>, _load<T>, etc.
+//   memory.h   — Heap allocation: _malloc, _free
+//   atomic.h   — Atomics and futex: _atomic_*, _futex_*
+//   print.h    — Debug output: _print_*
+//   io.h       — File I/O syscalls: __file_*, __read, __write
+//   network.h  — Socket syscalls: __socket, __bind, __listen, etc.
+
+#pragma once
+
+#include <string>
+
+// Include scoped headers for documentation and type traits
+#include "intrinsics/generic.h"
+#include "intrinsics/memory.h"
+#include "intrinsics/atomic.h"
+#include "intrinsics/print.h"
+#include "intrinsics/io.h"
+#include "intrinsics/network.h"
+
+namespace sun {
+
+// Intrinsic function identifiers
+// Generic intrinsics take a type argument: _sizeof<T>(), _load<T>(ptr, idx)
+// Non-generic intrinsics are called like regular functions: _malloc(size)
+enum class Intrinsic {
+  None,  // Not an intrinsic
+
+  // =========================================================================
+  // Generic intrinsics (require type argument)
+  // =========================================================================
+  Sizeof,         // _sizeof<T>() -> i64
+  Init,           // _init<T>(ptr, args...) -> void
+  Load,           // _load<T>(ptr, index) -> T
+  Store,          // _store<T>(ptr, index, value) -> void
+  StaticPtrData,  // _static_ptr_data<T>(static_ptr<T>) -> raw_ptr<T>
+  StaticPtrLen,   // _static_ptr_len<T>(static_ptr<T>) -> i64
+  PtrAsRaw,       // _ptr_as_raw<T>(ptr<T>) -> raw_ptr<T>
+  Is,             // _is<T>(value) -> bool (compile-time type check)
+  AddressOf,      // _address_of<T>(ref T) -> raw_ptr<T>
+  ToRef,          // _to_ref<T>(raw_ptr<T>) -> ref T (unsafe dereference)
+
+  // =========================================================================
+  // Memory intrinsics
+  // =========================================================================
+  LoadI64,   // _load_i64(ptr, index) -> i64
+  StoreI64,  // _store_i64(ptr, index, value) -> void
+  Malloc,    // _malloc(size) -> raw_ptr<i8>
+  Free,      // _free(ptr) -> void
+
+  // =========================================================================
+  // Print intrinsics
+  // =========================================================================
+  PrintI32,      // _print_i32(value) -> void
+  PrintI64,      // _print_i64(value) -> void
+  PrintF64,      // _print_f64(value) -> void
+  PrintNewline,  // _print_newline() -> void
+  PrintBytes,    // _print_bytes(ptr, len) -> void
+  PrintlnStr,    // _println_str(str) -> void
+
+  // =========================================================================
+  // Atomic intrinsics
+  // =========================================================================
+  AtomicCmpxchgI32,  // _atomic_cmpxchg_i32(ptr, expected, desired) -> old_value
+  AtomicStoreI32,    // _atomic_store_i32(ptr, value) -> void
+  AtomicLoadI32,     // _atomic_load_i32(ptr) -> i32
+
+  // Futex intrinsics (Linux-specific thread synchronization)
+  FutexWait,  // _futex_wait(ptr, expected) -> void
+  FutexWake,  // _futex_wake(ptr) -> void
+
+  // =========================================================================
+  // File I/O intrinsics (raw syscalls, no libc)
+  // =========================================================================
+  FileOpen,   // __file_open(path, flags) -> i32
+  FileClose,  // __file_close(fd) -> i32
+  FileWrite,  // __file_write(fd, data) -> i32
+  FileRead,   // __file_read(fd, size) -> raw_ptr<i8>
+  Lseek,      // __lseek(fd, offset, whence) -> i64
+  Fstat,      // __fstat(fd, stat_buf) -> i32
+  Fsync,      // __fsync(fd) -> i32
+  Ftruncate,  // __ftruncate(fd, length) -> i32
+  Unlink,     // __unlink(path) -> i32
+  Rename,     // __rename(old_path, new_path) -> i32
+  Mkdir,      // __mkdir(path, mode) -> i32
+  Rmdir,      // __rmdir(path) -> i32
+  Write,      // __write(fd, buf, len) -> i64
+  Read,       // __read(fd, buf, len) -> i64
+
+  // =========================================================================
+  // Network intrinsics (raw syscalls, no libc)
+  // =========================================================================
+  Socket,      // __socket(domain, type, protocol) -> i32
+  Bind,        // __bind(fd, addr, addrlen) -> i32
+  Listen,      // __listen(fd, backlog) -> i32
+  Accept,      // __accept(fd, addr, addrlen) -> i32
+  Connect,     // __connect(fd, addr, addrlen) -> i32
+  Send,        // __send(fd, buf, len, flags) -> i64
+  Recv,        // __recv(fd, buf, len, flags) -> i64
+  Shutdown,    // __shutdown(fd, how) -> i32
+  SetSockOpt,  // __setsockopt(fd, level, opt, val, len) -> i32
+  GetSockOpt,  // __getsockopt(fd, level, opt, val, len) -> i32
+};
+
+// Convert intrinsic function name to enum
+// Returns Intrinsic::None if not recognized
+inline Intrinsic getIntrinsic(const std::string& name) {
+  // -------------------------------------------------------------------------
+  // Generic intrinsics
+  // -------------------------------------------------------------------------
+  if (name == "_sizeof") return Intrinsic::Sizeof;
+  if (name == "_init") return Intrinsic::Init;
+  if (name == "_load") return Intrinsic::Load;
+  if (name == "_store") return Intrinsic::Store;
+  if (name == "_static_ptr_data") return Intrinsic::StaticPtrData;
+  if (name == "_static_ptr_len") return Intrinsic::StaticPtrLen;
+  if (name == "_ptr_as_raw") return Intrinsic::PtrAsRaw;
+  if (name == "_is") return Intrinsic::Is;
+  if (name == "_address_of") return Intrinsic::AddressOf;
+  if (name == "_to_ref") return Intrinsic::ToRef;
+
+  // -------------------------------------------------------------------------
+  // Memory intrinsics
+  // -------------------------------------------------------------------------
+  if (name == "_load_i64") return Intrinsic::LoadI64;
+  if (name == "_store_i64") return Intrinsic::StoreI64;
+  if (name == "_malloc") return Intrinsic::Malloc;
+  if (name == "_free") return Intrinsic::Free;
+
+  // -------------------------------------------------------------------------
+  // Print intrinsics
+  // -------------------------------------------------------------------------
+  if (name == "_print_i32") return Intrinsic::PrintI32;
+  if (name == "_print_i64") return Intrinsic::PrintI64;
+  if (name == "_print_f64") return Intrinsic::PrintF64;
+  if (name == "_print_newline") return Intrinsic::PrintNewline;
+  if (name == "_print_bytes") return Intrinsic::PrintBytes;
+  if (name == "_println_str") return Intrinsic::PrintlnStr;
+
+  // -------------------------------------------------------------------------
+  // Atomic intrinsics
+  // -------------------------------------------------------------------------
+  if (name == "_atomic_cmpxchg_i32") return Intrinsic::AtomicCmpxchgI32;
+  if (name == "_atomic_store_i32") return Intrinsic::AtomicStoreI32;
+  if (name == "_atomic_load_i32") return Intrinsic::AtomicLoadI32;
+
+  // Futex intrinsics
+  if (name == "_futex_wait") return Intrinsic::FutexWait;
+  if (name == "_futex_wake") return Intrinsic::FutexWake;
+
+  // -------------------------------------------------------------------------
+  // File I/O intrinsics
+  // -------------------------------------------------------------------------
+  if (name == "__file_open") return Intrinsic::FileOpen;
+  if (name == "__file_close") return Intrinsic::FileClose;
+  if (name == "__file_write") return Intrinsic::FileWrite;
+  if (name == "__file_read") return Intrinsic::FileRead;
+  if (name == "__lseek") return Intrinsic::Lseek;
+  if (name == "__fstat") return Intrinsic::Fstat;
+  if (name == "__fsync") return Intrinsic::Fsync;
+  if (name == "__ftruncate") return Intrinsic::Ftruncate;
+  if (name == "__unlink") return Intrinsic::Unlink;
+  if (name == "__rename") return Intrinsic::Rename;
+  if (name == "__mkdir") return Intrinsic::Mkdir;
+  if (name == "__rmdir") return Intrinsic::Rmdir;
+  if (name == "__write") return Intrinsic::Write;
+  if (name == "__read") return Intrinsic::Read;
+
+  // -------------------------------------------------------------------------
+  // Network intrinsics
+  // -------------------------------------------------------------------------
+  if (name == "__socket") return Intrinsic::Socket;
+  if (name == "__bind") return Intrinsic::Bind;
+  if (name == "__listen") return Intrinsic::Listen;
+  if (name == "__accept") return Intrinsic::Accept;
+  if (name == "__connect") return Intrinsic::Connect;
+  if (name == "__send") return Intrinsic::Send;
+  if (name == "__recv") return Intrinsic::Recv;
+  if (name == "__shutdown") return Intrinsic::Shutdown;
+  if (name == "__setsockopt") return Intrinsic::SetSockOpt;
+  if (name == "__getsockopt") return Intrinsic::GetSockOpt;
+
+  return Intrinsic::None;
+}
+
+// Check if a name is a generic intrinsic (requires type argument)
+inline bool isGenericIntrinsic(Intrinsic i) {
+  switch (i) {
+    case Intrinsic::Sizeof:
+    case Intrinsic::Init:
+    case Intrinsic::Load:
+    case Intrinsic::Store:
+    case Intrinsic::StaticPtrData:
+    case Intrinsic::StaticPtrLen:
+    case Intrinsic::PtrAsRaw:
+    case Intrinsic::Is:
+    case Intrinsic::AddressOf:
+    case Intrinsic::ToRef:
+      return true;
+    default:
+      return false;
+  }
+}
+
+// Check if a name is any intrinsic
+inline bool isIntrinsic(const std::string& name) {
+  return getIntrinsic(name) != Intrinsic::None;
+}
+
+}  // namespace sun

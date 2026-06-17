@@ -1282,6 +1282,11 @@ bool CodegenVisitor::isBuiltinFunction(const std::string& name) {
          name == "__fsync" || name == "__ftruncate" || name == "__unlink" ||
          name == "__rename" || name == "__mkdir" || name == "__rmdir" ||
          name == "__write" || name == "__read" ||
+         // Network socket intrinsics
+         name == "__socket" || name == "__bind" || name == "__listen" ||
+         name == "__accept" || name == "__connect" || name == "__send" ||
+         name == "__recv" || name == "__shutdown" || name == "__setsockopt" ||
+         name == "__getsockopt" ||
          // Pointer intrinsics
          name == "_load_i64" || name == "_store_i64" ||
          // Memory allocation intrinsics
@@ -1387,6 +1392,37 @@ Value* CodegenVisitor::codegenBuiltin(const std::string& name,
   }
   if (name == "_futex_wake") {
     return codegenFutexWakeIntrinsic(expr);
+  }
+  // Network socket intrinsics
+  if (name == "__socket") {
+    return codegenSocket(expr);
+  }
+  if (name == "__bind") {
+    return codegenBind(expr);
+  }
+  if (name == "__listen") {
+    return codegenListen(expr);
+  }
+  if (name == "__accept") {
+    return codegenAccept(expr);
+  }
+  if (name == "__connect") {
+    return codegenConnect(expr);
+  }
+  if (name == "__send") {
+    return codegenSend(expr);
+  }
+  if (name == "__recv") {
+    return codegenRecv(expr);
+  }
+  if (name == "__shutdown") {
+    return codegenShutdown(expr);
+  }
+  if (name == "__setsockopt") {
+    return codegenSetSockOpt(expr);
+  }
+  if (name == "__getsockopt") {
+    return codegenGetSockOpt(expr);
   }
   return nullptr;
 }

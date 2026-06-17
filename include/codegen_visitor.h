@@ -742,6 +742,18 @@ class CodegenVisitor {
   llvm::Value* codegenWrite(const CallExprAST& expr);
   llvm::Value* codegenRead(const CallExprAST& expr);
 
+  // Network socket built-ins using raw syscalls
+  llvm::Value* codegenSocket(const CallExprAST& expr);
+  llvm::Value* codegenBind(const CallExprAST& expr);
+  llvm::Value* codegenListen(const CallExprAST& expr);
+  llvm::Value* codegenAccept(const CallExprAST& expr);
+  llvm::Value* codegenConnect(const CallExprAST& expr);
+  llvm::Value* codegenSend(const CallExprAST& expr);
+  llvm::Value* codegenRecv(const CallExprAST& expr);
+  llvm::Value* codegenShutdown(const CallExprAST& expr);
+  llvm::Value* codegenSetSockOpt(const CallExprAST& expr);
+  llvm::Value* codegenGetSockOpt(const CallExprAST& expr);
+
   // -------------------------------------------------------------------
   // Thread support (uses ThreadUtils for syscalls and types)
   // -------------------------------------------------------------------
