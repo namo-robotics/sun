@@ -79,6 +79,15 @@ enum class TokenKind {
   MINUS,                 // -
   STAR,                  // *
   SLASH,                 // /
+  PERCENT,               // %
+  AMPERSAND,             // & (bitwise AND)
+  PIPE,                  // | (bitwise OR)
+  CARET,                 // ^ (bitwise XOR)
+  LEFT_SHIFT,            // <<
+  RIGHT_SHIFT,           // >>
+  AND,                   // and (logical AND)
+  OR,                    // or (logical OR)
+  NOT,                   // not (logical NOT)
   LESS,                  // <
   LESS_EQUAL,            // <=
   GREATER,               // >
@@ -173,6 +182,15 @@ static const std::map<TokenKind, std::string> tokenRegexes = {
     {TokenKind::MINUS, "-"},
     {TokenKind::STAR, "\\*"},
     {TokenKind::SLASH, "/"},
+    {TokenKind::PERCENT, "%"},
+    {TokenKind::AND, "and"},
+    {TokenKind::OR, "or"},
+    {TokenKind::NOT, "not"},
+    {TokenKind::LEFT_SHIFT, "<<"},
+    {TokenKind::RIGHT_SHIFT, ">>"},
+    {TokenKind::AMPERSAND, "&"},
+    {TokenKind::PIPE, "\\|"},
+    {TokenKind::CARET, "\\^"},
     {TokenKind::LESS_EQUAL, "<="},
     {TokenKind::LESS, "<"},
     {TokenKind::GREATER_EQUAL, ">="},
@@ -263,6 +281,15 @@ inline const std::map<TokenKind, TokenInfo>& getTokenInfo() {
       {TokenKind::MINUS, {"-", 20}},
       {TokenKind::STAR, {"*", 40}},
       {TokenKind::SLASH, {"/", 40}},
+      {TokenKind::PERCENT, {"%", 40}},
+      {TokenKind::LEFT_SHIFT, {"<<", 15}},
+      {TokenKind::RIGHT_SHIFT, {">>", 15}},
+      {TokenKind::AMPERSAND, {"&", 8}},
+      {TokenKind::CARET, {"^", 7}},
+      {TokenKind::PIPE, {"|", 6}},
+      {TokenKind::AND, {"and", 5}},
+      {TokenKind::OR, {"or", 4}},
+      {TokenKind::NOT, {"not", -1}},
       {TokenKind::LESS, {"<", 10}},
       {TokenKind::LESS_EQUAL, {"<=", 10}},
       {TokenKind::GREATER, {">", 10}},

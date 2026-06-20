@@ -112,7 +112,11 @@ add_library(sun_lib
     src/codegen/codegen_visitor.cpp
     src/codegen/functions_lambdas.cpp
     src/codegen/pointers.cpp
-    src/codegen/intrinsics.cpp
+    src/codegen/intrinsics/generic.cpp
+    src/codegen/intrinsics/memory.cpp
+    src/codegen/intrinsics/atomic.cpp
+    src/codegen/intrinsics/io.cpp
+    src/codegen/intrinsics/network.cpp
     src/codegen/arrays.cpp
     src/codegen/variable_creation.cpp
     src/codegen/variable_references.cpp

@@ -405,7 +405,11 @@ class CodegenVisitor {
   llvm::Value* codegen(const GenericCallAST& expr);
 
   // Safe arithmetic: returns error on division by zero
-  llvm::Value* codegenSafeDivision(llvm::Value* L, llvm::Value* R);
+  llvm::Value* codegenSafeDivision(llvm::Value* L, llvm::Value* R,
+                                    bool isModulo = false);
+
+  // Short-circuit logical operators (and, or)
+  llvm::Value* codegenLogicalOp(const BinaryExprAST& expr);
 
   // Interface codegen
   llvm::Value* codegen(const InterfaceDefinitionAST& expr);
@@ -741,6 +745,23 @@ class CodegenVisitor {
   llvm::Value* codegenRmdir(const CallExprAST& expr);
   llvm::Value* codegenWrite(const CallExprAST& expr);
   llvm::Value* codegenRead(const CallExprAST& expr);
+
+  // Network socket built-ins using raw syscalls
+  llvm::Value* codegenSocket(const CallExprAST& expr);
+  llvm::Value* codegenBind(const CallExprAST& expr);
+  llvm::Value* codegenListen(const CallExprAST& expr);
+  llvm::Value* codegenAccept(const CallExprAST& expr);
+  llvm::Value* codegenConnect(const CallExprAST& expr);
+  llvm::Value* codegenSend(const CallExprAST& expr);
+  llvm::Value* codegenRecv(const CallExprAST& expr);
+  llvm::Value* codegenShutdown(const CallExprAST& expr);
+  llvm::Value* codegenSetSockOpt(const CallExprAST& expr);
+  llvm::Value* codegenGetSockOpt(const CallExprAST& expr);
+
+  // High-level IPv4 socket helpers (build sockaddr_in internally)
+  llvm::Value* codegenBindIPv4(const CallExprAST& expr);
+  llvm::Value* codegenConnectIPv4(const CallExprAST& expr);
+  llvm::Value* codegenAcceptFd(const CallExprAST& expr);
 
   // -------------------------------------------------------------------
   // Thread support (uses ThreadUtils for syscalls and types)

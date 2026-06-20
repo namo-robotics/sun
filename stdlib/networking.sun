@@ -1,0 +1,200 @@
+// stdlib/networking.sun - Network socket wrapper over __socket* intrinsics
+//
+// Provides TCP client and server abstractions using high-level IPv4 intrinsics.
+//
+// Usage:
+//   using sun;
+//
+//   // TCP Server
+//   var listener = TcpListener();
+//   listener.bind_port(8080);
+//   listener.listen(128);
+//   while (true) {
+//       var client = listener.accept();
+//       client.send_str("HTTP/1.1 200 OK\r\n\r\nHello!");
+//       client.close();
+//   }
+//
+//   // TCP Client
+//   var stream = TcpStream();
+//   stream.connect_local(8080);
+//   stream.send_str("GET / HTTP/1.1\r\n\r\n");
+//   stream.close();
+
+module sun {
+
+// -------------------------------------------------------------------
+// Socket constants (Linux x86_64)
+// -------------------------------------------------------------------
+
+var AF_INET: i32 = 2;
+var SOCK_STREAM: i32 = 1;
+var SHUT_RDWR: i32 = 2;
+var MSG_NOSIGNAL: i32 = 16384;
+var INADDR_ANY: i32 = 0;
+var INADDR_LOOPBACK: i32 = 16777343;  // 127.0.0.1 in network byte order
+
+// -------------------------------------------------------------------
+// TcpListener - TCP server socket
+// -------------------------------------------------------------------
+
+class TcpListener {
+    var fd: i32;
+    
+    function init() {
+        this.fd = -1;
+    }
+    
+    // Create and bind to port on all interfaces (0.0.0.0)
+    function bind_port(port: i32) void, IError {
+        var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
+        if (sock_fd < 0) {
+            throw Error(sock_fd, "failed to create socket");
+        }
+        this.fd = sock_fd;
+        
+        var result: i32 = unsafe { __bind_ipv4(this.fd, INADDR_ANY, port); };
+        if (result < 0) {
+            throw Error(result, "failed to bind socket");
+        }
+    }
+    
+    // Create and bind to loopback (127.0.0.1) on port
+    function bind_loopback(port: i32) void, IError {
+        var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
+        if (sock_fd < 0) {
+            throw Error(sock_fd, "failed to create socket");
+        }
+        this.fd = sock_fd;
+        
+        var result: i32 = unsafe { __bind_ipv4(this.fd, INADDR_LOOPBACK, port); };
+        if (result < 0) {
+            throw Error(result, "failed to bind socket");
+        }
+    }
+    
+    // Start listening for connections
+    function listen(backlog: i32) void, IError {
+        var result: i32 = unsafe { __listen(this.fd, backlog); };
+        if (result < 0) {
+            throw Error(result, "failed to listen");
+        }
+    }
+    
+    // Accept a new connection, returns TcpStream
+    function accept() TcpStream, IError {
+        var client_fd: i32 = unsafe { __accept_fd(this.fd); };
+        if (client_fd < 0) {
+            throw Error(client_fd, "failed to accept connection");
+        }
+        var stream = TcpStream();
+        stream.fd = client_fd;
+        return stream;
+    }
+    
+    // Close the listener
+    function close() void {
+        if (this.fd >= 0) {
+            unsafe { __shutdown(this.fd, SHUT_RDWR); };
+            this.fd = -1;
+        }
+    }
+    
+    function is_open() bool {
+        return this.fd >= 0;
+    }
+    
+    function get_fd() i32 {
+        return this.fd;
+    }
+}
+
+// -------------------------------------------------------------------
+// TcpStream - TCP connection (client or accepted)
+// -------------------------------------------------------------------
+
+class TcpStream {
+    var fd: i32;
+    
+    function init() {
+        this.fd = -1;
+    }
+    
+    // Connect to loopback (127.0.0.1) on port
+    function connect_local(port: i32) void, IError {
+        var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
+        if (sock_fd < 0) {
+            throw Error(sock_fd, "failed to create socket");
+        }
+        this.fd = sock_fd;
+        
+        var result: i32 = unsafe { __connect_ipv4(this.fd, INADDR_LOOPBACK, port); };
+        if (result < 0) {
+            throw Error(result, "failed to connect");
+        }
+    }
+    
+    // Connect to specific IP (in network byte order) and port
+    function connect_ip(ip: i32, port: i32) void, IError {
+        var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
+        if (sock_fd < 0) {
+            throw Error(sock_fd, "failed to create socket");
+        }
+        this.fd = sock_fd;
+        
+        var result: i32 = unsafe { __connect_ipv4(this.fd, ip, port); };
+        if (result < 0) {
+            throw Error(result, "failed to connect");
+        }
+    }
+    
+    // Send string data
+    function send_str(data: static_ptr<u8>) i64, IError {
+        var str_ptr: raw_ptr<u8> = _static_ptr_data<u8>(data);
+        var len: i64 = _static_ptr_len<u8>(data);
+        var result: i64 = unsafe { __send(this.fd, str_ptr, len, MSG_NOSIGNAL); };
+        if (result < 0) {
+            var err_code: i32 = -1;
+            throw Error(err_code, "send failed");
+        }
+        return result;
+    }
+    
+    // Send raw bytes
+    function send_bytes(data: raw_ptr<u8>, len: i64) i64, IError {
+        var result: i64 = unsafe { __send(this.fd, data, len, MSG_NOSIGNAL); };
+        if (result < 0) {
+            var err_code: i32 = -1;
+            throw Error(err_code, "send failed");
+        }
+        return result;
+    }
+    
+    // Receive into buffer, returns bytes read
+    function recv_into(buf: raw_ptr<u8>, max_len: i64) i64, IError {
+        var result: i64 = unsafe { __recv(this.fd, buf, max_len, 0); };
+        if (result < 0) {
+            var err_code: i32 = -1;
+            throw Error(err_code, "recv failed");
+        }
+        return result;
+    }
+    
+    // Close the connection
+    function close() void {
+        if (this.fd >= 0) {
+            unsafe { __shutdown(this.fd, SHUT_RDWR); };
+            this.fd = -1;
+        }
+    }
+    
+    function is_open() bool {
+        return this.fd >= 0;
+    }
+    
+    function get_fd() i32 {
+        return this.fd;
+    }
+}
+
+} // module sun

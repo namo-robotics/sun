@@ -9,9 +9,9 @@
 
 using namespace llvm;
 
-// Safe division: check for zero divisor and return error instead of crashing
+// Safe division/modulo: check for zero divisor and return error instead of crashing
 // This is only called when currentFunctionCanError is true
-Value* CodegenVisitor::codegenSafeDivision(Value* L, Value* R) {
+Value* CodegenVisitor::codegenSafeDivision(Value* L, Value* R, bool isModulo) {
   // Get current function and its return type
   Function* func = ctx.builder->GetInsertBlock()->getParent();
   llvm::Type* retType = func->getReturnType();
@@ -38,17 +38,102 @@ Value* CodegenVisitor::codegenSafeDivision(Value* L, Value* R) {
       ctx.builder->CreateInsertValue(errorResult, zeroVal, 1, "error.value");
   ctx.builder->CreateRet(errorResult);
 
-  // Safe case: perform division and continue
+  // Safe case: perform division or modulo and continue
   ctx.builder->SetInsertPoint(safeBB);
-  Value* divResult = ctx.builder->CreateSDiv(L, R, "divtmp");
+  Value* result = isModulo ? ctx.builder->CreateSRem(L, R, "modtmp")
+                           : ctx.builder->CreateSDiv(L, R, "divtmp");
   ctx.builder->CreateBr(mergeBB);
 
-  // Merge block: continue with the division result
+  // Merge block: continue with the result
   ctx.builder->SetInsertPoint(mergeBB);
 
-  // Return the division result for use in subsequent code
+  // Return the result for use in subsequent code
   // (the error case already returned from the function)
-  return divResult;
+  return result;
+}
+
+// Short-circuit logical operators (and, or)
+// 'and' evaluates to: LHS ? RHS : false
+// 'or' evaluates to: LHS ? true : RHS
+Value* CodegenVisitor::codegenLogicalOp(const BinaryExprAST& expr) {
+  bool isAnd = (expr.getOp().kind == TokenKind::AND);
+
+  // Evaluate LHS
+  Value* L = codegen(*expr.getLHS());
+  if (!L) return nullptr;
+
+  // Convert LHS to bool (i1) if not already
+  if (!L->getType()->isIntegerTy(1)) {
+    if (L->getType()->isFloatingPointTy()) {
+      L = ctx.builder->CreateFCmpONE(L, ConstantFP::get(L->getType(), 0.0),
+                                      "tobool");
+    } else if (L->getType()->isIntegerTy()) {
+      L = ctx.builder->CreateICmpNE(L, ConstantInt::get(L->getType(), 0),
+                                     "tobool");
+    } else {
+      logAndThrowError("Logical operator requires boolean-compatible operand",
+                       expr.getLocation());
+    }
+  }
+
+  Function* TheFunction = ctx.builder->GetInsertBlock()->getParent();
+
+  // For 'and': if LHS is false, result is false (don't evaluate RHS)
+  // For 'or': if LHS is true, result is true (don't evaluate RHS)
+  BasicBlock* EvalRhsBB =
+      BasicBlock::Create(ctx.getContext(), isAnd ? "and.rhs" : "or.rhs", TheFunction);
+  BasicBlock* MergeBB =
+      BasicBlock::Create(ctx.getContext(), isAnd ? "and.end" : "or.end", TheFunction);
+
+  // Remember the block where LHS was evaluated (for PHI)
+  BasicBlock* LhsBB = ctx.builder->GetInsertBlock();
+
+  // For 'and': branch to RHS evaluation if LHS is true, otherwise short-circuit to merge
+  // For 'or': branch to RHS evaluation if LHS is false, otherwise short-circuit to merge
+  if (isAnd) {
+    ctx.builder->CreateCondBr(L, EvalRhsBB, MergeBB);
+  } else {
+    ctx.builder->CreateCondBr(L, MergeBB, EvalRhsBB);
+  }
+
+  // Evaluate RHS
+  ctx.builder->SetInsertPoint(EvalRhsBB);
+  Value* R = codegen(*expr.getRHS());
+  if (!R) return nullptr;
+
+  // Convert RHS to bool (i1) if not already
+  if (!R->getType()->isIntegerTy(1)) {
+    if (R->getType()->isFloatingPointTy()) {
+      R = ctx.builder->CreateFCmpONE(R, ConstantFP::get(R->getType(), 0.0),
+                                      "tobool");
+    } else if (R->getType()->isIntegerTy()) {
+      R = ctx.builder->CreateICmpNE(R, ConstantInt::get(R->getType(), 0),
+                                     "tobool");
+    } else {
+      logAndThrowError("Logical operator requires boolean-compatible operand",
+                       expr.getLocation());
+    }
+  }
+
+  // Branch to merge block after evaluating RHS
+  ctx.builder->CreateBr(MergeBB);
+
+  // Update RhsBB (codegen of RHS might have changed the current block)
+  BasicBlock* RhsBB = ctx.builder->GetInsertBlock();
+
+  // Emit merge block with PHI node
+  ctx.builder->SetInsertPoint(MergeBB);
+  PHINode* PN = ctx.builder->CreatePHI(Type::getInt1Ty(ctx.getContext()), 2,
+                                        isAnd ? "and.result" : "or.result");
+
+  // For 'and': short-circuit value is false, evaluated value is RHS
+  // For 'or': short-circuit value is true, evaluated value is RHS
+  Value* ShortCircuitVal = isAnd ? ConstantInt::getFalse(ctx.getContext())
+                                  : ConstantInt::getTrue(ctx.getContext());
+  PN->addIncoming(ShortCircuitVal, LhsBB);
+  PN->addIncoming(R, RhsBB);
+
+  return PN;
 }
 
 // Codegen for throw expression: throw <expr>

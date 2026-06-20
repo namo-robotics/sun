@@ -18,6 +18,7 @@ manifest {
         "linked_list.sun",
         "mutex.sun",
         "math.sun",
-        "io.sun"
+        "io.sun",
+        "networking.sun"
     ]
 }
