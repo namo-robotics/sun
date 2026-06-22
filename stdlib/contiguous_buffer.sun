@@ -23,7 +23,7 @@
 module sun {
 
 class ContiguousBuffer<T> implements IIterable<T, ContiguousBuffer<T>> {
-    var data: Unique<i8>;          // Element storage (owned, auto-freed)
+    var data: Unique<u8>;          // Element storage (owned, auto-freed)
     var alloc: HeapAllocator;      // Allocator (stored via copy)
     var size_: i64;                // Number of elements (fixed after init)
     
@@ -31,7 +31,7 @@ class ContiguousBuffer<T> implements IIterable<T, ContiguousBuffer<T>> {
     function init(allocator: ref HeapAllocator, size: i64) {
         this.alloc = allocator.copy();
         this.size_ = size;
-        this.data = Unique<i8>(this.alloc.alloc_raw(size * _sizeof<T>()));
+        this.data = Unique<u8>(this.alloc.alloc_raw(size * _sizeof<T>()));
     }
     
     // ========================================================================
@@ -119,7 +119,7 @@ class ContiguousBuffer<T> implements IIterable<T, ContiguousBuffer<T>> {
     }
     
     // Get raw data pointer (escape hatch for interop)
-    function rawData() raw_ptr<i8> {
+    function rawData() raw_ptr<u8> {
         return this.data.get_raw();
     }
     
@@ -131,7 +131,7 @@ class ContiguousBuffer<T> implements IIterable<T, ContiguousBuffer<T>> {
         }
         
         // Allocate new buffer
-        var new_data: raw_ptr<i8> = this.alloc.alloc_raw(new_size * _sizeof<T>());
+        var new_data: raw_ptr<u8> = this.alloc.alloc_raw(new_size * _sizeof<T>());
         
         // Copy existing elements (up to min of old and new size)
         var copy_count: i64 = this.size_;
@@ -144,7 +144,7 @@ class ContiguousBuffer<T> implements IIterable<T, ContiguousBuffer<T>> {
         }
         
         // Replace old data with new (Unique handles freeing old buffer)
-        this.data = Unique<i8>(new_data);
+        this.data = Unique<u8>(new_data);
         this.size_ = new_size;
     }
 
@@ -217,14 +217,14 @@ class ContiguousBufferIterator<T> implements IIterator<T, ContiguousBuffer<T>> {
 // ============================================================================
 
 // ContiguousBuffer specializations
-declare ContiguousBuffer_i8 = ContiguousBuffer<i8>;
+declare ContiguousBuffer_u8 = ContiguousBuffer<u8>;
 declare ContiguousBuffer_i32 = ContiguousBuffer<i32>;
 declare ContiguousBuffer_i64 = ContiguousBuffer<i64>;
 declare ContiguousBuffer_f32 = ContiguousBuffer<f32>;
 declare ContiguousBuffer_f64 = ContiguousBuffer<f64>;
 
 // ContiguousBufferIterator specializations
-declare ContiguousBufferIterator_i8 = ContiguousBufferIterator<i8>;
+declare ContiguousBufferIterator_u8 = ContiguousBufferIterator<u8>;
 declare ContiguousBufferIterator_i32 = ContiguousBufferIterator<i32>;
 declare ContiguousBufferIterator_i64 = ContiguousBufferIterator<i64>;
 declare ContiguousBufferIterator_f32 = ContiguousBufferIterator<f32>;

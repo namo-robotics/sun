@@ -186,23 +186,6 @@ llvm::Value* CodegenVisitor::createEnvClosure(StructType* envType,
   return envAlloca;  // returns %env*
 }
 
-llvm::Constant* CodegenVisitor::createGlobalFatClosure(
-    Function* func, StructType* fatType, const PrototypeAST& proto) {
-  llvm::Constant* funcConst = func;
-
-  llvm::Type* expectedFuncTy = fatType->getElementType(0);
-  if (funcConst->getType() != expectedFuncTy) {
-    funcConst = ConstantExpr::getBitCast(func, expectedFuncTy);
-  }
-
-  llvm::Constant* nullEnv =
-      ConstantPointerNull::get(cast<PointerType>(fatType->getElementType(1)));
-
-  llvm::Constant* constantFat =
-      ConstantStruct::get(fatType, {funcConst, nullEnv});
-  return constantFat;
-}
-
 // -------------------------------------------------------------------
 // Prototype codegen
 // -------------------------------------------------------------------
@@ -329,105 +312,87 @@ std::pair<Function*, llvm::StructType*> CodegenVisitor::codegen(
 }
 
 // -------------------------------------------------------------------
-// Function codegen
+// Generic function codegen
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
-  if (funcAst.shouldSkipCodegen()) return nullptr;
+Value* CodegenVisitor::codegenGenericFunc(FunctionAST& funcAst) {
+  // Save current insertion point - specialization codegen will change it
+  saveInsertPoint();
 
-  // Skip precompiled non-generic functions without bodies - they will be linked
-  // from bitcode. We must generate:
-  // - Generic functions (to process their specializations)
-  // - Specialized functions (they have bodies from clone)
-  // - Extern functions (they're declarations only)
-  // NOTE: hasBody() may be true even with an empty body (deserialized from
-  // proto), so we also check if the body has any statements.
-  bool hasBodyStatements =
-      funcAst.hasBody() && !funcAst.getBody().getBody().empty();
-  if (funcAst.isPrecompiled() && !funcAst.getProto().isGeneric() &&
-      !funcAst.isExtern() && !hasBodyStatements) {
-    // Non-generic precompiled function with no body statements -
-    // rely on linked bitcode
+  // Generate all specializations that were created during semantic analysis
+  for (const auto& [mangledName, specializedAST] :
+       funcAst.getSpecializations()) {
+    if (specializedAST && !module->getFunction(mangledName)) {
+      // Recursively generate the specialized function using the same codegen
+      codegenFunc(*specializedAST);
+    }
+  }
+
+  // Restore insertion point so caller can continue
+  restoreInsertPoint();
+
+  return nullptr;
+}
+
+// -------------------------------------------------------------------
+// Extern function codegen
+// -------------------------------------------------------------------
+
+Value* CodegenVisitor::codegenExternFunc(FunctionAST& funcAst) {
+  const PrototypeAST& proto = funcAst.getProto();
+
+  // Get return type from prototype (must be resolved by semantic analysis)
+  llvm::Type* returnType = nullptr;
+  if (proto.hasResolvedReturnType()) {
+    returnType = typeResolver.resolve(proto.getResolvedReturnType());
+  } else if (proto.hasReturnType()) {
+    logAndThrowError(
+        "Extern function return type not resolved by semantic analysis: " +
+        proto.getName());
+    return nullptr;
+  } else {
+    returnType = llvm::Type::getVoidTy(ctx.getContext());
+  }
+
+  // Build parameter types (must be resolved by semantic analysis)
+  std::vector<llvm::Type*> paramTypes;
+  if (!proto.hasResolvedParamTypes()) {
+    logAndThrowError(
+        "Extern function parameter types not resolved by semantic "
+        "analysis: " +
+        proto.getName());
     return nullptr;
   }
-
-  if (funcAst.getProto().isGeneric()) {
-    // Save current insertion point - specialization codegen will change it
-    saveInsertPoint();
-
-    // Generate all specializations that were created during semantic analysis
-    for (const auto& [mangledName, specializedAST] :
-         funcAst.getSpecializations()) {
-      if (specializedAST && !module->getFunction(mangledName)) {
-        // Recursively generate the specialized function using the same codegen
-        codegenFunc(*specializedAST);
-      }
-    }
-
-    // Restore insertion point so caller can continue
-    restoreInsertPoint();
-
-    return nullptr;
+  for (const auto& sunType : proto.getResolvedParamTypes()) {
+    paramTypes.push_back(typeResolver.resolve(sunType));
   }
 
-  // For extern function declarations, just declare the function (no body)
-  if (funcAst.isExtern()) {
-    const PrototypeAST& proto = funcAst.getProto();
+  // Create function type
+  llvm::FunctionType* funcType =
+      llvm::FunctionType::get(returnType, paramTypes, false);
 
-    // Get return type from prototype (must be resolved by semantic analysis)
-    llvm::Type* returnType = nullptr;
-    if (proto.hasResolvedReturnType()) {
-      returnType = typeResolver.resolve(proto.getResolvedReturnType());
-    } else if (proto.hasReturnType()) {
-      logAndThrowError(
-          "Extern function return type not resolved by semantic analysis: " +
-          proto.getName());
-      return nullptr;
-    } else {
-      returnType = llvm::Type::getVoidTy(ctx.getContext());
+  // Declare external function
+  llvm::Function* externFunc = llvm::Function::Create(
+      funcType, llvm::Function::ExternalLinkage, proto.getName(), module);
+
+  // Set parameter names
+  unsigned idx = 0;
+  for (auto& arg : externFunc->args()) {
+    if (idx < proto.getArgs().size()) {
+      arg.setName(proto.getArgs()[idx].first);
     }
-
-    // Build parameter types (must be resolved by semantic analysis)
-    std::vector<llvm::Type*> paramTypes;
-    if (!proto.hasResolvedParamTypes()) {
-      logAndThrowError(
-          "Extern function parameter types not resolved by semantic "
-          "analysis: " +
-          proto.getName());
-      return nullptr;
-    }
-    for (const auto& sunType : proto.getResolvedParamTypes()) {
-      paramTypes.push_back(typeResolver.resolve(sunType));
-    }
-
-    // Create function type
-    llvm::FunctionType* funcType =
-        llvm::FunctionType::get(returnType, paramTypes, false);
-
-    // Declare external function
-    llvm::Function* externFunc = llvm::Function::Create(
-        funcType, llvm::Function::ExternalLinkage, proto.getName(), module);
-
-    // Set parameter names
-    unsigned idx = 0;
-    for (auto& arg : externFunc->args()) {
-      if (idx < proto.getArgs().size()) {
-        arg.setName(proto.getArgs()[idx].first);
-      }
-      idx++;
-    }
-
-    return externFunc;
+    idx++;
   }
 
-  // Get a mutable reference to the prototype to set captures
-  PrototypeAST& proto = const_cast<PrototypeAST&>(funcAst.getProto());
+  return externFunc;
+}
 
-  // Named functions use FunctionType (direct call), anonymous use LambdaType
-  // (fat pointer)
-  bool isNamedFunction = !proto.getName().empty();
+// -------------------------------------------------------------------
+// Function signature declaration
+// -------------------------------------------------------------------
 
-  // Use captures already set by semantic analyzer, or compute if not set
+FuncDeclResult CodegenVisitor::declareFuncSignature(PrototypeAST& proto) {
+  // Use captures already set by semantic analyzer
   std::vector<Capture> captures = proto.getCaptures();
 
   if (proto.hasClosure()) {
@@ -439,36 +404,30 @@ Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
 
   // The semantic analyzer should have already inferred and set the return type
   // on the prototype. Error if no return type is available.
-  // All return types must be resolved by semantic analysis.
   llvm::Type* returnType = nullptr;
   bool canError = false;
   if (proto.hasResolvedReturnType()) {
-    // Use pre-resolved type from semantic analysis
     returnType = typeResolver.resolveForReturn(proto.getResolvedReturnType());
     canError = proto.hasReturnType() && proto.getReturnType()->canError;
   } else if (proto.hasReturnType()) {
     logAndThrowError(
         "Function return type not resolved by semantic analysis: " +
         proto.getName());
-    return nullptr;
   }
+
   if (!returnType) {
     logAndThrowError("Function '" + proto.getName() + "' has no return type. " +
                      "Ensure semantic analysis ran before codegen.");
-    return nullptr;
   }
 
   // If this function can return errors, wrap the return type in an error union
-  // struct
   llvm::Type* valueType = returnType;  // Save the underlying value type
   if (canError) {
-    // Error union: { i1 isError, T value } or just { i1 } for void return type
     if (valueType->isVoidTy()) {
-      // void, IError -> just { i1 } error flag, no value field
       returnType = llvm::StructType::get(
           ctx.getContext(),
           std::vector<llvm::Type*>{llvm::Type::getInt1Ty(ctx.getContext())});
-      valueType = nullptr;  // Mark that there's no value field
+      valueType = nullptr;
     } else {
       returnType = llvm::StructType::get(
           ctx.getContext(),
@@ -480,68 +439,78 @@ Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
   auto envType = createEnvTypeForFunc(proto);
 
   // Generate the function with the correct return type
-  // FunctionAST is always a named function (isLambda=false)
   auto [func, fatType] =
       codegen(proto, envType, /*isLambda=*/false, returnType);
   if (!func) {
     logAndThrowError("Failed to create function: " + proto.getName());
   }
 
+  return {func, fatType, envType, returnType, valueType, canError};
+}
+
+// -------------------------------------------------------------------
+// Function codegen
+// -------------------------------------------------------------------
+
+Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
+  if (funcAst.shouldSkipCodegen()) return nullptr;
+
+  if (funcAst.getProto().isGeneric()) {
+    return codegenGenericFunc(funcAst);
+  }
+
+  if (funcAst.isExtern()) {
+    return codegenExternFunc(funcAst);
+  }
+
+  // Precompiled functions are linked from bitcode — skip codegen
+  if (funcAst.isPrecompiled()) {
+    return nullptr;
+  }
+
+  // Get a mutable reference to the prototype to set captures
+  PrototypeAST& proto = const_cast<PrototypeAST&>(funcAst.getProto());
+
+  // Declare the function signature and resolve types
+  auto decl = declareFuncSignature(proto);
+  if (!decl.func) return nullptr;
+
+  auto* func = decl.func;
+  auto* fatType = decl.fatType;
+  auto* envType = decl.envType;
+  auto* returnType = decl.returnType;
+  auto* valueType = decl.valueType;
+  bool canError = decl.canError;
+
   // Always push a scope for function arguments (even for top-level)
 
   Value* resultPtr = nullptr;
-  // Set up closure context if we have captures
-
   bool isGlobalScope = scopes.empty();
 
-  // For named functions without captures: return the function pointer directly
-  // For lambdas: return the fat closure struct
-  // For named functions with captures: return just the env pointer
-  if (!isNamedFunction) {
-    // Lambda - use fat closure
+  if (proto.hasClosure()) {
     if (isGlobalScope) {
-      resultPtr = createGlobalFatClosure(func, fatType, proto);
-    } else {
-      resultPtr = createFatClosure(func, fatType, envType, proto);
+      logAndThrowError("Global named functions with captures are not supported: " +
+                       proto.getName());
     }
-  } else if (proto.hasClosure()) {
-    // Named function with captures - use direct env pointer
-    if (isGlobalScope) {
-      // TODO: support global named functions with captures if needed
-      resultPtr = createGlobalFatClosure(func, fatType, proto);
-    } else {
-      resultPtr = createEnvClosure(envType, proto);
-      // Store the env in scope so call sites can find it
-      // Use the mangled function name (proto.getName() has the mangled name for
-      // specializations)
-      scopes.back().variables[proto.getName()] = cast<AllocaInst>(resultPtr);
-    }
+    resultPtr = createEnvClosure(envType, proto);
+    scopes.back().variables[proto.getName()] = cast<AllocaInst>(resultPtr);
   } else {
-    // Named function without captures: just return the function pointer
     resultPtr = func;
   }
 
-  // Set up closure context for function body if needed
-  if (!isGlobalScope && proto.hasClosure()) {
-    // For the closure context used inside the function body, we need the
-    // function's first argument (the env/fat pointer passed by caller).
+  if (proto.hasClosure()) {
     Value* firstArg = &*func->arg_begin();
-    bool isDirectEnv = isNamedFunction;  // Named functions use direct env
     ClosureContext closureCtx;
     closureCtx.fatType = fatType;
     closureCtx.envType = envType;
     closureCtx.envOrFatPtr = firstArg;
-    closureCtx.isDirectEnv = isDirectEnv;
+    closureCtx.isDirectEnv = true;
     closureCtx.captures = proto.getCaptures();
-    // Build the capture index map and get the struct type using stored types
     for (size_t i = 0; i < proto.getCaptures().size(); i++) {
       const auto& cap = proto.getCaptures()[i];
       closureCtx.captureIndex[cap.name] = i;
-      llvm::Type* capType = typeResolver.resolve(cap.type);
-      closureCtx.captureTypes[cap.name] = capType;
+      closureCtx.captureTypes[cap.name] = typeResolver.resolve(cap.type);
     }
-
-    // Push closure context onto stack
     closureStack.push_back(closureCtx);
   }
 
@@ -588,13 +557,16 @@ Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
   currentFunctionValueType = savedValueType;
 
   // Pop closure context if we pushed one
-  if (!isGlobalScope && proto.hasClosure()) {
+  if (proto.hasClosure()) {
     closureStack.pop_back();
   }
 
   // Check if the current basic block needs a terminator
   llvm::BasicBlock* currentBlock = ctx.builder->GetInsertBlock();
   if (!currentBlock->getTerminator()) {
+    // Emit scope cleanup before implicit return (deinit classes, free ptrs)
+    emitScopeCleanup();
+
     Type* retType = func->getReturnType();
     if (retType->isVoidTy()) {
       // Void functions get an implicit return
@@ -695,17 +667,26 @@ llvm::Value* CodegenVisitor::codegenLambda(LambdaAST& lambdaAst) {
   }
 
   Value* resultPtr = nullptr;
-  bool isGlobalScope = scopes.empty();
-
-  // Lambdas always return a fat closure struct
-  if (isGlobalScope) {
-    resultPtr = createGlobalFatClosure(func, fatType, proto);
+  if (scopes.empty()) {
+    if (proto.hasClosure()) {
+      logAndThrowError(
+          "Lambdas at global scope with local captures are not supported");
+    }
+    // Global scope: create a constant fat pointer { funcPtr, null }
+    llvm::Constant* funcConst = func;
+    llvm::Type* expectedFuncTy = fatType->getElementType(0);
+    if (funcConst->getType() != expectedFuncTy) {
+      funcConst = ConstantExpr::getBitCast(func, expectedFuncTy);
+    }
+    llvm::Constant* nullEnv = ConstantPointerNull::get(
+        cast<PointerType>(fatType->getElementType(1)));
+    resultPtr = ConstantStruct::get(fatType, {funcConst, nullEnv});
   } else {
     resultPtr = createFatClosure(func, fatType, envType, proto);
   }
 
   // Set up closure context for function body if needed
-  if (!isGlobalScope && proto.hasClosure()) {
+  if (proto.hasClosure()) {
     Value* firstArg = &*func->arg_begin();
     ClosureContext closureCtx;
     closureCtx.fatType = fatType;
@@ -716,8 +697,7 @@ llvm::Value* CodegenVisitor::codegenLambda(LambdaAST& lambdaAst) {
     for (size_t i = 0; i < proto.getCaptures().size(); i++) {
       const auto& cap = proto.getCaptures()[i];
       closureCtx.captureIndex[cap.name] = i;
-      llvm::Type* capType = typeResolver.resolve(cap.type);
-      closureCtx.captureTypes[cap.name] = capType;
+      closureCtx.captureTypes[cap.name] = typeResolver.resolve(cap.type);
     }
     closureStack.push_back(closureCtx);
   }
@@ -758,13 +738,16 @@ llvm::Value* CodegenVisitor::codegenLambda(LambdaAST& lambdaAst) {
   currentFunctionValueType = savedValueType;
 
   // Pop closure context if we pushed one
-  if (!isGlobalScope && proto.hasClosure()) {
+  if (proto.hasClosure()) {
     closureStack.pop_back();
   }
 
   // Check if the current basic block needs a terminator
   llvm::BasicBlock* currentBlock = ctx.builder->GetInsertBlock();
   if (!currentBlock->getTerminator()) {
+    // Emit scope cleanup before implicit return (deinit classes, free ptrs)
+    emitScopeCleanup();
+
     llvm::Type* funcRetType = func->getReturnType();
     if (funcRetType->isVoidTy()) {
       ctx.builder->CreateRetVoid();

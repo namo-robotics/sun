@@ -1,0 +1,28 @@
+using sun;
+
+function main() i32 {
+    println("Starting TCP server on port 8080...");
+    var stream = TcpStream();
+    println("Connecting to TCP server on port 8080...");
+    stream.connect_local(8080);   // connects to 127.0.0.1:8080
+    println("Sending HTTP GET request...");
+    
+    stream.send_str("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+    println("Request sent, waiting for response...");
+    println("creating allocator...");
+    var alloc = make_heap_allocator();
+    println("Allocating buffer for response...");
+    var buf = ContiguousBuffer<u8>(alloc, 4096);
+    println("Buffer allocated, reading data...");
+    var n = stream.recv_into(buf.rawData(), 4096);
+    println("Data read, closing stream...");
+    
+    var s = `Received ${n} bytes`;
+    println(s);
+    // stream.close();
+    return 0;
+}
+
+manifest {
+    moons: ["stdlib.moon"]
+}

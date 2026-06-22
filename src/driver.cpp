@@ -1,4 +1,3 @@
-// src/driver.cpp
 #include "driver.h"
 
 #include <llvm/IR/Verifier.h>
@@ -152,14 +151,9 @@ void Driver::setDebugMode(bool enable, const std::string& inputFile) {
   }
 }
 
-// Print only IR for user-defined functions (filter out library code)
-void Driver::printUserDefinedIR() {
-  // ANSI color codes for cyan output
-  const char* cyan = "\033[36m";
-  const char* reset = "\033[0m";
-
-  llvm::outs() << cyan << "; LLVM IR (user-defined only):\n";
-
+// Helper to dump only user-defined globals and functions to any raw_ostream.
+// Used by both terminal printing (with colors) and debug file output.
+void Driver::dumpUserDefinedIR(llvm::raw_ostream& OS) {
   // Get user-defined functions from codegen visitor
   const auto& userDefined = codegenVisitor->getUserDefinedFunctions();
 
@@ -173,8 +167,8 @@ void Driver::printUserDefinedIR() {
     if (name.rfind("sun_", 0) == 0) continue;
     // Skip prefixed symbols (from moon imports)
     if (name.rfind("$", 0) == 0) continue;
-    gv.print(llvm::outs());
-    llvm::outs() << "\n";
+    gv.print(OS);
+    OS << "\n";
   }
 
   // Print only user-defined functions
@@ -185,9 +179,19 @@ void Driver::printUserDefinedIR() {
     // Only print functions that are user-defined
     if (userDefined.count(name) == 0) continue;
 
-    func.print(llvm::outs());
-    llvm::outs() << "\n";
+    func.print(OS);
+    OS << "\n";
   }
+}
+
+// Print only IR for user-defined functions (filter out library code)
+void Driver::printUserDefinedIR() {
+  // ANSI color codes for cyan output
+  const char* cyan = "\033[36m";
+  const char* reset = "\033[0m";
+
+  llvm::outs() << cyan << "; LLVM IR (user-defined only):\n";
+  dumpUserDefinedIR(llvm::outs());
   llvm::outs() << reset;
 }
 
@@ -246,6 +250,23 @@ void Driver::printReachableIR() {
   }
 
   llvm::outs() << reset;
+}
+
+// Write only the user-defined portion of the IR to a file (used in debug mode).
+// No ANSI colors, plain text suitable for .ll file.
+void Driver::writeUserDefinedIR(const std::string& path) {
+  std::error_code EC;
+  llvm::raw_fd_ostream OS(path, EC);
+  if (EC) {
+    llvm::errs() << "Warning: Could not write " << path << ": "
+                 << EC.message() << "\n";
+    return;
+  }
+
+  OS << "; LLVM IR (user-defined only)\n";
+  OS << "; Generated in debug mode - library and imported symbols filtered out\n\n";
+
+  dumpUserDefinedIR(OS);
 }
 
 // ---------------------------------------------------------------------------
@@ -434,18 +455,11 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
     }
   }
 
-  // Debug mode: dump full IR after codegen
+  // Debug mode: dump only user-defined IR after codegen (filters out stdlib / moon imports)
   if (debugMode_ && !debugFolder_.empty()) {
     std::string irPath = debugFolder_ + "/ir.ll";
-    std::error_code EC;
-    llvm::raw_fd_ostream irFile(irPath, EC);
-    if (!EC) {
-      ctx->mainModule->print(irFile, nullptr);
-      llvm::outs() << "  Generated: " << irPath << "\n";
-    } else {
-      llvm::errs() << "Warning: Could not write " << irPath << ": "
-                   << EC.message() << "\n";
-    }
+    writeUserDefinedIR(irPath);
+    llvm::outs() << "  Generated: " << irPath << "\n";
   }
 
   // If not executing, handle AOT compilation specifics

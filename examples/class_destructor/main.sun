@@ -1,0 +1,18 @@
+using sun;
+
+class Foo {
+    function init() {}
+
+    function deinit() void {
+        println("Foo deinit was called.");
+    }
+}
+
+function main() void {
+    var foo = Foo();
+    println("Exiting main, foo will go out of scope and deinit will be called.");
+}
+
+manifest {
+    moons: ["stdlib.moon"]
+}

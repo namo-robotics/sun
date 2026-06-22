@@ -1007,6 +1007,9 @@ sun::TypePtr SemanticAnalyzer::inferIntrinsicCallType(
   if (funcName == "_is") {
     return sun::Types::Bool();
   }
+  if (funcName == "_deinit") {
+    return sun::Types::Void();
+  }
 
   // Unknown intrinsic - return void as fallback
   return sun::Types::Void();

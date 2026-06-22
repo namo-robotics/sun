@@ -543,6 +543,10 @@ SemanticAnalyzer::instantiateGenericFunction(
     exitScope();  // parameter scope
 
     specializedAST = std::move(clonedFunc);
+    // Specializations are NOT precompiled - even if the generic function
+    // came from a precompiled .moon file, new specializations need codegen
+    // since they don't exist in the library bitcode.
+    specializedAST->setPrecompiled(false);
   }
 
   exitScope();  // type parameter scope
@@ -815,6 +819,8 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
 
   // Convert to shared_ptr for storage
   std::shared_ptr<FunctionAST> specializedAST = std::move(clonedFunc);
+  // Specializations are NOT precompiled - they need codegen
+  specializedAST->setPrecompiled(false);
 
   // Store specialization on the generic method AST for codegen access
   genericMethodAST->addSpecialization(mangledName, specializedAST);

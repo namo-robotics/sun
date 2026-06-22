@@ -67,6 +67,9 @@ class Driver {
     });
   }
 
+  void dumpUserDefinedIR(llvm::raw_ostream& OS);
+  void writeUserDefinedIR(const std::string& path);
+
  public:
   /// Create a Driver for JIT execution
   static std::unique_ptr<Driver> createForJIT(

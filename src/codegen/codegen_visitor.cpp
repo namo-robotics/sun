@@ -1,11 +1,7 @@
 // codegen_visitor.cpp - Main expression dispatch and basic expression codegen
 
 #include "codegen_visitor.h"
-
-#include <cmath>
 #include <cstdint>
-
-#include "ast.h"
 #include "codegen.h"
 
 static ExitOnError ExitOnErr;

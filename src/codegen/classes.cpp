@@ -1328,6 +1328,8 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
     case sun::Intrinsic::Is:
       // _is<T> uses the type name for type trait checks (e.g., "_Integer")
       return codegenIsIntrinsic(typeArgs[0]->baseName, expr.getArgs());
+    case sun::Intrinsic::Deinit:
+      return codegenDeinitIntrinsic(getFirstTypeArg(), expr.getArgs());
     default:
       break;  // Not a generic intrinsic, continue below
   }
