@@ -701,11 +701,13 @@ void CodegenVisitor::emitFieldDeinit(llvm::Value* objectPtr,
 }
 
 void CodegenVisitor::emitScopeCleanup() {
-  // First, cleanup class allocations (call deinit methods)
-  if (!classAllocations.empty()) {
-    auto& currentClassScope = classAllocations.back();
+  if (scopes.empty()) return;
 
-    // Deinit all non-moved class allocations in reverse order (LIFO)
+  // First, cleanup class allocations (call deinit methods)
+  auto& currentClassScope = scopes.back().classAllocations;
+
+  // Deinit all non-moved class allocations in reverse order (LIFO)
+  if (!currentClassScope.empty()) {
     for (auto it = currentClassScope.rbegin(); it != currentClassScope.rend();
          ++it) {
       if (!it->moved && it->alloca && it->type) {
@@ -739,9 +741,7 @@ void CodegenVisitor::emitScopeCleanup() {
   }
 
   // Then, cleanup owned pointer allocations (ptr<T>)
-  if (ownedAllocations.empty()) return;
-
-  auto& currentScope = ownedAllocations.back();
+  auto& currentScope = scopes.back().ownedAllocations;
   if (currentScope.empty()) return;
 
   // Get or declare free function: void free(ptr)
@@ -798,9 +798,27 @@ void CodegenVisitor::emitScopeCleanup() {
         ctx.builder->CreateCall(syscallAsm, {sysno, addr, size, zero});
       } else {
         // For malloc allocations:
-        // First, recursively free any ptr<T> fields if pointee is a class
         if (it->pointeeType && it->pointeeType->isClass()) {
           auto* classType = static_cast<sun::ClassType*>(it->pointeeType.get());
+          // Call T.deinit() on the pointee if it has one
+          const sun::ClassMethod* deinitMethod = classType->getMethod("deinit");
+          if (deinitMethod) {
+            std::string mangledName = classType->getMangledMethodName("deinit");
+            llvm::Function* deinitFunc = module->getFunction(mangledName);
+            if (!deinitFunc) {
+              std::vector<llvm::Type*> paramTypes;
+              paramTypes.push_back(
+                  llvm::PointerType::getUnqual(ctx.getContext()));
+              llvm::FunctionType* funcType = llvm::FunctionType::get(
+                  llvm::Type::getVoidTy(ctx.getContext()), paramTypes, false);
+              deinitFunc = llvm::Function::Create(
+                  funcType, llvm::Function::ExternalLinkage, mangledName,
+                  module);
+            }
+            ctx.builder->CreateCall(deinitFunc, {ptrToFree});
+          }
+          // Recursively deinit class fields and free nested ptr<T> fields
+          emitFieldDeinit(ptrToFree, classType, it->varName);
           emitFieldCleanup(ptrToFree, classType, it->varName, freeFunc);
         }
         // Then free the object itself

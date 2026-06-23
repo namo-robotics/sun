@@ -119,6 +119,10 @@ class TcpStream {
     function init() {
         this.fd = -1;
     }
+
+    function deinit() void {
+        this.close();
+    }
     
     // Connect to loopback (127.0.0.1) on port
     function connect_local(port: i32) void, IError {

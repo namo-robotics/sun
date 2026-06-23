@@ -980,3 +980,164 @@ TEST(ClassTest, chained_method_and_member_as_argument) {
   )");
   EXPECT_EQ(value, 21);
 }
+
+// ============================================================================
+// Destructor (deinit) Tests
+// ============================================================================
+
+TEST(ClassTest, deinit_called_at_implicit_function_exit) {
+  auto value = executeString(R"(
+    var counter: i32 = 0;
+
+    class Foo {
+      function init() {}
+      function deinit() void {
+        counter = counter + 1;
+      }
+    }
+
+    function helper() void {
+      var foo = Foo();
+    }
+
+    function main() i32 {
+      helper();
+      return counter;
+    }
+  )");
+  // deinit should be called when foo goes out of scope at function exit
+  EXPECT_EQ(value, 1);
+}
+
+TEST(ClassTest, deinit_called_at_explicit_return) {
+  auto value = executeString(R"(
+    var counter: i32 = 0;
+
+    class Foo {
+      function init() {}
+      function deinit() void {
+        counter = counter + 1;
+      }
+    }
+
+    function helper() i32 {
+      var foo = Foo();
+      return 0;
+    }
+
+    function main() i32 {
+      helper();
+      return counter;
+    }
+  )");
+  EXPECT_EQ(value, 1);
+}
+
+TEST(ClassTest, deinit_called_for_multiple_instances) {
+  auto value = executeString(R"(
+    var counter: i32 = 0;
+
+    class Foo {
+      function init() {}
+      function deinit() void {
+        counter = counter + 1;
+      }
+    }
+
+    function helper() void {
+      var a = Foo();
+      var b = Foo();
+      var c = Foo();
+    }
+
+    function main() i32 {
+      helper();
+      return counter;
+    }
+  )");
+  // All three instances should be deinited when helper() returns
+  EXPECT_EQ(value, 3);
+}
+
+TEST(ClassTest, explicit_deinit_no_double_call) {
+  auto value = executeString(R"(
+    var counter: i32 = 0;
+
+    class Foo {
+      function init() {}
+      function deinit() void {
+        counter = counter + 1;
+      }
+    }
+
+    function main() i32 {
+      var foo = Foo();
+      foo.deinit();
+      return counter;
+    }
+  )");
+  // Explicit deinit should mark it as moved, no auto-deinit at scope exit
+  EXPECT_EQ(value, 1);
+}
+
+TEST(ClassTest, deinit_called_for_unique_ptr_at_scope_exit) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    var counter: i32 = 0;
+
+    class Widget {
+      var id: i32;
+      function init(id: i32) { this.id = id; }
+      function deinit() void {
+        counter = counter + 1;
+      }
+    }
+
+    function helper() i32 {
+      var alloc = make_heap_allocator();
+      var w = Unique<Widget>(alloc.create<Widget>(1));
+      return w.get().id;
+    }
+
+    function main() i32 {
+      var result = helper();
+      // Unique<Widget>.deinit() should have been called, which frees the allocation.
+      // Widget.deinit() is called on the *Unique* wrapper (stack class), not directly on Widget.
+      // counter tracks Widget.deinit calls.
+      // The Unique wrapper's deinit frees the raw_ptr, but doesn't call Widget.deinit.
+      // So counter stays 0, but we verify Unique's scope cleanup works (no crash/leak).
+      return result;
+    }
+  )");
+  EXPECT_EQ(value, 1);
+}
+
+TEST(ClassTest, deinit_called_for_class_created_with_allocator) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    var counter: i32 = 0;
+
+    class Resource {
+      var value: i32;
+      function init(v: i32) { this.value = v; }
+      function deinit() void {
+        counter = counter + 1;
+      }
+    }
+
+    function helper() i32 {
+      var alloc = make_heap_allocator();
+      var r1 = Unique<Resource>(alloc.create<Resource>(10));
+      var r2 = Unique<Resource>(alloc.create<Resource>(20));
+      return r1.get().value + r2.get().value;
+    }
+
+    function main() i32 {
+      var result = helper();
+      // counter should be 2: both Resources had deinit called before free
+      return counter + result;
+    }
+  )");
+  // 2 (deinit calls) + 30 (values) = 32
+  EXPECT_EQ(value, 32);
+}

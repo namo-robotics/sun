@@ -19,12 +19,6 @@
 
 using NamedValueMap = std::map<std::string, llvm::AllocaInst*>;
 
-// Scope object containing variables
-struct CodegenScope {
-  NamedValueMap variables;
-  bool isFunctionBoundary = false;  // True for scopes marking function entry
-};
-
 // Information about a heap allocation that needs automatic cleanup
 struct OwnedAllocation {
   llvm::Value* ptrAlloca;  // Alloca storing the heap pointer
@@ -45,6 +39,14 @@ struct ClassAllocation {
   std::shared_ptr<sun::ClassType> type;  // Class type (for method lookup)
 };
 
+// Scope object containing variables and allocation tracking
+struct CodegenScope {
+  NamedValueMap variables;
+  bool isFunctionBoundary = false;  // True for scopes marking function entry
+  std::vector<OwnedAllocation> ownedAllocations;
+  std::vector<ClassAllocation> classAllocations;
+};
+
 // Closure context for nested functions
 struct ClosureContext {
   llvm::StructType* fatType;  // Only used for lambdas
@@ -60,6 +62,16 @@ struct ClosureContext {
 struct FunctionClosureInfo {
   std::vector<Capture> captures;  // Names of captured variables in order
   bool hasClosure;  // Whether this function uses closure calling convention
+};
+
+// Result of declaring a function's LLVM signature
+struct FuncDeclResult {
+  llvm::Function* func;
+  llvm::StructType* fatType;
+  llvm::StructType* envType;
+  llvm::Type* returnType;
+  llvm::Type* valueType;  // Underlying type before error union wrapping
+  bool canError;
 };
 
 // Loop context for break/continue statement codegen
@@ -199,6 +211,9 @@ class CodegenVisitor {
       const PrototypeAST& proto, llvm::StructType* envType, bool isLambda,
       llvm::Type* returnType = nullptr);
   llvm::Value* codegenFunc(FunctionAST& func);
+  llvm::Value* codegenGenericFunc(FunctionAST& func);
+  llvm::Value* codegenExternFunc(FunctionAST& func);
+  FuncDeclResult declareFuncSignature(PrototypeAST& proto);
   llvm::Value* codegenLambda(LambdaAST& lambda);
   llvm::Value* codegen(const ForExprAST& expr);
   llvm::Value* codegen(const ForInExprAST& expr);
@@ -348,6 +363,9 @@ class CodegenVisitor {
   llvm::Value* codegenIsIntrinsic(
       const std::string& targetName,
       const std::vector<std::unique_ptr<ExprAST>>& args);
+  llvm::Value* codegenDeinitIntrinsic(
+      sun::TypePtr typeArg,
+      const std::vector<std::unique_ptr<ExprAST>>& args);
   llvm::Value* codegenLoadI64Intrinsic(const CallExprAST& expr);
   llvm::Value* codegenStoreI64Intrinsic(const CallExprAST& expr);
   llvm::Value* codegenMallocIntrinsic(const CallExprAST& expr);
@@ -416,23 +434,13 @@ class CodegenVisitor {
 
   std::vector<CodegenScope> scopes;
 
-  // Stack of owned allocations per scope (for automatic cleanup)
-  std::vector<std::vector<OwnedAllocation>> ownedAllocations;
-
-  // Stack of class allocations per scope (for automatic deinit)
-  std::vector<std::vector<ClassAllocation>> classAllocations;
-
   CodegenScope& pushScope() {
     scopes.emplace_back();
-    ownedAllocations.emplace_back();  // Also push owned allocations scope
-    classAllocations.emplace_back();  // Also push class allocations scope
     return scopes.back();
   }
 
   void popScope() {
     if (!scopes.empty()) scopes.pop_back();
-    if (!ownedAllocations.empty()) ownedAllocations.pop_back();
-    if (!classAllocations.empty()) classAllocations.pop_back();
   }
 
   // Saved insertion point for restoring after nested codegen
@@ -490,8 +498,8 @@ class CodegenVisitor {
                             bool isMmap = false,
                             llvm::Value* sizeAlloca = nullptr,
                             sun::TypePtr pointeeType = nullptr) {
-    if (!ownedAllocations.empty()) {
-      ownedAllocations.back().push_back(
+    if (!scopes.empty()) {
+      scopes.back().ownedAllocations.push_back(
           {ptrAlloca, name, false, isMmap, sizeAlloca, pointeeType});
     }
   }
@@ -499,15 +507,15 @@ class CodegenVisitor {
   // Track a new class allocation in current scope for automatic deinit
   void trackClassAllocation(llvm::AllocaInst* alloca, const std::string& name,
                             std::shared_ptr<sun::ClassType> type) {
-    if (!classAllocations.empty()) {
-      classAllocations.back().push_back({alloca, name, false, std::move(type)});
+    if (!scopes.empty()) {
+      scopes.back().classAllocations.push_back({alloca, name, false, std::move(type)});
     }
   }
 
   // Mark a class allocation as moved/deinited (don't auto-deinit at scope exit)
   void markClassAllocationAsDeinited(llvm::Value* alloca) {
-    for (auto& scope : classAllocations) {
-      for (auto& alloc : scope) {
+    for (auto& scope : scopes) {
+      for (auto& alloc : scope.classAllocations) {
         if (alloc.alloca == alloca) {
           alloc.moved = true;
           return;
@@ -518,8 +526,8 @@ class CodegenVisitor {
 
   // Mark an allocation as moved (ownership transferred, don't free)
   void markAsMoved(const std::string& name) {
-    for (auto& scope : ownedAllocations) {
-      for (auto& alloc : scope) {
+    for (auto& scope : scopes) {
+      for (auto& alloc : scope.ownedAllocations) {
         if (alloc.varName == name) {
           alloc.moved = true;
           return;
@@ -708,9 +716,6 @@ class CodegenVisitor {
                                 StructType* envType, const PrototypeAST& proto);
 
   llvm::Value* createEnvClosure(StructType* envType, const PrototypeAST& proto);
-
-  llvm::Constant* createGlobalFatClosure(Function* func, StructType* fatType,
-                                         const PrototypeAST& proto);
 
   // Built-in functions (raw syscalls, no libc)
   bool isBuiltinFunction(const std::string& name);

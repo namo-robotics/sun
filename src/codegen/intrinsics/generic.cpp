@@ -499,3 +499,43 @@ Value* CodegenVisitor::codegenIsIntrinsic(
   return llvm::ConstantInt::get(llvm::Type::getInt1Ty(ctx.getContext()),
                                 result ? 1 : 0);
 }
+
+Value* CodegenVisitor::codegenDeinitIntrinsic(
+    sun::TypePtr typeArg,
+    const std::vector<std::unique_ptr<ExprAST>>& args) {
+  // _deinit<T>(raw_ptr<T>) - call T.deinit() on the pointee if T is a class
+  // with a deinit method, then recursively deinit class fields. No-op for
+  // non-class types or classes without deinit.
+  if (args.size() != 1) {
+    logAndThrowError("_deinit<T>() requires exactly 1 argument: (raw_ptr<T>)");
+    return nullptr;
+  }
+
+  llvm::Value* ptr = codegen(*args[0]);
+  if (!ptr) return nullptr;
+
+  if (typeArg && typeArg->isClass()) {
+    auto* classType = static_cast<sun::ClassType*>(typeArg.get());
+
+    // Call T.deinit() if it exists
+    const sun::ClassMethod* deinitMethod = classType->getMethod("deinit");
+    if (deinitMethod) {
+      std::string mangledName = classType->getMangledMethodName("deinit");
+      llvm::Function* deinitFunc = module->getFunction(mangledName);
+      if (!deinitFunc) {
+        std::vector<llvm::Type*> paramTypes;
+        paramTypes.push_back(llvm::PointerType::getUnqual(ctx.getContext()));
+        llvm::FunctionType* funcType = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(ctx.getContext()), paramTypes, false);
+        deinitFunc = llvm::Function::Create(
+            funcType, llvm::Function::ExternalLinkage, mangledName, module);
+      }
+      ctx.builder->CreateCall(deinitFunc, {ptr});
+    }
+
+    // Recursively deinit class fields that have deinit methods
+    emitFieldDeinit(ptr, classType, "deinit.intrinsic");
+  }
+
+  return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
+}

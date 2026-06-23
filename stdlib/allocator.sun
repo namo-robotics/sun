@@ -5,8 +5,8 @@
 // Use Unique<T> for automatic cleanup via deinit().
 
 // Memory allocation intrinsics:
-// _malloc(size: i64) raw_ptr<i8> - allocate size bytes
-// _free(ptr: raw_ptr<i8>) void - free previously allocated memory
+// _malloc(size: i64) raw_ptr<u8> - allocate size bytes
+// _free(ptr: raw_ptr<u8>) void - free previously allocated memory
 // _sizeof<T>() i64 - size of type T in bytes
 // _init<T>(ptr, args...) - call T's constructor at ptr
 
@@ -19,14 +19,14 @@ interface IAllocator {
     // Returns raw_ptr<T> - caller is responsible for freeing
     function alloc<T>(count: i64) raw_ptr<T>;
     
-    // Low-level raw allocation - returns raw_ptr<i8>
-    function alloc_raw(size: i64) raw_ptr<i8>;
+    // Low-level raw allocation - returns raw_ptr<u8>
+    function alloc_raw(size: i64) raw_ptr<u8>;
     
     // Free previously allocated memory (typed version)
     function dealloc<T>(p: raw_ptr<T>, count: i64) void;
     
     // Free previously allocated memory (raw bytes)
-    function dealloc_raw(p: raw_ptr<i8>, size: i64) void;
+    function dealloc_raw(p: raw_ptr<u8>, size: i64) void;
     
     // Create a single instance of T, calling its constructor
     // Returns raw_ptr<T> - caller manages lifetime
@@ -47,7 +47,7 @@ class HeapAllocator implements IAllocator {
     }
     
     // Low-level raw byte allocation
-    function alloc_raw(size: i64) raw_ptr<i8> {
+    function alloc_raw(size: i64) raw_ptr<u8> {
         return unsafe { _malloc(size); };
     }
     
@@ -57,7 +57,7 @@ class HeapAllocator implements IAllocator {
     }
     
     // Free raw bytes allocated with alloc_raw
-    function dealloc_raw(p: raw_ptr<i8>, size: i64) void {
+    function dealloc_raw(p: raw_ptr<u8>, size: i64) void {
         unsafe { _free(p); };
     }
     
@@ -65,7 +65,7 @@ class HeapAllocator implements IAllocator {
     // Allocates memory, calls T's constructor, returns raw_ptr<T>
     function create<T>(args...: _init_args<T>) raw_ptr<T> {
         var size: i64 = _sizeof<T>();
-        var memory: raw_ptr<i8> = this.alloc_raw(size);
+        var memory: raw_ptr<u8> = this.alloc_raw(size);
         _init<T>(memory, args...);
         return memory;
     }

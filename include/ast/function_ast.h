@@ -69,6 +69,7 @@ class FunctionAST : public ExprAST {
   // Check if function is an extern declaration (no body)
   bool isExtern() const { return Body == nullptr; }
   bool hasBody() const { return Body != nullptr; }
+  bool hasNonEmptyBody() const { return Body && !Body->getBody().empty(); }
 
   // Specialization storage for generic functions
   // Called by semantic analyzer when a generic function is instantiated
