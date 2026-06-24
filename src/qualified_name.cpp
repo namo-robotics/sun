@@ -71,4 +71,23 @@ std::string QualifiedName::buildParamSuffix(
   return result;
 }
 
+std::string QualifiedName::buildVariadicArgSuffix(
+    const std::vector<TypePtr>& variadicArgTypes,
+    const std::string& hashPrefix) {
+  if (variadicArgTypes.empty()) return "";
+
+  std::string result = "$v$";
+  for (const auto& argType : variadicArgTypes) {
+    result += "$";
+    std::string typeStr = canonicalTypeString(argType, hashPrefix);
+    // Sanitize: replace special chars that may cause issues in symbol names
+    for (char& c : typeStr) {
+      if (c == '<' || c == '>' || c == ',' || c == '(' || c == ')') c = '_';
+      if (c == ' ') c = '_';
+    }
+    result += typeStr;
+  }
+  return result;
+}
+
 }  // namespace sun

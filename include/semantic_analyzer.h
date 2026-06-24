@@ -205,9 +205,22 @@ class SemanticAnalyzer {
   // Instantiates a generic method on a class with specific type arguments.
   // Stores the specialization on the generic method's FunctionAST.
   // Returns the specialized FunctionAST for codegen lookup.
+  // variadicArgTypes carries the resolved types of the actual variadic
+  // arguments at the call site (for methods with an _init_args<T> pack). When
+  // the method is variadic, these drive the specialization's arity, its init
+  // overload selection, and its mangled name. `std::nullopt` means "no call
+  // info available" (e.g. from type inference): a variadic method is then not
+  // specialized here and the call-site trigger, which supplies the types
+  // (possibly an empty vector for a zero-arg call), does the real work.
   std::shared_ptr<FunctionAST> instantiateGenericMethod(
       std::shared_ptr<sun::ClassType> classType, const std::string& methodName,
-      const std::vector<sun::TypePtr>& methodTypeArgs);
+      const std::vector<sun::TypePtr>& methodTypeArgs,
+      const std::optional<std::vector<sun::TypePtr>>& variadicArgTypes =
+          std::nullopt);
+
+  // Find a generic method's FunctionAST on a class by name (nullptr if none).
+  FunctionAST* findGenericMethodAST(const sun::ClassType* classType,
+                                    const std::string& methodName);
 
   // Type parameter bindings (now scope-based)
   void addTypeParameterBindings(const std::vector<std::string>& params,

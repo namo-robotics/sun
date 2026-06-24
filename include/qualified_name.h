@@ -158,6 +158,15 @@ struct QualifiedName {
   static std::string buildParamSuffix(const std::vector<TypePtr>& paramTypes,
                                       const std::string& hashPrefix = "");
 
+  // Build a suffix that keys a variadic generic-method specialization by its
+  // actual variadic argument types, so calls with different arities/types
+  // resolve to distinct specializations. Format: "$v$type1$type2$...". Empty
+  // when there are no variadic args (leaving non-variadic names unchanged).
+  // Must be computed identically by semantic analysis and codegen.
+  static std::string buildVariadicArgSuffix(
+      const std::vector<TypePtr>& variadicArgTypes,
+      const std::string& hashPrefix = "");
+
   // Set param suffix from resolved param types.
   // Automatically derives hash prefix from this name's scope path.
   void setParamSuffix(const std::vector<TypePtr>& paramTypes) {

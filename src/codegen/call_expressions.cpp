@@ -649,11 +649,19 @@ Value* CodegenVisitor::codegenClassMethodCall(
     const std::vector<sun::TypePtr>& typeArgs =
         memberAccess->getResolvedTypeArgs();
 
-    // Build the specialized mangled name
+    // Build the specialized mangled name. Must match instantiateGenericMethod:
+    // type args, then (for variadic _init_args methods) a suffix keyed on the
+    // actual variadic argument types.
     std::string baseMangledName = classType->getMangledMethodName(methodName);
     std::string mangledName = baseMangledName;
     for (const auto& typeArg : typeArgs) {
       mangledName += "_" + typeArg->toString();
+    }
+    {
+      std::string hashPrefix =
+          sun::QualifiedName::extractHashPrefix(classType->getMangledName());
+      mangledName += sun::QualifiedName::buildVariadicArgSuffix(
+          memberAccess->getResolvedVariadicArgTypes(), hashPrefix);
     }
 
     // Look up the specialized method function

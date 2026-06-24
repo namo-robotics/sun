@@ -2126,17 +2126,47 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
           static_cast<const sun::ClassType*>(objectType.get());
       const std::string& methodName = memberAccess.getMemberName();
 
-      // Try to find a method overload matching the argument types
-      const sun::ClassMethod* method =
-          classType->getMethodForArgs(methodName, argTypes);
-      if (method) {
-        // Set the resolved type on the member access for later use
-        memberAccess.setResolvedType(
-            sun::Types::Function(method->returnType, method->paramTypes));
+      // Generic method with an _init_args<T> variadic pack (e.g.
+      // allocator.create<Point>(...)): specialize HERE, where the actual call
+      // argument types are known, so overloaded constructors resolve and the
+      // specialization is keyed (mangled) by the variadic arg types. The
+      // inferType trigger defers variadic methods to this path.
+      FunctionAST* genericMethod =
+          memberAccess.hasTypeArguments()
+              ? findGenericMethodAST(classType, methodName)
+              : nullptr;
+      if (genericMethod && genericMethod->getProto().hasVariadicConstraint()) {
+        std::vector<sun::TypePtr> typeArgPtrs;
+        for (const auto& ta : memberAccess.getTypeArguments()) {
+          typeArgPtrs.push_back(typeAnnotationToType(*ta));
+        }
+        memberAccess.setResolvedTypeArgs(typeArgPtrs);
+        // create<T>(args...) has no fixed params, so all call args are variadic.
+        memberAccess.setResolvedVariadicArgTypes(argTypes);
+
+        auto mutableClassType =
+            std::static_pointer_cast<sun::ClassType>(objectType);
+        instantiateGenericMethod(mutableClassType, methodName, typeArgPtrs,
+                                 argTypes);
+
+        const sun::ClassMethod* method = classType->getMethod(methodName);
+        if (method) {
+          memberAccess.setResolvedType(
+              sun::Types::Function(method->returnType, method->paramTypes));
+        }
       } else {
-        // Fall back to first method with this name (will error on type
-        // mismatch)
-        analyzeExpr(memberAccess);
+        // Try to find a method overload matching the argument types
+        const sun::ClassMethod* method =
+            classType->getMethodForArgs(methodName, argTypes);
+        if (method) {
+          // Set the resolved type on the member access for later use
+          memberAccess.setResolvedType(
+              sun::Types::Function(method->returnType, method->paramTypes));
+        } else {
+          // Fall back to first method with this name (will error on type
+          // mismatch)
+          analyzeExpr(memberAccess);
+        }
       }
     } else {
       // Not a class type - analyze normally

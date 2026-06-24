@@ -102,6 +102,11 @@ struct QualifiedNameExprAnalysis : public ExprAnalysis {
 /// Analysis data for MemberAccessAST
 struct MemberAccessAnalysis : public ExprAnalysis {
   std::vector<sun::TypePtr> resolvedTypeArgs;
+  // For a generic method call whose param is a variadic pack (_init_args<T>),
+  // the resolved types of the actual variadic arguments. Used to key the
+  // specialization (mangled name) so different call arities/types get distinct
+  // specializations.
+  std::vector<sun::TypePtr> resolvedVariadicArgTypes;
   std::string resolvedQualifiedName;
 
   MemberAccessAnalysis() = default;
