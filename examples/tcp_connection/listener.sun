@@ -1,0 +1,25 @@
+// Listener: accepts one connection and prints received message
+using sun;
+
+function main() i32 {
+    var listener = TcpListener();
+    listener.bind_loopback(8080);
+    listener.listen(1);
+    println("Listening on 127.0.0.1:8080...");
+    
+    var client = listener.accept();
+    println("Client connected");
+    
+    var alloc = make_heap_allocator();
+    var buf = ContiguousBuffer<u8>(alloc, 256);
+    var n = client.recv(buf);
+    
+    println(`Received ${n} bytes`);
+    client.close();
+    listener.close();
+    return 0;
+}
+
+manifest {
+    moons: ["stdlib.moon"]
+}

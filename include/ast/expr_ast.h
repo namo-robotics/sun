@@ -40,7 +40,7 @@ class ExprAST {
     dest.symbolPrefix_ = symbolPrefix_;
     if (analysis_) {
       dest.setResolvedType(getResolvedType());
-      dest.setConsumed(isConsumed());
+      dest.setMoved(isMoved());
     }
   }
 
@@ -129,11 +129,11 @@ class ExprAST {
   const std::string& getSymbolPrefix() const { return symbolPrefix_; }
   void setSymbolPrefix(const std::string& prefix) { symbolPrefix_ = prefix; }
 
-  // Consumed flag: set by borrow checker when a temporary's ownership
-  // is transferred (moved to a variable or field). Consumed temporaries
-  // should not have deinit called on them - the destination owns the data.
-  bool isConsumed() const { return analysis_ && analysis_->consumed; }
-  void setConsumed(bool value) const { analysis().consumed = value; }
+  // Moved flag: set by borrow checker when ownership is transferred
+  // (returned, assigned to variable/field, passed by value). Moved expressions
+  // should not have deinit called - the destination owns the data.
+  bool isMoved() const { return analysis_ && analysis_->moved; }
+  void setMoved(bool value) const { analysis().moved = value; }
 
  protected:
   ExprAST() = default;

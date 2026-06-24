@@ -35,81 +35,6 @@ var INADDR_ANY: i32 = 0;
 var INADDR_LOOPBACK: i32 = 16777343;  // 127.0.0.1 in network byte order
 
 // -------------------------------------------------------------------
-// TcpListener - TCP server socket
-// -------------------------------------------------------------------
-
-class TcpListener {
-    var fd: i32;
-    
-    function init() {
-        this.fd = -1;
-    }
-    
-    // Create and bind to port on all interfaces (0.0.0.0)
-    function bind_port(port: i32) void, IError {
-        var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
-        if (sock_fd < 0) {
-            throw Error(sock_fd, "failed to create socket");
-        }
-        this.fd = sock_fd;
-        
-        var result: i32 = unsafe { __bind_ipv4(this.fd, INADDR_ANY, port); };
-        if (result < 0) {
-            throw Error(result, "failed to bind socket");
-        }
-    }
-    
-    // Create and bind to loopback (127.0.0.1) on port
-    function bind_loopback(port: i32) void, IError {
-        var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
-        if (sock_fd < 0) {
-            throw Error(sock_fd, "failed to create socket");
-        }
-        this.fd = sock_fd;
-        
-        var result: i32 = unsafe { __bind_ipv4(this.fd, INADDR_LOOPBACK, port); };
-        if (result < 0) {
-            throw Error(result, "failed to bind socket");
-        }
-    }
-    
-    // Start listening for connections
-    function listen(backlog: i32) void, IError {
-        var result: i32 = unsafe { __listen(this.fd, backlog); };
-        if (result < 0) {
-            throw Error(result, "failed to listen");
-        }
-    }
-    
-    // Accept a new connection, returns TcpStream
-    function accept() TcpStream, IError {
-        var client_fd: i32 = unsafe { __accept_fd(this.fd); };
-        if (client_fd < 0) {
-            throw Error(client_fd, "failed to accept connection");
-        }
-        var stream = TcpStream();
-        stream.fd = client_fd;
-        return stream;
-    }
-    
-    // Close the listener
-    function close() void {
-        if (this.fd >= 0) {
-            unsafe { __shutdown(this.fd, SHUT_RDWR); };
-            this.fd = -1;
-        }
-    }
-    
-    function is_open() bool {
-        return this.fd >= 0;
-    }
-    
-    function get_fd() i32 {
-        return this.fd;
-    }
-}
-
-// -------------------------------------------------------------------
 // TcpStream - TCP connection (client or accepted)
 // -------------------------------------------------------------------
 
@@ -174,9 +99,9 @@ class TcpStream {
         return result;
     }
     
-    // Receive into buffer, returns bytes read
-    function recv_into(buf: raw_ptr<u8>, max_len: i64) i64, IError {
-        var result: i64 = unsafe { __recv(this.fd, buf, max_len, 0); };
+    // Receive into ContiguousBuffer, returns bytes read
+    function recv(buf: ref ContiguousBuffer<u8>) i64, IError {
+        var result: i64 = unsafe { __recv(this.fd, buf.rawData(), buf.size(), 0); };
         if (result < 0) {
             var err_code: i32 = -1;
             throw Error(err_code, "recv failed");
@@ -185,6 +110,85 @@ class TcpStream {
     }
     
     // Close the connection
+    function close() void {
+        if (this.fd >= 0) {
+            unsafe { __shutdown(this.fd, SHUT_RDWR); };
+            this.fd = -1;
+        }
+    }
+    
+    function is_open() bool {
+        return this.fd >= 0;
+    }
+    
+    function get_fd() i32 {
+        return this.fd;
+    }
+}
+
+// -------------------------------------------------------------------
+// TcpListener - TCP server socket
+// -------------------------------------------------------------------
+
+class TcpListener {
+    var fd: i32;
+    
+    function init() {
+        this.fd = -1;
+    }
+    
+    function deinit() void {
+        this.close();
+    }
+
+    // Create and bind to port on all interfaces (0.0.0.0)
+    function bind_port(port: i32) void, IError {
+        var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
+        if (sock_fd < 0) {
+            throw Error(sock_fd, "failed to create socket");
+        }
+        this.fd = sock_fd;
+        
+        var result: i32 = unsafe { __bind_ipv4(this.fd, INADDR_ANY, port); };
+        if (result < 0) {
+            throw Error(result, "failed to bind socket");
+        }
+    }
+    
+    // Create and bind to loopback (127.0.0.1) on port
+    function bind_loopback(port: i32) void, IError {
+        var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
+        if (sock_fd < 0) {
+            throw Error(sock_fd, "failed to create socket");
+        }
+        this.fd = sock_fd;
+        
+        var result: i32 = unsafe { __bind_ipv4(this.fd, INADDR_LOOPBACK, port); };
+        if (result < 0) {
+            throw Error(result, "failed to bind socket");
+        }
+    }
+    
+    // Start listening for connections
+    function listen(backlog: i32) void, IError {
+        var result: i32 = unsafe { __listen(this.fd, backlog); };
+        if (result < 0) {
+            throw Error(result, "failed to listen");
+        }
+    }
+    
+    // Accept a new connection, returns TcpStream
+    function accept() TcpStream, IError {
+        var client_fd: i32 = unsafe { __accept_fd(this.fd); };
+        if (client_fd < 0) {
+            throw Error(client_fd, "failed to accept connection");
+        }
+        var stream = TcpStream();
+        stream.fd = client_fd;
+        return stream;
+    }
+    
+    // Close the listener
     function close() void {
         if (this.fd >= 0) {
             unsafe { __shutdown(this.fd, SHUT_RDWR); };

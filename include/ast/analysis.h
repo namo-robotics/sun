@@ -20,7 +20,7 @@
 /// Base analysis data for all expression nodes
 struct ExprAnalysis {
   sun::TypePtr resolvedType;  // Type determined by semantic analyzer
-  bool consumed = false;      // Set by borrow checker when value is moved
+  bool moved = false;         // Set by borrow checker when ownership transfers
 
   ExprAnalysis() = default;
   ExprAnalysis(const ExprAnalysis&) = default;

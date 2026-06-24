@@ -353,22 +353,19 @@ Value* CodegenVisitor::prepareRefArgument(const ExprAST* argExpr,
       Value* tempVal = codegen(*argExpr);
       if (!tempVal) return nullptr;
 
-      // Get LLVM type for the class
-      llvm::Type* llvmType = typeResolver.resolve(argSunType);
+      // If codegen returned a pointer, it's already an alloca - use it directly.
+      // The original temporary is already tracked for deinit, no need to copy.
+      // Copying would cause double-free since both would try to deinit the same
+      // owned resources (e.g., Unique<T> pointers).
+      if (tempVal->getType()->isPointerTy()) {
+        return tempVal;
+      }
 
-      // Create alloca and store the temporary
+      // Codegen returned a struct value - need to materialize it in an alloca
+      llvm::Type* llvmType = typeResolver.resolve(argSunType);
       AllocaInst* tempAlloca =
           ctx.builder->CreateAlloca(llvmType, nullptr, "ref.temp");
-
-      // If codegen returned a struct value, store it
-      if (!tempVal->getType()->isPointerTy()) {
-        ctx.builder->CreateStore(tempVal, tempAlloca);
-      } else {
-        // Codegen returned a pointer - need to copy the struct
-        llvm::Value* loadedVal =
-            ctx.builder->CreateLoad(llvmType, tempVal, "temp.load");
-        ctx.builder->CreateStore(loadedVal, tempAlloca);
-      }
+      ctx.builder->CreateStore(tempVal, tempAlloca);
 
       // Track for cleanup - caller owns the temporary
       auto classTypePtr = std::dynamic_pointer_cast<sun::ClassType>(argSunType);
