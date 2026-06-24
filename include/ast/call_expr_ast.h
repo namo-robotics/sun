@@ -36,6 +36,10 @@ class CallExprAST : public ExprAST {
   const ExprAST* getCallee() const { return Callee.get(); }
   const std::vector<std::unique_ptr<ExprAST>>& getArgs() const { return Args; }
 
+  // Mutable access to the argument list (used to expand variadic packs into
+  // concrete args during semantic analysis).
+  std::vector<std::unique_ptr<ExprAST>>& getArgsMutable() { return Args; }
+
   // Returns the resolved types of all arguments (for constructor overload resolution)
   std::vector<sun::TypePtr> getResolvedArgTypes() const {
     std::vector<sun::TypePtr> types;

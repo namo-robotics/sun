@@ -63,6 +63,14 @@ class SemanticAnalyzer {
     return true;
   }
 
+  // Nearest enclosing function scope, or nullptr at module/global level.
+  FunctionScope* currentFunctionScope() const {
+    for (auto* s = currentScope; s != nullptr; s = s->parent)
+      if (s->getType() == ScopeType::Function)
+        return static_cast<FunctionScope*>(s);
+    return nullptr;
+  }
+
  public:
   explicit SemanticAnalyzer(std::shared_ptr<sun::TypeRegistry> registry)
       : typeRegistry(std::move(registry)) {
@@ -415,4 +423,10 @@ class SemanticAnalyzer {
   void analyzeIntrinsicCall(GenericCallAST& genericCall);
   void analyzeGenericFunctionCall(GenericCallAST& genericCall);
   void analyzeGenericClassConstruction(GenericCallAST& genericCall);
+
+  // Expand a variadic pack (`args...`) in a call's argument list into concrete,
+  // already-typed VariableReferenceAST nodes ("args.0", "args.1", ...), using
+  // the enclosing function scope's recorded variadic param. No-op when there is
+  // no enclosing variadic param or no pack argument is present.
+  void expandPackArguments(std::vector<std::unique_ptr<ExprAST>>& args);
 };

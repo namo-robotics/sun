@@ -42,10 +42,6 @@ struct ClassAllocation {
 // Scope object containing variables and allocation tracking
 struct CodegenScope {
   NamedValueMap variables;
-  // Resolved sun types for variables, keyed by the same names as `variables`.
-  // Populated for variadic pack params so their types can be recovered when a
-  // pack is expanded (e.g. for constructor overload resolution in _init<T>).
-  std::map<std::string, sun::TypePtr> variableTypes;
   bool isFunctionBoundary = false;  // True for scopes marking function entry
   std::vector<OwnedAllocation> ownedAllocations;
   std::vector<ClassAllocation> classAllocations;
@@ -576,20 +572,6 @@ class CodegenVisitor {
     return nullptr;
   }
 
-  // Find the resolved sun type recorded for a variable, if any. Follows the
-  // same scope/function-boundary rules as findVariable.
-  sun::TypePtr findVariableType(const std::string& name) {
-    for (auto it = scopes.rbegin(); it != scopes.rend(); ++it) {
-      auto found = it->variableTypes.find(name);
-      if (found != it->variableTypes.end()) {
-        return found->second;
-      }
-      if (it->isFunctionBoundary) {
-        break;
-      }
-    }
-    return nullptr;
-  }
 
   /**
    * Loads a variable from the closure context if it exists.

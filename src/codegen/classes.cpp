@@ -593,7 +593,6 @@ void CodegenVisitor::generateMethodBody(const FunctionAST& methodFunc,
           ctx.builder->CreateAlloca(argLLVMType, nullptr, indexedName);
       ctx.builder->CreateStore(&*argIt, alloca);
       scopes.back().variables[indexedName] = alloca;
-      scopes.back().variableTypes[indexedName] = variadicTypes[i];
       ++argIt;
     }
   }

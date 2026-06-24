@@ -66,6 +66,10 @@ class GenericCallAST : public ExprAST {
   }
   const std::vector<std::unique_ptr<ExprAST>>& getArgs() const { return args; }
 
+  // Mutable access to the argument list (used to expand variadic packs into
+  // concrete args during semantic analysis).
+  std::vector<std::unique_ptr<ExprAST>>& getArgsMutable() { return args; }
+
   // Resolved type arguments (set by semantic analyzer after type param
   // substitution)
   void setResolvedTypeArgs(std::vector<sun::TypePtr> types) const {

@@ -55,47 +55,34 @@ Value* CodegenVisitor::codegenInitIntrinsic(
 
   auto* classType = static_cast<sun::ClassType*>(targetType.get());
 
-  // Collect constructor arguments, expanding any pack expansions. argTypes is
-  // collected in parallel (aligned with the value args, excluding 'this') so
-  // constructor overload resolution can pick the right init.
+  // Collect constructor arguments. Variadic packs are already expanded into
+  // concrete typed args during semantic analysis, so every arg is ordinary
+  // here. argTypes is collected in parallel (aligned with the value args,
+  // excluding 'this') for constructor overload resolution.
   std::vector<Value*> ctorArgs;
   std::vector<sun::TypePtr> argTypes;
   ctorArgs.push_back(rawPtr);  // 'this' pointer
 
-  // Skip args[0] (the pointer), process remaining args with pack expansion
+  // Skip args[0] (the pointer)
   for (size_t i = 1; i < args.size(); ++i) {
-    if (args[i]->getType() == ASTNodeType::PACK_EXPANSION) {
-      // Expand the pack. We're inside a specialized variadic function body, so
-      // the pack's elements were materialized as indexed locals (e.g. "args.0",
-      // "args.1"); load each one and recover its resolved type. An empty pack
-      // simply expands to nothing.
-      const auto& packExpr = static_cast<const PackExpansionAST&>(*args[i]);
-      const std::string& packName = packExpr.getPackName();
+    Value* argVal = codegen(*args[i]);
+    if (!argVal) return nullptr;
+    sun::TypePtr argType = args[i]->getResolvedType();
 
-      for (size_t varIdx = 0;; ++varIdx) {
-        std::string paramName = packName + "." + std::to_string(varIdx);
-        AllocaInst* alloca = findVariable(paramName);
-        if (!alloca) break;  // No more variadic params
-
-        // Get the alloca's type to determine how to load
-        llvm::Type* allocaType = alloca->getAllocatedType();
-        Value* argVal =
-            ctx.builder->CreateLoad(allocaType, alloca, paramName + ".val");
-        ctorArgs.push_back(argVal);
-        argTypes.push_back(findVariableType(paramName));
-      }
-    } else {
-      // Regular argument
-      Value* argVal = codegen(*args[i]);
-      if (!argVal) return nullptr;
-      ctorArgs.push_back(argVal);
-      argTypes.push_back(args[i]->getResolvedType());
+    // Class values are addressable, so codegen yields a pointer to the struct,
+    // but constructors take a class argument by value. Load the struct to match
+    // the constructor's calling convention.
+    if (argType && argType->isClass() && argVal->getType()->isPointerTy()) {
+      llvm::Type* structTy = typeResolver.resolve(argType);
+      argVal = ctx.builder->CreateLoad(structTy, argVal, "arg.val");
     }
+
+    ctorArgs.push_back(argVal);
+    argTypes.push_back(argType);
   }
 
   // Look up the constructor (init method) that is compatible with the argument
-  // types. argTypes covers every value argument, including those produced by
-  // expanding a variadic pack, so overload resolution can pick the right init.
+  // types.
   ConstructorLookup ctor = lookupConstructor(classType, argTypes);
 
   Function* ctorFunc = nullptr;

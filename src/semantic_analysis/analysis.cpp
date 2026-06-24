@@ -2030,6 +2030,10 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
     analyzeExpr(const_cast<ExprAST&>(*arg));
   }
 
+  // Expand any variadic pack (`f(args...)`) into concrete typed args before
+  // overload resolution, so argTypes below reflects the real arguments.
+  expandPackArguments(callExpr.getArgsMutable());
+
   // Collect argument types for overload resolution
   std::vector<sun::TypePtr> argTypes;
   for (const auto& arg : callExpr.getArgs()) {
@@ -2368,11 +2372,53 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
 // Intrinsic call analysis (e.g., _load<T>, _store<T>, _address_of<T>)
 // -------------------------------------------------------------------
 
+void SemanticAnalyzer::expandPackArguments(
+    std::vector<std::unique_ptr<ExprAST>>& args) {
+  auto* fnScope = currentFunctionScope();
+  if (!fnScope || !fnScope->variadicParam) return;
+  const auto& [packName, types] = *fnScope->variadicParam;
+
+  // Is there a pack expansion for this function's variadic param to expand?
+  auto isPack = [&](const std::unique_ptr<ExprAST>& a) {
+    return a->getType() == ASTNodeType::PACK_EXPANSION &&
+           static_cast<const PackExpansionAST&>(*a).getPackName() == packName;
+  };
+  bool hasPack = false;
+  for (const auto& a : args) {
+    if (isPack(a)) {
+      hasPack = true;
+      break;
+    }
+  }
+  if (!hasPack) return;
+
+  // Rewrite `args...` into concrete, already-typed references to the elements
+  // the pack was materialized as ("args.0", "args.1", ...). Other args pass
+  // through unchanged.
+  std::vector<std::unique_ptr<ExprAST>> rebuilt;
+  rebuilt.reserve(args.size() + types.size());
+  for (auto& a : args) {
+    if (isPack(a)) {
+      for (size_t i = 0; i < types.size(); ++i) {
+        auto vref = std::make_unique<VariableReferenceAST>(
+            packName + "." + std::to_string(i));
+        vref->setResolvedType(types[i]);
+        rebuilt.push_back(std::move(vref));
+      }
+    } else {
+      rebuilt.push_back(std::move(a));
+    }
+  }
+  args = std::move(rebuilt);
+}
+
 void SemanticAnalyzer::analyzeIntrinsicCall(GenericCallAST& genericCall) {
   // Intrinsics are handled at codegen time - just analyze arguments
   for (const auto& arg : genericCall.getArgs()) {
     analyzeExpr(const_cast<ExprAST&>(*arg));
   }
+  // Expand any variadic pack into concrete typed args (e.g. _init<T>(p, args...))
+  expandPackArguments(genericCall.getArgsMutable());
   genericCall.setResolvedType(inferGenericCallType(genericCall));
 }
 

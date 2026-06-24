@@ -526,6 +526,18 @@ SemanticAnalyzer::instantiateGenericFunction(
     // name so nested functions get correct context
     enterFunctionScope(funcSig, clonedProto.getQualifiedName(),
                        proto.canThrow());
+
+    // Record the variadic pack on the function scope (see method path). Today
+    // the function path never resolves variadic types, so this is a no-op until
+    // generic-function variadics are supported.
+    if (clonedProto.hasVariadicParam() &&
+        clonedProto.hasResolvedVariadicTypes()) {
+      if (auto* fnScope = currentFunctionScope()) {
+        fnScope->variadicParam = {*clonedProto.getVariadicParamName(),
+                                  clonedProto.getResolvedVariadicTypes()};
+      }
+    }
+
     for (size_t i = 0; i < paramTypes.size(); ++i) {
       // Use parameter names from the cloned prototype
       std::string argName = proto.getArgs()[i].first;
@@ -797,6 +809,18 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   // Enter method scope and declare parameters
   enterFunctionScope(methodSig, sun::QualifiedName(modulePath, mangledName),
                      proto.canThrow());
+
+  // Record the variadic pack (name + resolved element types) on the function
+  // scope so `args...` can be expanded into concrete typed args during body
+  // analysis. Set it whenever the method has a variadic param, including the
+  // zero-element case (an empty pack expands to no args). exitScope() discards
+  // it.
+  if (clonedProto.hasVariadicParam()) {
+    if (auto* fnScope = currentFunctionScope()) {
+      fnScope->variadicParam = {*clonedProto.getVariadicParamName(),
+                                clonedProto.getResolvedVariadicTypes()};
+    }
+  }
 
   // Declare 'this' parameter
   declareVariable("this", classType, /*isParam=*/true);
