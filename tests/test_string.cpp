@@ -37,6 +37,40 @@ TEST(StringTest, construct_empty) {
   EXPECT_EQ(value, 0);
 }
 
+TEST(StringTest, construct_from_buffer) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    
+    function main() i64 {
+        var allocator = make_heap_allocator();
+        var buf = ContiguousBuffer<u8>(allocator, 10);
+        // Write "Hi" (72, 105) to buffer
+        buf.set_unchecked(0, 72);
+        buf.set_unchecked(1, 105);
+        
+        try {
+            var s = String(allocator, buf, 2);
+            var len: i64 = s.length();
+            if (len != 2) {
+                return 100 + len;  // Debug: length wrong
+            }
+            var h: i64 = s.at(0);
+            if (h != 72) {
+                return 200 + h;  // Debug: first char wrong
+            }
+            var i: i64 = s.at(1);
+            if (i != 105) {
+                return 300 + i;  // Debug: second char wrong
+            }
+            return 1;
+        } catch (e: IError) {
+            return -1;
+        }
+    }
+  )");
+  EXPECT_EQ(value, 1);
+}
+
 // ============================================================================
 // Character Access Tests
 // ============================================================================

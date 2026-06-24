@@ -42,6 +42,10 @@ struct ClassAllocation {
 // Scope object containing variables and allocation tracking
 struct CodegenScope {
   NamedValueMap variables;
+  // Resolved sun types for variables, keyed by the same names as `variables`.
+  // Populated for variadic pack params so their types can be recovered when a
+  // pack is expanded (e.g. for constructor overload resolution in _init<T>).
+  std::map<std::string, sun::TypePtr> variableTypes;
   bool isFunctionBoundary = false;  // True for scopes marking function entry
   std::vector<OwnedAllocation> ownedAllocations;
   std::vector<ClassAllocation> classAllocations;
@@ -165,10 +169,6 @@ class CodegenVisitor {
   std::map<std::pair<std::string, std::string>, llvm::GlobalVariable*>
       vtableGlobals;
 
-  // Stack of variadic argument expressions for pack expansion
-  // Each entry is a (param_name, expressions) pair for a variadic call context
-  std::vector<std::pair<std::string, std::vector<const ExprAST*>>>
-      variadicArgsStack;
 
   // Functions declared from precompiled bitcode (before codegen starts)
   // Used to distinguish library declarations from codegen-created forward decls
@@ -316,6 +316,23 @@ class CodegenVisitor {
       llvm::Value* thisPtr, const std::vector<std::unique_ptr<ExprAST>>& args,
       const std::vector<sun::TypePtr>& paramTypes);
 
+  // Result of constructor lookup - contains method info and mangled name
+  struct ConstructorLookup {
+    const sun::ClassMethod* method = nullptr;
+    std::string mangledName;
+    bool found() const { return method != nullptr || !mangledName.empty(); }
+  };
+
+  // Look up a constructor (init method) that matches the given argument types
+  // Returns the matching method info and mangled name for codegen
+  ConstructorLookup lookupConstructor(
+      sun::ClassType* classType,
+      const std::vector<std::unique_ptr<ExprAST>>& args);
+
+  // Overload for pre-collected argument types
+  ConstructorLookup lookupConstructor(sun::ClassType* classType,
+                                      const std::vector<sun::TypePtr>& argTypes);
+
   // Interface dynamic dispatch support
   // Creates a fat pointer { data_ptr, vtable_ptr } for passing a class instance
   // to an interface-typed parameter.
@@ -370,6 +387,8 @@ class CodegenVisitor {
   llvm::Value* codegenStoreI64Intrinsic(const CallExprAST& expr);
   llvm::Value* codegenMallocIntrinsic(const CallExprAST& expr);
   llvm::Value* codegenFreeIntrinsic(const CallExprAST& expr);
+  llvm::Value* codegenMemcpyIntrinsic(const CallExprAST& expr);
+  llvm::Value* codegenPtrOffsetIntrinsic(const CallExprAST& expr);
 
   // Atomic intrinsics (in intrinsics.cpp)
   llvm::Value* codegenAtomicCmpxchgI32Intrinsic(const CallExprAST& expr);
@@ -550,6 +569,21 @@ class CodegenVisitor {
       }
       // Stop at function boundary - outer function scopes are inaccessible
       // (captured variables should be accessed via closure stack)
+      if (it->isFunctionBoundary) {
+        break;
+      }
+    }
+    return nullptr;
+  }
+
+  // Find the resolved sun type recorded for a variable, if any. Follows the
+  // same scope/function-boundary rules as findVariable.
+  sun::TypePtr findVariableType(const std::string& name) {
+    for (auto it = scopes.rbegin(); it != scopes.rend(); ++it) {
+      auto found = it->variableTypes.find(name);
+      if (found != it->variableTypes.end()) {
+        return found->second;
+      }
       if (it->isFunctionBoundary) {
         break;
       }

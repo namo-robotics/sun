@@ -1132,8 +1132,18 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       if (errorType) {
         bool implementsIError = false;
 
+        // Get the builtin IError interface for comparison
+        auto builtinIError = typeRegistry->getInterface("IError");
+
+        // Check if it's the IError interface itself (e.g., re-throwing caught error)
+        if (errorType->isInterface()) {
+          // IError itself is throwable
+          if (errorType.get() == builtinIError.get()) {
+            implementsIError = true;
+          }
+        }
         // Check if it's a class that implements IError
-        if (errorType->isClass()) {
+        else if (errorType->isClass()) {
           auto* classType = static_cast<sun::ClassType*>(errorType.get());
           implementsIError = classType->implementsInterface("IError");
         }
@@ -1144,6 +1154,12 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
           if (innerType && innerType->isClass()) {
             auto* classType = static_cast<sun::ClassType*>(innerType.get());
             implementsIError = classType->implementsInterface("IError");
+          }
+          // Also allow reference to IError interface
+          else if (innerType && innerType->isInterface()) {
+            if (innerType.get() == builtinIError.get()) {
+              implementsIError = true;
+            }
           }
         }
 
@@ -2144,11 +2160,23 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
     paramTypes = static_cast<const sun::LambdaType*>(calleeSunType.get())
                      ->getParamTypes();
   } else if (classType && classType->isClass()) {
-    // Class constructor call: look up init method's param types
+    // Class constructor call: look up init method with overload resolution
     auto* ct = static_cast<const sun::ClassType*>(classType.get());
-    const auto* initMethod = ct->getConstructor();
+    const auto* initMethod = ct->getMethodForArgs("init", argTypes);
     if (initMethod) {
       paramTypes = initMethod->paramTypes;
+    } else if (ct->getMethod("init")) {
+      // The class declares one or more init methods but none are compatible
+      // with the supplied arguments. (Classes with no init method fall back to
+      // the implicit field-wise constructor and are validated elsewhere.)
+      std::string argList;
+      for (size_t i = 0; i < argTypes.size(); ++i) {
+        if (i > 0) argList += ", ";
+        argList += argTypes[i] ? argTypes[i]->toDisplayString() : "?";
+      }
+      logAndThrowError("No matching constructor for '" + ct->toString() +
+                           "' with arguments (" + argList + ")",
+                       callExpr.getLocation());
     }
   }
 

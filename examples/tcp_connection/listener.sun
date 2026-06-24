@@ -12,9 +12,21 @@ function main() i32 {
     
     var alloc = make_heap_allocator();
     var buf = ContiguousBuffer<u8>(alloc, 256);
-    var n = client.recv(buf);
     
-    println(`Received ${n} bytes`);
+    while (true) {
+        var n = client.recv(buf);
+        if (n <= 0) {
+            println("Connection closed");
+            break;
+        }
+        try {
+            var str = String(alloc, buf, n);
+            println(str);
+        } catch (e: IError) {
+            println("Failed to create string");
+        }
+    }
+    
     client.close();
     listener.close();
     return 0;

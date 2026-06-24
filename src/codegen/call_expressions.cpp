@@ -1290,7 +1290,8 @@ bool CodegenVisitor::isBuiltinFunction(const std::string& name) {
          // Pointer intrinsics
          name == "_load_i64" || name == "_store_i64" ||
          // Memory allocation intrinsics
-         name == "_malloc" || name == "_free" ||
+         name == "_malloc" || name == "_free" || name == "_memcpy" ||
+         name == "_ptr_offset" ||
          // Atomic intrinsics
          name == "_atomic_cmpxchg_i32" || name == "_atomic_store_i32" ||
          name == "_atomic_load_i32" ||
@@ -1375,6 +1376,12 @@ Value* CodegenVisitor::codegenBuiltin(const std::string& name,
   }
   if (name == "_free") {
     return codegenFreeIntrinsic(expr);
+  }
+  if (name == "_memcpy") {
+    return codegenMemcpyIntrinsic(expr);
+  }
+  if (name == "_ptr_offset") {
+    return codegenPtrOffsetIntrinsic(expr);
   }
   // Atomic intrinsics
   if (name == "_atomic_cmpxchg_i32") {

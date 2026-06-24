@@ -13,6 +13,8 @@ namespace sun {
 // Memory intrinsics:
 //   _malloc(size) -> raw_ptr<i8>      Allocate size bytes
 //   _free(ptr) -> void                Free previously allocated memory
+//   _memcpy(dst, src, len) -> void    Copy len bytes from src to dst
+//   _ptr_offset(ptr, offset) -> ptr   Offset pointer by byte_offset bytes
 //   _load_i64(ptr, index) -> i64      Load i64 at ptr[index]
 //   _store_i64(ptr, index, val)       Store i64 at ptr[index]
 

@@ -987,38 +987,32 @@ void CodegenVisitor::emitStaticInitFunction() {
         callExpr = static_cast<const CallExprAST*>(init.initExpr);
       }
 
-      // Get the init method info from the class type
-      const sun::ClassMethod* initMethod = classType->getMethod("init");
-      std::string baseCtorName;
-      if (initMethod) {
-        baseCtorName =
-            classType->getMangledMethodName("init", initMethod->paramTypes);
-      } else {
-        baseCtorName = classType->getMangledMethodName("init");
-      }
+      // Look up constructor with overload resolution
+      std::vector<sun::TypePtr> argTypes = callExpr ? callExpr->getResolvedArgTypes() : std::vector<sun::TypePtr>{};
+      ConstructorLookup ctor = lookupConstructor(classType, argTypes);
 
       // Try to find the constructor function
-      Function* ctorFunc = module->getFunction(baseCtorName);
+      Function* ctorFunc = module->getFunction(ctor.mangledName);
 
       // If not found but init method exists in class type, create declaration
-      if (!ctorFunc && initMethod) {
+      if (!ctorFunc && ctor.method) {
         std::vector<llvm::Type*> paramLLVMTypes;
         paramLLVMTypes.push_back(
             PointerType::getUnqual(ctx.getContext()));  // this
-        for (const auto& paramType : initMethod->paramTypes) {
+        for (const auto& paramType : ctor.method->paramTypes) {
           paramLLVMTypes.push_back(typeResolver.resolve(paramType));
         }
         FunctionType* funcType = FunctionType::get(
             Type::getVoidTy(ctx.getContext()), paramLLVMTypes, false);
         ctorFunc = Function::Create(funcType, Function::ExternalLinkage,
-                                    baseCtorName, module);
+                                    ctor.mangledName, module);
       }
 
       // Call the constructor if found and argument count matches
       size_t argCount = callExpr ? callExpr->getArgs().size() : 0;
       if (ctorFunc && ctorFunc->arg_size() == argCount + 1) {
         const auto& paramTypes =
-            initMethod ? initMethod->paramTypes : std::vector<sun::TypePtr>{};
+            ctor.method ? ctor.method->paramTypes : std::vector<sun::TypePtr>{};
 
         std::vector<Value*> ctorArgValues;
         ctorArgValues.push_back(gv);  // 'this' pointer is the global variable
@@ -1052,7 +1046,7 @@ void CodegenVisitor::emitStaticInitFunction() {
         }
 
         ctx.builder->CreateCall(ctorFunc, ctorArgValues);
-      } else if (!initMethod && callExpr && argCount > 0) {
+      } else if (!ctor.method && callExpr && argCount > 0) {
         // No explicit init method: default field-wise constructor
         // Directly assign constructor arguments to class fields in order
         const auto& fields = classType->getFields();

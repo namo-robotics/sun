@@ -53,6 +53,8 @@ enum class Intrinsic {
   StoreI64,  // _store_i64(ptr, index, value) -> void
   Malloc,    // _malloc(size) -> raw_ptr<i8>
   Free,      // _free(ptr) -> void
+  Memcpy,    // _memcpy(dst, src, len) -> void
+  PtrOffset, // _ptr_offset(ptr, byte_offset) -> raw_ptr
 
   // =========================================================================
   // Print intrinsics
@@ -133,6 +135,8 @@ inline Intrinsic getIntrinsic(const std::string& name) {
   if (name == "_store_i64") return Intrinsic::StoreI64;
   if (name == "_malloc") return Intrinsic::Malloc;
   if (name == "_free") return Intrinsic::Free;
+  if (name == "_memcpy") return Intrinsic::Memcpy;
+  if (name == "_ptr_offset") return Intrinsic::PtrOffset;
 
   // -------------------------------------------------------------------------
   // Print intrinsics

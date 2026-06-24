@@ -88,6 +88,16 @@ class ContiguousBuffer<T> implements IIterable<T, ContiguousBuffer<T>> {
         return this.size_ == 0;
     }
     
+    // Create a deep copy of this buffer
+    function clone() ContiguousBuffer<T> {
+        var copy: ContiguousBuffer<T> = ContiguousBuffer<T>(this.alloc, this.size_);
+        var byte_count: i64 = this.size_ * _sizeof<T>();
+        unsafe {
+            _memcpy(copy.rawData(), this.data.get_raw(), byte_count);
+        };
+        return copy;
+    }
+    
     // Fill entire buffer with value
     function fill(value: T) void {
         for (var i: i64 = 0; i < this.size_; i = i + 1) {
@@ -95,8 +105,8 @@ class ContiguousBuffer<T> implements IIterable<T, ContiguousBuffer<T>> {
         }
     }
     
-    // Copy elements from another buffer (bounds-checked)
-    function copy_from(source: ref ContiguousBuffer<T>, src_offset: i64, dst_offset: i64, count: i64) void, IError {
+    // Write elements from another buffer into this buffer (bounds-checked)
+    function write_from(source: ref ContiguousBuffer<T>, src_offset: i64, dst_offset: i64, count: i64) void, IError {
         // Validate source bounds
         if (src_offset < 0) {
             throw IndexOutOfBoundsError(src_offset);
@@ -111,11 +121,19 @@ class ContiguousBuffer<T> implements IIterable<T, ContiguousBuffer<T>> {
         if (dst_offset + count > this.size_) {
             throw IndexOutOfBoundsError(dst_offset);
         }
-        // Copy elements
-        for (var i: i64 = 0; i < count; i = i + 1) {
-            var value: T = unsafe { _load<T>(source.rawData(), src_offset + i); };
-            unsafe { _store<T>(this.data.get_raw(), dst_offset + i, value); };
-        }
+        // Copy elements using fast memcpy
+        var byte_count: i64 = count * _sizeof<T>();
+        var src_ptr: raw_ptr<u8> = source.rawData();
+        var dst_ptr: raw_ptr<u8> = this.data.get_raw();
+        var src_byte_offset: i64 = src_offset * _sizeof<T>();
+        var dst_byte_offset: i64 = dst_offset * _sizeof<T>();
+        unsafe {
+            _memcpy(
+                _ptr_offset(dst_ptr, dst_byte_offset),
+                _ptr_offset(src_ptr, src_byte_offset),
+                byte_count
+            );
+        };
     }
     
     // Get raw data pointer (escape hatch for interop)
