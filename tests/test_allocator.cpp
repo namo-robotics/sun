@@ -248,3 +248,70 @@ TEST(AllocatorTest, init_intrinsic_with_allocator) {
   )");
   EXPECT_EQ(value, 30);  // 10 + 20
 }
+
+// ============================================================================
+// Overloaded constructors via _init_args<T> variadic factory
+// ============================================================================
+
+TEST(AllocatorTest, create_selects_init_overload_by_args) {
+  // The same create<Point> specialization site is used with two different
+  // arities; each must select the matching init overload.
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    class Point {
+        var x: i32;
+        var y: i32;
+        function init(x: i32, y: i32) { this.x = x; this.y = y; }
+        function init(v: i32) { this.x = v; this.y = v; }
+    }
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        var a = Unique<Point>(alloc.create<Point>(7));     // init(i32) -> 14
+        var b = Unique<Point>(alloc.create<Point>(3, 4));  // init(i32,i32) -> 7
+        return a.get().x + a.get().y + b.get().x + b.get().y;
+    }
+  )");
+  EXPECT_EQ(value, 21);  // 14 + 7
+}
+
+TEST(AllocatorTest, create_single_arg_init_overload) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    class Point {
+        var x: i32;
+        var y: i32;
+        function init(x: i32, y: i32) { this.x = x; this.y = y; }
+        function init(v: i32) { this.x = v; this.y = v; }
+    }
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        var p = Unique<Point>(alloc.create<Point>(9));
+        return p.get().x + p.get().y;  // 9 + 9
+    }
+  )");
+  EXPECT_EQ(value, 18);
+}
+
+TEST(AllocatorTest, create_no_matching_init_overload_errors) {
+  // No 3-arg init exists; this must be a clean semantic error, not a crash.
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using sun;
+
+    class Point {
+        var x: i32;
+        var y: i32;
+        function init(x: i32, y: i32) { this.x = x; this.y = y; }
+    }
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        var p = Unique<Point>(alloc.create<Point>(1, 2, 3));
+        return 0;
+    }
+  )"),
+               SunError);
+}

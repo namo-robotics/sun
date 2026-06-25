@@ -16,6 +16,12 @@ Value* CodegenVisitor::codegen(const ReturnExprAST& expr) {
     Value* retVal = codegen(*expr.getValue());
     if (!retVal) return nullptr;
 
+    // Move semantics: borrow checker marks expressions as "moved" when
+    // ownership transfers (return, assignment, pass-by-value). Skip deinit.
+    if (expr.getValue()->isMoved() && retVal) {
+      markClassAllocationAsDeinited(retVal);
+    }
+
     // THEN clean up owned allocations that weren't moved (move semantics)
     emitScopeCleanup();
 

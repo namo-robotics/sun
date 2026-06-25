@@ -526,6 +526,18 @@ SemanticAnalyzer::instantiateGenericFunction(
     // name so nested functions get correct context
     enterFunctionScope(funcSig, clonedProto.getQualifiedName(),
                        proto.canThrow());
+
+    // Record the variadic pack on the function scope (see method path). Today
+    // the function path never resolves variadic types, so this is a no-op until
+    // generic-function variadics are supported.
+    if (clonedProto.hasVariadicParam() &&
+        clonedProto.hasResolvedVariadicTypes()) {
+      if (auto* fnScope = currentFunctionScope()) {
+        fnScope->variadicParam = {*clonedProto.getVariadicParamName(),
+                                  clonedProto.getResolvedVariadicTypes()};
+      }
+    }
+
     for (size_t i = 0; i < paramTypes.size(); ++i) {
       // Use parameter names from the cloned prototype
       std::string argName = proto.getArgs()[i].first;
@@ -572,19 +584,67 @@ SemanticAnalyzer::instantiateGenericFunction(
 // Generic method instantiation
 // -------------------------------------------------------------------
 
+// Find the generic method's FunctionAST on a class by name. Resolves the class
+// definition (specialized AST when available, else the generic definition) and
+// returns the first generic method matching `methodName`, or nullptr.
+FunctionAST* SemanticAnalyzer::findGenericMethodAST(
+    const sun::ClassType* classType, const std::string& methodName) {
+  if (!classType) return nullptr;
+
+  const ClassDefinitionAST* classDef = nullptr;
+  // For specialized classes, look up the method from the SPECIALIZED class AST
+  // (not the base generic class), because that's what codegen will iterate over
+  if (classType->isSpecialized()) {
+    const std::string& baseName = classType->getBaseGenericName();
+    auto* genericInfo = lookupGenericClass(baseName);
+    if (genericInfo && genericInfo->AST) {
+      auto specAST =
+          genericInfo->AST->getSpecialization(classType->getMangledName());
+      classDef = specAST ? specAST.get() : genericInfo->AST;
+    }
+  } else if (classType->isGenericDefinition()) {
+    auto* genericInfo = lookupGenericClass(classType->getBaseName());
+    if (genericInfo) classDef = genericInfo->AST;
+  } else {
+    // Non-generic class - may still have generic methods
+    auto* genericInfo = lookupGenericClass(classType->getBaseName());
+    if (genericInfo) classDef = genericInfo->AST;
+  }
+
+  if (!classDef) return nullptr;
+
+  for (const auto& methodDecl : classDef->getMethods()) {
+    if (methodDecl.function->getProto().getName() == methodName &&
+        methodDecl.function->getProto().isGeneric()) {
+      return methodDecl.function.get();
+    }
+  }
+  return nullptr;
+}
+
 std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
     std::shared_ptr<sun::ClassType> classType, const std::string& methodName,
-    const std::vector<sun::TypePtr>& methodTypeArgs) {
+    const std::vector<sun::TypePtr>& methodTypeArgs,
+    const std::optional<std::vector<sun::TypePtr>>& variadicArgTypes) {
   if (!classType || methodName.empty() || methodTypeArgs.empty()) {
     return nullptr;
   }
 
   // Build the specialized mangled name
-  // Format: ClassName_methodName_TypeArg1_TypeArg2...
+  // Format: ClassName_methodName_TypeArg1_TypeArg2...[$v$argType1$argType2...]
+  // The variadic suffix keys the specialization on the actual variadic argument
+  // types so overloaded factories (e.g. create<Point>(7) vs create<Point>(3,4))
+  // get distinct specializations. Codegen rebuilds this identically.
   std::string baseMangledName = classType->getMangledMethodName(methodName);
   std::string mangledName = baseMangledName;
   for (const auto& typeArg : methodTypeArgs) {
     mangledName += "_" + typeArg->toString();
+  }
+  if (variadicArgTypes) {
+    std::string hashPrefix =
+        sun::QualifiedName::extractHashPrefix(classType->getMangledName());
+    mangledName +=
+        sun::QualifiedName::buildVariadicArgSuffix(*variadicArgTypes, hashPrefix);
   }
 
   // Check cache
@@ -595,60 +655,21 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   }
 
   // Find the method's FunctionAST from the class definition
-  // For specialized generic classes, find the base generic class
-  const ClassDefinitionAST* classDef = nullptr;
-  FunctionAST* genericMethodAST = nullptr;
-
-  // For specialized classes, look up the method from the SPECIALIZED class AST
-  // (not the base generic class), because that's what codegen will iterate over
-  if (classType->isSpecialized()) {
-    const std::string& baseName = classType->getBaseGenericName();
-    auto* genericInfo = lookupGenericClass(baseName);
-    if (genericInfo && genericInfo->AST) {
-      // Get the specialized class AST - this is what codegen will process
-      auto specAST =
-          genericInfo->AST->getSpecialization(classType->getMangledName());
-      if (specAST) {
-        classDef = specAST.get();
-      } else {
-        // Fallback to base definition if specialization not found yet
-        classDef = genericInfo->AST;
-      }
-    }
-  } else if (classType->isGenericDefinition()) {
-    // Generic class definition - look up directly
-    auto* genericInfo = lookupGenericClass(classType->getBaseName());
-    if (genericInfo) {
-      classDef = genericInfo->AST;
-    }
-  } else {
-    // Non-generic class - look up in generic table anyway (might have generic
-    // methods)
-    auto* genericInfo = lookupGenericClass(classType->getBaseName());
-    if (genericInfo) {
-      classDef = genericInfo->AST;
-    }
-  }
-
-  if (!classDef) {
-    return nullptr;  // Class AST not found
-  }
-
-  // Find the generic method
-  for (const auto& methodDecl : classDef->getMethods()) {
-    if (methodDecl.function->getProto().getName() == methodName &&
-        methodDecl.function->getProto().isGeneric()) {
-      genericMethodAST = methodDecl.function.get();
-      break;
-    }
-  }
-
+  FunctionAST* genericMethodAST = findGenericMethodAST(classType.get(),
+                                                       methodName);
   if (!genericMethodAST) {
     return nullptr;  // Generic method not found
   }
 
   const PrototypeAST& proto = genericMethodAST->getProto();
   const auto& methodTypeParams = proto.getTypeParameters();
+
+  // A variadic method's arity/types come from the actual call arguments. If we
+  // weren't given them (nullopt, e.g. invoked from type inference), defer: the
+  // call-site trigger will specialize with the real variadic arg types.
+  if (proto.hasVariadicConstraint() && !variadicArgTypes) {
+    return nullptr;
+  }
 
   if (methodTypeArgs.size() != methodTypeParams.size()) {
     logAndThrowError(
@@ -727,27 +748,40 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   clonedProto.setResolvedParamTypes(paramTypes);
   clonedProto.setResolvedReturnType(returnType);
 
-  // Handle variadic constraint: _init_args<T> -> look up T's init signature
-  if (proto.hasVariadicConstraint()) {
+  // Handle variadic constraint: _init_args<T>. The variadic arity/types are
+  // driven by the ACTUAL call arguments (variadicArgTypes), so that overloaded
+  // constructors are supported: create<Point>(7) selects init(i32) while
+  // create<Point>(3,4) selects init(i32,i32) from the same create<Point>. We
+  // only validate that T actually has a matching init overload here; the
+  // matching init is selected downstream at _init via lookupConstructor.
+  if (proto.hasVariadicConstraint() && variadicArgTypes) {
+    clonedProto.setResolvedVariadicTypes(*variadicArgTypes);
+
     const auto& constraint = *proto.getVariadicConstraint();
-    // Check if it's _init_args<T> (may be module-qualified as sun__init_args)
     bool isInitArgs =
         (constraint.baseName == "_init_args" ||
          constraint.baseName.find("_init_args") != std::string::npos);
     if (isInitArgs && !constraint.typeArguments.empty()) {
-      // Get the type argument and substitute any type parameters
       sun::TypePtr constraintType =
           typeAnnotationToType(*constraint.typeArguments[0]);
       constraintType = substituteTypeParameters(constraintType);
 
-      // Look up the init signature for this type
       if (constraintType && constraintType->isClass()) {
         auto* targetClass = static_cast<sun::ClassType*>(constraintType.get());
-        // Find the init method
-        auto initInfo = targetClass->getMethod("init");
-        if (initInfo) {
-          // ClassMethod::paramTypes excludes 'this', so copy all params
-          clonedProto.setResolvedVariadicTypes(initInfo->paramTypes);
+        // Validate that some init overload matches the call's argument types.
+        if (targetClass->getMethod("init") &&
+            !targetClass->getMethodForArgs("init", *variadicArgTypes)) {
+          std::string argList;
+          for (size_t i = 0; i < variadicArgTypes->size(); ++i) {
+            if (i > 0) argList += ", ";
+            argList += (*variadicArgTypes)[i]
+                           ? (*variadicArgTypes)[i]->toDisplayString()
+                           : "?";
+          }
+          logAndThrowError("No matching constructor for '" +
+                               constraintType->toString() + "' with arguments (" +
+                               argList + ")",
+                           genericMethodAST->getLocation());
         }
       }
     }
@@ -797,6 +831,18 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   // Enter method scope and declare parameters
   enterFunctionScope(methodSig, sun::QualifiedName(modulePath, mangledName),
                      proto.canThrow());
+
+  // Record the variadic pack (name + resolved element types) on the function
+  // scope so `args...` can be expanded into concrete typed args during body
+  // analysis. Set it whenever the method has a variadic param, including the
+  // zero-element case (an empty pack expands to no args). exitScope() discards
+  // it.
+  if (clonedProto.hasVariadicParam()) {
+    if (auto* fnScope = currentFunctionScope()) {
+      fnScope->variadicParam = {*clonedProto.getVariadicParamName(),
+                                clonedProto.getResolvedVariadicTypes()};
+    }
+  }
 
   // Declare 'this' parameter
   declareVariable("this", classType, /*isParam=*/true);

@@ -1,0 +1,18 @@
+// Talker: connects and sends a message
+using sun;
+
+function main() i32 {
+    var stream = TcpStream();
+    stream.connect_local(8080);
+    println("Connected to 127.0.0.1:8080");
+    
+    stream.send_str("Hello from talker!");
+    println("Message sent");
+    
+    stream.close();
+    return 0;
+}
+
+manifest {
+    moons: ["stdlib.moon"]
+}

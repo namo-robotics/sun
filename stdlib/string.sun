@@ -89,6 +89,26 @@ class String {
         }
     }
     
+    // Construct from ContiguousBuffer with specified length
+    // Copies `length` bytes from buffer to a new heap-allocated string
+    // Throws IndexOutOfBoundsError if length > buffer.size()
+    function init(allocator: ref HeapAllocator, buffer: ref ContiguousBuffer<u8>, length: i64) void, IError {
+        if (length > buffer.size()) {
+            throw IndexOutOfBoundsError(length);
+        }
+        
+        var capacity: i64 = length + 16;
+        this.data = ContiguousBuffer<u8>(allocator, capacity);
+        this.capacity_ = capacity;
+        this.len = length;
+
+        // Simple byte-by-byte copy (safer for debugging)
+        for (var i: i64 = 0; i < length; i = i + 1) {
+            var byte: u8 = buffer.get_unchecked(i);
+            this.data.set_unchecked(i, byte);
+        }
+    }
+    
     // Get current string length
     function length() i64 {
         return this.len;

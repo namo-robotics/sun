@@ -63,6 +63,14 @@ class SemanticAnalyzer {
     return true;
   }
 
+  // Nearest enclosing function scope, or nullptr at module/global level.
+  FunctionScope* currentFunctionScope() const {
+    for (auto* s = currentScope; s != nullptr; s = s->parent)
+      if (s->getType() == ScopeType::Function)
+        return static_cast<FunctionScope*>(s);
+    return nullptr;
+  }
+
  public:
   explicit SemanticAnalyzer(std::shared_ptr<sun::TypeRegistry> registry)
       : typeRegistry(std::move(registry)) {
@@ -197,9 +205,22 @@ class SemanticAnalyzer {
   // Instantiates a generic method on a class with specific type arguments.
   // Stores the specialization on the generic method's FunctionAST.
   // Returns the specialized FunctionAST for codegen lookup.
+  // variadicArgTypes carries the resolved types of the actual variadic
+  // arguments at the call site (for methods with an _init_args<T> pack). When
+  // the method is variadic, these drive the specialization's arity, its init
+  // overload selection, and its mangled name. `std::nullopt` means "no call
+  // info available" (e.g. from type inference): a variadic method is then not
+  // specialized here and the call-site trigger, which supplies the types
+  // (possibly an empty vector for a zero-arg call), does the real work.
   std::shared_ptr<FunctionAST> instantiateGenericMethod(
       std::shared_ptr<sun::ClassType> classType, const std::string& methodName,
-      const std::vector<sun::TypePtr>& methodTypeArgs);
+      const std::vector<sun::TypePtr>& methodTypeArgs,
+      const std::optional<std::vector<sun::TypePtr>>& variadicArgTypes =
+          std::nullopt);
+
+  // Find a generic method's FunctionAST on a class by name (nullptr if none).
+  FunctionAST* findGenericMethodAST(const sun::ClassType* classType,
+                                    const std::string& methodName);
 
   // Type parameter bindings (now scope-based)
   void addTypeParameterBindings(const std::vector<std::string>& params,
@@ -415,4 +436,10 @@ class SemanticAnalyzer {
   void analyzeIntrinsicCall(GenericCallAST& genericCall);
   void analyzeGenericFunctionCall(GenericCallAST& genericCall);
   void analyzeGenericClassConstruction(GenericCallAST& genericCall);
+
+  // Expand a variadic pack (`args...`) in a call's argument list into concrete,
+  // already-typed VariableReferenceAST nodes ("args.0", "args.1", ...), using
+  // the enclosing function scope's recorded variadic param. No-op when there is
+  // no enclosing variadic param or no pack argument is present.
+  void expandPackArguments(std::vector<std::unique_ptr<ExprAST>>& args);
 };

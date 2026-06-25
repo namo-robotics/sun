@@ -109,7 +109,7 @@ void ASTSerializer::serializeExprBase(const ExprAST& expr,
     if (expr.hasResolvedType()) {
       analysis->set_resolved_type(expr.getResolvedType()->toString());
     }
-    analysis->set_consumed(expr.isConsumed());
+    analysis->set_moved(expr.isMoved());
   }
 }
 

@@ -169,10 +169,10 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
   if (var.getValue()) {
     auto srcType = var.getValue()->getResolvedType();
 
-    // Mark ALL temporaries as consumed when assigned to a variable.
+    // Mark ALL temporaries as moved when assigned to a variable.
     // The variable takes ownership, so the temporary's deinit must be skipped.
     if (var.getValue()->isTemporary()) {
-      var.getValue()->setConsumed(true);
+      var.getValue()->setMoved(true);
     }
     // For variable references of compound types, mark as moved
     else if (srcType && srcType->isCompound() &&
@@ -273,6 +273,7 @@ void BorrowChecker::checkVariableAssignment(
     auto srcType = assign.getValue()->getResolvedType();
     if (srcType && srcType->isCompound()) {
       movedVariables_.insert(srcRef.getName());
+      assign.getValue()->setMoved(true);  // Mark for codegen to skip deinit
     }
   }
 
@@ -375,6 +376,7 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
     // then we move the argument
     if (argType && argType->isCompound() && !paramType->isReference()) {
       movedVariables_.insert(varRef.getName());
+      arg->setMoved(true);  // Mark for codegen to skip deinit
     }
   }
 }
@@ -492,6 +494,23 @@ void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
 
   // Check lifetime safety for reference returns
   checkReturnLifetime(ret);
+
+  // Move semantics for return values: when returning a compound type (class)
+  // by value, the ownership transfers to the caller. Mark the return value
+  // as moved so its deinit is skipped in the callee.
+  auto retType = value->getResolvedType();
+  if (retType && retType->isCompound()) {
+    // Mark temporaries as moved (ownership transferred to caller)
+    if (value->isTemporary()) {
+      const_cast<ExprAST*>(value)->setMoved(true);
+    }
+    // For variable references, mark the variable as moved
+    else if (value->getType() == ASTNodeType::VARIABLE_REFERENCE) {
+      const auto& srcRef = static_cast<const VariableReferenceAST&>(*value);
+      movedVariables_.insert(srcRef.getName());
+      const_cast<ExprAST*>(value)->setMoved(true);  // Mark for codegen to skip deinit
+    }
+  }
 }
 
 void BorrowChecker::checkFunctionDef(const FunctionAST& func) {
@@ -628,10 +647,10 @@ void BorrowChecker::checkMemberAssignment(const MemberAssignmentAST& assign) {
 
     auto srcType = assign.getValue()->getResolvedType();
 
-    // Mark ALL temporaries as consumed when assigned to a field.
+    // Mark ALL temporaries as moved when assigned to a field.
     // The field takes ownership, so the temporary's deinit must be skipped.
     if (assign.getValue()->isTemporary()) {
-      assign.getValue()->setConsumed(true);
+      assign.getValue()->setMoved(true);
     }
     // For variable references of compound types, mark as moved
     else if (srcType && srcType->isCompound() &&
@@ -639,6 +658,7 @@ void BorrowChecker::checkMemberAssignment(const MemberAssignmentAST& assign) {
       const auto& srcRef =
           static_cast<const VariableReferenceAST&>(*assign.getValue());
       movedVariables_.insert(srcRef.getName());
+      assign.getValue()->setMoved(true);  // Mark for codegen to skip deinit
     }
   }
 }

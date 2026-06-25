@@ -92,3 +92,38 @@ Value* CodegenVisitor::codegenFreeIntrinsic(const CallExprAST& expr) {
   ctx.builder->CreateCall(freeFunc, {ptr});
   return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
 }
+
+Value* CodegenVisitor::codegenMemcpyIntrinsic(const CallExprAST& expr) {
+  // _memcpy(dst, src, len) - copy len bytes from src to dst
+  const auto& args = expr.getArgs();
+  if (args.size() != 3) {
+    logAndThrowError("_memcpy expects 3 arguments: (dst, src, len)");
+    return nullptr;
+  }
+
+  llvm::Value* dst = codegen(*args[0]);
+  llvm::Value* src = codegen(*args[1]);
+  llvm::Value* len = codegen(*args[2]);
+  if (!dst || !src || !len) return nullptr;
+
+  // Use LLVM's memcpy intrinsic for optimal codegen
+  ctx.builder->CreateMemCpy(dst, llvm::MaybeAlign(1), src, llvm::MaybeAlign(1), len);
+  return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
+}
+
+Value* CodegenVisitor::codegenPtrOffsetIntrinsic(const CallExprAST& expr) {
+  // _ptr_offset(ptr, byte_offset) - offset a pointer by byte_offset bytes
+  const auto& args = expr.getArgs();
+  if (args.size() != 2) {
+    logAndThrowError("_ptr_offset expects 2 arguments: (ptr, byte_offset)");
+    return nullptr;
+  }
+
+  llvm::Value* ptr = codegen(*args[0]);
+  llvm::Value* offset = codegen(*args[1]);
+  if (!ptr || !offset) return nullptr;
+
+  // GEP with i8 type to do byte-level pointer arithmetic
+  auto* i8Ty = llvm::Type::getInt8Ty(ctx.getContext());
+  return ctx.builder->CreateGEP(i8Ty, ptr, offset, "ptr.offset");
+}

@@ -353,22 +353,19 @@ Value* CodegenVisitor::prepareRefArgument(const ExprAST* argExpr,
       Value* tempVal = codegen(*argExpr);
       if (!tempVal) return nullptr;
 
-      // Get LLVM type for the class
-      llvm::Type* llvmType = typeResolver.resolve(argSunType);
+      // If codegen returned a pointer, it's already an alloca - use it directly.
+      // The original temporary is already tracked for deinit, no need to copy.
+      // Copying would cause double-free since both would try to deinit the same
+      // owned resources (e.g., Unique<T> pointers).
+      if (tempVal->getType()->isPointerTy()) {
+        return tempVal;
+      }
 
-      // Create alloca and store the temporary
+      // Codegen returned a struct value - need to materialize it in an alloca
+      llvm::Type* llvmType = typeResolver.resolve(argSunType);
       AllocaInst* tempAlloca =
           ctx.builder->CreateAlloca(llvmType, nullptr, "ref.temp");
-
-      // If codegen returned a struct value, store it
-      if (!tempVal->getType()->isPointerTy()) {
-        ctx.builder->CreateStore(tempVal, tempAlloca);
-      } else {
-        // Codegen returned a pointer - need to copy the struct
-        llvm::Value* loadedVal =
-            ctx.builder->CreateLoad(llvmType, tempVal, "temp.load");
-        ctx.builder->CreateStore(loadedVal, tempAlloca);
-      }
+      ctx.builder->CreateStore(tempVal, tempAlloca);
 
       // Track for cleanup - caller owns the temporary
       auto classTypePtr = std::dynamic_pointer_cast<sun::ClassType>(argSunType);
@@ -652,11 +649,19 @@ Value* CodegenVisitor::codegenClassMethodCall(
     const std::vector<sun::TypePtr>& typeArgs =
         memberAccess->getResolvedTypeArgs();
 
-    // Build the specialized mangled name
+    // Build the specialized mangled name. Must match instantiateGenericMethod:
+    // type args, then (for variadic _init_args methods) a suffix keyed on the
+    // actual variadic argument types.
     std::string baseMangledName = classType->getMangledMethodName(methodName);
     std::string mangledName = baseMangledName;
     for (const auto& typeArg : typeArgs) {
       mangledName += "_" + typeArg->toString();
+    }
+    {
+      std::string hashPrefix =
+          sun::QualifiedName::extractHashPrefix(classType->getMangledName());
+      mangledName += sun::QualifiedName::buildVariadicArgSuffix(
+          memberAccess->getResolvedVariadicArgTypes(), hashPrefix);
     }
 
     // Look up the specialized method function
@@ -1293,7 +1298,8 @@ bool CodegenVisitor::isBuiltinFunction(const std::string& name) {
          // Pointer intrinsics
          name == "_load_i64" || name == "_store_i64" ||
          // Memory allocation intrinsics
-         name == "_malloc" || name == "_free" ||
+         name == "_malloc" || name == "_free" || name == "_memcpy" ||
+         name == "_ptr_offset" ||
          // Atomic intrinsics
          name == "_atomic_cmpxchg_i32" || name == "_atomic_store_i32" ||
          name == "_atomic_load_i32" ||
@@ -1378,6 +1384,12 @@ Value* CodegenVisitor::codegenBuiltin(const std::string& name,
   }
   if (name == "_free") {
     return codegenFreeIntrinsic(expr);
+  }
+  if (name == "_memcpy") {
+    return codegenMemcpyIntrinsic(expr);
+  }
+  if (name == "_ptr_offset") {
+    return codegenPtrOffsetIntrinsic(expr);
   }
   // Atomic intrinsics
   if (name == "_atomic_cmpxchg_i32") {

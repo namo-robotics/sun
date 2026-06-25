@@ -833,35 +833,26 @@ Value* CodegenVisitor::codegenStackClassInstance(const CallExprAST& expr,
        ConstantInt::get(Type::getInt64Ty(ctx.getContext()), structSize)});
 
   // Call the constructor (init method) if it exists
-  // Get the init method info from the class type
-  const sun::ClassMethod* initMethod = classType.getMethod("init");
-
-  std::string baseCtorName;
-  if (initMethod) {
-    baseCtorName =
-        classType.getMangledMethodName("init", initMethod->paramTypes);
-  } else {
-    baseCtorName = classType.getMangledMethodName("init");
-  }
+  ConstructorLookup ctor = lookupConstructor(&classType, expr.getArgs());
 
   Function* ctorFunc = nullptr;
   size_t argCount = expr.getArgs().size();
 
   // Try to find existing function in module
-  Function* candidate = module->getFunction(baseCtorName);
+  Function* candidate = module->getFunction(ctor.mangledName);
 
   // If not found but init method exists in class type, create declaration
   // This handles precompiled classes where functions are linked later
-  if (!candidate && initMethod) {
+  if (!candidate && ctor.method) {
     std::vector<llvm::Type*> paramLLVMTypes;
     paramLLVMTypes.push_back(PointerType::getUnqual(ctx.getContext()));  // this
-    for (const auto& paramType : initMethod->paramTypes) {
+    for (const auto& paramType : ctor.method->paramTypes) {
       paramLLVMTypes.push_back(typeResolver.resolve(paramType));
     }
     FunctionType* funcType = FunctionType::get(
         Type::getVoidTy(ctx.getContext()), paramLLVMTypes, false);
     candidate = Function::Create(funcType, Function::ExternalLinkage,
-                                 baseCtorName, module);
+                                 ctor.mangledName, module);
   }
 
   if (candidate && candidate->arg_size() == argCount + 1) {
@@ -870,19 +861,19 @@ Value* CodegenVisitor::codegenStackClassInstance(const CallExprAST& expr,
 
   if (ctorFunc) {
     const auto& paramTypes =
-        initMethod ? initMethod->paramTypes : std::vector<sun::TypePtr>{};
+        ctor.method ? ctor.method->paramTypes : std::vector<sun::TypePtr>{};
 
     std::vector<Value*> ctorArgs =
         generateCtorArgs(alloca, expr.getArgs(), paramTypes);
     ctx.builder->CreateCall(ctorFunc, ctorArgs);
   }
 
-  // Track the temporary for deinit ONLY if not consumed (ownership
-  // transferred). The borrow checker marks temporaries as consumed when
-  // assigned to a variable or field. Consumed temporaries are owned by the
-  // destination, which will call deinit. Non-consumed temporaries must be
+  // Track the temporary for deinit ONLY if not moved (ownership
+  // transferred). The borrow checker marks temporaries as moved when
+  // assigned to a variable or field. Moved temporaries are owned by the
+  // destination, which will call deinit. Non-moved temporaries must be
   // deinited here.
-  if (!expr.isConsumed()) {
+  if (!expr.isMoved()) {
     auto classTypePtr = std::make_shared<sun::ClassType>(classType);
     trackClassAllocation(alloca, "stack.obj", classTypePtr);
   }
@@ -994,6 +985,42 @@ std::vector<Value*> CodegenVisitor::generateCtorArgs(
   }
 
   return ctorArgs;
+}
+
+// -------------------------------------------------------------------
+// Constructor lookup helpers
+// -------------------------------------------------------------------
+
+CodegenVisitor::ConstructorLookup CodegenVisitor::lookupConstructor(
+    sun::ClassType* classType,
+    const std::vector<std::unique_ptr<ExprAST>>& args) {
+  // Collect argument types from AST nodes
+  std::vector<sun::TypePtr> argTypes;
+  argTypes.reserve(args.size());
+  for (const auto& arg : args) {
+    argTypes.push_back(arg->getResolvedType());
+  }
+  return lookupConstructor(classType, argTypes);
+}
+
+CodegenVisitor::ConstructorLookup CodegenVisitor::lookupConstructor(
+    sun::ClassType* classType, const std::vector<sun::TypePtr>& argTypes) {
+  ConstructorLookup result;
+
+  // Look up the init method that matches the argument types
+  const sun::ClassMethod* initMethod =
+      classType->getMethodForArgs("init", argTypes);
+
+  if (initMethod) {
+    result.method = initMethod;
+    result.mangledName =
+        classType->getMangledMethodName("init", initMethod->paramTypes);
+  } else {
+    // No matching overload - use default mangled name (no params)
+    result.mangledName = classType->getMangledMethodName("init");
+  }
+
+  return result;
 }
 
 // -------------------------------------------------------------------
@@ -1479,9 +1506,9 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
         ctx.builder->CreateCall(ctorFunc, ctorArgs);
       }
 
-      // Track the temporary for deinit ONLY if not consumed (ownership
+      // Track the temporary for deinit ONLY if not moved (ownership
       // transferred)
-      if (!expr.isConsumed()) {
+      if (!expr.isMoved()) {
         auto classTypePtr = std::make_shared<sun::ClassType>(*classType);
         trackClassAllocation(alloca, "stack.obj", classTypePtr);
       }
@@ -1563,9 +1590,9 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
       ctx.builder->CreateCall(ctorFunc, ctorArgs);
     }
 
-    // Track the temporary for deinit ONLY if not consumed (ownership
+    // Track the temporary for deinit ONLY if not moved (ownership
     // transferred)
-    if (!expr.isConsumed()) {
+    if (!expr.isMoved()) {
       auto classTypePtr = std::make_shared<sun::ClassType>(*fallbackClassType);
       trackClassAllocation(alloca, "stack.obj", classTypePtr);
     }

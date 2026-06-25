@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./tests/sun_tests *')",
+      "Bash(git diff *)",
+      "Bash(git status)",
+      "Bash(./build.sh *)"
+    ]
+  }
+}

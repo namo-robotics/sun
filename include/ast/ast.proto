@@ -452,7 +452,7 @@ message DeclareType {
 // Base expression analysis
 message ExprAnalysis {
   string resolved_type = 1;  // Type stored as string signature
-  bool consumed = 2;         // Borrow checker consumed flag
+  bool moved = 2;            // Borrow checker moved flag (ownership transferred)
   string qualified_name = 3; // For variable/class/interface nodes
 }
 

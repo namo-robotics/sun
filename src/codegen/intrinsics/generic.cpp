@@ -55,117 +55,59 @@ Value* CodegenVisitor::codegenInitIntrinsic(
 
   auto* classType = static_cast<sun::ClassType*>(targetType.get());
 
-  // Collect constructor arguments, expanding any pack expansions
+  // Collect constructor arguments. Variadic packs are already expanded into
+  // concrete typed args during semantic analysis, so every arg is ordinary
+  // here. argTypes is collected in parallel (aligned with the value args,
+  // excluding 'this') for constructor overload resolution.
   std::vector<Value*> ctorArgs;
+  std::vector<sun::TypePtr> argTypes;
   ctorArgs.push_back(rawPtr);  // 'this' pointer
 
-  // Skip args[0] (the pointer), process remaining args with pack expansion
+  // Skip args[0] (the pointer)
   for (size_t i = 1; i < args.size(); ++i) {
-    if (args[i]->getType() == ASTNodeType::PACK_EXPANSION) {
-      // Expand the pack: first check variadicArgsStack (for call-site
-      // expansion)
-      const auto& packExpr = static_cast<const PackExpansionAST&>(*args[i]);
-      const std::string& packName = packExpr.getPackName();
+    Value* argVal = codegen(*args[i]);
+    if (!argVal) return nullptr;
+    sun::TypePtr argType = args[i]->getResolvedType();
 
-      // Find the variadic args for this pack name in the stack
-      bool found = false;
-      for (auto it = variadicArgsStack.rbegin(); it != variadicArgsStack.rend();
-           ++it) {
-        if (it->first == packName) {
-          // Load each variadic argument from its allocated slot
-          size_t varIdx = 0;
-          for (const auto* varArgExpr : it->second) {
-            std::string paramName = packName + "." + std::to_string(varIdx);
-            AllocaInst* alloca = findVariable(paramName);
-            if (alloca) {
-              sun::TypePtr argType = varArgExpr->getResolvedType();
-              llvm::Type* llvmType = typeResolver.resolve(argType);
-              Value* argVal =
-                  ctx.builder->CreateLoad(llvmType, alloca, paramName + ".val");
-              ctorArgs.push_back(argVal);
-            } else {
-              logAndThrowError("Cannot find variadic argument: " + paramName);
-              return nullptr;
-            }
-            ++varIdx;
-          }
-          found = true;
-          break;
-        }
-      }
-
-      // If not in stack, check if we're inside a variadic function body
-      // Look for indexed variables in scope (e.g., "args.0", "args.1")
-      if (!found) {
-        size_t varIdx = 0;
-        while (true) {
-          std::string paramName = packName + "." + std::to_string(varIdx);
-          AllocaInst* alloca = findVariable(paramName);
-          if (!alloca) break;  // No more variadic params
-
-          // Get the alloca's type to determine how to load
-          llvm::Type* allocaType = alloca->getAllocatedType();
-          Value* argVal =
-              ctx.builder->CreateLoad(allocaType, alloca, paramName + ".val");
-          ctorArgs.push_back(argVal);
-          ++varIdx;
-        }
-        // Even if varIdx==0 (empty pack), that's valid - check if we're in a
-        // variadic method by looking for any pack variables or the pack marker
-        if (varIdx > 0) {
-          found = true;
-        } else {
-          // Check if this is a valid empty pack expansion by seeing if we're
-          // in a method that was declared with variadic params (even if 0 args)
-          // The marker is that the pack name exists but has no indexed vars
-          // This is valid - the pack simply expands to nothing
-          found = true;  // Empty pack expansion is valid
-        }
-      }
-
-      // Empty pack expansion is valid - nothing to add to ctorArgs
-      // (the 'found' check below is now always true for pack expansions)
-    } else {
-      // Regular argument
-      Value* argVal = codegen(*args[i]);
-      if (!argVal) return nullptr;
-      ctorArgs.push_back(argVal);
+    // Class values are addressable, so codegen yields a pointer to the struct,
+    // but constructors take a class argument by value. Load the struct to match
+    // the constructor's calling convention.
+    if (argType && argType->isClass() && argVal->getType()->isPointerTy()) {
+      llvm::Type* structTy = typeResolver.resolve(argType);
+      argVal = ctx.builder->CreateLoad(structTy, argVal, "arg.val");
     }
+
+    ctorArgs.push_back(argVal);
+    argTypes.push_back(argType);
   }
 
-  // Look up the constructor (init method)
-  const sun::ClassMethod* initMethod = classType->getMethod("init");
-  std::string ctorMangledName;
-  if (initMethod) {
-    ctorMangledName =
-        classType->getMangledMethodName("init", initMethod->paramTypes);
-  } else {
-    ctorMangledName = classType->getMangledMethodName("init");
-  }
+  // Look up the constructor (init method) that is compatible with the argument
+  // types.
+  ConstructorLookup ctor = lookupConstructor(classType, argTypes);
 
   Function* ctorFunc = nullptr;
   size_t ctorArgCount = ctorArgs.size();  // includes 'this' pointer
 
   // Try to find existing constructor
-  Function* candidate = module->getFunction(ctorMangledName);
+  Function* candidate = module->getFunction(ctor.mangledName);
   if (candidate && candidate->arg_size() == ctorArgCount) {
     ctorFunc = candidate;
   }
 
   // If not found, try to create a declaration for it
   // This handles cases where the class is processed later in codegen order
-  if (!ctorFunc && initMethod &&
-      initMethod->paramTypes.size() + 1 == ctorArgCount) {
+  if (!ctorFunc && ctor.method &&
+      ctor.method->paramTypes.size() + 1 == ctorArgCount) {
     // Build parameter types for the constructor
     std::vector<llvm::Type*> paramTypes;
     paramTypes.push_back(PointerType::getUnqual(ctx.getContext()));  // this
-    for (const auto& paramType : initMethod->paramTypes) {
+    for (const auto& paramType : ctor.method->paramTypes) {
       paramTypes.push_back(typeResolver.resolve(paramType));
     }
     FunctionType* funcType =
         FunctionType::get(Type::getVoidTy(ctx.getContext()), paramTypes, false);
     ctorFunc = Function::Create(funcType, Function::ExternalLinkage,
-                                ctorMangledName, module);
+                                ctor.mangledName, module);
   }
 
   if (ctorFunc) {

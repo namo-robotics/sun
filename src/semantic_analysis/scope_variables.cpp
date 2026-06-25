@@ -901,6 +901,19 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
   // _free(ptr) - free previously allocated memory
   registernFunctionInCurrentScope(
       "_free", {Types::Void(), {Types::RawPointer(Types::Int8())}, {}});
+  // _memcpy(dst, src, len) - copy len bytes from src to dst
+  registernFunctionInCurrentScope(
+      "_memcpy",
+      {Types::Void(),
+       {Types::RawPointer(Types::UInt8()), Types::RawPointer(Types::UInt8()),
+        Types::Int64()},
+       {}});
+  // _ptr_offset(ptr, byte_offset) - offset a pointer by byte_offset bytes
+  registernFunctionInCurrentScope(
+      "_ptr_offset",
+      {Types::RawPointer(Types::UInt8()),
+       {Types::RawPointer(Types::UInt8()), Types::Int64()},
+       {}});
 
   // Atomic intrinsics
   // _atomic_cmpxchg_i32(ptr, expected, desired) - atomic compare-and-swap

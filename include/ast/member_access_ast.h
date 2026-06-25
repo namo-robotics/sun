@@ -77,6 +77,16 @@ class MemberAccessAST : public ExprAST {
                              .resolvedTypeArgs.empty();
   }
 
+  // Resolved types of the actual variadic arguments for a generic method call
+  // with an _init_args<T> pack (set by semantic analyzer). Used by codegen to
+  // rebuild the same specialization mangled name.
+  void setResolvedVariadicArgTypes(std::vector<sun::TypePtr> types) const {
+    memberAnalysis().resolvedVariadicArgTypes = std::move(types);
+  }
+  const std::vector<sun::TypePtr>& getResolvedVariadicArgTypes() const {
+    return memberAnalysis().resolvedVariadicArgTypes;
+  }
+
   // Resolved qualified name for module member access (set by semantic analyzer)
   void setResolvedQualifiedName(std::string name) const {
     memberAnalysis().resolvedQualifiedName = std::move(name);

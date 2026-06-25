@@ -1025,6 +1025,63 @@ class ClassType : public Type {
     return nullptr;
   }
 
+  // Returns true if an array argument of type `from` is compatible with an
+  // array parameter of type `to` (same element type, with an unsized parameter
+  // accepting any sized array). Mirrors the array coercion allowed elsewhere so
+  // that e.g. array<i32, 3, 2> can be passed where array<i32> is expected.
+  static bool isArrayCompatible(const TypePtr& from, const TypePtr& to) {
+    if (!from || !to || !from->isArray() || !to->isArray()) {
+      return false;
+    }
+    auto* toArr = static_cast<const ArrayType*>(to.get());
+    auto* fromArr = static_cast<const ArrayType*>(from.get());
+    return toArr->isCompatibleWith(*fromArr);
+  }
+
+  // Returns true if a value of type `from` can be implicitly widened to type
+  // `to` (integer-to-wider-integer or float-to-wider-float). This mirrors the
+  // numeric widening allowed by free-function overload resolution so that
+  // method/constructor overloads accept the same arguments (e.g. an i32 literal
+  // passed where an i64 parameter is expected).
+  static bool isNumericWidenable(const TypePtr& from, const TypePtr& to) {
+    if (!from || !to || !from->isPrimitive() || !to->isPrimitive()) {
+      return false;
+    }
+    auto fromKind = from->getKind();
+    auto toKind = to->getKind();
+
+    auto intBitWidth = [](Type::Kind k) -> int {
+      switch (k) {
+        case Type::Kind::Int8:
+        case Type::Kind::UInt8:
+          return 8;
+        case Type::Kind::Int16:
+        case Type::Kind::UInt16:
+          return 16;
+        case Type::Kind::Int32:
+        case Type::Kind::UInt32:
+          return 32;
+        case Type::Kind::Int64:
+        case Type::Kind::UInt64:
+          return 64;
+        default:
+          return 0;
+      }
+    };
+
+    int fromWidth = intBitWidth(fromKind);
+    int toWidth = intBitWidth(toKind);
+    if (fromWidth != 0 && toWidth != 0) {
+      return fromWidth <= toWidth;
+    }
+
+    bool fromFloat = fromKind == Type::Kind::Float32 ||
+                     fromKind == Type::Kind::Float64;
+    bool toFloat =
+        toKind == Type::Kind::Float32 || toKind == Type::Kind::Float64;
+    return fromFloat && toFloat;
+  }
+
   // Get method with overload resolution based on argument types
   // Returns the method whose parameter types best match the provided arg types
   const ClassMethod* getMethodForArgs(
@@ -1055,9 +1112,25 @@ class ClassType : public Type {
         if (method.paramTypes[i]->isReference()) {
           auto* refType =
               static_cast<const ReferenceType*>(method.paramTypes[i].get());
-          if (refType->getReferencedType()->equals(*argTypes[i])) {
+          const TypePtr& referenced = refType->getReferencedType();
+          if (referenced->equals(*argTypes[i])) {
             continue;
           }
+          // ref to an (unsized) array accepts a compatible sized array, e.g.
+          // passing array<i32, 3, 2> where ref array<i32> is expected.
+          if (isArrayCompatible(argTypes[i], referenced)) {
+            continue;
+          }
+        }
+
+        // Array compatibility for by-value array parameters (sized -> unsized).
+        if (isArrayCompatible(argTypes[i], method.paramTypes[i])) {
+          continue;
+        }
+
+        // Numeric widening: e.g. an i32 literal argument for an i64 parameter
+        if (isNumericWidenable(argTypes[i], method.paramTypes[i])) {
+          continue;
         }
 
         // No match for this parameter

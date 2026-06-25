@@ -471,6 +471,12 @@ struct FunctionScope : SemanticScopeBase {
   std::string functionSignature;  // e.g., "outer(i32)"
   sun::QualifiedName functionName;
   bool functionCanThrow = false;
+
+  // Variadic parameter pack for this function, when it is a specialized
+  // variadic body. Holds the pack's name (e.g. "args") and the resolved type of
+  // each expanded element. Used to expand `args...` into concrete, typed
+  // argument nodes during call analysis.
+  std::optional<std::pair<std::string, std::vector<sun::TypePtr>>> variadicParam;
 };
 
 // ===================================================================

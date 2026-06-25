@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "ast/expr_ast.h"
+#include "types.h"
 
 // Forward declaration for dotLabel()
 class MemberAccessAST;
@@ -34,5 +35,20 @@ class CallExprAST : public ExprAST {
   }
   const ExprAST* getCallee() const { return Callee.get(); }
   const std::vector<std::unique_ptr<ExprAST>>& getArgs() const { return Args; }
+
+  // Mutable access to the argument list (used to expand variadic packs into
+  // concrete args during semantic analysis).
+  std::vector<std::unique_ptr<ExprAST>>& getArgsMutable() { return Args; }
+
+  // Returns the resolved types of all arguments (for constructor overload resolution)
+  std::vector<sun::TypePtr> getResolvedArgTypes() const {
+    std::vector<sun::TypePtr> types;
+    types.reserve(Args.size());
+    for (const auto& arg : Args) {
+      types.push_back(arg->getResolvedType());
+    }
+    return types;
+  }
+
   std::string dotLabel() const override;
 };
