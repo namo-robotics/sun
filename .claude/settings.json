@@ -9,6 +9,7 @@
       "Bash(/workspaces/sun/build/sun *)",
       "Bash(./build/tests/sun_tests *)",
       "Bash(/workspaces/sun/build/tests/sun_tests *)",
+      "Bash(./tests/sun_tests *)",
       "Bash(SUN_PATH=/workspaces/sun ./build/sun *)",
       "Bash(SUN_PATH=/workspaces/sun /workspaces/sun/build/sun *)",
       "Bash(SUN_PATH=/workspaces/sun ./build/tests/sun_tests *)",

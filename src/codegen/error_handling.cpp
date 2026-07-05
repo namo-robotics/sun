@@ -9,6 +9,21 @@
 
 using namespace llvm;
 
+namespace {
+// Stable, module-independent type identity for an error class: FNV-1a 64-bit
+// hash of its (canonical) mangled name. Computed identically at the throw site
+// and every catch site, so typed catches can match without RTTI and without
+// relying on per-module vtable pointer identity.
+uint64_t sunTypeId(const std::string& mangledName) {
+  uint64_t h = 1469598103934665603ull;  // FNV offset basis
+  for (unsigned char c : mangledName) {
+    h ^= static_cast<uint64_t>(c);
+    h *= 1099511628211ull;  // FNV prime
+  }
+  return h;
+}
+}  // namespace
+
 // Safe division/modulo: check for zero divisor and throw instead of crashing.
 // This is only called when currentFunctionCanError is true.
 Value* CodegenVisitor::codegenSafeDivision(Value* L, Value* R, bool isModulo) {
@@ -163,8 +178,10 @@ void CodegenVisitor::emitCxaThrowAndUnreachable(Value* excPtr) {
 
 // Codegen for throw expression: throw <expr>
 // Boxes the thrown IError object into a C++ ABI exception and __cxa_throws it.
-// Exception buffer layout: { InterfaceFat fat; <object bytes> } where fat.data
-// points at the embedded object copy so it survives stack unwinding.
+// Exception buffer layout: { i64 typeId, InterfaceFat fat, <object bytes> }
+// where fat.data points at the embedded object copy so it survives unwinding,
+// and typeId (FNV-1a of the concrete class's mangled name) lets typed catches
+// match without RTTI. See the matching landing pad in codegen(TryCatchExprAST).
 Value* CodegenVisitor::codegen(const ThrowExprAST& expr) {
   if (!currentFunctionCanError) {
     logAndThrowError(
@@ -175,9 +192,18 @@ Value* CodegenVisitor::codegen(const ThrowExprAST& expr) {
   llvm::StructType* fatTy =
       sun::InterfaceType::getFatPointerType(ctx.getContext());
   const DataLayout& DL = module->getDataLayout();
-  uint64_t fatSize = DL.getTypeAllocSize(fatTy);
   auto* i64Ty = Type::getInt64Ty(ctx.getContext());
   auto* i8Ty = Type::getInt8Ty(ctx.getContext());
+  uint64_t idSize = DL.getTypeAllocSize(i64Ty);   // header: typeId
+  uint64_t fatSize = DL.getTypeAllocSize(fatTy);  // header: fat pointer
+  uint64_t fatOffset = idSize;
+  uint64_t objOffset = idSize + fatSize;
+
+  auto storeAt = [&](Value* base, uint64_t off, Value* val) {
+    Value* slot = ctx.builder->CreateGEP(i8Ty, base,
+                                         {ConstantInt::get(i64Ty, off)});
+    ctx.builder->CreateStore(val, slot);
+  };
 
   sun::TypePtr errType =
       expr.hasErrorExpr() ? expr.getErrorExpr().getResolvedType() : nullptr;
@@ -194,34 +220,40 @@ Value* CodegenVisitor::codegen(const ThrowExprAST& expr) {
 
     Value* exc = ctx.builder->CreateCall(
         getCxaAllocateException(),
-        {ConstantInt::get(i64Ty, fatSize + objSize)}, "exc");
-    // Object slot lives right after the fat pointer.
+        {ConstantInt::get(i64Ty, objOffset + objSize)}, "exc");
+    // typeId at offset 0.
+    ctx.builder->CreateStore(
+        ConstantInt::get(i64Ty, sunTypeId(classType->getMangledName())), exc);
+    // Object copy after the header; fat.data references it.
     Value* objSlot = ctx.builder->CreateGEP(
-        i8Ty, exc, {ConstantInt::get(i64Ty, fatSize)}, "exc.obj");
+        i8Ty, exc, {ConstantInt::get(i64Ty, objOffset)}, "exc.obj");
     Value* objVal = ctx.builder->CreateLoad(classStruct, objPtr, "throw.obj");
     ctx.builder->CreateStore(objVal, objSlot);
 
     auto ierror = typeRegistry->getInterface("IError");
     Value* fat = createInterfaceFatPointer(objSlot, classType, ierror.get());
-    ctx.builder->CreateStore(fat, exc);
+    storeAt(exc, fatOffset, fat);
 
     emitCxaThrowAndUnreachable(exc);
   } else {
     // Interface value (e.g. rethrow of a caught `e`) or unknown: box the fat
-    // pointer as-is. For a rethrow the underlying object outlives the throw
-    // (its owning exception is not released until __cxa_end_catch, which the
-    // unreachable throw path skips).
+    // pointer as-is with typeId 0 (concrete type unknown statically → only an
+    // 'IError' catch-all can re-catch it). The underlying object outlives the
+    // throw (its owning exception is released only by __cxa_end_catch, which
+    // the unreachable throw path skips).
     Value* fatVal = expr.hasErrorExpr() ? codegen(expr.getErrorExpr()) : nullptr;
     Value* exc = ctx.builder->CreateCall(
-        getCxaAllocateException(), {ConstantInt::get(i64Ty, fatSize)}, "exc");
+        getCxaAllocateException(), {ConstantInt::get(i64Ty, objOffset)}, "exc");
+    ctx.builder->CreateStore(ConstantInt::get(i64Ty, 0), exc);
+    Value* fatToStore;
     if (fatVal && fatVal->getType() == fatTy) {
-      ctx.builder->CreateStore(fatVal, exc);
+      fatToStore = fatVal;
     } else if (fatVal && fatVal->getType()->isPointerTy()) {
-      Value* loaded = ctx.builder->CreateLoad(fatTy, fatVal, "throw.fat");
-      ctx.builder->CreateStore(loaded, exc);
+      fatToStore = ctx.builder->CreateLoad(fatTy, fatVal, "throw.fat");
     } else {
-      ctx.builder->CreateStore(Constant::getNullValue(fatTy), exc);
+      fatToStore = Constant::getNullValue(fatTy);
     }
+    storeAt(exc, fatOffset, fatToStore);
     emitCxaThrowAndUnreachable(exc);
   }
 
@@ -234,11 +266,12 @@ Value* CodegenVisitor::codegen(const UnsafeBlockAST& expr) {
   return codegen(expr.getBody());
 }
 
-// Codegen for try-catch expression: try { ... } catch (e: IError) { ... }
-// Throwing calls in the try block are emitted as `invoke`s unwinding to a
-// landing pad, which enters a C++ ABI catch (__cxa_begin_catch), binds the
-// caught IError object to the catch variable, runs the catch body, and calls
-// __cxa_end_catch.
+// Codegen for try-catch: try { ... } catch (e: A) { ... } catch (e: IError) {}
+// Throwing calls in the try block `invoke` to a single catch-all landing pad.
+// The pad enters the C++ ABI catch, reads the exception's typeId header, and
+// dispatches to the first clause whose type matches (concrete class → id
+// compare; `IError` → unconditional catch-all). If nothing matches, the
+// exception is __cxa_rethrow'd to the nearest outer handler.
 Value* CodegenVisitor::codegen(const TryCatchExprAST& expr) {
   Function* func = ctx.builder->GetInsertBlock()->getParent();
   ensurePersonality(func);
@@ -268,62 +301,127 @@ Value* CodegenVisitor::codegen(const TryCatchExprAST& expr) {
   ctx.builder->SetInsertPoint(lpadBB);
   auto* ptrTy = PointerType::getUnqual(ctx.getContext());
   auto* i32Ty = Type::getInt32Ty(ctx.getContext());
+  auto* i64Ty = Type::getInt64Ty(ctx.getContext());
   llvm::StructType* lpadTy = StructType::get(ptrTy, i32Ty);
   llvm::LandingPadInst* lp = ctx.builder->CreateLandingPad(lpadTy, 1, "lpad");
-  // Single catch-all clause (catch(...)) — every Sun catch is `catch(e:IError)`.
-  lp->addClause(ConstantPointerNull::get(ptrTy));
+  lp->addClause(ConstantPointerNull::get(ptrTy));  // catch(...)
   Value* excPtr = ctx.builder->CreateExtractValue(lp, 0, "exc.ptr");
   Value* obj = ctx.builder->CreateCall(getCxaBeginCatch(), {excPtr}, "exc.obj");
 
-  // Reconstruct the IError fat pointer from the exception buffer (layout:
-  // { InterfaceFat fat; <object bytes> }) — the fat pointer sits at offset 0.
+  // Exception header (see codegen(ThrowExprAST)): { i64 typeId, InterfaceFat }.
   llvm::StructType* fatTy =
       sun::InterfaceType::getFatPointerType(ctx.getContext());
+  const DataLayout& DL = module->getDataLayout();
+  uint64_t fatOffset = DL.getTypeAllocSize(i64Ty);
+  Value* typeId = ctx.builder->CreateLoad(i64Ty, obj, "exc.typeId");
+  Value* fatSlot = ctx.builder->CreateGEP(
+      Type::getInt8Ty(ctx.getContext()), obj,
+      {ConstantInt::get(i64Ty, fatOffset)}, "exc.fat.slot");
+  Value* fat = ctx.builder->CreateLoad(fatTy, fatSlot, "exc.fat");
 
-  pushScope();
-  const auto& catchClause = expr.getCatchClause();
-  if (!catchClause.bindingName.empty()) {
-    IRBuilder<> tmpBuilder(&func->getEntryBlock(),
-                           func->getEntryBlock().begin());
-    AllocaInst* alloca =
-        tmpBuilder.CreateAlloca(fatTy, nullptr, catchClause.bindingName);
-    Value* fat = ctx.builder->CreateLoad(fatTy, obj, "err.fat");
-    ctx.builder->CreateStore(fat, alloca);
-    scopes.back().variables[catchClause.bindingName] = alloca;
+  const auto& clauses = expr.getCatchClauses();
+  size_t n = clauses.size();
+
+  // Per-clause test and body blocks; branch from the pad into the first test.
+  std::vector<BasicBlock*> testBBs(n), bodyBBs(n);
+  for (size_t i = 0; i < n; ++i) {
+    testBBs[i] = BasicBlock::Create(ctx.getContext(), "catch.test", func);
+    bodyBBs[i] = BasicBlock::Create(ctx.getContext(), "catch.body", func);
+  }
+  bool hasCatchAll = n > 0 && clauses.back().isCatchAll;
+  BasicBlock* nomatchBB =
+      hasCatchAll ? nullptr
+                  : BasicBlock::Create(ctx.getContext(), "catch.nomatch", func);
+  ctx.builder->CreateBr(testBBs[0]);
+
+  for (size_t i = 0; i < n; ++i) {
+    const auto& clause = clauses[i];
+
+    // ---- test ----
+    ctx.builder->SetInsertPoint(testBBs[i]);
+    if (clause.isCatchAll) {
+      ctx.builder->CreateBr(bodyBBs[i]);
+    } else {
+      Value* want = ConstantInt::get(i64Ty, sunTypeId(clause.resolvedMangledName));
+      Value* m = ctx.builder->CreateICmpEQ(typeId, want, "catch.match");
+      BasicBlock* elseBB = (i + 1 < n) ? testBBs[i + 1] : nomatchBB;
+      ctx.builder->CreateCondBr(m, bodyBBs[i], elseBB);
+    }
+
+    // ---- body ----
+    ctx.builder->SetInsertPoint(bodyBBs[i]);
+    pushScope();
+    if (!clause.bindingName.empty()) {
+      IRBuilder<> tmpBuilder(&func->getEntryBlock(),
+                             func->getEntryBlock().begin());
+      if (clause.isCatchAll) {
+        // Bind the IError interface fat pointer.
+        AllocaInst* alloca =
+            tmpBuilder.CreateAlloca(fatTy, nullptr, clause.bindingName);
+        ctx.builder->CreateStore(fat, alloca);
+        scopes.back().variables[clause.bindingName] = alloca;
+      } else {
+        // Concrete type: copy the object out of the exception buffer into a
+        // fresh stack slot so it survives __cxa_end_catch, then bind e to it.
+        auto classType = typeRegistry->getClass(clause.resolvedMangledName);
+        llvm::StructType* classStruct =
+            classType->getStructType(ctx.getContext());
+        Value* dataPtr = ctx.builder->CreateExtractValue(fat, 0, "err.data");
+        AllocaInst* alloca =
+            tmpBuilder.CreateAlloca(classStruct, nullptr, clause.bindingName);
+        Value* objVal =
+            ctx.builder->CreateLoad(classStruct, dataPtr, "err.obj");
+        ctx.builder->CreateStore(objVal, alloca);
+        scopes.back().variables[clause.bindingName] = alloca;
+      }
+    }
+    Value* catchResult = codegen(*clause.body);
+    popScope();
+
+    if (!ctx.builder->GetInsertBlock()->getTerminator()) {
+      ctx.builder->CreateCall(getCxaEndCatch(), {});
+      BasicBlock* bodyEndBB = ctx.builder->GetInsertBlock();
+      ctx.builder->CreateBr(mergeBB);
+      if (catchResult) results.push_back({catchResult, bodyEndBB});
+    }
   }
 
-  Value* catchResult = codegen(*catchClause.body);
-  popScope();
-
-  // End the catch scope on the fallthrough path, then merge, carrying the
-  // catch value.
-  if (!ctx.builder->GetInsertBlock()->getTerminator()) {
-    ctx.builder->CreateCall(getCxaEndCatch(), {});
-    BasicBlock* catchEndBB = ctx.builder->GetInsertBlock();
-    ctx.builder->CreateBr(mergeBB);
-    if (catchResult) results.push_back({catchResult, catchEndBB});
+  // No clause matched → rethrow to the nearest outer handler (the current try
+  // was already popped from tryStack, so tryStack.back() is the outer one).
+  if (nomatchBB) {
+    ctx.builder->SetInsertPoint(nomatchBB);
+    FunctionCallee rethrow = getCxaRethrow();
+    if (!tryStack.empty()) {
+      ensurePersonality(func);
+      BasicBlock* rcont =
+          BasicBlock::Create(ctx.getContext(), "rethrow.cont", func);
+      ctx.builder->CreateInvoke(rethrow, rcont, tryStack.back().landingPad, {});
+      ctx.builder->SetInsertPoint(rcont);
+    } else {
+      ctx.builder->CreateCall(rethrow, {});
+    }
+    ctx.builder->CreateUnreachable();
   }
 
   // ---- Merge ----
   ctx.builder->SetInsertPoint(mergeBB);
 
-  // If both paths reach merge with matching, non-void value types, produce a
-  // phi so try/catch yields a value. Otherwise it is used as a statement.
-  if (results.size() == 2 &&
-      results[0].first->getType() == results[1].first->getType() &&
-      !results[0].first->getType()->isVoidTy()) {
-    PHINode* phi = ctx.builder->CreatePHI(results[0].first->getType(), 2,
-                                          "try.result");
-    for (auto& [val, block] : results) phi->addIncoming(val, block);
-    return phi;
+  // Produce a phi if every path reaching merge carries the same non-void type
+  // (try/catch used as an expression); otherwise it is a statement.
+  if (!results.empty()) {
+    llvm::Type* t = results[0].first->getType();
+    bool uniform = !t->isVoidTy();
+    for (auto& [v, b] : results)
+      if (v->getType() != t) uniform = false;
+    if (uniform) {
+      PHINode* phi = ctx.builder->CreatePHI(t, results.size(), "try.result");
+      for (auto& [v, b] : results) phi->addIncoming(v, b);
+      return phi;
+    }
   }
-  if (results.size() == 1 && !results[0].first->getType()->isVoidTy()) {
-    return results[0].first;
-  }
-  // Statement use (void try block, or divergent branch types): yield a
-  // non-null dummy so the enclosing block continues generating subsequent
-  // statements (block codegen aborts on a null statement value).
-  return ConstantInt::get(Type::getInt32Ty(ctx.getContext()), 0);
+  // Non-null dummy so the enclosing block keeps generating statements
+  // (block codegen aborts on a null statement value).
+  return ConstantInt::get(i32Ty, 0);
 }
 
 // =============================================================================
@@ -366,6 +464,18 @@ FunctionCallee CodegenVisitor::getCxaEndCatch() {
   auto* voidTy = Type::getVoidTy(ctx.getContext());
   FunctionType* fnType = FunctionType::get(voidTy, {}, false);
   return module->getOrInsertFunction("__cxa_end_catch", fnType);
+}
+
+// Get or declare: void __cxa_rethrow() — rethrows the exception currently being
+// handled (must be called between __cxa_begin_catch and __cxa_end_catch).
+FunctionCallee CodegenVisitor::getCxaRethrow() {
+  auto* voidTy = Type::getVoidTy(ctx.getContext());
+  FunctionType* fnType = FunctionType::get(voidTy, {}, false);
+  auto fn = module->getOrInsertFunction("__cxa_rethrow", fnType);
+  if (auto* func = dyn_cast<Function>(fn.getCallee())) {
+    func->addFnAttr(Attribute::NoReturn);
+  }
+  return fn;
 }
 
 // Get the personality function for exception handling.

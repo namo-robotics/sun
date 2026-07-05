@@ -801,17 +801,18 @@ void ASTSerializer::serializeTryCatch(const TryCatchExprAST& expr,
     *tryBlock->add_body() = serialize(*stmt);
   }
 
-  // Serialize catch clause
-  auto* catchClause = tryCatch->mutable_catch_clause();
-  const auto& cc = expr.getCatchClause();
-  catchClause->set_binding_name(cc.bindingName);
-  if (cc.bindingType) {
-    *catchClause->mutable_binding_type() =
-        serializeTypeAnnotation(*cc.bindingType);
-  }
-  auto* catchBody = catchClause->mutable_body();
-  for (const auto& stmt : cc.body->getBody()) {
-    *catchBody->add_body() = serialize(*stmt);
+  // Serialize catch clauses (source order)
+  for (const auto& cc : expr.getCatchClauses()) {
+    auto* catchClause = tryCatch->add_catch_clauses();
+    catchClause->set_binding_name(cc.bindingName);
+    if (cc.bindingType) {
+      *catchClause->mutable_binding_type() =
+          serializeTypeAnnotation(*cc.bindingType);
+    }
+    auto* catchBody = catchClause->mutable_body();
+    for (const auto& stmt : cc.body->getBody()) {
+      *catchBody->add_body() = serialize(*stmt);
+    }
   }
 }
 

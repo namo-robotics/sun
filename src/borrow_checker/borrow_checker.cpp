@@ -677,13 +677,13 @@ void BorrowChecker::checkTryCatch(const TryCatchExprAST& tryCatch) {
   checkBlockExpr(tryCatch.getTryBlock());
   exitScope();
 
-  // Single catch clause
-  const auto& clause = tryCatch.getCatchClause();
-  enterScope();
-  if (clause.body) {
-    checkBlockExpr(*clause.body);
+  for (const auto& clause : tryCatch.getCatchClauses()) {
+    enterScope();
+    if (clause.body) {
+      checkBlockExpr(*clause.body);
+    }
+    exitScope();
   }
-  exitScope();
 }
 
 void BorrowChecker::checkUnsafeBlock(const UnsafeBlockAST& unsafeBlock) {

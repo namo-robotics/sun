@@ -3274,53 +3274,58 @@ unique_ptr<ExprAST> Parser::parseTryCatch() {
     return nullptr;
   }
 
-  // Expect 'catch'
+  // Expect at least one 'catch'
   if (curTok.kind != TokenKind::CATCH) {
     parsingError("expected 'catch' after try block");
     return nullptr;
   }
-  getNextToken();  // eat 'catch'
 
-  // Parse catch clause: (name: Type)
-  if (curTok.kind != TokenKind::PAREN_OPEN) {
-    parsingError("expected '(' after 'catch'");
-    return nullptr;
+  // Parse one or more catch clauses: catch (name: Type) { ... }
+  std::vector<CatchClause> catchClauses;
+  while (curTok.kind == TokenKind::CATCH) {
+    getNextToken();  // eat 'catch'
+
+    if (curTok.kind != TokenKind::PAREN_OPEN) {
+      parsingError("expected '(' after 'catch'");
+      return nullptr;
+    }
+    getNextToken();  // eat '('
+
+    CatchClause catchClause;
+
+    if (curTok.kind != TokenKind::IDENTIFIER) {
+      parsingError("expected binding name in catch clause");
+      return nullptr;
+    }
+
+    catchClause.bindingName = curTok.getIdentifier().value();
+    getNextToken();  // eat identifier
+
+    if (curTok.kind != TokenKind::COLON) {
+      parsingError("expected ':' after binding name in catch clause");
+      return nullptr;
+    }
+    getNextToken();  // eat ':'
+
+    catchClause.bindingType = parseTypeAnnotation();
+
+    if (curTok.kind != TokenKind::PAREN_CLOSE) {
+      parsingError("expected ')' after catch binding");
+      return nullptr;
+    }
+    getNextToken();  // eat ')'
+
+    if (curTok.kind != TokenKind::BRACE_OPEN) {
+      parsingError("expected '{' to start catch body");
+      return nullptr;
+    }
+
+    catchClause.body = parseBlock();
+    if (!catchClause.body) return nullptr;
+
+    catchClauses.push_back(std::move(catchClause));
   }
-  getNextToken();  // eat '('
-
-  CatchClause catchClause;
-
-  if (curTok.kind != TokenKind::IDENTIFIER) {
-    parsingError("expected binding name in catch clause");
-    return nullptr;
-  }
-
-  catchClause.bindingName = curTok.getIdentifier().value();
-  getNextToken();  // eat identifier
-
-  if (curTok.kind != TokenKind::COLON) {
-    parsingError("expected ':' after binding name in catch clause");
-    return nullptr;
-  }
-  getNextToken();  // eat ':'
-
-  catchClause.bindingType = parseTypeAnnotation();
-
-  if (curTok.kind != TokenKind::PAREN_CLOSE) {
-    parsingError("expected ')' after catch binding");
-    return nullptr;
-  }
-  getNextToken();  // eat ')'
-
-  // Parse catch body
-  if (curTok.kind != TokenKind::BRACE_OPEN) {
-    parsingError("expected '{' to start catch body");
-    return nullptr;
-  }
-
-  catchClause.body = parseBlock();
-  if (!catchClause.body) return nullptr;
 
   return std::make_unique<TryCatchExprAST>(std::move(tryBlock),
-                                           std::move(catchClause));
+                                           std::move(catchClauses));
 }

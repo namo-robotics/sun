@@ -438,6 +438,7 @@ class CodegenVisitor {
   llvm::FunctionCallee getCxaThrow();
   llvm::FunctionCallee getCxaBeginCatch();
   llvm::FunctionCallee getCxaEndCatch();
+  llvm::FunctionCallee getCxaRethrow();
   llvm::Constant* getPersonalityFunction();
   llvm::Constant* getSunExceptionTypeInfo();
 

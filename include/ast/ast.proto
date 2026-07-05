@@ -433,7 +433,7 @@ message CatchClause {
 
 message TryCatch {
   BlockExpr try_block = 1;
-  CatchClause catch_clause = 2;
+  repeated CatchClause catch_clauses = 2;
 }
 
 message ThrowExpr {
