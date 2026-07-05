@@ -296,8 +296,10 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       const auto* tc = static_cast<const TryCatchExprAST*>(node);
       int tryId = visitNode(&tc->getTryBlock());
       emitEdge(tryId, "try");
-      int catchId = visitNode(tc->getCatchClause().body.get());
-      emitEdge(catchId, "catch");
+      for (const auto& clause : tc->getCatchClauses()) {
+        int catchId = visitNode(clause.body.get());
+        emitEdge(catchId, "catch");
+      }
       break;
     }
     case ASTNodeType::THROW: {

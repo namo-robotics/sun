@@ -598,8 +598,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
         if (!funcInfo->qualifiedName.empty()) {
           qualName.setResolvedMangledName(funcInfo->qualifiedName.mangled());
         }
-        expr.setResolvedType(
-            sun::Types::Function(funcInfo->returnType, funcInfo->paramTypes));
+        expr.setResolvedType(sun::Types::Function(
+            funcInfo->returnType, funcInfo->paramTypes, funcInfo->canThrow));
         break;
       }
 
@@ -766,7 +766,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
         // Add method to class type (include generic type parameters)
         classType->addMethod(proto.getName(), methodInfo.returnType,
                              methodInfo.paramTypes, methodDecl.isConstructor,
-                             proto.getTypeParameters());
+                             proto.getTypeParameters(), proto.canThrow());
 
         // Register the method as a function with mangled name
         std::string mangledName =
@@ -1066,29 +1066,64 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       // Exit try block tracking
       exitTryBlock();
 
-      // Analyze the catch clause
-      const auto& catchClause = tryCatchExpr.getCatchClause();
-
-      // Create scope for the catch body
-      enterScope();
-
-      // If there's a binding, declare it in scope
-      if (!catchClause.bindingName.empty()) {
-        if (!catchClause.bindingType.has_value()) {
-          logAndThrowError("catch binding '" + catchClause.bindingName +
-                               "' requires a type annotation, e.g., catch (" +
-                               catchClause.bindingName + ": IError) { ... }",
-                           tryCatchExpr.getLocation());
+      // Analyze each catch clause, tested in source order.
+      auto builtinIError = typeRegistry->getInterface("IError");
+      bool sawCatchAll = false;
+      auto& clauses = tryCatchExpr.getCatchClausesMutable();
+      for (auto& catchClause : clauses) {
+        if (catchClause.bindingName.empty() ||
+            !catchClause.bindingType.has_value()) {
+          logAndThrowError(
+              "catch clause requires a typed binding, e.g. catch (e: IError) "
+              "{ ... }",
+              tryCatchExpr.getLocation());
         }
+
         sun::TypePtr bindingType =
             typeAnnotationToType(*catchClause.bindingType);
+
+        // The catch type must be IError or a class implementing IError.
+        bool isCatchAll = false;
+        bool valid = false;
+        if (bindingType && bindingType->isInterface()) {
+          if (bindingType.get() == builtinIError.get()) {
+            valid = true;
+            isCatchAll = true;  // catch (e: IError) matches any error
+          }
+        } else if (bindingType && bindingType->isClass()) {
+          valid = static_cast<sun::ClassType*>(bindingType.get())
+                      ->implementsInterface("IError");
+        }
+        if (!valid) {
+          logAndThrowError(
+              "catch type must be 'IError' or a class implementing IError, "
+              "got '" +
+                  (bindingType ? bindingType->toString() : std::string("?")) +
+                  "'",
+              tryCatchExpr.getLocation());
+        }
+
+        // A catch-all (IError) makes any following clause unreachable.
+        if (sawCatchAll) {
+          logAndThrowError(
+              "unreachable catch clause: a 'catch (e: IError)' catch-all must "
+              "be the last handler",
+              tryCatchExpr.getLocation());
+        }
+        if (isCatchAll) sawCatchAll = true;
+
+        // Record resolution for codegen's typed matching.
+        catchClause.isCatchAll = isCatchAll;
+        catchClause.resolvedMangledName =
+            isCatchAll ? std::string()
+                       : static_cast<sun::ClassType*>(bindingType.get())
+                             ->getMangledName();
+
+        enterScope();
         declareVariable(catchClause.bindingName, bindingType);
+        analyzeBlock(const_cast<BlockExprAST&>(*catchClause.body));
+        exitScope();
       }
-
-      // Analyze the catch body
-      analyzeBlock(const_cast<BlockExprAST&>(*catchClause.body));
-
-      exitScope();
 
       // The result type is the type of the try block
       sun::TypePtr resultType = inferType(tryCatchExpr.getTryBlock());
@@ -1455,7 +1490,7 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
 
       existingClass->addMethod(proto.getName(), methodInfo.returnType,
                                methodInfo.paramTypes, methodDecl.isConstructor,
-                               proto.getTypeParameters());
+                               proto.getTypeParameters(), proto.canThrow());
       std::string mangledName =
           existingClass->getMangledMethodName(proto.getName());
       std::vector<sun::TypePtr> methodParamTypes;
@@ -1762,8 +1797,9 @@ void SemanticAnalyzer::clearResolvedTypes(ExprAST& expr) {
     case ASTNodeType::TRY_CATCH: {
       auto& tc = static_cast<TryCatchExprAST&>(expr);
       clearResolvedTypes(const_cast<BlockExprAST&>(tc.getTryBlock()));
-      const auto& clause = tc.getCatchClause();
-      clearResolvedTypes(*clause.body);
+      for (const auto& clause : tc.getCatchClauses()) {
+        clearResolvedTypes(*clause.body);
+      }
       break;
     }
     case ASTNodeType::UNSAFE_BLOCK: {
@@ -2059,7 +2095,8 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
     if (resolvedFunc) {
       // Set resolved type on the callee directly
       varRef.setResolvedType(sun::Types::Function(resolvedFunc->returnType,
-                                                  resolvedFunc->paramTypes));
+                                                  resolvedFunc->paramTypes,
+                                                  resolvedFunc->canThrow));
       // Set qualified name from the resolved function (handles import scopes)
       if (!resolvedFunc->qualifiedName.empty()) {
         varRef.setQualifiedName(resolvedFunc->qualifiedName);

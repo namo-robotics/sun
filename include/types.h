@@ -242,14 +242,23 @@ class PrimitiveType : public Type {
 class FunctionType : public Type {
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;
+  bool canThrow_ = false;  // declared with ', IError' — may unwind
 
  public:
-  FunctionType(TypePtr ret, std::vector<TypePtr> params)
-      : returnType(std::move(ret)), paramTypes(std::move(params)) {}
+  FunctionType(TypePtr ret, std::vector<TypePtr> params, bool canThrow = false)
+      : returnType(std::move(ret)),
+        paramTypes(std::move(params)),
+        canThrow_(canThrow) {}
 
   Kind getKind() const override { return Kind::Function; }
   const TypePtr& getReturnType() const { return returnType; }
   const std::vector<TypePtr>& getParamTypes() const { return paramTypes; }
+
+  // Whether calls to this function may throw (unwind). Metadata only —
+  // intentionally excluded from equals()/identity so it never disturbs
+  // overload resolution.
+  bool canThrow() const { return canThrow_; }
+  void setCanThrow(bool v) { canThrow_ = v; }
 
   std::string toString() const override {
     std::string result = "(";
@@ -819,6 +828,7 @@ struct ClassMethod {
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;  // Excludes implicit 'this' parameter
   bool isConstructor;               // true if this is the 'init' method
+  bool canThrow = false;            // declared with ', IError' — may unwind
 
   bool isGeneric() const { return !typeParameters.empty(); }
 };
@@ -995,9 +1005,10 @@ class ClassType : public Type {
 
   void addMethod(const std::string& methodName, TypePtr returnType,
                  std::vector<TypePtr> paramTypes, bool isConstructor = false,
-                 std::vector<std::string> typeParams = {}) {
+                 std::vector<std::string> typeParams = {},
+                 bool canThrow = false) {
     methods.push_back({methodName, std::move(typeParams), std::move(returnType),
-                       std::move(paramTypes), isConstructor});
+                       std::move(paramTypes), isConstructor, canThrow});
   }
 
   void addImplementedInterface(const std::string& interfaceName) {
@@ -1672,9 +1683,10 @@ class Types {
   static TypePtr String() { return StaticPointer(UInt8()); }
 
   // Create a function type: _() -> {} (named function, direct call)
-  static TypePtr Function(TypePtr returnType, std::vector<TypePtr> paramTypes) {
+  static TypePtr Function(TypePtr returnType, std::vector<TypePtr> paramTypes,
+                          bool canThrow = false) {
     return std::make_shared<FunctionType>(std::move(returnType),
-                                          std::move(paramTypes));
+                                          std::move(paramTypes), canThrow);
   }
 
   // Create a lambda type: () -> {} (anonymous function, fat pointer call)

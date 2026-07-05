@@ -86,10 +86,10 @@ struct AllocationMetadata {
   llvm::Value* size;  // For mmap: the size value (munmap needs it)
 };
 
-// Try block context for error propagation
+// Try block context for exception handling. Throwing calls made inside a try
+// block are emitted as `invoke`s that unwind to this landing pad.
 struct TryContext {
-  llvm::BasicBlock* catchBlock;    // Block to jump to on error
-  llvm::Value* errorResultAlloca;  // Alloca to store the error union result
+  llvm::BasicBlock* landingPad;  // Landing pad to unwind to on exception
 };
 
 /**
@@ -336,6 +336,13 @@ class CodegenVisitor {
                                          sun::ClassType* classType,
                                          sun::InterfaceType* ifaceType);
 
+  // Returns the vtable global for a (class, interface) pair, building it on
+  // demand if the class was not codegen'd in this module (e.g. an stdlib error
+  // class referenced only by a `throw`). Missing methods are declared as
+  // externals resolved from the defining module at link/JIT time.
+  llvm::GlobalVariable* getOrCreateInterfaceVtable(
+      sun::ClassType* classType, sun::InterfaceType* ifaceType);
+
   // Converts a class argument to an interface fat pointer if the parameter
   // expects an interface. Returns the original value if no conversion needed.
   llvm::Value* convertToInterfaceIfNeeded(llvm::Value* argVal,
@@ -431,8 +438,29 @@ class CodegenVisitor {
   llvm::FunctionCallee getCxaThrow();
   llvm::FunctionCallee getCxaBeginCatch();
   llvm::FunctionCallee getCxaEndCatch();
+  llvm::FunctionCallee getCxaRethrow();
   llvm::Constant* getPersonalityFunction();
   llvm::Constant* getSunExceptionTypeInfo();
+
+  // Ensure `fn` has a personality function set (needed for any function that
+  // contains an invoke/landingpad). Idempotent.
+  void ensurePersonality(llvm::Function* fn);
+
+  // Emit __cxa_throw(excPtr, tinfo, null) (as an invoke to the innermost try's
+  // landing pad if inside a try, else a plain call), terminate the current
+  // block with unreachable, and leave the builder in a fresh dead block.
+  void emitCxaThrowAndUnreachable(llvm::Value* excPtr);
+
+  // Emit a call that may unwind. If `canThrow` and we are inside a try block,
+  // emits an `invoke` unwinding to the innermost try's landing pad and
+  // continues codegen in the normal-dest block; otherwise emits a plain call.
+  llvm::Value* emitPossiblyThrowingCall(llvm::FunctionType* fnTy,
+                                        llvm::Value* callee,
+                                        llvm::ArrayRef<llvm::Value*> args,
+                                        bool canThrow, const llvm::Twine& name);
+  llvm::Value* emitPossiblyThrowingCall(llvm::FunctionCallee callee,
+                                        llvm::ArrayRef<llvm::Value*> args,
+                                        bool canThrow, const llvm::Twine& name);
 
   // Generic function call codegen: create<T>(allocator, args...)
   llvm::Value* codegen(const GenericCallAST& expr);
@@ -625,22 +653,6 @@ class CodegenVisitor {
    */
   llvm::Value* genLocalVar(const VariableCreationAST& expr,
                            llvm::Type* varType);
-
-  /**
-   * Unwraps an error union value { i1 isError, T value }.
-   * If the value is an error union and we're in an error-returning function,
-   * generates error propagation code. Returns the unwrapped inner value.
-   * If value is not an error union, returns it unchanged.
-   */
-  llvm::Value* unwrapErrorUnion(llvm::Value* value, llvm::Type* expectedType,
-                                llvm::Function* func);
-
-  /**
-   * Unwraps an error union from a call result.
-   * Handles both try-catch blocks and error-returning function contexts.
-   * If value is not an error union, returns it unchanged.
-   */
-  llvm::Value* unwrapCallErrorUnion(llvm::Value* callResult);
 
   /**
    * Applies move semantics for class arguments passed by value.

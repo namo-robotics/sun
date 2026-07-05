@@ -781,16 +781,23 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeTryCatch(
     const ast::TryCatch& proto) const {
   auto tryBlock = deserializeBlockExpr(proto.try_block());
 
-  CatchClause catchClause;
-  const auto& cc = proto.catch_clause();
-  catchClause.bindingName = cc.binding_name();
-  if (cc.has_binding_type()) {
-    catchClause.bindingType = deserializeTypeAnnotation(cc.binding_type());
+  auto deserializeClause = [&](const ast::CatchClause& cc) {
+    CatchClause catchClause;
+    catchClause.bindingName = cc.binding_name();
+    if (cc.has_binding_type()) {
+      catchClause.bindingType = deserializeTypeAnnotation(cc.binding_type());
+    }
+    catchClause.body = deserializeBlockExpr(cc.body());
+    return catchClause;
+  };
+
+  std::vector<CatchClause> catchClauses;
+  for (const auto& cc : proto.catch_clauses()) {
+    catchClauses.push_back(deserializeClause(cc));
   }
-  catchClause.body = deserializeBlockExpr(cc.body());
 
   return std::make_unique<TryCatchExprAST>(std::move(tryBlock),
-                                           std::move(catchClause));
+                                           std::move(catchClauses));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeThrow(

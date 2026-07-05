@@ -420,20 +420,10 @@ FuncDeclResult CodegenVisitor::declareFuncSignature(PrototypeAST& proto) {
                      "Ensure semantic analysis ran before codegen.");
   }
 
-  // If this function can return errors, wrap the return type in an error union
-  llvm::Type* valueType = returnType;  // Save the underlying value type
-  if (canError) {
-    if (valueType->isVoidTy()) {
-      returnType = llvm::StructType::get(
-          ctx.getContext(),
-          std::vector<llvm::Type*>{llvm::Type::getInt1Ty(ctx.getContext())});
-      valueType = nullptr;
-    } else {
-      returnType = llvm::StructType::get(
-          ctx.getContext(),
-          {llvm::Type::getInt1Ty(ctx.getContext()), valueType});
-    }
-  }
+  // With native LLVM exceptions, a throwing function ('T, IError') returns a
+  // plain T — the ', IError' marker only means the function may unwind. We no
+  // longer wrap the return type in an error-union struct.
+  llvm::Type* valueType = returnType;
 
   // Create closure env struct type
   auto envType = createEnvTypeForFunc(proto);
@@ -443,6 +433,12 @@ FuncDeclResult CodegenVisitor::declareFuncSignature(PrototypeAST& proto) {
       codegen(proto, envType, /*isLambda=*/false, returnType);
   if (!func) {
     logAndThrowError("Failed to create function: " + proto.getName());
+  }
+
+  // Tag throwing functions so direct call sites know to emit `invoke` when
+  // inside a try block. This attribute survives CloneModule into the JIT.
+  if (canError) {
+    func->addFnAttr("sun.canthrow");
   }
 
   return {func, fatType, envType, returnType, valueType, canError};
