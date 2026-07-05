@@ -192,7 +192,8 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       // Check if it's a named function
       auto funcs = getAllFunctions(resolved.baseName);
       if (funcs.size() == 1) {
-        return sun::Types::Function(funcs[0].returnType, funcs[0].paramTypes);
+        return sun::Types::Function(funcs[0].returnType, funcs[0].paramTypes,
+                                    funcs[0].canThrow);
       }
       if (funcs.size() > 1) {
         logAndThrowError("Cannot reference overloaded function '" + name +
@@ -492,7 +493,8 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       // Look up in namespaced functions
       const FunctionInfo* funcInfo = lookupQualifiedFunction(fullName);
       if (funcInfo) {
-        return sun::Types::Function(funcInfo->returnType, funcInfo->paramTypes);
+        return sun::Types::Function(funcInfo->returnType, funcInfo->paramTypes,
+                                    funcInfo->canThrow);
       }
 
       // Unknown qualified name - error in strongly typed language
@@ -736,7 +738,8 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
             return match.enumType;
           case SymbolKind::Function:
             return sun::Types::Function(match.functionInfo->returnType,
-                                        match.functionInfo->paramTypes);
+                                        match.functionInfo->paramTypes,
+                                        match.functionInfo->canThrow);
           case SymbolKind::Variable:
             return match.variableInfo->type;
           default:

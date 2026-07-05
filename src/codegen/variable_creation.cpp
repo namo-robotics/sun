@@ -158,57 +158,6 @@ Value* CodegenVisitor::genFunctionVariable(const VariableCreationAST& expr) {
 // -------------------------------------------------------------------
 
 // -------------------------------------------------------------------
-// Error union unwrapping helper
-// -------------------------------------------------------------------
-
-llvm::Value* CodegenVisitor::unwrapErrorUnion(llvm::Value* value,
-                                              llvm::Type* expectedType,
-                                              llvm::Function* func) {
-  // Check if value is an error union struct but expectedType is the inner type
-  if (!value->getType()->isStructTy() || expectedType->isStructTy()) {
-    return value;  // Not an error union, return unchanged
-  }
-
-  auto* structType = cast<StructType>(value->getType());
-  // Check if this looks like an error union: { i1, T }
-  if (structType->getNumElements() != 2 ||
-      !structType->getElementType(0)->isIntegerTy(1)) {
-    return value;  // Not an error union format
-  }
-
-  // Extract isError flag and inner value
-  Value* isError = ctx.builder->CreateExtractValue(value, 0, "call.isError");
-  Value* innerValue = ctx.builder->CreateExtractValue(value, 1, "call.value");
-
-  // If we're in an error-returning function, propagate the error
-  if (currentFunctionCanError) {
-    BasicBlock* errorBB =
-        BasicBlock::Create(ctx.getContext(), "call.error", func);
-    BasicBlock* successBB =
-        BasicBlock::Create(ctx.getContext(), "call.success", func);
-
-    ctx.builder->CreateCondBr(isError, errorBB, successBB);
-
-    // Error block: return error from this function
-    ctx.builder->SetInsertPoint(errorBB);
-    llvm::Type* retType = func->getReturnType();
-    Value* errorStruct = UndefValue::get(retType);
-    errorStruct = ctx.builder->CreateInsertValue(
-        errorStruct, ConstantInt::getTrue(ctx.getContext()), 0);
-    if (currentFunctionValueType) {
-      Value* zeroVal = Constant::getNullValue(currentFunctionValueType);
-      errorStruct = ctx.builder->CreateInsertValue(errorStruct, zeroVal, 1);
-    }
-    ctx.builder->CreateRet(errorStruct);
-
-    // Success block: continue with the value
-    ctx.builder->SetInsertPoint(successBB);
-  }
-
-  return innerValue;
-}
-
-// -------------------------------------------------------------------
 // Local variable creation
 // -------------------------------------------------------------------
 
@@ -221,9 +170,6 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
   auto& scope = scopes.back().variables;
   Function* func = ctx.builder->GetInsertBlock()->getParent();
   sun::TypePtr varSunType = expr.getResolvedType();
-
-  // Handle error union unwrapping first
-  value = unwrapErrorUnion(value, varType, func);
 
   // Handle interface types
   if (varSunType && varSunType->isInterface()) {

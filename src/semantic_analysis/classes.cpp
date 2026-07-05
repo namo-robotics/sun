@@ -300,7 +300,7 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
     if (!astOnlyMode) {
       specializedClass->addMethod(proto.getName(), returnType, paramTypes,
                                   methodClone.isConstructor,
-                                  proto.getTypeParameters());
+                                  proto.getTypeParameters(), proto.canThrow());
     }
 
     // Update the cloned method's prototype with resolved types

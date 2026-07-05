@@ -1,10 +1,24 @@
 {
   "permissions": {
     "allow": [
-      "Bash(./tests/sun_tests *')",
       "Bash(git diff *)",
       "Bash(git status)",
-      "Bash(./build.sh *)"
+      "Bash(./build.sh *)",
+      "Bash(cmake --build *)",
+      "Bash(./build/sun *)",
+      "Bash(/workspaces/sun/build/sun *)",
+      "Bash(./build/tests/sun_tests *)",
+      "Bash(/workspaces/sun/build/tests/sun_tests *)",
+      "Bash(SUN_PATH=/workspaces/sun ./build/sun *)",
+      "Bash(SUN_PATH=/workspaces/sun /workspaces/sun/build/sun *)",
+      "Bash(SUN_PATH=/workspaces/sun ./build/tests/sun_tests *)",
+      "Bash(SUN_PATH=/workspaces/sun /workspaces/sun/build/tests/sun_tests *)",
+      "Read(//tmp/**)",
+      "Skill(update-config)",
+      "Skill(update-config:*)"
+    ],
+    "additionalDirectories": [
+      "/tmp"
     ]
   }
 }

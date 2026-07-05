@@ -29,65 +29,6 @@ Function* CodegenVisitor::findClassMethod(
 // Helper for unwrapping error union from call results
 // -------------------------------------------------------------------
 
-// Unwraps error union { i1 isError, T value } from a call result.
-// Generates error propagation code for try-catch or error-returning functions.
-// Returns the unwrapped inner value.
-Value* CodegenVisitor::unwrapCallErrorUnion(Value* callResult) {
-  if (!callResult || !callResult->getType()->isStructTy()) {
-    return callResult;
-  }
-
-  auto* structType = cast<StructType>(callResult->getType());
-  // Check if this looks like an error union: { i1, T }
-  if (structType->getNumElements() != 2 ||
-      !structType->getElementType(0)->isIntegerTy(1)) {
-    return callResult;
-  }
-
-  Function* currentFunc = ctx.builder->GetInsertBlock()->getParent();
-
-  // Extract isError flag and value
-  Value* isError =
-      ctx.builder->CreateExtractValue(callResult, 0, "call.isError");
-  Value* innerValue =
-      ctx.builder->CreateExtractValue(callResult, 1, "call.value");
-
-  // Create blocks for error handling
-  BasicBlock* errorBB =
-      BasicBlock::Create(ctx.getContext(), "call.error", currentFunc);
-  BasicBlock* successBB =
-      BasicBlock::Create(ctx.getContext(), "call.success", currentFunc);
-
-  ctx.builder->CreateCondBr(isError, errorBB, successBB);
-
-  // Error block: either propagate to caller or jump to catch block
-  ctx.builder->SetInsertPoint(errorBB);
-
-  if (!tryStack.empty()) {
-    // Inside a try block: store error result and jump to catch
-    ctx.builder->CreateStore(callResult, tryStack.back().errorResultAlloca);
-    ctx.builder->CreateBr(tryStack.back().catchBlock);
-  } else if (currentFunctionCanError) {
-    // In error-returning function: propagate error to caller
-    llvm::Type* retType = currentFunc->getReturnType();
-    Value* errorStruct = UndefValue::get(retType);
-    errorStruct = ctx.builder->CreateInsertValue(
-        errorStruct, ConstantInt::getTrue(ctx.getContext()), 0);
-    if (currentFunctionValueType) {
-      Value* zeroVal = Constant::getNullValue(currentFunctionValueType);
-      errorStruct = ctx.builder->CreateInsertValue(errorStruct, zeroVal, 1);
-    }
-    ctx.builder->CreateRet(errorStruct);
-  } else {
-    // Not in try block and not in error-returning function
-    // Continue to success block (error silently ignored)
-    ctx.builder->CreateBr(successBB);
-  }
-
-  // Success block: continue with the unwrapped value
-  ctx.builder->SetInsertPoint(successBB);
-  return innerValue;
-}
 
 // -------------------------------------------------------------------
 // Helper: Apply move semantics for class arguments passed by value
@@ -128,19 +69,67 @@ Value* CodegenVisitor::applyMoveSemantics(Value* argVal,
 // Helper: Create interface fat pointer { data_ptr, vtable_ptr }
 // -------------------------------------------------------------------
 
+GlobalVariable* CodegenVisitor::getOrCreateInterfaceVtable(
+    sun::ClassType* classType, sun::InterfaceType* ifaceType) {
+  std::string className = classType->getMangledName();
+  std::string interfaceName = ifaceType->getName();
+
+  auto it = vtableGlobals.find({className, interfaceName});
+  if (it != vtableGlobals.end()) return it->second;
+
+  auto* ptrTy = PointerType::getUnqual(ctx.getContext());
+
+  // Build one function pointer per non-generic interface method (declaration
+  // order). Methods not present in this module are declared as externals and
+  // resolved from the class's defining module at link/JIT time.
+  std::vector<Constant*> vtableEntries;
+  bool hasVtableMethods = false;
+  for (const auto& m : ifaceType->getMethods()) {
+    if (m.isGeneric()) continue;
+    hasVtableMethods = true;
+
+    std::string mangled = classType->getMangledMethodName(m.name, m.paramTypes);
+    Function* fn = module->getFunction(mangled);
+    if (!fn) {
+      std::vector<llvm::Type*> params;
+      params.push_back(ptrTy);  // 'this'
+      for (const auto& pt : m.paramTypes) params.push_back(typeResolver.resolve(pt));
+      llvm::Type* ret = typeResolver.resolveForReturn(m.returnType);
+      llvm::FunctionType* ft = FunctionType::get(ret, params, false);
+      fn = Function::Create(ft, Function::ExternalLinkage, mangled, module);
+    }
+    vtableEntries.push_back(fn);
+  }
+
+  if (!hasVtableMethods) return nullptr;
+
+  std::string vtableTypeName = className + "_" + interfaceName + "_vtable_t";
+  std::vector<llvm::Type*> slotTypes(vtableEntries.size(), ptrTy);
+  llvm::StructType* vtableType =
+      llvm::StructType::create(ctx.getContext(), slotTypes, vtableTypeName);
+
+  std::string vtableName = className + "_" + interfaceName + "_vtable";
+  Constant* vtableInit = ConstantStruct::get(vtableType, vtableEntries);
+  auto* vtableGlobal = new GlobalVariable(
+      *module, vtableType, /*isConstant=*/true, GlobalValue::InternalLinkage,
+      vtableInit, vtableName);
+
+  vtableGlobals[{className, interfaceName}] = vtableGlobal;
+  return vtableGlobal;
+}
+
 Value* CodegenVisitor::createInterfaceFatPointer(
     Value* objectPtr, sun::ClassType* classType,
     sun::InterfaceType* ifaceType) {
-  // Look up the vtable for this (class, interface) pair
-  auto vtableIt =
-      vtableGlobals.find({classType->getMangledName(), ifaceType->getName()});
-  if (vtableIt == vtableGlobals.end()) {
+  // Look up (or build) the vtable for this (class, interface) pair.
+  GlobalVariable* vtableGlobal =
+      getOrCreateInterfaceVtable(classType, ifaceType);
+  if (!vtableGlobal) {
     logAndThrowError("Vtable not found for class " +
                      classType->getDisplayName() + " implementing interface " +
                      ifaceType->getName());
     return nullptr;
   }
-  GlobalVariable* vtableGlobal = vtableIt->second;
 
   // Create the fat pointer struct { ptr data, ptr vtable }
   llvm::StructType* fatPtrType =
@@ -501,8 +490,9 @@ Value* CodegenVisitor::codegenModuleFunctionCall(
     return nullptr;
   }
 
-  Value* result = ctx.builder->CreateCall(func, argValues, "calltmp");
-  result = unwrapCallErrorUnion(result);
+  Value* result = emitPossiblyThrowingCall(
+      func->getFunctionType(), func, argValues,
+      func->hasFnAttribute("sun.canthrow"), "calltmp");
   return materializeStructReturn(result);
 }
 
@@ -581,17 +571,12 @@ Value* CodegenVisitor::codegenInterfaceMethodCall(
     argValues.push_back(argVal);
   }
 
-  // Make the indirect call
-  Value* result;
-  if (returnType->isVoidTy()) {
-    result = ctx.builder->CreateCall(funcType, funcPtr, argValues);
-  } else {
-    result =
-        ctx.builder->CreateCall(funcType, funcPtr, argValues, "iface.call");
-  }
-
-  // Handle error union unwrapping and struct materialization
-  result = unwrapCallErrorUnion(result);
+  // Make the indirect call. Interface-dispatched methods are not currently
+  // marked as throwing (InterfaceMethod carries no canThrow), so this does not
+  // route through a local landing pad — a limitation only for throwing methods
+  // invoked via an interface value, which the stdlib/tests don't exercise.
+  Value* result = emitPossiblyThrowingCall(funcType, funcPtr, argValues,
+                                           /*canThrow=*/false, "iface.call");
   return materializeStructReturn(result);
 }
 
@@ -684,12 +669,9 @@ Value* CodegenVisitor::codegenClassMethodCall(
       argValues.push_back(argVal);
     }
 
-    if (specializedFunc->getReturnType()->isVoidTy()) {
-      return ctx.builder->CreateCall(specializedFunc, argValues);
-    }
-    Value* result =
-        ctx.builder->CreateCall(specializedFunc, argValues, "method.call");
-    result = unwrapCallErrorUnion(result);
+    Value* result = emitPossiblyThrowingCall(
+        specializedFunc->getFunctionType(), specializedFunc, argValues,
+        method->canThrow, "method.call");
     return materializeStructReturn(result);
   }
 
@@ -764,11 +746,9 @@ Value* CodegenVisitor::codegenClassMethodCall(
     markClassAllocationAsDeinited(objectPtr);
   }
 
-  if (methodFunc->getReturnType()->isVoidTy()) {
-    return ctx.builder->CreateCall(methodFunc, argValues);
-  }
-  Value* result = ctx.builder->CreateCall(methodFunc, argValues, "method.call");
-  result = unwrapCallErrorUnion(result);
+  Value* result = emitPossiblyThrowingCall(
+      methodFunc->getFunctionType(), methodFunc, argValues, method->canThrow,
+      "method.call");
   return materializeStructReturn(result);
 }
 
@@ -1013,11 +993,8 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
     }
 
     // Indirect call through function pointer
-    if (llvmFuncType->getReturnType()->isVoidTy()) {
-      return ctx.builder->CreateCall(llvmFuncType, funcPtrVal, argValues);
-    }
-    return ctx.builder->CreateCall(llvmFuncType, funcPtrVal, argValues,
-                                   "calltmp");
+    return emitPossiblyThrowingCall(llvmFuncType, funcPtrVal, argValues,
+                                    funcType.canThrow(), "calltmp");
   }
 
   // Direct call to known function
@@ -1116,69 +1093,12 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
     ++argIdx;
   }
 
-  // Don't name the call result if the function returns void
-  Value* callResult;
-  if (func->getReturnType()->isVoidTy()) {
-    callResult = ctx.builder->CreateCall(func, argValues);
-  } else {
-    callResult = ctx.builder->CreateCall(func, argValues, "calltmp");
-  }
-
-  // Handle error union unwrapping: if the called function returns an error
-  // union, unwrap the result and propagate errors (either to caller or to catch
-  // block)
-  if (callResult->getType()->isStructTy()) {
-    auto* structType = cast<StructType>(callResult->getType());
-    // Check if this looks like an error union: { i1, T }
-    if (structType->getNumElements() == 2 &&
-        structType->getElementType(0)->isIntegerTy(1)) {
-      Function* currentFunc = ctx.builder->GetInsertBlock()->getParent();
-
-      // Extract isError flag and value
-      Value* isError =
-          ctx.builder->CreateExtractValue(callResult, 0, "call.isError");
-      Value* innerValue =
-          ctx.builder->CreateExtractValue(callResult, 1, "call.value");
-
-      // Create blocks for error handling
-      BasicBlock* errorBB =
-          BasicBlock::Create(ctx.getContext(), "call.error", currentFunc);
-      BasicBlock* successBB =
-          BasicBlock::Create(ctx.getContext(), "call.success", currentFunc);
-
-      ctx.builder->CreateCondBr(isError, errorBB, successBB);
-
-      // Error block: either propagate to caller or jump to catch block
-      ctx.builder->SetInsertPoint(errorBB);
-
-      if (!tryStack.empty()) {
-        // Inside a try block: store error result and jump to catch
-        ctx.builder->CreateStore(callResult, tryStack.back().errorResultAlloca);
-        ctx.builder->CreateBr(tryStack.back().catchBlock);
-      } else if (currentFunctionCanError) {
-        // In error-returning function: propagate error to caller
-        llvm::Type* retType = currentFunc->getReturnType();
-        Value* errorStruct = UndefValue::get(retType);
-        errorStruct = ctx.builder->CreateInsertValue(
-            errorStruct, ConstantInt::getTrue(ctx.getContext()), 0);
-        if (currentFunctionValueType) {
-          Value* zeroVal = Constant::getNullValue(currentFunctionValueType);
-          errorStruct = ctx.builder->CreateInsertValue(errorStruct, zeroVal, 1);
-        }
-        ctx.builder->CreateRet(errorStruct);
-      } else {
-        // Not in try block and not in error-returning function
-        // Log warning and continue - error will be silently ignored at runtime
-        llvm::errs() << "Warning: calling error-returning function outside of "
-                        "try block or error-returning function\n";
-        ctx.builder->CreateBr(successBB);
-      }
-
-      // Success block: continue with the unwrapped value
-      ctx.builder->SetInsertPoint(successBB);
-      callResult = innerValue;
-    }
-  }
+  // A throwing callee ('T, IError') is tagged with "sun.canthrow"; inside a try
+  // block it must be `invoke`d so its exception routes to the local landing
+  // pad. Exceptions now propagate natively — no error-union unwrapping.
+  bool canThrow = func->hasFnAttribute("sun.canthrow");
+  Value* callResult = emitPossiblyThrowingCall(
+      func->getFunctionType(), func, argValues, canThrow, "calltmp");
 
   // Handle struct return values (classes returned by value)
   return materializeStructReturn(callResult);
@@ -1262,13 +1182,11 @@ Value* CodegenVisitor::codegenLambdaCall(const CallExprAST& expr,
     ++i;
   }
 
-  // Indirect call through the extracted function pointer
-  // Don't name the result if the function returns void
-  if (llvmFuncType->getReturnType()->isVoidTy()) {
-    return ctx.builder->CreateCall(llvmFuncType, funcPtr, argValues);
-  }
-  Value* result =
-      ctx.builder->CreateCall(llvmFuncType, funcPtr, argValues, "calltmp");
+  // Indirect call through the extracted function pointer. LambdaType carries
+  // no canThrow flag, so throwing lambdas are not routed to a local landing
+  // pad (not exercised by the stdlib/tests).
+  Value* result = emitPossiblyThrowingCall(llvmFuncType, funcPtr, argValues,
+                                           /*canThrow=*/false, "calltmp");
 
   // Materialize struct return values for addressability
   return materializeStructReturn(result);

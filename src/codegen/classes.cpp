@@ -349,51 +349,7 @@ Value* CodegenVisitor::codegen(const ClassDefinitionAST& expr) {
     if (!interfaceType) {
       continue;
     }
-
-    // Build vtable entries: one function pointer per non-generic interface
-    // method
-    std::vector<Constant*> vtableEntries;
-    bool hasVtableMethods = false;
-    for (const auto& interfaceMethod : interfaceType->getMethods()) {
-      // Skip generic methods - they can't be dispatched via vtable
-      if (interfaceMethod.isGeneric()) {
-        continue;
-      }
-      hasVtableMethods = true;
-
-      // Include param types for overload disambiguation
-      std::string methodMangledName = classType->getMangledMethodName(
-          interfaceMethod.name, interfaceMethod.paramTypes);
-      Function* methodFunc = module->getFunction(methodMangledName);
-      if (!methodFunc) {
-        logAndThrowError("Method not found for vtable: " + methodMangledName +
-                         " in class " + className);
-        return nullptr;
-      }
-      vtableEntries.push_back(methodFunc);
-    }
-
-    // Skip creating vtable if there are no non-generic methods
-    if (!hasVtableMethods) {
-      continue;
-    }
-
-    // Create the vtable struct type dynamically based on non-generic methods
-    auto* ptrTy = PointerType::getUnqual(ctx.getContext());
-    std::string vtableTypeName = className + "_" + interfaceName + "_vtable_t";
-    std::vector<llvm::Type*> slotTypes(vtableEntries.size(), ptrTy);
-    llvm::StructType* vtableType =
-        llvm::StructType::create(ctx.getContext(), slotTypes, vtableTypeName);
-
-    // Create the vtable global variable
-    std::string vtableName = className + "_" + interfaceName + "_vtable";
-    Constant* vtableInit = ConstantStruct::get(vtableType, vtableEntries);
-    GlobalVariable* vtableGlobal = new GlobalVariable(
-        *module, vtableType, /*isConstant=*/true, GlobalValue::InternalLinkage,
-        vtableInit, vtableName);
-
-    // Store in the vtable map for later lookup during fat pointer creation
-    vtableGlobals[{className, interfaceName}] = vtableGlobal;
+    getOrCreateInterfaceVtable(classType.get(), interfaceType.get());
   }
 
   // Restore class context
@@ -448,26 +404,17 @@ Function* CodegenVisitor::declareMethodFromAST(
     return nullptr;
   }
 
-  // Wrap in error union if needed
-  llvm::Type* valueType = returnType;
-  if (canError && returnType) {
-    if (returnType->isVoidTy()) {
-      // void, IError -> just { i1 } error flag, no value field
-      returnType = llvm::StructType::get(
-          ctx.getContext(),
-          std::vector<llvm::Type*>{llvm::Type::getInt1Ty(ctx.getContext())});
-      valueType = nullptr;  // Mark that there's no value field
-    } else {
-      returnType = llvm::StructType::get(
-          ctx.getContext(),
-          {llvm::Type::getInt1Ty(ctx.getContext()), returnType});
-    }
-  }
+  // With native exceptions a throwing method ('T, IError') returns plain T; the
+  // marker only means it may unwind.
 
   // Create the function declaration
   FunctionType* funcType = FunctionType::get(returnType, paramTypes, false);
   Function* func = Function::Create(funcType, Function::ExternalLinkage,
                                     mangledName, module);
+  // Tag throwing methods so call sites emit `invoke` inside a try block.
+  if (canError) {
+    func->addFnAttr("sun.canthrow");
+  }
 
   // Set parameter names
   auto argIt = func->arg_begin();
@@ -514,27 +461,13 @@ void CodegenVisitor::generateMethodBody(const FunctionAST& methodFunc,
 
   // Check if this method can return errors (declared with ', IError')
   bool canError = proto.hasReturnType() && proto.getReturnType()->canError;
-  llvm::Type* valueType = nullptr;
-  if (canError) {
-    // Get the actual value type (not the error union)
-    // Return type must be resolved by semantic analysis
-    if (!proto.hasResolvedReturnType()) {
-      logAndThrowError(
-          "Method return type not resolved by semantic analysis: " +
-          mangledName);
-      return;
-    }
-    sun::TypePtr sunRetType = proto.getResolvedReturnType();
-    if (sunRetType && sunRetType->toString() != "void") {
-      valueType = typeResolver.resolveForReturn(sunRetType);
-    }
-  }
 
-  // Save and set error handling context
+  // Save and set error handling context. With native exceptions a throwing
+  // method returns plain T, so the value type is just the return type.
   bool savedCanError = currentFunctionCanError;
   llvm::Type* savedValueType = currentFunctionValueType;
   currentFunctionCanError = canError;
-  currentFunctionValueType = canError ? valueType : nullptr;
+  currentFunctionValueType = canError ? returnType : nullptr;
 
   // Create entry basic block
   BasicBlock* BB = BasicBlock::Create(ctx.getContext(), "entry", func);
@@ -604,12 +537,6 @@ void CodegenVisitor::generateMethodBody(const FunctionAST& methodFunc,
   if (!ctx.builder->GetInsertBlock()->getTerminator()) {
     if (returnType->isVoidTy()) {
       ctx.builder->CreateRetVoid();
-    } else if (canError && !valueType) {
-      // void, IError method: return { i1 = false } to indicate success
-      Value* successStruct = UndefValue::get(returnType);
-      successStruct = ctx.builder->CreateInsertValue(
-          successStruct, ConstantInt::getFalse(ctx.getContext()), 0);
-      ctx.builder->CreateRet(successStruct);
     }
   }
 

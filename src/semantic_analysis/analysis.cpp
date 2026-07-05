@@ -598,8 +598,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
         if (!funcInfo->qualifiedName.empty()) {
           qualName.setResolvedMangledName(funcInfo->qualifiedName.mangled());
         }
-        expr.setResolvedType(
-            sun::Types::Function(funcInfo->returnType, funcInfo->paramTypes));
+        expr.setResolvedType(sun::Types::Function(
+            funcInfo->returnType, funcInfo->paramTypes, funcInfo->canThrow));
         break;
       }
 
@@ -766,7 +766,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
         // Add method to class type (include generic type parameters)
         classType->addMethod(proto.getName(), methodInfo.returnType,
                              methodInfo.paramTypes, methodDecl.isConstructor,
-                             proto.getTypeParameters());
+                             proto.getTypeParameters(), proto.canThrow());
 
         // Register the method as a function with mangled name
         std::string mangledName =
@@ -1455,7 +1455,7 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
 
       existingClass->addMethod(proto.getName(), methodInfo.returnType,
                                methodInfo.paramTypes, methodDecl.isConstructor,
-                               proto.getTypeParameters());
+                               proto.getTypeParameters(), proto.canThrow());
       std::string mangledName =
           existingClass->getMangledMethodName(proto.getName());
       std::vector<sun::TypePtr> methodParamTypes;
@@ -2059,7 +2059,8 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
     if (resolvedFunc) {
       // Set resolved type on the callee directly
       varRef.setResolvedType(sun::Types::Function(resolvedFunc->returnType,
-                                                  resolvedFunc->paramTypes));
+                                                  resolvedFunc->paramTypes,
+                                                  resolvedFunc->canThrow));
       // Set qualified name from the resolved function (handles import scopes)
       if (!resolvedFunc->qualifiedName.empty()) {
         varRef.setQualifiedName(resolvedFunc->qualifiedName);

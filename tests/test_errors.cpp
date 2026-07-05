@@ -104,6 +104,66 @@ TEST(ErrorTest, try_catch_success_path) {
   EXPECT_EQ(value, 5);
 }
 
+// With native exceptions the thrown object is carried through the unwind and
+// bound to the catch variable, so `e.code()` / `e.message()` are usable in the
+// catch body (impossible under the old return-value error-union model).
+TEST(ErrorTest, catch_binding_code_is_usable) {
+  auto value = executeString(R"(
+    class MyError implements IError {
+      function init() {}
+      function code() i32 { return 7; }
+      function message() static_ptr<u8> { return "boom"; }
+    }
+
+    function mayThrow(x: i32) i32, IError {
+      if (x < 0) {
+        throw MyError();
+      }
+      return x;
+    }
+
+    function main() i32 {
+      try {
+        return mayThrow(-1);
+      } catch (e: IError) {
+        return e.code() + 100;
+      }
+    }
+  )");
+  EXPECT_EQ(value, 107);
+}
+
+TEST(ErrorTest, catch_binding_dispatches_to_concrete_type) {
+  // The vtable carried in the exception reflects the concrete thrown class, so
+  // dynamic dispatch picks the right override.
+  auto value = executeString(R"(
+    class ErrA implements IError {
+      function init() {}
+      function code() i32 { return 10; }
+      function message() static_ptr<u8> { return "a"; }
+    }
+    class ErrB implements IError {
+      function init() {}
+      function code() i32 { return 20; }
+      function message() static_ptr<u8> { return "b"; }
+    }
+
+    function pick(x: i32) i32, IError {
+      if (x == 1) { throw ErrA(); }
+      throw ErrB();
+    }
+
+    function main() i32 {
+      try {
+        return pick(2);
+      } catch (e: IError) {
+        return e.code();
+      }
+    }
+  )");
+  EXPECT_EQ(value, 20);
+}
+
 TEST(ErrorTest, try_catch_error_path) {
   auto value = executeString(R"(
     class TestError implements IError {

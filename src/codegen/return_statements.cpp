@@ -25,54 +25,6 @@ Value* CodegenVisitor::codegen(const ReturnExprAST& expr) {
     // THEN clean up owned allocations that weren't moved (move semantics)
     emitScopeCleanup();
 
-    // If this function can return errors, wrap the value in an error union
-    // struct
-    if (currentFunctionCanError && currentFunctionValueType) {
-      // Check if we're returning an error literal (already an error union)
-      if (retVal->getType()->isStructTy() && retVal->getType() == retType) {
-        // Already a properly typed error union, just return it
-        ctx.builder->CreateRet(retVal);
-        return nullptr;
-      }
-
-      // Convert return value to match the value type if needed
-      if (retVal->getType() != currentFunctionValueType) {
-        // For class types: if returning a pointer but value type is struct,
-        // load the struct
-        if (currentFunctionValueType->isStructTy() &&
-            retVal->getType()->isPointerTy()) {
-          retVal = ctx.builder->CreateLoad(currentFunctionValueType, retVal,
-                                           "struct.load");
-        } else if (currentFunctionValueType->isIntegerTy() &&
-                   retVal->getType()->isIntegerTy()) {
-          retVal = ctx.builder->CreateIntCast(retVal, currentFunctionValueType,
-                                              true, "intcast");
-        } else if (currentFunctionValueType->isFloatingPointTy() &&
-                   retVal->getType()->isIntegerTy()) {
-          retVal = ctx.builder->CreateSIToFP(retVal, currentFunctionValueType,
-                                             "inttofp");
-        } else if (currentFunctionValueType->isIntegerTy() &&
-                   retVal->getType()->isFloatingPointTy()) {
-          retVal = ctx.builder->CreateFPToSI(retVal, currentFunctionValueType,
-                                             "fptoint");
-        } else if (currentFunctionValueType->isFloatingPointTy() &&
-                   retVal->getType()->isFloatingPointTy()) {
-          retVal = ctx.builder->CreateFPCast(retVal, currentFunctionValueType,
-                                             "fpcast");
-        }
-      }
-
-      // Create error union: { i1 isError = false, T value }
-      Value* errorUnion = UndefValue::get(retType);
-      errorUnion = ctx.builder->CreateInsertValue(
-          errorUnion, ConstantInt::getFalse(ctx.getContext()), 0,
-          "success.flag");
-      errorUnion = ctx.builder->CreateInsertValue(errorUnion, retVal, 1,
-                                                  "success.value");
-      ctx.builder->CreateRet(errorUnion);
-      return nullptr;
-    }
-
     // Convert return value to match function return type if needed
     if (retVal->getType() != retType) {
       // Handle return-by-value for compound types (classes):
@@ -97,19 +49,10 @@ Value* CodegenVisitor::codegen(const ReturnExprAST& expr) {
 
     ctx.builder->CreateRet(retVal);
   } else {
-    // Void return - clean up and return
+    // Void return - clean up and return. A 'void, IError' function returns
+    // plain void now (exceptions carry error state, not the return value).
     emitScopeCleanup();
-    
-    // Handle void, IError case: return { i1 = false } to indicate success
-    if (currentFunctionCanError && !currentFunctionValueType) {
-      Value* errorUnion = UndefValue::get(retType);
-      errorUnion = ctx.builder->CreateInsertValue(
-          errorUnion, ConstantInt::getFalse(ctx.getContext()), 0,
-          "success.flag");
-      ctx.builder->CreateRet(errorUnion);
-    } else {
-      ctx.builder->CreateRetVoid();
-    }
+    ctx.builder->CreateRetVoid();
   }
 
   // Return nullptr to indicate this expression doesn't produce a value
