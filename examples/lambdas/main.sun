@@ -1,0 +1,22 @@
+using sun;
+
+function main() i32 {
+    var multiplier: i32 = 10;
+
+    // A lambda captures `multiplier` from the enclosing scope by closure.
+    var scale = lambda (x: i32) i32 {
+        return x * multiplier;
+    };
+
+    var total: i32 = 0;
+    for (var i: i32 = 1; i <= 5; i = i + 1) {
+        total = total + scale(i);  // 10 + 20 + 30 + 40 + 50
+    }
+
+    println_i32(total);  // 150
+    return 0;
+}
+
+manifest {
+    moons: ["stdlib.moon"]
+}

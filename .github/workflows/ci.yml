@@ -36,3 +36,26 @@ jobs:
           ctest --output-on-failure
         env:
           SUN_PATH: ${{ github.workspace }}
+
+      - name: Add compiler to PATH
+        # Examples call the bare `sun` binary; expose the freshly built one.
+        # A separate step so the PATH change takes effect in the next step.
+        run: echo "${GITHUB_WORKSPACE}/build" >> "$GITHUB_PATH"
+
+      - name: Verify examples compile & execute
+        run: |
+          set -euo pipefail
+          fail=0
+          for dir in examples/*/; do
+            [ -f "${dir}example.json" ] || continue
+            name=$(basename "$dir")
+            echo "::group::${name}"
+            if ( cd "$dir" && bash build.sh && bash test.sh ); then
+              echo "PASS ${name}"
+            else
+              echo "::error::example '${name}' failed to compile or execute"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $fail

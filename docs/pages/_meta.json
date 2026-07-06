@@ -1,6 +1,6 @@
 {
   "index": "Introduction",
-  "getting-started": "Examples",
+  "examples": "Examples",
   "overview": "Overview",
   "builtin-types": "Builtin Types",
   "functions": "Functions & Lambdas",

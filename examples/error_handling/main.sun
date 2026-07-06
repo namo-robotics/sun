@@ -1,0 +1,35 @@
+using sun;
+
+// A function that can fail declares an error type after its return type with
+// the `, IError` suffix, and signals failure with `throw`. The thrown value is
+// any class implementing `IError` (the standard library provides several).
+function divide(a: i32, b: i32) i32, IError {
+    if (b == 0) {
+        throw DivisionByZeroError();
+    }
+    return a / b;
+}
+
+function main() i32 {
+    // A successful call needs no special handling.
+    try {
+        var ok = divide(10, 2);   // 5
+        println_i32(ok);
+    } catch (e: IError) {
+        println("unexpected error");
+    }
+
+    // A failing call unwinds to the nearest matching catch.
+    try {
+        var bad = divide(10, 0);  // throws DivisionByZeroError
+        println_i32(bad);
+    } catch (e: IError) {
+        println("caught division by zero");
+    }
+
+    return 0;
+}
+
+manifest {
+    moons: ["stdlib.moon"]
+}

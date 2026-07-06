@@ -34,3 +34,4 @@ test
 *.ll
 *_debug/
 .cache/
+*.o

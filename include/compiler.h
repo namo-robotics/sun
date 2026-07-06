@@ -74,9 +74,12 @@ inline bool emitObjectFile(llvm::Module& module, const std::string& outputPath,
 inline bool linkExecutable(const std::string& objectPath,
                            const std::string& outputPath,
                            std::string& errorMsg) {
-  // Build linker command using the system C compiler
-  // Use cc (or clang/gcc) to handle linking with C runtime
-  std::string cmd = "cc -o " + outputPath + " " + objectPath;
+  // Build linker command using the system C compiler.
+  // Use cc (or clang/gcc) to handle linking with the C runtime.
+  // -lstdc++ provides the Itanium C++ ABI runtime (__cxa_throw,
+  // __cxa_allocate_exception, typeinfo, _Unwind_*) that native exception
+  // handling lowers to.
+  std::string cmd = "cc -o " + outputPath + " " + objectPath + " -lstdc++";
 
   int result = std::system(cmd.c_str());
   if (result != 0) {
