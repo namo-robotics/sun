@@ -16,7 +16,21 @@
       "Bash(SUN_PATH=/workspaces/sun /workspaces/sun/build/tests/sun_tests *)",
       "Read(//tmp/**)",
       "Skill(update-config)",
-      "Skill(update-config:*)"
+      "Skill(update-config:*)",
+      "Bash(bash build.sh)",
+      "Bash(echo \"[build exit=$?]\")",
+      "Bash(./main)",
+      "Bash(echo \"[exit=$?]\")",
+      "Bash(export SUN_PATH=\"/workspaces/sun:/workspaces/sun/build\")",
+      "Bash(sun --compile -o t t.sun)",
+      "Bash(chmod +x examples/*/test.sh)",
+      "Bash(bash examples/classes/build.sh)",
+      "Bash(bash examples/classes/test.sh)",
+      "Bash(echo \"[test exit=$?]\")",
+      "Bash(bash test.sh)",
+      "Bash(chmod +x test.sh)",
+      "Bash(grep -rn \"getting-started\" docs/pages/ docs/theme.config.tsx)",
+      "Bash(node scripts/gen-examples.mjs)"
     ],
     "additionalDirectories": [
       "/tmp"

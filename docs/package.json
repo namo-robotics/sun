@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "gen-examples": "node scripts/gen-examples.mjs",
+    "predev": "node scripts/gen-examples.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/gen-examples.mjs",
     "build": "next build",
     "start": "next start"
   },

@@ -1,0 +1,7 @@
+{
+  "title": "Class Destructors",
+  "order": 40,
+  "summary": "Sun runs a class's `deinit` method automatically when a value goes out of scope, giving deterministic cleanup with no garbage collector. Here `foo` is destroyed at the end of `main`.",
+  "files": ["main.sun"],
+  "run": "./main"
+}
