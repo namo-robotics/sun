@@ -163,3 +163,105 @@ TEST(LambdaParamTest, lambda_param_forwarded_between_methods) {
   )");
   EXPECT_EQ(value, 1);
 }
+
+// ============================================================================
+// Throwing lambdas: lambda (args) T, IError { ... }
+// ============================================================================
+
+TEST(ThrowingLambdaTest, throw_and_catch) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var risky = lambda (x: i32) i32, IError {
+            if (x < 0) { throw Error(1, "negative"); }
+            return x * 2;
+        };
+
+        try {
+            var a = risky(5);
+            var b = risky(-1);
+            return a + b;
+        } catch (e: IError) {
+            return 42;
+        }
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(ThrowingLambdaTest, throwing_lambda_as_param) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function run_guarded(f: (i32) i32, IError, x: i32) i32 {
+        try {
+            return f(x);
+        } catch (e: IError) {
+            return -1;
+        }
+    }
+
+    function main() i32 {
+        var risky = lambda (x: i32) i32, IError {
+            if (x < 0) { throw Error(1, "negative"); }
+            return x * 2;
+        };
+        var a = run_guarded(risky, 21);   // 42
+        var b = run_guarded(risky, -5);   // -1
+        return a + b;
+    }
+  )");
+  EXPECT_EQ(value, 41);
+}
+
+TEST(ThrowingLambdaTest, non_throwing_into_throwing_param) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function run_guarded(f: (i32) i32, IError, x: i32) i32 {
+        try {
+            return f(x);
+        } catch (e: IError) {
+            return -1;
+        }
+    }
+
+    function main() i32 {
+        var safe = lambda (x: i32) i32 {
+            return x + 100;
+        };
+        return run_guarded(safe, 1);
+    }
+  )");
+  EXPECT_EQ(value, 101);
+}
+
+TEST(ThrowingLambdaTest, uncaught_call_rejected) {
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var risky = lambda (x: i32) i32, IError {
+            if (x < 0) { throw Error(1, "negative"); }
+            return x;
+        };
+        return risky(1);
+    }
+  )"),
+               SunError);
+}
+
+TEST(ThrowingLambdaTest, throw_in_non_throwing_lambda_rejected) {
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var bad = lambda (x: i32) i32 {
+            throw Error(1, "boom");
+        };
+        return bad(1);
+    }
+  )"),
+               SunError);
+}

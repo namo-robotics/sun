@@ -510,3 +510,73 @@ TEST(StringTest, growth_beyond_initial_capacity) {
   )");
   EXPECT_EQ(value, 100);
 }
+
+// ============================================================================
+// String Literal Escape Sequences
+// ============================================================================
+
+TEST(StringTest, literal_escape_newline_tab) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i64 {
+        var allocator = make_heap_allocator();
+        var s = String(allocator, "a\nb\tc");
+        if (s.length() != 5) { return 1; }
+        if (s.at(1) != 10) { return 2; }
+        if (s.at(3) != 9) { return 3; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(StringTest, literal_escape_crlf) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i64 {
+        var allocator = make_heap_allocator();
+        var s = String(allocator, "\r\n");
+        if (s.length() != 2) { return 1; }
+        if (s.at(0) != 13) { return 2; }
+        if (s.at(1) != 10) { return 3; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(StringTest, literal_escape_quote_and_backslash) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i64 {
+        var allocator = make_heap_allocator();
+        var s = String(allocator, "say \"hi\" \\ done");
+        // s = say "hi" \ done  (15 chars)
+        if (s.length() != 15) { return 1; }
+        if (s.at(4) != 34) { return 2; }   // '"'
+        if (s.at(9) != 92) { return 3; }   // '\'
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(StringTest, literal_unknown_escape_preserved) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i64 {
+        var allocator = make_heap_allocator();
+        var s = String(allocator, "a\qb");
+        // Unknown escape \q stays as backslash + q
+        if (s.length() != 4) { return 1; }
+        if (s.at(1) != 92) { return 2; }   // '\'
+        if (s.at(2) != 113) { return 3; }  // 'q'
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}

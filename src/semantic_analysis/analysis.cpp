@@ -2413,9 +2413,18 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
     }
   }
 
-  // Check for error propagation: calling a throwing function requires either
-  // being inside a try block or being in a function declared with ", IError"
-  if (resolvedFunc && resolvedFunc->canThrow) {
+  // Check for error propagation: calling a throwing function or lambda
+  // requires either being inside a try block or being in a function declared
+  // with ", IError"
+  bool calleeThrows = resolvedFunc && resolvedFunc->canThrow;
+  if (!calleeThrows) {
+    sun::TypePtr calleeType = callExpr.getCallee()->getResolvedType();
+    if (calleeType && calleeType->isLambda()) {
+      calleeThrows =
+          static_cast<const sun::LambdaType*>(calleeType.get())->canThrow();
+    }
+  }
+  if (calleeThrows) {
     if (!isInTryBlock() && !isInThrowingFunction()) {
       std::string funcName = "<unknown>";
       if (calleeASTType == ASTNodeType::VARIABLE_REFERENCE) {

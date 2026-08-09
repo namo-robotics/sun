@@ -180,6 +180,14 @@ bool SemanticAnalyzer::isAssignableTo(const sun::TypePtr& from,
     }
   }
 
+  // Non-throwing lambda is accepted where a throwing lambda is expected
+  if (to->isLambda() && from->isLambda()) {
+    auto* toL = static_cast<const sun::LambdaType*>(to.get());
+    auto* fromL = static_cast<const sun::LambdaType*>(from.get());
+    return toL->canThrow() && !fromL->canThrow() &&
+           fromL->equalsIgnoringThrow(*toL);
+  }
+
   // Unwrap reference types and check inner compatibility
   if (to->isReference() && from->isReference()) {
     auto* toRef = static_cast<sun::ReferenceType*>(to.get());

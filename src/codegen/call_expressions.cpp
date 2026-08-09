@@ -1246,11 +1246,11 @@ Value* CodegenVisitor::codegenLambdaCall(const CallExprAST& expr,
     ++i;
   }
 
-  // Indirect call through the extracted function pointer. LambdaType carries
-  // no canThrow flag, so throwing lambdas are not routed to a local landing
-  // pad (not exercised by the stdlib/tests).
+  // Indirect call through the extracted function pointer. Throwing lambdas
+  // (', IError') are invoked so exceptions route to a local landing pad
+  // inside try blocks.
   Value* result = emitPossiblyThrowingCall(llvmFuncType, funcPtr, argValues,
-                                           /*canThrow=*/false, "calltmp");
+                                           lambdaType.canThrow(), "calltmp");
 
   // Materialize struct return values for addressability
   return materializeStructReturn(result);

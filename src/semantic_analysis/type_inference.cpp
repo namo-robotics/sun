@@ -463,7 +463,9 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       }
 
       // Lambdas always get LambdaType (fat pointer closure)
-      return sun::Types::Lambda(returnType, std::move(paramTypes));
+      bool canThrow =
+          proto.hasReturnType() && proto.getReturnType()->canError;
+      return sun::Types::Lambda(returnType, std::move(paramTypes), canThrow);
     }
 
     case ASTNodeType::INDEXED_ASSIGNMENT: {

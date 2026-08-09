@@ -938,7 +938,7 @@ TypeAnnotation Parser::parseTypeAnnotation() {
     return type;
   }
 
-  // Check for lambda type: (param_types) return_type (anonymous function)
+  // Check for lambda type: (param_types) return_type[, IError]
   if (curTok.kind == TokenKind::PAREN_OPEN) {
     type.baseName = "lambda";
     getNextToken();  // eat '('
@@ -963,6 +963,22 @@ TypeAnnotation Parser::parseTypeAnnotation() {
     getNextToken();  // eat ')'
 
     type.returnType = std::make_unique<TypeAnnotation>(parseTypeAnnotation());
+
+    // Throwing lambda type: (params) ret, IError. A ',' here is ambiguous
+    // (may belong to an enclosing param list), so only consume it when the
+    // next token is exactly 'IError'.
+    if (curTok.kind == TokenKind::COMMA) {
+      Token commaTok = curTok;
+      getNextToken();  // tentatively eat ','
+      auto id = curTok.getIdentifier();
+      if (curTok.kind == TokenKind::IDENTIFIER && id.has_value() &&
+          id.value() == "IError") {
+        getNextToken();  // eat 'IError'
+        type.canError = true;
+      } else {
+        pushToken(commaTok);  // not ours - restore the ','
+      }
+    }
 
     return type;
   }

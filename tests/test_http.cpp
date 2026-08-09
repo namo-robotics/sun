@@ -7,8 +7,7 @@
 
 #include "execution_utils.h"
 
-// Builds "GET /index.html HTTP/1.1\r\nHost: x\r\n\r\n" byte-by-byte since
-// regular Sun string literals do not process escapes.
+// Builds "GET /index.html HTTP/1.1\r\nHost: x\r\n\r\n"
 static const char* kBuildRequest = R"(
     function build_request(alloc: ref HeapAllocator) String {
         var raw = String(alloc, "GET /index.html HTTP/1.1");

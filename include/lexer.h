@@ -169,7 +169,7 @@ static const std::map<TokenKind, std::string> tokenRegexes = {
     {TokenKind::TYPE_F64, "f64"},
     {TokenKind::TYPE_BOOL, "bool"},
     {TokenKind::TYPE_VOID, "void"},
-    {TokenKind::STRING, "\"[^\"]*\""},
+    {TokenKind::STRING, "\"([^\"\\\\]|\\\\.)*\""},
     {TokenKind::TEMPLATE_STRING, "`([^`\\\\]|\\\\.)*`"},
     {TokenKind::INTRINSIC_IDENTIFIER, "_[a-zA-Z0-9_]+"},
     {TokenKind::IDENTIFIER, "[a-zA-Z][a-zA-Z0-9_]*"},
@@ -401,6 +401,48 @@ class Lexer {
 
   std::string buffer;
 
+  // Process escape sequences in regular string literals.
+  // Mirrors InterpolatedStringParser::processEscapes (template strings),
+  // with \" instead of the template-specific \` and \$.
+  static std::string processStringEscapes(const std::string& raw) {
+    std::string result;
+    result.reserve(raw.size());
+    for (size_t i = 0; i < raw.size(); i++) {
+      if (raw[i] == '\\' && i + 1 < raw.size()) {
+        char next = raw[i + 1];
+        switch (next) {
+          case '"':
+            result += '"';
+            break;
+          case 'n':
+            result += '\n';
+            break;
+          case 't':
+            result += '\t';
+            break;
+          case 'r':
+            result += '\r';
+            break;
+          case '\\':
+            result += '\\';
+            break;
+          case '0':
+            result += '\0';
+            break;
+          default:
+            // Unknown escape - keep as-is
+            result += raw[i];
+            result += next;
+            break;
+        }
+        i++;  // Skip the escaped character
+      } else {
+        result += raw[i];
+      }
+    }
+    return result;
+  }
+
   char advance() {
     if (currentPos.offset >= (static_cast<int>(buffer.size()))) {
       currentChar = input->get();
@@ -630,9 +672,10 @@ class Lexer {
           return Token::floatNum(val, startPos, endPos, matchedStr);
         }
         case TokenKind::STRING: {
-          // Remove the surrounding quotes from the matched string
+          // Remove the surrounding quotes and process escape sequences
           std::string content = matchedStr.substr(1, matchedStr.size() - 2);
-          return Token::stringLiteral(content, startPos, endPos);
+          return Token::stringLiteral(processStringEscapes(content), startPos,
+                                      endPos);
         }
         case TokenKind::TEMPLATE_STRING: {
           // Remove the surrounding backticks from the matched string

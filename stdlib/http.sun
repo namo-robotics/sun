@@ -23,8 +23,7 @@
 
 module sun {
 
-// ASCII bytes used for HTTP framing. Regular string literals do not process
-// escape sequences, so CR/LF are appended as raw bytes.
+// ASCII bytes used when scanning request bytes
 var HTTP_CR: u8 = 13;
 var HTTP_LF: u8 = 10;
 var HTTP_SP: u8 = 32;
@@ -88,8 +87,7 @@ class HttpResponse {
 // -------------------------------------------------------------------
 
 function http_append_crlf(out: ref String) void {
-    out.append_char(HTTP_CR);
-    out.append_char(HTTP_LF);
+    out.append("\r\n");
 }
 
 // Index of the CRLFCRLF header terminator, or -1 if not yet received

@@ -59,6 +59,7 @@ std::string QualifiedName::canonicalTypeString(const TypePtr& type,
     }
     result += ") -> ";
     result += canonicalTypeString(lamType->getReturnType(), hashPrefix);
+    if (lamType->canThrow()) result += ", IError";
     return result;
   }
 

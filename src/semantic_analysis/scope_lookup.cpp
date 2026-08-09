@@ -308,6 +308,14 @@ static bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
     }
   }
 
+  // Non-throwing lambda is accepted where a throwing lambda is expected
+  if (to->isLambda() && from->isLambda()) {
+    auto* toL = static_cast<const sun::LambdaType*>(to.get());
+    auto* fromL = static_cast<const sun::LambdaType*>(from.get());
+    return toL->canThrow() && !fromL->canThrow() &&
+           fromL->equalsIgnoringThrow(*toL);
+  }
+
   // Unwrap reference types
   if (to->isReference() && from->isReference()) {
     auto* toRef = static_cast<const sun::ReferenceType*>(to.get());
