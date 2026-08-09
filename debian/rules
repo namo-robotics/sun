@@ -7,7 +7,14 @@ export DH_VERBOSE = 1
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 
 # Disable debug symbols package (avoids permission issues with parent dir)
-export DEB_BUILD_OPTIONS = nostrip noddebs
+# Append to the inherited value: dpkg-buildpackage passes parallel=N here,
+# and overwriting it would force a single-threaded build.
+export DEB_BUILD_OPTIONS := $(DEB_BUILD_OPTIONS) nostrip noddebs
+
+# Use ccache when available (set up by CI)
+ifneq (,$(shell command -v ccache 2>/dev/null))
+CCACHE_ARGS = -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+endif
 
 %:
 	dh $@
@@ -15,7 +22,8 @@ export DEB_BUILD_OPTIONS = nostrip noddebs
 override_dh_auto_configure:
 	dh_auto_configure -- \
 		-DCMAKE_BUILD_TYPE=Release \
-		-DBUILD_TESTING=OFF
+		-DBUILD_TESTING=OFF \
+		$(CCACHE_ARGS)
 
 override_dh_auto_install:
 	dh_auto_install

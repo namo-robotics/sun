@@ -15,6 +15,13 @@ jobs:
   build-deb:
     runs-on: ubuntu-24.04
 
+    env:
+      # Required for ccache to cache compilations that use precompiled headers
+      CCACHE_SLOPPINESS: pch_defines,time_macros
+      # The build runs in a random mktemp dir; don't hash the cwd or every
+      # run misses the cache (dpkg buildflags include -g, which triggers it)
+      CCACHE_NOHASHDIR: "true"
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,6 +42,12 @@ jobs:
             build-essential \
             protobuf-compiler \
             libprotobuf-dev
+
+      - name: Set up ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: deb-gcc
+          max-size: 2G
 
       - name: Build Debian package
         run: |
