@@ -47,7 +47,7 @@ jobs:
           set -euo pipefail
           fail=0
           for dir in examples/*/; do
-            [ -f "${dir}example.json" ] || continue
+            [ -f "${dir}build.sh" ] || continue
             name=$(basename "$dir")
             echo "::group::${name}"
             if ( cd "$dir" && bash build.sh && bash test.sh ); then

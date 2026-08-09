@@ -1,12 +1,17 @@
 // Generates docs/pages/examples.mdx from the programs in the repo-root
-// examples/ folder. Each examples/<name>/example.json describes what to render;
-// the .sun sources are read verbatim so the docs can never drift from the code
-// that CI actually compiles and runs.
+// examples/ folder. Each examples/<name>/ is rendered from its README.md
+// (the prose the docs show) plus every .sun source file found in the folder,
+// read verbatim so the docs can never drift from the code CI compiles and runs.
+//
+// There is no per-example metadata file: the README is the single source of
+// truth for prose, ordering comes from the numeric folder-name prefix
+// (10-classes, 20-interfaces, ...), and the source list is discovered by
+// globbing *.sun.
 //
 // Run automatically via the `predev` / `prebuild` npm scripts. CWD is docs/.
 
 import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs'
-import { join, extname, dirname } from 'node:path'
+import { join, extname, dirname, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const DOCS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -20,27 +25,54 @@ function langFor(file) {
   return ext || 'text'
 }
 
+// Recursively collect every .sun source under `dir`, returned as paths relative
+// to `dir` and sorted so top-level main.sun leads and nested moons follow.
+function collectSunFiles(dir, base = dir) {
+  const out = []
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name)
+    if (entry.isDirectory()) {
+      out.push(...collectSunFiles(full, base))
+    } else if (extname(entry.name) === '.sun') {
+      out.push(relative(base, full).split(sep).join('/'))
+    }
+  }
+  return out.sort()
+}
+
+// An example is any immediate subdirectory that has a README.md. Ordering is the
+// numeric prefix baked into the folder name, so a plain name sort is correct.
 function loadExamples() {
   return readdirSync(EXAMPLES_DIR, { withFileTypes: true })
     .filter((d) => d.isDirectory())
     .map((d) => join(EXAMPLES_DIR, d.name))
-    .filter((dir) => existsSync(join(dir, 'example.json')))
-    .map((dir) => ({ dir, meta: JSON.parse(readFileSync(join(dir, 'example.json'), 'utf8')) }))
-    .sort((a, b) => (a.meta.order ?? 1e9) - (b.meta.order ?? 1e9))
+    .filter((dir) => existsSync(join(dir, 'README.md')))
+    .sort()
+    .map((dir) => ({ dir, readme: readFileSync(join(dir, 'README.md'), 'utf8') }))
 }
 
-function renderExample({ dir, meta }) {
-  const parts = [`## ${meta.title}`, '', meta.summary, '']
+// Split the README into its H1 title and the remaining body. The title becomes a
+// level-2 heading so it nests under the page's `# Examples`.
+function splitReadme(readme) {
+  const lines = readme.split('\n')
+  const i = lines.findIndex((l) => /^#\s+/.test(l))
+  if (i === -1) return { title: null, body: readme.trim() }
+  const title = lines[i].replace(/^#\s+/, '').trim()
+  const body = lines.slice(i + 1).join('\n').trim()
+  return { title, body }
+}
 
-  for (const file of meta.files ?? []) {
+function renderExample({ dir, readme }) {
+  const { title, body } = splitReadme(readme)
+  const parts = [`## ${title}`, '']
+  if (body) parts.push(body, '')
+
+  parts.push('### Source', '')
+  for (const file of collectSunFiles(dir)) {
     const contents = readFileSync(join(dir, file), 'utf8').replace(/\s+$/, '')
     parts.push('```' + langFor(file) + ` filename="${file}"`)
     parts.push(contents)
     parts.push('```', '')
-  }
-
-  if (meta.run) {
-    parts.push('Run it:', '', '```bash', meta.run, '```', '')
   }
 
   return parts.join('\n')

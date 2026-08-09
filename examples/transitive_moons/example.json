@@ -1,7 +1,0 @@
-{
-  "title": "Modules & Transitive Moons",
-  "order": 60,
-  "summary": "Sun compiles reusable libraries into `.moon` files. Dependencies are transitive at the bitcode level but opaque at the symbol level: `main` sees `moon1`, but not the `moon2`/`moon3` symbols that `moon1` pulls in. The chain `main -> moon1 -> moon2 -> moon3` computes `1 + 2 + 3 = 6`.",
-  "files": ["main.sun", "moon1/entry.sun", "moon2/entry.sun", "moon3/entry.sun"],
-  "run": "./main"
-}
