@@ -24,7 +24,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0  # Full history for version detection
 
@@ -35,6 +35,7 @@ jobs:
           sudo ./llvm.sh 20
           sudo apt-get update
           sudo apt-get install -y \
+            cmake \
             llvm-20-dev \
             libzstd-dev \
             devscripts \
@@ -44,7 +45,7 @@ jobs:
             libprotobuf-dev
 
       - name: Set up ccache
-        uses: hendrikmuhs/ccache-action@v1.2
+        uses: hendrikmuhs/ccache-action@v1.2.23
         with:
           key: deb-gcc
           max-size: 2G
