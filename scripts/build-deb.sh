@@ -24,14 +24,14 @@ check_dependencies() {
     local missing=()
     
     for cmd in dpkg-buildpackage debhelper cmake; do
-        if ! command -v "$cmd" &> /dev/null && ! dpkg -l "$cmd" &> /dev/null 2>&1; then
+        if ! command -v "$cmd" &> /dev/null && ! dpkg -s "$cmd" &> /dev/null 2>&1; then
             missing+=("$cmd")
         fi
     done
     
     if [ ${#missing[@]} -ne 0 ]; then
         error "Missing dependencies: ${missing[*]}"
-        log "Install with: sudo apt-get install -y devscripts debhelper build-essential cmake"
+        log "Install with: sudo apt-get install -y devscripts debhelper build-essential cmake llvm-20-dev libzstd-dev"
         exit 1
     fi
 }
@@ -83,15 +83,6 @@ EOF
 
 # Build the package
 build_package() {
-    log "Installing build dependencies..."
-    if [ "$(id -u)" -eq 0 ]; then
-        apt-get update
-        apt-get install -y devscripts debhelper build-essential cmake llvm-20-dev libzstd-dev
-    else
-        sudo apt-get update
-        sudo apt-get install -y devscripts debhelper build-essential cmake llvm-20-dev libzstd-dev
-    fi
-    
     log "Building Debian package..."
     
     # Clean previous builds

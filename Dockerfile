@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
-FROM ubuntu:25.10
+FROM ubuntu:26.04
 
-LABEL devcontainer.feature="LLVM 20 Dev Environment (Ubuntu 25.10)"
+LABEL devcontainer.feature="LLVM 20 Dev Environment (Ubuntu 26.04 LTS)"
 
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Etc/UTC
@@ -9,7 +9,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     # Core build tools
     build-essential cmake ninja-build git python3 python3-pip \
-    # LLVM 20 full development suite (native in 25.10!)
+    # LLVM 20 full development suite (native since 25.10)
     clang-20 lldb-20 lld-20 \
     llvm-20 llvm-20-dev llvm-20-tools \
     libllvm-20-ocaml-dev \
@@ -29,6 +29,8 @@ RUN update-alternatives --install /usr/bin/clang     clang     /usr/bin/clang-20
 
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Debian packaging tools (scripts/build-deb.sh)
+    debhelper devscripts \
     libgtest-dev \
     protobuf-compiler \
     libprotobuf-dev \
@@ -42,7 +44,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8
 
-# Grant sudo to existing ubuntu user (UID 1000 already exists in Ubuntu 25.10+)
+# Grant sudo to existing ubuntu user (UID 1000 already exists in Ubuntu 24.04+)
 RUN echo "ubuntu ALL=(root) NOPASSWD:ALL" > /etc/sudoers.d/ubuntu \
     && chmod 0440 /etc/sudoers.d/ubuntu
 

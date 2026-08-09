@@ -24,7 +24,7 @@
 	"postAttachCommand": "bash",
 	"features": {
 		"ghcr.io/devcontainers/features/node:1": {
-			"version": "20"
+			"version": "24"
 		}
 	},
 	"customizations": {
