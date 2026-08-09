@@ -30,9 +30,11 @@ add_executable(sun_tests
     test_generic_functions.cpp
     test_generic_methods.cpp
     test_generic_specializations.cpp
+    test_http.cpp
     test_interfaces.cpp
     test_interpolation.cpp
     test_intrinsics.cpp
+    test_lambda_params.cpp
     test_linked_list.cpp
     test_logical.cpp
     test_loops.cpp

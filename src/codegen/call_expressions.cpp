@@ -203,6 +203,36 @@ Value* CodegenVisitor::prepareClassForRefInterface(Value* classPtr,
 }
 
 // -------------------------------------------------------------------
+// Helper: Load closure struct for lambda-typed parameters
+// Lambda literals codegen to an alloca; params take the closure by value
+// -------------------------------------------------------------------
+
+Value* CodegenVisitor::loadClosureForLambdaParam(Value* argVal,
+                                                 sun::TypePtr paramType,
+                                                 llvm::Type* expectedTy) {
+  if (!paramType || !paramType->isLambda() || !argVal) return argVal;
+  if (!expectedTy || !expectedTy->isStructTy()) return argVal;
+  if (argVal->getType() == expectedTy) return argVal;
+
+  // Lambda literal: alloca holding the closure - load with the callee's type
+  if (argVal->getType()->isPointerTy()) {
+    return ctx.builder->CreateLoad(expectedTy, argVal, "closure.arg");
+  }
+
+  // Closure value under a differently-named (structurally identical) struct
+  // type (e.g. local %closure.N vs imported %closure) - rebuild field-wise
+  if (argVal->getType()->isStructTy()) {
+    Value* fn = ctx.builder->CreateExtractValue(argVal, {0}, "closure.fn");
+    Value* env = ctx.builder->CreateExtractValue(argVal, {1}, "closure.env");
+    Value* result = UndefValue::get(expectedTy);
+    result = ctx.builder->CreateInsertValue(result, fn, {0});
+    result = ctx.builder->CreateInsertValue(result, env, {1});
+    return result;
+  }
+  return argVal;
+}
+
+// -------------------------------------------------------------------
 // Helper: Widen numeric types if needed (i32->i64, f32->f64)
 // -------------------------------------------------------------------
 
@@ -736,6 +766,12 @@ Value* CodegenVisitor::codegenClassMethodCall(
         argVal = ctx.builder->CreateLoad(fatPtrType, argVal, "iface.arg.load");
       }
 
+      argVal = loadClosureForLambdaParam(
+          argVal, paramType,
+          argValues.size() < methodFunc->getFunctionType()->getNumParams()
+              ? methodFunc->getFunctionType()->getParamType(argValues.size())
+              : nullptr);
+
       argValues.push_back(argVal);
     }
     ++methodArgIdx;
@@ -1088,6 +1124,12 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
         argVal = ctx.builder->CreateLoad(fatPtrType, argVal, "iface.arg.load");
       }
 
+      argVal = loadClosureForLambdaParam(
+          argVal, paramType,
+          argValues.size() < func->getFunctionType()->getNumParams()
+              ? func->getFunctionType()->getParamType(argValues.size())
+              : nullptr);
+
       argValues.push_back(argVal);
     }
     ++argIdx;
@@ -1164,11 +1206,33 @@ Value* CodegenVisitor::codegenLambdaCall(const CallExprAST& expr,
   unsigned i = 1;  // start at 1, skipping the hidden closure pointer parameter
   for (const auto& argExpr : expr.getArgs()) {
     sun::TypePtr argSunType = argExpr->getResolvedType();
-    Value* argVal = codegen(*argExpr);
-    if (!argVal) return nullptr;
+    sun::TypePtr paramType =
+        (i - 1) < paramTypes.size() ? paramTypes[i - 1] : nullptr;
 
-    // Apply move semantics for class arguments passed by value
-    argVal = applyMoveSemantics(argVal, argSunType);
+    Value* argVal = nullptr;
+    if (paramType && paramType->isReference()) {
+      // Pass by reference: use the argument's address (same as named calls)
+      if (argSunType && argSunType->isClass()) {
+        Value* classPtr = prepareRefArgument(argExpr.get(), argSunType);
+        Value* ifaceRef =
+            prepareClassForRefInterface(classPtr, argSunType, paramType);
+        if (ifaceRef) {
+          argValues.push_back(ifaceRef);
+          ++i;
+          continue;
+        }
+      }
+      argVal = prepareRefArgument(argExpr.get(), argSunType);
+      if (!argVal) return nullptr;
+    } else {
+      argVal = codegen(*argExpr);
+      if (!argVal) return nullptr;
+
+      // Apply move semantics for class arguments passed by value
+      argVal = applyMoveSemantics(argVal, argSunType);
+      argVal = loadClosureForLambdaParam(argVal, paramType,
+                                         llvmFuncType->getParamType(i));
+    }
 
     llvm::Type* expectedTy = llvmFuncType->getParamType(i);
 

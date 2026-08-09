@@ -5,20 +5,20 @@
 // Usage:
 //   using sun;
 //
-//   // TCP Server
+//   // TCP Server (for HTTP, prefer HttpServer from http.sun)
 //   var listener = TcpListener();
 //   listener.bind_port(8080);
 //   listener.listen(128);
 //   while (true) {
 //       var client = listener.accept();
-//       client.send_str("HTTP/1.1 200 OK\r\n\r\nHello!");
+//       client.send_str("Hello!");
 //       client.close();
 //   }
 //
 //   // TCP Client
 //   var stream = TcpStream();
 //   stream.connect_local(8080);
-//   stream.send_str("GET / HTTP/1.1\r\n\r\n");
+//   stream.send_str("ping");
 //   stream.close();
 
 module sun {
@@ -33,6 +33,8 @@ var SHUT_RDWR: i32 = 2;
 var MSG_NOSIGNAL: i32 = 16384;
 var INADDR_ANY: i32 = 0;
 var INADDR_LOOPBACK: i32 = 16777343;  // 127.0.0.1 in network byte order
+var SOL_SOCKET: i32 = 1;
+var SO_REUSEADDR: i32 = 2;
 
 // -------------------------------------------------------------------
 // TcpStream - TCP connection (client or accepted)
@@ -98,6 +100,11 @@ class TcpStream {
         }
         return result;
     }
+
+    // Send a String's contents
+    function send_string(data: ref String) i64, IError {
+        return this.send_bytes(data.data.rawData(), data.length());
+    }
     
     // Receive into ContiguousBuffer, returns bytes read
     function recv(buf: ref ContiguousBuffer<u8>) i64, IError {
@@ -141,6 +148,12 @@ class TcpListener {
         this.close();
     }
 
+    // Allow rebinding the port immediately after a restart
+    function enable_reuse_addr() void {
+        var optval: i32 = 1;
+        unsafe { __setsockopt(this.fd, SOL_SOCKET, SO_REUSEADDR, _address_of<i32>(optval), 4); };
+    }
+
     // Create and bind to port on all interfaces (0.0.0.0)
     function bind_port(port: i32) void, IError {
         var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
@@ -148,13 +161,14 @@ class TcpListener {
             throw Error(sock_fd, "failed to create socket");
         }
         this.fd = sock_fd;
-        
+        this.enable_reuse_addr();
+
         var result: i32 = unsafe { __bind_ipv4(this.fd, INADDR_ANY, port); };
         if (result < 0) {
             throw Error(result, "failed to bind socket");
         }
     }
-    
+
     // Create and bind to loopback (127.0.0.1) on port
     function bind_loopback(port: i32) void, IError {
         var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
@@ -162,7 +176,8 @@ class TcpListener {
             throw Error(sock_fd, "failed to create socket");
         }
         this.fd = sock_fd;
-        
+        this.enable_reuse_addr();
+
         var result: i32 = unsafe { __bind_ipv4(this.fd, INADDR_LOOPBACK, port); };
         if (result < 0) {
             throw Error(result, "failed to bind socket");

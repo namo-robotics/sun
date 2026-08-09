@@ -436,12 +436,14 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunction(
             }
           }
 
-          // raw_ptr<T> is compatible with raw_ptr<i8> for intrinsics
+          // raw_ptr<T> is compatible with byte pointers (raw_ptr<i8>/u8)
+          // for intrinsics
           if (argTypes[i]->isRawPointer() &&
               info->paramTypes[i]->isRawPointer() && isIntrinsic(baseName)) {
             auto* paramRawPtr = static_cast<const sun::RawPointerType*>(
                 info->paramTypes[i].get());
-            if (paramRawPtr->getPointeeType()->isInt8()) {
+            if (paramRawPtr->getPointeeType()->isInt8() ||
+                paramRawPtr->getPointeeType()->isUInt8()) {
               continue;
             }
           }

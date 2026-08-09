@@ -19,6 +19,7 @@ manifest {
         "mutex.sun",
         "math.sun",
         "io.sun",
-        "networking.sun"
+        "networking.sun",
+        "http.sun"
     ]
 }

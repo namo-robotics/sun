@@ -2383,14 +2383,15 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
           }
         }
 
-        // raw_ptr<T> is compatible with raw_ptr<i8> (like C's void*)
-        // Only for intrinsics (functions starting with '_') to avoid
-        // accidental type erasure in user code
+        // raw_ptr<T> is compatible with byte pointers raw_ptr<i8>/raw_ptr<u8>
+        // (like C's void*). Only for intrinsics (functions starting with '_')
+        // to avoid accidental type erasure in user code
         if (argType->isRawPointer() && paramType->isRawPointer() &&
             isIntrinsic(funcName)) {
           auto* paramRawPtr =
               static_cast<const sun::RawPointerType*>(paramType.get());
-          if (paramRawPtr->getPointeeType()->isInt8()) {
+          if (paramRawPtr->getPointeeType()->isInt8() ||
+              paramRawPtr->getPointeeType()->isUInt8()) {
             compatible = true;
           }
         }
