@@ -1,6 +1,7 @@
 // tests/test_file_io.cpp - File I/O tests
 
 #include <gtest/gtest.h>
+#include <unistd.h>
 
 #include <cstdio>
 #include <filesystem>
@@ -16,8 +17,9 @@ class FileIOTest : public ::testing::Test {
   std::string testDir;
 
   void SetUp() override {
-    // Create a temp directory for test files
-    testDir = "/tmp/sun_file_io_tests";
+    // Create a temp directory for test files. Unique per process so tests
+    // can run under parallel ctest without deleting each other's files.
+    testDir = "/tmp/sun_file_io_tests_" + std::to_string(getpid());
     std::filesystem::create_directories(testDir);
   }
 

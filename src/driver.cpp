@@ -1,6 +1,8 @@
 #include "driver.h"
 
 #include <llvm/IR/Verifier.h>
+#include <llvm/Passes/PassBuilder.h>
+#include <llvm/Transforms/IPO/GlobalDCE.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 
 #include <filesystem>
@@ -78,6 +80,39 @@ static void processManifest(const ManifestAST& manifest,
       moonImports.emplace_back(resolved);
     }
   }
+}
+
+/// Strip library code the program never uses before handing a module to the
+/// JIT. ORC eagerly compiles every defined function in an added module, so
+/// linked-but-unused stdlib code would dominate JIT time. Internalize
+/// everything except the entry points, then GlobalDCE drops whatever main
+/// can't reach (references through vtables/globals are preserved).
+static void stripUnreachableForJIT(llvm::Module& module) {
+  for (auto& F : module) {
+    if (!F.isDeclaration() && F.getName() != "main" &&
+        F.getName() != "__sun_static_init") {
+      F.setLinkage(llvm::GlobalValue::InternalLinkage);
+    }
+  }
+  for (auto& G : module.globals()) {
+    if (!G.isDeclaration() && !G.getName().starts_with("llvm.")) {
+      G.setLinkage(llvm::GlobalValue::InternalLinkage);
+    }
+  }
+
+  llvm::LoopAnalysisManager lam;
+  llvm::FunctionAnalysisManager fam;
+  llvm::CGSCCAnalysisManager cgam;
+  llvm::ModuleAnalysisManager mam;
+  llvm::PassBuilder pb;
+  pb.registerModuleAnalyses(mam);
+  pb.registerCGSCCAnalyses(cgam);
+  pb.registerFunctionAnalyses(fam);
+  pb.registerLoopAnalyses(lam);
+  pb.crossRegisterProxies(lam, fam, cgam, mam);
+  llvm::ModulePassManager mpm;
+  mpm.addPass(llvm::GlobalDCEPass());
+  mpm.run(module, mam);
 }
 
 /// Check if stdlib.moon is included in moon imports
@@ -537,6 +572,7 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
 
   // Clone the module into the new context
   auto moduleClone = llvm::CloneModule(*ctx->mainModule);
+  stripUnreachableForJIT(*moduleClone);
 
   // Add the cloned module to JIT with its own context
   auto RT = ctx->jit->getMainJITDylib().createResourceTracker();
@@ -967,6 +1003,7 @@ void Driver::executeFiles(const std::vector<std::string>& sourceFiles,
   // Clone module for JIT
   auto anonContext = std::make_unique<llvm::LLVMContext>();
   auto moduleClone = llvm::CloneModule(*ctx->mainModule);
+  stripUnreachableForJIT(*moduleClone);
 
   auto RT = ctx->jit->getMainJITDylib().createResourceTracker();
   llvm::ExitOnError ExitOnErr;
