@@ -3,6 +3,7 @@
 #include "ast_cache.h"
 
 #include <llvm/Support/SHA256.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <fstream>
@@ -263,9 +264,25 @@ void ASTCache::saveToDisk(const std::string& contentHash,
     return;  // Silently fail disk cache write
   }
 
-  std::ofstream file(path, std::ios::binary);
-  if (file) {
+  // Write to a unique temp file, then rename into place. rename() is atomic
+  // on POSIX, so concurrent test processes never observe a partial file.
+  auto tmpPath = path;
+  tmpPath += ".tmp" + std::to_string(::getpid());
+  {
+    std::ofstream file(tmpPath, std::ios::binary);
+    if (!file) {
+      return;  // Silently fail disk cache write
+    }
     file.write(data.data(), static_cast<std::streamsize>(data.size()));
+    if (!file) {
+      file.close();
+      std::filesystem::remove(tmpPath, ec);
+      return;
+    }
+  }
+  std::filesystem::rename(tmpPath, path, ec);
+  if (ec) {
+    std::filesystem::remove(tmpPath, ec);
   }
 }
 

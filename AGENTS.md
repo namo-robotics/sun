@@ -12,7 +12,7 @@ Lexer → Parser → AST → SemanticAnalyzer → BorrowChecker → CodegenVisit
 
 ```bash
 cmake -B build && cmake --build build -j$(nproc)
-cd build && ctest --output-on-failure
+cd build && ctest -j8 --output-on-failure
 ./build/tests/sun_tests --gtest_filter="SuiteName.*"
 ./build/sun input.sun          # JIT execute
 ./build/sun -c -o output input.sun  # AOT compile

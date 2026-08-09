@@ -17,7 +17,8 @@
 	"updateRemoteUserUID": true,
 	"containerEnv": {
 		"CCACHE_MAXSIZE": "20G",
-		"CCACHE_SLOPPINESS": "pch_defines,time_macros"
+		"CCACHE_SLOPPINESS": "pch_defines,time_macros",
+		"CTEST_PARALLEL_LEVEL": "8"
 	},
 	"postCreateCommand": "sudo chown -R ubuntu:ubuntu /home/ubuntu/.cache/ccache",
 	"postAttachCommand": "bash",
