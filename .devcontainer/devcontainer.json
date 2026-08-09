@@ -10,10 +10,16 @@
 	},
 	"mounts": [
 		"source=vscode-user-data,target=/home/vscode/.vscode-server/data/User,type=volume",
-		"source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/home/ubuntu/.ssh,type=bind,readonly"
+		"source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/home/ubuntu/.ssh,type=bind,readonly",
+		"source=sun-ccache,target=/home/ubuntu/.cache/ccache,type=volume"
 	],
 	"remoteUser": "ubuntu",
 	"updateRemoteUserUID": true,
+	"containerEnv": {
+		"CCACHE_MAXSIZE": "20G",
+		"CCACHE_SLOPPINESS": "pch_defines,time_macros"
+	},
+	"postCreateCommand": "sudo chown -R ubuntu:ubuntu /home/ubuntu/.cache/ccache",
 	"postAttachCommand": "bash",
 	"features": {
 		"ghcr.io/devcontainers/features/node:1": {
@@ -30,7 +36,8 @@
 				"llvm-vs-code-extensions.lldb-dap",
 				"MermaidChart.vscode-mermaid-chart",
 				"ms-vscode.cmake-tools",
-				"llvm-vs-code-extensions.vscode-clangd"
+				"llvm-vs-code-extensions.vscode-clangd",
+				"Anthropic.claude-code"
 			]
 		}
 	}

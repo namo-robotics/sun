@@ -22,6 +22,16 @@ done
 mkdir -p build
 cd build
 
+# A cache configured with the wrong generator or compiler (e.g. by an IDE or
+# a fresh container picking defaults) poisons the build dir — wipe and redo.
+if [[ -f CMakeCache.txt ]]; then
+    if ! grep -q "CMAKE_GENERATOR:INTERNAL=Ninja" CMakeCache.txt || \
+       ! grep -q "CMAKE_CXX_COMPILER:.*clang++" CMakeCache.txt; then
+        echo "Build dir configured with wrong generator/compiler — wiping"
+        find . -mindepth 1 -delete
+    fi
+fi
+
 # Check if SKIP_STDLIB setting changed from cached value
 CACHED_SKIP_STDLIB=""
 if [[ -f CMakeCache.txt ]]; then
@@ -30,7 +40,10 @@ fi
 
 # Reconfigure if: no cache, --reconfigure flag, or SKIP_STDLIB changed
 if [[ ! -f CMakeCache.txt ]] || [[ "$RECONFIGURE" == "true" ]] || [[ "$CACHED_SKIP_STDLIB" != "$SKIP_STDLIB" ]]; then
-    cmake -DCMAKE_BUILD_TYPE=Debug \
+    cmake -G Ninja \
+          -DCMAKE_CXX_COMPILER=clang++ \
+          -DCMAKE_C_COMPILER=clang \
+          -DCMAKE_BUILD_TYPE=Debug \
           -DCMAKE_CXX_FLAGS="-g3 -O0 -fno-omit-frame-pointer" \
           -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
           -DCMAKE_C_COMPILER_LAUNCHER=ccache \
@@ -38,7 +51,7 @@ if [[ ! -f CMakeCache.txt ]] || [[ "$RECONFIGURE" == "true" ]] || [[ "$CACHED_SK
           ..
 fi
 
-make -j8
+cmake --build . -j8
 
 # Add sun to PATH by creating symlink
 sudo ln -sf "$(pwd)/sun" /usr/local/bin/sun

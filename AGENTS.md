@@ -83,6 +83,7 @@ Module tests require `SUN_PATH` env var pointing to workspace root.
 - Absotely NEVER use `git` commands except for `git diff`.
 - Run all commands from the workspace folder.
 - Create any temp files in ${workspaceRoot}/tmp
+- Keep code comments concise and minimal
 
 # Build
 
