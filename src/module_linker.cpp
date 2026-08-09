@@ -220,9 +220,13 @@ void ModuleLinker::declareAvailableFunctions() {
 bool ModuleLinker::linkOnlyUsedSymbols() {
   std::set<std::string> neededModules;
 
-  // Find undefined symbols in target module that we can provide
+  // Find undefined symbols in target module that we can provide.
+  // Only declarations with actual uses count — declareAvailableFunctions
+  // blanket-declares every library function, so an unused declaration must
+  // not pull in its module.
   for (const auto& F : target_) {
-    if (F.isDeclaration() && !F.isIntrinsic() && !F.getName().empty()) {
+    if (F.isDeclaration() && !F.isIntrinsic() && !F.getName().empty() &&
+        !F.use_empty()) {
       std::string name = F.getName().str();
       auto it = symbolToModule_.find(name);
       if (it != symbolToModule_.end()) {
@@ -233,7 +237,7 @@ bool ModuleLinker::linkOnlyUsedSymbols() {
 
   // Also check for undefined globals
   for (const auto& G : target_.globals()) {
-    if (G.isDeclaration() && !G.getName().empty()) {
+    if (G.isDeclaration() && !G.getName().empty() && !G.use_empty()) {
       std::string name = G.getName().str();
       auto it = symbolToModule_.find(name);
       if (it != symbolToModule_.end()) {

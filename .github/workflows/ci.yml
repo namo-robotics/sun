@@ -10,6 +10,10 @@ jobs:
   build-and-test:
     runs-on: ubuntu-24.04
 
+    env:
+      # Required for ccache to cache compilations that use precompiled headers
+      CCACHE_SLOPPINESS: pch_defines,time_macros
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -19,13 +23,21 @@ jobs:
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh 20
-          sudo apt-get install -y llvm-20-dev libzstd-dev libgtest-dev protobuf-compiler libprotobuf-dev
+          sudo apt-get install -y llvm-20-dev lld-20 libzstd-dev libgtest-dev protobuf-compiler libprotobuf-dev ninja-build
+
+      - name: Set up ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ci-clang20
+          max-size: 2G
 
       - name: Configure
         run: |
-          cmake -B build \
+          cmake -B build -G Ninja \
             -DCMAKE_C_COMPILER=clang-20 \
-            -DCMAKE_CXX_COMPILER=clang++-20
+            -DCMAKE_CXX_COMPILER=clang++-20 \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build
         run: cmake --build build -j$(nproc)
@@ -33,7 +45,7 @@ jobs:
       - name: Test
         run: |
           cd build
-          ctest --output-on-failure
+          ctest -j$(nproc) --output-on-failure
         env:
           SUN_PATH: ${{ github.workspace }}
 

@@ -440,11 +440,14 @@ std::unique_ptr<llvm::Module> SunLibReader::loadModule(
     return nullptr;
   }
 
-  auto memBuffer = llvm::MemoryBuffer::getMemBuffer(
-      llvm::StringRef(buffer.data(), buffer.size()), moduleKey, false);
+  auto memBuffer = llvm::MemoryBuffer::getMemBufferCopy(
+      llvm::StringRef(buffer.data(), buffer.size()), moduleKey);
 
+  // Lazy: prototypes and globals are parsed now, function bodies only on
+  // materialization (i.e. when the module actually gets linked). Callers
+  // that just scan declarations never pay for body parsing.
   auto moduleOrErr =
-      llvm::parseBitcodeFile(memBuffer->getMemBufferRef(), context);
+      llvm::getOwningLazyBitcodeModule(std::move(memBuffer), context);
   if (!moduleOrErr) {
     std::string errStr;
     llvm::raw_string_ostream errOS(errStr);

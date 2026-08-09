@@ -35,6 +35,16 @@
     "testMate.cpp.test.stderrDecorator": true,
     "testMate.cpp.log.logpanel": true,
     "testMate.cpp.test.workingDirectory": "${workspaceFolder}",
+    "testMate.cpp.test.parallelExecutionLimit": 8,
+    // All tests live in one binary (sun_tests); parallelizationLimit lets
+    // TestMate split its tests across up to 8 concurrent processes
+    "testMate.cpp.test.advancedExecutables": [
+        {
+            "pattern": "build/tests/sun_tests",
+            "cwd": "${workspaceFolder}",
+            "parallelizationLimit": 8
+        }
+    ],
     "files.associations": {
         "debian/rules": "makefile",
         "debian/control": "plaintext",

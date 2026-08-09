@@ -8,6 +8,15 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)  # Useful for clang-tidy, IDEs, etc.
 
+# Instantiate templates while building precompiled headers (clang)
+set(CMAKE_PCH_INSTANTIATE_TEMPLATES ON)
+
+# lld links debug binaries much faster than the default bfd linker
+# (clang-only, like the -Xclang PCH flags below — GCC configures still work)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    add_link_options(-fuse-ld=lld)
+endif()
+
 # Allow Debug/Release selection via command line or IDE (don't hardcode)
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
@@ -177,6 +186,20 @@ target_link_libraries(sun_lib PUBLIC LLVM protobuf::libprotobuf)  # Add more com
 # Ensure the library uses the same definitions/includes as LLVM
 target_compile_definitions(sun_lib PUBLIC ${LLVM_DEFINITIONS})
 target_include_directories(sun_lib SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
+
+# Precompile the common headers (each TU otherwise parses ~330k preprocessed
+# lines of AST + LLVM headers; measured ~2x per-file compile speedup)
+target_precompile_headers(sun_lib PRIVATE
+    include/ast.h
+    include/codegen.h
+    include/codegen_visitor.h
+    include/parser.h
+    include/intrinsics.h
+)
+# clang embeds a timestamp in PCHs by default, which defeats ccache
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(sun_lib PRIVATE -Xclang -fno-pch-timestamp)
+endif()
 
 # ------------------------------------------------------------------
 # Main executable
