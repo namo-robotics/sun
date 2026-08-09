@@ -119,10 +119,11 @@ Value* CodegenVisitor::codegen(const SpawnExprAST& expr) {
       ctx.builder->CreateStructGEP(contextType, contextPtr, 2, "ctx.result");
   ctx.builder->CreateStore(resultSlot, resultFieldPtr);
 
-  // Initialize futex word to 0 (index 3) - not done
+  // Initialize futex word to 1 (index 3) - running; the kernel clears it to
+  // 0 and wakes waiters when the child exits (CLONE_CHILD_CLEARTID)
   Value* futexFieldPtr =
       ctx.builder->CreateStructGEP(contextType, contextPtr, 3, "ctx.futex");
-  ctx.builder->CreateStore(ConstantInt::get(i32Ty, 0), futexFieldPtr);
+  ctx.builder->CreateStore(ConstantInt::get(i32Ty, 1), futexFieldPtr);
 
   // Store stack base (index 4)
   Value* stackBaseFieldPtr = ctx.builder->CreateStructGEP(
@@ -153,7 +154,8 @@ Value* CodegenVisitor::codegen(const SpawnExprAST& expr) {
   AllocaInst* parentTidAlloca =
       createEntryBlockAlloca(parentFunc, "parent_tid", i32Ty);
 
-  // Child TID storage - use the futex word so kernel clears it on exit
+  // The futex word doubles as the CLONE_CHILD_CLEARTID target: the kernel
+  // zeroes it and futex-wakes join() once the child has fully exited
   Value* childTidPtr = futexFieldPtr;
 
   // Call clone
@@ -215,13 +217,10 @@ Value* CodegenVisitor::codegen(const SpawnExprAST& expr) {
       ctx.builder->CreateLoad(ptrTy, childResultFieldPtr, "child.result_slot");
   ctx.builder->CreateStore(childResult, childResultSlot);
 
-  // Signal completion: set futex word to 1 and wake waiters
-  Value* childFutexFieldPtr = ctx.builder->CreateStructGEP(
-      contextType, childContextPtr, 3, "child.futex_ptr");
-  ctx.builder->CreateStore(ConstantInt::get(i32Ty, 1), childFutexFieldPtr);
-  threadUtils.emitSyscallFutexWake(childFutexFieldPtr);
-
-  // Exit the thread
+  // Exit the thread. Completion is signaled by the kernel via
+  // CLONE_CHILD_CLEARTID after the child is fully gone — the child must not
+  // signal manually, since it still uses its stack until the exit syscall
+  // and join() unmaps that stack as soon as it observes completion.
   threadUtils.emitSyscallExit(ConstantInt::get(i64Ty, 0));
   // Note: emitSyscallExit adds unreachable, so no need for terminator
 
@@ -281,7 +280,8 @@ Value* CodegenVisitor::codegenThreadJoin(Value* threadHandle,
   Value* futexWordPtr = ctx.builder->CreateStructGEP(contextType, contextPtr, 3,
                                                      "join.futex_ptr");
 
-  // Wait loop: while futex_word == 0, call futex_wait
+  // Wait loop: the word holds 1 while the child runs; the kernel clears it
+  // to 0 and wakes us once the child has fully exited (CLONE_CHILD_CLEARTID)
   Function* currentFunc = ctx.builder->GetInsertBlock()->getParent();
   BasicBlock* checkBB = BasicBlock::Create(llvmCtx, "join.check", currentFunc);
   BasicBlock* waitBB = BasicBlock::Create(llvmCtx, "join.wait", currentFunc);
@@ -292,13 +292,13 @@ Value* CodegenVisitor::codegenThreadJoin(Value* threadHandle,
   // Check if thread is done
   ctx.builder->SetInsertPoint(checkBB);
   Value* futexVal = ctx.builder->CreateLoad(i32Ty, futexWordPtr, "futex_val");
-  Value* isDone = ctx.builder->CreateICmpNE(
+  Value* isDone = ctx.builder->CreateICmpEQ(
       futexVal, ConstantInt::get(i32Ty, 0), "is_done");
   ctx.builder->CreateCondBr(isDone, doneBB, waitBB);
 
-  // Wait for thread
+  // Block while the word still holds the value we just observed
   ctx.builder->SetInsertPoint(waitBB);
-  threadUtils.emitSyscallFutexWait(futexWordPtr, ConstantInt::get(i32Ty, 0));
+  threadUtils.emitSyscallFutexWait(futexWordPtr, futexVal);
   ctx.builder->CreateBr(checkBB);  // Recheck after waking
 
   // Thread is done - load result

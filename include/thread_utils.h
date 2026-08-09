@@ -107,8 +107,8 @@ class ThreadUtils {
    * Blocks until the futex word changes from the expected value.
    *
    * Wrapper around emitSyscallFutex with FUTEX_WAIT. Used by join() to
-   * wait for the child thread to complete. The child sets the futex word
-   * to a different value and calls FUTEX_WAKE before exiting.
+   * wait for the child thread to complete. The kernel clears the futex
+   * word and wakes waiters when the child exits (CLONE_CHILD_CLEARTID).
    *
    * Note: May return spuriously; caller should re-check condition in a loop.
    *
@@ -120,8 +120,7 @@ class ThreadUtils {
   /**
    * Wakes threads waiting on a futex.
    *
-   * Wrapper around emitSyscallFutex with FUTEX_WAKE. Called by the child
-   * thread just before exit to unblock the parent's join() call.
+   * Wrapper around emitSyscallFutex with FUTEX_WAKE.
    * Wakes at most one waiter.
    *
    * @param addr Address of the futex word (i32*).
@@ -183,8 +182,10 @@ class ThreadUtils {
   static constexpr int64_t DEFAULT_STACK_SIZE = 2 * 1024 * 1024;
 
   /// Clone flags for creating a thread (shares everything with parent)
-  /// Note: We don't use CLONE_CHILD_CLEARTID because it races with our
-  /// manual futex signaling (kernel clears to 0 after we set to 1).
+  /// CLONE_CHILD_CLEARTID makes the kernel clear the futex word and wake
+  /// waiters only after the child has fully exited — the child must never
+  /// signal completion itself, since it still runs on its stack afterwards
+  /// and join() unmaps that stack.
   static constexpr int64_t THREAD_FLAGS =
       0x00000100 |  // CLONE_VM - Share memory space
       0x00000200 |  // CLONE_FS - Share filesystem info
@@ -192,5 +193,6 @@ class ThreadUtils {
       0x00000800 |  // CLONE_SIGHAND - Share signal handlers
       0x00010000 |  // CLONE_THREAD - Same thread group
       0x00040000 |  // CLONE_SYSVSEM - Share SysV semaphores
-      0x00100000;   // CLONE_PARENT_SETTID - Set TID in parent
+      0x00100000 |  // CLONE_PARENT_SETTID - Set TID in parent
+      0x00200000;   // CLONE_CHILD_CLEARTID - Clear futex word + wake on exit
 };
