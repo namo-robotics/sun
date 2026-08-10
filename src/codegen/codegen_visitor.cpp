@@ -250,6 +250,13 @@ Value* CodegenVisitor::codegen(const StringLiteralAST& expr) {
 // Binary and unary expressions
 // -------------------------------------------------------------------
 
+// True if the expression's resolved Sun type is an unsigned integer.
+// Floats, bool, and enums answer false and take the signed/default path.
+static bool isUnsignedExpr(const ExprAST& expr) {
+  auto type = sun::unwrapRef(expr.getResolvedType());
+  return type && type->isUnsigned();
+}
+
 Value* CodegenVisitor::codegen(const BinaryExprAST& expr) {
   // Handle short-circuit logical operators (and, or)
   if (expr.getOp().kind == TokenKind::AND ||
@@ -265,6 +272,10 @@ Value* CodegenVisitor::codegen(const BinaryExprAST& expr) {
   llvm::Type* LT = L->getType();
   llvm::Type* RT = R->getType();
 
+  // Signedness of div/rem/shift/compare follows the LHS operand's Sun type;
+  // mixed signed/unsigned operands are permitted by isAssignableTo.
+  bool unsignedOp = isUnsignedExpr(*expr.getLHS());
+
   // Handle implicit type widening when safe
   if (LT != RT) {
     // Integer widening: always widen smaller to larger (safe)
@@ -272,13 +283,18 @@ Value* CodegenVisitor::codegen(const BinaryExprAST& expr) {
       unsigned lhsBits = LT->getIntegerBitWidth();
       unsigned rhsBits = RT->getIntegerBitWidth();
 
+      // Extension mode follows the widened operand's own signedness
       if (lhsBits < rhsBits) {
         // Widen LHS to match RHS type
-        L = ctx.builder->CreateSExt(L, RT, "widen");
+        L = isUnsignedExpr(*expr.getLHS())
+                ? ctx.builder->CreateZExt(L, RT, "widen")
+                : ctx.builder->CreateSExt(L, RT, "widen");
         LT = RT;
       } else if (rhsBits < lhsBits) {
         // Widen RHS to match LHS type
-        R = ctx.builder->CreateSExt(R, LT, "widen");
+        R = isUnsignedExpr(*expr.getRHS())
+                ? ctx.builder->CreateZExt(R, LT, "widen")
+                : ctx.builder->CreateSExt(R, LT, "widen");
         RT = LT;
       }
     }
@@ -331,10 +347,11 @@ Value* CodegenVisitor::codegen(const BinaryExprAST& expr) {
     case TokenKind::SLASH: {
       if (isInteger && currentFunctionCanError) {
         // Safe division: check for zero and return error if so
-        return codegenSafeDivision(L, R);
+        return codegenSafeDivision(L, R, /*isModulo=*/false, unsignedOp);
       }
-      return isInteger ? ctx.builder->CreateSDiv(L, R, "divtmp")
-                       : ctx.builder->CreateFDiv(L, R, "divtmp");
+      if (!isInteger) return ctx.builder->CreateFDiv(L, R, "divtmp");
+      return unsignedOp ? ctx.builder->CreateUDiv(L, R, "divtmp")
+                        : ctx.builder->CreateSDiv(L, R, "divtmp");
     }
     case TokenKind::PERCENT: {
       if (!isInteger) {
@@ -343,9 +360,10 @@ Value* CodegenVisitor::codegen(const BinaryExprAST& expr) {
       }
       if (currentFunctionCanError) {
         // Safe modulo: check for zero and return error if so
-        return codegenSafeDivision(L, R, /*isModulo=*/true);
+        return codegenSafeDivision(L, R, /*isModulo=*/true, unsignedOp);
       }
-      return ctx.builder->CreateSRem(L, R, "modtmp");
+      return unsignedOp ? ctx.builder->CreateURem(L, R, "modtmp")
+                        : ctx.builder->CreateSRem(L, R, "modtmp");
     }
     case TokenKind::AMPERSAND: {
       if (!isInteger) {
@@ -380,33 +398,38 @@ Value* CodegenVisitor::codegen(const BinaryExprAST& expr) {
         logAndThrowError("Right shift operator (>>) requires integer operands",
                          expr.getLocation());
       }
-      // Arithmetic right shift (sign-extending)
-      return ctx.builder->CreateAShr(L, R, "shrtmp");
+      // Logical shift for unsigned, arithmetic (sign-extending) for signed
+      return unsignedOp ? ctx.builder->CreateLShr(L, R, "shrtmp")
+                        : ctx.builder->CreateAShr(L, R, "shrtmp");
     }
     case TokenKind::LESS:
       if (isInteger) {
-        L = ctx.builder->CreateICmpSLT(L, R, "cmptmp");
+        L = unsignedOp ? ctx.builder->CreateICmpULT(L, R, "cmptmp")
+                       : ctx.builder->CreateICmpSLT(L, R, "cmptmp");
       } else {
         L = ctx.builder->CreateFCmpULT(L, R, "cmptmp");
       }
       return L;
     case TokenKind::LESS_EQUAL:
       if (isInteger) {
-        L = ctx.builder->CreateICmpSLE(L, R, "cmptmp");
+        L = unsignedOp ? ctx.builder->CreateICmpULE(L, R, "cmptmp")
+                       : ctx.builder->CreateICmpSLE(L, R, "cmptmp");
       } else {
         L = ctx.builder->CreateFCmpULE(L, R, "cmptmp");
       }
       return L;
     case TokenKind::GREATER:
       if (isInteger) {
-        L = ctx.builder->CreateICmpSGT(L, R, "cmptmp");
+        L = unsignedOp ? ctx.builder->CreateICmpUGT(L, R, "cmptmp")
+                       : ctx.builder->CreateICmpSGT(L, R, "cmptmp");
       } else {
         L = ctx.builder->CreateFCmpUGT(L, R, "cmptmp");
       }
       return L;
     case TokenKind::GREATER_EQUAL:
       if (isInteger) {
-        L = ctx.builder->CreateICmpSGE(L, R, "cmptmp");
+        L = unsignedOp ? ctx.builder->CreateICmpUGE(L, R, "cmptmp")
+                       : ctx.builder->CreateICmpSGE(L, R, "cmptmp");
       } else {
         L = ctx.builder->CreateFCmpUGE(L, R, "cmptmp");
       }
@@ -439,6 +462,19 @@ Value* CodegenVisitor::codegen(const UnaryExprAST& expr) {
   Value* OperandV = codegen(*expr.getOperand());
   if (!OperandV) return nullptr;
 
-  logAndThrowError("Unknown unary operator: " + expr.getOp().text,
-                   expr.getLocation());
+  switch (expr.getOp().kind) {
+    case TokenKind::MINUS:
+      return OperandV->getType()->isFloatingPointTy()
+                 ? ctx.builder->CreateFNeg(OperandV, "negtmp")
+                 : ctx.builder->CreateNeg(OperandV, "negtmp");
+    case TokenKind::NOT:
+      // Semantic analysis guarantees a bool (i1) operand
+      return ctx.builder->CreateNot(OperandV, "nottmp");
+    case TokenKind::TILDE:
+      // Semantic analysis guarantees an integer operand
+      return ctx.builder->CreateNot(OperandV, "bnottmp");
+    default:
+      logAndThrowError("Unknown unary operator: " + expr.getOp().text,
+                       expr.getLocation());
+  }
 }

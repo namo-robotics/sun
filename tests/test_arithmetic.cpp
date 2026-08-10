@@ -467,6 +467,85 @@ TEST(ArithmeticOps, double_negative) {
   EXPECT_EQ(value, 42);
 }
 
+TEST(ArithmeticOps, unary_minus_f64_var) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var x: f64 = 2.5;
+          var y: f64 = -x;
+          if (y == -2.5) { return 1; }
+          return 0;
+      }
+    )");
+  EXPECT_EQ(value, 1);
+}
+
+TEST(ArithmeticOps, unary_minus_f32_var) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var x: f32 = 1.5;
+          var y: f32 = -x;
+          if (y == -1.5) { return 1; }
+          return 0;
+      }
+    )");
+  EXPECT_EQ(value, 1);
+}
+
+TEST(ArithmeticOps, unary_minus_expression) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var a: i32 = 3;
+          var b: i32 = 4;
+          return -(a + b);
+      }
+    )");
+  EXPECT_EQ(value, -7);
+}
+
+TEST(ArithmeticOps, unary_minus_nested) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var x: i32 = 5;
+          return -(-x);
+      }
+    )");
+  EXPECT_EQ(value, 5);
+}
+
+TEST(ArithmeticOps, unary_minus_call_arg) {
+  auto value = executeString(R"(
+      function id(v: i32) i32 {
+          return v;
+      }
+      function main() i32 {
+          var x: i32 = 9;
+          return id(-x);
+      }
+    )");
+  EXPECT_EQ(value, -9);
+}
+
+TEST(ArithmeticOps, unary_minus_binds_tighter_than_mul) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var a: i32 = 2;
+          return -a * 3;
+      }
+    )");
+  EXPECT_EQ(value, -6);
+}
+
+TEST(ArithmeticOps, unary_minus_on_unsigned_is_error) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      function main() i32 {
+          var x: u32 = 5;
+          var y: u32 = -x;
+          return 0;
+      }
+    )"),
+                                "Cannot negate a value of unsigned type");
+}
+
 TEST(ArithmeticOps, chained_operations) {
   auto value = executeString(R"(
       function main() i32 {

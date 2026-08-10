@@ -85,6 +85,18 @@ enum class TokenKind {
   CARET,                 // ^ (bitwise XOR)
   LEFT_SHIFT,            // <<
   RIGHT_SHIFT,           // >>
+  TILDE,                 // ~ (bitwise NOT)
+  // Compound assignment operators (desugared in the parser; never serialized)
+  PLUS_ASSIGN,           // +=
+  MINUS_ASSIGN,          // -=
+  STAR_ASSIGN,           // *=
+  SLASH_ASSIGN,          // /=
+  PERCENT_ASSIGN,        // %=
+  AMP_ASSIGN,            // &=
+  PIPE_ASSIGN,           // |=
+  CARET_ASSIGN,          // ^=
+  LEFT_SHIFT_ASSIGN,     // <<=
+  RIGHT_SHIFT_ASSIGN,    // >>=
   AND,                   // and (logical AND)
   OR,                    // or (logical OR)
   NOT,                   // not (logical NOT)
@@ -188,6 +200,17 @@ static const std::map<TokenKind, std::string> tokenRegexes = {
     {TokenKind::NOT, "not"},
     {TokenKind::LEFT_SHIFT, "<<"},
     {TokenKind::RIGHT_SHIFT, ">>"},
+    {TokenKind::TILDE, "~"},
+    {TokenKind::PLUS_ASSIGN, "\\+="},
+    {TokenKind::MINUS_ASSIGN, "-="},
+    {TokenKind::STAR_ASSIGN, "\\*="},
+    {TokenKind::SLASH_ASSIGN, "/="},
+    {TokenKind::PERCENT_ASSIGN, "%="},
+    {TokenKind::AMP_ASSIGN, "&="},
+    {TokenKind::PIPE_ASSIGN, "\\|="},
+    {TokenKind::CARET_ASSIGN, "\\^="},
+    {TokenKind::LEFT_SHIFT_ASSIGN, "<<="},
+    {TokenKind::RIGHT_SHIFT_ASSIGN, ">>="},
     {TokenKind::AMPERSAND, "&"},
     {TokenKind::PIPE, "\\|"},
     {TokenKind::CARET, "\\^"},
@@ -290,6 +313,17 @@ inline const std::map<TokenKind, TokenInfo>& getTokenInfo() {
       {TokenKind::AND, {"and", 5}},
       {TokenKind::OR, {"or", 4}},
       {TokenKind::NOT, {"not", -1}},
+      {TokenKind::TILDE, {"~", -1}},
+      {TokenKind::PLUS_ASSIGN, {"+=", -1}},
+      {TokenKind::MINUS_ASSIGN, {"-=", -1}},
+      {TokenKind::STAR_ASSIGN, {"*=", -1}},
+      {TokenKind::SLASH_ASSIGN, {"/=", -1}},
+      {TokenKind::PERCENT_ASSIGN, {"%=", -1}},
+      {TokenKind::AMP_ASSIGN, {"&=", -1}},
+      {TokenKind::PIPE_ASSIGN, {"|=", -1}},
+      {TokenKind::CARET_ASSIGN, {"^=", -1}},
+      {TokenKind::LEFT_SHIFT_ASSIGN, {"<<=", -1}},
+      {TokenKind::RIGHT_SHIFT_ASSIGN, {">>=", -1}},
       {TokenKind::LESS, {"<", 10}},
       {TokenKind::LESS_EQUAL, {"<=", 10}},
       {TokenKind::GREATER, {">", 10}},

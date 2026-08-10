@@ -78,12 +78,31 @@ class Parser {
       pushToken(remainingGreater);  // push '>' to be consumed next
       return;
     }
+    if (curTok.kind == TokenKind::GREATER_EQUAL) {
+      // Split '>=' into '>' and '=' (e.g. `var v: Vec<i32>= x;`)
+      Token remainingEqual = Token::make(TokenKind::EQUAL, curTok.start, curTok.end);
+      getNextToken();  // eat '>='
+      pushToken(remainingEqual);
+      return;
+    }
+    if (curTok.kind == TokenKind::RIGHT_SHIFT_ASSIGN) {
+      // Split '>>=' into '>' and '>=' (the '>=' splits again if needed,
+      // e.g. `var v: Vec<Vec<i32>>= x;`)
+      Token remainingGreaterEqual =
+          Token::make(TokenKind::GREATER_EQUAL, curTok.start, curTok.end);
+      getNextToken();  // eat '>>='
+      pushToken(remainingGreaterEqual);
+      return;
+    }
     parsingError(msg);
   }
 
-  // Helper: check if current token is '>' or '>>' (for lookahead)
+  // Helper: check if current token starts with '>' (for lookahead)
   bool isGreater() const {
-    return curTok.kind == TokenKind::GREATER || curTok.kind == TokenKind::RIGHT_SHIFT;
+    return curTok.kind == TokenKind::GREATER ||
+           curTok.kind == TokenKind::RIGHT_SHIFT ||
+           curTok.kind == TokenKind::GREATER_EQUAL ||
+           curTok.kind == TokenKind::RIGHT_SHIFT_ASSIGN;
   }
 
  public:
@@ -122,6 +141,7 @@ class Parser {
   }
 
   unique_ptr<ExprAST> parseExpression();
+  unique_ptr<ExprAST> parseUnary();
   unique_ptr<ExprAST> parsePrimary();
   unique_ptr<ExprAST> parsePostfixExpr(unique_ptr<ExprAST> base);
   unique_ptr<VariableCreationAST> parseVarStatement();

@@ -34,6 +34,26 @@ static TokenKind fromProtoTokenKind(ast::TokenKind kind) {
       return TokenKind::NOT_EQUAL;
     case ast::TOKEN_KIND_EQUAL:
       return TokenKind::EQUAL;
+    case ast::TOKEN_KIND_AND:
+      return TokenKind::AND;
+    case ast::TOKEN_KIND_OR:
+      return TokenKind::OR;
+    case ast::TOKEN_KIND_NOT:
+      return TokenKind::NOT;
+    case ast::TOKEN_KIND_AMPERSAND:
+      return TokenKind::AMPERSAND;
+    case ast::TOKEN_KIND_PIPE:
+      return TokenKind::PIPE;
+    case ast::TOKEN_KIND_CARET:
+      return TokenKind::CARET;
+    case ast::TOKEN_KIND_PERCENT:
+      return TokenKind::PERCENT;
+    case ast::TOKEN_KIND_SHIFT_LEFT:
+      return TokenKind::LEFT_SHIFT;
+    case ast::TOKEN_KIND_SHIFT_RIGHT:
+      return TokenKind::RIGHT_SHIFT;
+    case ast::TOKEN_KIND_TILDE:
+      return TokenKind::TILDE;
     default:
       return TokenKind::UNKNOWN;
   }

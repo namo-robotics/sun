@@ -461,3 +461,70 @@ TEST(BitwiseOps, byte_pack_unpack) {
     )");
   EXPECT_EQ(value, 4);
 }
+
+// ============================================================================
+// Bitwise NOT (~)
+// ============================================================================
+
+TEST(BitwiseOps, bnot_i32) {
+  auto value = executeString(R"(
+      function main() i32 {
+          return ~0;
+      }
+    )");
+  EXPECT_EQ(value, -1);
+}
+
+TEST(BitwiseOps, bnot_i32_var) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var x: i32 = 15;
+          return ~x;
+      }
+    )");
+  EXPECT_EQ(value, -16);
+}
+
+TEST(BitwiseOps, bnot_u8) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var x: u8 = 15;
+          var y: u8 = ~x;
+          if (y == 240) { return 1; }
+          return 0;
+      }
+    )");
+  EXPECT_EQ(value, 1);
+}
+
+TEST(BitwiseOps, bnot_i64) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var x: i64 = 255;
+          var y: i64 = ~x;
+          if (y == -256) { return 1; }
+          return 0;
+      }
+    )");
+  EXPECT_EQ(value, 1);
+}
+
+TEST(BitwiseOps, bnot_in_expression) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var mask: i32 = 12;
+          return 255 & ~mask;
+      }
+    )");
+  EXPECT_EQ(value, 243);
+}
+
+TEST(BitwiseOps, bnot_on_float_is_error) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      function main() i32 {
+          var y: f64 = ~1.5;
+          return 0;
+      }
+    )"),
+                                "Bitwise NOT (~) requires an integer operand");
+}

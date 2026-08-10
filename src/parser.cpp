@@ -176,7 +176,7 @@ unique_ptr<MatchExprAST> Parser::parseMatchExpression() {
       getNextToken();  // eat '_'
     } else {
       // Parse pattern expression (for now, just literals and identifiers)
-      pattern = parsePrimary();
+      pattern = parseUnary();
       if (!pattern) {
         parsingError("expected pattern in match arm");
         return nullptr;
@@ -566,41 +566,30 @@ unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
   return varRef;
 }
 
-unique_ptr<ExprAST> Parser::parsePrimary() {
-  // Handle prefix operators: + and -
-  if (curTok.kind == TokenKind::PLUS || curTok.kind == TokenKind::MINUS) {
-    Token opTok = curTok;  // Save the operator token (for kind and position)
-    getNextToken();        // eat + or -
-
-    auto operand = parsePrimary();  // Recursively parse the operand
-    if (!operand) return nullptr;
-
-    if (opTok.kind == TokenKind::PLUS) {
-      // Unary + is a no-op: just return the operand
-      return operand;
-    } else  // MINUS
-    {
-      // Unary minus: transform into 0 - operand
-      // Create zero with matching type to avoid type mismatch errors
-      std::unique_ptr<NumberExprAST> zero;
-      if (operand->getType() == ASTNodeType::NUMBER) {
-        auto* numExpr = static_cast<NumberExprAST*>(operand.get());
-        if (numExpr->isInteger()) {
-          zero = std::make_unique<NumberExprAST>(static_cast<int64_t>(0));
-        } else {
-          zero = std::make_unique<NumberExprAST>(0.0);
-        }
-      } else {
-        // For non-literal operands, default to integer zero
-        // (type checking will handle any coercion needed)
-        zero = std::make_unique<NumberExprAST>(static_cast<int64_t>(0));
-      }
-
-      return std::make_unique<BinaryExprAST>(opTok, std::move(zero),
-                                             std::move(operand));
-    }
+// Prefix operators: - (negation), not (logical), ~ (bitwise). Unary + is a
+// no-op. Right-recursive, so `-(-x)` and `not not b` parse naturally; binds
+// tighter than any binary operator.
+unique_ptr<ExprAST> Parser::parseUnary() {
+  if (curTok.kind == TokenKind::PLUS) {
+    getNextToken();  // eat '+'
+    return parseUnary();
   }
 
+  if (curTok.kind == TokenKind::MINUS || curTok.kind == TokenKind::NOT ||
+      curTok.kind == TokenKind::TILDE) {
+    Token opTok = curTok;
+    getNextToken();  // eat the operator
+
+    auto operand = parseUnary();
+    if (!operand) return nullptr;
+
+    return std::make_unique<UnaryExprAST>(opTok, std::move(operand));
+  }
+
+  return parsePrimary();
+}
+
+unique_ptr<ExprAST> Parser::parsePrimary() {
   unique_ptr<ExprAST> base;
 
   // Regular primaries
@@ -1164,15 +1153,56 @@ TypeAnnotation Parser::parseTypeAnnotation() {
   return type;
 }
 
+// Map compound-assignment token kinds (+=, -=, ...) to the underlying
+// binary operator; nullopt for anything else
+static std::optional<TokenKind> compoundToBinaryOp(TokenKind kind) {
+  switch (kind) {
+    case TokenKind::PLUS_ASSIGN:
+      return TokenKind::PLUS;
+    case TokenKind::MINUS_ASSIGN:
+      return TokenKind::MINUS;
+    case TokenKind::STAR_ASSIGN:
+      return TokenKind::STAR;
+    case TokenKind::SLASH_ASSIGN:
+      return TokenKind::SLASH;
+    case TokenKind::PERCENT_ASSIGN:
+      return TokenKind::PERCENT;
+    case TokenKind::AMP_ASSIGN:
+      return TokenKind::AMPERSAND;
+    case TokenKind::PIPE_ASSIGN:
+      return TokenKind::PIPE;
+    case TokenKind::CARET_ASSIGN:
+      return TokenKind::CARET;
+    case TokenKind::LEFT_SHIFT_ASSIGN:
+      return TokenKind::LEFT_SHIFT;
+    case TokenKind::RIGHT_SHIFT_ASSIGN:
+      return TokenKind::RIGHT_SHIFT;
+    default:
+      return std::nullopt;
+  }
+}
+
+// Desugar `target op= rhs` into `target op rhs` for the assignment's value.
+// opTok is the compound token; its position carries over for error messages.
+static std::unique_ptr<ExprAST> desugarCompoundValue(
+    TokenKind binOpKind, const Token& opTok, std::unique_ptr<ExprAST> target,
+    std::unique_ptr<ExprAST> rhs) {
+  Token binTok = Token::make(binOpKind, opTok.start, opTok.end);
+  return std::make_unique<BinaryExprAST>(binTok, std::move(target),
+                                         std::move(rhs));
+}
+
 unique_ptr<ExprAST> Parser::parseAssignmentOrExpression() {
   auto idToken = curTok;
   std::string idName = curTok.getIdentifier().value();
 
   getNextToken();  // eat identifier
 
-  // Check for simple variable assignment: x = ...
-  if (curTok.kind == TokenKind::EQUAL) {
-    getNextToken();  // eat '='
+  // Check for simple variable assignment: x = ... or x op= ...
+  if (curTok.kind == TokenKind::EQUAL ||
+      compoundToBinaryOp(curTok.kind).has_value()) {
+    Token opTok = curTok;
+    getNextToken();  // eat '=' or 'op='
     auto expr = parseExpression();
     if (!expr) return nullptr;
 
@@ -1181,6 +1211,12 @@ unique_ptr<ExprAST> Parser::parseAssignmentOrExpression() {
     else
       parsingError("expected ';' after variable assignment");
 
+    if (auto binOp = compoundToBinaryOp(opTok.kind)) {
+      auto target = std::make_unique<VariableReferenceAST>(idName);
+      target->setLocation(idToken.start);
+      expr = desugarCompoundValue(*binOp, opTok, std::move(target),
+                                  std::move(expr));
+    }
     return std::make_unique<VariableAssignmentAST>(idName, std::move(expr));
   }
 
@@ -1189,10 +1225,12 @@ unique_ptr<ExprAST> Parser::parseAssignmentOrExpression() {
   pushToken(idToken);
   auto expr = parseExpression();
 
-  // Check for indexed assignment: x[i] = value or x[i, j] = value
-  if (curTok.kind == TokenKind::EQUAL &&
+  // Check for indexed assignment: x[i] = value or x[i] op= value
+  if ((curTok.kind == TokenKind::EQUAL ||
+       compoundToBinaryOp(curTok.kind).has_value()) &&
       expr->getType() == ASTNodeType::INDEX) {
-    getNextToken();  // eat '='
+    Token opTok = curTok;
+    getNextToken();  // eat '=' or 'op='
     auto value = parseExpression();
     if (!value) return nullptr;
 
@@ -1201,16 +1239,31 @@ unique_ptr<ExprAST> Parser::parseAssignmentOrExpression() {
     else
       parsingError("expected ';' after indexed assignment");
 
+    if (auto binOp = compoundToBinaryOp(opTok.kind)) {
+      // Desugars to `x[i] = x[i] op value`: the index expressions are
+      // evaluated twice
+      value = desugarCompoundValue(*binOp, opTok, expr->clone(),
+                                   std::move(value));
+    }
     return std::make_unique<IndexedAssignmentAST>(std::move(expr),
                                                   std::move(value));
   }
 
-  // Check for member assignment: a.b = value or a.b.c.d = value
-  if (curTok.kind == TokenKind::EQUAL &&
+  // Check for member assignment: a.b = value, a.b.c.d = value, a.b op= value
+  if ((curTok.kind == TokenKind::EQUAL ||
+       compoundToBinaryOp(curTok.kind).has_value()) &&
       expr->getType() == ASTNodeType::MEMBER_ACCESS) {
-    getNextToken();  // eat '='
+    Token opTok = curTok;
+    getNextToken();  // eat '=' or 'op='
     auto value = parseExpression();
     if (!value) return nullptr;
+
+    if (auto binOp = compoundToBinaryOp(opTok.kind)) {
+      // Desugars to `a.b = a.b op value`; clone before releaseObject
+      // destructures the target. The object expression is evaluated twice.
+      value = desugarCompoundValue(*binOp, opTok, expr->clone(),
+                                   std::move(value));
+    }
 
     // Extract object and member from MemberAccessAST
     auto* memberAccess = static_cast<MemberAccessAST*>(expr.get());
@@ -1243,7 +1296,7 @@ unique_ptr<ExprAST> Parser::parseExpression() {
     return parseLambda();
   }
 
-  auto lhs = parsePrimary();
+  auto lhs = parseUnary();
   if (!lhs) return nullptr;
 
   return parseBinOpRhs(0, std::move(lhs));
@@ -1257,7 +1310,7 @@ std::unique_ptr<ExprAST> Parser::parseBinOpRhs(int exprPrec,
     Token binOp = curTok;
     getNextToken();  // eat binop
 
-    auto rhs = parsePrimary();
+    auto rhs = parseUnary();
     if (!rhs) return nullptr;
 
     if (binOp.precedence < curTok.precedence) {
@@ -1537,12 +1590,21 @@ unique_ptr<ExprAST> Parser::parseStatement() {
       auto lhs = parsePostfixExpr(std::move(thisExpr));
       if (!lhs) return nullptr;
 
-      // Check for assignment: this.field = value
-      if (curTok.kind == TokenKind::EQUAL &&
+      // Check for assignment: this.field = value or this.field op= value
+      if ((curTok.kind == TokenKind::EQUAL ||
+           compoundToBinaryOp(curTok.kind).has_value()) &&
           lhs->getType() == ASTNodeType::MEMBER_ACCESS) {
-        getNextToken();  // eat '='
+        Token opTok = curTok;
+        getNextToken();  // eat '=' or 'op='
         auto value = parseExpression();
         if (!value) return nullptr;
+
+        if (auto binOp = compoundToBinaryOp(opTok.kind)) {
+          // Desugars to `this.f = this.f op value`; clone before
+          // releaseObject destructures the target
+          value = desugarCompoundValue(*binOp, opTok, lhs->clone(),
+                                       std::move(value));
+        }
 
         // Extract object and member from MemberAccessAST
         auto* memberAccess = static_cast<MemberAccessAST*>(lhs.get());
@@ -1730,11 +1792,19 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
       std::string idName = std::get<std::string>(curTok.value);
       getNextToken();
 
-      if (curTok.kind == TokenKind::EQUAL) {
-        // It's an assignment: i = i + 1
-        getNextToken();  // eat '='
+      if (curTok.kind == TokenKind::EQUAL ||
+          compoundToBinaryOp(curTok.kind).has_value()) {
+        // It's an assignment: i = i + 1 or i op= expr
+        Token opTok = curTok;
+        getNextToken();  // eat '=' or 'op='
         auto expr = parseExpression();
         if (!expr) return nullptr;
+        if (auto binOp = compoundToBinaryOp(opTok.kind)) {
+          auto target = std::make_unique<VariableReferenceAST>(idName);
+          target->setLocation(savedTok.start);
+          expr = desugarCompoundValue(*binOp, opTok, std::move(target),
+                                      std::move(expr));
+        }
         increment =
             std::make_unique<VariableAssignmentAST>(idName, std::move(expr));
       } else {

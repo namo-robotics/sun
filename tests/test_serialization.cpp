@@ -212,6 +212,35 @@ TEST(SerializationTest, BinaryExprRoundtrip) {
   EXPECT_EQ(bin->getRHS()->getType(), ASTNodeType::NUMBER);
 }
 
+TEST(SerializationTest, BinaryOpTokenKindsRoundtrip) {
+  const std::pair<TokenKind, const char*> ops[] = {
+      {TokenKind::PERCENT, "%"},      {TokenKind::AMPERSAND, "&"},
+      {TokenKind::PIPE, "|"},         {TokenKind::CARET, "^"},
+      {TokenKind::LEFT_SHIFT, "<<"},  {TokenKind::RIGHT_SHIFT, ">>"},
+      {TokenKind::AND, "and"},        {TokenKind::OR, "or"},
+  };
+  for (const auto& [kind, text] : ops) {
+    auto lhs = std::make_unique<NumberExprAST>(static_cast<int64_t>(10));
+    auto rhs = std::make_unique<NumberExprAST>(static_cast<int64_t>(3));
+    Token op;
+    op.kind = kind;
+    op.text = text;
+    auto ast =
+        std::make_unique<BinaryExprAST>(op, std::move(lhs), std::move(rhs));
+
+    ASTSerializer serializer;
+    std::string data = serializer.serializeToString(*ast);
+
+    ASTDeserializer deserializer;
+    auto restored = deserializer.deserializeFromString(data);
+
+    ASSERT_NE(restored, nullptr);
+    ASSERT_EQ(restored->getType(), ASTNodeType::BINARY);
+    auto* bin = static_cast<BinaryExprAST*>(restored.get());
+    EXPECT_EQ(bin->getOp().kind, kind) << "operator " << text;
+  }
+}
+
 TEST(SerializationTest, UnaryExprRoundtrip) {
   // Test via parser - use negation on numbers which is valid
   auto block = parseCode(R"(

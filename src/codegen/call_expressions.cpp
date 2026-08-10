@@ -286,19 +286,24 @@ Value* CodegenVisitor::materializeMethodClosureValue(Value* fnPtr,
 // -------------------------------------------------------------------
 
 Value* CodegenVisitor::widenNumericIfNeeded(Value* argVal,
-                                            sun::TypePtr paramType) {
+                                            sun::TypePtr paramType,
+                                            sun::TypePtr sourceType) {
   if (!paramType) {
     return argVal;
   }
 
   llvm::Type* expectedType = typeResolver.resolve(paramType);
 
-  // Integer widening: smaller int -> larger int
+  // Integer widening: smaller int -> larger int; the source value's own
+  // signedness decides zero- vs sign-extension
   if (argVal->getType()->isIntegerTy() && expectedType->isIntegerTy()) {
     unsigned argBits = argVal->getType()->getIntegerBitWidth();
     unsigned paramBits = expectedType->getIntegerBitWidth();
     if (argBits < paramBits) {
-      return ctx.builder->CreateSExt(argVal, expectedType, "widen");
+      auto srcType = sun::unwrapRef(sourceType);
+      return srcType && srcType->isUnsigned()
+                 ? ctx.builder->CreateZExt(argVal, expectedType, "widen")
+                 : ctx.builder->CreateSExt(argVal, expectedType, "widen");
     }
   }
   // Float widening: f32 -> f64
@@ -805,7 +810,7 @@ Value* CodegenVisitor::codegenClassMethodCall(
 
       if (!paramType || !paramType->isInterface()) {
         argVal = applyMoveSemantics(argVal, argSunType);
-        argVal = widenNumericIfNeeded(argVal, paramType);
+        argVal = widenNumericIfNeeded(argVal, paramType, argSunType);
       }
 
       // Interface args: load fat pointer struct if value is still a pointer
@@ -1163,7 +1168,7 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
           }
         }
 
-        argVal = widenNumericIfNeeded(argVal, paramType);
+        argVal = widenNumericIfNeeded(argVal, paramType, argSunType);
       }
 
       // Interface args: load fat pointer struct if value is still a pointer

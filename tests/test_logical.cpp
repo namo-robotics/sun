@@ -331,3 +331,77 @@ TEST(LogicalOps, integers_or) {
     )");
   EXPECT_EQ(value, true);  // 0 is falsy, 3 is truthy
 }
+
+// ============================================================================
+// Logical NOT (not)
+// ============================================================================
+
+TEST(LogicalOps, not_true) {
+  auto value = executeString(R"(
+      function main() bool {
+          return not true;
+      }
+    )");
+  EXPECT_EQ(value, false);
+}
+
+TEST(LogicalOps, not_false) {
+  auto value = executeString(R"(
+      function main() bool {
+          return not false;
+      }
+    )");
+  EXPECT_EQ(value, true);
+}
+
+TEST(LogicalOps, not_comparison) {
+  auto value = executeString(R"(
+      function main() bool {
+          var a: i32 = 1;
+          var b: i32 = 2;
+          return not (a < b);
+      }
+    )");
+  EXPECT_EQ(value, false);
+}
+
+TEST(LogicalOps, not_binds_tighter_than_or) {
+  auto value = executeString(R"(
+      function main() bool {
+          var t: bool = true;
+          var f: bool = false;
+          return not t or t;
+      }
+    )");
+  EXPECT_EQ(value, true);  // (not t) or t
+}
+
+TEST(LogicalOps, double_not) {
+  auto value = executeString(R"(
+      function main() bool {
+          var t: bool = true;
+          return not not t;
+      }
+    )");
+  EXPECT_EQ(value, true);
+}
+
+TEST(LogicalOps, not_with_and) {
+  auto value = executeString(R"(
+      function main() bool {
+          var t: bool = true;
+          var f: bool = false;
+          return not f and t;
+      }
+    )");
+  EXPECT_EQ(value, true);  // (not f) and t
+}
+
+TEST(LogicalOps, not_on_integer_is_error) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      function main() bool {
+          return not 5;
+      }
+    )"),
+                                "'not' requires a bool operand");
+}

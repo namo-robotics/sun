@@ -59,6 +59,7 @@ enum TokenKind {
   TOKEN_KIND_PERCENT = 18;
   TOKEN_KIND_SHIFT_LEFT = 19;
   TOKEN_KIND_SHIFT_RIGHT = 20;
+  TOKEN_KIND_TILDE = 21;
 }
 
 // Token for operators in binary/unary expressions

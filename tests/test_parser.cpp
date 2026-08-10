@@ -735,3 +735,44 @@ int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
+
+// ------------------------------------------------------------------
+// Unary expression tests
+// ------------------------------------------------------------------
+TEST(ParserTest, UnaryMinusIsUnaryNode) {
+  auto ast = parseStringToExpr("-x");
+
+  ASSERT_NE(ast, nullptr);
+  auto* unary = dynamic_cast<UnaryExprAST*>(ast.get());
+  ASSERT_NE(unary, nullptr);
+  EXPECT_EQ(unary->getOp().kind, TokenKind::MINUS);
+  EXPECT_EQ(unary->getOperand()->getType(), ASTNodeType::VARIABLE_REFERENCE);
+}
+
+TEST(ParserTest, NotIsUnaryNode) {
+  auto ast = parseStringToExpr("not flag");
+
+  ASSERT_NE(ast, nullptr);
+  auto* unary = dynamic_cast<UnaryExprAST*>(ast.get());
+  ASSERT_NE(unary, nullptr);
+  EXPECT_EQ(unary->getOp().kind, TokenKind::NOT);
+}
+
+TEST(ParserTest, TildeIsUnaryNode) {
+  auto ast = parseStringToExpr("~bits");
+
+  ASSERT_NE(ast, nullptr);
+  auto* unary = dynamic_cast<UnaryExprAST*>(ast.get());
+  ASSERT_NE(unary, nullptr);
+  EXPECT_EQ(unary->getOp().kind, TokenKind::TILDE);
+}
+
+TEST(ParserTest, UnaryMinusBindsTighterThanBinary) {
+  auto ast = parseStringToExpr("-a + b");
+
+  ASSERT_NE(ast, nullptr);
+  auto* bin = dynamic_cast<BinaryExprAST*>(ast.get());
+  ASSERT_NE(bin, nullptr);
+  EXPECT_EQ(bin->getOp().kind, TokenKind::PLUS);
+  EXPECT_EQ(bin->getLHS()->getType(), ASTNodeType::UNARY);
+}

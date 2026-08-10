@@ -298,12 +298,17 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
   // Handle implicit type conversion for integers (e.g., i8 to i32)
   llvm::Type* valueType = value->getType();
   if (valueType != varType) {
-    // Integer widening
+    // Integer widening; the initializer's own signedness picks zext vs sext
     if (valueType->isIntegerTy() && varType->isIntegerTy()) {
       unsigned valueBits = valueType->getIntegerBitWidth();
       unsigned varBits = varType->getIntegerBitWidth();
       if (valueBits < varBits) {
-        value = ctx.builder->CreateSExt(value, varType, "widen");
+        auto srcType = expr.getValue()
+                           ? sun::unwrapRef(expr.getValue()->getResolvedType())
+                           : nullptr;
+        value = srcType && srcType->isUnsigned()
+                    ? ctx.builder->CreateZExt(value, varType, "widen")
+                    : ctx.builder->CreateSExt(value, varType, "widen");
       } else if (valueBits > varBits) {
         value = ctx.builder->CreateTrunc(value, varType, "trunc");
       }

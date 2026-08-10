@@ -21,10 +21,24 @@
       "Bash(node scripts/*)",
       "Read(//tmp/**)",
       "Skill(update-config)",
-      "Skill(update-config:*)"
+      "Skill(update-config:*)",
+      "Bash(./build.sh)",
+      "Bash(./build/sun *)",
+      "Bash(./build/tests/sun_tests *)",
+      "Bash(SUN_PATH=* ./build/sun *)",
+      "Bash(ctest *)",
+      "Bash(printf *)",
+      "Bash(mkdir -p *)",
+      "Bash(rm -f tmp/*)",
+      "Bash(ls *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(wc *)",
+      "Bash(sed -n *)"
     ],
     "additionalDirectories": [
-      "/tmp"
+      "/tmp",
+      "/workspaces/sun/build/tmp"
     ]
   }
 }
