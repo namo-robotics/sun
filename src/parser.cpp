@@ -513,14 +513,8 @@ unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
 
       // Handle '>' or '>>' (for nested generics)
       if (isGreater()) {
-        // Consume '>' (splits '>>' if needed)
-        if (curTok.kind == TokenKind::RIGHT_SHIFT) {
-          Token remainingGreater = Token::make(TokenKind::GREATER, curTok.start, curTok.end);
-          getNextToken();  // eat '>>'
-          pushToken(remainingGreater);  // push '>' to be consumed next
-        } else {
-          getNextToken();  // eat '>'
-        }
+        // Consume '>' (splits '>>', '>=', '>>=' if needed)
+        consumeGreater("expected '>' after generic type arguments");
 
         // Must be followed by '(' for a function call
         if (curTok.kind == TokenKind::PAREN_OPEN) {
@@ -801,14 +795,8 @@ unique_ptr<ExprAST> Parser::parsePostfixExpr(unique_ptr<ExprAST> base) {
 
           // Handle '>' or '>>' (for nested generics)
           if (isGreater()) {
-            // Consume '>' (splits '>>' if needed)
-            if (curTok.kind == TokenKind::RIGHT_SHIFT) {
-              Token remainingGreater = Token::make(TokenKind::GREATER, curTok.start, curTok.end);
-              getNextToken();  // eat '>>'
-              pushToken(remainingGreater);  // push '>' to be consumed next
-            } else {
-              getNextToken();  // eat '>'
-            }
+            // Consume '>' (splits '>>', '>=', '>>=' if needed)
+            consumeGreater("expected '>' after generic type arguments");
 
             // Must be followed by '(' for a method call
             if (curTok.kind == TokenKind::PAREN_OPEN) {
@@ -1182,6 +1170,11 @@ static std::optional<TokenKind> compoundToBinaryOp(TokenKind kind) {
   }
 }
 
+// True for '=' and every compound-assignment operator
+static bool isAssignmentOp(TokenKind kind) {
+  return kind == TokenKind::EQUAL || compoundToBinaryOp(kind).has_value();
+}
+
 // Desugar `target op= rhs` into `target op rhs` for the assignment's value.
 // opTok is the compound token; its position carries over for error messages.
 static std::unique_ptr<ExprAST> desugarCompoundValue(
@@ -1192,6 +1185,138 @@ static std::unique_ptr<ExprAST> desugarCompoundValue(
                                          std::move(rhs));
 }
 
+// Re-evaluating these in the desugared read is pure, so no temp is needed;
+// null (an absent slice bound) trivially qualifies
+static bool isPureIndexExpr(const ExprAST* e) {
+  return e == nullptr || e->getType() == ASTNodeType::NUMBER ||
+         e->getType() == ASTNodeType::VARIABLE_REFERENCE;
+}
+
+// Desugar `arr[i] op= rhs` into `arr[i] = arr[i] op rhs`. Index expressions
+// with possible side effects (e.g. `arr[f()] += v`) are hoisted into temps so
+// they are evaluated exactly once:
+//   { var $ca0 = f(); arr[$ca0] = arr[$ca0] op v; }
+// The array/object expression itself is still evaluated twice; it cannot be
+// hoisted without copying the (value-typed) container.
+unique_ptr<ExprAST> Parser::desugarIndexedCompound(TokenKind binOpKind,
+                                                   const Token& opTok,
+                                                   unique_ptr<ExprAST> target,
+                                                   unique_ptr<ExprAST> rhs) {
+  auto* indexExpr = static_cast<IndexAST*>(target.get());
+
+  // Common case: all indexes are pure, so the read side can simply clone the
+  // whole target and the write side reuses it as-is
+  bool allPure = true;
+  for (const auto& slice : indexExpr->getIndices()) {
+    allPure = allPure && isPureIndexExpr(slice->getStart()) &&
+              isPureIndexExpr(slice->getEnd());
+  }
+  if (allPure) {
+    auto value =
+        desugarCompoundValue(binOpKind, opTok, target->clone(), std::move(rhs));
+    return std::make_unique<IndexedAssignmentAST>(std::move(target),
+                                                  std::move(value));
+  }
+
+  std::vector<std::unique_ptr<ExprAST>> tempDecls;
+
+  // Produce (write, read) copies of an index subexpression, hoisting into a
+  // temp variable when re-evaluation would not be pure
+  auto splitIndexExpr = [&](const ExprAST* e)
+      -> std::pair<std::unique_ptr<ExprAST>, std::unique_ptr<ExprAST>> {
+    if (isPureIndexExpr(e)) {
+      if (e == nullptr) return {nullptr, nullptr};
+      return {e->clone(), e->clone()};
+    }
+
+    // '$' cannot appear in lexed identifiers, so this can never collide with
+    // (or be referenced by) user code
+    std::string tmpName = "$ca" + std::to_string(compoundTmpCounter++);
+    auto decl = std::make_unique<VariableCreationAST>(tmpName, e->clone());
+    decl->setLocation(opTok.start);
+    tempDecls.push_back(std::move(decl));
+
+    auto writeRef = std::make_unique<VariableReferenceAST>(tmpName);
+    writeRef->setLocation(opTok.start);
+    auto readRef = std::make_unique<VariableReferenceAST>(tmpName);
+    readRef->setLocation(opTok.start);
+    return {std::move(writeRef), std::move(readRef)};
+  };
+
+  std::vector<std::unique_ptr<SliceExprAST>> writeSlices, readSlices;
+  for (const auto& slice : indexExpr->getIndices()) {
+    auto [ws, rs] = splitIndexExpr(slice->getStart());
+    auto [we, re] = splitIndexExpr(slice->getEnd());
+    writeSlices.push_back(std::make_unique<SliceExprAST>(
+        std::move(ws), std::move(we), slice->isRange()));
+    readSlices.push_back(std::make_unique<SliceExprAST>(
+        std::move(rs), std::move(re), slice->isRange()));
+  }
+
+  auto writeIndex = std::make_unique<IndexAST>(indexExpr->getTarget()->clone(),
+                                               std::move(writeSlices));
+  auto readIndex = std::make_unique<IndexAST>(indexExpr->getTarget()->clone(),
+                                              std::move(readSlices));
+  auto value = desugarCompoundValue(binOpKind, opTok, std::move(readIndex),
+                                    std::move(rhs));
+  auto assign = std::make_unique<IndexedAssignmentAST>(std::move(writeIndex),
+                                                       std::move(value));
+
+  auto block = std::make_unique<BlockExprAST>();
+  for (auto& decl : tempDecls) block->addExpression(std::move(decl));
+  block->addExpression(std::move(assign));
+  return block;
+}
+
+// Shared tail for `name = rhs` / `name op= rhs` once the target identifier
+// has been consumed and curTok is the assignment operator. Does not consume
+// the trailing ';' (the for-loop increment has none).
+unique_ptr<ExprAST> Parser::finishVariableAssignment(const std::string& name,
+                                                     const Position& namePos) {
+  Token opTok = curTok;
+  getNextToken();  // eat '=' or 'op='
+  auto value = parseExpression();
+  if (!value) return nullptr;
+
+  if (auto binOp = compoundToBinaryOp(opTok.kind)) {
+    auto target = std::make_unique<VariableReferenceAST>(name);
+    target->setLocation(namePos);
+    value =
+        desugarCompoundValue(*binOp, opTok, std::move(target), std::move(value));
+  }
+  return std::make_unique<VariableAssignmentAST>(name, std::move(value));
+}
+
+// Shared tail for `a.b = rhs` / `a.b op= rhs` / `this.f op= rhs` once the
+// member-access target has been parsed and curTok is the assignment operator.
+// Consumes the trailing ';'.
+unique_ptr<ExprAST> Parser::finishMemberAssignment(unique_ptr<ExprAST> lhs) {
+  Token opTok = curTok;
+  getNextToken();  // eat '=' or 'op='
+  auto value = parseExpression();
+  if (!value) return nullptr;
+
+  if (auto binOp = compoundToBinaryOp(opTok.kind)) {
+    // Desugars to `a.b = a.b op value`; clone before releaseObject
+    // destructures the target. The object expression is evaluated twice.
+    value = desugarCompoundValue(*binOp, opTok, lhs->clone(), std::move(value));
+  }
+
+  // Extract object and member from MemberAccessAST; releaseObject preserves
+  // the full chain (e.g. this.a.b)
+  auto* memberAccess = static_cast<MemberAccessAST*>(lhs.get());
+  std::string memberName = memberAccess->getMemberName();
+  auto object = memberAccess->releaseObject();
+
+  if (curTok.kind == TokenKind::SEMI_COLON)
+    getNextToken();
+  else
+    parsingError("expected ';' after member assignment");
+
+  return std::make_unique<MemberAssignmentAST>(
+      std::move(object), std::move(memberName), std::move(value));
+}
+
 unique_ptr<ExprAST> Parser::parseAssignmentOrExpression() {
   auto idToken = curTok;
   std::string idName = curTok.getIdentifier().value();
@@ -1199,25 +1324,15 @@ unique_ptr<ExprAST> Parser::parseAssignmentOrExpression() {
   getNextToken();  // eat identifier
 
   // Check for simple variable assignment: x = ... or x op= ...
-  if (curTok.kind == TokenKind::EQUAL ||
-      compoundToBinaryOp(curTok.kind).has_value()) {
-    Token opTok = curTok;
-    getNextToken();  // eat '=' or 'op='
-    auto expr = parseExpression();
-    if (!expr) return nullptr;
+  if (isAssignmentOp(curTok.kind)) {
+    auto assign = finishVariableAssignment(idName, idToken.start);
+    if (!assign) return nullptr;
 
     if (curTok.kind == TokenKind::SEMI_COLON)
       getNextToken();
     else
       parsingError("expected ';' after variable assignment");
-
-    if (auto binOp = compoundToBinaryOp(opTok.kind)) {
-      auto target = std::make_unique<VariableReferenceAST>(idName);
-      target->setLocation(idToken.start);
-      expr = desugarCompoundValue(*binOp, opTok, std::move(target),
-                                  std::move(expr));
-    }
-    return std::make_unique<VariableAssignmentAST>(idName, std::move(expr));
+    return assign;
   }
 
   // Not an assignment, parse as expression
@@ -1226,9 +1341,7 @@ unique_ptr<ExprAST> Parser::parseAssignmentOrExpression() {
   auto expr = parseExpression();
 
   // Check for indexed assignment: x[i] = value or x[i] op= value
-  if ((curTok.kind == TokenKind::EQUAL ||
-       compoundToBinaryOp(curTok.kind).has_value()) &&
-      expr->getType() == ASTNodeType::INDEX) {
+  if (isAssignmentOp(curTok.kind) && expr->getType() == ASTNodeType::INDEX) {
     Token opTok = curTok;
     getNextToken();  // eat '=' or 'op='
     auto value = parseExpression();
@@ -1240,43 +1353,17 @@ unique_ptr<ExprAST> Parser::parseAssignmentOrExpression() {
       parsingError("expected ';' after indexed assignment");
 
     if (auto binOp = compoundToBinaryOp(opTok.kind)) {
-      // Desugars to `x[i] = x[i] op value`: the index expressions are
-      // evaluated twice
-      value = desugarCompoundValue(*binOp, opTok, expr->clone(),
-                                   std::move(value));
+      return desugarIndexedCompound(*binOp, opTok, std::move(expr),
+                                    std::move(value));
     }
     return std::make_unique<IndexedAssignmentAST>(std::move(expr),
                                                   std::move(value));
   }
 
   // Check for member assignment: a.b = value, a.b.c.d = value, a.b op= value
-  if ((curTok.kind == TokenKind::EQUAL ||
-       compoundToBinaryOp(curTok.kind).has_value()) &&
+  if (isAssignmentOp(curTok.kind) &&
       expr->getType() == ASTNodeType::MEMBER_ACCESS) {
-    Token opTok = curTok;
-    getNextToken();  // eat '=' or 'op='
-    auto value = parseExpression();
-    if (!value) return nullptr;
-
-    if (auto binOp = compoundToBinaryOp(opTok.kind)) {
-      // Desugars to `a.b = a.b op value`; clone before releaseObject
-      // destructures the target. The object expression is evaluated twice.
-      value = desugarCompoundValue(*binOp, opTok, expr->clone(),
-                                   std::move(value));
-    }
-
-    // Extract object and member from MemberAccessAST
-    auto* memberAccess = static_cast<MemberAccessAST*>(expr.get());
-    std::string memberName = memberAccess->getMemberName();
-    auto object = memberAccess->releaseObject();
-
-    if (curTok.kind == TokenKind::SEMI_COLON)
-      getNextToken();
-    else
-      parsingError("expected ';' after member assignment");
-
-    return std::make_unique<MemberAssignmentAST>(
-        std::move(object), std::move(memberName), std::move(value));
+    return finishMemberAssignment(std::move(expr));
   }
 
   if (curTok.kind == TokenKind::SEMI_COLON)
@@ -1591,35 +1678,9 @@ unique_ptr<ExprAST> Parser::parseStatement() {
       if (!lhs) return nullptr;
 
       // Check for assignment: this.field = value or this.field op= value
-      if ((curTok.kind == TokenKind::EQUAL ||
-           compoundToBinaryOp(curTok.kind).has_value()) &&
+      if (isAssignmentOp(curTok.kind) &&
           lhs->getType() == ASTNodeType::MEMBER_ACCESS) {
-        Token opTok = curTok;
-        getNextToken();  // eat '=' or 'op='
-        auto value = parseExpression();
-        if (!value) return nullptr;
-
-        if (auto binOp = compoundToBinaryOp(opTok.kind)) {
-          // Desugars to `this.f = this.f op value`; clone before
-          // releaseObject destructures the target
-          value = desugarCompoundValue(*binOp, opTok, lhs->clone(),
-                                       std::move(value));
-        }
-
-        // Extract object and member from MemberAccessAST
-        auto* memberAccess = static_cast<MemberAccessAST*>(lhs.get());
-        std::string memberName = memberAccess->getMemberName();
-        // Use releaseObject to preserve the full chain (e.g., this.a.b)
-        auto object = memberAccess->releaseObject();
-
-        auto assignExpr = std::make_unique<MemberAssignmentAST>(
-            std::move(object), std::move(memberName), std::move(value));
-
-        if (curTok.kind == TokenKind::SEMI_COLON)
-          getNextToken();
-        else
-          parsingError("expected ';' after member assignment");
-        return assignExpr;
+        return finishMemberAssignment(std::move(lhs));
       }
 
       // Not an assignment - expression statement (like method call)
@@ -1792,21 +1853,10 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
       std::string idName = std::get<std::string>(curTok.value);
       getNextToken();
 
-      if (curTok.kind == TokenKind::EQUAL ||
-          compoundToBinaryOp(curTok.kind).has_value()) {
-        // It's an assignment: i = i + 1 or i op= expr
-        Token opTok = curTok;
-        getNextToken();  // eat '=' or 'op='
-        auto expr = parseExpression();
-        if (!expr) return nullptr;
-        if (auto binOp = compoundToBinaryOp(opTok.kind)) {
-          auto target = std::make_unique<VariableReferenceAST>(idName);
-          target->setLocation(savedTok.start);
-          expr = desugarCompoundValue(*binOp, opTok, std::move(target),
-                                      std::move(expr));
-        }
-        increment =
-            std::make_unique<VariableAssignmentAST>(idName, std::move(expr));
+      if (isAssignmentOp(curTok.kind)) {
+        // It's an assignment: i = i + 1 or i op= expr (no trailing ';')
+        increment = finishVariableAssignment(idName, savedTok.start);
+        if (!increment) return nullptr;
       } else {
         // Not an assignment, backtrack and parse as expression
         lexer.setPosition(savedPos);

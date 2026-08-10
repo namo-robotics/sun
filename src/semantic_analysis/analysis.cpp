@@ -445,48 +445,48 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       auto& unaryExpr = static_cast<UnaryExprAST&>(expr);
       analyzeExpr(const_cast<ExprAST&>(*unaryExpr.getOperand()));
 
-      auto operandType =
-          sun::unwrapRef(inferType(*unaryExpr.getOperand()));
+      TokenKind op = unaryExpr.getOp().kind;
+      auto operandType = sun::unwrapRef(inferType(*unaryExpr.getOperand()));
+
       // Unresolved generic operands are validated again at instantiation
-      if (operandType && operandType->isTypeParameter()) {
-        expr.setResolvedType(inferType(expr));
-        break;
-      }
-      switch (unaryExpr.getOp().kind) {
-        case TokenKind::NOT:
-          if (!operandType || !operandType->isBool()) {
-            logAndThrowError(
-                "'not' requires a bool operand, got '" +
-                    (operandType ? operandType->toString() : "unknown") + "'",
-                expr.getLocation());
-          }
-          break;
-        case TokenKind::TILDE:
-          if (!operandType || !operandType->isIntegral()) {
-            logAndThrowError(
-                "Bitwise NOT (~) requires an integer operand, got '" +
-                    (operandType ? operandType->toString() : "unknown") + "'",
-                expr.getLocation());
-          }
-          break;
-        case TokenKind::MINUS:
-          if (!operandType || !operandType->isNumeric()) {
-            logAndThrowError(
-                "Unary minus requires a numeric operand, got '" +
-                    (operandType ? operandType->toString() : "unknown") + "'",
-                expr.getLocation());
-          }
-          if (operandType->isUnsigned()) {
-            logAndThrowError("Cannot negate a value of unsigned type '" +
-                                 operandType->toString() + "'",
-                             expr.getLocation());
-          }
-          break;
-        default:
-          break;
+      if (operandType && !operandType->isTypeParameter()) {
+        const std::string name = operandType->toDisplayString();
+        switch (op) {
+          case TokenKind::NOT:
+            if (!operandType->isBool()) {
+              logAndThrowError("'not' requires a bool operand, got '" + name +
+                                   "'",
+                               expr.getLocation());
+            }
+            break;
+          case TokenKind::TILDE:
+            if (!operandType->isIntegral()) {
+              logAndThrowError(
+                  "Bitwise NOT (~) requires an integer operand, got '" + name +
+                      "'",
+                  expr.getLocation());
+            }
+            break;
+          case TokenKind::MINUS:
+            if (!operandType->isNumeric()) {
+              logAndThrowError("Unary minus requires a numeric operand, got '" +
+                                   name + "'",
+                               expr.getLocation());
+            }
+            if (operandType->isUnsigned()) {
+              logAndThrowError("Cannot negate a value of unsigned type '" +
+                                   name + "'",
+                               expr.getLocation());
+            }
+            break;
+          default:
+            break;
+        }
       }
 
-      expr.setResolvedType(inferType(expr));
+      // Matches inferType's UNARY rule without re-walking the operand subtree
+      expr.setResolvedType(op == TokenKind::NOT ? sun::Types::Bool()
+                                                : operandType);
       break;
     }
 

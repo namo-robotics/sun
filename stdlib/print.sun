@@ -85,7 +85,8 @@ function println(value: bool) void {
 }
 
 function println(s: static_ptr<u8>) void {
-    _println_str(s);
+    print(s);
+    _print_newline();
 }
 
 function println(s: ref String) void {

@@ -4,60 +4,11 @@
 
 #include "ast.h"
 #include "ast.pb.h"
+#include "token_kind_proto_map.h"
 #include "types.pb.h"
 
 namespace sun {
 namespace serialization {
-
-// Helper to convert C++ TokenKind to proto TokenKind
-static ast::TokenKind toProtoTokenKind(TokenKind kind) {
-  switch (kind) {
-    case TokenKind::PLUS:
-      return ast::TOKEN_KIND_PLUS;
-    case TokenKind::MINUS:
-      return ast::TOKEN_KIND_MINUS;
-    case TokenKind::STAR:
-      return ast::TOKEN_KIND_STAR;
-    case TokenKind::SLASH:
-      return ast::TOKEN_KIND_SLASH;
-    case TokenKind::LESS:
-      return ast::TOKEN_KIND_LESS;
-    case TokenKind::LESS_EQUAL:
-      return ast::TOKEN_KIND_LESS_EQUAL;
-    case TokenKind::GREATER:
-      return ast::TOKEN_KIND_GREATER;
-    case TokenKind::GREATER_EQUAL:
-      return ast::TOKEN_KIND_GREATER_EQUAL;
-    case TokenKind::EQUAL_EQUAL:
-      return ast::TOKEN_KIND_EQUAL_EQUAL;
-    case TokenKind::NOT_EQUAL:
-      return ast::TOKEN_KIND_NOT_EQUAL;
-    case TokenKind::EQUAL:
-      return ast::TOKEN_KIND_EQUAL;
-    case TokenKind::AND:
-      return ast::TOKEN_KIND_AND;
-    case TokenKind::OR:
-      return ast::TOKEN_KIND_OR;
-    case TokenKind::NOT:
-      return ast::TOKEN_KIND_NOT;
-    case TokenKind::AMPERSAND:
-      return ast::TOKEN_KIND_AMPERSAND;
-    case TokenKind::PIPE:
-      return ast::TOKEN_KIND_PIPE;
-    case TokenKind::CARET:
-      return ast::TOKEN_KIND_CARET;
-    case TokenKind::PERCENT:
-      return ast::TOKEN_KIND_PERCENT;
-    case TokenKind::LEFT_SHIFT:
-      return ast::TOKEN_KIND_SHIFT_LEFT;
-    case TokenKind::RIGHT_SHIFT:
-      return ast::TOKEN_KIND_SHIFT_RIGHT;
-    case TokenKind::TILDE:
-      return ast::TOKEN_KIND_TILDE;
-    default:
-      return ast::TOKEN_KIND_UNKNOWN;
-  }
-}
 
 ast::Position ASTSerializer::serializePosition(const Position& pos) const {
   ast::Position proto;

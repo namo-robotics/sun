@@ -286,24 +286,20 @@ Value* CodegenVisitor::materializeMethodClosureValue(Value* fnPtr,
 // -------------------------------------------------------------------
 
 Value* CodegenVisitor::widenNumericIfNeeded(Value* argVal,
-                                            sun::TypePtr paramType,
-                                            sun::TypePtr sourceType) {
+                                            const sun::TypePtr& paramType,
+                                            const sun::TypePtr& sourceType) {
   if (!paramType) {
     return argVal;
   }
 
   llvm::Type* expectedType = typeResolver.resolve(paramType);
 
-  // Integer widening: smaller int -> larger int; the source value's own
-  // signedness decides zero- vs sign-extension
+  // Integer widening: smaller int -> larger int
   if (argVal->getType()->isIntegerTy() && expectedType->isIntegerTy()) {
     unsigned argBits = argVal->getType()->getIntegerBitWidth();
     unsigned paramBits = expectedType->getIntegerBitWidth();
     if (argBits < paramBits) {
-      auto srcType = sun::unwrapRef(sourceType);
-      return srcType && srcType->isUnsigned()
-                 ? ctx.builder->CreateZExt(argVal, expectedType, "widen")
-                 : ctx.builder->CreateSExt(argVal, expectedType, "widen");
+      return extendInt(argVal, expectedType, sourceType);
     }
   }
   // Float widening: f32 -> f64

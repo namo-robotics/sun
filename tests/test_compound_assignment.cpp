@@ -11,6 +11,14 @@
 #include "execution_utils.h"
 #include "parser.h"
 
+// Parse a single assignment-or-expression statement and return its AST
+static std::unique_ptr<ExprAST> parseStatementToAst(const std::string& source) {
+  std::istringstream ss(source);
+  Parser parser(ss);
+  parser.getNextToken();
+  return parser.parseAssignmentOrExpression();
+}
+
 // ============================================================================
 // All ten operators on mutable locals
 // ============================================================================
@@ -163,15 +171,46 @@ TEST(CompoundAssignment, indexed_target) {
   EXPECT_EQ(value, 28);  // 11 + 10 + 7
 }
 
+TEST(CompoundAssignment, indexed_side_effect_index_evaluated_once) {
+  auto value = executeString(R"(
+      function next(counter: ref array<i32>) i32 {
+          counter[0] += 1;
+          return 1;
+      }
+      function main() i32 {
+          var arr: array<i32, 3> = [10, 20, 30];
+          var calls: array<i32, 1> = [0];
+          arr[next(calls)] += 5;
+          if (calls[0] == 1 and arr[1] == 25) { return 1; }
+          return 0;
+      }
+    )");
+  EXPECT_EQ(value, 1);
+}
+
+TEST(CompoundAssignment, indexed_multidim_side_effect_once) {
+  auto value = executeString(R"(
+      function bump(counter: ref array<i32>, v: i32) i32 {
+          counter[0] += 1;
+          return v;
+      }
+      function main() i32 {
+          var m: array<i32, 2, 2> = [[1, 2], [3, 4]];
+          var calls: array<i32, 1> = [0];
+          m[bump(calls, 1), bump(calls, 0)] *= 10;
+          if (calls[0] == 2 and m[1, 0] == 30) { return 1; }
+          return 0;
+      }
+    )");
+  EXPECT_EQ(value, 1);
+}
+
 // ============================================================================
 // AST shape: x += y desugars to x = x + y
 // ============================================================================
 
 TEST(CompoundAssignment, desugars_to_binary_assignment) {
-  std::istringstream ss("x += y;");
-  Parser parser(ss);
-  parser.getNextToken();
-  auto ast = parser.parseAssignmentOrExpression();
+  auto ast = parseStatementToAst("x += y;");
 
   ASSERT_NE(ast, nullptr);
   ASSERT_EQ(ast->getType(), ASTNodeType::VARIABLE_ASSIGNMENT);
@@ -180,6 +219,24 @@ TEST(CompoundAssignment, desugars_to_binary_assignment) {
   auto* bin = static_cast<const BinaryExprAST*>(assign->getValue());
   EXPECT_EQ(bin->getOp().kind, TokenKind::PLUS);
   EXPECT_EQ(bin->getLHS()->getType(), ASTNodeType::VARIABLE_REFERENCE);
+}
+
+TEST(CompoundAssignment, indexed_pure_index_stays_plain_assignment) {
+  auto ast = parseStatementToAst("arr[i] += 1;");
+
+  ASSERT_NE(ast, nullptr);
+  EXPECT_EQ(ast->getType(), ASTNodeType::INDEXED_ASSIGNMENT);
+}
+
+TEST(CompoundAssignment, indexed_call_index_hoisted_into_block) {
+  auto ast = parseStatementToAst("arr[f()] += 1;");
+
+  ASSERT_NE(ast, nullptr);
+  ASSERT_EQ(ast->getType(), ASTNodeType::BLOCK);
+  auto* block = static_cast<BlockExprAST*>(ast.get());
+  ASSERT_EQ(block->getBody().size(), 2u);
+  EXPECT_EQ(block->getBody()[0]->getType(), ASTNodeType::VARIABLE_CREATION);
+  EXPECT_EQ(block->getBody()[1]->getType(), ASTNodeType::INDEXED_ASSIGNMENT);
 }
 
 // ============================================================================

@@ -84,11 +84,11 @@ Value* CodegenVisitor::codegen(const MatchExprAST& expr) {
         unsigned discBits = discVal->getType()->getIntegerBitWidth();
         unsigned patBits = patternVal->getType()->getIntegerBitWidth();
         if (discBits < patBits) {
-          discVal = ctx.builder->CreateSExt(discVal, patternVal->getType(),
-                                            "disc.ext");
+          discVal = extendInt(discVal, patternVal->getType(),
+                              expr.getDiscriminant()->getResolvedType());
         } else {
-          patternVal = ctx.builder->CreateSExt(patternVal, discVal->getType(),
-                                               "pat.ext");
+          patternVal = extendInt(patternVal, discVal->getType(),
+                                 arm.pattern->getResolvedType());
         }
       }
       cmp = ctx.builder->CreateICmpEQ(discVal, patternVal, "match.cmp");

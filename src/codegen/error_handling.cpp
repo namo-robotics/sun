@@ -55,15 +55,7 @@ Value* CodegenVisitor::codegenSafeDivision(Value* L, Value* R, bool isModulo,
 
   // Safe case: perform division or modulo and continue.
   ctx.builder->SetInsertPoint(safeBB);
-  Value* result;
-  if (isModulo) {
-    result = isUnsigned ? ctx.builder->CreateURem(L, R, "modtmp")
-                        : ctx.builder->CreateSRem(L, R, "modtmp");
-  } else {
-    result = isUnsigned ? ctx.builder->CreateUDiv(L, R, "divtmp")
-                        : ctx.builder->CreateSDiv(L, R, "divtmp");
-  }
-  return result;
+  return createIntDivRem(L, R, isModulo, isUnsigned);
 }
 
 // Short-circuit logical operators (and, or)

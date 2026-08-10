@@ -257,6 +257,24 @@ static bool isUnsignedExpr(const ExprAST& expr) {
   return type && type->isUnsigned();
 }
 
+Value* CodegenVisitor::extendInt(Value* value, llvm::Type* destTy,
+                                 const sun::TypePtr& sourceType) {
+  auto srcType = sun::unwrapRef(sourceType);
+  return srcType && srcType->isUnsigned()
+             ? ctx.builder->CreateZExt(value, destTy, "widen")
+             : ctx.builder->CreateSExt(value, destTy, "widen");
+}
+
+Value* CodegenVisitor::createIntDivRem(Value* L, Value* R, bool isModulo,
+                                       bool isUnsigned) {
+  if (isModulo) {
+    return isUnsigned ? ctx.builder->CreateURem(L, R, "modtmp")
+                      : ctx.builder->CreateSRem(L, R, "modtmp");
+  }
+  return isUnsigned ? ctx.builder->CreateUDiv(L, R, "divtmp")
+                    : ctx.builder->CreateSDiv(L, R, "divtmp");
+}
+
 Value* CodegenVisitor::codegen(const BinaryExprAST& expr) {
   // Handle short-circuit logical operators (and, or)
   if (expr.getOp().kind == TokenKind::AND ||
@@ -285,16 +303,10 @@ Value* CodegenVisitor::codegen(const BinaryExprAST& expr) {
 
       // Extension mode follows the widened operand's own signedness
       if (lhsBits < rhsBits) {
-        // Widen LHS to match RHS type
-        L = isUnsignedExpr(*expr.getLHS())
-                ? ctx.builder->CreateZExt(L, RT, "widen")
-                : ctx.builder->CreateSExt(L, RT, "widen");
+        L = extendInt(L, RT, expr.getLHS()->getResolvedType());
         LT = RT;
       } else if (rhsBits < lhsBits) {
-        // Widen RHS to match LHS type
-        R = isUnsignedExpr(*expr.getRHS())
-                ? ctx.builder->CreateZExt(R, LT, "widen")
-                : ctx.builder->CreateSExt(R, LT, "widen");
+        R = extendInt(R, LT, expr.getRHS()->getResolvedType());
         RT = LT;
       }
     }
@@ -350,8 +362,7 @@ Value* CodegenVisitor::codegen(const BinaryExprAST& expr) {
         return codegenSafeDivision(L, R, /*isModulo=*/false, unsignedOp);
       }
       if (!isInteger) return ctx.builder->CreateFDiv(L, R, "divtmp");
-      return unsignedOp ? ctx.builder->CreateUDiv(L, R, "divtmp")
-                        : ctx.builder->CreateSDiv(L, R, "divtmp");
+      return createIntDivRem(L, R, /*isModulo=*/false, unsignedOp);
     }
     case TokenKind::PERCENT: {
       if (!isInteger) {
@@ -362,8 +373,7 @@ Value* CodegenVisitor::codegen(const BinaryExprAST& expr) {
         // Safe modulo: check for zero and return error if so
         return codegenSafeDivision(L, R, /*isModulo=*/true, unsignedOp);
       }
-      return unsignedOp ? ctx.builder->CreateURem(L, R, "modtmp")
-                        : ctx.builder->CreateSRem(L, R, "modtmp");
+      return createIntDivRem(L, R, /*isModulo=*/true, unsignedOp);
     }
     case TokenKind::AMPERSAND: {
       if (!isInteger) {
@@ -403,37 +413,37 @@ Value* CodegenVisitor::codegen(const BinaryExprAST& expr) {
                         : ctx.builder->CreateAShr(L, R, "shrtmp");
     }
     case TokenKind::LESS:
-      if (isInteger) {
-        L = unsignedOp ? ctx.builder->CreateICmpULT(L, R, "cmptmp")
-                       : ctx.builder->CreateICmpSLT(L, R, "cmptmp");
-      } else {
-        L = ctx.builder->CreateFCmpULT(L, R, "cmptmp");
-      }
-      return L;
     case TokenKind::LESS_EQUAL:
-      if (isInteger) {
-        L = unsignedOp ? ctx.builder->CreateICmpULE(L, R, "cmptmp")
-                       : ctx.builder->CreateICmpSLE(L, R, "cmptmp");
-      } else {
-        L = ctx.builder->CreateFCmpULE(L, R, "cmptmp");
-      }
-      return L;
     case TokenKind::GREATER:
-      if (isInteger) {
-        L = unsignedOp ? ctx.builder->CreateICmpUGT(L, R, "cmptmp")
-                       : ctx.builder->CreateICmpSGT(L, R, "cmptmp");
-      } else {
-        L = ctx.builder->CreateFCmpUGT(L, R, "cmptmp");
+    case TokenKind::GREATER_EQUAL: {
+      // (signed int, unsigned int, float) predicate per operator
+      llvm::CmpInst::Predicate sPred, uPred, fPred;
+      switch (expr.getOp().kind) {
+        case TokenKind::LESS:
+          sPred = llvm::CmpInst::ICMP_SLT;
+          uPred = llvm::CmpInst::ICMP_ULT;
+          fPred = llvm::CmpInst::FCMP_ULT;
+          break;
+        case TokenKind::LESS_EQUAL:
+          sPred = llvm::CmpInst::ICMP_SLE;
+          uPred = llvm::CmpInst::ICMP_ULE;
+          fPred = llvm::CmpInst::FCMP_ULE;
+          break;
+        case TokenKind::GREATER:
+          sPred = llvm::CmpInst::ICMP_SGT;
+          uPred = llvm::CmpInst::ICMP_UGT;
+          fPred = llvm::CmpInst::FCMP_UGT;
+          break;
+        default:
+          sPred = llvm::CmpInst::ICMP_SGE;
+          uPred = llvm::CmpInst::ICMP_UGE;
+          fPred = llvm::CmpInst::FCMP_UGE;
+          break;
       }
-      return L;
-    case TokenKind::GREATER_EQUAL:
-      if (isInteger) {
-        L = unsignedOp ? ctx.builder->CreateICmpUGE(L, R, "cmptmp")
-                       : ctx.builder->CreateICmpSGE(L, R, "cmptmp");
-      } else {
-        L = ctx.builder->CreateFCmpUGE(L, R, "cmptmp");
-      }
-      return L;
+      if (!isInteger) return ctx.builder->CreateFCmp(fPred, L, R, "cmptmp");
+      return ctx.builder->CreateICmp(unsignedOp ? uPred : sPred, L, R,
+                                     "cmptmp");
+    }
     case TokenKind::EQUAL_EQUAL:
       if (isPointer) {
         L = ctx.builder->CreateICmpEQ(L, R, "cmptmp");
