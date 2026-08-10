@@ -12,7 +12,7 @@ function add(a: i32, b: i32) i32 {
 }
 
 function main() i32 {
-    println_i32(add(3, 4));  // 7
+    println(add(3, 4));  // 7
     return 0;
 }
 ```
@@ -24,7 +24,7 @@ Lambdas are anonymous functions created with the `lambda` keyword. They must be 
 ```sun
 function main() i32 {
     var square = lambda (x: i32) i32 { return x * x; };
-    println_i32(square(5));  // 25
+    println(square(5));  // 25
     return 0;
 }
 ```
@@ -54,20 +54,20 @@ Lambdas are first-class values—they can be assigned to variables, passed as ar
 ```sun
 // Assign a lambda to a variable
 var double = lambda (x: i32) i32 { return x * 2; };
-println_i32(double(5));  // 10
+println(double(5));  // 10
 
 // Pass a lambda as an argument
 function apply(fn: (i32) i32, x: i32) i32 {
     return fn(x);
 }
-println_i32(apply(double, 3));  // 6
+println(apply(double, 3));  // 6
 
 // Return a lambda from a function
 function makeAdder(n: i32) (i32) i32 {
     return lambda (x: i32) i32 { return x + n; };
 }
 var add5 = makeAdder(5);
-println_i32(add5(10));  // 15
+println(add5(10));  // 15
 ```
 
 ## Bound Methods

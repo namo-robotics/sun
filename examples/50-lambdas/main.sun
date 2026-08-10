@@ -13,7 +13,7 @@ function main() i32 {
         total = total + scale(i);  // 10 + 20 + 30 + 40 + 50
     }
 
-    println_i32(total);  // 150
+    println(total);  // 150
     return 0;
 }
 

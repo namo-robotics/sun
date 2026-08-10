@@ -14,7 +14,7 @@ function main() i32 {
     // A successful call needs no special handling.
     try {
         var ok = divide(10, 2);   // 5
-        println_i32(ok);
+        println(ok);
     } catch (e: IError) {
         println("unexpected error");
     }
@@ -22,7 +22,7 @@ function main() i32 {
     // A failing call unwinds to the nearest matching catch.
     try {
         var bad = divide(10, 0);  // throws DivisionByZeroError
-        println_i32(bad);
+        println(bad);
     } catch (e: IError) {
         println("caught division by zero");
     }

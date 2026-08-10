@@ -236,6 +236,50 @@ TEST(InterpolationTest, fails_without_stdlib) {
                SunError);
 }
 
+TEST(InterpolationTest, println_interpolated_direct) {
+  // Interpolated string passed directly as a ref String argument
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var x: i32 = 42;
+        println(`x = ${x}`);
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(InterpolationTest, print_interpolated_direct) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var x: i64 = 7;
+        print(`a=${x}`);
+        println();
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(InterpolationTest, println_interpolated_twice) {
+  // Back-to-back interpolated temporaries stress repeated temp cleanup
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var a: i64 = 1;
+        var b: i64 = 2;
+        println(`a=${a}`);
+        println(`b=${b}`);
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
 TEST(InterpolationTest, works_without_using_sun) {
   // String interpolation should work with just stdlib, no 'using sun;' needed
   auto value = executeStringWithStdlib(R"(

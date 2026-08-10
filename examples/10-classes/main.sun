@@ -26,7 +26,7 @@ function main() i32 {
     var p = Point(3, 4);
 
     var dist = p.manhattan(origin);  // 7
-    println_i32(dist);
+    println(dist);
     return 0;
 }
 

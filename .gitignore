@@ -35,3 +35,5 @@ test
 *_debug/
 .cache/
 *.o
+
+cmake_test_discovery*
