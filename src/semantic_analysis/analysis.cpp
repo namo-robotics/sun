@@ -444,7 +444,49 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
     case ASTNodeType::UNARY: {
       auto& unaryExpr = static_cast<UnaryExprAST&>(expr);
       analyzeExpr(const_cast<ExprAST&>(*unaryExpr.getOperand()));
-      expr.setResolvedType(inferType(expr));
+
+      TokenKind op = unaryExpr.getOp().kind;
+      auto operandType = sun::unwrapRef(inferType(*unaryExpr.getOperand()));
+
+      // Unresolved generic operands are validated again at instantiation
+      if (operandType && !operandType->isTypeParameter()) {
+        const std::string name = operandType->toDisplayString();
+        switch (op) {
+          case TokenKind::NOT:
+            if (!operandType->isBool()) {
+              logAndThrowError("'not' requires a bool operand, got '" + name +
+                                   "'",
+                               expr.getLocation());
+            }
+            break;
+          case TokenKind::TILDE:
+            if (!operandType->isIntegral()) {
+              logAndThrowError(
+                  "Bitwise NOT (~) requires an integer operand, got '" + name +
+                      "'",
+                  expr.getLocation());
+            }
+            break;
+          case TokenKind::MINUS:
+            if (!operandType->isNumeric()) {
+              logAndThrowError("Unary minus requires a numeric operand, got '" +
+                                   name + "'",
+                               expr.getLocation());
+            }
+            if (operandType->isUnsigned()) {
+              logAndThrowError("Cannot negate a value of unsigned type '" +
+                                   name + "'",
+                               expr.getLocation());
+            }
+            break;
+          default:
+            break;
+        }
+      }
+
+      // Matches inferType's UNARY rule without re-walking the operand subtree
+      expr.setResolvedType(op == TokenKind::NOT ? sun::Types::Bool()
+                                                : operandType);
       break;
     }
 

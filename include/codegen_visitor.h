@@ -362,7 +362,19 @@ class CodegenVisitor {
   // Handles i32->i64, f32->f64, etc. Returns the original value if no widening
   // needed.
   llvm::Value* widenNumericIfNeeded(llvm::Value* argVal,
-                                    sun::TypePtr paramType);
+                                    const sun::TypePtr& paramType,
+                                    const sun::TypePtr& sourceType);
+
+  // Widen an integer value to destTy; the source expression's Sun type
+  // decides zero- vs sign-extension (unsigned -> zext). This is the single
+  // place that owns that rule.
+  llvm::Value* extendInt(llvm::Value* value, llvm::Type* destTy,
+                         const sun::TypePtr& sourceType);
+
+  // Integer division/remainder with signedness; shared by the plain binary
+  // path and codegenSafeDivision
+  llvm::Value* createIntDivRem(llvm::Value* L, llvm::Value* R, bool isModulo,
+                               bool isUnsigned);
 
   // Coerces a lambda argument to the callee's closure struct param type:
   // loads lambda literals (alloca ptr) and rebuilds closure values carrying
@@ -509,7 +521,8 @@ class CodegenVisitor {
 
   // Safe arithmetic: returns error on division by zero
   llvm::Value* codegenSafeDivision(llvm::Value* L, llvm::Value* R,
-                                    bool isModulo = false);
+                                    bool isModulo = false,
+                                    bool isUnsigned = false);
 
   // Short-circuit logical operators (and, or)
   llvm::Value* codegenLogicalOp(const BinaryExprAST& expr);

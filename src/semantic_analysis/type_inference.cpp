@@ -257,7 +257,11 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
 
     case ASTNodeType::UNARY: {
       const auto& unaryExpr = static_cast<const UnaryExprAST&>(expr);
-      return inferType(*unaryExpr.getOperand());
+      // Logical not yields bool; - and ~ preserve the operand type
+      if (unaryExpr.getOp().kind == TokenKind::NOT) {
+        return sun::Types::Bool();
+      }
+      return unwrapRef(inferType(*unaryExpr.getOperand()));
     }
 
     case ASTNodeType::CALL: {

@@ -303,7 +303,9 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
       unsigned valueBits = valueType->getIntegerBitWidth();
       unsigned varBits = varType->getIntegerBitWidth();
       if (valueBits < varBits) {
-        value = ctx.builder->CreateSExt(value, varType, "widen");
+        value = extendInt(value, varType,
+                          expr.getValue() ? expr.getValue()->getResolvedType()
+                                          : nullptr);
       } else if (valueBits > varBits) {
         value = ctx.builder->CreateTrunc(value, varType, "trunc");
       }

@@ -93,7 +93,8 @@ Value* CodegenVisitor::codegen(const ArrayLiteralAST& expr) {
           unsigned valBits = valType->getIntegerBitWidth();
           unsigned slotBits = slotType->getIntegerBitWidth();
           if (valBits < slotBits) {
-            elemVal = ctx.builder->CreateSExt(elemVal, slotType, "widen");
+            elemVal =
+                extendInt(elemVal, slotType, elements[i]->getResolvedType());
           } else if (valBits > slotBits) {
             elemVal = ctx.builder->CreateTrunc(elemVal, slotType, "trunc");
           }

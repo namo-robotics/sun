@@ -293,6 +293,9 @@ int tokenKindToLSPType(TokenKind kind) {
     case TokenKind::TRUE_LITERAL:
     case TokenKind::FALSE_LITERAL:
     case TokenKind::NULL_LITERAL:
+    case TokenKind::AND:
+    case TokenKind::OR:
+    case TokenKind::NOT:
       return LSPTokenType::Keyword;
 
     case TokenKind::TYPE_I8:
@@ -333,6 +336,17 @@ int tokenKindToLSPType(TokenKind kind) {
     case TokenKind::LESS_EQUAL:
     case TokenKind::GREATER_EQUAL:
     case TokenKind::FAT_ARROW:
+    case TokenKind::TILDE:
+    case TokenKind::PLUS_ASSIGN:
+    case TokenKind::MINUS_ASSIGN:
+    case TokenKind::STAR_ASSIGN:
+    case TokenKind::SLASH_ASSIGN:
+    case TokenKind::PERCENT_ASSIGN:
+    case TokenKind::AMP_ASSIGN:
+    case TokenKind::PIPE_ASSIGN:
+    case TokenKind::CARET_ASSIGN:
+    case TokenKind::LEFT_SHIFT_ASSIGN:
+    case TokenKind::RIGHT_SHIFT_ASSIGN:
       return LSPTokenType::Operator;
 
     case TokenKind::INTRINSIC_IDENTIFIER:

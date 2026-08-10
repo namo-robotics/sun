@@ -26,7 +26,8 @@ uint64_t sunTypeId(const std::string& mangledName) {
 
 // Safe division/modulo: check for zero divisor and throw instead of crashing.
 // This is only called when currentFunctionCanError is true.
-Value* CodegenVisitor::codegenSafeDivision(Value* L, Value* R, bool isModulo) {
+Value* CodegenVisitor::codegenSafeDivision(Value* L, Value* R, bool isModulo,
+                                           bool isUnsigned) {
   Function* func = ctx.builder->GetInsertBlock()->getParent();
 
   // Check if R == 0
@@ -54,9 +55,7 @@ Value* CodegenVisitor::codegenSafeDivision(Value* L, Value* R, bool isModulo) {
 
   // Safe case: perform division or modulo and continue.
   ctx.builder->SetInsertPoint(safeBB);
-  Value* result = isModulo ? ctx.builder->CreateSRem(L, R, "modtmp")
-                           : ctx.builder->CreateSDiv(L, R, "divtmp");
-  return result;
+  return createIntDivRem(L, R, isModulo, isUnsigned);
 }
 
 // Short-circuit logical operators (and, or)

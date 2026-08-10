@@ -4,40 +4,11 @@
 
 #include "ast.h"
 #include "ast.pb.h"
+#include "token_kind_proto_map.h"
 #include "types.pb.h"
 
 namespace sun {
 namespace serialization {
-
-// Helper to convert proto TokenKind to C++ TokenKind
-static TokenKind fromProtoTokenKind(ast::TokenKind kind) {
-  switch (kind) {
-    case ast::TOKEN_KIND_PLUS:
-      return TokenKind::PLUS;
-    case ast::TOKEN_KIND_MINUS:
-      return TokenKind::MINUS;
-    case ast::TOKEN_KIND_STAR:
-      return TokenKind::STAR;
-    case ast::TOKEN_KIND_SLASH:
-      return TokenKind::SLASH;
-    case ast::TOKEN_KIND_LESS:
-      return TokenKind::LESS;
-    case ast::TOKEN_KIND_LESS_EQUAL:
-      return TokenKind::LESS_EQUAL;
-    case ast::TOKEN_KIND_GREATER:
-      return TokenKind::GREATER;
-    case ast::TOKEN_KIND_GREATER_EQUAL:
-      return TokenKind::GREATER_EQUAL;
-    case ast::TOKEN_KIND_EQUAL_EQUAL:
-      return TokenKind::EQUAL_EQUAL;
-    case ast::TOKEN_KIND_NOT_EQUAL:
-      return TokenKind::NOT_EQUAL;
-    case ast::TOKEN_KIND_EQUAL:
-      return TokenKind::EQUAL;
-    default:
-      return TokenKind::UNKNOWN;
-  }
-}
 
 Position ASTDeserializer::deserializePosition(const ast::Position& pos) const {
   Position result;

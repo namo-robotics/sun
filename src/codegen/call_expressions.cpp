@@ -286,7 +286,8 @@ Value* CodegenVisitor::materializeMethodClosureValue(Value* fnPtr,
 // -------------------------------------------------------------------
 
 Value* CodegenVisitor::widenNumericIfNeeded(Value* argVal,
-                                            sun::TypePtr paramType) {
+                                            const sun::TypePtr& paramType,
+                                            const sun::TypePtr& sourceType) {
   if (!paramType) {
     return argVal;
   }
@@ -298,7 +299,7 @@ Value* CodegenVisitor::widenNumericIfNeeded(Value* argVal,
     unsigned argBits = argVal->getType()->getIntegerBitWidth();
     unsigned paramBits = expectedType->getIntegerBitWidth();
     if (argBits < paramBits) {
-      return ctx.builder->CreateSExt(argVal, expectedType, "widen");
+      return extendInt(argVal, expectedType, sourceType);
     }
   }
   // Float widening: f32 -> f64
@@ -805,7 +806,7 @@ Value* CodegenVisitor::codegenClassMethodCall(
 
       if (!paramType || !paramType->isInterface()) {
         argVal = applyMoveSemantics(argVal, argSunType);
-        argVal = widenNumericIfNeeded(argVal, paramType);
+        argVal = widenNumericIfNeeded(argVal, paramType, argSunType);
       }
 
       // Interface args: load fat pointer struct if value is still a pointer
@@ -1163,7 +1164,7 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
           }
         }
 
-        argVal = widenNumericIfNeeded(argVal, paramType);
+        argVal = widenNumericIfNeeded(argVal, paramType, argSunType);
       }
 
       // Interface args: load fat pointer struct if value is still a pointer

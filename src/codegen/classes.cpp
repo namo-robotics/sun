@@ -951,7 +951,7 @@ std::vector<Value*> CodegenVisitor::generateCtorArgs(
           unsigned argBits = argVal->getType()->getIntegerBitWidth();
           unsigned paramBits = expectedType->getIntegerBitWidth();
           if (argBits < paramBits) {
-            argVal = ctx.builder->CreateSExt(argVal, expectedType, "widen");
+            argVal = extendInt(argVal, expectedType, arg->getResolvedType());
           }
         } else if (argVal->getType()->isFloatTy() &&
                    expectedType->isDoubleTy()) {
@@ -1115,7 +1115,8 @@ Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
         unsigned valueBits = valueType->getIntegerBitWidth();
         unsigned fieldBits = fieldLLVMType->getIntegerBitWidth();
         if (valueBits < fieldBits) {
-          value = ctx.builder->CreateSExt(value, fieldLLVMType, "widen");
+          value = extendInt(value, fieldLLVMType,
+                            expr.getValue()->getResolvedType());
         }
       }
       // Float widening

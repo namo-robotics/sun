@@ -11,6 +11,7 @@
 #include "ast_serializer.h"
 #include "lexer.h"
 #include "parser.h"
+#include "token_kind_proto_map.h"
 
 using namespace sun::serialization;
 
@@ -210,6 +211,30 @@ TEST(SerializationTest, BinaryExprRoundtrip) {
   EXPECT_EQ(bin->getOp().kind, TokenKind::PLUS);
   EXPECT_EQ(bin->getLHS()->getType(), ASTNodeType::NUMBER);
   EXPECT_EQ(bin->getRHS()->getType(), ASTNodeType::NUMBER);
+}
+
+// Every kind in the shared TokenKind<->proto table must survive a roundtrip,
+// so a newly mapped operator is covered automatically
+TEST(SerializationTest, MappedOpTokenKindsRoundtrip) {
+  for (const auto& [kind, protoKind] : kTokenKindProtoMap) {
+    auto lhs = std::make_unique<NumberExprAST>(static_cast<int64_t>(10));
+    auto rhs = std::make_unique<NumberExprAST>(static_cast<int64_t>(3));
+    Token op = Token::make(kind, Position{}, Position{});
+    auto ast =
+        std::make_unique<BinaryExprAST>(op, std::move(lhs), std::move(rhs));
+
+    ASTSerializer serializer;
+    std::string data = serializer.serializeToString(*ast);
+
+    ASTDeserializer deserializer;
+    auto restored = deserializer.deserializeFromString(data);
+
+    ASSERT_NE(restored, nullptr);
+    ASSERT_EQ(restored->getType(), ASTNodeType::BINARY);
+    auto* bin = static_cast<BinaryExprAST*>(restored.get());
+    EXPECT_EQ(bin->getOp().kind, kind)
+        << "operator " << getTokenInfo().at(kind).text;
+  }
 }
 
 TEST(SerializationTest, UnaryExprRoundtrip) {

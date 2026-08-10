@@ -17,6 +17,8 @@ add_executable(sun_tests
     test_arithmetic.cpp
     test_arrays.cpp
     test_bitwise.cpp
+    test_compound_assignment.cpp
+    test_unsigned.cpp
     test_borrow_checker.cpp
     test_bound_methods.cpp
     test_classes.cpp
