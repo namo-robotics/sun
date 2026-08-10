@@ -262,10 +262,10 @@ Value* CodegenVisitor::codegen(const ClassDefinitionAST& expr) {
       std::string defaultMangledName =
           interfaceType->getMangledDefaultMethodName(interfaceMethod.name);
 
-      // Build parameter types (with 'this' as first parameter)
+      // Build parameter types (closure ptr as first parameter)
       std::vector<llvm::Type*> paramTypes;
       paramTypes.push_back(
-          PointerType::getUnqual(ctx.getContext()));  // this ptr
+          PointerType::getUnqual(ctx.getContext()));  // closure
       for (const auto& pt : interfaceMethod.paramTypes) {
         paramTypes.push_back(typeResolver.resolve(pt));
       }
@@ -293,7 +293,10 @@ Value* CodegenVisitor::codegen(const ClassDefinitionAST& expr) {
         continue;
       }
 
-      // Build argument list (just forward all arguments)
+      // Build argument list (just forward all arguments). The closure arg
+      // (arg 0) is passed through verbatim: its func slot points at this
+      // wrapper, not the default impl, which is fine because method bodies
+      // only ever read the env slot (field 1).
       std::vector<Value*> args;
       for (auto& arg : func->args()) {
         args.push_back(&arg);
@@ -373,9 +376,10 @@ Function* CodegenVisitor::declareMethodFromAST(
 
   const PrototypeAST& proto = specializedAST.getProto();
 
-  // Build parameter types: 'this' first, then regular params
+  // Build parameter types: closure ptr first ({ func, env } with the
+  // receiver in env), then regular params
   std::vector<llvm::Type*> paramTypes;
-  paramTypes.push_back(PointerType::getUnqual(ctx.getContext()));  // this
+  paramTypes.push_back(PointerType::getUnqual(ctx.getContext()));  // closure
 
   if (!proto.hasResolvedParamTypes()) {
     logAndThrowError(
@@ -418,7 +422,7 @@ Function* CodegenVisitor::declareMethodFromAST(
 
   // Set parameter names
   auto argIt = func->arg_begin();
-  argIt->setName("this");
+  argIt->setName("closure");
   ++argIt;
 
   for (const auto& [argName, argType] : proto.getArgs()) {
@@ -476,10 +480,18 @@ void CodegenVisitor::generateMethodBody(const FunctionAST& methodFunc,
   // Create a new scope for the method
   pushScope();
 
-  // Store 'this' pointer for method body access
+  // Method ABI: arg 0 is a ptr to the closure struct { func, env }; the
+  // receiver ('this') lives in the env slot (field 1). Method bodies must
+  // never read field 0 — forwarding wrappers pass their own closure through,
+  // so the func slot may point at the wrapper rather than this function.
+  llvm::StructType* closureTy = typeResolver.getClosureType();
+  Value* envSlot = ctx.builder->CreateStructGEP(closureTy, &*func->arg_begin(),
+                                                1, "this.env");
+  Value* thisVal = ctx.builder->CreateLoad(
+      PointerType::getUnqual(ctx.getContext()), envSlot, "this.recv");
   AllocaInst* thisAlloca = ctx.builder->CreateAlloca(
       PointerType::getUnqual(ctx.getContext()), nullptr, "this.addr");
-  ctx.builder->CreateStore(&*func->arg_begin(), thisAlloca);
+  ctx.builder->CreateStore(thisVal, thisAlloca);
   thisPtr = ctx.builder->CreateLoad(PointerType::getUnqual(ctx.getContext()),
                                     thisAlloca, "this");
 
@@ -488,7 +500,7 @@ void CodegenVisitor::generateMethodBody(const FunctionAST& methodFunc,
 
   // Store other parameters
   auto argIt = func->arg_begin();
-  ++argIt;  // Skip 'this'
+  ++argIt;  // Skip closure
 
   // Use resolved param types if available (for specialized generic classes)
   const auto& protoArgs = proto.getArgs();
@@ -724,9 +736,66 @@ Value* CodegenVisitor::codegen(const MemberAccessAST& expr) {
                                    memberName + ".val");
   }
 
+  // Bound method reference: a method in value position materializes the
+  // closure value { methodFn, objectPtr }
+  if (expr.isBoundMethodRef()) {
+    return codegenBoundMethodReference(expr, objectPtr, classType);
+  }
+
   // It's a method - just return the object pointer
   // The actual method call will be handled in CallExprAST
   return objectPtr;
+}
+
+// -------------------------------------------------------------------
+// Bound method reference codegen: obj.method in value position
+// Produces a closure struct VALUE { methodFn, objectPtr } (lambda ABI)
+// -------------------------------------------------------------------
+
+Value* CodegenVisitor::codegenBoundMethodReference(const MemberAccessAST& expr,
+                                                   Value* objectPtr,
+                                                   sun::ClassType* classType) {
+  sun::TypePtr resolvedType = expr.getResolvedType();
+  if (!resolvedType || !resolvedType->isLambda()) {
+    logAndThrowError(
+        "Internal error: bound method reference without lambda type");
+    return nullptr;
+  }
+  auto* lambdaType = static_cast<sun::LambdaType*>(resolvedType.get());
+  const std::string& methodName = expr.getMemberName();
+
+  // Semantic analysis picked the exact overload; its param types are the
+  // lambda's param types.
+  const sun::ClassMethod* method =
+      classType->getMethodForArgs(methodName, lambdaType->getParamTypes());
+  if (!method) method = classType->getMethod(methodName);
+  if (!method) {
+    logAndThrowError("Unknown method: " + methodName + " on class " +
+                     classType->getDisplayName());
+    return nullptr;
+  }
+
+  std::string mangledName =
+      classType->getMangledMethodName(methodName, method->paramTypes);
+  Function* methodFunc = module->getFunction(mangledName);
+  if (!methodFunc) {
+    // Imported/precompiled class: declare an external, resolved at link/JIT
+    // time (same pattern as interface vtable entries)
+    std::vector<llvm::Type*> paramTypes;
+    paramTypes.push_back(PointerType::getUnqual(ctx.getContext()));  // closure
+    for (const auto& pt : method->paramTypes) {
+      paramTypes.push_back(typeResolver.resolve(pt));
+    }
+    llvm::Type* returnType = typeResolver.resolveForReturn(method->returnType);
+    FunctionType* funcType = FunctionType::get(returnType, paramTypes, false);
+    methodFunc = Function::Create(funcType, Function::ExternalLinkage,
+                                  mangledName, module);
+    if (method->canThrow) {
+      methodFunc->addFnAttr("sun.canthrow");
+    }
+  }
+
+  return materializeMethodClosureValue(methodFunc, objectPtr);
 }
 
 // -------------------------------------------------------------------
@@ -791,7 +860,7 @@ Value* CodegenVisitor::codegenStackClassInstance(const CallExprAST& expr,
         ctor.method ? ctor.method->paramTypes : std::vector<sun::TypePtr>{};
 
     std::vector<Value*> ctorArgs =
-        generateCtorArgs(alloca, expr.getArgs(), paramTypes);
+        generateCtorArgs(ctorFunc, alloca, expr.getArgs(), paramTypes);
     ctx.builder->CreateCall(ctorFunc, ctorArgs);
   }
 
@@ -813,10 +882,11 @@ Value* CodegenVisitor::codegenStackClassInstance(const CallExprAST& expr,
 // -------------------------------------------------------------------
 
 std::vector<Value*> CodegenVisitor::generateCtorArgs(
-    Value* thisPtr, const std::vector<std::unique_ptr<ExprAST>>& args,
+    llvm::Function* ctorFunc, Value* thisPtr,
+    const std::vector<std::unique_ptr<ExprAST>>& args,
     const std::vector<sun::TypePtr>& paramTypes) {
   std::vector<Value*> ctorArgs;
-  ctorArgs.push_back(thisPtr);  // 'this' pointer
+  ctorArgs.push_back(materializeMethodClosure(ctorFunc, thisPtr));
 
   size_t argIdx = 0;
   for (const auto& arg : args) {
@@ -1112,10 +1182,10 @@ Value* CodegenVisitor::codegen(const InterfaceDefinitionAST& expr) {
     std::string mangledName =
         interfaceType->getMangledDefaultMethodName(methodName);
 
-    // Build the method parameter types (with 'this' as first parameter - using
-    // opaque pointer)
+    // Build the method parameter types (closure ptr first - the receiver
+    // lives in the closure's env slot)
     std::vector<llvm::Type*> paramTypes;
-    paramTypes.push_back(PointerType::getUnqual(ctx.getContext()));  // this ptr
+    paramTypes.push_back(PointerType::getUnqual(ctx.getContext()));  // closure
 
     // Interface default methods must have resolved param types from semantic
     // analysis
@@ -1153,7 +1223,7 @@ Value* CodegenVisitor::codegen(const InterfaceDefinitionAST& expr) {
 
     // Set parameter names
     auto argIt = func->arg_begin();
-    argIt->setName("this");
+    argIt->setName("closure");
     ++argIt;
 
     for (const auto& [argName, argType] : proto.getArgs()) {
@@ -1168,10 +1238,16 @@ Value* CodegenVisitor::codegen(const InterfaceDefinitionAST& expr) {
     // Create a new scope for the method
     pushScope();
 
-    // Store 'this' pointer for method body access
+    // Method ABI: arg 0 is a ptr to the closure struct { func, env }; the
+    // receiver ('this') lives in the env slot (field 1).
+    llvm::StructType* closureTy = typeResolver.getClosureType();
+    Value* envSlot = ctx.builder->CreateStructGEP(
+        closureTy, &*func->arg_begin(), 1, "this.env");
+    Value* thisVal = ctx.builder->CreateLoad(
+        PointerType::getUnqual(ctx.getContext()), envSlot, "this.recv");
     AllocaInst* thisAlloca = ctx.builder->CreateAlloca(
         PointerType::getUnqual(ctx.getContext()), nullptr, "this.addr");
-    ctx.builder->CreateStore(&*func->arg_begin(), thisAlloca);
+    ctx.builder->CreateStore(thisVal, thisAlloca);
     thisPtr = ctx.builder->CreateLoad(PointerType::getUnqual(ctx.getContext()),
                                       thisAlloca, "this");
 
@@ -1180,7 +1256,7 @@ Value* CodegenVisitor::codegen(const InterfaceDefinitionAST& expr) {
 
     // Store other parameters
     argIt = func->arg_begin();
-    ++argIt;  // Skip 'this'
+    ++argIt;  // Skip closure
 
     // Use resolved param types for storing parameters
     const auto& resolvedParamTypes = proto.getResolvedParamTypes();
@@ -1429,7 +1505,7 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
             initMethod ? initMethod->paramTypes : std::vector<sun::TypePtr>{};
 
         std::vector<Value*> ctorArgs =
-            generateCtorArgs(alloca, expr.getArgs(), paramTypes);
+            generateCtorArgs(ctorFunc, alloca, expr.getArgs(), paramTypes);
         ctx.builder->CreateCall(ctorFunc, ctorArgs);
       }
 
@@ -1513,7 +1589,7 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
           initMethod ? initMethod->paramTypes : std::vector<sun::TypePtr>{};
 
       std::vector<Value*> ctorArgs =
-          generateCtorArgs(alloca, expr.getArgs(), paramTypes);
+          generateCtorArgs(ctorFunc, alloca, expr.getArgs(), paramTypes);
       ctx.builder->CreateCall(ctorFunc, ctorArgs);
     }
 

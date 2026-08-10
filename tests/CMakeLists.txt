@@ -18,6 +18,7 @@ add_executable(sun_tests
     test_arrays.cpp
     test_bitwise.cpp
     test_borrow_checker.cpp
+    test_bound_methods.cpp
     test_classes.cpp
     test_compilation.cpp
     test_contiguous_buffer.cpp

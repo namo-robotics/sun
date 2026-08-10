@@ -92,7 +92,7 @@ GlobalVariable* CodegenVisitor::getOrCreateInterfaceVtable(
     Function* fn = module->getFunction(mangled);
     if (!fn) {
       std::vector<llvm::Type*> params;
-      params.push_back(ptrTy);  // 'this'
+      params.push_back(ptrTy);  // closure
       for (const auto& pt : m.paramTypes) params.push_back(typeResolver.resolve(pt));
       llvm::Type* ret = typeResolver.resolveForReturn(m.returnType);
       llvm::FunctionType* ft = FunctionType::get(ret, params, false);
@@ -230,6 +230,37 @@ Value* CodegenVisitor::loadClosureForLambdaParam(Value* argVal,
     return result;
   }
   return argVal;
+}
+
+// -------------------------------------------------------------------
+// Method closure ABI helpers
+// Methods take a ptr to { ptr func, ptr env } as their hidden first
+// argument; env holds the receiver ('this'). Method bodies must never
+// read field 0 (forwarding wrappers pass their own closure through).
+// -------------------------------------------------------------------
+
+Value* CodegenVisitor::materializeMethodClosure(Value* fnPtr,
+                                                Value* receiverPtr,
+                                                StringRef name) {
+  llvm::StructType* closureTy = typeResolver.getClosureType();
+  Function* func = ctx.builder->GetInsertBlock()->getParent();
+  AllocaInst* closureAlloca = createEntryBlockAlloca(func, name, closureTy);
+  Value* fnSlot =
+      ctx.builder->CreateStructGEP(closureTy, closureAlloca, 0, name + ".fn");
+  ctx.builder->CreateStore(fnPtr, fnSlot);
+  Value* envSlot =
+      ctx.builder->CreateStructGEP(closureTy, closureAlloca, 1, name + ".env");
+  ctx.builder->CreateStore(receiverPtr, envSlot);
+  return closureAlloca;
+}
+
+Value* CodegenVisitor::materializeMethodClosureValue(Value* fnPtr,
+                                                     Value* receiverPtr) {
+  llvm::StructType* closureTy = typeResolver.getClosureType();
+  Value* closure = UndefValue::get(closureTy);
+  closure = ctx.builder->CreateInsertValue(closure, fnPtr, {0});
+  closure = ctx.builder->CreateInsertValue(closure, receiverPtr, {1});
+  return closure;
 }
 
 // -------------------------------------------------------------------
@@ -578,9 +609,9 @@ Value* CodegenVisitor::codegenInterfaceMethodCall(
   Value* funcPtr = ctx.builder->CreateLoad(ptrTy, funcPtrSlot, "iface.func");
 
   // Build the function type for the indirect call
-  // Parameters: this pointer (ptr), then method params
+  // Parameters: closure ptr, then method params
   std::vector<llvm::Type*> paramTypes;
-  paramTypes.push_back(ptrTy);  // 'this' pointer
+  paramTypes.push_back(ptrTy);  // closure
   for (const auto& pt : ifaceMethod->paramTypes) {
     paramTypes.push_back(typeResolver.resolve(pt));
   }
@@ -589,9 +620,10 @@ Value* CodegenVisitor::codegenInterfaceMethodCall(
   llvm::FunctionType* funcType =
       FunctionType::get(returnType, paramTypes, false);
 
-  // Build argument list: data_ptr as 'this', then user arguments
+  // Build argument list: method closure with data_ptr as receiver, then
+  // user arguments
   std::vector<Value*> argValues;
-  argValues.push_back(dataPtr);  // 'this' pointer
+  argValues.push_back(materializeMethodClosure(funcPtr, dataPtr, "iface.closure"));
 
   for (const auto& argExpr : expr.getArgs()) {
     sun::TypePtr argSunType = argExpr->getResolvedType();
@@ -687,9 +719,9 @@ Value* CodegenVisitor::codegenClassMethodCall(
       return nullptr;
     }
 
-    // Build arguments: this pointer first, then user arguments
+    // Build arguments: method closure first, then user arguments
     std::vector<Value*> argValues;
-    argValues.push_back(objectPtr);
+    argValues.push_back(materializeMethodClosure(specializedFunc, objectPtr));
 
     for (const auto& argExpr : expr.getArgs()) {
       sun::TypePtr argSunType = argExpr->getResolvedType();
@@ -717,9 +749,9 @@ Value* CodegenVisitor::codegenClassMethodCall(
     return nullptr;
   }
 
-  // Build arguments: this pointer first, then user arguments
+  // Build arguments: method closure first, then user arguments
   std::vector<Value*> argValues;
-  argValues.push_back(objectPtr);
+  argValues.push_back(materializeMethodClosure(methodFunc, objectPtr));
 
   const auto& methodParamTypes = method->paramTypes;
   size_t methodArgIdx = 0;

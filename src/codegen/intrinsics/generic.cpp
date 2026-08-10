@@ -61,7 +61,8 @@ Value* CodegenVisitor::codegenInitIntrinsic(
   // excluding 'this') for constructor overload resolution.
   std::vector<Value*> ctorArgs;
   std::vector<sun::TypePtr> argTypes;
-  ctorArgs.push_back(rawPtr);  // 'this' pointer
+  // Slot 0 is the method closure; patched below once the ctor is resolved.
+  ctorArgs.push_back(rawPtr);
 
   // Skip args[0] (the pointer)
   for (size_t i = 1; i < args.size(); ++i) {
@@ -111,6 +112,7 @@ Value* CodegenVisitor::codegenInitIntrinsic(
   }
 
   if (ctorFunc) {
+    ctorArgs[0] = materializeMethodClosure(ctorFunc, rawPtr, "init.closure");
     ctx.builder->CreateCall(ctorFunc, ctorArgs);
   }
 
@@ -472,7 +474,9 @@ Value* CodegenVisitor::codegenDeinitIntrinsic(
         deinitFunc = llvm::Function::Create(
             funcType, llvm::Function::ExternalLinkage, mangledName, module);
       }
-      ctx.builder->CreateCall(deinitFunc, {ptr});
+      ctx.builder->CreateCall(
+          deinitFunc,
+          {materializeMethodClosure(deinitFunc, ptr, "deinit.closure")});
     }
 
     // Recursively deinit class fields that have deinit methods

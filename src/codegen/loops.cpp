@@ -249,8 +249,10 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
     }
 
     // Call iter() to get the actual iterator
-    Value* actualIterator =
-        ctx.builder->CreateCall(iterFunc, {iterableObj}, "iter.result");
+    Value* actualIterator = ctx.builder->CreateCall(
+        iterFunc,
+        {materializeMethodClosure(iterFunc, iterableObj, "iter.closure")},
+        "iter.result");
 
     // Get the iterator type from iter()'s return type
     llvm::Type* iterRetType = iterFunc->getReturnType();
@@ -333,13 +335,15 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
   bool hasNextTakesContainerRef = hasNextFunc->arg_size() == 2;
 
   // Call hasNext with appropriate arguments
+  Value* hasNextClosure =
+      materializeMethodClosure(hasNextFunc, iteratorObj, "hasnext.closure");
   Value* hasNextResult;
   if (hasNextTakesContainerRef) {
     hasNextResult = ctx.builder->CreateCall(
-        hasNextFunc, {iteratorObj, containerObj}, "hasnext");
+        hasNextFunc, {hasNextClosure, containerObj}, "hasnext");
   } else {
     hasNextResult =
-        ctx.builder->CreateCall(hasNextFunc, {iteratorObj}, "hasnext");
+        ctx.builder->CreateCall(hasNextFunc, {hasNextClosure}, "hasnext");
   }
 
   // Branch: if hasNext() returns true go to body, else exit
@@ -364,12 +368,14 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
   bool nextTakesContainerRef = nextFunc->arg_size() == 2;
 
   // Call next() with appropriate arguments to get the value
+  Value* nextClosure =
+      materializeMethodClosure(nextFunc, iteratorObj, "next.closure");
   Value* nextResult;
   if (nextTakesContainerRef) {
-    nextResult = ctx.builder->CreateCall(nextFunc, {iteratorObj, containerObj},
+    nextResult = ctx.builder->CreateCall(nextFunc, {nextClosure, containerObj},
                                          "nextval");
   } else {
-    nextResult = ctx.builder->CreateCall(nextFunc, {iteratorObj}, "nextval");
+    nextResult = ctx.builder->CreateCall(nextFunc, {nextClosure}, "nextval");
   }
 
   // Store the result in the loop variable

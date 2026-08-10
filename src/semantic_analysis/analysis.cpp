@@ -1014,6 +1014,9 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
         analyzeExpr(const_cast<ExprAST&>(*memberAccess.getObject()));
       }
       expr.setResolvedType(inferType(expr));
+      // A method in value position becomes a bound method reference with
+      // lambda type (call-position callees don't route through this case).
+      maybeResolveBoundMethodRef(memberAccess, expectedType);
       break;
     }
 
@@ -1978,6 +1981,92 @@ void SemanticAnalyzer::analyzeMethodWithBindings(
 // Call expression analysis
 // -------------------------------------------------------------------
 
+// -------------------------------------------------------------------
+// Bound method references: obj.method in value position
+// -------------------------------------------------------------------
+
+void SemanticAnalyzer::maybeResolveBoundMethodRef(MemberAccessAST& memberAccess,
+                                                  sun::TypePtr expectedType) {
+  sun::TypePtr objectType =
+      unwrapRef(memberAccess.getObject()->getResolvedType());
+  if (!objectType) return;
+
+  // Unwrap raw_ptr<Class> / static_ptr<Class> (mirrors inferType)
+  if (objectType->isRawPointer()) {
+    sun::TypePtr pointee =
+        static_cast<sun::RawPointerType*>(objectType.get())->getPointeeType();
+    if (pointee && pointee->isClass()) objectType = pointee;
+  } else if (objectType->isStaticPointer()) {
+    sun::TypePtr pointee =
+        static_cast<sun::StaticPointerType*>(objectType.get())
+            ->getPointeeType();
+    if (pointee && pointee->isClass()) objectType = pointee;
+  }
+
+  const std::string& memberName = memberAccess.getMemberName();
+
+  // Interface methods as values are not supported (would need a vtable
+  // load at bind time). Only diagnose when a lambda is expected so
+  // interface method calls stay untouched.
+  if (objectType->isInterface() && expectedType && expectedType->isLambda()) {
+    auto* ifaceType = static_cast<sun::InterfaceType*>(objectType.get());
+    if (ifaceType->getMethod(memberName)) {
+      logAndThrowError("Referencing interface method '" + memberName +
+                           "' as a value is not supported",
+                       memberAccess.getLocation());
+    }
+    return;
+  }
+
+  if (!objectType->isClass()) return;
+  const auto* classType = static_cast<const sun::ClassType*>(objectType.get());
+  if (classType->getField(memberName)) return;
+  if (!classType->getMethod(memberName)) return;
+
+  std::vector<const sun::ClassMethod*> overloads;
+  for (const auto& m : classType->getMethods()) {
+    if (m.name == memberName) overloads.push_back(&m);
+  }
+
+  const sun::ClassMethod* chosen = nullptr;
+  if (overloads.size() == 1) {
+    chosen = overloads[0];
+  } else if (expectedType && expectedType->isLambda()) {
+    // Pick the overload matching the expected lambda signature. A
+    // non-throwing method may bind where a throwing lambda is expected.
+    const auto* expected =
+        static_cast<const sun::LambdaType*>(expectedType.get());
+    std::vector<const sun::ClassMethod*> matches;
+    for (const auto* m : overloads) {
+      sun::LambdaType candidate(m->returnType, m->paramTypes, m->canThrow);
+      if (candidate.equalsIgnoringThrow(*expected) &&
+          (expected->canThrow() || !m->canThrow)) {
+        matches.push_back(m);
+      }
+    }
+    if (matches.size() == 1) chosen = matches[0];
+  }
+
+  if (!chosen) {
+    logAndThrowError("Cannot reference overloaded method '" + memberName +
+                         "' as a value; add a type annotation or call it with "
+                         "arguments",
+                     memberAccess.getLocation());
+    return;
+  }
+
+  if (chosen->isGeneric()) {
+    logAndThrowError(
+        "Cannot use generic method '" + memberName + "' as a value",
+        memberAccess.getLocation());
+    return;
+  }
+
+  memberAccess.setResolvedType(sun::Types::Lambda(
+      chosen->returnType, chosen->paramTypes, chosen->canThrow));
+  memberAccess.setIsBoundMethodRef(true);
+}
+
 void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
   // Check for unsafe intrinsic calls (non-generic)
   // Generic intrinsics (_load<T>, _store<T>, _address_of<T>) are checked in
@@ -2061,9 +2150,20 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
   }
 
   // Analyze arguments FIRST (before callee) to get types for overload
-  // resolution
-  for (const auto& arg : callExpr.getArgs()) {
-    analyzeExpr(const_cast<ExprAST&>(*arg));
+  // resolution. Member-access args get the expected param type so an
+  // overloaded bound method reference can be disambiguated (kept narrow to
+  // avoid changing literal coercion or free-function overload resolution).
+  {
+    size_t argIdx = 0;
+    for (const auto& arg : callExpr.getArgs()) {
+      sun::TypePtr expected =
+          (arg->getType() == ASTNodeType::MEMBER_ACCESS &&
+           argIdx < expectedParamTypes.size())
+              ? expectedParamTypes[argIdx]
+              : nullptr;
+      analyzeExpr(const_cast<ExprAST&>(*arg), expected);
+      ++argIdx;
+    }
   }
 
   // Expand any variadic pack (`f(args...)`) into concrete typed args before
@@ -2201,13 +2301,18 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
               sun::Types::Function(method->returnType, method->paramTypes));
         } else {
           // Fall back to first method with this name (will error on type
-          // mismatch)
-          analyzeExpr(memberAccess);
+          // mismatch). Set the type directly (the object is already
+          // analyzed) instead of analyzeExpr, so the callee is not converted
+          // to a bound-method lambda — call position requires a FunctionType.
+          memberAccess.setResolvedType(inferType(memberAccess));
         }
       }
     } else {
-      // Not a class type - analyze normally
-      analyzeExpr(memberAccess);
+      // Not a class type (interface, module, ptr-to-class, builtin...).
+      // Set the type directly (the object is already analyzed) instead of
+      // analyzeExpr, so a ptr-to-class method callee is not converted to a
+      // bound-method lambda — call position requires a FunctionType.
+      memberAccess.setResolvedType(inferType(memberAccess));
     }
   } else {
     // Not a simple variable reference or method call - analyze the callee

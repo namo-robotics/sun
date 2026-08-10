@@ -637,7 +637,9 @@ void CodegenVisitor::emitFieldDeinit(llvm::Value* objectPtr,
         }
 
         // Call deinit on the field
-        ctx.builder->CreateCall(deinitFunc, {fieldPtr});
+        ctx.builder->CreateCall(
+            deinitFunc,
+            {materializeMethodClosure(deinitFunc, fieldPtr, "deinit.closure")});
       }
 
       // Recursively deinit nested class fields
@@ -677,7 +679,9 @@ void CodegenVisitor::emitScopeCleanup() {
           }
 
           // Call deinit on the class instance
-          ctx.builder->CreateCall(deinitFunc, {it->alloca});
+          ctx.builder->CreateCall(deinitFunc,
+                                  {materializeMethodClosure(
+                                      deinitFunc, it->alloca, "deinit.closure")});
         }
 
         // Recursively deinit class fields that have deinit methods
@@ -761,7 +765,9 @@ void CodegenVisitor::emitScopeCleanup() {
                   funcType, llvm::Function::ExternalLinkage, mangledName,
                   module);
             }
-            ctx.builder->CreateCall(deinitFunc, {ptrToFree});
+            ctx.builder->CreateCall(deinitFunc,
+                                    {materializeMethodClosure(
+                                        deinitFunc, ptrToFree, "deinit.closure")});
           }
           // Recursively deinit class fields and free nested ptr<T> fields
           emitFieldDeinit(ptrToFree, classType, it->varName);
@@ -961,7 +967,9 @@ void CodegenVisitor::emitStaticInitFunction() {
             ctor.method ? ctor.method->paramTypes : std::vector<sun::TypePtr>{};
 
         std::vector<Value*> ctorArgValues;
-        ctorArgValues.push_back(gv);  // 'this' pointer is the global variable
+        // Method closure; the receiver is the global variable
+        ctorArgValues.push_back(
+            materializeMethodClosure(ctorFunc, gv, "init.closure"));
 
         // Generate argument values
         if (callExpr) {

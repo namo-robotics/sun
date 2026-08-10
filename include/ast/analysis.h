@@ -108,6 +108,9 @@ struct MemberAccessAnalysis : public ExprAnalysis {
   // specializations.
   std::vector<sun::TypePtr> resolvedVariadicArgTypes;
   std::string resolvedQualifiedName;
+  // True when this member access is a method used in value position (bound
+  // method reference); its resolved type is then a LambdaType.
+  bool isBoundMethodRef = false;
 
   MemberAccessAnalysis() = default;
   MemberAccessAnalysis(const MemberAccessAnalysis&) = default;

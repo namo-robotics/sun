@@ -49,7 +49,7 @@ import { Callout } from 'nextra/components'
 
 ## First-Class Lambdas
 
-Only lambdas are first-class values—they can be assigned to variables, passed as arguments, and returned from functions:
+Lambdas are first-class values—they can be assigned to variables, passed as arguments, and returned from functions (named functions are not, but class methods are—see [Bound Methods](#bound-methods)):
 
 ```sun
 // Assign a lambda to a variable
@@ -69,3 +69,38 @@ function makeAdder(n: i32) (i32) i32 {
 var add5 = makeAdder(5);
 println_i32(add5(10));  // 15
 ```
+
+## Bound Methods
+
+Class methods are first-class values: `obj.method` (without parentheses) produces a value of lambda type `(params) ret` that can be stored in variables and passed wherever a lambda is expected. This makes class methods usable as callbacks:
+
+```sun
+class Counter {
+    var count: i32;
+    function init() { this.count = 0; }
+    function add(amount: i32) i32 {
+        this.count = this.count + amount;
+        return this.count;
+    }
+}
+
+function apply(f: (i32) i32, x: i32) i32 {
+    return f(x);
+}
+
+function main() i32 {
+    var c = Counter();
+    apply(c.add, 5);      // pass a method as a callback
+    var f = c.add;        // or store it in a variable
+    f(7);
+    return c.count;       // 12 — calls mutate the original object
+}
+```
+
+Rules and caveats:
+
+- **The receiver is captured by reference.** Calls through the bound value see and mutate the original object. The bound value must not outlive its receiver.
+- **Overloaded methods** need type context to disambiguate: a type annotation (`var f: (i32) i32 = c.add;`) or a lambda-typed parameter of the called function. Without context, referencing an overloaded method is an error.
+- **Generic methods** cannot be referenced as values.
+- **Interface-typed receivers** are not supported: only concrete class methods can be bound.
+- A **non-throwing method** can be bound where a throwing lambda type (`(i32) i32, IError`) is expected; a throwing method requires a throwing lambda type and its calls follow the usual `try`/`, IError` rules.

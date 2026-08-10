@@ -78,7 +78,7 @@ Module tests require `SUN_PATH` env var pointing to workspace root.
 
 - Namespace: `sun::` for type system classes.
 - Errors: `logError()` / `logAndThrowError()` for compilation errors.
-- Lambdas use closure structs; named functions use direct calls.
+- Lambdas use closure structs; named functions use direct calls. Class methods use the closure ABI: arg 0 is a ptr to `{ ptr func, ptr env }` with the receiver in `env`; `obj.method` in value position is a lambda-typed bound method `{ methodFn, objPtr }`.
 - Never `cd` out of workspace root. 
 - Absotely NEVER use `git` commands except for `git diff`.
 - Run all commands from the workspace folder.

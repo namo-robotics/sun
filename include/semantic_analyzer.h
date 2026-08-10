@@ -430,6 +430,14 @@ class SemanticAnalyzer {
   // expectedType: optional type hint for type inference (e.g., from variable
   // declaration)
   void analyzeExpr(ExprAST& expr, sun::TypePtr expectedType = nullptr);
+
+  // If the member access names a class method in value position, resolve it
+  // as a bound method reference: pick the overload (using expectedType when
+  // the name is overloaded), set a LambdaType resolved type and the
+  // isBoundMethodRef flag. No-op for fields, non-class receivers, and
+  // call-position callees (those never route through here).
+  void maybeResolveBoundMethodRef(MemberAccessAST& memberAccess,
+                                  sun::TypePtr expectedType);
   void analyzeCall(CallExprAST& callExpr);
 
   // Generic call analysis helpers

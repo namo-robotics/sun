@@ -20,7 +20,7 @@ namespace sun {
 /// Binary header for .moon format
 struct SunLibHeader {
   static constexpr uint32_t MAGIC = 0x53554E4C;  // "SUNL"
-  static constexpr uint32_t VERSION = 2;         // V2: Protobuf metadata format
+  static constexpr uint32_t VERSION = 3;  // V3: closure ABI for class methods
 
   uint32_t magic = MAGIC;
   uint32_t version = VERSION;

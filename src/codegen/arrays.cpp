@@ -589,7 +589,7 @@ Value* CodegenVisitor::codegenClassIndex(const IndexAST& expr, Value* objectPtr,
   if (!methodFunc) {
     // Create function declaration on-demand
     std::vector<llvm::Type*> paramTypes;
-    paramTypes.push_back(PointerType::getUnqual(ctx.getContext()));  // this ptr
+    paramTypes.push_back(PointerType::getUnqual(ctx.getContext()));  // closure
     // The array parameter is passed by reference (pointer to fat struct)
     paramTypes.push_back(
         PointerType::getUnqual(ctx.getContext()));  // ref array<i64>
@@ -606,9 +606,9 @@ Value* CodegenVisitor::codegenClassIndex(const IndexAST& expr, Value* objectPtr,
                                   mangledName, module);
   }
 
-  // Build arguments: this pointer, array reference
+  // Build arguments: method closure, array reference
   std::vector<Value*> argValues;
-  argValues.push_back(objectPtr);  // 'this' pointer
+  argValues.push_back(materializeMethodClosure(methodFunc, objectPtr));
   argValues.push_back(arrAlloca);  // reference to array (pointer to fat struct)
 
   Value* result =
@@ -779,7 +779,7 @@ Value* CodegenVisitor::codegenClassSlice(const IndexAST& expr, Value* objectPtr,
   if (!methodFunc) {
     // Create function declaration on-demand
     std::vector<llvm::Type*> paramTypes;
-    paramTypes.push_back(PointerType::getUnqual(ctx.getContext()));  // this ptr
+    paramTypes.push_back(PointerType::getUnqual(ctx.getContext()));  // closure
     paramTypes.push_back(
         PointerType::getUnqual(ctx.getContext()));  // ref array<SliceRange>
 
@@ -795,9 +795,9 @@ Value* CodegenVisitor::codegenClassSlice(const IndexAST& expr, Value* objectPtr,
                                   mangledName, module);
   }
 
-  // Build arguments: this pointer, array reference
+  // Build arguments: method closure, array reference
   std::vector<Value*> argValues;
-  argValues.push_back(objectPtr);  // 'this' pointer
+  argValues.push_back(materializeMethodClosure(methodFunc, objectPtr));
   argValues.push_back(arrAlloca);  // reference to array of SliceRanges
 
   Value* result =
@@ -906,7 +906,7 @@ Value* CodegenVisitor::codegenClassSetIndex(const IndexAST& indexExpr,
   if (!methodFunc) {
     // Create function declaration on-demand
     std::vector<llvm::Type*> paramTypes;
-    paramTypes.push_back(PointerType::getUnqual(ctx.getContext()));  // this ptr
+    paramTypes.push_back(PointerType::getUnqual(ctx.getContext()));  // closure
     paramTypes.push_back(
         PointerType::getUnqual(ctx.getContext()));  // ref array<i64>
 
@@ -924,9 +924,9 @@ Value* CodegenVisitor::codegenClassSetIndex(const IndexAST& indexExpr,
                                   mangledName, module);
   }
 
-  // Build arguments: this pointer, array reference, value
+  // Build arguments: method closure, array reference, value
   std::vector<Value*> argValues;
-  argValues.push_back(objectPtr);  // 'this' pointer
+  argValues.push_back(materializeMethodClosure(methodFunc, objectPtr));
   argValues.push_back(arrAlloca);  // reference to index array
   argValues.push_back(valueVal);   // value to set
 
