@@ -114,9 +114,9 @@ Value* CodegenVisitor::codegen(const IfExprAST& expr) {
     return thenTerminated ? ElseV : ThenV;
   }
 
-  // Both branches have values - if types differ, don't create PHI
-  if (ThenV->getType() != ElseV->getType()) {
-    // Different types - return void/unit (if expression used as statement)
+  // Both branches have values - if types differ or are void, don't create PHI
+  if (ThenV->getType() != ElseV->getType() || ThenV->getType()->isVoidTy()) {
+    // If expression used as statement - return a dummy value
     return ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
   }
 

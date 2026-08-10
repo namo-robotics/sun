@@ -49,6 +49,20 @@ std::string QualifiedName::canonicalTypeString(const TypePtr& type,
     return "array_" + inner + "_";
   }
 
+  if (type->isLambda()) {
+    auto* lamType = static_cast<const LambdaType*>(type.get());
+    std::string result = "(";
+    const auto& params = lamType->getParamTypes();
+    for (size_t i = 0; i < params.size(); ++i) {
+      if (i > 0) result += ", ";
+      result += canonicalTypeString(params[i], hashPrefix);
+    }
+    result += ") -> ";
+    result += canonicalTypeString(lamType->getReturnType(), hashPrefix);
+    if (lamType->canThrow()) result += ", IError";
+    return result;
+  }
+
   // For primitives and other types, toString() is stable
   return type->toString();
 }

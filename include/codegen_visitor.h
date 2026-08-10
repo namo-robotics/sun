@@ -362,6 +362,13 @@ class CodegenVisitor {
   llvm::Value* widenNumericIfNeeded(llvm::Value* argVal,
                                     sun::TypePtr paramType);
 
+  // Coerces a lambda argument to the callee's closure struct param type:
+  // loads lambda literals (alloca ptr) and rebuilds closure values carrying
+  // a differently-named but structurally identical struct type.
+  llvm::Value* loadClosureForLambdaParam(llvm::Value* argVal,
+                                         sun::TypePtr paramType,
+                                         llvm::Type* expectedTy);
+
   // Pointer intrinsics codegen (in pointers.cpp)
   llvm::Value* codegenSizeofIntrinsic(sun::TypePtr typeArg);
   llvm::Value* codegenInitIntrinsic(

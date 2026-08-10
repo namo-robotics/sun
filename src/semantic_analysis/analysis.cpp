@@ -2383,14 +2383,15 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
           }
         }
 
-        // raw_ptr<T> is compatible with raw_ptr<i8> (like C's void*)
-        // Only for intrinsics (functions starting with '_') to avoid
-        // accidental type erasure in user code
+        // raw_ptr<T> is compatible with byte pointers raw_ptr<i8>/raw_ptr<u8>
+        // (like C's void*). Only for intrinsics (functions starting with '_')
+        // to avoid accidental type erasure in user code
         if (argType->isRawPointer() && paramType->isRawPointer() &&
             isIntrinsic(funcName)) {
           auto* paramRawPtr =
               static_cast<const sun::RawPointerType*>(paramType.get());
-          if (paramRawPtr->getPointeeType()->isInt8()) {
+          if (paramRawPtr->getPointeeType()->isInt8() ||
+              paramRawPtr->getPointeeType()->isUInt8()) {
             compatible = true;
           }
         }
@@ -2412,9 +2413,18 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
     }
   }
 
-  // Check for error propagation: calling a throwing function requires either
-  // being inside a try block or being in a function declared with ", IError"
-  if (resolvedFunc && resolvedFunc->canThrow) {
+  // Check for error propagation: calling a throwing function or lambda
+  // requires either being inside a try block or being in a function declared
+  // with ", IError"
+  bool calleeThrows = resolvedFunc && resolvedFunc->canThrow;
+  if (!calleeThrows) {
+    sun::TypePtr calleeType = callExpr.getCallee()->getResolvedType();
+    if (calleeType && calleeType->isLambda()) {
+      calleeThrows =
+          static_cast<const sun::LambdaType*>(calleeType.get())->canThrow();
+    }
+  }
+  if (calleeThrows) {
     if (!isInTryBlock() && !isInThrowingFunction()) {
       std::string funcName = "<unknown>";
       if (calleeASTType == ASTNodeType::VARIABLE_REFERENCE) {

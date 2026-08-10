@@ -636,22 +636,9 @@ llvm::Value* CodegenVisitor::codegenLambda(LambdaAST& lambdaAst) {
     return nullptr;
   }
 
-  // If function can return errors, wrap the return type in an error union
+  // With native LLVM exceptions, a throwing lambda ('T, IError') returns a
+  // plain T — the ', IError' marker only means the lambda may unwind.
   llvm::Type* valueType = returnType;
-  if (canError) {
-    // Error union: { i1 isError, T value } or just { i1 } for void return type
-    if (valueType->isVoidTy()) {
-      // void, IError -> just { i1 } error flag, no value field
-      returnType = llvm::StructType::get(
-          ctx.getContext(),
-          std::vector<llvm::Type*>{llvm::Type::getInt1Ty(ctx.getContext())});
-      valueType = nullptr;  // Mark that there's no value field
-    } else {
-      returnType = llvm::StructType::get(
-          ctx.getContext(),
-          {llvm::Type::getInt1Ty(ctx.getContext()), valueType});
-    }
-  }
 
   // Create closure env struct type
   auto envType = createEnvTypeForFunc(proto);
@@ -660,6 +647,11 @@ llvm::Value* CodegenVisitor::codegenLambda(LambdaAST& lambdaAst) {
   auto [func, fatType] = codegen(proto, envType, /*isLambda=*/true, returnType);
   if (!func) {
     logAndThrowError("Failed to create lambda function");
+  }
+
+  // Tag throwing lambdas so call sites emit `invoke` inside try blocks
+  if (canError) {
+    func->addFnAttr("sun.canthrow");
   }
 
   Value* resultPtr = nullptr;
@@ -747,30 +739,14 @@ llvm::Value* CodegenVisitor::codegenLambda(LambdaAST& lambdaAst) {
     llvm::Type* funcRetType = func->getReturnType();
     if (funcRetType->isVoidTy()) {
       ctx.builder->CreateRetVoid();
-    } else if (canError && !valueType) {
-      // void, IError function: return { i1 = false } to indicate success
-      llvm::Value* resultStruct = llvm::UndefValue::get(funcRetType);
-      resultStruct = ctx.builder->CreateInsertValue(
-          resultStruct, ctx.builder->getInt1(false), {0});
-      ctx.builder->CreateRet(resultStruct);
     } else if (bodyValue && bodyValue->getType() == funcRetType) {
       ctx.builder->CreateRet(bodyValue);
-    } else if (canError && bodyValue && valueType) {
-      // Wrap success value in error union
-      llvm::Value* resultStruct = llvm::UndefValue::get(funcRetType);
-      resultStruct = ctx.builder->CreateInsertValue(
-          resultStruct, ctx.builder->getInt1(false), {0});
-      Value* actualBody = bodyValue;
-      if (bodyValue->getType()->isPointerTy() && valueType->isStructTy()) {
-        actualBody = ctx.builder->CreateLoad(valueType, bodyValue, "load.ret");
-      }
-      if (actualBody->getType() == valueType) {
-        resultStruct =
-            ctx.builder->CreateInsertValue(resultStruct, actualBody, {1});
-        ctx.builder->CreateRet(resultStruct);
-      } else {
-        ctx.builder->CreateRet(llvm::UndefValue::get(funcRetType));
-      }
+    } else if (bodyValue && bodyValue->getType()->isPointerTy() &&
+               funcRetType->isStructTy()) {
+      // Body produced a pointer to a struct value (e.g. class return)
+      Value* loaded =
+          ctx.builder->CreateLoad(funcRetType, bodyValue, "load.ret");
+      ctx.builder->CreateRet(loaded);
     } else {
       ctx.builder->CreateRet(llvm::UndefValue::get(funcRetType));
     }

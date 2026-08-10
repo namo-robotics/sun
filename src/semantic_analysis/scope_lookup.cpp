@@ -308,6 +308,14 @@ static bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
     }
   }
 
+  // Non-throwing lambda is accepted where a throwing lambda is expected
+  if (to->isLambda() && from->isLambda()) {
+    auto* toL = static_cast<const sun::LambdaType*>(to.get());
+    auto* fromL = static_cast<const sun::LambdaType*>(from.get());
+    return toL->canThrow() && !fromL->canThrow() &&
+           fromL->equalsIgnoringThrow(*toL);
+  }
+
   // Unwrap reference types
   if (to->isReference() && from->isReference()) {
     auto* toRef = static_cast<const sun::ReferenceType*>(to.get());
@@ -436,12 +444,14 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunction(
             }
           }
 
-          // raw_ptr<T> is compatible with raw_ptr<i8> for intrinsics
+          // raw_ptr<T> is compatible with byte pointers (raw_ptr<i8>/u8)
+          // for intrinsics
           if (argTypes[i]->isRawPointer() &&
               info->paramTypes[i]->isRawPointer() && isIntrinsic(baseName)) {
             auto* paramRawPtr = static_cast<const sun::RawPointerType*>(
                 info->paramTypes[i].get());
-            if (paramRawPtr->getPointeeType()->isInt8()) {
+            if (paramRawPtr->getPointeeType()->isInt8() ||
+                paramRawPtr->getPointeeType()->isUInt8()) {
               continue;
             }
           }

@@ -322,14 +322,18 @@ class FunctionType : public Type {
 class LambdaType : public Type {
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;
+  bool canThrow_ = false;  // declared with ', IError' — may unwind
 
  public:
-  LambdaType(TypePtr ret, std::vector<TypePtr> params)
-      : returnType(std::move(ret)), paramTypes(std::move(params)) {}
+  LambdaType(TypePtr ret, std::vector<TypePtr> params, bool canThrow = false)
+      : returnType(std::move(ret)),
+        paramTypes(std::move(params)),
+        canThrow_(canThrow) {}
 
   Kind getKind() const override { return Kind::Lambda; }
   const TypePtr& getReturnType() const { return returnType; }
   const std::vector<TypePtr>& getParamTypes() const { return paramTypes; }
+  bool canThrow() const { return canThrow_; }
 
   std::string toString() const override {
     std::string result = "(";
@@ -338,11 +342,13 @@ class LambdaType : public Type {
       result += paramTypes[i]->toString();
     }
     result += ") -> " + returnType->toString();
+    if (canThrow_) result += ", IError";
     return result;
   }
 
   bool equals(const Type& other) const override {
     if (auto* l = dynamic_cast<const LambdaType*>(&other)) {
+      if (canThrow_ != l->canThrow_) return false;
       if (!returnType->equals(*l->returnType)) return false;
       if (paramTypes.size() != l->paramTypes.size()) return false;
       for (size_t i = 0; i < paramTypes.size(); ++i) {
@@ -351,6 +357,17 @@ class LambdaType : public Type {
       return true;
     }
     return false;
+  }
+
+  // Same signature ignoring throwing-ness: a non-throwing lambda may be
+  // passed where a throwing one is expected (but not vice versa)
+  bool equalsIgnoringThrow(const LambdaType& other) const {
+    if (!returnType->equals(*other.returnType)) return false;
+    if (paramTypes.size() != other.paramTypes.size()) return false;
+    for (size_t i = 0; i < paramTypes.size(); ++i) {
+      if (!paramTypes[i]->equals(*other.paramTypes[i])) return false;
+    }
+    return true;
   }
 
   // Returns the closure struct type { ptr, ptr } (func*, env*)
@@ -1144,6 +1161,17 @@ class ClassType : public Type {
           continue;
         }
 
+        // Non-throwing lambda argument for a throwing lambda parameter
+        if (method.paramTypes[i]->isLambda() && argTypes[i]->isLambda()) {
+          auto* paramL =
+              static_cast<const LambdaType*>(method.paramTypes[i].get());
+          auto* argL = static_cast<const LambdaType*>(argTypes[i].get());
+          if (paramL->canThrow() && !argL->canThrow() &&
+              argL->equalsIgnoringThrow(*paramL)) {
+            continue;
+          }
+        }
+
         // No match for this parameter
         allMatch = false;
         break;
@@ -1690,9 +1718,10 @@ class Types {
   }
 
   // Create a lambda type: () -> {} (anonymous function, fat pointer call)
-  static TypePtr Lambda(TypePtr returnType, std::vector<TypePtr> paramTypes) {
+  static TypePtr Lambda(TypePtr returnType, std::vector<TypePtr> paramTypes,
+                        bool canThrow = false) {
     return std::make_shared<LambdaType>(std::move(returnType),
-                                        std::move(paramTypes));
+                                        std::move(paramTypes), canThrow);
   }
 
   // Create a raw (non-owning) pointer type: raw_ptr<T> for C interop

@@ -74,7 +74,7 @@ sun::TypePtr SemanticAnalyzer::substituteTypeParameters(sun::TypePtr type) {
       if (newParam != param) changed = true;
     }
     if (changed) {
-      return sun::Types::Lambda(newRet, std::move(newParams));
+      return sun::Types::Lambda(newRet, std::move(newParams), lt->canThrow());
     }
     return type;
   }
@@ -209,7 +209,9 @@ sun::TypePtr SemanticAnalyzer::typeAnnotationToType(
     sun::TypePtr retType = annot.returnType
                                ? typeAnnotationToType(*annot.returnType)
                                : sun::Types::Void();
-    return sun::Types::Lambda(retType, std::move(paramTypes));
+    bool canThrow =
+        annot.canError || (annot.returnType && annot.returnType->canError);
+    return sun::Types::Lambda(retType, std::move(paramTypes), canThrow);
   }
 
   // Array types: array<T, N> or array<T, M, N> or array<T> (unsized)
