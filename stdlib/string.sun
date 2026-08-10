@@ -10,7 +10,7 @@
 //   
 //   var allocator = make_heap_allocator();
 //   var s = String(allocator, "Hello");
-//   println_i64(s.length());  // 5
+//   println(s.length());  // 5
 //   var ch = s.at(0);         // 'H' (72)
 //   s.append_char(33);        // Append '!'
 //   

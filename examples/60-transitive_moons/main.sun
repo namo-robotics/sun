@@ -1,7 +1,7 @@
 using sun;
 
 function main() void {
-    println_i32(moon1.moon1());
+    println(moon1.moon1());
 }
 
 manifest {

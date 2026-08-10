@@ -327,23 +327,23 @@ TEST(ProgramTest, func_return) {
   EXPECT_EQ(value, 2);
 }
 
-TEST(ProgramTest, print_i32) {
+TEST(ProgramTest, print_i32_overload) {
   auto value = executeStringWithStdlib(R"(
     using sun;
     function main() i32 {
-        print_i32(42);
+        print(42);
         return 100;
     };
   )");
   EXPECT_EQ(value, 100);
 }
 
-TEST(ProgramTest, println_i32) {
+TEST(ProgramTest, println_i32_overload) {
   auto value = executeStringWithStdlib(R"(
     using sun;
     function main() i32 {
-        println_i32(123);
-        println_i32(-456);
+        println(123);
+        println(-456);
         return 200;
     };
   )");
@@ -355,14 +355,74 @@ TEST(ProgramTest, print_multiple) {
     using sun;
     function main() i32 {
         var x: i32 = 10;
-        print_i32(x);
-        print_newline();
+        print(x);
+        println();
         x = x + 5;
-        println_i32(x);
+        println(x);
         return x;
     };
   )");
   EXPECT_EQ(value, 15);
+}
+
+TEST(ProgramTest, print_overload_dispatch) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    function main() i32 {
+        var a: i32 = 1;
+        var b: i64 = 2;
+        var c: f64 = 3.5;
+        println(a);
+        println(b);
+        println(c);
+        println(true);
+        println(false);
+        println("literal");
+        return 0;
+    };
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(ProgramTest, print_overload_unsigned) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    function main() i32 {
+        var a: u32 = 7;
+        var b: u64 = 9;
+        println(a);
+        println(b);
+        return 0;
+    };
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(ProgramTest, println_no_args) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    function main() i32 {
+        print(1);
+        println();
+        print(2);
+        return 0;
+    };
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(ProgramTest, println_string_class) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    function main() i32 {
+        var allocator = make_heap_allocator();
+        var s = String(allocator, "hi");
+        print(s);
+        println(s);
+        return 0;
+    };
+  )");
+  EXPECT_EQ(value, 0);
 }
 
 TEST(ProgramTest, hello_world) {

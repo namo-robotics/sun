@@ -111,7 +111,7 @@ var v = Vec<i32>(allocator, 4);
 v.push(1); v.push(2); v.push(3);
 
 for (var x: i32 in v) {
-    println_i32(x);
+    println(x);
 }
 ```
 
@@ -148,7 +148,7 @@ m.insert(1, 10);
 m.insert(2, 20);
 
 for (var v: i32 in m) {
-    println_i32(v);  // Iterates over values
+    println(v);  // Iterates over values
 }
 ```
 
@@ -163,7 +163,7 @@ A heap-allocated mutable string backed by `Matrix<u8>`. Supports slicing via the
 ```sun
 var allocator = make_heap_allocator();
 var s = String(allocator, "Hello");
-println_i64(s.length());   // 5
+println(s.length());   // 5
 var ch = s.at(0);          // 72 ('H')
 s.append_char(33);         // Append '!'
 ```
@@ -178,7 +178,6 @@ s.append_char(33);         // Append '!'
 | `append(other)` | `(ref String) void` | Append another String |
 | `append_literal(s)` | `(static_ptr<u8>) void` | Append a string literal |
 | `equals_literal(s)` | `(static_ptr<u8>) bool` | Compare with a string literal |
-| `print()` | `() void` | Print string to stdout |
 
 ### Slicing
 
@@ -187,7 +186,7 @@ String slicing returns a `StringView` (non-owning view, no copy):
 ```sun
 var s = String(allocator, "Hello, World!");
 var view = s[0:5];   // StringView of "Hello"
-println_i64(view.length());  // 5
+println(view.length());  // 5
 ```
 
 ## StringView
@@ -271,15 +270,22 @@ function pop_first(v: ref Vec<i32>) i32, IError {
 
 ## Print Functions
 
-Convenience wrappers around print intrinsics (from `print.sun`):
+Overloaded `print` (no newline) and `println` (with newline) from `print.sun`. Both accept any of the following argument types:
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `print_i32(value)` | `(i32) void` | Print i32 |
-| `println_i32(value)` | `(i32) void` | Print i32 with newline |
-| `print_i64(value)` | `(i64) void` | Print i64 |
-| `println_i64(value)` | `(i64) void` | Print i64 with newline |
-| `print_f64(value)` | `(f64) void` | Print f64 |
-| `println_f64(value)` | `(f64) void` | Print f64 with newline |
-| `print_newline()` | `() void` | Print newline |
-| `println(s)` | `(static_ptr<u8>) void` | Print string literal with newline |
+| Overload | Description |
+|----------|-------------|
+| `i32`, `i64`, `u32`, `u64` | Print integer value |
+| `f64` | Print f64 |
+| `bool` | Print `true` or `false` |
+| `static_ptr<u8>` | Print string literal |
+| `ref String` | Print a `String` |
+| *(no argument, `println` only)* | Print a bare newline |
+
+Interpolated strings can be passed directly:
+
+```sun
+var x: i32 = 42;
+println(`x = ${x}`);   // prints "x = 42\n"
+print("no newline");
+println();
+```

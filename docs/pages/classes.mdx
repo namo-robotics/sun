@@ -49,8 +49,8 @@ class Point implements Printable {
     }
 
     function print() void {
-        println_i32(this.x);
-        println_i32(this.y);
+        println(this.x);
+        println(this.y);
     }
 }
 ```
@@ -76,7 +76,7 @@ class Task implements Named, Runnable {
     }
 
     function run() void {
-        println_i32(this.name);
+        println(this.name);
     }
 }
 ```

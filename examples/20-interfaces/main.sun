@@ -15,7 +15,7 @@ class Circle implements Drawable {
 
     function draw() void {
         println("Drawing circle with radius:");
-        println_f64(this.radius);
+        println(this.radius);
     }
 }
 
@@ -28,7 +28,7 @@ class Square implements Drawable {
 
     function draw() void {
         println("Drawing square with side:");
-        println_f64(this.side);
+        println(this.side);
     }
 }
 
