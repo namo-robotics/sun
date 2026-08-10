@@ -25,6 +25,32 @@ Function* CodegenVisitor::findClassMethod(
   return module->getFunction(typeName + "_" + methodName);
 }
 
+// Look up a method function by mangled name, declaring an external with the
+// closure ABI signature (ptr closure, params...) if not yet in the module.
+// Externals are resolved from the defining module at link/JIT time
+// (imported/precompiled classes).
+Function* CodegenVisitor::getOrDeclareMethodFunction(
+    const std::string& mangledName,
+    const std::vector<sun::TypePtr>& paramTypes,
+    const sun::TypePtr& returnType, bool canThrow) {
+  if (Function* existing = module->getFunction(mangledName)) return existing;
+
+  std::vector<llvm::Type*> llvmParams;
+  llvmParams.push_back(PointerType::getUnqual(ctx.getContext()));  // closure
+  for (const auto& pt : paramTypes) {
+    llvmParams.push_back(typeResolver.resolve(pt));
+  }
+  llvm::Type* retTy = returnType ? typeResolver.resolveForReturn(returnType)
+                                 : Type::getVoidTy(ctx.getContext());
+  FunctionType* funcType = FunctionType::get(retTy, llvmParams, false);
+  Function* func = Function::Create(funcType, Function::ExternalLinkage,
+                                    mangledName, module);
+  if (canThrow) {
+    func->addFnAttr("sun.canthrow");
+  }
+  return func;
+}
+
 // -------------------------------------------------------------------
 // Helper for unwrapping error union from call results
 // -------------------------------------------------------------------
@@ -89,16 +115,8 @@ GlobalVariable* CodegenVisitor::getOrCreateInterfaceVtable(
     hasVtableMethods = true;
 
     std::string mangled = classType->getMangledMethodName(m.name, m.paramTypes);
-    Function* fn = module->getFunction(mangled);
-    if (!fn) {
-      std::vector<llvm::Type*> params;
-      params.push_back(ptrTy);  // closure
-      for (const auto& pt : m.paramTypes) params.push_back(typeResolver.resolve(pt));
-      llvm::Type* ret = typeResolver.resolveForReturn(m.returnType);
-      llvm::FunctionType* ft = FunctionType::get(ret, params, false);
-      fn = Function::Create(ft, Function::ExternalLinkage, mangled, module);
-    }
-    vtableEntries.push_back(fn);
+    vtableEntries.push_back(getOrDeclareMethodFunction(
+        mangled, m.paramTypes, m.returnType, /*canThrow=*/false));
   }
 
   if (!hasVtableMethods) return nullptr;

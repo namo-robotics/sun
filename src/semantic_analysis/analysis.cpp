@@ -2021,12 +2021,12 @@ void SemanticAnalyzer::maybeResolveBoundMethodRef(MemberAccessAST& memberAccess,
   if (!objectType->isClass()) return;
   const auto* classType = static_cast<const sun::ClassType*>(objectType.get());
   if (classType->getField(memberName)) return;
-  if (!classType->getMethod(memberName)) return;
 
   std::vector<const sun::ClassMethod*> overloads;
   for (const auto& m : classType->getMethods()) {
     if (m.name == memberName) overloads.push_back(&m);
   }
+  if (overloads.empty()) return;  // not a method (inferType already errored)
 
   const sun::ClassMethod* chosen = nullptr;
   if (overloads.size() == 1) {
@@ -2153,17 +2153,13 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
   // resolution. Member-access args get the expected param type so an
   // overloaded bound method reference can be disambiguated (kept narrow to
   // avoid changing literal coercion or free-function overload resolution).
-  {
-    size_t argIdx = 0;
-    for (const auto& arg : callExpr.getArgs()) {
-      sun::TypePtr expected =
-          (arg->getType() == ASTNodeType::MEMBER_ACCESS &&
-           argIdx < expectedParamTypes.size())
-              ? expectedParamTypes[argIdx]
-              : nullptr;
-      analyzeExpr(const_cast<ExprAST&>(*arg), expected);
-      ++argIdx;
-    }
+  for (size_t i = 0; i < callExpr.getArgs().size(); ++i) {
+    const auto& arg = callExpr.getArgs()[i];
+    sun::TypePtr expected = (arg->getType() == ASTNodeType::MEMBER_ACCESS &&
+                             i < expectedParamTypes.size())
+                                ? expectedParamTypes[i]
+                                : nullptr;
+    analyzeExpr(const_cast<ExprAST&>(*arg), expected);
   }
 
   // Expand any variadic pack (`f(args...)`) into concrete typed args before

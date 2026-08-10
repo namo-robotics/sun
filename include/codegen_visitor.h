@@ -389,6 +389,21 @@ class CodegenVisitor {
                                            llvm::Value* objectPtr,
                                            sun::ClassType* classType);
 
+  // Method prologue: unwrap the receiver from the closure arg into a
+  // 'this.addr' alloca, set thisPtr, and register "this" in scope.
+  void emitMethodPrologueThis(Function* func);
+
+  // Look up a method function by mangled name, declaring an external with
+  // the closure ABI signature if not yet in the module.
+  llvm::Function* getOrDeclareMethodFunction(
+      const std::string& mangledName,
+      const std::vector<sun::TypePtr>& paramTypes,
+      const sun::TypePtr& returnType, bool canThrow);
+
+  // Call classType's deinit() on receiver if it defines one (declares the
+  // external on demand).
+  void emitDeinitCall(const sun::ClassType* classType, llvm::Value* receiver);
+
   // Pointer intrinsics codegen (in pointers.cpp)
   llvm::Value* codegenSizeofIntrinsic(sun::TypePtr typeArg);
   llvm::Value* codegenInitIntrinsic(
