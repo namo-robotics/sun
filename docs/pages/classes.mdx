@@ -213,6 +213,16 @@ function main() i32 {
 }
 ```
 
+## Methods as Values
+
+A method accessed without parentheses (`obj.method`) is a first-class value of lambda type: it can be stored in a variable or passed as a callback. The receiver is captured by reference, so calls through the value mutate the original object. See [Bound Methods](/functions#bound-methods) for the full rules.
+
+```sun
+var c = Counter();
+var tick = c.increment;   // type: () void
+tick();                   // increments c
+```
+
 ## Returning Objects from Functions
 
 Functions can return class instances by value:

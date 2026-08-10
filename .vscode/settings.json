@@ -45,6 +45,14 @@
             "parallelizationLimit": 8
         }
     ],
+    // Hide ctest's generated test-discovery files (rewritten on every ctest
+    // run by gtest_discover_tests PRE_TEST mode) from the explorer/watcher
+    "files.exclude": {
+        "build/tests/*.cmake": true
+    },
+    "files.watcherExclude": {
+        "build/tests/*.cmake": true
+    },
     "files.associations": {
         "debian/rules": "makefile",
         "debian/control": "plaintext",

@@ -316,8 +316,8 @@ std::unique_ptr<SunLibReader> SunLibReader::open(
   if (header.magic != SunLibHeader::MAGIC) {
     return nullptr;
   }
-  // Accept V2 format (protobuf metadata)
-  if (header.version != 2) {
+  // Reject bundles built for a different ABI/format version
+  if (header.version != SunLibHeader::VERSION) {
     return nullptr;
   }
 

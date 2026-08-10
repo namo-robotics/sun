@@ -61,7 +61,8 @@ Value* CodegenVisitor::codegenInitIntrinsic(
   // excluding 'this') for constructor overload resolution.
   std::vector<Value*> ctorArgs;
   std::vector<sun::TypePtr> argTypes;
-  ctorArgs.push_back(rawPtr);  // 'this' pointer
+  // Slot 0 is the method closure; patched below once the ctor is resolved.
+  ctorArgs.push_back(rawPtr);
 
   // Skip args[0] (the pointer)
   for (size_t i = 1; i < args.size(); ++i) {
@@ -111,6 +112,7 @@ Value* CodegenVisitor::codegenInitIntrinsic(
   }
 
   if (ctorFunc) {
+    ctorArgs[0] = materializeMethodClosure(ctorFunc, rawPtr, "init.closure");
     ctx.builder->CreateCall(ctorFunc, ctorArgs);
   }
 
@@ -459,21 +461,7 @@ Value* CodegenVisitor::codegenDeinitIntrinsic(
   if (typeArg && typeArg->isClass()) {
     auto* classType = static_cast<sun::ClassType*>(typeArg.get());
 
-    // Call T.deinit() if it exists
-    const sun::ClassMethod* deinitMethod = classType->getMethod("deinit");
-    if (deinitMethod) {
-      std::string mangledName = classType->getMangledMethodName("deinit");
-      llvm::Function* deinitFunc = module->getFunction(mangledName);
-      if (!deinitFunc) {
-        std::vector<llvm::Type*> paramTypes;
-        paramTypes.push_back(llvm::PointerType::getUnqual(ctx.getContext()));
-        llvm::FunctionType* funcType = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(ctx.getContext()), paramTypes, false);
-        deinitFunc = llvm::Function::Create(
-            funcType, llvm::Function::ExternalLinkage, mangledName, module);
-      }
-      ctx.builder->CreateCall(deinitFunc, {ptr});
-    }
+    emitDeinitCall(classType, ptr);
 
     // Recursively deinit class fields that have deinit methods
     emitFieldDeinit(ptr, classType, "deinit.intrinsic");

@@ -307,9 +307,11 @@ class CodegenVisitor {
   // Enum codegen
   llvm::Value* codegen(const EnumDefinitionAST& expr);
 
-  // Generate constructor argument values, handling ref parameters correctly
+  // Generate constructor argument values, handling ref parameters correctly.
+  // Arg 0 is the method closure { ctorFunc, thisPtr }.
   std::vector<llvm::Value*> generateCtorArgs(
-      llvm::Value* thisPtr, const std::vector<std::unique_ptr<ExprAST>>& args,
+      llvm::Function* ctorFunc, llvm::Value* thisPtr,
+      const std::vector<std::unique_ptr<ExprAST>>& args,
       const std::vector<sun::TypePtr>& paramTypes);
 
   // Result of constructor lookup - contains method info and mangled name
@@ -368,6 +370,39 @@ class CodegenVisitor {
   llvm::Value* loadClosureForLambdaParam(llvm::Value* argVal,
                                          sun::TypePtr paramType,
                                          llvm::Type* expectedTy);
+
+  // Method closure ABI: methods take a ptr to { ptr func, ptr env } as their
+  // hidden first argument; env holds the receiver ('this'). Returns a ptr to
+  // an entry-block alloca holding { fnPtr, receiverPtr } (stores emitted at
+  // the current insert point, so loops don't grow the stack).
+  llvm::Value* materializeMethodClosure(llvm::Value* fnPtr,
+                                        llvm::Value* receiverPtr,
+                                        llvm::StringRef name = "method.closure");
+
+  // Closure struct VALUE { fnPtr, receiverPtr } via insertvalue (for method
+  // references in value position).
+  llvm::Value* materializeMethodClosureValue(llvm::Value* fnPtr,
+                                             llvm::Value* receiverPtr);
+
+  // Bound method reference: obj.method in value position (lambda-typed).
+  llvm::Value* codegenBoundMethodReference(const MemberAccessAST& expr,
+                                           llvm::Value* objectPtr,
+                                           sun::ClassType* classType);
+
+  // Method prologue: unwrap the receiver from the closure arg into a
+  // 'this.addr' alloca, set thisPtr, and register "this" in scope.
+  void emitMethodPrologueThis(Function* func);
+
+  // Look up a method function by mangled name, declaring an external with
+  // the closure ABI signature if not yet in the module.
+  llvm::Function* getOrDeclareMethodFunction(
+      const std::string& mangledName,
+      const std::vector<sun::TypePtr>& paramTypes,
+      const sun::TypePtr& returnType, bool canThrow);
+
+  // Call classType's deinit() on receiver if it defines one (declares the
+  // external on demand).
+  void emitDeinitCall(const sun::ClassType* classType, llvm::Value* receiver);
 
   // Pointer intrinsics codegen (in pointers.cpp)
   llvm::Value* codegenSizeofIntrinsic(sun::TypePtr typeArg);

@@ -87,6 +87,16 @@ class MemberAccessAST : public ExprAST {
     return memberAnalysis().resolvedVariadicArgTypes;
   }
 
+  // Bound method reference: method used in value position (set by semantic
+  // analyzer); the resolved type is then a LambdaType.
+  void setIsBoundMethodRef(bool value) const {
+    memberAnalysis().isBoundMethodRef = value;
+  }
+  bool isBoundMethodRef() const {
+    return analysis_ &&
+           static_cast<MemberAccessAnalysis&>(*analysis_).isBoundMethodRef;
+  }
+
   // Resolved qualified name for module member access (set by semantic analyzer)
   void setResolvedQualifiedName(std::string name) const {
     memberAnalysis().resolvedQualifiedName = std::move(name);

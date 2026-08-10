@@ -601,6 +601,21 @@ void CodegenVisitor::emitFieldCleanup(llvm::Value* objectPtr,
   }
 }
 
+// Helper: call classType's deinit() on receiver if it defines one
+// (declares the external void deinit(closure*) on demand)
+void CodegenVisitor::emitDeinitCall(const sun::ClassType* classType,
+                                    llvm::Value* receiver) {
+  const sun::ClassMethod* deinitMethod = classType->getMethod("deinit");
+  if (!deinitMethod) return;
+
+  llvm::Function* deinitFunc = getOrDeclareMethodFunction(
+      classType->getMangledMethodName("deinit"), deinitMethod->paramTypes,
+      deinitMethod->returnType, deinitMethod->canThrow);
+  ctx.builder->CreateCall(
+      deinitFunc,
+      {materializeMethodClosure(deinitFunc, receiver, "deinit.closure")});
+}
+
 // Helper: emit deinit calls for class fields that have deinit methods
 // Recursively calls deinit on nested class fields
 void CodegenVisitor::emitFieldDeinit(llvm::Value* objectPtr,
@@ -618,27 +633,7 @@ void CodegenVisitor::emitFieldDeinit(llvm::Value* objectPtr,
       llvm::Value* fieldPtr = ctx.builder->CreateStructGEP(
           structType, objectPtr, field.index, baseName + "." + field.name);
 
-      // Check if the nested class has a deinit method
-      const sun::ClassMethod* deinitMethod = nestedClass->getMethod("deinit");
-      if (deinitMethod) {
-        // Get or declare the deinit function
-        std::string mangledName = nestedClass->getMangledMethodName("deinit");
-        llvm::Function* deinitFunc = module->getFunction(mangledName);
-
-        if (!deinitFunc) {
-          // Create declaration for deinit: void deinit(this*)
-          std::vector<llvm::Type*> paramTypes;
-          paramTypes.push_back(llvm::PointerType::getUnqual(ctx.getContext()));
-
-          llvm::FunctionType* funcType = llvm::FunctionType::get(
-              llvm::Type::getVoidTy(ctx.getContext()), paramTypes, false);
-          deinitFunc = llvm::Function::Create(
-              funcType, llvm::Function::ExternalLinkage, mangledName, module);
-        }
-
-        // Call deinit on the field
-        ctx.builder->CreateCall(deinitFunc, {fieldPtr});
-      }
+      emitDeinitCall(nestedClass, fieldPtr);
 
       // Recursively deinit nested class fields
       emitFieldDeinit(fieldPtr, nestedClass, baseName + "." + field.name);
@@ -657,28 +652,7 @@ void CodegenVisitor::emitScopeCleanup() {
     for (auto it = currentClassScope.rbegin(); it != currentClassScope.rend();
          ++it) {
       if (!it->moved && it->alloca && it->type) {
-        // Check if the class has a deinit method
-        const sun::ClassMethod* deinitMethod = it->type->getMethod("deinit");
-        if (deinitMethod) {
-          // Get or declare the deinit function
-          std::string mangledName = it->type->getMangledMethodName("deinit");
-          llvm::Function* deinitFunc = module->getFunction(mangledName);
-
-          if (!deinitFunc) {
-            // Create declaration for deinit: void deinit(this*)
-            std::vector<llvm::Type*> paramTypes;
-            paramTypes.push_back(
-                llvm::PointerType::getUnqual(ctx.getContext()));
-
-            llvm::FunctionType* funcType = llvm::FunctionType::get(
-                llvm::Type::getVoidTy(ctx.getContext()), paramTypes, false);
-            deinitFunc = llvm::Function::Create(
-                funcType, llvm::Function::ExternalLinkage, mangledName, module);
-          }
-
-          // Call deinit on the class instance
-          ctx.builder->CreateCall(deinitFunc, {it->alloca});
-        }
+        emitDeinitCall(it->type.get(), it->alloca);
 
         // Recursively deinit class fields that have deinit methods
         emitFieldDeinit(it->alloca, it->type.get(), it->varName);
@@ -746,23 +720,7 @@ void CodegenVisitor::emitScopeCleanup() {
         // For malloc allocations:
         if (it->pointeeType && it->pointeeType->isClass()) {
           auto* classType = static_cast<sun::ClassType*>(it->pointeeType.get());
-          // Call T.deinit() on the pointee if it has one
-          const sun::ClassMethod* deinitMethod = classType->getMethod("deinit");
-          if (deinitMethod) {
-            std::string mangledName = classType->getMangledMethodName("deinit");
-            llvm::Function* deinitFunc = module->getFunction(mangledName);
-            if (!deinitFunc) {
-              std::vector<llvm::Type*> paramTypes;
-              paramTypes.push_back(
-                  llvm::PointerType::getUnqual(ctx.getContext()));
-              llvm::FunctionType* funcType = llvm::FunctionType::get(
-                  llvm::Type::getVoidTy(ctx.getContext()), paramTypes, false);
-              deinitFunc = llvm::Function::Create(
-                  funcType, llvm::Function::ExternalLinkage, mangledName,
-                  module);
-            }
-            ctx.builder->CreateCall(deinitFunc, {ptrToFree});
-          }
+          emitDeinitCall(classType, ptrToFree);
           // Recursively deinit class fields and free nested ptr<T> fields
           emitFieldDeinit(ptrToFree, classType, it->varName);
           emitFieldCleanup(ptrToFree, classType, it->varName, freeFunc);
@@ -937,22 +895,13 @@ void CodegenVisitor::emitStaticInitFunction() {
       std::vector<sun::TypePtr> argTypes = callExpr ? callExpr->getResolvedArgTypes() : std::vector<sun::TypePtr>{};
       ConstructorLookup ctor = lookupConstructor(classType, argTypes);
 
-      // Try to find the constructor function
-      Function* ctorFunc = module->getFunction(ctor.mangledName);
-
-      // If not found but init method exists in class type, create declaration
-      if (!ctorFunc && ctor.method) {
-        std::vector<llvm::Type*> paramLLVMTypes;
-        paramLLVMTypes.push_back(
-            PointerType::getUnqual(ctx.getContext()));  // this
-        for (const auto& paramType : ctor.method->paramTypes) {
-          paramLLVMTypes.push_back(typeResolver.resolve(paramType));
-        }
-        FunctionType* funcType = FunctionType::get(
-            Type::getVoidTy(ctx.getContext()), paramLLVMTypes, false);
-        ctorFunc = Function::Create(funcType, Function::ExternalLinkage,
-                                    ctor.mangledName, module);
-      }
+      // Find the constructor; declare an external if the init method exists
+      // but isn't in the module yet
+      Function* ctorFunc =
+          ctor.method ? getOrDeclareMethodFunction(
+                            ctor.mangledName, ctor.method->paramTypes,
+                            ctor.method->returnType, ctor.method->canThrow)
+                      : module->getFunction(ctor.mangledName);
 
       // Call the constructor if found and argument count matches
       size_t argCount = callExpr ? callExpr->getArgs().size() : 0;
@@ -961,7 +910,9 @@ void CodegenVisitor::emitStaticInitFunction() {
             ctor.method ? ctor.method->paramTypes : std::vector<sun::TypePtr>{};
 
         std::vector<Value*> ctorArgValues;
-        ctorArgValues.push_back(gv);  // 'this' pointer is the global variable
+        // Method closure; the receiver is the global variable
+        ctorArgValues.push_back(
+            materializeMethodClosure(ctorFunc, gv, "init.closure"));
 
         // Generate argument values
         if (callExpr) {
