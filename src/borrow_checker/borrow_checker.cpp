@@ -112,6 +112,10 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
       checkIndexedAssignment(static_cast<const IndexedAssignmentAST&>(expr));
       break;
 
+    case ASTNodeType::COMPOUND_ASSIGNMENT:
+      checkCompoundAssignment(static_cast<const CompoundAssignmentAST&>(expr));
+      break;
+
     case ASTNodeType::TRY_CATCH:
       checkTryCatch(static_cast<const TryCatchExprAST&>(expr));
       break;
@@ -209,8 +213,9 @@ void BorrowChecker::checkReferenceCreation(const ReferenceCreationAST& ref) {
   const std::string& refName = ref.getName();
   const ExprAST* target = ref.getTarget();
 
-  // Target must be a variable (lvalue)
-  const std::string* targetVarName = getVariableName(*target);
+  // The borrow is tracked against the base variable of the target lvalue
+  // (ref r = obj.field borrows obj as a whole - conservative but sound)
+  const std::string* targetVarName = getBaseVariableName(*target);
   if (!targetVarName) {
     reportError("reference must be bound to a variable, not a temporary", 0, 0);
     return;
@@ -258,28 +263,9 @@ void BorrowChecker::checkReferenceCreation(const ReferenceCreationAST& ref) {
   }
 }
 
-void BorrowChecker::checkVariableAssignment(
-    const VariableAssignmentAST& assign) {
-  const std::string& varName = assign.getName();
-
-  // Check the value expression first
-  if (assign.getValue()) {
-    checkExpr(*assign.getValue());
-  }
-
-  // Move semantics: if assigning from a compound-typed variable, mark source as
-  // moved. Compound types (classes, interfaces) get moved, not copied.
-  if (assign.getValue() &&
-      assign.getValue()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
-    const auto& srcRef =
-        static_cast<const VariableReferenceAST&>(*assign.getValue());
-    auto srcType = assign.getValue()->getResolvedType();
-    if (srcType && srcType->isCompound()) {
-      movedVariables_.insert(srcRef.getName());
-      assign.getValue()->setMoved(true);  // Mark for codegen to skip deinit
-    }
-  }
-
+// Shared write-side check for assigning to a named variable (plain or
+// compound assignment)
+void BorrowChecker::checkVariableWrite(const std::string& varName) {
   // Check if this is a ref or a regular variable
   auto refIt = refVariables_.find(varName);
   if (refIt != refVariables_.end()) {
@@ -303,6 +289,52 @@ void BorrowChecker::checkVariableAssignment(
       }
     }
   }
+}
+
+void BorrowChecker::checkVariableAssignment(
+    const VariableAssignmentAST& assign) {
+  const std::string& varName = assign.getName();
+
+  // Check the value expression first
+  if (assign.getValue()) {
+    checkExpr(*assign.getValue());
+  }
+
+  // Move semantics: if assigning from a compound-typed variable, mark source as
+  // moved. Compound types (classes, interfaces) get moved, not copied.
+  if (assign.getValue() &&
+      assign.getValue()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
+    const auto& srcRef =
+        static_cast<const VariableReferenceAST&>(*assign.getValue());
+    auto srcType = assign.getValue()->getResolvedType();
+    if (srcType && srcType->isCompound()) {
+      movedVariables_.insert(srcRef.getName());
+      assign.getValue()->setMoved(true);  // Mark for codegen to skip deinit
+    }
+  }
+
+  checkVariableWrite(varName);
+}
+
+void BorrowChecker::checkCompoundAssignment(
+    const CompoundAssignmentAST& assign) {
+  // The value is only read - compound ops work on scalars, so no move
+  // semantics apply (`x += y` must not mark y as moved)
+  if (assign.getValue()) {
+    checkExpr(*assign.getValue());
+  }
+
+  // The target is read (use-after-move, read-through-ref checks) ...
+  checkExpr(*assign.getTarget());
+
+  // ... and written
+  if (assign.getTarget()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
+    checkVariableWrite(
+        static_cast<const VariableReferenceAST&>(*assign.getTarget())
+            .getName());
+  }
+  // Member/indexed targets have no write-side checks today (parity with
+  // checkMemberAssignment/checkIndexedAssignment)
 }
 
 void BorrowChecker::checkVariableReference(const VariableReferenceAST& varRef) {
@@ -773,6 +805,31 @@ const std::string* BorrowChecker::getVariableName(const ExprAST& expr) const {
     return &static_cast<const VariableReferenceAST&>(expr).getName();
   }
   return nullptr;
+}
+
+// Walk member/index chains down to the base variable (e.g. obj.a.b -> obj,
+// arr[i] -> arr, this.x -> this). Returns nullptr when the base is not a
+// named variable (a temporary).
+const std::string* BorrowChecker::getBaseVariableName(
+    const ExprAST& expr) const {
+  static const std::string kThis = "this";
+  const ExprAST* e = &expr;
+  while (true) {
+    switch (e->getType()) {
+      case ASTNodeType::VARIABLE_REFERENCE:
+        return &static_cast<const VariableReferenceAST&>(*e).getName();
+      case ASTNodeType::MEMBER_ACCESS:
+        e = static_cast<const MemberAccessAST&>(*e).getObject();
+        continue;
+      case ASTNodeType::INDEX:
+        e = static_cast<const IndexAST&>(*e).getTarget();
+        continue;
+      case ASTNodeType::THIS:
+        return &kThis;
+      default:
+        return nullptr;
+    }
+  }
 }
 
 BorrowChecker::RefTargetInfo BorrowChecker::resolveRefTarget(

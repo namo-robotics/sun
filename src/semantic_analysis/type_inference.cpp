@@ -546,6 +546,10 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       return sun::Types::Void();
     }
 
+    case ASTNodeType::COMPOUND_ASSIGNMENT:
+      // Compound assignment is a statement
+      return sun::Types::Void();
+
     case ASTNodeType::TRY_CATCH: {
       const auto& tryCatchExpr = static_cast<const TryCatchExprAST&>(expr);
       // The type of a try-catch is the type of the try block

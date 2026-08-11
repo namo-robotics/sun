@@ -173,6 +173,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserialize(
     case ast::ASTNode::kIndexedAssignment:
       result = deserializeIndexedAssignment(node.indexed_assignment());
       break;
+    case ast::ASTNode::kCompoundAssignment:
+      result = deserializeCompoundAssignment(node.compound_assignment());
+      break;
     case ast::ASTNode::kMemberAssignment:
       result = deserializeMemberAssignment(node.member_assignment());
       break;
@@ -422,6 +425,13 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeMemberAssignment(
   return std::make_unique<MemberAssignmentAST>(deserialize(proto.object()),
                                                proto.member_name(),
                                                deserialize(proto.value()));
+}
+
+std::unique_ptr<ExprAST> ASTDeserializer::deserializeCompoundAssignment(
+    const ast::CompoundAssignment& proto) const {
+  return std::make_unique<CompoundAssignmentAST>(deserialize(proto.target()),
+                                                 deserializeToken(proto.op()),
+                                                 deserialize(proto.value()));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeBinary(

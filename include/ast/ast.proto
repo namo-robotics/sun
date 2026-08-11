@@ -39,6 +39,7 @@ message ASTNode {
     ReferenceCreation reference_creation = 33;
     IndexedAssignment indexed_assignment = 34;
     MemberAssignment member_assignment = 35;
+    CompoundAssignment compound_assignment = 36;
     
     // Expressions
     BinaryExpr binary_expr = 40;
@@ -170,6 +171,12 @@ message IndexedAssignment {
 message MemberAssignment {
   ASTNode object = 1;
   string member_name = 2;
+  ASTNode value = 3;
+}
+
+message CompoundAssignment {
+  ASTNode target = 1;  // Lvalue expression (variable / member / index)
+  Token op = 2;        // The compound token (+=, -=, ...)
   ASTNode value = 3;
 }
 

@@ -201,6 +201,10 @@ ast::ASTNode ASTSerializer::serialize(const ExprAST& expr) const {
       serializeIndexedAssignment(static_cast<const IndexedAssignmentAST&>(expr),
                                  &node);
       break;
+    case ASTNodeType::COMPOUND_ASSIGNMENT:
+      serializeCompoundAssignment(
+          static_cast<const CompoundAssignmentAST&>(expr), &node);
+      break;
     case ASTNodeType::MEMBER_ASSIGNMENT:
       serializeMemberAssignment(static_cast<const MemberAssignmentAST&>(expr),
                                 &node);
@@ -442,6 +446,14 @@ void ASTSerializer::serializeMemberAssignment(const MemberAssignmentAST& expr,
   auto* assign = node->mutable_member_assignment();
   *assign->mutable_object() = serialize(*expr.getObject());
   assign->set_member_name(expr.getMemberName());
+  *assign->mutable_value() = serialize(*expr.getValue());
+}
+
+void ASTSerializer::serializeCompoundAssignment(
+    const CompoundAssignmentAST& expr, ast::ASTNode* node) const {
+  auto* assign = node->mutable_compound_assignment();
+  *assign->mutable_target() = serialize(*expr.getTarget());
+  *assign->mutable_op() = serializeToken(expr.getOp());
   *assign->mutable_value() = serialize(*expr.getValue());
 }
 

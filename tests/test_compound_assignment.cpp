@@ -206,38 +206,118 @@ TEST(CompoundAssignment, indexed_multidim_side_effect_once) {
 }
 
 // ============================================================================
-// AST shape: x += y desugars to x = x + y
+// AST shape: op= parses to a single CompoundAssignmentAST
 // ============================================================================
 
-TEST(CompoundAssignment, desugars_to_binary_assignment) {
+TEST(CompoundAssignment, variable_target_is_compound_node) {
   auto ast = parseStatementToAst("x += y;");
 
   ASSERT_NE(ast, nullptr);
-  ASSERT_EQ(ast->getType(), ASTNodeType::VARIABLE_ASSIGNMENT);
-  auto* assign = static_cast<VariableAssignmentAST*>(ast.get());
-  ASSERT_EQ(assign->getValue()->getType(), ASTNodeType::BINARY);
-  auto* bin = static_cast<const BinaryExprAST*>(assign->getValue());
-  EXPECT_EQ(bin->getOp().kind, TokenKind::PLUS);
-  EXPECT_EQ(bin->getLHS()->getType(), ASTNodeType::VARIABLE_REFERENCE);
+  ASSERT_EQ(ast->getType(), ASTNodeType::COMPOUND_ASSIGNMENT);
+  auto* compound = static_cast<CompoundAssignmentAST*>(ast.get());
+  EXPECT_EQ(compound->getOp().kind, TokenKind::PLUS_ASSIGN);
+  EXPECT_EQ(compound->binaryOpKind(), TokenKind::PLUS);
+  EXPECT_EQ(compound->getTarget()->getType(),
+            ASTNodeType::VARIABLE_REFERENCE);
+  EXPECT_EQ(compound->getValue()->getType(), ASTNodeType::VARIABLE_REFERENCE);
 }
 
-TEST(CompoundAssignment, indexed_pure_index_stays_plain_assignment) {
+TEST(CompoundAssignment, indexed_target_is_compound_node) {
   auto ast = parseStatementToAst("arr[i] += 1;");
 
   ASSERT_NE(ast, nullptr);
-  EXPECT_EQ(ast->getType(), ASTNodeType::INDEXED_ASSIGNMENT);
+  ASSERT_EQ(ast->getType(), ASTNodeType::COMPOUND_ASSIGNMENT);
+  auto* compound = static_cast<CompoundAssignmentAST*>(ast.get());
+  EXPECT_EQ(compound->getTarget()->getType(), ASTNodeType::INDEX);
 }
 
-TEST(CompoundAssignment, indexed_call_index_hoisted_into_block) {
+TEST(CompoundAssignment, side_effect_index_is_single_compound_node) {
+  // No temp hoisting or block wrapping: single-evaluation of the target is
+  // now a codegen guarantee
   auto ast = parseStatementToAst("arr[f()] += 1;");
 
   ASSERT_NE(ast, nullptr);
-  ASSERT_EQ(ast->getType(), ASTNodeType::BLOCK);
-  auto* block = static_cast<BlockExprAST*>(ast.get());
-  ASSERT_EQ(block->getBody().size(), 2u);
-  EXPECT_EQ(block->getBody()[0]->getType(), ASTNodeType::VARIABLE_CREATION);
-  EXPECT_EQ(block->getBody()[1]->getType(), ASTNodeType::INDEXED_ASSIGNMENT);
+  ASSERT_EQ(ast->getType(), ASTNodeType::COMPOUND_ASSIGNMENT);
+  auto* compound = static_cast<CompoundAssignmentAST*>(ast.get());
+  EXPECT_EQ(compound->getTarget()->getType(), ASTNodeType::INDEX);
 }
+
+TEST(CompoundAssignment, member_target_is_compound_node) {
+  auto ast = parseStatementToAst("a.b *= 2;");
+
+  ASSERT_NE(ast, nullptr);
+  ASSERT_EQ(ast->getType(), ASTNodeType::COMPOUND_ASSIGNMENT);
+  auto* compound = static_cast<CompoundAssignmentAST*>(ast.get());
+  EXPECT_EQ(compound->getTarget()->getType(), ASTNodeType::MEMBER_ACCESS);
+  EXPECT_EQ(compound->getOp().kind, TokenKind::STAR_ASSIGN);
+}
+
+// ============================================================================
+// Class __index__/__setindex__ targets (get-op-set lowering)
+// ============================================================================
+
+TEST(CompoundAssignment, class_setindex_target) {
+  auto value = executeString(R"(
+      class Box {
+          var slot: i32;
+          var gets: i32;
+          var sets: i32;
+          function init() void {
+              this.slot = 10;
+              this.gets = 0;
+              this.sets = 0;
+          }
+          function __index__(indices: ref array<i64>) i32 {
+              this.gets += 1;
+              return this.slot;
+          }
+          function __setindex__(indices: ref array<i64>, value: i32) void {
+              this.sets += 1;
+              this.slot = value;
+          }
+      }
+      function bump(counter: ref array<i32>) i64 {
+          counter[0] += 1;
+          return 0;
+      }
+      function main() i32 {
+          var b: Box = Box();
+          var calls: array<i32, 1> = [0];
+          b[bump(calls)] += 5;
+          if (b.slot == 15 and b.gets == 1 and b.sets == 1 and calls[0] == 1) {
+              return 1;
+          }
+          return 0;
+      }
+    )");
+  EXPECT_EQ(value, 1);  // one get, one set, index expression evaluated once
+}
+
+// ============================================================================
+// Compound assignment inside generics (exercises the proto clone path)
+// ============================================================================
+
+TEST(CompoundAssignment, inside_generic_function) {
+  auto value = executeString(R"(
+      function accumulate<T>(a: T, b: T) T {
+          var total: T = a;
+          total += b;
+          total *= b;
+          return total;
+      }
+      function main() i32 {
+          var i: i32 = accumulate<i32>(2, 3);
+          var l: i64 = accumulate<i64>(4, 5);
+          if (i == 15 and l == 45) { return 1; }
+          return 0;
+      }
+    )");
+  EXPECT_EQ(value, 1);
+}
+
+// Note: mutating a lambda-captured scalar (`x += 5` inside a lambda) fails
+// identically to plain assignment (`x = x + 5`) - scalar captures are
+// by-value today. Pre-existing limitation, kept at parity.
 
 // ============================================================================
 // Generic-nesting lexer splits: Vec<i32>= and Vec<Vec<i32>>=

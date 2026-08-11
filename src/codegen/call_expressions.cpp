@@ -354,7 +354,8 @@ Value* CodegenVisitor::materializeStructReturn(Value* callResult) {
 // -------------------------------------------------------------------
 
 Value* CodegenVisitor::prepareRefArgument(const ExprAST* argExpr,
-                                          sun::TypePtr argSunType) {
+                                          sun::TypePtr argSunType,
+                                          bool allowTemporaryCopy) {
   // Auto-deref: if argument is raw_ptr<T> and param is ref T, pass the
   // pointer directly
   if (argSunType && argSunType->isRawPointer()) {
@@ -363,26 +364,17 @@ Value* CodegenVisitor::prepareRefArgument(const ExprAST* argExpr,
     return argVal;
   }
 
-  // Variable reference: pass address of variable
-  if (auto* varRef = dynamic_cast<const VariableReferenceAST*>(argExpr)) {
-    AllocaInst* alloca = findVariable(varRef->getName());
-    if (alloca) {
-      // If the variable is already a reference, load the pointer and pass it
-      if (argSunType && argSunType->isReference()) {
-        return ctx.builder->CreateLoad(
-            llvm::PointerType::getUnqual(ctx.getContext()), alloca,
-            varRef->getName() + ".ptr");
-      } else {
-        return alloca;
-      }
-    }
-    // Check for global variable
-    GlobalVariable* gv = module->getGlobalVariable(varRef->getName());
-    if (gv) {
-      return gv;
-    }
-    logAndThrowError("Cannot find variable for reference parameter: " +
-                     varRef->getName());
+  // Addressable lvalues (variables, fields, array elements, this): pass the
+  // genuine storage address, so callee mutations are visible to the caller
+  if (Value* addr = tryCodegenAddress(*argExpr)) {
+    return addr;
+  }
+
+  // Everything below spills a temporary copy - only valid when the argument
+  // legitimately has no storage of its own
+  if (!allowTemporaryCopy) {
+    logAndThrowError(
+        "Reference parameter must be passed an addressable expression");
     return nullptr;
   }
 
@@ -398,8 +390,8 @@ Value* CodegenVisitor::prepareRefArgument(const ExprAST* argExpr,
     return tempAlloca;
   }
 
-  // Member access (e.g., this.alloc) - codegen gives pointer for class
-  // fields, loaded value for primitives
+  // Member access with no addressable field (e.g. through a module or a
+  // method receiver shape): fall back to the value, spilling if needed
   if (dynamic_cast<const MemberAccessAST*>(argExpr)) {
     Value* val = codegen(*argExpr);
     if (!val) return nullptr;

@@ -56,7 +56,8 @@ enum class ASTNodeType {
   DECLARE_TYPE,          // declare [Alias =] Type<Args>;
   SPAWN,                 // spawn(lambda) - create OS thread
   UNSAFE_BLOCK,          // unsafe { ... } - unsafe operations block
-  MOON_SCOPE             // Wrapper for moon import stubs with content hash
+  MOON_SCOPE,            // Wrapper for moon import stubs with content hash
+  COMPOUND_ASSIGNMENT    // target op= value (+=, -=, ...)
 };
 
 struct Capture {

@@ -76,6 +76,8 @@ class ASTSerializer {
                                   ast::ASTNode* node) const;
   void serializeMemberAssignment(const MemberAssignmentAST& expr,
                                  ast::ASTNode* node) const;
+  void serializeCompoundAssignment(const CompoundAssignmentAST& expr,
+                                   ast::ASTNode* node) const;
 
   void serializeBinary(const BinaryExprAST& expr, ast::ASTNode* node) const;
   void serializeUnary(const UnaryExprAST& expr, ast::ASTNode* node) const;

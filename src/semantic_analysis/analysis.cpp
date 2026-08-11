@@ -210,16 +210,65 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       break;
     }
 
+    case ASTNodeType::COMPOUND_ASSIGNMENT: {
+      auto& compound = static_cast<CompoundAssignmentAST&>(expr);
+
+      // Analyze the target as a read: gives the whole target subtree
+      // resolved types (codegen signedness depends on them)
+      analyzeExpr(const_cast<ExprAST&>(*compound.getTarget()));
+      sun::TypePtr targetType =
+          sun::unwrapRef(compound.getTarget()->getResolvedType());
+
+      // Analyze the value with the target's type as expected
+      analyzeExpr(const_cast<ExprAST&>(*compound.getValue()), targetType);
+      sun::TypePtr rhsType = compound.getValue()->getResolvedType();
+
+      if (rhsType && targetType && !isAssignableTo(rhsType, targetType)) {
+        // Allow integer literal coercion as a fallback
+        if (!tryCoerceIntegerLiteral(const_cast<ExprAST*>(compound.getValue()),
+                                     targetType, false)) {
+          logAndThrowError("Cannot apply '" + compound.getOp().text +
+                               "' with value of type '" + rhsType->toString() +
+                               "' to target of type '" +
+                               targetType->toString() + "'",
+                           compound.getLocation());
+        }
+      }
+
+      // Compound assignment is a statement; codegen returns the stored value
+      expr.setResolvedType(sun::Types::Void());
+      break;
+    }
+
     case ASTNodeType::REFERENCE_CREATION: {
       auto& refCreate = static_cast<ReferenceCreationAST&>(expr);
       // Analyze the target expression
       analyzeExpr(const_cast<ExprAST&>(*refCreate.getTarget()));
-      // The target must be an lvalue (variable reference or similar)
-      // For now, we just check that it's a variable reference
-      if (refCreate.getTarget()->getType() != ASTNodeType::VARIABLE_REFERENCE &&
-          refCreate.getTarget()->getType() != ASTNodeType::MEMBER_ACCESS) {
-        llvm::errs()
-            << "Error: Reference target must be a variable or member\n";
+
+      // The target must be an addressable lvalue
+      ASTNodeType targetKind = refCreate.getTarget()->getType();
+      if (targetKind != ASTNodeType::VARIABLE_REFERENCE &&
+          targetKind != ASTNodeType::MEMBER_ACCESS &&
+          targetKind != ASTNodeType::INDEX) {
+        logAndThrowError(
+            "Reference target must be a variable, field, or array element",
+            expr.getLocation());
+      }
+      if (targetKind == ASTNodeType::INDEX) {
+        const auto& indexExpr =
+            static_cast<const IndexAST&>(*refCreate.getTarget());
+        auto baseType =
+            sun::unwrapRef(indexExpr.getTarget()->getResolvedType());
+        if (baseType && baseType->isClass()) {
+          logAndThrowError(
+              "Cannot create a reference to a class __index__ element - it "
+              "has no storage address",
+              expr.getLocation());
+        }
+        if (indexExpr.hasSlices()) {
+          logAndThrowError("Cannot create a reference to a slice",
+                           expr.getLocation());
+        }
       }
       // Determine the type of the referenced expression
       sun::TypePtr targetType = inferType(*refCreate.getTarget());
@@ -1786,6 +1835,12 @@ void SemanticAnalyzer::clearResolvedTypes(ExprAST& expr) {
       auto& ia = static_cast<IndexedAssignmentAST&>(expr);
       clearResolvedTypes(const_cast<ExprAST&>(*ia.getTarget()));
       clearResolvedTypes(const_cast<ExprAST&>(*ia.getValue()));
+      break;
+    }
+    case ASTNodeType::COMPOUND_ASSIGNMENT: {
+      auto& ca = static_cast<CompoundAssignmentAST&>(expr);
+      clearResolvedTypes(const_cast<ExprAST&>(*ca.getTarget()));
+      clearResolvedTypes(const_cast<ExprAST&>(*ca.getValue()));
       break;
     }
     case ASTNodeType::IF: {

@@ -176,6 +176,15 @@ std::set<std::string> SemanticAnalyzer::collectFreeVariables(
       break;
     }
 
+    case ASTNodeType::COMPOUND_ASSIGNMENT: {
+      const auto& assignment = static_cast<const CompoundAssignmentAST&>(expr);
+      auto targetFree = collectFreeVariables(*assignment.getTarget(), bound);
+      free.insert(targetFree.begin(), targetFree.end());
+      auto valueFree = collectFreeVariables(*assignment.getValue(), bound);
+      free.insert(valueFree.begin(), valueFree.end());
+      break;
+    }
+
     case ASTNodeType::RETURN: {
       const auto& returnExpr = static_cast<const ReturnExprAST&>(expr);
       if (returnExpr.hasValue()) {

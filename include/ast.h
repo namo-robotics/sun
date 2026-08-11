@@ -44,6 +44,7 @@
 #include "ast/for_expr_ast.h"
 #include "ast/for_in_expr_ast.h"
 #include "ast/if_expr_ast.h"
+#include "ast/compound_assignment_ast.h"
 #include "ast/indexed_assignment_ast.h"
 #include "ast/match_expr_ast.h"
 #include "ast/return_expr_ast.h"

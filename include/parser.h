@@ -143,9 +143,6 @@ class Parser {
   unique_ptr<ExprAST> parseExpression();
   unique_ptr<ExprAST> parseUnary();
   unique_ptr<ExprAST> parsePrimary();
-
-  // Counter for unique temp names in compound-assignment desugaring
-  int compoundTmpCounter = 0;
   unique_ptr<ExprAST> parsePostfixExpr(unique_ptr<ExprAST> base);
   unique_ptr<VariableCreationAST> parseVarStatement();
   unique_ptr<VariableCreationAST>
@@ -180,10 +177,6 @@ class Parser {
   bool isTypeToken(TokenKind kind);
 
   unique_ptr<ExprAST> parseAssignmentOrExpression();
-  unique_ptr<ExprAST> desugarIndexedCompound(TokenKind binOpKind,
-                                             const Token& opTok,
-                                             unique_ptr<ExprAST> target,
-                                             unique_ptr<ExprAST> rhs);
   unique_ptr<ExprAST> finishVariableAssignment(const std::string& name,
                                                const Position& namePos);
   unique_ptr<ExprAST> finishMemberAssignment(unique_ptr<ExprAST> lhs);

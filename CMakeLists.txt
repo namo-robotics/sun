@@ -129,6 +129,7 @@ add_library(sun_lib
     src/codegen/arrays.cpp
     src/codegen/variable_creation.cpp
     src/codegen/variable_references.cpp
+    src/codegen/lvalues.cpp
     src/codegen/call_expressions.cpp
     src/codegen/if_expressions.cpp
     src/codegen/match_expressions.cpp

@@ -72,6 +72,8 @@ class BorrowChecker {
   void checkMemberAccess(const MemberAccessAST& access);
   void checkMemberAssignment(const MemberAssignmentAST& assign);
   void checkIndexedAssignment(const IndexedAssignmentAST& assign);
+  void checkCompoundAssignment(const CompoundAssignmentAST& assign);
+  void checkVariableWrite(const std::string& varName);
   void checkTryCatch(const TryCatchExprAST& tryCatch);
   void checkUnsafeBlock(const UnsafeBlockAST& unsafeBlock);
 
@@ -100,6 +102,7 @@ class BorrowChecker {
   // Get the name of the variable being referenced (if expression is a variable
   // ref)
   const std::string* getVariableName(const ExprAST& expr) const;
+  const std::string* getBaseVariableName(const ExprAST& expr) const;
 
   // Result of resolving a reference target
   struct RefTargetInfo {

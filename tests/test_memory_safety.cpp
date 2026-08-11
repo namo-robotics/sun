@@ -317,7 +317,7 @@ TEST(MemorySafety, ref_to_null_literal_rejected) {
           return 0;
       }
     )"),
-                                "Borrow check failed");
+                                "Reference target must be");
 }
 
 // Can't create ref to numeric literal (temporary)
@@ -328,7 +328,7 @@ TEST(MemorySafety, ref_to_literal_rejected) {
           return r;
       }
     )"),
-                                "Borrow check failed");
+                                "Reference target must be");
 }
 
 // Can't create ref to function call result (temporary)
@@ -343,7 +343,7 @@ TEST(MemorySafety, ref_to_temporary_rejected) {
           return r;
       }
     )"),
-                                "Borrow check failed");
+                                "Reference target must be");
 }
 
 // ============================================================================
@@ -363,7 +363,7 @@ TEST(MemorySafety, cannot_return_reference_type) {
           return r;
       }
     )"),
-                                "Borrow check failed");
+                                "Reference target must be");
 }
 
 // ============================================================================

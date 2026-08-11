@@ -371,10 +371,58 @@ class CodegenVisitor {
   llvm::Value* extendInt(llvm::Value* value, llvm::Type* destTy,
                          const sun::TypePtr& sourceType);
 
+  // Compound assignment (lvalues.cpp): address-once -> load -> op -> store
+  llvm::Value* codegen(const CompoundAssignmentAST& expr);
+  llvm::Value* emitCompoundOpValue(const CompoundAssignmentAST& expr,
+                                   llvm::Value* cur, llvm::Type* slotTy,
+                                   const sun::TypePtr& slotSunType);
+
+  // Lvalue facility (lvalues.cpp): compute the storage address of an
+  // assignable expression. tryCodegenAddress returns nullptr for shapes with
+  // no addressable slot (class __index__ targets, slices, closure captures,
+  // temporaries); codegenAddress throws instead. Neither ever spills a value
+  // to a temporary alloca.
+  llvm::Value* tryCodegenAddress(const ExprAST& expr);
+  llvm::Value* codegenAddress(const ExprAST& expr);
+
+  // Field pointer for a class member (shared by member read/write/address)
+  llvm::Value* getFieldPtr(sun::ClassType* classType, llvm::Value* objectPtr,
+                           const sun::ClassField& field,
+                           const std::string& name);
+
+  // Codegen a member-access object down to (objectPtr, ClassType*), applying
+  // the generic-`this` fixup and unwrapping raw_ptr/static_ptr/ref to class.
+  // ClassType* is null when the object is not class-shaped.
+  std::pair<llvm::Value*, sun::ClassType*> codegenObjectPtr(
+      const ExprAST& object);
+
+  // Class __index__/__setindex__ protocol pieces, decomposed so compound
+  // assignment can box the indices and resolve the receiver exactly once
+  llvm::AllocaInst* boxIndicesToArrayRef(const IndexAST& expr);
+  llvm::Value* emitClassIndexCall(llvm::Value* objectPtr,
+                                  llvm::AllocaInst* idxArr,
+                                  sun::ClassType* classType);
+  llvm::Value* emitClassSetIndexCall(llvm::Value* objectPtr,
+                                     llvm::AllocaInst* idxArr,
+                                     llvm::Value* value,
+                                     sun::ClassType* classType);
+
   // Integer division/remainder with signedness; shared by the plain binary
   // path and codegenSafeDivision
   llvm::Value* createIntDivRem(llvm::Value* L, llvm::Value* R, bool isModulo,
                                bool isUnsigned);
+
+  // Bring two scalar operands to a common type (int/float widening); throws
+  // on incompatible types
+  void unifyBinaryOperands(llvm::Value*& L, llvm::Value*& R,
+                           const sun::TypePtr& lhsSunType,
+                           const sun::TypePtr& rhsSunType,
+                           const Position& loc);
+
+  // Emit an arithmetic/bitwise/shift op on unified operands; shared by
+  // binary expressions and compound assignment
+  llvm::Value* emitBinaryOp(TokenKind op, llvm::Value* L, llvm::Value* R,
+                            bool unsignedOp, const Position& loc);
 
   // Coerces a lambda argument to the callee's closure struct param type:
   // loads lambda literals (alloca ptr) and rebuilds closure values carrying
@@ -749,7 +797,8 @@ class CodegenVisitor {
    * @return Pointer value suitable for passing as a reference parameter.
    */
   llvm::Value* prepareRefArgument(const ExprAST* argExpr,
-                                  sun::TypePtr argSunType);
+                                  sun::TypePtr argSunType,
+                                  bool allowTemporaryCopy = true);
 
   /**
    * Codegens a new global array variable.

@@ -149,40 +149,18 @@ Value* CodegenVisitor::codegen(const ArrayLiteralAST& expr) {
 // -------------------------------------------------------------------
 
 Value* CodegenVisitor::codegen(const IndexAST& expr) {
-  // Get the target value (array fat struct, class instance pointer, etc.)
-  Value* targetVal = codegen(*expr.getTarget());
-  if (!targetVal) return nullptr;
+  sun::TypePtr targetType =
+      sun::unwrapRef(expr.getTarget()->getResolvedType());
 
-  // Get the target type - unwrap reference if needed
-  auto exprType = expr.getTarget()->getResolvedType();
-  sun::TypePtr targetType = exprType;
-
-  // If this is a reference, we need to handle it appropriately
-  if (exprType && exprType->isReference()) {
-    auto* refType = static_cast<const sun::ReferenceType*>(exprType.get());
-    targetType = refType->getReferencedType();
-  }
-
-  // Check if target is a class with __index__ or __slice__ method
+  // Class targets dispatch to the __index__/__slice__ method protocol
   if (targetType && targetType->isClass()) {
+    Value* targetVal = codegen(*expr.getTarget());
+    if (!targetVal) return nullptr;
     auto* classType = static_cast<sun::ClassType*>(targetType.get());
-    bool hasSlices = expr.hasSlices();
-    const auto& indices = expr.getIndices();
-
-    if (hasSlices) {
-      // Call __slice__ method with array of SliceRange
+    if (expr.hasSlices()) {
       return codegenClassSlice(expr, targetVal, classType);
-    } else {
-      // Call __index__ method with array of indices
-      return codegenClassIndex(expr, targetVal, classType);
     }
-  }
-
-  // Handle array reference - load the fat struct from the pointer
-  if (exprType && exprType->isReference()) {
-    llvm::StructType* fatType =
-        sun::ArrayType::getArrayStructType(ctx.getContext());
-    targetVal = ctx.builder->CreateLoad(fatType, targetVal, "arr.fat.load");
+    return codegenClassIndex(expr, targetVal, classType);
   }
 
   if (!targetType || !targetType->isArray()) {
@@ -190,65 +168,13 @@ Value* CodegenVisitor::codegen(const IndexAST& expr) {
     return nullptr;
   }
 
+  // Array element: address via the shared helper, then load
+  Value* elemPtr = codegenIndexElementPtr(expr);
+  if (!elemPtr) return nullptr;
+
   auto* sunArrayType = static_cast<sun::ArrayType*>(targetType.get());
-  const auto& indices = expr.getIndices();
-
-  // Extract components from fat struct: { ptr data, i32 ndims, ptr dims }
-  Value* dataPtr =
-      ctx.builder->CreateExtractValue(targetVal, 0, "arr.data.ptr");
-  Value* dimsPtr =
-      ctx.builder->CreateExtractValue(targetVal, 2, "arr.dims.ptr");
-
-  sun::TypePtr elemSunType = sunArrayType->getElementType();
-  llvm::Type* elemType = elemSunType->toLLVMType(ctx.getContext());
-  llvm::Type* i64Ty = llvm::Type::getInt64Ty(ctx.getContext());
-
-  // Compute linear offset using row-major order
-  // For arr[i, j, k] with dims [D0, D1, D2]:
-  // offset = i * (D1 * D2) + j * D2 + k
-  Value* offset = ctx.builder->getInt64(0);
-
-  for (size_t i = 0; i < indices.size(); ++i) {
-    const auto& sliceExpr = *indices[i];
-
-    // For now, only handle single indices (not range slices)
-    if (sliceExpr.isRange()) {
-      logAndThrowError(
-          "Array slicing (a:b) not yet implemented - use single indices");
-      return nullptr;
-    }
-
-    if (!sliceExpr.hasStart()) {
-      logAndThrowError("Index expression is empty");
-      return nullptr;
-    }
-
-    Value* idx = codegen(*sliceExpr.getStart());
-    if (!idx) return nullptr;
-
-    if (idx->getType()->isIntegerTy() &&
-        idx->getType()->getIntegerBitWidth() < 64) {
-      idx = ctx.builder->CreateSExt(idx, i64Ty, "idx.ext");
-    }
-
-    // Compute stride for this index: product of dims[i+1..n-1]
-    Value* stride = ctx.builder->getInt64(1);
-    for (size_t j = i + 1; j < indices.size(); ++j) {
-      Value* dimJPtr = ctx.builder->CreateGEP(
-          i64Ty, dimsPtr, ctx.builder->getInt64(j), "dim.j.ptr");
-      Value* dimJ = ctx.builder->CreateLoad(i64Ty, dimJPtr, "dim.j");
-      stride = ctx.builder->CreateMul(stride, dimJ, "stride.mul");
-    }
-
-    // offset += idx * stride
-    Value* term = ctx.builder->CreateMul(idx, stride, "idx.stride");
-    offset = ctx.builder->CreateAdd(offset, term, "offset.add");
-  }
-
-  // GEP to the element using linear offset
-  Value* elemPtr =
-      ctx.builder->CreateGEP(elemType, dataPtr, offset, "arr.elem.ptr");
-
+  llvm::Type* elemType =
+      sunArrayType->getElementType()->toLLVMType(ctx.getContext());
   return ctx.builder->CreateLoad(elemType, elemPtr, "arr.elem");
 }
 
@@ -299,7 +225,7 @@ Value* CodegenVisitor::codegenIndexElementPtr(const IndexAST& expr) {
     // For now, only handle single indices (not range slices)
     if (sliceExpr.isRange()) {
       logAndThrowError(
-          "Array slicing (a:b) not yet implemented for assignment");
+          "Array slicing (a:b) not yet implemented - use single indices");
       return nullptr;
     }
 
@@ -523,21 +449,13 @@ Value* CodegenVisitor::codegenArrayShape(const MemberAccessAST& expr) {
 // Synthesizes a call to the __index__ method with indices as array
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegenClassIndex(const IndexAST& expr, Value* objectPtr,
-                                         sun::ClassType* classType) {
+// Box an IndexAST's index expressions into a stack `ref array<i64>` value:
+// [i64 x N] data + 1-element dims + fat struct. Shared by the __index__ and
+// __setindex__ call paths so compound assignment can evaluate indices once.
+AllocaInst* CodegenVisitor::boxIndicesToArrayRef(const IndexAST& expr) {
   const auto& indices = expr.getIndices();
   llvm::Type* i64Ty = llvm::Type::getInt64Ty(ctx.getContext());
 
-  // Look up the __index__ method
-  const sun::ClassMethod* method = classType->getMethod("__index__");
-  if (!method) {
-    logAndThrowError("Class " + classType->getDisplayName() +
-                     " does not have __index__ method");
-    return nullptr;
-  }
-
-  // Build array of indices on the stack
-  // Create array data: [i64 x N]
   size_t numIndices = indices.size();
   llvm::ArrayType* arrDataType = llvm::ArrayType::get(i64Ty, numIndices);
   Value* arrData =
@@ -546,6 +464,10 @@ Value* CodegenVisitor::codegenClassIndex(const IndexAST& expr, Value* objectPtr,
   // Store each index value
   for (size_t i = 0; i < numIndices; ++i) {
     const auto& sliceExpr = *indices[i];
+    if (sliceExpr.isRange()) {
+      logAndThrowError("Cannot use range slices in indexed access");
+      return nullptr;
+    }
     if (!sliceExpr.hasStart()) {
       logAndThrowError("Index expression is empty");
       return nullptr;
@@ -573,14 +495,27 @@ Value* CodegenVisitor::codegenClassIndex(const IndexAST& expr, Value* objectPtr,
   // Build the fat struct for the array { ptr data, i32 ndims, ptr dims }
   llvm::StructType* fatType =
       sun::ArrayType::getArrayStructType(ctx.getContext());
-  AllocaInst* arrAlloca =
-      ctx.builder->CreateAlloca(fatType, nullptr, "idx.arr");
+  AllocaInst* arrAlloca = ctx.builder->CreateAlloca(fatType, nullptr, "idx.arr");
 
   Value* fatVal = llvm::UndefValue::get(fatType);
   fatVal = ctx.builder->CreateInsertValue(fatVal, arrData, 0);
   fatVal = ctx.builder->CreateInsertValue(fatVal, ctx.builder->getInt32(1), 1);
   fatVal = ctx.builder->CreateInsertValue(fatVal, dimsAlloca, 2);
   ctx.builder->CreateStore(fatVal, arrAlloca);
+
+  return arrAlloca;
+}
+
+// Call obj.__index__(indices) with a pre-boxed index array
+Value* CodegenVisitor::emitClassIndexCall(Value* objectPtr,
+                                          AllocaInst* idxArr,
+                                          sun::ClassType* classType) {
+  const sun::ClassMethod* method = classType->getMethod("__index__");
+  if (!method) {
+    logAndThrowError("Class " + classType->getDisplayName() +
+                     " does not have __index__ method");
+    return nullptr;
+  }
 
   // Get the method function (include param types for overload disambiguation)
   std::string mangledName =
@@ -610,7 +545,7 @@ Value* CodegenVisitor::codegenClassIndex(const IndexAST& expr, Value* objectPtr,
   // Build arguments: method closure, array reference
   std::vector<Value*> argValues;
   argValues.push_back(materializeMethodClosure(methodFunc, objectPtr));
-  argValues.push_back(arrAlloca);  // reference to array (pointer to fat struct)
+  argValues.push_back(idxArr);  // reference to array (pointer to fat struct)
 
   Value* result =
       ctx.builder->CreateCall(methodFunc, argValues, "index.result");
@@ -632,6 +567,13 @@ Value* CodegenVisitor::codegenClassIndex(const IndexAST& expr, Value* objectPtr,
   }
 
   return result;
+}
+
+Value* CodegenVisitor::codegenClassIndex(const IndexAST& expr, Value* objectPtr,
+                                         sun::ClassType* classType) {
+  AllocaInst* idxArr = boxIndicesToArrayRef(expr);
+  if (!idxArr) return nullptr;
+  return emitClassIndexCall(objectPtr, idxArr, classType);
 }
 
 // -------------------------------------------------------------------
@@ -828,76 +770,16 @@ Value* CodegenVisitor::codegenClassSlice(const IndexAST& expr, Value* objectPtr,
 // Synthesizes a call to __setindex__(indices, value)
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegenClassSetIndex(const IndexAST& indexExpr,
-                                            const ExprAST* valueExpr,
-                                            sun::ClassType* classType) {
-  // Get the object pointer
-  Value* objectPtr = codegen(*indexExpr.getTarget());
-  if (!objectPtr) return nullptr;
-
-  const auto& indices = indexExpr.getIndices();
-  llvm::Type* i64Ty = llvm::Type::getInt64Ty(ctx.getContext());
-
-  // Look up the __setindex__ method
+// Call obj.__setindex__(indices, value) with a pre-boxed index array
+Value* CodegenVisitor::emitClassSetIndexCall(Value* objectPtr,
+                                             AllocaInst* idxArr, Value* value,
+                                             sun::ClassType* classType) {
   const sun::ClassMethod* method = classType->getMethod("__setindex__");
   if (!method) {
     logAndThrowError("Class " + classType->getDisplayName() +
                      " does not have __setindex__ method");
     return nullptr;
   }
-
-  // Build array of indices on the stack
-  size_t numIndices = indices.size();
-  llvm::ArrayType* arrDataType = llvm::ArrayType::get(i64Ty, numIndices);
-  Value* arrData =
-      ctx.builder->CreateAlloca(arrDataType, nullptr, "setidx.arr.data");
-
-  // Store each index value
-  for (size_t i = 0; i < numIndices; ++i) {
-    const auto& sliceExpr = *indices[i];
-    if (sliceExpr.isRange()) {
-      logAndThrowError("Cannot use range slices in indexed assignment");
-      return nullptr;
-    }
-    if (!sliceExpr.hasStart()) {
-      logAndThrowError("Index expression is empty");
-      return nullptr;
-    }
-
-    Value* idxVal = codegen(*sliceExpr.getStart());
-    if (!idxVal) return nullptr;
-
-    if (idxVal->getType()->isIntegerTy() &&
-        idxVal->getType()->getIntegerBitWidth() < 64) {
-      idxVal = ctx.builder->CreateSExt(idxVal, i64Ty, "idx.ext");
-    }
-
-    Value* elemPtr = ctx.builder->CreateGEP(
-        i64Ty, arrData, ctx.builder->getInt64(i), "idx.elem.ptr");
-    ctx.builder->CreateStore(idxVal, elemPtr);
-  }
-
-  // Create dims array (1D: [numIndices])
-  llvm::ArrayType* dimsType = llvm::ArrayType::get(i64Ty, 1);
-  Value* dimsAlloca =
-      ctx.builder->CreateAlloca(dimsType, nullptr, "setidx.dims");
-  ctx.builder->CreateStore(ctx.builder->getInt64(numIndices), dimsAlloca);
-
-  // Build fat struct for the array
-  llvm::StructType* fatType =
-      sun::ArrayType::getArrayStructType(ctx.getContext());
-  AllocaInst* arrAlloca =
-      ctx.builder->CreateAlloca(fatType, nullptr, "setidx.arr");
-
-  Value* fatVal = llvm::UndefValue::get(fatType);
-  fatVal = ctx.builder->CreateInsertValue(fatVal, arrData, 0);
-  fatVal = ctx.builder->CreateInsertValue(fatVal, ctx.builder->getInt32(1), 1);
-  fatVal = ctx.builder->CreateInsertValue(fatVal, dimsAlloca, 2);
-  ctx.builder->CreateStore(fatVal, arrAlloca);
-
-  // Generate the value to set
-  Value* valueVal = codegen(*valueExpr);
-  if (!valueVal) return nullptr;
 
   // Get the method function (include param types for overload disambiguation)
   std::string mangledName =
@@ -915,7 +797,7 @@ Value* CodegenVisitor::codegenClassSetIndex(const IndexAST& indexExpr,
     if (method->paramTypes.size() >= 2) {
       paramTypes.push_back(typeResolver.resolve(method->paramTypes[1]));
     } else {
-      paramTypes.push_back(valueVal->getType());  // fallback
+      paramTypes.push_back(value->getType());  // fallback
     }
 
     llvm::Type* returnType = Type::getVoidTy(ctx.getContext());
@@ -928,12 +810,29 @@ Value* CodegenVisitor::codegenClassSetIndex(const IndexAST& indexExpr,
   // Build arguments: method closure, array reference, value
   std::vector<Value*> argValues;
   argValues.push_back(materializeMethodClosure(methodFunc, objectPtr));
-  argValues.push_back(arrAlloca);  // reference to index array
-  argValues.push_back(valueVal);   // value to set
+  argValues.push_back(idxArr);  // reference to index array
+  argValues.push_back(value);   // value to set
 
   ctx.builder->CreateCall(methodFunc, argValues);
 
-  return valueVal;
+  return value;
+}
+
+Value* CodegenVisitor::codegenClassSetIndex(const IndexAST& indexExpr,
+                                            const ExprAST* valueExpr,
+                                            sun::ClassType* classType) {
+  // Get the object pointer
+  Value* objectPtr = codegen(*indexExpr.getTarget());
+  if (!objectPtr) return nullptr;
+
+  AllocaInst* idxArr = boxIndicesToArrayRef(indexExpr);
+  if (!idxArr) return nullptr;
+
+  // Generate the value to set
+  Value* valueVal = codegen(*valueExpr);
+  if (!valueVal) return nullptr;
+
+  return emitClassSetIndexCall(objectPtr, idxArr, valueVal, classType);
 }
 
 // -------------------------------------------------------------------
