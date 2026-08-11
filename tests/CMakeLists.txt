@@ -58,6 +58,7 @@ add_executable(sun_tests
     test_stdlib_linked_list.cpp
     test_stdlib_math.cpp
     test_string.cpp
+    test_ternary.cpp
     test_threads.cpp
     test_vec.cpp
     # Add more test files

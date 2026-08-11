@@ -177,6 +177,16 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       }
       break;
     }
+    case ASTNodeType::TERNARY: {
+      const auto* ternary = static_cast<const TernaryExprAST*>(node);
+      int condId = visitNode(ternary->getCond());
+      int thenId = visitNode(ternary->getThen());
+      int elseId = visitNode(ternary->getElse());
+      emitEdge(condId, "cond");
+      emitEdge(thenId, "then");
+      emitEdge(elseId, "else");
+      break;
+    }
     case ASTNodeType::MATCH: {
       const auto* match = static_cast<const MatchExprAST*>(node);
       int discId = visitNode(match->getDiscriminant());

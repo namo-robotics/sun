@@ -35,6 +35,7 @@
 // Expression nodes
 #include "ast/binary_expr_ast.h"
 #include "ast/pack_expansion_ast.h"
+#include "ast/ternary_expr_ast.h"
 #include "ast/unary_expr_ast.h"
 
 // Control flow nodes

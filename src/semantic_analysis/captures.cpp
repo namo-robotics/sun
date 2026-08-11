@@ -88,6 +88,17 @@ std::set<std::string> SemanticAnalyzer::collectFreeVariables(
       break;
     }
 
+    case ASTNodeType::TERNARY: {
+      const auto& ternary = static_cast<const TernaryExprAST&>(expr);
+      auto condFree = collectFreeVariables(*ternary.getCond(), bound);
+      auto thenFree = collectFreeVariables(*ternary.getThen(), bound);
+      auto elseFree = collectFreeVariables(*ternary.getElse(), bound);
+      free.insert(condFree.begin(), condFree.end());
+      free.insert(thenFree.begin(), thenFree.end());
+      free.insert(elseFree.begin(), elseFree.end());
+      break;
+    }
+
     case ASTNodeType::MATCH: {
       const auto& matchExpr = static_cast<const MatchExprAST&>(expr);
       auto discFree = collectFreeVariables(*matchExpr.getDiscriminant(), bound);
