@@ -15,6 +15,7 @@
 #include "ast.h"
 #include "ast.pb.h"
 #include "ast_serializer.h"
+#include "lowering_pass.h"
 #include "moon.pb.h"
 #include "parser.h"
 
@@ -231,6 +232,11 @@ std::optional<moon::ModuleMetadata> extractMetadataFromFile(
   if (!ast) {
     return std::nullopt;
   }
+
+  // Lower the parse tree so extracted generic function bodies contain only
+  // core AST nodes (paren/template-string nodes never reach .moon files)
+  LoweringPass lowering;
+  lowering.run(*ast);
 
   return extractMetadata(filename, *ast, sourceHash);
 }

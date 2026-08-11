@@ -23,5 +23,11 @@ class IfExprAST : public ExprAST {
   ExprAST* getCond() const { return Cond.get(); }
   ExprAST* getThen() const { return Then.get(); }
   ExprAST* getElse() const { return Else.get(); }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override {
+    fn(Cond);
+    fn(Then);
+    fn(Else);
+  }
   std::string dotLabel() const override { return "If"; }
 };

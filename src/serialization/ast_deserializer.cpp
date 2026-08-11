@@ -18,6 +18,15 @@ Position ASTDeserializer::deserializePosition(const ast::Position& pos) const {
   if (pos.has_file_path()) {
     result.filePath = pos.file_path();
   }
+  if (pos.has_end_line()) {
+    result.endLine = pos.end_line();
+  }
+  if (pos.has_end_column()) {
+    result.endColumn = pos.end_column();
+  }
+  if (pos.has_end_offset()) {
+    result.endOffset = pos.end_offset();
+  }
   return result;
 }
 
@@ -134,6 +143,10 @@ std::unique_ptr<PrototypeAST> ASTDeserializer::deserializePrototype(
   }
   result->setRefCaptureNames(std::move(refCaptureNames));
 
+  if (proto.has_location()) {
+    result->setLocation(deserializePosition(proto.location()));
+  }
+
   return result;
 }
 
@@ -192,6 +205,12 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserialize(
       break;
     case ast::ASTNode::kTernaryExpr:
       result = deserializeTernary(node.ternary_expr());
+      break;
+    case ast::ASTNode::kParenExpr:
+      result = deserializeParen(node.paren_expr());
+      break;
+    case ast::ASTNode::kInterpolatedString:
+      result = deserializeInterpolatedString(node.interpolated_string());
       break;
     case ast::ASTNode::kUnaryExpr:
       result = deserializeUnary(node.unary_expr());
@@ -457,6 +476,29 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeTernary(
   return std::make_unique<TernaryExprAST>(
       deserialize(proto.cond()), deserialize(proto.then_expr()),
       deserialize(proto.else_expr()), Position{});
+}
+
+std::unique_ptr<ExprAST> ASTDeserializer::deserializeParen(
+    const ast::ParenExpr& proto) const {
+  return std::make_unique<ParenExprAST>(deserialize(proto.inner()));
+}
+
+std::unique_ptr<ExprAST> ASTDeserializer::deserializeInterpolatedString(
+    const ast::InterpolatedString& proto) const {
+  std::vector<InterpolatedStringAST::Segment> segments;
+  for (const auto& seg : proto.segments()) {
+    InterpolatedStringAST::Segment segment;
+    segment.isLiteral = seg.is_literal();
+    segment.rawText = seg.raw_text();
+    segment.cookedText = seg.cooked_text();
+    segment.sourceOffset = seg.source_offset();
+    if (seg.has_expression()) {
+      segment.expression = deserialize(seg.expression());
+    }
+    segments.push_back(std::move(segment));
+  }
+  return std::make_unique<InterpolatedStringAST>(proto.raw_content(),
+                                                 std::move(segments));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeUnary(

@@ -23,6 +23,11 @@ class MemberAssignmentAST : public ExprAST {
   ASTNodeType getType() const override {
     return ASTNodeType::MEMBER_ASSIGNMENT;
   }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override {
+    fn(object);
+    fn(value);
+  }
   std::string toString() const override {
     return object->toString() + "." + memberName + " = " + value->toString();
   }

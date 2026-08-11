@@ -42,6 +42,11 @@ class ForInExprAST : public ExprAST {
         Body(std::move(Body)) {}
 
   ASTNodeType getType() const override { return ASTNodeType::FOR_IN_LOOP; }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override {
+    fn(Iterable);
+    fn(Body);
+  }
   std::string toString() const override {
     return "for (var " + LoopVar + ": " + LoopVarType.toString() + " in " +
            Iterable->toString() + ") " + Body->toString();

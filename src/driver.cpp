@@ -14,6 +14,7 @@
 #include "debug/ast_dot_generator.h"
 #include "debug/scope_tree_generator.h"
 #include "error.h"
+#include "lowering_pass.h"
 #include "module_linker.h"
 #include "source_manager.h"
 #include "sun_path.h"
@@ -399,14 +400,7 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
     return result;
   }
 
-  // Check if string interpolation is used without stdlib
-  if (parser.usesStringInterpolation() && !hasStdlibImport(moonImports_)) {
-    logAndThrowError(
-        "String interpolation requires the standard library. Add "
-        "'moon \"stdlib.moon\"' to your manifest or use --moon stdlib.moon");
-  }
-
-  // Debug mode: generate AST DOT graph
+  // Debug mode: generate AST DOT graph (pre-lowering, lossless parse tree)
   if (debugMode_ && !debugFolder_.empty()) {
     AstDotGenerator dotGen;
     std::string dot = dotGen.generate(blockAst.get());
@@ -418,6 +412,18 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
     } else {
       llvm::errs() << "Warning: Could not write " << dotPath << "\n";
     }
+  }
+
+  // Lower the lossless parse tree into the core AST before semantic analysis
+  LoweringPass lowering;
+  lowering.run(*blockAst);
+
+  // Check if string interpolation is used without stdlib
+  if ((parser.usesStringInterpolation() || lowering.usedInterpolation()) &&
+      !hasStdlibImport(moonImports_)) {
+    logAndThrowError(
+        "String interpolation requires the standard library. Add "
+        "'moon \"stdlib.moon\"' to your manifest or use --moon stdlib.moon");
   }
 
   // Inject AST stubs from moon imports before semantic analysis

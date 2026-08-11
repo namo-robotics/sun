@@ -354,7 +354,9 @@ TEST(Ternary, parenthesized_ternary_as_slice_bound_parses) {
   const auto& slice = index->getIndices()[0];
   ASSERT_TRUE(slice->hasStart());
   ASSERT_TRUE(slice->hasEnd());
-  EXPECT_EQ(slice->getStart()->getType(), ASTNodeType::TERNARY);
+  ASSERT_EQ(slice->getStart()->getType(), ASTNodeType::PAREN_EXPR);
+  const auto* paren = static_cast<const ParenExprAST*>(slice->getStart());
+  EXPECT_EQ(paren->getInner()->getType(), ASTNodeType::TERNARY);
   EXPECT_EQ(slice->getEnd()->getType(), ASTNodeType::NUMBER);
 }
 

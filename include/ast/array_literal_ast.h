@@ -16,6 +16,10 @@ class ArrayLiteralAST : public ExprAST {
   explicit ArrayLiteralAST(std::vector<std::unique_ptr<ExprAST>> elems)
       : elements(std::move(elems)) {}
   ASTNodeType getType() const override { return ASTNodeType::ARRAY_LITERAL; }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override {
+    for (auto& elem : elements) fn(elem);
+  }
   std::string toString() const override {
     std::string result = "[";
     for (size_t i = 0; i < elements.size(); ++i) {

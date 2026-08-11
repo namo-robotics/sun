@@ -27,6 +27,11 @@ class SliceExprAST : public ExprAST {
       : start_(std::move(start)), end_(std::move(end)), isRange_(isRange) {}
 
   ASTNodeType getType() const override { return ASTNodeType::SLICE; }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override {
+    fn(start_);
+    fn(end_);
+  }
   std::string toString() const override {
     if (!isRange_) return start_ ? start_->toString() : "";
     std::string result = start_ ? start_->toString() : "";

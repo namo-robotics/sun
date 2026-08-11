@@ -23,6 +23,8 @@ class ReferenceCreationAST;
 class BinaryExprAST;
 class UnaryExprAST;
 class TernaryExprAST;
+class ParenExprAST;
+class InterpolatedStringAST;
 class IndexAST;
 class ArrayIndexAST;
 class SliceExprAST;

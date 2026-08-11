@@ -32,6 +32,10 @@ class BlockExprAST : public ExprAST {
 
   const std::vector<std::unique_ptr<ExprAST>>& getBody() const { return Body; }
 
+  void forEachChildSlot(const ChildSlotFn& fn) override {
+    for (auto& stmt : Body) fn(stmt);
+  }
+
   // Optional: convenience method to check if block is empty
   bool isEmpty() const { return Body.empty(); }
 

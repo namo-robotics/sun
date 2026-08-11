@@ -44,6 +44,10 @@ class GenericCallAST : public ExprAST {
   }
 
   ASTNodeType getType() const override { return ASTNodeType::GENERIC_CALL; }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override {
+    for (auto& arg : args) fn(arg);
+  }
   std::string toString() const override {
     std::string result = functionName + "<";
     if (!typeArguments.empty()) {

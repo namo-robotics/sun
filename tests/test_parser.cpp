@@ -78,9 +78,57 @@ TEST(ParserTest, ParseParenExpression) {
   auto ast = parseStringToExpr("(123)");
 
   ASSERT_NE(ast, nullptr);
-  auto* num = dynamic_cast<NumberExprAST*>(ast.get());
+  auto* paren = dynamic_cast<ParenExprAST*>(ast.get());
+  ASSERT_NE(paren, nullptr);
+  auto* num = dynamic_cast<const NumberExprAST*>(paren->getInner());
   ASSERT_NE(num, nullptr);
   EXPECT_DOUBLE_EQ(num->getVal(), 123.0);
+}
+
+TEST(ParserTest, ParseNestedParenExpression) {
+  auto ast = parseStringToExpr("((1))");
+
+  ASSERT_NE(ast, nullptr);
+  auto* outer = dynamic_cast<ParenExprAST*>(ast.get());
+  ASSERT_NE(outer, nullptr);
+  auto* inner = dynamic_cast<const ParenExprAST*>(outer->getInner());
+  ASSERT_NE(inner, nullptr);
+  auto* num = dynamic_cast<const NumberExprAST*>(inner->getInner());
+  ASSERT_NE(num, nullptr);
+  EXPECT_DOUBLE_EQ(num->getVal(), 1.0);
+}
+
+TEST(ParserTest, ParseTemplateString) {
+  auto ast = parseStringToExpr("`Hello ${name}!`");
+
+  ASSERT_NE(ast, nullptr);
+  auto* interp = dynamic_cast<InterpolatedStringAST*>(ast.get());
+  ASSERT_NE(interp, nullptr);
+  EXPECT_EQ(interp->getRawContent(), "Hello ${name}!");
+  const auto& segments = interp->getSegments();
+  ASSERT_EQ(segments.size(), 3u);
+  EXPECT_TRUE(segments[0].isLiteral);
+  EXPECT_EQ(segments[0].rawText, "Hello ");
+  EXPECT_EQ(segments[0].cookedText, "Hello ");
+  EXPECT_FALSE(segments[1].isLiteral);
+  EXPECT_EQ(segments[1].rawText, "name");
+  ASSERT_NE(segments[1].expression, nullptr);
+  EXPECT_EQ(segments[1].expression->getType(),
+            ASTNodeType::VARIABLE_REFERENCE);
+  EXPECT_TRUE(segments[2].isLiteral);
+  EXPECT_EQ(segments[2].rawText, "!");
+}
+
+TEST(ParserTest, TemplateStringRawVsCookedEscapes) {
+  auto ast = parseStringToExpr("`a\\nb`");
+
+  ASSERT_NE(ast, nullptr);
+  auto* interp = dynamic_cast<InterpolatedStringAST*>(ast.get());
+  ASSERT_NE(interp, nullptr);
+  const auto& segments = interp->getSegments();
+  ASSERT_EQ(segments.size(), 1u);
+  EXPECT_EQ(segments[0].rawText, "a\\nb");   // escapes unprocessed
+  EXPECT_EQ(segments[0].cookedText, "a\nb");  // escapes processed
 }
 
 // ------------------------------------------------------------------
@@ -198,8 +246,10 @@ TEST(ParserTest, IfExpression) {
   auto* ifExpr = dynamic_cast<IfExprAST*>(ast.get());
   ASSERT_NE(ifExpr, nullptr);
 
-  // Check condition
-  auto* cond = dynamic_cast<BinaryExprAST*>(ifExpr->getCond());
+  // Check condition (the if-condition parens are preserved in the parse tree)
+  auto* condParen = dynamic_cast<ParenExprAST*>(ifExpr->getCond());
+  ASSERT_NE(condParen, nullptr);
+  auto* cond = dynamic_cast<const BinaryExprAST*>(condParen->getInner());
   ASSERT_NE(cond, nullptr);
   EXPECT_EQ(cond->getOp().kind, TokenKind::LESS);
 

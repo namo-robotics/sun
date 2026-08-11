@@ -29,6 +29,7 @@ class Parser {
  private:
   Lexer lexer;
   Token curTok = Token::eof({0, 0, 0});
+  Token prevTok_ = Token::eof({0, 0, 0});  // Last consumed token (span ends)
   std::vector<Token> tokenStack;
 
   // Track whether string interpolation was used during parsing
@@ -54,6 +55,7 @@ class Parser {
                  currentFilePath.empty()
                      ? std::nullopt
                      : std::optional<std::string>(currentFilePath)};
+    loc.setEnd(curTok.end.line, curTok.end.column, curTok.end.offset);
     logParsingError(loc, msg, sourceLine, prevLine);
   }
 
@@ -131,6 +133,7 @@ class Parser {
 
   // Parsing functions
   Token getNextToken() {
+    prevTok_ = curTok;
     if (!tokenStack.empty()) {
       curTok = tokenStack.back();
       tokenStack.pop_back();
@@ -138,6 +141,32 @@ class Parser {
     }
     curTok = lexer.getNextToken();
     return curTok;
+  }
+
+  // Start position of the node about to be parsed (curTok is its first token)
+  Position captureStart() const {
+    Position p = curTok.start;
+    if (!currentFilePath.empty()) p.filePath = currentFilePath;
+    return p;
+  }
+
+  // Stamp span [start, end-of-last-consumed-token] onto a finished node
+  template <typename NodeT>
+  unique_ptr<NodeT> finishNode(unique_ptr<NodeT> node, Position start) const {
+    if (node) {
+      start.setEnd(prevTok_.end.line, prevTok_.end.column,
+                   prevTok_.end.offset);
+      node->setLocation(std::move(start));
+    }
+    return node;
+  }
+
+  // Span variant for left-recursive constructs: start comes from an
+  // already-stamped sub-node's location
+  void extendSpan(ExprAST& node, const Position& start) const {
+    Position loc = start;
+    loc.setEnd(prevTok_.end.line, prevTok_.end.column, prevTok_.end.offset);
+    node.setLocation(std::move(loc));
   }
 
   unique_ptr<ExprAST> parseExpression();

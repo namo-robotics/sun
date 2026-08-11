@@ -34,6 +34,7 @@
 // === Implement all parsing functions ===
 
 std::unique_ptr<ExprAST> Parser::parseNumberExpr() {
+  Position start = captureStart();
   std::unique_ptr<ExprAST> result;
   if (curTok.kind == TokenKind::INTEGER) {
     result = std::make_unique<NumberExprAST>(curTok.getInteger().value());
@@ -41,17 +42,19 @@ std::unique_ptr<ExprAST> Parser::parseNumberExpr() {
     result = std::make_unique<NumberExprAST>(curTok.getFloat().value());
   }
   getNextToken();  // consume the number
-  return result;
+  return finishNode(std::move(result), start);
 }
 
 std::unique_ptr<ExprAST> Parser::parseStringLiteral() {
+  Position start = captureStart();
   auto result = std::make_unique<StringLiteralAST>(curTok.getString().value());
   getNextToken();  // consume the string
-  return result;
+  return finishNode(std::move(result), start);
 }
 
 std::unique_ptr<ExprAST> Parser::parseArrayLiteral() {
   assert(curTok.kind == TokenKind::BRACKET_OPEN);
+  Position start = captureStart();
   getNextToken();  // eat '['
 
   std::vector<std::unique_ptr<ExprAST>> elements;
@@ -59,7 +62,8 @@ std::unique_ptr<ExprAST> Parser::parseArrayLiteral() {
   // Handle empty array
   if (curTok.kind == TokenKind::BRACKET_CLOSE) {
     getNextToken();  // eat ']'
-    return std::make_unique<ArrayLiteralAST>(std::move(elements));
+    return finishNode(std::make_unique<ArrayLiteralAST>(std::move(elements)),
+                      start);
   }
 
   // Parse comma-separated elements
@@ -78,21 +82,24 @@ std::unique_ptr<ExprAST> Parser::parseArrayLiteral() {
   }
 
   getNextToken();  // eat ']'
-  return std::make_unique<ArrayLiteralAST>(std::move(elements));
+  return finishNode(std::make_unique<ArrayLiteralAST>(std::move(elements)),
+                    start);
 }
 
 std::unique_ptr<ExprAST> Parser::parseParenExpr() {
   assert(curTok.kind == TokenKind::PAREN_OPEN);
+  Position start = captureStart();
   getNextToken();  // eat (
   auto v = parseExpression();
   if (!v) return nullptr;
 
   expectCurrentTokenKind(TokenKind::PAREN_CLOSE, "expected ')'");
   getNextToken();  // eat )
-  return v;
+  return finishNode(std::make_unique<ParenExprAST>(std::move(v)), start);
 }
 
 unique_ptr<IfExprAST> Parser::parseIfStatement() {
+  Position start = captureStart();
   getNextToken();  // eat the 'if'
 
   auto Cond = parseExpression();
@@ -145,12 +152,15 @@ unique_ptr<IfExprAST> Parser::parseIfStatement() {
   }
   // No else - Else remains nullptr
 
-  return std::make_unique<IfExprAST>(std::move(Cond), std::move(Then),
-                                     std::move(Else));
+  return finishNode(std::make_unique<IfExprAST>(std::move(Cond),
+                                                std::move(Then),
+                                                std::move(Else)),
+                    start);
 }
 
 // Parse match expression: match value { pattern => expr, ... }
 unique_ptr<MatchExprAST> Parser::parseMatchExpression() {
+  Position start = captureStart();
   getNextToken();  // eat 'match'
 
   // Parse the discriminant expression
@@ -219,13 +229,15 @@ unique_ptr<MatchExprAST> Parser::parseMatchExpression() {
     return nullptr;
   }
 
-  return std::make_unique<MatchExprAST>(std::move(discriminant),
-                                        std::move(arms));
+  return finishNode(
+      std::make_unique<MatchExprAST>(std::move(discriminant), std::move(arms)),
+      start);
 }
 
 // Parse function: function name(args) returnType { body }
 // or: function name<T, U>(args) returnType { body }
 unique_ptr<FunctionAST> Parser::parseFunction() {
+  Position start = captureStart();
   getNextToken();  // eat 'function'
 
   // Allow both regular identifiers and intrinsic identifiers (e.g., __index__)
@@ -264,14 +276,16 @@ unique_ptr<FunctionAST> Parser::parseFunction() {
 
   auto result =
       parseFunctionLiteral(funcName, std::move(typeParameters), false);
-  return unique_ptr<FunctionAST>(static_cast<FunctionAST*>(result.release()));
+  return finishNode(
+      unique_ptr<FunctionAST>(static_cast<FunctionAST*>(result.release())),
+      start);
 }
 
 // Parse lambda: lambda [ref x, ref y] (args) returnType { body }
 // The optional bracketed list declares by-reference captures; all other
 // captures are by value.
 unique_ptr<LambdaAST> Parser::parseLambda() {
-  Position lambdaLoc = curTok.start;
+  Position lambdaLoc = captureStart();
   getNextToken();  // eat 'lambda'
 
   // Optional capture list: [ ref IDENT (, ref IDENT)* ]
@@ -303,8 +317,8 @@ unique_ptr<LambdaAST> Parser::parseLambda() {
 
   auto result = parseFunctionLiteral("", {}, true);  // anonymous function
   auto lambda = unique_ptr<LambdaAST>(static_cast<LambdaAST*>(result.release()));
+  lambda = finishNode(std::move(lambda), std::move(lambdaLoc));
   if (lambda) {
-    lambda->setLocation(lambdaLoc);
     if (!refCaptureNames.empty()) {
       const_cast<PrototypeAST&>(lambda->getProto())
           .setRefCaptureNames(std::move(refCaptureNames));
@@ -317,6 +331,7 @@ unique_ptr<LambdaAST> Parser::parseLambda() {
 unique_ptr<ExprAST> Parser::parseFunctionLiteral(
     const std::string& name, std::vector<std::string> typeParameters,
     bool isLambda) {
+  Position start = captureStart();
   expectCurrentTokenKind(TokenKind::PAREN_OPEN,
                          "Expected '(' in function literal");
 
@@ -402,6 +417,10 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
     }
   }
 
+  // Signature span ends at the last token before the body
+  Position protoLoc = start;
+  protoLoc.setEnd(prevTok_.end.line, prevTok_.end.column, prevTok_.end.offset);
+
   // Parse function body
   expectCurrentTokenKind(TokenKind::BRACE_OPEN,
                          "Expected '{' to start function body");
@@ -412,16 +431,21 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
   auto proto = std::make_unique<PrototypeAST>(
       name, std::move(args), std::move(retType), std::move(typeParameters),
       std::move(variadicParamName), std::move(variadicConstraint));
+  proto->setLocation(std::move(protoLoc));
   if (isLambda) {
-    return std::make_unique<LambdaAST>(std::move(proto), std::move(body));
+    return finishNode(
+        std::make_unique<LambdaAST>(std::move(proto), std::move(body)), start);
   } else {
-    return std::make_unique<FunctionAST>(std::move(proto), std::move(body));
+    return finishNode(
+        std::make_unique<FunctionAST>(std::move(proto), std::move(body)),
+        start);
   }
 }
 
 // Internal helper that parses var declaration without consuming trailing
 // semicolon
 unique_ptr<VariableCreationAST> Parser::parseVarDeclaration() {
+  Position start = captureStart();
   getNextToken();  // eat the 'var'
 
   // At least one variable name is required
@@ -449,8 +473,9 @@ unique_ptr<VariableCreationAST> Parser::parseVarDeclaration() {
     parsingError("variable initialization expression expected");
   }
 
-  return std::make_unique<VariableCreationAST>(name, std::move(value),
-                                               std::move(typeAnnot));
+  return finishNode(std::make_unique<VariableCreationAST>(
+                        name, std::move(value), std::move(typeAnnot)),
+                    start);
 }
 
 unique_ptr<VariableCreationAST> Parser::parseVarStatement() {
@@ -464,8 +489,8 @@ unique_ptr<VariableCreationAST> Parser::parseVarStatement() {
 }
 
 unique_ptr<ReferenceCreationAST> Parser::parseRefStatement() {
-  Position refLoc = curTok.start;  // Capture location of 'ref' keyword
-  getNextToken();                  // eat the 'ref'
+  Position refLoc = captureStart();  // Capture location of 'ref' keyword
+  getNextToken();                    // eat the 'ref'
 
   // Check for 'const' modifier: ref const x = y
   bool isMutable = true;
@@ -496,25 +521,24 @@ unique_ptr<ReferenceCreationAST> Parser::parseRefStatement() {
                          "expected ';' after reference declaration");
   getNextToken();  // eat ';'
 
-  return std::make_unique<ReferenceCreationAST>(name, std::move(target),
-                                                isMutable, refLoc);
+  return finishNode(std::make_unique<ReferenceCreationAST>(
+                        name, std::move(target), isMutable, refLoc),
+                    refLoc);
 }
 
 unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
   std::string idName = std::get<std::string>(curTok.value);
   // Create position with file path and end position
-  Position idLoc{curTok.start.line, curTok.start.column, curTok.start.offset,
-                 currentFilePath.empty()
-                     ? std::nullopt
-                     : std::optional<std::string>(currentFilePath)};
-  idLoc.setEnd(curTok.end.line, curTok.end.column);
+  Position idLoc = captureStart();
+  idLoc.setEnd(curTok.end.line, curTok.end.column, curTok.end.offset);
 
   getNextToken();  // eat identifier
 
   // Check for pack expansion: args...
   if (curTok.kind == TokenKind::ELLIPSIS) {
     getNextToken();  // eat '...'
-    return std::make_unique<PackExpansionAST>(std::move(idName));
+    return finishNode(std::make_unique<PackExpansionAST>(std::move(idName)),
+                      idLoc);
   }
 
   // Note: We don't parse dot-based qualified names (like sun.Vec) here.
@@ -527,6 +551,7 @@ unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
     // Could be a generic call or a comparison - use backtracking to decide
     // Save parser state for backtracking
     Token savedCurTok = curTok;
+    Token savedPrevTok = prevTok_;
     auto savedLexerPos = lexer.getPosition();
     auto savedTokenStack = tokenStack;
 
@@ -579,14 +604,17 @@ unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
           getNextToken();  // eat ')'
 
           // Create a GenericCallAST node
-          return std::make_unique<GenericCallAST>(
-              std::move(idName), std::move(typeArgs), std::move(args));
+          return finishNode(
+              std::make_unique<GenericCallAST>(
+                  std::move(idName), std::move(typeArgs), std::move(args)),
+              idLoc);
         }
       }
     }
 
     // Not a generic call - backtrack to before '<'
     curTok = savedCurTok;
+    prevTok_ = savedPrevTok;
     lexer.setPosition(savedLexerPos);
     tokenStack = savedTokenStack;
   }
@@ -595,7 +623,7 @@ unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
   // parsing This allows for first-class function support where variables can
   // hold functions
   auto varRef = std::make_unique<VariableReferenceAST>(idName);
-  varRef->setLocation(idLoc);
+  varRef->setLocation(idLoc);  // end already set from the identifier token
   return varRef;
 }
 
@@ -610,13 +638,15 @@ unique_ptr<ExprAST> Parser::parseUnary() {
 
   if (curTok.kind == TokenKind::MINUS || curTok.kind == TokenKind::NOT ||
       curTok.kind == TokenKind::TILDE) {
+    Position start = captureStart();
     Token opTok = curTok;
     getNextToken();  // eat the operator
 
     auto operand = parseUnary();
     if (!operand) return nullptr;
 
-    return std::make_unique<UnaryExprAST>(opTok, std::move(operand));
+    return finishNode(
+        std::make_unique<UnaryExprAST>(opTok, std::move(operand)), start);
   }
 
   return parsePrimary();
@@ -649,10 +679,12 @@ unique_ptr<ExprAST> Parser::parsePrimary() {
     case TokenKind::TEMPLATE_STRING: {
       // Parse interpolated template string: `Hello ${name}!`
       std::string content = curTok.getTemplateString().value();
-      Position loc = curTok.start;
+      Position tokStart = curTok.start;
+      Position tokEnd = curTok.end;
       getNextToken();  // consume the template string token
       usesStringInterpolation_ = true;
-      base = InterpolatedStringParser::parse(content, loc);
+      base = InterpolatedStringParser::parseToAst(content, tokStart, tokEnd,
+                                                  currentFilePath);
       break;
     }
     case TokenKind::PAREN_OPEN:
@@ -667,10 +699,13 @@ unique_ptr<ExprAST> Parser::parsePrimary() {
     case TokenKind::VAR:
       base = parseVarStatement();
       break;
-    case TokenKind::THIS:
+    case TokenKind::THIS: {
+      Position start = captureStart();
       base = std::make_unique<ThisExprAST>();
       getNextToken();  // eat 'this'
+      base = finishNode(std::move(base), start);
       break;
+    }
     case TokenKind::FUNCTION:
       parsingError(
           "'function' cannot be used as an expression; use 'lambda' instead");
@@ -678,15 +713,17 @@ unique_ptr<ExprAST> Parser::parsePrimary() {
     case TokenKind::LAMBDA:
       base = parseLambda();
       break;
-    case TokenKind::TRY:
+    case TokenKind::TRY: {
       // try { ... } catch (e: IError) { ... } syntax
+      Position start = captureStart();
       getNextToken();  // eat 'try'
       if (curTok.kind != TokenKind::BRACE_OPEN) {
         parsingError("expected '{' after 'try'");
         return nullptr;
       }
-      base = parseTryCatch();
+      base = finishNode(parseTryCatch(), start);
       break;
+    }
     case TokenKind::THROW:
       base = parseThrow();
       break;
@@ -696,18 +733,27 @@ unique_ptr<ExprAST> Parser::parsePrimary() {
     case TokenKind::UNSAFE:
       base = parseUnsafeBlock();
       break;
-    case TokenKind::NULL_LITERAL:
+    case TokenKind::NULL_LITERAL: {
+      Position start = captureStart();
       base = std::make_unique<NullLiteralAST>();
       getNextToken();  // eat 'null'
+      base = finishNode(std::move(base), start);
       break;
-    case TokenKind::TRUE_LITERAL:
+    }
+    case TokenKind::TRUE_LITERAL: {
+      Position start = captureStart();
       base = std::make_unique<BoolLiteralAST>(true);
       getNextToken();  // eat 'true'
+      base = finishNode(std::move(base), start);
       break;
-    case TokenKind::FALSE_LITERAL:
+    }
+    case TokenKind::FALSE_LITERAL: {
+      Position start = captureStart();
       base = std::make_unique<BoolLiteralAST>(false);
       getNextToken();  // eat 'false'
+      base = finishNode(std::move(base), start);
       break;
+    }
     case TokenKind::BRACKET_OPEN:
       base = parseArrayLiteral();
       break;
@@ -733,6 +779,7 @@ unique_ptr<ExprAST> Parser::parsePostfixExpr(unique_ptr<ExprAST> base) {
         while (true) {
           // Parse slice component: either single index or range slice
           // Cases: expr, :, :expr, expr:, expr:expr
+          Position compStart = captureStart();
           std::unique_ptr<ExprAST> start = nullptr;
           std::unique_ptr<ExprAST> end = nullptr;
           bool isRange = false;
@@ -769,10 +816,13 @@ unique_ptr<ExprAST> Parser::parsePostfixExpr(unique_ptr<ExprAST> base) {
 
           // Create the appropriate SliceExprAST
           if (isRange) {
-            indices.push_back(std::make_unique<SliceExprAST>(
-                std::move(start), std::move(end), true));
+            indices.push_back(finishNode(
+                std::make_unique<SliceExprAST>(std::move(start),
+                                               std::move(end), true),
+                compStart));
           } else {
-            indices.push_back(std::make_unique<SliceExprAST>(std::move(start)));
+            indices.push_back(finishNode(
+                std::make_unique<SliceExprAST>(std::move(start)), compStart));
           }
 
           if (curTok.kind == TokenKind::BRACKET_CLOSE) break;
@@ -791,7 +841,9 @@ unique_ptr<ExprAST> Parser::parsePostfixExpr(unique_ptr<ExprAST> base) {
         return nullptr;
       }
 
+      Position baseStart = base->getLocation();
       base = std::make_unique<IndexAST>(std::move(base), std::move(indices));
+      extendSpan(*base, baseStart);
     } else if (curTok.kind == TokenKind::DOT) {
       getNextToken();  // eat '.'
 
@@ -809,6 +861,7 @@ unique_ptr<ExprAST> Parser::parsePostfixExpr(unique_ptr<ExprAST> base) {
       if (curTok.kind == TokenKind::LESS) {
         // Save parser state for backtracking
         Token savedCurTok = curTok;
+        Token savedPrevTok = prevTok_;
         auto savedLexerPos = lexer.getPosition();
         auto savedTokenStack = tokenStack;
 
@@ -848,13 +901,16 @@ unique_ptr<ExprAST> Parser::parsePostfixExpr(unique_ptr<ExprAST> base) {
         if (!isGenericMethod) {
           // Not a generic method call - backtrack
           curTok = savedCurTok;
+          prevTok_ = savedPrevTok;
           lexer.setPosition(savedLexerPos);
           tokenStack = savedTokenStack;
         }
       }
 
+      Position baseStart = base->getLocation();
       base = std::make_unique<MemberAccessAST>(
           std::move(base), std::move(memberName), std::move(typeArgs));
+      extendSpan(*base, baseStart);
     } else {
       // Function call as postfix: base(args)
       // This handles indirect calls through function pointer variables
@@ -880,10 +936,10 @@ unique_ptr<ExprAST> Parser::parsePostfixExpr(unique_ptr<ExprAST> base) {
       getNextToken();  // eat ')'
 
       // Create a unified call expression (callee is an expression)
-      // Use the callee's location for the call
+      // The call spans from the callee's start to the closing ')'
       Position callLoc = base->getLocation();
       base = std::make_unique<CallExprAST>(std::move(base), std::move(args));
-      base->setLocation(callLoc);
+      extendSpan(*base, callLoc);
     }
   }
 
@@ -1198,10 +1254,13 @@ unique_ptr<ExprAST> Parser::finishVariableAssignment(const std::string& name,
   if (compoundToBinaryOp(opTok.kind)) {
     auto target = std::make_unique<VariableReferenceAST>(name);
     target->setLocation(namePos);
-    return std::make_unique<CompoundAssignmentAST>(std::move(target), opTok,
-                                                   std::move(value));
+    return finishNode(std::make_unique<CompoundAssignmentAST>(
+                          std::move(target), opTok, std::move(value)),
+                      namePos);
   }
-  return std::make_unique<VariableAssignmentAST>(name, std::move(value));
+  return finishNode(
+      std::make_unique<VariableAssignmentAST>(name, std::move(value)),
+      namePos);
 }
 
 // Shared tail for `a.b = rhs` / `a.b op= rhs` / `this.f op= rhs` once the
@@ -1218,10 +1277,12 @@ unique_ptr<ExprAST> Parser::finishMemberAssignment(unique_ptr<ExprAST> lhs) {
   else
     parsingError("expected ';' after member assignment");
 
+  Position start = lhs->getLocation();
   if (compoundToBinaryOp(opTok.kind)) {
     // Compound: keep the whole member access as the assignment target
-    return std::make_unique<CompoundAssignmentAST>(std::move(lhs), opTok,
-                                                   std::move(value));
+    return finishNode(std::make_unique<CompoundAssignmentAST>(
+                          std::move(lhs), opTok, std::move(value)),
+                      start);
   }
 
   // Extract object and member from MemberAccessAST; releaseObject preserves
@@ -1230,8 +1291,10 @@ unique_ptr<ExprAST> Parser::finishMemberAssignment(unique_ptr<ExprAST> lhs) {
   std::string memberName = memberAccess->getMemberName();
   auto object = memberAccess->releaseObject();
 
-  return std::make_unique<MemberAssignmentAST>(
-      std::move(object), std::move(memberName), std::move(value));
+  return finishNode(
+      std::make_unique<MemberAssignmentAST>(
+          std::move(object), std::move(memberName), std::move(value)),
+      start);
 }
 
 unique_ptr<ExprAST> Parser::parseAssignmentOrExpression() {
@@ -1269,12 +1332,15 @@ unique_ptr<ExprAST> Parser::parseAssignmentOrExpression() {
     else
       parsingError("expected ';' after indexed assignment");
 
+    Position start = expr->getLocation();
     if (compoundToBinaryOp(opTok.kind)) {
-      return std::make_unique<CompoundAssignmentAST>(std::move(expr), opTok,
-                                                     std::move(value));
+      return finishNode(std::make_unique<CompoundAssignmentAST>(
+                            std::move(expr), opTok, std::move(value)),
+                        start);
     }
-    return std::make_unique<IndexedAssignmentAST>(std::move(expr),
-                                                  std::move(value));
+    return finishNode(std::make_unique<IndexedAssignmentAST>(std::move(expr),
+                                                             std::move(value)),
+                      start);
   }
 
   // Check for member assignment: a.b = value, a.b.c.d = value, a.b op= value
@@ -1317,9 +1383,11 @@ unique_ptr<ExprAST> Parser::parseExpression() {
     getNextToken();  // eat ':'
     auto elseExpr = parseExpression();
     if (!elseExpr) return nullptr;
-    return std::make_unique<TernaryExprAST>(std::move(expr),
-                                            std::move(thenExpr),
-                                            std::move(elseExpr), qLoc);
+    Position start = expr->getLocation();
+    auto ternary = std::make_unique<TernaryExprAST>(
+        std::move(expr), std::move(thenExpr), std::move(elseExpr), qLoc);
+    extendSpan(*ternary, start);
+    return ternary;
   }
   return expr;
 }
@@ -1340,12 +1408,15 @@ std::unique_ptr<ExprAST> Parser::parseBinOpRhs(int exprPrec,
       if (!rhs) return nullptr;
     }
 
+    Position start = lhs->getLocation();
     lhs =
         std::make_unique<BinaryExprAST>(binOp, std::move(lhs), std::move(rhs));
+    extendSpan(*lhs, start);
   }
 }
 
 std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
+  Position start = captureStart();
   std::string fnName;
 
   // Allow both regular identifiers and intrinsic identifiers (e.g., __index__)
@@ -1399,8 +1470,11 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
          curTok.kind == TokenKind::UNDERSCORE)) {
       retType = parseTypeAnnotation();
     }
-    return std::make_unique<PrototypeAST>(
+    auto proto = std::make_unique<PrototypeAST>(
         fnName, std::move(args), std::move(retType), std::move(typeParameters));
+    start.setEnd(prevTok_.end.line, prevTok_.end.column, prevTok_.end.offset);
+    proto->setLocation(std::move(start));
+    return proto;
   }
 
   std::optional<std::string> variadicParamName;
@@ -1456,12 +1530,16 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
     retType = parseTypeAnnotation();
   }
 
-  return std::make_unique<PrototypeAST>(
+  auto proto = std::make_unique<PrototypeAST>(
       fnName, std::move(args), std::move(retType), std::move(typeParameters),
       std::move(variadicParamName), std::move(variadicConstraint));
+  start.setEnd(prevTok_.end.line, prevTok_.end.column, prevTok_.end.offset);
+  proto->setLocation(std::move(start));
+  return proto;
 }
 
 unique_ptr<BlockExprAST> Parser::parseBlock() {
+  Position start = captureStart();
   std::vector<unique_ptr<ExprAST>> body;
 
   expectCurrentTokenKind(TokenKind::BRACE_OPEN, "expected '{'");
@@ -1481,10 +1559,11 @@ unique_ptr<BlockExprAST> Parser::parseBlock() {
 
   getNextToken();  // eat }
 
-  return std::make_unique<BlockExprAST>(std::move(body));
+  return finishNode(std::make_unique<BlockExprAST>(std::move(body)), start);
 }
 
 unique_ptr<BlockExprAST> Parser::parseProgram() {
+  Position start = captureStart();
   std::vector<unique_ptr<ExprAST>> body;
 
   while (curTok.kind != TokenKind::BRACE_CLOSE &&
@@ -1496,7 +1575,7 @@ unique_ptr<BlockExprAST> Parser::parseProgram() {
     // consumption
   }
 
-  return std::make_unique<BlockExprAST>(std::move(body));
+  return finishNode(std::make_unique<BlockExprAST>(std::move(body)), start);
 }
 
 unique_ptr<ExprAST> Parser::parseStatement() {
@@ -1581,11 +1660,13 @@ unique_ptr<ExprAST> Parser::parseStatement() {
       return parseContinue();  // returns ContinueAST
     case TokenKind::EXTERN: {
       // External function declaration: extern function name(args) ret;
+      Position start = captureStart();
       auto proto = parseExtern();
       if (curTok.kind == TokenKind::SEMI_COLON)
         getNextToken();  // eat optional semicolon
       // Wrap prototype in a FunctionAST with no body (nullptr)
-      return std::make_unique<FunctionAST>(std::move(proto), nullptr);
+      return finishNode(
+          std::make_unique<FunctionAST>(std::move(proto), nullptr), start);
     }
     case TokenKind::FUNCTION: {
       // Function definitions don't need trailing semicolons
@@ -1599,8 +1680,10 @@ unique_ptr<ExprAST> Parser::parseStatement() {
     }
     case TokenKind::THIS: {
       // Handle this.field = value; or this.method(...);
+      Position start = captureStart();
       auto thisExpr = std::make_unique<ThisExprAST>();
       getNextToken();  // eat 'this'
+      thisExpr = finishNode(std::move(thisExpr), start);
 
       // Must be followed by '.'
       if (curTok.kind != TokenKind::DOT) {
@@ -1625,8 +1708,9 @@ unique_ptr<ExprAST> Parser::parseStatement() {
         parsingError("expected ';' after expression statement");
       return lhs;
     }
-    case TokenKind::RETURN:
+    case TokenKind::RETURN: {
       // parse return <expr>; or return;
+      Position start = captureStart();
       getNextToken();  // eat 'return'
       {
         std::unique_ptr<ExprAST> expr;
@@ -1641,17 +1725,20 @@ unique_ptr<ExprAST> Parser::parseStatement() {
         else
           parsingError("expected ';' after return statement");
 
-        return std::make_unique<ReturnExprAST>(std::move(expr));
+        return finishNode(std::make_unique<ReturnExprAST>(std::move(expr)),
+                          start);
       }
+    }
     case TokenKind::TRY: {
       // try { ... } catch (e: IError) { ... } syntax
+      Position start = captureStart();
       getNextToken();  // eat 'try'
       std::unique_ptr<ExprAST> tryExpr;
       if (curTok.kind != TokenKind::BRACE_OPEN) {
         parsingError("expected '{' after 'try'");
         return nullptr;
       }
-      tryExpr = parseTryCatch();
+      tryExpr = finishNode(parseTryCatch(), start);
       while (curTok.kind == TokenKind::SEMI_COLON)
         getNextToken();  // optional semicolons
       return tryExpr;
@@ -1683,6 +1770,7 @@ unique_ptr<ExprAST> Parser::parseStatement() {
 }
 
 unique_ptr<ExprAST> Parser::parseForLoop() {
+  Position forStart = captureStart();
   getNextToken();  // eat 'for'
 
   expectCurrentTokenKind(TokenKind::PAREN_OPEN, "Expected '(' after 'for'");
@@ -1693,6 +1781,7 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
   if (curTok.kind == TokenKind::VAR) {
     // Save state for potential backtracking
     Token savedCurTok = curTok;
+    Token savedPrevTok = prevTok_;
     auto savedLexerPos = lexer.getPosition();
     auto savedTokenStack = tokenStack;
 
@@ -1737,15 +1826,19 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
             body = std::move(bodyBlock);
           }
 
-          return std::make_unique<ForInExprAST>(
-              std::move(varName), std::move(typeAnnot), std::move(iterable),
-              std::move(body));
+          return finishNode(
+              std::make_unique<ForInExprAST>(std::move(varName),
+                                             std::move(typeAnnot),
+                                             std::move(iterable),
+                                             std::move(body)),
+              forStart);
         }
       }
     }
 
     // Not a for-in loop, backtrack and continue with traditional for loop
     curTok = savedCurTok;
+    prevTok_ = savedPrevTok;
     lexer.setPosition(savedLexerPos);
     tokenStack = savedTokenStack;
   }
@@ -1785,6 +1878,7 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
     if (curTok.kind == TokenKind::IDENTIFIER) {
       auto savedPos = lexer.getPosition();
       auto savedTok = curTok;
+      Token savedPrevTok = prevTok_;
       std::string idName = std::get<std::string>(curTok.value);
       getNextToken();
 
@@ -1796,6 +1890,7 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
         // Not an assignment, backtrack and parse as expression
         lexer.setPosition(savedPos);
         curTok = savedTok;
+        prevTok_ = savedPrevTok;
         increment = parseExpression();
       }
     } else {
@@ -1826,11 +1921,14 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
     body = std::move(bodyBlock);
   }
 
-  return std::make_unique<ForExprAST>(std::move(init), std::move(condition),
-                                      std::move(increment), std::move(body));
+  return finishNode(
+      std::make_unique<ForExprAST>(std::move(init), std::move(condition),
+                                   std::move(increment), std::move(body)),
+      forStart);
 }
 
 unique_ptr<WhileExprAST> Parser::parseWhileLoop() {
+  Position start = captureStart();
   getNextToken();  // eat 'while'
 
   expectCurrentTokenKind(TokenKind::PAREN_OPEN, "Expected '(' after 'while'");
@@ -1861,10 +1959,13 @@ unique_ptr<WhileExprAST> Parser::parseWhileLoop() {
     body = std::move(bodyBlock);
   }
 
-  return std::make_unique<WhileExprAST>(std::move(condition), std::move(body));
+  return finishNode(
+      std::make_unique<WhileExprAST>(std::move(condition), std::move(body)),
+      start);
 }
 
 unique_ptr<BreakAST> Parser::parseBreak() {
+  Position start = captureStart();
   getNextToken();  // eat 'break'
 
   // Expect semicolon after break
@@ -1872,10 +1973,11 @@ unique_ptr<BreakAST> Parser::parseBreak() {
     getNextToken();  // eat ';'
   }
 
-  return std::make_unique<BreakAST>();
+  return finishNode(std::make_unique<BreakAST>(), start);
 }
 
 unique_ptr<ContinueAST> Parser::parseContinue() {
+  Position start = captureStart();
   getNextToken();  // eat 'continue'
 
   // Expect semicolon after continue
@@ -1883,7 +1985,7 @@ unique_ptr<ContinueAST> Parser::parseContinue() {
     getNextToken();  // eat ';'
   }
 
-  return std::make_unique<ContinueAST>();
+  return finishNode(std::make_unique<ContinueAST>(), start);
 }
 
 std::unique_ptr<PrototypeAST> Parser::parseExtern() {
@@ -1905,6 +2007,7 @@ std::unique_ptr<PrototypeAST> Parser::parseExtern() {
 //   moons = ( "lib.moon", { path = "x.moon", hash = "def", rename = "y" } )
 // }
 unique_ptr<ManifestAST> Parser::parseManifest() {
+  Position start = captureStart();
   getNextToken();  // eat 'manifest'
 
   expectCurrentTokenKind(TokenKind::BRACE_OPEN,
@@ -1936,7 +2039,8 @@ unique_ptr<ManifestAST> Parser::parseManifest() {
                          "expected '}' at end of manifest block");
   getNextToken();  // eat '}'
 
-  return std::make_unique<ManifestAST>(std::move(suns), std::move(moons));
+  return finishNode(
+      std::make_unique<ManifestAST>(std::move(suns), std::move(moons)), start);
 }
 
 // Parse suns array: [ "file.sun", { path: "other.sun", hash: "abc" } ]
@@ -2087,6 +2191,7 @@ std::vector<ManifestMoonDependency> Parser::parseManifestMoons() {
 // - Forward function declaration: declare function name(args) RetType;
 // - Type declaration: declare [Alias =] Type<Args>;
 unique_ptr<ExprAST> Parser::parseDeclareStatement() {
+  Position declStart = captureStart();
   getNextToken();  // eat 'declare'
 
   // Check for forward function declaration: declare function name(args)
@@ -2100,7 +2205,8 @@ unique_ptr<ExprAST> Parser::parseDeclareStatement() {
     }
     getNextToken();  // eat ';'
     // Return FunctionAST with no body (forward declaration)
-    return std::make_unique<FunctionAST>(std::move(proto), nullptr);
+    return finishNode(
+        std::make_unique<FunctionAST>(std::move(proto), nullptr), declStart);
   }
 
   std::optional<std::string> alias;
@@ -2141,7 +2247,9 @@ unique_ptr<ExprAST> Parser::parseDeclareStatement() {
                              "expected ';' after declare statement");
       getNextToken();  // eat ';'
 
-      return std::make_unique<DeclareTypeAST>(std::move(typeAnnot), alias);
+      return finishNode(
+          std::make_unique<DeclareTypeAST>(std::move(typeAnnot), alias),
+          declStart);
     }
   } else {
     parsingError("expected 'function' or type name after 'declare'");
@@ -2155,7 +2263,9 @@ unique_ptr<ExprAST> Parser::parseDeclareStatement() {
                          "expected ';' after declare statement");
   getNextToken();  // eat ';'
 
-  return std::make_unique<DeclareTypeAST>(std::move(typeAnnot), alias);
+  return finishNode(
+      std::make_unique<DeclareTypeAST>(std::move(typeAnnot), alias),
+      declStart);
 }
 
 // Parse module declaration: module Name { declarations... }
@@ -2163,6 +2273,7 @@ unique_ptr<ExprAST> Parser::parseDeclareStatement() {
 //   module sun.io { } expands to module sun { module io { } }
 // Supports both 'module' (preferred) and 'namespace' (legacy) keywords
 unique_ptr<ModuleAST> Parser::parseModuleDecl() {
+  Position start = captureStart();
   getNextToken();  // eat 'module' or 'namespace'
 
   expectCurrentTokenKind(TokenKind::IDENTIFIER, "expected module name");
@@ -2194,14 +2305,16 @@ unique_ptr<ModuleAST> Parser::parseModuleDecl() {
       std::make_unique<ModuleAST>(std::move(names.back()), std::move(body));
   names.pop_back();
 
-  std::unique_ptr<ModuleAST> result = std::move(innermost);
+  std::unique_ptr<ModuleAST> result =
+      finishNode(std::move(innermost), start);
   for (auto it = names.rbegin(); it != names.rend(); ++it) {
     // Wrap current result in a new block containing just this module
     std::vector<std::unique_ptr<ExprAST>> stmts;
     stmts.push_back(std::move(result));
     auto wrapperBody = std::make_unique<BlockExprAST>(std::move(stmts));
-    result =
-        std::make_unique<ModuleAST>(std::move(*it), std::move(wrapperBody));
+    result = finishNode(
+        std::make_unique<ModuleAST>(std::move(*it), std::move(wrapperBody)),
+        start);
   }
 
   return result;
@@ -2211,6 +2324,7 @@ unique_ptr<ModuleAST> Parser::parseModuleDecl() {
 //   using sun;           -> import all from sun
 //   using sun.Vec;       -> import specific symbol Vec from sun
 unique_ptr<UsingAST> Parser::parseUsingStatement() {
+  Position start = captureStart();
   getNextToken();  // eat 'using'
 
   std::vector<std::string> namespacePath;
@@ -2229,8 +2343,9 @@ unique_ptr<UsingAST> Parser::parseUsingStatement() {
     namespacePath.push_back(std::move(firstName));
     target = "*";
     getNextToken();  // eat ';'
-    return std::make_unique<UsingAST>(std::move(namespacePath),
-                                      std::move(target));
+    return finishNode(std::make_unique<UsingAST>(std::move(namespacePath),
+                                                 std::move(target)),
+                      start);
   }
 
   // Dot-based path: using sun.Vec; or using sun.nested.Vec;
@@ -2268,8 +2383,9 @@ unique_ptr<UsingAST> Parser::parseUsingStatement() {
   }
   getNextToken();  // eat ';'
 
-  return std::make_unique<UsingAST>(std::move(namespacePath),
-                                    std::move(target));
+  return finishNode(std::make_unique<UsingAST>(std::move(namespacePath),
+                                               std::move(target)),
+                    start);
 }
 
 // Parse a qualified name (Module.name) or simple identifier
@@ -2278,6 +2394,7 @@ unique_ptr<ExprAST> Parser::parseQualifiedOrSimpleName() {
     return nullptr;
   }
 
+  Position start = captureStart();
   std::string firstName = curTok.getIdentifier().value();
   getNextToken();  // eat first identifier
 
@@ -2296,11 +2413,13 @@ unique_ptr<ExprAST> Parser::parseQualifiedOrSimpleName() {
       getNextToken();  // eat identifier
     }
 
-    return std::make_unique<QualifiedNameAST>(std::move(parts));
+    return finishNode(std::make_unique<QualifiedNameAST>(std::move(parts)),
+                      start);
   }
 
   // Simple identifier - return as variable reference
-  return std::make_unique<VariableReferenceAST>(std::move(firstName));
+  return finishNode(
+      std::make_unique<VariableReferenceAST>(std::move(firstName)), start);
 }
 
 // Handle import of a precompiled .moon file
@@ -2831,6 +2950,7 @@ std::unique_ptr<BlockExprAST> Parser::parseString(const std::string& source) {
 // Parse class definition: class ClassName implements Interface1, Interface2 {
 // fields and methods }
 unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
+  Position start = captureStart();
   getNextToken();  // eat 'class'
 
   if (curTok.kind != TokenKind::IDENTIFIER) {
@@ -2927,7 +3047,8 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
       expectCurrentTokenKind(TokenKind::IDENTIFIER,
                              "expected field name in class definition");
 
-      Position fieldLoc = curTok.start;  // Capture location before eating token
+      Position fieldLoc = captureStart();  // Location before eating token
+      fieldLoc.setEnd(curTok.end.line, curTok.end.column, curTok.end.offset);
       std::string fieldName = curTok.getIdentifier().value();
       getNextToken();  // eat field name
 
@@ -2972,14 +3093,18 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
                          "expected '}' at end of class definition");
   getNextToken();  // eat '}'
 
-  return std::make_unique<ClassDefinitionAST>(
-      std::move(className), std::move(typeParameters),
-      std::move(implementedInterfaces), std::move(fields), std::move(methods));
+  return finishNode(
+      std::make_unique<ClassDefinitionAST>(
+          std::move(className), std::move(typeParameters),
+          std::move(implementedInterfaces), std::move(fields),
+          std::move(methods)),
+      start);
 }
 
 // Parse interface definition: interface InterfaceName<T, U> { fields and
 // methods } Methods can have optional default implementations
 unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
+  Position start = captureStart();
   getNextToken();  // eat 'interface'
 
   expectCurrentTokenKind(TokenKind::IDENTIFIER,
@@ -3038,7 +3163,8 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
         return nullptr;
       }
 
-      Position fieldLoc = curTok.start;  // Capture location before eating token
+      Position fieldLoc = captureStart();  // Location before eating token
+      fieldLoc.setEnd(curTok.end.line, curTok.end.column, curTok.end.offset);
       std::string fieldName = curTok.getIdentifier().value();
       getNextToken();  // eat field name
 
@@ -3065,6 +3191,7 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
       // 2. Full method with default impl: function name(args) returnType { body
       // }
 
+      Position methodStart = captureStart();
       getNextToken();  // eat 'function'
 
       // Allow both regular identifiers and intrinsic identifiers
@@ -3160,6 +3287,11 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
         retType = parseTypeAnnotation();
       }
 
+      // Signature span ends at the last token before the body/semicolon
+      Position protoLoc = methodStart;
+      protoLoc.setEnd(prevTok_.end.line, prevTok_.end.column,
+                      prevTok_.end.offset);
+
       bool hasDefaultImpl = false;
       std::unique_ptr<BlockExprAST> body;
 
@@ -3184,8 +3316,10 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
           funcName, std::move(args), std::move(retType),
           std::move(typeParameters), std::move(variadicParamName),
           std::move(variadicConstraint));
-      auto func =
-          std::make_unique<FunctionAST>(std::move(proto), std::move(body));
+      proto->setLocation(std::move(protoLoc));
+      auto func = finishNode(
+          std::make_unique<FunctionAST>(std::move(proto), std::move(body)),
+          methodStart);
 
       InterfaceMethodDecl method;
       method.function = std::move(func);
@@ -3205,14 +3339,16 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
                          "expected '}' at end of interface definition");
   getNextToken();  // eat '}'
 
-  return std::make_unique<InterfaceDefinitionAST>(
-      std::move(interfaceName), std::move(typeParameters), std::move(fields),
-      std::move(methods));
+  return finishNode(std::make_unique<InterfaceDefinitionAST>(
+                        std::move(interfaceName), std::move(typeParameters),
+                        std::move(fields), std::move(methods)),
+                    start);
 }
 
 // Parse enum definition: enum Name { Variant1, Variant2, ... }
 // Syntax: enum ColorName { Red, Green, Blue }
 unique_ptr<EnumDefinitionAST> Parser::parseEnumDefinition() {
+  Position start = captureStart();
   getNextToken();  // eat 'enum'
 
   expectCurrentTokenKind(TokenKind::IDENTIFIER,
@@ -3233,7 +3369,8 @@ unique_ptr<EnumDefinitionAST> Parser::parseEnumDefinition() {
     expectCurrentTokenKind(TokenKind::IDENTIFIER,
                            "expected variant name in enum definition");
 
-    Position variantLoc = curTok.start;
+    Position variantLoc = captureStart();
+    variantLoc.setEnd(curTok.end.line, curTok.end.column, curTok.end.offset);
     std::string variantName = curTok.getIdentifier().value();
     getNextToken();  // eat variant name
 
@@ -3263,13 +3400,15 @@ unique_ptr<EnumDefinitionAST> Parser::parseEnumDefinition() {
     return nullptr;
   }
 
-  return std::make_unique<EnumDefinitionAST>(std::move(enumName),
-                                             std::move(variants));
+  return finishNode(std::make_unique<EnumDefinitionAST>(std::move(enumName),
+                                                        std::move(variants)),
+                    start);
 }
 
 // Parse throw expression: throw <expr>
 // Syntax: throw errorExpr;
 unique_ptr<ExprAST> Parser::parseThrow() {
+  Position start = captureStart();
   getNextToken();  // eat 'throw'
 
   // Parse the error expression being thrown
@@ -3279,13 +3418,14 @@ unique_ptr<ExprAST> Parser::parseThrow() {
     return nullptr;
   }
 
-  return std::make_unique<ThrowExprAST>(std::move(errorExpr));
+  return finishNode(std::make_unique<ThrowExprAST>(std::move(errorExpr)),
+                    start);
 }
 
 // Parse spawn expression: spawn(lambda)
 // Creates an OS thread that runs the lambda and returns Thread<T>
 unique_ptr<ExprAST> Parser::parseSpawn() {
-  Position loc = curTok.start;
+  Position loc = captureStart();
   getNextToken();  // eat 'spawn'
 
   // Expect '('
@@ -3309,14 +3449,13 @@ unique_ptr<ExprAST> Parser::parseSpawn() {
   }
   getNextToken();  // eat ')'
 
-  auto spawn = std::make_unique<SpawnExprAST>(std::move(lambdaExpr));
-  spawn->setLocation(loc);
-  return spawn;
+  return finishNode(std::make_unique<SpawnExprAST>(std::move(lambdaExpr)),
+                    loc);
 }
 
 // Parse unsafe block: unsafe { ... }
 unique_ptr<ExprAST> Parser::parseUnsafeBlock() {
-  Position loc = curTok.start;
+  Position loc = captureStart();
   getNextToken();  // eat 'unsafe'
 
   if (curTok.kind != TokenKind::BRACE_OPEN) {
@@ -3330,15 +3469,15 @@ unique_ptr<ExprAST> Parser::parseUnsafeBlock() {
     return nullptr;
   }
 
-  auto unsafeBlock = std::make_unique<UnsafeBlockAST>(std::move(body));
-  unsafeBlock->setLocation(loc);
-  return unsafeBlock;
+  return finishNode(std::make_unique<UnsafeBlockAST>(std::move(body)), loc);
 }
 
 // Parse try-catch expression: try { ... } catch (e: IError) { ... }
 // Note: 'try' has already been consumed; we're at '{'
 unique_ptr<ExprAST> Parser::parseTryCatch() {
-  // Parse try block - we're already at '{'
+  // Parse try block - we're already at '{' ('try' was consumed by the caller,
+  // which re-stamps the span to include it)
+  Position start = captureStart();
   auto tryBlock = parseBlock();
   if (!tryBlock) {
     parsingError("expected block after 'try'");
@@ -3397,6 +3536,7 @@ unique_ptr<ExprAST> Parser::parseTryCatch() {
     catchClauses.push_back(std::move(catchClause));
   }
 
-  return std::make_unique<TryCatchExprAST>(std::move(tryBlock),
-                                           std::move(catchClauses));
+  return finishNode(std::make_unique<TryCatchExprAST>(
+                        std::move(tryBlock), std::move(catchClauses)),
+                    start);
 }

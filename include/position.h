@@ -13,6 +13,7 @@ struct Position {
   // Optional end position for spanning tokens/expressions
   std::optional<int> endLine = std::nullopt;
   std::optional<int> endColumn = std::nullopt;
+  std::optional<int> endOffset = std::nullopt;  // Exclusive byte offset
 
   Position() = default;
   Position(int l, int c, int o = 0,
@@ -23,6 +24,12 @@ struct Position {
   void setEnd(int el, int ec) {
     endLine = el;
     endColumn = ec;
+  }
+
+  void setEnd(int el, int ec, int eo) {
+    endLine = el;
+    endColumn = ec;
+    endOffset = eo;
   }
 
   // Check if this position has end info

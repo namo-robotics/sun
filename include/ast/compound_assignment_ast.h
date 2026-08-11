@@ -28,6 +28,11 @@ class CompoundAssignmentAST : public ExprAST {
   ASTNodeType getType() const override {
     return ASTNodeType::COMPOUND_ASSIGNMENT;
   }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override {
+    fn(target);
+    fn(value);
+  }
   std::string toString() const override {
     return target->toString() + " " + op.text + " " + value->toString();
   }

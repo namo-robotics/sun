@@ -20,6 +20,10 @@ class LambdaAST : public ExprAST {
       : Proto(std::move(Proto)), Body(std::move(Body)) {}
 
   ASTNodeType getType() const override { return ASTNodeType::LAMBDA; }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override {
+    if (Body) Body->forEachChildSlot(fn);
+  }
   std::string toString() const override {
     std::string result = "lambda(";
     const auto& args = Proto->getArgs();

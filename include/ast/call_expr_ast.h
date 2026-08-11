@@ -40,6 +40,11 @@ class CallExprAST : public ExprAST {
   // concrete args during semantic analysis).
   std::vector<std::unique_ptr<ExprAST>>& getArgsMutable() { return Args; }
 
+  void forEachChildSlot(const ChildSlotFn& fn) override {
+    fn(Callee);
+    for (auto& arg : Args) fn(arg);
+  }
+
   // Returns the resolved types of all arguments (for constructor overload resolution)
   std::vector<sun::TypePtr> getResolvedArgTypes() const {
     std::vector<sun::TypePtr> types;

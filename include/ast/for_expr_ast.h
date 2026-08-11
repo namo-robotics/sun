@@ -22,6 +22,13 @@ class ForExprAST : public ExprAST {
         Body(std::move(Body)) {}
 
   ASTNodeType getType() const override { return ASTNodeType::FOR_LOOP; }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override {
+    fn(Init);
+    fn(Condition);
+    fn(Increment);
+    fn(Body);
+  }
   std::string toString() const override {
     std::string result = "for (";
     if (Init) result += Init->toString();

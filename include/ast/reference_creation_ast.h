@@ -42,6 +42,8 @@ class ReferenceCreationAST : public ExprAST {
   ASTNodeType getType() const override {
     return ASTNodeType::REFERENCE_CREATION;
   }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override { fn(target); }
   std::string toString() const override {
     return std::string("ref ") + (mutable_ ? "" : "const ") + name + " = " +
            target->toString();

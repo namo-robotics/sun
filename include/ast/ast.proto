@@ -26,6 +26,7 @@ message ASTNode {
     NullLiteral null_literal = 12;
     BoolLiteral bool_literal = 13;
     ArrayLiteral array_literal = 14;
+    InterpolatedString interpolated_string = 15;
     
     // Indexing/slicing
     SliceExpr slice_expr = 20;
@@ -46,6 +47,7 @@ message ASTNode {
     UnaryExpr unary_expr = 41;
     PackExpansion pack_expansion = 42;
     TernaryExpr ternary_expr = 43;
+    ParenExpr paren_expr = 44;
     
     // Control flow
     BlockExpr block_expr = 50;
@@ -116,6 +118,21 @@ message BoolLiteral {
 
 message ArrayLiteral {
   repeated ASTNode elements = 1;
+}
+
+// Template string segment: literal run or ${...} expression
+message InterpolatedSegment {
+  bool is_literal = 1;
+  string raw_text = 2;      // Exact source slice (escapes unprocessed)
+  string cooked_text = 3;   // Literal segments: escape-processed text
+  optional ASTNode expression = 4;  // Expression segments
+  int32 source_offset = 5;  // Absolute byte offset of the segment start
+}
+
+// Template string: `text ${expr}` (parse tree only; lowered before analysis)
+message InterpolatedString {
+  string raw_content = 1;   // Inner text, backticks stripped, unprocessed
+  repeated InterpolatedSegment segments = 2;
 }
 
 // =============================================================================
@@ -195,6 +212,11 @@ message TernaryExpr {
   ASTNode cond = 1;
   ASTNode then_expr = 2;
   ASTNode else_expr = 3;
+}
+
+// Grouping parentheses: (expr) (parse tree only; lowered before analysis)
+message ParenExpr {
+  ASTNode inner = 1;
 }
 
 message UnaryExpr {
@@ -286,7 +308,8 @@ message Prototype {
   optional string variadic_param_name = 6;
   optional TypeAnnotation variadic_constraint = 7;
   repeated string ref_captures = 8;  // Declared [ref x, ...] capture list
-  
+  optional Position location = 9;    // Source span of the signature
+
   // Optional analysis data
   optional PrototypeAnalysis analysis = 10;
 }

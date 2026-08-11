@@ -58,7 +58,9 @@ enum class ASTNodeType {
   UNSAFE_BLOCK,          // unsafe { ... } - unsafe operations block
   MOON_SCOPE,            // Wrapper for moon import stubs with content hash
   COMPOUND_ASSIGNMENT,   // target op= value (+=, -=, ...)
-  TERNARY                // cond ? thenExpr : elseExpr
+  TERNARY,               // cond ? thenExpr : elseExpr
+  INTERPOLATED_STRING,   // `text ${expr}` (parse tree only; lowered away)
+  PAREN_EXPR             // (expr) grouping (parse tree only; lowered away)
 };
 
 struct Capture {

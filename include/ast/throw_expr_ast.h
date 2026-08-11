@@ -17,6 +17,8 @@ class ThrowExprAST : public ExprAST {
       : errorExpr(std::move(expr)) {}
 
   ASTNodeType getType() const override { return ASTNodeType::THROW; }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override { fn(errorExpr); }
   std::string toString() const override {
     return "throw " + errorExpr->toString();
   }

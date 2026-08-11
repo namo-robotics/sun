@@ -16,6 +16,11 @@ class WhileExprAST : public ExprAST {
       : Condition(std::move(Condition)), Body(std::move(Body)) {}
 
   ASTNodeType getType() const override { return ASTNodeType::WHILE_LOOP; }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override {
+    fn(Condition);
+    fn(Body);
+  }
   std::string toString() const override {
     return "while (" + Condition->toString() + ") " + Body->toString();
   }

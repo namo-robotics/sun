@@ -23,5 +23,10 @@ class BinaryExprAST : public ExprAST {
   Token getOp() const { return op; }
   const ExprAST* getLHS() const { return LHS.get(); }
   const ExprAST* getRHS() const { return RHS.get(); }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override {
+    fn(LHS);
+    fn(RHS);
+  }
   std::string dotLabel() const override { return "Binary\n" + op.text; }
 };

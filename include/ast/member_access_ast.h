@@ -58,6 +58,8 @@ class MemberAccessAST : public ExprAST {
   }
 
   const ExprAST* getObject() const { return object.get(); }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override { fn(object); }
   std::unique_ptr<ExprAST> releaseObject() { return std::move(object); }
   const std::string& getMemberName() const { return memberName; }
   bool hasTypeArguments() const { return !typeArguments.empty(); }

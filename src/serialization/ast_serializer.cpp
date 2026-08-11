@@ -18,6 +18,15 @@ ast::Position ASTSerializer::serializePosition(const Position& pos) const {
   if (pos.filePath) {
     proto.set_file_path(*pos.filePath);
   }
+  if (pos.endLine) {
+    proto.set_end_line(*pos.endLine);
+  }
+  if (pos.endColumn) {
+    proto.set_end_column(*pos.endColumn);
+  }
+  if (pos.endOffset) {
+    proto.set_end_offset(*pos.endOffset);
+  }
   return proto;
 }
 
@@ -135,6 +144,10 @@ ast::Prototype ASTSerializer::serializePrototype(
         serializeTypeAnnotation(*proto.getVariadicConstraint());
   }
 
+  if (config_.include_location) {
+    *result.mutable_location() = serializePosition(proto.getLocation());
+  }
+
   // Serialize prototype analysis if requested
   if (config_.include_analysis && proto.hasAnalysis()) {
     auto* analysis = result.mutable_analysis();
@@ -222,6 +235,13 @@ ast::ASTNode ASTSerializer::serialize(const ExprAST& expr) const {
       break;
     case ASTNodeType::TERNARY:
       serializeTernary(static_cast<const TernaryExprAST&>(expr), &node);
+      break;
+    case ASTNodeType::PAREN_EXPR:
+      serializeParen(static_cast<const ParenExprAST&>(expr), &node);
+      break;
+    case ASTNodeType::INTERPOLATED_STRING:
+      serializeInterpolatedString(
+          static_cast<const InterpolatedStringAST&>(expr), &node);
       break;
     case ASTNodeType::PACK_EXPANSION:
       serializePackExpansion(static_cast<const PackExpansionAST&>(expr), &node);
@@ -479,6 +499,28 @@ void ASTSerializer::serializeTernary(const TernaryExprAST& expr,
   *tern->mutable_cond() = serialize(*expr.getCond());
   *tern->mutable_then_expr() = serialize(*expr.getThen());
   *tern->mutable_else_expr() = serialize(*expr.getElse());
+}
+
+void ASTSerializer::serializeParen(const ParenExprAST& expr,
+                                   ast::ASTNode* node) const {
+  auto* paren = node->mutable_paren_expr();
+  *paren->mutable_inner() = serialize(*expr.getInner());
+}
+
+void ASTSerializer::serializeInterpolatedString(
+    const InterpolatedStringAST& expr, ast::ASTNode* node) const {
+  auto* interp = node->mutable_interpolated_string();
+  interp->set_raw_content(expr.getRawContent());
+  for (const auto& segment : expr.getSegments()) {
+    auto* seg = interp->add_segments();
+    seg->set_is_literal(segment.isLiteral);
+    seg->set_raw_text(segment.rawText);
+    seg->set_cooked_text(segment.cookedText);
+    seg->set_source_offset(segment.sourceOffset);
+    if (segment.expression) {
+      *seg->mutable_expression() = serialize(*segment.expression);
+    }
+  }
 }
 
 void ASTSerializer::serializeUnary(const UnaryExprAST& expr,

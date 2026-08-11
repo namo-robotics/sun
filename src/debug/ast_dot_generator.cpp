@@ -131,6 +131,22 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       emitEdge(targetId, "target");
       break;
     }
+    case ASTNodeType::PAREN_EXPR: {
+      const auto* paren = static_cast<const ParenExprAST*>(node);
+      int innerId = visitNode(paren->getInner());
+      emitEdge(innerId, "inner");
+      break;
+    }
+    case ASTNodeType::INTERPOLATED_STRING: {
+      const auto* interp = static_cast<const InterpolatedStringAST*>(node);
+      for (const auto& segment : interp->getSegments()) {
+        if (!segment.isLiteral && segment.expression) {
+          int exprId = visitNode(segment.expression.get());
+          emitEdge(exprId, "expr");
+        }
+      }
+      break;
+    }
     case ASTNodeType::BINARY: {
       const auto* bin = static_cast<const BinaryExprAST*>(node);
       int lhsId = visitNode(bin->getLHS());

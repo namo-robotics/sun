@@ -24,5 +24,7 @@ class ReturnExprAST : public ExprAST {
 
   const ExprAST* getValue() const { return Value.get(); }
   bool hasValue() const { return Value != nullptr; }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override { fn(Value); }
   std::string dotLabel() const override { return "Return"; }
 };

@@ -1,7 +1,9 @@
 // interpolated_string_parser.h — Parser for template string interpolation
 //
-// Handles parsing of template strings like `Hello ${name}, age ${age}!`
-// Desugars into a block expression with String construction and append() calls.
+// Parses template strings like `Hello ${name}, age ${age}!` into an
+// InterpolatedStringAST (lossless parse tree). The lowering pass later calls
+// desugar() to turn the node into a block expression with String construction
+// and append() calls.
 
 #pragma once
 
@@ -16,43 +18,38 @@
 // Forward declaration
 class Parser;
 
-// Segment of an interpolated string: either a literal or an expression
-struct InterpolatedSegment {
-  bool isLiteral;
-  std::string literalText;              // If isLiteral is true
-  std::unique_ptr<ExprAST> expression;  // If isLiteral is false
-
-  static InterpolatedSegment makeLiteral(std::string text) {
-    return {true, std::move(text), nullptr};
-  }
-
-  static InterpolatedSegment makeExpression(std::unique_ptr<ExprAST> expr) {
-    return {false, "", std::move(expr)};
-  }
-};
-
-// Parser for interpolated template strings
-// Converts `Hello ${name}!` into:
+// Parser for interpolated template strings.
+// parseToAst: `Hello ${name}!` -> InterpolatedStringAST (kept in parse tree)
+// desugar (called by LoweringPass):
 // {
-//   var __interp_alloc = sun.HeapAllocator();
-//   var __interp_result = sun.String(__interp_alloc, "");
-//   __interp_result.append("Hello ");
-//   __interp_result.append(name);
-//   __interp_result.append("!");
-//   __interp_result
+//   var interp_alloc_ = sun.HeapAllocator();
+//   var interp_result_ = sun.String(interp_alloc_, "");
+//   interp_result_.append_literal("Hello ");
+//   interp_result_.append(name);
+//   interp_result_.append_literal("!");
+//   interp_result_
 // }
 class InterpolatedStringParser {
  public:
-  // Parse a template string (content without backticks)
-  // Returns the desugared BlockExprAST, or a simple StringLiteralAST if no
-  // interpolation
-  static std::unique_ptr<ExprAST> parse(const std::string& content,
-                                        const Position& location);
+  // Parse a template string token into the lossless AST node.
+  // content: inner text without backticks (escapes unprocessed).
+  // start/end: the TEMPLATE_STRING token's span (backticks included).
+  // Sub-expression positions inside ${...} are rebased to absolute file
+  // positions (best-effort; exact for offsets).
+  static std::unique_ptr<InterpolatedStringAST> parseToAst(
+      const std::string& content, const Position& start, const Position& end,
+      const std::string& filePath);
+
+  // Desugar the node into the runtime block (consumes segment expressions).
+  // Synthetic nodes are stamped with the template's location.
+  static std::unique_ptr<BlockExprAST> desugar(InterpolatedStringAST& node);
 
  private:
   // Split the template string into segments (alternating literals and
-  // expressions)
-  static std::vector<InterpolatedSegment> tokenize(const std::string& content);
+  // expressions). start = template token start (for position rebasing).
+  static std::vector<InterpolatedStringAST::Segment> tokenize(
+      const std::string& content, const Position& start,
+      const std::string& filePath);
 
   // Process escape sequences in a literal segment
   static std::string processEscapes(const std::string& raw);
@@ -63,28 +60,31 @@ class InterpolatedStringParser {
   // Parse an expression string using a sub-parser
   static std::unique_ptr<ExprAST> parseExpression(const std::string& exprText);
 
-  // Build the desugared block expression from segments
-  static std::unique_ptr<BlockExprAST> buildDesugaredBlock(
-      std::vector<InterpolatedSegment>& segments, const Position& location);
+  // Rebase fragment-relative positions in a sub-expression tree to absolute
+  // file positions
+  static void rebasePositions(ExprAST& expr, int lineBase, int colBase,
+                              int offsetBase, const std::string& filePath);
 
   // Helper: create variable reference AST
   static std::unique_ptr<VariableReferenceAST> makeVarRef(
-      const std::string& name);
+      const std::string& name, const Position& loc);
 
   // Helper: create string literal AST
   static std::unique_ptr<StringLiteralAST> makeStringLiteral(
-      const std::string& value);
+      const std::string& value, const Position& loc);
 
   // Helper: create member access AST (obj.member)
   static std::unique_ptr<MemberAccessAST> makeMemberAccess(
-      std::unique_ptr<ExprAST> object, const std::string& member);
+      std::unique_ptr<ExprAST> object, const std::string& member,
+      const Position& loc);
 
   // Helper: create call expression AST
   static std::unique_ptr<CallExprAST> makeCall(
       std::unique_ptr<ExprAST> callee,
-      std::vector<std::unique_ptr<ExprAST>> args);
+      std::vector<std::unique_ptr<ExprAST>> args, const Position& loc);
 
   // Helper: create variable creation AST
   static std::unique_ptr<VariableCreationAST> makeVarCreate(
-      const std::string& name, std::unique_ptr<ExprAST> value);
+      const std::string& name, std::unique_ptr<ExprAST> value,
+      const Position& loc);
 };
