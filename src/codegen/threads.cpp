@@ -245,7 +245,10 @@ Value* CodegenVisitor::codegen(const SpawnExprAST& expr) {
                                                       2, "handle.size.ptr");
   ctx.builder->CreateStore(stackSize, handleSizePtr);
 
-  return handleAlloca;
+  // Return the handle struct by value: Thread<T> resolves to the handle
+  // struct, so `var t = spawn(...)` stores the whole handle and join()
+  // extracts its fields from the loaded value
+  return ctx.builder->CreateLoad(handleType, handleAlloca, "spawn.handle");
 }
 
 // -------------------------------------------------------------------
@@ -264,9 +267,12 @@ Value* CodegenVisitor::codegenThreadJoin(Value* threadHandle,
   StructType* handleType = threadUtils.getThreadHandleType();
   StructType* contextType = threadUtils.getThreadContextType();
 
-  // Load handle from alloca
-  Value* handle =
-      ctx.builder->CreateLoad(handleType, threadHandle, "join.handle");
+  // The receiver may arrive as the handle alloca (pointer) or as an
+  // already-loaded handle struct value
+  Value* handle = threadHandle->getType()->isPointerTy()
+                      ? ctx.builder->CreateLoad(handleType, threadHandle,
+                                                "join.handle")
+                      : threadHandle;
 
   // Extract context pointer from handle
   Value* contextPtr =

@@ -108,9 +108,15 @@ Value* CodegenVisitor::tryCodegenAddress(const ExprAST& expr) {
         return alloca;
       }
 
-      // Note: closure captures are not found by findVariable and have no
-      // global; they fall through to nullptr - callers that support them
-      // handle the closure slot themselves
+      // [ref x] captures have a genuine storage address (the pointer stored
+      // in the env slot). By-value captures stay non-addressable - handing
+      // out the copy's address would let callers mutate it.
+      {
+        bool byRef = false;
+        Value* slotAddr =
+            createCaptureSlotAddress(varRef.getName(), nullptr, &byRef);
+        if (slotAddr && byRef) return slotAddr;
+      }
 
       // Globals: mangled name first (module-qualified), then plain
       if (GlobalVariable* gv =
@@ -243,20 +249,8 @@ Value* CodegenVisitor::codegen(const CompoundAssignmentAST& expr) {
     return result;
   }
 
-  // Closure-captured variable fallback: read via the closure-aware variable
-  // path, write through the closure slot (parity with VariableAssignmentAST)
-  if (target.getType() == ASTNodeType::VARIABLE_REFERENCE) {
-    const auto& varRef = static_cast<const VariableReferenceAST&>(target);
-    Value* cur = codegen(target);
-    if (!cur) return nullptr;
-    Value* result = emitCompoundOpValue(expr, cur, slotTy, slotSunType);
-    if (!result) return nullptr;
-    if (Value* slot = createLoadVarFromClosure(varRef.getName())) {
-      ctx.builder->CreateStore(result, slot);
-      return result;
-    }
-  }
-
+  // Note: [ref x] captures are addressable via tryCodegenAddress above;
+  // by-value captures are rejected by semantic analysis before codegen
   logAndThrowError("Compound assignment target is not assignable", loc);
   return nullptr;
 }

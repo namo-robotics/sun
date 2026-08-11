@@ -807,6 +807,20 @@ Value* CodegenVisitor::emitClassSetIndexCall(Value* objectPtr,
                                   mangledName, module);
   }
 
+  // Coerce the value to the __setindex__ value-parameter type (e.g. an i64
+  // loop counter assigned into a Vec<i32>)
+  if (method->paramTypes.size() >= 2) {
+    llvm::Type* paramTy = typeResolver.resolve(method->paramTypes[1]);
+    if (value->getType() != paramTy && value->getType()->isIntegerTy() &&
+        paramTy->isIntegerTy()) {
+      unsigned valueBits = value->getType()->getIntegerBitWidth();
+      unsigned paramBits = paramTy->getIntegerBitWidth();
+      value = valueBits > paramBits
+                  ? ctx.builder->CreateTrunc(value, paramTy, "setidx.trunc")
+                  : extendInt(value, paramTy, method->paramTypes[1]);
+    }
+  }
+
   // Build arguments: method closure, array reference, value
   std::vector<Value*> argValues;
   argValues.push_back(materializeMethodClosure(methodFunc, objectPtr));

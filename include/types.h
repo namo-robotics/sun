@@ -323,6 +323,10 @@ class LambdaType : public Type {
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;
   bool canThrow_ = false;  // declared with ', IError' — may unwind
+  // Metadata only — intentionally excluded from equals()/identity so it
+  // never disturbs overload resolution. Carries "this lambda holds pointers
+  // into an enclosing frame" through variables for spawn/return checks.
+  bool hasRefCaptures_ = false;
 
  public:
   LambdaType(TypePtr ret, std::vector<TypePtr> params, bool canThrow = false)
@@ -334,6 +338,8 @@ class LambdaType : public Type {
   const TypePtr& getReturnType() const { return returnType; }
   const std::vector<TypePtr>& getParamTypes() const { return paramTypes; }
   bool canThrow() const { return canThrow_; }
+  bool hasRefCaptures() const { return hasRefCaptures_; }
+  void setHasRefCaptures(bool v) { hasRefCaptures_ = v; }
 
   std::string toString() const override {
     std::string result = "(";

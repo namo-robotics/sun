@@ -365,6 +365,10 @@ class CodegenVisitor {
                                     const sun::TypePtr& paramType,
                                     const sun::TypePtr& sourceType);
 
+  // Load through a reference-typed return value (refs behave like values)
+  llvm::Value* derefIfRefReturn(llvm::Value* result,
+                                const sun::TypePtr& returnType);
+
   // Widen an integer value to destTy; the source expression's Sun type
   // decides zero- vs sign-extension (unsigned -> zext). This is the single
   // place that owns that rule.
@@ -710,6 +714,17 @@ class CodegenVisitor {
    */
   llvm::LoadInst* createLoadVarFromClosure(const std::string& name);
 
+  // Address of a captured variable's storage: env slot for by-value
+  // captures, the stored pointer for [ref x] captures. nullptr when name is
+  // not a capture.
+  llvm::Value* createCaptureSlotAddress(const std::string& name,
+                                        llvm::Type** valueTypeOut = nullptr,
+                                        bool* byRefOut = nullptr);
+
+  // Env-slot initializer at closure creation: value for by-value captures,
+  // referent address for [ref x] captures
+  llvm::Value* computeCaptureInitValue(const Capture& cap);
+
   GlobalVariable* createGlobalVariable(const std::string& name,
                                        llvm::Type* type,
                                        llvm::Constant* initializer = nullptr);
@@ -943,5 +958,9 @@ class CodegenVisitor {
 
   // Error handling context: tracks if current function can return errors
   bool currentFunctionCanError = false;
+
+  // True while generating the body of a function declared to return `ref T`;
+  // reference returns must return the referent's address
+  bool currentFunctionReturnsRef = false;
   llvm::Type* currentFunctionValueType = nullptr;  // The T in {i1, T}
 };

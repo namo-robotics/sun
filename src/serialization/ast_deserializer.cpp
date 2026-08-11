@@ -64,6 +64,7 @@ TypeAnnotation ASTDeserializer::deserializeTypeAnnotation(
 Capture ASTDeserializer::deserializeCapture(const ast::Capture& cap) const {
   Capture result;
   result.name = cap.name();
+  result.byRef = cap.by_ref();
   // Note: type is stored as string signature, not reconstructed as TypePtr
   // The semantic analyzer will need to re-resolve the type
   return result;
@@ -125,6 +126,13 @@ std::unique_ptr<PrototypeAST> ASTDeserializer::deserializePrototype(
     captures.push_back(deserializeCapture(cap));
   }
   result->setCaptures(captures);
+
+  // Restore the declared [ref x, ...] capture list
+  std::vector<std::string> refCaptureNames;
+  for (const auto& refName : proto.ref_captures()) {
+    refCaptureNames.push_back(refName);
+  }
+  result->setRefCaptureNames(std::move(refCaptureNames));
 
   return result;
 }

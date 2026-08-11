@@ -74,6 +74,11 @@ class BorrowChecker {
   void checkIndexedAssignment(const IndexedAssignmentAST& assign);
   void checkCompoundAssignment(const CompoundAssignmentAST& assign);
   void checkVariableWrite(const std::string& varName);
+  bool isRefCapturingLambdaExpr(const ExprAST& expr) const;
+
+  // Protos of the lambdas whose bodies are currently being checked
+  // (innermost last) - nested by-ref captures alias their loans
+  std::vector<const PrototypeAST*> lambdaProtoStack_;
   void checkTryCatch(const TryCatchExprAST& tryCatch);
   void checkUnsafeBlock(const UnsafeBlockAST& unsafeBlock);
 

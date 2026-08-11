@@ -154,10 +154,24 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
     case ASTNodeType::ENUM_DEFINITION:
     case ASTNodeType::GENERIC_CALL:
     case ASTNodeType::THROW:
-    case ASTNodeType::SPAWN:
     case ASTNodeType::BREAK_STMT:
     case ASTNodeType::CONTINUE_STMT:
       break;
+
+    case ASTNodeType::SPAWN: {
+      const auto& spawnExpr = static_cast<const SpawnExprAST&>(expr);
+      checkExpr(spawnExpr.getLambda());
+      // A spawned thread may outlive the enclosing frame; pointers into it
+      // (by-ref captures) would dangle and race
+      if (isRefCapturingLambdaExpr(spawnExpr.getLambda())) {
+        const auto& pos = spawnExpr.getLocation();
+        reportError(
+            "cannot spawn a lambda that captures variables by reference - "
+            "the thread may outlive the captured variables",
+            pos.line, pos.column);
+      }
+      break;
+    }
 
     default:
       throw SunError(SunError::Kind::Compile,
@@ -527,6 +541,15 @@ void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
   // Check the return value expression
   checkExpr(*value);
 
+  // A lambda holding pointers into this frame must not escape through return
+  if (isRefCapturingLambdaExpr(*value)) {
+    const auto& pos = ret.getLocation();
+    reportError(
+        "cannot return a lambda that captures variables by reference - the "
+        "captured variables die when this function returns",
+        pos.line, pos.column);
+  }
+
   // Check lifetime safety for reference returns
   checkReturnLifetime(ret);
 
@@ -591,6 +614,19 @@ void BorrowChecker::checkFunctionDef(const FunctionAST& func) {
   exitFunctionScope();
 }
 
+// True when the expression is (or holds) a lambda with [ref x] captures -
+// such a lambda carries pointers into the enclosing frame
+bool BorrowChecker::isRefCapturingLambdaExpr(const ExprAST& expr) const {
+  if (expr.getType() == ASTNodeType::LAMBDA) {
+    return static_cast<const LambdaAST&>(expr).getProto().hasRefCaptures();
+  }
+  auto type = expr.getResolvedType();
+  if (type && type->isLambda()) {
+    return static_cast<const sun::LambdaType*>(type.get())->hasRefCaptures();
+  }
+  return false;
+}
+
 void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
   const auto& proto = lambda.getProto();
 
@@ -608,6 +644,51 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
     }
   }
 
+  // Register a mutable borrow for every [ref x] capture in the ENCLOSING
+  // scope, before entering the lambda's own scope. Scope-depth expiry gives
+  // the loan exactly the enclosing block's lifetime, so conflicting refs to
+  // captured variables are rejected while the lambda value is live.
+  const auto& pos = lambda.getLocation();
+  for (const auto& cap : proto.getCaptures()) {
+    if (!cap.byRef) continue;
+    // A by-ref capture of an enclosing lambda's by-ref capture aliases the
+    // existing loan rather than creating a new one
+    bool aliasesEnclosingCapture = false;
+    for (const auto* enclosing : lambdaProtoStack_) {
+      for (const auto& enclosingCap : enclosing->getCaptures()) {
+        if (enclosingCap.name == cap.name && enclosingCap.byRef) {
+          aliasesEnclosingCapture = true;
+          break;
+        }
+      }
+      if (aliasesEnclosingCapture) break;
+    }
+    if (aliasesEnclosingCapture) continue;
+
+    auto targetInfo = resolveRefTarget(cap.name);
+    SourceLoc loc{pos.line, pos.column, ""};
+    std::string refName = "$capture:" + cap.name + "@" +
+                          std::to_string(pos.line) + ":" +
+                          std::to_string(pos.column);
+    auto result = state_.addBorrow(targetInfo.actualTarget, refName,
+                                   BorrowKind::Mutable, currentScope_, loc);
+    if (!result.allowed) {
+      reportConflict(result.errorMessage, pos.line, pos.column,
+                     result.conflictingLoan);
+    }
+  }
+
+  // Save the enclosing function's checking state: exitFunctionScope()'s
+  // blanket clear would otherwise wipe it for every lambda literal analyzed
+  // mid-function
+  auto savedRefVariables = refVariables_;
+  auto savedMovedVariables = movedVariables_;
+  auto savedRefTypedParams = refTypedParams_;
+  auto savedParamLifetimes = paramLifetimes_;
+  auto savedFunctionScopeDepth = functionScopeDepth_;
+  auto savedReturnsRef = currentFunctionReturnsRef_;
+  auto savedFunction = currentFunction_;
+
   // Enter function scope (anonymous)
   enterFunctionScope("<lambda>");
   currentFunctionReturnsRef_ = returnsRef;
@@ -624,12 +705,23 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
   }
 
   // Check the lambda body (lambdas always have a body)
+  lambdaProtoStack_.push_back(&proto);
   if (lambda.hasBody()) {
     checkBlockExpr(lambda.getBody());
   }
+  lambdaProtoStack_.pop_back();
 
-  // Exit function scope - clears all borrows
+  // Exit function scope - clears the lambda's borrows
   exitFunctionScope();
+
+  // Restore the enclosing function's state
+  refVariables_ = std::move(savedRefVariables);
+  movedVariables_ = std::move(savedMovedVariables);
+  refTypedParams_ = std::move(savedRefTypedParams);
+  paramLifetimes_ = std::move(savedParamLifetimes);
+  functionScopeDepth_ = savedFunctionScopeDepth;
+  currentFunctionReturnsRef_ = savedReturnsRef;
+  currentFunction_ = savedFunction;
 }
 
 void BorrowChecker::checkClassDef(const ClassDefinitionAST& classDef) {

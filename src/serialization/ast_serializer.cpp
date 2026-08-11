@@ -63,6 +63,7 @@ ast::Capture ASTSerializer::serializeCapture(const Capture& cap) const {
   if (cap.type) {
     proto.set_type_signature(cap.type->toString());
   }
+  proto.set_by_ref(cap.byRef);
   return proto;
 }
 
@@ -119,6 +120,10 @@ ast::Prototype ASTSerializer::serializePrototype(
 
   for (const auto& cap : proto.getCaptures()) {
     *result.add_captures() = serializeCapture(cap);
+  }
+
+  for (const auto& refName : proto.getRefCaptureNames()) {
+    result.add_ref_captures(refName);
   }
 
   if (proto.hasVariadicParam()) {

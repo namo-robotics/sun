@@ -55,12 +55,19 @@ Value* CodegenVisitor::codegenInitIntrinsic(
 
   auto* classType = static_cast<sun::ClassType*>(targetType.get());
 
-  // Collect constructor arguments. Variadic packs are already expanded into
-  // concrete typed args during semantic analysis, so every arg is ordinary
-  // here. argTypes is collected in parallel (aligned with the value args,
-  // excluding 'this') for constructor overload resolution.
-  std::vector<Value*> ctorArgs;
+  // Collect argument Sun types first (variadic packs are already expanded
+  // into concrete typed args by semantic analysis) so the constructor can be
+  // resolved before adapting values to its calling convention.
   std::vector<sun::TypePtr> argTypes;
+  for (size_t i = 1; i < args.size(); ++i) {
+    argTypes.push_back(args[i]->getResolvedType());
+  }
+
+  // Look up the constructor (init method) that is compatible with the argument
+  // types.
+  ConstructorLookup ctor = lookupConstructor(classType, argTypes);
+
+  std::vector<Value*> ctorArgs;
   // Slot 0 is the method closure; patched below once the ctor is resolved.
   ctorArgs.push_back(rawPtr);
 
@@ -70,21 +77,23 @@ Value* CodegenVisitor::codegenInitIntrinsic(
     if (!argVal) return nullptr;
     sun::TypePtr argType = args[i]->getResolvedType();
 
-    // Class values are addressable, so codegen yields a pointer to the struct,
-    // but constructors take a class argument by value. Load the struct to match
-    // the constructor's calling convention.
-    if (argType && argType->isClass() && argVal->getType()->isPointerTy()) {
+    sun::TypePtr paramType =
+        (ctor.method && i - 1 < ctor.method->paramTypes.size())
+            ? ctor.method->paramTypes[i - 1]
+            : nullptr;
+    bool paramIsRef = paramType && paramType->isReference();
+
+    // Class values are addressable, so codegen yields a pointer to the
+    // struct. Ref params take that pointer directly; by-value class params
+    // need the struct loaded to match the constructor's calling convention.
+    if (argType && argType->isClass() && argVal->getType()->isPointerTy() &&
+        !paramIsRef) {
       llvm::Type* structTy = typeResolver.resolve(argType);
       argVal = ctx.builder->CreateLoad(structTy, argVal, "arg.val");
     }
 
     ctorArgs.push_back(argVal);
-    argTypes.push_back(argType);
   }
-
-  // Look up the constructor (init method) that is compatible with the argument
-  // types.
-  ConstructorLookup ctor = lookupConstructor(classType, argTypes);
 
   Function* ctorFunc = nullptr;
   size_t ctorArgCount = ctorArgs.size();  // includes 'this' pointer

@@ -474,11 +474,10 @@ SemanticAnalyzer::instantiateGenericFunction(
     returnType = sun::Types::Void();
   }
 
-  // Substitute capture types
+  // Substitute capture types (field-by-field rebuild; keep byRef intact)
   std::vector<Capture> substitutedCaptures;
   for (const auto& cap : proto.getCaptures()) {
-    Capture subCap;
-    subCap.name = cap.name;
+    Capture subCap = cap;
     subCap.type = substituteTypeParameters(cap.type);
     substitutedCaptures.push_back(subCap);
   }

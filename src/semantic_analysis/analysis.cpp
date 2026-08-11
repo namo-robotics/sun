@@ -172,6 +172,13 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
 
       // Look up the variable's type first for expected type propagation
       VariableInfo* varInfo = lookupVariable(varAssign.getName());
+      if (varInfo && varInfo->isCapture && !varInfo->isByRefCapture) {
+        logAndThrowError("Cannot mutate by-value captured variable '" +
+                             varAssign.getName() +
+                             "': capture it by reference with 'lambda [ref " +
+                             varAssign.getName() + "]'",
+                         varAssign.getLocation());
+      }
       sun::TypePtr expectedTargetType = nullptr;
       if (varInfo) {
         expectedTargetType = varInfo->type;
@@ -212,6 +219,20 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
 
     case ASTNodeType::COMPOUND_ASSIGNMENT: {
       auto& compound = static_cast<CompoundAssignmentAST&>(expr);
+
+      // By-value captures are immutable (mirror VARIABLE_ASSIGNMENT)
+      if (compound.getTarget()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
+        const auto& varRef =
+            static_cast<const VariableReferenceAST&>(*compound.getTarget());
+        VariableInfo* varInfo = lookupVariable(varRef.getName());
+        if (varInfo && varInfo->isCapture && !varInfo->isByRefCapture) {
+          logAndThrowError("Cannot mutate by-value captured variable '" +
+                               varRef.getName() +
+                               "': capture it by reference with 'lambda [ref " +
+                               varRef.getName() + "]'",
+                           compound.getLocation());
+        }
+      }
 
       // Analyze the target as a read: gives the whole target subtree
       // resolved types (codegen signedness depends on them)
@@ -1669,9 +1690,15 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
     declareVariable(argName, paramType, /*isParam=*/true);
   }
 
-  // Add captured variables to scope (so nested functions can see them)
+  // Add captured variables to scope (so nested functions can see them),
+  // marked as captures so mutation checks and nested capture lists can
+  // distinguish them from ordinary locals
   for (const auto& cap : proto.getCaptures()) {
     declareVariable(cap.name, cap.type);
+    if (VariableInfo* vi = lookupVariable(cap.name)) {
+      vi->isCapture = true;
+      vi->isByRefCapture = cap.byRef;
+    }
   }
 
   // Analyze the function body
@@ -1727,9 +1754,15 @@ void SemanticAnalyzer::analyzeLambda(LambdaAST& lambda) {
     declareVariable(argName, paramType, /*isParam=*/true);
   }
 
-  // Add captured variables to scope (so nested functions can see them)
+  // Add captured variables to scope (so nested functions can see them),
+  // marked as captures so mutation checks and nested capture lists can
+  // distinguish them from ordinary locals
   for (const auto& cap : proto.getCaptures()) {
     declareVariable(cap.name, cap.type);
+    if (VariableInfo* vi = lookupVariable(cap.name)) {
+      vi->isCapture = true;
+      vi->isByRefCapture = cap.byRef;
+    }
   }
 
   // Analyze the lambda body
@@ -2761,6 +2794,13 @@ void SemanticAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
     analyzeExpr(const_cast<ExprAST&>(*arg));
   }
 
+  // Coerce integer literals to the instantiated parameter types (there is
+  // exactly one signature, so a non-fitting literal is a hard error)
+  for (size_t i = 0; i < args.size() && i < expectedParamTypes.size(); ++i) {
+    tryCoerceIntegerLiteral(const_cast<ExprAST*>(args[i].get()),
+                            expectedParamTypes[i], /*throwOnFail=*/true);
+  }
+
   genericCall.setResolvedType(inferGenericCallType(genericCall));
 }
 
@@ -2811,6 +2851,12 @@ void SemanticAnalyzer::analyzeGenericClassConstruction(
   // Analyze all arguments
   for (const auto& arg : args) {
     analyzeExpr(const_cast<ExprAST&>(*arg));
+  }
+
+  // Coerce integer literals to the init method's parameter types
+  for (size_t i = 0; i < args.size() && i < expectedParamTypes.size(); ++i) {
+    tryCoerceIntegerLiteral(const_cast<ExprAST*>(args[i].get()),
+                            expectedParamTypes[i], /*throwOnFail=*/true);
   }
 
   genericCall.setResolvedType(inferGenericCallType(genericCall));

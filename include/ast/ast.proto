@@ -278,6 +278,7 @@ message Prototype {
   repeated Capture captures = 5;
   optional string variadic_param_name = 6;
   optional TypeAnnotation variadic_constraint = 7;
+  repeated string ref_captures = 8;  // Declared [ref x, ...] capture list
   
   // Optional analysis data
   optional PrototypeAnalysis analysis = 10;

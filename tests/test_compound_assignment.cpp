@@ -315,9 +315,21 @@ TEST(CompoundAssignment, inside_generic_function) {
   EXPECT_EQ(value, 1);
 }
 
-// Note: mutating a lambda-captured scalar (`x += 5` inside a lambda) fails
-// identically to plain assignment (`x = x + 5`) - scalar captures are
-// by-value today. Pre-existing limitation, kept at parity.
+TEST(CompoundAssignment, byref_captured_variable) {
+  // Compound assignment through a [ref x] lambda capture mutates the
+  // original (by-value captures reject mutation - see test_ref_captures)
+  auto value = executeString(R"(
+      function main() i32 {
+          var x: i32 = 10;
+          var addFive = lambda [ref x] () void {
+              x += 5;
+          };
+          addFive();
+          return x;
+      }
+    )");
+  EXPECT_EQ(value, 15);
+}
 
 // ============================================================================
 // Generic-nesting lexer splits: Vec<i32>= and Vec<Vec<i32>>=

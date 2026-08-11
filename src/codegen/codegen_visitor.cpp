@@ -208,6 +208,8 @@ Value* CodegenVisitor::codegen(const NumberExprAST& expr) {
         case sun::Type::Kind::UInt64:
           return ConstantInt::get(Type::getInt64Ty(ctx.getContext()),
                                   static_cast<uint64_t>(val));
+        case sun::Type::Kind::Bool:
+          return ConstantInt::get(Type::getInt1Ty(ctx.getContext()), val != 0);
         default:
           break;
       }

@@ -49,7 +49,11 @@ function main() i32 {
 ```
 
 <Callout type="warning">
-  Captured variables are copied into the lambda's closure. Modifications to the captured variable inside the thread do not affect the original.
+  Captured variables are copied into the lambda's closure and are read-only —
+  mutating one is a compile error. By-reference captures (`lambda [ref x]`)
+  are rejected in `spawn`, since the thread could outlive the captured
+  variable. Share state between threads via module-level globals guarded by a
+  `Mutex`.
 </Callout>
 
 ## Multiple Threads

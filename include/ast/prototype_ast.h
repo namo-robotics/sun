@@ -21,6 +21,7 @@ class PrototypeAST {
   std::vector<std::pair<std::string, TypeAnnotation>> args;
   std::optional<TypeAnnotation> returnType;
   std::vector<Capture> captures;
+  std::vector<std::string> refCaptureNames;  // Declared [ref x, ...] list
   std::optional<std::string>
       variadicParamName_;  // Name of variadic param if present
   std::optional<TypeAnnotation> variadicConstraint_;  // e.g., _init_args<T>
@@ -53,6 +54,21 @@ class PrototypeAST {
   void setCaptures(const std::vector<Capture>& caps) { captures = caps; }
   const std::vector<Capture>& getCaptures() const { return captures; }
   bool hasClosure() const { return !captures.empty(); }
+
+  // Names declared in the lambda's [ref x, ...] capture list (parser-derived
+  // source of truth; Capture::byRef is derived from it during analysis)
+  void setRefCaptureNames(std::vector<std::string> names) {
+    refCaptureNames = std::move(names);
+  }
+  const std::vector<std::string>& getRefCaptureNames() const {
+    return refCaptureNames;
+  }
+  bool hasRefCaptures() const {
+    for (const auto& cap : captures) {
+      if (cap.byRef) return true;
+    }
+    return false;
+  }
   ASTNodeType getType() const { return ASTNodeType::PROTOTYPE; }
   const std::string& getName() const { return Name; }
   void setName(std::string name) { Name = std::move(name); }

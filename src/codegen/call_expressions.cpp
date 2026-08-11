@@ -285,6 +285,17 @@ Value* CodegenVisitor::materializeMethodClosureValue(Value* fnPtr,
 // Helper: Widen numeric types if needed (i32->i64, f32->f64)
 // -------------------------------------------------------------------
 
+// Reference-returning callees return the referent's ADDRESS; the caller
+// transparently dereferences so the call yields the value (refs behave like
+// values everywhere else)
+Value* CodegenVisitor::derefIfRefReturn(Value* result,
+                                        const sun::TypePtr& returnType) {
+  if (!result || !returnType || !returnType->isReference()) return result;
+  auto* refType = static_cast<const sun::ReferenceType*>(returnType.get());
+  llvm::Type* valueTy = typeResolver.resolve(refType->getReferencedType());
+  return ctx.builder->CreateLoad(valueTy, result, "ref.ret.deref");
+}
+
 Value* CodegenVisitor::widenNumericIfNeeded(Value* argVal,
                                             const sun::TypePtr& paramType,
                                             const sun::TypePtr& sourceType) {
@@ -828,6 +839,7 @@ Value* CodegenVisitor::codegenClassMethodCall(
   Value* result = emitPossiblyThrowingCall(
       methodFunc->getFunctionType(), methodFunc, argValues, method->canThrow,
       "method.call");
+  result = derefIfRefReturn(result, method->returnType);
   return materializeStructReturn(result);
 }
 
@@ -998,15 +1010,22 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
 
   // Handle Lambda type: fat pointer call with closure
   Value* result;
+  sun::TypePtr calleeReturnType;
   if (calleeSunType->isLambda()) {
-    result = codegenLambdaCall(
-        expr, calleeName, static_cast<const sun::LambdaType&>(*calleeSunType));
+    const auto& lambdaType =
+        static_cast<const sun::LambdaType&>(*calleeSunType);
+    result = codegenLambdaCall(expr, calleeName, lambdaType);
+    calleeReturnType = lambdaType.getReturnType();
   } else {
     // Handle Function type: direct call
-    result = codegenFunctionCall(
-        expr, calleeName,
-        static_cast<const sun::FunctionType&>(*calleeSunType));
+    const auto& funcType =
+        static_cast<const sun::FunctionType&>(*calleeSunType);
+    result = codegenFunctionCall(expr, calleeName, funcType);
+    calleeReturnType = funcType.getReturnType();
   }
+
+  // Reference returns are dereferenced at the call site
+  result = derefIfRefReturn(result, calleeReturnType);
 
   // Handle array returns: copy data/dims to caller's stack
   // Arrays returned by value have pointers to callee's stack which become

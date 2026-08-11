@@ -21,6 +21,8 @@ struct VariableInfo {
   bool isGlobal;         // Declared at module level (not inside a function)
   bool isFunctionParam;  // Is it a parameter vs let binding
   bool isMoved = false;  // Has ownership been transferred (move semantics)
+  bool isCapture = false;       // Declared as a lambda/function capture
+  bool isByRefCapture = false;  // Captured via [ref x] - mutable through env
   sun::QualifiedName qualifiedName;  // Full qualified name (empty for locals)
 };
 

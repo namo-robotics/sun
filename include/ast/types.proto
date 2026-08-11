@@ -31,6 +31,7 @@ message TypeAnnotation {
 message Capture {
   string name = 1;
   string type_signature = 2;  // Type stored as string signature
+  bool by_ref = 3;            // Captured by reference via [ref x]
 }
 
 // Token kind enumeration (mirrors TokenKind in lexer.h)

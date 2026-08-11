@@ -495,8 +495,11 @@ void CodegenVisitor::generateMethodBody(const FunctionAST& methodFunc,
   // method returns plain T, so the value type is just the return type.
   bool savedCanError = currentFunctionCanError;
   llvm::Type* savedValueType = currentFunctionValueType;
+  bool savedReturnsRef = currentFunctionReturnsRef;
   currentFunctionCanError = canError;
   currentFunctionValueType = canError ? returnType : nullptr;
+  currentFunctionReturnsRef =
+      proto.hasReturnType() && proto.getReturnType()->isReference();
 
   // Create entry basic block
   BasicBlock* BB = BasicBlock::Create(ctx.getContext(), "entry", func);
@@ -562,11 +565,11 @@ void CodegenVisitor::generateMethodBody(const FunctionAST& methodFunc,
   }
 
   popScope();
-  ;
 
   // Restore error handling context
   currentFunctionCanError = savedCanError;
   currentFunctionValueType = savedValueType;
+  currentFunctionReturnsRef = savedReturnsRef;
 
   // Verify the function
   verifyFunction(*func);
@@ -1306,13 +1309,25 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
       argValues.push_back(envPtr);
     }
 
+    // Sun-level parameter types of the specialization, for numeric widening
+    std::vector<sun::TypePtr> specParamTypes;
+    if (auto specialization = genericFuncAST->getSpecialization(mangledName)) {
+      specParamTypes = specialization->getProto().getResolvedParamTypes();
+    }
+
+    size_t argIdx = 0;
     for (const auto& arg : expr.getArgs()) {
       Value* val = codegen(*arg);
       if (!val) {
         logAndThrowError("Failed to generate argument for generic call");
         return nullptr;
       }
+      if (argIdx < specParamTypes.size()) {
+        val = widenNumericIfNeeded(val, specParamTypes[argIdx],
+                                   arg->getResolvedType());
+      }
       argValues.push_back(val);
+      ++argIdx;
     }
 
     return ctx.builder->CreateCall(specializedFunc, argValues);

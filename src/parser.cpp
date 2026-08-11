@@ -267,11 +267,50 @@ unique_ptr<FunctionAST> Parser::parseFunction() {
   return unique_ptr<FunctionAST>(static_cast<FunctionAST*>(result.release()));
 }
 
-// Parse lambda: lambda (args) returnType { body }
+// Parse lambda: lambda [ref x, ref y] (args) returnType { body }
+// The optional bracketed list declares by-reference captures; all other
+// captures are by value.
 unique_ptr<LambdaAST> Parser::parseLambda() {
-  getNextToken();                                    // eat 'lambda'
+  Position lambdaLoc = curTok.start;
+  getNextToken();  // eat 'lambda'
+
+  // Optional capture list: [ ref IDENT (, ref IDENT)* ]
+  std::vector<std::string> refCaptureNames;
+  if (curTok.kind == TokenKind::BRACKET_OPEN) {
+    getNextToken();  // eat '['
+    while (curTok.kind != TokenKind::BRACKET_CLOSE) {
+      if (curTok.kind != TokenKind::REF) {
+        parsingError(
+            "expected 'ref' in lambda capture list (only by-reference "
+            "captures are declared, e.g. [ref x])");
+      }
+      getNextToken();  // eat 'ref'
+
+      if (curTok.kind != TokenKind::IDENTIFIER) {
+        parsingError("expected variable name after 'ref' in capture list");
+      }
+      refCaptureNames.push_back(curTok.getIdentifier().value());
+      getNextToken();  // eat identifier
+
+      if (curTok.kind == TokenKind::COMMA) {
+        getNextToken();  // eat ','
+      } else if (curTok.kind != TokenKind::BRACKET_CLOSE) {
+        parsingError("expected ',' or ']' in lambda capture list");
+      }
+    }
+    getNextToken();  // eat ']'
+  }
+
   auto result = parseFunctionLiteral("", {}, true);  // anonymous function
-  return unique_ptr<LambdaAST>(static_cast<LambdaAST*>(result.release()));
+  auto lambda = unique_ptr<LambdaAST>(static_cast<LambdaAST*>(result.release()));
+  if (lambda) {
+    lambda->setLocation(lambdaLoc);
+    if (!refCaptureNames.empty()) {
+      const_cast<PrototypeAST&>(lambda->getProto())
+          .setRefCaptureNames(std::move(refCaptureNames));
+    }
+  }
+  return lambda;
 }
 
 // Parse a function literal: (args) returnType { body }
