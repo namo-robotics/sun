@@ -172,6 +172,13 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
 
       // Look up the variable's type first for expected type propagation
       VariableInfo* varInfo = lookupVariable(varAssign.getName());
+      if (varInfo && varInfo->isCapture && !varInfo->isByRefCapture) {
+        logAndThrowError("Cannot mutate by-value captured variable '" +
+                             varAssign.getName() +
+                             "': capture it by reference with 'lambda [ref " +
+                             varAssign.getName() + "]'",
+                         varAssign.getLocation());
+      }
       sun::TypePtr expectedTargetType = nullptr;
       if (varInfo) {
         expectedTargetType = varInfo->type;
@@ -210,16 +217,79 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       break;
     }
 
+    case ASTNodeType::COMPOUND_ASSIGNMENT: {
+      auto& compound = static_cast<CompoundAssignmentAST&>(expr);
+
+      // By-value captures are immutable (mirror VARIABLE_ASSIGNMENT)
+      if (compound.getTarget()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
+        const auto& varRef =
+            static_cast<const VariableReferenceAST&>(*compound.getTarget());
+        VariableInfo* varInfo = lookupVariable(varRef.getName());
+        if (varInfo && varInfo->isCapture && !varInfo->isByRefCapture) {
+          logAndThrowError("Cannot mutate by-value captured variable '" +
+                               varRef.getName() +
+                               "': capture it by reference with 'lambda [ref " +
+                               varRef.getName() + "]'",
+                           compound.getLocation());
+        }
+      }
+
+      // Analyze the target as a read: gives the whole target subtree
+      // resolved types (codegen signedness depends on them)
+      analyzeExpr(const_cast<ExprAST&>(*compound.getTarget()));
+      sun::TypePtr targetType =
+          sun::unwrapRef(compound.getTarget()->getResolvedType());
+
+      // Analyze the value with the target's type as expected
+      analyzeExpr(const_cast<ExprAST&>(*compound.getValue()), targetType);
+      sun::TypePtr rhsType = compound.getValue()->getResolvedType();
+
+      if (rhsType && targetType && !isAssignableTo(rhsType, targetType)) {
+        // Allow integer literal coercion as a fallback
+        if (!tryCoerceIntegerLiteral(const_cast<ExprAST*>(compound.getValue()),
+                                     targetType, false)) {
+          logAndThrowError("Cannot apply '" + compound.getOp().text +
+                               "' with value of type '" + rhsType->toString() +
+                               "' to target of type '" +
+                               targetType->toString() + "'",
+                           compound.getLocation());
+        }
+      }
+
+      // Compound assignment is a statement; codegen returns the stored value
+      expr.setResolvedType(sun::Types::Void());
+      break;
+    }
+
     case ASTNodeType::REFERENCE_CREATION: {
       auto& refCreate = static_cast<ReferenceCreationAST&>(expr);
       // Analyze the target expression
       analyzeExpr(const_cast<ExprAST&>(*refCreate.getTarget()));
-      // The target must be an lvalue (variable reference or similar)
-      // For now, we just check that it's a variable reference
-      if (refCreate.getTarget()->getType() != ASTNodeType::VARIABLE_REFERENCE &&
-          refCreate.getTarget()->getType() != ASTNodeType::MEMBER_ACCESS) {
-        llvm::errs()
-            << "Error: Reference target must be a variable or member\n";
+
+      // The target must be an addressable lvalue
+      ASTNodeType targetKind = refCreate.getTarget()->getType();
+      if (targetKind != ASTNodeType::VARIABLE_REFERENCE &&
+          targetKind != ASTNodeType::MEMBER_ACCESS &&
+          targetKind != ASTNodeType::INDEX) {
+        logAndThrowError(
+            "Reference target must be a variable, field, or array element",
+            expr.getLocation());
+      }
+      if (targetKind == ASTNodeType::INDEX) {
+        const auto& indexExpr =
+            static_cast<const IndexAST&>(*refCreate.getTarget());
+        auto baseType =
+            sun::unwrapRef(indexExpr.getTarget()->getResolvedType());
+        if (baseType && baseType->isClass()) {
+          logAndThrowError(
+              "Cannot create a reference to a class __index__ element - it "
+              "has no storage address",
+              expr.getLocation());
+        }
+        if (indexExpr.hasSlices()) {
+          logAndThrowError("Cannot create a reference to a slice",
+                           expr.getLocation());
+        }
       }
       // Determine the type of the referenced expression
       sun::TypePtr targetType = inferType(*refCreate.getTarget());
@@ -1620,9 +1690,15 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
     declareVariable(argName, paramType, /*isParam=*/true);
   }
 
-  // Add captured variables to scope (so nested functions can see them)
+  // Add captured variables to scope (so nested functions can see them),
+  // marked as captures so mutation checks and nested capture lists can
+  // distinguish them from ordinary locals
   for (const auto& cap : proto.getCaptures()) {
     declareVariable(cap.name, cap.type);
+    if (VariableInfo* vi = lookupVariable(cap.name)) {
+      vi->isCapture = true;
+      vi->isByRefCapture = cap.byRef;
+    }
   }
 
   // Analyze the function body
@@ -1678,9 +1754,15 @@ void SemanticAnalyzer::analyzeLambda(LambdaAST& lambda) {
     declareVariable(argName, paramType, /*isParam=*/true);
   }
 
-  // Add captured variables to scope (so nested functions can see them)
+  // Add captured variables to scope (so nested functions can see them),
+  // marked as captures so mutation checks and nested capture lists can
+  // distinguish them from ordinary locals
   for (const auto& cap : proto.getCaptures()) {
     declareVariable(cap.name, cap.type);
+    if (VariableInfo* vi = lookupVariable(cap.name)) {
+      vi->isCapture = true;
+      vi->isByRefCapture = cap.byRef;
+    }
   }
 
   // Analyze the lambda body
@@ -1786,6 +1868,12 @@ void SemanticAnalyzer::clearResolvedTypes(ExprAST& expr) {
       auto& ia = static_cast<IndexedAssignmentAST&>(expr);
       clearResolvedTypes(const_cast<ExprAST&>(*ia.getTarget()));
       clearResolvedTypes(const_cast<ExprAST&>(*ia.getValue()));
+      break;
+    }
+    case ASTNodeType::COMPOUND_ASSIGNMENT: {
+      auto& ca = static_cast<CompoundAssignmentAST&>(expr);
+      clearResolvedTypes(const_cast<ExprAST&>(*ca.getTarget()));
+      clearResolvedTypes(const_cast<ExprAST&>(*ca.getValue()));
       break;
     }
     case ASTNodeType::IF: {
@@ -2706,6 +2794,13 @@ void SemanticAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
     analyzeExpr(const_cast<ExprAST&>(*arg));
   }
 
+  // Coerce integer literals to the instantiated parameter types (there is
+  // exactly one signature, so a non-fitting literal is a hard error)
+  for (size_t i = 0; i < args.size() && i < expectedParamTypes.size(); ++i) {
+    tryCoerceIntegerLiteral(const_cast<ExprAST*>(args[i].get()),
+                            expectedParamTypes[i], /*throwOnFail=*/true);
+  }
+
   genericCall.setResolvedType(inferGenericCallType(genericCall));
 }
 
@@ -2756,6 +2851,12 @@ void SemanticAnalyzer::analyzeGenericClassConstruction(
   // Analyze all arguments
   for (const auto& arg : args) {
     analyzeExpr(const_cast<ExprAST&>(*arg));
+  }
+
+  // Coerce integer literals to the init method's parameter types
+  for (size_t i = 0; i < args.size() && i < expectedParamTypes.size(); ++i) {
+    tryCoerceIntegerLiteral(const_cast<ExprAST*>(args[i].get()),
+                            expectedParamTypes[i], /*throwOnFail=*/true);
   }
 
   genericCall.setResolvedType(inferGenericCallType(genericCall));

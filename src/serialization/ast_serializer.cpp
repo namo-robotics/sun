@@ -63,6 +63,7 @@ ast::Capture ASTSerializer::serializeCapture(const Capture& cap) const {
   if (cap.type) {
     proto.set_type_signature(cap.type->toString());
   }
+  proto.set_by_ref(cap.byRef);
   return proto;
 }
 
@@ -119,6 +120,10 @@ ast::Prototype ASTSerializer::serializePrototype(
 
   for (const auto& cap : proto.getCaptures()) {
     *result.add_captures() = serializeCapture(cap);
+  }
+
+  for (const auto& refName : proto.getRefCaptureNames()) {
+    result.add_ref_captures(refName);
   }
 
   if (proto.hasVariadicParam()) {
@@ -200,6 +205,10 @@ ast::ASTNode ASTSerializer::serialize(const ExprAST& expr) const {
     case ASTNodeType::INDEXED_ASSIGNMENT:
       serializeIndexedAssignment(static_cast<const IndexedAssignmentAST&>(expr),
                                  &node);
+      break;
+    case ASTNodeType::COMPOUND_ASSIGNMENT:
+      serializeCompoundAssignment(
+          static_cast<const CompoundAssignmentAST&>(expr), &node);
       break;
     case ASTNodeType::MEMBER_ASSIGNMENT:
       serializeMemberAssignment(static_cast<const MemberAssignmentAST&>(expr),
@@ -442,6 +451,14 @@ void ASTSerializer::serializeMemberAssignment(const MemberAssignmentAST& expr,
   auto* assign = node->mutable_member_assignment();
   *assign->mutable_object() = serialize(*expr.getObject());
   assign->set_member_name(expr.getMemberName());
+  *assign->mutable_value() = serialize(*expr.getValue());
+}
+
+void ASTSerializer::serializeCompoundAssignment(
+    const CompoundAssignmentAST& expr, ast::ASTNode* node) const {
+  auto* assign = node->mutable_compound_assignment();
+  *assign->mutable_target() = serialize(*expr.getTarget());
+  *assign->mutable_op() = serializeToken(expr.getOp());
   *assign->mutable_value() = serialize(*expr.getValue());
 }
 

@@ -112,6 +112,10 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
       checkIndexedAssignment(static_cast<const IndexedAssignmentAST&>(expr));
       break;
 
+    case ASTNodeType::COMPOUND_ASSIGNMENT:
+      checkCompoundAssignment(static_cast<const CompoundAssignmentAST&>(expr));
+      break;
+
     case ASTNodeType::TRY_CATCH:
       checkTryCatch(static_cast<const TryCatchExprAST&>(expr));
       break;
@@ -150,10 +154,24 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
     case ASTNodeType::ENUM_DEFINITION:
     case ASTNodeType::GENERIC_CALL:
     case ASTNodeType::THROW:
-    case ASTNodeType::SPAWN:
     case ASTNodeType::BREAK_STMT:
     case ASTNodeType::CONTINUE_STMT:
       break;
+
+    case ASTNodeType::SPAWN: {
+      const auto& spawnExpr = static_cast<const SpawnExprAST&>(expr);
+      checkExpr(spawnExpr.getLambda());
+      // A spawned thread may outlive the enclosing frame; pointers into it
+      // (by-ref captures) would dangle and race
+      if (isRefCapturingLambdaExpr(spawnExpr.getLambda())) {
+        const auto& pos = spawnExpr.getLocation();
+        reportError(
+            "cannot spawn a lambda that captures variables by reference - "
+            "the thread may outlive the captured variables",
+            pos.line, pos.column);
+      }
+      break;
+    }
 
     default:
       throw SunError(SunError::Kind::Compile,
@@ -209,8 +227,9 @@ void BorrowChecker::checkReferenceCreation(const ReferenceCreationAST& ref) {
   const std::string& refName = ref.getName();
   const ExprAST* target = ref.getTarget();
 
-  // Target must be a variable (lvalue)
-  const std::string* targetVarName = getVariableName(*target);
+  // The borrow is tracked against the base variable of the target lvalue
+  // (ref r = obj.field borrows obj as a whole - conservative but sound)
+  const std::string* targetVarName = getBaseVariableName(*target);
   if (!targetVarName) {
     reportError("reference must be bound to a variable, not a temporary", 0, 0);
     return;
@@ -258,28 +277,9 @@ void BorrowChecker::checkReferenceCreation(const ReferenceCreationAST& ref) {
   }
 }
 
-void BorrowChecker::checkVariableAssignment(
-    const VariableAssignmentAST& assign) {
-  const std::string& varName = assign.getName();
-
-  // Check the value expression first
-  if (assign.getValue()) {
-    checkExpr(*assign.getValue());
-  }
-
-  // Move semantics: if assigning from a compound-typed variable, mark source as
-  // moved. Compound types (classes, interfaces) get moved, not copied.
-  if (assign.getValue() &&
-      assign.getValue()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
-    const auto& srcRef =
-        static_cast<const VariableReferenceAST&>(*assign.getValue());
-    auto srcType = assign.getValue()->getResolvedType();
-    if (srcType && srcType->isCompound()) {
-      movedVariables_.insert(srcRef.getName());
-      assign.getValue()->setMoved(true);  // Mark for codegen to skip deinit
-    }
-  }
-
+// Shared write-side check for assigning to a named variable (plain or
+// compound assignment)
+void BorrowChecker::checkVariableWrite(const std::string& varName) {
   // Check if this is a ref or a regular variable
   auto refIt = refVariables_.find(varName);
   if (refIt != refVariables_.end()) {
@@ -303,6 +303,52 @@ void BorrowChecker::checkVariableAssignment(
       }
     }
   }
+}
+
+void BorrowChecker::checkVariableAssignment(
+    const VariableAssignmentAST& assign) {
+  const std::string& varName = assign.getName();
+
+  // Check the value expression first
+  if (assign.getValue()) {
+    checkExpr(*assign.getValue());
+  }
+
+  // Move semantics: if assigning from a compound-typed variable, mark source as
+  // moved. Compound types (classes, interfaces) get moved, not copied.
+  if (assign.getValue() &&
+      assign.getValue()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
+    const auto& srcRef =
+        static_cast<const VariableReferenceAST&>(*assign.getValue());
+    auto srcType = assign.getValue()->getResolvedType();
+    if (srcType && srcType->isCompound()) {
+      movedVariables_.insert(srcRef.getName());
+      assign.getValue()->setMoved(true);  // Mark for codegen to skip deinit
+    }
+  }
+
+  checkVariableWrite(varName);
+}
+
+void BorrowChecker::checkCompoundAssignment(
+    const CompoundAssignmentAST& assign) {
+  // The value is only read - compound ops work on scalars, so no move
+  // semantics apply (`x += y` must not mark y as moved)
+  if (assign.getValue()) {
+    checkExpr(*assign.getValue());
+  }
+
+  // The target is read (use-after-move, read-through-ref checks) ...
+  checkExpr(*assign.getTarget());
+
+  // ... and written
+  if (assign.getTarget()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
+    checkVariableWrite(
+        static_cast<const VariableReferenceAST&>(*assign.getTarget())
+            .getName());
+  }
+  // Member/indexed targets have no write-side checks today (parity with
+  // checkMemberAssignment/checkIndexedAssignment)
 }
 
 void BorrowChecker::checkVariableReference(const VariableReferenceAST& varRef) {
@@ -495,6 +541,15 @@ void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
   // Check the return value expression
   checkExpr(*value);
 
+  // A lambda holding pointers into this frame must not escape through return
+  if (isRefCapturingLambdaExpr(*value)) {
+    const auto& pos = ret.getLocation();
+    reportError(
+        "cannot return a lambda that captures variables by reference - the "
+        "captured variables die when this function returns",
+        pos.line, pos.column);
+  }
+
   // Check lifetime safety for reference returns
   checkReturnLifetime(ret);
 
@@ -559,6 +614,19 @@ void BorrowChecker::checkFunctionDef(const FunctionAST& func) {
   exitFunctionScope();
 }
 
+// True when the expression is (or holds) a lambda with [ref x] captures -
+// such a lambda carries pointers into the enclosing frame
+bool BorrowChecker::isRefCapturingLambdaExpr(const ExprAST& expr) const {
+  if (expr.getType() == ASTNodeType::LAMBDA) {
+    return static_cast<const LambdaAST&>(expr).getProto().hasRefCaptures();
+  }
+  auto type = expr.getResolvedType();
+  if (type && type->isLambda()) {
+    return static_cast<const sun::LambdaType*>(type.get())->hasRefCaptures();
+  }
+  return false;
+}
+
 void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
   const auto& proto = lambda.getProto();
 
@@ -576,6 +644,51 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
     }
   }
 
+  // Register a mutable borrow for every [ref x] capture in the ENCLOSING
+  // scope, before entering the lambda's own scope. Scope-depth expiry gives
+  // the loan exactly the enclosing block's lifetime, so conflicting refs to
+  // captured variables are rejected while the lambda value is live.
+  const auto& pos = lambda.getLocation();
+  for (const auto& cap : proto.getCaptures()) {
+    if (!cap.byRef) continue;
+    // A by-ref capture of an enclosing lambda's by-ref capture aliases the
+    // existing loan rather than creating a new one
+    bool aliasesEnclosingCapture = false;
+    for (const auto* enclosing : lambdaProtoStack_) {
+      for (const auto& enclosingCap : enclosing->getCaptures()) {
+        if (enclosingCap.name == cap.name && enclosingCap.byRef) {
+          aliasesEnclosingCapture = true;
+          break;
+        }
+      }
+      if (aliasesEnclosingCapture) break;
+    }
+    if (aliasesEnclosingCapture) continue;
+
+    auto targetInfo = resolveRefTarget(cap.name);
+    SourceLoc loc{pos.line, pos.column, ""};
+    std::string refName = "$capture:" + cap.name + "@" +
+                          std::to_string(pos.line) + ":" +
+                          std::to_string(pos.column);
+    auto result = state_.addBorrow(targetInfo.actualTarget, refName,
+                                   BorrowKind::Mutable, currentScope_, loc);
+    if (!result.allowed) {
+      reportConflict(result.errorMessage, pos.line, pos.column,
+                     result.conflictingLoan);
+    }
+  }
+
+  // Save the enclosing function's checking state: exitFunctionScope()'s
+  // blanket clear would otherwise wipe it for every lambda literal analyzed
+  // mid-function
+  auto savedRefVariables = refVariables_;
+  auto savedMovedVariables = movedVariables_;
+  auto savedRefTypedParams = refTypedParams_;
+  auto savedParamLifetimes = paramLifetimes_;
+  auto savedFunctionScopeDepth = functionScopeDepth_;
+  auto savedReturnsRef = currentFunctionReturnsRef_;
+  auto savedFunction = currentFunction_;
+
   // Enter function scope (anonymous)
   enterFunctionScope("<lambda>");
   currentFunctionReturnsRef_ = returnsRef;
@@ -592,12 +705,23 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
   }
 
   // Check the lambda body (lambdas always have a body)
+  lambdaProtoStack_.push_back(&proto);
   if (lambda.hasBody()) {
     checkBlockExpr(lambda.getBody());
   }
+  lambdaProtoStack_.pop_back();
 
-  // Exit function scope - clears all borrows
+  // Exit function scope - clears the lambda's borrows
   exitFunctionScope();
+
+  // Restore the enclosing function's state
+  refVariables_ = std::move(savedRefVariables);
+  movedVariables_ = std::move(savedMovedVariables);
+  refTypedParams_ = std::move(savedRefTypedParams);
+  paramLifetimes_ = std::move(savedParamLifetimes);
+  functionScopeDepth_ = savedFunctionScopeDepth;
+  currentFunctionReturnsRef_ = savedReturnsRef;
+  currentFunction_ = savedFunction;
 }
 
 void BorrowChecker::checkClassDef(const ClassDefinitionAST& classDef) {
@@ -773,6 +897,31 @@ const std::string* BorrowChecker::getVariableName(const ExprAST& expr) const {
     return &static_cast<const VariableReferenceAST&>(expr).getName();
   }
   return nullptr;
+}
+
+// Walk member/index chains down to the base variable (e.g. obj.a.b -> obj,
+// arr[i] -> arr, this.x -> this). Returns nullptr when the base is not a
+// named variable (a temporary).
+const std::string* BorrowChecker::getBaseVariableName(
+    const ExprAST& expr) const {
+  static const std::string kThis = "this";
+  const ExprAST* e = &expr;
+  while (true) {
+    switch (e->getType()) {
+      case ASTNodeType::VARIABLE_REFERENCE:
+        return &static_cast<const VariableReferenceAST&>(*e).getName();
+      case ASTNodeType::MEMBER_ACCESS:
+        e = static_cast<const MemberAccessAST&>(*e).getObject();
+        continue;
+      case ASTNodeType::INDEX:
+        e = static_cast<const IndexAST&>(*e).getTarget();
+        continue;
+      case ASTNodeType::THIS:
+        return &kThis;
+      default:
+        return nullptr;
+    }
+  }
 }
 
 BorrowChecker::RefTargetInfo BorrowChecker::resolveRefTarget(

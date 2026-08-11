@@ -750,26 +750,11 @@ Value* CodegenVisitor::codegen(const ReferenceCreationAST& expr) {
     logAndThrowError("Reference creation has no type or invalid type");
   }
 
-  // A reference stores a pointer to the target variable.
-  // This makes refs consistent with function parameters (both use ptr
-  // indirection).
-  const ExprAST* target = expr.getTarget();
-
-  if (target->getType() != ASTNodeType::VARIABLE_REFERENCE) {
-    logAndThrowError("Reference target must be a variable");
-  }
-
-  const auto& varRef = static_cast<const VariableReferenceAST&>(*target);
-
-  // Find the target - either a local alloca or a global variable
-  llvm::Value* targetPtr = findVariable(varRef.getName());
-  if (!targetPtr) {
-    targetPtr = module->getGlobalVariable(varRef.getName());
-  }
-  if (!targetPtr) {
-    logAndThrowError("Cannot create reference to unknown variable: " +
-                     varRef.getName());
-  }
+  // A reference stores a pointer to the target's storage. Any addressable
+  // lvalue qualifies: variables, fields (obj.f), and array elements (arr[i]).
+  // For ref-typed targets codegenAddress flattens to the referent's address,
+  // so rebinding aliases the original storage.
+  llvm::Value* targetPtr = codegenAddress(*expr.getTarget());
 
   // Create an alloca that holds a pointer to the target
   std::string refName = expr.getMangledName();

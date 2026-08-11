@@ -57,6 +57,7 @@ class MemberAccessAST;
 class MemberAssignmentAST;
 class ThisExprAST;
 class IndexedAssignmentAST;
+class CompoundAssignmentAST;
 
 // Moon import nodes
 class MoonScopeAST;

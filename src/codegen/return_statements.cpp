@@ -11,6 +11,32 @@ Value* CodegenVisitor::codegen(const ReturnExprAST& expr) {
   llvm::Type* retType = func->getReturnType();
 
   if (expr.hasValue()) {
+    // Reference returns must return the referent's ADDRESS, not the
+    // auto-dereffed value the normal expression path produces
+    if (currentFunctionReturnsRef) {
+      Value* addr = tryCodegenAddress(*expr.getValue());
+      if (!addr) {
+        // Expressions that are themselves reference-typed (e.g.
+        // _to_ref<T>(ptr)) codegen directly to the address
+        sun::TypePtr valType = expr.getValue()->getResolvedType();
+        if (valType && valType->isReference()) {
+          Value* v = codegen(*expr.getValue());
+          if (v && v->getType()->isPointerTy()) {
+            addr = v;
+          }
+        }
+      }
+      if (!addr) {
+        logAndThrowError(
+            "Cannot return a reference to a temporary or non-addressable "
+            "expression",
+            expr.getLocation());
+      }
+      emitScopeCleanup();
+      ctx.builder->CreateRet(addr);
+      return nullptr;
+    }
+
     // Return with a value
     // IMPORTANT: Evaluate return expression FIRST (may transfer ownership)
     Value* retVal = codegen(*expr.getValue());

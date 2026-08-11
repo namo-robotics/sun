@@ -54,6 +54,8 @@ Value* CodegenVisitor::codegen(const ExprAST& expr) {
       return codegen(static_cast<const BlockExprAST&>(expr));
     case ASTNodeType::INDEXED_ASSIGNMENT:
       return codegen(static_cast<const IndexedAssignmentAST&>(expr));
+    case ASTNodeType::COMPOUND_ASSIGNMENT:
+      return codegen(static_cast<const CompoundAssignmentAST&>(expr));
     case ASTNodeType::FUNCTION:
       return codegenFunc(
           const_cast<FunctionAST&>(static_cast<const FunctionAST&>(expr)));
@@ -206,6 +208,8 @@ Value* CodegenVisitor::codegen(const NumberExprAST& expr) {
         case sun::Type::Kind::UInt64:
           return ConstantInt::get(Type::getInt64Ty(ctx.getContext()),
                                   static_cast<uint64_t>(val));
+        case sun::Type::Kind::Bool:
+          return ConstantInt::get(Type::getInt1Ty(ctx.getContext()), val != 0);
         default:
           break;
       }
@@ -275,78 +279,64 @@ Value* CodegenVisitor::createIntDivRem(Value* L, Value* R, bool isModulo,
                     : ctx.builder->CreateSDiv(L, R, "divtmp");
 }
 
-Value* CodegenVisitor::codegen(const BinaryExprAST& expr) {
-  // Handle short-circuit logical operators (and, or)
-  if (expr.getOp().kind == TokenKind::AND ||
-      expr.getOp().kind == TokenKind::OR) {
-    return codegenLogicalOp(expr);
-  }
-
-  // Standard scalar binary operations
-  Value* L = codegen(*expr.getLHS());
-  Value* R = codegen(*expr.getRHS());
-  if (!L || !R) return nullptr;
-
+// Bring two scalar operands to a common type (int and float widening);
+// throws on incompatible operand types. Extension mode follows each
+// operand's own Sun-type signedness.
+void CodegenVisitor::unifyBinaryOperands(Value*& L, Value*& R,
+                                         const sun::TypePtr& lhsSunType,
+                                         const sun::TypePtr& rhsSunType,
+                                         const Position& loc) {
   llvm::Type* LT = L->getType();
   llvm::Type* RT = R->getType();
+  if (LT == RT) return;
 
-  // Signedness of div/rem/shift/compare follows the LHS operand's Sun type;
-  // mixed signed/unsigned operands are permitted by isAssignableTo.
-  bool unsignedOp = isUnsignedExpr(*expr.getLHS());
+  // Integer widening: always widen smaller to larger (safe)
+  if (LT->isIntegerTy() && RT->isIntegerTy()) {
+    unsigned lhsBits = LT->getIntegerBitWidth();
+    unsigned rhsBits = RT->getIntegerBitWidth();
 
-  // Handle implicit type widening when safe
-  if (LT != RT) {
-    // Integer widening: always widen smaller to larger (safe)
-    if (LT->isIntegerTy() && RT->isIntegerTy()) {
-      unsigned lhsBits = LT->getIntegerBitWidth();
-      unsigned rhsBits = RT->getIntegerBitWidth();
-
-      // Extension mode follows the widened operand's own signedness
-      if (lhsBits < rhsBits) {
-        L = extendInt(L, RT, expr.getLHS()->getResolvedType());
-        LT = RT;
-      } else if (rhsBits < lhsBits) {
-        R = extendInt(R, LT, expr.getRHS()->getResolvedType());
-        RT = LT;
-      }
+    if (lhsBits < rhsBits) {
+      L = extendInt(L, RT, lhsSunType);
+    } else if (rhsBits < lhsBits) {
+      R = extendInt(R, LT, rhsSunType);
     }
-    // Float widening: always widen f32 to f64 (safe)
-    else if (LT->isFloatingPointTy() && RT->isFloatingPointTy()) {
-      if (LT->isFloatTy() && RT->isDoubleTy()) {
-        // Widen LHS f32 to f64
-        L = ctx.builder->CreateFPExt(L, RT, "widen");
-        LT = RT;
-      } else if (RT->isFloatTy() && LT->isDoubleTy()) {
-        // Widen RHS f32 to f64
-        R = ctx.builder->CreateFPExt(R, LT, "widen");
-        RT = LT;
-      }
-    } else if (LT->isIntegerTy() && RT->isFloatingPointTy()) {
-      logAndThrowError(
-          "Type mismatch in binary operation: cannot mix integer and float",
-          expr.getLocation());
-    } else if (LT->isFloatingPointTy() && RT->isIntegerTy()) {
-      logAndThrowError(
-          "Type mismatch in binary operation: cannot mix float and integer",
-          expr.getLocation());
-    } else {
-      logAndThrowError(
-          "Type mismatch in binary operation: incompatible operand types",
-          expr.getLocation());
+  }
+  // Float widening: always widen f32 to f64 (safe)
+  else if (LT->isFloatingPointTy() && RT->isFloatingPointTy()) {
+    if (LT->isFloatTy() && RT->isDoubleTy()) {
+      L = ctx.builder->CreateFPExt(L, RT, "widen");
+    } else if (RT->isFloatTy() && LT->isDoubleTy()) {
+      R = ctx.builder->CreateFPExt(R, LT, "widen");
     }
+  } else if (LT->isIntegerTy() && RT->isFloatingPointTy()) {
+    logAndThrowError(
+        "Type mismatch in binary operation: cannot mix integer and float",
+        loc);
+  } else if (LT->isFloatingPointTy() && RT->isIntegerTy()) {
+    logAndThrowError(
+        "Type mismatch in binary operation: cannot mix float and integer",
+        loc);
+  } else {
+    logAndThrowError(
+        "Type mismatch in binary operation: incompatible operand types", loc);
   }
 
   // Final type check after potential widening
-  if (LT != RT) {
+  if (L->getType() != R->getType()) {
     logAndThrowError(
         "Type mismatch in binary operation: operands must have the same type",
-        expr.getLocation());
+        loc);
   }
+}
 
-  bool isInteger = LT->isIntegerTy();
-  bool isPointer = LT->isPointerTy();
+// Emit an arithmetic/bitwise/shift operation on unified operands. Shared by
+// binary expressions and compound assignment. Comparisons and logical ops
+// are not handled here.
+Value* CodegenVisitor::emitBinaryOp(TokenKind op, Value* L, Value* R,
+                                    bool unsignedOp, const Position& loc) {
+  bool isInteger = L->getType()->isIntegerTy();
 
-  switch (expr.getOp().kind) {
+  switch (op) {
     case TokenKind::PLUS:
       return isInteger ? ctx.builder->CreateAdd(L, R, "addtmp")
                        : ctx.builder->CreateFAdd(L, R, "addtmp");
@@ -366,8 +356,7 @@ Value* CodegenVisitor::codegen(const BinaryExprAST& expr) {
     }
     case TokenKind::PERCENT: {
       if (!isInteger) {
-        logAndThrowError("Modulo operator (%) requires integer operands",
-                         expr.getLocation());
+        logAndThrowError("Modulo operator (%) requires integer operands", loc);
       }
       if (currentFunctionCanError) {
         // Safe modulo: check for zero and return error if so
@@ -378,40 +367,68 @@ Value* CodegenVisitor::codegen(const BinaryExprAST& expr) {
     case TokenKind::AMPERSAND: {
       if (!isInteger) {
         logAndThrowError("Bitwise AND operator (&) requires integer operands",
-                         expr.getLocation());
+                         loc);
       }
       return ctx.builder->CreateAnd(L, R, "andtmp");
     }
     case TokenKind::PIPE: {
       if (!isInteger) {
         logAndThrowError("Bitwise OR operator (|) requires integer operands",
-                         expr.getLocation());
+                         loc);
       }
       return ctx.builder->CreateOr(L, R, "ortmp");
     }
     case TokenKind::CARET: {
       if (!isInteger) {
         logAndThrowError("Bitwise XOR operator (^) requires integer operands",
-                         expr.getLocation());
+                         loc);
       }
       return ctx.builder->CreateXor(L, R, "xortmp");
     }
     case TokenKind::LEFT_SHIFT: {
       if (!isInteger) {
         logAndThrowError("Left shift operator (<<) requires integer operands",
-                         expr.getLocation());
+                         loc);
       }
       return ctx.builder->CreateShl(L, R, "shltmp");
     }
     case TokenKind::RIGHT_SHIFT: {
       if (!isInteger) {
         logAndThrowError("Right shift operator (>>) requires integer operands",
-                         expr.getLocation());
+                         loc);
       }
       // Logical shift for unsigned, arithmetic (sign-extending) for signed
       return unsignedOp ? ctx.builder->CreateLShr(L, R, "shrtmp")
                         : ctx.builder->CreateAShr(L, R, "shrtmp");
     }
+    default:
+      logAndThrowError("Unknown binary operator", loc);
+  }
+}
+
+Value* CodegenVisitor::codegen(const BinaryExprAST& expr) {
+  // Handle short-circuit logical operators (and, or)
+  if (expr.getOp().kind == TokenKind::AND ||
+      expr.getOp().kind == TokenKind::OR) {
+    return codegenLogicalOp(expr);
+  }
+
+  // Standard scalar binary operations
+  Value* L = codegen(*expr.getLHS());
+  Value* R = codegen(*expr.getRHS());
+  if (!L || !R) return nullptr;
+
+  // Signedness of div/rem/shift/compare follows the LHS operand's Sun type;
+  // mixed signed/unsigned operands are permitted by isAssignableTo.
+  bool unsignedOp = isUnsignedExpr(*expr.getLHS());
+
+  unifyBinaryOperands(L, R, expr.getLHS()->getResolvedType(),
+                      expr.getRHS()->getResolvedType(), expr.getLocation());
+
+  bool isInteger = L->getType()->isIntegerTy();
+  bool isPointer = L->getType()->isPointerTy();
+
+  switch (expr.getOp().kind) {
     case TokenKind::LESS:
     case TokenKind::LESS_EQUAL:
     case TokenKind::GREATER:
@@ -463,8 +480,9 @@ Value* CodegenVisitor::codegen(const BinaryExprAST& expr) {
       }
       return L;
     default:
-      logAndThrowError("Unknown binary operator: " + expr.getOp().text,
-                       expr.getLocation());
+      // Arithmetic / bitwise / shift operators
+      return emitBinaryOp(expr.getOp().kind, L, R, unsignedOp,
+                          expr.getLocation());
   }
 }
 

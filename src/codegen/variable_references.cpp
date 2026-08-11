@@ -163,6 +163,12 @@ Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
           sun::ArrayType::getArrayStructType(ctx.getContext());
       return ctx.builder->CreateLoad(fatType, gv, expr.getName() + ".fat");
     }
+    // [ref arr] capture: the slot address points at the original fat struct
+    if (Value* addr = createCaptureSlotAddress(expr.getName())) {
+      llvm::StructType* fatType =
+          sun::ArrayType::getArrayStructType(ctx.getContext());
+      return ctx.builder->CreateLoad(fatType, addr, expr.getName() + ".fat");
+    }
     logAndThrowError("Array variable not found: " + expr.getName());
   }
 
@@ -183,6 +189,10 @@ Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
       // Return the global variable pointer directly (same semantics as alloca)
       return gv;
     }
+    // [ref c] capture: the slot address is the original object pointer
+    if (Value* addr = createCaptureSlotAddress(expr.getName())) {
+      return addr;
+    }
     // Fall through to error if not found
   }
 
@@ -200,6 +210,10 @@ Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
     }
     if (gv) {
       return gv;
+    }
+    // [ref i] capture: the slot address is the original fat pointer address
+    if (Value* addr = createCaptureSlotAddress(expr.getName())) {
+      return addr;
     }
     // Fall through to error if not found
   }
@@ -274,8 +288,10 @@ Value* CodegenVisitor::codegen(const VariableAssignmentAST& expr) {
     return value;
   }
 
-  Value* closureVal = createLoadVarFromClosure(expr.getName());
-  if (closureVal) {
+  // Captured variables: store through the capture slot address (for [ref x]
+  // captures that is the original variable's storage; by-value captures are
+  // rejected in semantic analysis before reaching here)
+  if (Value* slotAddr = createCaptureSlotAddress(expr.getName())) {
     Value* value = codegen(*expr.getValue());
     if (isLambdaLiteral && savedBlock) {
       ctx.builder->SetInsertPoint(savedBlock);
@@ -286,7 +302,7 @@ Value* CodegenVisitor::codegen(const VariableAssignmentAST& expr) {
                                         valueAlloca, "closure.load");
       }
     }
-    ctx.builder->CreateStore(value, closureVal);
+    ctx.builder->CreateStore(value, slotAddr);
     return value;
   }
 

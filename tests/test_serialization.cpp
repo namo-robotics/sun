@@ -237,6 +237,29 @@ TEST(SerializationTest, MappedOpTokenKindsRoundtrip) {
   }
 }
 
+TEST(SerializationTest, CompoundAssignmentRoundtrip) {
+  auto target = std::make_unique<VariableReferenceAST>("x");
+  auto value = std::make_unique<NumberExprAST>(static_cast<int64_t>(5));
+  Token op = Token::make(TokenKind::PLUS_ASSIGN, Position{}, Position{});
+  auto ast = std::make_unique<CompoundAssignmentAST>(std::move(target), op,
+                                                     std::move(value));
+
+  ASTSerializer serializer;
+  std::string data = serializer.serializeToString(*ast);
+
+  ASTDeserializer deserializer;
+  auto restored = deserializer.deserializeFromString(data);
+
+  ASSERT_NE(restored, nullptr);
+  ASSERT_EQ(restored->getType(), ASTNodeType::COMPOUND_ASSIGNMENT);
+  auto* compound = static_cast<CompoundAssignmentAST*>(restored.get());
+  EXPECT_EQ(compound->getOp().kind, TokenKind::PLUS_ASSIGN);
+  EXPECT_EQ(compound->binaryOpKind(), TokenKind::PLUS);
+  EXPECT_EQ(compound->getTarget()->getType(),
+            ASTNodeType::VARIABLE_REFERENCE);
+  EXPECT_EQ(compound->getValue()->getType(), ASTNodeType::NUMBER);
+}
+
 TEST(SerializationTest, UnaryExprRoundtrip) {
   // Test via parser - use negation on numbers which is valid
   auto block = parseCode(R"(

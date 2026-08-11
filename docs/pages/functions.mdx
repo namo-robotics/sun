@@ -29,6 +29,30 @@ function main() i32 {
 }
 ```
 
+## Captures
+
+A lambda may use variables from its enclosing scope. By default they are **captured by value** — the lambda gets a private, read-only copy. To mutate a captured variable (or to capture a class, interface, or array at all), declare it in a bracketed **by-reference capture list** after the `lambda` keyword:
+
+```sun
+function main() i32 {
+    var count: i32 = 0;
+    var tick = lambda [ref count] () void {
+        count += 1;       // mutates the original
+    };
+    tick();
+    tick();
+    return count;         // 2
+}
+```
+
+Capture rules:
+
+- **Scalars** (integers, floats, bool) capture by value by default. Mutating a by-value capture is a compile error with a hint to add `[ref x]`.
+- **Compound types** (classes, interfaces, arrays) must be captured with `[ref …]` — copying them into a closure would silently break aliasing.
+- **Globals** are accessed directly and cannot appear in a capture list.
+- A by-ref capture registers a **mutable borrow** of the variable for as long as the lambda value is in scope, so conflicting `ref`s are rejected.
+- A lambda with by-ref captures holds pointers into the enclosing frame, so it **cannot be returned** from the function or passed to `spawn` — the captured variables would be dead (or racing) when used.
+
 ## Semantic Differences
 
 | Aspect | `function` | `lambda` |

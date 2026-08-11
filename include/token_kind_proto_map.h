@@ -37,6 +37,16 @@ inline constexpr std::pair<TokenKind, ast::TokenKind> kTokenKindProtoMap[] = {
     {TokenKind::LEFT_SHIFT, ast::TOKEN_KIND_SHIFT_LEFT},
     {TokenKind::RIGHT_SHIFT, ast::TOKEN_KIND_SHIFT_RIGHT},
     {TokenKind::TILDE, ast::TOKEN_KIND_TILDE},
+    {TokenKind::PLUS_ASSIGN, ast::TOKEN_KIND_PLUS_ASSIGN},
+    {TokenKind::MINUS_ASSIGN, ast::TOKEN_KIND_MINUS_ASSIGN},
+    {TokenKind::STAR_ASSIGN, ast::TOKEN_KIND_STAR_ASSIGN},
+    {TokenKind::SLASH_ASSIGN, ast::TOKEN_KIND_SLASH_ASSIGN},
+    {TokenKind::PERCENT_ASSIGN, ast::TOKEN_KIND_PERCENT_ASSIGN},
+    {TokenKind::AMP_ASSIGN, ast::TOKEN_KIND_AMP_ASSIGN},
+    {TokenKind::PIPE_ASSIGN, ast::TOKEN_KIND_PIPE_ASSIGN},
+    {TokenKind::CARET_ASSIGN, ast::TOKEN_KIND_CARET_ASSIGN},
+    {TokenKind::LEFT_SHIFT_ASSIGN, ast::TOKEN_KIND_SHIFT_LEFT_ASSIGN},
+    {TokenKind::RIGHT_SHIFT_ASSIGN, ast::TOKEN_KIND_SHIFT_RIGHT_ASSIGN},
 };
 
 inline ast::TokenKind toProtoTokenKind(TokenKind kind) {

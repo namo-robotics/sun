@@ -83,6 +83,8 @@ class ASTDeserializer {
       const ast::IndexedAssignment& proto) const;
   std::unique_ptr<ExprAST> deserializeMemberAssignment(
       const ast::MemberAssignment& proto) const;
+  std::unique_ptr<ExprAST> deserializeCompoundAssignment(
+      const ast::CompoundAssignment& proto) const;
 
   std::unique_ptr<ExprAST> deserializeBinary(
       const ast::BinaryExpr& proto) const;

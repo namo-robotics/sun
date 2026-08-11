@@ -39,6 +39,7 @@ message ASTNode {
     ReferenceCreation reference_creation = 33;
     IndexedAssignment indexed_assignment = 34;
     MemberAssignment member_assignment = 35;
+    CompoundAssignment compound_assignment = 36;
     
     // Expressions
     BinaryExpr binary_expr = 40;
@@ -173,6 +174,12 @@ message MemberAssignment {
   ASTNode value = 3;
 }
 
+message CompoundAssignment {
+  ASTNode target = 1;  // Lvalue expression (variable / member / index)
+  Token op = 2;        // The compound token (+=, -=, ...)
+  ASTNode value = 3;
+}
+
 // =============================================================================
 // Expression nodes
 // =============================================================================
@@ -271,6 +278,7 @@ message Prototype {
   repeated Capture captures = 5;
   optional string variadic_param_name = 6;
   optional TypeAnnotation variadic_constraint = 7;
+  repeated string ref_captures = 8;  // Declared [ref x, ...] capture list
   
   // Optional analysis data
   optional PrototypeAnalysis analysis = 10;

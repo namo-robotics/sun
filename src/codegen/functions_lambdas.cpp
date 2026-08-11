@@ -10,8 +10,15 @@ using namespace llvm;
 // Closure helpers
 // -------------------------------------------------------------------
 
-llvm::LoadInst* CodegenVisitor::createLoadVarFromClosure(
-    const std::string& name) {
+// Address of the storage a captured variable refers to: for by-value
+// captures the env slot itself (the closure's private copy); for by-ref
+// captures, the pointer stored in the slot (the original variable's
+// storage). Returns nullptr when name is not a capture of any enclosing
+// closure. valueTypeOut receives the capture's value type; byRefOut whether
+// the capture was declared [ref name].
+llvm::Value* CodegenVisitor::createCaptureSlotAddress(const std::string& name,
+                                                      llvm::Type** valueTypeOut,
+                                                      bool* byRefOut) {
   // Search from innermost -> outermost closure
   for (auto it = closureStack.rbegin(); it != closureStack.rend(); ++it) {
     auto& closure = *it;
@@ -22,7 +29,6 @@ llvm::LoadInst* CodegenVisitor::createLoadVarFromClosure(
     }
 
     unsigned envFieldIndex = captureIt->second;  // index inside env struct
-    llvm::Type* captureType = closure.captureTypes[name];
     llvm::Value* envPtr;
 
     if (closure.isDirectEnv) {
@@ -30,38 +36,103 @@ llvm::LoadInst* CodegenVisitor::createLoadVarFromClosure(
       envPtr = closure.envOrFatPtr;
     } else {
       // Lambda: envOrFatPtr is fat* = { func*, env* }, extract env*
-      // Step 1: get pointer to the env* field (offset 1)
       llvm::Value* envPtrPtr = ctx.builder->CreateStructGEP(
           closure.fatType,      // %closure struct type
           closure.envOrFatPtr,  // Value* of type %closure*
           1,                    // field index 1 = env*
           name + ".env.ptr.ptr");
-
-      // Step 2: load the actual env pointer
       envPtr =
           ctx.builder->CreateLoad(llvm::PointerType::getUnqual(closure.envType),
                                   envPtrPtr, name + ".env.ptr");
     }
 
-    // GEP into the env struct to get the variable
-    llvm::Value* varPtr = ctx.builder->CreateStructGEP(
-        closure.envType,  // %env*
-        envPtr,           // env pointer
-        envFieldIndex,    // index of this capture inside env
-        name + ".ptr");
+    // GEP into the env struct to get the capture slot
+    llvm::Value* slotPtr = ctx.builder->CreateStructGEP(
+        closure.envType, envPtr, envFieldIndex, name + ".slot");
 
-    // Load the value
-    return ctx.builder->CreateLoad(captureType, varPtr, name);
+    bool byRef = false;
+    for (const auto& cap : closure.captures) {
+      if (cap.name == name) {
+        byRef = cap.byRef;
+        break;
+      }
+    }
+    if (valueTypeOut) *valueTypeOut = closure.captureTypes[name];
+    if (byRefOut) *byRefOut = byRef;
+
+    if (byRef) {
+      // The slot holds a pointer to the original storage
+      return ctx.builder->CreateLoad(
+          llvm::PointerType::getUnqual(ctx.getContext()), slotPtr,
+          name + ".ref");
+    }
+    return slotPtr;
   }
 
   return nullptr;
+}
+
+llvm::LoadInst* CodegenVisitor::createLoadVarFromClosure(
+    const std::string& name) {
+  llvm::Type* valueType = nullptr;
+  llvm::Value* addr = createCaptureSlotAddress(name, &valueType);
+  if (!addr) return nullptr;
+  return ctx.builder->CreateLoad(valueType, addr, name);
+}
+
+// Value stored into an env slot at closure creation: the current value for
+// by-value captures, the referent's address for by-ref captures
+llvm::Value* CodegenVisitor::computeCaptureInitValue(const Capture& cap) {
+  const std::string& varName = cap.name;
+
+  if (cap.byRef) {
+    if (AllocaInst* alloca = findVariable(varName)) {
+      // Ref-typed variables hold a pointer; flatten so the env points at the
+      // referent, not the ref cell (mirror tryCodegenAddress)
+      if (cap.type && cap.type->isReference()) {
+        const auto* refType =
+            static_cast<const sun::ReferenceType*>(cap.type.get());
+        llvm::Type* referencedLLVMType =
+            typeResolver.resolve(refType->getReferencedType());
+        if (alloca->getAllocatedType() != referencedLLVMType) {
+          return ctx.builder->CreateLoad(
+              PointerType::getUnqual(ctx.getContext()), alloca,
+              varName + ".ptr");
+        }
+      }
+      return alloca;
+    }
+    // Nested capture: the enclosing closure's slot. An enclosing by-ref
+    // capture propagates the original address (no indirection stacking);
+    // by-ref-of-by-value is rejected in semantic analysis.
+    if (Value* addr = createCaptureSlotAddress(varName)) {
+      return addr;
+    }
+    logAndThrowError("Cannot capture variable by reference: " + varName);
+    return nullptr;
+  }
+
+  Value* capturedValue = createLoadForLocalVar(varName);
+  if (!capturedValue) {
+    capturedValue = createLoadVarFromClosure(varName);
+  }
+  if (!capturedValue) {
+    capturedValue = createLoadForGlobalVar(varName);
+  }
+  if (!capturedValue) {
+    logAndThrowError("Cannot capture variable for closure: " + varName);
+  }
+  return capturedValue;
 }
 
 llvm::StructType* CodegenVisitor::createEnvTypeForFunc(
     const PrototypeAST& proto) {
   std::vector<llvm::Type*> capturedTypes;
   for (const auto& cap : proto.getCaptures()) {
-    capturedTypes.push_back(typeResolver.resolve(cap.type));
+    // By-ref captures store a pointer to the original storage
+    capturedTypes.push_back(cap.byRef
+                                ? PointerType::getUnqual(ctx.getContext())
+                                : typeResolver.resolve(cap.type));
   }
   return StructType::create(ctx.getContext(), capturedTypes,
                             proto.getName() + ".env");
@@ -72,12 +143,6 @@ llvm::StructType* CodegenVisitor::createFatTypeForFunc(
   if (!func) {
     logAndThrowError("null function passed to createFatTypeForFunc");
     return nullptr;
-  }
-
-  // The environment struct type: contains only the captured values
-  std::vector<llvm::Type*> capturedTypes;
-  for (const auto& cap : proto.getCaptures()) {
-    capturedTypes.push_back(typeResolver.resolve(cap.type));
   }
 
   // The actual fat pointer type we return: { function*, environment* }
@@ -107,11 +172,6 @@ llvm::Value* CodegenVisitor::createFatClosure(Function* func,
     return nullptr;
   }
 
-  std::vector<llvm::Type*> capturedTypes;
-  for (const auto& cap : proto.getCaptures()) {
-    capturedTypes.push_back(typeResolver.resolve(cap.type));
-  }
-
   IRBuilder<> entryBuilder(&parentFunc->getEntryBlock(),
                            parentFunc->getEntryBlock().begin());
 
@@ -120,22 +180,13 @@ llvm::Value* CodegenVisitor::createFatClosure(Function* func,
       nullptr, "closure.env");
 
   for (size_t i = 0; i < proto.getCaptures().size(); ++i) {
-    const std::string& varName = proto.getCaptures()[i].name;
+    const Capture& cap = proto.getCaptures()[i];
 
-    Value* capturedValue = createLoadForLocalVar(varName);
-    if (!capturedValue) {
-      capturedValue = createLoadVarFromClosure(varName);
-    }
-    if (!capturedValue) {
-      capturedValue = createLoadForGlobalVar(varName);
-    }
-    if (!capturedValue) {
-      logAndThrowError("Cannot capture variable for fat closure: " + varName);
-      return nullptr;
-    }
+    Value* capturedValue = computeCaptureInitValue(cap);
+    if (!capturedValue) return nullptr;
 
     Value* fieldPtr = ctx.builder->CreateStructGEP(
-        envType, envAlloca, (unsigned)i, "env." + varName);
+        envType, envAlloca, (unsigned)i, "env." + cap.name);
 
     ctx.builder->CreateStore(capturedValue, fieldPtr);
   }
@@ -164,22 +215,13 @@ llvm::Value* CodegenVisitor::createEnvClosure(StructType* envType,
       entryBuilder.CreateAlloca(envType, nullptr, proto.getName() + ".env");
 
   for (size_t i = 0; i < proto.getCaptures().size(); ++i) {
-    const std::string& varName = proto.getCaptures()[i].name;
+    const Capture& cap = proto.getCaptures()[i];
 
-    Value* capturedValue = createLoadForLocalVar(varName);
-    if (!capturedValue) {
-      capturedValue = createLoadVarFromClosure(varName);
-    }
-    if (!capturedValue) {
-      capturedValue = createLoadForGlobalVar(varName);
-    }
-    if (!capturedValue) {
-      logAndThrowError("Cannot capture variable for env closure: " + varName);
-      return nullptr;
-    }
+    Value* capturedValue = computeCaptureInitValue(cap);
+    if (!capturedValue) return nullptr;
 
     Value* fieldPtr = ctx.builder->CreateStructGEP(
-        envType, envAlloca, (unsigned)i, "env." + varName);
+        envType, envAlloca, (unsigned)i, "env." + cap.name);
     ctx.builder->CreateStore(capturedValue, fieldPtr);
   }
 
@@ -540,8 +582,11 @@ Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
   // Set error handling context for this function
   bool savedCanError = currentFunctionCanError;
   llvm::Type* savedValueType = currentFunctionValueType;
+  bool savedReturnsRef = currentFunctionReturnsRef;
   currentFunctionCanError = canError;
   currentFunctionValueType = canError ? valueType : nullptr;
+  currentFunctionReturnsRef =
+      proto.hasReturnType() && proto.getReturnType()->isReference();
 
   // Generate body — may recursively create many other functions
   // The body value is used for implicit return if the body doesn't explicitly
@@ -551,6 +596,7 @@ Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
   // Restore error handling context
   currentFunctionCanError = savedCanError;
   currentFunctionValueType = savedValueType;
+  currentFunctionReturnsRef = savedReturnsRef;
 
   // Pop closure context if we pushed one
   if (proto.hasClosure()) {
@@ -591,7 +637,10 @@ Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
     }
   }
 
-  verifyFunction(*func);
+  if (llvm::verifyFunction(*func, &llvm::errs())) {
+    logAndThrowError("Function verification failed: " +
+                     func->getName().str());
+  }
 
   // Track user-defined functions for IR filtering (exclude precompiled library
   // code)
@@ -715,8 +764,11 @@ llvm::Value* CodegenVisitor::codegenLambda(LambdaAST& lambdaAst) {
   // Set error handling context for this function
   bool savedCanError = currentFunctionCanError;
   llvm::Type* savedValueType = currentFunctionValueType;
+  bool savedReturnsRef = currentFunctionReturnsRef;
   currentFunctionCanError = canError;
   currentFunctionValueType = canError ? valueType : nullptr;
+  currentFunctionReturnsRef =
+      proto.hasReturnType() && proto.getReturnType()->isReference();
 
   // Generate body
   Value* bodyValue = codegen(lambdaAst.getBody());
@@ -724,6 +776,7 @@ llvm::Value* CodegenVisitor::codegenLambda(LambdaAST& lambdaAst) {
   // Restore error handling context
   currentFunctionCanError = savedCanError;
   currentFunctionValueType = savedValueType;
+  currentFunctionReturnsRef = savedReturnsRef;
 
   // Pop closure context if we pushed one
   if (proto.hasClosure()) {

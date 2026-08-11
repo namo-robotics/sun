@@ -230,6 +230,36 @@ static const std::map<TokenKind, std::string> tokenRegexes = {
     {TokenKind::ELLIPSIS, "\\.\\.\\."},
     {TokenKind::DOT, "\\."}};
 
+// Map compound-assignment token kinds (+=, -=, ...) to the underlying
+// binary operator; nullopt for anything else. Shared by the parser,
+// semantic analysis, and codegen.
+inline std::optional<TokenKind> compoundToBinaryOp(TokenKind kind) {
+  switch (kind) {
+    case TokenKind::PLUS_ASSIGN:
+      return TokenKind::PLUS;
+    case TokenKind::MINUS_ASSIGN:
+      return TokenKind::MINUS;
+    case TokenKind::STAR_ASSIGN:
+      return TokenKind::STAR;
+    case TokenKind::SLASH_ASSIGN:
+      return TokenKind::SLASH;
+    case TokenKind::PERCENT_ASSIGN:
+      return TokenKind::PERCENT;
+    case TokenKind::AMP_ASSIGN:
+      return TokenKind::AMPERSAND;
+    case TokenKind::PIPE_ASSIGN:
+      return TokenKind::PIPE;
+    case TokenKind::CARET_ASSIGN:
+      return TokenKind::CARET;
+    case TokenKind::LEFT_SHIFT_ASSIGN:
+      return TokenKind::LEFT_SHIFT;
+    case TokenKind::RIGHT_SHIFT_ASSIGN:
+      return TokenKind::RIGHT_SHIFT;
+    default:
+      return std::nullopt;
+  }
+}
+
 // Lookup table for simple token metadata (text and precedence)
 struct TokenInfo {
   std::string_view text;

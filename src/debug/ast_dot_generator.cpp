@@ -292,6 +292,14 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       emitEdge(valId, "value");
       break;
     }
+    case ASTNodeType::COMPOUND_ASSIGNMENT: {
+      const auto* ca = static_cast<const CompoundAssignmentAST*>(node);
+      int targetId = visitNode(ca->getTarget());
+      emitEdge(targetId, "target");
+      int valId = visitNode(ca->getValue());
+      emitEdge(valId, "value");
+      break;
+    }
     case ASTNodeType::TRY_CATCH: {
       const auto* tc = static_cast<const TryCatchExprAST*>(node);
       int tryId = visitNode(&tc->getTryBlock());

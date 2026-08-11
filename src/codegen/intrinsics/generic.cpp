@@ -55,12 +55,19 @@ Value* CodegenVisitor::codegenInitIntrinsic(
 
   auto* classType = static_cast<sun::ClassType*>(targetType.get());
 
-  // Collect constructor arguments. Variadic packs are already expanded into
-  // concrete typed args during semantic analysis, so every arg is ordinary
-  // here. argTypes is collected in parallel (aligned with the value args,
-  // excluding 'this') for constructor overload resolution.
-  std::vector<Value*> ctorArgs;
+  // Collect argument Sun types first (variadic packs are already expanded
+  // into concrete typed args by semantic analysis) so the constructor can be
+  // resolved before adapting values to its calling convention.
   std::vector<sun::TypePtr> argTypes;
+  for (size_t i = 1; i < args.size(); ++i) {
+    argTypes.push_back(args[i]->getResolvedType());
+  }
+
+  // Look up the constructor (init method) that is compatible with the argument
+  // types.
+  ConstructorLookup ctor = lookupConstructor(classType, argTypes);
+
+  std::vector<Value*> ctorArgs;
   // Slot 0 is the method closure; patched below once the ctor is resolved.
   ctorArgs.push_back(rawPtr);
 
@@ -70,21 +77,23 @@ Value* CodegenVisitor::codegenInitIntrinsic(
     if (!argVal) return nullptr;
     sun::TypePtr argType = args[i]->getResolvedType();
 
-    // Class values are addressable, so codegen yields a pointer to the struct,
-    // but constructors take a class argument by value. Load the struct to match
-    // the constructor's calling convention.
-    if (argType && argType->isClass() && argVal->getType()->isPointerTy()) {
+    sun::TypePtr paramType =
+        (ctor.method && i - 1 < ctor.method->paramTypes.size())
+            ? ctor.method->paramTypes[i - 1]
+            : nullptr;
+    bool paramIsRef = paramType && paramType->isReference();
+
+    // Class values are addressable, so codegen yields a pointer to the
+    // struct. Ref params take that pointer directly; by-value class params
+    // need the struct loaded to match the constructor's calling convention.
+    if (argType && argType->isClass() && argVal->getType()->isPointerTy() &&
+        !paramIsRef) {
       llvm::Type* structTy = typeResolver.resolve(argType);
       argVal = ctx.builder->CreateLoad(structTy, argVal, "arg.val");
     }
 
     ctorArgs.push_back(argVal);
-    argTypes.push_back(argType);
   }
-
-  // Look up the constructor (init method) that is compatible with the argument
-  // types.
-  ConstructorLookup ctor = lookupConstructor(classType, argTypes);
 
   Function* ctorFunc = nullptr;
   size_t ctorArgCount = ctorArgs.size();  // includes 'this' pointer
@@ -265,83 +274,14 @@ Value* CodegenVisitor::codegenAddressOfIntrinsic(
 
   const ExprAST* argExpr = args[0].get();
 
-  // Handle VariableReferenceAST - get the alloca directly
-  if (auto* varRef = dynamic_cast<const VariableReferenceAST*>(argExpr)) {
-    const std::string& varName = varRef->getName();
-
-    // Check for local variable first
-    llvm::AllocaInst* alloca = findVariable(varName);
-    if (alloca) {
-      return alloca;
-    }
-
-    // Check for global variable
-    llvm::GlobalVariable* globalVar = module->getGlobalVariable(varName);
-    if (globalVar) {
-      return globalVar;
-    }
-
-    logAndThrowError("_address_of: Cannot find variable '" + varName + "'");
+  Value* addr = tryCodegenAddress(*argExpr);
+  if (!addr) {
+    logAndThrowError(
+        "_address_of<T>() requires an addressable expression (variable, "
+        "field, array element, or this)");
     return nullptr;
   }
-
-  // Handle MemberAccessAST - get the field pointer without loading
-  if (auto* memberAccess = dynamic_cast<const MemberAccessAST*>(argExpr)) {
-    const std::string& memberName = memberAccess->getMemberName();
-
-    // Get the object pointer
-    llvm::Value* objectPtr = codegen(*memberAccess->getObject());
-    if (!objectPtr) return nullptr;
-
-    // Get the object type
-    sun::TypePtr objectType = memberAccess->getObject()->getResolvedType();
-
-    // Handle reference types
-    if (objectType && objectType->isReference()) {
-      objectType = static_cast<sun::ReferenceType*>(objectType.get())
-                       ->getReferencedType();
-    }
-
-    // Handle pointer types (raw_ptr, static_ptr)
-    if (objectType && objectType->isRawPointer()) {
-      objectType =
-          static_cast<sun::RawPointerType*>(objectType.get())->getPointeeType();
-    }
-
-    if (!objectType || !objectType->isClass()) {
-      logAndThrowError("_address_of: Member access on non-class type");
-      return nullptr;
-    }
-
-    auto* classType = static_cast<sun::ClassType*>(objectType.get());
-    const sun::ClassField* field = classType->getField(memberName);
-    if (!field) {
-      logAndThrowError("_address_of: Cannot find field '" + memberName + "'");
-      return nullptr;
-    }
-
-    // Generate GEP to access the field
-    llvm::StructType* structType = classType->getStructType(ctx.getContext());
-    return ctx.builder->CreateStructGEP(structType, objectPtr, field->index,
-                                        memberName + ".addr");
-  }
-
-  // Handle ThisExprAST - return the this pointer
-  if (dynamic_cast<const ThisExprAST*>(argExpr)) {
-    llvm::AllocaInst* thisAlloca = findVariable("this");
-    if (thisAlloca) {
-      // Load the this pointer (alloca holds a pointer to the instance)
-      return ctx.builder->CreateLoad(
-          llvm::PointerType::getUnqual(ctx.getContext()), thisAlloca, "this");
-    }
-    logAndThrowError("_address_of: 'this' not available in current context");
-    return nullptr;
-  }
-
-  logAndThrowError(
-      "_address_of<T>() requires an addressable expression (variable, field, "
-      "or this)");
-  return nullptr;
+  return addr;
 }
 
 Value* CodegenVisitor::codegenToRefIntrinsic(

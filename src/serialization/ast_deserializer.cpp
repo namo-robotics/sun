@@ -64,6 +64,7 @@ TypeAnnotation ASTDeserializer::deserializeTypeAnnotation(
 Capture ASTDeserializer::deserializeCapture(const ast::Capture& cap) const {
   Capture result;
   result.name = cap.name();
+  result.byRef = cap.by_ref();
   // Note: type is stored as string signature, not reconstructed as TypePtr
   // The semantic analyzer will need to re-resolve the type
   return result;
@@ -126,6 +127,13 @@ std::unique_ptr<PrototypeAST> ASTDeserializer::deserializePrototype(
   }
   result->setCaptures(captures);
 
+  // Restore the declared [ref x, ...] capture list
+  std::vector<std::string> refCaptureNames;
+  for (const auto& refName : proto.ref_captures()) {
+    refCaptureNames.push_back(refName);
+  }
+  result->setRefCaptureNames(std::move(refCaptureNames));
+
   return result;
 }
 
@@ -172,6 +180,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserialize(
       break;
     case ast::ASTNode::kIndexedAssignment:
       result = deserializeIndexedAssignment(node.indexed_assignment());
+      break;
+    case ast::ASTNode::kCompoundAssignment:
+      result = deserializeCompoundAssignment(node.compound_assignment());
       break;
     case ast::ASTNode::kMemberAssignment:
       result = deserializeMemberAssignment(node.member_assignment());
@@ -422,6 +433,13 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeMemberAssignment(
   return std::make_unique<MemberAssignmentAST>(deserialize(proto.object()),
                                                proto.member_name(),
                                                deserialize(proto.value()));
+}
+
+std::unique_ptr<ExprAST> ASTDeserializer::deserializeCompoundAssignment(
+    const ast::CompoundAssignment& proto) const {
+  return std::make_unique<CompoundAssignmentAST>(deserialize(proto.target()),
+                                                 deserializeToken(proto.op()),
+                                                 deserialize(proto.value()));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeBinary(

@@ -31,6 +31,7 @@ message TypeAnnotation {
 message Capture {
   string name = 1;
   string type_signature = 2;  // Type stored as string signature
+  bool by_ref = 3;            // Captured by reference via [ref x]
 }
 
 // Token kind enumeration (mirrors TokenKind in lexer.h)
@@ -60,6 +61,16 @@ enum TokenKind {
   TOKEN_KIND_SHIFT_LEFT = 19;
   TOKEN_KIND_SHIFT_RIGHT = 20;
   TOKEN_KIND_TILDE = 21;
+  TOKEN_KIND_PLUS_ASSIGN = 22;
+  TOKEN_KIND_MINUS_ASSIGN = 23;
+  TOKEN_KIND_STAR_ASSIGN = 24;
+  TOKEN_KIND_SLASH_ASSIGN = 25;
+  TOKEN_KIND_PERCENT_ASSIGN = 26;
+  TOKEN_KIND_AMP_ASSIGN = 27;
+  TOKEN_KIND_PIPE_ASSIGN = 28;
+  TOKEN_KIND_CARET_ASSIGN = 29;
+  TOKEN_KIND_SHIFT_LEFT_ASSIGN = 30;
+  TOKEN_KIND_SHIFT_RIGHT_ASSIGN = 31;
 }
 
 // Token for operators in binary/unary expressions

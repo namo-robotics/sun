@@ -155,9 +155,20 @@ std::set<std::string> SemanticAnalyzer::collectFreeVariables(
       // Functions define their own scope - handled separately
       break;
 
-    case ASTNodeType::LAMBDA:
-      // Lambdas define their own scope - handled separately
+    case ASTNodeType::LAMBDA: {
+      // A nested lambda's free variables (minus its own params) are free in
+      // the enclosing scope too: the enclosing closure must capture them so
+      // the inner closure can initialize its env from the enclosing one
+      const auto& lambda = static_cast<const LambdaAST&>(expr);
+      std::set<std::string> innerBound = bound;
+      for (const auto& arg : lambda.getProto().getArgNames()) {
+        innerBound.insert(arg);
+      }
+      auto innerFree =
+          collectFreeVariablesInBlock(lambda.getBody(), innerBound);
+      free.insert(innerFree.begin(), innerFree.end());
       break;
+    }
 
     case ASTNodeType::SPAWN: {
       // spawn(lambda) - analyze the lambda for captures
@@ -167,8 +178,50 @@ std::set<std::string> SemanticAnalyzer::collectFreeVariables(
       break;
     }
 
+    case ASTNodeType::MEMBER_ACCESS: {
+      const auto& access = static_cast<const MemberAccessAST&>(expr);
+      auto objectFree = collectFreeVariables(*access.getObject(), bound);
+      free.insert(objectFree.begin(), objectFree.end());
+      break;
+    }
+
+    case ASTNodeType::MEMBER_ASSIGNMENT: {
+      const auto& assignment = static_cast<const MemberAssignmentAST&>(expr);
+      auto objectFree = collectFreeVariables(*assignment.getObject(), bound);
+      free.insert(objectFree.begin(), objectFree.end());
+      auto valueFree = collectFreeVariables(*assignment.getValue(), bound);
+      free.insert(valueFree.begin(), valueFree.end());
+      break;
+    }
+
+    case ASTNodeType::INDEX: {
+      const auto& indexExpr = static_cast<const IndexAST&>(expr);
+      auto targetFree = collectFreeVariables(*indexExpr.getTarget(), bound);
+      free.insert(targetFree.begin(), targetFree.end());
+      for (const auto& slice : indexExpr.getIndices()) {
+        if (slice->getStart()) {
+          auto f = collectFreeVariables(*slice->getStart(), bound);
+          free.insert(f.begin(), f.end());
+        }
+        if (slice->getEnd()) {
+          auto f = collectFreeVariables(*slice->getEnd(), bound);
+          free.insert(f.begin(), f.end());
+        }
+      }
+      break;
+    }
+
     case ASTNodeType::INDEXED_ASSIGNMENT: {
       const auto& assignment = static_cast<const IndexedAssignmentAST&>(expr);
+      auto targetFree = collectFreeVariables(*assignment.getTarget(), bound);
+      free.insert(targetFree.begin(), targetFree.end());
+      auto valueFree = collectFreeVariables(*assignment.getValue(), bound);
+      free.insert(valueFree.begin(), valueFree.end());
+      break;
+    }
+
+    case ASTNodeType::COMPOUND_ASSIGNMENT: {
+      const auto& assignment = static_cast<const CompoundAssignmentAST&>(expr);
       auto targetFree = collectFreeVariables(*assignment.getTarget(), bound);
       free.insert(targetFree.begin(), targetFree.end());
       auto valueFree = collectFreeVariables(*assignment.getValue(), bound);
@@ -244,6 +297,17 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const FunctionAST& func) {
       if (varInfo->isGlobal) {
         continue;  // Skip global variables - they don't need to be captured
       }
+      // Compound types are copied into the env struct - a broken aliasing
+      // model. Nested named functions have no capture list, so they cannot
+      // capture compound types at all.
+      if (sun::unwrapRef(varInfo->type)->isCompound()) {
+        logAndThrowError("Cannot capture '" + var + "' of compound type '" +
+                             varInfo->type->toString() +
+                             "' by value in a nested function; use a lambda "
+                             "with a [ref " +
+                             var + "] capture list instead",
+                         func.getLocation());
+      }
       captures.push_back({var, varInfo->type});
     }
   }
@@ -263,6 +327,39 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const LambdaAST& lambda) {
   std::set<std::string> freeVars =
       collectFreeVariablesInBlock(lambda.getBody(), boundVars);
 
+  const auto& refNames = proto.getRefCaptureNames();
+  auto isDeclaredRef = [&](const std::string& name) {
+    return std::find(refNames.begin(), refNames.end(), name) != refNames.end();
+  };
+
+  // Every declared [ref x] must name a variable that is actually captured
+  for (const auto& refName : refNames) {
+    if (!freeVars.count(refName)) {
+      logAndThrowError("Capture list names '" + refName +
+                           "' but the lambda body does not use it",
+                       lambda.getLocation());
+    }
+    VariableInfo* varInfo = lookupVariable(refName);
+    if (!varInfo || !varInfo->type) {
+      logAndThrowError("Unknown variable '" + refName +
+                           "' in lambda capture list",
+                       lambda.getLocation());
+    }
+    if (varInfo->isGlobal) {
+      logAndThrowError("Cannot capture global variable '" + refName +
+                           "' by reference; globals are accessed directly",
+                       lambda.getLocation());
+    }
+    // A by-ref capture of a name the enclosing lambda captured by value
+    // would alias the enclosing env's private copy - reject
+    if (varInfo->isCapture && !varInfo->isByRefCapture) {
+      logAndThrowError(
+          "Cannot capture '" + refName +
+              "' by reference: the enclosing lambda captures it by value",
+          lambda.getLocation());
+    }
+  }
+
   std::vector<Capture> captures;
   for (const auto& var : freeVars) {
     // Look up the variable's type
@@ -271,7 +368,18 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const LambdaAST& lambda) {
       if (varInfo->isGlobal) {
         continue;  // Skip global variables - they don't need to be captured
       }
-      captures.push_back({var, varInfo->type});
+      bool byRef = isDeclaredRef(var);
+      // Compound types (classes, interfaces, arrays) cannot be captured by
+      // value - the env copy silently breaks aliasing
+      if (!byRef && sun::unwrapRef(varInfo->type)->isCompound()) {
+        logAndThrowError("Cannot capture '" + var + "' of compound type '" +
+                             varInfo->type->toString() +
+                             "' by value; capture it by reference with "
+                             "'lambda [ref " +
+                             var + "]'",
+                         lambda.getLocation());
+      }
+      captures.push_back({var, varInfo->type, byRef});
     }
   }
 

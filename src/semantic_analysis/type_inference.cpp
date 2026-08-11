@@ -469,7 +469,14 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       // Lambdas always get LambdaType (fat pointer closure)
       bool canThrow =
           proto.hasReturnType() && proto.getReturnType()->canError;
-      return sun::Types::Lambda(returnType, std::move(paramTypes), canThrow);
+      auto lambdaType =
+          sun::Types::Lambda(returnType, std::move(paramTypes), canThrow);
+      // Metadata for spawn/return escape checks (survives variable binding)
+      if (proto.hasRefCaptures() || !proto.getRefCaptureNames().empty()) {
+        static_cast<sun::LambdaType*>(lambdaType.get())
+            ->setHasRefCaptures(true);
+      }
+      return lambdaType;
     }
 
     case ASTNodeType::INDEXED_ASSIGNMENT: {
@@ -545,6 +552,10 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       // Assignment expression returns void
       return sun::Types::Void();
     }
+
+    case ASTNodeType::COMPOUND_ASSIGNMENT:
+      // Compound assignment is a statement
+      return sun::Types::Void();
 
     case ASTNodeType::TRY_CATCH: {
       const auto& tryCatchExpr = static_cast<const TryCatchExprAST&>(expr);

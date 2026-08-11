@@ -495,8 +495,11 @@ void CodegenVisitor::generateMethodBody(const FunctionAST& methodFunc,
   // method returns plain T, so the value type is just the return type.
   bool savedCanError = currentFunctionCanError;
   llvm::Type* savedValueType = currentFunctionValueType;
+  bool savedReturnsRef = currentFunctionReturnsRef;
   currentFunctionCanError = canError;
   currentFunctionValueType = canError ? returnType : nullptr;
+  currentFunctionReturnsRef =
+      proto.hasReturnType() && proto.getReturnType()->isReference();
 
   // Create entry basic block
   BasicBlock* BB = BasicBlock::Create(ctx.getContext(), "entry", func);
@@ -562,11 +565,11 @@ void CodegenVisitor::generateMethodBody(const FunctionAST& methodFunc,
   }
 
   popScope();
-  ;
 
   // Restore error handling context
   currentFunctionCanError = savedCanError;
   currentFunctionValueType = savedValueType;
+  currentFunctionReturnsRef = savedReturnsRef;
 
   // Verify the function
   verifyFunction(*func);
@@ -680,58 +683,18 @@ Value* CodegenVisitor::codegen(const MemberAccessAST& expr) {
     // Falls through if pointing to class and member not 'get'
   }
 
-  // Get the object value
-  Value* objectPtr = codegen(*expr.getObject());
+  // Resolve the object down to (pointer, class type)
+  auto [objectPtr, classType] = codegenObjectPtr(*expr.getObject());
   if (!objectPtr) return nullptr;
-
-  // For generic method bodies, 'this' may have a type parameter type.
-  // In that case, use the currentClass which is the specialized type.
-  if (dynamic_cast<const ThisExprAST*>(expr.getObject()) && currentClass) {
-    objectType = currentClass;
-  }
-
-  // Handle pointer-to-class types: raw_ptr<ClassName>.member or
-  // static_ptr<ClassName>.member
-  // The pointer value is already the 'this' pointer
-  if (objectType &&
-      (objectType->isRawPointer() || objectType->isStaticPointer())) {
-    sun::TypePtr pointeeType = nullptr;
-    if (objectType->isRawPointer()) {
-      pointeeType =
-          static_cast<sun::RawPointerType*>(objectType.get())->getPointeeType();
-    } else {
-      pointeeType = static_cast<sun::StaticPointerType*>(objectType.get())
-                        ->getPointeeType();
-    }
-    if (pointeeType && pointeeType->isClass()) {
-      objectType = pointeeType;
-    }
-  }
-
-  // Handle reference-to-class types: ref ClassName.member
-  // The reference value is already the object pointer
-  if (objectType && objectType->isReference()) {
-    sun::TypePtr referencedType =
-        static_cast<sun::ReferenceType*>(objectType.get())->getReferencedType();
-    if (referencedType && referencedType->isClass()) {
-      objectType = referencedType;
-    }
-  }
-
-  if (!objectType || !objectType->isClass()) {
+  if (!classType) {
     logAndThrowError("Member access on non-class type");
     return nullptr;
   }
 
-  auto* classType = static_cast<sun::ClassType*>(objectType.get());
-
   // Check if it's a field access
   const sun::ClassField* field = classType->getField(memberName);
   if (field) {
-    // Generate GEP to access the field
-    llvm::StructType* structType = classType->getStructType(ctx.getContext());
-    Value* fieldPtr = ctx.builder->CreateStructGEP(structType, objectPtr,
-                                                   field->index, memberName);
+    Value* fieldPtr = getFieldPtr(classType, objectPtr, *field, memberName);
 
     // For class-typed fields (embedded structs), return the pointer to the
     // embedded struct (class values in Sun are pointers)
@@ -1008,44 +971,15 @@ CodegenVisitor::ConstructorLookup CodegenVisitor::lookupConstructor(
 // -------------------------------------------------------------------
 
 Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
-  // Get the object pointer
-  Value* objectPtr = codegen(*expr.getObject());
+  // Resolve the object down to (pointer, class type); the shared helper also
+  // unwraps ref-to-class objects, which this path previously rejected
+  auto [objectPtr, classType] = codegenObjectPtr(*expr.getObject());
   if (!objectPtr) return nullptr;
-
-  // Get the object's type
-  sun::TypePtr objectType = expr.getObject()->getResolvedType();
-
-  // For generic method bodies, 'this' may have a type parameter type.
-  // In that case, use the currentClass which is the specialized type.
-  if (dynamic_cast<const ThisExprAST*>(expr.getObject()) && currentClass) {
-    objectType = currentClass;
-  }
-
-  // Handle pointer-to-class types: ptr<ClassName>.member = value or raw_ptr or
-  // Handle pointer-to-class: raw_ptr<ClassName>.member or
-  // static_ptr<ClassName>.member The pointer value is already the 'this'
-  // pointer
-  if (objectType &&
-      (objectType->isRawPointer() || objectType->isStaticPointer())) {
-    sun::TypePtr pointeeType = nullptr;
-    if (objectType->isRawPointer()) {
-      pointeeType =
-          static_cast<sun::RawPointerType*>(objectType.get())->getPointeeType();
-    } else {
-      pointeeType = static_cast<sun::StaticPointerType*>(objectType.get())
-                        ->getPointeeType();
-    }
-    if (pointeeType && pointeeType->isClass()) {
-      objectType = pointeeType;
-    }
-  }
-
-  if (!objectType || !objectType->isClass()) {
+  if (!classType) {
     logAndThrowError("Member assignment on non-class type");
     return nullptr;
   }
 
-  auto* classType = static_cast<sun::ClassType*>(objectType.get());
   const std::string& memberName = expr.getMemberName();
 
   // Get the field info
@@ -1078,9 +1012,8 @@ Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
   }
 
   // Generate GEP to access the field
-  llvm::StructType* structType = classType->getStructType(ctx.getContext());
-  Value* fieldPtr = ctx.builder->CreateStructGEP(
-      structType, objectPtr, field->index, memberName + ".ptr");
+  Value* fieldPtr =
+      getFieldPtr(classType, objectPtr, *field, memberName + ".ptr");
 
   // Handle class-typed fields: copy the embedded struct data
   if (field->type->isClass()) {
@@ -1376,13 +1309,25 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
       argValues.push_back(envPtr);
     }
 
+    // Sun-level parameter types of the specialization, for numeric widening
+    std::vector<sun::TypePtr> specParamTypes;
+    if (auto specialization = genericFuncAST->getSpecialization(mangledName)) {
+      specParamTypes = specialization->getProto().getResolvedParamTypes();
+    }
+
+    size_t argIdx = 0;
     for (const auto& arg : expr.getArgs()) {
       Value* val = codegen(*arg);
       if (!val) {
         logAndThrowError("Failed to generate argument for generic call");
         return nullptr;
       }
+      if (argIdx < specParamTypes.size()) {
+        val = widenNumericIfNeeded(val, specParamTypes[argIdx],
+                                   arg->getResolvedType());
+      }
       argValues.push_back(val);
+      ++argIdx;
     }
 
     return ctx.builder->CreateCall(specializedFunc, argValues);

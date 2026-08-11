@@ -27,6 +27,8 @@ static bool literalFitsInType(int64_t value,
       return value >= 0 && static_cast<uint64_t>(value) <= UINT32_MAX;
     case sun::Type::Kind::UInt64:
       return value >= 0;  // int64_t can't represent full u64 range
+    case sun::Type::Kind::Bool:
+      return value == 0 || value == 1;
     default:
       return false;
   }

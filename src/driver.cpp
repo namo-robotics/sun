@@ -541,9 +541,9 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
       }
     }
 
-    // Verify the module
+    // Verify the module - invalid IR is a hard compile failure
     if (llvm::verifyModule(*ctx->mainModule, &llvm::errs())) {
-      llvm::errs() << "Error: Module verification failed\n";
+      throw SunError(SunError::Kind::Compile, "Module verification failed");
     }
     return result;
   }
@@ -555,6 +555,11 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
     } else {
       printUserDefinedIR();
     }
+  }
+
+  // Verify before executing - never run invalid IR
+  if (llvm::verifyModule(*ctx->mainModule, &llvm::errs())) {
+    throw SunError(SunError::Kind::Compile, "Module verification failed");
   }
 
   llvm::Function* func = ctx->mainModule->getFunction("main");

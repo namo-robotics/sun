@@ -116,3 +116,48 @@ TEST(GenericFunctions, inner_generic_function_with_capture) {
   // inner(3) = 3+5 = 8, outer = 8
   EXPECT_EQ(value, 8);
 }
+// ============================================================================
+// Integer-literal arguments to explicit instantiations
+// ============================================================================
+
+TEST(GenericFunctions, literal_args_widened_to_i64) {
+  auto value = executeString(R"(
+    function scale <T> (v: T, by: T) T {
+        return v * by;
+    }
+
+    function main() i64 {
+        return scale<i64>(8, 9);
+    }
+  )");
+  EXPECT_EQ(value, 72);
+}
+
+TEST(GenericFunctions, literal_args_narrowed_to_i8) {
+  auto value = executeString(R"(
+    function double_it <T> (v: T) T {
+        return v + v;
+    }
+
+    function main() i32 {
+        var r: i8 = double_it<i8>(3);
+        if (r == 6) { return 1; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 1);
+}
+
+TEST(GenericFunctions, literal_arg_out_of_range_is_error) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    function double_it <T> (v: T) T {
+        return v + v;
+    }
+
+    function main() i32 {
+        var r: i8 = double_it<i8>(300);
+        return 0;
+    }
+  )"),
+                                "cannot be represented");
+}
