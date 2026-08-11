@@ -16,8 +16,9 @@
 
 enum class TokenKind {
   TOK_EOF,
-  COMMENT,  // // comment (skipped during lexing)
-  DECLARE,  // declare keyword for explicit generic instantiation
+  COMMENT,        // // comment (skipped unless emitComments is set)
+  BLOCK_COMMENT,  // /* comment */ (non-nested; skipped unless emitComments)
+  DECLARE,        // declare keyword for explicit generic instantiation
   DEF,
   EXTERN,
   VAR,
@@ -125,7 +126,9 @@ enum class TokenKind {
 };
 
 static const std::map<TokenKind, std::string> tokenRegexes = {
-    {TokenKind::COMMENT, "//[^\n]*"},  // Line comments (skipped)
+    {TokenKind::COMMENT, "//[^\r\n]*"},  // Line comments
+    // Non-nested block comments; cannot match past the first */
+    {TokenKind::BLOCK_COMMENT, "/\\*[^*]*\\*+([^/*][^*]*\\*+)*/"},
     {TokenKind::DECLARE, "declare"},
     {TokenKind::DEF, "def"},
     {TokenKind::EXTERN, "extern"},
@@ -417,6 +420,12 @@ struct Token {
     return {TokenKind::STRING, std::move(str), s, e, ""};
   }
 
+  // Comment token factory (COMMENT or BLOCK_COMMENT); text is the raw
+  // comment including delimiters
+  static Token comment(TokenKind k, std::string txt, Position s, Position e) {
+    return {k, txt, s, e, std::move(txt)};
+  }
+
   // Template string token factory
   static Token templateString(std::string str, Position s, Position e) {
     return {TokenKind::TEMPLATE_STRING, std::move(str), s, e, ""};
@@ -464,6 +473,9 @@ class Lexer {
   std::istream* input;
   char currentChar = ' ';
   Position currentPos{1, 1, 0};
+  // When set, comments are returned as tokens instead of skipped
+  // (deliberately preserved across resetInput)
+  bool emitComments_ = false;
   RegexParser regexParser;
 
   std::string buffer;
@@ -645,6 +657,9 @@ class Lexer {
     tokenNFA = RegexParser().parse(getStaticFullRegex());
   }
 
+  void setEmitComments(bool emit) { emitComments_ = emit; }
+  bool emitComments() const { return emitComments_; }
+
   // Reset lexer to parse a new input stream without rebuilding NFA
   void resetInput(std::istream& in) {
     input = &in;
@@ -724,6 +739,9 @@ class Lexer {
 
       switch (kind) {
         case TokenKind::COMMENT:
+        case TokenKind::BLOCK_COMMENT:
+          if (emitComments_)
+            return Token::comment(kind, matchedStr, startPos, endPos);
           // Skip comments by recursively getting the next token
           return getNextToken();
         case TokenKind::INTRINSIC_IDENTIFIER:

@@ -826,3 +826,96 @@ TEST(ParserTest, UnaryMinusBindsTighterThanBinary) {
   EXPECT_EQ(bin->getOp().kind, TokenKind::PLUS);
   EXPECT_EQ(bin->getLHS()->getType(), ASTNodeType::UNARY);
 }
+
+// ------------------------------------------------------------------
+// Comment collection tests (lossless AST / formatter support)
+// ------------------------------------------------------------------
+
+// Parse a full program and return the parser for side-table inspection
+static std::unique_ptr<Parser> parseProgramCollectingComments(
+    const std::string& source) {
+  std::istringstream dummy("");
+  auto parser = std::make_unique<Parser>(dummy);
+  parser->setCollectComments(true);
+  auto ast = parser->parseString(source);
+  EXPECT_NE(ast, nullptr);
+  return parser;
+}
+
+TEST(CommentTest, BlockCommentsAreSkippedByDefault) {
+  std::istringstream dummy("");
+  Parser parser(dummy);
+  auto ast = parser.parseString(
+      "/* leading */ function main() i32 { return /* mid */ 42; } /* end */");
+  ASSERT_NE(ast, nullptr);
+  EXPECT_TRUE(parser.getComments().empty());
+}
+
+TEST(CommentTest, CollectsLineAndBlockComments) {
+  auto parser = parseProgramCollectingComments(
+      "// leading line\n"
+      "function main() i32 {\n"
+      "    var x: i32 = /* inline */ 40; // trailing\n"
+      "    /* own line */\n"
+      "    return x + 2;\n"
+      "}\n");
+  const auto& comments = parser->getComments();
+  ASSERT_EQ(comments.size(), 4u);
+
+  std::vector<Comment> ordered;
+  for (const auto& [offset, c] : comments) ordered.push_back(c);
+
+  EXPECT_EQ(ordered[0].text, "// leading line");
+  EXPECT_FALSE(ordered[0].isBlock);
+  EXPECT_TRUE(ordered[0].ownLine);
+
+  EXPECT_EQ(ordered[1].text, "/* inline */");
+  EXPECT_TRUE(ordered[1].isBlock);
+  EXPECT_FALSE(ordered[1].ownLine);
+  EXPECT_EQ(ordered[1].span.line, 3);
+
+  EXPECT_EQ(ordered[2].text, "// trailing");
+  EXPECT_FALSE(ordered[2].isBlock);
+  EXPECT_FALSE(ordered[2].ownLine);
+
+  EXPECT_EQ(ordered[3].text, "/* own line */");
+  EXPECT_TRUE(ordered[3].isBlock);
+  EXPECT_TRUE(ordered[3].ownLine);
+}
+
+TEST(CommentTest, MultilineBlockCommentSpan) {
+  auto parser = parseProgramCollectingComments(
+      "/* line one\n"
+      "   line two */\n"
+      "function main() i32 { return 1; }\n");
+  const auto& comments = parser->getComments();
+  ASSERT_EQ(comments.size(), 1u);
+  const Comment& c = comments.begin()->second;
+  EXPECT_EQ(c.span.line, 1);
+  EXPECT_EQ(c.span.endLine, 2);
+  EXPECT_TRUE(c.isBlock);
+  EXPECT_TRUE(c.ownLine);
+}
+
+TEST(CommentTest, BlockCommentsDoNotNest) {
+  // The outer comment closes at the first */; "rest" must be real tokens
+  std::istringstream dummy("");
+  Parser parser(dummy);
+  parser.setCollectComments(true);
+  auto ast = parser.parseString(
+      "function main() i32 { return /* a /* b */ 5; }");
+  ASSERT_NE(ast, nullptr);
+  ASSERT_EQ(parser.getComments().size(), 1u);
+  EXPECT_EQ(parser.getComments().begin()->second.text, "/* a /* b */");
+}
+
+TEST(CommentTest, StarsInsideBlockComment) {
+  std::istringstream dummy("");
+  Parser parser(dummy);
+  parser.setCollectComments(true);
+  auto ast = parser.parseString(
+      "function main() i32 { return /* ** * *** */ 5; }");
+  ASSERT_NE(ast, nullptr);
+  ASSERT_EQ(parser.getComments().size(), 1u);
+  EXPECT_EQ(parser.getComments().begin()->second.text, "/* ** * *** */");
+}

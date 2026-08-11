@@ -25,6 +25,15 @@ static double putchard(double X) {
   return 0.0;      // Kaleidoscope externs return double
 }
 
+// A source comment collected during parsing (never part of the AST; the
+// formatter re-attaches comments to nodes by comparing spans)
+struct Comment {
+  Position span;     // start + end{Line,Column,Offset}
+  std::string text;  // raw text including delimiters ("// x", "/* x */")
+  bool ownLine;      // nothing but whitespace/comments precede it on its line
+  bool isBlock;      // /* */ vs //
+};
+
 class Parser {
  private:
   Lexer lexer;
@@ -34,6 +43,27 @@ class Parser {
 
   // Track whether string interpolation was used during parsing
   bool usesStringInterpolation_ = false;
+
+  // Comment side table, keyed by start offset. Offset keying makes
+  // collection idempotent when backtracking re-lexes a region.
+  bool collectComments_ = false;
+  std::map<int, Comment> comments_;
+
+  static bool isCommentToken(const Token& tok) {
+    return tok.kind == TokenKind::COMMENT ||
+           tok.kind == TokenKind::BLOCK_COMMENT;
+  }
+
+  void recordComment(const Token& tok, int lastEndLine) {
+    Position span = tok.start;
+    if (!currentFilePath.empty()) span.filePath = currentFilePath;
+    span.setEnd(tok.end.line, tok.end.column, tok.end.offset);
+    comments_.insert_or_assign(
+        tok.start.offset,
+        Comment{std::move(span), tok.text,
+                /*ownLine=*/lastEndLine != tok.start.line,
+                /*isBlock=*/tok.kind == TokenKind::BLOCK_COMMENT});
+  }
 
   // Track import paths that should be loaded from precompiled libraries
   // (not parsed from source)
@@ -139,7 +169,17 @@ class Parser {
       tokenStack.pop_back();
       return curTok;
     }
-    curTok = lexer.getNextToken();
+    Token tok = lexer.getNextToken();
+    // Comments never become curTok/prevTok_: record them (when collecting)
+    // and keep fetching. lastEndLine distinguishes own-line comments from
+    // trailing ones (prevTok_ starts as the line-0 EOF sentinel).
+    int lastEndLine = prevTok_.end.line;
+    while (isCommentToken(tok)) {
+      recordComment(tok, lastEndLine);
+      lastEndLine = tok.end.line;
+      tok = lexer.getNextToken();
+    }
+    curTok = tok;
     return curTok;
   }
 
@@ -290,4 +330,12 @@ class Parser {
   void setUsesStringInterpolation(bool value) {
     usesStringInterpolation_ = value;
   }
+
+  // Opt in to collecting comments into the side table (off by default)
+  void setCollectComments(bool collect) {
+    collectComments_ = collect;
+    lexer.setEmitComments(collect);
+  }
+  // Collected comments, keyed by absolute start offset
+  const std::map<int, Comment>& getComments() const { return comments_; }
 };

@@ -2943,6 +2943,7 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
 std::unique_ptr<BlockExprAST> Parser::parseString(const std::string& source) {
   std::istringstream ss(source);
   lexer = Lexer(ss);
+  lexer.setEmitComments(collectComments_);  // reassignment resets the flag
   getNextToken();  // Prime the first token
   return parseProgram();
 }

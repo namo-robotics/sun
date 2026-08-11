@@ -352,6 +352,10 @@ int tokenKindToLSPType(TokenKind kind) {
     case TokenKind::INTRINSIC_IDENTIFIER:
       return LSPTokenType::Function;
 
+    case TokenKind::COMMENT:
+    case TokenKind::BLOCK_COMMENT:
+      return LSPTokenType::Comment;
+
     default:
       return -1;
   }
@@ -472,6 +476,7 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
   std::vector<int> data;
   std::istringstream stream(source);
   Lexer lexer(stream);
+  lexer.setEmitComments(true);
 
   // Track context for classifying identifiers as type vs value
   int angleBracketDepth = 0;
@@ -505,6 +510,31 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
   while (true) {
     Token tok = lexer.getNextToken();
     if (tok.kind == TokenKind::TOK_EOF) break;
+
+    if (tok.kind == TokenKind::COMMENT ||
+        tok.kind == TokenKind::BLOCK_COMMENT) {
+      // Emit one token per line (clients may not support multiline tokens).
+      // Comments are transparent to the classification context below, so
+      // skip the rest of the loop without updating prevKind/lastIdent.
+      int commentLine = tok.start.line - 1;
+      int commentCol = tok.start.column - 1;
+      size_t pos = 0;
+      while (pos <= tok.text.size()) {
+        size_t nl = tok.text.find('\n', pos);
+        size_t segEnd = (nl == std::string::npos) ? tok.text.size() : nl;
+        while (segEnd > pos && tok.text[segEnd - 1] == '\r') --segEnd;
+        int segLen = static_cast<int>(segEnd - pos);
+        if (segLen > 0) {
+          tokens.push_back(
+              {commentLine, commentCol, segLen, LSPTokenType::Comment, 0});
+        }
+        if (nl == std::string::npos) break;
+        pos = nl + 1;
+        ++commentLine;
+        commentCol = 0;
+      }
+      continue;
+    }
 
     int line = tok.start.line - 1;   // Convert to 0-indexed
     int col = tok.start.column - 1;  // Convert to 0-indexed
