@@ -1303,7 +1303,25 @@ unique_ptr<ExprAST> Parser::parseExpression() {
   auto lhs = parseUnary();
   if (!lhs) return nullptr;
 
-  return parseBinOpRhs(0, std::move(lhs));
+  auto expr = parseBinOpRhs(0, std::move(lhs));
+  if (!expr) return nullptr;
+
+  // Ternary conditional: cond ? then : else (right-associative)
+  if (curTok.kind == TokenKind::QUESTION) {
+    Position qLoc = curTok.start;
+    getNextToken();  // eat '?'
+    auto thenExpr = parseExpression();
+    if (!thenExpr) return nullptr;
+    if (curTok.kind != TokenKind::COLON)
+      parsingError("expected ':' in ternary expression");
+    getNextToken();  // eat ':'
+    auto elseExpr = parseExpression();
+    if (!elseExpr) return nullptr;
+    return std::make_unique<TernaryExprAST>(std::move(expr),
+                                            std::move(thenExpr),
+                                            std::move(elseExpr), qLoc);
+  }
+  return expr;
 }
 
 std::unique_ptr<ExprAST> Parser::parseBinOpRhs(int exprPrec,

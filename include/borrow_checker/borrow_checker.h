@@ -60,6 +60,7 @@ class BorrowChecker {
   void checkBinaryExpr(const BinaryExprAST& binary);
   void checkCallExpr(const CallExprAST& call);
   void checkIfExpr(const IfExprAST& ifExpr);
+  void checkTernaryExpr(const TernaryExprAST& ternary);
   void checkMatchExpr(const MatchExprAST& matchExpr);
   void checkWhileExpr(const WhileExprAST& whileExpr);
   void checkForExpr(const ForExprAST& forExpr);

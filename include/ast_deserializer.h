@@ -89,6 +89,8 @@ class ASTDeserializer {
   std::unique_ptr<ExprAST> deserializeBinary(
       const ast::BinaryExpr& proto) const;
   std::unique_ptr<ExprAST> deserializeUnary(const ast::UnaryExpr& proto) const;
+  std::unique_ptr<ExprAST> deserializeTernary(
+      const ast::TernaryExpr& proto) const;
   std::unique_ptr<ExprAST> deserializePackExpansion(
       const ast::PackExpansion& proto) const;
 

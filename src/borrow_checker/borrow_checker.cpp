@@ -64,6 +64,10 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
       checkIfExpr(static_cast<const IfExprAST&>(expr));
       break;
 
+    case ASTNodeType::TERNARY:
+      checkTernaryExpr(static_cast<const TernaryExprAST&>(expr));
+      break;
+
     case ASTNodeType::MATCH:
       checkMatchExpr(static_cast<const MatchExprAST&>(expr));
       break;
@@ -449,6 +453,19 @@ void BorrowChecker::checkIfExpr(const IfExprAST& ifExpr) {
     checkExpr(*ifExpr.getElse());
     exitScope();
   }
+}
+
+void BorrowChecker::checkTernaryExpr(const TernaryExprAST& ternary) {
+  checkExpr(*ternary.getCond());
+
+  // Check each branch in its own scope
+  enterScope();
+  checkExpr(*ternary.getThen());
+  exitScope();
+
+  enterScope();
+  checkExpr(*ternary.getElse());
+  exitScope();
 }
 
 void BorrowChecker::checkMatchExpr(const MatchExprAST& matchExpr) {

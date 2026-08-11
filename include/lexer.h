@@ -113,6 +113,7 @@ enum class TokenKind {
   SEMI_COLON,            // ;
   DOUBLE_COLON,          // ::
   COLON,                 // :
+  QUESTION,              // ?
   ELLIPSIS,              // ...
   DOT,                   // .
   INTEGER,               // integer literal: 0, 1, 42, etc.
@@ -227,6 +228,7 @@ static const std::map<TokenKind, std::string> tokenRegexes = {
     {TokenKind::SEMI_COLON, ";"},
     {TokenKind::DOUBLE_COLON, "::"},
     {TokenKind::COLON, ":"},
+    {TokenKind::QUESTION, "\\?"},
     {TokenKind::ELLIPSIS, "\\.\\.\\."},
     {TokenKind::DOT, "\\."}};
 
@@ -325,6 +327,7 @@ inline const std::map<TokenKind, TokenInfo>& getTokenInfo() {
       {TokenKind::SEMI_COLON, {";"}},
       {TokenKind::DOUBLE_COLON, {"::"}},
       {TokenKind::COLON, {":"}},
+      {TokenKind::QUESTION, {"?"}},
       {TokenKind::ELLIPSIS, {"..."}},
       {TokenKind::DOT, {"."}},
       {TokenKind::EQUAL, {"="}},

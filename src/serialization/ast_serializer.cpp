@@ -220,6 +220,9 @@ ast::ASTNode ASTSerializer::serialize(const ExprAST& expr) const {
     case ASTNodeType::UNARY:
       serializeUnary(static_cast<const UnaryExprAST&>(expr), &node);
       break;
+    case ASTNodeType::TERNARY:
+      serializeTernary(static_cast<const TernaryExprAST&>(expr), &node);
+      break;
     case ASTNodeType::PACK_EXPANSION:
       serializePackExpansion(static_cast<const PackExpansionAST&>(expr), &node);
       break;
@@ -468,6 +471,14 @@ void ASTSerializer::serializeBinary(const BinaryExprAST& expr,
   *bin->mutable_op() = serializeToken(expr.getOp());
   *bin->mutable_lhs() = serialize(*expr.getLHS());
   *bin->mutable_rhs() = serialize(*expr.getRHS());
+}
+
+void ASTSerializer::serializeTernary(const TernaryExprAST& expr,
+                                     ast::ASTNode* node) const {
+  auto* tern = node->mutable_ternary_expr();
+  *tern->mutable_cond() = serialize(*expr.getCond());
+  *tern->mutable_then_expr() = serialize(*expr.getThen());
+  *tern->mutable_else_expr() = serialize(*expr.getElse());
 }
 
 void ASTSerializer::serializeUnary(const UnaryExprAST& expr,

@@ -190,6 +190,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserialize(
     case ast::ASTNode::kBinaryExpr:
       result = deserializeBinary(node.binary_expr());
       break;
+    case ast::ASTNode::kTernaryExpr:
+      result = deserializeTernary(node.ternary_expr());
+      break;
     case ast::ASTNode::kUnaryExpr:
       result = deserializeUnary(node.unary_expr());
       break;
@@ -447,6 +450,13 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeBinary(
   Token token = deserializeToken(proto.op());
   return std::make_unique<BinaryExprAST>(token, deserialize(proto.lhs()),
                                          deserialize(proto.rhs()));
+}
+
+std::unique_ptr<ExprAST> ASTDeserializer::deserializeTernary(
+    const ast::TernaryExpr& proto) const {
+  return std::make_unique<TernaryExprAST>(
+      deserialize(proto.cond()), deserialize(proto.then_expr()),
+      deserialize(proto.else_expr()), Position{});
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeUnary(

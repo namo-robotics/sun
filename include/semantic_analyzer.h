@@ -301,6 +301,13 @@ class SemanticAnalyzer {
   static bool tryCoerceIntegerLiteral(ExprAST* expr, sun::TypePtr targetType,
                                       bool throwOnFail = false);
 
+  // Unify the branch types of a ternary expression: exact match, or the
+  // wider type when one side widens to the other (never narrows f64 to f32).
+  // Throws a compile error when the types are incompatible.
+  static sun::TypePtr unifyTernaryTypes(const sun::TypePtr& thenType,
+                                        const sun::TypePtr& elseType,
+                                        std::optional<Position> loc);
+
   // Extract type guard pattern from condition (_is<T>(var)).
   // Returns (varName, narrowedType) if matched.
   std::optional<std::pair<std::string, sun::TypePtr>> extractTypeGuard(

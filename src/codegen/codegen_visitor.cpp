@@ -42,6 +42,8 @@ Value* CodegenVisitor::codegen(const ExprAST& expr) {
       return codegen(static_cast<const CallExprAST&>(expr));
     case ASTNodeType::IF:
       return codegen(static_cast<const IfExprAST&>(expr));
+    case ASTNodeType::TERNARY:
+      return codegen(static_cast<const TernaryExprAST&>(expr));
     case ASTNodeType::MATCH:
       return codegen(static_cast<const MatchExprAST&>(expr));
     case ASTNodeType::FOR_LOOP:

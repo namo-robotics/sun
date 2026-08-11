@@ -358,6 +358,13 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       return sun::Types::Void();
     }
 
+    case ASTNodeType::TERNARY: {
+      const auto& ternary = static_cast<const TernaryExprAST&>(expr);
+      auto thenType = sun::unwrapRef(inferType(*ternary.getThen()));
+      auto elseType = sun::unwrapRef(inferType(*ternary.getElse()));
+      return unifyTernaryTypes(thenType, elseType, expr.getLocation());
+    }
+
     case ASTNodeType::MATCH: {
       const auto& matchExpr = static_cast<const MatchExprAST&>(expr);
       // Return type is the type of the first arm's body

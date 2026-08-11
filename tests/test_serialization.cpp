@@ -260,6 +260,27 @@ TEST(SerializationTest, CompoundAssignmentRoundtrip) {
   EXPECT_EQ(compound->getValue()->getType(), ASTNodeType::NUMBER);
 }
 
+TEST(SerializationTest, TernaryExprRoundtrip) {
+  auto cond = std::make_unique<VariableReferenceAST>("c");
+  auto thenExpr = std::make_unique<NumberExprAST>(static_cast<int64_t>(1));
+  auto elseExpr = std::make_unique<NumberExprAST>(static_cast<int64_t>(2));
+  auto ast = std::make_unique<TernaryExprAST>(
+      std::move(cond), std::move(thenExpr), std::move(elseExpr), Position{});
+
+  ASTSerializer serializer;
+  std::string data = serializer.serializeToString(*ast);
+
+  ASTDeserializer deserializer;
+  auto restored = deserializer.deserializeFromString(data);
+
+  ASSERT_NE(restored, nullptr);
+  ASSERT_EQ(restored->getType(), ASTNodeType::TERNARY);
+  auto* ternary = static_cast<TernaryExprAST*>(restored.get());
+  EXPECT_EQ(ternary->getCond()->getType(), ASTNodeType::VARIABLE_REFERENCE);
+  EXPECT_EQ(ternary->getThen()->getType(), ASTNodeType::NUMBER);
+  EXPECT_EQ(ternary->getElse()->getType(), ASTNodeType::NUMBER);
+}
+
 TEST(SerializationTest, UnaryExprRoundtrip) {
   // Test via parser - use negation on numbers which is valid
   auto block = parseCode(R"(

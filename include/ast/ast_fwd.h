@@ -22,6 +22,7 @@ class ReferenceCreationAST;
 // Expression nodes
 class BinaryExprAST;
 class UnaryExprAST;
+class TernaryExprAST;
 class IndexAST;
 class ArrayIndexAST;
 class SliceExprAST;

@@ -413,6 +413,34 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       break;
     }
 
+    case ASTNodeType::TERNARY: {
+      auto& ternary = static_cast<TernaryExprAST&>(expr);
+      // Condition is not required to be bool (matches if/while laxness);
+      // codegen coerces numeric conditions to i1.
+      analyzeExpr(*ternary.getCond());
+      analyzeExpr(*ternary.getThen(), expectedType);
+      analyzeExpr(*ternary.getElse(), expectedType);
+
+      sun::TypePtr thenType =
+          sun::unwrapRef(ternary.getThen()->getResolvedType());
+      sun::TypePtr elseType =
+          sun::unwrapRef(ternary.getElse()->getResolvedType());
+
+      // Integer literals adopt the other branch's type: c ? x : 0
+      if (thenType && elseType && !thenType->equals(*elseType)) {
+        if (tryCoerceIntegerLiteral(ternary.getThen(), elseType, false)) {
+          thenType = elseType;
+        } else if (tryCoerceIntegerLiteral(ternary.getElse(), thenType,
+                                           false)) {
+          elseType = thenType;
+        }
+      }
+
+      expr.setResolvedType(
+          unifyTernaryTypes(thenType, elseType, expr.getLocation()));
+      break;
+    }
+
     case ASTNodeType::FOR_LOOP: {
       auto& forExpr = static_cast<ForExprAST&>(expr);
       // Create scope for loop variables (init may declare variables)
@@ -1883,6 +1911,13 @@ void SemanticAnalyzer::clearResolvedTypes(ExprAST& expr) {
       if (ifExpr.getElse()) {
         clearResolvedTypes(*ifExpr.getElse());
       }
+      break;
+    }
+    case ASTNodeType::TERNARY: {
+      auto& ternary = static_cast<TernaryExprAST&>(expr);
+      clearResolvedTypes(*ternary.getCond());
+      clearResolvedTypes(*ternary.getThen());
+      clearResolvedTypes(*ternary.getElse());
       break;
     }
     case ASTNodeType::FOR_LOOP: {

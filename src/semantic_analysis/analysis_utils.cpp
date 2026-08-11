@@ -64,6 +64,32 @@ bool SemanticAnalyzer::tryCoerceIntegerLiteral(ExprAST* expr,
   return false;
 }
 
+sun::TypePtr SemanticAnalyzer::unifyTernaryTypes(const sun::TypePtr& thenType,
+                                                 const sun::TypePtr& elseType,
+                                                 std::optional<Position> loc) {
+  if (!thenType || !elseType) {
+    logAndThrowError("Cannot determine ternary branch types", loc);
+  }
+  if (thenType->equals(*elseType)) return thenType;
+
+  bool thenToElse = isAssignableTo(thenType, elseType);
+  bool elseToThen = isAssignableTo(elseType, thenType);
+  if (thenToElse && elseToThen) {
+    // Both directions hold for f32<->f64 and same-width integers; never
+    // narrow to f32.
+    if (thenType->getKind() == sun::Type::Kind::Float64) return thenType;
+    if (elseType->getKind() == sun::Type::Kind::Float64) return elseType;
+    return thenType;
+  }
+  if (thenToElse) return elseType;
+  if (elseToThen) return thenType;
+
+  logAndThrowError("Ternary branch types do not match: '" +
+                       thenType->toString() + "' vs '" + elseType->toString() +
+                       "'",
+                   loc);
+}
+
 // Helper: extract type guard pattern from condition
 // If condition is `_is<T>(var)`, returns (varName, narrowedType)
 // Works for concrete types, interfaces, and type traits

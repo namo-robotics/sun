@@ -234,6 +234,7 @@ class CodegenVisitor {
   llvm::Value* codegen(const BinaryExprAST& expr);
   llvm::Value* codegen(const CallExprAST& expr);
   llvm::Value* codegen(const IfExprAST& expr);
+  llvm::Value* codegen(const TernaryExprAST& expr);
   llvm::Value* codegen(const MatchExprAST& expr);
   llvm::Value* codegen(const ReturnExprAST& expr);
   llvm::Value* codegen(const BreakAST& expr);

@@ -45,6 +45,7 @@ message ASTNode {
     BinaryExpr binary_expr = 40;
     UnaryExpr unary_expr = 41;
     PackExpansion pack_expansion = 42;
+    TernaryExpr ternary_expr = 43;
     
     // Control flow
     BlockExpr block_expr = 50;
@@ -188,6 +189,12 @@ message BinaryExpr {
   Token op = 1;
   ASTNode lhs = 2;
   ASTNode rhs = 3;
+}
+
+message TernaryExpr {
+  ASTNode cond = 1;
+  ASTNode then_expr = 2;
+  ASTNode else_expr = 3;
 }
 
 message UnaryExpr {
