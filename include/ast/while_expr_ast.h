@@ -16,11 +16,20 @@ class WhileExprAST : public ExprAST {
       : Condition(std::move(Condition)), Body(std::move(Body)) {}
 
   ASTNodeType getType() const override { return ASTNodeType::WHILE_LOOP; }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override {
+    fn(Condition);
+    fn(Body);
+  }
   std::string toString() const override {
     return "while (" + Condition->toString() + ") " + Body->toString();
   }
 
   const ExprAST* getCondition() const { return Condition.get(); }
   const ExprAST* getBody() const { return Body.get(); }
+
+  // Mutable body slot for LoweringPass block normalization
+  std::unique_ptr<ExprAST>& bodySlot() { return Body; }
+
   std::string dotLabel() const override { return "While"; }
 };

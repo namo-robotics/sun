@@ -42,6 +42,11 @@ class ForInExprAST : public ExprAST {
         Body(std::move(Body)) {}
 
   ASTNodeType getType() const override { return ASTNodeType::FOR_IN_LOOP; }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override {
+    fn(Iterable);
+    fn(Body);
+  }
   std::string toString() const override {
     return "for (var " + LoopVar + ": " + LoopVarType.toString() + " in " +
            Iterable->toString() + ") " + Body->toString();
@@ -51,6 +56,9 @@ class ForInExprAST : public ExprAST {
   const TypeAnnotation& getLoopVarType() const { return LoopVarType; }
   const ExprAST* getIterable() const { return Iterable.get(); }
   const ExprAST* getBody() const { return Body.get(); }
+
+  // Mutable body slot for LoweringPass block normalization
+  std::unique_ptr<ExprAST>& bodySlot() { return Body; }
 
   // Resolved loop variable type (set by semantic analyzer)
   void setResolvedLoopVarType(sun::TypePtr type) const {

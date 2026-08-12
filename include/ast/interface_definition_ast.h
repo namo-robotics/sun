@@ -103,6 +103,12 @@ class InterfaceDefinitionAST : public ExprAST {
   const std::vector<InterfaceFieldDecl>& getFields() const { return fields; }
   const std::vector<InterfaceMethodDecl>& getMethods() const { return methods; }
 
+  void forEachChildSlot(const ChildSlotFn& fn) override {
+    for (auto& method : methods) {
+      if (method.function) method.function->forEachChildSlot(fn);
+    }
+  }
+
   // Get methods with default implementations
   std::vector<const InterfaceMethodDecl*> getDefaultMethods() const {
     std::vector<const InterfaceMethodDecl*> defaults;

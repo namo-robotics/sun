@@ -57,5 +57,13 @@ class MatchExprAST : public ExprAST {
 
   const ExprAST* getDiscriminant() const { return discriminant.get(); }
   const std::vector<MatchArm>& getArms() const { return arms; }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override {
+    fn(discriminant);
+    for (auto& arm : arms) {
+      fn(arm.pattern);
+      fn(arm.body);
+    }
+  }
   std::string dotLabel() const override { return "Match"; }
 };

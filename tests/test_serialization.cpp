@@ -617,12 +617,73 @@ TEST(SerializationTest, ThrowExprRoundtrip) {
 }
 
 // =============================================================================
+// Lossless parse-tree node roundtrips (ParenExpr, InterpolatedString)
+// =============================================================================
+
+TEST(SerializationTest, ParenExprRoundtrip) {
+  auto block = parseCode("var x: i32 = (1 + 2);");
+  ASSERT_NE(block, nullptr);
+  auto* var = static_cast<VariableCreationAST*>(block->getBody()[0].get());
+  ASSERT_EQ(var->getValue()->getType(), ASTNodeType::PAREN_EXPR);
+
+  ASTSerializer serializer;
+  std::string data = serializer.serializeToString(*var->getValue());
+
+  ASTDeserializer deserializer;
+  auto restored = deserializer.deserializeFromString(data);
+
+  ASSERT_NE(restored, nullptr);
+  ASSERT_EQ(restored->getType(), ASTNodeType::PAREN_EXPR);
+  auto* paren = static_cast<ParenExprAST*>(restored.get());
+  ASSERT_NE(paren->getInner(), nullptr);
+  EXPECT_EQ(paren->getInner()->getType(), ASTNodeType::BINARY);
+
+  // clone() goes through the same proto roundtrip - must not be nullptr
+  auto cloned = var->getValue()->clone();
+  ASSERT_NE(cloned, nullptr);
+  EXPECT_EQ(cloned->getType(), ASTNodeType::PAREN_EXPR);
+}
+
+TEST(SerializationTest, InterpolatedStringRoundtrip) {
+  auto block = parseCode("var s = `Hello ${name}!`;");
+  ASSERT_NE(block, nullptr);
+  auto* var = static_cast<VariableCreationAST*>(block->getBody()[0].get());
+  ASSERT_EQ(var->getValue()->getType(), ASTNodeType::INTERPOLATED_STRING);
+
+  ASTSerializer serializer;
+  std::string data = serializer.serializeToString(*var->getValue());
+
+  ASTDeserializer deserializer;
+  auto restored = deserializer.deserializeFromString(data);
+
+  ASSERT_NE(restored, nullptr);
+  ASSERT_EQ(restored->getType(), ASTNodeType::INTERPOLATED_STRING);
+  auto* interp = static_cast<InterpolatedStringAST*>(restored.get());
+  EXPECT_EQ(interp->getRawContent(), "Hello ${name}!");
+  const auto& segments = interp->getSegments();
+  ASSERT_EQ(segments.size(), 3u);
+  EXPECT_TRUE(segments[0].isLiteral);
+  EXPECT_EQ(segments[0].rawText, "Hello ");
+  EXPECT_FALSE(segments[1].isLiteral);
+  ASSERT_NE(segments[1].expression, nullptr);
+  EXPECT_EQ(segments[1].expression->getType(),
+            ASTNodeType::VARIABLE_REFERENCE);
+  EXPECT_TRUE(segments[2].isLiteral);
+
+  // clone() must not silently return nullptr
+  auto cloned = var->getValue()->clone();
+  ASSERT_NE(cloned, nullptr);
+  EXPECT_EQ(cloned->getType(), ASTNodeType::INTERPOLATED_STRING);
+}
+
+// =============================================================================
 // Location Preservation Tests
 // =============================================================================
 
 TEST(SerializationTest, LocationPreservation) {
   auto ast = std::make_unique<NumberExprAST>(static_cast<int64_t>(42));
   Position pos{10, 5, 0, "test.sun"};
+  pos.setEnd(10, 7, 2);
   ast->setLocation(pos);
 
   SerializerConfig config;
@@ -639,6 +700,12 @@ TEST(SerializationTest, LocationPreservation) {
   EXPECT_EQ(restoredPos.column, 5);
   ASSERT_TRUE(restoredPos.filePath.has_value());
   EXPECT_EQ(*restoredPos.filePath, "test.sun");
+  ASSERT_TRUE(restoredPos.endLine.has_value());
+  EXPECT_EQ(*restoredPos.endLine, 10);
+  ASSERT_TRUE(restoredPos.endColumn.has_value());
+  EXPECT_EQ(*restoredPos.endColumn, 7);
+  ASSERT_TRUE(restoredPos.endOffset.has_value());
+  EXPECT_EQ(*restoredPos.endOffset, 2);
 }
 
 // =============================================================================
@@ -684,6 +751,7 @@ TEST(SerializationTest, CloneComplexExpression) {
 TEST(SerializationTest, ClonePreservesLocation) {
   auto original = std::make_unique<NumberExprAST>(static_cast<int64_t>(42));
   Position pos{20, 15, 0, "clone_test.sun"};
+  pos.setEnd(20, 17, 2);
   original->setLocation(pos);
 
   auto cloned = original->clone();
@@ -694,6 +762,8 @@ TEST(SerializationTest, ClonePreservesLocation) {
   EXPECT_EQ(clonedPos.column, 15);
   ASSERT_TRUE(clonedPos.filePath.has_value());
   EXPECT_EQ(*clonedPos.filePath, "clone_test.sun");
+  ASSERT_TRUE(clonedPos.endOffset.has_value());
+  EXPECT_EQ(*clonedPos.endOffset, 2);
 }
 
 // =============================================================================

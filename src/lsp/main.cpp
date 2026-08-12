@@ -16,6 +16,7 @@
 #include "ast/manifest_ast.h"
 #include "driver.h"
 #include "error.h"
+#include "formatter.h"
 #include "lexer.h"
 #include "parser.h"
 #include "sun_path.h"
@@ -352,6 +353,10 @@ int tokenKindToLSPType(TokenKind kind) {
     case TokenKind::INTRINSIC_IDENTIFIER:
       return LSPTokenType::Function;
 
+    case TokenKind::COMMENT:
+    case TokenKind::BLOCK_COMMENT:
+      return LSPTokenType::Comment;
+
     default:
       return -1;
   }
@@ -472,6 +477,7 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
   std::vector<int> data;
   std::istringstream stream(source);
   Lexer lexer(stream);
+  lexer.setEmitComments(true);
 
   // Track context for classifying identifiers as type vs value
   int angleBracketDepth = 0;
@@ -505,6 +511,31 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
   while (true) {
     Token tok = lexer.getNextToken();
     if (tok.kind == TokenKind::TOK_EOF) break;
+
+    if (tok.kind == TokenKind::COMMENT ||
+        tok.kind == TokenKind::BLOCK_COMMENT) {
+      // Emit one token per line (clients may not support multiline tokens).
+      // Comments are transparent to the classification context below, so
+      // skip the rest of the loop without updating prevKind/lastIdent.
+      int commentLine = tok.start.line - 1;
+      int commentCol = tok.start.column - 1;
+      size_t pos = 0;
+      while (pos <= tok.text.size()) {
+        size_t nl = tok.text.find('\n', pos);
+        size_t segEnd = (nl == std::string::npos) ? tok.text.size() : nl;
+        while (segEnd > pos && tok.text[segEnd - 1] == '\r') --segEnd;
+        int segLen = static_cast<int>(segEnd - pos);
+        if (segLen > 0) {
+          tokens.push_back(
+              {commentLine, commentCol, segLen, LSPTokenType::Comment, 0});
+        }
+        if (nl == std::string::npos) break;
+        pos = nl + 1;
+        ++commentLine;
+        commentCol = 0;
+      }
+      continue;
+    }
 
     int line = tok.start.line - 1;   // Convert to 0-indexed
     int col = tok.start.column - 1;  // Convert to 0-indexed
@@ -929,6 +960,7 @@ int main() {
       capabilities["textDocumentSync"] = std::move(textDocumentSync);
       capabilities["semanticTokensProvider"] =
           std::move(semanticTokensProvider);
+      capabilities["documentFormattingProvider"] = true;
 
       llvm::json::Object serverInfo;
       serverInfo["name"] = "sun-lsp";
@@ -1129,6 +1161,65 @@ int main() {
       llvm::json::Object result;
       result["data"] = std::move(dataArray);
       sendResponse(*id, std::move(result));
+      continue;
+    }
+
+    if (methodName == "textDocument/formatting" && params) {
+      if (!id) continue;
+
+      llvm::json::Object* textDocument = nullptr;
+      if (llvm::json::Value* rawTextDocument = params->get("textDocument")) {
+        textDocument = rawTextDocument->getAsObject();
+      }
+      if (!textDocument) {
+        sendErrorResponse(*id, -32602, "Missing textDocument parameter");
+        continue;
+      }
+
+      std::optional<llvm::StringRef> uri = textDocument->getString("uri");
+      if (!uri) {
+        sendErrorResponse(*id, -32602, "Missing textDocument.uri");
+        continue;
+      }
+
+      auto documentIter = openDocuments.find(uri->str());
+      if (documentIter == openDocuments.end()) {
+        sendErrorResponse(*id, -32602, "Document not open");
+        continue;
+      }
+
+      const OpenDocument& document = documentIter->second;
+      std::string formatted;
+      try {
+        formatted = sun::formatSource(document.text, document.path);
+      } catch (const SunError&) {
+        // Unparseable code: a null result avoids error popups on every save
+        sendResponse(*id, llvm::json::Value(nullptr));
+        continue;
+      }
+
+      if (formatted == document.text) {
+        sendResponse(*id, llvm::json::Array());
+        continue;
+      }
+
+      // Single whole-document edit: range spans every existing line
+      int lastLine = 0;
+      int lastCol = 0;
+      for (char c : document.text) {
+        if (c == '\n') {
+          ++lastLine;
+          lastCol = 0;
+        } else {
+          ++lastCol;
+        }
+      }
+      llvm::json::Object edit;
+      edit["range"] = makeRange(0, 0, lastLine, lastCol);
+      edit["newText"] = formatted;
+      llvm::json::Array edits;
+      edits.push_back(std::move(edit));
+      sendResponse(*id, std::move(edits));
       continue;
     }
 

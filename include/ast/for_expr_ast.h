@@ -22,6 +22,13 @@ class ForExprAST : public ExprAST {
         Body(std::move(Body)) {}
 
   ASTNodeType getType() const override { return ASTNodeType::FOR_LOOP; }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override {
+    fn(Init);
+    fn(Condition);
+    fn(Increment);
+    fn(Body);
+  }
   std::string toString() const override {
     std::string result = "for (";
     if (Init) result += Init->toString();
@@ -37,5 +44,9 @@ class ForExprAST : public ExprAST {
   const ExprAST* getCondition() const { return Condition.get(); }
   const ExprAST* getIncrement() const { return Increment.get(); }
   const ExprAST* getBody() const { return Body.get(); }
+
+  // Mutable body slot for LoweringPass block normalization
+  std::unique_ptr<ExprAST>& bodySlot() { return Body; }
+
   std::string dotLabel() const override { return "For"; }
 };

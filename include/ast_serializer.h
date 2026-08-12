@@ -82,6 +82,9 @@ class ASTSerializer {
   void serializeBinary(const BinaryExprAST& expr, ast::ASTNode* node) const;
   void serializeUnary(const UnaryExprAST& expr, ast::ASTNode* node) const;
   void serializeTernary(const TernaryExprAST& expr, ast::ASTNode* node) const;
+  void serializeParen(const ParenExprAST& expr, ast::ASTNode* node) const;
+  void serializeInterpolatedString(const InterpolatedStringAST& expr,
+                                   ast::ASTNode* node) const;
   void serializePackExpansion(const PackExpansionAST& expr,
                               ast::ASTNode* node) const;
 

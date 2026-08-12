@@ -18,6 +18,8 @@ class VariableAssignmentAST : public ExprAST {
   ASTNodeType getType() const override {
     return ASTNodeType::VARIABLE_ASSIGNMENT;
   }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override { fn(value); }
   std::string toString() const override {
     return name + " = " + value->toString();
   }

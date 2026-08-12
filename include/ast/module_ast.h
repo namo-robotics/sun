@@ -19,6 +19,10 @@ class ModuleAST : public ExprAST {
       : name(std::move(name)), body(std::move(body)) {}
 
   ASTNodeType getType() const override { return ASTNodeType::MODULE; }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override {
+    if (body) body->forEachChildSlot(fn);
+  }
   std::string toString() const override {
     return "module " + name + " " + body->toString();
   }

@@ -78,9 +78,57 @@ TEST(ParserTest, ParseParenExpression) {
   auto ast = parseStringToExpr("(123)");
 
   ASSERT_NE(ast, nullptr);
-  auto* num = dynamic_cast<NumberExprAST*>(ast.get());
+  auto* paren = dynamic_cast<ParenExprAST*>(ast.get());
+  ASSERT_NE(paren, nullptr);
+  auto* num = dynamic_cast<const NumberExprAST*>(paren->getInner());
   ASSERT_NE(num, nullptr);
   EXPECT_DOUBLE_EQ(num->getVal(), 123.0);
+}
+
+TEST(ParserTest, ParseNestedParenExpression) {
+  auto ast = parseStringToExpr("((1))");
+
+  ASSERT_NE(ast, nullptr);
+  auto* outer = dynamic_cast<ParenExprAST*>(ast.get());
+  ASSERT_NE(outer, nullptr);
+  auto* inner = dynamic_cast<const ParenExprAST*>(outer->getInner());
+  ASSERT_NE(inner, nullptr);
+  auto* num = dynamic_cast<const NumberExprAST*>(inner->getInner());
+  ASSERT_NE(num, nullptr);
+  EXPECT_DOUBLE_EQ(num->getVal(), 1.0);
+}
+
+TEST(ParserTest, ParseTemplateString) {
+  auto ast = parseStringToExpr("`Hello ${name}!`");
+
+  ASSERT_NE(ast, nullptr);
+  auto* interp = dynamic_cast<InterpolatedStringAST*>(ast.get());
+  ASSERT_NE(interp, nullptr);
+  EXPECT_EQ(interp->getRawContent(), "Hello ${name}!");
+  const auto& segments = interp->getSegments();
+  ASSERT_EQ(segments.size(), 3u);
+  EXPECT_TRUE(segments[0].isLiteral);
+  EXPECT_EQ(segments[0].rawText, "Hello ");
+  EXPECT_EQ(segments[0].cookedText, "Hello ");
+  EXPECT_FALSE(segments[1].isLiteral);
+  EXPECT_EQ(segments[1].rawText, "name");
+  ASSERT_NE(segments[1].expression, nullptr);
+  EXPECT_EQ(segments[1].expression->getType(),
+            ASTNodeType::VARIABLE_REFERENCE);
+  EXPECT_TRUE(segments[2].isLiteral);
+  EXPECT_EQ(segments[2].rawText, "!");
+}
+
+TEST(ParserTest, TemplateStringRawVsCookedEscapes) {
+  auto ast = parseStringToExpr("`a\\nb`");
+
+  ASSERT_NE(ast, nullptr);
+  auto* interp = dynamic_cast<InterpolatedStringAST*>(ast.get());
+  ASSERT_NE(interp, nullptr);
+  const auto& segments = interp->getSegments();
+  ASSERT_EQ(segments.size(), 1u);
+  EXPECT_EQ(segments[0].rawText, "a\\nb");   // escapes unprocessed
+  EXPECT_EQ(segments[0].cookedText, "a\nb");  // escapes processed
 }
 
 // ------------------------------------------------------------------
@@ -198,18 +246,27 @@ TEST(ParserTest, IfExpression) {
   auto* ifExpr = dynamic_cast<IfExprAST*>(ast.get());
   ASSERT_NE(ifExpr, nullptr);
 
-  // Check condition
-  auto* cond = dynamic_cast<BinaryExprAST*>(ifExpr->getCond());
+  // Check condition (the if-condition parens are preserved in the parse tree)
+  auto* condParen = dynamic_cast<ParenExprAST*>(ifExpr->getCond());
+  ASSERT_NE(condParen, nullptr);
+  auto* cond = dynamic_cast<const BinaryExprAST*>(condParen->getInner());
   ASSERT_NE(cond, nullptr);
   EXPECT_EQ(cond->getOp().kind, TokenKind::LESS);
 
-  // Check then branch
-  auto* thenBranch = dynamic_cast<NumberExprAST*>(ifExpr->getThen());
+  // Branches stay blocks in the lossless parse tree (LoweringPass unwraps)
+  auto* thenBlock = dynamic_cast<BlockExprAST*>(ifExpr->getThen());
+  ASSERT_NE(thenBlock, nullptr);
+  ASSERT_EQ(thenBlock->getBody().size(), 1u);
+  auto* thenBranch =
+      dynamic_cast<NumberExprAST*>(thenBlock->getBody()[0].get());
   ASSERT_NE(thenBranch, nullptr);
   EXPECT_DOUBLE_EQ(thenBranch->getVal(), 1.0);
 
-  // Check else branch
-  auto* elseBranch = dynamic_cast<NumberExprAST*>(ifExpr->getElse());
+  auto* elseBlock = dynamic_cast<BlockExprAST*>(ifExpr->getElse());
+  ASSERT_NE(elseBlock, nullptr);
+  ASSERT_EQ(elseBlock->getBody().size(), 1u);
+  auto* elseBranch =
+      dynamic_cast<NumberExprAST*>(elseBlock->getBody()[0].get());
   ASSERT_NE(elseBranch, nullptr);
   EXPECT_DOUBLE_EQ(elseBranch->getVal(), 0.0);
 }
@@ -775,4 +832,97 @@ TEST(ParserTest, UnaryMinusBindsTighterThanBinary) {
   ASSERT_NE(bin, nullptr);
   EXPECT_EQ(bin->getOp().kind, TokenKind::PLUS);
   EXPECT_EQ(bin->getLHS()->getType(), ASTNodeType::UNARY);
+}
+
+// ------------------------------------------------------------------
+// Comment collection tests (lossless AST / formatter support)
+// ------------------------------------------------------------------
+
+// Parse a full program and return the parser for side-table inspection
+static std::unique_ptr<Parser> parseProgramCollectingComments(
+    const std::string& source) {
+  std::istringstream dummy("");
+  auto parser = std::make_unique<Parser>(dummy);
+  parser->setCollectComments(true);
+  auto ast = parser->parseString(source);
+  EXPECT_NE(ast, nullptr);
+  return parser;
+}
+
+TEST(CommentTest, BlockCommentsAreSkippedByDefault) {
+  std::istringstream dummy("");
+  Parser parser(dummy);
+  auto ast = parser.parseString(
+      "/* leading */ function main() i32 { return /* mid */ 42; } /* end */");
+  ASSERT_NE(ast, nullptr);
+  EXPECT_TRUE(parser.getComments().empty());
+}
+
+TEST(CommentTest, CollectsLineAndBlockComments) {
+  auto parser = parseProgramCollectingComments(
+      "// leading line\n"
+      "function main() i32 {\n"
+      "    var x: i32 = /* inline */ 40; // trailing\n"
+      "    /* own line */\n"
+      "    return x + 2;\n"
+      "}\n");
+  const auto& comments = parser->getComments();
+  ASSERT_EQ(comments.size(), 4u);
+
+  std::vector<Comment> ordered;
+  for (const auto& [offset, c] : comments) ordered.push_back(c);
+
+  EXPECT_EQ(ordered[0].text, "// leading line");
+  EXPECT_FALSE(ordered[0].isBlock);
+  EXPECT_TRUE(ordered[0].ownLine);
+
+  EXPECT_EQ(ordered[1].text, "/* inline */");
+  EXPECT_TRUE(ordered[1].isBlock);
+  EXPECT_FALSE(ordered[1].ownLine);
+  EXPECT_EQ(ordered[1].span.line, 3);
+
+  EXPECT_EQ(ordered[2].text, "// trailing");
+  EXPECT_FALSE(ordered[2].isBlock);
+  EXPECT_FALSE(ordered[2].ownLine);
+
+  EXPECT_EQ(ordered[3].text, "/* own line */");
+  EXPECT_TRUE(ordered[3].isBlock);
+  EXPECT_TRUE(ordered[3].ownLine);
+}
+
+TEST(CommentTest, MultilineBlockCommentSpan) {
+  auto parser = parseProgramCollectingComments(
+      "/* line one\n"
+      "   line two */\n"
+      "function main() i32 { return 1; }\n");
+  const auto& comments = parser->getComments();
+  ASSERT_EQ(comments.size(), 1u);
+  const Comment& c = comments.begin()->second;
+  EXPECT_EQ(c.span.line, 1);
+  EXPECT_EQ(c.span.endLine, 2);
+  EXPECT_TRUE(c.isBlock);
+  EXPECT_TRUE(c.ownLine);
+}
+
+TEST(CommentTest, BlockCommentsDoNotNest) {
+  // The outer comment closes at the first */; "rest" must be real tokens
+  std::istringstream dummy("");
+  Parser parser(dummy);
+  parser.setCollectComments(true);
+  auto ast = parser.parseString(
+      "function main() i32 { return /* a /* b */ 5; }");
+  ASSERT_NE(ast, nullptr);
+  ASSERT_EQ(parser.getComments().size(), 1u);
+  EXPECT_EQ(parser.getComments().begin()->second.text, "/* a /* b */");
+}
+
+TEST(CommentTest, StarsInsideBlockComment) {
+  std::istringstream dummy("");
+  Parser parser(dummy);
+  parser.setCollectComments(true);
+  auto ast = parser.parseString(
+      "function main() i32 { return /* ** * *** */ 5; }");
+  ASSERT_NE(ast, nullptr);
+  ASSERT_EQ(parser.getComments().size(), 1u);
+  EXPECT_EQ(parser.getComments().begin()->second.text, "/* ** * *** */");
 }

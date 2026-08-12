@@ -17,5 +17,6 @@
   "modules": "Modules & Namespaces",
   "stdlib": "Standard Library",
   "intrinsics": "Compiler Intrinsics",
+  "formatting": "Formatting",
   "architecture": "Architecture"
 }

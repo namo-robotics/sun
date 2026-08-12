@@ -13,6 +13,8 @@ class UnaryExprAST : public ExprAST {
   std::unique_ptr<ExprAST> Operand;
 
  public:
+  void forEachChildSlot(const ChildSlotFn& fn) override { fn(Operand); }
+
   UnaryExprAST(Token op, std::unique_ptr<ExprAST> operand)
       : ExprAST(op.start), op(op), Operand(std::move(operand)) {}
   ASTNodeType getType() const override { return ASTNodeType::UNARY; }

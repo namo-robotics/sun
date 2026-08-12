@@ -19,6 +19,8 @@ class SpawnExprAST : public ExprAST {
       : Lambda(std::move(lambda)) {}
 
   ASTNodeType getType() const override { return ASTNodeType::SPAWN; }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override { fn(Lambda); }
   std::string toString() const override {
     return "spawn(" + Lambda->toString() + ")";
   }

@@ -19,6 +19,10 @@ class UnsafeBlockAST : public ExprAST {
       : body(std::move(b)) {}
 
   ASTNodeType getType() const override { return ASTNodeType::UNSAFE_BLOCK; }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override {
+    if (body) body->forEachChildSlot(fn);
+  }
   std::string toString() const override { return "unsafe { ... }"; }
   std::string dotLabel() const override { return "Unsafe"; }
 

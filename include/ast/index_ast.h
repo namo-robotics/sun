@@ -37,6 +37,13 @@ class IndexAST : public ExprAST {
   const std::vector<std::unique_ptr<SliceExprAST>>& getIndices() const {
     return indices;
   }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override {
+    fn(target);
+    for (auto& slice : indices) {
+      if (slice) slice->forEachChildSlot(fn);
+    }
+  }
   size_t numIndices() const { return indices.size(); }
 
   // Check if any index component is a range slice

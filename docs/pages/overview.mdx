@@ -42,9 +42,15 @@ var flag: bool = true;
 
 ## Comments
 
-Sun supports single-line comments:
+Sun supports single-line and block comments:
 
 ```sun
 // This is a comment
 var x: i32 = 42;  // Inline comment
+
+/* Block comment,
+   possibly spanning multiple lines */
+var y: i32 = /* inline */ 7;
 ```
+
+Block comments do not nest.

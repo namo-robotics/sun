@@ -1,0 +1,45 @@
+# Formatting
+
+Sun ships with a built-in source formatter, available as the `fmt` subcommand
+of the `sun` binary. It enforces one canonical style — there are no
+configuration options.
+
+```bash
+sun fmt file.sun other.sun   # rewrite files in place
+sun fmt --check file.sun     # exit 1 if a file would change (for CI)
+```
+
+Files that fail to parse are reported and left untouched (exit code 2).
+
+## Style
+
+- 2-space indentation, K&R braces (`function f() i32 {`).
+- One statement per line; a single space around binary operators.
+- Comments are preserved: own-line comments keep their position, trailing
+  comments stay on their line (two spaces before `//`).
+- Blank lines between statements are preserved, collapsed to at most one.
+- Bracketed lists (call arguments, array literals) stay on one line if they
+  were written on one line; multi-line lists get one element per line.
+- Parentheses are never added or removed.
+- Literals keep their exact source spelling (float forms, string escapes).
+
+```sun
+// before
+function main()i32{
+var x:i32=40;
+x+=2;  // bump
+return x;}
+
+// after
+function main() i32 {
+  var x: i32 = 40;
+  x += 2;  // bump
+  return x;
+}
+```
+
+## Editor integration
+
+The language server (`sun-lsp`) implements `textDocument/formatting`, so
+"Format Document" and format-on-save work in any LSP-enabled editor. Code
+that does not parse is left unchanged.

@@ -30,6 +30,10 @@ class MoonScopeAST : public ExprAST {
         body_(std::move(body)) {}
 
   ASTNodeType getType() const override { return ASTNodeType::MOON_SCOPE; }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override {
+    if (body_) body_->forEachChildSlot(fn);
+  }
   std::string toString() const override {
     return "moon_scope(" + getEffectiveName() + ")";
   }

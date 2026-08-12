@@ -23,6 +23,12 @@ class TernaryExprAST : public ExprAST {
         elseExpr(std::move(elseExpr)) {}
 
   ASTNodeType getType() const override { return ASTNodeType::TERNARY; }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override {
+    fn(cond);
+    fn(thenExpr);
+    fn(elseExpr);
+  }
   std::string toString() const override {
     return cond->toString() + " ? " + thenExpr->toString() + " : " +
            elseExpr->toString();

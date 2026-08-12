@@ -25,14 +25,45 @@ static double putchard(double X) {
   return 0.0;      // Kaleidoscope externs return double
 }
 
+// A source comment collected during parsing (never part of the AST; the
+// formatter re-attaches comments to nodes by comparing spans)
+struct Comment {
+  Position span;     // start + end{Line,Column,Offset}
+  std::string text;  // raw text including delimiters ("// x", "/* x */")
+  bool ownLine;      // nothing but whitespace/comments precede it on its line
+  bool isBlock;      // /* */ vs //
+};
+
 class Parser {
  private:
   Lexer lexer;
   Token curTok = Token::eof({0, 0, 0});
+  Token prevTok_ = Token::eof({0, 0, 0});  // Last consumed token (span ends)
   std::vector<Token> tokenStack;
 
   // Track whether string interpolation was used during parsing
   bool usesStringInterpolation_ = false;
+
+  // Comment side table, keyed by start offset. Offset keying makes
+  // collection idempotent when backtracking re-lexes a region.
+  bool collectComments_ = false;
+  std::map<int, Comment> comments_;
+
+  static bool isCommentToken(const Token& tok) {
+    return tok.kind == TokenKind::COMMENT ||
+           tok.kind == TokenKind::BLOCK_COMMENT;
+  }
+
+  void recordComment(const Token& tok, int lastEndLine) {
+    Position span = tok.start;
+    if (!currentFilePath.empty()) span.filePath = currentFilePath;
+    span.setEnd(tok.end.line, tok.end.column, tok.end.offset);
+    comments_.insert_or_assign(
+        tok.start.offset,
+        Comment{std::move(span), tok.text,
+                /*ownLine=*/lastEndLine != tok.start.line,
+                /*isBlock=*/tok.kind == TokenKind::BLOCK_COMMENT});
+  }
 
   // Track import paths that should be loaded from precompiled libraries
   // (not parsed from source)
@@ -54,6 +85,7 @@ class Parser {
                  currentFilePath.empty()
                      ? std::nullopt
                      : std::optional<std::string>(currentFilePath)};
+    loc.setEnd(curTok.end.line, curTok.end.column, curTok.end.offset);
     logParsingError(loc, msg, sourceLine, prevLine);
   }
 
@@ -71,27 +103,24 @@ class Parser {
       getNextToken();  // eat '>'
       return;
     }
-    if (curTok.kind == TokenKind::RIGHT_SHIFT) {
-      // Split '>>' into '>' and push remaining '>' back
-      Token remainingGreater = Token::make(TokenKind::GREATER, curTok.start, curTok.end);
-      getNextToken();  // eat '>>'
-      pushToken(remainingGreater);  // push '>' to be consumed next
-      return;
-    }
-    if (curTok.kind == TokenKind::GREATER_EQUAL) {
-      // Split '>=' into '>' and '=' (e.g. `var v: Vec<i32>= x;`)
-      Token remainingEqual = Token::make(TokenKind::EQUAL, curTok.start, curTok.end);
-      getNextToken();  // eat '>='
-      pushToken(remainingEqual);
-      return;
-    }
-    if (curTok.kind == TokenKind::RIGHT_SHIFT_ASSIGN) {
-      // Split '>>=' into '>' and '>=' (the '>=' splits again if needed,
-      // e.g. `var v: Vec<Vec<i32>>= x;`)
-      Token remainingGreaterEqual =
-          Token::make(TokenKind::GREATER_EQUAL, curTok.start, curTok.end);
-      getNextToken();  // eat '>>='
-      pushToken(remainingGreaterEqual);
+    if (curTok.kind == TokenKind::RIGHT_SHIFT ||
+        curTok.kind == TokenKind::GREATER_EQUAL ||
+        curTok.kind == TokenKind::RIGHT_SHIFT_ASSIGN) {
+      // Split off the leading '>' and push the remainder back. Spans are
+      // split at the character boundary so type annotations sliced from
+      // source don't absorb the remainder (e.g. Vec<Vec<i32>>).
+      TokenKind remainderKind = curTok.kind == TokenKind::RIGHT_SHIFT
+                                    ? TokenKind::GREATER
+                                : curTok.kind == TokenKind::GREATER_EQUAL
+                                    ? TokenKind::EQUAL
+                                    : TokenKind::GREATER_EQUAL;
+      Position mid = curTok.start;
+      mid.column += 1;
+      mid.offset += 1;
+      Token remainder = Token::make(remainderKind, mid, curTok.end);
+      curTok = Token::make(TokenKind::GREATER, curTok.start, mid);
+      getNextToken();  // eat the shrunk '>'
+      pushToken(remainder);
       return;
     }
     parsingError(msg);
@@ -131,13 +160,50 @@ class Parser {
 
   // Parsing functions
   Token getNextToken() {
+    prevTok_ = curTok;
     if (!tokenStack.empty()) {
       curTok = tokenStack.back();
       tokenStack.pop_back();
       return curTok;
     }
-    curTok = lexer.getNextToken();
+    Token tok = lexer.getNextToken();
+    // Comments never become curTok/prevTok_: record them (when collecting)
+    // and keep fetching. lastEndLine distinguishes own-line comments from
+    // trailing ones (prevTok_ starts as the line-0 EOF sentinel).
+    int lastEndLine = prevTok_.end.line;
+    while (isCommentToken(tok)) {
+      recordComment(tok, lastEndLine);
+      lastEndLine = tok.end.line;
+      tok = lexer.getNextToken();
+    }
+    curTok = tok;
     return curTok;
+  }
+
+  // Start position of the node about to be parsed (curTok is its first token)
+  Position captureStart() const {
+    Position p = curTok.start;
+    if (!currentFilePath.empty()) p.filePath = currentFilePath;
+    return p;
+  }
+
+  // Stamp span [start, end-of-last-consumed-token] onto a finished node
+  template <typename NodeT>
+  unique_ptr<NodeT> finishNode(unique_ptr<NodeT> node, Position start) const {
+    if (node) {
+      start.setEnd(prevTok_.end.line, prevTok_.end.column,
+                   prevTok_.end.offset);
+      node->setLocation(std::move(start));
+    }
+    return node;
+  }
+
+  // Span variant for left-recursive constructs: start comes from an
+  // already-stamped sub-node's location
+  void extendSpan(ExprAST& node, const Position& start) const {
+    Position loc = start;
+    loc.setEnd(prevTok_.end.line, prevTok_.end.column, prevTok_.end.offset);
+    node.setLocation(std::move(loc));
   }
 
   unique_ptr<ExprAST> parseExpression();
@@ -172,8 +238,10 @@ class Parser {
   unique_ptr<ExprAST> parseStatement();
   unique_ptr<ExprAST> parseStatementList();
 
-  // Type parsing
+  // Type parsing. parseTypeAnnotation stamps the source span; the Impl
+  // variant holds the grammar and leaves the span unset.
   TypeAnnotation parseTypeAnnotation();
+  TypeAnnotation parseTypeAnnotationImpl();
   bool isTypeToken(TokenKind kind);
 
   unique_ptr<ExprAST> parseAssignmentOrExpression();
@@ -261,4 +329,12 @@ class Parser {
   void setUsesStringInterpolation(bool value) {
     usesStringInterpolation_ = value;
   }
+
+  // Opt in to collecting comments into the side table (off by default)
+  void setCollectComments(bool collect) {
+    collectComments_ = collect;
+    lexer.setEmitComments(collect);
+  }
+  // Collected comments, keyed by absolute start offset
+  const std::map<int, Comment>& getComments() const { return comments_; }
 };

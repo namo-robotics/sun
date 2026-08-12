@@ -55,5 +55,12 @@ class TryCatchExprAST : public ExprAST {
     return catchClauses;
   }
   std::vector<CatchClause>& getCatchClausesMutable() { return catchClauses; }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override {
+    if (tryBlock) tryBlock->forEachChildSlot(fn);
+    for (auto& clause : catchClauses) {
+      if (clause.body) clause.body->forEachChildSlot(fn);
+    }
+  }
   std::string dotLabel() const override { return "TryCatch"; }
 };

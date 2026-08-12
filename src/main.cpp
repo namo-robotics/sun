@@ -13,6 +13,7 @@
 #include "compiler.h"
 #include "driver.h"
 #include "error.h"
+#include "formatter.h"
 #include "library_cache.h"
 #include "metadata_extractor.h"
 #include "moon/moon.h"
@@ -41,6 +42,9 @@ static void printUsage(const char* programName) {
   llvm::errs() << "                    Format: path.moon or "
                   "path.moon:module=alias\n";
   llvm::errs() << "  -h, --help        Show this help message\n";
+  llvm::errs() << "\nSubcommands:\n";
+  llvm::errs() << "  fmt [--check] <file.sun>...   Format files in place "
+                  "(--check: exit 1 if formatting would change a file)\n";
   llvm::errs() << "\nArguments after the script file (or after --) are passed "
                   "to main(argc, argv).\n";
   llvm::errs() << "\nExamples:\n";
@@ -129,7 +133,91 @@ static bool extractManifestFromFile(const std::string& filename,
   return true;
 }
 
+// sun fmt [--check] <file.sun>...
+// Exit codes: 0 = clean/formatted, 1 = --check found differences,
+// 2 = parse or I/O error. All files are processed before exiting.
+static int runFmt(int argc, char* argv[]) {
+  bool checkMode = false;
+  std::vector<std::string> files;
+  for (int i = 0; i < argc; ++i) {
+    std::string arg = argv[i];
+    if (arg == "--check") {
+      checkMode = true;
+    } else if (arg == "-h" || arg == "--help") {
+      llvm::errs() << "Usage: sun fmt [--check] <file.sun>...\n";
+      return 0;
+    } else if (!arg.empty() && arg[0] == '-') {
+      llvm::errs() << "Unknown fmt option: " << arg << "\n";
+      return 2;
+    } else {
+      files.push_back(arg);
+    }
+  }
+  if (files.empty()) {
+    llvm::errs() << "Usage: sun fmt [--check] <file.sun>...\n";
+    return 2;
+  }
+
+  bool hadError = false;
+  bool hadDiff = false;
+  for (const auto& file : files) {
+    std::ifstream in(file);
+    if (!in) {
+      llvm::errs() << file << ": cannot open file\n";
+      hadError = true;
+      continue;
+    }
+    std::stringstream buffer;
+    buffer << in.rdbuf();
+    std::string source = buffer.str();
+    in.close();
+
+    std::string formatted;
+    try {
+      formatted = sun::formatSource(source, file);
+    } catch (const SunError& e) {
+      llvm::errs() << file << ": " << e.what() << "\n";
+      hadError = true;
+      continue;
+    }
+
+    if (formatted == source) continue;
+    hadDiff = true;
+    if (checkMode) {
+      llvm::outs() << file << ": needs formatting\n";
+      continue;
+    }
+
+    // Atomic in-place rewrite: temp file in the same directory, then rename
+    std::string tmpPath = file + ".fmt-tmp";
+    {
+      std::ofstream out(tmpPath, std::ios::trunc);
+      if (!out) {
+        llvm::errs() << file << ": cannot write " << tmpPath << "\n";
+        hadError = true;
+        continue;
+      }
+      out << formatted;
+    }
+    std::error_code ec;
+    std::filesystem::rename(tmpPath, file, ec);
+    if (ec) {
+      llvm::errs() << file << ": rename failed: " << ec.message() << "\n";
+      std::filesystem::remove(tmpPath, ec);
+      hadError = true;
+    }
+  }
+
+  if (hadError) return 2;
+  if (checkMode && hadDiff) return 1;
+  return 0;
+}
+
 int main(int argc, char* argv[]) {
+  if (argc >= 2 && std::string(argv[1]) == "fmt") {
+    return runFmt(argc - 2, argv + 2);
+  }
+
   // Parse command-line arguments
   std::string outputFile;
   std::vector<std::string> inputFiles;

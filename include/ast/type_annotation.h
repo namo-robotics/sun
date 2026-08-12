@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "position.h"
+
 // Type annotation structure for parsed type info
 // Supports: i32, f64, bool, void, ptr<T>, ref T, fn, lambda
 // Generic types: ClassName<T, U> for class instantiation
@@ -30,12 +32,16 @@ struct TypeAnnotation {
   // For error union types: indicates this type can also be an error
   bool canError = false;
 
+  // Source span (includes the ", IError" suffix when present); not serialized
+  Position span{};
+
   TypeAnnotation() = default;
   TypeAnnotation(std::string name) : baseName(std::move(name)) {}
   TypeAnnotation(const TypeAnnotation& other)
       : baseName(other.baseName),
         arrayDimensions(other.arrayDimensions),
-        canError(other.canError) {
+        canError(other.canError),
+        span(other.span) {
     if (other.elementType) {
       elementType = std::make_unique<TypeAnnotation>(*other.elementType);
     }
@@ -54,6 +60,7 @@ struct TypeAnnotation {
       baseName = other.baseName;
       arrayDimensions = other.arrayDimensions;
       canError = other.canError;
+      span = other.span;
       if (other.elementType) {
         elementType = std::make_unique<TypeAnnotation>(*other.elementType);
       } else {

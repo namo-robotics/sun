@@ -76,6 +76,12 @@ class ClassDefinitionAST : public ExprAST {
   }
 
   ASTNodeType getType() const override { return ASTNodeType::CLASS_DEFINITION; }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override {
+    for (auto& method : methods) {
+      if (method.function) method.function->forEachChildSlot(fn);
+    }
+  }
   std::string toString() const override {
     std::string result = "class " + name;
     if (!typeParameters.empty()) {

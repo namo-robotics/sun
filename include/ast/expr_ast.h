@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -61,6 +62,13 @@ class ExprAST {
   // This approach is less error-prone than manual cloning as it automatically
   // handles all fields through the proto schema.
   std::unique_ptr<ExprAST> clone() const;
+
+  // Invoke fn on every direct child slot that holds a replaceable expression
+  // (used by AST-rewriting passes, e.g. lowering). Strongly-typed children
+  // (e.g. a BlockExprAST member) cannot be replaced, so overrides forward
+  // into them instead of exposing their slot.
+  using ChildSlotFn = std::function<void(std::unique_ptr<ExprAST>&)>;
+  virtual void forEachChildSlot(const ChildSlotFn&) {}
 
   // Analysis data access
   bool hasAnalysis() const { return analysis_ != nullptr; }

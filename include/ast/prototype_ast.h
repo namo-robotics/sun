@@ -11,6 +11,7 @@
 #include "ast/analysis.h"
 #include "ast/ast_common.h"
 #include "ast/type_annotation.h"
+#include "position.h"
 #include "qualified_name.h"
 #include "types.h"
 
@@ -25,6 +26,7 @@ class PrototypeAST {
   std::optional<std::string>
       variadicParamName_;  // Name of variadic param if present
   std::optional<TypeAnnotation> variadicConstraint_;  // e.g., _init_args<T>
+  Position location_;  // Source span of the signature
 
   // Analysis data populated by semantic analyzer
   mutable std::unique_ptr<PrototypeAnalysis> analysis_;
@@ -72,6 +74,9 @@ class PrototypeAST {
   ASTNodeType getType() const { return ASTNodeType::PROTOTYPE; }
   const std::string& getName() const { return Name; }
   void setName(std::string name) { Name = std::move(name); }
+
+  void setLocation(Position loc) { location_ = std::move(loc); }
+  const Position& getLocation() const { return location_; }
 
   // Analysis data access
   bool hasAnalysis() const { return analysis_ != nullptr; }

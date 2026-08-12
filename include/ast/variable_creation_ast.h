@@ -49,6 +49,8 @@ class VariableCreationAST : public ExprAST {
   }
   const std::string& getName() const { return name; }
   const ExprAST* getValue() const { return value.get(); }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override { fn(value); }
   const std::optional<TypeAnnotation>& getTypeAnnotation() const {
     return typeAnnotation;
   }

@@ -20,6 +20,11 @@ class IndexedAssignmentAST : public ExprAST {
   ASTNodeType getType() const override {
     return ASTNodeType::INDEXED_ASSIGNMENT;
   }
+
+  void forEachChildSlot(const ChildSlotFn& fn) override {
+    fn(target);
+    fn(value);
+  }
   std::string toString() const override {
     return target->toString() + " = " + value->toString();
   }
