@@ -1,12 +1,11 @@
 module A {
+  function foo() i32 {
+    return 1;
+  }
 
-    function foo() i32 {
-        return 1;
+  module B {
+    function bar() i32 {
+      return foo();
     }
-
-    module B {
-        function bar() i32 {
-            return foo();
-        }
-    }
+  }
 }

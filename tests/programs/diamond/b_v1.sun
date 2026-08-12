@@ -1,5 +1,5 @@
 module b {
-    function get_version() i32 {
-        return 1;
-    }
+  function get_version() i32 {
+    return 1;
+  }
 }

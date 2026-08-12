@@ -1,7 +1,7 @@
 module B {
-    module A {
-        function foo() i32 {
-            return 1;
-        }
+  module A {
+    function foo() i32 {
+      return 1;
     }
+  }
 }

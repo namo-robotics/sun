@@ -1,7 +1,0 @@
-import "/workspaces/sun/build/stdlib.moon";
-import "/workspaces/sun/tests/programs/diamond/a.moon";
-using a;
-function main() i32 {
-    sun.print(call_b_from_a());
-    return 0;
-}

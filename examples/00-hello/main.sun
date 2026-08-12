@@ -1,7 +1,7 @@
 using sun;
 
 function main() void {
-    println("Hello, Sun!");
+  println("Hello, Sun!");
 }
 
 manifest {

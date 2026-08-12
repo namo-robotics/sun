@@ -1,6 +1,7 @@
 // main.cpp
 #include <glob.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -43,8 +44,11 @@ static void printUsage(const char* programName) {
                   "path.moon:module=alias\n";
   llvm::errs() << "  -h, --help        Show this help message\n";
   llvm::errs() << "\nSubcommands:\n";
-  llvm::errs() << "  fmt [--check] <file.sun>...   Format files in place "
-                  "(--check: exit 1 if formatting would change a file)\n";
+  llvm::errs() << "  fmt [--check] <file.sun|directory>...\n";
+  llvm::errs() << "                    Format files in place; directories are "
+                  "searched recursively\n";
+  llvm::errs() << "                    (--check: exit 1 if formatting would "
+                  "change a file)\n";
   llvm::errs() << "\nArguments after the script file (or after --) are passed "
                   "to main(argc, argv).\n";
   llvm::errs() << "\nExamples:\n";
@@ -133,40 +137,84 @@ static bool extractManifestFromFile(const std::string& filename,
   return true;
 }
 
-// sun fmt [--check] <file.sun>...
+static const char* kFmtUsage =
+    "Usage: sun fmt [--check] <file.sun|directory>...\n";
+
+// Collect .sun files under a directory, skipping hidden directories
+// (.git, .cache, ...). Sorted so output order is deterministic.
+static bool collectSunFiles(const std::string& dir,
+                            std::vector<std::string>& out) {
+  std::error_code ec;
+  std::filesystem::recursive_directory_iterator it(dir, ec), end;
+  if (ec) {
+    llvm::errs() << dir << ": cannot read directory: " << ec.message() << "\n";
+    return false;
+  }
+  size_t firstNew = out.size();
+  for (; it != end; it.increment(ec)) {
+    if (ec) {
+      llvm::errs() << dir << ": error while scanning: " << ec.message() << "\n";
+      return false;
+    }
+    const std::filesystem::path& path = it->path();
+    std::string name = path.filename().string();
+    if (it->is_directory(ec)) {
+      if (name.size() > 1 && name[0] == '.') it.disable_recursion_pending();
+      continue;
+    }
+    if (path.extension() == ".sun") out.push_back(path.string());
+  }
+  std::sort(out.begin() + firstNew, out.end());
+  return true;
+}
+
+// sun fmt [--check] <file.sun|directory>...
+// Directories are searched recursively for .sun files.
 // Exit codes: 0 = clean/formatted, 1 = --check found differences,
 // 2 = parse or I/O error. All files are processed before exiting.
 static int runFmt(int argc, char* argv[]) {
   bool checkMode = false;
-  std::vector<std::string> files;
+  std::vector<std::string> inputs;
   for (int i = 0; i < argc; ++i) {
     std::string arg = argv[i];
     if (arg == "--check") {
       checkMode = true;
     } else if (arg == "-h" || arg == "--help") {
-      llvm::errs() << "Usage: sun fmt [--check] <file.sun>...\n";
+      llvm::errs() << kFmtUsage;
       return 0;
     } else if (!arg.empty() && arg[0] == '-') {
       llvm::errs() << "Unknown fmt option: " << arg << "\n";
       return 2;
     } else {
-      files.push_back(arg);
+      inputs.push_back(arg);
     }
   }
-  if (files.empty()) {
-    llvm::errs() << "Usage: sun fmt [--check] <file.sun>...\n";
+  if (inputs.empty()) {
+    llvm::errs() << kFmtUsage;
     return 2;
   }
 
   bool hadError = false;
   bool hadDiff = false;
-  for (const auto& file : files) {
-    // Only Sun sources are formatted; skip anything else a glob picked up
-    if (std::filesystem::path(file).extension() != ".sun") {
-      llvm::errs() << file << ": skipped (not a .sun file)\n";
-      continue;
-    }
 
+  // Expand directories; explicitly named non-.sun files are reported (a
+  // directory walk filters them silently instead)
+  std::vector<std::string> files;
+  for (const auto& input : inputs) {
+    std::error_code ec;
+    if (std::filesystem::is_directory(input, ec)) {
+      if (!collectSunFiles(input, files)) hadError = true;
+    } else if (!std::filesystem::exists(input, ec)) {
+      llvm::errs() << input << ": no such file or directory\n";
+      hadError = true;
+    } else if (std::filesystem::path(input).extension() != ".sun") {
+      llvm::errs() << input << ": skipped (not a .sun file)\n";
+    } else {
+      files.push_back(input);
+    }
+  }
+
+  for (const auto& file : files) {
     std::ifstream in(file);
     if (!in) {
       llvm::errs() << file << ": cannot open file\n";
