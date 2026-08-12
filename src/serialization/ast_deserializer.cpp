@@ -747,9 +747,15 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
     methods.push_back(std::move(method));
   }
 
-  return std::make_unique<ClassDefinitionAST>(
+  // Note: the 6th ctor parameter is `precompiled`, not `isPartial` - set the
+  // class modifiers explicitly so they actually round-trip. Packing in
+  // particular changes layout, so losing it would silently corrupt memory.
+  auto classDef = std::make_unique<ClassDefinitionAST>(
       proto.name(), std::move(typeParams), std::move(interfaces),
-      std::move(fields), std::move(methods), proto.is_partial());
+      std::move(fields), std::move(methods));
+  classDef->setIsPartial(proto.is_partial());
+  classDef->setIsPacked(proto.is_packed());
+  return classDef;
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeInterfaceDef(

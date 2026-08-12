@@ -704,8 +704,9 @@ Value* CodegenVisitor::codegen(const MemberAccessAST& expr) {
 
     // Load the field value
     llvm::Type* fieldLLVMType = field->type->toLLVMType(ctx.getContext());
-    return ctx.builder->CreateLoad(fieldLLVMType, fieldPtr,
-                                   memberName + ".val");
+    return ctx.builder->CreateAlignedLoad(fieldLLVMType, fieldPtr,
+                                          fieldAlign(classType, fieldLLVMType),
+                                          memberName + ".val");
   }
 
   // Bound method reference: a method in value position materializes the
@@ -1006,7 +1007,9 @@ Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
       // value is a pointer to the fat struct, load it
       llvm::StructType* fatType =
           sun::ArrayType::getArrayStructType(ctx.getContext());
-      value = ctx.builder->CreateLoad(fatType, value, "arr.fat.load");
+      value = ctx.builder->CreateAlignedLoad(
+          fatType, value, module->getDataLayout().getABITypeAlign(fatType),
+          "arr.fat.load");
       valueType = value->getType();
     }
   }
@@ -1027,14 +1030,18 @@ Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
     // fieldPtr is a pointer to the embedded struct in the parent class
     // If value is not a pointer (e.g., struct returned by value from a call),
     // materialize it to a stack alloca first so memcpy has a valid source.
+    llvm::Align srcAlign = DL.getABITypeAlign(fieldStructType);
     if (!value->getType()->isPointerTy()) {
       AllocaInst* tempAlloca = ctx.builder->CreateAlloca(
           fieldStructType, nullptr, memberName + ".tmp");
       ctx.builder->CreateStore(value, tempAlloca);
       value = tempAlloca;
+      srcAlign = tempAlloca->getAlign();
     }
-    ctx.builder->CreateMemCpy(fieldPtr, llvm::MaybeAlign(8), value,
-                              llvm::MaybeAlign(8), structSize);
+    // The destination sits inside the parent, so it inherits the parent's
+    // packing, not the field struct's own alignment
+    ctx.builder->CreateMemCpy(fieldPtr, fieldAlign(classType, fieldStructType),
+                              value, srcAlign, structSize);
     return value;
   }
 
@@ -1060,7 +1067,8 @@ Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
   }
 
   // Store the value
-  ctx.builder->CreateStore(value, fieldPtr);
+  ctx.builder->CreateAlignedStore(value, fieldPtr,
+                                  fieldAlign(classType, fieldLLVMType));
 
   // Return the value (like C assignment)
   return value;

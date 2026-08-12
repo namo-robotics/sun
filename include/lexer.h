@@ -27,6 +27,7 @@ enum class TokenKind {
   USING,          // using keyword for namespace imports
   CLASS,          // class keyword
   PARTIAL,        // partial keyword for class extensions
+  PACKED_CLASS,   // packed_class keyword: class with no inter-field padding
   INTERFACE,      // interface keyword
   ENUM,           // enum keyword
   IMPLEMENTS,     // implements keyword
@@ -138,6 +139,9 @@ static const std::map<TokenKind, std::string> tokenRegexes = {
     {TokenKind::USING, "using"},
     {TokenKind::CLASS, "class"},
     {TokenKind::PARTIAL, "partial"},
+    // Must precede CLASS's regex conceptually; longest-match makes
+    // "packed_class" win over both "class" and IDENTIFIER
+    {TokenKind::PACKED_CLASS, "packed_class"},
     {TokenKind::INTERFACE, "interface"},
     {TokenKind::ENUM, "enum"},
     {TokenKind::IMPLEMENTS, "implements"},
@@ -281,6 +285,8 @@ inline const std::map<TokenKind, TokenInfo>& getTokenInfo() {
       {TokenKind::MODULE, {"module"}},
       {TokenKind::USING, {"using"}},
       {TokenKind::CLASS, {"class"}},
+      {TokenKind::PARTIAL, {"partial"}},
+      {TokenKind::PACKED_CLASS, {"packed_class"}},
       {TokenKind::INTERFACE, {"interface"}},
       {TokenKind::ENUM, {"enum"}},
       {TokenKind::IMPLEMENTS, {"implements"}},

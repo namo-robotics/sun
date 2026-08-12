@@ -291,6 +291,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
                            expr.getLocation());
         }
       }
+      checkPackedFieldNotBorrowed(*refCreate.getTarget(), expr.getLocation());
       // Determine the type of the referenced expression
       sun::TypePtr targetType = inferType(*refCreate.getTarget());
       // Create reference type: ref(T)
@@ -820,6 +821,9 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       // Create the class type with the qualified name
       auto classType = typeRegistry->getClass(qualifiedClass);
 
+      // Layout must be decided before any getStructType() call memoizes it
+      classType->setPacked(classDef.isPacked());
+
       // Register the class BEFORE processing fields to allow self-referential
       // types (e.g., var next: raw_ptr<Node> inside class Node)
       registerClass(baseName, classType);
@@ -845,6 +849,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
                              field.location);
           }
         }
+
+        checkPackedFieldType(classDef, field, fieldType);
 
         classType->addField(field.name, fieldType);
       }
@@ -2529,6 +2535,8 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
                          " arguments, got " + std::to_string(args.size()),
                      callExpr.getLocation());
   }
+
+  checkPackedRefArguments(args, paramTypes);
 
   // If we found a function via overload resolution, types are already
   // compatible Otherwise, check each argument type manually

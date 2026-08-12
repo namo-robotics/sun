@@ -51,6 +51,7 @@ add_executable(sun_tests
     test_memory_safety.cpp
     test_modules.cpp
     test_mutex.cpp
+    test_packed_classes.cpp
     test_parser.cpp
     test_pointers.cpp
     test_programs.cpp

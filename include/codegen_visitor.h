@@ -395,6 +395,11 @@ class CodegenVisitor {
                            const sun::ClassField& field,
                            const std::string& name);
 
+  // Alignment for field accesses, honouring packed layout. Thin wrappers over
+  // sun::packed (include/packed_layout.h) that supply the module's DataLayout.
+  llvm::Align fieldAlign(const sun::ClassType* owner, llvm::Type* fieldTy);
+  llvm::Align lvalueAlign(const ExprAST& target, llvm::Type* slotTy);
+
   // Codegen a member-access object down to (objectPtr, ClassType*), applying
   // the generic-`this` fixup and unwrapping raw_ptr/static_ptr/ref to class.
   // ClassType* is null when the object is not class-shaped.

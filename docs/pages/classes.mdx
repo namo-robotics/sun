@@ -30,6 +30,60 @@ class Point {
 - **Member access**: Use `.` to access fields and call methods
 - **Interfaces**: Classes can implement one or more interfaces
 
+## Packed Classes
+
+By default the compiler inserts padding between fields so each one lands on its
+natural alignment. Declare a class with `packed_class` when the layout itself is
+the contract — binary file headers, wire protocols, hardware registers, or FFI
+against a C struct declared `__attribute__((packed))`:
+
+```sun
+packed_class Header {
+    var magic: u8;
+    var length: i32;
+    var flags: u8;
+
+    function init() {}
+}
+```
+
+Fields are laid out end to end with no padding, and the whole class has
+alignment 1:
+
+| Declaration | `magic` | `length` | `flags` | `_sizeof<T>()` |
+| --- | --- | --- | --- | --- |
+| `class Header` | 0 | 4 | 8 | 12 |
+| `packed_class Header` | 0 | 1 | 5 | 6 |
+
+Everything else about a packed class is unchanged — constructors, methods,
+generics, and `implements` all work as usual, and the whole object can still be
+passed by `ref`.
+
+### Restrictions
+
+Because a packed field sits at an arbitrary offset, its **address** cannot be
+handed out. Borrowing one is a compile error, the same restriction C++ places on
+references to packed members:
+
+```sun
+var h: Header = Header();
+
+ref r = h.length;   // ERROR: not aligned enough to be borrowed
+takes_a_ref(h.length);  // ERROR: same reason
+
+var len: i32 = h.length;  // OK: copy the value out
+takes_a_ref(h);           // OK: the object itself is fine to borrow
+```
+
+Field types are restricted to what can actually be packed:
+
+- **Arrays and interface values** are rejected — both are multi-word fat
+  pointers. Use `raw_ptr<T>` instead.
+- **Class-typed fields** must themselves be `packed_class`, otherwise the
+  nested class's interior padding would survive and defeat the purpose.
+- `packed_class` cannot be combined with `partial`, which declares methods only
+  and so has no layout.
+
 ## Implementing Interfaces
 
 Classes can implement interfaces using the `implements` keyword:

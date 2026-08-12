@@ -566,8 +566,10 @@ void CodegenVisitor::emitFieldCleanup(llvm::Value* objectPtr,
           ctx.builder->CreateStructGEP(structType, objectPtr, field.index,
                                        baseName + "." + field.name + ".ptr");
 
-      llvm::Value* fieldValue = ctx.builder->CreateLoad(
-          llvm::PointerType::getUnqual(ctx.getContext()), fieldPtr,
+      llvm::Type* ptrTy = llvm::PointerType::getUnqual(ctx.getContext());
+      llvm::Align ptrAlign = fieldAlign(classType, ptrTy);
+      llvm::Value* fieldValue = ctx.builder->CreateAlignedLoad(
+          ptrTy, fieldPtr, ptrAlign,
           baseName + "." + field.name + ".value");
 
       // Null-check raw_ptr fields too
@@ -584,7 +586,7 @@ void CodegenVisitor::emitFieldCleanup(llvm::Value* objectPtr,
 
       ctx.builder->SetInsertPoint(freeRawBB);
       ctx.builder->CreateCall(freeFunc, {fieldValue});
-      ctx.builder->CreateStore(nullPtr, fieldPtr);
+      ctx.builder->CreateAlignedStore(nullPtr, fieldPtr, ptrAlign);
       ctx.builder->CreateBr(skipRawBB);
 
       ctx.builder->SetInsertPoint(skipRawBB);
@@ -948,7 +950,8 @@ void CodegenVisitor::emitStaticInitFunction() {
           // Get GEP to the field
           Value* fieldPtr =
               ctx.builder->CreateStructGEP(structType, gv, argIdx, "field.ptr");
-          ctx.builder->CreateStore(argVal, fieldPtr);
+          ctx.builder->CreateAlignedStore(
+              argVal, fieldPtr, fieldAlign(classType, argVal->getType()));
           ++argIdx;
         }
       }

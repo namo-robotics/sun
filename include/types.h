@@ -939,6 +939,7 @@ class ClassType : public Type {
       methodTable_;  // Indexed method table for overload resolution
   std::vector<std::string>
       implementedInterfaces;  // Names of interfaces this class implements
+  bool isPacked_ = false;     // "packed class": lay fields out with no padding
   mutable llvm::StructType* cachedLLVMType = nullptr;
 
  public:
@@ -1258,10 +1259,15 @@ class ClassType : public Type {
         fieldTypes.push_back(field.type->toLLVMType(ctx));
       }
     }
-    cachedLLVMType =
-        llvm::StructType::create(ctx, fieldTypes, mangledName + "_struct");
+    cachedLLVMType = llvm::StructType::create(ctx, fieldTypes,
+                                              mangledName + "_struct", isPacked_);
     return cachedLLVMType;
   }
+
+  // Packed classes have no inter-field padding and struct alignment 1.
+  // Must be set before the first getStructType() call, which memoizes.
+  bool isPacked() const { return isPacked_; }
+  void setPacked(bool v) { isPacked_ = v; }
 
   // Get mangled method name: ClassName_methodName
   // Class name already includes module path and library hash

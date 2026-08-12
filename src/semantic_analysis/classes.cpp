@@ -1,6 +1,7 @@
 // semantic_analysis/classes.cpp — Class and generic class support
 
 #include "error.h"
+#include "packed_layout.h"
 #include "semantic_analyzer.h"
 
 // -------------------------------------------------------------------
@@ -30,6 +31,55 @@ void SemanticAnalyzer::setCurrentClass(
 
 std::shared_ptr<sun::ClassType> SemanticAnalyzer::getCurrentClass() const {
   return currentClass;
+}
+
+// -------------------------------------------------------------------
+// Packed class rules
+// -------------------------------------------------------------------
+
+// `ref p.field` would hand out an address the borrower accesses at the field
+// type's natural alignment, which a packed field does not satisfy.
+void SemanticAnalyzer::checkPackedFieldNotBorrowed(const ExprAST& target,
+                                                   const Position& loc) const {
+  if (target.getType() != ASTNodeType::MEMBER_ACCESS) return;
+  std::string ownerName;
+  if (!sun::packed::isFieldAccess(target, &ownerName)) return;
+  logAndThrowError(
+      sun::packed::borrowRejection(
+          "create a reference to a " + sun::packed::fieldPhrase(ownerName),
+          "Copy the field into a local instead."),
+      loc);
+}
+
+// A ref parameter takes the argument's address, so it has the same problem.
+void SemanticAnalyzer::checkPackedRefArguments(
+    const std::vector<std::unique_ptr<ExprAST>>& args,
+    const std::vector<sun::TypePtr>& paramTypes) const {
+  for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
+    if (!paramTypes[i] || !paramTypes[i]->isReference()) continue;
+    if (args[i]->getType() != ASTNodeType::MEMBER_ACCESS) continue;
+    std::string ownerName;
+    if (sun::packed::isFieldAccess(*args[i], &ownerName)) {
+      logAndThrowError(
+          sun::packed::borrowRejection(
+              "pass a " + sun::packed::fieldPhrase(ownerName) +
+                  " to a ref parameter",
+              "Pass a copy instead."),
+          args[i]->getLocation());
+    }
+  }
+}
+
+// Not every field type can live in a padding-free layout.
+void SemanticAnalyzer::checkPackedFieldType(
+    const ClassDefinitionAST& classDef, const ClassFieldDecl& field,
+    const sun::TypePtr& fieldType) const {
+  if (!classDef.isPacked()) return;
+  std::string reason = sun::packed::rejectFieldType(fieldType);
+  if (reason.empty()) return;
+  logAndThrowError("Field '" + field.name + "' in packed class '" +
+                       classDef.getName() + "' " + reason,
+                   field.location);
 }
 
 // -------------------------------------------------------------------
@@ -199,12 +249,19 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
     }
   }
 
+  // Layout is a property of the generic definition, so every specialization
+  // inherits it. Must precede the first getStructType(), which memoizes.
+  specializedClass->setPacked(genericClassInfo->AST->isPacked());
+
   // Add fields with substituted types (skip if type already exists or already
   // has fields from a previous instantiation in another scope)
   if (!astOnlyMode && specializedClass->getFields().empty()) {
     for (const auto& field : genericClassInfo->AST->getFields()) {
       auto fieldType = typeAnnotationToType(field.type);
       fieldType = substituteTypeParameters(fieldType);
+      // Checked per specialization: whether a type argument is packable is
+      // only knowable once T is substituted
+      checkPackedFieldType(*genericClassInfo->AST, field, fieldType);
       specializedClass->addField(field.name, fieldType);
     }
   }
@@ -347,6 +404,7 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
         mangledName, std::vector<std::string>{}, std::move(interfacesClone),
         std::move(fieldsClone), std::move(methodsClone),
         genericClassInfo->AST->isPrecompiled());
+    specializedAST->setIsPacked(genericClassInfo->AST->isPacked());
 
     // Store specialization on the generic class AST for codegen access
     genericClassInfo->AST->addSpecialization(mangledName, specializedAST);
@@ -385,6 +443,7 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
       std::move(interfacesClone), std::move(fieldsClone),
       std::move(methodsClone),  // cloned methods with analyzed bodies
       false);                   // NOT precompiled - needs codegen
+  specializedAST->setIsPacked(genericClassInfo->AST->isPacked());
 
   // Store specialization on the generic class AST for codegen access
   genericClassInfo->AST->addSpecialization(mangledName, specializedAST);

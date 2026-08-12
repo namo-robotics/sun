@@ -290,7 +290,8 @@ class Formatter {
 
   void printClass(const ClassDefinitionAST& c) {
     if (c.isPartial()) out_ += "partial ";
-    out_ += "class ";
+    out_ += c.classKeyword();
+    out_ += ' ';
     out_ += c.getName();
     const auto& typeParams = c.getTypeParameters();
     if (!typeParams.empty()) {

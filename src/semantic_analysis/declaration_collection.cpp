@@ -71,6 +71,7 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
         }
         if (!classDef.isGeneric()) {
           auto classType = typeRegistry->getClass(qualifiedClass);
+          classType->setPacked(classDef.isPacked());
           registerClass(classDef.getName(), classType);
         }
         break;

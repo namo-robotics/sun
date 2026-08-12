@@ -288,6 +288,8 @@ int tokenKindToLSPType(TokenKind kind) {
     case TokenKind::FUNCTION:
     case TokenKind::LAMBDA:
     case TokenKind::CLASS:
+    case TokenKind::PACKED_CLASS:
+    case TokenKind::PARTIAL:
     case TokenKind::INTERFACE:
     case TokenKind::IMPLEMENTS:
     case TokenKind::ENUM:
