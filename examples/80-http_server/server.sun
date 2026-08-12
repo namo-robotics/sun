@@ -2,25 +2,27 @@
 using sun;
 
 function main() i32 {
-    var alloc = make_heap_allocator();
-    var server = HttpServer(alloc);
-    try {
-        server.bind_loopback(8080);
-    } catch (e: IError) {
-        println("Failed to bind 127.0.0.1:8080 (port in use?)");
-        return 1;
-    }
-    println("Serving on http://127.0.0.1:8080");
+  var alloc = make_heap_allocator();
+  var server = HttpServer(alloc);
+  try {
+    server.bind_loopback(8080);
+  } catch (e: IError) {
+    println("Failed to bind 127.0.0.1:8080 (port in use?)");
+    return 1;
+  }
+  println("Serving on http://127.0.0.1:8080");
 
-    server.serve(lambda (req: ref HttpRequest, resp: ref HttpResponse) void {
-        if (req.path.equals_literal("/")) {
-            resp.set_body("<html><body><h1>Hello from Sun!</h1><p>This page is served by the Sun standard library.</p></body></html>");
-        } else {
-            resp.set_status(404);
-            resp.set_body("<html><body><h1>404 Not Found</h1></body></html>");
-        }
-    });
-    return 0;
+  server.serve(
+    lambda (req: ref HttpRequest, resp: ref HttpResponse) void {
+      if (req.path.equals_literal("/")) {
+        resp.set_body("<html><body><h1>Hello from Sun!</h1><p>This page is served by the Sun standard library.</p></body></html>");
+      } else {
+        resp.set_status(404);
+        resp.set_body("<html><body><h1>404 Not Found</h1></body></html>");
+      }
+    }
+  );
+  return 0;
 }
 
 manifest {

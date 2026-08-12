@@ -9,89 +9,87 @@
 //   println(`x = ${x}`);    // prints interpolated string with newline
 
 module sun {
+  // ---- print (no newline) ----
 
-// ---- print (no newline) ----
-
-function print(value: i32) void {
+  function print(value: i32) void {
     _print_i32(value);
-}
+  }
 
-function print(value: i64) void {
+  function print(value: i64) void {
     _print_i64(value);
-}
+  }
 
-function print(value: u32) void {
+  function print(value: u32) void {
     _print_i64(value);
-}
+  }
 
-function print(value: u64) void {
+  function print(value: u64) void {
     _print_i64(value);
-}
+  }
 
-function print(value: f64) void {
+  function print(value: f64) void {
     _print_f64(value);
-}
+  }
 
-function print(value: bool) void {
+  function print(value: bool) void {
     if (value) {
-        print("true");
+      print("true");
     } else {
-        print("false");
+      print("false");
     }
-}
+  }
 
-function print(s: static_ptr<u8>) void {
+  function print(s: static_ptr<u8>) void {
     _print_bytes(_static_ptr_data<u8>(s), _static_ptr_len<u8>(s));
-}
+  }
 
-function print(s: ref String) void {
+  function print(s: ref String) void {
     _print_bytes(s.data.rawData(), s.length());
-}
+  }
 
-// ---- println (with newline) ----
+  // ---- println (with newline) ----
 
-function println() void {
+  function println() void {
     _print_newline();
-}
+  }
 
-function println(value: i32) void {
+  function println(value: i32) void {
     print(value);
     _print_newline();
-}
+  }
 
-function println(value: i64) void {
+  function println(value: i64) void {
     print(value);
     _print_newline();
-}
+  }
 
-function println(value: u32) void {
+  function println(value: u32) void {
     print(value);
     _print_newline();
-}
+  }
 
-function println(value: u64) void {
+  function println(value: u64) void {
     print(value);
     _print_newline();
-}
+  }
 
-function println(value: f64) void {
+  function println(value: f64) void {
     print(value);
     _print_newline();
-}
+  }
 
-function println(value: bool) void {
+  function println(value: bool) void {
     print(value);
     _print_newline();
-}
+  }
 
-function println(s: static_ptr<u8>) void {
+  function println(s: static_ptr<u8>) void {
     print(s);
     _print_newline();
-}
+  }
 
-function println(s: ref String) void {
+  function println(s: ref String) void {
     print(s);
     _print_newline();
-}
-
-} // module sun
+  }
+}  // module sun

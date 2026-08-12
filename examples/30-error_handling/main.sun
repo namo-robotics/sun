@@ -4,30 +4,30 @@ using sun;
 // the `, IError` suffix, and signals failure with `throw`. The thrown value is
 // any class implementing `IError` (the standard library provides several).
 function divide(a: i32, b: i32) i32, IError {
-    if (b == 0) {
-        throw DivisionByZeroError();
-    }
-    return a / b;
+  if (b == 0) {
+    throw DivisionByZeroError();
+  }
+  return a / b;
 }
 
 function main() i32 {
-    // A successful call needs no special handling.
-    try {
-        var ok = divide(10, 2);   // 5
-        println(ok);
-    } catch (e: IError) {
-        println("unexpected error");
-    }
+  // A successful call needs no special handling.
+  try {
+    var ok = divide(10, 2);  // 5
+    println(ok);
+  } catch (e: IError) {
+    println("unexpected error");
+  }
 
-    // A failing call unwinds to the nearest matching catch.
-    try {
-        var bad = divide(10, 0);  // throws DivisionByZeroError
-        println(bad);
-    } catch (e: IError) {
-        println("caught division by zero");
-    }
+  // A failing call unwinds to the nearest matching catch.
+  try {
+    var bad = divide(10, 0);  // throws DivisionByZeroError
+    println(bad);
+  } catch (e: IError) {
+    println("caught division by zero");
+  }
 
-    return 0;
+  return 0;
 }
 
 manifest {

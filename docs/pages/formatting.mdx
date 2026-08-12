@@ -6,10 +6,14 @@ configuration options.
 
 ```bash
 sun fmt file.sun other.sun   # rewrite files in place
-sun fmt --check file.sun     # exit 1 if a file would change (for CI)
+sun fmt .                    # format every .sun file in the tree
+sun fmt --check .            # exit 1 if any file would change (for CI)
 ```
 
-Files that fail to parse are reported and left untouched (exit code 2).
+Directory arguments are searched recursively for `.sun` files; hidden
+directories (`.git`, `.cache`, …) are skipped. Paths that are not `.sun` files
+are ignored, and files that fail to parse are reported and left untouched
+(exit code 2).
 
 ## Style
 

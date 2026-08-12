@@ -18,204 +18,201 @@
 //   var last = v.pop();      // 30, size decreases
 //   var len = v.size();      // 2
 
-
 // ============================================================================
 // Vec<T> - Dynamic Growable Array
 // ============================================================================
 
 module sun {
+  class Vec<T> implements IIterable<T, Vec<T>> {
+    var data: ContiguousBuffer<T>;  // Element storage (bounds-checked, auto-freed)
+    var capacity_: i64;  // Allocated capacity
+    var size_: i64;  // Current number of elements
 
-class Vec<T> implements IIterable<T, Vec<T>> {
-    var data: ContiguousBuffer<T>; // Element storage (bounds-checked, auto-freed)
-    var capacity_: i64;            // Allocated capacity
-    var size_: i64;                // Current number of elements
-    
     // Constructor with allocator and capacity
     function init(allocator: ref HeapAllocator, capacity: i64) {
-        this.data = ContiguousBuffer<T>(allocator, capacity);
-        this.capacity_ = capacity;
-        this.size_ = 0;
+      this.data = ContiguousBuffer<T>(allocator, capacity);
+      this.capacity_ = capacity;
+      this.size_ = 0;
     }
-    
+
     // ========================================================================
     // Core Operations
     // ========================================================================
-    
+
     // Append element to end, grows if needed
     function push(value: T) void {
-        if (this.size_ >= this.capacity_) {
-            this.grow();
-        }
-        this.data.set_unchecked(this.size_, value);
-        this.size_ = this.size_ + 1;
+      if (this.size_ >= this.capacity_) {
+        this.grow();
+      }
+      this.data.set_unchecked(this.size_, value);
+      this.size_ = this.size_ + 1;
     }
-    
+
     // Remove and return last element
     function pop() T, IError {
-        if (this.size_ == 0) {
-            throw EmptyError();
-        }
-        this.size_ = this.size_ - 1;
-        return this.data.get_unchecked(this.size_);
+      if (this.size_ == 0) {
+        throw EmptyError();
+      }
+      this.size_ = this.size_ - 1;
+      return this.data.get_unchecked(this.size_);
     }
-    
+
     // Get element at index (bounds-checked against size)
     function get(index: i64) T, IError {
-        if (index < 0) {
-            throw IndexOutOfBoundsError(index);
-        }
-        if (index >= this.size_) {
-            throw IndexOutOfBoundsError(index);
-        }
-        return this.data.get_unchecked(index);
+      if (index < 0) {
+        throw IndexOutOfBoundsError(index);
+      }
+      if (index >= this.size_) {
+        throw IndexOutOfBoundsError(index);
+      }
+      return this.data.get_unchecked(index);
     }
-    
+
     // Get element at index (no bounds check)
     function get_unchecked(index: i64) T {
-        return this.data.get_unchecked(index);
+      return this.data.get_unchecked(index);
     }
-    
+
     // Set element at index (bounds-checked against size)
     function set(index: i64, value: T) void, IError {
-        if (index < 0) {
-            throw IndexOutOfBoundsError(index);
-        }
-        if (index >= this.size_) {
-            throw IndexOutOfBoundsError(index);
-        }
-        this.data.set_unchecked(index, value);
+      if (index < 0) {
+        throw IndexOutOfBoundsError(index);
+      }
+      if (index >= this.size_) {
+        throw IndexOutOfBoundsError(index);
+      }
+      this.data.set_unchecked(index, value);
     }
-    
+
     // Set element at index (no bounds check)
     function set_unchecked(index: i64, value: T) void {
-        this.data.set_unchecked(index, value);
+      this.data.set_unchecked(index, value);
     }
-    
+
     // Get current size
     function size() i64 {
-        return this.size_;
+      return this.size_;
     }
-    
+
     // Get current capacity
     function capacity() i64 {
-        return this.capacity_;
+      return this.capacity_;
     }
-    
+
     // Check if empty
     function isEmpty() bool {
-        return this.size_ == 0;
+      return this.size_ == 0;
     }
-    
+
     // Reserve capacity for at least n elements (doesn't change size)
     function reserve(n: i64) void {
-        if (n > this.capacity_) {
-            this.data.resize_to(n);
-            this.capacity_ = n;
-        }
+      if (n > this.capacity_) {
+        this.data.resize_to(n);
+        this.capacity_ = n;
+      }
     }
-    
+
     // Clear all elements (doesn't deallocate)
     function clear() void {
-        this.size_ = 0;
+      this.size_ = 0;
     }
-    
+
     // Get raw data pointer (for interop)
     function rawData() raw_ptr<i8> {
-        return this.data.rawData();
+      return this.data.rawData();
     }
-    
+
     // Get last element without removing
     function last() T, IError {
-        if (this.size_ == 0) {
-            throw EmptyError();
-        }
-        return this.data.get_unchecked(this.size_ - 1);
+      if (this.size_ == 0) {
+        throw EmptyError();
+      }
+      return this.data.get_unchecked(this.size_ - 1);
     }
-    
+
     // Get first element
     function first() T, IError {
-        if (this.size_ == 0) {
-            throw EmptyError();
-        }
-        return this.data.get_unchecked(0);
+      if (this.size_ == 0) {
+        throw EmptyError();
+      }
+      return this.data.get_unchecked(0);
     }
-    
+
     // ========================================================================
     // Internal Methods
     // ========================================================================
-    
+
     // Double capacity and copy elements
     function grow() void {
-        var new_capacity: i64 = this.capacity_ * 2;
-        this.data.resize_to(new_capacity);
-        this.capacity_ = new_capacity;
+      var new_capacity: i64 = this.capacity_ * 2;
+      this.data.resize_to(new_capacity);
+      this.capacity_ = new_capacity;
     }
-    
+
     // ========================================================================
     // Indexing Support
     // ========================================================================
-    
+
     // Operator overload for indexing: v[i] calls __index__([i])
     // Uses unchecked access for performance; use get() for bounds checking
     function __index__(indices: ref array<i64>) T {
-        return this.data.get_unchecked(indices[0]);
+      return this.data.get_unchecked(indices[0]);
     }
-    
+
     // Operator overload for indexed assignment: v[i] = val calls __setindex__([i], val)
     // Uses unchecked access for performance; use set() for bounds checking
     function __setindex__(indices: ref array<i64>, value: T) void {
-        this.data.set_unchecked(indices[0], value);
+      this.data.set_unchecked(indices[0], value);
     }
-    
+
     // ========================================================================
     // Iteration Support
     // ========================================================================
-    
+
     // Return iterator over elements
     function iter() VecIterator<T> {
-        return VecIterator<T>();
+      return VecIterator<T>();
     }
-}
+  }
 
-// ============================================================================
-// VecIterator<T> - Iterator over Vec elements
-// ============================================================================
+  // ============================================================================
+  // VecIterator<T> - Iterator over Vec elements
+  // ============================================================================
 
-class VecIterator<T> implements IIterator<T, Vec<T>> {
+  class VecIterator<T> implements IIterator<T, Vec<T>> {
     var current: i64;
-    
+
     function init() {
-        this.current = 0;
+      this.current = 0;
     }
-    
+
     function hasNext(vec: ref Vec<T>) bool {
-        return this.current < vec.size();
+      return this.current < vec.size();
     }
-    
+
     function next(vec: ref Vec<T>) T {
-        // Safe to use unchecked: hasNext already verified bounds
-        var value: T = vec.get_unchecked(this.current);
-        this.current = this.current + 1;
-        return value;
+      // Safe to use unchecked: hasNext already verified bounds
+      var value: T = vec.get_unchecked(this.current);
+      this.current = this.current + 1;
+      return value;
     }
-}
+  }
 
-// ============================================================================
-// Precompiled Specializations
-// ============================================================================
+  // ============================================================================
+  // Precompiled Specializations
+  // ============================================================================
 
-// Vec specializations (must be declared before VecIterator since VecIterator<T> references Vec<T>)
-declare Vec_i8 = Vec<i8>;
-declare Vec_i32 = Vec<i32>;
-declare Vec_i64 = Vec<i64>;
-declare Vec_f32 = Vec<f32>;
-declare Vec_f64 = Vec<f64>;
+  // Vec specializations (must be declared before VecIterator since VecIterator<T> references Vec<T>)
+  declare Vec_i8 = Vec<i8>;
+  declare Vec_i32 = Vec<i32>;
+  declare Vec_i64 = Vec<i64>;
+  declare Vec_f32 = Vec<f32>;
+  declare Vec_f64 = Vec<f64>;
 
-// VecIterator specializations
-declare VecIterator_i8 = VecIterator<i8>;
-declare VecIterator_i32 = VecIterator<i32>;
-declare VecIterator_i64 = VecIterator<i64>;
-declare VecIterator_f32 = VecIterator<f32>;
-declare VecIterator_f64 = VecIterator<f64>;
-
-} // module sun
+  // VecIterator specializations
+  declare VecIterator_i8 = VecIterator<i8>;
+  declare VecIterator_i32 = VecIterator<i32>;
+  declare VecIterator_i64 = VecIterator<i64>;
+  declare VecIterator_f32 = VecIterator<f32>;
+  declare VecIterator_f64 = VecIterator<f64>;
+}  // module sun
