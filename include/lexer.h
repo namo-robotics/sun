@@ -383,16 +383,26 @@ struct Token {
   std::string text;
   int precedence = -1;
 
-  // Generic factory for simple tokens (uses lookup table)
+  // Generic factory for simple tokens (uses lookup table).
+  // Indexes a flat array rather than searching getTokenInfo()'s std::map:
+  // this runs once per operator/keyword/punctuation token, and a red-black
+  // tree walk per token was measurable in the lexer's profile.
   static Token make(TokenKind k, Position s, Position e) {
-    const auto& info = getTokenInfo();
-    if (auto it = info.find(k); it != info.end()) {
-      return {k,
-              std::monostate{},
-              s,
-              e,
-              std::string(it->second.text),
-              it->second.precedence};
+    static const std::array<const TokenInfo*, static_cast<size_t>(
+                                                  TokenKind::COUNT)>
+        byKind = [] {
+          std::array<const TokenInfo*, static_cast<size_t>(TokenKind::COUNT)>
+              a{};
+          for (const auto& [kind, info] : getTokenInfo()) {
+            a[static_cast<size_t>(kind)] = &info;
+          }
+          return a;
+        }();
+
+    const TokenInfo* info = byKind[static_cast<size_t>(k)];
+    if (info) {
+      return {k, std::monostate{}, s, e, std::string(info->text),
+              info->precedence};
     }
     return {k, std::monostate{}, s, e, "", -1};
   }
@@ -475,7 +485,10 @@ class Lexer {
   static constexpr int kEof = -1;
 
  private:
-  std::istream* input;
+  // The whole input is read up front, so scanning never touches the stream.
+  // Reading byte-at-a-time through istream::get() cost ~70% of lexing time
+  // (virtual streambuf dispatch + sentry per byte, plus growing the buffer one
+  // char at a time); a slurped buffer makes advance() a load and two adds.
   int currentChar = ' ';
   Position currentPos{1, 1, 0};
   // When set, comments are returned as tokens instead of skipped
@@ -491,7 +504,7 @@ class Lexer {
   // Process escape sequences in regular string literals.
   // Mirrors InterpolatedStringParser::processEscapes (template strings),
   // with \" instead of the template-specific \` and \$.
-  static std::string processStringEscapes(const std::string& raw) {
+  static std::string processStringEscapes(std::string_view raw) {
     std::string result;
     result.reserve(raw.size());
     for (size_t i = 0; i < raw.size(); i++) {
@@ -530,21 +543,28 @@ class Lexer {
     return result;
   }
 
+  // Read the entire stream into buffer. Called once per input.
+  // Bulk reads, not istreambuf_iterator: the iterator form goes through the
+  // streambuf one character at a time and cost ~20% of total lexing
+  // instructions, which is the very per-byte overhead the slurp exists to
+  // avoid. istream::read() hands off to sgetn() and memcpys whole chunks.
+  void slurp(std::istream& in) {
+    buffer.clear();
+    char chunk[64 * 1024];
+    while (in.read(chunk, sizeof chunk) || in.gcount() > 0) {
+      buffer.append(chunk, static_cast<size_t>(in.gcount()));
+    }
+  }
+
   // Consume one byte and advance line/column. Returns kEof at end of input,
   // otherwise the byte value in 0..255. This is the single owner of the
   // lexer's position: nothing else moves currentPos forward.
   int advance() {
     if (currentPos.offset >= static_cast<int>(buffer.size())) {
-      int c = input->get();
-      if (c == std::char_traits<char>::eof()) {
-        currentChar = kEof;
-        return kEof;
-      }
-      currentChar = static_cast<unsigned char>(c);
-      buffer += static_cast<char>(currentChar);
-    } else {
-      currentChar = static_cast<unsigned char>(buffer[currentPos.offset]);
+      currentChar = kEof;
+      return kEof;
     }
+    currentChar = static_cast<unsigned char>(buffer[currentPos.offset]);
 
     ++currentPos.offset;
     if (currentChar == '\n') {
@@ -558,10 +578,7 @@ class Lexer {
   }
 
   int peekByte() const {
-    if (currentPos.offset >= static_cast<int>(buffer.size())) {
-      int c = input->peek();
-      return c == std::char_traits<char>::eof() ? kEof : c;
-    }
+    if (currentPos.offset >= static_cast<int>(buffer.size())) return kEof;
     return static_cast<unsigned char>(buffer[currentPos.offset]);
   }
 
@@ -654,18 +671,17 @@ class Lexer {
     return tokenDFA;
   }
 
-  explicit Lexer(std::istream& in) : input(&in) {}
+  explicit Lexer(std::istream& in) { slurp(in); }
 
   void setEmitComments(bool emit) { emitComments_ = emit; }
   bool emitComments() const { return emitComments_; }
 
-  // Point the lexer at a new input stream. There is no per-lexer scan state
-  // beyond the buffer and position; the token DFA is shared and stateless.
+  // Point the lexer at a new input. There is no per-lexer scan state beyond
+  // the buffer and position; the token DFA is shared and stateless.
   void resetInput(std::istream& in) {
-    input = &in;
     currentChar = ' ';
     currentPos = Position{1, 1, 0};
-    buffer.clear();
+    slurp(in);
   }
 
   // Copying a Lexer would duplicate a position into a shared stream; move only
@@ -678,19 +694,45 @@ class Lexer {
   Token getNextToken() {
     DFA& dfa = getTokenDFA();
 
+    // The scan runs on locals rather than through advance(), so the position
+    // triple stays in registers instead of being written to members on every
+    // byte; currentPos is committed once, at the end, via setPosition().
+    // buffer never grows during a scan (the input is slurped up front), so
+    // data stays valid throughout.
+    const char* const data = buffer.data();
+    const int size = static_cast<int>(buffer.size());
+    int off = currentPos.offset;
+    int line = currentPos.line;
+    int col = currentPos.column;
+
     // Skip leading whitespace directly. Equivalent to the master regex's
     // "[ \n\t\r]*" prefix: no token pattern starts with whitespace, and the
     // prefix sits outside every named group, so the match starts here.
-    while (isTokenWhitespace(peekByte())) advance();
+    while (off < size) {
+      const char c = data[off];
+      if (c == ' ' || c == '\t' || c == '\r') {
+        ++off;
+        ++col;
+      } else if (c == '\n') {
+        ++off;
+        ++line;
+        col = 1;
+      } else {
+        break;
+      }
+    }
 
-    const int startOffset = currentPos.offset;
-    const int startLine = currentPos.line;
-    const int startCol = currentPos.column;
+    const int startOffset = off;
+    const int startLine = line;
+    const int startCol = col;
 
-    if (peekByte() == kEof) return Token::eof(currentPos);
+    if (off >= size) {
+      setPosition(Position{line, col, off});
+      return Token::eof(currentPos);
+    }
 
     // Longest match wins; ties go to the lowest TokenKind index, which the DFA
-    // precomputes as each state's acceptKind. Line/column come from advance(),
+    // precomputes as each state's acceptKind. The position triple is
     // snapshotted at every accept -- so rewinding to the last accept restores
     // the right line/column even for a match spanning newlines (block
     // comments, multi-line strings) with no recomputation.
@@ -700,17 +742,23 @@ class Lexer {
     int bestLine = startLine;
     int bestCol = startCol;
 
-    for (;;) {
-      int c = advance();
-      if (c == kEof) break;
-      st = dfa.step(st, static_cast<unsigned char>(c));
+    while (off < size) {
+      const unsigned char c = static_cast<unsigned char>(data[off]);
+      st = dfa.step(st, c);
+      ++off;
+      if (c == '\n') {
+        ++line;
+        col = 1;
+      } else {
+        ++col;
+      }
       if (DFA::isDead(st)) break;
-      int32_t kindHere = dfa.acceptKind(st);
+      const int32_t kindHere = dfa.acceptKind(st);
       if (kindHere >= 0) {
         bestKind = kindHere;
-        bestOffset = currentPos.offset;
-        bestLine = currentPos.line;
-        bestCol = currentPos.column;
+        bestOffset = off;
+        bestLine = line;
+        bestCol = col;
       }
     }
 
@@ -725,42 +773,49 @@ class Lexer {
 
     Position startPos{startLine, startCol, startOffset};
     Position endPos{bestLine, bestCol, bestOffset};
-    // Text is sliced from the lexer's own buffer, not tracked during the
-    // scan (the scan uses O(1) memory per character)
-    std::string matchedStr =
-        buffer.substr(startPos.offset, endPos.offset - startPos.offset);
     TokenKind kind = static_cast<TokenKind>(bestKind);
     setPosition(endPos);
+
+    // The matched bytes, as a view into the lexer's own buffer. Only the
+    // value-carrying kinds below materialize a string from it -- operators,
+    // keywords and punctuation take their text from the static table, and a
+    // skipped comment needs no text at all.
+    const std::string_view matched(buffer.data() + startOffset,
+                                   static_cast<size_t>(bestOffset - startOffset));
 
     switch (kind) {
       case TokenKind::COMMENT:
       case TokenKind::BLOCK_COMMENT:
         if (emitComments_)
-          return Token::comment(kind, matchedStr, startPos, endPos);
+          return Token::comment(kind, std::string(matched), startPos, endPos);
         // Skip comments by recursively getting the next token
         return getNextToken();
       case TokenKind::INTRINSIC_IDENTIFIER:
-        return Token::intrinsicIdentifier(matchedStr, startPos, endPos);
+        return Token::intrinsicIdentifier(std::string(matched), startPos,
+                                          endPos);
       case TokenKind::IDENTIFIER:
-        return Token::identifier(matchedStr, startPos, endPos);
+        return Token::identifier(std::string(matched), startPos, endPos);
       case TokenKind::INTEGER: {
-        int64_t val = std::strtoll(matchedStr.c_str(), nullptr, 10);
-        return Token::integer(val, startPos, endPos, matchedStr);
+        std::string text(matched);
+        int64_t val = std::strtoll(text.c_str(), nullptr, 10);
+        return Token::integer(val, startPos, endPos, std::move(text));
       }
       case TokenKind::FLOAT: {
-        double val = std::strtod(matchedStr.c_str(), nullptr);
-        return Token::floatNum(val, startPos, endPos, matchedStr);
+        std::string text(matched);
+        double val = std::strtod(text.c_str(), nullptr);
+        return Token::floatNum(val, startPos, endPos, std::move(text));
       }
       case TokenKind::STRING: {
-        // Remove the surrounding quotes and process escape sequences
-        std::string content = matchedStr.substr(1, matchedStr.size() - 2);
-        return Token::stringLiteral(processStringEscapes(content), startPos,
-                                    endPos);
+        // Drop the surrounding quotes and process escape sequences
+        return Token::stringLiteral(
+            processStringEscapes(matched.substr(1, matched.size() - 2)),
+            startPos, endPos);
       }
       case TokenKind::TEMPLATE_STRING: {
         // Remove the surrounding backticks from the matched string
-        std::string content = matchedStr.substr(1, matchedStr.size() - 2);
-        return Token::templateString(content, startPos, endPos);
+        return Token::templateString(
+            std::string(matched.substr(1, matched.size() - 2)), startPos,
+            endPos);
       }
       default:
         // All other tokens use the lookup table
