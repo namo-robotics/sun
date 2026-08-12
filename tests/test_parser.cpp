@@ -193,9 +193,7 @@ TEST(ParserTest, ParsePrototypeWithArgs) {
 }
 
 TEST(ParserTest, LexerRegex) {
-  std::istringstream ss("a+b");
-  Lexer lexer(ss);
-  ASSERT_TRUE(lexer.getTokenNFA().matches(" a"));
+  ASSERT_TRUE(Lexer::getTokenDFA().matches(" a"));
 }
 
 // ------------------------------------------------------------------

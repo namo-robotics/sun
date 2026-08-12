@@ -19,6 +19,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcurl4-openssl-dev libpfm4-dev libdw-dev libcapstone-dev \
     # Quality-of-life tools
     gdb ccache vim less htop wget curl unzip \
+    # Profilers. valgrind (with callgrind_annotate) works unprivileged and
+    # gives exact per-function instruction counts -- run it under
+    # `ulimit -n 4096`, since Docker's default fd limit makes valgrind abort.
+    # perf additionally needs the container started with --cap-add=PERFMON
+    # (or --privileged) and a writable /proc/sys/kernel/perf_event_paranoid,
+    # otherwise it reports "No permission to enable task-clock event".
+    valgrind linux-tools-common linux-tools-generic \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Set modern LLVM 20 as default (usually already the case, but explicit is safer)
