@@ -6,6 +6,7 @@
 #include "ast.h"
 #include "codegen.h"
 #include "codegen_visitor.h"
+#include "packed_layout.h"
 
 using namespace llvm;
 
@@ -18,6 +19,20 @@ Value* CodegenVisitor::getFieldPtr(sun::ClassType* classType, Value* objectPtr,
                                    const std::string& name) {
   llvm::StructType* structType = classType->getStructType(ctx.getContext());
   return ctx.builder->CreateStructGEP(structType, objectPtr, field.index, name);
+}
+
+// -------------------------------------------------------------------
+// Field access alignment
+// -------------------------------------------------------------------
+
+llvm::Align CodegenVisitor::fieldAlign(const sun::ClassType* owner,
+                                       llvm::Type* fieldTy) {
+  return sun::packed::fieldAlign(owner, fieldTy, module->getDataLayout());
+}
+
+llvm::Align CodegenVisitor::lvalueAlign(const ExprAST& target,
+                                        llvm::Type* slotTy) {
+  return sun::packed::lvalueAlign(target, slotTy, module->getDataLayout());
 }
 
 // -------------------------------------------------------------------
@@ -242,10 +257,12 @@ Value* CodegenVisitor::codegen(const CompoundAssignmentAST& expr) {
 
   // Addressable targets: address once -> load -> op -> store
   if (Value* addr = tryCodegenAddress(target)) {
-    Value* cur = ctx.builder->CreateLoad(slotTy, addr, "compound.cur");
+    llvm::Align align = lvalueAlign(target, slotTy);
+    Value* cur =
+        ctx.builder->CreateAlignedLoad(slotTy, addr, align, "compound.cur");
     Value* result = emitCompoundOpValue(expr, cur, slotTy, slotSunType);
     if (!result) return nullptr;
-    ctx.builder->CreateStore(result, addr);
+    ctx.builder->CreateAlignedStore(result, addr, align);
     return result;
   }
 

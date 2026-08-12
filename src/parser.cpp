@@ -1591,6 +1591,11 @@ unique_ptr<ExprAST> Parser::parseStatement() {
     case TokenKind::PARTIAL: {
       // partial class X { ... } - partial class (methods only)
       getNextToken();  // eat 'partial'
+      if (curTok.kind == TokenKind::PACKED_CLASS) {
+        // A partial carries methods only, so there is no layout to pack
+        parsingError("'partial' cannot be combined with 'packed_class'");
+        return nullptr;
+      }
       if (curTok.kind != TokenKind::CLASS) {
         parsingError("expected 'class' after 'partial'");
         return nullptr;
@@ -1616,8 +1621,12 @@ unique_ptr<ExprAST> Parser::parseStatement() {
       return classDef;
     }
 
+    case TokenKind::PACKED_CLASS:
     case TokenKind::CLASS: {
+      // packed_class lays fields out with no padding; otherwise identical
+      bool isPacked = curTok.kind == TokenKind::PACKED_CLASS;
       auto classDef = parseClassDefinition();
+      if (classDef) classDef->setIsPacked(isPacked);
       while (curTok.kind == TokenKind::SEMI_COLON)
         getNextToken();  // optional semicolons
       return classDef;
@@ -2928,10 +2937,12 @@ std::unique_ptr<BlockExprAST> Parser::parseString(const std::string& source) {
 // fields and methods }
 unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
   Position start = captureStart();
-  getNextToken();  // eat 'class'
+  const bool packed = curTok.kind == TokenKind::PACKED_CLASS;
+  getNextToken();  // eat 'class' or 'packed_class'
 
   if (curTok.kind != TokenKind::IDENTIFIER) {
-    parsingError("expected class name after 'class'");
+    parsingError(packed ? "expected class name after 'packed_class'"
+                        : "expected class name after 'class'");
     return nullptr;
   }
 

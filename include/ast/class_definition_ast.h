@@ -45,6 +45,7 @@ class ClassDefinitionAST : public ExprAST {
   std::vector<ClassFieldDecl> fields;
   std::vector<ClassMethodDecl> methods;
   bool isPartial_ = false;  // True for "partial class X {}" (methods only)
+  bool isPacked_ = false;   // True for "packed class X {}" (no field padding)
 
  protected:
   // Override to allocate ClassAnalysis instead of base ExprAnalysis
@@ -83,7 +84,9 @@ class ClassDefinitionAST : public ExprAST {
     }
   }
   std::string toString() const override {
-    std::string result = "class " + name;
+    std::string result;
+    if (isPartial_) result += "partial ";
+    result += (isPacked_ ? "packed_class " : "class ") + name;
     if (!typeParameters.empty()) {
       result += "<";
       for (size_t i = 0; i < typeParameters.size(); ++i) {
@@ -176,8 +179,17 @@ class ClassDefinitionAST : public ExprAST {
   bool isPartial() const { return isPartial_; }
   void setIsPartial(bool v) { isPartial_ = v; }
 
+  // Packed class support: "packed class X {}" lays fields out with no padding
+  bool isPacked() const { return isPacked_; }
+  void setIsPacked(bool v) { isPacked_ = v; }
+
   // Allow adding methods from extensions (mutable for merging)
   std::vector<ClassMethodDecl>& getMutableMethods() { return methods; }
 
-  std::string dotLabel() const override { return "Class\n" + name; }
+  std::string dotLabel() const override {
+    return std::string(isPacked_ ? "Packed Class\n" : "Class\n") + name;
+  }
+
+  // Keyword that introduces this declaration in source
+  const char* classKeyword() const { return isPacked_ ? "packed_class" : "class"; }
 };

@@ -415,6 +415,7 @@ message ClassDef {
   repeated ClassField fields = 4;
   repeated ClassMethod methods = 5;
   bool is_partial = 6;
+  bool is_packed = 7;  // packed_class: fields laid out with no padding
 }
 
 // Interface field declaration

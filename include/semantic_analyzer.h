@@ -182,6 +182,17 @@ class SemanticAnalyzer {
   void setCurrentClass(std::shared_ptr<sun::ClassType> classType);
   std::shared_ptr<sun::ClassType> getCurrentClass() const;
 
+  // Packed class rules (see include/packed_layout.h for what "packed" means).
+  // Each rejects one way a packed field's layout guarantee could be violated.
+  void checkPackedFieldNotBorrowed(const ExprAST& target,
+                                   const Position& loc) const;
+  void checkPackedRefArguments(
+      const std::vector<std::unique_ptr<ExprAST>>& args,
+      const std::vector<sun::TypePtr>& paramTypes) const;
+  void checkPackedFieldType(const ClassDefinitionAST& classDef,
+                            const ClassFieldDecl& field,
+                            const sun::TypePtr& fieldType) const;
+
   // Generic class support
   void registerGenericClass(const std::string& name,
                             const GenericClassInfo& info,

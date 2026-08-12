@@ -773,6 +773,7 @@ void ASTSerializer::serializeClassDef(const ClassDefinitionAST& expr,
   }
 
   cls->set_is_partial(expr.isPartial());
+  cls->set_is_packed(expr.isPacked());
 }
 
 void ASTSerializer::serializeInterfaceDef(const InterfaceDefinitionAST& expr,

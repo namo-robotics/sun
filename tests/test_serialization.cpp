@@ -489,6 +489,63 @@ TEST(SerializationTest, ClassDefinitionRoundtrip) {
             ASTNodeType::CLASS_DEFINITION);
 }
 
+// Packing changes layout, so losing it across a .moon boundary would give
+// caller and callee different offsets for the same class - silent corruption.
+TEST(SerializationTest, PackedClassModifierRoundtrip) {
+  auto block = parseCode(R"(
+    packed_class Header {
+      var magic: u8;
+      var length: i32;
+
+      function init() {}
+    }
+  )");
+
+  ASSERT_NE(block, nullptr);
+  ASSERT_FALSE(block->getBody().empty());
+  ASSERT_TRUE(
+      static_cast<ClassDefinitionAST*>(block->getBody()[0].get())->isPacked());
+
+  ASTSerializer serializer;
+  std::string data = serializer.serializeToString(*block);
+
+  ASTDeserializer deserializer;
+  auto restored = deserializer.deserializeFromString(data);
+
+  ASSERT_NE(restored, nullptr);
+  auto* restoredBlock = static_cast<BlockExprAST*>(restored.get());
+  ASSERT_FALSE(restoredBlock->getBody().empty());
+  ASSERT_EQ(restoredBlock->getBody()[0]->getType(),
+            ASTNodeType::CLASS_DEFINITION);
+  EXPECT_TRUE(static_cast<ClassDefinitionAST*>(restoredBlock->getBody()[0].get())
+                  ->isPacked());
+}
+
+// Regression: isPartial_ used to be dropped because the deserializer passed
+// is_partial into the ctor's `precompiled` parameter instead
+TEST(SerializationTest, PartialClassModifierRoundtrip) {
+  auto block = parseCode(R"(
+    partial class Extra {
+      function helper() i32 { return 1; }
+    }
+  )");
+
+  ASSERT_NE(block, nullptr);
+  ASSERT_FALSE(block->getBody().empty());
+
+  ASTSerializer serializer;
+  std::string data = serializer.serializeToString(*block);
+
+  ASTDeserializer deserializer;
+  auto restored = deserializer.deserializeFromString(data);
+
+  ASSERT_NE(restored, nullptr);
+  auto* restoredBlock = static_cast<BlockExprAST*>(restored.get());
+  ASSERT_FALSE(restoredBlock->getBody().empty());
+  EXPECT_TRUE(static_cast<ClassDefinitionAST*>(restoredBlock->getBody()[0].get())
+                  ->isPartial());
+}
+
 TEST(SerializationTest, InterfaceDefinitionRoundtrip) {
   auto block = parseCode(R"(
     interface Printable {
