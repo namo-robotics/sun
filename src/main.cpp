@@ -161,6 +161,12 @@ static int runFmt(int argc, char* argv[]) {
   bool hadError = false;
   bool hadDiff = false;
   for (const auto& file : files) {
+    // Only Sun sources are formatted; skip anything else a glob picked up
+    if (std::filesystem::path(file).extension() != ".sun") {
+      llvm::errs() << file << ": skipped (not a .sun file)\n";
+      continue;
+    }
+
     std::ifstream in(file);
     if (!in) {
       llvm::errs() << file << ": cannot open file\n";

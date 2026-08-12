@@ -1,5 +1,5 @@
 using sun;
 
 function main() i32 {
-    return sun.a() + sun.b();
+  return sun.a() + sun.b();
 }

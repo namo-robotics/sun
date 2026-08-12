@@ -1,5 +1,5 @@
 module sun {
-    function b() i32 {
-        return 2;
-    }
+  function b() i32 {
+    return 2;
+  }
 }
