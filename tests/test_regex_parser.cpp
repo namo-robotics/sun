@@ -91,13 +91,16 @@ TEST(RegexParserTest, NumberGroup)
 {
     RegexParser parser;
     NFA nfa = parser.parse("(?<1>def)|(?<2>extern)|(?<3>[a-zA-Z][a-zA-Z0-9]*)|(?<4>if)|(?<5>then)|(?<6>else)|(?<7>[0-9]+)|(?<8>\\+)|(?<9>-)|(?<10>\\*)|(?<11>/)|(?<12><)|(?<13><=)|(?<14>>)|(?<15>>=)|(?<16>=)|(?<17>==)|(?<18>!=)|(?<19>\\()|(?<20>\\))|(?<21>,)|(?<22>for)|(?<23>in)");
-    auto step = nfa.step('4');
-    ASSERT_EQ(step.captures.size(), 1);
-    step = nfa.step('2');
-    ASSERT_TRUE(step.isAccepting);
-    ASSERT_EQ(step.captures.size(), 1);
-    ASSERT_EQ(step.captures.at(6).at(0).text, "4");
-    ASSERT_EQ(step.captures.at(6).back().text, "42");
+    nfa.step('4');
+    // Group 6 is the (?<7>[0-9]+) alternative (0-based group index)
+    ASSERT_NE(nfa.captureFor(6), nullptr);
+    ASSERT_EQ(nfa.captureFor(6)->length(), 1);  // matched "4"
+    ASSERT_TRUE(nfa.step('2'));
+    // Only the longest match per group is retained
+    ASSERT_NE(nfa.captureFor(6), nullptr);
+    ASSERT_EQ(nfa.captureFor(6)->length(), 2);  // matched "42"
+    ASSERT_EQ(nfa.bestCapture(), nfa.captureFor(6));
+    ASSERT_EQ(nfa.bestCapture()->groupNameNum, 7);
 }
 
 TEST(RegexParserTest, CanReachAcceptingWithNonEmptyInput)
@@ -105,7 +108,7 @@ TEST(RegexParserTest, CanReachAcceptingWithNonEmptyInput)
     RegexParser parser;
     NFA nfa = parser.parse("[1-9]*");
     //SERT_TRUE(nfa.canReachAcceptingWithNonEmptyInput());
-    auto step = nfa.step('4');
+    nfa.step('4');
     ASSERT_TRUE(nfa.isAccepting);
     // ASSERT_TRUE(nfa.canReachAcceptingWithNonEmptyInput());
     // step = nfa.step('2');
@@ -124,13 +127,13 @@ TEST(RegexParserTest, CaptureNumber)
     RegexParser parser;
     NFA nfa = parser.parse("([0-9]+)");
 
-    auto step = nfa.step('1');
-    ASSERT_TRUE(step.isAccepting);
-    ASSERT_EQ(step.captures.size(), 1);
+    ASSERT_TRUE(nfa.step('1'));
+    ASSERT_NE(nfa.captureFor(0), nullptr);
+    ASSERT_EQ(nfa.captureFor(0)->length(), 1);
 
-    step = nfa.step('2');
-    ASSERT_TRUE(step.isAccepting);
-    ASSERT_EQ(step.captures.size(), 1);
+    ASSERT_TRUE(nfa.step('2'));
+    ASSERT_NE(nfa.captureFor(0), nullptr);
+    ASSERT_EQ(nfa.captureFor(0)->length(), 2);
 }
 
 TEST(RegexParserTest, CaptureGroups)
@@ -138,17 +141,16 @@ TEST(RegexParserTest, CaptureGroups)
     RegexParser parser;
     NFA nfa = parser.parse(".*(a)|.*(b)");
 
-    auto step = nfa.step('a');
-    ASSERT_TRUE(step.isAccepting);
-    ASSERT_EQ(step.captures.size(), 1);
+    ASSERT_TRUE(nfa.step('a'));
+    ASSERT_NE(nfa.captureFor(0), nullptr);
+    ASSERT_EQ(nfa.captureFor(1), nullptr);
 
-    auto step2 = nfa.step('b');
-    ASSERT_TRUE(step2.isAccepting);
-    ASSERT_EQ(step2.captures.size(), 2);
-    ASSERT_EQ(step2.captures.at(1).size(), 1);
-    ASSERT_EQ(step2.captures.at(1)[0].groupIdx, 1);
-    ASSERT_EQ(step2.captures.at(1)[0].start.offset, 1);
-    ASSERT_EQ(step2.captures.at(1)[0].end.offset, 2);
+    ASSERT_TRUE(nfa.step('b'));
+    ASSERT_NE(nfa.captureFor(0), nullptr);
+    ASSERT_NE(nfa.captureFor(1), nullptr);
+    ASSERT_EQ(nfa.captureFor(1)->groupIdx, 1);
+    ASSERT_EQ(nfa.captureFor(1)->start.offset, 1);
+    ASSERT_EQ(nfa.captureFor(1)->end.offset, 2);
 }
 
 

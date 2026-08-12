@@ -27,35 +27,65 @@ struct State {
                             // reaching this state
   int groupId = 0;
   std::string groupName = "";
+  int groupNameNum = -1;  // groupName parsed as int (-1 when unnamed)
 };
+// A group match recorded during a scan. The matched text is NOT stored;
+// callers slice it from their own buffer via [start.offset, end.offset).
 struct RegexCapture {
   Position start;
   Position end;
   int groupIdx = -1;
-  std::string text;
-  std::string groupName;
-};
+  const std::string* groupName = nullptr;  // owned by the matching State
+  int groupNameNum = -1;                   // groupName as int (-1 unnamed)
 
-struct StepResult {
-  bool isAccepting = false;
-  std::map<int, std::vector<RegexCapture>> captures = {};
+  int length() const { return end.offset - start.offset; }
 };
 
 class NFA {
  private:
+  static constexpr int kAlphabet = 256;
+
   std::vector<std::unique_ptr<State>> allStates;
-  std::unordered_set<State*> activeStates;
-  std::map<int, std::vector<RegexCapture>> candidateRegexCaptures;
-  std::map<int, std::vector<RegexCapture>> actualRegexCaptures;
-  std::string currentInput = "";
   Position position;
 
-  // Precomputed reachability cache: states that can reach accepting via
-  // non-empty path
-  std::unordered_set<State*> canReachAcceptingNonEmpty_;
-  bool reachabilityComputed_ = false;
+  // Compiled form (see compile()); rebuilt whenever the graph grows
+  bool compiled_ = false;
+  bool initialized_ = false;
+  int numStates_ = 0;
+  std::unordered_map<const State*, int> idOf_;
+  std::vector<uint8_t> accepting_, enterGroup_, exitGroup_, reachNonEmpty_;
+  std::vector<int> groupId_, groupNameNum_;
+  std::vector<const std::string*> groupName_;
+  std::vector<int> epsOff_, epsTargets_;    // epsilon closure per state
+  std::vector<int> charOff_, charTargets_;  // (state, char) -> targets
+  std::vector<int> anyOff_, anyTargets_;    // '.' transitions per state
+  std::vector<int> startClosure_;
+  std::vector<int> active_, next_;
+  std::vector<uint32_t> mark_;
+  uint32_t markGen_ = 0;
+  bool canReachNonEmpty_ = false;
+
+  // Capture slots indexed by groupId. A slot is live only when its
+  // generation matches gen_; resetToPosition bumps gen_ so per-scan reset
+  // is O(1) with no allocation. Only the longest match per group is kept
+  // (later exits of a group within one scan always extend the same start).
+  std::vector<RegexCapture> captureSlots_;
+  std::vector<uint32_t> captureGen_;
+  std::vector<Position> candidateStart_;
+  std::vector<uint32_t> candidateGen_;
+  uint32_t gen_ = 0;
+
+  void ensureSlot(int g) {
+    if (g >= static_cast<int>(captureSlots_.size())) {
+      captureSlots_.resize(g + 1);
+      captureGen_.resize(g + 1, 0);
+      candidateStart_.resize(g + 1);
+      candidateGen_.resize(g + 1, 0);
+    }
+  }
 
   State* createState() {
+    compiled_ = false;
     allStates.emplace_back(std::make_unique<State>());
     return allStates.back().get();
   }
@@ -73,21 +103,14 @@ class NFA {
 
   void resetToPosition(Position pos) {
     position = pos;
-    activeStates.clear();
-    candidateRegexCaptures.clear();
-    actualRegexCaptures.clear();
-    currentInput = currentInput.substr(0, pos.offset);
-    activeStates = epsilonClosure({startState});
-    for (auto* s : activeStates) {
-      if (s->isAccepting) {
-        isAccepting = true;
-      }
-    }
+    ++gen_;                // invalidates capture/candidate slots in O(1)
+    initialized_ = false;  // active set rebuilt lazily from startClosure_
   }
 
   void fullReset() { resetToPosition(Position()); }
 
   void acquireStatesFrom(NFA& other) {
+    compiled_ = false;
     for (auto& state : other.allStates) {
       allStates.push_back(std::move(state));
     }
@@ -196,49 +219,149 @@ class NFA {
     return nfa;
   }
 
-  std::unordered_set<State*> epsilonClosure(
-      const std::unordered_set<State*>& states) const {
-    std::unordered_set<State*> result = states;
-    std::stack<State*> stack;
-    for (State* s : states) stack.push(s);
 
-    while (!stack.empty()) {
-      State* cur = stack.top();
-      stack.pop();
-      for (State* next : cur->epsilonTransitions) {
-        if (result.insert(next).second) stack.push(next);
-      }
+  // --- compiled execution -------------------------------------------------
+  //
+  // Scanning runs on dense arrays rather than the pointer graph: states get
+  // integer ids, epsilon closures and per-character transitions are
+  // precomputed once, and the active set is a vector deduplicated by
+  // generation marks. Built lazily on first use and invalidated whenever the
+  // graph grows (construction goes through the static factories).
+
+  void compile() {
+    numStates_ = static_cast<int>(allStates.size());
+    idOf_.clear();
+    idOf_.reserve(numStates_);
+    for (int i = 0; i < numStates_; ++i) idOf_[allStates[i].get()] = i;
+
+    accepting_.assign(numStates_, 0);
+    enterGroup_.assign(numStates_, 0);
+    exitGroup_.assign(numStates_, 0);
+    groupId_.assign(numStates_, 0);
+    groupName_.assign(numStates_, nullptr);
+    groupNameNum_.assign(numStates_, -1);
+    for (int i = 0; i < numStates_; ++i) {
+      const State* st = allStates[i].get();
+      accepting_[i] = st->isAccepting;
+      enterGroup_[i] = st->enterGroup;
+      exitGroup_[i] = st->exitGroup;
+      groupId_[i] = st->groupId;
+      groupName_[i] = &st->groupName;
+      groupNameNum_[i] = st->groupNameNum;
+      if (st->groupId >= 0) ensureSlot(st->groupId);
     }
-    return result;
+
+    // Transitive epsilon closure per state, flattened (CSR)
+    epsOff_.assign(numStates_ + 1, 0);
+    epsTargets_.clear();
+    {
+      std::vector<uint32_t> mark(numStates_, 0);
+      uint32_t m = 0;
+      std::vector<int> stack;
+      for (int i = 0; i < numStates_; ++i) {
+        epsOff_[i] = static_cast<int>(epsTargets_.size());
+        ++m;
+        stack.clear();
+        stack.push_back(i);
+        mark[i] = m;
+        epsTargets_.push_back(i);  // closure includes the state itself
+        while (!stack.empty()) {
+          int cur = stack.back();
+          stack.pop_back();
+          for (State* nx : allStates[cur]->epsilonTransitions) {
+            int nid = idOf_[nx];
+            if (mark[nid] != m) {
+              mark[nid] = m;
+              epsTargets_.push_back(nid);
+              stack.push_back(nid);
+            }
+          }
+        }
+      }
+      epsOff_[numStates_] = static_cast<int>(epsTargets_.size());
+    }
+
+    // Per-character transitions, indexed by (state, unsigned char) -> CSR
+    charOff_.assign(static_cast<size_t>(numStates_) * kAlphabet + 1, -1);
+    charTargets_.clear();
+    anyOff_.assign(numStates_ + 1, 0);
+    anyTargets_.clear();
+    for (int i = 0; i < numStates_; ++i) {
+      const State* st = allStates[i].get();
+      for (const auto& [ch, targets] : st->transitions) {
+        size_t slot = static_cast<size_t>(i) * kAlphabet +
+                      static_cast<unsigned char>(ch);
+        charOff_[slot] = static_cast<int>(charTargets_.size());
+        charTargets_.push_back(static_cast<int>(targets.size()));
+        for (State* t : targets) charTargets_.push_back(idOf_[t]);
+      }
+      anyOff_[i] = static_cast<int>(anyTargets_.size());
+      for (State* t : st->anyCharTransitions) anyTargets_.push_back(idOf_[t]);
+    }
+    anyOff_[numStates_] = static_cast<int>(anyTargets_.size());
+
+    computeReachability();
+
+    // Start-state closure, reused by every resetToPosition
+    startClosure_.clear();
+    for (int i = epsOff_[idOf_[startState]]; i < epsOff_[idOf_[startState] + 1];
+         ++i) {
+      startClosure_.push_back(epsTargets_[i]);
+    }
+
+    mark_.assign(numStates_, 0);
+    markGen_ = 0;
+    active_.clear();
+    next_.clear();
+    compiled_ = true;
   }
 
-  StepResult step(char c) {
-    currentInput += c;
-    std::unordered_set<State*> nextActiveStates;
+  void ensureCompiled() {
+    if (!compiled_) compile();
+  }
 
-    // === NORMAL TRANSITIONS ===
-    for (State* s : activeStates) {
-      // enterGroup: start RegexCapture BEFORE consuming char
-      if (s->enterGroup) {
-        RegexCapture cap;
-        cap.start = position;  // RegexCapture starts at current position
-        cap.groupIdx = s->groupId;
-        cap.groupName = s->groupName;
+  // Materialize the active set from the cached start closure
+  void ensureActive() {
+    ensureCompiled();
+    if (initialized_) return;
+    initialized_ = true;
+    active_ = startClosure_;
+    isAccepting = false;
+    canReachNonEmpty_ = false;
+    for (int id : active_) {
+      if (accepting_[id]) isAccepting = true;
+      if (reachNonEmpty_[id]) canReachNonEmpty_ = true;
+    }
+  }
 
-        candidateRegexCaptures[s->groupId].push_back(cap);
+ public:
+  bool step(char c) {
+    ensureActive();
+
+    next_.clear();
+    ++markGen_;
+
+    // === NORMAL TRANSITIONS (+ group entry, before consuming the char) ===
+    const size_t base = static_cast<size_t>(kAlphabet);
+    const unsigned char uc = static_cast<unsigned char>(c);
+    for (int id : active_) {
+      if (enterGroup_[id]) {
+        int g = groupId_[id];
+        candidateStart_[g] = position;
+        candidateGen_[g] = gen_;
       }
 
-      // char transitions
-      auto it = s->transitions.find(c);
-      if (it != s->transitions.end()) {
-        for (State* t : it->second) nextActiveStates.insert(t);
+      int off = charOff_[static_cast<size_t>(id) * base + uc];
+      if (off >= 0) {
+        int count = charTargets_[off];
+        for (int k = 1; k <= count; ++k) addWithClosure(charTargets_[off + k]);
       }
-
-      // dot transitions
-      for (State* t : s->anyCharTransitions) nextActiveStates.insert(t);
+      for (int k = anyOff_[id]; k < anyOff_[id + 1]; ++k) {
+        addWithClosure(anyTargets_[k]);
+      }
     }
 
-    activeStates = epsilonClosure(nextActiveStates);
+    active_.swap(next_);
 
     // update position
     position.offset += 1;
@@ -249,153 +372,107 @@ class NFA {
       position.column += 1;
     }
 
+    // === EXITS, ACCEPTANCE AND REACHABILITY (single pass) ===
     bool nowAccepting = false;
+    canReachNonEmpty_ = false;
+    for (int id : active_) {
+      if (accepting_[id]) nowAccepting = true;
+      if (reachNonEmpty_[id]) canReachNonEmpty_ = true;
 
-    // === HANDLE EXIT AND ACCEPTING ===
-    for (State* s : activeStates) {
-      if (s->isAccepting) nowAccepting = true;
-
-      if (s->exitGroup) {
-        auto it = candidateRegexCaptures.find(s->groupId);
-        if (it != candidateRegexCaptures.end() && !it->second.empty()) {
-          RegexCapture cap = it->second.back();
+      if (exitGroup_[id]) {
+        int g = groupId_[id];
+        if (candidateGen_[g] == gen_) {
+          RegexCapture& cap = captureSlots_[g];
+          cap.start = candidateStart_[g];
           cap.end = position;
-
-          // === NEW: Extract actual text ===
-          if (!currentInput.empty()) {
-            if (cap.start.offset >= 0 &&
-                cap.end.offset <= static_cast<int>(currentInput.size())) {
-              cap.text = currentInput.substr(cap.start.offset,
-                                             cap.end.offset - cap.start.offset);
-            } else {
-              cap.text = "";  // safety
-            }
-          }
-
-          // Also set group name if not already (in case it was missing)
-          cap.groupName = s->groupName;
-
-          actualRegexCaptures[s->groupId].push_back(cap);
+          cap.groupIdx = g;
+          cap.groupName = groupName_[id];
+          cap.groupNameNum = groupNameNum_[id];
+          captureGen_[g] = gen_;
         }
       }
     }
 
     isAccepting = nowAccepting;
-    return {isAccepting, actualRegexCaptures};
+    return isAccepting;
   }
 
-  void simulate(const std::string& input) {
-    fullReset();
-    for (char c : input) {
-      step(c);
-      if (activeStates.empty()) break;
+ private:
+  // Add a state and its precomputed epsilon closure to the next active set
+  void addWithClosure(int id) {
+    for (int k = epsOff_[id]; k < epsOff_[id + 1]; ++k) {
+      int t = epsTargets_[k];
+      if (mark_[t] != markGen_) {
+        mark_[t] = markGen_;
+        next_.push_back(t);
+      }
     }
   }
 
-  bool matches(const std::string& input) {
-    simulate(input);
-    for (State* s : activeStates)
-      if (s->isAccepting) return true;
-    return false;
-  }
-
-  // Precompute which states can reach an accepting state via a non-empty path.
-  // Uses reverse BFS from accepting states.
-  void precomputeCanReachAccepting() {
-    if (reachabilityComputed_) return;
-    reachabilityComputed_ = true;
-
-    // First: find states that can reach accepting (with any path)
-    std::unordered_set<State*> canReachAccepting;
-
-    // Build reverse transition graph
-    std::unordered_map<State*, std::vector<State*>> reverseEpsilon;
-    std::unordered_map<State*, std::vector<State*>> reverseNonEpsilon;
-
-    for (const auto& statePtr : allStates) {
-      State* s = statePtr.get();
-      for (State* next : s->epsilonTransitions) {
-        reverseEpsilon[next].push_back(s);
+  // States that can reach an accepting state via a non-empty path
+  void computeReachability() {
+    std::vector<std::vector<int>> revEps(numStates_);
+    std::vector<std::vector<int>> revOther(numStates_);
+    for (int i = 0; i < numStates_; ++i) {
+      const State* st = allStates[i].get();
+      for (State* nx : st->epsilonTransitions) revEps[idOf_[nx]].push_back(i);
+      for (const auto& [ch, targets] : st->transitions) {
+        for (State* nx : targets) revOther[idOf_[nx]].push_back(i);
       }
-      for (const auto& [ch, targets] : s->transitions) {
-        for (State* next : targets) {
-          reverseNonEpsilon[next].push_back(s);
-        }
-      }
-      for (State* next : s->anyCharTransitions) {
-        reverseNonEpsilon[next].push_back(s);
-      }
+      for (State* nx : st->anyCharTransitions) revOther[idOf_[nx]].push_back(i);
     }
 
-    // BFS backward from accepting states to find all states that can reach
-    // accepting
-    std::queue<State*> q;
-    for (const auto& statePtr : allStates) {
-      if (statePtr->isAccepting) {
-        canReachAccepting.insert(statePtr.get());
-        q.push(statePtr.get());
+    std::vector<uint8_t> canReach(numStates_, 0);
+    std::vector<int> queue;
+    for (int i = 0; i < numStates_; ++i) {
+      if (accepting_[i]) {
+        canReach[i] = 1;
+        queue.push_back(i);
       }
     }
-
-    while (!q.empty()) {
-      State* cur = q.front();
-      q.pop();
-      // Follow reverse epsilon edges
-      for (State* prev : reverseEpsilon[cur]) {
-        if (canReachAccepting.insert(prev).second) {
-          q.push(prev);
+    for (size_t qi = 0; qi < queue.size(); ++qi) {
+      int cur = queue[qi];
+      for (int prev : revEps[cur]) {
+        if (!canReach[prev]) {
+          canReach[prev] = 1;
+          queue.push_back(prev);
         }
       }
-      // Follow reverse non-epsilon edges
-      for (State* prev : reverseNonEpsilon[cur]) {
-        if (canReachAccepting.insert(prev).second) {
-          q.push(prev);
+      for (int prev : revOther[cur]) {
+        if (!canReach[prev]) {
+          canReach[prev] = 1;
+          queue.push_back(prev);
         }
       }
     }
 
-    // Now find states that can reach accepting via non-empty path:
-    // A state S can reach accepting with non-empty input if:
-    // S has a non-epsilon transition to a state in canReachAccepting
-    for (const auto& statePtr : allStates) {
-      State* s = statePtr.get();
-      bool canReachNonEmpty = false;
-
-      for (const auto& [ch, targets] : s->transitions) {
-        for (State* next : targets) {
-          if (canReachAccepting.count(next)) {
-            canReachNonEmpty = true;
-            break;
-          }
+    // A state qualifies if some non-epsilon edge lands in canReach...
+    reachNonEmpty_.assign(numStates_, 0);
+    for (int i = 0; i < numStates_; ++i) {
+      const State* st = allStates[i].get();
+      bool ok = false;
+      for (const auto& [ch, targets] : st->transitions) {
+        for (State* nx : targets) {
+          if (canReach[idOf_[nx]]) { ok = true; break; }
         }
-        if (canReachNonEmpty) break;
+        if (ok) break;
       }
-      if (!canReachNonEmpty) {
-        for (State* next : s->anyCharTransitions) {
-          if (canReachAccepting.count(next)) {
-            canReachNonEmpty = true;
-            break;
-          }
+      if (!ok) {
+        for (State* nx : st->anyCharTransitions) {
+          if (canReach[idOf_[nx]]) { ok = true; break; }
         }
       }
-
-      if (canReachNonEmpty) {
-        canReachAcceptingNonEmpty_.insert(s);
-      }
+      reachNonEmpty_[i] = ok;
     }
-
-    // Also propagate backward through epsilon transitions:
-    // If S ->epsilon-> T and T is in canReachAcceptingNonEmpty_, then S is too
+    // ...or reaches such a state through epsilon edges
     bool changed = true;
     while (changed) {
       changed = false;
-      for (const auto& statePtr : allStates) {
-        State* s = statePtr.get();
-        if (canReachAcceptingNonEmpty_.count(s)) continue;
-
-        for (State* next : s->epsilonTransitions) {
-          if (canReachAcceptingNonEmpty_.count(next)) {
-            canReachAcceptingNonEmpty_.insert(s);
+      for (int i = 0; i < numStates_; ++i) {
+        if (reachNonEmpty_[i]) continue;
+        for (State* nx : allStates[i]->epsilonTransitions) {
+          if (reachNonEmpty_[idOf_[nx]]) {
+            reachNonEmpty_[i] = 1;
             changed = true;
             break;
           }
@@ -404,16 +481,54 @@ class NFA {
     }
   }
 
-  bool canReachAcceptingWithNonEmptyInput() {
-    precomputeCanReachAccepting();
+ public:
+  // Capture recorded for a group in the current scan, or nullptr.
+  // Pointers stay valid until the next resetToPosition/fullReset/step.
+  const RegexCapture* captureFor(int groupIdx) const {
+    if (groupIdx < 0 || groupIdx >= static_cast<int>(captureSlots_.size()) ||
+        captureGen_[groupIdx] != gen_) {
+      return nullptr;
+    }
+    return &captureSlots_[groupIdx];
+  }
 
-    // Check if any active state can reach accepting with non-empty input
-    for (State* s : activeStates) {
-      if (canReachAcceptingNonEmpty_.count(s)) {
-        return true;
+  // Winning capture of the current scan: longest match among NAMED groups,
+  // ties broken by lowest numeric group name (= token declaration order)
+  const RegexCapture* bestCapture() const {
+    const RegexCapture* best = nullptr;
+    int bestLen = -1;
+    int bestName = 0;
+    for (size_t g = 0; g < captureSlots_.size(); ++g) {
+      if (captureGen_[g] != gen_) continue;
+      const RegexCapture& cap = captureSlots_[g];
+      if (cap.groupNameNum < 0) continue;  // unnamed group
+      int len = cap.length();
+      if (len > bestLen || (len == bestLen && cap.groupNameNum < bestName)) {
+        best = &cap;
+        bestLen = len;
+        bestName = cap.groupNameNum;
       }
     }
-    return false;
+    return best;
+  }
+
+  void simulate(const std::string& input) {
+    fullReset();
+    ensureActive();
+    for (char c : input) {
+      step(c);
+      if (active_.empty()) break;
+    }
+  }
+
+  bool matches(const std::string& input) {
+    simulate(input);
+    return isAccepting;
+  }
+
+  bool canReachAcceptingWithNonEmptyInput() {
+    ensureActive();
+    return canReachNonEmpty_;
   }
 };
 
@@ -551,11 +666,20 @@ class RegexParser {
           throw std::runtime_error("Empty group name not allowed");
       }
 
+      // Numeric form of the group name, precomputed so scanning never parses
+      // it (the lexer names each token alternative with its TokenKind index)
+      int groupNameNum = -1;
+      if (!groupName.empty() &&
+          groupName.find_first_not_of("0123456789") == std::string::npos) {
+        groupNameNum = std::stoi(groupName);
+      }
+
       // Create entry state for group
       NFA entryNFA;
       entryNFA.startState->enterGroup = true;
       entryNFA.startState->groupId = groupId;
       entryNFA.startState->groupName = groupName;
+      entryNFA.startState->groupNameNum = groupNameNum;
       entryNFA.startState->epsilonTransitions.insert(entryNFA.acceptingState);
 
       // Parse subexpression
@@ -566,6 +690,7 @@ class RegexParser {
       exitNFA.startState->exitGroup = true;
       exitNFA.startState->groupId = groupId;
       exitNFA.startState->groupName = groupName;
+      exitNFA.startState->groupNameNum = groupNameNum;
       exitNFA.startState->epsilonTransitions.insert(exitNFA.acceptingState);
 
       // Chain: entry -> sub -> exit

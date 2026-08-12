@@ -676,47 +676,18 @@ class Lexer {
   Lexer& operator=(Lexer&&) noexcept = default;
   ~Lexer() = default;
 
-  std::optional<RegexCapture> getLongestRegexCapture(
-      const std::map<int, std::vector<RegexCapture>>& RegexCaptures) {
-    if (RegexCaptures.empty()) return std::nullopt;
-
-    std::vector<RegexCapture> longestRegexCaptures;
-    for (const auto& [groupIdx, caps] : RegexCaptures) {
-      for (const auto& cap : caps) {
-        if (cap.groupName.empty()) continue;
-
-        if (longestRegexCaptures.empty()) {
-          longestRegexCaptures.push_back(cap);
-        } else if (cap.text.size() > longestRegexCaptures[0].text.size()) {
-          longestRegexCaptures.clear();
-          longestRegexCaptures.push_back(cap);
-        } else if (cap.text.size() == longestRegexCaptures[0].text.size()) {
-          longestRegexCaptures.push_back(cap);
-        }
-      }
-    }
-
-    // If multiple RegexCaptures have the same length, choose the one with the
-    // lowest group index
-    RegexCapture longestRegexCapture = longestRegexCaptures[0];
-    for (const auto& cap : longestRegexCaptures) {
-      if (std::stoi(cap.groupName) < std::stoi(longestRegexCapture.groupName)) {
-        longestRegexCapture = cap;
-      }
-    }
-    return longestRegexCapture;
-  }
-
   Token getNextToken() {
     tokenNFA.resetToPosition(currentPos);
-    StepResult stepResult;
+    // Scan without reading captures: the NFA keeps only the best match per
+    // group, so the winner is read once after the loop
     while (tokenNFA.canReachAcceptingWithNonEmptyInput()) {
       advance();
       if (currentChar == EOF || input->eof()) break;
-      stepResult = tokenNFA.step(currentChar);
+      tokenNFA.step(currentChar);
     }
 
-    if (stepResult.captures.size() == 0) {
+    const RegexCapture* bestCapture = tokenNFA.bestCapture();
+    if (!bestCapture) {
       if (currentChar == EOF) {
         return Token::eof(currentPos);
       }
@@ -728,53 +699,48 @@ class Lexer {
           currentPos.line > 1 ? getSourceLine(currentPos.line - 1) : "");
     }
 
-    auto RegexCapture = getLongestRegexCapture(stepResult.captures);
-    if (RegexCapture && !RegexCapture->groupName.empty()) {
-      std::string matchedStr = RegexCapture->text;
-      Position startPos = RegexCapture->start;
-      Position endPos = RegexCapture->end;
-      TokenKind kind =
-          static_cast<TokenKind>(std::stoi(RegexCapture->groupName));
-      setPosition(endPos);
+    Position startPos = bestCapture->start;
+    Position endPos = bestCapture->end;
+    // Text is sliced from the lexer's own buffer, not tracked during the
+    // scan (the scan uses O(1) memory per character)
+    std::string matchedStr =
+        buffer.substr(startPos.offset, endPos.offset - startPos.offset);
+    TokenKind kind = static_cast<TokenKind>(bestCapture->groupNameNum);
+    setPosition(endPos);
 
-      switch (kind) {
-        case TokenKind::COMMENT:
-        case TokenKind::BLOCK_COMMENT:
-          if (emitComments_)
-            return Token::comment(kind, matchedStr, startPos, endPos);
-          // Skip comments by recursively getting the next token
-          return getNextToken();
-        case TokenKind::INTRINSIC_IDENTIFIER:
-          return Token::intrinsicIdentifier(matchedStr, startPos, endPos);
-        case TokenKind::IDENTIFIER:
-          return Token::identifier(matchedStr, startPos, endPos);
-        case TokenKind::INTEGER: {
-          int64_t val = std::strtoll(matchedStr.c_str(), nullptr, 10);
-          return Token::integer(val, startPos, endPos, matchedStr);
-        }
-        case TokenKind::FLOAT: {
-          double val = std::strtod(matchedStr.c_str(), nullptr);
-          return Token::floatNum(val, startPos, endPos, matchedStr);
-        }
-        case TokenKind::STRING: {
-          // Remove the surrounding quotes and process escape sequences
-          std::string content = matchedStr.substr(1, matchedStr.size() - 2);
-          return Token::stringLiteral(processStringEscapes(content), startPos,
-                                      endPos);
-        }
-        case TokenKind::TEMPLATE_STRING: {
-          // Remove the surrounding backticks from the matched string
-          std::string content = matchedStr.substr(1, matchedStr.size() - 2);
-          return Token::templateString(content, startPos, endPos);
-        }
-        default:
-          // All other tokens use the lookup table
-          return Token::make(kind, startPos, endPos);
+    switch (kind) {
+      case TokenKind::COMMENT:
+      case TokenKind::BLOCK_COMMENT:
+        if (emitComments_)
+          return Token::comment(kind, matchedStr, startPos, endPos);
+        // Skip comments by recursively getting the next token
+        return getNextToken();
+      case TokenKind::INTRINSIC_IDENTIFIER:
+        return Token::intrinsicIdentifier(matchedStr, startPos, endPos);
+      case TokenKind::IDENTIFIER:
+        return Token::identifier(matchedStr, startPos, endPos);
+      case TokenKind::INTEGER: {
+        int64_t val = std::strtoll(matchedStr.c_str(), nullptr, 10);
+        return Token::integer(val, startPos, endPos, matchedStr);
       }
+      case TokenKind::FLOAT: {
+        double val = std::strtod(matchedStr.c_str(), nullptr);
+        return Token::floatNum(val, startPos, endPos, matchedStr);
+      }
+      case TokenKind::STRING: {
+        // Remove the surrounding quotes and process escape sequences
+        std::string content = matchedStr.substr(1, matchedStr.size() - 2);
+        return Token::stringLiteral(processStringEscapes(content), startPos,
+                                    endPos);
+      }
+      case TokenKind::TEMPLATE_STRING: {
+        // Remove the surrounding backticks from the matched string
+        std::string content = matchedStr.substr(1, matchedStr.size() - 2);
+        return Token::templateString(content, startPos, endPos);
+      }
+      default:
+        // All other tokens use the lookup table
+        return Token::make(kind, startPos, endPos);
     }
-    std::string sourceLine = getSourceLine(currentPos.line);
-    logParsingError(
-        currentPos, "Unrecognized token", sourceLine,
-        currentPos.line > 1 ? getSourceLine(currentPos.line - 1) : "");
   }
 };
