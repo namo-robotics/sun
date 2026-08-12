@@ -543,8 +543,8 @@ std::string loweredFingerprint(BlockExprAST& ast) {
 }  // namespace
 
 TEST(FmtCorpusTest, IdempotentAndStructurePreserving) {
-  // One shared parser: the lexer NFA is built once and each corpus file is
-  // parsed exactly twice (original and formatted)
+  // One shared parser; each corpus file is parsed exactly twice (original and
+  // formatted)
   std::istringstream dummy("");
   Parser parser(dummy);
   parser.setCollectComments(true);

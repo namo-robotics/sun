@@ -17,8 +17,8 @@
 
 struct State {
   bool isAccepting = false;
-  std::map<char, std::unordered_set<State*>>
-      transitions;                                // char -> next states
+  std::map<unsigned char, std::unordered_set<State*>>
+      transitions;                                // byte -> next states
   std::unordered_set<State*> epsilonTransitions;  // epsilon next states
   std::unordered_set<State*> anyCharTransitions;  // for '.' wildcard
   bool enterGroup = false;  // if true, entering this RegexCapture group when
@@ -41,16 +41,19 @@ struct RegexCapture {
   int length() const { return end.offset - start.offset; }
 };
 
+class DFA;
+
 class NFA {
  private:
+  // The DFA reads the compiled arrays below to run lazy subset construction.
+  friend class DFA;
+
   static constexpr int kAlphabet = 256;
 
   std::vector<std::unique_ptr<State>> allStates;
-  Position position;
 
   // Compiled form (see compile()); rebuilt whenever the graph grows
   bool compiled_ = false;
-  bool initialized_ = false;
   int numStates_ = 0;
   std::unordered_map<const State*, int> idOf_;
   std::vector<uint8_t> accepting_, enterGroup_, exitGroup_, reachNonEmpty_;
@@ -60,29 +63,7 @@ class NFA {
   std::vector<int> charOff_, charTargets_;  // (state, char) -> targets
   std::vector<int> anyOff_, anyTargets_;    // '.' transitions per state
   std::vector<int> startClosure_;
-  std::vector<int> active_, next_;
-  std::vector<uint32_t> mark_;
-  uint32_t markGen_ = 0;
-  bool canReachNonEmpty_ = false;
-
-  // Capture slots indexed by groupId. A slot is live only when its
-  // generation matches gen_; resetToPosition bumps gen_ so per-scan reset
-  // is O(1) with no allocation. Only the longest match per group is kept
-  // (later exits of a group within one scan always extend the same start).
-  std::vector<RegexCapture> captureSlots_;
-  std::vector<uint32_t> captureGen_;
-  std::vector<Position> candidateStart_;
-  std::vector<uint32_t> candidateGen_;
-  uint32_t gen_ = 0;
-
-  void ensureSlot(int g) {
-    if (g >= static_cast<int>(captureSlots_.size())) {
-      captureSlots_.resize(g + 1);
-      captureGen_.resize(g + 1, 0);
-      candidateStart_.resize(g + 1);
-      candidateGen_.resize(g + 1, 0);
-    }
-  }
+  int maxGroupId_ = 0;  // highest group id; sizes the DFA's capture slots
 
   State* createState() {
     compiled_ = false;
@@ -93,21 +74,11 @@ class NFA {
  public:
   State* startState;
   State* acceptingState;
-  bool isAccepting = false;
   NFA() {
     startState = createState();
     acceptingState = createState();
     acceptingState->isAccepting = true;
-    fullReset();
   }
-
-  void resetToPosition(Position pos) {
-    position = pos;
-    ++gen_;                // invalidates capture/candidate slots in O(1)
-    initialized_ = false;  // active set rebuilt lazily from startClosure_
-  }
-
-  void fullReset() { resetToPosition(Position()); }
 
   void acquireStatesFrom(NFA& other) {
     compiled_ = false;
@@ -120,39 +91,39 @@ class NFA {
   static NFA createForEpsilon() {
     NFA nfa;
     nfa.startState->epsilonTransitions.insert(nfa.acceptingState);
-    nfa.fullReset();
     return nfa;
   }
 
   static NFA createForChar(char c) {
     NFA nfa;
-    nfa.startState->transitions[c].insert(nfa.acceptingState);
-    nfa.fullReset();
+    nfa.startState->transitions[static_cast<unsigned char>(c)].insert(
+        nfa.acceptingState);
     return nfa;
   }
 
-  static NFA createForCharClass(const std::set<char>& charSet,
+  // Negation spans the full 0-255 byte range, so [^"\\] and friends accept
+  // UTF-8 continuation bytes inside string literals and comments.
+  static NFA createForCharClass(const std::set<unsigned char>& charSet,
                                 bool negated = false) {
     NFA nfa;
     if (negated) {
-      for (char c = 0; c < 127; ++c)  // ASCII range
-      {
-        if (charSet.count(c) == 0) {
-          nfa.startState->transitions[c].insert(nfa.acceptingState);
+      for (int c = 0; c < kAlphabet; ++c) {
+        if (charSet.count(static_cast<unsigned char>(c)) == 0) {
+          nfa.startState->transitions[static_cast<unsigned char>(c)].insert(
+              nfa.acceptingState);
         }
       }
     } else {
-      for (char c : charSet) {
+      for (unsigned char c : charSet) {
         nfa.startState->transitions[c].insert(nfa.acceptingState);
       }
     }
-    nfa.fullReset();
     return nfa;
   }
 
   static NFA createForCharClass(const std::string& chars,
                                 bool negated = false) {
-    std::set<char> set(chars.begin(), chars.end());
+    std::set<unsigned char> set(chars.begin(), chars.end());
     return createForCharClass(set, negated);
   }
 
@@ -166,7 +137,6 @@ class NFA {
     n2.acceptingState->epsilonTransitions.insert(nfa.acceptingState);
     nfa.acquireStatesFrom(n1);
     nfa.acquireStatesFrom(n2);
-    nfa.fullReset();
     return nfa;
   }
 
@@ -178,7 +148,6 @@ class NFA {
     nfa.acceptingState = n2.acceptingState;
     nfa.acquireStatesFrom(n1);
     nfa.acquireStatesFrom(n2);
-    nfa.fullReset();
     return nfa;
   }
 
@@ -190,7 +159,6 @@ class NFA {
     n.acceptingState->epsilonTransitions.insert(nfa.acceptingState);
     n.acceptingState->isAccepting = false;
     nfa.acquireStatesFrom(n);
-    nfa.fullReset();
     return nfa;
   }
 
@@ -208,25 +176,23 @@ class NFA {
     n.acceptingState->epsilonTransitions.insert(nfa.acceptingState);
     n.acceptingState->isAccepting = false;
     nfa.acquireStatesFrom(n);
-    nfa.fullReset();
     return nfa;
   }
 
   static NFA createForAnyChar() {
     NFA nfa;
     nfa.startState->anyCharTransitions.insert(nfa.acceptingState);
-    nfa.fullReset();
     return nfa;
   }
 
 
-  // --- compiled execution -------------------------------------------------
+  // --- compiled form ------------------------------------------------------
   //
-  // Scanning runs on dense arrays rather than the pointer graph: states get
-  // integer ids, epsilon closures and per-character transitions are
-  // precomputed once, and the active set is a vector deduplicated by
-  // generation marks. Built lazily on first use and invalidated whenever the
-  // graph grows (construction goes through the static factories).
+  // Flattens the pointer graph into dense arrays for the DFA to determinize:
+  // states get integer ids, and epsilon closures (transitive, including the
+  // state itself) and per-byte transitions are precomputed as CSR tables.
+  // Built lazily on first use and invalidated whenever the graph grows
+  // (construction goes through the static factories).
 
   void compile() {
     numStates_ = static_cast<int>(allStates.size());
@@ -248,7 +214,7 @@ class NFA {
       groupId_[i] = st->groupId;
       groupName_[i] = &st->groupName;
       groupNameNum_[i] = st->groupNameNum;
-      if (st->groupId >= 0) ensureSlot(st->groupId);
+      if (st->groupId >= 0) maxGroupId_ = std::max(maxGroupId_, st->groupId);
     }
 
     // Transitive epsilon closure per state, flattened (CSR)
@@ -302,17 +268,13 @@ class NFA {
 
     computeReachability();
 
-    // Start-state closure, reused by every resetToPosition
+    // Epsilon closure of the start state; seeds the DFA's start state
     startClosure_.clear();
     for (int i = epsOff_[idOf_[startState]]; i < epsOff_[idOf_[startState] + 1];
          ++i) {
       startClosure_.push_back(epsTargets_[i]);
     }
 
-    mark_.assign(numStates_, 0);
-    markGen_ = 0;
-    active_.clear();
-    next_.clear();
     compiled_ = true;
   }
 
@@ -320,95 +282,7 @@ class NFA {
     if (!compiled_) compile();
   }
 
-  // Materialize the active set from the cached start closure
-  void ensureActive() {
-    ensureCompiled();
-    if (initialized_) return;
-    initialized_ = true;
-    active_ = startClosure_;
-    isAccepting = false;
-    canReachNonEmpty_ = false;
-    for (int id : active_) {
-      if (accepting_[id]) isAccepting = true;
-      if (reachNonEmpty_[id]) canReachNonEmpty_ = true;
-    }
-  }
-
- public:
-  bool step(char c) {
-    ensureActive();
-
-    next_.clear();
-    ++markGen_;
-
-    // === NORMAL TRANSITIONS (+ group entry, before consuming the char) ===
-    const size_t base = static_cast<size_t>(kAlphabet);
-    const unsigned char uc = static_cast<unsigned char>(c);
-    for (int id : active_) {
-      if (enterGroup_[id]) {
-        int g = groupId_[id];
-        candidateStart_[g] = position;
-        candidateGen_[g] = gen_;
-      }
-
-      int off = charOff_[static_cast<size_t>(id) * base + uc];
-      if (off >= 0) {
-        int count = charTargets_[off];
-        for (int k = 1; k <= count; ++k) addWithClosure(charTargets_[off + k]);
-      }
-      for (int k = anyOff_[id]; k < anyOff_[id + 1]; ++k) {
-        addWithClosure(anyTargets_[k]);
-      }
-    }
-
-    active_.swap(next_);
-
-    // update position
-    position.offset += 1;
-    if (c == '\n') {
-      position.line += 1;
-      position.column = 1;
-    } else {
-      position.column += 1;
-    }
-
-    // === EXITS, ACCEPTANCE AND REACHABILITY (single pass) ===
-    bool nowAccepting = false;
-    canReachNonEmpty_ = false;
-    for (int id : active_) {
-      if (accepting_[id]) nowAccepting = true;
-      if (reachNonEmpty_[id]) canReachNonEmpty_ = true;
-
-      if (exitGroup_[id]) {
-        int g = groupId_[id];
-        if (candidateGen_[g] == gen_) {
-          RegexCapture& cap = captureSlots_[g];
-          cap.start = candidateStart_[g];
-          cap.end = position;
-          cap.groupIdx = g;
-          cap.groupName = groupName_[id];
-          cap.groupNameNum = groupNameNum_[id];
-          captureGen_[g] = gen_;
-        }
-      }
-    }
-
-    isAccepting = nowAccepting;
-    return isAccepting;
-  }
-
  private:
-  // Add a state and its precomputed epsilon closure to the next active set
-  void addWithClosure(int id) {
-    for (int k = epsOff_[id]; k < epsOff_[id + 1]; ++k) {
-      int t = epsTargets_[k];
-      if (mark_[t] != markGen_) {
-        mark_[t] = markGen_;
-        next_.push_back(t);
-      }
-    }
-  }
-
   // States that can reach an accepting state via a non-empty path
   void computeReachability() {
     std::vector<std::vector<int>> revEps(numStates_);
@@ -481,9 +355,243 @@ class NFA {
     }
   }
 
+};
+
+// ------------------------------------------------------------------
+// Lazily determinized NFA (subset construction with a transition cache)
+// ------------------------------------------------------------------
+//
+// A DFA state is a set of NFA states. Transitions are materialized the first
+// time they are taken and then cached, so a scan costs one array load per
+// input byte instead of a walk over the NFA's active set. The state count is
+// bounded by the regex, not by the input.
+//
+// Captures survive determinization because the NFA's capture bookkeeping only
+// ever depended on *which states are active*, not on the path taken: a group's
+// candidate start is written by any active enterGroup state and its end is
+// committed by any active exitGroup state (both single global slots per group
+// id). Those are properties of the state set, so they are precomputed per DFA
+// state. This reproduces the NFA's semantics exactly, including its
+// "last writer wins per group id" approximation. Path-accurate captures would
+// need a tagged DFA with per-transition register copies; that is not built
+// here.
+//
+// The Lexer bypasses captures entirely and uses acceptKind()/step() directly.
+class DFA {
  public:
+  static constexpr int kAlphabet = 256;
+  static constexpr int32_t kDead = 0;        // reserved: the empty state set
+  static constexpr int32_t kUncomputed = -1;  // sentinel inside trans_
+  static constexpr int32_t kNoAccept = -1;    // acceptKind_ of a non-accepting
+
+ private:
+  struct SetHash {
+    size_t operator()(const std::vector<int32_t>& v) const noexcept {
+      size_t h = 1469598103934665603ull;  // FNV-1a over the state ids
+      for (int32_t x : v) {
+        h ^= static_cast<size_t>(static_cast<uint32_t>(x));
+        h *= 1099511628211ull;
+      }
+      return h;
+    }
+  };
+
+  struct ExitInfo {
+    int32_t groupId;
+    const std::string* groupName;
+    int32_t groupNameNum;
+  };
+
+  NFA nfa_;  // owned: drives lazy expansion, and owns the group-name strings
+  int32_t start_ = kDead;
+
+  // Lazily grown cache. trans_ is numStates * kAlphabet.
+  std::vector<int32_t> trans_;
+  std::vector<std::vector<int32_t>> sets_;  // sorted NFA ids per DFA state
+  std::unordered_map<std::vector<int32_t>, int32_t, SetHash> interner_;
+
+  // Per-state properties, derived once when the state is created
+  std::vector<uint8_t> accepting_, canExtend_;
+  std::vector<int32_t> acceptKind_;  // min groupNameNum over exitGroup states
+  std::vector<int32_t> enterOff_, enterPool_;  // CSR, capture path only
+  std::vector<int32_t> exitOff_;
+  std::vector<ExitInfo> exitPool_;
+
+  // Scratch for materialize(); never touched by the scanning API
+  std::vector<uint32_t> mark_;
+  uint32_t markGen_ = 0;
+  std::vector<int32_t> scratch_;
+  long long misses_ = 0;
+
+  // Embedded capture scanner. The Lexer never touches any of this; it exists
+  // for the regex-level API (matches/step/captureFor/bestCapture).
+  int32_t cur_ = kDead;
+  Position position_;
+  std::vector<RegexCapture> captureSlots_;
+  std::vector<uint32_t> captureGen_;
+  std::vector<Position> candidateStart_;
+  std::vector<uint32_t> candidateGen_;
+  uint32_t gen_ = 0;
+
+  void addClosure(int32_t id) {
+    for (int k = nfa_.epsOff_[id]; k < nfa_.epsOff_[id + 1]; ++k) {
+      int t = nfa_.epsTargets_[k];
+      if (mark_[t] != markGen_) {
+        mark_[t] = markGen_;
+        scratch_.push_back(t);
+      }
+    }
+  }
+
+  // Look up a sorted state set, creating the DFA state if it is new
+  int32_t intern(const std::vector<int32_t>& set) {
+    if (auto it = interner_.find(set); it != interner_.end()) return it->second;
+
+    int32_t id = static_cast<int32_t>(sets_.size());
+    sets_.push_back(set);
+    interner_.emplace(set, id);
+    trans_.resize(static_cast<size_t>(sets_.size()) * kAlphabet, kUncomputed);
+
+    uint8_t acc = 0, ext = 0;
+    int32_t kind = kNoAccept;
+    for (int32_t s : set) {
+      if (nfa_.accepting_[s]) acc = 1;
+      if (nfa_.reachNonEmpty_[s]) ext = 1;
+      if (nfa_.enterGroup_[s]) enterPool_.push_back(nfa_.groupId_[s]);
+      if (nfa_.exitGroup_[s]) {
+        exitPool_.push_back(
+            {nfa_.groupId_[s], nfa_.groupName_[s], nfa_.groupNameNum_[s]});
+        // Lowest declaration index wins ties, matching bestCapture()
+        int32_t n = nfa_.groupNameNum_[s];
+        if (n >= 0 && (kind == kNoAccept || n < kind)) kind = n;
+      }
+    }
+    enterOff_.push_back(static_cast<int32_t>(enterPool_.size()));
+    exitOff_.push_back(static_cast<int32_t>(exitPool_.size()));
+    accepting_.push_back(acc);
+    canExtend_.push_back(ext);
+    acceptKind_.push_back(kind);
+    assert(trans_.size() == sets_.size() * kAlphabet);
+    return id;
+  }
+
+  // Compute and cache the transition out of `from` on byte `c`
+  int32_t materialize(int32_t from, unsigned char c) {
+    ++misses_;
+    scratch_.clear();
+    ++markGen_;
+    for (int32_t s : sets_[from]) {
+      int off = nfa_.charOff_[static_cast<size_t>(s) * kAlphabet + c];
+      if (off >= 0) {
+        int count = nfa_.charTargets_[off];
+        for (int k = 1; k <= count; ++k) addClosure(nfa_.charTargets_[off + k]);
+      }
+      // '.' matches every byte, so it feeds every column of the table
+      for (int k = nfa_.anyOff_[s]; k < nfa_.anyOff_[s + 1]; ++k) {
+        addClosure(nfa_.anyTargets_[k]);
+      }
+    }
+    std::sort(scratch_.begin(), scratch_.end());
+
+    // intern() resizes trans_, invalidating any pointer into it. Never cache
+    // a row pointer across this call; index trans_ only after it returns.
+    int32_t to = intern(scratch_);
+    trans_[static_cast<size_t>(from) * kAlphabet + c] = to;
+    return to;
+  }
+
+ public:
+  bool isAccepting = false;
+
+  explicit DFA(NFA nfa) : nfa_(std::move(nfa)) {
+    nfa_.ensureCompiled();
+    mark_.assign(nfa_.numStates_, 0);
+    enterOff_.push_back(0);
+    exitOff_.push_back(0);
+
+    intern({});  // id 0 is the dead state: an empty set of NFA states
+    std::fill(trans_.begin(), trans_.begin() + kAlphabet, kDead);
+
+    std::vector<int32_t> s0(nfa_.startClosure_.begin(),
+                            nfa_.startClosure_.end());
+    std::sort(s0.begin(), s0.end());
+    start_ = intern(s0);
+
+    const size_t slots = static_cast<size_t>(nfa_.maxGroupId_) + 1;
+    captureSlots_.resize(slots);
+    captureGen_.assign(slots, 0);
+    candidateStart_.resize(slots);
+    candidateGen_.assign(slots, 0);
+
+    fullReset();
+  }
+
+  // --- driver API (the Lexer uses only these) -----------------------------
+
+  int32_t startState() const { return start_; }
+  static bool isDead(int32_t s) { return s == kDead; }
+
+  int32_t step(int32_t s, unsigned char c) {
+    int32_t t = trans_[static_cast<size_t>(s) * kAlphabet + c];
+    return t >= 0 ? t : materialize(s, c);  // negative == not yet computed
+  }
+
+  // Token kind of the alternative accepted in this state, or kNoAccept
+  int32_t acceptKind(int32_t s) const { return acceptKind_[s]; }
+  bool acceptingState(int32_t s) const { return accepting_[s] != 0; }
+
+  int stateCount() const { return static_cast<int>(sets_.size()); }
+  long long transitionMisses() const { return misses_; }
+
+  // --- capture-tracking scanner (regex-level API) -------------------------
+
+  void resetToPosition(Position pos) {
+    position_ = pos;
+    ++gen_;  // invalidates capture/candidate slots in O(1)
+    cur_ = start_;
+    isAccepting = accepting_[cur_] != 0;
+  }
+
+  void fullReset() { resetToPosition(Position()); }
+
+  bool step(char c) {
+    // Group entry is read off the pre-transition state at the pre-transition
+    // position, exactly as NFA::step did.
+    for (int k = enterOff_[cur_]; k < enterOff_[cur_ + 1]; ++k) {
+      int g = enterPool_[k];
+      candidateStart_[g] = position_;
+      candidateGen_[g] = gen_;
+    }
+
+    cur_ = step(cur_, static_cast<unsigned char>(c));
+
+    position_.offset += 1;
+    if (c == '\n') {
+      position_.line += 1;
+      position_.column = 1;
+    } else {
+      position_.column += 1;
+    }
+
+    // ...and group exit off the post-transition state at the new position
+    for (int k = exitOff_[cur_]; k < exitOff_[cur_ + 1]; ++k) {
+      const ExitInfo& ex = exitPool_[k];
+      if (candidateGen_[ex.groupId] == gen_) {
+        RegexCapture& cap = captureSlots_[ex.groupId];
+        cap.start = candidateStart_[ex.groupId];
+        cap.end = position_;
+        cap.groupIdx = ex.groupId;
+        cap.groupName = ex.groupName;
+        cap.groupNameNum = ex.groupNameNum;
+        captureGen_[ex.groupId] = gen_;
+      }
+    }
+
+    isAccepting = accepting_[cur_] != 0;
+    return isAccepting;
+  }
+
   // Capture recorded for a group in the current scan, or nullptr.
-  // Pointers stay valid until the next resetToPosition/fullReset/step.
   const RegexCapture* captureFor(int groupIdx) const {
     if (groupIdx < 0 || groupIdx >= static_cast<int>(captureSlots_.size()) ||
         captureGen_[groupIdx] != gen_) {
@@ -514,10 +622,9 @@ class NFA {
 
   void simulate(const std::string& input) {
     fullReset();
-    ensureActive();
     for (char c : input) {
       step(c);
-      if (active_.empty()) break;
+      if (cur_ == kDead) break;
     }
   }
 
@@ -526,10 +633,7 @@ class NFA {
     return isAccepting;
   }
 
-  bool canReachAcceptingWithNonEmptyInput() {
-    ensureActive();
-    return canReachNonEmpty_;
-  }
+  bool canReachAcceptingWithNonEmptyInput() const { return canExtend_[cur_]; }
 };
 
 // ------------------------------------------------------------------
@@ -584,8 +688,10 @@ class RegexParser {
       negated = true;
     }
 
-    std::set<char> chars;
-    char prev = '\0';
+    std::set<unsigned char> chars;
+    // Range endpoints are compared and iterated as unsigned: a signed char
+    // would order bytes >= 0x80 below 0x00 and overflow past CHAR_MAX.
+    int prev = 0;
     bool inRange = false;
 
     while (true) {
@@ -596,18 +702,19 @@ class RegexParser {
 
       consume();  // consume the current character
 
-      char c = tc.ch;
+      int c = static_cast<unsigned char>(tc.ch);
 
       if (inRange) {
         if (prev > c) throw std::runtime_error("Invalid range: start > end");
-        for (char ch = prev; ch <= c; ++ch) chars.insert(ch);
+        for (int ch = prev; ch <= c; ++ch)
+          chars.insert(static_cast<unsigned char>(ch));
         inRange = false;
       } else if (c == '-' && !tc.escaped && !peek().isEnd() &&
                  peek().ch != ']') {
         // Unescaped '-' in middle (not at end) starts a range
         inRange = true;
       } else {
-        chars.insert(c);
+        chars.insert(static_cast<unsigned char>(c));
         prev = c;
       }
     }
@@ -776,9 +883,11 @@ class RegexParser {
   }
 
  public:
-  NFA parse(const std::string& r) {
+  // Thompson construction only; the caller determinizes.
+  NFA parseToNFA(const std::string& r) {
     regex = r;
     pos = 0;
+    nextGroupId = 0;
     NFA nfa = parseUnion();
 
     if (peek().ch != '\0')
@@ -786,4 +895,7 @@ class RegexParser {
 
     return nfa;
   }
+
+  // Parse and determinize. DFA states are materialized lazily on first use.
+  DFA parse(const std::string& r) { return DFA(parseToNFA(r)); }
 };

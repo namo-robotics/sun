@@ -27,6 +27,7 @@ add_executable(sun_tests
     test_compilation.cpp
     test_contiguous_buffer.cpp
     test_debug.cpp
+    test_dfa.cpp
     test_enums.cpp
     test_errors.cpp
     test_file_io.cpp
@@ -40,6 +41,7 @@ add_executable(sun_tests
     test_interpolation.cpp
     test_intrinsics.cpp
     test_lambda_params.cpp
+    test_lexer.cpp
     test_linked_list.cpp
     test_logical.cpp
     test_loops.cpp

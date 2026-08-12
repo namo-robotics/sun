@@ -2914,7 +2914,8 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
 // In parser.cpp (implementation)
 std::unique_ptr<BlockExprAST> Parser::parseString(const std::string& source) {
   std::istringstream ss(source);
-  lexer.resetInput(ss);  // reuse the token NFA; rebuilding it is expensive
+  lexer.resetInput(ss);  // point the lexer at a new stream; keeps the buffer
+                         // and position reset without touching the shared DFA
   lexer.setEmitComments(collectComments_);
   comments_.clear();  // don't carry state across inputs
   tokenStack.clear();
