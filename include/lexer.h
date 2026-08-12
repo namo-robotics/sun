@@ -387,7 +387,7 @@ struct Token {
   // Indexes a flat array rather than searching getTokenInfo()'s std::map:
   // this runs once per operator/keyword/punctuation token, and a red-black
   // tree walk per token was measurable in the lexer's profile.
-  static Token make(TokenKind k, Position s, Position e) {
+  static Token make(TokenKind k, const Position& s, const Position& e) {
     static const std::array<const TokenInfo*, static_cast<size_t>(
                                                   TokenKind::COUNT)>
         byKind = [] {
@@ -408,36 +408,36 @@ struct Token {
   }
 
   // Factories for value-carrying tokens
-  static Token eof(Position pos) { return make(TokenKind::TOK_EOF, pos, pos); }
+  static Token eof(const Position& pos) { return make(TokenKind::TOK_EOF, pos, pos); }
 
-  static Token identifier(std::string id, Position s, Position e) {
+  static Token identifier(std::string id, const Position& s, const Position& e) {
     return {TokenKind::IDENTIFIER, id, s, e, std::move(id)};
   }
 
-  static Token intrinsicIdentifier(std::string id, Position s, Position e) {
+  static Token intrinsicIdentifier(std::string id, const Position& s, const Position& e) {
     return {TokenKind::INTRINSIC_IDENTIFIER, id, s, e, std::move(id)};
   }
 
-  static Token integer(int64_t num, Position s, Position e, std::string txt) {
+  static Token integer(int64_t num, const Position& s, const Position& e, std::string txt) {
     return {TokenKind::INTEGER, num, s, e, std::move(txt)};
   }
 
-  static Token floatNum(double num, Position s, Position e, std::string txt) {
+  static Token floatNum(double num, const Position& s, const Position& e, std::string txt) {
     return {TokenKind::FLOAT, num, s, e, std::move(txt)};
   }
 
-  static Token stringLiteral(std::string str, Position s, Position e) {
+  static Token stringLiteral(std::string str, const Position& s, const Position& e) {
     return {TokenKind::STRING, std::move(str), s, e, ""};
   }
 
   // Comment token factory (COMMENT or BLOCK_COMMENT); text is the raw
   // comment including delimiters
-  static Token comment(TokenKind k, std::string txt, Position s, Position e) {
+  static Token comment(TokenKind k, std::string txt, const Position& s, const Position& e) {
     return {k, txt, s, e, std::move(txt)};
   }
 
   // Template string token factory
-  static Token templateString(std::string str, Position s, Position e) {
+  static Token templateString(std::string str, const Position& s, const Position& e) {
     return {TokenKind::TEMPLATE_STRING, std::move(str), s, e, ""};
   }
 
@@ -490,6 +490,7 @@ class Lexer {
   // (virtual streambuf dispatch + sentry per byte, plus growing the buffer one
   // char at a time); a slurped buffer makes advance() a load and two adds.
   int currentChar = ' ';
+  DFA* dfa_ = &getTokenDFA();
   Position currentPos{1, 1, 0};
   // When set, comments are returned as tokens instead of skipped
   // (deliberately preserved across resetInput)
@@ -580,6 +581,17 @@ class Lexer {
   int peekByte() const {
     if (currentPos.offset >= static_cast<int>(buffer.size())) return kEof;
     return static_cast<unsigned char>(buffer[currentPos.offset]);
+  }
+
+  // Commit a scan position without a whole-Position copy-assign. Position
+  // carries an optional<std::string> filePath and three optional<int>s that
+  // the lexer never sets, and assigning them cost one optional<string>
+  // copy-assignment per token. Only the three coordinates actually change.
+  void commitPosition(int line, int col, int off) {
+    currentPos.line = line;
+    currentPos.column = col;
+    currentPos.offset = off;
+    currentChar = static_cast<unsigned char>(buffer[off]);
   }
 
  public:
@@ -692,7 +704,9 @@ class Lexer {
   ~Lexer() = default;
 
   Token getNextToken() {
-    DFA& dfa = getTokenDFA();
+    // Cached at construction: getTokenDFA() is a function-local static, so
+    // calling it per token pays the thread-safe-init guard every time.
+    DFA& dfa = *dfa_;
 
     // The scan runs on locals rather than through advance(), so the position
     // triple stays in registers instead of being written to members on every
@@ -727,7 +741,7 @@ class Lexer {
     const int startCol = col;
 
     if (off >= size) {
-      setPosition(Position{line, col, off});
+      commitPosition(line, col, off);
       return Token::eof(currentPos);
     }
 
@@ -764,7 +778,7 @@ class Lexer {
 
     if (bestKind < 0 || bestOffset == startOffset) {
       Position at{startLine, startCol, startOffset};
-      setPosition(at);
+      commitPosition(startLine, startCol, startOffset);
       std::string sourceLine = getSourceLine(at.line);
       logParsingError(
           at, "Unrecognized token '" + std::string(1, buffer[startOffset]) + "'",
@@ -774,7 +788,7 @@ class Lexer {
     Position startPos{startLine, startCol, startOffset};
     Position endPos{bestLine, bestCol, bestOffset};
     TokenKind kind = static_cast<TokenKind>(bestKind);
-    setPosition(endPos);
+    commitPosition(bestLine, bestCol, bestOffset);
 
     // The matched bytes, as a view into the lexer's own buffer. Only the
     // value-carrying kinds below materialize a string from it -- operators,
