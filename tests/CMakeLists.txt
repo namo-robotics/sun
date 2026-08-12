@@ -53,6 +53,7 @@ add_executable(sun_tests
     test_pointers.cpp
     test_programs.cpp
     test_lowering.cpp
+    test_fmt.cpp
     test_positions.cpp
     test_refs.cpp
     test_regex_parser.cpp

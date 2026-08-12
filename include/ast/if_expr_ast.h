@@ -24,6 +24,10 @@ class IfExprAST : public ExprAST {
   ExprAST* getThen() const { return Then.get(); }
   ExprAST* getElse() const { return Else.get(); }
 
+  // Mutable body slots for LoweringPass block normalization
+  std::unique_ptr<ExprAST>& thenSlot() { return Then; }
+  std::unique_ptr<ExprAST>& elseSlot() { return Else; }
+
   void forEachChildSlot(const ChildSlotFn& fn) override {
     fn(Cond);
     fn(Then);

@@ -752,7 +752,9 @@ void ASTSerializer::serializeClassDef(const ClassDefinitionAST& expr,
     auto* fieldProto = cls->add_fields();
     fieldProto->set_name(field.name);
     *fieldProto->mutable_type() = serializeTypeAnnotation(field.type);
-    *fieldProto->mutable_location() = serializePosition(field.location);
+    if (config_.include_location) {
+      *fieldProto->mutable_location() = serializePosition(field.location);
+    }
   }
 
   for (const auto& method : expr.getMethods()) {
@@ -786,7 +788,9 @@ void ASTSerializer::serializeInterfaceDef(const InterfaceDefinitionAST& expr,
     auto* fieldProto = iface->add_fields();
     fieldProto->set_name(field.name);
     *fieldProto->mutable_type() = serializeTypeAnnotation(field.type);
-    *fieldProto->mutable_location() = serializePosition(field.location);
+    if (config_.include_location) {
+      *fieldProto->mutable_location() = serializePosition(field.location);
+    }
   }
 
   for (const auto& method : expr.getMethods()) {
@@ -813,7 +817,9 @@ void ASTSerializer::serializeEnumDef(const EnumDefinitionAST& expr,
     auto* variantProto = enumDef->add_variants();
     variantProto->set_name(variant.name);
     variantProto->set_value(variant.value);
-    *variantProto->mutable_location() = serializePosition(variant.location);
+    if (config_.include_location) {
+      *variantProto->mutable_location() = serializePosition(variant.location);
+    }
   }
 }
 

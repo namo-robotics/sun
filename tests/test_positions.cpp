@@ -214,3 +214,97 @@ TEST(PositionTest, LineAndColumnTracking) {
   ASSERT_TRUE(locB.endLine.has_value());
   EXPECT_EQ(*locB.endLine, 2);
 }
+
+// ------------------------------------------------------------------
+// TypeAnnotation span tests (formatter relies on slicing these)
+// ------------------------------------------------------------------
+
+TEST(TypeSpanTest, VarAnnotation) {
+  std::string src = "var x: i32 = 42;";
+  auto block = parseSource(src);
+  auto* var = static_cast<VariableCreationAST*>(block->getBody()[0].get());
+  ASSERT_TRUE(var->getTypeAnnotation().has_value());
+  EXPECT_EQ(spanText(src, var->getTypeAnnotation()->span), "i32");
+}
+
+TEST(TypeSpanTest, PointerAndRefTypes) {
+  std::string src =
+      "function f(a: ref Foo, b: raw_ptr<Bar>, c: ptr<Baz>, "
+      "d: static_ptr<u8>) void {}";
+  auto block = parseSource(src);
+  auto* fn = static_cast<FunctionAST*>(block->getBody()[0].get());
+  const auto& args = fn->getProto().getArgs();
+  ASSERT_EQ(args.size(), 4u);
+  EXPECT_EQ(spanText(src, args[0].second.span), "ref Foo");
+  EXPECT_EQ(spanText(src, args[1].second.span), "raw_ptr<Bar>");
+  EXPECT_EQ(spanText(src, args[2].second.span), "ptr<Baz>");
+  EXPECT_EQ(spanText(src, args[3].second.span), "static_ptr<u8>");
+}
+
+TEST(TypeSpanTest, GenericsAndArrays) {
+  std::string src =
+      "function f(a: Map<string, i32>, b: array<i32, 3>, "
+      "c: Vec<Vec<i32>>) void {}";
+  auto block = parseSource(src);
+  auto* fn = static_cast<FunctionAST*>(block->getBody()[0].get());
+  const auto& args = fn->getProto().getArgs();
+  ASSERT_EQ(args.size(), 3u);
+  EXPECT_EQ(spanText(src, args[0].second.span), "Map<string, i32>");
+  EXPECT_EQ(spanText(src, args[1].second.span), "array<i32, 3>");
+  EXPECT_EQ(spanText(src, args[2].second.span), "Vec<Vec<i32>>");
+  // Nested type argument spans
+  const auto& mapArgs = args[0].second.typeArguments;
+  ASSERT_EQ(mapArgs.size(), 2u);
+  EXPECT_EQ(spanText(src, mapArgs[0]->span), "string");
+  EXPECT_EQ(spanText(src, mapArgs[1]->span), "i32");
+}
+
+TEST(TypeSpanTest, ErrorUnionReturnType) {
+  std::string src = "function divide(a: i32, b: i32) i32, IError { throw 1; }";
+  auto block = parseSource(src);
+  auto* fn = static_cast<FunctionAST*>(block->getBody()[0].get());
+  const auto& ret = fn->getProto().getReturnType();
+  ASSERT_TRUE(ret.has_value());
+  EXPECT_TRUE(ret->canError);
+  EXPECT_EQ(spanText(src, ret->span), "i32, IError");
+}
+
+TEST(TypeSpanTest, PlainReturnType) {
+  std::string src = "function f() Foo.Bar {}";
+  auto block = parseSource(src);
+  auto* fn = static_cast<FunctionAST*>(block->getBody()[0].get());
+  const auto& ret = fn->getProto().getReturnType();
+  ASSERT_TRUE(ret.has_value());
+  EXPECT_EQ(spanText(src, ret->span), "Foo.Bar");
+}
+
+TEST(TypeSpanTest, LambdaTypeBacktrackedComma) {
+  // The ',' after the lambda type is tentatively eaten (IError check) and
+  // pushed back; the span must not include it.
+  std::string src = "function g(cb: (i32) i32, x: i32) void {}";
+  auto block = parseSource(src);
+  auto* fn = static_cast<FunctionAST*>(block->getBody()[0].get());
+  const auto& args = fn->getProto().getArgs();
+  ASSERT_EQ(args.size(), 2u);
+  EXPECT_EQ(spanText(src, args[0].second.span), "(i32) i32");
+  EXPECT_EQ(spanText(src, args[1].second.span), "i32");
+}
+
+TEST(TypeSpanTest, ThrowingLambdaType) {
+  std::string src = "function g(cb: (i32) i32, IError) void {}";
+  auto block = parseSource(src);
+  auto* fn = static_cast<FunctionAST*>(block->getBody()[0].get());
+  const auto& args = fn->getProto().getArgs();
+  ASSERT_EQ(args.size(), 1u);
+  EXPECT_TRUE(args[0].second.canError);
+  EXPECT_EQ(spanText(src, args[0].second.span), "(i32) i32, IError");
+}
+
+TEST(TypeSpanTest, FnType) {
+  std::string src = "function g(cb: _(i32, bool) void) void {}";
+  auto block = parseSource(src);
+  auto* fn = static_cast<FunctionAST*>(block->getBody()[0].get());
+  const auto& args = fn->getProto().getArgs();
+  ASSERT_EQ(args.size(), 1u);
+  EXPECT_EQ(spanText(src, args[0].second.span), "_(i32, bool) void");
+}

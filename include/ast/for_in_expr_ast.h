@@ -57,6 +57,9 @@ class ForInExprAST : public ExprAST {
   const ExprAST* getIterable() const { return Iterable.get(); }
   const ExprAST* getBody() const { return Body.get(); }
 
+  // Mutable body slot for LoweringPass block normalization
+  std::unique_ptr<ExprAST>& bodySlot() { return Body; }
+
   // Resolved loop variable type (set by semantic analyzer)
   void setResolvedLoopVarType(sun::TypePtr type) const {
     forInAnalysis().resolvedLoopVarType = std::move(type);

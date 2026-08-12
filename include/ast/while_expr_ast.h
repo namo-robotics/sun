@@ -27,5 +27,9 @@ class WhileExprAST : public ExprAST {
 
   const ExprAST* getCondition() const { return Condition.get(); }
   const ExprAST* getBody() const { return Body.get(); }
+
+  // Mutable body slot for LoweringPass block normalization
+  std::unique_ptr<ExprAST>& bodySlot() { return Body; }
+
   std::string dotLabel() const override { return "While"; }
 };

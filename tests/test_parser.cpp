@@ -253,13 +253,20 @@ TEST(ParserTest, IfExpression) {
   ASSERT_NE(cond, nullptr);
   EXPECT_EQ(cond->getOp().kind, TokenKind::LESS);
 
-  // Check then branch
-  auto* thenBranch = dynamic_cast<NumberExprAST*>(ifExpr->getThen());
+  // Branches stay blocks in the lossless parse tree (LoweringPass unwraps)
+  auto* thenBlock = dynamic_cast<BlockExprAST*>(ifExpr->getThen());
+  ASSERT_NE(thenBlock, nullptr);
+  ASSERT_EQ(thenBlock->getBody().size(), 1u);
+  auto* thenBranch =
+      dynamic_cast<NumberExprAST*>(thenBlock->getBody()[0].get());
   ASSERT_NE(thenBranch, nullptr);
   EXPECT_DOUBLE_EQ(thenBranch->getVal(), 1.0);
 
-  // Check else branch
-  auto* elseBranch = dynamic_cast<NumberExprAST*>(ifExpr->getElse());
+  auto* elseBlock = dynamic_cast<BlockExprAST*>(ifExpr->getElse());
+  ASSERT_NE(elseBlock, nullptr);
+  ASSERT_EQ(elseBlock->getBody().size(), 1u);
+  auto* elseBranch =
+      dynamic_cast<NumberExprAST*>(elseBlock->getBody()[0].get());
   ASSERT_NE(elseBranch, nullptr);
   EXPECT_DOUBLE_EQ(elseBranch->getVal(), 0.0);
 }

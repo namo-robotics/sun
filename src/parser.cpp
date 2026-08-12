@@ -112,17 +112,8 @@ unique_ptr<IfExprAST> Parser::parseIfStatement() {
   auto ThenBlock = parseBlock();
   if (!ThenBlock) return nullptr;
 
-  // Then block should return a single value (last expression)
-  unique_ptr<ExprAST> Then;
-  if (ThenBlock->getBody().empty()) {
-    Then = std::make_unique<BoolLiteralAST>(false);  // default
-  } else if (ThenBlock->getBody().size() == 1) {
-    // Move the single expression out
-    Then = std::move(const_cast<std::vector<std::unique_ptr<ExprAST>>&>(
-        ThenBlock->getBody())[0]);
-  } else {
-    Then = std::move(ThenBlock);
-  }
+  // Body kept as a block for losslessness; LoweringPass normalizes it
+  unique_ptr<ExprAST> Then = std::move(ThenBlock);
 
   // Optional else
   unique_ptr<ExprAST> Else;
@@ -139,15 +130,7 @@ unique_ptr<IfExprAST> Parser::parseIfStatement() {
 
       auto ElseBlock = parseBlock();
       if (!ElseBlock) return nullptr;
-
-      if (ElseBlock->getBody().empty()) {
-        Else = std::make_unique<BoolLiteralAST>(false);
-      } else if (ElseBlock->getBody().size() == 1) {
-        Else = std::move(const_cast<std::vector<std::unique_ptr<ExprAST>>&>(
-            ElseBlock->getBody())[0]);
-      } else {
-        Else = std::move(ElseBlock);
-      }
+      Else = std::move(ElseBlock);
     }
   }
   // No else - Else remains nullptr
@@ -403,6 +386,9 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
       getNextToken();  // eat 'IError'
       if (retType.has_value()) {
         retType->canError = true;
+        // Extend the span over the ", IError" consumed here
+        retType->span.setEnd(prevTok_.end.line, prevTok_.end.column,
+                             prevTok_.end.offset);
       }
     }
   } else {
@@ -975,6 +961,14 @@ bool Parser::isTypeToken(TokenKind kind) {
 // Parse type annotation: i32, f64, matrix(i32, 2, 3), _(param_types)
 // return_type (function), (param_types) return_type (lambda)
 TypeAnnotation Parser::parseTypeAnnotation() {
+  Position start = captureStart();
+  TypeAnnotation type = parseTypeAnnotationImpl();
+  start.setEnd(prevTok_.end.line, prevTok_.end.column, prevTok_.end.offset);
+  type.span = std::move(start);
+  return type;
+}
+
+TypeAnnotation Parser::parseTypeAnnotationImpl() {
   TypeAnnotation type;
 
   // Check for function type: _(param_types) return_type (named function)
@@ -1041,6 +1035,7 @@ TypeAnnotation Parser::parseTypeAnnotation() {
     // next token is exactly 'IError'.
     if (curTok.kind == TokenKind::COMMA) {
       Token commaTok = curTok;
+      Token savedPrev = prevTok_;
       getNextToken();  // tentatively eat ','
       auto id = curTok.getIdentifier();
       if (curTok.kind == TokenKind::IDENTIFIER && id.has_value() &&
@@ -1049,6 +1044,7 @@ TypeAnnotation Parser::parseTypeAnnotation() {
         type.canError = true;
       } else {
         pushToken(commaTok);  // not ours - restore the ','
+        prevTok_ = savedPrev;  // keep spans ending at the real last token
       }
     }
 
@@ -1815,16 +1811,8 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
           auto bodyBlock = parseBlock();
           if (!bodyBlock) return nullptr;
 
-          // Convert block to single expression if needed
-          unique_ptr<ExprAST> body;
-          if (bodyBlock->getBody().empty()) {
-            body = std::make_unique<NumberExprAST>(0.0);
-          } else if (bodyBlock->getBody().size() == 1) {
-            body = std::move(const_cast<std::vector<std::unique_ptr<ExprAST>>&>(
-                bodyBlock->getBody())[0]);
-          } else {
-            body = std::move(bodyBlock);
-          }
+          // Body kept as a block; LoweringPass normalizes it
+          unique_ptr<ExprAST> body = std::move(bodyBlock);
 
           return finishNode(
               std::make_unique<ForInExprAST>(std::move(varName),
@@ -1910,16 +1898,8 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
   auto bodyBlock = parseBlock();
   if (!bodyBlock) return nullptr;
 
-  // Convert block to single expression if needed
-  unique_ptr<ExprAST> body;
-  if (bodyBlock->getBody().empty()) {
-    body = std::make_unique<NumberExprAST>(0.0);
-  } else if (bodyBlock->getBody().size() == 1) {
-    body = std::move(const_cast<std::vector<std::unique_ptr<ExprAST>>&>(
-        bodyBlock->getBody())[0]);
-  } else {
-    body = std::move(bodyBlock);
-  }
+  // Body kept as a block; LoweringPass normalizes it
+  unique_ptr<ExprAST> body = std::move(bodyBlock);
 
   return finishNode(
       std::make_unique<ForExprAST>(std::move(init), std::move(condition),
@@ -1948,16 +1928,8 @@ unique_ptr<WhileExprAST> Parser::parseWhileLoop() {
   auto bodyBlock = parseBlock();
   if (!bodyBlock) return nullptr;
 
-  // Convert block to single expression if needed
-  unique_ptr<ExprAST> body;
-  if (bodyBlock->getBody().empty()) {
-    body = std::make_unique<NumberExprAST>(0.0);
-  } else if (bodyBlock->getBody().size() == 1) {
-    body = std::move(const_cast<std::vector<std::unique_ptr<ExprAST>>&>(
-        bodyBlock->getBody())[0]);
-  } else {
-    body = std::move(bodyBlock);
-  }
+  // Body kept as a block; LoweringPass normalizes it
+  unique_ptr<ExprAST> body = std::move(bodyBlock);
 
   return finishNode(
       std::make_unique<WhileExprAST>(std::move(condition), std::move(body)),
@@ -2942,8 +2914,11 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
 // In parser.cpp (implementation)
 std::unique_ptr<BlockExprAST> Parser::parseString(const std::string& source) {
   std::istringstream ss(source);
-  lexer = Lexer(ss);
-  lexer.setEmitComments(collectComments_);  // reassignment resets the flag
+  lexer.resetInput(ss);  // reuse the token NFA; rebuilding it is expensive
+  lexer.setEmitComments(collectComments_);
+  comments_.clear();  // don't carry state across inputs
+  tokenStack.clear();
+  prevTok_ = Token::eof({0, 0, 0});
   getNextToken();  // Prime the first token
   return parseProgram();
 }

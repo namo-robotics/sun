@@ -16,6 +16,7 @@
 #include "ast/manifest_ast.h"
 #include "driver.h"
 #include "error.h"
+#include "formatter.h"
 #include "lexer.h"
 #include "parser.h"
 #include "sun_path.h"
@@ -959,6 +960,7 @@ int main() {
       capabilities["textDocumentSync"] = std::move(textDocumentSync);
       capabilities["semanticTokensProvider"] =
           std::move(semanticTokensProvider);
+      capabilities["documentFormattingProvider"] = true;
 
       llvm::json::Object serverInfo;
       serverInfo["name"] = "sun-lsp";
@@ -1159,6 +1161,65 @@ int main() {
       llvm::json::Object result;
       result["data"] = std::move(dataArray);
       sendResponse(*id, std::move(result));
+      continue;
+    }
+
+    if (methodName == "textDocument/formatting" && params) {
+      if (!id) continue;
+
+      llvm::json::Object* textDocument = nullptr;
+      if (llvm::json::Value* rawTextDocument = params->get("textDocument")) {
+        textDocument = rawTextDocument->getAsObject();
+      }
+      if (!textDocument) {
+        sendErrorResponse(*id, -32602, "Missing textDocument parameter");
+        continue;
+      }
+
+      std::optional<llvm::StringRef> uri = textDocument->getString("uri");
+      if (!uri) {
+        sendErrorResponse(*id, -32602, "Missing textDocument.uri");
+        continue;
+      }
+
+      auto documentIter = openDocuments.find(uri->str());
+      if (documentIter == openDocuments.end()) {
+        sendErrorResponse(*id, -32602, "Document not open");
+        continue;
+      }
+
+      const OpenDocument& document = documentIter->second;
+      std::string formatted;
+      try {
+        formatted = sun::formatSource(document.text, document.path);
+      } catch (const SunError&) {
+        // Unparseable code: a null result avoids error popups on every save
+        sendResponse(*id, llvm::json::Value(nullptr));
+        continue;
+      }
+
+      if (formatted == document.text) {
+        sendResponse(*id, llvm::json::Array());
+        continue;
+      }
+
+      // Single whole-document edit: range spans every existing line
+      int lastLine = 0;
+      int lastCol = 0;
+      for (char c : document.text) {
+        if (c == '\n') {
+          ++lastLine;
+          lastCol = 0;
+        } else {
+          ++lastCol;
+        }
+      }
+      llvm::json::Object edit;
+      edit["range"] = makeRange(0, 0, lastLine, lastCol);
+      edit["newText"] = formatted;
+      llvm::json::Array edits;
+      edits.push_back(std::move(edit));
+      sendResponse(*id, std::move(edits));
       continue;
     }
 

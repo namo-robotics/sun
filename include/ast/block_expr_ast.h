@@ -31,6 +31,7 @@ class BlockExprAST : public ExprAST {
   std::string toString() const override { return "{ ... }"; }
 
   const std::vector<std::unique_ptr<ExprAST>>& getBody() const { return Body; }
+  std::vector<std::unique_ptr<ExprAST>>& mutableBody() { return Body; }
 
   void forEachChildSlot(const ChildSlotFn& fn) override {
     for (auto& stmt : Body) fn(stmt);

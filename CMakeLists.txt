@@ -170,6 +170,7 @@ add_library(sun_lib
     src/ast_cache.cpp
     # AST lowering (post-parse desugaring)
     src/lowering_pass.cpp
+    src/formatter.cpp
     # Add other implementation files here (but NOT main.cpp)
 )
 

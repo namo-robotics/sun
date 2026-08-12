@@ -62,7 +62,7 @@ This document tracks missing features needed for real-world adoption.
 ## 🔵 P3 — Nice to Have
 
 ### Tooling
-- [ ] Code formatter (`sunfmt`)
+- [x] Code formatter (`sun fmt`, also LSP textDocument/formatting)
 - [ ] Linter (`sunlint`)
 - [ ] Debugger support (DWARF debug info)
 - [ ] Source maps for error traces

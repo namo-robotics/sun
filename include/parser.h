@@ -103,27 +103,24 @@ class Parser {
       getNextToken();  // eat '>'
       return;
     }
-    if (curTok.kind == TokenKind::RIGHT_SHIFT) {
-      // Split '>>' into '>' and push remaining '>' back
-      Token remainingGreater = Token::make(TokenKind::GREATER, curTok.start, curTok.end);
-      getNextToken();  // eat '>>'
-      pushToken(remainingGreater);  // push '>' to be consumed next
-      return;
-    }
-    if (curTok.kind == TokenKind::GREATER_EQUAL) {
-      // Split '>=' into '>' and '=' (e.g. `var v: Vec<i32>= x;`)
-      Token remainingEqual = Token::make(TokenKind::EQUAL, curTok.start, curTok.end);
-      getNextToken();  // eat '>='
-      pushToken(remainingEqual);
-      return;
-    }
-    if (curTok.kind == TokenKind::RIGHT_SHIFT_ASSIGN) {
-      // Split '>>=' into '>' and '>=' (the '>=' splits again if needed,
-      // e.g. `var v: Vec<Vec<i32>>= x;`)
-      Token remainingGreaterEqual =
-          Token::make(TokenKind::GREATER_EQUAL, curTok.start, curTok.end);
-      getNextToken();  // eat '>>='
-      pushToken(remainingGreaterEqual);
+    if (curTok.kind == TokenKind::RIGHT_SHIFT ||
+        curTok.kind == TokenKind::GREATER_EQUAL ||
+        curTok.kind == TokenKind::RIGHT_SHIFT_ASSIGN) {
+      // Split off the leading '>' and push the remainder back. Spans are
+      // split at the character boundary so type annotations sliced from
+      // source don't absorb the remainder (e.g. Vec<Vec<i32>>).
+      TokenKind remainderKind = curTok.kind == TokenKind::RIGHT_SHIFT
+                                    ? TokenKind::GREATER
+                                : curTok.kind == TokenKind::GREATER_EQUAL
+                                    ? TokenKind::EQUAL
+                                    : TokenKind::GREATER_EQUAL;
+      Position mid = curTok.start;
+      mid.column += 1;
+      mid.offset += 1;
+      Token remainder = Token::make(remainderKind, mid, curTok.end);
+      curTok = Token::make(TokenKind::GREATER, curTok.start, mid);
+      getNextToken();  // eat the shrunk '>'
+      pushToken(remainder);
       return;
     }
     parsingError(msg);
@@ -241,8 +238,10 @@ class Parser {
   unique_ptr<ExprAST> parseStatement();
   unique_ptr<ExprAST> parseStatementList();
 
-  // Type parsing
+  // Type parsing. parseTypeAnnotation stamps the source span; the Impl
+  // variant holds the grammar and leaves the span unset.
   TypeAnnotation parseTypeAnnotation();
+  TypeAnnotation parseTypeAnnotationImpl();
   bool isTypeToken(TokenKind kind);
 
   unique_ptr<ExprAST> parseAssignmentOrExpression();
