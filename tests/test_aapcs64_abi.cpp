@@ -511,3 +511,60 @@ TEST(CrossTargetTest, extern_struct_call_runs_under_qemu) {
 
   EXPECT_EQ(runUnderQemu(binary), 242);  // a*100 + b
 }
+
+// ============================================================================
+// Static linking
+// ============================================================================
+
+namespace {
+
+// True when the ELF at `path` needs no dynamic loader (no PT_INTERP segment).
+bool isStaticBinary(const std::string& path) {
+  std::string cmd =
+      "! readelf -l " + path + " 2>/dev/null | grep -q INTERP";
+  return std::system(cmd.c_str()) == 0;
+}
+
+}  // namespace
+
+TEST(StaticLinkTest, host_static_binary_has_no_dynamic_dependencies) {
+  auto driver = Driver::createForAOT("static_host_module");
+  driver->compileString("function main() i32 { return 42; }");
+
+  std::string binary = ::testing::TempDir() + "sun_static_host_test";
+  std::string errorMsg;
+  sun::LinkOptions linkOpts;
+  linkOpts.staticLink = true;
+  ASSERT_TRUE(sun::compileToExecutable(driver->getModule(), binary, errorMsg,
+                                       /*keepObjectFile=*/false, linkOpts))
+      << errorMsg;
+
+  EXPECT_TRUE(isStaticBinary(binary));
+  int rc = std::system((binary + " >/dev/null 2>&1").c_str());
+  EXPECT_EQ(WEXITSTATUS(rc), 42);
+}
+
+TEST(StaticLinkTest, cross_static_binary_runs_under_qemu_without_sysroot) {
+  // The deployment shape cross-compilation exists for: one self-contained
+  // aarch64 file that runs with no target rootfs at all — qemu gets no -L.
+  if (!haveCrossExecutionTools()) {
+    GTEST_SKIP() << "qemu-aarch64 / aarch64-linux-gnu-gcc not installed";
+  }
+
+  auto driver = Driver::createForAOT("static_cross_module",
+                                     "aarch64-linux-gnu");
+  driver->compileString("function main() i32 { return 42; }");
+
+  std::string binary = ::testing::TempDir() + "sun_static_cross_test";
+  std::string errorMsg;
+  sun::LinkOptions linkOpts;
+  linkOpts.targetTriple = "aarch64-linux-gnu";
+  linkOpts.staticLink = true;
+  ASSERT_TRUE(sun::compileToExecutable(driver->getModule(), binary, errorMsg,
+                                       /*keepObjectFile=*/false, linkOpts))
+      << errorMsg;
+
+  EXPECT_TRUE(isStaticBinary(binary));
+  int rc = std::system(("qemu-aarch64 " + binary + " >/dev/null 2>&1").c_str());
+  EXPECT_EQ(WEXITSTATUS(rc), 42);
+}

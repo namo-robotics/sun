@@ -28,6 +28,7 @@ struct LinkOptions {
   std::vector<std::string> searchPaths;    // -Ldir  -> "dir"
   std::string targetTriple;                // --target -> cross linker needed
   std::string sysroot;                     // --sysroot -> target's root fs
+  bool staticLink = false;                 // --static -> self-contained binary
 };
 
 
@@ -219,6 +220,15 @@ inline bool linkExecutable(const std::string& objectPath,
 
   std::string cmd =
       linker + " -o " + shellQuote(outputPath) + " " + shellQuote(objectPath);
+
+  // Static: copy libc/libstdc++ into the binary instead of referencing their
+  // .so files. The result runs on any Linux of the same architecture with no
+  // loader, no shared-library dependencies and no glibc version coupling —
+  // the deployment shape embedded targets want. Needs the toolchain's static
+  // archives (libc.a from libc6-dev, libstdc++.a from libstdc++-dev).
+  if (linkOpts.staticLink) {
+    cmd += " -static";
+  }
 
   // Cross links need the target's root filesystem for libc and crt files.
   if (!linkOpts.sysroot.empty()) {

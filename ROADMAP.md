@@ -62,7 +62,10 @@ syscall assembly, so the emitted IR is target-neutral.
       `g++-aarch64-linux-gnu` + `qemu-user`, and `CrossTargetTest` compiles,
       links and runs aarch64 binaries under qemu (including a struct-passing
       extern against C compiled by the real aarch64 toolchain)
-- [ ] Static binary linking
+- [x] Static binary linking — `--static` produces a self-contained binary
+      (no loader, no .so dependencies, no glibc version coupling); combined
+      with `--target` it yields a single file that runs on any Linux of that
+      architecture (verified under qemu with no sysroot)
 
 ### Debug Info (DWARF)
 

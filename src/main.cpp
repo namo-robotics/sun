@@ -38,6 +38,8 @@ static void printUsage(const char* programName) {
                   "toolchain), --emit-obj and --emit-moon\n";
   llvm::errs() << "  --sysroot <dir>   Target root filesystem for cross "
                   "linking (passed to the linker)\n";
+  llvm::errs() << "  --static          Link a self-contained binary (no "
+                  "shared-library dependencies)\n";
   llvm::errs() << "  --emit-ir         Print LLVM IR to stdout\n";
   llvm::errs() << "  --debug           Generate debug output (ast.dot, ir.ll) "
                   "in <input>_debug/\n";
@@ -318,6 +320,8 @@ int main(int argc, char* argv[]) {
       targetTriple = argv[++i];
     } else if (arg == "--sysroot" && i + 1 < argc) {
       linkOpts.sysroot = argv[++i];
+    } else if (arg == "--static") {
+      linkOpts.staticLink = true;
     } else if (arg == "--emit-moon") {
       emitMoon = true;
     } else if (arg == "--emit-ir") {
@@ -360,6 +364,11 @@ int main(int argc, char* argv[]) {
   if (!targetTriple.empty() && !emitObjOnly && !emitMoon && !compileMode) {
     llvm::errs() << "Error: --target requires --emit-obj, -c or --emit-moon "
                     "(JIT execution is host-only)\n";
+    return 1;
+  }
+  if (linkOpts.staticLink && (!compileMode || emitObjOnly)) {
+    llvm::errs() << "Error: --static only applies when linking; use it with "
+                    "-c\n";
     return 1;
   }
 
