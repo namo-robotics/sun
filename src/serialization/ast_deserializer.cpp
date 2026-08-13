@@ -147,6 +147,11 @@ std::unique_ptr<PrototypeAST> ASTDeserializer::deserializePrototype(
     result->setLocation(deserializePosition(proto.location()));
   }
 
+  result->setCVariadic(proto.c_variadic());
+  if (proto.has_link_name()) {
+    result->setLinkName(proto.link_name());
+  }
+
   return result;
 }
 
@@ -169,6 +174,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserialize(
       break;
     case ast::ASTNode::kArrayLiteral:
       result = deserializeArray(node.array_literal());
+      break;
+    case ast::ASTNode::kStructLiteral:
+      result = deserializeStructLiteral(node.struct_literal());
       break;
     case ast::ASTNode::kSliceExpr:
       result = deserializeSlice(node.slice_expr());
@@ -359,6 +367,22 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeNull(
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeBool(
     const ast::BoolLiteral& proto) const {
   return std::make_unique<BoolLiteralAST>(proto.value());
+}
+
+std::unique_ptr<ExprAST> ASTDeserializer::deserializeStructLiteral(
+    const ast::StructLiteral& proto) const {
+  std::vector<StructLiteralAST::FieldInit> fields;
+  fields.reserve(proto.fields().size());
+  for (const auto& field : proto.fields()) {
+    StructLiteralAST::FieldInit init;
+    init.name = field.name();
+    init.value = deserialize(field.value());
+    if (field.has_location()) {
+      init.location = deserializePosition(field.location());
+    }
+    fields.push_back(std::move(init));
+  }
+  return std::make_unique<StructLiteralAST>(std::move(fields));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeArray(
@@ -608,9 +632,16 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeUnsafeBlock(
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeFunction(
     const ast::FunctionDef& proto) const {
   auto prototype = deserializePrototype(proto.proto());
-  auto body = deserializeBlockExpr(proto.body());
+  // A declaration has no body at all. Handing FunctionAST an empty block
+  // instead would make isExtern() false, so a C extern would be re-mangled as
+  // an ordinary Sun function and its symbol lost.
+  std::unique_ptr<BlockExprAST> body;
+  if (proto.body_present()) {
+    body = deserializeBlockExpr(proto.body());
+  }
   auto func =
       std::make_unique<FunctionAST>(std::move(prototype), std::move(body));
+  func->setCExtern(proto.is_c_extern());
   return func;
 }
 

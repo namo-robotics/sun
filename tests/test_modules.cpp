@@ -576,3 +576,130 @@ TEST(ModuleTest, dotted_module_with_class) {
   )");
   EXPECT_EQ(value, 100);
 }
+
+// ============================================================================
+// Module-qualified calls: mod.foo(args...)
+// ============================================================================
+// The resolved symbol name used to be rebuilt as modulePath + "_" + member,
+// which dropped the overload param suffix that codegen actually emits, so
+// every module-qualified call failed with "Unknown function: mod_foo".
+
+TEST(ModuleTest, module_qualified_call) {
+  auto value = executeString(R"(
+    module m {
+      function sq(x: i32) i32 { return x * x; }
+    }
+    function main() i32 {
+      return m.sq(5);
+    }
+  )");
+  EXPECT_EQ(value, 25);
+}
+
+TEST(ModuleTest, module_qualified_call_selects_overload) {
+  // Resolution must use the call's argument types, not the first registered
+  // overload.
+  auto value = executeString(R"(
+    module m {
+      function pick(x: i32) i32 { return 1; }
+      function pick(x: f64) i32 { return 2; }
+      function pick(x: bool) i32 { return 4; }
+    }
+    function main() i32 {
+      return m.pick(1) + m.pick(1.0) + m.pick(true);
+    }
+  )");
+  EXPECT_EQ(value, 7);
+}
+
+TEST(ModuleTest, nested_module_qualified_call) {
+  auto value = executeString(R"(
+    module a {
+      module b {
+        function f(x: i32) i32 { return x + 1; }
+      }
+    }
+    function main() i32 {
+      return a.b.f(41);
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(ModuleTest, module_qualified_call_to_extern) {
+  auto value = executeString(R"(
+    module libc {
+      extern function abs(x: i32) i32;
+    }
+    function main() i32 {
+      unsafe { return libc.abs(-13); };
+    }
+  )");
+  EXPECT_EQ(value, 13);
+}
+
+TEST(ModuleTest, module_qualified_call_with_void_return) {
+  auto value = executeString(R"(
+    module m {
+      function noop(x: i32) void { }
+    }
+    function main() i32 {
+      m.noop(1);
+      return 7;
+    }
+  )");
+  EXPECT_EQ(value, 7);
+}
+
+TEST(ModuleTest, module_qualified_call_unknown_overload_errors) {
+  EXPECT_THROW(executeString(R"(
+    module m {
+      function only_i32(x: i32) i32 { return x; }
+    }
+    function main() i32 {
+      return m.only_i32(true, 2);
+    }
+  )"),
+               std::exception);
+}
+
+TEST(ModuleTest, module_qualified_call_into_moon_library) {
+  // Library functions carry a content-hash scope segment
+  // ("$hash$_sun_println$..."), so the resolved name must come from the
+  // function's own qualified name rather than being rebuilt from the path.
+  auto value = executeStringWithStdlib(R"(
+    function main() i32 {
+      sun.println("ok");
+      return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(ModuleTest, module_qualified_call_coerces_arguments) {
+  // This call path used to build its argument list with a bare codegen(),
+  // skipping every coercion the direct-call path applies — so a string
+  // literal reached a raw_ptr<u8> parameter as a fat { ptr, i64 } struct.
+  auto value = executeString(R"(
+    module m {
+      function len4(s: raw_ptr<u8>) i32 { return 4; }
+    }
+    function main() i32 {
+      return m.len4("abcd");
+    }
+  )");
+  EXPECT_EQ(value, 4);
+}
+
+TEST(ModuleTest, module_qualified_call_widens_numeric_arguments) {
+  auto value = executeString(R"(
+    module m {
+      function take(x: i64) i64 { return x; }
+    }
+    function main() i32 {
+      var small: i32 = 7;
+      return m.take(small);
+    }
+  )");
+  EXPECT_EQ(value, 7);
+}

@@ -34,6 +34,12 @@ struct FunctionInfo {
   sun::QualifiedName qualifiedName;  // Full qualified name
   bool canThrow = false;  // Whether this function can throw (declared with ,
                           // IError)
+  // C-style trailing varargs (`extern function printf(fmt: ..., ...)`).
+  // Calls may supply more arguments than paramTypes lists.
+  bool isCVariadic = false;
+  // Declared with `extern function` — calling it leaves Sun's checked world,
+  // so call sites are gated on `unsafe`.
+  bool isCExtern = false;
 };
 
 // Indexed function table: O(1) name-based overload lookup + O(1) exact sig
@@ -400,6 +406,13 @@ struct SemanticScopeBase
 
   // Lookup function by name and exact argument types (overload resolution)
   std::optional<FunctionInfo> lookupFunction(
+      const std::string& name,
+      const std::vector<sun::TypePtr>& argTypes) const;
+
+  // Same overload resolution, but restricted to this scope's own function
+  // table — no walk to parents. Used for module-qualified calls, where the
+  // callee's scope is already known.
+  std::optional<FunctionInfo> lookupFunctionLocal(
       const std::string& name,
       const std::vector<sun::TypePtr>& argTypes) const;
 

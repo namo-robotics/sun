@@ -144,6 +144,11 @@ ast::Prototype ASTSerializer::serializePrototype(
         serializeTypeAnnotation(*proto.getVariadicConstraint());
   }
 
+  result.set_c_variadic(proto.isCVariadic());
+  if (proto.hasLinkName()) {
+    result.set_link_name(proto.getLinkName());
+  }
+
   if (config_.include_location) {
     *result.mutable_location() = serializePosition(proto.getLocation());
   }
@@ -189,6 +194,9 @@ ast::ASTNode ASTSerializer::serialize(const ExprAST& expr) const {
       break;
     case ASTNodeType::ARRAY_LITERAL:
       serializeArray(static_cast<const ArrayLiteralAST&>(expr), &node);
+      break;
+    case ASTNodeType::STRUCT_LITERAL:
+      serializeStructLiteral(static_cast<const StructLiteralAST&>(expr), &node);
       break;
     case ASTNodeType::SLICE:
       serializeSlice(static_cast<const SliceExprAST&>(expr), &node);
@@ -382,6 +390,19 @@ void ASTSerializer::serializeNull(const NullLiteralAST& expr,
 void ASTSerializer::serializeBool(const BoolLiteralAST& expr,
                                   ast::ASTNode* node) const {
   node->mutable_bool_literal()->set_value(expr.getValue());
+}
+
+void ASTSerializer::serializeStructLiteral(const StructLiteralAST& expr,
+                                           ast::ASTNode* node) const {
+  auto* literal = node->mutable_struct_literal();
+  for (const auto& field : expr.getFields()) {
+    auto* out = literal->add_fields();
+    out->set_name(field.name);
+    *out->mutable_value() = serialize(*field.value);
+    if (config_.include_location) {
+      *out->mutable_location() = serializePosition(field.location);
+    }
+  }
 }
 
 void ASTSerializer::serializeArray(const ArrayLiteralAST& expr,
@@ -630,6 +651,11 @@ void ASTSerializer::serializeFunction(const FunctionAST& expr,
                                       ast::ASTNode* node) const {
   auto* func = node->mutable_function_def();
   *func->mutable_proto() = serializePrototype(expr.getProto());
+  func->set_is_c_extern(expr.isCExtern());
+  // An empty body and no body are different things: the latter is a
+  // declaration, and reconstructing it as the former would give a C extern
+  // Sun name mangling and lose its symbol.
+  func->set_body_present(expr.hasBody());
   auto* body = func->mutable_body();
   if (expr.hasBody()) {
     for (const auto& stmt : expr.getBody().getBody()) {

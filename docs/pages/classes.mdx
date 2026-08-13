@@ -188,6 +188,46 @@ function main() i32 {
   The `init` method is called automatically when you create an instance. Arguments passed to `ClassName(args...)` are forwarded to the `init` method.
 </Callout>
 
+### Struct Literals (Classes Without `init`)
+
+A class that declares no `init` is constructed with a struct literal, naming
+every field:
+
+```sun
+class Car {
+    var color: static_ptr<u8>;
+    var speed: i32;
+}
+
+function main() i32 {
+    var car: Car = { color: "red", speed: 120 };
+    return car.speed;
+}
+```
+
+The target type comes from the annotation, so `var car = { ... }` is an error —
+a literal has no type of its own.
+
+Field order does not matter, and a class-typed field takes a nested literal:
+
+```sun
+class Inner { var a: i32; var b: i32; }
+class Outer { var inner: Inner; var tag: i32; }
+
+var o: Outer = { tag: 12, inner: { a: 10, b: 20 } };
+```
+
+Every field must be named. Leaving one out is an error rather than a silent
+zero — that silence is exactly the bug this syntax exists to prevent.
+
+<Callout type="warning">
+  Positional construction is not available for classes without `init`:
+  `Car("red", 120)` is rejected. Field order is a layout detail, and a
+  positional call would silently change meaning if two same-typed fields were
+  ever reordered. Add an `init` if you want positional arguments — a class
+  cannot use both forms.
+</Callout>
+
 ### Heap Allocation (Using Allocator)
 
 For heap-allocated objects, use an allocator from the standard library:

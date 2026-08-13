@@ -30,6 +30,9 @@ add_executable(sun_tests
     test_dfa.cpp
     test_enums.cpp
     test_errors.cpp
+    test_ffi.cpp
+    test_sysv_abi.cpp
+    test_struct_literals.cpp
     test_file_io.cpp
     test_sun_io.cpp
     test_generic_classes.cpp
@@ -89,6 +92,19 @@ endif()
 if(NOT SKIP_STDLIB)
     add_dependencies(sun_tests stdlib_moon)
 endif()
+
+# Shared library for the C FFI tests. Its symbols are deliberately absent
+# from the test binary, so -l/-L are actually exercised rather than being
+# satisfied by libc already being resident in the process.
+add_library(sun_ffi_testlib SHARED fixtures/ffi_testlib.c)
+set_target_properties(sun_ffi_testlib PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tests
+)
+add_dependencies(sun_tests sun_ffi_testlib)
+# Passed as a define rather than a test ENVIRONMENT entry: gtest_discover_tests
+# splits a multi-entry ENVIRONMENT list into separate property arguments.
+target_compile_definitions(sun_tests
+    PRIVATE SUN_FFI_TESTLIB_DIR="${CMAKE_BINARY_DIR}/tests")
 
 # Discover tests automatically (nice per-test reporting in ctest)
 include(GoogleTest)

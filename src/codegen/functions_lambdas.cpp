@@ -383,7 +383,9 @@ Value* CodegenVisitor::codegenGenericFunc(FunctionAST& funcAst) {
 Value* CodegenVisitor::codegenExternFunc(FunctionAST& funcAst) {
   const PrototypeAST& proto = funcAst.getProto();
 
-  // Get return type from prototype (must be resolved by semantic analysis)
+  // Resolve the signature's Sun types. Everything after this — the C symbol,
+  // ABI lowering, byval/sret attributes — belongs to the extern-C boundary
+  // and lives in ExternCEmitter.
   llvm::Type* returnType = nullptr;
   if (proto.hasResolvedReturnType()) {
     returnType = typeResolver.resolve(proto.getResolvedReturnType());
@@ -396,8 +398,6 @@ Value* CodegenVisitor::codegenExternFunc(FunctionAST& funcAst) {
     returnType = llvm::Type::getVoidTy(ctx.getContext());
   }
 
-  // Build parameter types (must be resolved by semantic analysis)
-  std::vector<llvm::Type*> paramTypes;
   if (!proto.hasResolvedParamTypes()) {
     logAndThrowError(
         "Extern function parameter types not resolved by semantic "
@@ -405,28 +405,14 @@ Value* CodegenVisitor::codegenExternFunc(FunctionAST& funcAst) {
         proto.getName());
     return nullptr;
   }
+
+  std::vector<llvm::Type*> paramTypes;
+  paramTypes.reserve(proto.getResolvedParamTypes().size());
   for (const auto& sunType : proto.getResolvedParamTypes()) {
     paramTypes.push_back(typeResolver.resolve(sunType));
   }
 
-  // Create function type
-  llvm::FunctionType* funcType =
-      llvm::FunctionType::get(returnType, paramTypes, false);
-
-  // Declare external function
-  llvm::Function* externFunc = llvm::Function::Create(
-      funcType, llvm::Function::ExternalLinkage, proto.getName(), module);
-
-  // Set parameter names
-  unsigned idx = 0;
-  for (auto& arg : externFunc->args()) {
-    if (idx < proto.getArgs().size()) {
-      arg.setName(proto.getArgs()[idx].first);
-    }
-    idx++;
-  }
-
-  return externFunc;
+  return externC.declare(proto, returnType, paramTypes);
 }
 
 // -------------------------------------------------------------------

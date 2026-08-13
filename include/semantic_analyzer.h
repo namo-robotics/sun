@@ -105,6 +105,12 @@ class SemanticAnalyzer {
   void analyzeFunction(FunctionAST& func);
   void analyzeLambda(LambdaAST& lambda);
 
+  // Reject extern signatures that have no C spelling. Primitives, raw_ptr<T>,
+  // `ref T` (C's T*) and objects by value all lower correctly; arrays,
+  // slices, interfaces and lambdas do not, and must error rather than
+  // silently miscompile.
+  void validateExternSignature(FunctionAST& func);
+
   // Analyze a partial class definition. Partial classes add methods to an
   // existing primary class. If the primary has been analyzed, merges now;
   // otherwise stashes for later merging.
@@ -327,8 +333,13 @@ class SemanticAnalyzer {
   // Validate parameter names and resolve their types from prototype
   // Throws if any parameter name is reserved; applies auto-ref conversion
   // Returns the resolved param types and sets them on the prototype
+  //
+  // allowByValueObjects exempts C externs from REQUIRE_REF_FOR_COMPOUND_PARAMS
+  // when that policy is enabled: passing a struct by value is what the C ABI
+  // specifies, so it is the callee's signature rather than a Sun choice.
   std::vector<sun::TypePtr> validateAndResolveParamTypes(
-      PrototypeAST& proto, std::optional<Position> loc = std::nullopt);
+      PrototypeAST& proto, std::optional<Position> loc = std::nullopt,
+      bool allowByValueObjects = false);
 
   // Register built-in functions (print, println, file I/O, etc.)
   void registerBuiltinFunctions();
@@ -407,9 +418,29 @@ class SemanticAnalyzer {
   // e.g., findSymbolInModule("b", "get_version") finds b.get_version
   // even if b is inside a library scope like $hash$.b
   // Optional filterKind restricts to specific symbol type (None = any)
+  // Optional argTypes selects the matching overload when the symbol is a
+  // function; without it the first registered overload is returned.
   SymbolMatch findSymbolInModule(
       const std::string& modulePath, const std::string& name,
-      SymbolKind filterKind = SymbolKind::None) const;
+      SymbolKind filterKind = SymbolKind::None,
+      const std::vector<sun::TypePtr>* argTypes = nullptr) const;
+
+  // Calling into C leaves everything the borrow checker and type system
+  // guarantee, so it is gated on `unsafe` — the same rule the equivalent
+  // intrinsics (_malloc, _free, ...) already follow. Throws if `info` names a
+  // C extern and the call site is not inside an unsafe block.
+  void checkExternCallAllowed(const FunctionInfo& info,
+                              const std::string& displayName,
+                              const Position& loc) const;
+
+  // Resolve a module-qualified call `mod.foo(args...)` against the actual
+  // argument types and stamp the chosen overload's own mangled name onto the
+  // member access. Rebuilding the name from the module path instead would
+  // drop the overload param suffix and name a symbol codegen never emits.
+  // Returns nullptr if the module has no overload matching those arguments.
+  const FunctionInfo* resolveModuleQualifiedCall(
+      const MemberAccessAST& memberAccess, const sun::TypePtr& objectType,
+      const std::vector<sun::TypePtr>& argTypes) const;
 
   // Get all active using imports (from all enclosing scopes)
   std::vector<UsingImport> getActiveUsingImports() const;
@@ -448,6 +479,12 @@ class SemanticAnalyzer {
   // expectedType: optional type hint for type inference (e.g., from variable
   // declaration)
   void analyzeExpr(ExprAST& expr, sun::TypePtr expectedType = nullptr);
+
+  // Resolve a `{ field: value }` literal against the type the context
+  // expects. A struct literal has no type of its own, so without an expected
+  // class type there is nothing to check the field names against.
+  void analyzeStructLiteral(StructLiteralAST& literal,
+                            const sun::TypePtr& expectedType);
 
   // If the member access names a class method in value position, resolve it
   // as a bound method reference: pick the overload (using expectedType when

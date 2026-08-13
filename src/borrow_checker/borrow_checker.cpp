@@ -145,6 +145,7 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
     case ASTNodeType::STRING_LITERAL:
     case ASTNodeType::BOOL_LITERAL:
     case ASTNodeType::NULL_LITERAL:
+    case ASTNodeType::STRUCT_LITERAL:
     case ASTNodeType::ARRAY_LITERAL:
     case ASTNodeType::INDEX:
     case ASTNodeType::THIS:

@@ -17,12 +17,28 @@ Sun currently reaches the outside world through compiler intrinsics
 the compiler and shipping a release. FFI converts most of the rest of this roadmap
 into work users can do without us.
 
-- [ ] `extern "C"` function declarations (`extern` token and bodyless-function
-      formatting already exist; semantic analysis + codegen do not)
-- [ ] Link external C libraries (`-l` / library search paths through the driver)
-- [ ] C struct interop and layout compatibility
-- [ ] Calling conventions
-- [ ] Safety story for unsafe interop — see *Design Decisions Needed*
+- [x] `extern function` declarations calling C symbols; signature types with
+      no C spelling (arrays, interfaces, lambdas) are rejected with an error
+      rather than miscompiled
+- [x] Pass string literals to C (`static_ptr<T>` → `raw_ptr<T>` narrows to the
+      data pointer at the call boundary)
+- [x] Varargs (`...`) with C default argument promotions — `printf` works.
+      Extern declarations only; Sun has no `va_arg`
+- [x] `extern "C"` ABI string and `as "symbol"` renaming (`as` is contextual,
+      not a reserved word)
+- [x] Link external C libraries — `-l<name>` / `-L<dir>` through the driver,
+      passed to the linker when compiling and `dlopen`ed when JITing
+- [x] Load libraries under JIT (`DynamicLibrary::LoadLibraryPermanently`,
+      including `lib<name>.so.N` discovery inside `-L` directories)
+- [x] C struct interop — class layout already matches C, and `ref T` is C's
+      `T*`; structs by value work too
+- [x] Calling conventions — System V eightbyte classification with
+      byval/sret and register coercion (`include/sysv_abi.h`)
+- [x] Extern declarations in `.moon` libraries
+- [x] Safety story — calling an extern requires an `unsafe` block, matching
+      the rule the equivalent intrinsics already follow
+- [ ] Cross-target ABIs: classification is x86-64 System V only; AArch64
+      needs its own rules (blocks *Cross-Compilation* below)
 
 ### Cross-Compilation
 
@@ -208,8 +224,10 @@ Found in source:
 
 ## Design Decisions Needed
 
-1. **FFI safety**: how does unsafe C interop coexist with a borrow-checked language —
-   an `unsafe` block, a trusted-wrapper convention, or something else?
+1. **FFI lifetimes**: extern calls now require an `unsafe` block, and the
+   convention is a safe Sun wrapper around it. What remains undecided is
+   whether the borrow checker should model a pointer escaping into C at all —
+   today `ref T` hands C an address with no lifetime tracking across the call.
 2. **Optional representation**: a stdlib `Option<T>` enum, or nullable type syntax
    built into the type system?
 3. **Generic instantiation**: where do cross-module instantiations get emitted, and

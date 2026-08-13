@@ -134,9 +134,12 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
           returnType = typeAnnotationToType(*proto.getReturnType());
         }
 
-        // Compute qualified name
-        sun::QualifiedName qualifiedName = makeQualifiedName(proto.getName());
-        qualifiedName.setParamSuffix(paramTypes);
+        // Compute qualified name. C externs bind to a fixed symbol: no
+        // module scope, no overload suffix (see getFunctionInfo).
+        sun::QualifiedName qualifiedName =
+            func.isCExtern() ? sun::QualifiedName({}, proto.getName())
+                            : makeQualifiedName(proto.getName());
+        if (!func.isCExtern()) qualifiedName.setParamSuffix(paramTypes);
 
         // Build minimal FunctionInfo (no captures — those require body
         // analysis)
@@ -145,6 +148,8 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
         info.paramTypes = std::move(paramTypes);
         info.qualifiedName = qualifiedName;
         info.canThrow = proto.canThrow();
+        info.isCVariadic = proto.isCVariadic();
+        info.isCExtern = func.isCExtern();
 
         registernFunctionInCurrentScope(qualifiedName.baseName, info);
         break;
@@ -173,13 +178,16 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
               returnType = typeAnnotationToType(*proto.getReturnType());
             }
             sun::QualifiedName qualifiedName =
-                makeQualifiedName(proto.getName());
-            qualifiedName.setParamSuffix(paramTypes);
+                func.isCExtern() ? sun::QualifiedName({}, proto.getName())
+                                : makeQualifiedName(proto.getName());
+            if (!func.isCExtern()) qualifiedName.setParamSuffix(paramTypes);
             FunctionInfo info;
             info.returnType = returnType;
             info.paramTypes = std::move(paramTypes);
             info.qualifiedName = qualifiedName;
             info.canThrow = proto.canThrow();
+            info.isCVariadic = proto.isCVariadic();
+            info.isCExtern = func.isCExtern();
             registernFunctionInCurrentScope(qualifiedName.baseName, info);
           }
         }
@@ -220,13 +228,17 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
                   returnType = typeAnnotationToType(*proto.getReturnType());
                 }
                 sun::QualifiedName qualifiedName =
-                    makeQualifiedName(proto.getName());
-                qualifiedName.setParamSuffix(paramTypes);
+                    func.isCExtern() ? sun::QualifiedName({}, proto.getName())
+                                    : makeQualifiedName(proto.getName());
+                if (!func.isCExtern())
+                  qualifiedName.setParamSuffix(paramTypes);
                 FunctionInfo info;
                 info.returnType = returnType;
                 info.paramTypes = std::move(paramTypes);
                 info.qualifiedName = qualifiedName;
                 info.canThrow = proto.canThrow();
+                info.isCVariadic = proto.isCVariadic();
+            info.isCExtern = func.isCExtern();
                 registernFunctionInCurrentScope(qualifiedName.baseName, info);
               }
             }

@@ -369,9 +369,15 @@ static bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
   return false;
 }
 
-std::optional<FunctionInfo> SemanticScopeBase::lookupFunction(
+// Resolve an overload against this scope's own function table only, without
+// walking to parents. Module-qualified calls need this: the callee's scope is
+// already known, and walking up from it would let unrelated same-named
+// functions in enclosing scopes win.
+std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
     const std::string& name,
     const std::vector<sun::TypePtr>& argTypes) const {
+  const FunctionTable& funcs = functions;
+
   std::string sig = name + "(";
   for (size_t i = 0; i < argTypes.size(); ++i) {
     if (i > 0) sig += ",";
@@ -380,9 +386,7 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunction(
   sig += ")";
   std::string prefix = name + "(";
 
-  // Helper lambda to check compatible overloads in a FunctionTable
-  auto findCompatible =
-      [&](const FunctionTable& funcs) -> std::optional<FunctionInfo> {
+  {
     // Try exact match first
     auto it = funcs.find(sig);
     if (it != funcs.end()) return it->second;
@@ -393,10 +397,15 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunction(
       auto* overloads = funcs.getOverloads(baseName);
       if (!overloads) return std::nullopt;
       for (const auto* info : *overloads) {
-        if (info->paramTypes.size() != argTypes.size()) continue;
+        // A C-variadic callee only fixes its leading parameters; anything
+        // past them is checked by the C side, not here.
+        if (info->isCVariadic ? argTypes.size() < info->paramTypes.size()
+                              : info->paramTypes.size() != argTypes.size()) {
+          continue;
+        }
 
         bool compatible = true;
-        for (size_t i = 0; i < argTypes.size(); ++i) {
+        for (size_t i = 0; i < info->paramTypes.size(); ++i) {
           if (!argTypes[i] || !info->paramTypes[i]) {
             compatible = false;
             break;
@@ -473,11 +482,15 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunction(
 
     std::string baseName = prefix.substr(0, prefix.size() - 1);
     return checkOverloads(baseName);
-  };
+  }
+}
 
+std::optional<FunctionInfo> SemanticScopeBase::lookupFunction(
+    const std::string& name,
+    const std::vector<sun::TypePtr>& argTypes) const {
   auto findInScope =
       [&](const SemanticScopeBase* scope) -> std::optional<FunctionInfo> {
-    return findCompatible(scope->functions);
+    return scope->lookupFunctionLocal(name, argTypes);
   };
 
   // Walk scope chain

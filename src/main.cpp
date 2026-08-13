@@ -38,7 +38,14 @@ static void printUsage(const char* programName) {
   llvm::errs() << "  --emit-moon       Compile to .moon precompiled library\n";
   llvm::errs() << "                    Use manifest { suns: [...] } to specify "
                   "files to include\n";
-  llvm::errs() << "  --lib-path <dir>  Add directory to library search path\n";
+  llvm::errs() << "  --lib-path <dir>  Add directory to .moon library search "
+                  "path\n";
+  llvm::errs() << "  -l<name>          Link against native library <name> "
+                  "(e.g. -lm)\n";
+  llvm::errs() << "                    Used for C FFI: linked when compiling, "
+                  "loaded when JITing\n";
+  llvm::errs() << "  -L<dir>           Add directory to the native library "
+                  "search path\n";
   llvm::errs() << "  --moon <spec>     Load precompiled .moon library\n";
   llvm::errs() << "                    Format: path.moon or "
                   "path.moon:module=alias\n";
@@ -276,6 +283,7 @@ int main(int argc, char* argv[]) {
   std::string outputFile;
   std::vector<std::string> inputFiles;
   std::vector<std::string> libPaths;
+  sun::LinkOptions linkOpts;
   std::vector<sun::MoonImport> moonImports;
   bool compileMode = false;
   bool emitObjOnly = false;
@@ -307,6 +315,14 @@ int main(int argc, char* argv[]) {
       debugMode = true;
     } else if (arg == "--lib-path" && i + 1 < argc) {
       libPaths.push_back(argv[++i]);
+    } else if (arg == "-l" && i + 1 < argc) {
+      linkOpts.libraries.push_back(argv[++i]);
+    } else if (arg.rfind("-l", 0) == 0 && arg.size() > 2) {
+      linkOpts.libraries.push_back(arg.substr(2));
+    } else if (arg == "-L" && i + 1 < argc) {
+      linkOpts.searchPaths.push_back(argv[++i]);
+    } else if (arg.rfind("-L", 0) == 0 && arg.size() > 2) {
+      linkOpts.searchPaths.push_back(arg.substr(2));
     } else if (arg == "--moon" && i + 1 < argc) {
       auto moonImport = sun::parseMoonImportSpec(argv[++i]);
       if (!moonImport) {
@@ -487,8 +503,9 @@ int main(int argc, char* argv[]) {
         success =
             sun::emitObjectFile(driver->getModule(), outputFile, errorMsg);
       } else {
-        success =
-            sun::compileToExecutable(driver->getModule(), outputFile, errorMsg);
+        success = sun::compileToExecutable(driver->getModule(), outputFile,
+                                           errorMsg, /*keepObjectFile=*/false,
+                                           linkOpts);
       }
 
       if (!success) {
@@ -508,6 +525,18 @@ int main(int argc, char* argv[]) {
   }
 
   // JIT execution mode (default)
+  // dlopen any -l libraries into this process first: the JIT resolves extern
+  // symbols by searching the current process, so they have to be loaded
+  // before the module referencing them is materialized.
+  // A library that fails to load is only a warning: libc/libm are already
+  // resident (and glibc's libm.so is a linker script dlopen cannot read), so
+  // their symbols resolve anyway. If one is genuinely missing, the JIT
+  // reports the unresolved symbol with more precision than a guess here.
+  for (const auto& lib : sun::loadDynamicLibraries(linkOpts)) {
+    llvm::errs() << "Warning: could not load library '" << lib
+                 << "'; continuing in case its symbols are already present\n";
+  }
+
   try {
     auto driver = Driver::createForJIT("main_module");
     driver->setDumpIR(emitIR);

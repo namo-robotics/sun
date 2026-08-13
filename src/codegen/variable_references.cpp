@@ -284,7 +284,31 @@ Value* CodegenVisitor::codegen(const VariableAssignmentAST& expr) {
                                         valueAlloca, "closure.load");
       }
     }
-    ctx.builder->CreateStore(value, alloca);
+
+    // Assigning to a class variable, where codegen of the right-hand side
+    // yields an address rather than the struct itself. Storing that address
+    // would write a pointer over the object's leading bytes — silently, since
+    // a two-word class is exactly pointer-sized.
+    if (varType && varType->isClass() && value->getType()->isPointerTy()) {
+      // Self-assignment would deinit the object and then copy from the
+      // corpse; it has no effect, so emit nothing.
+      if (value == alloca) return value;
+
+      auto* classType = static_cast<sun::ClassType*>(varType.get());
+
+      // The value being overwritten reaches the end of its life here, so it
+      // is deinitialized exactly as it would be at scope exit.
+      emitDeinitCall(classType, alloca);
+      emitFieldDeinit(alloca, classType, expr.getName());
+
+      // Assignment moves, which the borrow checker already enforces (it
+      // rejects use of the source afterwards). applyMoveSemantics loads the
+      // struct and zeroes the source so its own deinit becomes a no-op,
+      // matching how by-value arguments are handled.
+      value = applyMoveSemantics(value, varType);
+    }
+
+    storeIntoSlot(alloca, value, varType);
     return value;
   }
 

@@ -63,6 +63,8 @@ class ASTDeserializer {
       const ast::StringLiteral& proto) const;
   std::unique_ptr<ExprAST> deserializeNull(const ast::NullLiteral& proto) const;
   std::unique_ptr<ExprAST> deserializeBool(const ast::BoolLiteral& proto) const;
+  std::unique_ptr<ExprAST> deserializeStructLiteral(
+      const ast::StructLiteral& proto) const;
   std::unique_ptr<ExprAST> deserializeArray(
       const ast::ArrayLiteral& proto) const;
 

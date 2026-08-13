@@ -48,6 +48,11 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       break;
     }
 
+    case ASTNodeType::STRUCT_LITERAL: {
+      analyzeStructLiteral(static_cast<StructLiteralAST&>(expr), expectedType);
+      break;
+    }
+
     case ASTNodeType::ARRAY_LITERAL: {
       auto& arrLit = static_cast<ArrayLiteralAST&>(expr);
       // Analyze each element
@@ -1505,7 +1510,8 @@ void SemanticAnalyzer::validateNotReserved(const std::string& name,
 // -------------------------------------------------------------------
 
 std::vector<sun::TypePtr> SemanticAnalyzer::validateAndResolveParamTypes(
-    PrototypeAST& proto, std::optional<Position> loc) {
+    PrototypeAST& proto, std::optional<Position> loc,
+    bool allowByValueObjects) {
   // Validate parameter names
   for (const auto& argName : proto.getArgNames()) {
     validateNotReserved(argName, "Parameter name", loc);
@@ -1518,7 +1524,9 @@ std::vector<sun::TypePtr> SemanticAnalyzer::validateAndResolveParamTypes(
 
     // Check for compound types being passed by value
     if constexpr (sun::Config::REQUIRE_REF_FOR_COMPOUND_PARAMS) {
-      if (paramType && paramType->isCompound()) {
+      // C externs are exempt: passing a struct by value is what the C ABI
+      // specifies, so it is the callee's signature rather than a Sun choice.
+      if (!allowByValueObjects && paramType && paramType->isCompound()) {
         // Error: compound types must be passed by reference
         logAndThrowError("Parameter '" + argName + "' has compound type '" +
                              paramType->toString() +
@@ -1551,8 +1559,10 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
   // Build captures using current scope information
   std::vector<Capture> captures = buildCaptures(func);
 
-  // Validate and resolve parameter types
-  std::vector<sun::TypePtr> paramTypes = validateAndResolveParamTypes(proto);
+  // Validate and resolve parameter types. Only C externs may take objects by
+  // value; see validateAndResolveParamTypes.
+  std::vector<sun::TypePtr> paramTypes = validateAndResolveParamTypes(
+      proto, func.getLocation(), /*allowByValueObjects=*/func.isCExtern());
 
   // Resolve return type if specified; Void for constructors (no return type)
   sun::TypePtr returnType = sun::Types::Void();
@@ -1569,15 +1579,23 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
   // nested functions). Precompiled stubs have pre-set qualified names with
   // content hash for symbol isolation.
   sun::QualifiedName qualifiedName;
-  if (proto.hasQualifiedName()) {
+  if (func.isCExtern()) {
+    // C externs bind to a fixed symbol: no module scope, no overload suffix.
+    // This stays the Sun-side name — name resolution rewrites references
+    // through it — and codegen maps it to the C symbol when `as "name"`
+    // renames the import.
+    qualifiedName = sun::QualifiedName({}, proto.getName());
+  } else if (proto.hasQualifiedName()) {
     qualifiedName = proto.getQualifiedName();
   } else {
     qualifiedName = makeQualifiedName(proto.getName());
   }
 
   // Add param type suffix for overload disambiguation (unified with methods)
-  // Skip for 'main' — it's an entry point with a fixed ABI name.
-  if (qualifiedName.paramSuffix.empty() && proto.getName() != "main") {
+  // Skip for 'main' — it's an entry point with a fixed ABI name — and for
+  // externs, whose ABI name is fixed by C.
+  if (qualifiedName.paramSuffix.empty() && proto.getName() != "main" &&
+      !func.isCExtern()) {
     qualifiedName.setParamSuffix(paramTypes);
   }
 
@@ -1587,6 +1605,8 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
   info.captures = std::move(captures);
   info.qualifiedName = qualifiedName;
   info.canThrow = proto.canThrow();
+  info.isCVariadic = proto.isCVariadic();
+  info.isCExtern = func.isCExtern();
   return info;
 }
 
@@ -1681,6 +1701,182 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
 // Function body analysis
 // -------------------------------------------------------------------
 
+void SemanticAnalyzer::analyzeStructLiteral(StructLiteralAST& literal,
+                                            const sun::TypePtr& expectedType) {
+  if (!expectedType || !expectedType->isClass()) {
+    logAndThrowError(
+        "A '{ field: value }' literal needs a known class type. Annotate the "
+        "target, as in `var x: MyClass = { ... };`.",
+        literal.getLocation());
+    return;
+  }
+
+  auto* classType = static_cast<sun::ClassType*>(expectedType.get());
+
+  // A class with its own init is constructed through it; allowing both would
+  // give two ways to build one object with different invariants.
+  if (classType->getMethod("init")) {
+    logAndThrowError("Class '" + classType->getDisplayName() +
+                         "' declares an 'init', so construct it with "
+                         "'" + classType->getDisplayName() +
+                         "(...)' rather than a '{ field: value }' literal.",
+                     literal.getLocation());
+    return;
+  }
+
+  std::set<std::string> seen;
+  for (auto& field : literal.getMutableFields()) {
+    const sun::ClassField* classField = classType->getField(field.name);
+    if (!classField) {
+      logAndThrowError("Class '" + classType->getDisplayName() +
+                           "' has no field '" + field.name + "'",
+                       field.location);
+      continue;
+    }
+    if (!seen.insert(field.name).second) {
+      logAndThrowError("Field '" + field.name +
+                           "' is initialized more than once",
+                       field.location);
+      continue;
+    }
+
+    analyzeExpr(*field.value, classField->type);
+    sun::TypePtr valueType = field.value->getResolvedType();
+    if (valueType && classField->type &&
+        !isAssignableTo(valueType, classField->type)) {
+      if (!tryCoerceIntegerLiteral(field.value.get(), classField->type,
+                                   false)) {
+        logAndThrowError("Cannot initialize field '" + field.name +
+                             "' of type '" +
+                             classField->type->toDisplayString() +
+                             "' with a value of type '" +
+                             valueType->toDisplayString() + "'",
+                         field.location);
+      }
+    }
+  }
+
+  // Every field must be named. A field left out would silently be zero, which
+  // is exactly the class of bug this syntax exists to prevent.
+  std::string missing;
+  for (const auto& classField : classType->getFields()) {
+    if (seen.count(classField.name)) continue;
+    if (!missing.empty()) missing += ", ";
+    missing += classField.name;
+  }
+  if (!missing.empty()) {
+    logAndThrowError("Struct literal for '" + classType->getDisplayName() +
+                         "' is missing field(s): " + missing,
+                     literal.getLocation());
+  }
+
+  literal.setResolvedType(expectedType);
+}
+
+void SemanticAnalyzer::checkExternCallAllowed(const FunctionInfo& info,
+                                              const std::string& displayName,
+                                              const Position& loc) const {
+  if (!info.isCExtern || isInUnsafeBlock()) return;
+  logAndThrowError(
+      "Calling extern function '" + displayName +
+          "' requires an unsafe block: C code is outside the borrow "
+          "checker's guarantees. Wrap the call in `unsafe { ... }`, or "
+          "expose it through a safe Sun wrapper.",
+      loc);
+}
+
+const FunctionInfo* SemanticAnalyzer::resolveModuleQualifiedCall(
+    const MemberAccessAST& memberAccess, const sun::TypePtr& objectType,
+    const std::vector<sun::TypePtr>& argTypes) const {
+  if (!objectType || !objectType->isModule()) return nullptr;
+
+  auto* moduleType = static_cast<sun::ModuleType*>(objectType.get());
+  SymbolMatch match =
+      findSymbolInModule(moduleType->getModulePath(),
+                         memberAccess.getMemberName(), SymbolKind::Function,
+                         &argTypes);
+  if (!match || !match.functionInfo) return nullptr;
+
+  checkExternCallAllowed(*match.functionInfo, memberAccess.getMemberName(),
+                         memberAccess.getLocation());
+  memberAccess.setResolvedQualifiedName(
+      match.functionInfo->qualifiedName.mangled());
+  return match.functionInfo;
+}
+
+void SemanticAnalyzer::validateExternSignature(FunctionAST& func) {
+  const PrototypeAST& proto = func.getProto();
+
+  // C varargs only make sense at a C boundary — a Sun function body has no
+  // way to read them (no va_arg), so allowing `...` there would compile to a
+  // signature nothing can use.
+  if (proto.hasVariadicParam()) {
+    logAndThrowError("Extern function '" + proto.getName() +
+                         "' cannot use a named variadic pack; use C varargs "
+                         "('...') instead",
+                     func.getLocation());
+  }
+
+  auto describe = [](const sun::TypePtr& t) {
+    return t ? t->toString() : std::string("<unresolved>");
+  };
+
+  // What codegen can lower to a C-compatible signature:
+  //  - primitives, which map 1:1
+  //  - raw_ptr<T>, a bare pointer
+  //  - ref T, which also lowers to a bare pointer and so *is* C's `T*`.
+  //    Class layout already matches C (declaration order, natural padding),
+  //    so `ref SomeClass` is exactly `struct SomeClass*`.
+  //  - classes by value, via SysV eightbyte classification (see sysv_abi.h)
+  // Still excluded are the types with no C spelling at all: arrays and slices
+  // (fat pointers), interfaces (vtable pairs), lambdas (closures), and
+  // error unions.
+  auto isABISafeParam = [](const sun::TypePtr& t) {
+    return t && (t->isPrimitive() || t->isRawPointer() || t->isReference() ||
+                 t->isClass() || t->isEnum());
+  };
+  // Returns allow the same, minus `ref`: Sun's ref return has auto-deref
+  // semantics that do not correspond to anything C returns. Use raw_ptr<T>
+  // for a returned pointer.
+  auto isABISafeReturn = [](const sun::TypePtr& t) {
+    return t && (t->isPrimitive() || t->isRawPointer() || t->isClass() ||
+                 t->isEnum());
+  };
+
+  if (proto.hasResolvedParamTypes()) {
+    const auto& params = proto.getResolvedParamTypes();
+    for (size_t i = 0; i < params.size(); ++i) {
+      if (params[i] && params[i]->isVoid()) {
+        logAndThrowError("Parameter '" + proto.getArgs()[i].first +
+                             "' of extern function '" + proto.getName() +
+                             "' cannot be void",
+                         func.getLocation());
+      }
+      if (!isABISafeParam(params[i])) {
+        logAndThrowError(
+            "Parameter '" + proto.getArgs()[i].first +
+                "' of extern function '" + proto.getName() + "' has type '" +
+                describe(params[i]) +
+                "', which has no C equivalent. Extern parameters must be a "
+                "primitive, an enum, raw_ptr<T>, ref T (which is C's T*), or "
+                "a class (passed by value per the C ABI).",
+            func.getLocation());
+      }
+    }
+  }
+
+  if (proto.hasResolvedReturnType() &&
+      !isABISafeReturn(proto.getResolvedReturnType())) {
+    logAndThrowError(
+        "Extern function '" + proto.getName() + "' returns '" +
+            describe(proto.getResolvedReturnType()) +
+            "', which has no C equivalent. Extern return types must be a "
+            "primitive, an enum, raw_ptr<T>, or a class. Note that `ref T` "
+            "cannot be returned; use raw_ptr<T>.",
+        func.getLocation());
+  }
+}
+
 void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
   PrototypeAST& proto = const_cast<PrototypeAST&>(func.getProto());
 
@@ -1691,7 +1887,17 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
                            "' must have an explicit return type",
                        func.getLocation());
     }
+    if (func.isCExtern()) validateExternSignature(func);
     return;
+  }
+
+  // Sun has no va_arg, so C varargs are only meaningful on an extern
+  // declaration where the callee is C code.
+  if (proto.isCVariadic()) {
+    logAndThrowError("C varargs ('...') are only allowed on 'extern function' "
+                     "declarations; '" +
+                         proto.getName() + "' has a body",
+                     func.getLocation());
   }
 
   // Compute function signature from qualified name and resolved param types
@@ -2360,6 +2566,8 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
 
     resolvedFunc = lookupFunction(resolved.baseName, argTypes);
     if (resolvedFunc) {
+      checkExternCallAllowed(*resolvedFunc, varRef.getName(),
+                             callExpr.getLocation());
       // Set resolved type on the callee directly
       varRef.setResolvedType(sun::Types::Function(resolvedFunc->returnType,
                                                   resolvedFunc->paramTypes,
@@ -2396,6 +2604,9 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
               overloadsStr += overload.paramTypes[i]
                                   ? overload.paramTypes[i]->toDisplayString()
                                   : "unknown";
+            }
+            if (overload.isCVariadic) {
+              overloadsStr += overload.paramTypes.empty() ? "..." : ", ...";
             }
             overloadsStr += ")";
           }
@@ -2474,6 +2685,12 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
           memberAccess.setResolvedType(inferType(memberAccess));
         }
       }
+    } else if (const FunctionInfo* modFunc = resolveModuleQualifiedCall(
+                   memberAccess, objectType, argTypes)) {
+      // Module-qualified call: the overload is chosen from the argument
+      // types here. inferType() alone would only see the first overload.
+      memberAccess.setResolvedType(
+          sun::Types::Function(modFunc->returnType, modFunc->paramTypes));
     } else {
       // Not a class type (interface, module, ptr-to-class, builtin...).
       // Set the type directly (the object is already analyzed) instead of
@@ -2508,10 +2725,20 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
     const auto* initMethod = ct->getMethodForArgs("init", argTypes);
     if (initMethod) {
       paramTypes = initMethod->paramTypes;
+    } else if (!ct->getMethod("init") && !args.empty()) {
+      // No init at all, but arguments were supplied. Field-wise construction
+      // is spelled with a struct literal, where each field is named: relying
+      // on declaration order would silently change meaning if two same-typed
+      // fields were ever reordered.
+      logAndThrowError(
+          "Class '" + ct->toString() +
+              "' declares no 'init', so it cannot be constructed positionally."
+              " Use a struct literal naming each field: `var x: " +
+              ct->toString() + " = { ... };`",
+          callExpr.getLocation());
     } else if (ct->getMethod("init")) {
       // The class declares one or more init methods but none are compatible
-      // with the supplied arguments. (Classes with no init method fall back to
-      // the implicit field-wise constructor and are validated elsewhere.)
+      // with the supplied arguments.
       std::string argList;
       for (size_t i = 0; i < argTypes.size(); ++i) {
         if (i > 0) argList += ", ";
@@ -2523,14 +2750,19 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
     }
   }
 
-  // Check argument count
-  if (!paramTypes.empty() && args.size() != paramTypes.size()) {
+  // Check argument count. A C-variadic callee fixes only its leading
+  // parameters, so extra trailing arguments are allowed.
+  bool calleeIsCVariadic = resolvedFunc && resolvedFunc->isCVariadic;
+  bool badArgCount = calleeIsCVariadic ? args.size() < paramTypes.size()
+                                       : args.size() != paramTypes.size();
+  if (!paramTypes.empty() && badArgCount) {
     std::string funcName = "<unknown>";
     if (calleeASTType == ASTNodeType::VARIABLE_REFERENCE) {
       funcName = static_cast<const VariableReferenceAST&>(*callExpr.getCallee())
                      .getName();
     }
     logAndThrowError("Function '" + funcName + "' expects " +
+                         (calleeIsCVariadic ? "at least " : "") +
                          std::to_string(paramTypes.size()) +
                          " arguments, got " + std::to_string(args.size()),
                      callExpr.getLocation());

@@ -17,11 +17,20 @@ Value* CodegenVisitor::codegen(const BlockExprAST& block) {
     auto& funcAST = static_cast<FunctionAST&>(*expr);
     const PrototypeAST& proto = funcAST.getProto();
 
-    // Skip lambdas, generics, externs, closures, and functions already declared
+    // Skip lambdas, generics, closures, and functions already declared
     if (proto.getName().empty()) continue;
     if (proto.isGeneric()) continue;
-    if (funcAST.isExtern()) continue;
     if (proto.hasClosure()) continue;
+
+    // C externs declare under their raw C symbol, not a mangled name, so
+    // they can be called before their declaration appears in the file.
+    // `declare` forward declarations are skipped: the real definition later
+    // in the block supplies the mangled symbol.
+    if (funcAST.isCExtern()) {
+      codegenExternFunc(funcAST);
+      continue;
+    }
+    if (funcAST.isExtern()) continue;
 
     std::string funcName = proto.getMangledName();
     if (module->getFunction(funcName)) continue;

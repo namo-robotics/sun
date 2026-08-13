@@ -116,6 +116,7 @@ add_library(sun_lib
     src/ast/prototype_ast.cpp
     src/ast/call_expr_ast.cpp
     src/qualified_name.cpp
+    src/sysv_abi.cpp
     src/codegen.cpp
     src/driver.cpp
     src/codegen/codegen_visitor.cpp
@@ -131,6 +132,7 @@ add_library(sun_lib
     src/codegen/variable_references.cpp
     src/codegen/lvalues.cpp
     src/codegen/call_expressions.cpp
+    src/codegen/extern_c.cpp
     src/codegen/if_expressions.cpp
     src/codegen/match_expressions.cpp
     src/codegen/loops.cpp

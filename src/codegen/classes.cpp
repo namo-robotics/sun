@@ -1509,3 +1509,52 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
   logAndThrowError("Unknown generic call: " + funcName);
   return nullptr;
 }
+
+// -------------------------------------------------------------------
+// Struct literal codegen: { field: value, ... }
+// -------------------------------------------------------------------
+
+// Builds a class instance field by field. Semantic analysis has already
+// checked that the type is a class without an `init`, that every field is
+// named exactly once, and that the values are assignable — so this only has
+// to lay the bytes down. Returns the object's address, like other class-
+// valued expressions.
+Value* CodegenVisitor::codegen(const StructLiteralAST& expr) {
+  sun::TypePtr resolved = expr.getResolvedType();
+  if (!resolved || !resolved->isClass()) {
+    logAndThrowError("Struct literal has no resolved class type",
+                     expr.getLocation());
+    return nullptr;
+  }
+
+  auto* classType = static_cast<sun::ClassType*>(resolved.get());
+  llvm::StructType* structType = classType->getStructType(ctx.getContext());
+
+  Function* parentFunc = ctx.builder->GetInsertBlock()->getParent();
+  AllocaInst* alloca =
+      createEntryBlockAlloca(parentFunc, "struct.lit", structType);
+
+  // Every field is assigned below, so no zeroing pass is needed.
+  for (const auto& field : expr.getFields()) {
+    const sun::ClassField* classField = classType->getField(field.name);
+    if (!classField) continue;  // rejected in semantic analysis
+
+    Value* value = codegen(*field.value);
+    if (!value) return nullptr;
+
+    sun::TypePtr valueType = field.value->getResolvedType();
+    value = widenNumericIfNeeded(value, classField->type, valueType);
+
+    Value* fieldPtr = ctx.builder->CreateStructGEP(
+        structType, alloca, classField->index, field.name + ".ptr");
+    storeIntoSlot(fieldPtr, value, classField->type, classType);
+  }
+
+  // Track for deinit at scope exit unless ownership moves to a destination.
+  if (!expr.isMoved()) {
+    auto classTypePtr = std::make_shared<sun::ClassType>(*classType);
+    trackClassAllocation(alloca, "struct.lit", classTypePtr);
+  }
+
+  return alloca;
+}

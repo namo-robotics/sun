@@ -786,3 +786,84 @@ TEST(IsIntrinsicTest, nested_generic_function_definition) {
   )");
   EXPECT_EQ(value, 42);
 }
+
+// ============================================================================
+// _print_i64 — full 64-bit output
+// ============================================================================
+// _print_i64 used to sign-truncate to i32 and delegate to the i32 helper, so
+// any value outside the i32 range printed as garbage.
+
+static std::string capturePrintedOutput(const std::string& source) {
+  testing::internal::CaptureStdout();
+  executeString(source);
+  return testing::internal::GetCapturedStdout();
+}
+
+TEST(PrintI64Test, prints_value_above_i32_range) {
+  EXPECT_EQ(capturePrintedOutput(R"(
+    function main() i32 {
+        var big: i64 = 5000000000;
+        _print_i64(big);
+        return 0;
+    }
+  )"),
+            "5000000000");
+}
+
+TEST(PrintI64Test, prints_negative_value_below_i32_range) {
+  EXPECT_EQ(capturePrintedOutput(R"(
+    function main() i32 {
+        var big: i64 = 5000000000;
+        _print_i64(0 - big);
+        return 0;
+    }
+  )"),
+            "-5000000000");
+}
+
+TEST(PrintI64Test, prints_int64_max) {
+  EXPECT_EQ(capturePrintedOutput(R"(
+    function main() i32 {
+        var v: i64 = 9223372036854775807;
+        _print_i64(v);
+        return 0;
+    }
+  )"),
+            "9223372036854775807");
+}
+
+TEST(PrintI64Test, prints_int64_min) {
+  // Negating INT64_MIN overflows back to itself; digits are extracted with
+  // unsigned div/rem so the magnitude still comes out right.
+  EXPECT_EQ(capturePrintedOutput(R"(
+    function main() i32 {
+        var v: i64 = 9223372036854775807;
+        _print_i64(0 - v - 1);
+        return 0;
+    }
+  )"),
+            "-9223372036854775808");
+}
+
+TEST(PrintI64Test, prints_zero) {
+  EXPECT_EQ(capturePrintedOutput(R"(
+    function main() i32 {
+        var v: i64 = 0;
+        _print_i64(v);
+        return 0;
+    }
+  )"),
+            "0");
+}
+
+TEST(PrintI64Test, prints_small_values_unchanged) {
+  EXPECT_EQ(capturePrintedOutput(R"(
+    function main() i32 {
+        var v: i64 = 42;
+        _print_i64(v);
+        _print_i64(0 - v);
+        return 0;
+    }
+  )"),
+            "42-42");
+}

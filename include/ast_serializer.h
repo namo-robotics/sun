@@ -59,6 +59,8 @@ class ASTSerializer {
   void serializeNull(const NullLiteralAST& expr, ast::ASTNode* node) const;
   void serializeBool(const BoolLiteralAST& expr, ast::ASTNode* node) const;
   void serializeArray(const ArrayLiteralAST& expr, ast::ASTNode* node) const;
+  void serializeStructLiteral(const StructLiteralAST& expr,
+                              ast::ASTNode* node) const;
 
   void serializeSlice(const SliceExprAST& expr, ast::ASTNode* node) const;
   void serializeIndex(const IndexAST& expr, ast::ASTNode* node) const;

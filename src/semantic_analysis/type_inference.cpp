@@ -42,6 +42,17 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       return sun::Types::Bool();
     }
 
+    case ASTNodeType::STRUCT_LITERAL: {
+      // Set by analyzeStructLiteral from the expected type; a literal has no
+      // type of its own to infer.
+      if (auto resolved = expr.getResolvedType()) return resolved;
+      logAndThrowError(
+          "Cannot infer the type of a '{ field: value }' literal here; "
+          "annotate the target type.",
+          expr.getLocation());
+      return nullptr;
+    }
+
     case ASTNodeType::ARRAY_LITERAL: {
       const auto& arrLit = static_cast<const ArrayLiteralAST&>(expr);
       if (arrLit.getElements().empty()) {
@@ -288,6 +299,26 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
         if (classType) {
           // Stack-allocated class instantiation: ClassName(args...)
           return classType;
+        }
+      }
+
+      // Module-qualified call (mod.foo(...)): resolve the overload here,
+      // where the argument types are known. Inferring the callee alone can
+      // only see the first registered overload.
+      if (callExpr.getCallee()->getType() == ASTNodeType::MEMBER_ACCESS) {
+        const auto& memberAccess =
+            static_cast<const MemberAccessAST&>(*callExpr.getCallee());
+        sun::TypePtr objectType = inferType(*memberAccess.getObject());
+        if (objectType && objectType->isModule()) {
+          std::vector<sun::TypePtr> argTypes;
+          for (const auto& arg : callExpr.getArgs()) {
+            argTypes.push_back(inferType(*arg));
+          }
+          if (const FunctionInfo* info =
+                  resolveModuleQualifiedCall(memberAccess, objectType,
+                                             argTypes)) {
+            return info->returnType;
+          }
         }
       }
 
@@ -703,9 +734,14 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
       if (match) {
         // Set the resolved qualified name on the AST for codegen
         // e.g., "$d9b854ae$_sun_make_heap_allocator" for
-        // sun.make_heap_allocator
+        // sun.make_heap_allocator.
+        // Functions carry their own mangled name, which includes the overload
+        // param suffix; rebuilding it from the module path here would drop
+        // that suffix and reference a symbol codegen never emits.
         std::string resolvedName =
-            mangleModulePath(match.modulePath) + "_" + memberName;
+            match.kind == SymbolKind::Function && match.functionInfo
+                ? match.functionInfo->qualifiedName.mangled()
+                : mangleModulePath(match.modulePath) + "_" + memberName;
         memberAccess.setResolvedQualifiedName(resolvedName);
 
         switch (match.kind) {

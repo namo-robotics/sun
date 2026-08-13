@@ -26,6 +26,7 @@ message ASTNode {
     NullLiteral null_literal = 12;
     BoolLiteral bool_literal = 13;
     ArrayLiteral array_literal = 14;
+    StructLiteral struct_literal = 16;
     InterpolatedString interpolated_string = 15;
     
     // Indexing/slicing
@@ -118,6 +119,17 @@ message BoolLiteral {
 
 message ArrayLiteral {
   repeated ASTNode elements = 1;
+}
+
+message StructFieldInit {
+  string name = 1;
+  ASTNode value = 2;
+  optional Position location = 3;
+}
+
+// Struct literal: { color: "red", speed: 120 }
+message StructLiteral {
+  repeated StructFieldInit fields = 1;
 }
 
 // Template string segment: literal run or ${...} expression
@@ -312,12 +324,20 @@ message Prototype {
 
   // Optional analysis data
   optional PrototypeAnalysis analysis = 10;
+
+  bool c_variadic = 11;             // C-style trailing `...`
+  optional string link_name = 12;   // `as "c_symbol"` override
 }
 
 message FunctionDef {
   Prototype proto = 1;
   BlockExpr body = 2;
   string source_text = 3;  // Original source for generic specialization
+  // A bodyless `extern "C" function`. Without this the declaration comes back
+  // as an ordinary Sun function with an empty body and gets Sun name
+  // mangling, so the C symbol is lost.
+  bool is_c_extern = 4;
+  bool body_present = 5;  // Distinguishes "no body" from "empty body"
 }
 
 message LambdaExpr {

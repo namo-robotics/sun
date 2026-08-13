@@ -224,6 +224,10 @@ class Formatter {
         printType(*p.getVariadicConstraint());
       }
     }
+    if (p.isCVariadic()) {
+      if (!first) out_ += ", ";
+      out_ += "...";
+    }
     out_ += ')';
     // Span-less return types are parser-synthesized (init methods get an
     // implicit void); only source-spelled types are printed
@@ -236,12 +240,20 @@ class Formatter {
 
   void printFunction(const FunctionAST& f) {
     if (f.isExtern()) {
-      // Bodyless functions are `extern` or `declare` forward declarations;
-      // the AST doesn't distinguish them, but the span's first token does
-      std::string s = slice(f.getLocation());
-      out_ += s.rfind("declare", 0) == 0 ? "declare function "
-                                         : "extern function ";
+      // Bodyless functions are `extern` or `declare` forward declarations
+      if (f.isCExtern()) {
+        // Preserve an explicit ABI string; it is optional in the source and
+        // not stored on the AST, so recover it from the span.
+        std::string s = slice(f.getLocation());
+        out_ += s.rfind("extern \"C\"", 0) == 0 ? "extern \"C\" function "
+                                                : "extern function ";
+      } else {
+        out_ += "declare function ";
+      }
       printProtoSig(f.getProto());
+      if (f.getProto().hasLinkName()) {
+        out_ += " as \"" + f.getProto().getLinkName() + '"';
+      }
       return;  // ';' comes from needsSemicolon
     }
     out_ += "function ";
@@ -600,6 +612,20 @@ class Formatter {
         break;
       }
 
+      case ASTNodeType::STRUCT_LITERAL: {
+        const auto& lit = static_cast<const StructLiteralAST&>(e);
+        out_ += '{';
+        bool first = true;
+        for (const auto& field : lit.getFields()) {
+          out_ += first ? " " : ", ";
+          first = false;
+          out_ += field.name;
+          out_ += ": ";
+          printExpr(*field.value);
+        }
+        out_ += first ? "}" : " }";
+        break;
+      }
       case ASTNodeType::ARRAY_LITERAL: {
         const auto& n = static_cast<const ArrayLiteralAST&>(e);
         printExprList(n.getElements(), '[', ']', loc);
