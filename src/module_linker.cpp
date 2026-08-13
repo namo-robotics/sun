@@ -334,10 +334,13 @@ bool ModuleLinker::linkModuleRecursive(const std::string& moduleKey) {
     }
   }
 
-  // Ensure the library module has same data layout as target
+  // Ensure the library module has same data layout and triple as target
   // This avoids "Linking two modules of different data layouts" warnings
   if (libModule->getDataLayoutStr().empty()) {
     libModule->setDataLayout(target_.getDataLayout());
+  }
+  if (libModule->getTargetTriple().empty()) {
+    libModule->setTargetTriple(target_.getTargetTriple());
   }
 
   // Link into target

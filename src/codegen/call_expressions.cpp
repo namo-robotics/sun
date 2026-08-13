@@ -376,6 +376,22 @@ Function* CodegenVisitor::lookupCallTarget(const std::string& name) {
 // Helper: Materialize struct return value to caller's stack
 // -------------------------------------------------------------------
 
+Value* CodegenVisitor::emitMarshalledExternCall(
+    const CallExprAST& expr, const std::vector<sun::TypePtr>& paramTypes,
+    Function* func) {
+  std::vector<sun::cabi::PreparedArg> preparedArgs;
+  if (!buildExternCallArgs(expr, paramTypes, preparedArgs)) return nullptr;
+  return externC.emitCall(
+      func, preparedArgs,
+      [&](llvm::FunctionType* fnTy, Value* callee,
+          llvm::ArrayRef<Value*> callArgs) {
+        return emitPossiblyThrowingCall(
+            fnTy, callee,
+            std::vector<Value*>(callArgs.begin(), callArgs.end()),
+            func->hasFnAttribute("sun.canthrow"), "calltmp");
+      });
+}
+
 Value* CodegenVisitor::materializeStructReturn(Value* callResult) {
   if (!callResult || !callResult->getType()->isStructTy()) {
     return callResult;
@@ -626,6 +642,13 @@ Value* CodegenVisitor::codegenModuleFunctionCall(
       paramTypes =
           static_cast<sun::FunctionType*>(calleeType.get())->getParamTypes();
     }
+  }
+
+  // An extern "C" target whose signature needed ABI rewriting must be
+  // marshalled, exactly as in codegenFunctionCall — its LLVM parameters no
+  // longer line up with the Sun arguments.
+  if (externC.needsMarshalling(func)) {
+    return emitMarshalledExternCall(expr, paramTypes, func);
   }
 
   std::vector<Value*> argValues;
@@ -1319,17 +1342,7 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
   // normal path: its LLVM parameters no longer line up with the Sun arguments
   // one-to-one. Hand the prepared values to the extern-C emitter instead.
   if (externC.needsMarshalling(func)) {
-    std::vector<sun::cabi::PreparedArg> preparedArgs;
-    if (!buildExternCallArgs(expr, paramTypes, preparedArgs)) return nullptr;
-    return externC.emitCall(
-        func, preparedArgs,
-        [&](llvm::FunctionType* fnTy, Value* callee,
-            llvm::ArrayRef<Value*> callArgs) {
-          return emitPossiblyThrowingCall(
-              fnTy, callee, std::vector<Value*>(callArgs.begin(),
-                                                callArgs.end()),
-              func->hasFnAttribute("sun.canthrow"), "calltmp");
-        });
+    return emitMarshalledExternCall(expr, paramTypes, func);
   }
 
   if (!buildDirectCallArgs(expr, paramTypes, func, argValues)) return nullptr;

@@ -23,6 +23,9 @@ class SunJIT {
   std::unique_ptr<ExecutionSession> ES;
 
   DataLayout DL;
+  // Captured before JTMB is moved into the compile layer; codegen stamps it
+  // onto the module so C ABI classification knows the target.
+  Triple TT;
   MangleAndInterner Mangle;
 
   RTDyldObjectLinkingLayer ObjectLayer;
@@ -35,6 +38,7 @@ class SunJIT {
          DataLayout DL)
       : ES(std::move(ES)),
         DL(std::move(DL)),
+        TT(JTMB.getTargetTriple()),
         Mangle(*this->ES, this->DL),
         ObjectLayer(*this->ES,
                     []() { return std::make_unique<SectionMemoryManager>(); }),
@@ -44,7 +48,7 @@ class SunJIT {
     MainJD.addGenerator(
         cantFail(DynamicLibrarySearchGenerator::GetForCurrentProcess(
             DL.getGlobalPrefix())));
-    if (JTMB.getTargetTriple().isOSBinFormatCOFF()) {
+    if (TT.isOSBinFormatCOFF()) {
       ObjectLayer.setOverrideObjectFlagsWithResponsibilityFlags(true);
       ObjectLayer.setAutoClaimResponsibilityForObjectSymbols(true);
     }
@@ -71,6 +75,8 @@ class SunJIT {
   }
 
   const DataLayout& getDataLayout() const { return DL; }
+
+  const Triple& getTargetTriple() const { return TT; }
 
   JITDylib& getMainJITDylib() { return MainJD; }
 

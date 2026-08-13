@@ -33,20 +33,22 @@ into work users can do without us.
 - [x] C struct interop — class layout already matches C, and `ref T` is C's
       `T*`; structs by value work too
 - [x] Calling conventions — System V eightbyte classification with
-      byval/sret and register coercion (`include/sysv_abi.h`)
+      byval/sret and register coercion (`include/abi/sysv_x86_64.h`)
 - [x] Extern declarations in `.moon` libraries
 - [x] Safety story — calling an extern requires an `unsafe` block, matching
       the rule the equivalent intrinsics already follow
-- [ ] Cross-target ABIs: classification is x86-64 System V only; AArch64
-      needs its own rules (blocks *Cross-Compilation* below)
+- [x] Cross-target ABIs: per-target classification behind a triple dispatch
+      (`include/abi/c_abi.h`); AArch64 AAPCS64 (ELF) implemented with
+      HFA/register/indirect rules (`include/abi/aapcs64.h`)
 
 ### Cross-Compilation
 
-The driver is host-only; there is no target-triple handling anywhere. An embedded
-and robotics language that cannot target ARM from an x86 dev machine is unusable
-for its stated audience.
+An embedded and robotics language that cannot target ARM from an x86 dev machine
+is unusable for its stated audience. `--target <triple>` now emits cross objects
+and IR; linking, sysroots and cross `.moon` artifacts remain host-only.
 
-- [ ] `--target <triple>` in the driver
+- [x] `--target <triple>` in the driver (object/IR emission only; requires
+      `--emit-obj`)
 - [ ] Sysroot / linker configuration per target
 - [ ] Cross-compiled stdlib `.moon` artifacts
 - [ ] Static binary linking

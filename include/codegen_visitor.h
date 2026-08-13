@@ -396,6 +396,14 @@ class CodegenVisitor {
                            const std::vector<sun::TypePtr>& paramTypes,
                            std::vector<sun::cabi::PreparedArg>& out);
 
+  // Emit a call to a C function whose signature needed ABI rewriting: its
+  // LLVM parameters no longer line up one-to-one with the Sun arguments, so
+  // the normal argument path cannot be used. Shared by plain and
+  // module-qualified call sites.
+  llvm::Value* emitMarshalledExternCall(
+      const CallExprAST& expr, const std::vector<sun::TypePtr>& paramTypes,
+      llvm::Function* func);
+
   // Load through a reference-typed return value (refs behave like values)
   llvm::Value* derefIfRefReturn(llvm::Value* result,
                                 const sun::TypePtr& returnType);

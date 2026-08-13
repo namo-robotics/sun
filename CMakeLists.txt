@@ -116,7 +116,9 @@ add_library(sun_lib
     src/ast/prototype_ast.cpp
     src/ast/call_expr_ast.cpp
     src/qualified_name.cpp
-    src/sysv_abi.cpp
+    src/abi/aapcs64.cpp
+    src/abi/c_abi.cpp
+    src/abi/sysv_x86_64.cpp
     src/codegen.cpp
     src/driver.cpp
     src/codegen/codegen_visitor.cpp

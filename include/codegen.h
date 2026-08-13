@@ -1,6 +1,7 @@
 #pragma once
 
 #include <map>
+#include <stdexcept>
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/STLExtras.h"
@@ -52,14 +53,19 @@ class CodegenContext {
  private:
   std::string moduleName;
   bool ownsContext = true;  // Whether this context owns its LLVMContext
+  // AOT cross-compilation target; empty means the host (JIT ignores it —
+  // it can only ever execute on the host).
+  std::string targetTriple_;
 
  public:
   explicit CodegenContext(std::string moduleName,
                           const std::shared_ptr<SunJIT>& jit,
-                          LLVMContext* existingContext = nullptr)
+                          LLVMContext* existingContext = nullptr,
+                          std::string targetTriple = "")
       : moduleName(std::move(moduleName)),
         jit(jit),
-        ownsContext(existingContext == nullptr) {
+        targetTriple_(std::move(targetTriple)) {
+    ownsContext = existingContext == nullptr;
     if (existingContext) {
       initializeModule(*existingContext);
     } else {
@@ -99,6 +105,14 @@ class CodegenContext {
     InitializeNativeTarget();
     InitializeNativeTargetAsmPrinter();
     InitializeNativeTargetAsmParser();
+    if (!targetTriple_.empty()) {
+      // Cross-compiling: the requested backend is not the native one.
+      InitializeAllTargetInfos();
+      InitializeAllTargets();
+      InitializeAllTargetMCs();
+      InitializeAllAsmPrinters();
+      InitializeAllAsmParsers();
+    }
 
     si->registerCallbacks(*pic, mam.get());
 
@@ -115,15 +129,25 @@ class CodegenContext {
 
     if (jit) {
       mainModule->setDataLayout(jit->getDataLayout());
+      // C ABI classification dispatches on the triple, not just the layout.
+      mainModule->setTargetTriple(jit->getTargetTriple().str());
     } else {
       // AOT: emitObjectFile sets the real layout, but only after codegen has
       // run. C ABI classification needs true field offsets while emitting,
       // and LLVM's default layout aligns i64 to 32 bits — which would make
       // `{i32, i64}` 12 bytes instead of 16 and misclassify it. Establish the
-      // host layout up front. Targets were initialized just above.
-      auto triple = llvm::sys::getDefaultTargetTriple();
+      // target's layout up front (host unless cross-compiling). Targets were
+      // initialized just above.
+      auto triple = targetTriple_.empty() ? llvm::sys::getDefaultTargetTriple()
+                                          : targetTriple_;
       std::string err;
-      if (const auto* target = llvm::TargetRegistry::lookupTarget(triple, err)) {
+      const auto* target = llvm::TargetRegistry::lookupTarget(triple, err);
+      if (!target && !targetTriple_.empty()) {
+        // Silently falling back to the host layout would miscompile the
+        // requested target; a bad --target is a hard error.
+        throw std::runtime_error("unknown target '" + triple + "': " + err);
+      }
+      if (target) {
         llvm::TargetOptions opt;
         if (auto* tm = target->createTargetMachine(triple, "generic", "", opt,
                                                    llvm::Reloc::PIC_)) {

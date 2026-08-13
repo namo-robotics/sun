@@ -1,10 +1,11 @@
-// sysv_abi.cpp — System V AMD64 argument classification. See sysv_abi.h.
+// abi/sysv_x86_64.cpp — System V AMD64 argument classification.
+// See abi/sysv_x86_64.h.
 
-#include "sysv_abi.h"
+#include "abi/sysv_x86_64.h"
 
 #include <algorithm>
 
-namespace sun::sysv {
+namespace sun::abi::sysv {
 
 namespace {
 
@@ -156,6 +157,7 @@ ArgLowering lowerAggregate(llvm::Type* type, const llvm::DataLayout& dl) {
       eb.usedBytes = std::min<uint64_t>(8, size - i * 8);
     }
     result.pieces.push_back(pieceType(eb, ctx));
+    result.pieceOffsets.push_back(i * 8);
   }
   return result;
 }
@@ -188,41 +190,4 @@ SignatureLowering lowerCSignature(llvm::Type* returnType,
   return lowering;
 }
 
-llvm::FunctionType* buildLoweredFunctionType(const SignatureLowering& lowering,
-                                             llvm::LLVMContext& ctx,
-                                             bool isVarArg) {
-  std::vector<llvm::Type*> params;
-  llvm::Type* retTy = nullptr;
-
-  if (lowering.ret.isIndirect()) {
-    // sret: the caller's buffer arrives as a hidden leading pointer and the
-    // function itself returns nothing.
-    params.push_back(llvm::PointerType::getUnqual(ctx));
-    retTy = llvm::Type::getVoidTy(ctx);
-  } else if (lowering.ret.isCoerced()) {
-    const auto& pieces = lowering.ret.pieces;
-    if (pieces.empty()) {
-      retTy = llvm::Type::getVoidTy(ctx);
-    } else if (pieces.size() == 1) {
-      retTy = pieces[0];
-    } else {
-      retTy = llvm::StructType::get(ctx, {pieces[0], pieces[1]});
-    }
-  } else {
-    retTy = lowering.ret.type ? lowering.ret.type : llvm::Type::getVoidTy(ctx);
-  }
-
-  for (const auto& p : lowering.params) {
-    if (p.isIndirect()) {
-      params.push_back(llvm::PointerType::getUnqual(ctx));
-    } else if (p.isCoerced()) {
-      for (llvm::Type* piece : p.pieces) params.push_back(piece);
-    } else {
-      params.push_back(p.type);
-    }
-  }
-
-  return llvm::FunctionType::get(retTy, params, isVarArg);
-}
-
-}  // namespace sun::sysv
+}  // namespace sun::abi::sysv

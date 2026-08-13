@@ -158,10 +158,14 @@ std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName) {
 }
 
 // Factory method for AOT compilation
-std::unique_ptr<Driver> Driver::createForAOT(const std::string& moduleName) {
+std::unique_ptr<Driver> Driver::createForAOT(const std::string& moduleName,
+                                             const std::string& targetTriple) {
   ensureLLVMInitialized();
 
-  auto ctx = std::make_unique<CodegenContext>(moduleName, nullptr);
+  auto ctx =
+      std::make_unique<CodegenContext>(moduleName, nullptr,
+                                       /*existingContext=*/nullptr,
+                                       targetTriple);
   auto typeRegistry = std::make_shared<sun::TypeRegistry>();
   auto codegenVisitor = std::make_unique<CodegenVisitor>(*ctx, typeRegistry);
   auto analyzer = std::make_unique<SemanticAnalyzer>(typeRegistry);

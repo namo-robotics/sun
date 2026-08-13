@@ -115,9 +115,10 @@ function main() i32 {
 }
 ```
 
-Structs by value work too, in both directions. The compiler applies System V
-argument classification, so a small struct travels in registers and a large one
-through memory, matching what a C compiler emits:
+Structs by value work too, in both directions. The compiler applies the
+target's C argument classification (x86-64 System V, or AAPCS64 when
+compiling for AArch64), so a small struct travels in registers and a large
+one through memory, matching what a C compiler emits:
 
 ```sun
 class Pair { var a: i32; var b: i32; }
@@ -196,8 +197,11 @@ published and consumed like any other Sun code.
 
 ## Limitations
 
-- Argument classification implements x86-64 System V only. Other targets need
-  their own rules.
+- Argument classification implements x86-64 System V and AArch64 AAPCS64
+  (ELF). Other targets — including Apple's AArch64 variant — are rejected at
+  compile time until they grow their own rules. Cross-compile with
+  `sun --target aarch64-linux-gnu --emit-obj -o out.o program.sun`; linking
+  the resulting object is done with your cross toolchain.
 - The borrow checker does not model a pointer escaping into C. Handing C a `ref`
   gives it an address with no lifetime tracking across the call — the `unsafe`
   block is the only marker.

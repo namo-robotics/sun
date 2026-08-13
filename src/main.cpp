@@ -32,6 +32,10 @@ static void printUsage(const char* programName) {
                   "or based on input)\n";
   llvm::errs() << "  -S                Emit assembly file\n";
   llvm::errs() << "  --emit-obj        Emit object file only (do not link)\n";
+  llvm::errs() << "  --target <triple> Cross-compile for <triple> (e.g. "
+                  "aarch64-linux-gnu)\n";
+  llvm::errs() << "                    Requires --emit-obj; cross linking is "
+                  "not supported yet\n";
   llvm::errs() << "  --emit-ir         Print LLVM IR to stdout\n";
   llvm::errs() << "  --debug           Generate debug output (ast.dot, ir.ll) "
                   "in <input>_debug/\n";
@@ -281,6 +285,7 @@ int main(int argc, char* argv[]) {
 
   // Parse command-line arguments
   std::string outputFile;
+  std::string targetTriple;
   std::vector<std::string> inputFiles;
   std::vector<std::string> libPaths;
   sun::LinkOptions linkOpts;
@@ -307,6 +312,8 @@ int main(int argc, char* argv[]) {
     } else if (arg == "--emit-obj") {
       compileMode = true;
       emitObjOnly = true;
+    } else if (arg == "--target" && i + 1 < argc) {
+      targetTriple = argv[++i];
     } else if (arg == "--emit-moon") {
       emitMoon = true;
     } else if (arg == "--emit-ir") {
@@ -342,6 +349,18 @@ int main(int argc, char* argv[]) {
       // Input file
       inputFiles.push_back(arg);
     }
+  }
+
+  // Cross-compilation stops at the object file: the JIT can only run host
+  // code, and cross linking / cross .moon artifacts are not supported yet.
+  if (!targetTriple.empty() && !emitObjOnly) {
+    llvm::errs() << "Error: --target requires --emit-obj (cross linking and "
+                    "JIT execution are host-only)\n";
+    return 1;
+  }
+  if (!targetTriple.empty() && emitMoon) {
+    llvm::errs() << "Error: --target cannot be combined with --emit-moon\n";
+    return 1;
   }
 
   // Initialize library cache
@@ -479,7 +498,7 @@ int main(int argc, char* argv[]) {
     llvm::outs() << "Compiling: " << inputFile << " -> " << outputFile << "\n";
 
     try {
-      auto driver = Driver::createForAOT("main_module");
+      auto driver = Driver::createForAOT("main_module", targetTriple);
       if (debugMode) {
         driver->setDebugMode(true, inputFile);
       }

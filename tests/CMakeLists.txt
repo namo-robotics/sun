@@ -31,6 +31,7 @@ add_executable(sun_tests
     test_enums.cpp
     test_errors.cpp
     test_ffi.cpp
+    test_aapcs64_abi.cpp
     test_sysv_abi.cpp
     test_struct_literals.cpp
     test_file_io.cpp

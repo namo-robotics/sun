@@ -111,9 +111,13 @@ inline std::vector<std::string> loadDynamicLibraries(const LinkOptions& opts) {
 /// Returns true on success, false on failure
 inline bool emitObjectFile(llvm::Module& module, const std::string& outputPath,
                            std::string& errorMsg) {
-  // Get target triple
-  auto targetTriple = llvm::sys::getDefaultTargetTriple();
-  module.setTargetTriple(targetTriple);
+  // Honor a triple codegen already chose (set by --target); default to the
+  // host otherwise.
+  std::string targetTriple = module.getTargetTriple();
+  if (targetTriple.empty()) {
+    targetTriple = llvm::sys::getDefaultTargetTriple();
+    module.setTargetTriple(targetTriple);
+  }
 
   // Lookup the target
   std::string error;
