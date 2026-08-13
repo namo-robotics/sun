@@ -25,9 +25,6 @@ struct OwnedAllocation {
   llvm::Value* ptrAlloca;  // Alloca storing the heap pointer
   std::string varName;     // Variable name (for debugging)
   bool moved;              // If true, ownership was transferred - don't free
-  bool isMmap;             // If true, use munmap instead of free
-  llvm::Value*
-      sizeAlloca;  // For mmap: alloca storing the size (munmap needs it)
   sun::TypePtr pointeeType;  // Type of the pointed-to object (for recursive
                              // field cleanup)
 };
@@ -79,12 +76,6 @@ struct FuncDeclResult {
 struct LoopContext {
   llvm::BasicBlock* continueBlock;  // Block to jump to for 'continue'
   llvm::BasicBlock* breakBlock;     // Block to jump to for 'break'
-};
-
-// Metadata for heap allocations (attached to LLVM values)
-struct AllocationMetadata {
-  bool isMmap;        // If true, use munmap instead of free
-  llvm::Value* size;  // For mmap: the size value (munmap needs it)
 };
 
 // Try block context for exception handling. Throwing calls made inside a try
@@ -158,10 +149,6 @@ class CodegenVisitor {
 
   // Current class being compiled (for method name resolution)
   std::shared_ptr<sun::ClassType> currentClass = nullptr;
-
-  // Allocation metadata for heap allocations (keyed by the pointer value)
-  // Used to track whether a value came from mmap vs malloc for cleanup
-  std::map<llvm::Value*, AllocationMetadata> allocationMetadata;
 
   // Vtable globals for interface dispatch.
   // Key is (className, interfaceName), value is the vtable global.
@@ -698,12 +685,10 @@ class CodegenVisitor {
 
   // Track a new owned allocation in current scope
   void trackOwnedAllocation(llvm::Value* ptrAlloca, const std::string& name,
-                            bool isMmap = false,
-                            llvm::Value* sizeAlloca = nullptr,
                             sun::TypePtr pointeeType = nullptr) {
     if (!scopes.empty()) {
       scopes.back().ownedAllocations.push_back(
-          {ptrAlloca, name, false, isMmap, sizeAlloca, pointeeType});
+          {ptrAlloca, name, false, pointeeType});
     }
   }
 
@@ -917,15 +902,13 @@ class CodegenVisitor {
 
   llvm::Value* createEnvClosure(StructType* envType, const PrototypeAST& proto);
 
-  // Built-in functions (raw syscalls, no libc)
+  // Built-in intrinsics (libc calls; see intrinsics/libc.h). The registry
+  // and dispatcher live in src/codegen/intrinsics/builtins.cpp; the codegen
+  // methods below live in the per-area files beside it.
   bool isBuiltinFunction(const std::string& name);
   llvm::Value* codegenBuiltin(const std::string& name, const CallExprAST& expr);
 
-  // Raw x86_64 syscall: write(fd, buf, len) -> bytes_written
-  llvm::Value* emitRawSyscallWrite(llvm::Value* fd, llvm::Value* buf,
-                                   llvm::Value* len);
-
-  // Print built-ins using raw syscalls
+  // Print built-ins
   llvm::Value* codegenPrintI32(const CallExprAST& expr);
   llvm::Value* codegenPrintI64(const CallExprAST& expr);
   llvm::Value* codegenPrintF64(const CallExprAST& expr);
@@ -933,7 +916,7 @@ class CodegenVisitor {
   llvm::Value* codegenPrintBytes(const CallExprAST& expr);
   llvm::Value* codegenPrintNewline();
 
-  // File I/O built-ins using raw syscalls
+  // File I/O built-ins
   llvm::Value* codegenFileOpen(const CallExprAST& expr);
   llvm::Value* codegenFileClose(const CallExprAST& expr);
   llvm::Value* codegenFileWrite(const CallExprAST& expr);
@@ -951,7 +934,7 @@ class CodegenVisitor {
   llvm::Value* codegenWrite(const CallExprAST& expr);
   llvm::Value* codegenRead(const CallExprAST& expr);
 
-  // Network socket built-ins using raw syscalls
+  // Network socket built-ins
   llvm::Value* codegenSocket(const CallExprAST& expr);
   llvm::Value* codegenBind(const CallExprAST& expr);
   llvm::Value* codegenListen(const CallExprAST& expr);

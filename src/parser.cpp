@@ -2530,27 +2530,46 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
   const std::string& moonPath = moonImport.path;
   std::string contentHash;
 
-  // Resolve the moon path
-  std::filesystem::path resolved;
-  if (std::filesystem::path(moonPath).is_absolute()) {
-    resolved = moonPath;
-  } else {
+  auto resolveOne = [&](const std::string& path) -> std::filesystem::path {
+    if (std::filesystem::path(path).is_absolute()) {
+      return std::filesystem::exists(path) ? std::filesystem::path(path)
+                                           : std::filesystem::path();
+    }
     // Check SUN_PATH directories
-    resolved = sun::SunPath::resolve(moonPath);
+    std::filesystem::path resolved = sun::SunPath::resolve(path);
     // Check system-wide installation paths
     if (resolved.empty()) {
-      auto sysPath = std::filesystem::path("/usr/lib/sun") / moonPath;
+      auto sysPath = std::filesystem::path("/usr/lib/sun") / path;
       if (std::filesystem::exists(sysPath)) {
         resolved = sysPath;
       }
     }
     // Fall back to resolving relative to current file's directory
     if (resolved.empty()) {
-      resolved = std::filesystem::path(baseDir) / moonPath;
+      auto local = std::filesystem::path(baseDir) / path;
+      if (std::filesystem::exists(local)) {
+        resolved = local;
+      }
     }
+    return resolved;
+  };
+
+  // When cross-compiling, a target-suffixed bundle shadows the requested
+  // name: "stdlib.moon" resolves to "stdlib-aarch64-linux-gnu.moon" first.
+  std::filesystem::path resolved;
+  const std::string& target = sun::LibraryCache::instance().getTargetTriple();
+  if (!target.empty()) {
+    std::filesystem::path p(moonPath);
+    auto suffixed =
+        p.parent_path() /
+        (p.stem().string() + "-" + target + p.extension().string());
+    resolved = resolveOne(suffixed.string());
+  }
+  if (resolved.empty()) {
+    resolved = resolveOne(moonPath);
   }
 
-  if (!std::filesystem::exists(resolved)) {
+  if (resolved.empty() || !std::filesystem::exists(resolved)) {
     logAndThrowError("Could not find moon file: " + moonPath);
     return nullptr;
   }

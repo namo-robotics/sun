@@ -44,13 +44,20 @@ into work users can do without us.
 ### Cross-Compilation
 
 An embedded and robotics language that cannot target ARM from an x86 dev machine
-is unusable for its stated audience. `--target <triple>` now emits cross objects
-and IR; linking, sysroots and cross `.moon` artifacts remain host-only.
+is unusable for its stated audience. `--target <triple>` compiles whole programs
+(stdlib included) for the target; intrinsics call libc rather than x86-64
+syscall assembly, so the emitted IR is target-neutral.
 
-- [x] `--target <triple>` in the driver (object/IR emission only; requires
-      `--emit-obj`)
-- [ ] Sysroot / linker configuration per target
-- [ ] Cross-compiled stdlib `.moon` artifacts
+- [x] `--target <triple>` in the driver (`--emit-obj`, `--emit-moon`, and `-c`
+      when a cross toolchain is installed)
+- [x] Sysroot / linker configuration per target (`--sysroot`; the link driver
+      is `<triple>-gcc`, then `clang --target`, overridable with `SUN_CC`)
+- [x] Cross-compiled stdlib `.moon` artifacts — bundles are target-stamped
+      (`.moon` format V4), the build produces `stdlib-aarch64-linux-gnu.moon`,
+      resolution picks the bundle matching the target, and linking a
+      wrong-target bundle is a hard error
+- [x] Intrinsics call libc (`write`/`open`/sockets/`pthread_create`), removing
+      the raw x86-64 syscall assembly that blocked non-x86 codegen
 - [ ] Static binary linking
 
 ### Debug Info (DWARF)

@@ -124,10 +124,12 @@ add_library(sun_lib
     src/codegen/codegen_visitor.cpp
     src/codegen/functions_lambdas.cpp
     src/codegen/pointers.cpp
+    src/codegen/intrinsics/builtins.cpp
     src/codegen/intrinsics/generic.cpp
+    src/codegen/intrinsics/io.cpp
+    src/codegen/intrinsics/print.cpp
     src/codegen/intrinsics/memory.cpp
     src/codegen/intrinsics/atomic.cpp
-    src/codegen/intrinsics/io.cpp
     src/codegen/intrinsics/network.cpp
     src/codegen/arrays.cpp
     src/codegen/variable_creation.cpp
@@ -245,6 +247,9 @@ if(NOT SKIP_STDLIB)
         ${CMAKE_SOURCE_DIR}/stdlib/mutex.sun
         ${CMAKE_SOURCE_DIR}/stdlib/math.sun
         ${CMAKE_SOURCE_DIR}/stdlib/networking.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/io.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/http.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/simple_math.sun
     )
 
     add_custom_command(
@@ -257,6 +262,27 @@ if(NOT SKIP_STDLIB)
     )
 
     add_custom_target(stdlib_moon ALL DEPENDS ${STDLIB_MOON})
+
+    # Cross-compiled stdlib bundles: target-suffixed names sit beside the
+    # host bundle and are picked automatically when compiling with --target.
+    set(SUN_CROSS_STDLIB_TARGETS "aarch64-linux-gnu" CACHE STRING
+        "Triples to build cross stdlib .moon bundles for (empty disables)")
+    set(CROSS_MOONS "")
+    foreach(cross_triple ${SUN_CROSS_STDLIB_TARGETS})
+        set(CROSS_MOON ${CMAKE_BINARY_DIR}/stdlib-${cross_triple}.moon)
+        add_custom_command(
+            OUTPUT ${CROSS_MOON}
+            COMMAND $<TARGET_FILE:sun> --emit-moon --target ${cross_triple} -o ${CROSS_MOON} ${STDLIB_ENTRYPOINT}
+            DEPENDS sun ${STDLIB_SOURCES}
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            COMMENT "Building precompiled stdlib-${cross_triple}.moon"
+            VERBATIM
+        )
+        list(APPEND CROSS_MOONS ${CROSS_MOON})
+    endforeach()
+    if(CROSS_MOONS)
+        add_custom_target(stdlib_cross_moons ALL DEPENDS ${CROSS_MOONS})
+    endif()
 endif()
 
 # ------------------------------------------------------------------

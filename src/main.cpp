@@ -34,8 +34,10 @@ static void printUsage(const char* programName) {
   llvm::errs() << "  --emit-obj        Emit object file only (do not link)\n";
   llvm::errs() << "  --target <triple> Cross-compile for <triple> (e.g. "
                   "aarch64-linux-gnu)\n";
-  llvm::errs() << "                    Requires --emit-obj; cross linking is "
-                  "not supported yet\n";
+  llvm::errs() << "                    Works with -c (needs a cross "
+                  "toolchain), --emit-obj and --emit-moon\n";
+  llvm::errs() << "  --sysroot <dir>   Target root filesystem for cross "
+                  "linking (passed to the linker)\n";
   llvm::errs() << "  --emit-ir         Print LLVM IR to stdout\n";
   llvm::errs() << "  --debug           Generate debug output (ast.dot, ir.ll) "
                   "in <input>_debug/\n";
@@ -314,6 +316,8 @@ int main(int argc, char* argv[]) {
       emitObjOnly = true;
     } else if (arg == "--target" && i + 1 < argc) {
       targetTriple = argv[++i];
+    } else if (arg == "--sysroot" && i + 1 < argc) {
+      linkOpts.sysroot = argv[++i];
     } else if (arg == "--emit-moon") {
       emitMoon = true;
     } else if (arg == "--emit-ir") {
@@ -351,19 +355,16 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  // Cross-compilation stops at the object file: the JIT can only run host
-  // code, and cross linking / cross .moon artifacts are not supported yet.
-  if (!targetTriple.empty() && !emitObjOnly) {
-    llvm::errs() << "Error: --target requires --emit-obj (cross linking and "
-                    "JIT execution are host-only)\n";
-    return 1;
-  }
-  if (!targetTriple.empty() && emitMoon) {
-    llvm::errs() << "Error: --target cannot be combined with --emit-moon\n";
+  // Cross-compilation produces object files and .moon artifacts; the JIT can
+  // only run host code.
+  if (!targetTriple.empty() && !emitObjOnly && !emitMoon && !compileMode) {
+    llvm::errs() << "Error: --target requires --emit-obj, -c or --emit-moon "
+                    "(JIT execution is host-only)\n";
     return 1;
   }
 
   // Initialize library cache
+  sun::LibraryCache::instance().setTargetTriple(targetTriple);
   sun::LibraryCache::instance().initFromEnvironment();
   for (const auto& libPath : libPaths) {
     sun::LibraryCache::instance().addSearchPath(libPath);
@@ -382,11 +383,15 @@ int main(int argc, char* argv[]) {
         std::filesystem::absolute(entrypoint);
 
     if (outputFile.empty()) {
-      // Derive from input file
+      // Derive from input file; cross bundles get a target-suffixed name so
+      // they can sit beside the host bundle and be picked by target
       outputFile = entrypoint;
       size_t dotPos = outputFile.rfind(".sun");
       if (dotPos != std::string::npos) {
         outputFile = outputFile.substr(0, dotPos);
+      }
+      if (!targetTriple.empty()) {
+        outputFile += "-" + targetTriple;
       }
       outputFile += ".moon";
     }
@@ -431,7 +436,7 @@ int main(int argc, char* argv[]) {
       }
 
       // Compile all files together
-      auto driver = Driver::createForAOT("moon_module");
+      auto driver = Driver::createForAOT("moon_module", targetTriple);
       driver->compileFiles(sunFiles, moonImports);
 
       // Add each module's metadata + the shared compiled LLVM module
@@ -522,6 +527,7 @@ int main(int argc, char* argv[]) {
         success =
             sun::emitObjectFile(driver->getModule(), outputFile, errorMsg);
       } else {
+        linkOpts.targetTriple = targetTriple;
         success = sun::compileToExecutable(driver->getModule(), outputFile,
                                            errorMsg, /*keepObjectFile=*/false,
                                            linkOpts);

@@ -62,6 +62,14 @@ class LibraryCache {
   /// Find the bundle containing a module (for error reporting)
   SunLibReader* findBundleForModule(const std::string& moduleKey);
 
+  /// Set the compilation target. When several bundles claim the same module
+  /// (e.g. stdlib.moon and stdlib-aarch64-linux-gnu.moon), the one compiled
+  /// for this target wins. Empty means the host.
+  void setTargetTriple(const std::string& triple);
+
+  /// The compilation target set above (empty = host).
+  const std::string& getTargetTriple() const { return targetTriple_; }
+
  private:
   LibraryCache() = default;
   LibraryCache(const LibraryCache&) = delete;
@@ -70,9 +78,17 @@ class LibraryCache {
   /// Discover .moon files in search paths
   void discoverBundles();
 
+  /// Pick the candidate matching targetTriple_ (arch comparison); falls back
+  /// to a triple-less legacy bundle, then the first candidate — a wrong pick
+  /// is still caught by the linker's triple check.
+  SunLibReader* selectBundle(
+      const std::vector<SunLibReader*>& candidates) const;
+
   std::vector<std::filesystem::path> searchPaths_;
   std::vector<std::unique_ptr<SunLibReader>> bundles_;
-  std::unordered_map<std::string, SunLibReader*> moduleToBundle_;  // cache
+  // All bundles claiming each module key; target selection happens at lookup
+  std::unordered_map<std::string, std::vector<SunLibReader*>> moduleToBundle_;
+  std::string targetTriple_;  // empty = host
   mutable std::mutex mutex_;
   bool initialized_ = false;
   bool discovered_ = false;

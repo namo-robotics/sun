@@ -1,78 +1,19 @@
-// src/codegen/intrinsics/io.cpp - File I/O intrinsic function codegen
+// src/codegen/intrinsics/io.cpp - File I/O intrinsic codegen
 //
-// This file contains codegen for file I/O intrinsics:
-// - __file_open, __file_close, __file_write, __file_read
-// - __lseek, __fstat, __fsync, __ftruncate
-// - __unlink, __rename, __mkdir, __rmdir
-// - __write, __read (raw buffer operations)
-//
-// All I/O operations use raw Linux syscalls (no libc dependency).
+// __file_open/close/write/read plus the extended __lseek/__fstat/__fsync/
+// __ftruncate/__unlink/__rename/__mkdir/__rmdir/__write/__read intrinsics.
+// All operations call libc (see include/intrinsics/libc.h).
 
+#include "ast.h"
+#include "codegen.h"
 #include "codegen_visitor.h"
-#include "error.h"
+#include "intrinsics/libc.h"
 
 using namespace llvm;
 
 // ===================================================================
-// File I/O built-in helpers (raw Linux x86_64 syscalls)
+// File I/O built-in helpers (libc calls; see include/intrinsics/libc.h)
 // ===================================================================
-
-// Generic raw syscall emitter for 3-argument syscalls:
-//   syscall(number, arg1, arg2, arg3) -> result
-// Uses inline assembly on x86_64 Linux.
-static Value* emitRawSyscall3(IRBuilder<>& builder, LLVMContext& llvmCtx,
-                              Value* sysno, Value* arg1, Value* arg2,
-                              Value* arg3) {
-  // All args must be i64 for the inline asm constraint
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
-  sysno = builder.CreateZExtOrTrunc(sysno, i64Ty);
-  arg1 = builder.CreateZExtOrTrunc(arg1, i64Ty);
-  // arg2 can be a pointer, so we use ptrtoint if needed
-  if (arg2->getType()->isPointerTy()) {
-    arg2 = builder.CreatePtrToInt(arg2, i64Ty);
-  } else {
-    arg2 = builder.CreateZExtOrTrunc(arg2, i64Ty);
-  }
-  arg3 = builder.CreateZExtOrTrunc(arg3, i64Ty);
-
-  std::vector<Type*> paramTypes(4, i64Ty);
-  FunctionType* asmType = FunctionType::get(i64Ty, paramTypes, false);
-
-  InlineAsm* syscallAsm =
-      InlineAsm::get(asmType, "syscall",
-                     "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}",
-                     /*hasSideEffects=*/true,
-                     /*isAlignStack=*/false, InlineAsm::AD_ATT);
-
-  return builder.CreateCall(syscallAsm, {sysno, arg1, arg2, arg3},
-                            "syscall_result");
-}
-
-// Emit raw syscall with a pointer as arg2 (for read/write buf)
-static Value* emitRawSyscall3Ptr(IRBuilder<>& builder, LLVMContext& llvmCtx,
-                                 Value* sysno, Value* fd, Value* buf,
-                                 Value* len) {
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
-  auto* ptrTy = PointerType::getUnqual(llvmCtx);
-
-  // syscall write/read: rax=sysno, rdi=fd, rsi=buf(ptr), rdx=len
-  std::vector<Type*> paramTypes = {i64Ty, i32Ty, ptrTy, i64Ty};
-  FunctionType* asmType = FunctionType::get(i64Ty, paramTypes, false);
-
-  InlineAsm* syscallAsm =
-      InlineAsm::get(asmType, "syscall",
-                     "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}",
-                     /*hasSideEffects=*/true,
-                     /*isAlignStack=*/false, InlineAsm::AD_ATT);
-
-  Value* sysnoVal = builder.CreateZExtOrTrunc(sysno, i64Ty);
-  Value* fdVal = builder.CreateZExtOrTrunc(fd, i32Ty);
-  Value* lenVal = builder.CreateZExtOrTrunc(len, i64Ty);
-
-  return builder.CreateCall(syscallAsm, {sysnoVal, fdVal, buf, lenVal},
-                            "syscall_result");
-}
 
 // -------------------------------------------------------------------
 // __sun_file_open: open(path, flags, mode) -> fd
@@ -96,69 +37,26 @@ static Function* getOrCreateFileOpenHelper(llvm::Module* module,
   Value* path = &*argIt++;
   Value* userFlags = &*argIt++;
 
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
-
-  // Map user flags to Linux open flags:
+  // Map user flags to open(2) flags. The O_* values are Linux's asm-generic
+  // set, shared by x86-64 and aarch64:
   //   0 -> O_RDONLY (0)
-  //   1 -> O_WRONLY|O_CREAT|O_TRUNC (0x241)
+  //   1 -> O_WRONLY|O_CREAT|O_TRUNC  (0x241)
   //   2 -> O_WRONLY|O_CREAT|O_APPEND (0x441)
-
-  // Default: O_RDONLY
-  BasicBlock* readBB = BasicBlock::Create(llvmCtx, "mode_read", func);
-  BasicBlock* writeBB = BasicBlock::Create(llvmCtx, "mode_write", func);
-  BasicBlock* appendBB = BasicBlock::Create(llvmCtx, "mode_append", func);
-  BasicBlock* syscallBB = BasicBlock::Create(llvmCtx, "do_open", func);
-
-  AllocaInst* flagsAlloca = builder.CreateAlloca(i32Ty, nullptr, "flags");
-  builder.CreateStore(ConstantInt::get(i32Ty, 0), flagsAlloca);  // O_RDONLY
-
   Value* isWrite =
       builder.CreateICmpEQ(userFlags, ConstantInt::get(i32Ty, 1), "is_write");
-  builder.CreateCondBr(isWrite, writeBB, readBB);
-
-  // Read check -> could be append
-  builder.SetInsertPoint(readBB);
   Value* isAppend =
       builder.CreateICmpEQ(userFlags, ConstantInt::get(i32Ty, 2), "is_append");
-  builder.CreateCondBr(isAppend, appendBB, syscallBB);
+  Value* flags = builder.CreateSelect(
+      isWrite, ConstantInt::get(i32Ty, 0x241),
+      builder.CreateSelect(isAppend, ConstantInt::get(i32Ty, 0x441),
+                           ConstantInt::get(i32Ty, 0)),
+      "open_flags");
 
-  // Write mode: O_WRONLY|O_CREAT|O_TRUNC = 0x241 = 577
-  builder.SetInsertPoint(writeBB);
-  builder.CreateStore(ConstantInt::get(i32Ty, 577), flagsAlloca);
-  builder.CreateBr(syscallBB);
-
-  // Append mode: O_WRONLY|O_CREAT|O_APPEND = 0x441 = 1089
-  builder.SetInsertPoint(appendBB);
-  builder.CreateStore(ConstantInt::get(i32Ty, 1089), flagsAlloca);
-  builder.CreateBr(syscallBB);
-
-  // Do the syscall: sys_open = 2
-  builder.SetInsertPoint(syscallBB);
-  Value* openFlags = builder.CreateLoad(i32Ty, flagsAlloca);
-
-  // mode = 0644 = 420 (for create)
-  Value* mode = ConstantInt::get(i64Ty, 420);  // 0644 octal
-  Value* sysno = ConstantInt::get(i64Ty, 2);   // sys_open
-
-  // For open: rdi=path(ptr), so we need a version that takes ptr as arg1
-  // open(const char *filename, int flags, umode_t mode)
-  std::vector<Type*> paramTypes = {i64Ty, ptrTy, i64Ty, i64Ty};
-  FunctionType* asmType = FunctionType::get(i64Ty, paramTypes, false);
-
-  InlineAsm* syscallAsm =
-      InlineAsm::get(asmType, "syscall",
-                     "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}",
-                     /*hasSideEffects=*/true,
-                     /*isAlignStack=*/false, InlineAsm::AD_ATT);
-
-  Value* flagsExt = builder.CreateZExt(openFlags, i64Ty);
-  Value* result =
-      builder.CreateCall(syscallAsm, {sysno, path, flagsExt, mode}, "fd");
-
-  // Truncate result to i32 for the return
-  Value* fd = builder.CreateTrunc(result, i32Ty, "fd32");
+  // mode = 0644, passed as a vararg per open(2)'s prototype
+  Value* mode = ConstantInt::get(i32Ty, 0644);
+  Value* fd =
+      builder.CreateCall(sun::libc::open(module), {path, flags, mode}, "fd");
   builder.CreateRet(fd);
-
   return func;
 }
 
@@ -179,26 +77,9 @@ static Function* getOrCreateFileCloseHelper(llvm::Module* module,
   IRBuilder<> builder(entryBB);
 
   Value* fd = &*func->arg_begin();
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
-
-  // sys_close = 3, takes 1 arg: fd
-  // We use a 3-arg syscall with dummy values for unused args
-  std::vector<Type*> paramTypes = {i64Ty, i64Ty, i64Ty, i64Ty};
-  FunctionType* asmType = FunctionType::get(i64Ty, paramTypes, false);
-  InlineAsm* syscallAsm = InlineAsm::get(
-      asmType, "syscall",
-      "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}",
-      /*hasSideEffects=*/true, /*isAlignStack=*/false, InlineAsm::AD_ATT);
-
-  Value* sysno = ConstantInt::get(i64Ty, 3);
-  Value* fdExt = builder.CreateZExt(fd, i64Ty);
-  Value* zero = ConstantInt::get(i64Ty, 0);
-
-  Value* result = builder.CreateCall(syscallAsm, {sysno, fdExt, zero, zero},
-                                     "close_result");
-  Value* result32 = builder.CreateTrunc(result, i32Ty);
-  builder.CreateRet(result32);
-
+  Value* result =
+      builder.CreateCall(sun::libc::close(module), {fd}, "close_result");
+  builder.CreateRet(result);
   return func;
 }
 
@@ -244,33 +125,22 @@ static Function* getOrCreateFileWriteHelper(llvm::Module* module,
   builder.CreateStore(newLen, lenAlloca);
   builder.CreateCondBr(isNull, writeBB, loopBB);
 
-  // Write to fd using sys_write (syscall 1)
   builder.SetInsertPoint(writeBB);
   Value* finalLen = builder.CreateLoad(i64Ty, lenAlloca);
   finalLen =
       builder.CreateSub(finalLen, ConstantInt::get(i64Ty, 1));  // exclude null
 
-  Value* sysno = ConstantInt::get(i64Ty, 1);  // sys_write
-
-  std::vector<Type*> paramTypes = {i64Ty, i32Ty, ptrTy, i64Ty};
-  FunctionType* asmType = FunctionType::get(i64Ty, paramTypes, false);
-  InlineAsm* syscallAsm = InlineAsm::get(
-      asmType, "syscall",
-      "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}",
-      /*hasSideEffects=*/true, /*isAlignStack=*/false, InlineAsm::AD_ATT);
-
-  Value* result =
-      builder.CreateCall(syscallAsm, {sysno, fd, strPtr, finalLen}, "written");
+  Value* result = builder.CreateCall(sun::libc::write(module),
+                                     {fd, strPtr, finalLen}, "written");
   Value* result32 = builder.CreateTrunc(result, i32Ty);
   builder.CreateRet(result32);
-
   return func;
 }
 
 // -------------------------------------------------------------------
 // __sun_file_read: read(fd, count) -> string
-// Reads up to 'count' bytes from fd, returns heap-allocated string.
-// Uses mmap for memory allocation (syscall 9).
+// Reads up to 'count' bytes from fd, returns a malloc'd null-terminated
+// buffer the caller owns.
 // -------------------------------------------------------------------
 static Function* getOrCreateFileReadHelper(llvm::Module* module,
                                            LLVMContext& llvmCtx) {
@@ -288,459 +158,29 @@ static Function* getOrCreateFileReadHelper(llvm::Module* module,
                           "__sun_file_read", module);
 
   BasicBlock* entryBB = BasicBlock::Create(llvmCtx, "entry", func);
-  BasicBlock* readBB = BasicBlock::Create(llvmCtx, "do_read", func);
-  BasicBlock* doneBB = BasicBlock::Create(llvmCtx, "done", func);
-
   IRBuilder<> builder(entryBB);
+
   auto argIt = func->arg_begin();
   Value* fd = &*argIt++;
   Value* count = &*argIt++;
 
-  // Allocate buffer using mmap (syscall 9)
-  // mmap(addr=0, length=count+1, prot=PROT_READ|PROT_WRITE=3,
-  //      flags=MAP_PRIVATE|MAP_ANONYMOUS=0x22, fd=-1, offset=0)
-  // We need a 6-arg syscall for mmap
-
   Value* countExt = builder.CreateZExt(count, i64Ty);
   Value* bufSize =
       builder.CreateAdd(countExt, ConstantInt::get(i64Ty, 1));  // +1 for null
+  Value* bufPtr =
+      builder.CreateCall(sun::libc::malloc(module), {bufSize}, "buf");
 
-  // 6-arg syscall for mmap
-  // mmap uses: rax=sysno, rdi=addr, rsi=len, rdx=prot, r10=flags, r8=fd,
-  // r9=offset We directly assign r10, r8, r9 as inputs instead of moving from
-  // general regs
-  std::vector<Type*> mmap6Types(7, i64Ty);  // sysno + 6 args
-  FunctionType* mmap6FuncType = FunctionType::get(i64Ty, mmap6Types, false);
-  InlineAsm* mmapAsm = InlineAsm::get(
-      mmap6FuncType, "syscall",
-      "={rax},{rax},{rdi},{rsi},{rdx},{r10},{r8},{r9},~{rcx},~{r11},~{memory}",
-      /*hasSideEffects=*/true, /*isAlignStack=*/false, InlineAsm::AD_ATT);
+  Value* readResult = builder.CreateCall(sun::libc::read(module),
+                                         {fd, bufPtr, countExt}, "bytes_read");
 
-  Value* mmapSysno = ConstantInt::get(i64Ty, 9);  // sys_mmap
-  Value* mmapAddr = ConstantInt::get(i64Ty, 0);   // NULL
-  Value* mmapProt = ConstantInt::get(i64Ty, 3);   // PROT_READ|PROT_WRITE
-  Value* mmapFlags =
-      ConstantInt::get(i64Ty, 0x22);  // MAP_PRIVATE|MAP_ANONYMOUS
-  Value* mmapFd = ConstantInt::getSigned(i64Ty, -1);
-  Value* mmapOffset = ConstantInt::get(i64Ty, 0);
-
-  Value* mmapResult = builder.CreateCall(
-      mmapAsm,
-      {mmapSysno, mmapAddr, bufSize, mmapProt, mmapFlags, mmapFd, mmapOffset},
-      "mmap_result");
-
-  Value* bufPtr = builder.CreateIntToPtr(mmapResult, ptrTy, "buf");
-  builder.CreateBr(readBB);
-
-  // sys_read(fd, buf, count) - syscall 0
-  builder.SetInsertPoint(readBB);
-  std::vector<Type*> readParamTypes = {i64Ty, i32Ty, ptrTy, i64Ty};
-  FunctionType* readAsmType = FunctionType::get(i64Ty, readParamTypes, false);
-  InlineAsm* readAsm = InlineAsm::get(
-      readAsmType, "syscall",
-      "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}",
-      /*hasSideEffects=*/true, /*isAlignStack=*/false, InlineAsm::AD_ATT);
-
-  Value* readSysno = ConstantInt::get(i64Ty, 0);  // sys_read
-  Value* readResult = builder.CreateCall(
-      readAsm, {readSysno, fd, bufPtr, countExt}, "bytes_read");
-  builder.CreateBr(doneBB);
-
-  // Null-terminate the buffer at the position of bytes_read
-  builder.SetInsertPoint(doneBB);
-
-  // If read returned negative (error), clamp to 0
+  // If read returned negative (error), clamp to 0 and null-terminate there
   Value* isNeg = builder.CreateICmpSLT(readResult, ConstantInt::get(i64Ty, 0));
   Value* safeLen =
       builder.CreateSelect(isNeg, ConstantInt::get(i64Ty, 0), readResult);
-
   Value* nullPtr = builder.CreateGEP(i8Ty, bufPtr, safeLen);
   builder.CreateStore(ConstantInt::get(i8Ty, 0), nullPtr);
 
   builder.CreateRet(bufPtr);
-  return func;
-}
-
-// -------------------------------------------------------------------
-// Extended file I/O helper functions
-// -------------------------------------------------------------------
-
-// __sun_lseek: lseek(fd, offset, whence) -> new_offset
-static Function* getOrCreateLseekHelper(llvm::Module* module,
-                                        LLVMContext& llvmCtx) {
-  Function* func = module->getFunction("__sun_lseek");
-  if (func) return func;
-
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
-  FunctionType* funcType =
-      FunctionType::get(i64Ty, {i32Ty, i64Ty, i32Ty}, false);
-  func = Function::Create(funcType, Function::InternalLinkage, "__sun_lseek",
-                          module);
-
-  BasicBlock* entryBB = BasicBlock::Create(llvmCtx, "entry", func);
-  IRBuilder<> builder(entryBB);
-
-  auto argIt = func->arg_begin();
-  Value* fd = &*argIt++;
-  Value* offset = &*argIt++;
-  Value* whence = &*argIt++;
-
-  // sys_lseek = 8
-  std::vector<Type*> paramTypes = {i64Ty, i64Ty, i64Ty, i64Ty};
-  FunctionType* asmType = FunctionType::get(i64Ty, paramTypes, false);
-  InlineAsm* syscallAsm = InlineAsm::get(
-      asmType, "syscall",
-      "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}",
-      /*hasSideEffects=*/true, /*isAlignStack=*/false, InlineAsm::AD_ATT);
-
-  Value* sysno = ConstantInt::get(i64Ty, 8);
-  Value* fdExt = builder.CreateZExt(fd, i64Ty);
-  Value* whenceExt = builder.CreateZExt(whence, i64Ty);
-
-  Value* result = builder.CreateCall(
-      syscallAsm, {sysno, fdExt, offset, whenceExt}, "lseek_result");
-  builder.CreateRet(result);
-  return func;
-}
-
-// __sun_fstat: fstat(fd, stat_buf) -> result
-static Function* getOrCreateFstatHelper(llvm::Module* module,
-                                        LLVMContext& llvmCtx) {
-  Function* func = module->getFunction("__sun_fstat");
-  if (func) return func;
-
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
-  auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  FunctionType* funcType = FunctionType::get(i32Ty, {i32Ty, ptrTy}, false);
-  func = Function::Create(funcType, Function::InternalLinkage, "__sun_fstat",
-                          module);
-
-  BasicBlock* entryBB = BasicBlock::Create(llvmCtx, "entry", func);
-  IRBuilder<> builder(entryBB);
-
-  auto argIt = func->arg_begin();
-  Value* fd = &*argIt++;
-  Value* statBuf = &*argIt++;
-
-  // sys_fstat = 5
-  std::vector<Type*> paramTypes = {i64Ty, i64Ty, ptrTy, i64Ty};
-  FunctionType* asmType = FunctionType::get(i64Ty, paramTypes, false);
-  InlineAsm* syscallAsm = InlineAsm::get(
-      asmType, "syscall",
-      "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}",
-      /*hasSideEffects=*/true, /*isAlignStack=*/false, InlineAsm::AD_ATT);
-
-  Value* sysno = ConstantInt::get(i64Ty, 5);
-  Value* fdExt = builder.CreateZExt(fd, i64Ty);
-  Value* zero = ConstantInt::get(i64Ty, 0);
-
-  Value* result = builder.CreateCall(syscallAsm, {sysno, fdExt, statBuf, zero},
-                                     "fstat_result");
-  Value* result32 = builder.CreateTrunc(result, i32Ty);
-  builder.CreateRet(result32);
-  return func;
-}
-
-// __sun_fsync: fsync(fd) -> result
-static Function* getOrCreateFsyncHelper(llvm::Module* module,
-                                        LLVMContext& llvmCtx) {
-  Function* func = module->getFunction("__sun_fsync");
-  if (func) return func;
-
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
-  FunctionType* funcType = FunctionType::get(i32Ty, {i32Ty}, false);
-  func = Function::Create(funcType, Function::InternalLinkage, "__sun_fsync",
-                          module);
-
-  BasicBlock* entryBB = BasicBlock::Create(llvmCtx, "entry", func);
-  IRBuilder<> builder(entryBB);
-
-  Value* fd = &*func->arg_begin();
-
-  // sys_fsync = 74
-  std::vector<Type*> paramTypes = {i64Ty, i64Ty, i64Ty, i64Ty};
-  FunctionType* asmType = FunctionType::get(i64Ty, paramTypes, false);
-  InlineAsm* syscallAsm = InlineAsm::get(
-      asmType, "syscall",
-      "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}",
-      /*hasSideEffects=*/true, /*isAlignStack=*/false, InlineAsm::AD_ATT);
-
-  Value* sysno = ConstantInt::get(i64Ty, 74);
-  Value* fdExt = builder.CreateZExt(fd, i64Ty);
-  Value* zero = ConstantInt::get(i64Ty, 0);
-
-  Value* result = builder.CreateCall(syscallAsm, {sysno, fdExt, zero, zero},
-                                     "fsync_result");
-  Value* result32 = builder.CreateTrunc(result, i32Ty);
-  builder.CreateRet(result32);
-  return func;
-}
-
-// __sun_ftruncate: ftruncate(fd, length) -> result
-static Function* getOrCreateFtruncateHelper(llvm::Module* module,
-                                            LLVMContext& llvmCtx) {
-  Function* func = module->getFunction("__sun_ftruncate");
-  if (func) return func;
-
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
-  FunctionType* funcType = FunctionType::get(i32Ty, {i32Ty, i64Ty}, false);
-  func = Function::Create(funcType, Function::InternalLinkage,
-                          "__sun_ftruncate", module);
-
-  BasicBlock* entryBB = BasicBlock::Create(llvmCtx, "entry", func);
-  IRBuilder<> builder(entryBB);
-
-  auto argIt = func->arg_begin();
-  Value* fd = &*argIt++;
-  Value* length = &*argIt++;
-
-  // sys_ftruncate = 77
-  std::vector<Type*> paramTypes = {i64Ty, i64Ty, i64Ty, i64Ty};
-  FunctionType* asmType = FunctionType::get(i64Ty, paramTypes, false);
-  InlineAsm* syscallAsm = InlineAsm::get(
-      asmType, "syscall",
-      "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}",
-      /*hasSideEffects=*/true, /*isAlignStack=*/false, InlineAsm::AD_ATT);
-
-  Value* sysno = ConstantInt::get(i64Ty, 77);
-  Value* fdExt = builder.CreateZExt(fd, i64Ty);
-  Value* zero = ConstantInt::get(i64Ty, 0);
-
-  Value* result = builder.CreateCall(syscallAsm, {sysno, fdExt, length, zero},
-                                     "ftruncate_result");
-  Value* result32 = builder.CreateTrunc(result, i32Ty);
-  builder.CreateRet(result32);
-  return func;
-}
-
-// __sun_unlink: unlink(path) -> result
-static Function* getOrCreateUnlinkHelper(llvm::Module* module,
-                                         LLVMContext& llvmCtx) {
-  Function* func = module->getFunction("__sun_unlink");
-  if (func) return func;
-
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
-  auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  FunctionType* funcType = FunctionType::get(i32Ty, {ptrTy}, false);
-  func = Function::Create(funcType, Function::InternalLinkage, "__sun_unlink",
-                          module);
-
-  BasicBlock* entryBB = BasicBlock::Create(llvmCtx, "entry", func);
-  IRBuilder<> builder(entryBB);
-
-  Value* path = &*func->arg_begin();
-
-  // sys_unlink = 87
-  std::vector<Type*> paramTypes = {i64Ty, ptrTy, i64Ty, i64Ty};
-  FunctionType* asmType = FunctionType::get(i64Ty, paramTypes, false);
-  InlineAsm* syscallAsm = InlineAsm::get(
-      asmType, "syscall",
-      "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}",
-      /*hasSideEffects=*/true, /*isAlignStack=*/false, InlineAsm::AD_ATT);
-
-  Value* sysno = ConstantInt::get(i64Ty, 87);
-  Value* zero = ConstantInt::get(i64Ty, 0);
-
-  Value* result = builder.CreateCall(syscallAsm, {sysno, path, zero, zero},
-                                     "unlink_result");
-  Value* result32 = builder.CreateTrunc(result, i32Ty);
-  builder.CreateRet(result32);
-  return func;
-}
-
-// __sun_rename: rename(old_path, new_path) -> result
-static Function* getOrCreateRenameHelper(llvm::Module* module,
-                                         LLVMContext& llvmCtx) {
-  Function* func = module->getFunction("__sun_rename");
-  if (func) return func;
-
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
-  auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  FunctionType* funcType = FunctionType::get(i32Ty, {ptrTy, ptrTy}, false);
-  func = Function::Create(funcType, Function::InternalLinkage, "__sun_rename",
-                          module);
-
-  BasicBlock* entryBB = BasicBlock::Create(llvmCtx, "entry", func);
-  IRBuilder<> builder(entryBB);
-
-  auto argIt = func->arg_begin();
-  Value* oldPath = &*argIt++;
-  Value* newPath = &*argIt++;
-
-  // sys_rename = 82
-  std::vector<Type*> paramTypes = {i64Ty, ptrTy, ptrTy, i64Ty};
-  FunctionType* asmType = FunctionType::get(i64Ty, paramTypes, false);
-  InlineAsm* syscallAsm = InlineAsm::get(
-      asmType, "syscall",
-      "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}",
-      /*hasSideEffects=*/true, /*isAlignStack=*/false, InlineAsm::AD_ATT);
-
-  Value* sysno = ConstantInt::get(i64Ty, 82);
-  Value* zero = ConstantInt::get(i64Ty, 0);
-
-  Value* result = builder.CreateCall(
-      syscallAsm, {sysno, oldPath, newPath, zero}, "rename_result");
-  Value* result32 = builder.CreateTrunc(result, i32Ty);
-  builder.CreateRet(result32);
-  return func;
-}
-
-// __sun_mkdir: mkdir(path, mode) -> result
-static Function* getOrCreateMkdirHelper(llvm::Module* module,
-                                        LLVMContext& llvmCtx) {
-  Function* func = module->getFunction("__sun_mkdir");
-  if (func) return func;
-
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
-  auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  FunctionType* funcType = FunctionType::get(i32Ty, {ptrTy, i32Ty}, false);
-  func = Function::Create(funcType, Function::InternalLinkage, "__sun_mkdir",
-                          module);
-
-  BasicBlock* entryBB = BasicBlock::Create(llvmCtx, "entry", func);
-  IRBuilder<> builder(entryBB);
-
-  auto argIt = func->arg_begin();
-  Value* path = &*argIt++;
-  Value* mode = &*argIt++;
-
-  // sys_mkdir = 83
-  std::vector<Type*> paramTypes = {i64Ty, ptrTy, i64Ty, i64Ty};
-  FunctionType* asmType = FunctionType::get(i64Ty, paramTypes, false);
-  InlineAsm* syscallAsm = InlineAsm::get(
-      asmType, "syscall",
-      "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}",
-      /*hasSideEffects=*/true, /*isAlignStack=*/false, InlineAsm::AD_ATT);
-
-  Value* sysno = ConstantInt::get(i64Ty, 83);
-  Value* modeExt = builder.CreateZExt(mode, i64Ty);
-  Value* zero = ConstantInt::get(i64Ty, 0);
-
-  Value* result = builder.CreateCall(syscallAsm, {sysno, path, modeExt, zero},
-                                     "mkdir_result");
-  Value* result32 = builder.CreateTrunc(result, i32Ty);
-  builder.CreateRet(result32);
-  return func;
-}
-
-// __sun_rmdir: rmdir(path) -> result
-static Function* getOrCreateRmdirHelper(llvm::Module* module,
-                                        LLVMContext& llvmCtx) {
-  Function* func = module->getFunction("__sun_rmdir");
-  if (func) return func;
-
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
-  auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  FunctionType* funcType = FunctionType::get(i32Ty, {ptrTy}, false);
-  func = Function::Create(funcType, Function::InternalLinkage, "__sun_rmdir",
-                          module);
-
-  BasicBlock* entryBB = BasicBlock::Create(llvmCtx, "entry", func);
-  IRBuilder<> builder(entryBB);
-
-  Value* path = &*func->arg_begin();
-
-  // sys_rmdir = 84
-  std::vector<Type*> paramTypes = {i64Ty, ptrTy, i64Ty, i64Ty};
-  FunctionType* asmType = FunctionType::get(i64Ty, paramTypes, false);
-  InlineAsm* syscallAsm = InlineAsm::get(
-      asmType, "syscall",
-      "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}",
-      /*hasSideEffects=*/true, /*isAlignStack=*/false, InlineAsm::AD_ATT);
-
-  Value* sysno = ConstantInt::get(i64Ty, 84);
-  Value* zero = ConstantInt::get(i64Ty, 0);
-
-  Value* result =
-      builder.CreateCall(syscallAsm, {sysno, path, zero, zero}, "rmdir_result");
-  Value* result32 = builder.CreateTrunc(result, i32Ty);
-  builder.CreateRet(result32);
-  return func;
-}
-
-// __sun_write: write(fd, buf, len) -> bytes_written
-static Function* getOrCreateWriteHelper(llvm::Module* module,
-                                        LLVMContext& llvmCtx) {
-  Function* func = module->getFunction("__sun_write");
-  if (func) return func;
-
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
-  auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  FunctionType* funcType =
-      FunctionType::get(i64Ty, {i32Ty, ptrTy, i64Ty}, false);
-  func = Function::Create(funcType, Function::InternalLinkage, "__sun_write",
-                          module);
-
-  BasicBlock* entryBB = BasicBlock::Create(llvmCtx, "entry", func);
-  IRBuilder<> builder(entryBB);
-
-  auto argIt = func->arg_begin();
-  Value* fd = &*argIt++;
-  Value* buf = &*argIt++;
-  Value* len = &*argIt++;
-
-  // sys_write = 1
-  std::vector<Type*> paramTypes = {i64Ty, i64Ty, ptrTy, i64Ty};
-  FunctionType* asmType = FunctionType::get(i64Ty, paramTypes, false);
-  InlineAsm* syscallAsm = InlineAsm::get(
-      asmType, "syscall",
-      "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}",
-      /*hasSideEffects=*/true, /*isAlignStack=*/false, InlineAsm::AD_ATT);
-
-  Value* sysno = ConstantInt::get(i64Ty, 1);
-  Value* fdExt = builder.CreateZExt(fd, i64Ty);
-
-  Value* result =
-      builder.CreateCall(syscallAsm, {sysno, fdExt, buf, len}, "write_result");
-  builder.CreateRet(result);
-  return func;
-}
-
-// __sun_read: read(fd, buf, len) -> bytes_read
-static Function* getOrCreateReadHelper(llvm::Module* module,
-                                       LLVMContext& llvmCtx) {
-  Function* func = module->getFunction("__sun_read");
-  if (func) return func;
-
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
-  auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  FunctionType* funcType =
-      FunctionType::get(i64Ty, {i32Ty, ptrTy, i64Ty}, false);
-  func = Function::Create(funcType, Function::InternalLinkage, "__sun_read",
-                          module);
-
-  BasicBlock* entryBB = BasicBlock::Create(llvmCtx, "entry", func);
-  IRBuilder<> builder(entryBB);
-
-  auto argIt = func->arg_begin();
-  Value* fd = &*argIt++;
-  Value* buf = &*argIt++;
-  Value* len = &*argIt++;
-
-  // sys_read = 0
-  std::vector<Type*> paramTypes = {i64Ty, i64Ty, ptrTy, i64Ty};
-  FunctionType* asmType = FunctionType::get(i64Ty, paramTypes, false);
-  InlineAsm* syscallAsm = InlineAsm::get(
-      asmType, "syscall",
-      "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}",
-      /*hasSideEffects=*/true, /*isAlignStack=*/false, InlineAsm::AD_ATT);
-
-  Value* sysno = ConstantInt::get(i64Ty, 0);
-  Value* fdExt = builder.CreateZExt(fd, i64Ty);
-
-  Value* result =
-      builder.CreateCall(syscallAsm, {sysno, fdExt, buf, len}, "read_result");
-  builder.CreateRet(result);
   return func;
 }
 
@@ -843,18 +283,112 @@ Value* CodegenVisitor::codegenFileRead(const CallExprAST& expr) {
     count = ctx.builder->CreateSExtOrTrunc(count, Type::getInt32Ty(llvmCtx));
   }
 
+  // The helper malloc()s the buffer; the caller owns it.
   Function* helper = getOrCreateFileReadHelper(module, llvmCtx);
-  Value* result = ctx.builder->CreateCall(helper, {fd, count}, "read_str");
+  return ctx.builder->CreateCall(helper, {fd, count}, "read_str");
+}
 
-  // Track allocation metadata for automatic cleanup with munmap
-  // Size is count+1 (for null terminator), same as what the helper allocates
+// -------------------------------------------------------------------
+// Extended file I/O helper functions
+// -------------------------------------------------------------------
+
+// __sun_lseek: lseek(fd, offset, whence) -> new_offset
+static Function* getOrCreateLseekHelper(llvm::Module* module,
+                                        LLVMContext& llvmCtx) {
+  auto* i32Ty = Type::getInt32Ty(llvmCtx);
   auto* i64Ty = Type::getInt64Ty(llvmCtx);
-  Value* countExt = ctx.builder->CreateZExt(count, i64Ty);
-  Value* mmapSize =
-      ctx.builder->CreateAdd(countExt, ConstantInt::get(i64Ty, 1), "mmap.size");
-  allocationMetadata[result] = {/*isMmap=*/true, /*size=*/mmapSize};
+  return sun::libc::forwarder(module, "__sun_lseek",
+                                  sun::libc::lseek(module),
+                                  {i32Ty, i64Ty, i32Ty}, i64Ty);
+}
 
-  return result;
+// __sun_fstat: fstat(fd, stat_buf) -> result. The buffer layout is the
+// target libc's struct stat; the Sun-side caller owns that interpretation.
+static Function* getOrCreateFstatHelper(llvm::Module* module,
+                                        LLVMContext& llvmCtx) {
+  auto* i32Ty = Type::getInt32Ty(llvmCtx);
+  auto* ptrTy = PointerType::getUnqual(llvmCtx);
+  return sun::libc::forwarder(module, "__sun_fstat",
+                                  sun::libc::fstat(module), {i32Ty, ptrTy},
+                                  i32Ty);
+}
+
+// __sun_fsync: fsync(fd) -> result
+static Function* getOrCreateFsyncHelper(llvm::Module* module,
+                                        LLVMContext& llvmCtx) {
+  auto* i32Ty = Type::getInt32Ty(llvmCtx);
+  return sun::libc::forwarder(module, "__sun_fsync",
+                                  sun::libc::fsync(module), {i32Ty}, i32Ty);
+}
+
+// __sun_ftruncate: ftruncate(fd, length) -> result
+static Function* getOrCreateFtruncateHelper(llvm::Module* module,
+                                            LLVMContext& llvmCtx) {
+  auto* i32Ty = Type::getInt32Ty(llvmCtx);
+  auto* i64Ty = Type::getInt64Ty(llvmCtx);
+  return sun::libc::forwarder(module, "__sun_ftruncate",
+                                  sun::libc::ftruncate(module),
+                                  {i32Ty, i64Ty}, i32Ty);
+}
+
+// __sun_unlink: unlink(path) -> result
+static Function* getOrCreateUnlinkHelper(llvm::Module* module,
+                                         LLVMContext& llvmCtx) {
+  auto* i32Ty = Type::getInt32Ty(llvmCtx);
+  auto* ptrTy = PointerType::getUnqual(llvmCtx);
+  return sun::libc::forwarder(module, "__sun_unlink",
+                                  sun::libc::unlink(module), {ptrTy}, i32Ty);
+}
+
+// __sun_rename: rename(old_path, new_path) -> result
+static Function* getOrCreateRenameHelper(llvm::Module* module,
+                                         LLVMContext& llvmCtx) {
+  auto* i32Ty = Type::getInt32Ty(llvmCtx);
+  auto* ptrTy = PointerType::getUnqual(llvmCtx);
+  return sun::libc::forwarder(module, "__sun_rename",
+                                  sun::libc::rename(module), {ptrTy, ptrTy},
+                                  i32Ty);
+}
+
+// __sun_mkdir: mkdir(path, mode) -> result
+static Function* getOrCreateMkdirHelper(llvm::Module* module,
+                                        LLVMContext& llvmCtx) {
+  auto* i32Ty = Type::getInt32Ty(llvmCtx);
+  auto* ptrTy = PointerType::getUnqual(llvmCtx);
+  return sun::libc::forwarder(module, "__sun_mkdir",
+                                  sun::libc::mkdir(module), {ptrTy, i32Ty},
+                                  i32Ty);
+}
+
+// __sun_rmdir: rmdir(path) -> result
+static Function* getOrCreateRmdirHelper(llvm::Module* module,
+                                        LLVMContext& llvmCtx) {
+  auto* i32Ty = Type::getInt32Ty(llvmCtx);
+  auto* ptrTy = PointerType::getUnqual(llvmCtx);
+  return sun::libc::forwarder(module, "__sun_rmdir",
+                                  sun::libc::rmdir(module), {ptrTy}, i32Ty);
+}
+
+// __sun_write: write(fd, buf, len) -> bytes_written
+static Function* getOrCreateWriteHelper(llvm::Module* module,
+                                        LLVMContext& llvmCtx) {
+  auto* i32Ty = Type::getInt32Ty(llvmCtx);
+  auto* i64Ty = Type::getInt64Ty(llvmCtx);
+  auto* ptrTy = PointerType::getUnqual(llvmCtx);
+  return sun::libc::forwarder(module, "__sun_write",
+                                  sun::libc::write(module),
+                                  {i32Ty, ptrTy, i64Ty}, i64Ty);
+}
+
+// __sun_read: read(fd, buf, len) -> bytes_read
+static Function* getOrCreateReadHelper(llvm::Module* module,
+                                       LLVMContext& llvmCtx) {
+  auto* i32Ty = Type::getInt32Ty(llvmCtx);
+  auto* i64Ty = Type::getInt64Ty(llvmCtx);
+  auto* ptrTy = PointerType::getUnqual(llvmCtx);
+  return sun::libc::forwarder(module, "__sun_read",
+                                  sun::libc::read(module),
+                                  {i32Ty, ptrTy, i64Ty}, i64Ty);
 }
 
 // -------------------------------------------------------------------

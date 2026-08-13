@@ -1,19 +1,7 @@
 // intrinsics/network.h — Network socket intrinsic definitions
 //
-// Socket intrinsics wrap Linux syscalls directly (no libc).
+// Socket intrinsics call libc (see intrinsics/libc.h).
 // All functions use raw file descriptors (i32) for sockets.
-//
-// Linux x86_64 syscall numbers:
-//   SYS_SOCKET    = 41
-//   SYS_CONNECT   = 42
-//   SYS_ACCEPT    = 43
-//   SYS_SENDTO    = 44
-//   SYS_RECVFROM  = 45
-//   SYS_SHUTDOWN  = 48
-//   SYS_BIND      = 49
-//   SYS_LISTEN    = 50
-//   SYS_SETSOCKOPT = 54
-//   SYS_GETSOCKOPT = 55
 
 #pragma once
 

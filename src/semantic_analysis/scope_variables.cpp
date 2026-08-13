@@ -954,7 +954,7 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
   registernFunctionInCurrentScope(
       "_futex_wake", {Types::Void(), {Types::RawPointer(Types::Int32())}, {}});
 
-  // Network socket intrinsics (Linux-specific raw syscalls)
+  // Network socket intrinsics (libc sockets)
   // __socket(domain, type, protocol) -> fd
   registernFunctionInCurrentScope(
       "__socket",

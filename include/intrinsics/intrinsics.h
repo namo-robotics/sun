@@ -78,7 +78,7 @@ enum class Intrinsic {
   FutexWake,  // _futex_wake(ptr) -> void
 
   // =========================================================================
-  // File I/O intrinsics (raw syscalls, no libc)
+  // File I/O intrinsics (libc calls)
   // =========================================================================
   FileOpen,   // __file_open(path, flags) -> i32
   FileClose,  // __file_close(fd) -> i32
@@ -96,7 +96,7 @@ enum class Intrinsic {
   Read,       // __read(fd, buf, len) -> i64
 
   // =========================================================================
-  // Network intrinsics (raw syscalls, no libc)
+  // Network intrinsics (libc calls)
   // =========================================================================
   Socket,      // __socket(domain, type, protocol) -> i32
   Bind,        // __bind(fd, addr, addrlen) -> i32

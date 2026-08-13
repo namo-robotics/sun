@@ -1,142 +1,58 @@
 // thread_utils.cpp — Thread support utilities for code generation
 //
-// Implements raw syscall emitters and thread structure types
-// for spawn/join semantics using raw Linux syscalls.
-//
-// No libc dependency - all syscalls are emitted as inline assembly.
+// Threads are pthreads (see include/intrinsics/libc.h). The futex primitive
+// Mutex builds on has no libc wrapper, so it goes through libc's syscall()
+// with a per-target syscall number.
 
 #include "thread_utils.h"
 
+#include <llvm/TargetParser/Triple.h>
+
+#include "error.h"
+#include "intrinsics/libc.h"
 #include "llvm/IR/Constants.h"
-#include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/Instructions.h"
 #include "struct_names.h"
 
 using namespace llvm;
 
-// Linux x86_64 syscall numbers
-static constexpr int64_t SYS_MMAP = 9;
-static constexpr int64_t SYS_MUNMAP = 11;
-static constexpr int64_t SYS_CLONE = 56;
-static constexpr int64_t SYS_EXIT = 60;
-static constexpr int64_t SYS_FUTEX = 202;
-
 // Futex operations
 static constexpr int64_t FUTEX_WAIT = 0;
 static constexpr int64_t FUTEX_WAKE = 1;
 
-// mmap flags for anonymous private mapping
-static constexpr int64_t MAP_PRIVATE = 0x02;
-static constexpr int64_t MAP_ANONYMOUS = 0x20;
-static constexpr int64_t PROT_READ = 0x1;
-static constexpr int64_t PROT_WRITE = 0x2;
+// The futex syscall number is the one per-target constant left in thread
+// support — it is data, not assembly, so each Linux target is one table row.
+static int64_t futexSyscallNumber(const llvm::Module* module) {
+  llvm::Triple triple(module->getTargetTriple());
+  switch (triple.getArch()) {
+    case llvm::Triple::x86_64:
+      return 202;
+    case llvm::Triple::aarch64:
+      return 98;
+    default:
+      logAndThrowError("no futex syscall number for target '" +
+                       module->getTargetTriple() + "'");
+  }
+}
 
 // -------------------------------------------------------------------
-// Raw syscall emitters
+// Futex emitters
 // -------------------------------------------------------------------
-
-Value* ThreadUtils::emitSyscallMmap(Value* size) {
-  LLVMContext& llvmCtx = ctx.getContext();
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
-  auto* ptrTy = PointerType::getUnqual(llvmCtx);
-
-  // mmap takes 6 arguments: addr, length, prot, flags, fd, offset
-  std::vector<Type*> paramTypes = {i64Ty, i64Ty, i64Ty, i64Ty,
-                                   i64Ty, i64Ty, i64Ty};
-  FunctionType* asmType = FunctionType::get(i64Ty, paramTypes, false);
-
-  // syscall with 6 args uses: rax=sysno, rdi, rsi, rdx, r10, r8, r9
-  InlineAsm* syscallAsm = InlineAsm::get(
-      asmType, "syscall",
-      "={rax},{rax},{rdi},{rsi},{rdx},{r10},{r8},{r9},~{rcx},~{r11},~{memory}",
-      /*hasSideEffects=*/true, /*isAlignStack=*/false, InlineAsm::AD_ATT);
-
-  Value* sysno = ConstantInt::get(i64Ty, SYS_MMAP);
-  Value* addr = ConstantInt::get(i64Ty, 0);                     // NULL
-  Value* length = ctx.builder->CreateZExtOrTrunc(size, i64Ty);  // size
-  Value* prot = ConstantInt::get(i64Ty, PROT_READ | PROT_WRITE);
-  Value* flags = ConstantInt::get(i64Ty, MAP_PRIVATE | MAP_ANONYMOUS);
-  Value* fd = ConstantInt::get(i64Ty, -1);     // No file
-  Value* offset = ConstantInt::get(i64Ty, 0);  // No offset
-
-  Value* result = ctx.builder->CreateCall(
-      syscallAsm, {sysno, addr, length, prot, flags, fd, offset},
-      "mmap_result");
-
-  // Convert i64 result to pointer
-  return ctx.builder->CreateIntToPtr(result, ptrTy, "mmap_ptr");
-}
-
-void ThreadUtils::emitSyscallMunmap(Value* addr, Value* size) {
-  LLVMContext& llvmCtx = ctx.getContext();
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
-
-  std::vector<Type*> paramTypes = {i64Ty, i64Ty, i64Ty, i64Ty};
-  FunctionType* asmType = FunctionType::get(i64Ty, paramTypes, false);
-
-  InlineAsm* syscallAsm = InlineAsm::get(
-      asmType, "syscall",
-      "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}",
-      /*hasSideEffects=*/true, /*isAlignStack=*/false, InlineAsm::AD_ATT);
-
-  Value* sysno = ConstantInt::get(i64Ty, SYS_MUNMAP);
-  Value* addrInt = ctx.builder->CreatePtrToInt(addr, i64Ty);
-  Value* length = ctx.builder->CreateZExtOrTrunc(size, i64Ty);
-  Value* zero = ConstantInt::get(i64Ty, 0);
-
-  ctx.builder->CreateCall(syscallAsm, {sysno, addrInt, length, zero});
-}
-
-Value* ThreadUtils::emitSyscallClone(Value* flags, Value* stackTop,
-                                     Value* parentTidPtr, Value* childTidPtr) {
-  LLVMContext& llvmCtx = ctx.getContext();
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
-
-  // clone(flags, stack, parent_tid, child_tid, tls)
-  // Note: tls is not used for basic threads
-  std::vector<Type*> paramTypes = {i64Ty, i64Ty, i64Ty, i64Ty, i64Ty, i64Ty};
-  FunctionType* asmType = FunctionType::get(i64Ty, paramTypes, false);
-
-  InlineAsm* syscallAsm = InlineAsm::get(
-      asmType, "syscall",
-      "={rax},{rax},{rdi},{rsi},{rdx},{r10},{r8},~{rcx},~{r11},~{memory}",
-      /*hasSideEffects=*/true, /*isAlignStack=*/false, InlineAsm::AD_ATT);
-
-  Value* sysno = ConstantInt::get(i64Ty, SYS_CLONE);
-  Value* flagsVal = ctx.builder->CreateZExtOrTrunc(flags, i64Ty);
-  Value* stackVal = ctx.builder->CreatePtrToInt(stackTop, i64Ty);
-  Value* parentTid = ctx.builder->CreatePtrToInt(parentTidPtr, i64Ty);
-  Value* childTid = ctx.builder->CreatePtrToInt(childTidPtr, i64Ty);
-  Value* tls = ConstantInt::get(i64Ty, 0);  // Not using TLS
-
-  return ctx.builder->CreateCall(
-      syscallAsm, {sysno, flagsVal, stackVal, parentTid, childTid, tls},
-      "clone_result");
-}
 
 Value* ThreadUtils::emitSyscallFutex(Value* addr, Value* op, Value* val) {
   LLVMContext& llvmCtx = ctx.getContext();
   auto* i64Ty = Type::getInt64Ty(llvmCtx);
 
-  std::vector<Type*> paramTypes = {i64Ty, i64Ty, i64Ty, i64Ty,
-                                   i64Ty, i64Ty, i64Ty};
-  FunctionType* asmType = FunctionType::get(i64Ty, paramTypes, false);
-
-  InlineAsm* syscallAsm = InlineAsm::get(
-      asmType, "syscall",
-      "={rax},{rax},{rdi},{rsi},{rdx},{r10},{r8},{r9},~{rcx},~{r11},~{memory}",
-      /*hasSideEffects=*/true, /*isAlignStack=*/false, InlineAsm::AD_ATT);
-
-  Value* sysno = ConstantInt::get(i64Ty, SYS_FUTEX);
-  Value* addrVal = ctx.builder->CreatePtrToInt(addr, i64Ty);
+  // long syscall(SYS_futex, uaddr, op, val, timeout, uaddr2, val3)
+  Value* sysno = ConstantInt::get(i64Ty, futexSyscallNumber(module));
   Value* opVal = ctx.builder->CreateZExtOrTrunc(op, i64Ty);
   Value* valVal = ctx.builder->CreateZExtOrTrunc(val, i64Ty);
-  Value* timeout = ConstantInt::get(i64Ty, 0);  // No timeout (infinite wait)
-  Value* addr2 = ConstantInt::get(i64Ty, 0);    // Not used
-  Value* val3 = ConstantInt::get(i64Ty, 0);     // Not used
+  Value* zero = ConstantInt::get(i64Ty, 0);
 
   return ctx.builder->CreateCall(
-      syscallAsm, {sysno, addrVal, opVal, valVal, timeout, addr2, val3},
+      sun::libc::syscall(module),
+      {sysno, ctx.builder->CreatePtrToInt(addr, i64Ty), opVal, valVal, zero,
+       zero, zero},
       "futex_result");
 }
 
@@ -154,24 +70,68 @@ void ThreadUtils::emitSyscallFutexWake(Value* addr) {
   emitSyscallFutex(addr, op, numWaiters);
 }
 
-void ThreadUtils::emitSyscallExit(Value* exitCode) {
+// -------------------------------------------------------------------
+// Thread trampoline
+// -------------------------------------------------------------------
+
+Function* ThreadUtils::getOrCreateThreadTrampoline(
+    FunctionType* lambdaFuncType, StructType* fatType, Type* resultLLVMType) {
   LLVMContext& llvmCtx = ctx.getContext();
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
 
-  std::vector<Type*> paramTypes = {i64Ty, i64Ty};
-  FunctionType* asmType =
-      FunctionType::get(Type::getVoidTy(llvmCtx), paramTypes, false);
+  // Two spawns of same-typed lambdas share one trampoline.
+  std::string key;
+  raw_string_ostream keyStream(key);
+  lambdaFuncType->print(keyStream);
+  resultLLVMType->print(keyStream);
+  if (auto it = trampolineCache.find(keyStream.str());
+      it != trampolineCache.end()) {
+    return it->second;
+  }
 
-  InlineAsm* syscallAsm = InlineAsm::get(
-      asmType, "syscall", "{rax},{rdi},~{rcx},~{r11},~{memory}",
-      /*hasSideEffects=*/true, /*isAlignStack=*/false, InlineAsm::AD_ATT);
+  auto* ptrTy = PointerType::getUnqual(llvmCtx);
+  StructType* contextType = getThreadContextType();
 
-  Value* sysno = ConstantInt::get(i64Ty, SYS_EXIT);
-  Value* code = ctx.builder->CreateZExtOrTrunc(exitCode, i64Ty);
+  // ptr __sun_thread_start(ptr context) — LLVM uniques the name per module.
+  FunctionType* funcType = FunctionType::get(ptrTy, {ptrTy}, false);
+  Function* func = Function::Create(funcType, Function::InternalLinkage,
+                                    "__sun_thread_start", module);
 
-  ctx.builder->CreateCall(syscallAsm, {sysno, code});
-  // exit never returns, but LLVM needs a terminator
-  ctx.builder->CreateUnreachable();
+  BasicBlock* entryBB = BasicBlock::Create(llvmCtx, "entry", func);
+  IRBuilder<> builder(entryBB);
+
+  Value* contextPtr = func->arg_begin();
+  contextPtr->setName("context");
+
+  Value* funcFieldPtr =
+      builder.CreateStructGEP(contextType, contextPtr, 0, "ctx.func_ptr");
+  Value* lambdaFunc = builder.CreateLoad(ptrTy, funcFieldPtr, "lambda.func");
+  Value* envFieldPtr =
+      builder.CreateStructGEP(contextType, contextPtr, 1, "ctx.env_ptr");
+  Value* lambdaEnv = builder.CreateLoad(ptrTy, envFieldPtr, "lambda.env");
+
+  // Rebuild the fat pointer; the lambda calling convention expects a pointer
+  // to the fat struct as its argument.
+  Value* fat = UndefValue::get(fatType);
+  fat = builder.CreateInsertValue(fat, lambdaFunc, 0, "fat.func");
+  fat = builder.CreateInsertValue(fat, lambdaEnv, 1, "fat.env");
+  AllocaInst* fatAlloca = builder.CreateAlloca(fatType, nullptr, "fat.alloca");
+  builder.CreateStore(fat, fatAlloca);
+
+  Value* result =
+      builder.CreateCall(lambdaFuncType, lambdaFunc, {fatAlloca}, "result");
+
+  if (!resultLLVMType->isVoidTy()) {
+    Value* resultFieldPtr =
+        builder.CreateStructGEP(contextType, contextPtr, 2, "ctx.result_ptr");
+    Value* resultSlot =
+        builder.CreateLoad(ptrTy, resultFieldPtr, "result_slot");
+    builder.CreateStore(result, resultSlot);
+  }
+
+  builder.CreateRet(ConstantPointerNull::get(cast<PointerType>(ptrTy)));
+
+  trampolineCache[keyStream.str()] = func;
+  return func;
 }
 
 // -------------------------------------------------------------------
@@ -186,11 +146,10 @@ StructType* ThreadUtils::getThreadContextType() {
   }
 
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  auto* i32Ty = Type::getInt32Ty(llvmCtx);
   auto* i64Ty = Type::getInt64Ty(llvmCtx);
 
-  // { func, env, result_slot, futex_word, stack_base, stack_size }
-  return StructType::create(llvmCtx, {ptrTy, ptrTy, ptrTy, i32Ty, ptrTy, i64Ty},
+  // { func, env, result_slot, pthread_id }
+  return StructType::create(llvmCtx, {ptrTy, ptrTy, ptrTy, i64Ty},
                             "thread_context");
 }
 
@@ -203,8 +162,5 @@ StructType* ThreadUtils::getThreadHandleType() {
   }
 
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
-
-  return StructType::create(llvmCtx, {ptrTy, ptrTy, i64Ty},
-                            sun::StructNames::Thread);
+  return StructType::create(llvmCtx, {ptrTy}, sun::StructNames::Thread);
 }

@@ -21,6 +21,11 @@ message ModuleMetadata {
   // Dependencies
   repeated string dependencies = 5;  // Paths to imported modules
 
+  // Target the bitcode was compiled for (LLVM triple, e.g.
+  // "x86_64-pc-linux-gnu"). Linking a bundle into a different target is an
+  // error — struct layouts and ABI decisions are baked into the bitcode.
+  string target_triple = 10;
+
   // Exported definitions (bodies included only for generics)
   repeated sun.ast.FunctionDef functions = 6;
   repeated sun.ast.ClassDef classes = 7;

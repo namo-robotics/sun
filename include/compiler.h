@@ -26,7 +26,10 @@ namespace sun {
 struct LinkOptions {
   std::vector<std::string> libraries;      // -lfoo  -> "foo"
   std::vector<std::string> searchPaths;    // -Ldir  -> "dir"
+  std::string targetTriple;                // --target -> cross linker needed
+  std::string sysroot;                     // --sysroot -> target's root fs
 };
+
 
 /// Quote a string for safe use as a single argument in a /bin/sh command.
 /// The link command runs through std::system, and -l/-L values come from the
@@ -42,6 +45,36 @@ inline std::string shellQuote(const std::string& s) {
   }
   out += "'";
   return out;
+}
+
+/// Pick the link driver for a target. Host builds use `cc`. Cross builds
+/// prefer a triple-prefixed GCC (`aarch64-linux-gnu-gcc`), falling back to
+/// `clang --target=<triple>`; either can take --sysroot for the target's
+/// libc and startup files. SUN_CC overrides the choice entirely. Returns ""
+/// when no capable link driver exists on this machine.
+inline std::string linkerCommandFor(const std::string& targetTriple) {
+  if (const char* env = std::getenv("SUN_CC")) {
+    return env;
+  }
+  if (targetTriple.empty()) {
+    return "cc";
+  }
+  std::string crossGcc = targetTriple + "-gcc";
+  std::string probe =
+      "command -v " + shellQuote(crossGcc) + " >/dev/null 2>&1";
+  if (std::system(probe.c_str()) == 0) {
+    return crossGcc;
+  }
+  if (std::system("command -v clang >/dev/null 2>&1") == 0) {
+    std::string cmd = "clang --target=" + shellQuote(targetTriple);
+    // LLD links any target; the GNU ld clang would otherwise invoke is
+    // usually built for the host only.
+    if (std::system("command -v ld.lld >/dev/null 2>&1") == 0) {
+      cmd += " -fuse-ld=lld";
+    }
+    return cmd;
+  }
+  return "";
 }
 
 /// Make libraries named by -l visible to the JIT.
@@ -171,13 +204,26 @@ inline bool linkExecutable(const std::string& objectPath,
                            const std::string& outputPath,
                            std::string& errorMsg,
                            const LinkOptions& linkOpts = {}) {
-  // Build linker command using the system C compiler.
-  // Use cc (or clang/gcc) to handle linking with the C runtime.
-  // -lstdc++ provides the Itanium C++ ABI runtime (__cxa_throw,
-  // __cxa_allocate_exception, typeinfo, _Unwind_*) that native exception
-  // handling lowers to.
-  std::string cmd = "cc -o " + shellQuote(outputPath) + " " +
-                    shellQuote(objectPath);
+  // Build linker command using a C compiler driver so it handles the C
+  // runtime and startup files. -lstdc++ provides the Itanium C++ ABI runtime
+  // (__cxa_throw, __cxa_allocate_exception, typeinfo, _Unwind_*) that native
+  // exception handling lowers to.
+  std::string linker = linkerCommandFor(linkOpts.targetTriple);
+  if (linker.empty()) {
+    errorMsg = "no link driver for target '" + linkOpts.targetTriple +
+               "': install " + linkOpts.targetTriple +
+               "-gcc or clang (or set SUN_CC), or stop at --emit-obj and "
+               "link on the target machine";
+    return false;
+  }
+
+  std::string cmd =
+      linker + " -o " + shellQuote(outputPath) + " " + shellQuote(objectPath);
+
+  // Cross links need the target's root filesystem for libc and crt files.
+  if (!linkOpts.sysroot.empty()) {
+    cmd += " --sysroot=" + shellQuote(linkOpts.sysroot);
+  }
 
   // -L before -l: the search paths must be in effect when libraries resolve.
   for (const auto& dir : linkOpts.searchPaths) {

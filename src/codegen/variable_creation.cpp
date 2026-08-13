@@ -3,7 +3,6 @@
 #include "ast.h"
 #include "codegen.h"
 #include "codegen_visitor.h"
-#include "llvm/IR/InlineAsm.h"
 
 using namespace llvm;
 
@@ -699,39 +698,15 @@ void CodegenVisitor::emitScopeCleanup() {
 
       ctx.builder->SetInsertPoint(freeBB);
 
-      if (it->isMmap && it->sizeAlloca) {
-        // For mmap allocations, use munmap syscall (syscall 11 on x86_64)
-        llvm::Value* size =
-            ctx.builder->CreateLoad(llvm::Type::getInt64Ty(ctx.getContext()),
-                                    it->sizeAlloca, it->varName + ".mmap_size");
-
-        // munmap(addr, length) - syscall 11
-        auto* i64Ty = llvm::Type::getInt64Ty(ctx.getContext());
-        std::vector<llvm::Type*> paramTypes = {i64Ty, i64Ty, i64Ty, i64Ty};
-        llvm::FunctionType* asmType =
-            llvm::FunctionType::get(i64Ty, paramTypes, false);
-        llvm::InlineAsm* syscallAsm = llvm::InlineAsm::get(
-            asmType, "syscall",
-            "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}",
-            /*hasSideEffects=*/true, /*isAlignStack=*/false,
-            llvm::InlineAsm::AD_ATT);
-
-        llvm::Value* sysno = llvm::ConstantInt::get(i64Ty, 11);  // sys_munmap
-        llvm::Value* addr = ctx.builder->CreatePtrToInt(ptrToFree, i64Ty);
-        llvm::Value* zero = llvm::ConstantInt::get(i64Ty, 0);
-        ctx.builder->CreateCall(syscallAsm, {sysno, addr, size, zero});
-      } else {
-        // For malloc allocations:
-        if (it->pointeeType && it->pointeeType->isClass()) {
-          auto* classType = static_cast<sun::ClassType*>(it->pointeeType.get());
-          emitDeinitCall(classType, ptrToFree);
-          // Recursively deinit class fields and free nested ptr<T> fields
-          emitFieldDeinit(ptrToFree, classType, it->varName);
-          emitFieldCleanup(ptrToFree, classType, it->varName, freeFunc);
-        }
-        // Then free the object itself
-        ctx.builder->CreateCall(freeFunc, {ptrToFree});
+      if (it->pointeeType && it->pointeeType->isClass()) {
+        auto* classType = static_cast<sun::ClassType*>(it->pointeeType.get());
+        emitDeinitCall(classType, ptrToFree);
+        // Recursively deinit class fields and free nested ptr<T> fields
+        emitFieldDeinit(ptrToFree, classType, it->varName);
+        emitFieldCleanup(ptrToFree, classType, it->varName, freeFunc);
       }
+      // Then free the object itself
+      ctx.builder->CreateCall(freeFunc, {ptrToFree});
 
       // Null out the pointer to prevent double-free
       ctx.builder->CreateStore(nullPtr, it->ptrAlloca);

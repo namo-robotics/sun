@@ -1,5 +1,8 @@
 #include "library_cache.h"
 
+#include <llvm/TargetParser/Host.h>
+#include <llvm/TargetParser/Triple.h>
+
 #include <algorithm>
 
 #include "sun_path.h"
@@ -36,10 +39,33 @@ void LibraryCache::addBundle(const std::filesystem::path& bundlePath) {
   if (reader) {
     // Index all modules in this bundle
     for (const auto& modPath : reader->listModules()) {
-      moduleToBundle_[modPath] = reader.get();
+      moduleToBundle_[modPath].push_back(reader.get());
     }
     bundles_.push_back(std::move(reader));
   }
+}
+
+void LibraryCache::setTargetTriple(const std::string& triple) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  targetTriple_ = triple;
+}
+
+SunLibReader* LibraryCache::selectBundle(
+    const std::vector<SunLibReader*>& candidates) const {
+  if (candidates.empty()) return nullptr;
+
+  llvm::Triple want(targetTriple_.empty() ? llvm::sys::getDefaultTargetTriple()
+                                          : targetTriple_);
+  for (auto* reader : candidates) {
+    std::string triple = reader->getTargetTriple();
+    if (!triple.empty() && llvm::Triple(triple).getArch() == want.getArch()) {
+      return reader;
+    }
+  }
+  for (auto* reader : candidates) {
+    if (reader->getTargetTriple().empty()) return reader;  // legacy bundle
+  }
+  return candidates.front();
 }
 
 void LibraryCache::initFromEnvironment() {
@@ -95,7 +121,7 @@ void LibraryCache::discoverBundles() {
           auto reader = SunLibReader::open(entry.path());
           if (reader) {
             for (const auto& modPath : reader->listModules()) {
-              moduleToBundle_[modPath] = reader.get();
+              moduleToBundle_[modPath].push_back(reader.get());
             }
             bundles_.push_back(std::move(reader));
           }
@@ -111,7 +137,7 @@ SunLibReader* LibraryCache::findBundleForModule(const std::string& moduleKey) {
   // Check cache first
   auto it = moduleToBundle_.find(moduleKey);
   if (it != moduleToBundle_.end()) {
-    return it->second;
+    return selectBundle(it->second);
   }
 
   // Ensure bundles are discovered
@@ -120,7 +146,7 @@ SunLibReader* LibraryCache::findBundleForModule(const std::string& moduleKey) {
   // Check again after discovery
   it = moduleToBundle_.find(moduleKey);
   if (it != moduleToBundle_.end()) {
-    return it->second;
+    return selectBundle(it->second);
   }
 
   return nullptr;
