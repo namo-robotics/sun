@@ -149,6 +149,7 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
         info.qualifiedName = qualifiedName;
         info.canThrow = proto.canThrow();
         info.isCVariadic = proto.isCVariadic();
+        info.isCExtern = func.isCExtern();
 
         registernFunctionInCurrentScope(qualifiedName.baseName, info);
         break;
@@ -186,6 +187,7 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
             info.qualifiedName = qualifiedName;
             info.canThrow = proto.canThrow();
             info.isCVariadic = proto.isCVariadic();
+            info.isCExtern = func.isCExtern();
             registernFunctionInCurrentScope(qualifiedName.baseName, info);
           }
         }
@@ -236,6 +238,7 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
                 info.qualifiedName = qualifiedName;
                 info.canThrow = proto.canThrow();
                 info.isCVariadic = proto.isCVariadic();
+            info.isCExtern = func.isCExtern();
                 registernFunctionInCurrentScope(qualifiedName.baseName, info);
               }
             }

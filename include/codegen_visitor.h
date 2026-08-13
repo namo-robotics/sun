@@ -13,6 +13,7 @@
 #include "ast.h"                 // Your pure AST header with ASTNodeType
 #include "codegen.h"             // Your CodegenContext definition
 #include "error.h"               // Error handling
+#include "extern_c.h"            // The extern "C" boundary
 #include "llvm_type_resolver.h"  // LLVM type resolution
 #include "thread_utils.h"        // Thread support utilities
 #include "types.h"               // Type system
@@ -118,10 +119,9 @@ class CodegenVisitor {
   // Functions with hasClosure=false can be called directly
   std::map<std::string, FunctionClosureInfo> functionInfo;
 
-  // Sun-side extern name -> C symbol, for `extern function f(...) T as "g"`.
-  // Name resolution rewrites call sites through the Sun name, so this is
-  // where that name is translated to the symbol actually declared.
-  std::map<std::string, std::string> externSymbolNames;
+  // Everything specific to the `extern "C"` boundary: symbol renames, C ABI
+  // signature lowering, and argument marshalling. See extern_c.h.
+  sun::cabi::ExternCEmitter externC;
 
   // Counter for generating unique names for anonymous lambdas
   unsigned lambdaCounter = 0;
@@ -185,6 +185,7 @@ class CodegenVisitor {
         module(ctx.mainModule.get()),
         typeRegistry(std::move(registry)),
         typeResolver(ctx.getContext()),
+        externC(ctx, ctx.mainModule.get()),
         threadUtils(ctx, ctx.mainModule.get()) {}
 
   // Snapshot the module's current function declarations.
@@ -377,14 +378,23 @@ class CodegenVisitor {
                                        const sun::TypePtr& argSunType,
                                        const sun::TypePtr& paramType);
 
-  // C default argument promotions for values passed in a `...` tail:
-  // float -> double, sub-int integers -> int, static_ptr -> data pointer.
-  llvm::Value* applyCVarargPromotions(llvm::Value* argVal,
-                                      const sun::TypePtr& argSunType);
-
   // Find a function by its resolved Sun-side name, translating renamed
   // externs (`as "symbol"`) to the C symbol they were declared under.
   llvm::Function* lookupCallTarget(const std::string& name);
+
+  // Build the argument list for a direct call, applying every parameter
+  // coercion Sun performs at a call boundary. Shared by plain and
+  // module-qualified calls. Returns false if an argument failed to codegen.
+  bool buildDirectCallArgs(const CallExprAST& expr,
+                           const std::vector<sun::TypePtr>& paramTypes,
+                           llvm::Function* func,
+                           std::vector<llvm::Value*>& argValues);
+
+  // Generate the arguments for a call across the C boundary, applying only
+  // Sun's own coercions. C-specific marshalling is ExternCEmitter's job.
+  bool buildExternCallArgs(const CallExprAST& expr,
+                           const std::vector<sun::TypePtr>& paramTypes,
+                           std::vector<sun::cabi::PreparedArg>& out);
 
   // Load through a reference-typed return value (refs behave like values)
   llvm::Value* derefIfRefReturn(llvm::Value* result,

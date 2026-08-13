@@ -632,7 +632,7 @@ TEST(ModuleTest, module_qualified_call_to_extern) {
       extern function abs(x: i32) i32;
     }
     function main() i32 {
-      return libc.abs(-13);
+      unsafe { return libc.abs(-13); };
     }
   )");
   EXPECT_EQ(value, 13);
@@ -674,4 +674,32 @@ TEST(ModuleTest, module_qualified_call_into_moon_library) {
     }
   )");
   EXPECT_EQ(value, 0);
+}
+
+TEST(ModuleTest, module_qualified_call_coerces_arguments) {
+  // This call path used to build its argument list with a bare codegen(),
+  // skipping every coercion the direct-call path applies — so a string
+  // literal reached a raw_ptr<u8> parameter as a fat { ptr, i64 } struct.
+  auto value = executeString(R"(
+    module m {
+      function len4(s: raw_ptr<u8>) i32 { return 4; }
+    }
+    function main() i32 {
+      return m.len4("abcd");
+    }
+  )");
+  EXPECT_EQ(value, 4);
+}
+
+TEST(ModuleTest, module_qualified_call_widens_numeric_arguments) {
+  auto value = executeString(R"(
+    module m {
+      function take(x: i64) i64 { return x; }
+    }
+    function main() i32 {
+      var small: i32 = 7;
+      return m.take(small);
+    }
+  )");
+  EXPECT_EQ(value, 7);
 }

@@ -147,6 +147,11 @@ std::unique_ptr<PrototypeAST> ASTDeserializer::deserializePrototype(
     result->setLocation(deserializePosition(proto.location()));
   }
 
+  result->setCVariadic(proto.c_variadic());
+  if (proto.has_link_name()) {
+    result->setLinkName(proto.link_name());
+  }
+
   return result;
 }
 
@@ -608,9 +613,16 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeUnsafeBlock(
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeFunction(
     const ast::FunctionDef& proto) const {
   auto prototype = deserializePrototype(proto.proto());
-  auto body = deserializeBlockExpr(proto.body());
+  // A declaration has no body at all. Handing FunctionAST an empty block
+  // instead would make isExtern() false, so a C extern would be re-mangled as
+  // an ordinary Sun function and its symbol lost.
+  std::unique_ptr<BlockExprAST> body;
+  if (proto.body_present()) {
+    body = deserializeBlockExpr(proto.body());
+  }
   auto func =
       std::make_unique<FunctionAST>(std::move(prototype), std::move(body));
+  func->setCExtern(proto.is_c_extern());
   return func;
 }
 

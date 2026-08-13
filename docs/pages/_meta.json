@@ -17,6 +17,7 @@
   "modules": "Modules & Namespaces",
   "stdlib": "Standard Library",
   "intrinsics": "Compiler Intrinsics",
+  "c-ffi": "C FFI",
   "formatting": "Formatting",
   "architecture": "Architecture"
 }

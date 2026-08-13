@@ -17,7 +17,9 @@
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/StandardInstrumentations.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/MC/TargetRegistry.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/TargetParser/Host.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Scalar/GVN.h"
@@ -113,6 +115,23 @@ class CodegenContext {
 
     if (jit) {
       mainModule->setDataLayout(jit->getDataLayout());
+    } else {
+      // AOT: emitObjectFile sets the real layout, but only after codegen has
+      // run. C ABI classification needs true field offsets while emitting,
+      // and LLVM's default layout aligns i64 to 32 bits — which would make
+      // `{i32, i64}` 12 bytes instead of 16 and misclassify it. Establish the
+      // host layout up front. Targets were initialized just above.
+      auto triple = llvm::sys::getDefaultTargetTriple();
+      std::string err;
+      if (const auto* target = llvm::TargetRegistry::lookupTarget(triple, err)) {
+        llvm::TargetOptions opt;
+        if (auto* tm = target->createTargetMachine(triple, "generic", "", opt,
+                                                   llvm::Reloc::PIC_)) {
+          mainModule->setTargetTriple(triple);
+          mainModule->setDataLayout(tm->createDataLayout());
+          delete tm;
+        }
+      }
     }
   }
 

@@ -105,9 +105,10 @@ class SemanticAnalyzer {
   void analyzeFunction(FunctionAST& func);
   void analyzeLambda(LambdaAST& lambda);
 
-  // Reject extern signatures whose C ABI codegen cannot yet emit correctly.
-  // Only primitives and raw_ptr<T> are ABI-correct today: aggregates need
-  // SysV classification (byval/sret) that the backend does not perform.
+  // Reject extern signatures that have no C spelling. Primitives, raw_ptr<T>,
+  // `ref T` (C's T*) and objects by value all lower correctly; arrays,
+  // slices, interfaces and lambdas do not, and must error rather than
+  // silently miscompile.
   void validateExternSignature(FunctionAST& func);
 
   // Analyze a partial class definition. Partial classes add methods to an
@@ -332,8 +333,13 @@ class SemanticAnalyzer {
   // Validate parameter names and resolve their types from prototype
   // Throws if any parameter name is reserved; applies auto-ref conversion
   // Returns the resolved param types and sets them on the prototype
+  //
+  // allowByValueObjects exempts C externs from REQUIRE_REF_FOR_COMPOUND_PARAMS
+  // when that policy is enabled: passing a struct by value is what the C ABI
+  // specifies, so it is the callee's signature rather than a Sun choice.
   std::vector<sun::TypePtr> validateAndResolveParamTypes(
-      PrototypeAST& proto, std::optional<Position> loc = std::nullopt);
+      PrototypeAST& proto, std::optional<Position> loc = std::nullopt,
+      bool allowByValueObjects = false);
 
   // Register built-in functions (print, println, file I/O, etc.)
   void registerBuiltinFunctions();
@@ -418,6 +424,14 @@ class SemanticAnalyzer {
       const std::string& modulePath, const std::string& name,
       SymbolKind filterKind = SymbolKind::None,
       const std::vector<sun::TypePtr>* argTypes = nullptr) const;
+
+  // Calling into C leaves everything the borrow checker and type system
+  // guarantee, so it is gated on `unsafe` — the same rule the equivalent
+  // intrinsics (_malloc, _free, ...) already follow. Throws if `info` names a
+  // C extern and the call site is not inside an unsafe block.
+  void checkExternCallAllowed(const FunctionInfo& info,
+                              const std::string& displayName,
+                              const Position& loc) const;
 
   // Resolve a module-qualified call `mod.foo(args...)` against the actual
   // argument types and stamp the chosen overload's own mangled name onto the

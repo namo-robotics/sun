@@ -1505,7 +1505,8 @@ void SemanticAnalyzer::validateNotReserved(const std::string& name,
 // -------------------------------------------------------------------
 
 std::vector<sun::TypePtr> SemanticAnalyzer::validateAndResolveParamTypes(
-    PrototypeAST& proto, std::optional<Position> loc) {
+    PrototypeAST& proto, std::optional<Position> loc,
+    bool allowByValueObjects) {
   // Validate parameter names
   for (const auto& argName : proto.getArgNames()) {
     validateNotReserved(argName, "Parameter name", loc);
@@ -1518,7 +1519,9 @@ std::vector<sun::TypePtr> SemanticAnalyzer::validateAndResolveParamTypes(
 
     // Check for compound types being passed by value
     if constexpr (sun::Config::REQUIRE_REF_FOR_COMPOUND_PARAMS) {
-      if (paramType && paramType->isCompound()) {
+      // C externs are exempt: passing a struct by value is what the C ABI
+      // specifies, so it is the callee's signature rather than a Sun choice.
+      if (!allowByValueObjects && paramType && paramType->isCompound()) {
         // Error: compound types must be passed by reference
         logAndThrowError("Parameter '" + argName + "' has compound type '" +
                              paramType->toString() +
@@ -1551,8 +1554,10 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
   // Build captures using current scope information
   std::vector<Capture> captures = buildCaptures(func);
 
-  // Validate and resolve parameter types
-  std::vector<sun::TypePtr> paramTypes = validateAndResolveParamTypes(proto);
+  // Validate and resolve parameter types. Only C externs may take objects by
+  // value; see validateAndResolveParamTypes.
+  std::vector<sun::TypePtr> paramTypes = validateAndResolveParamTypes(
+      proto, func.getLocation(), /*allowByValueObjects=*/func.isCExtern());
 
   // Resolve return type if specified; Void for constructors (no return type)
   sun::TypePtr returnType = sun::Types::Void();
@@ -1596,6 +1601,7 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
   info.qualifiedName = qualifiedName;
   info.canThrow = proto.canThrow();
   info.isCVariadic = proto.isCVariadic();
+  info.isCExtern = func.isCExtern();
   return info;
 }
 
@@ -1690,6 +1696,18 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
 // Function body analysis
 // -------------------------------------------------------------------
 
+void SemanticAnalyzer::checkExternCallAllowed(const FunctionInfo& info,
+                                              const std::string& displayName,
+                                              const Position& loc) const {
+  if (!info.isCExtern || isInUnsafeBlock()) return;
+  logAndThrowError(
+      "Calling extern function '" + displayName +
+          "' requires an unsafe block: C code is outside the borrow "
+          "checker's guarantees. Wrap the call in `unsafe { ... }`, or "
+          "expose it through a safe Sun wrapper.",
+      loc);
+}
+
 const FunctionInfo* SemanticAnalyzer::resolveModuleQualifiedCall(
     const MemberAccessAST& memberAccess, const sun::TypePtr& objectType,
     const std::vector<sun::TypePtr>& argTypes) const {
@@ -1702,6 +1720,8 @@ const FunctionInfo* SemanticAnalyzer::resolveModuleQualifiedCall(
                          &argTypes);
   if (!match || !match.functionInfo) return nullptr;
 
+  checkExternCallAllowed(*match.functionInfo, memberAccess.getMemberName(),
+                         memberAccess.getLocation());
   memberAccess.setResolvedQualifiedName(
       match.functionInfo->qualifiedName.mangled());
   return match.functionInfo;
@@ -1720,14 +1740,30 @@ void SemanticAnalyzer::validateExternSignature(FunctionAST& func) {
                      func.getLocation());
   }
 
-  // Anything wider than a primitive or a bare pointer needs SysV argument
-  // classification (byval/sret) that codegen does not emit yet, so accepting
-  // it would silently produce a call the C side cannot decode.
   auto describe = [](const sun::TypePtr& t) {
     return t ? t->toString() : std::string("<unresolved>");
   };
-  auto isABISafe = [](const sun::TypePtr& t) {
-    return t && (t->isPrimitive() || t->isRawPointer());
+
+  // What codegen can lower to a C-compatible signature:
+  //  - primitives, which map 1:1
+  //  - raw_ptr<T>, a bare pointer
+  //  - ref T, which also lowers to a bare pointer and so *is* C's `T*`.
+  //    Class layout already matches C (declaration order, natural padding),
+  //    so `ref SomeClass` is exactly `struct SomeClass*`.
+  //  - classes by value, via SysV eightbyte classification (see sysv_abi.h)
+  // Still excluded are the types with no C spelling at all: arrays and slices
+  // (fat pointers), interfaces (vtable pairs), lambdas (closures), and
+  // error unions.
+  auto isABISafeParam = [](const sun::TypePtr& t) {
+    return t && (t->isPrimitive() || t->isRawPointer() || t->isReference() ||
+                 t->isClass() || t->isEnum());
+  };
+  // Returns allow the same, minus `ref`: Sun's ref return has auto-deref
+  // semantics that do not correspond to anything C returns. Use raw_ptr<T>
+  // for a returned pointer.
+  auto isABISafeReturn = [](const sun::TypePtr& t) {
+    return t && (t->isPrimitive() || t->isRawPointer() || t->isClass() ||
+                 t->isEnum());
   };
 
   if (proto.hasResolvedParamTypes()) {
@@ -1739,25 +1775,27 @@ void SemanticAnalyzer::validateExternSignature(FunctionAST& func) {
                              "' cannot be void",
                          func.getLocation());
       }
-      if (!isABISafe(params[i])) {
+      if (!isABISafeParam(params[i])) {
         logAndThrowError(
             "Parameter '" + proto.getArgs()[i].first +
                 "' of extern function '" + proto.getName() + "' has type '" +
                 describe(params[i]) +
-                "', which is not supported in a C signature yet. Extern "
-                "parameters must be a primitive or raw_ptr<T>.",
+                "', which has no C equivalent. Extern parameters must be a "
+                "primitive, an enum, raw_ptr<T>, ref T (which is C's T*), or "
+                "a class (passed by value per the C ABI).",
             func.getLocation());
       }
     }
   }
 
   if (proto.hasResolvedReturnType() &&
-      !isABISafe(proto.getResolvedReturnType())) {
+      !isABISafeReturn(proto.getResolvedReturnType())) {
     logAndThrowError(
         "Extern function '" + proto.getName() + "' returns '" +
             describe(proto.getResolvedReturnType()) +
-            "', which is not supported in a C signature yet. Extern return "
-            "types must be a primitive or raw_ptr<T>.",
+            "', which has no C equivalent. Extern return types must be a "
+            "primitive, an enum, raw_ptr<T>, or a class. Note that `ref T` "
+            "cannot be returned; use raw_ptr<T>.",
         func.getLocation());
   }
 }
@@ -2451,6 +2489,8 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
 
     resolvedFunc = lookupFunction(resolved.baseName, argTypes);
     if (resolvedFunc) {
+      checkExternCallAllowed(*resolvedFunc, varRef.getName(),
+                             callExpr.getLocation());
       // Set resolved type on the callee directly
       varRef.setResolvedType(sun::Types::Function(resolvedFunc->returnType,
                                                   resolvedFunc->paramTypes,

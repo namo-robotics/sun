@@ -363,49 +363,13 @@ Value* CodegenVisitor::coerceStaticPtrToRawPtr(Value* argVal,
 // -------------------------------------------------------------------
 
 Function* CodegenVisitor::lookupCallTarget(const std::string& name) {
-  auto it = externSymbolNames.find(name);
-  if (it != externSymbolNames.end()) {
-    if (Function* f = module->getFunction(it->second)) return f;
+  // A renamed extern is declared under its C symbol, not the Sun-side name
+  // the call site resolved to.
+  const std::string& symbol = externC.symbolFor(name);
+  if (symbol != name) {
+    if (Function* f = module->getFunction(symbol)) return f;
   }
   return module->getFunction(name);
-}
-
-// -------------------------------------------------------------------
-// Helper: C default argument promotions for varargs
-// -------------------------------------------------------------------
-
-// Arguments in the `...` tail of a C call are promoted before being passed:
-// float widens to double, and anything narrower than int widens to int.
-// Callees read them back with va_arg at the promoted width, so skipping this
-// hands printf & friends the wrong bytes.
-Value* CodegenVisitor::applyCVarargPromotions(Value* argVal,
-                                              const sun::TypePtr& argSunType) {
-  if (!argVal) return argVal;
-  LLVMContext& llvmCtx = ctx.getContext();
-
-  // static_ptr<T> is a fat { ptr, i64 }; C expects the bare data pointer
-  // (this is what makes printf("%s", "literal") work).
-  if (argSunType && argSunType->isStaticPointer() &&
-      argVal->getType()->isStructTy()) {
-    return ctx.builder->CreateExtractValue(argVal, 0, "vararg.str.data");
-  }
-
-  if (argVal->getType()->isFloatTy()) {
-    return ctx.builder->CreateFPExt(argVal, Type::getDoubleTy(llvmCtx),
-                                    "vararg.fpext");
-  }
-
-  if (argVal->getType()->isIntegerTy() &&
-      argVal->getType()->getIntegerBitWidth() < 32) {
-    llvm::Type* i32Ty = Type::getInt32Ty(llvmCtx);
-    bool isUnsigned = argSunType && argSunType->isIntegral() &&
-                      !argSunType->isSigned();
-    return isUnsigned
-               ? ctx.builder->CreateZExt(argVal, i32Ty, "vararg.zext")
-               : ctx.builder->CreateSExt(argVal, i32Ty, "vararg.sext");
-  }
-
-  return argVal;
 }
 
 // -------------------------------------------------------------------
@@ -645,20 +609,27 @@ Value* CodegenVisitor::codegenModuleFunctionCall(
         mangleModulePath(moduleType->getModulePath()) + "_" + funcName;
   }
 
-  // Build argument list
-  std::vector<Value*> argValues;
-  for (const auto& arg : expr.getArgs()) {
-    Value* val = codegen(*arg);
-    if (!val) return nullptr;
-    argValues.push_back(val);
-  }
-
   // Get or declare the function
   Function* func = lookupCallTarget(qualifiedName);
   if (!func) {
     logAndThrowError("Unknown function: " + qualifiedName);
     return nullptr;
   }
+
+  // Build the argument list through the shared coercion path. Semantic
+  // analysis records the resolved overload's signature on the member access;
+  // without it every coercion degrades to a no-op, which is what this call
+  // path used to do unconditionally.
+  std::vector<sun::TypePtr> paramTypes;
+  if (auto calleeType = memberAccess.getResolvedType()) {
+    if (calleeType->isFunction()) {
+      paramTypes =
+          static_cast<sun::FunctionType*>(calleeType.get())->getParamTypes();
+    }
+  }
+
+  std::vector<Value*> argValues;
+  if (!buildDirectCallArgs(expr, paramTypes, func, argValues)) return nullptr;
 
   Value* result = emitPossiblyThrowingCall(
       func->getFunctionType(), func, argValues,
@@ -1130,6 +1101,145 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
 }
 
 // -------------------------------------------------------------------
+// Helper: build the LLVM argument list for a direct call
+// -------------------------------------------------------------------
+
+// Applies every coercion Sun performs at a call boundary: taking the address
+// for `ref` parameters, class-to-interface conversion, move semantics,
+// raw_ptr auto-deref, numeric widening, static_ptr narrowing, and C vararg
+// promotions. Shared by plain and module-qualified calls so the two cannot
+// drift apart. Returns false if an argument failed to codegen.
+bool CodegenVisitor::buildDirectCallArgs(
+    const CallExprAST& expr, const std::vector<sun::TypePtr>& paramTypes,
+    llvm::Function* func, std::vector<Value*>& argValues) {
+  unsigned argIdx = 0;
+  for (const auto& argExpr : expr.getArgs()) {
+    // Check if this parameter is a reference type
+    bool isRefParam = argIdx < paramTypes.size() && paramTypes[argIdx] &&
+                      paramTypes[argIdx]->isReference();
+
+    // Get the argument's Sun type for auto-deref logic
+    sun::TypePtr argSunType = argExpr->getResolvedType();
+
+    if (isRefParam) {
+      // Check for class -> ref Interface conversion first
+      sun::TypePtr paramType =
+          argIdx < paramTypes.size() ? paramTypes[argIdx] : nullptr;
+      if (argSunType && argSunType->isClass()) {
+        Value* classPtr = prepareRefArgument(argExpr.get(), argSunType);
+        Value* ifaceRef =
+            prepareClassForRefInterface(classPtr, argSunType, paramType);
+        if (ifaceRef) {
+          argValues.push_back(ifaceRef);
+          ++argIdx;
+          continue;
+        }
+      }
+      Value* refArg = prepareRefArgument(argExpr.get(), argSunType);
+      if (!refArg) return false;
+      argValues.push_back(refArg);
+    } else {
+      // Normal parameter: codegen the value
+      Value* argVal = codegen(*argExpr);
+      if (!argVal) return false;
+
+      sun::TypePtr paramType =
+          argIdx < paramTypes.size() ? paramTypes[argIdx] : nullptr;
+
+      // Handle class-to-interface conversion (must come before move semantics)
+      argVal = convertToInterfaceIfNeeded(argVal, argSunType, paramType);
+      if (!argVal) return false;
+
+      // Skip move semantics for interface args (already handled)
+      if (!paramType || !paramType->isInterface()) {
+        argVal = applyMoveSemantics(argVal, argSunType);
+
+        // Auto-deref: if argument is raw_ptr<T> and param is primitive T, load
+        // the value
+        if (argSunType && argSunType->isRawPointer() && paramType) {
+          sun::TypePtr pointeeType =
+              static_cast<sun::RawPointerType*>(argSunType.get())
+                  ->getPointeeType();
+
+          // Check if param expects the pointee type (primitive auto-deref)
+          if (pointeeType->equals(*paramType) && paramType->isPrimitive()) {
+            llvm::Type* pointeeLLVMType =
+                pointeeType->toLLVMType(ctx.getContext());
+            argVal = ctx.builder->CreateLoad(pointeeLLVMType, argVal,
+                                             "auto_deref_arg");
+          }
+        }
+
+        argVal = widenNumericIfNeeded(argVal, paramType, argSunType);
+        argVal = coerceStaticPtrToRawPtr(argVal, argSunType, paramType);
+      }
+
+      // Arguments past the last declared parameter of a C-variadic callee
+      // have no parameter type to coerce against; C's default argument
+      // promotions apply instead.
+      if (!paramType && func->getFunctionType()->isVarArg()) {
+        argVal = externC.promoteVararg(argVal, argSunType);
+      }
+
+      // Interface args: load fat pointer struct if value is still a pointer
+      if (paramType && paramType->isInterface() &&
+          argVal->getType()->isPointerTy()) {
+        llvm::StructType* fatPtrType =
+            sun::InterfaceType::getFatPointerType(ctx.getContext());
+        argVal = ctx.builder->CreateLoad(fatPtrType, argVal, "iface.arg.load");
+      }
+
+      argVal = loadClosureForLambdaParam(
+          argVal, paramType,
+          argValues.size() < func->getFunctionType()->getNumParams()
+              ? func->getFunctionType()->getParamType(argValues.size())
+              : nullptr);
+
+      argValues.push_back(argVal);
+    }
+    ++argIdx;
+  }
+  return true;
+}
+
+// -------------------------------------------------------------------
+// Helper: prepare arguments for a call across the C boundary
+// -------------------------------------------------------------------
+
+// Generates each argument as a Sun value and applies the coercions that are
+// Sun's own (taking a `ref` address, numeric widening, static_ptr narrowing).
+// Everything C-specific — aggregate classification, byval copies, sret, and
+// vararg promotions — is left to ExternCEmitter, which needs the Sun type
+// alongside the value to make those decisions.
+bool CodegenVisitor::buildExternCallArgs(
+    const CallExprAST& expr, const std::vector<sun::TypePtr>& paramTypes,
+    std::vector<sun::cabi::PreparedArg>& out) {
+  unsigned argIdx = 0;
+  for (const auto& argExpr : expr.getArgs()) {
+    sun::TypePtr paramType =
+        argIdx < paramTypes.size() ? paramTypes[argIdx] : nullptr;
+    sun::TypePtr argSunType = argExpr->getResolvedType();
+
+    Value* argVal = nullptr;
+    if (paramType && paramType->isReference()) {
+      // `ref T` is C's `T*`: pass the address.
+      argVal = prepareRefArgument(argExpr.get(), argSunType);
+    } else {
+      argVal = codegen(*argExpr);
+      if (argVal) {
+        argVal = widenNumericIfNeeded(argVal, paramType, argSunType);
+        argVal = coerceStaticPtrToRawPtr(argVal, argSunType, paramType);
+      }
+    }
+    if (!argVal) return false;
+
+    out.push_back({argVal, argSunType, paramType});
+    ++argIdx;
+  }
+  return true;
+}
+
+// -------------------------------------------------------------------
 // Function call codegen (direct call)
 // -------------------------------------------------------------------
 
@@ -1205,93 +1315,24 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
   // Get parameter types from the function type
   const auto& paramTypes = funcType.getParamTypes();
 
-  unsigned argIdx = 0;
-  for (const auto& argExpr : expr.getArgs()) {
-    // Check if this parameter is a reference type
-    bool isRefParam = argIdx < paramTypes.size() && paramTypes[argIdx] &&
-                      paramTypes[argIdx]->isReference();
-
-    // Get the argument's Sun type for auto-deref logic
-    sun::TypePtr argSunType = argExpr->getResolvedType();
-
-    if (isRefParam) {
-      // Check for class -> ref Interface conversion first
-      sun::TypePtr paramType =
-          argIdx < paramTypes.size() ? paramTypes[argIdx] : nullptr;
-      if (argSunType && argSunType->isClass()) {
-        Value* classPtr = prepareRefArgument(argExpr.get(), argSunType);
-        Value* ifaceRef =
-            prepareClassForRefInterface(classPtr, argSunType, paramType);
-        if (ifaceRef) {
-          argValues.push_back(ifaceRef);
-          ++argIdx;
-          continue;
-        }
-      }
-      Value* refArg = prepareRefArgument(argExpr.get(), argSunType);
-      if (!refArg) return nullptr;
-      argValues.push_back(refArg);
-    } else {
-      // Normal parameter: codegen the value
-      Value* argVal = codegen(*argExpr);
-      if (!argVal) return nullptr;
-
-      sun::TypePtr paramType =
-          argIdx < paramTypes.size() ? paramTypes[argIdx] : nullptr;
-
-      // Handle class-to-interface conversion (must come before move semantics)
-      argVal = convertToInterfaceIfNeeded(argVal, argSunType, paramType);
-      if (!argVal) return nullptr;
-
-      // Skip move semantics for interface args (already handled)
-      if (!paramType || !paramType->isInterface()) {
-        argVal = applyMoveSemantics(argVal, argSunType);
-
-        // Auto-deref: if argument is raw_ptr<T> and param is primitive T, load
-        // the value
-        if (argSunType && argSunType->isRawPointer() && paramType) {
-          sun::TypePtr pointeeType =
-              static_cast<sun::RawPointerType*>(argSunType.get())
-                  ->getPointeeType();
-
-          // Check if param expects the pointee type (primitive auto-deref)
-          if (pointeeType->equals(*paramType) && paramType->isPrimitive()) {
-            llvm::Type* pointeeLLVMType =
-                pointeeType->toLLVMType(ctx.getContext());
-            argVal = ctx.builder->CreateLoad(pointeeLLVMType, argVal,
-                                             "auto_deref_arg");
-          }
-        }
-
-        argVal = widenNumericIfNeeded(argVal, paramType, argSunType);
-        argVal = coerceStaticPtrToRawPtr(argVal, argSunType, paramType);
-      }
-
-      // Arguments past the last declared parameter of a C-variadic callee
-      // have no parameter type to coerce against; C's default argument
-      // promotions apply instead.
-      if (!paramType && func->getFunctionType()->isVarArg()) {
-        argVal = applyCVarargPromotions(argVal, argSunType);
-      }
-
-      // Interface args: load fat pointer struct if value is still a pointer
-      if (paramType && paramType->isInterface() &&
-          argVal->getType()->isPointerTy()) {
-        llvm::StructType* fatPtrType =
-            sun::InterfaceType::getFatPointerType(ctx.getContext());
-        argVal = ctx.builder->CreateLoad(fatPtrType, argVal, "iface.arg.load");
-      }
-
-      argVal = loadClosureForLambdaParam(
-          argVal, paramType,
-          argValues.size() < func->getFunctionType()->getNumParams()
-              ? func->getFunctionType()->getParamType(argValues.size())
-              : nullptr);
-
-      argValues.push_back(argVal);
-    }
-    ++argIdx;
+  // A C function whose signature needed ABI rewriting cannot go through the
+  // normal path: its LLVM parameters no longer line up with the Sun arguments
+  // one-to-one. Hand the prepared values to the extern-C emitter instead.
+  if (externC.needsMarshalling(func)) {
+    std::vector<sun::cabi::PreparedArg> preparedArgs;
+    if (!buildExternCallArgs(expr, paramTypes, preparedArgs)) return nullptr;
+    return externC.emitCall(
+        func, preparedArgs,
+        [&](llvm::FunctionType* fnTy, Value* callee,
+            llvm::ArrayRef<Value*> callArgs) {
+          return emitPossiblyThrowingCall(
+              fnTy, callee, std::vector<Value*>(callArgs.begin(),
+                                                callArgs.end()),
+              func->hasFnAttribute("sun.canthrow"), "calltmp");
+        });
   }
+
+  if (!buildDirectCallArgs(expr, paramTypes, func, argValues)) return nullptr;
 
   // A throwing callee ('T, IError') is tagged with "sun.canthrow"; inside a try
   // block it must be `invoke`d so its exception routes to the local landing

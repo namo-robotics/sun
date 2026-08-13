@@ -144,6 +144,11 @@ ast::Prototype ASTSerializer::serializePrototype(
         serializeTypeAnnotation(*proto.getVariadicConstraint());
   }
 
+  result.set_c_variadic(proto.isCVariadic());
+  if (proto.hasLinkName()) {
+    result.set_link_name(proto.getLinkName());
+  }
+
   if (config_.include_location) {
     *result.mutable_location() = serializePosition(proto.getLocation());
   }
@@ -630,6 +635,11 @@ void ASTSerializer::serializeFunction(const FunctionAST& expr,
                                       ast::ASTNode* node) const {
   auto* func = node->mutable_function_def();
   *func->mutable_proto() = serializePrototype(expr.getProto());
+  func->set_is_c_extern(expr.isCExtern());
+  // An empty body and no body are different things: the latter is a
+  // declaration, and reconstructing it as the former would give a C extern
+  // Sun name mangling and lose its symbol.
+  func->set_body_present(expr.hasBody());
   auto* body = func->mutable_body();
   if (expr.hasBody()) {
     for (const auto& stmt : expr.getBody().getBody()) {

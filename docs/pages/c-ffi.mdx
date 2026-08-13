@@ -1,0 +1,205 @@
+# C FFI
+
+import { Callout } from 'nextra/components'
+
+`extern function` declares a function implemented in C. Sun calls it directly — no
+wrapper layer, no marshalling cost beyond what the C ABI itself requires.
+
+```sun
+extern "C" function abs(x: i32) i32;
+
+function main() i32 {
+    unsafe { return abs(-42); };
+}
+```
+
+<Callout type="warning">
+  Calling an extern requires an `unsafe` block. C code is outside everything the
+  type system and borrow checker guarantee, so the boundary is marked the same
+  way the equivalent intrinsics (`_malloc`, `_free`) already are.
+</Callout>
+
+## Declaring
+
+The ABI string is optional and only `"C"` is supported:
+
+```sun
+extern function puts(s: raw_ptr<u8>) i32;        // same as extern "C"
+extern "C" function puts(s: raw_ptr<u8>) i32;
+```
+
+A return type is required — there is no inference without a body. Use `void` when
+the C function returns nothing.
+
+Declarations are hoisted, so an extern may be used before it appears in the file,
+and may live inside a module:
+
+```sun
+module libc {
+    extern "C" function abs(x: i32) i32;
+}
+using libc;
+```
+
+### Renaming a symbol
+
+`as "symbol"` binds a Sun-side name to a different C symbol. Useful when the C
+name would collide or reads poorly:
+
+```sun
+extern "C" function c_strlen(s: raw_ptr<u8>) i64 as "strlen";
+```
+
+Only the Sun-side name (`c_strlen`) comes into scope; the C name does not.
+
+<Callout type="info">
+  `as` is only a keyword inside an extern declaration, so it remains usable as an
+  ordinary identifier elsewhere.
+</Callout>
+
+## Type mapping
+
+| C | Sun |
+|---|-----|
+| `int`, `long`, `char`, `float`, `double` | `i32`, `i64`, `i8`, `f32`, `f64` |
+| `T*`, `void*` | `raw_ptr<T>`, `raw_ptr<u8>` |
+| `struct T*` | `ref T` |
+| `struct T` (by value) | `T` |
+| `struct T` (returned) | `T` |
+| `void` | `void` |
+
+Class layout matches C: fields in declaration order with the platform's natural
+padding. A Sun class and the C struct it mirrors have identical layout, so no
+annotation is needed to keep them in sync.
+
+Types with no C spelling — arrays and slices (fat pointers), interfaces (vtable
+pairs), lambdas (closures) — are rejected at the declaration rather than
+miscompiled.
+
+### Strings
+
+A string literal is a `static_ptr<u8>`, a `{ pointer, length }` pair. Passing one
+where a `raw_ptr<u8>` is expected narrows it to the data pointer automatically:
+
+```sun
+extern "C" function strlen(s: raw_ptr<u8>) i64;
+
+function main() i32 {
+    unsafe { return strlen("hello"); };   // 5
+}
+```
+
+Sun string literals are NUL-terminated, so they are safe to hand to C.
+
+### Structs
+
+Pass a pointer with `ref`, which is exactly C's `T*`:
+
+```c
+struct TS { long sec; long nsec; };
+void fill(struct TS* t);
+```
+
+```sun
+class TS {
+    var sec: i64;
+    var nsec: i64;
+    function init(sec: i64, nsec: i64) { this.sec = sec; this.nsec = nsec; }
+}
+
+extern "C" function fill(t: ref TS) void;
+
+function main() i32 {
+    var t = TS(0, 0);
+    unsafe { fill(t); };
+    return t.sec + t.nsec;
+}
+```
+
+Structs by value work too, in both directions. The compiler applies System V
+argument classification, so a small struct travels in registers and a large one
+through memory, matching what a C compiler emits:
+
+```sun
+class Pair {
+    var a: i32;
+    var b: i32;
+    function init(a: i32, b: i32) { this.a = a; this.b = b; }
+}
+
+extern "C" function take_pair(p: Pair) i32;
+extern "C" function make_pair(a: i32, b: i32) Pair;
+```
+
+<Callout type="info">
+  Returning a `ref` is not supported: Sun's `ref` return auto-dereferences, which
+  has no C equivalent. Use `raw_ptr<T>` to return a pointer.
+</Callout>
+
+## Varargs
+
+A trailing `...` declares a C-variadic function. Arguments past the named
+parameters get C's default promotions — `f32` widens to `double`, integers
+narrower than `int` widen to `int`, and string literals narrow to their data
+pointer:
+
+```sun
+extern "C" function printf(fmt: raw_ptr<u8>, ...) i32;
+
+function main() i32 {
+    unsafe { printf("%d and %s\n", 42, "text"); };
+    return 0;
+}
+```
+
+`...` is only valid on an extern declaration. Sun has no `va_arg`, so a Sun
+function could not read the arguments.
+
+## Linking
+
+`-l` names a library and `-L` adds a search directory. Both work when compiling
+and when running under the JIT:
+
+```bash
+sun -lm program.sun                      # JIT
+sun -c -L/opt/lib -lsqlite3 -o app app.sun
+```
+
+Under the JIT the libraries are loaded into the compiler process; when compiling
+they are passed to the linker. libc and libm are already present in the process,
+so they usually need no flag at all under the JIT.
+
+<Callout type="info">
+  `-L`/`-l` are for native libraries. `--lib-path` and `--moon` are unrelated —
+  they locate Sun `.moon` libraries.
+</Callout>
+
+## Safe wrappers
+
+The intended pattern is to contain `unsafe` in a thin wrapper and give the rest
+of the program a safe API:
+
+```sun
+extern "C" function abs(x: i32) i32;
+
+function absolute(x: i32) i32 {
+    var r = 0;
+    unsafe { r = abs(x); };
+    return r;
+}
+
+function main() i32 { return absolute(-5); }   // no unsafe needed here
+```
+
+Externs can be declared in a `.moon` library, so a wrapper module can be
+published and consumed like any other Sun code.
+
+## Limitations
+
+- Argument classification implements x86-64 System V only. Other targets need
+  their own rules.
+- The borrow checker does not model a pointer escaping into C. Handing C a `ref`
+  gives it an address with no lifetime tracking across the call — the `unsafe`
+  block is the only marker.
+- There is no automatic binding generation from C headers; structs, enums and
+  signatures are declared by hand.

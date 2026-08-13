@@ -37,6 +37,9 @@ struct FunctionInfo {
   // C-style trailing varargs (`extern function printf(fmt: ..., ...)`).
   // Calls may supply more arguments than paramTypes lists.
   bool isCVariadic = false;
+  // Declared with `extern function` — calling it leaves Sun's checked world,
+  // so call sites are gated on `unsafe`.
+  bool isCExtern = false;
 };
 
 // Indexed function table: O(1) name-based overload lookup + O(1) exact sig
