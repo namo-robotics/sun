@@ -874,6 +874,30 @@ void CodegenVisitor::emitStaticInitFunction() {
           {gv, ConstantInt::get(Type::getInt32Ty(ctx.getContext()), 0),
            ConstantInt::get(Type::getInt64Ty(ctx.getContext()), structSize)});
 
+      // A struct literal names its fields, so store them straight into the
+      // global rather than looking for a constructor.
+      if (init.initExpr->getType() == ASTNodeType::STRUCT_LITERAL) {
+        const auto& literal =
+            *static_cast<const StructLiteralAST*>(init.initExpr);
+        for (const auto& field : literal.getFields()) {
+          const sun::ClassField* classField = classType->getField(field.name);
+          if (!classField) continue;  // rejected in semantic analysis
+
+          Value* value = codegen(*field.value);
+          if (!value) {
+            logAndThrowError("Failed to generate field '" + field.name +
+                             "' for global: " + init.varName);
+          }
+          value = widenNumericIfNeeded(value, classField->type,
+                                       field.value->getResolvedType());
+
+          Value* fieldPtr = ctx.builder->CreateStructGEP(
+              structType, gv, classField->index, field.name + ".ptr");
+          storeIntoSlot(fieldPtr, value, classField->type, classType);
+        }
+        continue;
+      }
+
       // Get constructor arguments from the CallExprAST
       const CallExprAST* callExpr = nullptr;
       if (init.initExpr->getType() == ASTNodeType::CALL) {
@@ -932,28 +956,6 @@ void CodegenVisitor::emitStaticInitFunction() {
         }
 
         ctx.builder->CreateCall(ctorFunc, ctorArgValues);
-      } else if (!ctor.method && callExpr && argCount > 0) {
-        // No explicit init method: default field-wise constructor
-        // Directly assign constructor arguments to class fields in order
-        const auto& fields = classType->getFields();
-        size_t argIdx = 0;
-        for (const auto& arg : callExpr->getArgs()) {
-          if (argIdx >= fields.size()) break;
-
-          Value* argVal = codegen(*arg);
-          if (!argVal) {
-            logAndThrowError(
-                "Failed to generate argument for global class field init: " +
-                init.varName);
-          }
-
-          // Get GEP to the field
-          Value* fieldPtr =
-              ctx.builder->CreateStructGEP(structType, gv, argIdx, "field.ptr");
-          ctx.builder->CreateAlignedStore(
-              argVal, fieldPtr, fieldAlign(classType, argVal->getType()));
-          ++argIdx;
-        }
       }
     } else if (init.initExpr) {
       // Non-class type: evaluate expression and store

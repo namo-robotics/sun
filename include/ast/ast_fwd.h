@@ -12,6 +12,7 @@ class StringLiteralAST;
 class NullLiteralAST;
 class BoolLiteralAST;
 class ArrayLiteralAST;
+class StructLiteralAST;
 
 // Variable nodes
 class VariableReferenceAST;

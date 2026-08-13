@@ -229,6 +229,7 @@ class Parser {
   unique_ptr<FunctionAST> parseFunction();
   unique_ptr<LambdaAST> parseLambda();
   unique_ptr<PrototypeAST> parseExtern();
+  unique_ptr<StructLiteralAST> parseStructLiteral();
   unique_ptr<ExprAST> parseForLoop();  // Returns ForExprAST or ForInExprAST
   unique_ptr<WhileExprAST> parseWhileLoop();
   unique_ptr<BreakAST> parseBreak();

@@ -42,6 +42,17 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       return sun::Types::Bool();
     }
 
+    case ASTNodeType::STRUCT_LITERAL: {
+      // Set by analyzeStructLiteral from the expected type; a literal has no
+      // type of its own to infer.
+      if (auto resolved = expr.getResolvedType()) return resolved;
+      logAndThrowError(
+          "Cannot infer the type of a '{ field: value }' literal here; "
+          "annotate the target type.",
+          expr.getLocation());
+      return nullptr;
+    }
+
     case ASTNodeType::ARRAY_LITERAL: {
       const auto& arrLit = static_cast<const ArrayLiteralAST&>(expr);
       if (arrLit.getElements().empty()) {

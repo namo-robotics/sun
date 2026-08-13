@@ -104,13 +104,12 @@ void fill(struct TS* t);
 class TS {
     var sec: i64;
     var nsec: i64;
-    function init(sec: i64, nsec: i64) { this.sec = sec; this.nsec = nsec; }
 }
 
 extern "C" function fill(t: ref TS) void;
 
 function main() i32 {
-    var t = TS(0, 0);
+    var t: TS = { sec: 0, nsec: 0 };
     unsafe { fill(t); };
     return t.sec + t.nsec;
 }
@@ -121,14 +120,15 @@ argument classification, so a small struct travels in registers and a large one
 through memory, matching what a C compiler emits:
 
 ```sun
-class Pair {
-    var a: i32;
-    var b: i32;
-    function init(a: i32, b: i32) { this.a = a; this.b = b; }
-}
+class Pair { var a: i32; var b: i32; }
 
 extern "C" function take_pair(p: Pair) i32;
 extern "C" function make_pair(a: i32, b: i32) Pair;
+
+function main() i32 {
+    var p: Pair = { a: 3, b: 7 };
+    unsafe { return take_pair(p); };
+}
 ```
 
 <Callout type="info">

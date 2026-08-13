@@ -612,6 +612,20 @@ class Formatter {
         break;
       }
 
+      case ASTNodeType::STRUCT_LITERAL: {
+        const auto& lit = static_cast<const StructLiteralAST&>(e);
+        out_ += '{';
+        bool first = true;
+        for (const auto& field : lit.getFields()) {
+          out_ += first ? " " : ", ";
+          first = false;
+          out_ += field.name;
+          out_ += ": ";
+          printExpr(*field.value);
+        }
+        out_ += first ? "}" : " }";
+        break;
+      }
       case ASTNodeType::ARRAY_LITERAL: {
         const auto& n = static_cast<const ArrayLiteralAST&>(e);
         printExprList(n.getElements(), '[', ']', loc);

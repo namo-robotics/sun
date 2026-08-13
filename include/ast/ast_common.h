@@ -13,6 +13,7 @@ enum class ASTNodeType {
   NULL_LITERAL,
   BOOL_LITERAL,
   ARRAY_LITERAL,  // [1, 2, 3] or [[1, 2], [3, 4]]
+  STRUCT_LITERAL,  // { color: "red", speed: 120 }
   ARRAY_INDEX,    // x[i] or x[i, j] for n-dimensional (legacy)
   INDEX,          // x[i] or x[i, j] or x[1:10, 3:5] for indexing/slicing
   SLICE,          // Slice expression: start:end or single index

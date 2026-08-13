@@ -480,6 +480,12 @@ class SemanticAnalyzer {
   // declaration)
   void analyzeExpr(ExprAST& expr, sun::TypePtr expectedType = nullptr);
 
+  // Resolve a `{ field: value }` literal against the type the context
+  // expects. A struct literal has no type of its own, so without an expected
+  // class type there is nothing to check the field names against.
+  void analyzeStructLiteral(StructLiteralAST& literal,
+                            const sun::TypePtr& expectedType);
+
   // If the member access names a class method in value position, resolve it
   // as a bound method reference: pick the overload (using expectedType when
   // the name is overloaded), set a LambdaType resolved type and the

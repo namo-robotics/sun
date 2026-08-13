@@ -48,6 +48,11 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       break;
     }
 
+    case ASTNodeType::STRUCT_LITERAL: {
+      analyzeStructLiteral(static_cast<StructLiteralAST&>(expr), expectedType);
+      break;
+    }
+
     case ASTNodeType::ARRAY_LITERAL: {
       auto& arrLit = static_cast<ArrayLiteralAST&>(expr);
       // Analyze each element
@@ -1696,6 +1701,78 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
 // Function body analysis
 // -------------------------------------------------------------------
 
+void SemanticAnalyzer::analyzeStructLiteral(StructLiteralAST& literal,
+                                            const sun::TypePtr& expectedType) {
+  if (!expectedType || !expectedType->isClass()) {
+    logAndThrowError(
+        "A '{ field: value }' literal needs a known class type. Annotate the "
+        "target, as in `var x: MyClass = { ... };`.",
+        literal.getLocation());
+    return;
+  }
+
+  auto* classType = static_cast<sun::ClassType*>(expectedType.get());
+
+  // A class with its own init is constructed through it; allowing both would
+  // give two ways to build one object with different invariants.
+  if (classType->getMethod("init")) {
+    logAndThrowError("Class '" + classType->getDisplayName() +
+                         "' declares an 'init', so construct it with "
+                         "'" + classType->getDisplayName() +
+                         "(...)' rather than a '{ field: value }' literal.",
+                     literal.getLocation());
+    return;
+  }
+
+  std::set<std::string> seen;
+  for (auto& field : literal.getMutableFields()) {
+    const sun::ClassField* classField = classType->getField(field.name);
+    if (!classField) {
+      logAndThrowError("Class '" + classType->getDisplayName() +
+                           "' has no field '" + field.name + "'",
+                       field.location);
+      continue;
+    }
+    if (!seen.insert(field.name).second) {
+      logAndThrowError("Field '" + field.name +
+                           "' is initialized more than once",
+                       field.location);
+      continue;
+    }
+
+    analyzeExpr(*field.value, classField->type);
+    sun::TypePtr valueType = field.value->getResolvedType();
+    if (valueType && classField->type &&
+        !isAssignableTo(valueType, classField->type)) {
+      if (!tryCoerceIntegerLiteral(field.value.get(), classField->type,
+                                   false)) {
+        logAndThrowError("Cannot initialize field '" + field.name +
+                             "' of type '" +
+                             classField->type->toDisplayString() +
+                             "' with a value of type '" +
+                             valueType->toDisplayString() + "'",
+                         field.location);
+      }
+    }
+  }
+
+  // Every field must be named. A field left out would silently be zero, which
+  // is exactly the class of bug this syntax exists to prevent.
+  std::string missing;
+  for (const auto& classField : classType->getFields()) {
+    if (seen.count(classField.name)) continue;
+    if (!missing.empty()) missing += ", ";
+    missing += classField.name;
+  }
+  if (!missing.empty()) {
+    logAndThrowError("Struct literal for '" + classType->getDisplayName() +
+                         "' is missing field(s): " + missing,
+                     literal.getLocation());
+  }
+
+  literal.setResolvedType(expectedType);
+}
+
 void SemanticAnalyzer::checkExternCallAllowed(const FunctionInfo& info,
                                               const std::string& displayName,
                                               const Position& loc) const {
@@ -2648,10 +2725,20 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
     const auto* initMethod = ct->getMethodForArgs("init", argTypes);
     if (initMethod) {
       paramTypes = initMethod->paramTypes;
+    } else if (!ct->getMethod("init") && !args.empty()) {
+      // No init at all, but arguments were supplied. Field-wise construction
+      // is spelled with a struct literal, where each field is named: relying
+      // on declaration order would silently change meaning if two same-typed
+      // fields were ever reordered.
+      logAndThrowError(
+          "Class '" + ct->toString() +
+              "' declares no 'init', so it cannot be constructed positionally."
+              " Use a struct literal naming each field: `var x: " +
+              ct->toString() + " = { ... };`",
+          callExpr.getLocation());
     } else if (ct->getMethod("init")) {
       // The class declares one or more init methods but none are compatible
-      // with the supplied arguments. (Classes with no init method fall back to
-      // the implicit field-wise constructor and are validated elsewhere.)
+      // with the supplied arguments.
       std::string argList;
       for (size_t i = 0; i < argTypes.size(); ++i) {
         if (i > 0) argList += ", ";

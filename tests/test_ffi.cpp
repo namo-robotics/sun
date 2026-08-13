@@ -490,7 +490,7 @@ TEST(FFIStructTest, c_writes_through_a_ref_to_a_sun_object) {
     extern "C" function sun_ffi_fill(t: ref TS) void;
 
     function main() i32 {
-        var t = TS(0, 0);
+        var t: TS = { sec: 0, nsec: 0 };
         unsafe { sun_ffi_fill(t); };
         return t.sec + t.nsec;
     }

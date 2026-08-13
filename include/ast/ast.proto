@@ -26,6 +26,7 @@ message ASTNode {
     NullLiteral null_literal = 12;
     BoolLiteral bool_literal = 13;
     ArrayLiteral array_literal = 14;
+    StructLiteral struct_literal = 16;
     InterpolatedString interpolated_string = 15;
     
     // Indexing/slicing
@@ -118,6 +119,17 @@ message BoolLiteral {
 
 message ArrayLiteral {
   repeated ASTNode elements = 1;
+}
+
+message StructFieldInit {
+  string name = 1;
+  ASTNode value = 2;
+  optional Position location = 3;
+}
+
+// Struct literal: { color: "red", speed: 120 }
+message StructLiteral {
+  repeated StructFieldInit fields = 1;
 }
 
 // Template string segment: literal run or ${...} expression

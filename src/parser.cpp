@@ -435,6 +435,62 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
   }
 }
 
+// Parse a struct literal: { color: "red", speed: 120 }
+//
+// Only reachable where an initializer is expected, so there is no ambiguity
+// with a block: a bare block is not a value.
+unique_ptr<StructLiteralAST> Parser::parseStructLiteral() {
+  Position start = captureStart();
+  getNextToken();  // eat '{'
+
+  std::vector<StructLiteralAST::FieldInit> fields;
+
+  while (curTok.kind != TokenKind::BRACE_CLOSE &&
+         curTok.kind != TokenKind::TOK_EOF) {
+    if (curTok.kind != TokenKind::IDENTIFIER) {
+      parsingError("expected a field name in struct literal");
+      return nullptr;
+    }
+    Position fieldLoc = captureStart();
+    std::string fieldName = curTok.getIdentifier().value();
+    getNextToken();  // eat field name
+
+    expectCurrentTokenKind(
+        TokenKind::COLON, "expected ':' after field name '" + fieldName + "'");
+    getNextToken();  // eat ':'
+
+    // A nested literal initializes a class-typed field:
+    // { inner: { a: 1, b: 2 }, tag: 3 }
+    unique_ptr<ExprAST> value;
+    if (curTok.kind == TokenKind::BRACE_OPEN) {
+      value = parseStructLiteral();
+    } else {
+      value = parseExpression();
+    }
+    if (!value) {
+      parsingError("expected a value for field '" + fieldName + "'");
+      return nullptr;
+    }
+    fieldLoc.setEnd(prevTok_.end.line, prevTok_.end.column,
+                    prevTok_.end.offset);
+    fields.push_back({std::move(fieldName), std::move(value),
+                      std::move(fieldLoc)});
+
+    if (curTok.kind == TokenKind::COMMA) {
+      getNextToken();  // eat ','
+    } else {
+      break;
+    }
+  }
+
+  expectCurrentTokenKind(TokenKind::BRACE_CLOSE,
+                         "expected '}' at end of struct literal");
+  getNextToken();  // eat '}'
+
+  return finishNode(std::make_unique<StructLiteralAST>(std::move(fields)),
+                    start);
+}
+
 // Internal helper that parses var declaration without consuming trailing
 // semicolon
 unique_ptr<VariableCreationAST> Parser::parseVarDeclaration() {
@@ -460,8 +516,15 @@ unique_ptr<VariableCreationAST> Parser::parseVarDeclaration() {
 
   getNextToken();  // eat '='
 
-  // parseExpression handles function/lambda keywords automatically
-  auto value = parseExpression();
+  // A '{' here starts a struct literal; the target type comes from the
+  // annotation, which semantic analysis checks is present.
+  unique_ptr<ExprAST> value;
+  if (curTok.kind == TokenKind::BRACE_OPEN) {
+    value = parseStructLiteral();
+  } else {
+    // parseExpression handles function/lambda keywords automatically
+    value = parseExpression();
+  }
   if (!value) {
     parsingError("variable initialization expression expected");
   }

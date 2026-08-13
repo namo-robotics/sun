@@ -195,6 +195,9 @@ ast::ASTNode ASTSerializer::serialize(const ExprAST& expr) const {
     case ASTNodeType::ARRAY_LITERAL:
       serializeArray(static_cast<const ArrayLiteralAST&>(expr), &node);
       break;
+    case ASTNodeType::STRUCT_LITERAL:
+      serializeStructLiteral(static_cast<const StructLiteralAST&>(expr), &node);
+      break;
     case ASTNodeType::SLICE:
       serializeSlice(static_cast<const SliceExprAST&>(expr), &node);
       break;
@@ -387,6 +390,19 @@ void ASTSerializer::serializeNull(const NullLiteralAST& expr,
 void ASTSerializer::serializeBool(const BoolLiteralAST& expr,
                                   ast::ASTNode* node) const {
   node->mutable_bool_literal()->set_value(expr.getValue());
+}
+
+void ASTSerializer::serializeStructLiteral(const StructLiteralAST& expr,
+                                           ast::ASTNode* node) const {
+  auto* literal = node->mutable_struct_literal();
+  for (const auto& field : expr.getFields()) {
+    auto* out = literal->add_fields();
+    out->set_name(field.name);
+    *out->mutable_value() = serialize(*field.value);
+    if (config_.include_location) {
+      *out->mutable_location() = serializePosition(field.location);
+    }
+  }
 }
 
 void ASTSerializer::serializeArray(const ArrayLiteralAST& expr,

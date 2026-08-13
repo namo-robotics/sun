@@ -427,7 +427,7 @@ TEST(ClassTest, global_class_var) {
       var y: i32;
     }
 
-    var p: Point = Point(1, 2);
+    var p: Point = { x: 1, y: 2 };
 
     function main() i32 {
         return p.x + p.y;

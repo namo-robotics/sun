@@ -428,6 +428,14 @@ class CodegenVisitor {
   // Alignment for field accesses, honouring packed layout. Thin wrappers over
   // sun::packed (include/packed_layout.h) that supply the module's DataLayout.
   llvm::Align fieldAlign(const sun::ClassType* owner, llvm::Type* fieldTy);
+
+  // Write a value into a storage slot, copying the struct when the slot is a
+  // class (codegen of a class expression yields its address, not the struct).
+  // `owner` is the enclosing class when the slot is a field, for packed
+  // alignment; nullptr for a standalone slot.
+  void storeIntoSlot(llvm::Value* dest, llvm::Value* value,
+                     const sun::TypePtr& slotType,
+                     const sun::ClassType* owner = nullptr);
   llvm::Align lvalueAlign(const ExprAST& target, llvm::Type* slotTy);
 
   // Codegen a member-access object down to (objectPtr, ClassType*), applying
@@ -552,6 +560,7 @@ class CodegenVisitor {
 
   // Array codegen (in arrays.cpp)
   llvm::Value* codegen(const ArrayLiteralAST& expr);
+  llvm::Value* codegen(const StructLiteralAST& expr);
   llvm::Value* codegen(const ArrayIndexAST& expr);  // Legacy
   llvm::Value* codegen(const IndexAST& expr);       // New slice-aware indexing
   llvm::Value* codegen(const IndexedAssignmentAST& expr);

@@ -30,6 +30,34 @@ llvm::Align CodegenVisitor::fieldAlign(const sun::ClassType* owner,
   return sun::packed::fieldAlign(owner, fieldTy, module->getDataLayout());
 }
 
+// Write a value into a storage slot.
+//
+// codegen of a class-valued expression yields the object's ADDRESS, not the
+// struct itself. Storing that address would write a pointer over the object's
+// leading bytes — and it fits silently, because a two-word class is exactly
+// pointer-sized, so the mistake surfaces as corrupted fields rather than as a
+// verifier error. Every site that writes a class into storage goes through
+// here so the copy cannot be forgotten again.
+//
+// `owner` is the class the slot belongs to when the slot is one of its
+// fields; a packed owner drops the alignment to 1. Pass nullptr for a
+// standalone slot such as a local variable.
+void CodegenVisitor::storeIntoSlot(llvm::Value* dest, llvm::Value* value,
+                                   const sun::TypePtr& slotType,
+                                   const sun::ClassType* owner) {
+  if (slotType && slotType->isClass() && value->getType()->isPointerTy()) {
+    const auto* classType = static_cast<const sun::ClassType*>(slotType.get());
+    llvm::StructType* structTy = classType->getStructType(ctx.getContext());
+    llvm::Align align = fieldAlign(owner, structTy);
+    ctx.builder->CreateMemCpy(
+        dest, align, value, align,
+        module->getDataLayout().getTypeAllocSize(structTy));
+    return;
+  }
+  ctx.builder->CreateAlignedStore(value, dest,
+                                  fieldAlign(owner, value->getType()));
+}
+
 llvm::Align CodegenVisitor::lvalueAlign(const ExprAST& target,
                                         llvm::Type* slotTy) {
   return sun::packed::lvalueAlign(target, slotTy, module->getDataLayout());

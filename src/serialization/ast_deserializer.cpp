@@ -175,6 +175,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserialize(
     case ast::ASTNode::kArrayLiteral:
       result = deserializeArray(node.array_literal());
       break;
+    case ast::ASTNode::kStructLiteral:
+      result = deserializeStructLiteral(node.struct_literal());
+      break;
     case ast::ASTNode::kSliceExpr:
       result = deserializeSlice(node.slice_expr());
       break;
@@ -364,6 +367,22 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeNull(
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeBool(
     const ast::BoolLiteral& proto) const {
   return std::make_unique<BoolLiteralAST>(proto.value());
+}
+
+std::unique_ptr<ExprAST> ASTDeserializer::deserializeStructLiteral(
+    const ast::StructLiteral& proto) const {
+  std::vector<StructLiteralAST::FieldInit> fields;
+  fields.reserve(proto.fields().size());
+  for (const auto& field : proto.fields()) {
+    StructLiteralAST::FieldInit init;
+    init.name = field.name();
+    init.value = deserialize(field.value());
+    if (field.has_location()) {
+      init.location = deserializePosition(field.location());
+    }
+    fields.push_back(std::move(init));
+  }
+  return std::make_unique<StructLiteralAST>(std::move(fields));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeArray(

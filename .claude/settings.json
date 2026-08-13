@@ -31,10 +31,7 @@
       "Bash(python3 -)",
       "Read(//tmp/**)",
       "Skill(update-config)",
-      "Skill(update-config:*)",
-      "Bash(./build/sun *)",
-      "Bash(./build/sun * | grep *)",
-      "Bash(echo *)"
+      "Skill(update-config:*)"
     ],
     "additionalDirectories": [
       "/tmp",

@@ -22,6 +22,8 @@ Value* CodegenVisitor::codegen(const ExprAST& expr) {
       return codegen(static_cast<const NumberExprAST&>(expr));
     case ASTNodeType::STRING_LITERAL:
       return codegen(static_cast<const StringLiteralAST&>(expr));
+    case ASTNodeType::STRUCT_LITERAL:
+      return codegen(static_cast<const StructLiteralAST&>(expr));
     case ASTNodeType::ARRAY_LITERAL:
       return codegen(static_cast<const ArrayLiteralAST&>(expr));
     case ASTNodeType::INDEX:
