@@ -359,6 +359,13 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
     }
   }
 
+  // A bare `...` in a definition's parameter list is C varargs. Sun has no
+  // va_arg, so only extern declarations (parsed via parsePrototype) can use it.
+  if (curTok.kind == TokenKind::ELLIPSIS) {
+    parsingError(
+        "C varargs ('...') are only allowed on 'extern function' declarations");
+  }
+
   expectCurrentTokenKind(TokenKind::PAREN_CLOSE,
                          "Expected ')' in function literal");
 
@@ -1476,7 +1483,23 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
   std::optional<std::string> variadicParamName;
   std::optional<TypeAnnotation> variadicConstraint;
 
-  while (curTok.kind == TokenKind::IDENTIFIER) {
+  bool cVariadic = false;
+
+  while (curTok.kind == TokenKind::IDENTIFIER ||
+         curTok.kind == TokenKind::ELLIPSIS) {
+    // C-style trailing varargs: `fn(fmt: raw_ptr<u8>, ...)`. Distinct from
+    // Sun's `args...` pack below, which binds a name.
+    if (curTok.kind == TokenKind::ELLIPSIS) {
+      if (args.empty()) {
+        parsingError(
+            "'...' must follow at least one named parameter; C varargs "
+            "cannot be the only parameter");
+      }
+      cVariadic = true;
+      getNextToken();  // eat '...'
+      break;           // must be last
+    }
+
     std::string argName = curTok.getIdentifier().value();
     getNextToken();  // eat identifier
 
@@ -1529,6 +1552,7 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
   auto proto = std::make_unique<PrototypeAST>(
       fnName, std::move(args), std::move(retType), std::move(typeParameters),
       std::move(variadicParamName), std::move(variadicConstraint));
+  proto->setCVariadic(cVariadic);
   start.setEnd(prevTok_.end.line, prevTok_.end.column, prevTok_.end.offset);
   proto->setLocation(std::move(start));
   return proto;
@@ -1973,6 +1997,17 @@ unique_ptr<ContinueAST> Parser::parseContinue() {
 std::unique_ptr<PrototypeAST> Parser::parseExtern() {
   getNextToken();  // eat 'extern'
 
+  // Optional ABI string: extern "C" function ...
+  // Only the C ABI exists today; naming it is allowed so the intent is
+  // explicit and so other ABIs can be added without a syntax change.
+  if (curTok.kind == TokenKind::STRING) {
+    std::string abi = curTok.getString().value();
+    if (abi != "C") {
+      parsingError("unsupported extern ABI '" + abi + "'; expected \"C\"");
+    }
+    getNextToken();  // eat ABI string
+  }
+
   // Expect 'function' keyword
   if (curTok.kind != TokenKind::FUNCTION) {
     parsingError("expected 'function' after 'extern'");
@@ -1980,7 +2015,27 @@ std::unique_ptr<PrototypeAST> Parser::parseExtern() {
   }
   getNextToken();  // eat 'function'
 
-  return parsePrototype();
+  auto proto = parsePrototype();
+
+  // Optional symbol rename: ... as "c_symbol".
+  // `as` is matched contextually rather than reserved as a keyword, so
+  // existing code may still use it as an identifier.
+  if (proto && curTok.kind == TokenKind::IDENTIFIER &&
+      curTok.getIdentifier().value() == "as") {
+    getNextToken();  // eat 'as'
+    if (curTok.kind != TokenKind::STRING) {
+      parsingError("expected a string literal C symbol name after 'as'");
+      return proto;
+    }
+    std::string symbol = curTok.getString().value();
+    if (symbol.empty()) {
+      parsingError("C symbol name after 'as' cannot be empty");
+    }
+    proto->setLinkName(std::move(symbol));
+    getNextToken();  // eat symbol string
+  }
+
+  return proto;
 }
 
 // Parse manifest block:

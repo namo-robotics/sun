@@ -322,6 +322,93 @@ Value* CodegenVisitor::widenNumericIfNeeded(Value* argVal,
 }
 
 // -------------------------------------------------------------------
+// Helper: static_ptr<T> -> raw_ptr<T> at a call boundary
+// -------------------------------------------------------------------
+
+// A static_ptr<T> is a fat { ptr, i64 } value, but a raw_ptr<T> parameter is
+// a bare pointer. The type system already treats the two as compatible
+// (StaticPointerType::equals, and the overload matcher), so the narrowing has
+// to happen here — otherwise the whole struct is passed and the call fails
+// verification. This is what lets a string literal reach a C function.
+Value* CodegenVisitor::coerceStaticPtrToRawPtr(Value* argVal,
+                                               const sun::TypePtr& argSunType,
+                                               const sun::TypePtr& paramType) {
+  if (!argVal || !argSunType || !paramType) return argVal;
+  if (!argSunType->isStaticPointer() || !paramType->isRawPointer()) {
+    return argVal;
+  }
+
+  // Loaded or constant fat pointer: take the data field.
+  if (argVal->getType()->isStructTy()) {
+    return ctx.builder->CreateExtractValue(argVal, 0, "static_ptr.data");
+  }
+
+  // Still an address of the fat pointer (e.g. an alloca): load field 0.
+  if (argVal->getType()->isPointerTy()) {
+    llvm::Type* fatTy = typeResolver.resolve(argSunType);
+    if (fatTy && fatTy->isStructTy()) {
+      Value* dataPtr = ctx.builder->CreateStructGEP(fatTy, argVal, 0,
+                                                    "static_ptr.data.addr");
+      return ctx.builder->CreateLoad(
+          llvm::PointerType::getUnqual(ctx.getContext()), dataPtr,
+          "static_ptr.data");
+    }
+  }
+
+  return argVal;
+}
+
+// -------------------------------------------------------------------
+// Helper: resolve a call target, translating renamed externs
+// -------------------------------------------------------------------
+
+Function* CodegenVisitor::lookupCallTarget(const std::string& name) {
+  auto it = externSymbolNames.find(name);
+  if (it != externSymbolNames.end()) {
+    if (Function* f = module->getFunction(it->second)) return f;
+  }
+  return module->getFunction(name);
+}
+
+// -------------------------------------------------------------------
+// Helper: C default argument promotions for varargs
+// -------------------------------------------------------------------
+
+// Arguments in the `...` tail of a C call are promoted before being passed:
+// float widens to double, and anything narrower than int widens to int.
+// Callees read them back with va_arg at the promoted width, so skipping this
+// hands printf & friends the wrong bytes.
+Value* CodegenVisitor::applyCVarargPromotions(Value* argVal,
+                                              const sun::TypePtr& argSunType) {
+  if (!argVal) return argVal;
+  LLVMContext& llvmCtx = ctx.getContext();
+
+  // static_ptr<T> is a fat { ptr, i64 }; C expects the bare data pointer
+  // (this is what makes printf("%s", "literal") work).
+  if (argSunType && argSunType->isStaticPointer() &&
+      argVal->getType()->isStructTy()) {
+    return ctx.builder->CreateExtractValue(argVal, 0, "vararg.str.data");
+  }
+
+  if (argVal->getType()->isFloatTy()) {
+    return ctx.builder->CreateFPExt(argVal, Type::getDoubleTy(llvmCtx),
+                                    "vararg.fpext");
+  }
+
+  if (argVal->getType()->isIntegerTy() &&
+      argVal->getType()->getIntegerBitWidth() < 32) {
+    llvm::Type* i32Ty = Type::getInt32Ty(llvmCtx);
+    bool isUnsigned = argSunType && argSunType->isIntegral() &&
+                      !argSunType->isSigned();
+    return isUnsigned
+               ? ctx.builder->CreateZExt(argVal, i32Ty, "vararg.zext")
+               : ctx.builder->CreateSExt(argVal, i32Ty, "vararg.sext");
+  }
+
+  return argVal;
+}
+
+// -------------------------------------------------------------------
 // Helper: Materialize struct return value to caller's stack
 // -------------------------------------------------------------------
 
@@ -567,7 +654,7 @@ Value* CodegenVisitor::codegenModuleFunctionCall(
   }
 
   // Get or declare the function
-  Function* func = module->getFunction(qualifiedName);
+  Function* func = lookupCallTarget(qualifiedName);
   if (!func) {
     logAndThrowError("Unknown function: " + qualifiedName);
     return nullptr;
@@ -810,6 +897,7 @@ Value* CodegenVisitor::codegenClassMethodCall(
       if (!paramType || !paramType->isInterface()) {
         argVal = applyMoveSemantics(argVal, argSunType);
         argVal = widenNumericIfNeeded(argVal, paramType, argSunType);
+        argVal = coerceStaticPtrToRawPtr(argVal, argSunType, paramType);
       }
 
       // Interface args: load fat pointer struct if value is still a pointer
@@ -1060,12 +1148,12 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
           dynamic_cast<const VariableReferenceAST*>(expr.getCallee())) {
     // Use qualified name from semantic analysis (handles using imports)
     std::string resolvedName = varRef->getMangledName();
-    func = module->getFunction(resolvedName);
+    func = lookupCallTarget(resolvedName);
   } else if (auto* qualName =
                  dynamic_cast<const QualifiedNameAST*>(expr.getCallee())) {
     // Qualified name - use the mangled name (calleeName already has :: replaced
     // with _)
-    func = module->getFunction(calleeName);
+    func = lookupCallTarget(calleeName);
   }
 
   if (!func) {
@@ -1176,6 +1264,14 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
         }
 
         argVal = widenNumericIfNeeded(argVal, paramType, argSunType);
+        argVal = coerceStaticPtrToRawPtr(argVal, argSunType, paramType);
+      }
+
+      // Arguments past the last declared parameter of a C-variadic callee
+      // have no parameter type to coerce against; C's default argument
+      // promotions apply instead.
+      if (!paramType && func->getFunctionType()->isVarArg()) {
+        argVal = applyCVarargPromotions(argVal, argSunType);
       }
 
       // Interface args: load fat pointer struct if value is still a pointer

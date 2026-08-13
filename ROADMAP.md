@@ -20,11 +20,12 @@ into work users can do without us.
 - [x] `extern function` declarations calling C symbols — primitives and
       `raw_ptr<T>` only; other signature types are rejected with an error
       rather than miscompiled
-- [ ] Pass string literals to C (`static_ptr<T>` → `raw_ptr<T>` needs a
-      data-pointer extract at the call boundary; currently fails verification)
-- [ ] Varargs (`...`) — blocks `printf`. ELLIPSIS token exists, parser does not
-      accept it and `FunctionType::get` hardcodes `isVarArg=false`
-- [ ] `extern "C"` ABI string and `as "symbol"` renaming
+- [x] Pass string literals to C (`static_ptr<T>` → `raw_ptr<T>` narrows to the
+      data pointer at the call boundary)
+- [x] Varargs (`...`) with C default argument promotions — `printf` works.
+      Extern declarations only; Sun has no `va_arg`
+- [x] `extern "C"` ABI string and `as "symbol"` renaming (`as` is contextual,
+      not a reserved word)
 - [ ] Link external C libraries (`-l` / library search paths through the driver)
 - [ ] Load libraries under JIT (`DynamicLibrary::LoadLibraryPermanently`;
       today only the current process is searched)

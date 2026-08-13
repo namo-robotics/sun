@@ -1571,8 +1571,9 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
   sun::QualifiedName qualifiedName;
   if (func.isCExtern()) {
     // C externs bind to a fixed symbol: no module scope, no overload suffix.
-    // The qualified name *is* the C symbol. Scope-based lookup still isolates
-    // declarations per module because registration keys on the base name.
+    // This stays the Sun-side name — name resolution rewrites references
+    // through it — and codegen maps it to the C symbol when `as "name"`
+    // renames the import.
     qualifiedName = sun::QualifiedName({}, proto.getName());
   } else if (proto.hasQualifiedName()) {
     qualifiedName = proto.getQualifiedName();
@@ -1594,6 +1595,7 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
   info.captures = std::move(captures);
   info.qualifiedName = qualifiedName;
   info.canThrow = proto.canThrow();
+  info.isCVariadic = proto.isCVariadic();
   return info;
 }
 
@@ -1708,6 +1710,16 @@ const FunctionInfo* SemanticAnalyzer::resolveModuleQualifiedCall(
 void SemanticAnalyzer::validateExternSignature(FunctionAST& func) {
   const PrototypeAST& proto = func.getProto();
 
+  // C varargs only make sense at a C boundary — a Sun function body has no
+  // way to read them (no va_arg), so allowing `...` there would compile to a
+  // signature nothing can use.
+  if (proto.hasVariadicParam()) {
+    logAndThrowError("Extern function '" + proto.getName() +
+                         "' cannot use a named variadic pack; use C varargs "
+                         "('...') instead",
+                     func.getLocation());
+  }
+
   // Anything wider than a primitive or a bare pointer needs SysV argument
   // classification (byval/sret) that codegen does not emit yet, so accepting
   // it would silently produce a call the C side cannot decode.
@@ -1762,6 +1774,15 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
     }
     if (func.isCExtern()) validateExternSignature(func);
     return;
+  }
+
+  // Sun has no va_arg, so C varargs are only meaningful on an extern
+  // declaration where the callee is C code.
+  if (proto.isCVariadic()) {
+    logAndThrowError("C varargs ('...') are only allowed on 'extern function' "
+                     "declarations; '" +
+                         proto.getName() + "' has a body",
+                     func.getLocation());
   }
 
   // Compute function signature from qualified name and resolved param types
@@ -2467,6 +2488,9 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
                                   ? overload.paramTypes[i]->toDisplayString()
                                   : "unknown";
             }
+            if (overload.isCVariadic) {
+              overloadsStr += overload.paramTypes.empty() ? "..." : ", ...";
+            }
             overloadsStr += ")";
           }
           logAndThrowError("No matching overload of '" + resolved.baseName +
@@ -2599,14 +2623,19 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
     }
   }
 
-  // Check argument count
-  if (!paramTypes.empty() && args.size() != paramTypes.size()) {
+  // Check argument count. A C-variadic callee fixes only its leading
+  // parameters, so extra trailing arguments are allowed.
+  bool calleeIsCVariadic = resolvedFunc && resolvedFunc->isCVariadic;
+  bool badArgCount = calleeIsCVariadic ? args.size() < paramTypes.size()
+                                       : args.size() != paramTypes.size();
+  if (!paramTypes.empty() && badArgCount) {
     std::string funcName = "<unknown>";
     if (calleeASTType == ASTNodeType::VARIABLE_REFERENCE) {
       funcName = static_cast<const VariableReferenceAST&>(*callExpr.getCallee())
                      .getName();
     }
     logAndThrowError("Function '" + funcName + "' expects " +
+                         (calleeIsCVariadic ? "at least " : "") +
                          std::to_string(paramTypes.size()) +
                          " arguments, got " + std::to_string(args.size()),
                      callExpr.getLocation());

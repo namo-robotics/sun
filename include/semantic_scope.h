@@ -34,6 +34,9 @@ struct FunctionInfo {
   sun::QualifiedName qualifiedName;  // Full qualified name
   bool canThrow = false;  // Whether this function can throw (declared with ,
                           // IError)
+  // C-style trailing varargs (`extern function printf(fmt: ..., ...)`).
+  // Calls may supply more arguments than paramTypes lists.
+  bool isCVariadic = false;
 };
 
 // Indexed function table: O(1) name-based overload lookup + O(1) exact sig

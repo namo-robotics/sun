@@ -26,7 +26,9 @@ class PrototypeAST {
   std::optional<std::string>
       variadicParamName_;  // Name of variadic param if present
   std::optional<TypeAnnotation> variadicConstraint_;  // e.g., _init_args<T>
-  Position location_;  // Source span of the signature
+  bool cVariadic_ = false;  // C-style trailing `...` (extern declarations)
+  std::optional<std::string> linkName_;  // `as "c_symbol"` override
+  Position location_;                    // Source span of the signature
 
   // Analysis data populated by semantic analyzer
   mutable std::unique_ptr<PrototypeAnalysis> analysis_;
@@ -138,6 +140,21 @@ class PrototypeAST {
   bool hasVariadicConstraint() const { return variadicConstraint_.has_value(); }
   const std::optional<TypeAnnotation>& getVariadicConstraint() const {
     return variadicConstraint_;
+  }
+
+  // C-style trailing varargs: `fn(fmt: raw_ptr<u8>, ...)`. Unrelated to the
+  // named `args...` pack above — this one binds no name and only affects the
+  // LLVM function type's isVarArg flag. Extern declarations only.
+  bool isCVariadic() const { return cVariadic_; }
+  void setCVariadic(bool v) { cVariadic_ = v; }
+
+  // Explicit C symbol from `extern function sunName(...) T as "c_name";`.
+  // Lets a Sun-side name differ from the symbol actually linked against.
+  bool hasLinkName() const { return linkName_.has_value(); }
+  void setLinkName(std::string name) { linkName_ = std::move(name); }
+  // The symbol to emit: the `as` name when given, otherwise the Sun name.
+  const std::string& getLinkName() const {
+    return linkName_.has_value() ? *linkName_ : Name;
   }
 
   // Resolved types for specialized generic functions

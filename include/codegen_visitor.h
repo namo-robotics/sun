@@ -118,6 +118,11 @@ class CodegenVisitor {
   // Functions with hasClosure=false can be called directly
   std::map<std::string, FunctionClosureInfo> functionInfo;
 
+  // Sun-side extern name -> C symbol, for `extern function f(...) T as "g"`.
+  // Name resolution rewrites call sites through the Sun name, so this is
+  // where that name is translated to the symbol actually declared.
+  std::map<std::string, std::string> externSymbolNames;
+
   // Counter for generating unique names for anonymous lambdas
   unsigned lambdaCounter = 0;
 
@@ -365,6 +370,21 @@ class CodegenVisitor {
   llvm::Value* widenNumericIfNeeded(llvm::Value* argVal,
                                     const sun::TypePtr& paramType,
                                     const sun::TypePtr& sourceType);
+
+  // Narrows a static_ptr<T> fat { ptr, i64 } argument to the bare data
+  // pointer a raw_ptr<T> parameter expects. No-op for any other type pairing.
+  llvm::Value* coerceStaticPtrToRawPtr(llvm::Value* argVal,
+                                       const sun::TypePtr& argSunType,
+                                       const sun::TypePtr& paramType);
+
+  // C default argument promotions for values passed in a `...` tail:
+  // float -> double, sub-int integers -> int, static_ptr -> data pointer.
+  llvm::Value* applyCVarargPromotions(llvm::Value* argVal,
+                                      const sun::TypePtr& argSunType);
+
+  // Find a function by its resolved Sun-side name, translating renamed
+  // externs (`as "symbol"`) to the C symbol they were declared under.
+  llvm::Function* lookupCallTarget(const std::string& name);
 
   // Load through a reference-typed return value (refs behave like values)
   llvm::Value* derefIfRefReturn(llvm::Value* result,

@@ -397,10 +397,15 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
       auto* overloads = funcs.getOverloads(baseName);
       if (!overloads) return std::nullopt;
       for (const auto* info : *overloads) {
-        if (info->paramTypes.size() != argTypes.size()) continue;
+        // A C-variadic callee only fixes its leading parameters; anything
+        // past them is checked by the C side, not here.
+        if (info->isCVariadic ? argTypes.size() < info->paramTypes.size()
+                              : info->paramTypes.size() != argTypes.size()) {
+          continue;
+        }
 
         bool compatible = true;
-        for (size_t i = 0; i < argTypes.size(); ++i) {
+        for (size_t i = 0; i < info->paramTypes.size(); ++i) {
           if (!argTypes[i] || !info->paramTypes[i]) {
             compatible = false;
             break;

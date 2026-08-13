@@ -148,6 +148,7 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
         info.paramTypes = std::move(paramTypes);
         info.qualifiedName = qualifiedName;
         info.canThrow = proto.canThrow();
+        info.isCVariadic = proto.isCVariadic();
 
         registernFunctionInCurrentScope(qualifiedName.baseName, info);
         break;
@@ -184,6 +185,7 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
             info.paramTypes = std::move(paramTypes);
             info.qualifiedName = qualifiedName;
             info.canThrow = proto.canThrow();
+            info.isCVariadic = proto.isCVariadic();
             registernFunctionInCurrentScope(qualifiedName.baseName, info);
           }
         }
@@ -233,6 +235,7 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
                 info.paramTypes = std::move(paramTypes);
                 info.qualifiedName = qualifiedName;
                 info.canThrow = proto.canThrow();
+                info.isCVariadic = proto.isCVariadic();
                 registernFunctionInCurrentScope(qualifiedName.baseName, info);
               }
             }

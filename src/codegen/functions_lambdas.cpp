@@ -383,11 +383,17 @@ Value* CodegenVisitor::codegenGenericFunc(FunctionAST& funcAst) {
 Value* CodegenVisitor::codegenExternFunc(FunctionAST& funcAst) {
   const PrototypeAST& proto = funcAst.getProto();
 
+  // Record the Sun name -> C symbol mapping before anything else, so call
+  // sites resolve even if the declaration itself was already emitted.
+  if (proto.hasLinkName()) {
+    externSymbolNames[proto.getName()] = proto.getLinkName();
+  }
+
   // Idempotent: the block pre-pass declares externs up front so they can be
   // called before their declaration appears, and codegenFunc reaches this
   // again when it walks the statement. Re-creating would give LLVM a
   // uniqued name (abs.1) that no longer matches the C symbol.
-  if (llvm::Function* existing = module->getFunction(proto.getName())) {
+  if (llvm::Function* existing = module->getFunction(proto.getLinkName())) {
     return existing;
   }
 
@@ -419,11 +425,12 @@ Value* CodegenVisitor::codegenExternFunc(FunctionAST& funcAst) {
 
   // Create function type
   llvm::FunctionType* funcType =
-      llvm::FunctionType::get(returnType, paramTypes, false);
+      llvm::FunctionType::get(returnType, paramTypes, proto.isCVariadic());
 
   // Declare external function
   llvm::Function* externFunc = llvm::Function::Create(
-      funcType, llvm::Function::ExternalLinkage, proto.getName(), module);
+      funcType, llvm::Function::ExternalLinkage, proto.getLinkName(),
+      module);
 
   // Set parameter names
   unsigned idx = 0;
