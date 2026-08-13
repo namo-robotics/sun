@@ -1635,6 +1635,99 @@ static Function* getOrCreatePrintI32Helper(llvm::Module* module,
   return func;
 }
 
+// Get or create the __sun_print_i64 helper function.
+// Same digit-extraction shape as the i32 helper, widened to 64 bits.
+// Buffer is 24 bytes: the longest output is "-9223372036854775808" (20 chars).
+static Function* getOrCreatePrintI64Helper(llvm::Module* module,
+                                           LLVMContext& llvmCtx) {
+  Function* func = module->getFunction("__sun_print_i64");
+  if (func) return func;
+
+  constexpr int kBufSize = 24;
+
+  FunctionType* funcType = FunctionType::get(
+      Type::getVoidTy(llvmCtx), {Type::getInt64Ty(llvmCtx)}, false);
+  func = Function::Create(funcType, Function::InternalLinkage,
+                          "__sun_print_i64", module);
+
+  BasicBlock* entryBB = BasicBlock::Create(llvmCtx, "entry", func);
+  BasicBlock* loopBB = BasicBlock::Create(llvmCtx, "loop", func);
+  BasicBlock* afterLoopBB = BasicBlock::Create(llvmCtx, "after_loop", func);
+  BasicBlock* addMinusBB = BasicBlock::Create(llvmCtx, "add_minus", func);
+  BasicBlock* writeBB = BasicBlock::Create(llvmCtx, "write", func);
+
+  IRBuilder<> builder(entryBB);
+  llvm::Type* i64Ty = Type::getInt64Ty(llvmCtx);
+  llvm::Type* i32Ty = Type::getInt32Ty(llvmCtx);
+  llvm::Type* i8Ty = Type::getInt8Ty(llvmCtx);
+  Value* val = func->arg_begin();
+
+  llvm::Type* bufArrayType = ArrayType::get(i8Ty, kBufSize);
+  AllocaInst* buffer = builder.CreateAlloca(bufArrayType, nullptr, "buf");
+
+  AllocaInst* idxAlloca = builder.CreateAlloca(i32Ty);
+  builder.CreateStore(ConstantInt::get(i32Ty, kBufSize - 1), idxAlloca);
+
+  Value* isNegative =
+      builder.CreateICmpSLT(val, ConstantInt::get(i64Ty, 0), "is_neg");
+  // Digits are extracted with unsigned div/rem, so negating INT64_MIN (which
+  // overflows back to itself) still yields the correct magnitude bit pattern.
+  Value* absVal = builder.CreateSelect(isNegative, builder.CreateNeg(val, "neg"),
+                                       val, "abs");
+
+  AllocaInst* numAlloca = builder.CreateAlloca(i64Ty);
+  builder.CreateStore(absVal, numAlloca);
+  builder.CreateBr(loopBB);
+
+  // Loop: extract digits right to left
+  builder.SetInsertPoint(loopBB);
+  Value* num = builder.CreateLoad(i64Ty, numAlloca);
+  Value* idx = builder.CreateLoad(i32Ty, idxAlloca);
+
+  Value* digit = builder.CreateURem(num, ConstantInt::get(i64Ty, 10));
+  Value* digitChar = builder.CreateAdd(digit, ConstantInt::get(i64Ty, '0'));
+  Value* digitChar8 = builder.CreateTrunc(digitChar, i8Ty);
+
+  Value* charPtr = builder.CreateGEP(i8Ty, buffer, idx);
+  builder.CreateStore(digitChar8, charPtr);
+
+  Value* newIdx = builder.CreateSub(idx, ConstantInt::get(i32Ty, 1));
+  builder.CreateStore(newIdx, idxAlloca);
+  Value* newNum = builder.CreateUDiv(num, ConstantInt::get(i64Ty, 10));
+  builder.CreateStore(newNum, numAlloca);
+
+  Value* cont = builder.CreateICmpUGT(newNum, ConstantInt::get(i64Ty, 0));
+  builder.CreateCondBr(cont, loopBB, afterLoopBB);
+
+  // After loop: check if negative
+  builder.SetInsertPoint(afterLoopBB);
+  builder.CreateCondBr(isNegative, addMinusBB, writeBB);
+
+  // Add minus sign
+  builder.SetInsertPoint(addMinusBB);
+  Value* minusIdx = builder.CreateLoad(i32Ty, idxAlloca);
+  Value* minusPtr = builder.CreateGEP(i8Ty, buffer, minusIdx);
+  builder.CreateStore(ConstantInt::get(i8Ty, '-'), minusPtr);
+  builder.CreateStore(
+      builder.CreateSub(minusIdx, ConstantInt::get(i32Ty, 1)), idxAlloca);
+  builder.CreateBr(writeBB);
+
+  // Write to stdout
+  builder.SetInsertPoint(writeBB);
+  Value* finalIdx = builder.CreateLoad(i32Ty, idxAlloca);
+  Value* startIdx = builder.CreateAdd(finalIdx, ConstantInt::get(i32Ty, 1));
+  Value* startPtr = builder.CreateGEP(i8Ty, buffer, startIdx);
+  Value* length =
+      builder.CreateSub(ConstantInt::get(i32Ty, kBufSize), startIdx);
+  Value* length64 = builder.CreateZExt(length, i64Ty);
+  Value* fd = ConstantInt::get(i32Ty, 1);
+
+  emitRawSyscallWriteInline(builder, llvmCtx, fd, startPtr, length64);
+  builder.CreateRetVoid();
+
+  return func;
+}
+
 // Get or create the __sun_print_newline helper function
 static Function* getOrCreatePrintNewlineHelper(llvm::Module* module,
                                                LLVMContext& llvmCtx) {
@@ -1741,17 +1834,15 @@ Value* CodegenVisitor::codegenPrintI64(const CallExprAST& expr) {
     return nullptr;
   }
 
-  // For now, truncate to i32 and use print_i32 helper
-  // TODO: implement proper i64 helper
   LLVMContext& llvmCtx = ctx.getContext();
   Value* val = codegen(*expr.getArgs()[0]);
   if (!val) return nullptr;
 
-  if (!val->getType()->isIntegerTy(32)) {
-    val = ctx.builder->CreateSExtOrTrunc(val, Type::getInt32Ty(llvmCtx));
+  if (!val->getType()->isIntegerTy(64)) {
+    val = ctx.builder->CreateSExtOrTrunc(val, Type::getInt64Ty(llvmCtx));
   }
 
-  Function* helper = getOrCreatePrintI32Helper(module, llvmCtx);
+  Function* helper = getOrCreatePrintI64Helper(module, llvmCtx);
   return ctx.builder->CreateCall(helper, {val});
 }
 

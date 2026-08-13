@@ -462,9 +462,9 @@ static std::vector<SemanticScope*> collectAllModuleScopes(
   return results;
 }
 
-SymbolMatch SemanticAnalyzer::findSymbolInModule(const std::string& modulePath,
-                                                 const std::string& name,
-                                                 SymbolKind filterKind) const {
+SymbolMatch SemanticAnalyzer::findSymbolInModule(
+    const std::string& modulePath, const std::string& name,
+    SymbolKind filterKind, const std::vector<sun::TypePtr>* argTypes) const {
   // Helper to extract visible module path by stripping $...$ prefixes
   auto getVisibleModulePath = [](const std::string& path) -> std::string {
     std::string result;
@@ -574,7 +574,21 @@ SymbolMatch SemanticAnalyzer::findSymbolInModule(const std::string& modulePath,
     if (matchesFilter(SymbolKind::Function)) {
       if (auto* overloads = scope->functions.getOverloads(name)) {
         if (!overloads->empty()) {
-          const auto* info = overloads->front();
+          const FunctionInfo* info = overloads->front();
+          // When the caller knows the argument types, pick the overload that
+          // actually matches rather than whichever was registered first.
+          if (argTypes) {
+            auto resolved = scope->lookupFunctionLocal(name, *argTypes);
+            if (!resolved) return std::nullopt;
+            info = nullptr;
+            for (const auto* candidate : *overloads) {
+              if (candidate->qualifiedName == resolved->qualifiedName) {
+                info = candidate;
+                break;
+              }
+            }
+            if (!info) return std::nullopt;
+          }
           SymbolMatch match;
           match.kind = SymbolKind::Function;
           match.name = name;

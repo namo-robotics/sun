@@ -403,6 +403,13 @@ struct SemanticScopeBase
       const std::string& name,
       const std::vector<sun::TypePtr>& argTypes) const;
 
+  // Same overload resolution, but restricted to this scope's own function
+  // table — no walk to parents. Used for module-qualified calls, where the
+  // callee's scope is already known.
+  std::optional<FunctionInfo> lookupFunctionLocal(
+      const std::string& name,
+      const std::vector<sun::TypePtr>& argTypes) const;
+
   // Lookup module scope by dot-separated path
   SemanticScopeBase* lookupModuleScope(const std::string& dotPath) const;
 

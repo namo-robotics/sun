@@ -1569,15 +1569,22 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
   // nested functions). Precompiled stubs have pre-set qualified names with
   // content hash for symbol isolation.
   sun::QualifiedName qualifiedName;
-  if (proto.hasQualifiedName()) {
+  if (func.isCExtern()) {
+    // C externs bind to a fixed symbol: no module scope, no overload suffix.
+    // The qualified name *is* the C symbol. Scope-based lookup still isolates
+    // declarations per module because registration keys on the base name.
+    qualifiedName = sun::QualifiedName({}, proto.getName());
+  } else if (proto.hasQualifiedName()) {
     qualifiedName = proto.getQualifiedName();
   } else {
     qualifiedName = makeQualifiedName(proto.getName());
   }
 
   // Add param type suffix for overload disambiguation (unified with methods)
-  // Skip for 'main' — it's an entry point with a fixed ABI name.
-  if (qualifiedName.paramSuffix.empty() && proto.getName() != "main") {
+  // Skip for 'main' — it's an entry point with a fixed ABI name — and for
+  // externs, whose ABI name is fixed by C.
+  if (qualifiedName.paramSuffix.empty() && proto.getName() != "main" &&
+      !func.isCExtern()) {
     qualifiedName.setParamSuffix(paramTypes);
   }
 
@@ -1681,6 +1688,68 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
 // Function body analysis
 // -------------------------------------------------------------------
 
+const FunctionInfo* SemanticAnalyzer::resolveModuleQualifiedCall(
+    const MemberAccessAST& memberAccess, const sun::TypePtr& objectType,
+    const std::vector<sun::TypePtr>& argTypes) const {
+  if (!objectType || !objectType->isModule()) return nullptr;
+
+  auto* moduleType = static_cast<sun::ModuleType*>(objectType.get());
+  SymbolMatch match =
+      findSymbolInModule(moduleType->getModulePath(),
+                         memberAccess.getMemberName(), SymbolKind::Function,
+                         &argTypes);
+  if (!match || !match.functionInfo) return nullptr;
+
+  memberAccess.setResolvedQualifiedName(
+      match.functionInfo->qualifiedName.mangled());
+  return match.functionInfo;
+}
+
+void SemanticAnalyzer::validateExternSignature(FunctionAST& func) {
+  const PrototypeAST& proto = func.getProto();
+
+  // Anything wider than a primitive or a bare pointer needs SysV argument
+  // classification (byval/sret) that codegen does not emit yet, so accepting
+  // it would silently produce a call the C side cannot decode.
+  auto describe = [](const sun::TypePtr& t) {
+    return t ? t->toString() : std::string("<unresolved>");
+  };
+  auto isABISafe = [](const sun::TypePtr& t) {
+    return t && (t->isPrimitive() || t->isRawPointer());
+  };
+
+  if (proto.hasResolvedParamTypes()) {
+    const auto& params = proto.getResolvedParamTypes();
+    for (size_t i = 0; i < params.size(); ++i) {
+      if (params[i] && params[i]->isVoid()) {
+        logAndThrowError("Parameter '" + proto.getArgs()[i].first +
+                             "' of extern function '" + proto.getName() +
+                             "' cannot be void",
+                         func.getLocation());
+      }
+      if (!isABISafe(params[i])) {
+        logAndThrowError(
+            "Parameter '" + proto.getArgs()[i].first +
+                "' of extern function '" + proto.getName() + "' has type '" +
+                describe(params[i]) +
+                "', which is not supported in a C signature yet. Extern "
+                "parameters must be a primitive or raw_ptr<T>.",
+            func.getLocation());
+      }
+    }
+  }
+
+  if (proto.hasResolvedReturnType() &&
+      !isABISafe(proto.getResolvedReturnType())) {
+    logAndThrowError(
+        "Extern function '" + proto.getName() + "' returns '" +
+            describe(proto.getResolvedReturnType()) +
+            "', which is not supported in a C signature yet. Extern return "
+            "types must be a primitive or raw_ptr<T>.",
+        func.getLocation());
+  }
+}
+
 void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
   PrototypeAST& proto = const_cast<PrototypeAST&>(func.getProto());
 
@@ -1691,6 +1760,7 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
                            "' must have an explicit return type",
                        func.getLocation());
     }
+    if (func.isCExtern()) validateExternSignature(func);
     return;
   }
 
@@ -2474,6 +2544,12 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
           memberAccess.setResolvedType(inferType(memberAccess));
         }
       }
+    } else if (const FunctionInfo* modFunc = resolveModuleQualifiedCall(
+                   memberAccess, objectType, argTypes)) {
+      // Module-qualified call: the overload is chosen from the argument
+      // types here. inferType() alone would only see the first overload.
+      memberAccess.setResolvedType(
+          sun::Types::Function(modFunc->returnType, modFunc->paramTypes));
     } else {
       // Not a class type (interface, module, ptr-to-class, builtin...).
       // Set the type directly (the object is already analyzed) instead of

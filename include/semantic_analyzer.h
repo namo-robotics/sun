@@ -105,6 +105,11 @@ class SemanticAnalyzer {
   void analyzeFunction(FunctionAST& func);
   void analyzeLambda(LambdaAST& lambda);
 
+  // Reject extern signatures whose C ABI codegen cannot yet emit correctly.
+  // Only primitives and raw_ptr<T> are ABI-correct today: aggregates need
+  // SysV classification (byval/sret) that the backend does not perform.
+  void validateExternSignature(FunctionAST& func);
+
   // Analyze a partial class definition. Partial classes add methods to an
   // existing primary class. If the primary has been analyzed, merges now;
   // otherwise stashes for later merging.
@@ -407,9 +412,21 @@ class SemanticAnalyzer {
   // e.g., findSymbolInModule("b", "get_version") finds b.get_version
   // even if b is inside a library scope like $hash$.b
   // Optional filterKind restricts to specific symbol type (None = any)
+  // Optional argTypes selects the matching overload when the symbol is a
+  // function; without it the first registered overload is returned.
   SymbolMatch findSymbolInModule(
       const std::string& modulePath, const std::string& name,
-      SymbolKind filterKind = SymbolKind::None) const;
+      SymbolKind filterKind = SymbolKind::None,
+      const std::vector<sun::TypePtr>* argTypes = nullptr) const;
+
+  // Resolve a module-qualified call `mod.foo(args...)` against the actual
+  // argument types and stamp the chosen overload's own mangled name onto the
+  // member access. Rebuilding the name from the module path instead would
+  // drop the overload param suffix and name a symbol codegen never emits.
+  // Returns nullptr if the module has no overload matching those arguments.
+  const FunctionInfo* resolveModuleQualifiedCall(
+      const MemberAccessAST& memberAccess, const sun::TypePtr& objectType,
+      const std::vector<sun::TypePtr>& argTypes) const;
 
   // Get all active using imports (from all enclosing scopes)
   std::vector<UsingImport> getActiveUsingImports() const;

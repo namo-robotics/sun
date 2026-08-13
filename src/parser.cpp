@@ -1670,8 +1670,9 @@ unique_ptr<ExprAST> Parser::parseStatement() {
       if (curTok.kind == TokenKind::SEMI_COLON)
         getNextToken();  // eat optional semicolon
       // Wrap prototype in a FunctionAST with no body (nullptr)
-      return finishNode(
-          std::make_unique<FunctionAST>(std::move(proto), nullptr), start);
+      auto fn = std::make_unique<FunctionAST>(std::move(proto), nullptr);
+      fn->setCExtern(true);  // C ABI — distinguishes from `declare function`
+      return finishNode(std::move(fn), start);
     }
     case TokenKind::FUNCTION: {
       // Function definitions don't need trailing semicolons

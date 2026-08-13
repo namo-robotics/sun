@@ -383,6 +383,14 @@ Value* CodegenVisitor::codegenGenericFunc(FunctionAST& funcAst) {
 Value* CodegenVisitor::codegenExternFunc(FunctionAST& funcAst) {
   const PrototypeAST& proto = funcAst.getProto();
 
+  // Idempotent: the block pre-pass declares externs up front so they can be
+  // called before their declaration appears, and codegenFunc reaches this
+  // again when it walks the statement. Re-creating would give LLVM a
+  // uniqued name (abs.1) that no longer matches the C symbol.
+  if (llvm::Function* existing = module->getFunction(proto.getName())) {
+    return existing;
+  }
+
   // Get return type from prototype (must be resolved by semantic analysis)
   llvm::Type* returnType = nullptr;
   if (proto.hasResolvedReturnType()) {

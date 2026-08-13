@@ -17,11 +17,20 @@ Sun currently reaches the outside world through compiler intrinsics
 the compiler and shipping a release. FFI converts most of the rest of this roadmap
 into work users can do without us.
 
-- [ ] `extern "C"` function declarations (`extern` token and bodyless-function
-      formatting already exist; semantic analysis + codegen do not)
+- [x] `extern function` declarations calling C symbols — primitives and
+      `raw_ptr<T>` only; other signature types are rejected with an error
+      rather than miscompiled
+- [ ] Pass string literals to C (`static_ptr<T>` → `raw_ptr<T>` needs a
+      data-pointer extract at the call boundary; currently fails verification)
+- [ ] Varargs (`...`) — blocks `printf`. ELLIPSIS token exists, parser does not
+      accept it and `FunctionType::get` hardcodes `isVarArg=false`
+- [ ] `extern "C"` ABI string and `as "symbol"` renaming
 - [ ] Link external C libraries (`-l` / library search paths through the driver)
+- [ ] Load libraries under JIT (`DynamicLibrary::LoadLibraryPermanently`;
+      today only the current process is searched)
 - [ ] C struct interop and layout compatibility
-- [ ] Calling conventions
+- [ ] Calling conventions — SysV classification (byval/sret) for aggregates
+- [ ] Extern declarations in `.moon` libraries (serializer guards on `hasBody`)
 - [ ] Safety story for unsafe interop — see *Design Decisions Needed*
 
 ### Cross-Compilation
