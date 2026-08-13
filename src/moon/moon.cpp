@@ -49,7 +49,13 @@ bool shouldSkipRename(const std::string& name) {
       "localtime", "strftime", "sin",     "cos",     "tan",     "asin",
       "acos",      "atan",     "atan2",   "sinh",    "cosh",    "tanh",
       "exp",       "log",      "log10",   "pow",     "sqrt",    "ceil",
-      "floor",     "fabs",     "fmod",    "frexp",   "ldexp",   "modf"};
+      "floor",     "fabs",     "fmod",    "frexp",   "ldexp",   "modf",
+      // POSIX symbols the intrinsics call (mirrors include/intrinsics/libc.h)
+      "write",     "read",     "open",    "close",   "lseek",   "fstat",
+      "fsync",     "ftruncate", "unlink", "rename",  "mkdir",   "rmdir",
+      "socket",    "bind",     "listen",  "accept",  "connect", "send",
+      "recv",      "shutdown", "setsockopt", "getsockopt", "syscall",
+      "pthread_create", "pthread_join"};
 
   if (name.starts_with("llvm.")) return true;
   if (name.starts_with("$")) return true;
@@ -180,6 +186,10 @@ void SunLibWriter::addModule(llvm::Module& module,
 
   // Store metadata (hash will be computed in write() from combined content)
   data.metadata = metadata;
+
+  // Stamp the target the bitcode was compiled for; the linker refuses to mix
+  // targets, since struct layouts and ABI decisions are baked into bitcode.
+  data.metadata.set_target_triple(module.getTargetTriple());
 
   modules_.push_back(std::move(data));
 }
@@ -421,6 +431,12 @@ const moon::ModuleMetadata* SunLibReader::getMetadata(
 
   metadataCache_[moduleKey] = std::move(metadata);
   return &metadataCache_[moduleKey];
+}
+
+std::string SunLibReader::getTargetTriple() {
+  if (index_.empty()) return "";
+  const auto* metadata = getMetadata(index_.front().moduleKey);
+  return metadata ? metadata->target_triple() : "";
 }
 
 std::unique_ptr<llvm::Module> SunLibReader::loadModule(

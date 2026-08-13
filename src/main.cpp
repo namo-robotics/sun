@@ -32,6 +32,16 @@ static void printUsage(const char* programName) {
                   "or based on input)\n";
   llvm::errs() << "  -S                Emit assembly file\n";
   llvm::errs() << "  --emit-obj        Emit object file only (do not link)\n";
+  llvm::errs() << "  --target <triple> Cross-compile for <triple> (e.g. "
+                  "aarch64-linux-gnu)\n";
+  llvm::errs() << "                    Works with -c (needs a cross "
+                  "toolchain), --emit-obj and --emit-moon\n";
+  llvm::errs() << "  --sysroot <dir>   Target root filesystem for cross "
+                  "linking (passed to the linker)\n";
+  llvm::errs() << "  --static          Link a self-contained binary (the "
+                  "default; musl preferred when installed)\n";
+  llvm::errs() << "  --dynamic         Link against shared libraries instead "
+                  "(needed for .so-only libs)\n";
   llvm::errs() << "  --emit-ir         Print LLVM IR to stdout\n";
   llvm::errs() << "  --debug           Generate debug output (ast.dot, ir.ll) "
                   "in <input>_debug/\n";
@@ -281,12 +291,15 @@ int main(int argc, char* argv[]) {
 
   // Parse command-line arguments
   std::string outputFile;
+  std::string targetTriple;
   std::vector<std::string> inputFiles;
   std::vector<std::string> libPaths;
   sun::LinkOptions linkOpts;
   std::vector<sun::MoonImport> moonImports;
   bool compileMode = false;
   bool emitObjOnly = false;
+  bool sawStatic = false;
+  bool sawDynamic = false;
   bool emitMoon = false;
   bool emitIR = false;
   bool debugMode = false;
@@ -307,6 +320,14 @@ int main(int argc, char* argv[]) {
     } else if (arg == "--emit-obj") {
       compileMode = true;
       emitObjOnly = true;
+    } else if (arg == "--target" && i + 1 < argc) {
+      targetTriple = argv[++i];
+    } else if (arg == "--sysroot" && i + 1 < argc) {
+      linkOpts.sysroot = argv[++i];
+    } else if (arg == "--static") {
+      sawStatic = true;
+    } else if (arg == "--dynamic") {
+      sawDynamic = true;
     } else if (arg == "--emit-moon") {
       emitMoon = true;
     } else if (arg == "--emit-ir") {
@@ -344,7 +365,29 @@ int main(int argc, char* argv[]) {
     }
   }
 
+  // Cross-compilation produces object files and .moon artifacts; the JIT can
+  // only run host code.
+  if (!targetTriple.empty() && !emitObjOnly && !emitMoon && !compileMode) {
+    llvm::errs() << "Error: --target requires --emit-obj, -c or --emit-moon "
+                    "(JIT execution is host-only)\n";
+    return 1;
+  }
+  if (sawStatic && sawDynamic) {
+    llvm::errs() << "Error: --static and --dynamic are mutually exclusive\n";
+    return 1;
+  }
+  if (sawStatic && (!compileMode || emitObjOnly)) {
+    llvm::errs() << "Error: --static only applies when linking; use it with "
+                    "-c\n";
+    return 1;
+  }
+  // Linking is static by default: one self-contained binary, the deployment
+  // shape embedded targets want. --dynamic restores shared-library linking
+  // (needed for .so-only vendor libraries).
+  linkOpts.staticLink = !sawDynamic;
+
   // Initialize library cache
+  sun::LibraryCache::instance().setTargetTriple(targetTriple);
   sun::LibraryCache::instance().initFromEnvironment();
   for (const auto& libPath : libPaths) {
     sun::LibraryCache::instance().addSearchPath(libPath);
@@ -363,7 +406,9 @@ int main(int argc, char* argv[]) {
         std::filesystem::absolute(entrypoint);
 
     if (outputFile.empty()) {
-      // Derive from input file
+      // Derive from input file. The name does not encode the target — the
+      // bundle metadata records it, and cross bundles conventionally live in
+      // per-target directories (use -o <triple>/name.moon).
       outputFile = entrypoint;
       size_t dotPos = outputFile.rfind(".sun");
       if (dotPos != std::string::npos) {
@@ -412,7 +457,7 @@ int main(int argc, char* argv[]) {
       }
 
       // Compile all files together
-      auto driver = Driver::createForAOT("moon_module");
+      auto driver = Driver::createForAOT("moon_module", targetTriple);
       driver->compileFiles(sunFiles, moonImports);
 
       // Add each module's metadata + the shared compiled LLVM module
@@ -479,7 +524,7 @@ int main(int argc, char* argv[]) {
     llvm::outs() << "Compiling: " << inputFile << " -> " << outputFile << "\n";
 
     try {
-      auto driver = Driver::createForAOT("main_module");
+      auto driver = Driver::createForAOT("main_module", targetTriple);
       if (debugMode) {
         driver->setDebugMode(true, inputFile);
       }
@@ -503,6 +548,7 @@ int main(int argc, char* argv[]) {
         success =
             sun::emitObjectFile(driver->getModule(), outputFile, errorMsg);
       } else {
+        linkOpts.targetTriple = targetTriple;
         success = sun::compileToExecutable(driver->getModule(), outputFile,
                                            errorMsg, /*keepObjectFile=*/false,
                                            linkOpts);

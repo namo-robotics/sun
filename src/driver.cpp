@@ -1,5 +1,7 @@
 #include "driver.h"
 
+#include "library_cache.h"
+
 #include <llvm/IR/Verifier.h>
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Transforms/IPO/GlobalDCE.h>
@@ -131,6 +133,9 @@ static bool hasStdlibImport(const std::vector<sun::MoonImport>& moonImports) {
 std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName) {
   ensureLLVMInitialized();
 
+  // JIT always runs on the host; .moon bundle selection must match.
+  sun::LibraryCache::instance().setTargetTriple("");
+
   auto jit = SunJIT::Create();
   if (!jit) {
     llvm::errs() << "Failed to create SunJIT: " << toString(jit.takeError())
@@ -158,10 +163,18 @@ std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName) {
 }
 
 // Factory method for AOT compilation
-std::unique_ptr<Driver> Driver::createForAOT(const std::string& moduleName) {
+std::unique_ptr<Driver> Driver::createForAOT(const std::string& moduleName,
+                                             const std::string& targetTriple) {
   ensureLLVMInitialized();
 
-  auto ctx = std::make_unique<CodegenContext>(moduleName, nullptr);
+  // Both the parser's bundle resolution and the linker's bundle selection
+  // key off this; setting it here keeps API users consistent with the CLI.
+  sun::LibraryCache::instance().setTargetTriple(targetTriple);
+
+  auto ctx =
+      std::make_unique<CodegenContext>(moduleName, nullptr,
+                                       /*existingContext=*/nullptr,
+                                       targetTriple);
   auto typeRegistry = std::make_shared<sun::TypeRegistry>();
   auto codegenVisitor = std::make_unique<CodegenVisitor>(*ctx, typeRegistry);
   auto analyzer = std::make_unique<SemanticAnalyzer>(typeRegistry);

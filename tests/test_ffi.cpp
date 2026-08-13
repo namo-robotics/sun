@@ -9,10 +9,12 @@
 #include <cstdlib>
 #include <string>
 
+#include "abi/c_abi.h"
 #include "ast_deserializer.h"
 #include "ast_serializer.h"
 #include "compiler.h"
 #include "execution_utils.h"
+#include "extern_c.h"
 #include "parser.h"
 
 // ============================================================================
@@ -700,4 +702,61 @@ TEST(FFIStructValueTest, struct_followed_by_a_scalar_keeps_argument_order) {
     }
   )");
   EXPECT_EQ(value, 42);
+}
+
+TEST(FFIStructValueTest, module_qualified_extern_call_marshals_structs) {
+  // The module-qualified call path (mymod.f) used to skip ABI marshalling
+  // entirely and hand the callee a raw {i32, i32} argument.
+  if (!loadFfiTestLib()) GTEST_SKIP() << "fixture library unavailable";
+  auto value = executeString(R"(
+    class Pair {
+        var a: i32;
+        var b: i32;
+        function init(a: i32, b: i32) { this.a = a; this.b = b; }
+    }
+    module clib {
+      extern "C" function sun_ffi_take_pair(p: Pair) i32;
+    }
+
+    function main() i32 {
+        var p = Pair(3, 7);
+        unsafe { return clib.sun_ffi_take_pair(p); };
+    }
+  )");
+  EXPECT_EQ(value, 307);  // a*100 + b
+}
+
+TEST(FFIStructValueTest, predeclared_function_still_registers_marshalling) {
+  // declare() used to return early for a Function that already existed (e.g.
+  // created by .moon bitcode linking) without registering its lowering, so
+  // needsMarshalling() silently answered no.
+  auto parser = Parser::createStringParser(R"(
+    extern "C" function pre_pair(p: i32) i32;
+  )");
+  auto ast = parser.parseProgram();
+  ASSERT_NE(ast, nullptr);
+  auto* fn = static_cast<FunctionAST*>(ast->getBody()[0].get());
+  const PrototypeAST& proto = fn->getProto();
+
+  CodegenContext cgctx("predecl_test", nullptr);
+  llvm::LLVMContext& lctx = cgctx.getContext();
+  llvm::Module* module = cgctx.mainModule.get();
+  sun::cabi::ExternCEmitter emitter(cgctx, module);
+
+  llvm::Type* i32Ty = llvm::Type::getInt32Ty(lctx);
+  auto* pairTy = llvm::StructType::get(lctx, {i32Ty, i32Ty});
+  llvm::Type* params[] = {pairTy};
+
+  // Pre-create the function with the lowered type, as bitcode linking would.
+  auto lowering =
+      sun::abi::lowerCSignature(llvm::Triple(module->getTargetTriple()),
+                                i32Ty, params, module->getDataLayout());
+  auto* loweredTy =
+      sun::abi::buildLoweredFunctionType(lowering, lctx, /*isVarArg=*/false);
+  llvm::Function::Create(loweredTy, llvm::Function::ExternalLinkage,
+                         "pre_pair", module);
+
+  llvm::Function* declared = emitter.declare(proto, i32Ty, params);
+  ASSERT_NE(declared, nullptr);
+  EXPECT_TRUE(emitter.needsMarshalling(declared));
 }

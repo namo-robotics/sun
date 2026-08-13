@@ -4,10 +4,22 @@
 
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/TargetParser/Host.h>
 
 #include "ast.h"
+#include "error.h"
 
 namespace sun::cabi {
+
+namespace {
+
+llvm::Triple targetTriple(const llvm::Module* module) {
+  std::string triple = module->getTargetTriple();
+  if (triple.empty()) triple = llvm::sys::getDefaultTargetTriple();
+  return llvm::Triple(triple);
+}
+
+}  // namespace
 
 llvm::Function* ExternCEmitter::declare(
     const PrototypeAST& proto, llvm::Type* returnType,
@@ -20,15 +32,33 @@ llvm::Function* ExternCEmitter::declare(
 
   const std::string& symbol = proto.getLinkName();
   if (llvm::Function* existing = module_->getFunction(symbol)) {
+    // The function may have been created by another path (linked .moon
+    // bitcode, a prior declaration). Without a registered lowering,
+    // needsMarshalling() would silently answer no and calls would skip the
+    // ABI rewriting the signature was built with.
+    if (!lowerings_.count(symbol)) {
+      auto lowering = abi::lowerCSignature(targetTriple(module_), returnType,
+                                           paramTypes,
+                                           module_->getDataLayout());
+      llvm::FunctionType* expected = abi::buildLoweredFunctionType(
+          lowering, ctx_.getContext(), proto.isCVariadic());
+      if (expected != existing->getFunctionType()) {
+        logAndThrowError("extern \"C\" declaration of '" + symbol +
+                         "' does not match the signature it was previously "
+                         "declared or compiled with");
+      }
+      lowerings_[symbol] = lowering;
+      applyAttributes(existing, lowering);
+    }
     return existing;
   }
 
   // Apply the C ABI to the signature. Scalars and pointers come back
   // unchanged; aggregates are coerced into register-sized pieces or passed
   // through memory. LLVM does none of this on its own.
-  auto lowering =
-      sysv::lowerCSignature(returnType, paramTypes, module_->getDataLayout());
-  llvm::FunctionType* funcType = sysv::buildLoweredFunctionType(
+  auto lowering = abi::lowerCSignature(targetTriple(module_), returnType,
+                                       paramTypes, module_->getDataLayout());
+  llvm::FunctionType* funcType = abi::buildLoweredFunctionType(
       lowering, ctx_.getContext(), proto.isCVariadic());
 
   llvm::Function* func = llvm::Function::Create(
@@ -57,7 +87,7 @@ const std::string& ExternCEmitter::symbolFor(const std::string& sunName) const {
   return it == symbolNames_.end() ? sunName : it->second;
 }
 
-const sysv::SignatureLowering* ExternCEmitter::loweringFor(
+const abi::SignatureLowering* ExternCEmitter::loweringFor(
     const llvm::Function* func) const {
   if (!func) return nullptr;
   auto it = lowerings_.find(func->getName().str());
@@ -65,12 +95,12 @@ const sysv::SignatureLowering* ExternCEmitter::loweringFor(
 }
 
 bool ExternCEmitter::needsMarshalling(const llvm::Function* func) const {
-  const sysv::SignatureLowering* lowering = loweringFor(func);
+  const abi::SignatureLowering* lowering = loweringFor(func);
   return lowering && !lowering->isTrivial();
 }
 
 void ExternCEmitter::applyAttributes(
-    llvm::Function* func, const sysv::SignatureLowering& lowering) const {
+    llvm::Function* func, const abi::SignatureLowering& lowering) const {
   llvm::LLVMContext& llvmCtx = ctx_.getContext();
   unsigned idx = 0;
 
@@ -88,12 +118,21 @@ void ExternCEmitter::applyAttributes(
 
   for (const auto& param : lowering.params) {
     if (param.isIndirect()) {
-      func->addParamAttr(
-          idx, llvm::Attribute::getWithByValType(llvmCtx, param.type));
-      addAlign(idx, param.align);
+      // SysV spells "in memory" as a byval pointer; AAPCS64 passes a plain
+      // pointer to a caller-made copy, so no attribute there.
+      if (param.indirectByval) {
+        func->addParamAttr(
+            idx, llvm::Attribute::getWithByValType(llvmCtx, param.type));
+        addAlign(idx, param.align);
+      }
       ++idx;
     } else if (param.isCoerced()) {
-      idx += param.pieces.size();
+      for (size_t i = 0; i < param.pieces.size(); ++i, ++idx) {
+        if (param.stackAlign) {
+          func->addParamAttr(idx, llvm::Attribute::getWithStackAlignment(
+                                      llvmCtx, llvm::Align(param.stackAlign)));
+        }
+      }
     } else {
       ++idx;
     }
@@ -144,14 +183,62 @@ llvm::Value* ExternCEmitter::promoteVararg(llvm::Value* value,
   return value;
 }
 
+llvm::Value* ExternCEmitter::loadPiece(llvm::Value* aggregateAddr,
+                                       llvm::Type* pieceType, uint64_t offset,
+                                       uint64_t aggregateSize) const {
+  const llvm::DataLayout& dl = module_->getDataLayout();
+  llvm::Type* i8Ty = llvm::Type::getInt8Ty(ctx_.getContext());
+
+  llvm::Value* src = aggregateAddr;
+  if (offset != 0) {
+    src = ctx_.builder->CreateConstInBoundsGEP1_64(i8Ty, aggregateAddr, offset,
+                                                   "cabi.piece.addr");
+  }
+
+  // The coerced type can overhang the aggregate — AAPCS64 reads a 12-byte
+  // struct as [2 x i64]. Bounce through a slot of the piece's full size so
+  // the load stays in bounds; the callee ignores the padding bytes.
+  uint64_t pieceSize = dl.getTypeStoreSize(pieceType);
+  if (offset + pieceSize > aggregateSize) {
+    llvm::AllocaInst* bounce = entryAlloca(pieceType, "cabi.piece.pad");
+    ctx_.builder->CreateMemCpy(bounce, llvm::MaybeAlign(), src,
+                               llvm::MaybeAlign(), aggregateSize - offset);
+    src = bounce;
+  }
+  return ctx_.builder->CreateLoad(pieceType, src, "cabi.piece");
+}
+
+void ExternCEmitter::storePiece(llvm::Value* piece, llvm::Value* aggregateAddr,
+                                uint64_t offset,
+                                uint64_t aggregateSize) const {
+  const llvm::DataLayout& dl = module_->getDataLayout();
+  llvm::Type* i8Ty = llvm::Type::getInt8Ty(ctx_.getContext());
+
+  llvm::Value* dest = aggregateAddr;
+  if (offset != 0) {
+    dest = ctx_.builder->CreateConstInBoundsGEP1_64(i8Ty, aggregateAddr,
+                                                    offset, "cabi.ret.addr");
+  }
+
+  // Mirror of loadPiece: never write the coerced type's padding over memory
+  // past the aggregate's end.
+  uint64_t pieceSize = dl.getTypeStoreSize(piece->getType());
+  if (offset + pieceSize > aggregateSize) {
+    llvm::AllocaInst* bounce = entryAlloca(piece->getType(), "cabi.ret.pad");
+    ctx_.builder->CreateStore(piece, bounce);
+    ctx_.builder->CreateMemCpy(dest, llvm::MaybeAlign(), bounce,
+                               llvm::MaybeAlign(), aggregateSize - offset);
+    return;
+  }
+  ctx_.builder->CreateStore(piece, dest);
+}
+
 llvm::Value* ExternCEmitter::emitCall(llvm::Function* func,
                                       llvm::ArrayRef<PreparedArg> args,
                                       CallEmitter emitCallInsn) {
-  const sysv::SignatureLowering* lowering = loweringFor(func);
+  const abi::SignatureLowering* lowering = loweringFor(func);
   if (!lowering) return nullptr;
 
-  llvm::LLVMContext& llvmCtx = ctx_.getContext();
-  llvm::Type* i8Ty = llvm::Type::getInt8Ty(llvmCtx);
   const llvm::DataLayout& dl = module_->getDataLayout();
 
   std::vector<llvm::Value*> loweredArgs;
@@ -165,7 +252,7 @@ llvm::Value* ExternCEmitter::emitCall(llvm::Function* func,
 
   for (size_t i = 0; i < args.size(); ++i) {
     const PreparedArg& arg = args[i];
-    const sysv::ArgLowering* plan =
+    const abi::ArgLowering* plan =
         i < lowering->params.size() ? &lowering->params[i] : nullptr;
 
     // Past the declared parameters: a `...` tail, where C's promotions apply.
@@ -185,8 +272,8 @@ llvm::Value* ExternCEmitter::emitCall(llvm::Function* func,
     llvm::Value* addr = addressOf(arg.value, plan->type);
 
     if (plan->isIndirect()) {
-      // byval hands the callee a pointer, but the callee owns a private copy
-      // — so give it a fresh one rather than the caller's live object.
+      // The callee owns a private copy — byval or not — so give it a fresh
+      // one rather than the caller's live object.
       llvm::AllocaInst* copy = entryAlloca(plan->type, "cabi.byval");
       ctx_.builder->CreateMemCpy(copy, llvm::MaybeAlign(plan->align), addr,
                                  llvm::MaybeAlign(plan->align),
@@ -195,13 +282,13 @@ llvm::Value* ExternCEmitter::emitCall(llvm::Function* func,
       continue;
     }
 
-    // Coerced: reload the aggregate's bytes as the eightbyte pieces the ABI
+    // Coerced: reload the aggregate's bytes as the register piece(s) the ABI
     // wants, one LLVM argument each.
+    uint64_t aggregateSize = dl.getTypeAllocSize(plan->type);
     for (size_t piece = 0; piece < plan->pieces.size(); ++piece) {
-      llvm::Value* slot = ctx_.builder->CreateConstInBoundsGEP1_64(
-          i8Ty, addr, piece * 8, "cabi.piece.addr");
-      loweredArgs.push_back(
-          ctx_.builder->CreateLoad(plan->pieces[piece], slot, "cabi.piece"));
+      loweredArgs.push_back(loadPiece(addr, plan->pieces[piece],
+                                      plan->pieceOffsets[piece],
+                                      aggregateSize));
     }
   }
 
@@ -216,17 +303,26 @@ llvm::Value* ExternCEmitter::emitCall(llvm::Function* func,
   // Sun represents a struct value.
   if (lowering->ret.isCoerced() && !lowering->ret.pieces.empty()) {
     llvm::AllocaInst* slot = entryAlloca(lowering->ret.type, "cabi.ret");
+    uint64_t aggregateSize = dl.getTypeAllocSize(lowering->ret.type);
     if (lowering->ret.pieces.size() == 1) {
-      ctx_.builder->CreateStore(result, slot);
+      storePiece(result, slot, lowering->ret.pieceOffsets[0], aggregateSize);
     } else {
       for (unsigned piece = 0; piece < lowering->ret.pieces.size(); ++piece) {
         llvm::Value* part =
             ctx_.builder->CreateExtractValue(result, piece, "cabi.ret.part");
-        llvm::Value* dest = ctx_.builder->CreateConstInBoundsGEP1_64(
-            i8Ty, slot, piece * 8, "cabi.ret.addr");
-        ctx_.builder->CreateStore(part, dest);
+        storePiece(part, slot, lowering->ret.pieceOffsets[piece],
+                   aggregateSize);
       }
     }
+    return slot;
+  }
+
+  // A Direct aggregate return (AAPCS64 HFAs stay the literal struct type)
+  // still needs an address to act as a Sun struct value.
+  if (lowering->ret.isDirect() && result &&
+      result->getType()->isStructTy()) {
+    llvm::AllocaInst* slot = entryAlloca(lowering->ret.type, "cabi.ret");
+    ctx_.builder->CreateStore(result, slot);
     return slot;
   }
 

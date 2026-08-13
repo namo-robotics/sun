@@ -33,23 +33,43 @@ into work users can do without us.
 - [x] C struct interop — class layout already matches C, and `ref T` is C's
       `T*`; structs by value work too
 - [x] Calling conventions — System V eightbyte classification with
-      byval/sret and register coercion (`include/sysv_abi.h`)
+      byval/sret and register coercion (`include/abi/sysv_x86_64.h`)
 - [x] Extern declarations in `.moon` libraries
 - [x] Safety story — calling an extern requires an `unsafe` block, matching
       the rule the equivalent intrinsics already follow
-- [ ] Cross-target ABIs: classification is x86-64 System V only; AArch64
-      needs its own rules (blocks *Cross-Compilation* below)
+- [x] Cross-target ABIs: per-target classification behind a triple dispatch
+      (`include/abi/c_abi.h`); AArch64 AAPCS64 (ELF) implemented with
+      HFA/register/indirect rules (`include/abi/aapcs64.h`)
 
 ### Cross-Compilation
 
-The driver is host-only; there is no target-triple handling anywhere. An embedded
-and robotics language that cannot target ARM from an x86 dev machine is unusable
-for its stated audience.
+An embedded and robotics language that cannot target ARM from an x86 dev machine
+is unusable for its stated audience. `--target <triple>` compiles whole programs
+(stdlib included) for the target; intrinsics call libc rather than x86-64
+syscall assembly, so the emitted IR is target-neutral.
 
-- [ ] `--target <triple>` in the driver
-- [ ] Sysroot / linker configuration per target
-- [ ] Cross-compiled stdlib `.moon` artifacts
-- [ ] Static binary linking
+- [x] `--target <triple>` in the driver (`--emit-obj`, `--emit-moon`, and `-c`
+      when a cross toolchain is installed)
+- [x] Sysroot / linker configuration per target (`--sysroot`; the link driver
+      is `<triple>-gcc`, then `clang --target`, overridable with `SUN_CC`)
+- [x] Cross-compiled stdlib `.moon` artifacts — bundles are target-stamped
+      (`.moon` format V4) and resolved by exact name; the build produces
+      per-target directories (`build/aarch64-linux-gnu/stdlib.moon`), and
+      linking a wrong-target bundle is a hard error naming both triples
+- [x] Intrinsics call libc (`write`/`open`/sockets/`pthread_create`), removing
+      the raw x86-64 syscall assembly that blocked non-x86 codegen
+- [x] Cross binaries are testable on the dev machine: the container ships
+      `g++-aarch64-linux-gnu` + `qemu-user`, and `CrossTargetTest` compiles,
+      links and runs aarch64 binaries under qemu (including a struct-passing
+      extern against C compiled by the real aarch64 toolchain)
+- [x] Static binary linking — the default for `-c`: a self-contained
+      static-pie binary (no loader, no .so dependencies, no libc version
+      coupling) that runs on any Linux of the target architecture (verified
+      under qemu with no sysroot). Static links prefer a musl toolchain
+      (`<arch>-linux-musl-gcc`, shipped in the dev container) — MIT-licensed,
+      no NSS dlopen, ~40% smaller than static glibc — falling back to glibc
+      `-static` when absent. `--dynamic` restores shared-library linking for
+      `.so`-only vendor libraries
 
 ### Debug Info (DWARF)
 

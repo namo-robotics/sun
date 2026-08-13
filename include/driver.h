@@ -75,9 +75,12 @@ class Driver {
   static std::unique_ptr<Driver> createForJIT(
       const std::string& moduleName = "sun");
 
-  /// Create a Driver for AOT compilation (no JIT)
+  /// Create a Driver for AOT compilation (no JIT). A non-empty targetTriple
+  /// cross-compiles for that target (object/IR emission only — linking and
+  /// execution stay host-only).
   static std::unique_ptr<Driver> createForAOT(
-      const std::string& moduleName = "module");
+      const std::string& moduleName = "module",
+      const std::string& targetTriple = "");
 
   /// Execute a source string with optional command-line arguments
   /// filePath is used for error messages (optional)

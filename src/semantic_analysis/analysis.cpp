@@ -1827,7 +1827,7 @@ void SemanticAnalyzer::validateExternSignature(FunctionAST& func) {
   //  - ref T, which also lowers to a bare pointer and so *is* C's `T*`.
   //    Class layout already matches C (declaration order, natural padding),
   //    so `ref SomeClass` is exactly `struct SomeClass*`.
-  //  - classes by value, via SysV eightbyte classification (see sysv_abi.h)
+  //  - classes by value, via per-target C ABI classification (see abi/c_abi.h)
   // Still excluded are the types with no C spelling at all: arrays and slices
   // (fat pointers), interfaces (vtable pairs), lambdas (closures), and
   // error unions.

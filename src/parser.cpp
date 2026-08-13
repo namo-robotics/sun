@@ -1,6 +1,7 @@
 // src/parser.cpp
 #include "parser.h"
 
+
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -2530,27 +2531,38 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
   const std::string& moonPath = moonImport.path;
   std::string contentHash;
 
-  // Resolve the moon path
-  std::filesystem::path resolved;
-  if (std::filesystem::path(moonPath).is_absolute()) {
-    resolved = moonPath;
-  } else {
+  auto resolveOne = [&](const std::string& path) -> std::filesystem::path {
+    if (std::filesystem::path(path).is_absolute()) {
+      return std::filesystem::exists(path) ? std::filesystem::path(path)
+                                           : std::filesystem::path();
+    }
     // Check SUN_PATH directories
-    resolved = sun::SunPath::resolve(moonPath);
+    std::filesystem::path resolved = sun::SunPath::resolve(path);
     // Check system-wide installation paths
     if (resolved.empty()) {
-      auto sysPath = std::filesystem::path("/usr/lib/sun") / moonPath;
+      auto sysPath = std::filesystem::path("/usr/lib/sun") / path;
       if (std::filesystem::exists(sysPath)) {
         resolved = sysPath;
       }
     }
     // Fall back to resolving relative to current file's directory
     if (resolved.empty()) {
-      resolved = std::filesystem::path(baseDir) / moonPath;
+      auto local = std::filesystem::path(baseDir) / path;
+      if (std::filesystem::exists(local)) {
+        resolved = local;
+      }
     }
-  }
+    return resolved;
+  };
 
-  if (!std::filesystem::exists(resolved)) {
+  // Bundles are resolved by the exact name given — the metadata's target
+  // triple is validation, not a resolution input. Cross builds point at a
+  // per-target bundle explicitly (e.g. build/aarch64-linux-gnu/stdlib.moon,
+  // via the path itself, --lib-path or SUN_PATH ordering); a wrong-target
+  // bundle is rejected at link time with an actionable error.
+  std::filesystem::path resolved = resolveOne(moonPath);
+
+  if (resolved.empty() || !std::filesystem::exists(resolved)) {
     logAndThrowError("Could not find moon file: " + moonPath);
     return nullptr;
   }

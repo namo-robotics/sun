@@ -1,6 +1,6 @@
 // intrinsics/io.h — File I/O intrinsic definitions
 //
-// File I/O intrinsics wrap Linux syscalls directly (no libc).
+// File I/O intrinsics call libc (see intrinsics/libc.h).
 // All functions use raw file descriptors (i32).
 
 #pragma once

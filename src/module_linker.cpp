@@ -33,6 +33,9 @@ llvm::Type* remapTypeToTarget(llvm::Type* srcType, llvm::LLVMContext& ctx) {
             canonical = llvm::StructType::create(ctx, info.name);
             auto* ptrTy = llvm::PointerType::getUnqual(ctx);
             switch (info.layout) {
+              case sun::StructNames::Layout::Ptr:
+                canonical->setBody({ptrTy});
+                break;
               case sun::StructNames::Layout::PtrPtr:
                 canonical->setBody({ptrTy, ptrTy});
                 break;
@@ -269,6 +272,23 @@ bool ModuleLinker::linkModuleRecursive(const std::string& moduleKey) {
     return false;
   }
 
+  // A bundle compiled for one target must not be linked into another: struct
+  // layouts and ABI decisions are baked into its bitcode. (Old bundles carry
+  // no triple; the format version bump retires those.)
+  if (!metadata->target_triple().empty() &&
+      !target_.getTargetTriple().empty()) {
+    llvm::Triple bundleTriple(metadata->target_triple());
+    llvm::Triple targetTriple(target_.getTargetTriple());
+    if (bundleTriple.getArch() != targetTriple.getArch()) {
+      error_ = "Module '" + moduleKey + "' was compiled for '" +
+               metadata->target_triple() + "' but the current target is '" +
+               target_.getTargetTriple() +
+               "'; rebuild the .moon with --target " +
+               targetTriple.str();
+      return false;
+    }
+  }
+
   // Check content hash for deduplication
   // If we've already linked bitcode with this hash, skip it
   std::string contentHash = sun::getSymbolPrefix(*metadata);
@@ -334,10 +354,13 @@ bool ModuleLinker::linkModuleRecursive(const std::string& moduleKey) {
     }
   }
 
-  // Ensure the library module has same data layout as target
+  // Ensure the library module has same data layout and triple as target
   // This avoids "Linking two modules of different data layouts" warnings
   if (libModule->getDataLayoutStr().empty()) {
     libModule->setDataLayout(target_.getDataLayout());
+  }
+  if (libModule->getTargetTriple().empty()) {
+    libModule->setTargetTriple(target_.getTargetTriple());
   }
 
   // Link into target

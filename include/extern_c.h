@@ -7,9 +7,9 @@
 //
 //   - a C symbol is unmangled, and `as "name"` may rename it, so the Sun-side
 //     name a call site resolves to is not the symbol to look up
-//   - aggregates need System V classification (see sysv_abi.h) before they can
-//     cross the boundary, which can turn one Sun argument into two LLVM ones,
-//     or into a `byval` / `sret` pointer
+//   - aggregates need per-target ABI classification (see abi/c_abi.h) before
+//     they can cross the boundary, which can turn one Sun argument into two
+//     LLVM ones, or into a `byval` / `sret` pointer
 //   - arguments in a `...` tail follow C's default argument promotions
 //
 // The emitter owns the bookkeeping those rules need (symbol renames and the
@@ -28,8 +28,8 @@
 #include <string>
 #include <vector>
 
+#include "abi/c_abi.h"
 #include "codegen.h"
-#include "sysv_abi.h"
 #include "types.h"
 
 class PrototypeAST;
@@ -91,7 +91,7 @@ class ExternCEmitter {
   /// Attach the byval/sret attributes a lowered signature requires. Without
   /// them LLVM does not know the pointers refer to aggregates passed by value.
   void applyAttributes(llvm::Function* func,
-                       const sysv::SignatureLowering& lowering) const;
+                       const abi::SignatureLowering& lowering) const;
 
   /// An address for `value`, spilling to a stack slot if it is a loaded
   /// struct, so its bytes can be reread in the shapes the ABI wants.
@@ -99,7 +99,18 @@ class ExternCEmitter {
 
   llvm::AllocaInst* entryAlloca(llvm::Type* type, const char* name) const;
 
-  const sysv::SignatureLowering* loweringFor(const llvm::Function* func) const;
+  /// Load one coerced register piece from the aggregate at `aggregateAddr`.
+  /// Bounces through a padded slot when the piece's type overhangs the
+  /// aggregate's end (AAPCS64 reads a 12-byte struct as [2 x i64]).
+  llvm::Value* loadPiece(llvm::Value* aggregateAddr, llvm::Type* pieceType,
+                         uint64_t offset, uint64_t aggregateSize) const;
+
+  /// Mirror of loadPiece for writing a returned piece back over the
+  /// aggregate without touching memory past its end.
+  void storePiece(llvm::Value* piece, llvm::Value* aggregateAddr,
+                  uint64_t offset, uint64_t aggregateSize) const;
+
+  const abi::SignatureLowering* loweringFor(const llvm::Function* func) const;
 
   CodegenContext& ctx_;
   llvm::Module* module_;
@@ -111,7 +122,7 @@ class ExternCEmitter {
   /// C symbol -> how its signature was lowered. Call sites need the same plan
   /// the declaration was built from; recomputing it independently would risk
   /// the two disagreeing.
-  std::map<std::string, sysv::SignatureLowering> lowerings_;
+  std::map<std::string, abi::SignatureLowering> lowerings_;
 };
 
 }  // namespace sun::cabi

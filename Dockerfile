@@ -45,11 +45,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sudo \
     bash-completion \
     locales \
+    # Cross-compilation to AArch64: toolchain+sysroot to link `sun --target
+    # aarch64-linux-gnu -c` output, qemu-user to run the result on x86
+    # (qemu-aarch64 -L /usr/aarch64-linux-gnu <binary>)
+    g++-aarch64-linux-gnu \
+    qemu-user \
     && locale-gen en_US.UTF-8 \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 ENV LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8
+
+# musl cross toolchains (musl.cc): the default link mode is static, and
+# static links prefer musl — designed for static linking (no NSS dlopen),
+# MIT-licensed, and roughly half the binary size of static glibc. These
+# bundles include a musl-built libstdc++ for Sun's exception runtime, which
+# Ubuntu's glibc-built libstdc++.a cannot provide.
+RUN mkdir -p /opt/cross \
+ && curl -sL https://musl.cc/aarch64-linux-musl-cross.tgz | tar xz -C /opt/cross \
+ && curl -sL https://musl.cc/x86_64-linux-musl-cross.tgz | tar xz -C /opt/cross
+ENV PATH="/opt/cross/aarch64-linux-musl-cross/bin:/opt/cross/x86_64-linux-musl-cross/bin:${PATH}"
 
 # Grant sudo to existing ubuntu user (UID 1000 already exists in Ubuntu 24.04+)
 RUN echo "ubuntu ALL=(root) NOPASSWD:ALL" > /etc/sudoers.d/ubuntu \

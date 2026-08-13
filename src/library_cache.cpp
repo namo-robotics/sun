@@ -1,5 +1,8 @@
 #include "library_cache.h"
 
+#include <llvm/TargetParser/Host.h>
+#include <llvm/TargetParser/Triple.h>
+
 #include <algorithm>
 
 #include "sun_path.h"
@@ -25,9 +28,11 @@ void LibraryCache::addSearchPath(const std::filesystem::path& path) {
 void LibraryCache::addBundle(const std::filesystem::path& bundlePath) {
   std::lock_guard<std::mutex> lock(mutex_);
 
-  // Check if already loaded
+  // Already loaded (possibly by directory discovery): just mark it as an
+  // explicit registration so selection can prefer it among equals.
   for (const auto& bundle : bundles_) {
     if (bundle->getPath() == bundlePath) {
+      pinnedBundles_.insert(bundle.get());
       return;
     }
   }
@@ -36,10 +41,45 @@ void LibraryCache::addBundle(const std::filesystem::path& bundlePath) {
   if (reader) {
     // Index all modules in this bundle
     for (const auto& modPath : reader->listModules()) {
-      moduleToBundle_[modPath] = reader.get();
+      moduleToBundle_[modPath].push_back(reader.get());
     }
+    pinnedBundles_.insert(reader.get());
     bundles_.push_back(std::move(reader));
   }
+}
+
+void LibraryCache::setTargetTriple(const std::string& triple) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  targetTriple_ = triple;
+}
+
+SunLibReader* LibraryCache::selectBundle(
+    const std::vector<SunLibReader*>& candidates) const {
+  if (candidates.empty()) return nullptr;
+
+  llvm::Triple want(targetTriple_.empty() ? llvm::sys::getDefaultTargetTriple()
+                                          : targetTriple_);
+
+  // Explicit registration outranks discovery: imports resolve bundles by
+  // exact name, and the linker must land on the same file the parser
+  // resolved — if that bundle is wrong for the target, the link-time triple
+  // check reports it with an actionable error rather than silently
+  // substituting a different file. Architecture match breaks ties (several
+  // explicitly registered bundles can accumulate across compilations in one
+  // process).
+  SunLibReader* best = nullptr;
+  int bestScore = -1;
+  for (auto* reader : candidates) {
+    std::string triple = reader->getTargetTriple();
+    bool archMatch =
+        !triple.empty() && llvm::Triple(triple).getArch() == want.getArch();
+    int score = (pinnedBundles_.count(reader) ? 2 : 0) + (archMatch ? 1 : 0);
+    if (score > bestScore) {
+      best = reader;
+      bestScore = score;
+    }
+  }
+  return best;
 }
 
 void LibraryCache::initFromEnvironment() {
@@ -95,7 +135,7 @@ void LibraryCache::discoverBundles() {
           auto reader = SunLibReader::open(entry.path());
           if (reader) {
             for (const auto& modPath : reader->listModules()) {
-              moduleToBundle_[modPath] = reader.get();
+              moduleToBundle_[modPath].push_back(reader.get());
             }
             bundles_.push_back(std::move(reader));
           }
@@ -108,19 +148,14 @@ void LibraryCache::discoverBundles() {
 }
 
 SunLibReader* LibraryCache::findBundleForModule(const std::string& moduleKey) {
-  // Check cache first
-  auto it = moduleToBundle_.find(moduleKey);
-  if (it != moduleToBundle_.end()) {
-    return it->second;
-  }
-
-  // Ensure bundles are discovered
+  // Discover before selecting, not merely as a fallback: an explicitly
+  // added bundle (e.g. the manifest's stdlib.moon) may have target-specific
+  // siblings in the search paths that are better candidates.
   discoverBundles();
 
-  // Check again after discovery
-  it = moduleToBundle_.find(moduleKey);
+  auto it = moduleToBundle_.find(moduleKey);
   if (it != moduleToBundle_.end()) {
-    return it->second;
+    return selectBundle(it->second);
   }
 
   return nullptr;
@@ -175,6 +210,7 @@ void LibraryCache::clear() {
   std::lock_guard<std::mutex> lock(mutex_);
   bundles_.clear();
   moduleToBundle_.clear();
+  pinnedBundles_.clear();
   searchPaths_.clear();
   initialized_ = false;
   discovered_ = false;

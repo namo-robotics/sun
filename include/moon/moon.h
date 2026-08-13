@@ -20,7 +20,8 @@ namespace sun {
 /// Binary header for .moon format
 struct SunLibHeader {
   static constexpr uint32_t MAGIC = 0x53554E4C;  // "SUNL"
-  static constexpr uint32_t VERSION = 3;  // V3: closure ABI for class methods
+  static constexpr uint32_t VERSION = 4;  // V4: target-stamped metadata,
+                                          // libc-based intrinsics
 
   uint32_t magic = MAGIC;
   uint32_t version = VERSION;
@@ -101,6 +102,10 @@ class SunLibReader {
 
   /// Get the path to this bundle file
   const std::filesystem::path& getPath() const { return path_; }
+
+  /// The target the bundle's bitcode was compiled for (LLVM triple), taken
+  /// from the first module's metadata. Empty for pre-V4 legacy bundles.
+  std::string getTargetTriple();
 
  private:
   SunLibReader() = default;

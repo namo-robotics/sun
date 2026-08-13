@@ -2230,16 +2230,13 @@ class ThreadType : public Type {
     return false;
   }
 
-  // Thread handle struct: { ptr context, ptr stack_base, i64 stack_size }
+  // Thread handle struct: { ptr context }
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
     if (!cachedLLVMType) {
       cachedLLVMType = llvm::StructType::getTypeByName(ctx, "thread_handle");
       if (!cachedLLVMType) {
         cachedLLVMType = llvm::StructType::create(
-            ctx,
-            {llvm::PointerType::getUnqual(ctx),  // context ptr
-             llvm::PointerType::getUnqual(ctx),  // stack_base ptr
-             llvm::Type::getInt64Ty(ctx)},       // stack_size
+            ctx, {llvm::PointerType::getUnqual(ctx)},  // context ptr
             "thread_handle");
       }
     }

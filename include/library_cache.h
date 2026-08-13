@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -62,6 +63,15 @@ class LibraryCache {
   /// Find the bundle containing a module (for error reporting)
   SunLibReader* findBundleForModule(const std::string& moduleKey);
 
+  /// Set the compilation target. When several discovered bundles claim the
+  /// same module (e.g. the host build/stdlib.moon and the cross
+  /// build/aarch64-linux-gnu/stdlib.moon), the one compiled for this target
+  /// wins. Empty means the host.
+  void setTargetTriple(const std::string& triple);
+
+  /// The compilation target set above (empty = host).
+  const std::string& getTargetTriple() const { return targetTriple_; }
+
  private:
   LibraryCache() = default;
   LibraryCache(const LibraryCache&) = delete;
@@ -70,9 +80,22 @@ class LibraryCache {
   /// Discover .moon files in search paths
   void discoverBundles();
 
+  /// Pick among bundles claiming the same module. Preference: matching the
+  /// target's architecture outranks everything (the parser opened an
+  /// arch-correct bundle, and the linker must agree with it); explicit
+  /// addBundle() registration breaks ties among same-arch candidates. A
+  /// wrong pick is still caught by the linker's triple check.
+  SunLibReader* selectBundle(
+      const std::vector<SunLibReader*>& candidates) const;
+
   std::vector<std::filesystem::path> searchPaths_;
   std::vector<std::unique_ptr<SunLibReader>> bundles_;
-  std::unordered_map<std::string, SunLibReader*> moduleToBundle_;  // cache
+  // All bundles claiming each module key; target selection happens at lookup
+  std::unordered_map<std::string, std::vector<SunLibReader*>> moduleToBundle_;
+  // Bundles registered explicitly (by resolved import path) rather than by
+  // directory discovery
+  std::set<SunLibReader*> pinnedBundles_;
+  std::string targetTriple_;  // empty = host
   mutable std::mutex mutex_;
   bool initialized_ = false;
   bool discovered_ = false;
