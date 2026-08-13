@@ -18,7 +18,10 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 
+#include <sys/wait.h>
+
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <string>
 
@@ -413,4 +416,98 @@ TEST(CrossTargetTest, emits_an_aarch64_elf_object) {
   uint16_t machine = static_cast<uint16_t>(header[18]) |
                      (static_cast<uint16_t>(header[19]) << 8);
   EXPECT_EQ(machine, 183u);
+}
+
+// ============================================================================
+// Execution under qemu (needs g++-aarch64-linux-gnu + qemu-user, in Dockerfile)
+// ============================================================================
+
+namespace {
+
+constexpr const char* kQemuSysroot = "/usr/aarch64-linux-gnu";
+
+bool haveCrossExecutionTools() {
+  return std::system("command -v qemu-aarch64 >/dev/null 2>&1") == 0 &&
+         std::system("command -v aarch64-linux-gnu-gcc >/dev/null 2>&1") == 0;
+}
+
+int runUnderQemu(const std::string& binary) {
+  std::string cmd = "qemu-aarch64 -L " + std::string(kQemuSysroot) + " " +
+                    binary + " >/dev/null 2>&1";
+  int rc = std::system(cmd.c_str());
+  return WEXITSTATUS(rc);
+}
+
+}  // namespace
+
+TEST(CrossTargetTest, cross_binary_runs_under_qemu) {
+  if (!haveCrossExecutionTools()) {
+    GTEST_SKIP() << "qemu-aarch64 / aarch64-linux-gnu-gcc not installed";
+  }
+
+  auto driver = Driver::createForAOT("qemu_run_module", "aarch64-linux-gnu");
+  driver->compileString("function main() i32 { return 42; }");
+
+  std::string binary = ::testing::TempDir() + "sun_qemu_run_test";
+  std::string errorMsg;
+  sun::LinkOptions linkOpts;
+  linkOpts.targetTriple = "aarch64-linux-gnu";
+  ASSERT_TRUE(sun::compileToExecutable(driver->getModule(), binary, errorMsg,
+                                       /*keepObjectFile=*/false, linkOpts))
+      << errorMsg;
+
+  EXPECT_EQ(runUnderQemu(binary), 42);
+}
+
+TEST(CrossTargetTest, extern_struct_call_runs_under_qemu) {
+  // End-to-end proof of the AAPCS64 marshalling: a struct-by-value extern
+  // crosses into C code compiled by the real aarch64 toolchain, on an
+  // emulated aarch64 CPU. A classification mismatch shows up as a wrong
+  // exit code, not a compile error.
+  if (!haveCrossExecutionTools()) {
+    GTEST_SKIP() << "qemu-aarch64 / aarch64-linux-gnu-gcc not installed";
+  }
+
+  std::string dir = ::testing::TempDir();
+  std::string cSource = dir + "sun_cross_pair.c";
+  {
+    std::ofstream out(cSource);
+    out << "struct Pair { int a; int b; };\n"
+           "int take_pair(struct Pair p) { return p.a * 100 + p.b; }\n";
+  }
+  ASSERT_EQ(std::system(("aarch64-linux-gnu-gcc -c -o " + dir +
+                         "sun_cross_pair.o " + cSource)
+                            .c_str()),
+            0);
+  ASSERT_EQ(std::system(("aarch64-linux-gnu-ar rcs " + dir +
+                         "libsun_cross_pair.a " + dir + "sun_cross_pair.o")
+                            .c_str()),
+            0);
+
+  auto driver = Driver::createForAOT("qemu_ffi_module", "aarch64-linux-gnu");
+  driver->compileString(R"(
+    class Pair {
+        var a: i32;
+        var b: i32;
+        function init(a: i32, b: i32) { this.a = a; this.b = b; }
+    }
+    extern "C" function take_pair(p: Pair) i32;
+
+    function main() i32 {
+        var p = Pair(2, 42);
+        unsafe { return take_pair(p); };
+    }
+  )");
+
+  std::string binary = dir + "sun_qemu_ffi_test";
+  std::string errorMsg;
+  sun::LinkOptions linkOpts;
+  linkOpts.targetTriple = "aarch64-linux-gnu";
+  linkOpts.searchPaths = {dir};
+  linkOpts.libraries = {"sun_cross_pair"};
+  ASSERT_TRUE(sun::compileToExecutable(driver->getModule(), binary, errorMsg,
+                                       /*keepObjectFile=*/false, linkOpts))
+      << errorMsg;
+
+  EXPECT_EQ(runUnderQemu(binary), 242);  // a*100 + b
 }

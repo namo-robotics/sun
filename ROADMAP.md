@@ -58,6 +58,10 @@ syscall assembly, so the emitted IR is target-neutral.
       wrong-target bundle is a hard error
 - [x] Intrinsics call libc (`write`/`open`/sockets/`pthread_create`), removing
       the raw x86-64 syscall assembly that blocked non-x86 codegen
+- [x] Cross binaries are testable on the dev machine: the container ships
+      `g++-aarch64-linux-gnu` + `qemu-user`, and `CrossTargetTest` compiles,
+      links and runs aarch64 binaries under qemu (including a struct-passing
+      extern against C compiled by the real aarch64 toolchain)
 - [ ] Static binary linking
 
 ### Debug Info (DWARF)

@@ -45,6 +45,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sudo \
     bash-completion \
     locales \
+    # Cross-compilation to AArch64: toolchain+sysroot to link `sun --target
+    # aarch64-linux-gnu -c` output, qemu-user to run the result on x86
+    # (qemu-aarch64 -L /usr/aarch64-linux-gnu <binary>)
+    g++-aarch64-linux-gnu \
+    qemu-user \
     && locale-gen en_US.UTF-8 \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
