@@ -26,9 +26,10 @@ into work users can do without us.
       Extern declarations only; Sun has no `va_arg`
 - [x] `extern "C"` ABI string and `as "symbol"` renaming (`as` is contextual,
       not a reserved word)
-- [ ] Link external C libraries (`-l` / library search paths through the driver)
-- [ ] Load libraries under JIT (`DynamicLibrary::LoadLibraryPermanently`;
-      today only the current process is searched)
+- [x] Link external C libraries — `-l<name>` / `-L<dir>` through the driver,
+      passed to the linker when compiling and `dlopen`ed when JITing
+- [x] Load libraries under JIT (`DynamicLibrary::LoadLibraryPermanently`,
+      including `lib<name>.so.N` discovery inside `-L` directories)
 - [ ] C struct interop and layout compatibility
 - [ ] Calling conventions — SysV classification (byval/sret) for aggregates
 - [ ] Extern declarations in `.moon` libraries (serializer guards on `hasBody`)

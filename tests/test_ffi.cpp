@@ -6,8 +6,10 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdlib>
 #include <string>
 
+#include "compiler.h"
 #include "execution_utils.h"
 
 // ============================================================================
@@ -326,4 +328,82 @@ TEST(FFITest, as_is_still_usable_as_an_identifier) {
     }
   )");
   EXPECT_EQ(value, 10);
+}
+
+// ============================================================================
+// Linking native libraries (-l / -L)
+// ============================================================================
+// These use sun_ffi_testlib, whose symbols are absent from the test binary.
+// Testing against libc would pass even if library loading did nothing.
+
+namespace {
+
+// Directory holding the built sun_ffi_testlib shared object, baked in by
+// CMake. Empty when the define is absent (e.g. an ad-hoc build).
+std::string ffiTestLibDir() {
+#ifdef SUN_FFI_TESTLIB_DIR
+  return SUN_FFI_TESTLIB_DIR;
+#else
+  return {};
+#endif
+}
+
+}  // namespace
+
+TEST(FFILinkTest, shell_quote_neutralises_metacharacters) {
+  // -l/-L values reach the linker through std::system, so they must not be
+  // able to inject shell syntax.
+  EXPECT_EQ(sun::shellQuote("plain"), "'plain'");
+  EXPECT_EQ(sun::shellQuote("a b"), "'a b'");
+  EXPECT_EQ(sun::shellQuote("x; rm -rf /"), "'x; rm -rf /'");
+  EXPECT_EQ(sun::shellQuote("$(id)"), "'$(id)'");
+  // A quote must close, escape, and reopen so it cannot terminate the string.
+  EXPECT_EQ(sun::shellQuote("it's"), "'it'\\''s'");
+}
+
+TEST(FFILinkTest, missing_library_is_reported_not_thrown) {
+  sun::LinkOptions opts;
+  opts.libraries = {"definitely_not_a_real_library_xyz"};
+  auto failed = sun::loadDynamicLibraries(opts);
+  ASSERT_EQ(failed.size(), 1u);
+  EXPECT_EQ(failed[0], "definitely_not_a_real_library_xyz");
+}
+
+TEST(FFILinkTest, symbols_are_unavailable_before_the_library_is_loaded) {
+  // Guards the test below: if these symbols were already reachable, loading
+  // the library would prove nothing. Declared before the loading test since
+  // dlopen is process-wide and irreversible (under ctest each test is its
+  // own process anyway).
+  EXPECT_EQ(llvm::sys::DynamicLibrary::SearchForAddressOfSymbol(
+                "sun_ffi_triple"),
+            nullptr);
+}
+
+TEST(FFILinkTest, loads_library_from_search_path_and_calls_into_it) {
+  if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
+
+  sun::LinkOptions opts;
+  opts.libraries = {"sun_ffi_testlib"};
+  opts.searchPaths = {ffiTestLibDir()};
+  auto failed = sun::loadDynamicLibraries(opts);
+  ASSERT_TRUE(failed.empty()) << "could not load sun_ffi_testlib";
+
+  auto value = executeString(R"(
+    extern "C" function sun_ffi_triple(x: i32) i32;
+    extern "C" function sun_ffi_sum(a: i64, b: i64) i64;
+
+    function main() i32 {
+        return sun_ffi_triple(4) + sun_ffi_sum(10, 20);
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(FFILinkTest, loads_library_given_as_an_explicit_path) {
+  if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
+
+  sun::LinkOptions opts;
+  opts.libraries = {ffiTestLibDir() + "/libsun_ffi_testlib.so"};
+  auto failed = sun::loadDynamicLibraries(opts);
+  EXPECT_TRUE(failed.empty());
 }
