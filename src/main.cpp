@@ -38,8 +38,10 @@ static void printUsage(const char* programName) {
                   "toolchain), --emit-obj and --emit-moon\n";
   llvm::errs() << "  --sysroot <dir>   Target root filesystem for cross "
                   "linking (passed to the linker)\n";
-  llvm::errs() << "  --static          Link a self-contained binary (no "
-                  "shared-library dependencies)\n";
+  llvm::errs() << "  --static          Link a self-contained binary (the "
+                  "default; musl preferred when installed)\n";
+  llvm::errs() << "  --dynamic         Link against shared libraries instead "
+                  "(needed for .so-only libs)\n";
   llvm::errs() << "  --emit-ir         Print LLVM IR to stdout\n";
   llvm::errs() << "  --debug           Generate debug output (ast.dot, ir.ll) "
                   "in <input>_debug/\n";
@@ -296,6 +298,8 @@ int main(int argc, char* argv[]) {
   std::vector<sun::MoonImport> moonImports;
   bool compileMode = false;
   bool emitObjOnly = false;
+  bool sawStatic = false;
+  bool sawDynamic = false;
   bool emitMoon = false;
   bool emitIR = false;
   bool debugMode = false;
@@ -321,7 +325,9 @@ int main(int argc, char* argv[]) {
     } else if (arg == "--sysroot" && i + 1 < argc) {
       linkOpts.sysroot = argv[++i];
     } else if (arg == "--static") {
-      linkOpts.staticLink = true;
+      sawStatic = true;
+    } else if (arg == "--dynamic") {
+      sawDynamic = true;
     } else if (arg == "--emit-moon") {
       emitMoon = true;
     } else if (arg == "--emit-ir") {
@@ -366,11 +372,19 @@ int main(int argc, char* argv[]) {
                     "(JIT execution is host-only)\n";
     return 1;
   }
-  if (linkOpts.staticLink && (!compileMode || emitObjOnly)) {
+  if (sawStatic && sawDynamic) {
+    llvm::errs() << "Error: --static and --dynamic are mutually exclusive\n";
+    return 1;
+  }
+  if (sawStatic && (!compileMode || emitObjOnly)) {
     llvm::errs() << "Error: --static only applies when linking; use it with "
                     "-c\n";
     return 1;
   }
+  // Linking is static by default: one self-contained binary, the deployment
+  // shape embedded targets want. --dynamic restores shared-library linking
+  // (needed for .so-only vendor libraries).
+  linkOpts.staticLink = !sawDynamic;
 
   // Initialize library cache
   sun::LibraryCache::instance().setTargetTriple(targetTriple);
@@ -392,15 +406,13 @@ int main(int argc, char* argv[]) {
         std::filesystem::absolute(entrypoint);
 
     if (outputFile.empty()) {
-      // Derive from input file; cross bundles get a target-suffixed name so
-      // they can sit beside the host bundle and be picked by target
+      // Derive from input file. The name does not encode the target — the
+      // bundle metadata records it, and cross bundles conventionally live in
+      // per-target directories (use -o <triple>/name.moon).
       outputFile = entrypoint;
       size_t dotPos = outputFile.rfind(".sun");
       if (dotPos != std::string::npos) {
         outputFile = outputFile.substr(0, dotPos);
-      }
-      if (!targetTriple.empty()) {
-        outputFile += "-" + targetTriple;
       }
       outputFile += ".moon";
     }

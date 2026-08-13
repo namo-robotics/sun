@@ -53,19 +53,23 @@ syscall assembly, so the emitted IR is target-neutral.
 - [x] Sysroot / linker configuration per target (`--sysroot`; the link driver
       is `<triple>-gcc`, then `clang --target`, overridable with `SUN_CC`)
 - [x] Cross-compiled stdlib `.moon` artifacts — bundles are target-stamped
-      (`.moon` format V4), the build produces `stdlib-aarch64-linux-gnu.moon`,
-      resolution picks the bundle matching the target, and linking a
-      wrong-target bundle is a hard error
+      (`.moon` format V4) and resolved by exact name; the build produces
+      per-target directories (`build/aarch64-linux-gnu/stdlib.moon`), and
+      linking a wrong-target bundle is a hard error naming both triples
 - [x] Intrinsics call libc (`write`/`open`/sockets/`pthread_create`), removing
       the raw x86-64 syscall assembly that blocked non-x86 codegen
 - [x] Cross binaries are testable on the dev machine: the container ships
       `g++-aarch64-linux-gnu` + `qemu-user`, and `CrossTargetTest` compiles,
       links and runs aarch64 binaries under qemu (including a struct-passing
       extern against C compiled by the real aarch64 toolchain)
-- [x] Static binary linking — `--static` produces a self-contained binary
-      (no loader, no .so dependencies, no glibc version coupling); combined
-      with `--target` it yields a single file that runs on any Linux of that
-      architecture (verified under qemu with no sysroot)
+- [x] Static binary linking — the default for `-c`: a self-contained
+      static-pie binary (no loader, no .so dependencies, no libc version
+      coupling) that runs on any Linux of the target architecture (verified
+      under qemu with no sysroot). Static links prefer a musl toolchain
+      (`<arch>-linux-musl-gcc`, shipped in the dev container) — MIT-licensed,
+      no NSS dlopen, ~40% smaller than static glibc — falling back to glibc
+      `-static` when absent. `--dynamic` restores shared-library linking for
+      `.so`-only vendor libraries
 
 ### Debug Info (DWARF)
 

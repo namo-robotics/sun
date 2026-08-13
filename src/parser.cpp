@@ -1,6 +1,7 @@
 // src/parser.cpp
 #include "parser.h"
 
+
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -2554,20 +2555,12 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
     return resolved;
   };
 
-  // When cross-compiling, a target-suffixed bundle shadows the requested
-  // name: "stdlib.moon" resolves to "stdlib-aarch64-linux-gnu.moon" first.
-  std::filesystem::path resolved;
-  const std::string& target = sun::LibraryCache::instance().getTargetTriple();
-  if (!target.empty()) {
-    std::filesystem::path p(moonPath);
-    auto suffixed =
-        p.parent_path() /
-        (p.stem().string() + "-" + target + p.extension().string());
-    resolved = resolveOne(suffixed.string());
-  }
-  if (resolved.empty()) {
-    resolved = resolveOne(moonPath);
-  }
+  // Bundles are resolved by the exact name given — the metadata's target
+  // triple is validation, not a resolution input. Cross builds point at a
+  // per-target bundle explicitly (e.g. build/aarch64-linux-gnu/stdlib.moon,
+  // via the path itself, --lib-path or SUN_PATH ordering); a wrong-target
+  // bundle is rejected at link time with an actionable error.
+  std::filesystem::path resolved = resolveOne(moonPath);
 
   if (resolved.empty() || !std::filesystem::exists(resolved)) {
     logAndThrowError("Could not find moon file: " + moonPath);

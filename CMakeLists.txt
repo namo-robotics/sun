@@ -263,19 +263,21 @@ if(NOT SKIP_STDLIB)
 
     add_custom_target(stdlib_moon ALL DEPENDS ${STDLIB_MOON})
 
-    # Cross-compiled stdlib bundles: target-suffixed names sit beside the
-    # host bundle and are picked automatically when compiling with --target.
+    # Cross-compiled stdlib bundles live in per-target directories under the
+    # same canonical name (build/<triple>/stdlib.moon). Bundles are resolved
+    # by exact name; the metadata's target triple validates the match.
     set(SUN_CROSS_STDLIB_TARGETS "aarch64-linux-gnu" CACHE STRING
         "Triples to build cross stdlib .moon bundles for (empty disables)")
     set(CROSS_MOONS "")
     foreach(cross_triple ${SUN_CROSS_STDLIB_TARGETS})
-        set(CROSS_MOON ${CMAKE_BINARY_DIR}/stdlib-${cross_triple}.moon)
+        set(CROSS_MOON ${CMAKE_BINARY_DIR}/${cross_triple}/stdlib.moon)
         add_custom_command(
             OUTPUT ${CROSS_MOON}
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/${cross_triple}
             COMMAND $<TARGET_FILE:sun> --emit-moon --target ${cross_triple} -o ${CROSS_MOON} ${STDLIB_ENTRYPOINT}
             DEPENDS sun ${STDLIB_SOURCES}
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            COMMENT "Building precompiled stdlib-${cross_triple}.moon"
+            COMMENT "Building precompiled ${cross_triple}/stdlib.moon"
             VERBATIM
         )
         list(APPEND CROSS_MOONS ${CROSS_MOON})

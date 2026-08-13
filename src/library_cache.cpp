@@ -28,9 +28,11 @@ void LibraryCache::addSearchPath(const std::filesystem::path& path) {
 void LibraryCache::addBundle(const std::filesystem::path& bundlePath) {
   std::lock_guard<std::mutex> lock(mutex_);
 
-  // Check if already loaded
+  // Already loaded (possibly by directory discovery): just mark it as an
+  // explicit registration so selection can prefer it among equals.
   for (const auto& bundle : bundles_) {
     if (bundle->getPath() == bundlePath) {
+      pinnedBundles_.insert(bundle.get());
       return;
     }
   }
@@ -41,6 +43,7 @@ void LibraryCache::addBundle(const std::filesystem::path& bundlePath) {
     for (const auto& modPath : reader->listModules()) {
       moduleToBundle_[modPath].push_back(reader.get());
     }
+    pinnedBundles_.insert(reader.get());
     bundles_.push_back(std::move(reader));
   }
 }
@@ -56,16 +59,27 @@ SunLibReader* LibraryCache::selectBundle(
 
   llvm::Triple want(targetTriple_.empty() ? llvm::sys::getDefaultTargetTriple()
                                           : targetTriple_);
+
+  // Explicit registration outranks discovery: imports resolve bundles by
+  // exact name, and the linker must land on the same file the parser
+  // resolved — if that bundle is wrong for the target, the link-time triple
+  // check reports it with an actionable error rather than silently
+  // substituting a different file. Architecture match breaks ties (several
+  // explicitly registered bundles can accumulate across compilations in one
+  // process).
+  SunLibReader* best = nullptr;
+  int bestScore = -1;
   for (auto* reader : candidates) {
     std::string triple = reader->getTargetTriple();
-    if (!triple.empty() && llvm::Triple(triple).getArch() == want.getArch()) {
-      return reader;
+    bool archMatch =
+        !triple.empty() && llvm::Triple(triple).getArch() == want.getArch();
+    int score = (pinnedBundles_.count(reader) ? 2 : 0) + (archMatch ? 1 : 0);
+    if (score > bestScore) {
+      best = reader;
+      bestScore = score;
     }
   }
-  for (auto* reader : candidates) {
-    if (reader->getTargetTriple().empty()) return reader;  // legacy bundle
-  }
-  return candidates.front();
+  return best;
 }
 
 void LibraryCache::initFromEnvironment() {
@@ -134,17 +148,12 @@ void LibraryCache::discoverBundles() {
 }
 
 SunLibReader* LibraryCache::findBundleForModule(const std::string& moduleKey) {
-  // Check cache first
-  auto it = moduleToBundle_.find(moduleKey);
-  if (it != moduleToBundle_.end()) {
-    return selectBundle(it->second);
-  }
-
-  // Ensure bundles are discovered
+  // Discover before selecting, not merely as a fallback: an explicitly
+  // added bundle (e.g. the manifest's stdlib.moon) may have target-specific
+  // siblings in the search paths that are better candidates.
   discoverBundles();
 
-  // Check again after discovery
-  it = moduleToBundle_.find(moduleKey);
+  auto it = moduleToBundle_.find(moduleKey);
   if (it != moduleToBundle_.end()) {
     return selectBundle(it->second);
   }
@@ -201,6 +210,7 @@ void LibraryCache::clear() {
   std::lock_guard<std::mutex> lock(mutex_);
   bundles_.clear();
   moduleToBundle_.clear();
+  pinnedBundles_.clear();
   searchPaths_.clear();
   initialized_ = false;
   discovered_ = false;

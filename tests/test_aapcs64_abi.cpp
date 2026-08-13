@@ -568,3 +568,153 @@ TEST(StaticLinkTest, cross_static_binary_runs_under_qemu_without_sysroot) {
   int rc = std::system(("qemu-aarch64 " + binary + " >/dev/null 2>&1").c_str());
   EXPECT_EQ(WEXITSTATUS(rc), 42);
 }
+
+// ============================================================================
+// musl targets
+// ============================================================================
+// musl is ABI-identical to glibc at the calling-convention level; only the
+// libc the linker resolves against differs. The dispatcher must accept the
+// musl environment, and static links must prefer a musl toolchain when one
+// is installed (musl.cc's <arch>-linux-musl-gcc).
+
+TEST_F(CABIDispatchTest, musl_environment_uses_the_same_arch_rules) {
+  llvm::Type* params[] = {structOf({i32(), i32(), i32()})};
+  llvm::Type* voidTy = llvm::Type::getVoidTy(ctx);
+
+  auto aapcs = sun::abi::lowerCSignature(
+      llvm::Triple("aarch64-linux-musl"), voidTy, params, dl);
+  ASSERT_EQ(aapcs.params[0].pieces.size(), 1u);
+  EXPECT_EQ(aapcs.params[0].pieces[0], arrayOf(i64(), 2));
+
+  llvm::DataLayout x86Dl{"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-"
+                         "i128:128-f80:128-n8:16:32:64-S128"};
+  auto sysv = sun::abi::lowerCSignature(llvm::Triple("x86_64-linux-musl"),
+                                        voidTy, params, x86Dl);
+  ASSERT_EQ(sysv.params[0].pieces.size(), 2u);
+}
+
+namespace {
+
+bool haveHostMuslToolchain() {
+  return std::system("command -v x86_64-linux-musl-gcc >/dev/null 2>&1") == 0;
+}
+
+bool haveAarch64MuslToolchain() {
+  return std::system(
+             "command -v aarch64-linux-musl-gcc >/dev/null 2>&1") == 0 &&
+         std::system("command -v qemu-aarch64 >/dev/null 2>&1") == 0;
+}
+
+// Exercises the C++ exception runtime, the part of static linking that
+// genuinely depends on the toolchain shipping a musl-built libstdc++.
+constexpr const char* kThrowingProgram = R"(
+    class DivByZero implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "division by zero"; }
+    }
+    function divide(a: i32, b: i32) i32, IError {
+        if (b == 0) { throw DivByZero(); }
+        return a / b;
+    }
+    function main() i32 {
+        try {
+            var x = divide(10, 0);
+            return 1;
+        } catch (e: IError) {
+            return 42;
+        }
+    }
+)";
+
+}  // namespace
+
+TEST(StaticLinkTest, static_links_prefer_the_musl_toolchain) {
+  if (!haveHostMuslToolchain()) {
+    GTEST_SKIP() << "x86_64-linux-musl-gcc not installed";
+  }
+  EXPECT_EQ(sun::linkerCommandFor("", /*staticLink=*/true),
+            "x86_64-linux-musl-gcc");
+  // Dynamic links stay on the host toolchain.
+  EXPECT_EQ(sun::linkerCommandFor("", /*staticLink=*/false), "cc");
+}
+
+TEST(StaticLinkTest, host_musl_static_binary_handles_exceptions) {
+  if (!haveHostMuslToolchain()) {
+    GTEST_SKIP() << "x86_64-linux-musl-gcc not installed";
+  }
+
+  auto driver = Driver::createForAOT("musl_host_module");
+  driver->compileString(kThrowingProgram);
+
+  std::string binary = ::testing::TempDir() + "sun_musl_host_test";
+  std::string errorMsg;
+  sun::LinkOptions linkOpts;
+  linkOpts.staticLink = true;
+  ASSERT_TRUE(sun::compileToExecutable(driver->getModule(), binary, errorMsg,
+                                       /*keepObjectFile=*/false, linkOpts))
+      << errorMsg;
+
+  EXPECT_TRUE(isStaticBinary(binary));
+  int rc = std::system((binary + " >/dev/null 2>&1").c_str());
+  EXPECT_EQ(WEXITSTATUS(rc), 42);
+}
+
+TEST(StaticLinkTest, cross_musl_static_binary_handles_exceptions_under_qemu) {
+  if (!haveAarch64MuslToolchain()) {
+    GTEST_SKIP() << "aarch64-linux-musl-gcc / qemu-aarch64 not installed";
+  }
+
+  auto driver = Driver::createForAOT("musl_cross_module",
+                                     "aarch64-linux-musl");
+  driver->compileString(kThrowingProgram);
+
+  std::string binary = ::testing::TempDir() + "sun_musl_cross_test";
+  std::string errorMsg;
+  sun::LinkOptions linkOpts;
+  linkOpts.targetTriple = "aarch64-linux-musl";
+  linkOpts.staticLink = true;
+  ASSERT_TRUE(sun::compileToExecutable(driver->getModule(), binary, errorMsg,
+                                       /*keepObjectFile=*/false, linkOpts))
+      << errorMsg;
+
+  EXPECT_TRUE(isStaticBinary(binary));
+  int rc = std::system(("qemu-aarch64 " + binary + " >/dev/null 2>&1").c_str());
+  EXPECT_EQ(WEXITSTATUS(rc), 42);
+}
+
+TEST(StaticLinkTest, cross_musl_stdlib_binary_runs_under_qemu) {
+  // Bundles resolve by exact name, so the cross build names the per-target
+  // bundle explicitly. The aarch64-gnu bundle serves the musl target: the
+  // bitcode is libc-agnostic (portable POSIX symbols), and the linker's
+  // triple check compares architectures. The parser's pick and the linker's
+  // pick must also agree, or symbol hashes diverge.
+  if (!haveAarch64MuslToolchain()) {
+    GTEST_SKIP() << "aarch64-linux-musl-gcc / qemu-aarch64 not installed";
+  }
+
+  auto driver = Driver::createForAOT("musl_stdlib_module",
+                                     "aarch64-linux-musl");
+  driver->setMoonImports(
+      {sun::MoonImport("build/aarch64-linux-gnu/stdlib.moon")});
+  driver->compileString(R"(
+    using sun;
+    function main() i32 {
+        println("hello from musl");
+        return 42;
+    }
+  )");
+
+  std::string binary = ::testing::TempDir() + "sun_musl_stdlib_test";
+  std::string errorMsg;
+  sun::LinkOptions linkOpts;
+  linkOpts.targetTriple = "aarch64-linux-musl";
+  linkOpts.staticLink = true;
+  ASSERT_TRUE(sun::compileToExecutable(driver->getModule(), binary, errorMsg,
+                                       /*keepObjectFile=*/false, linkOpts))
+      << errorMsg;
+
+  EXPECT_TRUE(isStaticBinary(binary));
+  int rc = std::system(("qemu-aarch64 " + binary + " >/dev/null 2>&1").c_str());
+  EXPECT_EQ(WEXITSTATUS(rc), 42);
+}

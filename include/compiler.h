@@ -9,6 +9,7 @@
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/TargetParser/Host.h>
+#include <llvm/TargetParser/Triple.h>
 
 #include <llvm/Support/DynamicLibrary.h>
 #include <llvm/Support/Path.h>
@@ -48,29 +49,52 @@ inline std::string shellQuote(const std::string& s) {
   return out;
 }
 
-/// Pick the link driver for a target. Host builds use `cc`. Cross builds
-/// prefer a triple-prefixed GCC (`aarch64-linux-gnu-gcc`), falling back to
-/// `clang --target=<triple>`; either can take --sysroot for the target's
-/// libc and startup files. SUN_CC overrides the choice entirely. Returns ""
-/// when no capable link driver exists on this machine.
-inline std::string linkerCommandFor(const std::string& targetTriple) {
+/// Pick the link driver for a target. SUN_CC overrides the choice entirely.
+///
+/// Static links prefer a musl toolchain for the target architecture
+/// (`<arch>-linux-musl-gcc`, as shipped by musl.cc) when one is installed:
+/// musl is designed for static linking (glibc's static binaries still dlopen
+/// NSS modules for name lookups), is MIT-licensed (no LGPL relink obligation
+/// on the embedded binary), and produces roughly half the binary size. When
+/// no musl toolchain is present, the triple's own GCC with -static is used.
+///
+/// Otherwise: host builds use `cc`; cross builds prefer a triple-prefixed
+/// GCC (`aarch64-linux-gnu-gcc`), falling back to `clang --target=<triple>`.
+/// Returns "" when no capable link driver exists on this machine.
+inline std::string linkerCommandFor(const std::string& targetTriple,
+                                    bool staticLink = false) {
   if (const char* env = std::getenv("SUN_CC")) {
     return env;
   }
+
+  auto haveTool = [](const std::string& tool) {
+    return std::system(
+               ("command -v " + shellQuote(tool) + " >/dev/null 2>&1")
+                   .c_str()) == 0;
+  };
+
+  if (staticLink) {
+    llvm::Triple triple(targetTriple.empty()
+                            ? llvm::sys::getDefaultTargetTriple()
+                            : targetTriple);
+    std::string muslGcc = triple.getArchName().str() + "-linux-musl-gcc";
+    if (haveTool(muslGcc)) {
+      return muslGcc;
+    }
+  }
+
   if (targetTriple.empty()) {
     return "cc";
   }
   std::string crossGcc = targetTriple + "-gcc";
-  std::string probe =
-      "command -v " + shellQuote(crossGcc) + " >/dev/null 2>&1";
-  if (std::system(probe.c_str()) == 0) {
+  if (haveTool(crossGcc)) {
     return crossGcc;
   }
-  if (std::system("command -v clang >/dev/null 2>&1") == 0) {
+  if (haveTool("clang")) {
     std::string cmd = "clang --target=" + shellQuote(targetTriple);
     // LLD links any target; the GNU ld clang would otherwise invoke is
     // usually built for the host only.
-    if (std::system("command -v ld.lld >/dev/null 2>&1") == 0) {
+    if (haveTool("ld.lld")) {
       cmd += " -fuse-ld=lld";
     }
     return cmd;
@@ -209,7 +233,8 @@ inline bool linkExecutable(const std::string& objectPath,
   // runtime and startup files. -lstdc++ provides the Itanium C++ ABI runtime
   // (__cxa_throw, __cxa_allocate_exception, typeinfo, _Unwind_*) that native
   // exception handling lowers to.
-  std::string linker = linkerCommandFor(linkOpts.targetTriple);
+  std::string linker =
+      linkerCommandFor(linkOpts.targetTriple, linkOpts.staticLink);
   if (linker.empty()) {
     errorMsg = "no link driver for target '" + linkOpts.targetTriple +
                "': install " + linkOpts.targetTriple +
