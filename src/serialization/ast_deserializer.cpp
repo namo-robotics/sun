@@ -565,6 +565,14 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeMatch(
     auto body = deserialize(armProto.body());
     arms.emplace_back(std::move(pattern), armProto.is_wildcard(),
                       std::move(body));
+    arms.back().hasPayloadParens = armProto.has_payload_parens();
+    for (const auto& bindingProto : armProto.bindings()) {
+      PatternBinding binding;
+      binding.name = bindingProto.name();
+      binding.isWildcard = bindingProto.is_wildcard();
+      binding.location = deserializePosition(bindingProto.location());
+      arms.back().bindings.push_back(std::move(binding));
+    }
   }
   return std::make_unique<MatchExprAST>(std::move(discriminant),
                                         std::move(arms));
@@ -833,6 +841,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeEnumDef(
     variant.name = variantProto.name();
     variant.value = variantProto.value();
     variant.location = deserializePosition(variantProto.location());
+    for (const auto& payloadProto : variantProto.payload_types()) {
+      variant.payloadTypes.push_back(deserializeTypeAnnotation(payloadProto));
+    }
     variants.push_back(std::move(variant));
   }
   return std::make_unique<EnumDefinitionAST>(proto.name(), std::move(variants));

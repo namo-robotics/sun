@@ -142,6 +142,101 @@ unique_ptr<IfExprAST> Parser::parseIfStatement() {
                     start);
 }
 
+// Parse a match arm pattern: '_', an enum-variant path with an optional
+// binding list (Shape.Circle(r, _)), or a plain unary expression compared by
+// equality. A dotted path is parsed manually so a trailing '(' means
+// destructuring bindings rather than a call expression.
+Parser::ParsedPattern Parser::parsePattern() {
+  ParsedPattern result;
+
+  if (curTok.kind == TokenKind::UNDERSCORE) {
+    getNextToken();  // eat '_'
+    result.isWildcard = true;
+    result.ok = true;
+    return result;
+  }
+
+  if (curTok.kind == TokenKind::IDENTIFIER) {
+    // Save state: if this is not a dotted path, backtrack to parseUnary
+    Token savedCurTok = curTok;
+    Token savedPrevTok = prevTok_;
+    auto savedLexerPos = lexer.getPosition();
+    auto savedTokenStack = tokenStack;
+
+    Position start = captureStart();
+    Position idLoc = start;
+    idLoc.setEnd(curTok.end.line, curTok.end.column, curTok.end.offset);
+    std::string firstName = curTok.getIdentifier().value();
+    getNextToken();  // eat identifier
+
+    if (curTok.kind == TokenKind::DOT) {
+      auto base = std::make_unique<VariableReferenceAST>(firstName);
+      base->setLocation(idLoc);
+      std::unique_ptr<ExprAST> path = std::move(base);
+
+      while (curTok.kind == TokenKind::DOT) {
+        getNextToken();  // eat '.'
+        if (curTok.kind != TokenKind::IDENTIFIER) {
+          parsingError("expected identifier after '.' in match pattern");
+          return result;
+        }
+        std::string member = curTok.getIdentifier().value();
+        getNextToken();  // eat member name
+        path = finishNode(
+            std::make_unique<MemberAccessAST>(std::move(path), member), start);
+      }
+
+      // Optional payload binding list: (a, _, b)
+      if (curTok.kind == TokenKind::PAREN_OPEN) {
+        getNextToken();  // eat '('
+        result.hasPayloadParens = true;
+        if (curTok.kind == TokenKind::PAREN_CLOSE) {
+          parsingError("payload pattern requires at least one binding");
+          return result;
+        }
+        while (true) {
+          PatternBinding binding;
+          binding.location = captureStart();
+          binding.location.setEnd(curTok.end.line, curTok.end.column,
+                                  curTok.end.offset);
+          if (curTok.kind == TokenKind::UNDERSCORE) {
+            binding.isWildcard = true;
+            getNextToken();  // eat '_'
+          } else if (curTok.kind == TokenKind::IDENTIFIER) {
+            binding.name = curTok.getIdentifier().value();
+            getNextToken();  // eat binding name
+          } else {
+            parsingError(
+                "match patterns bind payloads to fresh names; nested "
+                "patterns and expressions are not supported here");
+            return result;
+          }
+          result.bindings.push_back(std::move(binding));
+          if (curTok.kind != TokenKind::COMMA) break;
+          getNextToken();  // eat ','
+        }
+        expectCurrentTokenKind(TokenKind::PAREN_CLOSE,
+                               "expected ')' after pattern bindings");
+        getNextToken();  // eat ')'
+      }
+
+      result.pattern = std::move(path);
+      result.ok = true;
+      return result;
+    }
+
+    // Not a dotted path — backtrack and parse as a plain expression
+    curTok = savedCurTok;
+    prevTok_ = savedPrevTok;
+    lexer.setPosition(savedLexerPos);
+    tokenStack = savedTokenStack;
+  }
+
+  result.pattern = parseUnary();
+  result.ok = result.pattern != nullptr;
+  return result;
+}
+
 // Parse match expression: match value { pattern => expr, ... }
 unique_ptr<MatchExprAST> Parser::parseMatchExpression() {
   Position start = captureStart();
@@ -162,19 +257,10 @@ unique_ptr<MatchExprAST> Parser::parseMatchExpression() {
   // Parse match arms
   std::vector<MatchArm> arms;
   while (curTok.kind != TokenKind::BRACE_CLOSE) {
-    // Check for wildcard pattern: _
-    bool isWildcard = (curTok.kind == TokenKind::UNDERSCORE);
-    std::unique_ptr<ExprAST> pattern = nullptr;
-
-    if (isWildcard) {
-      getNextToken();  // eat '_'
-    } else {
-      // Parse pattern expression (for now, just literals and identifiers)
-      pattern = parseUnary();
-      if (!pattern) {
-        parsingError("expected pattern in match arm");
-        return nullptr;
-      }
+    ParsedPattern parsed = parsePattern();
+    if (!parsed.ok) {
+      parsingError("expected pattern in match arm");
+      return nullptr;
     }
 
     // Expect =>
@@ -195,7 +281,10 @@ unique_ptr<MatchExprAST> Parser::parseMatchExpression() {
       return nullptr;
     }
 
-    arms.emplace_back(std::move(pattern), isWildcard, std::move(body));
+    arms.emplace_back(std::move(parsed.pattern), parsed.isWildcard,
+                      std::move(body));
+    arms.back().hasPayloadParens = parsed.hasPayloadParens;
+    arms.back().bindings = std::move(parsed.bindings);
 
     // Check for comma (optional before closing brace)
     if (curTok.kind == TokenKind::COMMA) {
@@ -2750,6 +2839,18 @@ void Parser::createModuleStubs(
     }
   }
 
+  // Enums (before functions, whose signatures may use enum types; after
+  // classes, which enum payload types may reference)
+  for (int i = 0; i < metadata.enums_size(); ++i) {
+    sun::ast::ASTNode node;
+    *node.mutable_enum_def() = metadata.enums(i);
+
+    auto ast = deserializer.deserialize(node);
+    if (ast) {
+      moduleAST.push_back(std::move(ast));
+    }
+  }
+
   // Functions
   for (int i = 0; i < metadata.functions_size(); ++i) {
     sun::ast::ASTNode node;
@@ -2762,17 +2863,6 @@ void Parser::createModuleStubs(
         funcAST->getProtoMut().setQualifiedName(
             sun::QualifiedName(scopePath, funcAST->getProto().getName()));
       }
-      moduleAST.push_back(std::move(ast));
-    }
-  }
-
-  // Enums
-  for (int i = 0; i < metadata.enums_size(); ++i) {
-    sun::ast::ASTNode node;
-    *node.mutable_enum_def() = metadata.enums(i);
-
-    auto ast = deserializer.deserialize(node);
-    if (ast) {
       moduleAST.push_back(std::move(ast));
     }
   }
@@ -3493,12 +3583,31 @@ unique_ptr<EnumDefinitionAST> Parser::parseEnumDefinition() {
     std::string variantName = curTok.getIdentifier().value();
     getNextToken();  // eat variant name
 
+    // Optional payload types: Circle(f64), Rect(f64, f64)
+    std::vector<TypeAnnotation> payloadTypes;
+    if (curTok.kind == TokenKind::PAREN_OPEN) {
+      getNextToken();  // eat '('
+      if (curTok.kind == TokenKind::PAREN_CLOSE) {
+        parsingError("variant payload requires at least one type");
+        return nullptr;
+      }
+      while (true) {
+        payloadTypes.push_back(parseTypeAnnotation());
+        if (curTok.kind != TokenKind::COMMA) break;
+        getNextToken();  // eat ','
+      }
+      expectCurrentTokenKind(TokenKind::PAREN_CLOSE,
+                             "expected ')' after variant payload types");
+      getNextToken();  // eat ')'
+    }
+
     int64_t variantValue = nextValue++;
 
     // TODO: Support explicit value assignment: Red = 1
     // For now, just auto-increment
 
-    variants.push_back({std::move(variantName), variantValue, variantLoc});
+    variants.push_back({std::move(variantName), variantValue, variantLoc,
+                        std::move(payloadTypes)});
 
     // Handle optional comma between variants
     if (curTok.kind == TokenKind::COMMA) {

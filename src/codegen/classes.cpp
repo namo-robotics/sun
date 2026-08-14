@@ -654,6 +654,22 @@ Value* CodegenVisitor::codegen(const MemberAccessAST& expr) {
     if (enumType && enumType->getNumVariants() > 0) {
       const auto* variant = enumType->getVariant(memberName);
       if (variant) {
+        // Unit variant of a payload enum: materialize tagged storage and
+        // return the pointer (compound convention). Payload variants are
+        // constructed through the call path.
+        if (enumType->hasPayload()) {
+          StructType* storageTy = typeResolver.getEnumStorageType(*enumType);
+          Function* func = ctx.builder->GetInsertBlock()->getParent();
+          AllocaInst* storage = createEntryBlockAlloca(
+              func, enumType->getBaseName() + "." + memberName, storageTy);
+          Value* tagPtr = ctx.builder->CreateStructGEP(storageTy, storage, 0,
+                                                       "tag.ptr");
+          ctx.builder->CreateStore(
+              ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()),
+                               variant->value),
+              tagPtr);
+          return storage;
+        }
         // Return the variant value as i32 constant
         return ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()),
                                 variant->value);
@@ -706,9 +722,9 @@ Value* CodegenVisitor::codegen(const MemberAccessAST& expr) {
   if (field) {
     Value* fieldPtr = getFieldPtr(classType, objectPtr, *field, memberName);
 
-    // For class-typed fields (embedded structs), return the pointer to the
-    // embedded struct (class values in Sun are pointers)
-    if (field->type->isClass()) {
+    // For class-typed and payload-enum fields (embedded structs), return the
+    // pointer to the embedded struct (struct values in Sun are pointers)
+    if (field->type->isClass() || isPayloadEnum(field->type)) {
       return fieldPtr;
     }
 
@@ -1028,6 +1044,19 @@ Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
   Value* fieldPtr =
       getFieldPtr(classType, objectPtr, *field, memberName + ".ptr");
 
+  // Payload-enum fields: copy the storage struct (value arrives as a
+  // pointer; payloads are deinit-free so a plain copy is correct)
+  if (isPayloadEnum(field->type)) {
+    auto& enumType = static_cast<sun::EnumType&>(*field->type);
+    llvm::StructType* storageTy = typeResolver.getEnumStorageType(enumType);
+    Value* structVal = value;
+    if (value->getType()->isPointerTy()) {
+      structVal = ctx.builder->CreateLoad(storageTy, value, "enum.copy");
+    }
+    ctx.builder->CreateStore(structVal, fieldPtr);
+    return structVal;
+  }
+
   // Handle class-typed fields: copy the embedded struct data
   if (field->type->isClass()) {
     auto* fieldClassType = static_cast<sun::ClassType*>(field->type.get());
@@ -1235,12 +1264,17 @@ Value* CodegenVisitor::codegen(const InterfaceDefinitionAST& expr) {
 
 Value* CodegenVisitor::codegen(const EnumDefinitionAST& expr) {
   // Enum definitions are already fully registered by the semantic analyzer
-  // in the TypeRegistry. No additional codegen is needed here since enums
-  // are represented as i32 constants - the values are emitted inline when
-  // enum variants are referenced.
+  // in the TypeRegistry. Payload-free enums are represented as i32 constants
+  // emitted inline when variants are referenced.
 
-  // Skip precompiled enums - they come from linked bitcode
-  // (handled by semantic analyzer)
+  // Payload enums: eagerly build the storage struct so any later
+  // ClassType::getStructType embedding an enum field (which cannot reach the
+  // resolver) can serve it from the EnumType cache.
+  if (expr.hasAnyPayload()) {
+    if (auto enumType = typeRegistry->getEnum(expr.getName())) {
+      typeResolver.getEnumStorageType(*enumType);
+    }
+  }
 
   return ConstantFP::get(ctx.getContext(), APFloat(0.0));
 }

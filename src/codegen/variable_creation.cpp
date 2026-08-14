@@ -88,6 +88,12 @@ Value* CodegenVisitor::codegen(const VariableCreationAST& expr) {
     if (varSunType->isArray()) {
       return genGlobalArray(expr);
     }
+    if (isPayloadEnum(varSunType)) {
+      logAndThrowError(
+          "Global variables of payload-carrying enum types are not yet "
+          "supported",
+          expr.getLocation());
+    }
     // Global class variables need runtime initialization
     if (varSunType->isClass()) {
       auto classType = std::dynamic_pointer_cast<sun::ClassType>(varSunType);
@@ -173,6 +179,39 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
   auto& scope = scopes.back().variables;
   Function* func = ctx.builder->GetInsertBlock()->getParent();
   sun::TypePtr varSunType = expr.getResolvedType();
+
+  // Payload enums: struct values handled by pointer with copy semantics and
+  // no deinit tracking (payloads are deinit-free by construction)
+  if (varSunType && isPayloadEnum(varSunType)) {
+    auto& enumType = static_cast<sun::EnumType&>(*varSunType);
+    llvm::StructType* storageTy = typeResolver.getEnumStorageType(enumType);
+
+    // A fresh temporary (construction, materialized call return) can be
+    // adopted directly; a named source (variable, field) must be copied
+    ASTNodeType valueKind = expr.getValue()->getType();
+    bool valueIsFreshTemp = valueKind != ASTNodeType::VARIABLE_REFERENCE &&
+                            valueKind != ASTNodeType::MEMBER_ACCESS;
+    if (valueIsFreshTemp) {
+      if (auto* allocaValue = dyn_cast<AllocaInst>(value)) {
+        allocaValue->setName(expr.getName());
+        scope[expr.getName()] = allocaValue;
+        debugDeclareLocal(allocaValue, expr.getName(), varSunType,
+                          expr.getLocation());
+        return allocaValue;
+      }
+    }
+
+    AllocaInst* alloca = createEntryBlockAlloca(func, expr.getName(),
+                                                storageTy);
+    Value* structVal = value;
+    if (value->getType()->isPointerTy()) {
+      structVal = ctx.builder->CreateLoad(storageTy, value, "enum.copy");
+    }
+    ctx.builder->CreateStore(structVal, alloca);
+    scope[expr.getName()] = alloca;
+    debugDeclareLocal(alloca, expr.getName(), varSunType, expr.getLocation());
+    return alloca;
+  }
 
   // Handle interface types
   if (varSunType && varSunType->isInterface()) {

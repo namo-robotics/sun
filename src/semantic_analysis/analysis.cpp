@@ -10,6 +10,49 @@
 
 using sun::unwrapRef;
 
+namespace {
+
+// True if the class (transitively through class-typed fields) defines a
+// deinit method. Such types cannot be enum payloads yet: enum values have no
+// drop glue, so owning payloads would silently leak or double-free.
+bool classNeedsDeinit(const sun::ClassType* classType,
+                      std::set<const sun::ClassType*>& visited) {
+  if (!visited.insert(classType).second) return false;
+  if (classType->getMethod("deinit")) return true;
+  for (const auto& field : classType->getFields()) {
+    if (field.type && field.type->isClass() &&
+        classNeedsDeinit(static_cast<const sun::ClassType*>(field.type.get()),
+                         visited)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// True if `type` embeds enum `self` by value, walking enum payloads and class
+// fields. Pointers break the cycle (indirection is the fix we suggest).
+bool embedsEnumByValue(const sun::TypePtr& type, const sun::EnumType* self,
+                       std::set<const sun::Type*>& visited) {
+  if (!type || !visited.insert(type.get()).second) return false;
+  if (type->isEnum()) {
+    auto* e = static_cast<const sun::EnumType*>(type.get());
+    if (e == self || e->getName() == self->getName()) return true;
+    for (const auto& v : e->getVariants()) {
+      for (const auto& pt : v.payloadTypes) {
+        if (embedsEnumByValue(pt, self, visited)) return true;
+      }
+    }
+  } else if (type->isClass()) {
+    auto* c = static_cast<const sun::ClassType*>(type.get());
+    for (const auto& field : c->getFields()) {
+      if (embedsEnumByValue(field.type, self, visited)) return true;
+    }
+  }
+  return false;
+}
+
+}  // namespace
+
 // -------------------------------------------------------------------
 // Main analysis entry point
 // -------------------------------------------------------------------
@@ -394,8 +437,26 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       auto& matchExpr = static_cast<MatchExprAST&>(expr);
       // Analyze the discriminant expression
       analyzeExpr(const_cast<ExprAST&>(*matchExpr.getDiscriminant()));
+
+      // Enum discriminants get variant patterns, payload bindings, and
+      // exhaustiveness checking
+      sun::TypePtr discType =
+          unwrapRef(matchExpr.getDiscriminant()->getResolvedType());
+      if (discType && discType->isEnum()) {
+        analyzeEnumMatch(matchExpr,
+                         std::static_pointer_cast<sun::EnumType>(discType),
+                         expectedType);
+        expr.setResolvedType(inferType(expr));
+        break;
+      }
+
       // Analyze each arm, propagating expectedType to arm bodies
       for (const auto& arm : matchExpr.getArms()) {
+        if (arm.hasPayloadParens) {
+          logAndThrowError(
+              "Destructuring patterns require an enum discriminant",
+              arm.pattern ? arm.pattern->getLocation() : expr.getLocation());
+        }
         if (arm.pattern) {
           analyzeExpr(const_cast<ExprAST&>(*arm.pattern));
         }
@@ -541,6 +602,24 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       auto& binExpr = static_cast<BinaryExprAST&>(expr);
       analyzeExpr(const_cast<ExprAST&>(*binExpr.getLHS()));
       analyzeExpr(const_cast<ExprAST&>(*binExpr.getRHS()));
+
+      // Payload enums have no structural equality; match is the eliminator
+      TokenKind binOp = binExpr.getOp().kind;
+      if (binOp == TokenKind::EQUAL_EQUAL || binOp == TokenKind::NOT_EQUAL) {
+        for (const ExprAST* side :
+             {binExpr.getLHS(), binExpr.getRHS()}) {
+          sun::TypePtr sideType = unwrapRef(side->getResolvedType());
+          if (sideType && sideType->isEnum() &&
+              static_cast<sun::EnumType*>(sideType.get())->hasPayload()) {
+            logAndThrowError(
+                "Cannot compare enum '" +
+                    static_cast<sun::EnumType*>(sideType.get())
+                        ->getDisplayName() +
+                    "' with '==' ; use match to inspect payload enums",
+                expr.getLocation());
+          }
+        }
+      }
       expr.setResolvedType(inferType(expr));
       break;
     }
@@ -1125,9 +1204,26 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       // Create the enum type
       auto enumType = typeRegistry->getEnum(enumDef.getName());
 
-      // Add variants to the enum type
+      // Add variants to the enum type (idempotent: declaration collection
+      // already registered them)
       for (const auto& variant : enumDef.getVariants()) {
         enumType->addVariant(variant.name, variant.value);
+      }
+
+      // Resolve payload type annotations. This runs in full analysis (not
+      // declaration collection) because payloads may reference classes
+      // registered later in the same collection pass.
+      for (const auto& variant : enumDef.getVariants()) {
+        if (!variant.hasPayload()) continue;
+        std::vector<sun::TypePtr> payloadTypes;
+        for (const auto& annot : variant.payloadTypes) {
+          auto payloadType = typeAnnotationToType(annot);
+          validateEnumPayloadType(payloadType, enumType, variant.name,
+                                  variant.location);
+          payloadTypes.push_back(std::move(payloadType));
+        }
+        enumType->setVariantPayloadTypes(variant.name,
+                                         std::move(payloadTypes));
       }
 
       // Register the enum in the namespace
@@ -1831,16 +1927,22 @@ void SemanticAnalyzer::validateExternSignature(FunctionAST& func) {
   // Still excluded are the types with no C spelling at all: arrays and slices
   // (fat pointers), interfaces (vtable pairs), lambdas (closures), and
   // error unions.
-  auto isABISafeParam = [](const sun::TypePtr& t) {
+  // Payload enums have a Sun-private tagged-union layout with no C ABI
+  // classification yet; only payload-free (i32) enums cross the C boundary.
+  auto isCStyleEnum = [](const sun::TypePtr& t) {
+    return t->isEnum() &&
+           !static_cast<const sun::EnumType*>(t.get())->hasPayload();
+  };
+  auto isABISafeParam = [&](const sun::TypePtr& t) {
     return t && (t->isPrimitive() || t->isRawPointer() || t->isReference() ||
-                 t->isClass() || t->isEnum());
+                 t->isClass() || isCStyleEnum(t));
   };
   // Returns allow the same, minus `ref`: Sun's ref return has auto-deref
   // semantics that do not correspond to anything C returns. Use raw_ptr<T>
   // for a returned pointer.
-  auto isABISafeReturn = [](const sun::TypePtr& t) {
+  auto isABISafeReturn = [&](const sun::TypePtr& t) {
     return t && (t->isPrimitive() || t->isRawPointer() || t->isClass() ||
-                 t->isEnum());
+                 isCStyleEnum(t));
   };
 
   if (proto.hasResolvedParamTypes()) {
@@ -2209,8 +2311,16 @@ void SemanticAnalyzer::clearResolvedTypes(ExprAST& expr) {
     case ASTNodeType::MATCH: {
       auto& match = static_cast<MatchExprAST&>(expr);
       clearResolvedTypes(const_cast<ExprAST&>(*match.getDiscriminant()));
-      for (const auto& arm : match.getArms()) {
-        clearResolvedTypes(const_cast<ExprAST&>(*arm.body));
+      for (auto& arm : match.getArmsMutable()) {
+        if (arm.pattern) {
+          clearResolvedTypes(*arm.pattern);
+        }
+        arm.resolvedVariantTag = -1;
+        for (auto& binding : arm.bindings) {
+          binding.resolvedType = nullptr;
+          binding.resolvedMangledName.clear();
+        }
+        clearResolvedTypes(*arm.body);
       }
       break;
     }
@@ -2481,6 +2591,28 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
     if (unsafeIntrinsics.count(funcName) && !isInUnsafeBlock()) {
       logAndThrowError("'" + funcName + "' can only be used in an unsafe block",
                        callExpr.getLocation());
+    }
+  }
+
+  // Enum variant construction: EnumName.Variant(args...). Intercept before
+  // generic callee analysis, which would reject a payload variant in value
+  // position.
+  if (calleeASTType == ASTNodeType::MEMBER_ACCESS) {
+    auto& memberAccess = static_cast<MemberAccessAST&>(
+        const_cast<ExprAST&>(*callExpr.getCallee()));
+    if (memberAccess.getObject()->getType() ==
+        ASTNodeType::VARIABLE_REFERENCE) {
+      const auto& objRef = static_cast<const VariableReferenceAST&>(
+          *memberAccess.getObject());
+      // A local variable shadows an enum type name
+      if (!lookupVariable(objRef.getName())) {
+        if (auto enumType = lookupEnum(objRef.getName())) {
+          const_cast<ExprAST&>(*memberAccess.getObject())
+              .setResolvedType(enumType);
+          analyzeEnumVariantConstruction(callExpr, memberAccess, enumType);
+          return;
+        }
+      }
     }
   }
 
@@ -3135,4 +3267,231 @@ void SemanticAnalyzer::analyzeGenericClassConstruction(
   }
 
   genericCall.setResolvedType(inferGenericCallType(genericCall));
+}
+
+// -------------------------------------------------------------------
+// Payload enums
+// -------------------------------------------------------------------
+
+void SemanticAnalyzer::validateEnumPayloadType(
+    const sun::TypePtr& type, const std::shared_ptr<sun::EnumType>& enumType,
+    const std::string& variantName, const Position& location) {
+  const std::string context = "Payload of variant '" + variantName +
+                              "' in enum '" + enumType->getDisplayName() + "'";
+  if (!type || type->isVoid()) {
+    logAndThrowError(context + " cannot be void", location);
+  }
+  if (type->isReference()) {
+    logAndThrowError(context + " cannot be a reference", location);
+  }
+
+  // Stage 1 allowlist: primitives, pointers, enums, deinit-free classes.
+  // Arrays, slices, interfaces, lambdas, threads etc. are deferred.
+  bool allowed = type->isPrimitive() || type->isRawPointer() ||
+                 type->isStaticPointer() || type->isEnum() || type->isClass();
+  if (!allowed) {
+    logAndThrowError(context + " has unsupported type '" + type->toString() +
+                         "'; supported: primitives, pointers, enums, and "
+                         "classes without deinit",
+                     location);
+  }
+
+  if (type->isClass()) {
+    std::set<const sun::ClassType*> visited;
+    if (classNeedsDeinit(static_cast<const sun::ClassType*>(type.get()),
+                         visited)) {
+      logAndThrowError(context + ": enum payloads cannot yet hold types with "
+                                 "deinit ('" +
+                           type->toString() + "')",
+                       location);
+    }
+  }
+
+  std::set<const sun::Type*> visited;
+  if (embedsEnumByValue(type, enumType.get(), visited)) {
+    logAndThrowError("Recursive enum '" + enumType->getDisplayName() +
+                         "' requires indirection (raw_ptr)",
+                     location);
+  }
+}
+
+void SemanticAnalyzer::analyzeEnumVariantConstruction(
+    CallExprAST& callExpr, MemberAccessAST& memberAccess,
+    const std::shared_ptr<sun::EnumType>& enumType) {
+  const std::string& variantName = memberAccess.getMemberName();
+  const auto* variant = enumType->getVariant(variantName);
+  if (!variant) {
+    logAndThrowError("Unknown variant '" + variantName + "' in enum '" +
+                         enumType->getDisplayName() + "'",
+                     memberAccess.getLocation());
+  }
+  if (!variant->hasPayload()) {
+    logAndThrowError("Variant '" + variantName + "' of enum '" +
+                         enumType->getDisplayName() +
+                         "' carries no payload; write '" +
+                         enumType->getBaseName() + "." + variantName +
+                         "' without arguments",
+                     callExpr.getLocation());
+  }
+
+  const auto& args = callExpr.getArgs();
+  if (args.size() != variant->payloadTypes.size()) {
+    logAndThrowError(
+        "Variant '" + variantName + "' of enum '" +
+            enumType->getDisplayName() + "' expects " +
+            std::to_string(variant->payloadTypes.size()) +
+            " payload value(s), got " + std::to_string(args.size()),
+        callExpr.getLocation());
+  }
+
+  for (size_t i = 0; i < args.size(); ++i) {
+    const sun::TypePtr& payloadType = variant->payloadTypes[i];
+    analyzeExpr(const_cast<ExprAST&>(*args[i]), payloadType);
+    sun::TypePtr argType = args[i]->getResolvedType();
+    if (argType && !isAssignableTo(argType, payloadType)) {
+      if (!tryCoerceIntegerLiteral(const_cast<ExprAST*>(args[i].get()),
+                                   payloadType, /*throwOnFail=*/false)) {
+        logAndThrowError("Payload value " + std::to_string(i + 1) + " of '" +
+                             enumType->getBaseName() + "." + variantName +
+                             "' has type '" + argType->toString() +
+                             "', expected '" + payloadType->toString() + "'",
+                         args[i]->getLocation());
+      }
+    }
+  }
+
+  memberAccess.setResolvedType(enumType);
+  callExpr.setResolvedType(enumType);
+}
+
+void SemanticAnalyzer::analyzeEnumMatch(
+    MatchExprAST& matchExpr, const std::shared_ptr<sun::EnumType>& enumType,
+    sun::TypePtr expectedType) {
+  std::set<int> coveredTags;
+  bool sawWildcard = false;
+
+  for (auto& arm : matchExpr.getArmsMutable()) {
+    if (arm.isWildcard) {
+      if (sawWildcard) {
+        logWarning("Duplicate wildcard arm in match is unreachable",
+                   matchExpr.getLocation());
+      }
+      sawWildcard = true;
+      analyzeExpr(const_cast<ExprAST&>(*arm.body), expectedType);
+      continue;
+    }
+    if (sawWildcard) {
+      logWarning("Match arm after wildcard '_' is unreachable",
+                 arm.pattern ? arm.pattern->getLocation()
+                             : matchExpr.getLocation());
+    }
+
+    // Patterns on enum discriminants must be variant paths: Enum.Variant or
+    // Enum.Variant(bindings). Resolve structurally - the last path segment
+    // names the variant.
+    if (arm.pattern->getType() != ASTNodeType::MEMBER_ACCESS) {
+      logAndThrowError(
+          "Match on enum '" + enumType->getDisplayName() +
+              "' requires variant patterns (e.g. '" +
+              enumType->getBaseName() + ".Variant') or '_'",
+          arm.pattern->getLocation());
+    }
+    auto& patternAccess = static_cast<MemberAccessAST&>(*arm.pattern);
+    const std::string& variantName = patternAccess.getMemberName();
+
+    // The object must name this same enum type
+    sun::TypePtr objectType;
+    if (patternAccess.getObject()->getType() ==
+        ASTNodeType::VARIABLE_REFERENCE) {
+      const auto& varRef = static_cast<const VariableReferenceAST&>(
+          *patternAccess.getObject());
+      objectType = lookupEnum(varRef.getName());
+    }
+    if (!objectType) {
+      objectType = inferType(*patternAccess.getObject());
+    }
+    if (!objectType || !objectType->isEnum() ||
+        !objectType->equals(*enumType)) {
+      logAndThrowError("Pattern does not match discriminant enum '" +
+                           enumType->getDisplayName() + "'",
+                       arm.pattern->getLocation());
+    }
+    const auto* variant = enumType->getVariant(variantName);
+    if (!variant) {
+      logAndThrowError("Unknown variant '" + variantName + "' in enum '" +
+                           enumType->getDisplayName() + "'",
+                       arm.pattern->getLocation());
+    }
+
+    // Payload arity: bindings must match the variant's payload count
+    if (variant->hasPayload()) {
+      if (!arm.hasPayloadParens) {
+        logAndThrowError(
+            "Variant '" + variantName + "' carries " +
+                std::to_string(variant->payloadTypes.size()) +
+                " payload value(s); bind them with '" +
+                enumType->getBaseName() + "." + variantName + "(...)' or '_'",
+            arm.pattern->getLocation());
+      }
+      if (arm.bindings.size() != variant->payloadTypes.size()) {
+        logAndThrowError(
+            "Variant '" + variantName + "' has " +
+                std::to_string(variant->payloadTypes.size()) +
+                " payload value(s), but pattern binds " +
+                std::to_string(arm.bindings.size()),
+            arm.pattern->getLocation());
+      }
+    } else if (arm.hasPayloadParens) {
+      logAndThrowError("Variant '" + variantName +
+                           "' carries no payload; remove the parentheses",
+                       arm.pattern->getLocation());
+    }
+
+    if (coveredTags.count(static_cast<int>(variant->value))) {
+      logWarning("Unreachable arm: variant '" + variantName +
+                     "' is already matched",
+                 arm.pattern->getLocation());
+    }
+    coveredTags.insert(static_cast<int>(variant->value));
+    arm.resolvedVariantTag = static_cast<int>(variant->value);
+
+    // Set resolved types on the pattern nodes so codegen and tooling see a
+    // consistent tree (they are not analyzed via analyzeExpr).
+    patternAccess.setResolvedType(enumType);
+    const_cast<ExprAST&>(*patternAccess.getObject())
+        .setResolvedType(enumType);
+
+    // Bindings live in a per-arm scope
+    enterScope();
+    for (size_t i = 0; i < arm.bindings.size(); ++i) {
+      auto& binding = arm.bindings[i];
+      binding.resolvedType = variant->payloadTypes[i];
+      if (!binding.isWildcard) {
+        // Registered by plain name, like catch-clause bindings
+        declareVariable(binding.name, binding.resolvedType);
+      }
+    }
+    analyzeExpr(const_cast<ExprAST&>(*arm.body), expectedType);
+    exitScope();
+  }
+
+  // Exhaustiveness: every variant covered, or a wildcard present
+  if (!sawWildcard) {
+    std::string missing;
+    for (const auto& v : enumType->getVariants()) {
+      if (!coveredTags.count(static_cast<int>(v.value))) {
+        if (!missing.empty()) missing += ", ";
+        missing += v.name;
+      }
+    }
+    if (!missing.empty()) {
+      logAndThrowError("Match on enum '" + enumType->getDisplayName() +
+                           "' is not exhaustive; missing variants: " + missing,
+                       matchExpr.getLocation());
+    }
+  } else if (coveredTags.size() == enumType->getNumVariants()) {
+    logWarning("Wildcard '_' is unreachable: all variants of '" +
+                   enumType->getDisplayName() + "' are already matched",
+               matchExpr.getLocation());
+  }
 }

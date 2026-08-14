@@ -578,3 +578,27 @@ TEST(FmtCorpusTest, IdempotentAndStructurePreserving) {
   // The corpus must actually be exercised
   EXPECT_GE(checked, 15) << "corpus unexpectedly small";
 }
+
+// ------------------------------------------------------------------
+// Payload enums + match destructuring
+// ------------------------------------------------------------------
+
+TEST(FmtTest, EnumPayloadVariants) {
+  EXPECT_EQ(fmt("enum Shape{Circle(f64),Rect(f64,f64),Empty}"),
+            "enum Shape { Circle(f64), Rect(f64, f64), Empty }\n");
+}
+
+TEST(FmtTest, MatchDestructuringPattern) {
+  std::string once = fmt(
+      "function area(s: ref Shape) f64 {\n"
+      "return match s {\n"
+      "Shape.Circle(r) => 3.0 * r * r,\n"
+      "Shape.Rect(w, _) => w,\n"
+      "_ => 0.0\n"
+      "};\n"
+      "}");
+  // Idempotency: formatting the formatted output is a fixed point
+  EXPECT_EQ(fmt(once), once);
+  EXPECT_NE(once.find("Shape.Circle(r) => "), std::string::npos);
+  EXPECT_NE(once.find("Shape.Rect(w, _) => "), std::string::npos);
+}

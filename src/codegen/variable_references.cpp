@@ -127,11 +127,13 @@ Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
       logAndThrowError("Array ref variable not found: " + expr.getName());
     }
 
-    // For references to class/interface types, return the pointer (not the
-    // struct value). Classes need their address for field access and method
-    // calls, just like local class variables return their alloca.
+    // For references to class/interface/payload-enum types, return the
+    // pointer (not the struct value). Classes need their address for field
+    // access and method calls, just like local class variables return their
+    // alloca.
     if (refType->getReferencedType()->isClass() ||
-        refType->getReferencedType()->isInterface()) {
+        refType->getReferencedType()->isInterface() ||
+        isPayloadEnum(refType->getReferencedType())) {
       AllocaInst* alloca = findVariable(expr.getName());
       if (alloca) {
         llvm::Type* ptrType = llvm::PointerType::getUnqual(ctx.getContext());
@@ -172,9 +174,10 @@ Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
     logAndThrowError("Array variable not found: " + expr.getName());
   }
 
-  // For class types, return the alloca pointer (not load the struct value)
-  // Methods expect 'this' as a pointer to the struct
-  if (varType && varType->isClass()) {
+  // For class and payload-enum types, return the alloca pointer (not load
+  // the struct value). Methods expect 'this' as a pointer to the struct;
+  // match destructuring GEPs payloads out of the storage.
+  if (varType && (varType->isClass() || isPayloadEnum(varType))) {
     AllocaInst* alloca = findVariable(expr.getName());
     if (alloca) {
       // Return the alloca directly - it's the pointer to the struct
@@ -283,6 +286,16 @@ Value* CodegenVisitor::codegen(const VariableAssignmentAST& expr) {
         value = ctx.builder->CreateLoad(valueAlloca->getAllocatedType(),
                                         valueAlloca, "closure.load");
       }
+    }
+
+    // Assigning to a payload-enum variable: the right-hand side is a storage
+    // pointer; copy the struct (no deinit, payloads are deinit-free)
+    if (varType && isPayloadEnum(varType) &&
+        value->getType()->isPointerTy()) {
+      if (value == alloca) return value;
+      auto& enumType = static_cast<sun::EnumType&>(*varType);
+      llvm::StructType* storageTy = typeResolver.getEnumStorageType(enumType);
+      value = ctx.builder->CreateLoad(storageTy, value, "enum.copy");
     }
 
     // Assigning to a class variable, where codegen of the right-hand side

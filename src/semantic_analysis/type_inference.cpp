@@ -320,6 +320,16 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
             return info->returnType;
           }
         }
+        // Enum variant construction: EnumName.Variant(args...) has the enum
+        // type. Checked in detail by analyzeEnumVariantConstruction.
+        if (objectType && objectType->isEnum()) {
+          auto* enumType = static_cast<sun::EnumType*>(objectType.get());
+          const auto* variant =
+              enumType->getVariant(memberAccess.getMemberName());
+          if (variant && variant->hasPayload()) {
+            return objectType;
+          }
+        }
       }
 
       // Infer the type of the callee expression
@@ -401,7 +411,14 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       // Return type is the type of the first arm's body
       // All arms should have compatible types (not enforced yet)
       if (!matchExpr.getArms().empty()) {
-        return inferType(*matchExpr.getArms()[0].body);
+        const auto& firstBody = *matchExpr.getArms()[0].body;
+        // Bodies of destructuring arms are analyzed in per-arm binding
+        // scopes; use the resolved type rather than re-walking a body whose
+        // bindings are out of scope here
+        if (auto resolved = firstBody.getResolvedType()) {
+          return resolved;
+        }
+        return inferType(firstBody);
       }
       return sun::Types::Void();
     }
@@ -816,6 +833,14 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
       auto* enumType = static_cast<sun::EnumType*>(objectType.get());
       const auto* variant = enumType->getVariant(memberName);
       if (variant) {
+        if (variant->hasPayload()) {
+          logAndThrowError("Variant '" + memberName + "' of enum '" +
+                               enumType->getDisplayName() +
+                               "' carries a payload; construct it with '" +
+                               enumType->getBaseName() + "." + memberName +
+                               "(...)'",
+                           memberAccess.getLocation());
+        }
         return objectType;  // Enum variant has the enum type
       }
       logAndThrowError("Unknown variant '" + memberName + "' in enum '" +

@@ -118,13 +118,10 @@ class Type {
   bool isSlice() const { return getKind() == Kind::Slice; }
   bool isCallable() const { return isFunction() || isLambda(); }
   bool isThread() const { return getKind() == Kind::Thread; }
-  // Compound types must be passed by reference (classes, interfaces, arrays)
-  // Note: Enums are NOT compound - they are i32 values and passed by value
-  bool isCompound() const {
-    return !isPrimitive() && !isReference() && !isRawPointer() &&
-           !isStaticPointer() && !isFunction() && !isLambda() &&
-           !isTypeParameter() && !isEnum();
-  }
+  // Compound types must be passed by reference (classes, interfaces, arrays,
+  // payload-carrying enums). Payload-free enums are NOT compound - they are
+  // i32 values and passed by value. Defined out-of-line (needs EnumType).
+  bool isCompound() const;
   bool isNumeric() const;
   bool isIntegral() const;
   bool isFloatingPoint() const;
@@ -1569,7 +1566,10 @@ class InterfaceType : public Type {
 // Enum variant information
 struct EnumVariant {
   std::string name;
-  int64_t value;  // Numeric value of the variant
+  int64_t value;  // Numeric value of the variant (the runtime tag)
+  std::vector<TypePtr> payloadTypes;  // empty = unit variant
+
+  bool hasPayload() const { return !payloadTypes.empty(); }
 };
 
 // Forward declaration for EnumType
@@ -1616,8 +1616,35 @@ class EnumType : public Type {
     return base;
   }
 
+  // Idempotent: declaration collection and full analysis both register
+  // variants; the second registration must not duplicate them.
   void addVariant(const std::string& variantName, int64_t value) {
-    variants.push_back({variantName, value});
+    for (const auto& v : variants) {
+      if (v.name == variantName) return;
+    }
+    variants.push_back({variantName, value, {}});
+  }
+
+  // Attach resolved payload types to a variant (full-analysis phase; payload
+  // annotations may reference classes not yet registered during declaration
+  // collection).
+  void setVariantPayloadTypes(const std::string& variantName,
+                              std::vector<TypePtr> payloadTypes) {
+    for (auto& v : variants) {
+      if (v.name == variantName) {
+        v.payloadTypes = std::move(payloadTypes);
+        return;
+      }
+    }
+    assert(false && "setVariantPayloadTypes: unknown variant");
+  }
+
+  // True if any variant carries a payload (tagged-union representation)
+  bool hasPayload() const {
+    for (const auto& v : variants) {
+      if (v.hasPayload()) return true;
+    }
+    return false;
   }
 
   const EnumVariant* getVariant(const std::string& variantName) const {
@@ -1644,8 +1671,17 @@ class EnumType : public Type {
     return false;
   }
 
-  // Enums are represented as i32 values
+  // Payload-free enums are represented as i32 values. Payload enums need the
+  // module DataLayout for storage sizing: LLVMTypeResolver computes the
+  // storage struct and caches it here; afterwards toLLVMType serves the
+  // cache (e.g. for class field embedding via ClassType::getStructType).
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
+    if (hasPayload()) {
+      if (cachedStorageType) return cachedStorageType;
+      logAndThrowError("payload enum '" + getDisplayName() +
+                       "' LLVM type requires DataLayout - resolve it via "
+                       "LLVMTypeResolver first");
+    }
     return llvm::Type::getInt32Ty(ctx);
   }
 
@@ -1653,6 +1689,13 @@ class EnumType : public Type {
   std::string getMangledVariantName(const std::string& variantName) const {
     return qualifiedName_ + "_" + variantName;
   }
+
+  // LLVM struct caches, populated by LLVMTypeResolver (mirrors
+  // ClassType::cachedLLVMType). storage = { i32 tag, [M x unitTy] }; per
+  // variant = { i32 tag, T1, T2, ... } GEP'd on the same base pointer.
+  mutable llvm::StructType* cachedStorageType = nullptr;
+  mutable std::unordered_map<std::string, llvm::StructType*>
+      cachedVariantStructs;
 };
 
 // Type factory for common types (singleton pattern)
@@ -2161,6 +2204,15 @@ class TypeRegistry {
 };
 
 // Inline implementations for Type methods
+inline bool Type::isCompound() const {
+  if (isEnum()) {
+    return static_cast<const EnumType*>(this)->hasPayload();
+  }
+  return !isPrimitive() && !isReference() && !isRawPointer() &&
+         !isStaticPointer() && !isFunction() && !isLambda() &&
+         !isTypeParameter();
+}
+
 inline bool Type::isNumeric() const {
   Kind k = getKind();
   return k == Kind::Int8 || k == Kind::Int16 || k == Kind::Int32 ||

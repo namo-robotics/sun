@@ -976,3 +976,80 @@ TEST(SerializationTest, UnicodeStringLiteral) {
   auto* str = static_cast<StringLiteralAST*>(restored.get());
   EXPECT_EQ(str->getValue(), "Hello 世界 🌍");
 }
+
+// ============================================================================
+// Payload enums + match destructuring
+// ============================================================================
+
+TEST(SerializationTest, EnumPayloadRoundtrip) {
+  std::vector<EnumVariantDecl> variants;
+  variants.push_back({"Circle", 0, Position{}, {}});
+  variants.back().payloadTypes.push_back(TypeAnnotation("f64"));
+  variants.push_back({"Rect", 1, Position{}, {}});
+  variants.back().payloadTypes.push_back(TypeAnnotation("f64"));
+  variants.back().payloadTypes.push_back(TypeAnnotation("f64"));
+  variants.push_back({"Empty", 2, Position{}, {}});
+  auto ast =
+      std::make_unique<EnumDefinitionAST>("Shape", std::move(variants));
+
+  ASTSerializer serializer;
+  std::string data = serializer.serializeToString(*ast);
+
+  ASTDeserializer deserializer;
+  auto restored = deserializer.deserializeFromString(data);
+
+  ASSERT_NE(restored, nullptr);
+  ASSERT_EQ(restored->getType(), ASTNodeType::ENUM_DEFINITION);
+  auto* enumDef = static_cast<EnumDefinitionAST*>(restored.get());
+  ASSERT_EQ(enumDef->getNumVariants(), 3u);
+  EXPECT_TRUE(enumDef->hasAnyPayload());
+  const auto* circle = enumDef->getVariant("Circle");
+  ASSERT_NE(circle, nullptr);
+  ASSERT_EQ(circle->payloadTypes.size(), 1u);
+  EXPECT_EQ(circle->payloadTypes[0].baseName, "f64");
+  const auto* rect = enumDef->getVariant("Rect");
+  ASSERT_NE(rect, nullptr);
+  EXPECT_EQ(rect->payloadTypes.size(), 2u);
+  const auto* empty = enumDef->getVariant("Empty");
+  ASSERT_NE(empty, nullptr);
+  EXPECT_FALSE(empty->hasPayload());
+}
+
+TEST(SerializationTest, MatchBindingsRoundtrip) {
+  // match x { Shape.Circle(r, _) => r, _ => y }
+  auto disc = std::make_unique<VariableReferenceAST>("x");
+  std::vector<MatchArm> arms;
+  auto pattern = std::make_unique<MemberAccessAST>(
+      std::make_unique<VariableReferenceAST>("Shape"), "Circle");
+  arms.emplace_back(std::move(pattern), false,
+                    std::make_unique<VariableReferenceAST>("r"));
+  arms.back().hasPayloadParens = true;
+  PatternBinding b1;
+  b1.name = "r";
+  arms.back().bindings.push_back(std::move(b1));
+  PatternBinding b2;
+  b2.isWildcard = true;
+  arms.back().bindings.push_back(std::move(b2));
+  arms.emplace_back(nullptr, true,
+                    std::make_unique<VariableReferenceAST>("y"));
+  auto ast =
+      std::make_unique<MatchExprAST>(std::move(disc), std::move(arms));
+
+  ASTSerializer serializer;
+  std::string data = serializer.serializeToString(*ast);
+
+  ASTDeserializer deserializer;
+  auto restored = deserializer.deserializeFromString(data);
+
+  ASSERT_NE(restored, nullptr);
+  ASSERT_EQ(restored->getType(), ASTNodeType::MATCH);
+  auto* match = static_cast<MatchExprAST*>(restored.get());
+  ASSERT_EQ(match->getArms().size(), 2u);
+  const auto& arm = match->getArms()[0];
+  EXPECT_TRUE(arm.hasPayloadParens);
+  ASSERT_EQ(arm.bindings.size(), 2u);
+  EXPECT_EQ(arm.bindings[0].name, "r");
+  EXPECT_FALSE(arm.bindings[0].isWildcard);
+  EXPECT_TRUE(arm.bindings[1].isWildcard);
+  EXPECT_FALSE(match->getArms()[1].hasPayloadParens);
+}

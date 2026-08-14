@@ -475,7 +475,9 @@ void BorrowChecker::checkMatchExpr(const MatchExprAST& matchExpr) {
     checkExpr(*matchExpr.getDiscriminant());
   }
 
-  // Check each arm in its own scope
+  // Check each arm in its own scope. Payload bindings are fresh immutable
+  // locals copied out of the discriminant; like catch-clause bindings they
+  // are not ownership-tracked (destructuring never moves the discriminant).
   for (const auto& arm : matchExpr.getArms()) {
     enterScope();
     // Check pattern if present

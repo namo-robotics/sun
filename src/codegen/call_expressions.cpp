@@ -950,6 +950,18 @@ Value* CodegenVisitor::codegenMethodCall(const CallExprAST& expr,
         memberAccess);
   }
 
+  // Enum variant construction: EnumName.Variant(args...). Sema resolved the
+  // object to the enum type and validated arity/types.
+  if (objectType && objectType->isEnum()) {
+    auto& enumType = static_cast<sun::EnumType&>(*objectType);
+    const auto* variant = enumType.getVariant(methodName);
+    if (variant && variant->hasPayload()) {
+      return codegenEnumVariantConstruction(expr, enumType, *variant);
+    }
+    logAndThrowError("Variant '" + methodName + "' of enum '" +
+                     enumType.getDisplayName() + "' carries no payload");
+  }
+
   // Handle array.shape() builtin
   if (objectType && (objectType->isArray() ||
                      (objectType->isReference() &&
@@ -1465,4 +1477,62 @@ Value* CodegenVisitor::codegenLambdaCall(const CallExprAST& expr,
 
   // Materialize struct return values for addressability
   return materializeStructReturn(result);
+}
+
+// -------------------------------------------------------------------
+// Enum variant construction: EnumName.Variant(args...)
+// -------------------------------------------------------------------
+
+Value* CodegenVisitor::codegenEnumVariantConstruction(
+    const CallExprAST& expr, sun::EnumType& enumType,
+    const sun::EnumVariant& variant) {
+  StructType* storageTy = typeResolver.getEnumStorageType(enumType);
+  StructType* variantTy =
+      typeResolver.getEnumVariantStruct(enumType, variant.name);
+
+  Function* func = ctx.builder->GetInsertBlock()->getParent();
+  AllocaInst* storage = createEntryBlockAlloca(
+      func, enumType.getBaseName() + "." + variant.name, storageTy);
+
+  // Store the tag (field 0 has the same offset in storage and variant view)
+  Value* tagPtr = ctx.builder->CreateStructGEP(storageTy, storage, 0, "tag.ptr");
+  ctx.builder->CreateStore(
+      ConstantInt::get(Type::getInt32Ty(ctx.getContext()), variant.value),
+      tagPtr);
+
+  // Store each payload value through the variant view struct
+  const auto& args = expr.getArgs();
+  for (size_t i = 0; i < args.size(); ++i) {
+    Value* argVal = codegen(*args[i]);
+    if (!argVal) {
+      logAndThrowError("Failed to generate payload value for variant '" +
+                       variant.name + "'");
+    }
+    llvm::Type* fieldTy = variantTy->getElementType(i + 1);
+    Value* fieldPtr = ctx.builder->CreateStructGEP(variantTy, storage, i + 1,
+                                                   "payload." + variant.name);
+    const sun::TypePtr& payloadType = variant.payloadTypes[i];
+
+    if (payloadType->isCompound()) {
+      // Class or payload-enum argument arrives as a pointer: copy the struct
+      // (payloads are deinit-free by the Stage 1 restriction)
+      if (argVal->getType()->isPointerTy()) {
+        argVal = ctx.builder->CreateLoad(fieldTy, argVal, "payload.copy");
+      }
+      ctx.builder->CreateStore(argVal, fieldPtr);
+      continue;
+    }
+
+    // Numeric widening (sema allows widening assignability)
+    if (argVal->getType() != fieldTy) {
+      if (argVal->getType()->isIntegerTy() && fieldTy->isIntegerTy()) {
+        argVal = extendInt(argVal, fieldTy, args[i]->getResolvedType());
+      } else if (argVal->getType()->isFloatTy() && fieldTy->isDoubleTy()) {
+        argVal = ctx.builder->CreateFPExt(argVal, fieldTy, "payload.ext");
+      }
+    }
+    ctx.builder->CreateStore(argVal, fieldPtr);
+  }
+
+  return storage;
 }

@@ -8,11 +8,26 @@
 
 #include "ast/expr_ast.h"
 
+// A payload binding position in a destructuring pattern: Shape.Circle(r)
+struct PatternBinding {
+  std::string name;         // empty when isWildcard
+  bool isWildcard = false;  // '_' in this position
+  Position location;
+  // Set by semantic analysis:
+  sun::TypePtr resolvedType;        // payload element type
+  std::string resolvedMangledName;  // scoped name for codegen
+};
+
 // A single arm in a match expression: pattern => body
 struct MatchArm {
   std::unique_ptr<ExprAST> pattern;  // nullptr for wildcard _
   bool isWildcard;                   // true if this arm is _
+  bool hasPayloadParens = false;     // pattern had a '(...)' binding list
+  std::vector<PatternBinding> bindings;
   std::unique_ptr<ExprAST> body;
+  // Set by semantic analysis: >=0 when the pattern names a variant of the
+  // discriminant enum
+  int resolvedVariantTag = -1;
 
   MatchArm(std::unique_ptr<ExprAST> pattern, bool isWildcard,
            std::unique_ptr<ExprAST> body)
@@ -57,6 +72,7 @@ class MatchExprAST : public ExprAST {
 
   const ExprAST* getDiscriminant() const { return discriminant.get(); }
   const std::vector<MatchArm>& getArms() const { return arms; }
+  std::vector<MatchArm>& getArmsMutable() { return arms; }
 
   void forEachChildSlot(const ChildSlotFn& fn) override {
     fn(discriminant);

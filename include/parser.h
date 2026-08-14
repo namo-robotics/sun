@@ -217,6 +217,16 @@ class Parser {
   unique_ptr<ExprAST> parseIdentifierExpr();
   unique_ptr<IfExprAST> parseIfStatement();
   unique_ptr<MatchExprAST> parseMatchExpression();
+
+  // Parsed match-arm pattern; body is attached later by parseMatchExpression
+  struct ParsedPattern {
+    std::unique_ptr<ExprAST> pattern;  // null for wildcard
+    bool isWildcard = false;
+    bool hasPayloadParens = false;
+    std::vector<PatternBinding> bindings;
+    bool ok = false;
+  };
+  ParsedPattern parsePattern();
   unique_ptr<ExprAST> parseNumberExpr();
   unique_ptr<ExprAST> parseStringLiteral();
   unique_ptr<ExprAST> parseArrayLiteral();

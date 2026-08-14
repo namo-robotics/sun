@@ -169,3 +169,13 @@ inline void logErrorNoThrow(const std::string& msg,
     std::cerr << "Error: " << msg << std::endl;
   }
 }
+
+// Non-fatal diagnostic (e.g. unreachable match arms)
+inline void logWarning(const std::string& msg,
+                       std::optional<Position> loc = std::nullopt) {
+  if (loc) {
+    std::cerr << "Warning: " << loc->toString() << ": " << msg << std::endl;
+  } else {
+    std::cerr << "Warning: " << msg << std::endl;
+  }
+}

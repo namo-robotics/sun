@@ -29,6 +29,7 @@ add_executable(sun_tests
     test_debug.cpp
     test_debug_info.cpp
     test_dfa.cpp
+    test_enum_payloads.cpp
     test_enums.cpp
     test_errors.cpp
     test_ffi.cpp

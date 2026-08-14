@@ -495,6 +495,23 @@ class SemanticAnalyzer {
                                   sun::TypePtr expectedType);
   void analyzeCall(CallExprAST& callExpr);
 
+  // Enum variant construction: EnumName.Variant(args...)
+  void analyzeEnumVariantConstruction(CallExprAST& callExpr,
+                                      MemberAccessAST& memberAccess,
+                                      const std::shared_ptr<sun::EnumType>& enumType);
+
+  // Match analysis on enum discriminants: variant patterns, payload bindings,
+  // exhaustiveness
+  void analyzeEnumMatch(MatchExprAST& matchExpr,
+                        const std::shared_ptr<sun::EnumType>& enumType,
+                        sun::TypePtr expectedType);
+
+  // Validate a resolved payload type for an enum variant (Stage 1 rules)
+  void validateEnumPayloadType(const sun::TypePtr& type,
+                               const std::shared_ptr<sun::EnumType>& enumType,
+                               const std::string& variantName,
+                               const Position& location);
+
   // Generic call analysis helpers
   void analyzeIntrinsicCall(GenericCallAST& genericCall);
   void analyzeGenericFunctionCall(GenericCallAST& genericCall);

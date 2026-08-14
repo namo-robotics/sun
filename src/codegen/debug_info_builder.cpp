@@ -326,10 +326,28 @@ DIType* DebugInfoBuilder::resolveTypeImpl(const Type& type) {
         if (!seen.insert(v.name).second) continue;
         variants.push_back(di_->createEnumerator(v.name, v.value));
       }
-      return di_->createEnumerationType(
+      auto* tagDI = di_->createEnumerationType(
           cu_, et.getDisplayName(), cu_->getFile(), 0, 32, 32,
           di_->getOrCreateArray(variants),
           di_->createBasicType("i32", 32, dwarf::DW_ATE_signed));
+      if (!et.hasPayload()) return tagDI;
+
+      // Payload enum: describe the storage struct { tag, payload bytes }.
+      // A proper DW_TAG_variant_part description is future work.
+      auto* st = et.cachedStorageType;
+      if (!st || !st->isSized()) {
+        return di_->createUnspecifiedType(et.getDisplayName());
+      }
+      llvm::Type* payloadTy = st->getElementType(1);
+      auto* byteDI =
+          di_->createBasicType("u8", 8, dwarf::DW_ATE_unsigned_char);
+      auto* payloadDI = di_->createArrayType(
+          dl.getTypeSizeInBits(payloadTy),
+          dl.getABITypeAlign(payloadTy).value() * 8, byteDI,
+          di_->getOrCreateArray({di_->getOrCreateSubrange(
+              0, dl.getTypeAllocSize(payloadTy))}));
+      return structFor(et.getDisplayName(), st,
+                       {{"tag", tagDI}, {"payload", payloadDI}});
     }
 
     case Type::Kind::Class: {

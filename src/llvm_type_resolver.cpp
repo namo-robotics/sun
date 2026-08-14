@@ -31,6 +31,84 @@ StructType* LLVMTypeResolver::getStaticPtrType() {
 }
 
 // -----------------------------------------------------------------------------
+// Payload enum layout
+// -----------------------------------------------------------------------------
+
+void LLVMTypeResolver::prepareEnumFieldStorage(const sun::ClassType& classType) {
+  for (const auto& field : classType.getFields()) {
+    if (!field.type) continue;
+    if (field.type->isEnum()) {
+      const auto& enumType = static_cast<const sun::EnumType&>(*field.type);
+      if (enumType.hasPayload()) getEnumStorageType(enumType);
+    } else if (field.type->isClass()) {
+      prepareEnumFieldStorage(
+          static_cast<const sun::ClassType&>(*field.type));
+    }
+  }
+}
+
+StructType* LLVMTypeResolver::getEnumStorageType(
+    const sun::EnumType& enumType) {
+  if (enumType.cachedStorageType) return enumType.cachedStorageType;
+  if (!dataLayout) {
+    logAndThrowError("payload enum '" + enumType.getDisplayName() +
+                     "' layout requires a module DataLayout (compiler bug)");
+  }
+
+  uint64_t maxSize = 8;   // at least { i32 tag } rounded to a unit
+  Align maxAlign(4);      // at least the i32 tag
+  for (const auto& v : enumType.getVariants()) {
+    if (!v.hasPayload()) continue;
+    StructType* variantStruct = getEnumVariantStruct(enumType, v.name);
+    maxSize = std::max(maxSize,
+                       dataLayout->getTypeAllocSize(variantStruct)
+                           .getFixedValue());
+    maxAlign = std::max(maxAlign, dataLayout->getABITypeAlign(variantStruct));
+  }
+
+  const uint64_t unitBytes = maxAlign.value();
+  Type* unitTy = Type::getIntNTy(ctx, unitBytes * 8);
+  const uint64_t tagArea = alignTo(4, unitBytes);
+  const uint64_t payloadBytes = maxSize > tagArea ? maxSize - tagArea : 0;
+  const uint64_t numUnits = (payloadBytes + unitBytes - 1) / unitBytes;
+
+  auto* storage = StructType::create(
+      ctx, {Type::getInt32Ty(ctx), ArrayType::get(unitTy, numUnits)},
+      enumType.getName() + "_struct");
+
+  // The storage must be able to hold every variant view
+  for (const auto& [name, variantStruct] : enumType.cachedVariantStructs) {
+    (void)name;
+    assert(dataLayout->getTypeAllocSize(storage) >=
+               dataLayout->getTypeAllocSize(variantStruct) &&
+           "enum storage smaller than a variant");
+  }
+
+  enumType.cachedStorageType = storage;
+  return storage;
+}
+
+StructType* LLVMTypeResolver::getEnumVariantStruct(
+    const sun::EnumType& enumType, const std::string& variantName) {
+  auto it = enumType.cachedVariantStructs.find(variantName);
+  if (it != enumType.cachedVariantStructs.end()) return it->second;
+
+  const sun::EnumVariant* variant = enumType.getVariant(variantName);
+  assert(variant && variant->hasPayload() &&
+         "variant struct requested for unknown or unit variant");
+
+  std::vector<Type*> fields;
+  fields.push_back(Type::getInt32Ty(ctx));  // tag
+  for (const auto& payloadType : variant->payloadTypes) {
+    fields.push_back(resolve(payloadType));
+  }
+  auto* variantStruct = StructType::create(
+      ctx, fields, enumType.getName() + "_" + variantName + "_struct");
+  enumType.cachedVariantStructs[variantName] = variantStruct;
+  return variantStruct;
+}
+
+// -----------------------------------------------------------------------------
 // Type resolution
 // -----------------------------------------------------------------------------
 
@@ -99,7 +177,10 @@ Type* LLVMTypeResolver::resolve(const sun::Type& type) {
     }
 
     case sun::Type::Kind::Class: {
-      // Class instances are value types represented as structs
+      // Class instances are value types represented as structs. Payload-enum
+      // fields embed their storage struct, which needs the DataLayout — build
+      // those first so ClassType::getStructType can serve them from cache.
+      prepareEnumFieldStorage(static_cast<const sun::ClassType&>(type));
       result = type.toLLVMType(ctx);
       break;
     }
@@ -112,8 +193,13 @@ Type* LLVMTypeResolver::resolve(const sun::Type& type) {
     }
 
     case sun::Type::Kind::Enum: {
-      // Enum values are stored as i32
-      result = llvm::Type::getInt32Ty(ctx);
+      // Payload-free enums are i32 values; payload enums are tagged unions
+      const auto& enumType = static_cast<const sun::EnumType&>(type);
+      if (enumType.hasPayload()) {
+        result = getEnumStorageType(enumType);
+      } else {
+        result = llvm::Type::getInt32Ty(ctx);
+      }
       break;
     }
 
