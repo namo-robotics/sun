@@ -583,7 +583,8 @@ SemanticAnalyzer::instantiateGenericFunction(
     // Declare parameters in scope for body analysis - use the mangled qualified
     // name so nested functions get correct context
     enterFunctionScope(funcSig, clonedProto.getQualifiedName(),
-                       proto.canThrow());
+                       proto.canThrow(),
+                       clonedProto.getResolvedReturnType());
 
     // Record the variadic pack on the function scope (see method path). Today
     // the function path never resolves variadic types, so this is a no-op until
@@ -888,7 +889,7 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
 
   // Enter method scope and declare parameters
   enterFunctionScope(methodSig, sun::QualifiedName(modulePath, mangledName),
-                     proto.canThrow());
+                     proto.canThrow(), proto.getResolvedReturnType());
 
   // Record the variadic pack (name + resolved element types) on the function
   // scope so `args...` can be expanded into concrete typed args during body

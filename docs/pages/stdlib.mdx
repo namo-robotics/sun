@@ -91,8 +91,8 @@ var len = v.size();       // 2
 | `isEmpty()` | `() bool` | Check if empty |
 | `reserve(n)` | `(i64) void` | Ensure capacity for at least n elements |
 | `clear()` | `() void` | Remove all elements (doesn't deallocate) |
-| `first()` | `() T, IError` | Get first element |
-| `last()` | `() T, IError` | Get last element |
+| `first()` | `() Option<T>` | Get first element; `None` when empty |
+| `last()` | `() Option<T>` | Get last element; `None` when empty |
 | `iter()` | `() VecIterator<T>` | Get iterator for for-in loops |
 
 ### Indexing
@@ -131,6 +131,7 @@ m.remove(42);
 |--------|-----------|-------------|
 | `insert(key, value)` | `(K, V) void` | Insert or update a key-value pair |
 | `get(key)` | `(K) V, IError` | Get value by key (throws if not found) |
+| `find(key)` | `(K) Option<V>` | Get value by key; `None` if not present |
 | `getOrDefault(key, default)` | `(K, V) V` | Get value or return default |
 | `remove(key)` | `(K) V, IError` | Remove and return value (throws if not found) |
 | `contains(key)` | `(K) bool` | Check if key exists |
@@ -178,6 +179,9 @@ s.append_char(33);         // Append '!'
 | `append(other)` | `(ref String) void` | Append another String |
 | `append_literal(s)` | `(static_ptr<u8>) void` | Append a string literal |
 | `equals_literal(s)` | `(static_ptr<u8>) bool` | Compare with a string literal |
+| `find_char(ch)` | `(u8) Option<i64>` | Index of first occurrence; `None` if absent |
+| `rfind_char(ch)` | `(u8) Option<i64>` | Index of last occurrence; `None` if absent |
+| `contains_char(ch)` | `(u8) bool` | Check if the byte occurs |
 
 ### Slicing
 
@@ -198,6 +202,9 @@ A non-owning view into a `String`. Provides read-only access to a substring with
 | `length()` | `() i64` | View length |
 | `at(i)` | `(i64) u8` | Get byte at index (relative to view) |
 | `equals_literal(s)` | `(static_ptr<u8>) bool` | Compare with a string literal |
+| `find_char(ch)` | `(u8) Option<i64>` | Index of first occurrence; `None` if absent |
+| `rfind_char(ch)` | `(u8) Option<i64>` | Index of last occurrence; `None` if absent |
+| `contains_char(ch)` | `(u8) bool` | Check if the byte occurs |
 
 <Callout type="warning">
   A `StringView` must not outlive the parent `String`. The view holds a reference to the String's internal memory.
@@ -242,6 +249,30 @@ m.unlock();
 | `unlock()` | `() void` | Release the lock |
 
 See [Threads](/threads) for usage with spawned threads.
+
+## Option\<T\> and Result\<T, E\>
+
+Payload enums for absence and fallibility, defined in `option.sun`:
+
+```sun
+enum Option<T> { Some(T), None }
+enum Result<T, E> { Ok(T), Err(E) }
+```
+
+Inspect them with `match`; construction infers type arguments from the
+payload (`Option.Some(42)`) or from the expected type (`Option.None` in
+return position or against an annotation):
+
+```sun
+var v = match m.find(key) {
+    Option.Some(x) => x,
+    Option.None => fallback
+};
+```
+
+Use `Option` for "might not be there" (lookups, first/last), and `IError`
+throwing for actual failures. `Result<T, E>` suits fallible operations whose
+error is a value rather than an exception.
 
 ## Error Types
 

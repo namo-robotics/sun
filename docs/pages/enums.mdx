@@ -129,8 +129,86 @@ function to_rgb(c: Color) i32 {
 
 See [Match Expressions](/match) for more details.
 
+## Payload-Carrying Variants
+
+Variants can carry data, turning an enum into a tagged union:
+
+```sun
+enum Shape {
+    Circle(f64),          // radius
+    Rect(f64, f64),       // width, height
+    Empty
+}
+
+var c = Shape.Circle(2.5);
+var r = Shape.Rect(3.0, 4.0);
+```
+
+The only way to reach a payload is a `match` with a destructuring pattern,
+which binds each payload position to a fresh immutable local (use `_` to skip
+a position):
+
+```sun
+function area(s: ref Shape) f64 {
+    return match s {
+        Shape.Circle(r) => 3.14 * r * r,
+        Shape.Rect(w, h) => w * h,
+        Shape.Empty => 0.0
+    };
+}
+```
+
+Matches on enums are checked for exhaustiveness: every variant must be
+covered, or a `_` arm must be present. The error names the missing variants.
+
+Rules for payload enums:
+
+- They are value types, passed by `ref` like classes and returned by value.
+- `==` / `!=` are not defined on them — `match` is the eliminator.
+- Payload types may be primitives, pointers, other enums, and classes
+  without `deinit`. References, arrays, and recursive payloads (without
+  `raw_ptr` indirection) are rejected.
+- Payload-free enums are unchanged: plain `i32` values with `==` comparison,
+  usable in `extern "C"` signatures. Payload enums cannot cross the C
+  boundary yet.
+
+## Generic Enums
+
+Enums can take type parameters, making reusable shapes like options and
+results expressible:
+
+```sun
+enum Option<T> { Some(T), None }
+enum Result<T, E> { Ok(T), Err(E) }
+
+function find(x: i32) Option<i32> {
+    if (x > 0) { return Option.Some(x * 2); }  // T inferred from the argument
+    return Option.None;                        // T from the return type
+}
+
+var a = Option.Some(21);           // Option<i32>, inferred
+var b: Option<f64> = Option.None;  // type arguments from the annotation
+```
+
+Type arguments are inferred from payload arguments where possible; a bare
+unit variant like `Option.None` takes them from the expected type (a variable
+annotation, the function return type, or an assigned field), and it is an
+error when no context determines them. Each specialization is a distinct
+type — `Option<i32>` and `Option<f64>` coexist independently — and matches
+use the generic name in patterns:
+
+```sun
+match a {
+    Option.Some(v) => v,
+    Option.None => 0
+}
+```
+
 <Callout type="info">
-  Sun enums are currently simple tagged values without associated data. Support for enums with associated data (like Rust's `Option<T>` or `Result<T, E>`) is planned for a future release.
+  Not yet supported: explicit type arguments in expression position
+  (`Option<i32>.Some(5)` — use inference or an annotation), nested patterns,
+  arrays or globals of payload enums, and payloads owning heap resources.
+  These are planned follow-ups.
 </Callout>
 
 ## Trailing Commas

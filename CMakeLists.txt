@@ -140,6 +140,7 @@ add_library(sun_lib
     src/codegen/extern_c.cpp
     src/codegen/if_expressions.cpp
     src/codegen/match_expressions.cpp
+    src/codegen/enums.cpp
     src/codegen/loops.cpp
     src/codegen/return_statements.cpp
     src/codegen/block_expressions.cpp
@@ -158,6 +159,7 @@ add_library(sun_lib
     src/semantic_analysis/analysis.cpp
     src/semantic_analysis/analysis_utils.cpp
     src/semantic_analysis/declaration_collection.cpp
+    src/semantic_analysis/enums.cpp
     src/llvm_type_resolver.cpp
     src/borrow_checker/borrow_state.cpp
     src/borrow_checker/borrow_checker.cpp
@@ -238,6 +240,7 @@ if(NOT SKIP_STDLIB)
         ${CMAKE_SOURCE_DIR}/stdlib/allocator.sun
         ${CMAKE_SOURCE_DIR}/stdlib/unique.sun
         ${CMAKE_SOURCE_DIR}/stdlib/errors.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/option.sun
         ${CMAKE_SOURCE_DIR}/stdlib/slice.sun
         ${CMAKE_SOURCE_DIR}/stdlib/contiguous_buffer.sun
         ${CMAKE_SOURCE_DIR}/stdlib/vec.sun

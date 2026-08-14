@@ -585,6 +585,15 @@ void ASTSerializer::serializeMatch(const MatchExprAST& expr,
     }
     armProto->set_is_wildcard(arm.isWildcard);
     *armProto->mutable_body() = serialize(*arm.body);
+    armProto->set_has_payload_parens(arm.hasPayloadParens);
+    for (const auto& binding : arm.bindings) {
+      auto* bindingProto = armProto->add_bindings();
+      bindingProto->set_name(binding.name);
+      bindingProto->set_is_wildcard(binding.isWildcard);
+      if (config_.include_location) {
+        *bindingProto->mutable_location() = serializePosition(binding.location);
+      }
+    }
   }
 }
 
@@ -839,6 +848,9 @@ void ASTSerializer::serializeEnumDef(const EnumDefinitionAST& expr,
                                      ast::ASTNode* node) const {
   auto* enumDef = node->mutable_enum_def();
   enumDef->set_name(expr.getName());
+  for (const auto& typeParam : expr.getTypeParameters()) {
+    enumDef->add_type_parameters(typeParam);
+  }
 
   for (const auto& variant : expr.getVariants()) {
     auto* variantProto = enumDef->add_variants();
@@ -846,6 +858,9 @@ void ASTSerializer::serializeEnumDef(const EnumDefinitionAST& expr,
     variantProto->set_value(variant.value);
     if (config_.include_location) {
       *variantProto->mutable_location() = serializePosition(variant.location);
+    }
+    for (const auto& payloadType : variant.payloadTypes) {
+      *variantProto->add_payload_types() = serializeTypeAnnotation(payloadType);
     }
   }
 }

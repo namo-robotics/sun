@@ -173,6 +173,15 @@ module sun {
       return this.values.get(probe);
     }
 
+    // Get value by key; None if not present
+    function find(key: K) Option<V> {
+      var probe: i64 = this.findIndex(key);
+      if (probe < 0) {
+        return Option.None;
+      }
+      return Option.Some(this.values.get(probe));
+    }
+
     // Get value by key, returns default if not found
     function getOrDefault(key: K, default_value: V) V {
       var probe: i64 = this.findIndex(key);

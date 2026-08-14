@@ -950,6 +950,18 @@ Value* CodegenVisitor::codegenMethodCall(const CallExprAST& expr,
         memberAccess);
   }
 
+  // Enum variant construction: EnumName.Variant(args...). Sema resolved the
+  // object to the enum type and validated arity/types.
+  if (objectType && objectType->isEnum()) {
+    auto& enumType = static_cast<sun::EnumType&>(*objectType);
+    const auto* variant = enumType.getVariant(methodName);
+    if (variant && variant->hasPayload()) {
+      return codegenEnumVariantConstruction(expr, enumType, *variant);
+    }
+    logAndThrowError("Variant '" + methodName + "' of enum '" +
+                     enumType.getDisplayName() + "' carries no payload");
+  }
+
   // Handle array.shape() builtin
   if (objectType && (objectType->isArray() ||
                      (objectType->isReference() &&

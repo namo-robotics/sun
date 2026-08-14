@@ -272,6 +272,12 @@ struct GenericInterfaceInfo {
   std::vector<std::string> typeParameters;  // ["T", "U", etc.]
 };
 
+// Information about a generic enum definition (template)
+struct GenericEnumInfo {
+  const EnumDefinitionAST* AST;             // Original AST node
+  std::vector<std::string> typeParameters;  // ["T", "U", etc.]
+};
+
 // Information about a generic function definition (template)
 struct GenericFunctionInfo {
   const FunctionAST* AST;                    // Original AST node
@@ -328,6 +334,7 @@ struct SemanticScopeBase
   std::map<std::string, std::shared_ptr<sun::InterfaceType>> interfaces;
   std::map<std::string, GenericInterfaceInfo> genericInterfaces;
   std::map<std::string, std::shared_ptr<sun::EnumType>> enums;
+  std::map<std::string, GenericEnumInfo> genericEnums;
   std::map<sun::QualifiedName, GenericFunctionInfo> genericFunctions;
   std::map<std::string, std::shared_ptr<SemanticScopeBase>> childModules;
   std::map<std::string, VariableInfo> namespacedVariables;
@@ -362,6 +369,7 @@ struct SemanticScopeBase
   const GenericInterfaceInfo* findGenericInterface(
       const std::string& name) const;
   std::shared_ptr<sun::EnumType> findEnum(const std::string& name) const;
+  const GenericEnumInfo* findGenericEnum(const std::string& name) const;
   void collectFunctions(const std::string& prefix,
                         std::vector<FunctionInfo>& results) const;
 
@@ -393,6 +401,9 @@ struct SemanticScopeBase
 
   // Lookup an enum by name in the scope chain
   std::shared_ptr<sun::EnumType> lookupEnum(const std::string& name) const;
+
+  // Lookup a generic enum by name in the scope chain
+  const GenericEnumInfo* lookupGenericEnum(const std::string& name) const;
 
   // Lookup a variable by name in the scope chain
   VariableInfo* lookupVariable(const std::string& name);
@@ -486,6 +497,7 @@ struct FunctionScope : SemanticScopeBase {
   std::string functionSignature;  // e.g., "outer(i32)"
   sun::QualifiedName functionName;
   bool functionCanThrow = false;
+  sun::TypePtr functionReturnType;  // for return-position type inference
 
   // Variadic parameter pack for this function, when it is a specialized
   // variadic body. Holds the pack's name (e.g. "args") and the resolved type of

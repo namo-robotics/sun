@@ -187,11 +187,15 @@ TEST(VecTest, first_and_last) {
         v.push(10);
         v.push(20);
         v.push(30);
-        try {
-            return v.first() + v.last();
-        } catch (e: IError) {
-            return -1;
-        }
+        var f = match v.first() {
+            Option.Some(x) => x,
+            Option.None => -1
+        };
+        var l = match v.last() {
+            Option.Some(x) => x,
+            Option.None => -1
+        };
+        return f + l;
     }
   )");
   // 10 + 30 = 40

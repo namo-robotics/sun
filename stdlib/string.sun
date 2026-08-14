@@ -309,31 +309,34 @@ module sun {
     // Search Methods
     // ========================================================================
 
-    // Find first occurrence of byte, returns -1 if not found
-    function find_char(ch: u8) i64 {
+    // Find first occurrence of byte; None if not found
+    function find_char(ch: u8) Option<i64> {
       for (var i: i64 = 0; i < this.len; i = i + 1) {
         if (this.data.get_unchecked(i) == ch) {
-          return i;
+          return Option.Some(i);
         }
       }
-      return -1;
+      return Option.None;
     }
 
-    // Find last occurrence of byte, returns -1 if not found
-    function rfind_char(ch: u8) i64 {
+    // Find last occurrence of byte; None if not found
+    function rfind_char(ch: u8) Option<i64> {
       var i: i64 = this.len - 1;
       while (i >= 0) {
         if (this.data.get_unchecked(i) == ch) {
-          return i;
+          return Option.Some(i);
         }
         i = i - 1;
       }
-      return -1;
+      return Option.None;
     }
 
     // Check if string contains byte
     function contains_char(ch: u8) bool {
-      return this.find_char(ch) >= 0;
+      return match this.find_char(ch) {
+        Option.Some(i) => true,
+        Option.None => false
+      };
     }
 
     // Check if string starts with literal

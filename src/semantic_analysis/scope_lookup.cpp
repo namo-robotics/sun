@@ -119,6 +119,17 @@ std::shared_ptr<sun::EnumType> SemanticScopeBase::lookupEnum(
 }
 
 // -------------------------------------------------------------------
+// lookupGenericEnum — find a generic enum template in the scope chain
+// -------------------------------------------------------------------
+const GenericEnumInfo* SemanticScopeBase::lookupGenericEnum(
+    const std::string& name) const {
+  return lookupInChain<const GenericEnumInfo*>(
+      [&](const SemanticScopeBase* scope) {
+        return scope->findGenericEnum(name);
+      });
+}
+
+// -------------------------------------------------------------------
 // lookupVariable — find a variable in the scope chain
 // -------------------------------------------------------------------
 VariableInfo* SemanticScopeBase::lookupVariable(const std::string& name) {

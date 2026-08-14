@@ -195,14 +195,8 @@ SemanticAnalyzer::instantiateGenericInterface(
 }
 
 // -------------------------------------------------------------------
-// Enum support
+// Enum lookup (the rest of enum analysis lives in enums.cpp)
 // -------------------------------------------------------------------
-
-void SemanticAnalyzer::registerEnum(const std::string& name,
-                                    std::shared_ptr<sun::EnumType> enumType) {
-  // Register in current scope
-  currentScope->enums[name] = enumType;
-}
 
 std::shared_ptr<sun::EnumType> SemanticAnalyzer::lookupEnum(
     const std::string& name) const {

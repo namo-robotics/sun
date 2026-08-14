@@ -1,0 +1,25 @@
+// stdlib/option.sun - Optional values and fallible results
+//
+// Option<T> represents a value that may be absent; Result<T, E> represents
+// success or failure. Both are payload enums inspected with match:
+//
+//   var found = m.find(key);
+//   var v = match found {
+//       Option.Some(x) => x,
+//       Option.None => fallback
+//   };
+//
+// Type arguments are inferred from payload arguments (Option.Some(42)) or
+// from the expected type (return position, annotations, field assignment).
+
+module sun {
+  enum Option<T> {
+    Some(T),
+    None
+  }
+
+  enum Result<T, E> {
+    Ok(T),
+    Err(E)
+  }
+}

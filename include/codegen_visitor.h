@@ -176,7 +176,7 @@ class CodegenVisitor {
       : ctx(ctx),
         module(ctx.mainModule.get()),
         typeRegistry(std::move(registry)),
-        typeResolver(ctx.getContext()),
+        typeResolver(ctx.getContext(), &ctx.mainModule->getDataLayout()),
         debugInfo(ctx.mainModule.get(), ctx.debugInfoEnabled()),
         externC(ctx, ctx.mainModule.get()),
         threadUtils(ctx, ctx.mainModule.get()) {}
@@ -252,6 +252,26 @@ class CodegenVisitor {
 
   // Method call dispatch helpers (in call_expressions.cpp)
   // Top-level method call handler: dispatches to appropriate sub-handler
+  // Payload enums: struct-valued like classes, handled by pointer
+  static bool isPayloadEnum(const sun::TypePtr& t) {
+    return t && t->isEnum() &&
+           static_cast<const sun::EnumType*>(t.get())->hasPayload();
+  }
+
+  // Enum variant construction: EnumName.Variant(args...) -> storage alloca ptr
+  llvm::Value* codegenEnumVariantConstruction(const CallExprAST& expr,
+                                              sun::EnumType& enumType,
+                                              const sun::EnumVariant& variant);
+
+  // Variant access without arguments: i32 constant for payload-free enums,
+  // tagged storage alloca for unit variants of payload enums
+  llvm::Value* codegenEnumVariantAccess(sun::EnumType& enumType,
+                                        const sun::EnumVariant& variant);
+
+  // Tag-switch match with payload destructuring
+  llvm::Value* codegenEnumMatch(const MatchExprAST& expr,
+                                sun::EnumType& enumType);
+
   llvm::Value* codegenMethodCall(const CallExprAST& expr,
                                  const MemberAccessAST& memberAccess);
 

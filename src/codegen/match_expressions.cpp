@@ -7,6 +7,15 @@
 using namespace llvm;
 
 Value* CodegenVisitor::codegen(const MatchExprAST& expr) {
+  // All enum matches lower as a tag switch (sema guarantees variant patterns
+  // and exhaustiveness); the equality chain below handles scalar
+  // discriminants (ints, floats, strings).
+  sun::TypePtr discType =
+      sun::unwrapRef(expr.getDiscriminant()->getResolvedType());
+  if (discType && discType->isEnum()) {
+    return codegenEnumMatch(expr, static_cast<sun::EnumType&>(*discType));
+  }
+
   // Generate code for the discriminant (value being matched)
   Value* discVal = codegen(*expr.getDiscriminant());
   if (!discVal) {

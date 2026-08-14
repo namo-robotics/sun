@@ -220,6 +220,27 @@ function main() i32 {
 }
 ```
 
+## Destructuring Enum Payloads
+
+Matching a payload-carrying enum destructures the payload into fresh
+bindings; `_` skips a position:
+
+```sun
+enum Shape { Circle(f64), Rect(f64, f64), Empty }
+
+function describe(s: ref Shape) f64 {
+    return match s {
+        Shape.Circle(r) => r,
+        Shape.Rect(w, _) => w,
+        Shape.Empty => 0.0
+    };
+}
+```
+
+Enum matches are exhaustive: cover every variant or add a `_` arm. Duplicate
+arms and arms after `_` produce unreachable-arm warnings.
+
 <Callout type="info">
-  Currently, match supports equality matching only. Future versions will add support for pattern destructuring, guards, and range patterns.
+  For non-enum discriminants match remains equality-based. Guards, range
+  patterns, and nested destructuring are planned for future versions.
 </Callout>

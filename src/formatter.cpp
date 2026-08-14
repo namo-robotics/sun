@@ -456,15 +456,36 @@ class Formatter {
     lastLine_ = savedLast;
   }
 
+  void printVariant(const EnumVariantDecl& v) {
+    out_ += v.name;
+    if (v.hasPayload()) {
+      out_ += '(';
+      for (size_t j = 0; j < v.payloadTypes.size(); ++j) {
+        if (j) out_ += ", ";
+        printType(v.payloadTypes[j]);
+      }
+      out_ += ')';
+    }
+  }
+
   void printEnum(const EnumDefinitionAST& n) {
     out_ += "enum ";
     out_ += n.getName();
+    const auto& typeParams = n.getTypeParameters();
+    if (!typeParams.empty()) {
+      out_ += '<';
+      for (size_t i = 0; i < typeParams.size(); ++i) {
+        if (i) out_ += ", ";
+        out_ += typeParams[i];
+      }
+      out_ += '>';
+    }
     const auto& variants = n.getVariants();
     if (!isMultiLine(n.getLocation())) {
       out_ += " { ";
       for (size_t i = 0; i < variants.size(); ++i) {
         if (i) out_ += ", ";
-        out_ += variants[i].name;
+        printVariant(variants[i]);
       }
       out_ += " }";
       return;
@@ -474,7 +495,7 @@ class Formatter {
     for (size_t i = 0; i < variants.size(); ++i) {
       flushCommentsBefore(variants[i].location.offset);
       writeIndent();
-      out_ += variants[i].name;
+      printVariant(variants[i]);
       if (i + 1 < variants.size()) out_ += ',';
       lastLine_ = endLineOf(variants[i].location);
       emitTrailingComments(lastLine_);
@@ -526,6 +547,14 @@ class Formatter {
         out_ += '_';
       } else {
         printExpr(*arm.pattern);
+        if (arm.hasPayloadParens) {
+          out_ += '(';
+          for (size_t j = 0; j < arm.bindings.size(); ++j) {
+            if (j) out_ += ", ";
+            out_ += arm.bindings[j].isWildcard ? "_" : arm.bindings[j].name;
+          }
+          out_ += ')';
+        }
       }
       out_ += " => ";
       if (arm.body) {

@@ -394,8 +394,26 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       auto& matchExpr = static_cast<MatchExprAST&>(expr);
       // Analyze the discriminant expression
       analyzeExpr(const_cast<ExprAST&>(*matchExpr.getDiscriminant()));
+
+      // Enum discriminants get variant patterns, payload bindings, and
+      // exhaustiveness checking
+      sun::TypePtr discType =
+          unwrapRef(matchExpr.getDiscriminant()->getResolvedType());
+      if (discType && discType->isEnum()) {
+        analyzeEnumMatch(matchExpr,
+                         std::static_pointer_cast<sun::EnumType>(discType),
+                         expectedType);
+        expr.setResolvedType(inferType(expr));
+        break;
+      }
+
       // Analyze each arm, propagating expectedType to arm bodies
       for (const auto& arm : matchExpr.getArms()) {
+        if (arm.hasPayloadParens) {
+          logAndThrowError(
+              "Destructuring patterns require an enum discriminant",
+              arm.pattern ? arm.pattern->getLocation() : expr.getLocation());
+        }
         if (arm.pattern) {
           analyzeExpr(const_cast<ExprAST&>(*arm.pattern));
         }
@@ -541,6 +559,24 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       auto& binExpr = static_cast<BinaryExprAST&>(expr);
       analyzeExpr(const_cast<ExprAST&>(*binExpr.getLHS()));
       analyzeExpr(const_cast<ExprAST&>(*binExpr.getRHS()));
+
+      // Payload enums have no structural equality; match is the eliminator
+      TokenKind binOp = binExpr.getOp().kind;
+      if (binOp == TokenKind::EQUAL_EQUAL || binOp == TokenKind::NOT_EQUAL) {
+        for (const ExprAST* side :
+             {binExpr.getLHS(), binExpr.getRHS()}) {
+          sun::TypePtr sideType = unwrapRef(side->getResolvedType());
+          if (sideType && sideType->isEnum() &&
+              static_cast<sun::EnumType*>(sideType.get())->hasPayload()) {
+            logAndThrowError(
+                "Cannot compare enum '" +
+                    static_cast<sun::EnumType*>(sideType.get())
+                        ->getDisplayName() +
+                    "' with '==' ; use match to inspect payload enums",
+                expr.getLocation());
+          }
+        }
+      }
       expr.setResolvedType(inferType(expr));
       break;
     }
@@ -596,7 +632,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
 
     case ASTNodeType::CALL: {
       auto& callExpr = static_cast<CallExprAST&>(expr);
-      analyzeCall(callExpr);
+      analyzeCall(callExpr, expectedType);
       break;
     }
 
@@ -619,7 +655,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
     case ASTNodeType::RETURN: {
       auto& returnExpr = static_cast<ReturnExprAST&>(expr);
       if (returnExpr.hasValue()) {
-        analyzeExpr(const_cast<ExprAST&>(*returnExpr.getValue()));
+        // Propagate the function's return type for return-position inference
+        // (e.g. `return Option.None;`)
+        analyzeExpr(const_cast<ExprAST&>(*returnExpr.getValue()),
+                    currentFunctionReturnType());
         expr.setResolvedType(inferType(*returnExpr.getValue()));
       } else {
         expr.setResolvedType(sun::Types::Void());
@@ -1097,46 +1136,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
     }
 
     case ASTNodeType::ENUM_DEFINITION: {
-      auto& enumDef = static_cast<EnumDefinitionAST&>(expr);
-
-      // Forbid redefinition of enum in same module
-      if (definedSymbols_.count(enumDef.getName())) {
-        logAndThrowError("Redefinition of enum '" + enumDef.getName() + "'",
-                         enumDef.getLocation());
-      }
-
-      // Validate enum name
-      validateNotReserved(enumDef.getName(), "Enum name",
-                          enumDef.getLocation());
-
-      // Validate variant names and check for duplicates
-      std::set<std::string> seenVariants;
-      for (const auto& variant : enumDef.getVariants()) {
-        validateNotReserved(variant.name, "Enum variant name",
-                            variant.location);
-        if (seenVariants.count(variant.name)) {
-          logAndThrowError("Duplicate enum variant '" + variant.name +
-                               "' in enum '" + enumDef.getName() + "'",
-                           variant.location);
-        }
-        seenVariants.insert(variant.name);
-      }
-
-      // Create the enum type
-      auto enumType = typeRegistry->getEnum(enumDef.getName());
-
-      // Add variants to the enum type
-      for (const auto& variant : enumDef.getVariants()) {
-        enumType->addVariant(variant.name, variant.value);
-      }
-
-      // Register the enum in the namespace
-      registerEnum(enumDef.getName(), enumType);
-
-      // Track symbol for redefinition detection
-      definedSymbols_.insert(enumDef.getName());
-
-      expr.setResolvedType(sun::Types::Void());
+      analyzeEnumDefinition(static_cast<EnumDefinitionAST&>(expr));
       break;
     }
 
@@ -1157,6 +1157,11 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
             static_cast<const VariableReferenceAST&>(*memberAccess.getObject());
         if (lookupEnum(varRef.getName())) {
           isEnumAccess = true;
+        } else if (tryAnalyzeGenericEnumUnitVariant(memberAccess,
+                                                    expectedType)) {
+          // Generic enum unit variant (Option.None): resolved from expected
+          // type in enums.cpp
+          break;
         }
       }
 
@@ -1173,13 +1178,23 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
 
     case ASTNodeType::MEMBER_ASSIGNMENT: {
       auto& memberAssign = static_cast<MemberAssignmentAST&>(expr);
-      // Analyze the object and value expressions
+      // Analyze the object first so the field type can flow into the value
+      // as the expected type (e.g. `this.value = Option.None;`)
       analyzeExpr(const_cast<ExprAST&>(*memberAssign.getObject()));
-      analyzeExpr(const_cast<ExprAST&>(*memberAssign.getValue()));
 
-      // Get the field type for type compatibility check
       sun::TypePtr objectType = memberAssign.getObject()->getResolvedType();
       objectType = unwrapRef(objectType);
+
+      sun::TypePtr expectedFieldType;
+      if (objectType && objectType->isClass()) {
+        auto* classType = static_cast<sun::ClassType*>(objectType.get());
+        if (const sun::ClassField* field =
+                classType->getField(memberAssign.getMemberName())) {
+          expectedFieldType = field->type;
+        }
+      }
+      analyzeExpr(const_cast<ExprAST&>(*memberAssign.getValue()),
+                  expectedFieldType);
 
       if (objectType && objectType->isClass()) {
         auto* classType = static_cast<sun::ClassType*>(objectType.get());
@@ -1831,16 +1846,22 @@ void SemanticAnalyzer::validateExternSignature(FunctionAST& func) {
   // Still excluded are the types with no C spelling at all: arrays and slices
   // (fat pointers), interfaces (vtable pairs), lambdas (closures), and
   // error unions.
-  auto isABISafeParam = [](const sun::TypePtr& t) {
+  // Payload enums have a Sun-private tagged-union layout with no C ABI
+  // classification yet; only payload-free (i32) enums cross the C boundary.
+  auto isCStyleEnum = [](const sun::TypePtr& t) {
+    return t->isEnum() &&
+           !static_cast<const sun::EnumType*>(t.get())->hasPayload();
+  };
+  auto isABISafeParam = [&](const sun::TypePtr& t) {
     return t && (t->isPrimitive() || t->isRawPointer() || t->isReference() ||
-                 t->isClass() || t->isEnum());
+                 t->isClass() || isCStyleEnum(t));
   };
   // Returns allow the same, minus `ref`: Sun's ref return has auto-deref
   // semantics that do not correspond to anything C returns. Use raw_ptr<T>
   // for a returned pointer.
-  auto isABISafeReturn = [](const sun::TypePtr& t) {
+  auto isABISafeReturn = [&](const sun::TypePtr& t) {
     return t && (t->isPrimitive() || t->isRawPointer() || t->isClass() ||
-                 t->isEnum());
+                 isCStyleEnum(t));
   };
 
   if (proto.hasResolvedParamTypes()) {
@@ -1905,9 +1926,20 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
   std::string funcSig = getFunctionSignature(proto.getMangledName(),
                                              proto.getResolvedParamTypes());
 
+  // Return type for return-position inference. Some paths (class method
+  // pass 2) reach here before the proto's resolved return type is applied;
+  // resolve the annotation in the current scope (type parameter bindings for
+  // specialized classes are active here).
+  sun::TypePtr scopeReturnType = proto.getResolvedReturnType();
+  if (!scopeReturnType && proto.hasReturnType() && !proto.isGeneric()) {
+    scopeReturnType =
+        substituteTypeParameters(typeAnnotationToType(*proto.getReturnType()));
+  }
+
   // Enter function scope with signature for nested function qualification
   // Pass canThrow flag so throw expressions can be validated
-  enterFunctionScope(funcSig, proto.getQualifiedName(), proto.canThrow());
+  enterFunctionScope(funcSig, proto.getQualifiedName(), proto.canThrow(),
+                     scopeReturnType);
 
   // Declare 'this' for methods (when we're inside a class context)
   if (currentClass) {
@@ -1984,7 +2016,8 @@ void SemanticAnalyzer::analyzeLambda(LambdaAST& lambda) {
   // Enter function scope (empty signature - lambdas are anonymous)
   // Nested functions in lambdas will still get outer function prefixes
   // Pass canThrow flag from the lambda's prototype
-  enterFunctionScope("", sun::QualifiedName(), proto.canThrow());
+  enterFunctionScope("", sun::QualifiedName(), proto.canThrow(),
+                     proto.getResolvedReturnType());
 
   // Lambdas don't have type parameters (no generic lambdas)
 
@@ -2209,8 +2242,16 @@ void SemanticAnalyzer::clearResolvedTypes(ExprAST& expr) {
     case ASTNodeType::MATCH: {
       auto& match = static_cast<MatchExprAST&>(expr);
       clearResolvedTypes(const_cast<ExprAST&>(*match.getDiscriminant()));
-      for (const auto& arm : match.getArms()) {
-        clearResolvedTypes(const_cast<ExprAST&>(*arm.body));
+      for (auto& arm : match.getArmsMutable()) {
+        if (arm.pattern) {
+          clearResolvedTypes(*arm.pattern);
+        }
+        arm.resolvedVariantTag = -1;
+        for (auto& binding : arm.bindings) {
+          binding.resolvedType = nullptr;
+          binding.resolvedMangledName.clear();
+        }
+        clearResolvedTypes(*arm.body);
       }
       break;
     }
@@ -2321,10 +2362,17 @@ void SemanticAnalyzer::analyzeMethodWithBindings(
       classType->getMangledMethodName(proto.getName()), substitutedParamTypes);
   std::string mangledMethodName =
       classType->getMangledMethodName(proto.getName());
+  // Resolve the return type under the active bindings so return-position
+  // inference (e.g. `return Option.None;`) has the expected type
+  sun::TypePtr methodReturnType;
+  if (proto.hasReturnType()) {
+    methodReturnType =
+        substituteTypeParameters(typeAnnotationToType(*proto.getReturnType()));
+  }
   enterFunctionScope(
       methodSig,
       sun::QualifiedName(std::vector<std::string>{}, mangledMethodName),
-      proto.canThrow());
+      proto.canThrow(), methodReturnType);
   if (classType) {
     declareVariable("this", classType, /*isParam=*/true);
   }
@@ -2444,7 +2492,8 @@ void SemanticAnalyzer::maybeResolveBoundMethodRef(MemberAccessAST& memberAccess,
   memberAccess.setIsBoundMethodRef(true);
 }
 
-void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
+void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
+                                   sun::TypePtr expectedType) {
   // Check for unsafe intrinsic calls (non-generic)
   // Generic intrinsics (_load<T>, _store<T>, _address_of<T>) are checked in
   // type_inference.cpp
@@ -2482,6 +2531,12 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr) {
       logAndThrowError("'" + funcName + "' can only be used in an unsafe block",
                        callExpr.getLocation());
     }
+  }
+
+  // Enum variant construction: EnumName.Variant(args...) for concrete and
+  // generic enums; intercepted before generic callee analysis (see enums.cpp)
+  if (tryAnalyzeEnumConstruction(callExpr, expectedType)) {
+    return;
   }
 
   // Get parameter types early for array literal type propagation
@@ -3136,3 +3191,6 @@ void SemanticAnalyzer::analyzeGenericClassConstruction(
 
   genericCall.setResolvedType(inferGenericCallType(genericCall));
 }
+
+// -------------------------------------------------------------------
+// Payload enums

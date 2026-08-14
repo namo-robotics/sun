@@ -112,9 +112,9 @@ be written generically. This matters more than any new generics feature.
 Enums and `match` exist; without exhaustiveness they are convenience rather than
 safety, which undercuts the central pitch of the language.
 
-- [ ] Exhaustiveness checking over enum patterns
-- [ ] Useful diagnostics naming the uncovered cases
-- [ ] Reachability / duplicate-arm warnings
+- [x] Exhaustiveness checking over enum patterns
+- [x] Useful diagnostics naming the uncovered cases
+- [x] Reachability / duplicate-arm warnings
 
 ---
 
@@ -123,12 +123,35 @@ safety, which undercuts the central pitch of the language.
 ### Optionals
 
 Without a first-class optional, every "might not be there" API invents its own
-convention and none of them compose.
+convention and none of them compose. Decision: the Rust route — general
+payload-carrying enums, with `Option<T>` landing as ordinary stdlib code once
+enums are generic.
 
-- [ ] `Option<T>` (or nullable type syntax — see *Design Decisions Needed*)
-- [ ] Niche-optimised representation where possible
-- [ ] Pattern matching integration
-- [ ] Migrate stdlib APIs that currently signal absence via errors or sentinels
+- [x] Payload-carrying enum variants (`Circle(f64)`), tagged-union layout,
+      construction, and match destructuring with payload bindings (Stage 1;
+      deferred within it: payloads owning heap resources / drop glue, arrays
+      and globals of payload enums, C-ABI classification, nested patterns,
+      niche layout, `DW_TAG_variant_part` debug info)
+- [x] Generic enums + expected-type inference (Stage 2): `enum Option<T>`,
+      type arguments inferred from payload arguments (`Option.Some(42)`) or
+      the expected type (`var x: Option<i32> = Option.None;`, return
+      position, member assignment); monomorphized like generic classes with
+      specializations stored on the template AST; works across `.moon`
+      (deferred within it: explicit `Option<i32>.Some(...)` in expression
+      position, nested-generic payload unification)
+- [x] `Option<T>` and `Result<T, E>` in the stdlib (`stdlib/option.sun`,
+      exported through stdlib.moon; constructed as `Option.Some(x)` /
+      `Option.None` — bare `Some`/`None` prelude names are a possible later
+      nicety)
+- [x] Starter migration: `Map.find` (new, alongside throwing `get`),
+      `String.find_char`/`rfind_char` → `Option<i64>` (sentinel `-1`
+      removed), `Vec.first`/`last` → `Option<T>`; interface payloads allowed
+      so `Vec<ISomething>` keeps working
+- [ ] Niche-optimised representation where possible (e.g.
+      `Option<raw_ptr<T>>` as a nullable pointer)
+- [ ] Migrate the remaining absence APIs (`LinkedList.first/last`,
+      `Vec.pop`, iterator `next()` — the last needs the `IIterator` contract
+      rework); blocked on drop glue for owning payloads where `T` has deinit
 
 ### Tuples
 
@@ -222,6 +245,43 @@ hits. Most become community-supplyable once FFI lands.
 - [ ] Regex (expose the existing parser)
 - [ ] Process, environment and filesystem access
 
+### Native Protobuf Import
+
+Import `.proto` schemas directly — no generated source files. The compiler already
+links libprotobuf for `.moon`/AST serialization, so at manifest-processing time it
+can parse the schema with `google::protobuf::compiler::Importer`, walk the
+`FileDescriptor`, and synthesize ordinary Sun classes into a module named after the
+proto `package`. Semantic analysis, the borrow checker, codegen and the LSP all see
+normal code; serializers compile monomorphic and static, with no descriptor
+reflection or libprotobuf dependency in the output binary.
+
+```sun
+manifest {
+    protos: ["schemas/telemetry.proto"];
+}
+using namo.telemetry;
+
+var status = RobotStatus(alloc);       // synthesized zero-value init (proto3 defaults)
+status.robot_id = 7;
+status.encode(ref buf);                // borrow-checked, appends wire bytes to Vec<u8>
+var back = try RobotStatus.decode(alloc, view);   // malformed input throws IError
+```
+
+- [ ] `protos:` manifest entries, resolved through `SUN_PATH` like other imports
+- [ ] Descriptor walk → synthesized AST: class per message, zero-value `init`
+      taking `ref HeapAllocator`, public fields (`string` → `String`,
+      `repeated T` → `Vec<T>`, `bytes` → `Vec<u8>`, `map<K,V>` → `Map<K,V>`,
+      nested messages embedded by value)
+- [ ] Synthesized `encode(this, ref Vec<u8>)` and `decode(...) T, IError`, plus
+      `_delimited` variants (varint length prefix) for stream framing
+- [ ] Proto `package foo.bar` → nested `module` decls; proto-level `import`
+      resolved through the same manifest machinery
+- [ ] Unknown-field preservation (hidden `Vec<u8>` per message) so
+      decode-then-reencode round-trips fields from newer peers
+- [ ] Depends on: `Option<T>` for proto3 explicit `optional`; tagged unions for
+      `oneof`; associated/static functions for `T.decode(...)` (else a free
+      function per message)
+
 ### Targets
 
 - [ ] WebAssembly — also the cheapest route to an online playground, which is the
@@ -260,12 +320,18 @@ Found in source:
    convention is a safe Sun wrapper around it. What remains undecided is
    whether the borrow checker should model a pointer escaping into C at all —
    today `ref T` hands C an address with no lifetime tracking across the call.
-2. **Optional representation**: a stdlib `Option<T>` enum, or nullable type syntax
-   built into the type system?
+2. ~~**Optional representation**~~ *Decided:* Rust-style — `Option<T>` as an
+   ordinary stdlib enum once payload enums (done) grow generics; no nullable
+   type syntax.
 3. **Generic instantiation**: where do cross-module instantiations get emitted, and
    who owns deduplication — the compiler or the linker?
-4. **Enum representation**: tagged union vs inheritance hierarchy?
+4. ~~**Enum representation**~~ *Decided:* tagged union —
+   `{ i32 tag, [M x unit] }` storage with per-variant view structs
+   (`include/llvm_type_resolver.h`).
 5. **Memory model**: should `Vec<T>` own its allocator or take a reference?
+6. **Protobuf surface**: import-only (`.proto` via manifest), or also a native
+   `message` declaration in Sun source with `field: T = tag;` syntax? The
+   descriptor walk and the parser production would synthesize the same AST.
 
 ---
 

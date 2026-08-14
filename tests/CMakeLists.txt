@@ -29,6 +29,7 @@ add_executable(sun_tests
     test_debug.cpp
     test_debug_info.cpp
     test_dfa.cpp
+    test_enum_payloads.cpp
     test_enums.cpp
     test_errors.cpp
     test_ffi.cpp
@@ -38,6 +39,7 @@ add_executable(sun_tests
     test_file_io.cpp
     test_sun_io.cpp
     test_generic_classes.cpp
+    test_generic_enums.cpp
     test_generic_functions.cpp
     test_generic_methods.cpp
     test_generic_specializations.cpp
@@ -67,6 +69,7 @@ add_executable(sun_tests
     test_regex_parser.cpp
     test_serialization.cpp
     test_stdlib_linked_list.cpp
+    test_stdlib_option.cpp
     test_stdlib_math.cpp
     test_string.cpp
     test_ternary.cpp

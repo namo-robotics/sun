@@ -308,6 +308,29 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       if (callExpr.getCallee()->getType() == ASTNodeType::MEMBER_ACCESS) {
         const auto& memberAccess =
             static_cast<const MemberAccessAST&>(*callExpr.getCallee());
+        // Generic enum construction (Option.Some(42)): analysis resolves the
+        // specialization; reuse it rather than inferring 'Option' as a value
+        if (memberAccess.getObject()->getType() ==
+            ASTNodeType::VARIABLE_REFERENCE) {
+          const auto& objRef = static_cast<const VariableReferenceAST&>(
+              *memberAccess.getObject());
+          if (!lookupVariable(objRef.getName()) &&
+              !lookupEnum(objRef.getName()) &&
+              currentScope->lookupGenericEnum(objRef.getName())) {
+            if (auto resolved = callExpr.getResolvedType()) {
+              return resolved;
+            }
+            if (auto resolvedObj =
+                    memberAccess.getObject()->getResolvedType()) {
+              return resolvedObj;
+            }
+            logAndThrowError(
+                "Cannot infer type arguments for '" + objRef.getName() + "." +
+                    memberAccess.getMemberName() +
+                    "'; add a type annotation to the target",
+                callExpr.getLocation());
+          }
+        }
         sun::TypePtr objectType = inferType(*memberAccess.getObject());
         if (objectType && objectType->isModule()) {
           std::vector<sun::TypePtr> argTypes;
@@ -318,6 +341,16 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
                   resolveModuleQualifiedCall(memberAccess, objectType,
                                              argTypes)) {
             return info->returnType;
+          }
+        }
+        // Enum variant construction: EnumName.Variant(args...) has the enum
+        // type. Checked in detail by analyzeEnumVariantConstruction.
+        if (objectType && objectType->isEnum()) {
+          auto* enumType = static_cast<sun::EnumType*>(objectType.get());
+          const auto* variant =
+              enumType->getVariant(memberAccess.getMemberName());
+          if (variant && variant->hasPayload()) {
+            return objectType;
           }
         }
       }
@@ -401,7 +434,14 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       // Return type is the type of the first arm's body
       // All arms should have compatible types (not enforced yet)
       if (!matchExpr.getArms().empty()) {
-        return inferType(*matchExpr.getArms()[0].body);
+        const auto& firstBody = *matchExpr.getArms()[0].body;
+        // Bodies of destructuring arms are analyzed in per-arm binding
+        // scopes; use the resolved type rather than re-walking a body whose
+        // bindings are out of scope here
+        if (auto resolved = firstBody.getResolvedType()) {
+          return resolved;
+        }
+        return inferType(firstBody);
       }
       return sun::Types::Void();
     }
@@ -681,6 +721,23 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
   // 3. Check for type narrowing from _is<T> guards
   // 4. Unwrap raw_ptr<Class> to Class for member access
   sun::TypePtr objectType = memberAccess.getObject()->getResolvedType();
+  if (!objectType &&
+      memberAccess.getObject()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
+    // Generic enum object (Option.None): only valid once analysis resolved
+    // the specialization from context
+    const auto& varRef =
+        static_cast<const VariableReferenceAST&>(*memberAccess.getObject());
+    if (!lookupVariable(varRef.getName()) &&
+        currentScope->lookupGenericEnum(varRef.getName())) {
+      if (auto resolved = memberAccess.getResolvedType()) {
+        return resolved;
+      }
+      logAndThrowError("Cannot infer type arguments for '" +
+                           varRef.getName() + "." + memberName +
+                           "'; add a type annotation to the target",
+                       memberAccess.getLocation());
+    }
+  }
   if (!objectType) {
     objectType = inferType(*memberAccess.getObject());
   }
@@ -816,6 +873,14 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
       auto* enumType = static_cast<sun::EnumType*>(objectType.get());
       const auto* variant = enumType->getVariant(memberName);
       if (variant) {
+        if (variant->hasPayload()) {
+          logAndThrowError("Variant '" + memberName + "' of enum '" +
+                               enumType->getDisplayName() +
+                               "' carries a payload; construct it with '" +
+                               enumType->getBaseName() + "." + memberName +
+                               "(...)'",
+                           memberAccess.getLocation());
+        }
         return objectType;  // Enum variant has the enum type
       }
       logAndThrowError("Unknown variant '" + memberName + "' in enum '" +

@@ -8,6 +8,7 @@ manifest {
         "allocator.sun",
         "unique.sun",
         "errors.sun",
+        "option.sun",
         "slice.sun",
         "contiguous_buffer.sun",
         "vec.sun",

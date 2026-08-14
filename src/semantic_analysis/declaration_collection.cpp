@@ -21,6 +21,15 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
     switch (expr->getType()) {
       case ASTNodeType::ENUM_DEFINITION: {
         auto& enumDef = static_cast<EnumDefinitionAST&>(*expr);
+        // Generic enums register as templates, instantiated at use sites
+        if (enumDef.isGeneric()) {
+          if (!lookupGenericEnum(enumDef.getName())) {
+            registerGenericEnum(
+                enumDef.getName(),
+                {&enumDef, enumDef.getTypeParameters()});
+          }
+          break;
+        }
         // Skip if already registered (e.g. from import)
         if (lookupEnum(enumDef.getName())) break;
         // Create and register a minimal enum type
@@ -157,6 +166,9 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
       case ASTNodeType::MODULE: {
         auto& nsDecl = static_cast<ModuleAST&>(*expr);
         enterModuleScope(nsDecl.getName());
+        // Register the module's enums first: function signatures below may
+        // use enum types (including generic enums like Option<i32>)
+        collectEnumDeclarations(nsDecl.getBody());
         // Collect function declarations inside the module
         for (const auto& bodyExpr :
              const_cast<BlockExprAST&>(nsDecl.getBody()).getBody()) {
@@ -206,6 +218,9 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
           if (bodyExpr->getType() == ASTNodeType::MODULE) {
             auto& nsDecl = static_cast<ModuleAST&>(*bodyExpr);
             enterModuleScope(nsDecl.getName());
+            // Register the module's enums first: function signatures below
+            // may use enum types (including generic enums like Option<i32>)
+            collectEnumDeclarations(nsDecl.getBody());
             // Collect function declarations inside the module
             for (const auto& moduleExpr :
                  const_cast<BlockExprAST&>(nsDecl.getBody()).getBody()) {

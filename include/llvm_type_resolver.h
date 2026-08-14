@@ -8,6 +8,7 @@
 
 #include <map>
 
+#include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
@@ -25,6 +26,10 @@
 class LLVMTypeResolver {
   llvm::LLVMContext& ctx;
 
+  // Module DataLayout; required for payload-enum storage sizing. Null only
+  // in contexts that never resolve payload enums.
+  const llvm::DataLayout* dataLayout = nullptr;
+
   // Shared closure type { ptr, ptr } for all functions
   llvm::StructType* closureType = nullptr;
 
@@ -35,7 +40,31 @@ class LLVMTypeResolver {
   std::map<sun::Type*, llvm::Type*> typeCache;
 
  public:
-  explicit LLVMTypeResolver(llvm::LLVMContext& context) : ctx(context) {}
+  explicit LLVMTypeResolver(llvm::LLVMContext& context,
+                            const llvm::DataLayout* dl = nullptr)
+      : ctx(context), dataLayout(dl) {}
+
+  /**
+   * Storage struct for a payload enum: { i32 tag, [M x unitTy] } where unitTy
+   * matches the max payload alignment, so LLVM's natural layout aligns the
+   * payload area. Named "<QualifiedEnum>_struct" (not a well-known internal
+   * struct, so materializeStructReturn treats returns like class values).
+   */
+  llvm::StructType* getEnumStorageType(const sun::EnumType& enumType);
+
+  /**
+   * Per-variant view struct { i32 tag, T1, T2, ... }. Construction and
+   * pattern extraction GEP through this on the storage pointer, so field
+   * offsets are always consistent and naturally aligned.
+   */
+  llvm::StructType* getEnumVariantStruct(const sun::EnumType& enumType,
+                                         const std::string& variantName);
+
+  /**
+   * Build storage structs for payload-enum fields (transitively) so
+   * ClassType::getStructType can embed them from the enum's cache.
+   */
+  void prepareEnumFieldStorage(const sun::ClassType& classType);
 
   /**
    * Get or create the shared closure struct type { ptr, ptr }.

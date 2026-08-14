@@ -254,10 +254,19 @@ message IfExpr {
   optional ASTNode else_branch = 3;
 }
 
+// A payload binding position in a destructuring pattern: Shape.Circle(r, _)
+message PatternBinding {
+  string name = 1;  // empty when is_wildcard
+  bool is_wildcard = 2;
+  Position location = 3;
+}
+
 message MatchArm {
   optional ASTNode pattern = 1;  // null for wildcard (_)
   bool is_wildcard = 2;
   ASTNode body = 3;
+  bool has_payload_parens = 4;
+  repeated PatternBinding bindings = 5;
 }
 
 message MatchExpr {
@@ -463,11 +472,13 @@ message EnumVariant {
   string name = 1;
   int64 value = 2;
   Position location = 3;
+  repeated TypeAnnotation payload_types = 4;  // empty = unit variant
 }
 
 message EnumDef {
   string name = 1;
   repeated EnumVariant variants = 2;
+  repeated string type_parameters = 3;  // generic enums: enum Option<T>
 }
 
 message ThisExpr {

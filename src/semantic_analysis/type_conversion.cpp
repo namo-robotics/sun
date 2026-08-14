@@ -132,6 +132,26 @@ sun::TypePtr SemanticAnalyzer::substituteTypeParameters(sun::TypePtr type) {
     return type;
   }
 
+  // Handle specialized enums with type arguments (e.g., Option<T> ->
+  // Option<i32>)
+  if (type->isEnum()) {
+    auto* et = dynamic_cast<sun::EnumType*>(type.get());
+    const auto& typeArgs = et->getGenericArgs();
+    if (!typeArgs.empty()) {
+      std::vector<sun::TypePtr> newArgs;
+      bool changed = false;
+      for (const auto& arg : typeArgs) {
+        auto newArg = substituteTypeParameters(arg);
+        newArgs.push_back(newArg);
+        if (newArg != arg) changed = true;
+      }
+      if (changed) {
+        return instantiateGenericEnum(et->getGenericBase(), newArgs);
+      }
+    }
+    return type;
+  }
+
   // Primitives, etc. don't need substitution
   return type;
 }
@@ -264,6 +284,15 @@ sun::TypePtr SemanticAnalyzer::typeAnnotationToType(
     std::string lookupName = annot.baseName.find('.') != std::string::npos
                                  ? annot.baseName
                                  : resolved.baseName;
+    // Generic enum (e.g., Option<i32>) — checked first to avoid the noisy
+    // unknown-class/interface fallthrough below
+    if (currentScope->lookupGenericEnum(lookupName)) {
+      auto specializedEnum = instantiateGenericEnum(lookupName, typeArgs);
+      if (specializedEnum) {
+        return specializedEnum;
+      }
+    }
+
     auto specializedClass = instantiateGenericClass(lookupName, typeArgs);
     if (specializedClass) {
       return specializedClass;
