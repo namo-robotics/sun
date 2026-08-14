@@ -2,6 +2,7 @@
 
 #include "library_cache.h"
 
+#include <llvm/IR/DebugInfo.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Transforms/IPO/GlobalDCE.h>
@@ -130,7 +131,8 @@ static bool hasStdlibImport(const std::vector<sun::MoonImport>& moonImports) {
 }
 
 // Factory method for JIT execution
-std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName) {
+std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
+                                             bool debugInfo) {
   ensureLLVMInitialized();
 
   // JIT always runs on the host; .moon bundle selection must match.
@@ -144,7 +146,9 @@ std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName) {
   }
 
   auto jitShared = std::shared_ptr<SunJIT>(std::move(jit.get()));
-  auto ctx = std::make_unique<CodegenContext>(moduleName, jitShared);
+  auto ctx = std::make_unique<CodegenContext>(moduleName, jitShared,
+                                              /*existingContext=*/nullptr,
+                                              /*targetTriple=*/"", debugInfo);
 
   // Register runtime symbols for JIT
   auto& mainDylib = ctx->jit->getMainJITDylib();
@@ -164,7 +168,8 @@ std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName) {
 
 // Factory method for AOT compilation
 std::unique_ptr<Driver> Driver::createForAOT(const std::string& moduleName,
-                                             const std::string& targetTriple) {
+                                             const std::string& targetTriple,
+                                             bool debugInfo) {
   ensureLLVMInitialized();
 
   // Both the parser's bundle resolution and the linker's bundle selection
@@ -174,7 +179,7 @@ std::unique_ptr<Driver> Driver::createForAOT(const std::string& moduleName,
   auto ctx =
       std::make_unique<CodegenContext>(moduleName, nullptr,
                                        /*existingContext=*/nullptr,
-                                       targetTriple);
+                                       targetTriple, debugInfo);
   auto typeRegistry = std::make_shared<sun::TypeRegistry>();
   auto codegenVisitor = std::make_unique<CodegenVisitor>(*ctx, typeRegistry);
   auto analyzer = std::make_unique<SemanticAnalyzer>(typeRegistry);
@@ -507,7 +512,17 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
       throw SunError(SunError::Kind::Semantic,
                      "Failed to link precompiled module: " + linker.getError());
     }
+    // Precompiled bundles may carry debug info (stdlib is built with -g); a
+    // non-debug compile must not inherit it — it would bloat the binary and
+    // flip the backend to CodeGenOptLevel::None.
+    if (!ctx->debugInfoEnabled()) {
+      sun::DebugInfoBuilder::stripFromModule(*ctx->mainModule);
+    }
   }
+
+  // All codegen is done (including static init); emit the DI finalization
+  // before any module verification.
+  codegenVisitor->finalizeDebugInfo();
 
   // Debug mode: dump only user-defined IR after codegen (filters out stdlib / moon imports)
   if (debugMode_ && !debugFolder_.empty()) {

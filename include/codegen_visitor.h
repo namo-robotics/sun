@@ -12,6 +12,7 @@
 
 #include "ast.h"                 // Your pure AST header with ASTNodeType
 #include "codegen.h"             // Your CodegenContext definition
+#include "debug_info_builder.h"  // DWARF emission (-g)
 #include "error.h"               // Error handling
 #include "extern_c.h"            // The extern "C" boundary
 #include "llvm_type_resolver.h"  // LLVM type resolution
@@ -41,6 +42,7 @@ struct ClassAllocation {
 struct CodegenScope {
   NamedValueMap variables;
   bool isFunctionBoundary = false;  // True for scopes marking function entry
+  bool hasDebugScope = false;  // True when a DILexicalBlock was opened with it
   std::vector<OwnedAllocation> ownedAllocations;
   std::vector<ClassAllocation> classAllocations;
 };
@@ -96,6 +98,9 @@ class CodegenVisitor {
 
   // Type resolver for sun::Type -> llvm::Type conversion
   LLVMTypeResolver typeResolver;
+
+  // DWARF debug metadata emission; no-op unless -g
+  sun::DebugInfoBuilder debugInfo;
 
   // Stack of closure contexts for nested function compilation
   std::vector<ClosureContext> closureStack;
@@ -172,8 +177,12 @@ class CodegenVisitor {
         module(ctx.mainModule.get()),
         typeRegistry(std::move(registry)),
         typeResolver(ctx.getContext()),
+        debugInfo(ctx.mainModule.get(), ctx.debugInfoEnabled()),
         externC(ctx, ctx.mainModule.get()),
         threadUtils(ctx, ctx.mainModule.get()) {}
+
+  // Run DIBuilder finalization; call after all codegen, before verifyModule.
+  void finalizeDebugInfo() { debugInfo.finalize(); }
 
   // Snapshot the module's current function declarations.
   // Call after declareAvailableFunctions() but before codegen().
@@ -629,8 +638,19 @@ class CodegenVisitor {
     return scopes.back();
   }
 
+  // Scope for a source block (if/else, loop, try/catch): also opens a
+  // DILexicalBlock so debuggers see block-accurate variable visibility
+  // (no-op without -g). popScope() closes it symmetrically.
+  CodegenScope& pushScope(const Position& loc) {
+    auto& scope = pushScope();
+    scope.hasDebugScope = debugInfo.pushLexicalBlock(*ctx.builder, loc);
+    return scope;
+  }
+
   void popScope() {
-    if (!scopes.empty()) scopes.pop_back();
+    if (scopes.empty()) return;
+    if (scopes.back().hasDebugScope) debugInfo.popLexicalBlock();
+    scopes.pop_back();
   }
 
   // Saved insertion point for restoring after nested codegen
@@ -772,6 +792,27 @@ class CodegenVisitor {
     IRBuilder<> builder(&func->getEntryBlock(), func->getEntryBlock().begin());
     if (!type) type = Type::getDoubleTy(ctx.getContext());
     return builder.CreateAlloca(type, nullptr, varName);
+  }
+
+  // Attach a #dbg_declare for a user variable (no-op without -g)
+  void debugDeclareLocal(llvm::AllocaInst* alloca, const std::string& name,
+                         const sun::TypePtr& type, const Position& loc) {
+    debugInfo.declareLocal(*ctx.builder, alloca, name, type, loc);
+  }
+
+  // Attach a #dbg_declare for a source parameter (no-op without -g).
+  // DWARF argNo is 1-based; argNoBase is 2 for methods, whose slot 1 is the
+  // artificial 'this'.
+  void debugDeclareParam(llvm::AllocaInst* alloca, const std::string& name,
+                         const PrototypeAST& proto, unsigned userArgIdx,
+                         unsigned argNoBase = 1) {
+    sun::TypePtr type =
+        proto.hasResolvedParamTypes() &&
+                userArgIdx < proto.getResolvedParamTypes().size()
+            ? proto.getResolvedParamTypes()[userArgIdx]
+            : nullptr;
+    debugInfo.declareParameter(*ctx.builder, alloca, name, type,
+                               proto.getLocation(), argNoBase + userArgIdx);
   }
 
   /**

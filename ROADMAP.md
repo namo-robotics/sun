@@ -73,14 +73,26 @@ syscall assembly, so the emitted IR is target-neutral.
 
 ### Debug Info (DWARF)
 
-There is no `DIBuilder` usage in the tree, so no debugger can step Sun code. Nobody
-ships safety-critical code they cannot attach a debugger to. Comparatively cheap
-against an existing LLVM 20 backend and buys disproportionate credibility.
+`sun::DebugInfoBuilder` (`include/debug_info_builder.h`) emits DWARF 5 when `-g`
+is passed; without it, no debug metadata is created at all. Debug builds use
+backend `CodeGenOptLevel::None` so stepping stays line-accurate. JITed code is
+registered with gdb's JIT interface, so `gdb --args sun -g prog.sun` works too.
 
-- [ ] Line tables and `-g` in the driver
-- [ ] Variable and parameter locations
-- [ ] Struct/class type descriptions
-- [ ] Verified `gdb` / `lldb` stepping over the examples
+- [x] Line tables and `-g` in the driver
+- [x] Variable and parameter locations (params, locals, `this`, loop vars,
+      catch bindings, refs)
+- [x] Struct/class type descriptions (plus enums, arrays, slices, pointers,
+      references, closures)
+- [x] Verified `gdb` / `lldb` stepping over the examples
+      (`tests/test_debug_info.cpp`; lldb needs `DEBUGINFOD_URLS=` unset in
+      restricted environments)
+- [x] Stdlib `.moon` bundles built with `-g` — debug compiles `step` into
+      stdlib source; non-debug compiles strip the bundle's debug info at link
+      time (`DebugInfoBuilder::stripFromModule`), keeping binaries clean and
+      the backend at full optimization
+- [x] `DILexicalBlock` scoping — variables in `if`/`else`, loop, and
+      `try`/`catch` blocks are scoped to their block, so shadowing resolves
+      correctly in debuggers
 
 ### Generics Across Module Boundaries
 

@@ -140,6 +140,8 @@ Value* CodegenVisitor::genFunctionVariable(const VariableCreationAST& expr) {
       // directly
       fatAlloca->setName(varName);
       scope[expr.getName()] = fatAlloca;
+      debugDeclareLocal(fatAlloca, expr.getName(), expr.getResolvedType(),
+                        expr.getLocation());
     } else {
       // Fallback: create a new alloca and store the value
       Function* currentFunc = ctx.builder->GetInsertBlock()->getParent();
@@ -147,6 +149,8 @@ Value* CodegenVisitor::genFunctionVariable(const VariableCreationAST& expr) {
           createEntryBlockAlloca(currentFunc, varName, varType);
       ctx.builder->CreateStore(resultPtr, alloca);
       scope[expr.getName()] = alloca;
+      debugDeclareLocal(alloca, expr.getName(), expr.getResolvedType(),
+                        expr.getLocation());
     }
   }
   return resultPtr;
@@ -193,6 +197,7 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
           createEntryBlockAlloca(func, expr.getName(), fatPtr->getType());
       ctx.builder->CreateStore(fatPtr, alloca);
       scope[expr.getName()] = alloca;
+      debugDeclareLocal(alloca, expr.getName(), varSunType, expr.getLocation());
       return fatPtr;
     }
 
@@ -213,6 +218,7 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
           createEntryBlockAlloca(func, expr.getName(), fatPtrType);
       ctx.builder->CreateStore(fatPtrVal, alloca);
       scope[expr.getName()] = alloca;
+      debugDeclareLocal(alloca, expr.getName(), varSunType, expr.getLocation());
       return fatPtrVal;
     }
   }
@@ -223,6 +229,8 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
     if (auto* allocaValue = dyn_cast<AllocaInst>(value)) {
       allocaValue->setName(expr.getName());
       scope[expr.getName()] = allocaValue;
+      debugDeclareLocal(allocaValue, expr.getName(), varSunType,
+                        expr.getLocation());
 
       // Track class allocation for automatic deinit at scope exit
       if (varSunType && varSunType->isClass()) {
@@ -242,6 +250,7 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
           createEntryBlockAlloca(func, expr.getName(), structType);
       ctx.builder->CreateStore(value, alloca);
       scope[expr.getName()] = alloca;
+      debugDeclareLocal(alloca, expr.getName(), varSunType, expr.getLocation());
 
       // Track class allocation for automatic deinit at scope exit
       auto classType = std::dynamic_pointer_cast<sun::ClassType>(varSunType);
@@ -268,6 +277,8 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
             createEntryBlockAlloca(func, expr.getName(), structType);
         ctx.builder->CreateStore(structVal, alloca);
         scope[expr.getName()] = alloca;
+        debugDeclareLocal(alloca, expr.getName(), varSunType,
+                          expr.getLocation());
 
         // MOVE SEMANTICS: Zero out the source field to prevent double-free
         // when the original object's deinit runs. The source expression
@@ -320,6 +331,7 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
   AllocaInst* alloca = createEntryBlockAlloca(func, expr.getName(), varType);
   ctx.builder->CreateStore(value, alloca);
   scope[expr.getName()] = alloca;
+  debugDeclareLocal(alloca, expr.getName(), varSunType, expr.getLocation());
 
   return value;
 }
@@ -742,6 +754,7 @@ Value* CodegenVisitor::codegen(const ReferenceCreationAST& expr) {
 
   if (!scopes.empty()) {
     scopes.back().variables[refName] = refAlloca;
+    debugDeclareLocal(refAlloca, refName, refSunType, expr.getLocation());
   }
   return refAlloca;
 }
@@ -821,6 +834,8 @@ void CodegenVisitor::emitStaticInitFunction() {
 
   BasicBlock* entryBB = BasicBlock::Create(ctx.getContext(), "entry", initFunc);
   ctx.builder->SetInsertPoint(entryBB);
+  // No subprogram on the init function: it must carry no debug locations
+  debugInfo.clearLocation(*ctx.builder);
 
   // Push a scope for any temporaries needed during init
   pushScope();

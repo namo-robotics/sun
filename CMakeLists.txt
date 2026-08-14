@@ -122,6 +122,7 @@ add_library(sun_lib
     src/codegen.cpp
     src/driver.cpp
     src/codegen/codegen_visitor.cpp
+    src/codegen/debug_info_builder.cpp
     src/codegen/functions_lambdas.cpp
     src/codegen/pointers.cpp
     src/codegen/intrinsics/builtins.cpp
@@ -252,9 +253,11 @@ if(NOT SKIP_STDLIB)
         ${CMAKE_SOURCE_DIR}/stdlib/simple_math.sun
     )
 
+    # Built with -g: debug compiles can step into stdlib; non-debug compiles
+    # strip the bundle's debug info at link time.
     add_custom_command(
         OUTPUT ${STDLIB_MOON}
-        COMMAND $<TARGET_FILE:sun> --emit-moon -o ${STDLIB_MOON} ${STDLIB_ENTRYPOINT}
+        COMMAND $<TARGET_FILE:sun> --emit-moon -g -o ${STDLIB_MOON} ${STDLIB_ENTRYPOINT}
         DEPENDS sun ${STDLIB_SOURCES}
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         COMMENT "Building precompiled stdlib.moon"
@@ -274,7 +277,7 @@ if(NOT SKIP_STDLIB)
         add_custom_command(
             OUTPUT ${CROSS_MOON}
             COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/${cross_triple}
-            COMMAND $<TARGET_FILE:sun> --emit-moon --target ${cross_triple} -o ${CROSS_MOON} ${STDLIB_ENTRYPOINT}
+            COMMAND $<TARGET_FILE:sun> --emit-moon -g --target ${cross_triple} -o ${CROSS_MOON} ${STDLIB_ENTRYPOINT}
             DEPENDS sun ${STDLIB_SOURCES}
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
             COMMENT "Building precompiled ${cross_triple}/stdlib.moon"

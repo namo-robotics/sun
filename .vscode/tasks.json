@@ -2,6 +2,27 @@
     "version": "2.0.0",
     "tasks": [
         {
+            // Builds the example (or any main.sun) whose file is open in the
+            // active editor, with DWARF debug info
+            "label": "sun: build open example (-g)",
+            "type": "shell",
+            "command": "${workspaceFolder}/build/sun",
+            "args": [
+                "-c",
+                "-g",
+                "-o",
+                "${fileDirname}/main",
+                "${fileDirname}/main.sun"
+            ],
+            "options": {
+                "env": {
+                    "SUN_PATH": "${fileDirname}:${workspaceFolder}/build"
+                }
+            },
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
             "label": "sun-extension: compile",
             "type": "shell",
             "command": "npm",

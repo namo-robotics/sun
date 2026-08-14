@@ -545,6 +545,9 @@ Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
   // Switch to it
   ctx.builder->SetInsertPoint(entryBB);
 
+  debugInfo.enterFunction(*ctx.builder, func, proto.getName(),
+                          proto.getLocation());
+
   auto& scope = pushScope();
   scope.isFunctionBoundary = true;  // Mark as function entry scope
 
@@ -562,6 +565,8 @@ Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
         createEntryBlockAlloca(func, arg.getName().str(), arg.getType());
     ctx.builder->CreateStore(&arg, alloca);
     scope.variables[std::string(arg.getName())] = alloca;
+    debugDeclareParam(alloca, arg.getName().str(), proto,
+                      hasClosureArg ? argIdx - 1 : argIdx);
     argIdx++;
   }
 
@@ -622,6 +627,8 @@ Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
       ctx.builder->CreateUnreachable();
     }
   }
+
+  debugInfo.exitFunction(func);
 
   if (llvm::verifyFunction(*func, &llvm::errs())) {
     logAndThrowError("Function verification failed: " +
@@ -729,6 +736,8 @@ llvm::Value* CodegenVisitor::codegenLambda(LambdaAST& lambdaAst) {
   BasicBlock* entryBB = BasicBlock::Create(ctx.getContext(), "entry", func);
   ctx.builder->SetInsertPoint(entryBB);
 
+  debugInfo.enterFunction(*ctx.builder, func, "lambda", proto.getLocation());
+
   auto& scope = pushScope();
   scope.isFunctionBoundary = true;
 
@@ -744,6 +753,7 @@ llvm::Value* CodegenVisitor::codegenLambda(LambdaAST& lambdaAst) {
         createEntryBlockAlloca(func, arg.getName().str(), arg.getType());
     ctx.builder->CreateStore(&arg, alloca);
     scope.variables[std::string(arg.getName())] = alloca;
+    debugDeclareParam(alloca, arg.getName().str(), proto, argIdx - 1);
     argIdx++;
   }
 
@@ -791,6 +801,8 @@ llvm::Value* CodegenVisitor::codegenLambda(LambdaAST& lambdaAst) {
     }
   }
 
+  debugInfo.exitFunction(func);
+
   // Verify the function
   if (llvm::verifyFunction(*func, &llvm::errs())) {
     logAndThrowError("Lambda function verification failed");
@@ -801,6 +813,8 @@ llvm::Value* CodegenVisitor::codegenLambda(LambdaAST& lambdaAst) {
 
   // Restore insertion point so caller can continue generating code
   restoreInsertPoint();
+  // The lambda's debug location must not leak into the enclosing function
+  debugInfo.clearLocation(*ctx.builder);
 
   return resultPtr;
 }

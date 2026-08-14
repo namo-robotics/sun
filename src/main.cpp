@@ -43,6 +43,7 @@ static void printUsage(const char* programName) {
   llvm::errs() << "  --dynamic         Link against shared libraries instead "
                   "(needed for .so-only libs)\n";
   llvm::errs() << "  --emit-ir         Print LLVM IR to stdout\n";
+  llvm::errs() << "  -g                Emit DWARF debug info (for gdb/lldb)\n";
   llvm::errs() << "  --debug           Generate debug output (ast.dot, ir.ll) "
                   "in <input>_debug/\n";
   llvm::errs() << "  --emit-moon       Compile to .moon precompiled library\n";
@@ -303,6 +304,7 @@ int main(int argc, char* argv[]) {
   bool emitMoon = false;
   bool emitIR = false;
   bool debugMode = false;
+  bool debugInfo = false;
   int programArgStart = -1;  // Index where program arguments start
 
   for (int i = 1; i < argc; ++i) {
@@ -332,6 +334,8 @@ int main(int argc, char* argv[]) {
       emitMoon = true;
     } else if (arg == "--emit-ir") {
       emitIR = true;
+    } else if (arg == "-g") {
+      debugInfo = true;
     } else if (arg == "--debug") {
       debugMode = true;
     } else if (arg == "--lib-path" && i + 1 < argc) {
@@ -457,7 +461,7 @@ int main(int argc, char* argv[]) {
       }
 
       // Compile all files together
-      auto driver = Driver::createForAOT("moon_module", targetTriple);
+      auto driver = Driver::createForAOT("moon_module", targetTriple, debugInfo);
       driver->compileFiles(sunFiles, moonImports);
 
       // Add each module's metadata + the shared compiled LLVM module
@@ -524,7 +528,8 @@ int main(int argc, char* argv[]) {
     llvm::outs() << "Compiling: " << inputFile << " -> " << outputFile << "\n";
 
     try {
-      auto driver = Driver::createForAOT("main_module", targetTriple);
+      auto driver =
+          Driver::createForAOT("main_module", targetTriple, debugInfo);
       if (debugMode) {
         driver->setDebugMode(true, inputFile);
       }
@@ -584,7 +589,7 @@ int main(int argc, char* argv[]) {
   }
 
   try {
-    auto driver = Driver::createForJIT("main_module");
+    auto driver = Driver::createForJIT("main_module", debugInfo);
     driver->setDumpIR(emitIR);
     if (debugMode) {
       driver->setDebugMode(true, inputFile);

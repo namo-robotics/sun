@@ -185,12 +185,18 @@ inline bool emitObjectFile(llvm::Module& module, const std::string& outputPath,
     return false;
   }
 
-  // Create target machine
+  // Create target machine. Debug builds (-g) use CodeGenOptLevel::None so the
+  // backend does not merge instructions across source lines (e.g. folding a
+  // subtraction into a later comparison's flags), which makes stepping jumpy.
   auto cpu = "generic";
   auto features = "";
   llvm::TargetOptions opt;
-  auto targetMachine = target->createTargetMachine(targetTriple, cpu, features,
-                                                   opt, llvm::Reloc::PIC_);
+  bool hasDebugInfo = module.getModuleFlag("Debug Info Version") != nullptr;
+  auto targetMachine = target->createTargetMachine(
+      targetTriple, cpu, features, opt, llvm::Reloc::PIC_,
+      /*CM=*/std::nullopt,
+      hasDebugInfo ? llvm::CodeGenOptLevel::None
+                   : llvm::CodeGenOptLevel::Default);
 
   if (!targetMachine) {
     errorMsg = "Failed to create target machine";

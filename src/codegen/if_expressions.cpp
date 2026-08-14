@@ -48,7 +48,7 @@ Value* CodegenVisitor::codegen(const IfExprAST& expr) {
   ctx.builder->SetInsertPoint(ThenBB);
 
   // Push scope for then block (variables declared here are local to this block)
-  pushScope();
+  pushScope(expr.getThen()->getLocation());
   Value* ThenV = codegen(*expr.getThen());
   popScope();
 
@@ -76,7 +76,7 @@ Value* CodegenVisitor::codegen(const IfExprAST& expr) {
 
     // Push scope for else block (variables declared here are local to this
     // block)
-    pushScope();
+    pushScope(expr.getElse()->getLocation());
     ElseV = codegen(*expr.getElse());
     popScope();
 
