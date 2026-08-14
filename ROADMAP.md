@@ -139,11 +139,19 @@ enums are generic.
       specializations stored on the template AST; works across `.moon`
       (deferred within it: explicit `Option<i32>.Some(...)` in expression
       position, nested-generic payload unification)
-- [ ] `Option<T>` (and `Result<T, E>`) in the stdlib + prelude ergonomics
-      (Stage 3)
+- [x] `Option<T>` and `Result<T, E>` in the stdlib (`stdlib/option.sun`,
+      exported through stdlib.moon; constructed as `Option.Some(x)` /
+      `Option.None` — bare `Some`/`None` prelude names are a possible later
+      nicety)
+- [x] Starter migration: `Map.find` (new, alongside throwing `get`),
+      `String.find_char`/`rfind_char` → `Option<i64>` (sentinel `-1`
+      removed), `Vec.first`/`last` → `Option<T>`; interface payloads allowed
+      so `Vec<ISomething>` keeps working
 - [ ] Niche-optimised representation where possible (e.g.
       `Option<raw_ptr<T>>` as a nullable pointer)
-- [ ] Migrate stdlib APIs that currently signal absence via errors or sentinels
+- [ ] Migrate the remaining absence APIs (`LinkedList.first/last`,
+      `Vec.pop`, iterator `next()` — the last needs the `IIterator` contract
+      rework); blocked on drop glue for owning payloads where `T` has deinit
 
 ### Tuples
 

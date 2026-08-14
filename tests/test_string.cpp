@@ -428,7 +428,10 @@ TEST(StringTest, find_char) {
     function main() i64 {
         var allocator = make_heap_allocator();
         var s = String(allocator, "hello world");
-        return s.find_char(111);  // 'o' at index 4
+        return match s.find_char(111) {   // 'o' at index 4
+            Option.Some(i) => i,
+            Option.None => -1
+        };
     }
   )");
   EXPECT_EQ(value, 4);
@@ -442,7 +445,10 @@ TEST(StringTest, find_char_not_found) {
     function main() i64 {
         var allocator = make_heap_allocator();
         var s = String(allocator, "hello");
-        return s.find_char(120);  // 'x' not in string
+        return match s.find_char(120) {   // 'x' not in string
+            Option.Some(i) => i,
+            Option.None => -1
+        };
     }
   )");
   EXPECT_EQ(value, -1);

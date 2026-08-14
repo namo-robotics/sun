@@ -1926,10 +1926,20 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
   std::string funcSig = getFunctionSignature(proto.getMangledName(),
                                              proto.getResolvedParamTypes());
 
+  // Return type for return-position inference. Some paths (class method
+  // pass 2) reach here before the proto's resolved return type is applied;
+  // resolve the annotation in the current scope (type parameter bindings for
+  // specialized classes are active here).
+  sun::TypePtr scopeReturnType = proto.getResolvedReturnType();
+  if (!scopeReturnType && proto.hasReturnType() && !proto.isGeneric()) {
+    scopeReturnType =
+        substituteTypeParameters(typeAnnotationToType(*proto.getReturnType()));
+  }
+
   // Enter function scope with signature for nested function qualification
   // Pass canThrow flag so throw expressions can be validated
   enterFunctionScope(funcSig, proto.getQualifiedName(), proto.canThrow(),
-                     proto.getResolvedReturnType());
+                     scopeReturnType);
 
   // Declare 'this' for methods (when we're inside a class context)
   if (currentClass) {
@@ -2352,10 +2362,17 @@ void SemanticAnalyzer::analyzeMethodWithBindings(
       classType->getMangledMethodName(proto.getName()), substitutedParamTypes);
   std::string mangledMethodName =
       classType->getMangledMethodName(proto.getName());
+  // Resolve the return type under the active bindings so return-position
+  // inference (e.g. `return Option.None;`) has the expected type
+  sun::TypePtr methodReturnType;
+  if (proto.hasReturnType()) {
+    methodReturnType =
+        substituteTypeParameters(typeAnnotationToType(*proto.getReturnType()));
+  }
   enterFunctionScope(
       methodSig,
       sun::QualifiedName(std::vector<std::string>{}, mangledMethodName),
-      proto.canThrow());
+      proto.canThrow(), methodReturnType);
   if (classType) {
     declareVariable("this", classType, /*isParam=*/true);
   }

@@ -213,14 +213,16 @@ void SemanticAnalyzer::validateEnumPayloadType(
     logAndThrowError(context + " cannot be a reference", location);
   }
 
-  // Stage 1 allowlist: primitives, pointers, enums, deinit-free classes.
-  // Arrays, slices, interfaces, lambdas, threads etc. are deferred.
+  // Allowlist: primitives, pointers, enums, deinit-free classes, and
+  // interfaces (fat pointers are copyable borrowed views). Arrays, slices,
+  // lambdas, threads etc. are deferred.
   bool allowed = type->isPrimitive() || type->isRawPointer() ||
-                 type->isStaticPointer() || type->isEnum() || type->isClass();
+                 type->isStaticPointer() || type->isEnum() ||
+                 type->isClass() || type->isInterface();
   if (!allowed) {
     logAndThrowError(context + " has unsupported type '" + type->toString() +
-                         "'; supported: primitives, pointers, enums, and "
-                         "classes without deinit",
+                         "'; supported: primitives, pointers, enums, "
+                         "interfaces, and classes without deinit",
                      location);
   }
 

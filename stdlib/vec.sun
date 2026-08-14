@@ -122,20 +122,20 @@ module sun {
       return this.data.rawData();
     }
 
-    // Get last element without removing
-    function last() T, IError {
+    // Get last element without removing; None when empty
+    function last() Option<T> {
       if (this.size_ == 0) {
-        throw EmptyError();
+        return Option.None;
       }
-      return this.data.get_unchecked(this.size_ - 1);
+      return Option.Some(this.data.get_unchecked(this.size_ - 1));
     }
 
-    // Get first element
-    function first() T, IError {
+    // Get first element; None when empty
+    function first() Option<T> {
       if (this.size_ == 0) {
-        throw EmptyError();
+        return Option.None;
       }
-      return this.data.get_unchecked(0);
+      return Option.Some(this.data.get_unchecked(0));
     }
 
     // ========================================================================
