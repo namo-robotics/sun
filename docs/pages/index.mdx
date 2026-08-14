@@ -1,15 +1,20 @@
 # Sun Programming Language
 
-Sun is an **experimental** programming language exploring Rust-style memory safety while retaining familiar concepts such as classes and interfaces.
+Sun is a general-purpose programming language designed for robotics and AI. 
+It provides Rust-style memory safety while retaining a familiar syntax and classic concepts such as classes and interfaces. 
+Sun optimizes for both performance and **intelligibility** for human programmers as well as AI coding agents. 
+Sun additionally aims to improve software distribution in robotics applications by making it easier to package and distribute portable,
+ systems-level software modules.
 
 ## Design Goals
 
 - **Fast**: Systems-level performance without runtime overhead
-- **Designed For AI**: NumPy-like N-D matrices and linear algebra provided in the standard library
-- **Safety Critical**: Suitable for safety-critical embedded applications, particularly autonomous robotics
+- **Designed for Robotics**: Built-in support for protobuf messages. (a custom DDS and middleware are on the roadmap.)
+- **Designed for AI**: NumPy-like N-D matrices and linear algebra provided in the standard library
 - **Memory safe**: No undefined behavior via Rust-style borrow checking
 - **Readable**: Straightforward for humans (and AIs!) to read and understand
-- **Unambiguous**: No alternative syntaxes. No hidden control flow. No hidden memory allocation. No macros
+- **Unambiguous**: Minimizes alternative syntaxes and hidden control flow such as operator and constructor overloading. No hidden memory allocation. Absolutely no macros!
+- **Modular**: Simple to package and distribute pre-compiled modules.
 
 import { Callout } from 'nextra/components'
 
