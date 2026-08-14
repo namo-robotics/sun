@@ -360,7 +360,12 @@ class SemanticAnalyzer {
   // funcName is the qualified name of the function.
   void enterFunctionScope(const std::string& funcSig,
                           const sun::QualifiedName& funcName,
-                          bool canThrow = false);
+                          bool canThrow = false,
+                          sun::TypePtr returnType = nullptr);
+
+  // Return type of the nearest enclosing function scope (null outside
+  // functions or when unresolved); used for return-position inference
+  sun::TypePtr currentFunctionReturnType() const;
   void exitScope();
 
   // Get the current module prefix for name mangling (e.g., "sun_")
@@ -493,12 +498,49 @@ class SemanticAnalyzer {
   // call-position callees (those never route through here).
   void maybeResolveBoundMethodRef(MemberAccessAST& memberAccess,
                                   sun::TypePtr expectedType);
-  void analyzeCall(CallExprAST& callExpr);
+  void analyzeCall(CallExprAST& callExpr, sun::TypePtr expectedType = nullptr);
+
+  // ===== Enums (all implemented in semantic_analysis/enums.cpp) =====
+
+  // Enum definition analysis: validation, payload resolution, registration
+  // (generic enums register as templates)
+  void analyzeEnumDefinition(EnumDefinitionAST& enumDef);
+
+  // Declaration-collection pre-pass: register a block's enums (and generic
+  // enum templates) so function signatures collected afterwards can resolve
+  // enum-typed parameters/returns
+  void collectEnumDeclarations(const BlockExprAST& block);
+
+  // Call interception for EnumName.Variant(args...) on concrete and generic
+  // enums; returns true when the call was an enum construction
+  bool tryAnalyzeEnumConstruction(CallExprAST& callExpr,
+                                  sun::TypePtr expectedType);
+
+  // Member-access interception for generic enum unit variants (Option.None);
+  // returns true when handled (type arguments taken from the expected type)
+  bool tryAnalyzeGenericEnumUnitVariant(MemberAccessAST& memberAccess,
+                                        sun::TypePtr expectedType);
 
   // Enum variant construction: EnumName.Variant(args...)
   void analyzeEnumVariantConstruction(CallExprAST& callExpr,
                                       MemberAccessAST& memberAccess,
                                       const std::shared_ptr<sun::EnumType>& enumType);
+
+  // Generic enum templates
+  void registerGenericEnum(const std::string& name, GenericEnumInfo info);
+  const GenericEnumInfo* lookupGenericEnum(const std::string& name) const;
+
+  // Instantiate Option<i32> from a generic enum template (monomorphization)
+  std::shared_ptr<sun::EnumType> instantiateGenericEnum(
+      const std::string& baseName, const std::vector<sun::TypePtr>& typeArgs);
+
+  // Option.Some(42): infer type arguments from payload args (falling back to
+  // the expected type), instantiate, then check like a concrete construction
+  void analyzeGenericEnumConstruction(CallExprAST& callExpr,
+                                      MemberAccessAST& memberAccess,
+                                      const std::string& genericName,
+                                      const GenericEnumInfo& genericInfo,
+                                      sun::TypePtr expectedType);
 
   // Match analysis on enum discriminants: variant patterns, payload bindings,
   // exhaustiveness

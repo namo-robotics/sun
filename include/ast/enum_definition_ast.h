@@ -7,9 +7,15 @@
 #include <string>
 #include <vector>
 
+#include <map>
+
 #include "ast/expr_ast.h"
 #include "ast/type_annotation.h"
 #include "lexer.h"
+
+namespace sun {
+class EnumType;
+}
 
 // Enum variant declaration: Red, Circle(f64), Rect(f64, f64)
 struct EnumVariantDecl {
@@ -22,15 +28,43 @@ struct EnumVariantDecl {
 };
 
 // Enum definition: enum Name { Variant1, Variant2(T1, T2), ... }
+// Generic form: enum Option<T> { Some(T), None }
 class EnumDefinitionAST : public ExprAST {
   std::string name;
   std::vector<EnumVariantDecl> variants;
+  std::vector<std::string> typeParameters;  // empty = non-generic
+  // Populated during semantic analysis (mutable, like ClassAnalysis
+  // specializations on ClassDefinitionAST)
+  mutable std::map<std::string, std::shared_ptr<sun::EnumType>>
+      specializations_;
 
  public:
   EnumDefinitionAST(std::string name, std::vector<EnumVariantDecl> variants,
-                    bool precompiled = false)
-      : name(std::move(name)), variants(std::move(variants)) {
+                    bool precompiled = false,
+                    std::vector<std::string> typeParams = {})
+      : name(std::move(name)),
+        variants(std::move(variants)),
+        typeParameters(std::move(typeParams)) {
     precompiled_ = precompiled;
+  }
+
+  const std::vector<std::string>& getTypeParameters() const {
+    return typeParameters;
+  }
+  bool isGeneric() const { return !typeParameters.empty(); }
+
+  // Specialization storage for generic enums, mirroring generic classes.
+  // Enums carry no per-specialization code, so the artifact is the resolved
+  // EnumType itself (payload types substituted). Called by the semantic
+  // analyzer when the generic enum is instantiated; codegen walks these to
+  // build the storage structs.
+  void addSpecialization(const std::string& mangledName,
+                         std::shared_ptr<sun::EnumType> specialized) const {
+    specializations_[mangledName] = std::move(specialized);
+  }
+  const std::map<std::string, std::shared_ptr<sun::EnumType>>&
+  getSpecializations() const {
+    return specializations_;
   }
 
   ASTNodeType getType() const override { return ASTNodeType::ENUM_DEFINITION; }

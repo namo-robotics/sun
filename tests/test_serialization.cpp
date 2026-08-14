@@ -1053,3 +1053,30 @@ TEST(SerializationTest, MatchBindingsRoundtrip) {
   EXPECT_TRUE(arm.bindings[1].isWildcard);
   EXPECT_FALSE(match->getArms()[1].hasPayloadParens);
 }
+
+TEST(SerializationTest, GenericEnumTypeParamsRoundtrip) {
+  std::vector<EnumVariantDecl> variants;
+  variants.push_back({"Some", 0, Position{}, {}});
+  variants.back().payloadTypes.push_back(TypeAnnotation("T"));
+  variants.push_back({"None", 1, Position{}, {}});
+  auto ast = std::make_unique<EnumDefinitionAST>(
+      "Option", std::move(variants), /*precompiled=*/false,
+      std::vector<std::string>{"T"});
+
+  ASTSerializer serializer;
+  std::string data = serializer.serializeToString(*ast);
+
+  ASTDeserializer deserializer;
+  auto restored = deserializer.deserializeFromString(data);
+
+  ASSERT_NE(restored, nullptr);
+  ASSERT_EQ(restored->getType(), ASTNodeType::ENUM_DEFINITION);
+  auto* enumDef = static_cast<EnumDefinitionAST*>(restored.get());
+  EXPECT_TRUE(enumDef->isGeneric());
+  ASSERT_EQ(enumDef->getTypeParameters().size(), 1u);
+  EXPECT_EQ(enumDef->getTypeParameters()[0], "T");
+  const auto* some = enumDef->getVariant("Some");
+  ASSERT_NE(some, nullptr);
+  ASSERT_EQ(some->payloadTypes.size(), 1u);
+  EXPECT_EQ(some->payloadTypes[0].baseName, "T");
+}

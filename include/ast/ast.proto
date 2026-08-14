@@ -478,6 +478,7 @@ message EnumVariant {
 message EnumDef {
   string name = 1;
   repeated EnumVariant variants = 2;
+  repeated string type_parameters = 3;  // generic enums: enum Option<T>
 }
 
 message ThisExpr {

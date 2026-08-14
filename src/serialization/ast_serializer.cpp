@@ -848,6 +848,9 @@ void ASTSerializer::serializeEnumDef(const EnumDefinitionAST& expr,
                                      ast::ASTNode* node) const {
   auto* enumDef = node->mutable_enum_def();
   enumDef->set_name(expr.getName());
+  for (const auto& typeParam : expr.getTypeParameters()) {
+    enumDef->add_type_parameters(typeParam);
+  }
 
   for (const auto& variant : expr.getVariants()) {
     auto* variantProto = enumDef->add_variants();

@@ -172,10 +172,43 @@ Rules for payload enums:
   usable in `extern "C"` signatures. Payload enums cannot cross the C
   boundary yet.
 
+## Generic Enums
+
+Enums can take type parameters, making reusable shapes like options and
+results expressible:
+
+```sun
+enum Option<T> { Some(T), None }
+enum Result<T, E> { Ok(T), Err(E) }
+
+function find(x: i32) Option<i32> {
+    if (x > 0) { return Option.Some(x * 2); }  // T inferred from the argument
+    return Option.None;                        // T from the return type
+}
+
+var a = Option.Some(21);           // Option<i32>, inferred
+var b: Option<f64> = Option.None;  // type arguments from the annotation
+```
+
+Type arguments are inferred from payload arguments where possible; a bare
+unit variant like `Option.None` takes them from the expected type (a variable
+annotation, the function return type, or an assigned field), and it is an
+error when no context determines them. Each specialization is a distinct
+type — `Option<i32>` and `Option<f64>` coexist independently — and matches
+use the generic name in patterns:
+
+```sun
+match a {
+    Option.Some(v) => v,
+    Option.None => 0
+}
+```
+
 <Callout type="info">
-  Not yet supported: generic enums (`Option<T>`), nested patterns, arrays or
-  globals of payload enums, and payloads owning heap resources. These are
-  planned follow-ups.
+  Not yet supported: explicit type arguments in expression position
+  (`Option<i32>.Some(5)` — use inference or an annotation), nested patterns,
+  arrays or globals of payload enums, and payloads owning heap resources.
+  These are planned follow-ups.
 </Callout>
 
 ## Trailing Commas

@@ -1584,6 +1584,8 @@ class EnumType : public Type {
       qualifiedName_;     // Fully qualified name (e.g., "$hash$_sun_Color")
   std::string baseName_;  // User-written base name (e.g., "Color")
   std::vector<EnumVariant> variants;
+  std::string genericBase_;          // e.g. "Option" for Option_i32
+  std::vector<TypePtr> genericArgs_;  // e.g. [i32] for Option_i32
 
  public:
   EnumType(std::string qualifiedName, std::string baseName = "")
@@ -1605,6 +1607,17 @@ class EnumType : public Type {
     return baseName_.empty() ? qualifiedName_ : baseName_;
   }
   bool hasBaseName() const { return !baseName_.empty(); }
+  void setBaseName(std::string baseName) { baseName_ = std::move(baseName); }
+
+  // Generic specialization origin (e.g. Option_i32 records base "Option" and
+  // args [i32]); empty for non-generic enums.
+  void setGenericOrigin(std::string base, std::vector<TypePtr> args) {
+    genericBase_ = std::move(base);
+    genericArgs_ = std::move(args);
+  }
+  const std::string& getGenericBase() const { return genericBase_; }
+  const std::vector<TypePtr>& getGenericArgs() const { return genericArgs_; }
+  bool isGenericSpecialization() const { return !genericBase_.empty(); }
 
   // Get user-friendly display name for error messages
   std::string getDisplayName() const {

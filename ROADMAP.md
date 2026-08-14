@@ -132,7 +132,13 @@ enums are generic.
       deferred within it: payloads owning heap resources / drop glue, arrays
       and globals of payload enums, C-ABI classification, nested patterns,
       niche layout, `DW_TAG_variant_part` debug info)
-- [ ] Generic enums + expected-type inference for bare variants (Stage 2)
+- [x] Generic enums + expected-type inference (Stage 2): `enum Option<T>`,
+      type arguments inferred from payload arguments (`Option.Some(42)`) or
+      the expected type (`var x: Option<i32> = Option.None;`, return
+      position, member assignment); monomorphized like generic classes with
+      specializations stored on the template AST; works across `.moon`
+      (deferred within it: explicit `Option<i32>.Some(...)` in expression
+      position, nested-generic payload unification)
 - [ ] `Option<T>` (and `Result<T, E>`) in the stdlib + prelude ergonomics
       (Stage 3)
 - [ ] Niche-optimised representation where possible (e.g.

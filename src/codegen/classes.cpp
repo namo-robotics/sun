@@ -646,33 +646,24 @@ Value* CodegenVisitor::codegen(const MemberAccessAST& expr) {
                      moduleType->getModulePath() + "'");
   }
 
-  // Check for enum variant access: EnumName.VariantName
+  // Check for enum variant access: EnumName.VariantName. Prefer the
+  // sema-resolved object type (handles generic specializations like
+  // Option.None, whose object resolves to Option_i32); fall back to the
+  // registry for the plain-name path, without auto-creating entries.
   if (expr.getObject()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
     const auto& varRef =
         static_cast<const VariableReferenceAST&>(*expr.getObject());
-    auto enumType = typeRegistry->getEnum(varRef.getName());
+    std::shared_ptr<sun::EnumType> enumType;
+    sun::TypePtr objResolved = expr.getObject()->getResolvedType();
+    if (objResolved && objResolved->isEnum()) {
+      enumType = std::static_pointer_cast<sun::EnumType>(objResolved);
+    } else if (typeRegistry->hasEnum(varRef.getName())) {
+      enumType = typeRegistry->getEnum(varRef.getName());
+    }
     if (enumType && enumType->getNumVariants() > 0) {
       const auto* variant = enumType->getVariant(memberName);
       if (variant) {
-        // Unit variant of a payload enum: materialize tagged storage and
-        // return the pointer (compound convention). Payload variants are
-        // constructed through the call path.
-        if (enumType->hasPayload()) {
-          StructType* storageTy = typeResolver.getEnumStorageType(*enumType);
-          Function* func = ctx.builder->GetInsertBlock()->getParent();
-          AllocaInst* storage = createEntryBlockAlloca(
-              func, enumType->getBaseName() + "." + memberName, storageTy);
-          Value* tagPtr = ctx.builder->CreateStructGEP(storageTy, storage, 0,
-                                                       "tag.ptr");
-          ctx.builder->CreateStore(
-              ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()),
-                               variant->value),
-              tagPtr);
-          return storage;
-        }
-        // Return the variant value as i32 constant
-        return ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()),
-                                variant->value);
+        return codegenEnumVariantAccess(*enumType, *variant);
       }
     }
   }
@@ -1266,6 +1257,18 @@ Value* CodegenVisitor::codegen(const EnumDefinitionAST& expr) {
   // Enum definitions are already fully registered by the semantic analyzer
   // in the TypeRegistry. Payload-free enums are represented as i32 constants
   // emitted inline when variants are referenced.
+
+  // Generic templates generate no code themselves; walk the specializations
+  // recorded by the semantic analyzer (mirrors generic classes) and build
+  // their storage structs.
+  if (expr.isGeneric()) {
+    for (const auto& [mangledName, specialized] : expr.getSpecializations()) {
+      if (specialized && specialized->hasPayload()) {
+        typeResolver.getEnumStorageType(*specialized);
+      }
+    }
+    return ConstantFP::get(ctx.getContext(), APFloat(0.0));
+  }
 
   // Payload enums: eagerly build the storage struct so any later
   // ClassType::getStructType embedding an enum field (which cannot reach the

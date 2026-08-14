@@ -3566,6 +3566,22 @@ unique_ptr<EnumDefinitionAST> Parser::parseEnumDefinition() {
   std::string enumName = curTok.getIdentifier().value();
   getNextToken();  // eat enum name
 
+  // Optional type parameters: enum Option<T> { ... }
+  std::vector<std::string> typeParameters;
+  if (curTok.kind == TokenKind::LESS) {
+    getNextToken();  // eat '<'
+    while (curTok.kind == TokenKind::IDENTIFIER) {
+      typeParameters.push_back(curTok.getIdentifier().value());
+      getNextToken();  // eat type parameter name
+      if (curTok.kind == TokenKind::COMMA) {
+        getNextToken();  // eat ','
+      } else {
+        break;
+      }
+    }
+    consumeGreater("expected '>' after enum type parameters");
+  }
+
   expectCurrentTokenKind(TokenKind::BRACE_OPEN, "expected '{' after enum name");
   getNextToken();  // eat '{'
 
@@ -3628,9 +3644,12 @@ unique_ptr<EnumDefinitionAST> Parser::parseEnumDefinition() {
     return nullptr;
   }
 
-  return finishNode(std::make_unique<EnumDefinitionAST>(std::move(enumName),
-                                                        std::move(variants)),
-                    start);
+  return finishNode(
+      std::make_unique<EnumDefinitionAST>(std::move(enumName),
+                                          std::move(variants),
+                                          /*precompiled=*/false,
+                                          std::move(typeParameters)),
+      start);
 }
 
 // Parse throw expression: throw <expr>

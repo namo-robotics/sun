@@ -846,7 +846,13 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeEnumDef(
     }
     variants.push_back(std::move(variant));
   }
-  return std::make_unique<EnumDefinitionAST>(proto.name(), std::move(variants));
+  std::vector<std::string> typeParams;
+  for (const auto& tp : proto.type_parameters()) {
+    typeParams.push_back(tp);
+  }
+  return std::make_unique<EnumDefinitionAST>(proto.name(), std::move(variants),
+                                             /*precompiled=*/false,
+                                             std::move(typeParams));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeThis(

@@ -263,6 +263,11 @@ class CodegenVisitor {
                                               sun::EnumType& enumType,
                                               const sun::EnumVariant& variant);
 
+  // Variant access without arguments: i32 constant for payload-free enums,
+  // tagged storage alloca for unit variants of payload enums
+  llvm::Value* codegenEnumVariantAccess(sun::EnumType& enumType,
+                                        const sun::EnumVariant& variant);
+
   // Tag-switch match with payload destructuring
   llvm::Value* codegenEnumMatch(const MatchExprAST& expr,
                                 sun::EnumType& enumType);

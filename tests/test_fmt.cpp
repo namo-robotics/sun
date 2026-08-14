@@ -602,3 +602,8 @@ TEST(FmtTest, MatchDestructuringPattern) {
   EXPECT_NE(once.find("Shape.Circle(r) => "), std::string::npos);
   EXPECT_NE(once.find("Shape.Rect(w, _) => "), std::string::npos);
 }
+
+TEST(FmtTest, GenericEnumDeclaration) {
+  EXPECT_EQ(fmt("enum Option<T>{Some(T),None}"),
+            "enum Option<T> { Some(T), None }\n");
+}

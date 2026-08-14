@@ -471,6 +471,15 @@ class Formatter {
   void printEnum(const EnumDefinitionAST& n) {
     out_ += "enum ";
     out_ += n.getName();
+    const auto& typeParams = n.getTypeParameters();
+    if (!typeParams.empty()) {
+      out_ += '<';
+      for (size_t i = 0; i < typeParams.size(); ++i) {
+        if (i) out_ += ", ";
+        out_ += typeParams[i];
+      }
+      out_ += '>';
+    }
     const auto& variants = n.getVariants();
     if (!isMultiLine(n.getLocation())) {
       out_ += " { ";

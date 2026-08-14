@@ -25,6 +25,7 @@ bool SemanticScope::hasSymbol(const std::string& name) const {
   if (interfaces.contains(name)) return true;
   if (genericInterfaces.contains(name)) return true;
   if (enums.contains(name)) return true;
+  if (genericEnums.contains(name)) return true;
   if (namespacedVariables.contains(name)) return true;
 
   // Check functions by name (O(1) via indexed FunctionTable)
@@ -65,6 +66,13 @@ std::shared_ptr<sun::EnumType> SemanticScope::findEnum(
     const std::string& name) const {
   auto it = enums.find(name);
   if (it != enums.end()) return it->second;
+  return nullptr;
+}
+
+const GenericEnumInfo* SemanticScope::findGenericEnum(
+    const std::string& name) const {
+  auto it = genericEnums.find(name);
+  if (it != genericEnums.end()) return &it->second;
   return nullptr;
 }
 
@@ -112,6 +120,7 @@ std::shared_ptr<SemanticScopeBase> SemanticScopeBase::cloneSymbols(
   clone->interfaces = interfaces;
   clone->genericInterfaces = genericInterfaces;
   clone->enums = enums;
+  clone->genericEnums = genericEnums;
   clone->genericFunctions = genericFunctions;
   clone->childModules = childModules;
   clone->namespacedVariables = namespacedVariables;
@@ -207,11 +216,13 @@ void SemanticAnalyzer::enterInterfaceScope(
 
 void SemanticAnalyzer::enterFunctionScope(const std::string& funcSig,
                                           const sun::QualifiedName& funcName,
-                                          bool canThrow) {
+                                          bool canThrow,
+                                          sun::TypePtr returnType) {
   auto funcScope = std::make_shared<FunctionScope>();
   funcScope->functionSignature = funcSig;
   funcScope->functionName = funcName;
   funcScope->functionCanThrow = canThrow;
+  funcScope->functionReturnType = std::move(returnType);
   funcScope->parent = currentScope;
 
   // Set scopePath to include the function's mangled name so nested functions
@@ -221,6 +232,15 @@ void SemanticAnalyzer::enterFunctionScope(const std::string& funcSig,
 
   currentScope->children.push_back(funcScope);
   currentScope = funcScope.get();
+}
+
+sun::TypePtr SemanticAnalyzer::currentFunctionReturnType() const {
+  for (auto* s = currentScope; s != nullptr; s = s->parent) {
+    if (s->getType() == ScopeType::Function) {
+      return static_cast<const FunctionScope*>(s)->functionReturnType;
+    }
+  }
+  return nullptr;
 }
 
 void SemanticAnalyzer::exitScope() {
