@@ -69,5 +69,11 @@
     ],
     "sun.lsp.path": "build/sun-lsp",
     // === LLDB (for debugging) ===
-    "lldb-dap.executable-path": "/usr/lib/llvm-20/bin/lldb-dap",
+    // Wrapper unsets DEBUGINFOD_URLS, which otherwise hangs lldb in the
+    // container (unreachable symbol server, no timeout). Absolute path: the
+    // lldb-dap extension does not substitute ${workspaceFolder} here.
+    "lldb-dap.executable-path": "/workspaces/sun/.vscode/lldb-dap-wrapper.sh",
+    // Allow gutter breakpoints in .sun files (cppdbg only whitelists
+    // C-family languages by default)
+    "debug.allowBreakpointsEverywhere": true,
 }

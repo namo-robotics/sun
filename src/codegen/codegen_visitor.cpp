@@ -17,6 +17,8 @@ Value* CodegenVisitor::codegen(const ExprAST& expr) {
     return ConstantFP::get(ctx.getContext(), APFloat(0.0));
   }
 
+  debugInfo.attachExpressionLocation(*ctx.builder, expr.getLocation());
+
   switch (expr.getType()) {
     case ASTNodeType::NUMBER:
       return codegen(static_cast<const NumberExprAST&>(expr));

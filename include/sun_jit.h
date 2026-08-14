@@ -10,6 +10,7 @@
 #include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h"
+#include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
@@ -48,6 +49,11 @@ class SunJIT {
     MainJD.addGenerator(
         cantFail(DynamicLibrarySearchGenerator::GetForCurrentProcess(
             DL.getGlobalPrefix())));
+    // Register JITed objects with gdb's JIT interface so -g modules are
+    // debuggable under the JIT (no-op when no debugger is attached).
+    if (auto* gdbListener = JITEventListener::createGDBRegistrationListener()) {
+      ObjectLayer.registerJITEventListener(*gdbListener);
+    }
     if (TT.isOSBinFormatCOFF()) {
       ObjectLayer.setOverrideObjectFlagsWithResponsibilityFlags(true);
       ObjectLayer.setAutoClaimResponsibilityForObjectSymbols(true);

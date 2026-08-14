@@ -284,6 +284,8 @@ Value* CodegenVisitor::codegen(const ClassDefinitionAST& expr) {
       // Create entry basic block
       BasicBlock* BB = BasicBlock::Create(ctx.getContext(), "entry", func);
       ctx.builder->SetInsertPoint(BB);
+      // No subprogram on this wrapper: it must carry no debug locations
+      debugInfo.clearLocation(*ctx.builder);
 
       // Get the default implementation function
       Function* defaultFunc = module->getFunction(defaultMangledName);
@@ -468,6 +470,7 @@ void CodegenVisitor::emitMethodPrologueThis(Function* func) {
 
   // Register 'this' in the current scope so the body can find it
   scopes.back().variables["this"] = thisAlloca;
+  debugInfo.declareThisParameter(*ctx.builder, thisAlloca, currentClass);
 }
 
 // -------------------------------------------------------------------
@@ -505,6 +508,9 @@ void CodegenVisitor::generateMethodBody(const FunctionAST& methodFunc,
   BasicBlock* BB = BasicBlock::Create(ctx.getContext(), "entry", func);
   ctx.builder->SetInsertPoint(BB);
 
+  debugInfo.enterFunction(*ctx.builder, func, proto.getName(),
+                          proto.getLocation());
+
   // Create a new scope for the method
   pushScope();
 
@@ -536,6 +542,8 @@ void CodegenVisitor::generateMethodBody(const FunctionAST& methodFunc,
         ctx.builder->CreateAlloca(argLLVMType, nullptr, argName);
     ctx.builder->CreateStore(&*argIt, alloca);
     scopes.back().variables[argName] = alloca;
+    debugDeclareParam(alloca, argName, proto, static_cast<unsigned>(i),
+                      /*argNoBase=*/2);
     ++argIt;
   }
 
@@ -570,6 +578,8 @@ void CodegenVisitor::generateMethodBody(const FunctionAST& methodFunc,
   currentFunctionCanError = savedCanError;
   currentFunctionValueType = savedValueType;
   currentFunctionReturnsRef = savedReturnsRef;
+
+  debugInfo.exitFunction(func);
 
   // Verify the function
   verifyFunction(*func);
@@ -1160,6 +1170,9 @@ Value* CodegenVisitor::codegen(const InterfaceDefinitionAST& expr) {
     BasicBlock* BB = BasicBlock::Create(ctx.getContext(), "entry", func);
     ctx.builder->SetInsertPoint(BB);
 
+    debugInfo.enterFunction(*ctx.builder, func, proto.getName(),
+                            proto.getLocation());
+
     // Create a new scope for the method
     pushScope();
 
@@ -1186,6 +1199,8 @@ Value* CodegenVisitor::codegen(const InterfaceDefinitionAST& expr) {
           ctx.builder->CreateAlloca(argLLVMType, nullptr, argName);
       ctx.builder->CreateStore(&*argIt, alloca);
       scopes.back().variables[argName] = alloca;
+      debugDeclareParam(alloca, argName, proto,
+                        static_cast<unsigned>(paramIdx), /*argNoBase=*/2);
       ++argIt;
       ++paramIdx;
     }
@@ -1203,6 +1218,8 @@ Value* CodegenVisitor::codegen(const InterfaceDefinitionAST& expr) {
 
     popScope();
     thisPtr = nullptr;
+
+    debugInfo.exitFunction(func);
 
     // Verify the function
     verifyFunction(*func);

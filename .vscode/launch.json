@@ -51,6 +51,54 @@
       ],
     },
     {
+      // Open an example's main.sun (e.g. examples/10-classes/main.sun), set
+      // breakpoints in the gutter, and press F5. Builds with -g, then debugs
+      // the produced binary with lldb.
+      "name": "Debug Sun Example (lldb)",
+      "type": "lldb-dap",
+      "request": "launch",
+      "program": "${fileDirname}/main",
+      "args": [],
+      "cwd": "${fileDirname}",
+      "initCommands": [
+        // (debuginfod is neutralized by lldb-dap-wrapper.sh — the env var
+        // must be unset before lldb starts; settings are not enough)
+        // the sandbox denies the personality() syscall behind ASLR-disable
+        "settings set target.disable-aslr false",
+        "settings set target.process.thread.step-in-avoid-nodebug true",
+        "settings set target.process.thread.step-out-avoid-nodebug true"
+      ],
+      "disableASLR": false,
+      "preLaunchTask": "sun: build open example (-g)"
+    },
+    {
+      // Same as above, with gdb instead of lldb.
+      "name": "Debug Sun Example (gdb)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${fileDirname}/main",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${fileDirname}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "/usr/bin/gdb",
+      "setupCommands": [
+        {
+          "description": "No debuginfod prompts (unreachable in container)",
+          "text": "set debuginfod enabled off",
+          "ignoreFailures": true
+        },
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "sun: build open example (-g)"
+    },
+    {
       "name": "Debug Script",
       "type": "cppdbg",
       "request": "launch",

@@ -56,15 +56,19 @@ class CodegenContext {
   // AOT cross-compilation target; empty means the host (JIT ignores it —
   // it can only ever execute on the host).
   std::string targetTriple_;
+  // Emit DWARF debug info (-g)
+  bool debugInfo_ = false;
 
  public:
   explicit CodegenContext(std::string moduleName,
                           const std::shared_ptr<SunJIT>& jit,
                           LLVMContext* existingContext = nullptr,
-                          std::string targetTriple = "")
+                          std::string targetTriple = "",
+                          bool debugInfo = false)
       : moduleName(std::move(moduleName)),
         jit(jit),
-        targetTriple_(std::move(targetTriple)) {
+        targetTriple_(std::move(targetTriple)),
+        debugInfo_(debugInfo) {
     ownsContext = existingContext == nullptr;
     if (existingContext) {
       initializeModule(*existingContext);
@@ -163,6 +167,8 @@ class CodegenContext {
   // Always use this to get the LLVM context - handles both owned and borrowed
   // cases
   LLVMContext& getContext() const { return mainModule->getContext(); }
+
+  bool debugInfoEnabled() const { return debugInfo_; }
 
   ~CodegenContext() = default;
 

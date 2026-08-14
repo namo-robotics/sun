@@ -281,7 +281,7 @@ Value* CodegenVisitor::codegen(const TryCatchExprAST& expr) {
   // Push try context so throwing calls in the body invoke to this landing pad.
   tryStack.push_back({lpadBB});
 
-  pushScope();
+  pushScope(expr.getTryBlock().getLocation());
   Value* tryResult = codegen(expr.getTryBlock());
   popScope();
 
@@ -349,7 +349,7 @@ Value* CodegenVisitor::codegen(const TryCatchExprAST& expr) {
 
     // ---- body ----
     ctx.builder->SetInsertPoint(bodyBBs[i]);
-    pushScope();
+    pushScope(clause.body->getLocation());
     if (!clause.bindingName.empty()) {
       IRBuilder<> tmpBuilder(&func->getEntryBlock(),
                              func->getEntryBlock().begin());
@@ -359,6 +359,8 @@ Value* CodegenVisitor::codegen(const TryCatchExprAST& expr) {
             tmpBuilder.CreateAlloca(fatTy, nullptr, clause.bindingName);
         ctx.builder->CreateStore(fat, alloca);
         scopes.back().variables[clause.bindingName] = alloca;
+        debugDeclareLocal(alloca, clause.bindingName, nullptr,
+                          expr.getLocation());
       } else {
         // Concrete type: copy the object out of the exception buffer into a
         // fresh stack slot so it survives __cxa_end_catch, then bind e to it.
@@ -372,6 +374,8 @@ Value* CodegenVisitor::codegen(const TryCatchExprAST& expr) {
             ctx.builder->CreateLoad(classStruct, dataPtr, "err.obj");
         ctx.builder->CreateStore(objVal, alloca);
         scopes.back().variables[clause.bindingName] = alloca;
+        debugDeclareLocal(alloca, clause.bindingName, classType,
+                          expr.getLocation());
       }
     }
     Value* catchResult = codegen(*clause.body);

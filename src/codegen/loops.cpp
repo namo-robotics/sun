@@ -10,7 +10,7 @@ Value* CodegenVisitor::codegen(const ForExprAST& expr) {
   Function* func = ctx.builder->GetInsertBlock()->getParent();
 
   // Enter a new scope for loop variables
-  pushScope();
+  pushScope(expr.getLocation());
 
   // Emit the initialization code (can be var declaration or assignment)
   if (expr.getInit()) {
@@ -187,7 +187,7 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
   Function* func = ctx.builder->GetInsertBlock()->getParent();
 
   // Enter a new scope for loop variables
-  pushScope();
+  pushScope(expr.getLocation());
 
   // Evaluate the iterable expression to get the container/iterator
   // The iterable is expected to have hasNext(ref Container) -> bool and
@@ -317,6 +317,8 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
 
   // Register the loop variable in the current scope
   scopes.back().variables[expr.getLoopVar()] = loopVarAlloca;
+  debugDeclareLocal(loopVarAlloca, expr.getLoopVar(), loopVarType,
+                    expr.getLocation());
 
   // Create basic blocks for the loop structure
   BasicBlock* condBB = BasicBlock::Create(ctx.getContext(), "forin_cond", func);

@@ -27,6 +27,7 @@ add_executable(sun_tests
     test_compilation.cpp
     test_contiguous_buffer.cpp
     test_debug.cpp
+    test_debug_info.cpp
     test_dfa.cpp
     test_enums.cpp
     test_errors.cpp

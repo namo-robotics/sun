@@ -71,16 +71,16 @@ class Driver {
   void writeUserDefinedIR(const std::string& path);
 
  public:
-  /// Create a Driver for JIT execution
+  /// Create a Driver for JIT execution. debugInfo enables DWARF emission (-g).
   static std::unique_ptr<Driver> createForJIT(
-      const std::string& moduleName = "sun");
+      const std::string& moduleName = "sun", bool debugInfo = false);
 
   /// Create a Driver for AOT compilation (no JIT). A non-empty targetTriple
   /// cross-compiles for that target (object/IR emission only — linking and
-  /// execution stay host-only).
+  /// execution stay host-only). debugInfo enables DWARF emission (-g).
   static std::unique_ptr<Driver> createForAOT(
       const std::string& moduleName = "module",
-      const std::string& targetTriple = "");
+      const std::string& targetTriple = "", bool debugInfo = false);
 
   /// Execute a source string with optional command-line arguments
   /// filePath is used for error messages (optional)
