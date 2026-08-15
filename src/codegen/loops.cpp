@@ -59,15 +59,22 @@ Value* CodegenVisitor::codegen(const ForExprAST& expr) {
   // Emit loop body
   ctx.builder->SetInsertPoint(bodyBB);
 
+  // Per-iteration scope: owners declared in the body are dropped at the
+  // back-edge (and by break/continue), not once after the loop
+  pushScope(expr.getBody()->getLocation());
+
   // Push loop context for break/continue (continue goes to step, break goes to
   // after)
-  loopStack.push_back({stepBB, afterBB});
+  loopStack.push_back({stepBB, afterBB, scopes.size() - 1});
 
   // Emit the body of the loop.
   codegen(*expr.getBody());
 
   // Pop loop context
   loopStack.pop_back();
+
+  // Emits this iteration's drops unless the block already terminated
+  popScope();
 
   // Only emit branch to step if current block has no terminator (break/continue
   // didn't execute)
@@ -134,15 +141,22 @@ Value* CodegenVisitor::codegen(const WhileExprAST& expr) {
   // Emit loop body
   ctx.builder->SetInsertPoint(bodyBB);
 
+  // Per-iteration scope: owners declared in the body are dropped at the
+  // back-edge (and by break/continue), not leaked into the enclosing scope
+  pushScope(expr.getBody()->getLocation());
+
   // Push loop context for break/continue (continue goes to cond, break goes to
   // after)
-  loopStack.push_back({condBB, afterBB});
+  loopStack.push_back({condBB, afterBB, scopes.size() - 1});
 
   // Emit the body of the loop.
   codegen(*expr.getBody());
 
   // Pop loop context
   loopStack.pop_back();
+
+  // Emits this iteration's drops unless the block already terminated
+  popScope();
 
   // Only emit branch to condition if current block has no terminator
   // (break/continue didn't execute)
@@ -163,6 +177,9 @@ Value* CodegenVisitor::codegen(const BreakAST& expr) {
     return nullptr;
   }
 
+  // Drop owners in all scopes being jumped out of (down to the loop body)
+  emitCleanupToDepth(loopStack.back().cleanupDepth);
+
   // Jump to the break target (the block after the loop)
   ctx.builder->CreateBr(loopStack.back().breakBlock);
 
@@ -175,6 +192,9 @@ Value* CodegenVisitor::codegen(const ContinueAST& expr) {
     logAndThrowError("'continue' statement not within a loop");
     return nullptr;
   }
+
+  // Drop owners in all scopes being jumped out of (down to the loop body)
+  emitCleanupToDepth(loopStack.back().cleanupDepth);
 
   // Jump to the continue target (condition for while, step for for)
   ctx.builder->CreateBr(loopStack.back().continueBlock);
@@ -354,8 +374,12 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
   // Emit loop body
   ctx.builder->SetInsertPoint(bodyBB);
 
+  // Per-iteration scope: owners declared in the body are dropped at the
+  // back-edge (and by break/continue)
+  pushScope(expr.getBody()->getLocation());
+
   // Push loop context for break/continue
-  loopStack.push_back({condBB, afterBB});
+  loopStack.push_back({condBB, afterBB, scopes.size() - 1});
 
   // Call iterator.next() and store result in loop variable
   Function* nextFunc =
@@ -389,6 +413,9 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
   // Pop loop context
   loopStack.pop_back();
 
+  // Emits this iteration's drops unless the block already terminated
+  popScope();
+
   // Only emit branch to condition if current block has no terminator
   if (!ctx.builder->GetInsertBlock()->getTerminator()) {
     ctx.builder->CreateBr(condBB);
@@ -397,7 +424,7 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
   // Continue inserting after the loop
   ctx.builder->SetInsertPoint(afterBB);
 
-  // Pop the loop scope
+  // Pop the loop scope (emits cleanup for loop-scoped owners in afterBB)
   popScope();
 
   // for-in expr always returns 0.0

@@ -25,6 +25,7 @@ add_executable(sun_tests
     test_bound_methods.cpp
     test_classes.cpp
     test_compilation.cpp
+    test_scope_cleanup.cpp
     test_contiguous_buffer.cpp
     test_debug.cpp
     test_debug_info.cpp

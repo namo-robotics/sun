@@ -78,6 +78,8 @@ struct FuncDeclResult {
 struct LoopContext {
   llvm::BasicBlock* continueBlock;  // Block to jump to for 'continue'
   llvm::BasicBlock* breakBlock;     // Block to jump to for 'break'
+  size_t cleanupDepth;  // Scope index of the loop body; break/continue emit
+                        // cleanup for scopes at or above this depth
 };
 
 // Try block context for exception handling. Throwing calls made inside a try
@@ -669,8 +671,24 @@ class CodegenVisitor {
 
   void popScope() {
     if (scopes.empty()) return;
+    // Run this scope's pending drops unless the block already terminated
+    // (return/break/throw paths emit their own multi-scope cleanup first).
+    llvm::BasicBlock* bb = ctx.builder->GetInsertBlock();
+    if (bb && !bb->getTerminator()) {
+      emitCleanupForScope(scopes.back());
+    }
     if (scopes.back().hasDebugScope) debugInfo.popLexicalBlock();
     scopes.pop_back();
+  }
+
+  // Index of the innermost function-boundary scope. Falls back to the
+  // innermost scope (old single-scope cleanup behavior) if none is marked,
+  // so an unmarked context can never emit references into another function.
+  size_t functionBoundaryDepth() const {
+    for (size_t i = scopes.size(); i-- > 0;) {
+      if (scopes[i].isFunctionBoundary) return i;
+    }
+    return scopes.empty() ? 0 : scopes.size() - 1;
   }
 
   // Saved insertion point for restoring after nested codegen
@@ -705,11 +723,21 @@ class CodegenVisitor {
     insertPointStack.pop_back();
   }
 
-  // Emit cleanup code for all owned allocations and class variables in current
-  // scope For ptr<T>: frees the allocation, recursively freeing ptr<T> fields
+  // Emit cleanup code for all owned allocations and class variables from the
+  // innermost scope down to the innermost function boundary (used by return
+  // paths and function ends).
+  // For ptr<T>: frees the allocation, recursively freeing ptr<T> fields
   // if T is a class For class variables: calls deinit() method if it exists,
   // recursively deinits class fields
   void emitScopeCleanup();
+
+  // Emit cleanup for a single scope's allocations (LIFO), without popping it
+  void emitCleanupForScope(CodegenScope& scope);
+
+  // Emit cleanup for all scopes from the innermost down to index `depth`
+  // (inclusive), without popping any. Used by break/continue/throw paths that
+  // jump out of several scopes at once.
+  void emitCleanupToDepth(size_t depth);
 
   // Helper: emit cleanup code for ptr<T> and raw_ptr<T> fields in a class
   // Recursively frees pointer fields before the containing object is freed
@@ -732,12 +760,22 @@ class CodegenVisitor {
     }
   }
 
-  // Track a new class allocation in current scope for automatic deinit
+  // Track a new class allocation in current scope for automatic deinit.
+  // An alloca already tracked (e.g. a constructor temporary later adopted by
+  // a variable) keeps its single entry — double-tracking would double-deinit.
   void trackClassAllocation(llvm::AllocaInst* alloca, const std::string& name,
                             std::shared_ptr<sun::ClassType> type) {
-    if (!scopes.empty()) {
-      scopes.back().classAllocations.push_back({alloca, name, false, std::move(type)});
+    if (scopes.empty()) return;
+    for (auto& scope : scopes) {
+      for (auto& alloc : scope.classAllocations) {
+        if (alloc.alloca == alloca) {
+          alloc.varName = name;  // adopt the variable's name for diagnostics
+          return;
+        }
+      }
     }
+    scopes.back().classAllocations.push_back(
+        {alloca, name, false, std::move(type)});
   }
 
   // Mark a class allocation as moved/deinited (don't auto-deinit at scope exit)
