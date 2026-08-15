@@ -57,11 +57,13 @@
       "Bash(echo \"proto-moon exit=$?\")",
       "Bash(echo \"moon2 exit=$?\")",
       "Bash(./build/tests/sun_tests --gtest_filter=\"ProtoImportTest.moon*\")",
-      "Bash(grep -n \"Import-only via manifest\\\\|native \\\\`message\\\\`\" ROADMAP.md)"
+      "Bash(grep -n \"Import-only via manifest\\\\|native \\\\`message\\\\`\" ROADMAP.md)",
+      "Bash(rm -rf tmp/t*.sun tmp/w*.sun tmp/o*.sun tmp/f32*.sun tmp/opt1.sun tmp/oneof1.sun tmp/refret.sun tmp/rr2.sun tmp/mapstr*.sun tmp/qual*.sun tmp/gdbcmds tmp/*_debug tmp/t7.ll tmp/t11_full.ll tmp/protodemo tmp/moonproto tmp/moon2 2>/dev/null; ls tmp/ | head; ls build/tmp 2>/dev/null | head -3)"
     ],
     "additionalDirectories": [
       "/tmp",
-      "/workspaces/sun/build/tmp"
+      "/workspaces/sun/build/tmp",
+      "/workspaces/sun/tmp"
     ]
   }
 }
