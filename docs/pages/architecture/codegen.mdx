@@ -1,0 +1,55 @@
+# Code Generation
+
+The codegen stage walks the analyzed AST with a visitor
+(`codegen_visitor.h`) and emits LLVM IR. It relies entirely on the types and
+annotations stamped by the semantic analyzer — by this point every
+expression already knows its resolved `sun::Type`, and generic
+specializations have been recorded for it to emit as ordinary non-generic
+code.
+
+## Key Conventions
+
+- LLVM is accessed through a shared context: `ctx.builder` and
+  `ctx.context`.
+- Sun types map to LLVM types via the type resolver:
+  `typeResolver.resolve(type)` for variables and
+  `typeResolver.resolveForReturn(type)` for function returns.
+- Classes are value types: functions returning a class return the struct by
+  value, and callers materialize it on the stack for addressability.
+- Arrays are fat pointers: `{ ptr data, i32 ndims, ptr dims }`.
+- Error unions (`T, IError` functions) lower to `{ i1 isError, T value }`.
+- Lambdas use closure structs; named functions use direct calls. Class
+  methods use the closure ABI: arg 0 is a ptr to `{ ptr func, ptr env }`
+  with the receiver in `env`, and `obj.method` in value position is a
+  lambda-typed bound method `{ methodFn, objPtr }`.
+
+## Source Layout
+
+The code generation is split across multiple files under `src/codegen/` by
+expression type:
+
+| File | Responsibility |
+|------|----------------|
+| `codegen_visitor.cpp` | Main visitor dispatch, module initialization |
+| `functions_lambdas.cpp` | Function/lambda codegen with closure support |
+| `classes.cpp` | Class definitions, constructors, methods |
+| `call_expressions.cpp` | Function calls, method calls |
+| `variable_creation.cpp` | Variable declarations (`var`, `let`) |
+| `variable_references.cpp` | Variable loads, assignments |
+| `if_expressions.cpp` | Conditionals, ternary expressions |
+| `loops.cpp` | `for`, `while`, and `for-in` loops |
+| `match_expressions.cpp` | Pattern matching (`match` expressions) |
+| `block_expressions.cpp` | Block scoping |
+| `return_statements.cpp` | Return value handling |
+| `error_handling.cpp` | `try`/`catch`/`throw` codegen |
+| `arrays.cpp` | Array literals and indexing |
+| `pointers.cpp` | Pointer member access (`raw_ptr`, `static_ptr`) |
+| `intrinsics.cpp` | Compiler intrinsic codegen (`_sizeof`, `_load`, etc.) |
+| `threads.cpp` | OS thread spawning and joining |
+| `thread_utils.cpp` | Thread utility helpers |
+
+## Adding a New Expression Type
+
+1. Add an `ASTNodeType` enum value and AST class.
+2. Implement a `codegen` method in the appropriate `src/codegen/*.cpp` file.
+3. Update the `codegenExpression()` dispatch switch.

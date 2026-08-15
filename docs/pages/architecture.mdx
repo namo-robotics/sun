@@ -2,6 +2,14 @@
 
 Sun is a compiled language with an LLVM 20 backend.
 
+This page gives a high-level overview of the compiler. Two stages have
+dedicated deep-dives:
+
+- [Semantic Analysis](/architecture/semantic-analysis) — type inference,
+  scope resolution, generics, and capture detection
+- [Code Generation](/architecture/codegen) — LLVM IR emission, lowering
+  conventions, and source layout
+
 ## Compilation Pipeline
 
 ```
@@ -35,88 +43,26 @@ Source → Lexer → Parser → AST → Manifest Processing → Merged AST → S
 | **SunJIT** | `sun_jit.h` | LLVM ORC-based JIT compiler for immediate execution |
 | **Moon** | `moon.h/cpp`, `library_cache.h/cpp` | Precompiled library format (.moon) and caching |
 
-## How the Semantic Analyzer Works
+## Semantic Analysis
 
-The semantic analyzer's job is to turn a merely *parsed* program into an
-*understood* one: every expression gets a resolved type, every name gets a
-meaning, and anything inconsistent is rejected with an error. It never
-rewrites the program — it annotates the AST in place, and the borrow checker
-and codegen simply read those annotations.
+The semantic analyzer turns a merely *parsed* program into an *understood*
+one: it makes two passes over the merged AST — a shallow declaration
+collection sweep, then a deep walk that stamps every expression with a
+resolved `sun::Type`. Type inference, expected-type propagation,
+compatibility checking, closure capture detection, and generic
+monomorphization all happen here.
 
-It makes two passes over the merged AST:
+See [Semantic Analysis](/architecture/semantic-analysis) for the full
+deep-dive.
 
-1. **Declaration collection** — a shallow sweep that registers the *names* of
-   things: classes, interfaces, enums, and function signatures. This is what
-   lets code call a function or use a type that is defined further down the
-   file. Generic definitions (classes, interfaces, enums) are registered as
-   templates, not concrete types. Bodies are not analyzed yet.
-2. **Full analysis** — a deep walk of every statement and expression. Each
-   node is checked against its context and stamped with a resolved
-   `sun::Type`.
+## Code Generation
 
-All name resolution happens against a **scope tree** that mirrors the
-program's structure: a global scope with module, import, function, and block
-scopes nested inside it. Looking up a name walks from the innermost scope
-outward, also consulting `using` imports and, for code that came from a
-`.moon` library, the scope of the module that defined it. Function scopes
-additionally carry context the analysis needs later — whether the function
-may throw, and its return type (used to infer types in `return` position).
+The codegen visitor walks the analyzed AST and emits LLVM IR, reading the
+types and annotations the semantic analyzer recorded. Its source is split
+across `src/codegen/` by expression type.
 
-During the deep walk, a few things are happening at once:
-
-- **Type inference** — the type of every expression is computed bottom-up
-  (a literal is an `i32`, a call has its callee's return type, and so on).
-- **Expected-type propagation** — types also flow *top-down* where context
-  determines them: a variable's annotation shapes its initializer, a
-  function's return type shapes its `return` expressions, a parameter type
-  shapes its argument. This is how integer literals adopt the right width and
-  how `Option.None` learns its type arguments.
-- **Checking** — assignments, arguments, and operators are verified for
-  compatibility; overloads are resolved against the actual argument types;
-  calls to throwing functions must sit inside `try` or a throwing function;
-  enum matches must be exhaustive.
-- **Capture detection** — lambdas are scanned for references to outer
-  variables so codegen can build their closure environments.
-
-**Generics are monomorphized here, not in codegen.** When analysis meets
-`Vec<i32>` or `Option<f64>`, it instantiates the template with the type
-arguments bound: annotations inside the template resolve against those
-bindings, and the resulting concrete type (plus, for classes, a cloned and
-re-analyzed copy of the method bodies) is recorded on the template's AST
-node. Codegen later walks those recorded specializations and emits each one
-as ordinary non-generic code.
-
-The analyzer's source is split by concern under `src/semantic_analysis/`:
-`declaration_collection.cpp` (pass one), `analysis.cpp` (the main
-expression walk), `type_inference.cpp` (bottom-up typing),
-`type_conversion.cpp` (annotation resolution and type-parameter
-substitution), `scope_variables.cpp` / `scope_lookup.cpp` (the scope tree),
-`classes.cpp`, `interfaces.cpp`, `enums.cpp` (per-construct analysis and
-generic instantiation), and `captures.cpp` (closure captures).
-
-## Codegen Structure
-
-The code generation is split across multiple files by expression type:
-
-| File | Responsibility |
-|------|----------------|
-| `codegen_visitor.cpp` | Main visitor dispatch, module initialization |
-| `functions_lambdas.cpp` | Function/lambda codegen with closure support |
-| `classes.cpp` | Class definitions, constructors, methods |
-| `call_expressions.cpp` | Function calls, method calls |
-| `variable_creation.cpp` | Variable declarations (`var`, `let`) |
-| `variable_references.cpp` | Variable loads, assignments |
-| `if_expressions.cpp` | Conditionals, ternary expressions |
-| `loops.cpp` | `for`, `while`, and `for-in` loops |
-| `match_expressions.cpp` | Pattern matching (`match` expressions) |
-| `block_expressions.cpp` | Block scoping |
-| `return_statements.cpp` | Return value handling |
-| `error_handling.cpp` | `try`/`catch`/`throw` codegen |
-| `arrays.cpp` | Array literals and indexing |
-| `pointers.cpp` | Pointer member access (`raw_ptr`, `static_ptr`) |
-| `intrinsics.cpp` | Compiler intrinsic codegen (`_sizeof`, `_load`, etc.) |
-| `threads.cpp` | OS thread spawning and joining |
-| `thread_utils.cpp` | Thread utility helpers |
+See [Code Generation](/architecture/codegen) for lowering conventions and
+the per-file breakdown.
 
 ## Type System
 
