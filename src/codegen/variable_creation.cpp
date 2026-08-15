@@ -696,10 +696,19 @@ void CodegenVisitor::emitFieldDeinit(llvm::Value* objectPtr,
 }
 
 void CodegenVisitor::emitScopeCleanup() {
-  if (scopes.empty()) return;
+  emitCleanupToDepth(functionBoundaryDepth());
+}
 
+void CodegenVisitor::emitCleanupToDepth(size_t depth) {
+  if (scopes.empty()) return;
+  for (size_t i = scopes.size(); i-- > depth;) {
+    emitCleanupForScope(scopes[i]);
+  }
+}
+
+void CodegenVisitor::emitCleanupForScope(CodegenScope& scope) {
   // First, cleanup class allocations (call deinit methods)
-  auto& currentClassScope = scopes.back().classAllocations;
+  auto& currentClassScope = scope.classAllocations;
 
   // Deinit all non-moved class allocations in reverse order (LIFO)
   if (!currentClassScope.empty()) {
@@ -715,7 +724,7 @@ void CodegenVisitor::emitScopeCleanup() {
   }
 
   // Then, cleanup owned pointer allocations (ptr<T>)
-  auto& currentScope = scopes.back().ownedAllocations;
+  auto& currentScope = scope.ownedAllocations;
   if (currentScope.empty()) return;
 
   // Get or declare free function: void free(ptr)
@@ -877,7 +886,7 @@ void CodegenVisitor::emitStaticInitFunction() {
   debugInfo.clearLocation(*ctx.builder);
 
   // Push a scope for any temporaries needed during init
-  pushScope();
+  pushScope().isFunctionBoundary = true;
 
   // Generate initialization code for each global variable
   for (const auto& init : staticInits) {

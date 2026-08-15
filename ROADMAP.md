@@ -96,16 +96,19 @@ registered with gdb's JIT interface, so `gdb --args sun -g prog.sun` works too.
 
 ### Generics Across Module Boundaries
 
-Generic instantiations do not currently cross `.moon` boundaries transparently —
-`stdlib/contiguous_buffer.sun` has to pre-enumerate every specialization with
-`declare ContiguousBufferIterator_u8 = ContiguousBufferIterator<u8>;`. Library
-authors cannot anticipate their users' type arguments, so generic libraries cannot
-be written generically. This matters more than any new generics feature.
+Generic instantiations cross `.moon` boundaries transparently: generic
+definitions are serialized into the `.moon`, and use sites instantiate them on
+demand (verified with specializations not pre-declared anywhere, e.g.
+`Vec<i16>`; `Option<T>`/`Result<T, E>` ship with no pre-declared
+specializations at all). The stdlib's explicit `declare` specializations are
+kept deliberately — they precompile common instantiations into `stdlib.moon`
+so downstream programs don't pay codegen cost for them; link-time
+deduplication makes a pre-declared and use-site instantiation resolve to one
+symbol.
 
-- [ ] Instantiate generics on demand at the use site across modules
-- [ ] Serialize generic definitions (not just specializations) into `.moon`
-- [ ] Deduplicate identical instantiations at link time
-- [ ] Remove the explicit `declare` specializations from the stdlib
+- [x] Instantiate generics on demand at the use site across modules
+- [x] Serialize generic definitions (not just specializations) into `.moon`
+- [x] Deduplicate identical instantiations at link time
 
 ### Match Exhaustiveness Checking
 
@@ -152,13 +155,6 @@ enums are generic.
 - [ ] Migrate the remaining absence APIs (`LinkedList.first/last`,
       `Vec.pop`, iterator `next()` — the last needs the `IIterator` contract
       rework); blocked on drop glue for owning payloads where `T` has deinit
-
-### Tuples
-
-- [ ] Tuple types: `(i32, string)`
-- [ ] Tuple construction: `(1, "hello")`
-- [ ] Destructuring: `var (x, y) = pair;`
-- [ ] Multiple return values without a named class
 
 ### Constants and Compile-Time Evaluation
 
@@ -297,6 +293,19 @@ var back = try RobotStatus.decode(alloc, view);   // malformed input throws IErr
 
 - [ ] Interface inheritance (`src/semantic_analysis/scope_variables.cpp:746`)
 - [ ] Explicit enum values: `Red = 1` (`src/parser.cpp:3367`)
+
+---
+
+## ⚪ Maybe
+
+Ideas under consideration, not committed to.
+
+### Tuples
+
+- [ ] Tuple types: `(i32, string)`
+- [ ] Tuple construction: `(1, "hello")`
+- [ ] Destructuring: `var (x, y) = pair;`
+- [ ] Multiple return values without a named class
 
 ---
 

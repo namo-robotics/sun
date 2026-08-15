@@ -512,7 +512,7 @@ void CodegenVisitor::generateMethodBody(const FunctionAST& methodFunc,
                           proto.getLocation());
 
   // Create a new scope for the method
-  pushScope();
+  pushScope().isFunctionBoundary = true;
 
   emitMethodPrologueThis(func);
 
@@ -1194,7 +1194,7 @@ Value* CodegenVisitor::codegen(const InterfaceDefinitionAST& expr) {
                             proto.getLocation());
 
     // Create a new scope for the method
-    pushScope();
+    pushScope().isFunctionBoundary = true;
 
     emitMethodPrologueThis(func);
 
