@@ -138,6 +138,24 @@ class BorrowChecker {
   // varName -> true if ownership was transferred
   std::unordered_set<std::string> movedVariables_;
 
+  // Compound match-payload bindings currently in scope. They BORROW the
+  // matched value's payload slot in place: moving them (var creation,
+  // by-value argument, return, assignment source) is rejected.
+  std::unordered_set<std::string> matchBorrowedBindings_;
+
+  // Discriminant variables of enclosing match expressions: frozen (no
+  // assignment, no move) while their arms borrow payloads.
+  std::unordered_set<std::string> frozenDiscriminants_;
+
+  // Reject moving out of a match binding / frozen discriminant. Returns
+  // true if `name` may be moved.
+  bool checkMoveAllowed(const std::string& name, const Position& pos);
+
+  // True if control never falls out of `expr` (it ends in return/throw, or
+  // is an if whose branches all diverge). Moves made on a diverging path do
+  // not flow into the code after it.
+  static bool exprDiverges(const ExprAST& expr);
+
   // Track which variables are known to be reference-typed (for function params)
   std::unordered_set<std::string> refTypedParams_;
 

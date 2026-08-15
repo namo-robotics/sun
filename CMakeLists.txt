@@ -121,6 +121,8 @@ add_library(sun_lib
     src/abi/sysv_x86_64.cpp
     src/codegen.cpp
     src/driver.cpp
+    src/manifest_processor.cpp
+    src/proto_importer.cpp
     src/codegen/codegen_visitor.cpp
     src/codegen/debug_info_builder.cpp
     src/codegen/functions_lambdas.cpp
@@ -194,7 +196,10 @@ target_include_directories(sun_lib
 )
 
 # Link LLVM the modern way (target-based)
-target_link_libraries(sun_lib PUBLIC LLVM protobuf::libprotobuf)  # Add more components as needed
+# libprotoc provides google::protobuf::compiler::Importer, used to parse .proto
+# schemas listed in a manifest's `protos:` at compile time (no libprotobuf
+# dependency ends up in compiled Sun programs).
+target_link_libraries(sun_lib PUBLIC LLVM protobuf::libprotobuf protobuf::libprotoc)  # Add more components as needed
 
 # Ensure the library uses the same definitions/includes as LLVM
 target_compile_definitions(sun_lib PUBLIC ${LLVM_DEFINITIONS})

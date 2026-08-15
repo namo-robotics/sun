@@ -148,7 +148,8 @@ Value* CodegenVisitor::tryCodegenAddress(const ExprAST& expr) {
               llvm::PointerType::getUnqual(ctx.getContext()), alloca,
               varRef.getName() + ".ptr");
         }
-        return alloca;
+        // Compound match-payload bindings hold the borrowed slot's address
+        return compoundStorageAddress(varRef.getName());
       }
 
       // [ref x] captures have a genuine storage address (the pointer stored

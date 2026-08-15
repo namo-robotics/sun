@@ -18,73 +18,14 @@
 #include "debug/scope_tree_generator.h"
 #include "error.h"
 #include "lowering_pass.h"
+#include "manifest_processor.h"
 #include "module_linker.h"
+#include "proto_importer.h"
 #include "source_manager.h"
 #include "sun_path.h"
 
 static llvm::ExitOnError ExitOnErr;
 using llvm::orc::ThreadSafeModule;
-
-// ---------------------------------------------------------------------------
-// Manifest processing helpers
-// ---------------------------------------------------------------------------
-
-/// Extract ManifestAST from a parsed program's top-level statements.
-/// Returns nullptr if no manifest block is found.
-static const ManifestAST* findManifest(const BlockExprAST& program) {
-  for (const auto& stmt : program.getBody()) {
-    if (stmt && stmt->getType() == ASTNodeType::MANIFEST) {
-      return static_cast<const ManifestAST*>(stmt.get());
-    }
-  }
-  return nullptr;
-}
-
-/// Resolve a manifest path - first relative to baseDir, then via SUN_PATH.
-static std::string resolveManifestPath(const std::string& path,
-                                       const std::string& baseDir) {
-  std::filesystem::path p(path);
-  if (p.is_absolute()) {
-    return path;
-  }
-  // First try relative to base directory
-  auto relative = std::filesystem::path(baseDir) / p;
-  if (std::filesystem::exists(relative)) {
-    return relative.lexically_normal().string();
-  }
-  // Then try SUN_PATH
-  auto resolved = sun::SunPath::resolve(path);
-  if (!resolved.empty()) {
-    return resolved.string();
-  }
-  // Fall back to path as-is (will error later if not found)
-  return path;
-}
-
-/// Process manifest and populate source files and moon imports.
-/// baseDir is used to resolve relative paths.
-static void processManifest(const ManifestAST& manifest,
-                            const std::string& baseDir,
-                            std::vector<std::string>& sunFiles,
-                            std::vector<sun::MoonImport>& moonImports) {
-  // Process sun dependencies
-  for (const auto& sunDep : manifest.getSuns()) {
-    std::string resolved = resolveManifestPath(sunDep.path, baseDir);
-    sunFiles.push_back(resolved);
-  }
-
-  // Process moon dependencies
-  for (const auto& moonDep : manifest.getMoons()) {
-    std::string resolved = resolveManifestPath(moonDep.path, baseDir);
-    if (moonDep.rename.has_value()) {
-      // Create moon import with renaming
-      moonImports.emplace_back(resolved, moonDep.rename.value(),
-                               moonDep.rename.value());
-    } else {
-      moonImports.emplace_back(resolved);
-    }
-  }
-}
 
 /// Strip library code the program never uses before handing a module to the
 /// JIT. ORC eagerly compiles every defined function in an added module, so
@@ -809,7 +750,8 @@ sun::SunValue Driver::executeString(const std::string& source, int argc,
   return runPipeline(std::move(blockAst), parser, true, argc, argv);
 }
 
-void Driver::executeFile(const std::string& filename, int argc, char** argv) {
+sun::SunValue Driver::executeFile(const std::string& filename, int argc,
+                                  char** argv) {
   std::filesystem::path filePath = std::filesystem::absolute(filename);
   std::string baseDirPath = filePath.parent_path().string();
   std::string canonical = std::filesystem::canonical(filePath).string();
@@ -817,7 +759,7 @@ void Driver::executeFile(const std::string& filename, int argc, char** argv) {
   std::ifstream file(filename);
   if (!file.is_open()) {
     llvm::errs() << "Error: Could not open file '" << filename << "'\n";
-    return;
+    return sun::VoidValue{};
   }
   std::stringstream buffer;
   buffer << file.rdbuf();
@@ -830,17 +772,23 @@ void Driver::executeFile(const std::string& filename, int argc, char** argv) {
 
   std::vector<std::string> sunFiles;
   std::vector<sun::MoonImport> moonImports = moonImports_;
+  std::vector<std::string> protoFiles = protoFiles_;
 
-  if (const auto* manifest = findManifest(*preAst)) {
+  if (const auto* manifest = sun::ManifestProcessor::findManifest(*preAst)) {
     // Manifest found - collect all dependencies
-    processManifest(*manifest, baseDirPath, sunFiles, moonImports);
+    auto resolved = sun::ManifestProcessor::process(*manifest, baseDirPath);
+    sunFiles = std::move(resolved.sunFiles);
+    moonImports.insert(moonImports.end(), resolved.moonImports.begin(),
+                       resolved.moonImports.end());
+    protoFiles.insert(protoFiles.end(), resolved.protoFiles.begin(),
+                      resolved.protoFiles.end());
   }
 
   // Add the entrypoint file itself
   sunFiles.insert(sunFiles.begin(), canonical);
 
   // Use merged compilation
-  executeFiles(sunFiles, moonImports, argc, argv);
+  return executeFiles(sunFiles, moonImports, argc, argv, protoFiles);
 }
 
 void Driver::compileString(const std::string& source,
@@ -891,17 +839,23 @@ void Driver::compileFile(const std::string& filename) {
 
   std::vector<std::string> sunFiles;
   std::vector<sun::MoonImport> moonImports = moonImports_;
+  std::vector<std::string> protoFiles = protoFiles_;
 
-  if (const auto* manifest = findManifest(*preAst)) {
+  if (const auto* manifest = sun::ManifestProcessor::findManifest(*preAst)) {
     // Manifest found - collect all dependencies
-    processManifest(*manifest, baseDirPath, sunFiles, moonImports);
+    auto resolved = sun::ManifestProcessor::process(*manifest, baseDirPath);
+    sunFiles = std::move(resolved.sunFiles);
+    moonImports.insert(moonImports.end(), resolved.moonImports.begin(),
+                       resolved.moonImports.end());
+    protoFiles.insert(protoFiles.end(), resolved.protoFiles.begin(),
+                      resolved.protoFiles.end());
   }
 
   // Add the entrypoint file itself
   sunFiles.insert(sunFiles.begin(), canonical);
 
   // Use merged compilation
-  compileFiles(sunFiles, moonImports);
+  compileFiles(sunFiles, moonImports, protoFiles);
 }
 
 // ---------------------------------------------------------------------------
@@ -915,9 +869,13 @@ static std::unique_ptr<BlockExprAST> mergeASTs(
     const std::vector<std::string>& filePaths) {
   std::vector<std::unique_ptr<ExprAST>> mergedBody;
 
-  // Track modules by name so we can merge same-named modules
+  // Track modules by name so we can merge same-named modules. Emission keeps
+  // first-seen order: declaration order across modules must stay stable
+  // (a class field of a type from a sibling module resolves in the
+  // declaration pre-pass in this order).
   std::unordered_map<std::string, std::vector<std::unique_ptr<ExprAST>>>
       moduleContents;
+  std::vector<std::string> moduleOrder;
 
   // Track non-module statements separately so we can order them after modules
   std::vector<std::unique_ptr<ExprAST>> nonModuleStatements;
@@ -940,6 +898,7 @@ static std::unique_ptr<BlockExprAST> mergeASTs(
         // Move the module body statements to our collection
         auto& modBody = const_cast<std::vector<std::unique_ptr<ExprAST>>&>(
             mod.getBody().getBody());
+        if (!moduleContents.count(modName)) moduleOrder.push_back(modName);
         for (auto& modStmt : modBody) {
           if (modStmt) {
             moduleContents[modName].push_back(std::move(modStmt));
@@ -953,7 +912,8 @@ static std::unique_ptr<BlockExprAST> mergeASTs(
   }
 
   // First add merged modules (so they're defined before using statements)
-  for (auto& [modName, contents] : moduleContents) {
+  for (const auto& modName : moduleOrder) {
+    auto& contents = moduleContents[modName];
     auto modBody = std::make_unique<BlockExprAST>(std::move(contents));
     auto mergedMod = std::make_unique<ModuleAST>(modName, std::move(modBody));
     mergedBody.push_back(std::move(mergedMod));
@@ -968,7 +928,8 @@ static std::unique_ptr<BlockExprAST> mergeASTs(
 }
 
 void Driver::compileFiles(const std::vector<std::string>& sourceFiles,
-                          const std::vector<sun::MoonImport>& moonImports) {
+                          const std::vector<sun::MoonImport>& moonImports,
+                          const std::vector<std::string>& protoFiles) {
   if (sourceFiles.empty()) {
     throw SunError(SunError::Kind::Parse, "No source files specified");
   }
@@ -1008,6 +969,33 @@ void Driver::compileFiles(const std::vector<std::string>& sourceFiles,
     parsedFiles.push_back(std::move(blockAst));
   }
 
+  // Native protobuf import: each .proto is synthesized into Sun source and
+  // parsed like any other file, so the merged AST (and everything after it)
+  // sees ordinary code.
+  for (const auto& protoPath : protoFiles) {
+    std::vector<std::string> importDirs;
+    if (!baseDir.empty()) importDirs.push_back(baseDir);
+    for (const auto& dir : sun::SunPath::getPaths()) {
+      importDirs.push_back(dir.string());
+    }
+    auto synthesized = sun::ProtoImporter::import(protoPath, importDirs);
+    SourceManager::instance().addSource(synthesized.pseudoPath,
+                                        synthesized.sunSource);
+    if (dumpProtoSun_) {
+      llvm::outs() << "// ==== " << synthesized.pseudoPath << " ====\n"
+                   << synthesized.sunSource << "\n";
+    }
+    auto parser = Parser::createStringParser(synthesized.sunSource);
+    parser.setFilePath(synthesized.pseudoPath);
+    auto blockAst = parser.parseProgram();
+    if (!blockAst) {
+      throw SunError(SunError::Kind::Parse,
+                     "Failed to parse synthesized module for " + protoPath);
+    }
+    canonicalPaths.push_back(synthesized.pseudoPath);
+    parsedFiles.push_back(std::move(blockAst));
+  }
+
   // Merge all parsed files into a single AST
   auto mergedAst = mergeASTs(parsedFiles, canonicalPaths);
 
@@ -1021,18 +1009,20 @@ void Driver::compileFiles(const std::vector<std::string>& sourceFiles,
   runPipeline(std::move(mergedAst), stubParser, false);
 }
 
-void Driver::executeFiles(const std::vector<std::string>& sourceFiles,
-                          const std::vector<sun::MoonImport>& moonImports,
-                          int argc, char** argv) {
+sun::SunValue Driver::executeFiles(
+    const std::vector<std::string>& sourceFiles,
+    const std::vector<sun::MoonImport>& moonImports, int argc, char** argv,
+    const std::vector<std::string>& protoFiles) {
   // For now, delegate to compileFiles then execute
   // This can be optimized later to avoid the extra JIT setup
-  compileFiles(sourceFiles, moonImports);
+  compileFiles(sourceFiles, moonImports, protoFiles);
+  sun::SunValue result = sun::VoidValue{};
 
   // JIT execution similar to runPipeline
   llvm::Function* func = ctx->mainModule->getFunction("main");
   if (!func) {
     llvm::errs() << "Error: Could not find 'main' function in module.\n";
-    return;
+    return result;
   }
 
   // Get info before cloning
@@ -1073,17 +1063,18 @@ void Driver::executeFiles(const std::vector<std::string>& sourceFiles,
       FP();
     }
   } else if (returnType->isIntegerTy(32)) {
-    int32_t result;
+    int32_t ret;
     if (mainHasArgs) {
       int32_t (*FP)(int, char**) =
           ExprSymbol.getAddress().toPtr<int32_t (*)(int, char**)>();
-      result = FP(argc, argv);
+      ret = FP(argc, argv);
     } else {
       int32_t (*FP)() = ExprSymbol.getAddress().toPtr<int32_t (*)()>();
-      result = FP();
+      ret = FP();
     }
-    (void)result;  // Result returned via process exit code
+    result = ret;
   }
 
   ExitOnErr(RT->remove());
+  return result;
 }

@@ -32,11 +32,24 @@ tests/            # GoogleTest suites (test_*.cpp) + programs/
 
 ## Type System
 
-- **Primitives**: i8–i64, u8–u32, f32, f64, bool — passed/returned by value.
-- **Classes**: Value types, stack-allocated. **Must be passed by `ref`**, returned by value (struct copy).
+- **Primitives**: i8–i64, u8–u64, f32, f64, bool — passed/returned by value.
+- **Classes**: Value types, stack-allocated. Pass by `ref` to borrow; passing by value **moves**. Returned by value (moves to caller).
+- **Payload enums**: Tagged unions `{ i32 tag, [N x unit] }`; same ownership rules as classes.
 - **Arrays**: Fat pointer `{ ptr data, i32 ndims, ptr dims }`.
 - **Pointers**: `raw_ptr<T>` (bare pointer), `static_ptr<T>` (`{ ptr, i64 }` for literals).
-- **Error unions**: `{ i1 isError, T value }` — functions declared with `, IError` suffix.
+- **Error unions**: functions declared with `, IError` suffix; implemented with native LLVM exceptions (a throwing function returns plain `T` and may unwind).
+
+## Ownership: No Implicit Copies
+
+**Sun NEVER implicitly copies a compound value (class, payload enum, interface).** Every by-value transfer is a move:
+
+- `var b = a;`, `x = a;`, `obj.field = a;`, `f(a)` (by-value param), `return a;`, `Enum.Variant(a)` — all move `a`. The borrow checker rejects later uses of `a` (use-after-move).
+- Codegen invalidates the moved-from source (`applyMoveSemantics`: memset classes to zero, poison enum tag to -1) so its own drop is a no-op. **Owning types must treat the all-zero state as "nothing to release"** (null-check pointers in `deinit`, like `Unique<T>`).
+- Overwriting a compound variable/field drops the old value first, then moves the new one in.
+- Match bindings of compound payloads **borrow** the payload slot in place (by pointer) — they cannot be moved out or passed by value; the discriminant is frozen for the match.
+- Drop scheduling is codegen's job (`trackClassAllocation` / `emitCleanupForScope`): at scope exit (incl. blocks, loop iterations, `break`/`continue`), on returns, and on exception unwind (cleanup landing pads). Payload enums with owning payloads get a synthesized `__sun_enum_drop$<Enum>` function.
+- Containers own their elements: `Vec`/`Map`/`LinkedList` drop live elements in `deinit`/`clear`/overwrite; use `take()`/`pop()`/`remove()` to move an element out, `get()` only for non-owning element types.
+- Do not add a code path that loads a compound struct out of one location and stores it into another without moving (invalidating) the source.
 
 ## Codegen Conventions
 
@@ -48,12 +61,19 @@ tests/            # GoogleTest suites (test_*.cpp) + programs/
 ## Error Handling
 
 ```sun
+class DivByZero implements IError {
+    function init() {}
+    function code() i32 { return 1; }
+    function message() static_ptr<u8> { return "division by zero"; }
+}
 function divide(a: i32, b: i32) i32, IError {
-    if (b == 0) { throw 1; }
+    if (b == 0) { throw DivByZero(); }
     return a / b;
 }
 try { var r = divide(10, x); } catch (e: IError) { return -1; }
 ```
+
+`throw` takes a class implementing `IError` (never a bare int). `try` is block-form only.
 
 ## Memory Allocation
 

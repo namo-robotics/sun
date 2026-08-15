@@ -176,12 +176,11 @@ Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
 
   // For class and payload-enum types, return the alloca pointer (not load
   // the struct value). Methods expect 'this' as a pointer to the struct;
-  // match destructuring GEPs payloads out of the storage.
+  // match destructuring GEPs payloads out of the storage. Indirect bindings
+  // (compound match payloads) yield the borrowed slot's address instead.
   if (varType && (varType->isClass() || isPayloadEnum(varType))) {
-    AllocaInst* alloca = findVariable(expr.getName());
-    if (alloca) {
-      // Return the alloca directly - it's the pointer to the struct
-      return alloca;
+    if (Value* addr = compoundStorageAddress(expr.getName())) {
+      return addr;
     }
     // Check for global class variables
     GlobalVariable* gv = module->getGlobalVariable(expr.getName());
@@ -203,9 +202,8 @@ Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
   // Interface method dispatch expects a pointer to the fat struct { ptr, ptr }
   // so it can load and extract data/vtable pointers
   if (varType && varType->isInterface()) {
-    AllocaInst* alloca = findVariable(expr.getName());
-    if (alloca) {
-      return alloca;
+    if (Value* addr = compoundStorageAddress(expr.getName())) {
+      return addr;
     }
     GlobalVariable* gv = module->getGlobalVariable(expr.getName());
     if (!gv) {
@@ -289,13 +287,15 @@ Value* CodegenVisitor::codegen(const VariableAssignmentAST& expr) {
     }
 
     // Assigning to a payload-enum variable: the right-hand side is a storage
-    // pointer; copy the struct (no deinit, payloads are deinit-free)
+    // pointer. The overwritten value is dropped first, then the source is
+    // MOVED in (tag-poisoned, tracking released) — never implicitly copied.
     if (varType && isPayloadEnum(varType) &&
         value->getType()->isPointerTy()) {
       if (value == alloca) return value;
       auto& enumType = static_cast<sun::EnumType&>(*varType);
-      llvm::StructType* storageTy = typeResolver.getEnumStorageType(enumType);
-      value = ctx.builder->CreateLoad(storageTy, value, "enum.copy");
+      emitEnumDrop(enumType, alloca);
+      markClassAllocationAsDeinited(value);
+      value = applyMoveSemantics(value, varType);
     }
 
     // Assigning to a class variable, where codegen of the right-hand side

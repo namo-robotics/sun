@@ -42,6 +42,19 @@ module sun {
       this.value = v;
     }
 
+    // Replace the stored value, dropping the old one first (no-op for
+    // non-owning types)
+    function replaceValue(v: T) void {
+      unsafe { _deinit<T>(_address_of<T>(this.value)); };
+      this.value = v;
+    }
+
+    // Drop the stored value in place (used when freeing nodes that still own
+    // their payload)
+    function dropValue() void {
+      unsafe { _deinit<T>(_address_of<T>(this.value)); };
+    }
+
     function getNext() raw_ptr<LinkedListNode<T>> {
       return this.next;
     }
@@ -171,7 +184,7 @@ module sun {
         throw NotFoundError();
       }
       var node: raw_ptr<LinkedListNode<T>> = this.nodeAt(index);
-      unsafe { node.setValue(value); };
+      unsafe { node.replaceValue(value); };
     }
 
     // Remove element at index and return its value
@@ -216,11 +229,13 @@ module sun {
       return this.size_ == 0;
     }
 
-    // Remove all elements and free nodes
+    // Remove all elements and free nodes. Node payloads still owned by the
+    // list are dropped.
     function clear() void {
       var curr: raw_ptr<LinkedListNode<T>> = this.head;
       while (curr != null) {
         var next: raw_ptr<LinkedListNode<T>> = unsafe { curr.getNext(); };
+        unsafe { curr.dropValue(); };
         unsafe { _free(curr); };
         curr = next;
       }

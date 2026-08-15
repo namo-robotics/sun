@@ -132,9 +132,24 @@ enums are generic.
 
 - [x] Payload-carrying enum variants (`Circle(f64)`), tagged-union layout,
       construction, and match destructuring with payload bindings (Stage 1;
-      deferred within it: payloads owning heap resources / drop glue, arrays
-      and globals of payload enums, C-ABI classification, nested patterns,
-      niche layout, `DW_TAG_variant_part` debug info)
+      deferred within it: arrays and globals of payload enums, C-ABI
+      classification, nested patterns, niche layout, `DW_TAG_variant_part`
+      debug info)
+- [x] Owning payloads and drop glue (Stage 3): payloads may hold classes
+      with `deinit` (`Option<String>`, `Option<Vec<T>>`, …). A synthesized
+      per-enum `__sun_enum_drop$<Enum>` (LinkOnceODR, merges across `.moon`)
+      switches on the tag and drops live payloads; enum locals/fields are
+      drop-tracked like classes. **No implicit copies**: variant construction,
+      `var b = a`, assignment, by-value args, returns and `_store<T>` all
+      *move* compound values (source tag-poisoned / zeroed, use-after-move
+      rejected); overwrites drop the old value first. Compound match bindings
+      borrow the payload slot by pointer (cannot be moved out; discriminant
+      frozen for the match). Foundation work landed alongside: block-scope
+      and loop-iteration drops, `break`/`continue`/nested-`return` drops,
+      exception-unwind cleanup (per-call-site cleanup landing pads), and
+      container element drops (`Vec`/`Map`/`LinkedList` drop live elements;
+      `Vec.take` moves one out). Deferred: moving a payload *out* of a match
+      binding (needs partial-move tracking).
 - [x] Generic enums + expected-type inference (Stage 2): `enum Option<T>`,
       type arguments inferred from payload arguments (`Option.Some(42)`) or
       the expected type (`var x: Option<i32> = Option.None;`, return
@@ -154,7 +169,7 @@ enums are generic.
       `Option<raw_ptr<T>>` as a nullable pointer)
 - [ ] Migrate the remaining absence APIs (`LinkedList.first/last`,
       `Vec.pop`, iterator `next()` — the last needs the `IIterator` contract
-      rework); blocked on drop glue for owning payloads where `T` has deinit
+      rework); unblocked now that owning payloads have drop glue
 
 ### Constants and Compile-Time Evaluation
 

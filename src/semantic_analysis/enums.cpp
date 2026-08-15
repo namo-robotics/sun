@@ -16,23 +16,6 @@ using sun::unwrapRef;
 
 namespace {
 
-// True if the class (transitively through class-typed fields) defines a
-// deinit method. Such types cannot be enum payloads yet: enum values have no
-// drop glue, so owning payloads would silently leak or double-free.
-bool classNeedsDeinit(const sun::ClassType* classType,
-                      std::set<const sun::ClassType*>& visited) {
-  if (!visited.insert(classType).second) return false;
-  if (classType->getMethod("deinit")) return true;
-  for (const auto& field : classType->getFields()) {
-    if (field.type && field.type->isClass() &&
-        classNeedsDeinit(static_cast<const sun::ClassType*>(field.type.get()),
-                         visited)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 // True if `type` embeds enum `self` by value, walking enum payloads and class
 // fields. Pointers break the cycle (indirection is the fix we suggest).
 bool embedsEnumByValue(const sun::TypePtr& type, const sun::EnumType* self,
@@ -213,28 +196,17 @@ void SemanticAnalyzer::validateEnumPayloadType(
     logAndThrowError(context + " cannot be a reference", location);
   }
 
-  // Allowlist: primitives, pointers, enums, deinit-free classes, and
-  // interfaces (fat pointers are copyable borrowed views). Arrays, slices,
-  // lambdas, threads etc. are deferred.
+  // Allowlist: primitives, pointers, enums, classes (including owning ones —
+  // payload enums carry drop glue), and interfaces (fat pointers are copyable
+  // borrowed views). Arrays, slices, lambdas, threads etc. are deferred.
   bool allowed = type->isPrimitive() || type->isRawPointer() ||
                  type->isStaticPointer() || type->isEnum() ||
                  type->isClass() || type->isInterface();
   if (!allowed) {
     logAndThrowError(context + " has unsupported type '" + type->toString() +
                          "'; supported: primitives, pointers, enums, "
-                         "interfaces, and classes without deinit",
+                         "interfaces, and classes",
                      location);
-  }
-
-  if (type->isClass()) {
-    std::set<const sun::ClassType*> visited;
-    if (classNeedsDeinit(static_cast<const sun::ClassType*>(type.get()),
-                         visited)) {
-      logAndThrowError(context + ": enum payloads cannot yet hold types with "
-                                 "deinit ('" +
-                           type->toString() + "')",
-                       location);
-    }
   }
 
   std::set<const sun::Type*> visited;

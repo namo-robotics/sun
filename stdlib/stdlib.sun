@@ -21,6 +21,7 @@ manifest {
         "math.sun",
         "io.sun",
         "networking.sun",
-        "http.sun"
+        "http.sun",
+        "proto_wire.sun"
     ]
 }

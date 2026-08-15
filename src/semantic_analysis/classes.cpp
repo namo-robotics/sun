@@ -417,19 +417,24 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
     return specializedClass;
   }
 
-  // PASS 2: Analyze all cloned method bodies
-  for (auto& methodClone : methodsClone) {
-    FunctionAST* methodFunc = methodClone.function.get();
-    const auto& proto = methodFunc->getProto();
+  // PASS 2: Analyze all cloned method bodies — unless requested from the
+  // declaration pre-pass, where bodies are deferred until every declaration
+  // (including functions the bodies may call) is registered.
+  bool deferBodies = declarationPrepassDepth_ > 0;
+  if (!deferBodies) {
+    for (auto& methodClone : methodsClone) {
+      FunctionAST* methodFunc = methodClone.function.get();
+      const auto& proto = methodFunc->getProto();
 
-    // Skip generic methods - they are analyzed when called with type args
-    if (proto.isGeneric()) {
-      continue;
+      // Skip generic methods - they are analyzed when called with type args
+      if (proto.isGeneric()) {
+        continue;
+      }
+
+      // Use the unified helper (type params already in outer scope, pass
+      // empty). This analyzes the CLONED method, not the shared generic one
+      analyzeMethodWithBindings(*methodFunc, specializedClass, {}, {});
     }
-
-    // Use the unified helper (type params already in outer scope, pass empty)
-    // This analyzes the CLONED method, not the shared generic one
-    analyzeMethodWithBindings(*methodFunc, specializedClass, {}, {});
   }
 
   // Create the specialized ClassDefinitionAST with cloned/analyzed methods
@@ -448,6 +453,12 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
   // Store specialization on the generic class AST for codegen access
   genericClassInfo->AST->addSpecialization(mangledName, specializedAST);
 
+  if (deferBodies) {
+    deferredSpecializations_.push_back({specializedClass, genericClassInfo,
+                                        typeArgs, specializedAST,
+                                        currentScope->parent});
+  }
+
   // Restore old class context
   setCurrentClass(savedClass);
 
@@ -458,6 +469,38 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
   classesBeingInstantiated.erase(mangledName);
 
   return specializedClass;
+}
+
+// Analyze the method bodies of specializations created during the
+// declaration pre-pass. Re-enters an equivalent class scope (type parameter
+// bindings + definition-scope link) in the scope the instantiation was
+// requested from. Bodies may create further specializations; those are
+// analyzed immediately (the pre-pass is over) so the loop is by index.
+void SemanticAnalyzer::analyzeDeferredSpecializations() {
+  for (size_t i = 0; i < deferredSpecializations_.size(); ++i) {
+    DeferredSpecialization d = deferredSpecializations_[i];
+    SemanticScope* savedScope = currentScope;
+    currentScope = d.requestScope;
+
+    enterClassScope(d.specializedClass->getQualifiedName());
+    addTypeParameterBindings(d.genericInfo->typeParameters, d.typeArgs);
+    if (auto defScope = d.genericInfo->definitionScope.lock()) {
+      currentScope->childModules["__definition__"] = defScope;
+    }
+    auto savedClass = currentClass;
+    setCurrentClass(d.specializedClass);
+
+    for (auto& methodClone : d.specializedAST->getMutableMethods()) {
+      FunctionAST* methodFunc = methodClone.function.get();
+      if (methodFunc->getProto().isGeneric()) continue;
+      analyzeMethodWithBindings(*methodFunc, d.specializedClass, {}, {});
+    }
+
+    setCurrentClass(savedClass);
+    exitScope();
+    currentScope = savedScope;
+  }
+  deferredSpecializations_.clear();
 }
 
 // -------------------------------------------------------------------

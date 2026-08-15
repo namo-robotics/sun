@@ -26,6 +26,10 @@ add_executable(sun_tests
     test_classes.cpp
     test_compilation.cpp
     test_scope_cleanup.cpp
+    test_unwind_cleanup.cpp
+    test_container_drops.cpp
+    test_enum_drops.cpp
+    test_proto_import.cpp
     test_contiguous_buffer.cpp
     test_debug.cpp
     test_debug_info.cpp

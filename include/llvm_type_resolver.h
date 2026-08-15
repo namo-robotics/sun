@@ -57,6 +57,16 @@ class LLVMTypeResolver {
    * pattern extraction GEP through this on the storage pointer, so field
    * offsets are always consistent and naturally aligned.
    */
+  // Field index of payload `i` in a variant view struct (field 0 is the
+  // tag; a padding field may follow it — see getEnumVariantStruct)
+  unsigned enumPayloadFieldIndex(const sun::EnumType& enumType,
+                                 const std::string& variantName, size_t i) {
+    llvm::StructType* vt = getEnumVariantStruct(enumType, variantName);
+    const sun::EnumVariant* v = enumType.getVariant(variantName);
+    unsigned base = vt->getNumElements() - static_cast<unsigned>(v->payloadTypes.size());
+    return base + static_cast<unsigned>(i);
+  }
+
   llvm::StructType* getEnumVariantStruct(const sun::EnumType& enumType,
                                          const std::string& variantName);
 

@@ -722,39 +722,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
     }
 
     case ASTNodeType::USING: {
-      auto& usingDecl = static_cast<UsingAST&>(expr);
-      // Check if this is "using A.B;" where A_B is actually a module name
-      // In that case, treat it as "import all from A_B" (wildcard)
-      std::string namespacePath = usingDecl.getNamespacePathString();
-      std::string target = usingDecl.getTarget();
-
-      if (!usingDecl.isModuleImport()) {
-        // Build the dot-separated path: "A.B"
-        std::string displayPath =
-            namespacePath.empty() ? target : namespacePath + "." + target;
-        // Check if this path refers to a module (handles nested modules)
-        if (auto* modScope = lookupModuleScope(displayPath)) {
-          // Target is a module, convert to wildcard import from that module
-          UsingImport import(displayPath, "*");
-          addUsingImport(import);
-          // Also create scope-based ImportBinding
-          addImportBinding(ImportBinding::wildcard(modScope));
-          expr.setResolvedType(sun::Types::Void());
-          break;
-        }
-      }
-
-      // Normal case: import symbol or wildcard from namespace
-      UsingImport import(namespacePath, target);
-      addUsingImport(import);
-      // Also create scope-based ImportBinding
-      if (auto* modScope = lookupModuleScope(namespacePath)) {
-        if (import.isWildcard) {
-          addImportBinding(ImportBinding::wildcard(modScope));
-        } else {
-          addImportBinding(ImportBinding(target, modScope, target));
-        }
-      }
+      registerUsing(static_cast<UsingAST&>(expr));
       expr.setResolvedType(sun::Types::Void());
       break;
     }
@@ -872,31 +840,13 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       // types (e.g., var next: raw_ptr<Node> inside class Node)
       registerClass(baseName, classType);
 
-      // Add fields to the class type
-      for (const auto& field : classDef.getFields()) {
-        if (classType->hasField(field.name)) {
-          logAndThrowError("Field '" + field.name +
-                               "' already exists in class '" +
-                               classDef.getName() + "'",
-                           field.location);
-        }
-        sun::TypePtr fieldType = typeAnnotationToType(field.type);
-
-        // Check for ref types in fields
-        if constexpr (sun::Config::FORBID_REF_FIELDS_IN_CLASSES) {
-          if (fieldType && fieldType->isReference()) {
-            logAndThrowError("Field '" + field.name + "' in class '" +
-                                 classDef.getName() + "' has reference type '" +
-                                 fieldType->toString() +
-                                 "'. References cannot be stored in class "
-                                 "fields. Use a pointer type or store a copy.",
-                             field.location);
-          }
-        }
-
-        checkPackedFieldType(classDef, field, fieldType);
-
-        classType->addField(field.name, fieldType);
+      // Fields and method signatures are normally registered by the
+      // declaration pre-pass (registerClassShape); classes analyzed outside a
+      // pre-passed block register them here.
+      bool shapeRegistered =
+          preRegisteredClassShapes_.count(mangledClassName) > 0;
+      if (!shapeRegistered) {
+        registerClassShape(classDef, qualifiedClass, classType);
       }
 
       // Inherit interface fields BEFORE analyzing methods
@@ -942,34 +892,22 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       // Enter a Class scope to contain all method scopes in the tree
       enterClassScope(qualifiedClass);
 
-      // PASS 1: Register all methods first (so methods can call each other)
+      // PASS 1: Make the (already registered) method signatures resolvable
+      // by mangled name inside the class scope
       for (const auto& methodDecl : classDef.getMethods()) {
-        // Get method signature info (pure computation)
-        FunctionInfo methodInfo = getFunctionInfo(*methodDecl.function);
-
-        PrototypeAST& proto =
-            const_cast<PrototypeAST&>(methodDecl.function->getProto());
-
-        // Apply computed info to prototype
-        applyFunctionInfoToProto(proto, methodInfo);
-
-        // Add method to class type (include generic type parameters)
-        classType->addMethod(proto.getName(), methodInfo.returnType,
-                             methodInfo.paramTypes, methodDecl.isConstructor,
-                             proto.getTypeParameters(), proto.canThrow());
-
-        // Register the method as a function with mangled name
+        const PrototypeAST& proto = methodDecl.function->getProto();
         std::string mangledName =
             classType->getMangledMethodName(proto.getName());
-
-        // For methods, add 'this' as first parameter type
         std::vector<sun::TypePtr> methodParamTypes;
         methodParamTypes.push_back(classType);  // this parameter
-        for (const auto& pt : methodInfo.paramTypes) {
+        for (const auto& pt : proto.getResolvedParamTypes()) {
           methodParamTypes.push_back(pt);
         }
-        registernFunctionInCurrentScope(
-            mangledName, {methodInfo.returnType, methodParamTypes, {}});
+        sun::TypePtr returnType = proto.hasResolvedReturnType()
+                                      ? proto.getResolvedReturnType()
+                                      : sun::Types::Void();
+        registernFunctionInCurrentScope(mangledName,
+                                        {returnType, methodParamTypes, {}});
       }
 
       // PASS 2: Analyze all method bodies
@@ -1518,6 +1456,90 @@ void SemanticAnalyzer::validateNotReserved(const std::string& name,
                          "reserved for builtins",
                      location);
   }
+}
+
+// -------------------------------------------------------------------
+// using declarations (idempotent: run by the pre-pass and the main pass)
+// -------------------------------------------------------------------
+
+void SemanticAnalyzer::registerUsing(UsingAST& usingDecl) {
+  // "using A.B;" where A.B is a module name means "import all from A.B"
+  std::string namespacePath = usingDecl.getNamespacePathString();
+  std::string target = usingDecl.getTarget();
+
+  if (!usingDecl.isModuleImport()) {
+    std::string displayPath =
+        namespacePath.empty() ? target : namespacePath + "." + target;
+    if (auto* modScope = lookupModuleScope(displayPath)) {
+      UsingImport import(displayPath, "*");
+      addUsingImport(import);
+      addImportBinding(ImportBinding::wildcard(modScope));
+      return;
+    }
+  }
+
+  // Normal case: import symbol or wildcard from namespace
+  UsingImport import(namespacePath, target);
+  addUsingImport(import);
+  if (auto* modScope = lookupModuleScope(namespacePath)) {
+    if (import.isWildcard) {
+      addImportBinding(ImportBinding::wildcard(modScope));
+    } else {
+      addImportBinding(ImportBinding(target, modScope, target));
+    }
+  }
+}
+
+// -------------------------------------------------------------------
+// Class shape registration (fields + method signatures)
+// -------------------------------------------------------------------
+
+void SemanticAnalyzer::registerClassShape(
+    ClassDefinitionAST& classDef, const sun::QualifiedName& qualifiedClass,
+    std::shared_ptr<sun::ClassType> classType) {
+  std::string mangledClassName = qualifiedClass.mangled();
+  if (!preRegisteredClassShapes_.insert(mangledClassName).second) return;
+
+  // Fields
+  for (const auto& field : classDef.getFields()) {
+    if (classType->hasField(field.name)) {
+      logAndThrowError("Field '" + field.name + "' already exists in class '" +
+                           classDef.getName() + "'",
+                       field.location);
+    }
+    sun::TypePtr fieldType = typeAnnotationToType(field.type);
+
+    if constexpr (sun::Config::FORBID_REF_FIELDS_IN_CLASSES) {
+      if (fieldType && fieldType->isReference()) {
+        logAndThrowError("Field '" + field.name + "' in class '" +
+                             classDef.getName() + "' has reference type '" +
+                             fieldType->toString() +
+                             "'. References cannot be stored in class "
+                             "fields. Use a pointer type or store a copy.",
+                         field.location);
+      }
+    }
+
+    checkPackedFieldType(classDef, field, fieldType);
+    classType->addField(field.name, fieldType);
+  }
+
+  // Implemented interfaces (fields inherited, implementation recorded)
+  inheritInterfaceFields(classDef, classType);
+
+  // Method signatures ('this' resolves against the class being shaped)
+  auto savedClass = currentClass;
+  setCurrentClass(classType);
+  for (const auto& methodDecl : classDef.getMethods()) {
+    FunctionInfo methodInfo = getFunctionInfo(*methodDecl.function);
+    PrototypeAST& proto =
+        const_cast<PrototypeAST&>(methodDecl.function->getProto());
+    applyFunctionInfoToProto(proto, methodInfo);
+    classType->addMethod(proto.getName(), methodInfo.returnType,
+                         methodInfo.paramTypes, methodDecl.isConstructor,
+                         proto.getTypeParameters(), proto.canThrow());
+  }
+  setCurrentClass(savedClass);
 }
 
 // -------------------------------------------------------------------

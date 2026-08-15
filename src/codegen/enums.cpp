@@ -1,11 +1,98 @@
 // enums.cpp - Payload enum codegen: variant construction, unit-variant
-// materialization, and tag-switch match with payload destructuring.
+// materialization, tag-switch match with payload destructuring, and the
+// synthesized per-enum drop function for owning payloads.
 
 #include "ast.h"
 #include "codegen.h"
 #include "codegen_visitor.h"
 
 using namespace llvm;
+
+// -------------------------------------------------------------------
+// Enum drop glue: void __sun_enum_drop$<Enum>(ptr storage)
+// Switches on the tag, drops each owning payload (class deinit + field
+// recursion, or a nested enum's drop function), then poisons the tag with -1
+// so a second drop falls through the switch as a no-op.
+// -------------------------------------------------------------------
+
+Function* CodegenVisitor::getOrCreateEnumDropFunction(sun::EnumType& enumType) {
+  if (!sun::typeNeedsDrop(&enumType)) return nullptr;
+
+  std::string name = "__sun_enum_drop$" + enumType.getName();
+  if (Function* existing = module->getFunction(name)) return existing;
+
+  auto* voidTy = Type::getVoidTy(ctx.getContext());
+  auto* ptrTy = PointerType::getUnqual(ctx.getContext());
+  auto* i32Ty = Type::getInt32Ty(ctx.getContext());
+  FunctionType* fnTy = FunctionType::get(voidTy, {ptrTy}, false);
+  // LinkOnceODR: the same specialization may be emitted by several modules
+  // (main program + .moon bundles); identical bodies merge at link/JIT time.
+  Function* fn =
+      Function::Create(fnTy, Function::LinkOnceODRLinkage, name, module);
+
+  saveInsertPoint();
+  BasicBlock* entry = BasicBlock::Create(ctx.getContext(), "entry", fn);
+  ctx.builder->SetInsertPoint(entry);
+  Value* storage = fn->getArg(0);
+
+  StructType* storageTy = typeResolver.getEnumStorageType(enumType);
+  Value* tagPtr =
+      ctx.builder->CreateStructGEP(storageTy, storage, 0, "drop.tag.ptr");
+  Value* tag = ctx.builder->CreateLoad(i32Ty, tagPtr, "drop.tag");
+
+  BasicBlock* doneBB = BasicBlock::Create(ctx.getContext(), "drop.done", fn);
+  SwitchInst* sw = ctx.builder->CreateSwitch(tag, doneBB);
+
+  for (const auto& variant : enumType.getVariants()) {
+    if (!variant.hasPayload()) continue;
+    bool owns = false;
+    for (const auto& pt : variant.payloadTypes) {
+      if (pt && sun::typeNeedsDrop(pt)) {
+        owns = true;
+        break;
+      }
+    }
+    if (!owns) continue;
+
+    BasicBlock* caseBB =
+        BasicBlock::Create(ctx.getContext(), "drop." + variant.name, fn);
+    sw->addCase(ConstantInt::get(i32Ty, variant.value), caseBB);
+    ctx.builder->SetInsertPoint(caseBB);
+
+    StructType* variantTy =
+        typeResolver.getEnumVariantStruct(enumType, variant.name);
+    for (size_t i = 0; i < variant.payloadTypes.size(); ++i) {
+      const sun::TypePtr& pt = variant.payloadTypes[i];
+      if (!pt || !sun::typeNeedsDrop(pt)) continue;
+      unsigned idx = typeResolver.enumPayloadFieldIndex(enumType, variant.name, i);
+      Value* fieldPtr = ctx.builder->CreateStructGEP(
+          variantTy, storage, idx, "drop.payload." + variant.name);
+      if (pt->isClass()) {
+        auto* classType = static_cast<sun::ClassType*>(pt.get());
+        emitDeinitCall(classType, fieldPtr);
+        emitFieldDeinit(fieldPtr, classType, "enum.payload");
+      } else if (pt->isEnum()) {
+        emitEnumDrop(static_cast<sun::EnumType&>(*pt), fieldPtr);
+      }
+    }
+    ctx.builder->CreateBr(doneBB);
+  }
+
+  ctx.builder->SetInsertPoint(doneBB);
+  // Poison the tag (never memset: tag 0 is a real variant). Double drops and
+  // drops of moved-from storage fall into the switch default above.
+  ctx.builder->CreateStore(ConstantInt::get(i32Ty, -1), tagPtr);
+  ctx.builder->CreateRetVoid();
+  restoreInsertPoint();
+  return fn;
+}
+
+void CodegenVisitor::emitEnumDrop(sun::EnumType& enumType,
+                                  llvm::Value* storagePtr) {
+  if (Function* drop = getOrCreateEnumDropFunction(enumType)) {
+    ctx.builder->CreateCall(drop, {storagePtr});
+  }
+}
 
 // -------------------------------------------------------------------
 // Enum variant construction: EnumName.Variant(args...)
@@ -36,16 +123,20 @@ Value* CodegenVisitor::codegenEnumVariantConstruction(
       logAndThrowError("Failed to generate payload value for variant '" +
                        variant.name + "'");
     }
-    llvm::Type* fieldTy = variantTy->getElementType(i + 1);
-    Value* fieldPtr = ctx.builder->CreateStructGEP(variantTy, storage, i + 1,
+    unsigned idx = typeResolver.enumPayloadFieldIndex(enumType, variant.name, i);
+    llvm::Type* fieldTy = variantTy->getElementType(idx);
+    Value* fieldPtr = ctx.builder->CreateStructGEP(variantTy, storage, idx,
                                                    "payload." + variant.name);
     const sun::TypePtr& payloadType = variant.payloadTypes[i];
 
     if (payloadType->isCompound()) {
-      // Class or payload-enum argument arrives as a pointer: copy the struct
-      // (payloads are deinit-free by the Stage 1 restriction)
+      // Class or payload-enum argument arrives as a pointer. Compound values
+      // are never implicitly copied: the payload MOVES into the enum. The
+      // source is invalidated (zeroed / tag-poisoned) so its own drop is a
+      // no-op, and its tracking entry is released — the enum owns it now.
       if (argVal->getType()->isPointerTy()) {
-        argVal = ctx.builder->CreateLoad(fieldTy, argVal, "payload.copy");
+        markClassAllocationAsDeinited(argVal);
+        argVal = applyMoveSemantics(argVal, payloadType);
       }
       ctx.builder->CreateStore(argVal, fieldPtr);
       continue;
@@ -60,6 +151,12 @@ Value* CodegenVisitor::codegenEnumVariantConstruction(
       }
     }
     ctx.builder->CreateStore(argVal, fieldPtr);
+  }
+
+  // The fresh storage owns its payloads until moved into a variable/field
+  // (the borrow checker marks that move; genLocalVar adopts the alloca).
+  if (!expr.isMoved()) {
+    trackClassAllocation(storage, "enum.tmp", expr.getResolvedType());
   }
 
   return storage;
@@ -170,18 +267,32 @@ Value* CodegenVisitor::codegenEnumMatch(const MatchExprAST& expr,
       for (size_t i = 0; i < arm.bindings.size(); ++i) {
         const auto& binding = arm.bindings[i];
         if (binding.isWildcard) continue;
+        unsigned idx = typeResolver.enumPayloadFieldIndex(
+            enumType, patternAccess.getMemberName(), i);
         Value* fieldPtr = ctx.builder->CreateStructGEP(
-            variantTy, discPtr, i + 1, binding.name + ".ptr");
-        llvm::Type* fieldTy = variantTy->getElementType(i + 1);
-        // Fresh local copy of the payload (never aliases the discriminant)
-        AllocaInst* alloca =
-            createEntryBlockAlloca(TheFunction, binding.name, fieldTy);
-        Value* fieldVal =
-            ctx.builder->CreateLoad(fieldTy, fieldPtr, binding.name);
-        ctx.builder->CreateStore(fieldVal, alloca);
-        scopes.back().variables[binding.name] = alloca;
-        debugDeclareLocal(alloca, binding.name, binding.resolvedType,
-                          binding.location);
+            variantTy, discPtr, idx, binding.name + ".ptr");
+        llvm::Type* fieldTy = variantTy->getElementType(idx);
+        if (binding.resolvedType && binding.resolvedType->isCompound()) {
+          // Compound payload: bind BY POINTER (a borrow of the payload slot
+          // inside the discriminant — never an implicit copy). The alloca
+          // holds the slot address; reads go through the indirection.
+          AllocaInst* alloca = createEntryBlockAlloca(
+              TheFunction, binding.name + ".ref",
+              PointerType::getUnqual(ctx.getContext()));
+          ctx.builder->CreateStore(fieldPtr, alloca);
+          scopes.back().variables[binding.name] = alloca;
+          scopes.back().indirectBindings.insert(binding.name);
+        } else {
+          // Scalar payload: fresh local copy
+          AllocaInst* alloca =
+              createEntryBlockAlloca(TheFunction, binding.name, fieldTy);
+          Value* fieldVal =
+              ctx.builder->CreateLoad(fieldTy, fieldPtr, binding.name);
+          ctx.builder->CreateStore(fieldVal, alloca);
+          scopes.back().variables[binding.name] = alloca;
+          debugDeclareLocal(alloca, binding.name, binding.resolvedType,
+                            binding.location);
+        }
       }
     }
 

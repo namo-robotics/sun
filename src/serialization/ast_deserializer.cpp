@@ -274,6 +274,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserialize(
     case ast::ASTNode::kModuleDef:
       result = deserializeModule(node.module_def());
       break;
+    case ast::ASTNode::kManifest:
+      result = deserializeManifest(node.manifest());
+      break;
     case ast::ASTNode::kUsingStmt:
       result = deserializeUsing(node.using_stmt());
       break;
@@ -720,7 +723,15 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeManifest(
     moons.push_back(std::move(moon));
   }
 
-  return std::make_unique<ManifestAST>(std::move(suns), std::move(moons));
+  std::vector<ManifestProtoDependency> protos;
+  for (const auto& protoDep : proto.protos()) {
+    ManifestProtoDependency dep;
+    dep.path = protoDep.path();
+    protos.push_back(std::move(dep));
+  }
+
+  return std::make_unique<ManifestAST>(std::move(suns), std::move(moons),
+                                       std::move(protos));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeModule(

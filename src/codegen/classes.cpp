@@ -1035,20 +1035,26 @@ Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
   Value* fieldPtr =
       getFieldPtr(classType, objectPtr, *field, memberName + ".ptr");
 
-  // Payload-enum fields: copy the storage struct (value arrives as a
-  // pointer; payloads are deinit-free so a plain copy is correct)
+  // Payload-enum fields: the value arrives as a storage pointer. Drop the
+  // overwritten field first (a no-op on freshly zeroed storage: tag 0 with
+  // zeroed payloads drops cleanly), then MOVE the source in — never an
+  // implicit copy.
   if (isPayloadEnum(field->type)) {
     auto& enumType = static_cast<sun::EnumType&>(*field->type);
     llvm::StructType* storageTy = typeResolver.getEnumStorageType(enumType);
     Value* structVal = value;
     if (value->getType()->isPointerTy()) {
-      structVal = ctx.builder->CreateLoad(storageTy, value, "enum.copy");
+      emitEnumDrop(enumType, fieldPtr);
+      markClassAllocationAsDeinited(value);
+      structVal = applyMoveSemantics(value, field->type);
     }
     ctx.builder->CreateStore(structVal, fieldPtr);
     return structVal;
   }
 
-  // Handle class-typed fields: copy the embedded struct data
+  // Handle class-typed fields: the source instance MOVES into the field.
+  // The overwritten field value is dropped first (a no-op on freshly
+  // zeroed storage), then the source is copied in and invalidated.
   if (field->type->isClass()) {
     auto* fieldClassType = static_cast<sun::ClassType*>(field->type.get());
     llvm::StructType* fieldStructType =
@@ -1056,12 +1062,17 @@ Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
     const DataLayout& DL = module->getDataLayout();
     uint64_t structSize = DL.getTypeAllocSize(fieldStructType);
 
+    // Drop whatever the field currently holds
+    emitDeinitCall(fieldClassType, fieldPtr);
+    emitFieldDeinit(fieldPtr, fieldClassType, memberName);
+
     // value is a pointer to the source class instance
     // fieldPtr is a pointer to the embedded struct in the parent class
     // If value is not a pointer (e.g., struct returned by value from a call),
     // materialize it to a stack alloca first so memcpy has a valid source.
     llvm::Align srcAlign = DL.getABITypeAlign(fieldStructType);
-    if (!value->getType()->isPointerTy()) {
+    bool sourceIsAddressable = value->getType()->isPointerTy();
+    if (!sourceIsAddressable) {
       AllocaInst* tempAlloca = ctx.builder->CreateAlloca(
           fieldStructType, nullptr, memberName + ".tmp");
       ctx.builder->CreateStore(value, tempAlloca);
@@ -1072,6 +1083,14 @@ Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
     // packing, not the field struct's own alignment
     ctx.builder->CreateMemCpy(fieldPtr, fieldAlign(classType, fieldStructType),
                               value, srcAlign, structSize);
+    if (sourceIsAddressable) {
+      // Move: the field owns the payload now. Release the source's tracking
+      // entry and zero it so its own drop is a no-op.
+      markClassAllocationAsDeinited(value);
+      ctx.builder->CreateMemSet(value,
+                                ConstantInt::get(Type::getInt8Ty(ctx.getContext()), 0),
+                                structSize, srcAlign);
+    }
     return value;
   }
 
@@ -1092,6 +1111,10 @@ Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
       // Float widening
       else if (valueType->isFloatTy() && fieldLLVMType->isDoubleTy()) {
         value = ctx.builder->CreateFPExt(value, fieldLLVMType, "widen");
+      }
+      // Float literal into an f32 field: literals default to f64
+      else if (valueType->isDoubleTy() && fieldLLVMType->isFloatTy()) {
+        value = ctx.builder->CreateFPTrunc(value, fieldLLVMType, "narrow");
       }
     }
   }
@@ -1325,6 +1348,10 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
       return codegenIsIntrinsic(typeArgs[0]->baseName, expr.getArgs());
     case sun::Intrinsic::Deinit:
       return codegenDeinitIntrinsic(getFirstTypeArg(), expr.getArgs());
+    case sun::Intrinsic::Convert:
+      return codegenConvertIntrinsic(getFirstTypeArg(), expr.getArgs());
+    case sun::Intrinsic::Bitcast:
+      return codegenBitcastIntrinsic(getFirstTypeArg(), expr.getArgs());
     default:
       break;  // Not a generic intrinsic, continue below
   }

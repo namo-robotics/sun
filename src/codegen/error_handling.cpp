@@ -233,6 +233,15 @@ Value* CodegenVisitor::codegen(const ThrowExprAST& expr) {
     Value* fat = createInterfaceFatPointer(objSlot, classType, ierror.get());
     storeAt(exc, fatOffset, fat);
 
+    // The exception buffer now owns the object copy: the stack original must
+    // not be dropped by the cleanup below (aliased heap pointers).
+    markClassAllocationAsDeinited(objPtr);
+
+    // Control permanently leaves every scope down to the catch (or the
+    // function): drop live owners before unwinding.
+    emitCleanupToDepth(tryStack.empty() ? functionBoundaryDepth()
+                                        : tryStack.back().scopeDepth);
+
     emitCxaThrowAndUnreachable(exc);
   } else {
     // Interface value (e.g. rethrow of a caught `e`) or unknown: box the fat
@@ -253,6 +262,13 @@ Value* CodegenVisitor::codegen(const ThrowExprAST& expr) {
       fatToStore = Constant::getNullValue(fatTy);
     }
     storeAt(exc, fatOffset, fatToStore);
+
+    // Drop live owners in every scope being left before unwinding (the
+    // rethrown error object itself lives in its exception buffer, not in a
+    // tracked scope allocation).
+    emitCleanupToDepth(tryStack.empty() ? functionBoundaryDepth()
+                                        : tryStack.back().scopeDepth);
+
     emitCxaThrowAndUnreachable(exc);
   }
 
@@ -276,16 +292,28 @@ Value* CodegenVisitor::codegen(const TryCatchExprAST& expr) {
   ensurePersonality(func);
 
   BasicBlock* lpadBB = BasicBlock::Create(ctx.getContext(), "try.lpad", func);
+  BasicBlock* dispatchBB =
+      BasicBlock::Create(ctx.getContext(), "try.dispatch", func);
   BasicBlock* mergeBB = BasicBlock::Create(ctx.getContext(), "try.merge", func);
 
-  // Push try context so throwing calls in the body invoke to this landing pad.
-  tryStack.push_back({lpadBB});
+  auto* ptrTy = PointerType::getUnqual(ctx.getContext());
 
+  // Dispatch block: an exception-pointer phi fed by the plain landing pad and
+  // by any per-call-site cleanup pads (which drop live owners before joining).
+  saveInsertPoint();
+  ctx.builder->SetInsertPoint(dispatchBB);
+  PHINode* excPhi = ctx.builder->CreatePHI(ptrTy, 2, "exc.phi");
+  restoreInsertPoint();
+
+  // Push the try body scope, then the try context (records the body scope
+  // depth so unwind paths know how far to clean).
   pushScope(expr.getTryBlock().getLocation());
+  tryStack.push_back({lpadBB, dispatchBB, excPhi, scopes.size() - 1});
+
   Value* tryResult = codegen(expr.getTryBlock());
-  popScope();
 
   tryStack.pop_back();
+  popScope();
 
   // Fallthrough of the try body (no exception): branch to merge, carrying the
   // try block's value so `try { expr }` can be used as an expression.
@@ -296,16 +324,21 @@ Value* CodegenVisitor::codegen(const TryCatchExprAST& expr) {
     if (tryResult) results.push_back({tryResult, tryEndBB});
   }
 
-  // ---- Landing pad ----
+  // ---- Landing pad (no live owners on this edge) ----
   ctx.builder->SetInsertPoint(lpadBB);
-  auto* ptrTy = PointerType::getUnqual(ctx.getContext());
   auto* i32Ty = Type::getInt32Ty(ctx.getContext());
   auto* i64Ty = Type::getInt64Ty(ctx.getContext());
   llvm::StructType* lpadTy = StructType::get(ptrTy, i32Ty);
   llvm::LandingPadInst* lp = ctx.builder->CreateLandingPad(lpadTy, 1, "lpad");
   lp->addClause(ConstantPointerNull::get(ptrTy));  // catch(...)
-  Value* excPtr = ctx.builder->CreateExtractValue(lp, 0, "exc.ptr");
-  Value* obj = ctx.builder->CreateCall(getCxaBeginCatch(), {excPtr}, "exc.obj");
+  Value* lpExcPtr = ctx.builder->CreateExtractValue(lp, 0, "exc.ptr");
+  excPhi->addIncoming(lpExcPtr, ctx.builder->GetInsertBlock());
+  ctx.builder->CreateBr(dispatchBB);
+
+  // ---- Catch dispatch ----
+  ctx.builder->SetInsertPoint(dispatchBB);
+  Value* obj =
+      ctx.builder->CreateCall(getCxaBeginCatch(), {excPhi}, "exc.obj");
 
   // Exception header (see codegen(ThrowExprAST)): { i64 typeId, InterfaceFat }.
   llvm::StructType* fatTy =
@@ -393,6 +426,10 @@ Value* CodegenVisitor::codegen(const TryCatchExprAST& expr) {
   // was already popped from tryStack, so tryStack.back() is the outer one).
   if (nomatchBB) {
     ctx.builder->SetInsertPoint(nomatchBB);
+    // Control leaves every scope between here and the outer handler (or the
+    // function): drop live owners before rethrowing.
+    emitCleanupToDepth(tryStack.empty() ? functionBoundaryDepth()
+                                        : tryStack.back().scopeDepth);
     FunctionCallee rethrow = getCxaRethrow();
     if (!tryStack.empty()) {
       ensurePersonality(func);
@@ -513,26 +550,79 @@ void CodegenVisitor::ensurePersonality(Function* fn) {
 }
 
 // Emit a call that may unwind. Inside a try block a throwing callee must be
-// `invoke`d so the exception routes to the local landing pad; otherwise a
-// plain call lets the exception propagate out of the current function.
+// `invoke`d so the exception routes to the local landing pad. Outside a try,
+// a plain call lets the exception propagate out of the current function —
+// unless scopes with live owners would be skipped, in which case the call is
+// `invoke`d to a per-call-site cleanup pad that drops them first and then
+// resumes unwinding (or joins the try's catch dispatch). Pads are per call
+// site because the emitted drop set is a codegen-time snapshot of which
+// owners are live and non-moved at this point.
 Value* CodegenVisitor::emitPossiblyThrowingCall(FunctionType* fnTy,
                                                 Value* callee,
                                                 ArrayRef<Value*> args,
                                                 bool canThrow,
                                                 const Twine& name) {
   bool isVoid = fnTy->getReturnType()->isVoidTy();
-  if (canThrow && !tryStack.empty()) {
-    Function* curFn = ctx.builder->GetInsertBlock()->getParent();
-    ensurePersonality(curFn);
-    BasicBlock* contBB =
-        BasicBlock::Create(ctx.getContext(), "invoke.cont", curFn);
-    Value* inv = ctx.builder->CreateInvoke(fnTy, callee, contBB,
-                                           tryStack.back().landingPad, args,
-                                           isVoid ? "" : name);
-    ctx.builder->SetInsertPoint(contBB);
-    return inv;
+  if (!canThrow) {
+    return ctx.builder->CreateCall(fnTy, callee, args, isVoid ? "" : name);
   }
-  return ctx.builder->CreateCall(fnTy, callee, args, isVoid ? "" : name);
+
+  bool inTry = !tryStack.empty();
+  size_t cleanupDepth =
+      inTry ? tryStack.back().scopeDepth : functionBoundaryDepth();
+  bool needsCleanup = hasLiveOwners(cleanupDepth);
+
+  if (!inTry && !needsCleanup) {
+    // Nothing to clean: let the exception unwind straight into the caller.
+    return ctx.builder->CreateCall(fnTy, callee, args, isVoid ? "" : name);
+  }
+
+  Function* curFn = ctx.builder->GetInsertBlock()->getParent();
+  ensurePersonality(curFn);
+  BasicBlock* contBB =
+      BasicBlock::Create(ctx.getContext(), "invoke.cont", curFn);
+
+  BasicBlock* unwindDest;
+  if (!needsCleanup) {
+    // Inside a try with no owners on the unwind edge: use the plain pad.
+    unwindDest = tryStack.back().landingPad;
+  } else {
+    // Build the per-call-site cleanup pad.
+    auto* ptrTy = PointerType::getUnqual(ctx.getContext());
+    auto* i32Ty = Type::getInt32Ty(ctx.getContext());
+    llvm::StructType* lpadTy = StructType::get(ptrTy, i32Ty);
+
+    BasicBlock* padBB =
+        BasicBlock::Create(ctx.getContext(), "cleanup.pad", curFn);
+    saveInsertPoint();
+    ctx.builder->SetInsertPoint(padBB);
+    llvm::LandingPadInst* lp =
+        ctx.builder->CreateLandingPad(lpadTy, 1, "cleanup.lp");
+    if (inTry) {
+      // Same catch-all clause as the try's plain pad; after dropping owners
+      // the exception joins the catch dispatch.
+      lp->addClause(ConstantPointerNull::get(ptrTy));
+      Value* excPtr = ctx.builder->CreateExtractValue(lp, 0, "exc.ptr");
+      emitCleanupToDepth(cleanupDepth);
+      // Cleanup may have moved the insert point into a later block (owned-ptr
+      // frees create null-check blocks): the dispatch edge starts there.
+      tryStack.back().excPhi->addIncoming(excPtr,
+                                          ctx.builder->GetInsertBlock());
+      ctx.builder->CreateBr(tryStack.back().dispatchBB);
+    } else {
+      // Pure cleanup pad: drop owners, then continue unwinding to the caller.
+      lp->setCleanup(true);
+      emitCleanupToDepth(cleanupDepth);
+      ctx.builder->CreateResume(lp);
+    }
+    restoreInsertPoint();
+    unwindDest = padBB;
+  }
+
+  Value* inv = ctx.builder->CreateInvoke(fnTy, callee, contBB, unwindDest,
+                                         args, isVoid ? "" : name);
+  ctx.builder->SetInsertPoint(contBB);
+  return inv;
 }
 
 Value* CodegenVisitor::emitPossiblyThrowingCall(FunctionCallee callee,

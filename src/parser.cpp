@@ -2206,6 +2206,7 @@ unique_ptr<ManifestAST> Parser::parseManifest() {
 
   std::vector<ManifestSunDependency> suns;
   std::vector<ManifestMoonDependency> moons;
+  std::vector<ManifestProtoDependency> protos;
 
   while (curTok.kind == TokenKind::IDENTIFIER) {
     auto ident = curTok.getIdentifier().value();
@@ -2219,9 +2220,16 @@ unique_ptr<ManifestAST> Parser::parseManifest() {
       suns = parseManifestSuns();
     } else if (ident == "moons") {
       moons = parseManifestMoons();
+    } else if (ident == "protos") {
+      protos = parseManifestProtos();
     } else {
       parsingError("unexpected identifier '" + ident +
-                   "' in manifest; expected 'suns' or 'moons'");
+                   "' in manifest; expected 'suns', 'moons' or 'protos'");
+    }
+
+    // Entries are newline-separated; a trailing ';' is tolerated
+    if (curTok.kind == TokenKind::SEMI_COLON) {
+      getNextToken();
     }
   }
 
@@ -2229,8 +2237,37 @@ unique_ptr<ManifestAST> Parser::parseManifest() {
                          "expected '}' at end of manifest block");
   getNextToken();  // eat '}'
 
-  return finishNode(
-      std::make_unique<ManifestAST>(std::move(suns), std::move(moons)), start);
+  return finishNode(std::make_unique<ManifestAST>(std::move(suns),
+                                                  std::move(moons),
+                                                  std::move(protos)),
+                    start);
+}
+
+// Parse protos array: [ "schemas/telemetry.proto", ... ]
+std::vector<ManifestProtoDependency> Parser::parseManifestProtos() {
+  expectCurrentTokenKind(TokenKind::BRACKET_OPEN,
+                         "expected '[' after 'protos:'");
+  getNextToken();  // eat '['
+
+  std::vector<ManifestProtoDependency> protos;
+
+  while (curTok.kind != TokenKind::BRACKET_CLOSE) {
+    expectCurrentTokenKind(TokenKind::STRING,
+                           "expected string path in protos array");
+    ManifestProtoDependency dep;
+    dep.path = curTok.getString().value();
+    getNextToken();  // eat string
+    protos.push_back(std::move(dep));
+
+    if (curTok.kind == TokenKind::COMMA) {
+      getNextToken();  // eat ','
+    } else if (curTok.kind != TokenKind::BRACKET_CLOSE) {
+      parsingError("expected ',' or ']' in protos array");
+    }
+  }
+
+  getNextToken();  // eat ']'
+  return protos;
 }
 
 // Parse suns array: [ "file.sun", { path: "other.sun", hash: "abc" } ]

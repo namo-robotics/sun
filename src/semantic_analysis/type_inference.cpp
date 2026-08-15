@@ -1138,6 +1138,9 @@ sun::TypePtr SemanticAnalyzer::inferIntrinsicCallType(
   if (funcName == "_deinit") {
     return sun::Types::Void();
   }
+  if (funcName == "_convert" || funcName == "_bitcast") {
+    return typeArgs.empty() ? nullptr : typeArgs[0];
+  }
 
   // Unknown intrinsic - return void as fallback
   return sun::Types::Void();

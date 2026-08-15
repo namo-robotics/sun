@@ -302,6 +302,9 @@ ast::ASTNode ASTSerializer::serialize(const ExprAST& expr) const {
     case ASTNodeType::MODULE:
       serializeModule(static_cast<const ModuleAST&>(expr), &node);
       break;
+    case ASTNodeType::MANIFEST:
+      serializeManifest(static_cast<const ManifestAST&>(expr), &node);
+      break;
     case ASTNodeType::MOON_SCOPE:
       // MoonScopeAST should never be serialized - it's an ephemeral import
       // wrapper If we reach here, just serialize the contained modules This
@@ -735,6 +738,12 @@ void ASTSerializer::serializeManifest(const ManifestAST& expr,
     if (moon.rename) {
       moonProto->set_rename_module(*moon.rename);
     }
+  }
+
+  // Protos
+  auto* protos = manifest->mutable_protos();
+  for (const auto& proto : expr.getProtos()) {
+    protos->Add()->set_path(proto.path);
   }
 }
 

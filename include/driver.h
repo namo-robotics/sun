@@ -41,6 +41,8 @@ class Driver {
 
   // Moon libraries to preload for single-file compilation modes
   std::vector<sun::MoonImport> moonImports_;
+  std::vector<std::string> protoFiles_;
+  bool dumpProtoSun_ = false;
 
   // Private constructor - use factory methods
   Driver(std::unique_ptr<CodegenContext> ctx,
@@ -88,9 +90,10 @@ class Driver {
                               char** argv = nullptr,
                               const std::string& filePath = "");
 
-  /// Execute a file with optional command-line arguments
-  void executeFile(const std::string& filename, int argc = 0,
-                   char** argv = nullptr);
+  /// Execute a file with optional command-line arguments; returns main()'s
+  /// value (VoidValue for void main)
+  sun::SunValue executeFile(const std::string& filename, int argc = 0,
+                            char** argv = nullptr);
 
   /// Compile a source string to IR without executing
   /// filePath is used for error messages (optional)
@@ -109,22 +112,34 @@ class Driver {
     moonImports_ = std::move(imports);
   }
 
+  /// Set .proto schemas to import natively (see ProtoImporter): each is
+  /// synthesized into ordinary Sun source and compiled with the program.
+  void setProtoFiles(std::vector<std::string> protos) {
+    protoFiles_ = std::move(protos);
+  }
+
+  /// Print the Sun source synthesized from each imported .proto to stdout
+  void setDumpProtoSun(bool dump) { dumpProtoSun_ = dump; }
+
   /// Compile multiple source files with optional precompiled moon libraries
   /// This is the merged-AST compilation model: all files are parsed and merged
   /// into a single AST before semantic analysis and codegen.
   /// @param sourceFiles List of .sun source files to compile
   /// @param moonImports Precompiled .moon libraries with optional aliasing
+  /// @param protoFiles .proto schemas to synthesize into Sun modules
   void compileFiles(const std::vector<std::string>& sourceFiles,
-                    const std::vector<sun::MoonImport>& moonImports = {});
+                    const std::vector<sun::MoonImport>& moonImports = {},
+                    const std::vector<std::string>& protoFiles = {});
 
   /// Execute multiple source files with optional precompiled moon libraries
   /// @param sourceFiles List of .sun source files to compile and execute
   /// @param moonImports Precompiled .moon libraries with optional aliasing
   /// @param argc Argument count for main()
   /// @param argv Argument vector for main()
-  void executeFiles(const std::vector<std::string>& sourceFiles,
-                    const std::vector<sun::MoonImport>& moonImports = {},
-                    int argc = 0, char** argv = nullptr);
+  sun::SunValue executeFiles(const std::vector<std::string>& sourceFiles,
+                             const std::vector<sun::MoonImport>& moonImports = {},
+                             int argc = 0, char** argv = nullptr,
+                             const std::vector<std::string>& protoFiles = {});
 
   /// Access the underlying module (for emitting object code after compilation)
   llvm::Module& getModule() { return *ctx->mainModule; }
