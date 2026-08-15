@@ -27,13 +27,17 @@ manifest {
 manifest {
     suns: ["file1.sun", "file2.sun"]   // Optional: additional source files
     moons: ["lib1.moon", "lib2.moon"]  // Optional: precompiled libraries
+    protos: ["schemas/msgs.proto"]     // Optional: protobuf schemas to import
 }
 ```
 
 - **suns** — Source files (`.sun`) to parse and merge with the entrypoint
 - **moons** — Precompiled library bundles (`.moon`) to link
+- **protos** — Protobuf schemas (`.proto`) compiled into message classes; see
+  [Protobuf](/protobuf)
 
-Both fields are optional. A minimal program needs only a `main()` function.
+All fields are optional (entries are newline-separated; a trailing `;` is
+tolerated). A minimal program needs only a `main()` function.
 
 ### Path Resolution
 
@@ -52,7 +56,8 @@ sun myprogram.sun   # Can find stdlib.moon in SUN_PATH
 When you run `sun main.sun`:
 
 1. **Parse entrypoint** — Parse `main.sun` and extract the manifest
-2. **Parse dependencies** — Parse all files listed in `suns` 
+2. **Parse dependencies** — Parse all files listed in `suns`; synthesize a
+   module of message classes for each schema in `protos`
 3. **Merge ASTs** — Combine all parsed ASTs into a single merged AST
 4. **Load moons** — Load type stubs and compiled code from `moons`
 5. **Semantic analysis** — Analyze the merged AST with moon type information

@@ -1,0 +1,152 @@
+# Protobuf
+
+import { Callout } from 'nextra/components'
+
+Sun imports Protocol Buffer schemas natively: list `.proto` files in the
+manifest and the compiler synthesizes ordinary Sun classes for every message,
+with monomorphic `encode`/`decode` that speak the standard wire format. There
+are no generated source files to check in, no runtime reflection, and no
+libprotobuf dependency in the compiled program.
+
+```sun filename="main.sun"
+manifest {
+    protos: ["schemas/telemetry.proto"]
+    moons: ["stdlib.moon"]
+}
+using sun;
+using namo.telemetry;      // the proto `package`
+
+function main() i32 {
+    var alloc = make_heap_allocator();
+
+    var status = RobotStatus(alloc);      // zero-value init (proto3 defaults)
+    status.robot_id = 7;
+    status.name = String(alloc, "rover");
+    status.samples.push(300);
+    status.mode = Mode.FAULT;
+
+    var buf = Vec<u8>(alloc, 64);
+    status.encode(buf);                   // appends wire bytes
+
+    try {
+        var back = RobotStatus_decode(alloc, buf);
+        return back.robot_id;
+    } catch (e: IError) {
+        return -1;                        // malformed input throws
+    }
+}
+```
+
+```proto filename="schemas/telemetry.proto"
+syntax = "proto3";
+package namo.telemetry;
+
+enum Mode { IDLE = 0; ACTIVE = 1; FAULT = 7; }
+message Pose { double x = 1; double y = 2; }
+
+message RobotStatus {
+  int32 robot_id = 1;
+  string name = 2;
+  repeated int64 samples = 3;
+  Mode mode = 4;
+  Pose pose = 5;
+  optional string nickname = 6;
+  oneof power { int32 battery_pct = 7; string station_id = 8; }
+  map<string, int32> scores = 9;
+}
+```
+
+Schemas are parsed at compile time with the protobuf compiler library
+(`libprotoc`); paths resolve like other manifest entries — relative to the
+entrypoint, then through `SUN_PATH` — and proto-level `import` statements
+resolve the same way. Run `sun --dump-proto-sun main.sun` to print the Sun
+source the compiler synthesized.
+
+## What gets generated
+
+For each `.proto` file, one Sun module named after the proto `package`
+(`package a.b` → `module a.b`), containing:
+
+| Proto | Sun |
+|---|---|
+| `message M { ... }` | `class M` with a public field per proto field |
+| `enum E { A = 0; ... }` | `enum E { A, ... }` plus `proto_enum_to_i32_E` / `proto_enum_from_i32_E` |
+| `int32 / sint32 / sfixed32` | `i32` |
+| `int64 / sint64 / sfixed64` | `i64` |
+| `uint32 / fixed32` | `u32` |
+| `uint64 / fixed64` | `u64` |
+| `float` / `double` / `bool` | `f32` / `f64` / `bool` |
+| `string` | `String` |
+| `bytes` | `Vec<u8>` |
+| `repeated T` | `Vec<T>` (packed encoding for scalars; both forms decode) |
+| `map<K, V>` | `Map<K, V>` (integer or string keys) |
+| `optional T` | `Option<T>` — `None` when absent, written whenever `Some`, even if zero |
+| `oneof name { a; b; }` | a payload enum `M_name { NotSet, A(T), B(U) }` stored in field `name` |
+| nested `Outer.Inner` | `Outer_Inner` |
+| another message by value | embedded by value |
+
+Every message class also has:
+
+- `init(alloc: ref HeapAllocator)` — zero values (proto3 defaults; sub-messages
+  and containers are constructed empty).
+- `encode(buf: ref Vec<u8>) void` — appends the message's wire bytes.
+- `encode_delimited(buf: ref Vec<u8>) void` — same, prefixed with a varint
+  length (stream framing).
+- A hidden `unknown_fields: Vec<u8>` holding fields the schema does not know
+  about; they are re-emitted by `encode`, so decoding a message from a newer
+  peer and re-encoding it loses nothing.
+
+Decoding is a free function per message (Sun has no static methods):
+
+- `M_decode(alloc: ref HeapAllocator, buf: ref Vec<u8>) M, IError`
+- `M_decode_delimited(alloc: ref HeapAllocator, r: ref ProtoReader) M, IError`
+  reads one length-prefixed message from a stream reader (`ProtoReader(buf)`,
+  from the stdlib's `proto_wire` module).
+
+Malformed input (truncated buffers, over-long varints, bad lengths) throws a
+`ProtoDecodeError`.
+
+## Ownership
+
+Message classes follow the language's ownership rules — see
+[Ownership](/ownership). Fields hold their values, `Vec`/`Map`/`String` fields
+own their contents, and assigning a compound field moves the source. Match
+bindings over `optional` and `oneof` payloads borrow in place:
+
+```sun
+match status.nickname {
+    Option.Some(s) => println(s.length()),   // s borrows the String
+    Option.None => { }
+};
+match status.power {
+    RobotStatus_power.BatteryPct(pct) => { },
+    RobotStatus_power.StationId(id) => { },
+    RobotStatus_power.NotSet => { }
+};
+status.power = RobotStatus_power.BatteryPct(80);   // drops the old payload
+```
+
+## Libraries
+
+A `.moon` built from a manifest with `protos:` exports the synthesized
+messages. Programs that import the moon use them directly and need neither the
+`.proto` file nor the protobuf compiler:
+
+```bash
+sun --emit-moon -o telemetry_lib.moon telemetry_lib.sun   # manifest { protos: [...] }
+```
+
+Listing the same schema in a program that already imports such a moon is a
+module collision error.
+
+## Interoperability
+
+The wire format is the standard one: bytes produced by Sun decode with
+`protoc --decode` and libprotobuf, and vice versa; the encoding is
+byte-identical to libprotobuf's canonical serialization for the same values.
+
+<Callout type="info">
+  Supported: proto3 (`syntax = "proto3"`). Not supported: proto2, `group`,
+  extensions, and messages that embed themselves by value (use `repeated` for
+  recursive structures). Unknown enum numbers decode to the enum's zero value.
+</Callout>

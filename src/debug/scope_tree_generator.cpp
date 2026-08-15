@@ -233,6 +233,10 @@ std::string ScopeTreeGenerator::generateJson(const SemanticScope& scope,
     out << ",\n" << pad2 << "\"childModules\": {";
     bool first = true;
     for (const auto& [name, child] : scope.childModules) {
+      // "__definition__" is a back-reference from a generic specialization
+      // to the generic's definition scope (an ancestor): not a child, and
+      // following it would recurse forever
+      if (!child || name == "__definition__") continue;
       if (!first) out << ",";
       out << "\n" << pad4 << "\"" << escapeJson(name) << "\": ";
       out << generateJson(*child, indent + 4);

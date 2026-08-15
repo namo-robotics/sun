@@ -12,7 +12,9 @@
 #include "ast_serializer.h"
 #include "execution_utils.h"
 #include "manifest_processor.h"
+#include "metadata_extractor.h"
 #include "parser.h"
+#include "proto_importer.h"
 
 namespace fs = std::filesystem;
 
@@ -1139,4 +1141,165 @@ TEST(ProtoImportTest, libprotobuf_parses_optional_oneof_map_encoding) {
   EXPECT_EQ(set->name(), "dock");
   EXPECT_EQ(refl->FieldSize(*msg, desc->FindFieldByName("scores")), 1);
   EXPECT_EQ(refl->FieldSize(*msg, desc->FindFieldByName("items")), 1);
+}
+
+// ============================================================================
+// Moon export/import: a moon built from a manifest with `protos:` exports
+// the synthesized messages; importers need neither the .proto nor libprotoc
+// ============================================================================
+
+#include "moon/moon.h"
+
+namespace {
+
+// Build <dir>/lib/telemetry_lib.moon from a manifest listing telemetry.proto
+fs::path buildTelemetryMoon(const std::string& dirName) {
+  initTestEnvironment();
+  fs::path dir = fs::temp_directory_path() / dirName;
+  fs::create_directories(dir / "lib");
+  {
+    std::ofstream out(dir / "lib" / "telemetry.proto");
+    out << kTelemetryProto;
+  }
+  fs::path entry = dir / "lib" / "telemetry_lib.sun";
+  {
+    std::ofstream out(entry);
+    out << "manifest { protos: [\"telemetry.proto\"] }\n";
+  }
+  // Same steps as `sun --emit-moon`
+  auto manifest = sun::ManifestProcessor::fromEntrypointFile(entry.string());
+  std::vector<sun::moon::ModuleMetadata> allMetadata;
+  std::vector<std::string> importDirs{(dir / "lib").string()};
+  for (const auto& protoPath : manifest->protoFiles) {
+    auto synthesized = sun::ProtoImporter::import(protoPath, importDirs);
+    auto md = sun::extractAllMetadataFromSource(
+        synthesized.sunSource, synthesized.pseudoPath, (dir / "lib").string());
+    for (auto& m : *md) allMetadata.push_back(std::move(m));
+  }
+  auto driver = Driver::createForAOT("moon_module");
+  driver->compileFiles({entry.string()}, getStdlibMoonImports(),
+                       manifest->protoFiles);
+  sun::SunLibWriter writer;
+  for (auto& md : allMetadata) writer.addModule(driver->getModule(), md);
+  fs::path moonPath = dir / "lib" / "telemetry_lib.moon";
+  writer.write(moonPath);
+  return moonPath;
+}
+
+}  // namespace
+
+TEST(ProtoImportTest, moon_exports_proto_messages_to_importers) {
+  fs::path moonPath = buildTelemetryMoon("sun_proto_moon1");
+  ASSERT_TRUE(fs::exists(moonPath));
+
+  // The importing program: no .proto anywhere in its manifest or SUN_PATH
+  auto imports = getStdlibMoonImports();
+  imports.push_back(sun::MoonImport(moonPath.string()));
+  auto driver = Driver::createForJIT("proto_moon_app");
+  driver->setMoonImports(imports);
+  auto value = driver->executeString(R"(
+    using sun;
+    using t;
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var st = Status(alloc);
+      st.robot_id = 7;
+      st.name = String(alloc, "rover");
+      st.samples.push(300);
+      st.mode = Mode.FAULT;
+      st.pose.y = -2.0;
+      var buf = Vec<u8>(alloc, 32);
+      st.encode(buf);
+      try {
+        var back = Status_decode(alloc, buf);
+        if (back.robot_id != 7) { return 1; }
+        if (back.name.length() != 5) { return 2; }
+        if (back.samples.get_unchecked(0) != 300) { return 3; }
+        if (proto_enum_to_i32_Mode(back.mode) != 7) { return 4; }
+        if (back.pose.y != -2.0) { return 5; }
+      } catch (e: IError) { return -1; }
+      return 42;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(ProtoImportTest, moon_import_plus_same_proto_is_a_collision_error) {
+  fs::path moonPath = buildTelemetryMoon("sun_proto_moon2");
+  fs::path dir = moonPath.parent_path().parent_path();
+  fs::path entry = dir / "main.sun";
+  {
+    std::ofstream out(entry);
+    out << "manifest { protos: [\"lib/telemetry.proto\"] moons: [\""
+        << moonPath.string() << "\"] }\n"
+        << "using sun;\nusing t;\n"
+        << "function main() i32 { var alloc = make_heap_allocator(); "
+        << "var s = Status(alloc); return 0; }\n";
+  }
+  auto driver = Driver::createForJIT("proto_moon_dup");
+  driver->setMoonImports(getStdlibMoonImports());
+  try {
+    driver->executeFile(entry.string(), 0, nullptr);
+    FAIL() << "expected a module collision error";
+  } catch (const std::exception& e) {
+    EXPECT_NE(std::string(e.what()).find("collision"), std::string::npos)
+        << e.what();
+  }
+}
+
+TEST(ProtoImportTest, moon_exports_nested_dotted_package_modules) {
+  // package namo.telemetry -> module namo.telemetry: importers use the
+  // dotted path
+  initTestEnvironment();
+  fs::path dir = fs::temp_directory_path() / "sun_proto_moon3";
+  fs::create_directories(dir / "lib");
+  {
+    std::ofstream out(dir / "lib" / "nested.proto");
+    out << "syntax = \"proto3\";\npackage namo.telemetry;\n"
+           "message Ping { int32 seq = 1; }\n";
+  }
+  fs::path entry = dir / "lib" / "nested_lib.sun";
+  {
+    std::ofstream out(entry);
+    out << "manifest { protos: [\"nested.proto\"] }\n";
+  }
+  auto manifest = sun::ManifestProcessor::fromEntrypointFile(entry.string());
+  std::vector<sun::moon::ModuleMetadata> allMetadata;
+  for (const auto& protoPath : manifest->protoFiles) {
+    auto synthesized =
+        sun::ProtoImporter::import(protoPath, {(dir / "lib").string()});
+    auto md = sun::extractAllMetadataFromSource(
+        synthesized.sunSource, synthesized.pseudoPath, (dir / "lib").string());
+    for (auto& m : *md) allMetadata.push_back(std::move(m));
+  }
+  ASSERT_EQ(allMetadata.size(), 1u);
+  EXPECT_EQ(allMetadata[0].module_name(), "namo.telemetry");
+  auto driver = Driver::createForAOT("moon_module");
+  driver->compileFiles({entry.string()}, getStdlibMoonImports(),
+                       manifest->protoFiles);
+  sun::SunLibWriter writer;
+  for (auto& md : allMetadata) writer.addModule(driver->getModule(), md);
+  fs::path moonPath = dir / "lib" / "nested_lib.moon";
+  ASSERT_TRUE(writer.write(moonPath));
+
+  auto imports = getStdlibMoonImports();
+  imports.push_back(sun::MoonImport(moonPath.string()));
+  auto app = Driver::createForJIT("proto_moon_nested");
+  app->setMoonImports(imports);
+  auto value = app->executeString(R"(
+    using sun;
+    using namo.telemetry;
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var p = Ping(alloc);
+      p.seq = 9;
+      var buf = Vec<u8>(alloc, 8);
+      p.encode(buf);
+      try {
+        var back = Ping_decode(alloc, buf);
+        return back.seq;
+      } catch (e: IError) { return -1; }
+    }
+  )");
+  EXPECT_EQ(value, 9);
 }

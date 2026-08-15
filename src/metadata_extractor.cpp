@@ -135,58 +135,86 @@ void extractEnum(const EnumDefinitionAST& enumDef,
 }
 
 // Recursively extract from statements
+// Collects definitions into one ModuleMetadata per dotted module path
+// ("a.b" for `module a { module b { ... } }`); file-level definitions go
+// under the empty name. Vector order = first-seen order.
+struct ModuleCollector {
+  std::vector<std::pair<std::string, moon::ModuleMetadata>> modules;
+
+  moon::ModuleMetadata& forModule(const std::string& dotted) {
+    for (auto& [name, md] : modules) {
+      if (name == dotted) return md;
+    }
+    modules.emplace_back(dotted, moon::ModuleMetadata{});
+    modules.back().second.set_module_name(dotted);
+    return modules.back().second;
+  }
+};
+
 void extractFromStatements(const std::vector<std::unique_ptr<ExprAST>>& stmts,
-                           moon::ModuleMetadata& metadata,
+                           ModuleCollector& collector,
+                           const std::string& modulePath,
                            const ASTSerializer& serializer,
-                           const std::filesystem::path& moduleDir,
-                           bool isTopLevel) {
+                           const std::filesystem::path& moduleDir) {
   for (const auto& stmt : stmts) {
     if (!stmt) continue;
 
-    // Handle module/namespace blocks
+    // Record `using` declarations (whole-module imports) so importers can
+    // rebind them around the exported stubs
+    if (stmt->getType() == ASTNodeType::USING) {
+      const auto& u = static_cast<const UsingAST&>(*stmt);
+      std::string path = u.getNamespacePathString();
+      std::string target = u.getTarget();
+      std::string full = path.empty() ? target
+                         : (target == "*" ? path : path + "." + target);
+      auto& metadata = collector.forModule(modulePath);
+      bool seen = false;
+      for (const auto& existing : metadata.usings()) {
+        if (existing == full) seen = true;
+      }
+      if (!seen) metadata.add_usings(full);
+    }
+
+    // Handle module/namespace blocks (nested modules become dotted paths)
     if (stmt->getType() == ASTNodeType::MODULE) {
       const auto& nsDecl = static_cast<const ModuleAST&>(*stmt);
-      if (isTopLevel && metadata.module_name().empty()) {
-        metadata.set_module_name(nsDecl.getName());
-      }
-      // Recurse into module body
-      extractFromStatements(nsDecl.getBody().getBody(), metadata, serializer,
-                            moduleDir, false);
+      std::string nested = modulePath.empty()
+                               ? nsDecl.getName()
+                               : modulePath + "." + nsDecl.getName();
+      collector.forModule(nested);
+      extractFromStatements(nsDecl.getBody().getBody(), collector, nested,
+                            serializer, moduleDir);
     }
 
     // Extract functions
     if (stmt->getType() == ASTNodeType::FUNCTION) {
-      extractFunction(static_cast<const FunctionAST&>(*stmt), metadata,
-                      serializer);
+      extractFunction(static_cast<const FunctionAST&>(*stmt),
+                      collector.forModule(modulePath), serializer);
     }
 
     // Extract classes
     if (stmt->getType() == ASTNodeType::CLASS_DEFINITION) {
-      extractClass(static_cast<const ClassDefinitionAST&>(*stmt), metadata,
-                   serializer);
+      extractClass(static_cast<const ClassDefinitionAST&>(*stmt),
+                   collector.forModule(modulePath), serializer);
     }
 
     // Extract interfaces
     if (stmt->getType() == ASTNodeType::INTERFACE_DEFINITION) {
       extractInterface(static_cast<const InterfaceDefinitionAST&>(*stmt),
-                       metadata, serializer);
+                       collector.forModule(modulePath), serializer);
     }
 
     // Extract enums
     if (stmt->getType() == ASTNodeType::ENUM_DEFINITION) {
-      extractEnum(static_cast<const EnumDefinitionAST&>(*stmt), metadata,
-                  serializer);
+      extractEnum(static_cast<const EnumDefinitionAST&>(*stmt),
+                  collector.forModule(modulePath), serializer);
     }
   }
 }
 
-moon::ModuleMetadata extractMetadata(const std::string& filePath,
-                                     const BlockExprAST& ast,
-                                     const std::string& sourceHash) {
-  moon::ModuleMetadata metadata;
-  metadata.set_source_hash(sourceHash);
-  metadata.set_version("1.0.0");
-
+std::vector<moon::ModuleMetadata> extractAllMetadata(
+    const std::string& filePath, const BlockExprAST& ast,
+    const std::string& sourceHash) {
   std::filesystem::path moduleDir =
       std::filesystem::path(filePath).parent_path();
 
@@ -194,14 +222,37 @@ moon::ModuleMetadata extractMetadata(const std::string& filePath,
   ASTSerializer serializer(
       {.include_analysis = false, .include_location = true});
 
-  extractFromStatements(ast.getBody(), metadata, serializer, moduleDir, true);
+  ModuleCollector collector;
+  extractFromStatements(ast.getBody(), collector, "", serializer, moduleDir);
 
-  return metadata;
+  std::vector<moon::ModuleMetadata> out;
+  size_t idx = 0;
+  for (auto& [name, md] : collector.modules) {
+    // Entries with nothing exported (a file-level shell of usings, or the
+    // outer module of `module a.b { }`) are noise
+    bool empty = md.functions_size() == 0 && md.classes_size() == 0 &&
+                 md.interfaces_size() == 0 && md.enums_size() == 0;
+    if (empty) continue;
+    // Bundle entries are keyed by source hash: several modules from one file
+    // need distinct keys
+    md.set_source_hash(idx == 0 ? sourceHash
+                                : sourceHash + "-" + std::to_string(idx));
+    ++idx;
+    md.set_version("1.0.0");
+    out.push_back(std::move(md));
+  }
+  if (out.empty()) {
+    moon::ModuleMetadata md;
+    md.set_source_hash(sourceHash);
+    md.set_version("1.0.0");
+    out.push_back(std::move(md));
+  }
+  return out;
 }
 
 }  // namespace
 
-std::optional<moon::ModuleMetadata> extractMetadataFromFile(
+std::optional<std::vector<moon::ModuleMetadata>> extractAllMetadataFromFile(
     const std::string& filename) {
   std::ifstream file(filename);
   if (!file.is_open()) {
@@ -209,8 +260,15 @@ std::optional<moon::ModuleMetadata> extractMetadataFromFile(
   }
   std::stringstream buffer;
   buffer << file.rdbuf();
-  std::string source = buffer.str();
+  return extractAllMetadataFromSource(
+      buffer.str(), filename,
+      std::filesystem::path(filename).parent_path().string());
+}
 
+std::optional<std::vector<moon::ModuleMetadata>>
+extractAllMetadataFromSource(const std::string& source,
+                             const std::string& displayName,
+                             const std::string& baseDir) {
   // Compute SHA-256 hash of source contents
   llvm::SHA256 sha;
   sha.update(llvm::StringRef(source));
@@ -225,7 +283,7 @@ std::optional<moon::ModuleMetadata> extractMetadataFromFile(
 
   std::istringstream ss(source);
   Parser parser(ss);
-  parser.setBaseDir(std::filesystem::path(filename).parent_path().string());
+  parser.setBaseDir(baseDir);
   parser.getNextToken();
 
   auto ast = parser.parseProgram();
@@ -238,7 +296,22 @@ std::optional<moon::ModuleMetadata> extractMetadataFromFile(
   LoweringPass lowering;
   lowering.run(*ast);
 
-  return extractMetadata(filename, *ast, sourceHash);
+  return extractAllMetadata(displayName, *ast, sourceHash);
+}
+
+std::optional<moon::ModuleMetadata> extractMetadataFromFile(
+    const std::string& filename) {
+  auto all = extractAllMetadataFromFile(filename);
+  if (!all || all->empty()) return std::nullopt;
+  return (*all)[0];
+}
+
+std::optional<moon::ModuleMetadata> extractMetadataFromSource(
+    const std::string& source, const std::string& displayName,
+    const std::string& baseDir) {
+  auto all = extractAllMetadataFromSource(source, displayName, baseDir);
+  if (!all || all->empty()) return std::nullopt;
+  return (*all)[0];
 }
 
 }  // namespace sun

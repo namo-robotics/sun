@@ -258,40 +258,60 @@ hits. Most become community-supplyable once FFI lands.
 
 ### Native Protobuf Import
 
-Import `.proto` schemas directly — no generated source files. The compiler already
-links libprotobuf for `.moon`/AST serialization, so at manifest-processing time it
-can parse the schema with `google::protobuf::compiler::Importer`, walk the
-`FileDescriptor`, and synthesize ordinary Sun classes into a module named after the
-proto `package`. Semantic analysis, the borrow checker, codegen and the LSP all see
-normal code; serializers compile monomorphic and static, with no descriptor
-reflection or libprotobuf dependency in the output binary.
+Import `.proto` schemas directly — no generated source files. At
+manifest-processing time the compiler parses the schema in-process with
+`google::protobuf::compiler::Importer` (libprotoc), walks the `FileDescriptor`,
+and synthesizes ordinary Sun *source* into a module named after the proto
+`package`, which is parsed and merged like any other file. Semantic analysis,
+the borrow checker, codegen and the LSP all see normal code; serializers
+compile monomorphic and static, with no descriptor reflection or libprotobuf
+dependency in the output binary. Docs: `docs/pages/protobuf.mdx`.
 
 ```sun
 manifest {
-    protos: ["schemas/telemetry.proto"];
+    protos: ["schemas/telemetry.proto"]
 }
 using namo.telemetry;
 
 var status = RobotStatus(alloc);       // synthesized zero-value init (proto3 defaults)
 status.robot_id = 7;
-status.encode(ref buf);                // borrow-checked, appends wire bytes to Vec<u8>
-var back = try RobotStatus.decode(alloc, view);   // malformed input throws IError
+status.encode(buf);                    // borrow-checked, appends wire bytes to Vec<u8>
+try { var back = RobotStatus_decode(alloc, buf); } catch (e: IError) { }
 ```
 
-- [ ] `protos:` manifest entries, resolved through `SUN_PATH` like other imports
-- [ ] Descriptor walk → synthesized AST: class per message, zero-value `init`
-      taking `ref HeapAllocator`, public fields (`string` → `String`,
-      `repeated T` → `Vec<T>`, `bytes` → `Vec<u8>`, `map<K,V>` → `Map<K,V>`,
-      nested messages embedded by value)
-- [ ] Synthesized `encode(this, ref Vec<u8>)` and `decode(...) T, IError`, plus
-      `_delimited` variants (varint length prefix) for stream framing
-- [ ] Proto `package foo.bar` → nested `module` decls; proto-level `import`
-      resolved through the same manifest machinery
-- [ ] Unknown-field preservation (hidden `Vec<u8>` per message) so
+- [x] `protos:` manifest entries, resolved through `SUN_PATH` like other imports
+      (manifest handling consolidated in `ManifestProcessor`, shared by the
+      driver, `--emit-moon` and the LSP)
+- [x] Descriptor walk → synthesized Sun source: class per message, zero-value
+      `init` taking `ref HeapAllocator`, public fields (`string` → `String`,
+      `repeated T` → `Vec<T>` with packed scalars, `bytes` → `Vec<u8>`,
+      `map<K,V>` → `Map<K,V>` with integer/string keys, nested messages
+      embedded by value, proto enums with open-enum decode)
+- [x] Synthesized `encode(ref Vec<u8>)` and free `<Msg>_decode(...) T, IError`
+      per message (Sun has no static methods), plus `_delimited` variants
+      (varint length prefix) for stream framing; wire primitives live in
+      `stdlib/proto_wire.sun` (`ProtoReader`, `proto_write_*`)
+- [x] Proto `package foo.bar` → nested `module` decls; proto-level `import`
+      resolved through the same directories, imported files generated
+      transitively as sibling modules
+- [x] Unknown-field preservation (`unknown_fields: Vec<u8>` per message) so
       decode-then-reencode round-trips fields from newer peers
-- [ ] Depends on: `Option<T>` for proto3 explicit `optional`; tagged unions for
-      `oneof`; associated/static functions for `T.decode(...)` (else a free
-      function per message)
+- [x] proto3 explicit `optional` → `Option<T>`; `oneof` → synthesized payload
+      enum `<Msg>_<oneof>`
+- [x] `.moon` export/import: bundles built from a manifest with `protos:`
+      export the messages (importers need neither the `.proto` nor libprotoc);
+      nested `module a.b` and per-module `using`s now survive the `.moon`
+      round-trip
+- [x] Cross-validated against libprotobuf: byte-identical to its canonical
+      serialization, decodes `protoc --encode` output
+- [ ] Deferred: proto2 syntax, `group`, extensions, recursive messages by value
+      (need indirection), `--dump-proto-sun` in the LSP
+- Landed alongside: `_convert<T>` / `_bitcast<T>` intrinsics (Sun's explicit
+  numeric narrowing/reinterpret), `Vec.borrow`/`Vec.take`, `Map` bucket
+  accessors, declaration pre-pass registers class shapes / `using`s /
+  `.moon` types before signatures (declaration order across modules and
+  moons no longer matters), stable module order in merged ASTs, `sun` exit
+  code = `main`'s return
 
 ### Targets
 

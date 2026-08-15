@@ -2747,8 +2747,19 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
       primaryModuleName = metadata->module_name();
     }
 
-    // Create stubs into a temporary vector
+    // Create stubs into a temporary vector. The module's `using`
+    // declarations come first so the stubs' field/parameter types resolve
+    // the same names their source did (e.g. Vec<u8> from stdlib.moon).
     std::vector<std::unique_ptr<ExprAST>> stubs;
+    for (const auto& u : metadata->usings()) {
+      std::vector<std::string> path;
+      std::stringstream ss(u);
+      std::string seg;
+      while (std::getline(ss, seg, '.')) path.push_back(seg);
+      auto usingStub = std::make_unique<UsingAST>(std::move(path), "*");
+      usingStub->setPrecompiled(true);
+      stubs.push_back(std::move(usingStub));
+    }
     createModuleStubs(*metadata, stubs);
 
     // Get the original module name and apply remapping if configured
@@ -2791,10 +2802,29 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
   for (auto& [modName, stubs] : moduleStubs) {
     if (stubs.empty()) continue;
     if (!modName.empty()) {
+      // A dotted name ("a.b") becomes nested modules, innermost first
+      std::vector<std::string> segs;
+      {
+        std::stringstream ss(modName);
+        std::string seg;
+        while (std::getline(ss, seg, '.')) segs.push_back(seg);
+      }
       auto nsBody = std::make_unique<BlockExprAST>(std::move(stubs));
-      auto nsAST = std::make_unique<ModuleAST>(modName, std::move(nsBody));
-      nsAST->setPrecompiled(true);
-      allModuleASTs.push_back(std::move(nsAST));
+      std::unique_ptr<ExprAST> current;
+      for (size_t i = segs.size(); i-- > 0;) {
+        std::unique_ptr<BlockExprAST> body;
+        if (current) {
+          std::vector<std::unique_ptr<ExprAST>> one;
+          one.push_back(std::move(current));
+          body = std::make_unique<BlockExprAST>(std::move(one));
+        } else {
+          body = std::move(nsBody);
+        }
+        auto nsAST = std::make_unique<ModuleAST>(segs[i], std::move(body));
+        nsAST->setPrecompiled(true);
+        current = std::move(nsAST);
+      }
+      allModuleASTs.push_back(std::move(current));
     } else {
       for (auto& ast : stubs) {
         allModuleASTs.push_back(std::move(ast));
@@ -2837,7 +2867,10 @@ void Parser::createModuleStubs(
     scopePath.push_back(contentHash);
   }
   if (!metadata.module_name().empty()) {
-    scopePath.push_back(metadata.module_name());
+    // Nested modules are exported under their dotted path
+    std::stringstream ss(metadata.module_name());
+    std::string seg;
+    while (std::getline(ss, seg, '.')) scopePath.push_back(seg);
   }
 
   // Collect AST stubs for this module - may be wrapped in a namespace

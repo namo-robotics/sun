@@ -18,6 +18,7 @@
 #include "library_cache.h"
 #include "manifest_processor.h"
 #include "metadata_extractor.h"
+#include "proto_importer.h"
 #include "moon/moon.h"
 #include "moon_import.h"
 #include "parser.h"
@@ -383,13 +384,34 @@ int main(int argc, char* argv[]) {
       // Extract metadata from each file
       std::vector<sun::moon::ModuleMetadata> allMetadata;
       for (const auto& file : sunFiles) {
-        auto metadataOpt = sun::extractMetadataFromFile(file);
+        auto metadataOpt = sun::extractAllMetadataFromFile(file);
         if (!metadataOpt) {
           llvm::errs() << "Error: Failed to parse " << file
                        << " for metadata\n";
           return 1;
         }
-        allMetadata.push_back(*metadataOpt);
+        for (auto& md : *metadataOpt) allMetadata.push_back(std::move(md));
+      }
+
+      // Messages synthesized from manifest protos are exported too: importers
+      // of this moon get the classes without needing the .proto (or
+      // libprotoc). The synthesized source is compiled with the bundle below.
+      std::string protoBaseDir = entrypointPath.parent_path().string();
+      for (const auto& protoPath : protoFiles) {
+        std::vector<std::string> importDirs{protoBaseDir};
+        for (const auto& dir : sun::SunPath::getPaths()) {
+          importDirs.push_back(dir.string());
+        }
+        auto synthesized = sun::ProtoImporter::import(protoPath, importDirs);
+        auto metadataOpt = sun::extractAllMetadataFromSource(
+            synthesized.sunSource, synthesized.pseudoPath, protoBaseDir);
+        if (!metadataOpt) {
+          llvm::errs() << "Error: Failed to extract metadata for " << protoPath
+                       << "\n";
+          return 1;
+        }
+        for (auto& md : *metadataOpt) allMetadata.push_back(std::move(md));
+        llvm::outs() << "  Including proto: " << protoPath << "\n";
       }
 
       // Compile all files together

@@ -538,3 +538,28 @@ TEST(EnumDropTest, cross_moon_owning_enum_drops_once) {
   )");
   EXPECT_EQ(value, 2);
 }
+
+// Small scalar payload next to a large, 8-byte-aligned payload: the scalar
+// must not live in the tag's alignment padding, or aggregate moves lose it.
+TEST(EnumDropTest, small_payload_survives_move_next_to_owning_payload) {
+  auto value = executeString(withPreamble(R"(
+    class Wide {
+      var a: i64;
+      var b: i64;
+      var o: Owner;
+      function init() { this.a = 1; this.b = 2; this.o = Owner(3); }
+    }
+    enum P { NotSet, Pct(i32), Big(Wide) }
+    class Box { var p: P; function init() { this.p = P.NotSet; } }
+    function main() i32 {
+      var local = P.NotSet;
+      local = P.Pct(55);
+      var l: i32 = match local { P.Pct(v) => v, P.Big(w) => -2, P.NotSet => -3 };
+      var box = Box();
+      box.p = P.Pct(66);
+      var f: i32 = match box.p { P.Pct(v) => v, P.Big(w) => -2, P.NotSet => -3 };
+      return l + f;
+    }
+  )"));
+  EXPECT_EQ(value, 121);
+}

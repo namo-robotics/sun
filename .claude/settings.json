@@ -43,7 +43,21 @@
       "Bash(./build/sun tmp/o8.sun)",
       "Bash(./build/sun --debug tmp/o8.sun)",
       "Bash(awk '/^define i32 @main/,/^}/' tmp/o8_debug/ir.ll)",
-      "Bash(grep -vE \"^\\\\s*$|debugloc|^;\")"
+      "Bash(grep -vE \"^\\\\s*$|debugloc|^;\")",
+      "Bash(./build/sun --moon build/stdlib.moon --debug tmp/w8.sun)",
+      "Bash(echo \"w8 exit=$?\")",
+      "Bash(echo \"o8 exit=$?\")",
+      "Bash(./build/sun --moon build/stdlib.moon --debug tmp/o7.sun)",
+      "Bash(DEBUGINFOD_URLS= timeout 60 gdb -batch -ex \"run --moon build/stdlib.moon --debug tmp/w8.sun\" -ex \"bt 6\" ./build/sun)",
+      "Bash(SUN_PATH=/workspaces/sun/build ./build/sun --emit-moon -o tmp/moon2/lib/lib.moon tmp/moon2/lib/lib.sun)",
+      "Bash(SUN_PATH=/workspaces/sun/build ./build/sun tmp/moon2/app/main.sun)",
+      "Bash(SUN_PATH=/workspaces/sun/build ./build/sun --emit-moon -o tmp/moonproto/lib/telemetry_lib.moon tmp/moonproto/lib/telemetry_lib.sun)",
+      "Bash(SUN_PATH=/workspaces/sun/build ./build/sun tmp/moonproto/app/main.sun)",
+      "Bash(SUN_PATH=/workspaces/sun/build ./build/sun --moon build/stdlib.moon tmp/w8.sun)",
+      "Bash(echo \"proto-moon exit=$?\")",
+      "Bash(echo \"moon2 exit=$?\")",
+      "Bash(./build/tests/sun_tests --gtest_filter=\"ProtoImportTest.moon*\")",
+      "Bash(grep -n \"Import-only via manifest\\\\|native \\\\`message\\\\`\" ROADMAP.md)"
     ],
     "additionalDirectories": [
       "/tmp",
