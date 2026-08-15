@@ -373,9 +373,10 @@ Found in source:
    `{ i32 tag, [M x unit] }` storage with per-variant view structs
    (`include/llvm_type_resolver.h`).
 5. **Memory model**: should `Vec<T>` own its allocator or take a reference?
-6. **Protobuf surface**: import-only (`.proto` via manifest), or also a native
-   `message` declaration in Sun source with `field: T = tag;` syntax? The
-   descriptor walk and the parser production would synthesize the same AST.
+6. **Protobuf surface**: import-only (`.proto` via manifest) shipped first.
+   A native `message` declaration in Sun source with `field: T = tag;` syntax
+   remains open — it would drive the same source generator (`ProtoImporter`)
+   from a parser production instead of a `FileDescriptor`.
 
 ---
 
