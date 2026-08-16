@@ -158,6 +158,7 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
     case ASTNodeType::INTERFACE_DEFINITION:
     case ASTNodeType::ENUM_DEFINITION:
     case ASTNodeType::GENERIC_CALL:
+    case ASTNodeType::PACK_EXPANSION:  // only in unexpanded generic templates
     case ASTNodeType::THROW:
     case ASTNodeType::BREAK_STMT:
     case ASTNodeType::CONTINUE_STMT:
@@ -708,6 +709,16 @@ void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
 void BorrowChecker::checkFunctionDef(const FunctionAST& func) {
   const auto& proto = func.getProto();
   const std::string& funcName = proto.getName();
+
+  // Generic templates are analyzed with unbound type parameters; codegen only
+  // emits their specializations (analyzed clones with concrete types), so those
+  // are what must be checked (move marks must land on the emitted AST).
+  if (proto.isGeneric() && !func.getSpecializations().empty()) {
+    for (const auto& [name, specialized] : func.getSpecializations()) {
+      if (specialized) checkFunctionDef(*specialized);
+    }
+    return;
+  }
 
   // Check if function returns a reference type
   bool returnsRef = false;

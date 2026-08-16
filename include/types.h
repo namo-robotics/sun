@@ -930,6 +930,8 @@ class ClassType : public Type {
   std::vector<TypePtr>
       typeArguments;            // Type args: [i32] for specialized classes
   std::string baseGenericName;  // For specialized: original generic class name
+  sun::QualifiedName
+      genericQualifiedName_;  // For specialized: the generic's qualified name
   std::vector<ClassField> fields;
   std::vector<ClassMethod> methods;
   ScopeMethodTable
@@ -1007,6 +1009,14 @@ class ClassType : public Type {
   }
   const std::vector<TypePtr>& getTypeArguments() const { return typeArguments; }
   const std::string& getBaseGenericName() const { return baseGenericName; }
+  // Qualified name of the generic this specialization was instantiated from
+  // (scope path + plain base name), for scope-tree lookups
+  const sun::QualifiedName& getGenericQualifiedName() const {
+    return genericQualifiedName_;
+  }
+  void setGenericQualifiedName(sun::QualifiedName qn) {
+    genericQualifiedName_ = std::move(qn);
+  }
   bool isGenericDefinition() const { return !typeParameters.empty(); }
   bool isSpecialized() const { return !typeArguments.empty(); }
   const std::vector<ClassField>& getFields() const { return fields; }

@@ -61,6 +61,16 @@ const GenericClassInfo* SemanticScopeBase::lookupGenericClass(
       });
 }
 
+const GenericClassInfo* SemanticScopeBase::lookupGenericClass(
+    const sun::QualifiedName& qualifiedName) const {
+  if (qualifiedName.scopePath.empty()) {
+    return lookupGenericClass(qualifiedName.baseName);
+  }
+  auto* modScope = lookupModuleScope(qualifiedName.scopePathString());
+  return modScope ? modScope->findGenericClass(qualifiedName.baseName)
+                  : nullptr;
+}
+
 // -------------------------------------------------------------------
 // lookupInterface — find an interface in the scope chain
 // -------------------------------------------------------------------

@@ -32,10 +32,17 @@
       "Bash(chmod +x *)",
       "Bash(node scripts/*)",
       "Bash(python3 -)",
-      "Bash(DEBUGINFOD_URLS= timeout * gdb -batch *)",
       "Read(//tmp/**)",
       "Skill(update-config)",
-      "Skill(update-config:*)"
+      "Skill(update-config:*)",
+      "Bash(cat)",
+      "Bash(SUN_PATH=*)",
+      "Bash(DEBUGINFOD_URLS=*)",
+      "Bash(lldb *)",
+      "Bash(cp * tmp/*)",
+      "WebFetch",
+      "Read(//usr/bin/**)",
+      "Bash(gdb *)"
     ],
     "additionalDirectories": [
       "/tmp",
