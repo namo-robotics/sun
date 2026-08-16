@@ -69,6 +69,13 @@ class Driver {
     });
   }
 
+  // Synthesize Sun modules for manifest .proto files and parse them into
+  // parsedFiles/canonicalPaths (see ProtoImporter)
+  void parseSynthesizedProtoModules(
+      const std::vector<std::string>& protoFiles,
+      std::vector<std::unique_ptr<BlockExprAST>>& parsedFiles,
+      std::vector<std::string>& canonicalPaths);
+
   void dumpUserDefinedIR(llvm::raw_ostream& OS);
   void writeUserDefinedIR(const std::string& path);
 

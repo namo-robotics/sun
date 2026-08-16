@@ -16,9 +16,7 @@
 #include "error.h"
 #include "formatter.h"
 #include "library_cache.h"
-#include "manifest_processor.h"
-#include "metadata_extractor.h"
-#include "proto_importer.h"
+#include "moon_builder.h"
 #include "moon/moon.h"
 #include "moon_import.h"
 #include "parser.h"
@@ -334,103 +332,29 @@ int main(int argc, char* argv[]) {
       llvm::errs() << "Error: --emit-moon requires an entrypoint file\n";
       return 1;
     }
+    const std::string& entrypoint = inputFiles[0];
+    std::filesystem::path outputPath =
+        outputFile.empty() ? sun::MoonBuilder::defaultOutputPath(entrypoint)
+                           : std::filesystem::path(outputFile);
 
-    std::string entrypoint = inputFiles[0];
-    std::filesystem::path entrypointPath =
-        std::filesystem::absolute(entrypoint);
-
-    if (outputFile.empty()) {
-      // Derive from input file. The name does not encode the target — the
-      // bundle metadata records it, and cross bundles conventionally live in
-      // per-target directories (use -o <triple>/name.moon).
-      outputFile = entrypoint;
-      size_t dotPos = outputFile.rfind(".sun");
-      if (dotPos != std::string::npos) {
-        outputFile = outputFile.substr(0, dotPos);
-      }
-      outputFile += ".moon";
-    }
-
-    // Extract manifest from entrypoint
-    std::vector<std::string> sunFiles;
-    std::vector<std::string> protoFiles;
-
-    auto manifest = sun::ManifestProcessor::fromEntrypointFile(entrypoint);
-    if (!manifest) {
-      // No manifest - single file mode
-      sunFiles.push_back(entrypointPath.string());
-    } else {
-      sunFiles = std::move(manifest->sunFiles);
-      // Add entrypoint to the list
-      sunFiles.insert(sunFiles.begin(), entrypointPath.string());
-      // Merge manifest moons with CLI moons
-      for (auto& m : manifest->moonImports) {
-        moonImports.push_back(std::move(m));
-      }
-      protoFiles = std::move(manifest->protoFiles);
-    }
-
-    llvm::outs() << "Creating moon: " << outputFile << "\n";
-    for (const auto& f : sunFiles) {
-      llvm::outs() << "  Including: " << f << "\n";
-    }
-    for (const auto& m : moonImports) {
-      llvm::outs() << "  Moon import: " << m.path << "\n";
-    }
-
+    llvm::outs() << "Creating moon: " << outputPath.string() << "\n";
     try {
-      sun::SunLibWriter bundleWriter;
-
-      // Extract metadata from each file
-      std::vector<sun::moon::ModuleMetadata> allMetadata;
-      for (const auto& file : sunFiles) {
-        auto metadataOpt = sun::extractAllMetadataFromFile(file);
-        if (!metadataOpt) {
-          llvm::errs() << "Error: Failed to parse " << file
-                       << " for metadata\n";
-          return 1;
-        }
-        for (auto& md : *metadataOpt) allMetadata.push_back(std::move(md));
+      sun::MoonBuildOptions options;
+      options.targetTriple = targetTriple;
+      options.debugInfo = debugInfo;
+      options.dumpProtoSun = dumpProtoSun;
+      options.extraMoons = moonImports;
+      auto report = sun::MoonBuilder::build(entrypoint, outputPath, options);
+      for (const auto& f : report.sunFiles) {
+        llvm::outs() << "  Including: " << f << "\n";
       }
-
-      // Messages synthesized from manifest protos are exported too: importers
-      // of this moon get the classes without needing the .proto (or
-      // libprotoc). The synthesized source is compiled with the bundle below.
-      std::string protoBaseDir = entrypointPath.parent_path().string();
-      for (const auto& protoPath : protoFiles) {
-        std::vector<std::string> importDirs{protoBaseDir};
-        for (const auto& dir : sun::SunPath::getPaths()) {
-          importDirs.push_back(dir.string());
-        }
-        auto synthesized = sun::ProtoImporter::import(protoPath, importDirs);
-        auto metadataOpt = sun::extractAllMetadataFromSource(
-            synthesized.sunSource, synthesized.pseudoPath, protoBaseDir);
-        if (!metadataOpt) {
-          llvm::errs() << "Error: Failed to extract metadata for " << protoPath
-                       << "\n";
-          return 1;
-        }
-        for (auto& md : *metadataOpt) allMetadata.push_back(std::move(md));
-        llvm::outs() << "  Including proto: " << protoPath << "\n";
+      for (const auto& p : report.protoFiles) {
+        llvm::outs() << "  Including proto: " << p << "\n";
       }
-
-      // Compile all files together
-      auto driver = Driver::createForAOT("moon_module", targetTriple, debugInfo);
-      driver->setDumpProtoSun(dumpProtoSun);
-      driver->compileFiles(sunFiles, moonImports, protoFiles);
-
-      // Add each module's metadata + the shared compiled LLVM module
-      for (auto& metadata : allMetadata) {
-        bundleWriter.addModule(driver->getModule(), metadata);
+      for (const auto& m : report.moonImports) {
+        llvm::outs() << "  Moon import: " << m.path << "\n";
       }
-
-      if (!bundleWriter.write(outputFile)) {
-        llvm::errs() << "Error writing moon: " << bundleWriter.getError()
-                     << "\n";
-        return 1;
-      }
-
-      llvm::outs() << "Successfully created: " << outputFile << "\n";
+      llvm::outs() << "Successfully created: " << outputPath.string() << "\n";
       return 0;
     } catch (const SunError& e) {
       llvm::errs() << "Error: " << e.what() << "\n";

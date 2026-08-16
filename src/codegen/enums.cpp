@@ -67,13 +67,7 @@ Function* CodegenVisitor::getOrCreateEnumDropFunction(sun::EnumType& enumType) {
       unsigned idx = typeResolver.enumPayloadFieldIndex(enumType, variant.name, i);
       Value* fieldPtr = ctx.builder->CreateStructGEP(
           variantTy, storage, idx, "drop.payload." + variant.name);
-      if (pt->isClass()) {
-        auto* classType = static_cast<sun::ClassType*>(pt.get());
-        emitDeinitCall(classType, fieldPtr);
-        emitFieldDeinit(fieldPtr, classType, "enum.payload");
-      } else if (pt->isEnum()) {
-        emitEnumDrop(static_cast<sun::EnumType&>(*pt), fieldPtr);
-      }
+      emitDropInPlace(pt, fieldPtr, "enum.payload");
     }
     ctx.builder->CreateBr(doneBB);
   }
@@ -135,7 +129,6 @@ Value* CodegenVisitor::codegenEnumVariantConstruction(
       // source is invalidated (zeroed / tag-poisoned) so its own drop is a
       // no-op, and its tracking entry is released — the enum owns it now.
       if (argVal->getType()->isPointerTy()) {
-        markClassAllocationAsDeinited(argVal);
         argVal = applyMoveSemantics(argVal, payloadType);
       }
       ctx.builder->CreateStore(argVal, fieldPtr);

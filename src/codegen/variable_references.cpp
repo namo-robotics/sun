@@ -292,9 +292,7 @@ Value* CodegenVisitor::codegen(const VariableAssignmentAST& expr) {
     if (varType && isPayloadEnum(varType) &&
         value->getType()->isPointerTy()) {
       if (value == alloca) return value;
-      auto& enumType = static_cast<sun::EnumType&>(*varType);
-      emitEnumDrop(enumType, alloca);
-      markClassAllocationAsDeinited(value);
+      emitDropInPlace(varType, alloca, expr.getName());
       value = applyMoveSemantics(value, varType);
     }
 
@@ -307,12 +305,9 @@ Value* CodegenVisitor::codegen(const VariableAssignmentAST& expr) {
       // corpse; it has no effect, so emit nothing.
       if (value == alloca) return value;
 
-      auto* classType = static_cast<sun::ClassType*>(varType.get());
-
       // The value being overwritten reaches the end of its life here, so it
       // is deinitialized exactly as it would be at scope exit.
-      emitDeinitCall(classType, alloca);
-      emitFieldDeinit(alloca, classType, expr.getName());
+      emitDropInPlace(varType, alloca, expr.getName());
 
       // Assignment moves, which the borrow checker already enforces (it
       // rejects use of the source afterwards). applyMoveSemantics loads the

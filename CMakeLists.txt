@@ -123,6 +123,7 @@ add_library(sun_lib
     src/driver.cpp
     src/manifest_processor.cpp
     src/proto_importer.cpp
+    src/moon_builder.cpp
     src/codegen/codegen_visitor.cpp
     src/codegen/debug_info_builder.cpp
     src/codegen/functions_lambdas.cpp
@@ -198,8 +199,22 @@ target_include_directories(sun_lib
 # Link LLVM the modern way (target-based)
 # libprotoc provides google::protobuf::compiler::Importer, used to parse .proto
 # schemas listed in a manifest's `protos:` at compile time (no libprotobuf
-# dependency ends up in compiled Sun programs).
-target_link_libraries(sun_lib PUBLIC LLVM protobuf::libprotobuf protobuf::libprotoc)  # Add more components as needed
+# dependency ends up in compiled Sun programs). Both protobuf libraries are
+# linked STATICALLY into the sun binaries so users of a prebuilt compiler
+# need no libprotobuf/libprotoc shared objects installed (libprotoc depends
+# on libprotobuf, so they must be static together to avoid two copies of the
+# protobuf runtime).
+find_package(Threads REQUIRED)
+find_library(PROTOBUF_STATIC_LIB NAMES libprotobuf.a)
+find_library(PROTOC_STATIC_LIB NAMES libprotoc.a)
+if(PROTOBUF_STATIC_LIB AND PROTOC_STATIC_LIB)
+    message(STATUS "Linking protobuf statically: ${PROTOC_STATIC_LIB} ${PROTOBUF_STATIC_LIB}")
+    target_include_directories(sun_lib PUBLIC ${Protobuf_INCLUDE_DIRS})
+    target_link_libraries(sun_lib PUBLIC LLVM ${PROTOC_STATIC_LIB} ${PROTOBUF_STATIC_LIB} Threads::Threads)
+else()
+    message(WARNING "Static protobuf archives not found; linking shared libprotobuf/libprotoc")
+    target_link_libraries(sun_lib PUBLIC LLVM protobuf::libprotobuf protobuf::libprotoc)
+endif()
 
 # Ensure the library uses the same definitions/includes as LLVM
 target_compile_definitions(sun_lib PUBLIC ${LLVM_DEFINITIONS})

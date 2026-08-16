@@ -1,19 +1,27 @@
 // proto_importer.cpp — see proto_importer.h
 //
+// Structure:
+//   SchemaValidator   rejects constructs outside the supported proto3 subset
+//   TypeMapper        proto descriptor → Sun spelling (types, names, wire types,
+//                     read/write expressions)
+//   MessageGenerator  emits the Sun class + decode functions for one message
+//   emitFile          emits one .proto file's module (enums + messages)
+//   ProtoImporter     public API: parse with libprotoc, order dependencies,
+//                     generate one Sun source per manifest entry
+//
 // Generated shape (proto3):
 //
-//   using sun;
 //   module <package> {
+//     using sun;
 //     enum <Enum> { A, B, ... }                    // proto enums
 //     class <Msg> {
 //       var <field>: <SunType>; ...
-//       var unknown_fields: Vec<u8>;                     // preserved unknown fields
+//       var unknown_fields: Vec<u8>;               // preserved unknown fields
 //       var alloc_: HeapAllocator;
 //       function init(alloc: ref HeapAllocator) { ...zero values... }
 //       function encode(buf: ref Vec<u8>) void { ... }
 //     }
 //     function <Msg>_decode(alloc: ref HeapAllocator, buf: ref Vec<u8>) <Msg>, IError
-//     function <Msg>_decode_from(alloc: ref HeapAllocator, r: ref ProtoReader) <Msg>, IError
 //   }
 //
 // Nested messages/enums flatten to Outer_Inner. Sun has no static methods, so
@@ -34,6 +42,7 @@
 #include <google/protobuf/descriptor.h>
 
 #include "error.h"
+#include "sun_path.h"
 
 namespace sun {
 
@@ -41,8 +50,16 @@ namespace {
 
 namespace pb = google::protobuf;
 namespace pbc = google::protobuf::compiler;
+using FD = pb::FieldDescriptor;
 
-// Collects proto parse errors and surfaces them as one Sun compile error.
+[[noreturn]] void fail(const std::string& message) {
+  throw SunError(SunError::Kind::Compile, "proto import: " + message);
+}
+
+// ---------------------------------------------------------------------------
+// Diagnostics: proto parse errors surface as one Sun compile error
+// ---------------------------------------------------------------------------
+
 class ErrorCollector : public pbc::MultiFileErrorCollector {
  public:
   void AddError(const std::string& filename, int line, int column,
@@ -66,7 +83,10 @@ class ErrorCollector : public pbc::MultiFileErrorCollector {
   std::vector<std::string> errors_;
 };
 
-// Simple indenting source writer
+// ---------------------------------------------------------------------------
+// Indenting source writer
+// ---------------------------------------------------------------------------
+
 class Writer {
  public:
   void line(const std::string& text = "") {
@@ -94,354 +114,53 @@ class Writer {
   int indent_ = 0;
 };
 
-// Sun identifier for a (possibly nested) message or enum: Outer_Inner
-std::string sunTypeName(const pb::Descriptor* d) {
-  std::string name = d->name();
-  for (const pb::Descriptor* p = d->containing_type(); p;
-       p = p->containing_type()) {
-    name = p->name() + "_" + name;
-  }
-  return name;
-}
+// ---------------------------------------------------------------------------
+// Descriptor traversal helpers
+// ---------------------------------------------------------------------------
 
-std::string sunEnumName(const pb::EnumDescriptor* e) {
-  std::string name = e->name();
-  for (const pb::Descriptor* p = e->containing_type(); p;
-       p = p->containing_type()) {
-    name = p->name() + "_" + name;
+// Every message in the file, nested ones included (pre-order)
+std::vector<const pb::Descriptor*> allMessages(const pb::FileDescriptor* file) {
+  std::vector<const pb::Descriptor*> out;
+  std::vector<const pb::Descriptor*> stack;
+  for (int i = 0; i < file->message_type_count(); ++i) {
+    stack.push_back(file->message_type(i));
   }
-  return name;
-}
-
-// Sun spelling of a field's element type (ignoring repeated/optional)
-std::string scalarSunType(const pb::FieldDescriptor* f) {
-  switch (f->type()) {
-    case pb::FieldDescriptor::TYPE_INT32:
-    case pb::FieldDescriptor::TYPE_SINT32:
-    case pb::FieldDescriptor::TYPE_SFIXED32:
-      return "i32";
-    case pb::FieldDescriptor::TYPE_INT64:
-    case pb::FieldDescriptor::TYPE_SINT64:
-    case pb::FieldDescriptor::TYPE_SFIXED64:
-      return "i64";
-    case pb::FieldDescriptor::TYPE_UINT32:
-    case pb::FieldDescriptor::TYPE_FIXED32:
-      return "u32";
-    case pb::FieldDescriptor::TYPE_UINT64:
-    case pb::FieldDescriptor::TYPE_FIXED64:
-      return "u64";
-    case pb::FieldDescriptor::TYPE_FLOAT:
-      return "f32";
-    case pb::FieldDescriptor::TYPE_DOUBLE:
-      return "f64";
-    case pb::FieldDescriptor::TYPE_BOOL:
-      return "bool";
-    case pb::FieldDescriptor::TYPE_STRING:
-      return "String";
-    case pb::FieldDescriptor::TYPE_BYTES:
-      return "Vec<u8>";
-    case pb::FieldDescriptor::TYPE_ENUM:
-      return sunEnumName(f->enum_type());
-    case pb::FieldDescriptor::TYPE_MESSAGE:
-      return sunTypeName(f->message_type());
-    default:
-      return "";
-  }
-}
-
-// Wire type for a (non-repeated) field's element
-int wireType(const pb::FieldDescriptor* f) {
-  switch (f->type()) {
-    case pb::FieldDescriptor::TYPE_FIXED64:
-    case pb::FieldDescriptor::TYPE_SFIXED64:
-    case pb::FieldDescriptor::TYPE_DOUBLE:
-      return 1;
-    case pb::FieldDescriptor::TYPE_STRING:
-    case pb::FieldDescriptor::TYPE_BYTES:
-    case pb::FieldDescriptor::TYPE_MESSAGE:
-      return 2;
-    case pb::FieldDescriptor::TYPE_FIXED32:
-    case pb::FieldDescriptor::TYPE_SFIXED32:
-    case pb::FieldDescriptor::TYPE_FLOAT:
-      return 5;
-    default:
-      return 0;  // varint
-  }
-}
-
-bool isScalarNumeric(const pb::FieldDescriptor* f) {
-  switch (f->type()) {
-    case pb::FieldDescriptor::TYPE_STRING:
-    case pb::FieldDescriptor::TYPE_BYTES:
-    case pb::FieldDescriptor::TYPE_MESSAGE:
-      return false;
-    default:
-      return true;
-  }
-}
-
-// proto_write_<suffix> / read_<suffix> for a scalar field
-std::string wireSuffix(const pb::FieldDescriptor* f) {
-  switch (f->type()) {
-    case pb::FieldDescriptor::TYPE_INT32:
-      return "int32";
-    case pb::FieldDescriptor::TYPE_INT64:
-      return "int64";
-    case pb::FieldDescriptor::TYPE_UINT32:
-      return "uint32";
-    case pb::FieldDescriptor::TYPE_UINT64:
-      return "uint64";
-    case pb::FieldDescriptor::TYPE_SINT32:
-      return "sint32";
-    case pb::FieldDescriptor::TYPE_SINT64:
-      return "sint64";
-    case pb::FieldDescriptor::TYPE_FIXED32:
-      return "fixed32";
-    case pb::FieldDescriptor::TYPE_FIXED64:
-      return "fixed64";
-    case pb::FieldDescriptor::TYPE_SFIXED32:
-      return "sfixed32";
-    case pb::FieldDescriptor::TYPE_SFIXED64:
-      return "sfixed64";
-    case pb::FieldDescriptor::TYPE_FLOAT:
-      return "float";
-    case pb::FieldDescriptor::TYPE_DOUBLE:
-      return "double";
-    case pb::FieldDescriptor::TYPE_BOOL:
-      return "bool";
-    case pb::FieldDescriptor::TYPE_ENUM:
-      return "int32";
-    default:
-      return "";
-  }
-}
-
-// Zero-value expression for a field's element type
-std::string zeroValue(const pb::FieldDescriptor* f) {
-  switch (f->type()) {
-    case pb::FieldDescriptor::TYPE_FLOAT:
-    case pb::FieldDescriptor::TYPE_DOUBLE:
-      return "0.0";
-    case pb::FieldDescriptor::TYPE_BOOL:
-      return "false";
-    case pb::FieldDescriptor::TYPE_STRING:
-      return "String(alloc, \"\")";
-    case pb::FieldDescriptor::TYPE_BYTES:
-      return "Vec<u8>(alloc, 4)";
-    case pb::FieldDescriptor::TYPE_ENUM: {
-      // Proto3 enums always have a 0 value: use its name
-      const auto* e = f->enum_type();
-      for (int i = 0; i < e->value_count(); ++i) {
-        if (e->value(i)->number() == 0) {
-          return sunEnumName(e) + "." + e->value(i)->name();
-        }
-      }
-      return sunEnumName(e) + "." + e->value(0)->name();
+  while (!stack.empty()) {
+    const pb::Descriptor* d = stack.back();
+    stack.pop_back();
+    out.push_back(d);
+    for (int i = 0; i < d->nested_type_count(); ++i) {
+      stack.push_back(d->nested_type(i));
     }
-    case pb::FieldDescriptor::TYPE_MESSAGE:
-      return sunTypeName(f->message_type()) + "(alloc)";
-    default:
-      return "0";
-  }
-}
-
-// Expression that reads one element of field `f` from reader `r`
-std::string readExpr(const pb::FieldDescriptor* f) {
-  switch (f->type()) {
-    case pb::FieldDescriptor::TYPE_STRING:
-      return "r.read_string_field(alloc)";
-    case pb::FieldDescriptor::TYPE_BYTES:
-      return "r.read_bytes_field(alloc)";
-    case pb::FieldDescriptor::TYPE_MESSAGE:
-      return sunTypeName(f->message_type()) + "_decode_nested(alloc, r)";
-    case pb::FieldDescriptor::TYPE_ENUM:
-      return "proto_enum_from_i32_" + sunEnumName(f->enum_type()) +
-             "(r.read_int32())";
-    default:
-      return "r.read_" + wireSuffix(f) + "()";
-  }
-}
-
-// Statement that writes one element `v` of field `f` into buffer `dst`
-// (tag already written)
-std::string writeStmt(const pb::FieldDescriptor* f, const std::string& v,
-                      const std::string& dst = "buf") {
-  switch (f->type()) {
-    case pb::FieldDescriptor::TYPE_STRING:
-      return "proto_write_string(" + dst + ", " + v + ");";
-    case pb::FieldDescriptor::TYPE_BYTES:
-      return "proto_write_bytes(" + dst + ", " + v + ");";
-    case pb::FieldDescriptor::TYPE_MESSAGE:
-      return v + ".encode_nested(" + dst + ");";
-    case pb::FieldDescriptor::TYPE_ENUM:
-      return "proto_write_int32(" + dst + ", proto_enum_to_i32_" +
-             sunEnumName(f->enum_type()) + "(" + v + "));";
-    default:
-      return "proto_write_" + wireSuffix(f) + "(" + dst + ", " + v + ");";
-  }
-}
-
-// A field's Sun storage type as declared on the class
-std::string fieldSunType(const pb::FieldDescriptor* f) {
-  if (f->is_map()) {
-    const pb::Descriptor* entry = f->message_type();
-    return "Map<" + scalarSunType(entry->map_key()) + ", " +
-           scalarSunType(entry->map_value()) + ">";
-  }
-  if (f->is_repeated()) return "Vec<" + scalarSunType(f) + ">";
-  if (f->has_optional_keyword()) return "Option<" + scalarSunType(f) + ">";
-  return scalarSunType(f);
-}
-
-// Synthesized enum name for a oneof: <Msg>_<oneof>
-std::string oneofEnumName(const pb::OneofDescriptor* o) {
-  return sunTypeName(o->containing_type()) + "_" + o->name();
-}
-
-// Variant name for a oneof member: snake_case field -> CamelCase
-std::string oneofVariantName(const pb::FieldDescriptor* f) {
-  std::string out;
-  bool upper = true;
-  for (char c : f->name()) {
-    if (c == '_') {
-      upper = true;
-      continue;
-    }
-    out += upper ? static_cast<char>(std::toupper(c)) : c;
-    upper = false;
   }
   return out;
 }
 
-// Non-zero test for a singular field (proto3 implicit presence)
-std::string nonZeroTest(const pb::FieldDescriptor* f, const std::string& v) {
-  switch (f->type()) {
-    case pb::FieldDescriptor::TYPE_FLOAT:
-    case pb::FieldDescriptor::TYPE_DOUBLE:
-      return v + " != 0.0";
-    case pb::FieldDescriptor::TYPE_BOOL:
-      return v;
-    case pb::FieldDescriptor::TYPE_STRING:
-      return v + ".length() > 0";
-    case pb::FieldDescriptor::TYPE_BYTES:
-      return v + ".size() > 0";
-    case pb::FieldDescriptor::TYPE_ENUM:
-      return "proto_enum_to_i32_" + sunEnumName(f->enum_type()) + "(" + v +
-             ") != 0";
-    case pb::FieldDescriptor::TYPE_MESSAGE:
-      return "true";  // sub-messages are always written in v1
-    default:
-      return v + " != 0";
+// Every enum in the file, nested ones included
+std::vector<const pb::EnumDescriptor*> allEnums(const pb::FileDescriptor* file) {
+  std::vector<const pb::EnumDescriptor*> out;
+  for (int i = 0; i < file->enum_type_count(); ++i) {
+    out.push_back(file->enum_type(i));
   }
+  for (const pb::Descriptor* d : allMessages(file)) {
+    for (int i = 0; i < d->enum_type_count(); ++i) out.push_back(d->enum_type(i));
+  }
+  return out;
 }
 
-// Reject constructs outside the supported subset with a precise message
-void rejectUnsupported(const pb::FileDescriptor* file) {
-  if (file->syntax() != pb::FileDescriptor::SYNTAX_PROTO3) {
-    throw SunError(SunError::Kind::Compile,
-                   "proto import: '" + file->name() +
-                       "' must use syntax = \"proto3\" (proto2 is not "
-                       "supported)");
-  }
-  if (file->extension_count() > 0) {
-    throw SunError(SunError::Kind::Compile,
-                   "proto import: extensions are not supported ('" +
-                       file->name() + "')");
-  }
-  std::vector<const pb::Descriptor*> stack;
-  for (int i = 0; i < file->message_type_count(); ++i) {
-    stack.push_back(file->message_type(i));
-  }
-  while (!stack.empty()) {
-    const pb::Descriptor* d = stack.back();
-    stack.pop_back();
-    for (int i = 0; i < d->nested_type_count(); ++i) {
-      stack.push_back(d->nested_type(i));
-    }
-    for (int i = 0; i < d->field_count(); ++i) {
-      const pb::FieldDescriptor* f = d->field(i);
-      if (f->type() == pb::FieldDescriptor::TYPE_GROUP) {
-        throw SunError(SunError::Kind::Compile,
-                       "proto import: groups are not supported (field '" +
-                           f->full_name() + "')");
-      }
-      if (f->is_map()) {
-        const pb::FieldDescriptor* key = f->message_type()->map_key();
-        switch (key->type()) {
-          case pb::FieldDescriptor::TYPE_INT32:
-          case pb::FieldDescriptor::TYPE_INT64:
-          case pb::FieldDescriptor::TYPE_SINT32:
-          case pb::FieldDescriptor::TYPE_SINT64:
-          case pb::FieldDescriptor::TYPE_SFIXED32:
-          case pb::FieldDescriptor::TYPE_SFIXED64:
-          case pb::FieldDescriptor::TYPE_UINT32:
-          case pb::FieldDescriptor::TYPE_UINT64:
-          case pb::FieldDescriptor::TYPE_FIXED32:
-          case pb::FieldDescriptor::TYPE_FIXED64:
-          case pb::FieldDescriptor::TYPE_STRING:
-            break;
-          default:
-            throw SunError(SunError::Kind::Compile,
-                           "proto import: unsupported map key type on field '" +
-                               f->full_name() +
-                               "' (integer and string keys are supported)");
-        }
-      }
-    }
-  }
-}
-
-// Message cycles by value cannot be embedded: reject with a clear error
-void rejectRecursiveMessages(const pb::FileDescriptor* file) {
-  std::vector<const pb::Descriptor*> all;
-  std::vector<const pb::Descriptor*> stack;
-  for (int i = 0; i < file->message_type_count(); ++i) {
-    stack.push_back(file->message_type(i));
-  }
-  while (!stack.empty()) {
-    const pb::Descriptor* d = stack.back();
-    stack.pop_back();
-    all.push_back(d);
-    for (int i = 0; i < d->nested_type_count(); ++i) {
-      stack.push_back(d->nested_type(i));
-    }
-  }
-  for (const pb::Descriptor* root : all) {
-    std::set<const pb::Descriptor*> visited;
-    std::vector<const pb::Descriptor*> dfs{root};
-    while (!dfs.empty()) {
-      const pb::Descriptor* d = dfs.back();
-      dfs.pop_back();
-      for (int i = 0; i < d->field_count(); ++i) {
-        const pb::FieldDescriptor* f = d->field(i);
-        if (f->type() != pb::FieldDescriptor::TYPE_MESSAGE) continue;
-        // repeated sub-messages live in a Vec (heap), which breaks the cycle
-        if (f->is_repeated()) continue;
-        const pb::Descriptor* sub = f->message_type();
-        if (sub == root) {
-          throw SunError(SunError::Kind::Compile,
-                         "proto import: message '" + root->full_name() +
-                             "' embeds itself by value (through field '" +
-                             f->full_name() +
-                             "'); recursive messages are not supported");
-        }
-        if (visited.insert(sub).second) dfs.push_back(sub);
-      }
-    }
-  }
-}
-
-// Messages in dependency order (a message's by-value sub-messages first)
-void orderMessages(const pb::FileDescriptor* file,
-                   std::vector<const pb::Descriptor*>& out) {
+// Messages in dependency order: a message's by-value sub-messages (from the
+// same file) and nested types come first
+std::vector<const pb::Descriptor*> messagesInDependencyOrder(
+    const pb::FileDescriptor* file) {
+  std::vector<const pb::Descriptor*> out;
   std::set<const pb::Descriptor*> done;
   std::function<void(const pb::Descriptor*)> visit =
       [&](const pb::Descriptor* d) {
         if (!done.insert(d).second) return;
         for (int i = 0; i < d->nested_type_count(); ++i) visit(d->nested_type(i));
         for (int i = 0; i < d->field_count(); ++i) {
-          const pb::FieldDescriptor* f = d->field(i);
-          if (f->type() == pb::FieldDescriptor::TYPE_MESSAGE &&
+          const FD* f = d->field(i);
+          if (f->type() == FD::TYPE_MESSAGE &&
               f->message_type()->file() == file) {
             visit(f->message_type());
           }
@@ -451,30 +170,345 @@ void orderMessages(const pb::FileDescriptor* file,
   for (int i = 0; i < file->message_type_count(); ++i) {
     visit(file->message_type(i));
   }
+  return out;
 }
 
-void collectEnums(const pb::FileDescriptor* file,
-                  std::vector<const pb::EnumDescriptor*>& out) {
-  for (int i = 0; i < file->enum_type_count(); ++i) out.push_back(file->enum_type(i));
-  std::vector<const pb::Descriptor*> stack;
-  for (int i = 0; i < file->message_type_count(); ++i) stack.push_back(file->message_type(i));
-  while (!stack.empty()) {
-    const pb::Descriptor* d = stack.back();
-    stack.pop_back();
-    for (int i = 0; i < d->enum_type_count(); ++i) out.push_back(d->enum_type(i));
-    for (int i = 0; i < d->nested_type_count(); ++i) stack.push_back(d->nested_type(i));
+// ---------------------------------------------------------------------------
+// SchemaValidator: the supported subset, with precise rejections
+// ---------------------------------------------------------------------------
+
+class SchemaValidator {
+ public:
+  static void validate(const pb::FileDescriptor* file) {
+    if (file->syntax() != pb::FileDescriptor::SYNTAX_PROTO3) {
+      fail("'" + file->name() +
+           "' must use syntax = \"proto3\" (proto2 is not supported)");
+    }
+    if (file->extension_count() > 0) {
+      fail("extensions are not supported ('" + file->name() + "')");
+    }
+    for (const pb::Descriptor* d : allMessages(file)) {
+      for (int i = 0; i < d->field_count(); ++i) validateField(d->field(i));
+    }
+    rejectRecursiveMessages(file);
   }
-}
+
+ private:
+  static void validateField(const FD* f) {
+    if (f->type() == FD::TYPE_GROUP) {
+      fail("groups are not supported (field '" + f->full_name() + "')");
+    }
+    if (f->is_map() && !isSupportedMapKey(f->message_type()->map_key())) {
+      fail("unsupported map key type on field '" + f->full_name() +
+           "' (integer and string keys are supported)");
+    }
+  }
+
+  static bool isSupportedMapKey(const FD* key) {
+    switch (key->type()) {
+      case FD::TYPE_INT32:
+      case FD::TYPE_INT64:
+      case FD::TYPE_SINT32:
+      case FD::TYPE_SINT64:
+      case FD::TYPE_SFIXED32:
+      case FD::TYPE_SFIXED64:
+      case FD::TYPE_UINT32:
+      case FD::TYPE_UINT64:
+      case FD::TYPE_FIXED32:
+      case FD::TYPE_FIXED64:
+      case FD::TYPE_STRING:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  // A message that embeds itself by value (directly or through other
+  // messages) has no finite layout. `repeated` breaks the cycle (heap).
+  static void rejectRecursiveMessages(const pb::FileDescriptor* file) {
+    for (const pb::Descriptor* root : allMessages(file)) {
+      std::set<const pb::Descriptor*> visited;
+      std::vector<const pb::Descriptor*> dfs{root};
+      while (!dfs.empty()) {
+        const pb::Descriptor* d = dfs.back();
+        dfs.pop_back();
+        for (int i = 0; i < d->field_count(); ++i) {
+          const FD* f = d->field(i);
+          if (f->type() != FD::TYPE_MESSAGE || f->is_repeated()) continue;
+          const pb::Descriptor* sub = f->message_type();
+          if (sub == root) {
+            fail("message '" + root->full_name() +
+                 "' embeds itself by value (through field '" + f->full_name() +
+                 "'); recursive messages are not supported");
+          }
+          if (visited.insert(sub).second) dfs.push_back(sub);
+        }
+      }
+    }
+  }
+};
+
+// ---------------------------------------------------------------------------
+// TypeMapper: proto descriptor → Sun spelling
+// ---------------------------------------------------------------------------
+
+class TypeMapper {
+ public:
+  // Sun identifier for a (possibly nested) message: Outer_Inner
+  static std::string messageName(const pb::Descriptor* d) {
+    std::string name = d->name();
+    for (const pb::Descriptor* p = d->containing_type(); p;
+         p = p->containing_type()) {
+      name = p->name() + "_" + name;
+    }
+    return name;
+  }
+
+  static std::string enumName(const pb::EnumDescriptor* e) {
+    std::string name = e->name();
+    for (const pb::Descriptor* p = e->containing_type(); p;
+         p = p->containing_type()) {
+      name = p->name() + "_" + name;
+    }
+    return name;
+  }
+
+  // Synthesized payload enum for a oneof: <Msg>_<oneof>
+  static std::string oneofEnumName(const pb::OneofDescriptor* o) {
+    return messageName(o->containing_type()) + "_" + o->name();
+  }
+
+  // Variant name for a oneof member: snake_case field → CamelCase
+  static std::string oneofVariantName(const FD* f) {
+    std::string out;
+    bool upper = true;
+    for (char c : f->name()) {
+      if (c == '_') {
+        upper = true;
+        continue;
+      }
+      out += upper ? static_cast<char>(std::toupper(c)) : c;
+      upper = false;
+    }
+    return out;
+  }
+
+  // Sun type of one element of the field (ignoring repeated/optional/map)
+  static std::string elementType(const FD* f) {
+    switch (f->type()) {
+      case FD::TYPE_INT32:
+      case FD::TYPE_SINT32:
+      case FD::TYPE_SFIXED32:
+        return "i32";
+      case FD::TYPE_INT64:
+      case FD::TYPE_SINT64:
+      case FD::TYPE_SFIXED64:
+        return "i64";
+      case FD::TYPE_UINT32:
+      case FD::TYPE_FIXED32:
+        return "u32";
+      case FD::TYPE_UINT64:
+      case FD::TYPE_FIXED64:
+        return "u64";
+      case FD::TYPE_FLOAT:
+        return "f32";
+      case FD::TYPE_DOUBLE:
+        return "f64";
+      case FD::TYPE_BOOL:
+        return "bool";
+      case FD::TYPE_STRING:
+        return "String";
+      case FD::TYPE_BYTES:
+        return "Vec<u8>";
+      case FD::TYPE_ENUM:
+        return enumName(f->enum_type());
+      case FD::TYPE_MESSAGE:
+        return messageName(f->message_type());
+      default:
+        return "";
+    }
+  }
+
+  // Sun type of the field as declared on the class
+  static std::string fieldType(const FD* f) {
+    if (f->is_map()) {
+      const pb::Descriptor* entry = f->message_type();
+      return "Map<" + elementType(entry->map_key()) + ", " +
+             elementType(entry->map_value()) + ">";
+    }
+    if (f->is_repeated()) return "Vec<" + elementType(f) + ">";
+    if (f->has_optional_keyword()) return "Option<" + elementType(f) + ">";
+    return elementType(f);
+  }
+
+  // Wire type of one element (0 varint, 1 64-bit, 2 length-delimited, 5 32-bit)
+  static int wireType(const FD* f) {
+    switch (f->type()) {
+      case FD::TYPE_FIXED64:
+      case FD::TYPE_SFIXED64:
+      case FD::TYPE_DOUBLE:
+        return 1;
+      case FD::TYPE_STRING:
+      case FD::TYPE_BYTES:
+      case FD::TYPE_MESSAGE:
+        return 2;
+      case FD::TYPE_FIXED32:
+      case FD::TYPE_SFIXED32:
+      case FD::TYPE_FLOAT:
+        return 5;
+      default:
+        return 0;
+    }
+  }
+
+  // Scalars pack when repeated; strings/bytes/messages never do
+  static bool isPackable(const FD* f) {
+    switch (f->type()) {
+      case FD::TYPE_STRING:
+      case FD::TYPE_BYTES:
+      case FD::TYPE_MESSAGE:
+        return false;
+      default:
+        return true;
+    }
+  }
+
+  // Zero-value expression for one element (`alloc` must be in scope)
+  static std::string zeroValue(const FD* f) {
+    switch (f->type()) {
+      case FD::TYPE_FLOAT:
+      case FD::TYPE_DOUBLE:
+        return "0.0";
+      case FD::TYPE_BOOL:
+        return "false";
+      case FD::TYPE_STRING:
+        return "String(alloc, \"\")";
+      case FD::TYPE_BYTES:
+        return "Vec<u8>(alloc, 4)";
+      case FD::TYPE_ENUM:
+        return enumName(f->enum_type()) + "." + zeroVariant(f->enum_type());
+      case FD::TYPE_MESSAGE:
+        return messageName(f->message_type()) + "(alloc)";
+      default:
+        return "0";
+    }
+  }
+
+  // Expression that reads one element from reader `r`
+  static std::string readExpr(const FD* f) {
+    switch (f->type()) {
+      case FD::TYPE_STRING:
+        return "r.read_string_field(alloc)";
+      case FD::TYPE_BYTES:
+        return "r.read_bytes_field(alloc)";
+      case FD::TYPE_MESSAGE:
+        return messageName(f->message_type()) + "_decode_nested(alloc, r)";
+      case FD::TYPE_ENUM:
+        return "proto_enum_from_i32_" + enumName(f->enum_type()) +
+               "(r.read_int32())";
+      default:
+        return "r.read_" + wireSuffix(f) + "()";
+    }
+  }
+
+  // Statement writing one element `v` into buffer `dst` (tag already written)
+  static std::string writeStmt(const FD* f, const std::string& v,
+                               const std::string& dst = "buf") {
+    switch (f->type()) {
+      case FD::TYPE_STRING:
+        return "proto_write_string(" + dst + ", " + v + ");";
+      case FD::TYPE_BYTES:
+        return "proto_write_bytes(" + dst + ", " + v + ");";
+      case FD::TYPE_MESSAGE:
+        return v + ".encode_nested(" + dst + ");";
+      case FD::TYPE_ENUM:
+        return "proto_write_int32(" + dst + ", proto_enum_to_i32_" +
+               enumName(f->enum_type()) + "(" + v + "));";
+      default:
+        return "proto_write_" + wireSuffix(f) + "(" + dst + ", " + v + ");";
+    }
+  }
+
+  // Non-zero test for a singular field (proto3 implicit presence)
+  static std::string nonZeroTest(const FD* f, const std::string& v) {
+    switch (f->type()) {
+      case FD::TYPE_FLOAT:
+      case FD::TYPE_DOUBLE:
+        return v + " != 0.0";
+      case FD::TYPE_BOOL:
+        return v;
+      case FD::TYPE_STRING:
+        return v + ".length() > 0";
+      case FD::TYPE_BYTES:
+        return v + ".size() > 0";
+      case FD::TYPE_ENUM:
+        return "proto_enum_to_i32_" + enumName(f->enum_type()) + "(" + v +
+               ") != 0";
+      case FD::TYPE_MESSAGE:
+        return "true";  // sub-messages are always written
+      default:
+        return v + " != 0";
+    }
+  }
+
+  // Name of the enum value numbered 0 (proto3 requires one; fall back to
+  // the first declared)
+  static std::string zeroVariant(const pb::EnumDescriptor* e) {
+    for (int i = 0; i < e->value_count(); ++i) {
+      if (e->value(i)->number() == 0) return e->value(i)->name();
+    }
+    return e->value(0)->name();
+  }
+
+ private:
+  // proto_write_<suffix> / r.read_<suffix> for a scalar field
+  static std::string wireSuffix(const FD* f) {
+    switch (f->type()) {
+      case FD::TYPE_INT32:
+        return "int32";
+      case FD::TYPE_INT64:
+        return "int64";
+      case FD::TYPE_UINT32:
+        return "uint32";
+      case FD::TYPE_UINT64:
+        return "uint64";
+      case FD::TYPE_SINT32:
+        return "sint32";
+      case FD::TYPE_SINT64:
+        return "sint64";
+      case FD::TYPE_FIXED32:
+        return "fixed32";
+      case FD::TYPE_FIXED64:
+        return "fixed64";
+      case FD::TYPE_SFIXED32:
+        return "sfixed32";
+      case FD::TYPE_SFIXED64:
+        return "sfixed64";
+      case FD::TYPE_FLOAT:
+        return "float";
+      case FD::TYPE_DOUBLE:
+        return "double";
+      case FD::TYPE_BOOL:
+        return "bool";
+      case FD::TYPE_ENUM:
+        return "int32";
+      default:
+        return "";
+    }
+  }
+};
+
+using T = TypeMapper;
+
+// ---------------------------------------------------------------------------
+// Enum generation: Sun enum + explicit i32 conversion tables. Sun enums are
+// dense tags; proto values are arbitrary numbers, and unknown wire values
+// (open enums) map to the zero value.
+// ---------------------------------------------------------------------------
 
 void emitEnum(Writer& w, const pb::EnumDescriptor* e) {
-  std::string name = sunEnumName(e);
-  // Sun enums are dense i32 tags; proto values are arbitrary. Keep the Sun
-  // enum symbolic and convert through explicit tables so unknown wire values
-  // (open enums) still round-trip: an unrecognized value maps to the enum's
-  // first variant on decode... except we preserve it: the class stores the
-  // Sun enum, and unknown values are kept as the zero variant.
-  std::string decl = "enum " + name + " {";
-  w.open(decl);
+  std::string name = T::enumName(e);
+  w.open("enum " + name + " {");
   for (int i = 0; i < e->value_count(); ++i) {
     std::string sep = (i + 1 < e->value_count()) ? "," : "";
     w.line(e->value(i)->name() + sep);
@@ -482,7 +516,6 @@ void emitEnum(Writer& w, const pb::EnumDescriptor* e) {
   w.close();
   w.line();
 
-  // enum -> wire number
   w.open("function proto_enum_to_i32_" + name + "(v: " + name + ") i32 {");
   w.open("return match v {");
   for (int i = 0; i < e->value_count(); ++i) {
@@ -494,282 +527,316 @@ void emitEnum(Writer& w, const pb::EnumDescriptor* e) {
   w.close();
   w.line();
 
-  // wire number -> enum (unknown numbers map to the zero value)
   w.open("function proto_enum_from_i32_" + name + "(v: i32) " + name + " {");
   for (int i = 0; i < e->value_count(); ++i) {
     w.line("if (v == " + std::to_string(e->value(i)->number()) + ") { return " +
            name + "." + e->value(i)->name() + "; }");
   }
-  const pb::EnumValueDescriptor* zero = e->value(0);
-  for (int i = 0; i < e->value_count(); ++i) {
-    if (e->value(i)->number() == 0) zero = e->value(i);
-  }
-  w.line("return " + name + "." + zero->name() + ";");
+  w.line("return " + name + "." + T::zeroVariant(e) + ";");
   w.close();
   w.line();
 }
 
-void emitMessage(Writer& w, const pb::Descriptor* d) {
-  std::string name = sunTypeName(d);
+// ---------------------------------------------------------------------------
+// MessageGenerator: one message → oneof enums, class, decode functions
+// ---------------------------------------------------------------------------
 
-  // ---- oneof enums: <Msg>_<oneof> { NotSet, FieldA(T), FieldB(U) } ----
-  for (int i = 0; i < d->real_oneof_decl_count(); ++i) {
-    const pb::OneofDescriptor* o = d->oneof_decl(i);
-    w.open("enum " + oneofEnumName(o) + " {");
-    w.line("NotSet,");
-    for (int j = 0; j < o->field_count(); ++j) {
-      const pb::FieldDescriptor* f = o->field(j);
-      std::string sep = (j + 1 < o->field_count()) ? "," : "";
-      w.line(oneofVariantName(f) + "(" + scalarSunType(f) + ")" + sep);
-    }
-    w.close();
-    w.line();
+class MessageGenerator {
+ public:
+  MessageGenerator(Writer& w, const pb::Descriptor* d)
+      : w_(w), d_(d), name_(T::messageName(d)) {}
+
+  void emit() {
+    emitOneofEnums();
+    w_.open("class " + name_ + " {");
+    emitFields();
+    emitInit();
+    emitEncode();
+    emitEncodeNested();
+    w_.close();  // class
+    w_.line();
+    emitDecodeFrom();
+    emitDecodeHelpers();
   }
 
-  // ---- class ----
-  w.open("class " + name + " {");
-  for (int i = 0; i < d->field_count(); ++i) {
-    const pb::FieldDescriptor* f = d->field(i);
-    if (f->real_containing_oneof()) continue;  // stored in the oneof field
-    w.line("var " + f->name() + ": " + fieldSunType(f) + ";");
-  }
-  for (int i = 0; i < d->real_oneof_decl_count(); ++i) {
-    const pb::OneofDescriptor* o = d->oneof_decl(i);
-    w.line("var " + o->name() + ": " + oneofEnumName(o) + ";");
-  }
-  w.line("var unknown_fields: Vec<u8>;");
-  w.line("var alloc_: HeapAllocator;");
-  w.line();
+ private:
+  Writer& w_;
+  const pb::Descriptor* d_;
+  std::string name_;
 
-  // init: zero values
-  w.open("function init(alloc: ref HeapAllocator) {");
-  w.line("this.alloc_ = alloc.copy();");
-  for (int i = 0; i < d->field_count(); ++i) {
-    const pb::FieldDescriptor* f = d->field(i);
-    if (f->real_containing_oneof()) continue;
-    if (f->is_map()) {
-      w.line("this." + f->name() + " = " + fieldSunType(f) + "(alloc, 8);");
-    } else if (f->is_repeated()) {
-      w.line("this." + f->name() + " = " + fieldSunType(f) + "(alloc, 4);");
-    } else if (f->has_optional_keyword()) {
-      w.line("this." + f->name() + " = Option.None;");
-    } else {
-      w.line("this." + f->name() + " = " + zeroValue(f) + ";");
+  // Fields stored directly on the class (oneof members live in the oneof)
+  template <typename Fn>
+  void forEachPlainField(Fn fn) const {
+    for (int i = 0; i < d_->field_count(); ++i) {
+      const FD* f = d_->field(i);
+      if (!f->real_containing_oneof()) fn(f);
     }
   }
-  for (int i = 0; i < d->real_oneof_decl_count(); ++i) {
-    const pb::OneofDescriptor* o = d->oneof_decl(i);
-    w.line("this." + o->name() + " = " + oneofEnumName(o) + ".NotSet;");
-  }
-  w.line("this.unknown_fields = Vec<u8>(alloc, 4);");
-  w.close();
-  w.line();
 
-  // encode: append wire bytes
-  w.open("function encode(buf: ref Vec<u8>) void {");
-  for (int i = 0; i < d->field_count(); ++i) {
-    const pb::FieldDescriptor* f = d->field(i);
-    if (f->real_containing_oneof()) continue;  // emitted per oneof below
+  template <typename Fn>
+  void forEachOneof(Fn fn) const {
+    for (int i = 0; i < d_->real_oneof_decl_count(); ++i) fn(d_->oneof_decl(i));
+  }
+
+  static std::string tagLine(const std::string& dst, int number, int wire) {
+    return "proto_write_tag(" + dst + ", " + std::to_string(number) + ", " +
+           std::to_string(wire) + ");";
+  }
+
+  // enum <Msg>_<oneof> { NotSet, FieldA(T), FieldB(U) }
+  void emitOneofEnums() {
+    forEachOneof([&](const pb::OneofDescriptor* o) {
+      w_.open("enum " + T::oneofEnumName(o) + " {");
+      w_.line("NotSet,");
+      for (int j = 0; j < o->field_count(); ++j) {
+        const FD* f = o->field(j);
+        std::string sep = (j + 1 < o->field_count()) ? "," : "";
+        w_.line(T::oneofVariantName(f) + "(" + T::elementType(f) + ")" + sep);
+      }
+      w_.close();
+      w_.line();
+    });
+  }
+
+  void emitFields() {
+    forEachPlainField([&](const FD* f) {
+      w_.line("var " + f->name() + ": " + T::fieldType(f) + ";");
+    });
+    forEachOneof([&](const pb::OneofDescriptor* o) {
+      w_.line("var " + o->name() + ": " + T::oneofEnumName(o) + ";");
+    });
+    w_.line("var unknown_fields: Vec<u8>;");
+    w_.line("var alloc_: HeapAllocator;");
+    w_.line();
+  }
+
+  // Zero values (proto3 defaults); containers and sub-messages start empty
+  void emitInit() {
+    w_.open("function init(alloc: ref HeapAllocator) {");
+    w_.line("this.alloc_ = alloc.copy();");
+    forEachPlainField([&](const FD* f) {
+      std::string init;
+      if (f->is_map()) {
+        init = T::fieldType(f) + "(alloc, 8)";
+      } else if (f->is_repeated()) {
+        init = T::fieldType(f) + "(alloc, 4)";
+      } else if (f->has_optional_keyword()) {
+        init = "Option.None";
+      } else {
+        init = T::zeroValue(f);
+      }
+      w_.line("this." + f->name() + " = " + init + ";");
+    });
+    forEachOneof([&](const pb::OneofDescriptor* o) {
+      w_.line("this." + o->name() + " = " + T::oneofEnumName(o) + ".NotSet;");
+    });
+    w_.line("this.unknown_fields = Vec<u8>(alloc, 4);");
+    w_.close();
+    w_.line();
+  }
+
+  void emitEncode() {
+    w_.open("function encode(buf: ref Vec<u8>) void {");
+    forEachPlainField([&](const FD* f) { emitEncodeField(f); });
+    forEachOneof([&](const pb::OneofDescriptor* o) { emitEncodeOneof(o); });
+    w_.line("proto_append_raw(buf, this.unknown_fields);");
+    w_.close();
+    w_.line();
+  }
+
+  void emitEncodeField(const FD* f) {
     std::string fld = "this." + f->name();
-    std::string tag = std::to_string(f->number());
+    int number = f->number();
     if (f->is_map()) {
       // Each entry is a length-delimited message { 1: key, 2: value }
       const pb::Descriptor* entry = f->message_type();
-      const pb::FieldDescriptor* k = entry->map_key();
-      const pb::FieldDescriptor* v = entry->map_value();
-      w.open("for (var i: i64 = 0; i < " + fld + ".capacity(); i = i + 1) {");
-      w.open("if (" + fld + ".bucket_occupied(i)) {");
-      w.line("var body = Vec<u8>(this.alloc_, 16);");
-      w.line("proto_write_tag(body, 1, " + std::to_string(wireType(k)) + ");");
-      w.line(writeStmt(k, fld + ".bucket_key(i)", "body"));
-      w.line("proto_write_tag(body, 2, " + std::to_string(wireType(v)) + ");");
-      w.line(writeStmt(v, fld + ".bucket_value(i)", "body"));
-      w.line("proto_write_tag(buf, " + tag + ", 2);");
-      w.line("proto_write_bytes(buf, body);");
-      w.close();
-      w.close();
+      const FD* k = entry->map_key();
+      const FD* v = entry->map_value();
+      w_.open("for (var i: i64 = 0; i < " + fld + ".capacity(); i = i + 1) {");
+      w_.open("if (" + fld + ".bucket_occupied(i)) {");
+      w_.line("var body = Vec<u8>(this.alloc_, 16);");
+      w_.line(tagLine("body", 1, T::wireType(k)));
+      w_.line(T::writeStmt(k, fld + ".bucket_key(i)", "body"));
+      w_.line(tagLine("body", 2, T::wireType(v)));
+      w_.line(T::writeStmt(v, fld + ".bucket_value(i)", "body"));
+      w_.line(tagLine("buf", number, 2));
+      w_.line("proto_write_bytes(buf, body);");
+      w_.close();
+      w_.close();
     } else if (f->has_optional_keyword()) {
       // Explicit presence: written whenever set, even if zero
-      w.open("match " + fld + " {");
-      w.open("Option.Some(v) => {");
-      w.line("proto_write_tag(buf, " + tag + ", " +
-             std::to_string(wireType(f)) + ");");
-      w.line(writeStmt(f, "v"));
-      w.close("},");
-      w.line("Option.None => { }");
-      w.close("};");
+      w_.open("match " + fld + " {");
+      w_.open("Option.Some(v) => {");
+      w_.line(tagLine("buf", number, T::wireType(f)));
+      w_.line(T::writeStmt(f, "v"));
+      w_.close("},");
+      w_.line("Option.None => { }");
+      w_.close("};");
+    } else if (f->is_repeated() && T::isPackable(f)) {
+      // Packed: one length-delimited record holding all elements
+      w_.open("if (" + fld + ".size() > 0) {");
+      w_.line("var body = Vec<u8>(this.alloc_, 16);");
+      w_.open("for (var i: i64 = 0; i < " + fld + ".size(); i = i + 1) {");
+      w_.line(T::writeStmt(f, fld + ".get_unchecked(i)", "body"));
+      w_.close();
+      w_.line(tagLine("buf", number, 2));
+      w_.line("proto_write_bytes(buf, body);");
+      w_.close();
     } else if (f->is_repeated()) {
-      if (isScalarNumeric(f)) {
-        // packed: one length-delimited record holding all elements
-        w.open("if (" + fld + ".size() > 0) {");
-        w.line("var body = Vec<u8>(this.alloc_, 16);");
-        w.open("for (var i: i64 = 0; i < " + fld + ".size(); i = i + 1) {");
-        // Elements go into the scratch body buffer, not `buf`
-        w.line(writeStmt(f, fld + ".get_unchecked(i)", "body"));
-        w.close();
-        w.line("proto_write_tag(buf, " + tag + ", 2);");
-        w.line("proto_write_bytes(buf, body);");
-        w.close();
-      } else {
-        w.open("for (var i: i64 = 0; i < " + fld + ".size(); i = i + 1) {");
-        w.line("proto_write_tag(buf, " + tag + ", " +
-               std::to_string(wireType(f)) + ");");
-        w.line(writeStmt(f, fld + ".get_unchecked(i)"));
-        w.close();
-      }
+      w_.open("for (var i: i64 = 0; i < " + fld + ".size(); i = i + 1) {");
+      w_.line(tagLine("buf", number, T::wireType(f)));
+      w_.line(T::writeStmt(f, fld + ".get_unchecked(i)"));
+      w_.close();
     } else {
-      w.open("if (" + nonZeroTest(f, fld) + ") {");
-      w.line("proto_write_tag(buf, " + tag + ", " +
-             std::to_string(wireType(f)) + ");");
-      w.line(writeStmt(f, fld));
-      w.close();
+      w_.open("if (" + T::nonZeroTest(f, fld) + ") {");
+      w_.line(tagLine("buf", number, T::wireType(f)));
+      w_.line(T::writeStmt(f, fld));
+      w_.close();
     }
   }
-  // oneofs: whichever variant is set is written
-  for (int i = 0; i < d->real_oneof_decl_count(); ++i) {
-    const pb::OneofDescriptor* o = d->oneof_decl(i);
-    std::string en = oneofEnumName(o);
-    w.open("match this." + o->name() + " {");
+
+  // Whichever variant is set is written
+  void emitEncodeOneof(const pb::OneofDescriptor* o) {
+    std::string en = T::oneofEnumName(o);
+    w_.open("match this." + o->name() + " {");
     for (int j = 0; j < o->field_count(); ++j) {
-      const pb::FieldDescriptor* f = o->field(j);
-      w.open(en + "." + oneofVariantName(f) + "(v) => {");
-      w.line("proto_write_tag(buf, " + std::to_string(f->number()) + ", " +
-             std::to_string(wireType(f)) + ");");
-      w.line(writeStmt(f, "v"));
-      w.close("},");
+      const FD* f = o->field(j);
+      w_.open(en + "." + T::oneofVariantName(f) + "(v) => {");
+      w_.line(tagLine("buf", f->number(), T::wireType(f)));
+      w_.line(T::writeStmt(f, "v"));
+      w_.close("},");
     }
-    w.line(en + ".NotSet => { }");
-    w.close("};");
+    w_.line(en + ".NotSet => { }");
+    w_.close("};");
   }
-  w.line("proto_append_raw(buf, this.unknown_fields);");
-  w.close();
-  w.line();
 
-  // encode_nested: length-prefixed (used when embedded in another message)
-  w.open("function encode_nested(buf: ref Vec<u8>) void {");
-  w.line("var body = Vec<u8>(this.alloc_, 16);");
-  w.line("this.encode(body);");
-  w.line("proto_write_bytes(buf, body);");
-  w.close();
-  w.line();
+  // Length-prefixed forms: embedded sub-message and stream framing
+  void emitEncodeNested() {
+    w_.open("function encode_nested(buf: ref Vec<u8>) void {");
+    w_.line("var body = Vec<u8>(this.alloc_, 16);");
+    w_.line("this.encode(body);");
+    w_.line("proto_write_bytes(buf, body);");
+    w_.close();
+    w_.line();
+    w_.open("function encode_delimited(buf: ref Vec<u8>) void {");
+    w_.line("this.encode_nested(buf);");
+    w_.close();
+  }
 
-  // encode_delimited: varint length prefix for stream framing
-  w.open("function encode_delimited(buf: ref Vec<u8>) void {");
-  w.line("this.encode_nested(buf);");
-  w.close();
+  // <Msg>_decode_from: the field-dispatch loop over a reader
+  void emitDecodeFrom() {
+    w_.open("function " + name_ +
+            "_decode_from(alloc: ref HeapAllocator, r: ref ProtoReader) " +
+            name_ + ", IError {");
+    w_.line("var msg = " + name_ + "(alloc);");
+    w_.open("while (r.at_end() == false) {");
+    w_.line("var tag: u64 = r.read_tag();");
+    w_.line("var field: i64 = proto_tag_field(tag);");
+    w_.line("var wire: i64 = proto_tag_wire_type(tag);");
+    bool first = true;
+    for (int i = 0; i < d_->field_count(); ++i) {
+      const FD* f = d_->field(i);
+      w_.open(std::string(first ? "if (" : "} else if (") +
+              "field == " + std::to_string(f->number()) + ") {");
+      first = false;
+      emitDecodeField(f);
+      w_.closeSilently();
+    }
+    w_.open(first ? "if (true) {" : "} else {");
+    w_.line("r.skip_field(wire, tag, msg.unknown_fields);");
+    w_.close();
+    w_.close();  // while
+    w_.line("return msg;");
+    w_.close();
+    w_.line();
+  }
 
-  w.close();  // class
-  w.line();
-
-  // ---- decode (free functions) ----
-  w.open("function " + name +
-         "_decode_from(alloc: ref HeapAllocator, r: ref ProtoReader) " + name +
-         ", IError {");
-  w.line("var msg = " + name + "(alloc);");
-  w.open("while (r.at_end() == false) {");
-  w.line("var tag: u64 = r.read_tag();");
-  w.line("var field: i64 = proto_tag_field(tag);");
-  w.line("var wire: i64 = proto_tag_wire_type(tag);");
-  bool first = true;
-  for (int i = 0; i < d->field_count(); ++i) {
-    const pb::FieldDescriptor* f = d->field(i);
+  void emitDecodeField(const FD* f) {
     std::string fld = "msg." + f->name();
-    std::string cond = (first ? "if (" : "} else if (") + std::string("field == ") +
-                       std::to_string(f->number()) + ") {";
-    first = false;
-    w.open(cond);
-    if (f->real_containing_oneof()) {
-      const pb::OneofDescriptor* o = f->real_containing_oneof();
-      w.line("msg." + o->name() + " = " + oneofEnumName(o) + "." +
-             oneofVariantName(f) + "(" + readExpr(f) + ");");
+    if (const pb::OneofDescriptor* o = f->real_containing_oneof()) {
+      w_.line("msg." + o->name() + " = " + T::oneofEnumName(o) + "." +
+              T::oneofVariantName(f) + "(" + T::readExpr(f) + ");");
     } else if (f->is_map()) {
-      const pb::Descriptor* entry = f->message_type();
-      const pb::FieldDescriptor* k = entry->map_key();
-      const pb::FieldDescriptor* v = entry->map_value();
-      w.line("var end: i64 = r.read_length();");
-      w.line("var old: i64 = r.push_limit(end);");
-      w.line("var key: " + scalarSunType(k) + " = " + zeroValue(k) + ";");
-      w.line("var val: " + scalarSunType(v) + " = " + zeroValue(v) + ";");
-      w.open("while (r.at_end() == false) {");
-      w.line("var etag: u64 = r.read_tag();");
-      w.line("var efield: i64 = proto_tag_field(etag);");
-      w.open("if (efield == 1) {");
-      w.line("key = " + readExpr(k) + ";");
-      w.close("} else if (efield == 2) {");
-      w.open("");
-      w.line("val = " + readExpr(v) + ";");
-      w.close("} else {");
-      w.open("");
-      w.line("r.skip_field(proto_tag_wire_type(etag), etag, msg.unknown_fields);");
-      w.close();
-      w.close();
-      w.line("r.pop_limit(old);");
-      w.line(fld + ".insert(key, val);");
+      emitDecodeMapEntry(f, fld);
     } else if (f->has_optional_keyword()) {
-      w.line(fld + " = Option.Some(" + readExpr(f) + ");");
+      w_.line(fld + " = Option.Some(" + T::readExpr(f) + ");");
+    } else if (f->is_repeated() && T::isPackable(f)) {
+      // Accept both packed (wire 2) and unpacked encodings
+      w_.open("if (wire == 2) {");
+      w_.line("var end: i64 = r.read_length();");
+      w_.line("var old: i64 = r.push_limit(end);");
+      w_.open("while (r.at_end() == false) {");
+      w_.line(fld + ".push(" + T::readExpr(f) + ");");
+      w_.close();
+      w_.line("r.pop_limit(old);");
+      w_.close("} else {");
+      w_.open("");
+      w_.line(fld + ".push(" + T::readExpr(f) + ");");
+      w_.close();
     } else if (f->is_repeated()) {
-      if (isScalarNumeric(f)) {
-        // Accept both packed (wire 2) and unpacked encodings
-        w.open("if (wire == 2) {");
-        w.line("var end: i64 = r.read_length();");
-        w.line("var old: i64 = r.push_limit(end);");
-        w.open("while (r.at_end() == false) {");
-        w.line(fld + ".push(" + readExpr(f) + ");");
-        w.close();
-        w.line("r.pop_limit(old);");
-        w.close("} else {");
-        w.open("");
-        w.line(fld + ".push(" + readExpr(f) + ");");
-        w.close();
-      } else {
-        w.line(fld + ".push(" + readExpr(f) + ");");
-      }
+      w_.line(fld + ".push(" + T::readExpr(f) + ");");
     } else {
-      w.line(fld + " = " + readExpr(f) + ";");
+      w_.line(fld + " = " + T::readExpr(f) + ";");
     }
-    w.closeSilently();
   }
-  if (!first) {
-    w.open("} else {");
-  } else {
-    w.open("if (true) {");
+
+  // One map entry: a length-delimited { 1: key, 2: value } record
+  void emitDecodeMapEntry(const FD* f, const std::string& fld) {
+    const pb::Descriptor* entry = f->message_type();
+    const FD* k = entry->map_key();
+    const FD* v = entry->map_value();
+    w_.line("var end: i64 = r.read_length();");
+    w_.line("var old: i64 = r.push_limit(end);");
+    w_.line("var key: " + T::elementType(k) + " = " + T::zeroValue(k) + ";");
+    w_.line("var val: " + T::elementType(v) + " = " + T::zeroValue(v) + ";");
+    w_.open("while (r.at_end() == false) {");
+    w_.line("var etag: u64 = r.read_tag();");
+    w_.line("var efield: i64 = proto_tag_field(etag);");
+    w_.open("if (efield == 1) {");
+    w_.line("key = " + T::readExpr(k) + ";");
+    w_.close("} else if (efield == 2) {");
+    w_.open("");
+    w_.line("val = " + T::readExpr(v) + ";");
+    w_.close("} else {");
+    w_.open("");
+    w_.line("r.skip_field(proto_tag_wire_type(etag), etag, msg.unknown_fields);");
+    w_.close();
+    w_.close();
+    w_.line("r.pop_limit(old);");
+    w_.line(fld + ".insert(key, val);");
   }
-  w.line("r.skip_field(wire, tag, msg.unknown_fields);");
-  w.close();
-  w.close();  // while
-  w.line("return msg;");
-  w.close();
-  w.line();
 
-  // Decode a length-prefixed nested message
-  w.open("function " + name +
-         "_decode_nested(alloc: ref HeapAllocator, r: ref ProtoReader) " +
-         name + ", IError {");
-  w.line("var end: i64 = r.read_length();");
-  w.line("var old: i64 = r.push_limit(end);");
-  w.line("var msg = " + name + "_decode_from(alloc, r);");
-  w.line("r.pop_limit(old);");
-  w.line("return msg;");
-  w.close();
-  w.line();
+  // Nested (length-prefixed), whole-buffer, and delimited entry points
+  void emitDecodeHelpers() {
+    const std::string sig = "(alloc: ref HeapAllocator, r: ref ProtoReader) ";
+    w_.open("function " + name_ + "_decode_nested" + sig + name_ + ", IError {");
+    w_.line("var end: i64 = r.read_length();");
+    w_.line("var old: i64 = r.push_limit(end);");
+    w_.line("var msg = " + name_ + "_decode_from(alloc, r);");
+    w_.line("r.pop_limit(old);");
+    w_.line("return msg;");
+    w_.close();
+    w_.line();
 
-  // Decode from a whole buffer
-  w.open("function " + name +
-         "_decode(alloc: ref HeapAllocator, buf: ref Vec<u8>) " + name +
-         ", IError {");
-  w.line("var r = ProtoReader(buf);");
-  w.line("return " + name + "_decode_from(alloc, r);");
-  w.close();
-  w.line();
+    w_.open("function " + name_ +
+            "_decode(alloc: ref HeapAllocator, buf: ref Vec<u8>) " + name_ +
+            ", IError {");
+    w_.line("var r = ProtoReader(buf);");
+    w_.line("return " + name_ + "_decode_from(alloc, r);");
+    w_.close();
+    w_.line();
 
-  // Decode one delimited (length-prefixed) message from a reader
-  w.open("function " + name +
-         "_decode_delimited(alloc: ref HeapAllocator, r: ref ProtoReader) " +
-         name + ", IError {");
-  w.line("return " + name + "_decode_nested(alloc, r);");
-  w.close();
-  w.line();
-}
+    w_.open("function " + name_ + "_decode_delimited" + sig + name_ +
+            ", IError {");
+    w_.line("return " + name_ + "_decode_nested(alloc, r);");
+    w_.close();
+    w_.line();
+  }
+};
+
+// ---------------------------------------------------------------------------
+// One .proto file → one Sun module
+// ---------------------------------------------------------------------------
 
 std::string sha256Hex(const std::string& data) {
   llvm::SHA256 h;
@@ -784,26 +851,19 @@ std::string sha256Hex(const std::string& data) {
   return out;
 }
 
-}  // namespace
-
-namespace {
-
-// Emit one .proto file's module into `w`
 void emitFile(Writer& w, const pb::FileDescriptor* file,
               const std::string& displayPath, const std::string& sourceText) {
-  rejectUnsupported(file);
-  rejectRecursiveMessages(file);
+  SchemaValidator::validate(file);
 
   w.line("// generated by sun proto-import v1 from " + displayPath);
   w.line("// sha256: " + sha256Hex(sourceText));
   w.line();
 
   std::string pkg = file->package();
-  bool hasPkg = !pkg.empty();
-  if (hasPkg) w.open("module " + pkg + " {");
-  // Inside the module: merged ASTs order modules before other top-level
-  // statements, so a file-level `using` would bind too late for the shapes.
-  // Imported packages are brought into scope the same way.
+  if (!pkg.empty()) w.open("module " + pkg + " {");
+  // `using` inside the module: merged ASTs order modules before other
+  // top-level statements, so a file-level `using` would bind too late for
+  // the class shapes. Imported packages are brought into scope the same way.
   w.line("using sun;");
   std::set<std::string> importedPkgs;
   for (int i = 0; i < file->dependency_count(); ++i) {
@@ -814,15 +874,12 @@ void emitFile(Writer& w, const pb::FileDescriptor* file,
   }
   w.line();
 
-  std::vector<const pb::EnumDescriptor*> enums;
-  collectEnums(file, enums);
-  for (const auto* e : enums) emitEnum(w, e);
+  for (const auto* e : allEnums(file)) emitEnum(w, e);
+  for (const auto* d : messagesInDependencyOrder(file)) {
+    MessageGenerator(w, d).emit();
+  }
 
-  std::vector<const pb::Descriptor*> messages;
-  orderMessages(file, messages);
-  for (const auto* d : messages) emitMessage(w, d);
-
-  if (hasPkg) w.close();
+  if (!pkg.empty()) w.close();
   w.line();
 }
 
@@ -835,32 +892,43 @@ std::string readFile(const std::filesystem::path& p) {
 
 }  // namespace
 
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+std::vector<std::string> ProtoImporter::importDirsFor(const std::string& baseDir) {
+  std::vector<std::string> dirs;
+  if (!baseDir.empty()) dirs.push_back(baseDir);
+  for (const auto& dir : SunPath::getPaths()) dirs.push_back(dir.string());
+  return dirs;
+}
+
+std::vector<SynthesizedProtoModule> ProtoImporter::importAll(
+    const std::vector<std::string>& protoFiles, const std::string& baseDir) {
+  std::vector<SynthesizedProtoModule> out;
+  auto dirs = importDirsFor(baseDir);
+  for (const auto& protoPath : protoFiles) {
+    out.push_back(import(protoPath, dirs));
+  }
+  return out;
+}
+
 SynthesizedProtoModule ProtoImporter::import(
     const std::string& protoPath, const std::vector<std::string>& importDirs) {
   namespace fs = std::filesystem;
   fs::path path = fs::absolute(protoPath);
-  if (!fs::exists(path)) {
-    throw SunError(SunError::Kind::Compile,
-                   "proto import: file not found: " + protoPath);
-  }
+  if (!fs::exists(path)) fail("file not found: " + protoPath);
 
   // Map every import dir (and the proto's own directory) onto the virtual
   // root so proto-level `import "x.proto"` resolves like other Sun imports.
   pbc::DiskSourceTree tree;
-  std::vector<std::string> dirs = importDirs;
-  dirs.insert(dirs.begin(), path.parent_path().string());
-  for (const auto& d : dirs) tree.MapPath("", d);
-
-  // The file itself is addressed by its name relative to its own directory
-  std::string virtualName = path.filename().string();
+  tree.MapPath("", path.parent_path().string());
+  for (const auto& d : importDirs) tree.MapPath("", d);
 
   ErrorCollector errors;
   pbc::Importer importer(&tree, &errors);
-  const pb::FileDescriptor* file = importer.Import(virtualName);
-  if (!file || errors.hasErrors()) {
-    throw SunError(SunError::Kind::Compile,
-                   "proto import: " + errors.joined());
-  }
+  const pb::FileDescriptor* file = importer.Import(path.filename().string());
+  if (!file || errors.hasErrors()) fail(errors.joined());
 
   // Dependencies first (deepest first, each once), then the file itself:
   // imported messages/enums become sibling modules in the same synthesized

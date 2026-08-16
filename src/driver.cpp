@@ -927,6 +927,33 @@ static std::unique_ptr<BlockExprAST> mergeASTs(
   return std::make_unique<BlockExprAST>(std::move(mergedBody));
 }
 
+void Driver::parseSynthesizedProtoModules(
+    const std::vector<std::string>& protoFiles,
+    std::vector<std::unique_ptr<BlockExprAST>>& parsedFiles,
+    std::vector<std::string>& canonicalPaths) {
+  for (const auto& synthesized :
+       sun::ProtoImporter::importAll(protoFiles, baseDir)) {
+    // Registered under its pseudo-path so diagnostics cite the .proto and
+    // show the synthesized source line
+    SourceManager::instance().addSource(synthesized.pseudoPath,
+                                        synthesized.sunSource);
+    if (dumpProtoSun_) {
+      llvm::outs() << "// ==== " << synthesized.pseudoPath << " ====\n"
+                   << synthesized.sunSource << "\n";
+    }
+    auto parser = Parser::createStringParser(synthesized.sunSource);
+    parser.setFilePath(synthesized.pseudoPath);
+    auto blockAst = parser.parseProgram();
+    if (!blockAst) {
+      throw SunError(SunError::Kind::Parse,
+                     "Failed to parse synthesized module for " +
+                         synthesized.pseudoPath);
+    }
+    canonicalPaths.push_back(synthesized.pseudoPath);
+    parsedFiles.push_back(std::move(blockAst));
+  }
+}
+
 void Driver::compileFiles(const std::vector<std::string>& sourceFiles,
                           const std::vector<sun::MoonImport>& moonImports,
                           const std::vector<std::string>& protoFiles) {
@@ -969,32 +996,10 @@ void Driver::compileFiles(const std::vector<std::string>& sourceFiles,
     parsedFiles.push_back(std::move(blockAst));
   }
 
-  // Native protobuf import: each .proto is synthesized into Sun source and
-  // parsed like any other file, so the merged AST (and everything after it)
-  // sees ordinary code.
-  for (const auto& protoPath : protoFiles) {
-    std::vector<std::string> importDirs;
-    if (!baseDir.empty()) importDirs.push_back(baseDir);
-    for (const auto& dir : sun::SunPath::getPaths()) {
-      importDirs.push_back(dir.string());
-    }
-    auto synthesized = sun::ProtoImporter::import(protoPath, importDirs);
-    SourceManager::instance().addSource(synthesized.pseudoPath,
-                                        synthesized.sunSource);
-    if (dumpProtoSun_) {
-      llvm::outs() << "// ==== " << synthesized.pseudoPath << " ====\n"
-                   << synthesized.sunSource << "\n";
-    }
-    auto parser = Parser::createStringParser(synthesized.sunSource);
-    parser.setFilePath(synthesized.pseudoPath);
-    auto blockAst = parser.parseProgram();
-    if (!blockAst) {
-      throw SunError(SunError::Kind::Parse,
-                     "Failed to parse synthesized module for " + protoPath);
-    }
-    canonicalPaths.push_back(synthesized.pseudoPath);
-    parsedFiles.push_back(std::move(blockAst));
-  }
+  // Native protobuf import: each .proto becomes ordinary Sun source, parsed
+  // like any other file so the merged AST (and everything after it) sees
+  // normal code
+  parseSynthesizedProtoModules(protoFiles, parsedFiles, canonicalPaths);
 
   // Merge all parsed files into a single AST
   auto mergedAst = mergeASTs(parsedFiles, canonicalPaths);

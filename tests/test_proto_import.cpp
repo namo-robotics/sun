@@ -12,11 +12,13 @@
 #include "ast_serializer.h"
 #include "execution_utils.h"
 #include "manifest_processor.h"
-#include "metadata_extractor.h"
 #include "parser.h"
-#include "proto_importer.h"
+#include "proto_test_utils.h"
 
 namespace fs = std::filesystem;
+using proto_test::LibprotobufSchema;
+using proto_test::ProtoProject;
+using proto_test::runWithProto;
 
 namespace {
 
@@ -419,34 +421,7 @@ TEST(ProtoImportTest, map_string_keys) {
 // Synthesized messages: encode/decode round-trips
 // ============================================================================
 
-#include <google/protobuf/compiler/importer.h>
-#include <google/protobuf/descriptor.h>
-#include <google/protobuf/dynamic_message.h>
-
-#include "driver.h"
-
 namespace {
-
-// Write a .proto into a temp dir and JIT a program that imports it via a
-// manifest, returning main()'s result.
-sun::SunValue runWithProto(const std::string& dirName, const std::string& proto,
-                           const std::string& program) {
-  initTestEnvironment();
-  fs::path dir = fs::temp_directory_path() / dirName;
-  fs::create_directories(dir / "schemas");
-  {
-    std::ofstream out(dir / "schemas" / "t.proto");
-    out << proto;
-  }
-  fs::path entry = dir / "main.sun";
-  {
-    std::ofstream out(entry);
-    out << "manifest { protos: [\"schemas/t.proto\"] }\n" << program;
-  }
-  auto driver = Driver::createForJIT("proto_test");
-  driver->setMoonImports(getStdlibMoonImports());
-  return driver->executeFile(entry.string(), 0, nullptr);
-}
 
 const char* kTelemetryProto = R"(
 syntax = "proto3";
@@ -754,18 +729,10 @@ TEST(ProtoImportTest, proto_syntax_error_reports_file_line_column) {
 }
 
 TEST(ProtoImportTest, missing_proto_file_is_reported) {
-  initTestEnvironment();
-  fs::path dir = fs::temp_directory_path() / "sun_proto_rej4";
-  fs::create_directories(dir);
-  fs::path entry = dir / "main.sun";
-  {
-    std::ofstream out(entry);
-    out << "manifest { protos: [\"nope.proto\"] }\nfunction main() i32 { return 0; }\n";
-  }
-  auto driver = Driver::createForJIT("proto_test");
-  driver->setMoonImports(getStdlibMoonImports());
+  ProtoProject project("sun_proto_rej4");
+  project.setProgram("function main() i32 { return 0; }\n", {"nope.proto"});
   try {
-    driver->executeFile(entry.string(), 0, nullptr);
+    project.run();
     FAIL() << "expected rejection";
   } catch (const std::exception& e) {
     EXPECT_NE(std::string(e.what()).find("nope.proto"), std::string::npos);
@@ -778,78 +745,41 @@ TEST(ProtoImportTest, missing_proto_file_is_reported) {
 
 namespace {
 
-// Bytes of a Status encoded by Sun with the values used in
-// message_roundtrip_all_field_kinds, dumped by a Sun program as decimal
-// lines. Returned as a byte string.
-std::string sunEncodedStatusBytes() {
-  initTestEnvironment();
-  fs::path dir = fs::temp_directory_path() / "sun_proto_xv";
-  fs::create_directories(dir / "schemas");
-  {
-    std::ofstream out(dir / "schemas" / "t.proto");
-    out << kTelemetryProto;
-  }
-  fs::path outFile = dir / "bytes.txt";
-  fs::path entry = dir / "main.sun";
-  {
-    std::ofstream out(entry);
-    out << "manifest { protos: [\"schemas/t.proto\"] }\n"
-        << "using sun;\nusing t;\n"
-        << "function main() i32 {\n"
-        << "  var alloc = make_heap_allocator();\n"
-        << "  var st = Status(alloc);\n"
-        << "  st.robot_id = 7;\n"
-        << "  st.name = String(alloc, \"rover\");\n"
-        << "  st.samples.push(1);\n  st.samples.push(300);\n"
-        << "  st.mode = Mode.FAULT;\n"
-        << "  st.pose.x = 1.5;\n  st.pose.y = -2.0;\n"
-        << "  st.tags.push(String(alloc, \"a\"));\n"
-        << "  st.ok = true;\n  st.delta = -3;\n  st.crc = 305419896;\n"
-        << "  var buf = Vec<u8>(alloc, 64);\n"
-        << "  st.encode(buf);\n"
-        << "  var fd: i32 = unsafe { __file_open(\"" << outFile.string()
-        << "\", 1); };\n"
-        << "  if (fd < 0) { return 1; }\n"
-        << "  unsafe { __write(fd, buf.rawData(), buf.size()); };\n"
-        << "  unsafe { __file_close(fd); };\n"
-        << "  return 0;\n}\n";
-  }
-  auto driver = Driver::createForJIT("proto_xv");
-  driver->setMoonImports(getStdlibMoonImports());
-  driver->executeFile(entry.string(), 0, nullptr);
-  std::ifstream in(outFile, std::ios::binary);
-  std::stringstream ss;
-  ss << in.rdbuf();
-  return ss.str();
+// Encode a Status with fixed values in Sun and return the wire bytes
+std::string sunEncodedStatusBytes(ProtoProject& project) {
+  fs::path outFile = project.file("bytes.bin");
+  project.setProgram(
+      "using sun;\nusing t;\n"
+      "function main() i32 {\n"
+      "  var alloc = make_heap_allocator();\n"
+      "  var st = Status(alloc);\n"
+      "  st.robot_id = 7;\n"
+      "  st.name = String(alloc, \"rover\");\n"
+      "  st.samples.push(1);\n  st.samples.push(300);\n"
+      "  st.mode = Mode.FAULT;\n"
+      "  st.pose.x = 1.5;\n  st.pose.y = -2.0;\n"
+      "  st.tags.push(String(alloc, \"a\"));\n"
+      "  st.ok = true;\n  st.delta = -3;\n  st.crc = 305419896;\n"
+      "  var buf = Vec<u8>(alloc, 64);\n"
+      "  st.encode(buf);\n" +
+      proto_test::dumpBufferProgramTail(outFile));
+  EXPECT_EQ(project.run(), 0);
+  return proto_test::readBytes(outFile);
 }
 
 }  // namespace
 
 TEST(ProtoImportTest, libprotobuf_parses_sun_encoded_message) {
-  std::string bytes = sunEncodedStatusBytes();
+  ProtoProject project("sun_proto_xv");
+  project.addSchema("t.proto", kTelemetryProto);
+  std::string bytes = sunEncodedStatusBytes(project);
   ASSERT_FALSE(bytes.empty());
 
-  // Build the descriptor with libprotoc from the same schema text
   namespace pb = google::protobuf;
-  namespace pbc = google::protobuf::compiler;
-  fs::path dir = fs::temp_directory_path() / "sun_proto_xv" / "schemas";
-  pbc::DiskSourceTree tree;
-  tree.MapPath("", dir.string());
-  struct Collector : pbc::MultiFileErrorCollector {
-    void AddError(const std::string&, int, int, const std::string& m) override {
-      msgs += m;
-    }
-    std::string msgs;
-  } errors;
-  pbc::Importer importer(&tree, &errors);
-  const pb::FileDescriptor* file = importer.Import("t.proto");
-  ASSERT_NE(file, nullptr) << errors.msgs;
-  const pb::Descriptor* desc = file->FindMessageTypeByName("Status");
-  ASSERT_NE(desc, nullptr);
-
-  pb::DynamicMessageFactory factory;
-  std::unique_ptr<pb::Message> msg(factory.GetPrototype(desc)->New());
-  ASSERT_TRUE(msg->ParseFromString(bytes));
+  LibprotobufSchema schema(project.schemasDir());
+  auto msg = schema.parse("t.proto", "Status", bytes);
+  ASSERT_NE(msg, nullptr) << schema.errors();
+  const pb::Descriptor* desc = msg->GetDescriptor();
   const pb::Reflection* refl = msg->GetReflection();
   EXPECT_EQ(refl->GetInt32(*msg, desc->FindFieldByName("robot_id")), 7);
   EXPECT_EQ(refl->GetString(*msg, desc->FindFieldByName("name")), "rover");
@@ -862,9 +792,8 @@ TEST(ProtoImportTest, libprotobuf_parses_sun_encoded_message) {
   EXPECT_TRUE(refl->GetBool(*msg, desc->FindFieldByName("ok")));
   const pb::Message& pose =
       refl->GetMessage(*msg, desc->FindFieldByName("pose"));
-  const pb::Descriptor* poseDesc = pose.GetDescriptor();
   EXPECT_DOUBLE_EQ(pose.GetReflection()->GetDouble(
-                       pose, poseDesc->FindFieldByName("y")),
+                       pose, pose.GetDescriptor()->FindFieldByName("y")),
                    -2.0);
   // Sun-encoded bytes are also byte-identical to libprotobuf's canonical
   // serialization of the same values
@@ -1018,117 +947,71 @@ TEST(ProtoImportTest, maps_with_string_keys_and_message_values) {
 }
 
 TEST(ProtoImportTest, proto_imports_generate_dependency_modules) {
-  initTestEnvironment();
-  fs::path dir = fs::temp_directory_path() / "sun_proto_imports";
-  fs::create_directories(dir / "schemas");
-  {
-    std::ofstream out(dir / "schemas" / "common.proto");
-    out << "syntax = \"proto3\";\npackage common;\n"
-           "message Stamp { int64 secs = 1; int32 nanos = 2; }\n"
-           "enum Level { LOW = 0; HIGH = 1; }\n";
-  }
-  {
-    std::ofstream out(dir / "schemas" / "uses.proto");
-    out << "syntax = \"proto3\";\npackage app;\nimport \"common.proto\";\n"
-           "message Event { common.Stamp when = 1; common.Level level = 2; "
-           "string what = 3; }\n";
-  }
-  fs::path entry = dir / "main.sun";
-  {
-    std::ofstream out(entry);
-    out << R"(
-      manifest { protos: ["schemas/uses.proto"] }
-      using sun;
-      using app;
-      using common;
-      function main() i32 {
-        var alloc = make_heap_allocator();
-        var e = Event(alloc);
-        e.when.secs = 1700000000;
-        e.level = Level.HIGH;
-        e.what = String(alloc, "boot");
-        var buf = Vec<u8>(alloc, 32);
-        e.encode(buf);
-        try {
-          var back = Event_decode(alloc, buf);
-          if (back.when.secs != 1700000000) { return 1; }
-          if (proto_enum_to_i32_Level(back.level) != 1) { return 2; }
-          if (back.what.length() != 4) { return 3; }
-        } catch (e2: IError) { return -1; }
-        return 0;
-      }
-    )";
-  }
-  auto driver = Driver::createForJIT("proto_test");
-  driver->setMoonImports(getStdlibMoonImports());
-  auto value = driver->executeFile(entry.string(), 0, nullptr);
-  EXPECT_EQ(value, 0);
+  ProtoProject project("sun_proto_imports");
+  project
+      .addSchema("common.proto",
+                 "syntax = \"proto3\";\npackage common;\n"
+                 "message Stamp { int64 secs = 1; int32 nanos = 2; }\n"
+                 "enum Level { LOW = 0; HIGH = 1; }\n")
+      .addSchema("uses.proto",
+                 "syntax = \"proto3\";\npackage app;\nimport \"common.proto\";\n"
+                 "message Event { common.Stamp when = 1; common.Level level = 2; "
+                 "string what = 3; }\n")
+      // Only the importing schema is listed; common.proto comes in through it
+      .setProgram(R"(
+        using sun;
+        using app;
+        using common;
+        function main() i32 {
+          var alloc = make_heap_allocator();
+          var e = Event(alloc);
+          e.when.secs = 1700000000;
+          e.level = Level.HIGH;
+          e.what = String(alloc, "boot");
+          var buf = Vec<u8>(alloc, 32);
+          e.encode(buf);
+          try {
+            var back = Event_decode(alloc, buf);
+            if (back.when.secs != 1700000000) { return 1; }
+            if (proto_enum_to_i32_Level(back.level) != 1) { return 2; }
+            if (back.what.length() != 4) { return 3; }
+          } catch (e2: IError) { return -1; }
+          return 0;
+        }
+      )",
+                  {"schemas/uses.proto"});
+  EXPECT_EQ(project.run(), 0);
 }
 
 TEST(ProtoImportTest, libprotobuf_parses_optional_oneof_map_encoding) {
-  // Bytes produced by Sun for optional + oneof(message) + map<int64, Item>
-  initTestEnvironment();
-  fs::path dir = fs::temp_directory_path() / "sun_proto_xv2";
-  fs::create_directories(dir / "schemas");
-  {
-    std::ofstream out(dir / "schemas" / "t.proto");
-    out << kFullProto;
-  }
-  fs::path outFile = dir / "bytes.bin";
-  fs::path entry = dir / "main.sun";
-  {
-    std::ofstream out(entry);
-    out << "manifest { protos: [\"schemas/t.proto\"] }\n"
-        << "using sun;\nusing f;\n"
-        << "function main() i32 {\n"
-        << "  var alloc = make_heap_allocator();\n"
-        << "  var b = Bag(alloc);\n"
-        << "  b.nickname = Option.Some(String(alloc, \"nick\"));\n"
-        << "  b.count = Option.Some(0);\n"
-        << "  var d = Item(alloc);\n  d.id = 9;\n"
-        << "  b.power = Bag_power.Dock(d);\n"
-        << "  b.scores.insert(String(alloc, \"alice\"), 10);\n"
-        << "  var it = Item(alloc);\n  it.id = 3;\n"
-        << "  it.label = String(alloc, \"three\");\n"
-        << "  b.items.insert(3, it);\n"
-        << "  var buf = Vec<u8>(alloc, 64);\n"
-        << "  b.encode(buf);\n"
-        << "  var fd: i32 = unsafe { __file_open(\"" << outFile.string()
-        << "\", 1); };\n"
-        << "  if (fd < 0) { return 1; }\n"
-        << "  unsafe { __write(fd, buf.rawData(), buf.size()); };\n"
-        << "  unsafe { __file_close(fd); };\n"
-        << "  return 0;\n}\n";
-  }
-  auto driver = Driver::createForJIT("proto_xv2");
-  driver->setMoonImports(getStdlibMoonImports());
-  ASSERT_EQ(driver->executeFile(entry.string(), 0, nullptr), 0);
-  std::string bytes;
-  {
-    std::ifstream in(outFile, std::ios::binary);
-    std::stringstream ss;
-    ss << in.rdbuf();
-    bytes = ss.str();
-  }
+  ProtoProject project("sun_proto_xv2");
+  fs::path outFile = project.file("bytes.bin");
+  project.addSchema("t.proto", kFullProto)
+      .setProgram(
+          "using sun;\nusing f;\n"
+          "function main() i32 {\n"
+          "  var alloc = make_heap_allocator();\n"
+          "  var b = Bag(alloc);\n"
+          "  b.nickname = Option.Some(String(alloc, \"nick\"));\n"
+          "  b.count = Option.Some(0);\n"
+          "  var d = Item(alloc);\n  d.id = 9;\n"
+          "  b.power = Bag_power.Dock(d);\n"
+          "  b.scores.insert(String(alloc, \"alice\"), 10);\n"
+          "  var it = Item(alloc);\n  it.id = 3;\n"
+          "  it.label = String(alloc, \"three\");\n"
+          "  b.items.insert(3, it);\n"
+          "  var buf = Vec<u8>(alloc, 64);\n"
+          "  b.encode(buf);\n" +
+          proto_test::dumpBufferProgramTail(outFile));
+  ASSERT_EQ(project.run(), 0);
+  std::string bytes = proto_test::readBytes(outFile);
   ASSERT_FALSE(bytes.empty());
 
   namespace pb = google::protobuf;
-  namespace pbc = google::protobuf::compiler;
-  pbc::DiskSourceTree tree;
-  tree.MapPath("", (dir / "schemas").string());
-  struct Collector : pbc::MultiFileErrorCollector {
-    void AddError(const std::string&, int, int, const std::string& m) override {
-      msgs += m;
-    }
-    std::string msgs;
-  } errors;
-  pbc::Importer importer(&tree, &errors);
-  const pb::FileDescriptor* file = importer.Import("t.proto");
-  ASSERT_NE(file, nullptr) << errors.msgs;
-  const pb::Descriptor* desc = file->FindMessageTypeByName("Bag");
-  pb::DynamicMessageFactory factory;
-  std::unique_ptr<pb::Message> msg(factory.GetPrototype(desc)->New());
-  ASSERT_TRUE(msg->ParseFromString(bytes));
+  LibprotobufSchema schema(project.schemasDir());
+  auto msg = schema.parse("t.proto", "Bag", bytes);
+  ASSERT_NE(msg, nullptr) << schema.errors();
+  const pb::Descriptor* desc = msg->GetDescriptor();
   const pb::Reflection* refl = msg->GetReflection();
   EXPECT_TRUE(refl->HasField(*msg, desc->FindFieldByName("nickname")));
   EXPECT_EQ(refl->GetString(*msg, desc->FindFieldByName("nickname")), "nick");
@@ -1148,48 +1031,10 @@ TEST(ProtoImportTest, libprotobuf_parses_optional_oneof_map_encoding) {
 // the synthesized messages; importers need neither the .proto nor libprotoc
 // ============================================================================
 
-#include "moon/moon.h"
-
-namespace {
-
-// Build <dir>/lib/telemetry_lib.moon from a manifest listing telemetry.proto
-fs::path buildTelemetryMoon(const std::string& dirName) {
-  initTestEnvironment();
-  fs::path dir = fs::temp_directory_path() / dirName;
-  fs::create_directories(dir / "lib");
-  {
-    std::ofstream out(dir / "lib" / "telemetry.proto");
-    out << kTelemetryProto;
-  }
-  fs::path entry = dir / "lib" / "telemetry_lib.sun";
-  {
-    std::ofstream out(entry);
-    out << "manifest { protos: [\"telemetry.proto\"] }\n";
-  }
-  // Same steps as `sun --emit-moon`
-  auto manifest = sun::ManifestProcessor::fromEntrypointFile(entry.string());
-  std::vector<sun::moon::ModuleMetadata> allMetadata;
-  std::vector<std::string> importDirs{(dir / "lib").string()};
-  for (const auto& protoPath : manifest->protoFiles) {
-    auto synthesized = sun::ProtoImporter::import(protoPath, importDirs);
-    auto md = sun::extractAllMetadataFromSource(
-        synthesized.sunSource, synthesized.pseudoPath, (dir / "lib").string());
-    for (auto& m : *md) allMetadata.push_back(std::move(m));
-  }
-  auto driver = Driver::createForAOT("moon_module");
-  driver->compileFiles({entry.string()}, getStdlibMoonImports(),
-                       manifest->protoFiles);
-  sun::SunLibWriter writer;
-  for (auto& md : allMetadata) writer.addModule(driver->getModule(), md);
-  fs::path moonPath = dir / "lib" / "telemetry_lib.moon";
-  writer.write(moonPath);
-  return moonPath;
-}
-
-}  // namespace
-
 TEST(ProtoImportTest, moon_exports_proto_messages_to_importers) {
-  fs::path moonPath = buildTelemetryMoon("sun_proto_moon1");
+  ProtoProject lib("sun_proto_moon1");
+  lib.addSchema("telemetry.proto", kTelemetryProto);
+  fs::path moonPath = lib.buildMoon("telemetry_lib");
   ASSERT_TRUE(fs::exists(moonPath));
 
   // The importing program: no .proto anywhere in its manifest or SUN_PATH
@@ -1225,21 +1070,16 @@ TEST(ProtoImportTest, moon_exports_proto_messages_to_importers) {
 }
 
 TEST(ProtoImportTest, moon_import_plus_same_proto_is_a_collision_error) {
-  fs::path moonPath = buildTelemetryMoon("sun_proto_moon2");
-  fs::path dir = moonPath.parent_path().parent_path();
-  fs::path entry = dir / "main.sun";
-  {
-    std::ofstream out(entry);
-    out << "manifest { protos: [\"lib/telemetry.proto\"] moons: [\""
-        << moonPath.string() << "\"] }\n"
-        << "using sun;\nusing t;\n"
-        << "function main() i32 { var alloc = make_heap_allocator(); "
-        << "var s = Status(alloc); return 0; }\n";
-  }
-  auto driver = Driver::createForJIT("proto_moon_dup");
-  driver->setMoonImports(getStdlibMoonImports());
+  ProtoProject project("sun_proto_moon2");
+  project.addSchema("telemetry.proto", kTelemetryProto);
+  fs::path moonPath = project.buildMoon("telemetry_lib");
+  // Same schema listed again in a program that already imports the moon
+  project.setProgram(
+      "using sun;\nusing t;\n"
+      "function main() i32 { var alloc = make_heap_allocator(); "
+      "var s = Status(alloc); return 0; }\n");
   try {
-    driver->executeFile(entry.string(), 0, nullptr);
+    project.run({sun::MoonImport(moonPath.string())});
     FAIL() << "expected a module collision error";
   } catch (const std::exception& e) {
     EXPECT_NE(std::string(e.what()).find("collision"), std::string::npos)
@@ -1250,37 +1090,11 @@ TEST(ProtoImportTest, moon_import_plus_same_proto_is_a_collision_error) {
 TEST(ProtoImportTest, moon_exports_nested_dotted_package_modules) {
   // package namo.telemetry -> module namo.telemetry: importers use the
   // dotted path
-  initTestEnvironment();
-  fs::path dir = fs::temp_directory_path() / "sun_proto_moon3";
-  fs::create_directories(dir / "lib");
-  {
-    std::ofstream out(dir / "lib" / "nested.proto");
-    out << "syntax = \"proto3\";\npackage namo.telemetry;\n"
-           "message Ping { int32 seq = 1; }\n";
-  }
-  fs::path entry = dir / "lib" / "nested_lib.sun";
-  {
-    std::ofstream out(entry);
-    out << "manifest { protos: [\"nested.proto\"] }\n";
-  }
-  auto manifest = sun::ManifestProcessor::fromEntrypointFile(entry.string());
-  std::vector<sun::moon::ModuleMetadata> allMetadata;
-  for (const auto& protoPath : manifest->protoFiles) {
-    auto synthesized =
-        sun::ProtoImporter::import(protoPath, {(dir / "lib").string()});
-    auto md = sun::extractAllMetadataFromSource(
-        synthesized.sunSource, synthesized.pseudoPath, (dir / "lib").string());
-    for (auto& m : *md) allMetadata.push_back(std::move(m));
-  }
-  ASSERT_EQ(allMetadata.size(), 1u);
-  EXPECT_EQ(allMetadata[0].module_name(), "namo.telemetry");
-  auto driver = Driver::createForAOT("moon_module");
-  driver->compileFiles({entry.string()}, getStdlibMoonImports(),
-                       manifest->protoFiles);
-  sun::SunLibWriter writer;
-  for (auto& md : allMetadata) writer.addModule(driver->getModule(), md);
-  fs::path moonPath = dir / "lib" / "nested_lib.moon";
-  ASSERT_TRUE(writer.write(moonPath));
+  ProtoProject lib("sun_proto_moon3");
+  lib.addSchema("nested.proto",
+                "syntax = \"proto3\";\npackage namo.telemetry;\n"
+                "message Ping { int32 seq = 1; }\n");
+  fs::path moonPath = lib.buildMoon("nested_lib");
 
   auto imports = getStdlibMoonImports();
   imports.push_back(sun::MoonImport(moonPath.string()));

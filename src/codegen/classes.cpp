@@ -1040,12 +1040,9 @@ Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
   // zeroed payloads drops cleanly), then MOVE the source in — never an
   // implicit copy.
   if (isPayloadEnum(field->type)) {
-    auto& enumType = static_cast<sun::EnumType&>(*field->type);
-    llvm::StructType* storageTy = typeResolver.getEnumStorageType(enumType);
     Value* structVal = value;
     if (value->getType()->isPointerTy()) {
-      emitEnumDrop(enumType, fieldPtr);
-      markClassAllocationAsDeinited(value);
+      emitDropInPlace(field->type, fieldPtr, memberName);
       structVal = applyMoveSemantics(value, field->type);
     }
     ctx.builder->CreateStore(structVal, fieldPtr);
@@ -1063,8 +1060,7 @@ Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
     uint64_t structSize = DL.getTypeAllocSize(fieldStructType);
 
     // Drop whatever the field currently holds
-    emitDeinitCall(fieldClassType, fieldPtr);
-    emitFieldDeinit(fieldPtr, fieldClassType, memberName);
+    emitDropInPlace(field->type, fieldPtr, memberName);
 
     // value is a pointer to the source class instance
     // fieldPtr is a pointer to the embedded struct in the parent class

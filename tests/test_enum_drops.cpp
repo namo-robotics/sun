@@ -456,8 +456,7 @@ TEST(EnumDropTest, non_owning_payload_enum_still_copies_scalars_in_match) {
 #include <filesystem>
 #include <fstream>
 
-#include "metadata_extractor.h"
-#include "moon/moon.h"
+#include "moon_builder.h"
 #include "moon_import.h"
 
 TEST(EnumDropTest, cross_moon_owning_enum_drops_once) {
@@ -503,14 +502,8 @@ TEST(EnumDropTest, cross_moon_owning_enum_drops_once) {
     )";
   }
 
-  auto metadata = sun::extractMetadataFromFile(libSrc.string());
-  ASSERT_TRUE(metadata.has_value());
-  auto libDriver = Driver::createForAOT("moon_module");
-  libDriver->compileFiles({libSrc.string()}, {});
-  sun::SunLibWriter writer;
-  writer.addModule(libDriver->getModule(), *metadata);
   fs::path moonPath = dir / "droplib.moon";
-  ASSERT_TRUE(writer.write(moonPath));
+  sun::MoonBuilder::build(libSrc.string(), moonPath);
 
   auto driver = Driver::createForJIT("moon_main");
   driver->setMoonImports({sun::MoonImport(moonPath.string())});

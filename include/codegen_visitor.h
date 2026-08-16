@@ -791,6 +791,11 @@ class CodegenVisitor {
   // enum needs no drop code)
   void emitEnumDrop(sun::EnumType& enumType, llvm::Value* storagePtr);
 
+  // Drop whatever value of `type` lives at `ptr`, in place: class deinit +
+  // field recursion, or the enum drop function. No-op for other types.
+  void emitDropInPlace(const sun::TypePtr& type, llvm::Value* ptr,
+                       const std::string& name = "drop");
+
   // Track a new owned allocation in current scope
   void trackOwnedAllocation(llvm::Value* ptrAlloca, const std::string& name,
                             sun::TypePtr pointeeType = nullptr) {

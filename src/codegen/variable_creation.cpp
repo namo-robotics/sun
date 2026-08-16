@@ -208,9 +208,8 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
                                                 storageTy);
     Value* structVal = value;
     if (value->getType()->isPointerTy()) {
-      // Move: load the storage and poison the source tag; release the
-      // source's tracking entry (the new variable owns the payload now)
-      markClassAllocationAsDeinited(value);
+      // Move: load the storage and poison the source tag (the new variable
+      // owns the payload now)
       structVal = applyMoveSemantics(value, varSunType);
     }
     ctx.builder->CreateStore(structVal, alloca);
@@ -707,6 +706,19 @@ void CodegenVisitor::emitFieldDeinit(llvm::Value* objectPtr,
   }
 }
 
+void CodegenVisitor::emitDropInPlace(const sun::TypePtr& type,
+                                     llvm::Value* ptr,
+                                     const std::string& name) {
+  if (!type || !ptr) return;
+  if (type->isClass()) {
+    auto* classType = static_cast<sun::ClassType*>(type.get());
+    emitDeinitCall(classType, ptr);
+    emitFieldDeinit(ptr, classType, name);
+  } else if (type->isEnum()) {
+    emitEnumDrop(static_cast<sun::EnumType&>(*type), ptr);
+  }
+}
+
 void CodegenVisitor::emitScopeCleanup() {
   emitCleanupToDepth(functionBoundaryDepth());
 }
@@ -727,15 +739,7 @@ void CodegenVisitor::emitCleanupForScope(CodegenScope& scope) {
     for (auto it = currentClassScope.rbegin(); it != currentClassScope.rend();
          ++it) {
       if (!it->moved && it->alloca && it->type) {
-        if (it->type->isClass()) {
-          auto* classType = static_cast<sun::ClassType*>(it->type.get());
-          emitDeinitCall(classType, it->alloca);
-
-          // Recursively deinit class fields that have deinit methods
-          emitFieldDeinit(it->alloca, classType, it->varName);
-        } else if (it->type->isEnum()) {
-          emitEnumDrop(static_cast<sun::EnumType&>(*it->type), it->alloca);
-        }
+        emitDropInPlace(it->type, it->alloca, it->varName);
       }
     }
   }
