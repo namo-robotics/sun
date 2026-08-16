@@ -2,6 +2,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "moon.pb.h"
 
@@ -16,5 +17,22 @@ namespace sun {
 /// @return Extracted metadata, or nullopt on failure
 std::optional<moon::ModuleMetadata> extractMetadataFromFile(
     const std::string& filename);
+
+/// Same as extractMetadataFromFile for source text that has no file (e.g. a
+/// module synthesized from a .proto schema). `displayName` labels the
+/// metadata; `baseDir` resolves relative imports.
+std::optional<moon::ModuleMetadata> extractMetadataFromSource(
+    const std::string& source, const std::string& displayName,
+    const std::string& baseDir = "");
+
+/// One ModuleMetadata per module declared in the file (nested modules are
+/// exported under their dotted path, e.g. "namo.telemetry"), plus one for
+/// file-level definitions if any. The single-result variants above return
+/// the first entry.
+std::optional<std::vector<moon::ModuleMetadata>> extractAllMetadataFromFile(
+    const std::string& filename);
+std::optional<std::vector<moon::ModuleMetadata>> extractAllMetadataFromSource(
+    const std::string& source, const std::string& displayName,
+    const std::string& baseDir = "");
 
 }  // namespace sun

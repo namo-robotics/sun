@@ -18,6 +18,7 @@
 #include "error.h"
 #include "formatter.h"
 #include "lexer.h"
+#include "manifest_processor.h"
 #include "parser.h"
 #include "sun_path.h"
 
@@ -88,6 +89,7 @@ struct EntrypointConfig {
   std::string entrypointPath;                // Absolute path to entrypoint
   std::vector<std::string> sunFiles;         // All .sun files from manifest
   std::vector<sun::MoonImport> moonImports;  // Moon imports from manifest
+  std::vector<std::string> protoFiles;       // .proto schemas from manifest
   std::set<std::string> coveredFiles;        // Quick lookup of covered files
 };
 
@@ -138,27 +140,6 @@ class EntrypointManager {
   std::vector<EntrypointConfig> entrypoints_;
   std::unordered_map<std::string, size_t> fileToEntrypoint_;
 
-  /// Resolve a manifest path - relative to baseDir or via SUN_PATH
-  static std::string resolveManifestPath(const std::string& path,
-                                         const std::string& baseDir) {
-    std::filesystem::path p(path);
-    if (p.is_absolute()) {
-      return path;
-    }
-    // First try relative to base directory
-    auto relative = std::filesystem::path(baseDir) / p;
-    if (std::filesystem::exists(relative)) {
-      return std::filesystem::canonical(relative).string();
-    }
-    // Then try SUN_PATH
-    auto resolved = sun::SunPath::resolve(path);
-    if (!resolved.empty()) {
-      return resolved.string();
-    }
-    // Fall back to path as-is
-    return path;
-  }
-
   /// Parse an entrypoint file and extract manifest information
   std::optional<EntrypointConfig> parseEntrypoint(const std::string& path) {
     std::filesystem::path entrypointPath;
@@ -169,68 +150,28 @@ class EntrypointManager {
       return std::nullopt;
     }
 
-    std::ifstream file(entrypointPath);
-    if (!file.is_open()) {
-      return std::nullopt;
-    }
-
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    std::string source = buffer.str();
-    std::string baseDir = entrypointPath.parent_path().string();
-
-    // Parse the file to find manifest
-    auto parser = Parser::createStringParser(source);
-    parser.setFilePath(entrypointPath.string());
-
-    std::unique_ptr<BlockExprAST> ast;
-    try {
-      ast = parser.parseProgram();
-    } catch (...) {
-      return std::nullopt;
-    }
-
-    // Find manifest block
-    const ManifestAST* manifest = nullptr;
-    for (const auto& stmt : ast->getBody()) {
-      if (stmt && stmt->getType() == ASTNodeType::MANIFEST) {
-        manifest = static_cast<const ManifestAST*>(stmt.get());
-        break;
-      }
-    }
-
-    if (!manifest) {
+    auto resolved =
+        sun::ManifestProcessor::fromEntrypointFile(entrypointPath.string());
+    if (!resolved) {
       return std::nullopt;
     }
 
     // Build entrypoint config
     EntrypointConfig config;
     config.entrypointPath = entrypointPath.string();
+    config.sunFiles = std::move(resolved->sunFiles);
+    config.moonImports = std::move(resolved->moonImports);
+    config.protoFiles = std::move(resolved->protoFiles);
 
-    // Process sun dependencies
-    for (const auto& sunDep : manifest->getSuns()) {
-      std::string resolved = resolveManifestPath(sunDep.path, baseDir);
-      config.sunFiles.push_back(resolved);
-      if (std::filesystem::exists(resolved)) {
-        config.coveredFiles.insert(
-            std::filesystem::canonical(resolved).string());
+    for (const auto& file : config.sunFiles) {
+      if (std::filesystem::exists(file)) {
+        config.coveredFiles.insert(std::filesystem::canonical(file).string());
       }
     }
 
     // The entrypoint file itself is also covered
     config.sunFiles.insert(config.sunFiles.begin(), entrypointPath.string());
     config.coveredFiles.insert(entrypointPath.string());
-
-    // Process moon dependencies
-    for (const auto& moonDep : manifest->getMoons()) {
-      std::string resolved = resolveManifestPath(moonDep.path, baseDir);
-      if (moonDep.rename.has_value()) {
-        config.moonImports.emplace_back(resolved, moonDep.rename.value(),
-                                        moonDep.rename.value());
-      } else {
-        config.moonImports.emplace_back(resolved);
-      }
-    }
 
     return config;
   }
@@ -709,7 +650,8 @@ llvm::json::Array analyzeDiagnostics(const OpenDocument& document) {
       // Compile using full manifest context
       // Note: This uses disk content for all files including the current one.
       // Unsaved changes won't be reflected until the file is saved.
-      driver->compileFiles(entrypoint->sunFiles, entrypoint->moonImports);
+      driver->compileFiles(entrypoint->sunFiles, entrypoint->moonImports,
+                           entrypoint->protoFiles);
     } else {
       // Single-file compilation (existing behavior)
       driver->compileString(document.text, document.path);

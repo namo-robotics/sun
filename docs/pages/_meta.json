@@ -15,6 +15,7 @@
   "threads": "Threads",
   "matrices": "Matrices",
   "modules": "Modules & Namespaces",
+  "protobuf": "Protobuf",
   "stdlib": "Standard Library",
   "intrinsics": "Compiler Intrinsics",
   "c-ffi": "C FFI",

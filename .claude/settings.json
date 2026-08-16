@@ -14,6 +14,7 @@
       "Bash(export SUN_PATH=*)",
       "Bash(sun *)",
       "Bash(./tests/sun_tests *)",
+      "Bash(./build/tests/sun_tests *)",
       "Bash(ctest *)",
       "Bash(./tmp/*)",
       "Bash(ls *)",
@@ -22,21 +23,24 @@
       "Bash(wc *)",
       "Bash(sed -n *)",
       "Bash(grep *)",
+      "Bash(awk *)",
       "Bash(echo *)",
       "Bash(printf *)",
       "Bash(mkdir -p *)",
       "Bash(rm -f tmp/*)",
+      "Bash(rm -rf tmp/*)",
       "Bash(chmod +x *)",
       "Bash(node scripts/*)",
       "Bash(python3 -)",
+      "Bash(DEBUGINFOD_URLS= timeout * gdb -batch *)",
       "Read(//tmp/**)",
       "Skill(update-config)",
-      "Skill(update-config:*)",
-      "Bash(./build/tests/sun_tests:*)"
+      "Skill(update-config:*)"
     ],
     "additionalDirectories": [
       "/tmp",
-      "/workspaces/sun/build/tmp"
+      "/workspaces/sun/build/tmp",
+      "/workspaces/sun/tmp"
     ]
   }
 }

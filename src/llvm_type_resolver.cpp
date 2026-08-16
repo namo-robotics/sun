@@ -97,8 +97,26 @@ StructType* LLVMTypeResolver::getEnumVariantStruct(
   assert(variant && variant->hasPayload() &&
          "variant struct requested for unknown or unit variant");
 
+  // Payloads must start at the enum's unit boundary (the storage struct is
+  // { i32 tag, [N x unit] }): a small payload placed in the tag's alignment
+  // padding would live outside the storage aggregate's fields and be lost
+  // by aggregate load/store moves. Pad the tag up to the enum-wide max
+  // payload alignment first.
+  Align maxAlign(4);
+  if (dataLayout) {
+    for (const auto& v : enumType.getVariants()) {
+      for (const auto& pt : v.payloadTypes) {
+        maxAlign = std::max(maxAlign, dataLayout->getABITypeAlign(resolve(pt)));
+      }
+    }
+  }
+  const uint64_t tagArea = alignTo(4, maxAlign.value());
+
   std::vector<Type*> fields;
   fields.push_back(Type::getInt32Ty(ctx));  // tag
+  if (tagArea > 4) {
+    fields.push_back(ArrayType::get(Type::getInt8Ty(ctx), tagArea - 4));
+  }
   for (const auto& payloadType : variant->payloadTypes) {
     fields.push_back(resolve(payloadType));
   }

@@ -238,7 +238,7 @@ std::vector<FunctionInfo> SemanticScopeBase::getAllFunctions(
 
   std::vector<FunctionInfo> allResults;
 
-  for (auto* s = this; s != nullptr; s = s->parent) {
+  auto collectFrom = [&](const SemanticScopeBase* s) {
     s->collectFunctions(prefix, allResults);
     for (const auto& [childName, child] : s->childModules) {
       if (child && child->getType() == ScopeType::Import) {
@@ -253,6 +253,19 @@ std::vector<FunctionInfo> SemanticScopeBase::getAllFunctions(
     for (const auto& binding : s->importBindings) {
       if (!binding.sourceScope) continue;
       binding.sourceScope->collectFunctions(prefix, allResults);
+    }
+  };
+
+  // Scope chain plus, for generic specializations, the definition scope
+  // chain of the generic (see lookupFunction)
+  for (auto* s = this; s != nullptr; s = s->parent) {
+    collectFrom(s);
+    auto defIt = s->childModules.find("__definition__");
+    if (defIt != s->childModules.end() && defIt->second) {
+      for (auto* defS = defIt->second.get(); defS != nullptr;
+           defS = defS->parent) {
+        collectFrom(defS);
+      }
     }
   }
 
@@ -504,8 +517,9 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunction(
     return scope->lookupFunctionLocal(name, argTypes);
   };
 
-  // Walk scope chain
-  for (auto* s = this; s != nullptr; s = s->parent) {
+  // One scope plus its import children and import bindings
+  auto searchScope =
+      [&](const SemanticScopeBase* s) -> std::optional<FunctionInfo> {
     auto result = findInScope(s);
     if (result) return result;
     for (const auto& [childName, child] : s->childModules) {
@@ -524,6 +538,21 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunction(
       if (!binding.sourceScope) continue;
       result = findInScope(binding.sourceScope);
       if (result) return result;
+    }
+    return std::nullopt;
+  };
+
+  // Walk scope chain; a generic specialization's scope also links its
+  // definition scope (__definition__) so bodies resolve free functions of
+  // the module the generic was written in, wherever it is instantiated
+  for (auto* s = this; s != nullptr; s = s->parent) {
+    if (auto result = searchScope(s)) return result;
+    auto defIt = s->childModules.find("__definition__");
+    if (defIt != s->childModules.end() && defIt->second) {
+      for (auto* defS = defIt->second.get(); defS != nullptr;
+           defS = defS->parent) {
+        if (auto result = searchScope(defS)) return result;
+      }
     }
   }
 

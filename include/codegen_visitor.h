@@ -30,12 +30,14 @@ struct OwnedAllocation {
                              // field cleanup)
 };
 
-// Information about a class instance that needs deinit at scope exit
+// Information about a stack value that needs drop code at scope exit:
+// class instances (deinit + field recursion) or payload enums with owning
+// payloads (synthesized drop function)
 struct ClassAllocation {
-  llvm::AllocaInst* alloca;  // Alloca storing the class instance
+  llvm::AllocaInst* alloca;  // Alloca storing the instance/storage
   std::string varName;       // Variable name (for debugging)
-  bool moved;                // If true, ownership transferred - don't deinit
-  std::shared_ptr<sun::ClassType> type;  // Class type (for method lookup)
+  bool moved;                // If true, ownership transferred - don't drop
+  sun::TypePtr type;         // Class or payload-enum type
 };
 
 // Scope object containing variables and allocation tracking
@@ -45,6 +47,9 @@ struct CodegenScope {
   bool hasDebugScope = false;  // True when a DILexicalBlock was opened with it
   std::vector<OwnedAllocation> ownedAllocations;
   std::vector<ClassAllocation> classAllocations;
+  // Names whose alloca holds a POINTER to the value rather than the value
+  // itself (compound match-payload bindings borrow the payload slot in place)
+  std::set<std::string> indirectBindings;
 };
 
 // Closure context for nested functions
@@ -83,9 +88,14 @@ struct LoopContext {
 };
 
 // Try block context for exception handling. Throwing calls made inside a try
-// block are emitted as `invoke`s that unwind to this landing pad.
+// block are emitted as `invoke`s that unwind to this landing pad (or, when
+// scopes with live owners must be cleaned first, to a per-call-site cleanup
+// pad that drops them and then branches into dispatchBB).
 struct TryContext {
-  llvm::BasicBlock* landingPad;  // Landing pad to unwind to on exception
+  llvm::BasicBlock* landingPad;  // Plain landing pad (no owners to clean)
+  llvm::BasicBlock* dispatchBB;  // Catch-clause dispatch (target of pads)
+  llvm::PHINode* excPhi;         // Exception-pointer phi at dispatchBB entry
+  size_t scopeDepth;             // Scope index of the try body scope
 };
 
 /**
@@ -567,6 +577,13 @@ class CodegenVisitor {
   llvm::Value* codegenMallocIntrinsic(const CallExprAST& expr);
   llvm::Value* codegenFreeIntrinsic(const CallExprAST& expr);
   llvm::Value* codegenMemcpyIntrinsic(const CallExprAST& expr);
+  llvm::Value* codegenMemsetIntrinsic(const CallExprAST& expr);
+  llvm::Value* codegenConvertIntrinsic(
+      sun::TypePtr targetType,
+      const std::vector<std::unique_ptr<ExprAST>>& args);
+  llvm::Value* codegenBitcastIntrinsic(
+      sun::TypePtr targetType,
+      const std::vector<std::unique_ptr<ExprAST>>& args);
   llvm::Value* codegenPtrOffsetIntrinsic(const CallExprAST& expr);
 
   // Atomic intrinsics (in intrinsics.cpp)
@@ -739,6 +756,18 @@ class CodegenVisitor {
   // jump out of several scopes at once.
   void emitCleanupToDepth(size_t depth);
 
+  // True if any scope at or above `depth` holds a live (non-moved) owner —
+  // i.e. unwinding past this point would need cleanup
+  bool hasLiveOwners(size_t depth) const {
+    for (size_t i = depth; i < scopes.size(); ++i) {
+      for (const auto& a : scopes[i].classAllocations)
+        if (!a.moved) return true;
+      for (const auto& a : scopes[i].ownedAllocations)
+        if (!a.moved) return true;
+    }
+    return false;
+  }
+
   // Helper: emit cleanup code for ptr<T> and raw_ptr<T> fields in a class
   // Recursively frees pointer fields before the containing object is freed
   // Also frees raw_ptr<T> fields (used for dynamic data in classes)
@@ -747,9 +776,25 @@ class CodegenVisitor {
                         llvm::FunctionCallee freeFunc);
 
   // Helper: emit deinit calls for class fields that have deinit methods
-  // Recursively calls deinit on nested class fields
+  // Recursively calls deinit on nested class fields; enum-typed fields with
+  // owning payloads are dropped through their synthesized drop function
   void emitFieldDeinit(llvm::Value* objectPtr, const sun::ClassType* classType,
                        const std::string& baseName);
+
+  // Get or emit the synthesized drop function for a payload enum with owning
+  // payloads: `void __sun_enum_drop$<Enum>(ptr storage)` switches on the tag,
+  // drops each owning payload, then poisons the tag so a second drop is a
+  // no-op. Returns nullptr when the enum needs no drop code.
+  llvm::Function* getOrCreateEnumDropFunction(sun::EnumType& enumType);
+
+  // Emit a drop of the payload-enum storage at `storagePtr` (no-op when the
+  // enum needs no drop code)
+  void emitEnumDrop(sun::EnumType& enumType, llvm::Value* storagePtr);
+
+  // Drop whatever value of `type` lives at `ptr`, in place: class deinit +
+  // field recursion, or the enum drop function. No-op for other types.
+  void emitDropInPlace(const sun::TypePtr& type, llvm::Value* ptr,
+                       const std::string& name = "drop");
 
   // Track a new owned allocation in current scope
   void trackOwnedAllocation(llvm::Value* ptrAlloca, const std::string& name,
@@ -760,12 +805,15 @@ class CodegenVisitor {
     }
   }
 
-  // Track a new class allocation in current scope for automatic deinit.
-  // An alloca already tracked (e.g. a constructor temporary later adopted by
-  // a variable) keeps its single entry — double-tracking would double-deinit.
+  // Track a new class or payload-enum allocation in current scope for
+  // automatic drop at scope exit. Enums are tracked only when they actually
+  // need drop code. An alloca already tracked (e.g. a constructor temporary
+  // later adopted by a variable) keeps its single entry — double-tracking
+  // would double-drop.
   void trackClassAllocation(llvm::AllocaInst* alloca, const std::string& name,
-                            std::shared_ptr<sun::ClassType> type) {
+                            sun::TypePtr type) {
     if (scopes.empty()) return;
+    if (type && type->isEnum() && !sun::typeNeedsDrop(type)) return;
     for (auto& scope : scopes) {
       for (auto& alloc : scope.classAllocations) {
         if (alloc.alloca == alloca) {
@@ -800,6 +848,29 @@ class CodegenVisitor {
         }
       }
     }
+  }
+
+  // True if `name` resolves (in the current function) to an indirect binding
+  // — its alloca holds the value's address, not the value
+  bool isIndirectBinding(const std::string& name) const {
+    for (auto it = scopes.rbegin(); it != scopes.rend(); ++it) {
+      if (it->variables.count(name)) return it->indirectBindings.count(name);
+      if (it->isFunctionBoundary) break;
+    }
+    return false;
+  }
+
+  // Storage address of a compound local: the alloca itself, or for an
+  // indirect binding the pointer it holds
+  llvm::Value* compoundStorageAddress(const std::string& name) {
+    AllocaInst* alloca = findVariable(name);
+    if (!alloca) return nullptr;
+    if (isIndirectBinding(name)) {
+      return ctx.builder->CreateLoad(
+          llvm::PointerType::getUnqual(ctx.getContext()), alloca,
+          name + ".borrow");
+    }
+    return alloca;
   }
 
   /**

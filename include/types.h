@@ -1033,6 +1033,7 @@ class ClassType : public Type {
   }
 
   void addImplementedInterface(const std::string& interfaceName) {
+    if (implementsInterface(interfaceName)) return;
     implementedInterfaces.push_back(interfaceName);
   }
 
@@ -2224,6 +2225,43 @@ inline bool Type::isCompound() const {
   return !isPrimitive() && !isReference() && !isRawPointer() &&
          !isStaticPointer() && !isFunction() && !isLambda() &&
          !isTypeParameter();
+}
+
+// True if dropping a value of this type must run cleanup code: classes with a
+// deinit method (directly, or transitively through class/enum-typed fields)
+// and payload enums with at least one payload that needs drop.
+inline bool typeNeedsDropImpl(const Type* type,
+                              std::unordered_set<const Type*>& visited) {
+  if (!type || !visited.insert(type).second) return false;
+  if (type->isClass()) {
+    auto* c = static_cast<const ClassType*>(type);
+    if (c->getMethod("deinit")) return true;
+    for (const auto& field : c->getFields()) {
+      if (field.type && typeNeedsDropImpl(field.type.get(), visited)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  if (type->isEnum()) {
+    auto* e = static_cast<const EnumType*>(type);
+    for (const auto& v : e->getVariants()) {
+      for (const auto& pt : v.payloadTypes) {
+        if (pt && typeNeedsDropImpl(pt.get(), visited)) return true;
+      }
+    }
+    return false;
+  }
+  return false;
+}
+
+inline bool typeNeedsDrop(const Type* type) {
+  std::unordered_set<const Type*> visited;
+  return typeNeedsDropImpl(type, visited);
+}
+
+inline bool typeNeedsDrop(const TypePtr& type) {
+  return typeNeedsDrop(type.get());
 }
 
 inline bool Type::isNumeric() const {

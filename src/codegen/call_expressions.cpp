@@ -61,11 +61,29 @@ Function* CodegenVisitor::getOrDeclareMethodFunction(
 
 Value* CodegenVisitor::applyMoveSemantics(Value* argVal,
                                           sun::TypePtr argSunType) {
-  // Only apply move semantics to class types that are pointers (addressable)
-  if (!argSunType || !argSunType->isClass() ||
-      !argVal->getType()->isPointerTy()) {
-    return argVal;
+  if (!argSunType || !argVal->getType()->isPointerTy()) return argVal;
+
+  // Whatever tracked the source (a constructor temporary, a local) no longer
+  // owns it: the value moves to the destination. Its own drop is also made a
+  // no-op below (zeroed / tag-poisoned) for sources not tracked here.
+  markClassAllocationAsDeinited(argVal);
+
+  // Payload enums move by loading the storage and poisoning the source tag
+  // (never memset: tag 0 is a real variant); a later drop of the source is
+  // then a no-op through the drop function's switch default.
+  if (isPayloadEnum(argSunType)) {
+    auto& enumType = static_cast<sun::EnumType&>(*argSunType);
+    llvm::StructType* storageTy = typeResolver.getEnumStorageType(enumType);
+    Value* structVal = ctx.builder->CreateLoad(storageTy, argVal, "move.enum");
+    Value* tagPtr =
+        ctx.builder->CreateStructGEP(storageTy, argVal, 0, "move.tag.ptr");
+    ctx.builder->CreateStore(
+        ConstantInt::get(Type::getInt32Ty(ctx.getContext()), -1), tagPtr);
+    return structVal;
   }
+
+  // Only apply move semantics to class types that are pointers (addressable)
+  if (!argSunType->isClass()) return argVal;
 
   auto* classType = static_cast<sun::ClassType*>(argSunType.get());
   llvm::StructType* structType = classType->getStructType(ctx.getContext());
@@ -439,6 +457,14 @@ Value* CodegenVisitor::prepareRefArgument(const ExprAST* argExpr,
     // raw_ptr<T> passed to ref T - pass the pointer value directly
     Value* argVal = codegen(*argExpr);
     return argVal;
+  }
+
+  // A reference-typed expression that is not itself an addressable variable
+  // (e.g. `_to_ref<T>(ptr)`) already evaluates to the referent's address.
+  if (argSunType && argSunType->isReference() &&
+      argExpr->getType() != ASTNodeType::VARIABLE_REFERENCE) {
+    Value* argVal = codegen(*argExpr);
+    if (argVal && argVal->getType()->isPointerTy()) return argVal;
   }
 
   // Addressable lvalues (variables, fields, array elements, this): pass the

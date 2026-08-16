@@ -35,6 +35,20 @@ module sun {
       this.size_ = 0;
     }
 
+    // Destructor - drop live elements (the buffer memory itself is freed by
+    // the ContiguousBuffer/Unique field recursion)
+    function deinit() void {
+      this.drop_range(0, this.size_);
+    }
+
+    // Drop elements in [from, to) in place (no-op for element types without
+    // deinit). Internal helper for deinit/clear/set.
+    function drop_range(from: i64, to: i64) void {
+      for (var i: i64 = from; i < to; i = i + 1) {
+        unsafe { _deinit<T>(_ptr_offset(this.data.rawData(), i * _sizeof<T>())); };
+      }
+    }
+
     // ========================================================================
     // Core Operations
     // ========================================================================
@@ -73,7 +87,26 @@ module sun {
       return this.data.get_unchecked(index);
     }
 
-    // Set element at index (bounds-checked against size)
+    // Borrow the element at index in place (bounds-checked). Use this for
+    // element types that own heap memory: get() returns a bitwise copy that
+    // aliases the stored element.
+    function borrow(index: i64) ref T, IError {
+      if (index < 0) {
+        throw IndexOutOfBoundsError(index);
+      }
+      if (index >= this.size_) {
+        throw IndexOutOfBoundsError(index);
+      }
+      return unsafe { _to_ref<T>(_ptr_as_raw<T>(_ptr_offset(this.data.rawData(), index * _sizeof<T>()))); };
+    }
+
+    // Borrow the element at index in place (no bounds check)
+    function borrow_unchecked(index: i64) ref T {
+      return unsafe { _to_ref<T>(_ptr_as_raw<T>(_ptr_offset(this.data.rawData(), index * _sizeof<T>()))); };
+    }
+
+    // Set element at index (bounds-checked against size).
+    // The previous element is dropped before being overwritten.
     function set(index: i64, value: T) void, IError {
       if (index < 0) {
         throw IndexOutOfBoundsError(index);
@@ -81,6 +114,7 @@ module sun {
       if (index >= this.size_) {
         throw IndexOutOfBoundsError(index);
       }
+      this.drop_range(index, index + 1);
       this.data.set_unchecked(index, value);
     }
 
@@ -112,13 +146,32 @@ module sun {
       }
     }
 
-    // Clear all elements (doesn't deallocate)
+    // Clear all elements (doesn't deallocate). Live elements are dropped.
     function clear() void {
+      this.drop_range(0, this.size_);
       this.size_ = 0;
     }
 
+    // Move the element at index out of the Vec (bounds-checked). The slot is
+    // zeroed so it drops as a no-op; ownership transfers to the caller.
+    // Use this instead of get() for element types that own heap memory.
+    function take(index: i64) T, IError {
+      if (index < 0) {
+        throw IndexOutOfBoundsError(index);
+      }
+      if (index >= this.size_) {
+        throw IndexOutOfBoundsError(index);
+      }
+      var value: T = this.data.get_unchecked(index);
+      unsafe {
+        _memset(_ptr_offset(this.data.rawData(), index * _sizeof<T>()), 0,
+                _sizeof<T>());
+      };
+      return value;
+    }
+
     // Get raw data pointer (for interop)
-    function rawData() raw_ptr<i8> {
+    function rawData() raw_ptr<u8> {
       return this.data.rawData();
     }
 

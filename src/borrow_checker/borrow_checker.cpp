@@ -205,7 +205,9 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
              var.getValue()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
       const auto& srcRef =
           static_cast<const VariableReferenceAST&>(*var.getValue());
-      movedVariables_.insert(srcRef.getName());
+      if (checkMoveAllowed(srcRef.getName(), srcRef.getLocation())) {
+        movedVariables_.insert(srcRef.getName());
+      }
     }
   }
 
@@ -326,11 +328,16 @@ void BorrowChecker::checkVariableAssignment(
     const auto& srcRef =
         static_cast<const VariableReferenceAST&>(*assign.getValue());
     auto srcType = assign.getValue()->getResolvedType();
-    if (srcType && srcType->isCompound()) {
+    if (srcType && srcType->isCompound() &&
+        checkMoveAllowed(srcRef.getName(), srcRef.getLocation())) {
       movedVariables_.insert(srcRef.getName());
       assign.getValue()->setMoved(true);  // Mark for codegen to skip deinit
     }
   }
+
+  // Overwriting a frozen discriminant or a match binding is rejected the
+  // same way as moving it (the arms borrow the payload in place)
+  checkMoveAllowed(varName, assign.getLocation());
 
   checkVariableWrite(varName);
 }
@@ -409,12 +416,30 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
   TypePtr calleeType = callee->getResolvedType();
   if (!calleeType) return;
 
+  const auto& args = call.getArgs();
+
+  // Enum variant construction (EnumName.Variant(args...)): sema resolves the
+  // callee to the enum type. Every compound payload argument MOVES into the
+  // enum — Sun never implicitly copies compound values.
+  if (calleeType->isEnum()) {
+    for (const auto& arg : args) {
+      if (!arg || arg->getType() != ASTNodeType::VARIABLE_REFERENCE) continue;
+      TypePtr argType = arg->getResolvedType();
+      if (!argType || !argType->isCompound()) continue;
+      const auto& varRef = static_cast<const VariableReferenceAST&>(*arg);
+      if (checkMoveAllowed(varRef.getName(), varRef.getLocation())) {
+        movedVariables_.insert(varRef.getName());
+        arg->setMoved(true);
+      }
+    }
+    return;
+  }
+
   // Handle FunctionType (direct calls)
   auto* funcType = dynamic_cast<const FunctionType*>(calleeType.get());
   if (!funcType) return;
 
   const auto& paramTypes = funcType->getParamTypes();
-  const auto& args = call.getArgs();
 
   for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
     const auto& arg = args[i];
@@ -428,10 +453,33 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
 
     // If argument is compound type AND parameter is NOT a reference (by-value)
     // then we move the argument
-    if (argType && argType->isCompound() && !paramType->isReference()) {
+    if (argType && argType->isCompound() && !paramType->isReference() &&
+        checkMoveAllowed(varRef.getName(), varRef.getLocation())) {
       movedVariables_.insert(varRef.getName());
       arg->setMoved(true);  // Mark for codegen to skip deinit
     }
+  }
+}
+
+bool BorrowChecker::exprDiverges(const ExprAST& expr) {
+  switch (expr.getType()) {
+    case ASTNodeType::RETURN:
+    case ASTNodeType::THROW:
+      return true;
+    case ASTNodeType::BLOCK: {
+      const auto& block = static_cast<const BlockExprAST&>(expr);
+      for (const auto& stmt : block.getBody()) {
+        if (stmt && exprDiverges(*stmt)) return true;
+      }
+      return false;
+    }
+    case ASTNodeType::IF: {
+      const auto& ifExpr = static_cast<const IfExprAST&>(expr);
+      return ifExpr.getThen() && ifExpr.getElse() &&
+             exprDiverges(*ifExpr.getThen()) && exprDiverges(*ifExpr.getElse());
+    }
+    default:
+      return false;
   }
 }
 
@@ -441,19 +489,35 @@ void BorrowChecker::checkIfExpr(const IfExprAST& ifExpr) {
     checkExpr(*ifExpr.getCond());
   }
 
+  // Branches are alternatives: each is checked against the pre-if move
+  // state, and only moves on branches that fall through are unioned into
+  // the state after the if. A branch that returns/throws cannot poison the
+  // code that follows.
+  auto movedBefore = movedVariables_;
+  auto movedAfter = movedVariables_;
+
   // Check then branch in its own scope
   enterScope();
   if (ifExpr.getThen()) {
     checkExpr(*ifExpr.getThen());
+    if (!exprDiverges(*ifExpr.getThen())) {
+      movedAfter.insert(movedVariables_.begin(), movedVariables_.end());
+    }
   }
   exitScope();
 
   // Check else branch in its own scope
   if (ifExpr.getElse()) {
+    movedVariables_ = movedBefore;
     enterScope();
     checkExpr(*ifExpr.getElse());
+    if (!exprDiverges(*ifExpr.getElse())) {
+      movedAfter.insert(movedVariables_.begin(), movedVariables_.end());
+    }
     exitScope();
   }
+
+  movedVariables_ = std::move(movedAfter);
 }
 
 void BorrowChecker::checkTernaryExpr(const TernaryExprAST& ternary) {
@@ -475,21 +539,69 @@ void BorrowChecker::checkMatchExpr(const MatchExprAST& matchExpr) {
     checkExpr(*matchExpr.getDiscriminant());
   }
 
-  // Check each arm in its own scope. Payload bindings are fresh immutable
-  // locals copied out of the discriminant; like catch-clause bindings they
-  // are not ownership-tracked (destructuring never moves the discriminant).
+  // A named discriminant is frozen for the whole match: its payloads may be
+  // borrowed by arm bindings, so it must not be reassigned or moved.
+  const std::string* discName = nullptr;
+  if (matchExpr.getDiscriminant()) {
+    discName = getBaseVariableName(*matchExpr.getDiscriminant());
+  }
+  bool discNewlyFrozen = discName && !frozenDiscriminants_.count(*discName);
+  if (discNewlyFrozen) frozenDiscriminants_.insert(*discName);
+
+  // Each arm is checked in its own scope against the SAME pre-match move
+  // state (arms are alternatives, not a sequence); moves performed inside
+  // any arm are unioned afterwards, conservatively.
+  auto movedBefore = movedVariables_;
+  auto movedAfter = movedVariables_;
   for (const auto& arm : matchExpr.getArms()) {
+    movedVariables_ = movedBefore;
     enterScope();
-    // Check pattern if present
     if (arm.pattern) {
       checkExpr(*arm.pattern);
     }
-    // Check body
+    // Compound payload bindings borrow the payload slot in place and can
+    // never be moved out; scalar bindings are plain copies.
+    std::vector<std::string> armBorrows;
+    for (const auto& binding : arm.bindings) {
+      if (binding.isWildcard) continue;
+      if (binding.resolvedType && binding.resolvedType->isCompound()) {
+        if (matchBorrowedBindings_.insert(binding.name).second) {
+          armBorrows.push_back(binding.name);
+        }
+      }
+    }
     if (arm.body) {
       checkExpr(*arm.body);
     }
+    for (const auto& name : armBorrows) matchBorrowedBindings_.erase(name);
     exitScope();
+    movedAfter.insert(movedVariables_.begin(), movedVariables_.end());
   }
+  movedVariables_ = std::move(movedAfter);
+
+  if (discNewlyFrozen) frozenDiscriminants_.erase(*discName);
+}
+
+// Moving out of a match binding would take ownership of a payload the enum
+// still owns (double drop); moving/reassigning a frozen discriminant would
+// invalidate borrows held by its arms.
+bool BorrowChecker::checkMoveAllowed(const std::string& name,
+                                     const Position& pos) {
+  if (matchBorrowedBindings_.count(name)) {
+    reportError("cannot move out of match binding '" + name +
+                    "' — it borrows the matched value's payload; use it in "
+                    "place or pass it by ref",
+                pos.line, pos.column);
+    return false;
+  }
+  if (frozenDiscriminants_.count(name)) {
+    reportError("cannot move '" + name +
+                    "' while it is being matched — its payloads are borrowed "
+                    "by the match arms",
+                pos.line, pos.column);
+    return false;
+  }
+  return true;
 }
 
 void BorrowChecker::checkWhileExpr(const WhileExprAST& whileExpr) {
@@ -585,8 +697,10 @@ void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
     // For variable references, mark the variable as moved
     else if (value->getType() == ASTNodeType::VARIABLE_REFERENCE) {
       const auto& srcRef = static_cast<const VariableReferenceAST&>(*value);
-      movedVariables_.insert(srcRef.getName());
-      const_cast<ExprAST*>(value)->setMoved(true);  // Mark for codegen to skip deinit
+      if (checkMoveAllowed(srcRef.getName(), srcRef.getLocation())) {
+        movedVariables_.insert(srcRef.getName());
+        const_cast<ExprAST*>(value)->setMoved(true);  // codegen skips deinit
+      }
     }
   }
 }
@@ -804,8 +918,10 @@ void BorrowChecker::checkMemberAssignment(const MemberAssignmentAST& assign) {
              assign.getValue()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
       const auto& srcRef =
           static_cast<const VariableReferenceAST&>(*assign.getValue());
-      movedVariables_.insert(srcRef.getName());
-      assign.getValue()->setMoved(true);  // Mark for codegen to skip deinit
+      if (checkMoveAllowed(srcRef.getName(), srcRef.getLocation())) {
+        movedVariables_.insert(srcRef.getName());
+        assign.getValue()->setMoved(true);  // Mark for codegen to skip deinit
+      }
     }
   }
 }
@@ -1048,11 +1164,19 @@ Lifetime BorrowChecker::inferExprLifetime(const ExprAST& expr) {
     }
 
     case ASTNodeType::GENERIC_CALL: {
-      // For _to_ref<T>(ptr), the returned ref has the lifetime of the ptr arg
+      // For _to_ref<T>(ptr), the returned ref has the lifetime of the ptr
+      // arg when that is a named variable. Any other raw pointer expression
+      // (pointer arithmetic, a method returning raw_ptr) points at storage
+      // the borrow checker cannot see: raw pointers are the unsafe escape
+      // hatch, so the resulting ref is unrestricted rather than a temporary.
       const auto& genericCall = static_cast<const GenericCallAST&>(expr);
       const std::string& funcName = genericCall.getFunctionName();
       if (funcName == "_to_ref" && !genericCall.getArgs().empty()) {
-        return inferExprLifetime(*genericCall.getArgs()[0]);
+        const ExprAST& ptrArg = *genericCall.getArgs()[0];
+        if (ptrArg.getType() == ASTNodeType::VARIABLE_REFERENCE) {
+          return inferExprLifetime(ptrArg);
+        }
+        return Lifetime::static_();
       }
       // Other generic calls: treat as temporary
       break;
@@ -1135,6 +1259,29 @@ Lifetime BorrowChecker::inferCallReturnLifetime(const CallExprAST& call) {
     return Lifetime::local("$temp", currentScope_);
   }
 
+  // Method call (`obj.method(...)`): the callee is a lambda-typed bound
+  // method. A ref-returning method borrows from its receiver, so the result
+  // has the receiver's lifetime (unless a temporary was passed by ref).
+  if (auto* lambdaType = dynamic_cast<const LambdaType*>(calleeType.get())) {
+    TypePtr returnType = lambdaType->getReturnType();
+    if (!returnType || !returnType->isReference()) {
+      return Lifetime::local("$temp", currentScope_);
+    }
+    const auto& paramTypes = lambdaType->getParamTypes();
+    const auto& args = call.getArgs();
+    for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
+      if (args[i] && paramTypes[i] && paramTypes[i]->isReference() &&
+          args[i]->isTemporary()) {
+        return Lifetime::local("$temp.from_call", currentScope_);
+      }
+    }
+    if (callee->getType() == ASTNodeType::MEMBER_ACCESS) {
+      const auto& access = static_cast<const MemberAccessAST&>(*callee);
+      if (access.getObject()) return inferExprLifetime(*access.getObject());
+    }
+    return Lifetime::param("$call_return");
+  }
+
   // Check if function returns a reference type
   auto* funcType = dynamic_cast<const FunctionType*>(calleeType.get());
   if (!funcType) {
@@ -1166,6 +1313,13 @@ Lifetime BorrowChecker::inferCallReturnLifetime(const CallExprAST& call) {
     if (arg->isTemporary()) {
       return Lifetime::local("$temp.from_call", currentScope_);
     }
+  }
+
+  // A ref-returning method borrows from its receiver: `obj.method(...)`
+  // has obj's lifetime
+  if (callee->getType() == ASTNodeType::MEMBER_ACCESS) {
+    const auto& access = static_cast<const MemberAccessAST&>(*callee);
+    if (access.getObject()) return inferExprLifetime(*access.getObject());
   }
 
   // No temporaries passed to ref params - return lifetime is param lifetime

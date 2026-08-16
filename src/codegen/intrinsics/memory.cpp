@@ -111,6 +111,28 @@ Value* CodegenVisitor::codegenMemcpyIntrinsic(const CallExprAST& expr) {
   return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
 }
 
+Value* CodegenVisitor::codegenMemsetIntrinsic(const CallExprAST& expr) {
+  // _memset(dst, value, len) - set len bytes at dst to value
+  const auto& args = expr.getArgs();
+  if (args.size() != 3) {
+    logAndThrowError("_memset expects 3 arguments: (dst, value, len)");
+    return nullptr;
+  }
+
+  llvm::Value* dst = codegen(*args[0]);
+  llvm::Value* val = codegen(*args[1]);
+  llvm::Value* len = codegen(*args[2]);
+  if (!dst || !val || !len) return nullptr;
+
+  // Memset wants an i8 value
+  auto* i8Ty = llvm::Type::getInt8Ty(ctx.getContext());
+  if (val->getType() != i8Ty) {
+    val = ctx.builder->CreateTrunc(val, i8Ty, "memset.val");
+  }
+  ctx.builder->CreateMemSet(dst, val, len, llvm::MaybeAlign(1));
+  return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
+}
+
 Value* CodegenVisitor::codegenPtrOffsetIntrinsic(const CallExprAST& expr) {
   // _ptr_offset(ptr, byte_offset) - offset a pointer by byte_offset bytes
   const auto& args = expr.getArgs();

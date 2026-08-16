@@ -163,14 +163,48 @@ covered, or a `_` arm must be present. The error names the missing variants.
 
 Rules for payload enums:
 
-- They are value types, passed by `ref` like classes and returned by value.
+- They are value types with the same ownership rules as classes: pass by
+  `ref` to borrow, pass by value to move, returned by value (moved to the
+  caller).
 - `==` / `!=` are not defined on them — `match` is the eliminator.
-- Payload types may be primitives, pointers, other enums, and classes
-  without `deinit`. References, arrays, and recursive payloads (without
-  `raw_ptr` indirection) are rejected.
+- Payload types may be primitives, pointers, other enums, interfaces, and
+  classes — including classes that own heap memory (`String`, `Vec<T>`,
+  anything with `deinit`). References, arrays, and recursive payloads
+  (without `raw_ptr` indirection) are rejected.
 - Payload-free enums are unchanged: plain `i32` values with `==` comparison,
   usable in `extern "C"` signatures. Payload enums cannot cross the C
   boundary yet.
+
+### Ownership and Drops
+
+Sun never implicitly copies a compound value, and payload enums follow that
+rule throughout:
+
+- **Construction moves.** `Holder.Hold(owner)` moves `owner` into the enum;
+  using `owner` afterwards is a use-after-move error.
+- **Assignment moves and drops.** `var b = a;` and `b = a;` move `a`
+  (it cannot be used again). Overwriting a variable or field that already
+  holds a payload drops the old payload first.
+- **Drops are automatic.** When an enum whose payload owns resources goes out
+  of scope (block end, loop iteration, `return`, `break`/`continue`, or an
+  exception unwinding through the frame), its live payload is dropped
+  exactly once — the compiler synthesizes a per-enum drop routine that
+  switches on the tag.
+- **Match bindings borrow.** A binding for a compound payload refers to the
+  payload in place for the duration of the arm; it can be read, called, and
+  passed to `ref` parameters, but not moved out (assigned to a variable,
+  passed by value, or returned), and the matched variable itself cannot be
+  reassigned or moved inside the arms. Scalar payload bindings are plain
+  copies. Moving a payload out of a match is a planned follow-up.
+
+```sun
+var maybe = Option.Some(String(alloc, "hello"));
+var len = match maybe {
+    Option.Some(s) => s.length(),   // borrows the String in place
+    Option.None => 0
+};
+maybe = Option.None;                // drops the String
+```
 
 ## Generic Enums
 
@@ -207,8 +241,8 @@ match a {
 <Callout type="info">
   Not yet supported: explicit type arguments in expression position
   (`Option<i32>.Some(5)` — use inference or an annotation), nested patterns,
-  arrays or globals of payload enums, and payloads owning heap resources.
-  These are planned follow-ups.
+  arrays or globals of payload enums, and moving a payload out of a match
+  binding. These are planned follow-ups.
 </Callout>
 
 ## Trailing Commas

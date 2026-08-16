@@ -56,6 +56,39 @@ class SemanticAnalyzer {
   std::unordered_map<std::string, std::vector<ClassDefinitionAST*>>
       pendingExtensions_;
 
+  // Classes (by mangled name) whose fields and method signatures were
+  // registered by the declaration pre-pass. The sequential pass skips
+  // re-adding them and only analyzes bodies.
+  std::unordered_set<std::string> preRegisteredClassShapes_;
+
+  // Register a non-generic class's fields and method signatures on its
+  // ClassType so that any body analyzed afterwards — including bodies of
+  // generic specializations triggered from function signatures — can call
+  // its methods regardless of declaration order.
+  void registerClassShape(ClassDefinitionAST& classDef,
+                          const sun::QualifiedName& qualifiedClass,
+                          std::shared_ptr<sun::ClassType> classType);
+
+  // Bind a `using` declaration in the current scope (idempotent)
+  void registerUsing(UsingAST& usingDecl);
+
+  // Depth of the declaration pre-pass (collectDeclarations). Generic class
+  // specializations requested while > 0 register their type and method
+  // signatures immediately (so shapes and signatures can refer to them) but
+  // defer method-body analysis to the end of the outermost pre-pass, once
+  // every declaration in the program is registered.
+  int declarationPrepassDepth_ = 0;
+
+  struct DeferredSpecialization {
+    std::shared_ptr<sun::ClassType> specializedClass;
+    const GenericClassInfo* genericInfo;
+    std::vector<sun::TypePtr> typeArgs;
+    std::shared_ptr<ClassDefinitionAST> specializedAST;  // bodies unanalyzed
+    SemanticScope* requestScope;
+  };
+  std::vector<DeferredSpecialization> deferredSpecializations_;
+  void analyzeDeferredSpecializations();
+
   // True when not inside any function scope (i.e. at module/global level)
   bool isAtModuleLevel() const {
     for (auto* s = currentScope; s != nullptr; s = s->parent)

@@ -942,6 +942,12 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
        {Types::RawPointer(Types::UInt8()), Types::RawPointer(Types::UInt8()),
         Types::Int64()},
        {}});
+  // _memset(dst, value, len) - set len bytes at dst to value
+  registernFunctionInCurrentScope(
+      "_memset",
+      {Types::Void(),
+       {Types::RawPointer(Types::UInt8()), Types::Int32(), Types::Int64()},
+       {}});
   // _ptr_offset(ptr, byte_offset) - offset a pointer by byte_offset bytes
   registernFunctionInCurrentScope(
       "_ptr_offset",

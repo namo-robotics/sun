@@ -41,6 +41,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgtest-dev \
     protobuf-compiler \
     libprotobuf-dev \
+    libprotoc-dev \
     openssh-client \
     sudo \
     bash-completion \

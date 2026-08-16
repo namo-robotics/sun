@@ -180,14 +180,16 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
   Function* func = ctx.builder->GetInsertBlock()->getParent();
   sun::TypePtr varSunType = expr.getResolvedType();
 
-  // Payload enums: struct values handled by pointer with copy semantics and
-  // no deinit tracking (payloads are deinit-free by construction)
+  // Payload enums: struct values handled by pointer. The variable OWNS its
+  // storage: fresh temporaries are adopted, named sources are MOVED (never
+  // implicitly copied), and the result is drop-tracked when payloads own
+  // heap resources.
   if (varSunType && isPayloadEnum(varSunType)) {
     auto& enumType = static_cast<sun::EnumType&>(*varSunType);
     llvm::StructType* storageTy = typeResolver.getEnumStorageType(enumType);
 
     // A fresh temporary (construction, materialized call return) can be
-    // adopted directly; a named source (variable, field) must be copied
+    // adopted directly; a named source (variable, field) is moved out of
     ASTNodeType valueKind = expr.getValue()->getType();
     bool valueIsFreshTemp = valueKind != ASTNodeType::VARIABLE_REFERENCE &&
                             valueKind != ASTNodeType::MEMBER_ACCESS;
@@ -197,6 +199,7 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
         scope[expr.getName()] = allocaValue;
         debugDeclareLocal(allocaValue, expr.getName(), varSunType,
                           expr.getLocation());
+        trackClassAllocation(allocaValue, expr.getName(), varSunType);
         return allocaValue;
       }
     }
@@ -205,11 +208,14 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
                                                 storageTy);
     Value* structVal = value;
     if (value->getType()->isPointerTy()) {
-      structVal = ctx.builder->CreateLoad(storageTy, value, "enum.copy");
+      // Move: load the storage and poison the source tag (the new variable
+      // owns the payload now)
+      structVal = applyMoveSemantics(value, varSunType);
     }
     ctx.builder->CreateStore(structVal, alloca);
     scope[expr.getName()] = alloca;
     debugDeclareLocal(alloca, expr.getName(), varSunType, expr.getLocation());
+    trackClassAllocation(alloca, expr.getName(), varSunType);
     return alloca;
   }
 
@@ -671,7 +677,8 @@ void CodegenVisitor::emitDeinitCall(const sun::ClassType* classType,
 }
 
 // Helper: emit deinit calls for class fields that have deinit methods
-// Recursively calls deinit on nested class fields
+// Recursively calls deinit on nested class fields; enum-typed fields with
+// owning payloads are dropped through their synthesized drop function
 void CodegenVisitor::emitFieldDeinit(llvm::Value* objectPtr,
                                      const sun::ClassType* classType,
                                      const std::string& baseName) {
@@ -691,7 +698,24 @@ void CodegenVisitor::emitFieldDeinit(llvm::Value* objectPtr,
 
       // Recursively deinit nested class fields
       emitFieldDeinit(fieldPtr, nestedClass, baseName + "." + field.name);
+    } else if (field.type->isEnum() && sun::typeNeedsDrop(field.type)) {
+      llvm::Value* fieldPtr = ctx.builder->CreateStructGEP(
+          structType, objectPtr, field.index, baseName + "." + field.name);
+      emitEnumDrop(static_cast<sun::EnumType&>(*field.type), fieldPtr);
     }
+  }
+}
+
+void CodegenVisitor::emitDropInPlace(const sun::TypePtr& type,
+                                     llvm::Value* ptr,
+                                     const std::string& name) {
+  if (!type || !ptr) return;
+  if (type->isClass()) {
+    auto* classType = static_cast<sun::ClassType*>(type.get());
+    emitDeinitCall(classType, ptr);
+    emitFieldDeinit(ptr, classType, name);
+  } else if (type->isEnum()) {
+    emitEnumDrop(static_cast<sun::EnumType&>(*type), ptr);
   }
 }
 
@@ -710,15 +734,12 @@ void CodegenVisitor::emitCleanupForScope(CodegenScope& scope) {
   // First, cleanup class allocations (call deinit methods)
   auto& currentClassScope = scope.classAllocations;
 
-  // Deinit all non-moved class allocations in reverse order (LIFO)
+  // Drop all non-moved allocations in reverse order (LIFO)
   if (!currentClassScope.empty()) {
     for (auto it = currentClassScope.rbegin(); it != currentClassScope.rend();
          ++it) {
       if (!it->moved && it->alloca && it->type) {
-        emitDeinitCall(it->type.get(), it->alloca);
-
-        // Recursively deinit class fields that have deinit methods
-        emitFieldDeinit(it->alloca, it->type.get(), it->varName);
+        emitDropInPlace(it->type, it->alloca, it->varName);
       }
     }
   }

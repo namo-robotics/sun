@@ -21,6 +21,12 @@ message ModuleMetadata {
   // Dependencies
   repeated string dependencies = 5;  // Paths to imported modules
 
+  // `using` declarations in effect for the exported definitions (dotted
+  // module paths, e.g. "sun"). Re-bound when the module stubs are imported so
+  // exported class shapes / signatures resolve the same names they were
+  // written against (e.g. a field of type Vec<u8> from stdlib.moon).
+  repeated string usings = 11;
+
   // Target the bitcode was compiled for (LLVM triple, e.g.
   // "x86_64-pc-linux-gnu"). Linking a bundle into a different target is an
   // error — struct layouts and ABI decisions are baked into the bitcode.

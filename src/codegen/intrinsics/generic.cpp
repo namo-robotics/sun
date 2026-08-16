@@ -55,6 +55,17 @@ Value* CodegenVisitor::codegenInitIntrinsic(
 
   auto* classType = static_cast<sun::ClassType*>(targetType.get());
 
+  // Zero the target first (like stack construction does): field assignments
+  // in the constructor drop the field's previous value, which must be the
+  // well-defined "nothing" state rather than heap garbage.
+  {
+    llvm::StructType* structTy = classType->getStructType(ctx.getContext());
+    const DataLayout& DL = module->getDataLayout();
+    ctx.builder->CreateMemSet(
+        rawPtr, ConstantInt::get(Type::getInt8Ty(ctx.getContext()), 0),
+        DL.getTypeAllocSize(structTy), llvm::MaybeAlign(1));
+  }
+
   // Collect argument Sun types first (variadic packs are already expanded
   // into concrete typed args by semantic analysis) so the constructor can be
   // resolved before adapting values to its calling convention.
@@ -83,13 +94,13 @@ Value* CodegenVisitor::codegenInitIntrinsic(
             : nullptr;
     bool paramIsRef = paramType && paramType->isReference();
 
-    // Class values are addressable, so codegen yields a pointer to the
-    // struct. Ref params take that pointer directly; by-value class params
-    // need the struct loaded to match the constructor's calling convention.
-    if (argType && argType->isClass() && argVal->getType()->isPointerTy() &&
+    // Compound values are addressable, so codegen yields a pointer to the
+    // struct. Ref params take that pointer directly; by-value params MOVE
+    // the value into the constructor (source zeroed / tag-poisoned and its
+    // tracking released) to match the calling convention without copying.
+    if (argType && argType->isCompound() && argVal->getType()->isPointerTy() &&
         !paramIsRef) {
-      llvm::Type* structTy = typeResolver.resolve(argType);
-      argVal = ctx.builder->CreateLoad(structTy, argVal, "arg.val");
+      argVal = applyMoveSemantics(argVal, argType);
     }
 
     ctorArgs.push_back(argVal);
@@ -152,9 +163,9 @@ Value* CodegenVisitor::codegenLoadIntrinsic(
   llvm::Value* elemPtr =
       ctx.builder->CreateGEP(elemType, rawPtr, index, "elem.ptr");
 
-  // For class types, return the pointer to the element (classes are
-  // addressable)
-  if (targetType->isClass()) {
+  // For class and payload-enum types, return the pointer to the element
+  // (compounds are addressable; the consumer moves or borrows from it)
+  if (targetType->isClass() || isPayloadEnum(targetType)) {
     return elemPtr;
   }
 
@@ -186,12 +197,14 @@ Value* CodegenVisitor::codegenStoreIntrinsic(
   llvm::Value* elemPtr =
       ctx.builder->CreateGEP(elemType, rawPtr, index, "elem.ptr");
 
-  // For class types, value may be a pointer (alloca) or already a struct value
-  // (e.g. from a ref parameter that was auto-dereferenced)
-  if (targetType->isClass()) {
+  // For class and payload-enum types, value may be a pointer (alloca) or
+  // already a struct value (e.g. from a by-value parameter). An addressable
+  // source MOVES into the slot (never an implicit copy): it is invalidated
+  // and its drop tracking released.
+  if (targetType->isClass() || isPayloadEnum(targetType)) {
     llvm::Value* structVal = value;
     if (value->getType()->isPointerTy()) {
-      structVal = ctx.builder->CreateLoad(elemType, value, "struct.val");
+      structVal = applyMoveSemantics(value, targetType);
     }
     ctx.builder->CreateStore(structVal, elemPtr);
     return structVal;
@@ -405,7 +418,78 @@ Value* CodegenVisitor::codegenDeinitIntrinsic(
 
     // Recursively deinit class fields that have deinit methods
     emitFieldDeinit(ptr, classType, "deinit.intrinsic");
+  } else if (typeArg && typeArg->isEnum()) {
+    // Payload enums with owning payloads drop through their drop function
+    emitEnumDrop(static_cast<sun::EnumType&>(*typeArg), ptr);
   }
 
   return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
+}
+
+Value* CodegenVisitor::codegenConvertIntrinsic(
+    sun::TypePtr targetType,
+    const std::vector<std::unique_ptr<ExprAST>>& args) {
+  // _convert<T>(value) - explicit numeric conversion. Integers truncate or
+  // extend (sign-extending from signed sources, zero-extending from unsigned);
+  // int<->float convert by value. The one escape hatch Sun offers for
+  // narrowing, since assignments never narrow implicitly.
+  if (args.size() != 1) {
+    logAndThrowError("_convert<T>() requires exactly 1 argument");
+    return nullptr;
+  }
+  if (!targetType || !targetType->isNumeric()) {
+    logAndThrowError("_convert<T>: T must be a numeric type");
+    return nullptr;
+  }
+  llvm::Value* v = codegen(*args[0]);
+  if (!v) return nullptr;
+  sun::TypePtr srcType = args[0]->getResolvedType();
+  llvm::Type* dstTy = typeResolver.resolve(targetType);
+  llvm::Type* srcTy = v->getType();
+  if (srcTy == dstTy) return v;
+
+  bool srcSigned = srcType && srcType->isIntegral() && !srcType->isUnsigned();
+  bool dstSigned = !targetType->isUnsigned();
+
+  if (srcTy->isIntegerTy() && dstTy->isIntegerTy()) {
+    return ctx.builder->CreateIntCast(v, dstTy, srcSigned, "convert");
+  }
+  if (srcTy->isIntegerTy() && dstTy->isFloatingPointTy()) {
+    return srcSigned ? ctx.builder->CreateSIToFP(v, dstTy, "convert")
+                     : ctx.builder->CreateUIToFP(v, dstTy, "convert");
+  }
+  if (srcTy->isFloatingPointTy() && dstTy->isIntegerTy()) {
+    return dstSigned ? ctx.builder->CreateFPToSI(v, dstTy, "convert")
+                     : ctx.builder->CreateFPToUI(v, dstTy, "convert");
+  }
+  if (srcTy->isFloatingPointTy() && dstTy->isFloatingPointTy()) {
+    return ctx.builder->CreateFPCast(v, dstTy, "convert");
+  }
+  logAndThrowError("_convert<T>: unsupported conversion");
+  return nullptr;
+}
+
+Value* CodegenVisitor::codegenBitcastIntrinsic(
+    sun::TypePtr targetType,
+    const std::vector<std::unique_ptr<ExprAST>>& args) {
+  // _bitcast<T>(value) - reinterpret the bits of a same-size numeric value
+  // (f32 <-> u32/i32, f64 <-> u64/i64). Used by binary wire formats.
+  if (args.size() != 1) {
+    logAndThrowError("_bitcast<T>() requires exactly 1 argument");
+    return nullptr;
+  }
+  if (!targetType || !targetType->isNumeric()) {
+    logAndThrowError("_bitcast<T>: T must be a numeric type");
+    return nullptr;
+  }
+  llvm::Value* v = codegen(*args[0]);
+  if (!v) return nullptr;
+  llvm::Type* dstTy = typeResolver.resolve(targetType);
+  const DataLayout& DL = module->getDataLayout();
+  if (DL.getTypeSizeInBits(v->getType()) != DL.getTypeSizeInBits(dstTy)) {
+    logAndThrowError("_bitcast<T>: source and target sizes differ");
+    return nullptr;
+  }
+  if (v->getType() == dstTy) return v;
+  return ctx.builder->CreateBitCast(v, dstTy, "bitcast");
 }

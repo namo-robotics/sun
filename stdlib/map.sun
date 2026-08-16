@@ -71,6 +71,22 @@ module sun {
     return hash;
   }
 
+  // Key hashing/equality dispatched by key type. Overloads resolve per Map
+  // specialization, so Map<i64, V>, Map<i32, V>, Map<u32, V> and
+  // Map<String, V> each pick the matching pair. String keys are compared by
+  // content through references (never copied out of the bucket).
+  function map_key_hash(k: i64) i64 { return hash_i64(k); }
+  function map_key_hash(k: i32) i64 { return hash_i64(k); }
+  function map_key_hash(k: u32) i64 { return hash_i64(k); }
+  function map_key_hash(k: u64) i64 { return hash_i64(_convert<i64>(k)); }
+  function map_key_hash(k: ref String) i64 { return hash_string(k); }
+
+  function map_keys_equal(a: ref i64, b: i64) bool { return a == b; }
+  function map_keys_equal(a: ref i32, b: i32) bool { return a == b; }
+  function map_keys_equal(a: ref u32, b: u32) bool { return a == b; }
+  function map_keys_equal(a: ref u64, b: u64) bool { return a == b; }
+  function map_keys_equal(a: ref String, b: ref String) bool { return a.equals(b); }
+
   // Modulo operation (a mod b)
   function mod(a: i64, b: i64) i64 {
     return a - (a / b) * b;
@@ -103,6 +119,27 @@ module sun {
       this.states.fill(0);
     }
 
+    // Destructor - drop live keys/values (buffer memory itself is freed by
+    // the ContiguousBuffer/Unique field recursion)
+    function deinit() void {
+      for (var i: i64 = 0; i < this.capacity_; i = i + 1) {
+        if (this.states.get_unchecked(i) == 1) {
+          this.drop_key(i);
+          this.drop_value(i);
+        }
+      }
+    }
+
+    // Drop the key stored at bucket probe (no-op for non-owning key types)
+    function drop_key(probe: i64) void {
+      unsafe { _deinit<K>(_ptr_offset(this.keys.rawData(), probe * _sizeof<K>())); };
+    }
+
+    // Drop the value stored at bucket probe (no-op for non-owning value types)
+    function drop_value(probe: i64) void {
+      unsafe { _deinit<V>(_ptr_offset(this.values.rawData(), probe * _sizeof<V>())); };
+    }
+
     // ========================================================================
     // Core Operations
     // ========================================================================
@@ -115,7 +152,7 @@ module sun {
         this.grow();
       }
 
-      var hash: i64 = hash_i64(key);
+      var hash: i64 = map_key_hash(key);
       var start: i64 = mod(hash, this.capacity_);
       var first_deleted: i64 = -1;
 
@@ -144,11 +181,14 @@ module sun {
         }
 
         if (state == 1) {
-          // OCCUPIED - check if same key (update)
-          var existing_key: K = this.keys.get(probe);
-          if (existing_key == key) {
-            // Update value
+          // OCCUPIED - check if same key (update); the stored key is
+          // borrowed in place, never copied out
+          if (this.key_at_equals(probe, key)) {
+            // Update value (dropping the old one); the incoming key is
+            // dropped since the bucket keeps its own
+            this.drop_value(probe);
             this.values.set(probe, value);
+            unsafe { _deinit<K>(_address_of<K>(key)); };
             return;
           }
         }
@@ -199,6 +239,7 @@ module sun {
       }
 
       var value: V = this.values.get(probe);
+      this.drop_key(probe);       // Value moved out; the key is dropped here
       this.states.set(probe, 2);  // Mark as DELETED
       this.size_ = this.size_ - 1;
       return value;
@@ -224,9 +265,13 @@ module sun {
       return this.size_ == 0;
     }
 
-    // Clear all entries
+    // Clear all entries. Live keys/values are dropped.
     function clear() void {
       for (var i: i64 = 0; i < this.capacity_; i = i + 1) {
+        if (this.states.get_unchecked(i) == 1) {
+          this.drop_key(i);
+          this.drop_value(i);
+        }
         this.states.set(i, 0);
       }
       this.size_ = 0;
@@ -236,9 +281,37 @@ module sun {
     // Internal Methods
     // ========================================================================
 
-    // Find index of key, returns -1 if not found
+    // ========================================================================
+    // Bucket-level access (for serializers/iterators that must borrow keys
+    // and values in place rather than copy them out)
+    // ========================================================================
+
+    // True if bucket i holds a live entry
+    function bucket_occupied(i: i64) bool {
+      return this.states.get_unchecked(i) == 1;
+    }
+
+    // Borrow the key stored in bucket i (must be occupied)
+    function bucket_key(i: i64) ref K {
+      return unsafe { _to_ref<K>(_ptr_as_raw<K>(_ptr_offset(this.keys.rawData(), i * _sizeof<K>()))); };
+    }
+
+    // Borrow the value stored in bucket i (must be occupied)
+    function bucket_value(i: i64) ref V {
+      return unsafe { _to_ref<V>(_ptr_as_raw<V>(_ptr_offset(this.values.rawData(), i * _sizeof<V>()))); };
+    }
+
+    // Compare the key stored in bucket probe against `key` in place
+    function key_at_equals(probe: i64, key: ref K) bool {
+      var slot: raw_ptr<K> = unsafe { _ptr_as_raw<K>(_ptr_offset(this.keys.rawData(), probe * _sizeof<K>())); };
+      return unsafe { map_keys_equal(_to_ref<K>(slot), key); };
+    }
+
+    // Find index of key, returns -1 if not found. The key is borrowed for
+    // the comparisons and dropped when this call ends (String keys own their
+    // buffer; the bucket keeps its own copy).
     function findIndex(key: K) i64 {
-      var hash: i64 = hash_i64(key);
+      var hash: i64 = map_key_hash(key);
       var start: i64 = mod(hash, this.capacity_);
 
       for (var i: i64 = 0; i < this.capacity_; i = i + 1) {
@@ -251,9 +324,8 @@ module sun {
         }
 
         if (state == 1) {
-          // OCCUPIED - check key
-          var existing_key: K = this.keys.get(probe);
-          if (existing_key == key) {
+          // OCCUPIED - check key (borrowed in place)
+          if (this.key_at_equals(probe, key)) {
             return probe;
           }
         }

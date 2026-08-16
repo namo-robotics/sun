@@ -439,12 +439,29 @@ TEST(EnumPayloadTest, EqualityOnPayloadEnumIsError) {
                std::exception);
 }
 
-TEST(EnumPayloadTest, ByValuePayloadEnumParamIsError) {
+// Payload enums pass by value with move semantics (like classes): the callee
+// owns the argument and the caller's variable is moved-from afterwards.
+TEST(EnumPayloadTest, ByValuePayloadEnumParamMoves) {
+  auto value = executeString(R"(
+    enum Opt { Some(i32), None }
+    function get(o: Opt) i32 {
+      return match o { Opt.Some(v) => v, Opt.None => -1 };
+    }
+    function main() i32 {
+      var a = Opt.Some(41);
+      return get(a) + 1;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(EnumPayloadTest, ByValuePayloadEnumParamUseAfterMoveIsError) {
   EXPECT_THROW(executeString(R"(
     enum Opt { Some(i32), None }
     function get(o: Opt) i32 { return 0; }
     function main() i32 {
       var a = Opt.Some(1);
+      get(a);
       return get(a);
     }
   )"),
@@ -494,21 +511,30 @@ TEST(EnumPayloadTest, RefPayloadTypeIsError) {
                std::exception);
 }
 
-TEST(EnumPayloadTest, DeinitClassPayloadIsError) {
-  EXPECT_THROW(executeString(R"(
+// Owning payloads (classes with deinit) are supported: see
+// tests/test_enum_drops.cpp for the drop-glue behaviour.
+TEST(EnumPayloadTest, DeinitClassPayloadCompiles) {
+  auto value = executeString(R"(
     class Owner {
       var p: raw_ptr<i8>;
       function init() {
-        this.p = unsafe { _malloc(8); };
+        var size: i64 = 8;
+        this.p = unsafe { _malloc(size); };
       }
       function deinit() void {
-        unsafe { _free(this.p); };
+        if (this.p != null) {
+          unsafe { _free(this.p); };
+          this.p = null;
+        }
       }
     }
-    enum Bad { Hold(Owner), Nothing }
-    function main() i32 { return 0; }
-  )"),
-               std::exception);
+    enum Holder { Hold(Owner), Nothing }
+    function main() i32 {
+      var h = Holder.Hold(Owner());
+      return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
 }
 
 TEST(EnumPayloadTest, EmptyPayloadParensIsError) {

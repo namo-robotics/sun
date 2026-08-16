@@ -1,6 +1,8 @@
 // Test utility functions that delegate to Driver
 // This file provides convenient free functions for tests
 
+#pragma once
+
 #include <cstring>
 #include <filesystem>
 #include <iostream>

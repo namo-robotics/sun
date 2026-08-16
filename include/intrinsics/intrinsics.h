@@ -45,6 +45,10 @@ enum class Intrinsic {
   AddressOf,      // _address_of<T>(ref T) -> raw_ptr<T>
   ToRef,          // _to_ref<T>(raw_ptr<T>) -> ref T (unsafe dereference)
   Deinit,         // _deinit<T>(raw_ptr<T>) -> void (call T.deinit if exists)
+  Convert,        // _convert<T>(numeric) -> T (explicit numeric conversion:
+                  // trunc / extend / int<->float)
+  Bitcast,        // _bitcast<T>(value) -> T (same-size bit reinterpretation,
+                  // e.g. f32 <-> u32, f64 <-> u64)
 
   // =========================================================================
   // Memory intrinsics
@@ -127,6 +131,8 @@ inline Intrinsic getIntrinsic(const std::string& name) {
   if (name == "_address_of") return Intrinsic::AddressOf;
   if (name == "_to_ref") return Intrinsic::ToRef;
   if (name == "_deinit") return Intrinsic::Deinit;
+  if (name == "_convert") return Intrinsic::Convert;
+  if (name == "_bitcast") return Intrinsic::Bitcast;
 
   // -------------------------------------------------------------------------
   // Memory intrinsics
@@ -208,6 +214,8 @@ inline bool isGenericIntrinsic(Intrinsic i) {
     case Intrinsic::AddressOf:
     case Intrinsic::ToRef:
     case Intrinsic::Deinit:
+    case Intrinsic::Convert:
+    case Intrinsic::Bitcast:
       return true;
     default:
       return false;

@@ -264,6 +264,11 @@ void SemanticAnalyzer::inheritInterfaceFields(
       // Add interface field to class
       classType->addField(field.name, field.type);
     }
+
+    // Record the implementation now (conformance is validated after the
+    // class body is analyzed) so `throw`/interface conversions on this class
+    // work in any body analyzed before its definition is reached
+    classType->addImplementedInterface(interfaceType->getName());
   }
 }
 

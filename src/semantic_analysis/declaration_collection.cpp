@@ -11,12 +11,28 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
   // and local variable ordering matter)
   if (!isAtModuleLevel()) return;
 
+  // Nested calls (modules) share the outermost pre-pass; specialization
+  // bodies deferred anywhere inside are analyzed when it completes.
+  struct PrepassGuard {
+    SemanticAnalyzer& a;
+    bool outermost;
+    explicit PrepassGuard(SemanticAnalyzer& an)
+        : a(an), outermost(an.declarationPrepassDepth_ == 0) {
+      ++a.declarationPrepassDepth_;
+    }
+    ~PrepassGuard() {
+      --a.declarationPrepassDepth_;
+      if (outermost) a.analyzeDeferredSpecializations();
+    }
+  } prepassGuard(*this);
+
   // Sub-pass A: Register types (enums, interfaces, classes) so that
   // function signatures can reference forward-declared types.
   for (const auto& expr : block.getBody()) {
-    // Skip precompiled nodes (from .moon libs) — they are already fully
-    // processed during import and must not be partially re-registered.
-    if (expr->isPrecompiled()) continue;
+    // Precompiled nodes (from .moon libs) are registered here like any
+    // other type declaration — registration is idempotent, and every type,
+    // generic template and class shape must be known before any signature
+    // (precompiled or not) is resolved. Their bodies are never analyzed.
 
     switch (expr->getType()) {
       case ASTNodeType::ENUM_DEFINITION: {
@@ -52,8 +68,11 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
             registerGenericInterface(interfaceDef.getName(), info);
           }
         } else {
+          // Precompiled stubs carry their qualified name (content-hash scoped)
           sun::QualifiedName qualifiedInterface =
-              makeQualifiedName(interfaceDef.getName());
+              interfaceDef.hasQualifiedName()
+                  ? interfaceDef.getQualifiedName()
+                  : makeQualifiedName(interfaceDef.getName());
           std::string interfaceName = qualifiedInterface.mangled();
           auto interfaceType = typeRegistry->getInterface(interfaceName);
           if (interfaceName != interfaceDef.getName()) {
@@ -68,8 +87,10 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
         if (classDef.isPartial()) break;
         // Skip if already registered
         if (lookupClass(classDef.getName())) break;
+        // Precompiled stubs carry their qualified name (content-hash scoped)
         sun::QualifiedName qualifiedClass =
-            makeQualifiedName(classDef.getName());
+            classDef.hasQualifiedName() ? classDef.getQualifiedName()
+                                        : makeQualifiedName(classDef.getName());
         if (classDef.isGeneric() || classDef.hasGenericMethods()) {
           GenericClassInfo genericInfo;
           genericInfo.AST = &classDef;
@@ -83,6 +104,13 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
           classType->setPacked(classDef.isPacked());
           registerClass(classDef.getName(), classType);
         }
+        break;
+      }
+      case ASTNodeType::USING: {
+        // Bind imports in declaration order so nested modules and the shape
+        // / signature passes below resolve imported names (moon-imported
+        // module scopes precede user code in the body)
+        registerUsing(static_cast<UsingAST&>(*expr));
         break;
       }
       case ASTNodeType::MODULE: {
@@ -108,6 +136,24 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
       default:
         break;
     }
+  }
+
+  // Sub-pass A2: Register class shapes (fields + method signatures) for the
+  // non-generic classes just registered. Function signatures in sub-pass B
+  // may instantiate generic classes, and those specializations' method bodies
+  // may call methods of any class in this block — so every class's methods
+  // must be known before any signature is resolved.
+  for (const auto& expr : block.getBody()) {
+    if (expr->getType() != ASTNodeType::CLASS_DEFINITION) continue;
+    auto& classDef = static_cast<ClassDefinitionAST&>(*expr);
+    if (classDef.isPartial() || classDef.isGeneric()) continue;
+    sun::QualifiedName qualifiedClass = classDef.hasQualifiedName()
+                                            ? classDef.getQualifiedName()
+                                            : makeQualifiedName(classDef.getName());
+    if (preRegisteredClassShapes_.count(qualifiedClass.mangled())) continue;
+    auto classType = lookupClass(classDef.getName());
+    if (!classType) continue;
+    registerClassShape(classDef, qualifiedClass, classType);
   }
 
   // Sub-pass B: Register functions (signatures only, no body analysis).
