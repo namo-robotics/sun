@@ -315,3 +315,113 @@ TEST(AllocatorTest, create_no_matching_init_overload_errors) {
   )"),
                SunError);
 }
+
+// ============================================================================
+// create_unique<T> Tests
+// ============================================================================
+
+TEST(AllocatorTest, create_unique_basic) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    class Point {
+        var x: i32;
+        var y: i32;
+        function init(x: i32, y: i32) { this.x = x; this.y = y; }
+        function sum() i32 { return this.x + this.y; }
+    }
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        var p = alloc.create_unique<Point>(3, 4);
+        return p.get().sum();
+    }
+  )");
+  EXPECT_EQ(value, 7);
+}
+
+TEST(AllocatorTest, create_unique_overloaded_init) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    class Point {
+        var x: i32;
+        var y: i32;
+        function init(v: i32) { this.x = v; this.y = v; }
+        function init(x: i32, y: i32) { this.x = x; this.y = y; }
+    }
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        var a = alloc.create_unique<Point>(7);
+        var b = alloc.create_unique<Point>(3, 4);
+        return a.get().x + a.get().y + b.get().x + b.get().y;
+    }
+  )");
+  EXPECT_EQ(value, 21);
+}
+
+TEST(AllocatorTest, create_unique_deinit_called_once) {
+  // Returning Unique<T> by value from create_unique must move, not copy:
+  // exactly one deinit per object, no double free.
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    var counter: i32 = 0;
+
+    class Resource {
+      var value: i32;
+      function init(v: i32) { this.value = v; }
+      function deinit() void { counter = counter + 1; }
+    }
+
+    function helper() i32 {
+      var alloc = make_heap_allocator();
+      var r1 = alloc.create_unique<Resource>(10);
+      var r2 = alloc.create_unique<Resource>(20);
+      return r1.get().value + r2.get().value;
+    }
+
+    function main() i32 {
+      var result = helper();
+      return counter * 100 + result;
+    }
+  )");
+  // 2 deinits, values sum to 30
+  EXPECT_EQ(value, 230);
+}
+
+TEST(AllocatorTest, create_unique_returned_from_function) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    var counter: i32 = 0;
+
+    class Resource {
+      var value: i32;
+      function init(v: i32) { this.value = v; }
+      function deinit() void { counter = counter + 1; }
+    }
+
+    function make(alloc: ref HeapAllocator, v: i32) Unique<Resource> {
+      return alloc.create_unique<Resource>(v);
+    }
+
+    var before: i32 = 0;
+
+    function use(alloc: ref HeapAllocator) i32 {
+      var r = make(alloc, 5);
+      var v: i32 = r.get().value;
+      before = counter;  // no deinit yet while r is alive
+      return v;
+    }
+
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var v = use(alloc);
+      // deinit ran exactly once, and only after use() returned
+      return before * 100 + counter * 10 + v;
+    }
+  )");
+  EXPECT_EQ(value, 15);
+}

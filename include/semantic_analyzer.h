@@ -237,8 +237,16 @@ class SemanticAnalyzer {
                             const GenericClassInfo& info,
                             std::optional<Position> loc = std::nullopt);
   const GenericClassInfo* lookupGenericClass(const std::string& name) const;
+  const GenericClassInfo* lookupGenericClass(
+      const sun::QualifiedName& qualifiedName) const;
+  // Generic definition a specialized class was instantiated from
+  const GenericClassInfo* lookupGenericClassOf(
+      const sun::ClassType& specialized) const;
   std::shared_ptr<sun::ClassType> instantiateGenericClass(
       const std::string& baseName, const std::vector<sun::TypePtr>& typeArgs);
+  std::shared_ptr<sun::ClassType> instantiateGenericClass(
+      const GenericClassInfo& genericClassInfo,
+      const std::vector<sun::TypePtr>& typeArgs);
 
   // Generic function support
   // Register a generic function template in current scope

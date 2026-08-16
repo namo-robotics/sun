@@ -2313,22 +2313,7 @@ void SemanticAnalyzer::analyzeMethodWithBindings(
 
     // For specialized classes, look up the generic class to get module path
     if (classType->isSpecialized()) {
-      const std::string& baseGenericName = classType->getBaseGenericName();
-      // The base generic name may be qualified (e.g., "$hash$_sun_Vec").
-      // Generic classes are keyed by base name ("Vec"), so extract it.
-      std::string lookupName = baseGenericName;
-      // Strip module prefix: find last underscore that precedes a letter
-      // e.g., "$hash$_sun_Vec" -> "Vec"
-      for (size_t i = lookupName.size(); i > 0; --i) {
-        if (lookupName[i - 1] == '_' && i < lookupName.size()) {
-          std::string candidate = lookupName.substr(i);
-          if (lookupGenericClass(candidate)) {
-            lookupName = candidate;
-            break;
-          }
-        }
-      }
-      auto* genericInfo = lookupGenericClass(lookupName);
+      auto* genericInfo = lookupGenericClassOf(*classType);
       if (genericInfo && genericInfo->AST) {
         modulePath = genericInfo->AST->getQualifiedName().scopePathString();
       }

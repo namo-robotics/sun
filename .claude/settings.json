@@ -35,7 +35,21 @@
       "Bash(DEBUGINFOD_URLS= timeout * gdb -batch *)",
       "Read(//tmp/**)",
       "Skill(update-config)",
-      "Skill(update-config:*)"
+      "Skill(update-config:*)",
+      "Bash(cat)",
+      "Bash(SUN_PATH=*)",
+      "Bash(DEBUGINFOD_URLS=*)",
+      "Bash(lldb *)",
+      "Bash(cp * tmp/*)",
+      "Bash(./build/sun *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "WebFetch",
+      "Bash(DEBUGINFOD_URLS= timeout 120 lldb --batch -o \"settings set target.disable-aslr false\" -o run -o \"bt 30\" -- ./build/sun --emit-ir tmp/cu3.sun)",
+      "Read(//usr/bin/**)",
+      "Bash(gdb *)",
+      "Bash(DEBUGINFOD_URLS= gdb -batch -ex run -ex bt --args ./build/sun tmp/cu2.sun)",
+      "Bash(./build/tests/sun_tests --gtest_filter=\"AllocatorTest.create_unique*\")"
     ],
     "additionalDirectories": [
       "/tmp",

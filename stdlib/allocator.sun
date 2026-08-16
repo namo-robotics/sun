@@ -30,6 +30,9 @@ module sun {
     // Create a single instance of T, calling its constructor
     // Returns raw_ptr<T> - caller manages lifetime
     function create<T>(args...: _init_args<T>) raw_ptr<T>;
+
+    // Create a single instance of T owned by a Unique<T> (freed on scope exit)
+    function create_unique<T>(args...: _init_args<T>) Unique<T>;
   }
 
   // Default heap allocator using malloc/free
@@ -69,6 +72,12 @@ module sun {
       return memory;
     }
 
+    // Create a single instance of T wrapped in Unique<T>
+    // Preferred over create<T> when the object has a single owner
+    function create_unique<T>(args...: _init_args<T>) Unique<T> {
+      return Unique<T>(this.create<T>(args...));
+    }
+
     // Create a copy of this allocator
     // Since HeapAllocator has no state, this just returns a new instance
     function copy() HeapAllocator {
@@ -80,7 +89,7 @@ module sun {
   // Usage: import "stdlib/allocator.sun"; 
   //        using sun;
   //        var allocator = make_heap_allocator();
-  //        var p = allocator.create<Point>(3, 4);
+  //        var p = allocator.create_unique<Point>(3, 4);
   //        // p.deinit() called automatically at scope exit
   function make_heap_allocator() HeapAllocator {
     return HeapAllocator();

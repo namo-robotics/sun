@@ -93,14 +93,13 @@ sun::TypePtr SemanticAnalyzer::substituteTypeParameters(sun::TypePtr type) {
         if (newArg != arg) changed = true;
       }
       if (changed) {
-        // Need to re-instantiate the generic class with substituted type args
-        std::string baseName = ct->getBaseGenericName();
-        if (baseName.empty()) {
-          // Might be an unresolved generic reference, extract base name from
-          // class name
-          baseName = ct->getMangledName();
+        // Re-instantiate the generic with substituted type args
+        if (auto* info = lookupGenericClassOf(*ct)) {
+          return instantiateGenericClass(*info, newArgs);
         }
-        return instantiateGenericClass(baseName, newArgs);
+        logAndThrowError("Cannot resolve generic class for '" +
+                         ct->getDisplayName() + "'");
+        return type;
       }
     }
     return type;

@@ -390,6 +390,9 @@ struct SemanticScopeBase
 
   // Lookup a generic class by name in the scope chain
   const GenericClassInfo* lookupGenericClass(const std::string& name) const;
+  // Lookup by qualified name: walk to the scope path, then find the base name
+  const GenericClassInfo* lookupGenericClass(
+      const sun::QualifiedName& qualifiedName) const;
 
   // Lookup an interface by name in the scope chain
   std::shared_ptr<sun::InterfaceType> lookupInterface(

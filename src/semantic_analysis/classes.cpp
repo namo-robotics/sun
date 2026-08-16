@@ -1,5 +1,7 @@
 // semantic_analysis/classes.cpp — Class and generic class support
 
+#include <algorithm>
+
 #include "error.h"
 #include "packed_layout.h"
 #include "semantic_analyzer.h"
@@ -102,6 +104,16 @@ const GenericClassInfo* SemanticAnalyzer::lookupGenericClass(
   return currentScope->lookupGenericClass(name);
 }
 
+const GenericClassInfo* SemanticAnalyzer::lookupGenericClass(
+    const sun::QualifiedName& qualifiedName) const {
+  return currentScope->lookupGenericClass(qualifiedName);
+}
+
+const GenericClassInfo* SemanticAnalyzer::lookupGenericClassOf(
+    const sun::ClassType& specialized) const {
+  return lookupGenericClass(specialized.getGenericQualifiedName());
+}
+
 void SemanticAnalyzer::addTypeParameterBindings(
     const std::vector<std::string>& params,
     const std::vector<sun::TypePtr>& args) {
@@ -137,14 +149,18 @@ sun::TypePtr SemanticAnalyzer::findTypeAlias(const std::string& name) const {
 // Instantiate a generic class with specific type arguments
 std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
     const std::string& baseName, const std::vector<sun::TypePtr>& typeArgs) {
-  // Look up the generic class definition first
   auto* genericClassInfo = lookupGenericClass(baseName);
-
-  // Look up the generic class definition
   if (!genericClassInfo || !genericClassInfo->AST) {
     llvm::errs() << "Error: Unknown generic class '" << baseName << "'\n";
     return nullptr;
   }
+  return instantiateGenericClass(*genericClassInfo, typeArgs);
+}
+
+std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
+    const GenericClassInfo& info, const std::vector<sun::TypePtr>& typeArgs) {
+  const GenericClassInfo* genericClassInfo = &info;
+  const std::string& baseName = info.qualifiedName.baseName;
 
   // Verify type argument count matches
   if (typeArgs.size() != genericClassInfo->typeParameters.size()) {
@@ -211,6 +227,7 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
       specializedClass = typeRegistry->getSpecializedClass(
           genericClassInfo->qualifiedName.mangled(), typeArgs);
       specializedClass->setQualifiedName(specializedQName);
+      specializedClass->setGenericQualifiedName(genericClassInfo->qualifiedName);
     }
 
     // Register the specialized class so methods can reference it
@@ -697,8 +714,7 @@ FunctionAST* SemanticAnalyzer::findGenericMethodAST(
   // For specialized classes, look up the method from the SPECIALIZED class AST
   // (not the base generic class), because that's what codegen will iterate over
   if (classType->isSpecialized()) {
-    const std::string& baseName = classType->getBaseGenericName();
-    auto* genericInfo = lookupGenericClass(baseName);
+    auto* genericInfo = lookupGenericClassOf(*classType);
     if (genericInfo && genericInfo->AST) {
       auto specAST =
           genericInfo->AST->getSpecialization(classType->getMangledName());
@@ -729,6 +745,18 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
     const std::vector<sun::TypePtr>& methodTypeArgs,
     const std::optional<std::vector<sun::TypePtr>>& variadicArgTypes) {
   if (!classType || methodName.empty() || methodTypeArgs.empty()) {
+    return nullptr;
+  }
+
+  // Inside a generic template body (analyzed with T bound to itself), the type
+  // args are still type parameters; a real specialization is created when the
+  // enclosing generic is instantiated with concrete types.
+  auto isTypeParam = [](const sun::TypePtr& t) {
+    return t && t->isTypeParameter();
+  };
+  if (std::any_of(methodTypeArgs.begin(), methodTypeArgs.end(), isTypeParam) ||
+      (variadicArgTypes && std::any_of(variadicArgTypes->begin(),
+                                       variadicArgTypes->end(), isTypeParam))) {
     return nullptr;
   }
 
@@ -789,8 +817,7 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
 
   // Collect class-level type parameter bindings for specialized generic classes
   if (classType->isSpecialized()) {
-    const std::string& baseName = classType->getBaseGenericName();
-    auto* genericInfo = lookupGenericClass(baseName);
+    auto* genericInfo = lookupGenericClassOf(*classType);
     if (genericInfo) {
       const auto& classTypeParams = genericInfo->typeParameters;
       const auto& classTypeArgs = classType->getTypeArguments();
@@ -902,8 +929,7 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   std::vector<std::string> modulePath;
   int moduleScopesEntered = 0;
   if (classType->isSpecialized()) {
-    const std::string& baseName = classType->getBaseGenericName();
-    auto* genericInfo = lookupGenericClass(baseName);
+    auto* genericInfo = lookupGenericClassOf(*classType);
     if (genericInfo && !genericInfo->qualifiedName.scopePath.empty()) {
       modulePath = genericInfo->qualifiedName.scopePath;
     }
