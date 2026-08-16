@@ -212,8 +212,10 @@ if(PROTOBUF_STATIC_LIB AND PROTOC_STATIC_LIB)
     target_include_directories(sun_lib PUBLIC ${Protobuf_INCLUDE_DIRS})
     target_link_libraries(sun_lib PUBLIC LLVM ${PROTOC_STATIC_LIB} ${PROTOBUF_STATIC_LIB} Threads::Threads)
 else()
-    message(WARNING "Static protobuf archives not found; linking shared libprotobuf/libprotoc")
-    target_link_libraries(sun_lib PUBLIC LLVM protobuf::libprotobuf protobuf::libprotoc)
+    # libprotoc-dev provides both the headers (compiler/importer.h) and the
+    # static archives; without it neither the static nor the shared link works
+    message(FATAL_ERROR "libprotoc static archive not found: install libprotoc-dev "
+                        "(alongside libprotobuf-dev) to build the compiler")
 endif()
 
 # Ensure the library uses the same definitions/includes as LLVM

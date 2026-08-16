@@ -42,7 +42,8 @@ jobs:
             debhelper \
             build-essential \
             protobuf-compiler \
-            libprotobuf-dev
+            libprotobuf-dev \
+            libprotoc-dev
 
       - name: Set up ccache
         uses: hendrikmuhs/ccache-action@v1.2.23
