@@ -6,6 +6,7 @@
 #include <sstream>
 #include <string>
 
+#include "error.h"
 #include "execution_utils.h"
 
 // ============================================================================
@@ -62,6 +63,39 @@ TEST(GenericClass, generic_class_with_constructor) {
     }
   )");
   EXPECT_EQ(value, 0);
+}
+
+// A generic constructor call is resolved against the specialization's init
+// overloads like any other class; a mismatch must be a compile error, not a
+// silently skipped constructor.
+TEST(GenericClass, generic_constructor_wrong_argument_count) {
+  EXPECT_THROW(executeString(R"(
+    class Wrapper<T> {
+      var value: T;
+      function init(v: T) { this.value = v; }
+    }
+
+    function main() i32 {
+        var w = Wrapper<i32>();
+        return 0;
+    }
+  )"),
+               SunError);
+}
+
+TEST(GenericClass, generic_constructor_wrong_argument_type) {
+  EXPECT_THROW(executeString(R"(
+    class Wrapper<T> {
+      var value: T;
+      function init(v: T) { this.value = v; }
+    }
+
+    function main() i32 {
+        var w = Wrapper<i32>(true);
+        return 0;
+    }
+  )"),
+               SunError);
 }
 
 // ============================================================================
@@ -334,7 +368,7 @@ TEST(GenericClass, generic_with_bool) {
     }
 
     function main() i32 {
-        var f = Flag<bool>(1);
+        var f = Flag<bool>(true);
         var result = f.get();
         if (result) {
           return 1;
