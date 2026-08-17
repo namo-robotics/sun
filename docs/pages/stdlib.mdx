@@ -173,6 +173,7 @@ s.append_char(33);         // Append '!'
 |--------|-----------|-------------|
 | `length()` | `() i64` | Current string length |
 | `capacity()` | `() i64` | Allocated capacity |
+| `isEmpty()` | `() bool` | True when the string has no bytes |
 | `at(i)` | `(i64) u8` | Get byte at index |
 | `set_at(i, val)` | `(i64, u8) void` | Set byte at index |
 | `append_char(ch)` | `(u8) void` | Append a single byte |
@@ -182,11 +183,41 @@ s.append_char(33);         // Append '!'
 | `find_char(ch)` | `(u8) Option<i64>` | Index of first occurrence; `None` if absent |
 | `rfind_char(ch)` | `(u8) Option<i64>` | Index of last occurrence; `None` if absent |
 | `contains_char(ch)` | `(u8) bool` | Check if the byte occurs |
+| `find(needle)` | `(static_ptr<u8>) Option<i64>`, `(ref String) Option<i64>` | Index of first occurrence of a substring; `None` if absent |
+| `contains(needle)` | `(static_ptr<u8>) bool`, `(ref String) bool` | Check if the substring occurs |
+| `starts_with(s)` / `ends_with(s)` | `(static_ptr<u8>) bool`, `(ref String) bool` | Prefix / suffix check |
 | `append_i64(n)` / `append_u64(n)` | `(i64) void` | Append an integer in decimal |
 | `append_f64(x)` | `(f64) void` | Append a float in its shortest round-trip form (`0.1`, `1e+21`) |
 | `append(x)` | `(f64) void`, `(f32) void`, ... | Overloads used by `${x}` interpolation for every primitive |
 | `parse_i64()` | `() Option<i64>` | Whole string as a decimal integer; `None` if malformed or out of range |
 | `parse_f64()` | `() Option<f64>` | Whole string as a decimal float; `None` if malformed |
+
+### Text Manipulation
+
+Methods that keep the same bytes, or fewer, edit the string in place. Methods
+that produce new strings take the allocator to build them with.
+
+```sun
+var line = String(allocator, "  name = Ada  ");
+line.trim();                              // "name = Ada"
+line.replace(" = ", "=");                 // "name=Ada"
+line.to_upper();                          // "NAME=ADA"
+
+var fields = line.split(allocator, 61);   // ['=' is 61] -> ["NAME", "ADA"]
+var again = join(allocator, fields, "=");  // "NAME=ADA"
+```
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `to_lower()` / `to_upper()` | `() void` | Convert ASCII letters in place |
+| `trim()` | `() void` | Drop leading and trailing ASCII whitespace in place |
+| `trim_start()` / `trim_end()` | `() void` | Drop whitespace from one end in place |
+| `reverse()` | `() void` | Reverse the bytes in place |
+| `replace(from, to)` | `(static_ptr<u8>, static_ptr<u8>) void`, `(ref String, ref String) void` | Replace every occurrence in place; an empty `from` does nothing |
+| `clone(alloc)` | `(ref HeapAllocator) String` | Copy into a new String |
+| `substr(alloc, start, count)` | `(ref HeapAllocator, i64, i64) String, IError` | Copy a byte range; throws if it falls outside the string |
+| `split(alloc, sep)` | `(ref HeapAllocator, u8) Vec<String>`, `(ref HeapAllocator, static_ptr<u8>) Vec<String>` | Split into owned pieces; always yields one piece more than there are separators |
+| `join(alloc, parts, sep)` | `(ref HeapAllocator, ref Vec<String>, static_ptr<u8>) String` | Free function: concatenate pieces with a separator between them |
 
 ### Slicing
 

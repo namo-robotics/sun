@@ -643,6 +643,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
           }
         }
       }
+      coerceBinaryLiteralOperands(binExpr, expectedType);
       expr.setResolvedType(inferType(expr));
       break;
     }

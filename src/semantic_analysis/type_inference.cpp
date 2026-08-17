@@ -261,10 +261,15 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
         case TokenKind::NOT_EQUAL:
           return sun::Types::Bool();
         default: {
-          // Arithmetic operators - return LHS type
-          // Unwrap references - refs behave like values
-          sun::TypePtr lhsType = unwrapRef(inferType(*binExpr.getLHS()));
-          return lhsType;
+          // Arithmetic operators - the operands' promoted type, matching the
+          // widening codegen applies. Refs behave like values.
+          // A literal analysis already retyped from context keeps that type.
+          auto operandType = [this](const ExprAST& operand) {
+            auto resolved = operand.getResolvedType();
+            return resolved ? resolved : inferType(operand);
+          };
+          return promoteBinaryOperands(operandType(*binExpr.getLHS()),
+                                       operandType(*binExpr.getRHS()));
         }
       }
     }

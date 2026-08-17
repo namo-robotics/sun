@@ -572,3 +572,81 @@ TEST(ArithmeticOps, quotient_remainder_identity) {
     )");
   EXPECT_EQ(value, 10);  // Verifies q*b + r = a
 }
+// ============================================================================
+// Untyped literal operands take the other operand's type
+// ============================================================================
+
+TEST(ArithmeticOps, narrow_int_plus_literal_stays_narrow) {
+  auto value = executeString(R"(
+      function to_i32(x: u8) i32 { return _convert<i32>(x); }
+
+      function main() i32 {
+          var c: u8 = 65;
+          // The literal adopts u8, so the argument matches the u8 parameter
+          return to_i32(c + 32);
+      }
+    )");
+  EXPECT_EQ(value, 97);
+}
+
+TEST(ArithmeticOps, narrow_int_literal_arithmetic_wraps) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var c: u8 = 200;
+          var sum: u8 = c + 100;  // wraps at 8 bits
+          var shifted: u8 = c << 1;
+          var masked: u8 = c & 15;
+          return _convert<i32>(sum) + _convert<i32>(shifted) + _convert<i32>(masked);
+      }
+    )");
+  EXPECT_EQ(value, 44 + 144 + 8);
+}
+
+TEST(ArithmeticOps, shift_amount_literal_does_not_narrow_result) {
+  auto value = executeString(R"(
+      function main() i64 {
+          var bits: u8 = 40;
+          var mask: i64 = 1 << bits;  // result follows the i64 left operand
+          return mask;
+      }
+    )");
+  EXPECT_EQ(value, static_cast<int64_t>(1) << 40);
+}
+
+TEST(ArithmeticOps, f32_plus_literal_stays_f32) {
+  auto value = executeString(R"(
+      function to_i32(x: f32) i32 { return _convert<i32>(x); }
+
+      function main() i32 {
+          var f: f32 = 1.5;
+          return to_i32(f * 2.0);
+      }
+    )");
+  EXPECT_EQ(value, 3);
+}
+
+TEST(ArithmeticOps, mixed_width_operands_promote_to_wider) {
+  auto value = executeString(R"(
+      function to_i32(x: i64) i32 { return _convert<i32>(x); }
+
+      function main() i32 {
+          var a: i32 = 1000000;
+          var b: i64 = 1000000;
+          // i32 + i64 is i64, which the i64 parameter accepts
+          return to_i32(a * b / b);
+      }
+    )");
+  EXPECT_EQ(value, 1000000);
+}
+
+TEST(ArithmeticOps, literal_too_wide_for_operand_is_error) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      function takes_u8(x: u8) i32 { return _convert<i32>(x); }
+
+      function main() i32 {
+          var c: u8 = 200;
+          return takes_u8(c + 1000);
+      }
+    )"),
+                                "No matching overload of 'takes_u8'");
+}

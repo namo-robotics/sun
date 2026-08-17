@@ -13,14 +13,26 @@
 //   println(s.length());  // 5
 //   var ch = s.at(0);         // 'H' (72)
 //   s.append_char(33);        // Append '!'
-//   
+//
 //   // Slicing returns a view (no copy)
 //   var view = s[1:4];        // "ell"
+//
+//   // Text manipulation edits in place where the bytes allow it; methods that
+//   // build new strings (clone, substr, split) take the allocator to use.
+//   s.trim();
+//   s.to_lower();
+//   s.replace("hello", "goodbye");
+//   var words = s.split(allocator, 32);   // on ' '
 
 public module sun {
   // libc number formatting/parsing used by append_f64 / parse_f64
   extern "C" function snprintf(buf: raw_ptr<u8>, n: i64, fmt: raw_ptr<u8>, ...) i32;
   extern "C" function strtod(s: raw_ptr<u8>, end: raw_ptr<u8>) f64;
+
+  // Space, tab, newline, carriage return, vertical tab, form feed
+  function ascii_is_space(ch: u8) bool {
+    return ch == 32 or (ch >= 9 and ch <= 13);
+  }
 
   // Non-owning view into a String
   // Provides read-only access to a substring without copying
@@ -119,6 +131,11 @@ public module sun {
     // Get allocated capacity
     public function capacity() i64 {
       return this.capacity_;
+    }
+
+    // Check if the string has no bytes
+    public function isEmpty() bool {
+      return this.len == 0;
     }
 
     // Get byte at index (no bounds checking)
@@ -389,6 +406,81 @@ public module sun {
       return true;
     }
 
+    // Check if string starts with another string
+    public function starts_with(other: ref String) bool {
+      if (other.len > this.len) {
+        return false;
+      }
+      for (var i: i64 = 0; i < other.len; i = i + 1) {
+        if (this.data.get_unchecked(i) != other.data.get_unchecked(i)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    // Check if string ends with another string
+    public function ends_with(other: ref String) bool {
+      if (other.len > this.len) {
+        return false;
+      }
+      var offset: i64 = this.len - other.len;
+      for (var i: i64 = 0; i < other.len; i = i + 1) {
+        if (this.data.get_unchecked(offset + i) != other.data.get_unchecked(i)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    // Helper: first index at or after `start` where `needle` occurs
+    function find_bytes(needle: raw_ptr<u8>, needle_len: i64, start: i64) Option<i64> {
+      if (needle_len == 0) {
+        return Option.Some(start);
+      }
+      var last: i64 = this.len - needle_len;
+      for (var i: i64 = start; i <= last; i = i + 1) {
+        var matched: bool = true;
+        for (var j: i64 = 0; j < needle_len; j = j + 1) {
+          var b: u8 = unsafe { _load<u8>(needle, j); };
+          if (this.data.get_unchecked(i + j) != b) {
+            matched = false;
+            break;
+          }
+        }
+        if (matched) {
+          return Option.Some(i);
+        }
+      }
+      return Option.None;
+    }
+
+    // Find first occurrence of a literal; None if not found
+    public function find(needle: static_ptr<u8>) Option<i64> {
+      return this.find_bytes(_static_ptr_data<u8>(needle), _static_ptr_len<u8>(needle), 0);
+    }
+
+    // Find first occurrence of another string; None if not found
+    public function find(needle: ref String) Option<i64> {
+      return this.find_bytes(needle.data.rawData(), needle.len, 0);
+    }
+
+    // Check if string contains a literal
+    public function contains(needle: static_ptr<u8>) bool {
+      return match this.find(needle) {
+        Option.Some(i) => true,
+        Option.None => false
+      };
+    }
+
+    // Check if string contains another string
+    public function contains(needle: ref String) bool {
+      return match this.find(needle) {
+        Option.Some(i) => true,
+        Option.None => false
+      };
+    }
+
     // Compare with another string: -1 if less, 0 if equal, 1 if greater
     public function compare(other: ref String) i64 {
       var min_len: i64 = this.len;
@@ -439,6 +531,190 @@ public module sun {
         left = left + 1;
         right = right - 1;
       }
+    }
+
+    // Lowercase ASCII letters in-place; other bytes are left alone
+    public function to_lower() void {
+      for (var i: i64 = 0; i < this.len; i = i + 1) {
+        var ch: u8 = this.data.get_unchecked(i);
+        // 'A'..'Z'
+        if (ch >= 65 and ch <= 90) {
+          this.data.set_unchecked(i, ch + 32);
+        }
+      }
+    }
+
+    // Uppercase ASCII letters in-place; other bytes are left alone
+    public function to_upper() void {
+      for (var i: i64 = 0; i < this.len; i = i + 1) {
+        var ch: u8 = this.data.get_unchecked(i);
+        // 'a'..'z'
+        if (ch >= 97 and ch <= 122) {
+          this.data.set_unchecked(i, ch - 32);
+        }
+      }
+    }
+
+    // Drop leading ASCII whitespace in-place
+    public function trim_start() void {
+      var start: i64 = 0;
+      while (start < this.len and ascii_is_space(this.data.get_unchecked(start))) {
+        start = start + 1;
+      }
+      if (start == 0) {
+        return;
+      }
+      var new_len: i64 = this.len - start;
+      for (var i: i64 = 0; i < new_len; i = i + 1) {
+        this.data.set_unchecked(i, this.data.get_unchecked(start + i));
+      }
+      this.len = new_len;
+    }
+
+    // Drop trailing ASCII whitespace in-place
+    public function trim_end() void {
+      while (this.len > 0 and ascii_is_space(this.data.get_unchecked(this.len - 1))) {
+        this.len = this.len - 1;
+      }
+    }
+
+    // Drop leading and trailing ASCII whitespace in-place
+    public function trim() void {
+      this.trim_end();
+      this.trim_start();
+    }
+
+    // Helper: replace `count` bytes at `index` with `repl_len` bytes from
+    // `repl`, shifting the tail to fit
+    function splice_bytes(index: i64, count: i64, repl: raw_ptr<u8>, repl_len: i64) void {
+      var delta: i64 = repl_len - count;
+      if (delta > 0) {
+        this.ensure_capacity(delta);
+        // Shift the tail right, back to front, so bytes are not overwritten
+        var i: i64 = this.len - 1;
+        while (i >= index + count) {
+          this.data.set_unchecked(i + delta, this.data.get_unchecked(i));
+          i = i - 1;
+        }
+      } else if (delta < 0) {
+        for (var i: i64 = index + count; i < this.len; i = i + 1) {
+          this.data.set_unchecked(i + delta, this.data.get_unchecked(i));
+        }
+      }
+      for (var j: i64 = 0; j < repl_len; j = j + 1) {
+        var b: u8 = unsafe { _load<u8>(repl, j); };
+        this.data.set_unchecked(index + j, b);
+      }
+      this.len = this.len + delta;
+    }
+
+    // Helper: replace every occurrence of one byte run with another
+    function replace_bytes(from: raw_ptr<u8>, from_len: i64, to: raw_ptr<u8>, to_len: i64) void {
+      if (from_len == 0) {
+        return;
+      }
+      var pos: i64 = 0;
+      var searching: bool = true;
+      while (searching) {
+        match this.find_bytes(from, from_len, pos) {
+          Option.Some(i) => {
+            this.splice_bytes(i, from_len, to, to_len);
+            pos = i + to_len;
+          },
+          Option.None => {
+            searching = false;
+          }
+        };
+      }
+    }
+
+    // Replace every occurrence of a literal with another literal, in-place
+    public function replace(from: static_ptr<u8>, to: static_ptr<u8>) void {
+      this.replace_bytes(
+        _static_ptr_data<u8>(from),
+        _static_ptr_len<u8>(from),
+        _static_ptr_data<u8>(to),
+        _static_ptr_len<u8>(to)
+      );
+    }
+
+    // Replace every occurrence of a string with another string, in-place
+    public function replace(from: ref String, to: ref String) void {
+      this.replace_bytes(from.data.rawData(), from.len, to.data.rawData(), to.len);
+    }
+
+    // ========================================================================
+    // Copying Methods
+    // ========================================================================
+
+    // Copy `count` bytes starting at `start` into a new string
+    function copy_range(alloc: ref HeapAllocator, start: i64, count: i64) String {
+      var out: String = String(alloc, "");
+      out.ensure_capacity(count);
+      for (var i: i64 = 0; i < count; i = i + 1) {
+        out.append_char(this.data.get_unchecked(start + i));
+      }
+      return out;
+    }
+
+    // Copy this string into a new one
+    public function clone(alloc: ref HeapAllocator) String {
+      return this.copy_range(alloc, 0, this.len);
+    }
+
+    // Copy `count` bytes starting at `start` into a new string
+    // Throws IndexOutOfBoundsError if the range falls outside the string
+    public function substr(alloc: ref HeapAllocator, start: i64, count: i64) String, IError {
+      if (start < 0 or count < 0) {
+        throw IndexOutOfBoundsError(start);
+      }
+      if (start + count > this.len) {
+        throw IndexOutOfBoundsError(start + count);
+      }
+      return this.copy_range(alloc, start, count);
+    }
+
+    // Split on a separator byte into owned strings.
+    // Adjacent separators produce empty pieces, so the result always holds
+    // one more piece than there are separators.
+    public function split(alloc: ref HeapAllocator, sep: u8) Vec<String> {
+      var parts: Vec<String> = Vec<String>(alloc, 4);
+      var start: i64 = 0;
+      for (var i: i64 = 0; i < this.len; i = i + 1) {
+        if (this.data.get_unchecked(i) == sep) {
+          parts.push(this.copy_range(alloc, start, i - start));
+          start = i + 1;
+        }
+      }
+      parts.push(this.copy_range(alloc, start, this.len - start));
+      return parts;
+    }
+
+    // Split on a separator string into owned strings.
+    // An empty separator yields the whole string as a single piece.
+    public function split(alloc: ref HeapAllocator, sep: static_ptr<u8>) Vec<String> {
+      var sep_data: raw_ptr<u8> = _static_ptr_data<u8>(sep);
+      var sep_len: i64 = _static_ptr_len<u8>(sep);
+      var parts: Vec<String> = Vec<String>(alloc, 4);
+      if (sep_len == 0) {
+        parts.push(this.clone(alloc));
+        return parts;
+      }
+      var start: i64 = 0;
+      var searching: bool = true;
+      while (searching) {
+        match this.find_bytes(sep_data, sep_len, start) {
+          Option.Some(i) => {
+            parts.push(this.copy_range(alloc, start, i - start));
+            start = i + sep_len;
+          },
+          Option.None => {
+            searching = false;
+          }
+        };
+      }
+      parts.push(this.copy_range(alloc, start, this.len - start));
+      return parts;
     }
 
     // ========================================================================
@@ -723,5 +999,23 @@ public module sun {
       var matView: MatrixView<u8> = MatrixView<u8>(this.data.rawData(), start, new_shape, strides);
       return StringView(matView);
     }
+  }
+
+  // ============================================================================
+  // Precompiled Specializations
+  // ============================================================================
+
+  public declare Vec_String = Vec<String>;
+
+  // Concatenate strings with a separator between them
+  public function join(alloc: ref HeapAllocator, parts: ref Vec<String>, sep: static_ptr<u8>) String {
+    var out: String = String(alloc, "");
+    for (var i: i64 = 0; i < parts.size(); i = i + 1) {
+      if (i > 0) {
+        out.append_literal(sep);
+      }
+      out.append(parts.borrow_unchecked(i));
+    }
+    return out;
   }
 }  // module sun

@@ -365,6 +365,18 @@ class SemanticAnalyzer : public AccessContext {
   static bool tryCoerceIntegerLiteral(ExprAST* expr, sun::TypePtr targetType,
                                       bool throwOnFail = false);
 
+  // Give an untyped numeric literal operand of a binary expression its type
+  // from context: the surrounding expected type if there is one, otherwise the
+  // other operand's type. Without this `u8_var + 32` would promote to the
+  // literal's default i32.
+  static void coerceBinaryLiteralOperands(const BinaryExprAST& binExpr,
+                                          const sun::TypePtr& expectedType);
+
+  // The type an arithmetic/bitwise/shift binary expression produces: the wider
+  // of the two operand types, mirroring codegen's operand unification.
+  static sun::TypePtr promoteBinaryOperands(const sun::TypePtr& lhsType,
+                                            const sun::TypePtr& rhsType);
+
   // Unify the branch types of a ternary expression: exact match, or the
   // wider type when one side widens to the other (never narrows f64 to f32).
   // Throws a compile error when the types are incompatible.

@@ -228,7 +228,12 @@ Value* CodegenVisitor::codegen(const NumberExprAST& expr) {
     }
     return ConstantInt::get(Type::getInt64Ty(ctx.getContext()), val);
   }
-  // Floating point literal -> f64
+  // Floating point literal -> f64 unless context typed it f32
+  auto resolvedType = expr.getResolvedType();
+  if (resolvedType && resolvedType->isFloat32()) {
+    return ConstantFP::get(Type::getFloatTy(ctx.getContext()),
+                           expr.getFloatVal());
+  }
   return ConstantFP::get(ctx.getContext(), APFloat(expr.getFloatVal()));
 }
 
