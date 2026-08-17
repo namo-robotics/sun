@@ -101,6 +101,7 @@ void SemanticAnalyzer::registerEnum(const std::string& name,
 
 void SemanticAnalyzer::registerGenericEnum(const std::string& name,
                                            GenericEnumInfo info) {
+  info.definitionScope = currentScope->shared_from_this();
   currentScope->genericEnums[name] = std::move(info);
 }
 
@@ -258,24 +259,27 @@ std::shared_ptr<sun::EnumType> SemanticAnalyzer::instantiateGenericEnum(
       genericInfo->qualifiedName.scopePath, mangledName,
       genericInfo->qualifiedName.modulePath));
 
-  // Payload annotations resolve in the enum's own module context
-  AccessContextGuard accessGuard(*this, genericInfo->qualifiedName.owner());
-  enterTypeParamScope(genericInfo->typeParameters, typeArgs);
-  for (const auto& variant : genericInfo->AST->getVariants()) {
-    specialized->addVariant(variant.name, variant.value);
-    if (!variant.hasPayload()) continue;
-    std::vector<sun::TypePtr> payloadTypes;
-    for (const auto& annot : variant.payloadTypes) {
-      auto payloadType = typeAnnotationToType(annot);
-      payloadType = substituteTypeParameters(payloadType);
-      validateEnumPayloadType(payloadType, specialized, variant.name,
-                              variant.location);
-      payloadTypes.push_back(std::move(payloadType));
+  {
+    // Payload annotations resolve in the enum's definition scope; the result
+    // is registered in the requesting scope below
+    ScopeSwitchGuard definitionScope(*this, definitionScopeOf(*genericInfo));
+    enterTypeParamScope(genericInfo->typeParameters, typeArgs);
+    for (const auto& variant : genericInfo->AST->getVariants()) {
+      specialized->addVariant(variant.name, variant.value);
+      if (!variant.hasPayload()) continue;
+      std::vector<sun::TypePtr> payloadTypes;
+      for (const auto& annot : variant.payloadTypes) {
+        auto payloadType = typeAnnotationToType(annot);
+        payloadType = substituteTypeParameters(payloadType);
+        validateEnumPayloadType(payloadType, specialized, variant.name,
+                                variant.location);
+        payloadTypes.push_back(std::move(payloadType));
+      }
+      specialized->setVariantPayloadTypes(variant.name,
+                                          std::move(payloadTypes));
     }
-    specialized->setVariantPayloadTypes(variant.name,
-                                        std::move(payloadTypes));
+    exitScope();
   }
-  exitScope();
 
   registerEnum(mangledName, specialized);
   // Record on the template AST (mirrors generic classes); codegen walks

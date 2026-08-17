@@ -39,11 +39,15 @@ tests/            # GoogleTest suites (test_*.cpp) + programs/
 - **Pointers**: `raw_ptr<T>` (bare pointer), `static_ptr<T>` (`{ ptr, i64 }` for literals).
 - **Error unions**: functions declared with `, IError` suffix; implemented with native LLVM exceptions (a throwing function returns plain `T` and may unwind).
 
+## Generics
+
+- Templates record their `definitionScope` at registration; `instantiateGeneric{Class,Method,Function,Interface,Enum}` switch `currentScope` to it before analyzing the body, so bodies resolve names as written at the definition site (never the requester's locals/imports). The specialized type is registered back in the requesting scope only as a lookup fast path.
+
 ## Visibility
 
 - Private by default; `public` is the only modifier (there is no `private` keyword). Applies to module-level items (functions, classes, interfaces, enums, globals, extern/declare, nested modules) and class/interface members.
 - Privacy is **module-scoped**: a private item is reachable from its declaring module and that module's children. Root-level (module-less) items are reachable everywhere. `deinit` is always callable; `init` follows the normal rules.
-- Records carry `Visibility` plus a `QualifiedName` whose `owner()` (`modulePath`) is the declaring module. Enforced in semantic analysis: module items inside the scope lookups (`AccessFilter`, `semantic_scope.h`), members via `accessibleField/accessibleMethod`; one predicate `sun::access::isAccessible` (`include/visibility.h`, `include/access_checker.h`). Generic instantiation pushes the generic's owner module with `AccessContextGuard`.
+- Records carry `Visibility` plus a `QualifiedName` whose `owner()` (`modulePath`) is the declaring module. Enforced in semantic analysis: module items inside the scope lookups (`AccessFilter`, `semantic_scope.h`), members via `accessibleField/accessibleMethod`; one predicate `sun::access::isAccessible` (`include/visibility.h`, `include/access_checker.h`). Generic bodies are analyzed inside their template's `definitionScope` (`ScopeSwitchGuard`), so the scope stack answers "which module is asking".
 - `.moon` bundles carry private items (generic bodies need them) but hide them from importers; every top-level module of a bundle must be `public`.
 
 ## Ownership: No Implicit Copies
@@ -103,14 +107,15 @@ Module tests require `SUN_PATH` env var pointing to workspace root.
 
 ## Conventions
 
-- Namespace: `sun::` for type system classes.
 - Errors: `logError()` / `logAndThrowError()` for compilation errors.
 - Lambdas use closure structs; named functions use direct calls. Class methods use the closure ABI: arg 0 is a ptr to `{ ptr func, ptr env }` with the receiver in `env`; `obj.method` in value position is a lambda-typed bound method `{ methodFn, objPtr }`.
-- Never `cd` out of workspace root. 
-- Absotely NEVER use `git` commands except for `git diff`.
+- Run call commands from the workspace root.
+- Do not use `git` commands except for `git diff`.
 - Run all commands from the workspace folder.
 - Create any temp files in ${workspaceRoot}/tmp
-- Keep code comments concise and minimal
+- Keep code comments concise and minimal.
+- Sun minimizes and discourages alternative syntaxes that do the same thing.
+- Use plain english with minimal jargon.
 
 # Build
 

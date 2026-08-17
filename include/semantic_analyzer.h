@@ -85,7 +85,6 @@ class SemanticAnalyzer : public AccessContext {
     const GenericClassInfo* genericInfo;
     std::vector<sun::TypePtr> typeArgs;
     std::shared_ptr<ClassDefinitionAST> specializedAST;  // bodies unanalyzed
-    SemanticScope* requestScope;
   };
   std::vector<DeferredSpecialization> deferredSpecializations_;
   void analyzeDeferredSpecializations();
@@ -618,18 +617,37 @@ class SemanticAnalyzer : public AccessContext {
   // Module-level items are filtered inside the scope lookups (AccessFilter in
   // semantic_scope.h) via the AccessContext this analyzer implements; class
   // and interface members are checked where they are resolved on the type.
-  //
-  // The module context of the code being analyzed. Normally derived from the
-  // scope stack (nearest Module scope); generic instantiation analyzes bodies
-  // away from their defining module, so those paths push the owner
-  // explicitly with AccessContextGuard.
-  std::vector<sun::ModulePath> accessContextStack_;
+  // "Which module is asking" is always the nearest Module scope on the stack:
+  // generic bodies are analyzed inside their definition scope (see
+  // ScopeSwitchGuard), so no override is needed.
 
   // Locations of the expressions being analyzed (innermost last), so denials
   // raised inside lookups can still point at source.
   std::vector<const Position*> locationStack_;
 
  public:
+  // Make `target` the current scope for the enclosed block (restored on
+  // exit, including by exception). Generic instantiation uses it to analyze
+  // a template's body in the scope the template was declared in.
+  struct ScopeSwitchGuard {
+    SemanticAnalyzer& sema;
+    SemanticScope* saved;
+    ScopeSwitchGuard(SemanticAnalyzer& s, SemanticScope* target)
+        : sema(s), saved(s.currentScope) {
+      if (target) sema.currentScope = target;
+    }
+    ~ScopeSwitchGuard() { sema.currentScope = saved; }
+    ScopeSwitchGuard(const ScopeSwitchGuard&) = delete;
+    ScopeSwitchGuard& operator=(const ScopeSwitchGuard&) = delete;
+  };
+  // The scope a generic template was declared in (nullptr if unknown, in
+  // which case ScopeSwitchGuard keeps the current scope).
+  template <typename GenericInfo>
+  static SemanticScope* definitionScopeOf(const GenericInfo& info) {
+    return info.definitionScope.lock().get();
+  }
+  SemanticScope* classDefinitionScope(const sun::ClassType& classType) const;
+
   struct LocationGuard {
     SemanticAnalyzer& sema;
     LocationGuard(SemanticAnalyzer& s, const Position& loc) : sema(s) {
@@ -648,19 +666,6 @@ class SemanticAnalyzer : public AccessContext {
   sun::ModulePath currentModulePath() const override;
   [[noreturn]] void denyAccess(
       const sun::access::ItemRef& item) const override;
-  // Analyze the enclosed block as if it were inside module `owner`. Generic
-  // bodies are instantiated at their first use, outside their own module;
-  // this keeps their module-private dependencies reachable.
-  struct AccessContextGuard {
-    SemanticAnalyzer& sema;
-    AccessContextGuard(SemanticAnalyzer& s, sun::ModulePath owner) : sema(s) {
-      sema.accessContextStack_.push_back(std::move(owner));
-    }
-    ~AccessContextGuard() { sema.accessContextStack_.pop_back(); }
-    AccessContextGuard(const AccessContextGuard&) = delete;
-    AccessContextGuard& operator=(const AccessContextGuard&) = delete;
-  };
-
   // `deinit` is compiler-invoked and therefore always public.
   static sun::Visibility methodVisibility(const FunctionAST& method);
 

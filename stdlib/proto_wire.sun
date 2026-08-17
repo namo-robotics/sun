@@ -157,7 +157,7 @@ public module sun {
 
   public class ProtoReader {
     var data: raw_ptr<u8>;
-    var len: i64;    // current limit (end of the message being decoded)
+    var len: i64;  // current limit (end of the message being decoded)
     var pos: i64;
 
     public function init(buf: ref Vec<u8>) {
@@ -373,6 +373,4 @@ public module sun {
   public function proto_tag_wire_type(tag: u64) i64 {
     return _convert<i64>(tag & 7);
   }
-
-
 }  // module sun

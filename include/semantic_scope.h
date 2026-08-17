@@ -259,13 +259,17 @@ struct SymbolMatch {
   }
 };
 
+// Generic templates record the scope they were declared in
+// (`definitionScope`, weak to avoid cycles; scopes are never freed). Their
+// bodies are analyzed inside that scope, wherever the instantiation is
+// requested from, so name resolution and access control come from the scope
+// stack. Set by the register* functions.
+
 // Information about a generic class definition (template)
 struct GenericClassInfo {
   const ClassDefinitionAST* AST;                     // Original AST node
   std::vector<std::string> typeParameters;           // ["T", "U", etc.]
-  std::weak_ptr<SemanticScopeBase> definitionScope;  // Scope where generic was
-                                                     // defined (weak to avoid
-                                                     // circular refs)
+  std::weak_ptr<SemanticScopeBase> definitionScope;
   sun::QualifiedName qualifiedName;                  // Captured at registration
 };
 
@@ -274,6 +278,7 @@ struct GenericInterfaceInfo {
   const InterfaceDefinitionAST* AST;        // Original AST node
   std::vector<std::string> typeParameters;  // ["T", "U", etc.]
   sun::QualifiedName qualifiedName;         // Captured at registration
+  std::weak_ptr<SemanticScopeBase> definitionScope;
 };
 
 // Information about a generic enum definition (template)
@@ -281,6 +286,7 @@ struct GenericEnumInfo {
   const EnumDefinitionAST* AST;             // Original AST node
   std::vector<std::string> typeParameters;  // ["T", "U", etc.]
   sun::QualifiedName qualifiedName;         // Captured at registration
+  std::weak_ptr<SemanticScopeBase> definitionScope;
 };
 
 // Information about a generic function definition (template)
@@ -290,6 +296,7 @@ struct GenericFunctionInfo {
   std::optional<TypeAnnotation> returnType;  // Return type annotation
   std::vector<std::pair<std::string, TypeAnnotation>> params;  // Parameters
   sun::QualifiedName qualifiedName;          // Captured at registration
+  std::weak_ptr<SemanticScopeBase> definitionScope;
 };
 
 // Information about a specialized (monomorphized) generic function
@@ -411,7 +418,7 @@ struct SemanticScopeBase
       SemanticScopeBase* newParent) const;
 
   // ===== Scope-chain lookup methods =====
-  // These traverse the parent chain, import scopes, __definition__ scopes,
+  // These traverse the parent chain, import scopes,
   // and import bindings to find symbols.
 
   // Generic scope-chain traversal: calls finder(scope) at each scope in chain
@@ -738,8 +745,8 @@ class AccessFilter {
 
 // -------------------------------------------------------------------
 // Template implementation: lookupInChain
-// Traverses the scope chain (parent + import children + __definition__ +
-// import bindings) calling finder(scope) at each node.
+// Traverses the scope chain (parent + import children + import bindings)
+// calling finder(scope) at each node.
 // finder signature: ResultT finder(const SemanticScopeBase* scope)
 // -------------------------------------------------------------------
 template <typename ResultT, typename Finder>
@@ -762,27 +769,6 @@ ResultT SemanticScopeBase::lookupInChain(Finder finder) const {
           if (modChild && modChild->getType() == ScopeType::Module) {
             result = probe(modChild.get());
             if (result) return result;
-          }
-        }
-      }
-    }
-    // Search __definition__ scope chain
-    auto defIt = s->childModules.find("__definition__");
-    if (defIt != s->childModules.end() && defIt->second) {
-      for (auto* defS = defIt->second.get(); defS != nullptr;
-           defS = defS->parent) {
-        result = probe(defS);
-        if (result) return result;
-        for (const auto& [childName, child] : defS->childModules) {
-          if (child && child->getType() == ScopeType::Import) {
-            result = probe(child.get());
-            if (result) return result;
-            for (const auto& [modName, modChild] : child->childModules) {
-              if (modChild && modChild->getType() == ScopeType::Module) {
-                result = probe(modChild.get());
-                if (result) return result;
-              }
-            }
           }
         }
       }

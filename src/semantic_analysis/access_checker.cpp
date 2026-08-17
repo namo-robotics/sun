@@ -57,7 +57,6 @@ void requireAccessible(const ModulePath& from, const ItemRef& item,
 #include "semantic_analyzer.h"
 
 sun::ModulePath SemanticAnalyzer::currentModulePath() const {
-  if (!accessContextStack_.empty()) return accessContextStack_.back();
   for (auto* s = currentScope; s != nullptr; s = s->parent) {
     if (s->getType() == ScopeType::Module) return s->scopePath;
   }

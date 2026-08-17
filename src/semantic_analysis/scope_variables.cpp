@@ -906,6 +906,7 @@ void SemanticAnalyzer::registerGenericFunctionInCurrentScope(
   sun::QualifiedName qname(getCurrentScopePath(), proto.getName(),
                            currentModulePath());
   genInfo.qualifiedName = qname;
+  genInfo.definitionScope = currentScope->shared_from_this();
   currentScope->genericFunctions[qname] = genInfo;
 }
 

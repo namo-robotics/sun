@@ -164,8 +164,11 @@ public module sun {
       }
       var value: T = this.data.get_unchecked(index);
       unsafe {
-        _memset(_ptr_offset(this.data.rawData(), index * _sizeof<T>()), 0,
-                _sizeof<T>());
+        _memset(
+          _ptr_offset(this.data.rawData(), index * _sizeof<T>()),
+          0,
+          _sizeof<T>()
+        );
       };
       return value;
     }

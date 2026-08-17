@@ -1,7 +1,7 @@
 // scope_lookup.cpp — Scope-chain lookup methods on SemanticScope
 //
-// These methods traverse the parent chain, import scopes, __definition__
-// scopes, and import bindings to find symbols. They encapsulate the lookup
+// These methods traverse the parent chain, import scopes and import bindings
+// to find symbols. They encapsulate the lookup
 // logic that was previously spread across SemanticAnalyzer.
 
 #include <algorithm>
@@ -42,8 +42,7 @@ const GenericClassInfo* SemanticScopeBase::lookupGenericClass(
       }
       for (const auto& [childName, child] : s->childModules) {
         if (!child) continue;
-        if (child->getType() == ScopeType::Import ||
-            childName == "__definition__") {
+        if (child->getType() == ScopeType::Import) {
           auto innerModIt = child->childModules.find(moduleName);
           if (innerModIt != child->childModules.end() && innerModIt->second) {
             auto* result = innerModIt->second->findGenericClass(symbolName);
@@ -101,8 +100,7 @@ const GenericInterfaceInfo* SemanticScopeBase::lookupGenericInterface(
       }
       for (const auto& [childName, child] : s->childModules) {
         if (!child) continue;
-        if (child->getType() == ScopeType::Import ||
-            childName == "__definition__") {
+        if (child->getType() == ScopeType::Import) {
           auto innerModIt = child->childModules.find(moduleName);
           if (innerModIt != child->childModules.end() && innerModIt->second) {
             auto* result = innerModIt->second->findGenericInterface(symbolName);
@@ -253,17 +251,8 @@ std::vector<FunctionInfo> SemanticScopeBase::getAllFunctions(
     }
   };
 
-  // Scope chain plus, for generic specializations, the definition scope
-  // chain of the generic (see lookupFunction)
   for (auto* s = this; s != nullptr; s = s->parent) {
     collectFrom(s);
-    auto defIt = s->childModules.find("__definition__");
-    if (defIt != s->childModules.end() && defIt->second) {
-      for (auto* defS = defIt->second.get(); defS != nullptr;
-           defS = defS->parent) {
-        collectFrom(defS);
-      }
-    }
   }
 
   AccessFilter filter(this);
@@ -546,18 +535,10 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunction(
     return std::nullopt;
   };
 
-  // Walk scope chain; a generic specialization's scope also links its
-  // definition scope (__definition__) so bodies resolve free functions of
-  // the module the generic was written in, wherever it is instantiated
+  // Walk the scope chain (generic bodies are analyzed inside their
+  // definition scope, so the chain already contains their module)
   for (auto* s = this; s != nullptr; s = s->parent) {
     if (auto result = searchScope(s)) return result;
-    auto defIt = s->childModules.find("__definition__");
-    if (defIt != s->childModules.end() && defIt->second) {
-      for (auto* defS = defIt->second.get(); defS != nullptr;
-           defS = defS->parent) {
-        if (auto result = searchScope(defS)) return result;
-      }
-    }
   }
 
   filter.finish();
@@ -585,7 +566,7 @@ SemanticScopeBase* SemanticScopeBase::lookupModuleScope(
     SemanticScopeBase* found = nullptr;
     for (const auto& [modName, child] : scope.childModules) {
       if (!child) continue;
-      if (!isLibraryScope(modName) && modName != "__definition__") continue;
+      if (!isLibraryScope(modName)) continue;
 
       auto childIt = child->childModules.find(segment);
       if (childIt != child->childModules.end()) {

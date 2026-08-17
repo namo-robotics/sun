@@ -44,7 +44,9 @@ void SemanticAnalyzer::registerGenericInterface(
     return;
   }
   // Register in current scope
-  currentScope->genericInterfaces[name] = info;
+  auto& slot = currentScope->genericInterfaces[name];
+  slot = info;
+  slot.definitionScope = currentScope->shared_from_this();
 }
 
 const GenericInterfaceInfo* SemanticAnalyzer::lookupGenericInterface(
@@ -153,50 +155,53 @@ SemanticAnalyzer::instantiateGenericInterface(
       genericInfo->qualifiedName.scopePath, mangledName,
       genericInfo->qualifiedName.modulePath));
 
-  // Member annotations resolve in the interface's own module context
-  AccessContextGuard accessGuard(*this, genericInfo->qualifiedName.owner());
-  // Push a scope for type parameter bindings
-  enterTypeParamScope(genericInfo->typeParameters, typeArgs);
+  {
+    // Member annotations resolve in the interface's definition scope; the
+    // result is registered in the requesting scope below
+    ScopeSwitchGuard definitionScope(*this, definitionScopeOf(*genericInfo));
+    // Push a scope for type parameter bindings
+    enterTypeParamScope(genericInfo->typeParameters, typeArgs);
 
-  // Add fields with substituted types
-  for (const auto& field : genericInfo->AST->getFields()) {
-    auto fieldType = typeAnnotationToType(field.type);
-    fieldType = substituteTypeParameters(fieldType);
-    specializedInterface->addField(field.name, fieldType).visibility =
-        field.visibility;
-  }
-
-  // Add methods with substituted types
-  for (const auto& methodDecl : genericInfo->AST->getMethods()) {
-    const PrototypeAST& proto = methodDecl.function->getProto();
-
-    // Get return type with substitution
-    sun::TypePtr returnType;
-    if (proto.getReturnType()) {
-      returnType = typeAnnotationToType(*proto.getReturnType());
-      returnType = substituteTypeParameters(returnType);
-    } else {
-      returnType = sun::Types::Void();
+    // Add fields with substituted types
+    for (const auto& field : genericInfo->AST->getFields()) {
+      auto fieldType = typeAnnotationToType(field.type);
+      fieldType = substituteTypeParameters(fieldType);
+      specializedInterface->addField(field.name, fieldType).visibility =
+          field.visibility;
     }
 
-    // Get parameter types with substitution
-    std::vector<sun::TypePtr> paramTypes;
-    for (const auto& [argName, argType] : proto.getArgs()) {
-      auto paramType = typeAnnotationToType(argType);
-      paramType = substituteTypeParameters(paramType);
-      paramTypes.push_back(paramType);
+    // Add methods with substituted types
+    for (const auto& methodDecl : genericInfo->AST->getMethods()) {
+      const PrototypeAST& proto = methodDecl.function->getProto();
+
+      // Get return type with substitution
+      sun::TypePtr returnType;
+      if (proto.getReturnType()) {
+        returnType = typeAnnotationToType(*proto.getReturnType());
+        returnType = substituteTypeParameters(returnType);
+      } else {
+        returnType = sun::Types::Void();
+      }
+
+      // Get parameter types with substitution
+      std::vector<sun::TypePtr> paramTypes;
+      for (const auto& [argName, argType] : proto.getArgs()) {
+        auto paramType = typeAnnotationToType(argType);
+        paramType = substituteTypeParameters(paramType);
+        paramTypes.push_back(paramType);
+      }
+
+      // Add method to interface type (preserve method-level generic type
+      // parameters)
+      specializedInterface
+          ->addMethod(proto.getName(), returnType, paramTypes,
+                      methodDecl.hasDefaultImpl, proto.getTypeParameters())
+          .visibility = methodVisibility(*methodDecl.function);
     }
 
-    // Add method to interface type (preserve method-level generic type
-    // parameters)
-    specializedInterface
-        ->addMethod(proto.getName(), returnType, paramTypes,
-                    methodDecl.hasDefaultImpl, proto.getTypeParameters())
-        .visibility = methodVisibility(*methodDecl.function);
+    // Pop the scope
+    exitScope();
   }
-
-  // Pop the scope
-  exitScope();
 
   // Register the specialized interface
   registerInterface(mangledName, specializedInterface);

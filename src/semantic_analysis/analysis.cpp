@@ -2328,55 +2328,13 @@ void SemanticAnalyzer::clearResolvedTypes(ExprAST& expr) {
 // Method analysis with type bindings
 // -------------------------------------------------------------------
 
+// Analyze one (cloned) method body of a specialized class. The caller has
+// entered the specialized class's scope inside the template's definition
+// scope, so the body sees exactly the names the template was written against.
 void SemanticAnalyzer::analyzeMethodWithBindings(
     FunctionAST& methodFunc, std::shared_ptr<sun::ClassType> classType,
     const std::vector<std::string>& typeParams,
     const std::vector<sun::TypePtr>& typeArgs) {
-  // Extract module path from class context for type resolution.
-  // For specialized generic classes (e.g., "$hash$_sun_Matrix_i64"), look up
-  // the generic class definition's qualified name to get the module path
-  // (e.g., "$hash$.sun"). This ensures types like HeapAllocator resolve to
-  // their full qualified form ($hash$_sun_HeapAllocator) in method bodies.
-  std::string modulePrefix;
-  int moduleScopesEntered = 0;
-  // The body is analyzed away from its module scope: give it the class's
-  // module as access context so module-private helpers stay reachable
-  std::optional<AccessContextGuard> accessGuard;
-  if (classType)
-    accessGuard.emplace(*this, classType->getQualifiedName().owner());
-  if (classType) {
-    std::string modulePath;
-
-    // For specialized classes, look up the generic class to get module path
-    if (classType->isSpecialized()) {
-      auto* genericInfo = lookupGenericClassOf(*classType);
-      if (genericInfo && genericInfo->AST) {
-        modulePath = genericInfo->AST->getQualifiedName().scopePathString();
-      }
-    }
-
-    // For non-specialized classes, use the first underscore-separated segment
-    // as a fallback (works for "sun_HeapAllocator" -> "sun")
-    if (modulePath.empty()) {
-      const std::string& className = classType->getMangledName();
-      size_t underscorePos = className.find('_');
-      if (underscorePos != std::string::npos) {
-        modulePrefix = className.substr(0, underscorePos);
-      }
-    } else {
-      modulePrefix = modulePath;
-    }
-
-    // Make module symbols visible for method body analysis.
-    // We add a using import rather than entering module scopes, because
-    // entering module scopes from the current context (which may be inside
-    // an instantiation's class scope) would create empty shadow scopes
-    // instead of finding the existing module scope with registered types.
-    if (!modulePrefix.empty()) {
-      addUsingImport(UsingImport(modulePrefix, "*"));
-    }
-  }
-
   // Step 2: Set up scope with type parameter bindings (only if needed)
   // For generic class methods, type bindings are already in the Class scope
   bool needsTypeParamScope =
@@ -2412,10 +2370,10 @@ void SemanticAnalyzer::analyzeMethodWithBindings(
     methodReturnType =
         substituteTypeParameters(typeAnnotationToType(*proto.getReturnType()));
   }
-  enterFunctionScope(
-      methodSig,
-      sun::QualifiedName(std::vector<std::string>{}, mangledMethodName),
-      proto.canThrow(), methodReturnType);
+  enterFunctionScope(methodSig,
+                     sun::QualifiedName(classType->getQualifiedName().scopePath,
+                                        mangledMethodName),
+                     proto.canThrow(), methodReturnType);
   if (classType) {
     declareVariable("this", classType, /*isParam=*/true);
   }
@@ -2438,9 +2396,6 @@ void SemanticAnalyzer::analyzeMethodWithBindings(
   exitScope();  // method scope
   if (needsTypeParamScope) {
     exitScope();  // type param scope
-  }
-  for (int i = 0; i < moduleScopesEntered; ++i) {
-    exitScope();  // module scope(s)
   }
   setCurrentClass(savedClass);
 }

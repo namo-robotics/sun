@@ -57,6 +57,17 @@ re-analyzed copy of the method bodies) is recorded on the template's AST
 node. Codegen later walks those recorded specializations and emits each one
 as ordinary non-generic code.
 
+Instantiation happens lazily at the first use, but the template's body is
+analyzed **in the scope the template was declared in**: every generic
+template records its `definitionScope` when registered, and the instantiators
+switch `currentScope` to it (`ScopeSwitchGuard`) before pushing the transient
+type-parameter / class / function scopes. So a body sees exactly the names
+its author could see — its module's private helpers, the module's `using`s,
+transitive dependencies — and never the requester's locals or imports. Only
+the resulting specialized type is registered back in the requesting scope
+(as a lookup fast path); identity lives in the global `TypeRegistry` and the
+specialization list on the template's AST.
+
 ## Access Control
 
 Every declaration record (`FunctionInfo`, `ClassType`, `InterfaceType`,
@@ -83,11 +94,11 @@ Enforcement lives in two places:
   member's visibility (owner = the type's module) where `obj.member` is
   resolved.
 
-Generic bodies are instantiated away from their defining module, so
-`instantiateGenericClass`, `analyzeMethodWithBindings`, and friends push the
-generic's owner with `AccessContextGuard`; `deinit` is always public
-(`methodVisibility`). Wording of every diagnostic comes from
-`sun::access::denialMessage` (`access_checker.h`).
+Because generic bodies are analyzed inside their definition scope, "which
+module is asking" is always the nearest `Module` scope on the stack — no
+override is needed. `deinit` is always public (`methodVisibility`). Wording
+of every diagnostic comes from `sun::access::denialMessage`
+(`access_checker.h`).
 
 ## Source Layout
 

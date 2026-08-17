@@ -75,17 +75,37 @@ public module sun {
   // specialization, so Map<i64, V>, Map<i32, V>, Map<u32, V> and
   // Map<String, V> each pick the matching pair. String keys are compared by
   // content through references (never copied out of the bucket).
-  function map_key_hash(k: i64) i64 { return hash_i64(k); }
-  function map_key_hash(k: i32) i64 { return hash_i64(k); }
-  function map_key_hash(k: u32) i64 { return hash_i64(k); }
-  function map_key_hash(k: u64) i64 { return hash_i64(_convert<i64>(k)); }
-  function map_key_hash(k: ref String) i64 { return hash_string(k); }
+  function map_key_hash(k: i64) i64 {
+    return hash_i64(k);
+  }
+  function map_key_hash(k: i32) i64 {
+    return hash_i64(k);
+  }
+  function map_key_hash(k: u32) i64 {
+    return hash_i64(k);
+  }
+  function map_key_hash(k: u64) i64 {
+    return hash_i64(_convert<i64>(k));
+  }
+  function map_key_hash(k: ref String) i64 {
+    return hash_string(k);
+  }
 
-  function map_keys_equal(a: ref i64, b: i64) bool { return a == b; }
-  function map_keys_equal(a: ref i32, b: i32) bool { return a == b; }
-  function map_keys_equal(a: ref u32, b: u32) bool { return a == b; }
-  function map_keys_equal(a: ref u64, b: u64) bool { return a == b; }
-  function map_keys_equal(a: ref String, b: ref String) bool { return a.equals(b); }
+  function map_keys_equal(a: ref i64, b: i64) bool {
+    return a == b;
+  }
+  function map_keys_equal(a: ref i32, b: i32) bool {
+    return a == b;
+  }
+  function map_keys_equal(a: ref u32, b: u32) bool {
+    return a == b;
+  }
+  function map_keys_equal(a: ref u64, b: u64) bool {
+    return a == b;
+  }
+  function map_keys_equal(a: ref String, b: ref String) bool {
+    return a.equals(b);
+  }
 
   // Modulo operation (a mod b)
   function mod(a: i64, b: i64) i64 {
@@ -239,7 +259,7 @@ public module sun {
       }
 
       var value: V = this.values.get(probe);
-      this.drop_key(probe);       // Value moved out; the key is dropped here
+      this.drop_key(probe);  // Value moved out; the key is dropped here
       this.states.set(probe, 2);  // Mark as DELETED
       this.size_ = this.size_ - 1;
       return value;

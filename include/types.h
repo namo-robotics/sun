@@ -2094,8 +2094,11 @@ class TypeRegistry {
     if (!classType->hasQualifiedName()) {
       classType->setQualifiedName(qualifiedName);
     }
-    // Set base name for error messages if there's a scope path
-    if (!classType->hasBaseName() && !qualifiedName.scopePath.empty()) {
+    // Set base name for error messages if there's a scope path. A
+    // specialization derives its display name from the generic's, so leave
+    // it alone (its mangled base name would read "Vec_i32<i32>").
+    if (!classType->hasBaseName() && !classType->isSpecialized() &&
+        !qualifiedName.scopePath.empty()) {
       classType->setBaseName(qualifiedName.baseName);
     }
     return classType;

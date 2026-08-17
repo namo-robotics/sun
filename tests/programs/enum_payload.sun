@@ -1,30 +1,36 @@
 // AOT compilation test for payload-carrying enums
 
 enum Shape {
-    Circle(f64),
-    Rect(f64, f64),
-    Empty
+  Circle(f64),
+  Rect(f64, f64),
+  Empty
 }
 
 function area(s: ref Shape) f64 {
-    return match s {
-        Shape.Circle(r) => 3.0 * r * r,
-        Shape.Rect(w, h) => w * h,
-        Shape.Empty => 0.0
-    };
+  return match s {
+    Shape.Circle(r) => 3.0 * r * r,
+    Shape.Rect(w, h) => w * h,
+    Shape.Empty => 0.0
+  };
 }
 
 function pick(kind: i32) Shape {
-    if (kind == 0) { return Shape.Circle(1.5); }
-    if (kind == 1) { return Shape.Rect(2.0, 4.0); }
-    return Shape.Empty;
+  if (kind == 0) {
+    return Shape.Circle(1.5);
+  }
+  if (kind == 1) {
+    return Shape.Rect(2.0, 4.0);
+  }
+  return Shape.Empty;
 }
 
 function main() i32 {
-    var c = pick(0);
-    var r = pick(1);
-    var e = pick(2);
-    var total = area(c) + area(r) + area(e);
-    if (total > 0.0) { return 0; }
-    return 1;
+  var c = pick(0);
+  var r = pick(1);
+  var e = pick(2);
+  var total = area(c) + area(r) + area(e);
+  if (total > 0.0) {
+    return 0;
+  }
+  return 1;
 }

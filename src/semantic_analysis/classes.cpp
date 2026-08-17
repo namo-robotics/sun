@@ -96,7 +96,9 @@ void SemanticAnalyzer::registerGenericClass(const std::string& name,
     return;
   }
   // Register in current scope
-  currentScope->genericClasses[name] = info;
+  auto& slot = currentScope->genericClasses[name];
+  slot = info;
+  slot.definitionScope = currentScope->shared_from_this();
 }
 
 const GenericClassInfo* SemanticAnalyzer::lookupGenericClass(
@@ -112,6 +114,17 @@ const GenericClassInfo* SemanticAnalyzer::lookupGenericClass(
 const GenericClassInfo* SemanticAnalyzer::lookupGenericClassOf(
     const sun::ClassType& specialized) const {
   return lookupGenericClass(specialized.getGenericQualifiedName());
+}
+
+// Scope a class's template was declared in: for a specialization, the
+// generic's; for a plain class with generic methods, its own registration
+// (hasGenericMethods() registers a GenericClassInfo too). nullptr if unknown.
+SemanticScope* SemanticAnalyzer::classDefinitionScope(
+    const sun::ClassType& classType) const {
+  const GenericClassInfo* info =
+      classType.isSpecialized() ? lookupGenericClassOf(classType)
+                                : lookupGenericClass(classType.getQualifiedName());
+  return info ? definitionScopeOf(*info) : nullptr;
 }
 
 void SemanticAnalyzer::addTypeParameterBindings(
@@ -244,33 +257,17 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
     }
   }
 
-  // Member annotations and interface references resolve in the generic's
-  // own module context, wherever it is instantiated from
-  AccessContextGuard accessGuard(*this,
-                                 genericClassInfo->qualifiedName.owner());
+  // The template's members, interfaces and bodies are analyzed in the scope
+  // the template was declared in, wherever this instantiation was requested
+  // from: names resolve as they do at the definition site (transitive
+  // dependencies of its module included) and access control sees the
+  // template's own module.
+  ScopeSwitchGuard definitionScope(*this,
+                                   definitionScopeOf(*genericClassInfo));
 
   // Push a scope for class-level type parameter bindings
   enterClassScope(specializedQName);
   addTypeParameterBindings(genericClassInfo->typeParameters, typeArgs);
-
-  // Link definition scope so transitive dependencies (types from imports in the
-  // generic's source file) are accessible during instantiation. This allows
-  // ContiguousBuffer<T> to resolve Unique<i8> even when instantiated from
-  // matrix.sun which doesn't directly import unique.sun.
-  if (auto defScope = genericClassInfo->definitionScope.lock()) {
-    // Only add if definition scope is not already an ancestor (avoids cycle)
-    bool isAncestor = false;
-    for (auto* s = currentScope->parent; s != nullptr; s = s->parent) {
-      if (s == defScope.get()) {
-        isAncestor = true;
-        break;
-      }
-    }
-    if (!isAncestor) {
-      // Add the definition scope as an accessible import scope for type lookups
-      currentScope->childModules["__definition__"] = defScope;
-    }
-  }
 
   // Layout is a property of the generic definition, so every specialization
   // inherits it. Must precede the first getStructType(), which memoizes.
@@ -483,9 +480,8 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
   genericClassInfo->AST->addSpecialization(mangledName, specializedAST);
 
   if (deferBodies) {
-    deferredSpecializations_.push_back({specializedClass, genericClassInfo,
-                                        typeArgs, specializedAST,
-                                        currentScope->parent});
+    deferredSpecializations_.push_back(
+        {specializedClass, genericClassInfo, typeArgs, specializedAST});
   }
 
   // Restore old class context
@@ -502,20 +498,17 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
 
 // Analyze the method bodies of specializations created during the
 // declaration pre-pass. Re-enters an equivalent class scope (type parameter
-// bindings + definition-scope link) in the scope the instantiation was
-// requested from. Bodies may create further specializations; those are
-// analyzed immediately (the pre-pass is over) so the loop is by index.
+// bindings) inside the template's definition scope. Bodies may create
+// further specializations; those are analyzed immediately (the pre-pass is
+// over) so the loop is by index.
 void SemanticAnalyzer::analyzeDeferredSpecializations() {
   for (size_t i = 0; i < deferredSpecializations_.size(); ++i) {
     DeferredSpecialization d = deferredSpecializations_[i];
-    SemanticScope* savedScope = currentScope;
-    currentScope = d.requestScope;
+    ScopeSwitchGuard definitionScope(*this,
+                                     definitionScopeOf(*d.genericInfo));
 
     enterClassScope(d.specializedClass->getQualifiedName());
     addTypeParameterBindings(d.genericInfo->typeParameters, d.typeArgs);
-    if (auto defScope = d.genericInfo->definitionScope.lock()) {
-      currentScope->childModules["__definition__"] = defScope;
-    }
     auto savedClass = currentClass;
     setCurrentClass(d.specializedClass);
 
@@ -527,7 +520,6 @@ void SemanticAnalyzer::analyzeDeferredSpecializations() {
 
     setCurrentClass(savedClass);
     exitScope();
-    currentScope = savedScope;
   }
   deferredSpecializations_.clear();
 }
@@ -544,9 +536,6 @@ SemanticAnalyzer::instantiateGenericFunction(
   if (!genericFunc) {
     return std::nullopt;
   }
-  // The body resolves names in the function's own module context
-  AccessContextGuard accessGuard(*this, genericInfo.qualifiedName.owner());
-
   const PrototypeAST& proto = genericFunc->getProto();
   // Use qualified name to include enclosing function context (e.g.,
   // outer_i32_inner)
@@ -580,6 +569,10 @@ SemanticAnalyzer::instantiateGenericFunction(
   }
 
   // Enter scope and bind type parameters
+  // Analyze the body in the scope the template was declared in (a module,
+  // or the enclosing specialized function for nested generics — that is
+  // where its captures and outer type bindings live)
+  ScopeSwitchGuard definitionScope(*this, definitionScopeOf(genericInfo));
   enterTypeParamScope(typeParams, typeArgs);
 
   // Substitute parameter types
@@ -851,7 +844,9 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
     allTypeArgs.push_back(methodTypeArgs[i]);
   }
 
-  // Enter scope and add all type bindings
+  // Enter scope and add all type bindings, inside the class's definition
+  // scope so the body resolves names as written at the definition site
+  ScopeSwitchGuard definitionScope(*this, classDefinitionScope(*classType));
   enterTypeParamScope(allTypeParams, allTypeArgs);
 
   // Substitute types in parameters
@@ -939,44 +934,13 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   auto savedClass = currentClass;
   setCurrentClass(classType);
 
-  // The body resolves names in the class's own module context
-  AccessContextGuard accessGuard(*this, classType->getQualifiedName().owner());
-
-  // Extract module path from class context for type resolution.
-  // For specialized generic classes, look up the generic class definition's
-  // qualified name to get the module path.
-  std::vector<std::string> modulePath;
-  int moduleScopesEntered = 0;
-  if (classType->isSpecialized()) {
-    auto* genericInfo = lookupGenericClassOf(*classType);
-    if (genericInfo && !genericInfo->qualifiedName.scopePath.empty()) {
-      modulePath = genericInfo->qualifiedName.scopePath;
-    }
-  }
-  if (modulePath.empty()) {
-    const std::string& className = classType->getMangledName();
-    size_t underscorePos = className.find('_');
-    if (underscorePos != std::string::npos) {
-      modulePath.push_back(className.substr(0, underscorePos));
-    }
-  }
-
-  // Enter module scope if class is from a namespace (for correct type
-  // resolution)
-  for (const auto& segment : modulePath) {
-    enterModuleScope(segment);
-    moduleScopesEntered++;
-  }
-  if (!modulePath.empty()) {
-    // Add implicit using import for the module so unqualified names resolve
-    addUsingImport(UsingImport(sun::QualifiedName::joinPath(modulePath), "*"));
-  }
-
   // Compute method signature for nested function qualification
   std::string methodSig = getFunctionSignature(mangledName, paramTypes);
 
   // Enter method scope and declare parameters
-  enterFunctionScope(methodSig, sun::QualifiedName(modulePath, mangledName),
+  enterFunctionScope(methodSig,
+                     sun::QualifiedName(classType->getQualifiedName().scopePath,
+                                        mangledName),
                      proto.canThrow(), proto.getResolvedReturnType());
 
   // Record the variadic pack (name + resolved element types) on the function
@@ -1005,9 +969,6 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
 
   exitScope();  // method scope
   setCurrentClass(savedClass);
-  for (int i = 0; i < moduleScopesEntered; ++i) {
-    exitScope();  // module scope(s)
-  }
   exitScope();  // type parameter scope
 
   // Convert to shared_ptr for storage
