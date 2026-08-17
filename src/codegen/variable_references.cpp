@@ -286,37 +286,7 @@ Value* CodegenVisitor::codegen(const VariableAssignmentAST& expr) {
       }
     }
 
-    // Assigning to a payload-enum variable: the right-hand side is a storage
-    // pointer. The overwritten value is dropped first, then the source is
-    // MOVED in (tag-poisoned, tracking released) — never implicitly copied.
-    if (varType && isPayloadEnum(varType) &&
-        value->getType()->isPointerTy()) {
-      if (value == alloca) return value;
-      emitDropInPlace(varType, alloca, expr.getName());
-      value = applyMoveSemantics(value, varType);
-    }
-
-    // Assigning to a class variable, where codegen of the right-hand side
-    // yields an address rather than the struct itself. Storing that address
-    // would write a pointer over the object's leading bytes — silently, since
-    // a two-word class is exactly pointer-sized.
-    if (varType && varType->isClass() && value->getType()->isPointerTy()) {
-      // Self-assignment would deinit the object and then copy from the
-      // corpse; it has no effect, so emit nothing.
-      if (value == alloca) return value;
-
-      // The value being overwritten reaches the end of its life here, so it
-      // is deinitialized exactly as it would be at scope exit.
-      emitDropInPlace(varType, alloca, expr.getName());
-
-      // Assignment moves, which the borrow checker already enforces (it
-      // rejects use of the source afterwards). applyMoveSemantics loads the
-      // struct and zeroes the source so its own deinit becomes a no-op,
-      // matching how by-value arguments are handled.
-      value = applyMoveSemantics(value, varType);
-    }
-
-    storeIntoSlot(alloca, value, varType);
+    assignToVariableSlot(alloca, value, varType, expr.getName());
     return value;
   }
 
@@ -351,9 +321,33 @@ Value* CodegenVisitor::codegen(const VariableAssignmentAST& expr) {
                                         valueAlloca, "closure.load");
       }
     }
-    ctx.builder->CreateStore(value, gv);
+    assignToVariableSlot(gv, value, expr.getResolvedType(), expr.getName());
     return value;
   }
 
   logAndThrowError("Unknown variable name in assignment: " + expr.getName());
+}
+
+// Compound values reach here as an address (codegen of a class or payload-enum
+// expression yields the object's storage, not the struct). Storing that address
+// would write a pointer over the object's leading bytes — silently, since a
+// two-word class is exactly pointer-sized. Instead the overwritten value is
+// dropped (it reaches the end of its life here, exactly as at scope exit) and
+// the source is MOVED in: applyMoveSemantics loads the struct and invalidates
+// the source so its own drop is a no-op. The borrow checker already rejects
+// later uses of the source.
+void CodegenVisitor::assignToVariableSlot(Value* slot, Value* value,
+                                         const sun::TypePtr& varType,
+                                         const std::string& name) {
+  bool compound =
+      varType && (varType->isClass() || isPayloadEnum(varType)) &&
+      value->getType()->isPointerTy();
+  if (compound) {
+    // Self-assignment would drop the object and then copy from the corpse;
+    // it has no effect, so emit nothing.
+    if (value == slot) return;
+    emitDropInPlace(varType, slot, name);
+    value = applyMoveSemantics(value, varType);
+  }
+  storeIntoSlot(slot, value, varType);
 }

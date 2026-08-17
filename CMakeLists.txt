@@ -240,7 +240,22 @@ endif()
 # ------------------------------------------------------------------
 # Main executable
 # ------------------------------------------------------------------
+# Build-time git hash for `sun --version` (regenerated every build, only
+# rewritten when it changes). SUN_VERSION may be passed to override the
+# version string read from debian/changelog.
+set(SUN_VERSION_HEADER ${CMAKE_BINARY_DIR}/generated/sun_version.h)
+add_custom_target(sun_version
+    COMMAND ${CMAKE_COMMAND}
+        -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -DOUTPUT_FILE=${SUN_VERSION_HEADER}
+        -DSUN_VERSION=${SUN_VERSION}
+        -P ${CMAKE_SOURCE_DIR}/cmake/GitVersion.cmake
+    BYPRODUCTS ${SUN_VERSION_HEADER}
+    COMMENT "Updating sun_version.h")
+
 add_executable(sun src/main.cpp)
+add_dependencies(sun sun_version)
+target_include_directories(sun PRIVATE ${CMAKE_BINARY_DIR}/generated)
 target_link_libraries(sun PRIVATE sun_lib)
 
 # ------------------------------------------------------------------

@@ -3254,6 +3254,35 @@ void SemanticAnalyzer::analyzeGenericClassConstruction(
     analyzeExpr(const_cast<ExprAST&>(*arg));
   }
 
+  // Pick the init overload from the argument types, exactly as for a
+  // non-generic class. Without this, a call with the wrong argument count
+  // would silently skip the constructor in codegen.
+  if (specializedClass) {
+    std::vector<sun::TypePtr> argTypes;
+    for (const auto& arg : args) argTypes.push_back(arg->getResolvedType());
+    const auto* initMethod = accessibleMethodForArgs(
+        *specializedClass, "init", argTypes, genericCall.getLocation());
+    if (initMethod) {
+      expectedParamTypes = initMethod->paramTypes;
+    } else if (!specializedClass->getMethod("init") && !args.empty()) {
+      logAndThrowError(
+          "Class '" + specializedClass->toString() +
+              "' declares no 'init', so it cannot be constructed positionally."
+              " Use a struct literal naming each field.",
+          genericCall.getLocation());
+    } else if (specializedClass->getMethod("init")) {
+      std::string argList;
+      for (size_t i = 0; i < argTypes.size(); ++i) {
+        if (i > 0) argList += ", ";
+        argList += argTypes[i] ? argTypes[i]->toDisplayString() : "?";
+      }
+      logAndThrowError("No matching constructor for '" +
+                           specializedClass->toString() +
+                           "' with arguments (" + argList + ")",
+                       genericCall.getLocation());
+    }
+  }
+
   // Coerce integer literals to the init method's parameter types
   for (size_t i = 0; i < args.size() && i < expectedParamTypes.size(); ++i) {
     tryCoerceIntegerLiteral(const_cast<ExprAST*>(args[i].get()),

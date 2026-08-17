@@ -474,6 +474,13 @@ class CodegenVisitor {
                      const sun::ClassType* owner = nullptr);
   llvm::Align lvalueAlign(const ExprAST& target, llvm::Type* slotTy);
 
+  // Assign an already-evaluated value to a variable slot (local alloca or
+  // global). Compound values (classes, payload enums) drop the overwritten
+  // value first and MOVE the source in; self-assignment emits nothing.
+  void assignToVariableSlot(llvm::Value* slot, llvm::Value* value,
+                            const sun::TypePtr& varType,
+                            const std::string& name);
+
   // Codegen a member-access object down to (objectPtr, ClassType*), applying
   // the generic-`this` fixup and unwrapping raw_ptr/static_ptr/ref to class.
   // ClassType* is null when the object is not class-shaped.
