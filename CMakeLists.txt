@@ -293,6 +293,8 @@ if(NOT SKIP_STDLIB)
         ${CMAKE_SOURCE_DIR}/stdlib/io.sun
         ${CMAKE_SOURCE_DIR}/stdlib/http.sun
         ${CMAKE_SOURCE_DIR}/stdlib/simple_math.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/proto_wire.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/json.sun
     )
 
     # Built with -g: debug compiles can step into stdlib; non-debug compiles

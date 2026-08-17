@@ -1,0 +1,938 @@
+// stdlib/json.sun - JSON parsing and serialization
+//
+// A parsed document is a tree of Json values. Objects keep their members in
+// insertion order (lookup is a linear scan), numbers are Int(i64) when the
+// text is an integer that fits, Float(f64) otherwise.
+//
+// Usage:
+//   using sun;
+//
+//   var alloc = make_heap_allocator();
+//   var doc = json_parse(alloc, "{\"name\": \"sun\", \"tags\": [1, 2.5]}");
+//   var name: ref String = doc.get("name").as_string();
+//   var second: f64 = doc.get("tags").at(1).as_f64();
+//
+//   var obj = json_object(alloc);
+//   obj.set(String(alloc, "ok"), Json(true));
+//   var text = obj.to_string(alloc);          // {"ok":true}
+//   var pretty = obj.to_pretty_string(alloc, 2);
+
+public module sun {
+  // ==========================================================================
+  // Errors
+  // ==========================================================================
+
+  // Raised by json_parse (with the byte offset of the problem) and by the
+  // Json readers when the value has another kind (offset -1).
+  public class JsonError implements IError {
+    var message_: static_ptr<u8>;
+    var offset_: i64;
+
+    public function init(message: static_ptr<u8>, offset: i64) {
+      this.message_ = message;
+      this.offset_ = offset;
+    }
+
+    public function code() i32 {
+      return 60;
+    }
+
+    public function message() static_ptr<u8> {
+      return this.message_;
+    }
+
+    // Byte offset into the parsed text, or -1 for non-parse errors
+    public function offset() i64 {
+      return this.offset_;
+    }
+  }
+
+  // ==========================================================================
+  // Value tree
+  // ==========================================================================
+
+  public enum JsonValue {
+    Null,
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    String(String),
+    Array(Vec<Json>),
+    Object(Vec<JsonMember>)
+  }
+
+  // One "key": value pair of an object
+  public class JsonMember {
+    var key: String;
+    var value: Json;
+
+    public function init(key: String, value: Json) {
+      this.key = key;
+      this.value = value;
+    }
+  }
+
+  public class Json {
+    // The tree node itself; match on it directly when the methods below are
+    // not enough (see JsonValue)
+    public var value: JsonValue;
+
+    // null
+    public function init() {
+      this.value = JsonValue.Null;
+    }
+
+    public function init(v: JsonValue) {
+      this.value = v;
+    }
+
+    public function init(b: bool) {
+      this.value = JsonValue.Bool(b);
+    }
+
+    public function init(n: i64) {
+      this.value = JsonValue.Int(n);
+    }
+
+    public function init(x: f64) {
+      this.value = JsonValue.Float(x);
+    }
+
+    // Takes ownership of the string
+    public function init(s: String) {
+      this.value = JsonValue.String(s);
+    }
+
+    // ------------------------------------------------------------------------
+    // Kind checks
+    // ------------------------------------------------------------------------
+
+    public function is_null() bool {
+      return match this.value {
+        JsonValue.Null => true,
+        _ => false
+      };
+    }
+
+    public function is_bool() bool {
+      return match this.value {
+        JsonValue.Bool(b) => true,
+        _ => false
+      };
+    }
+
+    public function is_int() bool {
+      return match this.value {
+        JsonValue.Int(n) => true,
+        _ => false
+      };
+    }
+
+    public function is_float() bool {
+      return match this.value {
+        JsonValue.Float(x) => true,
+        _ => false
+      };
+    }
+
+    // Int or Float
+    public function is_number() bool {
+      return match this.value {
+        JsonValue.Int(n) => true,
+        JsonValue.Float(x) => true,
+        _ => false
+      };
+    }
+
+    public function is_string() bool {
+      return match this.value {
+        JsonValue.String(s) => true,
+        _ => false
+      };
+    }
+
+    public function is_array() bool {
+      return match this.value {
+        JsonValue.Array(items) => true,
+        _ => false
+      };
+    }
+
+    public function is_object() bool {
+      return match this.value {
+        JsonValue.Object(members) => true,
+        _ => false
+      };
+    }
+
+    // ------------------------------------------------------------------------
+    // Readers
+    // ------------------------------------------------------------------------
+
+    public function as_bool() bool, IError {
+      match this.value {
+        JsonValue.Bool(b) => {
+          return b;
+        },
+        _ => {
+          throw JsonError("JSON value is not a bool", -1);
+        }
+      };
+    }
+
+    // Int, or a Float with an integral value
+    public function as_i64() i64, IError {
+      match this.value {
+        JsonValue.Int(n) => {
+          return n;
+        },
+        JsonValue.Float(x) => {
+          if (x >= -9223372036854775808.0 and x < 9223372036854775808.0) {
+            var n: i64 = _convert<i64>(x);
+            if (_convert<f64>(n) == x) {
+              return n;
+            }
+          }
+          throw JsonError("JSON number is not an integer", -1);
+        },
+        _ => {
+          throw JsonError("JSON value is not a number", -1);
+        }
+      };
+    }
+
+    // Int or Float, as f64
+    public function as_f64() f64, IError {
+      match this.value {
+        JsonValue.Int(n) => {
+          return _convert<f64>(n);
+        },
+        JsonValue.Float(x) => {
+          return x;
+        },
+        _ => {
+          throw JsonError("JSON value is not a number", -1);
+        }
+      };
+    }
+
+    public function as_string() ref String, IError {
+      match this.value {
+        JsonValue.String(s) => {
+          return s;
+        },
+        _ => {
+          throw JsonError("JSON value is not a string", -1);
+        }
+      };
+    }
+
+    // Number of array items or object members; 0 for other kinds
+    public function len() i64 {
+      return match this.value {
+        JsonValue.Array(items) => items.size(),
+        JsonValue.Object(members) => members.size(),
+        _ => 0
+      };
+    }
+
+    // Array item by index
+    public function at(i: i64) ref Json, IError {
+      match this.value {
+        JsonValue.Array(items) => {
+          if (i < 0 or i >= items.size()) {
+            throw JsonError("JSON array index out of range", -1);
+          }
+          return items.borrow(i);
+        },
+        _ => {
+          throw JsonError("JSON value is not an array", -1);
+        }
+      };
+    }
+
+    // Object member value by key
+    public function get(key: static_ptr<u8>) ref Json, IError {
+      match this.value {
+        JsonValue.Object(members) => {
+          for (var i: i64 = 0; i < members.size(); i = i + 1) {
+            if (members.borrow(i).key.equals_literal(key)) {
+              return members.borrow(i).value;
+            }
+          }
+          throw JsonError("JSON object has no such key", -1);
+        },
+        _ => {
+          throw JsonError("JSON value is not an object", -1);
+        }
+      };
+    }
+
+    public function get(key: ref String) ref Json, IError {
+      match this.value {
+        JsonValue.Object(members) => {
+          for (var i: i64 = 0; i < members.size(); i = i + 1) {
+            if (members.borrow(i).key.equals(key)) {
+              return members.borrow(i).value;
+            }
+          }
+          throw JsonError("JSON object has no such key", -1);
+        },
+        _ => {
+          throw JsonError("JSON value is not an object", -1);
+        }
+      };
+    }
+
+    // True if this is an object with the key
+    public function has(key: static_ptr<u8>) bool {
+      return match this.value {
+        JsonValue.Object(members) => this.member_index(members, key) >= 0,
+        _ => false
+      };
+    }
+
+    function member_index(members: ref Vec<JsonMember>, key: static_ptr<u8>) i64 {
+      for (var i: i64 = 0; i < members.size(); i = i + 1) {
+        if (members.borrow(i).key.equals_literal(key)) {
+          return i;
+        }
+      }
+      return -1;
+    }
+
+    // Object member key by position (insertion order)
+    public function key_at(i: i64) ref String, IError {
+      match this.value {
+        JsonValue.Object(members) => {
+          if (i < 0 or i >= members.size()) {
+            throw JsonError("JSON member index out of range", -1);
+          }
+          return members.borrow(i).key;
+        },
+        _ => {
+          throw JsonError("JSON value is not an object", -1);
+        }
+      };
+    }
+
+    // Object member value by position (insertion order)
+    public function value_at(i: i64) ref Json, IError {
+      match this.value {
+        JsonValue.Object(members) => {
+          if (i < 0 or i >= members.size()) {
+            throw JsonError("JSON member index out of range", -1);
+          }
+          return members.borrow(i).value;
+        },
+        _ => {
+          throw JsonError("JSON value is not an object", -1);
+        }
+      };
+    }
+
+    // ------------------------------------------------------------------------
+    // Building
+    // ------------------------------------------------------------------------
+
+    // Append an item to an array
+    public function push(item: Json) void, IError {
+      match this.value {
+        JsonValue.Array(items) => {
+          items.push(item);
+        },
+        _ => {
+          throw JsonError("JSON value is not an array", -1);
+        }
+      };
+    }
+
+    // Set an object member: replaces the value of an existing key (the old
+    // value is dropped) or appends a new member.
+    public function set(key: String, value: Json) void, IError {
+      match this.value {
+        JsonValue.Object(members) => {
+          var index: i64 = -1;
+          for (var i: i64 = 0; i < members.size(); i = i + 1) {
+            if (members.borrow(i).key.equals(key)) {
+              index = i;
+            }
+          }
+          if (index >= 0) {
+            members.set(index, JsonMember(key, value));
+          } else {
+            members.push(JsonMember(key, value));
+          }
+        },
+        _ => {
+          throw JsonError("JSON value is not an object", -1);
+        }
+      };
+    }
+
+    // ------------------------------------------------------------------------
+    // Serialization
+    // ------------------------------------------------------------------------
+
+    // Append compact JSON text (no whitespace)
+    public function write(out: ref String) void {
+      json_write_value(this, out, -1, 0);
+    }
+
+    // Append JSON text with newlines and `indent` spaces per level
+    public function write_pretty(out: ref String, indent: i64) void {
+      json_write_value(this, out, indent, 0);
+    }
+
+    public function to_string(alloc: ref HeapAllocator) String {
+      var out = String(alloc, "");
+      this.write(out);
+      return out;
+    }
+
+    public function to_pretty_string(alloc: ref HeapAllocator, indent: i64) String {
+      var out = String(alloc, "");
+      this.write_pretty(out, indent);
+      return out;
+    }
+  }
+
+  // Empty array
+  public function json_array(alloc: ref HeapAllocator) Json {
+    return Json(JsonValue.Array(Vec<Json>(alloc, 4)));
+  }
+
+  // Empty object
+  public function json_object(alloc: ref HeapAllocator) Json {
+    return Json(JsonValue.Object(Vec<JsonMember>(alloc, 4)));
+  }
+
+  // String value from a literal
+  public function json_string(alloc: ref HeapAllocator, text: static_ptr<u8>) Json {
+    return Json(String(alloc, text));
+  }
+
+  // ==========================================================================
+  // Writer
+  // ==========================================================================
+
+  function json_write_indent(out: ref String, indent: i64, level: i64) void {
+    if (indent < 0) {
+      return;
+    }
+    out.append_char(10);  // '\n'
+    for (var i: i64 = 0; i < indent * level; i = i + 1) {
+      out.append_char(32);  // ' '
+    }
+  }
+
+  function json_write_hex4(out: ref String, code: i64) void {
+    var shift: i64 = 12;
+    while (shift >= 0) {
+      var nibble: i64 = (code >> shift) & 15;
+      if (nibble < 10) {
+        out.append_char(_convert<u8>(48 + nibble));
+      } else {
+        out.append_char(_convert<u8>(87 + nibble));  // 'a' - 10
+      }
+      shift = shift - 4;
+    }
+  }
+
+  // Quoted string with JSON escapes; bytes >= 0x20 other than '"' and '\'
+  // pass through unchanged (UTF-8 stays UTF-8)
+  function json_write_string(s: ref String, out: ref String) void {
+    out.append_char(34);  // '"'
+    var n: i64 = s.length();
+    for (var i: i64 = 0; i < n; i = i + 1) {
+      var ch: u8 = s.at(i);
+      if (ch == 34) {
+        // '"'
+        out.append_literal("\\\"");
+      } else if (ch == 92) {
+        // '\'
+        out.append_literal("\\\\");
+      } else if (ch == 10) {
+        out.append_literal("\\n");
+      } else if (ch == 13) {
+        out.append_literal("\\r");
+      } else if (ch == 9) {
+        out.append_literal("\\t");
+      } else if (ch == 8) {
+        out.append_literal("\\b");
+      } else if (ch == 12) {
+        out.append_literal("\\f");
+      } else if (ch < 32) {
+        out.append_literal("\\u");
+        json_write_hex4(out, _convert<i64>(ch));
+      } else {
+        out.append_char(ch);
+      }
+    }
+    out.append_char(34);
+  }
+
+  // Floats keep a '.'/exponent so they read back as Float; non-finite
+  // values have no JSON spelling and are written as null
+  function json_write_float(x: f64, out: ref String) void {
+    if (x != x or x > 1.7976931348623157e308 or x < -1.7976931348623157e308) {
+      out.append_literal("null");
+      return;
+    }
+    var start: i64 = out.length();
+    out.append_f64(x);
+    for (var i: i64 = start; i < out.length(); i = i + 1) {
+      var ch: u8 = out.at(i);
+      if (ch == 46 or ch == 101) {
+        // '.' 'e'
+        return;
+      }
+    }
+    out.append_literal(".0");
+  }
+
+  function json_write_value(j: ref Json, out: ref String, indent: i64, level: i64) void {
+    match j.value {
+      JsonValue.Null => {
+        out.append_literal("null");
+      },
+      JsonValue.Bool(b) => {
+        out.append_bool(b);
+      },
+      JsonValue.Int(n) => {
+        out.append_i64(n);
+      },
+      JsonValue.Float(x) => {
+        json_write_float(x, out);
+      },
+      JsonValue.String(s) => {
+        json_write_string(s, out);
+      },
+      JsonValue.Array(items) => {
+        out.append_char(91);  // '['
+        var n: i64 = items.size();
+        for (var i: i64 = 0; i < n; i = i + 1) {
+          if (i > 0) {
+            out.append_char(44);  // ','
+          }
+          json_write_indent(out, indent, level + 1);
+          json_write_value(items.borrow_unchecked(i), out, indent, level + 1);
+        }
+        if (n > 0) {
+          json_write_indent(out, indent, level);
+        }
+        out.append_char(93);  // ']'
+      },
+      JsonValue.Object(members) => {
+        out.append_char(123);  // '{'
+        var n: i64 = members.size();
+        for (var i: i64 = 0; i < n; i = i + 1) {
+          if (i > 0) {
+            out.append_char(44);  // ','
+          }
+          json_write_indent(out, indent, level + 1);
+          json_write_string(members.borrow_unchecked(i).key, out);
+          out.append_char(58);  // ':'
+          if (indent >= 0) {
+            out.append_char(32);
+          }
+          json_write_value(members.borrow_unchecked(i).value, out, indent, level + 1);
+        }
+        if (n > 0) {
+          json_write_indent(out, indent, level);
+        }
+        out.append_char(125);  // '}'
+      }
+    };
+  }
+
+  // ==========================================================================
+  // Parser
+  // ==========================================================================
+
+  // Deepest allowed array/object nesting
+  var JSON_MAX_DEPTH: i64 = 256;
+
+  class JsonParser {
+    var pos: i64;
+    var depth: i64;
+    var alloc: HeapAllocator;
+
+    function init(alloc: ref HeapAllocator) {
+      this.pos = 0;
+      this.depth = 0;
+      this.alloc = alloc.copy();
+    }
+
+    function peek(text: ref String) i64 {
+      if (this.pos >= text.length()) {
+        return -1;
+      }
+      return _convert<i64>(text.at(this.pos));
+    }
+
+    function skip_whitespace(text: ref String) void {
+      while (this.pos < text.length()) {
+        var ch: u8 = text.at(this.pos);
+        if (ch == 32 or ch == 9 or ch == 10 or ch == 13) {
+          this.pos = this.pos + 1;
+        } else {
+          return;
+        }
+      }
+    }
+
+    // Consume `literal` at pos or fail
+    function expect_literal(text: ref String, literal: static_ptr<u8>, what: static_ptr<u8>) void, IError {
+      var data: raw_ptr<u8> = _static_ptr_data<u8>(literal);
+      var n: i64 = _static_ptr_len<u8>(literal);
+      var start: i64 = this.pos;
+      for (var i: i64 = 0; i < n; i = i + 1) {
+        var expected: u8 = unsafe { _load<u8>(data, i); };
+        if (this.pos >= text.length() or text.at(this.pos) != expected) {
+          throw JsonError(what, start);
+        }
+        this.pos = this.pos + 1;
+      }
+    }
+
+    function parse_value(text: ref String) Json, IError {
+      var ch: i64 = this.peek(text);
+      if (ch == 123) {
+        // '{'
+        return this.parse_object(text);
+      }
+      if (ch == 91) {
+        // '['
+        return this.parse_array(text);
+      }
+      if (ch == 34) {
+        // '"'
+        return Json(this.parse_string(text));
+      }
+      if (ch == 116) {
+        // 't'
+        this.expect_literal(text, "true", "invalid JSON literal");
+        return Json(true);
+      }
+      if (ch == 102) {
+        // 'f'
+        this.expect_literal(text, "false", "invalid JSON literal");
+        return Json(false);
+      }
+      if (ch == 110) {
+        // 'n'
+        this.expect_literal(text, "null", "invalid JSON literal");
+        return Json();
+      }
+      if (ch == 45 or (ch >= 48 and ch <= 57)) {
+        // '-' or digit
+        return this.parse_number(text);
+      }
+      if (ch < 0) {
+        throw JsonError("unexpected end of JSON text", this.pos);
+      }
+      throw JsonError("unexpected character in JSON text", this.pos);
+    }
+
+    function enter(text: ref String) void, IError {
+      this.depth = this.depth + 1;
+      if (this.depth > JSON_MAX_DEPTH) {
+        throw JsonError("JSON nesting too deep", this.pos);
+      }
+    }
+
+    function parse_array(text: ref String) Json, IError {
+      this.enter(text);
+      this.pos = this.pos + 1;  // '['
+      var items = Vec<Json>(this.alloc, 4);
+      this.skip_whitespace(text);
+      if (this.peek(text) == 93) {
+        // ']'
+        this.pos = this.pos + 1;
+        this.depth = this.depth - 1;
+        return Json(JsonValue.Array(items));
+      }
+      while (true) {
+        this.skip_whitespace(text);
+        items.push(this.parse_value(text));
+        this.skip_whitespace(text);
+        var ch: i64 = this.peek(text);
+        if (ch == 44) {
+          // ','
+          this.pos = this.pos + 1;
+        } else if (ch == 93) {
+          // ']'
+          this.pos = this.pos + 1;
+          this.depth = this.depth - 1;
+          return Json(JsonValue.Array(items));
+        } else if (ch < 0) {
+          throw JsonError("unterminated JSON array", this.pos);
+        } else {
+          throw JsonError("expected ',' or ']' in JSON array", this.pos);
+        }
+      }
+      return Json();
+    }
+
+    function parse_object(text: ref String) Json, IError {
+      this.enter(text);
+      this.pos = this.pos + 1;  // '{'
+      var members = Vec<JsonMember>(this.alloc, 4);
+      this.skip_whitespace(text);
+      if (this.peek(text) == 125) {
+        // '}'
+        this.pos = this.pos + 1;
+        this.depth = this.depth - 1;
+        return Json(JsonValue.Object(members));
+      }
+      while (true) {
+        this.skip_whitespace(text);
+        if (this.peek(text) != 34) {
+          throw JsonError("expected string key in JSON object", this.pos);
+        }
+        var key: String = this.parse_string(text);
+        this.skip_whitespace(text);
+        if (this.peek(text) != 58) {
+          // ':'
+          throw JsonError("expected ':' after JSON object key", this.pos);
+        }
+        this.pos = this.pos + 1;
+        this.skip_whitespace(text);
+        var value: Json = this.parse_value(text);
+        members.push(JsonMember(key, value));
+        this.skip_whitespace(text);
+        var ch: i64 = this.peek(text);
+        if (ch == 44) {
+          // ','
+          this.pos = this.pos + 1;
+        } else if (ch == 125) {
+          // '}'
+          this.pos = this.pos + 1;
+          this.depth = this.depth - 1;
+          return Json(JsonValue.Object(members));
+        } else if (ch < 0) {
+          throw JsonError("unterminated JSON object", this.pos);
+        } else {
+          throw JsonError("expected ',' or '}' in JSON object", this.pos);
+        }
+      }
+      return Json();
+    }
+
+    function hex_digit(text: ref String) i64, IError {
+      var ch: i64 = this.peek(text);
+      this.pos = this.pos + 1;
+      if (ch >= 48 and ch <= 57) {
+        return ch - 48;
+      }
+      if (ch >= 97 and ch <= 102) {
+        return ch - 87;
+      }
+      if (ch >= 65 and ch <= 70) {
+        return ch - 55;
+      }
+      throw JsonError("invalid \\u escape in JSON string", this.pos - 1);
+    }
+
+    function hex4(text: ref String) i64, IError {
+      var code: i64 = 0;
+      for (var i: i64 = 0; i < 4; i = i + 1) {
+        code = code * 16 + this.hex_digit(text);
+      }
+      return code;
+    }
+
+    function append_utf8(out: ref String, code: i64) void {
+      if (code < 128) {
+        out.append_char(_convert<u8>(code));
+      } else if (code < 2048) {
+        out.append_char(_convert<u8>(192 | (code >> 6)));
+        out.append_char(_convert<u8>(128 | (code & 63)));
+      } else if (code < 65536) {
+        out.append_char(_convert<u8>(224 | (code >> 12)));
+        out.append_char(_convert<u8>(128 | ((code >> 6) & 63)));
+        out.append_char(_convert<u8>(128 | (code & 63)));
+      } else {
+        out.append_char(_convert<u8>(240 | (code >> 18)));
+        out.append_char(_convert<u8>(128 | ((code >> 12) & 63)));
+        out.append_char(_convert<u8>(128 | ((code >> 6) & 63)));
+        out.append_char(_convert<u8>(128 | (code & 63)));
+      }
+    }
+
+    // Parse a quoted string starting at pos, decoding escapes into UTF-8
+    function parse_string(text: ref String) String, IError {
+      var start: i64 = this.pos;
+      this.pos = this.pos + 1;  // opening '"'
+      var out = String(this.alloc, "");
+      while (true) {
+        var ch: i64 = this.peek(text);
+        if (ch < 0) {
+          throw JsonError("unterminated JSON string", start);
+        }
+        if (ch == 34) {
+          // closing '"'
+          this.pos = this.pos + 1;
+          return out;
+        }
+        if (ch < 32) {
+          throw JsonError("control character in JSON string", this.pos);
+        }
+        if (ch != 92) {
+          // not '\'
+          out.append_char(_convert<u8>(ch));
+          this.pos = this.pos + 1;
+          continue;
+        }
+        // Escape sequence
+        var esc_at: i64 = this.pos;
+        this.pos = this.pos + 1;
+        var esc: i64 = this.peek(text);
+        this.pos = this.pos + 1;
+        if (esc == 34 or esc == 92 or esc == 47) {
+          // '"' '\' '/'
+          out.append_char(_convert<u8>(esc));
+        } else if (esc == 110) {
+          // 'n'
+          out.append_char(10);
+        } else if (esc == 116) {
+          // 't'
+          out.append_char(9);
+        } else if (esc == 114) {
+          // 'r'
+          out.append_char(13);
+        } else if (esc == 98) {
+          // 'b'
+          out.append_char(8);
+        } else if (esc == 102) {
+          // 'f'
+          out.append_char(12);
+        } else if (esc == 117) {
+          // 'u'
+          var code: i64 = this.hex4(text);
+          if (code >= 55296 and code <= 56319) {
+            // high surrogate
+            var low: i64 = -1;
+            if (this.peek(text) == 92 and this.pos + 1 < text.length() and text.at(this.pos + 1) == 117) {
+              var save: i64 = this.pos;
+              this.pos = this.pos + 2;
+              low = this.hex4(text);
+              if (low < 56320 or low > 57343) {
+                this.pos = save;  // not a low surrogate: leave it for the next round
+                low = -1;
+              }
+            }
+            if (low >= 0) {
+              code = 65536 + ((code - 55296) << 10) + (low - 56320);
+            } else {
+              code = 65533;  // U+FFFD replacement character
+            }
+          } else if (code >= 56320 and code <= 57343) {
+            // lone low surrogate
+            code = 65533;
+          }
+          this.append_utf8(out, code);
+        } else {
+          throw JsonError("invalid escape in JSON string", esc_at);
+        }
+      }
+      return out;
+    }
+
+    function digits(text: ref String) i64 {
+      var count: i64 = 0;
+      while (this.pos < text.length() and text.at(this.pos) >= 48 and text.at(this.pos) <= 57) {
+        this.pos = this.pos + 1;
+        count = count + 1;
+      }
+      return count;
+    }
+
+    // number = [-] int [frac] [exp]; int = 0 | [1-9][0-9]*
+    function parse_number(text: ref String) Json, IError {
+      var start: i64 = this.pos;
+      if (this.peek(text) == 45) {
+        // '-'
+        this.pos = this.pos + 1;
+      }
+      var first: i64 = this.peek(text);
+      if (first == 48) {
+        // '0' must stand alone
+        this.pos = this.pos + 1;
+        if (this.peek(text) >= 48 and this.peek(text) <= 57) {
+          throw JsonError("leading zeros are not allowed in JSON numbers", start);
+        }
+      } else if (first >= 49 and first <= 57) {
+        this.digits(text);
+      } else {
+        throw JsonError("invalid JSON number", start);
+      }
+      var is_float: bool = false;
+      if (this.peek(text) == 46) {
+        // '.'
+        is_float = true;
+        this.pos = this.pos + 1;
+        if (this.digits(text) == 0) {
+          throw JsonError("digits expected after '.' in JSON number", this.pos);
+        }
+      }
+      if (this.peek(text) == 101 or this.peek(text) == 69) {
+        // 'e' 'E'
+        is_float = true;
+        this.pos = this.pos + 1;
+        if (this.peek(text) == 43 or this.peek(text) == 45) {
+          this.pos = this.pos + 1;
+        }
+        if (this.digits(text) == 0) {
+          throw JsonError("digits expected in JSON number exponent", this.pos);
+        }
+      }
+      var token = String(this.alloc, "");
+      for (var i: i64 = start; i < this.pos; i = i + 1) {
+        token.append_char(text.at(i));
+      }
+      if (not is_float) {
+        match token.parse_i64() {
+          Option.Some(n) => {
+            return Json(n);
+          },
+          Option.None => {}
+        };
+      }
+      match token.parse_f64() {
+        Option.Some(x) => {
+          return Json(x);
+        },
+        Option.None => {
+          throw JsonError("invalid JSON number", start);
+        }
+      };
+    }
+  }
+
+  // Parse a complete JSON text. Trailing whitespace is allowed, anything else
+  // after the value is an error.
+  public function json_parse(alloc: ref HeapAllocator, text: ref String) Json, IError {
+    var parser = JsonParser(alloc);
+    parser.skip_whitespace(text);
+    var value: Json = parser.parse_value(text);
+    parser.skip_whitespace(text);
+    if (parser.pos < text.length()) {
+      throw JsonError("unexpected text after JSON value", parser.pos);
+    }
+    return value;
+  }
+
+  public function json_parse(alloc: ref HeapAllocator, text: static_ptr<u8>) Json, IError {
+    var owned = String(alloc, text);
+    return json_parse(alloc, owned);
+  }
+
+  // ============================================================================
+  // Precompiled Specializations
+  // ============================================================================
+
+  public declare Vec_Json = Vec<Json>;
+  public declare Vec_JsonMember = Vec<JsonMember>;
+}  // module sun

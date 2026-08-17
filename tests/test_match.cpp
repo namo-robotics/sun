@@ -418,3 +418,90 @@ TEST(MatchTest, NoMatchContinuesExecution) {
   )");
   EXPECT_EQ(value, 100);
 }
+
+// A non-void method whose body ends in a match where every arm returns or
+// throws has no fall-through; codegen must still terminate the tail block.
+TEST(MatchTest, method_ending_in_fully_terminating_match) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    class NotANumber implements IError {
+      function init() {}
+      function code() i32 { return 7; }
+      function message() static_ptr<u8> { return "not a number"; }
+    }
+
+    enum Value {
+      Int(i64),
+      Float(f64),
+      Empty
+    }
+
+    class Holder {
+      var v: Value;
+      function init(v: Value) { this.v = v; }
+      function as_f64() f64, IError {
+        match this.v {
+          Value.Int(x) => { return _convert<f64>(x); },
+          Value.Float(x) => { return x; },
+          _ => { throw NotANumber(); }
+        };
+      }
+    }
+
+    function main() i32 {
+      var a = Holder(Value.Int(4));
+      var b = Holder(Value.Empty);
+      var total: f64 = 0.0;
+      try {
+        total = a.as_f64();
+        total = total + b.as_f64();
+      } catch (e: IError) {
+        return _convert<i32>(total) + e.code();
+      }
+      return 0;
+    }
+  )");
+  EXPECT_EQ(value, 11);
+}
+
+// A match arm whose body is a void statement contributes no value.
+TEST(MatchTest, statement_arms_with_void_calls) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    enum Value {
+      Items(Vec<i64>),
+      Empty
+    }
+
+    class Holder {
+      var v: Value;
+      function init(v: Value) { this.v = v; }
+      function push(x: i64) void {
+        match this.v {
+          Value.Items(items) => { items.push(x); },
+          Value.Empty => { }
+        };
+      }
+      function count() i64 {
+        return match this.v {
+          Value.Items(items) => items.size(),
+          Value.Empty => 0
+        };
+      }
+    }
+
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var h = Holder(Value.Items(Vec<i64>(alloc, 2)));
+      h.push(1);
+      h.push(2);
+      h.push(3);
+      var e = Holder(Value.Empty);
+      e.push(9);
+      return _convert<i32>(h.count() + e.count());
+    }
+  )");
+  EXPECT_EQ(value, 3);
+}

@@ -565,10 +565,14 @@ void CodegenVisitor::generateMethodBody(const FunctionAST& methodFunc,
   // Generate the method body
   codegen(methodFunc.getBody());
 
-  // Add implicit return if no explicit return
+  // Add implicit return if no explicit return. A non-void body whose last
+  // statement always returns/throws (e.g. a match with terminating arms)
+  // leaves an unreachable tail block.
   if (!ctx.builder->GetInsertBlock()->getTerminator()) {
     if (returnType->isVoidTy()) {
       ctx.builder->CreateRetVoid();
+    } else {
+      ctx.builder->CreateUnreachable();
     }
   }
 
@@ -924,6 +928,9 @@ std::vector<Value*> CodegenVisitor::generateCtorArgs(
       Value* argVal = codegen(*arg);
       if (!argVal) return {};
 
+      // Class/payload-enum arguments passed by value move into the ctor
+      argVal = applyMoveSemantics(argVal, argSunType);
+
       // Handle implicit widening for arguments:
       // Widen smaller integers to larger integers (i32 -> i64)
       if (argIdx < paramTypes.size() && paramTypes[argIdx]) {
@@ -1247,11 +1254,12 @@ Value* CodegenVisitor::codegen(const InterfaceDefinitionAST& expr) {
     // Generate the method body
     codegen(methodFunc.getBody());
 
-    // Add return void if no explicit return and function returns void
-    if (returnType->isVoidTy()) {
-      // Check if the block is properly terminated
-      if (!ctx.builder->GetInsertBlock()->getTerminator()) {
+    // Add implicit return if no explicit return (see codegenMethod)
+    if (!ctx.builder->GetInsertBlock()->getTerminator()) {
+      if (returnType->isVoidTy()) {
         ctx.builder->CreateRetVoid();
+      } else {
+        ctx.builder->CreateUnreachable();
       }
     }
 

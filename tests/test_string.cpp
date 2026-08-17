@@ -586,3 +586,83 @@ TEST(StringTest, literal_unknown_escape_preserved) {
   )");
   EXPECT_EQ(value, 0);
 }
+
+// ============================================================================
+// Float Formatting and Number Parsing
+// ============================================================================
+
+TEST(StringTest, append_f64_shortest_round_trip) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function check(alloc: ref HeapAllocator, x: f64, expected: static_ptr<u8>) bool {
+        var s = String(alloc, "");
+        s.append_f64(x);
+        return s.equals_literal(expected);
+    }
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        if (check(alloc, 0.1, "0.1") == false) { return 1; }
+        if (check(alloc, 1.5, "1.5") == false) { return 2; }
+        if (check(alloc, 100.0, "100") == false) { return 3; }
+        if (check(alloc, 1e21, "1e+21") == false) { return 4; }
+        if (check(alloc, -2.5e-7, "-2.5e-07") == false) { return 5; }
+        if (check(alloc, 3.141592653589793, "3.141592653589793") == false) { return 6; }
+        if (check(alloc, 1.0 / 3.0, "0.3333333333333333") == false) { return 7; }
+        if (check(alloc, -0.0, "-0") == false) { return 8; }
+        var f: f32 = 2.5;
+        var s = String(alloc, "");
+        s.append(f);
+        s.append(0.25);
+        if (s.equals_literal("2.50.25") == false) { return 9; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(StringTest, parse_i64_and_parse_f64) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function int_or(alloc: ref HeapAllocator, text: static_ptr<u8>, fallback: i64) i64 {
+        var s = String(alloc, text);
+        return match s.parse_i64() {
+            Option.Some(v) => v,
+            Option.None => fallback
+        };
+    }
+
+    function float_or(alloc: ref HeapAllocator, text: static_ptr<u8>, fallback: f64) f64 {
+        var s = String(alloc, text);
+        return match s.parse_f64() {
+            Option.Some(v) => v,
+            Option.None => fallback
+        };
+    }
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        if (int_or(alloc, "42", -1) != 42) { return 1; }
+        if (int_or(alloc, "-42", -1) != -42) { return 2; }
+        if (int_or(alloc, "9223372036854775807", -1) != 9223372036854775807) { return 3; }
+        if (int_or(alloc, "-9223372036854775808", -1) != -9223372036854775807 - 1) { return 4; }
+        if (int_or(alloc, "9223372036854775808", -1) != -1) { return 5; }
+        if (int_or(alloc, "12a", -1) != -1) { return 6; }
+        if (int_or(alloc, "", -1) != -1) { return 7; }
+        if (int_or(alloc, "-", -1) != -1) { return 8; }
+        if (int_or(alloc, "1.5", -1) != -1) { return 9; }
+        if (float_or(alloc, "1.5", 0.0) != 1.5) { return 10; }
+        if (float_or(alloc, "-2.5e3", 0.0) != -2500.0) { return 11; }
+        if (float_or(alloc, "7", 0.0) != 7.0) { return 12; }
+        if (float_or(alloc, "0.1", 0.0) != 0.1) { return 13; }
+        if (float_or(alloc, "abc", -1.0) != -1.0) { return 14; }
+        if (float_or(alloc, "1e", -1.0) != -1.0) { return 15; }
+        if (float_or(alloc, "1.5x", -1.0) != -1.0) { return 16; }
+        if (float_or(alloc, ".", -1.0) != -1.0) { return 17; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}

@@ -72,9 +72,16 @@ StructType* LLVMTypeResolver::getEnumStorageType(
   const uint64_t payloadBytes = maxSize > tagArea ? maxSize - tagArea : 0;
   const uint64_t numUnits = (payloadBytes + unitBytes - 1) / unitBytes;
 
-  auto* storage = StructType::create(
-      ctx, {Type::getInt32Ty(ctx), ArrayType::get(unitTy, numUnits)},
-      enumType.getName() + "_struct");
+  // Share one storage struct per enum name (see ClassType::getStructType)
+  std::string storageName = enumType.getName() + "_struct";
+  StructType* storage = StructType::getTypeByName(ctx, storageName);
+  if (storage && storage->isOpaque()) {
+    storage->setBody({Type::getInt32Ty(ctx), ArrayType::get(unitTy, numUnits)});
+  } else if (!storage) {
+    storage = StructType::create(
+        ctx, {Type::getInt32Ty(ctx), ArrayType::get(unitTy, numUnits)},
+        storageName);
+  }
 
   // The storage must be able to hold every variant view
   for (const auto& [name, variantStruct] : enumType.cachedVariantStructs) {

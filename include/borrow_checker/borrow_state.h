@@ -65,6 +65,9 @@ class BorrowState {
   /// Get the lifetime for a variable or reference (if known)
   std::optional<Lifetime> getLifetime(const std::string& name) const;
 
+  /// Forget the lifetime recorded for a name
+  void clearLifetime(const std::string& name);
+
   /// Clear all state (for testing)
   void clear();
 

@@ -182,6 +182,11 @@ s.append_char(33);         // Append '!'
 | `find_char(ch)` | `(u8) Option<i64>` | Index of first occurrence; `None` if absent |
 | `rfind_char(ch)` | `(u8) Option<i64>` | Index of last occurrence; `None` if absent |
 | `contains_char(ch)` | `(u8) bool` | Check if the byte occurs |
+| `append_i64(n)` / `append_u64(n)` | `(i64) void` | Append an integer in decimal |
+| `append_f64(x)` | `(f64) void` | Append a float in its shortest round-trip form (`0.1`, `1e+21`) |
+| `append(x)` | `(f64) void`, `(f32) void`, ... | Overloads used by `${x}` interpolation for every primitive |
+| `parse_i64()` | `() Option<i64>` | Whole string as a decimal integer; `None` if malformed or out of range |
+| `parse_f64()` | `() Option<f64>` | Whole string as a decimal float; `None` if malformed |
 
 ### Slicing
 
@@ -205,6 +210,11 @@ A non-owning view into a `String`. Provides read-only access to a substring with
 | `find_char(ch)` | `(u8) Option<i64>` | Index of first occurrence; `None` if absent |
 | `rfind_char(ch)` | `(u8) Option<i64>` | Index of last occurrence; `None` if absent |
 | `contains_char(ch)` | `(u8) bool` | Check if the byte occurs |
+| `append_i64(n)` / `append_u64(n)` | `(i64) void` | Append an integer in decimal |
+| `append_f64(x)` | `(f64) void` | Append a float in its shortest round-trip form (`0.1`, `1e+21`) |
+| `append(x)` | `(f64) void`, `(f32) void`, ... | Overloads used by `${x}` interpolation for every primitive |
+| `parse_i64()` | `() Option<i64>` | Whole string as a decimal integer; `None` if malformed or out of range |
+| `parse_f64()` | `() Option<f64>` | Whole string as a decimal float; `None` if malformed |
 
 <Callout type="warning">
   A `StringView` must not outlive the parent `String`. The view holds a reference to the String's internal memory.
@@ -361,6 +371,60 @@ it soundly).
 `Vec<T>`, `LinkedList<T>`, `Map<K, V>` (values) and `ContiguousBuffer<T>`
 implement `IIterable`.
 
+## Json
+
+`json.sun` parses JSON text into an owned tree and writes it back, compact or
+pretty. Objects keep their members in insertion order (lookups are a linear
+scan), numbers are `Int(i64)` when the text is an integer that fits and
+`Float(f64)` otherwise, strings are UTF-8 `String`s.
+
+```sun
+var alloc = make_heap_allocator();
+var doc = json_parse(alloc, "{\"name\": \"sun\", \"tags\": [1, 2.5]}");
+var name: ref String = doc.get("name").as_string();
+var second: f64 = doc.get("tags").at(1).as_f64();
+
+var obj = json_object(alloc);
+obj.set(String(alloc, "ok"), Json(true));
+obj.set(String(alloc, "tags"), json_array(alloc));
+obj.get("tags").push(Json(42));
+println(obj.to_string(alloc));            // {"ok":true,"tags":[42]}
+println(obj.to_pretty_string(alloc, 2));
+```
+
+The tree node is `class Json` wrapping a `public var value: JsonValue`:
+
+```sun
+enum JsonValue { Null, Bool(bool), Int(i64), Float(f64), String(String), Array(Vec<Json>), Object(Vec<JsonMember>) }
+class JsonMember { var key: String; var value: Json; }
+```
+
+Match on `j.value` directly when the accessors below are not enough.
+
+| Function / Method | Signature | Description |
+|--------|-----------|-------------|
+| `json_parse(alloc, text)` | `(ref HeapAllocator, ref String) Json, IError` | Parse a complete document (also accepts a `static_ptr<u8>` literal). Rejects trailing text, leading zeros, control characters in strings, and nesting deeper than 256 |
+| `Json()`, `Json(b)`, `Json(n)`, `Json(x)`, `Json(s)` | `()`, `(bool)`, `(i64)`, `(f64)`, `(String)` | Build a scalar node (`Json(s)` takes ownership of the `String`) |
+| `json_array(alloc)` / `json_object(alloc)` | `(ref HeapAllocator) Json` | Empty array / object |
+| `json_string(alloc, text)` | `(ref HeapAllocator, static_ptr<u8>) Json` | String node from a literal |
+| `is_null()`, `is_bool()`, `is_int()`, `is_float()`, `is_number()`, `is_string()`, `is_array()`, `is_object()` | `() bool` | Kind checks |
+| `as_bool()`, `as_i64()`, `as_f64()` | `() T, IError` | Scalar readers; `as_i64` accepts an integral `Float`, `as_f64` accepts an `Int` |
+| `as_string()` | `() ref String, IError` | Borrow the string |
+| `len()` | `() i64` | Array items or object members (0 for scalars) |
+| `at(i)` | `(i64) ref Json, IError` | Array item |
+| `get(key)` | `(static_ptr<u8>) ref Json, IError`, `(ref String) ref Json, IError` | Object member value |
+| `has(key)` | `(static_ptr<u8>) bool` | Whether an object has the key |
+| `key_at(i)` / `value_at(i)` | `(i64) ref String, IError` / `(i64) ref Json, IError` | Object members by position, in insertion order |
+| `push(item)` | `(Json) void, IError` | Append to an array |
+| `set(key, value)` | `(String, Json) void, IError` | Set an object member (replaces an existing key's value in place, otherwise appends) |
+| `write(out)` / `write_pretty(out, indent)` | `(ref String) void` / `(ref String, i64) void` | Append JSON text to a `String` |
+| `to_string(alloc)` / `to_pretty_string(alloc, indent)` | `(ref HeapAllocator) String` / `(ref HeapAllocator, i64) String` | JSON text as a new `String` |
+
+Readers throw `JsonError` (code 60) on a kind mismatch or missing key; parse
+errors carry the byte offset of the problem in `offset()`. When writing,
+`Float` values keep a `.0` or exponent so they read back as `Float`, and
+non-finite floats become `null`.
+
 ## Error Types
 
 All error types implement `IError` with `code() i32` and `message() static_ptr<u8>` methods.
@@ -376,6 +440,7 @@ All error types implement `IError` with `code() i32` and `message() static_ptr<u
 | `InvalidArgumentError` | 6 | Invalid function arguments |
 | `IOError` | 7 | I/O operations |
 | `AllocationError` | 8 | Memory allocation failures |
+| `JsonError` | 60 | JSON parse errors (with `offset()`) and kind mismatches |
 
 ```sun
 function pop_first(v: ref Vec<i32>) i32, IError {

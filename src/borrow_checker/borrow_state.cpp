@@ -215,6 +215,10 @@ std::optional<Lifetime> BorrowState::getLifetime(
   return std::nullopt;
 }
 
+void BorrowState::clearLifetime(const std::string& name) {
+  lifetimes_.erase(name);
+}
+
 void BorrowState::clear() {
   loans_.clear();
   refToTarget_.clear();

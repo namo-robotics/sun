@@ -140,6 +140,13 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
       checkExpr(*static_cast<const UnaryExprAST&>(expr).getOperand());
       break;
 
+    case ASTNodeType::GENERIC_CALL:
+      // Intrinsics and generic functions: arguments still use variables
+      for (const auto& arg : static_cast<const GenericCallAST&>(expr).getArgs()) {
+        if (arg) checkExpr(*arg);
+      }
+      break;
+
     // These don't need borrow checking
     case ASTNodeType::NUMBER:
     case ASTNodeType::STRING_LITERAL:
@@ -157,7 +164,6 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
     case ASTNodeType::QUALIFIED_NAME:
     case ASTNodeType::INTERFACE_DEFINITION:
     case ASTNodeType::ENUM_DEFINITION:
-    case ASTNodeType::GENERIC_CALL:
     case ASTNodeType::PACK_EXPANSION:  // only in unexpanded generic templates
     case ASTNodeType::THROW:
     case ASTNodeType::BREAK_STMT:
@@ -192,6 +198,10 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
     checkExpr(*var.getValue());
   }
 
+  // A fresh declaration (e.g. the next loop iteration, or a same-named
+  // variable in a sibling scope) starts un-moved
+  movedVariables_.erase(var.getName());
+
   // Move semantics for temporaries and compound types
   if (var.getValue()) {
     auto srcType = var.getValue()->getResolvedType();
@@ -218,8 +228,10 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
     TypePtr varType = var.getValue()->getResolvedType();
     if (varType && varType->isReference()) {
       // Variable is being initialized with a reference type
+      // A ref into a named local (e.g. `items.borrow(i)` on a local Vec) is
+      // fine: it lives as long as that variable. Only temporaries die here.
       Lifetime lt = inferExprLifetime(*var.getValue());
-      if (lt.isLocal()) {
+      if (lt.isLocal() && lt.getName().rfind("$temp", 0) == 0) {
         const auto& pos = var.getLocation();
         reportError("cannot store reference with local lifetime in variable '" +
                         var.getName() +
@@ -436,11 +448,25 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
     return;
   }
 
-  // Handle FunctionType (direct calls)
-  auto* funcType = dynamic_cast<const FunctionType*>(calleeType.get());
-  if (!funcType) return;
-
-  const auto& paramTypes = funcType->getParamTypes();
+  // Constructor call (ClassName(args...)): resolve the init overload and move
+  // compound arguments bound to by-value parameters.
+  std::vector<TypePtr> paramTypes;
+  if (calleeType->isClass()) {
+    std::vector<TypePtr> argTypes;
+    for (const auto& arg : args) {
+      argTypes.push_back(arg ? arg->getResolvedType() : nullptr);
+    }
+    const ClassMethod* init =
+        static_cast<const ClassType&>(*calleeType)
+            .getMethodForArgs("init", argTypes);
+    if (!init) return;
+    paramTypes = init->paramTypes;
+  } else {
+    // Handle FunctionType (direct calls)
+    auto* funcType = dynamic_cast<const FunctionType*>(calleeType.get());
+    if (!funcType) return;
+    paramTypes = funcType->getParamTypes();
+  }
 
   for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
     const auto& arg = args[i];
@@ -561,13 +587,23 @@ void BorrowChecker::checkMatchExpr(const MatchExprAST& matchExpr) {
       checkExpr(*arm.pattern);
     }
     // Compound payload bindings borrow the payload slot in place and can
-    // never be moved out; scalar bindings are plain copies.
+    // never be moved out; scalar bindings are plain copies. A borrowed
+    // binding lives as long as the matched value does, so a ref derived
+    // from it (e.g. `items.borrow(i)`) may be returned when the
+    // discriminant is a parameter or `this`.
     std::vector<std::string> armBorrows;
+    std::vector<std::pair<std::string, std::optional<Lifetime>>> savedLifetimes;
     for (const auto& binding : arm.bindings) {
       if (binding.isWildcard) continue;
       if (binding.resolvedType && binding.resolvedType->isCompound()) {
         if (matchBorrowedBindings_.insert(binding.name).second) {
           armBorrows.push_back(binding.name);
+        }
+        if (matchExpr.getDiscriminant()) {
+          savedLifetimes.emplace_back(binding.name,
+                                      state_.getLifetime(binding.name));
+          state_.setLifetime(binding.name,
+                             inferExprLifetime(*matchExpr.getDiscriminant()));
         }
       }
     }
@@ -575,6 +611,13 @@ void BorrowChecker::checkMatchExpr(const MatchExprAST& matchExpr) {
       checkExpr(*arm.body);
     }
     for (const auto& name : armBorrows) matchBorrowedBindings_.erase(name);
+    for (const auto& [name, previous] : savedLifetimes) {
+      if (previous) {
+        state_.setLifetime(name, *previous);
+      } else {
+        state_.clearLifetime(name);
+      }
+    }
     exitScope();
     movedAfter.insert(movedVariables_.begin(), movedVariables_.end());
   }
@@ -688,9 +731,10 @@ void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
 
   // Move semantics for return values: when returning a compound type (class)
   // by value, the ownership transfers to the caller. Mark the return value
-  // as moved so its deinit is skipped in the callee.
+  // as moved so its deinit is skipped in the callee. Returning a `ref` only
+  // lends the value out, so nothing moves.
   auto retType = value->getResolvedType();
-  if (retType && retType->isCompound()) {
+  if (retType && retType->isCompound() && !currentFunctionReturnsRef_) {
     // Mark temporaries as moved (ownership transferred to caller)
     if (value->isTemporary()) {
       const_cast<ExprAST*>(value)->setMoved(true);

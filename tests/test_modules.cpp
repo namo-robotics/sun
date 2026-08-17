@@ -5,6 +5,7 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
@@ -14,6 +15,7 @@
 #include "codegen_visitor.h"
 #include "execution_utils.h"
 #include "lexer.h"
+#include "moon_builder.h"
 #include "parser.h"
 #include "semantic_analyzer.h"
 
@@ -702,4 +704,98 @@ TEST(ModuleTest, module_qualified_call_widens_numeric_arguments) {
     }
   )");
   EXPECT_EQ(value, 7);
+}
+
+// === Calling into a precompiled .moon ===
+
+namespace {
+
+std::filesystem::path writeMoonLib(const std::string& name,
+                                   const std::string& source) {
+  namespace fs = std::filesystem;
+  fs::path dir = fs::temp_directory_path() / "sun_module_moon_tests";
+  fs::create_directories(dir);
+  fs::path libSrc = dir / (name + ".sun");
+  std::ofstream out(libSrc);
+  out << source;
+  out.close();
+  fs::path moonPath = dir / (name + ".moon");
+  sun::MoonBuilder::build(libSrc.string(), moonPath);
+  return moonPath;
+}
+
+}  // namespace
+
+// A throwing free function in a .moon must be invoked (not called) inside a
+// try block, or its exception skips the local catch and terminates.
+TEST(ModuleTest, moon_free_function_throw_is_caught_by_importer) {
+  initTestEnvironment();
+  auto moonPath = writeMoonLib("throwlib", R"(
+    public module throwlib {
+        public class Boom implements IError {
+            public function init() {}
+            public function code() i32 { return 77; }
+            public function message() static_ptr<u8> { return "boom"; }
+        }
+        public function fail(x: i32) i32, IError {
+            if (x > 0) { throw Boom(); }
+            return 1;
+        }
+        public function nested(x: i32) i32, IError {
+            return fail(x);
+        }
+    }
+  )");
+
+  auto driver = Driver::createForJIT("moon_throw_main");
+  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  auto value = driver->executeString(R"(
+    using throwlib;
+
+    function main() i32 {
+        var r: i32 = 0;
+        try { r = r + fail(1); } catch (e: IError) { r = r + e.code(); }
+        try { r = r + nested(1); } catch (e: IError) { r = r + 1000; }
+        try { r = r + fail(0); } catch (e: IError) { r = r + 5000; }
+        return r;
+    }
+  )");
+  EXPECT_EQ(value, 1078);
+}
+
+// Struct types for the same class minted by the library and by the importer
+// must agree, or by-value class arguments fail to type-check at the call.
+TEST(ModuleTest, moon_method_taking_class_by_value) {
+  initTestEnvironment();
+  auto moonPath = writeMoonLib("byvallib", R"(
+    public module byvallib {
+        public class Pair {
+            public var a: i64;
+            public var b: i64;
+            public function init(a: i64, b: i64) { this.a = a; this.b = b; }
+        }
+        public class Sink {
+            var total: i64;
+            public function init() { this.total = 0; }
+            public function take(p: Pair) void { this.total = this.total + p.a + p.b; }
+            public function total_of() i64 { return this.total; }
+        }
+        public function sum(p: Pair) i64 { return p.a + p.b; }
+    }
+  )");
+
+  auto driver = Driver::createForJIT("moon_byval_main");
+  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  auto value = driver->executeString(R"(
+    using byvallib;
+
+    function main() i32 {
+        var s = Sink();
+        s.take(Pair(1, 2));
+        var p = Pair(10, 20);
+        s.take(p);
+        return _convert<i32>(s.total_of() + sum(Pair(3, 4)));
+    }
+  )");
+  EXPECT_EQ(value, 40);
 }

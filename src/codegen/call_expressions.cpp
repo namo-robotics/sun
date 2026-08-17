@@ -302,14 +302,20 @@ Value* CodegenVisitor::materializeMethodClosureValue(Value* fnPtr,
 // Helper: Widen numeric types if needed (i32->i64, f32->f64)
 // -------------------------------------------------------------------
 
-// Reference-returning callees return the referent's ADDRESS; the caller
-// transparently dereferences so the call yields the value (refs behave like
-// values everywhere else)
+// Reference-returning callees return the referent's ADDRESS; for scalars the
+// caller transparently dereferences so the call yields the value (refs behave
+// like values everywhere else). Compound referents (classes, payload enums)
+// flow as pointers everywhere, so the address is kept: loading would produce
+// an aliasing copy and mutations through the ref would be lost.
 Value* CodegenVisitor::derefIfRefReturn(Value* result,
                                         const sun::TypePtr& returnType) {
   if (!result || !returnType || !returnType->isReference()) return result;
   auto* refType = static_cast<const sun::ReferenceType*>(returnType.get());
-  llvm::Type* valueTy = typeResolver.resolve(refType->getReferencedType());
+  const sun::TypePtr& referenced = refType->getReferencedType();
+  if (referenced && referenced->isCompound() && !referenced->isInterface()) {
+    return result;
+  }
+  llvm::Type* valueTy = typeResolver.resolve(referenced);
   return ctx.builder->CreateLoad(valueTy, result, "ref.ret.deref");
 }
 
@@ -1387,7 +1393,7 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
   // A throwing callee ('T, IError') is tagged with "sun.canthrow"; inside a try
   // block it must be `invoke`d so its exception routes to the local landing
   // pad. Exceptions now propagate natively — no error-union unwrapping.
-  bool canThrow = func->hasFnAttribute("sun.canthrow");
+  bool canThrow = func->hasFnAttribute("sun.canthrow") || funcType.canThrow();
   Value* callResult = emitPossiblyThrowingCall(
       func->getFunctionType(), func, argValues, canThrow, "calltmp");
 

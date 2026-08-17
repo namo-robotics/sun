@@ -1141,3 +1141,105 @@ TEST(ClassTest, deinit_called_for_class_created_with_allocator) {
   // 2 (deinit calls) + 30 (values) = 32
   EXPECT_EQ(value, 32);
 }
+
+// Compound arguments passed by value to a constructor move into the object,
+// exactly like by-value arguments to any other call.
+TEST(ClassTest, ctor_by_value_class_arg_moves_temporary_and_named) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    class Holder {
+      var s: String;
+      function init(s: String) { this.s = s; }
+      function len() i64 { return this.s.length(); }
+    }
+
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var h = Holder(String(alloc, "abc"));
+      var t = String(alloc, "hello");
+      var h2 = Holder(t);
+      return _convert<i32>(h.len() + h2.len());
+    }
+  )");
+  EXPECT_EQ(value, 8);
+}
+
+TEST(ClassTest, ctor_by_value_class_arg_is_use_after_move) {
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using sun;
+
+    class Holder {
+      var s: String;
+      function init(s: String) { this.s = s; }
+    }
+
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var t = String(alloc, "hello");
+      var h = Holder(t);
+      return _convert<i32>(t.length());
+    }
+  )"),
+               SunError);
+}
+
+TEST(ClassTest, ctor_by_value_enum_arg_moves_payload) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    enum Value {
+      Empty,
+      Text(String),
+      Num(i64)
+    }
+
+    class Box {
+      var v: Value;
+      function init(v: Value) { this.v = v; }
+      function size() i64 {
+        return match this.v {
+          Value.Text(s) => s.length(),
+          Value.Num(n) => n,
+          Value.Empty => 0
+        };
+      }
+    }
+
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var a = Box(Value.Text(String(alloc, "four")));
+      var n = Value.Num(10);
+      var b = Box(n);
+      var c = Box(Value.Empty);
+      return _convert<i32>(a.size() + b.size() + c.size());
+    }
+  )");
+  EXPECT_EQ(value, 14);
+}
+
+// A `ref` to a compound value returned from a free function is the value
+// itself, not a copy: reads see it and mutations through it stick.
+TEST(ClassTest, ref_return_of_compound_from_free_function_is_not_a_copy) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    class Holder {
+      var items: Vec<i64>;
+      function init(items: Vec<i64>) { this.items = items; }
+    }
+
+    function items_of(h: ref Holder) ref Vec<i64> {
+      return h.items;
+    }
+
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var h = Holder(Vec<i64>(alloc, 2));
+      items_of(h).push(5);
+      items_of(h).push(6);
+      return _convert<i32>(items_of(h).size() + h.items.size());
+    }
+  )");
+  EXPECT_EQ(value, 4);
+}

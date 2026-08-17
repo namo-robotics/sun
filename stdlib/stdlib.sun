@@ -23,6 +23,7 @@ manifest {
         "io.sun",
         "networking.sun",
         "http.sun",
-        "proto_wire.sun"
+        "proto_wire.sun",
+        "json.sun"
     ]
 }
