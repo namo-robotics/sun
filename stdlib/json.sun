@@ -187,7 +187,8 @@ public module sun {
           return n;
         },
         JsonValue.Float(x) => {
-          if (x >= -9223372036854775808.0 and x < 9223372036854775808.0) {
+          var min_f: f64 = _convert<f64>(I64_MIN);
+          if (x >= min_f and x < 0.0 - min_f) {
             var n: i64 = _convert<i64>(x);
             if (_convert<f64>(n) == x) {
               return n;
@@ -475,7 +476,8 @@ public module sun {
   // Floats keep a '.'/exponent so they read back as Float; non-finite
   // values have no JSON spelling and are written as null
   function json_write_float(x: f64, out: ref String) void {
-    if (x != x or x > 1.7976931348623157e308 or x < -1.7976931348623157e308) {
+    if (x != x or x > F64_MAX or x < 0.0 - F64_MAX) {
+      // nan / inf
       out.append_literal("null");
       return;
     }

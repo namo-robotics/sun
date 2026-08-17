@@ -593,6 +593,11 @@ class CodegenVisitor {
       const std::vector<std::unique_ptr<ExprAST>>& args);
   llvm::Value* codegenPtrOffsetIntrinsic(const CallExprAST& expr);
 
+  // Bit intrinsics (in intrinsics/bits.cpp)
+  llvm::Value* codegenMulHiU64Intrinsic(const CallExprAST& expr);
+  llvm::Value* codegenCountZerosIntrinsic(const CallExprAST& expr,
+                                          bool leading);
+
   // Atomic intrinsics (in intrinsics.cpp)
   llvm::Value* codegenAtomicCmpxchgI32Intrinsic(const CallExprAST& expr);
   llvm::Value* codegenAtomicStoreI32Intrinsic(const CallExprAST& expr);

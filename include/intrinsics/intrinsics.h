@@ -82,6 +82,13 @@ enum class Intrinsic {
   FutexWake,  // _futex_wake(ptr) -> void
 
   // =========================================================================
+  // Bit intrinsics (wide multiply, leading/trailing zero counts)
+  // =========================================================================
+  MulHiU64,  // _mul_hi_u64(a, b) -> u64 (high 64 bits of the 128-bit product)
+  CtlzU64,   // _ctlz_u64(x) -> u64 (leading zero bits; 64 for 0)
+  CttzU64,   // _cttz_u64(x) -> u64 (trailing zero bits; 64 for 0)
+
+  // =========================================================================
   // File I/O intrinsics (libc calls)
   // =========================================================================
   FileOpen,   // __file_open(path, flags) -> i32
@@ -164,6 +171,11 @@ inline Intrinsic getIntrinsic(const std::string& name) {
   // Futex intrinsics
   if (name == "_futex_wait") return Intrinsic::FutexWait;
   if (name == "_futex_wake") return Intrinsic::FutexWake;
+
+  // Bit intrinsics
+  if (name == "_mul_hi_u64") return Intrinsic::MulHiU64;
+  if (name == "_ctlz_u64") return Intrinsic::CtlzU64;
+  if (name == "_cttz_u64") return Intrinsic::CttzU64;
 
   // -------------------------------------------------------------------------
   // File I/O intrinsics

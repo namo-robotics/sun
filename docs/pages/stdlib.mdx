@@ -371,6 +371,40 @@ it soundly).
 `Vec<T>`, `LinkedList<T>`, `Map<K, V>` (values) and `ContiguousBuffer<T>`
 implement `IIterable`.
 
+## BigUint
+
+Arbitrary-precision unsigned integer from `bigint.sun`: little-endian `u64`
+limbs in a `Vec`, schoolbook arithmetic built on `_mul_hi_u64`. Values are
+owned (`clone()` to copy); the by-`ref` argument of a binary operation is never
+modified.
+
+```sun
+var n = BigUint(alloc, 1);
+for (var i: u64 = 2; i <= 30; i = i + 1) { n.mul_small(i); }   // 30!
+var text = String(alloc, "");
+n.append_decimal(text);   // 265252859812191058636308480000000
+```
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `BigUint(alloc)` / `BigUint(alloc, v)` | `(ref HeapAllocator[, u64])` | Zero, or a machine word |
+| `clone()` | `() BigUint` | Independent copy |
+| `is_zero()`, `bit_length()`, `limb_count()`, `limb(i)`, `low_u64()` | | Inspection; `limb(i)` is 0 beyond the top |
+| `to_u64()` | `() Option<u64>` | The value if it fits in 64 bits |
+| `set_u64(v)`, `assign(other)`, `clear()` | | Replace the value |
+| `compare(other)`, `compare_u64(v)`, `equals(other)` | `(ref BigUint) i64`, `(u64) i64`, `(ref BigUint) bool` | Ordering (-1/0/1) |
+| `add(other)`, `add_small(v)` | `(ref BigUint) void`, `(u64) void` | In-place addition |
+| `sub(other)` | `(ref BigUint) void, IError` | In-place subtraction; throws `OverflowError` if the result would be negative |
+| `mul(other)`, `mul_small(v)`, `mul_pow10(n)` | `(ref BigUint) void`, `(u64) void`, `(i64) void` | In-place multiplication |
+| `shl(bits)`, `shr(bits)` | `(i64) void` | In-place shifts |
+| `divmod_small(d)` | `(u32) u32, IError` | Divide in place by a 32-bit divisor, returning the remainder |
+| `append_decimal(out)` | `(ref String) void` | Append the decimal digits |
+| `set_decimal(text)` | `(ref String) bool` | Parse decimal digits; `false` (value left at zero) if malformed |
+
+## Numeric limits
+
+`math.sun` also defines `I64_MAX`, `I64_MIN`, `F64_MAX`, `F64_MIN_POSITIVE` (smallest normal) and `F64_EPSILON`.
+
 ## Json
 
 `json.sun` parses JSON text into an owned tree and writes it back, compact or
