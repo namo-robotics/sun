@@ -13,7 +13,6 @@
       "Bash(SUN_PATH=* /workspaces/sun/build/*)",
       "Bash(export SUN_PATH=*)",
       "Bash(sun *)",
-      "Bash(./tests/sun_tests *)",
       "Bash(./build/tests/sun_tests *)",
       "Bash(ctest *)",
       "Bash(./tmp/*)",
@@ -47,7 +46,18 @@
     "additionalDirectories": [
       "/tmp",
       "/workspaces/sun/build/tmp",
-      "/workspaces/sun/tmp"
+      "/workspaces/sun/tmp",
+      "/workspaces/sun/src/semantic_analysis"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "python3 .claude/hooks/allow_tests.py" }
+        ]
+      }
     ]
   }
 }

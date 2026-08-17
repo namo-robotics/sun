@@ -3,30 +3,30 @@ using sun;
 // An interface declares behaviour that classes can implement. Functions can
 // accept `ref Interface` and dispatch dynamically to the concrete type.
 interface Drawable {
-  function draw() void;
+  public function draw() void;
 }
 
 class Circle implements Drawable {
-  var radius: f64;
+  public var radius: f64;
 
-  function init(r: f64) {
+  public function init(r: f64) {
     this.radius = r;
   }
 
-  function draw() void {
+  public function draw() void {
     println("Drawing circle with radius:");
     println(this.radius);
   }
 }
 
 class Square implements Drawable {
-  var side: f64;
+  public var side: f64;
 
-  function init(s: f64) {
+  public function init(s: f64) {
     this.side = s;
   }
 
-  function draw() void {
+  public function draw() void {
     println("Drawing square with side:");
     println(this.side);
   }

@@ -101,6 +101,7 @@ void SemanticAnalyzer::registerEnum(const std::string& name,
 
 void SemanticAnalyzer::registerGenericEnum(const std::string& name,
                                            GenericEnumInfo info) {
+  info.definitionScope = currentScope->shared_from_this();
   currentScope->genericEnums[name] = std::move(info);
 }
 
@@ -139,8 +140,10 @@ void SemanticAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
   // resolved per instantiation with the type arguments bound
   if (enumDef.isGeneric()) {
     if (!lookupGenericEnum(enumDef.getName())) {
-      registerGenericEnum(enumDef.getName(),
-                          {&enumDef, enumDef.getTypeParameters()});
+      registerGenericEnum(
+          enumDef.getName(),
+          {&enumDef, enumDef.getTypeParameters(),
+           makeQualifiedName(enumDef.getName())});
     }
     definedSymbols_.insert(enumDef.getName());
     enumDef.setResolvedType(sun::Types::Void());
@@ -149,6 +152,8 @@ void SemanticAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
 
   // Create the enum type
   auto enumType = typeRegistry->getEnum(enumDef.getName());
+  enumType->visibility = enumDef.getVisibility();
+  enumType->setQualifiedName(makeQualifiedName(enumDef.getName()));
 
   // Add variants to the enum type (idempotent: declaration collection
   // already registered them)
@@ -249,23 +254,32 @@ std::shared_ptr<sun::EnumType> SemanticAnalyzer::instantiateGenericEnum(
   auto specialized = typeRegistry->getEnum(mangledName);
   specialized->setBaseName(baseName);
   specialized->setGenericOrigin(baseName, typeArgs);
+  specialized->visibility = genericInfo->AST->getVisibility();
+  specialized->setQualifiedName(sun::QualifiedName(
+      genericInfo->qualifiedName.scopePath, mangledName,
+      genericInfo->qualifiedName.modulePath));
 
-  enterTypeParamScope(genericInfo->typeParameters, typeArgs);
-  for (const auto& variant : genericInfo->AST->getVariants()) {
-    specialized->addVariant(variant.name, variant.value);
-    if (!variant.hasPayload()) continue;
-    std::vector<sun::TypePtr> payloadTypes;
-    for (const auto& annot : variant.payloadTypes) {
-      auto payloadType = typeAnnotationToType(annot);
-      payloadType = substituteTypeParameters(payloadType);
-      validateEnumPayloadType(payloadType, specialized, variant.name,
-                              variant.location);
-      payloadTypes.push_back(std::move(payloadType));
+  {
+    // Payload annotations resolve in the enum's definition scope; the result
+    // is registered in the requesting scope below
+    ScopeSwitchGuard definitionScope(*this, definitionScopeOf(*genericInfo));
+    enterTypeParamScope(genericInfo->typeParameters, typeArgs);
+    for (const auto& variant : genericInfo->AST->getVariants()) {
+      specialized->addVariant(variant.name, variant.value);
+      if (!variant.hasPayload()) continue;
+      std::vector<sun::TypePtr> payloadTypes;
+      for (const auto& annot : variant.payloadTypes) {
+        auto payloadType = typeAnnotationToType(annot);
+        payloadType = substituteTypeParameters(payloadType);
+        validateEnumPayloadType(payloadType, specialized, variant.name,
+                                variant.location);
+        payloadTypes.push_back(std::move(payloadType));
+      }
+      specialized->setVariantPayloadTypes(variant.name,
+                                          std::move(payloadTypes));
     }
-    specialized->setVariantPayloadTypes(variant.name,
-                                        std::move(payloadTypes));
+    exitScope();
   }
-  exitScope();
 
   registerEnum(mangledName, specialized);
   // Record on the template AST (mirrors generic classes); codegen walks
@@ -651,8 +665,10 @@ void SemanticAnalyzer::collectEnumDeclarations(const BlockExprAST& block) {
     auto& enumDef = static_cast<EnumDefinitionAST&>(*expr);
     if (enumDef.isGeneric()) {
       if (!lookupGenericEnum(enumDef.getName())) {
-        registerGenericEnum(enumDef.getName(),
-                            {&enumDef, enumDef.getTypeParameters()});
+        registerGenericEnum(
+            enumDef.getName(),
+            {&enumDef, enumDef.getTypeParameters(),
+             makeQualifiedName(enumDef.getName())});
       }
       continue;
     }
@@ -661,6 +677,8 @@ void SemanticAnalyzer::collectEnumDeclarations(const BlockExprAST& block) {
     for (const auto& variant : enumDef.getVariants()) {
       enumType->addVariant(variant.name, variant.value);
     }
+    enumType->visibility = enumDef.getVisibility();
+    enumType->setQualifiedName(makeQualifiedName(enumDef.getName()));
     registerEnum(enumDef.getName(), enumType);
   }
 }

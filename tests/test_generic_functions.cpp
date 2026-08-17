@@ -161,3 +161,48 @@ TEST(GenericFunctions, literal_arg_out_of_range_is_error) {
   )"),
                                 "cannot be represented");
 }
+
+// ============================================================================
+// Generic bodies are analyzed in their definition scope, not the requester's
+// ============================================================================
+
+TEST(GenericFunctions, body_cannot_see_requesters_locals) {
+  // `secret` is a local of main; the template never declared it
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    function leak<T>(v: T) T { return v + secret; }
+    function main() i32 {
+        var secret: i32 = 5;
+        return leak<i32>(1);
+    }
+  )"), "Unknown variable");
+}
+
+TEST(GenericFunctions, module_private_helper_reachable_from_two_requesters) {
+  auto value = executeString(R"(
+    public module a {
+        function helper() i32 { return 10; }
+        public function twice<T>(v: T) T { return v + helper() + helper(); }
+    }
+    using a;
+    public module b {
+        public function via_b() i32 { return twice<i32>(1); }
+    }
+    function main() i32 { return b.via_b() + twice<i32>(2); }
+  )");
+  EXPECT_EQ(value, 21 + 22);
+}
+
+TEST(GenericFunctions, nested_generic_with_capture_two_outer_specializations) {
+  auto value = executeString(R"(
+    function outer<T>(base: T) T {
+        function inner<U>(v: U) U { return v + base; }
+        return inner<T>(base) + inner<T>(base);
+    }
+    function main() i32 {
+        var a: i32 = outer<i32>(3);     // 12
+        var b: i64 = outer<i64>(5);     // 20
+        return a + b;
+    }
+  )");
+  EXPECT_EQ(value, 32);
+}

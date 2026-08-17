@@ -252,10 +252,10 @@ TEST(GenericEnumTest, CrossModuleMoonBundle) {
   {
     std::ofstream out(libSrc);
     out << R"(
-      module optlib {
-          enum Option<T> { Some(T), None }
+      public module optlib {
+          public enum Option<T> { Some(T), None }
 
-          function pick(x: i32) Option<i32> {
+          public function pick(x: i32) Option<i32> {
               if (x > 0) { return Option.Some(x); }
               return Option.None;
           }

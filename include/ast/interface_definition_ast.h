@@ -18,6 +18,7 @@ struct InterfaceFieldDecl {
   std::string name;
   TypeAnnotation type;
   Position location;  // Source location of field declaration
+  sun::Visibility visibility = sun::Visibility::Private;
 };
 
 // Method declaration in an interface (uses FunctionAST internally)
@@ -25,6 +26,7 @@ struct InterfaceFieldDecl {
 struct InterfaceMethodDecl {
   std::unique_ptr<FunctionAST> function;
   bool hasDefaultImpl;  // true if method has a body (default implementation)
+  sun::Visibility visibility() const { return function->getVisibility(); }
 };
 
 // Interface definition: interface Name<T, U> { fields and methods }
@@ -66,7 +68,7 @@ class InterfaceDefinitionAST : public ExprAST {
     return ASTNodeType::INTERFACE_DEFINITION;
   }
   std::string toString() const override {
-    std::string result = "interface " + name;
+    std::string result = std::string(isPublic() ? "public " : "") + "interface " + name;
     if (!typeParameters.empty()) {
       result += "<";
       for (size_t i = 0; i < typeParameters.size(); ++i) {

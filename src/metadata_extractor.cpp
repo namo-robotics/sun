@@ -181,7 +181,9 @@ void extractFromStatements(const std::vector<std::unique_ptr<ExprAST>>& stmts,
       std::string nested = modulePath.empty()
                                ? nsDecl.getName()
                                : modulePath + "." + nsDecl.getName();
-      collector.forModule(nested);
+      auto& md = collector.forModule(nested);
+      // Visibility is per module, agreed across all of its openings
+      if (nsDecl.isPublic()) md.set_visibility(ast::PUBLIC);
       extractFromStatements(nsDecl.getBody().getBody(), collector, nested,
                             serializer, moduleDir);
     }
@@ -228,11 +230,12 @@ std::vector<moon::ModuleMetadata> extractAllMetadata(
   std::vector<moon::ModuleMetadata> out;
   size_t idx = 0;
   for (auto& [name, md] : collector.modules) {
-    // Entries with nothing exported (a file-level shell of usings, or the
-    // outer module of `module a.b { }`) are noise
+    // A file-level shell with nothing exported (just usings) is noise. Named
+    // modules are kept even when empty: their visibility is part of the
+    // bundle's interface (an outer `public module a` of `a.b`, say)
     bool empty = md.functions_size() == 0 && md.classes_size() == 0 &&
                  md.interfaces_size() == 0 && md.enums_size() == 0;
-    if (empty) continue;
+    if (empty && name.empty()) continue;
     // Bundle entries are keyed by source hash: several modules from one file
     // need distinct keys
     md.set_source_hash(idx == 0 ? sourceHash

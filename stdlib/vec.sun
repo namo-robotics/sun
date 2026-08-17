@@ -22,14 +22,14 @@
 // Vec<T> - Dynamic Growable Array
 // ============================================================================
 
-module sun {
-  class Vec<T> implements IIterable<T, Vec<T>> {
+public module sun {
+  public class Vec<T> implements IIterable<T, Vec<T>> {
     var data: ContiguousBuffer<T>;  // Element storage (bounds-checked, auto-freed)
     var capacity_: i64;  // Allocated capacity
     var size_: i64;  // Current number of elements
 
     // Constructor with allocator and capacity
-    function init(allocator: ref HeapAllocator, capacity: i64) {
+    public function init(allocator: ref HeapAllocator, capacity: i64) {
       this.data = ContiguousBuffer<T>(allocator, capacity);
       this.capacity_ = capacity;
       this.size_ = 0;
@@ -54,7 +54,7 @@ module sun {
     // ========================================================================
 
     // Append element to end, grows if needed
-    function push(value: T) void {
+    public function push(value: T) void {
       if (this.size_ >= this.capacity_) {
         this.grow();
       }
@@ -63,7 +63,7 @@ module sun {
     }
 
     // Remove and return last element
-    function pop() T, IError {
+    public function pop() T, IError {
       if (this.size_ == 0) {
         throw EmptyError();
       }
@@ -72,7 +72,7 @@ module sun {
     }
 
     // Get element at index (bounds-checked against size)
-    function get(index: i64) T, IError {
+    public function get(index: i64) T, IError {
       if (index < 0) {
         throw IndexOutOfBoundsError(index);
       }
@@ -83,14 +83,14 @@ module sun {
     }
 
     // Get element at index (no bounds check)
-    function get_unchecked(index: i64) T {
+    public function get_unchecked(index: i64) T {
       return this.data.get_unchecked(index);
     }
 
     // Borrow the element at index in place (bounds-checked). Use this for
     // element types that own heap memory: get() returns a bitwise copy that
     // aliases the stored element.
-    function borrow(index: i64) ref T, IError {
+    public function borrow(index: i64) ref T, IError {
       if (index < 0) {
         throw IndexOutOfBoundsError(index);
       }
@@ -101,13 +101,13 @@ module sun {
     }
 
     // Borrow the element at index in place (no bounds check)
-    function borrow_unchecked(index: i64) ref T {
+    public function borrow_unchecked(index: i64) ref T {
       return unsafe { _to_ref<T>(_ptr_as_raw<T>(_ptr_offset(this.data.rawData(), index * _sizeof<T>()))); };
     }
 
     // Set element at index (bounds-checked against size).
     // The previous element is dropped before being overwritten.
-    function set(index: i64, value: T) void, IError {
+    public function set(index: i64, value: T) void, IError {
       if (index < 0) {
         throw IndexOutOfBoundsError(index);
       }
@@ -119,27 +119,27 @@ module sun {
     }
 
     // Set element at index (no bounds check)
-    function set_unchecked(index: i64, value: T) void {
+    public function set_unchecked(index: i64, value: T) void {
       this.data.set_unchecked(index, value);
     }
 
     // Get current size
-    function size() i64 {
+    public function size() i64 {
       return this.size_;
     }
 
     // Get current capacity
-    function capacity() i64 {
+    public function capacity() i64 {
       return this.capacity_;
     }
 
     // Check if empty
-    function isEmpty() bool {
+    public function isEmpty() bool {
       return this.size_ == 0;
     }
 
     // Reserve capacity for at least n elements (doesn't change size)
-    function reserve(n: i64) void {
+    public function reserve(n: i64) void {
       if (n > this.capacity_) {
         this.data.resize_to(n);
         this.capacity_ = n;
@@ -147,7 +147,7 @@ module sun {
     }
 
     // Clear all elements (doesn't deallocate). Live elements are dropped.
-    function clear() void {
+    public function clear() void {
       this.drop_range(0, this.size_);
       this.size_ = 0;
     }
@@ -155,7 +155,7 @@ module sun {
     // Move the element at index out of the Vec (bounds-checked). The slot is
     // zeroed so it drops as a no-op; ownership transfers to the caller.
     // Use this instead of get() for element types that own heap memory.
-    function take(index: i64) T, IError {
+    public function take(index: i64) T, IError {
       if (index < 0) {
         throw IndexOutOfBoundsError(index);
       }
@@ -164,19 +164,22 @@ module sun {
       }
       var value: T = this.data.get_unchecked(index);
       unsafe {
-        _memset(_ptr_offset(this.data.rawData(), index * _sizeof<T>()), 0,
-                _sizeof<T>());
+        _memset(
+          _ptr_offset(this.data.rawData(), index * _sizeof<T>()),
+          0,
+          _sizeof<T>()
+        );
       };
       return value;
     }
 
     // Get raw data pointer (for interop)
-    function rawData() raw_ptr<u8> {
+    public function rawData() raw_ptr<u8> {
       return this.data.rawData();
     }
 
     // Get last element without removing; None when empty
-    function last() Option<T> {
+    public function last() Option<T> {
       if (this.size_ == 0) {
         return Option.None;
       }
@@ -184,7 +187,7 @@ module sun {
     }
 
     // Get first element; None when empty
-    function first() Option<T> {
+    public function first() Option<T> {
       if (this.size_ == 0) {
         return Option.None;
       }
@@ -208,13 +211,13 @@ module sun {
 
     // Operator overload for indexing: v[i] calls __index__([i])
     // Uses unchecked access for performance; use get() for bounds checking
-    function __index__(indices: ref array<i64>) T {
+    public function __index__(indices: ref array<i64>) T {
       return this.data.get_unchecked(indices[0]);
     }
 
     // Operator overload for indexed assignment: v[i] = val calls __setindex__([i], val)
     // Uses unchecked access for performance; use set() for bounds checking
-    function __setindex__(indices: ref array<i64>, value: T) void {
+    public function __setindex__(indices: ref array<i64>, value: T) void {
       this.data.set_unchecked(indices[0], value);
     }
 
@@ -223,7 +226,7 @@ module sun {
     // ========================================================================
 
     // Return iterator over elements
-    function iter() VecIterator<T> {
+    public function iter() VecIterator<T> {
       return VecIterator<T>();
     }
   }
@@ -232,18 +235,18 @@ module sun {
   // VecIterator<T> - Iterator over Vec elements
   // ============================================================================
 
-  class VecIterator<T> implements IIterator<T, Vec<T>> {
+  public class VecIterator<T> implements IIterator<T, Vec<T>> {
     var current: i64;
 
-    function init() {
+    public function init() {
       this.current = 0;
     }
 
-    function hasNext(vec: ref Vec<T>) bool {
+    public function hasNext(vec: ref Vec<T>) bool {
       return this.current < vec.size();
     }
 
-    function next(vec: ref Vec<T>) T {
+    public function next(vec: ref Vec<T>) T {
       // Safe to use unchecked: hasNext already verified bounds
       var value: T = vec.get_unchecked(this.current);
       this.current = this.current + 1;
@@ -256,16 +259,16 @@ module sun {
   // ============================================================================
 
   // Vec specializations (must be declared before VecIterator since VecIterator<T> references Vec<T>)
-  declare Vec_i8 = Vec<i8>;
-  declare Vec_i32 = Vec<i32>;
-  declare Vec_i64 = Vec<i64>;
-  declare Vec_f32 = Vec<f32>;
-  declare Vec_f64 = Vec<f64>;
+  public declare Vec_i8 = Vec<i8>;
+  public declare Vec_i32 = Vec<i32>;
+  public declare Vec_i64 = Vec<i64>;
+  public declare Vec_f32 = Vec<f32>;
+  public declare Vec_f64 = Vec<f64>;
 
   // VecIterator specializations
-  declare VecIterator_i8 = VecIterator<i8>;
-  declare VecIterator_i32 = VecIterator<i32>;
-  declare VecIterator_i64 = VecIterator<i64>;
-  declare VecIterator_f32 = VecIterator<f32>;
-  declare VecIterator_f64 = VecIterator<f64>;
+  public declare VecIterator_i8 = VecIterator<i8>;
+  public declare VecIterator_i32 = VecIterator<i32>;
+  public declare VecIterator_i64 = VecIterator<i64>;
+  public declare VecIterator_f32 = VecIterator<f32>;
+  public declare VecIterator_f64 = VecIterator<f64>;
 }  // module sun

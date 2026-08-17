@@ -8,32 +8,7 @@ into "a user can do it themselves". Table stakes before novelty.
 
 ---
 
-## 1. Access Modifiers
-
-Everything is public today; there is no way to hide representation or enforce
-invariants at a type or module boundary, so stdlib containers cannot stop users
-from reaching into their internals and modules cannot keep helpers private.
-
-- [ ] `private` / `public` on class fields and methods
-- [ ] `private` / `public` on interfaces and interface members
-- [ ] `private` / `public` on modules themselves (a nested module hidden from
-      importers of its parent)
-- [ ] `private` / `public` on each item inside a module — functions, classes,
-      interfaces, enums, globals, extern declarations, nested modules
-- [ ] Private by default everywhere (decided): unannotated items are private;
-      only `public` needs to be written. Existing code and the stdlib must be
-      annotated `public` where they are meant to be visible
-- [ ] Enforce in semantic analysis, with diagnostics naming the item and its
-      owning class or module
-- [ ] Preserve visibility across `.moon` boundaries; private items are not
-      exported from a bundle. Each `.moon`'s top-level module is required to
-      be `public` — `--emit-moon` rejects a bundle whose root module is private
-- [ ] Reflect in the LSP (hide private items in completions outside their scope)
-- [ ] Migrate the stdlib and tests: mark the intended API of `Vec`, `Map`,
-      `String`, … `public`; internal fields and module-internal helpers stay
-      private by omission
-
-## 2. Optionals — Remaining Work
+## 1. Optionals — Remaining Work
 
 `Option<T>` / `Result<T, E>` ship in the stdlib (`stdlib/option.sun`) as ordinary
 generic payload enums with owning payloads and drop glue, and the starter
@@ -56,7 +31,7 @@ landed. What remains:
 - [ ] Nested patterns in `match`
 - [ ] `DW_TAG_variant_part` debug info for payload enums
 
-## 3. Constants and Compile-Time Evaluation
+## 2. Constants and Compile-Time Evaluation
 
 Routine requirements in embedded and safety-critical work, not niceties.
 
@@ -65,7 +40,7 @@ Routine requirements in embedded and safety-critical work, not niceties.
 - [ ] Const generics: `array<T, const N>`
 - [ ] Fixed-size array types
 
-## 4. Iteration Ergonomics
+## 3. Iteration Ergonomics
 
 `for (var x: Type in iterable)` works but requires an explicit type annotation and
 there are no adapters. Verbose iteration is the first thing people mention when
@@ -75,7 +50,7 @@ they bounce off a language.
 - [ ] Iterator adapters (`map`, `filter`, `take`, `zip`, `enumerate`)
 - [ ] Ranges as iterables
 
-## 5. Language Server Navigation
+## 4. Language Server Navigation
 
 The LSP serves diagnostics, formatting and semantic tokens today, plus a VS Code
 extension in `extensions/vscode-sun`. The navigation features are the gap.
@@ -83,10 +58,11 @@ extension in `extensions/vscode-sun`. The navigation features are the gap.
 - [ ] Go-to-definition
 - [ ] Find references
 - [ ] Hover type info
-- [ ] Autocomplete
+- [ ] Autocomplete (must hide items that are not accessible from the cursor's
+      module — use `sun::access::isAccessible`)
 - [ ] Rename symbol
 
-## 6. Testing
+## 5. Testing
 
 There is no `sun test`; the suites under `tests/` are GoogleTest in C++. Users
 cannot write tests in Sun, which suppresses exactly the library-writing that an
@@ -96,13 +72,13 @@ ecosystem is made of.
 - [ ] Test declarations in `.sun` source
 - [ ] Assertion builtins with useful failure output
 
-## 7. Error Handling Improvements
+## 6. Error Handling Improvements
 
 - [ ] Stack traces on errors
 - [ ] `panic` / `assert` builtins
 - [ ] Error context and chaining
 
-## 8. Library Expansion
+## 7. Library Expansion
 
 Roughly 3,400 lines of stdlib today (networking and `Mutex` exist). Every item
 below is something a first-day user hits. Most are community-supplyable now that
@@ -114,7 +90,7 @@ FFI has landed.
 - [ ] Date and time
 - [ ] Regex (expose the existing parser)
 
-## 9. Data Structures
+## 8. Data Structures
 
 `Vec<T>`, `Map<K, V>`, `LinkedList<T>`, `ContiguousBuffer<T>`, `String`, `Matrix<T>`
 and `Unique<T>` exist today.
@@ -123,7 +99,7 @@ and `Unique<T>` exist today.
 - [ ] `Queue<T>`, `Stack<T>`
 - [ ] `OrderedMap<K, V>`
 
-## 10. Language Odds and Ends
+## 9. Language Odds and Ends
 
 - [ ] Interface inheritance (`src/semantic_analysis/scope_variables.cpp:746`)
 - [ ] Explicit enum values: `Red = 1` (`src/parser.cpp:3367`)
@@ -132,14 +108,14 @@ and `Unique<T>` exist today.
 - [ ] Proper i64 helper and float printing in
       `src/codegen/call_expressions.cpp:1745` / `:1766`
 
-## 11. Other Tooling
+## 10. Other Tooling
 
 - [ ] Linter (`sunlint`)
 - [ ] Source maps for error traces
 - [ ] Re-enable the 11 `DISABLED_` tests in `tests/test_lexer.cpp`,
       `tests/test_matrix.cpp`, `tests/test_stdlib_linked_list.cpp`
 
-## 12. Native Protobuf Import — Deferred Items
+## 11. Native Protobuf Import — Deferred Items
 
 `protos:` manifest imports synthesize Sun source per message (encode/decode,
 `_delimited` framing, `Option<T>` for proto3 `optional`, payload enums for
@@ -152,12 +128,12 @@ libprotobuf. Docs: `docs/pages/protobuf.mdx`. Deferred:
 - [ ] Recursive messages by value (need indirection)
 - [ ] `--dump-proto-sun` in the LSP
 
-## 13. WebAssembly Target
+## 12. WebAssembly Target
 
 - [ ] WebAssembly — also the cheapest route to an online playground, which is
       the most effective adoption funnel a new language has
 
-## 14. Tuples (maybe)
+## 13. Tuples (maybe)
 
 Under consideration, not committed to.
 

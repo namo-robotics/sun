@@ -10,6 +10,7 @@
 #include "ast/analysis.h"
 #include "ast/ast_common.h"
 #include "lexer.h"
+#include "visibility.h"
 
 class ExprAST {
  protected:
@@ -18,6 +19,7 @@ class ExprAST {
   bool precompiled_ = false;  // True if from precompiled library
   bool skipCodegen_ = false;  // Set by semantic analyzer for diamond duplicates
   std::string symbolPrefix_;  // Hash prefix for moon symbol isolation
+  sun::Visibility visibility_ = sun::Visibility::Private;  // Declaration visibility
 
   // Virtual method to ensure analysis is allocated with the correct type
   // Derived classes with specialized analysis types should override this
@@ -39,6 +41,7 @@ class ExprAST {
     dest.precompiled_ = precompiled_;
     dest.skipCodegen_ = skipCodegen_;
     dest.symbolPrefix_ = symbolPrefix_;
+    dest.visibility_ = visibility_;
     if (analysis_) {
       dest.setResolvedType(getResolvedType());
       dest.setMoved(isMoved());
@@ -69,6 +72,11 @@ class ExprAST {
   // into them instead of exposing their slot.
   using ChildSlotFn = std::function<void(std::unique_ptr<ExprAST>&)>;
   virtual void forEachChildSlot(const ChildSlotFn&) {}
+
+  // Declaration visibility (meaningful on declaration nodes only)
+  sun::Visibility getVisibility() const { return visibility_; }
+  void setVisibility(sun::Visibility v) { visibility_ = v; }
+  bool isPublic() const { return visibility_ == sun::Visibility::Public; }
 
   // Analysis data access
   bool hasAnalysis() const { return analysis_ != nullptr; }

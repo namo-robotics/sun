@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "access_checker.h"
 #include "ast.h"
 #include "qualified_name.h"
 #include "types.h"
@@ -24,6 +25,7 @@ struct VariableInfo {
   bool isCapture = false;       // Declared as a lambda/function capture
   bool isByRefCapture = false;  // Captured via [ref x] - mutable through env
   sun::QualifiedName qualifiedName;  // Full qualified name (empty for locals)
+  sun::Visibility visibility = sun::Visibility::Private;  // globals only
 };
 
 // Information about a declared function
@@ -40,6 +42,7 @@ struct FunctionInfo {
   // Declared with `extern function` — calling it leaves Sun's checked world,
   // so call sites are gated on `unsafe`.
   bool isCExtern = false;
+  sun::Visibility visibility = sun::Visibility::Private;
 };
 
 // Indexed function table: O(1) name-based overload lookup + O(1) exact sig
@@ -256,13 +259,17 @@ struct SymbolMatch {
   }
 };
 
+// Generic templates record the scope they were declared in
+// (`definitionScope`, weak to avoid cycles; scopes are never freed). Their
+// bodies are analyzed inside that scope, wherever the instantiation is
+// requested from, so name resolution and access control come from the scope
+// stack. Set by the register* functions.
+
 // Information about a generic class definition (template)
 struct GenericClassInfo {
   const ClassDefinitionAST* AST;                     // Original AST node
   std::vector<std::string> typeParameters;           // ["T", "U", etc.]
-  std::weak_ptr<SemanticScopeBase> definitionScope;  // Scope where generic was
-                                                     // defined (weak to avoid
-                                                     // circular refs)
+  std::weak_ptr<SemanticScopeBase> definitionScope;
   sun::QualifiedName qualifiedName;                  // Captured at registration
 };
 
@@ -270,12 +277,16 @@ struct GenericClassInfo {
 struct GenericInterfaceInfo {
   const InterfaceDefinitionAST* AST;        // Original AST node
   std::vector<std::string> typeParameters;  // ["T", "U", etc.]
+  sun::QualifiedName qualifiedName;         // Captured at registration
+  std::weak_ptr<SemanticScopeBase> definitionScope;
 };
 
 // Information about a generic enum definition (template)
 struct GenericEnumInfo {
   const EnumDefinitionAST* AST;             // Original AST node
   std::vector<std::string> typeParameters;  // ["T", "U", etc.]
+  sun::QualifiedName qualifiedName;         // Captured at registration
+  std::weak_ptr<SemanticScopeBase> definitionScope;
 };
 
 // Information about a generic function definition (template)
@@ -284,6 +295,8 @@ struct GenericFunctionInfo {
   std::vector<std::string> typeParameters;   // ["T", "U", etc.]
   std::optional<TypeAnnotation> returnType;  // Return type annotation
   std::vector<std::pair<std::string, TypeAnnotation>> params;  // Parameters
+  sun::QualifiedName qualifiedName;          // Captured at registration
+  std::weak_ptr<SemanticScopeBase> definitionScope;
 };
 
 // Information about a specialized (monomorphized) generic function
@@ -307,6 +320,21 @@ struct TypeParamsScope;
 
 // Alias for backward compatibility
 using SemanticScope = SemanticScopeBase;
+
+// ===================================================================
+// Access control hooks for symbol lookup
+//
+// Lookups filter out symbols the asking code may not see (see
+// include/visibility.h). The analyzer installs an AccessContext on the root
+// scope; it answers "which module is asking" and reports a denial. Without a
+// context (no analyzer attached) lookups are unfiltered.
+// ===================================================================
+struct AccessContext {
+  virtual ~AccessContext() = default;
+  virtual sun::ModulePath currentModulePath() const = 0;
+  [[noreturn]] virtual void denyAccess(
+      const sun::access::ItemRef& item) const = 0;
+};
 
 // ===================================================================
 // SemanticScopeBase - Base class for all scope types
@@ -352,6 +380,14 @@ struct SemanticScopeBase
   // Non-module child scopes (for scope tree traversal)
   std::vector<std::shared_ptr<SemanticScopeBase>> children;
 
+  // Set on the root scope by the analyzer; consulted by every lookup.
+  const AccessContext* accessContext = nullptr;
+  const AccessContext* accessCtx() const {
+    auto* s = this;
+    while (s->parent) s = s->parent;
+    return s->accessContext;
+  }
+
   // True if this scope was loaded from an external .moon file
   bool isExternal = false;
 
@@ -362,6 +398,10 @@ struct SemanticScopeBase
 
   // ===== Symbol lookup methods (delegate to persistent scope impl) =====
   bool hasSymbol(const std::string& name) const;
+  // Like hasSymbol, but only counts symbols the filter admits (private ones
+  // are recorded on the filter as denied candidates).
+  bool hasAccessibleSymbol(const std::string& name,
+                           class AccessFilter& filter) const;
   std::shared_ptr<sun::ClassType> findClass(const std::string& name) const;
   const GenericClassInfo* findGenericClass(const std::string& name) const;
   std::shared_ptr<sun::InterfaceType> findInterface(
@@ -378,7 +418,7 @@ struct SemanticScopeBase
       SemanticScopeBase* newParent) const;
 
   // ===== Scope-chain lookup methods =====
-  // These traverse the parent chain, import scopes, __definition__ scopes,
+  // These traverse the parent chain, import scopes,
   // and import bindings to find symbols.
 
   // Generic scope-chain traversal: calls finder(scope) at each scope in chain
@@ -426,9 +466,11 @@ struct SemanticScopeBase
   // Same overload resolution, but restricted to this scope's own function
   // table — no walk to parents. Used for module-qualified calls, where the
   // callee's scope is already known.
+  // Inaccessible overloads are skipped and recorded on `filter` (if given)
+  // so the caller can report them once nothing else matched.
   std::optional<FunctionInfo> lookupFunctionLocal(
-      const std::string& name,
-      const std::vector<sun::TypePtr>& argTypes) const;
+      const std::string& name, const std::vector<sun::TypePtr>& argTypes,
+      class AccessFilter* filter = nullptr) const;
 
   // Lookup module scope by dot-separated path
   SemanticScopeBase* lookupModuleScope(const std::string& dotPath) const;
@@ -482,6 +524,10 @@ struct GlobalScope : SemanticScopeBase {
 // ===================================================================
 struct ModuleScope : SemanticScopeBase {
   ScopeType getType() const override { return ScopeType::Module; }
+  // Structured name: owner() is the parent module path
+  sun::QualifiedName qualifiedName;
+  sun::Visibility visibility = sun::Visibility::Private;
+  bool visibilityDeclared = false;  // A source declaration set `visibility`
 };
 
 // ===================================================================
@@ -607,46 +653,122 @@ inline std::string mangleModulePath(const std::string& dotPath) {
 }
 
 // -------------------------------------------------------------------
+// accessItem — describe a lookup result for the access predicate
+// -------------------------------------------------------------------
+// Visibility comes from the record (or its AST for generic templates); the
+// owner is the record's QualifiedName::owner().
+inline sun::access::ItemRef accessItem(
+    const std::shared_ptr<sun::ClassType>& c) {
+  return {"class", c->getDisplayName(), "", c->visibility,
+          c->getQualifiedName().owner()};
+}
+inline sun::access::ItemRef accessItem(const GenericClassInfo* g) {
+  return {"class", g->qualifiedName.baseName, "",
+          g->AST ? g->AST->getVisibility() : sun::Visibility::Private,
+          g->qualifiedName.owner()};
+}
+inline sun::access::ItemRef accessItem(
+    const std::shared_ptr<sun::InterfaceType>& i) {
+  return {"interface", i->getBaseName(), "", i->visibility,
+          i->getQualifiedName().owner()};
+}
+inline sun::access::ItemRef accessItem(const GenericInterfaceInfo* g) {
+  return {"interface", g->qualifiedName.baseName, "",
+          g->AST ? g->AST->getVisibility() : sun::Visibility::Private,
+          g->qualifiedName.owner()};
+}
+inline sun::access::ItemRef accessItem(const std::shared_ptr<sun::EnumType>& e) {
+  return {"enum", e->getBaseName(), "", e->visibility,
+          e->getQualifiedName().owner()};
+}
+inline sun::access::ItemRef accessItem(const GenericEnumInfo* g) {
+  return {"enum", g->qualifiedName.baseName, "",
+          g->AST ? g->AST->getVisibility() : sun::Visibility::Private,
+          g->qualifiedName.owner()};
+}
+inline sun::access::ItemRef accessItem(const GenericFunctionInfo* g) {
+  return {"function", g->qualifiedName.baseName, "",
+          g->AST ? g->AST->getVisibility() : sun::Visibility::Private,
+          g->qualifiedName.owner()};
+}
+inline sun::access::ItemRef accessItem(const FunctionInfo& f) {
+  return {"function", f.qualifiedName.baseName, "", f.visibility,
+          f.qualifiedName.owner()};
+}
+inline sun::access::ItemRef accessItem(const FunctionInfo* f) {
+  return accessItem(*f);
+}
+inline sun::access::ItemRef accessItem(const VariableInfo* v) {
+  return {"variable", v->qualifiedName.baseName, "", v->visibility,
+          v->qualifiedName.owner()};
+}
+inline sun::access::ItemRef accessItem(const ModuleScope& m) {
+  return {"module", m.qualifiedName.baseName, "", m.visibility,
+          m.qualifiedName.owner()};
+}
+
+// -------------------------------------------------------------------
+// AccessFilter — admits lookup results the asking module may see and
+// remembers the first private one it skipped, so a lookup that finds only
+// private candidates reports "is private to ..." instead of "unknown".
+// -------------------------------------------------------------------
+class AccessFilter {
+  const AccessContext* ctx_ = nullptr;
+  sun::ModulePath from_;
+  std::optional<sun::access::ItemRef> denied_;
+
+ public:
+  explicit AccessFilter(const SemanticScopeBase* scope)
+      : ctx_(scope ? scope->accessCtx() : nullptr) {
+    if (ctx_) from_ = ctx_->currentModulePath();
+  }
+
+  bool enabled() const { return ctx_ != nullptr; }
+  const sun::ModulePath& from() const { return from_; }
+
+  bool admitItem(sun::access::ItemRef item) {
+    if (!ctx_ || sun::access::isAccessible(from_, item)) return true;
+    if (!denied_) denied_ = std::move(item);
+    return false;
+  }
+  template <typename T>
+  bool admit(const T& result) {
+    return admitItem(accessItem(result));
+  }
+
+  bool hasDenied() const { return denied_.has_value(); }
+  // Throws the recorded denial, if any.
+  void finish() const {
+    if (denied_) ctx_->denyAccess(*denied_);
+  }
+};
+
+// -------------------------------------------------------------------
 // Template implementation: lookupInChain
-// Traverses the scope chain (parent + import children + __definition__ +
-// import bindings) calling finder(scope) at each node.
+// Traverses the scope chain (parent + import children + import bindings)
+// calling finder(scope) at each node.
 // finder signature: ResultT finder(const SemanticScopeBase* scope)
 // -------------------------------------------------------------------
 template <typename ResultT, typename Finder>
 ResultT SemanticScopeBase::lookupInChain(Finder finder) const {
+  AccessFilter filter(this);
+  auto probe = [&](const SemanticScopeBase* s) -> ResultT {
+    auto r = finder(s);
+    if (r && filter.admit(r)) return r;
+    return ResultT{};
+  };
   for (auto* s = this; s != nullptr; s = s->parent) {
-    auto result = finder(s);
+    auto result = probe(s);
     if (result) return result;
     // Search direct import-scope children (one level of transparency)
     for (const auto& [childName, child] : s->childModules) {
       if (child && child->getType() == ScopeType::Import) {
-        result = finder(child.get());
+        result = probe(child.get());
         if (result) return result;
         for (const auto& [modName, modChild] : child->childModules) {
           if (modChild && modChild->getType() == ScopeType::Module) {
-            result = finder(modChild.get());
+            result = probe(modChild.get());
             if (result) return result;
-          }
-        }
-      }
-    }
-    // Search __definition__ scope chain
-    auto defIt = s->childModules.find("__definition__");
-    if (defIt != s->childModules.end() && defIt->second) {
-      for (auto* defS = defIt->second.get(); defS != nullptr;
-           defS = defS->parent) {
-        result = finder(defS);
-        if (result) return result;
-        for (const auto& [childName, child] : defS->childModules) {
-          if (child && child->getType() == ScopeType::Import) {
-            result = finder(child.get());
-            if (result) return result;
-            for (const auto& [modName, modChild] : child->childModules) {
-              if (modChild && modChild->getType() == ScopeType::Module) {
-                result = finder(modChild.get());
-                if (result) return result;
-              }
-            }
           }
         }
       }
@@ -655,10 +777,11 @@ ResultT SemanticScopeBase::lookupInChain(Finder finder) const {
     for (const auto& binding : s->importBindings) {
       if (!binding.sourceScope) continue;
       if (binding.isWildcard) {
-        result = finder(binding.sourceScope);
+        result = probe(binding.sourceScope);
         if (result) return result;
       }
     }
   }
+  filter.finish();
   return ResultT{};
 }

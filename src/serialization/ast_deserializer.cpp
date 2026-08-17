@@ -10,6 +10,10 @@
 namespace sun {
 namespace serialization {
 
+static sun::Visibility fromProto(ast::Visibility v) {
+  return v == ast::PUBLIC ? sun::Visibility::Public : sun::Visibility::Private;
+}
+
 Position ASTDeserializer::deserializePosition(const ast::Position& pos) const {
   Position result;
   result.line = pos.line();
@@ -455,8 +459,10 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeVariableCreation(
   if (proto.has_type_annotation()) {
     typeAnnotation = deserializeTypeAnnotation(proto.type_annotation());
   }
-  return std::make_unique<VariableCreationAST>(proto.name(), std::move(value),
-                                               std::move(typeAnnotation));
+  auto var = std::make_unique<VariableCreationAST>(
+      proto.name(), std::move(value), std::move(typeAnnotation));
+  var->setVisibility(fromProto(proto.visibility()));
+  return var;
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeVariableAssignment(
@@ -653,6 +659,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeFunction(
   auto func =
       std::make_unique<FunctionAST>(std::move(prototype), std::move(body));
   func->setCExtern(proto.is_c_extern());
+  func->setVisibility(fromProto(proto.visibility()));
   return func;
 }
 
@@ -737,7 +744,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeManifest(
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeModule(
     const ast::ModuleDef& proto) const {
   auto body = deserializeBlockExpr(proto.body());
-  return std::make_unique<ModuleAST>(proto.name(), std::move(body));
+  auto mod = std::make_unique<ModuleAST>(proto.name(), std::move(body));
+  mod->setVisibility(fromProto(proto.visibility()));
+  return mod;
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeUsing(
@@ -782,6 +791,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
     field.name = fieldProto.name();
     field.type = deserializeTypeAnnotation(fieldProto.type());
     field.location = deserializePosition(fieldProto.location());
+    field.visibility = fromProto(fieldProto.visibility());
     fields.push_back(std::move(field));
   }
 
@@ -793,18 +803,21 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
     auto body = deserializeBlockExpr(funcProto.body());
     method.function =
         std::make_unique<FunctionAST>(std::move(prototype), std::move(body));
+    method.function->setVisibility(fromProto(funcProto.visibility()));
     method.isConstructor = methodProto.is_constructor();
     methods.push_back(std::move(method));
   }
 
   // Note: the 6th ctor parameter is `precompiled`, not `isPartial` - set the
   // class modifiers explicitly so they actually round-trip. Packing in
-  // particular changes layout, so losing it would silently corrupt memory.
+  // particular changes layout, so losing it would silently corrupt memory;
+  // losing visibility would make every bundled item private.
   auto classDef = std::make_unique<ClassDefinitionAST>(
       proto.name(), std::move(typeParams), std::move(interfaces),
       std::move(fields), std::move(methods));
   classDef->setIsPartial(proto.is_partial());
   classDef->setIsPacked(proto.is_packed());
+  classDef->setVisibility(fromProto(proto.visibility()));
   return classDef;
 }
 
@@ -821,6 +834,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeInterfaceDef(
     field.name = fieldProto.name();
     field.type = deserializeTypeAnnotation(fieldProto.type());
     field.location = deserializePosition(fieldProto.location());
+    field.visibility = fromProto(fieldProto.visibility());
     fields.push_back(std::move(field));
   }
 
@@ -835,13 +849,16 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeInterfaceDef(
     }
     method.function =
         std::make_unique<FunctionAST>(std::move(prototype), std::move(body));
+    method.function->setVisibility(fromProto(funcProto.visibility()));
     method.hasDefaultImpl = methodProto.has_default_impl();
     methods.push_back(std::move(method));
   }
 
-  return std::make_unique<InterfaceDefinitionAST>(
+  auto iface = std::make_unique<InterfaceDefinitionAST>(
       proto.name(), std::move(typeParams), std::move(fields),
       std::move(methods));
+  iface->setVisibility(fromProto(proto.visibility()));
+  return iface;
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeEnumDef(
@@ -861,9 +878,11 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeEnumDef(
   for (const auto& tp : proto.type_parameters()) {
     typeParams.push_back(tp);
   }
-  return std::make_unique<EnumDefinitionAST>(proto.name(), std::move(variants),
-                                             /*precompiled=*/false,
-                                             std::move(typeParams));
+  auto enumDef = std::make_unique<EnumDefinitionAST>(
+      proto.name(), std::move(variants), /*precompiled=*/false,
+      std::move(typeParams));
+  enumDef->setVisibility(fromProto(proto.visibility()));
+  return enumDef;
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeThis(
@@ -919,8 +938,10 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeDeclareType(
   }
   auto typeAnnotation = deserializeTypeAnnotation(proto.type_annotation());
   // Note: DeclareTypeAST constructor takes type first, then alias
-  return std::make_unique<DeclareTypeAST>(std::move(typeAnnotation),
-                                          std::move(aliasName));
+  auto decl = std::make_unique<DeclareTypeAST>(std::move(typeAnnotation),
+                                               std::move(aliasName));
+  decl->setVisibility(fromProto(proto.visibility()));
+  return decl;
 }
 
 }  // namespace serialization

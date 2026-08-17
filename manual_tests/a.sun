@@ -1,5 +1,5 @@
-module sun {
-  function a() i32 {
+public module sun {
+  public function a() i32 {
     return 1;
   }
 }

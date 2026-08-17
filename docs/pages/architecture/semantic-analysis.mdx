@@ -57,6 +57,49 @@ re-analyzed copy of the method bodies) is recorded on the template's AST
 node. Codegen later walks those recorded specializations and emits each one
 as ordinary non-generic code.
 
+Instantiation happens lazily at the first use, but the template's body is
+analyzed **in the scope the template was declared in**: every generic
+template records its `definitionScope` when registered, and the instantiators
+switch `currentScope` to it (`ScopeSwitchGuard`) before pushing the transient
+type-parameter / class / function scopes. So a body sees exactly the names
+its author could see — its module's private helpers, the module's `using`s,
+transitive dependencies — and never the requester's locals or imports. Only
+the resulting specialized type is registered back in the requesting scope
+(as a lookup fast path); identity lives in the global `TypeRegistry` and the
+specialization list on the template's AST.
+
+## Access Control
+
+Every declaration record (`FunctionInfo`, `ClassType`, `InterfaceType`,
+`EnumType`, the `Generic*Info`s, `ModuleScope`, class/interface members)
+carries a `sun::Visibility` and — except members, which use their type's — a
+`QualifiedName` whose `owner()` (`modulePath`) is the module that declared it.
+`modulePath` differs from `scopePath` for nested items: it never contains
+class or function segments. The single predicate is
+`isAccessibleFrom(from, visibility, owner)` (`include/visibility.h`): public,
+or `from` is the owner module or one of its descendants. Contents of an imported `.moon` live
+under a `$hash$` scope segment, so importer code is never inside a bundle
+module and bundle-private items are hidden by the same rule.
+
+Enforcement lives in two places:
+
+- **Module-level items** are filtered inside the scope lookups
+  (`AccessFilter` in `semantic_scope.h`, used by `lookupInChain`,
+  `lookupFunction`, `resolveNameWithUsings`, `findSymbolInModule`, ...). The
+  analyzer implements `AccessContext`, which tells lookups which module is
+  asking and reports a denial ("`helper` is private to module `sun`") when
+  the only candidates were private.
+- **Class / interface members** are resolved on the type
+  (`SemanticAnalyzer::accessibleField / accessibleMethod`), which check the
+  member's visibility (owner = the type's module) where `obj.member` is
+  resolved.
+
+Because generic bodies are analyzed inside their definition scope, "which
+module is asking" is always the nearest `Module` scope on the stack — no
+override is needed. `deinit` is always public (`methodVisibility`). Wording
+of every diagnostic comes from `sun::access::denialMessage`
+(`access_checker.h`).
+
 ## Source Layout
 
 The analyzer's source is split by concern under `src/semantic_analysis/`:

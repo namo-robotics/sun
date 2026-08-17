@@ -471,11 +471,11 @@ TEST(EnumDropTest, cross_moon_owning_enum_drops_once) {
     // Drops are counted through a heap cell the resource points at (module
     // bodies cannot see file-level globals).
     out << R"(
-      module droplib {
-          class Res {
-              var cell: raw_ptr<i32>;
-              var id: i32;
-              function init(cell: raw_ptr<i32>, id: i32) {
+      public module droplib {
+          public class Res {
+              public var cell: raw_ptr<i32>;
+              public var id: i32;
+              public function init(cell: raw_ptr<i32>, id: i32) {
                   this.cell = cell;
                   this.id = id;
               }
@@ -485,16 +485,16 @@ TEST(EnumDropTest, cross_moon_owning_enum_drops_once) {
                       this.id = 0;
                   }
               }
-              function get_id() i32 { return this.id; }
+              public function get_id() i32 { return this.id; }
           }
 
-          enum Maybe { Got(Res), Nope }
+          public enum Maybe { Got(Res), Nope }
 
-          function make(cell: raw_ptr<i32>, id: i32) Maybe {
+          public function make(cell: raw_ptr<i32>, id: i32) Maybe {
               return Maybe.Got(Res(cell, id));
           }
 
-          function consume_in_lib(cell: raw_ptr<i32>, id: i32) i32 {
+          public function consume_in_lib(cell: raw_ptr<i32>, id: i32) i32 {
               var m = make(cell, id);
               return 0;
           }

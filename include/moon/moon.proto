@@ -32,6 +32,11 @@ message ModuleMetadata {
   // error — struct layouts and ABI decisions are baked into the bitcode.
   string target_triple = 10;
 
+  // The module's own visibility. Bundle-private items are carried (generic
+  // bodies shipped in the bundle may reference them) but importers cannot
+  // reach them; every top-level module of a bundle must be public.
+  sun.ast.Visibility visibility = 12;
+
   // Exported definitions (bodies included only for generics)
   repeated sun.ast.FunctionDef functions = 6;
   repeated sun.ast.ClassDef classes = 7;

@@ -98,8 +98,8 @@ Create a moon from an entrypoint file with a manifest:
 
 **mylib.sun** (entrypoint)
 ```sun
-module mylib {
-    function helper() i32 { return 42; }
+public module mylib {
+    public function helper() i32 { return 42; }
 }
 
 manifest {
@@ -245,12 +245,12 @@ manifest {
 Use `module` blocks to group related types and functions:
 
 ```sun
-module math {
-    function square(x: i32) i32 {
+public module math {
+    public function square(x: i32) i32 {
         return x * x;
     }
     
-    function cube(x: i32) i32 {
+    public function cube(x: i32) i32 {
         return x * x * x;
     }
 }
@@ -284,14 +284,75 @@ Without `using`, you would need to reference symbols by their mangled names.
 Inside a module, symbols can reference each other directly:
 
 ```sun
-module math {
-    function square(x: i32) i32 {
+public module math {
+    public function square(x: i32) i32 {
         return x * x;
     }
 
-    function sum_of_squares(a: i32, b: i32) i32 {
+    public function sum_of_squares(a: i32, b: i32) i32 {
         // Can call square() directly - same module
         return square(a) + square(b);
     }
 }
 ```
+
+## Visibility
+
+Everything is **private by default**. `public` is the only modifier; there is
+no `private` keyword — an item is private simply by not being marked `public`.
+
+Privacy is scoped to the **module**: a private item is reachable from anywhere
+inside the module that declares it, including nested (child) modules, and from
+nowhere else. Files are not a boundary — every opening of `module sun { ... }`
+across the stdlib's files is one module.
+
+```sun
+public module geometry {
+    // Private helper: callable anywhere inside `geometry` (and its children)
+    function square(x: f64) f64 { return x * x; }
+
+    public class Point {
+        var x: f64;                    // private field: `geometry` only
+        var y: f64;
+        public function init(x: f64, y: f64) { this.x = x; this.y = y; }
+        public function norm2() f64 { return square(this.x) + square(this.y); }
+    }
+
+    module internal {                  // private nested module
+        public function scratch() i32 { return 0; }
+    }
+
+    public module shapes {             // public nested module
+        public function unit() Point { return Point(1.0, 0.0); }
+    }
+}
+
+using geometry;
+
+function main() i32 {
+    var p = shapes.unit();
+    var n = p.norm2();        // OK: public method
+    // p.x                    // error: 'x' is private to class 'Point' in module 'geometry'
+    // square(2.0)            // error: function 'square' is private to module 'geometry'
+    // internal.scratch()     // error: module 'internal' is private to module 'geometry'
+    return 0;
+}
+```
+
+The modifier applies to every kind of module-level item — functions, classes,
+interfaces, enums, globals, `extern` and `declare` declarations, and nested
+modules — and to class and interface members. `public module a.b { ... }`
+makes both `a` and `b` public. All openings of a module must agree on its
+visibility. `using M;` never exposes `M`'s private items.
+
+Items declared outside any module belong to the program's root scope and are
+reachable everywhere in that program (a single-file program needs no `public`
+at all).
+
+### Visibility and `.moon` bundles
+
+A bundle keeps every item — private ones included, since generic method
+bodies shipped in the bundle may use them — but importers can only reach the
+public API. `--emit-moon` requires each top-level module of the bundle to be
+`public`; a bundle whose root module is private is rejected.
+

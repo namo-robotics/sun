@@ -1711,13 +1711,15 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
   return proto;
 }
 
-unique_ptr<BlockExprAST> Parser::parseBlock() {
+unique_ptr<BlockExprAST> Parser::parseBlock(bool itemLevel) {
   Position start = captureStart();
   std::vector<unique_ptr<ExprAST>> body;
 
   expectCurrentTokenKind(TokenKind::BRACE_OPEN, "expected '{'");
   getNextToken();  // eat {
 
+  bool savedItemLevel = atItemLevel_;
+  atItemLevel_ = itemLevel;
   while (curTok.kind != TokenKind::BRACE_CLOSE &&
          curTok.kind != TokenKind::TOK_EOF) {
     if (auto stmt = parseStatement()) {
@@ -1726,6 +1728,7 @@ unique_ptr<BlockExprAST> Parser::parseBlock() {
     // No error recovery needed - parseStatement handles its own token
     // consumption
   }
+  atItemLevel_ = savedItemLevel;
 
   expectCurrentTokenKind(TokenKind::BRACE_CLOSE,
                          "expected '}' at end of block");
@@ -1739,6 +1742,7 @@ unique_ptr<BlockExprAST> Parser::parseProgram() {
   Position start = captureStart();
   std::vector<unique_ptr<ExprAST>> body;
 
+  atItemLevel_ = true;
   while (curTok.kind != TokenKind::BRACE_CLOSE &&
          curTok.kind != TokenKind::TOK_EOF) {
     if (auto stmt = parseStatement()) {
@@ -1751,7 +1755,66 @@ unique_ptr<BlockExprAST> Parser::parseProgram() {
   return finishNode(std::make_unique<BlockExprAST>(std::move(body)), start);
 }
 
+bool Parser::parsePublic() {
+  if (curTok.kind != TokenKind::PUBLIC) return false;
+  getNextToken();  // eat 'public'
+  if (curTok.kind == TokenKind::PUBLIC)
+    parsingError("duplicate 'public' modifier");
+  return true;
+}
+
+// Statement kinds that may carry a `public` modifier at item level.
+static bool isPublicableStatementStart(TokenKind kind) {
+  switch (kind) {
+    case TokenKind::MODULE:
+    case TokenKind::PARTIAL:
+    case TokenKind::PACKED_CLASS:
+    case TokenKind::CLASS:
+    case TokenKind::INTERFACE:
+    case TokenKind::ENUM:
+    case TokenKind::VAR:
+    case TokenKind::EXTERN:
+    case TokenKind::FUNCTION:
+    case TokenKind::DECLARE:
+      return true;
+    default:
+      return false;
+  }
+}
+
 unique_ptr<ExprAST> Parser::parseStatement() {
+  if (curTok.kind != TokenKind::PUBLIC) return parseStatementCore();
+
+  Position start = captureStart();
+  parsePublic();
+  if (!atItemLevel_)
+    parsingError("'public' is only allowed on module-level declarations");
+  if (!isPublicableStatementStart(curTok.kind))
+    parsingError(
+        "'public' must precede a declaration (module, class, interface, "
+        "enum, function, extern, declare or var)");
+
+  auto node = parseStatementCore();
+  if (node) {
+    node->setVisibility(sun::Visibility::Public);
+    // `public module a.b.c` desugars to nested modules sharing one span;
+    // every synthesized level is public.
+    for (auto* mod = dynamic_cast<ModuleAST*>(node.get()); mod;) {
+      const auto& stmts = mod->getBody().getBody();
+      auto* inner = stmts.size() == 1
+                        ? dynamic_cast<ModuleAST*>(stmts.front().get())
+                        : nullptr;
+      if (!inner || inner->getLocation().offset != mod->getLocation().offset)
+        break;
+      inner->setVisibility(sun::Visibility::Public);
+      mod = inner;
+    }
+    extendSpanStart(*node, start);  // span covers the modifier
+  }
+  return node;
+}
+
+unique_ptr<ExprAST> Parser::parseStatementCore() {
   switch (curTok.kind) {
     case TokenKind::DECLARE:
       return parseDeclareStatement();
@@ -2522,7 +2585,7 @@ unique_ptr<ModuleAST> Parser::parseModuleDecl() {
   expectCurrentTokenKind(TokenKind::BRACE_OPEN,
                          "expected '{' after module name");
 
-  auto body = parseBlock();
+  auto body = parseBlock(/*itemLevel=*/true);
   if (!body) return nullptr;
 
   // Build nested modules from innermost to outermost
@@ -2714,6 +2777,8 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
   // Track defined symbols per module for collision detection
   std::unordered_map<std::string, std::unordered_set<std::string>>
       moduleSymbols;
+  // Visibility per (effective) dotted module name, from the bundle metadata
+  std::unordered_map<std::string, sun::Visibility> moduleVisibility;
 
   // Track the primary module name (first non-empty module found)
   std::string primaryModuleName;
@@ -2765,6 +2830,13 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
     // Get the original module name and apply remapping if configured
     std::string modName = metadata->module_name();
     std::string effectiveName = moonImport.getAliasedModule(modName);
+    if (!effectiveName.empty()) {
+      auto& vis = moduleVisibility[effectiveName];
+      if (metadata->visibility() == sun::ast::PUBLIC)
+        vis = sun::Visibility::Public;
+      // Ensure the entry exists even for a module with no stubs
+      (void)moduleStubs[effectiveName];
+    }
 
     // Check for name collisions within this moon
     auto& symbols = moduleSymbols[effectiveName];
@@ -2797,6 +2869,21 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
     }
   }
 
+  // Visibility of a dotted prefix: its own entry if the bundle recorded one,
+  // else public when any module below it is public (the prefix was only an
+  // unrecorded shell around a public module)
+  auto visibilityOf = [&](const std::string& dotted) {
+    auto it = moduleVisibility.find(dotted);
+    if (it != moduleVisibility.end()) return it->second;
+    for (const auto& [name, vis] : moduleVisibility) {
+      if (vis == sun::Visibility::Public && name.size() > dotted.size() &&
+          name.compare(0, dotted.size(), dotted) == 0 &&
+          name[dotted.size()] == '.')
+        return sun::Visibility::Public;
+    }
+    return sun::Visibility::Private;
+  };
+
   // Build consolidated ModuleAST nodes (one per unique module name)
   std::vector<std::unique_ptr<ExprAST>> allModuleASTs;
   for (auto& [modName, stubs] : moduleStubs) {
@@ -2822,6 +2909,9 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
         }
         auto nsAST = std::make_unique<ModuleAST>(segs[i], std::move(body));
         nsAST->setPrecompiled(true);
+        std::string prefix;
+        for (size_t k = 0; k <= i; ++k) prefix += (k ? "." : "") + segs[k];
+        nsAST->setVisibility(visibilityOf(prefix));
         current = std::move(nsAST);
       }
       allModuleASTs.push_back(std::move(current));
@@ -2887,7 +2977,7 @@ void Parser::createModuleStubs(
       if (auto* ifaceDef = dynamic_cast<InterfaceDefinitionAST*>(ast.get())) {
         ifaceDef->setPrecompiled(true);
         ifaceDef->setQualifiedName(
-            sun::QualifiedName(scopePath, ifaceDef->getName()));
+            sun::QualifiedName(scopePath, ifaceDef->getName(), scopePath));
       }
       moduleAST.push_back(std::move(ast));
     }
@@ -2903,7 +2993,7 @@ void Parser::createModuleStubs(
       if (auto* classDef = dynamic_cast<ClassDefinitionAST*>(ast.get())) {
         classDef->setPrecompiled(true);
         classDef->setQualifiedName(
-            sun::QualifiedName(scopePath, classDef->getName()));
+            sun::QualifiedName(scopePath, classDef->getName(), scopePath));
       }
       moduleAST.push_back(std::move(ast));
     }
@@ -2931,7 +3021,8 @@ void Parser::createModuleStubs(
       if (auto* funcAST = dynamic_cast<FunctionAST*>(ast.get())) {
         funcAST->setPrecompiled(true);
         funcAST->getProtoMut().setQualifiedName(
-            sun::QualifiedName(scopePath, funcAST->getProto().getName()));
+            sun::QualifiedName(scopePath, funcAST->getProto().getName(),
+                               scopePath));
       }
       moduleAST.push_back(std::move(ast));
     }
@@ -3319,6 +3410,9 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
   // Parse class body (fields and methods)
   while (curTok.kind != TokenKind::BRACE_CLOSE &&
          curTok.kind != TokenKind::TOK_EOF) {
+    Position memberStart = captureStart();
+    sun::Visibility memberVis = parsePublic() ? sun::Visibility::Public
+                                              : sun::Visibility::Private;
     if (curTok.kind == TokenKind::VAR) {
       // Parse field declaration: var name: type;
       getNextToken();  // eat 'var'
@@ -3346,11 +3440,15 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
       }
       getNextToken();  // eat ';'
 
-      fields.push_back({std::move(fieldName), std::move(fieldType), fieldLoc});
+      fields.push_back(
+          {std::move(fieldName), std::move(fieldType), fieldLoc, memberVis});
     } else if (curTok.kind == TokenKind::FUNCTION) {
       // Parse method declaration
       auto func = parseFunction();
       if (!func) return nullptr;
+      func->setVisibility(memberVis);
+      if (memberVis == sun::Visibility::Public)
+        extendSpanStart(*func, memberStart);
 
       bool isConstructor = (func->getProto().getName() == "init");
 
@@ -3433,6 +3531,9 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
   // Parse interface body (fields and methods)
   while (curTok.kind != TokenKind::BRACE_CLOSE &&
          curTok.kind != TokenKind::TOK_EOF) {
+    Position memberStart = captureStart();
+    sun::Visibility memberVis = parsePublic() ? sun::Visibility::Public
+                                              : sun::Visibility::Private;
     if (curTok.kind == TokenKind::VAR) {
       // Parse field declaration: var name: type;
       getNextToken();  // eat 'var'
@@ -3462,7 +3563,8 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
       }
       getNextToken();  // eat ';'
 
-      fields.push_back({std::move(fieldName), std::move(fieldType), fieldLoc});
+      fields.push_back(
+          {std::move(fieldName), std::move(fieldType), fieldLoc, memberVis});
     } else if (curTok.kind == TokenKind::FUNCTION) {
       // Parse method declaration (may have default implementation)
       // Interface methods can be:
@@ -3598,7 +3700,8 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
       proto->setLocation(std::move(protoLoc));
       auto func = finishNode(
           std::make_unique<FunctionAST>(std::move(proto), std::move(body)),
-          methodStart);
+          memberVis == sun::Visibility::Public ? memberStart : methodStart);
+      func->setVisibility(memberVis);
 
       InterfaceMethodDecl method;
       method.function = std::move(func);

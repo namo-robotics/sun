@@ -1,7 +1,7 @@
 using sun;
 
 class Foo {
-  function init() {}
+  public function init() {}
 
   function deinit() void {
     println("Foo deinit was called.");

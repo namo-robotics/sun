@@ -1,7 +1,7 @@
 // scope_lookup.cpp — Scope-chain lookup methods on SemanticScope
 //
-// These methods traverse the parent chain, import scopes, __definition__
-// scopes, and import bindings to find symbols. They encapsulate the lookup
+// These methods traverse the parent chain, import scopes and import bindings
+// to find symbols. They encapsulate the lookup
 // logic that was previously spread across SemanticAnalyzer.
 
 #include <algorithm>
@@ -42,8 +42,7 @@ const GenericClassInfo* SemanticScopeBase::lookupGenericClass(
       }
       for (const auto& [childName, child] : s->childModules) {
         if (!child) continue;
-        if (child->getType() == ScopeType::Import ||
-            childName == "__definition__") {
+        if (child->getType() == ScopeType::Import) {
           auto innerModIt = child->childModules.find(moduleName);
           if (innerModIt != child->childModules.end() && innerModIt->second) {
             auto* result = innerModIt->second->findGenericClass(symbolName);
@@ -101,8 +100,7 @@ const GenericInterfaceInfo* SemanticScopeBase::lookupGenericInterface(
       }
       for (const auto& [childName, child] : s->childModules) {
         if (!child) continue;
-        if (child->getType() == ScopeType::Import ||
-            childName == "__definition__") {
+        if (child->getType() == ScopeType::Import) {
           auto innerModIt = child->childModules.find(moduleName);
           if (innerModIt != child->childModules.end() && innerModIt->second) {
             auto* result = innerModIt->second->findGenericInterface(symbolName);
@@ -143,31 +141,27 @@ const GenericEnumInfo* SemanticScopeBase::lookupGenericEnum(
 // lookupVariable — find a variable in the scope chain
 // -------------------------------------------------------------------
 VariableInfo* SemanticScopeBase::lookupVariable(const std::string& name) {
-  for (auto* s = this; s != nullptr; s = s->parent) {
+  AccessFilter filter(this);
+  auto probe = [&](SemanticScopeBase* s) -> VariableInfo* {
     auto found = s->variables.find(name);
-    if (found != s->variables.end()) {
-      return &found->second;
-    }
+    if (found == s->variables.end()) return nullptr;
+    return filter.admit(&found->second) ? &found->second : nullptr;
+  };
+  for (auto* s = this; s != nullptr; s = s->parent) {
+    if (auto* v = probe(s)) return v;
     // Search direct import-scope children
     for (const auto& [childName, child] : s->childModules) {
       if (child && child->getType() == ScopeType::Import) {
-        auto childFound = child->variables.find(name);
-        if (childFound != child->variables.end()) {
-          return &childFound->second;
-        }
+        if (auto* v = probe(child.get())) return v;
       }
     }
     // Search import bindings from using statements
     for (const auto& binding : s->importBindings) {
-      if (!binding.sourceScope) continue;
-      if (binding.isWildcard) {
-        auto bindingFound = binding.sourceScope->variables.find(name);
-        if (bindingFound != binding.sourceScope->variables.end()) {
-          return &bindingFound->second;
-        }
-      }
+      if (!binding.sourceScope || !binding.isWildcard) continue;
+      if (auto* v = probe(binding.sourceScope)) return v;
     }
   }
+  filter.finish();
   return nullptr;
 }
 
@@ -178,48 +172,39 @@ const GenericFunctionInfo* SemanticScopeBase::lookupGenericFunction(
     const std::string& name) const {
   auto scopePath = getCurrentScopePath();
   sun::QualifiedName qname(scopePath, name);
+  AccessFilter filter(this);
+  auto probe = [&](const SemanticScopeBase* s, const sun::QualifiedName& qn)
+      -> const GenericFunctionInfo* {
+    auto found = s->genericFunctions.find(qn);
+    if (found == s->genericFunctions.end()) return nullptr;
+    return filter.admit(&found->second) ? &found->second : nullptr;
+  };
 
   for (auto* s = this; s != nullptr; s = s->parent) {
-    auto found = s->genericFunctions.find(qname);
-    if (found != s->genericFunctions.end()) {
-      return &found->second;
-    }
+    if (auto* g = probe(s, qname)) return g;
     // Try global scope (empty scope path)
     if (!scopePath.empty()) {
-      sun::QualifiedName globalQname({}, name);
-      found = s->genericFunctions.find(globalQname);
-      if (found != s->genericFunctions.end()) {
-        return &found->second;
-      }
+      if (auto* g = probe(s, sun::QualifiedName({}, name))) return g;
     }
     // Search direct import-scope children
     for (const auto& [modName, child] : s->childModules) {
       if (!child || child->getType() != ScopeType::Import) continue;
-      sun::QualifiedName childQname(child->scopePath, name);
-      auto childFound = child->genericFunctions.find(childQname);
-      if (childFound != child->genericFunctions.end()) {
-        return &childFound->second;
-      }
+      if (auto* g = probe(child.get(), {child->scopePath, name})) return g;
       for (const auto& [subName, subChild] : child->childModules) {
         if (!subChild || subChild->getType() == ScopeType::Import) continue;
-        sun::QualifiedName subQname(subChild->scopePath, name);
-        auto subFound = subChild->genericFunctions.find(subQname);
-        if (subFound != subChild->genericFunctions.end()) {
-          return &subFound->second;
-        }
+        if (auto* g = probe(subChild.get(), {subChild->scopePath, name}))
+          return g;
       }
     }
     // Search import bindings
     for (const auto& binding : s->importBindings) {
       if (!binding.sourceScope || !binding.isWildcard) continue;
-      sun::QualifiedName bindingQname(binding.sourceScope->scopePath, name);
-      auto bindingFound =
-          binding.sourceScope->genericFunctions.find(bindingQname);
-      if (bindingFound != binding.sourceScope->genericFunctions.end()) {
-        return &bindingFound->second;
-      }
+      if (auto* g = probe(binding.sourceScope,
+                          {binding.sourceScope->scopePath, name}))
+        return g;
     }
   }
+  filter.finish();
   return nullptr;
 }
 
@@ -266,22 +251,15 @@ std::vector<FunctionInfo> SemanticScopeBase::getAllFunctions(
     }
   };
 
-  // Scope chain plus, for generic specializations, the definition scope
-  // chain of the generic (see lookupFunction)
   for (auto* s = this; s != nullptr; s = s->parent) {
     collectFrom(s);
-    auto defIt = s->childModules.find("__definition__");
-    if (defIt != s->childModules.end() && defIt->second) {
-      for (auto* defS = defIt->second.get(); defS != nullptr;
-           defS = defS->parent) {
-        collectFrom(defS);
-      }
-    }
   }
 
+  AccessFilter filter(this);
   for (const auto& info : allResults) {
-    addIfUnique(info);
+    if (filter.admit(info)) addIfUnique(info);
   }
+  if (results.empty()) filter.finish();
   return results;
 }
 
@@ -408,9 +386,12 @@ static bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
 // already known, and walking up from it would let unrelated same-named
 // functions in enclosing scopes win.
 std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
-    const std::string& name,
-    const std::vector<sun::TypePtr>& argTypes) const {
+    const std::string& name, const std::vector<sun::TypePtr>& argTypes,
+    AccessFilter* filter) const {
   const FunctionTable& funcs = functions;
+  auto admit = [&](const FunctionInfo& info) {
+    return !filter || filter->admit(info);
+  };
 
   std::string sig = name + "(";
   for (size_t i = 0; i < argTypes.size(); ++i) {
@@ -423,7 +404,7 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
   {
     // Try exact match first
     auto it = funcs.find(sig);
-    if (it != funcs.end()) return it->second;
+    if (it != funcs.end() && admit(it->second)) return it->second;
 
     // Try compatible overload — look up by base name
     auto checkOverloads =
@@ -437,6 +418,7 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
                               : info->paramTypes.size() != argTypes.size()) {
           continue;
         }
+        if (!admit(*info)) continue;
 
         bool compatible = true;
         for (size_t i = 0; i < info->paramTypes.size(); ++i) {
@@ -522,9 +504,10 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
 std::optional<FunctionInfo> SemanticScopeBase::lookupFunction(
     const std::string& name,
     const std::vector<sun::TypePtr>& argTypes) const {
+  AccessFilter filter(this);
   auto findInScope =
       [&](const SemanticScopeBase* scope) -> std::optional<FunctionInfo> {
-    return scope->lookupFunctionLocal(name, argTypes);
+    return scope->lookupFunctionLocal(name, argTypes, &filter);
   };
 
   // One scope plus its import children and import bindings
@@ -552,20 +535,13 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunction(
     return std::nullopt;
   };
 
-  // Walk scope chain; a generic specialization's scope also links its
-  // definition scope (__definition__) so bodies resolve free functions of
-  // the module the generic was written in, wherever it is instantiated
+  // Walk the scope chain (generic bodies are analyzed inside their
+  // definition scope, so the chain already contains their module)
   for (auto* s = this; s != nullptr; s = s->parent) {
     if (auto result = searchScope(s)) return result;
-    auto defIt = s->childModules.find("__definition__");
-    if (defIt != s->childModules.end() && defIt->second) {
-      for (auto* defS = defIt->second.get(); defS != nullptr;
-           defS = defS->parent) {
-        if (auto result = searchScope(defS)) return result;
-      }
-    }
   }
 
+  filter.finish();
   return std::nullopt;
 }
 
@@ -590,7 +566,7 @@ SemanticScopeBase* SemanticScopeBase::lookupModuleScope(
     SemanticScopeBase* found = nullptr;
     for (const auto& [modName, child] : scope.childModules) {
       if (!child) continue;
-      if (!isLibraryScope(modName) && modName != "__definition__") continue;
+      if (!isLibraryScope(modName)) continue;
 
       auto childIt = child->childModules.find(segment);
       if (childIt != child->childModules.end()) {
@@ -774,11 +750,14 @@ sun::QualifiedName SemanticScopeBase::resolveNameWithUsings(
     std::string symbolName = name.substr(lastDot + 1);
 
     if (auto* modScope = lookupModuleScope(modulePath)) {
-      if (modScope->hasSymbol(symbolName)) {
+      AccessFilter qualifiedFilter(this);
+      if (modScope->hasAccessibleSymbol(symbolName, qualifiedFilter)) {
         return sun::QualifiedName(modScope->scopePath, symbolName);
       }
+      qualifiedFilter.finish();
     }
   }
+  AccessFilter filter(this);
 
   // Helper to filter out $...$ hash segments from scope path
   auto getVisiblePath =
@@ -808,7 +787,7 @@ sun::QualifiedName SemanticScopeBase::resolveNameWithUsings(
 
   // 1. Check enclosing module scopes by walking up the parent chain
   for (auto* s = this; s != nullptr; s = s->parent) {
-    if (s->getType() == ScopeType::Module && s->hasSymbol(name)) {
+    if (s->getType() == ScopeType::Module && s->hasAccessibleSymbol(name, filter)) {
       addCandidate(const_cast<SemanticScopeBase*>(s));
     }
   }
@@ -818,7 +797,7 @@ sun::QualifiedName SemanticScopeBase::resolveNameWithUsings(
     std::string visPathStr = sun::QualifiedName::joinPath(visiblePath);
     auto allScopes = collectAllModuleScopes(this, visPathStr);
     for (auto* modScope : allScopes) {
-      if (modScope->hasSymbol(name)) {
+      if (modScope->hasAccessibleSymbol(name, filter)) {
         addCandidate(modScope);
       }
     }
@@ -831,7 +810,7 @@ sun::QualifiedName SemanticScopeBase::resolveNameWithUsings(
 
     auto allScopes = collectAllModuleScopes(this, import.namespacePath);
     for (auto* modScope : allScopes) {
-      if (modScope->hasSymbol(name)) {
+      if (modScope->hasAccessibleSymbol(name, filter)) {
         addCandidate(modScope);
       }
     }
@@ -842,7 +821,7 @@ sun::QualifiedName SemanticScopeBase::resolveNameWithUsings(
   while (rootScope->parent != nullptr) {
     rootScope = rootScope->parent;
   }
-  if (rootScope->getType() == ScopeType::Global && rootScope->hasSymbol(name)) {
+  if (rootScope->getType() == ScopeType::Global && rootScope->hasAccessibleSymbol(name, filter)) {
     std::vector<std::string> emptyPath;
     if (candidates.find(emptyPath) == candidates.end()) {
       candidates[emptyPath] = {emptyPath,
@@ -878,7 +857,9 @@ sun::QualifiedName SemanticScopeBase::resolveNameWithUsings(
     return sun::QualifiedName(info.first, name);
   }
 
-  // No match found - return unqualified name
+  // No match found: report a private candidate if that is all there was,
+  // otherwise return the unqualified name
+  filter.finish();
   return sun::QualifiedName(std::vector<std::string>{}, name);
 }
 
@@ -900,18 +881,20 @@ VariableInfo* SemanticScopeBase::lookupQualifiedVariable(
   auto* modScope = lookupModuleScope(modulePath);
   if (!modScope) return nullptr;
 
+  AccessFilter filter(this);
   // Search in the module scope's namespaced variables
   auto it = modScope->namespacedVariables.find(varName);
-  if (it != modScope->namespacedVariables.end()) {
+  if (it != modScope->namespacedVariables.end() && filter.admit(&it->second)) {
     return &it->second;
   }
 
   // Also check regular variables in the module scope
   auto varIt = modScope->variables.find(varName);
-  if (varIt != modScope->variables.end()) {
+  if (varIt != modScope->variables.end() && filter.admit(&varIt->second)) {
     return &varIt->second;
   }
 
+  filter.finish();
   return nullptr;
 }
 
@@ -932,11 +915,13 @@ const FunctionInfo* SemanticScopeBase::lookupQualifiedFunction(
   if (!modScope) return nullptr;
 
   // Search for function by name in the module scope
+  AccessFilter filter(this);
   if (auto* overloads = modScope->functions.getOverloads(funcName)) {
-    if (!overloads->empty()) {
-      return (*overloads)[0];
+    for (const auto* info : *overloads) {
+      if (filter.admit(info)) return info;
     }
   }
 
+  filter.finish();
   return nullptr;
 }

@@ -508,7 +508,7 @@ using T = TypeMapper;
 
 void emitEnum(Writer& w, const pb::EnumDescriptor* e) {
   std::string name = T::enumName(e);
-  w.open("enum " + name + " {");
+  w.open("public enum " + name + " {");
   for (int i = 0; i < e->value_count(); ++i) {
     std::string sep = (i + 1 < e->value_count()) ? "," : "";
     w.line(e->value(i)->name() + sep);
@@ -516,7 +516,7 @@ void emitEnum(Writer& w, const pb::EnumDescriptor* e) {
   w.close();
   w.line();
 
-  w.open("function proto_enum_to_i32_" + name + "(v: " + name + ") i32 {");
+  w.open("public function proto_enum_to_i32_" + name + "(v: " + name + ") i32 {");
   w.open("return match v {");
   for (int i = 0; i < e->value_count(); ++i) {
     std::string sep = (i + 1 < e->value_count()) ? "," : "";
@@ -527,7 +527,7 @@ void emitEnum(Writer& w, const pb::EnumDescriptor* e) {
   w.close();
   w.line();
 
-  w.open("function proto_enum_from_i32_" + name + "(v: i32) " + name + " {");
+  w.open("public function proto_enum_from_i32_" + name + "(v: i32) " + name + " {");
   for (int i = 0; i < e->value_count(); ++i) {
     w.line("if (v == " + std::to_string(e->value(i)->number()) + ") { return " +
            name + "." + e->value(i)->name() + "; }");
@@ -548,7 +548,7 @@ class MessageGenerator {
 
   void emit() {
     emitOneofEnums();
-    w_.open("class " + name_ + " {");
+    w_.open("public class " + name_ + " {");
     emitFields();
     emitInit();
     emitEncode();
@@ -586,7 +586,7 @@ class MessageGenerator {
   // enum <Msg>_<oneof> { NotSet, FieldA(T), FieldB(U) }
   void emitOneofEnums() {
     forEachOneof([&](const pb::OneofDescriptor* o) {
-      w_.open("enum " + T::oneofEnumName(o) + " {");
+      w_.open("public enum " + T::oneofEnumName(o) + " {");
       w_.line("NotSet,");
       for (int j = 0; j < o->field_count(); ++j) {
         const FD* f = o->field(j);
@@ -600,19 +600,19 @@ class MessageGenerator {
 
   void emitFields() {
     forEachPlainField([&](const FD* f) {
-      w_.line("var " + f->name() + ": " + T::fieldType(f) + ";");
+      w_.line("public var " + f->name() + ": " + T::fieldType(f) + ";");
     });
     forEachOneof([&](const pb::OneofDescriptor* o) {
-      w_.line("var " + o->name() + ": " + T::oneofEnumName(o) + ";");
+      w_.line("public var " + o->name() + ": " + T::oneofEnumName(o) + ";");
     });
-    w_.line("var unknown_fields: Vec<u8>;");
+    w_.line("public var unknown_fields: Vec<u8>;");
     w_.line("var alloc_: HeapAllocator;");
     w_.line();
   }
 
   // Zero values (proto3 defaults); containers and sub-messages start empty
   void emitInit() {
-    w_.open("function init(alloc: ref HeapAllocator) {");
+    w_.open("public function init(alloc: ref HeapAllocator) {");
     w_.line("this.alloc_ = alloc.copy();");
     forEachPlainField([&](const FD* f) {
       std::string init;
@@ -636,7 +636,7 @@ class MessageGenerator {
   }
 
   void emitEncode() {
-    w_.open("function encode(buf: ref Vec<u8>) void {");
+    w_.open("public function encode(buf: ref Vec<u8>) void {");
     forEachPlainField([&](const FD* f) { emitEncodeField(f); });
     forEachOneof([&](const pb::OneofDescriptor* o) { emitEncodeOneof(o); });
     w_.line("proto_append_raw(buf, this.unknown_fields);");
@@ -712,20 +712,20 @@ class MessageGenerator {
 
   // Length-prefixed forms: embedded sub-message and stream framing
   void emitEncodeNested() {
-    w_.open("function encode_nested(buf: ref Vec<u8>) void {");
+    w_.open("public function encode_nested(buf: ref Vec<u8>) void {");
     w_.line("var body = Vec<u8>(this.alloc_, 16);");
     w_.line("this.encode(body);");
     w_.line("proto_write_bytes(buf, body);");
     w_.close();
     w_.line();
-    w_.open("function encode_delimited(buf: ref Vec<u8>) void {");
+    w_.open("public function encode_delimited(buf: ref Vec<u8>) void {");
     w_.line("this.encode_nested(buf);");
     w_.close();
   }
 
   // <Msg>_decode_from: the field-dispatch loop over a reader
   void emitDecodeFrom() {
-    w_.open("function " + name_ +
+    w_.open("public function " + name_ +
             "_decode_from(alloc: ref HeapAllocator, r: ref ProtoReader) " +
             name_ + ", IError {");
     w_.line("var msg = " + name_ + "(alloc);");
@@ -809,7 +809,7 @@ class MessageGenerator {
   // Nested (length-prefixed), whole-buffer, and delimited entry points
   void emitDecodeHelpers() {
     const std::string sig = "(alloc: ref HeapAllocator, r: ref ProtoReader) ";
-    w_.open("function " + name_ + "_decode_nested" + sig + name_ + ", IError {");
+    w_.open("public function " + name_ + "_decode_nested" + sig + name_ + ", IError {");
     w_.line("var end: i64 = r.read_length();");
     w_.line("var old: i64 = r.push_limit(end);");
     w_.line("var msg = " + name_ + "_decode_from(alloc, r);");
@@ -818,7 +818,7 @@ class MessageGenerator {
     w_.close();
     w_.line();
 
-    w_.open("function " + name_ +
+    w_.open("public function " + name_ +
             "_decode(alloc: ref HeapAllocator, buf: ref Vec<u8>) " + name_ +
             ", IError {");
     w_.line("var r = ProtoReader(buf);");
@@ -826,7 +826,7 @@ class MessageGenerator {
     w_.close();
     w_.line();
 
-    w_.open("function " + name_ + "_decode_delimited" + sig + name_ +
+    w_.open("public function " + name_ + "_decode_delimited" + sig + name_ +
             ", IError {");
     w_.line("return " + name_ + "_decode_nested(alloc, r);");
     w_.close();
@@ -860,7 +860,7 @@ void emitFile(Writer& w, const pb::FileDescriptor* file,
   w.line();
 
   std::string pkg = file->package();
-  if (!pkg.empty()) w.open("module " + pkg + " {");
+  if (!pkg.empty()) w.open("public module " + pkg + " {");
   // `using` inside the module: merged ASTs order modules before other
   // top-level statements, so a file-level `using` would bind too late for
   // the class shapes. Imported packages are brought into scope the same way.

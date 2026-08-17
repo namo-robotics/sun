@@ -44,7 +44,9 @@ void SemanticAnalyzer::registerGenericInterface(
     return;
   }
   // Register in current scope
-  currentScope->genericInterfaces[name] = info;
+  auto& slot = currentScope->genericInterfaces[name];
+  slot = info;
+  slot.definitionScope = currentScope->shared_from_this();
 }
 
 const GenericInterfaceInfo* SemanticAnalyzer::lookupGenericInterface(
@@ -107,7 +109,8 @@ SemanticAnalyzer::instantiateGenericInterface(
       // Add fields with substituted types
       for (const auto& field : builtinInterface->getFields()) {
         auto fieldType = substituteTypeParameters(field.type);
-        specializedInterface->addField(field.name, fieldType);
+        specializedInterface->addField(field.name, fieldType).visibility =
+            field.visibility;
       }
 
       // Add methods with substituted types
@@ -117,9 +120,10 @@ SemanticAnalyzer::instantiateGenericInterface(
         for (const auto& pt : method.paramTypes) {
           paramTypes.push_back(substituteTypeParameters(pt));
         }
-        specializedInterface->addMethod(method.name, returnType, paramTypes,
-                                        method.hasDefaultImpl,
-                                        method.typeParameters);
+        specializedInterface
+            ->addMethod(method.name, returnType, paramTypes,
+                        method.hasDefaultImpl, method.typeParameters)
+            .visibility = method.visibility;
       }
 
       // Pop the scope
@@ -146,47 +150,58 @@ SemanticAnalyzer::instantiateGenericInterface(
   // Create the specialized interface type
   auto specializedInterface =
       typeRegistry->getSpecializedInterface(baseName, typeArgs);
+  specializedInterface->visibility = genericInfo->AST->getVisibility();
+  specializedInterface->setQualifiedName(sun::QualifiedName(
+      genericInfo->qualifiedName.scopePath, mangledName,
+      genericInfo->qualifiedName.modulePath));
 
-  // Push a scope for type parameter bindings
-  enterTypeParamScope(genericInfo->typeParameters, typeArgs);
+  {
+    // Member annotations resolve in the interface's definition scope; the
+    // result is registered in the requesting scope below
+    ScopeSwitchGuard definitionScope(*this, definitionScopeOf(*genericInfo));
+    // Push a scope for type parameter bindings
+    enterTypeParamScope(genericInfo->typeParameters, typeArgs);
 
-  // Add fields with substituted types
-  for (const auto& field : genericInfo->AST->getFields()) {
-    auto fieldType = typeAnnotationToType(field.type);
-    fieldType = substituteTypeParameters(fieldType);
-    specializedInterface->addField(field.name, fieldType);
-  }
-
-  // Add methods with substituted types
-  for (const auto& methodDecl : genericInfo->AST->getMethods()) {
-    const PrototypeAST& proto = methodDecl.function->getProto();
-
-    // Get return type with substitution
-    sun::TypePtr returnType;
-    if (proto.getReturnType()) {
-      returnType = typeAnnotationToType(*proto.getReturnType());
-      returnType = substituteTypeParameters(returnType);
-    } else {
-      returnType = sun::Types::Void();
+    // Add fields with substituted types
+    for (const auto& field : genericInfo->AST->getFields()) {
+      auto fieldType = typeAnnotationToType(field.type);
+      fieldType = substituteTypeParameters(fieldType);
+      specializedInterface->addField(field.name, fieldType).visibility =
+          field.visibility;
     }
 
-    // Get parameter types with substitution
-    std::vector<sun::TypePtr> paramTypes;
-    for (const auto& [argName, argType] : proto.getArgs()) {
-      auto paramType = typeAnnotationToType(argType);
-      paramType = substituteTypeParameters(paramType);
-      paramTypes.push_back(paramType);
+    // Add methods with substituted types
+    for (const auto& methodDecl : genericInfo->AST->getMethods()) {
+      const PrototypeAST& proto = methodDecl.function->getProto();
+
+      // Get return type with substitution
+      sun::TypePtr returnType;
+      if (proto.getReturnType()) {
+        returnType = typeAnnotationToType(*proto.getReturnType());
+        returnType = substituteTypeParameters(returnType);
+      } else {
+        returnType = sun::Types::Void();
+      }
+
+      // Get parameter types with substitution
+      std::vector<sun::TypePtr> paramTypes;
+      for (const auto& [argName, argType] : proto.getArgs()) {
+        auto paramType = typeAnnotationToType(argType);
+        paramType = substituteTypeParameters(paramType);
+        paramTypes.push_back(paramType);
+      }
+
+      // Add method to interface type (preserve method-level generic type
+      // parameters)
+      specializedInterface
+          ->addMethod(proto.getName(), returnType, paramTypes,
+                      methodDecl.hasDefaultImpl, proto.getTypeParameters())
+          .visibility = methodVisibility(*methodDecl.function);
     }
 
-    // Add method to interface type (preserve method-level generic type
-    // parameters)
-    specializedInterface->addMethod(proto.getName(), returnType, paramTypes,
-                                    methodDecl.hasDefaultImpl,
-                                    proto.getTypeParameters());
+    // Pop the scope
+    exitScope();
   }
-
-  // Pop the scope
-  exitScope();
 
   // Register the specialized interface
   registerInterface(mangledName, specializedInterface);
@@ -261,8 +276,9 @@ void SemanticAnalyzer::inheritInterfaceFields(
         }
         continue;
       }
-      // Add interface field to class
-      classType->addField(field.name, field.type);
+      // Add interface field to class with the interface's visibility
+      classType->addField(field.name, field.type).visibility =
+          field.visibility;
     }
 
     // Record the implementation now (conformance is validated after the
@@ -316,6 +332,17 @@ void SemanticAnalyzer::validateInterfaceImplementation(
       }
 
       if (classMethodInfo) {
+        // A public interface member is reachable through the interface, so
+        // the implementing method must be public too
+        if (interfaceMethod.visibility == sun::Visibility::Public &&
+            classMethodInfo->visibility != sun::Visibility::Public) {
+          logSemanticError("method '" + interfaceMethod.name + "' of class '" +
+                               classDef.getName() +
+                               "' implements public member '" +
+                               interfaceDisplayName + "." +
+                               interfaceMethod.name + "' and must be public",
+                           classDef.getLocation());
+        }
         // Verify return type matches
         if (classMethodInfo->returnType && interfaceMethod.returnType &&
             !classMethodInfo->returnType->equals(*interfaceMethod.returnType)) {
@@ -361,9 +388,11 @@ void SemanticAnalyzer::validateInterfaceImplementation(
         if (interfaceMethod.hasDefaultImpl) {
           // Add the default method to the class type so it can be found during
           // lookup (preserve generic type parameters)
-          classType->addMethod(interfaceMethod.name, interfaceMethod.returnType,
-                               interfaceMethod.paramTypes, false,
-                               interfaceMethod.typeParameters);
+          classType
+              ->addMethod(interfaceMethod.name, interfaceMethod.returnType,
+                          interfaceMethod.paramTypes, false,
+                          interfaceMethod.typeParameters)
+              .visibility = interfaceMethod.visibility;
 
           // Register the mangled method name as a function
           std::string mangledName =

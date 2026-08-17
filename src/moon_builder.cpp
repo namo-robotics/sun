@@ -71,6 +71,17 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
             synthesized.pseudoPath);
   }
 
+  // ---- Root modules must be public: a bundle whose top-level module is
+  // private would export nothing reachable ----
+  for (const auto& m : allMetadata) {
+    const std::string& name = m.module_name();
+    if (name.empty() || name.find('.') != std::string::npos) continue;
+    if (m.visibility() != ast::PUBLIC) {
+      fail("moon bundle: top-level module '" + name +
+           "' must be declared 'public' to be exported");
+    }
+  }
+
   // ---- Compile everything into one LLVM module ----
   auto driver = Driver::createForAOT("moon_module", options.targetTriple,
                                      options.debugInfo);

@@ -344,3 +344,40 @@ TEST(GenericClass, generic_with_bool) {
   )");
   EXPECT_EQ(value, 1);
 }
+
+// ============================================================================
+// Generic bodies are analyzed in their definition scope, not the requester's
+// ============================================================================
+
+TEST(GenericClasses, method_body_cannot_see_requesters_locals) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Box<T> {
+        var v: T;
+        function init(v: T) { this.v = v; }
+        function get() T { return this.v + secret; }
+    }
+    function main() i32 {
+        var secret: i32 = 5;
+        var b = Box<i32>(1);
+        return b.get();
+    }
+  )"), "Unknown variable");
+}
+
+TEST(GenericClasses, qualified_cross_module_instantiation_without_using) {
+  auto value = executeString(R"(
+    public module lib {
+        function bonus() i32 { return 100; }
+        public class Thing<T> {
+            var v: T;
+            public function init(v: T) { this.v = v; }
+            public function get() T { return this.v + bonus(); }
+        }
+    }
+    public module app {
+        public function run() i32 { var t = lib.Thing<i32>(7); return t.get(); }
+    }
+    function main() i32 { return app.run(); }
+  )");
+  EXPECT_EQ(value, 107);
+}

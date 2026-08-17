@@ -20,8 +20,8 @@ namespace sun {
 /// Binary header for .moon format
 struct SunLibHeader {
   static constexpr uint32_t MAGIC = 0x53554E4C;  // "SUNL"
-  static constexpr uint32_t VERSION = 4;  // V4: target-stamped metadata,
-                                          // libc-based intrinsics
+  static constexpr uint32_t VERSION = 5;  // V5: visibility on modules and
+                                          // exported declarations
 
   uint32_t magic = MAGIC;
   uint32_t version = VERSION;

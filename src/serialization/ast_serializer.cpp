@@ -10,6 +10,10 @@
 namespace sun {
 namespace serialization {
 
+static ast::Visibility toProto(sun::Visibility v) {
+  return v == sun::Visibility::Public ? ast::PUBLIC : ast::PRIVATE;
+}
+
 ast::Position ASTSerializer::serializePosition(const Position& pos) const {
   ast::Position proto;
   proto.set_line(pos.line);
@@ -462,6 +466,7 @@ void ASTSerializer::serializeVariableCreation(const VariableCreationAST& expr,
                                               ast::ASTNode* node) const {
   auto* var = node->mutable_variable_creation();
   var->set_name(expr.getName());
+  var->set_visibility(toProto(expr.getVisibility()));
   if (expr.getValue()) {
     *var->mutable_value() = serialize(*expr.getValue());
   }
@@ -664,6 +669,7 @@ void ASTSerializer::serializeFunction(const FunctionAST& expr,
   auto* func = node->mutable_function_def();
   *func->mutable_proto() = serializePrototype(expr.getProto());
   func->set_is_c_extern(expr.isCExtern());
+  func->set_visibility(toProto(expr.getVisibility()));
   // An empty body and no body are different things: the latter is a
   // declaration, and reconstructing it as the former would give a C extern
   // Sun name mangling and lose its symbol.
@@ -751,6 +757,7 @@ void ASTSerializer::serializeModule(const ModuleAST& expr,
                                     ast::ASTNode* node) const {
   auto* mod = node->mutable_module_def();
   mod->set_name(expr.getName());
+  mod->set_visibility(toProto(expr.getVisibility()));
   auto* body = mod->mutable_body();
   for (const auto& stmt : expr.getBody().getBody()) {
     *body->add_body() = serialize(*stmt);
@@ -799,6 +806,7 @@ void ASTSerializer::serializeClassDef(const ClassDefinitionAST& expr,
     if (config_.include_location) {
       *fieldProto->mutable_location() = serializePosition(field.location);
     }
+    fieldProto->set_visibility(toProto(field.visibility));
   }
 
   for (const auto& method : expr.getMethods()) {
@@ -813,11 +821,13 @@ void ASTSerializer::serializeClassDef(const ClassDefinitionAST& expr,
         *body->add_body() = serialize(*stmt);
       }
     }
+    funcProto->set_visibility(toProto(method.function->getVisibility()));
     methodProto->set_is_constructor(method.isConstructor);
   }
 
   cls->set_is_partial(expr.isPartial());
   cls->set_is_packed(expr.isPacked());
+  cls->set_visibility(toProto(expr.getVisibility()));
 }
 
 void ASTSerializer::serializeInterfaceDef(const InterfaceDefinitionAST& expr,
@@ -836,6 +846,7 @@ void ASTSerializer::serializeInterfaceDef(const InterfaceDefinitionAST& expr,
     if (config_.include_location) {
       *fieldProto->mutable_location() = serializePosition(field.location);
     }
+    fieldProto->set_visibility(toProto(field.visibility));
   }
 
   for (const auto& method : expr.getMethods()) {
@@ -849,14 +860,17 @@ void ASTSerializer::serializeInterfaceDef(const InterfaceDefinitionAST& expr,
         *body->add_body() = serialize(*stmt);
       }
     }
+    funcProto->set_visibility(toProto(method.function->getVisibility()));
     methodProto->set_has_default_impl(method.hasDefaultImpl);
   }
+  iface->set_visibility(toProto(expr.getVisibility()));
 }
 
 void ASTSerializer::serializeEnumDef(const EnumDefinitionAST& expr,
                                      ast::ASTNode* node) const {
   auto* enumDef = node->mutable_enum_def();
   enumDef->set_name(expr.getName());
+  enumDef->set_visibility(toProto(expr.getVisibility()));
   for (const auto& typeParam : expr.getTypeParameters()) {
     enumDef->add_type_parameters(typeParam);
   }
@@ -928,6 +942,7 @@ void ASTSerializer::serializeDeclareType(const DeclareTypeAST& expr,
   }
   *decl->mutable_type_annotation() =
       serializeTypeAnnotation(expr.getTypeAnnotation());
+  decl->set_visibility(toProto(expr.getVisibility()));
 }
 
 }  // namespace serialization

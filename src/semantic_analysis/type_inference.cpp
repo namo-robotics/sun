@@ -128,7 +128,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
         if (hasSlices) {
           // Look for __slice__ method
           const sun::ClassMethod* sliceMethod =
-              classType->getMethod("__slice__");
+              accessibleMethod(*classType, "__slice__", arrIdx.getLocation());
           if (sliceMethod) {
             return sliceMethod->returnType;
           }
@@ -139,7 +139,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
         } else {
           // Look for __index__ method
           const sun::ClassMethod* indexMethod =
-              classType->getMethod("__index__");
+              accessibleMethod(*classType, "__index__", arrIdx.getLocation());
           if (indexMethod) {
             return indexMethod->returnType;
           }
@@ -214,7 +214,10 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
 
       // Check if it's a module name (for mod_x.mod_y.var access)
       if (isModuleName(name)) {
-        return sun::Types::Module(getFullModulePath(name));
+        std::string fullPath = getFullModulePath(name);
+        if (auto* modScope = lookupModuleScope(fullPath))
+          requireModuleAccessible(*modScope, varRef.getLocation());
+        return sun::Types::Module(fullPath);
       }
 
       // Unknown variable - error in strongly typed language
@@ -782,7 +785,8 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
 
       // Check if it's a nested module first
       std::string nestedModPath = modPath + "." + memberName;
-      if (lookupModuleScope(nestedModPath)) {
+      if (auto* nested = lookupModuleScope(nestedModPath)) {
+        requireModuleAccessible(*nested, memberAccess.getLocation());
         return sun::Types::Module(nestedModPath);
       }
 
@@ -940,13 +944,15 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
           static_cast<const sun::ClassType*>(objectType.get());
 
       // Check for field
-      const sun::ClassField* field = classType->getField(memberName);
+      const sun::ClassField* field =
+          accessibleField(*classType, memberName, memberAccess.getLocation());
       if (field) {
         return field->type;
       }
 
       // Check for method
-      const sun::ClassMethod* method = classType->getMethod(memberName);
+      const sun::ClassMethod* method =
+          accessibleMethod(*classType, memberName, memberAccess.getLocation());
       if (method) {
         sun::TypePtr returnType = method->returnType;
 
@@ -997,13 +1003,15 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
           static_cast<const sun::InterfaceType*>(objectType.get());
 
       // Check for field
-      const sun::InterfaceField* field = ifaceType->getField(memberName);
+      const sun::InterfaceField* field =
+          accessibleField(*ifaceType, memberName, memberAccess.getLocation());
       if (field) {
         return field->type;
       }
 
       // Check for method
-      const sun::InterfaceMethod* method = ifaceType->getMethod(memberName);
+      const sun::InterfaceMethod* method =
+          accessibleMethod(*ifaceType, memberName, memberAccess.getLocation());
       if (method) {
         return sun::Types::Function(method->returnType, method->paramTypes);
       }
@@ -1029,9 +1037,11 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
           if (narrowedType->isClass()) {
             const auto* classType =
                 static_cast<const sun::ClassType*>(narrowedType.get());
-            const sun::ClassField* field = classType->getField(memberName);
+            const sun::ClassField* field = accessibleField(
+                *classType, memberName, memberAccess.getLocation());
             if (field) return field->type;
-            const sun::ClassMethod* method = classType->getMethod(memberName);
+            const sun::ClassMethod* method = accessibleMethod(
+                *classType, memberName, memberAccess.getLocation());
             if (method)
               return sun::Types::Function(method->returnType,
                                           method->paramTypes);
@@ -1042,10 +1052,11 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
           if (narrowedType->isInterface()) {
             const auto* ifaceType =
                 static_cast<const sun::InterfaceType*>(narrowedType.get());
-            const sun::InterfaceField* field = ifaceType->getField(memberName);
+            const sun::InterfaceField* field = accessibleField(
+                *ifaceType, memberName, memberAccess.getLocation());
             if (field) return field->type;
-            const sun::InterfaceMethod* method =
-                ifaceType->getMethod(memberName);
+            const sun::InterfaceMethod* method = accessibleMethod(
+                *ifaceType, memberName, memberAccess.getLocation());
             if (method)
               return sun::Types::Function(method->returnType,
                                           method->paramTypes);

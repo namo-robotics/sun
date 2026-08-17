@@ -22,29 +22,29 @@
 // LinkedListNode<T> - Doubly-linked node
 // ============================================================================
 
-module sun {
-  class LinkedListNode<T> {
+public module sun {
+  public class LinkedListNode<T> {
     var value: T;
     var next: raw_ptr<LinkedListNode<T>>;
     var prev: raw_ptr<LinkedListNode<T>>;
 
-    function init(v: T) {
+    public function init(v: T) {
       this.value = v;
       this.next = null;
       this.prev = null;
     }
 
-    function getValue() T {
+    public function getValue() T {
       return this.value;
     }
 
-    function setValue(v: T) void {
+    public function setValue(v: T) void {
       this.value = v;
     }
 
     // Replace the stored value, dropping the old one first (no-op for
     // non-owning types)
-    function replaceValue(v: T) void {
+    public function replaceValue(v: T) void {
       unsafe { _deinit<T>(_address_of<T>(this.value)); };
       this.value = v;
     }
@@ -55,19 +55,19 @@ module sun {
       unsafe { _deinit<T>(_address_of<T>(this.value)); };
     }
 
-    function getNext() raw_ptr<LinkedListNode<T>> {
+    public function getNext() raw_ptr<LinkedListNode<T>> {
       return this.next;
     }
 
-    function getPrev() raw_ptr<LinkedListNode<T>> {
+    public function getPrev() raw_ptr<LinkedListNode<T>> {
       return this.prev;
     }
 
-    function setNext(n: raw_ptr<LinkedListNode<T>>) void {
+    public function setNext(n: raw_ptr<LinkedListNode<T>>) void {
       this.next = n;
     }
 
-    function setPrev(p: raw_ptr<LinkedListNode<T>>) void {
+    public function setPrev(p: raw_ptr<LinkedListNode<T>>) void {
       this.prev = p;
     }
   }
@@ -76,14 +76,14 @@ module sun {
   // LinkedList<T> - Doubly-Linked List
   // ============================================================================
 
-  class LinkedList<T> implements IIterable<T, LinkedList<T>> {
+  public class LinkedList<T> implements IIterable<T, LinkedList<T>> {
     var head: raw_ptr<LinkedListNode<T>>;
     var tail: raw_ptr<LinkedListNode<T>>;
     var alloc: HeapAllocator;
     var size_: i64;
 
     // Constructor with allocator
-    function init(allocator: ref HeapAllocator) {
+    public function init(allocator: ref HeapAllocator) {
       this.alloc = allocator.copy();
       this.head = null;
       this.tail = null;
@@ -100,7 +100,7 @@ module sun {
     // ========================================================================
 
     // Append element to the back
-    function push_back(value: T) void {
+    public function push_back(value: T) void {
       var node: raw_ptr<LinkedListNode<T>> = this.alloc.create<LinkedListNode<T>>(value);
       if (this.tail != null) {
         unsafe { this.tail.setNext(node); };
@@ -114,7 +114,7 @@ module sun {
     }
 
     // Prepend element to the front
-    function push_front(value: T) void {
+    public function push_front(value: T) void {
       var node: raw_ptr<LinkedListNode<T>> = this.alloc.create<LinkedListNode<T>>(value);
       if (this.head != null) {
         unsafe { this.head.setPrev(node); };
@@ -128,7 +128,7 @@ module sun {
     }
 
     // Remove and return the last element
-    function pop_back() T, IError {
+    public function pop_back() T, IError {
       if (this.tail == null) {
         throw EmptyError();
       }
@@ -146,7 +146,7 @@ module sun {
     }
 
     // Remove and return the first element
-    function pop_front() T, IError {
+    public function pop_front() T, IError {
       if (this.head == null) {
         throw EmptyError();
       }
@@ -164,7 +164,7 @@ module sun {
     }
 
     // Get element at index (traverses from nearest end)
-    function get(index: i64) T, IError {
+    public function get(index: i64) T, IError {
       if (index < 0) {
         throw NotFoundError();
       }
@@ -176,7 +176,7 @@ module sun {
     }
 
     // Set element at index
-    function set(index: i64, value: T) void, IError {
+    public function set(index: i64, value: T) void, IError {
       if (index < 0) {
         throw NotFoundError();
       }
@@ -188,7 +188,7 @@ module sun {
     }
 
     // Remove element at index and return its value
-    function remove(index: i64) T, IError {
+    public function remove(index: i64) T, IError {
       if (index < 0) {
         throw NotFoundError();
       }
@@ -204,7 +204,7 @@ module sun {
     }
 
     // Get first element without removing
-    function first() T, IError {
+    public function first() T, IError {
       if (this.head == null) {
         throw EmptyError();
       }
@@ -212,7 +212,7 @@ module sun {
     }
 
     // Get last element without removing
-    function last() T, IError {
+    public function last() T, IError {
       if (this.tail == null) {
         throw EmptyError();
       }
@@ -220,18 +220,18 @@ module sun {
     }
 
     // Get current size
-    function size() i64 {
+    public function size() i64 {
       return this.size_;
     }
 
     // Check if empty
-    function isEmpty() bool {
+    public function isEmpty() bool {
       return this.size_ == 0;
     }
 
     // Remove all elements and free nodes. Node payloads still owned by the
     // list are dropped.
-    function clear() void {
+    public function clear() void {
       var curr: raw_ptr<LinkedListNode<T>> = this.head;
       while (curr != null) {
         var next: raw_ptr<LinkedListNode<T>> = unsafe { curr.getNext(); };
@@ -287,7 +287,7 @@ module sun {
     // ========================================================================
 
     // Return iterator over elements
-    function iter() LinkedListIterator<T> {
+    public function iter() LinkedListIterator<T> {
       return LinkedListIterator<T>();
     }
   }
@@ -296,16 +296,16 @@ module sun {
   // LinkedListIterator<T> - Iterator over LinkedList elements
   // ============================================================================
 
-  class LinkedListIterator<T> implements IIterator<T, LinkedList<T>> {
+  public class LinkedListIterator<T> implements IIterator<T, LinkedList<T>> {
     var current: raw_ptr<LinkedListNode<T>>;
     var started: bool;
 
-    function init() {
+    public function init() {
       this.current = null;
       this.started = false;
     }
 
-    function hasNext(list: ref LinkedList<T>) bool {
+    public function hasNext(list: ref LinkedList<T>) bool {
       if (this.started == false) {
         return list.head != null;
       }
@@ -315,7 +315,7 @@ module sun {
       return unsafe { this.current.getNext(); } != null;
     }
 
-    function next(list: ref LinkedList<T>) T {
+    public function next(list: ref LinkedList<T>) T {
       if (this.started == false) {
         this.current = list.head;
         this.started = true;
@@ -330,12 +330,12 @@ module sun {
   // Precompiled Specializations
   // ============================================================================
 
-  declare LinkedListNode_i32 = LinkedListNode<i32>;
-  declare LinkedListNode_i64 = LinkedListNode<i64>;
+  public declare LinkedListNode_i32 = LinkedListNode<i32>;
+  public declare LinkedListNode_i64 = LinkedListNode<i64>;
 
-  declare LinkedList_i32 = LinkedList<i32>;
-  declare LinkedList_i64 = LinkedList<i64>;
+  public declare LinkedList_i32 = LinkedList<i32>;
+  public declare LinkedList_i64 = LinkedList<i64>;
 
-  declare LinkedListIterator_i32 = LinkedListIterator<i32>;
-  declare LinkedListIterator_i64 = LinkedListIterator<i64>;
+  public declare LinkedListIterator_i32 = LinkedListIterator<i32>;
+  public declare LinkedListIterator_i64 = LinkedListIterator<i64>;
 }  // module sun

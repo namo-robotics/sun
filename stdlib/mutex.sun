@@ -12,17 +12,17 @@
 //   1 = locked (no waiters)
 //   2 = locked (with waiters)
 
-module sun {
-  class Mutex {
+public module sun {
+  public class Mutex {
     // Lock state: 0=unlocked, 1=locked, 2=locked+waiters
     var state: i32;
 
-    function init() {
+    public function init() {
       this.state = 0;
     }
 
     // Acquire the lock. Blocks until the lock is available.
-    function lock() void {
+    public function lock() void {
       // Fast path: try to acquire uncontended lock (0 -> 1)
       var old = unsafe { _atomic_cmpxchg_i32(_address_of<i32>(this.state), 0, 1); };
       if (old == 0) {
@@ -70,7 +70,7 @@ module sun {
     }
 
     // Release the lock. Must only be called by the thread holding the lock.
-    function unlock() void {
+    public function unlock() void {
       // Get the old state and set to 0 (unlocked)
       var old = unsafe { _atomic_cmpxchg_i32(_address_of<i32>(this.state), 1, 0); };
 
