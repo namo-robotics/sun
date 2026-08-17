@@ -26,14 +26,25 @@ using TypePtr = std::shared_ptr<Type>;
 // A qualified name with both mangled and display representations
 // Keeps scope path and symbol name separate to avoid lossy conversion
 struct QualifiedName {
-  // Scope path segments, e.g., {"module", "submodule"} or empty for global
+  // Scope path segments, e.g., {"module", "submodule"} or empty for global.
+  // May include enclosing class/function segments for nested items.
   std::vector<std::string> scopePath;
   std::string baseName;  // "my_func" (the original identifier, may contain _)
   std::string paramSuffix;  // "$i32$ref_String_" for overload disambiguation
+  // The module that declared the item — the unit of visibility. Unlike
+  // scopePath it never contains class/function segments; empty = root.
+  std::vector<std::string> modulePath;
 
   QualifiedName() = default;
   QualifiedName(std::vector<std::string> path, std::string name)
       : scopePath(std::move(path)), baseName(std::move(name)) {}
+  QualifiedName(std::vector<std::string> path, std::string name,
+                std::vector<std::string> owner)
+      : scopePath(std::move(path)),
+        baseName(std::move(name)),
+        modulePath(std::move(owner)) {}
+
+  const std::vector<std::string>& owner() const { return modulePath; }
 
   // Get mangled form for codegen/lookup: "$hash$_A_B_my_func$i32$ref_String_"
   // Joins scope path with underscores, appends paramSuffix for overloads

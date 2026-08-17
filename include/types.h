@@ -840,7 +840,7 @@ struct ClassField {
   std::string name;
   TypePtr type;
   size_t index;  // Index in the struct
-  sun::AccessInfo access;  // Visibility + owning module
+  sun::Visibility visibility = sun::Visibility::Private;
 };
 
 // Class method information
@@ -851,7 +851,7 @@ struct ClassMethod {
   std::vector<TypePtr> paramTypes;  // Excludes implicit 'this' parameter
   bool isConstructor;               // true if this is the 'init' method
   bool canThrow = false;            // declared with ', IError' — may unwind
-  sun::AccessInfo access;           // Visibility + owning module
+  sun::Visibility visibility = sun::Visibility::Private;
 
   bool isGeneric() const { return !typeParameters.empty(); }
 };
@@ -945,7 +945,7 @@ class ClassType : public Type {
   mutable llvm::StructType* cachedLLVMType = nullptr;
 
  public:
-  sun::AccessInfo access;  // Class visibility + owning module
+  sun::Visibility visibility = sun::Visibility::Private;
 
   ClassType(std::string className) : mangledName(std::move(className)) {}
 
@@ -1330,7 +1330,7 @@ class ClassType : public Type {
 struct InterfaceField {
   std::string name;
   TypePtr type;
-  sun::AccessInfo access;  // Visibility + owning module
+  sun::Visibility visibility = sun::Visibility::Private;
 };
 
 // Interface method information
@@ -1340,7 +1340,7 @@ struct InterfaceMethod {
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;  // Excludes implicit 'this' parameter
   bool hasDefaultImpl;  // true if this method has a default implementation
-  sun::AccessInfo access;  // Visibility + owning module
+  sun::Visibility visibility = sun::Visibility::Private;
 
   bool isGeneric() const { return !typeParameters.empty(); }
 };
@@ -1363,11 +1363,16 @@ class InterfaceType : public Type {
   std::vector<InterfaceMethod> methods;
   ScopeMethodTable
       methodTable_;  // Indexed method table for default implementations
+  sun::QualifiedName qualifiedName_;
 
  public:
-  sun::AccessInfo access;  // Interface visibility + owning module
+  sun::Visibility visibility = sun::Visibility::Private;
 
   InterfaceType(std::string interfaceName) : name(std::move(interfaceName)) {}
+
+  // Structured name: owner() is the declaring module (unit of visibility)
+  const sun::QualifiedName& getQualifiedName() const { return qualifiedName_; }
+  void setQualifiedName(sun::QualifiedName qn) { qualifiedName_ = std::move(qn); }
 
   // Constructor for generic interface definition
   InterfaceType(std::string interfaceName, std::vector<std::string> typeParams)
@@ -1611,9 +1616,14 @@ class EnumType : public Type {
   std::vector<EnumVariant> variants;
   std::string genericBase_;          // e.g. "Option" for Option_i32
   std::vector<TypePtr> genericArgs_;  // e.g. [i32] for Option_i32
+  sun::QualifiedName structuredName_;
 
  public:
-  sun::AccessInfo access;  // Enum visibility + owning module
+  sun::Visibility visibility = sun::Visibility::Private;
+
+  // Structured name: owner() is the declaring module (unit of visibility)
+  const sun::QualifiedName& getQualifiedName() const { return structuredName_; }
+  void setQualifiedName(sun::QualifiedName qn) { structuredName_ = std::move(qn); }
 
   EnumType(std::string qualifiedName, std::string baseName = "")
       : qualifiedName_(std::move(qualifiedName)),

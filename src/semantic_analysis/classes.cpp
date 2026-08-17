@@ -174,6 +174,7 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
   // with type arguments mangled into the base name
   sun::QualifiedName specializedQName;
   specializedQName.scopePath = genericClassInfo->qualifiedName.scopePath;
+  specializedQName.modulePath = genericClassInfo->qualifiedName.modulePath;
   std::string specializedBaseName = genericClassInfo->qualifiedName.baseName;
   for (const auto& arg : typeArgs) {
     specializedBaseName += "_" + sun::Types::mangleTypeName(arg);
@@ -245,7 +246,8 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
 
   // Member annotations and interface references resolve in the generic's
   // own module context, wherever it is instantiated from
-  AccessContextGuard accessGuard(*this, genericClassInfo->access.owner);
+  AccessContextGuard accessGuard(*this,
+                                 genericClassInfo->qualifiedName.owner());
 
   // Push a scope for class-level type parameter bindings
   enterClassScope(specializedQName);
@@ -273,7 +275,7 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
   // Layout is a property of the generic definition, so every specialization
   // inherits it. Must precede the first getStructType(), which memoizes.
   specializedClass->setPacked(genericClassInfo->AST->isPacked());
-  specializedClass->access = genericClassInfo->access;
+  specializedClass->visibility = genericClassInfo->AST->getVisibility();
 
   // Add fields with substituted types (skip if type already exists or already
   // has fields from a previous instantiation in another scope)
@@ -284,8 +286,8 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
       // Checked per specialization: whether a type argument is packable is
       // only knowable once T is substituted
       checkPackedFieldType(*genericClassInfo->AST, field, fieldType);
-      specializedClass->addField(field.name, fieldType).access =
-          memberAccess(specializedClass->access, field.visibility);
+      specializedClass->addField(field.name, fieldType).visibility =
+          field.visibility;
     }
   }
 
@@ -382,8 +384,7 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
           ->addMethod(proto.getName(), returnType, paramTypes,
                       methodClone.isConstructor, proto.getTypeParameters(),
                       proto.canThrow())
-          .access = memberAccess(specializedClass->access,
-                                 methodVisibility(*methodClone.function));
+          .visibility = methodVisibility(*methodClone.function);
     }
 
     // Update the cloned method's prototype with resolved types
@@ -544,7 +545,7 @@ SemanticAnalyzer::instantiateGenericFunction(
     return std::nullopt;
   }
   // The body resolves names in the function's own module context
-  AccessContextGuard accessGuard(*this, genericInfo.access.owner);
+  AccessContextGuard accessGuard(*this, genericInfo.qualifiedName.owner());
 
   const PrototypeAST& proto = genericFunc->getProto();
   // Use qualified name to include enclosing function context (e.g.,
@@ -939,7 +940,7 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   setCurrentClass(classType);
 
   // The body resolves names in the class's own module context
-  AccessContextGuard accessGuard(*this, classType->access.owner);
+  AccessContextGuard accessGuard(*this, classType->getQualifiedName().owner());
 
   // Extract module path from class context for type resolution.
   // For specialized generic classes, look up the generic class definition's

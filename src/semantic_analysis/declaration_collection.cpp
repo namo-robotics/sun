@@ -42,7 +42,8 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
           if (!lookupGenericEnum(enumDef.getName())) {
             registerGenericEnum(
                 enumDef.getName(),
-                {&enumDef, enumDef.getTypeParameters(), makeAccess(enumDef)});
+                {&enumDef, enumDef.getTypeParameters(),
+                 makeQualifiedName(enumDef.getName())});
           }
           break;
         }
@@ -53,7 +54,8 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
         for (const auto& variant : enumDef.getVariants()) {
           enumType->addVariant(variant.name, variant.value);
         }
-        enumType->access = makeAccess(enumDef);
+        enumType->visibility = enumDef.getVisibility();
+        enumType->setQualifiedName(makeQualifiedName(enumDef.getName()));
         registerEnum(enumDef.getName(), enumType);
         break;
       }
@@ -66,7 +68,7 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
             GenericInterfaceInfo info;
             info.AST = &interfaceDef;
             info.typeParameters = interfaceDef.getTypeParameters();
-            info.access = makeAccess(interfaceDef);
+            info.qualifiedName = makeQualifiedName(interfaceDef.getName());
             registerGenericInterface(interfaceDef.getName(), info);
           }
         } else {
@@ -80,7 +82,8 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
           if (interfaceName != interfaceDef.getName()) {
             interfaceType->setBaseName(interfaceDef.getName());
           }
-          interfaceType->access = makeAccess(interfaceDef);
+          interfaceType->visibility = interfaceDef.getVisibility();
+          interfaceType->setQualifiedName(qualifiedInterface);
           registerInterface(interfaceDef.getName(), interfaceType);
         }
         break;
@@ -100,13 +103,12 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
           genericInfo.typeParameters = classDef.getTypeParameters();
           genericInfo.definitionScope = currentScope->shared_from_this();
           genericInfo.qualifiedName = qualifiedClass;
-          genericInfo.access = makeAccess(classDef);
           registerGenericClass(classDef.getName(), genericInfo);
         }
         if (!classDef.isGeneric()) {
           auto classType = typeRegistry->getClass(qualifiedClass);
           classType->setPacked(classDef.isPacked());
-          classType->access = makeAccess(classDef);
+          classType->visibility = classDef.getVisibility();
           registerClass(classDef.getName(), classType);
         }
         break;
@@ -259,7 +261,7 @@ void SemanticAnalyzer::collectFunctionSignature(FunctionAST& func) {
   info.canThrow = proto.canThrow();
   info.isCVariadic = proto.isCVariadic();
   info.isCExtern = func.isCExtern();
-  info.access = makeAccess(func);
+  info.visibility = func.getVisibility();
 
   registernFunctionInCurrentScope(qualifiedName.baseName, info);
 }

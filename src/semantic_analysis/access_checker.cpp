@@ -14,10 +14,10 @@ bool isBundleOwned(const ModulePath& owner) {
 
 std::string describeOwner(const ItemRef& item) {
   std::string modulePart;
-  std::string moduleName = displayModulePath(item.access.owner);
+  std::string moduleName = displayModulePath(item.owner);
   if (!moduleName.empty()) {
     modulePart = "module '" + moduleName + "'";
-  } else if (isBundleOwned(item.access.owner)) {
+  } else if (isBundleOwned(item.owner)) {
     modulePart = "the top-level scope of its bundle";
   } else {
     modulePart = "the top-level scope";
@@ -36,7 +36,7 @@ std::string denialMessage(const ItemRef& item) {
 }
 
 bool isAccessible(const ModulePath& from, const ItemRef& item) {
-  return isAccessibleFrom(from, item.access);
+  return isAccessibleFrom(from, item.visibility, item.owner);
 }
 
 void denyAccess(const ItemRef& item, const Position& loc) {
@@ -86,49 +86,32 @@ static std::string cleanTypeName(std::string name) {
   return name;
 }
 
+// Members are owned by their type's module
 sun::access::ItemRef SemanticAnalyzer::fieldRef(const sun::ClassType& cls,
                                                 const sun::ClassField& f) {
   return {"field", f.name, "class '" + cleanTypeName(cls.getDisplayName()) + "'",
-          f.access};
+          f.visibility, cls.getQualifiedName().owner()};
 }
 
 sun::access::ItemRef SemanticAnalyzer::methodRef(const sun::ClassType& cls,
                                                  const sun::ClassMethod& m) {
   return {"method", m.name,
-          "class '" + cleanTypeName(cls.getDisplayName()) + "'", m.access};
+          "class '" + cleanTypeName(cls.getDisplayName()) + "'", m.visibility,
+          cls.getQualifiedName().owner()};
 }
 
 sun::access::ItemRef SemanticAnalyzer::fieldRef(const sun::InterfaceType& iface,
                                                 const sun::InterfaceField& f) {
-  return {"field", f.name, "interface '" + iface.getBaseName() + "'", f.access};
+  return {"field", f.name, "interface '" + iface.getBaseName() + "'",
+          f.visibility, iface.getQualifiedName().owner()};
 }
 
 sun::access::ItemRef SemanticAnalyzer::methodRef(
     const sun::InterfaceType& iface, const sun::InterfaceMethod& m) {
   return {"method", m.name, "interface '" + iface.getBaseName() + "'",
-          m.access};
+          m.visibility, iface.getQualifiedName().owner()};
 }
 
-sun::access::ItemRef SemanticAnalyzer::symbolRef(const SymbolMatch& match) {
-  const char* kind = "item";
-  switch (match.kind) {
-    case SymbolKind::Module: kind = "module"; break;
-    case SymbolKind::Class:
-    case SymbolKind::GenericClass: kind = "class"; break;
-    case SymbolKind::Interface:
-    case SymbolKind::GenericInterface: kind = "interface"; break;
-    case SymbolKind::Enum: kind = "enum"; break;
-    case SymbolKind::Function: kind = "function"; break;
-    case SymbolKind::Variable: kind = "variable"; break;
-    case SymbolKind::None: break;
-  }
-  return {kind, match.name, "", match.access};
-}
-
-sun::access::ItemRef SemanticAnalyzer::moduleRef(const std::string& name,
-                                                 const ModuleScope& scope) {
-  return {"module", name, "", scope.access};
-}
 
 const sun::ClassField* SemanticAnalyzer::accessibleField(
     const sun::ClassType& cls, const std::string& name,
@@ -175,7 +158,6 @@ void SemanticAnalyzer::requireModuleAccessible(
   for (auto* s = &moduleScope; s && s->getType() == ScopeType::Module;
        s = s->parent) {
     if (isLibraryScope(s->scopeName)) continue;  // bundle boundary, not a module
-    requireAccessible(
-        moduleRef(s->scopeName, static_cast<const ModuleScope&>(*s)), loc);
+    requireAccessible(moduleRef(static_cast<const ModuleScope&>(*s)), loc);
   }
 }

@@ -144,7 +144,8 @@ std::shared_ptr<SemanticScopeBase> SemanticScopeBase::cloneSymbols(
   clone->parent = newParent;
   if (auto* mod = dynamic_cast<ModuleScope*>(clone.get())) {
     const auto& src = static_cast<const ModuleScope&>(*this);
-    mod->access = src.access;
+    mod->qualifiedName = src.qualifiedName;
+    mod->visibility = src.visibility;
     mod->visibilityDeclared = src.visibilityDeclared;
   }
   // Copy all symbol tables (shallow — shares type objects)
@@ -219,24 +220,25 @@ void SemanticAnalyzer::enterModuleScope(const std::string& moduleName) {
     // Compute full scope path by extending parent's path
     modScope->scopePath = currentScope->scopePath;
     modScope->scopePath.push_back(moduleName);
+    modScope->qualifiedName = sun::QualifiedName(
+        currentScope->scopePath, moduleName, currentScope->scopePath);
     child = modScope;
   }
   currentScope = child.get();
 }
 
 void SemanticAnalyzer::declareModule(const ModuleAST& module) {
-  sun::AccessInfo access{module.getVisibility(), currentModulePath()};
   enterModuleScope(module.getName());
   auto* scope = static_cast<ModuleScope*>(currentScope);
   if (scope->visibilityDeclared &&
-      scope->access.visibility != access.visibility) {
+      scope->visibility != module.getVisibility()) {
     logSemanticError(
         "module '" + module.getName() + "' was previously declared " +
-            sun::visibilityKeyword(scope->access.visibility) +
+            sun::visibilityKeyword(scope->visibility) +
             "; all declarations of a module must agree on its visibility",
         module.getLocation());
   }
-  scope->access = access;
+  scope->visibility = module.getVisibility();
   scope->visibilityDeclared = true;
 }
 
@@ -329,7 +331,8 @@ std::vector<std::string> SemanticAnalyzer::getCurrentScopePath() const {
 
 sun::QualifiedName SemanticAnalyzer::makeQualifiedName(
     const std::string& baseName) const {
-  return sun::QualifiedName(getCurrentScopePath(), baseName);
+  return sun::QualifiedName(getCurrentScopePath(), baseName,
+                            currentModulePath());
 }
 
 std::string SemanticAnalyzer::qualifyNameInCurrentModule(
@@ -585,7 +588,6 @@ SymbolMatch SemanticAnalyzer::findSymbolInModule(
         match.modulePath = fullPath;
         match.libraryHash = libHash;
         match.classType = classIt->second;
-        match.access = classIt->second->access;
         if (!accessFilter.admit(classIt->second)) return std::nullopt;
         return match;
       }
@@ -601,7 +603,6 @@ SymbolMatch SemanticAnalyzer::findSymbolInModule(
         match.modulePath = fullPath;
         match.libraryHash = libHash;
         match.genericClassInfo = &genClassIt->second;
-        match.access = genClassIt->second.access;
         if (!accessFilter.admit(&genClassIt->second)) return std::nullopt;
         return match;
       }
@@ -617,7 +618,6 @@ SymbolMatch SemanticAnalyzer::findSymbolInModule(
         match.modulePath = fullPath;
         match.libraryHash = libHash;
         match.interfaceType = ifaceIt->second;
-        match.access = ifaceIt->second->access;
         if (!accessFilter.admit(ifaceIt->second)) return std::nullopt;
         return match;
       }
@@ -633,7 +633,6 @@ SymbolMatch SemanticAnalyzer::findSymbolInModule(
         match.modulePath = fullPath;
         match.libraryHash = libHash;
         match.genericInterfaceInfo = &genIfaceIt->second;
-        match.access = genIfaceIt->second.access;
         if (!accessFilter.admit(&genIfaceIt->second)) return std::nullopt;
         return match;
       }
@@ -649,7 +648,6 @@ SymbolMatch SemanticAnalyzer::findSymbolInModule(
         match.modulePath = fullPath;
         match.libraryHash = libHash;
         match.enumType = enumIt->second;
-        match.access = enumIt->second->access;
         if (!accessFilter.admit(enumIt->second)) return std::nullopt;
         return match;
       }
@@ -692,7 +690,6 @@ SymbolMatch SemanticAnalyzer::findSymbolInModule(
           match.modulePath = fullPath;
           match.libraryHash = libHash;
           match.functionInfo = info;
-          match.access = info->access;
           return match;
         }
       }
@@ -710,7 +707,6 @@ SymbolMatch SemanticAnalyzer::findSymbolInModule(
         match.modulePath = fullPath;
         match.libraryHash = libHash;
         match.variableInfo = &varIt->second;
-        match.access = varIt->second.access;
         if (!accessFilter.admit(&varIt->second)) return std::nullopt;
         return match;
       }
@@ -907,9 +903,9 @@ void SemanticAnalyzer::registerGenericFunctionInCurrentScope(
   }
   genInfo.params = proto.getArgs();
 
-  genInfo.access = makeAccess(func);
-
-  sun::QualifiedName qname(getCurrentScopePath(), proto.getName());
+  sun::QualifiedName qname(getCurrentScopePath(), proto.getName(),
+                           currentModulePath());
+  genInfo.qualifiedName = qname;
   currentScope->genericFunctions[qname] = genInfo;
 }
 
@@ -1143,10 +1139,10 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
 void SemanticAnalyzer::registerModuleVariable(const std::string& baseName,
                                               const std::string& qualifiedName,
                                               sun::TypePtr type,
-                                              const sun::AccessInfo& access) {
+                                              sun::Visibility visibility) {
   VariableInfo info{type, true, false};
-  info.access = access;
-  info.qualifiedName = sun::QualifiedName(access.owner, baseName);
+  info.visibility = visibility;
+  info.qualifiedName = makeQualifiedName(baseName);
   // Store with qualified name for codegen lookup
   rootScope->namespacedVariables[qualifiedName] = info;
   if (currentScope != rootScope.get()) {
@@ -1157,7 +1153,7 @@ void SemanticAnalyzer::registerModuleVariable(const std::string& baseName,
   // The plain-name entry created by declareVariable during body analysis
   if (auto it = currentScope->variables.find(baseName);
       it != currentScope->variables.end()) {
-    it->second.access = access;
+    it->second.visibility = visibility;
     if (it->second.qualifiedName.empty())
       it->second.qualifiedName = info.qualifiedName;
   }

@@ -18,24 +18,13 @@ namespace sun {
 
 enum class Visibility : uint8_t { Private = 0, Public = 1 };
 
-// Module path as segments, e.g. {"$hash$", "sun"}; root = {}. This is the same
-// representation as QualifiedName::scopePath — for symbols that carry a
-// QualifiedName, `AccessInfo::owner == qualifiedName.scopePath`. It is stored
-// separately only so records without a QualifiedName (class/interface
-// members, interface and enum types, inherited interface fields that keep the
-// interface's owner) fit the same predicate.
+// Module path as segments, e.g. {"$hash$", "sun"}; root = {}. An item's owner
+// is its QualifiedName::owner() (the scope path it was declared in); a
+// private item owned by root is reachable from every context in a
+// compilation — root is a prefix of every path — so internal/synthesized
+// symbols fail open, while anything declared under a real module or a bundle
+// fails closed unless marked public.
 using ModulePath = std::vector<std::string>;
-
-// Visibility plus the module that owns the item. The default (Private, root)
-// is reachable from every context in a compilation — root is a prefix of every
-// path — so internal/synthesized symbols fail open, while anything registered
-// under a real module or a bundle fails closed unless marked public.
-struct AccessInfo {
-  Visibility visibility = Visibility::Private;
-  ModulePath owner;
-
-  bool isPublic() const { return visibility == Visibility::Public; }
-};
 
 inline bool isModulePrefix(const ModulePath& prefix, const ModulePath& path) {
   if (prefix.size() > path.size()) return false;
@@ -46,8 +35,9 @@ inline bool isModulePrefix(const ModulePath& prefix, const ModulePath& path) {
 }
 
 // The single access predicate: public, or `from` is inside the owner.
-inline bool isAccessibleFrom(const ModulePath& from, const AccessInfo& item) {
-  return item.isPublic() || isModulePrefix(item.owner, from);
+inline bool isAccessibleFrom(const ModulePath& from, Visibility visibility,
+                             const ModulePath& owner) {
+  return visibility == Visibility::Public || isModulePrefix(owner, from);
 }
 
 inline bool isLibraryHashSegment(const std::string& seg) {

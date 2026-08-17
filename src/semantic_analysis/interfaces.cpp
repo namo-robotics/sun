@@ -107,8 +107,8 @@ SemanticAnalyzer::instantiateGenericInterface(
       // Add fields with substituted types
       for (const auto& field : builtinInterface->getFields()) {
         auto fieldType = substituteTypeParameters(field.type);
-        specializedInterface->addField(field.name, fieldType).access =
-            field.access;
+        specializedInterface->addField(field.name, fieldType).visibility =
+            field.visibility;
       }
 
       // Add methods with substituted types
@@ -121,7 +121,7 @@ SemanticAnalyzer::instantiateGenericInterface(
         specializedInterface
             ->addMethod(method.name, returnType, paramTypes,
                         method.hasDefaultImpl, method.typeParameters)
-            .access = method.access;
+            .visibility = method.visibility;
       }
 
       // Pop the scope
@@ -148,10 +148,13 @@ SemanticAnalyzer::instantiateGenericInterface(
   // Create the specialized interface type
   auto specializedInterface =
       typeRegistry->getSpecializedInterface(baseName, typeArgs);
-  specializedInterface->access = genericInfo->access;
+  specializedInterface->visibility = genericInfo->AST->getVisibility();
+  specializedInterface->setQualifiedName(sun::QualifiedName(
+      genericInfo->qualifiedName.scopePath, mangledName,
+      genericInfo->qualifiedName.modulePath));
 
   // Member annotations resolve in the interface's own module context
-  AccessContextGuard accessGuard(*this, genericInfo->access.owner);
+  AccessContextGuard accessGuard(*this, genericInfo->qualifiedName.owner());
   // Push a scope for type parameter bindings
   enterTypeParamScope(genericInfo->typeParameters, typeArgs);
 
@@ -159,8 +162,8 @@ SemanticAnalyzer::instantiateGenericInterface(
   for (const auto& field : genericInfo->AST->getFields()) {
     auto fieldType = typeAnnotationToType(field.type);
     fieldType = substituteTypeParameters(fieldType);
-    specializedInterface->addField(field.name, fieldType).access =
-        memberAccess(specializedInterface->access, field.visibility);
+    specializedInterface->addField(field.name, fieldType).visibility =
+        field.visibility;
   }
 
   // Add methods with substituted types
@@ -189,8 +192,7 @@ SemanticAnalyzer::instantiateGenericInterface(
     specializedInterface
         ->addMethod(proto.getName(), returnType, paramTypes,
                     methodDecl.hasDefaultImpl, proto.getTypeParameters())
-        .access = memberAccess(specializedInterface->access,
-                               methodVisibility(*methodDecl.function));
+        .visibility = methodVisibility(*methodDecl.function);
   }
 
   // Pop the scope
@@ -269,9 +271,9 @@ void SemanticAnalyzer::inheritInterfaceFields(
         }
         continue;
       }
-      // Add interface field to class; it keeps the interface's visibility
-      // and owner
-      classType->addField(field.name, field.type).access = field.access;
+      // Add interface field to class with the interface's visibility
+      classType->addField(field.name, field.type).visibility =
+          field.visibility;
     }
 
     // Record the implementation now (conformance is validated after the
@@ -327,8 +329,8 @@ void SemanticAnalyzer::validateInterfaceImplementation(
       if (classMethodInfo) {
         // A public interface member is reachable through the interface, so
         // the implementing method must be public too
-        if (interfaceMethod.access.isPublic() &&
-            !classMethodInfo->access.isPublic()) {
+        if (interfaceMethod.visibility == sun::Visibility::Public &&
+            classMethodInfo->visibility != sun::Visibility::Public) {
           logSemanticError("method '" + interfaceMethod.name + "' of class '" +
                                classDef.getName() +
                                "' implements public member '" +
@@ -385,7 +387,7 @@ void SemanticAnalyzer::validateInterfaceImplementation(
               ->addMethod(interfaceMethod.name, interfaceMethod.returnType,
                           interfaceMethod.paramTypes, false,
                           interfaceMethod.typeParameters)
-              .access = interfaceMethod.access;
+              .visibility = interfaceMethod.visibility;
 
           // Register the mangled method name as a function
           std::string mangledName =

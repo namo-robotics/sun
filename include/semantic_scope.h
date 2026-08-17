@@ -25,7 +25,7 @@ struct VariableInfo {
   bool isCapture = false;       // Declared as a lambda/function capture
   bool isByRefCapture = false;  // Captured via [ref x] - mutable through env
   sun::QualifiedName qualifiedName;  // Full qualified name (empty for locals)
-  sun::AccessInfo access;            // Visibility + owner (globals only)
+  sun::Visibility visibility = sun::Visibility::Private;  // globals only
 };
 
 // Information about a declared function
@@ -42,7 +42,7 @@ struct FunctionInfo {
   // Declared with `extern function` — calling it leaves Sun's checked world,
   // so call sites are gated on `unsafe`.
   bool isCExtern = false;
-  sun::AccessInfo access;  // Visibility + owning module
+  sun::Visibility visibility = sun::Visibility::Private;
 };
 
 // Indexed function table: O(1) name-based overload lookup + O(1) exact sig
@@ -224,7 +224,6 @@ struct SymbolMatch {
   const GenericInterfaceInfo* genericInterfaceInfo = nullptr;
   const FunctionInfo* functionInfo = nullptr;
   const VariableInfo* variableInfo = nullptr;
-  sun::AccessInfo access;  // Visibility + owner of the matched symbol
 
   bool empty() const { return kind == SymbolKind::None; }
   explicit operator bool() const { return kind != SymbolKind::None; }
@@ -268,21 +267,20 @@ struct GenericClassInfo {
                                                      // defined (weak to avoid
                                                      // circular refs)
   sun::QualifiedName qualifiedName;                  // Captured at registration
-  sun::AccessInfo access;                            // Visibility + owner
 };
 
 // Information about a generic interface definition (template)
 struct GenericInterfaceInfo {
   const InterfaceDefinitionAST* AST;        // Original AST node
   std::vector<std::string> typeParameters;  // ["T", "U", etc.]
-  sun::AccessInfo access;                   // Visibility + owner
+  sun::QualifiedName qualifiedName;         // Captured at registration
 };
 
 // Information about a generic enum definition (template)
 struct GenericEnumInfo {
   const EnumDefinitionAST* AST;             // Original AST node
   std::vector<std::string> typeParameters;  // ["T", "U", etc.]
-  sun::AccessInfo access;                   // Visibility + owner
+  sun::QualifiedName qualifiedName;         // Captured at registration
 };
 
 // Information about a generic function definition (template)
@@ -291,7 +289,7 @@ struct GenericFunctionInfo {
   std::vector<std::string> typeParameters;   // ["T", "U", etc.]
   std::optional<TypeAnnotation> returnType;  // Return type annotation
   std::vector<std::pair<std::string, TypeAnnotation>> params;  // Parameters
-  sun::AccessInfo access;                    // Visibility + owner
+  sun::QualifiedName qualifiedName;          // Captured at registration
 };
 
 // Information about a specialized (monomorphized) generic function
@@ -329,9 +327,6 @@ struct AccessContext {
   virtual sun::ModulePath currentModulePath() const = 0;
   [[noreturn]] virtual void denyAccess(
       const sun::access::ItemRef& item) const = 0;
-  // False while the analyzer performs internal, unfiltered lookups (e.g.
-  // "is this already registered?" checks that are not user references).
-  virtual bool accessChecksEnabled() const { return true; }
 };
 
 // ===================================================================
@@ -522,9 +517,10 @@ struct GlobalScope : SemanticScopeBase {
 // ===================================================================
 struct ModuleScope : SemanticScopeBase {
   ScopeType getType() const override { return ScopeType::Module; }
-  // The module's own visibility; owner is the parent module path.
-  sun::AccessInfo access;
-  bool visibilityDeclared = false;  // A source declaration set `access`
+  // Structured name: owner() is the parent module path
+  sun::QualifiedName qualifiedName;
+  sun::Visibility visibility = sun::Visibility::Private;
+  bool visibilityDeclared = false;  // A source declaration set `visibility`
 };
 
 // ===================================================================
@@ -652,43 +648,56 @@ inline std::string mangleModulePath(const std::string& dotPath) {
 // -------------------------------------------------------------------
 // accessItem — describe a lookup result for the access predicate
 // -------------------------------------------------------------------
+// Visibility comes from the record (or its AST for generic templates); the
+// owner is the record's QualifiedName::owner().
 inline sun::access::ItemRef accessItem(
     const std::shared_ptr<sun::ClassType>& c) {
-  return {"class", c->getDisplayName(), "", c->access};
+  return {"class", c->getDisplayName(), "", c->visibility,
+          c->getQualifiedName().owner()};
 }
 inline sun::access::ItemRef accessItem(const GenericClassInfo* g) {
-  return {"class", g->AST ? g->AST->getName() : g->qualifiedName.baseName, "",
-          g->access};
+  return {"class", g->qualifiedName.baseName, "",
+          g->AST ? g->AST->getVisibility() : sun::Visibility::Private,
+          g->qualifiedName.owner()};
 }
 inline sun::access::ItemRef accessItem(
     const std::shared_ptr<sun::InterfaceType>& i) {
-  return {"interface", i->getBaseName(), "", i->access};
+  return {"interface", i->getBaseName(), "", i->visibility,
+          i->getQualifiedName().owner()};
 }
 inline sun::access::ItemRef accessItem(const GenericInterfaceInfo* g) {
-  return {"interface", g->AST ? g->AST->getName() : "", "", g->access};
+  return {"interface", g->qualifiedName.baseName, "",
+          g->AST ? g->AST->getVisibility() : sun::Visibility::Private,
+          g->qualifiedName.owner()};
 }
 inline sun::access::ItemRef accessItem(const std::shared_ptr<sun::EnumType>& e) {
-  return {"enum", e->getBaseName(), "", e->access};
+  return {"enum", e->getBaseName(), "", e->visibility,
+          e->getQualifiedName().owner()};
 }
 inline sun::access::ItemRef accessItem(const GenericEnumInfo* g) {
-  return {"enum", g->AST ? g->AST->getName() : "", "", g->access};
+  return {"enum", g->qualifiedName.baseName, "",
+          g->AST ? g->AST->getVisibility() : sun::Visibility::Private,
+          g->qualifiedName.owner()};
 }
 inline sun::access::ItemRef accessItem(const GenericFunctionInfo* g) {
-  return {"function", g->AST ? g->AST->getProto().getName() : "", "",
-          g->access};
+  return {"function", g->qualifiedName.baseName, "",
+          g->AST ? g->AST->getVisibility() : sun::Visibility::Private,
+          g->qualifiedName.owner()};
 }
 inline sun::access::ItemRef accessItem(const FunctionInfo& f) {
-  return {"function", f.qualifiedName.baseName, "", f.access};
+  return {"function", f.qualifiedName.baseName, "", f.visibility,
+          f.qualifiedName.owner()};
 }
 inline sun::access::ItemRef accessItem(const FunctionInfo* f) {
   return accessItem(*f);
 }
 inline sun::access::ItemRef accessItem(const VariableInfo* v) {
-  return {"variable", v->qualifiedName.baseName, "", v->access};
+  return {"variable", v->qualifiedName.baseName, "", v->visibility,
+          v->qualifiedName.owner()};
 }
-inline sun::access::ItemRef accessItem(const std::string& moduleName,
-                                       const ModuleScope& m) {
-  return {"module", moduleName, "", m.access};
+inline sun::access::ItemRef accessItem(const ModuleScope& m) {
+  return {"module", m.qualifiedName.baseName, "", m.visibility,
+          m.qualifiedName.owner()};
 }
 
 // -------------------------------------------------------------------
@@ -704,7 +713,6 @@ class AccessFilter {
  public:
   explicit AccessFilter(const SemanticScopeBase* scope)
       : ctx_(scope ? scope->accessCtx() : nullptr) {
-    if (ctx_ && !ctx_->accessChecksEnabled()) ctx_ = nullptr;
     if (ctx_) from_ = ctx_->currentModulePath();
   }
 

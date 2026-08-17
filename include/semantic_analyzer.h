@@ -332,7 +332,7 @@ class SemanticAnalyzer : public AccessContext {
   // Register namespaced symbols (used during namespace analysis)
   void registerModuleVariable(const std::string& baseName,
                               const std::string& qualifiedName,
-                              sun::TypePtr type, const sun::AccessInfo& access);
+                              sun::TypePtr type, sun::Visibility visibility);
 
   // Lookup functions that handle using statements and namespace resolution
   VariableInfo* lookupQualifiedVariable(const std::string& qualifiedName);
@@ -628,7 +628,6 @@ class SemanticAnalyzer : public AccessContext {
   // Locations of the expressions being analyzed (innermost last), so denials
   // raised inside lookups can still point at source.
   std::vector<const Position*> locationStack_;
-  int accessSuspendDepth_ = 0;
 
  public:
   struct LocationGuard {
@@ -649,21 +648,9 @@ class SemanticAnalyzer : public AccessContext {
   sun::ModulePath currentModulePath() const override;
   [[noreturn]] void denyAccess(
       const sun::access::ItemRef& item) const override;
-  bool accessChecksEnabled() const override {
-    return accessSuspendDepth_ == 0;
-  }
-  // Lookups inside the guard are unfiltered: for registration-time
-  // "already declared?" probes and other non-user-reference lookups.
-  struct AccessSuspendGuard {
-    SemanticAnalyzer& sema;
-    explicit AccessSuspendGuard(SemanticAnalyzer& s) : sema(s) {
-      ++sema.accessSuspendDepth_;
-    }
-    ~AccessSuspendGuard() { --sema.accessSuspendDepth_; }
-    AccessSuspendGuard(const AccessSuspendGuard&) = delete;
-    AccessSuspendGuard& operator=(const AccessSuspendGuard&) = delete;
-  };
-
+  // Analyze the enclosed block as if it were inside module `owner`. Generic
+  // bodies are instantiated at their first use, outside their own module;
+  // this keeps their module-private dependencies reachable.
   struct AccessContextGuard {
     SemanticAnalyzer& sema;
     AccessContextGuard(SemanticAnalyzer& s, sun::ModulePath owner) : sema(s) {
@@ -674,16 +661,6 @@ class SemanticAnalyzer : public AccessContext {
     AccessContextGuard& operator=(const AccessContextGuard&) = delete;
   };
 
-  // Access info for a declaration registered from the current context.
-  sun::AccessInfo makeAccess(const ExprAST& decl) const {
-    return {decl.getVisibility(), currentModulePath()};
-  }
-  // Access info for a member of a type: the member's declared visibility,
-  // owned by the type's module.
-  static sun::AccessInfo memberAccess(const sun::AccessInfo& typeAccess,
-                                      sun::Visibility v) {
-    return {v, typeAccess.owner};
-  }
   // `deinit` is compiler-invoked and therefore always public.
   static sun::Visibility methodVisibility(const FunctionAST& method);
 
@@ -730,11 +707,7 @@ class SemanticAnalyzer : public AccessContext {
                                        const sun::InterfaceField& f);
   static sun::access::ItemRef methodRef(const sun::InterfaceType& iface,
                                         const sun::InterfaceMethod& m);
-  static sun::access::ItemRef symbolRef(const SymbolMatch& match);
-  static sun::access::ItemRef moduleRef(const std::string& name,
-                                        const ModuleScope& scope);
-  static sun::access::ItemRef typeRef(const char* kind, const std::string& name,
-                                      const sun::AccessInfo& access) {
-    return {kind, name, "", access};
+  static sun::access::ItemRef moduleRef(const ModuleScope& scope) {
+    return accessItem(scope);
   }
 };

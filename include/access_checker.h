@@ -18,7 +18,8 @@ struct ItemRef {
   const char* kind;           // "field", "method", "function", "class", ...
   std::string name;           // Item name as written by the user
   std::string ownerTypeName;  // Class/interface display name for members
-  AccessInfo access;          // Visibility + owning module
+  Visibility visibility;
+  ModulePath owner;           // QualifiedName::owner() of the item (or type)
 };
 
 // "class 'Vec' in module 'sun'" | "module 'sun'" |

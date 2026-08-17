@@ -2977,7 +2977,7 @@ void Parser::createModuleStubs(
       if (auto* ifaceDef = dynamic_cast<InterfaceDefinitionAST*>(ast.get())) {
         ifaceDef->setPrecompiled(true);
         ifaceDef->setQualifiedName(
-            sun::QualifiedName(scopePath, ifaceDef->getName()));
+            sun::QualifiedName(scopePath, ifaceDef->getName(), scopePath));
       }
       moduleAST.push_back(std::move(ast));
     }
@@ -2993,7 +2993,7 @@ void Parser::createModuleStubs(
       if (auto* classDef = dynamic_cast<ClassDefinitionAST*>(ast.get())) {
         classDef->setPrecompiled(true);
         classDef->setQualifiedName(
-            sun::QualifiedName(scopePath, classDef->getName()));
+            sun::QualifiedName(scopePath, classDef->getName(), scopePath));
       }
       moduleAST.push_back(std::move(ast));
     }
@@ -3021,7 +3021,8 @@ void Parser::createModuleStubs(
       if (auto* funcAST = dynamic_cast<FunctionAST*>(ast.get())) {
         funcAST->setPrecompiled(true);
         funcAST->getProtoMut().setQualifiedName(
-            sun::QualifiedName(scopePath, funcAST->getProto().getName()));
+            sun::QualifiedName(scopePath, funcAST->getProto().getName(),
+                               scopePath));
       }
       moduleAST.push_back(std::move(ast));
     }

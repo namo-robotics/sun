@@ -59,11 +59,14 @@ as ordinary non-generic code.
 
 ## Access Control
 
-Visibility (`include/visibility.h`) is a property of every declaration:
-`AccessInfo { visibility, owner }`, where `owner` is the module path that
-declared the item (the same segments as `QualifiedName::scopePath`). The
-single predicate is `isAccessibleFrom(from, item)`: public, or `from` is the
-owner module or one of its descendants. Contents of an imported `.moon` live
+Every declaration record (`FunctionInfo`, `ClassType`, `InterfaceType`,
+`EnumType`, the `Generic*Info`s, `ModuleScope`, class/interface members)
+carries a `sun::Visibility` and — except members, which use their type's — a
+`QualifiedName` whose `owner()` (`modulePath`) is the module that declared it.
+`modulePath` differs from `scopePath` for nested items: it never contains
+class or function segments. The single predicate is
+`isAccessibleFrom(from, visibility, owner)` (`include/visibility.h`): public,
+or `from` is the owner module or one of its descendants. Contents of an imported `.moon` live
 under a `$hash$` scope segment, so importer code is never inside a bundle
 module and bundle-private items are hidden by the same rule.
 
@@ -74,11 +77,11 @@ Enforcement lives in two places:
   `lookupFunction`, `resolveNameWithUsings`, `findSymbolInModule`, ...). The
   analyzer implements `AccessContext`, which tells lookups which module is
   asking and reports a denial ("`helper` is private to module `sun`") when
-  the only candidates were private. `AccessSuspendGuard` turns filtering off
-  for internal "already registered?" probes.
+  the only candidates were private.
 - **Class / interface members** are resolved on the type
   (`SemanticAnalyzer::accessibleField / accessibleMethod`), which check the
-  member's `AccessInfo` where `obj.member` is resolved.
+  member's visibility (owner = the type's module) where `obj.member` is
+  resolved.
 
 Generic bodies are instantiated away from their defining module, so
 `instantiateGenericClass`, `analyzeMethodWithBindings`, and friends push the

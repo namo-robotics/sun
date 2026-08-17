@@ -695,7 +695,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
           varCreate.setQualifiedName(qualifiedName);
           if (auto type = varCreate.getResolvedType()) {
             registerModuleVariable(varCreate.getName(), qualifiedName.mangled(),
-                                   type, makeAccess(varCreate));
+                                   type, varCreate.getVisibility());
           }
         } else if (bodyExpr->getType() == ASTNodeType::REFERENCE_CREATION) {
           analyzeExpr(*bodyExpr);
@@ -833,7 +833,6 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
         genericInfo.typeParameters = classDef.getTypeParameters();
         genericInfo.definitionScope = currentScope->shared_from_this();
         genericInfo.qualifiedName = qualifiedClass;
-        genericInfo.access = makeAccess(classDef);
         registerGenericClass(baseName, genericInfo);
 
         // Generic class templates are not analyzed further until instantiated
@@ -848,7 +847,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
 
       // Layout must be decided before any getStructType() call memoizes it
       classType->setPacked(classDef.isPacked());
-      classType->access = makeAccess(classDef);
+      classType->visibility = classDef.getVisibility();
 
       // Register the class BEFORE processing fields to allow self-referential
       // types (e.g., var next: raw_ptr<Node> inside class Node)
@@ -1010,14 +1009,15 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
         GenericInterfaceInfo info;
         info.AST = &interfaceDef;
         info.typeParameters = interfaceDef.getTypeParameters();
-        info.access = makeAccess(interfaceDef);
+        info.qualifiedName = qualifiedInterface;
         registerGenericInterface(interfaceDef.getName(), info);
 
         // Create a generic interface type (for type checking generic
         // references)
         auto interfaceType = typeRegistry->getGenericInterface(
             interfaceDef.getName(), interfaceDef.getTypeParameters());
-        interfaceType->access = info.access;
+        interfaceType->visibility = interfaceDef.getVisibility();
+        interfaceType->setQualifiedName(qualifiedInterface);
         registerInterface(interfaceDef.getName(), interfaceType);
 
         expr.setResolvedType(sun::Types::Void());
@@ -1030,7 +1030,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       if (interfaceName != interfaceDef.getName()) {
         interfaceType->setBaseName(interfaceDef.getName());
       }
-      interfaceType->access = makeAccess(interfaceDef);
+      interfaceType->visibility = interfaceDef.getVisibility();
+      interfaceType->setQualifiedName(qualifiedInterface);
 
       // Create a pseudo-class type for 'this' during interface method analysis
       // This allows default implementations to access interface fields
@@ -1040,9 +1041,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       // Add fields to the interface type and pseudo-class
       for (const auto& field : interfaceDef.getFields()) {
         sun::TypePtr fieldType = typeAnnotationToType(field.type);
-        auto fieldAccess = memberAccess(interfaceType->access, field.visibility);
-        interfaceType->addField(field.name, fieldType).access = fieldAccess;
-        pseudoClass->addField(field.name, fieldType).access = fieldAccess;
+        interfaceType->addField(field.name, fieldType).visibility =
+            field.visibility;
+        pseudoClass->addField(field.name, fieldType).visibility =
+            field.visibility;
       }
 
       // Add methods to the interface type
@@ -1060,8 +1062,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
             ->addMethod(proto.getName(), methodInfo.returnType,
                         methodInfo.paramTypes, methodDecl.hasDefaultImpl,
                         proto.getTypeParameters())
-            .access = memberAccess(interfaceType->access,
-                                   methodVisibility(*methodDecl.function));
+            .visibility = methodVisibility(*methodDecl.function);
       }
 
       // Enter Interface scope to contain method scopes
@@ -1545,8 +1546,7 @@ void SemanticAnalyzer::registerClassShape(
     }
 
     checkPackedFieldType(classDef, field, fieldType);
-    classType->addField(field.name, fieldType).access =
-        memberAccess(classType->access, field.visibility);
+    classType->addField(field.name, fieldType).visibility = field.visibility;
   }
 
   // Implemented interfaces (fields inherited, implementation recorded)
@@ -1564,8 +1564,7 @@ void SemanticAnalyzer::registerClassShape(
         ->addMethod(proto.getName(), methodInfo.returnType,
                     methodInfo.paramTypes, methodDecl.isConstructor,
                     proto.getTypeParameters(), proto.canThrow())
-        .access = memberAccess(classType->access,
-                               methodVisibility(*methodDecl.function));
+        .visibility = methodVisibility(*methodDecl.function);
   }
   setCurrentClass(savedClass);
 }
@@ -1672,7 +1671,7 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
   info.canThrow = proto.canThrow();
   info.isCVariadic = proto.isCVariadic();
   info.isCExtern = func.isCExtern();
-  info.access = makeAccess(func);
+  info.visibility = func.getVisibility();
   return info;
 }
 
@@ -1727,8 +1726,7 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
           ->addMethod(proto.getName(), methodInfo.returnType,
                       methodInfo.paramTypes, methodDecl.isConstructor,
                       proto.getTypeParameters(), proto.canThrow())
-          .access = memberAccess(existingClass->access,
-                                 methodVisibility(*methodDecl.function));
+          .visibility = methodVisibility(*methodDecl.function);
       std::string mangledName =
           existingClass->getMangledMethodName(proto.getName());
       std::vector<sun::TypePtr> methodParamTypes;
@@ -2344,7 +2342,8 @@ void SemanticAnalyzer::analyzeMethodWithBindings(
   // The body is analyzed away from its module scope: give it the class's
   // module as access context so module-private helpers stay reachable
   std::optional<AccessContextGuard> accessGuard;
-  if (classType) accessGuard.emplace(*this, classType->access.owner);
+  if (classType)
+    accessGuard.emplace(*this, classType->getQualifiedName().owner());
   if (classType) {
     std::string modulePath;
 
