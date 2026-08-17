@@ -734,24 +734,25 @@ TEST(LoopTest, while_break_continue) {
 TEST(ForInLoopTest, basic_iterator_sum) {
   // Test basic for-in loop with IIterator<T, Self> where the iterator is its
   // own "container"
-  auto value = executeString(R"(
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
     class RangeIterator implements IIterator<i32, RangeIterator> {
       var current: i32;
       var end: i32;
-      
+
       function init(start: i32, stop: i32) {
         this.current = start;
         this.end = stop;
       }
-      
-      function hasNext(self: ref RangeIterator) bool {
-        return this.current < this.end;
-      }
-      
-      function next(self: ref RangeIterator) i32 {
+
+      function next(self: ref RangeIterator) Option<i32> {
+        if (this.current >= this.end) {
+          return Option.None;
+        }
         var result = this.current;
         this.current = this.current + 1;
-        return result;
+        return Option.Some(result);
       }
     }
 
@@ -768,24 +769,25 @@ TEST(ForInLoopTest, basic_iterator_sum) {
 }
 
 TEST(ForInLoopTest, empty_iterator) {
-  auto value = executeString(R"(
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
     class RangeIterator implements IIterator<i32, RangeIterator> {
       var current: i32;
       var end: i32;
-      
+
       function init(start: i32, stop: i32) {
         this.current = start;
         this.end = stop;
       }
-      
-      function hasNext(self: ref RangeIterator) bool {
-        return this.current < this.end;
-      }
-      
-      function next(self: ref RangeIterator) i32 {
+
+      function next(self: ref RangeIterator) Option<i32> {
+        if (this.current >= this.end) {
+          return Option.None;
+        }
         var result = this.current;
         this.current = this.current + 1;
-        return result;
+        return Option.Some(result);
       }
     }
 
@@ -802,23 +804,24 @@ TEST(ForInLoopTest, empty_iterator) {
 }
 
 TEST(ForInLoopTest, single_element) {
-  auto value = executeString(R"(
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
     class SingleIterator implements IIterator<i32, SingleIterator> {
       var value: i32;
       var done: bool;
-      
+
       function init(v: i32) {
         this.value = v;
         this.done = false;
       }
-      
-      function hasNext(self: ref SingleIterator) bool {
-        return this.done == false;
-      }
-      
-      function next(self: ref SingleIterator) i32 {
+
+      function next(self: ref SingleIterator) Option<i32> {
+        if (this.done) {
+          return Option.None;
+        }
         this.done = true;
-        return this.value;
+        return Option.Some(this.value);
       }
     }
 
@@ -846,24 +849,25 @@ TEST(ForInLoopTest, variable_named_in) {
 }
 
 TEST(ForInLoopTest, nested_forin) {
-  auto value = executeString(R"(
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
     class RangeIterator implements IIterator<i32, RangeIterator> {
       var current: i32;
       var end: i32;
-      
+
       function init(start: i32, stop: i32) {
         this.current = start;
         this.end = stop;
       }
-      
-      function hasNext(self: ref RangeIterator) bool {
-        return this.current < this.end;
-      }
-      
-      function next(self: ref RangeIterator) i32 {
+
+      function next(self: ref RangeIterator) Option<i32> {
+        if (this.current >= this.end) {
+          return Option.None;
+        }
         var result = this.current;
         this.current = this.current + 1;
-        return result;
+        return Option.Some(result);
       }
     }
 
@@ -885,24 +889,25 @@ TEST(ForInLoopTest, nested_forin) {
 }
 
 TEST(ForInLoopTest, break_in_forin) {
-  auto value = executeString(R"(
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
     class RangeIterator implements IIterator<i32, RangeIterator> {
       var current: i32;
       var end: i32;
-      
+
       function init(start: i32, stop: i32) {
         this.current = start;
         this.end = stop;
       }
-      
-      function hasNext(self: ref RangeIterator) bool {
-        return this.current < this.end;
-      }
-      
-      function next(self: ref RangeIterator) i32 {
+
+      function next(self: ref RangeIterator) Option<i32> {
+        if (this.current >= this.end) {
+          return Option.None;
+        }
         var result = this.current;
         this.current = this.current + 1;
-        return result;
+        return Option.Some(result);
       }
     }
 
@@ -920,24 +925,25 @@ TEST(ForInLoopTest, break_in_forin) {
 }
 
 TEST(ForInLoopTest, continue_in_forin) {
-  auto value = executeString(R"(
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
     class RangeIterator implements IIterator<i32, RangeIterator> {
       var current: i32;
       var end: i32;
-      
+
       function init(start: i32, stop: i32) {
         this.current = start;
         this.end = stop;
       }
-      
-      function hasNext(self: ref RangeIterator) bool {
-        return this.current < this.end;
-      }
-      
-      function next(self: ref RangeIterator) i32 {
+
+      function next(self: ref RangeIterator) Option<i32> {
+        if (this.current >= this.end) {
+          return Option.None;
+        }
         var result = this.current;
         this.current = this.current + 1;
-        return result;
+        return Option.Some(result);
       }
     }
 
@@ -959,26 +965,27 @@ TEST(ForInLoopTest, continue_in_forin) {
 // ============================================================================
 
 TEST(ForInLoopTest, error_class_without_iterator_interface) {
-  // Class that has hasNext/next methods but doesn't implement IIterator
+  // Class that has a next() method but doesn't implement IIterator
   EXPECT_ANY_THROW({
-    executeString(R"(
+    executeStringWithStdlib(R"(
+      using sun;
+
       class NotAnIterator {
         var current: i32;
         var end: i32;
-        
+
         function init(start: i32, stop: i32) {
           this.current = start;
           this.end = stop;
         }
-        
-        function hasNext() bool {
-          return this.current < this.end;
-        }
-        
-        function next() i32 {
+
+        function next() Option<i32> {
+          if (this.current >= this.end) {
+            return Option.None;
+          }
           var result = this.current;
           this.current = this.current + 1;
-          return result;
+          return Option.Some(result);
         }
       }
 
@@ -994,15 +1001,68 @@ TEST(ForInLoopTest, error_class_without_iterator_interface) {
   });
 }
 
+TEST(ForInLoopTest, error_loop_var_type_mismatch) {
+  // The loop variable annotation must match the iterator's element type
+  EXPECT_ANY_THROW({
+    executeStringWithStdlib(R"(
+      using sun;
+
+      class Once implements IIterator<i32, Once> {
+        var done: bool;
+        function init() { this.done = false; }
+        function next(self: ref Once) Option<i32> {
+          if (this.done) { return Option.None; }
+          this.done = true;
+          return Option.Some(1);
+        }
+      }
+
+      function main() i32 {
+          var it = Once();
+          var sum: i64 = 0;
+          for (var x: i64 in it) {
+              sum = sum + x;
+          }
+          return 0;
+      }
+    )");
+  });
+}
+
+TEST(ForInLoopTest, error_next_not_returning_option) {
+  // next() must return Option<T>
+  EXPECT_ANY_THROW({
+    executeStringWithStdlib(R"(
+      using sun;
+
+      class Bare implements IIterator<i32, Bare> {
+        function init() {}
+        function next(self: ref Bare) i32 { return 1; }
+      }
+
+      function main() i32 {
+          var it = Bare();
+          for (var x: i32 in it) {}
+          return 0;
+      }
+    )");
+  });
+}
+
 TEST(ForInLoopTest, error_class_without_iterable_interface) {
   // Class that has iter() method but doesn't implement IIterable
   EXPECT_ANY_THROW({
-    executeString(R"(
+    executeStringWithStdlib(R"(
+      using sun;
+
       class FakeIterator implements IIterator<i32, FakeIterator> {
         var done: bool;
         function init() { this.done = false; }
-        function hasNext(self: ref FakeIterator) bool { return this.done == false; }
-        function next(self: ref FakeIterator) i32 { this.done = true; return 42; }
+        function next(self: ref FakeIterator) Option<i32> {
+          if (this.done) { return Option.None; }
+          this.done = true;
+          return Option.Some(42);
+        }
       }
 
       class NotIterable {

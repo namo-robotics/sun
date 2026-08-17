@@ -264,6 +264,7 @@ if(NOT SKIP_STDLIB)
         ${CMAKE_SOURCE_DIR}/stdlib/unique.sun
         ${CMAKE_SOURCE_DIR}/stdlib/errors.sun
         ${CMAKE_SOURCE_DIR}/stdlib/option.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/iterator.sun
         ${CMAKE_SOURCE_DIR}/stdlib/slice.sun
         ${CMAKE_SOURCE_DIR}/stdlib/contiguous_buffer.sun
         ${CMAKE_SOURCE_DIR}/stdlib/vec.sun

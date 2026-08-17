@@ -217,14 +217,14 @@ public module sun {
       this.current = 0;
     }
 
-    public function hasNext(buf: ref ContiguousBuffer<T>) bool {
-      return this.current < buf.size();
-    }
-
-    public function next(buf: ref ContiguousBuffer<T>) T {
+    // Next element, or None once the buffer is exhausted
+    public function next(buf: ref ContiguousBuffer<T>) Option<T> {
+      if (this.current >= buf.size()) {
+        return Option.None;
+      }
       var value: T = buf.get_unchecked(this.current);
       this.current = this.current + 1;
-      return value;
+      return Option.Some(value);
     }
   }
 

@@ -124,9 +124,11 @@ Sun's standard library is built from `stdlib/stdlib.sun`:
 ```sun filename="stdlib/stdlib.sun"
 manifest {
     suns: [
-        "print.sun", "allocator.sun", "unique.sun", "errors.sun",
-        "slice.sun", "contiguous_buffer.sun", "vec.sun", "matrix.sun",
-        "string.sun", "map.sun", "linked_list.sun", "mutex.sun", "math.sun"
+        "allocator.sun", "unique.sun", "errors.sun", "option.sun",
+        "iterator.sun", "slice.sun", "contiguous_buffer.sun", "vec.sun",
+        "matrix.sun", "string.sun", "print.sun", "map.sun", "linked_list.sun",
+        "mutex.sun", "math.sun", "io.sun", "networking.sun", "http.sun",
+        "proto_wire.sun"
     ]
 }
 ```
@@ -135,9 +137,12 @@ manifest {
 |--------|----------|
 | `allocator.sun` | Memory allocators (`HeapAllocator`, `IAllocator` interface) |
 | `errors.sun` | Standard error types (`EmptyError`, `NotFoundError`, etc.) |
+| `iterator.sun` | Iteration protocol (`IIterator<T, Container>`, `IIterable<T, Self>`) |
+| `linked_list.sun` | Doubly-linked list `LinkedList<T>` |
 | `map.sun` | Generic hash map `Map<K, V>` |
 | `matrix.sun` | `Matrix<T>` and `MatrixView<T>` N-dimensional arrays |
 | `mutex.sun` | `Mutex` for thread synchronization |
+| `option.sun` | `Option<T>` and `Result<T, E>` payload enums |
 | `print.sun` | Overloaded `print`/`println` functions |
 | `string.sun` | `String` and `StringView` classes |
 | `unique.sun` | `Unique<T>` smart pointer with automatic cleanup |

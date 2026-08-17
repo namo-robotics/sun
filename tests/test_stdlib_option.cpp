@@ -178,3 +178,127 @@ TEST(StdlibOptionTest, InterfacePayloadOption) {
   )");
   EXPECT_EQ(value, 42);
 }
+
+// ============================================================================
+// Remaining absence APIs: LinkedList.first/last, Vec.pop, iterator next()
+// ============================================================================
+
+TEST(StdlibOptionTest, LinkedListFirstLast) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var allocator = make_heap_allocator();
+        var ll = LinkedList<i32>(allocator);
+        var empty = match ll.first() {
+            Option.Some(x) => 0,
+            Option.None => 2
+        };
+        ll.push_back(10);
+        ll.push_back(30);
+        var f = match ll.first() {
+            Option.Some(x) => x,
+            Option.None => 0
+        };
+        var l = match ll.last() {
+            Option.Some(x) => x,
+            Option.None => 0
+        };
+        return empty + f + l;   // 2 + 10 + 30
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(StdlibOptionTest, VecPop) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var allocator = make_heap_allocator();
+        var v = Vec<i32>(allocator, 4);
+        v.push(30);
+        v.push(10);
+        var a = match v.pop() { Option.Some(x) => x, Option.None => 0 };
+        var b = match v.pop() { Option.Some(x) => x, Option.None => 0 };
+        var c = match v.pop() { Option.Some(x) => 0, Option.None => 2 };
+        return a + b + c + v.size();   // 10 + 30 + 2 + 0
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// Iterators are driven by next() -> Option<T>; the sequence ends at None
+TEST(StdlibOptionTest, IteratorNextReturnsOption) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var allocator = make_heap_allocator();
+        var v = Vec<i32>(allocator, 4);
+        v.push(20);
+        v.push(22);
+        var it = v.iter();
+        var sum: i32 = 0;
+        var going = true;
+        while (going) {
+            match it.next(v) {
+                Option.Some(x) => { sum = sum + x; },
+                Option.None => { going = false; }
+            };
+        }
+        // Exhausted iterators keep returning None
+        return match it.next(v) {
+            Option.Some(x) => 0,
+            Option.None => sum
+        };
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// for-in over every stdlib container goes through next() -> Option<T>
+TEST(StdlibOptionTest, ForInOverStdlibContainers) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var allocator = make_heap_allocator();
+        var v = Vec<i32>(allocator, 4);
+        v.push(1);
+        v.push(2);
+        var ll = LinkedList<i32>(allocator);
+        ll.push_back(3);
+        ll.push_back(4);
+        var m = Map<i64, i32>(allocator, 8);
+        m.insert(1, 5);
+        m.insert(2, 6);
+        var buf = ContiguousBuffer<i32>(allocator, 2);
+        buf[0] = 7;
+        buf[1] = 14;
+        var sum: i32 = 0;
+        for (var x: i32 in v) { sum = sum + x; }
+        for (var x: i32 in ll) { sum = sum + x; }
+        for (var x: i32 in m) { sum = sum + x; }
+        for (var x: i32 in buf) { sum = sum + x; }
+        return sum;   // 3 + 7 + 11 + 21
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// for-in over an empty container never enters the body
+TEST(StdlibOptionTest, ForInOverEmptyContainer) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var allocator = make_heap_allocator();
+        var ll = LinkedList<i32>(allocator);
+        var count: i32 = 42;
+        for (var x: i32 in ll) { count = 0; }
+        return count;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}

@@ -13,8 +13,8 @@
 //   list.push_back(10);
 //   list.push_back(20);
 //   list.push_front(5);
-//   var val = list.first();     // 5
-//   var last = list.last();     // 20
+//   var val = list.first();     // Option.Some(5)
+//   var last = list.last();     // Option.Some(20)
 //   var popped = list.pop_front(); // 5
 //   var len = list.size();      // 2
 
@@ -203,20 +203,20 @@ public module sun {
       return value;
     }
 
-    // Get first element without removing
-    public function first() T, IError {
+    // Get first element without removing; None when empty
+    public function first() Option<T> {
       if (this.head == null) {
-        throw EmptyError();
+        return Option.None;
       }
-      return unsafe { this.head.getValue(); };
+      return Option.Some(unsafe { this.head.getValue(); });
     }
 
-    // Get last element without removing
-    public function last() T, IError {
+    // Get last element without removing; None when empty
+    public function last() Option<T> {
       if (this.tail == null) {
-        throw EmptyError();
+        return Option.None;
       }
-      return unsafe { this.tail.getValue(); };
+      return Option.Some(unsafe { this.tail.getValue(); });
     }
 
     // Get current size
@@ -305,24 +305,18 @@ public module sun {
       this.started = false;
     }
 
-    public function hasNext(list: ref LinkedList<T>) bool {
-      if (this.started == false) {
-        return list.head != null;
-      }
-      if (this.current == null) {
-        return false;
-      }
-      return unsafe { this.current.getNext(); } != null;
-    }
-
-    public function next(list: ref LinkedList<T>) T {
+    // Next element, or None once the list is exhausted
+    public function next(list: ref LinkedList<T>) Option<T> {
       if (this.started == false) {
         this.current = list.head;
         this.started = true;
-      } else {
+      } else if (this.current != null) {
         this.current = unsafe { this.current.getNext(); };
       }
-      return unsafe { this.current.getValue(); };
+      if (this.current == null) {
+        return Option.None;
+      }
+      return Option.Some(unsafe { this.current.getValue(); });
     }
   }
 

@@ -457,13 +457,15 @@ TEST(GenericInterfaceTest, interface_field_inherited) {
 }
 
 // ============================================================================
-// Builtin Interface Tests (IIterator<T, Container>, IIterable<T, Self>)
+// Stdlib Iteration Interfaces (IIterator<T, Container>, IIterable<T, Self>)
 // ============================================================================
 
-TEST(BuiltinInterfaceTest, implements_iiterator) {
-  // Test implementing IIterator<T, Container> - uses a dummy container
+TEST(IteratorInterfaceTest, implements_iiterator) {
+  // Implementing IIterator<T, Container> - uses a dummy container
   // The iterator stores all state internally, so the container ref is unused
-  auto value = executeString(R"(
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
     class DummyContainer {
       function init() {}
     }
@@ -471,20 +473,19 @@ TEST(BuiltinInterfaceTest, implements_iiterator) {
     class RangeIterator implements IIterator<i32, DummyContainer> {
       var current: i32;
       var end: i32;
-      
+
       function init(start: i32, end: i32) {
         this.current = start;
         this.end = end;
       }
-      
-      function hasNext(c: ref DummyContainer) bool {
-        return this.current < this.end;
-      }
-      
-      function next(c: ref DummyContainer) i32 {
+
+      function next(c: ref DummyContainer) Option<i32> {
+        if (this.current >= this.end) {
+          return Option.None;
+        }
         var result = this.current;
         this.current = this.current + 1;
-        return result;
+        return Option.Some(result);
       }
     }
 
@@ -492,8 +493,12 @@ TEST(BuiltinInterfaceTest, implements_iiterator) {
         var container = DummyContainer();
         var iter = RangeIterator(0, 5);
         var sum: i32 = 0;
-        while (iter.hasNext(container)) {
-            sum = sum + iter.next(container);
+        var going = true;
+        while (going) {
+            match iter.next(container) {
+                Option.Some(v) => { sum = sum + v; },
+                Option.None => { going = false; }
+            };
         }
         return sum;
     }
@@ -501,9 +506,11 @@ TEST(BuiltinInterfaceTest, implements_iiterator) {
   EXPECT_EQ(value, 10);  // 0 + 1 + 2 + 3 + 4 = 10
 }
 
-TEST(BuiltinInterfaceTest, generic_implements_iiterator) {
+TEST(IteratorInterfaceTest, generic_implements_iiterator) {
   // Generic class implementing IIterator<T, Container>
-  auto value = executeString(R"(
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
     class DummyContainer {
       function init() {}
     }
@@ -512,21 +519,20 @@ TEST(BuiltinInterfaceTest, generic_implements_iiterator) {
       var items: array<T>;
       var index: i32;
       var size: i32;
-      
+
       function init(arr: ref array<T>, sz: i32) {
         this.items = arr;
         this.index = 0;
         this.size = sz;
       }
-      
-      function hasNext(c: ref DummyContainer) bool {
-        return this.index < this.size;
-      }
-      
-      function next(c: ref DummyContainer) T {
+
+      function next(c: ref DummyContainer) Option<T> {
+        if (this.index >= this.size) {
+          return Option.None;
+        }
         var result = this.items[this.index];
         this.index = this.index + 1;
-        return result;
+        return Option.Some(result);
       }
     }
 
@@ -535,8 +541,12 @@ TEST(BuiltinInterfaceTest, generic_implements_iiterator) {
         var arr = [10, 20, 30];
         var iter = ArrayIterator<i32>(arr, 3);
         var sum: i32 = 0;
-        while (iter.hasNext(container)) {
-            sum = sum + iter.next(container);
+        var going = true;
+        while (going) {
+            match iter.next(container) {
+                Option.Some(v) => { sum = sum + v; },
+                Option.None => { going = false; }
+            };
         }
         return sum;
     }
@@ -544,50 +554,33 @@ TEST(BuiltinInterfaceTest, generic_implements_iiterator) {
   EXPECT_EQ(value, 60);  // 10 + 20 + 30 = 60
 }
 
-// IIterable test with new interface signature
-TEST(BuiltinInterfaceTest, iterable_pattern_duck_typed) {
-  auto value = executeString(R"(
-    class SingleValue {
-      var val: i32;
-      
-      function init(v: i32) {
-        this.val = v;
-      }
-      
-      function getValue() i32 {
-        return this.val;
-      }
-    }
+TEST(IteratorInterfaceTest, missing_next_is_error) {
+  // A class claiming IIterator without next() is rejected
+  EXPECT_ANY_THROW({
+    executeStringWithStdlib(R"(
+      using sun;
 
-    class SimpleIterator implements IIterator<i32, SingleValue> {
-      var value: i32;
-      var done: bool;
-      
-      function init(v: i32) {
-        this.value = v;
-        this.done = false;
+      class Broken implements IIterator<i32, Broken> {
+        function init() {}
       }
-      
-      function hasNext(sv: ref SingleValue) bool {
-        return this.done == false;
-      }
-      
-      function next(sv: ref SingleValue) i32 {
-        this.done = true;
-        return this.value;
-      }
-    }
+      function main() i32 { return 0; }
+    )");
+  });
+}
 
-    function main() i32 {
-        var sv = SingleValue(42);
-        var it = SimpleIterator(sv.getValue());
-        if (it.hasNext(sv)) {
-            return it.next(sv);
-        }
-        return 0;
-    }
-  )");
-  EXPECT_EQ(value, 42);
+TEST(IteratorInterfaceTest, wrong_next_signature_is_error) {
+  // next() must return Option<T>
+  EXPECT_ANY_THROW({
+    executeStringWithStdlib(R"(
+      using sun;
+
+      class Broken implements IIterator<i32, Broken> {
+        function init() {}
+        function next(c: ref Broken) i32 { return 0; }
+      }
+      function main() i32 { return 0; }
+    )");
+  });
 }
 
 // ============================================================================
@@ -605,45 +598,11 @@ TEST(BuiltinInterfaceTest, cannot_redefine_IError_interface) {
   });
 }
 
-TEST(BuiltinInterfaceTest, cannot_redefine_IIterator_interface) {
-  EXPECT_ANY_THROW({
-    executeString(R"(
-      interface IIterator<T> {
-        function hasNext() bool;
-        function next() T;
-      }
-      function main() i32 { return 0; }
-    )");
-  });
-}
-
-TEST(BuiltinInterfaceTest, cannot_redefine_IIterable_interface) {
-  EXPECT_ANY_THROW({
-    executeString(R"(
-      interface IIterable<T> {
-        function iter() i32;
-      }
-      function main() i32 { return 0; }
-    )");
-  });
-}
-
 TEST(BuiltinInterfaceTest, cannot_redefine_IError_as_class) {
   EXPECT_ANY_THROW({
     executeString(R"(
       class IError {
         var code: i32;
-      }
-      function main() i32 { return 0; }
-    )");
-  });
-}
-
-TEST(BuiltinInterfaceTest, cannot_redefine_IIterator_as_class) {
-  EXPECT_ANY_THROW({
-    executeString(R"(
-      class IIterator {
-        var value: i32;
       }
       function main() i32 { return 0; }
     )");

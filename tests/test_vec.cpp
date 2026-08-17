@@ -83,16 +83,33 @@ TEST(VecTest, pop_element) {
         v.push(10);
         v.push(20);
         v.push(30);
-        try {
-            var last = v.pop();
-            return last + v.size();
-        } catch (e: IError) {
-            return -1;
-        }
+        var last = match v.pop() {
+            Option.Some(x) => x,
+            Option.None => -1
+        };
+        return last + v.size();
     }
   )");
   // last=30, size after pop=2, so 30+2=32
   EXPECT_EQ(value, 32);
+}
+
+TEST(VecTest, pop_empty_is_none) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var allocator = make_heap_allocator();
+        var v = Vec<i64>(allocator, 8);
+        v.push(1);
+        v.pop();
+        return match v.pop() {
+            Option.Some(x) => 1,
+            Option.None => 42
+        };
+    }
+  )");
+  EXPECT_EQ(value, 42);
 }
 
 TEST(VecTest, is_empty) {

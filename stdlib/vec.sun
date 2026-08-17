@@ -15,7 +15,7 @@
 //   v.push(30);
 //   var val = v.get(0);      // 10
 //   v.set(1, 25);            // Update index 1 to 25
-//   var last = v.pop();      // 30, size decreases
+//   var last = v.pop();      // Option.Some(30), size decreases
 //   var len = v.size();      // 2
 
 // ============================================================================
@@ -62,13 +62,14 @@ public module sun {
       this.size_ = this.size_ + 1;
     }
 
-    // Remove and return last element
-    public function pop() T, IError {
+    // Remove and return the last element; None when empty. Ownership moves
+    // to the caller.
+    public function pop() Option<T> {
       if (this.size_ == 0) {
-        throw EmptyError();
+        return Option.None;
       }
       this.size_ = this.size_ - 1;
-      return this.data.get_unchecked(this.size_);
+      return Option.Some(this.data.get_unchecked(this.size_));
     }
 
     // Get element at index (bounds-checked against size)
@@ -242,15 +243,14 @@ public module sun {
       this.current = 0;
     }
 
-    public function hasNext(vec: ref Vec<T>) bool {
-      return this.current < vec.size();
-    }
-
-    public function next(vec: ref Vec<T>) T {
-      // Safe to use unchecked: hasNext already verified bounds
+    // Next element, or None once the Vec is exhausted
+    public function next(vec: ref Vec<T>) Option<T> {
+      if (this.current >= vec.size()) {
+        return Option.None;
+      }
       var value: T = vec.get_unchecked(this.current);
       this.current = this.current + 1;
-      return value;
+      return Option.Some(value);
     }
   }
 

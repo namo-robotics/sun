@@ -193,7 +193,7 @@ function main() i32 {
 
 ## For-In Loop
 
-The `for-in` loop iterates over objects that implement `IIterator<T, Container>`. The iterator's `hasNext` and `next` methods receive a reference to the container being iterated:
+The `for-in` loop iterates over objects that implement `IIterator<T, Container>` (or `IIterable<T, Self>`, whose `iter()` produces one). These interfaces come from the standard library (`using sun;`). The iterator's `next` method receives a reference to the container being iterated and returns `Option<T>`; the loop ends at `Option.None`. The loop variable's type must match `T`:
 
 ```sun
 for (var element: Type in iterable) {
@@ -204,6 +204,8 @@ for (var element: Type in iterable) {
 **Basic example** - sum using a self-iterating pattern:
 
 ```sun
+using sun;
+
 class RangeIterator implements IIterator<i32, RangeIterator> {
     var current: i32;
     var end: i32;
@@ -213,14 +215,13 @@ class RangeIterator implements IIterator<i32, RangeIterator> {
         this.end = stop;
     }
 
-    function hasNext(self: ref RangeIterator) bool {
-        return this.current < this.end;
-    }
-
-    function next(self: ref RangeIterator) i32 {
+    function next(self: ref RangeIterator) Option<i32> {
+        if (this.current >= this.end) {
+            return Option.None;
+        }
         var result = this.current;
         this.current = this.current + 1;
-        return result;
+        return Option.Some(result);
     }
 }
 

@@ -40,13 +40,9 @@ TEST(StdlibLinkedListTest, push_back) {
         ll.push_back(10);
         ll.push_back(20);
         ll.push_back(30);
-        try {
-            var f = ll.first();
-            var l = ll.last();
-            return f + l + ll.size();
-        } catch (e: IError) {
-            return -1;
-        }
+        var f = match ll.first() { Option.Some(x) => x, Option.None => -1 };
+        var l = match ll.last() { Option.Some(x) => x, Option.None => -1 };
+        return f + l + ll.size();
     }
   )");
   // first=10, last=30, size=3 -> 43
@@ -64,13 +60,9 @@ TEST(StdlibLinkedListTest, push_front) {
         ll.push_front(2);
         ll.push_front(1);
         // List: 1 -> 2 -> 3
-        try {
-            var f = ll.first();
-            var l = ll.last();
-            return f * 100 + l;
-        } catch (e: IError) {
-            return -1;
-        }
+        var f = match ll.first() { Option.Some(x) => x, Option.None => -1 };
+        var l = match ll.last() { Option.Some(x) => x, Option.None => -1 };
+        return f * 100 + l;
     }
   )");
   // first=1, last=3 -> 103
@@ -273,12 +265,8 @@ TEST(StdlibLinkedListTest, clear_and_reuse) {
         ll.push_back(30);
         ll.clear();
         ll.push_back(99);
-        try {
-            var f = ll.first();
-            return f + ll.size();
-        } catch (e: IError) {
-            return -1;
-        }
+        var f = match ll.first() { Option.Some(x) => x, Option.None => -1 };
+        return f + ll.size();
     }
   )");
   // first=99, size=1 -> 100

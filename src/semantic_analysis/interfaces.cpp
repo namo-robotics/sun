@@ -23,7 +23,7 @@ std::shared_ptr<sun::InterfaceType> SemanticAnalyzer::lookupInterface(
   auto result = currentScope->lookupInterface(name);
   if (result) return result;
 
-  // Check builtin interfaces in type registry (IError, IIterator, IIterable)
+  // Check builtin interfaces in type registry (IError)
   if (typeRegistry) {
     auto builtinInterface = typeRegistry->lookupInterface(name);
     if (builtinInterface) return builtinInterface;
@@ -75,66 +75,7 @@ SemanticAnalyzer::instantiateGenericInterface(
     return existing;
   }
 
-  // If not found in analyzer's table, check if it's a builtin interface
-  // (IIterator<T>, IIterable<T>)
   if (!genericInfo || !genericInfo->AST) {
-    // Try to find builtin interface by stripping module prefix if needed
-    // e.g., "sun_IIterator" -> "IIterator"
-    // Don't use getInterface() directly as it auto-creates empty interfaces
-    std::string unqualifiedName = baseName;
-    size_t underscorePos = baseName.find('_');
-    if (underscorePos != std::string::npos) {
-      unqualifiedName = baseName.substr(underscorePos + 1);
-    }
-
-    // Look up the unqualified name - builtin interfaces are registered without
-    // prefix
-    auto builtinInterface = typeRegistry->lookupInterface(unqualifiedName);
-    if (builtinInterface && builtinInterface->isGenericDefinition()) {
-      // Verify type argument count
-      if (typeArgs.size() != builtinInterface->getTypeParameters().size()) {
-        llvm::errs() << "Error: Generic interface '" << baseName << "' expects "
-                     << builtinInterface->getTypeParameters().size()
-                     << " type arguments, got " << typeArgs.size() << "\n";
-        return nullptr;
-      }
-
-      // Create specialized interface from builtin
-      auto specializedInterface =
-          typeRegistry->getSpecializedInterface(baseName, typeArgs);
-
-      // Push a scope for type parameter bindings
-      enterTypeParamScope(builtinInterface->getTypeParameters(), typeArgs);
-
-      // Add fields with substituted types
-      for (const auto& field : builtinInterface->getFields()) {
-        auto fieldType = substituteTypeParameters(field.type);
-        specializedInterface->addField(field.name, fieldType).visibility =
-            field.visibility;
-      }
-
-      // Add methods with substituted types
-      for (const auto& method : builtinInterface->getMethods()) {
-        auto returnType = substituteTypeParameters(method.returnType);
-        std::vector<sun::TypePtr> paramTypes;
-        for (const auto& pt : method.paramTypes) {
-          paramTypes.push_back(substituteTypeParameters(pt));
-        }
-        specializedInterface
-            ->addMethod(method.name, returnType, paramTypes,
-                        method.hasDefaultImpl, method.typeParameters)
-            .visibility = method.visibility;
-      }
-
-      // Pop the scope
-      exitScope();
-
-      // Register the specialized interface
-      registerInterface(mangledName, specializedInterface);
-
-      return specializedInterface;
-    }
-
     llvm::errs() << "Error: Unknown generic interface '" << baseName << "'\n";
     return nullptr;
   }

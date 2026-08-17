@@ -413,24 +413,19 @@ public module sun {
       this.current = 0;
     }
 
-    public function hasNext(map: ref Map<K, V>) bool {
-      // Find next occupied slot starting from current
+    // Value in the next occupied slot, or None once the map is exhausted
+    public function next(map: ref Map<K, V>) Option<V> {
       var capacity: i64 = map.capacity();
       while (this.current < capacity) {
         var state: i8 = map.states.get(this.current);
         if (state == 1) {
-          return true;
+          var value: V = map.values.get(this.current);
+          this.current = this.current + 1;
+          return Option.Some(value);
         }
         this.current = this.current + 1;
       }
-      return false;
-    }
-
-    public function next(map: ref Map<K, V>) V {
-      // Current should already point to an occupied slot (from hasNext)
-      var value: V = map.values.get(this.current);
-      this.current = this.current + 1;  // Move past current
-      return value;
+      return Option.None;
     }
   }
 

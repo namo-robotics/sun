@@ -2027,7 +2027,8 @@ class TypeRegistry {
  public:
   TypeRegistry() { registerBuiltins(); }
 
-  // Register built-in types like IError, IIterator<T>, IIterable<T>
+  // Register built-in types (IError). The iteration protocol
+  // (IIterator/IIterable) lives in stdlib/iterator.sun since it names Option.
   void registerBuiltins() {
     // Create IError interface with code() and message() methods
     auto ierror = std::make_shared<InterfaceType>("IError");
@@ -2035,35 +2036,6 @@ class TypeRegistry {
     ierror->addMethod("message", Types::String(), {},
                       true);  // message() -> static_ptr<u8>
     interfaceCache["IError"] = ierror;
-
-    // Create IIterator<T, Container> generic interface
-    // Methods: hasNext(ref Container) -> bool, next(ref Container) -> T
-    auto iiterator = std::make_shared<InterfaceType>(
-        "IIterator", std::vector<std::string>{"T", "Container"});
-    iiterator->addMethod("hasNext", Types::Bool(),
-                         {Types::Reference(Types::TypeParameter("Container"))},
-                         false);
-    iiterator->addMethod("next", Types::TypeParameter("T"),
-                         {Types::Reference(Types::TypeParameter("Container"))},
-                         false);
-    genericInterfaceCache["IIterator<T,Container>"] = iiterator;
-    // Also register by base name for lookup
-    interfaceCache["IIterator"] = iiterator;
-
-    // Create IIterable<T, Self> generic interface
-    // Methods: iter() -> IIterator<T, Self>
-    // Self is the type of the container implementing IIterable
-    auto iiterable = std::make_shared<InterfaceType>(
-        "IIterable", std::vector<std::string>{"T", "Self"});
-    // Create IIterator<T, Self> return type
-    auto iteratorReturnType = std::make_shared<InterfaceType>(
-        "IIterator", "IIterator",
-        std::vector<TypePtr>{Types::TypeParameter("T"),
-                             Types::TypeParameter("Self")});
-    iiterable->addMethod("iter", iteratorReturnType, {}, false);
-    genericInterfaceCache["IIterable<T,Self>"] = iiterable;
-    // Also register by base name for lookup
-    interfaceCache["IIterable"] = iiterable;
   }
 
   // Check if a type name is a builtin type that cannot be redefined
@@ -2071,7 +2043,7 @@ class TypeRegistry {
   bool isBuiltinTypeName(const std::string& name) const {
     static const std::unordered_set<std::string> builtinNames = {
         // Builtin interfaces
-        "IError", "IIterator", "IIterable",
+        "IError",
         // Type traits for _is<T> intrinsic
         "_Integer", "_Signed", "_Unsigned", "_Float", "_Numeric", "_Primitive"};
     return builtinNames.count(name) > 0;

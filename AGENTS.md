@@ -38,6 +38,7 @@ tests/            # GoogleTest suites (test_*.cpp) + programs/
 - **Arrays**: Fat pointer `{ ptr data, i32 ndims, ptr dims }`.
 - **Pointers**: `raw_ptr<T>` (bare pointer), `static_ptr<T>` (`{ ptr, i64 }` for literals).
 - **Error unions**: functions declared with `, IError` suffix; implemented with native LLVM exceptions (a throwing function returns plain `T` and may unwind).
+- **Iteration**: `IIterator<T, Container>`/`IIterable<T, Self>` are stdlib interfaces (`stdlib/iterator.sun`), not builtins; `for … in` calls `iter()` if present, then `next(ref Container) Option<T>` until `None` (`src/codegen/loops.cpp`), and sema checks the loop variable type equals `T`. Absence is signalled with `Option<T>` (`first`/`last`/`pop`/`find`), not by throwing.
 
 ## Generics
 

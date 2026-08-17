@@ -1,0 +1,26 @@
+// stdlib/iterator.sun - Iteration protocol
+//
+// IIterator<T, Container> yields elements one at a time; next() returns
+// Option.None when the sequence is exhausted. IIterable<T, Self> is a
+// container that can produce such an iterator. `for (var x: T in c)` accepts
+// either: it calls iter() when present, then loops on next() until None.
+//
+//   class Countdown implements IIterator<i32, Countdown> {
+//     var n: i32;
+//     function init(n: i32) { this.n = n; }
+//     function next(self: ref Countdown) Option<i32> {
+//       if (this.n == 0) { return Option.None; }
+//       this.n = this.n - 1;
+//       return Option.Some(this.n + 1);
+//     }
+//   }
+
+public module sun {
+  public interface IIterator<T, Container> {
+    function next(container: ref Container) Option<T>;
+  }
+
+  public interface IIterable<T, Self> {
+    function iter() IIterator<T, Self>;
+  }
+}
