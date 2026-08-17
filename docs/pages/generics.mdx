@@ -127,6 +127,8 @@ function main() i32 {
 Generic classes can implement interfaces, forwarding type parameters:
 
 ```sun
+using sun;
+
 class Container<T> implements IIterator<T, Container<T>> {
     var items: array<T>;
     var index: i32;
@@ -138,14 +140,13 @@ class Container<T> implements IIterator<T, Container<T>> {
         this.size = sz;
     }
 
-    function hasNext(self: ref Container<T>) bool {
-        return this.index < this.size;
-    }
-
-    function next(self: ref Container<T>) T {
+    function next(self: ref Container<T>) Option<T> {
+        if (this.index >= this.size) {
+            return Option.None;
+        }
         var result = this.items[this.index];
         this.index = this.index + 1;
-        return result;
+        return Option.Some(result);
     }
 }
 ```

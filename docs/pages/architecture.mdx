@@ -74,7 +74,7 @@ The type system (`types.h`) includes:
 - **Pointers**: `ptr<T>` owning pointers (RAII), `raw_ptr<T>` for C interop, `static_ptr<T>` for static data
 - **References**: `ref T` for borrowing without ownership transfer
 - **Classes**: User-defined value types with methods and fields
-- **Interfaces**: Contracts for polymorphism (including builtin `IIterator`, `IIterable`, `IError`)
+- **Interfaces**: Contracts for polymorphism (including builtin `IError`; the stdlib supplies `IIterator`, `IIterable`)
 - **Enums**: Named integer variants with pattern matching support
 - **Generics**: Parameterized types with monomorphization
 - **Error Unions**: `T, IError` for explicit error handling

@@ -10,8 +10,9 @@
 #include "ast/type_annotation.h"
 
 // for (var x: T in iterable) { ... }
-// Iterates over iterable by calling iter() -> IIterator<T>,
-// then hasNext() -> bool, next() -> T in a loop
+// Iterates over iterable by calling iter() -> IIterator<T, C> (when the
+// iterable is not itself an iterator), then next(ref C) -> Option<T> until
+// None
 class ForInExprAST : public ExprAST {
   std::string LoopVar;                // Variable name (x)
   TypeAnnotation LoopVarType;         // Type annotation (T)

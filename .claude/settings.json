@@ -41,7 +41,8 @@
       "Bash(cp * tmp/*)",
       "WebFetch",
       "Read(//usr/bin/**)",
-      "Bash(gdb *)"
+      "Bash(gdb *)",
+      "Bash(rm -f tmp/*)"
     ],
     "additionalDirectories": [
       "/tmp",
@@ -55,7 +56,10 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "python3 .claude/hooks/allow_tests.py" }
+          {
+            "type": "command",
+            "command": "python3 .claude/hooks/allow_tests.py"
+          }
         ]
       }
     ]

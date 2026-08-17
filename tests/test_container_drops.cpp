@@ -93,23 +93,22 @@ TEST(ContainerDropTest, vec_set_drops_overwritten_element_only) {
 
 TEST(ContainerDropTest, vec_pop_moves_ownership_no_double_drop) {
   auto value = executeStringWithStdlib(withPreamble(R"(
-    function helper() i32, IError {
+    function helper() i32 {
       var alloc = make_heap_allocator();
       var v = Vec<Owner>(alloc, 4);
       v.push(Owner(1));
       v.push(Owner(2));
       var popped = v.pop();
-      // popped (id 2) is dropped at helper exit; v deinit drops id 1
-      return popped.get_id();
+      // popped (Option.Some(id 2)) is dropped at helper exit through the
+      // enum drop glue; v deinit drops id 1
+      return match popped {
+        Option.Some(o) => o.get_id(),
+        Option.None => -1
+      };
     }
 
     function main() i32 {
-      var id: i32 = 0;
-      try {
-        id = helper();
-      } catch (e: IError) {
-        return -1;
-      }
+      var id: i32 = helper();
       if (id != 2) {
         return -2;
       }

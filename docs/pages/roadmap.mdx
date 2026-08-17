@@ -11,13 +11,11 @@ into "a user can do it themselves". Table stakes before novelty.
 ## 1. Optionals — Remaining Work
 
 `Option<T>` / `Result<T, E>` ship in the stdlib (`stdlib/option.sun`) as ordinary
-generic payload enums with owning payloads and drop glue, and the starter
-migration (`Map.find`, `String.find_char`/`rfind_char`, `Vec.first`/`last`) has
-landed. What remains:
+generic payload enums with owning payloads and drop glue. The absence APIs
+(`Map.find`, `String.find_char`/`rfind_char`, `Vec.first`/`last`/`pop`,
+`LinkedList.first`/`last`) return `Option<T>`, and the iteration protocol
+(`stdlib/iterator.sun`) is `next(ref Container) Option<T>`. What remains:
 
-- [ ] Migrate the remaining absence APIs (`LinkedList.first/last`, `Vec.pop`,
-      iterator `next()` — the last needs the `IIterator` contract rework);
-      unblocked now that owning payloads have drop glue
 - [ ] Niche-optimised representation where possible (e.g. `Option<raw_ptr<T>>`
       as a nullable pointer)
 - [ ] Bare `Some` / `None` prelude names (today it is `Option.Some(x)` /

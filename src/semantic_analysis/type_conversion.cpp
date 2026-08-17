@@ -292,16 +292,18 @@ sun::TypePtr SemanticAnalyzer::typeAnnotationToType(
       }
     }
 
+    // Generic interface (e.g., IIterator<i32, Range>)
+    if (lookupGenericInterface(lookupName)) {
+      auto specializedInterface =
+          instantiateGenericInterface(lookupName, typeArgs);
+      if (specializedInterface) {
+        return specializedInterface;
+      }
+    }
+
     auto specializedClass = instantiateGenericClass(lookupName, typeArgs);
     if (specializedClass) {
       return specializedClass;
-    }
-
-    // Try to instantiate as a generic interface (e.g., IIterator<i32>)
-    auto specializedInterface =
-        instantiateGenericInterface(lookupName, typeArgs);
-    if (specializedInterface) {
-      return specializedInterface;
     }
 
     llvm::errs() << "Error: Failed to instantiate generic type '"

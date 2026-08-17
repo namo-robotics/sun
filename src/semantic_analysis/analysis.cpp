@@ -493,50 +493,115 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       // Get the type of the iterable
       auto iterableType = forInExpr.getIterable()->getResolvedType();
 
+      // Convert loop variable type annotation to type
+      auto loopVarType = typeAnnotationToType(forInExpr.getLoopVarType());
+      forInExpr.setResolvedLoopVarType(loopVarType);
+
       // Verify the iterable type implements IIterator<T> or IIterable<T>
-      if (auto classType =
-              std::dynamic_pointer_cast<sun::ClassType>(iterableType)) {
-        bool implementsIterator = false;
-        bool implementsIterable = false;
-
-        // Check implemented interfaces for IIterator<*> or IIterable<*>
-        // Interface names may be module-qualified: sun_IIterator_i32,
-        // sun_IIterable_String, etc. Or unqualified: IIterator_i32,
-        // IIterable_String, etc.
-        for (const auto& ifaceName : classType->getImplementedInterfaces()) {
-          // Check for IIterator (with or without module prefix)
-          if (ifaceName.find("IIterator_") != std::string::npos ||
-              ifaceName.find("IIterator<") != std::string::npos ||
-              ifaceName == "IIterator") {
-            implementsIterator = true;
-            break;
-          }
-          // Check for IIterable (with or without module prefix)
-          if (ifaceName.find("IIterable_") != std::string::npos ||
-              ifaceName.find("IIterable<") != std::string::npos ||
-              ifaceName == "IIterable") {
-            implementsIterable = true;
-            break;
-          }
-        }
-
-        if (!implementsIterator && !implementsIterable) {
-          logAndThrowError(
-              "for-in loop requires type that implements IIterator<T> or "
-              "IIterable<T>, but '" +
-                  classType->getDisplayName() + "' does not implement either",
-              forInExpr.getLocation());
-        }
-      } else {
+      auto classType = std::dynamic_pointer_cast<sun::ClassType>(iterableType);
+      if (!classType) {
         logAndThrowError(
             "for-in loop requires a class type that implements IIterator<T> "
             "or IIterable<T>",
             forInExpr.getLocation());
       }
+      bool implementsIterator = false;
+      bool implementsIterable = false;
+      // Interface names are mangled and may be module-qualified
+      // (sun_IIterator_i32_Range); match on the base name
+      for (const auto& ifaceName : classType->getImplementedInterfaces()) {
+        if (ifaceName.find("IIterator_") != std::string::npos ||
+            ifaceName.find("IIterator<") != std::string::npos ||
+            ifaceName == "IIterator") {
+          implementsIterator = true;
+          break;
+        }
+        if (ifaceName.find("IIterable_") != std::string::npos ||
+            ifaceName.find("IIterable<") != std::string::npos ||
+            ifaceName == "IIterable") {
+          implementsIterable = true;
+          break;
+        }
+      }
+      if (!implementsIterator && !implementsIterable) {
+        logAndThrowError(
+            "for-in loop requires type that implements IIterator<T> or "
+            "IIterable<T>, but '" +
+                classType->getDisplayName() + "' does not implement either",
+            forInExpr.getLocation());
+      }
 
-      // Convert loop variable type annotation to type
-      auto loopVarType = typeAnnotationToType(forInExpr.getLoopVarType());
-      forInExpr.setResolvedLoopVarType(loopVarType);
+      // Resolve the iterator class: the iterable itself, or what iter()
+      // returns. Codegen relies on these shapes, so they are all errors here.
+      std::shared_ptr<sun::ClassType> iteratorType = classType;
+      if (!implementsIterator) {
+        const auto* iterMethod = classType->getMethod("iter");
+        iteratorType =
+            iterMethod ? std::dynamic_pointer_cast<sun::ClassType>(
+                             sun::unwrapRef(iterMethod->returnType))
+                       : nullptr;
+        if (!iteratorType) {
+          logAndThrowError("for-in loop: '" + classType->getDisplayName() +
+                               "' must define iter() returning an iterator "
+                               "class",
+                           forInExpr.getLocation());
+        }
+      }
+      const sun::ClassMethod* nextMethod = iteratorType->getMethod("next");
+      if (!nextMethod || !nextMethod->returnType) {
+        logAndThrowError("for-in loop: iterator '" +
+                             iteratorType->getDisplayName() +
+                             "' must define next(container: ref " +
+                             classType->getDisplayName() + ") Option<T>",
+                         forInExpr.getLocation());
+      }
+
+      // next() takes exactly the iterable by ref: codegen passes the
+      // iterable's address, so any other parameter type would reinterpret it
+      bool containerOk = nextMethod->paramTypes.size() == 1 &&
+                         nextMethod->paramTypes[0] &&
+                         nextMethod->paramTypes[0]->isReference();
+      if (containerOk) {
+        sun::TypePtr paramType = sun::unwrapRef(nextMethod->paramTypes[0]);
+        containerOk = paramType && (paramType->isTypeParameter() ||
+                                    paramType->equals(*classType));
+      }
+      if (!containerOk) {
+        logAndThrowError("for-in loop: iterator '" +
+                             iteratorType->getDisplayName() +
+                             "' must take the iterable by reference: "
+                             "next(container: ref " +
+                             classType->getDisplayName() + ")",
+                         forInExpr.getLocation());
+      }
+
+      // The element type is the payload of next()'s Option<T>; the loop
+      // variable annotation must agree with it
+      sun::TypePtr elementType;
+      if (auto* opt = dynamic_cast<sun::EnumType*>(
+              sun::unwrapRef(nextMethod->returnType).get())) {
+        const sun::EnumVariant* some = opt->getVariant("Some");
+        if (some && some->payloadTypes.size() == 1 &&
+            opt->hasVariant("None")) {
+          elementType = some->payloadTypes[0];
+        }
+      }
+      if (!elementType) {
+        logAndThrowError("for-in loop: iterator '" +
+                             iteratorType->getDisplayName() +
+                             "' must return Option<T> from next(), got '" +
+                             nextMethod->returnType->toDisplayString() + "'",
+                         forInExpr.getLocation());
+      }
+      if (loopVarType && !elementType->isTypeParameter() &&
+          !loopVarType->isTypeParameter() &&
+          !elementType->equals(*loopVarType)) {
+        logAndThrowError("for-in loop variable '" + forInExpr.getLoopVar() +
+                             "' has type '" + loopVarType->toDisplayString() +
+                             "' but the iterator yields '" +
+                             elementType->toDisplayString() + "'",
+                         forInExpr.getLocation());
+      }
 
       // Create scope for loop body with loop variable
       enterScope();

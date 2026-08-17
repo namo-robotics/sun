@@ -442,12 +442,37 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
     return specializedClass;
   }
 
+  // Create the specialized ClassDefinitionAST with the cloned methods (bodies
+  // analyzed below, through this AST).
+  // Note: Specializations are NOT precompiled - even if the generic class
+  // came from a precompiled .moon file, new specializations with user-defined
+  // type args (e.g., Unique<Point>) need codegen since they don't exist in
+  // the library bitcode.
+  auto specializedAST = std::make_shared<ClassDefinitionAST>(
+      mangledName,                 // e.g., "Vec_i32" instead of "Vec"
+      std::vector<std::string>{},  // empty - no longer generic
+      std::move(interfacesClone), std::move(fieldsClone),
+      std::move(methodsClone),  // cloned methods
+      false);                   // NOT precompiled - needs codegen
+  specializedAST->setIsPacked(genericClassInfo->AST->isPacked());
+  specializedAST->setVisibility(genericClassInfo->AST->getVisibility());
+  specializedAST->setLocation(genericClassInfo->AST->getLocation());
+
+  // Interface conformance is checked per specialization (signatures are
+  // only known once T is substituted)
+  if (!astOnlyMode) {
+    validateInterfaceImplementation(*specializedAST, specializedClass);
+  }
+
+  // Store specialization on the generic class AST for codegen access
+  genericClassInfo->AST->addSpecialization(mangledName, specializedAST);
+
   // PASS 2: Analyze all cloned method bodies — unless requested from the
   // declaration pre-pass, where bodies are deferred until every declaration
   // (including functions the bodies may call) is registered.
   bool deferBodies = declarationPrepassDepth_ > 0;
   if (!deferBodies) {
-    for (auto& methodClone : methodsClone) {
+    for (auto& methodClone : specializedAST->getMutableMethods()) {
       FunctionAST* methodFunc = methodClone.function.get();
       const auto& proto = methodFunc->getProto();
 
@@ -461,23 +486,6 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
       analyzeMethodWithBindings(*methodFunc, specializedClass, {}, {});
     }
   }
-
-  // Create the specialized ClassDefinitionAST with cloned/analyzed methods
-  // Note: Specializations are NOT precompiled - even if the generic class
-  // came from a precompiled .moon file, new specializations with user-defined
-  // type args (e.g., Unique<Point>) need codegen since they don't exist in
-  // the library bitcode.
-  auto specializedAST = std::make_shared<ClassDefinitionAST>(
-      mangledName,                 // e.g., "Vec_i32" instead of "Vec"
-      std::vector<std::string>{},  // empty - no longer generic
-      std::move(interfacesClone), std::move(fieldsClone),
-      std::move(methodsClone),  // cloned methods with analyzed bodies
-      false);                   // NOT precompiled - needs codegen
-  specializedAST->setIsPacked(genericClassInfo->AST->isPacked());
-  specializedAST->setVisibility(genericClassInfo->AST->getVisibility());
-
-  // Store specialization on the generic class AST for codegen access
-  genericClassInfo->AST->addSpecialization(mangledName, specializedAST);
 
   if (deferBodies) {
     deferredSpecializations_.push_back(

@@ -8,7 +8,7 @@
 //   import "stdlib/errors.sun";
 //   using sun;
 //   
-//   function pop() T, IError {
+//   function pop_front() T, IError {
 //       if (this.isEmpty()) {
 //           throw EmptyError();
 //       }

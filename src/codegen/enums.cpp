@@ -131,6 +131,11 @@ Value* CodegenVisitor::codegenEnumVariantConstruction(
       if (argVal->getType()->isPointerTy()) {
         argVal = applyMoveSemantics(argVal, payloadType);
       }
+      // Interface payloads (fat pointers) are copyable borrowed views: a
+      // variable arrives as a pointer to its fat pointer, so load it
+      if (argVal->getType()->isPointerTy() && !fieldTy->isPointerTy()) {
+        argVal = ctx.builder->CreateLoad(fieldTy, argVal, "payload.load");
+      }
       ctx.builder->CreateStore(argVal, fieldPtr);
       continue;
     }

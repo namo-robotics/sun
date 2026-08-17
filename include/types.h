@@ -941,6 +941,8 @@ class ClassType : public Type {
       methodTable_;  // Indexed method table for overload resolution
   std::vector<std::string>
       implementedInterfaces;  // Names of interfaces this class implements
+  std::vector<std::string>
+      staticOnlyInterfaces;  // Implemented, but not convertible to (see below)
   bool isPacked_ = false;     // "packed class": lay fields out with no padding
   mutable llvm::StructType* cachedLLVMType = nullptr;
 
@@ -1061,6 +1063,27 @@ class ClassType : public Type {
       if (iface == interfaceName) return true;
     }
     return false;
+  }
+
+  // An interface implemented with a covariant (class-typed) return where the
+  // interface declares an interface type cannot be dispatched through a fat
+  // pointer (the ABI differs), so the class is not convertible to it. It is
+  // still usable statically (e.g. IIterable for for-in).
+  void markStaticOnlyInterface(const std::string& interfaceName) {
+    if (!isStaticOnlyInterface(interfaceName)) {
+      staticOnlyInterfaces.push_back(interfaceName);
+    }
+  }
+  bool isStaticOnlyInterface(const std::string& interfaceName) const {
+    for (const auto& iface : staticOnlyInterfaces) {
+      if (iface == interfaceName) return true;
+    }
+    return false;
+  }
+  // Class value/ref may be converted to an interface fat pointer
+  bool convertibleToInterface(const std::string& interfaceName) const {
+    return implementsInterface(interfaceName) &&
+           !isStaticOnlyInterface(interfaceName);
   }
 
   const ClassField* getField(const std::string& fieldName) const {
@@ -2027,7 +2050,8 @@ class TypeRegistry {
  public:
   TypeRegistry() { registerBuiltins(); }
 
-  // Register built-in types like IError, IIterator<T>, IIterable<T>
+  // Register built-in types (IError). The iteration protocol
+  // (IIterator/IIterable) lives in stdlib/iterator.sun since it names Option.
   void registerBuiltins() {
     // Create IError interface with code() and message() methods
     auto ierror = std::make_shared<InterfaceType>("IError");
@@ -2035,35 +2059,6 @@ class TypeRegistry {
     ierror->addMethod("message", Types::String(), {},
                       true);  // message() -> static_ptr<u8>
     interfaceCache["IError"] = ierror;
-
-    // Create IIterator<T, Container> generic interface
-    // Methods: hasNext(ref Container) -> bool, next(ref Container) -> T
-    auto iiterator = std::make_shared<InterfaceType>(
-        "IIterator", std::vector<std::string>{"T", "Container"});
-    iiterator->addMethod("hasNext", Types::Bool(),
-                         {Types::Reference(Types::TypeParameter("Container"))},
-                         false);
-    iiterator->addMethod("next", Types::TypeParameter("T"),
-                         {Types::Reference(Types::TypeParameter("Container"))},
-                         false);
-    genericInterfaceCache["IIterator<T,Container>"] = iiterator;
-    // Also register by base name for lookup
-    interfaceCache["IIterator"] = iiterator;
-
-    // Create IIterable<T, Self> generic interface
-    // Methods: iter() -> IIterator<T, Self>
-    // Self is the type of the container implementing IIterable
-    auto iiterable = std::make_shared<InterfaceType>(
-        "IIterable", std::vector<std::string>{"T", "Self"});
-    // Create IIterator<T, Self> return type
-    auto iteratorReturnType = std::make_shared<InterfaceType>(
-        "IIterator", "IIterator",
-        std::vector<TypePtr>{Types::TypeParameter("T"),
-                             Types::TypeParameter("Self")});
-    iiterable->addMethod("iter", iteratorReturnType, {}, false);
-    genericInterfaceCache["IIterable<T,Self>"] = iiterable;
-    // Also register by base name for lookup
-    interfaceCache["IIterable"] = iiterable;
   }
 
   // Check if a type name is a builtin type that cannot be redefined
@@ -2071,7 +2066,7 @@ class TypeRegistry {
   bool isBuiltinTypeName(const std::string& name) const {
     static const std::unordered_set<std::string> builtinNames = {
         // Builtin interfaces
-        "IError", "IIterator", "IIterable",
+        "IError",
         // Type traits for _is<T> intrinsic
         "_Integer", "_Signed", "_Unsigned", "_Float", "_Numeric", "_Primitive"};
     return builtinNames.count(name) > 0;

@@ -376,9 +376,8 @@ TEST(ContiguousBufferTest, iterator_sum) {
         buf[3] = 4;
         
         var sum: i32 = 0;
-        var it = buf.iter();
-        while (it.hasNext(buf)) {
-            sum = sum + it.next(buf);
+        for (var x: i32 in buf) {
+            sum = sum + x;
         }
         return sum;  // 1 + 2 + 3 + 4 = 10
     }

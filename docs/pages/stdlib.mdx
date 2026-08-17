@@ -76,14 +76,14 @@ v.push(20);
 v.push(30);
 var val = v.get(0);       // 10
 v.set(1, 25);             // Update index 1
-var last = v.pop();       // 30 (removes last element)
+var last = v.pop();       // Option.Some(30) (removes last element)
 var len = v.size();       // 2
 ```
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `push(value)` | `(T) void` | Append element (grows if needed) |
-| `pop()` | `() T, IError` | Remove and return last element |
+| `pop()` | `() Option<T>` | Remove and return last element; `None` when empty (ownership moves to the caller) |
 | `get(index)` | `(i64) T` | Get element at index |
 | `set(index, value)` | `(i64, T) void` | Set element at index |
 | `size()` | `() i64` | Current number of elements |
@@ -270,9 +270,96 @@ var v = match m.find(key) {
 };
 ```
 
-Use `Option` for "might not be there" (lookups, first/last), and `IError`
-throwing for actual failures. `Result<T, E>` suits fallible operations whose
-error is a value rather than an exception.
+Use `Option` for "might not be there" (lookups, `first`/`last`, `pop`,
+iterator `next`), and `IError` throwing for actual failures. `Result<T, E>`
+suits fallible operations whose error is a value rather than an exception.
+
+## Iteration: IIterator\<T, Container\> and IIterable\<T, Self\>
+
+The iteration protocol lives in `iterator.sun` and is what `for-in` drives:
+
+```sun
+interface IIterator<T, Container> {
+    function next(container: ref Container) Option<T>;
+}
+interface IIterable<T, Self> {
+    function iter() IIterator<T, Self>;
+}
+```
+
+`next()` yields the next element or `Option.None` once the sequence is
+exhausted (and keeps returning `None` afterwards). `for (var x: T in c)` calls
+`iter()` when `c` has one, then loops on `next()` until `None`; the loop
+variable's type must match `T`. Iterators are separate objects that receive the
+container by `ref` on every call, so a container can be iterated more than once
+and iterators stay cheap:
+
+```sun
+class Countdown implements IIterator<i32, Countdown> {
+    var n: i32;
+    function init(n: i32) { this.n = n; }
+
+    function next(self: ref Countdown) Option<i32> {
+        if (this.n == 0) { return Option.None; }
+        this.n = this.n - 1;
+        return Option.Some(this.n + 1);
+    }
+}
+
+function main() i32 {
+    var sum: i32 = 0;
+    for (var x: i32 in Countdown(5)) {
+        sum = sum + x;
+    }
+    return sum;  // 5 + 4 + 3 + 2 + 1 = 15
+}
+```
+
+Iterators can also be driven by hand:
+
+```sun
+var it = v.iter();
+var going = true;
+while (going) {
+    match it.next(v) {
+        Option.Some(x) => { println(x); },
+        Option.None => { going = false; }
+    };
+}
+```
+
+A container implements `IIterable` and returns its concrete iterator from
+`iter()`; the loop then passes the container to every `next()` call, so
+`next` must take that container type by `ref` (the compiler checks this —
+it is what keeps the container access inside `next` memory-safe):
+
+```sun
+class Range implements IIterable<i32, Range> {
+    var start: i32;
+    var end: i32;
+    function init(s: i32, e: i32) { this.start = s; this.end = e; }
+    function iter() RangeIterator { return RangeIterator(this.start); }
+}
+
+class RangeIterator implements IIterator<i32, Range> {
+    var cur: i32;
+    function init(s: i32) { this.cur = s; }
+    function next(r: ref Range) Option<i32> {
+        if (this.cur >= r.end) { return Option.None; }
+        this.cur = this.cur + 1;
+        return Option.Some(this.cur - 1);
+    }
+}
+```
+
+Because `iter()` returns a class rather than the `IIterator<T, Self>` fat
+pointer the interface names, an `IIterable` implemented this way is
+*static-only*: it drives `for-in`, but a `Range` cannot be converted to an
+`IIterable<i32, Range>` value (there is no way to dispatch `iter()` through
+it soundly).
+
+`Vec<T>`, `LinkedList<T>`, `Map<K, V>` (values) and `ContiguousBuffer<T>`
+implement `IIterable`.
 
 ## Error Types
 

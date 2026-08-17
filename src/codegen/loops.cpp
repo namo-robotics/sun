@@ -209,21 +209,19 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
   // Enter a new scope for loop variables
   pushScope(expr.getLocation());
 
-  // Evaluate the iterable expression to get the container/iterator
-  // The iterable is expected to have hasNext(ref Container) -> bool and
-  // next(ref Container) -> T methods
+  // Evaluate the iterable expression to get the container/iterator. The
+  // iterator protocol is next(ref Container) -> Option<T>: loop until None.
   Value* iterableObj = codegen(*expr.getIterable());
   if (!iterableObj) return nullptr;
 
-  // Get the iterable type (should be a struct/class pointer)
   auto iterableType = expr.getIterable()->getResolvedType();
   if (!iterableType) {
     logAndThrowError("Could not determine type of iterable in for-in loop");
     return nullptr;
   }
 
-  // If iterable is a struct value (e.g., from a method call returning by
-  // value), we need to store it in an alloca so that it can be passed by ref.
+  // A struct value (e.g. a method call returning by value) needs an alloca so
+  // it can be passed by ref
   if (iterableObj->getType()->isStructTy()) {
     llvm::StructType* structType = cast<StructType>(iterableObj->getType());
     AllocaInst* iterableAlloca =
@@ -232,11 +230,10 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
     iterableObj = iterableAlloca;
   }
 
-  // Keep track of the container object for passing to hasNext/next
+  // The container object is passed to next()
   Value* containerObj = iterableObj;
 
-  // Get the iterable class name for method lookup (includes hash prefix for
-  // imported types, e.g., "$ac9ed853$_sun_Vec_i64")
+  // Class name for method lookup (includes hash prefix for imported types)
   std::string iterableTypeName;
   std::shared_ptr<sun::ClassType> iterableClassType;
   if (auto ct = std::dynamic_pointer_cast<sun::ClassType>(iterableType)) {
@@ -244,82 +241,78 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
     iterableClassType = ct;
   } else {
     logAndThrowError(
-        "Iterator in for-in loop must be a class type with hasNext() method");
+        "Iterator in for-in loop must be a class type with next() method");
     return nullptr;
   }
 
-  // Check if the iterable has hasNext() directly, or if we need to call iter()
-  Function* hasNextFunc =
-      findClassMethod(iterableClassType, iterableTypeName, "hasNext");
+  // The iterable is either the iterator itself (has next()) or a container
+  // whose iter() produces one
+  Function* nextFunc =
+      findClassMethod(iterableClassType, iterableTypeName, "next");
 
   Value* iteratorObj = iterableObj;
-  std::string iteratorTypeName = iterableTypeName;
   std::shared_ptr<sun::ClassType> iteratorClassType = iterableClassType;
 
-  if (!hasNextFunc) {
-    // No hasNext() - check if it has an iter() method to get an iterator
+  if (!nextFunc) {
     Function* iterFunc =
         findClassMethod(iterableClassType, iterableTypeName, "iter");
-
     if (!iterFunc) {
-      logAndThrowError(
-          "for-in loop: " + iterableTypeName +
-          " must have hasNext()/next() methods or an iter() method");
+      logAndThrowError("for-in loop: " + iterableTypeName +
+                       " must have a next() method or an iter() method");
       return nullptr;
     }
 
-    // Call iter() to get the actual iterator
     Value* actualIterator = ctx.builder->CreateCall(
         iterFunc,
         {materializeMethodClosure(iterFunc, iterableObj, "iter.closure")},
         "iter.result");
 
-    // Get the iterator type from iter()'s return type
     llvm::Type* iterRetType = iterFunc->getReturnType();
     if (!iterRetType->isStructTy()) {
-      logAndThrowError(
-          "iter() must return a class type with hasNext()/next() methods");
+      logAndThrowError("iter() must return a class type with a next() method");
       return nullptr;
     }
-
-    // Store the iterator struct in an alloca
-    llvm::StructType* iterStructType = cast<StructType>(iterRetType);
-    AllocaInst* iterAlloca =
-        createEntryBlockAlloca(func, "iter.alloca", iterStructType);
+    AllocaInst* iterAlloca = createEntryBlockAlloca(
+        func, "iter.alloca", cast<StructType>(iterRetType));
     ctx.builder->CreateStore(actualIterator, iterAlloca);
     iteratorObj = iterAlloca;
 
-    // Get the iterator type name from the iter() method's return type in
-    // the sun type system (has the correct hash prefix, unlike LLVM struct
-    // names)
+    // The iterator's sun type comes from iter()'s return type (carries the
+    // correct hash prefix, unlike LLVM struct names)
     const auto* iterMethod = iterableClassType->getMethod("iter");
-    if (iterMethod && iterMethod->returnType &&
-        iterMethod->returnType->isClass()) {
-      iteratorClassType =
-          std::dynamic_pointer_cast<sun::ClassType>(iterMethod->returnType);
-      iteratorTypeName = iteratorClassType->getMangledName();
-    } else {
-      iteratorClassType = nullptr;
-      // Fallback: extract from LLVM struct name
-      StringRef structName = iterStructType->getName();
-      if (structName.ends_with("_struct")) {
-        iteratorTypeName = structName.drop_back(7).str();
-      } else {
-        iteratorTypeName = structName.str();
-      }
+    if (!iterMethod || !iterMethod->returnType ||
+        !iterMethod->returnType->isClass()) {
+      logAndThrowError("iter() must return a class type with a next() method");
+      return nullptr;
     }
-
-    // Now look up hasNext on the actual iterator type
-    hasNextFunc =
-        findClassMethod(iteratorClassType, iteratorTypeName, "hasNext");
-    if (!hasNextFunc) {
-      logAndThrowError(
-          "Iterator returned by iter() must have hasNext() method");
+    iteratorClassType =
+        std::dynamic_pointer_cast<sun::ClassType>(iterMethod->returnType);
+    nextFunc = findClassMethod(iteratorClassType,
+                               iteratorClassType->getMangledName(), "next");
+    if (!nextFunc) {
+      logAndThrowError("Iterator returned by iter() must have next() method");
       return nullptr;
     }
   }
 
-  // Get the loop variable type from semantic analysis
+  // next() returns Option<T>: sema verified the shape and that T matches the
+  // loop variable annotation
+  const auto* nextMethod = iteratorClassType->getMethod("next");
+  auto optionType =
+      nextMethod ? std::dynamic_pointer_cast<sun::EnumType>(
+                       sun::unwrapRef(nextMethod->returnType))
+                 : nullptr;
+  if (!optionType || !optionType->getVariant("Some") ||
+      !optionType->getVariant("None")) {
+    logAndThrowError("for-in loop: next() must return Option<T>");
+    return nullptr;
+  }
+  StructType* optionStorageTy = typeResolver.getEnumStorageType(*optionType);
+  StructType* someTy = typeResolver.getEnumVariantStruct(*optionType, "Some");
+  unsigned payloadIdx = typeResolver.enumPayloadFieldIndex(*optionType, "Some", 0);
+  int64_t someTag = optionType->getVariant("Some")->value;
+
+  // Loop variable (type from semantic analysis)
   if (!expr.hasResolvedLoopVarType()) {
     logAndThrowError(
         "Internal error: for-in loop variable type not resolved by semantic "
@@ -327,101 +320,72 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
     return nullptr;
   }
   sun::TypePtr loopVarType = expr.getResolvedLoopVarType();
-
-  // Resolve LLVM type for the loop variable
   Type* llvmLoopVarType = typeResolver.resolve(loopVarType);
-
-  // Create the loop variable alloca
   AllocaInst* loopVarAlloca =
       createEntryBlockAlloca(func, expr.getLoopVar(), llvmLoopVarType);
-
-  // Register the loop variable in the current scope
   scopes.back().variables[expr.getLoopVar()] = loopVarAlloca;
   debugDeclareLocal(loopVarAlloca, expr.getLoopVar(), loopVarType,
                     expr.getLocation());
 
-  // Create basic blocks for the loop structure
+  // Storage for the Option<T> yielded by each next() call. The payload is
+  // copied out into the loop variable; the Option itself is a transient view
+  // and is never dropped here.
+  AllocaInst* nextAlloca =
+      createEntryBlockAlloca(func, "forin.next", optionStorageTy);
+
   BasicBlock* condBB = BasicBlock::Create(ctx.getContext(), "forin_cond", func);
   BasicBlock* bodyBB = BasicBlock::Create(ctx.getContext(), "forin_body", func);
   BasicBlock* afterBB =
       BasicBlock::Create(ctx.getContext(), "forin_after", func);
 
-  // Branch to the condition check first
   ctx.builder->CreateBr(condBB);
 
-  // Emit condition check block (call hasNext())
+  // Condition: call next(), continue while the tag is Some
   ctx.builder->SetInsertPoint(condBB);
-
-  // Determine if hasNext takes a container ref parameter (new style) or not
-  // (old duck-typed style) by checking the function argument count
-  bool hasNextTakesContainerRef = hasNextFunc->arg_size() == 2;
-
-  // Call hasNext with appropriate arguments
-  Value* hasNextClosure =
-      materializeMethodClosure(hasNextFunc, iteratorObj, "hasnext.closure");
-  Value* hasNextResult;
-  if (hasNextTakesContainerRef) {
-    hasNextResult = ctx.builder->CreateCall(
-        hasNextFunc, {hasNextClosure, containerObj}, "hasnext");
-  } else {
-    hasNextResult =
-        ctx.builder->CreateCall(hasNextFunc, {hasNextClosure}, "hasnext");
+  Value* nextClosure =
+      materializeMethodClosure(nextFunc, iteratorObj, "next.closure");
+  // next(ref Container): sema verified Container is the iterable's type
+  Value* nextResult = ctx.builder->CreateCall(
+      nextFunc, {nextClosure, containerObj}, "nextval");
+  if (nextResult->getType()->isPointerTy()) {
+    nextResult = ctx.builder->CreateLoad(optionStorageTy, nextResult,
+                                         "nextval.load");
   }
+  ctx.builder->CreateStore(nextResult, nextAlloca);
+  Value* tagPtr = ctx.builder->CreateStructGEP(optionStorageTy, nextAlloca, 0,
+                                               "forin.tag.ptr");
+  Value* tag = ctx.builder->CreateLoad(Type::getInt32Ty(ctx.getContext()),
+                                       tagPtr, "forin.tag");
+  Value* isSome = ctx.builder->CreateICmpEQ(
+      tag, ConstantInt::get(Type::getInt32Ty(ctx.getContext()), someTag),
+      "forin.some");
+  ctx.builder->CreateCondBr(isSome, bodyBB, afterBB);
 
-  // Branch: if hasNext() returns true go to body, else exit
-  ctx.builder->CreateCondBr(hasNextResult, bodyBB, afterBB);
-
-  // Emit loop body
+  // Body: bind the payload, then run the user block
   ctx.builder->SetInsertPoint(bodyBB);
 
   // Per-iteration scope: owners declared in the body are dropped at the
   // back-edge (and by break/continue)
   pushScope(expr.getBody()->getLocation());
-
-  // Push loop context for break/continue
   loopStack.push_back({condBB, afterBB, scopes.size() - 1});
 
-  // Call iterator.next() and store result in loop variable
-  Function* nextFunc =
-      findClassMethod(iteratorClassType, iteratorTypeName, "next");
-  if (!nextFunc) {
-    logAndThrowError("for-in loop iterator must have next() method");
-    return nullptr;
-  }
+  Value* payloadPtr = ctx.builder->CreateStructGEP(someTy, nextAlloca,
+                                                   payloadIdx, "forin.payload");
+  Value* payload = ctx.builder->CreateLoad(someTy->getElementType(payloadIdx),
+                                           payloadPtr, "forin.elem");
+  ctx.builder->CreateStore(payload, loopVarAlloca);
 
-  // Determine if next takes a container ref parameter (new style) or not
-  // (old duck-typed style) by checking the function argument count
-  bool nextTakesContainerRef = nextFunc->arg_size() == 2;
-
-  // Call next() with appropriate arguments to get the value
-  Value* nextClosure =
-      materializeMethodClosure(nextFunc, iteratorObj, "next.closure");
-  Value* nextResult;
-  if (nextTakesContainerRef) {
-    nextResult = ctx.builder->CreateCall(nextFunc, {nextClosure, containerObj},
-                                         "nextval");
-  } else {
-    nextResult = ctx.builder->CreateCall(nextFunc, {nextClosure}, "nextval");
-  }
-
-  // Store the result in the loop variable
-  ctx.builder->CreateStore(nextResult, loopVarAlloca);
-
-  // Emit the body of the loop
   codegen(*expr.getBody());
 
-  // Pop loop context
   loopStack.pop_back();
 
   // Emits this iteration's drops unless the block already terminated
   popScope();
 
-  // Only emit branch to condition if current block has no terminator
   if (!ctx.builder->GetInsertBlock()->getTerminator()) {
     ctx.builder->CreateBr(condBB);
   }
 
-  // Continue inserting after the loop
   ctx.builder->SetInsertPoint(afterBB);
 
   // Pop the loop scope (emits cleanup for loop-scoped owners in afterBB)

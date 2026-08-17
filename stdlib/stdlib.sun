@@ -9,6 +9,7 @@ manifest {
         "unique.sun",
         "errors.sun",
         "option.sun",
+        "iterator.sun",
         "slice.sun",
         "contiguous_buffer.sun",
         "vec.sun",

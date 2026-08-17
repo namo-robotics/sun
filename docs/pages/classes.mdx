@@ -175,6 +175,8 @@ class Task implements Named, Runnable {
 Generic classes can implement generic interfaces with matching type parameters:
 
 ```sun
+using sun;
+
 class Box<T> implements IIterator<T, Box<T>> {
     var value: T;
     var returned: bool;
@@ -184,13 +186,12 @@ class Box<T> implements IIterator<T, Box<T>> {
         this.returned = false;
     }
 
-    function hasNext(self: ref Box<T>) bool {
-        return this.returned == false;
-    }
-
-    function next(self: ref Box<T>) T {
+    function next(self: ref Box<T>) Option<T> {
+        if (this.returned) {
+            return Option.None;
+        }
         this.returned = true;
-        return this.value;
+        return Option.Some(this.value);
     }
 }
 ```
