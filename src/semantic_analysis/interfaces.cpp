@@ -278,16 +278,34 @@ void SemanticAnalyzer::validateInterfaceImplementation(
         if (interfaceMethod.visibility == sun::Visibility::Public &&
             classMethodInfo->visibility != sun::Visibility::Public) {
           logSemanticError("method '" + interfaceMethod.name + "' of class '" +
-                               classDef.getName() +
+                               classType->getDisplayName() +
                                "' implements public member '" +
                                interfaceDisplayName + "." +
                                interfaceMethod.name + "' and must be public",
                            classDef.getLocation());
         }
-        // Verify return type matches
-        if (classMethodInfo->returnType && interfaceMethod.returnType &&
-            !classMethodInfo->returnType->equals(*interfaceMethod.returnType)) {
-          logAndThrowError("Class '" + classDef.getName() + "' method '" +
+        // Verify return type matches. A class return where the interface
+        // declares an interface type it implements is accepted (IIterable's
+        // iter() returns the concrete iterator), but such a method cannot be
+        // dispatched through a fat pointer, so the class is not convertible
+        // to this interface.
+        bool returnOk = !classMethodInfo->returnType ||
+                        !interfaceMethod.returnType ||
+                        classMethodInfo->returnType->equals(
+                            *interfaceMethod.returnType);
+        if (!returnOk && interfaceMethod.returnType->isInterface() &&
+            classMethodInfo->returnType->isClass()) {
+          auto* required = static_cast<const sun::InterfaceType*>(
+              interfaceMethod.returnType.get());
+          auto* returned = static_cast<const sun::ClassType*>(
+              classMethodInfo->returnType.get());
+          if (returned->implementsInterface(required->getName())) {
+            returnOk = true;
+            classType->markStaticOnlyInterface(interfaceType->getName());
+          }
+        }
+        if (!returnOk) {
+          logAndThrowError("Class '" + classType->getDisplayName() + "' method '" +
                                interfaceMethod.name + "' has return type '" +
                                classMethodInfo->returnType->toString() +
                                "' but interface '" + interfaceDisplayName +
@@ -299,7 +317,7 @@ void SemanticAnalyzer::validateInterfaceImplementation(
         if (classMethodInfo->paramTypes.size() !=
             interfaceMethod.paramTypes.size()) {
           logAndThrowError(
-              "Class '" + classDef.getName() + "' method '" +
+              "Class '" + classType->getDisplayName() + "' method '" +
                   interfaceMethod.name + "' has " +
                   std::to_string(classMethodInfo->paramTypes.size()) +
                   " parameters but interface '" + interfaceDisplayName +
@@ -312,7 +330,7 @@ void SemanticAnalyzer::validateInterfaceImplementation(
           for (size_t i = 0; i < classMethodInfo->paramTypes.size(); ++i) {
             if (!classMethodInfo->paramTypes[i]->equals(
                     *interfaceMethod.paramTypes[i])) {
-              logAndThrowError("Class '" + classDef.getName() + "' method '" +
+              logAndThrowError("Class '" + classType->getDisplayName() + "' method '" +
                                    interfaceMethod.name + "' parameter " +
                                    std::to_string(i + 1) + " has type '" +
                                    classMethodInfo->paramTypes[i]->toString() +
@@ -347,7 +365,7 @@ void SemanticAnalyzer::validateInterfaceImplementation(
               mangledName, {interfaceMethod.returnType, methodParamTypes, {}});
         } else {
           // Required method not implemented
-          logAndThrowError("Class '" + classDef.getName() +
+          logAndThrowError("Class '" + classType->getDisplayName() +
                                "' does not implement required method '" +
                                interfaceMethod.name + "' from interface '" +
                                interfaceDisplayName + "'",

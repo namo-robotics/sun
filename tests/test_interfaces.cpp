@@ -554,6 +554,51 @@ TEST(IteratorInterfaceTest, generic_implements_iiterator) {
   EXPECT_EQ(value, 60);  // 10 + 20 + 30 = 60
 }
 
+TEST(IteratorInterfaceTest, covariant_iter_is_static_only) {
+  // iter() may return the concrete iterator class, but such an IIterable
+  // cannot be dispatched through a fat pointer, so conversion is rejected
+  EXPECT_ANY_THROW({
+    executeStringWithStdlib(R"(
+      using sun;
+
+      class Range implements IIterable<i32, Range> {
+          function init() {}
+          function iter() RangeIterator { return RangeIterator(); }
+      }
+
+      class RangeIterator implements IIterator<i32, Range> {
+          function init() {}
+          function next(r: ref Range) Option<i32> { return Option.None; }
+      }
+
+      function main() i32 {
+          var r = Range();
+          var it: IIterable<i32, Range> = r;
+          return 0;
+      }
+    )");
+  });
+}
+
+TEST(IteratorInterfaceTest, generic_class_conformance_is_checked) {
+  // Generic specializations validate their interfaces like other classes
+  EXPECT_ANY_THROW({
+    executeStringWithStdlib(R"(
+      using sun;
+
+      class Wrong<T> implements IIterator<T, Wrong<T>> {
+        function init() {}
+        function next(w: ref Wrong<T>) T { return 0; }
+      }
+
+      function main() i32 {
+          var w = Wrong<i32>();
+          return 0;
+      }
+    )");
+  });
+}
+
 TEST(IteratorInterfaceTest, missing_next_is_error) {
   // A class claiming IIterator without next() is rejected
   EXPECT_ANY_THROW({

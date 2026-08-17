@@ -344,13 +344,9 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
   ctx.builder->SetInsertPoint(condBB);
   Value* nextClosure =
       materializeMethodClosure(nextFunc, iteratorObj, "next.closure");
-  // next(ref Container) takes the container; a container-less iterator
-  // (arg count 1) is still accepted
-  Value* nextResult =
-      nextFunc->arg_size() == 2
-          ? ctx.builder->CreateCall(nextFunc, {nextClosure, containerObj},
-                                    "nextval")
-          : ctx.builder->CreateCall(nextFunc, {nextClosure}, "nextval");
+  // next(ref Container): sema verified Container is the iterable's type
+  Value* nextResult = ctx.builder->CreateCall(
+      nextFunc, {nextClosure, containerObj}, "nextval");
   if (nextResult->getType()->isPointerTy()) {
     nextResult = ctx.builder->CreateLoad(optionStorageTy, nextResult,
                                          "nextval.load");

@@ -941,6 +941,8 @@ class ClassType : public Type {
       methodTable_;  // Indexed method table for overload resolution
   std::vector<std::string>
       implementedInterfaces;  // Names of interfaces this class implements
+  std::vector<std::string>
+      staticOnlyInterfaces;  // Implemented, but not convertible to (see below)
   bool isPacked_ = false;     // "packed class": lay fields out with no padding
   mutable llvm::StructType* cachedLLVMType = nullptr;
 
@@ -1061,6 +1063,27 @@ class ClassType : public Type {
       if (iface == interfaceName) return true;
     }
     return false;
+  }
+
+  // An interface implemented with a covariant (class-typed) return where the
+  // interface declares an interface type cannot be dispatched through a fat
+  // pointer (the ABI differs), so the class is not convertible to it. It is
+  // still usable statically (e.g. IIterable for for-in).
+  void markStaticOnlyInterface(const std::string& interfaceName) {
+    if (!isStaticOnlyInterface(interfaceName)) {
+      staticOnlyInterfaces.push_back(interfaceName);
+    }
+  }
+  bool isStaticOnlyInterface(const std::string& interfaceName) const {
+    for (const auto& iface : staticOnlyInterfaces) {
+      if (iface == interfaceName) return true;
+    }
+    return false;
+  }
+  // Class value/ref may be converted to an interface fat pointer
+  bool convertibleToInterface(const std::string& interfaceName) const {
+    return implementsInterface(interfaceName) &&
+           !isStaticOnlyInterface(interfaceName);
   }
 
   const ClassField* getField(const std::string& fieldName) const {

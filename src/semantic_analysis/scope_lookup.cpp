@@ -340,7 +340,7 @@ static bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
   if (to->isInterface() && from->isClass()) {
     auto* classType = static_cast<const sun::ClassType*>(from.get());
     auto* ifaceType = static_cast<const sun::InterfaceType*>(to.get());
-    return classType->implementsInterface(ifaceType->getName());
+    return classType->convertibleToInterface(ifaceType->getName());
   }
 
   // Class -> ref Interface (class can be passed as ref to interface it implements)
@@ -350,7 +350,7 @@ static bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
     if (innerTo && innerTo->isInterface()) {
       auto* ifaceType = static_cast<const sun::InterfaceType*>(innerTo.get());
       auto* classType = static_cast<const sun::ClassType*>(from.get());
-      return classType->implementsInterface(ifaceType->getName());
+      return classType->convertibleToInterface(ifaceType->getName());
     }
   }
 
@@ -361,7 +361,7 @@ static bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
     if (innerFrom && innerFrom->isClass()) {
       auto* ifaceType = static_cast<const sun::InterfaceType*>(to.get());
       auto* classType = static_cast<const sun::ClassType*>(innerFrom.get());
-      return classType->implementsInterface(ifaceType->getName());
+      return classType->convertibleToInterface(ifaceType->getName());
     }
   }
 

@@ -328,6 +328,36 @@ while (going) {
 }
 ```
 
+A container implements `IIterable` and returns its concrete iterator from
+`iter()`; the loop then passes the container to every `next()` call, so
+`next` must take that container type by `ref` (the compiler checks this —
+it is what keeps the container access inside `next` memory-safe):
+
+```sun
+class Range implements IIterable<i32, Range> {
+    var start: i32;
+    var end: i32;
+    function init(s: i32, e: i32) { this.start = s; this.end = e; }
+    function iter() RangeIterator { return RangeIterator(this.start); }
+}
+
+class RangeIterator implements IIterator<i32, Range> {
+    var cur: i32;
+    function init(s: i32) { this.cur = s; }
+    function next(r: ref Range) Option<i32> {
+        if (this.cur >= r.end) { return Option.None; }
+        this.cur = this.cur + 1;
+        return Option.Some(this.cur - 1);
+    }
+}
+```
+
+Because `iter()` returns a class rather than the `IIterator<T, Self>` fat
+pointer the interface names, an `IIterable` implemented this way is
+*static-only*: it drives `for-in`, but a `Range` cannot be converted to an
+`IIterable<i32, Range>` value (there is no way to dispatch `iter()` through
+it soundly).
+
 `Vec<T>`, `LinkedList<T>`, `Map<K, V>` (values) and `ContiguousBuffer<T>`
 implement `IIterable`.
 

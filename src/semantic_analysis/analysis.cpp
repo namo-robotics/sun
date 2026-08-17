@@ -531,8 +531,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
             forInExpr.getLocation());
       }
 
-      // The element type is the payload of next()'s Option<T>; the loop
-      // variable annotation must agree with it
+      // Resolve the iterator class: the iterable itself, or what iter()
+      // returns. Codegen relies on these shapes, so they are all errors here.
       std::shared_ptr<sun::ClassType> iteratorType = classType;
       if (!implementsIterator) {
         const auto* iterMethod = classType->getMethod("iter");
@@ -540,34 +540,67 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
             iterMethod ? std::dynamic_pointer_cast<sun::ClassType>(
                              sun::unwrapRef(iterMethod->returnType))
                        : nullptr;
+        if (!iteratorType) {
+          logAndThrowError("for-in loop: '" + classType->getDisplayName() +
+                               "' must define iter() returning an iterator "
+                               "class",
+                           forInExpr.getLocation());
+        }
       }
-      const sun::ClassMethod* nextMethod =
-          iteratorType ? iteratorType->getMethod("next") : nullptr;
-      if (nextMethod && nextMethod->returnType) {
-        sun::TypePtr elementType;
-        if (auto* opt = dynamic_cast<sun::EnumType*>(
-                sun::unwrapRef(nextMethod->returnType).get())) {
-          const sun::EnumVariant* some = opt->getVariant("Some");
-          if (some && some->payloadTypes.size() == 1 && opt->hasVariant("None")) {
-            elementType = some->payloadTypes[0];
-          }
+      const sun::ClassMethod* nextMethod = iteratorType->getMethod("next");
+      if (!nextMethod || !nextMethod->returnType) {
+        logAndThrowError("for-in loop: iterator '" +
+                             iteratorType->getDisplayName() +
+                             "' must define next(container: ref " +
+                             classType->getDisplayName() + ") Option<T>",
+                         forInExpr.getLocation());
+      }
+
+      // next() takes exactly the iterable by ref: codegen passes the
+      // iterable's address, so any other parameter type would reinterpret it
+      bool containerOk = nextMethod->paramTypes.size() == 1 &&
+                         nextMethod->paramTypes[0] &&
+                         nextMethod->paramTypes[0]->isReference();
+      if (containerOk) {
+        sun::TypePtr paramType = sun::unwrapRef(nextMethod->paramTypes[0]);
+        containerOk = paramType && (paramType->isTypeParameter() ||
+                                    paramType->equals(*classType));
+      }
+      if (!containerOk) {
+        logAndThrowError("for-in loop: iterator '" +
+                             iteratorType->getDisplayName() +
+                             "' must take the iterable by reference: "
+                             "next(container: ref " +
+                             classType->getDisplayName() + ")",
+                         forInExpr.getLocation());
+      }
+
+      // The element type is the payload of next()'s Option<T>; the loop
+      // variable annotation must agree with it
+      sun::TypePtr elementType;
+      if (auto* opt = dynamic_cast<sun::EnumType*>(
+              sun::unwrapRef(nextMethod->returnType).get())) {
+        const sun::EnumVariant* some = opt->getVariant("Some");
+        if (some && some->payloadTypes.size() == 1 &&
+            opt->hasVariant("None")) {
+          elementType = some->payloadTypes[0];
         }
-        if (!elementType) {
-          logAndThrowError("for-in loop: iterator '" +
-                               iteratorType->getDisplayName() +
-                               "' must return Option<T> from next(), got '" +
-                               nextMethod->returnType->toDisplayString() + "'",
-                           forInExpr.getLocation());
-        }
-        if (loopVarType && !elementType->isTypeParameter() &&
-            !loopVarType->isTypeParameter() &&
-            !elementType->equals(*loopVarType)) {
-          logAndThrowError("for-in loop variable '" + forInExpr.getLoopVar() +
-                               "' has type '" + loopVarType->toDisplayString() +
-                               "' but the iterator yields '" +
-                               elementType->toDisplayString() + "'",
-                           forInExpr.getLocation());
-        }
+      }
+      if (!elementType) {
+        logAndThrowError("for-in loop: iterator '" +
+                             iteratorType->getDisplayName() +
+                             "' must return Option<T> from next(), got '" +
+                             nextMethod->returnType->toDisplayString() + "'",
+                         forInExpr.getLocation());
+      }
+      if (loopVarType && !elementType->isTypeParameter() &&
+          !loopVarType->isTypeParameter() &&
+          !elementType->equals(*loopVarType)) {
+        logAndThrowError("for-in loop variable '" + forInExpr.getLoopVar() +
+                             "' has type '" + loopVarType->toDisplayString() +
+                             "' but the iterator yields '" +
+                             elementType->toDisplayString() + "'",
+                         forInExpr.getLocation());
       }
 
       // Create scope for loop body with loop variable

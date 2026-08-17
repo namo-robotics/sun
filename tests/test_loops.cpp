@@ -1049,6 +1049,105 @@ TEST(ForInLoopTest, error_next_not_returning_option) {
   });
 }
 
+TEST(ForInLoopTest, iterable_with_separate_iterator) {
+  // IIterable whose iter() returns a concrete iterator class; next() takes the
+  // container by ref
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    class Range implements IIterable<i32, Range> {
+        var start: i32;
+        var end: i32;
+        function init(s: i32, e: i32) { this.start = s; this.end = e; }
+        function iter() RangeIterator { return RangeIterator(this.start); }
+    }
+
+    class RangeIterator implements IIterator<i32, Range> {
+        var cur: i32;
+        function init(s: i32) { this.cur = s; }
+        function next(r: ref Range) Option<i32> {
+            if (this.cur >= r.end) { return Option.None; }
+            this.cur = this.cur + 1;
+            return Option.Some(this.cur - 1);
+        }
+    }
+
+    function main() i32 {
+        var sum: i32 = 0;
+        for (var x: i32 in Range(1, 5)) { sum = sum + x; }
+        return sum;
+    }
+  )");
+  EXPECT_EQ(value, 10);
+}
+
+TEST(ForInLoopTest, error_next_container_type_mismatch) {
+  // next() must take the iterated type itself: codegen passes its address, so
+  // any other parameter type would reinterpret memory
+  EXPECT_ANY_THROW({
+    executeStringWithStdlib(R"(
+      using sun;
+
+      class Other { function init() {} }
+
+      class BadIter implements IIterator<i32, Other> {
+        function init() {}
+        function next(o: ref Other) Option<i32> { return Option.None; }
+      }
+
+      function main() i32 {
+          for (var v: i32 in BadIter()) {}
+          return 0;
+      }
+    )");
+  });
+}
+
+TEST(ForInLoopTest, error_iter_returns_mismatched_iterator) {
+  // A generic IIterable whose iter() returns an iterator over another type
+  EXPECT_ANY_THROW({
+    executeStringWithStdlib(R"(
+      using sun;
+
+      class Other { function init() {} }
+
+      class BadIter implements IIterator<i32, Other> {
+        function init() {}
+        function next(o: ref Other) Option<i32> { return Option.None; }
+      }
+
+      class Small<T> implements IIterable<T, Small<T>> {
+        function init() {}
+        function iter() BadIter { return BadIter(); }
+      }
+
+      function main() i32 {
+          var s = Small<i32>();
+          for (var v: i32 in s) {}
+          return 0;
+      }
+    )");
+  });
+}
+
+TEST(ForInLoopTest, error_next_without_container_param) {
+  EXPECT_ANY_THROW({
+    executeStringWithStdlib(R"(
+      using sun;
+
+      class NoArg implements IIterator<i32, NoArg> {
+        function init() {}
+        function next() Option<i32> { return Option.None; }
+      }
+
+      function main() i32 {
+          for (var v: i32 in NoArg()) {}
+          return 0;
+      }
+    )");
+  });
+}
+
 TEST(ForInLoopTest, error_class_without_iterable_interface) {
   // Class that has iter() method but doesn't implement IIterable
   EXPECT_ANY_THROW({
