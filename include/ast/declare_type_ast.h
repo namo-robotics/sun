@@ -38,10 +38,11 @@ class DeclareTypeAST : public ExprAST {
 
   ASTNodeType getType() const override { return ASTNodeType::DECLARE_TYPE; }
   std::string toString() const override {
+    std::string prefix = isPublic() ? "public " : "";
     if (aliasName) {
-      return "declare " + *aliasName + " = " + typeAnnotation.toString();
+      return prefix + "declare " + *aliasName + " = " + typeAnnotation.toString();
     }
-    return "declare " + typeAnnotation.toString();
+    return prefix + "declare " + typeAnnotation.toString();
   }
 
   bool hasAlias() const { return aliasName.has_value(); }

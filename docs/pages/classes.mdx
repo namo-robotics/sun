@@ -29,6 +29,41 @@ class Point {
 - **Methods**: Functions inside the class that can access `this`
 - **Member access**: Use `.` to access fields and call methods
 - **Interfaces**: Classes can implement one or more interfaces
+- **Visibility**: Fields and methods are private by default; mark the API `public`
+
+## Visibility
+
+Class members are **private by default**; `public` is the only modifier.
+Privacy is module-scoped: a private member is accessible from any code in the
+module that defines the class (see [Modules → Visibility](/modules#visibility)),
+and from nowhere outside it.
+
+```sun
+public module bank {
+    public class Account {
+        var balance: i64;                       // private
+        public var owner: i32;                  // public field
+        function init(owner: i32) {             // private constructor ...
+            this.owner = owner; this.balance = 0;
+        }
+        public function open(owner: i32) Account {   // ... with a public factory
+            return Account(owner);
+        }
+        public function deposit(n: i64) void { this.balance = this.balance + n; }
+        function audit() bool { return this.balance >= 0; }   // private
+    }
+}
+```
+
+- `deinit` is invoked by the compiler and is always callable.
+- `init` follows the normal rules, so a private `init` plus a public factory
+  is a supported pattern.
+- Operator methods (`__index__`, `__setindex__`, `__slice__`) follow the normal
+  rules: `v[i]` from outside the module needs a public `__index__`.
+- Struct literals `{ field: value }` name fields directly, so every field
+  written must be accessible from the literal's location.
+- A method that implements a **public** interface member must itself be
+  `public`.
 
 ## Packed Classes
 

@@ -34,6 +34,36 @@ bool SemanticScope::hasSymbol(const std::string& name) const {
   return false;
 }
 
+bool SemanticScope::hasAccessibleSymbol(const std::string& name,
+                                        AccessFilter& filter) const {
+  if (!filter.enabled()) return hasSymbol(name);
+  if (auto it = classes.find(name); it != classes.end() && filter.admit(it->second))
+    return true;
+  if (auto it = genericClasses.find(name);
+      it != genericClasses.end() && filter.admit(&it->second))
+    return true;
+  if (auto it = interfaces.find(name);
+      it != interfaces.end() && filter.admit(it->second))
+    return true;
+  if (auto it = genericInterfaces.find(name);
+      it != genericInterfaces.end() && filter.admit(&it->second))
+    return true;
+  if (auto it = enums.find(name); it != enums.end() && filter.admit(it->second))
+    return true;
+  if (auto it = genericEnums.find(name);
+      it != genericEnums.end() && filter.admit(&it->second))
+    return true;
+  if (auto it = namespacedVariables.find(name);
+      it != namespacedVariables.end() && filter.admit(&it->second))
+    return true;
+  if (auto* overloads = functions.getOverloads(name)) {
+    for (const auto* info : *overloads) {
+      if (filter.admit(info)) return true;
+    }
+  }
+  return false;
+}
+
 std::shared_ptr<sun::ClassType> SemanticScope::findClass(
     const std::string& name) const {
   auto it = classes.find(name);
@@ -112,6 +142,11 @@ std::shared_ptr<SemanticScopeBase> SemanticScopeBase::cloneSymbols(
   clone->scopeName = scopeName;
   clone->scopePath = scopePath;
   clone->parent = newParent;
+  if (auto* mod = dynamic_cast<ModuleScope*>(clone.get())) {
+    const auto& src = static_cast<const ModuleScope&>(*this);
+    mod->access = src.access;
+    mod->visibilityDeclared = src.visibilityDeclared;
+  }
   // Copy all symbol tables (shallow — shares type objects)
   clone->functions = functions;
   clone->classes = classes;
@@ -187,6 +222,22 @@ void SemanticAnalyzer::enterModuleScope(const std::string& moduleName) {
     child = modScope;
   }
   currentScope = child.get();
+}
+
+void SemanticAnalyzer::declareModule(const ModuleAST& module) {
+  sun::AccessInfo access{module.getVisibility(), currentModulePath()};
+  enterModuleScope(module.getName());
+  auto* scope = static_cast<ModuleScope*>(currentScope);
+  if (scope->visibilityDeclared &&
+      scope->access.visibility != access.visibility) {
+    logSemanticError(
+        "module '" + module.getName() + "' was previously declared " +
+            sun::visibilityKeyword(scope->access.visibility) +
+            "; all declarations of a module must agree on its visibility",
+        module.getLocation());
+  }
+  scope->access = access;
+  scope->visibilityDeclared = true;
 }
 
 void SemanticAnalyzer::enterClassScope(const sun::QualifiedName& className) {
@@ -507,6 +558,10 @@ SymbolMatch SemanticAnalyzer::findSymbolInModule(
   // Get visible module path for searching across all matching scopes
   std::string visiblePath = getVisibleModulePath(modulePath);
 
+  // Access filtering: private symbols of other modules are skipped; if that
+  // leaves nothing, the denial is reported instead of "unknown member".
+  AccessFilter accessFilter(currentScope);
+
   // Helper to search a single scope for all symbol types
   auto searchInScope = [&](SemanticScope* scope) -> std::optional<SymbolMatch> {
     std::string fullPath = sun::QualifiedName::joinPath(scope->scopePath);
@@ -530,6 +585,8 @@ SymbolMatch SemanticAnalyzer::findSymbolInModule(
         match.modulePath = fullPath;
         match.libraryHash = libHash;
         match.classType = classIt->second;
+        match.access = classIt->second->access;
+        if (!accessFilter.admit(classIt->second)) return std::nullopt;
         return match;
       }
     }
@@ -544,6 +601,8 @@ SymbolMatch SemanticAnalyzer::findSymbolInModule(
         match.modulePath = fullPath;
         match.libraryHash = libHash;
         match.genericClassInfo = &genClassIt->second;
+        match.access = genClassIt->second.access;
+        if (!accessFilter.admit(&genClassIt->second)) return std::nullopt;
         return match;
       }
     }
@@ -558,6 +617,8 @@ SymbolMatch SemanticAnalyzer::findSymbolInModule(
         match.modulePath = fullPath;
         match.libraryHash = libHash;
         match.interfaceType = ifaceIt->second;
+        match.access = ifaceIt->second->access;
+        if (!accessFilter.admit(ifaceIt->second)) return std::nullopt;
         return match;
       }
     }
@@ -572,6 +633,8 @@ SymbolMatch SemanticAnalyzer::findSymbolInModule(
         match.modulePath = fullPath;
         match.libraryHash = libHash;
         match.genericInterfaceInfo = &genIfaceIt->second;
+        match.access = genIfaceIt->second.access;
+        if (!accessFilter.admit(&genIfaceIt->second)) return std::nullopt;
         return match;
       }
     }
@@ -586,6 +649,8 @@ SymbolMatch SemanticAnalyzer::findSymbolInModule(
         match.modulePath = fullPath;
         match.libraryHash = libHash;
         match.enumType = enumIt->second;
+        match.access = enumIt->second->access;
+        if (!accessFilter.admit(enumIt->second)) return std::nullopt;
         return match;
       }
     }
@@ -598,11 +663,23 @@ SymbolMatch SemanticAnalyzer::findSymbolInModule(
           // When the caller knows the argument types, pick the overload that
           // actually matches rather than whichever was registered first.
           if (argTypes) {
-            auto resolved = scope->lookupFunctionLocal(name, *argTypes);
+            auto resolved =
+                scope->lookupFunctionLocal(name, *argTypes, &accessFilter);
             if (!resolved) return std::nullopt;
             info = nullptr;
             for (const auto* candidate : *overloads) {
               if (candidate->qualifiedName == resolved->qualifiedName) {
+                info = candidate;
+                break;
+              }
+            }
+            if (!info) return std::nullopt;
+          }
+          if (!argTypes) {
+            // First accessible overload
+            info = nullptr;
+            for (const auto* candidate : *overloads) {
+              if (accessFilter.admit(candidate)) {
                 info = candidate;
                 break;
               }
@@ -615,6 +692,7 @@ SymbolMatch SemanticAnalyzer::findSymbolInModule(
           match.modulePath = fullPath;
           match.libraryHash = libHash;
           match.functionInfo = info;
+          match.access = info->access;
           return match;
         }
       }
@@ -632,6 +710,8 @@ SymbolMatch SemanticAnalyzer::findSymbolInModule(
         match.modulePath = fullPath;
         match.libraryHash = libHash;
         match.variableInfo = &varIt->second;
+        match.access = varIt->second.access;
+        if (!accessFilter.admit(&varIt->second)) return std::nullopt;
         return match;
       }
     }
@@ -688,6 +768,7 @@ SymbolMatch SemanticAnalyzer::findSymbolInModule(
     return allMatches[0];
   }
 
+  accessFilter.finish();
   return SymbolMatch{};
 }
 
@@ -825,6 +906,8 @@ void SemanticAnalyzer::registerGenericFunctionInCurrentScope(
     genInfo.returnType = *proto.getReturnType();
   }
   genInfo.params = proto.getArgs();
+
+  genInfo.access = makeAccess(func);
 
   sun::QualifiedName qname(getCurrentScopePath(), proto.getName());
   currentScope->genericFunctions[qname] = genInfo;
@@ -1059,14 +1142,25 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
 
 void SemanticAnalyzer::registerModuleVariable(const std::string& baseName,
                                               const std::string& qualifiedName,
-                                              sun::TypePtr type) {
+                                              sun::TypePtr type,
+                                              const sun::AccessInfo& access) {
+  VariableInfo info{type, true, false};
+  info.access = access;
+  info.qualifiedName = sun::QualifiedName(access.owner, baseName);
   // Store with qualified name for codegen lookup
-  rootScope->namespacedVariables[qualifiedName] = {type, true, false};
+  rootScope->namespacedVariables[qualifiedName] = info;
   if (currentScope != rootScope.get()) {
-    currentScope->namespacedVariables[qualifiedName] = {type, true, false};
+    currentScope->namespacedVariables[qualifiedName] = info;
   }
   // Also store with plain name in current scope for hasSymbol lookup
-  currentScope->namespacedVariables[baseName] = {type, true, false};
+  currentScope->namespacedVariables[baseName] = info;
+  // The plain-name entry created by declareVariable during body analysis
+  if (auto it = currentScope->variables.find(baseName);
+      it != currentScope->variables.end()) {
+    it->second.access = access;
+    if (it->second.qualifiedName.empty())
+      it->second.qualifiedName = info.qualifiedName;
+  }
 }
 
 VariableInfo* SemanticAnalyzer::lookupQualifiedVariable(

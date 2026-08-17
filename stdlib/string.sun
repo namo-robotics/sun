@@ -17,31 +17,31 @@
 //   // Slicing returns a view (no copy)
 //   var view = s[1:4];        // "ell"
 
-module sun {
+public module sun {
   // Non-owning view into a String
   // Provides read-only access to a substring without copying
   // WARNING: StringView must not outlive the parent String!
   // NOTE: Defined before String because String.__slice__ returns StringView
-  class StringView {
+  public class StringView {
     var view: MatrixView<u8>;  // Underlying 1D matrix view
 
-    function init(mat_view: ref MatrixView<u8>) {
+    public function init(mat_view: ref MatrixView<u8>) {
       this.view = mat_view;
     }
 
     // Get view length
-    function length() i64 {
+    public function length() i64 {
       return this.view.size();
     }
 
     // Get byte at index (relative to view start)
-    function at(i: i64) u8 {
+    public function at(i: i64) u8 {
       var idx: array<i64, 1> = [i];
       return this.view.get(idx);
     }
 
     // Check if view equals a literal
-    function equals_literal(literal: static_ptr<u8>) bool {
+    public function equals_literal(literal: static_ptr<u8>) bool {
       var srcData: raw_ptr<u8> = _static_ptr_data<u8>(literal);
       var srcLen: i64 = _static_ptr_len<u8>(literal);
 
@@ -62,14 +62,14 @@ module sun {
   }
 
   // Heap-allocated mutable string backed by ContiguousBuffer<u8>
-  class String {
+  public class String {
     var data: ContiguousBuffer<u8>;  // Byte storage (owns ptr, auto-freed)
     var capacity_: i64;  // Allocated capacity
     var len: i64;  // Current string length
 
     // Construct from string literal
     // Copies bytes from static_ptr<u8> (fat pointer) to heap
-    function init(alloc: ref HeapAllocator, literal: static_ptr<u8>) {
+    public function init(alloc: ref HeapAllocator, literal: static_ptr<u8>) {
       // Extract data pointer and length from fat pointer struct
       var srcData: raw_ptr<u8> = _static_ptr_data<u8>(literal);
       var srcLen: i64 = _static_ptr_len<u8>(literal);
@@ -90,7 +90,7 @@ module sun {
     // Construct from ContiguousBuffer with specified length
     // Copies `length` bytes from buffer to a new heap-allocated string
     // Throws IndexOutOfBoundsError if length > buffer.size()
-    function init(allocator: ref HeapAllocator, buffer: ref ContiguousBuffer<u8>, length: i64) void, IError {
+    public function init(allocator: ref HeapAllocator, buffer: ref ContiguousBuffer<u8>, length: i64) void, IError {
       if (length > buffer.size()) {
         throw IndexOutOfBoundsError(length);
       }
@@ -108,27 +108,27 @@ module sun {
     }
 
     // Get current string length
-    function length() i64 {
+    public function length() i64 {
       return this.len;
     }
 
     // Get allocated capacity
-    function capacity() i64 {
+    public function capacity() i64 {
       return this.capacity_;
     }
 
     // Get byte at index (no bounds checking)
-    function at(i: i64) u8 {
+    public function at(i: i64) u8 {
       return this.data.get_unchecked(i);
     }
 
     // Set byte at index (no bounds checking, must be within len)
-    function set_at(i: i64, val: u8) void {
+    public function set_at(i: i64, val: u8) void {
       this.data.set_unchecked(i, val);
     }
 
     // Ensure capacity for at least n bytes (doesn't change len)
-    function reserve(n: i64) void {
+    public function reserve(n: i64) void {
       if (n > this.capacity_) {
         this.data.resize_to(n);
         this.capacity_ = n;
@@ -157,14 +157,14 @@ module sun {
     }
 
     // Append a single byte/character
-    function append_char(ch: u8) void {
+    public function append_char(ch: u8) void {
       this.ensure_capacity(1);
       this.data.set_unchecked(this.len, ch);
       this.len = this.len + 1;
     }
 
     // Append another string
-    function append(other: ref String) void {
+    public function append(other: ref String) void {
       var otherLen: i64 = other.length();
       this.ensure_capacity(otherLen);
       for (var i: i64 = 0; i < otherLen; i = i + 1) {
@@ -180,32 +180,32 @@ module sun {
     // ========================================================================
 
     // Append string literal (overload for interpolation)
-    function append(literal: static_ptr<u8>) void {
+    public function append(literal: static_ptr<u8>) void {
       this.append_literal(literal);
     }
 
     // Append signed 64-bit integer (overload for interpolation)
-    function append(val: i64) void {
+    public function append(val: i64) void {
       this.append_i64(val);
     }
 
     // Append signed 32-bit integer (overload for interpolation)
-    function append(val: i32) void {
+    public function append(val: i32) void {
       this.append_i64(val);
     }
 
     // Append unsigned 64-bit integer (overload for interpolation)  
-    function append(val: u64) void {
+    public function append(val: u64) void {
       this.append_u64(val);
     }
 
     // Append unsigned 32-bit integer (overload for interpolation)
-    function append(val: u32) void {
+    public function append(val: u32) void {
       this.append_u64(val);
     }
 
     // Append boolean (overload for interpolation)
-    function append(val: bool) void {
+    public function append(val: bool) void {
       this.append_bool(val);
     }
 
@@ -213,7 +213,7 @@ module sun {
     // TODO: Add append(val: f64) and append(val: f32) once intrinsic is available
 
     // Append string literal
-    function append_literal(literal: static_ptr<u8>) void {
+    public function append_literal(literal: static_ptr<u8>) void {
       var srcData: raw_ptr<u8> = _static_ptr_data<u8>(literal);
       var srcLen: i64 = _static_ptr_len<u8>(literal);
 
@@ -226,7 +226,7 @@ module sun {
     }
 
     // Check if string equals a literal
-    function equals_literal(literal: static_ptr<u8>) bool {
+    public function equals_literal(literal: static_ptr<u8>) bool {
       var srcData: raw_ptr<u8> = _static_ptr_data<u8>(literal);
       var srcLen: i64 = _static_ptr_len<u8>(literal);
 
@@ -249,12 +249,12 @@ module sun {
     // ========================================================================
 
     // Clear string (reset length to 0, keep capacity)
-    function clear() void {
+    public function clear() void {
       this.len = 0;
     }
 
     // Remove and return last byte
-    function pop() u8, IError {
+    public function pop() u8, IError {
       if (this.len == 0) {
         throw EmptyError();
       }
@@ -263,14 +263,14 @@ module sun {
     }
 
     // Truncate to given length (does nothing if new_len >= len)
-    function truncate(new_len: i64) void {
+    public function truncate(new_len: i64) void {
       if (new_len < this.len) {
         this.len = new_len;
       }
     }
 
     // Remove byte at index, shifting remaining bytes left
-    function remove(index: i64) u8, IError {
+    public function remove(index: i64) u8, IError {
       if (index < 0) {
         throw IndexOutOfBoundsError(index);
       }
@@ -288,7 +288,7 @@ module sun {
     }
 
     // Insert byte at index, shifting remaining bytes right
-    function insert_char(index: i64, ch: u8) void, IError {
+    public function insert_char(index: i64, ch: u8) void, IError {
       if (index < 0) {
         throw IndexOutOfBoundsError(index);
       }
@@ -310,7 +310,7 @@ module sun {
     // ========================================================================
 
     // Find first occurrence of byte; None if not found
-    function find_char(ch: u8) Option<i64> {
+    public function find_char(ch: u8) Option<i64> {
       for (var i: i64 = 0; i < this.len; i = i + 1) {
         if (this.data.get_unchecked(i) == ch) {
           return Option.Some(i);
@@ -320,7 +320,7 @@ module sun {
     }
 
     // Find last occurrence of byte; None if not found
-    function rfind_char(ch: u8) Option<i64> {
+    public function rfind_char(ch: u8) Option<i64> {
       var i: i64 = this.len - 1;
       while (i >= 0) {
         if (this.data.get_unchecked(i) == ch) {
@@ -332,7 +332,7 @@ module sun {
     }
 
     // Check if string contains byte
-    function contains_char(ch: u8) bool {
+    public function contains_char(ch: u8) bool {
       return match this.find_char(ch) {
         Option.Some(i) => true,
         Option.None => false
@@ -340,7 +340,7 @@ module sun {
     }
 
     // Check if string starts with literal
-    function starts_with(literal: static_ptr<u8>) bool {
+    public function starts_with(literal: static_ptr<u8>) bool {
       var srcData: raw_ptr<u8> = _static_ptr_data<u8>(literal);
       var srcLen: i64 = _static_ptr_len<u8>(literal);
 
@@ -359,7 +359,7 @@ module sun {
     }
 
     // Check if string ends with literal
-    function ends_with(literal: static_ptr<u8>) bool {
+    public function ends_with(literal: static_ptr<u8>) bool {
       var srcData: raw_ptr<u8> = _static_ptr_data<u8>(literal);
       var srcLen: i64 = _static_ptr_len<u8>(literal);
 
@@ -379,7 +379,7 @@ module sun {
     }
 
     // Compare with another string: -1 if less, 0 if equal, 1 if greater
-    function compare(other: ref String) i64 {
+    public function compare(other: ref String) i64 {
       var min_len: i64 = this.len;
       if (other.len < min_len) {
         min_len = other.len;
@@ -406,7 +406,7 @@ module sun {
     }
 
     // Check if equal to another string
-    function equals(other: ref String) bool {
+    public function equals(other: ref String) bool {
       return this.compare(other) == 0;
     }
 
@@ -415,7 +415,7 @@ module sun {
     // ========================================================================
 
     // Reverse string in-place
-    function reverse() void {
+    public function reverse() void {
       if (this.len <= 1) {
         return;
       }
@@ -475,7 +475,7 @@ module sun {
     }
 
     // Append an unsigned integer in decimal
-    function append_u64(val: i64) void {
+    public function append_u64(val: i64) void {
       if (val == 0) {
         this.append_char(48);  // '0'
         return;
@@ -505,7 +505,7 @@ module sun {
     }
 
     // Append a signed integer in decimal
-    function append_i64(val: i64) void {
+    public function append_i64(val: i64) void {
       if (val >= 0) {
         this.append_u64(val);
         return;
@@ -520,7 +520,7 @@ module sun {
     }
 
     // Append an integer in hexadecimal (lowercase)
-    function append_hex(val: i64) void {
+    public function append_hex(val: i64) void {
       if (val == 0) {
         this.append_char(48);  // '0'
         return;
@@ -551,7 +551,7 @@ module sun {
     }
 
     // Append a boolean as "true" or "false"
-    function append_bool(val: bool) void {
+    public function append_bool(val: bool) void {
       if (val) {
         this.append_literal("true");
         return;
@@ -568,7 +568,7 @@ module sun {
 
     // Slicing via __slice__ method: s[a:b] -> StringView
     // Returns a non-owning view into the string data
-    function __slice__(ranges: ref array<SliceRange>) StringView {
+    public function __slice__(ranges: ref array<SliceRange>) StringView {
       // For strings, we only support 1D slicing
       var range: SliceRange = ranges[0];
       var start: i64 = range.getStart();

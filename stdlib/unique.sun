@@ -5,26 +5,26 @@
 //        var ptr = allocator.create<Point>(3, 4);
 //        var p = Unique<Point>(ptr);
 
-module sun {
-  class Unique<T> {
+public module sun {
+  public class Unique<T> {
     var data: raw_ptr<T>;
 
-    function init(p: raw_ptr<T>) {
+    public function init(p: raw_ptr<T>) {
       this.data = p;
     }
 
     // Safe dereference - returns a reference to the underlying value
     // Caller should check is_null() first if pointer validity is uncertain
-    function get() ref T {
+    public function get() ref T {
       return unsafe { _to_ref<T>(this.data); };
     }
 
     // Get the raw pointer (for low-level operations like _free or null checks)
-    function get_raw() raw_ptr<T> {
+    public function get_raw() raw_ptr<T> {
       return this.data;
     }
 
-    function is_null() bool {
+    public function is_null() bool {
       return this.data == null;
     }
 
@@ -42,5 +42,5 @@ module sun {
   // ============================================================================
 
   // Unique specializations for common types
-  declare Unique_i8 = Unique<i8>;
+  public declare Unique_i8 = Unique<i8>;
 }  // module sun

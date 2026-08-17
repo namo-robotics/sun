@@ -69,7 +69,7 @@ class EnumDefinitionAST : public ExprAST {
 
   ASTNodeType getType() const override { return ASTNodeType::ENUM_DEFINITION; }
   std::string toString() const override {
-    std::string result = "enum " + name + " { ";
+    std::string result = std::string(isPublic() ? "public " : "") + "enum " + name + " { ";
     for (size_t i = 0; i < variants.size(); ++i) {
       if (i > 0) result += ", ";
       result += variants[i].name;

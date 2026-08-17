@@ -39,6 +39,13 @@ tests/            # GoogleTest suites (test_*.cpp) + programs/
 - **Pointers**: `raw_ptr<T>` (bare pointer), `static_ptr<T>` (`{ ptr, i64 }` for literals).
 - **Error unions**: functions declared with `, IError` suffix; implemented with native LLVM exceptions (a throwing function returns plain `T` and may unwind).
 
+## Visibility
+
+- Private by default; `public` is the only modifier (there is no `private` keyword). Applies to module-level items (functions, classes, interfaces, enums, globals, extern/declare, nested modules) and class/interface members.
+- Privacy is **module-scoped**: a private item is reachable from its declaring module and that module's children. Root-level (module-less) items are reachable everywhere. `deinit` is always callable; `init` follows the normal rules.
+- Enforced in semantic analysis: module items inside the scope lookups (`AccessFilter`, `semantic_scope.h`), members via `accessibleField/accessibleMethod`; one predicate `sun::access::isAccessible` (`include/visibility.h`, `include/access_checker.h`). Generic instantiation pushes the generic's owner module with `AccessContextGuard`.
+- `.moon` bundles carry private items (generic bodies need them) but hide them from importers; every top-level module of a bundle must be `public`.
+
 ## Ownership: No Implicit Copies
 
 **Sun NEVER implicitly copies a compound value (class, payload enum, interface).** Every by-value transfer is a move:

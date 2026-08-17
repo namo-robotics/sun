@@ -13,6 +13,7 @@ endif()
 
 # Create test executable
 add_executable(sun_tests
+    test_access_modifiers.cpp
     test_allocator.cpp
     test_arithmetic.cpp
     test_arrays.cpp

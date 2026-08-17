@@ -42,7 +42,7 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
           if (!lookupGenericEnum(enumDef.getName())) {
             registerGenericEnum(
                 enumDef.getName(),
-                {&enumDef, enumDef.getTypeParameters()});
+                {&enumDef, enumDef.getTypeParameters(), makeAccess(enumDef)});
           }
           break;
         }
@@ -53,6 +53,7 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
         for (const auto& variant : enumDef.getVariants()) {
           enumType->addVariant(variant.name, variant.value);
         }
+        enumType->access = makeAccess(enumDef);
         registerEnum(enumDef.getName(), enumType);
         break;
       }
@@ -65,6 +66,7 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
             GenericInterfaceInfo info;
             info.AST = &interfaceDef;
             info.typeParameters = interfaceDef.getTypeParameters();
+            info.access = makeAccess(interfaceDef);
             registerGenericInterface(interfaceDef.getName(), info);
           }
         } else {
@@ -78,6 +80,7 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
           if (interfaceName != interfaceDef.getName()) {
             interfaceType->setBaseName(interfaceDef.getName());
           }
+          interfaceType->access = makeAccess(interfaceDef);
           registerInterface(interfaceDef.getName(), interfaceType);
         }
         break;
@@ -97,11 +100,13 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
           genericInfo.typeParameters = classDef.getTypeParameters();
           genericInfo.definitionScope = currentScope->shared_from_this();
           genericInfo.qualifiedName = qualifiedClass;
+          genericInfo.access = makeAccess(classDef);
           registerGenericClass(classDef.getName(), genericInfo);
         }
         if (!classDef.isGeneric()) {
           auto classType = typeRegistry->getClass(qualifiedClass);
           classType->setPacked(classDef.isPacked());
+          classType->access = makeAccess(classDef);
           registerClass(classDef.getName(), classType);
         }
         break;
@@ -115,7 +120,7 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
       }
       case ASTNodeType::MODULE: {
         auto& nsDecl = static_cast<ModuleAST&>(*expr);
-        enterModuleScope(nsDecl.getName());
+        declareModule(nsDecl);
         collectDeclarations(const_cast<BlockExprAST&>(nsDecl.getBody()));
         exitScope();
         break;
@@ -163,52 +168,9 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
     if (expr->isPrecompiled()) continue;
 
     switch (expr->getType()) {
-      case ASTNodeType::FUNCTION: {
-        auto& func = static_cast<FunctionAST&>(*expr);
-        PrototypeAST& proto = const_cast<PrototypeAST&>(func.getProto());
-
-        // Skip lambdas and anonymous functions
-        if (proto.getName().empty()) break;
-
-        // Register generic functions
-        if (proto.isGeneric()) {
-          registerGenericFunctionInCurrentScope(func);
-          break;
-        }
-
-        // Resolve parameter types
-        std::vector<sun::TypePtr> paramTypes;
-        for (auto& [argName, argType] : proto.getMutableArgs()) {
-          sun::TypePtr paramType = typeAnnotationToType(argType);
-          paramTypes.push_back(paramType);
-        }
-
-        // Resolve return type
-        sun::TypePtr returnType = sun::Types::Void();
-        if (proto.hasReturnType()) {
-          returnType = typeAnnotationToType(*proto.getReturnType());
-        }
-
-        // Compute qualified name. C externs bind to a fixed symbol: no
-        // module scope, no overload suffix (see getFunctionInfo).
-        sun::QualifiedName qualifiedName =
-            func.isCExtern() ? sun::QualifiedName({}, proto.getName())
-                            : makeQualifiedName(proto.getName());
-        if (!func.isCExtern()) qualifiedName.setParamSuffix(paramTypes);
-
-        // Build minimal FunctionInfo (no captures — those require body
-        // analysis)
-        FunctionInfo info;
-        info.returnType = returnType;
-        info.paramTypes = std::move(paramTypes);
-        info.qualifiedName = qualifiedName;
-        info.canThrow = proto.canThrow();
-        info.isCVariadic = proto.isCVariadic();
-        info.isCExtern = func.isCExtern();
-
-        registernFunctionInCurrentScope(qualifiedName.baseName, info);
+      case ASTNodeType::FUNCTION:
+        collectFunctionSignature(static_cast<FunctionAST&>(*expr));
         break;
-      }
       case ASTNodeType::MODULE: {
         auto& nsDecl = static_cast<ModuleAST&>(*expr);
         enterModuleScope(nsDecl.getName());
@@ -218,36 +180,8 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
         // Collect function declarations inside the module
         for (const auto& bodyExpr :
              const_cast<BlockExprAST&>(nsDecl.getBody()).getBody()) {
-          if (bodyExpr->getType() == ASTNodeType::FUNCTION) {
-            auto& func = static_cast<FunctionAST&>(*bodyExpr);
-            PrototypeAST& proto = const_cast<PrototypeAST&>(func.getProto());
-            if (proto.getName().empty()) continue;
-            if (proto.isGeneric()) {
-              registerGenericFunctionInCurrentScope(func);
-              continue;
-            }
-            std::vector<sun::TypePtr> paramTypes;
-            for (auto& [argName, argType] : proto.getMutableArgs()) {
-              sun::TypePtr paramType = typeAnnotationToType(argType);
-              paramTypes.push_back(paramType);
-            }
-            sun::TypePtr returnType = sun::Types::Void();
-            if (proto.hasReturnType()) {
-              returnType = typeAnnotationToType(*proto.getReturnType());
-            }
-            sun::QualifiedName qualifiedName =
-                func.isCExtern() ? sun::QualifiedName({}, proto.getName())
-                                : makeQualifiedName(proto.getName());
-            if (!func.isCExtern()) qualifiedName.setParamSuffix(paramTypes);
-            FunctionInfo info;
-            info.returnType = returnType;
-            info.paramTypes = std::move(paramTypes);
-            info.qualifiedName = qualifiedName;
-            info.canThrow = proto.canThrow();
-            info.isCVariadic = proto.isCVariadic();
-            info.isCExtern = func.isCExtern();
-            registernFunctionInCurrentScope(qualifiedName.baseName, info);
-          }
+          if (bodyExpr->getType() == ASTNodeType::FUNCTION)
+            collectFunctionSignature(static_cast<FunctionAST&>(*bodyExpr));
         }
         exitScope();
         break;
@@ -270,38 +204,9 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
             // Collect function declarations inside the module
             for (const auto& moduleExpr :
                  const_cast<BlockExprAST&>(nsDecl.getBody()).getBody()) {
-              if (moduleExpr->getType() == ASTNodeType::FUNCTION) {
-                auto& func = static_cast<FunctionAST&>(*moduleExpr);
-                PrototypeAST& proto =
-                    const_cast<PrototypeAST&>(func.getProto());
-                if (proto.getName().empty()) continue;
-                if (proto.isGeneric()) {
-                  registerGenericFunctionInCurrentScope(func);
-                  continue;
-                }
-                std::vector<sun::TypePtr> paramTypes;
-                for (auto& [argName, argType] : proto.getMutableArgs()) {
-                  sun::TypePtr paramType = typeAnnotationToType(argType);
-                  paramTypes.push_back(paramType);
-                }
-                sun::TypePtr returnType = sun::Types::Void();
-                if (proto.hasReturnType()) {
-                  returnType = typeAnnotationToType(*proto.getReturnType());
-                }
-                sun::QualifiedName qualifiedName =
-                    func.isCExtern() ? sun::QualifiedName({}, proto.getName())
-                                    : makeQualifiedName(proto.getName());
-                if (!func.isCExtern())
-                  qualifiedName.setParamSuffix(paramTypes);
-                FunctionInfo info;
-                info.returnType = returnType;
-                info.paramTypes = std::move(paramTypes);
-                info.qualifiedName = qualifiedName;
-                info.canThrow = proto.canThrow();
-                info.isCVariadic = proto.isCVariadic();
-            info.isCExtern = func.isCExtern();
-                registernFunctionInCurrentScope(qualifiedName.baseName, info);
-              }
+              if (moduleExpr->getType() == ASTNodeType::FUNCTION)
+                collectFunctionSignature(
+                    static_cast<FunctionAST&>(*moduleExpr));
             }
             exitScope();
           }
@@ -315,4 +220,46 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
         break;
     }
   }
+}
+
+// Register a named, non-lambda function's signature (no body analysis) in
+// the current scope. Generic functions register as templates.
+void SemanticAnalyzer::collectFunctionSignature(FunctionAST& func) {
+  PrototypeAST& proto = const_cast<PrototypeAST&>(func.getProto());
+
+  // Skip lambdas and anonymous functions
+  if (proto.getName().empty()) return;
+
+  if (proto.isGeneric()) {
+    registerGenericFunctionInCurrentScope(func);
+    return;
+  }
+
+  std::vector<sun::TypePtr> paramTypes;
+  for (auto& [argName, argType] : proto.getMutableArgs()) {
+    paramTypes.push_back(typeAnnotationToType(argType));
+  }
+  sun::TypePtr returnType = sun::Types::Void();
+  if (proto.hasReturnType()) {
+    returnType = typeAnnotationToType(*proto.getReturnType());
+  }
+
+  // C externs bind to a fixed symbol: no module scope, no overload suffix
+  // (see getFunctionInfo).
+  sun::QualifiedName qualifiedName =
+      func.isCExtern() ? sun::QualifiedName({}, proto.getName())
+                       : makeQualifiedName(proto.getName());
+  if (!func.isCExtern()) qualifiedName.setParamSuffix(paramTypes);
+
+  // Minimal FunctionInfo (no captures — those require body analysis)
+  FunctionInfo info;
+  info.returnType = returnType;
+  info.paramTypes = std::move(paramTypes);
+  info.qualifiedName = qualifiedName;
+  info.canThrow = proto.canThrow();
+  info.isCVariadic = proto.isCVariadic();
+  info.isCExtern = func.isCExtern();
+  info.access = makeAccess(func);
+
+  registernFunctionInCurrentScope(qualifiedName.baseName, info);
 }

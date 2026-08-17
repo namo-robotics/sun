@@ -21,8 +21,8 @@
 
 TEST(ModuleTest, parse_module_declaration) {
   auto parser = Parser::createStringParser(R"(
-    module math {
-      function square(x: i32) i32 {
+    public module math {
+      public function square(x: i32) i32 {
         return x * x;
       }
     }
@@ -41,8 +41,8 @@ TEST(ModuleTest, module_with_using_all) {
   //       using math;
   //       function main() i32 { return square(5); }
   auto value = executeString(R"(
-    module math {
-      function square(x: i32) i32 {
+    public module math {
+      public function square(x: i32) i32 {
         return x * x;
       }
     }
@@ -57,11 +57,11 @@ TEST(ModuleTest, module_with_using_all) {
 TEST(ModuleTest, module_with_using_specific) {
   // Test: using math.square; to import only one symbol
   auto value = executeString(R"(
-    module math {
-      function square(x: i32) i32 {
+    public module math {
+      public function square(x: i32) i32 {
         return x * x;
       }
-      function cube(x: i32) i32 {
+      public function cube(x: i32) i32 {
         return x * x * x;
       }
     }
@@ -120,13 +120,13 @@ TEST(ModuleTest, parse_using_nested_module) {
 TEST(ModuleTest, module_with_class_method) {
   // Test module with class and method call
   auto value = executeString(R"(
-    module mymod {
-      class ClassA {
-        var value: i32;
-        function init(v: i32) {
+    public module mymod {
+      public class ClassA {
+        public var value: i32;
+        public function init(v: i32) {
           this.value = v;
         }
-        function foo() i32 {
+        public function foo() i32 {
           return this.value * 2;
         }
       }
@@ -144,27 +144,27 @@ TEST(ModuleTest, nested_modules_nested_classes_method_chain) {
   // Test: mod_x.mod_y.ClassA.ClassB.foo()
   // Nested modules with nested classes and method call chain
   auto value = executeString(R"(
-    module mod_x {
-      module mod_y {
+    public module mod_x {
+      public module mod_y {
     
-        class ClassB {
-          var val: i32;
-          function init(v: i32) {
+        public class ClassB {
+          public var val: i32;
+          public function init(v: i32) {
             this.val = v;
           }
-          function foo() i32 {
+          public function foo() i32 {
             return this.val;
           }
         }
 
-        class ClassA {
-          var b: ClassB;
-          function init() {
+        public class ClassA {
+          public var b: ClassB;
+          public function init() {
             this.b = ClassB(42);
           }
         }
 
-        var a = ClassA();
+        public var a = ClassA();
       }
     }
 
@@ -178,11 +178,11 @@ TEST(ModuleTest, nested_modules_nested_classes_method_chain) {
 TEST(ModuleTest, same_module_in_multiple_files_merges) {
   // Two declarations of the same module merge their functions
   auto value = executeString(R"(
-    module mymod {
-      function foo() i32 { return 1; }
+    public module mymod {
+      public function foo() i32 { return 1; }
     }
-    module mymod {
-      function bar() i32 { return 2; }
+    public module mymod {
+      public function bar() i32 { return 2; }
     }
 
     function main() i32 {
@@ -195,14 +195,14 @@ TEST(ModuleTest, same_module_in_multiple_files_merges) {
 TEST(ModuleTest, nested_module_qualified_function_call) {
   // Call functions in nested modules using qualified names without using
   auto value = executeString(R"(
-    module A {
-      module B {
-        function foo() i32 { return 2; }
+    public module A {
+      public module B {
+        public function foo() i32 { return 2; }
       }
     }
-    module B {
-      module A {
-        function foo() i32 { return 1; }
+    public module B {
+      public module A {
+        public function foo() i32 { return 1; }
       }
     }
 
@@ -216,10 +216,10 @@ TEST(ModuleTest, nested_module_qualified_function_call) {
 TEST(ModuleTest, submod_fn_calls_mod_fn) {
   // Submodule function can call parent module function
   auto value = executeString(R"(
-    module A {
-      function foo() i32 { return 1; }
-      module B {
-        function bar() i32 { return 1; }
+    public module A {
+      public function foo() i32 { return 1; }
+      public module B {
+        public function bar() i32 { return 1; }
       }
     }
 
@@ -234,13 +234,13 @@ TEST(ModuleTest, submod_duplicates_fn) {
   // When two modules define the same symbol and both are wildcard imported,
   // using the unqualified name is ambiguous and errors
   EXPECT_THROW(executeString(R"(
-    module A {
-      function foo() i32 {
+    public module A {
+      public function foo() i32 {
         return 1;
       }
     }
-    module B {
-      function foo() i32 {
+    public module B {
+      public function foo() i32 {
         return 2;
       }
     }
@@ -256,12 +256,12 @@ TEST(ModuleTest, submod_duplicates_fn) {
 TEST(ModuleTest, using_nest_module) {
   // "using A.B;" where B is a nested module should import all from A.B
   auto value = executeString(R"(
-    module A {
-      function foo() i32 {
+    public module A {
+      public function foo() i32 {
         return 1;
       }
-      module B {
-        function bar() i32 {
+      public module B {
+        public function bar() i32 {
           return 2;
         }
       }
@@ -278,12 +278,12 @@ TEST(ModuleTest, nested_module_ambiguity) {
   // When parent and nested module both define foo(), using both causes
   // ambiguity
   EXPECT_THROW(executeString(R"(
-    module A {
-      function foo() i32 {
+    public module A {
+      public function foo() i32 {
         return 1;
       }
-      module B {
-        function foo() i32 {
+      public module B {
+        public function foo() i32 {
           return 2;
         }
       }
@@ -300,14 +300,14 @@ TEST(ModuleTest, nested_module_ambiguity) {
 TEST(ModuleTest, extend_existing_module) {
   // Adding new functions to an existing module (declared earlier) works
   auto value = executeString(R"(
-    module sun {
-      function foo() i32 {
+    public module sun {
+      public function foo() i32 {
         return 1;
       }
     }
     
-    module sun {
-      function bar() i32 {
+    public module sun {
+      public function bar() i32 {
         return 2;
       }
     }
@@ -401,8 +401,8 @@ TEST(ModuleTest, local_shadowing_allowed) {
 TEST(ModuleTest, using_is_lexically_scoped) {
   // A 'using' inside a function should not leak to a sibling function
   auto value = executeString(R"(
-    module math {
-      function square(x: i32) i32 { return x * x; }
+    public module math {
+      public function square(x: i32) i32 { return x * x; }
     }
     function helper() i32 {
       using math;
@@ -418,8 +418,8 @@ TEST(ModuleTest, using_is_lexically_scoped) {
 TEST(ModuleTest, using_causes_ambiguity) {
   // A 'using' inside a function should not leak to a sibling function
   EXPECT_THROW(executeString(R"(
-    module math {
-      function foo() i32 { return 1; }
+    public module math {
+      public function foo() i32 { return 1; }
     }
 
     function foo() i32 {
@@ -443,8 +443,8 @@ TEST(ModuleTest, module_imports_global_function) {
       return 123;
     }
 
-    module A {
-      function bar() i32 {
+    public module A {
+      public function bar() i32 {
         return foo();
       }
     }
@@ -458,8 +458,8 @@ TEST(ModuleTest, module_imports_global_function) {
 
 TEST(ModuleTest, transitive_call_to_imported_function_fails) {
   EXPECT_THROW(executeString(R"(
-    module A {
-      function bar() i32 {
+    public module A {
+      public function bar() i32 {
         return foo();
       }
     }
@@ -476,8 +476,8 @@ TEST(ModuleTest, transitive_call_to_imported_function_fails) {
 TEST(ModuleTest, parse_dotted_module_name) {
   // "module a.b { }" should parse as nested modules
   auto parser = Parser::createStringParser(R"(
-    module outer.inner {
-      function foo() i32 { return 42; }
+    public module outer.inner {
+      public function foo() i32 { return 42; }
     }
   )");
   auto ast = parser.parseProgram();
@@ -500,8 +500,8 @@ TEST(ModuleTest, parse_dotted_module_name) {
 TEST(ModuleTest, dotted_module_name_execution) {
   // "module a.b { function foo() }" should be callable as a.b.foo()
   auto value = executeString(R"(
-    module outer.inner {
-      function foo() i32 { return 42; }
+    public module outer.inner {
+      public function foo() i32 { return 42; }
     }
     function main() i32 {
       return outer.inner.foo();
@@ -513,8 +513,8 @@ TEST(ModuleTest, dotted_module_name_execution) {
 TEST(ModuleTest, dotted_module_name_three_levels) {
   // "module a.b.c { }" should create three nested modules
   auto value = executeString(R"(
-    module a.b.c {
-      function foo() i32 { return 123; }
+    public module a.b.c {
+      public function foo() i32 { return 123; }
     }
     function main() i32 {
       return a.b.c.foo();
@@ -526,8 +526,8 @@ TEST(ModuleTest, dotted_module_name_three_levels) {
 TEST(ModuleTest, dotted_module_name_with_using) {
   // Using statement should work with dotted module declaration
   auto value = executeString(R"(
-    module math.advanced {
-      function cube(x: i32) i32 { return x * x * x; }
+    public module math.advanced {
+      public function cube(x: i32) i32 { return x * x * x; }
     }
     using math.advanced;
     function main() i32 {
@@ -540,12 +540,12 @@ TEST(ModuleTest, dotted_module_name_with_using) {
 TEST(ModuleTest, dotted_module_merges_with_explicit_nesting) {
   // Dotted syntax and explicit nesting should merge into same module scope
   auto value = executeString(R"(
-    module sun.io {
-      function read() i32 { return 1; }
+    public module sun.io {
+      public function read() i32 { return 1; }
     }
-    module sun {
-      module io {
-        function write() i32 { return 2; }
+    public module sun {
+      public module io {
+        public function write() i32 { return 2; }
       }
     }
     function main() i32 {
@@ -558,13 +558,13 @@ TEST(ModuleTest, dotted_module_merges_with_explicit_nesting) {
 TEST(ModuleTest, dotted_module_with_class) {
   // Dotted module containing a class
   auto value = executeString(R"(
-    module game.entities {
-      class Player {
-        var health: i32;
-        function init(h: i32) {
+    public module game.entities {
+      public class Player {
+        public var health: i32;
+        public function init(h: i32) {
           this.health = h;
         }
-        function getHealth() i32 {
+        public function getHealth() i32 {
           return this.health;
         }
       }
@@ -586,8 +586,8 @@ TEST(ModuleTest, dotted_module_with_class) {
 
 TEST(ModuleTest, module_qualified_call) {
   auto value = executeString(R"(
-    module m {
-      function sq(x: i32) i32 { return x * x; }
+    public module m {
+      public function sq(x: i32) i32 { return x * x; }
     }
     function main() i32 {
       return m.sq(5);
@@ -600,10 +600,10 @@ TEST(ModuleTest, module_qualified_call_selects_overload) {
   // Resolution must use the call's argument types, not the first registered
   // overload.
   auto value = executeString(R"(
-    module m {
-      function pick(x: i32) i32 { return 1; }
-      function pick(x: f64) i32 { return 2; }
-      function pick(x: bool) i32 { return 4; }
+    public module m {
+      public function pick(x: i32) i32 { return 1; }
+      public function pick(x: f64) i32 { return 2; }
+      public function pick(x: bool) i32 { return 4; }
     }
     function main() i32 {
       return m.pick(1) + m.pick(1.0) + m.pick(true);
@@ -614,9 +614,9 @@ TEST(ModuleTest, module_qualified_call_selects_overload) {
 
 TEST(ModuleTest, nested_module_qualified_call) {
   auto value = executeString(R"(
-    module a {
-      module b {
-        function f(x: i32) i32 { return x + 1; }
+    public module a {
+      public module b {
+        public function f(x: i32) i32 { return x + 1; }
       }
     }
     function main() i32 {
@@ -628,8 +628,8 @@ TEST(ModuleTest, nested_module_qualified_call) {
 
 TEST(ModuleTest, module_qualified_call_to_extern) {
   auto value = executeString(R"(
-    module libc {
-      extern function abs(x: i32) i32;
+    public module libc {
+      public extern function abs(x: i32) i32;
     }
     function main() i32 {
       unsafe { return libc.abs(-13); };
@@ -640,8 +640,8 @@ TEST(ModuleTest, module_qualified_call_to_extern) {
 
 TEST(ModuleTest, module_qualified_call_with_void_return) {
   auto value = executeString(R"(
-    module m {
-      function noop(x: i32) void { }
+    public module m {
+      public function noop(x: i32) void { }
     }
     function main() i32 {
       m.noop(1);
@@ -653,8 +653,8 @@ TEST(ModuleTest, module_qualified_call_with_void_return) {
 
 TEST(ModuleTest, module_qualified_call_unknown_overload_errors) {
   EXPECT_THROW(executeString(R"(
-    module m {
-      function only_i32(x: i32) i32 { return x; }
+    public module m {
+      public function only_i32(x: i32) i32 { return x; }
     }
     function main() i32 {
       return m.only_i32(true, 2);
@@ -681,8 +681,8 @@ TEST(ModuleTest, module_qualified_call_coerces_arguments) {
   // skipping every coercion the direct-call path applies — so a string
   // literal reached a raw_ptr<u8> parameter as a fat { ptr, i64 } struct.
   auto value = executeString(R"(
-    module m {
-      function len4(s: raw_ptr<u8>) i32 { return 4; }
+    public module m {
+      public function len4(s: raw_ptr<u8>) i32 { return 4; }
     }
     function main() i32 {
       return m.len4("abcd");
@@ -693,8 +693,8 @@ TEST(ModuleTest, module_qualified_call_coerces_arguments) {
 
 TEST(ModuleTest, module_qualified_call_widens_numeric_arguments) {
   auto value = executeString(R"(
-    module m {
-      function take(x: i64) i64 { return x; }
+    public module m {
+      public function take(x: i64) i64 { return x; }
     }
     function main() i32 {
       var small: i32 = 7;

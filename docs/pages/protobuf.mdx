@@ -69,7 +69,7 @@ For each `.proto` file, one Sun module named after the proto `package`
 
 | Proto | Sun |
 |---|---|
-| `message M { ... }` | `class M` with a public field per proto field |
+| `message M { ... }` | `class M` with a `public` field per proto field (the generated module, classes, enums, `init`, `encode*`/`decode*` functions are all `public`) |
 | `enum E { A = 0; ... }` | `enum E { A, ... }` plus `proto_enum_to_i32_E` / `proto_enum_from_i32_E` |
 | `int32 / sint32 / sfixed32` | `i32` |
 | `int64 / sint64 / sfixed64` | `i64` |

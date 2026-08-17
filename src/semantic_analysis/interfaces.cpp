@@ -107,7 +107,8 @@ SemanticAnalyzer::instantiateGenericInterface(
       // Add fields with substituted types
       for (const auto& field : builtinInterface->getFields()) {
         auto fieldType = substituteTypeParameters(field.type);
-        specializedInterface->addField(field.name, fieldType);
+        specializedInterface->addField(field.name, fieldType).access =
+            field.access;
       }
 
       // Add methods with substituted types
@@ -117,9 +118,10 @@ SemanticAnalyzer::instantiateGenericInterface(
         for (const auto& pt : method.paramTypes) {
           paramTypes.push_back(substituteTypeParameters(pt));
         }
-        specializedInterface->addMethod(method.name, returnType, paramTypes,
-                                        method.hasDefaultImpl,
-                                        method.typeParameters);
+        specializedInterface
+            ->addMethod(method.name, returnType, paramTypes,
+                        method.hasDefaultImpl, method.typeParameters)
+            .access = method.access;
       }
 
       // Pop the scope
@@ -146,7 +148,10 @@ SemanticAnalyzer::instantiateGenericInterface(
   // Create the specialized interface type
   auto specializedInterface =
       typeRegistry->getSpecializedInterface(baseName, typeArgs);
+  specializedInterface->access = genericInfo->access;
 
+  // Member annotations resolve in the interface's own module context
+  AccessContextGuard accessGuard(*this, genericInfo->access.owner);
   // Push a scope for type parameter bindings
   enterTypeParamScope(genericInfo->typeParameters, typeArgs);
 
@@ -154,7 +159,8 @@ SemanticAnalyzer::instantiateGenericInterface(
   for (const auto& field : genericInfo->AST->getFields()) {
     auto fieldType = typeAnnotationToType(field.type);
     fieldType = substituteTypeParameters(fieldType);
-    specializedInterface->addField(field.name, fieldType);
+    specializedInterface->addField(field.name, fieldType).access =
+        memberAccess(specializedInterface->access, field.visibility);
   }
 
   // Add methods with substituted types
@@ -180,9 +186,11 @@ SemanticAnalyzer::instantiateGenericInterface(
 
     // Add method to interface type (preserve method-level generic type
     // parameters)
-    specializedInterface->addMethod(proto.getName(), returnType, paramTypes,
-                                    methodDecl.hasDefaultImpl,
-                                    proto.getTypeParameters());
+    specializedInterface
+        ->addMethod(proto.getName(), returnType, paramTypes,
+                    methodDecl.hasDefaultImpl, proto.getTypeParameters())
+        .access = memberAccess(specializedInterface->access,
+                               methodVisibility(*methodDecl.function));
   }
 
   // Pop the scope
@@ -261,8 +269,9 @@ void SemanticAnalyzer::inheritInterfaceFields(
         }
         continue;
       }
-      // Add interface field to class
-      classType->addField(field.name, field.type);
+      // Add interface field to class; it keeps the interface's visibility
+      // and owner
+      classType->addField(field.name, field.type).access = field.access;
     }
 
     // Record the implementation now (conformance is validated after the
@@ -316,6 +325,17 @@ void SemanticAnalyzer::validateInterfaceImplementation(
       }
 
       if (classMethodInfo) {
+        // A public interface member is reachable through the interface, so
+        // the implementing method must be public too
+        if (interfaceMethod.access.isPublic() &&
+            !classMethodInfo->access.isPublic()) {
+          logSemanticError("method '" + interfaceMethod.name + "' of class '" +
+                               classDef.getName() +
+                               "' implements public member '" +
+                               interfaceDisplayName + "." +
+                               interfaceMethod.name + "' and must be public",
+                           classDef.getLocation());
+        }
         // Verify return type matches
         if (classMethodInfo->returnType && interfaceMethod.returnType &&
             !classMethodInfo->returnType->equals(*interfaceMethod.returnType)) {
@@ -361,9 +381,11 @@ void SemanticAnalyzer::validateInterfaceImplementation(
         if (interfaceMethod.hasDefaultImpl) {
           // Add the default method to the class type so it can be found during
           // lookup (preserve generic type parameters)
-          classType->addMethod(interfaceMethod.name, interfaceMethod.returnType,
-                               interfaceMethod.paramTypes, false,
-                               interfaceMethod.typeParameters);
+          classType
+              ->addMethod(interfaceMethod.name, interfaceMethod.returnType,
+                          interfaceMethod.paramTypes, false,
+                          interfaceMethod.typeParameters)
+              .access = interfaceMethod.access;
 
           // Register the mangled method name as a function
           std::string mangledName =

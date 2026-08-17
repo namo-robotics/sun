@@ -139,8 +139,9 @@ void SemanticAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
   // resolved per instantiation with the type arguments bound
   if (enumDef.isGeneric()) {
     if (!lookupGenericEnum(enumDef.getName())) {
-      registerGenericEnum(enumDef.getName(),
-                          {&enumDef, enumDef.getTypeParameters()});
+      registerGenericEnum(
+          enumDef.getName(),
+          {&enumDef, enumDef.getTypeParameters(), makeAccess(enumDef)});
     }
     definedSymbols_.insert(enumDef.getName());
     enumDef.setResolvedType(sun::Types::Void());
@@ -149,6 +150,7 @@ void SemanticAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
 
   // Create the enum type
   auto enumType = typeRegistry->getEnum(enumDef.getName());
+  enumType->access = makeAccess(enumDef);
 
   // Add variants to the enum type (idempotent: declaration collection
   // already registered them)
@@ -249,7 +251,10 @@ std::shared_ptr<sun::EnumType> SemanticAnalyzer::instantiateGenericEnum(
   auto specialized = typeRegistry->getEnum(mangledName);
   specialized->setBaseName(baseName);
   specialized->setGenericOrigin(baseName, typeArgs);
+  specialized->access = genericInfo->access;
 
+  // Payload annotations resolve in the enum's own module context
+  AccessContextGuard accessGuard(*this, genericInfo->access.owner);
   enterTypeParamScope(genericInfo->typeParameters, typeArgs);
   for (const auto& variant : genericInfo->AST->getVariants()) {
     specialized->addVariant(variant.name, variant.value);
@@ -651,8 +656,9 @@ void SemanticAnalyzer::collectEnumDeclarations(const BlockExprAST& block) {
     auto& enumDef = static_cast<EnumDefinitionAST&>(*expr);
     if (enumDef.isGeneric()) {
       if (!lookupGenericEnum(enumDef.getName())) {
-        registerGenericEnum(enumDef.getName(),
-                            {&enumDef, enumDef.getTypeParameters()});
+        registerGenericEnum(
+            enumDef.getName(),
+            {&enumDef, enumDef.getTypeParameters(), makeAccess(enumDef)});
       }
       continue;
     }
@@ -661,6 +667,7 @@ void SemanticAnalyzer::collectEnumDeclarations(const BlockExprAST& block) {
     for (const auto& variant : enumDef.getVariants()) {
       enumType->addVariant(variant.name, variant.value);
     }
+    enumType->access = makeAccess(enumDef);
     registerEnum(enumDef.getName(), enumType);
   }
 }

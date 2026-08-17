@@ -35,7 +35,7 @@ TEST(MemorySafety, use_after_move_field_access) {
           var allocator = make_heap_allocator();
           var s = String(allocator, "Test");
           var s2 = s;
-          return s.len;  // ERROR: accessing field of moved variable
+          return s.length();  // ERROR: accessing member of moved variable
       }
     )"),
                                 "Borrow check failed");

@@ -57,6 +57,35 @@ re-analyzed copy of the method bodies) is recorded on the template's AST
 node. Codegen later walks those recorded specializations and emits each one
 as ordinary non-generic code.
 
+## Access Control
+
+Visibility (`include/visibility.h`) is a property of every declaration:
+`AccessInfo { visibility, owner }`, where `owner` is the module path that
+declared the item (the same segments as `QualifiedName::scopePath`). The
+single predicate is `isAccessibleFrom(from, item)`: public, or `from` is the
+owner module or one of its descendants. Contents of an imported `.moon` live
+under a `$hash$` scope segment, so importer code is never inside a bundle
+module and bundle-private items are hidden by the same rule.
+
+Enforcement lives in two places:
+
+- **Module-level items** are filtered inside the scope lookups
+  (`AccessFilter` in `semantic_scope.h`, used by `lookupInChain`,
+  `lookupFunction`, `resolveNameWithUsings`, `findSymbolInModule`, ...). The
+  analyzer implements `AccessContext`, which tells lookups which module is
+  asking and reports a denial ("`helper` is private to module `sun`") when
+  the only candidates were private. `AccessSuspendGuard` turns filtering off
+  for internal "already registered?" probes.
+- **Class / interface members** are resolved on the type
+  (`SemanticAnalyzer::accessibleField / accessibleMethod`), which check the
+  member's `AccessInfo` where `obj.member` is resolved.
+
+Generic bodies are instantiated away from their defining module, so
+`instantiateGenericClass`, `analyzeMethodWithBindings`, and friends push the
+generic's owner with `AccessContextGuard`; `deinit` is always public
+(`methodVisibility`). Wording of every diagnostic comes from
+`sun::access::denialMessage` (`access_checker.h`).
+
 ## Source Layout
 
 The analyzer's source is split by concern under `src/semantic_analysis/`:

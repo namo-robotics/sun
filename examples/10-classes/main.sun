@@ -3,16 +3,16 @@ using sun;
 // Classes are stack-allocated value types. They are passed by `ref` and
 // carry methods, including an `init` constructor.
 class Point {
-  var x: i32;
-  var y: i32;
+  public var x: i32;
+  public var y: i32;
 
-  function init(x_: i32, y_: i32) {
+  public function init(x_: i32, y_: i32) {
     this.x = x_;
     this.y = y_;
   }
 
   // Manhattan distance to another point. Class arguments are passed by ref.
-  function manhattan(other: ref Point) i32 {
+  public function manhattan(other: ref Point) i32 {
     var dx = this.x - other.x;
     if (dx < 0) {
       dx = -dx;

@@ -10,6 +10,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "access_checker.h"
 #include "semantic_scope.h"
 
 // Forward declarations
@@ -28,7 +29,7 @@ using QualifiedName = sun::QualifiedName;
  * 6. Handle class definitions and member access
  * 7. Handle generic class instantiation (monomorphization)
  */
-class SemanticAnalyzer {
+class SemanticAnalyzer : public AccessContext {
   // Type registry for class/interface types (shared with codegen)
   std::shared_ptr<sun::TypeRegistry> typeRegistry;
 
@@ -107,6 +108,7 @@ class SemanticAnalyzer {
  public:
   explicit SemanticAnalyzer(std::shared_ptr<sun::TypeRegistry> registry)
       : typeRegistry(std::move(registry)) {
+    rootScope->accessContext = this;  // lookups filter by visibility
     registerBuiltinFunctions();
   }
 
@@ -120,6 +122,11 @@ class SemanticAnalyzer {
   // and modules in a block before analyzing bodies. This allows forward
   // references between declarations at the same scope level.
   void collectDeclarations(BlockExprAST& block);
+  // Register one named function's signature in the current scope
+  void collectFunctionSignature(FunctionAST& func);
+  // Enter (creating or reusing) a module scope and record its visibility;
+  // re-openings must agree.
+  void declareModule(const ModuleAST& module);
 
   // Extract function signature info (param types, captures, explicit return
   // type) Sets captures on the prototype and handles auto-ref conversion for
@@ -256,7 +263,7 @@ class SemanticAnalyzer {
   const GenericFunctionInfo* lookupGenericFunction(
       const std::string& name) const;
   std::optional<SpecializedFunctionInfo> instantiateGenericFunction(
-      const FunctionAST* genericFunc,
+      const GenericFunctionInfo& genericInfo,
       const std::vector<sun::TypePtr>& typeArgs);
 
   // Generic method support
@@ -325,7 +332,7 @@ class SemanticAnalyzer {
   // Register namespaced symbols (used during namespace analysis)
   void registerModuleVariable(const std::string& baseName,
                               const std::string& qualifiedName,
-                              sun::TypePtr type);
+                              sun::TypePtr type, const sun::AccessInfo& access);
 
   // Lookup functions that handle using statements and namespace resolution
   VariableInfo* lookupQualifiedVariable(const std::string& qualifiedName);
@@ -605,4 +612,129 @@ class SemanticAnalyzer {
   // the enclosing function scope's recorded variadic param. No-op when there is
   // no enclosing variadic param or no pack argument is present.
   void expandPackArguments(std::vector<std::unique_ptr<ExprAST>>& args);
+
+  // ---- Access control (see include/visibility.h, access_checker.h) --------
+  //
+  // Module-level items are filtered inside the scope lookups (AccessFilter in
+  // semantic_scope.h) via the AccessContext this analyzer implements; class
+  // and interface members are checked where they are resolved on the type.
+  //
+  // The module context of the code being analyzed. Normally derived from the
+  // scope stack (nearest Module scope); generic instantiation analyzes bodies
+  // away from their defining module, so those paths push the owner
+  // explicitly with AccessContextGuard.
+  std::vector<sun::ModulePath> accessContextStack_;
+
+  // Locations of the expressions being analyzed (innermost last), so denials
+  // raised inside lookups can still point at source.
+  std::vector<const Position*> locationStack_;
+  int accessSuspendDepth_ = 0;
+
+ public:
+  struct LocationGuard {
+    SemanticAnalyzer& sema;
+    LocationGuard(SemanticAnalyzer& s, const Position& loc) : sema(s) {
+      sema.locationStack_.push_back(&loc);
+    }
+    ~LocationGuard() { sema.locationStack_.pop_back(); }
+    LocationGuard(const LocationGuard&) = delete;
+    LocationGuard& operator=(const LocationGuard&) = delete;
+  };
+  std::optional<Position> currentLocation() const {
+    if (locationStack_.empty()) return std::nullopt;
+    return *locationStack_.back();
+  }
+
+  // AccessContext
+  sun::ModulePath currentModulePath() const override;
+  [[noreturn]] void denyAccess(
+      const sun::access::ItemRef& item) const override;
+  bool accessChecksEnabled() const override {
+    return accessSuspendDepth_ == 0;
+  }
+  // Lookups inside the guard are unfiltered: for registration-time
+  // "already declared?" probes and other non-user-reference lookups.
+  struct AccessSuspendGuard {
+    SemanticAnalyzer& sema;
+    explicit AccessSuspendGuard(SemanticAnalyzer& s) : sema(s) {
+      ++sema.accessSuspendDepth_;
+    }
+    ~AccessSuspendGuard() { --sema.accessSuspendDepth_; }
+    AccessSuspendGuard(const AccessSuspendGuard&) = delete;
+    AccessSuspendGuard& operator=(const AccessSuspendGuard&) = delete;
+  };
+
+  struct AccessContextGuard {
+    SemanticAnalyzer& sema;
+    AccessContextGuard(SemanticAnalyzer& s, sun::ModulePath owner) : sema(s) {
+      sema.accessContextStack_.push_back(std::move(owner));
+    }
+    ~AccessContextGuard() { sema.accessContextStack_.pop_back(); }
+    AccessContextGuard(const AccessContextGuard&) = delete;
+    AccessContextGuard& operator=(const AccessContextGuard&) = delete;
+  };
+
+  // Access info for a declaration registered from the current context.
+  sun::AccessInfo makeAccess(const ExprAST& decl) const {
+    return {decl.getVisibility(), currentModulePath()};
+  }
+  // Access info for a member of a type: the member's declared visibility,
+  // owned by the type's module.
+  static sun::AccessInfo memberAccess(const sun::AccessInfo& typeAccess,
+                                      sun::Visibility v) {
+    return {v, typeAccess.owner};
+  }
+  // `deinit` is compiler-invoked and therefore always public.
+  static sun::Visibility methodVisibility(const FunctionAST& method);
+
+  void requireAccessible(const sun::access::ItemRef& item,
+                         const Position& loc) const {
+    sun::access::requireAccessible(currentModulePath(), item, loc);
+  }
+  void requireAccessible(const sun::access::ItemRef& item) const {
+    if (!isAccessible(item)) denyAccess(item);
+  }
+  bool isAccessible(const sun::access::ItemRef& item) const {
+    return sun::access::isAccessible(currentModulePath(), item);
+  }
+
+  // Member resolution with access checks: nullptr when the member does not
+  // exist; throws when it exists but is not accessible from here.
+  const sun::ClassField* accessibleField(const sun::ClassType& cls,
+                                         const std::string& name,
+                                         const Position& loc) const;
+  const sun::ClassMethod* accessibleMethod(const sun::ClassType& cls,
+                                           const std::string& name,
+                                           const Position& loc) const;
+  const sun::ClassMethod* accessibleMethodForArgs(
+      const sun::ClassType& cls, const std::string& name,
+      const std::vector<sun::TypePtr>& argTypes, const Position& loc) const;
+  const sun::InterfaceField* accessibleField(const sun::InterfaceType& iface,
+                                             const std::string& name,
+                                             const Position& loc) const;
+  const sun::InterfaceMethod* accessibleMethod(const sun::InterfaceType& iface,
+                                               const std::string& name,
+                                               const Position& loc) const;
+
+  // A module named by user code (`a.b`, `using a.b;`, `b.f()`): every
+  // module on its path must be visible from here.
+  void requireModuleAccessible(const SemanticScopeBase& moduleScope,
+                               const Position& loc) const;
+
+  // ItemRef builders (uniform diagnostics)
+  static sun::access::ItemRef fieldRef(const sun::ClassType& cls,
+                                       const sun::ClassField& f);
+  static sun::access::ItemRef methodRef(const sun::ClassType& cls,
+                                        const sun::ClassMethod& m);
+  static sun::access::ItemRef fieldRef(const sun::InterfaceType& iface,
+                                       const sun::InterfaceField& f);
+  static sun::access::ItemRef methodRef(const sun::InterfaceType& iface,
+                                        const sun::InterfaceMethod& m);
+  static sun::access::ItemRef symbolRef(const SymbolMatch& match);
+  static sun::access::ItemRef moduleRef(const std::string& name,
+                                        const ModuleScope& scope);
+  static sun::access::ItemRef typeRef(const char* kind, const std::string& name,
+                                      const sun::AccessInfo& access) {
+    return {kind, name, "", access};
+  }
 };

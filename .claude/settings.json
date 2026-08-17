@@ -42,12 +42,20 @@
       "Bash(cp * tmp/*)",
       "WebFetch",
       "Read(//usr/bin/**)",
-      "Bash(gdb *)"
+      "Bash(gdb *)",
+      "Bash(sed -n 778,800p src/semantic_analysis/type_inference.cpp; grep -n \"isModuleName\" src/semantic_analysis/*.cpp | head; sed -n '/^void SemanticAnalyzer::registerUsing/,/^}/p' src/semantic_analysis/*.cpp | head -80)",
+      "Bash(awk -F'public function ' '{print $1 $2}')",
+      "Bash(awk '{print $1, $NF}')",
+      "Bash(awk '{a[$1]=a[$1]\" \"$2} END{for\\(k in a\\) print k\":\"a[k]}')",
+      "Bash(./build/tests/sun_tests --gtest_filter=\"ProtoImportTest.optional_fields_track_presence:MemorySafety.use_after_move_field_access:HttpTest.status_reason_phrases\")",
+      "Bash(./build/tests/sun_tests --gtest_filter=\"ProtoImportTest.*:HttpTest.*:MemorySafety.*\")",
+      "Bash(ctest -j8)"
     ],
     "additionalDirectories": [
       "/tmp",
       "/workspaces/sun/build/tmp",
-      "/workspaces/sun/tmp"
+      "/workspaces/sun/tmp",
+      "/workspaces/sun/src/semantic_analysis"
     ]
   }
 }

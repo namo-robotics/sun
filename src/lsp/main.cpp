@@ -231,6 +231,7 @@ int tokenKindToLSPType(TokenKind kind) {
     case TokenKind::CLASS:
     case TokenKind::PACKED_CLASS:
     case TokenKind::PARTIAL:
+    case TokenKind::PUBLIC:
     case TokenKind::INTERFACE:
     case TokenKind::IMPLEMENTS:
     case TokenKind::ENUM:

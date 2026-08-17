@@ -21,25 +21,25 @@
 //       return 0;
 //   }
 
-module sun {
+public module sun {
   // ASCII bytes used when scanning request bytes
-  var HTTP_CR: u8 = 13;
-  var HTTP_LF: u8 = 10;
-  var HTTP_SP: u8 = 32;
+  public var HTTP_CR: u8 = 13;
+  public var HTTP_LF: u8 = 10;
+  public var HTTP_SP: u8 = 32;
 
   // Cap on total request header size
-  var HTTP_MAX_REQUEST: i64 = 65536;
+  public var HTTP_MAX_REQUEST: i64 = 65536;
 
   // -------------------------------------------------------------------
   // HttpRequest - parsed request handed to the handler
   // -------------------------------------------------------------------
 
-  class HttpRequest {
-    var method: String;  // "GET", "POST", ...
-    var path: String;  // "/index.html"
-    var headers: String;  // raw header block after the request line
+  public class HttpRequest {
+    public var method: String;  // "GET", "POST", ...
+    public var path: String;  // "/index.html"
+    public var headers: String;  // raw header block after the request line
 
-    function init(alloc: ref HeapAllocator) {
+    public function init(alloc: ref HeapAllocator) {
       this.method = String(alloc, "");
       this.path = String(alloc, "");
       this.headers = String(alloc, "");
@@ -50,32 +50,32 @@ module sun {
   // HttpResponse - filled in by the handler, serialized by the server
   // -------------------------------------------------------------------
 
-  class HttpResponse {
-    var status: i32;
-    var content_type: String;
-    var body: String;
+  public class HttpResponse {
+    public var status: i32;
+    public var content_type: String;
+    public var body: String;
 
-    function init(alloc: ref HeapAllocator) {
+    public function init(alloc: ref HeapAllocator) {
       this.status = 200;
       this.content_type = String(alloc, "text/html");
       this.body = String(alloc, "");
     }
 
-    function set_status(code: i32) void {
+    public function set_status(code: i32) void {
       this.status = code;
     }
 
-    function set_content_type(ct: static_ptr<u8>) void {
+    public function set_content_type(ct: static_ptr<u8>) void {
       this.content_type.clear();
       this.content_type.append(ct);
     }
 
-    function set_body(content: static_ptr<u8>) void {
+    public function set_body(content: static_ptr<u8>) void {
       this.body.clear();
       this.body.append(content);
     }
 
-    function set_body_string(content: ref String) void {
+    public function set_body_string(content: ref String) void {
       this.body.clear();
       this.body.append(content);
     }
@@ -85,12 +85,12 @@ module sun {
   // Framing helpers
   // -------------------------------------------------------------------
 
-  function http_append_crlf(out: ref String) void {
+  public function http_append_crlf(out: ref String) void {
     out.append("\r\n");
   }
 
   // Index of the CRLFCRLF header terminator, or -1 if not yet received
-  function http_find_header_end(s: ref String) i64 {
+  public function http_find_header_end(s: ref String) i64 {
     var n: i64 = s.length();
     for (var i: i64 = 0; i + 3 < n; i = i + 1) {
       if (s.at(i) == HTTP_CR) {
@@ -107,7 +107,7 @@ module sun {
   }
 
   // Parse "METHOD path HTTP/1.1" request line and raw header block
-  function http_parse_request(raw: ref String, req: ref HttpRequest) void {
+  public function http_parse_request(raw: ref String, req: ref HttpRequest) void {
     var n: i64 = raw.length();
     var i: i64 = 0;
 
@@ -156,7 +156,7 @@ module sun {
     }
   }
 
-  function http_append_reason(out: ref String, code: i32) void {
+  public function http_append_reason(out: ref String, code: i32) void {
     if (code == 200) {
       out.append("OK");
       return;
@@ -204,12 +204,12 @@ module sun {
   // HttpServer - sequential accept loop with a handler lambda
   // -------------------------------------------------------------------
 
-  class HttpServer {
+  public class HttpServer {
     var listener: TcpListener;
     var alloc: HeapAllocator;
     var running: bool;
 
-    function init(allocator: ref HeapAllocator) {
+    public function init(allocator: ref HeapAllocator) {
       this.alloc = allocator.copy();
       this.listener = TcpListener();
       this.running = false;
@@ -220,18 +220,18 @@ module sun {
     }
 
     // Bind to port on all interfaces (0.0.0.0) and start listening
-    function bind(port: i32) void, IError {
+    public function bind(port: i32) void, IError {
       this.listener.bind_port(port);
       this.listener.listen(128);
     }
 
     // Bind to 127.0.0.1 only
-    function bind_loopback(port: i32) void, IError {
+    public function bind_loopback(port: i32) void, IError {
       this.listener.bind_loopback(port);
       this.listener.listen(128);
     }
 
-    function stop() void {
+    public function stop() void {
       this.running = false;
       this.listener.close();
     }
@@ -239,7 +239,7 @@ module sun {
     // Accept and handle connections one at a time until stop() is called
     // or the listener fails. A failed connection is dropped; the server
     // keeps running.
-    function serve(handler: (ref HttpRequest, ref HttpResponse) void) void {
+    public function serve(handler: (ref HttpRequest, ref HttpResponse) void) void {
       this.running = true;
       while (this.running) {
         try {
@@ -292,7 +292,7 @@ module sun {
     }
 
     // Serialize status line, headers, and body
-    function send_response(client: ref TcpStream, resp: ref HttpResponse) void, IError {
+    public function send_response(client: ref TcpStream, resp: ref HttpResponse) void, IError {
       var out = String(this.alloc, "HTTP/1.1 ");
       out.append(resp.status);
       out.append_char(HTTP_SP);

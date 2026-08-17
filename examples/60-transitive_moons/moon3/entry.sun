@@ -1,5 +1,5 @@
-module moon3 {
-  function moon3() i32 {
+public module moon3 {
+  public function moon3() i32 {
     return 3;
   }
 }

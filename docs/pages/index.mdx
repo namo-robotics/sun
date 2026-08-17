@@ -218,8 +218,8 @@ Paths are resolved relative to the source file, then via `SUN_PATH`.
 **Moons** (`.moon` files) are precompiled library bundles containing compiled code and type information. Create a moon from an entrypoint with a manifest:
 
 ```sun filename="mylib.sun"
-module mylib {
-    function helper() i32 { return 42; }
+public module mylib {
+    public function helper() i32 { return 42; }
 }
 
 manifest {

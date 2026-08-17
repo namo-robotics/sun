@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "error.h"
+#include "visibility.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
@@ -839,6 +840,7 @@ struct ClassField {
   std::string name;
   TypePtr type;
   size_t index;  // Index in the struct
+  sun::AccessInfo access;  // Visibility + owning module
 };
 
 // Class method information
@@ -849,6 +851,7 @@ struct ClassMethod {
   std::vector<TypePtr> paramTypes;  // Excludes implicit 'this' parameter
   bool isConstructor;               // true if this is the 'init' method
   bool canThrow = false;            // declared with ', IError' — may unwind
+  sun::AccessInfo access;           // Visibility + owning module
 
   bool isGeneric() const { return !typeParameters.empty(); }
 };
@@ -942,6 +945,8 @@ class ClassType : public Type {
   mutable llvm::StructType* cachedLLVMType = nullptr;
 
  public:
+  sun::AccessInfo access;  // Class visibility + owning module
+
   ClassType(std::string className) : mangledName(std::move(className)) {}
 
   // Constructor for generic class definition
@@ -1029,17 +1034,21 @@ class ClassType : public Type {
     return getField(fieldName) != nullptr;
   }
 
-  void addField(const std::string& fieldName, TypePtr fieldType) {
+  // Returns the new record so callers can set its access info.
+  ClassField& addField(const std::string& fieldName, TypePtr fieldType) {
     // Caller should check hasField() first and report error with position
     fields.push_back({fieldName, std::move(fieldType), fields.size()});
+    return fields.back();
   }
 
-  void addMethod(const std::string& methodName, TypePtr returnType,
-                 std::vector<TypePtr> paramTypes, bool isConstructor = false,
-                 std::vector<std::string> typeParams = {},
-                 bool canThrow = false) {
+  ClassMethod& addMethod(const std::string& methodName, TypePtr returnType,
+                         std::vector<TypePtr> paramTypes,
+                         bool isConstructor = false,
+                         std::vector<std::string> typeParams = {},
+                         bool canThrow = false) {
     methods.push_back({methodName, std::move(typeParams), std::move(returnType),
                        std::move(paramTypes), isConstructor, canThrow});
+    return methods.back();
   }
 
   void addImplementedInterface(const std::string& interfaceName) {
@@ -1321,6 +1330,7 @@ class ClassType : public Type {
 struct InterfaceField {
   std::string name;
   TypePtr type;
+  sun::AccessInfo access;  // Visibility + owning module
 };
 
 // Interface method information
@@ -1330,6 +1340,7 @@ struct InterfaceMethod {
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;  // Excludes implicit 'this' parameter
   bool hasDefaultImpl;  // true if this method has a default implementation
+  sun::AccessInfo access;  // Visibility + owning module
 
   bool isGeneric() const { return !typeParameters.empty(); }
 };
@@ -1354,6 +1365,8 @@ class InterfaceType : public Type {
       methodTable_;  // Indexed method table for default implementations
 
  public:
+  sun::AccessInfo access;  // Interface visibility + owning module
+
   InterfaceType(std::string interfaceName) : name(std::move(interfaceName)) {}
 
   // Constructor for generic interface definition
@@ -1387,21 +1400,22 @@ class InterfaceType : public Type {
   const std::vector<InterfaceField>& getFields() const { return fields; }
   const std::vector<InterfaceMethod>& getMethods() const { return methods; }
 
-  void addField(const std::string& fieldName, TypePtr fieldType) {
-    // Check if field already exists
-    for (const auto& existingField : fields) {
-      if (existingField.name == fieldName) {
-        return;
-      }
+  // Returns the (possibly pre-existing) record so callers can set access.
+  InterfaceField& addField(const std::string& fieldName, TypePtr fieldType) {
+    for (auto& existingField : fields) {
+      if (existingField.name == fieldName) return existingField;
     }
     fields.push_back({fieldName, std::move(fieldType)});
+    return fields.back();
   }
 
-  void addMethod(const std::string& methodName, TypePtr returnType,
-                 std::vector<TypePtr> paramTypes, bool hasDefaultImpl = false,
-                 std::vector<std::string> typeParams = {}) {
+  InterfaceMethod& addMethod(const std::string& methodName, TypePtr returnType,
+                             std::vector<TypePtr> paramTypes,
+                             bool hasDefaultImpl = false,
+                             std::vector<std::string> typeParams = {}) {
     methods.push_back({methodName, std::move(typeParams), std::move(returnType),
                        std::move(paramTypes), hasDefaultImpl});
+    return methods.back();
   }
 
   const InterfaceField* getField(const std::string& fieldName) const {
@@ -1599,6 +1613,8 @@ class EnumType : public Type {
   std::vector<TypePtr> genericArgs_;  // e.g. [i32] for Option_i32
 
  public:
+  sun::AccessInfo access;  // Enum visibility + owning module
+
   EnumType(std::string qualifiedName, std::string baseName = "")
       : qualifiedName_(std::move(qualifiedName)),
         baseName_(std::move(baseName)) {}

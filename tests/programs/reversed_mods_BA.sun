@@ -1,6 +1,6 @@
-module B {
-  module A {
-    function foo() i32 {
+public module B {
+  public module A {
+    public function foo() i32 {
       return 1;
     }
   }

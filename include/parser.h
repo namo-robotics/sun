@@ -44,6 +44,10 @@ class Parser {
   // Track whether string interpolation was used during parsing
   bool usesStringInterpolation_ = false;
 
+  // True while parsing module-level items (program root or a module body);
+  // false inside function/control-flow blocks. Gates the `public` modifier.
+  bool atItemLevel_ = true;
+
   // Comment side table, keyed by start offset. Offset keying makes
   // collection idempotent when backtracking re-lexes a region.
   bool collectComments_ = false;
@@ -187,6 +191,14 @@ class Parser {
     return p;
   }
 
+  // Move a node's span start back to `start` (e.g. over a leading modifier)
+  static void extendSpanStart(ExprAST& node, Position start) {
+    const Position& cur = node.getLocation();
+    if (cur.hasEnd())
+      start.setEnd(*cur.endLine, *cur.endColumn, cur.endOffset.value_or(0));
+    node.setLocation(std::move(start));
+  }
+
   // Stamp span [start, end-of-last-consumed-token] onto a finished node
   template <typename NodeT>
   unique_ptr<NodeT> finishNode(unique_ptr<NodeT> node, Position start) const {
@@ -245,8 +257,11 @@ class Parser {
   unique_ptr<BreakAST> parseBreak();
   unique_ptr<ContinueAST> parseContinue();
   unique_ptr<BlockExprAST> parseString(const std::string& source);
-  unique_ptr<BlockExprAST> parseBlock();
+  unique_ptr<BlockExprAST> parseBlock(bool itemLevel = false);
   unique_ptr<ExprAST> parseStatement();
+  unique_ptr<ExprAST> parseStatementCore();
+  // Consumes an optional `public`; errors on a duplicate.
+  bool parsePublic();
   unique_ptr<ExprAST> parseStatementList();
 
   // Type parsing. parseTypeAnnotation stamps the source span; the Impl

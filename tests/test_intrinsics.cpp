@@ -626,18 +626,18 @@ TEST(IsIntrinsicTest, nested_generic_classes) {
   // Minimal: Outer<T> contains Inner<T>
   auto value = executeString(R"(
 
-    module Test {
-        class Inner<T> {
-            var val: T;
-            function init(v: T) { this.val = v; }
-            function get() T { return this.val; }
+    public module Test {
+        public class Inner<T> {
+            public var val: T;
+            public function init(v: T) { this.val = v; }
+            public function get() T { return this.val; }
         }
     }
     
     class Outer<T> {
-        var inner: Test.Inner<T>;
-        function init(v: T) { this.inner = Test.Inner<T>(v); }
-        function get() T { return this.inner.get(); }
+        public var inner: Test.Inner<T>;
+        public function init(v: T) { this.inner = Test.Inner<T>(v); }
+        public function get() T { return this.inner.get(); }
     }
     
     function main() i32 { var o = Outer<i32>(42); return o.get(); }

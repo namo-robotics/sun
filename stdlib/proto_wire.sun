@@ -6,23 +6,23 @@
 //
 // Wire types: 0 = varint, 1 = 64-bit, 2 = length-delimited, 5 = 32-bit.
 
-module sun {
+public module sun {
   // ==========================================================================
   // Errors
   // ==========================================================================
 
-  class ProtoDecodeError implements IError {
+  public class ProtoDecodeError implements IError {
     var message_: static_ptr<u8>;
 
-    function init(message: static_ptr<u8>) {
+    public function init(message: static_ptr<u8>) {
       this.message_ = message;
     }
 
-    function code() i32 {
+    public function code() i32 {
       return 40;
     }
 
-    function message() static_ptr<u8> {
+    public function message() static_ptr<u8> {
       return this.message_;
     }
   }
@@ -31,7 +31,7 @@ module sun {
   // Writers (append to a Vec<u8>)
   // ==========================================================================
 
-  function proto_write_varint(buf: ref Vec<u8>, value: u64) void {
+  public function proto_write_varint(buf: ref Vec<u8>, value: u64) void {
     var v: u64 = value;
     while (v >= 128) {
       buf.push(_convert<u8>((v & 127) | 128));
@@ -40,29 +40,29 @@ module sun {
     buf.push(_convert<u8>(v));
   }
 
-  function proto_write_tag(buf: ref Vec<u8>, field: i64, wire_type: i64) void {
+  public function proto_write_tag(buf: ref Vec<u8>, field: i64, wire_type: i64) void {
     var key: u64 = _convert<u64>(field * 8 + wire_type);
     proto_write_varint(buf, key);
   }
 
-  function proto_write_int32(buf: ref Vec<u8>, value: i32) void {
+  public function proto_write_int32(buf: ref Vec<u8>, value: i32) void {
     // Negative int32 sign-extends to a 10-byte varint (protobuf spec)
     proto_write_varint(buf, _convert<u64>(value));
   }
 
-  function proto_write_int64(buf: ref Vec<u8>, value: i64) void {
+  public function proto_write_int64(buf: ref Vec<u8>, value: i64) void {
     proto_write_varint(buf, _convert<u64>(value));
   }
 
-  function proto_write_uint32(buf: ref Vec<u8>, value: u32) void {
+  public function proto_write_uint32(buf: ref Vec<u8>, value: u32) void {
     proto_write_varint(buf, _convert<u64>(value));
   }
 
-  function proto_write_uint64(buf: ref Vec<u8>, value: u64) void {
+  public function proto_write_uint64(buf: ref Vec<u8>, value: u64) void {
     proto_write_varint(buf, value);
   }
 
-  function proto_write_bool(buf: ref Vec<u8>, value: bool) void {
+  public function proto_write_bool(buf: ref Vec<u8>, value: bool) void {
     if (value) {
       buf.push(1);
     } else {
@@ -70,25 +70,25 @@ module sun {
     }
   }
 
-  function proto_zigzag64(value: i64) u64 {
+  public function proto_zigzag64(value: i64) u64 {
     return (_convert<u64>(value) << 1) ^ _convert<u64>(value >> 63);
   }
 
-  function proto_unzigzag64(value: u64) i64 {
+  public function proto_unzigzag64(value: u64) i64 {
     var half: i64 = _convert<i64>(value >> 1);
     var neg: i64 = 0 - _convert<i64>(value & 1);
     return half ^ neg;
   }
 
-  function proto_write_sint32(buf: ref Vec<u8>, value: i32) void {
+  public function proto_write_sint32(buf: ref Vec<u8>, value: i32) void {
     proto_write_varint(buf, proto_zigzag64(_convert<i64>(value)));
   }
 
-  function proto_write_sint64(buf: ref Vec<u8>, value: i64) void {
+  public function proto_write_sint64(buf: ref Vec<u8>, value: i64) void {
     proto_write_varint(buf, proto_zigzag64(value));
   }
 
-  function proto_write_fixed32(buf: ref Vec<u8>, value: u32) void {
+  public function proto_write_fixed32(buf: ref Vec<u8>, value: u32) void {
     var v: u32 = value;
     buf.push(_convert<u8>(v & 255));
     buf.push(_convert<u8>((v >> 8) & 255));
@@ -96,7 +96,7 @@ module sun {
     buf.push(_convert<u8>((v >> 24) & 255));
   }
 
-  function proto_write_fixed64(buf: ref Vec<u8>, value: u64) void {
+  public function proto_write_fixed64(buf: ref Vec<u8>, value: u64) void {
     var v: u64 = value;
     for (var i: i32 = 0; i < 8; i = i + 1) {
       buf.push(_convert<u8>(v & 255));
@@ -104,24 +104,24 @@ module sun {
     }
   }
 
-  function proto_write_sfixed32(buf: ref Vec<u8>, value: i32) void {
+  public function proto_write_sfixed32(buf: ref Vec<u8>, value: i32) void {
     proto_write_fixed32(buf, _convert<u32>(value));
   }
 
-  function proto_write_sfixed64(buf: ref Vec<u8>, value: i64) void {
+  public function proto_write_sfixed64(buf: ref Vec<u8>, value: i64) void {
     proto_write_fixed64(buf, _convert<u64>(value));
   }
 
-  function proto_write_float(buf: ref Vec<u8>, value: f32) void {
+  public function proto_write_float(buf: ref Vec<u8>, value: f32) void {
     proto_write_fixed32(buf, _bitcast<u32>(value));
   }
 
-  function proto_write_double(buf: ref Vec<u8>, value: f64) void {
+  public function proto_write_double(buf: ref Vec<u8>, value: f64) void {
     proto_write_fixed64(buf, _bitcast<u64>(value));
   }
 
   // Length-prefixed raw bytes
-  function proto_write_bytes(buf: ref Vec<u8>, data: ref Vec<u8>) void {
+  public function proto_write_bytes(buf: ref Vec<u8>, data: ref Vec<u8>) void {
     var n: i64 = data.size();
     proto_write_varint(buf, _convert<u64>(n));
     for (var i: i64 = 0; i < n; i = i + 1) {
@@ -130,7 +130,7 @@ module sun {
   }
 
   // Length-prefixed string bytes
-  function proto_write_string(buf: ref Vec<u8>, s: ref String) void {
+  public function proto_write_string(buf: ref Vec<u8>, s: ref String) void {
     var n: i64 = s.length();
     proto_write_varint(buf, _convert<u64>(n));
     for (var i: i64 = 0; i < n; i = i + 1) {
@@ -140,7 +140,7 @@ module sun {
 
   // Append raw bytes without a length prefix (unknown-field passthrough,
   // packed bodies)
-  function proto_append_raw(buf: ref Vec<u8>, data: ref Vec<u8>) void {
+  public function proto_append_raw(buf: ref Vec<u8>, data: ref Vec<u8>) void {
     var n: i64 = data.size();
     for (var i: i64 = 0; i < n; i = i + 1) {
       buf.push(data.get_unchecked(i));
@@ -155,26 +155,26 @@ module sun {
   // decode functions keep that Vec borrowed (`ref`) for the reader's whole
   // lifetime, so the pointer cannot dangle.
 
-  class ProtoReader {
+  public class ProtoReader {
     var data: raw_ptr<u8>;
     var len: i64;    // current limit (end of the message being decoded)
     var pos: i64;
 
-    function init(buf: ref Vec<u8>) {
+    public function init(buf: ref Vec<u8>) {
       this.data = buf.rawData();
       this.len = buf.size();
       this.pos = 0;
     }
 
-    function at_end() bool {
+    public function at_end() bool {
       return this.pos >= this.len;
     }
 
-    function position() i64 {
+    public function position() i64 {
       return this.pos;
     }
 
-    function read_byte() u8, IError {
+    public function read_byte() u8, IError {
       if (this.pos >= this.len) {
         throw ProtoDecodeError("unexpected end of buffer");
       }
@@ -183,7 +183,7 @@ module sun {
       return b;
     }
 
-    function read_varint() u64, IError {
+    public function read_varint() u64, IError {
       var result: u64 = 0;
       var shift: u64 = 0;
       for (var i: i32 = 0; i < 10; i = i + 1) {
@@ -199,39 +199,39 @@ module sun {
     }
 
     // Returns the tag key (field << 3 | wire type)
-    function read_tag() u64, IError {
+    public function read_tag() u64, IError {
       return this.read_varint();
     }
 
-    function read_int32() i32, IError {
+    public function read_int32() i32, IError {
       return _convert<i32>(this.read_varint());
     }
 
-    function read_int64() i64, IError {
+    public function read_int64() i64, IError {
       return _convert<i64>(this.read_varint());
     }
 
-    function read_uint32() u32, IError {
+    public function read_uint32() u32, IError {
       return _convert<u32>(this.read_varint());
     }
 
-    function read_uint64() u64, IError {
+    public function read_uint64() u64, IError {
       return this.read_varint();
     }
 
-    function read_bool() bool, IError {
+    public function read_bool() bool, IError {
       return this.read_varint() != 0;
     }
 
-    function read_sint32() i32, IError {
+    public function read_sint32() i32, IError {
       return _convert<i32>(proto_unzigzag64(this.read_varint()));
     }
 
-    function read_sint64() i64, IError {
+    public function read_sint64() i64, IError {
       return proto_unzigzag64(this.read_varint());
     }
 
-    function read_fixed32() u32, IError {
+    public function read_fixed32() u32, IError {
       var b0: u32 = _convert<u32>(this.read_byte());
       var b1: u32 = _convert<u32>(this.read_byte());
       var b2: u32 = _convert<u32>(this.read_byte());
@@ -239,7 +239,7 @@ module sun {
       return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
     }
 
-    function read_fixed64() u64, IError {
+    public function read_fixed64() u64, IError {
       var result: u64 = 0;
       var shift: u64 = 0;
       for (var i: i32 = 0; i < 8; i = i + 1) {
@@ -250,26 +250,26 @@ module sun {
       return result;
     }
 
-    function read_sfixed32() i32, IError {
+    public function read_sfixed32() i32, IError {
       return _convert<i32>(this.read_fixed32());
     }
 
-    function read_sfixed64() i64, IError {
+    public function read_sfixed64() i64, IError {
       return _convert<i64>(this.read_fixed64());
     }
 
-    function read_float() f32, IError {
+    public function read_float() f32, IError {
       return _bitcast<f32>(this.read_fixed32());
     }
 
-    function read_double() f64, IError {
+    public function read_double() f64, IError {
       return _bitcast<f64>(this.read_fixed64());
     }
 
     // Read a length prefix and return the absolute end position of the
     // delimited region; the caller narrows with push_limit / restores with
     // pop_limit around nested decoding.
-    function read_length() i64, IError {
+    public function read_length() i64, IError {
       var n: i64 = _convert<i64>(this.read_varint());
       if (n < 0) {
         throw ProtoDecodeError("negative length");
@@ -281,18 +281,18 @@ module sun {
     }
 
     // Narrow the readable region to [pos, new_end); returns the previous end
-    function push_limit(new_end: i64) i64 {
+    public function push_limit(new_end: i64) i64 {
       var old: i64 = this.len;
       this.len = new_end;
       return old;
     }
 
-    function pop_limit(old_end: i64) void {
+    public function pop_limit(old_end: i64) void {
       this.len = old_end;
     }
 
     // Read `n` bytes into a fresh Vec<u8>
-    function read_bytes(alloc: ref HeapAllocator, n: i64) Vec<u8>, IError {
+    public function read_bytes(alloc: ref HeapAllocator, n: i64) Vec<u8>, IError {
       if (this.pos + n > this.len) {
         throw ProtoDecodeError("length exceeds buffer");
       }
@@ -305,13 +305,13 @@ module sun {
     }
 
     // Read a length-prefixed byte field
-    function read_bytes_field(alloc: ref HeapAllocator) Vec<u8>, IError {
+    public function read_bytes_field(alloc: ref HeapAllocator) Vec<u8>, IError {
       var n: i64 = _convert<i64>(this.read_varint());
       return this.read_bytes(alloc, n);
     }
 
     // Read a length-prefixed string field
-    function read_string_field(alloc: ref HeapAllocator) String, IError {
+    public function read_string_field(alloc: ref HeapAllocator) String, IError {
       var n: i64 = _convert<i64>(this.read_varint());
       if (n < 0) {
         throw ProtoDecodeError("negative length");
@@ -329,7 +329,7 @@ module sun {
 
     // Skip a field of the given wire type, appending its raw tag+payload
     // bytes to `unknown` so an unrecognized field survives re-encoding.
-    function skip_field(wire_type: i64, tag: u64, unknown: ref Vec<u8>) void, IError {
+    public function skip_field(wire_type: i64, tag: u64, unknown: ref Vec<u8>) void, IError {
       proto_write_varint(unknown, tag);
       if (wire_type == 0) {
         var v: u64 = this.read_varint();
@@ -366,11 +366,11 @@ module sun {
   }
 
   // Tag helpers
-  function proto_tag_field(tag: u64) i64 {
+  public function proto_tag_field(tag: u64) i64 {
     return _convert<i64>(tag >> 3);
   }
 
-  function proto_tag_wire_type(tag: u64) i64 {
+  public function proto_tag_wire_type(tag: u64) i64 {
     return _convert<i64>(tag & 7);
   }
 

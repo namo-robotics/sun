@@ -21,7 +21,7 @@
 //   // Iteration over values
 //   for (var v: i32 in m) { ... }
 
-module sun {
+public module sun {
   // Entry states for open addressing
   // 0 = EMPTY (never used)
   // 1 = OCCUPIED (has key-value)
@@ -96,7 +96,7 @@ module sun {
   // Map<K, V> - Generic Hash Map
   // ============================================================================
 
-  class Map<K, V> implements IIterable<V, Map<K, V>> {
+  public class Map<K, V> implements IIterable<V, Map<K, V>> {
     var keys: ContiguousBuffer<K>;  // Key storage
     var values: ContiguousBuffer<V>;  // Value storage  
     var states: ContiguousBuffer<i8>;  // State array: 0=empty, 1=occupied, 2=deleted
@@ -105,7 +105,7 @@ module sun {
     var size_: i64;  // Number of occupied entries
 
     // Constructor with allocator and capacity
-    function init(allocator: ref HeapAllocator, capacity: i64) {
+    public function init(allocator: ref HeapAllocator, capacity: i64) {
       this.alloc = allocator.copy();
       this.capacity_ = capacity;
       this.size_ = 0;
@@ -145,7 +145,7 @@ module sun {
     // ========================================================================
 
     // Insert or update a key-value pair
-    function insert(key: K, value: V) void {
+    public function insert(key: K, value: V) void {
       // Check load factor and grow if needed (> 70%)
       var threshold: i64 = (this.capacity_ * 7) / 10;
       if (this.size_ >= threshold) {
@@ -205,7 +205,7 @@ module sun {
     }
 
     // Get value by key, throws IError if not found
-    function get(key: K) V, IError {
+    public function get(key: K) V, IError {
       var probe: i64 = this.findIndex(key);
       if (probe < 0) {
         throw NotFoundError();
@@ -214,7 +214,7 @@ module sun {
     }
 
     // Get value by key; None if not present
-    function find(key: K) Option<V> {
+    public function find(key: K) Option<V> {
       var probe: i64 = this.findIndex(key);
       if (probe < 0) {
         return Option.None;
@@ -223,7 +223,7 @@ module sun {
     }
 
     // Get value by key, returns default if not found
-    function getOrDefault(key: K, default_value: V) V {
+    public function getOrDefault(key: K, default_value: V) V {
       var probe: i64 = this.findIndex(key);
       if (probe < 0) {
         return default_value;
@@ -232,7 +232,7 @@ module sun {
     }
 
     // Remove key and return its value, throws IError if not found
-    function remove(key: K) V, IError {
+    public function remove(key: K) V, IError {
       var probe: i64 = this.findIndex(key);
       if (probe < 0) {
         throw NotFoundError();
@@ -246,27 +246,27 @@ module sun {
     }
 
     // Check if key exists
-    function contains(key: K) bool {
+    public function contains(key: K) bool {
       return this.findIndex(key) >= 0;
     }
 
     // Get number of elements
-    function size() i64 {
+    public function size() i64 {
       return this.size_;
     }
 
     // Get bucket count
-    function capacity() i64 {
+    public function capacity() i64 {
       return this.capacity_;
     }
 
     // Check if map is empty
-    function isEmpty() bool {
+    public function isEmpty() bool {
       return this.size_ == 0;
     }
 
     // Clear all entries. Live keys/values are dropped.
-    function clear() void {
+    public function clear() void {
       for (var i: i64 = 0; i < this.capacity_; i = i + 1) {
         if (this.states.get_unchecked(i) == 1) {
           this.drop_key(i);
@@ -287,17 +287,17 @@ module sun {
     // ========================================================================
 
     // True if bucket i holds a live entry
-    function bucket_occupied(i: i64) bool {
+    public function bucket_occupied(i: i64) bool {
       return this.states.get_unchecked(i) == 1;
     }
 
     // Borrow the key stored in bucket i (must be occupied)
-    function bucket_key(i: i64) ref K {
+    public function bucket_key(i: i64) ref K {
       return unsafe { _to_ref<K>(_ptr_as_raw<K>(_ptr_offset(this.keys.rawData(), i * _sizeof<K>()))); };
     }
 
     // Borrow the value stored in bucket i (must be occupied)
-    function bucket_value(i: i64) ref V {
+    public function bucket_value(i: i64) ref V {
       return unsafe { _to_ref<V>(_ptr_as_raw<V>(_ptr_offset(this.values.rawData(), i * _sizeof<V>()))); };
     }
 
@@ -377,7 +377,7 @@ module sun {
     // ========================================================================
 
     // Return iterator over values
-    function iter() MapIterator<K, V> {
+    public function iter() MapIterator<K, V> {
       return MapIterator<K, V>();
     }
   }
@@ -386,14 +386,14 @@ module sun {
   // MapIterator<K, V> - Iterator over map values
   // ============================================================================
 
-  class MapIterator<K, V> implements IIterator<V, Map<K, V>> {
+  public class MapIterator<K, V> implements IIterator<V, Map<K, V>> {
     var current: i64;
 
-    function init() {
+    public function init() {
       this.current = 0;
     }
 
-    function hasNext(map: ref Map<K, V>) bool {
+    public function hasNext(map: ref Map<K, V>) bool {
       // Find next occupied slot starting from current
       var capacity: i64 = map.capacity();
       while (this.current < capacity) {
@@ -406,7 +406,7 @@ module sun {
       return false;
     }
 
-    function next(map: ref Map<K, V>) V {
+    public function next(map: ref Map<K, V>) V {
       // Current should already point to an occupied slot (from hasNext)
       var value: V = map.values.get(this.current);
       this.current = this.current + 1;  // Move past current
@@ -420,10 +420,10 @@ module sun {
 
   // Map specializations - must be declared before MapIterator since MapIterator<K, V> references Map<K, V>
   // (only i64 keys supported - hash_i64 requires i64)
-  declare Map_i64_i32 = Map<i64, i32>;
-  declare Map_i64_i64 = Map<i64, i64>;
+  public declare Map_i64_i32 = Map<i64, i32>;
+  public declare Map_i64_i64 = Map<i64, i64>;
 
   // MapIterator specializations
-  declare MapIterator_i64_i32 = MapIterator<i64, i32>;
-  declare MapIterator_i64_i64 = MapIterator<i64, i64>;
+  public declare MapIterator_i64_i32 = MapIterator<i64, i32>;
+  public declare MapIterator_i64_i64 = MapIterator<i64, i64>;
 }  // module sun

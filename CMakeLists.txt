@@ -162,6 +162,7 @@ add_library(sun_lib
     src/semantic_analysis/analysis.cpp
     src/semantic_analysis/analysis_utils.cpp
     src/semantic_analysis/declaration_collection.cpp
+    src/semantic_analysis/access_checker.cpp
     src/semantic_analysis/enums.cpp
     src/llvm_type_resolver.cpp
     src/borrow_checker/borrow_state.cpp

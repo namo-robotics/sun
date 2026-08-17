@@ -113,8 +113,27 @@ class Formatter {
   }
 
   void printStmt(const ExprAST& e) {
+    printVisibility(e.getVisibility());
     printExpr(e);
     if (needsSemicolon(e)) out_ += ';';
+  }
+
+  void printVisibility(sun::Visibility v) {
+    if (v == sun::Visibility::Public) out_ += "public ";
+  }
+
+  // Drop a leading `public` from a verbatim slice; the modifier is re-emitted
+  // by printVisibility so it is not doubled.
+  static std::string stripPublic(std::string s) {
+    static const std::string kw = "public";
+    if (s.compare(0, kw.size(), kw) == 0 && s.size() > kw.size() &&
+        std::isspace(static_cast<unsigned char>(s[kw.size()]))) {
+      size_t i = kw.size();
+      while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i])))
+        ++i;
+      s.erase(0, i);
+    }
+    return s;
   }
 
   static bool needsSemicolon(const ExprAST& e) {
@@ -244,7 +263,7 @@ class Formatter {
       if (f.isCExtern()) {
         // Preserve an explicit ABI string; it is optional in the source and
         // not stored on the AST, so recover it from the span.
-        std::string s = slice(f.getLocation());
+        std::string s = stripPublic(slice(f.getLocation()));
         out_ += s.rfind("extern \"C\"", 0) == 0 ? "extern \"C\" function "
                                                 : "extern function ";
       } else {
@@ -363,12 +382,14 @@ class Formatter {
       blankGap(m.line);
       writeIndent();
       if (m.field) {
+        printVisibility(m.field->visibility);
         out_ += "var ";
         out_ += m.field->name;
         out_ += ": ";
         printType(m.field->type);
         out_ += ';';
       } else {
+        printVisibility(m.method->getVisibility());
         printFunction(*m.method);
         if (m.method->isExtern()) out_ += ';';
       }
@@ -429,17 +450,20 @@ class Formatter {
       blankGap(m.line);
       writeIndent();
       if (m.field) {
+        printVisibility(m.field->visibility);
         out_ += "var ";
         out_ += m.field->name;
         out_ += ": ";
         printType(m.field->type);
         out_ += ';';
       } else if (!m.method->hasDefaultImpl) {
+        printVisibility(m.method->visibility());
         // Signature-only method (the parser synthesizes an empty body)
         out_ += "function ";
         printProtoSig(m.method->function->getProto());
         out_ += ';';
       } else {
+        printVisibility(m.method->visibility());
         printFunction(*m.method->function);
       }
       lastLine_ = m.endLine;
@@ -952,9 +976,9 @@ class Formatter {
       // Statement forms without structured spans on their parts (using,
       // declare, manifest, import): verbatim slice, normalized ';'
       default: {
-        std::string s = slice(loc);
+        std::string s = stripPublic(slice(loc));
         if (s.empty()) {
-          out_ += e.toString();
+          out_ += stripPublic(e.toString());
           break;
         }
         while (!s.empty() &&

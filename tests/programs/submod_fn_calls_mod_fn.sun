@@ -1,10 +1,10 @@
-module A {
-  function foo() i32 {
+public module A {
+  public function foo() i32 {
     return 1;
   }
 
-  module B {
-    function bar() i32 {
+  public module B {
+    public function bar() i32 {
       return foo();
     }
   }

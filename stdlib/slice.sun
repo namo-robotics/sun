@@ -12,15 +12,15 @@
 // When hasStart=false, start should be treated as 0 (beginning of dimension).
 // When hasEnd=false, end should be treated as dimension size (end of dimension).
 
-module sun {
-  class SliceRange {
-    var start: i64;  // Start index (ignored if hasStart=false)
-    var end: i64;  // End index, exclusive (ignored if hasEnd=false)
-    var hasStart: bool;  // true if explicit start was provided
-    var hasEnd: bool;  // true if explicit end was provided
+public module sun {
+  public class SliceRange {
+    public var start: i64;  // Start index (ignored if hasStart=false)
+    public var end: i64;  // End index, exclusive (ignored if hasEnd=false)
+    public var hasStart: bool;  // true if explicit start was provided
+    public var hasEnd: bool;  // true if explicit end was provided
 
     // Constructor with all fields
-    function init(start_: i64, end_: i64, hasStart_: bool, hasEnd_: bool) {
+    public function init(start_: i64, end_: i64, hasStart_: bool, hasEnd_: bool) {
       this.start = start_;
       this.end = end_;
       this.hasStart = hasStart_;
@@ -28,7 +28,7 @@ module sun {
     }
 
     // Get effective start index (0 if not specified)
-    function getStart() i64 {
+    public function getStart() i64 {
       if (this.hasStart) {
         return this.start;
       }
@@ -36,7 +36,7 @@ module sun {
     }
 
     // Get effective end index, given dimension size
-    function getEnd(dimSize: i64) i64 {
+    public function getEnd(dimSize: i64) i64 {
       if (this.hasEnd) {
         return this.end;
       }
@@ -44,7 +44,7 @@ module sun {
     }
 
     // Check if this is a full-range slice (:)
-    function isFullRange() bool {
+    public function isFullRange() bool {
       if (this.hasStart) {
         return false;
       }
@@ -55,7 +55,7 @@ module sun {
     }
 
     // Compute the size of this slice given dimension size
-    function size(dimSize: i64) i64 {
+    public function size(dimSize: i64) i64 {
       var s: i64 = this.getStart();
       var e: i64 = this.getEnd(dimSize);
       return e - s;
@@ -63,24 +63,24 @@ module sun {
   }
 
   // Helper function to create a full-range slice (:)
-  function SliceRange_full() SliceRange {
+  public function SliceRange_full() SliceRange {
     var zero: i64 = 0;
     return SliceRange(zero, zero, false, false);
   }
 
   // Helper function to create an explicit range slice (a:b)
-  function SliceRange_range(start: i64, end: i64) SliceRange {
+  public function SliceRange_range(start: i64, end: i64) SliceRange {
     return SliceRange(start, end, true, true);
   }
 
   // Helper function to create a from-start slice (a:)
-  function SliceRange_from(start: i64) SliceRange {
+  public function SliceRange_from(start: i64) SliceRange {
     var zero: i64 = 0;
     return SliceRange(start, zero, true, false);
   }
 
   // Helper function to create a to-end slice (:b)
-  function SliceRange_to(end: i64) SliceRange {
+  public function SliceRange_to(end: i64) SliceRange {
     var zero: i64 = 0;
     return SliceRange(zero, end, false, true);
   }

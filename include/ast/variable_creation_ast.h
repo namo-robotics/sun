@@ -42,7 +42,7 @@ class VariableCreationAST : public ExprAST {
     return ASTNodeType::VARIABLE_CREATION;
   }
   std::string toString() const override {
-    std::string result = "var " + name;
+    std::string result = std::string(isPublic() ? "public " : "") + "var " + name;
     if (typeAnnotation) result += ": " + typeAnnotation->toString();
     result += " = " + value->toString();
     return result;

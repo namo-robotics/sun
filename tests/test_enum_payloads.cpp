@@ -576,10 +576,10 @@ TEST(EnumPayloadTest, CrossModuleMoonBundle) {
   {
     std::ofstream out(libSrc);
     out << R"(
-      module shapes {
-          enum Shape { Circle(f64), Rect(f64, f64), Empty }
+      public module shapes {
+          public enum Shape { Circle(f64), Rect(f64, f64), Empty }
 
-          function area(s: ref Shape) f64 {
+          public function area(s: ref Shape) f64 {
               return match s {
                   Shape.Circle(r) => 3.0 * r * r,
                   Shape.Rect(w, h) => w * h,

@@ -24,7 +24,7 @@ class ModuleAST : public ExprAST {
     if (body) body->forEachChildSlot(fn);
   }
   std::string toString() const override {
-    return "module " + name + " " + body->toString();
+    return std::string(isPublic() ? "public " : "") + "module " + name + " " + body->toString();
   }
 
   const std::string& getName() const { return name; }

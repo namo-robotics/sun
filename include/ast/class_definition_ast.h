@@ -19,12 +19,14 @@ struct ClassFieldDecl {
   std::string name;
   TypeAnnotation type;
   Position location;  // Source location of field declaration
+  sun::Visibility visibility = sun::Visibility::Private;
 };
 
 // Method declaration in a class (uses FunctionAST internally)
 struct ClassMethodDecl {
   std::unique_ptr<FunctionAST> function;
   bool isConstructor;  // true if method name is "init"
+  sun::Visibility visibility() const { return function->getVisibility(); }
 };
 
 // Implemented interface with optional type arguments
@@ -85,6 +87,7 @@ class ClassDefinitionAST : public ExprAST {
   }
   std::string toString() const override {
     std::string result;
+    if (isPublic()) result += "public ";
     if (isPartial_) result += "partial ";
     result += (isPacked_ ? "packed_class " : "class ") + name;
     if (!typeParameters.empty()) {

@@ -24,6 +24,28 @@ class Counter implements Printable, HasValue {
 }
 ```
 
+## Visibility
+
+Interfaces and their members are private by default and are marked `public`
+individually. A private interface member is only callable through the
+interface from inside the interface's module; a class implementing a public
+member must declare its implementation `public`. Interface fields inherited by
+a class keep the visibility they were declared with on the interface.
+
+```sun
+public module shapes {
+    public interface IShape {
+        public function area() f64;
+        function debug_id() i32 { return 0; }   // module-internal default
+    }
+    public class Square implements IShape {
+        var side: f64;
+        public function init(s: f64) { this.side = s; }
+        public function area() f64 { return this.side * this.side; }
+    }
+}
+```
+
 ## Interface Fields
 
 Interfaces can declare fields that implementing classes must have:

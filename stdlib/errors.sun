@@ -15,25 +15,25 @@
 //       // ...
 //   }
 
-module sun {
+public module sun {
   // ============================================================================
   // Generic Error - base error with custom message
   // ============================================================================
 
-  class Error implements IError {
+  public class Error implements IError {
     var code_: i32;
     var message_: static_ptr<u8>;
 
-    function init(code: i32, message: static_ptr<u8>) {
+    public function init(code: i32, message: static_ptr<u8>) {
       this.code_ = code;
       this.message_ = message;
     }
 
-    function code() i32 {
+    public function code() i32 {
       return this.code_;
     }
 
-    function message() static_ptr<u8> {
+    public function message() static_ptr<u8> {
       return this.message_;
     }
   }
@@ -42,14 +42,14 @@ module sun {
   // EmptyError - for operations on empty containers
   // ============================================================================
 
-  class EmptyError implements IError {
-    function init() {}
+  public class EmptyError implements IError {
+    public function init() {}
 
-    function code() i32 {
+    public function code() i32 {
       return 1;
     }
 
-    function message() static_ptr<u8> {
+    public function message() static_ptr<u8> {
       return "container is empty";
     }
   }
@@ -58,14 +58,14 @@ module sun {
   // NotFoundError - for failed lookups
   // ============================================================================
 
-  class NotFoundError implements IError {
-    function init() {}
+  public class NotFoundError implements IError {
+    public function init() {}
 
-    function code() i32 {
+    public function code() i32 {
       return 2;
     }
 
-    function message() static_ptr<u8> {
+    public function message() static_ptr<u8> {
       return "element not found";
     }
   }
@@ -74,22 +74,22 @@ module sun {
   // IndexOutOfBoundsError - for invalid array/vector indices
   // ============================================================================
 
-  class IndexOutOfBoundsError implements IError {
+  public class IndexOutOfBoundsError implements IError {
     var index_: i64;
 
-    function init(index: i64) {
+    public function init(index: i64) {
       this.index_ = index;
     }
 
-    function code() i32 {
+    public function code() i32 {
       return 3;
     }
 
-    function message() static_ptr<u8> {
+    public function message() static_ptr<u8> {
       return "index out of bounds";
     }
 
-    function index() i64 {
+    public function index() i64 {
       return this.index_;
     }
   }
@@ -98,14 +98,14 @@ module sun {
   // DivisionByZeroError - for division by zero
   // ============================================================================
 
-  class DivisionByZeroError implements IError {
-    function init() {}
+  public class DivisionByZeroError implements IError {
+    public function init() {}
 
-    function code() i32 {
+    public function code() i32 {
       return 4;
     }
 
-    function message() static_ptr<u8> {
+    public function message() static_ptr<u8> {
       return "division by zero";
     }
   }
@@ -114,14 +114,14 @@ module sun {
   // OverflowError - for arithmetic overflow
   // ============================================================================
 
-  class OverflowError implements IError {
-    function init() {}
+  public class OverflowError implements IError {
+    public function init() {}
 
-    function code() i32 {
+    public function code() i32 {
       return 5;
     }
 
-    function message() static_ptr<u8> {
+    public function message() static_ptr<u8> {
       return "arithmetic overflow";
     }
   }
@@ -130,18 +130,18 @@ module sun {
   // InvalidArgumentError - for invalid function arguments
   // ============================================================================
 
-  class InvalidArgumentError implements IError {
+  public class InvalidArgumentError implements IError {
     var message_: static_ptr<u8>;
 
-    function init(message: static_ptr<u8>) {
+    public function init(message: static_ptr<u8>) {
       this.message_ = message;
     }
 
-    function code() i32 {
+    public function code() i32 {
       return 6;
     }
 
-    function message() static_ptr<u8> {
+    public function message() static_ptr<u8> {
       return this.message_;
     }
   }
@@ -150,22 +150,22 @@ module sun {
   // IOError - for I/O operations
   // ============================================================================
 
-  class IOError implements IError {
+  public class IOError implements IError {
     var errno_: i32;
 
-    function init(errno: i32) {
+    public function init(errno: i32) {
       this.errno_ = errno;
     }
 
-    function code() i32 {
+    public function code() i32 {
       return this.errno_;
     }
 
-    function message() static_ptr<u8> {
+    public function message() static_ptr<u8> {
       return "I/O error";
     }
 
-    function errno() i32 {
+    public function errno() i32 {
       return this.errno_;
     }
   }
@@ -174,22 +174,22 @@ module sun {
   // AllocationError - for memory allocation failures
   // ============================================================================
 
-  class AllocationError implements IError {
+  public class AllocationError implements IError {
     var size_: i64;
 
-    function init(size: i64) {
+    public function init(size: i64) {
       this.size_ = size;
     }
 
-    function code() i32 {
+    public function code() i32 {
       return 7;
     }
 
-    function message() static_ptr<u8> {
+    public function message() static_ptr<u8> {
       return "memory allocation failed";
     }
 
-    function requestedSize() i64 {
+    public function requestedSize() i64 {
       return this.size_;
     }
   }

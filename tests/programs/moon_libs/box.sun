@@ -1,7 +1,7 @@
-class Box<T> {
-  var value: T;
+public class Box<T> {
+  public var value: T;
 
-  function init(value: T) {
+  public function init(value: T) {
     this.value = value;
   }
 }

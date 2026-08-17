@@ -85,7 +85,7 @@
                 },
                 {
                     "name": "storage.modifier.sun",
-                    "match": "\\b(?:module|function|packed_class|class|partial|interface|enum|var|ref|raw_ptr|static_ptr|declare|static|public|private)\\b"
+                    "match": "\\b(?:module|function|packed_class|class|partial|interface|enum|var|ref|raw_ptr|static_ptr|declare|public)\\b"
                 },
                 {
                     "name": "constant.language.sun",

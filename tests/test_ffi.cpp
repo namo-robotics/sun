@@ -76,8 +76,8 @@ TEST(FFITest, extern_with_pointer_args_and_void_return) {
 
 TEST(FFITest, extern_inside_module_via_using) {
   auto value = executeString(R"(
-    module libc {
-        extern function abs(x: i32) i32;
+    public module libc {
+        public extern function abs(x: i32) i32;
     }
     using libc;
 
@@ -423,7 +423,7 @@ TEST(FFISafetyTest, extern_call_outside_unsafe_is_rejected) {
 
 TEST(FFISafetyTest, module_qualified_extern_call_outside_unsafe_is_rejected) {
   EXPECT_THROW(executeString(R"(
-    module libc { extern "C" function abs(x: i32) i32; }
+    public module libc { extern "C" function abs(x: i32) i32; }
     function main() i32 { return libc.abs(-5); }
   )"),
                std::exception);
@@ -710,12 +710,12 @@ TEST(FFIStructValueTest, module_qualified_extern_call_marshals_structs) {
   if (!loadFfiTestLib()) GTEST_SKIP() << "fixture library unavailable";
   auto value = executeString(R"(
     class Pair {
-        var a: i32;
-        var b: i32;
-        function init(a: i32, b: i32) { this.a = a; this.b = b; }
+        public var a: i32;
+        public var b: i32;
+        public function init(a: i32, b: i32) { this.a = a; this.b = b; }
     }
-    module clib {
-      extern "C" function sun_ffi_take_pair(p: Pair) i32;
+    public module clib {
+      public extern "C" function sun_ffi_take_pair(p: Pair) i32;
     }
 
     function main() i32 {

@@ -13,6 +13,13 @@ option cc_enable_arenas = true;
 // Root wrapper for polymorphic AST nodes
 // =============================================================================
 
+// Declaration visibility. Sun is private by default; `public` is the only
+// modifier. Zero value = PRIVATE keeps older serialized data valid.
+enum Visibility {
+  PRIVATE = 0;
+  PUBLIC = 1;
+}
+
 message ASTNode {
   Position location = 1;
   bool precompiled = 2;
@@ -180,6 +187,7 @@ message VariableCreation {
   string name = 1;
   optional ASTNode value = 2;
   optional TypeAnnotation type_annotation = 3;
+  Visibility visibility = 4;  // module-level globals only
 }
 
 message VariableAssignment {
@@ -347,6 +355,7 @@ message FunctionDef {
   // mangling, so the C symbol is lost.
   bool is_c_extern = 4;
   bool body_present = 5;  // Distinguishes "no body" from "empty body"
+  Visibility visibility = 6;
 }
 
 message LambdaExpr {
@@ -407,6 +416,7 @@ message Manifest {
 message ModuleDef {
   string name = 1;
   BlockExpr body = 2;
+  Visibility visibility = 3;
 }
 
 message UsingStmt {
@@ -428,6 +438,7 @@ message ClassField {
   string name = 1;
   TypeAnnotation type = 2;
   Position location = 3;
+  Visibility visibility = 4;
 }
 
 // Class method declaration
@@ -450,6 +461,7 @@ message ClassDef {
   repeated ClassMethod methods = 5;
   bool is_partial = 6;
   bool is_packed = 7;  // packed_class: fields laid out with no padding
+  Visibility visibility = 8;
 }
 
 // Interface field declaration
@@ -457,6 +469,7 @@ message InterfaceField {
   string name = 1;
   TypeAnnotation type = 2;
   Position location = 3;
+  Visibility visibility = 4;
 }
 
 // Interface method declaration
@@ -470,6 +483,7 @@ message InterfaceDef {
   repeated string type_parameters = 2;
   repeated InterfaceField fields = 3;
   repeated InterfaceMethod methods = 4;
+  Visibility visibility = 5;
 }
 
 // Enum variant declaration
@@ -484,6 +498,7 @@ message EnumDef {
   string name = 1;
   repeated EnumVariant variants = 2;
   repeated string type_parameters = 3;  // generic enums: enum Option<T>
+  Visibility visibility = 4;
 }
 
 message ThisExpr {
@@ -518,6 +533,7 @@ message ThrowExpr {
 message DeclareType {
   optional string alias_name = 1;
   TypeAnnotation type_annotation = 2;
+  Visibility visibility = 3;
 }
 
 // =============================================================================

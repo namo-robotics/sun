@@ -243,6 +243,10 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
     }
   }
 
+  // Member annotations and interface references resolve in the generic's
+  // own module context, wherever it is instantiated from
+  AccessContextGuard accessGuard(*this, genericClassInfo->access.owner);
+
   // Push a scope for class-level type parameter bindings
   enterClassScope(specializedQName);
   addTypeParameterBindings(genericClassInfo->typeParameters, typeArgs);
@@ -269,6 +273,7 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
   // Layout is a property of the generic definition, so every specialization
   // inherits it. Must precede the first getStructType(), which memoizes.
   specializedClass->setPacked(genericClassInfo->AST->isPacked());
+  specializedClass->access = genericClassInfo->access;
 
   // Add fields with substituted types (skip if type already exists or already
   // has fields from a previous instantiation in another scope)
@@ -279,7 +284,8 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
       // Checked per specialization: whether a type argument is packable is
       // only knowable once T is substituted
       checkPackedFieldType(*genericClassInfo->AST, field, fieldType);
-      specializedClass->addField(field.name, fieldType);
+      specializedClass->addField(field.name, fieldType).access =
+          memberAccess(specializedClass->access, field.visibility);
     }
   }
 
@@ -372,9 +378,12 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
 
     // Add method to class type (skip if type already exists)
     if (!astOnlyMode) {
-      specializedClass->addMethod(proto.getName(), returnType, paramTypes,
-                                  methodClone.isConstructor,
-                                  proto.getTypeParameters(), proto.canThrow());
+      specializedClass
+          ->addMethod(proto.getName(), returnType, paramTypes,
+                      methodClone.isConstructor, proto.getTypeParameters(),
+                      proto.canThrow())
+          .access = memberAccess(specializedClass->access,
+                                 methodVisibility(*methodClone.function));
     }
 
     // Update the cloned method's prototype with resolved types
@@ -422,6 +431,7 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
         std::move(fieldsClone), std::move(methodsClone),
         genericClassInfo->AST->isPrecompiled());
     specializedAST->setIsPacked(genericClassInfo->AST->isPacked());
+    specializedAST->setVisibility(genericClassInfo->AST->getVisibility());
 
     // Store specialization on the generic class AST for codegen access
     genericClassInfo->AST->addSpecialization(mangledName, specializedAST);
@@ -466,6 +476,7 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
       std::move(methodsClone),  // cloned methods with analyzed bodies
       false);                   // NOT precompiled - needs codegen
   specializedAST->setIsPacked(genericClassInfo->AST->isPacked());
+  specializedAST->setVisibility(genericClassInfo->AST->getVisibility());
 
   // Store specialization on the generic class AST for codegen access
   genericClassInfo->AST->addSpecialization(mangledName, specializedAST);
@@ -526,10 +537,14 @@ void SemanticAnalyzer::analyzeDeferredSpecializations() {
 
 std::optional<SpecializedFunctionInfo>
 SemanticAnalyzer::instantiateGenericFunction(
-    const FunctionAST* genericFunc, const std::vector<sun::TypePtr>& typeArgs) {
+    const GenericFunctionInfo& genericInfo,
+    const std::vector<sun::TypePtr>& typeArgs) {
+  const FunctionAST* genericFunc = genericInfo.AST;
   if (!genericFunc) {
     return std::nullopt;
   }
+  // The body resolves names in the function's own module context
+  AccessContextGuard accessGuard(*this, genericInfo.access.owner);
 
   const PrototypeAST& proto = genericFunc->getProto();
   // Use qualified name to include enclosing function context (e.g.,
@@ -922,6 +937,9 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   // Analyze the method body
   auto savedClass = currentClass;
   setCurrentClass(classType);
+
+  // The body resolves names in the class's own module context
+  AccessContextGuard accessGuard(*this, classType->access.owner);
 
   // Extract module path from class context for type resolution.
   // For specialized generic classes, look up the generic class definition's
