@@ -59,6 +59,8 @@ add_executable(sun_tests
     test_linked_list.cpp
     test_logical.cpp
     test_loops.cpp
+    test_bigint.cpp
+    test_json.cpp
     test_map.cpp
     test_match.cpp
     test_matrix.cpp

@@ -1,0 +1,487 @@
+// stdlib/bigint.sun - Arbitrary-precision unsigned integers
+//
+// BigUint stores little-endian u64 limbs in a Vec and never has leading zero
+// limbs (zero is an empty limb list). Arithmetic is schoolbook; wide products
+// use _mul_hi_u64. Meant for exact decimal/binary conversions and other
+// occasional big-number work, not for cryptographic throughput.
+//
+// Usage:
+//   using sun;
+//
+//   var alloc = make_heap_allocator();
+//   var n = BigUint(alloc, 1);
+//   for (var i: u64 = 2; i <= 30; i = i + 1) { n.mul_small(i); }   // 30!
+//   var text = String(alloc, "");
+//   n.append_decimal(text);            // 265252859812191058636308480000000
+
+public module sun {
+  public class BigUint {
+    var limbs: Vec<u64>;
+    var alloc: HeapAllocator;
+
+    // Zero
+    public function init(allocator: ref HeapAllocator) {
+      this.alloc = allocator.copy();
+      this.limbs = Vec<u64>(allocator, 4);
+    }
+
+    // From a machine word
+    public function init(allocator: ref HeapAllocator, value: u64) {
+      this.alloc = allocator.copy();
+      this.limbs = Vec<u64>(allocator, 4);
+      if (value != 0) {
+        this.limbs.push(value);
+      }
+    }
+
+    // Independent copy
+    public function clone() BigUint {
+      var out = BigUint(this.alloc);
+      out.limbs.reserve(this.limbs.size());
+      for (var i: i64 = 0; i < this.limbs.size(); i = i + 1) {
+        out.limbs.push(this.limbs.get_unchecked(i));
+      }
+      return out;
+    }
+
+    // Number of limbs in use
+    public function limb_count() i64 {
+      return this.limbs.size();
+    }
+
+    // Limb i (little-endian); 0 beyond the top
+    public function limb(i: i64) u64 {
+      if (i < 0 or i >= this.limbs.size()) {
+        return 0;
+      }
+      return this.limbs.get_unchecked(i);
+    }
+
+    public function is_zero() bool {
+      return this.limbs.size() == 0;
+    }
+
+    // Bits needed to represent the value (0 for zero)
+    public function bit_length() i64 {
+      var n: i64 = this.limbs.size();
+      if (n == 0) {
+        return 0;
+      }
+      var top: u64 = this.limbs.get_unchecked(n - 1);
+      return (n - 1) * 64 + 64 - _convert<i64>(_ctlz_u64(top));
+    }
+
+    // Low 64 bits
+    public function low_u64() u64 {
+      return this.limb(0);
+    }
+
+    // The value as u64, or None if it does not fit
+    public function to_u64() Option<u64> {
+      if (this.limbs.size() > 1) {
+        return Option.None;
+      }
+      return Option.Some(this.limb(0));
+    }
+
+    // Set to zero
+    public function clear() void {
+      this.limbs.clear();
+    }
+
+    // Set from a machine word
+    public function set_u64(value: u64) void {
+      this.limbs.clear();
+      if (value != 0) {
+        this.limbs.push(value);
+      }
+    }
+
+    // Copy the value of another number
+    public function assign(other: ref BigUint) void {
+      this.limbs.clear();
+      for (var i: i64 = 0; i < other.limbs.size(); i = i + 1) {
+        this.limbs.push(other.limbs.get_unchecked(i));
+      }
+    }
+
+    // Drop leading zero limbs
+    function trim() void {
+      while (this.limbs.size() > 0) {
+        var top: u64 = this.limbs.get_unchecked(this.limbs.size() - 1);
+        if (top != 0) {
+          return;
+        }
+        this.limbs.pop();
+      }
+    }
+
+    // ------------------------------------------------------------------------
+    // Comparison
+    // ------------------------------------------------------------------------
+
+    // -1, 0 or 1
+    public function compare(other: ref BigUint) i64 {
+      var n: i64 = this.limbs.size();
+      var m: i64 = other.limbs.size();
+      if (n != m) {
+        if (n < m) {
+          return -1;
+        }
+        return 1;
+      }
+      var i: i64 = n - 1;
+      while (i >= 0) {
+        var a: u64 = this.limbs.get_unchecked(i);
+        var b: u64 = other.limbs.get_unchecked(i);
+        if (a != b) {
+          if (a < b) {
+            return -1;
+          }
+          return 1;
+        }
+        i = i - 1;
+      }
+      return 0;
+    }
+
+    public function equals(other: ref BigUint) bool {
+      return this.compare(other) == 0;
+    }
+
+    public function compare_u64(value: u64) i64 {
+      if (this.limbs.size() > 1) {
+        return 1;
+      }
+      var a: u64 = this.limb(0);
+      if (a < value) {
+        return -1;
+      }
+      if (a > value) {
+        return 1;
+      }
+      return 0;
+    }
+
+    // ------------------------------------------------------------------------
+    // Addition and subtraction
+    // ------------------------------------------------------------------------
+
+    public function add_small(value: u64) void {
+      var carry: u64 = value;
+      var i: i64 = 0;
+      while (carry != 0) {
+        if (i >= this.limbs.size()) {
+          this.limbs.push(carry);
+          return;
+        }
+        var a: u64 = this.limbs.get_unchecked(i);
+        var sum: u64 = a + carry;
+        this.limbs.set_unchecked(i, sum);
+        if (sum < a) {
+          carry = 1;
+        } else {
+          carry = 0;
+        }
+        i = i + 1;
+      }
+    }
+
+    public function add(other: ref BigUint) void {
+      var n: i64 = other.limbs.size();
+      while (this.limbs.size() < n) {
+        this.limbs.push(0);
+      }
+      var carry: u64 = 0;
+      for (var i: i64 = 0; i < this.limbs.size(); i = i + 1) {
+        var a: u64 = this.limbs.get_unchecked(i);
+        var b: u64 = other.limb(i);
+        var sum: u64 = a + b;
+        var c: u64 = 0;
+        if (sum < a) {
+          c = 1;
+        }
+        var total: u64 = sum + carry;
+        if (total < sum) {
+          c = c + 1;
+        }
+        this.limbs.set_unchecked(i, total);
+        carry = c;
+        if (i >= n - 1 and carry == 0) {
+          return;
+        }
+      }
+      if (carry != 0) {
+        this.limbs.push(carry);
+      }
+    }
+
+    // this = this - other; throws if other is larger
+    public function sub(other: ref BigUint) void, IError {
+      if (this.compare(other) < 0) {
+        throw OverflowError();
+      }
+      var borrow: u64 = 0;
+      for (var i: i64 = 0; i < this.limbs.size(); i = i + 1) {
+        var a: u64 = this.limbs.get_unchecked(i);
+        var b: u64 = other.limb(i);
+        var diff: u64 = a - b;
+        var next: u64 = 0;
+        if (a < b) {
+          next = 1;
+        }
+        var result: u64 = diff - borrow;
+        if (diff < borrow) {
+          next = next + 1;
+        }
+        this.limbs.set_unchecked(i, result);
+        borrow = next;
+      }
+      this.trim();
+    }
+
+    // ------------------------------------------------------------------------
+    // Multiplication and shifts
+    // ------------------------------------------------------------------------
+
+    public function mul_small(value: u64) void {
+      if (value == 0) {
+        this.limbs.clear();
+        return;
+      }
+      var carry: u64 = 0;
+      for (var i: i64 = 0; i < this.limbs.size(); i = i + 1) {
+        var a: u64 = this.limbs.get_unchecked(i);
+        var lo: u64 = a * value;
+        var hi: u64 = _mul_hi_u64(a, value);
+        var sum: u64 = lo + carry;
+        if (sum < lo) {
+          hi = hi + 1;
+        }
+        this.limbs.set_unchecked(i, sum);
+        carry = hi;
+      }
+      if (carry != 0) {
+        this.limbs.push(carry);
+      }
+    }
+
+    // this = this * other
+    public function mul(other: ref BigUint) void {
+      if (this.is_zero() or other.is_zero()) {
+        this.limbs.clear();
+        return;
+      }
+      var n: i64 = this.limbs.size();
+      var m: i64 = other.limbs.size();
+      var result = Vec<u64>(this.alloc, n + m);
+      for (var i: i64 = 0; i < n + m; i = i + 1) {
+        result.push(0);
+      }
+      for (var i: i64 = 0; i < n; i = i + 1) {
+        var a: u64 = this.limbs.get_unchecked(i);
+        if (a == 0) {
+          continue;
+        }
+        var carry: u64 = 0;
+        for (var j: i64 = 0; j < m; j = j + 1) {
+          var b: u64 = other.limbs.get_unchecked(j);
+          var lo: u64 = a * b;
+          var hi: u64 = _mul_hi_u64(a, b);
+          var cur: u64 = result.get_unchecked(i + j);
+          var s1: u64 = lo + cur;
+          if (s1 < lo) {
+            hi = hi + 1;
+          }
+          var s2: u64 = s1 + carry;
+          if (s2 < s1) {
+            hi = hi + 1;
+          }
+          result.set_unchecked(i + j, s2);
+          carry = hi;
+        }
+        var k: i64 = i + m;
+        while (carry != 0) {
+          var cur: u64 = result.get_unchecked(k);
+          var s: u64 = cur + carry;
+          result.set_unchecked(k, s);
+          if (s < cur) {
+            carry = 1;
+          } else {
+            carry = 0;
+          }
+          k = k + 1;
+        }
+      }
+      this.limbs = result;
+      this.trim();
+    }
+
+    // Multiply by 10^n
+    public function mul_pow10(n: i64) void {
+      var remaining: i64 = n;
+      while (remaining >= 18) {
+        this.mul_small(1000000000000000000);
+        remaining = remaining - 18;
+      }
+      var factor: u64 = 1;
+      while (remaining > 0) {
+        factor = factor * 10;
+        remaining = remaining - 1;
+      }
+      if (factor != 1) {
+        this.mul_small(factor);
+      }
+    }
+
+    // this = this << bits
+    public function shl(bits: i64) void {
+      if (this.is_zero() or bits <= 0) {
+        return;
+      }
+      var limb_shift: i64 = bits / 64;
+      var bit_shift: u64 = _convert<u64>(bits - limb_shift * 64);
+      var n: i64 = this.limbs.size();
+      var result = Vec<u64>(this.alloc, n + limb_shift + 1);
+      for (var i: i64 = 0; i < limb_shift; i = i + 1) {
+        result.push(0);
+      }
+      var carry: u64 = 0;
+      for (var i: i64 = 0; i < n; i = i + 1) {
+        var a: u64 = this.limbs.get_unchecked(i);
+        if (bit_shift == 0) {
+          result.push(a);
+        } else {
+          result.push((a << bit_shift) | carry);
+          carry = a >> (64 - bit_shift);
+        }
+      }
+      if (carry != 0) {
+        result.push(carry);
+      }
+      this.limbs = result;
+    }
+
+    // this = this >> bits
+    public function shr(bits: i64) void {
+      if (this.is_zero() or bits <= 0) {
+        return;
+      }
+      var limb_shift: i64 = bits / 64;
+      var bit_shift: u64 = _convert<u64>(bits - limb_shift * 64);
+      var n: i64 = this.limbs.size();
+      if (limb_shift >= n) {
+        this.limbs.clear();
+        return;
+      }
+      var result = Vec<u64>(this.alloc, n - limb_shift);
+      for (var i: i64 = limb_shift; i < n; i = i + 1) {
+        var a: u64 = this.limbs.get_unchecked(i);
+        if (bit_shift == 0) {
+          result.push(a);
+        } else {
+          var high: u64 = 0;
+          if (i + 1 < n) {
+            high = this.limbs.get_unchecked(i + 1) << (64 - bit_shift);
+          }
+          result.push((a >> bit_shift) | high);
+        }
+      }
+      this.limbs = result;
+      this.trim();
+    }
+
+    // ------------------------------------------------------------------------
+    // Division by a small divisor
+    // ------------------------------------------------------------------------
+
+    // this = this / divisor, returns the remainder. The divisor must fit in
+    // 32 bits (enough for decimal digit extraction: 10, 10^9, ...).
+    public function divmod_small(divisor: u32) u32, IError {
+      if (divisor == 0) {
+        throw DivisionByZeroError();
+      }
+      var d: u64 = _convert<u64>(divisor);
+      var rem: u64 = 0;
+      var i: i64 = this.limbs.size() - 1;
+      while (i >= 0) {
+        var a: u64 = this.limbs.get_unchecked(i);
+        // Two 32-bit halves keep every intermediate below 2^64
+        var high_half: u64 = (rem << 32) | (a >> 32);
+        var q_high: u64 = high_half / d;
+        rem = high_half - q_high * d;
+        var low_half: u64 = (rem << 32) | (a & 4294967295);
+        var q_low: u64 = low_half / d;
+        rem = low_half - q_low * d;
+        this.limbs.set_unchecked(i, (q_high << 32) | q_low);
+        i = i - 1;
+      }
+      this.trim();
+      return _convert<u32>(rem);
+    }
+
+    // ------------------------------------------------------------------------
+    // Decimal text
+    // ------------------------------------------------------------------------
+
+    // Append the decimal digits of the value
+    public function append_decimal(out: ref String) void {
+      if (this.is_zero()) {
+        out.append_char(48);
+        return;
+      }
+      // Peel off 9 digits at a time (10^9 fits a u32 divisor)
+      var work = this.clone();
+      var chunks = Vec<u32>(this.alloc, this.limbs.size() * 3 + 1);
+      while (work.is_zero() == false) {
+        var chunk: u32 = 0;
+        try {
+          chunk = work.divmod_small(1000000000);
+        } catch (e: IError) {
+          return;
+        }
+        chunks.push(chunk);
+      }
+      var i: i64 = chunks.size() - 1;
+      out.append_u64(_convert<i64>(chunks.get_unchecked(i)));
+      i = i - 1;
+      while (i >= 0) {
+        var chunk: i64 = _convert<i64>(chunks.get_unchecked(i));
+        // Zero-pad inner chunks to 9 digits
+        var scale: i64 = 100000000;
+        while (scale > 1 and chunk < scale) {
+          out.append_char(48);
+          scale = scale / 10;
+        }
+        out.append_u64(chunk);
+        i = i - 1;
+      }
+    }
+
+    // Set from decimal digits; false (and the value left as zero) if the text
+    // is empty or has a non-digit
+    public function set_decimal(text: ref String) bool {
+      this.limbs.clear();
+      if (text.length() == 0) {
+        return false;
+      }
+      for (var i: i64 = 0; i < text.length(); i = i + 1) {
+        var ch: u8 = text.at(i);
+        if (ch < 48 or ch > 57) {
+          this.limbs.clear();
+          return false;
+        }
+        this.mul_small(10);
+        this.add_small(_convert<u64>(ch) - 48);
+      }
+      return true;
+    }
+  }
+
+  // ============================================================================
+  // Precompiled Specializations
+  // ============================================================================
+
+  public declare Vec_u64 = Vec<u64>;
+  public declare Vec_u32 = Vec<u32>;
+}  // module sun

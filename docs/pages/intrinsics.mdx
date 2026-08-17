@@ -289,6 +289,28 @@ Atomically loads the `i32` value at `ptr`.
 var current = _atomic_load_i32(_address_of<i32>(state));
 ```
 
+## Bit Intrinsics
+
+Wide multiplication and zero counts, the building blocks of multi-limb integer
+arithmetic (`BigUint`) and table-driven float conversion.
+
+### `_mul_hi_u64(a, b)`
+
+The high 64 bits of the 128-bit product `a * b` (the low 64 bits are just `a * b`).
+
+```sun
+var lo: u64 = a * b;
+var hi: u64 = _mul_hi_u64(a, b);
+```
+
+### `_ctlz_u64(x)` / `_cttz_u64(x)`
+
+Number of leading / trailing zero bits in a `u64`; both return 64 for 0.
+
+```sun
+var bits: u64 = 64 - _ctlz_u64(x);   // bit length of x
+```
+
 ## Futex Intrinsics
 
 Linux-specific thread synchronization primitives. Used by `Mutex` for efficient blocking.
@@ -377,5 +399,8 @@ class Vec<T> {
 | `_atomic_cmpxchg_i32` | `ptr, expected, desired` | `i32` | Atomic compare-and-exchange |
 | `_atomic_store_i32` | `ptr, value` | `void` | Atomic store |
 | `_atomic_load_i32` | `ptr` | `i32` | Atomic load |
+| `_mul_hi_u64` | `a: u64, b: u64` | `u64` | High 64 bits of the 128-bit product |
+| `_ctlz_u64` | `x: u64` | `u64` | Leading zero bits (64 for 0) |
+| `_cttz_u64` | `x: u64` | `u64` | Trailing zero bits (64 for 0) |
 | `_futex_wait` | `ptr, expected` | `void` | Block until woken |
 | `_futex_wake` | `ptr` | `void` | Wake one blocked thread |

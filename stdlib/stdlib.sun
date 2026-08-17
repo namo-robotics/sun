@@ -9,6 +9,7 @@ manifest {
         "unique.sun",
         "errors.sun",
         "option.sun",
+        "math.sun",
         "iterator.sun",
         "slice.sun",
         "contiguous_buffer.sun",
@@ -19,10 +20,11 @@ manifest {
         "map.sun",
         "linked_list.sun",
         "mutex.sun",
-        "math.sun",
         "io.sun",
         "networking.sun",
         "http.sun",
-        "proto_wire.sun"
+        "proto_wire.sun",
+        "json.sun",
+        "bigint.sun"
     ]
 }

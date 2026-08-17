@@ -1051,6 +1051,16 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
       "_atomic_load_i32",
       {Types::Int32(), {Types::RawPointer(Types::Int32())}, {}});
 
+  // Bit intrinsics
+  // _mul_hi_u64(a, b) - high 64 bits of the 128-bit product a * b
+  registernFunctionInCurrentScope(
+      "_mul_hi_u64", {Types::UInt64(), {Types::UInt64(), Types::UInt64()}, {}});
+  // _ctlz_u64(x) / _cttz_u64(x) - leading / trailing zero bit count (64 for 0)
+  registernFunctionInCurrentScope("_ctlz_u64",
+                                  {Types::UInt64(), {Types::UInt64()}, {}});
+  registernFunctionInCurrentScope("_cttz_u64",
+                                  {Types::UInt64(), {Types::UInt64()}, {}});
+
   // Futex intrinsics (Linux-specific thread synchronization)
   // _futex_wait(ptr, expected) - block if *ptr == expected
   registernFunctionInCurrentScope(

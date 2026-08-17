@@ -1,5 +1,12 @@
-// math.sun - Generic math utility functions
+// math.sun - Generic math utility functions and numeric limits
 public module sun {
+  // Numeric limits
+  public var I64_MAX: i64 = 9223372036854775807;
+  public var I64_MIN: i64 = -9223372036854775807 - 1;
+  public var F64_MAX: f64 = 1.7976931348623157e308;
+  public var F64_MIN_POSITIVE: f64 = 2.2250738585072014e-308;  // smallest normal
+  public var F64_EPSILON: f64 = 2.220446049250313e-16;
+
   // Return the minimum of two values
   public function min<T>(a: T, b: T) T {
     if (a < b) {

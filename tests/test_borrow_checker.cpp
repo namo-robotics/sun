@@ -395,3 +395,83 @@ TEST(BorrowCheckerTest, temporary_with_method_call) {
   )");
   EXPECT_EQ(value, 42);
 }
+// ============================================================================
+// Match bindings borrow from the discriminant
+// ============================================================================
+
+// A compound match binding borrows the payload of the matched value, so a
+// ref derived from it lives as long as that value: returning it is fine when
+// the discriminant is `this` or a ref parameter.
+TEST(BorrowCheckerTest, ref_return_through_match_binding_of_this) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    class OutOfRange implements IError {
+      function init() {}
+      function code() i32 { return 3; }
+      function message() static_ptr<u8> { return "out of range"; }
+    }
+
+    enum Value {
+      Items(Vec<String>),
+      Text(String),
+      Empty
+    }
+
+    class Holder {
+      var v: Value;
+      function init(v: Value) { this.v = v; }
+      function at(i: i64) ref String, IError {
+        match this.v {
+          Value.Items(items) => { return items.borrow(i); },
+          Value.Text(s) => { return s; },
+          _ => { throw OutOfRange(); }
+        };
+      }
+    }
+
+    function first(h: ref Holder) ref String, IError {
+      match h.v {
+        Value.Items(items) => { return items.borrow(0); },
+        _ => { throw OutOfRange(); }
+      };
+    }
+
+    function main() i32, IError {
+      var alloc = make_heap_allocator();
+      var items = Vec<String>(alloc, 2);
+      items.push(String(alloc, "ab"));
+      items.push(String(alloc, "cde"));
+      var h = Holder(Value.Items(items));
+      var t = Holder(Value.Text(String(alloc, "z")));
+      return _convert<i32>(h.at(1).length() + first(h).length() + t.at(0).length());
+    }
+  )");
+  EXPECT_EQ(value, 6);
+}
+
+TEST(BorrowCheckerTest, ref_return_through_match_binding_of_local_is_dangling) {
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using sun;
+
+    enum Value {
+      Items(Vec<String>),
+      Empty
+    }
+
+    function first(alloc: ref HeapAllocator) ref String {
+      var local = Value.Items(Vec<String>(alloc, 1));
+      match local {
+        Value.Items(items) => { return items.borrow(0); },
+        _ => { }
+      };
+      return unsafe { _to_ref<String>(null); };
+    }
+
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      return _convert<i32>(first(alloc).length());
+    }
+  )"),
+               SunError);
+}

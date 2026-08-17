@@ -290,3 +290,17 @@ TEST(InterpolationTest, works_without_using_sun) {
   )");
   EXPECT_EQ(value, 5);
 }
+
+TEST(InterpolationTest, interpolate_float) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i64 {
+        var ratio: f64 = 0.25;
+        var s = `ratio=${ratio} half=${1.5}`;
+        if (s.equals_literal("ratio=0.25 half=1.5") == false) { return -1; }
+        return s.length();
+    }
+  )");
+  EXPECT_EQ(value, 19);
+}

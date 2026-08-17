@@ -136,7 +136,7 @@ Value* CodegenVisitor::codegen(const MatchExprAST& expr) {
     bool terminated = ctx.builder->GetInsertBlock()->getTerminator() != nullptr;
 
     if (!terminated) {
-      if (bodyVal) {
+      if (bodyVal && !bodyVal->getType()->isVoidTy()) {
         armResults.push_back({bodyVal, ctx.builder->GetInsertBlock()});
       }
       ctx.builder->CreateBr(MergeBB);

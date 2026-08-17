@@ -18,6 +18,10 @@
 //   var view = s[1:4];        // "ell"
 
 public module sun {
+  // libc number formatting/parsing used by append_f64 / parse_f64
+  extern "C" function snprintf(buf: raw_ptr<u8>, n: i64, fmt: raw_ptr<u8>, ...) i32;
+  extern "C" function strtod(s: raw_ptr<u8>, end: raw_ptr<u8>) f64;
+
   // Non-owning view into a String
   // Provides read-only access to a substring without copying
   // WARNING: StringView must not outlive the parent String!
@@ -209,8 +213,15 @@ public module sun {
       this.append_bool(val);
     }
 
-    // Note: Float support (f32/f64) requires _f64_to_i64 intrinsic
-    // TODO: Add append(val: f64) and append(val: f32) once intrinsic is available
+    // Append 64-bit float (overload for interpolation)
+    public function append(val: f64) void {
+      this.append_f64(val);
+    }
+
+    // Append 32-bit float (overload for interpolation)
+    public function append(val: f32) void {
+      this.append_f64(val);
+    }
 
     // Append string literal
     public function append_literal(literal: static_ptr<u8>) void {
@@ -512,7 +523,7 @@ public module sun {
       }
       this.append_char(45);  // '-'
       // Handle i64 min value edge case
-      if (val == -9223372036854775808) {
+      if (val == I64_MIN) {
         this.append_literal("9223372036854775808");
         return;
       }
@@ -559,8 +570,138 @@ public module sun {
       this.append_literal("false");
     }
 
-    // Note: append_f64() requires f64-to-i64 intrinsic which is not yet available
-    // TODO: Implement once _f64_to_i64 intrinsic is added
+    // Append a float using the shortest decimal form that reads back as the
+    // same value ("0.1", "1e+21", "3.14"). Non-finite values print as libc
+    // spells them ("inf", "-inf", "nan").
+    public function append_f64(val: f64) void {
+      var room: i64 = 32;
+      this.ensure_capacity(room);
+      var dst: raw_ptr<u8> = unsafe { _ptr_offset(this.data.rawData(), this.len); };
+      var written: i32 = unsafe { snprintf(dst, room, "%.15g", val); };
+      var back: f64 = unsafe { strtod(dst, null); };
+      if (back != val) {
+        written = unsafe { snprintf(dst, room, "%.16g", val); };
+        back = unsafe { strtod(dst, null); };
+        if (back != val) {
+          written = unsafe { snprintf(dst, room, "%.17g", val); };
+        }
+      }
+      if (written < 0) {
+        return;
+      }
+      this.len = this.len + written;
+    }
+
+    // ========================================================================
+    // Numeric Parsing
+    // ========================================================================
+
+    // Parse the whole string as a signed decimal integer ("-42"). None if the
+    // text is not exactly an optional '-' followed by digits, or on overflow.
+    public function parse_i64() Option<i64> {
+      var i: i64 = 0;
+      var negative: bool = false;
+      if (this.len > 0) {
+        if (this.at(0) == 45) {
+          // '-'
+          negative = true;
+          i = 1;
+        }
+      }
+      if (i >= this.len) {
+        return Option.None;
+      }
+      // Accumulate as a negative number so i64 min is representable
+      var acc: i64 = 0;
+      var limit: i64 = I64_MIN / 10;
+      while (i < this.len) {
+        var ch: u8 = this.at(i);
+        if (ch < 48) {
+          return Option.None;
+        }
+        if (ch > 57) {
+          return Option.None;
+        }
+        var digit: i64 = _convert<i64>(ch) - 48;
+        if (acc < limit) {
+          return Option.None;
+        }
+        acc = acc * 10;
+        if (acc < I64_MIN + digit) {
+          return Option.None;
+        }
+        acc = acc - digit;
+        i = i + 1;
+      }
+      if (negative) {
+        return Option.Some(acc);
+      }
+      if (acc == I64_MIN) {
+        return Option.None;
+      }
+      var positive: i64 = 0 - acc;
+      return Option.Some(positive);
+    }
+
+    // True if the whole string is a decimal float: optional '-', digits,
+    // optional fraction, optional exponent (as JSON spells numbers, but a
+    // leading '+' or extra leading zeros are also accepted).
+    function is_decimal_float() bool {
+      var i: i64 = 0;
+      if (i < this.len) {
+        var sign: u8 = this.at(i);
+        if (sign == 45 or sign == 43) {
+          // '-' '+'
+          i = i + 1;
+        }
+      }
+      var int_digits: i64 = 0;
+      while (i < this.len and this.at(i) >= 48 and this.at(i) <= 57) {
+        i = i + 1;
+        int_digits = int_digits + 1;
+      }
+      var frac_digits: i64 = 0;
+      if (i < this.len and this.at(i) == 46) {
+        // '.'
+        i = i + 1;
+        while (i < this.len and this.at(i) >= 48 and this.at(i) <= 57) {
+          i = i + 1;
+          frac_digits = frac_digits + 1;
+        }
+      }
+      if (int_digits + frac_digits == 0) {
+        return false;
+      }
+      if (i < this.len and (this.at(i) == 101 or this.at(i) == 69)) {
+        // 'e' 'E'
+        i = i + 1;
+        if (i < this.len and (this.at(i) == 45 or this.at(i) == 43)) {
+          i = i + 1;
+        }
+        var exp_digits: i64 = 0;
+        while (i < this.len and this.at(i) >= 48 and this.at(i) <= 57) {
+          i = i + 1;
+          exp_digits = exp_digits + 1;
+        }
+        if (exp_digits == 0) {
+          return false;
+        }
+      }
+      return i == this.len;
+    }
+
+    // Parse the whole string as a decimal float ("3.25", "-1e-9", "42").
+    // None if the text is not a decimal float.
+    public function parse_f64() Option<f64> {
+      if (not this.is_decimal_float()) {
+        return Option.None;
+      }
+      // NUL-terminate in spare capacity for libc
+      this.ensure_capacity(1);
+      this.data.set_unchecked(this.len, 0);
+      var value: f64 = unsafe { strtod(this.data.rawData(), null); };
+      return Option.Some(value);
+    }
 
     // ========================================================================
     // Slicing

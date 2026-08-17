@@ -302,7 +302,8 @@ Value* CodegenVisitor::codegenEnumMatch(const MatchExprAST& expr,
     }
     popScope();
     if (!terminated) {
-      if (bodyVal) {
+      // Void arms (statement bodies) contribute no value to the merge
+      if (bodyVal && !bodyVal->getType()->isVoidTy()) {
         armResults.push_back({bodyVal, ctx.builder->GetInsertBlock()});
       }
       ctx.builder->CreateBr(MergeBB);

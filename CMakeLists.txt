@@ -134,6 +134,7 @@ add_library(sun_lib
     src/codegen/intrinsics/print.cpp
     src/codegen/intrinsics/memory.cpp
     src/codegen/intrinsics/atomic.cpp
+    src/codegen/intrinsics/bits.cpp
     src/codegen/intrinsics/network.cpp
     src/codegen/arrays.cpp
     src/codegen/variable_creation.cpp
@@ -293,6 +294,9 @@ if(NOT SKIP_STDLIB)
         ${CMAKE_SOURCE_DIR}/stdlib/io.sun
         ${CMAKE_SOURCE_DIR}/stdlib/http.sun
         ${CMAKE_SOURCE_DIR}/stdlib/simple_math.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/proto_wire.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/json.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/bigint.sun
     )
 
     # Built with -g: debug compiles can step into stdlib; non-debug compiles

@@ -50,6 +50,31 @@ llvm::Type* remapTypeToTarget(llvm::Type* srcType, llvm::LLVMContext& ctx) {
           return canonical;
         }
       }
+
+      // Sun class/enum structs are named "<mangled>_struct" and every module
+      // that mentions them mints its own copy, which LLVM keeps apart with a
+      // ".N" suffix. Codegen for the target module creates (or will create)
+      // the unsuffixed one from the Sun type, so declare library functions
+      // against that canonical struct.
+      size_t dot = name.rfind('.');
+      if (dot != llvm::StringRef::npos && dot + 1 < name.size() &&
+          name.substr(dot + 1).find_first_not_of("0123456789") ==
+              llvm::StringRef::npos &&
+          name.substr(0, dot).ends_with("_struct")) {
+        std::string base = name.substr(0, dot).str();
+        llvm::StructType* canonical = llvm::StructType::getTypeByName(ctx, base);
+        if (!canonical) {
+          canonical = llvm::StructType::create(ctx, base);
+        }
+        if (canonical->isOpaque() && !structTy->isOpaque()) {
+          llvm::SmallVector<llvm::Type*, 8> elems;
+          for (llvm::Type* elem : structTy->elements()) {
+            elems.push_back(remapTypeToTarget(elem, ctx));
+          }
+          canonical->setBody(elems, structTy->isPacked());
+        }
+        return canonical;
+      }
     }
   }
 
@@ -211,8 +236,12 @@ void ModuleLinker::declareAvailableFunctions() {
           remapFunctionType(func.getFunctionType(), ctx);
 
       // Create external declaration with the (potentially aliased) name
-      llvm::Function::Create(funcType, llvm::Function::ExternalLinkage,
-                             declaredName, &target_);
+      llvm::Function* decl = llvm::Function::Create(
+          funcType, llvm::Function::ExternalLinkage, declaredName, &target_);
+      // Callers pick call vs invoke from this tag; keep it on the declaration
+      if (func.hasFnAttribute("sun.canthrow")) {
+        decl->addFnAttr("sun.canthrow");
+      }
 
       // Map the aliased name to the module for linking
       symbolToModule_[declaredName] = moduleKey;

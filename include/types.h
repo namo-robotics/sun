@@ -1289,6 +1289,18 @@ class ClassType : public Type {
   llvm::StructType* getStructType(llvm::LLVMContext& ctx) const {
     if (cachedLLVMType) return cachedLLVMType;
 
+    // Several ClassType objects can describe the same class (e.g. a type
+    // resolved inside a .moon and the same type seen by its importer). The
+    // mangled name identifies the layout, so share one LLVM struct per name
+    // rather than letting LLVM mint "name.1", "name.2" duplicates that then
+    // fail to match across call boundaries.
+    llvm::StructType* existing =
+        llvm::StructType::getTypeByName(ctx, mangledName + "_struct");
+    if (existing && !existing->isOpaque()) {
+      cachedLLVMType = existing;
+      return cachedLLVMType;
+    }
+
     std::vector<llvm::Type*> fieldTypes;
     for (const auto& field : fields) {
       // For class-typed fields, embed the struct directly (not a pointer)
@@ -1298,6 +1310,12 @@ class ClassType : public Type {
       } else {
         fieldTypes.push_back(field.type->toLLVMType(ctx));
       }
+    }
+    if (existing) {
+      // Opaque placeholder minted by the module linker: fill it in
+      existing->setBody(fieldTypes, isPacked_);
+      cachedLLVMType = existing;
+      return cachedLLVMType;
     }
     cachedLLVMType = llvm::StructType::create(ctx, fieldTypes,
                                               mangledName + "_struct", isPacked_);
