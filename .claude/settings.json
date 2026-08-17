@@ -42,7 +42,14 @@
       "WebFetch",
       "Read(//usr/bin/**)",
       "Bash(gdb *)",
-      "Bash(rm -f tmp/*)"
+      "Bash(sed -i *)",
+      "Bash(valgrind *)",
+      "Bash(ulimit *)",
+      "Bash(which *)",
+      "Bash(find *)",
+      "Bash(curl -sL *)",
+      "Bash(dpkg-deb -x *)",
+      "Bash(SUN_PATH=* ctest *)"
     ],
     "additionalDirectories": [
       "/tmp",
@@ -58,7 +65,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .claude/hooks/allow_tests.py"
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/allow_tests.py\""
           }
         ]
       }

@@ -21,6 +21,7 @@
 #include "moon_import.h"
 #include "parser.h"
 #include "sun_path.h"
+#include "sun_version.h"
 
 static void printUsage(const char* programName) {
   llvm::errs() << "Usage: " << programName
@@ -63,6 +64,7 @@ static void printUsage(const char* programName) {
   llvm::errs() << "                    Format: path.moon or "
                   "path.moon:module=alias\n";
   llvm::errs() << "  -h, --help        Show this help message\n";
+  llvm::errs() << "  --version         Print version and git commit hash\n";
   llvm::errs() << "\nSubcommands:\n";
   llvm::errs() << "  fmt [--check] <file.sun|directory>...\n";
   llvm::errs() << "                    Format files in place; directories are "
@@ -286,6 +288,9 @@ int main(int argc, char* argv[]) {
       moonImports.push_back(std::move(*moonImport));
     } else if (arg == "-h" || arg == "--help") {
       printUsage(argv[0]);
+      return 0;
+    } else if (arg == "--version") {
+      llvm::outs() << "sun " << SUN_VERSION << " (" << SUN_GIT_HASH << ")\n";
       return 0;
     } else if (arg[0] == '-') {
       llvm::errs() << "Unknown option: " << arg << "\n";
