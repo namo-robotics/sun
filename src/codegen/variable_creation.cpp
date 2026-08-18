@@ -3,6 +3,7 @@
 #include "ast.h"
 #include "codegen.h"
 #include "codegen_visitor.h"
+#include "intrinsics/intrinsics.h"
 
 using namespace llvm;
 
@@ -862,6 +863,7 @@ GlobalVariable* CodegenVisitor::genGlobalClassVar(
   info.classType =
       std::dynamic_pointer_cast<sun::ClassType>(expr.getResolvedType());
   info.initExpr = expr.getValue();
+  info.location = expr.getLocation();
   staticInits.push_back(std::move(info));
 
   return gv;
@@ -890,6 +892,7 @@ GlobalVariable* CodegenVisitor::genGlobalVarWithRuntimeInit(
   info.varType = expr.getResolvedType();
   info.classType = nullptr;
   info.initExpr = expr.getValue();
+  info.location = expr.getLocation();
   staticInits.push_back(std::move(info));
 
   return gv;
@@ -898,6 +901,30 @@ GlobalVariable* CodegenVisitor::genGlobalVarWithRuntimeInit(
 // -------------------------------------------------------------------
 // Emit static initialization function
 // -------------------------------------------------------------------
+
+// The initializer of a global class variable constructs it in place when it
+// names the class: `Class(args)` is a call whose callee resolves to the class,
+// and `Class<T>(args)` a generic call that resolves to it. Intrinsics and
+// generic functions merely return a class, so they are not constructions.
+// Returns the constructor arguments, or null when the initializer is anything
+// else.
+static const std::vector<std::unique_ptr<ExprAST>>* constructorArgsForGlobal(
+    const ExprAST& initExpr) {
+  if (initExpr.getType() == ASTNodeType::CALL) {
+    const auto& call = static_cast<const CallExprAST&>(initExpr);
+    sun::TypePtr calleeType = call.getCallee()->getResolvedType();
+    if (calleeType && calleeType->isClass()) return &call.getArgs();
+    return nullptr;
+  }
+  if (initExpr.getType() == ASTNodeType::GENERIC_CALL) {
+    const auto& call = static_cast<const GenericCallAST&>(initExpr);
+    if (call.getGenericFunctionAST()) return nullptr;
+    if (sun::isIntrinsic(call.getFunctionName())) return nullptr;
+    sun::TypePtr resolved = call.getResolvedType();
+    if (resolved && resolved->isClass()) return &call.getArgs();
+  }
+  return nullptr;
+}
 
 void CodegenVisitor::emitStaticInitFunction() {
   if (staticInits.empty()) return;
@@ -964,14 +991,29 @@ void CodegenVisitor::emitStaticInitFunction() {
         continue;
       }
 
-      // Get constructor arguments from the CallExprAST
-      const CallExprAST* callExpr = nullptr;
-      if (init.initExpr->getType() == ASTNodeType::CALL) {
-        callExpr = static_cast<const CallExprAST*>(init.initExpr);
+      // `Class(args)` and `Class<T>(args)` construct the global in place;
+      // anything else produces a value elsewhere and moves it in.
+      const std::vector<std::unique_ptr<ExprAST>>* ctorArgs =
+          constructorArgsForGlobal(*init.initExpr);
+      if (!ctorArgs) {
+        Value* value = codegen(*init.initExpr);
+        if (!value) {
+          logAndThrowError(
+              "Failed to generate initializer for global variable: " +
+              init.varName);
+        }
+        // Moving, not copying: the source is invalidated so only the global
+        // drops the value.
+        ctx.builder->CreateStore(applyMoveSemantics(value, init.varType), gv);
+        continue;
       }
 
       // Look up constructor with overload resolution
-      std::vector<sun::TypePtr> argTypes = callExpr ? callExpr->getResolvedArgTypes() : std::vector<sun::TypePtr>{};
+      std::vector<sun::TypePtr> argTypes;
+      argTypes.reserve(ctorArgs->size());
+      for (const auto& arg : *ctorArgs) {
+        argTypes.push_back(arg->getResolvedType());
+      }
       ConstructorLookup ctor = lookupConstructor(classType, argTypes);
 
       // Find the constructor; declare an external if the init method exists
@@ -982,47 +1024,60 @@ void CodegenVisitor::emitStaticInitFunction() {
                             ctor.method->returnType, ctor.method->canThrow)
                       : module->getFunction(ctor.mangledName);
 
-      // Call the constructor if found and argument count matches
-      size_t argCount = callExpr ? callExpr->getArgs().size() : 0;
-      if (ctorFunc && ctorFunc->arg_size() == argCount + 1) {
-        const auto& paramTypes =
-            ctor.method ? ctor.method->paramTypes : std::vector<sun::TypePtr>{};
+      // A class with no constructor at all is fully described by the zeroed
+      // storage; anything else must reach its constructor, so a lookup that
+      // comes up empty is a miscompile rather than a silent no-op.
+      if (!ctorFunc || ctorFunc->arg_size() != ctorArgs->size() + 1) {
+        if (!ctorArgs->empty() || ctorFunc) {
+          logAndThrowError("No constructor to initialize global variable '" +
+                               init.varName + "' of type " +
+                               classType->getDisplayName(),
+                           init.location);
+        }
+        continue;
+      }
 
-        std::vector<Value*> ctorArgValues;
-        // Method closure; the receiver is the global variable
-        ctorArgValues.push_back(
-            materializeMethodClosure(ctorFunc, gv, "init.closure"));
+      const auto& paramTypes =
+          ctor.method ? ctor.method->paramTypes : std::vector<sun::TypePtr>{};
 
-        // Generate argument values
-        if (callExpr) {
-          size_t argIdx = 0;
-          for (const auto& arg : callExpr->getArgs()) {
-            bool isRefParam = argIdx < paramTypes.size() &&
-                              paramTypes[argIdx] &&
-                              paramTypes[argIdx]->isReference();
+      std::vector<Value*> ctorArgValues;
+      // Method closure; the receiver is the global variable
+      ctorArgValues.push_back(
+          materializeMethodClosure(ctorFunc, gv, "init.closure"));
 
-            Value* argVal = codegen(*arg);
-            if (!argVal) {
-              logAndThrowError(
-                  "Failed to generate argument for global class constructor: " +
-                  init.varName);
-            }
+      size_t argIdx = 0;
+      for (const auto& arg : *ctorArgs) {
+        sun::TypePtr paramType =
+            argIdx < paramTypes.size() ? paramTypes[argIdx] : nullptr;
+        bool isRefParam = paramType && paramType->isReference();
 
-            // Handle reference parameters
-            if (isRefParam && !argVal->getType()->isPointerTy()) {
-              AllocaInst* tempAlloca = createEntryBlockAlloca(
-                  initFunc, "ref.temp", argVal->getType());
-              ctx.builder->CreateStore(argVal, tempAlloca);
-              argVal = tempAlloca;
-            }
-
-            ctorArgValues.push_back(argVal);
-            ++argIdx;
-          }
+        Value* argVal = codegen(*arg);
+        if (!argVal) {
+          logAndThrowError(
+              "Failed to generate argument for global class constructor: " +
+              init.varName);
         }
 
-        ctx.builder->CreateCall(ctorFunc, ctorArgValues);
+        if (isRefParam) {
+          // Reference parameters take the argument's address
+          if (!argVal->getType()->isPointerTy()) {
+            AllocaInst* tempAlloca =
+                createEntryBlockAlloca(initFunc, "ref.temp", argVal->getType());
+            ctx.builder->CreateStore(argVal, tempAlloca);
+            argVal = tempAlloca;
+          }
+        } else {
+          // By-value compound arguments move into the constructor
+          argVal = applyMoveSemantics(argVal, arg->getResolvedType());
+          argVal =
+              widenNumericIfNeeded(argVal, paramType, arg->getResolvedType());
+        }
+
+        ctorArgValues.push_back(argVal);
+        ++argIdx;
       }
+
+      ctx.builder->CreateCall(ctorFunc, ctorArgValues);
     } else if (init.initExpr) {
       // Non-class type: evaluate expression and store
       Value* initVal = codegen(*init.initExpr);

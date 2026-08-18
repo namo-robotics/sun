@@ -166,3 +166,111 @@ TEST(GlobalAssignmentTest, string_global_queue_pop_keeps_buffers_distinct) {
   )");
   EXPECT_EQ(value, 0);
 }
+
+// ============================================================================
+// Issue #68: a global whose type is a generic class must run its constructor
+// ============================================================================
+
+// `Class<T>(args)` parses as a generic call, which the static initializer used
+// to ignore — the global stayed zeroed and the first use crashed.
+TEST(GlobalAssignmentTest, generic_class_global_runs_constructor) {
+  auto value = executeString(R"(
+    class Box<T> {
+      var value: T;
+      var tag: i32;
+      function init(v: T, tag_: i32) {
+        this.value = v;
+        this.tag = tag_;
+      }
+      function get() T { return this.value; }
+      function get_tag() i32 { return this.tag; }
+    }
+
+    var b: Box<i32> = Box<i32>(41, 1);
+
+    function main() i32 {
+      return b.get() + b.get_tag();
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(GlobalAssignmentTest, vec_global_is_constructed) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    var alloc: HeapAllocator = HeapAllocator();
+    var v: Vec<i64> = Vec<i64>(alloc, 8);
+
+    function main() i64 {
+      if (v.capacity() != 8) { return -1; }
+      v.push(10);
+      v.push(20);
+      return v.size();
+    }
+  )");
+  EXPECT_EQ(value, 2);
+}
+
+// The reproduction from issue #68: a global Map reported capacity 0 and then
+// crashed with a divide-by-zero on the first insert.
+TEST(GlobalAssignmentTest, map_global_is_constructed) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    var alloc: HeapAllocator = HeapAllocator();
+    var m: Map<String, i32> = Map<String, i32>(alloc, 64);
+
+    function main() i32 {
+      if (m.capacity() != 64) { return -1; }
+      var k = String(alloc, "key");
+      m.insert(k, 3);
+      if (m.size() != 1) { return -2; }
+      var found = 0;
+      try {
+        var k2 = String(alloc, "key");
+        found = m.get(k2);
+      } catch (e: IError) {
+        return -3;
+      }
+      return found;
+    }
+  )");
+  EXPECT_EQ(value, 3);
+}
+
+// A global initialized from something other than a constructor call takes the
+// returned value by move rather than staying zeroed.
+TEST(GlobalAssignmentTest, global_initialized_from_factory_call) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    var alloc: HeapAllocator = HeapAllocator();
+
+    function make() Vec<i64> {
+      var v = Vec<i64>(alloc, 4);
+      v.push(7);
+      return v;
+    }
+
+    var g: Vec<i64> = make();
+
+    function main() i64 {
+      if (g.capacity() != 4) { return -1; }
+      return g.size();
+    }
+  )");
+  EXPECT_EQ(value, 1);
+}
+
+// A constructor taking `ref T` accepts a global as that argument: globals live
+// in module storage, not in a function's scope.
+TEST(GlobalAssignmentTest, constructor_takes_global_by_ref) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    var alloc: HeapAllocator = HeapAllocator();
+
+    function main() i64 {
+      var s = String(alloc, "hello");
+      return s.length();
+    }
+  )");
+  EXPECT_EQ(value, 5);
+}

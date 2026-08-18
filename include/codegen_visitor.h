@@ -142,6 +142,7 @@ class CodegenVisitor {
     std::shared_ptr<sun::ClassType>
         classType;            // Class type (if class, else nullptr)
     const ExprAST* initExpr;  // The initialization expression
+    Position location;        // Declaration site (for diagnostics)
   };
 
   // Queue of global variables that need runtime initialization
