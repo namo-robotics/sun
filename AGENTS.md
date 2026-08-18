@@ -34,11 +34,12 @@ tests/            # GoogleTest suites (test_*.cpp) + programs/
 
 - **Primitives**: i8–i64, u8–u64, f32, f64, bool — passed/returned by value.
 - **Classes**: Value types, stack-allocated. Pass by `ref` to borrow; passing by value **moves**. Returned by value (moves to caller).
-- **Payload enums**: Tagged unions `{ i32 tag, [N x unit] }`; same ownership rules as classes.
+- **Payload enums**: Tagged unions `{ i32 tag, [N x unit] }`; same ownership rules as classes. A `ref T` payload stores the referent's address and owns nothing — that is how a peek returns `Option<ref T>`.
 - **Arrays**: Fat pointer `{ ptr data, i32 ndims, ptr dims }`.
 - **Pointers**: `raw_ptr<T>` (bare pointer), `static_ptr<T>` (`{ ptr, i64 }` for literals).
 - **Error unions**: functions declared with `, IError` suffix; implemented with native LLVM exceptions (a throwing function returns plain `T` and may unwind).
-- **Iteration**: `IIterator<T, Container>`/`IIterable<T, Self>` are stdlib interfaces (`stdlib/iterator.sun`), not builtins; `for … in` calls `iter()` if present, then `next(ref Container) Option<T>` until `None` (`src/codegen/loops.cpp`). Sema requires `next` to take exactly `ref <the iterated type>` and return `Option<loop var type>` (codegen passes the iterable's address, so anything else would be UB). Absence is signalled with `Option<T>` (`first`/`last`/`pop`/`find`), not by throwing.
+- **References**: `ref T` is a real type — a parameter, a variable, or an enum payload can hold one — but reading a reference reads *through* it, so the expression `c.get(i)` has type `T`. Only the contexts that want the address (binding a ref variable, a `ref` argument, returning a ref, assigning through one) take it, via `tryCodegenAddress`; everything else goes through `codegen()`, which loads (`loadIfRef`). Compound referents are carried as addresses everywhere and are never loaded out — that would be the implicit copy borrowing exists to avoid.
+- **Iteration**: `IIterator<T, Container>`/`IIterable<T, Self>` are stdlib interfaces (`stdlib/iterator.sun`), not builtins; `for … in` calls `iter()` if present, then `next(ref Container) Option<T>` until `None` (`src/codegen/loops.cpp`). Sema requires `next` to take exactly `ref <the iterated type>` and return `Option<loop var type>` (codegen passes the iterable's address, so anything else would be UB). The stdlib containers iterate by borrow — `IIterator<ref T, …>`, `next() Option<ref T>` — and `for (var x: T in c)` accepts that, binding `x` to the element in place. Absence is signalled with `Option<T>` (`first`/`last`/`pop`/`find`), not by throwing.
 - **Interface conformance** runs for every class and every generic specialization (`validateInterfaceImplementation`). A method may return a class where the interface declares an interface type it implements (`IIterable.iter()`); that marks the interface *static-only* for the class (`ClassType::markStaticOnlyInterface`): usable statically, but the class is not convertible to the interface value since fat-pointer dispatch would mismatch the ABI.
 
 ## Generics
@@ -61,7 +62,7 @@ tests/            # GoogleTest suites (test_*.cpp) + programs/
 - Overwriting a compound variable/field drops the old value first, then moves the new one in.
 - Match bindings of compound payloads **borrow** the payload slot in place (by pointer) — they cannot be moved out or passed by value; the discriminant is frozen for the match.
 - Drop scheduling is codegen's job (`trackClassAllocation` / `emitCleanupForScope`): at scope exit (incl. blocks, loop iterations, `break`/`continue`), on returns, and on exception unwind (cleanup landing pads). Payload enums with owning payloads get a synthesized `__sun_enum_drop$<Enum>` function.
-- Containers own their elements: `Vec`/`Map`/`LinkedList` drop live elements in `deinit`/`clear`/overwrite; use `take()`/`pop()`/`remove()` to move an element out, `get()` only for non-owning element types.
+- Containers own their elements: `Vec`/`Map`/`LinkedList` drop live elements in `deinit`/`clear`/overwrite. Their peek accessors (`get`, `get_unchecked`, `first`, `last`, `c[i]`, `find`, iteration) hand back a **borrow**, since the container keeps ownership; use `take()`/`pop()`/`remove()` to move an element out. Handing back a bitwise copy instead gives the copy and the stored element the same buffer, and both release it (issue #69).
 - Do not add a code path that loads a compound struct out of one location and stores it into another without moving (invalidating) the source.
 
 ## Codegen Conventions
@@ -118,6 +119,7 @@ Module tests require `SUN_PATH` env var pointing to workspace root.
 - Keep code comments concise and minimal.
 - Sun minimizes and discourages alternative syntaxes that do the same thing.
 - Use plain english with minimal jargon.
+- Sun DOES NOT ALLOW IMPLICIT COPIES.
 
 # Build
 

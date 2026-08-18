@@ -19,6 +19,14 @@ Value* CodegenVisitor::codegen(const ExprAST& expr) {
 
   debugInfo.attachExpressionLocation(*ctx.builder, expr.getLocation());
 
+  // Reading an expression reads *through* any reference it produced. The
+  // contexts that want the address instead — binding a ref variable, passing
+  // to a ref parameter, returning a ref, assigning through one — go via
+  // tryCodegenAddress rather than here.
+  return loadIfRef(codegenExpression(expr), expr.getResolvedType());
+}
+
+Value* CodegenVisitor::codegenExpression(const ExprAST& expr) {
   switch (expr.getType()) {
     case ASTNodeType::NUMBER:
       return codegen(static_cast<const NumberExprAST&>(expr));

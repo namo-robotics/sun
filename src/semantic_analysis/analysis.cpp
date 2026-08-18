@@ -593,6 +593,16 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
                              nextMethod->returnType->toDisplayString() + "'",
                          forInExpr.getLocation());
       }
+      // An iterator that yields Option<ref X> borrows: `for (var x: X in c)`
+      // binds x to the element in place rather than copying it out, which is
+      // what lets a container be iterated without duplicating elements it
+      // still owns. Writing `ref X` in the annotation says the same thing.
+      if (elementType->isReference() && loopVarType &&
+          !loopVarType->isReference() &&
+          sun::unwrapRef(elementType)->equals(*loopVarType)) {
+        loopVarType = elementType;
+        forInExpr.setResolvedLoopVarType(loopVarType);
+      }
       if (loopVarType && !elementType->isTypeParameter() &&
           !loopVarType->isTypeParameter() &&
           !elementType->equals(*loopVarType)) {

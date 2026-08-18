@@ -13,8 +13,8 @@
 //   list.push_back(10);
 //   list.push_back(20);
 //   list.push_front(5);
-//   var val = list.first();     // Option.Some(5)
-//   var last = list.last();     // Option.Some(20)
+//   var val = list.first();     // Option.Some borrowing 5
+//   var last = list.last();     // Option.Some borrowing 20
 //   var popped = list.pop_front(); // 5
 //   var len = list.size();      // 2
 
@@ -34,8 +34,17 @@ public module sun {
       this.prev = null;
     }
 
-    public function getValue() T {
-      return this.value;
+    // Borrow the stored value; the node keeps ownership
+    public function getValue() ref T {
+      return unsafe { _to_ref<T>(_address_of<T>(this.value)); };
+    }
+
+    // Move the stored value out, leaving the slot zeroed so it drops as a
+    // no-op. Only for callers that are freeing or reusing the node.
+    public function takeValue() T {
+      var value: T = this.value;
+      unsafe { _memset(_address_of<T>(this.value), 0, _sizeof<T>()); };
+      return value;
     }
 
     public function setValue(v: T) void {
@@ -76,7 +85,7 @@ public module sun {
   // LinkedList<T> - Doubly-Linked List
   // ============================================================================
 
-  public class LinkedList<T> implements IIterable<T, LinkedList<T>> {
+  public class LinkedList<T> implements IIterable<ref T, LinkedList<T>> {
     var head: raw_ptr<LinkedListNode<T>>;
     var tail: raw_ptr<LinkedListNode<T>>;
     var alloc: HeapAllocator;
@@ -133,7 +142,7 @@ public module sun {
         throw EmptyError();
       }
       var node: raw_ptr<LinkedListNode<T>> = this.tail;
-      var value: T = unsafe { node.getValue(); };
+      var value: T = unsafe { node.takeValue(); };
       this.tail = unsafe { node.getPrev(); };
       if (this.tail != null) {
         unsafe { this.tail.setNext(null); };
@@ -151,7 +160,7 @@ public module sun {
         throw EmptyError();
       }
       var node: raw_ptr<LinkedListNode<T>> = this.head;
-      var value: T = unsafe { node.getValue(); };
+      var value: T = unsafe { node.takeValue(); };
       this.head = unsafe { node.getNext(); };
       if (this.head != null) {
         unsafe { this.head.setPrev(null); };
@@ -163,8 +172,10 @@ public module sun {
       return value;
     }
 
-    // Get element at index (traverses from nearest end)
-    public function get(index: i64) T, IError {
+    // Borrow the element at index (traverses from nearest end). The list keeps
+    // ownership, so this hands back a reference; use remove()/pop_*() to move
+    // an element out.
+    public function get(index: i64) ref T, IError {
       if (index < 0) {
         throw NotFoundError();
       }
@@ -196,23 +207,23 @@ public module sun {
         throw NotFoundError();
       }
       var node: raw_ptr<LinkedListNode<T>> = this.nodeAt(index);
-      var value: T = unsafe { node.getValue(); };
+      var value: T = unsafe { node.takeValue(); };
       this.unlinkNode(node);
       unsafe { _free(node); };
       this.size_ = this.size_ - 1;
       return value;
     }
 
-    // Get first element without removing; None when empty
-    public function first() Option<T> {
+    // Borrow the first element; None when empty
+    public function first() Option<ref T> {
       if (this.head == null) {
         return Option.None;
       }
       return Option.Some(unsafe { this.head.getValue(); });
     }
 
-    // Get last element without removing; None when empty
-    public function last() Option<T> {
+    // Borrow the last element; None when empty
+    public function last() Option<ref T> {
       if (this.tail == null) {
         return Option.None;
       }
@@ -296,7 +307,7 @@ public module sun {
   // LinkedListIterator<T> - Iterator over LinkedList elements
   // ============================================================================
 
-  public class LinkedListIterator<T> implements IIterator<T, LinkedList<T>> {
+  public class LinkedListIterator<T> implements IIterator<ref T, LinkedList<T>> {
     var current: raw_ptr<LinkedListNode<T>>;
     var started: bool;
 
@@ -305,8 +316,9 @@ public module sun {
       this.started = false;
     }
 
-    // Next element, or None once the list is exhausted
-    public function next(list: ref LinkedList<T>) Option<T> {
+    // Next element, or None once the list is exhausted. Elements are
+    // borrowed: the list still owns them.
+    public function next(list: ref LinkedList<T>) Option<ref T> {
       if (this.started == false) {
         this.current = list.head;
         this.started = true;

@@ -432,9 +432,12 @@ class CodegenVisitor {
       const CallExprAST& expr, const std::vector<sun::TypePtr>& paramTypes,
       llvm::Function* func);
 
-  // Load through a reference-typed return value (refs behave like values)
-  llvm::Value* derefIfRefReturn(llvm::Value* result,
-                                const sun::TypePtr& returnType);
+  // Read through a reference where a plain value is wanted. A reference is
+  // an address until something consumes it; this is what does the consuming.
+  llvm::Value* loadIfRef(llvm::Value* value, const sun::TypePtr& type);
+
+  // The node dispatch that codegen(const ExprAST&) wraps. Call codegen().
+  llvm::Value* codegenExpression(const ExprAST& expr);
 
   // Widen an integer value to destTy; the source expression's Sun type
   // decides zero- vs sign-extension (unsigned -> zext). This is the single

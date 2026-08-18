@@ -172,7 +172,14 @@ Value* CodegenVisitor::genFunctionVariable(const VariableCreationAST& expr) {
 
 llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
                                          llvm::Type* varType) {
-  Value* value = codegen(*expr.getValue());
+  // A reference variable binds the referent's address rather than reading
+  // through it — that is what makes `var r = v.get(i); r = 5;` write into
+  // the Vec. codegen() would read instead (see loadIfRef).
+  sun::TypePtr declaredType = expr.getResolvedType();
+  Value* value = declaredType && declaredType->isReference()
+                     ? tryCodegenAddress(*expr.getValue())
+                     : nullptr;
+  if (!value) value = codegen(*expr.getValue());
   if (!value) return nullptr;
 
   // Inside a function: use local alloca

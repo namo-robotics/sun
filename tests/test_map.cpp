@@ -126,7 +126,8 @@ TEST(MapTest, get_or_default_found) {
         var allocator = make_heap_allocator();
         var m = Map<i64, i32>(allocator, 16);
         m.insert(42, 100);
-        return m.getOrDefault(42, -1);
+        var fallback: i32 = -1;
+        return m.getOrDefault(42, fallback);
     }
   )");
   EXPECT_EQ(value, 100);
@@ -140,7 +141,8 @@ TEST(MapTest, get_or_default_not_found) {
         var allocator = make_heap_allocator();
         var m = Map<i64, i32>(allocator, 16);
         m.insert(42, 100);
-        return m.getOrDefault(99, -1);
+        var fallback: i32 = -1;
+        return m.getOrDefault(99, fallback);
     }
   )");
   EXPECT_EQ(value, -1);

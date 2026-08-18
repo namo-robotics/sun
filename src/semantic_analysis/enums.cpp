@@ -197,16 +197,16 @@ void SemanticAnalyzer::validateEnumPayloadType(
   if (!type || type->isVoid()) {
     logAndThrowError(context + " cannot be void", location);
   }
-  if (type->isReference()) {
-    logAndThrowError(context + " cannot be a reference", location);
-  }
-
   // Allowlist: primitives, pointers, enums, classes (including owning ones —
-  // payload enums carry drop glue), and interfaces (fat pointers are copyable
-  // borrowed views). Arrays, slices, lambdas, threads etc. are deferred.
+  // payload enums carry drop glue), interfaces (fat pointers are copyable
+  // borrowed views), and references (the variant stores the referent's
+  // address and owns nothing — this is what lets a container hand back
+  // `Option<ref T>` for a peek instead of a copy of an element it still
+  // owns). Arrays, slices, lambdas, threads etc. are deferred.
   bool allowed = type->isPrimitive() || type->isRawPointer() ||
                  type->isStaticPointer() || type->isEnum() ||
-                 type->isClass() || type->isInterface();
+                 type->isClass() || type->isInterface() ||
+                 type->isReference();
   if (!allowed) {
     logAndThrowError(context + " has unsupported type '" + type->toString() +
                          "'; supported: primitives, pointers, enums, "
@@ -358,6 +358,13 @@ void SemanticAnalyzer::analyzeEnumVariantConstruction(
     const sun::TypePtr& payloadType = variant->payloadTypes[i];
     analyzeExpr(const_cast<ExprAST&>(*args[i]), payloadType);
     sun::TypePtr argType = args[i]->getResolvedType();
+    // A `ref X` payload borrows, so it accepts an X the same way a `ref X`
+    // parameter does: the variant stores the argument's address.
+    if (argType && payloadType && payloadType->isReference() &&
+        !argType->isReference() &&
+        unwrapRef(payloadType)->equals(*argType)) {
+      continue;
+    }
     if (argType && !isAssignableTo(argType, payloadType)) {
       if (!tryCoerceIntegerLiteral(const_cast<ExprAST*>(args[i].get()),
                                    payloadType, /*throwOnFail=*/false)) {
@@ -439,6 +446,19 @@ void SemanticAnalyzer::analyzeGenericEnumConstruction(
     const std::string& param = genericInfo.typeParameters[i];
     auto it = bindings.find(param);
     if (it != bindings.end()) {
+      // Unification reads through a reference argument, so a `ref X` argument
+      // binds X. When the target says it wants `ref X` — `Option<ref T>` from
+      // a peek accessor — honour that: the variant borrows the referent
+      // instead of copying it out.
+      const sun::TypePtr* expectedArg =
+          expectedEnum && i < expectedEnum->getGenericArgs().size()
+              ? &expectedEnum->getGenericArgs()[i]
+              : nullptr;
+      if (expectedArg && *expectedArg && (*expectedArg)->isReference() &&
+          unwrapRef(*expectedArg)->equals(*it->second)) {
+        typeArgs.push_back(*expectedArg);
+        continue;
+      }
       typeArgs.push_back(it->second);
       continue;
     }

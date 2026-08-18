@@ -60,6 +60,7 @@ TEST(StdlibOptionTest, ResultFromStdlib) {
 // Migrated stdlib APIs
 // ============================================================================
 
+// find() borrows the stored value: the map still owns it
 TEST(StdlibOptionTest, MapFind) {
   auto value = executeStringWithStdlib(R"(
     using sun;
@@ -107,6 +108,7 @@ TEST(StdlibOptionTest, StringFindChar) {
   EXPECT_EQ(value, 42);
 }
 
+// first()/last() borrow the element: the Vec still owns it
 TEST(StdlibOptionTest, VecFirstLast) {
   auto value = executeStringWithStdlib(R"(
     using sun;

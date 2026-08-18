@@ -49,7 +49,9 @@
       "Bash(find *)",
       "Bash(curl -sL *)",
       "Bash(dpkg-deb -x *)",
-      "Bash(SUN_PATH=* ctest *)"
+      "Bash(SUN_PATH=* ctest *)",
+      "WebFetch(domain:github.com)",
+      "Bash(git checkout *)"
     ],
     "additionalDirectories": [
       "/tmp",

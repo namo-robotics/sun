@@ -159,6 +159,11 @@ class BorrowChecker {
   // Track which variables are known to be reference-typed (for function params)
   std::unordered_set<std::string> refTypedParams_;
 
+  // Locals declared as raw_ptr<T>. What they point at is storage the checker
+  // cannot see (raw pointers are the unsafe escape hatch), so a reference
+  // reached through one is unrestricted rather than tied to the local.
+  std::unordered_set<std::string> rawPointerLocals_;
+
   // Track function return types to validate no ref returns
   std::unordered_map<std::string, TypePtr> functionReturnTypes_;
 

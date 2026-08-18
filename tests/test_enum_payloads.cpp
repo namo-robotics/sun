@@ -503,12 +503,24 @@ TEST(EnumPayloadTest, RecursiveEnumIsError) {
                std::exception);
 }
 
-TEST(EnumPayloadTest, RefPayloadTypeIsError) {
-  EXPECT_THROW(executeString(R"(
-    enum Bad { Holder(ref i32) }
-    function main() i32 { return 0; }
-  )"),
-               std::exception);
+// A reference payload stores the referent's address: the variant borrows and
+// owns nothing. This is what lets a container hand back Option<ref T> from a
+// peek instead of a copy of an element it still owns.
+TEST(EnumPayloadTest, RefPayloadBorrowsTheReferent) {
+  auto value = executeString(R"(
+    enum Holder { Of(ref i32), Empty }
+    function main() i32 {
+      var n: i32 = 41;
+      var h = Holder.Of(n);
+      n = n + 1;
+      return match h {
+        Holder.Of(r) => r,
+        Holder.Empty => 0
+      };
+    }
+  )");
+  // r borrows n, so it sees the increment
+  EXPECT_EQ(value, 42);
 }
 
 // Owning payloads (classes with deinit) are supported: see

@@ -244,7 +244,7 @@ public module sun {
           if (i < 0 or i >= items.size()) {
             throw JsonError("JSON array index out of range", -1);
           }
-          return items.borrow(i);
+          return items.get(i);
         },
         _ => {
           throw JsonError("JSON value is not an array", -1);
@@ -257,8 +257,8 @@ public module sun {
       match this.value {
         JsonValue.Object(members) => {
           for (var i: i64 = 0; i < members.size(); i = i + 1) {
-            if (members.borrow(i).key.equals_literal(key)) {
-              return members.borrow(i).value;
+            if (members.get(i).key.equals_literal(key)) {
+              return members.get(i).value;
             }
           }
           throw JsonError("JSON object has no such key", -1);
@@ -273,8 +273,8 @@ public module sun {
       match this.value {
         JsonValue.Object(members) => {
           for (var i: i64 = 0; i < members.size(); i = i + 1) {
-            if (members.borrow(i).key.equals(key)) {
-              return members.borrow(i).value;
+            if (members.get(i).key.equals(key)) {
+              return members.get(i).value;
             }
           }
           throw JsonError("JSON object has no such key", -1);
@@ -295,7 +295,7 @@ public module sun {
 
     function member_index(members: ref Vec<JsonMember>, key: static_ptr<u8>) i64 {
       for (var i: i64 = 0; i < members.size(); i = i + 1) {
-        if (members.borrow(i).key.equals_literal(key)) {
+        if (members.get(i).key.equals_literal(key)) {
           return i;
         }
       }
@@ -309,7 +309,7 @@ public module sun {
           if (i < 0 or i >= members.size()) {
             throw JsonError("JSON member index out of range", -1);
           }
-          return members.borrow(i).key;
+          return members.get(i).key;
         },
         _ => {
           throw JsonError("JSON value is not an object", -1);
@@ -324,7 +324,7 @@ public module sun {
           if (i < 0 or i >= members.size()) {
             throw JsonError("JSON member index out of range", -1);
           }
-          return members.borrow(i).value;
+          return members.get(i).value;
         },
         _ => {
           throw JsonError("JSON value is not an object", -1);
@@ -355,7 +355,7 @@ public module sun {
         JsonValue.Object(members) => {
           var index: i64 = -1;
           for (var i: i64 = 0; i < members.size(); i = i + 1) {
-            if (members.borrow(i).key.equals(key)) {
+            if (members.get(i).key.equals(key)) {
               index = i;
             }
           }
@@ -518,7 +518,7 @@ public module sun {
             out.append_char(44);  // ','
           }
           json_write_indent(out, indent, level + 1);
-          json_write_value(items.borrow_unchecked(i), out, indent, level + 1);
+          json_write_value(items.get_unchecked(i), out, indent, level + 1);
         }
         if (n > 0) {
           json_write_indent(out, indent, level);
@@ -533,12 +533,12 @@ public module sun {
             out.append_char(44);  // ','
           }
           json_write_indent(out, indent, level + 1);
-          json_write_string(members.borrow_unchecked(i).key, out);
+          json_write_string(members.get_unchecked(i).key, out);
           out.append_char(58);  // ':'
           if (indent >= 0) {
             out.append_char(32);
           }
-          json_write_value(members.borrow_unchecked(i).value, out, indent, level + 1);
+          json_write_value(members.get_unchecked(i).value, out, indent, level + 1);
         }
         if (n > 0) {
           json_write_indent(out, indent, level);
