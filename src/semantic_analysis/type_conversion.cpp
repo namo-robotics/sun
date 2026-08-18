@@ -316,9 +316,13 @@ sun::TypePtr SemanticAnalyzer::typeAnnotationToType(
                      annot.span);
   }
 
-  // Resolve the base name through using imports
+  // Resolve the base name through using imports. A dotted name keeps its
+  // module path, so the lookups below can find the symbol inside that module
+  // (the generic branch above does the same).
   sun::QualifiedName resolved = resolveNameWithUsings(annot.baseName);
-  const std::string& lookupName = resolved.baseName;
+  const std::string& lookupName =
+      annot.baseName.find('.') != std::string::npos ? annot.baseName
+                                                    : resolved.baseName;
 
   // Check for type aliases (lexically scoped)
   auto aliasType = findTypeAlias(lookupName);
@@ -352,6 +356,18 @@ sun::TypePtr SemanticAnalyzer::typeAnnotationToType(
   auto enumType = lookupEnum(lookupName);
   if (enumType) {
     return enumType;
+  }
+
+  // A dotted name spells a module path, so it is never an unbound type
+  // parameter — reaching here means the module or the symbol is wrong. Say so
+  // now; silently making a type parameter of it only surfaces later as a
+  // mismatch against the type it was meant to name.
+  if (annot.baseName.find('.') != std::string::npos) {
+    logAndThrowError("Unknown type '" + annot.baseName +
+                         "'. No class, interface or enum by that name is "
+                         "visible here — check the spelling, and that the "
+                         "module declaring it is imported in this scope.",
+                     annot.span);
   }
 
   // Unknown type - could be a type parameter not yet bound

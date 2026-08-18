@@ -13,11 +13,36 @@
 #include "error.h"
 #include "semantic_scope.h"
 
+namespace {
+
+// A module-qualified name split at its last dot: "sun.io.File" names the
+// symbol "File" in module "sun.io". Falsy when the name carries no module.
+// Purely syntactic — finding the module is the caller's step, since callers
+// differ on what an unknown module should mean.
+struct DottedName {
+  std::string modulePath;
+  std::string symbol;
+  explicit operator bool() const { return !modulePath.empty(); }
+};
+
+DottedName splitDotted(const std::string& name) {
+  size_t lastDot = name.rfind('.');
+  if (lastDot == std::string::npos) return {};
+  return {name.substr(0, lastDot), name.substr(lastDot + 1)};
+}
+
+}  // namespace
+
 // -------------------------------------------------------------------
 // lookupClass — find a class in the scope chain
 // -------------------------------------------------------------------
 std::shared_ptr<sun::ClassType> SemanticScopeBase::lookupClass(
     const std::string& name) const {
+  if (auto dotted = splitDotted(name)) {
+    if (auto* modScope = lookupModuleScope(dotted.modulePath)) {
+      if (auto found = modScope->findClass(dotted.symbol)) return found;
+    }
+  }
   return lookupInChain<std::shared_ptr<sun::ClassType>>(
       [&](const SemanticScopeBase* scope) { return scope->findClass(name); });
 }
@@ -28,30 +53,11 @@ std::shared_ptr<sun::ClassType> SemanticScopeBase::lookupClass(
 // -------------------------------------------------------------------
 const GenericClassInfo* SemanticScopeBase::lookupGenericClass(
     const std::string& name) const {
-  // Handle module-qualified names like "Test.Inner"
-  size_t dotPos = name.find('.');
-  if (dotPos != std::string::npos) {
-    std::string moduleName = name.substr(0, dotPos);
-    std::string symbolName = name.substr(dotPos + 1);
-
-    for (auto* s = this; s != nullptr; s = s->parent) {
-      auto modIt = s->childModules.find(moduleName);
-      if (modIt != s->childModules.end() && modIt->second) {
-        auto* result = modIt->second->findGenericClass(symbolName);
-        if (result) return result;
-      }
-      for (const auto& [childName, child] : s->childModules) {
-        if (!child) continue;
-        if (child->getType() == ScopeType::Import) {
-          auto innerModIt = child->childModules.find(moduleName);
-          if (innerModIt != child->childModules.end() && innerModIt->second) {
-            auto* result = innerModIt->second->findGenericClass(symbolName);
-            if (result) return result;
-          }
-        }
-      }
+  // Handle module-qualified names like "Test.Inner" or "sun.Vec"
+  if (auto dotted = splitDotted(name)) {
+    if (auto* modScope = lookupModuleScope(dotted.modulePath)) {
+      if (auto* found = modScope->findGenericClass(dotted.symbol)) return found;
     }
-    // Fall through to regular lookup
   }
 
   return lookupInChain<const GenericClassInfo*>(
@@ -75,6 +81,11 @@ const GenericClassInfo* SemanticScopeBase::lookupGenericClass(
 // -------------------------------------------------------------------
 std::shared_ptr<sun::InterfaceType> SemanticScopeBase::lookupInterface(
     const std::string& name) const {
+  if (auto dotted = splitDotted(name)) {
+    if (auto* modScope = lookupModuleScope(dotted.modulePath)) {
+      if (auto found = modScope->findInterface(dotted.symbol)) return found;
+    }
+  }
   return lookupInChain<std::shared_ptr<sun::InterfaceType>>(
       [&](const SemanticScopeBase* scope) {
         return scope->findInterface(name);
@@ -86,27 +97,11 @@ std::shared_ptr<sun::InterfaceType> SemanticScopeBase::lookupInterface(
 // -------------------------------------------------------------------
 const GenericInterfaceInfo* SemanticScopeBase::lookupGenericInterface(
     const std::string& name) const {
-  // Handle module-qualified names like "Test.Inner"
-  size_t dotPos = name.find('.');
-  if (dotPos != std::string::npos) {
-    std::string moduleName = name.substr(0, dotPos);
-    std::string symbolName = name.substr(dotPos + 1);
-
-    for (auto* s = this; s != nullptr; s = s->parent) {
-      auto modIt = s->childModules.find(moduleName);
-      if (modIt != s->childModules.end() && modIt->second) {
-        auto* result = modIt->second->findGenericInterface(symbolName);
-        if (result) return result;
-      }
-      for (const auto& [childName, child] : s->childModules) {
-        if (!child) continue;
-        if (child->getType() == ScopeType::Import) {
-          auto innerModIt = child->childModules.find(moduleName);
-          if (innerModIt != child->childModules.end() && innerModIt->second) {
-            auto* result = innerModIt->second->findGenericInterface(symbolName);
-            if (result) return result;
-          }
-        }
+  // Handle module-qualified names like "Test.Inner" or "sun.IIterator"
+  if (auto dotted = splitDotted(name)) {
+    if (auto* modScope = lookupModuleScope(dotted.modulePath)) {
+      if (auto* found = modScope->findGenericInterface(dotted.symbol)) {
+        return found;
       }
     }
   }
@@ -122,6 +117,11 @@ const GenericInterfaceInfo* SemanticScopeBase::lookupGenericInterface(
 // -------------------------------------------------------------------
 std::shared_ptr<sun::EnumType> SemanticScopeBase::lookupEnum(
     const std::string& name) const {
+  if (auto dotted = splitDotted(name)) {
+    if (auto* modScope = lookupModuleScope(dotted.modulePath)) {
+      if (auto found = modScope->findEnum(dotted.symbol)) return found;
+    }
+  }
   return lookupInChain<std::shared_ptr<sun::EnumType>>(
       [&](const SemanticScopeBase* scope) { return scope->findEnum(name); });
 }
@@ -131,6 +131,11 @@ std::shared_ptr<sun::EnumType> SemanticScopeBase::lookupEnum(
 // -------------------------------------------------------------------
 const GenericEnumInfo* SemanticScopeBase::lookupGenericEnum(
     const std::string& name) const {
+  if (auto dotted = splitDotted(name)) {
+    if (auto* modScope = lookupModuleScope(dotted.modulePath)) {
+      if (auto* found = modScope->findGenericEnum(dotted.symbol)) return found;
+    }
+  }
   return lookupInChain<const GenericEnumInfo*>(
       [&](const SemanticScopeBase* scope) {
         return scope->findGenericEnum(name);
@@ -750,15 +755,11 @@ static std::vector<SemanticScopeBase*> collectAllModuleScopes(
 sun::QualifiedName SemanticScopeBase::resolveNameWithUsings(
     const std::string& name) const {
   // Handle qualified (dotted) names like "sun.String"
-  size_t lastDot = name.rfind('.');
-  if (lastDot != std::string::npos) {
-    std::string modulePath = name.substr(0, lastDot);
-    std::string symbolName = name.substr(lastDot + 1);
-
-    if (auto* modScope = lookupModuleScope(modulePath)) {
+  if (auto dotted = splitDotted(name)) {
+    if (auto* modScope = lookupModuleScope(dotted.modulePath)) {
       AccessFilter qualifiedFilter(this);
-      if (modScope->hasAccessibleSymbol(symbolName, qualifiedFilter)) {
-        return sun::QualifiedName(modScope->scopePath, symbolName);
+      if (modScope->hasAccessibleSymbol(dotted.symbol, qualifiedFilter)) {
+        return sun::QualifiedName(modScope->scopePath, dotted.symbol);
       }
       qualifiedFilter.finish();
     }
@@ -874,28 +875,23 @@ sun::QualifiedName SemanticScopeBase::resolveNameWithUsings(
 // -------------------------------------------------------------------
 VariableInfo* SemanticScopeBase::lookupQualifiedVariable(
     const std::string& qualifiedName) {
-  // Split "module.varName" into module path and variable name
-  size_t lastDot = qualifiedName.rfind('.');
-  if (lastDot == std::string::npos) {
-    return lookupVariable(qualifiedName);
-  }
+  // An unqualified name is an ordinary variable; a qualified one must come
+  // from the named module or not at all.
+  auto dotted = splitDotted(qualifiedName);
+  if (!dotted) return lookupVariable(qualifiedName);
 
-  std::string modulePath = qualifiedName.substr(0, lastDot);
-  std::string varName = qualifiedName.substr(lastDot + 1);
-
-  // Look up the module scope and search for the variable there
-  auto* modScope = lookupModuleScope(modulePath);
+  auto* modScope = lookupModuleScope(dotted.modulePath);
   if (!modScope) return nullptr;
 
   AccessFilter filter(this);
   // Search in the module scope's namespaced variables
-  auto it = modScope->namespacedVariables.find(varName);
+  auto it = modScope->namespacedVariables.find(dotted.symbol);
   if (it != modScope->namespacedVariables.end() && filter.admit(&it->second)) {
     return &it->second;
   }
 
   // Also check regular variables in the module scope
-  auto varIt = modScope->variables.find(varName);
+  auto varIt = modScope->variables.find(dotted.symbol);
   if (varIt != modScope->variables.end() && filter.admit(&varIt->second)) {
     return &varIt->second;
   }
@@ -909,20 +905,16 @@ VariableInfo* SemanticScopeBase::lookupQualifiedVariable(
 // -------------------------------------------------------------------
 const FunctionInfo* SemanticScopeBase::lookupQualifiedFunction(
     const std::string& qualifiedName) const {
-  // Split "module.funcName" into module path and function name
-  size_t lastDot = qualifiedName.rfind('.');
-  if (lastDot == std::string::npos) return nullptr;
+  // Qualified only: an unqualified name is not this function's business
+  auto dotted = splitDotted(qualifiedName);
+  if (!dotted) return nullptr;
 
-  std::string modulePath = qualifiedName.substr(0, lastDot);
-  std::string funcName = qualifiedName.substr(lastDot + 1);
-
-  // Look up the module scope
-  auto* modScope = lookupModuleScope(modulePath);
+  auto* modScope = lookupModuleScope(dotted.modulePath);
   if (!modScope) return nullptr;
 
   // Search for function by name in the module scope
   AccessFilter filter(this);
-  if (auto* overloads = modScope->functions.getOverloads(funcName)) {
+  if (auto* overloads = modScope->functions.getOverloads(dotted.symbol)) {
     for (const auto* info : *overloads) {
       if (filter.admit(info)) return info;
     }
