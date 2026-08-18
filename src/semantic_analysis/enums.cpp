@@ -370,8 +370,9 @@ void SemanticAnalyzer::analyzeEnumVariantConstruction(
                                    payloadType, /*throwOnFail=*/false)) {
         logAndThrowError("Payload value " + std::to_string(i + 1) + " of '" +
                              enumType->getBaseName() + "." + variantName +
-                             "' has type '" + argType->toString() +
-                             "', expected '" + payloadType->toString() + "'",
+                             "' has type '" + argType->toDisplayString() +
+                             "', expected '" + payloadType->toDisplayString() +
+                             "'",
                          args[i]->getLocation());
       }
     }

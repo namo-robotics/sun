@@ -145,9 +145,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
                   const_cast<ExprAST*>(varCreate.getValue()), declaredType,
                   false)) {
             logAndThrowError("Cannot assign value of type '" +
-                                 rhsType->toString() + "' to variable '" +
-                                 varCreate.getName() + "' of type '" +
-                                 declaredType->toString() + "'",
+                                 rhsType->toDisplayString() +
+                                 "' to variable '" + varCreate.getName() +
+                                 "' of type '" +
+                                 declaredType->toDisplayString() + "'",
                              varCreate.getLocation());
           }
         }
@@ -210,9 +211,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
                   const_cast<ExprAST*>(varAssign.getValue()),
                   expectedTargetType, false)) {
             logAndThrowError("Cannot assign value of type '" +
-                                 rhsType->toString() + "' to variable '" +
-                                 varAssign.getName() + "' of type '" +
-                                 varInfo->type->toString() + "'",
+                                 rhsType->toDisplayString() +
+                                 "' to variable '" + varAssign.getName() +
+                                 "' of type '" +
+                                 varInfo->type->toDisplayString() + "'",
                              varAssign.getLocation());
           }
         }
@@ -1264,9 +1266,11 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
                     const_cast<ExprAST*>(memberAssign.getValue()), fieldType,
                     false)) {
               logAndThrowError("Cannot assign value of type '" +
-                                   rhsType->toString() + "' to field '" +
+                                   rhsType->toDisplayString() +
+                                   "' to field '" +
                                    memberAssign.getMemberName() +
-                                   "' of type '" + fieldType->toString() + "'",
+                                   "' of type '" +
+                                   fieldType->toDisplayString() + "'",
                                memberAssign.getLocation());
             }
           }

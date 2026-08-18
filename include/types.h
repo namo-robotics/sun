@@ -984,26 +984,24 @@ class ClassType : public Type {
   // For specialized classes: "Vec<i32>" or "sun.Vec<i32>"
   // For non-specialized: baseName or name with underscores converted to dots
   std::string getDisplayName() const {
+    // Prefer the structured name: QualifiedName::display() spells the scope
+    // path with dots and drops bundle hash segments. A specialization shows
+    // the generic it came from, with its arguments spelled out.
     std::string base;
     if (!baseName_.empty()) {
       base = baseName_;
-    } else if (!baseGenericName.empty()) {
-      // Convert mangled name to dot notation: sun_Vec -> sun.Vec
-      base = baseGenericName;
-      for (size_t i = 0; i < base.size(); ++i) {
-        if (base[i] == '_') base[i] = '.';
-      }
+    } else if (!genericQualifiedName_.empty()) {
+      base = genericQualifiedName_.display();
+    } else if (hasQualifiedName()) {
+      base = qualifiedName_.display();
     } else {
       base = mangledName;
-      for (size_t i = 0; i < base.size(); ++i) {
-        if (base[i] == '_') base[i] = '.';
-      }
     }
     if (isSpecialized() && !typeArguments.empty()) {
       std::string result = base + "<";
       for (size_t i = 0; i < typeArguments.size(); ++i) {
         if (i > 0) result += ", ";
-        result += typeArguments[i]->toString();
+        result += typeArguments[i]->toDisplayString();
       }
       result += ">";
       return result;
@@ -1413,7 +1411,9 @@ class InterfaceType : public Type {
 
   // Structured name: owner() is the declaring module (unit of visibility)
   const sun::QualifiedName& getQualifiedName() const { return qualifiedName_; }
-  void setQualifiedName(sun::QualifiedName qn) { qualifiedName_ = std::move(qn); }
+  void setQualifiedName(sun::QualifiedName qn) {
+    qualifiedName_ = std::move(qn);
+  }
 
   // Constructor for generic interface definition
   InterfaceType(std::string interfaceName, std::vector<std::string> typeParams)
@@ -1652,37 +1652,39 @@ using EnumTypePtr = std::shared_ptr<EnumType>;
 // Example: enum Color { Red, Green, Blue }
 class EnumType : public Type {
   std::string
-      qualifiedName_;     // Fully qualified name (e.g., "$hash$_sun_Color")
+      mangledName_;       // Mangled name (e.g., "$hash$_sun_Color")
   std::string baseName_;  // User-written base name (e.g., "Color")
   std::vector<EnumVariant> variants;
   std::string genericBase_;          // e.g. "Option" for Option_i32
   std::vector<TypePtr> genericArgs_;  // e.g. [i32] for Option_i32
-  sun::QualifiedName structuredName_;
+  sun::QualifiedName qualifiedName_;
 
  public:
   sun::Visibility visibility = sun::Visibility::Private;
 
   // Structured name: owner() is the declaring module (unit of visibility)
-  const sun::QualifiedName& getQualifiedName() const { return structuredName_; }
-  void setQualifiedName(sun::QualifiedName qn) { structuredName_ = std::move(qn); }
+  const sun::QualifiedName& getQualifiedName() const { return qualifiedName_; }
+  void setQualifiedName(sun::QualifiedName qn) {
+    qualifiedName_ = std::move(qn);
+  }
 
-  EnumType(std::string qualifiedName, std::string baseName = "")
-      : qualifiedName_(std::move(qualifiedName)),
+  EnumType(std::string mangledName, std::string baseName = "")
+      : mangledName_(std::move(mangledName)),
         baseName_(std::move(baseName)) {}
 
-  EnumType(std::string qualifiedName, std::vector<EnumVariant> vars,
+  EnumType(std::string mangledName, std::vector<EnumVariant> vars,
            std::string baseName = "")
-      : qualifiedName_(std::move(qualifiedName)),
+      : mangledName_(std::move(mangledName)),
         variants(std::move(vars)),
         baseName_(std::move(baseName)) {}
 
   Kind getKind() const override { return Kind::Enum; }
-  const std::string& getName() const { return qualifiedName_; }
+  const std::string& getName() const { return mangledName_; }
   const std::vector<EnumVariant>& getVariants() const { return variants; }
 
   // Base name accessor
   const std::string& getBaseName() const {
-    return baseName_.empty() ? qualifiedName_ : baseName_;
+    return baseName_.empty() ? mangledName_ : baseName_;
   }
   bool hasBaseName() const { return !baseName_.empty(); }
   void setBaseName(std::string baseName) { baseName_ = std::move(baseName); }
@@ -1699,13 +1701,20 @@ class EnumType : public Type {
 
   // Get user-friendly display name for error messages
   std::string getDisplayName() const {
-    if (!baseName_.empty()) return baseName_;
-    std::string base = qualifiedName_;
-    for (size_t i = 0; i < base.size(); ++i) {
-      if (base[i] == '_') base[i] = '.';
+    if (isGenericSpecialization()) {
+      std::string result = genericBase_ + "<";
+      for (size_t i = 0; i < genericArgs_.size(); ++i) {
+        if (i > 0) result += ", ";
+        result += genericArgs_[i]->toDisplayString();
+      }
+      return result + ">";
     }
-    return base;
+    if (!baseName_.empty()) return baseName_;
+    if (!qualifiedName_.empty()) return qualifiedName_.display();
+    return mangledName_;
   }
+
+  std::string toDisplayString() const override { return getDisplayName(); }
 
   // Idempotent: declaration collection and full analysis both register
   // variants; the second registration must not duplicate them.
@@ -1753,11 +1762,11 @@ class EnumType : public Type {
   // Get the number of variants
   size_t getNumVariants() const { return variants.size(); }
 
-  std::string toString() const override { return qualifiedName_; }
+  std::string toString() const override { return mangledName_; }
 
   bool equals(const Type& other) const override {
     if (auto* e = dynamic_cast<const EnumType*>(&other)) {
-      return qualifiedName_ == e->qualifiedName_;
+      return mangledName_ == e->mangledName_;
     }
     return false;
   }
@@ -1778,7 +1787,7 @@ class EnumType : public Type {
 
   // Get the mangled variant name: EnumName_VariantName
   std::string getMangledVariantName(const std::string& variantName) const {
-    return qualifiedName_ + "_" + variantName;
+    return mangledName_ + "_" + variantName;
   }
 
   // LLVM struct caches, populated by LLVMTypeResolver (mirrors
