@@ -354,14 +354,14 @@ bool SemanticAnalyzer::isAssignableTo(const sun::TypePtr& from,
     }
   }
 
-  // ref(T) -> T: the value is read out of the reference. Fine for anything a
-  // read can honestly duplicate, but not for a T that runs drop code: the
-  // borrowed value and the copy would both own what it holds and both release
-  // it. Moving out of a borrow is not a thing you can do — a container hands
-  // ownership over with take()/pop()/remove().
+  // ref(T) -> T: the value is read out of the reference. Only a scalar can be
+  // duplicated that way. A compound T read out of a borrow would be a second
+  // value backed by the borrowed storage — borrow it with `ref`, copy it
+  // explicitly with clone(), or move it out of a container with
+  // take()/pop()/remove().
   if (!to->isReference() && from->isReference()) {
     auto* fromRef = static_cast<sun::ReferenceType*>(from.get());
-    if (sun::typeNeedsDrop(to)) return false;
+    if (!sun::typeCopiesByRead(to)) return false;
     return isAssignableTo(fromRef->getReferencedType(), to);
   }
 

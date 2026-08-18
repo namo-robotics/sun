@@ -151,6 +151,38 @@ class BorrowChecker {
   // true if `name` may be moved.
   bool checkMoveAllowed(const std::string& name, const Position& pos);
 
+  // =========================================================================
+  // Partial moves (a field moved out of its object)
+  // =========================================================================
+
+  // Moved field paths ("cfg.line", "this.keys") live in movedVariables_
+  // alongside moved variable names, so branches, loops and function exits
+  // handle them the same way. A path is forgotten again when a value is
+  // assigned back into the field.
+
+  // "cfg.line" for a read of a field of a named object; empty when the
+  // expression is not one (a temporary, a call result, an enum constant, a
+  // module-qualified name, a method).
+  std::string fieldPath(const ExprAST& expr) const;
+
+  // Record that `value` moved a compound field out of its object.
+  void noteFieldMove(const ExprAST& value);
+
+  // Forget every field path under `base` (it was reassigned or moved away).
+  void clearFieldPaths(const std::string& base);
+
+  // The field of `name` that is currently moved out, if any.
+  const std::string* movedFieldOf(const std::string& name) const;
+
+  // Reject moving a whole object whose field was moved out. Returns true if
+  // `name` may be moved.
+  bool checkFieldsIntact(const std::string& name, const Position& pos);
+
+  // Depth of member-access objects being checked: reading `cfg.query` is a
+  // use of that field, not of `cfg` as a whole, so a partially moved `cfg` is
+  // still fine there. Assignment targets suppress it the same way.
+  int fieldBaseDepth_ = 0;
+
   // True if control never falls out of `expr` (it ends in return/throw, or
   // is an if whose branches all diverge). Moves made on a diverging path do
   // not flow into the code after it.

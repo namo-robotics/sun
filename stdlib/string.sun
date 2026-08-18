@@ -41,7 +41,9 @@ public module sun {
   public class StringView {
     var view: MatrixView<u8>;  // Underlying 1D matrix view
 
-    public function init(mat_view: ref MatrixView<u8>) {
+    // Takes the view by value: a view is a class, so it moves in rather than
+    // being read out of a borrow
+    public function init(mat_view: MatrixView<u8>) {
       this.view = mat_view;
     }
 

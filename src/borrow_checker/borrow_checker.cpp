@@ -203,6 +203,7 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
   // A fresh declaration (e.g. the next loop iteration, or a same-named
   // variable in a sibling scope) starts un-moved
   movedVariables_.erase(var.getName());
+  clearFieldPaths(var.getName());
 
   // Remember raw_ptr<T> locals; see rawPointerLocals_. The annotation is read
   // rather than the resolved type, which is only known per specialization.
@@ -232,9 +233,15 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
              var.getValue()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
       const auto& srcRef =
           static_cast<const VariableReferenceAST&>(*var.getValue());
-      if (checkMoveAllowed(srcRef.getName(), srcRef.getLocation())) {
+      if (checkMoveAllowed(srcRef.getName(), srcRef.getLocation()) &&
+          checkFieldsIntact(srcRef.getName(), srcRef.getLocation())) {
         movedVariables_.insert(srcRef.getName());
+        clearFieldPaths(srcRef.getName());
       }
+    }
+    // A field read moves the field out of its object
+    else {
+      noteFieldMove(*var.getValue());
     }
   }
 
@@ -269,6 +276,19 @@ void BorrowChecker::checkReferenceCreation(const ReferenceCreationAST& ref) {
   if (!targetVarName) {
     reportError("reference must be bound to a variable, not a temporary", 0, 0);
     return;
+  }
+
+  // Borrowing a place that was moved out of: the field itself, or the whole
+  // object while one of its fields is gone
+  std::string targetPath = fieldPath(*target);
+  const auto& refPos = ref.getLocation();
+  if (!targetPath.empty() && movedVariables_.count(targetPath)) {
+    reportError("cannot borrow moved field '" + targetPath +
+                    "'. It was moved out of its object; assign a value back "
+                    "into it first",
+                refPos.line, refPos.column);
+  } else if (targetPath == *targetVarName) {
+    checkFieldsIntact(*targetVarName, refPos);
   }
 
   // Resolve the actual target and check rebinding rules
@@ -358,15 +378,24 @@ void BorrowChecker::checkVariableAssignment(
         static_cast<const VariableReferenceAST&>(*assign.getValue());
     auto srcType = assign.getValue()->getResolvedType();
     if (srcType && srcType->isCompound() &&
-        checkMoveAllowed(srcRef.getName(), srcRef.getLocation())) {
+        checkMoveAllowed(srcRef.getName(), srcRef.getLocation()) &&
+        checkFieldsIntact(srcRef.getName(), srcRef.getLocation())) {
       movedVariables_.insert(srcRef.getName());
+      clearFieldPaths(srcRef.getName());
       assign.getValue()->setMoved(true);  // Mark for codegen to skip deinit
     }
+  } else if (assign.getValue()) {
+    noteFieldMove(*assign.getValue());
   }
 
   // Overwriting a frozen discriminant or a match binding is rejected the
   // same way as moving it (the arms borrow the payload in place)
   checkMoveAllowed(varName, assign.getLocation());
+
+  // The variable holds a new value: whatever was moved out of the old one is
+  // no longer missing
+  movedVariables_.erase(varName);
+  clearFieldPaths(varName);
 
   checkVariableWrite(varName);
 }
@@ -401,6 +430,13 @@ void BorrowChecker::checkVariableReference(const VariableReferenceAST& varRef) {
     reportError("use of moved variable '" + name +
                     "'. Ownership was transferred in a previous assignment.",
                 pos.line, pos.column);
+  }
+
+  // Using the object as a whole (a by-value move, a borrow, a method call)
+  // while one of its fields is moved out. Reaching a sibling field is fine,
+  // and those reads run with fieldBaseDepth_ raised.
+  if (fieldBaseDepth_ == 0) {
+    checkFieldsIntact(name, varRef.getLocation());
   }
 
   // Check if reading through a reference
@@ -452,12 +488,18 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
   // enum — Sun never implicitly copies compound values.
   if (calleeType->isEnum()) {
     for (const auto& arg : args) {
-      if (!arg || arg->getType() != ASTNodeType::VARIABLE_REFERENCE) continue;
+      if (!arg) continue;
       TypePtr argType = arg->getResolvedType();
       if (!argType || !argType->isCompound()) continue;
+      if (arg->getType() != ASTNodeType::VARIABLE_REFERENCE) {
+        noteFieldMove(*arg);
+        continue;
+      }
       const auto& varRef = static_cast<const VariableReferenceAST&>(*arg);
-      if (checkMoveAllowed(varRef.getName(), varRef.getLocation())) {
+      if (checkMoveAllowed(varRef.getName(), varRef.getLocation()) &&
+          checkFieldsIntact(varRef.getName(), varRef.getLocation())) {
         movedVariables_.insert(varRef.getName());
+        clearFieldPaths(varRef.getName());
         arg->setMoved(true);
       }
     }
@@ -488,8 +530,15 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
     const auto& arg = args[i];
     const auto& paramType = paramTypes[i];
 
+    if (!arg) continue;
+
+    // A field handed to a by-value parameter moves out of its object
+    if (paramType && !paramType->isReference()) {
+      noteFieldMove(*arg);
+    }
+
     // Only check variable references (not complex expressions)
-    if (!arg || arg->getType() != ASTNodeType::VARIABLE_REFERENCE) continue;
+    if (arg->getType() != ASTNodeType::VARIABLE_REFERENCE) continue;
 
     const auto& varRef = static_cast<const VariableReferenceAST&>(*arg);
     TypePtr argType = arg->getResolvedType();
@@ -497,8 +546,10 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
     // If argument is compound type AND parameter is NOT a reference (by-value)
     // then we move the argument
     if (argType && argType->isCompound() && !paramType->isReference() &&
-        checkMoveAllowed(varRef.getName(), varRef.getLocation())) {
+        checkMoveAllowed(varRef.getName(), varRef.getLocation()) &&
+        checkFieldsIntact(varRef.getName(), varRef.getLocation())) {
       movedVariables_.insert(varRef.getName());
+      clearFieldPaths(varRef.getName());
       arg->setMoved(true);  // Mark for codegen to skip deinit
     }
   }
@@ -676,6 +727,86 @@ bool BorrowChecker::checkMoveAllowed(const std::string& name,
   return true;
 }
 
+std::string BorrowChecker::fieldPath(const ExprAST& expr) const {
+  if (expr.getType() == ASTNodeType::VARIABLE_REFERENCE) {
+    return static_cast<const VariableReferenceAST&>(expr).getName();
+  }
+  // A method's receiver: its fields are tracked like any other object's
+  if (expr.getType() == ASTNodeType::THIS) return "this";
+  if (expr.getType() != ASTNodeType::MEMBER_ACCESS) return "";
+
+  const auto& access = static_cast<const MemberAccessAST&>(expr);
+  if (access.isBoundMethodRef() || access.hasResolvedQualifiedName()) return "";
+
+  const ExprAST* object = access.getObject();
+  if (!object) return "";
+
+  // Only a field of a class value: an enum constant (Option.None) or a module
+  // member is not a place that can be moved out of.
+  TypePtr objectType = object->getResolvedType();
+  if (objectType && objectType->isReference()) {
+    objectType =
+        static_cast<const ReferenceType&>(*objectType).getReferencedType();
+  }
+  if (objectType && objectType->isClass()) {
+    if (!static_cast<const ClassType&>(*objectType)
+             .getField(access.getMemberName())) {
+      return "";
+    }
+  } else if (object->getType() != ASTNodeType::THIS) {
+    // `this` carries no resolved type on the node; anything else without a
+    // class type is not a field of an object
+    return "";
+  }
+
+  std::string base = fieldPath(*object);
+  if (base.empty()) return "";
+  return base + "." + access.getMemberName();
+}
+
+void BorrowChecker::noteFieldMove(const ExprAST& value) {
+  TypePtr type = value.getResolvedType();
+  if (!type || !type->isCompound()) return;
+
+  std::string path = fieldPath(value);
+  // A plain variable move is recorded by the caller; only field paths here
+  if (path.empty() || path.find('.') == std::string::npos) return;
+
+  movedVariables_.insert(path);
+  clearFieldPaths(path);
+}
+
+void BorrowChecker::clearFieldPaths(const std::string& base) {
+  const std::string prefix = base + ".";
+  for (auto it = movedVariables_.begin(); it != movedVariables_.end();) {
+    if (it->rfind(prefix, 0) == 0) {
+      it = movedVariables_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
+
+const std::string* BorrowChecker::movedFieldOf(const std::string& name) const {
+  const std::string prefix = name + ".";
+  for (const auto& moved : movedVariables_) {
+    if (moved.rfind(prefix, 0) == 0) return &moved;
+  }
+  return nullptr;
+}
+
+bool BorrowChecker::checkFieldsIntact(const std::string& name,
+                                      const Position& pos) {
+  const std::string* moved = movedFieldOf(name);
+  if (!moved) return true;
+  reportError("cannot use '" + name + "' as a whole: its field '" + *moved +
+                  "' was moved out. Assign a value back into " + *moved +
+                  " first, or borrow the field with 'ref' instead of moving "
+                  "it",
+              pos.line, pos.column);
+  return false;
+}
+
 void BorrowChecker::checkWhileExpr(const WhileExprAST& whileExpr) {
   // Check condition
   if (whileExpr.getCondition()) {
@@ -770,10 +901,16 @@ void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
     // For variable references, mark the variable as moved
     else if (value->getType() == ASTNodeType::VARIABLE_REFERENCE) {
       const auto& srcRef = static_cast<const VariableReferenceAST&>(*value);
-      if (checkMoveAllowed(srcRef.getName(), srcRef.getLocation())) {
+      if (checkMoveAllowed(srcRef.getName(), srcRef.getLocation()) &&
+          checkFieldsIntact(srcRef.getName(), srcRef.getLocation())) {
         movedVariables_.insert(srcRef.getName());
+        clearFieldPaths(srcRef.getName());
         const_cast<ExprAST*>(value)->setMoved(true);  // codegen skips deinit
       }
+    }
+    // Returning a field moves it out of its object
+    else {
+      noteFieldMove(*value);
     }
   }
 }
@@ -977,14 +1114,40 @@ void BorrowChecker::checkClassDef(const ClassDefinitionAST& classDef) {
 }
 
 void BorrowChecker::checkMemberAccess(const MemberAccessAST& access) {
+  std::string path = fieldPath(access);
+
   if (access.getObject()) {
+    // Reaching through an object to one of its fields is a use of that field,
+    // not of the object as a whole
+    if (!path.empty()) fieldBaseDepth_++;
     checkExpr(*access.getObject());
+    if (!path.empty()) fieldBaseDepth_--;
+  }
+
+  if (!path.empty() && movedVariables_.count(path)) {
+    const auto& pos = access.getLocation();
+    reportError("use of moved field '" + path +
+                    "'. It was moved out of its object; assign a value back "
+                    "into it before reading it again",
+                pos.line, pos.column);
   }
 }
 
 void BorrowChecker::checkMemberAssignment(const MemberAssignmentAST& assign) {
   if (assign.getObject()) {
+    // Storing into a field is not a use of the object as a whole: a field of
+    // a partially moved object can still be filled back in
+    fieldBaseDepth_++;
     checkExpr(*assign.getObject());
+    fieldBaseDepth_--;
+
+    // The field owns a value again
+    std::string base = fieldPath(*assign.getObject());
+    if (!base.empty()) {
+      std::string path = base + "." + assign.getMemberName();
+      movedVariables_.erase(path);
+      clearFieldPaths(path);
+    }
   }
   if (assign.getValue()) {
     checkExpr(*assign.getValue());
@@ -1001,10 +1164,14 @@ void BorrowChecker::checkMemberAssignment(const MemberAssignmentAST& assign) {
              assign.getValue()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
       const auto& srcRef =
           static_cast<const VariableReferenceAST&>(*assign.getValue());
-      if (checkMoveAllowed(srcRef.getName(), srcRef.getLocation())) {
+      if (checkMoveAllowed(srcRef.getName(), srcRef.getLocation()) &&
+          checkFieldsIntact(srcRef.getName(), srcRef.getLocation())) {
         movedVariables_.insert(srcRef.getName());
+        clearFieldPaths(srcRef.getName());
         assign.getValue()->setMoved(true);  // Mark for codegen to skip deinit
       }
+    } else {
+      noteFieldMove(*assign.getValue());
     }
   }
 }
@@ -1015,6 +1182,7 @@ void BorrowChecker::checkIndexedAssignment(const IndexedAssignmentAST& assign) {
   }
   if (assign.getValue()) {
     checkExpr(*assign.getValue());
+    noteFieldMove(*assign.getValue());
   }
 }
 

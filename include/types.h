@@ -2325,6 +2325,21 @@ inline bool typeNeedsDrop(const TypePtr& type) {
   return typeNeedsDrop(type.get());
 }
 
+// True if a read can honestly duplicate a value of this type. Scalars can:
+// primitives, pointers, functions. So can an array, which is a fat pointer to
+// storage owned elsewhere. A class, payload enum or interface value cannot: it
+// has one owner, so reading one out of a borrow would hand back a second value
+// backed by the borrowed storage. Borrow it with `ref` instead, or copy it
+// explicitly with a clone method. Unbound type parameters answer true; the
+// specialization is checked with the concrete type in hand.
+inline bool typeCopiesByRead(const Type* type) {
+  return type && (!type->isCompound() || type->isArray());
+}
+
+inline bool typeCopiesByRead(const TypePtr& type) {
+  return typeCopiesByRead(type.get());
+}
+
 inline bool Type::isNumeric() const {
   Kind k = getKind();
   return k == Kind::Int8 || k == Kind::Int16 || k == Kind::Int32 ||
