@@ -206,3 +206,258 @@ TEST(GenericFunctions, nested_generic_with_capture_two_outer_specializations) {
   )");
   EXPECT_EQ(value, 32);
 }
+
+// ============================================================================
+// Call sites ahead of the definition (issue #78)
+// ============================================================================
+
+TEST(GenericFunctions, called_from_generic_class_method_defined_above_it) {
+  auto value = executeString(R"(
+    class Box<T> {
+        var v: T;
+        function init(v: T) { this.v = v; }
+        function get() T { return helper<T>(this.v); }
+    }
+    function helper<T>(x: T) T { return x + x; }
+    function main() i32 {
+        var b = Box<i32>(21);
+        return b.get();
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(GenericFunctions, called_from_class_method_defined_above_it) {
+  auto value = executeString(R"(
+    class Plain {
+        var n: i32;
+        function init(n: i32) { this.n = n; }
+        function get() i32 { return helper<i32>(this.n); }
+    }
+    function helper<T>(x: T) T { return x + x; }
+    function main() i32 {
+        var p = Plain(21);
+        return p.get();
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(GenericFunctions, called_from_function_defined_above_it) {
+  auto value = executeString(R"(
+    function caller() i32 { return helper<i32>(21); }
+    function helper<T>(x: T) T { return x + x; }
+    function main() i32 { return caller(); }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(GenericFunctions, generic_calls_generic_defined_below_it) {
+  auto value = executeString(R"(
+    function outer<T>(x: T) T { return inner<T>(x) + inner<T>(x); }
+    function inner<T>(x: T) T { return x; }
+    function main() i32 { return outer<i32>(21); }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(GenericFunctions, mutually_ordered_specializations_share_one_symbol) {
+  // Both call sites — the one above the definition and the one below — must
+  // resolve to the same specialization.
+  auto value = executeString(R"(
+    function before() i32 { return helper<i32>(20); }
+    function helper<T>(x: T) T { return x + 1; }
+    function after() i32 { return helper<i32>(20); }
+    function main() i32 { return before() + after(); }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// ============================================================================
+// Throwing generic functions
+// ============================================================================
+
+TEST(GenericFunctions, throwing_generic_is_catchable) {
+  auto value = executeString(R"(
+    class Boom implements IError {
+        function init() {}
+        function code() i32 { return 1; }
+        function message() static_ptr<u8> { return "boom"; }
+    }
+    function risky<T>(x: T) i32, IError { throw Boom(); }
+    function main() i32 {
+        try { return risky<i32>(1); } catch (e: IError) { return 42; }
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(GenericFunctions, throwing_generic_is_catchable_from_class_method) {
+  auto value = executeString(R"(
+    class Boom implements IError {
+        function init() {}
+        function code() i32 { return 1; }
+        function message() static_ptr<u8> { return "boom"; }
+    }
+    class Box<T> {
+        var v: T;
+        function init(v: T) { this.v = v; }
+        function get() i32 {
+            try { return risky<T>(this.v); } catch (e: IError) { return 42; }
+        }
+    }
+    function risky<T>(x: T) i32, IError { throw Boom(); }
+    function main() i32 { var b = Box<i32>(1); return b.get(); }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// ============================================================================
+// Parameter shapes: ref T, and generic classes named in a signature
+// ============================================================================
+
+TEST(GenericFunctions, ref_type_parameter_receives_an_address) {
+  auto value = executeString(R"(
+    function bump<T>(x: ref T) i32 { return 42; }
+    function main() i32 {
+        var v: i32 = 3;
+        return bump<i32>(v);
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(GenericFunctions, ref_type_parameter_from_generic_class_method) {
+  auto value = executeString(R"(
+    function bump<T>(x: ref T) i32 { return 42; }
+    class Box<T> {
+        var v: T;
+        function init(v: T) { this.v = v; }
+        function get() i32 { var local: T = this.v; return bump<T>(local); }
+    }
+    function main() i32 { var b = Box<i32>(1); return b.get(); }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(GenericFunctions, parameter_naming_a_generic_class) {
+  auto value = executeString(R"(
+    class Pair<A> {
+        var a: A;
+        function init(a: A) { this.a = a; }
+        function get() A { return this.a; }
+    }
+    function unwrap<T>(p: ref Pair<T>) T { return p.get(); }
+    function main() i32 {
+        var p = Pair<i32>(42);
+        return unwrap<i32>(p);
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// ============================================================================
+// Module-qualified generic calls
+// ============================================================================
+
+TEST(GenericFunctions, module_qualified_call) {
+  auto value = executeString(R"(
+    public module m {
+        public function twice<T>(x: T) T { return x + x; }
+    }
+    function main() i32 { return m.twice<i32>(21); }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(GenericFunctions, nested_module_qualified_call_from_generic_method) {
+  auto value = executeString(R"(
+    public module a {
+        public module b {
+            public function pick<T>(x: T, y: T) T { return x; }
+        }
+    }
+    class Box<T> {
+        var v: T;
+        function init(v: T) { this.v = v; }
+        function get() T { return a.b.pick<T>(this.v, this.v); }
+    }
+    function main() i32 {
+        var box = Box<i32>(20);
+        return box.get() + a.b.pick<i32>(22, 0);
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// ============================================================================
+// Type arguments inferred from the call's arguments
+// ============================================================================
+
+TEST(GenericFunctions, type_argument_inferred_from_argument) {
+  auto value = executeString(R"(
+    function identity<T>(x: T) T { return x; }
+    function main() i32 { return identity(42); }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(GenericFunctions, type_arguments_inferred_for_each_parameter) {
+  auto value = executeString(R"(
+    function add<T>(a: T, b: T) T { return a + b; }
+    function first<A, B>(a: A, b: B) A { return a; }
+    function main() i32 { return add(20, 21) + first(1, true); }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(GenericFunctions, type_argument_inferred_through_ref_parameter) {
+  auto value = executeString(R"(
+    class Point {
+        var x: i32;
+        function init(x: i32) { this.x = x; }
+        function get() i32 { return this.x; }
+    }
+    function peek<T>(v: ref T) i32 { return 42; }
+    function main() i32 {
+        var p = Point(1);
+        return peek(p);
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(GenericFunctions, type_argument_inferred_from_generic_class_argument) {
+  auto value = executeString(R"(
+    class Pair<A> {
+        var a: A;
+        function init(a: A) { this.a = a; }
+        function get() A { return this.a; }
+    }
+    function unwrap<T>(p: ref Pair<T>) T { return p.get(); }
+    function main() i32 {
+        var p = Pair<i32>(42);
+        return unwrap(p);
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(GenericFunctions, inference_from_imported_module) {
+  auto value = executeString(R"(
+    public module m {
+        public function twice<T>(x: T) T { return x + x; }
+    }
+    using m;
+    function main() i32 { return twice(21); }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(GenericFunctions, uninferable_type_argument_is_error) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    function nothing<T>(n: i32) i32 { return n; }
+    function main() i32 { return nothing(1); }
+  )"),
+                                "Cannot infer type argument 'T'");
+}

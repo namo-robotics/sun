@@ -695,6 +695,22 @@ SymbolMatch SemanticAnalyzer::findSymbolInModule(
       }
     }
 
+    // Check generic functions (templates, keyed by qualified name)
+    if (matchesFilter(SymbolKind::GenericFunction)) {
+      auto genFuncIt =
+          scope->genericFunctions.find({scope->scopePath, name});
+      if (genFuncIt != scope->genericFunctions.end()) {
+        SymbolMatch match;
+        match.kind = SymbolKind::GenericFunction;
+        match.name = name;
+        match.modulePath = fullPath;
+        match.libraryHash = libHash;
+        match.genericFunctionInfo = &genFuncIt->second;
+        if (!accessFilter.admit(&genFuncIt->second)) return std::nullopt;
+        return match;
+      }
+    }
+
     // Check namespaced variables
     if (matchesFilter(SymbolKind::Variable)) {
       std::string mangledPath = mangleModulePath(fullPath);

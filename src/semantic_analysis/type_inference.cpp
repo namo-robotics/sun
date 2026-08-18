@@ -308,6 +308,15 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
           // Stack-allocated class instantiation: ClassName(args...)
           return classType;
         }
+        // A generic function called without type arguments — `identity(42)`.
+        // Analysis pinned the callee to the specialization it inferred; the
+        // template itself is in no function table to look up.
+        if (auto calleeType = varRef.getResolvedType()) {
+          if (calleeType->isFunction()) {
+            return static_cast<const sun::FunctionType*>(calleeType.get())
+                ->getReturnType();
+          }
+        }
       }
 
       // Module-qualified call (mod.foo(...)): resolve the overload here,
@@ -869,6 +878,28 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
             return sun::Types::Function(match.functionInfo->returnType,
                                         match.functionInfo->paramTypes,
                                         match.functionInfo->canThrow);
+          case SymbolKind::GenericFunction: {
+            // m.f<i32>(...): instantiate here, and point the call site at the
+            // specialization rather than at the template's name.
+            if (!memberAccess.hasTypeArguments() ||
+                !match.genericFunctionInfo) {
+              logAndThrowError(
+                  "Generic function '" + memberName + "' in module '" +
+                      modPath + "' needs type arguments, e.g. " + memberName +
+                      "<i32>(...)",
+                  memberAccess.getLocation());
+            }
+            auto typeArgs = resolveTypeArguments(
+                memberAccess.getTypeArguments(), memberAccess.getLocation(),
+                "generic function instantiation");
+            memberAccess.setResolvedTypeArgs(typeArgs);
+            SpecializedFunctionInfo specialized = requireGenericSpecialization(
+                *match.genericFunctionInfo, typeArgs, memberName,
+                memberAccess.getLocation());
+            memberAccess.setResolvedQualifiedName(
+                specialized.qualifiedName.mangled());
+            return specialized.functionType();
+          }
           case SymbolKind::Variable:
             return match.variableInfo->type;
           default:

@@ -1243,3 +1243,39 @@ TEST(ClassTest, ref_return_of_compound_from_free_function_is_not_a_copy) {
   )");
   EXPECT_EQ(value, 4);
 }
+
+// A class body may name a class declared further down the file: codegen
+// declares every class's methods before it emits any body.
+TEST(ClassTest, method_calls_class_declared_below_it) {
+  auto value = executeString(R"(
+    class First {
+        function init() {}
+        function go() i32 { var s = Second(20); return s.doubled() + helper(); }
+    }
+    class Second {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+        function doubled() i32 { return this.v * 2; }
+    }
+    function helper() i32 { return 2; }
+    function main() i32 { var f = First(); return f.go(); }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(ClassTest, method_calls_generic_class_declared_below_it) {
+  auto value = executeString(R"(
+    class Node {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+        function wrapped() i32 { var w = Wrapper<i32>(this.v); return w.get(); }
+    }
+    class Wrapper<T> {
+        var v: T;
+        function init(v: T) { this.v = v; }
+        function get() T { return this.v; }
+    }
+    function main() i32 { var n = Node(42); return n.wrapped(); }
+  )");
+  EXPECT_EQ(value, 42);
+}
