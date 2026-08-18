@@ -183,6 +183,28 @@ class BorrowChecker {
   // still fine there. Assignment targets suppress it the same way.
   int fieldBaseDepth_ = 0;
 
+  // =========================================================================
+  // Loop-carried moves
+  // =========================================================================
+
+  // Record that `place` (a variable name or a field path) was moved here.
+  void recordMove(const std::string& place, const Position& pos);
+
+  // Where each still-standing move happened, for the loop report below.
+  std::unordered_map<std::string, Position> moveLocations_;
+
+  // Names declared inside the loop bodies currently being checked (innermost
+  // last). Such a name is fresh on every iteration, so moving it is fine.
+  std::vector<std::unordered_set<std::string>> loopLocals_;
+
+  // Note a declaration in every enclosing loop body.
+  void noteLoopLocal(const std::string& name);
+
+  // Check a loop body: a move that is still standing when the body ends would
+  // run again on the next iteration, using a value that is already gone.
+  void checkLoopBody(const ExprAST* body,
+                     const std::vector<std::string>& loopVars = {});
+
   // True if control never falls out of `expr` (it ends in return/throw, or
   // is an if whose branches all diverge). Moves made on a diverging path do
   // not flow into the code after it.

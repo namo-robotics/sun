@@ -204,6 +204,7 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
   // variable in a sibling scope) starts un-moved
   movedVariables_.erase(var.getName());
   clearFieldPaths(var.getName());
+  noteLoopLocal(var.getName());
 
   // Remember raw_ptr<T> locals; see rawPointerLocals_. The annotation is read
   // rather than the resolved type, which is only known per specialization.
@@ -235,7 +236,7 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
           static_cast<const VariableReferenceAST&>(*var.getValue());
       if (checkMoveAllowed(srcRef.getName(), srcRef.getLocation()) &&
           checkFieldsIntact(srcRef.getName(), srcRef.getLocation())) {
-        movedVariables_.insert(srcRef.getName());
+        recordMove(srcRef.getName(), srcRef.getLocation());
         clearFieldPaths(srcRef.getName());
       }
     }
@@ -380,7 +381,7 @@ void BorrowChecker::checkVariableAssignment(
     if (srcType && srcType->isCompound() &&
         checkMoveAllowed(srcRef.getName(), srcRef.getLocation()) &&
         checkFieldsIntact(srcRef.getName(), srcRef.getLocation())) {
-      movedVariables_.insert(srcRef.getName());
+      recordMove(srcRef.getName(), srcRef.getLocation());
       clearFieldPaths(srcRef.getName());
       assign.getValue()->setMoved(true);  // Mark for codegen to skip deinit
     }
@@ -498,7 +499,7 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
       const auto& varRef = static_cast<const VariableReferenceAST&>(*arg);
       if (checkMoveAllowed(varRef.getName(), varRef.getLocation()) &&
           checkFieldsIntact(varRef.getName(), varRef.getLocation())) {
-        movedVariables_.insert(varRef.getName());
+        recordMove(varRef.getName(), varRef.getLocation());
         clearFieldPaths(varRef.getName());
         arg->setMoved(true);
       }
@@ -548,7 +549,7 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
     if (argType && argType->isCompound() && !paramType->isReference() &&
         checkMoveAllowed(varRef.getName(), varRef.getLocation()) &&
         checkFieldsIntact(varRef.getName(), varRef.getLocation())) {
-      movedVariables_.insert(varRef.getName());
+      recordMove(varRef.getName(), varRef.getLocation());
       clearFieldPaths(varRef.getName());
       arg->setMoved(true);  // Mark for codegen to skip deinit
     }
@@ -772,7 +773,7 @@ void BorrowChecker::noteFieldMove(const ExprAST& value) {
   // A plain variable move is recorded by the caller; only field paths here
   if (path.empty() || path.find('.') == std::string::npos) return;
 
-  movedVariables_.insert(path);
+  recordMove(path, value.getLocation());
   clearFieldPaths(path);
 }
 
@@ -795,6 +796,56 @@ const std::string* BorrowChecker::movedFieldOf(const std::string& name) const {
   return nullptr;
 }
 
+void BorrowChecker::recordMove(const std::string& place, const Position& pos) {
+  movedVariables_.insert(place);
+  moveLocations_[place] = pos;
+}
+
+void BorrowChecker::noteLoopLocal(const std::string& name) {
+  for (auto& frame : loopLocals_) frame.insert(name);
+}
+
+void BorrowChecker::checkLoopBody(const ExprAST* body,
+                                  const std::vector<std::string>& loopVars) {
+  if (!body) return;
+
+  auto movedBefore = movedVariables_;
+  loopLocals_.emplace_back();
+  for (const auto& v : loopVars) loopLocals_.back().insert(v);
+
+  checkExpr(*body);
+
+  auto declared = std::move(loopLocals_.back());
+  loopLocals_.pop_back();
+
+  // A body that always returns or throws runs at most once
+  if (exprDiverges(*body)) return;
+
+  // Whatever is still moved when the body ends was moved out of something
+  // that outlives the iteration: the next pass would move it again.
+  std::vector<std::string> carried;
+  for (const auto& place : movedVariables_) {
+    if (movedBefore.count(place)) continue;
+    std::string base = place.substr(0, place.find('.'));
+    if (declared.count(base)) continue;
+    carried.push_back(place);
+  }
+
+  for (const auto& place : carried) {
+    auto loc = moveLocations_.find(place);
+    Position pos = loc != moveLocations_.end() ? loc->second : Position{};
+    reportError("'" + place +
+                    "' is moved inside a loop, so the next iteration would "
+                    "use what is already gone. Move it once outside the loop, "
+                    "borrow it with 'ref', copy it with clone(), or assign a "
+                    "value back into it before the iteration ends",
+                pos.line, pos.column);
+    // Reported once: let the rest of the function check against a whole value
+    movedVariables_.erase(place);
+    moveLocations_.erase(place);
+  }
+}
+
 bool BorrowChecker::checkFieldsIntact(const std::string& name,
                                       const Position& pos) {
   const std::string* moved = movedFieldOf(name);
@@ -815,9 +866,7 @@ void BorrowChecker::checkWhileExpr(const WhileExprAST& whileExpr) {
 
   // Check body in its own scope
   enterScope();
-  if (whileExpr.getBody()) {
-    checkExpr(*whileExpr.getBody());
-  }
+  checkLoopBody(whileExpr.getBody());
   exitScope();
 }
 
@@ -837,9 +886,7 @@ void BorrowChecker::checkForExpr(const ForExprAST& forExpr) {
   }
 
   // Check body
-  if (forExpr.getBody()) {
-    checkExpr(*forExpr.getBody());
-  }
+  checkLoopBody(forExpr.getBody());
   exitScope();
 }
 
@@ -852,10 +899,8 @@ void BorrowChecker::checkForInExpr(const ForInExprAST& forInExpr) {
   // Enter scope for loop variable
   enterScope();
 
-  // Check body
-  if (forInExpr.getBody()) {
-    checkExpr(*forInExpr.getBody());
-  }
+  // Check body; the loop variable is bound afresh on every iteration
+  checkLoopBody(forInExpr.getBody(), {forInExpr.getLoopVar()});
   exitScope();
 }
 
@@ -903,7 +948,7 @@ void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
       const auto& srcRef = static_cast<const VariableReferenceAST&>(*value);
       if (checkMoveAllowed(srcRef.getName(), srcRef.getLocation()) &&
           checkFieldsIntact(srcRef.getName(), srcRef.getLocation())) {
-        movedVariables_.insert(srcRef.getName());
+        recordMove(srcRef.getName(), srcRef.getLocation());
         clearFieldPaths(srcRef.getName());
         const_cast<ExprAST*>(value)->setMoved(true);  // codegen skips deinit
       }
@@ -1166,7 +1211,7 @@ void BorrowChecker::checkMemberAssignment(const MemberAssignmentAST& assign) {
           static_cast<const VariableReferenceAST&>(*assign.getValue());
       if (checkMoveAllowed(srcRef.getName(), srcRef.getLocation()) &&
           checkFieldsIntact(srcRef.getName(), srcRef.getLocation())) {
-        movedVariables_.insert(srcRef.getName());
+        recordMove(srcRef.getName(), srcRef.getLocation());
         clearFieldPaths(srcRef.getName());
         assign.getValue()->setMoved(true);  // Mark for codegen to skip deinit
       }

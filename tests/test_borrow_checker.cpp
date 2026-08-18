@@ -846,3 +846,137 @@ TEST(BorrowCheckerTest, error_on_storing_borrowed_class_in_field) {
   )"),
                std::exception);
 }
+
+// ============================================================================
+// Loop-carried moves
+//
+// A move that is still standing when a loop body ends runs again on the next
+// iteration, against a value that is already gone.
+// ============================================================================
+
+TEST(BorrowCheckerTest, error_on_variable_moved_every_iteration) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Inner {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+        function deinit() void { }
+        function get() i32 { return this.v; }
+    }
+
+    function main() i32 {
+        var src = Inner(7);
+        var total = 0;
+        for (var i: i32 = 0; i < 3; i = i + 1) {
+            var taken = src;      // ERROR: moved again on the next iteration
+            total = total + taken.get();
+        }
+        return total;
+    }
+  )"),
+                                "Borrow check failed");
+}
+
+TEST(BorrowCheckerTest, error_on_field_moved_every_iteration) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Inner {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+        function deinit() void { }
+        function get() i32 { return this.v; }
+    }
+    class Config {
+        var line: Inner;
+        function init() { this.line = Inner(7); }
+        function deinit() void { }
+    }
+
+    function main() i32 {
+        var cfg = Config();
+        var total = 0;
+        for (var i: i32 = 0; i < 3; i = i + 1) {
+            var taken = cfg.line;   // ERROR: the field is gone next iteration
+            total = total + taken.get();
+        }
+        return total;
+    }
+  )"),
+                                "Borrow check failed");
+}
+
+TEST(BorrowCheckerTest, loop_moves_a_value_made_in_the_same_iteration) {
+  // A value created inside the body is fresh each time round
+  auto value = executeString(R"(
+    class Inner {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+        function deinit() void { }
+        function get() i32 { return this.v; }
+    }
+
+    function consume(i: Inner) i32 { return i.get(); }
+
+    function main() i32 {
+        var total = 0;
+        for (var i: i32 = 0; i < 3; i = i + 1) {
+            var tmp = Inner(2);
+            total = total + consume(tmp);
+        }
+        return total;
+    }
+  )");
+  EXPECT_EQ(value, 6);
+}
+
+TEST(BorrowCheckerTest, loop_refills_the_moved_field_before_the_end) {
+  auto value = executeString(R"(
+    class Inner {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+        function deinit() void { }
+        function get() i32 { return this.v; }
+    }
+    class Config {
+        var line: Inner;
+        function init() { this.line = Inner(7); }
+        function deinit() void { }
+    }
+
+    function main() i32 {
+        var cfg = Config();
+        var total = 0;
+        for (var i: i32 = 0; i < 3; i = i + 1) {
+            var taken = cfg.line;
+            total = total + taken.get();
+            cfg.line = Inner(1);      // whole again before the iteration ends
+        }
+        return total;
+    }
+  )");
+  EXPECT_EQ(value, 9);
+}
+
+TEST(BorrowCheckerTest, loop_body_that_returns_moves_once) {
+  auto value = executeString(R"(
+    class Inner {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+        function deinit() void { }
+        function get() i32 { return this.v; }
+    }
+    class Config {
+        var line: Inner;
+        function init() { this.line = Inner(7); }
+        function deinit() void { }
+    }
+
+    function main() i32 {
+        var cfg = Config();
+        while (true) {
+            var taken = cfg.line;     // the body cannot run twice
+            return taken.get();
+        }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 7);
+}
