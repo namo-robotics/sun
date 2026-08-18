@@ -445,11 +445,14 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
         const auto& firstBody = *matchExpr.getArms()[0].body;
         // Bodies of destructuring arms are analyzed in per-arm binding
         // scopes; use the resolved type rather than re-walking a body whose
-        // bindings are out of scope here
+        // bindings are out of scope here.
+        // A match yields a value: each arm's body is read, so an arm that
+        // names a `ref T` binding contributes T. (The other arms need not
+        // have an address to hand out — `Option.None => 0` has none.)
         if (auto resolved = firstBody.getResolvedType()) {
-          return resolved;
+          return unwrapRef(resolved);
         }
-        return inferType(firstBody);
+        return unwrapRef(inferType(firstBody));
       }
       return sun::Types::Void();
     }

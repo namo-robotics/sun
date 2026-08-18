@@ -16,8 +16,8 @@ Value* CodegenVisitor::codegen(const ReturnExprAST& expr) {
     if (currentFunctionReturnsRef) {
       Value* addr = tryCodegenAddress(*expr.getValue());
       if (!addr) {
-        // Expressions that are themselves reference-typed (e.g.
-        // _to_ref<T>(ptr)) codegen directly to the address
+        // Expressions that are themselves reference-typed codegen directly
+        // to the address: _to_ref<T>(ptr), and a call forwarding a borrow.
         sun::TypePtr valType = expr.getValue()->getResolvedType();
         if (valType && valType->isReference()) {
           Value* v = codegen(*expr.getValue());

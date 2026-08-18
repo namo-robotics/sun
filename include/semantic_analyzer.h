@@ -190,6 +190,8 @@ class SemanticAnalyzer : public AccessContext {
   sun::TypePtr inferType(const ExprAST& expr);
   sun::TypePtr inferType(const MemberAccessAST& expr);
 
+
+
   // Infer type for generic call using pre-resolved type arguments
   sun::TypePtr inferGenericCallType(const GenericCallAST& call);
 

@@ -5,6 +5,19 @@
 // container that can produce such an iterator. `for (var x: T in c)` accepts
 // either: it calls iter() when present, then loops on next() until None.
 //
+// T is the item type, so it decides whether iteration borrows or yields
+// values. A container that owns its elements iterates by borrow — it uses
+// `ref T` as the item type, so next() returns Option<ref T> and the loop body
+// sees the element in place rather than a copy the container still owns:
+//
+//   class VecIterator<T> implements IIterator<ref T, Vec<T>> {
+//     public function next(v: ref Vec<T>) Option<ref T> { ... }
+//   }
+//
+// An iterator that computes its elements has nothing to borrow and yields
+// them by value, as below. `for (var x: T in c)` is written the same way for
+// both.
+//
 //   class Countdown implements IIterator<i32, Countdown> {
 //     var n: i32;
 //     function init(n: i32) { this.n = n; }

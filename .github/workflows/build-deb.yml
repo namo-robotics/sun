@@ -89,6 +89,10 @@ jobs:
   test-install:
     needs: build-deb
     runs-on: ubuntu-24.04
+    # A bare container, not the runner image: the runner ships gcc, libc6-dev
+    # and libstdc++-dev already, so a missing Depends would go unnoticed there.
+    # Here everything `sun -c` needs has to come from the package's own deps.
+    container: ubuntu:24.04
 
     steps:
       - name: Download artifact
@@ -99,14 +103,18 @@ jobs:
 
       - name: Install LLVM 20 runtime
         run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            wget ca-certificates gnupg lsb-release software-properties-common
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
-          sudo ./llvm.sh 20
+          ./llvm.sh 20
 
       - name: Install package
         run: |
-          sudo apt-get update
-          sudo dpkg -i dist/*.deb || sudo apt-get install -f -y
+          apt-get update
+          # apt (not dpkg) so the package's declared Depends are resolved.
+          apt-get install -y --no-install-recommends ./dist/*.deb
 
       - name: Test installation
         run: |
@@ -125,3 +133,6 @@ jobs:
           EOF
           export SUN_PATH=/usr/lib/sun
           sun test.sun
+          # AOT: needs a C link driver (cc), libc6-dev and libstdc++ dev files
+          sun -c -o test_aot test.sun
+          ./test_aot

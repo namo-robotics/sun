@@ -4,6 +4,7 @@
 #include "borrow_checker/borrow_checker.h"
 
 #include <cassert>
+#include <optional>
 
 #include "config.h"
 #include "error.h"
@@ -20,6 +21,7 @@ std::vector<BorrowError> BorrowChecker::check(const BlockExprAST& program) {
   refVariables_.clear();
   movedVariables_.clear();
   refTypedParams_.clear();
+  rawPointerLocals_.clear();
   functionScopeDepth_ = 0;
   currentFunctionReturnsRef_ = false;
   paramLifetimes_.clear();
@@ -201,6 +203,20 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
   // A fresh declaration (e.g. the next loop iteration, or a same-named
   // variable in a sibling scope) starts un-moved
   movedVariables_.erase(var.getName());
+
+  // Remember raw_ptr<T> locals; see rawPointerLocals_. The annotation is read
+  // rather than the resolved type, which is only known per specialization.
+  const auto& annotation = var.getTypeAnnotation();
+  bool isRawPointer = annotation && annotation->baseName == "raw_ptr";
+  if (!isRawPointer && var.getValue()) {
+    TypePtr valueType = var.getValue()->getResolvedType();
+    isRawPointer = valueType && valueType->isRawPointer();
+  }
+  if (isRawPointer) {
+    rawPointerLocals_.insert(var.getName());
+  } else {
+    rawPointerLocals_.erase(var.getName());
+  }
 
   // Move semantics for temporaries and compound types
   if (var.getValue()) {
@@ -595,6 +611,14 @@ void BorrowChecker::checkMatchExpr(const MatchExprAST& matchExpr) {
     std::vector<std::pair<std::string, std::optional<Lifetime>>> savedLifetimes;
     for (const auto& binding : arm.bindings) {
       if (binding.isWildcard) continue;
+      // A reference payload is an address the enum borrowed from elsewhere,
+      // so the binding does not live and die with the matched value.
+      if (binding.resolvedType && binding.resolvedType->isReference()) {
+        savedLifetimes.emplace_back(binding.name,
+                                    state_.getLifetime(binding.name));
+        state_.setLifetime(binding.name, Lifetime::static_());
+        continue;
+      }
       if (binding.resolvedType && binding.resolvedType->isCompound()) {
         if (matchBorrowedBindings_.insert(binding.name).second) {
           armBorrows.push_back(binding.name);
@@ -1043,6 +1067,7 @@ void BorrowChecker::enterFunctionScope(const std::string& funcName) {
   enterScope();
   functionScopeDepth_ = currentScope_;  // Record where function body starts
   refTypedParams_.clear();
+  rawPointerLocals_.clear();
   paramLifetimes_.clear();
 }
 
@@ -1051,6 +1076,7 @@ void BorrowChecker::exitFunctionScope() {
   refVariables_.clear();
   movedVariables_.clear();
   refTypedParams_.clear();
+  rawPointerLocals_.clear();
   paramLifetimes_.clear();
   currentFunction_.clear();
   functionScopeDepth_ = 0;
@@ -1326,8 +1352,32 @@ Lifetime BorrowChecker::inferCallReturnLifetime(const CallExprAST& call) {
     return Lifetime::local("$temp", currentScope_);
   }
 
+  // A method call cannot outlive its receiver, so `obj.method(...)` gets the
+  // receiver's lifetime whenever the signature is not visible here — inside a
+  // generic body the callee's type is only known per specialization. A call
+  // through a raw pointer is unrestricted for the same reason `_to_ref` is:
+  // raw pointers are the unsafe escape hatch and name storage the checker
+  // cannot see.
+  const MemberAccessAST* methodAccess =
+      callee->getType() == ASTNodeType::MEMBER_ACCESS
+          ? static_cast<const MemberAccessAST*>(callee)
+          : nullptr;
+  auto receiverLifetime = [&]() -> std::optional<Lifetime> {
+    if (!methodAccess || !methodAccess->getObject()) return std::nullopt;
+    const ExprAST& object = *methodAccess->getObject();
+    TypePtr objectType = object.getResolvedType();
+    if (objectType && objectType->isRawPointer()) return Lifetime::static_();
+    if (object.getType() == ASTNodeType::VARIABLE_REFERENCE &&
+        rawPointerLocals_.count(
+            static_cast<const VariableReferenceAST&>(object).getName())) {
+      return Lifetime::static_();
+    }
+    return inferExprLifetime(object);
+  };
+
   TypePtr calleeType = callee->getResolvedType();
   if (!calleeType) {
+    if (auto lt = receiverLifetime()) return *lt;
     return Lifetime::local("$temp", currentScope_);
   }
 
@@ -1347,16 +1397,14 @@ Lifetime BorrowChecker::inferCallReturnLifetime(const CallExprAST& call) {
         return Lifetime::local("$temp.from_call", currentScope_);
       }
     }
-    if (callee->getType() == ASTNodeType::MEMBER_ACCESS) {
-      const auto& access = static_cast<const MemberAccessAST&>(*callee);
-      if (access.getObject()) return inferExprLifetime(*access.getObject());
-    }
+    if (auto lt = receiverLifetime()) return *lt;
     return Lifetime::param("$call_return");
   }
 
   // Check if function returns a reference type
   auto* funcType = dynamic_cast<const FunctionType*>(calleeType.get());
   if (!funcType) {
+    if (auto lt = receiverLifetime()) return *lt;
     return Lifetime::local("$temp", currentScope_);
   }
 
@@ -1389,10 +1437,7 @@ Lifetime BorrowChecker::inferCallReturnLifetime(const CallExprAST& call) {
 
   // A ref-returning method borrows from its receiver: `obj.method(...)`
   // has obj's lifetime
-  if (callee->getType() == ASTNodeType::MEMBER_ACCESS) {
-    const auto& access = static_cast<const MemberAccessAST&>(*callee);
-    if (access.getObject()) return inferExprLifetime(*access.getObject());
-  }
+  if (auto lt = receiverLifetime()) return *lt;
 
   // No temporaries passed to ref params - return lifetime is param lifetime
   // (tied to the arguments' lifetimes, which the caller controls)

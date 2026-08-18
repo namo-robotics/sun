@@ -1014,7 +1014,7 @@ public module sun {
       if (i > 0) {
         out.append_literal(sep);
       }
-      out.append(parts.borrow_unchecked(i));
+      out.append(parts.get_unchecked(i));
     }
     return out;
   }

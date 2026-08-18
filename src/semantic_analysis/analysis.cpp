@@ -145,9 +145,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
                   const_cast<ExprAST*>(varCreate.getValue()), declaredType,
                   false)) {
             logAndThrowError("Cannot assign value of type '" +
-                                 rhsType->toString() + "' to variable '" +
-                                 varCreate.getName() + "' of type '" +
-                                 declaredType->toString() + "'",
+                                 rhsType->toDisplayString() +
+                                 "' to variable '" + varCreate.getName() +
+                                 "' of type '" +
+                                 declaredType->toDisplayString() + "'",
                              varCreate.getLocation());
           }
         }
@@ -210,9 +211,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
                   const_cast<ExprAST*>(varAssign.getValue()),
                   expectedTargetType, false)) {
             logAndThrowError("Cannot assign value of type '" +
-                                 rhsType->toString() + "' to variable '" +
-                                 varAssign.getName() + "' of type '" +
-                                 varInfo->type->toString() + "'",
+                                 rhsType->toDisplayString() +
+                                 "' to variable '" + varAssign.getName() +
+                                 "' of type '" +
+                                 varInfo->type->toDisplayString() + "'",
                              varAssign.getLocation());
           }
         }
@@ -593,6 +595,16 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
                              nextMethod->returnType->toDisplayString() + "'",
                          forInExpr.getLocation());
       }
+      // An iterator that yields Option<ref X> borrows: `for (var x: X in c)`
+      // binds x to the element in place rather than copying it out, which is
+      // what lets a container be iterated without duplicating elements it
+      // still owns. Writing `ref X` in the annotation says the same thing.
+      if (elementType->isReference() && loopVarType &&
+          !loopVarType->isReference() &&
+          sun::unwrapRef(elementType)->equals(*loopVarType)) {
+        loopVarType = elementType;
+        forInExpr.setResolvedLoopVarType(loopVarType);
+      }
       if (loopVarType && !elementType->isTypeParameter() &&
           !loopVarType->isTypeParameter() &&
           !elementType->equals(*loopVarType)) {
@@ -735,9 +747,26 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       if (returnExpr.hasValue()) {
         // Propagate the function's return type for return-position inference
         // (e.g. `return Option.None;`)
+        sun::TypePtr declaredReturn = currentFunctionReturnType();
         analyzeExpr(const_cast<ExprAST&>(*returnExpr.getValue()),
-                    currentFunctionReturnType());
-        expr.setResolvedType(inferType(*returnExpr.getValue()));
+                    declaredReturn);
+        sun::TypePtr valueType = inferType(*returnExpr.getValue());
+        // Returning by value out of a borrow would hand the caller a second
+        // owner of what the borrowed value holds; both would release it.
+        if (valueType && valueType->isReference() && declaredReturn &&
+            !declaredReturn->isReference() &&
+            sun::typeNeedsDrop(declaredReturn)) {
+          logAndThrowError(
+              "Cannot return a borrowed '" +
+                  declaredReturn->toDisplayString() +
+                  "' by value: it owns resources the borrow does not give up. "
+                  "Return 'ref " +
+                  declaredReturn->toDisplayString() +
+                  "' to keep borrowing, or move the value out first "
+                  "(take()/pop()/remove() on a container).",
+              returnExpr.getLocation());
+        }
+        expr.setResolvedType(valueType);
       } else {
         expr.setResolvedType(sun::Types::Void());
       }
@@ -1237,9 +1266,11 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
                     const_cast<ExprAST*>(memberAssign.getValue()), fieldType,
                     false)) {
               logAndThrowError("Cannot assign value of type '" +
-                                   rhsType->toString() + "' to field '" +
+                                   rhsType->toDisplayString() +
+                                   "' to field '" +
                                    memberAssign.getMemberName() +
-                                   "' of type '" + fieldType->toString() + "'",
+                                   "' of type '" +
+                                   fieldType->toDisplayString() + "'",
                                memberAssign.getLocation());
             }
           }
@@ -3037,10 +3068,23 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
         }
 
         if (!compatible) {
+          // The common way to land here now: handing a borrowed element to a
+          // by-value parameter. Say what to do about it.
+          std::string hint;
+          if (argType->isReference() && !paramType->isReference() &&
+              sun::typeNeedsDrop(paramType)) {
+            hint =
+                ". It is borrowed, and a '" + paramType->toDisplayString() +
+                "' cannot be copied out of a borrow: take the parameter by "
+                "'ref', or move the value out first (take()/pop()/remove() on "
+                "a container)";
+          }
           logAndThrowError("Type mismatch in argument " +
-                           std::to_string(i + 1) + " of call to '" + funcName +
-                           "': expected " + paramType->toString() + ", got " +
-                           argType->toString());
+                               std::to_string(i + 1) + " of call to '" +
+                               funcName + "': expected " +
+                               paramType->toDisplayString() + ", got " +
+                               argType->toDisplayString() + hint,
+                           callExpr.getLocation());
         }
       }
     }

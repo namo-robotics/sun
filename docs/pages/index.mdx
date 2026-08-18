@@ -62,8 +62,13 @@ Download and install the latest dev build:
 
 ```bash
 curl -LO https://github.com/namo-robotics/sun/releases/download/dev/sun_0.dev_amd64.deb
-sudo dpkg -i sun_0.dev_amd64.deb
+sudo apt install ./sun_0.dev_amd64.deb
 ```
+
+Use `apt` rather than `dpkg -i` so the dependencies are pulled in: `sun -c` links
+through the system C compiler, so it needs `gcc`, `libc6-dev` and the libstdc++
+development files. On releases without LLVM 20 in the archive, add
+[apt.llvm.org](https://apt.llvm.org/) first so `libllvm20` can be found.
 
 To update, download and install the new package.
 

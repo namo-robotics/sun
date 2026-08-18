@@ -797,9 +797,9 @@ TEST(StringTest, split_on_byte_and_string) {
         var csv = String(alloc, "a,b,,c");
         var parts = csv.split(alloc, 44);  // ','
         if (parts.size() != 4) { return 1; }
-        if (not parts.borrow_unchecked(0).equals_literal("a")) { return 2; }
-        if (not parts.borrow_unchecked(2).isEmpty()) { return 3; }
-        if (not parts.borrow_unchecked(3).equals_literal("c")) { return 4; }
+        if (not parts.get_unchecked(0).equals_literal("a")) { return 2; }
+        if (not parts.get_unchecked(2).isEmpty()) { return 3; }
+        if (not parts.get_unchecked(3).equals_literal("c")) { return 4; }
 
         var plain = String(alloc, "no separators here");
         var whole = plain.split(alloc, 44);
@@ -808,13 +808,13 @@ TEST(StringTest, split_on_byte_and_string) {
         var text = String(alloc, "k1=v1;;k2=v2;");
         var fields = text.split(alloc, ";;");
         if (fields.size() != 2) { return 6; }
-        if (not fields.borrow_unchecked(0).equals_literal("k1=v1")) { return 7; }
-        if (not fields.borrow_unchecked(1).equals_literal("k2=v2;")) { return 8; }
+        if (not fields.get_unchecked(0).equals_literal("k1=v1")) { return 7; }
+        if (not fields.get_unchecked(1).equals_literal("k2=v2;")) { return 8; }
 
         var untouched = String(alloc, "abc");
         var one = untouched.split(alloc, "");
         if (one.size() != 1) { return 9; }
-        if (not one.borrow_unchecked(0).equals_literal("abc")) { return 10; }
+        if (not one.get_unchecked(0).equals_literal("abc")) { return 10; }
         return 0;
     }
   )");

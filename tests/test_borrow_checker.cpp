@@ -423,7 +423,7 @@ TEST(BorrowCheckerTest, ref_return_through_match_binding_of_this) {
       function init(v: Value) { this.v = v; }
       function at(i: i64) ref String, IError {
         match this.v {
-          Value.Items(items) => { return items.borrow(i); },
+          Value.Items(items) => { return items.get(i); },
           Value.Text(s) => { return s; },
           _ => { throw OutOfRange(); }
         };
@@ -432,7 +432,7 @@ TEST(BorrowCheckerTest, ref_return_through_match_binding_of_this) {
 
     function first(h: ref Holder) ref String, IError {
       match h.v {
-        Value.Items(items) => { return items.borrow(0); },
+        Value.Items(items) => { return items.get(0); },
         _ => { throw OutOfRange(); }
       };
     }
@@ -462,7 +462,7 @@ TEST(BorrowCheckerTest, ref_return_through_match_binding_of_local_is_dangling) {
     function first(alloc: ref HeapAllocator) ref String {
       var local = Value.Items(Vec<String>(alloc, 1));
       match local {
-        Value.Items(items) => { return items.borrow(0); },
+        Value.Items(items) => { return items.get(0); },
         _ => { }
       };
       return unsafe { _to_ref<String>(null); };

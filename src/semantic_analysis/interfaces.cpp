@@ -186,7 +186,7 @@ void SemanticAnalyzer::inheritInterfaceFields(
                              ifaceRef.name + "'",
                          classDef.getLocation());
       }
-      interfaceDisplayName = interfaceType->toString();
+      interfaceDisplayName = interfaceType->toDisplayString();
     } else {
       // Non-generic interface
       interfaceType = lookupInterface(ifaceRef.name);
@@ -208,9 +208,10 @@ void SemanticAnalyzer::inheritInterfaceFields(
           logAndThrowError(
               "Class '" + classDef.getName() + "' declares field '" +
                   field.name + "' with type '" +
-                  existingField->type->toString() + "' but interface '" +
+                  existingField->type->toDisplayString() +
+                      "' but interface '" +
                   interfaceDisplayName + "' requires type '" +
-                  field.type->toString() + "'",
+                  field.type->toDisplayString() + "'",
               classDef.getLocation());
         }
         continue;
@@ -248,7 +249,7 @@ void SemanticAnalyzer::validateInterfaceImplementation(
         // Already reported in inheritInterfaceFields
         continue;
       }
-      interfaceDisplayName = interfaceType->toString();
+      interfaceDisplayName = interfaceType->toDisplayString();
     } else {
       interfaceType = lookupInterface(ifaceRef.name);
       if (!interfaceType) {
@@ -305,10 +306,13 @@ void SemanticAnalyzer::validateInterfaceImplementation(
         if (!returnOk) {
           logAndThrowError("Class '" + classType->getDisplayName() + "' method '" +
                                interfaceMethod.name + "' has return type '" +
-                               classMethodInfo->returnType->toString() +
+                               classMethodInfo->returnType
+                                   ->toDisplayString() +
                                "' but interface '" + interfaceDisplayName +
                                "' requires return type '" +
-                               interfaceMethod.returnType->toString() + "'",
+                               interfaceMethod.returnType
+                                   ->toDisplayString() +
+                               "'",
                            classDef.getLocation());
         }
         // Verify parameter count matches
@@ -331,10 +335,12 @@ void SemanticAnalyzer::validateInterfaceImplementation(
               logAndThrowError("Class '" + classType->getDisplayName() + "' method '" +
                                    interfaceMethod.name + "' parameter " +
                                    std::to_string(i + 1) + " has type '" +
-                                   classMethodInfo->paramTypes[i]->toString() +
+                                   classMethodInfo->paramTypes[i]
+                                       ->toDisplayString() +
                                    "' but interface '" + interfaceDisplayName +
                                    "' requires type '" +
-                                   interfaceMethod.paramTypes[i]->toString() +
+                                   interfaceMethod.paramTypes[i]
+                                       ->toDisplayString() +
                                    "'",
                                classDef.getLocation());
             }

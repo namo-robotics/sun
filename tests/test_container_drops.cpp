@@ -340,3 +340,357 @@ TEST(ContainerDropTest, vec_of_string_no_crash) {
   // exactly once)
   EXPECT_EQ(value, 1);
 }
+
+// ============================================================================
+// Peek accessors borrow (issue #69)
+//
+// get()/first()/last()/c[i] and iteration hand back a reference: the container
+// keeps ownership of the element. Returning a bitwise copy instead left the
+// copy and the stored element both owning the same heap buffer, and both
+// released it — "double free detected in tcache 2" on scope exit.
+// ============================================================================
+
+TEST(ContainerDropTest, vec_get_borrows_owning_element) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var v = Vec<String>(alloc, 4);
+      v.push(String(alloc, "hello"));
+      v.push(String(alloc, "world"));
+      var n: i64 = 0;
+      try {
+        var s = v.get(0);
+        n = s.length();
+      } catch (e: IError) {
+        return -1;
+      }
+      return n;
+    }
+  )");
+  // Borrowed, so the Vec still drops both strings exactly once at scope exit
+  EXPECT_EQ(value, 5);
+}
+
+TEST(ContainerDropTest, vec_index_and_peeks_borrow_owning_elements) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var v = Vec<String>(alloc, 4);
+      v.push(String(alloc, "aa"));
+      v.push(String(alloc, "bbb"));
+      var total: i64 = v[0].length() + v[1].length();
+      total = total + match v.first() { Option.Some(s) => s.length(), Option.None => 0 };
+      total = total + match v.last() { Option.Some(s) => s.length(), Option.None => 0 };
+      for (var s: String in v) { total = total + s.length(); }
+      return total;
+    }
+  )");
+  // 5 (index) + 2 (first) + 3 (last) + 5 (iteration)
+  EXPECT_EQ(value, 15);
+}
+
+TEST(ContainerDropTest, map_and_list_peeks_borrow_owning_values) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var m = Map<i64, String>(alloc, 16);
+      m.insert(1, String(alloc, "alpha"));
+      var total: i64 = 0;
+      try { total = total + m.get(1).length(); } catch (e: IError) { return -1; }
+      total = total + match m.find(1) { Option.Some(s) => s.length(), Option.None => 0 };
+
+      var ll = LinkedList<String>(alloc);
+      ll.push_back(String(alloc, "beta"));
+      try { total = total + ll.get(0).length(); } catch (e: IError) { return -2; }
+      total = total + match ll.first() { Option.Some(s) => s.length(), Option.None => 0 };
+      return total;
+    }
+  )");
+  // 5 + 5 (map get/find) + 4 + 4 (list get/first)
+  EXPECT_EQ(value, 18);
+}
+
+// A borrow is a real reference, not a copy that happens to read the same value
+TEST(ContainerDropTest, writing_through_a_borrow_hits_the_container) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var v = Vec<i32>(alloc, 4);
+      v.push(10);
+      v.push(20);
+      try {
+        var r = v.get(1);
+        r = 99;
+      } catch (e: IError) {
+        return -1;
+      }
+      return match v.last() { Option.Some(x) => x, Option.None => 0 };
+    }
+  )");
+  EXPECT_EQ(value, 99);
+}
+
+// take()/pop() still move the element out, leaving the slot to drop as a no-op
+TEST(ContainerDropTest, take_moves_the_element_out) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var v = Vec<String>(alloc, 4);
+      v.push(String(alloc, "hello"));
+      v.push(String(alloc, "hi"));
+      var n: i64 = 0;
+      try {
+        var owned = v.take(0);
+        n = owned.length();
+      } catch (e: IError) {
+        return -1;
+      }
+      return n + v.size();
+    }
+  )");
+  // owned dropped at scope exit, the Vec drops what is left — each buffer once
+  EXPECT_EQ(value, 7);
+}
+
+// ============================================================================
+// A borrow cannot be copied back into an owner
+//
+// The peek accessors return `ref T`, so the next question is whether that
+// reference can be laundered back into an owned T. It cannot: the copy and the
+// borrowed value would both own the same buffer and both release it — the same
+// double free, one step removed. Every by-value context has to reject it.
+// ============================================================================
+
+TEST(ContainerDropTest, borrowed_element_is_not_assignable_to_a_value) {
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using sun;
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var v = Vec<String>(alloc, 4);
+      v.push(String(alloc, "hello"));
+      var s: String = v.get_unchecked(0);
+      return s.length();
+    }
+  )"),
+               std::exception);
+}
+
+TEST(ContainerDropTest, borrowed_element_is_not_a_by_value_argument) {
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using sun;
+    function by_value(s: String) i64 { return s.length(); }
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var v = Vec<String>(alloc, 4);
+      v.push(String(alloc, "hello"));
+      return by_value(v.get_unchecked(0));
+    }
+  )"),
+               std::exception);
+}
+
+TEST(ContainerDropTest, borrowed_element_is_not_returned_by_value) {
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using sun;
+    function grab(v: ref Vec<String>) String { return v.get_unchecked(0); }
+    function main() i32 { return 0; }
+  )"),
+               std::exception);
+}
+
+// An iterator that claims to yield owning elements by value out of a container
+// it only borrows: each next() would have to move an element out of the Vec
+TEST(ContainerDropTest, borrowed_element_is_not_an_owning_enum_payload) {
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using sun;
+    function grab(v: ref Vec<String>) Option<String> {
+      return Option.Some(v.get_unchecked(0));
+    }
+    function main() i32 { return 0; }
+  )"),
+               std::exception);
+}
+
+TEST(ContainerDropTest, borrowed_element_is_not_stored_in_a_field) {
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using sun;
+    class Holder {
+      var s: String;
+      function init(alloc: ref HeapAllocator) { this.s = String(alloc, ""); }
+      public function set_from(v: ref Vec<String>) void {
+        this.s = v.get_unchecked(0);
+      }
+    }
+    function main() i32 { return 0; }
+  )"),
+               std::exception);
+}
+
+// Non-owning types are unaffected: reading one out of a borrow is a real copy
+TEST(ContainerDropTest, borrowed_scalar_copies_out_normally) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    function by_value(n: i32) i32 { return n + 1; }
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var v = Vec<i32>(alloc, 4);
+      v.push(41);
+      var copied: i32 = v.get_unchecked(0);
+      return by_value(copied) - 1;
+    }
+  )");
+  EXPECT_EQ(value, 41);
+}
+
+// ============================================================================
+// Iterating a container of owning elements by value
+//
+// next() takes the container by `ref`, so an iterator never owns what it walks.
+// Yielding elements BY VALUE out of one it only borrowed would hand the loop a
+// second owner of each element — unless it actually removes them, which is what
+// separates a draining iterator from a broken one.
+// ============================================================================
+
+// An iterator over Vec<String> declaring String as its item type
+TEST(ContainerDropTest, by_value_iterator_over_owning_elements_is_rejected) {
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using sun;
+
+    class ByValueIter implements IIterator<String, Vec<String>> {
+      var i: i64;
+      public function init() { this.i = 0; }
+      public function next(v: ref Vec<String>) Option<String> {
+        if (this.i >= v.size()) { return Option.None; }
+        var e = v.get_unchecked(this.i);
+        this.i = this.i + 1;
+        return Option.Some(e);
+      }
+    }
+
+    function main() i32 { return 0; }
+  )"),
+               std::exception);
+}
+
+// The same thing through a full IIterable container reached by for-in
+TEST(ContainerDropTest, by_value_iterable_of_owning_elements_is_rejected) {
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using sun;
+
+    class Bag implements IIterable<String, Bag> {
+      var items: Vec<String>;
+      public function init(alloc: ref HeapAllocator) {
+        this.items = Vec<String>(alloc, 4);
+      }
+      public function add(s: String) void { this.items.push(s); }
+      public function count() i64 { return this.items.size(); }
+      public function iter() BagIter { return BagIter(); }
+    }
+
+    class BagIter implements IIterator<String, Bag> {
+      var i: i64;
+      public function init() { this.i = 0; }
+      public function next(b: ref Bag) Option<String> {
+        if (this.i >= b.count()) { return Option.None; }
+        var e = b.items.get_unchecked(this.i);
+        this.i = this.i + 1;
+        return Option.Some(e);
+      }
+    }
+
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var b = Bag(alloc);
+      b.add(String(alloc, "hello"));
+      var total: i64 = 0;
+      for (var s: String in b) { total = total + s.length(); }
+      return total;
+    }
+  )"),
+               std::exception);
+}
+
+// A loop body cannot launder the borrowed element into an owned variable
+TEST(ContainerDropTest, owning_the_loop_element_of_an_owning_vec_is_rejected) {
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using sun;
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var v = Vec<String>(alloc, 4);
+      v.push(String(alloc, "hello"));
+      var n: i64 = 0;
+      for (var s: String in v) {
+        var owned: String = s;
+        n = n + owned.length();
+      }
+      return n;
+    }
+  )"),
+               std::exception);
+}
+
+// `for (var s: String in v)` names the element type; the binding is a borrow,
+// and re-binding it without an annotation is just a second borrow
+TEST(ContainerDropTest, for_in_over_owning_vec_binds_a_borrow) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var v = Vec<String>(alloc, 4);
+      v.push(String(alloc, "hello"));
+      v.push(String(alloc, "hi"));
+      var n: i64 = 0;
+      for (var s: String in v) {
+        var also = s;
+        n = n + also.length();
+      }
+      return n;
+    }
+  )");
+  // Each element is dropped once, by the Vec
+  EXPECT_EQ(value, 7);
+}
+
+// A draining iterator yields by value legitimately: pop() moves the element
+// out, so the loop owns it and the Vec no longer does
+TEST(ContainerDropTest, draining_iterator_may_yield_owning_elements_by_value) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    class Draining implements IIterator<String, Vec<String>> {
+      public function init() {}
+      public function next(v: ref Vec<String>) Option<String> {
+        return v.pop();
+      }
+    }
+
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var v = Vec<String>(alloc, 4);
+      v.push(String(alloc, "hello"));
+      v.push(String(alloc, "hi"));
+      var it = Draining();
+      var total: i64 = 0;
+      var more: bool = true;
+      while (more) {
+        match it.next(v) {
+          Option.Some(s) => { total = total + s.length(); },
+          Option.None => { more = false; }
+        };
+      }
+      return total + v.size();
+    }
+  )");
+  // 5 + 2 drained, Vec left empty
+  EXPECT_EQ(value, 7);
+}

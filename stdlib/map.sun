@@ -11,8 +11,9 @@
 //   var allocator = make_heap_allocator();
 //   var m = Map<i64, i32>(allocator);
 //   m.insert(42, 100);
-//   var val = m.get(42);              // Returns 100, throws if not found
-//   var val2 = m.getOrDefault(99, 0); // Returns 0 (default) since 99 not in map
+//   var val = m.get(42);              // Borrows 100, throws if not found
+//   var fallback = 0;
+//   var val2 = m.getOrDefault(99, fallback); // Borrows the default: 99 absent
 //   m.remove(42);                     // Removes and returns value
 //
 //   // Check existence
@@ -116,7 +117,7 @@ public module sun {
   // Map<K, V> - Generic Hash Map
   // ============================================================================
 
-  public class Map<K, V> implements IIterable<V, Map<K, V>> {
+  public class Map<K, V> implements IIterable<ref V, Map<K, V>> {
     var keys: ContiguousBuffer<K>;  // Key storage
     var values: ContiguousBuffer<V>;  // Value storage  
     var states: ContiguousBuffer<i8>;  // State array: 0=empty, 1=occupied, 2=deleted
@@ -224,31 +225,33 @@ public module sun {
       }
     }
 
-    // Get value by key, throws IError if not found
-    public function get(key: K) V, IError {
+    // Borrow the value stored under key; throws if not found. The map keeps
+    // ownership, so this hands back a reference — copying the value out would
+    // leave two owners of anything it holds. Use remove() to move it out.
+    public function get(key: K) ref V, IError {
       var probe: i64 = this.findIndex(key);
       if (probe < 0) {
         throw NotFoundError();
       }
-      return this.values.get(probe);
+      return this.values.get_unchecked(probe);
     }
 
-    // Get value by key; None if not present
-    public function find(key: K) Option<V> {
+    // Borrow the value stored under key; None if not present
+    public function find(key: K) Option<ref V> {
       var probe: i64 = this.findIndex(key);
       if (probe < 0) {
         return Option.None;
       }
-      return Option.Some(this.values.get(probe));
+      return Option.Some(this.values.get_unchecked(probe));
     }
 
-    // Get value by key, returns default if not found
-    public function getOrDefault(key: K, default_value: V) V {
+    // Borrow the value stored under key, or the caller's default when absent
+    public function getOrDefault(key: K, default_value: ref V) ref V {
       var probe: i64 = this.findIndex(key);
       if (probe < 0) {
         return default_value;
       }
-      return this.values.get(probe);
+      return this.values.get_unchecked(probe);
     }
 
     // Remove key and return its value, throws IError if not found
@@ -258,7 +261,7 @@ public module sun {
         throw NotFoundError();
       }
 
-      var value: V = this.values.get(probe);
+      var value: V = this.values.take_unchecked(probe);
       this.drop_key(probe);  // Value moved out; the key is dropped here
       this.states.set(probe, 2);  // Mark as DELETED
       this.size_ = this.size_ - 1;
@@ -383,8 +386,8 @@ public module sun {
         var state: i8 = old_states.get(i);
         if (state == 1) {
           // OCCUPIED - rehash into new table
-          var key: K = old_keys.get(i);
-          var value: V = old_values.get(i);
+          var key: K = old_keys.take_unchecked(i);
+          var value: V = old_values.take_unchecked(i);
           this.insert(key, value);
         }
       }
@@ -406,7 +409,7 @@ public module sun {
   // MapIterator<K, V> - Iterator over map values
   // ============================================================================
 
-  public class MapIterator<K, V> implements IIterator<V, Map<K, V>> {
+  public class MapIterator<K, V> implements IIterator<ref V, Map<K, V>> {
     var current: i64;
 
     public function init() {
@@ -414,14 +417,15 @@ public module sun {
     }
 
     // Value in the next occupied slot, or None once the map is exhausted
-    public function next(map: ref Map<K, V>) Option<V> {
+    // Values are borrowed: the map still owns them.
+    public function next(map: ref Map<K, V>) Option<ref V> {
       var capacity: i64 = map.capacity();
       while (this.current < capacity) {
-        var state: i8 = map.states.get(this.current);
+        var state: i8 = map.states.get_unchecked(this.current);
         if (state == 1) {
-          var value: V = map.values.get(this.current);
+          var index: i64 = this.current;
           this.current = this.current + 1;
-          return Option.Some(value);
+          return Option.Some(map.values.get_unchecked(index));
         }
         this.current = this.current + 1;
       }

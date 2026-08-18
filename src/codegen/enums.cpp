@@ -112,16 +112,31 @@ Value* CodegenVisitor::codegenEnumVariantConstruction(
   // Store each payload value through the variant view struct
   const auto& args = expr.getArgs();
   for (size_t i = 0; i < args.size(); ++i) {
-    Value* argVal = codegen(*args[i]);
-    if (!argVal) {
-      logAndThrowError("Failed to generate payload value for variant '" +
-                       variant.name + "'");
-    }
     unsigned idx = typeResolver.enumPayloadFieldIndex(enumType, variant.name, i);
     llvm::Type* fieldTy = variantTy->getElementType(idx);
     Value* fieldPtr = ctx.builder->CreateStructGEP(variantTy, storage, idx,
                                                    "payload." + variant.name);
     const sun::TypePtr& payloadType = variant.payloadTypes[i];
+
+    // A reference payload stores the referent's ADDRESS: the variant borrows,
+    // it does not own, so nothing moves and nothing is dropped later.
+    if (payloadType->isReference()) {
+      Value* addr = tryCodegenAddress(*args[i]);
+      if (!addr) {
+        logAndThrowError(
+            "Payload of variant '" + variant.name +
+                "' is a reference, but the argument has no address to borrow",
+            expr.getLocation());
+      }
+      ctx.builder->CreateStore(addr, fieldPtr);
+      continue;
+    }
+
+    Value* argVal = codegen(*args[i]);
+    if (!argVal) {
+      logAndThrowError("Failed to generate payload value for variant '" +
+                       variant.name + "'");
+    }
 
     if (payloadType->isCompound()) {
       // Class or payload-enum argument arrives as a pointer. Compound values

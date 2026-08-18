@@ -18,7 +18,14 @@ Rules-Requires-Root: no
 
 Package: sun
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, libllvm20
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         libllvm20,
+         gcc | clang,
+         libc6-dev | libc-dev,
+         g++ | libstdc++-dev
+Suggests: lld,
+          gcc-aarch64-linux-gnu
 Description: The Sun Programming Language Compiler
  Sun is a statically compiled programming language optimized with LLVM.
  .

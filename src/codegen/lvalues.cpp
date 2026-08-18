@@ -123,6 +123,30 @@ std::pair<Value*, sun::ClassType*> CodegenVisitor::codegenObjectPtr(
 // closure captures, temporaries, modules). Never spills values to temp
 // allocas - every returned pointer is the genuine storage location.
 Value* CodegenVisitor::tryCodegenAddress(const ExprAST& expr) {
+  // Expressions that are already the referent's address: a call or index that
+  // borrows, and the wrappers a body puts around one. codegenExpression skips
+  // the read-through that codegen() would otherwise apply.
+  sun::TypePtr exprType = expr.getResolvedType();
+  if (exprType && exprType->isReference()) {
+    switch (expr.getType()) {
+      case ASTNodeType::CALL:
+      case ASTNodeType::INDEX:
+      case ASTNodeType::GENERIC_CALL:  // _to_ref<T>(ptr)
+        return codegenExpression(expr);
+      case ASTNodeType::PAREN_EXPR:
+        return tryCodegenAddress(
+            *static_cast<const ParenExprAST&>(expr).getInner());
+      case ASTNodeType::UNSAFE_BLOCK: {
+        const auto& body =
+            static_cast<const UnsafeBlockAST&>(expr).getBody().getBody();
+        if (!body.empty()) return tryCodegenAddress(*body.back());
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
   switch (expr.getType()) {
     case ASTNodeType::VARIABLE_REFERENCE: {
       const auto& varRef = static_cast<const VariableReferenceAST&>(expr);

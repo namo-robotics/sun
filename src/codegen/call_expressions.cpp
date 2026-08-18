@@ -302,21 +302,26 @@ Value* CodegenVisitor::materializeMethodClosureValue(Value* fnPtr,
 // Helper: Widen numeric types if needed (i32->i64, f32->f64)
 // -------------------------------------------------------------------
 
-// Reference-returning callees return the referent's ADDRESS; for scalars the
-// caller transparently dereferences so the call yields the value (refs behave
-// like values everywhere else). Compound referents (classes, payload enums)
-// flow as pointers everywhere, so the address is kept: loading would produce
-// an aliasing copy and mutations through the ref would be lost.
-Value* CodegenVisitor::derefIfRefReturn(Value* result,
-                                        const sun::TypePtr& returnType) {
-  if (!result || !returnType || !returnType->isReference()) return result;
-  auto* refType = static_cast<const sun::ReferenceType*>(returnType.get());
-  const sun::TypePtr& referenced = refType->getReferencedType();
-  if (referenced && referenced->isCompound() && !referenced->isInterface()) {
-    return result;
+// `ref T` is a real type: a ref-returning call yields the referent's ADDRESS,
+// which is what makes `var r = v.get(i); r = 5;` write through to the Vec.
+// Reading a reference is what loads through it — see loadIfRef, applied where
+// an expression's value is actually consumed. Compound referents (classes,
+// payload enums) flow as pointers everywhere, so nothing to do for them.
+Value* CodegenVisitor::loadIfRef(Value* value, const sun::TypePtr& type) {
+  if (!value || !type || !type->isReference()) return value;
+  if (!value->getType()->isPointerTy()) return value;  // already a value
+  const sun::TypePtr& referenced =
+      static_cast<const sun::ReferenceType&>(*type).getReferencedType();
+  // Compound referents (classes, payload enums) and interface fat pointers are
+  // carried as addresses everywhere; loading one here would make the aliasing
+  // copy a borrow exists to avoid, and interface arguments load their own fat
+  // pointer at the call. A type parameter means an unsubstituted template body.
+  if (!referenced || referenced->isTypeParameter() || referenced->isCompound()) {
+    return value;
   }
   llvm::Type* valueTy = typeResolver.resolve(referenced);
-  return ctx.builder->CreateLoad(valueTy, result, "ref.ret.deref");
+  if (!valueTy) return value;
+  return ctx.builder->CreateLoad(valueTy, value, "ref.deref");
 }
 
 Value* CodegenVisitor::widenNumericIfNeeded(Value* argVal,
@@ -952,7 +957,6 @@ Value* CodegenVisitor::codegenClassMethodCall(
   Value* result = emitPossiblyThrowingCall(
       methodFunc->getFunctionType(), methodFunc, argValues, method->canThrow,
       "method.call");
-  result = derefIfRefReturn(result, method->returnType);
   return materializeStructReturn(result);
 }
 
@@ -1148,9 +1152,6 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
     result = codegenFunctionCall(expr, calleeName, funcType);
     calleeReturnType = funcType.getReturnType();
   }
-
-  // Reference returns are dereferenced at the call site
-  result = derefIfRefReturn(result, calleeReturnType);
 
   // Handle array returns: copy data/dims to caller's stack
   // Arrays returned by value have pointers to callee's stack which become
@@ -1492,8 +1493,17 @@ Value* CodegenVisitor::codegenLambdaCall(const CallExprAST& expr,
     llvm::Type* expectedTy = llvmFuncType->getParamType(i);
 
     if (argVal->getType() != expectedTy) {
+      std::string hint;
+      if (argSunType && argSunType->isReference() && paramType &&
+          !paramType->isReference() && sun::typeNeedsDrop(paramType)) {
+        hint =
+            "; it is borrowed, and a '" + paramType->toDisplayString() +
+            "' cannot be copied out of a borrow (take()/pop()/remove() moves "
+            "one out of a container)";
+      }
       logAndThrowError("Type mismatch in argument " + std::to_string(i - 1) +
-                       " of call to " + calleeName);
+                           " of call to " + calleeName + hint,
+                       argExpr->getLocation());
       return nullptr;
     }
 
