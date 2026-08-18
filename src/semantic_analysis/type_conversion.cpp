@@ -236,13 +236,11 @@ sun::TypePtr SemanticAnalyzer::typeAnnotationToType(
   // Array types: array<T, N> or array<T, M, N> or array<T> (unsized)
   if (annot.isArray()) {
     if (!annot.elementType) {
-      llvm::errs() << "Error: array type requires element type\n";
-      return nullptr;
+      logAndThrowError("array type requires an element type", annot.span);
     }
     sun::TypePtr elemType = typeAnnotationToType(*annot.elementType);
     if (!elemType) {
-      llvm::errs() << "Error: invalid array element type\n";
-      return nullptr;
+      logAndThrowError("invalid array element type", annot.span);
     }
     // Empty dimensions means "unsized" - accepts any array<T, ...>
     return sun::Types::Array(elemType, annot.arrayDimensions);
@@ -267,8 +265,9 @@ sun::TypePtr SemanticAnalyzer::typeAnnotationToType(
     for (const auto& typeArg : annot.typeArguments) {
       auto argType = typeAnnotationToType(*typeArg);
       if (!argType) {
-        llvm::errs() << "Error: Invalid type argument in generic type\n";
-        return nullptr;
+        logAndThrowError(
+            "invalid type argument in generic type '" + annot.baseName + "'",
+            annot.span);
       }
       typeArgs.push_back(argType);
     }
@@ -301,14 +300,20 @@ sun::TypePtr SemanticAnalyzer::typeAnnotationToType(
       }
     }
 
-    auto specializedClass = instantiateGenericClass(lookupName, typeArgs);
-    if (specializedClass) {
-      return specializedClass;
+    // Guarded so the unknown-name case reports here, with a source location,
+    // rather than from inside the instantiation helper.
+    if (lookupGenericClass(lookupName)) {
+      auto specializedClass = instantiateGenericClass(lookupName, typeArgs);
+      if (specializedClass) {
+        return specializedClass;
+      }
     }
 
-    llvm::errs() << "Error: Failed to instantiate generic type '"
-                 << annot.baseName << "'\n";
-    return nullptr;
+    logAndThrowError("Unknown generic type '" + annot.baseName +
+                         "'. No generic class, interface or enum by that name "
+                         "is visible here — check the spelling, and that the "
+                         "module declaring it is imported in this scope.",
+                     annot.span);
   }
 
   // Resolve the base name through using imports

@@ -164,8 +164,7 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
     const std::string& baseName, const std::vector<sun::TypePtr>& typeArgs) {
   auto* genericClassInfo = lookupGenericClass(baseName);
   if (!genericClassInfo || !genericClassInfo->AST) {
-    llvm::errs() << "Error: Unknown generic class '" << baseName << "'\n";
-    return nullptr;
+    logAndThrowError("Unknown generic class '" + baseName + "'");
   }
   return instantiateGenericClass(*genericClassInfo, typeArgs);
 }
@@ -177,10 +176,10 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
 
   // Verify type argument count matches
   if (typeArgs.size() != genericClassInfo->typeParameters.size()) {
-    llvm::errs() << "Error: Generic class '" << baseName << "' expects "
-                 << genericClassInfo->typeParameters.size()
-                 << " type arguments, got " << typeArgs.size() << "\n";
-    return nullptr;
+    logAndThrowError(
+        "Generic class '" + baseName + "' expects " +
+        std::to_string(genericClassInfo->typeParameters.size()) +
+        " type arguments, got " + std::to_string(typeArgs.size()));
   }
 
   // Construct the specialized QualifiedName from the generic's qualified name
@@ -570,10 +569,9 @@ SemanticAnalyzer::instantiateGenericFunction(
 
   // Verify type argument count
   if (typeArgs.size() != typeParams.size()) {
-    llvm::errs() << "Error: Generic function '" << funcName << "' expects "
-                 << typeParams.size() << " type arguments, got "
-                 << typeArgs.size() << "\n";
-    return std::nullopt;
+    logAndThrowError("Generic function '" + funcName + "' expects " +
+                     std::to_string(typeParams.size()) +
+                     " type arguments, got " + std::to_string(typeArgs.size()));
   }
 
   // Enter scope and bind type parameters
