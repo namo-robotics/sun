@@ -891,6 +891,9 @@ std::vector<Value*> CodegenVisitor::generateCtorArgs(
             // Pass address of the variable
             ctorArgs.push_back(varAlloca);
           }
+        } else if (Value* addr = tryCodegenAddress(*arg)) {
+          // Not a local: globals and [ref x] captures still have real storage
+          ctorArgs.push_back(addr);
         } else {
           logAndThrowError("Cannot find variable for reference parameter: " +
                            varRef->getName());
