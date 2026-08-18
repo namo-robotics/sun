@@ -745,9 +745,26 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       if (returnExpr.hasValue()) {
         // Propagate the function's return type for return-position inference
         // (e.g. `return Option.None;`)
+        sun::TypePtr declaredReturn = currentFunctionReturnType();
         analyzeExpr(const_cast<ExprAST&>(*returnExpr.getValue()),
-                    currentFunctionReturnType());
-        expr.setResolvedType(inferType(*returnExpr.getValue()));
+                    declaredReturn);
+        sun::TypePtr valueType = inferType(*returnExpr.getValue());
+        // Returning by value out of a borrow would hand the caller a second
+        // owner of what the borrowed value holds; both would release it.
+        if (valueType && valueType->isReference() && declaredReturn &&
+            !declaredReturn->isReference() &&
+            sun::typeNeedsDrop(declaredReturn)) {
+          logAndThrowError(
+              "Cannot return a borrowed '" +
+                  declaredReturn->toDisplayString() +
+                  "' by value: it owns resources the borrow does not give up. "
+                  "Return 'ref " +
+                  declaredReturn->toDisplayString() +
+                  "' to keep borrowing, or move the value out first "
+                  "(take()/pop()/remove() on a container).",
+              returnExpr.getLocation());
+        }
+        expr.setResolvedType(valueType);
       } else {
         expr.setResolvedType(sun::Types::Void());
       }
@@ -3047,10 +3064,23 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
         }
 
         if (!compatible) {
+          // The common way to land here now: handing a borrowed element to a
+          // by-value parameter. Say what to do about it.
+          std::string hint;
+          if (argType->isReference() && !paramType->isReference() &&
+              sun::typeNeedsDrop(paramType)) {
+            hint =
+                ". It is borrowed, and a '" + paramType->toDisplayString() +
+                "' cannot be copied out of a borrow: take the parameter by "
+                "'ref', or move the value out first (take()/pop()/remove() on "
+                "a container)";
+          }
           logAndThrowError("Type mismatch in argument " +
-                           std::to_string(i + 1) + " of call to '" + funcName +
-                           "': expected " + paramType->toString() + ", got " +
-                           argType->toString());
+                               std::to_string(i + 1) + " of call to '" +
+                               funcName + "': expected " +
+                               paramType->toDisplayString() + ", got " +
+                               argType->toDisplayString() + hint,
+                           callExpr.getLocation());
         }
       }
     }

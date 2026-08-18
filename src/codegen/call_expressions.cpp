@@ -1493,8 +1493,17 @@ Value* CodegenVisitor::codegenLambdaCall(const CallExprAST& expr,
     llvm::Type* expectedTy = llvmFuncType->getParamType(i);
 
     if (argVal->getType() != expectedTy) {
+      std::string hint;
+      if (argSunType && argSunType->isReference() && paramType &&
+          !paramType->isReference() && sun::typeNeedsDrop(paramType)) {
+        hint =
+            "; it is borrowed, and a '" + paramType->toDisplayString() +
+            "' cannot be copied out of a borrow (take()/pop()/remove() moves "
+            "one out of a container)";
+      }
       logAndThrowError("Type mismatch in argument " + std::to_string(i - 1) +
-                       " of call to " + calleeName);
+                           " of call to " + calleeName + hint,
+                       argExpr->getLocation());
       return nullptr;
     }
 

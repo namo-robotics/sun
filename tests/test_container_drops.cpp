@@ -461,3 +461,93 @@ TEST(ContainerDropTest, take_moves_the_element_out) {
   // owned dropped at scope exit, the Vec drops what is left — each buffer once
   EXPECT_EQ(value, 7);
 }
+
+// ============================================================================
+// A borrow cannot be copied back into an owner
+//
+// The peek accessors return `ref T`, so the next question is whether that
+// reference can be laundered back into an owned T. It cannot: the copy and the
+// borrowed value would both own the same buffer and both release it — the same
+// double free, one step removed. Every by-value context has to reject it.
+// ============================================================================
+
+TEST(ContainerDropTest, borrowed_element_is_not_assignable_to_a_value) {
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using sun;
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var v = Vec<String>(alloc, 4);
+      v.push(String(alloc, "hello"));
+      var s: String = v.get_unchecked(0);
+      return s.length();
+    }
+  )"),
+               std::exception);
+}
+
+TEST(ContainerDropTest, borrowed_element_is_not_a_by_value_argument) {
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using sun;
+    function by_value(s: String) i64 { return s.length(); }
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var v = Vec<String>(alloc, 4);
+      v.push(String(alloc, "hello"));
+      return by_value(v.get_unchecked(0));
+    }
+  )"),
+               std::exception);
+}
+
+TEST(ContainerDropTest, borrowed_element_is_not_returned_by_value) {
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using sun;
+    function grab(v: ref Vec<String>) String { return v.get_unchecked(0); }
+    function main() i32 { return 0; }
+  )"),
+               std::exception);
+}
+
+// An iterator that claims to yield owning elements by value out of a container
+// it only borrows: each next() would have to move an element out of the Vec
+TEST(ContainerDropTest, borrowed_element_is_not_an_owning_enum_payload) {
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using sun;
+    function grab(v: ref Vec<String>) Option<String> {
+      return Option.Some(v.get_unchecked(0));
+    }
+    function main() i32 { return 0; }
+  )"),
+               std::exception);
+}
+
+TEST(ContainerDropTest, borrowed_element_is_not_stored_in_a_field) {
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using sun;
+    class Holder {
+      var s: String;
+      function init(alloc: ref HeapAllocator) { this.s = String(alloc, ""); }
+      public function set_from(v: ref Vec<String>) void {
+        this.s = v.get_unchecked(0);
+      }
+    }
+    function main() i32 { return 0; }
+  )"),
+               std::exception);
+}
+
+// Non-owning types are unaffected: reading one out of a borrow is a real copy
+TEST(ContainerDropTest, borrowed_scalar_copies_out_normally) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    function by_value(n: i32) i32 { return n + 1; }
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var v = Vec<i32>(alloc, 4);
+      v.push(41);
+      var copied: i32 = v.get_unchecked(0);
+      return by_value(copied) - 1;
+    }
+  )");
+  EXPECT_EQ(value, 41);
+}
