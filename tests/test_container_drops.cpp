@@ -551,3 +551,146 @@ TEST(ContainerDropTest, borrowed_scalar_copies_out_normally) {
   )");
   EXPECT_EQ(value, 41);
 }
+
+// ============================================================================
+// Iterating a container of owning elements by value
+//
+// next() takes the container by `ref`, so an iterator never owns what it walks.
+// Yielding elements BY VALUE out of one it only borrowed would hand the loop a
+// second owner of each element — unless it actually removes them, which is what
+// separates a draining iterator from a broken one.
+// ============================================================================
+
+// An iterator over Vec<String> declaring String as its item type
+TEST(ContainerDropTest, by_value_iterator_over_owning_elements_is_rejected) {
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using sun;
+
+    class ByValueIter implements IIterator<String, Vec<String>> {
+      var i: i64;
+      public function init() { this.i = 0; }
+      public function next(v: ref Vec<String>) Option<String> {
+        if (this.i >= v.size()) { return Option.None; }
+        var e = v.get_unchecked(this.i);
+        this.i = this.i + 1;
+        return Option.Some(e);
+      }
+    }
+
+    function main() i32 { return 0; }
+  )"),
+               std::exception);
+}
+
+// The same thing through a full IIterable container reached by for-in
+TEST(ContainerDropTest, by_value_iterable_of_owning_elements_is_rejected) {
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using sun;
+
+    class Bag implements IIterable<String, Bag> {
+      var items: Vec<String>;
+      public function init(alloc: ref HeapAllocator) {
+        this.items = Vec<String>(alloc, 4);
+      }
+      public function add(s: String) void { this.items.push(s); }
+      public function count() i64 { return this.items.size(); }
+      public function iter() BagIter { return BagIter(); }
+    }
+
+    class BagIter implements IIterator<String, Bag> {
+      var i: i64;
+      public function init() { this.i = 0; }
+      public function next(b: ref Bag) Option<String> {
+        if (this.i >= b.count()) { return Option.None; }
+        var e = b.items.get_unchecked(this.i);
+        this.i = this.i + 1;
+        return Option.Some(e);
+      }
+    }
+
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var b = Bag(alloc);
+      b.add(String(alloc, "hello"));
+      var total: i64 = 0;
+      for (var s: String in b) { total = total + s.length(); }
+      return total;
+    }
+  )"),
+               std::exception);
+}
+
+// A loop body cannot launder the borrowed element into an owned variable
+TEST(ContainerDropTest, owning_the_loop_element_of_an_owning_vec_is_rejected) {
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using sun;
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var v = Vec<String>(alloc, 4);
+      v.push(String(alloc, "hello"));
+      var n: i64 = 0;
+      for (var s: String in v) {
+        var owned: String = s;
+        n = n + owned.length();
+      }
+      return n;
+    }
+  )"),
+               std::exception);
+}
+
+// `for (var s: String in v)` names the element type; the binding is a borrow,
+// and re-binding it without an annotation is just a second borrow
+TEST(ContainerDropTest, for_in_over_owning_vec_binds_a_borrow) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var v = Vec<String>(alloc, 4);
+      v.push(String(alloc, "hello"));
+      v.push(String(alloc, "hi"));
+      var n: i64 = 0;
+      for (var s: String in v) {
+        var also = s;
+        n = n + also.length();
+      }
+      return n;
+    }
+  )");
+  // Each element is dropped once, by the Vec
+  EXPECT_EQ(value, 7);
+}
+
+// A draining iterator yields by value legitimately: pop() moves the element
+// out, so the loop owns it and the Vec no longer does
+TEST(ContainerDropTest, draining_iterator_may_yield_owning_elements_by_value) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    class Draining implements IIterator<String, Vec<String>> {
+      public function init() {}
+      public function next(v: ref Vec<String>) Option<String> {
+        return v.pop();
+      }
+    }
+
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var v = Vec<String>(alloc, 4);
+      v.push(String(alloc, "hello"));
+      v.push(String(alloc, "hi"));
+      var it = Draining();
+      var total: i64 = 0;
+      var more: bool = true;
+      while (more) {
+        match it.next(v) {
+          Option.Some(s) => { total = total + s.length(); },
+          Option.None => { more = false; }
+        };
+      }
+      return total + v.size();
+    }
+  )");
+  // 5 + 2 drained, Vec left empty
+  EXPECT_EQ(value, 7);
+}
