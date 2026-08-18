@@ -12,6 +12,22 @@
 
 using namespace llvm;
 
+namespace {
+
+// True when a registered specialization still carries a type parameter among
+// its type arguments — a shape produced by resolving a template's own
+// signature, never a class with a layout.
+bool specializationIsAbstract(
+    const std::shared_ptr<sun::ClassType>& classType) {
+  if (!classType) return false;
+  for (const auto& typeArg : classType->getTypeArguments()) {
+    if (typeArg && typeArg->isTypeParameter()) return true;
+  }
+  return false;
+}
+
+}  // namespace
+
 // -------------------------------------------------------------------
 // Precompiled class codegen (from linked bitcode)
 // -------------------------------------------------------------------
@@ -86,6 +102,75 @@ Value* CodegenVisitor::codegenPrecompiledClass(const ClassDefinitionAST& expr,
 }
 
 // -------------------------------------------------------------------
+// Declare every method of a class (no bodies), so calls can be emitted
+// before the class definition is reached
+// -------------------------------------------------------------------
+
+void CodegenVisitor::declareClassMethods(
+    const ClassDefinitionAST& expr,
+    const std::shared_ptr<sun::ClassType>& classType) {
+  if (!classType) return;
+
+  for (const auto& methodDecl : expr.getMethods()) {
+    const FunctionAST& methodFunc = *methodDecl.function;
+    const PrototypeAST& proto = methodFunc.getProto();
+    const std::string& methodName = proto.getName();
+
+    // A generic method has no signature of its own — declare the
+    // specializations semantic analysis created instead.
+    if (proto.isGeneric()) {
+      for (const auto& [specMangledName, specializedAST] :
+           methodFunc.getSpecializations()) {
+        if (specializedAST) {
+          declareMethodFromAST(*specializedAST, specMangledName);
+        }
+      }
+      continue;
+    }
+
+    // Get resolved parameter types for mangled name (overload disambiguation)
+    std::vector<sun::TypePtr> paramTypes;
+    if (proto.hasResolvedParamTypes()) {
+      paramTypes = proto.getResolvedParamTypes();
+    }
+
+    // Create mangled method name with param types:
+    // ClassName_methodName$type1$type2
+    std::string mangledName =
+        classType->getMangledMethodName(methodName, paramTypes);
+
+    // Declare the non-generic method using the shared helper
+    declareMethodFromAST(methodFunc, mangledName);
+  }
+}
+
+// Declare the methods of every class a block defines, before any body is
+// emitted, so a method may call one of a class declared further down the file
+// (the same courtesy the function pre-pass extends to free functions).
+void CodegenVisitor::declareBlockClassMethods(const ClassDefinitionAST& expr) {
+  if (expr.isPrecompiled() || expr.isPartial()) return;
+
+  if (expr.isGeneric()) {
+    for (const auto& [mangledName, specializedAST] :
+         expr.getSpecializations()) {
+      if (!specializedAST) continue;
+      if (specializationIsAbstract(typeRegistry->getClass(mangledName)))
+        continue;
+      declareBlockClassMethods(*specializedAST);
+    }
+    return;
+  }
+
+  std::string className = expr.getName();
+  if (expr.getResolvedType() && expr.getResolvedType()->isClass()) {
+    className =
+        static_cast<sun::ClassType*>(expr.getResolvedType().get())
+            ->getMangledName();
+  }
+  declareClassMethods(expr, typeRegistry->getClass(className));
+}
+
+// -------------------------------------------------------------------
 // Class definition codegen
 // -------------------------------------------------------------------
 
@@ -122,9 +207,14 @@ Value* CodegenVisitor::codegen(const ClassDefinitionAST& expr) {
     for (const auto& [mangledName, specializedAST] :
          expr.getSpecializations()) {
       // Check if already codegenned (not just type-registered)
-      if (specializedAST && !codegenedClasses.count(mangledName)) {
-        codegen(*specializedAST);
-      }
+      if (!specializedAST || codegenedClasses.count(mangledName)) continue;
+      // Resolving a template's own signature instantiates the shape it names
+      // — `ref Pair<T>` in `unwrap<T>` yields Pair<T>, whose T is still a
+      // type parameter. That shape has no layout to emit; the class the code
+      // actually uses is instantiated when unwrap<i32> is.
+      if (specializationIsAbstract(typeRegistry->getClass(mangledName)))
+        continue;
+      codegen(*specializedAST);
     }
 
     // Return a void value - generic class templates don't generate code
@@ -157,39 +247,7 @@ Value* CodegenVisitor::codegen(const ClassDefinitionAST& expr) {
   currentClass = classType;
 
   // PASS 1: Declare all method functions first (so methods can call each other)
-  for (const auto& methodDecl : expr.getMethods()) {
-    const FunctionAST& methodFunc = *methodDecl.function;
-    const PrototypeAST& proto = methodFunc.getProto();
-    const std::string& methodName = proto.getName();
-
-    // Skip generic methods during initial class codegen
-    // They will be instantiated on-demand when called with specific type args
-    if (proto.isGeneric()) {
-      // Declare any pre-computed specializations from semantic analysis
-      for (const auto& [specMangledName, specializedAST] :
-           methodFunc.getSpecializations()) {
-        if (specializedAST) {
-          declareMethodFromAST(*specializedAST, specMangledName);
-        }
-      }
-
-      continue;
-    }
-
-    // Get resolved parameter types for mangled name (overload disambiguation)
-    std::vector<sun::TypePtr> paramTypes;
-    if (proto.hasResolvedParamTypes()) {
-      paramTypes = proto.getResolvedParamTypes();
-    }
-
-    // Create mangled method name with param types:
-    // ClassName_methodName$type1$type2
-    std::string mangledName =
-        classType->getMangledMethodName(methodName, paramTypes);
-
-    // Declare the non-generic method using the shared helper
-    declareMethodFromAST(methodFunc, mangledName);
-  }
+  declareClassMethods(expr, classType);
 
   // PASS 2: Generate all method bodies
   for (const auto& methodDecl : expr.getMethods()) {
@@ -1410,28 +1468,30 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
       argValues.push_back(envPtr);
     }
 
-    // Sun-level parameter types of the specialization, for numeric widening
+    // Sun-level signature of the specialization. A `ref T` parameter wants the
+    // referent's address, a by-value compound moves — the same coercions any
+    // other direct call applies, so the argument build is shared.
     std::vector<sun::TypePtr> specParamTypes;
+    bool canThrow = specializedFunc->hasFnAttribute("sun.canthrow");
     if (auto specialization = genericFuncAST->getSpecialization(mangledName)) {
-      specParamTypes = specialization->getProto().getResolvedParamTypes();
+      const PrototypeAST& specProto = specialization->getProto();
+      specParamTypes = specProto.getResolvedParamTypes();
+      // The specialization may still be a forward declaration here, in which
+      // case it carries no attribute yet — its prototype is the authority.
+      canThrow = canThrow || (specProto.hasReturnType() &&
+                              specProto.getReturnType()->canError);
     }
 
-    size_t argIdx = 0;
-    for (const auto& arg : expr.getArgs()) {
-      Value* val = codegen(*arg);
-      if (!val) {
-        logAndThrowError("Failed to generate argument for generic call");
-        return nullptr;
-      }
-      if (argIdx < specParamTypes.size()) {
-        val = widenNumericIfNeeded(val, specParamTypes[argIdx],
-                                   arg->getResolvedType());
-      }
-      argValues.push_back(val);
-      ++argIdx;
+    if (!buildDirectCallArgs(expr.getArgs(), specParamTypes, specializedFunc,
+                             argValues)) {
+      logAndThrowError("Failed to generate argument for generic call");
+      return nullptr;
     }
 
-    return ctx.builder->CreateCall(specializedFunc, argValues);
+    Value* result = emitPossiblyThrowingCall(
+        specializedFunc->getFunctionType(), specializedFunc, argValues,
+        canThrow, "generic.call");
+    return materializeStructReturn(result);
   }
 
   // Check for generic class constructor: Box<i32>(42)

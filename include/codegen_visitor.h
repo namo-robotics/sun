@@ -336,6 +336,21 @@ class CodegenVisitor {
   llvm::Function* declareMethodFromAST(const FunctionAST& specializedAST,
                                        const std::string& mangledName);
 
+  // Declare every method of one class (no bodies)
+  void declareClassMethods(const ClassDefinitionAST& expr,
+                           const std::shared_ptr<sun::ClassType>& classType);
+
+  // Declare the methods of a class a block defines — including each
+  // specialization of a generic class — before any body is emitted
+  void declareBlockClassMethods(const ClassDefinitionAST& expr);
+
+  // Declare one function signature, body to follow
+  void forwardDeclareFunction(const PrototypeAST& proto);
+
+  // Declare every function and method a block defines, before any body is
+  // emitted, so calls may name things defined further down the block
+  void declareBlockSignatures(const BlockExprAST& block);
+
   // Generate a method body for an already-declared function
   void generateMethodBody(const FunctionAST& methodFunc,
                           const std::string& mangledName);
@@ -412,9 +427,10 @@ class CodegenVisitor {
   llvm::Function* lookupCallTarget(const std::string& name);
 
   // Build the argument list for a direct call, applying every parameter
-  // coercion Sun performs at a call boundary. Shared by plain and
-  // module-qualified calls. Returns false if an argument failed to codegen.
-  bool buildDirectCallArgs(const CallExprAST& expr,
+  // coercion Sun performs at a call boundary. Shared by plain,
+  // module-qualified and generic calls. Returns false if an argument failed
+  // to codegen.
+  bool buildDirectCallArgs(const std::vector<std::unique_ptr<ExprAST>>& args,
                            const std::vector<sun::TypePtr>& paramTypes,
                            llvm::Function* func,
                            std::vector<llvm::Value*>& argValues);

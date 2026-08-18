@@ -2731,10 +2731,23 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
       // Check if this is a class constructor call: ClassName(args...)
       // This creates a stack-allocated class instance
       classType = lookupClass(resolved.baseName);
+      // A generic function called without type arguments — `identity(42)`.
+      // The arguments say what T is, so instantiate that specialization and
+      // let the call resolve to it like any other named function.
+      const GenericFunctionInfo* genericFunc =
+          classType ? nullptr : lookupGenericFunction(resolved.baseName);
       if (classType) {
         // Set resolved type on the callee to indicate this is a class
         // constructor call (stack-allocated)
         varRef.setResolvedType(classType);
+      } else if (genericFunc) {
+        auto typeArgs = inferGenericTypeArguments(
+            *genericFunc, argTypes, varRef.getName(), callExpr.getLocation());
+        SpecializedFunctionInfo specialized = requireGenericSpecialization(
+            *genericFunc, typeArgs, varRef.getName(), callExpr.getLocation());
+        resolvedFunc = specialized.asFunctionInfo();
+        varRef.setQualifiedName(specialized.qualifiedName);
+        varRef.setResolvedType(specialized.functionType());
       } else {
         // Check if there are overloads for this function name - if so,
         // report a helpful "no matching overload" error
@@ -3209,17 +3222,11 @@ void SemanticAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
       std::all_of(typeArgs.begin(), typeArgs.end(),
                   [](const sun::TypePtr& t) { return !t->isTypeParameter(); });
   if (allConcrete) {
-    auto specializedFunc = instantiateGenericFunction(*genFuncInfo, typeArgs);
-    if (specializedFunc) {
-      expectedParamTypes = specializedFunc->paramTypes;
-      // Record the name so codegen calls exactly what was instantiated
-      genericCall.setSpecializationName(specializedFunc->qualifiedName);
-      // genericCall.setResolvedType(specializedFunc->returnType);
-    } else {
-      logAndThrowError("Failed to instantiate generic function '" + funcName +
-                           "' with provided type arguments",
-                       genericCall.getLocation());
-    }
+    SpecializedFunctionInfo specializedFunc = requireGenericSpecialization(
+        *genFuncInfo, typeArgs, funcName, genericCall.getLocation());
+    expectedParamTypes = specializedFunc.paramTypes;
+    // Record the name so codegen calls exactly what was instantiated
+    genericCall.setSpecializationName(specializedFunc.qualifiedName);
   }
 
   // Propagate expected types to array literal arguments before analysis

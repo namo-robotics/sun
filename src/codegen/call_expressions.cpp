@@ -688,7 +688,8 @@ Value* CodegenVisitor::codegenModuleFunctionCall(
   }
 
   std::vector<Value*> argValues;
-  if (!buildDirectCallArgs(expr, paramTypes, func, argValues)) return nullptr;
+  if (!buildDirectCallArgs(expr.getArgs(), paramTypes, func, argValues))
+    return nullptr;
 
   Value* result = emitPossiblyThrowingCall(
       func->getFunctionType(), func, argValues,
@@ -1177,10 +1178,11 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
 // promotions. Shared by plain and module-qualified calls so the two cannot
 // drift apart. Returns false if an argument failed to codegen.
 bool CodegenVisitor::buildDirectCallArgs(
-    const CallExprAST& expr, const std::vector<sun::TypePtr>& paramTypes,
-    llvm::Function* func, std::vector<Value*>& argValues) {
+    const std::vector<std::unique_ptr<ExprAST>>& args,
+    const std::vector<sun::TypePtr>& paramTypes, llvm::Function* func,
+    std::vector<Value*>& argValues) {
   unsigned argIdx = 0;
-  for (const auto& argExpr : expr.getArgs()) {
+  for (const auto& argExpr : args) {
     // Check if this parameter is a reference type
     bool isRefParam = argIdx < paramTypes.size() && paramTypes[argIdx] &&
                       paramTypes[argIdx]->isReference();
@@ -1389,7 +1391,8 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
     return emitMarshalledExternCall(expr, paramTypes, func);
   }
 
-  if (!buildDirectCallArgs(expr, paramTypes, func, argValues)) return nullptr;
+  if (!buildDirectCallArgs(expr.getArgs(), paramTypes, func, argValues))
+    return nullptr;
 
   // A throwing callee ('T, IError') is tagged with "sun.canthrow"; inside a try
   // block it must be `invoke`d so its exception routes to the local landing

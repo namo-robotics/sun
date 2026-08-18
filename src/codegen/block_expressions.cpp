@@ -6,38 +6,40 @@
 
 using namespace llvm;
 
-Value* CodegenVisitor::codegen(const BlockExprAST& block) {
-  if (block.isEmpty()) return ConstantFP::get(ctx.getContext(), APFloat(0.0));
+// Declare one function signature without a body. The definition later in the
+// block fills it in (codegen(PrototypeAST) reuses a matching declaration).
+void CodegenVisitor::forwardDeclareFunction(const PrototypeAST& proto) {
+  if (proto.getName().empty()) return;
+  if (proto.hasClosure()) return;
 
-  // Declare a function signature without a body. The definition later in the
-  // block fills it in (codegen(PrototypeAST) reuses a matching declaration).
-  auto forwardDeclare = [&](const PrototypeAST& proto) {
-    if (proto.getName().empty()) return;
-    if (proto.hasClosure()) return;
+  std::string funcName = proto.getMangledName();
+  if (module->getFunction(funcName)) return;
 
-    std::string funcName = proto.getMangledName();
-    if (module->getFunction(funcName)) return;
+  // Build LLVM function type from resolved semantic types
+  if (!proto.hasResolvedReturnType() || !proto.hasResolvedParamTypes()) return;
 
-    // Build LLVM function type from resolved semantic types
-    if (!proto.hasResolvedReturnType() || !proto.hasResolvedParamTypes())
-      return;
+  llvm::Type* retType =
+      typeResolver.resolveForReturn(proto.getResolvedReturnType());
+  std::vector<llvm::Type*> paramTypes;
+  for (const auto& sunType : proto.getResolvedParamTypes()) {
+    paramTypes.push_back(typeResolver.resolve(sunType));
+  }
+  llvm::FunctionType* funcType =
+      llvm::FunctionType::get(retType, paramTypes, false);
+  llvm::Function::Create(funcType, llvm::Function::ExternalLinkage, funcName,
+                         module);
+}
 
-    llvm::Type* retType =
-        typeResolver.resolveForReturn(proto.getResolvedReturnType());
-    std::vector<llvm::Type*> paramTypes;
-    for (const auto& sunType : proto.getResolvedParamTypes()) {
-      paramTypes.push_back(typeResolver.resolve(sunType));
-    }
-    llvm::FunctionType* funcType =
-        llvm::FunctionType::get(retType, paramTypes, false);
-    llvm::Function::Create(funcType, llvm::Function::ExternalLinkage, funcName,
-                           module);
-  };
-
-  // Pre-pass: emit forward declarations for all named functions in this block.
-  // This enables mutual recursion: isEven can call isOdd before isOdd is
-  // fully generated.
+// Pre-pass over a block: declare everything it defines before any body is
+// emitted, so a call may name something defined further down — mutual
+// recursion between functions, a method calling one of a class below it, a
+// generic helper declared after its caller.
+void CodegenVisitor::declareBlockSignatures(const BlockExprAST& block) {
   for (const auto& expr : block.getBody()) {
+    if (expr->getType() == ASTNodeType::CLASS_DEFINITION) {
+      declareBlockClassMethods(static_cast<const ClassDefinitionAST&>(*expr));
+      continue;
+    }
     if (!expr->isFunction()) continue;
     auto& funcAST = static_cast<FunctionAST&>(*expr);
     const PrototypeAST& proto = funcAST.getProto();
@@ -49,7 +51,7 @@ Value* CodegenVisitor::codegen(const BlockExprAST& block) {
     if (proto.isGeneric()) {
       for (const auto& [mangledName, specializedAST] :
            funcAST.getSpecializations()) {
-        if (specializedAST) forwardDeclare(specializedAST->getProto());
+        if (specializedAST) forwardDeclareFunction(specializedAST->getProto());
       }
       continue;
     }
@@ -64,8 +66,14 @@ Value* CodegenVisitor::codegen(const BlockExprAST& block) {
     }
     if (funcAST.isExtern()) continue;
 
-    forwardDeclare(proto);
+    forwardDeclareFunction(proto);
   }
+}
+
+Value* CodegenVisitor::codegen(const BlockExprAST& block) {
+  if (block.isEmpty()) return ConstantFP::get(ctx.getContext(), APFloat(0.0));
+
+  declareBlockSignatures(block);
 
   Value* lastValue = nullptr;
   bool encounteredReturn = false;

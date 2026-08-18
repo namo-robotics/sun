@@ -200,6 +200,7 @@ enum class SymbolKind {
   GenericInterface,
   Enum,
   Function,
+  GenericFunction,
   Variable
 };
 
@@ -222,6 +223,7 @@ struct SymbolMatch {
   std::shared_ptr<sun::EnumType> enumType;
   const GenericClassInfo* genericClassInfo = nullptr;
   const GenericInterfaceInfo* genericInterfaceInfo = nullptr;
+  const GenericFunctionInfo* genericFunctionInfo = nullptr;
   const FunctionInfo* functionInfo = nullptr;
   const VariableInfo* variableInfo = nullptr;
 
@@ -310,6 +312,23 @@ struct SpecializedFunctionInfo {
   // recomputing, so one specialization keeps one symbol no matter where the
   // call sits relative to the definition.
   sun::QualifiedName qualifiedName;
+
+  // Whether the specialization's signature carries ', IError'
+  bool canThrow() const {
+    return specializedAST && specializedAST->getProto().canThrow();
+  }
+
+  // The specialization seen as an ordinary resolved function — what a call
+  // site that named the template ends up calling.
+  FunctionInfo asFunctionInfo() const {
+    return FunctionInfo{returnType,    paramTypes, captures,
+                        qualifiedName, canThrow()};
+  }
+
+  // Type of the call itself, for the callee expression
+  sun::TypePtr functionType() const {
+    return sun::Types::Function(returnType, paramTypes, canThrow());
+  }
 };
 
 // Forward declarations

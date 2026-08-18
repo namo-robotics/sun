@@ -535,6 +535,131 @@ void SemanticAnalyzer::analyzeDeferredSpecializations() {
 // Generic function support
 // -------------------------------------------------------------------
 
+namespace {
+
+// Match one parameter annotation against the type of the argument it
+// receives, binding any type parameter it names. Only shapes a reader can
+// follow are matched: the bare parameter, a `ref`, a pointer or array
+// element, and the type arguments of a generic type.
+void bindTypeParameters(
+    const TypeAnnotation& annot, const sun::TypePtr& argType,
+    const std::vector<std::string>& typeParams,
+    std::map<std::string, sun::TypePtr>& bindings) {
+  if (!argType) return;
+
+  auto isTypeParam = [&](const std::string& name) {
+    return std::find(typeParams.begin(), typeParams.end(), name) !=
+           typeParams.end();
+  };
+
+  // `ref T` against an argument of type T (or ref T)
+  if (annot.baseName == "ref" && annot.elementType) {
+    sun::TypePtr referent = argType;
+    if (argType->isReference()) {
+      referent =
+          static_cast<const sun::ReferenceType*>(argType.get())
+              ->getReferencedType();
+    }
+    bindTypeParameters(*annot.elementType, referent, typeParams, bindings);
+    return;
+  }
+
+  // Reading through a borrow gives the referent's type everywhere else
+  sun::TypePtr value = argType;
+  if (value->isReference()) {
+    value = static_cast<const sun::ReferenceType*>(value.get())
+                ->getReferencedType();
+  }
+  if (!value) return;
+
+  // The parameter is the type parameter itself: T, bound to the argument
+  if (annot.typeArguments.empty() && isTypeParam(annot.baseName)) {
+    auto existing = bindings.find(annot.baseName);
+    if (existing == bindings.end()) bindings[annot.baseName] = value;
+    return;
+  }
+
+  // array<T> / raw_ptr<T> / static_ptr<T>: bind against the element
+  if (annot.elementType) {
+    sun::TypePtr element;
+    if (value->isArray()) {
+      element = static_cast<const sun::ArrayType*>(value.get())
+                    ->getElementType();
+    } else if (value->isRawPointer()) {
+      element = static_cast<const sun::RawPointerType*>(value.get())
+                    ->getPointeeType();
+    } else if (value->isStaticPointer()) {
+      element = static_cast<const sun::StaticPointerType*>(value.get())
+                    ->getPointeeType();
+    }
+    if (element) {
+      bindTypeParameters(*annot.elementType, element, typeParams, bindings);
+    }
+    return;
+  }
+
+  // Vec<T>, Map<K, V>, Option<T>: bind against the argument's type arguments
+  if (!annot.typeArguments.empty()) {
+    const std::vector<sun::TypePtr>* args = nullptr;
+    if (value->isClass()) {
+      args = &static_cast<const sun::ClassType*>(value.get())
+                  ->getTypeArguments();
+    } else if (value->isEnum()) {
+      args =
+          &static_cast<const sun::EnumType*>(value.get())->getGenericArgs();
+    }
+    if (!args) return;
+    for (size_t i = 0; i < annot.typeArguments.size() && i < args->size();
+         ++i) {
+      bindTypeParameters(*annot.typeArguments[i], (*args)[i], typeParams,
+                         bindings);
+    }
+  }
+}
+
+}  // namespace
+
+// Work out `f<...>` from the arguments of a call written without them.
+std::vector<sun::TypePtr> SemanticAnalyzer::inferGenericTypeArguments(
+    const GenericFunctionInfo& genericInfo,
+    const std::vector<sun::TypePtr>& argTypes, const std::string& displayName,
+    std::optional<Position> loc) const {
+  std::map<std::string, sun::TypePtr> bindings;
+  for (size_t i = 0; i < genericInfo.params.size() && i < argTypes.size();
+       ++i) {
+    bindTypeParameters(genericInfo.params[i].second, argTypes[i],
+                       genericInfo.typeParameters, bindings);
+  }
+
+  std::vector<sun::TypePtr> typeArgs;
+  for (const auto& typeParam : genericInfo.typeParameters) {
+    auto found = bindings.find(typeParam);
+    if (found == bindings.end() || !found->second ||
+        found->second->isTypeParameter()) {
+      logAndThrowError("Cannot infer type argument '" + typeParam +
+                           "' of generic function '" + displayName +
+                           "' from the arguments. Give it explicitly, e.g. " +
+                           displayName + "<i32>(...).",
+                       loc);
+    }
+    typeArgs.push_back(found->second);
+  }
+  return typeArgs;
+}
+
+SpecializedFunctionInfo SemanticAnalyzer::requireGenericSpecialization(
+    const GenericFunctionInfo& genericInfo,
+    const std::vector<sun::TypePtr>& typeArgs, const std::string& displayName,
+    std::optional<Position> loc) {
+  auto specialized = instantiateGenericFunction(genericInfo, typeArgs);
+  if (!specialized) {
+    logAndThrowError("Failed to instantiate generic function '" + displayName +
+                         "' with the given type arguments",
+                     loc);
+  }
+  return *specialized;
+}
+
 std::optional<SpecializedFunctionInfo>
 SemanticAnalyzer::instantiateGenericFunction(
     const GenericFunctionInfo& genericInfo,
