@@ -666,3 +666,230 @@ TEST(StringTest, parse_i64_and_parse_f64) {
   )");
   EXPECT_EQ(value, 0);
 }
+
+// ============================================================================
+// Case, Trim, Search, Split, Replace
+// ============================================================================
+
+TEST(StringTest, to_lower_and_to_upper) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        var s = String(alloc, "Hello, World 42!");
+        s.to_lower();
+        if (not s.equals_literal("hello, world 42!")) { return 1; }
+        s.to_upper();
+        if (not s.equals_literal("HELLO, WORLD 42!")) { return 2; }
+        // Case conversion of a single byte keeps the u8 type
+        var ch: u8 = 65;
+        var lowered: u8 = ch + 32;
+        var one = String(alloc, "");
+        one.append_char(lowered);
+        if (not one.equals_literal("a")) { return 3; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(StringTest, trim_variants) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        var s = String(alloc, "  \t hi \n ");
+        s.trim();
+        if (not s.equals_literal("hi")) { return 1; }
+
+        var lead = String(alloc, "  hi  ");
+        lead.trim_start();
+        if (not lead.equals_literal("hi  ")) { return 2; }
+
+        var trail = String(alloc, "  hi  ");
+        trail.trim_end();
+        if (not trail.equals_literal("  hi")) { return 3; }
+
+        var blank = String(alloc, "   ");
+        blank.trim();
+        if (not blank.isEmpty()) { return 4; }
+
+        var none = String(alloc, "hi");
+        none.trim();
+        if (not none.equals_literal("hi")) { return 5; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(StringTest, find_and_contains) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function index_of(s: ref String, needle: static_ptr<u8>) i64 {
+        return match s.find(needle) {
+            Option.Some(i) => i,
+            Option.None => -1
+        };
+    }
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        var s = String(alloc, "hello world");
+        if (index_of(s, "hello") != 0) { return 1; }
+        if (index_of(s, "world") != 6) { return 2; }
+        if (index_of(s, "o w") != 4) { return 3; }
+        if (index_of(s, "worlds") != -1) { return 4; }
+        if (index_of(s, "") != 0) { return 5; }
+        if (not s.contains("lo wo")) { return 6; }
+        if (s.contains("xyz")) { return 7; }
+
+        var needle = String(alloc, "wor");
+        if (not s.contains(needle)) { return 8; }
+        var missing = String(alloc, "cat");
+        if (s.contains(missing)) { return 9; }
+        if (not s.starts_with(String(alloc, "hell"))) { return 10; }
+        if (not s.ends_with(String(alloc, "rld"))) { return 11; }
+        if (s.starts_with(String(alloc, "world"))) { return 12; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(StringTest, substr_and_clone) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32, IError {
+        var alloc = make_heap_allocator();
+        var s = String(alloc, "abcdef");
+        var mid = s.substr(alloc, 2, 3);
+        if (not mid.equals_literal("cde")) { return 1; }
+        var empty = s.substr(alloc, 6, 0);
+        if (not empty.isEmpty()) { return 2; }
+
+        var copy = s.clone(alloc);
+        if (not copy.equals(s)) { return 3; }
+        copy.to_upper();
+        if (not s.equals_literal("abcdef")) { return 4; }
+
+        try {
+            var bad = s.substr(alloc, 4, 3);
+            return 5;
+        } catch (e: IError) {
+            return 0;
+        }
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(StringTest, split_on_byte_and_string) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        var csv = String(alloc, "a,b,,c");
+        var parts = csv.split(alloc, 44);  // ','
+        if (parts.size() != 4) { return 1; }
+        if (not parts.borrow_unchecked(0).equals_literal("a")) { return 2; }
+        if (not parts.borrow_unchecked(2).isEmpty()) { return 3; }
+        if (not parts.borrow_unchecked(3).equals_literal("c")) { return 4; }
+
+        var plain = String(alloc, "no separators here");
+        var whole = plain.split(alloc, 44);
+        if (whole.size() != 1) { return 5; }
+
+        var text = String(alloc, "k1=v1;;k2=v2;");
+        var fields = text.split(alloc, ";;");
+        if (fields.size() != 2) { return 6; }
+        if (not fields.borrow_unchecked(0).equals_literal("k1=v1")) { return 7; }
+        if (not fields.borrow_unchecked(1).equals_literal("k2=v2;")) { return 8; }
+
+        var untouched = String(alloc, "abc");
+        var one = untouched.split(alloc, "");
+        if (one.size() != 1) { return 9; }
+        if (not one.borrow_unchecked(0).equals_literal("abc")) { return 10; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(StringTest, join_parts) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        var csv = String(alloc, "a,b,,c");
+        var parts = csv.split(alloc, 44);
+        var rejoined = join(alloc, parts, ",");
+        if (not rejoined.equals(csv)) { return 1; }
+        var dashed = join(alloc, parts, " - ");
+        if (not dashed.equals_literal("a - b -  - c")) { return 2; }
+
+        var single = Vec<String>(alloc, 2);
+        single.push(String(alloc, "solo"));
+        var alone = join(alloc, single, ",");
+        if (not alone.equals_literal("solo")) { return 3; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(StringTest, replace_literal_and_string) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        // Replacement longer than the match: buffer has to grow
+        var s = String(alloc, "one fish two fish");
+        s.replace("fish", "lizard");
+        if (not s.equals_literal("one lizard two lizard")) { return 1; }
+
+        // Replacement shorter than the match
+        s.replace("lizard", "ox");
+        if (not s.equals_literal("one ox two ox")) { return 2; }
+
+        // Same length
+        s.replace("ox", "oy");
+        if (not s.equals_literal("one oy two oy")) { return 3; }
+
+        // Replacement containing the needle must not loop forever
+        var loopy = String(alloc, "aaa");
+        loopy.replace("a", "aa");
+        if (not loopy.equals_literal("aaaaaa")) { return 4; }
+
+        // Deleting matches
+        var del = String(alloc, "x-y-z");
+        del.replace("-", "");
+        if (not del.equals_literal("xyz")) { return 5; }
+
+        // No match leaves the string alone
+        var same = String(alloc, "hello");
+        same.replace("zz", "yy");
+        if (not same.equals_literal("hello")) { return 6; }
+
+        // Empty needle is a no-op
+        same.replace("", "yy");
+        if (not same.equals_literal("hello")) { return 7; }
+
+        // String overloads
+        var text = String(alloc, "cat dog cat");
+        var from = String(alloc, "cat");
+        var to = String(alloc, "bird");
+        text.replace(from, to);
+        if (not text.equals_literal("bird dog bird")) { return 8; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}

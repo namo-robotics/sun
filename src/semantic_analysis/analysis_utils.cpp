@@ -7,6 +7,8 @@
 #include "intrinsics.h"
 #include "semantic_analyzer.h"
 
+using sun::unwrapRef;
+
 // Helper: check if an integer literal value fits in a target primitive type
 static bool literalFitsInType(int64_t value,
                               const sun::PrimitiveType* primType) {
@@ -62,6 +64,103 @@ bool SemanticAnalyzer::tryCoerceIntegerLiteral(ExprAST* expr,
                      expr->getLocation());
   }
   return false;
+}
+
+// Bit width of an integer primitive, 0 for anything else.
+static int integerBitWidth(const sun::TypePtr& type) {
+  if (!type || !type->isPrimitive()) return 0;
+  switch (type->getKind()) {
+    case sun::Type::Kind::Int8:
+    case sun::Type::Kind::UInt8:
+      return 8;
+    case sun::Type::Kind::Int16:
+    case sun::Type::Kind::UInt16:
+      return 16;
+    case sun::Type::Kind::Int32:
+    case sun::Type::Kind::UInt32:
+      return 32;
+    case sun::Type::Kind::Int64:
+    case sun::Type::Kind::UInt64:
+      return 64;
+    default:
+      return 0;
+  }
+}
+
+// An untyped numeric literal takes its type from context: the type the
+// surrounding expression expects, or failing that the operand it is combined
+// with. Without this the literal keeps its default i32/f64 type and codegen
+// widens the other operand to match, so `u8_var + 32` would produce an i32
+// value where semantic analysis promised a u8.
+void SemanticAnalyzer::coerceBinaryLiteralOperands(
+    const BinaryExprAST& binExpr, const sun::TypePtr& expectedType) {
+  // Returns true if the literal took the target type
+  auto coerceNumericLiteral = [](const ExprAST* literal,
+                                 const sun::TypePtr& targetType) {
+    auto target = unwrapRef(targetType);
+    if (!literal || !target || !target->isPrimitive()) return false;
+    auto* expr = const_cast<ExprAST*>(literal);
+
+    const auto& num = static_cast<const NumberExprAST&>(*literal);
+    if (num.isInteger()) {
+      if (!target->isIntegral()) return false;
+      return tryCoerceIntegerLiteral(expr, target, /*throwOnFail=*/false);
+    }
+    if (!target->isFloatingPoint()) return false;
+    expr->setResolvedType(target);
+    return true;
+  };
+
+  const ExprAST* lhs = binExpr.getLHS();
+  const ExprAST* rhs = binExpr.getRHS();
+  if (!lhs || !rhs) return;
+
+  bool lhsIsLiteral = lhs->getType() == ASTNodeType::NUMBER;
+  bool rhsIsLiteral = rhs->getType() == ASTNodeType::NUMBER;
+  if (!lhsIsLiteral && !rhsIsLiteral) return;
+
+  // A comparison's expected type describes its bool result, not its operands
+  TokenKind op = binExpr.getOp().kind;
+  bool isComparison = op == TokenKind::LESS || op == TokenKind::GREATER ||
+                      op == TokenKind::LESS_EQUAL ||
+                      op == TokenKind::GREATER_EQUAL ||
+                      op == TokenKind::EQUAL_EQUAL || op == TokenKind::NOT_EQUAL;
+  auto expected = unwrapRef(expectedType);
+  if (!isComparison && expected && expected->isNumeric()) {
+    bool coerced = false;
+    if (lhsIsLiteral) coerced = coerceNumericLiteral(lhs, expected) || coerced;
+    if (rhsIsLiteral) coerced = coerceNumericLiteral(rhs, expected) || coerced;
+    // The context type wins; adapting to the other operand would undo it
+    if (coerced) return;
+  }
+
+  if (lhsIsLiteral && rhsIsLiteral) return;  // no typed operand to follow
+  if (rhsIsLiteral) {
+    coerceNumericLiteral(rhs, lhs->getResolvedType());
+    return;
+  }
+  // A shift produces the left operand's type, so the shift amount must not
+  // drag the result down to its own type.
+  if (op == TokenKind::LEFT_SHIFT || op == TokenKind::RIGHT_SHIFT) return;
+  coerceNumericLiteral(lhs, rhs->getResolvedType());
+}
+
+sun::TypePtr SemanticAnalyzer::promoteBinaryOperands(
+    const sun::TypePtr& lhsType, const sun::TypePtr& rhsType) {
+  auto lhs = unwrapRef(lhsType);
+  auto rhs = unwrapRef(rhsType);
+  if (!lhs || !rhs || lhs->getKind() == rhs->getKind()) return lhs;
+
+  // Integers widen to the larger of the two; equal widths keep the LHS type
+  int lhsBits = integerBitWidth(lhs);
+  int rhsBits = integerBitWidth(rhs);
+  if (lhsBits && rhsBits) return rhsBits > lhsBits ? rhs : lhs;
+
+  // f32 widens to f64
+  if (lhs->isFloatingPoint() && rhs->isFloatingPoint()) {
+    return lhs->isFloat64() ? lhs : rhs;
+  }
+  return lhs;
 }
 
 sun::TypePtr SemanticAnalyzer::unifyTernaryTypes(const sun::TypePtr& thenType,
