@@ -1,0 +1,17 @@
+// Regression: `using sun;` at file scope does not reach inside a module
+// block, so Vec is not visible where this return type is written. That used
+// to print an error and still emit a (hanging) binary; it must be fatal.
+using sun;
+
+public module namo {
+  public function make(a: ref HeapAllocator) Vec<String> {
+    var v = Vec<String>(a, 4);
+    return v;
+  }
+}
+
+function main() i32 {
+  var alloc = make_heap_allocator();
+  var v = namo.make(alloc);
+  return _convert<i32>(v.size());
+}

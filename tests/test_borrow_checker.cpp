@@ -475,3 +475,166 @@ TEST(BorrowCheckerTest, ref_return_through_match_binding_of_local_is_dangling) {
   )"),
                SunError);
 }
+
+// ============================================================================
+// Flow Sensitivity Across Branches
+//
+// A branch that returns or throws never reaches the code after it, so a move
+// on that branch must not mark the variable moved on the paths that do.
+// ============================================================================
+
+TEST(BorrowCheckerTest, return_in_catch_does_not_move_on_fallthrough) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function pick(alloc: ref HeapAllocator, n: i64) Vec<String>, IError {
+      var out = Vec<String>(alloc, 4);
+      try {
+        if (n == 3) { throw EmptyError(); }
+      } catch (e: IError) {
+        return out;
+      }
+      if (n < 2) { return out; }
+      out.push(String(alloc, "ok"));
+      return out;
+    }
+
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      try {
+        var v = pick(alloc, 5);
+        return _convert<i32>(v.size());
+      } catch (e: IError) {
+        return -1;
+      }
+    }
+  )");
+  EXPECT_EQ(value, 1);
+}
+
+TEST(BorrowCheckerTest, catch_clauses_are_alternatives_not_a_sequence) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function pick(alloc: ref HeapAllocator, n: i64) Vec<String>, IError {
+      var out = Vec<String>(alloc, 4);
+      try {
+        if (n == 3) { throw EmptyError(); }
+      } catch (e: EmptyError) {
+        return out;
+      } catch (e: IError) {
+        return out;
+      }
+      return out;
+    }
+
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      try {
+        var v = pick(alloc, 5);
+        return _convert<i32>(v.size());
+      } catch (e: IError) {
+        return -1;
+      }
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(BorrowCheckerTest, return_in_match_arm_does_not_move_on_fallthrough) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function pick(alloc: ref HeapAllocator, o: Option<i64>) Vec<String> {
+      var out = Vec<String>(alloc, 4);
+      match o {
+        Option.Some(v) => { return out; },
+        Option.None => { out.push(String(alloc, "x")); }
+      };
+      return out;
+    }
+
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var v = pick(alloc, Option.None);
+      return _convert<i32>(v.size());
+    }
+  )");
+  EXPECT_EQ(value, 1);
+}
+
+TEST(BorrowCheckerTest, error_on_move_in_falling_through_catch) {
+  // The catch clause moves and does NOT diverge, so the later use is a
+  // genuine use-after-move and must still be rejected.
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using sun;
+
+    function consume(v: Vec<String>) i64 { return v.size(); }
+
+    function f(alloc: ref HeapAllocator, n: i64) Vec<String>, IError {
+      var out = Vec<String>(alloc, 4);
+      try {
+        if (n == 3) { throw EmptyError(); }
+      } catch (e: IError) {
+        var k = consume(out);
+      }
+      return out;
+    }
+
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      try { var v = f(alloc, 1); return 0; } catch (e: IError) { return -1; }
+    }
+  )"),
+               SunError);
+}
+
+TEST(BorrowCheckerTest, error_on_move_in_falling_through_match_arm) {
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using sun;
+
+    function consume(v: Vec<String>) i64 { return v.size(); }
+
+    function f(alloc: ref HeapAllocator, o: Option<i64>) Vec<String> {
+      var out = Vec<String>(alloc, 4);
+      match o {
+        Option.Some(v) => { var k = consume(out); },
+        Option.None => { }
+      };
+      return out;
+    }
+
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var v = f(alloc, Option.None);
+      return 0;
+    }
+  )"),
+               SunError);
+}
+
+TEST(BorrowCheckerTest, error_on_move_in_try_block_used_after) {
+  // A move inside the try block is on the normal path and still propagates
+  // into the catch clauses and past the try/catch.
+  EXPECT_THROW(executeStringWithStdlib(R"(
+    using sun;
+
+    function consume(v: Vec<String>) i64 { return v.size(); }
+
+    function f(alloc: ref HeapAllocator) Vec<String>, IError {
+      var out = Vec<String>(alloc, 4);
+      try {
+        var k = consume(out);
+      } catch (e: IError) {
+        return out;
+      }
+      return out;
+    }
+
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      try { var v = f(alloc); return 0; } catch (e: IError) { return -1; }
+    }
+  )"),
+               SunError);
+}

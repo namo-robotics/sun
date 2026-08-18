@@ -76,16 +76,14 @@ SemanticAnalyzer::instantiateGenericInterface(
   }
 
   if (!genericInfo || !genericInfo->AST) {
-    llvm::errs() << "Error: Unknown generic interface '" << baseName << "'\n";
-    return nullptr;
+    logAndThrowError("Unknown generic interface '" + baseName + "'");
   }
 
   // Verify type argument count matches
   if (typeArgs.size() != genericInfo->typeParameters.size()) {
-    llvm::errs() << "Error: Generic interface '" << baseName << "' expects "
-                 << genericInfo->typeParameters.size()
-                 << " type arguments, got " << typeArgs.size() << "\n";
-    return nullptr;
+    logAndThrowError("Generic interface '" + baseName + "' expects " +
+                     std::to_string(genericInfo->typeParameters.size()) +
+                     " type arguments, got " + std::to_string(typeArgs.size()));
   }
 
   // Create the specialized interface type

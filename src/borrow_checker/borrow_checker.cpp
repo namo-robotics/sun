@@ -619,7 +619,11 @@ void BorrowChecker::checkMatchExpr(const MatchExprAST& matchExpr) {
       }
     }
     exitScope();
-    movedAfter.insert(movedVariables_.begin(), movedVariables_.end());
+    // An arm that returns or throws never reaches the code after the match,
+    // so its moves must not leak into the post-match state.
+    if (!arm.body || !exprDiverges(*arm.body)) {
+      movedAfter.insert(movedVariables_.begin(), movedVariables_.end());
+    }
   }
   movedVariables_ = std::move(movedAfter);
 
@@ -995,13 +999,26 @@ void BorrowChecker::checkTryCatch(const TryCatchExprAST& tryCatch) {
   checkBlockExpr(tryCatch.getTryBlock());
   exitScope();
 
+  // Catch clauses are alternatives to one another, each entered from the try
+  // block's state. As with if/else, a clause that returns or throws cannot
+  // poison the code that follows the try/catch — only clauses that fall
+  // through contribute their moves.
+  auto movedBefore = movedVariables_;
+  auto movedAfter = movedVariables_;
+
   for (const auto& clause : tryCatch.getCatchClauses()) {
+    movedVariables_ = movedBefore;
     enterScope();
     if (clause.body) {
       checkBlockExpr(*clause.body);
+      if (!exprDiverges(*clause.body)) {
+        movedAfter.insert(movedVariables_.begin(), movedVariables_.end());
+      }
     }
     exitScope();
   }
+
+  movedVariables_ = std::move(movedAfter);
 }
 
 void BorrowChecker::checkUnsafeBlock(const UnsafeBlockAST& unsafeBlock) {

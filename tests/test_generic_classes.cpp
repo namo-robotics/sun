@@ -415,3 +415,73 @@ TEST(GenericClasses, qualified_cross_module_instantiation_without_using) {
   )");
   EXPECT_EQ(value, 107);
 }
+
+// ============================================================================
+// Unresolvable Generic Types Are Fatal
+//
+// A generic type that cannot be instantiated used to print an error and
+// return a null type, letting the compiler carry on and emit a binary that
+// hung at runtime. It must abort the compilation instead.
+// ============================================================================
+
+TEST(GenericClassTest, error_on_generic_type_not_in_scope) {
+  // `using sun;` outside the module block does not reach inside it, so Vec is
+  // not visible where the return type is written. Uses the file path because
+  // the single-string path scopes top-level `using` differently.
+  EXPECT_THROW(compileFileWithStdlib("tests/programs/using_outside_module.sun"),
+               SunError);
+}
+
+TEST(GenericClassTest, error_on_unknown_generic_type_name) {
+  EXPECT_THROW(executeString(R"(
+    class Box<T> {
+      var v: T;
+      function init(x: T) { this.v = x; }
+    }
+
+    function main() i32 {
+      var b: Bocks<i32> = Box<i32>(1);
+      return 0;
+    };
+  )"),
+               SunError);
+}
+
+TEST(GenericClassTest, error_on_wrong_type_argument_count) {
+  EXPECT_THROW(executeString(R"(
+    class Pair<A, B> {
+      var a: A;
+      var b: B;
+      function init(x: A, y: B) { this.a = x; this.b = y; }
+    }
+
+    function main() i32 {
+      var p: Pair<i32> = Pair<i32, i32>(1, 2);
+      return 0;
+    };
+  )"),
+               SunError);
+}
+
+TEST(GenericClassTest, using_inside_module_resolves_generic) {
+  auto value = executeStringWithStdlib(R"(
+    public module namo {
+      using sun;
+
+      public function make(a: ref HeapAllocator) Vec<String> {
+        var v = Vec<String>(a, 4);
+        v.push(String(a, "hi"));
+        return v;
+      }
+    }
+
+    using sun;
+
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var v = namo.make(alloc);
+      return _convert<i32>(v.size());
+    }
+  )");
+  EXPECT_EQ(value, 1);
+}
