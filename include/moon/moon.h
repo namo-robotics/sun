@@ -18,15 +18,16 @@ namespace sun {
 // =============================================================================
 
 /// Binary header for .moon format
-struct SunLibHeader {
+struct MoonHeader {
   static constexpr uint32_t MAGIC = 0x53554E4C;  // "SUNL"
-  static constexpr uint32_t VERSION = 5;  // V5: visibility on modules and
-                                          // exported declarations
+  static constexpr uint32_t VERSION = 6;  // V6: 64-bit index offset and count,
+                                          // no redundant module count
 
   uint32_t magic = MAGIC;
   uint32_t version = VERSION;
-  uint32_t moduleCount = 0;
-  uint32_t indexOffset = 0;  // Offset to module index
+  // The index carries its own entry count, so the number of modules is not
+  // repeated here. 64-bit because it addresses anywhere in the payload.
+  uint64_t indexOffset = 0;
 };
 
 /// Index entry for a module in the bundle
@@ -43,9 +44,9 @@ struct ModuleIndexEntry {
 // =============================================================================
 
 /// Creates .moon bundle files containing multiple modules
-class SunLibWriter {
+class MoonWriter {
  public:
-  SunLibWriter();
+  MoonWriter();
 
   /// Add a compiled module to the bundle
   /// @param module The compiled LLVM module
@@ -62,21 +63,27 @@ class SunLibWriter {
 
  private:
   struct ModuleData {
-    std::string bitcode;
+    size_t blobIndex;  // index into blobs_
     moon::ModuleMetadata metadata;
   };
+
+  // Bundles normally share one code image across every exported module (the
+  // whole bundle is compiled into a single LLVM module), so the bitcode is
+  // held once and referenced by index rather than copied per module.
+  std::vector<std::string> blobs_;
+  std::unordered_map<const llvm::Module*, size_t> blobIndexByModule_;
 
   std::vector<ModuleData> modules_;
   std::string error_;
 };
 
 /// Reads .moon bundle files and extracts individual modules
-class SunLibReader {
+class MoonReader {
  public:
   /// Open a .moon bundle file
   /// @param path Path to the .moon file
   /// @return Reader instance, or nullptr on failure
-  static std::unique_ptr<SunLibReader> open(const std::filesystem::path& path);
+  static std::unique_ptr<MoonReader> open(const std::filesystem::path& path);
 
   /// Check if a module exists in this bundle
   /// @param moduleKey The module key (source hash)
@@ -97,6 +104,11 @@ class SunLibReader {
   std::unique_ptr<llvm::Module> loadModule(const std::string& moduleKey,
                                            llvm::LLVMContext& context);
 
+  /// Identity of the bitcode region backing a module. Modules that share a
+  /// code image share this string, so a caller can scan the image once
+  /// instead of once per module. Empty if the module is unknown.
+  std::string getBitcodeId(const std::string& moduleKey) const;
+
   /// Get error message if an operation failed
   const std::string& getError() const { return error_; }
 
@@ -108,7 +120,7 @@ class SunLibReader {
   std::string getTargetTriple();
 
  private:
-  SunLibReader() = default;
+  MoonReader() = default;
 
   std::filesystem::path path_;
   std::vector<ModuleIndexEntry> index_;

@@ -89,7 +89,7 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   driver->compileFiles(report.sunFiles, report.moonImports, report.protoFiles);
 
   // ---- Write the bundle: each module's metadata + the shared code ----
-  SunLibWriter writer;
+  MoonWriter writer;
   for (const auto& metadata : allMetadata) {
     writer.addModule(driver->getModule(), metadata);
   }

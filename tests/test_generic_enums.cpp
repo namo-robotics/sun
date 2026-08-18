@@ -267,7 +267,7 @@ TEST(GenericEnumTest, CrossModuleMoonBundle) {
   ASSERT_TRUE(metadata.has_value());
   auto libDriver = Driver::createForAOT("moon_module");
   libDriver->compileFiles({libSrc.string()}, {});
-  sun::SunLibWriter writer;
+  sun::MoonWriter writer;
   writer.addModule(libDriver->getModule(), *metadata);
   fs::path moonPath = dir / "optlib.moon";
   ASSERT_TRUE(writer.write(moonPath));

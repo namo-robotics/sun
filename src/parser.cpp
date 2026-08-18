@@ -2760,7 +2760,7 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
 
   // Open the moon bundle
   PARSER_TIMER_START(open_moon);
-  auto reader = sun::SunLibReader::open(resolved);
+  auto reader = sun::MoonReader::open(resolved);
   if (!reader) {
     logAndThrowError("Failed to open moon: " + resolvedStr);
     return nullptr;

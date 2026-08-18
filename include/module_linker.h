@@ -3,6 +3,7 @@
 #include <llvm/IR/Module.h>
 
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -78,6 +79,10 @@ class ModuleLinker {
       const std::unordered_map<std::string, std::string>& moduleRemap) const;
 
   llvm::Module& target_;
+  // Code images parsed by declareAvailableFunctions(), keyed by bitcode id and
+  // held for linkModuleRecursive() to claim instead of re-parsing them.
+  std::unordered_map<std::string, std::unique_ptr<llvm::Module>>
+      scannedModules_;
   std::set<std::string> linkedModules_;
   std::set<std::string>
       linkedContentHashes_;  // Content hashes of linked bitcode
