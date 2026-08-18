@@ -236,8 +236,14 @@ std::shared_ptr<sun::EnumType> SemanticAnalyzer::instantiateGenericEnum(
     return nullptr;
   }
 
+  // Mangle from the template's registered name, not the spelling the caller
+  // used: `sun.Option<i32>` and `Option<i32>` name the same specialization
+  // (generic classes derive their name the same way).
+  const std::string& templateName = genericInfo->qualifiedName.baseName.empty()
+                                        ? baseName
+                                        : genericInfo->qualifiedName.baseName;
   std::string mangledName =
-      sun::Types::mangleGenericClassName(baseName, typeArgs);
+      sun::Types::mangleGenericClassName(templateName, typeArgs);
   if (typeRegistry->hasEnum(mangledName)) {
     auto existing = typeRegistry->getEnum(mangledName);
     registerEnum(mangledName, existing);
@@ -252,8 +258,8 @@ std::shared_ptr<sun::EnumType> SemanticAnalyzer::instantiateGenericEnum(
   }
 
   auto specialized = typeRegistry->getEnum(mangledName);
-  specialized->setBaseName(baseName);
-  specialized->setGenericOrigin(baseName, typeArgs);
+  specialized->setBaseName(templateName);
+  specialized->setGenericOrigin(templateName, typeArgs);
   specialized->visibility = genericInfo->AST->getVisibility();
   specialized->setQualifiedName(sun::QualifiedName(
       genericInfo->qualifiedName.scopePath, mangledName,
