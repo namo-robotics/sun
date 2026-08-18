@@ -206,3 +206,69 @@ TEST(GenericFunctions, nested_generic_with_capture_two_outer_specializations) {
   )");
   EXPECT_EQ(value, 32);
 }
+
+// ============================================================================
+// Call sites ahead of the definition (issue #78)
+// ============================================================================
+
+TEST(GenericFunctions, called_from_generic_class_method_defined_above_it) {
+  auto value = executeString(R"(
+    class Box<T> {
+        var v: T;
+        function init(v: T) { this.v = v; }
+        function get() T { return helper<T>(this.v); }
+    }
+    function helper<T>(x: T) T { return x + x; }
+    function main() i32 {
+        var b = Box<i32>(21);
+        return b.get();
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(GenericFunctions, called_from_class_method_defined_above_it) {
+  auto value = executeString(R"(
+    class Plain {
+        var n: i32;
+        function init(n: i32) { this.n = n; }
+        function get() i32 { return helper<i32>(this.n); }
+    }
+    function helper<T>(x: T) T { return x + x; }
+    function main() i32 {
+        var p = Plain(21);
+        return p.get();
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(GenericFunctions, called_from_function_defined_above_it) {
+  auto value = executeString(R"(
+    function caller() i32 { return helper<i32>(21); }
+    function helper<T>(x: T) T { return x + x; }
+    function main() i32 { return caller(); }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(GenericFunctions, generic_calls_generic_defined_below_it) {
+  auto value = executeString(R"(
+    function outer<T>(x: T) T { return inner<T>(x) + inner<T>(x); }
+    function inner<T>(x: T) T { return x; }
+    function main() i32 { return outer<i32>(21); }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(GenericFunctions, mutually_ordered_specializations_share_one_symbol) {
+  // Both call sites — the one above the definition and the one below — must
+  // resolve to the same specialization.
+  auto value = executeString(R"(
+    function before() i32 { return helper<i32>(20); }
+    function helper<T>(x: T) T { return x + 1; }
+    function after() i32 { return helper<i32>(20); }
+    function main() i32 { return before() + after(); }
+  )");
+  EXPECT_EQ(value, 42);
+}

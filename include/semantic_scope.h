@@ -305,6 +305,11 @@ struct SpecializedFunctionInfo {
   std::vector<sun::TypePtr> paramTypes;
   std::vector<Capture> captures;  // Captures with substituted types
   std::shared_ptr<FunctionAST> specializedAST;  // The analyzed clone
+  // Name this specialization is emitted under: the template's qualified name
+  // with the type arguments appended. Call sites carry it rather than
+  // recomputing, so one specialization keeps one symbol no matter where the
+  // call sits relative to the definition.
+  sun::QualifiedName qualifiedName;
 };
 
 // Forward declarations

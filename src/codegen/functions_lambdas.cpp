@@ -364,10 +364,13 @@ Value* CodegenVisitor::codegenGenericFunc(FunctionAST& funcAst) {
   // Generate all specializations that were created during semantic analysis
   for (const auto& [mangledName, specializedAST] :
        funcAst.getSpecializations()) {
-    if (specializedAST && !module->getFunction(mangledName)) {
-      // Recursively generate the specialized function using the same codegen
-      codegenFunc(*specializedAST);
-    }
+    if (!specializedAST) continue;
+    // A forward declaration from the block pre-pass still needs its body;
+    // only an already-defined function is skipped.
+    llvm::Function* existing = module->getFunction(mangledName);
+    if (existing && !existing->empty()) continue;
+    // Recursively generate the specialized function using the same codegen
+    codegenFunc(*specializedAST);
   }
 
   // Restore insertion point so caller can continue

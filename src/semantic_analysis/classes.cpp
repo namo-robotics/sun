@@ -544,9 +544,15 @@ SemanticAnalyzer::instantiateGenericFunction(
     return std::nullopt;
   }
   const PrototypeAST& proto = genericFunc->getProto();
-  // Use qualified name to include enclosing function context (e.g.,
-  // outer_i32_inner)
-  std::string funcName = proto.getMangledName();
+  // Name the specialization off the template's registration, which includes
+  // enclosing function context (e.g. outer_i32_inner) and is fixed from the
+  // moment the template is collected. The prototype's own mangled name only
+  // gains its overload suffix once its definition is analyzed, so using it
+  // would name the same specialization differently depending on whether the
+  // call site sits above or below the definition.
+  std::string funcName = genericInfo.qualifiedName.empty()
+                             ? proto.getMangledName()
+                             : genericInfo.qualifiedName.mangled();
   const auto& typeParams = proto.getTypeParameters();
 
   // Generate mangled name for cache lookup
@@ -554,6 +560,10 @@ SemanticAnalyzer::instantiateGenericFunction(
   for (const auto& typeArg : typeArgs) {
     mangledName += "_" + typeArg->toString();
   }
+  // The name the specialization is emitted under. Type arguments are part of
+  // the name itself, so it carries no scope path or overload suffix — this is
+  // the same name the cloned prototype gets below.
+  const sun::QualifiedName specializedName({}, mangledName);
 
   // Check cache first
   auto cacheIt = specializedFunctionCache.find(mangledName);
@@ -699,6 +709,7 @@ SemanticAnalyzer::instantiateGenericFunction(
 
   // Build result
   SpecializedFunctionInfo result;
+  result.qualifiedName = specializedName;
   result.returnType = returnType;
   result.paramTypes = std::move(paramTypes);
   result.captures = std::move(substitutedCaptures);

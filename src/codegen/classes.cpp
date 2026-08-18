@@ -1378,12 +1378,17 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
     const std::vector<sun::TypePtr>& resolvedTypeArgs =
         expr.getResolvedTypeArgs();
 
-    // Build mangled name to look up the correct specialization
-    // Use qualified name to include enclosing function context (e.g.,
-    // outer_i32_inner)
-    std::string mangledName = genericFuncAST->getProto().getMangledName();
-    for (const auto& typeArg : resolvedTypeArgs) {
-      mangledName += "_" + typeArg->toString();
+    // Prefer the name semantic analysis recorded when it instantiated the
+    // template; only fall back to rebuilding it from the template's mangled
+    // name (which includes enclosing function context, e.g. outer_i32_inner).
+    std::string mangledName;
+    if (expr.hasSpecializationName()) {
+      mangledName = expr.getSpecializationName().mangled();
+    } else {
+      mangledName = genericFuncAST->getProto().getMangledName();
+      for (const auto& typeArg : resolvedTypeArgs) {
+        mangledName += "_" + typeArg->toString();
+      }
     }
 
     // The specialized function should already exist - it was generated when

@@ -121,6 +121,9 @@ struct MemberAccessAnalysis : public ExprAnalysis {
 struct GenericCallAnalysis : public ExprAnalysis {
   std::vector<sun::TypePtr> resolvedTypeArgs;
   const FunctionAST* genericFunctionAST = nullptr;
+  // Name of the specialization this call resolved to, as recorded by the
+  // semantic analyzer when it instantiated the template.
+  sun::QualifiedName specializationName;
 
   GenericCallAnalysis() = default;
   GenericCallAnalysis(const GenericCallAnalysis&) = default;

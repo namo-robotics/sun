@@ -3212,6 +3212,8 @@ void SemanticAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
     auto specializedFunc = instantiateGenericFunction(*genFuncInfo, typeArgs);
     if (specializedFunc) {
       expectedParamTypes = specializedFunc->paramTypes;
+      // Record the name so codegen calls exactly what was instantiated
+      genericCall.setSpecializationName(specializedFunc->qualifiedName);
       // genericCall.setResolvedType(specializedFunc->returnType);
     } else {
       logAndThrowError("Failed to instantiate generic function '" + funcName +
