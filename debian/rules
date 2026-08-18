@@ -6,10 +6,11 @@ export DH_VERBOSE = 1
 # Hardening flags
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 
-# Disable debug symbols package (avoids permission issues with parent dir)
+# Disable the separate -dbgsym package (avoids permission issues with parent
+# dir). dh_strip still strips the shipped binaries, keeping the .deb small.
 # Append to the inherited value: dpkg-buildpackage passes parallel=N here,
 # and overwriting it would force a single-threaded build.
-export DEB_BUILD_OPTIONS := $(DEB_BUILD_OPTIONS) nostrip noddebs
+export DEB_BUILD_OPTIONS := $(DEB_BUILD_OPTIONS) noddebs
 
 # Use ccache when available (set up by CI)
 ifneq (,$(shell command -v ccache 2>/dev/null))

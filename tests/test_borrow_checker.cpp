@@ -638,3 +638,345 @@ TEST(BorrowCheckerTest, error_on_move_in_try_block_used_after) {
   )"),
                SunError);
 }
+
+// ============================================================================
+// Partial moves: a field moved out of its object
+//
+// Reading a compound field by value moves it out and leaves the field empty.
+// That is allowed, but the checker tracks it: the field cannot be read again
+// until a value is put back, and the object cannot be used as a whole while
+// one of its fields is missing.
+// ============================================================================
+
+TEST(BorrowCheckerTest, error_on_use_of_moved_field) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Inner {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+        function deinit() void { }
+        function get() i32 { return this.v; }
+    }
+    class Config {
+        var line: Inner;
+        function init() { this.line = Inner(7); }
+        function deinit() void { }
+    }
+
+    function main() i32 {
+        var cfg = Config();
+        var subject = cfg.line;   // moves the field out
+        return cfg.line.get();    // ERROR: use of moved field
+    }
+  )"),
+                                "Borrow check failed");
+}
+
+TEST(BorrowCheckerTest, error_on_whole_object_use_after_field_move) {
+  // Borrowing the object hands the callee a field that is no longer there
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Inner {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+        function deinit() void { }
+        function get() i32 { return this.v; }
+    }
+    class Config {
+        var line: Inner;
+        function init() { this.line = Inner(7); }
+        function deinit() void { }
+    }
+
+    function read(c: ref Config) i32 { return c.line.get(); }
+
+    function main() i32 {
+        var cfg = Config();
+        var subject = cfg.line;
+        return read(cfg);         // ERROR: cfg is partially moved
+    }
+  )"),
+                                "Borrow check failed");
+}
+
+TEST(BorrowCheckerTest, error_on_borrow_of_moved_field) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Inner {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+        function deinit() void { }
+        function get() i32 { return this.v; }
+    }
+    class Config {
+        var line: Inner;
+        function init() { this.line = Inner(7); }
+        function deinit() void { }
+    }
+
+    function main() i32 {
+        var cfg = Config();
+        var subject = cfg.line;
+        ref r = cfg.line;         // ERROR: borrow of moved field
+        return r.get();
+    }
+  )"),
+                                "Borrow check failed");
+}
+
+TEST(BorrowCheckerTest, error_on_use_of_moved_field_of_this) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Inner {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+        function deinit() void { }
+        function get() i32 { return this.v; }
+    }
+    class Holder {
+        var inner: Inner;
+        function init() { this.inner = Inner(9); }
+        function deinit() void { }
+        function bad() i32 {
+            var taken = this.inner;
+            return this.inner.get();   // ERROR: use of moved field
+        }
+    }
+
+    function main() i32 {
+        var h = Holder();
+        return h.bad();
+    }
+  )"),
+                                "Borrow check failed");
+}
+
+TEST(BorrowCheckerTest, sibling_field_and_refill_after_field_move) {
+  // Moving one field out leaves the others readable, and assigning a value
+  // back into the moved field makes the object whole again
+  auto value = executeString(R"(
+    class Inner {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+        function deinit() void { }
+        function get() i32 { return this.v; }
+    }
+    class Config {
+        var line: Inner;
+        var query: Inner;
+        function init() { this.line = Inner(7); this.query = Inner(3); }
+        function deinit() void { }
+    }
+
+    function main() i32 {
+        var cfg = Config();
+        var subject = cfg.line;      // moves the field out
+        var q = cfg.query.get();     // sibling field is still there
+        cfg.line = Inner(5);         // field owns a value again
+        return subject.get() * 100 + q * 10 + cfg.line.get();
+    }
+  )");
+  EXPECT_EQ(value, 735);
+}
+
+TEST(BorrowCheckerTest, borrowing_a_field_does_not_move_it) {
+  auto value = executeString(R"(
+    class Inner {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+        function deinit() void { }
+        function get() i32 { return this.v; }
+    }
+    class Config {
+        var line: Inner;
+        function init() { this.line = Inner(7); }
+        function deinit() void { }
+    }
+
+    function main() i32 {
+        var cfg = Config();
+        ref subject = cfg.line;
+        return subject.get() * 10 + cfg.line.get();
+    }
+  )");
+  EXPECT_EQ(value, 77);
+}
+
+// ============================================================================
+// Reading a class out of a borrow
+//
+// Only scalars (and arrays, which are fat pointers into storage owned
+// elsewhere) can be duplicated by a read. A class value has one owner, so a
+// borrow of one cannot be turned back into a value - with or without drop glue.
+// ============================================================================
+
+TEST(BorrowCheckerTest, error_on_returning_borrowed_class_by_value) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Cursor {
+        var pos: i32;
+        function init(p: i32) { this.pos = p; }
+        function get() i32 { return this.pos; }
+    }
+
+    function snapshot(c: ref Cursor) Cursor {
+        return c;                 // ERROR: reading a class out of a borrow
+    }
+
+    function main() i32 {
+        var c = Cursor(7);
+        var copy = snapshot(c);
+        return copy.get();
+    }
+  )"),
+                                "Cannot return a borrowed");
+}
+
+TEST(BorrowCheckerTest, error_on_storing_borrowed_class_in_field) {
+  EXPECT_THROW(executeString(R"(
+    class Cursor {
+        var pos: i32;
+        function init(p: i32) { this.pos = p; }
+    }
+    class Holder {
+        var cur: Cursor;
+        function init(c: ref Cursor) { this.cur = c; }
+    }
+
+    function main() i32 {
+        var c = Cursor(7);
+        var h = Holder(c);
+        return 0;
+    }
+  )"),
+               std::exception);
+}
+
+// ============================================================================
+// Loop-carried moves
+//
+// A move that is still standing when a loop body ends runs again on the next
+// iteration, against a value that is already gone.
+// ============================================================================
+
+TEST(BorrowCheckerTest, error_on_variable_moved_every_iteration) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Inner {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+        function deinit() void { }
+        function get() i32 { return this.v; }
+    }
+
+    function main() i32 {
+        var src = Inner(7);
+        var total = 0;
+        for (var i: i32 = 0; i < 3; i = i + 1) {
+            var taken = src;      // ERROR: moved again on the next iteration
+            total = total + taken.get();
+        }
+        return total;
+    }
+  )"),
+                                "Borrow check failed");
+}
+
+TEST(BorrowCheckerTest, error_on_field_moved_every_iteration) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Inner {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+        function deinit() void { }
+        function get() i32 { return this.v; }
+    }
+    class Config {
+        var line: Inner;
+        function init() { this.line = Inner(7); }
+        function deinit() void { }
+    }
+
+    function main() i32 {
+        var cfg = Config();
+        var total = 0;
+        for (var i: i32 = 0; i < 3; i = i + 1) {
+            var taken = cfg.line;   // ERROR: the field is gone next iteration
+            total = total + taken.get();
+        }
+        return total;
+    }
+  )"),
+                                "Borrow check failed");
+}
+
+TEST(BorrowCheckerTest, loop_moves_a_value_made_in_the_same_iteration) {
+  // A value created inside the body is fresh each time round
+  auto value = executeString(R"(
+    class Inner {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+        function deinit() void { }
+        function get() i32 { return this.v; }
+    }
+
+    function consume(i: Inner) i32 { return i.get(); }
+
+    function main() i32 {
+        var total = 0;
+        for (var i: i32 = 0; i < 3; i = i + 1) {
+            var tmp = Inner(2);
+            total = total + consume(tmp);
+        }
+        return total;
+    }
+  )");
+  EXPECT_EQ(value, 6);
+}
+
+TEST(BorrowCheckerTest, loop_refills_the_moved_field_before_the_end) {
+  auto value = executeString(R"(
+    class Inner {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+        function deinit() void { }
+        function get() i32 { return this.v; }
+    }
+    class Config {
+        var line: Inner;
+        function init() { this.line = Inner(7); }
+        function deinit() void { }
+    }
+
+    function main() i32 {
+        var cfg = Config();
+        var total = 0;
+        for (var i: i32 = 0; i < 3; i = i + 1) {
+            var taken = cfg.line;
+            total = total + taken.get();
+            cfg.line = Inner(1);      // whole again before the iteration ends
+        }
+        return total;
+    }
+  )");
+  EXPECT_EQ(value, 9);
+}
+
+TEST(BorrowCheckerTest, loop_body_that_returns_moves_once) {
+  auto value = executeString(R"(
+    class Inner {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+        function deinit() void { }
+        function get() i32 { return this.v; }
+    }
+    class Config {
+        var line: Inner;
+        function init() { this.line = Inner(7); }
+        function deinit() void { }
+    }
+
+    function main() i32 {
+        var cfg = Config();
+        while (true) {
+            var taken = cfg.line;     // the body cannot run twice
+            return taken.get();
+        }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 7);
+}

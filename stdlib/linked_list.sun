@@ -39,11 +39,10 @@ public module sun {
       return unsafe { _to_ref<T>(_address_of<T>(this.value)); };
     }
 
-    // Move the stored value out, leaving the slot zeroed so it drops as a
-    // no-op. Only for callers that are freeing or reusing the node.
+    // Move the stored value out. The move zeroes the slot, so the node's own
+    // drop is a no-op. Only for callers that are freeing or reusing the node.
     public function takeValue() T {
       var value: T = this.value;
-      unsafe { _memset(_address_of<T>(this.value), 0, _sizeof<T>()); };
       return value;
     }
 

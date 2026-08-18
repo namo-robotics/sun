@@ -365,11 +365,11 @@ static bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
     }
   }
 
-  // ref(T) -> T: the value is read out of the reference. Not for a T that
-  // runs drop code — the borrowed value and the copy would both own what it
-  // holds and both release it. Mirrors SemanticAnalyzer::isAssignableTo.
+  // ref(T) -> T: the value is read out of the reference. Only a scalar can
+  // be duplicated that way; a compound T is borrowed or cloned instead.
+  // Mirrors SemanticAnalyzer::isAssignableTo.
   if (!to->isReference() && from->isReference()) {
-    if (sun::typeNeedsDrop(to)) return false;
+    if (!sun::typeCopiesByRead(to)) return false;
     auto* fromRef = static_cast<const sun::ReferenceType*>(from.get());
     return isAssignableTo(fromRef->getReferencedType(), to);
   }
@@ -451,10 +451,10 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
           if (argTypes[i]->isReference()) {
             auto* refType =
                 static_cast<const sun::ReferenceType*>(argTypes[i].get());
-            // Reading the value out of the borrow, so not for a parameter
-            // type that runs drop code (see isAssignableTo above)
+            // Reading the value out of the borrow, so only for a scalar
+            // parameter type (see isAssignableTo above)
             if (info->paramTypes[i]->equals(*refType->getReferencedType()) &&
-                !sun::typeNeedsDrop(info->paramTypes[i]))
+                sun::typeCopiesByRead(info->paramTypes[i]))
               continue;
           }
 

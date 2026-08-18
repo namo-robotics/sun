@@ -1,5 +1,21 @@
 using sun;
 
+class Config {
+  var line: String;
+
+  function init(alloc: ref HeapAllocator) {
+    this.line = String(alloc, "test");
+  }
+}
+
 function main() i32 {
-  return sun.a() + sun.b();
+  var alloc = make_heap_allocator();
+
+  var cfg = Config(alloc);
+  ref x = cfg.line;
+  println(x.clone(alloc));
+}
+
+manifest {
+  moons: ["stdlib.moon"]
 }
