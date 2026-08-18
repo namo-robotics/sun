@@ -190,19 +190,45 @@ void ModuleLinker::buildSymbolMap(const std::string& moduleKey) {
 void ModuleLinker::declareAvailableFunctions() {
   auto& ctx = target_.getContext();
 
-  for (const auto& moduleKey : availableModules_) {
-    // Load the bitcode module to scan its functions directly
-    // This captures all concrete functions including generic specializations
-    // NOTE: Symbols in the bitcode are ALREADY prefixed with the content hash
-    // (done at moon bundle creation time), so we don't add prefixes here.
-    auto libModule = LibraryCache::instance().loadModule(moduleKey, ctx);
-    if (!libModule) continue;
+  // Every module of a bundle normally points at one shared code image, so
+  // scanning per module key would parse the same bitcode once per module.
+  // Scan each (code image, aliasing) pair once instead; a repeat scan can only
+  // re-derive declarations the first one already made.
+  std::set<std::string> scanned;
 
+  for (const auto& moduleKey : availableModules_) {
     // Check if this module has aliasing configured
     auto remapIt = moduleRemaps_.find(moduleKey);
     bool hasRemap =
         (remapIt != moduleRemaps_.end() && !remapIt->second.empty());
     const auto* remap = hasRemap ? &remapIt->second : nullptr;
+
+    std::string bitcodeId = LibraryCache::instance().getBitcodeId(moduleKey);
+    if (!bitcodeId.empty()) {
+      std::string scanKey = bitcodeId;
+      if (remap) {
+        for (const auto& [from, to] : std::map<std::string, std::string>(
+                 remap->begin(), remap->end())) {
+          scanKey += "|" + from + "=" + to;
+        }
+      }
+      if (!scanned.insert(scanKey).second) continue;
+    }
+
+    // Load the bitcode module to scan its functions directly
+    // This captures all concrete functions including generic specializations
+    // NOTE: Symbols in the bitcode are ALREADY prefixed with the content hash
+    // (done at moon bundle creation time), so we don't add prefixes here.
+    auto owned = LibraryCache::instance().loadModule(moduleKey, ctx);
+    if (!owned) continue;
+
+    // Scanning does not touch the module, so keep it for the link step rather
+    // than parsing the same code image a second time. Anything left unclaimed
+    // is dropped when the linker goes out of scope.
+    llvm::Module* libModule = owned.get();
+    if (!bitcodeId.empty()) {
+      scannedModules_[bitcodeId] = std::move(owned);
+    }
 
     // Scan all defined functions in the bitcode and create declarations
     for (const auto& func : libModule->functions()) {
@@ -339,8 +365,18 @@ bool ModuleLinker::linkModuleRecursive(const std::string& moduleKey) {
   // 1. Symbol isolation between different library versions
   // 2. Integrity verification - if bitcode is modified, symbols won't match
   // 3. Struct type isolation to prevent LLVM type merging issues
-  auto libModule =
-      LibraryCache::instance().loadModule(moduleKey, target_.getContext());
+  // declareAvailableFunctions() already parsed this code image into the
+  // target's context and left it untouched; claim it rather than parse again.
+  std::unique_ptr<llvm::Module> libModule;
+  std::string bitcodeId = LibraryCache::instance().getBitcodeId(moduleKey);
+  auto scannedIt = scannedModules_.find(bitcodeId);
+  if (!bitcodeId.empty() && scannedIt != scannedModules_.end()) {
+    libModule = std::move(scannedIt->second);
+    scannedModules_.erase(scannedIt);
+  } else {
+    libModule =
+        LibraryCache::instance().loadModule(moduleKey, target_.getContext());
+  }
   if (!libModule) {
     // Get detailed error from the reader
     auto* bundle = LibraryCache::instance().findBundleForModule(moduleKey);
@@ -411,7 +447,7 @@ bool ModuleLinker::linkModuleRecursive(const std::string& moduleKey) {
 void ModuleLinker::registerAvailableModulesWithRemap(
     const MoonImport& moonImport) {
   // Open the moon file
-  auto reader = SunLibReader::open(moonImport.path);
+  auto reader = MoonReader::open(moonImport.path);
   if (!reader) {
     return;
   }

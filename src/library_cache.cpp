@@ -37,7 +37,7 @@ void LibraryCache::addBundle(const std::filesystem::path& bundlePath) {
     }
   }
 
-  auto reader = SunLibReader::open(bundlePath);
+  auto reader = MoonReader::open(bundlePath);
   if (reader) {
     // Index all modules in this bundle
     for (const auto& modPath : reader->listModules()) {
@@ -53,8 +53,8 @@ void LibraryCache::setTargetTriple(const std::string& triple) {
   targetTriple_ = triple;
 }
 
-SunLibReader* LibraryCache::selectBundle(
-    const std::vector<SunLibReader*>& candidates) const {
+MoonReader* LibraryCache::selectBundle(
+    const std::vector<MoonReader*>& candidates) const {
   if (candidates.empty()) return nullptr;
 
   llvm::Triple want(targetTriple_.empty() ? llvm::sys::getDefaultTargetTriple()
@@ -67,7 +67,7 @@ SunLibReader* LibraryCache::selectBundle(
   // substituting a different file. Architecture match breaks ties (several
   // explicitly registered bundles can accumulate across compilations in one
   // process).
-  SunLibReader* best = nullptr;
+  MoonReader* best = nullptr;
   int bestScore = -1;
   for (auto* reader : candidates) {
     std::string triple = reader->getTargetTriple();
@@ -132,7 +132,7 @@ void LibraryCache::discoverBundles() {
         }
 
         if (!alreadyLoaded) {
-          auto reader = SunLibReader::open(entry.path());
+          auto reader = MoonReader::open(entry.path());
           if (reader) {
             for (const auto& modPath : reader->listModules()) {
               moduleToBundle_[modPath].push_back(reader.get());
@@ -147,7 +147,7 @@ void LibraryCache::discoverBundles() {
   discovered_ = true;
 }
 
-SunLibReader* LibraryCache::findBundleForModule(const std::string& moduleKey) {
+MoonReader* LibraryCache::findBundleForModule(const std::string& moduleKey) {
   // Discover before selecting, not merely as a fallback: an explicitly
   // added bundle (e.g. the manifest's stdlib.moon) may have target-specific
   // siblings in the search paths that are better candidates.
@@ -188,6 +188,17 @@ std::unique_ptr<llvm::Module> LibraryCache::loadModule(
   }
 
   return bundle->loadModule(moduleKey, context);
+}
+
+std::string LibraryCache::getBitcodeId(const std::string& moduleKey) {
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  auto* bundle = findBundleForModule(moduleKey);
+  if (!bundle) {
+    return "";
+  }
+
+  return bundle->getBitcodeId(moduleKey);
 }
 
 const std::vector<std::filesystem::path>& LibraryCache::getSearchPaths() const {

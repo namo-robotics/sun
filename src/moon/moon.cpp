@@ -170,19 +170,30 @@ void applyMetadataPrefix(moon::ModuleMetadata& metadata,
 }  // namespace
 
 //===----------------------------------------------------------------------===//
-// SunLibWriter
+// MoonWriter
 //===----------------------------------------------------------------------===//
 
-SunLibWriter::SunLibWriter() = default;
+MoonWriter::MoonWriter() = default;
 
-void SunLibWriter::addModule(llvm::Module& module,
-                             const moon::ModuleMetadata& metadata) {
+void MoonWriter::addModule(llvm::Module& module,
+                           const moon::ModuleMetadata& metadata) {
   ModuleData data;
 
-  // Serialize LLVM bitcode
-  llvm::raw_string_ostream bitcodeStream(data.bitcode);
-  llvm::WriteBitcodeToFile(module, bitcodeStream);
-  bitcodeStream.flush();
+  // The same module is normally handed in once per exported module; serialize
+  // it once and let the later entries reference the same blob.
+  auto cached = blobIndexByModule_.find(&module);
+  if (cached != blobIndexByModule_.end()) {
+    data.blobIndex = cached->second;
+  } else {
+    std::string bitcode;
+    llvm::raw_string_ostream bitcodeStream(bitcode);
+    llvm::WriteBitcodeToFile(module, bitcodeStream);
+    bitcodeStream.flush();
+
+    data.blobIndex = blobs_.size();
+    blobs_.push_back(std::move(bitcode));
+    blobIndexByModule_[&module] = data.blobIndex;
+  }
 
   // Store metadata (hash will be computed in write() from combined content)
   data.metadata = metadata;
@@ -194,7 +205,7 @@ void SunLibWriter::addModule(llvm::Module& module,
   modules_.push_back(std::move(data));
 }
 
-bool SunLibWriter::write(const std::filesystem::path& outputPath) {
+bool MoonWriter::write(const std::filesystem::path& outputPath) {
   std::ofstream out(outputPath, std::ios::binary);
   if (!out) {
     error_ = "Failed to open output file: " + outputPath.string();
@@ -204,13 +215,13 @@ bool SunLibWriter::write(const std::filesystem::path& outputPath) {
   // Compute a single content hash from ALL original bitcodes in the bundle
   std::string combinedContent;
   for (const auto& mod : modules_) {
-    combinedContent += mod.bitcode;
+    combinedContent += blobs_[mod.blobIndex];
   }
   std::string bundleHash = computeContentHash(combinedContent);
   std::string prefix = "$" + bundleHash + "$";
 
   // Write header (will update indexOffset later)
-  SunLibHeader header;
+  MoonHeader header;
   header.moduleCount = static_cast<uint32_t>(modules_.size());
   auto headerPos = out.tellp();
   out.write(reinterpret_cast<const char*>(&header), sizeof(header));
@@ -219,39 +230,58 @@ bool SunLibWriter::write(const std::filesystem::path& outputPath) {
   std::vector<ModuleIndexEntry> index;
   llvm::LLVMContext tempContext;
 
+  // Each distinct blob is prefixed and written once; every module that shares
+  // it points at the same region. A bundle built from one compilation unit
+  // therefore stores its code once instead of once per exported module.
+  struct BlobLocation {
+    uint64_t offset = 0;
+    uint64_t size = 0;
+    bool written = false;
+  };
+  std::vector<BlobLocation> blobLocations(blobs_.size());
+
   for (auto& mod : modules_) {
     ModuleIndexEntry entry;
     entry.moduleKey = mod.metadata.source_hash();
 
-    // Re-parse the bitcode to apply symbol prefixes
-    auto memBuffer = llvm::MemoryBuffer::getMemBuffer(
-        llvm::StringRef(mod.bitcode.data(), mod.bitcode.size()),
-        mod.metadata.source_hash(), false);
+    auto& location = blobLocations[mod.blobIndex];
+    if (!location.written) {
+      const std::string& bitcode = blobs_[mod.blobIndex];
 
-    auto moduleOrErr =
-        llvm::parseBitcodeFile(memBuffer->getMemBufferRef(), tempContext);
-    if (!moduleOrErr) {
-      llvm::consumeError(moduleOrErr.takeError());
-      error_ = "Failed to re-parse bitcode for symbol prefixing";
-      return false;
+      // Re-parse the bitcode to apply symbol prefixes
+      auto memBuffer = llvm::MemoryBuffer::getMemBuffer(
+          llvm::StringRef(bitcode.data(), bitcode.size()),
+          mod.metadata.source_hash(), false);
+
+      auto moduleOrErr =
+          llvm::parseBitcodeFile(memBuffer->getMemBufferRef(), tempContext);
+      if (!moduleOrErr) {
+        llvm::consumeError(moduleOrErr.takeError());
+        error_ = "Failed to re-parse bitcode for symbol prefixing";
+        return false;
+      }
+
+      auto& parsedModule = *moduleOrErr;
+
+      // Apply symbol prefixes to LLVM module
+      applySymbolPrefix(*parsedModule, prefix);
+
+      // Re-serialize the prefixed module
+      std::string prefixedBitcode;
+      llvm::raw_string_ostream bitcodeStream(prefixedBitcode);
+      llvm::WriteBitcodeToFile(*parsedModule, bitcodeStream);
+      bitcodeStream.flush();
+
+      // Write prefixed bitcode
+      location.offset = static_cast<uint64_t>(out.tellp());
+      location.size = prefixedBitcode.size();
+      location.written = true;
+      out.write(prefixedBitcode.data(),
+                static_cast<std::streamsize>(prefixedBitcode.size()));
     }
 
-    auto& parsedModule = *moduleOrErr;
-
-    // Apply symbol prefixes to LLVM module
-    applySymbolPrefix(*parsedModule, prefix);
-
-    // Re-serialize the prefixed module
-    std::string prefixedBitcode;
-    llvm::raw_string_ostream bitcodeStream(prefixedBitcode);
-    llvm::WriteBitcodeToFile(*parsedModule, bitcodeStream);
-    bitcodeStream.flush();
-
-    // Write prefixed bitcode
-    entry.bitcodeOffset = static_cast<uint64_t>(out.tellp());
-    entry.bitcodeSize = prefixedBitcode.size();
-    out.write(prefixedBitcode.data(),
-              static_cast<std::streamsize>(prefixedBitcode.size()));
+    entry.bitcodeOffset = location.offset;
+    entry.bitcodeSize = location.size;
 
     // NOTE: Do NOT prefix metadata names. The semantic analyzer will compute
     // fully-qualified names based on the import scope path (content hash) and
@@ -309,10 +339,10 @@ bool SunLibWriter::write(const std::filesystem::path& outputPath) {
 }
 
 //===----------------------------------------------------------------------===//
-// SunLibReader
+// MoonReader
 //===----------------------------------------------------------------------===//
 
-std::unique_ptr<SunLibReader> SunLibReader::open(
+std::unique_ptr<MoonReader> MoonReader::open(
     const std::filesystem::path& path) {
   std::ifstream in(path, std::ios::binary);
   if (!in) {
@@ -320,18 +350,18 @@ std::unique_ptr<SunLibReader> SunLibReader::open(
   }
 
   // Read header
-  SunLibHeader header;
+  MoonHeader header;
   in.read(reinterpret_cast<char*>(&header), sizeof(header));
 
-  if (header.magic != SunLibHeader::MAGIC) {
+  if (header.magic != MoonHeader::MAGIC) {
     return nullptr;
   }
   // Reject bundles built for a different ABI/format version
-  if (header.version != SunLibHeader::VERSION) {
+  if (header.version != MoonHeader::VERSION) {
     return nullptr;
   }
 
-  auto reader = std::unique_ptr<SunLibReader>(new SunLibReader());
+  auto reader = std::unique_ptr<MoonReader>(new MoonReader());
   reader->path_ = path;
 
   // Read index
@@ -365,11 +395,11 @@ std::unique_ptr<SunLibReader> SunLibReader::open(
   return reader;
 }
 
-bool SunLibReader::hasModule(const std::string& moduleKey) const {
+bool MoonReader::hasModule(const std::string& moduleKey) const {
   return indexMap_.find(moduleKey) != indexMap_.end();
 }
 
-std::vector<std::string> SunLibReader::listModules() const {
+std::vector<std::string> MoonReader::listModules() const {
   std::vector<std::string> result;
   result.reserve(index_.size());
   for (const auto& entry : index_) {
@@ -378,8 +408,8 @@ std::vector<std::string> SunLibReader::listModules() const {
   return result;
 }
 
-bool SunLibReader::readBytes(uint64_t offset, uint64_t size,
-                             std::vector<char>& buffer) {
+bool MoonReader::readBytes(uint64_t offset, uint64_t size,
+                           std::vector<char>& buffer) {
   std::ifstream in(path_, std::ios::binary);
   if (!in) {
     error_ = "Failed to open bundle file";
@@ -398,7 +428,7 @@ bool SunLibReader::readBytes(uint64_t offset, uint64_t size,
   return true;
 }
 
-const moon::ModuleMetadata* SunLibReader::getMetadata(
+const moon::ModuleMetadata* MoonReader::getMetadata(
     const std::string& moduleKey) {
   // Check cache
   auto cacheIt = metadataCache_.find(moduleKey);
@@ -433,13 +463,21 @@ const moon::ModuleMetadata* SunLibReader::getMetadata(
   return &metadataCache_[moduleKey];
 }
 
-std::string SunLibReader::getTargetTriple() {
+std::string MoonReader::getBitcodeId(const std::string& moduleKey) const {
+  auto it = indexMap_.find(moduleKey);
+  if (it == indexMap_.end()) return "";
+  const auto& entry = index_[it->second];
+  return path_.string() + ":" + std::to_string(entry.bitcodeOffset) + ":" +
+         std::to_string(entry.bitcodeSize);
+}
+
+std::string MoonReader::getTargetTriple() {
   if (index_.empty()) return "";
   const auto* metadata = getMetadata(index_.front().moduleKey);
   return metadata ? metadata->target_triple() : "";
 }
 
-std::unique_ptr<llvm::Module> SunLibReader::loadModule(
+std::unique_ptr<llvm::Module> MoonReader::loadModule(
     const std::string& moduleKey, llvm::LLVMContext& context) {
   auto it = indexMap_.find(moduleKey);
   if (it == indexMap_.end()) {
