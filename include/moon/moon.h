@@ -20,13 +20,14 @@ namespace sun {
 /// Binary header for .moon format
 struct MoonHeader {
   static constexpr uint32_t MAGIC = 0x53554E4C;  // "SUNL"
-  static constexpr uint32_t VERSION = 5;  // V5: visibility on modules and
-                                          // exported declarations
+  static constexpr uint32_t VERSION = 6;  // V6: 64-bit index offset and count,
+                                          // no redundant module count
 
   uint32_t magic = MAGIC;
   uint32_t version = VERSION;
-  uint32_t moduleCount = 0;
-  uint32_t indexOffset = 0;  // Offset to module index
+  // The index carries its own entry count, so the number of modules is not
+  // repeated here. 64-bit because it addresses anywhere in the payload.
+  uint64_t indexOffset = 0;
 };
 
 /// Index entry for a module in the bundle

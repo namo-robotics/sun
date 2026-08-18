@@ -222,7 +222,6 @@ bool MoonWriter::write(const std::filesystem::path& outputPath) {
 
   // Write header (will update indexOffset later)
   MoonHeader header;
-  header.moduleCount = static_cast<uint32_t>(modules_.size());
   auto headerPos = out.tellp();
   out.write(reinterpret_cast<const char*>(&header), sizeof(header));
 
@@ -307,9 +306,9 @@ bool MoonWriter::write(const std::filesystem::path& outputPath) {
   }
 
   // Write index
-  header.indexOffset = static_cast<uint32_t>(out.tellp());
+  header.indexOffset = static_cast<uint64_t>(out.tellp());
 
-  uint32_t indexCount = static_cast<uint32_t>(index.size());
+  uint64_t indexCount = index.size();
   out.write(reinterpret_cast<const char*>(&indexCount), sizeof(indexCount));
 
   for (const auto& entry : index) {
@@ -365,12 +364,12 @@ std::unique_ptr<MoonReader> MoonReader::open(
   reader->path_ = path;
 
   // Read index
-  in.seekg(header.indexOffset);
+  in.seekg(static_cast<std::streamoff>(header.indexOffset));
 
-  uint32_t indexCount;
+  uint64_t indexCount = 0;
   in.read(reinterpret_cast<char*>(&indexCount), sizeof(indexCount));
 
-  for (uint32_t i = 0; i < indexCount; ++i) {
+  for (uint64_t i = 0; i < indexCount; ++i) {
     ModuleIndexEntry entry;
 
     uint32_t keyLen;
