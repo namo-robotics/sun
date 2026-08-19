@@ -44,13 +44,17 @@ class VariableCreationAST : public ExprAST {
   std::string toString() const override {
     std::string result = std::string(isPublic() ? "public " : "") + "var " + name;
     if (typeAnnotation) result += ": " + typeAnnotation->toString();
-    result += " = " + value->toString();
+    // A global imported from a .moon carries its type but no initializer.
+    if (value) result += " = " + value->toString();
     return result;
   }
   const std::string& getName() const { return name; }
   const ExprAST* getValue() const { return value.get(); }
+  bool hasValue() const { return value != nullptr; }
 
-  void forEachChildSlot(const ChildSlotFn& fn) override { fn(value); }
+  void forEachChildSlot(const ChildSlotFn& fn) override {
+    if (value) fn(value);
+  }
   const std::optional<TypeAnnotation>& getTypeAnnotation() const {
     return typeAnnotation;
   }

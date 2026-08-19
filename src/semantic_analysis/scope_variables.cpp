@@ -1163,6 +1163,34 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
 // Namespace-qualified symbols (separate from scope-based lookup)
 // -------------------------------------------------------------------
 
+void SemanticAnalyzer::registerPrecompiledModuleVariable(
+    VariableCreationAST& varCreate) {
+  sun::TypePtr type;
+  if (varCreate.hasTypeAnnotation()) {
+    type = typeAnnotationToType(*varCreate.getTypeAnnotation());
+  } else if (varCreate.hasValue()) {
+    // The declaration inferred its type, so the bundle kept the initializer
+    // for its type alone. Codegen still only declares the symbol.
+    analyzeExpr(const_cast<ExprAST&>(*varCreate.getValue()));
+    type = varCreate.getValue()->getResolvedType();
+  }
+  if (!type) return;
+  varCreate.setResolvedType(type);
+
+  // Bare-name lookup goes through `variables`, which body analysis would
+  // normally populate; there is no body to analyze here.
+  const std::string& name = varCreate.getName();
+  VariableInfo info{type, true, false, false};
+  info.visibility = varCreate.getVisibility();
+  info.qualifiedName = varCreate.getQualifiedName();
+  currentScope->variables[name] = info;
+
+  // The stub's qualified name is already scoped by content hash; it must be
+  // the one registered, since that is the symbol the bundle defines.
+  registerModuleVariable(name, varCreate.getQualifiedName().mangled(), type,
+                         varCreate.getVisibility());
+}
+
 void SemanticAnalyzer::registerModuleVariable(const std::string& baseName,
                                               const std::string& qualifiedName,
                                               sun::TypePtr type,

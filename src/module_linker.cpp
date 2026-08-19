@@ -268,8 +268,30 @@ void ModuleLinker::declareAvailableFunctions() {
       if (func.hasFnAttribute("sun.canthrow")) {
         decl->addFnAttr("sun.canthrow");
       }
+      // Keeps a C extern exempt from symbol prefixing if this module is
+      // itself bundled.
+      if (func.hasFnAttribute("sun.cabi")) {
+        decl->addFnAttr("sun.cabi");
+      }
 
       // Map the aliased name to the module for linking
+      symbolToModule_[declaredName] = moduleKey;
+    }
+
+    // Same for module-level variables the bitcode defines: the importer holds
+    // a declaration, so the defining module has to be pulled in.
+    for (const auto& global : libModule->globals()) {
+      if (!global.hasInitializer()) continue;  // a declaration, not a definition
+      if (!global.hasName() || global.getName().empty()) continue;
+
+      std::string globalName = global.getName().str();
+      if (globalName[0] == '_') continue;  // internal helpers and literals
+
+      std::string declaredName = globalName;
+      if (remap) {
+        declaredName = remapSymbolName(globalName, *remap);
+      }
+
       symbolToModule_[declaredName] = moduleKey;
     }
   }

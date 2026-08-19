@@ -1,0 +1,161 @@
+// stdlib/sys.sun - The stdlib's single C boundary
+//
+// Every libc symbol the standard library calls is declared here exactly once,
+// and none of it is public. Two reasons:
+//
+//   1. A C extern's Sun name carries no module path and no overload suffix, so
+//      two files declaring `close` would emit one symbol and two colliding
+//      metadata entries.
+//   2. None of it is public, so `getenv`, `fork`, `poll` and friends stay free
+//      in user namespace and a program can still declare its own. An extern's
+//      Sun-side name is module-scoped like any other item; only the emitted
+//      symbol is fixed by C. The `c_` prefix is just for readability at the
+//      call site.
+//
+// RULE: where a name is also declared by the compiler's own intrinsics
+// (include/intrinsics/libc.h), the signature here must match that one exactly
+// or the extern declaration is rejected. `open` is C-variadic there, so it is
+// C-variadic here.
+
+public module sun {
+  // --- file descriptors ----------------------------------------------------
+
+  extern "C" function c_open(path: raw_ptr<u8>, flags: i32, ...) i32 as "open";
+  extern "C" function c_close(fd: i32) i32 as "close";
+  extern "C" function c_read(fd: i32, buf: raw_ptr<u8>, count: i64) i64 as "read";
+  extern "C" function c_write(fd: i32, buf: raw_ptr<u8>, count: i64) i64 as "write";
+  extern "C" function c_lseek(fd: i32, offset: i64, whence: i32) i64 as "lseek";
+  extern "C" function c_fsync(fd: i32) i32 as "fsync";
+  extern "C" function c_ftruncate(fd: i32, length: i64) i32 as "ftruncate";
+  extern "C" function c_dup2(oldfd: i32, newfd: i32) i32 as "dup2";
+  extern "C" function c_pipe(fds: raw_ptr<i32>) i32 as "pipe";
+
+  // --- paths ---------------------------------------------------------------
+
+  extern "C" function c_unlink(path: raw_ptr<u8>) i32 as "unlink";
+  extern "C" function c_rename(old_path: raw_ptr<u8>, new_path: raw_ptr<u8>) i32 as "rename";
+  extern "C" function c_mkdir(path: raw_ptr<u8>, mode: i32) i32 as "mkdir";
+  extern "C" function c_rmdir(path: raw_ptr<u8>) i32 as "rmdir";
+  extern "C" function c_access(path: raw_ptr<u8>, mode: i32) i32 as "access";
+
+  // --- directories ---------------------------------------------------------
+
+  extern "C" function c_opendir(path: raw_ptr<u8>) raw_ptr<u8> as "opendir";
+  extern "C" function c_readdir(dir: raw_ptr<u8>) raw_ptr<u8> as "readdir";
+  extern "C" function c_closedir(dir: raw_ptr<u8>) i32 as "closedir";
+
+  // --- polling -------------------------------------------------------------
+
+  extern "C" function c_poll(fds: raw_ptr<u8>, nfds: i64, timeout_ms: i32) i32 as "poll";
+
+  // --- environment ---------------------------------------------------------
+
+  extern "C" function c_getenv(name: raw_ptr<u8>) raw_ptr<u8> as "getenv";
+  extern "C" function c_setenv(name: raw_ptr<u8>, value: raw_ptr<u8>, overwrite: i32) i32 as "setenv";
+  extern "C" function c_unsetenv(name: raw_ptr<u8>) i32 as "unsetenv";
+  extern "C" function c_getcwd(buf: raw_ptr<u8>, size: i64) raw_ptr<u8> as "getcwd";
+  extern "C" function c_chdir(path: raw_ptr<u8>) i32 as "chdir";
+
+  // --- processes -----------------------------------------------------------
+
+  extern "C" function c_fork() i32 as "fork";
+  extern "C" function c_execvp(file: raw_ptr<u8>, argv: raw_ptr<u8>) i32 as "execvp";
+  extern "C" function c_waitpid(pid: i32, status: raw_ptr<i32>, options: i32) i32 as "waitpid";
+  extern "C" function c_kill(pid: i32, sig: i32) i32 as "kill";
+  extern "C" function c_setpgid(pid: i32, pgid: i32) i32 as "setpgid";
+  extern "C" function c_setsid() i32 as "setsid";
+  extern "C" function c_getpid() i32 as "getpid";
+  extern "C" function c_getppid() i32 as "getppid";
+  extern "C" function c_getuid() u32 as "getuid";
+  extern "C" function c_geteuid() u32 as "geteuid";
+  extern "C" function c_exit(code: i32) void as "exit";
+  extern "C" function c_exit_now(code: i32) void as "_exit";
+
+  // --- time ----------------------------------------------------------------
+
+  extern "C" function c_clock_gettime(clock_id: i32, ts: ref Timespec) i32 as "clock_gettime";
+  extern "C" function c_nanosleep(req: ref Timespec, rem: raw_ptr<u8>) i32 as "nanosleep";
+  extern "C" function c_gmtime_r(t: raw_ptr<i64>, out: ref CTm) raw_ptr<u8> as "gmtime_r";
+  extern "C" function c_localtime_r(t: raw_ptr<i64>, out: ref CTm) raw_ptr<u8> as "localtime_r";
+  extern "C" function c_mktime(tm: ref CTm) i64 as "mktime";
+  extern "C" function c_timegm(tm: ref CTm) i64 as "timegm";
+  extern "C" function c_strftime(buf: raw_ptr<u8>, size: i64, fmt: raw_ptr<u8>, tm: ref CTm) i64 as "strftime";
+
+  // --- strings and numbers -------------------------------------------------
+
+  extern "C" function c_strlen(s: raw_ptr<u8>) i64 as "strlen";
+  extern "C" function c_snprintf(buf: raw_ptr<u8>, n: i64, fmt: raw_ptr<u8>, ...) i32 as "snprintf";
+  extern "C" function c_strtod(s: raw_ptr<u8>, end: raw_ptr<u8>) f64 as "strtod";
+
+  // --- errno ---------------------------------------------------------------
+
+  // Both glibc and musl export __errno_location for the per-thread errno.
+  extern "C" function c_errno_location() raw_ptr<i32> as "__errno_location";
+
+  // The last error a C call reported. Only meaningful right after a call that
+  // signalled failure.
+  function errno() i32 {
+    return unsafe { _load<i32>(c_errno_location(), 0); };
+  }
+
+  // ==========================================================================
+  // C struct mirrors
+  // ==========================================================================
+  // A Sun class lays out in declaration order with natural padding, which is
+  // C's layout. Only structs whose layout is the same on every target we build
+  // for belong here — `struct stat` is not one of them (its field order and
+  // padding differ between x86-64 and aarch64 glibc), which is why sun.io
+  // answers metadata questions with access/opendir/lseek instead.
+
+  // struct timespec — { i64, i64 } on every 64-bit Linux.
+  class Timespec {
+    var sec: i64;
+    var nsec: i64;
+
+    public function init(sec: i64, nsec: i64) {
+      this.sec = sec;
+      this.nsec = nsec;
+    }
+  }
+
+  // struct tm — 9 ints, pad to 8, then long tm_gmtoff and const char* tm_zone.
+  // Same on glibc and musl, x86-64 and aarch64.
+  class CTm {
+    var sec: i32;
+    var min: i32;
+    var hour: i32;
+    var mday: i32;
+    var mon: i32;
+    var year: i32;
+    var wday: i32;
+    var yday: i32;
+    var isdst: i32;
+    var gmtoff: i64;
+    var zone: raw_ptr<u8>;
+
+    public function init() {
+      this.sec = 0;
+      this.min = 0;
+      this.hour = 0;
+      this.mday = 0;
+      this.mon = 0;
+      this.year = 0;
+      this.wday = 0;
+      this.yday = 0;
+      this.isdst = 0;
+      this.gmtoff = 0;
+      this.zone = null;
+    }
+  }
+
+  // The fixed head of struct dirent. d_name is a flexible char[] at byte 19.
+  // 64-bit d_ino/d_off are unconditional on 64-bit Linux (readdir == readdir64)
+  // and identical on glibc and musl.
+  class Dirent {
+    var d_ino: u64;  // @0
+    var d_off: i64;  // @8
+    var d_reclen: u16;  // @16
+    var d_type: u8;  // @18
+  }
+
+}

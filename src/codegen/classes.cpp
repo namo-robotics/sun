@@ -995,6 +995,9 @@ std::vector<Value*> CodegenVisitor::generateCtorArgs(
       // Handle implicit widening for arguments:
       // Widen smaller integers to larger integers (i32 -> i64)
       if (argIdx < paramTypes.size() && paramTypes[argIdx]) {
+        // A string literal reaching a raw_ptr<u8> parameter narrows to its
+        // data pointer, the same as at any other call boundary.
+        argVal = coerceStaticPtrToRawPtr(argVal, argSunType, paramTypes[argIdx]);
         llvm::Type* expectedType = typeResolver.resolve(paramTypes[argIdx]);
         if (argVal->getType()->isIntegerTy() && expectedType->isIntegerTy()) {
           unsigned argBits = argVal->getType()->getIntegerBitWidth();

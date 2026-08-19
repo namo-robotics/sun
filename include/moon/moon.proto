@@ -42,4 +42,10 @@ message ModuleMetadata {
   repeated sun.ast.ClassDef classes = 7;
   repeated sun.ast.InterfaceDef interfaces = 8;
   repeated sun.ast.EnumDef enums = 9;
+
+  // Module-level variables. The initializer is dropped: the storage lives in
+  // this bundle's bitcode, already initialized, and importers reference it.
+  // Private ones are carried like other private items — bodies shipped in the
+  // bundle may read them — but importers cannot reach them.
+  repeated sun.ast.VariableCreation globals = 13;
 }

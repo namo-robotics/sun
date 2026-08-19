@@ -191,6 +191,18 @@ s.append_char(33);         // Append '!'
 | `append(x)` | `(f64) void`, `(f32) void`, ... | Overloads used by `${x}` interpolation for every primitive |
 | `parse_i64()` | `() Option<i64>` | Whole string as a decimal integer; `None` if malformed or out of range |
 | `parse_f64()` | `() Option<f64>` | Whole string as a decimal float; `None` if malformed |
+| `c_str()` | `() raw_ptr<u8>` | NUL-terminated pointer for C, valid until the next mutation |
+
+The terminator `c_str()` writes sits past the length, so the string itself is
+unchanged. `from_c_str(alloc, p)` is the other direction — it copies a
+NUL-terminated C string into an owned `String`, which is how `sun.env.get` and
+`read_dir` hand back text from libc.
+
+```sun
+var path = String(alloc, "/tmp/");
+path.append_literal("out.txt");
+write_string(path.c_str(), body);
+```
 
 ### Text Manipulation
 
@@ -290,6 +302,290 @@ m.unlock();
 | `unlock()` | `() void` | Release the lock |
 
 See [Threads](/threads) for usage with spawned threads.
+
+## File I/O
+
+`stdlib/io.sun` (module `sun.io`). A path is a `raw_ptr<u8>`: a string literal
+narrows to one automatically, and a path built at runtime supplies one through
+`String.c_str()`.
+
+```sun
+using sun;
+using sun.io;
+
+var f = File();
+try {
+    f.open("notes.txt", FileMode.Write);
+    f.write("Hello, World!");
+    f.close();
+} catch (e: IError) {
+    eprintln("could not write notes.txt");
+}
+
+// Or in one step
+var text = read_to_string(alloc, "notes.txt");
+
+// A runtime path
+var path = String(alloc, "/tmp/");
+path.append_literal("report.csv");
+write_string(path.c_str(), text);
+```
+
+`FileMode` is `Read` (must exist), `Write` (create or truncate) or `Append`.
+`Whence` is `Start`, `Current` or `End`.
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `open` | `(path: raw_ptr<u8>, mode: FileMode) void, IError` | Open a file |
+| `adopt` | `(fd: i32) void` | Take ownership of an open descriptor |
+| `write` | `(data: static_ptr<u8>) i64` / `(data: ref String) i64` | Bytes written |
+| `write_bytes` | `(buf: raw_ptr<u8>, len: i64) i64` | Write raw bytes |
+| `read_all` | `(alloc: ref HeapAllocator) String, IError` | Read to end of file |
+| `read_into` | `(buf: raw_ptr<u8>, len: i64) i64` | Read into a buffer |
+| `seek` | `(offset: i64, whence: Whence) i64` | New offset from the start |
+| `tell` / `size` | `() i64` | Current position / total length |
+| `sync` / `truncate` | `() void, IError` / `(length: i64) void, IError` | Flush / resize |
+| `close` / `is_open` / `get_fd` | | Close (idempotent), query, borrow the fd |
+
+A `File` closes itself at scope exit. The descriptor it holds is `0` when it
+holds nothing, so a moved-from `File` — which is zeroed — closes nothing rather
+than closing stdin.
+
+Free functions:
+
+| Function | Signature |
+|----------|-----------|
+| `read_to_string` | `(alloc: ref HeapAllocator, path: raw_ptr<u8>) String, IError` |
+| `write_string` | `(path: raw_ptr<u8>, contents: ref String) void, IError` |
+| `remove_file` / `remove_dir` | `(path: raw_ptr<u8>) void, IError` |
+| `rename_file` | `(old_path: raw_ptr<u8>, new_path: raw_ptr<u8>) void, IError` |
+| `make_dir` | `(path: raw_ptr<u8>, mode: i32) void, IError` |
+| `exists` / `is_dir` / `is_file` | `(path: raw_ptr<u8>) bool` |
+| `file_size` | `(path: raw_ptr<u8>) i64, IError` |
+| `read_line` | `(alloc: ref HeapAllocator) Option<String>` |
+
+`read_line` reads stdin one byte at a time and strips the newline, returning
+`None` only at end of input with nothing read. It is deliberately unbuffered: a
+buffered reader would swallow bytes a child process spawned later expects to
+find on the descriptor.
+
+There is no `stat`. `struct stat` has a different field order and padding on
+x86-64 and aarch64, and the stdlib is compiled from one source for both, so the
+questions people actually ask are answered with `access`, `opendir` and `lseek`
+instead.
+
+### Reading a directory
+
+`read_dir` returns the entries with their kind attached, taken from the
+directory record itself — no second syscall per entry, and no application-level
+parsing of `getdents64` output.
+
+```sun
+var entries = read_dir(alloc, "/etc");
+for (var e: DirEntry in entries) {
+    if (e.is_dir()) {
+        print("dir  ");
+    } else {
+        print("file ");
+    }
+    println(e.name());
+}
+```
+
+| Item | Signature | Description |
+|------|-----------|-------------|
+| `read_dir` | `(alloc: ref HeapAllocator, path: raw_ptr<u8>) Vec<DirEntry>, IError` | `.` and `..` excluded, filesystem order |
+| `DirEntry.name` | `() ref String` | Borrowed — the entry keeps it |
+| `DirEntry.kind` | `() FileKind` | `File`, `Dir`, `Symlink`, `Other` or `Unknown` |
+| `DirEntry.is_dir` / `is_file` | `() bool` | |
+
+Some filesystems do not report a kind, giving `FileKind.Unknown`; `is_dir(path)`
+answers it with a syscall when that matters.
+
+### Waiting on descriptors
+
+`Poller` wraps `poll(2)`. Descriptors keep the position they were added at, so
+`is_readable(i)` answers for the i-th one. Nothing here needs a `struct pollfd`
+assembled by hand.
+
+```sun
+var poller = Poller(alloc);
+poller.add_read(sock_fd);
+poller.add_read(pipe_fd);
+
+var ready = poller.wait(1000);   // -1 blocks forever
+if (poller.is_readable(0)) { /* sock_fd has data */ }
+if (poller.is_hup(1)) { /* pipe_fd's writer closed */ }
+```
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `add_read` / `add_write` / `add_read_write` | `(fd: i32) void` | Watch a descriptor |
+| `add` | `(fd: i32, events: i16) void` | Watch with an explicit `POLL*` mask |
+| `wait` | `(timeout_ms: i32) i32, IError` | Number ready; -1 blocks |
+| `is_readable` / `is_writable` / `is_hup` / `is_error` | `(i: i64) bool` | |
+| `fd_at` / `revents` | `(i: i64) i32` / `(i: i64) i16` | |
+| `clear` / `count` | | Reset, or how many are watched |
+
+The bits are `POLLIN`, `POLLPRI`, `POLLOUT`, `POLLERR`, `POLLHUP` and
+`POLLNVAL`. Do not call `add` while a `wait` is in flight: growing the set
+reallocates it.
+
+## Environment
+
+`stdlib/env.sun` (module `sun.env`).
+
+```sun
+using sun.env;
+
+var home = match get(alloc, "HOME") {
+    Option.Some(p) => p,
+    Option.None => String(alloc, "/")
+};
+
+try { set("LANG", "C"); } catch (e: IError) { }
+var here = cwd(alloc);
+```
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `get` | `(alloc: ref HeapAllocator, name: raw_ptr<u8>) Option<String>` | `None` if unset |
+| `has` | `(name: raw_ptr<u8>) bool` | Set at all, whatever the value |
+| `set` | `(name: raw_ptr<u8>, value: raw_ptr<u8>) void, IError` | Replaces any existing value |
+| `remove` | `(name: raw_ptr<u8>) void, IError` | Removing an unset variable is fine |
+| `cwd` | `(alloc: ref HeapAllocator) String, IError` | Working directory |
+| `set_cwd` | `(path: raw_ptr<u8>) void, IError` | Process-wide, and it persists |
+| `args` | `(alloc: ref HeapAllocator, argc: i32, argv: raw_ptr<raw_ptr<i8>>) Vec<String>` | `argv[0]` first |
+
+`args` takes `argc` and `argv` from `main` rather than discovering them. Under
+the JIT the running process is the compiler, so its own argv is not the
+script's — see [Entry point](/functions#entry-point).
+
+```sun
+function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
+    var alloc = make_heap_allocator();
+    var cli = args(alloc, argc, argv);
+    for (var s: String in cli) { println(s); }
+    return 0;
+}
+```
+
+Listing *every* environment variable needs the `environ` global, and Sun has no
+`extern` global declaration yet.
+
+## Processes
+
+`stdlib/process.sun` (module `sun.process`). `Command` covers running a program;
+the raw POSIX calls are there for programs that drive the fork themselves.
+
+```sun
+using sun.process;
+
+var cmd = Command(alloc, "/bin/sh");
+cmd.arg("-c");
+cmd.arg("printf hello");
+var out = cmd.output();
+
+println(out.status());     // 0
+println(out.stdout());     // hello
+```
+
+### Command
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `init` | `(alloc: ref HeapAllocator, program: raw_ptr<u8>)` | The program is `argv[0]` |
+| `arg` | `(value: raw_ptr<u8>) void` / `(value: ref String) void` | Append one argument |
+| `stdin` / `stdout` / `stderr` | `(mode: Stdio) void` | `Inherit`, `Piped` or `Null` |
+| `start` | `() Child, IError` | Run it, return immediately |
+| `status` | `() i32, IError` | Run to completion, inheriting the streams |
+| `output` | `() Output, IError` | Run to completion, capturing both streams |
+
+Arguments are passed to the program as they are given — a space inside one
+argument stays inside it, with no shell reparsing.
+
+### Child
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `id` | `() i32` | Process id |
+| `wait` | `() i32, IError` | Exit code; a killed child reports 128 + signal |
+| `try_wait` | `() Option<i32>, IError` | `None` while it is still running |
+| `kill` | `(sig: i32) void, IError` | |
+| `write_stdin` / `close_stdin` | `(data: ref String) i64` / `() void` | Needs `stdin(Stdio.Piped)` |
+| `take_stdout` / `take_stderr` | `() i32` | Hand the pipe over |
+| `collect` | `(alloc: ref HeapAllocator) Output, IError` | Drain both pipes and wait |
+
+`collect` polls the two pipes rather than draining one and then the other: a
+child that fills the stderr pipe while the parent is stuck reading stdout would
+deadlock. `Output` gives `status() i32` and borrowed `stdout()` / `stderr()`.
+
+A `Child` releases any pipes it still holds when it goes out of scope. It never
+waits and never signals there — a moved-from `Child` is all zeroes, and reaping
+or killing on that would touch a process the object no longer stands for. Call
+`wait` to reap.
+
+### Identity, signals and raw control
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `pid` / `parent_pid` | `() i32` | |
+| `uid` / `euid` | `() u32` | |
+| `kill` | `(target: i32, sig: i32) void, IError` | |
+| `set_pgid` | `(target: i32, pgid: i32) void, IError` | 0 means "this one" |
+| `new_session` | `() i32, IError` | `setsid` |
+| `exit` / `exit_now` | `(code: i32) void` | With / without atexit handlers |
+| `fork` | `() i32, IError` | 0 in the child, the child's pid in the parent |
+| `exec` | `(cmd: ref Command) void, IError` | Only returns on failure |
+| `wait_pid` | `(target: i32, options: i32) i32, IError` | Raw wait status; -1 = any child |
+| `exited` / `exit_status` / `signaled` / `term_signal` | `(status: i32)` | Read a wait status |
+| `open_pipe` | `(alloc: ref HeapAllocator) Pipe, IError` | `read_fd()` / `write_fd()` |
+| `dup_fd` | `(old_fd: i32, new_fd: i32) void, IError` | `dup2` |
+
+Signal numbers are `SIGHUP`, `SIGINT`, `SIGQUIT`, `SIGKILL`, `SIGSEGV`,
+`SIGPIPE`, `SIGALRM`, `SIGTERM`, `SIGCHLD`, `SIGCONT`, `SIGSTOP`; `wait_pid`
+takes `WNOHANG`.
+
+Between `fork` and `exec` a child may only call things that are safe inside a
+signal handler — no allocation, no method that might allocate. `Command` is
+written to that rule; hand-rolled forks have to be too.
+
+## Time
+
+`stdlib/time.sun` (module `sun.time`).
+
+```sun
+using sun.time;
+
+var start = now();
+sleep(millis(50));
+println(start.elapsed().as_millis());
+
+println(format(alloc, utc(unix_time()), "%Y-%m-%d %H:%M:%S"));
+```
+
+| Item | Signature | Description |
+|------|-----------|-------------|
+| `nanos` / `micros` / `millis` / `seconds` | `(n: i64) Duration` | Build a `Duration` |
+| `Duration.as_secs` / `as_millis` / `as_micros` / `as_nanos` | `() i64` | |
+| `Duration.as_secs_f64` | `() f64` | |
+| `Duration.subsec_nanos` | `() i64` | Remainder on top of `as_secs` |
+| `now` | `() Instant` | Monotonic clock |
+| `Instant.elapsed` | `() Duration` | Time since it was taken |
+| `Instant.since` | `(earlier: ref Instant) Duration` | Zero if this is the earlier |
+| `unix_time` / `unix_time_millis` | `() i64` | Wall clock, since the epoch |
+| `sleep` | `(d: ref Duration) void` | A signal can cut it short |
+| `utc` / `local` | `(unix_secs: i64) DateTime` | Break into calendar fields |
+| `to_unix_utc` / `to_unix_local` | `(dt: ref DateTime) i64` | And back |
+| `format` | `(alloc, dt: ref DateTime, fmt: raw_ptr<u8>) String` | strftime |
+
+Only differences between `Instant`s mean anything: the zero point is arbitrary,
+and the clock never jumps backwards when the system time is adjusted.
+
+`DateTime` uses human units — `year` is the full year and `month` is 1-12, not
+C's `tm_year`/`tm_mon` offsets. It also carries `day`, `hour`, `minute`,
+`second`, `weekday` (Sunday = 0), `yearday` and `utc_offset`.
+
 
 ## Option\<T\> and Result\<T, E\>
 
@@ -536,4 +832,13 @@ var x: i32 = 42;
 println(`x = ${x}`);   // prints "x = 42\n"
 print("no newline");
 println();
+```
+
+`eprint` and `eprintln` write to stderr instead, so a caller can tell
+diagnostics apart from the program's real output. They take a string literal or
+a `ref String`; interpolation covers everything else.
+
+```sun
+eprintln("could not open the file");
+eprintln(`giving up after ${attempts} tries`);
 ```

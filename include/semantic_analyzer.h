@@ -347,6 +347,11 @@ class SemanticAnalyzer : public AccessContext {
                               const std::string& qualifiedName,
                               sun::TypePtr type, sun::Visibility visibility);
 
+  // Register a module-level variable imported from a .moon bundle. The stub
+  // carries a type annotation and a content-hash-scoped qualified name, but
+  // no initializer — the storage is in the bundle.
+  void registerPrecompiledModuleVariable(VariableCreationAST& varCreate);
+
   // Lookup functions that handle using statements and namespace resolution
   VariableInfo* lookupQualifiedVariable(const std::string& qualifiedName);
   const FunctionInfo* lookupQualifiedFunction(

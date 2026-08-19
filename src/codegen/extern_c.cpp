@@ -50,6 +50,9 @@ llvm::Function* ExternCEmitter::declare(
       lowerings_[symbol] = lowering;
       applyAttributes(existing, lowering);
     }
+    // A C extern's name *is* its ABI; tag it so .moon bundling leaves the
+    // symbol alone.
+    existing->addFnAttr("sun.cabi");
     return existing;
   }
 
@@ -68,6 +71,7 @@ llvm::Function* ExternCEmitter::declare(
   // can find the marshalling it was built with.
   lowerings_[func->getName().str()] = lowering;
   applyAttributes(func, lowering);
+  func->addFnAttr("sun.cabi");
 
   // Parameter names are only meaningful where a parameter survived one-to-one;
   // coerced and indirect ones no longer correspond to a single source name.
@@ -80,6 +84,11 @@ llvm::Function* ExternCEmitter::declare(
   }
 
   return func;
+}
+
+void ExternCEmitter::mapSunName(const std::string& sunName,
+                                const std::string& symbol) {
+  symbolNames_[sunName] = symbol;
 }
 
 const std::string& ExternCEmitter::symbolFor(const std::string& sunName) const {

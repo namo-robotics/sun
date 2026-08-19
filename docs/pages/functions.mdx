@@ -17,6 +17,55 @@ function main() i32 {
 }
 ```
 
+## Entry point
+
+A program starts at `main`, which takes either no parameters or exactly two —
+the argument count and the argument vector:
+
+```sun
+function main() i32 { return 0; }
+
+function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
+    return argc;
+}
+```
+
+`raw_ptr<raw_ptr<i8>>` is C's `char**`. The compiler dispatches on the number
+of parameters, so those are the only two shapes it accepts.
+
+An AOT-compiled `main` must return `i32` or `void`. Under the JIT it may also
+return `i1`, `i8`, `i16`, `i64`, `f32`, `f64` or a string — useful for scripts
+and tests.
+
+Arguments after the script file, or after `--`, are passed through:
+
+```bash
+sun script.sun -- one two      # argc = 3, argv[0] = "script.sun"
+sun -c -o prog script.sun && ./prog one two
+```
+
+`argv[0]` is the script path under the JIT and the executable's path after AOT
+compilation.
+
+Sun does not discover the arguments on its own, so anything that wants them has
+to be handed `argc` and `argv` from `main`. Reading `/proc/self/cmdline` would
+work for a compiled binary but not under the JIT, where the running process is
+the compiler and its argv is the compiler's. `sun.env.args` turns the pair into
+a `Vec<String>`:
+
+```sun
+using sun;
+using sun.env;
+
+function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
+    var alloc = make_heap_allocator();
+    var cli = args(alloc, argc, argv);
+    for (var arg: String in cli) { println(arg); }
+    return 0;
+}
+```
+
+
 ## Lambdas
 
 Lambdas are anonymous functions created with the `lambda` keyword. They must be assigned to a variable or used immediately:

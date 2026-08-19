@@ -124,11 +124,12 @@ Sun's standard library is built from `stdlib/stdlib.sun`:
 ```sun filename="stdlib/stdlib.sun"
 manifest {
     suns: [
-        "allocator.sun", "unique.sun", "errors.sun", "option.sun",
-        "iterator.sun", "slice.sun", "contiguous_buffer.sun", "vec.sun",
-        "matrix.sun", "string.sun", "print.sun", "map.sun", "linked_list.sun",
-        "mutex.sun", "math.sun", "io.sun", "networking.sun", "http.sun",
-        "proto_wire.sun"
+        "allocator.sun", "unique.sun", "errors.sun", "sys.sun", "option.sun",
+        "math.sun", "iterator.sun", "slice.sun", "contiguous_buffer.sun",
+        "vec.sun", "matrix.sun", "string.sun", "print.sun", "map.sun",
+        "linked_list.sun", "mutex.sun", "io.sun", "env.sun", "time.sun",
+        "process.sun", "networking.sun", "http.sun", "proto_wire.sun",
+        "json.sun", "bigint.sun"
     ]
 }
 ```
@@ -136,15 +137,25 @@ manifest {
 | Module | Contents |
 |--------|----------|
 | `allocator.sun` | Memory allocators (`HeapAllocator`, `IAllocator` interface) |
+| `bigint.sun` | Arbitrary-precision `BigUint` |
+| `env.sun` | `sun.env` — environment variables, working directory, `args` |
 | `errors.sun` | Standard error types (`EmptyError`, `NotFoundError`, etc.) |
+| `http.sun` | HTTP client and server |
+| `io.sun` | `sun.io` — files, directories, `Poller` |
 | `iterator.sun` | Iteration protocol (`IIterator<T, Container>`, `IIterable<T, Self>`) |
+| `json.sun` | `Json` parsing and serialization |
 | `linked_list.sun` | Doubly-linked list `LinkedList<T>` |
 | `map.sun` | Generic hash map `Map<K, V>` |
 | `matrix.sun` | `Matrix<T>` and `MatrixView<T>` N-dimensional arrays |
 | `mutex.sun` | `Mutex` for thread synchronization |
+| `networking.sun` | TCP sockets (`TcpStream`, `TcpListener`) |
 | `option.sun` | `Option<T>` and `Result<T, E>` payload enums |
-| `print.sun` | Overloaded `print`/`println` functions |
+| `print.sun` | Overloaded `print`/`println`/`eprint`/`eprintln` |
+| `process.sun` | `sun.process` — `Command`, signals, raw fork/exec |
+| `proto_wire.sun` | Protobuf wire format |
 | `string.sun` | `String` and `StringView` classes |
+| `sys.sun` | The stdlib's private `extern "C"` declarations |
+| `time.sun` | `sun.time` — `Duration`, `Instant`, `DateTime` |
 | `unique.sun` | `Unique<T>` smart pointer with automatic cleanup |
 | `vec.sun` | Generic growable array `Vec<T>` |
 

@@ -78,15 +78,18 @@ ecosystem is made of.
 
 ## 7. Library Expansion
 
-Roughly 3,400 lines of stdlib today (networking and `Mutex` exist). Every item
-below is something a first-day user hits. Most are community-supplyable now that
-FFI has landed.
+Roughly 5,000 lines of stdlib today. Files and directories (`sun.io`),
+environment (`sun.env`), processes (`sun.process`) and clocks (`sun.time`) all
+exist. Every item below is something a first-day user hits. Most are
+community-supplyable now that FFI has landed.
 
-- [ ] File I/O — round out `stdlib/io.sun`
-- [ ] Process, environment and filesystem access
-- [x] JSON parsing / serialization
-- [ ] Date and time
 - [ ] Regex (expose the existing parser)
+- [ ] `extern` declarations for C globals — needed for `environ`, and so for
+      listing every environment variable
+- [ ] File metadata beyond exists/size, via `statx` (the one stat-family call
+      whose struct has the same layout on every architecture)
+- [ ] Buffered stdin; `sun.io.read_line` reads a byte at a time so it cannot
+      swallow input a child process is about to read
 
 ## 8. Data Structures
 
