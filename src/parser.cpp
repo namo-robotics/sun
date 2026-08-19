@@ -2771,9 +2771,12 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
   // to consolidate stubs and detect name collisions
   PARSER_TIMER_START(process_modules);
 
-  // Map module_name -> list of stubs (empty key = global scope)
-  std::unordered_map<std::string, std::vector<std::unique_ptr<ExprAST>>>
-      moduleStubs;
+  // Map module_name -> list of stubs (empty key = global scope).
+  // Ordered, so a module is always emitted before the modules nested inside
+  // it ("sun" sorts before "sun.io"). The declaration pre-pass registers a
+  // module's types as it reaches it, so a nested module's class shape can
+  // only name a generic from its parent if the parent came first.
+  std::map<std::string, std::vector<std::unique_ptr<ExprAST>>> moduleStubs;
   // Track defined symbols per module for collision detection
   std::unordered_map<std::string, std::unordered_set<std::string>>
       moduleSymbols;
@@ -2994,6 +2997,23 @@ void Parser::createModuleStubs(
         classDef->setPrecompiled(true);
         classDef->setQualifiedName(
             sun::QualifiedName(scopePath, classDef->getName(), scopePath));
+      }
+      moduleAST.push_back(std::move(ast));
+    }
+  }
+
+  // Module-level variables. The stub carries the type but no initializer —
+  // the storage lives in the bundle's bitcode and is linked in.
+  for (int i = 0; i < metadata.globals_size(); ++i) {
+    sun::ast::ASTNode node;
+    *node.mutable_variable_creation() = metadata.globals(i);
+
+    auto ast = deserializer.deserialize(node);
+    if (ast) {
+      if (auto* varDef = dynamic_cast<VariableCreationAST*>(ast.get())) {
+        varDef->setPrecompiled(true);
+        varDef->setQualifiedName(
+            sun::QualifiedName(scopePath, varDef->getName(), scopePath));
       }
       moduleAST.push_back(std::move(ast));
     }

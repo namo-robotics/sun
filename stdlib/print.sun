@@ -92,4 +92,32 @@ public module sun {
     print(s);
     _print_newline();
   }
-}  // module sun
+
+  // ---- stderr ----
+  // Diagnostics belong on fd 2 so a caller can separate them from the
+  // program's real output. Literal and String only: interpolation covers
+  // everything else.
+
+  public function eprint(s: static_ptr<u8>) void {
+    unsafe { c_write(2, _static_ptr_data<u8>(s), _static_ptr_len<u8>(s)); };
+  }
+
+  public function eprint(s: ref String) void {
+    unsafe { c_write(2, s.data.rawData(), s.length()); };
+  }
+
+  public function eprintln() void {
+    unsafe { c_write(2, _static_ptr_data<u8>("\n"), 1); };
+  }
+
+  public function eprintln(s: static_ptr<u8>) void {
+    eprint(s);
+    eprintln();
+  }
+
+  public function eprintln(s: ref String) void {
+    eprint(s);
+    eprintln();
+  }
+
+}

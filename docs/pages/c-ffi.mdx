@@ -193,7 +193,31 @@ function main() i32 { return absolute(-5); }   // no unsafe needed here
 ```
 
 Externs can be declared in a `.moon` library, so a wrapper module can be
-published and consumed like any other Sun code.
+published and consumed like any other Sun code. Bundling prefixes a module's
+symbols to isolate versions, but a C extern's name *is* its ABI, so it is left
+alone and still resolves against libc in the importing program.
+
+An extern's *Sun-side* name is scoped to its module like any other item, so a
+library can wrap a C function without exporting it:
+
+```sun
+public module wrap {
+    // Private: importers get the wrapper, not the raw call.
+    extern "C" function c_getenv(name: raw_ptr<u8>) raw_ptr<u8> as "getenv";
+
+    public function lookup(alloc: ref HeapAllocator, name: raw_ptr<u8>) Option<String> {
+        var value = unsafe { c_getenv(name); };
+        if (value == null) { return Option.None; }
+        return Option.Some(from_c_str(alloc, value));
+    }
+}
+```
+
+The *symbol* is still global. Two modules may each declare the same C function
+under their own Sun name, but their signatures must agree — the second
+declaration of a symbol is checked against the first and rejected on a
+mismatch. This is why the standard library keeps every one of its externs in a
+single private file, `stdlib/sys.sun`.
 
 ## Limitations
 
@@ -211,3 +235,6 @@ published and consumed like any other Sun code.
   block is the only marker.
 - There is no automatic binding generation from C headers; structs, enums and
   signatures are declared by hand.
+- There is no `extern` declaration for a C *global*, only for functions. That
+  is why the standard library has no way to enumerate the environment, which
+  would need `environ`.

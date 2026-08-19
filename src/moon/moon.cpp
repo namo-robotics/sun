@@ -69,6 +69,9 @@ void applySymbolPrefix(llvm::Module& module, const std::string& prefix) {
   for (auto& func : module.functions()) {
     if (!func.hasName() || func.getName().empty()) continue;
     if (func.isIntrinsic()) continue;
+    // A C extern's name *is* its ABI. Prefixing it renames the C symbol out
+    // of existence, so the bundle would fail to link against libc.
+    if (func.hasFnAttribute("sun.cabi")) continue;
     std::string originalName = func.getName().str();
     if (!shouldSkipRename(originalName)) {
       func.setName(prefix + "_" + originalName);

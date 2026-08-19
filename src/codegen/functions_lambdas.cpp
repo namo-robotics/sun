@@ -415,6 +415,13 @@ Value* CodegenVisitor::codegenExternFunc(FunctionAST& funcAst) {
     paramTypes.push_back(typeResolver.resolve(sunType));
   }
 
+  // A C extern's Sun-side name is module-scoped like any other item, so call
+  // sites resolve through a mangled name the C symbol never matches. Guarded:
+  // codegenFunc sends every bodyless function here, and a `declare` forward
+  // declaration keeps normal Sun mangling.
+  if (funcAst.isCExtern()) {
+    externC.mapSunName(proto.getMangledName(), proto.getLinkName());
+  }
   return externC.declare(proto, returnType, paramTypes);
 }
 

@@ -784,8 +784,15 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       for (const auto& bodyExpr : nsDecl.getBody().getBody()) {
         if (bodyExpr->getType() == ASTNodeType::VARIABLE_CREATION) {
           // Variables need special handling to register in namespacedVariables
-          analyzeExpr(*bodyExpr);
           auto& varCreate = static_cast<VariableCreationAST&>(*bodyExpr);
+          if (bodyExpr->isPrecompiled()) {
+            // A global imported from a .moon: the storage and its initial
+            // value live in the bundle, so there is nothing to analyze — only
+            // the type to resolve and the name to register.
+            registerPrecompiledModuleVariable(varCreate);
+            continue;
+          }
+          analyzeExpr(*bodyExpr);
           sun::QualifiedName qualifiedName =
               makeQualifiedName(varCreate.getName());
           varCreate.setQualifiedName(qualifiedName);
@@ -1742,11 +1749,11 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
   // content hash for symbol isolation.
   sun::QualifiedName qualifiedName;
   if (func.isCExtern()) {
-    // C externs bind to a fixed symbol: no module scope, no overload suffix.
-    // This stays the Sun-side name — name resolution rewrites references
-    // through it — and codegen maps it to the C symbol when `as "name"`
-    // renames the import.
-    qualifiedName = sun::QualifiedName({}, proto.getName());
+    // The Sun-side name is scoped to its module like any other item, so
+    // `public` and privacy mean what they say. Only the emitted symbol is
+    // fixed by C — codegen takes that from the link name, never from here.
+    // No overload suffix: C has no overloading.
+    qualifiedName = makeQualifiedName(proto.getName());
   } else if (proto.hasQualifiedName()) {
     qualifiedName = proto.getQualifiedName();
   } else {

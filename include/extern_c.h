@@ -59,6 +59,12 @@ class ExternCEmitter {
   llvm::Function* declare(const PrototypeAST& proto, llvm::Type* returnType,
                           llvm::ArrayRef<llvm::Type*> paramTypes);
 
+  /// Record that a Sun-side name resolves to `symbol`. Call sites resolve
+  /// through the module-scoped mangled name, which the C symbol never
+  /// matches; only the C-extern path knows a name is one of these, so it
+  /// registers the mapping rather than declare() guessing.
+  void mapSunName(const std::string& sunName, const std::string& symbol);
+
   /// Translate a resolved Sun-side name to the C symbol it was declared
   /// under, for `extern function f(...) T as "g"`. Returns the name unchanged
   /// when it is not a renamed extern.

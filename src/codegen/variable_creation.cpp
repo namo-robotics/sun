@@ -54,6 +54,19 @@ Value* CodegenVisitor::codegen(const VariableCreationAST& expr) {
   // Use qualified name from semantic analysis
   std::string varName = expr.getMangledName();
 
+  // A global imported from a .moon is defined in the bundle's bitcode, which
+  // is linked in. Declare it so references resolve; defining it here would
+  // give the program a second, uninitialized copy.
+  if (expr.isPrecompiled()) {
+    if (GlobalVariable* existing = module->getGlobalVariable(varName)) {
+      return existing;
+    }
+    return new GlobalVariable(*module, typeResolver.resolve(varSunType),
+                              /*isConstant=*/false,
+                              GlobalValue::ExternalLinkage,
+                              /*Initializer=*/nullptr, varName);
+  }
+
   // Check if we're creating a global variable and if it already exists
   if (scopes.empty()) {
     if (module->getGlobalVariable(varName)) {

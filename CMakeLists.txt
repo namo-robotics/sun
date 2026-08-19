@@ -279,6 +279,7 @@ if(NOT SKIP_STDLIB)
         ${CMAKE_SOURCE_DIR}/stdlib/allocator.sun
         ${CMAKE_SOURCE_DIR}/stdlib/unique.sun
         ${CMAKE_SOURCE_DIR}/stdlib/errors.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/sys.sun
         ${CMAKE_SOURCE_DIR}/stdlib/option.sun
         ${CMAKE_SOURCE_DIR}/stdlib/iterator.sun
         ${CMAKE_SOURCE_DIR}/stdlib/slice.sun
@@ -292,6 +293,9 @@ if(NOT SKIP_STDLIB)
         ${CMAKE_SOURCE_DIR}/stdlib/math.sun
         ${CMAKE_SOURCE_DIR}/stdlib/networking.sun
         ${CMAKE_SOURCE_DIR}/stdlib/io.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/env.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/time.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/process.sun
         ${CMAKE_SOURCE_DIR}/stdlib/http.sun
         ${CMAKE_SOURCE_DIR}/stdlib/simple_math.sun
         ${CMAKE_SOURCE_DIR}/stdlib/proto_wire.sun

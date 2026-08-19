@@ -633,11 +633,14 @@ TEST(Modules, module_qualified_call_to_extern) {
     public module libc {
       public extern function abs(x: i32) i32;
     }
+    public module other_libc {
+      public extern function abs(x: i32) i32;
+    }
     function main() i32 {
-      unsafe { return libc.abs(-13); };
+      unsafe { return libc.abs(-13) + other_libc.abs(-13); };
     }
   )");
-  EXPECT_EQ(value, 13);
+  EXPECT_EQ(value, 26);
 }
 
 TEST(Modules, module_qualified_call_with_void_return) {
@@ -798,4 +801,106 @@ TEST(Modules, moon_method_taking_class_by_value) {
     }
   )");
   EXPECT_EQ(value, 40);
+}
+
+// === Nested modules and module-level variables across a .moon ===
+
+// A class in a nested module whose field is a generic specialization. The
+// module stubs used to be emitted in hash order, so the nested module could
+// be processed before the parent that declares the generic — which made every
+// import of the bundle fail, not just uses of the class.
+TEST(Modules, moon_nested_module_class_with_generic_field) {
+  auto moonPath = writeMoonLib("nestedgeneric", R"(
+    public module outer {
+      public class Box<T> {
+        var v: T;
+        public function init(v: T) { this.v = v; }
+        public function get() ref T {
+          return unsafe { _to_ref<T>(_address_of<T>(this.v)); };
+        }
+      }
+
+      public module inner {
+        public class Holder {
+          var b: Box<i32>;
+          public function init(x: i32) { this.b = Box<i32>(x); }
+          public function value() i32 { return this.b.get(); }
+        }
+      }
+    }
+  )");
+
+  auto driver = Driver::createForJIT("nested_generic_main");
+  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  auto value = driver->executeString(R"(
+    using outer.inner;
+
+    function main() i32 {
+        var h = Holder(41);
+        return h.value() + 1;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// Module-level variables are part of a module's interface, so the bundle has
+// to carry them. Importers reference the bundle's storage rather than
+// defining a second, uninitialized copy.
+TEST(Modules, moon_exports_module_variables) {
+  auto moonPath = writeMoonLib("globals", R"(
+    public module conf {
+      public var LIMIT: i32 = 42;
+      public var SCALE: f64 = 1.5;
+
+      public var INFERRED = 100;
+
+      public module deep {
+        public var DEPTH: i32 = 9;
+      }
+    }
+  )");
+
+  auto driver = Driver::createForJIT("globals_main");
+  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  auto value = driver->executeString(R"(
+    using conf;
+    using conf.deep;
+
+    function main() i32 {
+        if (SCALE < 1.4) { return -1; }
+        // A declaration that inferred its type crosses too: extraction runs
+        // before inference, so the bundle keeps the initializer for its type.
+        if (INFERRED != 100) { return -2; }
+        return LIMIT + DEPTH;
+    }
+  )");
+  EXPECT_EQ(value, 51);
+}
+
+// A private module variable is carried (code in the bundle reads it) but must
+// stay unreachable from an importer.
+TEST(Modules, moon_private_module_variable_is_hidden) {
+  auto moonPath = writeMoonLib("privglobal", R"(
+    public module hidden {
+      var SECRET: i32 = 7;
+      public function reveal() i32 { return SECRET; }
+    }
+  )");
+
+  auto driver = Driver::createForJIT("priv_global_main");
+  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  // The bundle's own code still reads it.
+  EXPECT_EQ(driver->executeString(R"(
+    using hidden;
+    function main() i32 { return reveal(); }
+  )"),
+            7);
+
+  auto driver2 = Driver::createForJIT("priv_global_main2");
+  driver2->setMoonImports({sun::MoonImport(moonPath.string())});
+  EXPECT_THROW(driver2->executeString(R"(
+    using hidden;
+    function main() i32 { return SECRET; }
+  )"),
+               std::exception);
 }

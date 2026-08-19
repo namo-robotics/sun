@@ -122,6 +122,21 @@ void extractInterface(const InterfaceDefinitionAST& iface,
   clearNonGenericBodies(ifaceDef, iface);
 }
 
+// Extract a module-level variable and add to metadata.
+// The initializer is dropped where the declaration states a type: this
+// bundle's bitcode already holds the initialized storage, and importers
+// reference that symbol rather than defining their own copy. Where the type
+// was inferred the initializer is kept, since extraction runs on the parse
+// tree and there is nothing else to read the type from.
+void extractGlobal(const VariableCreationAST& var,
+                   moon::ModuleMetadata& metadata,
+                   const ASTSerializer& serializer) {
+  ast::ASTNode node = serializer.serialize(var);
+  ast::VariableCreation* global = metadata.add_globals();
+  *global = node.variable_creation();
+  if (global->has_type_annotation()) global->clear_value();
+}
+
 // Extract an enum and add to metadata
 void extractEnum(const EnumDefinitionAST& enumDef,
                  moon::ModuleMetadata& metadata,
@@ -211,6 +226,12 @@ void extractFromStatements(const std::vector<std::unique_ptr<ExprAST>>& stmts,
       extractEnum(static_cast<const EnumDefinitionAST&>(*stmt),
                   collector.forModule(modulePath), serializer);
     }
+
+    // Extract module-level variables
+    if (stmt->getType() == ASTNodeType::VARIABLE_CREATION) {
+      extractGlobal(static_cast<const VariableCreationAST&>(*stmt),
+                    collector.forModule(modulePath), serializer);
+    }
   }
 }
 
@@ -234,7 +255,8 @@ std::vector<moon::ModuleMetadata> extractAllMetadata(
     // modules are kept even when empty: their visibility is part of the
     // bundle's interface (an outer `public module a` of `a.b`, say)
     bool empty = md.functions_size() == 0 && md.classes_size() == 0 &&
-                 md.interfaces_size() == 0 && md.enums_size() == 0;
+                 md.interfaces_size() == 0 && md.enums_size() == 0 &&
+                 md.globals_size() == 0;
     if (empty && name.empty()) continue;
     // Bundle entries are keyed by source hash: several modules from one file
     // need distinct keys

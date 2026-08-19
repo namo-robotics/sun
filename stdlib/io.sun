@@ -1,165 +1,496 @@
-// stdlib/io.sun - File I/O wrapper over __file_* intrinsics
-//
-// Provides a safe File class for reading and writing files.
+// stdlib/io.sun - Files, directories and descriptor polling
 //
 // Usage:
-//   import "stdlib/io.sun";
 //   using sun.io;
 //
 //   var f = File();
 //   try {
-//       f.open("test.txt", MODE_WRITE);
+//       f.open("test.txt", FileMode.Write);
 //       f.write("Hello, World!");
 //       f.close();
 //   } catch (e: IError) {
 //       // Handle error
 //   }
+//
+// Paths are raw_ptr<u8>: a string literal narrows to one automatically, and a
+// runtime String supplies one through `s.c_str()`.
 
 public module sun {
   public module io {
-    // File open modes
-    public var MODE_READ: i32 = 0;  // Open for reading (file must exist)
-    public var MODE_WRITE: i32 = 1;  // Open for writing (creates/truncates)
-    public var MODE_APPEND: i32 = 2;  // Open for appending (creates if needed)
+    // How to open a file.
+    //   Read   — the file must exist
+    //   Write  — create, or truncate what is there
+    //   Append — create if missing, write at the end
+    // These are enums rather than integer constants because a bundle exports
+    // its enums but not its module-level variables.
+    public enum FileMode { Read, Write, Append }
 
-    // Seek whence constants (POSIX)
-    public var SEEK_SET: i32 = 0;  // Seek from beginning of file
-    public var SEEK_CUR: i32 = 1;  // Seek from current position
-    public var SEEK_END: i32 = 2;  // Seek from end of file
+    // Where a seek offset is measured from.
+    public enum Whence { Start, Current, End }
+
+    // What a directory entry is. Some filesystems do not report a kind, in
+    // which case it is Unknown and is_dir(path) answers the question.
+    public enum FileKind { Unknown, File, Dir, Symlink, Other }
+
+    // open(2) flags. Linux's asm-generic set, shared by x86-64 and aarch64.
+    var O_RDONLY: i32 = 0;
+    var O_WRONLY_CREAT_TRUNC: i32 = 577;  // 0x241
+    var O_WRONLY_CREAT_APPEND: i32 = 1089;  // 0x441
+    var CREATE_MODE: i32 = 420;  // 0644
+
+    // Standard descriptors
+    public var STDIN_FD: i32 = 0;
+    public var STDOUT_FD: i32 = 1;
+    public var STDERR_FD: i32 = 2;
+
+    // poll(2) event bits, for Poller.add. The add_read / add_write / is_*
+    // helpers cover the common cases without assembling a bitmask.
+    public var POLLIN: i16 = 1;
+    public var POLLPRI: i16 = 2;
+    public var POLLOUT: i16 = 4;
+    public var POLLERR: i16 = 8;
+    public var POLLHUP: i16 = 16;
+    public var POLLNVAL: i16 = 32;
+
+    // struct pollfd — { int, short, short }, 8 bytes, same layout on every
+    // Linux ABI. Public because Poller stores a Vec of these, and a bundled
+    // specialization over a private type is not visible to importers.
+    public class PollFd {
+      var fd: i32;
+      var events: i16;
+      var revents: i16;
+
+      public function init(fd: i32, events: i16) {
+        this.fd = fd;
+        this.events = events;
+        this.revents = 0;
+      }
+    }
+
+    function open_flags(mode: FileMode) i32 {
+      return match mode {
+        FileMode.Read => O_RDONLY,
+        FileMode.Write => O_WRONLY_CREAT_TRUNC,
+        FileMode.Append => O_WRONLY_CREAT_APPEND
+      };
+    }
+
+    function whence_of(w: Whence) i32 {
+      return match w {
+        Whence.Start => 0,
+        Whence.Current => 1,
+        Whence.End => 2
+      };
+    }
 
     // File handle wrapper
-    // Provides safe access to file operations with automatic resource tracking
     public class File {
+      // 0 means "holds nothing". A moved-from File is zeroed, and closing
+      // fd 0 would close stdin.
       var fd: i32;
 
       public function init() {
-        this.fd = -1;
+        this.fd = 0;
       }
 
       // Open a file with the specified mode
-      // Returns error if file cannot be opened
-      public function open(path: static_ptr<u8>, mode: i32) void, IError {
-        var result: i32 = unsafe { __file_open(path, mode); };
+      public function open(path: raw_ptr<u8>, mode: FileMode) void, IError {
+        var result: i32 = unsafe { c_open(path, open_flags(mode), CREATE_MODE); };
         if (result < 0) {
-          throw Error(result, "failed to open file");
+          throw Error(errno(), "failed to open file");
         }
         this.fd = result;
       }
 
-      // Read up to 'size' bytes from the file
-      // Returns a raw pointer to the read data (null-terminated)
-      // Caller is responsible for freeing the returned memory
-      public function read(size: i32) raw_ptr<i8> {
-        return unsafe { __file_read(this.fd, size); };
+      // Adopt an already-open descriptor. The File owns it from here.
+      public function adopt(fd: i32) void {
+        this.close();
+        this.fd = fd;
       }
 
       // Write string data to the file
       // Returns number of bytes written, or negative on error
-      public function write(data: static_ptr<u8>) i32 {
-        return unsafe { __file_write(this.fd, data); };
+      public function write(data: static_ptr<u8>) i64 {
+        return unsafe { c_write(this.fd, _static_ptr_data<u8>(data),
+                                _static_ptr_len<u8>(data)); };
       }
 
-      // Close the file
-      // Safe to call multiple times
+      public function write(data: ref String) i64 {
+        return unsafe { c_write(this.fd, data.c_str(), data.length()); };
+      }
+
+      // Read the rest of the file into a String
+      public function read_all(alloc: ref HeapAllocator) String, IError {
+        var out: String = String(alloc, "");
+        var chunk: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 4096);
+        var n: i64 = unsafe { c_read(this.fd, chunk.rawData(), 4096); };
+        while (n > 0) {
+          for (var i: i64 = 0; i < n; i = i + 1) {
+            out.append_char(chunk.get_unchecked(i));
+          }
+          n = unsafe { c_read(this.fd, chunk.rawData(), 4096); };
+        }
+        if (n < 0) {
+          throw Error(errno(), "failed to read file");
+        }
+        return out;
+      }
+
+      // Close the file. Safe to call more than once.
       public function close() void {
-        if (this.fd >= 0) {
-          unsafe { __file_close(this.fd); };
-          this.fd = -1;
+        if (this.fd > 0) {
+          unsafe { c_close(this.fd); };
+          this.fd = 0;
         }
       }
 
-      // Check if file is currently open
       public function is_open() bool {
-        return this.fd >= 0;
+        return this.fd > 0;
       }
 
-      // Get the underlying file descriptor
-      // Use with caution - for advanced use cases only
+      // The underlying descriptor. The File still owns it.
       public function get_fd() i32 {
         return this.fd;
       }
 
       // Seek to a position in the file
       // Returns the new offset from the beginning of the file
-      public function seek(offset: i64, whence: i32) i64 {
-        return unsafe { __lseek(this.fd, offset, whence); };
+      public function seek(offset: i64, whence: Whence) i64 {
+        return unsafe { c_lseek(this.fd, offset, whence_of(whence)); };
       }
 
-      // Get current position in file
       public function tell() i64 {
-        return this.seek(0, SEEK_CUR);
+        return this.seek(0, Whence.Current);
       }
 
       // Flush file data to disk
       public function sync() void, IError {
-        var result: i32 = unsafe { __fsync(this.fd); };
+        var result: i32 = unsafe { c_fsync(this.fd); };
         if (result < 0) {
-          throw Error(result, "failed to sync file");
+          throw Error(errno(), "failed to sync file");
         }
       }
 
       // Truncate or extend file to specified length
       public function truncate(length: i64) void, IError {
-        var result: i32 = unsafe { __ftruncate(this.fd, length); };
+        var result: i32 = unsafe { c_ftruncate(this.fd, length); };
         if (result < 0) {
-          throw Error(result, "failed to truncate file");
+          throw Error(errno(), "failed to truncate file");
         }
       }
 
       // Get file size by seeking to end and back
       public function size() i64 {
         var current: i64 = this.tell();
-        var end_pos: i64 = this.seek(0, SEEK_END);
-        this.seek(current, SEEK_SET);
+        var end_pos: i64 = this.seek(0, Whence.End);
+        this.seek(current, Whence.Start);
         return end_pos;
       }
 
       // Write raw bytes to file
-      // Returns number of bytes written
       public function write_bytes(buf: raw_ptr<u8>, len: i64) i64 {
-        return unsafe { __write(this.fd, buf, len); };
+        return unsafe { c_write(this.fd, buf, len); };
       }
 
       // Read raw bytes into provided buffer
-      // Returns number of bytes read
       public function read_into(buf: raw_ptr<u8>, len: i64) i64 {
-        return unsafe { __read(this.fd, buf, len); };
+        return unsafe { c_read(this.fd, buf, len); };
+      }
+
+      function deinit() void {
+        this.close();
       }
     }
 
     // -------------------------------------------------------------------
-    // Standalone file system functions
+    // Whole-file helpers
+    // -------------------------------------------------------------------
+
+    public function read_to_string(alloc: ref HeapAllocator, path: raw_ptr<u8>) String, IError {
+      var f: File = File();
+      f.open(path, FileMode.Read);
+      var text: String = f.read_all(alloc);
+      f.close();
+      return text;
+    }
+
+    public function write_string(path: raw_ptr<u8>, contents: ref String) void, IError {
+      var f: File = File();
+      f.open(path, FileMode.Write);
+      if (f.write(contents) < 0) {
+        throw Error(errno(), "failed to write file");
+      }
+      f.close();
+    }
+
+    // -------------------------------------------------------------------
+    // Paths
     // -------------------------------------------------------------------
 
     // Remove a file
-    public function remove_file(path: static_ptr<u8>) void, IError {
-      var result: i32 = unsafe { __unlink(path); };
+    public function remove_file(path: raw_ptr<u8>) void, IError {
+      var result: i32 = unsafe { c_unlink(path); };
       if (result < 0) {
-        throw Error(result, "failed to remove file");
+        throw Error(errno(), "failed to remove file");
       }
     }
 
     // Rename or move a file
-    public function rename_file(old_path: static_ptr<u8>, new_path: static_ptr<u8>) void, IError {
-      var result: i32 = unsafe { __rename(old_path, new_path); };
+    public function rename_file(old_path: raw_ptr<u8>, new_path: raw_ptr<u8>) void, IError {
+      var result: i32 = unsafe { c_rename(old_path, new_path); };
       if (result < 0) {
-        throw Error(result, "failed to rename file");
+        throw Error(errno(), "failed to rename file");
       }
     }
 
-    // Create a directory with the specified mode (e.g., 0755 = 493)
-    public function make_dir(path: static_ptr<u8>, mode: i32) void, IError {
-      var result: i32 = unsafe { __mkdir(path, mode); };
+    // Create a directory with the specified mode (e.g. 0755 = 493)
+    public function make_dir(path: raw_ptr<u8>, mode: i32) void, IError {
+      var result: i32 = unsafe { c_mkdir(path, mode); };
       if (result < 0) {
-        throw Error(result, "failed to create directory");
+        throw Error(errno(), "failed to create directory");
       }
     }
 
     // Remove an empty directory
-    public function remove_dir(path: static_ptr<u8>) void, IError {
-      var result: i32 = unsafe { __rmdir(path); };
+    public function remove_dir(path: raw_ptr<u8>) void, IError {
+      var result: i32 = unsafe { c_rmdir(path); };
       if (result < 0) {
-        throw Error(result, "failed to remove directory");
+        throw Error(errno(), "failed to remove directory");
+      }
+    }
+
+    // -------------------------------------------------------------------
+    // Metadata
+    // -------------------------------------------------------------------
+    // Answered with access/opendir/lseek rather than stat: `struct stat` has a
+    // different field order and padding on x86-64 and aarch64 glibc, and the
+    // stdlib is compiled from one source for both.
+
+    // Does the path exist? access(path, F_OK)
+    public function exists(path: raw_ptr<u8>) bool {
+      return unsafe { c_access(path, 0); } == 0;
+    }
+
+    public function is_dir(path: raw_ptr<u8>) bool {
+      var dir: raw_ptr<u8> = unsafe { c_opendir(path); };
+      if (dir == null) {
+        return false;
+      }
+      unsafe { c_closedir(dir); };
+      return true;
+    }
+
+    public function is_file(path: raw_ptr<u8>) bool {
+      return exists(path) and not is_dir(path);
+    }
+
+    public function file_size(path: raw_ptr<u8>) i64, IError {
+      var f: File = File();
+      f.open(path, FileMode.Read);
+      var size: i64 = f.seek(0, Whence.End);
+      f.close();
+      if (size < 0) {
+        throw Error(errno(), "failed to size file");
+      }
+      return size;
+    }
+
+    // -------------------------------------------------------------------
+    // Directories
+    // -------------------------------------------------------------------
+
+    // One entry from read_dir. The kind comes from the directory record, so
+    // no extra syscall is needed to tell a file from a subdirectory.
+    public class DirEntry {
+      var name_: String;
+      var kind_: FileKind;
+
+      public function init(name: String, kind: FileKind) {
+        this.name_ = name;
+        this.kind_ = kind;
+      }
+
+      // Borrowed: the entry keeps the name.
+      public function name() ref String {
+        return unsafe { _to_ref<String>(_address_of<String>(this.name_)); };
+      }
+
+      public function kind() FileKind {
+        return this.kind_;
+      }
+
+      public function is_dir() bool {
+        return this.kind_ == FileKind.Dir;
+      }
+
+      public function is_file() bool {
+        return this.kind_ == FileKind.File;
+      }
+    }
+
+    // DT_* values from the directory record's d_type byte.
+    function kind_of(d_type: u8) FileKind {
+      if (d_type == 4) {
+        return FileKind.Dir;
+      }
+      if (d_type == 8) {
+        return FileKind.File;
+      }
+      if (d_type == 10) {
+        return FileKind.Symlink;
+      }
+      if (d_type == 0) {
+        return FileKind.Unknown;
+      }
+      return FileKind.Other;
+    }
+
+    // Is the record's name "." or ".."?
+    function is_dot_entry(name: raw_ptr<u8>) bool {
+      var first: u8 = unsafe { _load<u8>(name, 0); };
+      if (first != 46) {
+        return false;
+      }
+      var second: u8 = unsafe { _load<u8>(name, 1); };
+      if (second == 0) {
+        return true;
+      }
+      if (second != 46) {
+        return false;
+      }
+      return unsafe { _load<u8>(name, 2); } == 0;
+    }
+
+    // List a directory. "." and ".." are left out; the order is whatever the
+    // filesystem gives, not sorted.
+    public function read_dir(alloc: ref HeapAllocator, path: raw_ptr<u8>) Vec<DirEntry>, IError {
+      var dir: raw_ptr<u8> = unsafe { c_opendir(path); };
+      if (dir == null) {
+        throw Error(errno(), "failed to open directory");
+      }
+
+      var entries: Vec<DirEntry> = Vec<DirEntry>(alloc, 8);
+      var rec: raw_ptr<u8> = unsafe { c_readdir(dir); };
+      while (rec != null) {
+        // d_name is a flexible char[] at byte 19 of the record.
+        var name: raw_ptr<u8> = unsafe { _ptr_offset(rec, 19); };
+        if (not is_dot_entry(name)) {
+          var head: ref Dirent = unsafe { _to_ref<Dirent>(_ptr_as_raw<Dirent>(rec)); };
+          entries.push(DirEntry(from_c_str(alloc, name), kind_of(head.d_type)));
+        }
+        rec = unsafe { c_readdir(dir); };
+      }
+
+      unsafe { c_closedir(dir); };
+      return entries;
+    }
+
+    // -------------------------------------------------------------------
+    // Standard input
+    // -------------------------------------------------------------------
+
+    // Read one line from stdin, without the trailing newline. None at end of
+    // input with nothing read. Unbuffered on purpose: a buffered reader would
+    // swallow bytes a later child process expects to find on the descriptor.
+    public function read_line(alloc: ref HeapAllocator) Option<String> {
+      var line: String = String(alloc, "");
+      var byte: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 1);
+      var got_any: bool = false;
+
+      var n: i64 = unsafe { c_read(STDIN_FD, byte.rawData(), 1); };
+      while (n > 0) {
+        got_any = true;
+        var ch: u8 = byte.get_unchecked(0);
+        if (ch == 10) {
+          return Option.Some(line);
+        }
+        line.append_char(ch);
+        n = unsafe { c_read(STDIN_FD, byte.rawData(), 1); };
+      }
+
+      if (not got_any) {
+        return Option.None;
+      }
+      return Option.Some(line);
+    }
+
+    // -------------------------------------------------------------------
+    // Polling
+    // -------------------------------------------------------------------
+
+    // Waits for readiness on a set of descriptors. The descriptors keep their
+    // positions, so revents(i) answers for the fd added i-th.
+    public class Poller {
+      var fds: Vec<PollFd>;
+
+      public function init(alloc: ref HeapAllocator) {
+        this.fds = Vec<PollFd>(alloc, 4);
+      }
+
+      // Watch for an arbitrary combination of the POLL* bits.
+      public function add(fd: i32, events: i16) void {
+        this.fds.push(PollFd(fd, events));
+      }
+
+      // Watch for readable data (or the peer hanging up).
+      public function add_read(fd: i32) void {
+        this.fds.push(PollFd(fd, POLLIN));
+      }
+
+      // Watch for room to write.
+      public function add_write(fd: i32) void {
+        this.fds.push(PollFd(fd, POLLOUT));
+      }
+
+      public function add_read_write(fd: i32) void {
+        this.fds.push(PollFd(fd, POLLIN | POLLOUT));
+      }
+
+      public function clear() void {
+        this.fds.clear();
+      }
+
+      public function count() i64 {
+        return this.fds.size();
+      }
+
+      // Blocks until something is ready, the timeout expires, or a signal
+      // arrives. -1 waits forever. Returns how many descriptors are ready.
+      public function wait(timeout_ms: i32) i32, IError {
+        if (this.fds.size() == 0) {
+          return 0;
+        }
+        var ready: i32 = unsafe { c_poll(this.fds.rawData(), this.fds.size(),
+                                         timeout_ms); };
+        if (ready < 0) {
+          throw Error(errno(), "poll failed");
+        }
+        return ready;
+      }
+
+      public function fd_at(i: i64) i32 {
+        return this.fds.get_unchecked(i).fd;
+      }
+
+      public function revents(i: i64) i16 {
+        return this.fds.get_unchecked(i).revents;
+      }
+
+      public function is_readable(i: i64) bool {
+        return (this.revents(i) & POLLIN) != 0;
+      }
+
+      public function is_writable(i: i64) bool {
+        return (this.revents(i) & POLLOUT) != 0;
+      }
+
+      // The peer closed its end. Any buffered bytes are still readable.
+      public function is_hup(i: i64) bool {
+        return (this.revents(i) & POLLHUP) != 0;
+      }
+
+      public function is_error(i: i64) bool {
+        return (this.revents(i) & POLLERR) != 0;
       }
     }
   }  // module sun.io

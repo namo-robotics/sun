@@ -893,3 +893,67 @@ TEST(Stdlib_Text_String, replace_literal_and_string) {
   )");
   EXPECT_EQ(value, 0);
 }
+
+// ============================================================================
+// C string interop
+// ============================================================================
+
+TEST(Stdlib_Text_String, c_str_terminates_without_changing_the_string) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        var s = String(alloc, "abc");
+        s.append_literal("def");
+        var p = s.c_str();
+        // A NUL sits just past the last byte, and the bytes are unchanged.
+        if (unsafe { _load<u8>(p, 6); } != 0) { return 1; }
+        if (unsafe { _load<u8>(p, 0); } != 97) { return 2; }
+        if (s.length() != 6) { return 3; }
+        if (not s.equals_literal("abcdef")) { return 4; }
+        // Still usable, and re-terminating after a mutation still works.
+        s.append_char(33);
+        if (unsafe { _load<u8>(s.c_str(), 7); } != 0) { return 5; }
+        if (s.length() != 7) { return 6; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(Stdlib_Text_String, from_c_str_copies_the_bytes) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        var src = String(alloc, "round trip");
+        var copy = from_c_str(alloc, src.c_str());
+        if (copy.length() != 10) { return 1; }
+        if (not copy.equals_literal("round trip")) { return 2; }
+        // The copy is independent of the source.
+        src.clear();
+        if (copy.length() != 10) { return 3; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(Stdlib_Text_String, from_c_str_handles_empty_and_null) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        var empty = String(alloc, "");
+        var a = from_c_str(alloc, empty.c_str());
+        if (not a.isEmpty()) { return 1; }
+        var b = from_c_str(alloc, null);
+        if (not b.isEmpty()) { return 2; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}

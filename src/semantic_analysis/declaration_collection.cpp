@@ -246,11 +246,9 @@ void SemanticAnalyzer::collectFunctionSignature(FunctionAST& func) {
     returnType = typeAnnotationToType(*proto.getReturnType());
   }
 
-  // C externs bind to a fixed symbol: no module scope, no overload suffix
-  // (see getFunctionInfo).
-  sun::QualifiedName qualifiedName =
-      func.isCExtern() ? sun::QualifiedName({}, proto.getName())
-                       : makeQualifiedName(proto.getName());
+  // A C extern is scoped to its module like any other item; only its emitted
+  // symbol is fixed by C. No overload suffix: C has no overloading.
+  sun::QualifiedName qualifiedName = makeQualifiedName(proto.getName());
   if (!func.isCExtern()) qualifiedName.setParamSuffix(paramTypes);
 
   // Minimal FunctionInfo (no captures — those require body analysis)

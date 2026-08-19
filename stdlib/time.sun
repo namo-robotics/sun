@@ -1,0 +1,232 @@
+// stdlib/time.sun - Durations, clocks, sleeping and calendar dates
+//
+// Usage:
+//   using sun.time;
+//
+//   var start = now();
+//   sleep(millis(50));
+//   println(start.elapsed().as_millis());
+//
+//   var today = utc(unix_time());
+//   println(format(alloc, today, "%Y-%m-%d"));
+
+public module sun {
+  public module time {
+    // clockid_t values from asm-generic, the same on every Linux target.
+    var CLOCK_REALTIME: i32 = 0;
+    var CLOCK_MONOTONIC: i32 = 1;
+
+    var NANOS_PER_SEC: i64 = 1000000000;
+
+    // A length of time. Always non-negative: subtracting a later instant from
+    // an earlier one gives zero rather than wrapping.
+    public class Duration {
+      var secs: i64;
+      var nanos: i64;  // 0 .. 999999999
+
+      public function init(secs: i64, nanos: i64) {
+        var extra: i64 = nanos / NANOS_PER_SEC;
+        this.secs = secs + extra;
+        this.nanos = nanos - extra * NANOS_PER_SEC;
+        if (this.secs < 0) {
+          this.secs = 0;
+          this.nanos = 0;
+        }
+      }
+
+      public function as_secs() i64 {
+        return this.secs;
+      }
+
+      public function as_millis() i64 {
+        return this.secs * 1000 + this.nanos / 1000000;
+      }
+
+      public function as_micros() i64 {
+        return this.secs * 1000000 + this.nanos / 1000;
+      }
+
+      public function as_nanos() i64 {
+        return this.secs * NANOS_PER_SEC + this.nanos;
+      }
+
+      public function as_secs_f64() f64 {
+        return _convert<f64>(this.secs) +
+               _convert<f64>(this.nanos) / 1000000000.0;
+      }
+
+      // The nanosecond remainder, on top of as_secs().
+      public function subsec_nanos() i64 {
+        return this.nanos;
+      }
+    }
+
+    public function nanos(n: i64) Duration {
+      return Duration(0, n);
+    }
+
+    public function micros(n: i64) Duration {
+      return Duration(0, n * 1000);
+    }
+
+    public function millis(n: i64) Duration {
+      return Duration(0, n * 1000000);
+    }
+
+    public function seconds(n: i64) Duration {
+      return Duration(n, 0);
+    }
+
+    // A point on the monotonic clock. Only differences between Instants mean
+    // anything — the zero point is arbitrary and unrelated to wall time. It
+    // never jumps backwards when the system clock is adjusted.
+    public class Instant {
+      var secs: i64;
+      var nanos: i64;
+
+      public function init(secs: i64, nanos: i64) {
+        this.secs = secs;
+        this.nanos = nanos;
+      }
+
+      // How long since this Instant was taken.
+      public function elapsed() Duration {
+        var current: Instant = now();
+        return current.since(this);
+      }
+
+      // How long from `earlier` to this Instant. Zero if this is the earlier
+      // of the two.
+      public function since(earlier: ref Instant) Duration {
+        var ds: i64 = this.secs - earlier.secs;
+        var dn: i64 = this.nanos - earlier.nanos;
+        if (dn < 0) {
+          ds = ds - 1;
+          dn = dn + NANOS_PER_SEC;
+        }
+        if (ds < 0) {
+          return Duration(0, 0);
+        }
+        return Duration(ds, dn);
+      }
+    }
+
+    // Read the monotonic clock.
+    public function now() Instant {
+      var ts: Timespec = Timespec(0, 0);
+      unsafe { c_clock_gettime(CLOCK_MONOTONIC, ts); };
+      return Instant(ts.sec, ts.nsec);
+    }
+
+    // Seconds since the Unix epoch, from the wall clock.
+    public function unix_time() i64 {
+      var ts: Timespec = Timespec(0, 0);
+      unsafe { c_clock_gettime(CLOCK_REALTIME, ts); };
+      return ts.sec;
+    }
+
+    public function unix_time_millis() i64 {
+      var ts: Timespec = Timespec(0, 0);
+      unsafe { c_clock_gettime(CLOCK_REALTIME, ts); };
+      return ts.sec * 1000 + ts.nsec / 1000000;
+    }
+
+    // Suspend this thread. A signal can cut the wait short.
+    public function sleep(d: ref Duration) void {
+      var req: Timespec = Timespec(d.as_secs(), d.subsec_nanos());
+      unsafe { c_nanosleep(req, null); };
+    }
+
+    // A moment in human units. Unlike C's struct tm, the year is the full
+    // year and the month is 1-12.
+    public class DateTime {
+      public var year: i32;  // e.g. 2026
+      public var month: i32;  // 1-12
+      public var day: i32;  // 1-31
+      public var hour: i32;  // 0-23
+      public var minute: i32;  // 0-59
+      public var second: i32;  // 0-60, 60 for a leap second
+      public var weekday: i32;  // 0 = Sunday
+      public var yearday: i32;  // 0-365
+      public var utc_offset: i64;  // seconds east of UTC
+
+      public function init(year: i32, month: i32, day: i32, hour: i32,
+                           minute: i32, second: i32) {
+        this.year = year;
+        this.month = month;
+        this.day = day;
+        this.hour = hour;
+        this.minute = minute;
+        this.second = second;
+        this.weekday = 0;
+        this.yearday = 0;
+        this.utc_offset = 0;
+      }
+    }
+
+    function from_ctm(tm: ref CTm) DateTime {
+      var dt: DateTime = DateTime(tm.year + 1900, tm.mon + 1, tm.mday, tm.hour,
+                                  tm.min, tm.sec);
+      dt.weekday = tm.wday;
+      dt.yearday = tm.yday;
+      dt.utc_offset = tm.gmtoff;
+      return dt;
+    }
+
+    function to_ctm(dt: ref DateTime) CTm {
+      var tm: CTm = CTm();
+      tm.year = dt.year - 1900;
+      tm.mon = dt.month - 1;
+      tm.mday = dt.day;
+      tm.hour = dt.hour;
+      tm.min = dt.minute;
+      tm.sec = dt.second;
+      tm.isdst = -1;  // let mktime work out whether DST applies
+      return tm;
+    }
+
+    // Break a Unix timestamp into UTC calendar fields.
+    public function utc(unix_secs: i64) DateTime {
+      var t: i64 = unix_secs;
+      var tm: CTm = CTm();
+      unsafe { c_gmtime_r(_address_of<i64>(t), tm); };
+      return from_ctm(tm);
+    }
+
+    // Break a Unix timestamp into local calendar fields, per $TZ.
+    public function local(unix_secs: i64) DateTime {
+      var t: i64 = unix_secs;
+      var tm: CTm = CTm();
+      unsafe { c_localtime_r(_address_of<i64>(t), tm); };
+      return from_ctm(tm);
+    }
+
+    // Read the fields back as a Unix timestamp, treating them as UTC.
+    // (timegm is a GNU extension, present in glibc and musl.)
+    public function to_unix_utc(dt: ref DateTime) i64 {
+      var tm: CTm = to_ctm(dt);
+      return unsafe { c_timegm(tm); };
+    }
+
+    // Read the fields back as a Unix timestamp, treating them as local time.
+    public function to_unix_local(dt: ref DateTime) i64 {
+      var tm: CTm = to_ctm(dt);
+      return unsafe { c_mktime(tm); };
+    }
+
+    // Render with a strftime format, e.g. "%Y-%m-%d %H:%M:%S". Output longer
+    // than 256 bytes comes back empty.
+    public function format(alloc: ref HeapAllocator, dt: ref DateTime,
+                           fmt: raw_ptr<u8>) String {
+      var tm: CTm = to_ctm(dt);
+      tm.wday = dt.weekday;
+      tm.yday = dt.yearday;
+      var buf: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 256);
+      var written: i64 = unsafe { c_strftime(buf.rawData(), 256, fmt, tm); };
+      if (written <= 0) {
+        return String(alloc, "");
+      }
+      return from_c_str(alloc, buf.rawData());
+    }
+  }  // module sun.time
+}

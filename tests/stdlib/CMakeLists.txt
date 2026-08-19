@@ -10,4 +10,5 @@ target_sources(sun_tests PRIVATE
 add_subdirectory(collections)
 add_subdirectory(concurrency)
 add_subdirectory(io)
+add_subdirectory(sys)
 add_subdirectory(text)

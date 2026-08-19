@@ -266,3 +266,164 @@ TEST_F(Stdlib_Io_File, file_read_returns_content) {
 
   EXPECT_EQ(value, std::string("Hello from file!"));
 }
+
+// ============================================================================
+// The sun.io File class
+// ============================================================================
+// The tests above drive the __file_* intrinsics directly. These go through
+// stdlib/io.sun, where a path is a raw_ptr<u8> — a literal narrows to one, and
+// a runtime String supplies one through c_str().
+
+TEST_F(Stdlib_Io_File, sun_io_file_literal_path_round_trip) {
+  std::string path = testFile("literal.txt");
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    using sun.io;
+
+    function main() i32 {
+        var a = make_heap_allocator();
+        try {
+            var f = File();
+            f.open(")" + path + R"(", FileMode.Write);
+            f.write("written by File");
+            f.close();
+
+            var text = read_to_string(a, ")" + path + R"(");
+            if (not text.equals_literal("written by File")) { return 1; }
+        } catch (e: IError) {
+            return 2;
+        }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+  EXPECT_EQ(readFileContents(path), "written by File");
+}
+
+TEST_F(Stdlib_Io_File, sun_io_file_runtime_string_path) {
+  std::string path = testFile("runtime.txt");
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    using sun.io;
+
+    function main() i32 {
+        var a = make_heap_allocator();
+        try {
+            // The path is built at runtime, which the intrinsics cannot take.
+            var dir = String(a, ")" + testDir + R"(");
+            dir.append_literal("/runtime.txt");
+
+            var body = String(a, "runtime path");
+            write_string(dir.c_str(), body);
+
+            var back = read_to_string(a, dir.c_str());
+            if (not back.equals_literal("runtime path")) { return 1; }
+            if (file_size(dir.c_str()) != 12) { return 2; }
+        } catch (e: IError) {
+            return 3;
+        }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+  EXPECT_EQ(readFileContents(path), "runtime path");
+}
+
+TEST_F(Stdlib_Io_File, sun_io_file_seek_and_size) {
+  std::string path = testFile("seek.txt");
+  writeFileContents(path, "0123456789");
+
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    using sun.io;
+
+    function main() i32 {
+        try {
+            var f = File();
+            f.open(")" + path + R"(", FileMode.Read);
+            if (f.size() != 10) { return 1; }
+            if (f.tell() != 0) { return 2; }
+            if (f.seek(4, Whence.Start) != 4) { return 3; }
+            if (f.tell() != 4) { return 4; }
+            if (f.seek(0, Whence.End) != 10) { return 5; }
+            f.close();
+            if (f.is_open()) { return 6; }
+        } catch (e: IError) {
+            return 7;
+        }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST_F(Stdlib_Io_File, sun_io_append_mode_keeps_existing_content) {
+  std::string path = testFile("append.txt");
+  writeFileContents(path, "first;");
+
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    using sun.io;
+
+    function main() i32 {
+        try {
+            var f = File();
+            f.open(")" + path + R"(", FileMode.Append);
+            f.write("second");
+            f.close();
+        } catch (e: IError) {
+            return 1;
+        }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+  EXPECT_EQ(readFileContents(path), "first;second");
+}
+
+TEST_F(Stdlib_Io_File, sun_io_open_missing_file_throws) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    using sun.io;
+
+    function main() i32 {
+        var f = File();
+        try {
+            f.open(")" + testFile("nope.txt") + R"(", FileMode.Read);
+        } catch (e: IError) {
+            return 42;
+        }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST_F(Stdlib_Io_File, sun_io_remove_rename_and_directories) {
+  std::string path = testFile("victim.txt");
+  writeFileContents(path, "x");
+
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    using sun.io;
+
+    function main() i32 {
+        try {
+            rename_file(")" + path + R"(", ")" + testFile("renamed.txt") + R"(");
+            if (exists(")" + path + R"(")) { return 1; }
+            if (not exists(")" + testFile("renamed.txt") + R"(")) { return 2; }
+            remove_file(")" + testFile("renamed.txt") + R"(");
+            if (exists(")" + testFile("renamed.txt") + R"(")) { return 3; }
+
+            make_dir(")" + testFile("newdir") + R"(", 493);
+            if (not is_dir(")" + testFile("newdir") + R"(")) { return 4; }
+            remove_dir(")" + testFile("newdir") + R"(");
+            if (exists(")" + testFile("newdir") + R"(")) { return 5; }
+        } catch (e: IError) {
+            return 6;
+        }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}

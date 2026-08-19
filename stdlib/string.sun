@@ -25,9 +25,7 @@
 //   var words = s.split(allocator, 32);   // on ' '
 
 public module sun {
-  // libc number formatting/parsing used by append_f64 / parse_f64
-  extern "C" function snprintf(buf: raw_ptr<u8>, n: i64, fmt: raw_ptr<u8>, ...) i32;
-  extern "C" function strtod(s: raw_ptr<u8>, end: raw_ptr<u8>) f64;
+  // Number formatting/parsing goes through c_snprintf / c_strtod in sys.sun.
 
   // Space, tab, newline, carriage return, vertical tab, form feed
   function ascii_is_space(ch: u8) bool {
@@ -177,6 +175,16 @@ public module sun {
         this.data.resize_to(new_capacity);
         this.capacity_ = new_capacity;
       }
+    }
+
+    // NUL-terminate in spare capacity and hand back a pointer to the bytes,
+    // for passing a runtime path or argument to C. The terminator sits past
+    // the length, so the string itself is unchanged. The pointer is only good
+    // until the next mutation.
+    public function c_str() raw_ptr<u8> {
+      this.ensure_capacity(1);
+      this.data.set_unchecked(this.len, 0);
+      return this.data.rawData();
     }
 
     // Append a single byte/character
@@ -855,13 +863,13 @@ public module sun {
       var room: i64 = 32;
       this.ensure_capacity(room);
       var dst: raw_ptr<u8> = unsafe { _ptr_offset(this.data.rawData(), this.len); };
-      var written: i32 = unsafe { snprintf(dst, room, "%.15g", val); };
-      var back: f64 = unsafe { strtod(dst, null); };
+      var written: i32 = unsafe { c_snprintf(dst, room, "%.15g", val); };
+      var back: f64 = unsafe { c_strtod(dst, null); };
       if (back != val) {
-        written = unsafe { snprintf(dst, room, "%.16g", val); };
-        back = unsafe { strtod(dst, null); };
+        written = unsafe { c_snprintf(dst, room, "%.16g", val); };
+        back = unsafe { c_strtod(dst, null); };
         if (back != val) {
-          written = unsafe { snprintf(dst, room, "%.17g", val); };
+          written = unsafe { c_snprintf(dst, room, "%.17g", val); };
         }
       }
       if (written < 0) {
@@ -974,10 +982,7 @@ public module sun {
       if (not this.is_decimal_float()) {
         return Option.None;
       }
-      // NUL-terminate in spare capacity for libc
-      this.ensure_capacity(1);
-      this.data.set_unchecked(this.len, 0);
-      var value: f64 = unsafe { strtod(this.data.rawData(), null); };
+      var value: f64 = unsafe { c_strtod(this.c_str(), null); };
       return Option.Some(value);
     }
 
@@ -1008,6 +1013,23 @@ public module sun {
   // ============================================================================
 
   public declare Vec_String = Vec<String>;
+
+  // Copy a NUL-terminated C string into an owned String.
+  // A free function rather than an init overload: static_ptr<u8> matches
+  // raw_ptr<u8> in overload resolution, so String(alloc, "literal") would
+  // become ambiguous.
+  public function from_c_str(alloc: ref HeapAllocator, s: raw_ptr<u8>) String {
+    var out: String = String(alloc, "");
+    if (s == null) {
+      return out;
+    }
+    var len: i64 = unsafe { c_strlen(s); };
+    out.reserve(len + 1);
+    for (var i: i64 = 0; i < len; i = i + 1) {
+      out.append_char(unsafe { _load<u8>(s, i); });
+    }
+    return out;
+  }
 
   // Concatenate strings with a separator between them
   public function join(alloc: ref HeapAllocator, parts: ref Vec<String>, sep: static_ptr<u8>) String {

@@ -7,6 +7,8 @@
 #include <gtest/gtest.h>
 
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <string>
 
 #include "abi/c_abi.h"
@@ -15,6 +17,9 @@
 #include "compiler.h"
 #include "execution_utils.h"
 #include "extern_c.h"
+#include "metadata_extractor.h"
+#include "moon/moon.h"
+#include "moon_import.h"
 #include "parser.h"
 
 // ============================================================================
@@ -759,4 +764,137 @@ TEST(Ffi_StructValue, predeclared_function_still_registers_marshalling) {
   llvm::Function* declared = emitter.declare(proto, i32Ty, params);
   ASSERT_NE(declared, nullptr);
   EXPECT_TRUE(emitter.needsMarshalling(declared));
+}
+
+// ============================================================================
+// Externs inside a .moon bundle
+// ============================================================================
+
+TEST(Ffi, extern_symbol_survives_moon_bundling) {
+  // Bundling prefixes every symbol in a module for isolation. A C extern's
+  // name *is* its ABI, so prefixing it renames the libc symbol out of
+  // existence and the import fails to link.
+  namespace fs = std::filesystem;
+  initTestEnvironment();
+
+  fs::path dir = fs::temp_directory_path() / "sun_ffi_moon_test";
+  fs::create_directories(dir);
+  fs::path libSrc = dir / "cwrap.sun";
+  {
+    std::ofstream out(libSrc);
+    out << R"(
+      public module cwrap {
+          // Private: users of the bundle get the wrapper, not the C symbol.
+          extern "C" function c_labs(x: i64) i64 as "labs";
+
+          public function magnitude(x: i64) i64 {
+              return unsafe { c_labs(x); };
+          }
+      }
+    )";
+  }
+
+  auto metadata = sun::extractMetadataFromFile(libSrc.string());
+  ASSERT_TRUE(metadata.has_value());
+  auto libDriver = Driver::createForAOT("ffi_moon_module");
+  libDriver->compileFiles({libSrc.string()}, {});
+
+  // The C symbol must still be spelled `labs` in the bundled module.
+  llvm::Function* labs = libDriver->getModule().getFunction("labs");
+  ASSERT_NE(labs, nullptr);
+  EXPECT_TRUE(labs->hasFnAttribute("sun.cabi"));
+
+  sun::MoonWriter writer;
+  writer.addModule(libDriver->getModule(), *metadata);
+  fs::path moonPath = dir / "cwrap.moon";
+  ASSERT_TRUE(writer.write(moonPath));
+
+  auto driver = Driver::createForJIT("ffi_moon_main");
+  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  auto value = driver->executeString(R"(
+    using cwrap;
+
+    function main() i64 {
+        return magnitude(-91);
+    }
+  )");
+  EXPECT_EQ(value, 91);
+}
+
+TEST(Ffi, extern_coexists_with_intrinsic_of_same_symbol) {
+  // The compiler's own intrinsics declare libc symbols (see
+  // include/intrinsics/libc.h). An extern naming one of them must agree on
+  // the signature — `open` is C-variadic there, so it must be here too.
+  auto value = executeString(R"(
+    extern "C" function c_close(fd: i32) i32 as "close";
+
+    function main() i32 {
+        var fd: i32 = unsafe { __file_open("/dev/null", 0); };
+        if (fd < 0) { return -1; }
+        unsafe { c_close(fd); };
+        return 7;
+    }
+  )");
+  EXPECT_EQ(value, 7);
+}
+
+// ============================================================================
+// Extern visibility
+// ============================================================================
+
+TEST(Ffi, private_extern_is_not_reachable_from_outside_its_module) {
+  // An extern's Sun-side name is scoped to its module like any other item;
+  // only the emitted symbol is fixed by C. Without that, a library could not
+  // wrap a C function without also exporting it.
+  EXPECT_THROW(executeString(R"(
+    public module wrap {
+        extern "C" function c_abs(x: i32) i32 as "abs";
+        public function magnitude(x: i32) i32 {
+            return unsafe { c_abs(x); };
+        }
+    }
+    using wrap;
+
+    function main() i32 {
+        return unsafe { c_abs(-1); };
+    }
+  )"),
+               std::exception);
+}
+
+TEST(Ffi, public_extern_is_reachable_and_keeps_its_c_symbol) {
+  auto value = executeString(R"(
+    public module wrap {
+        public extern "C" function c_abs(x: i32) i32 as "abs";
+        public function magnitude(x: i32) i32 {
+            return unsafe { c_abs(x); };
+        }
+    }
+    using wrap;
+
+    function main() i32 {
+        return magnitude(-20) + unsafe { c_abs(-22); };
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Ffi, same_c_symbol_wrapped_privately_in_two_modules) {
+  // Two modules may each declare the same C function under their own name.
+  // The Sun names are module-scoped; the symbol is shared.
+  auto value = executeString(R"(
+    public module a {
+        extern "C" function abs_a(x: i32) i32 as "abs";
+        public function f(x: i32) i32 { return unsafe { abs_a(x); }; }
+    }
+    public module b {
+        extern "C" function abs_b(x: i32) i32 as "abs";
+        public function g(x: i32) i32 { return unsafe { abs_b(x); }; }
+    }
+
+    function main() i32 {
+        return a.f(-20) + b.g(-22);
+    }
+  )");
+  EXPECT_EQ(value, 42);
 }
