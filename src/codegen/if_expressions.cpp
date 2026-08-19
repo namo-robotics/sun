@@ -6,9 +6,7 @@
 
 using namespace llvm;
 
-// Convert a condition value to i1 if not already (non-zero test for
-// numeric conditions)
-static Value* coerceCondToBool(CodegenContext& ctx, Value* CondV) {
+Value* coerceCondToBool(CodegenContext& ctx, Value* CondV) {
   if (CondV->getType()->isIntegerTy(1)) return CondV;
   if (CondV->getType()->isFloatingPointTy()) {
     return ctx.builder->CreateFCmpONE(

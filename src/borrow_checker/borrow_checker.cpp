@@ -220,6 +220,18 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
     rawPointerLocals_.erase(var.getName());
   }
 
+  // `var r: ref T = <lvalue>` binds a borrow, not a value: nothing moves out
+  // of the target, and the loan is tracked like `ref r = <lvalue>`.
+  TypePtr declaredType = var.getResolvedType();
+  if (var.getValue() && declaredType && declaredType->isReference()) {
+    auto valueType = var.getValue()->getResolvedType();
+    if (valueType && !valueType->isReference()) {
+      checkBorrowBinding(var.getName(), *var.getValue(), /*isMutable=*/true,
+                         var.getLocation());
+      return;
+    }
+  }
+
   // Move semantics for temporaries and compound types
   if (var.getValue()) {
     auto srcType = var.getValue()->getResolvedType();
@@ -268,21 +280,17 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
 }
 
 void BorrowChecker::checkReferenceCreation(const ReferenceCreationAST& ref) {
-  const std::string& refName = ref.getName();
-  const ExprAST* target = ref.getTarget();
+  checkBorrowBinding(ref.getName(), *ref.getTarget(), ref.isMutable(),
+                     ref.getLocation());
+}
 
-  // The borrow is tracked against the base variable of the target lvalue
-  // (ref r = obj.field borrows obj as a whole - conservative but sound)
-  const std::string* targetVarName = getBaseVariableName(*target);
-  if (!targetVarName) {
-    reportError("reference must be bound to a variable, not a temporary", 0, 0);
-    return;
-  }
-
-  // Borrowing a place that was moved out of: the field itself, or the whole
-  // object while one of its fields is gone
-  std::string targetPath = fieldPath(*target);
-  const auto& refPos = ref.getLocation();
+// Borrowing a place that was moved out of: the field itself, or the whole
+// object while one of its fields is gone
+void BorrowChecker::checkBorrowTargetIntact(const ExprAST& target,
+                                            const Position& refPos) {
+  const std::string* targetVarName = getBaseVariableName(target);
+  if (!targetVarName) return;
+  std::string targetPath = fieldPath(target);
   if (!targetPath.empty() && movedVariables_.count(targetPath)) {
     reportError("cannot borrow moved field '" + targetPath +
                     "'. It was moved out of its object; assign a value back "
@@ -291,21 +299,49 @@ void BorrowChecker::checkReferenceCreation(const ReferenceCreationAST& ref) {
   } else if (targetPath == *targetVarName) {
     checkFieldsIntact(*targetVarName, refPos);
   }
+}
+
+void BorrowChecker::checkBorrowBinding(const std::string& refName,
+                                       const ExprAST& targetExpr,
+                                       bool isMutable, const Position& refPos) {
+  // A conditional borrow binds whichever branch runs, so both are borrowed
+  // for the ref's lifetime. Branches of the same object share one loan -
+  // borrows are tracked per base variable, so a second one would collide.
+  if (targetExpr.getType() == ASTNodeType::TERNARY) {
+    const auto& ternary = static_cast<const TernaryExprAST&>(targetExpr);
+    const std::string* thenBase = getBaseVariableName(*ternary.getThen());
+    const std::string* elseBase = getBaseVariableName(*ternary.getElse());
+    checkBorrowBinding(refName, *ternary.getThen(), isMutable, refPos);
+    if (!thenBase || !elseBase || *thenBase != *elseBase) {
+      checkBorrowBinding(refName, *ternary.getElse(), isMutable, refPos);
+    } else {
+      checkBorrowTargetIntact(*ternary.getElse(), refPos);
+    }
+    return;
+  }
+
+  // The borrow is tracked against the base variable of the target lvalue
+  // (ref r = obj.field borrows obj as a whole - conservative but sound)
+  const std::string* targetVarName = getBaseVariableName(targetExpr);
+  if (!targetVarName) {
+    reportError("reference must be bound to a variable, not a temporary", 0, 0);
+    return;
+  }
+
+  checkBorrowTargetIntact(targetExpr, refPos);
 
   // Resolve the actual target and check rebinding rules
   auto targetInfo = resolveRefTarget(*targetVarName);
 
-  // Borrow kind comes from the AST node
-  BorrowKind kind = ref.isMutable() ? BorrowKind::Mutable : BorrowKind::Shared;
+  BorrowKind kind = isMutable ? BorrowKind::Mutable : BorrowKind::Shared;
 
   // Rebinding rules: mutable -> immutable is OK, immutable -> mutable is NOT
   if (targetInfo.isRebind) {
     if (targetInfo.sourceBorrowKind == BorrowKind::Shared &&
         kind == BorrowKind::Mutable) {
-      const auto& pos = ref.getLocation();
       reportError("cannot create mutable reference '" + refName +
                       "' from immutable reference '" + *targetVarName + "'",
-                  pos.line, pos.column);
+                  refPos.line, refPos.column);
       return;
     }
     // Downgrade: if source is immutable, new ref must also be immutable
@@ -320,13 +356,12 @@ void BorrowChecker::checkReferenceCreation(const ReferenceCreationAST& ref) {
   }
 
   // Attempt to create the borrow
-  const auto& pos = ref.getLocation();
-  SourceLoc loc{pos.line, pos.column, ""};
+  SourceLoc loc{refPos.line, refPos.column, ""};
   auto result = state_.addBorrow(targetInfo.actualTarget, refName, kind,
                                  currentScope_, loc);
 
   if (!result.allowed) {
-    reportConflict(result.errorMessage, pos.line, pos.column,
+    reportConflict(result.errorMessage, refPos.line, refPos.column,
                    result.conflictingLoan);
   } else {
     // Track this reference with its borrow kind

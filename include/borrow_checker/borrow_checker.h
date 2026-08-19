@@ -55,6 +55,12 @@ class BorrowChecker {
   // Specific node handlers
   void checkVariableCreation(const VariableCreationAST& var);
   void checkReferenceCreation(const ReferenceCreationAST& ref);
+  // Shared by `ref r = lvalue` and `var r: ref T = lvalue`: both bind a
+  // borrow of the lvalue's storage rather than moving a value into r.
+  void checkBorrowBinding(const std::string& refName,
+                          const ExprAST& targetExpr, bool isMutable,
+                          const Position& refPos);
+  void checkBorrowTargetIntact(const ExprAST& target, const Position& refPos);
   void checkVariableAssignment(const VariableAssignmentAST& assign);
   void checkVariableReference(const VariableReferenceAST& varRef);
   void checkBinaryExpr(const BinaryExprAST& binary);

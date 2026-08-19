@@ -17,6 +17,51 @@ using sun::unwrapRef;
 void SemanticAnalyzer::analyze(ExprAST& expr) { analyzeExpr(expr); }
 
 // -------------------------------------------------------------------
+// Borrow targets
+// -------------------------------------------------------------------
+
+bool SemanticAnalyzer::isBorrowableLvalue(const ExprAST& target) {
+  ASTNodeType kind = target.getType();
+  // A conditional picks one of two slots at runtime; it borrows if both
+  // branches do.
+  if (kind == ASTNodeType::TERNARY) {
+    const auto& ternary = static_cast<const TernaryExprAST&>(target);
+    return isBorrowableLvalue(*ternary.getThen()) &&
+           isBorrowableLvalue(*ternary.getElse());
+  }
+  return kind == ASTNodeType::VARIABLE_REFERENCE ||
+         kind == ASTNodeType::MEMBER_ACCESS || kind == ASTNodeType::INDEX;
+}
+
+void SemanticAnalyzer::validateBorrowTarget(const ExprAST& target,
+                                            const Position& loc) {
+  if (!isBorrowableLvalue(target)) {
+    logAndThrowError(
+        "Reference target must be a variable, field, or array element", loc);
+  }
+  if (target.getType() == ASTNodeType::TERNARY) {
+    const auto& ternary = static_cast<const TernaryExprAST&>(target);
+    validateBorrowTarget(*ternary.getThen(), loc);
+    validateBorrowTarget(*ternary.getElse(), loc);
+    return;
+  }
+  if (target.getType() == ASTNodeType::INDEX) {
+    const auto& indexExpr = static_cast<const IndexAST&>(target);
+    auto baseType = sun::unwrapRef(indexExpr.getTarget()->getResolvedType());
+    if (baseType && baseType->isClass()) {
+      logAndThrowError(
+          "Cannot create a reference to a class __index__ element - it "
+          "has no storage address",
+          loc);
+    }
+    if (indexExpr.hasSlices()) {
+      logAndThrowError("Cannot create a reference to a slice", loc);
+    }
+  }
+  checkPackedFieldNotBorrowed(target, loc);
+}
+
+// -------------------------------------------------------------------
 // Expression analysis
 // -------------------------------------------------------------------
 
@@ -135,11 +180,32 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       sun::TypePtr rhsType = varCreate.getValue()->getResolvedType();
 
       // Determine the final variable type
+      // `var r: ref T = <lvalue>` borrows the lvalue's storage - the same
+      // implicit borrow a `ref T` parameter takes at a call site. An RHS that
+      // is already a reference (a call returning `ref T`) goes through
+      // isAssignableTo instead.
+      bool bindsBorrow = false;
+      if (declaredType && declaredType->isReference() && rhsType &&
+          !rhsType->isReference()) {
+        auto referenced = static_cast<sun::ReferenceType*>(declaredType.get())
+                              ->getReferencedType();
+        if (isAssignableTo(rhsType, referenced)) {
+          if (!isBorrowableLvalue(*varCreate.getValue())) {
+            logAndThrowError("Cannot bind reference '" + varCreate.getName() +
+                                 "' to a temporary - a reference must bind a "
+                                 "variable, field, or array element",
+                             varCreate.getLocation());
+          }
+          bindsBorrow = true;
+          validateBorrowTarget(*varCreate.getValue(), varCreate.getLocation());
+        }
+      }
+
       sun::TypePtr type;
       if (declaredType) {
         // Check type compatibility: RHS must be assignable to declared type
         // This enables interface polymorphism: var s: IShape = Circle(...)
-        if (rhsType && !isAssignableTo(rhsType, declaredType)) {
+        if (!bindsBorrow && rhsType && !isAssignableTo(rhsType, declaredType)) {
           // Allow integer literal coercion as a fallback
           if (!tryCoerceIntegerLiteral(
                   const_cast<ExprAST*>(varCreate.getValue()), declaredType,
@@ -274,32 +340,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       // Analyze the target expression
       analyzeExpr(const_cast<ExprAST&>(*refCreate.getTarget()));
 
-      // The target must be an addressable lvalue
-      ASTNodeType targetKind = refCreate.getTarget()->getType();
-      if (targetKind != ASTNodeType::VARIABLE_REFERENCE &&
-          targetKind != ASTNodeType::MEMBER_ACCESS &&
-          targetKind != ASTNodeType::INDEX) {
-        logAndThrowError(
-            "Reference target must be a variable, field, or array element",
-            expr.getLocation());
-      }
-      if (targetKind == ASTNodeType::INDEX) {
-        const auto& indexExpr =
-            static_cast<const IndexAST&>(*refCreate.getTarget());
-        auto baseType =
-            sun::unwrapRef(indexExpr.getTarget()->getResolvedType());
-        if (baseType && baseType->isClass()) {
-          logAndThrowError(
-              "Cannot create a reference to a class __index__ element - it "
-              "has no storage address",
-              expr.getLocation());
-        }
-        if (indexExpr.hasSlices()) {
-          logAndThrowError("Cannot create a reference to a slice",
-                           expr.getLocation());
-        }
-      }
-      checkPackedFieldNotBorrowed(*refCreate.getTarget(), expr.getLocation());
+      validateBorrowTarget(*refCreate.getTarget(), expr.getLocation());
       // Determine the type of the referenced expression
       sun::TypePtr targetType = inferType(*refCreate.getTarget());
       // Create reference type: ref(T)

@@ -233,6 +233,58 @@ Value* CodegenVisitor::tryCodegenAddress(const ExprAST& expr) {
   }
 }
 
+// A borrow may bind a conditional lvalue: `ref r = c ? a.x : b.y` picks one of
+// two storage slots at runtime, so the address is a phi of the branches'
+// addresses. Only the borrow-binding paths ask for this; every other lvalue
+// use goes through tryCodegenAddress, which leaves a conditional alone.
+Value* CodegenVisitor::codegenBorrowAddress(const ExprAST& expr) {
+  if (expr.getType() != ASTNodeType::TERNARY) return tryCodegenAddress(expr);
+
+  const auto& ternary = static_cast<const TernaryExprAST&>(expr);
+  Value* cond = codegen(*ternary.getCond());
+  if (!cond) return nullptr;
+  cond = coerceCondToBool(ctx, cond);
+
+  Function* func = ctx.builder->GetInsertBlock()->getParent();
+  BasicBlock* thenBB =
+      BasicBlock::Create(ctx.getContext(), "borrow.then", func);
+  BasicBlock* elseBB =
+      BasicBlock::Create(ctx.getContext(), "borrow.else", func);
+  BasicBlock* mergeBB =
+      BasicBlock::Create(ctx.getContext(), "borrow.cont", func);
+  ctx.builder->CreateCondBr(cond, thenBB, elseBB);
+
+  // Blocks are already emitted, so a branch without an address is a hard
+  // error rather than a nullptr the caller could recover from. Semantic
+  // analysis rejects those shapes before codegen sees them.
+  auto branchAddress = [&](const ExprAST& branch) {
+    Value* addr = codegenBorrowAddress(branch);
+    if (!addr) {
+      logAndThrowError(
+          "Conditional reference branch is not addressable (expected a "
+          "variable, field, or array element)",
+          branch.getLocation());
+    }
+    ctx.builder->CreateBr(mergeBB);
+    return addr;
+  };
+
+  ctx.builder->SetInsertPoint(thenBB);
+  Value* thenAddr = branchAddress(*ternary.getThen());
+  thenBB = ctx.builder->GetInsertBlock();
+
+  ctx.builder->SetInsertPoint(elseBB);
+  Value* elseAddr = branchAddress(*ternary.getElse());
+  elseBB = ctx.builder->GetInsertBlock();
+
+  ctx.builder->SetInsertPoint(mergeBB);
+  PHINode* phi = ctx.builder->CreatePHI(
+      PointerType::getUnqual(ctx.getContext()), 2, "borrow.addr");
+  phi->addIncoming(thenAddr, thenBB);
+  phi->addIncoming(elseAddr, elseBB);
+  return phi;
+}
+
 Value* CodegenVisitor::codegenAddress(const ExprAST& expr) {
   Value* addr = tryCodegenAddress(expr);
   if (!addr) {

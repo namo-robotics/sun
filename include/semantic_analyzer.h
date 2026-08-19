@@ -229,6 +229,12 @@ class SemanticAnalyzer : public AccessContext {
   void setCurrentClass(std::shared_ptr<sun::ClassType> classType);
   std::shared_ptr<sun::ClassType> getCurrentClass() const;
 
+  // A borrow binds the storage of an addressable lvalue: a variable, a field,
+  // or an array element. Rejects everything else (temporaries, class
+  // __index__ results, slices), so `ref r = x` and `var r: ref T = x` agree.
+  static bool isBorrowableLvalue(const ExprAST& target);
+  void validateBorrowTarget(const ExprAST& target, const Position& loc);
+
   // Packed class rules (see include/packed_layout.h for what "packed" means).
   // Each rejects one way a packed field's layout guarantee could be violated.
   void checkPackedFieldNotBorrowed(const ExprAST& target,

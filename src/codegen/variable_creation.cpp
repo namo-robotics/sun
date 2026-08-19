@@ -191,7 +191,7 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
   // the Vec. codegen() would read instead (see loadIfRef).
   sun::TypePtr declaredType = expr.getResolvedType();
   Value* value = declaredType && declaredType->isReference()
-                     ? tryCodegenAddress(*expr.getValue())
+                     ? codegenBorrowAddress(*expr.getValue())
                      : nullptr;
   if (!value) value = codegen(*expr.getValue());
   if (!value) return nullptr;
@@ -833,7 +833,13 @@ Value* CodegenVisitor::codegen(const ReferenceCreationAST& expr) {
   // lvalue qualifies: variables, fields (obj.f), and array elements (arr[i]).
   // For ref-typed targets codegenAddress flattens to the referent's address,
   // so rebinding aliases the original storage.
-  llvm::Value* targetPtr = codegenAddress(*expr.getTarget());
+  llvm::Value* targetPtr = codegenBorrowAddress(*expr.getTarget());
+  if (!targetPtr) {
+    logAndThrowError(
+        "Reference target is not addressable (expected a variable, field, or "
+        "array element)",
+        expr.getLocation());
+  }
 
   // Create an alloca that holds a pointer to the target
   std::string refName = expr.getMangledName();
