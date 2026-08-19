@@ -1,0 +1,5 @@
+add_subdirectory(backend)
+add_subdirectory(fmt)
+add_subdirectory(frontend)
+add_subdirectory(regex)
+add_subdirectory(serialization)

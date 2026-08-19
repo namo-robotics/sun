@@ -11,81 +11,29 @@ endif()
 # set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 # (Only needed if mixing CRT types; usually not required with package managers)
 
-# Create test executable
-add_executable(sun_tests
-    test_access_modifiers.cpp
-    test_allocator.cpp
-    test_arithmetic.cpp
-    test_arrays.cpp
-    test_bitwise.cpp
-    test_compound_assignment.cpp
-    test_ref_targets.cpp
-    test_ref_captures.cpp
-    test_unsigned.cpp
-    test_borrow_checker.cpp
-    test_bound_methods.cpp
-    test_classes.cpp
-    test_compilation.cpp
-    test_scope_cleanup.cpp
-    test_global_assignment.cpp
-    test_unwind_cleanup.cpp
-    test_container_drops.cpp
-    test_enum_drops.cpp
-    test_proto_import.cpp
-    test_contiguous_buffer.cpp
-    test_debug.cpp
-    test_debug_info.cpp
-    test_dfa.cpp
-    test_enum_payloads.cpp
-    test_enums.cpp
-    test_errors.cpp
-    test_ffi.cpp
-    test_aapcs64_abi.cpp
-    test_sysv_abi.cpp
-    test_struct_literals.cpp
-    test_file_io.cpp
-    test_sun_io.cpp
-    test_generic_classes.cpp
-    test_generic_enums.cpp
-    test_generic_functions.cpp
-    test_generic_methods.cpp
-    test_generic_specializations.cpp
-    test_http.cpp
-    test_interfaces.cpp
-    test_interpolation.cpp
-    test_intrinsics.cpp
-    test_lambda_params.cpp
-    test_lexer.cpp
-    test_linked_list.cpp
-    test_logical.cpp
-    test_loops.cpp
-    test_bigint.cpp
-    test_json.cpp
-    test_map.cpp
-    test_match.cpp
-    test_matrix.cpp
-    test_memory_safety.cpp
-    test_modules.cpp
-    test_mutex.cpp
-    test_packed_classes.cpp
-    test_parser.cpp
-    test_pointers.cpp
-    test_programs.cpp
-    test_lowering.cpp
-    test_fmt.cpp
-    test_positions.cpp
-    test_refs.cpp
-    test_regex_parser.cpp
-    test_serialization.cpp
-    test_stdlib_linked_list.cpp
-    test_stdlib_option.cpp
-    test_stdlib_math.cpp
-    test_string.cpp
-    test_ternary.cpp
-    test_threads.cpp
-    test_vec.cpp
-    # Add more test files
-)
+# One binary for every suite. Sources come from the group subdirectories
+# below; nothing is listed here. Suite names mirror the directory path
+# (e.g. tests/stdlib/collections/test_vec.cpp -> Stdlib_Collections_Vec),
+# so --gtest_filter="Stdlib_*" selects a whole group.
+add_executable(sun_tests)
+
+# Must come after add_executable: target_sources() needs the target to exist.
+# Order among the groups themselves does not matter.
+add_subdirectory(builtins)
+add_subdirectory(classes)
+add_subdirectory(control_flow)
+add_subdirectory(end_to_end)
+add_subdirectory(enums)
+add_subdirectory(errors)
+add_subdirectory(ffi)
+add_subdirectory(functions)
+add_subdirectory(interfaces)
+add_subdirectory(lambdas)
+add_subdirectory(memory_safety)
+add_subdirectory(modules)
+add_subdirectory(operators)
+add_subdirectory(stdlib)
+add_subdirectory(tooling)
 
 target_link_libraries(sun_tests
     PRIVATE
