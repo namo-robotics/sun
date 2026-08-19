@@ -112,6 +112,30 @@ function main() i32 {
 }
 ```
 
+A declaration annotated `ref T` borrows too, which is what lets a borrow carry
+an explicit type or come from a call that returns one:
+
+```sun
+function main() i32 {
+    var p = Point(1, 2);
+    var r: ref i32 = p.x;   // borrows the field, same as `ref r = p.x`
+    r = 5;
+    return p.x;             // Returns 5
+}
+```
+
+Either form may pick its target with a conditional, as long as both branches
+are themselves borrowable. The reference binds whichever slot the condition
+selects, and both objects count as borrowed for its lifetime:
+
+```sun
+var pick: ref String = h.flag ? h.a : h.b;
+```
+
+The target must have storage: a temporary (`var r: ref String = String(alloc,
+"x")`) is rejected, since the value it borrows would die at the end of the
+statement.
+
 ### Reference Rebinding
 
 You can create a reference from another reference. The borrow kind may be downgraded but never upgraded:

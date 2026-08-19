@@ -21,6 +21,9 @@
 
 using NamedValueMap = std::map<std::string, llvm::AllocaInst*>;
 
+// Convert a condition value to i1 (non-zero test for numeric conditions)
+llvm::Value* coerceCondToBool(CodegenContext& ctx, llvm::Value* condV);
+
 // Information about a heap allocation that needs automatic cleanup
 struct OwnedAllocation {
   llvm::Value* ptrAlloca;  // Alloca storing the heap pointer
@@ -475,6 +478,9 @@ class CodegenVisitor {
   // to a temporary alloca.
   llvm::Value* tryCodegenAddress(const ExprAST& expr);
   llvm::Value* codegenAddress(const ExprAST& expr);
+  // Same, plus conditional lvalues (`ref r = c ? a.x : b.y`), whose address
+  // is a phi of the branches'. Only borrow bindings take that path.
+  llvm::Value* codegenBorrowAddress(const ExprAST& expr);
 
   // Field pointer for a class member (shared by member read/write/address)
   llvm::Value* getFieldPtr(sun::ClassType* classType, llvm::Value* objectPtr,
