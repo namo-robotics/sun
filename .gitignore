@@ -1,8 +1,11 @@
 build/
-regex
-echo
-hello_world
-hello
+
+# Stray compiled binaries (root-anchored so they don't swallow source dirs)
+/regex
+/echo
+/hello_world
+/hello
+manual_tests/test
 
 # Debian packaging artifacts
 debian/.debhelper/
@@ -29,7 +32,6 @@ extensions/vscode-sun/*.vsix
 extensions/vscode-sun/.vscode-test/
 *.moon
 tmp
-test
 *.dot
 *.ll
 *_debug/

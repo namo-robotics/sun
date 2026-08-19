@@ -13,7 +13,8 @@ Lexer → Parser → AST → SemanticAnalyzer → BorrowChecker → CodegenVisit
 ```bash
 cmake -B build && cmake --build build -j$(nproc)
 cd build && ctest -j8 --output-on-failure
-./build/tests/sun_tests --gtest_filter="SuiteName.*"
+./build/tests/sun_tests --gtest_filter="MemorySafety*"          # a whole group
+./build/tests/sun_tests --gtest_filter="Stdlib_Collections_*"   # a subgroup
 ./build/sun input.sun          # JIT execute
 ./build/sun -c -o output input.sun  # AOT compile
 ```
@@ -27,8 +28,25 @@ src/semantic_analysis/  # Type inference, classes, interfaces, captures
 src/borrow_checker/     # Ownership tracking
 src/lsp/          # Language server
 stdlib/           # Standard library (.sun files)
-tests/            # GoogleTest suites (test_*.cpp) + programs/
+tests/            # GoogleTest suites, grouped by subject + programs/ (.sun fixtures)
 ```
+
+Tests live in a directory hierarchy and each suite name mirrors its path, so a
+group is one filter away. `tests/stdlib/collections/test_vec.cpp` defines
+`Stdlib_Collections_Vec`; `--gtest_filter="Stdlib_*"` runs every stdlib test.
+Top-level groups:
+
+```
+operators/  control_flow/  errors/  functions/{,generic/}  lambdas/{,generic/}
+classes/{,generic/}  interfaces/{,generic/}  enums/{,generic/}
+memory_safety/{,refs/,drops/}  modules/  ffi/{,abi/}
+stdlib/{,collections/,text/,concurrency/,io/}  builtins/
+tooling/{frontend/,regex/,fmt/,serialization/,backend/}  end_to_end/
+```
+
+Adding a test file means dropping it in the right group and adding one line to
+that directory's `CMakeLists.txt` — the root `tests/CMakeLists.txt` lists no
+sources, only `add_subdirectory` calls.
 
 ## Type System
 

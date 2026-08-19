@@ -1,0 +1,652 @@
+// tests/operators/test_arithmetic.cpp - Tests for arithmetic operations (+, -, *, /, %)
+
+#include <gtest/gtest.h>
+
+#include <memory>
+#include <sstream>
+#include <string>
+
+#include "execution_utils.h"
+#include "sun_value.h"
+
+// ============================================================================
+// Basic Arithmetic: Addition (+)
+// ============================================================================
+
+TEST(Operators_Arithmetic, add_i32) {
+  auto value = executeString(R"(
+      function main() i32 {
+          return 10 + 32;
+      }
+    )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Operators_Arithmetic, add_i32_variables) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var x: i32 = 15;
+          var y: i32 = 27;
+          return x + y;
+      }
+    )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Operators_Arithmetic, add_i64) {
+  auto value = executeString(R"(
+      function main() i64 {
+          var x: i64 = 1000000000000;
+          var y: i64 = 2000000000000;
+          return x + y;
+      }
+    )");
+  EXPECT_EQ(value, static_cast<int64_t>(3000000000000LL));
+}
+
+TEST(Operators_Arithmetic, add_negative) {
+  auto value = executeString(R"(
+      function main() i32 {
+          return 100 + -58;
+      }
+    )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Operators_Arithmetic, add_f64) {
+  auto value = executeString(R"(
+      function main() f64 {
+          return 3.14 + 2.86;
+      }
+    )");
+  EXPECT_DOUBLE_EQ(sun::toDouble(value), 6.0);
+}
+
+TEST(Operators_Arithmetic, add_f64_variables) {
+  auto value = executeString(R"(
+      function main() f64 {
+          var x: f64 = 1.5;
+          var y: f64 = 2.5;
+          return x + y;
+      }
+    )");
+  EXPECT_DOUBLE_EQ(sun::toDouble(value), 4.0);
+}
+
+// ============================================================================
+// Basic Arithmetic: Subtraction (-)
+// ============================================================================
+
+TEST(Operators_Arithmetic, sub_i32) {
+  auto value = executeString(R"(
+      function main() i32 {
+          return 100 - 58;
+      }
+    )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Operators_Arithmetic, sub_i32_variables) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var x: i32 = 100;
+          var y: i32 = 58;
+          return x - y;
+      }
+    )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Operators_Arithmetic, sub_negative_result) {
+  auto value = executeString(R"(
+      function main() i32 {
+          return 10 - 52;
+      }
+    )");
+  EXPECT_EQ(value, -42);
+}
+
+TEST(Operators_Arithmetic, sub_f64) {
+  auto value = executeString(R"(
+      function main() f64 {
+          return 10.5 - 4.5;
+      }
+    )");
+  EXPECT_DOUBLE_EQ(sun::toDouble(value), 6.0);
+}
+
+// ============================================================================
+// Basic Arithmetic: Multiplication (*)
+// ============================================================================
+
+TEST(Operators_Arithmetic, mul_i32) {
+  auto value = executeString(R"(
+      function main() i32 {
+          return 6 * 7;
+      }
+    )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Operators_Arithmetic, mul_i32_variables) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var x: i32 = 6;
+          var y: i32 = 7;
+          return x * y;
+      }
+    )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Operators_Arithmetic, mul_negative) {
+  auto value = executeString(R"(
+      function main() i32 {
+          return -6 * 7;
+      }
+    )");
+  EXPECT_EQ(value, -42);
+}
+
+TEST(Operators_Arithmetic, mul_both_negative) {
+  auto value = executeString(R"(
+      function main() i32 {
+          return -6 * -7;
+      }
+    )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Operators_Arithmetic, mul_f64) {
+  auto value = executeString(R"(
+      function main() f64 {
+          return 3.0 * 2.5;
+      }
+    )");
+  EXPECT_DOUBLE_EQ(sun::toDouble(value), 7.5);
+}
+
+TEST(Operators_Arithmetic, mul_by_zero) {
+  auto value = executeString(R"(
+      function main() i32 {
+          return 42 * 0;
+      }
+    )");
+  EXPECT_EQ(value, 0);
+}
+
+// ============================================================================
+// Basic Arithmetic: Division (/)
+// ============================================================================
+
+TEST(Operators_Arithmetic, div_i32) {
+  auto value = executeString(R"(
+      function main() i32 {
+          return 84 / 2;
+      }
+    )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Operators_Arithmetic, div_i32_variables) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var x: i32 = 84;
+          var y: i32 = 2;
+          return x / y;
+      }
+    )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Operators_Arithmetic, div_truncation) {
+  auto value = executeString(R"(
+      function main() i32 {
+          return 85 / 2;
+      }
+    )");
+  EXPECT_EQ(value, 42);  // Integer division truncates
+}
+
+TEST(Operators_Arithmetic, div_negative) {
+  auto value = executeString(R"(
+      function main() i32 {
+          return -84 / 2;
+      }
+    )");
+  EXPECT_EQ(value, -42);
+}
+
+TEST(Operators_Arithmetic, div_f64) {
+  auto value = executeString(R"(
+      function main() f64 {
+          return 21.0 / 2.0;
+      }
+    )");
+  EXPECT_DOUBLE_EQ(sun::toDouble(value), 10.5);
+}
+
+TEST(Operators_Arithmetic, div_f64_precise) {
+  auto value = executeString(R"(
+      function main() f64 {
+          return 85.0 / 2.0;
+      }
+    )");
+  EXPECT_DOUBLE_EQ(sun::toDouble(value), 42.5);
+}
+
+// ============================================================================
+// Modulo Operator (%)
+// ============================================================================
+
+TEST(Operators_Arithmetic, mod_i32) {
+  auto value = executeString(R"(
+      function main() i32 {
+          return 17 % 5;
+      }
+    )");
+  EXPECT_EQ(value, 2);
+}
+
+TEST(Operators_Arithmetic, mod_i32_variables) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var x: i32 = 17;
+          var y: i32 = 5;
+          return x % y;
+      }
+    )");
+  EXPECT_EQ(value, 2);
+}
+
+TEST(Operators_Arithmetic, mod_evenly_divisible) {
+  auto value = executeString(R"(
+      function main() i32 {
+          return 20 % 5;
+      }
+    )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(Operators_Arithmetic, mod_negative_dividend) {
+  auto value = executeString(R"(
+      function main() i32 {
+          return -17 % 5;
+      }
+    )");
+  EXPECT_EQ(value, -2);  // C/LLVM semantics: sign follows dividend
+}
+
+TEST(Operators_Arithmetic, mod_negative_divisor) {
+  auto value = executeString(R"(
+      function main() i32 {
+          return 17 % -5;
+      }
+    )");
+  EXPECT_EQ(value, 2);  // Sign follows dividend
+}
+
+TEST(Operators_Arithmetic, mod_both_negative) {
+  auto value = executeString(R"(
+      function main() i32 {
+          return -17 % -5;
+      }
+    )");
+  EXPECT_EQ(value, -2);
+}
+
+TEST(Operators_Arithmetic, mod_i64) {
+  auto value = executeString(R"(
+      function main() i64 {
+          var x: i64 = 1000000000007;
+          var y: i64 = 1000000000;
+          return x % y;
+      }
+    )");
+  EXPECT_EQ(value, static_cast<int64_t>(7));
+}
+
+TEST(Operators_Arithmetic, mod_small_dividend) {
+  auto value = executeString(R"(
+      function main() i32 {
+          return 3 % 10;
+      }
+    )");
+  EXPECT_EQ(value, 3);
+}
+
+// ============================================================================
+// Operator Precedence
+// ============================================================================
+
+TEST(Operators_Arithmetic, precedence_mul_before_add) {
+  auto value = executeString(R"(
+      function main() i32 {
+          return 2 + 3 * 4;
+      }
+    )");
+  EXPECT_EQ(value, 14);  // Not 20
+}
+
+TEST(Operators_Arithmetic, precedence_div_before_sub) {
+  auto value = executeString(R"(
+      function main() i32 {
+          return 20 - 12 / 3;
+      }
+    )");
+  EXPECT_EQ(value, 16);  // Not 2
+}
+
+TEST(Operators_Arithmetic, precedence_mod_same_as_mul) {
+  auto value = executeString(R"(
+      function main() i32 {
+          return 2 + 10 % 3;
+      }
+    )");
+  EXPECT_EQ(value, 3);  // 2 + (10 % 3) = 2 + 1 = 3
+}
+
+TEST(Operators_Arithmetic, precedence_with_parens) {
+  auto value = executeString(R"(
+      function main() i32 {
+          return (2 + 3) * 4;
+      }
+    )");
+  EXPECT_EQ(value, 20);
+}
+
+// ============================================================================
+// Complex Expressions
+// ============================================================================
+
+TEST(Operators_Arithmetic, complex_expression) {
+  auto value = executeString(R"(
+      function main() i32 {
+          return 2 * 3 + 4 * 5 - 6 / 2;
+      }
+    )");
+  EXPECT_EQ(value, 23);  // 6 + 20 - 3 = 23
+}
+
+TEST(Operators_Arithmetic, nested_parens) {
+  auto value = executeString(R"(
+      function main() i32 {
+          return ((2 + 3) * (4 + 5)) - 10;
+      }
+    )");
+  EXPECT_EQ(value, 35);  // 5 * 9 - 10 = 35
+}
+
+// ============================================================================
+// Automatic Type Widening
+// ============================================================================
+
+TEST(Operators_Arithmetic, i32_to_f64_explicit_cast) {
+  // Sun requires explicit cast to mix int and float
+  auto value = executeString(R"(
+      function main() f64 {
+          var x: f64 = 5.0;
+          var y: f64 = 1.5;
+          return x + y;
+      }
+    )");
+  EXPECT_DOUBLE_EQ(sun::toDouble(value), 6.5);
+}
+
+TEST(Operators_Arithmetic, i32_to_i64_widening) {
+  auto value = executeString(R"(
+      function main() i64 {
+          var x: i32 = 10;
+          var y: i64 = 20;
+          return x + y;
+      }
+    )");
+  EXPECT_EQ(value, static_cast<int64_t>(30));
+}
+
+// ============================================================================
+// Integer Type Variations
+// ============================================================================
+
+TEST(Operators_Arithmetic, u8_arithmetic) {
+  // u8 arithmetic within safe range to avoid sign-extension issues
+  auto value = executeString(R"(
+      function main() i32 {
+          var x: u8 = 100;
+          var y: u8 = 20;
+          var z: u8 = x + y;
+          return z;
+      }
+    )");
+  EXPECT_EQ(value, 120);
+}
+
+TEST(Operators_Arithmetic, i8_arithmetic) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var x: i8 = 100;
+          var y: i8 = 20;
+          return x - y;
+      }
+    )");
+  EXPECT_EQ(value, 80);
+}
+
+TEST(Operators_Arithmetic, i16_arithmetic) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var x: i16 = 1000;
+          var y: i16 = 234;
+          return x + y;
+      }
+    )");
+  EXPECT_EQ(value, 1234);
+}
+
+// ============================================================================
+// Edge Cases
+// ============================================================================
+
+TEST(Operators_Arithmetic, unary_minus) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var x: i32 = 42;
+          return -x;
+      }
+    )");
+  EXPECT_EQ(value, -42);
+}
+
+TEST(Operators_Arithmetic, double_negative) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var x: i32 = -42;
+          return -x;
+      }
+    )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Operators_Arithmetic, unary_minus_f64_var) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var x: f64 = 2.5;
+          var y: f64 = -x;
+          if (y == -2.5) { return 1; }
+          return 0;
+      }
+    )");
+  EXPECT_EQ(value, 1);
+}
+
+TEST(Operators_Arithmetic, unary_minus_f32_var) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var x: f32 = 1.5;
+          var y: f32 = -x;
+          if (y == -1.5) { return 1; }
+          return 0;
+      }
+    )");
+  EXPECT_EQ(value, 1);
+}
+
+TEST(Operators_Arithmetic, unary_minus_expression) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var a: i32 = 3;
+          var b: i32 = 4;
+          return -(a + b);
+      }
+    )");
+  EXPECT_EQ(value, -7);
+}
+
+TEST(Operators_Arithmetic, unary_minus_nested) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var x: i32 = 5;
+          return -(-x);
+      }
+    )");
+  EXPECT_EQ(value, 5);
+}
+
+TEST(Operators_Arithmetic, unary_minus_call_arg) {
+  auto value = executeString(R"(
+      function id(v: i32) i32 {
+          return v;
+      }
+      function main() i32 {
+          var x: i32 = 9;
+          return id(-x);
+      }
+    )");
+  EXPECT_EQ(value, -9);
+}
+
+TEST(Operators_Arithmetic, unary_minus_binds_tighter_than_mul) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var a: i32 = 2;
+          return -a * 3;
+      }
+    )");
+  EXPECT_EQ(value, -6);
+}
+
+TEST(Operators_Arithmetic, unary_minus_on_unsigned_is_error) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      function main() i32 {
+          var x: u32 = 5;
+          var y: u32 = -x;
+          return 0;
+      }
+    )"),
+                                "Cannot negate a value of unsigned type");
+}
+
+TEST(Operators_Arithmetic, chained_operations) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var x: i32 = 10;
+          x = x + 5;
+          x = x * 2;
+          x = x - 10;
+          x = x / 2;
+          return x;
+      }
+    )");
+  EXPECT_EQ(value, 10);  // ((10+5)*2-10)/2 = (30-10)/2 = 10
+}
+
+TEST(Operators_Arithmetic, quotient_remainder_identity) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var a: i32 = 10;
+          var b: i32 = 3;
+          var quotient: i32 = a / b;
+          var remainder: i32 = a % b;
+          return quotient * b + remainder;
+      }
+    )");
+  EXPECT_EQ(value, 10);  // Verifies q*b + r = a
+}
+// ============================================================================
+// Untyped literal operands take the other operand's type
+// ============================================================================
+
+TEST(Operators_Arithmetic, narrow_int_plus_literal_stays_narrow) {
+  auto value = executeString(R"(
+      function to_i32(x: u8) i32 { return _convert<i32>(x); }
+
+      function main() i32 {
+          var c: u8 = 65;
+          // The literal adopts u8, so the argument matches the u8 parameter
+          return to_i32(c + 32);
+      }
+    )");
+  EXPECT_EQ(value, 97);
+}
+
+TEST(Operators_Arithmetic, narrow_int_literal_arithmetic_wraps) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var c: u8 = 200;
+          var sum: u8 = c + 100;  // wraps at 8 bits
+          var shifted: u8 = c << 1;
+          var masked: u8 = c & 15;
+          return _convert<i32>(sum) + _convert<i32>(shifted) + _convert<i32>(masked);
+      }
+    )");
+  EXPECT_EQ(value, 44 + 144 + 8);
+}
+
+TEST(Operators_Arithmetic, shift_amount_literal_does_not_narrow_result) {
+  auto value = executeString(R"(
+      function main() i64 {
+          var bits: u8 = 40;
+          var mask: i64 = 1 << bits;  // result follows the i64 left operand
+          return mask;
+      }
+    )");
+  EXPECT_EQ(value, static_cast<int64_t>(1) << 40);
+}
+
+TEST(Operators_Arithmetic, f32_plus_literal_stays_f32) {
+  auto value = executeString(R"(
+      function to_i32(x: f32) i32 { return _convert<i32>(x); }
+
+      function main() i32 {
+          var f: f32 = 1.5;
+          return to_i32(f * 2.0);
+      }
+    )");
+  EXPECT_EQ(value, 3);
+}
+
+TEST(Operators_Arithmetic, mixed_width_operands_promote_to_wider) {
+  auto value = executeString(R"(
+      function to_i32(x: i64) i32 { return _convert<i32>(x); }
+
+      function main() i32 {
+          var a: i32 = 1000000;
+          var b: i64 = 1000000;
+          // i32 + i64 is i64, which the i64 parameter accepts
+          return to_i32(a * b / b);
+      }
+    )");
+  EXPECT_EQ(value, 1000000);
+}
+
+TEST(Operators_Arithmetic, literal_too_wide_for_operand_is_error) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      function takes_u8(x: u8) i32 { return _convert<i32>(x); }
+
+      function main() i32 {
+          var c: u8 = 200;
+          return takes_u8(c + 1000);
+      }
+    )"),
+                                "No matching overload of 'takes_u8'");
+}
