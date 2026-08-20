@@ -270,6 +270,17 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
         type = rhsType;
       }
 
+      // Nothing can be stored in a variable of type void, and an inferred
+      // `var` has nothing to infer from a call that returns nothing.
+      if (type && sun::unwrapRef(type)->isVoid()) {
+        logAndThrowError(
+            declaredType
+                ? "Variable '" + varName + "' cannot have type 'void'"
+                : "Cannot infer a type for variable '" + varName +
+                      "': the value assigned to it produces no result",
+            varCreate.getLocation());
+      }
+
       validateTypeParameter(type, varCreate);
 
       // Note: Move semantics tracking is handled by the borrow checker
