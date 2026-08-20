@@ -710,3 +710,19 @@ TEST(Interfaces_DynamicDispatch, for_in_over_vec_of_interfaces) {
   // NumA(10).get() = 10, NumB(5).get() = 10, NumA(3).get() = 3
   EXPECT_EQ(value, 23);
 }
+TEST(Interfaces_DynamicDispatch, extra_argument_to_interface_method_is_error) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    interface IShape { function area() i32; }
+    class Square implements IShape {
+        var s: i32;
+        function init(s: i32) { this.s = s; }
+        function area() i32 { return this.s * this.s; }
+    }
+    function main() i32 {
+        var q = Square(2);
+        var shape: IShape = q;
+        return shape.area(7);
+    }
+  )"),
+                                "'area' expects 0 arguments, got 1");
+}

@@ -10,6 +10,53 @@
 
 using sun::unwrapRef;
 
+namespace {
+
+// "i32, ref Vec<i32>" — for call diagnostics.
+std::string formatTypeList(const std::vector<sun::TypePtr>& types) {
+  std::string out;
+  for (size_t i = 0; i < types.size(); ++i) {
+    if (i > 0) out += ", ";
+    out += types[i] ? types[i]->toDisplayString() : "unknown";
+  }
+  return out;
+}
+
+// "\n  - trim()\n  - trim(ref HeapAllocator)" — the candidate list shown
+// after "No matching overload".
+std::string formatCandidates(
+    const std::string& name,
+    const std::vector<std::vector<sun::TypePtr>>& candidates) {
+  std::string out;
+  for (const auto& params : candidates) {
+    out += "\n  - " + name + "(" + formatTypeList(params) + ")";
+  }
+  return out;
+}
+
+}  // namespace
+
+void SemanticAnalyzer::reportNoMethodForArgCount(
+    const sun::ClassType& cls, const std::string& name,
+    const std::vector<sun::TypePtr>& argTypes, const Position& loc) const {
+  std::vector<std::vector<sun::TypePtr>> candidates;
+  for (const auto& method : cls.getMethods()) {
+    if (method.name != name) continue;
+    // A generic method's recorded parameters are the uninstantiated ones, so
+    // their count is not something to hold the call to.
+    if (method.isGeneric()) return;
+    if (method.paramTypes.size() == argTypes.size()) return;
+    candidates.push_back(method.paramTypes);
+  }
+  if (candidates.empty()) return;
+
+  logAndThrowError("No matching overload of '" + name +
+                       "' for argument types (" + formatTypeList(argTypes) +
+                       "). Available overloads:" +
+                       formatCandidates(name, candidates),
+                   loc);
+}
+
 // -------------------------------------------------------------------
 // Main analysis entry point
 // -------------------------------------------------------------------
@@ -2638,6 +2685,9 @@ void SemanticAnalyzer::maybeResolveBoundMethodRef(MemberAccessAST& memberAccess,
 
 void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
                                    sun::TypePtr expectedType) {
+  // Set when the callee swallows a variadic pack, whose arguments are not
+  // part of the recorded parameter list — the arity check below sits out.
+  bool calleeTakesPack = false;
   // Check for unsafe intrinsic calls (non-generic)
   // Generic intrinsics (_load<T>, _store<T>, _address_of<T>) are checked in
   // type_inference.cpp
@@ -2863,6 +2913,7 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
               ? findGenericMethodAST(classType, methodName)
               : nullptr;
       if (genericMethod && genericMethod->getProto().hasVariadicConstraint()) {
+        calleeTakesPack = true;
         std::vector<sun::TypePtr> typeArgPtrs;
         for (const auto& ta : memberAccess.getTypeArguments()) {
           typeArgPtrs.push_back(typeAnnotationToType(*ta));
@@ -2891,6 +2942,12 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
           memberAccess.setResolvedType(
               sun::Types::Function(method->returnType, method->paramTypes));
         } else {
+          // No overload took these arguments. When the mismatch is the
+          // argument *count*, say so here: the fallback below picks an
+          // arbitrary overload, and a zero-parameter one leaves nothing for
+          // the arity check to compare against (issue #87).
+          reportNoMethodForArgCount(*classType, methodName, argTypes,
+                                    memberAccess.getLocation());
           // Fall back to first method with this name (will error on type
           // mismatch). Set the type directly (the object is already
           // analyzed) instead of analyzeExpr, so the callee is not converted
@@ -2929,15 +2986,23 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
     classType = std::static_pointer_cast<sun::ClassType>(calleeSunType);
   }
   std::vector<sun::TypePtr> paramTypes;
+  // Whether paramTypes came from a callee whose signature we actually know.
+  // An empty parameter list is a real signature (`f()`), so emptiness alone
+  // cannot stand in for "unknown" — that is what let calls to zero-parameter
+  // methods and lambdas past the arity check (issue #87).
+  bool knownSignature = false;
 
   if (resolvedFunc) {
     paramTypes = resolvedFunc->paramTypes;
+    knownSignature = true;
   } else if (calleeSunType && calleeSunType->isFunction()) {
     paramTypes = static_cast<const sun::FunctionType*>(calleeSunType.get())
                      ->getParamTypes();
+    knownSignature = true;
   } else if (calleeSunType && calleeSunType->isLambda()) {
     paramTypes = static_cast<const sun::LambdaType*>(calleeSunType.get())
                      ->getParamTypes();
+    knownSignature = true;
   } else if (classType && classType->isClass()) {
     // Class constructor call: look up init method with overload resolution
     auto* ct = static_cast<const sun::ClassType*>(classType.get());
@@ -2945,6 +3010,7 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
         accessibleMethodForArgs(*ct, "init", argTypes, callExpr.getLocation());
     if (initMethod) {
       paramTypes = initMethod->paramTypes;
+      knownSignature = true;
     } else if (!ct->getMethod("init") && !args.empty()) {
       // No init at all, but arguments were supplied. Field-wise construction
       // is spelled with a struct literal, where each field is named: relying
@@ -2975,11 +3041,14 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
   bool calleeIsCVariadic = resolvedFunc && resolvedFunc->isCVariadic;
   bool badArgCount = calleeIsCVariadic ? args.size() < paramTypes.size()
                                        : args.size() != paramTypes.size();
-  if (!paramTypes.empty() && badArgCount) {
+  if (knownSignature && !calleeTakesPack && badArgCount) {
     std::string funcName = "<unknown>";
     if (calleeASTType == ASTNodeType::VARIABLE_REFERENCE) {
       funcName = static_cast<const VariableReferenceAST&>(*callExpr.getCallee())
                      .getName();
+    } else if (calleeASTType == ASTNodeType::MEMBER_ACCESS) {
+      funcName = static_cast<const MemberAccessAST&>(*callExpr.getCallee())
+                     .getMemberName();
     }
     logAndThrowError("Function '" + funcName + "' expects " +
                          (calleeIsCVariadic ? "at least " : "") +

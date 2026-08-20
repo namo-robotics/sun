@@ -265,3 +265,13 @@ TEST(Lambdas_Throwing, throw_in_non_throwing_lambda_rejected) {
   )"),
                SunError);
 }
+
+TEST(Lambdas_Params, extra_argument_to_zero_parameter_lambda_is_error) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    function main() i32 {
+        var f = lambda() i32 { return 3; };
+        return f(9);
+    }
+  )"),
+                                "'f' expects 0 arguments, got 1");
+}
