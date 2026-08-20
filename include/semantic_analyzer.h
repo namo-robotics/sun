@@ -728,6 +728,13 @@ class SemanticAnalyzer : public AccessContext {
   const sun::ClassMethod* accessibleMethodForArgs(
       const sun::ClassType& cls, const std::string& name,
       const std::vector<sun::TypePtr>& argTypes, const Position& loc) const;
+  // Throws "No matching overload" when the class has methods called `name`
+  // but none of them takes `argTypes.size()` arguments. Silent otherwise, so
+  // callers can still fall back on their own type-mismatch diagnostics.
+  void reportNoMethodForArgCount(const sun::ClassType& cls,
+                                 const std::string& name,
+                                 const std::vector<sun::TypePtr>& argTypes,
+                                 const Position& loc) const;
   const sun::InterfaceField* accessibleField(const sun::InterfaceType& iface,
                                              const std::string& name,
                                              const Position& loc) const;

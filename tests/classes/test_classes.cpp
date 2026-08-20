@@ -1279,3 +1279,57 @@ TEST(Classes, method_calls_generic_class_declared_below_it) {
   )");
   EXPECT_EQ(value, 42);
 }
+
+// ============================================================================
+// Call arity diagnostics (issue #87)
+// ============================================================================
+
+TEST(Classes, extra_argument_to_zero_parameter_method_is_error) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Counter {
+        var n: i32;
+        function init() { this.n = 0; }
+        function bump() void { this.n = this.n + 1; }
+    }
+    function main() i32 { var c = Counter(); c.bump(5); return c.n; }
+  )"),
+                                "No matching overload of 'bump'");
+}
+
+TEST(Classes, wrong_argument_count_to_method_lists_overloads) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Counter {
+        var n: i32;
+        function init() { this.n = 0; }
+        function add(x: i32) void { this.n = this.n + x; }
+    }
+    function main() i32 { var c = Counter(); c.add(1, 2); return c.n; }
+  )"),
+                                "add(i32)");
+}
+
+TEST(Classes, missing_argument_to_method_is_error) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Counter {
+        var n: i32;
+        function init() { this.n = 0; }
+        function add(x: i32) void { this.n = this.n + x; }
+    }
+    function main() i32 { var c = Counter(); c.add(); return c.n; }
+  )"),
+                                "No matching overload of 'add'");
+}
+
+TEST(Classes, argument_to_zero_parameter_overload_picks_the_other_one) {
+  // The one-argument overload still resolves; the arity check must not fire.
+  auto value = executeString(R"(
+    class Counter {
+        var n: i32;
+        function init() { this.n = 0; }
+        function add() void { this.n = this.n + 1; }
+        function add(x: i32) void { this.n = this.n + x; }
+    }
+    function main() i32 { var c = Counter(); c.add(); c.add(41); return c.n; }
+  )");
+  EXPECT_EQ(value, 42);
+}
