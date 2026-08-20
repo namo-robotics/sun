@@ -103,6 +103,25 @@ public module sun {
       }
     }
 
+    // Construct from a string literal without naming an allocator.
+    // HeapAllocator is stateless, so a fresh one serves; the buffer keeps its
+    // own copy and frees itself through it as usual.
+    public function init(literal: static_ptr<u8>) {
+      var alloc: HeapAllocator = HeapAllocator();
+      var srcData: raw_ptr<u8> = _static_ptr_data<u8>(literal);
+      var srcLen: i64 = _static_ptr_len<u8>(literal);
+
+      var capacity: i64 = srcLen + 16;
+      this.data = ContiguousBuffer<u8>(alloc, capacity);
+      this.capacity_ = capacity;
+      this.len = srcLen;
+
+      for (var i: i64 = 0; i < srcLen; i = i + 1) {
+        var byte: u8 = unsafe { _load<u8>(srcData, i); };
+        this.data.set_unchecked(i, byte);
+      }
+    }
+
     // Construct from ContiguousBuffer with specified length
     // Copies `length` bytes from buffer to a new heap-allocated string
     // Throws IndexOutOfBoundsError if length > buffer.size()

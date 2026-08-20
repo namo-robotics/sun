@@ -2,12 +2,20 @@
 //
 // All error types implement the IError interface with:
 //   - code() -> i32: numeric error code
-//   - message() -> static_ptr<u8>: error description
+//   - message() -> String: an owned clone of the error description
+//
+// message() hands back a clone, so the text stays usable for as long as the
+// caller keeps it — independent of the error object and of whatever scope the
+// message was composed in.
+//
+// Error takes its message either as a literal or as a String built at runtime:
+//   throw Error(errno(), "failed to open file");
+//   throw Error(-1, path);   // path: a String built at runtime
 //
 // Usage:
 //   import "stdlib/errors.sun";
 //   using sun;
-//   
+//
 //   function pop_front() T, IError {
 //       if (this.isEmpty()) {
 //           throw EmptyError();
@@ -22,19 +30,28 @@ public module sun {
 
   public class Error implements IError {
     var code_: i32;
-    var message_: static_ptr<u8>;
+    var message_: String;
 
     public function init(code: i32, message: static_ptr<u8>) {
       this.code_ = code;
-      this.message_ = message;
+      this.message_ = String(message);
+    }
+
+    // The error keeps its own copy, so the String the caller built can go out
+    // of scope (or be thrown past).
+    public function init(code: i32, message: ref String) {
+      var alloc: HeapAllocator = HeapAllocator();
+      this.code_ = code;
+      this.message_ = message.clone(alloc);
     }
 
     public function code() i32 {
       return this.code_;
     }
 
-    public function message() static_ptr<u8> {
-      return this.message_;
+    public function message() String {
+      var alloc: HeapAllocator = HeapAllocator();
+      return this.message_.clone(alloc);
     }
   }
 
@@ -49,8 +66,8 @@ public module sun {
       return 1;
     }
 
-    public function message() static_ptr<u8> {
-      return "container is empty";
+    public function message() String {
+      return String("container is empty");
     }
   }
 
@@ -65,8 +82,8 @@ public module sun {
       return 2;
     }
 
-    public function message() static_ptr<u8> {
-      return "element not found";
+    public function message() String {
+      return String("element not found");
     }
   }
 
@@ -85,8 +102,8 @@ public module sun {
       return 3;
     }
 
-    public function message() static_ptr<u8> {
-      return "index out of bounds";
+    public function message() String {
+      return String("index out of bounds");
     }
 
     public function index() i64 {
@@ -105,8 +122,8 @@ public module sun {
       return 4;
     }
 
-    public function message() static_ptr<u8> {
-      return "division by zero";
+    public function message() String {
+      return String("division by zero");
     }
   }
 
@@ -121,8 +138,8 @@ public module sun {
       return 5;
     }
 
-    public function message() static_ptr<u8> {
-      return "arithmetic overflow";
+    public function message() String {
+      return String("arithmetic overflow");
     }
   }
 
@@ -131,18 +148,24 @@ public module sun {
   // ============================================================================
 
   public class InvalidArgumentError implements IError {
-    var message_: static_ptr<u8>;
+    var message_: String;
 
     public function init(message: static_ptr<u8>) {
-      this.message_ = message;
+      this.message_ = String(message);
+    }
+
+    public function init(message: ref String) {
+      var alloc: HeapAllocator = HeapAllocator();
+      this.message_ = message.clone(alloc);
     }
 
     public function code() i32 {
       return 6;
     }
 
-    public function message() static_ptr<u8> {
-      return this.message_;
+    public function message() String {
+      var alloc: HeapAllocator = HeapAllocator();
+      return this.message_.clone(alloc);
     }
   }
 
@@ -161,8 +184,8 @@ public module sun {
       return this.errno_;
     }
 
-    public function message() static_ptr<u8> {
-      return "I/O error";
+    public function message() String {
+      return String("I/O error");
     }
 
     public function errno() i32 {
@@ -185,8 +208,8 @@ public module sun {
       return 7;
     }
 
-    public function message() static_ptr<u8> {
-      return "memory allocation failed";
+    public function message() String {
+      return String("memory allocation failed");
     }
 
     public function requestedSize() i64 {

@@ -271,8 +271,8 @@ TEST_F(Stdlib_Io_File, file_read_returns_content) {
 // The sun.io File class
 // ============================================================================
 // The tests above drive the __file_* intrinsics directly. These go through
-// stdlib/io.sun, where a path is a raw_ptr<u8> — a literal narrows to one, and
-// a runtime String supplies one through c_str().
+// stdlib/io.sun, where every path is taken as a static_ptr<u8> (a literal) or
+// as a ref String (a path built at runtime).
 
 TEST_F(Stdlib_Io_File, sun_io_file_literal_path_round_trip) {
   std::string path = testFile("literal.txt");
@@ -314,11 +314,11 @@ TEST_F(Stdlib_Io_File, sun_io_file_runtime_string_path) {
             dir.append_literal("/runtime.txt");
 
             var body = String(a, "runtime path");
-            write_string(dir.c_str(), body);
+            write_string(dir, body);
 
-            var back = read_to_string(a, dir.c_str());
+            var back = read_to_string(a, dir);
             if (not back.equals_literal("runtime path")) { return 1; }
-            if (file_size(dir.c_str()) != 12) { return 2; }
+            if (file_size(dir) != 12) { return 2; }
         } catch (e: IError) {
             return 3;
         }

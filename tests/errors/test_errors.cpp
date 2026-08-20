@@ -1061,3 +1061,148 @@ TEST(Errors, throw_after_loop_exceeds_limit) {
   // sum = 1+2+...+10 = 55 > 20, so process throws
   EXPECT_EQ(value, -1);
 }
+
+// ============================================================================
+// Error with a message computed at runtime (issue #84)
+// ============================================================================
+
+TEST(Errors, error_carries_a_computed_string_message) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function boom(path: ref String) void, IError {
+      throw Error(-7, path);
+    }
+
+    function main() i32 {
+      var a = make_heap_allocator();
+      var path = String(a, "/tmp/");
+      path.append("computed.txt");
+      try {
+        boom(path);
+      } catch (e: IError) {
+        // The message outlives the String's scope: Error keeps its own copy.
+        var msg: String = e.message();
+        if (not msg.equals(path)) { return -2; }
+        return e.code();
+      }
+      return 0;
+    }
+  )");
+  EXPECT_EQ(value, -7);
+}
+
+TEST(Errors, computed_error_message_survives_the_string_it_came_from) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    // The String is built, moved into the Error and dropped here; only the
+    // Error's copy is left for the caller to read.
+    function make(a: ref HeapAllocator) void, IError {
+      var msg = String(a, "gone");
+      msg.append(" by now");
+      throw Error(3, msg);
+    }
+
+    function main() i32 {
+      var a = make_heap_allocator();
+      try {
+        make(a);
+      } catch (e: IError) {
+        var text: String = e.message();
+        if (text.length() != 11) { return -2; }
+        // 'g' is 103: the clone is real bytes, not freed storage.
+        if (text.at(0) != 103) { return -3; }
+        return e.code();
+      }
+      return 0;
+    }
+  )");
+  EXPECT_EQ(value, 3);
+}
+
+TEST(Errors, error_still_takes_a_literal_message) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+      var e: Error = Error(5, "plain literal");
+      var msg: String = e.message();
+      return e.code() + _convert<i32>(msg.length());
+    }
+  )");
+  EXPECT_EQ(value, 18);  // 5 + 13
+}
+
+TEST(Errors, message_returns_an_independent_clone_each_time) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+      var e: Error = Error(1, "abc");
+      var first: String = e.message();
+      first.append("!");
+      // Mutating one clone must not leak into the next.
+      var second: String = e.message();
+      return _convert<i32>(first.length() * 10 + second.length());
+    }
+  )");
+  EXPECT_EQ(value, 43);  // first grew to 4, second is a fresh 3
+}
+
+TEST(Errors, without_stdlib_message_stays_literal_only) {
+  // No stdlib loaded: there is no String class, so IError keeps its
+  // registered static_ptr<u8> message contract.
+  auto value = executeString(R"(
+    class Boom implements IError {
+      function init() {}
+      function code() i32 { return 9; }
+      function message() static_ptr<u8> { return "boom"; }
+    }
+
+    function main() i32 {
+      var b: Boom = Boom();
+      return b.code() + _convert<i32>(_static_ptr_len<u8>(b.message()));
+    }
+  )");
+  EXPECT_EQ(value, 13);  // 9 + 4
+}
+
+// ============================================================================
+// Call diagnostics name the callee (issue #84)
+// ============================================================================
+
+TEST(Errors, argument_mismatch_on_a_method_names_the_method) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
+        class Counter {
+          var n: i32;
+          function init() { this.n = 0; }
+          function add(step: i32) void { this.n = this.n + step; }
+        }
+
+        function main() i32 {
+          var c: Counter = Counter();
+          c.add(1.5);
+          return 0;
+        }
+      )"),
+      "call to 'add'");
+}
+
+TEST(Errors, no_matching_constructor_lists_the_candidates) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
+        class Pair {
+          var a: i32;
+          function init(a: i32) { this.a = a; }
+          function init(a: i32, b: i32) { this.a = a + b; }
+        }
+
+        function main() i32 {
+          var p: Pair = Pair(true);
+          return 0;
+        }
+      )"),
+      "candidate: init(i32, i32)");
+}

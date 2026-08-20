@@ -37,8 +37,8 @@ public module sun {
       return 60;
     }
 
-    public function message() static_ptr<u8> {
-      return this.message_;
+    public function message() String {
+      return String(this.message_);
     }
 
     // Byte offset into the parsed text, or -1 for non-parse errors
