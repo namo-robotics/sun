@@ -155,7 +155,7 @@ TEST_F(Stdlib_Io_Dir, read_dir_accepts_a_runtime_string_path) {
     function count(a: ref HeapAllocator) i64, IError {
         // A path built at runtime, not a literal
         var dir = String(a, ")" + testDir + R"(");
-        var entries = read_dir(a, dir.c_str());
+        var entries = read_dir(a, dir);
         return entries.size();
     }
 

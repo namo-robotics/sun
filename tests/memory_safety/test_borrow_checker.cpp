@@ -409,7 +409,7 @@ TEST(MemorySafety_BorrowChecker, ref_return_through_match_binding_of_this) {
     class OutOfRange implements IError {
       function init() {}
       function code() i32 { return 3; }
-      function message() static_ptr<u8> { return "out of range"; }
+      function message() String { return String("out of range"); }
     }
 
     enum Value {

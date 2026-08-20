@@ -99,7 +99,7 @@ sources, only `add_subdirectory` calls.
 class DivByZero implements IError {
     function init() {}
     function code() i32 { return 1; }
-    function message() static_ptr<u8> { return "division by zero"; }
+    function message() String { return String("division by zero"); }
 }
 function divide(a: i32, b: i32) i32, IError {
     if (b == 0) { throw DivByZero(); }
@@ -109,6 +109,9 @@ try { var r = divide(10, x); } catch (e: IError) { return -1; }
 ```
 
 `throw` takes a class implementing `IError` (never a bare int). `try` is block-form only.
+With the stdlib loaded, `IError.message()` returns an owned `String` clone (the builtin
+registration starts as `static_ptr<u8>` and is retargeted once `sun.String` is registered,
+so stdlib-less programs stay literal-only).
 
 ## Memory Allocation
 

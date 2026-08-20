@@ -229,7 +229,17 @@ public module sun {
       var stdout_mode: Stdio;
       var stderr_mode: Stdio;
 
-      public function init(allocator: ref HeapAllocator, program: raw_ptr<u8>) {
+      public function init(allocator: ref HeapAllocator, program: static_ptr<u8>) {
+        this.alloc = allocator.copy();
+        this.blob = String(allocator, "");
+        this.offsets = Vec<i64>(allocator, 4);
+        this.stdin_mode = Stdio.Inherit;
+        this.stdout_mode = Stdio.Inherit;
+        this.stderr_mode = Stdio.Inherit;
+        this.arg(program);
+      }
+
+      public function init(allocator: ref HeapAllocator, program: ref String) {
         this.alloc = allocator.copy();
         this.blob = String(allocator, "");
         this.offsets = Vec<i64>(allocator, 4);
@@ -240,14 +250,12 @@ public module sun {
       }
 
       // Append one argument. The program itself is argv[0].
-      public function arg(value: raw_ptr<u8>) void {
+      public function arg(value: static_ptr<u8>) void {
         this.offsets.push(this.blob.length());
-        var i: i64 = 0;
-        var ch: u8 = unsafe { _load<u8>(value, 0); };
-        while (ch != 0) {
-          this.blob.append_char(ch);
-          i = i + 1;
-          ch = unsafe { _load<u8>(value, i); };
+        var data: raw_ptr<u8> = _static_ptr_data<u8>(value);
+        var len: i64 = _static_ptr_len<u8>(value);
+        for (var i: i64 = 0; i < len; i = i + 1) {
+          this.blob.append_char(unsafe { _load<u8>(data, i); });
         }
         this.blob.append_char(0);
       }

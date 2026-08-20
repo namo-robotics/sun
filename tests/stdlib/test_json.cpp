@@ -153,7 +153,8 @@ TEST(Stdlib_Json, parse_errors_report_offsets) {
             return -1;
         } catch (e: IError) {
             if (e.code() != 60) { return -100; }
-            var msg: static_ptr<u8> = e.message();
+            var msg: String = e.message();
+            if (msg.isEmpty()) { return -101; }
             return -2;
         }
     }

@@ -1771,6 +1771,18 @@ void SemanticAnalyzer::registerClassShape(
         .visibility = methodVisibility(*methodDecl.function);
   }
   setCurrentClass(savedClass);
+
+  // The builtin IError predates all source, so it is registered with
+  // message() returning static_ptr<u8> — the only string type that exists at
+  // that point. The stdlib upgrades the contract: once sun.String is known,
+  // IError.message() returns an owned String clone, and every implementation
+  // compiled after this line must match that signature.
+  if (typeRegistry && qualifiedClass.baseName == "String" &&
+      !qualifiedClass.owner().empty() && qualifiedClass.owner().back() == "sun") {
+    if (auto ierror = typeRegistry->getInterface("IError")) {
+      ierror->setMethodReturnType("message", classType);
+    }
+  }
 }
 
 // -------------------------------------------------------------------
@@ -3041,11 +3053,38 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
         if (i > 0) argList += ", ";
         argList += argTypes[i] ? argTypes[i]->toDisplayString() : "?";
       }
+      // List what the class does declare — with overloads, "no match" alone
+      // leaves the caller guessing which one they nearly hit.
+      std::string candidates;
+      for (const auto& method : ct->getMethods()) {
+        if (method.name != "init") continue;
+        std::string params;
+        for (size_t i = 0; i < method.paramTypes.size(); ++i) {
+          if (i > 0) params += ", ";
+          params += method.paramTypes[i] ? method.paramTypes[i]->toDisplayString()
+                                         : "?";
+        }
+        candidates += "\n       candidate: init(" + params + ")";
+      }
       logAndThrowError("No matching constructor for '" + ct->toString() +
-                           "' with arguments (" + argList + ")",
+                           "' with arguments (" + argList + ")" + candidates,
                        callExpr.getLocation());
     }
   }
+
+  // What to call the callee in diagnostics: a plain call gives its function
+  // name, a method call its member name. Only a plain call can name an
+  // intrinsic, so the intrinsic-only conversions below key off that form.
+  std::string funcName = "<unknown>";
+  if (calleeASTType == ASTNodeType::VARIABLE_REFERENCE) {
+    funcName =
+        static_cast<const VariableReferenceAST&>(*callExpr.getCallee()).getName();
+  } else if (calleeASTType == ASTNodeType::MEMBER_ACCESS) {
+    funcName = static_cast<const MemberAccessAST&>(*callExpr.getCallee())
+                   .getMemberName();
+  }
+  bool calleeIsIntrinsic = calleeASTType == ASTNodeType::VARIABLE_REFERENCE &&
+                           isIntrinsic(funcName);
 
   // Check argument count. A C-variadic callee fixes only its leading
   // parameters, so extra trailing arguments are allowed.
@@ -3053,14 +3092,6 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
   bool badArgCount = calleeIsCVariadic ? args.size() < paramTypes.size()
                                        : args.size() != paramTypes.size();
   if (knownSignature && !calleeTakesPack && badArgCount) {
-    std::string funcName = "<unknown>";
-    if (calleeASTType == ASTNodeType::VARIABLE_REFERENCE) {
-      funcName = static_cast<const VariableReferenceAST&>(*callExpr.getCallee())
-                     .getName();
-    } else if (calleeASTType == ASTNodeType::MEMBER_ACCESS) {
-      funcName = static_cast<const MemberAccessAST&>(*callExpr.getCallee())
-                     .getMemberName();
-    }
     logAndThrowError("Function '" + funcName + "' expects " +
                          (calleeIsCVariadic ? "at least " : "") +
                          std::to_string(paramTypes.size()) +
@@ -3086,15 +3117,6 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
       if (argType && paramType && !paramType->equals(*argType)) {
         // Allow implicit conversions for compatible types
         bool compatible = false;
-
-        // Get function name for error messages
-        std::string funcName = "<unknown>";
-        if (callExpr.getCallee()->getType() ==
-            ASTNodeType::VARIABLE_REFERENCE) {
-          funcName =
-              static_cast<const VariableReferenceAST&>(*callExpr.getCallee())
-                  .getName();
-        }
 
         // Reference parameter accepts the referenced type directly
         if (paramType->isReference()) {
@@ -3193,7 +3215,7 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
         // (like C's void*). Only for intrinsics (functions starting with '_')
         // to avoid accidental type erasure in user code
         if (argType->isRawPointer() && paramType->isRawPointer() &&
-            isIntrinsic(funcName)) {
+            calleeIsIntrinsic) {
           auto* paramRawPtr =
               static_cast<const sun::RawPointerType*>(paramType.get());
           if (paramRawPtr->getPointeeType()->isInt8() ||
@@ -3245,12 +3267,6 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
   }
   if (calleeThrows) {
     if (!isInTryBlock() && !isInThrowingFunction()) {
-      std::string funcName = "<unknown>";
-      if (calleeASTType == ASTNodeType::VARIABLE_REFERENCE) {
-        funcName =
-            static_cast<const VariableReferenceAST&>(*callExpr.getCallee())
-                .getName();
-      }
       logAndThrowError(
           "Call to throwing function '" + funcName +
               "' must be in a try block or in a function declared with ', "

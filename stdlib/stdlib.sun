@@ -7,7 +7,6 @@ manifest {
     suns: [
         "allocator.sun",
         "unique.sun",
-        "errors.sun",
         "sys.sun",
         "option.sun",
         "math.sun",
@@ -17,6 +16,7 @@ manifest {
         "vec.sun",
         "matrix.sun",
         "string.sun",
+        "errors.sun",
         "print.sun",
         "map.sun",
         "linked_list.sun",

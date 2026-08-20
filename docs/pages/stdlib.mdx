@@ -164,6 +164,7 @@ A heap-allocated mutable string backed by `Matrix<u8>`. Supports slicing via the
 ```sun
 var allocator = make_heap_allocator();
 var s = String(allocator, "Hello");
+var t = String("literal only");  // allocator-less: uses a fresh HeapAllocator
 println(s.length());   // 5
 var ch = s.at(0);          // 72 ('H')
 s.append_char(33);         // Append '!'
@@ -305,9 +306,9 @@ See [Threads](/threads) for usage with spawned threads.
 
 ## File I/O
 
-`stdlib/io.sun` (module `sun.io`). A path is a `raw_ptr<u8>`: a string literal
-narrows to one automatically, and a path built at runtime supplies one through
-`String.c_str()`.
+`stdlib/io.sun` (module `sun.io`). Every path is taken two ways: as a
+`static_ptr<u8>` — what a string literal is — and as a `ref String` for a path
+put together at runtime.
 
 ```sun
 using sun;
@@ -328,7 +329,7 @@ var text = read_to_string(alloc, "notes.txt");
 // A runtime path
 var path = String(alloc, "/tmp/");
 path.append_literal("report.csv");
-write_string(path.c_str(), text);
+write_string(path, text);
 ```
 
 `FileMode` is `Read` (must exist), `Write` (create or truncate) or `Append`.
@@ -336,7 +337,7 @@ write_string(path.c_str(), text);
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `open` | `(path: raw_ptr<u8>, mode: FileMode) void, IError` | Open a file |
+| `open` | `(path: Path, mode: FileMode) void, IError` | Open a file |
 | `adopt` | `(fd: i32) void` | Take ownership of an open descriptor |
 | `write` | `(data: static_ptr<u8>) i64` / `(data: ref String) i64` | Bytes written |
 | `write_bytes` | `(buf: raw_ptr<u8>, len: i64) i64` | Write raw bytes |
@@ -355,14 +356,18 @@ Free functions:
 
 | Function | Signature |
 |----------|-----------|
-| `read_to_string` | `(alloc: ref HeapAllocator, path: raw_ptr<u8>) String, IError` |
-| `write_string` | `(path: raw_ptr<u8>, contents: ref String) void, IError` |
-| `remove_file` / `remove_dir` | `(path: raw_ptr<u8>) void, IError` |
-| `rename_file` | `(old_path: raw_ptr<u8>, new_path: raw_ptr<u8>) void, IError` |
-| `make_dir` | `(path: raw_ptr<u8>, mode: i32) void, IError` |
-| `exists` / `is_dir` / `is_file` | `(path: raw_ptr<u8>) bool` |
-| `file_size` | `(path: raw_ptr<u8>) i64, IError` |
+| `read_to_string` | `(alloc: ref HeapAllocator, path: Path) String, IError` |
+| `write_string` | `(path: Path, contents: ref String) void, IError` |
+| `remove_file` / `remove_dir` | `(path: Path) void, IError` |
+| `rename_file` | `(old_path: Path, new_path: Path) void, IError` |
+| `make_dir` | `(path: Path, mode: i32) void, IError` |
+| `exists` / `is_dir` / `is_file` | `(path: Path) bool` |
+| `file_size` | `(path: Path) i64, IError` |
 | `read_line` | `(alloc: ref HeapAllocator) Option<String>` |
+
+`Path` stands for the two overloads each of these has: `static_ptr<u8>` (a
+string literal) and `ref String` (a path built at runtime). `rename_file` has
+all four combinations.
 
 `read_line` reads stdin one byte at a time and strips the newline, returning
 `None` only at end of input with nothing read. It is deliberately unbuffered: a
@@ -394,7 +399,7 @@ for (var e: DirEntry in entries) {
 
 | Item | Signature | Description |
 |------|-----------|-------------|
-| `read_dir` | `(alloc: ref HeapAllocator, path: raw_ptr<u8>) Vec<DirEntry>, IError` | `.` and `..` excluded, filesystem order |
+| `read_dir` | `(alloc: ref HeapAllocator, path: Path) Vec<DirEntry>, IError` | `.` and `..` excluded, filesystem order |
 | `DirEntry.name` | `() ref String` | Borrowed — the entry keeps it |
 | `DirEntry.kind` | `() FileKind` | `File`, `Dir`, `Symlink`, `Other` or `Unknown` |
 | `DirEntry.is_dir` / `is_file` | `() bool` | |
@@ -449,13 +454,17 @@ var here = cwd(alloc);
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `get` | `(alloc: ref HeapAllocator, name: raw_ptr<u8>) Option<String>` | `None` if unset |
-| `has` | `(name: raw_ptr<u8>) bool` | Set at all, whatever the value |
-| `set` | `(name: raw_ptr<u8>, value: raw_ptr<u8>) void, IError` | Replaces any existing value |
-| `remove` | `(name: raw_ptr<u8>) void, IError` | Removing an unset variable is fine |
+| `get` | `(alloc: ref HeapAllocator, name: Name) Option<String>` | `None` if unset |
+| `has` | `(name: Name) bool` | Set at all, whatever the value |
+| `set` | `(name: Name, value: Name) void, IError` | Replaces any existing value |
+| `remove` | `(name: Name) void, IError` | Removing an unset variable is fine |
 | `cwd` | `(alloc: ref HeapAllocator) String, IError` | Working directory |
-| `set_cwd` | `(path: raw_ptr<u8>) void, IError` | Process-wide, and it persists |
+| `set_cwd` | `(path: Name) void, IError` | Process-wide, and it persists |
 | `args` | `(alloc: ref HeapAllocator, argc: i32, argv: raw_ptr<raw_ptr<i8>>) Vec<String>` | `argv[0]` first |
+
+`Name` stands for the two overloads each of these has: `static_ptr<u8>` (a
+literal) and `ref String` (a name or value built at runtime). `set` has all
+four combinations.
 
 `args` takes `argc` and `argv` from `main` rather than discovering them. Under
 the JIT the running process is the compiler, so its own argv is not the
@@ -494,8 +503,8 @@ println(out.stdout());     // hello
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `init` | `(alloc: ref HeapAllocator, program: raw_ptr<u8>)` | The program is `argv[0]` |
-| `arg` | `(value: raw_ptr<u8>) void` / `(value: ref String) void` | Append one argument |
+| `init` | `(alloc: ref HeapAllocator, program: static_ptr<u8> \| ref String)` | The program is `argv[0]` |
+| `arg` | `(value: static_ptr<u8>) void` / `(value: ref String) void` | Append one argument |
 | `stdin` / `stdout` / `stderr` | `(mode: Stdio) void` | `Inherit`, `Piped` or `Null` |
 | `start` | `() Child, IError` | Run it, return immediately |
 | `status` | `() i32, IError` | Run to completion, inheriting the streams |
@@ -788,7 +797,10 @@ non-finite floats become `null`.
 
 ## Error Types
 
-All error types implement `IError` with `code() i32` and `message() static_ptr<u8>` methods.
+All error types implement `IError` with `code() i32` and `message() String`
+methods. `message()` returns an owned clone of the description, so the text
+stays usable for as long as the caller keeps it, independent of the error
+object itself.
 
 | Error Type | Code | Description |
 |------------|------|-------------|
@@ -809,6 +821,23 @@ function pop_first(v: ref Vec<i32>) i32, IError {
         throw EmptyError();
     }
     return v.get(0);
+}
+```
+
+`Error` takes its message either as a literal or as a `String` put together at
+runtime. Given a `String` it keeps its own copy, so the message stays readable
+after the `String` it came from is gone — including in a caller that catches the
+error several frames up.
+
+```sun
+var path = String(alloc, "/tmp/");
+path.append(name);
+throw Error(errno(), path);
+
+// ... several frames up:
+catch (e: IError) {
+    var msg: String = e.message();   // an owned clone
+    eprintln(msg);
 }
 ```
 

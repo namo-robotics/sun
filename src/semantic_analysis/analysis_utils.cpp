@@ -260,6 +260,15 @@ bool SemanticAnalyzer::isAssignableTo(const sun::TypePtr& from,
   // Exact equality always works
   if (from->equals(*to)) return true;
 
+  // A static_ptr narrows to a raw_ptr of the same pointee (the data pointer
+  // is extracted). The reverse never holds: a raw_ptr carries no length and
+  // no promise the bytes are immortal, so it cannot become a static_ptr.
+  if (from->isStaticPointer() && to->isRawPointer()) {
+    auto* s = static_cast<const sun::StaticPointerType*>(from.get());
+    auto* r = static_cast<const sun::RawPointerType*>(to.get());
+    if (s->getPointeeType()->equals(*r->getPointeeType())) return true;
+  }
+
   // Numeric widening
   if (from->isPrimitive() && to->isPrimitive()) {
     auto fromKind = from->getKind();

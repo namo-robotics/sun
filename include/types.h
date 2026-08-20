@@ -453,10 +453,10 @@ class StaticPointerType : public Type {
   bool equals(const Type& other) const override {
     // Static pointer is compatible with null
     if (other.isNullPointer()) return true;
-    // Static pointer is compatible with raw_ptr (implicit conversion)
-    if (auto* r = dynamic_cast<const RawPointerType*>(&other)) {
-      return pointeeType->equals(*r->getPointeeType());
-    }
+    // A raw_ptr does NOT satisfy a static_ptr: the fat pointer needs a length
+    // and a promise the bytes are immortal, and a bare pointer carries
+    // neither. The other direction (a static_ptr where raw_ptr is expected)
+    // lives in RawPointerType::equals — narrowing loses nothing.
     if (auto* p = dynamic_cast<const StaticPointerType*>(&other)) {
       return pointeeType->equals(*p->pointeeType);
     }
@@ -1181,6 +1181,18 @@ class ClassType : public Type {
         }
         allExact = false;
 
+        // A static_ptr argument narrows to a raw_ptr parameter of the same
+        // pointee: the data pointer is passed. Never the other way around.
+        if (method.paramTypes[i]->isRawPointer() &&
+            argTypes[i]->isStaticPointer()) {
+          auto* r =
+              static_cast<const RawPointerType*>(method.paramTypes[i].get());
+          auto* s = static_cast<const StaticPointerType*>(argTypes[i].get());
+          if (s->getPointeeType()->equals(*r->getPointeeType())) {
+            continue;
+          }
+        }
+
         // Reference parameter accepts the referenced type
         if (method.paramTypes[i]->isReference()) {
           auto* refType =
@@ -1476,6 +1488,19 @@ class InterfaceType : public Type {
       if (method.name == methodName) return &method;
     }
     return nullptr;
+  }
+
+  // Rebind one method's return type. Exists for the builtin IError: it is
+  // registered before any source is read, so message() starts as
+  // static_ptr<u8> and is retargeted to the String class when the stdlib
+  // registers one (see SemanticAnalyzer::registerClassShape).
+  void setMethodReturnType(const std::string& methodName, TypePtr returnType) {
+    for (auto& method : methods) {
+      if (method.name == methodName) {
+        method.returnType = std::move(returnType);
+        return;
+      }
+    }
   }
 
   // Get methods that don't have default implementations (must be implemented by
@@ -2080,11 +2105,15 @@ class TypeRegistry {
   // Register built-in types (IError). The iteration protocol
   // (IIterator/IIterable) lives in stdlib/iterator.sun since it names Option.
   void registerBuiltins() {
-    // Create IError interface with code() and message() methods
+    // Create IError interface with code() and message() methods.
+    // message() starts as static_ptr<u8> — the only string type that exists
+    // before any source is read. When the stdlib's String class is registered,
+    // the return type is retargeted to it (an owned clone of the message), so
+    // errors can carry text composed at runtime. Without the stdlib, message()
+    // stays literal-only.
     auto ierror = std::make_shared<InterfaceType>("IError");
     ierror->addMethod("code", Types::Int32(), {}, true);  // code() -> i32
-    ierror->addMethod("message", Types::String(), {},
-                      true);  // message() -> static_ptr<u8>
+    ierror->addMethod("message", Types::String(), {}, true);
     interfaceCache["IError"] = ierror;
   }
 
@@ -2373,11 +2402,10 @@ inline bool Type::isString() const {
 inline bool RawPointerType::equals(const Type& other) const {
   // Raw pointer is compatible with null
   if (other.isNullPointer()) return true;
-  // Raw pointer is compatible with static_ptr (static_ptr can convert to
-  // raw_ptr)
-  if (auto* s = dynamic_cast<const StaticPointerType*>(&other)) {
-    return pointeeType->equals(*s->getPointeeType());
-  }
+  // NOT compatible with static_ptr in either direction here: equals is used
+  // symmetrically, and only one direction is sound. The static_ptr → raw_ptr
+  // narrowing lives in the explicit conversion rules (isAssignableTo, the
+  // overload matchers, and analyzeCall).
   if (auto* p = dynamic_cast<const RawPointerType*>(&other)) {
     return pointeeType->equals(*p->pointeeType);
   }

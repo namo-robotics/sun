@@ -22,8 +22,8 @@ public module sun {
       return 40;
     }
 
-    public function message() static_ptr<u8> {
-      return this.message_;
+    public function message() String {
+      return String(this.message_);
     }
   }
 

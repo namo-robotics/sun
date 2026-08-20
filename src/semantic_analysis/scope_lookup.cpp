@@ -282,6 +282,14 @@ static bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
   if (!from || !to) return false;
   if (to->equals(*from)) return true;
 
+  // A static_ptr narrows to a raw_ptr of the same pointee; a raw_ptr can
+  // never widen to a static_ptr (no length, no immortality promise).
+  if (from->isStaticPointer() && to->isRawPointer()) {
+    auto* s = static_cast<const sun::StaticPointerType*>(from.get());
+    auto* r = static_cast<const sun::RawPointerType*>(to.get());
+    if (s->getPointeeType()->equals(*r->getPointeeType())) return true;
+  }
+
   // Numeric widening
   if (from->isPrimitive() && to->isPrimitive()) {
     auto fromKind = from->getKind();

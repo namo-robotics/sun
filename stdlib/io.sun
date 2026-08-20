@@ -12,8 +12,9 @@
 //       // Handle error
 //   }
 //
-// Paths are raw_ptr<u8>: a string literal narrows to one automatically, and a
-// runtime String supplies one through `s.c_str()`.
+// Every path is taken two ways: as a static_ptr<u8> — what a string literal
+// is — and as a `ref String` for a path put together at runtime. Both feed the
+// same private worker, which talks to C through a raw NUL-terminated pointer.
 
 public module sun {
   public module io {
@@ -94,7 +95,15 @@ public module sun {
       }
 
       // Open a file with the specified mode
-      public function open(path: raw_ptr<u8>, mode: FileMode) void, IError {
+      public function open(path: static_ptr<u8>, mode: FileMode) void, IError {
+        this.open_cstr(_static_ptr_data<u8>(path), mode);
+      }
+
+      public function open(path: ref String, mode: FileMode) void, IError {
+        this.open_cstr(path.c_str(), mode);
+      }
+
+      function open_cstr(path: raw_ptr<u8>, mode: FileMode) void, IError {
         var result: i32 = unsafe { c_open(path, open_flags(mode), CREATE_MODE); };
         if (result < 0) {
           throw Error(errno(), "failed to open file");
@@ -206,7 +215,7 @@ public module sun {
     // Whole-file helpers
     // -------------------------------------------------------------------
 
-    public function read_to_string(alloc: ref HeapAllocator, path: raw_ptr<u8>) String, IError {
+    public function read_to_string(alloc: ref HeapAllocator, path: static_ptr<u8>) String, IError {
       var f: File = File();
       f.open(path, FileMode.Read);
       var text: String = f.read_all(alloc);
@@ -214,7 +223,24 @@ public module sun {
       return text;
     }
 
-    public function write_string(path: raw_ptr<u8>, contents: ref String) void, IError {
+    public function read_to_string(alloc: ref HeapAllocator, path: ref String) String, IError {
+      var f: File = File();
+      f.open(path, FileMode.Read);
+      var text: String = f.read_all(alloc);
+      f.close();
+      return text;
+    }
+
+    public function write_string(path: static_ptr<u8>, contents: ref String) void, IError {
+      var f: File = File();
+      f.open(path, FileMode.Write);
+      if (f.write(contents) < 0) {
+        throw Error(errno(), "failed to write file");
+      }
+      f.close();
+    }
+
+    public function write_string(path: ref String, contents: ref String) void, IError {
       var f: File = File();
       f.open(path, FileMode.Write);
       if (f.write(contents) < 0) {
@@ -227,36 +253,76 @@ public module sun {
     // Paths
     // -------------------------------------------------------------------
 
-    // Remove a file
-    public function remove_file(path: raw_ptr<u8>) void, IError {
+    function remove_file_cstr(path: raw_ptr<u8>) void, IError {
       var result: i32 = unsafe { c_unlink(path); };
       if (result < 0) {
         throw Error(errno(), "failed to remove file");
       }
     }
 
-    // Rename or move a file
-    public function rename_file(old_path: raw_ptr<u8>, new_path: raw_ptr<u8>) void, IError {
+    // Remove a file
+    public function remove_file(path: static_ptr<u8>) void, IError {
+      remove_file_cstr(_static_ptr_data<u8>(path));
+    }
+
+    public function remove_file(path: ref String) void, IError {
+      remove_file_cstr(path.c_str());
+    }
+
+    function rename_file_cstr(old_path: raw_ptr<u8>, new_path: raw_ptr<u8>) void, IError {
       var result: i32 = unsafe { c_rename(old_path, new_path); };
       if (result < 0) {
         throw Error(errno(), "failed to rename file");
       }
     }
 
-    // Create a directory with the specified mode (e.g. 0755 = 493)
-    public function make_dir(path: raw_ptr<u8>, mode: i32) void, IError {
+    // Rename or move a file
+    public function rename_file(old_path: static_ptr<u8>, new_path: static_ptr<u8>) void, IError {
+      rename_file_cstr(_static_ptr_data<u8>(old_path), _static_ptr_data<u8>(new_path));
+    }
+
+    public function rename_file(old_path: static_ptr<u8>, new_path: ref String) void, IError {
+      rename_file_cstr(_static_ptr_data<u8>(old_path), new_path.c_str());
+    }
+
+    public function rename_file(old_path: ref String, new_path: static_ptr<u8>) void, IError {
+      rename_file_cstr(old_path.c_str(), _static_ptr_data<u8>(new_path));
+    }
+
+    public function rename_file(old_path: ref String, new_path: ref String) void, IError {
+      rename_file_cstr(old_path.c_str(), new_path.c_str());
+    }
+
+    function make_dir_cstr(path: raw_ptr<u8>, mode: i32) void, IError {
       var result: i32 = unsafe { c_mkdir(path, mode); };
       if (result < 0) {
         throw Error(errno(), "failed to create directory");
       }
     }
 
-    // Remove an empty directory
-    public function remove_dir(path: raw_ptr<u8>) void, IError {
+    // Create a directory with the specified mode (e.g. 0755 = 493)
+    public function make_dir(path: static_ptr<u8>, mode: i32) void, IError {
+      make_dir_cstr(_static_ptr_data<u8>(path), mode);
+    }
+
+    public function make_dir(path: ref String, mode: i32) void, IError {
+      make_dir_cstr(path.c_str(), mode);
+    }
+
+    function remove_dir_cstr(path: raw_ptr<u8>) void, IError {
       var result: i32 = unsafe { c_rmdir(path); };
       if (result < 0) {
         throw Error(errno(), "failed to remove directory");
       }
+    }
+
+    // Remove an empty directory
+    public function remove_dir(path: static_ptr<u8>) void, IError {
+      remove_dir_cstr(_static_ptr_data<u8>(path));
+    }
+
+    public function remove_dir(path: ref String) void, IError {
+      remove_dir_cstr(path.c_str());
     }
 
     // -------------------------------------------------------------------
@@ -266,12 +332,20 @@ public module sun {
     // different field order and padding on x86-64 and aarch64 glibc, and the
     // stdlib is compiled from one source for both.
 
-    // Does the path exist? access(path, F_OK)
-    public function exists(path: raw_ptr<u8>) bool {
+    function exists_cstr(path: raw_ptr<u8>) bool {
       return unsafe { c_access(path, 0); } == 0;
     }
 
-    public function is_dir(path: raw_ptr<u8>) bool {
+    // Does the path exist? access(path, F_OK)
+    public function exists(path: static_ptr<u8>) bool {
+      return exists_cstr(_static_ptr_data<u8>(path));
+    }
+
+    public function exists(path: ref String) bool {
+      return exists_cstr(path.c_str());
+    }
+
+    function is_dir_cstr(path: raw_ptr<u8>) bool {
       var dir: raw_ptr<u8> = unsafe { c_opendir(path); };
       if (dir == null) {
         return false;
@@ -280,11 +354,34 @@ public module sun {
       return true;
     }
 
-    public function is_file(path: raw_ptr<u8>) bool {
+    public function is_dir(path: static_ptr<u8>) bool {
+      return is_dir_cstr(_static_ptr_data<u8>(path));
+    }
+
+    public function is_dir(path: ref String) bool {
+      return is_dir_cstr(path.c_str());
+    }
+
+    public function is_file(path: static_ptr<u8>) bool {
       return exists(path) and not is_dir(path);
     }
 
-    public function file_size(path: raw_ptr<u8>) i64, IError {
+    public function is_file(path: ref String) bool {
+      return exists(path) and not is_dir(path);
+    }
+
+    public function file_size(path: static_ptr<u8>) i64, IError {
+      var f: File = File();
+      f.open(path, FileMode.Read);
+      var size: i64 = f.seek(0, Whence.End);
+      f.close();
+      if (size < 0) {
+        throw Error(errno(), "failed to size file");
+      }
+      return size;
+    }
+
+    public function file_size(path: ref String) i64, IError {
       var f: File = File();
       f.open(path, FileMode.Read);
       var size: i64 = f.seek(0, Whence.End);
@@ -363,7 +460,7 @@ public module sun {
 
     // List a directory. "." and ".." are left out; the order is whatever the
     // filesystem gives, not sorted.
-    public function read_dir(alloc: ref HeapAllocator, path: raw_ptr<u8>) Vec<DirEntry>, IError {
+    function read_dir_cstr(alloc: ref HeapAllocator, path: raw_ptr<u8>) Vec<DirEntry>, IError {
       var dir: raw_ptr<u8> = unsafe { c_opendir(path); };
       if (dir == null) {
         throw Error(errno(), "failed to open directory");
@@ -383,6 +480,14 @@ public module sun {
 
       unsafe { c_closedir(dir); };
       return entries;
+    }
+
+    public function read_dir(alloc: ref HeapAllocator, path: static_ptr<u8>) Vec<DirEntry>, IError {
+      return read_dir_cstr(alloc, _static_ptr_data<u8>(path));
+    }
+
+    public function read_dir(alloc: ref HeapAllocator, path: ref String) Vec<DirEntry>, IError {
+      return read_dir_cstr(alloc, path.c_str());
     }
 
     // -------------------------------------------------------------------
