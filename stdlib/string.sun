@@ -746,6 +746,77 @@ public module sun {
       return parts;
     }
 
+    // Split on a separator byte, keeping only non-empty pieces.
+    // Adjacent, leading, and trailing separators yield nothing.
+    public function split_nonempty(alloc: ref HeapAllocator, sep: u8) Vec<String> {
+      var parts: Vec<String> = Vec<String>(alloc, 4);
+      var start: i64 = 0;
+      for (var i: i64 = 0; i < this.len; i = i + 1) {
+        if (this.data.get_unchecked(i) == sep) {
+          if (i > start) {
+            parts.push(this.copy_range(alloc, start, i - start));
+          }
+          start = i + 1;
+        }
+      }
+      if (this.len > start) {
+        parts.push(this.copy_range(alloc, start, this.len - start));
+      }
+      return parts;
+    }
+
+    // Split on a separator string, keeping only non-empty pieces.
+    // An empty separator yields the whole string, or nothing if it is empty.
+    public function split_nonempty(alloc: ref HeapAllocator, sep: static_ptr<u8>) Vec<String> {
+      var sep_data: raw_ptr<u8> = _static_ptr_data<u8>(sep);
+      var sep_len: i64 = _static_ptr_len<u8>(sep);
+      var parts: Vec<String> = Vec<String>(alloc, 4);
+      if (sep_len == 0) {
+        if (this.len > 0) {
+          parts.push(this.clone(alloc));
+        }
+        return parts;
+      }
+      var start: i64 = 0;
+      var searching: bool = true;
+      while (searching) {
+        match this.find_bytes(sep_data, sep_len, start) {
+          Option.Some(i) => {
+            if (i > start) {
+              parts.push(this.copy_range(alloc, start, i - start));
+            }
+            start = i + sep_len;
+          },
+          Option.None => {
+            searching = false;
+          }
+        };
+      }
+      if (this.len > start) {
+        parts.push(this.copy_range(alloc, start, this.len - start));
+      }
+      return parts;
+    }
+
+    // Split on runs of ASCII whitespace, keeping only non-empty pieces.
+    // Any mix of adjacent spaces, tabs, and newlines counts as one separator.
+    public function split_whitespace(alloc: ref HeapAllocator) Vec<String> {
+      var parts: Vec<String> = Vec<String>(alloc, 4);
+      var start: i64 = 0;
+      for (var i: i64 = 0; i < this.len; i = i + 1) {
+        if (ascii_is_space(this.data.get_unchecked(i))) {
+          if (i > start) {
+            parts.push(this.copy_range(alloc, start, i - start));
+          }
+          start = i + 1;
+        }
+      }
+      if (this.len > start) {
+        parts.push(this.copy_range(alloc, start, this.len - start));
+      }
+      return parts;
+    }
+
     // ========================================================================
     // Numeric Formatting
     // ========================================================================

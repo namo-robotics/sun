@@ -230,6 +230,8 @@ var again = join(allocator, fields, "=");  // "NAME=ADA"
 | `clone(alloc)` | `(ref HeapAllocator) String` | Copy into a new String |
 | `substr(alloc, start, count)` | `(ref HeapAllocator, i64, i64) String, IError` | Copy a byte range; throws if it falls outside the string |
 | `split(alloc, sep)` | `(ref HeapAllocator, u8) Vec<String>`, `(ref HeapAllocator, static_ptr<u8>) Vec<String>` | Split into owned pieces; always yields one piece more than there are separators |
+| `split_nonempty(alloc, sep)` | `(ref HeapAllocator, u8) Vec<String>`, `(ref HeapAllocator, static_ptr<u8>) Vec<String>` | Like `split`, but empty pieces are dropped: adjacent, leading, and trailing separators yield nothing |
+| `split_whitespace(alloc)` | `(ref HeapAllocator) Vec<String>` | Split on runs of ASCII whitespace; never yields an empty piece |
 | `join(alloc, parts, sep)` | `(ref HeapAllocator, ref Vec<String>, static_ptr<u8>) String` | Free function: concatenate pieces with a separator between them |
 
 ### Slicing

@@ -821,6 +821,69 @@ TEST(Stdlib_Text_String, split_on_byte_and_string) {
   EXPECT_EQ(value, 0);
 }
 
+TEST(Stdlib_Text_String, split_nonempty_skips_empty_pieces) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        var csv = String(alloc, ",a,,b,");
+        var parts = csv.split_nonempty(alloc, 44);  // ','
+        if (parts.size() != 2) { return 1; }
+        if (not parts.get_unchecked(0).equals_literal("a")) { return 2; }
+        if (not parts.get_unchecked(1).equals_literal("b")) { return 3; }
+
+        var seps = String(alloc, ",,,");
+        var none = seps.split_nonempty(alloc, 44);
+        if (none.size() != 0) { return 4; }
+
+        var text = String(alloc, ";;k1=v1;;;;k2=v2;;");
+        var fields = text.split_nonempty(alloc, ";;");
+        if (fields.size() != 2) { return 5; }
+        if (not fields.get_unchecked(0).equals_literal("k1=v1")) { return 6; }
+        if (not fields.get_unchecked(1).equals_literal("k2=v2")) { return 7; }
+
+        var abc = String(alloc, "abc");
+        var one = abc.split_nonempty(alloc, "");
+        if (one.size() != 1) { return 8; }
+        if (not one.get_unchecked(0).equals_literal("abc")) { return 9; }
+
+        var blank = String(alloc, "");
+        var nothing = blank.split_nonempty(alloc, "");
+        if (nothing.size() != 0) { return 10; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(Stdlib_Text_String, split_whitespace_collapses_runs) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        var s = String(alloc, "  one\ttwo  \n three\r\n");
+        var words = s.split_whitespace(alloc);
+        if (words.size() != 3) { return 1; }
+        if (not words.get_unchecked(0).equals_literal("one")) { return 2; }
+        if (not words.get_unchecked(1).equals_literal("two")) { return 3; }
+        if (not words.get_unchecked(2).equals_literal("three")) { return 4; }
+
+        var solid = String(alloc, "word");
+        var solo = solid.split_whitespace(alloc);
+        if (solo.size() != 1) { return 5; }
+        if (not solo.get_unchecked(0).equals_literal("word")) { return 6; }
+
+        var spaces = String(alloc, " \t\n ");
+        var empty = spaces.split_whitespace(alloc);
+        if (empty.size() != 0) { return 7; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
 TEST(Stdlib_Text_String, join_parts) {
   auto value = executeStringWithStdlib(R"(
     using sun;
