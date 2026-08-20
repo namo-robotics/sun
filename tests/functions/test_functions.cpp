@@ -311,3 +311,35 @@ TEST(Functions, unknown_function_is_error) {
       )"),
                SunError);
 }
+
+TEST(Functions, binding_void_call_to_inferred_var_is_error) {
+  // A call that returns nothing gives an inferred `var` nothing to hold;
+  // the compiler used to reach codegen and trap (issue #86).
+  try {
+    executeString(R"(
+        function nothing() void { }
+
+        function main() i32 {
+            var t = nothing();
+            return 0;
+        }
+      )");
+    FAIL() << "Expected SunError for binding a void result";
+  } catch (const SunError& e) {
+    std::string msg = e.what();
+    EXPECT_TRUE(msg.find("'t'") != std::string::npos)
+        << "Error should name the variable, got: " << msg;
+  }
+}
+
+TEST(Functions, binding_void_call_to_typed_var_is_error) {
+  EXPECT_THROW(executeString(R"(
+        function nothing() void { }
+
+        function main() i32 {
+            var t: void = nothing();
+            return 0;
+        }
+      )"),
+               SunError);
+}
