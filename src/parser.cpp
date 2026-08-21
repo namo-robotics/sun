@@ -1556,6 +1556,15 @@ std::unique_ptr<ExprAST> Parser::parseBinOpRhs(int exprPrec,
     Token binOp = curTok;
     getNextToken();  // eat binop
 
+    // `&&` / `||` lex as two bitwise operators; point newcomers at `and`/`or`.
+    if ((binOp.kind == TokenKind::AMPERSAND || binOp.kind == TokenKind::PIPE) &&
+        curTok.kind == binOp.kind && curTok.start.offset == binOp.end.offset) {
+      curTok = Token::make(binOp.kind, binOp.start, curTok.end);
+      parsingError(binOp.kind == TokenKind::AMPERSAND
+                       ? "unexpected '&&' - Sun spells logical and as 'and'"
+                       : "unexpected '||' - Sun spells logical or as 'or'");
+    }
+
     auto rhs = parseUnary();
     if (!rhs) return nullptr;
 

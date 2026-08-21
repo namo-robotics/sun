@@ -1,51 +1,123 @@
 # Error Handling
 
-Sun uses error unions for explicit error handling with `try/catch` blocks.
+Sun signals failure with exceptions. A function that can fail says so in its
+signature, `throw` raises an error object, and the error unwinds the stack to
+the nearest matching `catch`. There is no cost on the success path: a throwing
+function returns its plain value like any other, and the unwinding machinery
+only runs when something is actually thrown.
 
-## Error-Returning Functions
+## Error Types
 
-Functions declare they may error with `, IError` suffix:
+An error is a class that implements the builtin `IError` interface:
+
+```sun
+interface IError {
+    function code() i32;
+    function message() String;
+}
+```
+
+Define your own by implementing both methods. Because an error is an ordinary
+class, it can carry whatever fields and extra methods you need:
+
+```sun
+class ParseError implements IError {
+    var line_: i32;
+    function init(line: i32) { this.line_ = line; }
+    function code() i32 { return 1; }
+    function message() String { return String("bad input"); }
+    function line() i32 { return this.line_; }
+}
+```
+
+The standard library (`using sun;`) provides `Error(code, message)` plus a set
+of ready-made ones: `EmptyError`, `NotFoundError`, `IndexOutOfBoundsError`,
+`DivisionByZeroError`, `OverflowError`, `InvalidArgumentError`, `IOError` and
+`AllocationError`. `Error` accepts its message as a literal or as a `String`
+built at runtime, and keeps its own copy.
+
+## Throwing Functions
+
+A function that can fail declares it with the `, IError` suffix after its
+return type, and raises an error with `throw`. `throw` takes an error object,
+never a bare number:
 
 ```sun
 function divide(a: i32, b: i32) i32, IError {
-    if (b == 0) { throw 1; }
+    if (b == 0) { throw DivisionByZeroError(); }
     return a / b;
+}
+```
+
+A function without the suffix cannot throw. Calling a throwing function is
+only allowed from inside a `try` block or from another throwing function, so
+an error either gets handled or is visibly passed up the signature chain — it
+can never escape unnoticed:
+
+```sun
+// Propagates: no try needed, the error keeps unwinding to the caller.
+function half_of_quotient(a: i32, b: i32) i32, IError {
+    return divide(a, b) / 2;
 }
 ```
 
 ## Handling Errors with try/catch
 
-Use `try/catch` to handle potential errors:
+`try` is block-form only. Each `catch` names a binding and its type, and the
+clauses are tested in order against the concrete type of the thrown error:
 
 ```sun
 function main() i32 {
     try {
-        var result = divide(10, 2);
-        return result;  // Success: returns 5
+        var r = divide(10, 0);
+        return r;
+    } catch (e: DivisionByZeroError) {
+        return -1;                 // this exact error type
     } catch (e: IError) {
-        return -1;  // Error path
+        return e.code();           // anything else
     }
 }
 ```
 
+- `catch (e: IError)` matches every error; a clause after it is unreachable
+  and rejected.
+- `catch (e: SomeError)` matches only that class. The binding is the real
+  object, so methods unique to that class (like `line()` above) are callable.
+- When no clause matches, the error keeps unwinding to the enclosing `try` or
+  caller.
+- Inside a catch clause, `e.code()` and `e.message()` dispatch to the thrown
+  class. `message()` returns an owned `String` that stays valid after the
+  handler ends.
+
 import { Callout } from 'nextra/components'
 
 <Callout type="warning">
-  The `IError` type matches any error. Division by zero in error-returning functions automatically throws.
+  Inside a throwing function, integer division and modulo by zero throw
+  instead of crashing; `catch (e: IError)` catches them.
 </Callout>
 
-## Error Unions
+## Cleanup During Unwinding
 
-Internally, error-returning functions return an error union struct:
+Unwinding runs the same cleanup a normal scope exit would: every live value
+between the `throw` and the `catch` is dropped, so containers, strings and
+other owning types release their memory exactly as if the function had
+returned. Code before the failing call in a `try` block has run; code after it
+has not.
 
-```
-{ i1 isError, T value }
-```
+## How It Works
 
-This allows the caller to check if an error occurred and handle it appropriately.
+Errors are native LLVM exceptions, using the same personality routine and
+landing pads as C++. A throwing function has the plain return type `T` in the
+generated code; `throw` allocates the error, packs it with its `IError` vtable
+and a type id, and unwinds. Each `catch` clause compares the type id to select
+a handler, and cleanup landing pads drop live values on the way out. An error
+that is never caught terminates the program.
 
 ## Best Practices
 
-1. **Always handle errors**: Use `try/catch` when calling functions that may error
-2. **Propagate errors**: If your function can't handle an error, declare it as error-returning and let the caller handle it
-3. **Use meaningful error codes**: The `throw` statement accepts an error code that can be checked in the catch block
+1. **Handle or declare**: wrap the call in `try`, or add `, IError` to your own
+   signature and let the caller decide.
+2. **Catch what you can handle**: use a typed `catch` for the errors you have a
+   real answer for, and let the rest propagate.
+3. **Throw meaningful errors**: pick a stdlib error type or define a class that
+   carries the details the handler needs.
