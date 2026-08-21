@@ -45,6 +45,44 @@ std::vector<TokenKind> kindsOf(const std::string& source,
 }  // namespace
 
 // ------------------------------------------------------------------
+// Reserved words
+// ------------------------------------------------------------------
+
+TEST(Tooling_Frontend_Lexer, KeywordSpellingCoversWordTokensOnly) {
+  EXPECT_EQ(getKeywordSpelling(TokenKind::PARTIAL), "partial");
+  EXPECT_EQ(getKeywordSpelling(TokenKind::PACKED_CLASS), "packed_class");
+  EXPECT_EQ(getKeywordSpelling(TokenKind::TYPE_I32), "i32");
+  EXPECT_EQ(getKeywordSpelling(TokenKind::AND), "and");
+  EXPECT_EQ(getKeywordSpelling(TokenKind::TRUE_LITERAL), "true");
+  EXPECT_FALSE(isKeyword(TokenKind::IDENTIFIER));
+  EXPECT_FALSE(isKeyword(TokenKind::INTRINSIC_IDENTIFIER));
+  EXPECT_FALSE(isKeyword(TokenKind::UNDERSCORE));
+  EXPECT_FALSE(isKeyword(TokenKind::PLUS));
+  EXPECT_FALSE(isKeyword(TokenKind::ARROW));
+  EXPECT_FALSE(isKeyword(TokenKind::STRING));
+  EXPECT_FALSE(isKeyword(TokenKind::TOK_EOF));
+}
+
+// Every word the table calls a keyword must lex as that keyword, and every
+// token the lexer produces for a bare word must be in the table. The docs'
+// reserved-word list (docs/pages/overview.mdx) mirrors this set.
+TEST(Tooling_Frontend_Lexer, EveryKeywordLexesAsItself) {
+  int count = 0;
+  for (int i = 0; i < static_cast<int>(TokenKind::COUNT); ++i) {
+    TokenKind kind = static_cast<TokenKind>(i);
+    auto word = getKeywordSpelling(kind);
+    if (!word) continue;
+    ++count;
+    auto kinds = kindsOf(std::string(*word));
+    ASSERT_EQ(kinds.size(), 1u) << *word;
+    EXPECT_EQ(kinds[0], kind) << *word;
+    // A keyword token carries its spelling as text.
+    EXPECT_EQ(lexAll(std::string(*word))[0].text, *word);
+  }
+  EXPECT_EQ(count, 53);
+}
+
+// ------------------------------------------------------------------
 // Non-ASCII bytes
 // ------------------------------------------------------------------
 

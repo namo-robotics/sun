@@ -119,6 +119,24 @@ Field types are restricted to what can actually be packed:
 - `packed_class` cannot be combined with `partial`, which declares methods only
   and so has no layout.
 
+## Partial Classes
+
+A `partial class` adds methods to a class declared elsewhere in the program.
+It cannot declare fields or `init`, and cannot redefine a method the class
+already has. Methods on either side can call each other through `this`.
+
+```sun
+class Point {
+    var x: i32;
+    var y: i32;
+    function init(x: i32, y: i32) { this.x = x; this.y = y; }
+}
+
+partial class Point {
+    function sum() i32 { return this.x + this.y; }
+}
+```
+
 ## Implementing Interfaces
 
 Classes can implement interfaces using the `implements` keyword:

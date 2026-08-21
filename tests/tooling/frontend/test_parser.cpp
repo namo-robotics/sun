@@ -651,6 +651,91 @@ function main() i32 {
   EXPECT_TRUE(what.find("'or'") != std::string::npos) << what;
 }
 
+// A keyword where a name belongs is a name collision, not a syntax error;
+// the diagnostic must say which word is reserved (issue #92).
+TEST(Tooling_Frontend_Parser_Errors, KeywordAsVariableNameIsReserved) {
+  std::string what = parseErrorMessage(R"(
+function main() i32 {
+    var partial = 1;
+    return 0;
+}
+)");
+  EXPECT_TRUE(what.find("'partial' is a reserved word") != std::string::npos)
+      << what;
+  EXPECT_TRUE(what.find("3:9") != std::string::npos) << what;  // at 'partial'
+  EXPECT_TRUE(what.find("expected identifier") == std::string::npos) << what;
+}
+
+TEST(Tooling_Frontend_Parser_Errors, KeywordAsFunctionNameIsReserved) {
+  std::string what = parseErrorMessage(R"(
+function class() i32 { return 0; }
+)");
+  EXPECT_TRUE(what.find("'class' is a reserved word") != std::string::npos)
+      << what;
+}
+
+TEST(Tooling_Frontend_Parser_Errors, KeywordAsParameterNameIsReserved) {
+  std::string what = parseErrorMessage(R"(
+function f(spawn: i32) i32 { return spawn; }
+)");
+  EXPECT_TRUE(what.find("'spawn' is a reserved word") != std::string::npos)
+      << what;
+}
+
+TEST(Tooling_Frontend_Parser_Errors, KeywordAsClassNameIsReserved) {
+  std::string what = parseErrorMessage(R"(
+class array { var x: i32; function init() { this.x = 0; } }
+)");
+  EXPECT_TRUE(what.find("'array' is a reserved word") != std::string::npos)
+      << what;
+}
+
+TEST(Tooling_Frontend_Parser_Errors, KeywordAsFieldNameIsReserved) {
+  std::string what = parseErrorMessage(R"(
+class P { var match: i32; function init() { this.match = 0; } }
+)");
+  EXPECT_TRUE(what.find("'match' is a reserved word") != std::string::npos)
+      << what;
+}
+
+TEST(Tooling_Frontend_Parser_Errors, KeywordAsMemberNameIsReserved) {
+  std::string what = parseErrorMessage(R"(
+function main() i32 {
+    var p = P();
+    return p.unsafe;
+}
+)");
+  EXPECT_TRUE(what.find("'unsafe' is a reserved word") != std::string::npos)
+      << what;
+}
+
+TEST(Tooling_Frontend_Parser_Errors, NonKeywordKeepsExpectedIdentifierMessage) {
+  std::string what = parseErrorMessage(R"(
+function main() i32 {
+    var 5 = 1;
+    return 0;
+}
+)");
+  EXPECT_TRUE(what.find("expected identifier after 'var'") !=
+              std::string::npos)
+      << what;
+  EXPECT_TRUE(what.find("reserved word") == std::string::npos) << what;
+}
+
+// `in`, `as` and `const` only mean something in one position each; they
+// stay usable as names.
+TEST(Tooling_Frontend_Parser, ContextualWordsAreValidNames) {
+  auto ast = parseString(R"(
+function main() i32 {
+    var in: i32 = 5;
+    var as: i32 = 6;
+    var const: i32 = 7;
+    return in + as + const;
+}
+)");
+  ASSERT_NE(ast, nullptr);
+}
+
 // ------------------------------------------------------------------
 // Driver-based parsing error tests - these log errors to stderr
 // Uses compileString which goes through the full driver pipeline

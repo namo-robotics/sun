@@ -18,6 +18,33 @@ function helper() i32 { ... }   // ✓ OK
 var count: i32 = 0;             // ✓ OK
 ```
 
+## Reserved Words
+
+The following words are keywords and cannot be used as names for variables,
+functions, parameters, fields, classes, interfaces, enums, or modules. Using
+one where a name is expected is reported as `'partial' is a reserved word and
+cannot be used as an identifier`.
+
+| Group | Words |
+|-------|-------|
+| Declarations | `var`, `function`, `lambda`, `class`, `packed_class`, `partial`, `interface`, `enum`, `implements`, `public`, `def`, `declare`, `extern` |
+| Modules | `manifest`, `module`, `using` |
+| Control flow | `if`, `else`, `match`, `for`, `while`, `break`, `continue`, `return` |
+| Errors | `try`, `catch`, `throw` |
+| Literals | `true`, `false`, `null`, `this` |
+| Operators | `and`, `or`, `not` |
+| Types | `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `f32`, `f64`, `bool`, `void`, `array`, `ref`, `ptr`, `raw_ptr`, `static_ptr` |
+| Other | `spawn`, `unsafe` |
+
+A few words only have meaning in one position and remain usable as names:
+`in` (in a `for` loop), `as` (in an `extern` declaration) and `const` (after
+`ref`).
+
+```sun
+var partial = 1;   // ❌ ERROR: 'partial' is a reserved word
+var in: i32 = 5;   // ✓ OK: `in` is only a keyword inside `for (...)`
+```
+
 ## Primitive Types
 
 Sun provides the following primitive types:
