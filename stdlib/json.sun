@@ -16,6 +16,10 @@
 //   obj.set(String(alloc, "ok"), Json(true));
 //   var text = obj.to_string(alloc);          // {"ok":true}
 //   var pretty = obj.to_pretty_string(alloc, 2);
+//
+// Ownership: the tree owns everything in it. Json(s) and set(key, value)
+// move their String/Json arguments in, so the caller cannot use them after
+// the call. To keep a String, store a copy with json_string(alloc, ref s).
 
 public module sun {
   // ==========================================================================
@@ -98,7 +102,9 @@ public module sun {
       this.value = JsonValue.Float(x);
     }
 
-    // Takes ownership of the string
+    // Takes ownership of the string: s is moved into the node and cannot be
+    // used afterwards. To keep the original, pass a borrow to
+    // json_string(alloc, ref s), which stores a copy.
     public function init(s: String) {
       this.value = JsonValue.String(s);
     }
@@ -411,6 +417,12 @@ public module sun {
   // String value from a literal
   public function json_string(alloc: ref HeapAllocator, text: static_ptr<u8>) Json {
     return Json(String(alloc, text));
+  }
+
+  // String value copied from a borrowed String; the caller keeps its own.
+  // Use Json(s) instead to hand the String over without a copy.
+  public function json_string(alloc: ref HeapAllocator, text: ref String) Json {
+    return Json(text.clone(alloc));
   }
 
   // ==========================================================================

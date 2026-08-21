@@ -268,6 +268,53 @@ TEST(Stdlib_Json, build_and_write_compact) {
   EXPECT_EQ(value, 0);
 }
 
+// Issue #94: Json(s) moves the String in; json_string(alloc, ref s) stores a
+// copy so the caller can keep using the original.
+TEST(Stdlib_Json, json_string_copies_a_borrowed_string) {
+  auto value = executeStringWithStdlib(withMain(R"(
+    class Config {
+        var model: String;
+        function init(model: String) { this.model = model; }
+    }
+
+    function main() i32, IError {
+        var alloc = make_heap_allocator();
+        var cfg = Config(String(alloc, "sun-1"));
+        var req = json_object(alloc);
+        req.set(String(alloc, "model"), json_string(alloc, cfg.model));
+        req.set(String(alloc, "again"), json_string(alloc, cfg.model));
+        // The original is intact after both calls
+        if (cfg.model.equals_literal("sun-1") == false) { return 1; }
+        var out = req.to_string(alloc);
+        if (out.equals_literal("{\"model\":\"sun-1\",\"again\":\"sun-1\"}") == false) {
+            println(out);
+            return 2;
+        }
+        // The copies are independent of the original: changing it later does
+        // not change the document.
+        cfg.model.append("-pro");
+        if (req.get("model").as_string().equals_literal("sun-1") == false) { return 3; }
+        return 0;
+    }
+  )"));
+  EXPECT_EQ(value, 0);
+}
+
+TEST(Stdlib_Json, json_constructor_takes_ownership_of_string) {
+  EXPECT_THROW(executeStringWithStdlib(withMain(R"(
+    function main() i32, IError {
+        var alloc = make_heap_allocator();
+        var s = String(alloc, "moved");
+        var req = json_object(alloc);
+        req.set(String(alloc, "s"), Json(s));
+        // s was moved into the document; this is a use after move
+        if (s.length() == 0) { return 1; }
+        return 0;
+    }
+  )")),
+               std::exception);
+}
+
 TEST(Stdlib_Json, write_pretty) {
   auto value = executeStringWithStdlib(withMain(R"(
     function main() i32, IError {
