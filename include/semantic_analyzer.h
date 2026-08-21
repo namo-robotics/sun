@@ -273,11 +273,14 @@ class SemanticAnalyzer : public AccessContext {
       const GenericFunctionInfo& genericInfo,
       const std::vector<sun::TypePtr>& typeArgs);
   // Infer `f<...>` for a call written without type arguments, by matching the
-  // template's parameter annotations against the argument types.
+  // template's parameter annotations against the argument types. A call may
+  // also name only the leading type parameters (`f<i32>(x)` for `f<T, U>`);
+  // those are passed as explicitTypeArgs and the rest are inferred.
   std::vector<sun::TypePtr> inferGenericTypeArguments(
       const GenericFunctionInfo& genericInfo,
       const std::vector<sun::TypePtr>& argTypes, const std::string& displayName,
-      std::optional<Position> loc) const;
+      std::optional<Position> loc,
+      const std::vector<sun::TypePtr>& explicitTypeArgs = {}) const;
   // Instantiate for a call site: same as instantiateGenericFunction, but a
   // failure is the call's error rather than an empty optional to unpack.
   SpecializedFunctionInfo requireGenericSpecialization(

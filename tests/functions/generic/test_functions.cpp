@@ -461,3 +461,33 @@ TEST(Functions_Generic, uninferable_type_argument_is_error) {
   )"),
                                 "Cannot infer type argument 'T'");
 }
+
+TEST(Functions_Generic, leading_type_arguments_given_rest_inferred) {
+  auto value = executeString(R"(
+    function narrow<T, U>(x: U) T { return _convert<T>(x); }
+    function main() i32 {
+        var ms: i64 = 300;
+        return narrow<i32>(ms);
+    }
+  )");
+  EXPECT_EQ(value, 300);
+}
+
+TEST(Functions_Generic, given_type_argument_wins_over_argument_type) {
+  auto value = executeString(R"(
+    function width<T, U>(a: T, b: U) i64 { return _sizeof<T>() * 10 + _sizeof<U>(); }
+    function main() i64 {
+        // The literal 1 would infer T = i32; the written i64 is what counts
+        return width<i64>(1, 2);
+    }
+  )");
+  EXPECT_EQ(value, 84);
+}
+
+TEST(Functions_Generic, partial_type_arguments_uninferable_is_error) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    function make<T, U>(n: T) U { return _convert<U>(n); }
+    function main() i32 { return make<i32>(1); }
+  )"),
+                                "Cannot infer type argument 'U'");
+}

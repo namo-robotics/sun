@@ -623,12 +623,21 @@ void bindTypeParameters(
 std::vector<sun::TypePtr> SemanticAnalyzer::inferGenericTypeArguments(
     const GenericFunctionInfo& genericInfo,
     const std::vector<sun::TypePtr>& argTypes, const std::string& displayName,
-    std::optional<Position> loc) const {
+    std::optional<Position> loc,
+    const std::vector<sun::TypePtr>& explicitTypeArgs) const {
   std::map<std::string, sun::TypePtr> bindings;
   for (size_t i = 0; i < genericInfo.params.size() && i < argTypes.size();
        ++i) {
     bindTypeParameters(genericInfo.params[i].second, argTypes[i],
                        genericInfo.typeParameters, bindings);
+  }
+  // A type argument written at the call site is the caller's choice; an
+  // argument that disagrees with it is reported when the specialization is
+  // type-checked, not papered over by inference.
+  for (size_t i = 0; i < explicitTypeArgs.size() &&
+                     i < genericInfo.typeParameters.size();
+       ++i) {
+    bindings[genericInfo.typeParameters[i]] = explicitTypeArgs[i];
   }
 
   std::vector<sun::TypePtr> typeArgs;

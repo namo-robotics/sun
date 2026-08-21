@@ -3341,7 +3341,6 @@ void SemanticAnalyzer::analyzeIntrinsicCall(GenericCallAST& genericCall) {
 void SemanticAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
   const std::string& funcName = genericCall.getFunctionName();
   const auto& args = genericCall.getArgs();
-  const auto& typeArgs = genericCall.getResolvedTypeArgs();
 
   // Resolve the function name through using imports
   sun::QualifiedName resolved = resolveNameWithUsings(funcName);
@@ -3355,6 +3354,24 @@ void SemanticAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
 
   // Store the generic function AST on the call node for codegen
   genericCall.setGenericFunctionAST(genFuncInfo->AST);
+
+  // A call may name only the leading type parameters — `f<i32>(x)` for
+  // `f<T, U>` — and leave the rest to the arguments, as a call with no type
+  // arguments does. That needs the argument types first.
+  bool argsAnalyzed = false;
+  if (genericCall.getResolvedTypeArgs().size() <
+      genFuncInfo->typeParameters.size()) {
+    std::vector<sun::TypePtr> argTypes;
+    for (const auto& arg : args) {
+      analyzeExpr(const_cast<ExprAST&>(*arg));
+      argTypes.push_back(arg->getResolvedType());
+    }
+    argsAnalyzed = true;
+    std::vector<sun::TypePtr> given = genericCall.getResolvedTypeArgs();
+    genericCall.setResolvedTypeArgs(inferGenericTypeArguments(
+        *genFuncInfo, argTypes, funcName, genericCall.getLocation(), given));
+  }
+  const auto& typeArgs = genericCall.getResolvedTypeArgs();
 
   // Try to get expected parameter types for array literal type propagation
   // Only instantiate if all type arguments are concrete (not type parameters)
@@ -3389,8 +3406,10 @@ void SemanticAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
   }
 
   // Analyze all arguments
-  for (const auto& arg : args) {
-    analyzeExpr(const_cast<ExprAST&>(*arg));
+  if (!argsAnalyzed) {
+    for (const auto& arg : args) {
+      analyzeExpr(const_cast<ExprAST&>(*arg));
+    }
   }
 
   // Coerce integer literals to the instantiated parameter types (there is

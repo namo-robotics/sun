@@ -34,6 +34,28 @@ function main() i32 {
 }
 ```
 
+### Inferred Type Arguments
+
+When a type parameter appears in a parameter's type, the call can leave it out
+and the argument supplies it. A call may also write only the leading type
+arguments; the rest are inferred. This is how a function whose return type is
+a type parameter is called:
+
+```sun
+function identity<T>(x: T) T { return x; }
+function narrow<T, U>(x: U) T { return _convert<T>(x); }
+
+function main() i32 {
+    var a = identity(42);          // T = i32, from the argument
+    var ms: i64 = 200;
+    var b = narrow<i32>(ms);       // T = i32 as written, U = i64 from ms
+    return a + b;
+}
+```
+
+A type argument that is written always wins over what the argument suggests;
+a type parameter that appears in no parameter must be written.
+
 ### Generic Functions with Type Checking
 
 Combine generic functions with `_is<T>` for type-specific behavior:
