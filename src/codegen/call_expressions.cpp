@@ -786,6 +786,69 @@ Value* CodegenVisitor::codegenInterfaceMethodCall(
 // Class method dispatch (regular and generic methods)
 // -------------------------------------------------------------------
 
+// Emit a method call's user arguments against the method's parameter types,
+// appending to argValues (which already holds the closure). Returns false if
+// an argument failed to generate.
+bool CodegenVisitor::emitMethodArguments(
+    const CallExprAST& expr, const std::vector<sun::TypePtr>& paramTypes,
+    llvm::Function* callee, std::vector<Value*>& argValues) {
+  size_t methodArgIdx = 0;
+  for (const auto& argExpr : expr.getArgs()) {
+    sun::TypePtr argSunType = argExpr->getResolvedType();
+    sun::TypePtr paramType =
+        methodArgIdx < paramTypes.size() ? paramTypes[methodArgIdx] : nullptr;
+
+    bool isRefParam = paramType && paramType->isReference();
+
+    if (isRefParam) {
+      // Check for class -> ref Interface conversion first
+      if (argSunType && argSunType->isClass()) {
+        Value* classPtr = prepareRefArgument(argExpr.get(), argSunType);
+        Value* ifaceRef =
+            prepareClassForRefInterface(classPtr, argSunType, paramType);
+        if (ifaceRef) {
+          argValues.push_back(ifaceRef);
+          ++methodArgIdx;
+          continue;
+        }
+      }
+      Value* refArg = prepareRefArgument(argExpr.get(), argSunType);
+      if (!refArg) return false;
+      argValues.push_back(refArg);
+    } else {
+      Value* argVal = codegen(*argExpr);
+      if (!argVal) return false;
+
+      argVal = convertToInterfaceIfNeeded(argVal, argSunType, paramType);
+      if (!argVal) return false;
+
+      if (!paramType || !paramType->isInterface()) {
+        argVal = applyMoveSemantics(argVal, argSunType);
+        argVal = widenNumericIfNeeded(argVal, paramType, argSunType);
+        argVal = coerceStaticPtrToRawPtr(argVal, argSunType, paramType);
+      }
+
+      // Interface args: load fat pointer struct if value is still a pointer
+      if (paramType && paramType->isInterface() &&
+          argVal->getType()->isPointerTy()) {
+        llvm::StructType* fatPtrType =
+            sun::InterfaceType::getFatPointerType(ctx.getContext());
+        argVal = ctx.builder->CreateLoad(fatPtrType, argVal, "iface.arg.load");
+      }
+
+      argVal = loadClosureForLambdaParam(
+          argVal, paramType,
+          argValues.size() < callee->getFunctionType()->getNumParams()
+              ? callee->getFunctionType()->getParamType(argValues.size())
+              : nullptr);
+
+      argValues.push_back(argVal);
+    }
+    ++methodArgIdx;
+  }
+  return true;
+}
+
 Value* CodegenVisitor::codegenClassMethodCall(
     const CallExprAST& expr, Value* objectPtr, sun::ClassType* classType,
     const std::string& methodName, const MemberAccessAST* memberAccess) {
@@ -825,7 +888,8 @@ Value* CodegenVisitor::codegenClassMethodCall(
 
   // Handle generic method calls with type arguments
   // e.g., allocator.create<Point>(3, 4)
-  if (memberAccess && memberAccess->hasTypeArguments() && method->isGeneric()) {
+  if (memberAccess && memberAccess->hasResolvedTypeArgs() &&
+      method->isGeneric()) {
     // Type arguments must be resolved by semantic analysis
     if (!memberAccess->hasResolvedTypeArgs()) {
       logAndThrowError(
@@ -859,16 +923,24 @@ Value* CodegenVisitor::codegenClassMethodCall(
       return nullptr;
     }
 
-    // Build arguments: method closure first, then user arguments
+    // Build arguments: method closure first, then user arguments. The
+    // parameter types are the specialization's (type arguments substituted),
+    // recorded by semantic analysis as the callee's type; a `ref U` parameter
+    // takes the argument's address like any other ref parameter.
     std::vector<Value*> argValues;
     argValues.push_back(materializeMethodClosure(specializedFunc, objectPtr));
 
-    for (const auto& argExpr : expr.getArgs()) {
-      sun::TypePtr argSunType = argExpr->getResolvedType();
-      Value* argVal = codegen(*argExpr);
-      if (!argVal) return nullptr;
-      argVal = applyMoveSemantics(argVal, argSunType);
-      argValues.push_back(argVal);
+    sun::TypePtr calleeType = expr.getCallee()->getResolvedType();
+    if (!calleeType || !calleeType->isFunction()) {
+      logAndThrowError(
+          "Generic method call signature not resolved by semantic analysis: " +
+          methodName);
+      return nullptr;
+    }
+    const auto& paramTypes =
+        static_cast<const sun::FunctionType*>(calleeType.get())->getParamTypes();
+    if (!emitMethodArguments(expr, paramTypes, specializedFunc, argValues)) {
+      return nullptr;
     }
 
     Value* result = emitPossiblyThrowingCall(
@@ -893,61 +965,8 @@ Value* CodegenVisitor::codegenClassMethodCall(
   std::vector<Value*> argValues;
   argValues.push_back(materializeMethodClosure(methodFunc, objectPtr));
 
-  const auto& methodParamTypes = method->paramTypes;
-  size_t methodArgIdx = 0;
-  for (const auto& argExpr : expr.getArgs()) {
-    sun::TypePtr argSunType = argExpr->getResolvedType();
-    sun::TypePtr paramType = methodArgIdx < methodParamTypes.size()
-                                 ? methodParamTypes[methodArgIdx]
-                                 : nullptr;
-
-    bool isRefParam = paramType && paramType->isReference();
-
-    if (isRefParam) {
-      // Check for class -> ref Interface conversion first
-      if (argSunType && argSunType->isClass()) {
-        Value* classPtr = prepareRefArgument(argExpr.get(), argSunType);
-        Value* ifaceRef =
-            prepareClassForRefInterface(classPtr, argSunType, paramType);
-        if (ifaceRef) {
-          argValues.push_back(ifaceRef);
-          ++methodArgIdx;
-          continue;
-        }
-      }
-      Value* refArg = prepareRefArgument(argExpr.get(), argSunType);
-      if (!refArg) return nullptr;
-      argValues.push_back(refArg);
-    } else {
-      Value* argVal = codegen(*argExpr);
-      if (!argVal) return nullptr;
-
-      argVal = convertToInterfaceIfNeeded(argVal, argSunType, paramType);
-      if (!argVal) return nullptr;
-
-      if (!paramType || !paramType->isInterface()) {
-        argVal = applyMoveSemantics(argVal, argSunType);
-        argVal = widenNumericIfNeeded(argVal, paramType, argSunType);
-        argVal = coerceStaticPtrToRawPtr(argVal, argSunType, paramType);
-      }
-
-      // Interface args: load fat pointer struct if value is still a pointer
-      if (paramType && paramType->isInterface() &&
-          argVal->getType()->isPointerTy()) {
-        llvm::StructType* fatPtrType =
-            sun::InterfaceType::getFatPointerType(ctx.getContext());
-        argVal = ctx.builder->CreateLoad(fatPtrType, argVal, "iface.arg.load");
-      }
-
-      argVal = loadClosureForLambdaParam(
-          argVal, paramType,
-          argValues.size() < methodFunc->getFunctionType()->getNumParams()
-              ? methodFunc->getFunctionType()->getParamType(argValues.size())
-              : nullptr);
-
-      argValues.push_back(argVal);
-    }
-    ++methodArgIdx;
+  if (!emitMethodArguments(expr, method->paramTypes, methodFunc, argValues)) {
+    return nullptr;
   }
 
   // If this is an explicit deinit() call, mark as already deinited

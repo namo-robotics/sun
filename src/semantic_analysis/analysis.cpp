@@ -5,6 +5,7 @@
 
 #include "config.h"
 #include "error.h"
+#include "generic_type_arguments.h"
 #include "intrinsics.h"
 #include "semantic_analyzer.h"
 
@@ -2862,13 +2863,23 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
         // constructor call (stack-allocated)
         varRef.setResolvedType(classType);
       } else if (genericFunc) {
-        auto typeArgs = inferGenericTypeArguments(
+        auto typeArgs = sun::generics::inferGenericTypeArguments(
             *genericFunc, argTypes, varRef.getName(), callExpr.getLocation());
-        SpecializedFunctionInfo specialized = requireGenericSpecialization(
-            *genericFunc, typeArgs, varRef.getName(), callExpr.getLocation());
-        resolvedFunc = specialized.asFunctionInfo();
-        varRef.setQualifiedName(specialized.qualifiedName);
-        varRef.setResolvedType(specialized.functionType());
+        if (std::any_of(typeArgs.begin(), typeArgs.end(),
+                        sun::generics::mentionsTypeParameter)) {
+          // In a template body the arguments are still type parameters; the
+          // specialization is made when the enclosing generic is
+          // instantiated. Until then the call has the substituted signature.
+          varRef.setResolvedType(
+              genericFunctionSignature(*genericFunc, typeArgs));
+        } else {
+          SpecializedFunctionInfo specialized = requireGenericSpecialization(
+              *genericFunc, typeArgs, varRef.getName(),
+              callExpr.getLocation());
+          resolvedFunc = specialized.asFunctionInfo();
+          varRef.setQualifiedName(specialized.qualifiedName);
+          varRef.setResolvedType(specialized.functionType());
+        }
       } else {
         // Check if there are overloads for this function name - if so,
         // report a helpful "no matching overload" error
@@ -2931,11 +2942,10 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
       // argument types are known, so overloaded constructors resolve and the
       // specialization is keyed (mangled) by the variadic arg types. The
       // inferType trigger defers variadic methods to this path.
-      FunctionAST* genericMethod =
-          memberAccess.hasTypeArguments()
-              ? findGenericMethodAST(classType, methodName)
-              : nullptr;
-      if (genericMethod && genericMethod->getProto().hasVariadicConstraint()) {
+      FunctionAST* genericMethod = findGenericMethodAST(classType, methodName);
+      bool variadicMethod =
+          genericMethod && genericMethod->getProto().hasVariadicConstraint();
+      if (variadicMethod && memberAccess.hasTypeArguments()) {
         calleeTakesPack = true;
         std::vector<sun::TypePtr> typeArgPtrs;
         for (const auto& ta : memberAccess.getTypeArguments()) {
@@ -2956,6 +2966,22 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
           memberAccess.setResolvedType(
               sun::Types::Function(method->returnType, method->paramTypes));
         }
+      } else if (genericMethod && !variadicMethod) {
+        // A generic method: whatever type arguments the call leaves out are
+        // inferred from its arguments, then inferType() instantiates the
+        // specialization from the complete list (and does the same when all
+        // of them were written).
+        const sun::ClassMethod* method = accessibleMethod(
+            *classType, methodName, memberAccess.getLocation());
+        std::vector<sun::TypePtr> written = resolveTypeArguments(
+            memberAccess.getTypeArguments(), memberAccess.getLocation(),
+            "generic method call");
+        if (method && written.size() < method->typeParameters.size()) {
+          memberAccess.setResolvedTypeArgs(sun::generics::inferMethodTypeArguments(
+              *method, argTypes, classType->getDisplayName() + "." + methodName,
+              memberAccess.getLocation(), written));
+        }
+        memberAccess.setResolvedType(inferType(memberAccess));
       } else {
         // Try to find a method overload matching the argument types
         const sun::ClassMethod* method = accessibleMethodForArgs(
@@ -3368,7 +3394,7 @@ void SemanticAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
     }
     argsAnalyzed = true;
     std::vector<sun::TypePtr> given = genericCall.getResolvedTypeArgs();
-    genericCall.setResolvedTypeArgs(inferGenericTypeArguments(
+    genericCall.setResolvedTypeArgs(sun::generics::inferGenericTypeArguments(
         *genFuncInfo, argTypes, funcName, genericCall.getLocation(), given));
   }
   const auto& typeArgs = genericCall.getResolvedTypeArgs();
@@ -3379,9 +3405,8 @@ void SemanticAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
   // we can't create a real specialization yet - it will be created when
   // the outer generic function is instantiated with concrete types.
   std::vector<sun::TypePtr> expectedParamTypes;
-  bool allConcrete =
-      std::all_of(typeArgs.begin(), typeArgs.end(),
-                  [](const sun::TypePtr& t) { return !t->isTypeParameter(); });
+  bool allConcrete = std::none_of(typeArgs.begin(), typeArgs.end(),
+                                  sun::generics::mentionsTypeParameter);
   if (allConcrete) {
     SpecializedFunctionInfo specializedFunc = requireGenericSpecialization(
         *genFuncInfo, typeArgs, funcName, genericCall.getLocation());

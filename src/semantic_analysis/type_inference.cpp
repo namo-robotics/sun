@@ -995,23 +995,27 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
       if (method) {
         sun::TypePtr returnType = method->returnType;
 
-        // Handle generic method calls with type arguments
-        if (memberAccess.hasTypeArguments() && method->isGeneric()) {
-          const auto& typeArgs = memberAccess.getTypeArguments();
+        // Generic method calls: the type arguments written at the call,
+        // completed by the ones the call site inferred from its arguments
+        if (method->isGeneric()) {
           const auto& typeParams = method->typeParameters;
 
           std::vector<sun::TypePtr> typeArgPtrs;
-          for (const auto& typeArg : typeArgs) {
+          for (const auto& typeArg : memberAccess.getTypeArguments()) {
             auto argType = typeAnnotationToType(*typeArg);
             if (argType) {
               typeArgPtrs.push_back(argType);
             }
           }
+          if (memberAccess.hasResolvedTypeArgs() &&
+              memberAccess.getResolvedTypeArgs().size() > typeArgPtrs.size()) {
+            typeArgPtrs = memberAccess.getResolvedTypeArgs();
+          }
 
           // Store resolved type args on the AST for codegen
           memberAccess.setResolvedTypeArgs(typeArgPtrs);
 
-          if (typeArgPtrs.size() == typeParams.size()) {
+          if (!typeArgPtrs.empty() && typeArgPtrs.size() == typeParams.size()) {
             // Instantiate the generic method - this creates and stores the
             // specialized FunctionAST on the generic method for codegen access
             auto mutableClassType =

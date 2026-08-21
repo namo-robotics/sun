@@ -1061,6 +1061,14 @@ class CodegenVisitor {
                                   sun::TypePtr argSunType,
                                   bool allowTemporaryCopy = true);
 
+  // Emit a method call's user arguments against paramTypes (ref parameters
+  // take the argument's address), appending to argValues after the closure.
+  // Shared by plain and generic method calls. False if an argument failed.
+  bool emitMethodArguments(const CallExprAST& expr,
+                           const std::vector<sun::TypePtr>& paramTypes,
+                           llvm::Function* callee,
+                           std::vector<llvm::Value*>& argValues);
+
   /**
    * Codegens a new global array variable.
    * Creates global data storage and dims array, returns the fat struct

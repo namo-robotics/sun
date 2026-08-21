@@ -156,6 +156,7 @@ add_library(sun_lib
     src/semantic_analysis/scope_variables.cpp
     src/semantic_analysis/scope_lookup.cpp
     src/semantic_analysis/classes.cpp
+    src/semantic_analysis/generic_type_arguments.cpp
     src/semantic_analysis/interfaces.cpp
     src/semantic_analysis/type_conversion.cpp
     src/semantic_analysis/type_inference.cpp

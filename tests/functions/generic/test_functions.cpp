@@ -484,6 +484,15 @@ TEST(Functions_Generic, given_type_argument_wins_over_argument_type) {
   EXPECT_EQ(value, 84);
 }
 
+TEST(Functions_Generic, inference_inside_generic_function_body) {
+  auto value = executeString(R"(
+    function twice<U>(x: U) U { return x + x; }
+    function outer<T>(x: T) T { return twice(x); }
+    function main() i32 { return outer<i32>(21); }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
 TEST(Functions_Generic, partial_type_arguments_uninferable_is_error) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     function make<T, U>(n: T) U { return _convert<U>(n); }

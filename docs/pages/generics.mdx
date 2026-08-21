@@ -54,7 +54,21 @@ function main() i32 {
 ```
 
 A type argument that is written always wins over what the argument suggests;
-a type parameter that appears in no parameter must be written.
+a type parameter that appears in no parameter must be written. Generic
+methods work the same way:
+
+```sun
+class Box<T> {
+    var v: T;
+    function init(v: T) { this.v = v; }
+    function twice<U>(x: U) U { return x + x; }
+    function as<R, U>(x: U) R { return _convert<R>(x); }
+}
+
+var b = Box<i64>(1);
+var n = b.twice(21);      // U = i32
+var m = b.as<i32>(ms);    // R = i32 as written, U = i64 from ms
+```
 
 ### Generic Functions with Type Checking
 
