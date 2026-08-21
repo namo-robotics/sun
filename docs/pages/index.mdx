@@ -1,20 +1,20 @@
 # Sun Programming Language
 
-Sun is a general-purpose programming language designed for robotics and AI. 
-It provides Rust-style memory safety while retaining a familiar syntax and classic concepts such as classes and interfaces. 
-Sun optimizes for both performance and **intelligibility** for human programmers as well as AI coding agents. 
+Sun is a general-purpose programming language designed particularly with the needs
+of robotics and AI in mind. It provides Rust-style memory safety while retaining a familiar syntax and classic concepts such as classes and interfaces.
+Sun optimizes for both performance and **intelligibility** for human programmers as well as AI coding agents.
 Sun additionally aims to improve software distribution in robotics applications by making it easier to package and distribute portable,
- systems-level software modules.
+systems-level software modules.
 
 ## Design Goals
 
 - **Fast**: Systems-level performance without runtime overhead
 - **Designed for Robotics**: Robotics software typically involves dozens to
     hundreds of processes that run across one or more compute nodes and communicate over a [DDS](https://en.wikipedia.org/wiki/Data_Distribution_Service) using
-    some kind of pub-sub middleware (e.g. [ROS](https://www.ros.org/)). The standard message serialization format is `protobuf` 
-    which Sun provides builtin support for. A custom DDS and middleware are on the roadmap.
-- **Designed for AI**: NumPy-like N-D matrices and linear algebra provided in the standard library.
-  Builtin support for acclerators/GPUs is on the roadmap.
+    some kind of pub-sub middleware (e.g. [ROS](https://www.ros.org/)). The standard message serialization format is `protobuf`,
+    which Sun provides built-in support for. A custom DDS and middleware are on the roadmap.
+- **Designed for AI**: NumPy-like N-D matrices and linear algebra are provided in the standard library.
+  Built-in support for hardware accelerators/GPUs using LLVM Offload is on the roadmap.
 - **Memory safe**: No undefined behavior via Rust-style borrow checking
 - **Readable**: Straightforward for humans (and AIs!) to read and understand
 - **Unambiguous**: Minimizes alternative syntaxes and hidden control flow such as operator and constructor overloading. No hidden memory allocation. Absolutely no macros!
@@ -224,7 +224,7 @@ Paths are resolved relative to the source file, then via `SUN_PATH`.
 
 ## Moons
 
-**Moons** (`.moon` files) are precompiled library bundles containing compiled code and type information. Create a moon from an entrypoint with a manifest:
+**Moons** (`.moon` files) are precompiled library bundles containing compiled code and type information. Create a moon from an entry point with a manifest:
 
 ```sun filename="mylib.sun"
 public module mylib {
@@ -244,7 +244,7 @@ Sun is designed to work with **Moon**, a safety-critical package manager (coming
 
 - **Exact matching**: Dependencies are pinned to the exact hash of the binary and compiler version — every change is a breaking change
 - **Verified builds**: Reproducible compilation with cryptographic verification
-- **Trusted sources**: Security auditing based on verified, trustable package sources
+- **Trusted sources**: Security auditing based on verified, trustworthy package sources
 - **Static bundling**: No dynamic linkage — moons and binaries include all dependencies in a single file
 
 ## Quick Links
