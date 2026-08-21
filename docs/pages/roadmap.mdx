@@ -134,7 +134,26 @@ libprotobuf. Docs: `docs/pages/protobuf.mdx`. Deferred:
 - [ ] WebAssembly — also the cheapest route to an online playground, which is
       the most effective adoption funnel a new language has
 
-## 13. Tuples (maybe)
+## 13. Robotics Middleware
+
+Robotics systems are dozens to hundreds of processes communicating over a DDS
+through a pub-sub middleware. Sun ships the message layer (native protobuf
+import); the transport is the gap.
+
+- [ ] Custom DDS: discovery, topics, QoS, and a wire protocol
+- [ ] Pub-sub middleware on top of it, with protobuf messages as the payload
+- [ ] Interop with existing DDS implementations and ROS 2
+
+## 14. Hardware Accelerators
+
+`Matrix<T>` and linear algebra run on the CPU today. The design goal is
+builtin GPU/accelerator support without leaving the language.
+
+- [ ] Offload kernels via LLVM Offload
+- [ ] Device memory ownership modelled by the borrow checker
+- [ ] `Matrix<T>` operations dispatched to the device when available
+
+## 15. Tuples (maybe)
 
 Under consideration, not committed to.
 
