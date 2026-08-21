@@ -96,7 +96,7 @@ public module sun {
 
       // Open a file with the specified mode
       public function open(path: static_ptr<u8>, mode: FileMode) void, IError {
-        this.open_cstr(_static_ptr_data<u8>(path), mode);
+        this.open_cstr(path.raw(), mode);
       }
 
       public function open(path: ref String, mode: FileMode) void, IError {
@@ -120,8 +120,7 @@ public module sun {
       // Write string data to the file
       // Returns number of bytes written, or negative on error
       public function write(data: static_ptr<u8>) i64 {
-        return unsafe { c_write(this.fd, _static_ptr_data<u8>(data),
-                                _static_ptr_len<u8>(data)); };
+        return unsafe { c_write(this.fd, data.raw(), data.length()); };
       }
 
       public function write(data: ref String) i64 {
@@ -262,7 +261,7 @@ public module sun {
 
     // Remove a file
     public function remove_file(path: static_ptr<u8>) void, IError {
-      remove_file_cstr(_static_ptr_data<u8>(path));
+      remove_file_cstr(path.raw());
     }
 
     public function remove_file(path: ref String) void, IError {
@@ -278,15 +277,15 @@ public module sun {
 
     // Rename or move a file
     public function rename_file(old_path: static_ptr<u8>, new_path: static_ptr<u8>) void, IError {
-      rename_file_cstr(_static_ptr_data<u8>(old_path), _static_ptr_data<u8>(new_path));
+      rename_file_cstr(old_path.raw(), new_path.raw());
     }
 
     public function rename_file(old_path: static_ptr<u8>, new_path: ref String) void, IError {
-      rename_file_cstr(_static_ptr_data<u8>(old_path), new_path.c_str());
+      rename_file_cstr(old_path.raw(), new_path.c_str());
     }
 
     public function rename_file(old_path: ref String, new_path: static_ptr<u8>) void, IError {
-      rename_file_cstr(old_path.c_str(), _static_ptr_data<u8>(new_path));
+      rename_file_cstr(old_path.c_str(), new_path.raw());
     }
 
     public function rename_file(old_path: ref String, new_path: ref String) void, IError {
@@ -302,7 +301,7 @@ public module sun {
 
     // Create a directory with the specified mode (e.g. 0755 = 493)
     public function make_dir(path: static_ptr<u8>, mode: i32) void, IError {
-      make_dir_cstr(_static_ptr_data<u8>(path), mode);
+      make_dir_cstr(path.raw(), mode);
     }
 
     public function make_dir(path: ref String, mode: i32) void, IError {
@@ -318,7 +317,7 @@ public module sun {
 
     // Remove an empty directory
     public function remove_dir(path: static_ptr<u8>) void, IError {
-      remove_dir_cstr(_static_ptr_data<u8>(path));
+      remove_dir_cstr(path.raw());
     }
 
     public function remove_dir(path: ref String) void, IError {
@@ -338,7 +337,7 @@ public module sun {
 
     // Does the path exist? access(path, F_OK)
     public function exists(path: static_ptr<u8>) bool {
-      return exists_cstr(_static_ptr_data<u8>(path));
+      return exists_cstr(path.raw());
     }
 
     public function exists(path: ref String) bool {
@@ -355,7 +354,7 @@ public module sun {
     }
 
     public function is_dir(path: static_ptr<u8>) bool {
-      return is_dir_cstr(_static_ptr_data<u8>(path));
+      return is_dir_cstr(path.raw());
     }
 
     public function is_dir(path: ref String) bool {
@@ -483,7 +482,7 @@ public module sun {
     }
 
     public function read_dir(alloc: ref HeapAllocator, path: static_ptr<u8>) Vec<DirEntry>, IError {
-      return read_dir_cstr(alloc, _static_ptr_data<u8>(path));
+      return read_dir_cstr(alloc, path.raw());
     }
 
     public function read_dir(alloc: ref HeapAllocator, path: ref String) Vec<DirEntry>, IError {
@@ -565,8 +564,13 @@ public module sun {
         if (this.fds.size() == 0) {
           return 0;
         }
-        var ready: i32 = unsafe { c_poll(this.fds.rawData(), this.fds.size(),
-                                         timeout_ms); };
+        var ready: i32 = unsafe {
+          c_poll(
+            this.fds.rawData(),
+            this.fds.size(),
+            timeout_ms
+          );
+        };
         if (ready < 0) {
           throw Error(errno(), "poll failed");
         }

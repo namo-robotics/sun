@@ -349,6 +349,12 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
           }
         }
         sun::TypePtr objectType = inferType(*memberAccess.getObject());
+        if (auto* staticPtr = asNonClassStaticPtr(unwrapRef(objectType))) {
+          return inferStaticPtrMethodType(*staticPtr,
+                                          memberAccess.getMemberName(),
+                                          callExpr.getArgs().size(),
+                                          memberAccess.getLocation());
+        }
         if (objectType && objectType->isModule()) {
           std::vector<sun::TypePtr> argTypes;
           for (const auto& arg : callExpr.getArgs()) {
@@ -389,7 +395,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       if (calleeType && calleeType->isClass()) {
         return calleeType;
       }
-      // Handle builtin method calls on pointer types (e.g., raw_ptr<T>.get())
+      // Handle builtin method calls on builtin types (e.g., Thread.join())
       // For these, inferType on the MemberAccess returns the result type
       // directly
       if (callExpr.getCallee()->getType() == ASTNodeType::MEMBER_ACCESS) {
@@ -397,23 +403,6 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
             static_cast<const MemberAccessAST&>(*callExpr.getCallee());
         sun::TypePtr objectType = inferType(*memberAccess.getObject());
         const std::string& memberName = memberAccess.getMemberName();
-
-        // raw_ptr<T>.get(), static_ptr<T>.get() return T
-        if (memberName == "get") {
-          if (objectType && objectType->isRawPointer()) {
-            if (!isInUnsafeBlock()) {
-              logAndThrowError(
-                  "Dereferencing 'raw_ptr' can only be done in an unsafe block",
-                  memberAccess.getLocation());
-            }
-            return static_cast<sun::RawPointerType*>(objectType.get())
-                ->getPointeeType();
-          }
-          if (objectType && objectType->isStaticPointer()) {
-            return static_cast<sun::StaticPointerType*>(objectType.get())
-                ->getPointeeType();
-          }
-        }
 
         // Thread<T>.join() returns T
         if (memberName == "join") {
@@ -946,36 +935,27 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
     }
 
     case sun::Type::Kind::StaticPointer: {
-      auto* staticPtrType =
-          static_cast<sun::StaticPointerType*>(objectType.get());
-      if (memberName == "length") {
-        return sun::Types::Int64();
-      }
-      if (memberName == "data") {
-        return sun::Types::RawPointer(staticPtrType->getPointeeType());
-      }
-      if (memberName == "_get") {
-        return staticPtrType->getPointeeType();
+      // The accessors are methods; the call form is typed by
+      // inferStaticPtrMethodType before the callee is inferred, so reaching
+      // here means the property form was written.
+      if (isStaticPtrMethod(memberName)) {
+        logAndThrowError("static_ptr has no property '" + memberName +
+                             "'; call '" + memberName + "()'",
+                         memberAccess.getLocation());
       }
       logAndThrowError("static_ptr has no member '" + memberName +
-                           "'; available: 'length', 'data', '_get'",
+                           "'; available: length(), raw()",
                        memberAccess.getLocation());
     }
 
     case sun::Type::Kind::RawPointer: {
-      // raw_ptr<T> where T is not a class (class case handled above)
-      auto* ptrType = static_cast<sun::RawPointerType*>(objectType.get());
-      if (memberName == "_get") {
-        if (!isInUnsafeBlock()) {
-          logAndThrowError(
-              "Dereferencing 'raw_ptr' can only be done in an unsafe block",
-              memberAccess.getLocation());
-        }
-        return ptrType->getPointeeType();
-      }
-      logAndThrowError(
-          "raw_ptr has no member '" + memberName + "'; available: '_get'",
-          memberAccess.getLocation());
+      // raw_ptr<T> where T is not a class (class case handled above): a
+      // bare pointer has no members; read through it with _load<T> or
+      // _to_ref<T>
+      logAndThrowError("raw_ptr has no member '" + memberName +
+                           "'; read through it with _load<T>(p, i) or "
+                           "_to_ref<T>(p)",
+                       memberAccess.getLocation());
     }
 
     case sun::Type::Kind::Class: {
@@ -1170,7 +1150,7 @@ sun::TypePtr SemanticAnalyzer::inferIntrinsicCallType(
   const auto& typeArgs = genericCall.getResolvedTypeArgs();
   const std::string& funcName = genericCall.getFunctionName();
 
-  if (funcName == "_sizeof" || funcName == "_static_ptr_len") {
+  if (funcName == "_sizeof") {
     return sun::Types::Int64();
   }
   if (funcName == "_load") {
@@ -1179,8 +1159,7 @@ sun::TypePtr SemanticAnalyzer::inferIntrinsicCallType(
   if (funcName == "_store" || funcName == "_init") {
     return sun::Types::Void();
   }
-  if (funcName == "_static_ptr_data" || funcName == "_ptr_as_raw" ||
-      funcName == "_address_of") {
+  if (funcName == "_ptr_as_raw" || funcName == "_address_of") {
     return typeArgs.empty() ? nullptr : sun::Types::RawPointer(typeArgs[0]);
   }
   if (funcName == "_to_ref") {
@@ -1198,6 +1177,38 @@ sun::TypePtr SemanticAnalyzer::inferIntrinsicCallType(
 
   // Unknown intrinsic - return void as fallback
   return sun::Types::Void();
+}
+
+// -------------------------------------------------------------------
+// static_ptr<T> builtin methods
+// -------------------------------------------------------------------
+
+sun::StaticPointerType* SemanticAnalyzer::asNonClassStaticPtr(
+    const sun::TypePtr& type) {
+  if (!type || !type->isStaticPointer()) return nullptr;
+  auto* staticPtr = static_cast<sun::StaticPointerType*>(type.get());
+  const auto& pointee = staticPtr->getPointeeType();
+  if (pointee && pointee->isClass()) return nullptr;
+  return staticPtr;
+}
+
+bool SemanticAnalyzer::isStaticPtrMethod(const std::string& name) {
+  return name == "length" || name == "raw";
+}
+
+sun::TypePtr SemanticAnalyzer::inferStaticPtrMethodType(
+    const sun::StaticPointerType& ptrType, const std::string& name,
+    size_t argCount, const Position& loc) {
+  if (!isStaticPtrMethod(name)) {
+    logAndThrowError(
+        "static_ptr has no method '" + name + "'; available: length(), raw()",
+        loc);
+  }
+  if (argCount != 0) {
+    logAndThrowError("static_ptr." + name + "() takes no arguments", loc);
+  }
+  if (name == "length") return sun::Types::Int64();
+  return sun::Types::RawPointer(ptrType.getPointeeType());
 }
 
 // -------------------------------------------------------------------

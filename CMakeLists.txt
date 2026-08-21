@@ -127,7 +127,6 @@ add_library(sun_lib
     src/codegen/codegen_visitor.cpp
     src/codegen/debug_info_builder.cpp
     src/codegen/functions_lambdas.cpp
-    src/codegen/pointers.cpp
     src/codegen/intrinsics/builtins.cpp
     src/codegen/intrinsics/generic.cpp
     src/codegen/intrinsics/io.cpp

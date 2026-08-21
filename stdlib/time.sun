@@ -51,8 +51,7 @@ public module sun {
       }
 
       public function as_secs_f64() f64 {
-        return _convert<f64>(this.secs) +
-               _convert<f64>(this.nanos) / 1000000000.0;
+        return _convert<f64>(this.secs) + _convert<f64>(this.nanos) / 1000000000.0;
       }
 
       // The nanosecond remainder, on top of as_secs().
@@ -150,8 +149,7 @@ public module sun {
       public var yearday: i32;  // 0-365
       public var utc_offset: i64;  // seconds east of UTC
 
-      public function init(year: i32, month: i32, day: i32, hour: i32,
-                           minute: i32, second: i32) {
+      public function init(year: i32, month: i32, day: i32, hour: i32, minute: i32, second: i32) {
         this.year = year;
         this.month = month;
         this.day = day;
@@ -165,8 +163,14 @@ public module sun {
     }
 
     function from_ctm(tm: ref CTm) DateTime {
-      var dt: DateTime = DateTime(tm.year + 1900, tm.mon + 1, tm.mday, tm.hour,
-                                  tm.min, tm.sec);
+      var dt: DateTime = DateTime(
+        tm.year + 1900,
+        tm.mon + 1,
+        tm.mday,
+        tm.hour,
+        tm.min,
+        tm.sec
+      );
       dt.weekday = tm.wday;
       dt.yearday = tm.yday;
       dt.utc_offset = tm.gmtoff;
@@ -216,8 +220,7 @@ public module sun {
 
     // Render with a strftime format, e.g. "%Y-%m-%d %H:%M:%S". Output longer
     // than 256 bytes comes back empty.
-    public function format(alloc: ref HeapAllocator, dt: ref DateTime,
-                           fmt: raw_ptr<u8>) String {
+    public function format(alloc: ref HeapAllocator, dt: ref DateTime, fmt: raw_ptr<u8>) String {
       var tm: CTm = to_ctm(dt);
       tm.wday = dt.weekday;
       tm.yday = dt.yearday;

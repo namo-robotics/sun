@@ -2,8 +2,7 @@
 //
 // This file contains codegen for generic (type-parameterized) intrinsics:
 // - _sizeof<T>, _init<T>, _load<T>, _store<T>
-// - _static_ptr_data<T>, _static_ptr_len<T>, _ptr_as_raw<T>
-// - _address_of<T>, _to_ref<T>, _is<T>
+// - _ptr_as_raw<T>, _address_of<T>, _to_ref<T>, _is<T>
 
 #include "codegen_visitor.h"
 #include "error.h"
@@ -222,40 +221,6 @@ Value* CodegenVisitor::codegenStoreIntrinsic(
 
   ctx.builder->CreateStore(value, elemPtr);
   return value;
-}
-
-Value* CodegenVisitor::codegenStaticPtrDataIntrinsic(
-    const std::vector<std::unique_ptr<ExprAST>>& args) {
-  // _static_ptr_data<T>(static_ptr<T>) extracts data pointer from fat struct
-  // static_ptr<T> is struct { ptr data, i64 length }
-  // Returns element 0 (the raw pointer)
-  if (args.size() != 1) {
-    logAndThrowError("_static_ptr_data<T>() requires exactly one argument");
-    return nullptr;
-  }
-
-  llvm::Value* fatPtr = codegen(*args[0]);
-  if (!fatPtr) return nullptr;
-
-  // Extract element 0 (the data pointer) from the fat struct
-  return ctx.builder->CreateExtractValue(fatPtr, 0, "static_ptr.data");
-}
-
-Value* CodegenVisitor::codegenStaticPtrLenIntrinsic(
-    const std::vector<std::unique_ptr<ExprAST>>& args) {
-  // _static_ptr_len<T>(static_ptr<T>) extracts length from fat struct
-  // static_ptr<T> is struct { ptr data, i64 length }
-  // Returns element 1 (the length as i64)
-  if (args.size() != 1) {
-    logAndThrowError("_static_ptr_len<T>() requires exactly one argument");
-    return nullptr;
-  }
-
-  llvm::Value* fatPtr = codegen(*args[0]);
-  if (!fatPtr) return nullptr;
-
-  // Extract element 1 (the length) from the fat struct
-  return ctx.builder->CreateExtractValue(fatPtr, 1, "static_ptr.len");
 }
 
 Value* CodegenVisitor::codegenPtrAsRawIntrinsic(

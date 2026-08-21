@@ -40,7 +40,7 @@ public module sun {
   }
 
   public function print(s: static_ptr<u8>) void {
-    _print_bytes(_static_ptr_data<u8>(s), _static_ptr_len<u8>(s));
+    _print_bytes(s.raw(), s.length());
   }
 
   public function print(s: ref String) void {
@@ -99,7 +99,7 @@ public module sun {
   // everything else.
 
   public function eprint(s: static_ptr<u8>) void {
-    unsafe { c_write(2, _static_ptr_data<u8>(s), _static_ptr_len<u8>(s)); };
+    unsafe { c_write(2, s.raw(), s.length()); };
   }
 
   public function eprint(s: ref String) void {
@@ -107,7 +107,7 @@ public module sun {
   }
 
   public function eprintln() void {
-    unsafe { c_write(2, _static_ptr_data<u8>("\n"), 1); };
+    unsafe { c_write(2, "\n".raw(), 1); };
   }
 
   public function eprintln(s: static_ptr<u8>) void {
@@ -119,5 +119,4 @@ public module sun {
     eprint(s);
     eprintln();
   }
-
 }

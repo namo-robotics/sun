@@ -598,8 +598,8 @@ public module sun {
 
     // Consume `literal` at pos or fail
     function expect_literal(text: ref String, literal: static_ptr<u8>, what: static_ptr<u8>) void, IError {
-      var data: raw_ptr<u8> = _static_ptr_data<u8>(literal);
-      var n: i64 = _static_ptr_len<u8>(literal);
+      var data: raw_ptr<u8> = literal.raw();
+      var n: i64 = literal.length();
       var start: i64 = this.pos;
       for (var i: i64 = 0; i < n; i = i + 1) {
         var expected: u8 = unsafe { _load<u8>(data, i); };

@@ -195,6 +195,16 @@ class SemanticAnalyzer : public AccessContext {
   // Infer type for generic call using pre-resolved type arguments
   sun::TypePtr inferGenericCallType(const GenericCallAST& call);
 
+  // static_ptr<T> builtin methods (call form only): length(), raw().
+  // asNonClassStaticPtr returns the type when it is a static_ptr to a
+  // non-class (a static_ptr<Class> dispatches to the class's own methods).
+  static sun::StaticPointerType* asNonClassStaticPtr(const sun::TypePtr& type);
+  static bool isStaticPtrMethod(const std::string& name);
+  sun::TypePtr inferStaticPtrMethodType(const sun::StaticPointerType& ptrType,
+                                        const std::string& name,
+                                        size_t argCount,
+                                        const Position& loc);
+
   // Generic call type inference helpers
   sun::TypePtr inferIntrinsicCallType(const GenericCallAST& call);
   sun::TypePtr inferGenericFunctionCallType(const GenericCallAST& call);

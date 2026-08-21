@@ -291,8 +291,8 @@ class CodegenVisitor {
   llvm::Value* codegenMethodCall(const CallExprAST& expr,
                                  const MemberAccessAST& memberAccess);
 
-  // Handles builtin type methods: Thread.join(), array.shape(), ptr._get(),
-  // etc. Returns nullptr if not a builtin type method (caller should continue).
+  // Handles builtin type methods: Thread.join(), static_ptr.length()/.raw().
+  // Returns nullptr if not a builtin type method (caller should continue).
   llvm::Value* codegenBuiltinTypeMethod(const CallExprAST& expr,
                                         llvm::Value* objectPtr,
                                         sun::TypePtr objectType,
@@ -579,7 +579,7 @@ class CodegenVisitor {
   // external on demand).
   void emitDeinitCall(const sun::ClassType* classType, llvm::Value* receiver);
 
-  // Pointer intrinsics codegen (in pointers.cpp)
+  // Generic intrinsics codegen (in intrinsics/generic.cpp)
   llvm::Value* codegenSizeofIntrinsic(sun::TypePtr typeArg);
   llvm::Value* codegenInitIntrinsic(
       sun::TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args);
@@ -587,10 +587,6 @@ class CodegenVisitor {
       sun::TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args);
   llvm::Value* codegenStoreIntrinsic(
       sun::TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args);
-  llvm::Value* codegenStaticPtrDataIntrinsic(
-      const std::vector<std::unique_ptr<ExprAST>>& args);
-  llvm::Value* codegenStaticPtrLenIntrinsic(
-      const std::vector<std::unique_ptr<ExprAST>>& args);
   llvm::Value* codegenPtrAsRawIntrinsic(
       const std::vector<std::unique_ptr<ExprAST>>& args);
   llvm::Value* codegenAddressOfIntrinsic(
@@ -631,11 +627,11 @@ class CodegenVisitor {
   llvm::Value* codegenFutexWaitIntrinsic(const CallExprAST& expr);
   llvm::Value* codegenFutexWakeIntrinsic(const CallExprAST& expr);
 
-  // Pointer member access codegen (in pointers.cpp)
-  llvm::Value* codegenStaticPtrMemberAccess(const MemberAccessAST& expr,
-                                            sun::StaticPointerType* ptrType);
-  llvm::Value* codegenRawPtrMemberAccess(const MemberAccessAST& expr,
-                                         sun::RawPointerType* ptrType);
+  // Field 0 (data) or 1 (length) of a static_ptr fat pointer, whether it
+  // arrived as the struct value or as its address (in call_expressions.cpp)
+  llvm::Value* extractStaticPtrField(llvm::Value* fatPtr, unsigned index,
+                                     const sun::TypePtr& staticPtrType,
+                                     const char* name);
 
   // Array codegen (in arrays.cpp)
   llvm::Value* codegen(const ArrayLiteralAST& expr);

@@ -163,8 +163,8 @@ TEST(Ffi, extern_rejects_types_with_no_c_spelling) {
 }
 
 TEST(Ffi, extern_rejects_static_ptr_parameter) {
-  // static_ptr is a fat { ptr, i64 } struct; passing one to C needs the
-  // data-pointer extract that is not implemented yet.
+  // static_ptr is a fat { ptr, i64 } struct with no C equivalent; a C
+  // function takes the data pointer (raw_ptr<u8>, or s.raw()) instead.
   EXPECT_THROW(executeString(R"(
     extern function s(p: static_ptr<u8>) i32;
     function main() i32 { return 0; }
