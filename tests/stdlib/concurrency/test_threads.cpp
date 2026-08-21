@@ -112,6 +112,51 @@ TEST(Stdlib_Concurrency_Threads, spawn_with_captured_value) {
   EXPECT_EQ(value, 20);
 }
 
+// Issue #99: a void lambda has no result slot; join returns nothing
+TEST(Stdlib_Concurrency_Threads, spawn_void_lambda_and_join) {
+  auto value = executeString(R"(
+    function main() i32 {
+      var t = spawn(lambda() void { });
+      t.join();
+      return 42;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Stdlib_Concurrency_Threads, spawn_void_lambda_without_join_compiles) {
+  EXPECT_NO_THROW(compileString(R"(
+    function main() i32 {
+      spawn(lambda() void { });
+      return 0;
+    }
+  )"));
+}
+
+// Issue #99: a lambda held in a variable arrives as a fat struct value
+TEST(Stdlib_Concurrency_Threads, spawn_lambda_variable) {
+  auto value = executeString(R"(
+    function main() i32 {
+      var f = lambda() i32 { return 7; };
+      var t = spawn(f);
+      return t.join() * 6;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Stdlib_Concurrency_Threads, spawn_lambda_variable_with_capture) {
+  auto value = executeString(R"(
+    function main() i32 {
+      var x: i32 = 10;
+      var f = lambda() i32 { return x * 2; };
+      var t = spawn(f);
+      return t.join() + 1;
+    }
+  )");
+  EXPECT_EQ(value, 21);
+}
+
 TEST(Stdlib_Concurrency_Threads, multiple_threads) {
   auto value = executeString(R"(
     function main() i32 {
