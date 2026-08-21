@@ -43,16 +43,20 @@ Value* CodegenVisitor::codegen(const SpawnExprAST& expr) {
   }
   Function* parentFunc = currentBB->getParent();
 
-  // Generate the lambda (returns alloca pointer to fat struct { func*, env* })
-  Value* lambdaFatPtr = codegen(lambdaExpr);
-  if (!lambdaFatPtr) {
+  // Generate the lambda. A lambda literal yields a pointer to the fat
+  // struct { func*, env* }; a variable holding a lambda yields the fat
+  // struct by value.
+  Value* lambdaVal = codegen(lambdaExpr);
+  if (!lambdaVal) {
     logAndThrowError("Failed to generate lambda for spawn");
     return nullptr;
   }
 
   StructType* fatType = cast<StructType>(lambdaType->toLLVMType(llvmCtx));
   Value* lambdaFat =
-      ctx.builder->CreateLoad(fatType, lambdaFatPtr, "spawn.fat");
+      lambdaVal->getType()->isPointerTy()
+          ? ctx.builder->CreateLoad(fatType, lambdaVal, "spawn.fat")
+          : lambdaVal;
   Value* funcPtr = ctx.builder->CreateExtractValue(lambdaFat, 0, "spawn.func");
   Value* envPtr = ctx.builder->CreateExtractValue(lambdaFat, 1, "spawn.env");
 
@@ -72,11 +76,18 @@ Value* CodegenVisitor::codegen(const SpawnExprAST& expr) {
       ctx.builder->CreateStructGEP(contextType, contextPtr, 1, "ctx.env");
   ctx.builder->CreateStore(envPtr, envFieldPtr);
 
-  // Allocate the result slot and store its pointer (index 2)
-  Value* resultSize = ConstantInt::get(
-      i64Ty, module->getDataLayout().getTypeAllocSize(resultLLVMType));
-  Value* resultSlot =
-      ctx.builder->CreateCall(mallocFunc, {resultSize}, "result_slot");
+  // Allocate the result slot and store its pointer (index 2). A void lambda
+  // produces no result, so its slot stays null and the trampoline skips the
+  // store.
+  Value* resultSlot;
+  if (resultLLVMType->isVoidTy()) {
+    resultSlot = ConstantPointerNull::get(cast<PointerType>(ptrTy));
+  } else {
+    Value* resultSize = ConstantInt::get(
+        i64Ty, module->getDataLayout().getTypeAllocSize(resultLLVMType));
+    resultSlot =
+        ctx.builder->CreateCall(mallocFunc, {resultSize}, "result_slot");
+  }
   Value* resultFieldPtr =
       ctx.builder->CreateStructGEP(contextType, contextPtr, 2, "ctx.result");
   ctx.builder->CreateStore(resultSlot, resultFieldPtr);
@@ -142,20 +153,26 @@ Value* CodegenVisitor::codegenThreadJoin(Value* threadHandle,
   ctx.builder->CreateCall(sun::libc::pthreadJoin(module), {tid, nullPtr},
                           "pthread_join_result");
 
-  // Thread is done - load result
+  // Thread is done - load result (a void thread has no result slot)
   Value* resultSlotPtrPtr = ctx.builder->CreateStructGEP(
       contextType, contextPtr, 2, "join.result_ptr_ptr");
   Value* resultSlotPtr =
       ctx.builder->CreateLoad(ptrTy, resultSlotPtrPtr, "join.result_ptr");
 
   Type* resultLLVMType = typeResolver.resolveForReturn(resultType);
-  Value* result =
-      ctx.builder->CreateLoad(resultLLVMType, resultSlotPtr, "join.result");
+  Value* result = nullptr;
+  if (!resultLLVMType->isVoidTy()) {
+    result =
+        ctx.builder->CreateLoad(resultLLVMType, resultSlotPtr, "join.result");
+  }
 
-  // Free result slot and context
+  // Free result slot (null for void threads - free(null) is a no-op) and
+  // context
   FunctionCallee freeFunc = sun::libc::free(module);
   ctx.builder->CreateCall(freeFunc, {resultSlotPtr});
-  ctx.builder->CreateCall(freeFunc, {contextPtr});
+  Value* freeContext = ctx.builder->CreateCall(freeFunc, {contextPtr});
 
-  return result;
+  // A void join has no value; hand back the (void-typed) free call so the
+  // caller sees a non-null result
+  return result ? result : freeContext;
 }

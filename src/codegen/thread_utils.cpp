@@ -117,8 +117,9 @@ Function* ThreadUtils::getOrCreateThreadTrampoline(
   AllocaInst* fatAlloca = builder.CreateAlloca(fatType, nullptr, "fat.alloca");
   builder.CreateStore(fat, fatAlloca);
 
-  Value* result =
-      builder.CreateCall(lambdaFuncType, lambdaFunc, {fatAlloca}, "result");
+  Value* result = builder.CreateCall(
+      lambdaFuncType, lambdaFunc, {fatAlloca},
+      lambdaFuncType->getReturnType()->isVoidTy() ? "" : "result");
 
   if (!resultLLVMType->isVoidTy()) {
     Value* resultFieldPtr =
