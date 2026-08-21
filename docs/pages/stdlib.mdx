@@ -800,12 +800,27 @@ class JsonMember { var key: String; var value: Json; }
 
 Match on `j.value` directly when the accessors below are not enough.
 
+The tree owns everything in it. `Json(s)`, `push(item)` and `set(key, value)`
+take their `String` and `Json` arguments by value, which in Sun means they are
+moved in: the caller cannot use them afterwards, and the borrow checker rejects
+a later use. When a value is still needed after being placed in a document,
+store a copy instead. `json_string(alloc, ref s)` does that for a `String`:
+
+```sun
+// cfg.model is still needed later, so the document gets a copy
+req.set(String(alloc, "model"), json_string(alloc, cfg.model));
+// Equivalent to an explicit clone:
+req.set(String(alloc, "model"), Json(cfg.model.clone(alloc)));
+// Moves cfg.model into the document; using it again is a compile error
+req.set(String(alloc, "model"), Json(cfg.model));
+```
+
 | Function / Method | Signature | Description |
 |--------|-----------|-------------|
 | `json_parse(alloc, text)` | `(ref HeapAllocator, ref String) Json, IError` | Parse a complete document (also accepts a `static_ptr<u8>` literal). Rejects trailing text, leading zeros, control characters in strings, and nesting deeper than 256 |
-| `Json()`, `Json(b)`, `Json(n)`, `Json(x)`, `Json(s)` | `()`, `(bool)`, `(i64)`, `(f64)`, `(String)` | Build a scalar node (`Json(s)` takes ownership of the `String`) |
+| `Json()`, `Json(b)`, `Json(n)`, `Json(x)`, `Json(s)` | `()`, `(bool)`, `(i64)`, `(f64)`, `(String)` | Build a scalar node (`Json(s)` moves the `String` into the node; see above) |
 | `json_array(alloc)` / `json_object(alloc)` | `(ref HeapAllocator) Json` | Empty array / object |
-| `json_string(alloc, text)` | `(ref HeapAllocator, static_ptr<u8>) Json` | String node from a literal |
+| `json_string(alloc, text)` | `(ref HeapAllocator, static_ptr<u8>) Json`, `(ref HeapAllocator, ref String) Json` | String node from a literal, or a copy of a borrowed `String` (the caller keeps its own) |
 | `is_null()`, `is_bool()`, `is_int()`, `is_float()`, `is_number()`, `is_string()`, `is_array()`, `is_object()` | `() bool` | Kind checks |
 | `as_bool()`, `as_i64()`, `as_f64()` | `() T, IError` | Scalar readers; `as_i64` accepts an integral `Float`, `as_f64` accepts an `Int` |
 | `as_string()` | `() ref String, IError` | Borrow the string |
