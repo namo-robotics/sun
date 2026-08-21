@@ -167,6 +167,35 @@ function example(key: MyKey) bool {
 }
 ```
 
+### `_convert<T>(value)`
+
+Converts a numeric value to another numeric type `T`, unchecked. Integers
+truncate or extend (sign-extending from a signed source, zero-extending from an
+unsigned one); integer-to-float and float-to-integer convert by value, dropping
+any fraction; `f32`/`f64` convert between each other. This is the only way to
+narrow an integer — an assignment never does it on its own.
+
+```sun
+var ms: i64 = 200;
+var t: i32 = _convert<i32>(ms);     // 200
+var f: f64 = _convert<f64>(t);      // 200.0
+var b: u8 = _convert<u8>(300);      // 44 — the high bits are dropped
+```
+
+Use the stdlib's `safe_convert<T>(value)` when the value may not fit; it throws
+`ConversionError` instead of wrapping (see [Standard Library](/stdlib#numeric-conversion)).
+
+### `_bitcast<T>(value)`
+
+Reinterprets the bits of a numeric value as another numeric type of the same
+size — `f32` ↔ `u32`/`i32`, `f64` ↔ `u64`/`i64`. The sizes must match, which is
+checked at compile time. Used by binary wire formats to read and write floats.
+
+```sun
+var bits: u64 = _bitcast<u64>(1.0);   // 0x3FF0000000000000
+var back: f64 = _bitcast<f64>(bits);  // 1.0
+```
+
 ## Non-Generic Intrinsics
 
 These intrinsics operate on specific, fixed types.
@@ -205,6 +234,21 @@ var ptr = _address_of<i32>(x);  // raw_ptr<i32> to x's memory
 <Callout type="warning">
   The returned pointer is only valid while the referenced variable is in scope. Do not store it beyond the variable's lifetime.
 </Callout>
+
+### `_to_ref<T>(raw_ptr<T>)`
+
+The reverse of `_address_of`: turns a `raw_ptr<T>` into a `ref T` so the
+pointed-to value can be read, borrowed or assigned through like any reference.
+Must be used inside `unsafe { }`. The borrow checker gives the reference the
+lifetime of the pointer, so the pointer must stay valid for as long as the
+reference is used.
+
+```sun
+var x: i32 = 1;
+var p: raw_ptr<i32> = _address_of<i32>(x);
+var r: ref i32 = unsafe { _to_ref<i32>(p); };
+r = 2;   // x is now 2
+```
 
 ### `_load_i64(ptr, index)`
 
@@ -385,7 +429,10 @@ class Vec<T> {
 | `_static_ptr_len<T>` | `static_ptr<T>` | `i64` | Extract length |
 | `_ptr_as_raw<T>` | `ptr<T>` | `raw_ptr<T>` | Get raw pointer without ownership transfer |
 | `_is<T>` | `value` | `bool` | Compile-time type check |
+| `_convert<T>` | `value` | `T` | Unchecked numeric conversion (truncate, extend, int ↔ float) |
+| `_bitcast<T>` | `value` | `T` | Reinterpret bits as a same-size numeric type |
 | `_address_of<T>` | `ref T` | `raw_ptr<T>` | Get pointer to referenced memory |
+| `_to_ref<T>` | `raw_ptr<T>` | `ref T` | Reference the pointed-to value (unsafe) |
 | `_malloc` | `size: i64` | `raw_ptr<i8>` | Allocate heap memory |
 | `_free` | `ptr` | `void` | Free heap memory |
 | `_load_i64` | `ptr, index` | `i64` | Load i64 at index |

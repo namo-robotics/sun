@@ -24,6 +24,13 @@ code.
   methods use the closure ABI: arg 0 is a ptr to `{ ptr func, ptr env }`
   with the receiver in `env`, and `obj.method` in value position is a
   lambda-typed bound method `{ methodFn, objPtr }`.
+- Call arguments are never re-examined here. Semantic analysis records an
+  `ArgConversion` per argument on the call node, and every kind of call —
+  plain, module-qualified, generic, method, lambda, interface, constructor,
+  extern "C" — lowers its arguments through one loop, `emitCallArguments`,
+  that switches on those tags (take the address for a borrow, zero the
+  source for a move, build a fat pointer for an interface, extend a number,
+  ...). Codegen does no semantic analysis of its own.
 
 ## Source Layout
 

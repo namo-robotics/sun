@@ -343,3 +343,26 @@ TEST(Functions, binding_void_call_to_typed_var_is_error) {
       )"),
                SunError);
 }
+
+TEST(Functions, narrowing_float_argument_is_error) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    function half(x: f32) f32 { return x / 2.0; }
+    function main() i32 {
+        var d: f64 = 3.0;
+        return _convert<i32>(half(d));
+    }
+  )"),
+                                "expected f32, got f64");
+}
+
+TEST(Functions, widening_argument_conversions) {
+  auto value = executeString(R"(
+    function add(a: i64, b: f64) i64 { return a + _convert<i64>(b); }
+    function main() i32 {
+        var small: i16 = 40;
+        var f: f32 = 2.0;
+        return _convert<i32>(add(small, f));
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}

@@ -739,6 +739,33 @@ n.append_decimal(text);   // 265252859812191058636308480000000
 | `append_decimal(out)` | `(ref String) void` | Append the decimal digits |
 | `set_decimal(text)` | `(ref String) bool` | Parse decimal digits; `false` (value left at zero) if malformed |
 
+## Numeric conversion
+
+A value never narrows on its own: assigning an `i64` to an `i32` is a compile
+error. `math.sun` provides `safe_convert<T>(x)`, which converts between any two
+numeric types and throws `ConversionError` when the value does not fit:
+
+```sun
+var ms: i64 = 200;
+var t: i32 = safe_convert<i32>(ms);       // 200
+var big: i64 = 4294967498;
+var u: i32 = safe_convert<i32>(big);      // throws ConversionError
+var n: u64 = safe_convert<u64>(-1);       // throws: negative to unsigned
+var b: u8 = safe_convert<u8>(255.0);      // 255
+var c: u8 = safe_convert<u8>(256.0);      // throws
+var h: f32 = safe_convert<f32>(1.0e300);  // throws: infinite in f32
+```
+
+Checked: integer values outside `T`'s range (including a sign change that flips
+the value), floats that are NaN or outside `T`'s range, and an `f64` that
+overflows `f32`. A fraction is truncated toward zero, as with `_convert`.
+Widening and integer-to-float conversions always succeed.
+
+`safe_convert` takes two type parameters, `<T, U>`; the source type `U` is
+inferred from the argument, so only the target is written. When the value is
+known to fit, the `_convert<T>(x)` intrinsic does the same conversion with no
+check (see [Intrinsics](/intrinsics#_convertt)).
+
 ## Numeric limits
 
 `math.sun` also defines `I64_MAX`, `I64_MIN`, `F64_MAX`, `F64_MIN_POSITIVE` (smallest normal) and `F64_EPSILON`.
@@ -815,6 +842,7 @@ object itself.
 | `InvalidArgumentError` | 6 | Invalid function arguments |
 | `IOError` | 7 | I/O operations |
 | `AllocationError` | 8 | Memory allocation failures |
+| `ConversionError` | 9 | A value does not fit the type `safe_convert` targets |
 | `JsonError` | 60 | JSON parse errors (with `offset()`) and kind mismatches |
 
 ```sun

@@ -1,5 +1,6 @@
 target_sources(sun_tests PRIVATE
     test_bigint.cpp
+    test_convert.cpp
     test_http.cpp
     test_json.cpp
     test_math.cpp

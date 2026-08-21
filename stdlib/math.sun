@@ -62,4 +62,68 @@ public module sun {
     }
     return false;
   }
+
+  // 2^bits as an f64 (exact: a power of two)
+  function two_to_the(bits: i64) f64 {
+    var r: f64 = 1.0;
+    var i: i64 = 0;
+    while (i < bits) {
+      r = r * 2.0;
+      i = i + 1;
+    }
+    return r;
+  }
+
+  // Convert a number to another numeric type, checking that the value fits.
+  // Throws ConversionError for an integer outside T's range, a float that is
+  // NaN or outside T's range, and an f64 too large for f32. A fraction is
+  // dropped (truncated toward zero), as _convert does.
+  //
+  //   var t: i32 = safe_convert<i32>(ms);   // ms: i64
+  public function safe_convert<T, U>(x: U) T, IError {
+    var zero: T = _convert<T>(0);
+    if (_is<_Integer>(x) and _is<_Integer>(zero)) {
+      var y: T = _convert<T>(x);
+      // Dropped bits change the value; a flipped sign does not, so check both
+      if (_convert<U>(y) != x) {
+        throw ConversionError();
+      }
+      if (_is<_Signed>(x) and _is<_Unsigned>(y) and x < _convert<U>(0)) {
+        throw ConversionError();
+      }
+      if (_is<_Unsigned>(x) and _is<_Signed>(y) and y < zero) {
+        throw ConversionError();
+      }
+      return y;
+    }
+    if (_is<_Float>(x) and _is<_Integer>(zero)) {
+      var f: f64 = _convert<f64>(x);
+      if (f != f) {
+        throw ConversionError();  // NaN
+      }
+      var bits: i64 = _sizeof<T>() * 8;
+      var lo: f64 = 0.0;
+      var hi: f64 = two_to_the(bits);
+      if (_is<_Signed>(zero)) {
+        hi = two_to_the(bits - 1);
+        lo = 0.0 - hi;
+      }
+      if (f < lo or f >= hi) {
+        throw ConversionError();
+      }
+      return _convert<T>(x);
+    }
+    if (_is<_Float>(x) and _is<_Float>(zero)) {
+      // Only f64 -> f32 can lose range: a finite value that came out infinite
+      var src: f64 = _convert<f64>(x);
+      var dst: f64 = _convert<f64>(_convert<T>(x));
+      if (src <= F64_MAX and src >= 0.0 - F64_MAX) {
+        if (dst > F64_MAX or dst < 0.0 - F64_MAX) {
+          throw ConversionError();
+        }
+      }
+    }
+    // Integer -> float always fits
+    return _convert<T>(x);
+  }
 }

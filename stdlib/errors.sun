@@ -216,4 +216,20 @@ public module sun {
       return this.size_;
     }
   }
+
+  // ============================================================================
+  // ConversionError - a value does not fit the type it is converted to
+  // ============================================================================
+
+  public class ConversionError implements IError {
+    public function init() {}
+
+    public function code() i32 {
+      return 9;
+    }
+
+    public function message() String {
+      return String("value out of range for the target type");
+    }
+  }
 }  // module sun

@@ -44,6 +44,11 @@ During the deep walk, a few things are happening at once:
   compatibility; overloads are resolved against the actual argument types;
   calls to throwing functions must sit inside `try` or a throwing function;
   enum matches must be exhaustive.
+- **Argument conversions** — once a call's signature is settled, each
+  argument is tagged with how it reaches its parameter (`ArgConversion`:
+  pass by value, move, borrow, class to interface, numeric widening, and so
+  on — `include/argument_conversion.h`). The rules live in
+  `sun::conversions::classifyArgument`; codegen only carries the tags out.
 - **Capture detection** — lambdas are scanned for references to outer
   variables so codegen can build their closure environments.
 

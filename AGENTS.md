@@ -91,6 +91,7 @@ sources, only `add_subdirectory` calls.
 - Access LLVM via `ctx.builder` / `ctx.context`.
 - `typeResolver.resolve(type)` for variables; `typeResolver.resolveForReturn(type)` for function returns.
 - Functions returning classes return the struct by value; callers materialize on stack for addressability.
+- Codegen performs no semantic analysis. At a call boundary sema records one `ArgConversion` per argument (`include/argument_conversion.h`, decided by `sun::conversions::classifyArgument`) on the `CallExprAST`/`GenericCallAST`; every call path in codegen lowers its arguments through `emitCallArguments`, which only switches on those tags. Add a new argument conversion by extending the enum, the classifier, and that one switch — never by comparing Sun types in codegen.
 - New expression types: add `ASTNodeType` enum → AST class → `codegen` method in `src/codegen/*.cpp` → update `codegenExpression()` switch.
 
 ## Error Handling

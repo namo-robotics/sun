@@ -886,7 +886,8 @@ Value* CodegenVisitor::codegenStackClassInstance(const CallExprAST& expr,
         ctor.method ? ctor.method->paramTypes : std::vector<sun::TypePtr>{};
 
     std::vector<Value*> ctorArgs =
-        generateCtorArgs(ctorFunc, alloca, expr.getArgs(), paramTypes);
+        generateCtorArgs(ctorFunc, alloca, expr.getArgs(),
+                             expr.getArgConversions(), paramTypes);
     ctx.builder->CreateCall(ctorFunc, ctorArgs);
   }
 
@@ -910,112 +911,14 @@ Value* CodegenVisitor::codegenStackClassInstance(const CallExprAST& expr,
 std::vector<Value*> CodegenVisitor::generateCtorArgs(
     llvm::Function* ctorFunc, Value* thisPtr,
     const std::vector<std::unique_ptr<ExprAST>>& args,
+    const std::vector<sun::ArgConversion>& conversions,
     const std::vector<sun::TypePtr>& paramTypes) {
   std::vector<Value*> ctorArgs;
   ctorArgs.push_back(materializeMethodClosure(ctorFunc, thisPtr));
-
-  size_t argIdx = 0;
-  for (const auto& arg : args) {
-    bool isRefParam = argIdx < paramTypes.size() && paramTypes[argIdx] &&
-                      paramTypes[argIdx]->isReference();
-    sun::TypePtr argSunType = arg->getResolvedType();
-
-    if (isRefParam) {
-      // For reference parameters, pass the address of the argument
-      if (auto* varRef = dynamic_cast<const VariableReferenceAST*>(arg.get())) {
-        AllocaInst* varAlloca = findVariable(varRef->getName());
-        if (varAlloca) {
-          // Check if the alloca holds the class struct directly (value type)
-          // or holds a pointer to the struct (pointer type)
-          if (argSunType && argSunType->isClass()) {
-            llvm::Type* allocatedType = varAlloca->getAllocatedType();
-            if (allocatedType->isStructTy()) {
-              // Class value stored directly in alloca - pass alloca ptr
-              ctorArgs.push_back(varAlloca);
-            } else {
-              // Class stored as pointer - load and pass the pointer
-              Value* ptrVal = ctx.builder->CreateLoad(
-                  llvm::PointerType::getUnqual(ctx.getContext()), varAlloca,
-                  varRef->getName() + ".ptr");
-              ctorArgs.push_back(ptrVal);
-            }
-          } else if (argSunType && argSunType->isReference()) {
-            // Variable is already a reference - load the pointer
-            Value* ptrVal = ctx.builder->CreateLoad(
-                llvm::PointerType::getUnqual(ctx.getContext()), varAlloca,
-                varRef->getName() + ".ptr");
-            ctorArgs.push_back(ptrVal);
-          } else {
-            // Pass address of the variable
-            ctorArgs.push_back(varAlloca);
-          }
-        } else if (Value* addr = tryCodegenAddress(*arg)) {
-          // Not a local: globals and [ref x] captures still have real storage
-          ctorArgs.push_back(addr);
-        } else {
-          logAndThrowError("Cannot find variable for reference parameter: " +
-                           varRef->getName());
-          return {};
-        }
-      } else if (argSunType && argSunType->isArray()) {
-        // Array value expression - need to create a temporary alloca
-        Value* argVal = codegen(*arg);
-        if (!argVal) return {};
-        llvm::StructType* fatType =
-            sun::ArrayType::getArrayStructType(ctx.getContext());
-        AllocaInst* tempAlloca =
-            ctx.builder->CreateAlloca(fatType, nullptr, "arr.temp");
-        ctx.builder->CreateStore(argVal, tempAlloca);
-        ctorArgs.push_back(tempAlloca);
-      } else if (dynamic_cast<const MemberAccessAST*>(arg.get())) {
-        // Member access (e.g., this.alloc) - codegen gives pointer for class
-        // fields, loaded value for primitives
-        Value* val = codegen(*arg);
-        if (!val) return {};
-        if (val->getType()->isPointerTy()) {
-          ctorArgs.push_back(val);
-        } else {
-          AllocaInst* tempAlloca =
-              ctx.builder->CreateAlloca(val->getType(), nullptr, "ref.member");
-          ctx.builder->CreateStore(val, tempAlloca);
-          ctorArgs.push_back(tempAlloca);
-        }
-      } else {
-        logAndThrowError(
-            "Reference parameter must be passed a variable, not an expression");
-        return {};
-      }
-    } else {
-      Value* argVal = codegen(*arg);
-      if (!argVal) return {};
-
-      // Class/payload-enum arguments passed by value move into the ctor
-      argVal = applyMoveSemantics(argVal, argSunType);
-
-      // Handle implicit widening for arguments:
-      // Widen smaller integers to larger integers (i32 -> i64)
-      if (argIdx < paramTypes.size() && paramTypes[argIdx]) {
-        // A string literal reaching a raw_ptr<u8> parameter narrows to its
-        // data pointer, the same as at any other call boundary.
-        argVal = coerceStaticPtrToRawPtr(argVal, argSunType, paramTypes[argIdx]);
-        llvm::Type* expectedType = typeResolver.resolve(paramTypes[argIdx]);
-        if (argVal->getType()->isIntegerTy() && expectedType->isIntegerTy()) {
-          unsigned argBits = argVal->getType()->getIntegerBitWidth();
-          unsigned paramBits = expectedType->getIntegerBitWidth();
-          if (argBits < paramBits) {
-            argVal = extendInt(argVal, expectedType, arg->getResolvedType());
-          }
-        } else if (argVal->getType()->isFloatTy() &&
-                   expectedType->isDoubleTy()) {
-          argVal = ctx.builder->CreateFPExt(argVal, expectedType, "widen");
-        }
-      }
-
-      ctorArgs.push_back(argVal);
-    }
-    ++argIdx;
+  if (!emitCallArguments(args, conversions, paramTypes,
+                         ctorFunc->getFunctionType(), ctorArgs, "init")) {
+    return {};
   }
-
   return ctorArgs;
 }
 
@@ -1485,8 +1388,9 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
                               specProto.getReturnType()->canError);
     }
 
-    if (!buildDirectCallArgs(expr.getArgs(), specParamTypes, specializedFunc,
-                             argValues)) {
+    if (!emitCallArguments(expr.getArgs(), expr.getArgConversions(),
+                           specParamTypes, specializedFunc->getFunctionType(),
+                           argValues, funcName)) {
       logAndThrowError("Failed to generate argument for generic call");
       return nullptr;
     }
@@ -1573,7 +1477,8 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
             initMethod ? initMethod->paramTypes : std::vector<sun::TypePtr>{};
 
         std::vector<Value*> ctorArgs =
-            generateCtorArgs(ctorFunc, alloca, expr.getArgs(), paramTypes);
+            generateCtorArgs(ctorFunc, alloca, expr.getArgs(),
+                             expr.getArgConversions(), paramTypes);
         ctx.builder->CreateCall(ctorFunc, ctorArgs);
       }
 
@@ -1648,7 +1553,8 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
           initMethod ? initMethod->paramTypes : std::vector<sun::TypePtr>{};
 
       std::vector<Value*> ctorArgs =
-          generateCtorArgs(ctorFunc, alloca, expr.getArgs(), paramTypes);
+          generateCtorArgs(ctorFunc, alloca, expr.getArgs(),
+                             expr.getArgConversions(), paramTypes);
       ctx.builder->CreateCall(ctorFunc, ctorArgs);
     }
 

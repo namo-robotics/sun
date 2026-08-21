@@ -137,6 +137,21 @@ function main() i32 {
   has no C equivalent. Use `raw_ptr<T>` to return a pointer.
 </Callout>
 
+### Integer widths
+
+C's `int` is `i32`. A value computed as `i64` does not narrow on its own, so
+convert it at the call: `_convert<i32>(x)` when it is known to fit, or
+`safe_convert<i32>(x)` from the stdlib to get a `ConversionError` when it does
+not.
+
+```sun
+extern "C" function poll(fds: raw_ptr<u8>, nfds: i64, timeout: i32) i32;
+
+function wait_for(fds: raw_ptr<u8>, interval_ms: i64) i32 {
+    unsafe { return poll(fds, 1, _convert<i32>(interval_ms)); };
+}
+```
+
 ## Varargs
 
 A trailing `...` declares a C-variadic function. Arguments past the named
