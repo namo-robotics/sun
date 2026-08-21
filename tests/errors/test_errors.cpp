@@ -1162,7 +1162,7 @@ TEST(Errors, without_stdlib_message_stays_literal_only) {
 
     function main() i32 {
       var b: Boom = Boom();
-      return b.code() + _convert<i32>(_static_ptr_len<u8>(b.message()));
+      return b.code() + _convert<i32>(b.message().length());
     }
   )");
   EXPECT_EQ(value, 13);  // 9 + 4

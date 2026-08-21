@@ -38,8 +38,6 @@ enum class Intrinsic {
   Init,           // _init<T>(ptr, args...) -> void
   Load,           // _load<T>(ptr, index) -> T
   Store,          // _store<T>(ptr, index, value) -> void
-  StaticPtrData,  // _static_ptr_data<T>(static_ptr<T>) -> raw_ptr<T>
-  StaticPtrLen,   // _static_ptr_len<T>(static_ptr<T>) -> i64
   PtrAsRaw,       // _ptr_as_raw<T>(ptr<T>) -> raw_ptr<T>
   Is,             // _is<T>(value) -> bool (compile-time type check)
   AddressOf,      // _address_of<T>(ref T) -> raw_ptr<T>
@@ -131,8 +129,6 @@ inline Intrinsic getIntrinsic(const std::string& name) {
   if (name == "_init") return Intrinsic::Init;
   if (name == "_load") return Intrinsic::Load;
   if (name == "_store") return Intrinsic::Store;
-  if (name == "_static_ptr_data") return Intrinsic::StaticPtrData;
-  if (name == "_static_ptr_len") return Intrinsic::StaticPtrLen;
   if (name == "_ptr_as_raw") return Intrinsic::PtrAsRaw;
   if (name == "_is") return Intrinsic::Is;
   if (name == "_address_of") return Intrinsic::AddressOf;
@@ -219,8 +215,6 @@ inline bool isGenericIntrinsic(Intrinsic i) {
     case Intrinsic::Init:
     case Intrinsic::Load:
     case Intrinsic::Store:
-    case Intrinsic::StaticPtrData:
-    case Intrinsic::StaticPtrLen:
     case Intrinsic::PtrAsRaw:
     case Intrinsic::Is:
     case Intrinsic::AddressOf:

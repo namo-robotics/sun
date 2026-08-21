@@ -83,13 +83,23 @@ _free(raw);
 
 ### `static_ptr<T>` - Static Pointer
 
-A pointer to immortal/static data, such as string literals. Represented as a fat pointer `{ ptr data, i64 length }`.
+A pointer to immortal/static data, such as string literals. Represented as a fat pointer `{ ptr data, i64 length }`. The data lives for the entire program.
+
+Two methods take the fat pointer apart; they are the supported way to read a `static_ptr`:
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `length()` | `i64` | Number of elements (bytes, for a string literal; the NUL terminator is not counted) |
+| `raw()` | `raw_ptr<T>` | The data pointer, for `_load<T>`, `_print_bytes` or a C function |
 
 ```sun
 var s: static_ptr<u8> = "hello world";
-// Points to static data that lives for the entire program
-// s.length == 11, s.data == raw pointer to bytes
+var n: i64 = s.length();        // 11
+var bytes: raw_ptr<u8> = s.raw();
+_print_bytes(bytes, n);
 ```
+
+Passing a `static_ptr<T>` where a `raw_ptr<T>` is expected narrows it to `raw()` automatically, so a string literal can be handed straight to a C function (see [C FFI](/c-ffi#strings)).
 
 ## Thread Type
 

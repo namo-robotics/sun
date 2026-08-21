@@ -746,22 +746,6 @@ Value* CodegenVisitor::codegen(const MemberAccessAST& expr) {
     }
   }
 
-  // Handle static_ptr members (length, data, get)
-  if (objectType && objectType->isStaticPointer()) {
-    auto* ptrType = static_cast<sun::StaticPointerType*>(objectType.get());
-    Value* result = codegenStaticPtrMemberAccess(expr, ptrType);
-    if (result) return result;
-    // Falls through if pointing to class and member not found
-  }
-
-  // Handle raw_ptr<T>.get() - dereference raw pointer
-  if (objectType && objectType->isRawPointer()) {
-    auto* ptrType = static_cast<sun::RawPointerType*>(objectType.get());
-    Value* result = codegenRawPtrMemberAccess(expr, ptrType);
-    if (result) return result;
-    // Falls through if pointing to class and member not 'get'
-  }
-
   // Resolve the object down to (pointer, class type)
   auto [objectPtr, classType] = codegenObjectPtr(*expr.getObject());
   if (!objectPtr) return nullptr;
@@ -1304,10 +1288,6 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
       return codegenLoadIntrinsic(getFirstTypeArg(), expr.getArgs());
     case sun::Intrinsic::Store:
       return codegenStoreIntrinsic(getFirstTypeArg(), expr.getArgs());
-    case sun::Intrinsic::StaticPtrData:
-      return codegenStaticPtrDataIntrinsic(expr.getArgs());
-    case sun::Intrinsic::StaticPtrLen:
-      return codegenStaticPtrLenIntrinsic(expr.getArgs());
     case sun::Intrinsic::PtrAsRaw:
       return codegenPtrAsRawIntrinsic(expr.getArgs());
     case sun::Intrinsic::AddressOf:

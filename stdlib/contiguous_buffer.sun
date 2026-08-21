@@ -74,8 +74,11 @@ public module sun {
     public function take_unchecked(index: i64) T {
       var value: T = unsafe { _load<T>(this.data.get_raw(), index); };
       unsafe {
-        _memset(_ptr_offset(this.data.get_raw(), index * _sizeof<T>()), 0,
-                _sizeof<T>());
+        _memset(
+          _ptr_offset(this.data.get_raw(), index * _sizeof<T>()),
+          0,
+          _sizeof<T>()
+        );
       };
       return value;
     }

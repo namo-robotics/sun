@@ -89,7 +89,19 @@ function main() i32 {
 }
 ```
 
-Sun string literals are NUL-terminated, so they are safe to hand to C.
+Sun string literals are NUL-terminated, so they are safe to hand to C. When the C
+function wants the pointer and the length separately, take them apart with
+`s.raw()` and `s.length()`:
+
+```sun
+extern "C" function write(fd: i32, buf: raw_ptr<u8>, n: i64) i64;
+
+function main() i32 {
+    var s: static_ptr<u8> = "hello\n";
+    unsafe { write(1, s.raw(), s.length()); };
+    return 0;
+}
+```
 
 ### Structs
 

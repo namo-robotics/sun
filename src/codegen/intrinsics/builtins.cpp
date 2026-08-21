@@ -109,7 +109,7 @@ Value* CodegenVisitor::codegenBuiltin(const std::string& name,
   if (name == "__read") {
     return codegenRead(expr);
   }
-  // Pointer intrinsics (implemented in pointers.cpp)
+  // Pointer intrinsics
   if (name == "_load_i64") {
     return codegenLoadI64Intrinsic(expr);
   }

@@ -58,8 +58,8 @@ public module sun {
 
     // Check if view equals a literal
     public function equals_literal(literal: static_ptr<u8>) bool {
-      var srcData: raw_ptr<u8> = _static_ptr_data<u8>(literal);
-      var srcLen: i64 = _static_ptr_len<u8>(literal);
+      var srcData: raw_ptr<u8> = literal.raw();
+      var srcLen: i64 = literal.length();
 
       var myLen: i64 = this.length();
       if (myLen != srcLen) {
@@ -87,8 +87,8 @@ public module sun {
     // Copies bytes from static_ptr<u8> (fat pointer) to heap
     public function init(alloc: ref HeapAllocator, literal: static_ptr<u8>) {
       // Extract data pointer and length from fat pointer struct
-      var srcData: raw_ptr<u8> = _static_ptr_data<u8>(literal);
-      var srcLen: i64 = _static_ptr_len<u8>(literal);
+      var srcData: raw_ptr<u8> = literal.raw();
+      var srcLen: i64 = literal.length();
 
       // Allocate with some extra capacity for growth
       var capacity: i64 = srcLen + 16;
@@ -108,8 +108,8 @@ public module sun {
     // own copy and frees itself through it as usual.
     public function init(literal: static_ptr<u8>) {
       var alloc: HeapAllocator = HeapAllocator();
-      var srcData: raw_ptr<u8> = _static_ptr_data<u8>(literal);
-      var srcLen: i64 = _static_ptr_len<u8>(literal);
+      var srcData: raw_ptr<u8> = literal.raw();
+      var srcLen: i64 = literal.length();
 
       var capacity: i64 = srcLen + 16;
       this.data = ContiguousBuffer<u8>(alloc, capacity);
@@ -271,8 +271,8 @@ public module sun {
 
     // Append string literal
     public function append_literal(literal: static_ptr<u8>) void {
-      var srcData: raw_ptr<u8> = _static_ptr_data<u8>(literal);
-      var srcLen: i64 = _static_ptr_len<u8>(literal);
+      var srcData: raw_ptr<u8> = literal.raw();
+      var srcLen: i64 = literal.length();
 
       this.ensure_capacity(srcLen);
       for (var i: i64 = 0; i < srcLen; i = i + 1) {
@@ -284,8 +284,8 @@ public module sun {
 
     // Check if string equals a literal
     public function equals_literal(literal: static_ptr<u8>) bool {
-      var srcData: raw_ptr<u8> = _static_ptr_data<u8>(literal);
-      var srcLen: i64 = _static_ptr_len<u8>(literal);
+      var srcData: raw_ptr<u8> = literal.raw();
+      var srcLen: i64 = literal.length();
 
       if (this.len != srcLen) {
         return false;
@@ -398,8 +398,8 @@ public module sun {
 
     // Check if string starts with literal
     public function starts_with(literal: static_ptr<u8>) bool {
-      var srcData: raw_ptr<u8> = _static_ptr_data<u8>(literal);
-      var srcLen: i64 = _static_ptr_len<u8>(literal);
+      var srcData: raw_ptr<u8> = literal.raw();
+      var srcLen: i64 = literal.length();
 
       if (srcLen > this.len) {
         return false;
@@ -417,8 +417,8 @@ public module sun {
 
     // Check if string ends with literal
     public function ends_with(literal: static_ptr<u8>) bool {
-      var srcData: raw_ptr<u8> = _static_ptr_data<u8>(literal);
-      var srcLen: i64 = _static_ptr_len<u8>(literal);
+      var srcData: raw_ptr<u8> = literal.raw();
+      var srcLen: i64 = literal.length();
 
       if (srcLen > this.len) {
         return false;
@@ -486,7 +486,7 @@ public module sun {
 
     // Find first occurrence of a literal; None if not found
     public function find(needle: static_ptr<u8>) Option<i64> {
-      return this.find_bytes(_static_ptr_data<u8>(needle), _static_ptr_len<u8>(needle), 0);
+      return this.find_bytes(needle.raw(), needle.length(), 0);
     }
 
     // Find first occurrence of another string; None if not found
@@ -660,10 +660,10 @@ public module sun {
     // Replace every occurrence of a literal with another literal, in-place
     public function replace(from: static_ptr<u8>, to: static_ptr<u8>) void {
       this.replace_bytes(
-        _static_ptr_data<u8>(from),
-        _static_ptr_len<u8>(from),
-        _static_ptr_data<u8>(to),
-        _static_ptr_len<u8>(to)
+        from.raw(),
+        from.length(),
+        to.raw(),
+        to.length()
       );
     }
 
@@ -722,8 +722,8 @@ public module sun {
     // Split on a separator string into owned strings.
     // An empty separator yields the whole string as a single piece.
     public function split(alloc: ref HeapAllocator, sep: static_ptr<u8>) Vec<String> {
-      var sep_data: raw_ptr<u8> = _static_ptr_data<u8>(sep);
-      var sep_len: i64 = _static_ptr_len<u8>(sep);
+      var sep_data: raw_ptr<u8> = sep.raw();
+      var sep_len: i64 = sep.length();
       var parts: Vec<String> = Vec<String>(alloc, 4);
       if (sep_len == 0) {
         parts.push(this.clone(alloc));
@@ -768,8 +768,8 @@ public module sun {
     // Split on a separator string, keeping only non-empty pieces.
     // An empty separator yields the whole string, or nothing if it is empty.
     public function split_nonempty(alloc: ref HeapAllocator, sep: static_ptr<u8>) Vec<String> {
-      var sep_data: raw_ptr<u8> = _static_ptr_data<u8>(sep);
-      var sep_len: i64 = _static_ptr_len<u8>(sep);
+      var sep_data: raw_ptr<u8> = sep.raw();
+      var sep_len: i64 = sep.length();
       var parts: Vec<String> = Vec<String>(alloc, 4);
       if (sep_len == 0) {
         if (this.len > 0) {

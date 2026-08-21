@@ -555,15 +555,39 @@ Value* CodegenVisitor::prepareRefArgument(const ExprAST* argExpr,
 
 // -------------------------------------------------------------------
 // Builtin type method dispatch
-// Handles: Thread.join(), array.shape(), raw_ptr._get(), static_ptr methods
+// Handles: Thread.join(), static_ptr.length()/.raw()
 // Returns nullptr if not a builtin type method (caller should continue).
 // -------------------------------------------------------------------
+
+Value* CodegenVisitor::extractStaticPtrField(Value* fatPtr, unsigned index,
+                                             const sun::TypePtr& staticPtrType,
+                                             const char* name) {
+  if (fatPtr->getType()->isStructTy()) {
+    return ctx.builder->CreateExtractValue(fatPtr, index, name);
+  }
+  // Still an address of the fat pointer (e.g. an alloca): load the field.
+  llvm::Type* fatTy = typeResolver.resolve(staticPtrType);
+  Value* fieldAddr = ctx.builder->CreateStructGEP(fatTy, fatPtr, index);
+  llvm::Type* fieldTy = index == 0
+                            ? static_cast<llvm::Type*>(
+                                  llvm::PointerType::getUnqual(ctx.getContext()))
+                            : llvm::Type::getInt64Ty(ctx.getContext());
+  return ctx.builder->CreateLoad(fieldTy, fieldAddr, name);
+}
 
 Value* CodegenVisitor::codegenBuiltinTypeMethod(const CallExprAST& expr,
                                                 Value* objectPtr,
                                                 sun::TypePtr objectType,
                                                 const std::string& methodName) {
   if (!objectType) return nullptr;
+
+  // A ref static_ptr<T> receiver was loaded by codegen(); treat it as the
+  // fat pointer value.
+  if (objectType->isReference()) {
+    sun::TypePtr inner =
+        static_cast<sun::ReferenceType*>(objectType.get())->getReferencedType();
+    if (inner && inner->isStaticPointer()) objectType = inner;
+  }
 
   // Handle Thread<T>.join()
   if (objectType->isThread()) {
@@ -580,49 +604,25 @@ Value* CodegenVisitor::codegenBuiltinTypeMethod(const CallExprAST& expr,
     return nullptr;
   }
 
-  // Handle pointer type methods: raw_ptr._get(),
-  // static_ptr._get()/.length/.data
-  if (objectType->isRawPointer() || objectType->isStaticPointer()) {
-    sun::TypePtr pointeeType = nullptr;
-    if (objectType->isRawPointer()) {
-      pointeeType =
-          static_cast<sun::RawPointerType*>(objectType.get())->getPointeeType();
-    } else {
-      pointeeType = static_cast<sun::StaticPointerType*>(objectType.get())
-                        ->getPointeeType();
-    }
+  // static_ptr<T>.length() -> i64, static_ptr<T>.raw() -> raw_ptr<T>.
+  // A static_ptr<Class> dispatches to the class's own methods instead.
+  if (objectType->isStaticPointer()) {
+    sun::TypePtr pointeeType =
+        static_cast<sun::StaticPointerType*>(objectType.get())
+            ->getPointeeType();
+    if (pointeeType && pointeeType->isClass()) return nullptr;
 
-    // Handle ._get() method for pointer dereferencing
-    if (methodName == "_get") {
+    if (methodName == "length" || methodName == "raw") {
       if (!expr.getArgs().empty()) {
-        logAndThrowError("_get() takes no arguments");
+        logAndThrowError("static_ptr." + methodName +
+                         "() takes no arguments");
         return nullptr;
       }
-
-      if (objectType->isStaticPointer()) {
-        // static_ptr is a fat pointer struct { ptr, i64 }
-        // objectPtr is the struct value, extract data ptr and load
-        Value* dataPtr =
-            ctx.builder->CreateExtractValue(objectPtr, 0, "static_ptr.data");
-        auto* staticPtrType =
-            static_cast<sun::StaticPointerType*>(objectType.get());
-        llvm::Type* pointeeLLVMType =
-            staticPtrType->getPointeeType()->toLLVMType(ctx.getContext());
-        return ctx.builder->CreateLoad(pointeeLLVMType, dataPtr,
-                                       "static_ptr._get");
-      } else {
-        auto* ptrType = static_cast<sun::RawPointerType*>(objectType.get());
-        llvm::Type* pointeeLLVMType =
-            ptrType->getPointeeType()->toLLVMType(ctx.getContext());
-        return ctx.builder->CreateLoad(pointeeLLVMType, objectPtr,
-                                       "raw_ptr._get");
-      }
-    }
-
-    // For pointer-to-class, we don't handle other methods here - return nullptr
-    // to continue with class method dispatch
-    if (pointeeType && pointeeType->isClass()) {
-      return nullptr;  // Let caller handle as class method
+      return methodName == "length"
+                 ? extractStaticPtrField(objectPtr, 1, objectType,
+                                         "static_ptr.length")
+                 : extractStaticPtrField(objectPtr, 0, objectType,
+                                         "static_ptr.raw");
     }
   }
 
@@ -973,7 +973,7 @@ Value* CodegenVisitor::codegenMethodCall(const CallExprAST& expr,
     objectType = currentClass;
   }
 
-  // Try builtin type methods first (Thread.join(), ptr._get(), etc.)
+  // Try builtin type methods first (Thread.join(), static_ptr.length(), etc.)
   // Note: For pointer-to-class, this returns nullptr to continue with class
   // dispatch
   if (Value* builtinResult =

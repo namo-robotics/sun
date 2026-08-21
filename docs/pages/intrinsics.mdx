@@ -60,24 +60,6 @@ Stores `value` of type `T` at `ptr[index]`.
 _store<i32>(data, 5, 42);
 ```
 
-### `_static_ptr_data<T>(static_ptr<T>)`
-
-Extracts the raw data pointer from a `static_ptr<T>` fat pointer.
-
-```sun
-var s: static_ptr<u8> = "hello";
-var rawPtr = _static_ptr_data<u8>(s);  // raw_ptr<u8> to the string data
-```
-
-### `_static_ptr_len<T>(static_ptr<T>)`
-
-Extracts the length from a `static_ptr<T>` fat pointer.
-
-```sun
-var s: static_ptr<u8> = "hello";
-var len = _static_ptr_len<u8>(s);  // 5
-```
-
 ### `_ptr_as_raw<T>(ptr<T>)`
 
 Converts an owning `ptr<T>` to a non-owning `raw_ptr<T>` without transferring ownership. Similar to C++'s `unique_ptr::get()`.
@@ -292,8 +274,12 @@ Prints `len` bytes from the memory at `ptr` to stdout.
 
 ```sun
 var s: static_ptr<u8> = "hello";
-_print_bytes(_static_ptr_data<u8>(s), 5);  // Prints "hello"
+_print_bytes(s.raw(), s.length());  // Prints "hello"
 ```
+
+The pointer and length of a `static_ptr<T>` come from its `raw()` and
+`length()` methods, not from an intrinsic (see
+[Builtin Types](/builtin-types#static_ptrt---static-pointer)).
 
 ### `_println_str(str)`
 
@@ -425,8 +411,6 @@ class Vec<T> {
 | `_init<T>` | `ptr, args...` | `void` | Construct T at ptr |
 | `_load<T>` | `ptr, index` | `T` | Load element at index |
 | `_store<T>` | `ptr, index, value` | `void` | Store element at index |
-| `_static_ptr_data<T>` | `static_ptr<T>` | `raw_ptr<T>` | Extract data pointer |
-| `_static_ptr_len<T>` | `static_ptr<T>` | `i64` | Extract length |
 | `_ptr_as_raw<T>` | `ptr<T>` | `raw_ptr<T>` | Get raw pointer without ownership transfer |
 | `_is<T>` | `value` | `bool` | Compile-time type check |
 | `_convert<T>` | `value` | `T` | Unchecked numeric conversion (truncate, extend, int ↔ float) |

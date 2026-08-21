@@ -80,8 +80,8 @@ public module sun {
 
     // Send string data
     public function send_str(data: static_ptr<u8>) i64, IError {
-      var str_ptr: raw_ptr<u8> = _static_ptr_data<u8>(data);
-      var len: i64 = _static_ptr_len<u8>(data);
+      var str_ptr: raw_ptr<u8> = data.raw();
+      var len: i64 = data.length();
       var result: i64 = unsafe { __send(this.fd, str_ptr, len, MSG_NOSIGNAL); };
       if (result < 0) {
         var err_code: i32 = -1;

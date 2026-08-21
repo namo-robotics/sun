@@ -157,5 +157,4 @@ public module sun {
     var d_reclen: u16;  // @16
     var d_type: u8;  // @18
   }
-
 }

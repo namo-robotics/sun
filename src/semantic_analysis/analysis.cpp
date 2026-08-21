@@ -3010,6 +3010,11 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
       // types here. inferType() alone would only see the first overload.
       memberAccess.setResolvedType(
           sun::Types::Function(modFunc->returnType, modFunc->paramTypes));
+    } else if (auto* staticPtr = asNonClassStaticPtr(objectType)) {
+      // static_ptr<T> builtin methods: length(), raw()
+      memberAccess.setResolvedType(inferStaticPtrMethodType(
+          *staticPtr, memberAccess.getMemberName(), callExpr.getArgs().size(),
+          memberAccess.getLocation()));
     } else {
       // Not a class type (interface, module, ptr-to-class, builtin...).
       // Set the type directly (the object is already analyzed) instead of

@@ -8,7 +8,9 @@ function main() i32 {
   var a = make_heap_allocator();
   var p = String(a, "/tmp/");
   p.append("computed.txt");
-  try { boom(p); } catch (e: IError) {
+  try {
+    boom(p);
+  } catch (e: IError) {
     var m: String = e.message();
     println(m);
     return _convert<i32>(m.length());
