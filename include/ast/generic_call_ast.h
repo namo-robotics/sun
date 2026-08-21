@@ -76,6 +76,15 @@ class GenericCallAST : public ExprAST {
 
   // Resolved type arguments (set by semantic analyzer after type param
   // substitution)
+  // How each argument reaches its parameter (set by the semantic analyzer
+  // once the specialization is known; one entry per argument)
+  void setArgConversions(std::vector<sun::ArgConversion> conversions) const {
+    gcAnalysis().argConversions = std::move(conversions);
+  }
+  const std::vector<sun::ArgConversion>& getArgConversions() const {
+    return gcAnalysis().argConversions;
+  }
+
   void setResolvedTypeArgs(std::vector<sun::TypePtr> types) const {
     gcAnalysis().resolvedTypeArgs = std::move(types);
   }

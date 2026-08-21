@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "argument_conversion.h"
 #include "ast/ast_fwd.h"
 #include "qualified_name.h"
 #include "types.h"
@@ -117,6 +118,17 @@ struct MemberAccessAnalysis : public ExprAnalysis {
   MemberAccessAnalysis& operator=(const MemberAccessAnalysis&) = default;
 };
 
+/// Analysis data for CallExprAST
+struct CallAnalysis : public ExprAnalysis {
+  // How each argument reaches its parameter, decided by the semantic analyzer
+  // once the callee's signature is known; codegen carries these out.
+  std::vector<sun::ArgConversion> argConversions;
+
+  CallAnalysis() = default;
+  CallAnalysis(const CallAnalysis&) = default;
+  CallAnalysis& operator=(const CallAnalysis&) = default;
+};
+
 /// Analysis data for GenericCallAST
 struct GenericCallAnalysis : public ExprAnalysis {
   std::vector<sun::TypePtr> resolvedTypeArgs;
@@ -124,6 +136,8 @@ struct GenericCallAnalysis : public ExprAnalysis {
   // Name of the specialization this call resolved to, as recorded by the
   // semantic analyzer when it instantiated the template.
   sun::QualifiedName specializationName;
+  // As CallAnalysis::argConversions, for `f<T>(args)` and `Box<T>(args)`
+  std::vector<sun::ArgConversion> argConversions;
 
   GenericCallAnalysis() = default;
   GenericCallAnalysis(const GenericCallAnalysis&) = default;

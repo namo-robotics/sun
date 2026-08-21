@@ -361,11 +361,12 @@ class CodegenVisitor {
   // Enum codegen
   llvm::Value* codegen(const EnumDefinitionAST& expr);
 
-  // Generate constructor argument values, handling ref parameters correctly.
+  // Generate constructor argument values as semantic analysis decided them.
   // Arg 0 is the method closure { ctorFunc, thisPtr }.
   std::vector<llvm::Value*> generateCtorArgs(
       llvm::Function* ctorFunc, llvm::Value* thisPtr,
       const std::vector<std::unique_ptr<ExprAST>>& args,
+      const std::vector<sun::ArgConversion>& conversions,
       const std::vector<sun::TypePtr>& paramTypes);
 
   // Result of constructor lookup - contains method info and mangled name
@@ -399,12 +400,6 @@ class CodegenVisitor {
   llvm::GlobalVariable* getOrCreateInterfaceVtable(
       sun::ClassType* classType, sun::InterfaceType* ifaceType);
 
-  // Converts a class argument to an interface fat pointer if the parameter
-  // expects an interface. Returns the original value if no conversion needed.
-  llvm::Value* convertToInterfaceIfNeeded(llvm::Value* argVal,
-                                          sun::TypePtr argType,
-                                          sun::TypePtr paramType);
-
   // Prepares a class argument for a ref Interface parameter by creating a
   // fat pointer on the stack. Returns nullptr if not a class->ref Interface
   // conversion, otherwise returns pointer to the fat pointer on stack.
@@ -429,18 +424,21 @@ class CodegenVisitor {
   // externs (`as "symbol"`) to the C symbol they were declared under.
   llvm::Function* lookupCallTarget(const std::string& name);
 
-  // Build the argument list for a direct call, applying every parameter
-  // coercion Sun performs at a call boundary. Shared by plain,
-  // module-qualified and generic calls. Returns false if an argument failed
-  // to codegen.
-  bool buildDirectCallArgs(const std::vector<std::unique_ptr<ExprAST>>& args,
-                           const std::vector<sun::TypePtr>& paramTypes,
-                           llvm::Function* func,
-                           std::vector<llvm::Value*>& argValues);
+  // Lower a call's arguments as semantic analysis decided (one ArgConversion
+  // per argument), appending to argValues. The one argument loop for every
+  // kind of call. `paramTypes` supplies the target type where a conversion
+  // needs one, `calleeTy` the LLVM parameter types for closure values.
+  // Returns false if an argument failed to codegen.
+  bool emitCallArguments(const std::vector<std::unique_ptr<ExprAST>>& args,
+                         const std::vector<sun::ArgConversion>& conversions,
+                         const std::vector<sun::TypePtr>& paramTypes,
+                         llvm::FunctionType* calleeTy,
+                         std::vector<llvm::Value*>& argValues,
+                         const std::string& calleeName);
 
-  // Generate the arguments for a call across the C boundary, applying only
-  // Sun's own coercions. C-specific marshalling is ExternCEmitter's job.
-  bool buildExternCallArgs(const CallExprAST& expr,
+  // Generate the arguments for a call across the C boundary, carrying out
+  // only Sun's own conversions. C-specific marshalling is ExternCEmitter's job.
+  bool emitExternArguments(const CallExprAST& expr,
                            const std::vector<sun::TypePtr>& paramTypes,
                            std::vector<sun::cabi::PreparedArg>& out);
 
@@ -1060,14 +1058,6 @@ class CodegenVisitor {
   llvm::Value* prepareRefArgument(const ExprAST* argExpr,
                                   sun::TypePtr argSunType,
                                   bool allowTemporaryCopy = true);
-
-  // Emit a method call's user arguments against paramTypes (ref parameters
-  // take the argument's address), appending to argValues after the closure.
-  // Shared by plain and generic method calls. False if an argument failed.
-  bool emitMethodArguments(const CallExprAST& expr,
-                           const std::vector<sun::TypePtr>& paramTypes,
-                           llvm::Function* callee,
-                           std::vector<llvm::Value*>& argValues);
 
   /**
    * Codegens a new global array variable.

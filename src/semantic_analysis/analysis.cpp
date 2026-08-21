@@ -3301,7 +3301,13 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
     }
   }
 
-  // Note: Move semantics for ptr<T> arguments are tracked by the borrow checker
+  // Record how each argument reaches its parameter. Codegen carries these
+  // out and never compares Sun types at the call boundary itself.
+  if (knownSignature) {
+    callExpr.setArgConversions(sun::conversions::classifyArguments(
+        callExpr.getResolvedArgTypes(), paramTypes, calleeIsCVariadic,
+        funcName, callExpr.getLocation()));
+  }
 
   callExpr.setResolvedType(inferType(callExpr));
 }
@@ -3444,6 +3450,14 @@ void SemanticAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
                             expectedParamTypes[i], /*throwOnFail=*/true);
   }
 
+  if (allConcrete) {
+    std::vector<sun::TypePtr> argTypes;
+    for (const auto& arg : args) argTypes.push_back(arg->getResolvedType());
+    genericCall.setArgConversions(sun::conversions::classifyArguments(
+        argTypes, expectedParamTypes, /*cVariadic=*/false, funcName,
+        genericCall.getLocation()));
+  }
+
   genericCall.setResolvedType(inferGenericCallType(genericCall));
 }
 
@@ -3530,6 +3544,14 @@ void SemanticAnalyzer::analyzeGenericClassConstruction(
   for (size_t i = 0; i < args.size() && i < expectedParamTypes.size(); ++i) {
     tryCoerceIntegerLiteral(const_cast<ExprAST*>(args[i].get()),
                             expectedParamTypes[i], /*throwOnFail=*/true);
+  }
+
+  if (specializedClass) {
+    std::vector<sun::TypePtr> argTypes;
+    for (const auto& arg : args) argTypes.push_back(arg->getResolvedType());
+    genericCall.setArgConversions(sun::conversions::classifyArguments(
+        argTypes, expectedParamTypes, /*cVariadic=*/false,
+        specializedClass->toString() + ".init", genericCall.getLocation()));
   }
 
   genericCall.setResolvedType(inferGenericCallType(genericCall));

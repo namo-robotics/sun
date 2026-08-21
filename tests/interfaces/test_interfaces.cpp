@@ -726,3 +726,27 @@ TEST(Interfaces_DynamicDispatch, extra_argument_to_interface_method_is_error) {
   )"),
                                 "'area' expects 0 arguments, got 1");
 }
+
+// ============================================================================
+// Borrowed class arguments to interface parameters
+// ============================================================================
+
+TEST(Interfaces, borrowed_class_passes_to_interface_parameters) {
+  auto value = executeString(R"(
+    interface IShape { function area() i32; }
+    class Sq implements IShape {
+      var s: i32;
+      function init(s: i32) { this.s = s; }
+      function area() i32 { return this.s * this.s; }
+    }
+    function measure(sh: IShape) i32 { return sh.area(); }
+    function measure_ref(sh: ref IShape) i32 { return sh.area(); }
+    // q is a borrow; both parameters still get a proper fat pointer
+    function via_borrow(q: ref Sq) i32 { return measure(q) + measure_ref(q); }
+    function main() i32 {
+        var q = Sq(3);
+        return via_borrow(q) + measure(q);   // 9 + 9 + 9
+    }
+  )");
+  EXPECT_EQ(value, 27);
+}
