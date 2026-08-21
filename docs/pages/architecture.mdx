@@ -77,7 +77,7 @@ The type system (`types.h`) includes:
 - **Interfaces**: Contracts for polymorphism (including builtin `IError`; the stdlib supplies `IIterator`, `IIterable`)
 - **Enums**: Named integer variants with pattern matching support
 - **Generics**: Parameterized types with monomorphization
-- **Error Unions**: `T, IError` for explicit error handling
+- **Errors**: `T, IError` functions throw classes implementing `IError` as native exceptions
 - **Threads**: `Thread<T>` for OS thread handles via `spawn`
 
 ## Execution Modes

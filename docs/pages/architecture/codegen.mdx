@@ -17,7 +17,9 @@ code.
 - Classes are value types: functions returning a class return the struct by
   value, and callers materialize it on the stack for addressability.
 - Arrays are fat pointers: `{ ptr data, i32 ndims, ptr dims }`.
-- Error unions (`T, IError` functions) lower to `{ i1 isError, T value }`.
+- Throwing functions (`T, IError`) return plain `T`; errors are native LLVM
+  exceptions (`__gxx_personality_v0`, landing pads), so `throw` unwinds and
+  `catch` selects a handler by the thrown class's type id.
 - Lambdas use closure structs; named functions use direct calls. Class
   methods use the closure ABI: arg 0 is a ptr to `{ ptr func, ptr env }`
   with the receiver in `env`, and `obj.method` in value position is a

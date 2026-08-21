@@ -117,10 +117,15 @@ Sun provides builtin interfaces for common patterns. These interfaces are always
 The error interface used with the `try`/`catch`/`throw` error handling system.
 
 ```sun
-// IError is automatically used by the error system
+class DivByZero implements IError {
+    function init() {}
+    function code() i32 { return 1; }
+    function message() String { return String("division by zero"); }
+}
+
 function divide(a: i32, b: i32) i32, IError {
     if (b == 0) {
-        throw 1;  // Error code
+        throw DivByZero();  // any class implementing IError
     }
     return a / b;
 }

@@ -616,6 +616,41 @@ function main() i32 {
       SunError);
 }
 
+// `&&` / `||` are not Sun operators; the error must name `and` / `or`.
+static std::string parseErrorMessage(const std::string& src) {
+  try {
+    parseString(src);
+  } catch (const SunError& e) {
+    EXPECT_EQ(e.getKind(), SunError::Kind::Parse);
+    return e.what();
+  }
+  ADD_FAILURE() << "expected a parse error";
+  return "";
+}
+
+TEST(Tooling_Frontend_Parser_Errors, DoubleAmpersandSuggestsAnd) {
+  std::string what = parseErrorMessage(R"(
+function main() i32 {
+    if (true && false) { return 1; }
+    return 0;
+}
+)");
+  EXPECT_TRUE(what.find("unexpected '&&'") != std::string::npos) << what;
+  EXPECT_TRUE(what.find("'and'") != std::string::npos) << what;
+  EXPECT_TRUE(what.find("3:14") != std::string::npos) << what;  // points at '&&'
+}
+
+TEST(Tooling_Frontend_Parser_Errors, DoublePipeSuggestsOr) {
+  std::string what = parseErrorMessage(R"(
+function main() i32 {
+    var ok: bool = true || false;
+    return 0;
+}
+)");
+  EXPECT_TRUE(what.find("unexpected '||'") != std::string::npos) << what;
+  EXPECT_TRUE(what.find("'or'") != std::string::npos) << what;
+}
+
 // ------------------------------------------------------------------
 // Driver-based parsing error tests - these log errors to stderr
 // Uses compileString which goes through the full driver pipeline
