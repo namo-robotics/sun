@@ -177,7 +177,7 @@ Parser::ParsedPattern Parser::parsePattern() {
       while (curTok.kind == TokenKind::DOT) {
         getNextToken();  // eat '.'
         if (curTok.kind != TokenKind::IDENTIFIER) {
-          parsingError("expected identifier after '.' in match pattern");
+          throwIdentifierError("expected identifier after '.' in match pattern");
           return result;
         }
         std::string member = curTok.getIdentifier().value();
@@ -206,7 +206,7 @@ Parser::ParsedPattern Parser::parsePattern() {
             binding.name = curTok.getIdentifier().value();
             getNextToken();  // eat binding name
           } else {
-            parsingError(
+            throwIdentifierError(
                 "match patterns bind payloads to fresh names; nested "
                 "patterns and expressions are not supported here");
             return result;
@@ -316,7 +316,7 @@ unique_ptr<FunctionAST> Parser::parseFunction() {
   // Allow both regular identifiers and intrinsic identifiers (e.g., __index__)
   if (curTok.kind != TokenKind::IDENTIFIER &&
       curTok.kind != TokenKind::INTRINSIC_IDENTIFIER)
-    parsingError("Expected function name after 'function'");
+    throwIdentifierError("Expected function name after 'function'");
 
   std::string funcName = curTok.getIdentifier().value();
   getNextToken();  // eat function name
@@ -339,7 +339,7 @@ unique_ptr<FunctionAST> Parser::parseFunction() {
     }
 
     if (typeParameters.empty()) {
-      parsingError("expected type parameter name after '<'");
+      throwIdentifierError("expected type parameter name after '<'");
     }
 
     expectCurrentTokenKind(TokenKind::GREATER,
@@ -374,7 +374,7 @@ unique_ptr<LambdaAST> Parser::parseLambda() {
       getNextToken();  // eat 'ref'
 
       if (curTok.kind != TokenKind::IDENTIFIER) {
-        parsingError("expected variable name after 'ref' in capture list");
+        throwIdentifierError("expected variable name after 'ref' in capture list");
       }
       refCaptureNames.push_back(curTok.getIdentifier().value());
       getNextToken();  // eat identifier
@@ -456,8 +456,9 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
         "C varargs ('...') are only allowed on 'extern function' declarations");
   }
 
-  expectCurrentTokenKind(TokenKind::PAREN_CLOSE,
-                         "Expected ')' in function literal");
+  if (curTok.kind != TokenKind::PAREN_CLOSE) {
+    throwIdentifierError("Expected ')' in function literal");
+  }
 
   getNextToken();  // eat ')'
 
@@ -538,7 +539,7 @@ unique_ptr<StructLiteralAST> Parser::parseStructLiteral() {
   while (curTok.kind != TokenKind::BRACE_CLOSE &&
          curTok.kind != TokenKind::TOK_EOF) {
     if (curTok.kind != TokenKind::IDENTIFIER) {
-      parsingError("expected a field name in struct literal");
+      throwIdentifierError("expected a field name in struct literal");
       return nullptr;
     }
     Position fieldLoc = captureStart();
@@ -994,7 +995,7 @@ unique_ptr<ExprAST> Parser::parsePostfixExpr(unique_ptr<ExprAST> base) {
       getNextToken();  // eat '.'
 
       if (curTok.kind != TokenKind::IDENTIFIER) {
-        parsingError("expected member name after '.'");
+        throwIdentifierError("expected member name after '.'");
         return nullptr;
       }
 
@@ -1587,7 +1588,7 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
   // Allow both regular identifiers and intrinsic identifiers (e.g., __index__)
   if (curTok.kind != TokenKind::IDENTIFIER &&
       curTok.kind != TokenKind::INTRINSIC_IDENTIFIER) {
-    parsingError("Expected function name in prototype");
+    throwIdentifierError("Expected function name in prototype");
   }
 
   fnName = curTok.getIdentifier().value();
@@ -1611,7 +1612,7 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
     }
 
     if (typeParameters.empty()) {
-      parsingError("expected type parameter name after '<'");
+      throwIdentifierError("expected type parameter name after '<'");
     }
 
     if (curTok.kind != TokenKind::GREATER) {
@@ -1696,7 +1697,9 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
       break;
   }
 
-  expectCurrentTokenKind(TokenKind::PAREN_CLOSE, "Expected ')' in prototype");
+  if (curTok.kind != TokenKind::PAREN_CLOSE) {
+    throwIdentifierError("Expected ')' in prototype");
+  }
 
   // success.
   getNextToken();  // eat ')'."
@@ -3352,8 +3355,8 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
   getNextToken();  // eat 'class' or 'packed_class'
 
   if (curTok.kind != TokenKind::IDENTIFIER) {
-    parsingError(packed ? "expected class name after 'packed_class'"
-                        : "expected class name after 'class'");
+    throwIdentifierError(packed ? "expected class name after 'packed_class'"
+                           : "expected class name after 'class'");
     return nullptr;
   }
 
@@ -3378,7 +3381,7 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
     }
 
     if (typeParameters.empty()) {
-      parsingError("expected type parameter name after '<'");
+      throwIdentifierError("expected type parameter name after '<'");
       return nullptr;
     }
 
@@ -3424,7 +3427,7 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
     }
 
     if (implementedInterfaces.empty()) {
-      parsingError("expected interface name after 'implements'");
+      throwIdentifierError("expected interface name after 'implements'");
       return nullptr;
     }
   }
@@ -3537,7 +3540,7 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
     }
 
     if (typeParameters.empty()) {
-      parsingError("expected type parameter name after '<'");
+      throwIdentifierError("expected type parameter name after '<'");
       return nullptr;
     }
 
@@ -3568,7 +3571,7 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
       getNextToken();  // eat 'var'
 
       if (curTok.kind != TokenKind::IDENTIFIER) {
-        parsingError("expected field name in interface definition");
+        throwIdentifierError("expected field name in interface definition");
         return nullptr;
       }
 
@@ -3607,7 +3610,7 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
       // Allow both regular identifiers and intrinsic identifiers
       if (curTok.kind != TokenKind::IDENTIFIER &&
           curTok.kind != TokenKind::INTRINSIC_IDENTIFIER) {
-        parsingError("Expected method name in interface");
+        throwIdentifierError("Expected method name in interface");
         return nullptr;
       }
 
@@ -3632,7 +3635,7 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
         }
 
         if (typeParameters.empty()) {
-          parsingError("expected type parameter name after '<'");
+          throwIdentifierError("expected type parameter name after '<'");
           return nullptr;
         }
 
@@ -3953,7 +3956,7 @@ unique_ptr<ExprAST> Parser::parseTryCatch() {
     CatchClause catchClause;
 
     if (curTok.kind != TokenKind::IDENTIFIER) {
-      parsingError("expected binding name in catch clause");
+      throwIdentifierError("expected binding name in catch clause");
       return nullptr;
     }
 

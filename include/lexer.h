@@ -271,6 +271,38 @@ inline std::optional<TokenKind> compoundToBinaryOp(TokenKind kind) {
   }
 }
 
+// The spelling of a keyword token (a token whose regex is a bare word, so it
+// would otherwise lex as an identifier); nullopt for any other kind. Derived
+// from the regex table so a new keyword is covered without a second list.
+inline std::optional<std::string_view> getKeywordSpelling(TokenKind kind) {
+  static const std::array<std::optional<std::string_view>,
+                          static_cast<size_t>(TokenKind::COUNT)>
+      table = [] {
+        std::array<std::optional<std::string_view>,
+                   static_cast<size_t>(TokenKind::COUNT)>
+            a{};
+        for (const auto& [k, re] : tokenRegexes) {
+          if (k == TokenKind::IDENTIFIER || re.empty() ||
+              !std::isalpha(static_cast<unsigned char>(re[0])))
+            continue;
+          bool word = true;
+          for (char c : re) {
+            if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') {
+              word = false;
+              break;
+            }
+          }
+          if (word) a[static_cast<size_t>(k)] = std::string_view(re);
+        }
+        return a;
+      }();
+  return table[static_cast<size_t>(kind)];
+}
+
+inline bool isKeyword(TokenKind kind) {
+  return getKeywordSpelling(kind).has_value();
+}
+
 // Lookup table for simple token metadata (text and precedence)
 struct TokenInfo {
   std::string_view text;
@@ -280,6 +312,7 @@ struct TokenInfo {
 inline const std::map<TokenKind, TokenInfo>& getTokenInfo() {
   static const std::map<TokenKind, TokenInfo> tokenInfo = {
       {TokenKind::TOK_EOF, {""}},
+      {TokenKind::DECLARE, {"declare"}},
       {TokenKind::DEF, {"def"}},
       {TokenKind::EXTERN, {"extern"}},
       {TokenKind::VAR, {"var"}},
@@ -310,10 +343,13 @@ inline const std::map<TokenKind, TokenInfo>& getTokenInfo() {
       {TokenKind::TRY, {"try"}},
       {TokenKind::CATCH, {"catch"}},
       {TokenKind::THROW, {"throw"}},
+      {TokenKind::SPAWN, {"spawn"}},
+      {TokenKind::UNSAFE, {"unsafe"}},
       {TokenKind::STATIC_PTR, {"static_ptr"}},
       {TokenKind::PTR, {"ptr"}},
       {TokenKind::RAW_PTR, {"raw_ptr"}},
       {TokenKind::REF, {"ref"}},
+      {TokenKind::ARRAY, {"array"}},
       {TokenKind::ARROW, {"->"}},
       {TokenKind::FAT_ARROW, {"=>"}},
       {TokenKind::UNDERSCORE, {"_"}},

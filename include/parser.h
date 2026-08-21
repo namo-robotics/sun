@@ -93,8 +93,28 @@ class Parser {
     logParsingError(loc, msg, sourceLine, prevLine);
   }
 
+  // Helper: throw the error for a missing identifier. A keyword standing
+  // where a name belongs is reported as such, since "expected identifier"
+  // reads as a syntax problem rather than a name collision.
+  [[noreturn]] void throwIdentifierError(const std::string& msg) {
+    if (auto word = getKeywordSpelling(curTok.kind)) {
+      parsingError("'" + std::string(*word) +
+                   "' is a reserved word and cannot be used as an identifier");
+    }
+    parsingError(msg);
+  }
+
+  // Helper: expect current token to be an identifier, or throw error
+  void expectIdentifier(const std::string& msg) {
+    if (curTok.kind != TokenKind::IDENTIFIER) throwIdentifierError(msg);
+  }
+
   // Helper: expect current token to be a specific kind, or throw error
   void expectCurrentTokenKind(TokenKind expected, const std::string& msg) {
+    if (expected == TokenKind::IDENTIFIER) {
+      expectIdentifier(msg);
+      return;
+    }
     if (curTok.kind != expected) {
       parsingError(msg);
     }
