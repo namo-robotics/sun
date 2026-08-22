@@ -6,8 +6,8 @@
 #include <cassert>
 #include <optional>
 
-#include "config.h"
-#include "error.h"
+#include "support/config.h"
+#include "support/error.h"
 
 namespace sun {
 

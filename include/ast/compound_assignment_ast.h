@@ -6,7 +6,7 @@
 #include <string>
 
 #include "ast/expr_ast.h"
-#include "lexer.h"
+#include "parsing/lexer.h"
 
 // Compound assignment: target op= value (e.g. x += 1, obj.f *= 2,
 // arr[i] |= mask). Kept as a single node through analysis and lowered in

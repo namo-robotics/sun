@@ -14,8 +14,8 @@
 #include <utility>
 #include <vector>
 
-#include "lexer.h"  // for Lexer::getStaticFullRegex()
-#include "nfa.h"
+#include "parsing/lexer.h"  // for Lexer::getStaticFullRegex()
+#include "parsing/nfa.h"
 
 namespace {
 

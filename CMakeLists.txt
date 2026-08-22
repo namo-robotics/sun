@@ -41,7 +41,7 @@ message(STATUS "Found Protobuf ${Protobuf_VERSION}")
 # Generate Protobuf sources (AST serialization + Moon library)
 # ------------------------------------------------------------------
 set(AST_PROTO_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include/ast)
-set(MOON_PROTO_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include/moon)
+set(MOON_PROTO_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include/moon_bundling)
 
 # AST proto files
 set(AST_PROTO_FILES
@@ -109,33 +109,45 @@ message(STATUS "Proto headers: ${PROTO_HDRS}")
 add_library(sun_lib
     # Generated protobuf sources
     ${PROTO_SRCS}
-    src/parser.cpp
-    src/interpolated_string_parser.cpp
-    # AST node implementations (in src/ast/)
+    # Driver: pipeline orchestration (the sun executable is src/driver/main.cpp)
+    src/driver/driver.cpp
+    src/driver/manifest_processor.cpp
+    # Parsing
+    src/parsing/parser.cpp
+    src/parsing/interpolated_string_parser.cpp
+    src/parsing/lowering_pass.cpp
+    src/parsing/formatter.cpp
+    src/parsing/doc_comments.cpp
+    # AST
     src/ast/expr_ast.cpp
     src/ast/prototype_ast.cpp
     src/ast/call_expr_ast.cpp
     src/ast/ast_children.cpp
-    src/qualified_name.cpp
-    src/abi/aapcs64.cpp
-    src/abi/c_abi.cpp
-    src/abi/sysv_x86_64.cpp
-    src/codegen.cpp
-    src/driver.cpp
-    src/manifest_processor.cpp
-    src/proto_importer.cpp
-    src/moon_builder.cpp
+    # Semantic analysis
+    src/semantic_analysis/semantic_analyzer.cpp
+    src/semantic_analysis/qualified_name.cpp
+    src/semantic_analysis/scope_variables.cpp
+    src/semantic_analysis/scope_lookup.cpp
+    src/semantic_analysis/classes.cpp
+    src/semantic_analysis/argument_conversion.cpp
+    src/semantic_analysis/generic_type_arguments.cpp
+    src/semantic_analysis/interfaces.cpp
+    src/semantic_analysis/type_conversion.cpp
+    src/semantic_analysis/type_inference.cpp
+    src/semantic_analysis/captures.cpp
+    src/semantic_analysis/analysis.cpp
+    src/semantic_analysis/analysis_utils.cpp
+    src/semantic_analysis/declaration_collection.cpp
+    src/semantic_analysis/access_checker.cpp
+    src/semantic_analysis/enums.cpp
+    # Borrow checker
+    src/borrow_checker/borrow_state.cpp
+    src/borrow_checker/borrow_checker.cpp
+    # Codegen
     src/codegen/codegen_visitor.cpp
+    src/codegen/llvm_type_resolver.cpp
     src/codegen/debug_info_builder.cpp
     src/codegen/functions_lambdas.cpp
-    src/codegen/intrinsics/builtins.cpp
-    src/codegen/intrinsics/generic.cpp
-    src/codegen/intrinsics/io.cpp
-    src/codegen/intrinsics/print.cpp
-    src/codegen/intrinsics/memory.cpp
-    src/codegen/intrinsics/atomic.cpp
-    src/codegen/intrinsics/bits.cpp
-    src/codegen/intrinsics/network.cpp
     src/codegen/arrays.cpp
     src/codegen/variable_creation.cpp
     src/codegen/variable_references.cpp
@@ -152,42 +164,32 @@ add_library(sun_lib
     src/codegen/error_handling.cpp
     src/codegen/threads.cpp
     src/codegen/thread_utils.cpp
-    src/semantic_analyzer.cpp
-    src/semantic_analysis/scope_variables.cpp
-    src/semantic_analysis/scope_lookup.cpp
-    src/semantic_analysis/classes.cpp
-    src/semantic_analysis/argument_conversion.cpp
-    src/semantic_analysis/generic_type_arguments.cpp
-    src/semantic_analysis/interfaces.cpp
-    src/semantic_analysis/type_conversion.cpp
-    src/semantic_analysis/type_inference.cpp
-    src/semantic_analysis/captures.cpp
-    src/semantic_analysis/analysis.cpp
-    src/semantic_analysis/analysis_utils.cpp
-    src/semantic_analysis/declaration_collection.cpp
-    src/semantic_analysis/access_checker.cpp
-    src/semantic_analysis/enums.cpp
-    src/llvm_type_resolver.cpp
-    src/borrow_checker/borrow_state.cpp
-    src/borrow_checker/borrow_checker.cpp
+    src/codegen/abi/aapcs64.cpp
+    src/codegen/abi/c_abi.cpp
+    src/codegen/abi/sysv_x86_64.cpp
+    src/codegen/intrinsics/builtins.cpp
+    src/codegen/intrinsics/generic.cpp
+    src/codegen/intrinsics/io.cpp
+    src/codegen/intrinsics/print.cpp
+    src/codegen/intrinsics/memory.cpp
+    src/codegen/intrinsics/atomic.cpp
+    src/codegen/intrinsics/bits.cpp
+    src/codegen/intrinsics/network.cpp
+    # AST serialization and caching
+    src/serialization/ast_serializer.cpp
+    src/serialization/ast_deserializer.cpp
+    src/serialization/ast_cache.cpp
     # Precompiled library support (moon format)
-    src/moon/moon.cpp
-    src/library_cache.cpp
-    src/module_linker.cpp
-    src/module_types.cpp
-    src/metadata_extractor.cpp
+    src/moon_bundling/moon.cpp
+    src/moon_bundling/moon_builder.cpp
+    src/moon_bundling/library_cache.cpp
+    src/moon_bundling/module_linker.cpp
+    src/moon_bundling/module_types.cpp
+    src/moon_bundling/metadata_extractor.cpp
+    src/moon_bundling/proto_importer.cpp
     # Debug utilities
     src/debug/ast_dot_generator.cpp
     src/debug/scope_tree_generator.cpp
-    # AST serialization
-    src/serialization/ast_serializer.cpp
-    src/serialization/ast_deserializer.cpp
-    # AST caching
-    src/ast_cache.cpp
-    # AST lowering (post-parse desugaring)
-    src/lowering_pass.cpp
-    src/formatter.cpp
-    src/doc_comments.cpp
     # Language server helpers (the sun-lsp executable is src/lsp/main.cpp)
     src/lsp/hover.cpp
     # Add other implementation files here (but NOT main.cpp)
@@ -233,10 +235,10 @@ target_include_directories(sun_lib SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
 # lines of AST + LLVM headers; measured ~2x per-file compile speedup)
 target_precompile_headers(sun_lib PRIVATE
     include/ast.h
-    include/codegen.h
-    include/codegen_visitor.h
-    include/parser.h
-    include/intrinsics.h
+    include/codegen/codegen.h
+    include/codegen/codegen_visitor.h
+    include/parsing/parser.h
+    include/codegen/intrinsics/intrinsics.h
 )
 # clang embeds a timestamp in PCHs by default, which defeats ccache
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -259,7 +261,7 @@ add_custom_target(sun_version
     BYPRODUCTS ${SUN_VERSION_HEADER}
     COMMENT "Updating sun_version.h")
 
-add_executable(sun src/main.cpp)
+add_executable(sun src/driver/main.cpp)
 add_dependencies(sun sun_version)
 target_include_directories(sun PRIVATE ${CMAKE_BINARY_DIR}/generated)
 target_link_libraries(sun PRIVATE sun_lib)

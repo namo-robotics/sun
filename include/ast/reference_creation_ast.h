@@ -7,7 +7,7 @@
 
 #include "ast/analysis.h"
 #include "ast/expr_ast.h"
-#include "qualified_name.h"
+#include "semantic_analysis/qualified_name.h"
 
 // Reference creation: ref x = y (mutable) or const ref x = y (immutable)
 // Creates a reference variable x that points to the address of y

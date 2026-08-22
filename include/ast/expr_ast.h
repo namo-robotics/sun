@@ -9,8 +9,8 @@
 
 #include "ast/analysis.h"
 #include "ast/ast_common.h"
-#include "lexer.h"
-#include "visibility.h"
+#include "parsing/lexer.h"
+#include "semantic_analysis/visibility.h"
 
 class ExprAST {
  protected:

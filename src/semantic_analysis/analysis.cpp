@@ -3,11 +3,11 @@
 #include <set>
 #include <unordered_set>
 
-#include "config.h"
-#include "error.h"
-#include "generic_type_arguments.h"
-#include "intrinsics.h"
-#include "semantic_analyzer.h"
+#include "support/config.h"
+#include "support/error.h"
+#include "semantic_analysis/generic_type_arguments.h"
+#include "codegen/intrinsics/intrinsics.h"
+#include "semantic_analysis/semantic_analyzer.h"
 
 using sun::unwrapRef;
 

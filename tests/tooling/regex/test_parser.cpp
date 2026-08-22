@@ -5,7 +5,7 @@
 #include <sstream>
 #include <string>
 
-#include "nfa.h"
+#include "parsing/nfa.h"
 
 // ------------------------------------------------------------------
 TEST(Tooling_Regex_Parser, Integers)

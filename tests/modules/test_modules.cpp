@@ -11,13 +11,13 @@
 #include <stdexcept>
 #include <string>
 
-#include "codegen.h"
-#include "codegen_visitor.h"
-#include "execution_utils.h"
-#include "lexer.h"
-#include "moon_builder.h"
-#include "parser.h"
-#include "semantic_analyzer.h"
+#include "codegen/codegen.h"
+#include "codegen/codegen_visitor.h"
+#include "driver/execution_utils.h"
+#include "parsing/lexer.h"
+#include "moon_bundling/moon_builder.h"
+#include "parsing/parser.h"
+#include "semantic_analysis/semantic_analyzer.h"
 
 // === Module declaration tests ===
 

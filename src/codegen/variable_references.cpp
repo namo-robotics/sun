@@ -1,8 +1,8 @@
 // variable_references.cpp - Variable reference and assignment codegen methods
 
 #include "ast.h"
-#include "codegen.h"
-#include "codegen_visitor.h"
+#include "codegen/codegen.h"
+#include "codegen/codegen_visitor.h"
 
 using namespace llvm;
 

@@ -8,8 +8,8 @@
 #include <string>
 
 #include "ast.h"
-#include "execution_utils.h"
-#include "parser.h"
+#include "driver/execution_utils.h"
+#include "parsing/parser.h"
 
 // ============================================================================
 // By-ref captures: mutation through the capture is visible outside

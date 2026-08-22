@@ -8,7 +8,7 @@
 
 #include <gtest/gtest.h>
 
-#include "execution_utils.h"
+#include "driver/execution_utils.h"
 
 TEST(Lambdas_BoundMethods, pass_method_as_callback) {
   auto value = executeString(R"(

@@ -31,17 +31,22 @@ Source → Lexer → Parser → AST → Manifest Processing → Merged AST → S
 
 | Component | Files | Description |
 |-----------|-------|-------------|
-| **Driver** | `driver.h/cpp` | Orchestrates the full pipeline: parse → analyze → codegen → execute |
-| **Lexer** | `lexer.h/cpp`, `nfa.h` | NFA-based regex tokenizer supporting keywords, operators, literals |
-| **Parser** | `parser.h/cpp` | Recursive descent parser producing AST nodes |
-| **AST** | `ast.h/cpp` | Expression/statement nodes with type annotations |
-| **Semantic Analyzer** | `semantic_analyzer.h/cpp` | Type inference, scope analysis, closure capture detection |
+| **Driver** | `driver/driver.h/cpp` | Orchestrates the full pipeline: parse → analyze → codegen → execute |
+| **Lexer** | `parsing/lexer.h`, `parsing/nfa.h` | NFA-based regex tokenizer supporting keywords, operators, literals (header-only) |
+| **Parser** | `parsing/parser.h/cpp` | Recursive descent parser producing AST nodes |
+| **AST** | `ast.h`, `ast/*.h`, `src/ast/*.cpp` | Expression/statement nodes with type annotations |
+| **Semantic Analyzer** | `semantic_analysis/semantic_analyzer.h`, `src/semantic_analysis/*.cpp` | Type inference, scope analysis, closure capture detection |
 | **Borrow Checker** | `borrow_checker/*.h/cpp` | Rust-style ownership and borrowing analysis (WIP) |
-| **Codegen Visitor** | `codegen_visitor.h`, `src/codegen/*.cpp` | Visitor pattern for AST-to-LLVM-IR translation |
-| **LLVM Codegen** | `codegen.h/cpp`, `llvm_type_resolver.h/cpp` | LLVM context, module, and type management |
-| **Compiler** | `compiler.h` | AOT compilation: emit object files, link executables |
-| **SunJIT** | `sun_jit.h` | LLVM ORC-based JIT compiler for immediate execution |
-| **Moon** | `moon.h/cpp`, `library_cache.h/cpp` | Precompiled library format (.moon) and caching |
+| **Codegen Visitor** | `codegen/codegen_visitor.h`, `src/codegen/*.cpp` | Visitor pattern for AST-to-LLVM-IR translation |
+| **LLVM Codegen** | `codegen/codegen.h`, `codegen/llvm_type_resolver.h/cpp` | LLVM context, module, and type management |
+| **Compiler** | `driver/compiler.h` | AOT compilation: emit object files, link executables |
+| **SunJIT** | `driver/sun_jit.h` | LLVM ORC-based JIT compiler for immediate execution |
+| **Moon** | `moon_bundling/moon.h/cpp`, `moon_bundling/library_cache.h/cpp` | Precompiled library format (.moon) and caching |
+
+Headers live under `include/` and implementations under `src/` in the same
+directory layout: `support/`, `driver/`, `parsing/`, `ast/`,
+`semantic_analysis/`, `borrow_checker/`, `codegen/` (with `abi/` and
+`intrinsics/`), `serialization/`, `moon_bundling/`, `lsp/`, `debug/`.
 
 ## Semantic Analysis
 

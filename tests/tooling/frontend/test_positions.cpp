@@ -11,7 +11,7 @@
 #include <string>
 
 #include "ast.h"
-#include "parser.h"
+#include "parsing/parser.h"
 
 namespace {
 

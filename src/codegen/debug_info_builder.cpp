@@ -1,6 +1,6 @@
 // debug_info_builder.cpp — DWARF debug metadata emission for -g builds
 
-#include "debug_info_builder.h"
+#include "codegen/debug_info_builder.h"
 
 #include <llvm/BinaryFormat/Dwarf.h>
 #include <llvm/IR/DataLayout.h>

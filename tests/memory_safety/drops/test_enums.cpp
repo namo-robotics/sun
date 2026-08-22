@@ -5,7 +5,7 @@
 
 #include <gtest/gtest.h>
 
-#include "execution_utils.h"
+#include "driver/execution_utils.h"
 
 namespace {
 
@@ -456,8 +456,8 @@ TEST(MemorySafety_Drops_Enums, non_owning_payload_enum_still_copies_scalars_in_m
 #include <filesystem>
 #include <fstream>
 
-#include "moon_builder.h"
-#include "moon_import.h"
+#include "moon_bundling/moon_builder.h"
+#include "moon_bundling/moon_import.h"
 
 TEST(MemorySafety_Drops_Enums, cross_moon_owning_enum_drops_once) {
   namespace fs = std::filesystem;

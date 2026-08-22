@@ -4,8 +4,8 @@
 // - _load_i64, _store_i64 (raw memory access)
 // - _malloc, _free (heap allocation via libc)
 
-#include "codegen_visitor.h"
-#include "error.h"
+#include "codegen/codegen_visitor.h"
+#include "support/error.h"
 
 using namespace llvm;
 

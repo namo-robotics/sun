@@ -4,9 +4,9 @@
 // - _atomic_cmpxchg_i32, _atomic_store_i32, _atomic_load_i32
 // - _futex_wait, _futex_wake (Linux futex syscalls)
 
-#include "codegen_visitor.h"
-#include "error.h"
-#include "thread_utils.h"
+#include "codegen/codegen_visitor.h"
+#include "support/error.h"
+#include "codegen/thread_utils.h"
 
 using namespace llvm;
 

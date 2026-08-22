@@ -4,9 +4,9 @@
 // and ref arguments all build on it.
 
 #include "ast.h"
-#include "codegen.h"
-#include "codegen_visitor.h"
-#include "packed_layout.h"
+#include "codegen/codegen.h"
+#include "codegen/codegen_visitor.h"
+#include "semantic_analysis/packed_layout.h"
 
 using namespace llvm;
 

@@ -6,7 +6,7 @@
 #include <sstream>
 #include <string>
 
-#include "semantic_scope.h"
+#include "semantic_analysis/semantic_scope.h"
 
 /// Generates an interactive HTML visualization of the semantic scope tree.
 /// Usage:

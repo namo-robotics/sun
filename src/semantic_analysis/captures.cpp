@@ -3,7 +3,7 @@
 
 #include <set>
 
-#include "semantic_analyzer.h"
+#include "semantic_analysis/semantic_analyzer.h"
 
 // -------------------------------------------------------------------
 // Free variable collection

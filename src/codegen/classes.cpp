@@ -4,11 +4,11 @@
 #include <cstdint>
 
 #include "ast.h"
-#include "codegen.h"
-#include "codegen_visitor.h"
-#include "intrinsics.h"
-#include "parser.h"
-#include "semantic_scope.h"
+#include "codegen/codegen.h"
+#include "codegen/codegen_visitor.h"
+#include "codegen/intrinsics/intrinsics.h"
+#include "parsing/parser.h"
+#include "semantic_analysis/semantic_scope.h"
 
 using namespace llvm;
 

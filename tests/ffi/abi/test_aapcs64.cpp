@@ -25,12 +25,12 @@
 #include <fstream>
 #include <string>
 
-#include "abi/aapcs64.h"
-#include "abi/c_abi.h"
-#include "abi/sysv_x86_64.h"
-#include "compiler.h"
-#include "driver.h"
-#include "error.h"
+#include "codegen/abi/aapcs64.h"
+#include "codegen/abi/c_abi.h"
+#include "codegen/abi/sysv_x86_64.h"
+#include "driver/compiler.h"
+#include "driver/driver.h"
+#include "support/error.h"
 
 namespace {
 

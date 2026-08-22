@@ -4,7 +4,7 @@
 #include <gtest/gtest.h>
 
 #include "borrow_checker/borrow_checker.h"
-#include "execution_utils.h"
+#include "driver/execution_utils.h"
 
 // ============================================================================
 // Valid Borrow Patterns - Should Compile Successfully

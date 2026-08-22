@@ -11,8 +11,8 @@
 #include <string>
 #include <vector>
 
-#include "lexer.h"
-#include "parser.h"
+#include "parsing/lexer.h"
+#include "parsing/parser.h"
 
 namespace {
 

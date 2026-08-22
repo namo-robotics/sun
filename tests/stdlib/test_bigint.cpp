@@ -3,7 +3,7 @@
 
 #include <gtest/gtest.h>
 
-#include "execution_utils.h"
+#include "driver/execution_utils.h"
 
 TEST(Stdlib_BigInt_BitIntrinsics, mul_hi_ctlz_cttz) {
   auto value = executeString(R"(

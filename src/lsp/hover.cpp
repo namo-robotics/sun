@@ -11,8 +11,8 @@
 
 #include "ast.h"
 #include "ast/ast_children.h"
-#include "doc_comments.h"
-#include "source_manager.h"
+#include "parsing/doc_comments.h"
+#include "support/source_manager.h"
 
 namespace sun::lsp {
 

@@ -11,9 +11,9 @@
 
 // Include your public headers
 #include "ast.h"     // Needed to inspect the parsed AST nodes
-#include "error.h"   // For SunError exception type
-#include "lexer.h"   // If needed for Token checks
-#include "parser.h"  // This should be in include/ (or include/SunCompiler/)
+#include "support/error.h"   // For SunError exception type
+#include "parsing/lexer.h"   // If needed for Token checks
+#include "parsing/parser.h"  // This should be in include/ (or include/SunCompiler/)
 
 // Helper to parse a string and return the parsed AST (for top-level
 // expressions)
@@ -740,7 +740,7 @@ function main() i32 {
 // Uses compileString which goes through the full driver pipeline
 // ------------------------------------------------------------------
 
-#include "execution_utils.h"
+#include "driver/execution_utils.h"
 
 TEST(Tooling_Frontend_Parser_ErrorDriver, MissingSemicolonLogsEnhancedError) {
   // This test verifies that parsing errors through the driver

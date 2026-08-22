@@ -2,17 +2,17 @@
 //
 // __file_open/close/write/read plus the extended __lseek/__fstat/__fsync/
 // __ftruncate/__unlink/__rename/__mkdir/__rmdir/__write/__read intrinsics.
-// All operations call libc (see include/intrinsics/libc.h).
+// All operations call libc (see include/codegen/intrinsics/libc.h).
 
 #include "ast.h"
-#include "codegen.h"
-#include "codegen_visitor.h"
-#include "intrinsics/libc.h"
+#include "codegen/codegen.h"
+#include "codegen/codegen_visitor.h"
+#include "codegen/intrinsics/libc.h"
 
 using namespace llvm;
 
 // ===================================================================
-// File I/O built-in helpers (libc calls; see include/intrinsics/libc.h)
+// File I/O built-in helpers (libc calls; see include/codegen/intrinsics/libc.h)
 // ===================================================================
 
 // -------------------------------------------------------------------

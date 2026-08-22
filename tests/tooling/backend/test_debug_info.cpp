@@ -15,9 +15,9 @@
 #include <sstream>
 #include <string>
 
-#include "compiler.h"
-#include "driver.h"
-#include "execution_utils.h"
+#include "driver/compiler.h"
+#include "driver/driver.h"
+#include "driver/execution_utils.h"
 
 namespace {
 

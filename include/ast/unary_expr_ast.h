@@ -6,7 +6,7 @@
 #include <string>
 
 #include "ast/expr_ast.h"
-#include "lexer.h"
+#include "parsing/lexer.h"
 
 class UnaryExprAST : public ExprAST {
   Token op;

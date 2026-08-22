@@ -8,8 +8,8 @@
 #include <string>
 
 #include "ast.h"
-#include "execution_utils.h"
-#include "parser.h"
+#include "driver/execution_utils.h"
+#include "parsing/parser.h"
 
 // Parse a single assignment-or-expression statement and return its AST
 static std::unique_ptr<ExprAST> parseStatementToAst(const std::string& source) {

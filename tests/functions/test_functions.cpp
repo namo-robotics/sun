@@ -6,7 +6,7 @@
 
 #include <gtest/gtest.h>
 
-#include "execution_utils.h"
+#include "driver/execution_utils.h"
 
 TEST(Functions, by_value_primitive_param) {
   auto value = executeString(R"(

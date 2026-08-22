@@ -47,7 +47,7 @@ During the deep walk, a few things are happening at once:
 - **Argument conversions** — once a call's signature is settled, each
   argument is tagged with how it reaches its parameter (`ArgConversion`:
   pass by value, move, borrow, class to interface, numeric widening, and so
-  on — `include/argument_conversion.h`). The rules live in
+  on — `include/semantic_analysis/argument_conversion.h`). The rules live in
   `sun::conversions::classifyArgument`; codegen only carries the tags out.
 - **Capture detection** — lambdas are scanned for references to outer
   variables so codegen can build their closure environments.
@@ -81,7 +81,7 @@ carries a `sun::Visibility` and — except members, which use their type's — a
 `QualifiedName` whose `owner()` (`modulePath`) is the module that declared it.
 `modulePath` differs from `scopePath` for nested items: it never contains
 class or function segments. The single predicate is
-`isAccessibleFrom(from, visibility, owner)` (`include/visibility.h`): public,
+`isAccessibleFrom(from, visibility, owner)` (`include/semantic_analysis/visibility.h`): public,
 or `from` is the owner module or one of its descendants. Contents of an imported `.moon` live
 under a `$hash$` scope segment, so importer code is never inside a bundle
 module and bundle-private items are hidden by the same rule.

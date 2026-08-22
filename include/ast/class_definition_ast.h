@@ -11,8 +11,8 @@
 #include "ast/expr_ast.h"
 #include "ast/function_ast.h"
 #include "ast/type_annotation.h"
-#include "lexer.h"
-#include "qualified_name.h"
+#include "parsing/lexer.h"
+#include "semantic_analysis/qualified_name.h"
 
 // Field declaration in a class: var name: type;
 struct ClassFieldDecl {

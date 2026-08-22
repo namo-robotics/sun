@@ -7,8 +7,8 @@
 // - Array literals: [1, 2, 3] or [[1, 2], [3, 4]]
 // - Array indexing: arr[i] or arr[i, j] for n-dimensional arrays
 
-#include "codegen_visitor.h"
-#include "error.h"
+#include "codegen/codegen_visitor.h"
+#include "support/error.h"
 
 using namespace llvm;
 

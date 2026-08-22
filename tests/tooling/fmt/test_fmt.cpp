@@ -4,8 +4,8 @@
 
 #include <string>
 
-#include "error.h"
-#include "formatter.h"
+#include "support/error.h"
+#include "parsing/formatter.h"
 
 static std::string fmt(const std::string& src) {
   return sun::formatSource(src);
@@ -537,9 +537,9 @@ TEST(Tooling_Fmt, MultipleFilesOneParserNoCommentBleed) {
 #include <sstream>
 #include <vector>
 
-#include "ast_serializer.h"
-#include "lowering_pass.h"
-#include "parser.h"
+#include "serialization/ast_serializer.h"
+#include "parsing/lowering_pass.h"
+#include "parsing/parser.h"
 
 namespace {
 

@@ -5,7 +5,7 @@
 #include <string>
 
 #include "ast/ast_fwd.h"
-#include "types.h"
+#include "semantic_analysis/types.h"
 
 enum class ASTNodeType {
   NUMBER,

@@ -2,12 +2,12 @@
 //
 // _print_i32/_print_i64/_print_f64/_print_newline/_println_str/_print_bytes.
 // Integer formatting is emitted IR (portable); the final write goes through
-// libc (see include/intrinsics/libc.h).
+// libc (see include/codegen/intrinsics/libc.h).
 
 #include "ast.h"
-#include "codegen.h"
-#include "codegen_visitor.h"
-#include "intrinsics/libc.h"
+#include "codegen/codegen.h"
+#include "codegen/codegen_visitor.h"
+#include "codegen/intrinsics/libc.h"
 
 using namespace llvm;
 

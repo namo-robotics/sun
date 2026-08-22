@@ -1,9 +1,9 @@
 // call_expressions.cpp - Call expression codegen methods
 
 #include "ast.h"
-#include "codegen.h"
-#include "codegen_visitor.h"
-#include "semantic_scope.h"
+#include "codegen/codegen.h"
+#include "codegen/codegen_visitor.h"
+#include "semantic_analysis/semantic_scope.h"
 
 using namespace llvm;
 

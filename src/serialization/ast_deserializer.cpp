@@ -1,10 +1,10 @@
 // ast_deserializer.cpp — Implementation of protobuf to AST deserialization
 
-#include "ast_deserializer.h"
+#include "serialization/ast_deserializer.h"
 
 #include "ast.h"
 #include "ast.pb.h"
-#include "token_kind_proto_map.h"
+#include "serialization/token_kind_proto_map.h"
 #include "types.pb.h"
 
 namespace sun {

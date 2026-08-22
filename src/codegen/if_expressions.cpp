@@ -1,8 +1,8 @@
 // if_expressions.cpp - If expression codegen
 
 #include "ast.h"
-#include "codegen.h"
-#include "codegen_visitor.h"
+#include "codegen/codegen.h"
+#include "codegen/codegen_visitor.h"
 
 using namespace llvm;
 

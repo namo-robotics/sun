@@ -15,15 +15,15 @@
 #include <vector>
 
 #include "ast/manifest_ast.h"
-#include "driver.h"
-#include "error.h"
-#include "formatter.h"
-#include "lexer.h"
+#include "driver/driver.h"
+#include "support/error.h"
+#include "parsing/formatter.h"
+#include "parsing/lexer.h"
 #include "lsp/hover.h"
 #include "lsp/text_positions.h"
-#include "manifest_processor.h"
-#include "parser.h"
-#include "sun_path.h"
+#include "driver/manifest_processor.h"
+#include "parsing/parser.h"
+#include "support/sun_path.h"
 
 // =============================================================================
 // Diagnostics Cache

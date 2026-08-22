@@ -1,10 +1,10 @@
 // The one place that says how a call argument reaches its parameter. See
-// include/argument_conversion.h.
+// include/semantic_analysis/argument_conversion.h.
 
-#include "argument_conversion.h"
+#include "semantic_analysis/argument_conversion.h"
 
-#include "error.h"
-#include "generic_type_arguments.h"
+#include "support/error.h"
+#include "semantic_analysis/generic_type_arguments.h"
 
 namespace sun::conversions {
 

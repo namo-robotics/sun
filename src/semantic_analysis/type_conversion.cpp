@@ -1,8 +1,8 @@
 // semantic_analysis/type_conversion.cpp — Type annotation conversion and
 // substitution
 
-#include "error.h"
-#include "semantic_analyzer.h"
+#include "support/error.h"
+#include "semantic_analysis/semantic_analyzer.h"
 
 // -------------------------------------------------------------------
 // Type parameter substitution

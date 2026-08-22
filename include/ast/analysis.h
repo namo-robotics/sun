@@ -8,10 +8,10 @@
 #include <utility>
 #include <vector>
 
-#include "argument_conversion.h"
+#include "semantic_analysis/argument_conversion.h"
 #include "ast/ast_fwd.h"
-#include "qualified_name.h"
-#include "types.h"
+#include "semantic_analysis/qualified_name.h"
+#include "semantic_analysis/types.h"
 
 // ============================================================================
 // Analysis structures - populated by semantic analyzer, borrow checker, etc.

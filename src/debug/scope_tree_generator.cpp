@@ -7,7 +7,7 @@
 #include <fstream>
 #include <sstream>
 
-#include "sun_path.h"
+#include "support/sun_path.h"
 
 std::string ScopeTreeGenerator::generateHtml(const SemanticScope& root) {
   std::string json = generateJson(root);

@@ -1,18 +1,18 @@
 // thread_utils.cpp — Thread support utilities for code generation
 //
-// Threads are pthreads (see include/intrinsics/libc.h). The futex primitive
+// Threads are pthreads (see include/codegen/intrinsics/libc.h). The futex primitive
 // Mutex builds on has no libc wrapper, so it goes through libc's syscall()
 // with a per-target syscall number.
 
-#include "thread_utils.h"
+#include "codegen/thread_utils.h"
 
 #include <llvm/TargetParser/Triple.h>
 
-#include "error.h"
-#include "intrinsics/libc.h"
+#include "support/error.h"
+#include "codegen/intrinsics/libc.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
-#include "struct_names.h"
+#include "semantic_analysis/struct_names.h"
 
 using namespace llvm;
 

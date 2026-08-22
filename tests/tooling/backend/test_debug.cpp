@@ -7,9 +7,9 @@
 #include <fstream>
 #include <string>
 
-#include "driver.h"
-#include "error.h"
-#include "execution_utils.h"
+#include "driver/driver.h"
+#include "support/error.h"
+#include "driver/execution_utils.h"
 
 // ============================================================================
 // Debug Mode Tests

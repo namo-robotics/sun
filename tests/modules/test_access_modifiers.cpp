@@ -9,14 +9,14 @@
 #include <fstream>
 #include <string>
 
-#include "ast_deserializer.h"
-#include "ast_serializer.h"
-#include "execution_utils.h"
-#include "formatter.h"
-#include "lexer.h"
-#include "moon_builder.h"
-#include "moon_import.h"
-#include "parser.h"
+#include "serialization/ast_deserializer.h"
+#include "serialization/ast_serializer.h"
+#include "driver/execution_utils.h"
+#include "parsing/formatter.h"
+#include "parsing/lexer.h"
+#include "moon_bundling/moon_builder.h"
+#include "moon_bundling/moon_import.h"
+#include "parsing/parser.h"
 
 namespace {
 

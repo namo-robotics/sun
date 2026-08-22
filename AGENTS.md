@@ -8,6 +8,8 @@ Sun is a compiled language with an LLVM 20 backend (C++20). Sun ensures memory-s
 Lexer → Parser → AST → SemanticAnalyzer → BorrowChecker → CodegenVisitor → LLVM IR
 ```
 
+`include/` and `src/` share one layout, grouped by stage: `support/`, `driver/`, `parsing/`, `ast/`, `semantic_analysis/`, `borrow_checker/`, `codegen/` (with `abi/` and `intrinsics/`), `serialization/`, `moon_bundling/`, `lsp/`, `debug/`. Includes are spelled relative to `include/` (`#include "parsing/parser.h"`). Sources are listed explicitly in `CMakeLists.txt` (`add_library(sun_lib …)`), so a new `.cpp` must be added there.
+
 ## Build & Test
 
 ```bash
@@ -40,7 +42,7 @@ cd build && ctest -j8 --output-on-failure
 
 - Private by default; `public` is the only modifier (there is no `private` keyword). Applies to module-level items (functions, classes, interfaces, enums, globals, extern/declare, nested modules) and class/interface members.
 - Privacy is **module-scoped**: a private item is reachable from its declaring module and that module's children. Root-level (module-less) items are reachable everywhere. `deinit` is always callable; `init` follows the normal rules.
-- Records carry `Visibility` plus a `QualifiedName` whose `owner()` (`modulePath`) is the declaring module. Enforced in semantic analysis: module items inside the scope lookups (`AccessFilter`, `semantic_scope.h`), members via `accessibleField/accessibleMethod`; one predicate `sun::access::isAccessible` (`include/visibility.h`, `include/access_checker.h`). Generic bodies are analyzed inside their template's `definitionScope` (`ScopeSwitchGuard`), so the scope stack answers "which module is asking".
+- Records carry `Visibility` plus a `QualifiedName` whose `owner()` (`modulePath`) is the declaring module. Enforced in semantic analysis: module items inside the scope lookups (`AccessFilter`, `semantic_scope.h`), members via `accessibleField/accessibleMethod`; one predicate `sun::access::isAccessible` (`include/semantic_analysis/visibility.h`, `include/semantic_analysis/access_checker.h`). Generic bodies are analyzed inside their template's `definitionScope` (`ScopeSwitchGuard`), so the scope stack answers "which module is asking".
 - `.moon` bundles carry private items (generic bodies need them) but hide them from importers; every top-level module of a bundle must be `public`.
 
 ## Ownership: No Implicit Copies
@@ -63,7 +65,7 @@ cd build && ctest -j8 --output-on-failure
 - Access LLVM via `ctx.builder` / `ctx.context`.
 - `typeResolver.resolve(type)` for variables; `typeResolver.resolveForReturn(type)` for function returns.
 - Functions returning classes return the struct by value; callers materialize on stack for addressability.
-- Codegen performs no semantic analysis. At a call boundary sema records one `ArgConversion` per argument (`include/argument_conversion.h`, decided by `sun::conversions::classifyArgument`) on the `CallExprAST`/`GenericCallAST`; every call path in codegen lowers its arguments through `emitCallArguments`, which only switches on those tags. Add a new argument conversion by extending the enum, the classifier, and that one switch — never by comparing Sun types in codegen.
+- Codegen performs no semantic analysis. At a call boundary sema records one `ArgConversion` per argument (`include/semantic_analysis/argument_conversion.h`, decided by `sun::conversions::classifyArgument`) on the `CallExprAST`/`GenericCallAST`; every call path in codegen lowers its arguments through `emitCallArguments`, which only switches on those tags. Add a new argument conversion by extending the enum, the classifier, and that one switch — never by comparing Sun types in codegen.
 - New expression types: add `ASTNodeType` enum → AST class → `codegen` method in `src/codegen/*.cpp` → update `codegenExpression()` switch.
 
 ## Error Handling
