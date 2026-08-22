@@ -186,8 +186,10 @@ function main() i32 {
 Through a `const ref` nothing can be assigned, no mutable `ref` can be taken,
 and only const methods can be called. A `ref T` may be passed or rebound as
 `const ref T`, never the other way round. When a const method returns a borrow
-(`function get(i) ref T`) and the receiver is constant or a `const ref`, the
-result is `const ref T`.
+and the receiver is constant or a `const ref`, the result is the *const view*
+of the declared type: `get(i) ref T` yields `const ref T`, and `first()
+Option<ref T>` yields `Option<const ref T>`, so a `match` on it binds a
+read-only element.
 
 Several `const ref`s to one value may be alive at once; a mutable `ref` cannot
 coexist with any of them.

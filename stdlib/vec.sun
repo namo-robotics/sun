@@ -159,7 +159,7 @@ public module sun {
     }
 
     // Borrow the last element; None when empty
-    public function last() Option<ref T> {
+    public const function last() Option<ref T> {
       if (this.size_ == 0) {
         return Option.None;
       }
@@ -167,7 +167,7 @@ public module sun {
     }
 
     // Borrow the first element; None when empty
-    public function first() Option<ref T> {
+    public const function first() Option<ref T> {
       if (this.size_ == 0) {
         return Option.None;
       }

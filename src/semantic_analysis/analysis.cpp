@@ -192,7 +192,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       }
       // Set resolved type (element type of the array)
       sun::TypePtr resultType = inferType(expr);
-      if (receiverImmutable) resultType = downgradeRefResult(resultType);
+      if (receiverImmutable) resultType = createConstView(resultType);
       expr.setResolvedType(resultType);
       break;
     }
@@ -2269,7 +2269,11 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
   }
 
   // Enter function scope with signature for nested function qualification
-  // Pass canThrow flag so throw expressions can be validated
+  // Pass canThrow flag so throw expressions can be validated. A const method
+  // body sees the const view of its return type: borrows of `this` are
+  // `const ref` there, and the declared `ref` result is what callers with a
+  // mutable receiver get.
+  if (proto.isConstMethod()) scopeReturnType = createConstView(scopeReturnType);
   enterFunctionScope(funcSig, proto.getQualifiedName(), proto.canThrow(),
                      scopeReturnType);
 
@@ -2653,6 +2657,8 @@ void SemanticAnalyzer::analyzeMethodWithBindings(
     methodReturnType =
         substituteTypeParameters(typeAnnotationToType(*proto.getReturnType()));
   }
+  // A const method body sees the const view of its return type
+  if (proto.isConstMethod()) methodReturnType = createConstView(methodReturnType);
   enterFunctionScope(methodSig,
                      sun::QualifiedName(classType->getQualifiedName().scopePath,
                                         mangledMethodName),
@@ -3425,7 +3431,7 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
   // A borrow handed out by a method seen through an immutable receiver may
   // only be read through
   sun::TypePtr resultType = inferType(callExpr);
-  if (receiverImmutable) resultType = downgradeRefResult(resultType);
+  if (receiverImmutable) resultType = createConstView(resultType);
   callExpr.setResolvedType(resultType);
 }
 

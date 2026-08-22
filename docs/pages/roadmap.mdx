@@ -50,11 +50,6 @@ they bounce off a language.
 - [ ] Ranges as iterables
 - [ ] Iteration over a constant container: `next(ref Container)` takes a
       mutable borrow, so `for … in` needs a `var` iterable
-- [ ] Peek accessors returning `Option<ref T>` (`Vec.first`/`last`,
-      `Map.find`, `LinkedList.first`/`last`) as `const function`: the borrow
-      inside the payload would need to become `const ref T` on a constant
-      receiver, which means a second `Option` specialization with the same
-      layout
 
 ## 4. Language Server Navigation
 

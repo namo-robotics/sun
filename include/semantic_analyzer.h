@@ -267,8 +267,6 @@ class SemanticAnalyzer : public AccessContext {
   bool checkMethodReceiver(const ExprAST& receiver, const std::string& name,
                            bool methodIsConst, bool isConstructor,
                            const Position& loc);
-  // `ref T` seen through an immutable receiver is `const ref T`
-  static sun::TypePtr downgradeRefResult(sun::TypePtr type);
 
   // Packed class rules (see include/packed_layout.h for what "packed" means).
   // Each rejects one way a packed field's layout guarantee could be violated.
@@ -582,6 +580,12 @@ class SemanticAnalyzer : public AccessContext {
 
   // Type inference helpers
   sun::TypePtr typeAnnotationToType(const TypeAnnotation& annot);
+
+  // The const view of a type: every `ref T` in it, including inside a payload
+  // enum (Option<ref T> -> Option<const ref T>), becomes `const ref T`. It is
+  // what a const method's result looks like through a constant receiver, and
+  // what its body returns against (type_conversion.cpp).
+  sun::TypePtr createConstView(sun::TypePtr type);
   std::vector<sun::TypePtr> resolveTypeArguments(
       const std::vector<std::unique_ptr<TypeAnnotation>>& typeAnnotations,
       const std::optional<Position>& location, const std::string& context);

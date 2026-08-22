@@ -519,10 +519,3 @@ bool SemanticAnalyzer::checkMethodReceiver(const ExprAST& receiver,
   }
   return true;
 }
-
-sun::TypePtr SemanticAnalyzer::downgradeRefResult(sun::TypePtr type) {
-  if (!sun::isMutableRef(type)) return type;
-  return sun::Types::Reference(
-      static_cast<const sun::ReferenceType*>(type.get())->getReferencedType(),
-      /*isMutable=*/false);
-}

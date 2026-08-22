@@ -374,3 +374,37 @@ sun::TypePtr SemanticAnalyzer::typeAnnotationToType(
   // Create a TypeParameter type for it
   return sun::Types::TypeParameter(annot.baseName);
 }
+
+// -------------------------------------------------------------------
+// Const view
+// -------------------------------------------------------------------
+
+// The const view of a type: every `ref` in it becomes `const ref`. A payload
+// enum such as Option<ref T> is re-instantiated as Option<const ref T>; both
+// lower to the same layout, so a value crosses between them through memory
+// without codegen help. Classes are not viewed (a class holding a borrow of
+// its receiver is not a pattern the stdlib uses).
+sun::TypePtr SemanticAnalyzer::createConstView(sun::TypePtr type) {
+  if (!type) return type;
+  if (type->isReference()) {
+    auto* ref = static_cast<const sun::ReferenceType*>(type.get());
+    if (!ref->isMutable()) return type;
+    return sun::Types::Reference(ref->getReferencedType(), /*isMutable=*/false);
+  }
+  if (type->isEnum()) {
+    auto* enumType = static_cast<const sun::EnumType*>(type.get());
+    if (!enumType->isGenericSpecialization()) return type;
+    std::vector<sun::TypePtr> args;
+    bool changed = false;
+    for (const auto& arg : enumType->getGenericArgs()) {
+      sun::TypePtr viewed = createConstView(arg);
+      changed = changed || viewed != arg;
+      args.push_back(viewed);
+    }
+    if (!changed) return type;
+    if (auto viewed = instantiateGenericEnum(enumType->getGenericBase(), args)) {
+      return viewed;
+    }
+  }
+  return type;
+}
