@@ -457,6 +457,99 @@ TEST(Classes_ConstMethods, const_vec_cannot_push_or_set) {
                                 "Cannot assign to an element of const reference 'cv'");
 }
 
+// A const method's result is its "const view": every `ref` in it, including
+// inside a payload enum, is `const ref` when the receiver is constant.
+TEST(Classes_ConstMethods, peek_accessors_are_const_views) {
+  auto value = executeStringWithStdlib(R"(
+      using sun;
+      function main() i32 {
+          var allocator = make_heap_allocator();
+          var v = Vec<i32>(allocator, 4);
+          v.push(5);
+          v.push(7);
+          var m = Map<i64, i32>(allocator, 8);
+          m.insert(1, 30);
+          var l = LinkedList<i32>(allocator);
+          l.push_back(100);
+          const ref cv = v;
+          const ref cm = m;
+          const ref cl = l;
+          var a: i32 = match cv.first() { Option.Some(x) => x, Option.None => -1000 };
+          var b: i32 = match cv.last() { Option.Some(x) => x, Option.None => -1000 };
+          var c: i32 = match cm.find(1) { Option.Some(x) => x, Option.None => -1000 };
+          var d: i32 = match cl.last() { Option.Some(x) => x, Option.None => -1000 };
+          return a + b + c + d;
+      }
+    )");
+  EXPECT_EQ(value, 5 + 7 + 30 + 100);
+
+  // Through a constant receiver the peeked element is read-only ...
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
+      using sun;
+      function main() i32 {
+          var allocator = make_heap_allocator();
+          var v = Vec<i32>(allocator, 4);
+          v.push(5);
+          const ref cv = v;
+          match cv.last() {
+              Option.Some(x) => { x = 1; },
+              Option.None => { }
+          };
+          return 0;
+      }
+    )"),
+                                "Cannot assign through const reference 'x'");
+
+  // ... while a mutable receiver still hands out a writable borrow
+  auto written = executeStringWithStdlib(R"(
+      using sun;
+      function main() i32 {
+          var allocator = make_heap_allocator();
+          var v = Vec<i32>(allocator, 4);
+          v.push(5);
+          match v.last() {
+              Option.Some(x) => { x = 42; },
+              Option.None => { }
+          };
+          return v.get(0);
+      }
+    )");
+  EXPECT_EQ(written, 42);
+}
+
+TEST(Classes_ConstMethods, user_const_method_returning_option_ref) {
+  auto value = executeString(R"(
+      enum Maybe<T> { Some(T), None }
+      class Cell {
+          var v: i32;
+          function init(v: i32) { this.v = v; }
+          const function peek() Maybe<ref i32> { return Maybe.Some(this.v); }
+      }
+      function main() i32 {
+          const c = Cell(21);
+          var w = Cell(1);
+          match w.peek() { Maybe.Some(r) => { r = 21; }, Maybe.None => { } };
+          return match c.peek() { Maybe.Some(r) => r, Maybe.None => -1 } + w.v;
+      }
+    )");
+  EXPECT_EQ(value, 42);
+
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      enum Maybe<T> { Some(T), None }
+      class Cell {
+          var v: i32;
+          function init(v: i32) { this.v = v; }
+          const function peek() Maybe<ref i32> { return Maybe.Some(this.v); }
+      }
+      function main() i32 {
+          const c = Cell(21);
+          match c.peek() { Maybe.Some(r) => { r = 1; }, Maybe.None => { } };
+          return c.v;
+      }
+    )"),
+                                "Cannot assign through const reference 'r'");
+}
+
 TEST(Classes_ConstMethods, const_map_reads) {
   auto value = executeStringWithStdlib(R"(
       using sun;

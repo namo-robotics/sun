@@ -214,7 +214,7 @@ public module sun {
     }
 
     // Borrow the first element; None when empty
-    public function first() Option<ref T> {
+    public const function first() Option<ref T> {
       if (this.head == null) {
         return Option.None;
       }
@@ -222,7 +222,7 @@ public module sun {
     }
 
     // Borrow the last element; None when empty
-    public function last() Option<ref T> {
+    public const function last() Option<ref T> {
       if (this.tail == null) {
         return Option.None;
       }

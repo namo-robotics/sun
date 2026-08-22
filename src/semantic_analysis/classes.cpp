@@ -970,11 +970,14 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   // Compute method signature for nested function qualification
   std::string methodSig = getFunctionSignature(mangledName, paramTypes);
 
-  // Enter method scope and declare parameters
+  // Enter method scope and declare parameters. A const method body sees the
+  // const view of its return type (borrows of `this` are `const ref` there).
+  sun::TypePtr bodyReturnType = proto.getResolvedReturnType();
+  if (proto.isConstMethod()) bodyReturnType = createConstView(bodyReturnType);
   enterFunctionScope(methodSig,
                      sun::QualifiedName(classType->getQualifiedName().scopePath,
                                         mangledName),
-                     proto.canThrow(), proto.getResolvedReturnType());
+                     proto.canThrow(), bodyReturnType);
 
   // Record the variadic pack (name + resolved element types) on the function
   // scope so `args...` can be expanded into concrete typed args during body

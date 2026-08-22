@@ -237,7 +237,7 @@ public module sun {
     }
 
     // Borrow the value stored under key; None if not present
-    public function find(key: K) Option<ref V> {
+    public const function find(key: K) Option<ref V> {
       var probe: i64 = this.findIndex(key);
       if (probe < 0) {
         return Option.None;

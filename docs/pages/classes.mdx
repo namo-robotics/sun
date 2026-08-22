@@ -396,10 +396,14 @@ c.get();          // ✓ OK
 c.increment();    // ❌ ERROR: cannot call non-const method 'increment' on constant 'c'
 ```
 
-A const method may still hand out a borrow of its object (`function get(i) ref T`).
-Seen through a constant receiver that borrow becomes `const ref T`, so the
-element can be read but not changed. `init` is never const, and a bound
-method value (`c.increment`) follows the same rule as a call.
+A const method may still hand out a borrow of its object (`function get(i) ref T`,
+`function first() Option<ref T>`). Seen through a constant receiver every
+`ref` in the result becomes `const ref` — `const ref T`, `Option<const ref T>`
+— so the element can be read but not changed, while a `var` receiver gets the
+writable borrow the signature declares. Inside the method the body is checked
+against that same read-only view, which is what lets it return a borrow of the
+immutable `this`. `init` is never const, and a bound method value
+(`c.increment`) follows the same rule as a call.
 
 An interface method declared `const function` must be implemented by a const
 method; a class may mark further methods const on its own.
