@@ -23,6 +23,7 @@ struct EnumVariantDecl {
   int64_t value;      // Explicit or implicit numeric value
   Position location;  // Source location of variant declaration
   std::vector<TypeAnnotation> payloadTypes;  // empty = unit variant
+  std::string doc;  // Comment written above the variant
 
   bool hasPayload() const { return !payloadTypes.empty(); }
 };
@@ -33,6 +34,7 @@ class EnumDefinitionAST : public ExprAST {
   std::string name;
   std::vector<EnumVariantDecl> variants;
   std::vector<std::string> typeParameters;  // empty = non-generic
+  std::string doc_;  // Comment written above the enum
   // Populated during semantic analysis (mutable, like ClassAnalysis
   // specializations on ClassDefinitionAST)
   mutable std::map<std::string, std::shared_ptr<sun::EnumType>>
@@ -96,6 +98,11 @@ class EnumDefinitionAST : public ExprAST {
 
   const std::string& getName() const { return name; }
   const std::vector<EnumVariantDecl>& getVariants() const { return variants; }
+  std::vector<EnumVariantDecl>& getMutableVariants() { return variants; }
+
+  // Comment written above the enum (see doc_comments.h)
+  const std::string& getDoc() const { return doc_; }
+  void setDoc(std::string doc) { doc_ = std::move(doc); }
 
   // Get a variant by name
   const EnumVariantDecl* getVariant(const std::string& variantName) const {

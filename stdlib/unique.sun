@@ -4,7 +4,6 @@
 //   or, adopting an existing pointer:
 //        var ptr = allocator.create<Point>(3, 4);
 //        var p = Unique<Point>(ptr);
-
 public module sun {
   public class Unique<T> {
     var data: raw_ptr<T>;

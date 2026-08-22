@@ -187,6 +187,7 @@ add_library(sun_lib
     # AST lowering (post-parse desugaring)
     src/lowering_pass.cpp
     src/formatter.cpp
+    src/doc_comments.cpp
     # Language server helpers (the sun-lsp executable is src/lsp/main.cpp)
     src/lsp/hover.cpp
     # Add other implementation files here (but NOT main.cpp)

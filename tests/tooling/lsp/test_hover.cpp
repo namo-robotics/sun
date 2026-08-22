@@ -10,12 +10,15 @@
 #include <fstream>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
 
 #include "ast.h"
+#include "doc_comments.h"
 #include "driver.h"
 #include "execution_utils.h"
 #include "lsp/hover.h"
+#include "parser.h"
 
 namespace {
 
@@ -330,6 +333,113 @@ function main() i32 {
   EXPECT_EQ(docAt(source, "total + p"), "The running total.");
   EXPECT_EQ(docAt(source, "function main"), "");
   EXPECT_EQ(docAt(source, "this.x = 0"), "A point on the plane.");
+}
+
+TEST(Tooling_Lsp_Hover, TypeNamesInAnnotations) {
+  std::string source = R"(
+/**
+ * A pool of objects.
+ * Hands them out one at a time.
+ */
+class Pool { function init() {} }
+// Which end of the pool to take from.
+enum End { Front, Back }
+function use(p: ref Pool, e: End) i32 {
+    var q: Pool = Pool();
+    return 0;
+}
+)";
+  const char* poolDoc = "A pool of objects.\nHands them out one at a time.";
+  // Parameter, local annotation, and constructor call all name the class
+  auto param = fullHoverAt(source, "Pool, e");
+  ASSERT_TRUE(param);
+  EXPECT_EQ(param->code, "class Pool");
+  EXPECT_EQ(param->documentation, poolDoc);
+  // The range is the type name itself, not the `ref` wrapper around it
+  EXPECT_EQ(param->range.offset,
+            static_cast<int>(offsetOf(source, "Pool, e", 0)));
+  EXPECT_EQ(hoverAt(source, "Pool = Pool()"), "class Pool");
+  EXPECT_EQ(docAt(source, "Pool = Pool()"), poolDoc);
+  EXPECT_EQ(docAt(source, "Pool();"), poolDoc);
+  EXPECT_EQ(hoverAt(source, "End) i32"), "enum End");
+  EXPECT_EQ(docAt(source, "End) i32"), "Which end of the pool to take from.");
+  // Primitive names keep the enclosing hover
+  EXPECT_EQ(hoverAt(source, "i32 {"), "function use(p: ref Pool, e: End) i32");
+}
+
+TEST(Tooling_Lsp_Hover, AttachedDocsSurviveCloning) {
+  // attachDocComments stores comments on declarations; clone() goes through
+  // the serializer, so this is the same path a .moon bundle takes
+  std::string source = R"(
+// Counts things.
+class Counter {
+    // How many so far.
+    var count: i32;
+    function init() { this.count = 0; }
+    // One more.
+    function bump() void { this.count = this.count + 1; }
+}
+// Which way to go.
+enum Direction {
+    // Skyward.
+    Up,
+    Down
+}
+/// Ready to use.
+function make() Counter { return Counter(); }
+// Flat.
+enum Level { Low, High }
+)";
+  std::istringstream stream(source);
+  Parser parser(stream);
+  auto program = parser.parseString(source);
+  ASSERT_TRUE(program);
+  sun::attachDocComments(*program, source);
+
+  auto cls = program->getBody()[0]->clone();
+  const auto& counter = static_cast<const ClassDefinitionAST&>(*cls);
+  EXPECT_EQ(counter.getDoc(), "Counts things.");
+  EXPECT_EQ(counter.getFields()[0].doc, "How many so far.");
+  EXPECT_EQ(counter.getMethods()[1].function->getProto().getDoc(), "One more.");
+
+  auto enumNode = program->getBody()[1]->clone();
+  const auto& direction = static_cast<const EnumDefinitionAST&>(*enumNode);
+  EXPECT_EQ(direction.getDoc(), "Which way to go.");
+  EXPECT_EQ(direction.getVariants()[0].doc, "Skyward.");
+  EXPECT_EQ(direction.getVariants()[1].doc, "");
+
+  auto fn = program->getBody()[2]->clone();
+  EXPECT_EQ(static_cast<const FunctionAST&>(*fn).getProto().getDoc(),
+            "Ready to use.");
+
+  // Variants on the enum's own line take nothing from the enum's comment
+  auto level = program->getBody()[3]->clone();
+  const auto& levelEnum = static_cast<const EnumDefinitionAST&>(*level);
+  EXPECT_EQ(levelEnum.getDoc(), "Flat.");
+  EXPECT_EQ(levelEnum.getVariants()[0].doc, "");
+}
+
+TEST(Tooling_Lsp_Hover, StdlibDocComments) {
+  if (getStdlibMoonImports().empty()) GTEST_SKIP() << "stdlib.moon not built";
+  // Declarations from the stdlib bundle are documented from the source
+  // files the bundle was built from
+  std::string source = R"(
+using sun;
+function take(a: ref HeapAllocator) i32 { return 0; }
+function main() i32 {
+    var allocator = make_heap_allocator();
+    return take(allocator);
+}
+)";
+  auto annotation = fullHoverAt(source, "HeapAllocator) i32", true);
+  ASSERT_TRUE(annotation);
+  EXPECT_EQ(annotation->code, "public class HeapAllocator implements IAllocator");
+  EXPECT_NE(annotation->documentation.find("default system allocator"),
+            std::string::npos)
+      << annotation->documentation;
+  auto call = fullHoverAt(source, "make_heap_allocator()", true);
+  ASSERT_TRUE(call);
+  EXPECT_FALSE(call->documentation.empty());
 }
 
 TEST(Tooling_Lsp_Hover, ReferenceBinding) {

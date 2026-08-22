@@ -16,6 +16,7 @@ class VariableCreationAST : public ExprAST {
   std::unique_ptr<ExprAST> value;
   std::optional<TypeAnnotation> typeAnnotation;
   bool isConst_;  // `const x = ...`: the binding and its value never change
+  std::string doc_;  // Comment written above the declaration
 
  protected:
   // Override to allocate VariableAnalysis instead of base ExprAnalysis
@@ -63,6 +64,11 @@ class VariableCreationAST : public ExprAST {
     return typeAnnotation;
   }
   bool hasTypeAnnotation() const { return typeAnnotation.has_value(); }
+
+  // Comment written above the declaration (see doc_comments.h)
+  const std::string& getDoc() const { return doc_; }
+  void setDoc(std::string doc) { doc_ = std::move(doc); }
+
   std::string dotLabel() const override {
     std::string label = "VarCreate\n" + name;
     if (typeAnnotation) label += ": " + typeAnnotation->toString();

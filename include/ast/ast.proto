@@ -189,6 +189,7 @@ message VariableCreation {
   optional TypeAnnotation type_annotation = 3;
   Visibility visibility = 4;  // module-level globals only
   bool is_const = 5;          // `const x = ...`
+  string doc = 6;             // Comment written above the declaration
 }
 
 message VariableAssignment {
@@ -347,6 +348,7 @@ message Prototype {
   bool c_variadic = 11;             // C-style trailing `...`
   optional string link_name = 12;   // `as "c_symbol"` override
   bool is_const_method = 13;        // `const function`: `this` is immutable
+  string doc = 14;                  // Comment written above the function
 }
 
 message FunctionDef {
@@ -442,6 +444,7 @@ message ClassField {
   TypeAnnotation type = 2;
   Position location = 3;
   Visibility visibility = 4;
+  string doc = 5;  // Comment written above the field
 }
 
 // Class method declaration
@@ -466,6 +469,7 @@ message ClassDef {
   bool is_partial = 6;
   bool is_packed = 7;  // packed_class: fields laid out with no padding
   Visibility visibility = 8;
+  string doc = 9;  // Comment written above the class
 }
 
 // Interface field declaration
@@ -474,6 +478,7 @@ message InterfaceField {
   TypeAnnotation type = 2;
   Position location = 3;
   Visibility visibility = 4;
+  string doc = 5;  // Comment written above the field
 }
 
 // Interface method declaration
@@ -489,6 +494,7 @@ message InterfaceDef {
   repeated InterfaceField fields = 3;
   repeated InterfaceMethod methods = 4;
   Visibility visibility = 5;
+  string doc = 6;  // Comment written above the interface
 }
 
 // Enum variant declaration
@@ -497,6 +503,7 @@ message EnumVariant {
   int64 value = 2;
   Position location = 3;
   repeated TypeAnnotation payload_types = 4;  // empty = unit variant
+  string doc = 5;  // Comment written above the variant
 }
 
 message EnumDef {
@@ -504,6 +511,7 @@ message EnumDef {
   repeated EnumVariant variants = 2;
   repeated string type_parameters = 3;  // generic enums: enum Option<T>
   Visibility visibility = 4;
+  string doc = 5;  // Comment written above the enum
 }
 
 message ThisExpr {

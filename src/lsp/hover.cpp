@@ -3,12 +3,15 @@
 #include "lsp/hover.h"
 
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "ast.h"
 #include "ast/ast_children.h"
+#include "doc_comments.h"
 #include "source_manager.h"
 
 namespace sun::lsp {
@@ -295,6 +298,9 @@ std::string renderPrototype(const PrototypeAST& proto,
   return out;
 }
 
+// Hovers on definitions carry the comment stored on the node when the tree
+// has one (declarations loaded from a bundle); otherwise the caller looks it
+// up in the source.
 std::optional<Hover> hoverClass(const ClassDefinitionAST& cls, int offset,
                                 const std::string& source,
                                 const Bindings& bindings) {
@@ -314,7 +320,7 @@ std::optional<Hover> hoverClass(const ClassDefinitionAST& cls, int offset,
     if (typeText.empty()) typeText = annotationText(field.type, source);
     std::string prefix =
         field.visibility == sun::Visibility::Public ? "public var " : "var ";
-    return Hover{prefix + field.name + ": " + typeText, "", span};
+    return Hover{prefix + field.name + ": " + typeText, field.doc, span};
   }
 
   std::string out = cls.isPublic() ? "public " : "";
@@ -331,7 +337,7 @@ std::optional<Hover> hoverClass(const ClassDefinitionAST& cls, int offset,
     }
     if (!interfaces[i].typeArguments.empty()) out += ">";
   }
-  return Hover{out, "", cls.getLocation()};
+  return Hover{out, cls.getDoc(), cls.getLocation()};
 }
 
 std::optional<Hover> hoverInterface(const InterfaceDefinitionAST& iface,
@@ -341,12 +347,12 @@ std::optional<Hover> hoverInterface(const InterfaceDefinitionAST& iface,
     if (field.type.span.endOffset) span.endOffset = field.type.span.endOffset;
     if (!spanContains(span, offset)) continue;
     return Hover{"var " + field.name + ": " + annotationText(field.type, source),
-                 "", span};
+                 field.doc, span};
   }
   std::string out = iface.isPublic() ? "public " : "";
   out += "interface " + iface.getName() +
          renderTypeParameters(iface.getTypeParameters());
-  return Hover{out, "", iface.getLocation()};
+  return Hover{out, iface.getDoc(), iface.getLocation()};
 }
 
 std::optional<Hover> hoverEnum(const EnumDefinitionAST& enumDef, int offset,
@@ -359,12 +365,12 @@ std::optional<Hover> hoverEnum(const EnumDefinitionAST& enumDef, int offset,
       out += annotationText(variant.payloadTypes[i], source);
     }
     if (variant.hasPayload()) out += ")";
-    return Hover{out, "", variant.location};
+    return Hover{out, variant.doc, variant.location};
   }
   std::string out = enumDef.isPublic() ? "public " : "";
   out += "enum " + enumDef.getName() +
          renderTypeParameters(enumDef.getTypeParameters());
-  return Hover{out, "", enumDef.getLocation()};
+  return Hover{out, enumDef.getDoc(), enumDef.getLocation()};
 }
 
 std::optional<Hover> hoverNode(const Target& target, int offset,
@@ -395,10 +401,13 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
       std::string prefix =
           std::string(decl.isConst() ? "const " : "var ") + decl.getName() +
           ": ";
-      if (type) return Hover{prefix + renderType(*type, bindings), "", range};
+      if (type) {
+        return Hover{prefix + renderType(*type, bindings), decl.getDoc(),
+                     range};
+      }
       if (decl.hasTypeAnnotation()) {
         return Hover{prefix + annotationText(*decl.getTypeAnnotation(), source),
-                     "", range};
+                     decl.getDoc(), range};
       }
       return std::nullopt;
     }
@@ -438,7 +447,7 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
       return Hover{renderPrototype(fn.getProto(), "function",
                                    fn.getProto().getName(), fn.isPublic(),
                                    source, bindings),
-                   "", range};
+                   fn.getProto().getDoc(), range};
     }
     case ASTNodeType::LAMBDA: {
       const auto& lambda = static_cast<const LambdaAST&>(node);
@@ -540,6 +549,14 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
 // Finding the declaration behind a symbol
 // ---------------------------------------------------------------------------
 
+// A declaration found for a symbol: where it is, and the comment stored on
+// it when the tree carries one (declarations loaded from a bundle). When the
+// stored comment is empty, the source at the location is consulted.
+struct Declaration {
+  Position location;
+  std::string doc;
+};
+
 bool isDefinition(ASTNodeType kind) {
   switch (kind) {
     case ASTNodeType::FUNCTION:
@@ -594,6 +611,28 @@ sun::QualifiedName declarationQualifiedName(const ExprAST& node) {
     default:
       return {};
   }
+}
+
+// Comment stored on a declaration node (see doc_comments.h)
+std::string storedDoc(const ExprAST& node) {
+  switch (node.getType()) {
+    case ASTNodeType::FUNCTION:
+      return static_cast<const FunctionAST&>(node).getProto().getDoc();
+    case ASTNodeType::CLASS_DEFINITION:
+      return static_cast<const ClassDefinitionAST&>(node).getDoc();
+    case ASTNodeType::INTERFACE_DEFINITION:
+      return static_cast<const InterfaceDefinitionAST&>(node).getDoc();
+    case ASTNodeType::ENUM_DEFINITION:
+      return static_cast<const EnumDefinitionAST&>(node).getDoc();
+    case ASTNodeType::VARIABLE_CREATION:
+      return static_cast<const VariableCreationAST&>(node).getDoc();
+    default:
+      return "";
+  }
+}
+
+Declaration declarationOf(const ExprAST& node) {
+  return Declaration{node.getLocation(), storedDoc(node)};
 }
 
 // Walks module-level declarations (through modules and moon stubs)
@@ -679,18 +718,19 @@ const ExprAST* findTypeDefinition(const BlockExprAST& program,
   return findDeclaration(program, name, qualified);
 }
 
-// Location of a member (method, field or variant) inside a definition
-std::optional<Position> findMember(const ExprAST& definition,
-                                   const std::string& member) {
+// A member (method, field or variant) inside a definition
+std::optional<Declaration> findMember(const ExprAST& definition,
+                                      const std::string& member) {
   switch (definition.getType()) {
     case ASTNodeType::CLASS_DEFINITION: {
       const auto& cls = static_cast<const ClassDefinitionAST&>(definition);
       for (const auto& method : cls.getMethods()) {
         if (method.function && method.function->getProto().getName() == member)
-          return method.function->getLocation();
+          return Declaration{method.function->getLocation(),
+                             method.function->getProto().getDoc()};
       }
       for (const auto& field : cls.getFields()) {
-        if (field.name == member) return field.location;
+        if (field.name == member) return Declaration{field.location, field.doc};
       }
       return std::nullopt;
     }
@@ -699,17 +739,19 @@ std::optional<Position> findMember(const ExprAST& definition,
           static_cast<const InterfaceDefinitionAST&>(definition);
       for (const auto& method : iface.getMethods()) {
         if (method.function && method.function->getProto().getName() == member)
-          return method.function->getLocation();
+          return Declaration{method.function->getLocation(),
+                             method.function->getProto().getDoc()};
       }
       for (const auto& field : iface.getFields()) {
-        if (field.name == member) return field.location;
+        if (field.name == member) return Declaration{field.location, field.doc};
       }
       return std::nullopt;
     }
     case ASTNodeType::ENUM_DEFINITION: {
       const auto& enumDef = static_cast<const EnumDefinitionAST&>(definition);
       for (const auto& variant : enumDef.getVariants()) {
-        if (variant.name == member) return variant.location;
+        if (variant.name == member)
+          return Declaration{variant.location, variant.doc};
       }
       return std::nullopt;
     }
@@ -720,7 +762,7 @@ std::optional<Position> findMember(const ExprAST& definition,
 
 // Declaration of a local name visible at `node`: the closest earlier
 // `var`/`const`/`ref` in an enclosing block, or an enclosing loop variable
-std::optional<Position> findLocalDeclaration(
+std::optional<Declaration> findLocalDeclaration(
     const std::vector<const ExprAST*>& chain, const ExprAST& node,
     const std::string& name) {
   int offset = node.getLocation().offset;
@@ -740,10 +782,10 @@ std::optional<Position> findLocalDeclaration(
           latest = stmt.get();
         }
       }
-      if (latest) return latest->getLocation();
+      if (latest) return declarationOf(*latest);
     } else if (ancestor.getType() == ASTNodeType::FOR_IN_LOOP) {
       if (static_cast<const ForInExprAST&>(ancestor).getLoopVar() == name) {
-        return ancestor.getLocation();
+        return Declaration{ancestor.getLocation(), ""};
       }
     } else if (ancestor.getType() == ASTNodeType::FUNCTION ||
                ancestor.getType() == ASTNodeType::LAMBDA) {
@@ -761,7 +803,7 @@ std::optional<Position> findLocalDeclaration(
 }
 
 // Where the symbol under `node` was declared, or nothing
-std::optional<Position> findDeclarationOf(
+std::optional<Declaration> findDeclarationOf(
     const BlockExprAST& program, const std::vector<const ExprAST*>& chain,
     const ExprAST& node) {
   switch (node.getType()) {
@@ -774,7 +816,7 @@ std::optional<Position> findDeclarationOf(
       if (ref.hasQualifiedName()) qualified = ref.getQualifiedName();
       if (const ExprAST* decl =
               findDeclaration(program, ref.getName(), qualified)) {
-        return decl->getLocation();
+        return declarationOf(*decl);
       }
       return std::nullopt;
     }
@@ -782,7 +824,7 @@ std::optional<Position> findDeclarationOf(
       const auto& call = static_cast<const GenericCallAST&>(node);
       if (const ExprAST* decl =
               findDeclaration(program, call.getFunctionName(), {})) {
-        return decl->getLocation();
+        return declarationOf(*decl);
       }
       return std::nullopt;
     }
@@ -792,7 +834,7 @@ std::optional<Position> findDeclarationOf(
     case ASTNodeType::THIS: {
       for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
         if ((*it)->getType() == ASTNodeType::CLASS_DEFINITION) {
-          return (*it)->getLocation();
+          return declarationOf(**it);
         }
       }
       return std::nullopt;
@@ -807,7 +849,7 @@ std::optional<Position> findDeclarationOf(
       if (objectType->getKind() == sun::Type::Kind::Module) {
         if (const ExprAST* decl =
                 findDeclaration(program, access.getMemberName(), {})) {
-          return decl->getLocation();
+          return declarationOf(*decl);
         }
         return std::nullopt;
       }
@@ -821,84 +863,8 @@ std::optional<Position> findDeclarationOf(
 }
 
 // ---------------------------------------------------------------------------
-// Doc comments
+// Source text for comments
 // ---------------------------------------------------------------------------
-
-std::string trim(const std::string& text) {
-  size_t start = text.find_first_not_of(" \t\r");
-  if (start == std::string::npos) return "";
-  size_t end = text.find_last_not_of(" \t\r");
-  return text.substr(start, end - start + 1);
-}
-
-bool startsWith(const std::string& text, const std::string& prefix) {
-  return text.compare(0, prefix.size(), prefix) == 0;
-}
-
-bool endsWith(const std::string& text, const std::string& suffix) {
-  return text.size() >= suffix.size() &&
-         text.compare(text.size() - suffix.size(), suffix.size(), suffix) == 0;
-}
-
-// One comment line with its delimiters removed
-std::string stripCommentLine(std::string line) {
-  line = trim(line);
-  if (startsWith(line, "///")) line = line.substr(3);
-  else if (startsWith(line, "//")) line = line.substr(2);
-  else if (startsWith(line, "/**")) line = line.substr(3);
-  else if (startsWith(line, "/*")) line = line.substr(2);
-  else if (startsWith(line, "*")) line = line.substr(1);
-  if (endsWith(line, "*/")) line = line.substr(0, line.size() - 2);
-  return trim(line);
-}
-
-std::vector<std::string> splitLines(const std::string& text) {
-  std::vector<std::string> lines;
-  size_t start = 0;
-  while (start <= text.size()) {
-    size_t end = text.find('\n', start);
-    if (end == std::string::npos) end = text.size();
-    lines.push_back(text.substr(start, end - start));
-    start = end + 1;
-  }
-  return lines;
-}
-
-// The comment block written directly above a line (1-based): consecutive
-// `//` lines, or one `/* */` block. A blank line breaks the attachment.
-std::string commentAbove(const std::string& source, int line) {
-  std::vector<std::string> lines = splitLines(source);
-  int index = line - 2;  // line above, as a 0-based index
-  if (index < 0 || index >= static_cast<int>(lines.size())) return "";
-
-  std::vector<std::string> collected;
-  std::string above = trim(lines[index]);
-  if (startsWith(above, "//")) {
-    while (index >= 0 && startsWith(trim(lines[index]), "//")) {
-      collected.push_back(stripCommentLine(lines[index]));
-      --index;
-    }
-  } else if (endsWith(above, "*/")) {
-    int start = index;
-    while (start >= 0 && trim(lines[start]).find("/*") == std::string::npos) {
-      --start;
-    }
-    if (start < 0) return "";
-    for (int i = index; i >= start; --i) {
-      collected.push_back(stripCommentLine(lines[i]));
-    }
-  } else {
-    return "";
-  }
-
-  std::string out;
-  for (auto it = collected.rbegin(); it != collected.rend(); ++it) {
-    if (it->empty() && out.empty()) continue;  // leading blank comment line
-    if (!out.empty()) out += "\n";
-    out += *it;
-  }
-  return trim(out);
-}
 
 // Text of the file a declaration lives in: the document itself, or a file
 // registered during compilation (another file of the same manifest)
@@ -920,6 +886,201 @@ std::string sourceFor(const Position& declaration,
   return "";
 }
 
+// ---------------------------------------------------------------------------
+// Type names written in annotations
+// ---------------------------------------------------------------------------
+
+// Innermost annotation containing the offset (type arguments, element and
+// function types nest inside the outer one), or null
+const TypeAnnotation* annotationAt(const TypeAnnotation& annotation,
+                                   int offset) {
+  if (!spanContains(annotation.span, offset)) return nullptr;
+  for (const auto& arg : annotation.typeArguments) {
+    if (arg) {
+      if (const TypeAnnotation* inner = annotationAt(*arg, offset)) {
+        return inner;
+      }
+    }
+  }
+  for (const auto& param : annotation.paramTypes) {
+    if (param) {
+      if (const TypeAnnotation* inner = annotationAt(*param, offset)) {
+        return inner;
+      }
+    }
+  }
+  if (annotation.elementType) {
+    if (const TypeAnnotation* inner =
+            annotationAt(*annotation.elementType, offset)) {
+      return inner;
+    }
+  }
+  if (annotation.returnType) {
+    if (const TypeAnnotation* inner =
+            annotationAt(*annotation.returnType, offset)) {
+      return inner;
+    }
+  }
+  return &annotation;
+}
+
+// The annotation under the cursor among those written on a node, or null
+const TypeAnnotation* annotationIn(const ExprAST& node, int offset) {
+  auto check = [&](const TypeAnnotation& annotation) {
+    return annotationAt(annotation, offset);
+  };
+  auto checkProto = [&](const PrototypeAST& proto) -> const TypeAnnotation* {
+    for (const auto& arg : proto.getArgs()) {
+      if (const TypeAnnotation* hit = check(arg.second)) return hit;
+    }
+    if (proto.hasReturnType()) {
+      if (const TypeAnnotation* hit = check(*proto.getReturnType())) return hit;
+    }
+    if (proto.hasVariadicConstraint()) {
+      if (const TypeAnnotation* hit = check(*proto.getVariadicConstraint()))
+        return hit;
+    }
+    return nullptr;
+  };
+
+  switch (node.getType()) {
+    case ASTNodeType::FUNCTION:
+      return checkProto(static_cast<const FunctionAST&>(node).getProto());
+    case ASTNodeType::LAMBDA:
+      return checkProto(static_cast<const LambdaAST&>(node).getProto());
+    case ASTNodeType::VARIABLE_CREATION: {
+      const auto& decl = static_cast<const VariableCreationAST&>(node);
+      return decl.hasTypeAnnotation() ? check(*decl.getTypeAnnotation())
+                                      : nullptr;
+    }
+    case ASTNodeType::FOR_IN_LOOP:
+      return check(static_cast<const ForInExprAST&>(node).getLoopVarType());
+    case ASTNodeType::DECLARE_TYPE:
+      return check(
+          static_cast<const DeclareTypeAST&>(node).getTypeAnnotation());
+    case ASTNodeType::CLASS_DEFINITION: {
+      const auto& cls = static_cast<const ClassDefinitionAST&>(node);
+      for (const auto& field : cls.getFields()) {
+        if (const TypeAnnotation* hit = check(field.type)) return hit;
+      }
+      for (const auto& iface : cls.getImplementedInterfaces()) {
+        for (const auto& arg : iface.typeArguments) {
+          if (const TypeAnnotation* hit = check(arg)) return hit;
+        }
+      }
+      return nullptr;
+    }
+    case ASTNodeType::INTERFACE_DEFINITION: {
+      for (const auto& field :
+           static_cast<const InterfaceDefinitionAST&>(node).getFields()) {
+        if (const TypeAnnotation* hit = check(field.type)) return hit;
+      }
+      return nullptr;
+    }
+    case ASTNodeType::ENUM_DEFINITION: {
+      for (const auto& variant :
+           static_cast<const EnumDefinitionAST&>(node).getVariants()) {
+        for (const auto& payload : variant.payloadTypes) {
+          if (const TypeAnnotation* hit = check(payload)) return hit;
+        }
+      }
+      return nullptr;
+    }
+    case ASTNodeType::GENERIC_CALL: {
+      for (const auto& arg :
+           static_cast<const GenericCallAST&>(node).getTypeArguments()) {
+        if (arg) {
+          if (const TypeAnnotation* hit = check(*arg)) return hit;
+        }
+      }
+      return nullptr;
+    }
+    case ASTNodeType::MEMBER_ACCESS: {
+      for (const auto& arg :
+           static_cast<const MemberAccessAST&>(node).getTypeArguments()) {
+        if (arg) {
+          if (const TypeAnnotation* hit = check(*arg)) return hit;
+        }
+      }
+      return nullptr;
+    }
+    case ASTNodeType::TRY_CATCH: {
+      for (const auto& clause :
+           static_cast<const TryCatchExprAST&>(node).getCatchClauses()) {
+        if (clause.bindingType) {
+          if (const TypeAnnotation* hit = check(*clause.bindingType)) return hit;
+        }
+      }
+      return nullptr;
+    }
+    default:
+      return nullptr;
+  }
+}
+
+// The user-defined type an annotation names, looking through `ref`,
+// pointer and array wrappers when their element has no span of its own
+const ExprAST* findAnnotatedType(const BlockExprAST& program,
+                                 const TypeAnnotation& annotation) {
+  const TypeAnnotation* named = &annotation;
+  while (named->elementType &&
+         (named->baseName == "ref" || named->baseName == "raw_ptr" ||
+          named->baseName == "static_ptr" || named->baseName == "ptr" ||
+          named->baseName == "array")) {
+    named = named->elementType.get();
+  }
+  std::string name = named->baseName;
+  size_t dot = name.rfind('.');
+  if (dot != std::string::npos) name = name.substr(dot + 1);
+  if (name.empty()) return nullptr;
+  const ExprAST* decl = findDeclaration(program, name, {});
+  if (!decl) return nullptr;
+  switch (decl->getType()) {
+    case ASTNodeType::CLASS_DEFINITION:
+    case ASTNodeType::INTERFACE_DEFINITION:
+    case ASTNodeType::ENUM_DEFINITION:
+    case ASTNodeType::DECLARE_TYPE:
+      return decl;
+    default:
+      return nullptr;
+  }
+}
+
+// Hover for a type name written in an annotation: the definition's header
+// and its comment, with the annotation itself as the range
+std::optional<Hover> hoverAnnotation(const ExprAST& decl,
+                                     const TypeAnnotation& annotation,
+                                     const std::string& source) {
+  std::optional<Hover> hover;
+  switch (decl.getType()) {
+    case ASTNodeType::CLASS_DEFINITION:
+      hover = hoverClass(static_cast<const ClassDefinitionAST&>(decl), -1,
+                         source, {});
+      break;
+    case ASTNodeType::INTERFACE_DEFINITION:
+      hover = hoverInterface(static_cast<const InterfaceDefinitionAST&>(decl),
+                             -1, source);
+      break;
+    case ASTNodeType::ENUM_DEFINITION:
+      hover = hoverEnum(static_cast<const EnumDefinitionAST&>(decl), -1,
+                        source);
+      break;
+    case ASTNodeType::DECLARE_TYPE: {
+      const auto& alias = static_cast<const DeclareTypeAST&>(decl);
+      if (!alias.hasResolvedDeclaredType()) return std::nullopt;
+      std::string out = "declare ";
+      if (alias.hasAlias()) out += alias.getAliasName() + " = ";
+      out += renderType(*alias.getResolvedDeclaredType(), {});
+      hover = Hover{out, "", decl.getLocation()};
+      break;
+    }
+    default:
+      return std::nullopt;
+  }
+  if (hover) hover->range = annotation.span;
+  return hover;
+}
+
 }  // namespace
 
 const ExprAST* findInnermostNodeAt(const BlockExprAST& program,
@@ -937,25 +1098,50 @@ std::optional<Hover> computeHover(const BlockExprAST& program,
   std::optional<Target> target = locate(program, documentPath, byteOffset);
   if (!target) return std::nullopt;
 
-  std::optional<Hover> hover = hoverNode(*target, byteOffset, source);
+  // A type name written in an annotation stands for its definition
+  std::optional<Declaration> declaration;
+  std::optional<Hover> hover;
+  if (const TypeAnnotation* annotation =
+          annotationIn(target->node(), byteOffset)) {
+    if (const ExprAST* decl = findAnnotatedType(program, *annotation)) {
+      hover = hoverAnnotation(*decl, *annotation, source);
+      if (hover) declaration = declarationOf(*decl);
+    }
+  }
+  if (!hover) hover = hoverNode(*target, byteOffset, source);
   if (!hover) return hover;
 
   // A definition documents itself (the range already points at a field or
   // variant when one was hit); anything else is documented by what it names
-  std::optional<Position> declaration;
-  if (isDefinition(target->node().getType()) ||
-      target->node().getType() == ASTNodeType::ENUM_DEFINITION) {
-    declaration = hover->range;
-    if (!declaration->filePath) {
-      declaration->filePath = target->node().getLocation().filePath;
+  if (!declaration) {
+    ASTNodeType kind = target->node().getType();
+    if (isDefinition(kind) || kind == ASTNodeType::ENUM_DEFINITION) {
+      const Position& own = target->node().getLocation();
+      // A field or variant on the definition's header line has no comment
+      // line of its own; the one above belongs to the definition
+      bool memberOnHeaderLine =
+          hover->range.offset != own.offset && hover->range.line == own.line;
+      if (!memberOnHeaderLine) {
+        declaration = Declaration{hover->range, ""};
+        if (!declaration->location.filePath) {
+          declaration->location.filePath = own.filePath;
+        }
+      }
+    } else {
+      declaration = findDeclarationOf(program, target->chain, target->node());
     }
-  } else {
-    declaration = findDeclarationOf(program, target->chain, target->node());
   }
-  if (declaration) {
-    hover->documentation =
-        commentAbove(sourceFor(*declaration, documentPath, source),
-                     declaration->line);
+
+  // The comment stored on the declaration wins; otherwise read it from the
+  // source the declaration was written in
+  if (hover->documentation.empty() && declaration) {
+    if (!declaration->doc.empty()) {
+      hover->documentation = declaration->doc;
+    } else {
+      hover->documentation = sun::docCommentAbove(
+          sourceFor(declaration->location, documentPath, source),
+          declaration->location.line);
+    }
   }
   return hover;
 }

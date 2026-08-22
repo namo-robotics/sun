@@ -30,6 +30,7 @@ class PrototypeAST {
   bool constMethod_ = false;  // `const function`: `this` is immutable
   std::optional<std::string> linkName_;  // `as "c_symbol"` override
   Position location_;                    // Source span of the signature
+  std::string doc_;  // Comment written above the declaration
 
   // Analysis data populated by semantic analyzer
   mutable std::unique_ptr<PrototypeAnalysis> analysis_;
@@ -80,6 +81,10 @@ class PrototypeAST {
 
   void setLocation(Position loc) { location_ = std::move(loc); }
   const Position& getLocation() const { return location_; }
+
+  // Comment written above the function (see doc_comments.h)
+  const std::string& getDoc() const { return doc_; }
+  void setDoc(std::string doc) { doc_ = std::move(doc); }
 
   // Analysis data access
   bool hasAnalysis() const { return analysis_ != nullptr; }
