@@ -586,11 +586,14 @@ unique_ptr<StructLiteralAST> Parser::parseStructLiteral() {
 // semicolon
 unique_ptr<VariableCreationAST> Parser::parseVarDeclaration() {
   Position start = captureStart();
-  getNextToken();  // eat the 'var'
+  bool isConst = curTok.kind == TokenKind::CONST;
+  getNextToken();  // eat 'var' / 'const'
 
   // At least one variable name is required
-  expectCurrentTokenKind(TokenKind::IDENTIFIER,
-                         "expected identifier after 'var'");
+  expectCurrentTokenKind(
+      TokenKind::IDENTIFIER,
+      std::string("expected identifier after '") + (isConst ? "const" : "var") +
+          "'");
 
   std::string name = std::get<std::string>(curTok.value);
   getNextToken();  // eat identifier
@@ -621,7 +624,7 @@ unique_ptr<VariableCreationAST> Parser::parseVarDeclaration() {
   }
 
   return finishNode(std::make_unique<VariableCreationAST>(
-                        name, std::move(value), std::move(typeAnnot)),
+                        name, std::move(value), std::move(typeAnnot), isConst),
                     start);
 }
 
@@ -635,17 +638,9 @@ unique_ptr<VariableCreationAST> Parser::parseVarStatement() {
   return decl;
 }
 
-unique_ptr<ReferenceCreationAST> Parser::parseRefStatement() {
-  Position refLoc = captureStart();  // Capture location of 'ref' keyword
-  getNextToken();                    // eat the 'ref'
-
-  // Check for 'const' modifier: ref const x = y
-  bool isMutable = true;
-  if (curTok.kind == TokenKind::IDENTIFIER &&
-      std::get<std::string>(curTok.value) == "const") {
-    isMutable = false;
-    getNextToken();  // eat 'const'
-  }
+unique_ptr<ReferenceCreationAST> Parser::parseRefStatement(Position refLoc,
+                                                           bool isMutable) {
+  getNextToken();  // eat the 'ref'
 
   // Require identifier
   expectCurrentTokenKind(TokenKind::IDENTIFIER,
@@ -671,6 +666,26 @@ unique_ptr<ReferenceCreationAST> Parser::parseRefStatement() {
   return finishNode(std::make_unique<ReferenceCreationAST>(
                         name, std::move(target), isMutable, refLoc),
                     refLoc);
+}
+
+unique_ptr<ExprAST> Parser::parseConstStatement() {
+  Position start = captureStart();
+  Token constTok = curTok;
+  getNextToken();  // eat 'const'
+
+  switch (curTok.kind) {
+    case TokenKind::REF:
+      return parseRefStatement(start, /*isMutable=*/false);
+    case TokenKind::IDENTIFIER:
+      // parseVarDeclaration eats the declaring keyword itself
+      pushToken(constTok);
+      return parseVarStatement();
+    case TokenKind::FUNCTION:
+      parsingError(
+          "'const function' is only allowed on class and interface methods");
+    default:
+      throwIdentifierError("expected a variable name or 'ref' after 'const'");
+  }
 }
 
 unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
@@ -845,6 +860,9 @@ unique_ptr<ExprAST> Parser::parsePrimary() {
       break;
     case TokenKind::VAR:
       base = parseVarStatement();
+      break;
+    case TokenKind::CONST:
+      base = parseConstStatement();
       break;
     case TokenKind::THIS: {
       Position start = captureStart();
@@ -1111,6 +1129,8 @@ bool Parser::isTypeToken(TokenKind kind) {
     case TokenKind::PTR:
     case TokenKind::RAW_PTR:
     case TokenKind::STATIC_PTR:
+    case TokenKind::REF:
+    case TokenKind::CONST:
     case TokenKind::IDENTIFIER:            // User-defined class types
     case TokenKind::INTRINSIC_IDENTIFIER:  // Intrinsic types like _init_args
       return true;
@@ -1258,6 +1278,14 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
     consumeGreater("expected '>' after static_ptr type");
 
     return type;
+  }
+
+  if (curTok.kind == TokenKind::CONST) {
+    // const ref T - a reference whose referent cannot be changed
+    getNextToken();  // eat 'const'
+    expectCurrentTokenKind(TokenKind::REF,
+                           "expected 'ref' after 'const' in a type (const ref T)");
+    type.constRef = true;
   }
 
   if (curTok.kind == TokenKind::REF) {
@@ -1775,6 +1803,16 @@ bool Parser::parsePublic() {
   return true;
 }
 
+bool Parser::parseConstModifier() {
+  if (curTok.kind != TokenKind::CONST) return false;
+  getNextToken();  // eat 'const'
+  if (curTok.kind == TokenKind::CONST)
+    parsingError("duplicate 'const' modifier");
+  if (curTok.kind == TokenKind::PUBLIC)
+    parsingError("'public' must come before 'const'");
+  return true;
+}
+
 // Statement kinds that may carry a `public` modifier at item level.
 static bool isPublicableStatementStart(TokenKind kind) {
   switch (kind) {
@@ -1785,6 +1823,7 @@ static bool isPublicableStatementStart(TokenKind kind) {
     case TokenKind::INTERFACE:
     case TokenKind::ENUM:
     case TokenKind::VAR:
+    case TokenKind::CONST:
     case TokenKind::EXTERN:
     case TokenKind::FUNCTION:
     case TokenKind::DECLARE:
@@ -1804,10 +1843,12 @@ unique_ptr<ExprAST> Parser::parseStatement() {
   if (!isPublicableStatementStart(curTok.kind))
     parsingError(
         "'public' must precede a declaration (module, class, interface, "
-        "enum, function, extern, declare or var)");
+        "enum, function, extern, declare, var or const)");
 
   auto node = parseStatementCore();
   if (node) {
+    if (node->getType() == ASTNodeType::REFERENCE_CREATION)
+      parsingError("'public' cannot be applied to a reference");
     node->setVisibility(sun::Visibility::Public);
     // `public module a.b.c` desugars to nested modules sharing one span;
     // every synthesized level is public.
@@ -1901,8 +1942,11 @@ unique_ptr<ExprAST> Parser::parseStatementCore() {
     case TokenKind::VAR:
       return parseVarStatement();  // returns VarDeclExprAST or similar
 
+    case TokenKind::CONST:
+      return parseConstStatement();
+
     case TokenKind::REF:
-      return parseRefStatement();  // returns ReferenceCreationAST
+      return parseRefStatement(captureStart(), /*isMutable=*/true);
 
     case TokenKind::IF:
       return parseIfStatement();  // returns IfStmtAST (different from
@@ -2036,14 +2080,15 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
 
   // Check for for-in loop: for (var x: T in iterable) { ... }
   // We need to distinguish from for (var i: i32 = 0; ...; ...) { ... }
-  if (curTok.kind == TokenKind::VAR) {
+  if (curTok.kind == TokenKind::VAR || curTok.kind == TokenKind::CONST) {
     // Save state for potential backtracking
     Token savedCurTok = curTok;
     Token savedPrevTok = prevTok_;
     auto savedLexerPos = lexer.getPosition();
     auto savedTokenStack = tokenStack;
+    bool isConst = curTok.kind == TokenKind::CONST;
 
-    getNextToken();  // eat 'var'
+    getNextToken();  // eat 'var' / 'const'
 
     if (curTok.kind == TokenKind::IDENTIFIER) {
       std::string varName = curTok.getIdentifier().value();
@@ -2077,10 +2122,9 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
           unique_ptr<ExprAST> body = std::move(bodyBlock);
 
           return finishNode(
-              std::make_unique<ForInExprAST>(std::move(varName),
-                                             std::move(typeAnnot),
-                                             std::move(iterable),
-                                             std::move(body)),
+              std::make_unique<ForInExprAST>(
+                  std::move(varName), std::move(typeAnnot),
+                  std::move(iterable), std::move(body), isConst),
               forStart);
         }
       }
@@ -2098,7 +2142,7 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
   unique_ptr<ExprAST> init;
   if (curTok.kind != TokenKind::SEMI_COLON) {
     // Check if it's a variable declaration
-    if (curTok.kind == TokenKind::VAR) {
+    if (curTok.kind == TokenKind::VAR || curTok.kind == TokenKind::CONST) {
       init = parseVarDeclaration();  // Without semicolon consumption
     } else {
       init = parseExpression();
@@ -3445,7 +3489,12 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
     Position memberStart = captureStart();
     sun::Visibility memberVis = parsePublic() ? sun::Visibility::Public
                                               : sun::Visibility::Private;
+    bool isConstMethod = parseConstModifier();
     if (curTok.kind == TokenKind::VAR) {
+      if (isConstMethod)
+        parsingError(
+            "'const' is not allowed on fields; only methods can be declared "
+            "'const function'");
       // Parse field declaration: var name: type;
       getNextToken();  // eat 'var'
 
@@ -3479,14 +3528,18 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
       auto func = parseFunction();
       if (!func) return nullptr;
       func->setVisibility(memberVis);
-      if (memberVis == sun::Visibility::Public)
+      if (memberVis == sun::Visibility::Public || isConstMethod)
         extendSpanStart(*func, memberStart);
 
       bool isConstructor = (func->getProto().getName() == "init");
+      if (isConstructor && isConstMethod)
+        parsingError("'init' cannot be a const method");
+      func->getProtoMut().setConstMethod(isConstMethod);
 
       ClassMethodDecl method;
       method.function = std::move(func);
       method.isConstructor = isConstructor;
+      method.isConst = isConstMethod;
       methods.push_back(std::move(method));
 
       // Skip optional semicolons after methods
@@ -3566,7 +3619,12 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
     Position memberStart = captureStart();
     sun::Visibility memberVis = parsePublic() ? sun::Visibility::Public
                                               : sun::Visibility::Private;
+    bool isConstMethod = parseConstModifier();
     if (curTok.kind == TokenKind::VAR) {
+      if (isConstMethod)
+        parsingError(
+            "'const' is not allowed on fields; only methods can be declared "
+            "'const function'");
       // Parse field declaration: var name: type;
       getNextToken();  // eat 'var'
 
@@ -3730,14 +3788,17 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
           std::move(typeParameters), std::move(variadicParamName),
           std::move(variadicConstraint));
       proto->setLocation(std::move(protoLoc));
+      proto->setConstMethod(isConstMethod);
       auto func = finishNode(
           std::make_unique<FunctionAST>(std::move(proto), std::move(body)),
-          memberVis == sun::Visibility::Public ? memberStart : methodStart);
+          (memberVis == sun::Visibility::Public || isConstMethod) ? memberStart
+                                                                 : methodStart);
       func->setVisibility(memberVis);
 
       InterfaceMethodDecl method;
       method.function = std::move(func);
       method.hasDefaultImpl = hasDefaultImpl;
+      method.isConst = isConstMethod;
       methods.push_back(std::move(method));
 
       // Skip optional semicolons after methods

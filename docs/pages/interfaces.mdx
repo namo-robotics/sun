@@ -46,6 +46,21 @@ public module shapes {
 }
 ```
 
+## Const Methods
+
+An interface member declared `const function` promises not to change the
+object, so it can be called through a `const ref` to the interface. Every
+implementation must then be a `const function` too (see
+[Const Methods](/classes#const-methods)). A class may declare extra const
+methods the interface does not require.
+
+```sun
+interface IShape {
+    const function area() f64;
+}
+function measure(s: const ref IShape) f64 { return s.area(); }
+```
+
 ## Interface Fields
 
 Interfaces can declare fields that implementing classes must have:

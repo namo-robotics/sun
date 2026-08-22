@@ -79,7 +79,7 @@ TEST(Tooling_Frontend_Lexer, EveryKeywordLexesAsItself) {
     // A keyword token carries its spelling as text.
     EXPECT_EQ(lexAll(std::string(*word))[0].text, *word);
   }
-  EXPECT_EQ(count, 53);
+  EXPECT_EQ(count, 54);
 }
 
 // ------------------------------------------------------------------

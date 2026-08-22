@@ -341,10 +341,11 @@ static bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
            fromL->equalsIgnoringThrow(*toL);
   }
 
-  // Unwrap reference types
+  // Unwrap reference types (a const borrow never becomes a mutable one)
   if (to->isReference() && from->isReference()) {
     auto* toRef = static_cast<const sun::ReferenceType*>(to.get());
     auto* fromRef = static_cast<const sun::ReferenceType*>(from.get());
+    if (!sun::refMutabilityConvertible(*fromRef, *toRef)) return false;
     return isAssignableTo(fromRef->getReferencedType(),
                           toRef->getReferencedType());
   }
@@ -448,6 +449,16 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
             auto* refType = static_cast<const sun::ReferenceType*>(
                 info->paramTypes[i].get());
             if (refType->getReferencedType()->equals(*argTypes[i])) continue;
+            // A borrow handed to a parameter of the other mutability: only
+            // ref -> const ref is allowed
+            if (argTypes[i]->isReference()) {
+              auto* argRef =
+                  static_cast<const sun::ReferenceType*>(argTypes[i].get());
+              if (sun::refMutabilityConvertible(*argRef, *refType) &&
+                  refType->getReferencedType()->equals(
+                      *argRef->getReferencedType()))
+                continue;
+            }
             if (refType->getReferencedType()->isArray() &&
                 argTypes[i]->isArray()) {
               auto* paramArray = static_cast<const sun::ArrayType*>(

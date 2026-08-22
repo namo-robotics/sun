@@ -244,7 +244,7 @@ public module sun {
         this.arg(program);
       }
 
-      public function init(allocator: ref HeapAllocator, program: ref String) {
+      public function init(allocator: ref HeapAllocator, program: const ref String) {
         this.alloc = allocator.copy();
         this.blob = String(allocator, "");
         this.offsets = Vec<i64>(allocator, 4);
@@ -265,7 +265,7 @@ public module sun {
         this.blob.append_char(0);
       }
 
-      public function arg(value: ref String) void {
+      public function arg(value: const ref String) void {
         this.offsets.push(this.blob.length());
         for (var i: i64 = 0; i < value.length(); i = i + 1) {
           this.blob.append_char(value.at(i));

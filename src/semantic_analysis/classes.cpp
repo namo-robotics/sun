@@ -347,6 +347,7 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
     auto funcClone = methodDecl.function->clone();
     methodClone.function.reset(static_cast<FunctionAST*>(funcClone.release()));
     methodClone.isConstructor = methodDecl.isConstructor;
+    methodClone.isConst = methodDecl.isConst;
     methodsClone.push_back(std::move(methodClone));
   }
 
@@ -376,11 +377,11 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
 
     // Add method to class type (skip if type already exists)
     if (!astOnlyMode) {
-      specializedClass
-          ->addMethod(proto.getName(), returnType, paramTypes,
-                      methodClone.isConstructor, proto.getTypeParameters(),
-                      proto.canThrow())
-          .visibility = methodVisibility(*methodClone.function);
+      auto& method = specializedClass->addMethod(
+          proto.getName(), returnType, paramTypes, methodClone.isConstructor,
+          proto.getTypeParameters(), proto.canThrow());
+      method.visibility = methodVisibility(*methodClone.function);
+      method.isConst = methodClone.isConst;
     }
 
     // Update the cloned method's prototype with resolved types
@@ -987,8 +988,9 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
     }
   }
 
-  // Declare 'this' parameter
-  declareVariable("this", classType, /*isParam=*/true);
+  // Declare 'this' parameter (immutable inside a const method)
+  declareVariable("this", classType, /*isParam=*/true,
+                  /*isConst=*/clonedProto.isConstMethod());
 
   // Declare regular parameters
   for (size_t i = 0; i < paramTypes.size(); ++i) {

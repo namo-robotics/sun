@@ -371,6 +371,39 @@ var tick = c.increment;   // type: () void
 tick();                   // increments c
 ```
 
+## Const Methods
+
+A method that does not change its object is declared `const function`. The
+modifier sits where `public` does (`public const function`). Inside it,
+`this` is immutable: the body cannot assign to a field, take a `ref` to one,
+pass one to a `ref` parameter, or call a non-const method on `this`.
+
+```sun
+class Counter {
+    var n: i32;
+    function init() { this.n = 0; }
+    public const function get() i32 { return this.n; }
+    public function increment() void { this.n = this.n + 1; }
+}
+```
+
+Only const methods may be called on a constant receiver — a `const` variable,
+a `const ref`, or `this` inside another const method:
+
+```sun
+const c = Counter();
+c.get();          // ✓ OK
+c.increment();    // ❌ ERROR: cannot call non-const method 'increment' on constant 'c'
+```
+
+A const method may still hand out a borrow of its object (`function get(i) ref T`).
+Seen through a constant receiver that borrow becomes `const ref T`, so the
+element can be read but not changed. `init` is never const, and a bound
+method value (`c.increment`) follows the same rule as a call.
+
+An interface method declared `const function` must be implemented by a const
+method; a class may mark further methods const on its own.
+
 ## Returning Objects from Functions
 
 Functions can return class instances by value:

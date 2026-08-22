@@ -245,6 +245,31 @@ class SemanticAnalyzer : public AccessContext {
   static bool isBorrowableLvalue(const ExprAST& target);
   void validateBorrowTarget(const ExprAST& target, const Position& loc);
 
+  // Constness. A place (`x`, `x.f`, `x[i]`, `this.f`, `a ? x : y`, a call
+  // result) cannot be changed when its base is a `const` variable, a
+  // `const ref`, or `this` inside a const method. Returns why, or an empty
+  // string when the place may be changed.
+  std::string immutableBaseOf(const ExprAST& place);
+  // Throws "Cannot <action> <why>" when `place` cannot be changed.
+  void requireMutablePlace(const ExprAST& place, const std::string& action,
+                           const Position& loc);
+  // `value` is consumed by value: a compound field read out of an immutable
+  // object (a partial move) or a constant global is rejected.
+  void checkMoveSource(const ExprAST& value, const Position& loc);
+  // An argument bound to a `ref T` parameter must be a mutable place; one
+  // bound to a by-value compound parameter is a move (see checkMoveSource).
+  void checkArgumentPlaces(const std::vector<std::unique_ptr<ExprAST>>& args,
+                           const std::vector<sun::TypePtr>& paramTypes,
+                           const std::string& callee, const Position& loc);
+  // Calling `method` on `receiver`: a non-const method needs a mutable
+  // receiver. Returns true when the receiver is immutable, so a `ref T`
+  // result must be downgraded to `const ref T`.
+  bool checkMethodReceiver(const ExprAST& receiver, const std::string& name,
+                           bool methodIsConst, bool isConstructor,
+                           const Position& loc);
+  // `ref T` seen through an immutable receiver is `const ref T`
+  static sun::TypePtr downgradeRefResult(sun::TypePtr type);
+
   // Packed class rules (see include/packed_layout.h for what "packed" means).
   // Each rejects one way a packed field's layout guarantee could be violated.
   void checkPackedFieldNotBorrowed(const ExprAST& target,
@@ -362,7 +387,8 @@ class SemanticAnalyzer : public AccessContext {
   // Register namespaced symbols (used during namespace analysis)
   void registerModuleVariable(const std::string& baseName,
                               const std::string& qualifiedName,
-                              sun::TypePtr type, sun::Visibility visibility);
+                              sun::TypePtr type, sun::Visibility visibility,
+                              bool isConst = false);
 
   // Register a module-level variable imported from a .moon bundle. The stub
   // carries a type annotation and a content-hash-scoped qualified name, but
@@ -547,7 +573,7 @@ class SemanticAnalyzer : public AccessContext {
 
   // Variable management
   void declareVariable(const std::string& name, sun::TypePtr type,
-                       bool isParam = false);
+                       bool isParam = false, bool isConst = false);
 
   // Type narrowing (from _is<T> type guards in conditionals)
   void narrowVariable(const std::string& varName, sun::TypePtr narrowedType);

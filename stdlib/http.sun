@@ -75,7 +75,7 @@ public module sun {
       this.body.append(content);
     }
 
-    public function set_body_string(content: ref String) void {
+    public function set_body_string(content: const ref String) void {
       this.body.clear();
       this.body.append(content);
     }
@@ -90,7 +90,7 @@ public module sun {
   }
 
   // Index of the CRLFCRLF header terminator, or -1 if not yet received
-  public function http_find_header_end(s: ref String) i64 {
+  public function http_find_header_end(s: const ref String) i64 {
     var n: i64 = s.length();
     for (var i: i64 = 0; i + 3 < n; i = i + 1) {
       if (s.at(i) == HTTP_CR) {
@@ -107,7 +107,7 @@ public module sun {
   }
 
   // Parse "METHOD path HTTP/1.1" request line and raw header block
-  public function http_parse_request(raw: ref String, req: ref HttpRequest) void {
+  public function http_parse_request(raw: const ref String, req: ref HttpRequest) void {
     var n: i64 = raw.length();
     var i: i64 = 0;
 

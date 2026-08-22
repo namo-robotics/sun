@@ -390,7 +390,9 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const LambdaAST& lambda) {
                              var + "]'",
                          lambda.getLocation());
       }
-      captures.push_back({var, varInfo->type, byRef});
+      // A constant stays constant inside the lambda, however it is captured
+      bool isConst = varInfo->isConst || sun::isConstRef(varInfo->type);
+      captures.push_back({var, varInfo->type, byRef, isConst});
     }
   }
 

@@ -47,6 +47,17 @@ TypePtr ModuleTypeResolver::parseType(const std::string& sig, size_t& pos) {
     return nullptr;
   }
 
+  // `const ref(T)`: a reference that may only be read through
+  if (name == "const") {
+    skipWhitespace(sig, pos);
+    if (parseIdentifier(sig, pos) != "ref" || !match(sig, pos, '(')) {
+      return nullptr;
+    }
+    auto referenced = parseType(sig, pos);
+    if (!referenced || !match(sig, pos, ')')) return nullptr;
+    return std::make_shared<ReferenceType>(referenced, /*isMutable=*/false);
+  }
+
   // Check for primitive types
   if (name == "void") return std::make_shared<PrimitiveType>(Type::Kind::Void);
   if (name == "bool") return std::make_shared<PrimitiveType>(Type::Kind::Bool);

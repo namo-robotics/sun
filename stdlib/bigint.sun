@@ -20,13 +20,13 @@ public module sun {
     var alloc: HeapAllocator;
 
     // Zero
-    public function init(allocator: ref HeapAllocator) {
+    public function init(allocator: const ref HeapAllocator) {
       this.alloc = allocator.copy();
       this.limbs = Vec<u64>(allocator, 4);
     }
 
     // From a machine word
-    public function init(allocator: ref HeapAllocator, value: u64) {
+    public function init(allocator: const ref HeapAllocator, value: u64) {
       this.alloc = allocator.copy();
       this.limbs = Vec<u64>(allocator, 4);
       if (value != 0) {
@@ -35,7 +35,7 @@ public module sun {
     }
 
     // Independent copy
-    public function clone() BigUint {
+    public const function clone() BigUint {
       var out = BigUint(this.alloc);
       out.limbs.reserve(this.limbs.size());
       for (var i: i64 = 0; i < this.limbs.size(); i = i + 1) {
@@ -45,24 +45,24 @@ public module sun {
     }
 
     // Number of limbs in use
-    public function limb_count() i64 {
+    public const function limb_count() i64 {
       return this.limbs.size();
     }
 
     // Limb i (little-endian); 0 beyond the top
-    public function limb(i: i64) u64 {
+    public const function limb(i: i64) u64 {
       if (i < 0 or i >= this.limbs.size()) {
         return 0;
       }
       return this.limbs.get_unchecked(i);
     }
 
-    public function is_zero() bool {
+    public const function is_zero() bool {
       return this.limbs.size() == 0;
     }
 
     // Bits needed to represent the value (0 for zero)
-    public function bit_length() i64 {
+    public const function bit_length() i64 {
       var n: i64 = this.limbs.size();
       if (n == 0) {
         return 0;
@@ -72,12 +72,12 @@ public module sun {
     }
 
     // Low 64 bits
-    public function low_u64() u64 {
+    public const function low_u64() u64 {
       return this.limb(0);
     }
 
     // The value as u64, or None if it does not fit
-    public function to_u64() Option<u64> {
+    public const function to_u64() Option<u64> {
       if (this.limbs.size() > 1) {
         return Option.None;
       }
@@ -98,7 +98,7 @@ public module sun {
     }
 
     // Copy the value of another number
-    public function assign(other: ref BigUint) void {
+    public function assign(other: const ref BigUint) void {
       this.limbs.clear();
       for (var i: i64 = 0; i < other.limbs.size(); i = i + 1) {
         this.limbs.push(other.limbs.get_unchecked(i));
@@ -121,7 +121,7 @@ public module sun {
     // ------------------------------------------------------------------------
 
     // -1, 0 or 1
-    public function compare(other: ref BigUint) i64 {
+    public const function compare(other: const ref BigUint) i64 {
       var n: i64 = this.limbs.size();
       var m: i64 = other.limbs.size();
       if (n != m) {
@@ -145,11 +145,11 @@ public module sun {
       return 0;
     }
 
-    public function equals(other: ref BigUint) bool {
+    public const function equals(other: const ref BigUint) bool {
       return this.compare(other) == 0;
     }
 
-    public function compare_u64(value: u64) i64 {
+    public const function compare_u64(value: u64) i64 {
       if (this.limbs.size() > 1) {
         return 1;
       }
@@ -187,7 +187,7 @@ public module sun {
       }
     }
 
-    public function add(other: ref BigUint) void {
+    public function add(other: const ref BigUint) void {
       var n: i64 = other.limbs.size();
       while (this.limbs.size() < n) {
         this.limbs.push(0);
@@ -217,7 +217,7 @@ public module sun {
     }
 
     // this = this - other; throws if other is larger
-    public function sub(other: ref BigUint) void, IError {
+    public function sub(other: const ref BigUint) void, IError {
       if (this.compare(other) < 0) {
         throw OverflowError();
       }
@@ -267,7 +267,7 @@ public module sun {
     }
 
     // this = this * other
-    public function mul(other: ref BigUint) void {
+    public function mul(other: const ref BigUint) void {
       if (this.is_zero() or other.is_zero()) {
         this.limbs.clear();
         return;
@@ -425,7 +425,7 @@ public module sun {
     // ------------------------------------------------------------------------
 
     // Append the decimal digits of the value
-    public function append_decimal(out: ref String) void {
+    public const function append_decimal(out: ref String) void {
       if (this.is_zero()) {
         out.append_char(48);
         return;
@@ -460,7 +460,7 @@ public module sun {
 
     // Set from decimal digits; false (and the value left as zero) if the text
     // is empty or has a non-digit
-    public function set_decimal(text: ref String) bool {
+    public function set_decimal(text: const ref String) bool {
       this.limbs.clear();
       if (text.length() == 0) {
         return false;

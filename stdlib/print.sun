@@ -43,7 +43,7 @@ public module sun {
     _print_bytes(s.raw(), s.length());
   }
 
-  public function print(s: ref String) void {
+  public function print(s: const ref String) void {
     _print_bytes(s.data.rawData(), s.length());
   }
 
@@ -88,7 +88,7 @@ public module sun {
     _print_newline();
   }
 
-  public function println(s: ref String) void {
+  public function println(s: const ref String) void {
     print(s);
     _print_newline();
   }
@@ -102,7 +102,7 @@ public module sun {
     unsafe { c_write(2, s.raw(), s.length()); };
   }
 
-  public function eprint(s: ref String) void {
+  public function eprint(s: const ref String) void {
     unsafe { c_write(2, s.data.rawData(), s.length()); };
   }
 
@@ -115,7 +115,7 @@ public module sun {
     eprintln();
   }
 
-  public function eprintln(s: ref String) void {
+  public function eprintln(s: const ref String) void {
     eprint(s);
     eprintln();
   }

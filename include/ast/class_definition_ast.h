@@ -25,7 +25,8 @@ struct ClassFieldDecl {
 // Method declaration in a class (uses FunctionAST internally)
 struct ClassMethodDecl {
   std::unique_ptr<FunctionAST> function;
-  bool isConstructor;  // true if method name is "init"
+  bool isConstructor;    // true if method name is "init"
+  bool isConst = false;  // `const function`: does not mutate `this`
   sun::Visibility visibility() const { return function->getVisibility(); }
 };
 

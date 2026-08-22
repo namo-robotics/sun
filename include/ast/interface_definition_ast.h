@@ -25,7 +25,8 @@ struct InterfaceFieldDecl {
 // Methods can have default implementations
 struct InterfaceMethodDecl {
   std::unique_ptr<FunctionAST> function;
-  bool hasDefaultImpl;  // true if method has a body (default implementation)
+  bool hasDefaultImpl;   // true if method has a body (default implementation)
+  bool isConst = false;  // `const function`: does not mutate `this`
   sun::Visibility visibility() const { return function->getVisibility(); }
 };
 

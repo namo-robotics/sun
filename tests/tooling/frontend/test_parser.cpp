@@ -729,8 +729,7 @@ TEST(Tooling_Frontend_Parser, ContextualWordsAreValidNames) {
 function main() i32 {
     var in: i32 = 5;
     var as: i32 = 6;
-    var const: i32 = 7;
-    return in + as + const;
+    return in + as;
 }
 )");
   ASSERT_NE(ast, nullptr);
@@ -1043,4 +1042,52 @@ TEST(Tooling_Frontend_Comments, StarsInsideBlockComment) {
   ASSERT_NE(ast, nullptr);
   ASSERT_EQ(parser.getComments().size(), 1u);
   EXPECT_EQ(parser.getComments().begin()->second.text, "/* ** * *** */");
+}
+
+// ------------------------------------------------------------------
+// const
+// ------------------------------------------------------------------
+
+TEST(Tooling_Frontend_Parser_Errors, ConstIsReserved) {
+  std::string what = parseErrorMessage(R"(
+function main() i32 { var const = 1; return const; }
+)");
+  EXPECT_TRUE(what.find("'const' is a reserved word") != std::string::npos)
+      << what;
+}
+
+TEST(Tooling_Frontend_Parser_Errors, ConstAfterRefIsRejected) {
+  std::string what = parseErrorMessage(R"(
+function main() i32 { var x: i32 = 1; ref const r = x; return r; }
+)");
+  EXPECT_TRUE(what.find("'const' is a reserved word") != std::string::npos)
+      << what;
+}
+
+TEST(Tooling_Frontend_Parser_Errors, ConstNeedsNameOrRef) {
+  std::string what = parseErrorMessage(R"(
+function main() i32 { const = 1; return 0; }
+)");
+  EXPECT_TRUE(what.find("expected a variable name or 'ref' after 'const'") !=
+              std::string::npos)
+      << what;
+}
+
+TEST(Tooling_Frontend_Parser_Errors, ConstTypeNeedsRef) {
+  std::string what = parseErrorMessage(R"(
+function f(x: const i32) i32 { return x; }
+)");
+  EXPECT_TRUE(what.find("expected 'ref' after 'const' in a type") !=
+              std::string::npos)
+      << what;
+}
+
+TEST(Tooling_Frontend_Parser_Errors, PublicConstRefIsRejected) {
+  std::string what = parseErrorMessage(R"(
+var x: i32 = 1;
+public const ref r = x;
+)");
+  EXPECT_TRUE(what.find("'public' cannot be applied to a reference") !=
+              std::string::npos)
+      << what;
 }

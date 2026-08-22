@@ -32,6 +32,9 @@ struct TypeAnnotation {
   // For error union types: indicates this type can also be an error
   bool canError = false;
 
+  // For reference types: `const ref T` (the referent cannot be changed)
+  bool constRef = false;
+
   // Source span (includes the ", IError" suffix when present); not serialized
   Position span{};
 
@@ -41,6 +44,7 @@ struct TypeAnnotation {
       : baseName(other.baseName),
         arrayDimensions(other.arrayDimensions),
         canError(other.canError),
+        constRef(other.constRef),
         span(other.span) {
     if (other.elementType) {
       elementType = std::make_unique<TypeAnnotation>(*other.elementType);
@@ -60,6 +64,7 @@ struct TypeAnnotation {
       baseName = other.baseName;
       arrayDimensions = other.arrayDimensions;
       canError = other.canError;
+      constRef = other.constRef;
       span = other.span;
       if (other.elementType) {
         elementType = std::make_unique<TypeAnnotation>(*other.elementType);
@@ -94,6 +99,7 @@ struct TypeAnnotation {
   bool isReference() const {
     return baseName == "ref";
   }  // ref(T) reference type
+  bool isConstReference() const { return isReference() && constRef; }
   bool isFunction() const {
     return baseName == "fn";
   }  // _() -> {} named function type
@@ -124,7 +130,8 @@ struct TypeAnnotation {
       return "static_ptr(" + elementType->toString() + ")";
     }
     if (isReference() && elementType) {
-      return "ref(" + elementType->toString() + ")";
+      return std::string(constRef ? "const ref(" : "ref(") +
+             elementType->toString() + ")";
     }
     if (isFunction()) {
       std::string result = "_(";

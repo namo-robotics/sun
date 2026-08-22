@@ -226,6 +226,7 @@ int tokenKindToLSPType(TokenKind kind) {
     case TokenKind::DECLARE:
     case TokenKind::THIS:
     case TokenKind::VAR:
+    case TokenKind::CONST:
     case TokenKind::FUNCTION:
     case TokenKind::LAMBDA:
     case TokenKind::CLASS:

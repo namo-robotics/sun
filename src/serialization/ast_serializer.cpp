@@ -67,6 +67,7 @@ ast::TypeAnnotation ASTSerializer::serializeTypeAnnotation(
   }
 
   proto.set_can_error(type.canError);
+  proto.set_const_ref(type.constRef);
   return proto;
 }
 
@@ -77,6 +78,7 @@ ast::Capture ASTSerializer::serializeCapture(const Capture& cap) const {
     proto.set_type_signature(cap.type->toString());
   }
   proto.set_by_ref(cap.byRef);
+  proto.set_is_const(cap.isConst);
   return proto;
 }
 
@@ -149,6 +151,7 @@ ast::Prototype ASTSerializer::serializePrototype(
   }
 
   result.set_c_variadic(proto.isCVariadic());
+  result.set_is_const_method(proto.isConstMethod());
   if (proto.hasLinkName()) {
     result.set_link_name(proto.getLinkName());
   }
@@ -467,6 +470,7 @@ void ASTSerializer::serializeVariableCreation(const VariableCreationAST& expr,
   auto* var = node->mutable_variable_creation();
   var->set_name(expr.getName());
   var->set_visibility(toProto(expr.getVisibility()));
+  var->set_is_const(expr.isConst());
   if (expr.getValue()) {
     *var->mutable_value() = serialize(*expr.getValue());
   }
@@ -628,6 +632,7 @@ void ASTSerializer::serializeForIn(const ForInExprAST& expr,
       serializeTypeAnnotation(expr.getLoopVarType());
   *forIn->mutable_iterable() = serialize(*expr.getIterable());
   *forIn->mutable_body() = serialize(*expr.getBody());
+  forIn->set_is_const(expr.isConst());
 }
 
 void ASTSerializer::serializeWhile(const WhileExprAST& expr,
@@ -823,6 +828,7 @@ void ASTSerializer::serializeClassDef(const ClassDefinitionAST& expr,
     }
     funcProto->set_visibility(toProto(method.function->getVisibility()));
     methodProto->set_is_constructor(method.isConstructor);
+    methodProto->set_is_const(method.isConst);
   }
 
   cls->set_is_partial(expr.isPartial());
@@ -862,6 +868,7 @@ void ASTSerializer::serializeInterfaceDef(const InterfaceDefinitionAST& expr,
     }
     funcProto->set_visibility(toProto(method.function->getVisibility()));
     methodProto->set_has_default_impl(method.hasDefaultImpl);
+    methodProto->set_is_const(method.isConst);
   }
   iface->set_visibility(toProto(expr.getVisibility()));
 }

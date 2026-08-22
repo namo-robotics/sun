@@ -68,4 +68,5 @@ struct Capture {
   std::string name;
   sun::TypePtr type;
   bool byRef = false;  // Declared in the lambda's [ref x, ...] capture list
+  bool isConst = false;  // The captured variable is a constant / const ref
 };

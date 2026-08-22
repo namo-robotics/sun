@@ -33,8 +33,9 @@ generic payload enums with owning payloads and drop glue. The absence APIs
 
 Routine requirements in embedded and safety-critical work, not niceties.
 
-- [ ] Constant variables and references
-- [ ] Compile-time evaluation of constant expressions
+- [ ] Compile-time evaluation of constant expressions (`const` variables,
+      `const ref` and `const function` exist; a `const` global is still
+      initialised at runtime)
 - [ ] Const generics: `array<T, const N>`
 - [ ] Fixed-size array types
 
@@ -47,6 +48,13 @@ they bounce off a language.
 - [ ] Infer the element type in `for ... in`
 - [ ] Iterator adapters (`map`, `filter`, `take`, `zip`, `enumerate`)
 - [ ] Ranges as iterables
+- [ ] Iteration over a constant container: `next(ref Container)` takes a
+      mutable borrow, so `for … in` needs a `var` iterable
+- [ ] Peek accessors returning `Option<ref T>` (`Vec.first`/`last`,
+      `Map.find`, `LinkedList.first`/`last`) as `const function`: the borrow
+      inside the payload would need to become `const ref T` on a constant
+      receiver, which means a second `Option` specialization with the same
+      layout
 
 ## 4. Language Server Navigation
 
@@ -90,6 +98,10 @@ community-supplyable now that FFI has landed.
       whose struct has the same layout on every architecture)
 - [ ] Buffered stdin; `sun.io.read_line` reads a byte at a time so it cannot
       swallow input a child process is about to read
+- [ ] `String.c_str()` as a `const function`: it writes the terminating NUL on
+      demand, so every path-taking function (`sun.io`, `sun.env`,
+      `sun.process`) still takes `ref String`. Keeping the NUL as an invariant
+      of the buffer would let them take `const ref String`
 
 ## 8. Data Structures
 

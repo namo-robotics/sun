@@ -35,7 +35,7 @@ public module sun {
     }
 
     // Borrow the stored value; the node keeps ownership
-    public function getValue() ref T {
+    public const function getValue() ref T {
       return unsafe { _to_ref<T>(_address_of<T>(this.value)); };
     }
 
@@ -63,11 +63,11 @@ public module sun {
       unsafe { _deinit<T>(_address_of<T>(this.value)); };
     }
 
-    public function getNext() raw_ptr<LinkedListNode<T>> {
+    public const function getNext() raw_ptr<LinkedListNode<T>> {
       return this.next;
     }
 
-    public function getPrev() raw_ptr<LinkedListNode<T>> {
+    public const function getPrev() raw_ptr<LinkedListNode<T>> {
       return this.prev;
     }
 
@@ -91,7 +91,7 @@ public module sun {
     var size_: i64;
 
     // Constructor with allocator
-    public function init(allocator: ref HeapAllocator) {
+    public function init(allocator: const ref HeapAllocator) {
       this.alloc = allocator.copy();
       this.head = null;
       this.tail = null;
@@ -174,7 +174,7 @@ public module sun {
     // Borrow the element at index (traverses from nearest end). The list keeps
     // ownership, so this hands back a reference; use remove()/pop_*() to move
     // an element out.
-    public function get(index: i64) ref T, IError {
+    public const function get(index: i64) ref T, IError {
       if (index < 0) {
         throw NotFoundError();
       }
@@ -230,12 +230,12 @@ public module sun {
     }
 
     // Get current size
-    public function size() i64 {
+    public const function size() i64 {
       return this.size_;
     }
 
     // Check if empty
-    public function isEmpty() bool {
+    public const function isEmpty() bool {
       return this.size_ == 0;
     }
 
@@ -259,7 +259,7 @@ public module sun {
     // ========================================================================
 
     // Get node at index, traversing from nearest end
-    function nodeAt(index: i64) raw_ptr<LinkedListNode<T>> {
+    const function nodeAt(index: i64) raw_ptr<LinkedListNode<T>> {
       if (index < this.size_ / 2) {
         // Traverse from head
         var node: raw_ptr<LinkedListNode<T>> = this.head;
@@ -297,7 +297,7 @@ public module sun {
     // ========================================================================
 
     // Return iterator over elements
-    public function iter() LinkedListIterator<T> {
+    public const function iter() LinkedListIterator<T> {
       return LinkedListIterator<T>();
     }
   }

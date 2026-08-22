@@ -390,6 +390,7 @@ class Formatter {
         out_ += ';';
       } else {
         printVisibility(m.method->getVisibility());
+        if (m.method->getProto().isConstMethod()) out_ += "const ";
         printFunction(*m.method);
         if (m.method->isExtern()) out_ += ';';
       }
@@ -458,12 +459,14 @@ class Formatter {
         out_ += ';';
       } else if (!m.method->hasDefaultImpl) {
         printVisibility(m.method->visibility());
+        if (m.method->isConst) out_ += "const ";
         // Signature-only method (the parser synthesizes an empty body)
         out_ += "function ";
         printProtoSig(m.method->function->getProto());
         out_ += ';';
       } else {
         printVisibility(m.method->visibility());
+        if (m.method->isConst) out_ += "const ";
         printFunction(*m.method->function);
       }
       lastLine_ = m.endLine;
@@ -699,7 +702,7 @@ class Formatter {
 
       case ASTNodeType::VARIABLE_CREATION: {
         const auto& n = static_cast<const VariableCreationAST&>(e);
-        out_ += "var ";
+        out_ += n.isConst() ? "const " : "var ";
         out_ += n.getName();
         if (n.hasTypeAnnotation()) {
           out_ += ": ";
@@ -722,8 +725,7 @@ class Formatter {
 
       case ASTNodeType::REFERENCE_CREATION: {
         const auto& n = static_cast<const ReferenceCreationAST&>(e);
-        out_ += "ref ";
-        if (!n.isMutable()) out_ += "const ";
+        out_ += n.isMutable() ? "ref " : "const ref ";
         out_ += n.getName();
         out_ += " = ";
         printExpr(*n.getTarget());
@@ -891,7 +893,7 @@ class Formatter {
 
       case ASTNodeType::FOR_IN_LOOP: {
         const auto& n = static_cast<const ForInExprAST&>(e);
-        out_ += "for (var ";
+        out_ += n.isConst() ? "for (const " : "for (var ";
         out_ += n.getLoopVar();
         out_ += ": ";
         printType(n.getLoopVarType());

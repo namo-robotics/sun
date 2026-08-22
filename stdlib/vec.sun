@@ -32,7 +32,7 @@ public module sun {
     var size_: i64;  // Current number of elements
 
     // Constructor with allocator and capacity
-    public function init(allocator: ref HeapAllocator, capacity: i64) {
+    public function init(allocator: const ref HeapAllocator, capacity: i64) {
       this.data = ContiguousBuffer<T>(allocator, capacity);
       this.capacity_ = capacity;
       this.size_ = 0;
@@ -78,7 +78,7 @@ public module sun {
     // Borrow the element at index (bounds-checked against size). The Vec keeps
     // ownership, so this hands back a reference: a copy of an element that owns
     // heap memory would be released twice. Use take()/pop() to move one out.
-    public function get(index: i64) ref T, IError {
+    public const function get(index: i64) ref T, IError {
       if (index < 0) {
         throw IndexOutOfBoundsError(index);
       }
@@ -89,7 +89,7 @@ public module sun {
     }
 
     // Borrow the element at index (no bounds check)
-    public function get_unchecked(index: i64) ref T {
+    public const function get_unchecked(index: i64) ref T {
       return this.data.get_unchecked(index);
     }
 
@@ -112,17 +112,17 @@ public module sun {
     }
 
     // Get current size
-    public function size() i64 {
+    public const function size() i64 {
       return this.size_;
     }
 
     // Get current capacity
-    public function capacity() i64 {
+    public const function capacity() i64 {
       return this.capacity_;
     }
 
     // Check if empty
-    public function isEmpty() bool {
+    public const function isEmpty() bool {
       return this.size_ == 0;
     }
 
@@ -154,7 +154,7 @@ public module sun {
     }
 
     // Get raw data pointer (for interop)
-    public function rawData() raw_ptr<u8> {
+    public const function rawData() raw_ptr<u8> {
       return this.data.rawData();
     }
 
@@ -191,13 +191,13 @@ public module sun {
 
     // Operator overload for indexing: v[i] calls __index__([i])
     // Uses unchecked access for performance; use get() for bounds checking
-    public function __index__(indices: ref array<i64>) ref T {
+    public const function __index__(indices: const ref array<i64>) ref T {
       return this.data.get_unchecked(indices[0]);
     }
 
     // Operator overload for indexed assignment: v[i] = val calls __setindex__([i], val)
     // Uses unchecked access for performance; use set() for bounds checking
-    public function __setindex__(indices: ref array<i64>, value: T) void {
+    public function __setindex__(indices: const ref array<i64>, value: T) void {
       this.data.set_unchecked(indices[0], value);
     }
 
@@ -206,7 +206,7 @@ public module sun {
     // ========================================================================
 
     // Return iterator over elements
-    public function iter() VecIterator<T> {
+    public const function iter() VecIterator<T> {
       return VecIterator<T>();
     }
   }

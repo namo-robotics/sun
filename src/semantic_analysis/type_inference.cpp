@@ -244,8 +244,8 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
 
     case ASTNodeType::REFERENCE_CREATION: {
       const auto& refCreate = static_cast<const ReferenceCreationAST&>(expr);
-      // Reference type is ref(T) where T is the target's type
-      sun::TypePtr targetType = inferType(*refCreate.getTarget());
+      // Reference type is ref(T) where T is the target's (referent's) type
+      sun::TypePtr targetType = unwrapRef(inferType(*refCreate.getTarget()));
       return sun::Types::Reference(targetType, refCreate.isMutable());
     }
 

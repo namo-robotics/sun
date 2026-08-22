@@ -9,7 +9,7 @@
 #include "ast/expr_ast.h"
 #include "qualified_name.h"
 
-// Reference creation: ref x = y (mutable) or ref const x = y (immutable)
+// Reference creation: ref x = y (mutable) or const ref x = y (immutable)
 // Creates a reference variable x that points to the address of y
 class ReferenceCreationAST : public ExprAST {
   std::string name;
@@ -45,7 +45,7 @@ class ReferenceCreationAST : public ExprAST {
 
   void forEachChildSlot(const ChildSlotFn& fn) override { fn(target); }
   std::string toString() const override {
-    return std::string("ref ") + (mutable_ ? "" : "const ") + name + " = " +
+    return std::string(mutable_ ? "ref " : "const ref ") + name + " = " +
            target->toString();
   }
   const std::string& getName() const { return name; }

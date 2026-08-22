@@ -98,6 +98,8 @@ std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
 
   TypePtr value = unwrapRef(argType);
 
+  // `ref T` and `const ref T` parameters take the argument's address alike;
+  // constness is checked by semantic analysis and has no lowering of its own.
   if (paramType->isReference()) {
     TypePtr target = unwrapRef(paramType);
     if (argType->isRawPointer() && target) {

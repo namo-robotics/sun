@@ -178,15 +178,15 @@ s.append_char(33);         // Append '!'
 | `at(i)` | `(i64) u8` | Get byte at index |
 | `set_at(i, val)` | `(i64, u8) void` | Set byte at index |
 | `append_char(ch)` | `(u8) void` | Append a single byte |
-| `append(other)` | `(ref String) void` | Append another String |
+| `append(other)` | `(const ref String) void` | Append another String |
 | `append_literal(s)` | `(static_ptr<u8>) void` | Append a string literal |
 | `equals_literal(s)` | `(static_ptr<u8>) bool` | Compare with a string literal |
 | `find_char(ch)` | `(u8) Option<i64>` | Index of first occurrence; `None` if absent |
 | `rfind_char(ch)` | `(u8) Option<i64>` | Index of last occurrence; `None` if absent |
 | `contains_char(ch)` | `(u8) bool` | Check if the byte occurs |
-| `find(needle)` | `(static_ptr<u8>) Option<i64>`, `(ref String) Option<i64>` | Index of first occurrence of a substring; `None` if absent |
-| `contains(needle)` | `(static_ptr<u8>) bool`, `(ref String) bool` | Check if the substring occurs |
-| `starts_with(s)` / `ends_with(s)` | `(static_ptr<u8>) bool`, `(ref String) bool` | Prefix / suffix check |
+| `find(needle)` | `(static_ptr<u8>) Option<i64>`, `(const ref String) Option<i64>` | Index of first occurrence of a substring; `None` if absent |
+| `contains(needle)` | `(static_ptr<u8>) bool`, `(const ref String) bool` | Check if the substring occurs |
+| `starts_with(s)` / `ends_with(s)` | `(static_ptr<u8>) bool`, `(const ref String) bool` | Prefix / suffix check |
 | `append_i64(n)` / `append_u64(n)` | `(i64) void` | Append an integer in decimal |
 | `append_f64(x)` | `(f64) void` | Append a float in its shortest round-trip form (`0.1`, `1e+21`) |
 | `append(x)` | `(f64) void`, `(f32) void`, ... | Overloads used by `${x}` interpolation for every primitive |
@@ -226,13 +226,13 @@ var again = join(allocator, fields, "=");  // "NAME=ADA"
 | `trim()` | `() void` | Drop leading and trailing ASCII whitespace in place |
 | `trim_start()` / `trim_end()` | `() void` | Drop whitespace from one end in place |
 | `reverse()` | `() void` | Reverse the bytes in place |
-| `replace(from, to)` | `(static_ptr<u8>, static_ptr<u8>) void`, `(ref String, ref String) void` | Replace every occurrence in place; an empty `from` does nothing |
-| `clone(alloc)` | `(ref HeapAllocator) String` | Copy into a new String |
-| `substr(alloc, start, count)` | `(ref HeapAllocator, i64, i64) String, IError` | Copy a byte range; throws if it falls outside the string |
-| `split(alloc, sep)` | `(ref HeapAllocator, u8) Vec<String>`, `(ref HeapAllocator, static_ptr<u8>) Vec<String>` | Split into owned pieces; always yields one piece more than there are separators |
-| `split_nonempty(alloc, sep)` | `(ref HeapAllocator, u8) Vec<String>`, `(ref HeapAllocator, static_ptr<u8>) Vec<String>` | Like `split`, but empty pieces are dropped: adjacent, leading, and trailing separators yield nothing |
-| `split_whitespace(alloc)` | `(ref HeapAllocator) Vec<String>` | Split on runs of ASCII whitespace; never yields an empty piece |
-| `join(alloc, parts, sep)` | `(ref HeapAllocator, ref Vec<String>, static_ptr<u8>) String` | Free function: concatenate pieces with a separator between them |
+| `replace(from, to)` | `(static_ptr<u8>, static_ptr<u8>) void`, `(const ref String, const ref String) void` | Replace every occurrence in place; an empty `from` does nothing |
+| `clone(alloc)` | `(const ref HeapAllocator) String` | Copy into a new String |
+| `substr(alloc, start, count)` | `(const ref HeapAllocator, i64, i64) String, IError` | Copy a byte range; throws if it falls outside the string |
+| `split(alloc, sep)` | `(const ref HeapAllocator, u8) Vec<String>`, `(const ref HeapAllocator, static_ptr<u8>) Vec<String>` | Split into owned pieces; always yields one piece more than there are separators |
+| `split_nonempty(alloc, sep)` | `(const ref HeapAllocator, u8) Vec<String>`, `(const ref HeapAllocator, static_ptr<u8>) Vec<String>` | Like `split`, but empty pieces are dropped: adjacent, leading, and trailing separators yield nothing |
+| `split_whitespace(alloc)` | `(const ref HeapAllocator) Vec<String>` | Split on runs of ASCII whitespace; never yields an empty piece |
+| `join(alloc, parts, sep)` | `(const ref HeapAllocator, const ref Vec<String>, static_ptr<u8>) String` | Free function: concatenate pieces with a separator between them |
 
 ### Slicing
 
@@ -583,12 +583,12 @@ println(format(alloc, utc(unix_time()), "%Y-%m-%d %H:%M:%S"));
 | `Duration.subsec_nanos` | `() i64` | Remainder on top of `as_secs` |
 | `now` | `() Instant` | Monotonic clock |
 | `Instant.elapsed` | `() Duration` | Time since it was taken |
-| `Instant.since` | `(earlier: ref Instant) Duration` | Zero if this is the earlier |
+| `Instant.since` | `(earlier: const ref Instant) Duration` | Zero if this is the earlier |
 | `unix_time` / `unix_time_millis` | `() i64` | Wall clock, since the epoch |
-| `sleep` | `(d: ref Duration) void` | A signal can cut it short |
+| `sleep` | `(d: const ref Duration) void` | A signal can cut it short |
 | `utc` / `local` | `(unix_secs: i64) DateTime` | Break into calendar fields |
-| `to_unix_utc` / `to_unix_local` | `(dt: ref DateTime) i64` | And back |
-| `format` | `(alloc, dt: ref DateTime, fmt: raw_ptr<u8>) String` | strftime |
+| `to_unix_utc` / `to_unix_local` | `(dt: const ref DateTime) i64` | And back |
+| `format` | `(alloc, dt: const ref DateTime, fmt: raw_ptr<u8>) String` | strftime |
 
 Only differences between `Instant`s mean anything: the zero point is arbitrary,
 and the clock never jumps backwards when the system time is adjusted.
@@ -725,19 +725,19 @@ n.append_decimal(text);   // 265252859812191058636308480000000
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `BigUint(alloc)` / `BigUint(alloc, v)` | `(ref HeapAllocator[, u64])` | Zero, or a machine word |
+| `BigUint(alloc)` / `BigUint(alloc, v)` | `(const ref HeapAllocator[, u64])` | Zero, or a machine word |
 | `clone()` | `() BigUint` | Independent copy |
 | `is_zero()`, `bit_length()`, `limb_count()`, `limb(i)`, `low_u64()` | | Inspection; `limb(i)` is 0 beyond the top |
 | `to_u64()` | `() Option<u64>` | The value if it fits in 64 bits |
 | `set_u64(v)`, `assign(other)`, `clear()` | | Replace the value |
-| `compare(other)`, `compare_u64(v)`, `equals(other)` | `(ref BigUint) i64`, `(u64) i64`, `(ref BigUint) bool` | Ordering (-1/0/1) |
-| `add(other)`, `add_small(v)` | `(ref BigUint) void`, `(u64) void` | In-place addition |
-| `sub(other)` | `(ref BigUint) void, IError` | In-place subtraction; throws `OverflowError` if the result would be negative |
-| `mul(other)`, `mul_small(v)`, `mul_pow10(n)` | `(ref BigUint) void`, `(u64) void`, `(i64) void` | In-place multiplication |
+| `compare(other)`, `compare_u64(v)`, `equals(other)` | `(const ref BigUint) i64`, `(u64) i64`, `(const ref BigUint) bool` | Ordering (-1/0/1) |
+| `add(other)`, `add_small(v)` | `(const ref BigUint) void`, `(u64) void` | In-place addition |
+| `sub(other)` | `(const ref BigUint) void, IError` | In-place subtraction; throws `OverflowError` if the result would be negative |
+| `mul(other)`, `mul_small(v)`, `mul_pow10(n)` | `(const ref BigUint) void`, `(u64) void`, `(i64) void` | In-place multiplication |
 | `shl(bits)`, `shr(bits)` | `(i64) void` | In-place shifts |
 | `divmod_small(d)` | `(u32) u32, IError` | Divide in place by a 32-bit divisor, returning the remainder |
 | `append_decimal(out)` | `(ref String) void` | Append the decimal digits |
-| `set_decimal(text)` | `(ref String) bool` | Parse decimal digits; `false` (value left at zero) if malformed |
+| `set_decimal(text)` | `(const ref String) bool` | Parse decimal digits; `false` (value left at zero) if malformed |
 
 ## Numeric conversion
 

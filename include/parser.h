@@ -243,9 +243,13 @@ class Parser {
   unique_ptr<ExprAST> parsePrimary();
   unique_ptr<ExprAST> parsePostfixExpr(unique_ptr<ExprAST> base);
   unique_ptr<VariableCreationAST> parseVarStatement();
-  unique_ptr<VariableCreationAST>
-  parseVarDeclaration();  // Without trailing semicolon
-  unique_ptr<ReferenceCreationAST> parseRefStatement();
+  // `var x = ...` or `const x = ...`, without the trailing semicolon
+  unique_ptr<VariableCreationAST> parseVarDeclaration();
+  // `ref r = x;` (mutable) or, after `const`, `const ref r = x;`
+  unique_ptr<ReferenceCreationAST> parseRefStatement(Position start,
+                                                     bool isMutable);
+  // `const x = ...;` or `const ref r = x;`
+  unique_ptr<ExprAST> parseConstStatement();
   unique_ptr<ExprAST> parseIdentifierExpr();
   unique_ptr<IfExprAST> parseIfStatement();
   unique_ptr<MatchExprAST> parseMatchExpression();
@@ -282,6 +286,8 @@ class Parser {
   unique_ptr<ExprAST> parseStatementCore();
   // Consumes an optional `public`; errors on a duplicate.
   bool parsePublic();
+  // Consumes an optional `const` before a class/interface member.
+  bool parseConstModifier();
   unique_ptr<ExprAST> parseStatementList();
 
   // Type parsing. parseTypeAnnotation stamps the source span; the Impl

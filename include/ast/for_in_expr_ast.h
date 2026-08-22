@@ -18,6 +18,7 @@ class ForInExprAST : public ExprAST {
   TypeAnnotation LoopVarType;         // Type annotation (T)
   std::unique_ptr<ExprAST> Iterable;  // Expression that yields an iterable
   std::unique_ptr<ExprAST> Body;
+  bool isConst_;  // `for (const x: T in ...)`
 
  protected:
   // Override to allocate ForInAnalysis instead of base ExprAnalysis
@@ -36,11 +37,13 @@ class ForInExprAST : public ExprAST {
 
  public:
   ForInExprAST(std::string LoopVar, TypeAnnotation LoopVarType,
-               std::unique_ptr<ExprAST> Iterable, std::unique_ptr<ExprAST> Body)
+               std::unique_ptr<ExprAST> Iterable, std::unique_ptr<ExprAST> Body,
+               bool isConst = false)
       : LoopVar(std::move(LoopVar)),
         LoopVarType(std::move(LoopVarType)),
         Iterable(std::move(Iterable)),
-        Body(std::move(Body)) {}
+        Body(std::move(Body)),
+        isConst_(isConst) {}
 
   ASTNodeType getType() const override { return ASTNodeType::FOR_IN_LOOP; }
 
@@ -49,10 +52,12 @@ class ForInExprAST : public ExprAST {
     fn(Body);
   }
   std::string toString() const override {
-    return "for (var " + LoopVar + ": " + LoopVarType.toString() + " in " +
-           Iterable->toString() + ") " + Body->toString();
+    return std::string(isConst_ ? "for (const " : "for (var ") + LoopVar +
+           ": " + LoopVarType.toString() + " in " + Iterable->toString() +
+           ") " + Body->toString();
   }
 
+  bool isConst() const { return isConst_; }
   const std::string& getLoopVar() const { return LoopVar; }
   const TypeAnnotation& getLoopVarType() const { return LoopVarType; }
   const ExprAST* getIterable() const { return Iterable.get(); }

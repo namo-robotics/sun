@@ -538,17 +538,13 @@ class ReferenceType : public Type {
   inline bool isUnsizedArrayRef() const;
 
   std::string toString() const override {
-    if (mutable_) {
-      return "ref(" + referencedType->toString() + ")";
-    }
-    return "ref const(" + referencedType->toString() + ")";
+    return std::string(mutable_ ? "ref(" : "const ref(") +
+           referencedType->toString() + ")";
   }
 
   std::string toDisplayString() const override {
-    if (mutable_) {
-      return "ref(" + referencedType->toDisplayString() + ")";
-    }
-    return "ref const(" + referencedType->toDisplayString() + ")";
+    return std::string(mutable_ ? "ref " : "const ref ") +
+           referencedType->toDisplayString();
   }
 
   bool equals(const Type& other) const override {
@@ -576,6 +572,25 @@ inline TypePtr unwrapRef(TypePtr type) {
     return static_cast<const ReferenceType*>(type.get())->getReferencedType();
   }
   return type;
+}
+
+// `ref T` (the referent may be changed through it)
+inline bool isMutableRef(const TypePtr& type) {
+  return type && type->isReference() &&
+         static_cast<const ReferenceType*>(type.get())->isMutable();
+}
+
+// `const ref T` (the referent may only be read through it)
+inline bool isConstRef(const TypePtr& type) {
+  return type && type->isReference() &&
+         !static_cast<const ReferenceType*>(type.get())->isMutable();
+}
+
+// A reference of kind `from` may stand in for one of kind `to` unless that
+// would let a const borrow be written through
+inline bool refMutabilityConvertible(const ReferenceType& from,
+                                     const ReferenceType& to) {
+  return from.isMutable() || !to.isMutable();
 }
 
 // Error union type - represents a type that can be either a value or an error
@@ -851,6 +866,7 @@ struct ClassMethod {
   std::vector<TypePtr> paramTypes;  // Excludes implicit 'this' parameter
   bool isConstructor;               // true if this is the 'init' method
   bool canThrow = false;            // declared with ', IError' — may unwind
+  bool isConst = false;  // `const function`: does not change `this`
   sun::Visibility visibility = sun::Visibility::Private;
 
   bool isGeneric() const { return !typeParameters.empty(); }
@@ -1201,6 +1217,15 @@ class ClassType : public Type {
           if (referenced->equals(*argTypes[i])) {
             continue;
           }
+          // A borrow of the other mutability: only ref -> const ref
+          if (argTypes[i]->isReference()) {
+            auto* argRef =
+                static_cast<const ReferenceType*>(argTypes[i].get());
+            if (refMutabilityConvertible(*argRef, *refType) &&
+                referenced->equals(*argRef->getReferencedType())) {
+              continue;
+            }
+          }
           // ref to an (unsized) array accepts a compatible sized array, e.g.
           // passing array<i32, 3, 2> where ref array<i32> is expected.
           if (isArrayCompatible(argTypes[i], referenced)) {
@@ -1391,6 +1416,7 @@ struct InterfaceMethod {
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;  // Excludes implicit 'this' parameter
   bool hasDefaultImpl;  // true if this method has a default implementation
+  bool isConst = false;  // `const function`: does not change `this`
   sun::Visibility visibility = sun::Visibility::Private;
 
   bool isGeneric() const { return !typeParameters.empty(); }
@@ -2112,7 +2138,9 @@ class TypeRegistry {
     // errors can carry text composed at runtime. Without the stdlib, message()
     // stays literal-only.
     auto ierror = std::make_shared<InterfaceType>("IError");
-    ierror->addMethod("code", Types::Int32(), {}, true);  // code() -> i32
+    // Not const: every user error class would then have to spell
+    // `const function code()`, and errors are caught into plain variables.
+    ierror->addMethod("code", Types::Int32(), {}, true);
     ierror->addMethod("message", Types::String(), {}, true);
     interfaceCache["IError"] = ierror;
   }
