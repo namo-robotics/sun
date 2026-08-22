@@ -383,6 +383,10 @@ void SemanticAnalyzer::analyzeEnumVariantConstruction(
       }
     }
   }
+  // A `ref X` payload borrows its argument, an owning payload moves it
+  checkArgumentPlaces(args, variant->payloadTypes,
+                      enumType->getBaseName() + "." + variantName,
+                      callExpr.getLocation());
 
   memberAccess.setResolvedType(enumType);
   callExpr.setResolvedType(enumType);

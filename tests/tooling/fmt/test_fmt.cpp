@@ -458,13 +458,46 @@ TEST(Tooling_Fmt, IndexingAndSlices) {
 }
 
 TEST(Tooling_Fmt, RefCreationAndConst) {
-  EXPECT_EQ(fmt("function f(v: ref Vec<i32>) void {\n"
+  EXPECT_EQ(fmt("function f(v: ref Vec<i32>, c: const ref Vec<i32>) void {\n"
                 "ref a = v;\n"
-                "ref const b = v;\n"
+                "const ref b = v;\n"
+                "const n: i64 = c.size();\n"
+                "var r: const ref Vec<i32> = v;\n"
                 "}"),
-            "function f(v: ref Vec<i32>) void {\n"
+            "function f(v: ref Vec<i32>, c: const ref Vec<i32>) void {\n"
             "  ref a = v;\n"
-            "  ref const b = v;\n"
+            "  const ref b = v;\n"
+            "  const n: i64 = c.size();\n"
+            "  var r: const ref Vec<i32> = v;\n"
+            "}\n");
+}
+
+TEST(Tooling_Fmt, ConstMethodsAndLoops) {
+  EXPECT_EQ(fmt("class C {\n"
+                "var n: i32;\n"
+                "public const function get() i32 { return this.n; }\n"
+                "const function zero() bool { return this.n == 0; }\n"
+                "}\n"
+                "interface I {\n"
+                "const function get() i32;\n"
+                "}\n"
+                "function f(v: ref Vec<i32>) void {\n"
+                "for (const x: i32 in v) { }\n"
+                "}"),
+            "class C {\n"
+            "  var n: i32;\n"
+            "  public const function get() i32 {\n"
+            "    return this.n;\n"
+            "  }\n"
+            "  const function zero() bool {\n"
+            "    return this.n == 0;\n"
+            "  }\n"
+            "}\n"
+            "interface I {\n"
+            "  const function get() i32;\n"
+            "}\n"
+            "function f(v: ref Vec<i32>) void {\n"
+            "  for (const x: i32 in v) {}\n"
             "}\n");
 }
 

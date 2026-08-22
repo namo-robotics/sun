@@ -28,6 +28,7 @@ message TypeAnnotation {
   repeated TypeAnnotation type_arguments = 5;   // For generics: Vec<i32>
   repeated uint64 array_dimensions = 6;         // For arrays: array<T, 5, 3>
   bool can_error = 7;                           // Error union: T, IError
+  bool const_ref = 8;                           // `const ref T`
 }
 
 // Lambda capture (mirrors Capture in ast_common.h)
@@ -35,6 +36,7 @@ message Capture {
   string name = 1;
   string type_signature = 2;  // Type stored as string signature
   bool by_ref = 3;            // Captured by reference via [ref x]
+  bool is_const = 4;          // The captured variable is immutable
 }
 
 // Token kind enumeration (mirrors TokenKind in lexer.h)

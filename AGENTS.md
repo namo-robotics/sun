@@ -19,35 +19,6 @@ cd build && ctest -j8 --output-on-failure
 ./build/sun -c -o output input.sun  # AOT compile
 ```
 
-## Project Layout
-
-```
-include/          # Headers (ast.h, types.h, codegen_visitor.h, ...)
-src/codegen/      # IR generation split by expression type
-src/semantic_analysis/  # Type inference, classes, interfaces, captures
-src/borrow_checker/     # Ownership tracking
-src/lsp/          # Language server
-stdlib/           # Standard library (.sun files)
-tests/            # GoogleTest suites, grouped by subject + programs/ (.sun fixtures)
-```
-
-Tests live in a directory hierarchy and each suite name mirrors its path, so a
-group is one filter away. `tests/stdlib/collections/test_vec.cpp` defines
-`Stdlib_Collections_Vec`; `--gtest_filter="Stdlib_*"` runs every stdlib test.
-Top-level groups:
-
-```
-operators/  control_flow/  errors/  functions/{,generic/}  lambdas/{,generic/}
-classes/{,generic/}  interfaces/{,generic/}  enums/{,generic/}
-memory_safety/{,refs/,drops/}  modules/  ffi/{,abi/}
-stdlib/{,collections/,text/,concurrency/,io/}  builtins/
-tooling/{frontend/,regex/,fmt/,serialization/,backend/}  end_to_end/
-```
-
-Adding a test file means dropping it in the right group and adding one line to
-that directory's `CMakeLists.txt` — the root `tests/CMakeLists.txt` lists no
-sources, only `add_subdirectory` calls.
-
 ## Type System
 
 - **Primitives**: i8–i64, u8–u64, f32, f64, bool — passed/returned by value.
@@ -56,6 +27,7 @@ sources, only `add_subdirectory` calls.
 - **Arrays**: Fat pointer `{ ptr data, i32 ndims, ptr dims }`.
 - **Pointers**: `raw_ptr<T>` (bare pointer), `static_ptr<T>` (`{ ptr, i64 }` for literals; read with `.length()` / `.raw()`, builtin methods lowered in `codegenBuiltinTypeMethod`).
 - **Error unions**: functions declared with `, IError` suffix; implemented with native LLVM exceptions (a throwing function returns plain `T` and may unwind).
+- **Constness**: `const x = …` declares a binding that is never assigned, never mutably borrowed, never taken apart (no field moved out), and only has `const function` methods called on it; a const local may still be moved as a whole. `const ref T` is the read-only borrow (`const ref r = x;`, `v: const ref Vec<T>`); `ref T` converts to `const ref T`, never back. `const function` (in the `public` slot, never on `init`) makes `this` immutable in the body; its `ref T` result seen through a constant receiver is `const ref T`; an interface's const member must be implemented by a const method. `const` always leads — there is no `ref const`. Enforced in sema by one predicate, `SemanticAnalyzer::immutableBaseOf` (`analysis_utils.cpp`), applied at every write, borrow, `ref` argument, receiver and move site; the borrow checker only records `const ref` as a Shared loan. A by-value compound parameter still *moves* its argument, so read-only parameters are spelled `const ref T`. Known gaps (roadmap): `Option<ref T>` peek accessors and `String.c_str()` are not const, so `first`/`last`/`find` and path-taking `sun.io`/`sun.env` functions need a `var`.
 - **References**: `ref T` is a real type — a parameter, a variable, or an enum payload can hold one — but reading a reference reads *through* it, so the expression `c.get(i)` has type `T`. Only the contexts that want the address (binding a ref variable, a `ref` argument, returning a ref, assigning through one) take it, via `tryCodegenAddress`; everything else goes through `codegen()`, which loads (`loadIfRef`). Compound referents are carried as addresses everywhere and are never loaded out — that would be the implicit copy borrowing exists to avoid.
 - **Iteration**: `IIterator<T, Container>`/`IIterable<T, Self>` are stdlib interfaces (`stdlib/iterator.sun`), not builtins; `for … in` calls `iter()` if present, then `next(ref Container) Option<T>` until `None` (`src/codegen/loops.cpp`). Sema requires `next` to take exactly `ref <the iterated type>` and return `Option<loop var type>` (codegen passes the iterable's address, so anything else would be UB). The stdlib containers iterate by borrow — `IIterator<ref T, …>`, `next() Option<ref T>` — and `for (var x: T in c)` accepts that, binding `x` to the element in place. Absence is signalled with `Option<T>` (`first`/`last`/`pop`/`find`), not by throwing.
 - **Interface conformance** runs for every class and every generic specialization (`validateInterfaceImplementation`). A method may return a class where the interface declares an interface type it implements (`IIterable.iter()`); that marks the interface *static-only* for the class (`ClassType::markStaticOnlyInterface`): usable statically, but the class is not convertible to the interface value since fat-pointer dispatch would mismatch the ABI.
@@ -150,3 +122,9 @@ Module tests require `SUN_PATH` env var pointing to workspace root.
 
 - Always use `./build.sh` to build the project. Do not run cmake commands directly.
 - Use at most 8 cores when compiling.
+
+# Docs
+
+* Use concise plain-english in the docs and code comments.
+* Docs and code comments should target a public audience of open-source software engineers.
+* Avoid acronyms and jargon except when they are widely known to the target audience.

@@ -27,6 +27,7 @@ class PrototypeAST {
       variadicParamName_;  // Name of variadic param if present
   std::optional<TypeAnnotation> variadicConstraint_;  // e.g., _init_args<T>
   bool cVariadic_ = false;  // C-style trailing `...` (extern declarations)
+  bool constMethod_ = false;  // `const function`: `this` is immutable
   std::optional<std::string> linkName_;  // `as "c_symbol"` override
   Position location_;                    // Source span of the signature
 
@@ -147,6 +148,11 @@ class PrototypeAST {
   // LLVM function type's isVarArg flag. Extern declarations only.
   bool isCVariadic() const { return cVariadic_; }
   void setCVariadic(bool v) { cVariadic_ = v; }
+
+  // A class/interface method declared `const function`: its body may not
+  // change `this`, and it may be called on a constant receiver.
+  bool isConstMethod() const { return constMethod_; }
+  void setConstMethod(bool v) { constMethod_ = v; }
 
   // Explicit C symbol from `extern function sunName(...) T as "c_name";`.
   // Lets a Sun-side name differ from the symbol actually linked against.

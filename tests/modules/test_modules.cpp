@@ -904,3 +904,48 @@ TEST(Modules, moon_private_module_variable_is_hidden) {
   )"),
                std::exception);
 }
+
+// `const` survives a .moon round trip: a constant global stays constant for
+// the importer, a `const ref` parameter keeps its kind, and a `const function`
+// may still be called on a constant receiver.
+TEST(Modules, moon_keeps_const_declarations) {
+  initTestEnvironment();
+  auto moonPath = writeMoonLib("constlib", R"(
+    public module constlib {
+        public const LIMIT: i32 = 40;
+        public class Counter {
+            var n: i32;
+            public function init(n: i32) { this.n = n; }
+            public const function get() i32 { return this.n; }
+            public function bump() void { this.n = this.n + 1; }
+        }
+        public function peek(c: const ref Counter) i32 { return c.get(); }
+    }
+  )");
+
+  auto driver = Driver::createForJIT("moon_const_main");
+  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  auto value = driver->executeString(R"(
+    using constlib;
+
+    function main() i32 {
+        const c = Counter(2);
+        return LIMIT + peek(c) + c.get() - 2;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+
+  auto rejects = [&](const std::string& body, const char* message) {
+    auto d = Driver::createForJIT("moon_const_reject");
+    d->setMoonImports({sun::MoonImport(moonPath.string())});
+    EXPECT_SUN_ERROR_WITH_MESSAGE(
+        d->executeString("using constlib;\nfunction main() i32 {\n" + body +
+                         "\nreturn 0;\n}\n"),
+        message);
+  };
+  rejects("LIMIT = 1;", "Cannot assign to constant 'LIMIT'");
+  rejects("const c = Counter(1); c.bump();",
+          "Cannot call non-const method 'bump' on constant 'c'");
+  rejects("var c = Counter(1); var r: const ref Counter = c; r.bump();",
+          "Cannot call non-const method 'bump' on const reference 'r'");
+}

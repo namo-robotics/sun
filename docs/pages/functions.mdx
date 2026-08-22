@@ -17,6 +17,20 @@ function main() i32 {
 }
 ```
 
+A parameter declared `ref T` borrows the caller's value and may change it;
+one declared `const ref T` borrows it for reading only. A constant, or a
+value already borrowed with `const ref`, can only be passed to the second
+kind. See [Constant references](/ownership#constant-references).
+
+```sun
+function total(v: const ref Vec<i32>) i32 {
+    var sum: i32 = 0;
+    var i: i64 = 0;
+    while (i < v.size()) { sum = sum + v[i]; i = i + 1; }
+    return sum;
+}
+```
+
 ## Entry point
 
 A program starts at `main`, which takes either no parameters or exactly two —

@@ -15,6 +15,7 @@ class VariableCreationAST : public ExprAST {
   std::string name;
   std::unique_ptr<ExprAST> value;
   std::optional<TypeAnnotation> typeAnnotation;
+  bool isConst_;  // `const x = ...`: the binding and its value never change
 
  protected:
   // Override to allocate VariableAnalysis instead of base ExprAnalysis
@@ -34,15 +35,18 @@ class VariableCreationAST : public ExprAST {
  public:
   explicit VariableCreationAST(
       std::string name, std::unique_ptr<ExprAST> value,
-      std::optional<TypeAnnotation> type = std::nullopt)
+      std::optional<TypeAnnotation> type = std::nullopt, bool isConst = false)
       : name(std::move(name)),
         value(std::move(value)),
-        typeAnnotation(std::move(type)) {}
+        typeAnnotation(std::move(type)),
+        isConst_(isConst) {}
   ASTNodeType getType() const override {
     return ASTNodeType::VARIABLE_CREATION;
   }
+  bool isConst() const { return isConst_; }
   std::string toString() const override {
-    std::string result = std::string(isPublic() ? "public " : "") + "var " + name;
+    std::string result = std::string(isPublic() ? "public " : "") +
+                         (isConst_ ? "const " : "var ") + name;
     if (typeAnnotation) result += ": " + typeAnnotation->toString();
     // A global imported from a .moon carries its type but no initializer.
     if (value) result += " = " + value->toString();

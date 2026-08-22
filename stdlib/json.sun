@@ -275,7 +275,7 @@ public module sun {
       };
     }
 
-    public function get(key: ref String) ref Json, IError {
+    public function get(key: const ref String) ref Json, IError {
       match this.value {
         JsonValue.Object(members) => {
           for (var i: i64 = 0; i < members.size(); i = i + 1) {
@@ -299,7 +299,7 @@ public module sun {
       };
     }
 
-    function member_index(members: ref Vec<JsonMember>, key: static_ptr<u8>) i64 {
+    function member_index(members: const ref Vec<JsonMember>, key: static_ptr<u8>) i64 {
       for (var i: i64 = 0; i < members.size(); i = i + 1) {
         if (members.get(i).key.equals_literal(key)) {
           return i;
@@ -421,7 +421,7 @@ public module sun {
 
   // String value copied from a borrowed String; the caller keeps its own.
   // Use Json(s) instead to hand the String over without a copy.
-  public function json_string(alloc: ref HeapAllocator, text: ref String) Json {
+  public function json_string(alloc: ref HeapAllocator, text: const ref String) Json {
     return Json(text.clone(alloc));
   }
 
@@ -454,7 +454,7 @@ public module sun {
 
   // Quoted string with JSON escapes; bytes >= 0x20 other than '"' and '\'
   // pass through unchanged (UTF-8 stays UTF-8)
-  function json_write_string(s: ref String, out: ref String) void {
+  function json_write_string(s: const ref String, out: ref String) void {
     out.append_char(34);  // '"'
     var n: i64 = s.length();
     for (var i: i64 = 0; i < n; i = i + 1) {
@@ -505,7 +505,7 @@ public module sun {
     out.append_literal(".0");
   }
 
-  function json_write_value(j: ref Json, out: ref String, indent: i64, level: i64) void {
+  function json_write_value(j: const ref Json, out: ref String, indent: i64, level: i64) void {
     match j.value {
       JsonValue.Null => {
         out.append_literal("null");
@@ -578,14 +578,14 @@ public module sun {
       this.alloc = alloc.copy();
     }
 
-    function peek(text: ref String) i64 {
+    function peek(text: const ref String) i64 {
       if (this.pos >= text.length()) {
         return -1;
       }
       return _convert<i64>(text.at(this.pos));
     }
 
-    function skip_whitespace(text: ref String) void {
+    function skip_whitespace(text: const ref String) void {
       while (this.pos < text.length()) {
         var ch: u8 = text.at(this.pos);
         if (ch == 32 or ch == 9 or ch == 10 or ch == 13) {
@@ -597,7 +597,7 @@ public module sun {
     }
 
     // Consume `literal` at pos or fail
-    function expect_literal(text: ref String, literal: static_ptr<u8>, what: static_ptr<u8>) void, IError {
+    function expect_literal(text: const ref String, literal: static_ptr<u8>, what: static_ptr<u8>) void, IError {
       var data: raw_ptr<u8> = literal.raw();
       var n: i64 = literal.length();
       var start: i64 = this.pos;
@@ -610,7 +610,7 @@ public module sun {
       }
     }
 
-    function parse_value(text: ref String) Json, IError {
+    function parse_value(text: const ref String) Json, IError {
       var ch: i64 = this.peek(text);
       if (ch == 123) {
         // '{'
@@ -649,14 +649,14 @@ public module sun {
       throw JsonError("unexpected character in JSON text", this.pos);
     }
 
-    function enter(text: ref String) void, IError {
+    function enter(text: const ref String) void, IError {
       this.depth = this.depth + 1;
       if (this.depth > JSON_MAX_DEPTH) {
         throw JsonError("JSON nesting too deep", this.pos);
       }
     }
 
-    function parse_array(text: ref String) Json, IError {
+    function parse_array(text: const ref String) Json, IError {
       this.enter(text);
       this.pos = this.pos + 1;  // '['
       var items = Vec<Json>(this.alloc, 4);
@@ -689,7 +689,7 @@ public module sun {
       return Json();
     }
 
-    function parse_object(text: ref String) Json, IError {
+    function parse_object(text: const ref String) Json, IError {
       this.enter(text);
       this.pos = this.pos + 1;  // '{'
       var members = Vec<JsonMember>(this.alloc, 4);
@@ -734,7 +734,7 @@ public module sun {
       return Json();
     }
 
-    function hex_digit(text: ref String) i64, IError {
+    function hex_digit(text: const ref String) i64, IError {
       var ch: i64 = this.peek(text);
       this.pos = this.pos + 1;
       if (ch >= 48 and ch <= 57) {
@@ -749,7 +749,7 @@ public module sun {
       throw JsonError("invalid \\u escape in JSON string", this.pos - 1);
     }
 
-    function hex4(text: ref String) i64, IError {
+    function hex4(text: const ref String) i64, IError {
       var code: i64 = 0;
       for (var i: i64 = 0; i < 4; i = i + 1) {
         code = code * 16 + this.hex_digit(text);
@@ -776,7 +776,7 @@ public module sun {
     }
 
     // Parse a quoted string starting at pos, decoding escapes into UTF-8
-    function parse_string(text: ref String) String, IError {
+    function parse_string(text: const ref String) String, IError {
       var start: i64 = this.pos;
       this.pos = this.pos + 1;  // opening '"'
       var out = String(this.alloc, "");
@@ -854,7 +854,7 @@ public module sun {
       return out;
     }
 
-    function digits(text: ref String) i64 {
+    function digits(text: const ref String) i64 {
       var count: i64 = 0;
       while (this.pos < text.length() and text.at(this.pos) >= 48 and text.at(this.pos) <= 57) {
         this.pos = this.pos + 1;
@@ -864,7 +864,7 @@ public module sun {
     }
 
     // number = [-] int [frac] [exp]; int = 0 | [1-9][0-9]*
-    function parse_number(text: ref String) Json, IError {
+    function parse_number(text: const ref String) Json, IError {
       var start: i64 = this.pos;
       if (this.peek(text) == 45) {
         // '-'
@@ -927,7 +927,7 @@ public module sun {
 
   // Parse a complete JSON text. Trailing whitespace is allowed, anything else
   // after the value is an error.
-  public function json_parse(alloc: ref HeapAllocator, text: ref String) Json, IError {
+  public function json_parse(alloc: ref HeapAllocator, text: const ref String) Json, IError {
     var parser = JsonParser(alloc);
     parser.skip_whitespace(text);
     var value: Json = parser.parse_value(text);

@@ -175,8 +175,25 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
         // Each SliceExprAST resolves to the slice type
         const_cast<SliceExprAST&>(*idx).setResolvedType(sun::Types::Slice());
       }
+      // `c[i]` on a class calls __index__ / __slice__, a method like any
+      // other: it needs a mutable receiver unless declared const, and a
+      // `ref T` result seen through a constant receiver is `const ref T`
+      bool receiverImmutable = false;
+      sun::TypePtr targetType = unwrapRef(arrIdx.getTarget()->getResolvedType());
+      if (targetType && targetType->isClass()) {
+        const auto* classType =
+            static_cast<const sun::ClassType*>(targetType.get());
+        const char* opName = arrIdx.hasSlices() ? "__slice__" : "__index__";
+        if (const auto* method = classType->getMethod(opName)) {
+          receiverImmutable = checkMethodReceiver(
+              *arrIdx.getTarget(), opName, method->isConst,
+              /*isConstructor=*/false, arrIdx.getLocation());
+        }
+      }
       // Set resolved type (element type of the array)
-      expr.setResolvedType(inferType(expr));
+      sun::TypePtr resultType = inferType(expr);
+      if (receiverImmutable) resultType = downgradeRefResult(resultType);
+      expr.setResolvedType(resultType);
       break;
     }
 
@@ -246,7 +263,16 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
           }
           bindsBorrow = true;
           validateBorrowTarget(*varCreate.getValue(), varCreate.getLocation());
+          if (sun::isMutableRef(declaredType)) {
+            requireMutablePlace(*varCreate.getValue(),
+                                "take a mutable reference to",
+                                varCreate.getLocation());
+          }
         }
+      }
+      // Taking the value moves it: a field cannot leave an immutable object
+      if (!bindsBorrow) {
+        checkMoveSource(*varCreate.getValue(), varCreate.getLocation());
       }
 
       sun::TypePtr type;
@@ -285,7 +311,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       validateTypeParameter(type, varCreate);
 
       // Note: Move semantics tracking is handled by the borrow checker
-      declareVariable(varCreate.getName(), type);
+      declareVariable(varCreate.getName(), type, /*isParam=*/false,
+                      varCreate.isConst());
       // Set the resolved type on the variable creation node itself
       expr.setResolvedType(type);
 
@@ -304,6 +331,16 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
 
       // Look up the variable's type first for expected type propagation
       VariableInfo* varInfo = lookupVariable(varAssign.getName());
+      if (varInfo && varInfo->isConst) {
+        logAndThrowError("Cannot assign to constant '" + varAssign.getName() +
+                             "'; declare it with 'var' if it must change",
+                         varAssign.getLocation());
+      }
+      if (varInfo && sun::isConstRef(varInfo->type)) {
+        logAndThrowError("Cannot assign through const reference '" +
+                             varAssign.getName() + "'",
+                         varAssign.getLocation());
+      }
       if (varInfo && varInfo->isCapture && !varInfo->isByRefCapture) {
         logAndThrowError("Cannot mutate by-value captured variable '" +
                              varAssign.getName() +
@@ -326,6 +363,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       analyzeExpr(const_cast<ExprAST&>(*varAssign.getValue()),
                   expectedTargetType);
       sun::TypePtr rhsType = varAssign.getValue()->getResolvedType();
+      checkMoveSource(*varAssign.getValue(), varAssign.getLocation());
 
       if (varInfo) {
         // Check type compatibility for interface polymorphism
@@ -370,6 +408,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       // Analyze the target as a read: gives the whole target subtree
       // resolved types (codegen signedness depends on them)
       analyzeExpr(const_cast<ExprAST&>(*compound.getTarget()));
+      requireMutablePlace(*compound.getTarget(), "assign to",
+                          compound.getLocation());
       sun::TypePtr targetType =
           sun::unwrapRef(compound.getTarget()->getResolvedType());
 
@@ -400,10 +440,17 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       analyzeExpr(const_cast<ExprAST&>(*refCreate.getTarget()));
 
       validateBorrowTarget(*refCreate.getTarget(), expr.getLocation());
-      // Determine the type of the referenced expression
-      sun::TypePtr targetType = inferType(*refCreate.getTarget());
-      // Create reference type: ref(T)
-      sun::TypePtr refType = sun::Types::Reference(targetType);
+      // A mutable borrow needs a place that may be changed
+      if (refCreate.isMutable()) {
+        requireMutablePlace(*refCreate.getTarget(),
+                            "take a mutable reference to", expr.getLocation());
+      }
+      // Determine the type of the referenced expression. Rebinding through
+      // another reference borrows the same referent, not the reference.
+      sun::TypePtr targetType = unwrapRef(inferType(*refCreate.getTarget()));
+      // Create reference type: ref(T) or const ref(T)
+      sun::TypePtr refType =
+          sun::Types::Reference(targetType, refCreate.isMutable());
       // Declare the reference variable
       declareVariable(refCreate.getName(), refType);
       // Set the resolved type
@@ -717,7 +764,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
 
       // Create scope for loop body with loop variable
       enterScope();
-      declareVariable(forInExpr.getLoopVar(), loopVarType);
+      declareVariable(forInExpr.getLoopVar(), loopVarType, /*isParam=*/false,
+                      forInExpr.isConst());
       analyzeExpr(const_cast<ExprAST&>(*forInExpr.getBody()));
       exitScope();
 
@@ -818,7 +866,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
     case ASTNodeType::INDEXED_ASSIGNMENT: {
       auto& assignment = static_cast<IndexedAssignmentAST&>(expr);
       analyzeExpr(const_cast<ExprAST&>(*assignment.getTarget()));
+      requireMutablePlace(*assignment.getTarget(), "assign to an element of",
+                          assignment.getLocation());
       analyzeExpr(const_cast<ExprAST&>(*assignment.getValue()));
+      checkMoveSource(*assignment.getValue(), assignment.getLocation());
 
       // `obj[i] = v` on a class dispatches to __setindex__ (resolved in
       // codegen); it must be accessible from here like any other member
@@ -867,6 +918,9 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
                   "container).",
               returnExpr.getLocation());
         }
+        if (!declaredReturn || !declaredReturn->isReference()) {
+          checkMoveSource(*returnExpr.getValue(), returnExpr.getLocation());
+        }
         expr.setResolvedType(valueType);
       } else {
         expr.setResolvedType(sun::Types::Void());
@@ -898,7 +952,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
           varCreate.setQualifiedName(qualifiedName);
           if (auto type = varCreate.getResolvedType()) {
             registerModuleVariable(varCreate.getName(), qualifiedName.mangled(),
-                                   type, varCreate.getVisibility());
+                                   type, varCreate.getVisibility(),
+                                   varCreate.isConst());
           }
         } else if (bodyExpr->getType() == ASTNodeType::REFERENCE_CREATION) {
           analyzeExpr(*bodyExpr);
@@ -1261,11 +1316,11 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
         applyFunctionInfoToProto(proto, methodInfo);
 
         // Add method to interface type (include generic type parameters)
-        interfaceType
-            ->addMethod(proto.getName(), methodInfo.returnType,
-                        methodInfo.paramTypes, methodDecl.hasDefaultImpl,
-                        proto.getTypeParameters())
-            .visibility = methodVisibility(*methodDecl.function);
+        auto& method = interfaceType->addMethod(
+            proto.getName(), methodInfo.returnType, methodInfo.paramTypes,
+            methodDecl.hasDefaultImpl, proto.getTypeParameters());
+        method.visibility = methodVisibility(*methodDecl.function);
+        method.isConst = methodDecl.isConst;
       }
 
       // Enter Interface scope to contain method scopes
@@ -1344,6 +1399,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       // Analyze the object first so the field type can flow into the value
       // as the expected type (e.g. `this.value = Option.None;`)
       analyzeExpr(const_cast<ExprAST&>(*memberAssign.getObject()));
+      requireMutablePlace(*memberAssign.getObject(),
+                          "assign to field '" + memberAssign.getMemberName() +
+                              "' of",
+                          memberAssign.getLocation());
 
       sun::TypePtr objectType = memberAssign.getObject()->getResolvedType();
       objectType = unwrapRef(objectType);
@@ -1359,6 +1418,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       }
       analyzeExpr(const_cast<ExprAST&>(*memberAssign.getValue()),
                   expectedFieldType);
+      checkMoveSource(*memberAssign.getValue(), memberAssign.getLocation());
 
       if (objectType && objectType->isClass()) {
         auto* classType = static_cast<sun::ClassType*>(objectType.get());
@@ -1765,11 +1825,11 @@ void SemanticAnalyzer::registerClassShape(
     PrototypeAST& proto =
         const_cast<PrototypeAST&>(methodDecl.function->getProto());
     applyFunctionInfoToProto(proto, methodInfo);
-    classType
-        ->addMethod(proto.getName(), methodInfo.returnType,
-                    methodInfo.paramTypes, methodDecl.isConstructor,
-                    proto.getTypeParameters(), proto.canThrow())
-        .visibility = methodVisibility(*methodDecl.function);
+    auto& method = classType->addMethod(
+        proto.getName(), methodInfo.returnType, methodInfo.paramTypes,
+        methodDecl.isConstructor, proto.getTypeParameters(), proto.canThrow());
+    method.visibility = methodVisibility(*methodDecl.function);
+    method.isConst = methodDecl.isConst;
   }
   setCurrentClass(savedClass);
 
@@ -1939,11 +1999,12 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
       // Apply computed info to prototype
       applyFunctionInfoToProto(proto, methodInfo);
 
-      existingClass
-          ->addMethod(proto.getName(), methodInfo.returnType,
-                      methodInfo.paramTypes, methodDecl.isConstructor,
-                      proto.getTypeParameters(), proto.canThrow())
-          .visibility = methodVisibility(*methodDecl.function);
+      auto& method = existingClass->addMethod(
+          proto.getName(), methodInfo.returnType, methodInfo.paramTypes,
+          methodDecl.isConstructor, proto.getTypeParameters(),
+          proto.canThrow());
+      method.visibility = methodVisibility(*methodDecl.function);
+      method.isConst = methodDecl.isConst;
       std::string mangledName =
           existingClass->getMangledMethodName(proto.getName());
       std::vector<sun::TypePtr> methodParamTypes;
@@ -2027,6 +2088,7 @@ void SemanticAnalyzer::analyzeStructLiteral(StructLiteralAST& literal,
 
     analyzeExpr(*field.value, classField->type);
     sun::TypePtr valueType = field.value->getResolvedType();
+    checkMoveSource(*field.value, field.location);
     if (valueType && classField->type &&
         !isAssignableTo(valueType, classField->type)) {
       if (!tryCoerceIntegerLiteral(field.value.get(), classField->type,
@@ -2211,9 +2273,11 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
   enterFunctionScope(funcSig, proto.getQualifiedName(), proto.canThrow(),
                      scopeReturnType);
 
-  // Declare 'this' for methods (when we're inside a class context)
+  // Declare 'this' for methods (when we're inside a class context); it is
+  // immutable inside a const method
   if (currentClass) {
-    declareVariable("this", currentClass, /*isParam=*/true);
+    declareVariable("this", currentClass, /*isParam=*/true,
+                    /*isConst=*/proto.isConstMethod());
   }
 
   // If this is a generic function/method, bind its type parameters
@@ -2240,6 +2304,7 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
     if (VariableInfo* vi = lookupVariable(cap.name)) {
       vi->isCapture = true;
       vi->isByRefCapture = cap.byRef;
+      vi->isConst = cap.isConst;
     }
   }
 
@@ -2305,6 +2370,7 @@ void SemanticAnalyzer::analyzeLambda(LambdaAST& lambda) {
     if (VariableInfo* vi = lookupVariable(cap.name)) {
       vi->isCapture = true;
       vi->isByRefCapture = cap.byRef;
+      vi->isConst = cap.isConst;
     }
   }
 
@@ -2592,7 +2658,8 @@ void SemanticAnalyzer::analyzeMethodWithBindings(
                                         mangledMethodName),
                      proto.canThrow(), methodReturnType);
   if (classType) {
-    declareVariable("this", classType, /*isParam=*/true);
+    declareVariable("this", classType, /*isParam=*/true,
+                    /*isConst=*/proto.isConstMethod());
   }
 
   // Step 5: Declare method parameters with substituted types
@@ -2702,6 +2769,11 @@ void SemanticAnalyzer::maybeResolveBoundMethodRef(MemberAccessAST& memberAccess,
     return;
   }
 
+  // The bound method will run on this receiver later, so the receiver must
+  // allow it now
+  checkMethodReceiver(*memberAccess.getObject(), memberName, chosen->isConst,
+                      chosen->isConstructor, memberAccess.getLocation());
+
   memberAccess.setResolvedType(sun::Types::Lambda(
       chosen->returnType, chosen->paramTypes, chosen->canThrow));
   memberAccess.setIsBoundMethodRef(true);
@@ -2712,6 +2784,9 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
   // Set when the callee swallows a variadic pack, whose arguments are not
   // part of the recorded parameter list — the arity check below sits out.
   bool calleeTakesPack = false;
+  // Set when a method is called on a constant receiver (see
+  // checkMethodReceiver): a `ref T` result becomes `const ref T`
+  bool receiverImmutable = false;
   // Check for unsafe intrinsic calls (non-generic)
   // Generic intrinsics (_load<T>, _store<T>, _address_of<T>) are checked in
   // type_inference.cpp
@@ -2965,6 +3040,9 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
         if (method) {
           memberAccess.setResolvedType(
               sun::Types::Function(method->returnType, method->paramTypes));
+          receiverImmutable = checkMethodReceiver(
+              *memberAccess.getObject(), methodName, method->isConst,
+              method->isConstructor, memberAccess.getLocation());
         }
       } else if (genericMethod && !variadicMethod) {
         // A generic method: whatever type arguments the call leaves out are
@@ -2982,6 +3060,11 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
               memberAccess.getLocation(), written));
         }
         memberAccess.setResolvedType(inferType(memberAccess));
+        if (method) {
+          receiverImmutable = checkMethodReceiver(
+              *memberAccess.getObject(), methodName, method->isConst,
+              method->isConstructor, memberAccess.getLocation());
+        }
       } else {
         // Try to find a method overload matching the argument types
         const sun::ClassMethod* method = accessibleMethodForArgs(
@@ -2990,6 +3073,9 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
           // Set the resolved type on the member access for later use
           memberAccess.setResolvedType(
               sun::Types::Function(method->returnType, method->paramTypes));
+          receiverImmutable = checkMethodReceiver(
+              *memberAccess.getObject(), methodName, method->isConst,
+              method->isConstructor, memberAccess.getLocation());
         } else {
           // No overload took these arguments. When the mismatch is the
           // argument *count*, say so here: the fallback below picks an
@@ -3021,6 +3107,15 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
       // analyzeExpr, so a ptr-to-class method callee is not converted to a
       // bound-method lambda — call position requires a FunctionType.
       memberAccess.setResolvedType(inferType(memberAccess));
+      if (objectType && objectType->isInterface()) {
+        const auto* iface =
+            static_cast<const sun::InterfaceType*>(objectType.get());
+        if (const auto* method = iface->getMethod(memberAccess.getMemberName())) {
+          receiverImmutable = checkMethodReceiver(
+              *memberAccess.getObject(), method->name, method->isConst,
+              /*isConstructor=*/false, memberAccess.getLocation());
+        }
+      }
     }
   } else {
     // Not a simple variable reference or method call - analyze the callee
@@ -3131,6 +3226,9 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
   }
 
   checkPackedRefArguments(args, paramTypes);
+  if (knownSignature) {
+    checkArgumentPlaces(args, paramTypes, funcName, callExpr.getLocation());
+  }
 
   // If we found a function via overload resolution, types are already
   // compatible Otherwise, check each argument type manually
@@ -3155,6 +3253,16 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
               static_cast<const sun::ReferenceType*>(paramType.get());
           if (refType->getReferencedType()->equals(*argType)) {
             compatible = true;
+          }
+          // A borrow of the other mutability: only ref -> const ref
+          if (argType->isReference()) {
+            auto* argRef =
+                static_cast<const sun::ReferenceType*>(argType.get());
+            if (sun::refMutabilityConvertible(*argRef, *refType) &&
+                refType->getReferencedType()->equals(
+                    *argRef->getReferencedType())) {
+              compatible = true;
+            }
           }
           // ref array<T> (unsized) accepts any array<T, dims...>
           if (refType->getReferencedType()->isArray() && argType->isArray()) {
@@ -3314,7 +3422,11 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
         funcName, callExpr.getLocation()));
   }
 
-  callExpr.setResolvedType(inferType(callExpr));
+  // A borrow handed out by a method seen through an immutable receiver may
+  // only be read through
+  sun::TypePtr resultType = inferType(callExpr);
+  if (receiverImmutable) resultType = downgradeRefResult(resultType);
+  callExpr.setResolvedType(resultType);
 }
 
 // -------------------------------------------------------------------
@@ -3454,6 +3566,8 @@ void SemanticAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
     tryCoerceIntegerLiteral(const_cast<ExprAST*>(args[i].get()),
                             expectedParamTypes[i], /*throwOnFail=*/true);
   }
+  checkArgumentPlaces(args, expectedParamTypes, funcName,
+                      genericCall.getLocation());
 
   if (allConcrete) {
     std::vector<sun::TypePtr> argTypes;
@@ -3552,6 +3666,9 @@ void SemanticAnalyzer::analyzeGenericClassConstruction(
   }
 
   if (specializedClass) {
+    checkArgumentPlaces(args, expectedParamTypes,
+                        specializedClass->toString() + ".init",
+                        genericCall.getLocation());
     std::vector<sun::TypePtr> argTypes;
     for (const auto& arg : args) argTypes.push_back(arg->getResolvedType());
     genericCall.setArgConversions(sun::conversions::classifyArguments(

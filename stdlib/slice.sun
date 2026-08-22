@@ -28,7 +28,7 @@ public module sun {
     }
 
     // Get effective start index (0 if not specified)
-    public function getStart() i64 {
+    public const function getStart() i64 {
       if (this.hasStart) {
         return this.start;
       }
@@ -36,7 +36,7 @@ public module sun {
     }
 
     // Get effective end index, given dimension size
-    public function getEnd(dimSize: i64) i64 {
+    public const function getEnd(dimSize: i64) i64 {
       if (this.hasEnd) {
         return this.end;
       }
@@ -44,7 +44,7 @@ public module sun {
     }
 
     // Check if this is a full-range slice (:)
-    public function isFullRange() bool {
+    public const function isFullRange() bool {
       if (this.hasStart) {
         return false;
       }
@@ -55,7 +55,7 @@ public module sun {
     }
 
     // Compute the size of this slice given dimension size
-    public function size(dimSize: i64) i64 {
+    public const function size(dimSize: i64) i64 {
       var s: i64 = this.getStart();
       var e: i64 = this.getEnd(dimSize);
       return e - s;

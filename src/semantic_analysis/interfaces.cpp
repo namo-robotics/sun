@@ -132,10 +132,11 @@ SemanticAnalyzer::instantiateGenericInterface(
 
       // Add method to interface type (preserve method-level generic type
       // parameters)
-      specializedInterface
-          ->addMethod(proto.getName(), returnType, paramTypes,
-                      methodDecl.hasDefaultImpl, proto.getTypeParameters())
-          .visibility = methodVisibility(*methodDecl.function);
+      auto& method = specializedInterface->addMethod(
+          proto.getName(), returnType, paramTypes, methodDecl.hasDefaultImpl,
+          proto.getTypeParameters());
+      method.visibility = methodVisibility(*methodDecl.function);
+      method.isConst = methodDecl.isConst;
     }
 
     // Pop the scope
@@ -283,6 +284,17 @@ void SemanticAnalyzer::validateInterfaceImplementation(
                                interfaceMethod.name + "' and must be public",
                            classDef.getLocation());
         }
+        // A const interface member may be called on a constant receiver, so
+        // the implementing method must promise the same
+        if (interfaceMethod.isConst && !classMethodInfo->isConst) {
+          logSemanticError("method '" + interfaceMethod.name + "' of class '" +
+                               classType->getDisplayName() +
+                               "' implements const member '" +
+                               interfaceDisplayName + "." +
+                               interfaceMethod.name +
+                               "' and must be declared 'const function'",
+                           classDef.getLocation());
+        }
         // Verify return type matches. A class return where the interface
         // declares an interface type it implements is accepted (IIterable's
         // iter() returns the concrete iterator), but such a method cannot be
@@ -351,11 +363,11 @@ void SemanticAnalyzer::validateInterfaceImplementation(
         if (interfaceMethod.hasDefaultImpl) {
           // Add the default method to the class type so it can be found during
           // lookup (preserve generic type parameters)
-          classType
-              ->addMethod(interfaceMethod.name, interfaceMethod.returnType,
-                          interfaceMethod.paramTypes, false,
-                          interfaceMethod.typeParameters)
-              .visibility = interfaceMethod.visibility;
+          auto& method = classType->addMethod(
+              interfaceMethod.name, interfaceMethod.returnType,
+              interfaceMethod.paramTypes, false, interfaceMethod.typeParameters);
+          method.visibility = interfaceMethod.visibility;
+          method.isConst = interfaceMethod.isConst;
 
           // Register the mangled method name as a function
           std::string mangledName =

@@ -26,7 +26,7 @@ public module sun {
     var size_: i64;  // Number of elements (fixed after init)
 
     // Constructor with allocator and size
-    public function init(allocator: ref HeapAllocator, size: i64) {
+    public function init(allocator: const ref HeapAllocator, size: i64) {
       this.alloc = allocator.copy();
       this.size_ = size;
       this.data = Unique<u8>(this.alloc.alloc_raw(size * _sizeof<T>()));
@@ -39,7 +39,7 @@ public module sun {
     // Borrow element at index (bounds-checked). The buffer keeps ownership, so
     // this hands back a reference — copying the element out would leave two
     // owners of anything it holds.
-    public function get(index: i64) ref T, IError {
+    public const function get(index: i64) ref T, IError {
       if (index < 0) {
         throw IndexOutOfBoundsError(index);
       }
@@ -65,7 +65,7 @@ public module sun {
     // ========================================================================
 
     // Borrow element at index (no bounds check)
-    public function get_unchecked(index: i64) ref T {
+    public const function get_unchecked(index: i64) ref T {
       return unsafe { _to_ref<T>(_ptr_as_raw<T>(_ptr_offset(this.data.get_raw(), index * _sizeof<T>()))); };
     }
 
@@ -93,17 +93,17 @@ public module sun {
     // ========================================================================
 
     // Get buffer size
-    public function size() i64 {
+    public const function size() i64 {
       return this.size_;
     }
 
     // Check if buffer is empty
-    public function isEmpty() bool {
+    public const function isEmpty() bool {
       return this.size_ == 0;
     }
 
     // Create a deep copy of this buffer
-    public function clone() ContiguousBuffer<T> {
+    public const function clone() ContiguousBuffer<T> {
       var copy: ContiguousBuffer<T> = ContiguousBuffer<T>(this.alloc, this.size_);
       var byte_count: i64 = this.size_ * _sizeof<T>();
       unsafe {
@@ -120,7 +120,7 @@ public module sun {
     }
 
     // Write elements from another buffer into this buffer (bounds-checked)
-    public function write_from(source: ref ContiguousBuffer<T>, src_offset: i64, dst_offset: i64, count: i64) void, IError {
+    public function write_from(source: const ref ContiguousBuffer<T>, src_offset: i64, dst_offset: i64, count: i64) void, IError {
       // Validate source bounds
       if (src_offset < 0) {
         throw IndexOutOfBoundsError(src_offset);
@@ -151,7 +151,7 @@ public module sun {
     }
 
     // Get raw data pointer (escape hatch for interop)
-    public function rawData() raw_ptr<u8> {
+    public const function rawData() raw_ptr<u8> {
       return this.data.get_raw();
     }
 
@@ -181,7 +181,7 @@ public module sun {
     }
 
     // Borrow first element (bounds-checked)
-    public function first() ref T, IError {
+    public const function first() ref T, IError {
       if (this.size_ == 0) {
         throw IndexOutOfBoundsError(0);
       }
@@ -189,7 +189,7 @@ public module sun {
     }
 
     // Borrow last element (bounds-checked)
-    public function last() ref T, IError {
+    public const function last() ref T, IError {
       if (this.size_ == 0) {
         throw IndexOutOfBoundsError(0);
       }
@@ -202,13 +202,13 @@ public module sun {
 
     // Operator overload for indexing: buf[i] calls __index__([i])
     // Note: Uses unchecked access for performance; use get() for bounds checking
-    public function __index__(indices: ref array<i64>) ref T {
+    public const function __index__(indices: const ref array<i64>) ref T {
       return this.get_unchecked(indices[0]);
     }
 
     // Operator overload for indexed assignment: buf[i] = val calls __setindex__([i], val)
     // Note: Uses unchecked access for performance; use set() for bounds checking
-    public function __setindex__(indices: ref array<i64>, value: T) void {
+    public function __setindex__(indices: const ref array<i64>, value: T) void {
       this.set_unchecked(indices[0], value);
     }
 
@@ -217,7 +217,7 @@ public module sun {
     // ========================================================================
 
     // Return iterator over elements
-    public function iter() ContiguousBufferIterator<T> {
+    public const function iter() ContiguousBufferIterator<T> {
       return ContiguousBufferIterator<T>();
     }
   }

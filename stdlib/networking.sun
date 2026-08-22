@@ -101,7 +101,7 @@ public module sun {
     }
 
     // Send a String's contents
-    public function send_string(data: ref String) i64, IError {
+    public function send_string(data: const ref String) i64, IError {
       return this.send_bytes(data.data.rawData(), data.length());
     }
 

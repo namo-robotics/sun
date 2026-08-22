@@ -226,8 +226,8 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
   if (var.getValue() && declaredType && declaredType->isReference()) {
     auto valueType = var.getValue()->getResolvedType();
     if (valueType && !valueType->isReference()) {
-      checkBorrowBinding(var.getName(), *var.getValue(), /*isMutable=*/true,
-                         var.getLocation());
+      checkBorrowBinding(var.getName(), *var.getValue(),
+                         isMutableRef(declaredType), var.getLocation());
       return;
     }
   }
@@ -1031,7 +1031,7 @@ void BorrowChecker::checkFunctionDef(const FunctionAST& func) {
   // Track reference parameters and their lifetimes
   for (const auto& [argName, argType] : proto.getArgs()) {
     if (argType.isReference()) {
-      refTypedParams_.insert(argName);
+      refTypedParams_[argName] = !argType.constRef;
       // Assign param lifetime - outlives the function body
       Lifetime paramLt = Lifetime::param(argName);
       paramLifetimes_[argName] = paramLt;
@@ -1130,7 +1130,7 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
   // Track reference parameters and their lifetimes
   for (const auto& [argName, argType] : proto.getArgs()) {
     if (argType.isReference()) {
-      refTypedParams_.insert(argName);
+      refTypedParams_[argName] = !argType.constRef;
       // Assign param lifetime - outlives the lambda body
       Lifetime paramLt = Lifetime::param(argName);
       paramLifetimes_[argName] = paramLt;
@@ -1421,13 +1421,14 @@ BorrowChecker::RefTargetInfo BorrowChecker::resolveRefTarget(
   }
 
   // Check if target is a ref-typed function parameter
-  if (refTypedParams_.count(targetVarName)) {
+  auto paramIt = refTypedParams_.find(targetVarName);
+  if (paramIt != refTypedParams_.end()) {
     // Treat the param as a virtual borrow target since we don't know
     // what it references outside our scope
     info.actualTarget = "param:" + targetVarName;
     info.isRefParam = true;
-    // Ref params are assumed mutable unless we add const ref support
-    info.sourceBorrowKind = BorrowKind::Mutable;
+    info.sourceBorrowKind =
+        paramIt->second ? BorrowKind::Mutable : BorrowKind::Shared;
     info.isRebind = true;  // Treat as rebind for rule checking
     return info;
   }

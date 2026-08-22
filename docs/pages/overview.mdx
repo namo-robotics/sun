@@ -27,7 +27,7 @@ cannot be used as an identifier`.
 
 | Group | Words |
 |-------|-------|
-| Declarations | `var`, `function`, `lambda`, `class`, `packed_class`, `partial`, `interface`, `enum`, `implements`, `public`, `def`, `declare`, `extern` |
+| Declarations | `var`, `const`, `function`, `lambda`, `class`, `packed_class`, `partial`, `interface`, `enum`, `implements`, `public`, `def`, `declare`, `extern` |
 | Modules | `manifest`, `module`, `using` |
 | Control flow | `if`, `else`, `match`, `for`, `while`, `break`, `continue`, `return` |
 | Errors | `try`, `catch`, `throw` |
@@ -37,8 +37,7 @@ cannot be used as an identifier`.
 | Other | `spawn`, `unsafe` |
 
 A few words only have meaning in one position and remain usable as names:
-`in` (in a `for` loop), `as` (in an `extern` declaration) and `const` (after
-`ref`).
+`in` (in a `for` loop) and `as` (in an `extern` declaration).
 
 ```sun
 var partial = 1;   // ❌ ERROR: 'partial' is a reserved word
@@ -65,6 +64,15 @@ Variables are declared with `var` and require explicit type annotations:
 var x: i32 = 42;
 var name: static_ptr<u8> = "Sun";
 var flag: bool = true;
+```
+
+A value that never changes is declared with `const` instead. It can be read,
+borrowed with `const ref`, and moved, but never assigned to or changed in
+place. See [Constants](/ownership#constants).
+
+```sun
+const MAX_RETRIES: i32 = 3;
+const greeting = String(alloc, "hello");
 ```
 
 ## Comments

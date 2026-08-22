@@ -188,6 +188,7 @@ message VariableCreation {
   optional ASTNode value = 2;
   optional TypeAnnotation type_annotation = 3;
   Visibility visibility = 4;  // module-level globals only
+  bool is_const = 5;          // `const x = ...`
 }
 
 message VariableAssignment {
@@ -294,6 +295,7 @@ message ForInExpr {
   TypeAnnotation loop_var_type = 2;
   ASTNode iterable = 3;
   ASTNode body = 4;
+  bool is_const = 5;  // `for (const x: T in ...)`
 }
 
 message WhileExpr {
@@ -344,6 +346,7 @@ message Prototype {
 
   bool c_variadic = 11;             // C-style trailing `...`
   optional string link_name = 12;   // `as "c_symbol"` override
+  bool is_const_method = 13;        // `const function`: `this` is immutable
 }
 
 message FunctionDef {
@@ -445,6 +448,7 @@ message ClassField {
 message ClassMethod {
   FunctionDef function = 1;
   bool is_constructor = 2;  // true if method name is "init"
+  bool is_const = 3;        // `const function`: does not mutate `this`
 }
 
 // Implemented interface with type arguments
@@ -476,6 +480,7 @@ message InterfaceField {
 message InterfaceMethod {
   FunctionDef function = 1;
   bool has_default_impl = 2;
+  bool is_const = 3;  // `const function`: does not mutate `this`
 }
 
 message InterfaceDef {

@@ -789,7 +789,8 @@ SymbolMatch SemanticAnalyzer::findSymbolInModule(
 // -------------------------------------------------------------------
 
 void SemanticAnalyzer::declareVariable(const std::string& name,
-                                       sun::TypePtr type, bool isParam) {
+                                       sun::TypePtr type, bool isParam,
+                                       bool isConst) {
   // Block user-defined identifiers starting with underscore
   if (isReservedIdentifier(name)) {
     logAndThrowError(
@@ -809,7 +810,9 @@ void SemanticAnalyzer::declareVariable(const std::string& name,
       }
     }
   }
-  currentScope->variables[name] = {type, isAtModuleLevel(), isParam, false};
+  VariableInfo info{type, isAtModuleLevel(), isParam, false};
+  info.isConst = isConst;
+  currentScope->variables[name] = info;
 }
 
 VariableInfo* SemanticAnalyzer::lookupVariable(const std::string& name) {
@@ -1182,21 +1185,24 @@ void SemanticAnalyzer::registerPrecompiledModuleVariable(
   const std::string& name = varCreate.getName();
   VariableInfo info{type, true, false, false};
   info.visibility = varCreate.getVisibility();
+  info.isConst = varCreate.isConst();
   info.qualifiedName = varCreate.getQualifiedName();
   currentScope->variables[name] = info;
 
   // The stub's qualified name is already scoped by content hash; it must be
   // the one registered, since that is the symbol the bundle defines.
   registerModuleVariable(name, varCreate.getQualifiedName().mangled(), type,
-                         varCreate.getVisibility());
+                         varCreate.getVisibility(), varCreate.isConst());
 }
 
 void SemanticAnalyzer::registerModuleVariable(const std::string& baseName,
                                               const std::string& qualifiedName,
                                               sun::TypePtr type,
-                                              sun::Visibility visibility) {
+                                              sun::Visibility visibility,
+                                              bool isConst) {
   VariableInfo info{type, true, false};
   info.visibility = visibility;
+  info.isConst = isConst;
   info.qualifiedName = makeQualifiedName(baseName);
   // Store with qualified name for codegen lookup
   rootScope->namespacedVariables[qualifiedName] = info;
@@ -1209,6 +1215,7 @@ void SemanticAnalyzer::registerModuleVariable(const std::string& baseName,
   if (auto it = currentScope->variables.find(baseName);
       it != currentScope->variables.end()) {
     it->second.visibility = visibility;
+    it->second.isConst = isConst;
     if (it->second.qualifiedName.empty())
       it->second.qualifiedName = info.qualifiedName;
   }

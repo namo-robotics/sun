@@ -56,6 +56,7 @@ enum class TokenKind {
   PTR,                   // ptr (unique/owning pointer with RAII)
   RAW_PTR,               // raw_ptr (non-owning pointer for C interop)
   REF,                   // ref (reference type)
+  CONST,                 // const (constant variable / const ref / const method)
   ARRAY,                 // array (fixed-size array type)
   ARROW,                 // ->
   FAT_ARROW,             // =>
@@ -172,6 +173,7 @@ static const std::map<TokenKind, std::string> tokenRegexes = {
     {TokenKind::RAW_PTR, "raw_ptr"},        // Must come before ptr
     {TokenKind::PTR, "ptr"},
     {TokenKind::REF, "ref"},
+    {TokenKind::CONST, "const"},
     {TokenKind::ARRAY, "array"},
     {TokenKind::BRACE_OPEN, "\\{"},
     {TokenKind::BRACE_CLOSE, "\\}"},
@@ -349,6 +351,7 @@ inline const std::map<TokenKind, TokenInfo>& getTokenInfo() {
       {TokenKind::PTR, {"ptr"}},
       {TokenKind::RAW_PTR, {"raw_ptr"}},
       {TokenKind::REF, {"ref"}},
+      {TokenKind::CONST, {"const"}},
       {TokenKind::ARRAY, {"array"}},
       {TokenKind::ARROW, {"->"}},
       {TokenKind::FAT_ARROW, {"=>"}},

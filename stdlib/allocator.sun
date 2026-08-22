@@ -80,7 +80,7 @@ public module sun {
 
     // Create a copy of this allocator
     // Since HeapAllocator has no state, this just returns a new instance
-    public function copy() HeapAllocator {
+    public const function copy() HeapAllocator {
       return HeapAllocator();
     }
   }

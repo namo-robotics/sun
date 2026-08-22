@@ -204,7 +204,7 @@ sun::TypePtr SemanticAnalyzer::typeAnnotationToType(
     }
     sun::TypePtr referencedType = typeAnnotationToType(*annot.elementType);
     if (!referencedType) return nullptr;
-    return sun::Types::Reference(referencedType);
+    return sun::Types::Reference(referencedType, /*isMutable=*/!annot.constRef);
   }
 
   // Function types: _() {} (named function, direct call)

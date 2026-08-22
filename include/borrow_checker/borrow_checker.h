@@ -216,8 +216,9 @@ class BorrowChecker {
   // not flow into the code after it.
   static bool exprDiverges(const ExprAST& expr);
 
-  // Track which variables are known to be reference-typed (for function params)
-  std::unordered_set<std::string> refTypedParams_;
+  // Reference-typed parameters of the current function: name -> true when
+  // the parameter is `ref T` (mutable), false for `const ref T`
+  std::unordered_map<std::string, bool> refTypedParams_;
 
   // Locals declared as raw_ptr<T>. What they point at is storage the checker
   // cannot see (raw pointers are the unsafe escape hatch), so a reference

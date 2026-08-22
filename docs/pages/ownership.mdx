@@ -84,6 +84,32 @@ function main() i32 {
 }
 ```
 
+## Constants
+
+A binding declared with `const` instead of `var` never changes: it cannot be
+assigned to (`=`, `+=`), none of its fields or elements can be assigned, no
+field can be moved out of it, nothing may take a mutable `ref` to it, and only
+[const methods](/classes#const-methods) may be called on it. It can be read,
+borrowed with `const ref`, copied if it is a scalar, and — for a local — moved
+as a whole, which ends the binding.
+
+```sun
+const LIMIT: i32 = 100;           // a constant global
+
+function main() i32 {
+    const p = Point(3, 4);
+    const n = p.x + LIMIT;        // ✓ reads are fine
+    var q = p;                    // ✓ a whole-value move ends `p`
+    // p.x = 5;                   // ❌ ERROR: cannot assign to field 'x' of constant 'p'
+    // LIMIT = 1;                 // ❌ ERROR: cannot assign to constant 'LIMIT'
+    return n;
+}
+```
+
+A constant global is initialised at runtime like any other global; compile-time
+evaluation is on the roadmap. `for (const x: T in c)` makes the loop binding
+constant for each element.
+
 ## References
 
 References provide temporary, scoped access to variables without transferring ownership. Create a reference using the `ref` keyword:
@@ -136,15 +162,46 @@ The target must have storage: a temporary (`var r: ref String = String(alloc,
 "x")`) is rejected, since the value it borrows would die at the end of the
 statement.
 
+### Constant References
+
+`const ref` borrows a value for reading only. The statement form is
+`const ref r = x;`, the type is `const ref T`, and either may bind a
+constant, a variable, or a field:
+
+```sun
+function total(v: const ref Vec<i32>) i64 {
+    return v.size();              // ✓ size() is a const method
+    // v.push(1);                 // ❌ ERROR: cannot call non-const method 'push'
+}
+
+function main() i32 {
+    var x: i32 = 1;
+    const ref r = x;              // shared borrow: x may still be read and assigned
+    var s: const ref i32 = x;     // same, with an annotation
+    // r = 2;                     // ❌ ERROR: cannot assign through const reference 'r'
+    return r + s;
+}
+```
+
+Through a `const ref` nothing can be assigned, no mutable `ref` can be taken,
+and only const methods can be called. A `ref T` may be passed or rebound as
+`const ref T`, never the other way round. When a const method returns a borrow
+(`function get(i) ref T`) and the receiver is constant or a `const ref`, the
+result is `const ref T`.
+
+Several `const ref`s to one value may be alive at once; a mutable `ref` cannot
+coexist with any of them.
+
 ### Reference Rebinding
 
-You can create a reference from another reference. The borrow kind may be downgraded but never upgraded:
+You can create a reference from another reference. The borrow kind may be downgraded (`ref` to `const ref`) but never upgraded:
 
 ```sun
 function main() i32 {
     var x: i32 = 10;
     ref r1 = x;       // Mutable borrow of x
     ref r2 = r1;      // ❌ ERROR: x is already borrowed
+    const ref r3 = r1;  // ✓ OK: downgrade to a shared borrow
     return x;
 }
 ```
@@ -552,7 +609,7 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
 | References in structs | Yes (with lifetimes) | No |
 | Return references | Yes (with lifetimes) | No |
 | Mutable borrow exclusivity | Enforced | Enforced |
-| Shared borrows (`&T`) | Yes | Planned |
+| Shared borrows (`&T`) | Yes | Yes (`const ref T`) |
 | Move semantics | Yes | Yes (for classes) |
 | Use-after-move detection | Yes | Yes |
 | Learning curve | Steep | Moderate |

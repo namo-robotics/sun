@@ -39,7 +39,7 @@ public module sun {
 
     // The error keeps its own copy, so the String the caller built can go out
     // of scope (or be thrown past).
-    public function init(code: i32, message: ref String) {
+    public function init(code: i32, message: const ref String) {
       var alloc: HeapAllocator = HeapAllocator();
       this.code_ = code;
       this.message_ = message.clone(alloc);
@@ -154,7 +154,7 @@ public module sun {
       this.message_ = String(message);
     }
 
-    public function init(message: ref String) {
+    public function init(message: const ref String) {
       var alloc: HeapAllocator = HeapAllocator();
       this.message_ = message.clone(alloc);
     }

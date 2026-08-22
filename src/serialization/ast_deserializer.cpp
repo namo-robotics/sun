@@ -71,6 +71,7 @@ TypeAnnotation ASTDeserializer::deserializeTypeAnnotation(
   }
 
   result.canError = type.can_error();
+  result.constRef = type.const_ref();
   return result;
 }
 
@@ -78,6 +79,7 @@ Capture ASTDeserializer::deserializeCapture(const ast::Capture& cap) const {
   Capture result;
   result.name = cap.name();
   result.byRef = cap.by_ref();
+  result.isConst = cap.is_const();
   // Note: type is stored as string signature, not reconstructed as TypePtr
   // The semantic analyzer will need to re-resolve the type
   return result;
@@ -152,6 +154,7 @@ std::unique_ptr<PrototypeAST> ASTDeserializer::deserializePrototype(
   }
 
   result->setCVariadic(proto.c_variadic());
+  result->setConstMethod(proto.is_const_method());
   if (proto.has_link_name()) {
     result->setLinkName(proto.link_name());
   }
@@ -460,7 +463,8 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeVariableCreation(
     typeAnnotation = deserializeTypeAnnotation(proto.type_annotation());
   }
   auto var = std::make_unique<VariableCreationAST>(
-      proto.name(), std::move(value), std::move(typeAnnotation));
+      proto.name(), std::move(value), std::move(typeAnnotation),
+      proto.is_const());
   var->setVisibility(fromProto(proto.visibility()));
   return var;
 }
@@ -612,7 +616,8 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeForIn(
   auto iterable = deserialize(proto.iterable());
   auto body = deserialize(proto.body());
   return std::make_unique<ForInExprAST>(proto.loop_var(), std::move(type),
-                                        std::move(iterable), std::move(body));
+                                        std::move(iterable), std::move(body),
+                                        proto.is_const());
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeWhile(
@@ -805,6 +810,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
         std::make_unique<FunctionAST>(std::move(prototype), std::move(body));
     method.function->setVisibility(fromProto(funcProto.visibility()));
     method.isConstructor = methodProto.is_constructor();
+    method.isConst = methodProto.is_const();
     methods.push_back(std::move(method));
   }
 
@@ -851,6 +857,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeInterfaceDef(
         std::make_unique<FunctionAST>(std::move(prototype), std::move(body));
     method.function->setVisibility(fromProto(funcProto.visibility()));
     method.hasDefaultImpl = methodProto.has_default_impl();
+    method.isConst = methodProto.is_const();
     methods.push_back(std::move(method));
   }
 

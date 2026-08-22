@@ -43,7 +43,7 @@ public module sun {
 
     // Constructor: allocates memory for matrix of given shape
     // shape is an array of dimension sizes: [rows, cols, ...] 
-    public function init(alloc: ref HeapAllocator, shape: ref array<i64>) {
+    public function init(alloc: const ref HeapAllocator, shape: const ref array<i64>) {
       this.dims = shape;
       var shape_dims = shape.shape();
       this.ndims_ = shape_dims[0];
@@ -59,7 +59,7 @@ public module sun {
     }
 
     // Compute linear index from n-dimensional indices (row-major order)
-    public function linearIndex(indices: ref array<i64>) i64 {
+    public const function linearIndex(indices: const ref array<i64>) i64 {
       var offset: i64 = 0;
       var stride: i64 = 1;
 
@@ -73,48 +73,48 @@ public module sun {
     }
 
     // Get element at indices
-    public function get(indices: ref array<i64>) T {
+    public const function get(indices: const ref array<i64>) T {
       var idx: i64 = this.linearIndex(indices);
       return this.data.get_unchecked(idx);
     }
 
     // Set element at indices
-    public function set(indices: ref array<i64>, value: T) void {
+    public function set(indices: const ref array<i64>, value: T) void {
       var idx: i64 = this.linearIndex(indices);
       this.data.set_unchecked(idx, value);
     }
 
     // Get shape array
-    public function shape() array<i64> {
+    public const function shape() array<i64> {
       return this.dims;
     }
 
     // Get total element count
-    public function size() i64 {
+    public const function size() i64 {
       return this.total_size;
     }
 
     // Get number of dimensions
-    public function ndims() i64 {
+    public const function ndims() i64 {
       return this.ndims_;
     }
 
     // Operator overload for indexing: m[i, j] calls __index__([i, j])
     // Enables M[i, j] syntax for element access
-    public function __index__(indices: ref array<i64>) T {
+    public const function __index__(indices: const ref array<i64>) T {
       return this.get(indices);
     }
 
     // Operator overload for indexed assignment: m[i, j] = val calls __setindex__([i, j], val)
     // Enables M[i, j] = value syntax for element assignment
-    public function __setindex__(indices: ref array<i64>, value: T) void {
+    public function __setindex__(indices: const ref array<i64>, value: T) void {
       this.set(indices, value);
     }
 
     // Slicing via __slice__ method: m[a:b] -> MatrixView<T>
     // Returns a non-owning view into the matrix data
     // NOTE: Currently only supports 1D slicing (single range)
-    public function __slice__(ranges: ref array<SliceRange>) MatrixView<T> {
+    public const function __slice__(ranges: const ref array<SliceRange>) MatrixView<T> {
       // For 1D matrices, slicing is straightforward
       var range: SliceRange = ranges[0];
       var start: i64 = range.getStart();
@@ -129,7 +129,7 @@ public module sun {
     }
 
     // Get raw data pointer (escape hatch for interop)
-    public function rawData() raw_ptr<u8> {
+    public const function rawData() raw_ptr<u8> {
       return this.data.rawData();
     }
   }
@@ -146,7 +146,7 @@ public module sun {
     var total_size: i64;  // Total elements in view
 
     // Constructor from raw components
-    public function init(data_ptr: raw_ptr<u8>, offset: i64, shape: ref array<i64>, strides_arr: ref array<i64>) {
+    public function init(data_ptr: raw_ptr<u8>, offset: i64, shape: const ref array<i64>, strides_arr: const ref array<i64>) {
       this.data = data_ptr;
       this.base_offset = offset;
       this.dims = shape;
@@ -162,7 +162,7 @@ public module sun {
     }
 
     // Compute linear index using strides (includes base offset)
-    public function linearIndex(indices: ref array<i64>) i64 {
+    public const function linearIndex(indices: const ref array<i64>) i64 {
       var offset: i64 = this.base_offset;
       for (var i: i64 = 0; i < this.ndims_; i = i + 1) {
         offset = offset + indices[i] * this.strides[i];
@@ -171,41 +171,41 @@ public module sun {
     }
 
     // Get element at indices
-    public function get(indices: ref array<i64>) T {
+    public const function get(indices: const ref array<i64>) T {
       var idx: i64 = this.linearIndex(indices);
       return unsafe { _load<T>(this.data, idx); };
     }
 
     // Set element at indices (views allow modification)
-    public function set(indices: ref array<i64>, value: T) void {
+    public function set(indices: const ref array<i64>, value: T) void {
       var idx: i64 = this.linearIndex(indices);
       unsafe { _store<T>(this.data, idx, value); };
     }
 
     // Get shape array
-    public function shape() array<i64> {
+    public const function shape() array<i64> {
       return this.dims;
     }
 
     // Get total element count
-    public function size() i64 {
+    public const function size() i64 {
       return this.total_size;
     }
 
     // Get number of dimensions
-    public function ndims() i64 {
+    public const function ndims() i64 {
       return this.ndims_;
     }
 
     // Operator overload for indexing: v[i, j] calls __index__([i, j])
     // Enables View[i, j] syntax for element access
-    public function __index__(indices: ref array<i64>) T {
+    public const function __index__(indices: const ref array<i64>) T {
       return this.get(indices);
     }
 
     // Operator overload for indexed assignment: v[i, j] = val calls __setindex__([i, j], val)
     // Enables View[i, j] = value syntax for element assignment
-    public function __setindex__(indices: ref array<i64>, value: T) void {
+    public function __setindex__(indices: const ref array<i64>, value: T) void {
       this.set(indices, value);
     }
   }

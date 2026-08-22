@@ -34,28 +34,28 @@ public module sun {
         }
       }
 
-      public function as_secs() i64 {
+      public const function as_secs() i64 {
         return this.secs;
       }
 
-      public function as_millis() i64 {
+      public const function as_millis() i64 {
         return this.secs * 1000 + this.nanos / 1000000;
       }
 
-      public function as_micros() i64 {
+      public const function as_micros() i64 {
         return this.secs * 1000000 + this.nanos / 1000;
       }
 
-      public function as_nanos() i64 {
+      public const function as_nanos() i64 {
         return this.secs * NANOS_PER_SEC + this.nanos;
       }
 
-      public function as_secs_f64() f64 {
+      public const function as_secs_f64() f64 {
         return _convert<f64>(this.secs) + _convert<f64>(this.nanos) / 1000000000.0;
       }
 
       // The nanosecond remainder, on top of as_secs().
-      public function subsec_nanos() i64 {
+      public const function subsec_nanos() i64 {
         return this.nanos;
       }
     }
@@ -89,14 +89,14 @@ public module sun {
       }
 
       // How long since this Instant was taken.
-      public function elapsed() Duration {
+      public const function elapsed() Duration {
         var current: Instant = now();
         return current.since(this);
       }
 
       // How long from `earlier` to this Instant. Zero if this is the earlier
       // of the two.
-      public function since(earlier: ref Instant) Duration {
+      public const function since(earlier: const ref Instant) Duration {
         var ds: i64 = this.secs - earlier.secs;
         var dn: i64 = this.nanos - earlier.nanos;
         if (dn < 0) {
@@ -131,7 +131,7 @@ public module sun {
     }
 
     // Suspend this thread. A signal can cut the wait short.
-    public function sleep(d: ref Duration) void {
+    public function sleep(d: const ref Duration) void {
       var req: Timespec = Timespec(d.as_secs(), d.subsec_nanos());
       unsafe { c_nanosleep(req, null); };
     }
@@ -162,7 +162,7 @@ public module sun {
       }
     }
 
-    function from_ctm(tm: ref CTm) DateTime {
+    function from_ctm(tm: const ref CTm) DateTime {
       var dt: DateTime = DateTime(
         tm.year + 1900,
         tm.mon + 1,
@@ -177,7 +177,7 @@ public module sun {
       return dt;
     }
 
-    function to_ctm(dt: ref DateTime) CTm {
+    function to_ctm(dt: const ref DateTime) CTm {
       var tm: CTm = CTm();
       tm.year = dt.year - 1900;
       tm.mon = dt.month - 1;
@@ -207,20 +207,20 @@ public module sun {
 
     // Read the fields back as a Unix timestamp, treating them as UTC.
     // (timegm is a GNU extension, present in glibc and musl.)
-    public function to_unix_utc(dt: ref DateTime) i64 {
+    public function to_unix_utc(dt: const ref DateTime) i64 {
       var tm: CTm = to_ctm(dt);
       return unsafe { c_timegm(tm); };
     }
 
     // Read the fields back as a Unix timestamp, treating them as local time.
-    public function to_unix_local(dt: ref DateTime) i64 {
+    public function to_unix_local(dt: const ref DateTime) i64 {
       var tm: CTm = to_ctm(dt);
       return unsafe { c_mktime(tm); };
     }
 
     // Render with a strftime format, e.g. "%Y-%m-%d %H:%M:%S". Output longer
     // than 256 bytes comes back empty.
-    public function format(alloc: ref HeapAllocator, dt: ref DateTime, fmt: raw_ptr<u8>) String {
+    public function format(alloc: const ref HeapAllocator, dt: const ref DateTime, fmt: raw_ptr<u8>) String {
       var tm: CTm = to_ctm(dt);
       tm.wday = dt.weekday;
       tm.yday = dt.yearday;
