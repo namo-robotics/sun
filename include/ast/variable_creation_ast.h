@@ -9,7 +9,7 @@
 #include "ast/analysis.h"
 #include "ast/expr_ast.h"
 #include "ast/type_annotation.h"
-#include "qualified_name.h"
+#include "semantic_analysis/qualified_name.h"
 
 class VariableCreationAST : public ExprAST {
   std::string name;

@@ -11,9 +11,9 @@
 #include "ast/analysis.h"
 #include "ast/ast_common.h"
 #include "ast/type_annotation.h"
-#include "position.h"
-#include "qualified_name.h"
-#include "types.h"
+#include "support/position.h"
+#include "semantic_analysis/qualified_name.h"
+#include "semantic_analysis/types.h"
 
 // Top-level nodes (not derived from ExprAST)
 class PrototypeAST {

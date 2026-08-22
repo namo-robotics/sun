@@ -12,7 +12,7 @@
 #include "ast.h"
 #include "borrow_checker/borrow_state.h"
 #include "borrow_checker/loan.h"
-#include "types.h"
+#include "semantic_analysis/types.h"
 
 namespace sun {
 

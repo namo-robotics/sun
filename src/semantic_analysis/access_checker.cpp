@@ -1,6 +1,6 @@
-#include "access_checker.h"
+#include "semantic_analysis/access_checker.h"
 
-#include "error.h"
+#include "support/error.h"
 
 namespace sun::access {
 
@@ -54,7 +54,7 @@ void requireAccessible(const ModulePath& from, const ItemRef& item,
 // SemanticAnalyzer integration
 // ---------------------------------------------------------------------------
 
-#include "semantic_analyzer.h"
+#include "semantic_analysis/semantic_analyzer.h"
 
 sun::ModulePath SemanticAnalyzer::currentModulePath() const {
   for (auto* s = currentScope; s != nullptr; s = s->parent) {

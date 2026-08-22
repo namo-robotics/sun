@@ -9,7 +9,7 @@
 
 #include <string>
 
-#include "execution_utils.h"
+#include "driver/execution_utils.h"
 
 TEST(Stdlib_Sys_Process, ids_match_the_host_process) {
   auto value = executeStringWithStdlib(R"(

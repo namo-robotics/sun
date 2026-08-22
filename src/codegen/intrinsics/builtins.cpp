@@ -6,7 +6,7 @@
 // atomic.cpp, generic.cpp).
 
 #include "ast.h"
-#include "codegen_visitor.h"
+#include "codegen/codegen_visitor.h"
 
 using namespace llvm;
 

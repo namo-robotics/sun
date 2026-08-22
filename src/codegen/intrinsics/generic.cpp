@@ -4,9 +4,9 @@
 // - _sizeof<T>, _init<T>, _load<T>, _store<T>
 // - _ptr_as_raw<T>, _address_of<T>, _to_ref<T>, _is<T>
 
-#include "codegen_visitor.h"
-#include "error.h"
-#include "intrinsics/intrinsics.h"
+#include "codegen/codegen_visitor.h"
+#include "support/error.h"
+#include "codegen/intrinsics/intrinsics.h"
 
 using namespace llvm;
 

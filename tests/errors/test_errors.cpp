@@ -6,7 +6,7 @@
 #include <sstream>
 #include <string>
 
-#include "execution_utils.h"
+#include "driver/execution_utils.h"
 
 // ============================================================================
 // Basic try/catch Tests
@@ -1163,6 +1163,32 @@ TEST(Errors, without_stdlib_message_stays_literal_only) {
     function main() i32 {
       var b: Boom = Boom();
       return b.code() + _convert<i32>(b.message().length());
+    }
+  )");
+  EXPECT_EQ(value, 13);  // 9 + 4
+}
+
+TEST(Errors, throw_and_catch_work_without_stdlib) {
+  // IError is a builtin and throw/catch lower to native exceptions, so a
+  // program can throw, catch through the IError binding and read the
+  // literal message with nothing imported.
+  auto value = executeString(R"(
+    class Boom implements IError {
+      function init() {}
+      function code() i32 { return 9; }
+      function message() static_ptr<u8> { return "boom"; }
+    }
+
+    function fail() i32, IError {
+      throw Boom();
+    }
+
+    function main() i32 {
+      try {
+        return fail();
+      } catch (e: IError) {
+        return e.code() + _convert<i32>(e.message().length());
+      }
     }
   )");
   EXPECT_EQ(value, 13);  // 9 + 4

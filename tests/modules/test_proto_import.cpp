@@ -8,11 +8,11 @@
 #include <fstream>
 
 #include "ast.h"
-#include "ast_deserializer.h"
-#include "ast_serializer.h"
-#include "execution_utils.h"
-#include "manifest_processor.h"
-#include "parser.h"
+#include "serialization/ast_deserializer.h"
+#include "serialization/ast_serializer.h"
+#include "driver/execution_utils.h"
+#include "driver/manifest_processor.h"
+#include "parsing/parser.h"
 #include "proto_test_utils.h"
 
 namespace fs = std::filesystem;

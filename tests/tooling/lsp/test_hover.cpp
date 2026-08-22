@@ -14,11 +14,11 @@
 #include <string>
 
 #include "ast.h"
-#include "doc_comments.h"
-#include "driver.h"
-#include "execution_utils.h"
+#include "parsing/doc_comments.h"
+#include "driver/driver.h"
+#include "driver/execution_utils.h"
 #include "lsp/hover.h"
-#include "parser.h"
+#include "parsing/parser.h"
 
 namespace {
 

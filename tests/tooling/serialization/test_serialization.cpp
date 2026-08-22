@@ -7,11 +7,11 @@
 #include <string>
 
 #include "ast.h"
-#include "ast_deserializer.h"
-#include "ast_serializer.h"
-#include "lexer.h"
-#include "parser.h"
-#include "token_kind_proto_map.h"
+#include "serialization/ast_deserializer.h"
+#include "serialization/ast_serializer.h"
+#include "parsing/lexer.h"
+#include "parsing/parser.h"
+#include "serialization/token_kind_proto_map.h"
 
 using namespace sun::serialization;
 

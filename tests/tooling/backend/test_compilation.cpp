@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <string>
 
-#include "driver.h"
+#include "driver/driver.h"
 
 // Helper function to test compilation (without JIT)
 void compileString(const std::string& source) {

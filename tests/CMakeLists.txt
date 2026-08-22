@@ -44,7 +44,7 @@ target_link_libraries(sun_tests
 target_precompile_headers(sun_tests PRIVATE
     <gtest/gtest.h>
     ${CMAKE_SOURCE_DIR}/include/ast.h
-    ${CMAKE_SOURCE_DIR}/include/parser.h
+    ${CMAKE_SOURCE_DIR}/include/parsing/parser.h
 )
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(sun_tests PRIVATE -Xclang -fno-pch-timestamp)

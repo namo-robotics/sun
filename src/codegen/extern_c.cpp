@@ -1,13 +1,13 @@
 // extern_c.cpp — The `extern "C"` boundary. See extern_c.h.
 
-#include "extern_c.h"
+#include "codegen/extern_c.h"
 
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/TargetParser/Host.h>
 
 #include "ast.h"
-#include "error.h"
+#include "support/error.h"
 
 namespace sun::cabi {
 

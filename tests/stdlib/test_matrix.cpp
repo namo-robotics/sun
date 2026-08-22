@@ -5,7 +5,7 @@
 #include <memory>
 #include <string>
 
-#include "execution_utils.h"
+#include "driver/execution_utils.h"
 
 // Basic Matrix construction and element access
 TEST(Stdlib_Matrix, simple_matrix) {

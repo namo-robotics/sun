@@ -5,7 +5,7 @@
 
 #include <gtest/gtest.h>
 
-#include "execution_utils.h"
+#include "driver/execution_utils.h"
 
 TEST(Lambdas_Params, lambda_param_by_value) {
   auto value = executeString(R"(

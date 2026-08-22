@@ -1,8 +1,8 @@
 // codegen_visitor.cpp - Main expression dispatch and basic expression codegen
 
-#include "codegen_visitor.h"
+#include "codegen/codegen_visitor.h"
 #include <cstdint>
-#include "codegen.h"
+#include "codegen/codegen.h"
 
 static ExitOnError ExitOnErr;
 

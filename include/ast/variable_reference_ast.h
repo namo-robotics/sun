@@ -7,7 +7,7 @@
 
 #include "ast/analysis.h"
 #include "ast/expr_ast.h"
-#include "qualified_name.h"
+#include "semantic_analysis/qualified_name.h"
 
 class VariableReferenceAST : public ExprAST {
   std::string Name;

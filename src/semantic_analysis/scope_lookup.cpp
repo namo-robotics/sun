@@ -10,8 +10,8 @@
 #include <set>
 #include <sstream>
 
-#include "error.h"
-#include "semantic_scope.h"
+#include "support/error.h"
+#include "semantic_analysis/semantic_scope.h"
 
 namespace {
 

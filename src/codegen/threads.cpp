@@ -5,8 +5,8 @@
 // slot. All thread plumbing goes through libc (see intrinsics/libc.h), so
 // the emitted IR is target-neutral.
 
-#include "codegen_visitor.h"
-#include "intrinsics/libc.h"
+#include "codegen/codegen_visitor.h"
+#include "codegen/intrinsics/libc.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
 

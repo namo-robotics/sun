@@ -9,7 +9,7 @@
 #include <ctime>
 #include <string>
 
-#include "execution_utils.h"
+#include "driver/execution_utils.h"
 
 TEST(Stdlib_Sys_Time, duration_conversions) {
   auto value = executeStringWithStdlib(R"(

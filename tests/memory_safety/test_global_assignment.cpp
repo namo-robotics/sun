@@ -5,8 +5,8 @@
 
 #include <gtest/gtest.h>
 
-#include "error.h"
-#include "execution_utils.h"
+#include "support/error.h"
+#include "driver/execution_utils.h"
 
 namespace {
 

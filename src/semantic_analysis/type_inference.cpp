@@ -2,9 +2,9 @@
 
 #include <unordered_set>
 
-#include "error.h"
-#include "intrinsics.h"
-#include "semantic_analyzer.h"
+#include "support/error.h"
+#include "codegen/intrinsics/intrinsics.h"
+#include "semantic_analysis/semantic_analyzer.h"
 
 using sun::unwrapRef;
 

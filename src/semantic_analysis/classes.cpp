@@ -2,9 +2,9 @@
 
 #include <algorithm>
 
-#include "error.h"
-#include "packed_layout.h"
-#include "semantic_analyzer.h"
+#include "support/error.h"
+#include "semantic_analysis/packed_layout.h"
+#include "semantic_analysis/semantic_analyzer.h"
 
 // -------------------------------------------------------------------
 // Class support

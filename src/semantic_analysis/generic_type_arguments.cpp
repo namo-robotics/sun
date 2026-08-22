@@ -1,12 +1,12 @@
 // Inferring the type arguments of a generic call from its arguments. See
-// include/generic_type_arguments.h for the shapes that are matched.
+// include/semantic_analysis/generic_type_arguments.h for the shapes that are matched.
 
-#include "generic_type_arguments.h"
+#include "semantic_analysis/generic_type_arguments.h"
 
 #include <algorithm>
 
-#include "error.h"
-#include "semantic_analyzer.h"
+#include "support/error.h"
+#include "semantic_analysis/semantic_analyzer.h"
 
 namespace sun::generics {
 

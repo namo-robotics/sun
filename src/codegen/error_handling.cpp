@@ -5,7 +5,7 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Type.h>
 
-#include "codegen_visitor.h"
+#include "codegen/codegen_visitor.h"
 
 using namespace llvm;
 

@@ -2,8 +2,8 @@
 
 #include "ast/prototype_ast.h"
 
-#include "ast_deserializer.h"
-#include "ast_serializer.h"
+#include "serialization/ast_deserializer.h"
+#include "serialization/ast_serializer.h"
 
 std::unique_ptr<PrototypeAST> PrototypeAST::clone() const {
   // Serialize this prototype to protobuf

@@ -1,9 +1,9 @@
 // variable_creation.cpp - Variable creation codegen methods
 
 #include "ast.h"
-#include "codegen.h"
-#include "codegen_visitor.h"
-#include "intrinsics/intrinsics.h"
+#include "codegen/codegen.h"
+#include "codegen/codegen_visitor.h"
+#include "codegen/intrinsics/intrinsics.h"
 
 using namespace llvm;
 

@@ -6,7 +6,7 @@
 #include <string>
 
 #include "ast/block_expr_ast.h"
-#include "position.h"
+#include "support/position.h"
 
 namespace sun::lsp {
 

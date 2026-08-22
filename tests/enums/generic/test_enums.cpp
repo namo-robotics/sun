@@ -5,10 +5,10 @@
 
 #include <fstream>
 
-#include "execution_utils.h"
-#include "metadata_extractor.h"
-#include "moon/moon.h"
-#include "moon_import.h"
+#include "driver/execution_utils.h"
+#include "moon_bundling/metadata_extractor.h"
+#include "moon_bundling/moon.h"
+#include "moon_bundling/moon_import.h"
 
 // ============================================================================
 // Option<T>

@@ -6,7 +6,7 @@
 #include <sstream>
 #include <string>
 
-#include "execution_utils.h"
+#include "driver/execution_utils.h"
 
 TEST(Functions_Generic, generic_identity_function) {
   auto value = executeString(R"(

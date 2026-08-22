@@ -4,7 +4,7 @@
 // classes, interfaces, enums, modules) before analyzing bodies. This allows
 // forward references between declarations at the same scope level.
 
-#include "semantic_analyzer.h"
+#include "semantic_analysis/semantic_analyzer.h"
 
 void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
   // Only hoist at module level (not inside function bodies where captures

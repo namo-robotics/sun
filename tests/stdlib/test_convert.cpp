@@ -4,7 +4,7 @@
 
 #include <string>
 
-#include "execution_utils.h"
+#include "driver/execution_utils.h"
 
 // Runs `body` inside main with the stdlib loaded. `body` must return an i32:
 // the converted value on success, or -1 if the conversion threw.

@@ -2,8 +2,8 @@
 
 #include "ast/expr_ast.h"
 
-#include "ast_deserializer.h"
-#include "ast_serializer.h"
+#include "serialization/ast_deserializer.h"
+#include "serialization/ast_serializer.h"
 
 std::unique_ptr<ExprAST> ExprAST::clone() const {
   // Serialize this node to protobuf

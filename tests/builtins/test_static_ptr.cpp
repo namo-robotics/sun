@@ -6,7 +6,7 @@
 
 #include <gtest/gtest.h>
 
-#include "execution_utils.h"
+#include "driver/execution_utils.h"
 
 static std::string capturePrintedOutput(const std::string& source) {
   testing::internal::CaptureStdout();

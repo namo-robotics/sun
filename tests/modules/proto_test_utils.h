@@ -15,10 +15,10 @@
 #include <string>
 #include <vector>
 
-#include "driver.h"
-#include "execution_utils.h"
-#include "moon_builder.h"
-#include "moon_import.h"
+#include "driver/driver.h"
+#include "driver/execution_utils.h"
+#include "moon_bundling/moon_builder.h"
+#include "moon_bundling/moon_import.h"
 
 namespace proto_test {
 

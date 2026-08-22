@@ -11,7 +11,7 @@
 
 #include "ast/expr_ast.h"
 #include "ast/type_annotation.h"
-#include "lexer.h"
+#include "parsing/lexer.h"
 
 namespace sun {
 class EnumType;

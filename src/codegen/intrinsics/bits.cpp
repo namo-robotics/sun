@@ -8,8 +8,8 @@
 
 #include <llvm/IR/Intrinsics.h>
 
-#include "codegen_visitor.h"
-#include "error.h"
+#include "codegen/codegen_visitor.h"
+#include "support/error.h"
 
 using namespace llvm;
 

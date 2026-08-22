@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "position.h"
+#include "support/position.h"
 
 // Type annotation structure for parsed type info
 // Supports: i32, f64, bool, void, ptr<T>, ref T, fn, lambda

@@ -11,16 +11,16 @@
 #include <fstream>
 #include <string>
 
-#include "abi/c_abi.h"
-#include "ast_deserializer.h"
-#include "ast_serializer.h"
-#include "compiler.h"
-#include "execution_utils.h"
-#include "extern_c.h"
-#include "metadata_extractor.h"
-#include "moon/moon.h"
-#include "moon_import.h"
-#include "parser.h"
+#include "codegen/abi/c_abi.h"
+#include "serialization/ast_deserializer.h"
+#include "serialization/ast_serializer.h"
+#include "driver/compiler.h"
+#include "driver/execution_utils.h"
+#include "codegen/extern_c.h"
+#include "moon_bundling/metadata_extractor.h"
+#include "moon_bundling/moon.h"
+#include "moon_bundling/moon_import.h"
+#include "parsing/parser.h"
 
 // ============================================================================
 // Calling C functions
@@ -823,7 +823,7 @@ TEST(Ffi, extern_symbol_survives_moon_bundling) {
 
 TEST(Ffi, extern_coexists_with_intrinsic_of_same_symbol) {
   // The compiler's own intrinsics declare libc symbols (see
-  // include/intrinsics/libc.h). An extern naming one of them must agree on
+  // include/codegen/intrinsics/libc.h). An extern naming one of them must agree on
   // the signature — `open` is C-variadic there, so it must be here too.
   auto value = executeString(R"(
     extern "C" function c_close(fd: i32) i32 as "close";

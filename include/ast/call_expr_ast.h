@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "ast/expr_ast.h"
-#include "types.h"
+#include "semantic_analysis/types.h"
 
 // Forward declaration for dotLabel()
 class MemberAccessAST;

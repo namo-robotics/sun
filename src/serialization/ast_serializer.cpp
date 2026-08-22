@@ -1,10 +1,10 @@
 // ast_serializer.cpp — Implementation of AST to protobuf serialization
 
-#include "ast_serializer.h"
+#include "serialization/ast_serializer.h"
 
 #include "ast.h"
 #include "ast.pb.h"
-#include "token_kind_proto_map.h"
+#include "serialization/token_kind_proto_map.h"
 #include "types.pb.h"
 
 namespace sun {

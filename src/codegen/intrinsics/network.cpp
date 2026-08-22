@@ -5,12 +5,12 @@
 // - __send, __recv, __shutdown
 // - __setsockopt, __getsockopt
 //
-// All socket operations call libc (see include/intrinsics/libc.h), which
+// All socket operations call libc (see include/codegen/intrinsics/libc.h), which
 // keeps the emitted IR target-neutral.
 
-#include "codegen_visitor.h"
-#include "error.h"
-#include "intrinsics/libc.h"
+#include "codegen/codegen_visitor.h"
+#include "support/error.h"
+#include "codegen/intrinsics/libc.h"
 
 using namespace llvm;
 

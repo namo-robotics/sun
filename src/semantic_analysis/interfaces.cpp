@@ -1,7 +1,7 @@
 // semantic_analysis/interfaces.cpp — Interface, enum support, and validation
 
-#include "error.h"
-#include "semantic_analyzer.h"
+#include "support/error.h"
+#include "semantic_analysis/semantic_analyzer.h"
 
 // -------------------------------------------------------------------
 // Interface support
