@@ -20,6 +20,7 @@ struct ClassFieldDecl {
   TypeAnnotation type;
   Position location;  // Source location of field declaration
   sun::Visibility visibility = sun::Visibility::Private;
+  std::string doc;  // Comment written above the field
 };
 
 // Method declaration in a class (uses FunctionAST internally)
@@ -49,6 +50,7 @@ class ClassDefinitionAST : public ExprAST {
   std::vector<ClassMethodDecl> methods;
   bool isPartial_ = false;  // True for "partial class X {}" (methods only)
   bool isPacked_ = false;   // True for "packed class X {}" (no field padding)
+  std::string doc_;         // Comment written above the class
 
  protected:
   // Override to allocate ClassAnalysis instead of base ExprAnalysis
@@ -189,6 +191,11 @@ class ClassDefinitionAST : public ExprAST {
 
   // Allow adding methods from extensions (mutable for merging)
   std::vector<ClassMethodDecl>& getMutableMethods() { return methods; }
+  std::vector<ClassFieldDecl>& getMutableFields() { return fields; }
+
+  // Comment written above the class (see doc_comments.h)
+  const std::string& getDoc() const { return doc_; }
+  void setDoc(std::string doc) { doc_ = std::move(doc); }
 
   std::string dotLabel() const override {
     return std::string(isPacked_ ? "Packed Class\n" : "Class\n") + name;

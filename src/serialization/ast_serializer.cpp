@@ -155,6 +155,7 @@ ast::Prototype ASTSerializer::serializePrototype(
   if (proto.hasLinkName()) {
     result.set_link_name(proto.getLinkName());
   }
+  result.set_doc(proto.getDoc());
 
   if (config_.include_location) {
     *result.mutable_location() = serializePosition(proto.getLocation());
@@ -471,6 +472,7 @@ void ASTSerializer::serializeVariableCreation(const VariableCreationAST& expr,
   var->set_name(expr.getName());
   var->set_visibility(toProto(expr.getVisibility()));
   var->set_is_const(expr.isConst());
+  var->set_doc(expr.getDoc());
   if (expr.getValue()) {
     *var->mutable_value() = serialize(*expr.getValue());
   }
@@ -812,6 +814,7 @@ void ASTSerializer::serializeClassDef(const ClassDefinitionAST& expr,
       *fieldProto->mutable_location() = serializePosition(field.location);
     }
     fieldProto->set_visibility(toProto(field.visibility));
+    fieldProto->set_doc(field.doc);
   }
 
   for (const auto& method : expr.getMethods()) {
@@ -834,6 +837,7 @@ void ASTSerializer::serializeClassDef(const ClassDefinitionAST& expr,
   cls->set_is_partial(expr.isPartial());
   cls->set_is_packed(expr.isPacked());
   cls->set_visibility(toProto(expr.getVisibility()));
+  cls->set_doc(expr.getDoc());
 }
 
 void ASTSerializer::serializeInterfaceDef(const InterfaceDefinitionAST& expr,
@@ -853,6 +857,7 @@ void ASTSerializer::serializeInterfaceDef(const InterfaceDefinitionAST& expr,
       *fieldProto->mutable_location() = serializePosition(field.location);
     }
     fieldProto->set_visibility(toProto(field.visibility));
+    fieldProto->set_doc(field.doc);
   }
 
   for (const auto& method : expr.getMethods()) {
@@ -871,6 +876,7 @@ void ASTSerializer::serializeInterfaceDef(const InterfaceDefinitionAST& expr,
     methodProto->set_is_const(method.isConst);
   }
   iface->set_visibility(toProto(expr.getVisibility()));
+  iface->set_doc(expr.getDoc());
 }
 
 void ASTSerializer::serializeEnumDef(const EnumDefinitionAST& expr,
@@ -878,6 +884,7 @@ void ASTSerializer::serializeEnumDef(const EnumDefinitionAST& expr,
   auto* enumDef = node->mutable_enum_def();
   enumDef->set_name(expr.getName());
   enumDef->set_visibility(toProto(expr.getVisibility()));
+  enumDef->set_doc(expr.getDoc());
   for (const auto& typeParam : expr.getTypeParameters()) {
     enumDef->add_type_parameters(typeParam);
   }
@@ -886,6 +893,7 @@ void ASTSerializer::serializeEnumDef(const EnumDefinitionAST& expr,
     auto* variantProto = enumDef->add_variants();
     variantProto->set_name(variant.name);
     variantProto->set_value(variant.value);
+    variantProto->set_doc(variant.doc);
     if (config_.include_location) {
       *variantProto->mutable_location() = serializePosition(variant.location);
     }

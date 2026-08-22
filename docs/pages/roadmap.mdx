@@ -53,12 +53,16 @@ they bounce off a language.
 
 ## 4. Language Server Navigation
 
-The LSP serves diagnostics, formatting and semantic tokens today, plus a VS Code
-extension in `extensions/vscode-sun`. The navigation features are the gap.
+The LSP serves diagnostics, formatting, semantic tokens and hover type
+information today, plus a VS Code extension in `extensions/vscode-sun`. The
+navigation features are the gap.
 
 - [ ] Go-to-definition
 - [ ] Find references
-- [ ] Hover type info
+- [x] Hover type info, with the comment above the symbol's declaration.
+      Inside a generic body the types come from the first specialization,
+      printed in terms of the type parameters; a generic that is never used
+      only shows its written annotations.
 - [ ] Autocomplete (must hide items that are not accessible from the cursor's
       module — use `sun::access::isAccessible`)
 - [ ] Rename symbol

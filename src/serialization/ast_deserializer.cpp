@@ -158,6 +158,7 @@ std::unique_ptr<PrototypeAST> ASTDeserializer::deserializePrototype(
   if (proto.has_link_name()) {
     result->setLinkName(proto.link_name());
   }
+  result->setDoc(proto.doc());
 
   return result;
 }
@@ -466,6 +467,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeVariableCreation(
       proto.name(), std::move(value), std::move(typeAnnotation),
       proto.is_const());
   var->setVisibility(fromProto(proto.visibility()));
+  var->setDoc(proto.doc());
   return var;
 }
 
@@ -797,6 +799,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
     field.type = deserializeTypeAnnotation(fieldProto.type());
     field.location = deserializePosition(fieldProto.location());
     field.visibility = fromProto(fieldProto.visibility());
+    field.doc = fieldProto.doc();
     fields.push_back(std::move(field));
   }
 
@@ -824,6 +827,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
   classDef->setIsPartial(proto.is_partial());
   classDef->setIsPacked(proto.is_packed());
   classDef->setVisibility(fromProto(proto.visibility()));
+  classDef->setDoc(proto.doc());
   return classDef;
 }
 
@@ -841,6 +845,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeInterfaceDef(
     field.type = deserializeTypeAnnotation(fieldProto.type());
     field.location = deserializePosition(fieldProto.location());
     field.visibility = fromProto(fieldProto.visibility());
+    field.doc = fieldProto.doc();
     fields.push_back(std::move(field));
   }
 
@@ -865,6 +870,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeInterfaceDef(
       proto.name(), std::move(typeParams), std::move(fields),
       std::move(methods));
   iface->setVisibility(fromProto(proto.visibility()));
+  iface->setDoc(proto.doc());
   return iface;
 }
 
@@ -876,6 +882,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeEnumDef(
     variant.name = variantProto.name();
     variant.value = variantProto.value();
     variant.location = deserializePosition(variantProto.location());
+    variant.doc = variantProto.doc();
     for (const auto& payloadProto : variantProto.payload_types()) {
       variant.payloadTypes.push_back(deserializeTypeAnnotation(payloadProto));
     }
@@ -889,6 +896,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeEnumDef(
       proto.name(), std::move(variants), /*precompiled=*/false,
       std::move(typeParams));
   enumDef->setVisibility(fromProto(proto.visibility()));
+  enumDef->setDoc(proto.doc());
   return enumDef;
 }
 

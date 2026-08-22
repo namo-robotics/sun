@@ -35,8 +35,10 @@ public module sun {
     public function create_unique<T>(args...: _init_args<T>) Unique<T>;
   }
 
-  // Default heap allocator using malloc/free
-  // This is the standard allocator for most use cases
+  /**
+   * HeapAllocator is the default system allocator using malloc and free.
+   * It implements the IAllocator interface.
+   */
   public class HeapAllocator implements IAllocator {
     public function init() {
       // No initialization needed for system malloc

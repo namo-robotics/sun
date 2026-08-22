@@ -19,6 +19,7 @@ struct InterfaceFieldDecl {
   TypeAnnotation type;
   Position location;  // Source location of field declaration
   sun::Visibility visibility = sun::Visibility::Private;
+  std::string doc;  // Comment written above the field
 };
 
 // Method declaration in an interface (uses FunctionAST internally)
@@ -37,6 +38,7 @@ class InterfaceDefinitionAST : public ExprAST {
       typeParameters;  // Generic type parameters: T, U, etc.
   std::vector<InterfaceFieldDecl> fields;
   std::vector<InterfaceMethodDecl> methods;
+  std::string doc_;  // Comment written above the interface
 
  protected:
   // Override to allocate InterfaceAnalysis instead of base ExprAnalysis
@@ -105,6 +107,12 @@ class InterfaceDefinitionAST : public ExprAST {
   bool isGeneric() const { return !typeParameters.empty(); }
   const std::vector<InterfaceFieldDecl>& getFields() const { return fields; }
   const std::vector<InterfaceMethodDecl>& getMethods() const { return methods; }
+  std::vector<InterfaceFieldDecl>& getMutableFields() { return fields; }
+  std::vector<InterfaceMethodDecl>& getMutableMethods() { return methods; }
+
+  // Comment written above the interface (see doc_comments.h)
+  const std::string& getDoc() const { return doc_; }
+  void setDoc(std::string doc) { doc_ = std::move(doc); }
 
   void forEachChildSlot(const ChildSlotFn& fn) override {
     for (auto& method : methods) {

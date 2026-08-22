@@ -3,13 +3,16 @@
 #include <llvm/ExecutionEngine/Orc/AbsoluteSymbols.h>
 #include <llvm/Support/TargetSelect.h>
 
+#include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "codegen.h"
 #include "codegen_visitor.h"
+#include "error.h"
 #include "moon_import.h"
 #include "parser.h"
 #include "semantic_analyzer.h"
@@ -58,6 +61,22 @@ class Driver {
   sun::SunValue runPipeline(std::unique_ptr<BlockExprAST> blockAst,
                             Parser& parser, bool execute, int argc = 0,
                             char** argv = nullptr);
+
+  // Front half of the pipeline shared by compilation and analysis: lowering,
+  // moon stub injection and semantic analysis (no borrow check, no codegen)
+  void analyzeProgram(BlockExprAST& blockAst, Parser& parser);
+
+  // Register a source string for error reporting and create its parser
+  Parser prepareStringParser(const std::string& source,
+                             const std::string& filePath);
+
+  // Read, parse and merge every source file plus synthesized .proto modules.
+  // sourceOverrides maps a canonical path to text used instead of the file
+  // on disk (an editor's unsaved buffer).
+  std::unique_ptr<BlockExprAST> parseAndMergeFiles(
+      const std::vector<std::string>& sourceFiles,
+      const std::vector<std::string>& protoFiles,
+      const std::map<std::string, std::string>& sourceOverrides);
 
   // Initialize LLVM targets once (thread-safe)
   static void ensureLLVMInitialized() {
@@ -110,8 +129,27 @@ class Driver {
   /// Compile a file to IR without executing
   void compileFile(const std::string& filename);
 
-  /// Compile a file and return the parsed AST for metadata extraction
-  std::unique_ptr<BlockExprAST> compileFileWithAST(const std::string& filename);
+  /// A program that was parsed and semantically analyzed but not compiled.
+  /// `ast` is null only when parsing failed. `error` holds the first error
+  /// raised; the tree keeps every type resolved before it, which is what
+  /// editor tooling needs while a file is mid-edit.
+  struct AnalyzedProgram {
+    std::unique_ptr<BlockExprAST> ast;
+    std::optional<SunError> error;
+  };
+
+  /// Parse and analyze a source string without generating code
+  AnalyzedProgram analyzeString(const std::string& source,
+                                const std::string& filePath = "");
+
+  /// Parse and analyze a set of files (merged like compileFiles) without
+  /// generating code. sourceOverrides maps a canonical path to in-memory text
+  /// used instead of the file on disk.
+  AnalyzedProgram analyzeFiles(
+      const std::vector<std::string>& sourceFiles,
+      const std::vector<sun::MoonImport>& moonImports = {},
+      const std::vector<std::string>& protoFiles = {},
+      const std::map<std::string, std::string>& sourceOverrides = {});
 
   /// Set moon libraries to preload for single-file compilation modes
   /// (executeString, compileFile, etc.)

@@ -1,9 +1,9 @@
 {
     "name": "sun-language",
     "displayName": "Sun Language",
-    "description": "Syntax highlighting and language server integration for Sun",
+    "description": "Syntax highlighting, diagnostics, formatting and hover type information for Sun",
     "icon": "images/sun-logo.png",
-    "version": "0.1.13",
+    "version": "0.1.15",
     "publisher": "namo-robotics",
     "license": "MIT",
     "repository": {

@@ -349,6 +349,26 @@ static void processMoonImports(
   }
 }
 
+void Driver::analyzeProgram(BlockExprAST& blockAst, Parser& parser) {
+  // Lower the lossless parse tree into the core AST before semantic analysis
+  LoweringPass lowering;
+  lowering.run(blockAst);
+
+  // Check if string interpolation is used without stdlib
+  if ((parser.usesStringInterpolation() || lowering.usedInterpolation()) &&
+      !hasStdlibImport(moonImports_)) {
+    logAndThrowError(
+        "String interpolation requires the standard library. Add "
+        "'moon \"stdlib.moon\"' to your manifest or use --moon stdlib.moon");
+  }
+
+  // Inject AST stubs from moon imports before semantic analysis
+  processMoonImports(blockAst, parser, moonImports_);
+
+  // Run semantic analysis on the unified AST
+  analyzer->analyzeBlock(blockAst);
+}
+
 sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
                                   Parser& parser, bool execute, int argc,
                                   char** argv) {
@@ -373,23 +393,7 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
     }
   }
 
-  // Lower the lossless parse tree into the core AST before semantic analysis
-  LoweringPass lowering;
-  lowering.run(*blockAst);
-
-  // Check if string interpolation is used without stdlib
-  if ((parser.usesStringInterpolation() || lowering.usedInterpolation()) &&
-      !hasStdlibImport(moonImports_)) {
-    logAndThrowError(
-        "String interpolation requires the standard library. Add "
-        "'moon \"stdlib.moon\"' to your manifest or use --moon stdlib.moon");
-  }
-
-  // Inject AST stubs from moon imports before semantic analysis
-  processMoonImports(*blockAst, parser, moonImports_);
-
-  // Run semantic analysis on the unified AST
-  analyzer->analyzeBlock(*blockAst);
+  analyzeProgram(*blockAst, parser);
 
   // Debug mode: generate scope tree HTML after semantic analysis
   if (debugMode_ && !debugFolder_.empty()) {
@@ -791,8 +795,8 @@ sun::SunValue Driver::executeFile(const std::string& filename, int argc,
   return executeFiles(sunFiles, moonImports, argc, argv, protoFiles);
 }
 
-void Driver::compileString(const std::string& source,
-                           const std::string& filePath) {
+Parser Driver::prepareStringParser(const std::string& source,
+                                   const std::string& filePath) {
   std::string effectivePath = filePath;
   if (!filePath.empty()) {
     std::filesystem::path sourcePath = std::filesystem::absolute(filePath);
@@ -813,9 +817,44 @@ void Driver::compileString(const std::string& source,
   } else {
     parser.setFilePath(effectivePath);
   }
+  return parser;
+}
 
+void Driver::compileString(const std::string& source,
+                           const std::string& filePath) {
+  auto parser = prepareStringParser(source, filePath);
   auto blockAst = parser.parseProgram();
   runPipeline(std::move(blockAst), parser, false);
+}
+
+Driver::AnalyzedProgram Driver::analyzeString(const std::string& source,
+                                              const std::string& filePath) {
+  AnalyzedProgram result;
+  try {
+    auto parser = prepareStringParser(source, filePath);
+    result.ast = parser.parseProgram();
+    if (result.ast) analyzeProgram(*result.ast, parser);
+  } catch (const SunError& error) {
+    result.error = error;
+  }
+  return result;
+}
+
+Driver::AnalyzedProgram Driver::analyzeFiles(
+    const std::vector<std::string>& sourceFiles,
+    const std::vector<sun::MoonImport>& moonImports,
+    const std::vector<std::string>& protoFiles,
+    const std::map<std::string, std::string>& sourceOverrides) {
+  AnalyzedProgram result;
+  moonImports_ = moonImports;
+  try {
+    result.ast = parseAndMergeFiles(sourceFiles, protoFiles, sourceOverrides);
+    auto stubParser = Parser::createStringParser("");
+    analyzeProgram(*result.ast, stubParser);
+  } catch (const SunError& error) {
+    result.error = error;
+  }
+  return result;
 }
 
 void Driver::compileFile(const std::string& filename) {
@@ -954,9 +993,10 @@ void Driver::parseSynthesizedProtoModules(
   }
 }
 
-void Driver::compileFiles(const std::vector<std::string>& sourceFiles,
-                          const std::vector<sun::MoonImport>& moonImports,
-                          const std::vector<std::string>& protoFiles) {
+std::unique_ptr<BlockExprAST> Driver::parseAndMergeFiles(
+    const std::vector<std::string>& sourceFiles,
+    const std::vector<std::string>& protoFiles,
+    const std::map<std::string, std::string>& sourceOverrides) {
   if (sourceFiles.empty()) {
     throw SunError(SunError::Kind::Parse, "No source files specified");
   }
@@ -972,15 +1012,20 @@ void Driver::compileFiles(const std::vector<std::string>& sourceFiles,
     std::string canonical = std::filesystem::canonical(filePath).string();
     canonicalPaths.push_back(canonical);
 
-    // Read file
-    std::ifstream file(filename);
-    if (!file.is_open()) {
-      throw SunError(SunError::Kind::Parse,
-                     "Could not open file '" + filename + "'");
+    std::string source;
+    auto override = sourceOverrides.find(canonical);
+    if (override != sourceOverrides.end()) {
+      source = override->second;
+    } else {
+      std::ifstream file(filename);
+      if (!file.is_open()) {
+        throw SunError(SunError::Kind::Parse,
+                       "Could not open file '" + filename + "'");
+      }
+      std::stringstream buffer;
+      buffer << file.rdbuf();
+      source = buffer.str();
     }
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    std::string source = buffer.str();
 
     // Register source for error reporting
     SourceManager::instance().addSource(canonical, source);
@@ -1002,7 +1047,13 @@ void Driver::compileFiles(const std::vector<std::string>& sourceFiles,
   parseSynthesizedProtoModules(protoFiles, parsedFiles, canonicalPaths);
 
   // Merge all parsed files into a single AST
-  auto mergedAst = mergeASTs(parsedFiles, canonicalPaths);
+  return mergeASTs(parsedFiles, canonicalPaths);
+}
+
+void Driver::compileFiles(const std::vector<std::string>& sourceFiles,
+                          const std::vector<sun::MoonImport>& moonImports,
+                          const std::vector<std::string>& protoFiles) {
+  auto mergedAst = parseAndMergeFiles(sourceFiles, protoFiles, {});
 
   // Create a parser for runPipeline (used for precompiled imports lookup)
   auto stubParser = Parser::createStringParser("");

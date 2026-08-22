@@ -15,6 +15,7 @@
 #include "ast.h"
 #include "ast.pb.h"
 #include "ast_serializer.h"
+#include "doc_comments.h"
 #include "lowering_pass.h"
 #include "moon.pb.h"
 #include "parser.h"
@@ -320,6 +321,10 @@ extractAllMetadataFromSource(const std::string& source,
   // core AST nodes (paren/template-string nodes never reach .moon files)
   LoweringPass lowering;
   lowering.run(*ast);
+
+  // Doc comments ride along in the bundle so editors can show them for
+  // imported declarations without the library's source at hand
+  attachDocComments(*ast, source);
 
   return extractAllMetadata(displayName, *ast, sourceHash);
 }
