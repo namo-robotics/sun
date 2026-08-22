@@ -40,6 +40,14 @@ class SourceManager {
     return syntheticPath;
   }
 
+  /// Full text of a registered file, or nothing when the path is unknown
+  std::optional<std::string> getSource(const std::string& filePath) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = sources_.find(filePath);
+    if (it == sources_.end()) return std::nullopt;
+    return it->second;
+  }
+
   /// Get a specific line from a file (1-indexed).
   /// Returns empty string if file or line not found.
   std::string getLine(const std::string& filePath, int lineNum) const {

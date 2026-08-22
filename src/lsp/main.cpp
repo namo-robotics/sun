@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -18,6 +19,8 @@
 #include "error.h"
 #include "formatter.h"
 #include "lexer.h"
+#include "lsp/hover.h"
+#include "lsp/text_positions.h"
 #include "manifest_processor.h"
 #include "parser.h"
 #include "sun_path.h"
@@ -78,6 +81,17 @@ class DiagnosticsCache {
 
 static DiagnosticsCache diagnosticsCache;
 
+// Canonical form of a path when it exists on disk, otherwise unchanged
+static std::string normalizePath(const std::string& path) {
+  try {
+    if (std::filesystem::exists(path)) {
+      return std::filesystem::canonical(path).string();
+    }
+  } catch (const std::filesystem::filesystem_error&) {
+  }
+  return path;
+}
+
 // =============================================================================
 // Entrypoint Configuration
 // =============================================================================
@@ -120,13 +134,7 @@ class EntrypointManager {
   /// Returns nullptr if file is not covered by any entrypoint
   const EntrypointConfig* findEntrypointForFile(
       const std::string& filePath) const {
-    // Normalize the path for lookup
-    std::string normalizedPath = filePath;
-    if (std::filesystem::exists(filePath)) {
-      normalizedPath = std::filesystem::canonical(filePath).string();
-    }
-
-    auto it = fileToEntrypoint_.find(normalizedPath);
+    auto it = fileToEntrypoint_.find(normalizePath(filePath));
     if (it != fileToEntrypoint_.end()) {
       return &entrypoints_[it->second];
     }
@@ -668,20 +676,8 @@ llvm::json::Array analyzeDiagnostics(const OpenDocument& document) {
     bool isFromCurrentFile = true;
     if (error.getLocation() && error.getLocation()->filePath) {
       const std::string& errorFile = *error.getLocation()->filePath;
-      // Normalize paths for comparison
-      std::string normalizedErrorFile = errorFile;
-      std::string normalizedDocPath = document.path;
-      try {
-        if (std::filesystem::exists(errorFile)) {
-          normalizedErrorFile = std::filesystem::canonical(errorFile).string();
-        }
-        if (std::filesystem::exists(document.path)) {
-          normalizedDocPath =
-              std::filesystem::canonical(document.path).string();
-        }
-      } catch (...) {
-      }
-      isFromCurrentFile = (normalizedErrorFile == normalizedDocPath);
+      isFromCurrentFile =
+          normalizePath(errorFile) == normalizePath(document.path);
     }
 
     if (isFromCurrentFile) {
@@ -744,6 +740,62 @@ llvm::json::Array analyzeDiagnostics(const OpenDocument& document) {
   diagnosticsCache.put(cacheKey, std::move(cacheEntry));
 
   return diagnostics;
+}
+
+// =============================================================================
+// Analyzed documents (for hover)
+// =============================================================================
+// A document's analyzed tree, built on the first hover request for a given
+// text and kept until the text changes. The driver stays alive with the tree
+// so the types it owns remain valid; members are declared so the tree is
+// destroyed first.
+
+struct AnalyzedDocument {
+  std::string contentHash;
+  std::unique_ptr<Driver> driver;
+  std::unique_ptr<BlockExprAST> ast;
+};
+
+static std::unordered_map<std::string, AnalyzedDocument> analyzedDocuments;
+
+// Analyzed tree for the document's current text, or null when it cannot be
+// parsed. Analysis errors keep the partial tree: everything typed before the
+// error still answers hover requests.
+const AnalyzedDocument* getAnalyzedDocument(const OpenDocument& document) {
+  std::string hash = DiagnosticsCache::computeHash(document.text);
+  auto cached = analyzedDocuments.find(document.uri);
+  if (cached != analyzedDocuments.end() &&
+      cached->second.contentHash == hash) {
+    return &cached->second;
+  }
+  analyzedDocuments.erase(document.uri);
+
+  try {
+    auto driver = Driver::createForAOT("sun-lsp");
+    Driver::AnalyzedProgram program;
+    const EntrypointConfig* entrypoint =
+        entrypointManager.findEntrypointForFile(document.path);
+    if (entrypoint && !entrypoint->sunFiles.empty()) {
+      // Manifest context; the open buffer stands in for its file on disk
+      std::map<std::string, std::string> overrides;
+      overrides[normalizePath(document.path)] = document.text;
+      program = driver->analyzeFiles(entrypoint->sunFiles,
+                                     entrypoint->moonImports,
+                                     entrypoint->protoFiles, overrides);
+    } else {
+      program = driver->analyzeString(document.text, document.path);
+    }
+    if (!program.ast) return nullptr;
+
+    AnalyzedDocument analyzed;
+    analyzed.contentHash = std::move(hash);
+    analyzed.driver = std::move(driver);
+    analyzed.ast = std::move(program.ast);
+    auto inserted = analyzedDocuments.emplace(document.uri, std::move(analyzed));
+    return &inserted.first->second;
+  } catch (const std::exception&) {
+    return nullptr;
+  }
 }
 
 void publishDiagnostics(const std::string& uri, llvm::json::Array diagnostics,
@@ -907,6 +959,7 @@ int main() {
       capabilities["semanticTokensProvider"] =
           std::move(semanticTokensProvider);
       capabilities["documentFormattingProvider"] = true;
+      capabilities["hoverProvider"] = true;
 
       llvm::json::Object serverInfo;
       serverInfo["name"] = "sun-lsp";
@@ -991,6 +1044,7 @@ int main() {
       OpenDocument& document = documentIter->second;
       document.text = text->str();
       document.version = version;
+      analyzedDocuments.erase(document.uri);
 
       publishDiagnostics(document.uri, analyzeDiagnostics(document), version);
       continue;
@@ -1012,6 +1066,7 @@ int main() {
       OpenDocument& document = documentIter->second;
       // Clear cache to force re-read from disk for manifest-based compilation
       diagnosticsCache.clear();
+      analyzedDocuments.clear();
       publishDiagnostics(document.uri, analyzeDiagnostics(document),
                          document.version);
       continue;
@@ -1029,6 +1084,7 @@ int main() {
 
       std::string uriString = uri->str();
       openDocuments.erase(uriString);
+      analyzedDocuments.erase(uriString);
       publishDiagnostics(uriString, llvm::json::Array(), 0);
       continue;
     }
@@ -1055,8 +1111,9 @@ int main() {
                     }
                   }
                   entrypointManager.setEntrypoints(entrypointPaths);
-                  // Clear diagnostics cache since context may have changed
+                  // Clear caches since context may have changed
                   diagnosticsCache.clear();
+                  analyzedDocuments.clear();
                   // Re-analyze all open documents
                   for (auto& [docUri, document] : openDocuments) {
                     publishDiagnostics(document.uri,
@@ -1166,6 +1223,81 @@ int main() {
       llvm::json::Array edits;
       edits.push_back(std::move(edit));
       sendResponse(*id, std::move(edits));
+      continue;
+    }
+
+    if (methodName == "textDocument/hover" && params) {
+      if (!id) continue;
+
+      llvm::json::Object* textDocument = nullptr;
+      if (llvm::json::Value* rawTextDocument = params->get("textDocument")) {
+        textDocument = rawTextDocument->getAsObject();
+      }
+      if (!textDocument) {
+        sendErrorResponse(*id, -32602, "Missing textDocument parameter");
+        continue;
+      }
+
+      std::optional<llvm::StringRef> uri = textDocument->getString("uri");
+      if (!uri) {
+        sendErrorResponse(*id, -32602, "Missing textDocument.uri");
+        continue;
+      }
+
+      llvm::json::Object* position = nullptr;
+      if (llvm::json::Value* rawPosition = params->get("position")) {
+        position = rawPosition->getAsObject();
+      }
+      if (!position) {
+        sendErrorResponse(*id, -32602, "Missing position parameter");
+        continue;
+      }
+      int line = static_cast<int>(position->getInteger("line").value_or(0));
+      int character =
+          static_cast<int>(position->getInteger("character").value_or(0));
+
+      auto documentIter = openDocuments.find(uri->str());
+      if (documentIter == openDocuments.end()) {
+        sendErrorResponse(*id, -32602, "Document not open");
+        continue;
+      }
+
+      const OpenDocument& document = documentIter->second;
+      const AnalyzedDocument* analyzed = getAnalyzedDocument(document);
+      std::optional<sun::lsp::Hover> hover;
+      if (analyzed) {
+        int offset = sun::lsp::byteOffsetFromLspPosition(document.text, line,
+                                                         character);
+        try {
+          hover = sun::lsp::computeHover(*analyzed->ast, document.path,
+                                         document.text, offset);
+        } catch (const std::exception&) {
+          hover.reset();
+        }
+      }
+      if (!hover) {
+        sendResponse(*id, llvm::json::Value(nullptr));
+        continue;
+      }
+
+      auto start =
+          sun::lsp::lspPositionFromByteOffset(document.text, hover->range.offset);
+      auto end = sun::lsp::lspPositionFromByteOffset(
+          document.text, hover->range.endOffset.value_or(hover->range.offset));
+
+      std::string value = "```sun\n" + hover->code + "\n```";
+      if (!hover->documentation.empty()) {
+        value += "\n\n---\n\n" + hover->documentation;
+      }
+      llvm::json::Object contents;
+      contents["kind"] = "markdown";
+      contents["value"] = std::move(value);
+
+      llvm::json::Object result;
+      result["contents"] = std::move(contents);
+      result["range"] =
+          makeRange(start.line, start.character, end.line, end.character);
+      sendResponse(*id, std::move(result));
       continue;
     }
 
