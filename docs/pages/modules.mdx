@@ -1,6 +1,7 @@
 # Modules and Manifests
 
 import { Callout } from 'nextra/components'
+import PathVariablesExample from '../generated/path_variables.mdx'
 
 Sun uses a **manifest-based** module system where programs declare their dependencies in a `manifest` block. Multiple source files are merged into a single AST before compilation, enabling efficient cross-file optimization.
 
@@ -53,28 +54,7 @@ sun myprogram.sun   # Can find stdlib.moon in SUN_PATH
 
 ### Path Variables
 
-Manifest entries can reference variables with `$NAME` — in `suns`, `moons`
-(paths and urls) and `protos` alike:
-
-```sun
-manifest {
-    suns: ["$SHARED/util.sun"]
-    moons: ["$LIBS/stdlib.moon"]
-    protos: ["$SCHEMAS/telemetry.proto"]
-}
-```
-
-Define a variable with `--path-var` or in the environment (the compiler
-checks `--path-var` definitions first):
-
-```bash
-sun --path-var LIBS=/opt/sunlibs myprogram.sun
-LIBS=/opt/sunlibs sun myprogram.sun   # same effect
-```
-
-Referencing a variable defined in neither place is a compile error. Variables
-are expanded before the path resolution above, so a variable can also hold a
-relative directory.
+<PathVariablesExample />
 
 ### Compilation Pipeline
 

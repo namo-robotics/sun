@@ -1,21 +1,32 @@
-// Generates docs/pages/examples.mdx from the programs in the repo-root
-// examples/ folder. Each examples/<name>/ is rendered from its README.md
-// (the prose the docs show) plus every .sun source file found in the folder,
-// read verbatim so the docs can never drift from the code CI compiles and runs.
+// Generates docs pages from the programs in the repo-root examples/ folder.
+// Every examples/<name>/ has a README.md plus build.sh and test.sh that CI
+// compiles and runs. Two outputs:
 //
-// There is no per-example metadata file: the README is the single source of
-// truth for prose, ordering comes from the numeric folder-name prefix
-// (10-classes, 20-interfaces, ...), and the source list is discovered by
-// globbing *.sun.
+//  - docs/pages/examples.mdx: the Examples page, one section per example.
+//    Ordering comes from the numeric folder-name prefix (10-classes, ...).
+//  - docs/generated/<name>.mdx: an MDX partial for each example whose README
+//    starts with a `docs-page: <page>` frontmatter block. These examples are
+//    left off the Examples page; instead the named handwritten page imports
+//    the partial (modules.mdx imports generated/path_variables.mdx). Such
+//    folders carry no numeric prefix — they hold no slot on the Examples
+//    page — and their READMEs use no headings above level four (####), since
+//    the host page owns the heading.
+//
+// Each example is rendered from its README.md (the prose the docs show) plus
+// every .sun source file found in the folder, read verbatim so the docs can
+// never drift from the code CI compiles and runs. The README is the single
+// source of truth for prose, and the source list is discovered by globbing
+// *.sun.
 //
 // Run automatically via the `predev` / `prebuild` npm scripts. CWD is docs/.
 
-import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs'
-import { join, extname, dirname, relative, sep } from 'node:path'
+import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from 'node:fs'
+import { join, extname, dirname, basename, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const DOCS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..')
 const EXAMPLES_DIR = join(DOCS_DIR, '..', 'examples')
+const GENERATED_DIR = join(DOCS_DIR, 'generated')
 const OUT_FILE = join(DOCS_DIR, 'pages', 'examples.mdx')
 
 // Map a source file extension to a fenced-code language for syntax highlighting.
@@ -40,19 +51,34 @@ function collectSunFiles(dir, base = dir) {
   return out.sort()
 }
 
-// An example is any immediate subdirectory that has a README.md. Ordering is the
-// numeric prefix baked into the folder name, so a plain name sort is correct.
+// Split an optional leading `--- key: value ---` frontmatter block from the
+// README, returning its keys and the remaining markdown.
+function splitFrontmatter(readme) {
+  const match = readme.match(/^---\n([\s\S]*?)\n---\n/)
+  if (!match) return { meta: {}, markdown: readme }
+  const meta = {}
+  for (const line of match[1].split('\n')) {
+    const kv = line.match(/^([\w-]+):\s*(.*)$/)
+    if (kv) meta[kv[1]] = kv[2].trim()
+  }
+  return { meta, markdown: readme.slice(match[0].length) }
+}
+
+// An example is any immediate subdirectory that has a README.md. A plain name
+// sort gives the ordering.
 function loadExamples() {
   return readdirSync(EXAMPLES_DIR, { withFileTypes: true })
     .filter((d) => d.isDirectory())
     .map((d) => join(EXAMPLES_DIR, d.name))
     .filter((dir) => existsSync(join(dir, 'README.md')))
     .sort()
-    .map((dir) => ({ dir, readme: readFileSync(join(dir, 'README.md'), 'utf8') }))
+    .map((dir) => {
+      const { meta, markdown } = splitFrontmatter(readFileSync(join(dir, 'README.md'), 'utf8'))
+      return { dir, meta, readme: markdown }
+    })
 }
 
-// Split the README into its H1 title and the remaining body. The title becomes a
-// level-2 heading so it nests under the page's `# Examples`.
+// Split the README into its H1 title and the remaining body.
 function splitReadme(readme) {
   const lines = readme.split('\n')
   const i = lines.findIndex((l) => /^#\s+/.test(l))
@@ -62,23 +88,46 @@ function splitReadme(readme) {
   return { title, body }
 }
 
-function renderExample({ dir, readme }) {
-  const { title, body } = splitReadme(readme)
-  const parts = [`## ${title}`, '']
-  if (body) parts.push(body, '')
-
-  parts.push('### Source', '')
+// A `Source` heading at the given level, followed by every .sun file verbatim.
+function renderSources(dir, level) {
+  const parts = ['#'.repeat(level) + ' Source', '']
   for (const file of collectSunFiles(dir)) {
     const contents = readFileSync(join(dir, file), 'utf8').replace(/\s+$/, '')
     parts.push('```' + langFor(file) + ` filename="${file}"`)
     parts.push(contents)
     parts.push('```', '')
   }
+  return parts
+}
 
+// A section of the Examples page: the README title becomes a level-2 heading
+// so it nests under the page's `# Examples`.
+function renderExample({ dir, readme }) {
+  const { title, body } = splitReadme(readme)
+  const parts = [`## ${title}`, '']
+  if (body) parts.push(body, '')
+  parts.push(...renderSources(dir, 3))
+  return parts.join('\n')
+}
+
+// A partial for a handwritten page to import. The host page owns the heading,
+// so the README's H1 is dropped and `Source` sits at level 4.
+function renderPartial({ dir, readme }) {
+  const name = basename(dir)
+  const { body } = splitReadme(readme)
+  const parts = [
+    `{/* AUTO-GENERATED by docs/scripts/gen-examples.mjs from examples/${name}/. */}`,
+    '{/* Do not edit by hand — edit the program in that folder instead. */}',
+    '',
+  ]
+  if (body) parts.push(body, '')
+  parts.push(...renderSources(dir, 4))
   return parts.join('\n')
 }
 
 const examples = loadExamples()
+const pageExamples = examples.filter((e) => !e.meta['docs-page'])
+const partials = examples.filter((e) => e.meta['docs-page'])
 
 const header = [
   '{/* AUTO-GENERATED by docs/scripts/gen-examples.mjs from the examples/ folder. */}',
@@ -92,7 +141,12 @@ const header = [
   '',
 ].join('\n')
 
-const body = examples.map(renderExample).join('\n')
+writeFileSync(OUT_FILE, header + '\n' + pageExamples.map(renderExample).join('\n'))
+console.log(`Generated ${OUT_FILE} from ${pageExamples.length} examples.`)
 
-writeFileSync(OUT_FILE, header + '\n' + body)
-console.log(`Generated ${OUT_FILE} from ${examples.length} examples.`)
+mkdirSync(GENERATED_DIR, { recursive: true })
+for (const example of partials) {
+  const out = join(GENERATED_DIR, basename(example.dir) + '.mdx')
+  writeFileSync(out, renderPartial(example))
+  console.log(`Generated ${out} for the ${example.meta['docs-page']} page.`)
+}

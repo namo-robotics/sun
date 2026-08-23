@@ -8,8 +8,9 @@ out/
 # Build
 dist/
 
-# Generated from the examples/ folder by scripts/gen-examples.mjs
+# Generated from examples/ folders by scripts/gen-examples.mjs
 pages/examples.mdx
+generated/
 
 # Debug
 npm-debug.log*
