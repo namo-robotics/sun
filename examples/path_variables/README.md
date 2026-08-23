@@ -28,7 +28,8 @@ LIBS=libs sun --compile -o main main.sun
 Using a variable that is defined in neither place is a compile error.
 Variables are expanded before path resolution, so a variable can hold a
 relative directory — which keeps a manifest portable when libraries live
-in a different place on each machine.
+in a different place on each machine. In VS Code, the `sun.pathVariables`
+setting supplies the same variables to the language server.
 
 ```bash
 ./build.sh

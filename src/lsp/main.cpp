@@ -115,10 +115,11 @@ class EntrypointManager {
  public:
   /// Set entrypoints from configuration and build file mappings
   void setEntrypoints(const std::vector<std::string>& paths) {
+    configuredPaths_ = paths;
     entrypoints_.clear();
     fileToEntrypoint_.clear();
 
-    for (const auto& path : paths) {
+    for (const auto& path : configuredPaths_) {
       auto config = parseEntrypoint(path);
       if (config) {
         // Map all covered files to this entrypoint
@@ -144,10 +145,17 @@ class EntrypointManager {
     return nullptr;
   }
 
+  /// Re-resolve the configured entrypoints, e.g. after path variables change
+  void reparse() {
+    std::vector<std::string> paths = configuredPaths_;
+    setEntrypoints(paths);
+  }
+
   /// Check if any entrypoints are configured
   bool hasEntrypoints() const { return !entrypoints_.empty(); }
 
  private:
+  std::vector<std::string> configuredPaths_;
   std::vector<EntrypointConfig> entrypoints_;
   std::unordered_map<std::string, size_t> fileToEntrypoint_;
 
@@ -196,6 +204,41 @@ class EntrypointManager {
 };
 
 static EntrypointManager entrypointManager;
+
+/// Install manifest path variables ($NAME) from a configuration object's
+/// "pathVariables" member ({NAME: dir, ...}). Replaces the previous set so
+/// removed variables disappear. Returns true if the member was present.
+static bool applyPathVariables(const llvm::json::Object& config) {
+  const llvm::json::Object* vars = config.getObject("pathVariables");
+  if (!vars) return false;
+  sun::ManifestProcessor::clearPathVariables();
+  for (const auto& [name, value] : *vars) {
+    if (auto str = value.getAsString()) {
+      sun::ManifestProcessor::setPathVariable(llvm::StringRef(name).str(),
+                                              str->str());
+    }
+  }
+  return true;
+}
+
+/// Read a configuration object's "entrypoints" member. Entries may be strings
+/// or {path: string} objects. Returns nullopt if the member is absent.
+static std::optional<std::vector<std::string>> readEntrypoints(
+    const llvm::json::Object& config) {
+  const llvm::json::Array* entrypoints = config.getArray("entrypoints");
+  if (!entrypoints) return std::nullopt;
+  std::vector<std::string> paths;
+  for (const auto& entry : *entrypoints) {
+    if (auto str = entry.getAsString()) {
+      paths.push_back(str->str());
+    } else if (const llvm::json::Object* entryObj = entry.getAsObject()) {
+      if (auto path = entryObj->getString("path")) {
+        paths.push_back(path->str());
+      }
+    }
+  }
+  return paths;
+}
 
 // LSP semantic token type indices (must match legend in initialize response)
 namespace LSPTokenType {
@@ -921,32 +964,15 @@ int main() {
     if (methodName == "initialize") {
       if (!id) continue;
 
-      // Parse initializationOptions for entrypoints configuration
+      // Parse initializationOptions. Path variables are applied before
+      // entrypoints are resolved, since manifests may reference them.
       if (llvm::json::Value* rawParams = message->get("params")) {
         if (llvm::json::Object* params = rawParams->getAsObject()) {
-          if (llvm::json::Value* rawInitOptions =
-                  params->get("initializationOptions")) {
-            if (llvm::json::Object* initOptions =
-                    rawInitOptions->getAsObject()) {
-              if (llvm::json::Value* rawEntrypoints =
-                      initOptions->get("entrypoints")) {
-                if (llvm::json::Array* entrypoints =
-                        rawEntrypoints->getAsArray()) {
-                  std::vector<std::string> entrypointPaths;
-                  for (const auto& entry : *entrypoints) {
-                    // Support both string and {path: string} formats
-                    if (auto str = entry.getAsString()) {
-                      entrypointPaths.push_back(str->str());
-                    } else if (const llvm::json::Object* entryObj =
-                                   entry.getAsObject()) {
-                      if (auto path = entryObj->getString("path")) {
-                        entrypointPaths.push_back(path->str());
-                      }
-                    }
-                  }
-                  entrypointManager.setEntrypoints(entrypointPaths);
-                }
-              }
+          if (const llvm::json::Object* initOptions =
+                  params->getObject("initializationOptions")) {
+            applyPathVariables(*initOptions);
+            if (auto entrypointPaths = readEntrypoints(*initOptions)) {
+              entrypointManager.setEntrypoints(*entrypointPaths);
             }
           }
         }
@@ -1136,38 +1162,27 @@ int main() {
     }
 
     if (methodName == "workspace/didChangeConfiguration" && params) {
-      // Handle configuration changes - extract entrypoints if present
-      if (llvm::json::Value* rawSettings = params->get("settings")) {
-        if (llvm::json::Object* settings = rawSettings->getAsObject()) {
-          if (llvm::json::Value* rawSun = settings->get("sun")) {
-            if (llvm::json::Object* sun = rawSun->getAsObject()) {
-              if (llvm::json::Value* rawEntrypoints = sun->get("entrypoints")) {
-                if (llvm::json::Array* entrypoints =
-                        rawEntrypoints->getAsArray()) {
-                  std::vector<std::string> entrypointPaths;
-                  for (const auto& entry : *entrypoints) {
-                    // Support both string and {path: string} formats
-                    if (auto str = entry.getAsString()) {
-                      entrypointPaths.push_back(str->str());
-                    } else if (const llvm::json::Object* entryObj =
-                                   entry.getAsObject()) {
-                      if (auto path = entryObj->getString("path")) {
-                        entrypointPaths.push_back(path->str());
-                      }
-                    }
-                  }
-                  entrypointManager.setEntrypoints(entrypointPaths);
-                  // Clear caches since context may have changed
-                  diagnosticsCache.clear();
-                  analyzedDocuments.clear();
-                  // Re-analyze all open documents
-                  for (auto& [docUri, document] : openDocuments) {
-                    publishDiagnostics(document.uri,
-                                       analyzeDiagnostics(document),
-                                       document.version);
-                  }
-                }
-              }
+      // Configuration arrives under settings.sun. Path variables are applied
+      // before entrypoints are re-resolved, since manifests may reference
+      // them; a change to either re-analyzes every open document.
+      if (const llvm::json::Object* settings = params->getObject("settings")) {
+        if (const llvm::json::Object* sunSettings =
+                settings->getObject("sun")) {
+          bool variablesChanged = applyPathVariables(*sunSettings);
+          auto entrypointPaths = readEntrypoints(*sunSettings);
+          if (variablesChanged || entrypointPaths) {
+            if (entrypointPaths) {
+              entrypointManager.setEntrypoints(*entrypointPaths);
+            } else {
+              entrypointManager.reparse();
+            }
+            // Clear caches since context may have changed
+            diagnosticsCache.clear();
+            analyzedDocuments.clear();
+            // Re-analyze all open documents
+            for (auto& [docUri, document] : openDocuments) {
+              publishDiagnostics(document.uri, analyzeDiagnostics(document),
+                                 document.version);
             }
           }
         }

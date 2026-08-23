@@ -59,7 +59,8 @@ std::string ManifestProcessor::expandPathVariables(const std::string& input) {
       logAndThrowError("undefined path variable '$" + name +
                        "' in manifest entry '" + input +
                        "'; define it with --path-var " + name +
-                       "=<dir> or in the environment");
+                       "=<dir>, the sun.pathVariables editor setting, or in "
+                       "the environment");
     }
     i = nameEnd;
   }
