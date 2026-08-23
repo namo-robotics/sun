@@ -265,12 +265,15 @@ TEST(Tooling_Lsp_References, MethodCallsThroughVarAndRef) {
   EXPECT_TRUE(refersTo(kProgram, "sum();", true, {{"sum() i32"}, {"sum();"}}));
 }
 
-TEST(Tooling_Lsp_References, InterfaceMethodSeparateFromClassMethod) {
-  // A call through the interface names the interface's method
-  EXPECT_TRUE(refersTo(kProgram, "area() i32;", true,
-                       {{"area() i32;"}, {"area(); }"}}));
-  // The class's method is never called directly
-  EXPECT_TRUE(refersTo(kProgram, "area() i32 {", true, {{"area() i32 {"}}));
+TEST(Tooling_Lsp_References, InterfaceMemberGroup) {
+  // An interface member and the class members implementing it are one
+  // group: from either side, the references list the interface's
+  // declaration, every implementation, and the calls
+  std::vector<ExpectedName> group = {
+      {"area() i32;"}, {"area() i32 {"}, {"area(); }"}};
+  EXPECT_TRUE(refersTo(kProgram, "area() i32;", true, group));
+  EXPECT_TRUE(refersTo(kProgram, "area() i32 {", true, group));
+  EXPECT_TRUE(refersTo(kProgram, "area(); }", true, group));
 }
 
 TEST(Tooling_Lsp_References, Class) {

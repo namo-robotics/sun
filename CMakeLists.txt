@@ -196,6 +196,7 @@ add_library(sun_lib
     src/lsp/definition.cpp
     src/lsp/name_ranges.cpp
     src/lsp/references.cpp
+    src/lsp/rename.cpp
     # Add other implementation files here (but NOT main.cpp)
 )
 
