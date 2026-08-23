@@ -14,6 +14,9 @@ namespace serialization {
 // Configuration for AST deserialization
 struct DeserializerConfig {
   bool restore_analysis = false;  // Restore semantic analysis data
+  // File given to positions that carry none (a .moon bundle stores the
+  // module's source path once rather than on every position)
+  std::string default_file_path;
 };
 
 // Deserialize protobuf messages to AST nodes

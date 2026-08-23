@@ -48,4 +48,9 @@ message ModuleMetadata {
   // Private ones are carried like other private items — bodies shipped in the
   // bundle may read them — but importers cannot reach them.
   repeated sun.ast.VariableCreation globals = 13;
+
+  // Absolute path of the source file the module was extracted from. Positions
+  // inside the exported definitions are offsets into that file; editors use
+  // it to open the declaration behind an imported symbol.
+  string source_path = 14;
 }

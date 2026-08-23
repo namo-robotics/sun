@@ -105,12 +105,18 @@ ast::Program ASTSerializer::serializeProgram(const BlockExprAST& root) const {
   program.set_version(1);
   program.set_has_analysis(config_.include_analysis);
 
-  ast::BlockExpr* block = program.mutable_body();
-  for (const auto& stmt : root.getBody()) {
-    *block->add_body() = serialize(*stmt);
-  }
-
+  serializeBlockInto(root, program.mutable_body());
   return program;
+}
+
+void ASTSerializer::serializeBlockInto(const BlockExprAST& block,
+                                       ast::BlockExpr* proto) const {
+  for (const auto& stmt : block.getBody()) {
+    *proto->add_body() = serialize(*stmt);
+  }
+  if (config_.include_location && block.getLocation().endOffset) {
+    *proto->mutable_location() = serializePosition(block.getLocation());
+  }
 }
 
 ast::Prototype ASTSerializer::serializePrototype(
@@ -360,6 +366,10 @@ ast::ASTNode ASTSerializer::serialize(const ExprAST& expr) const {
     case ASTNodeType::PROTOTYPE:
       // Prototypes are not standalone expressions
       break;
+    case ASTNodeType::IMPORT:
+    case ASTNodeType::IMPORT_SCOPE:
+      // Imports are resolved by the parser and never reach a serialized tree
+      break;
   }
 
   return node;
@@ -572,10 +582,7 @@ void ASTSerializer::serializePackExpansion(const PackExpansionAST& expr,
 
 void ASTSerializer::serializeBlock(const BlockExprAST& expr,
                                    ast::ASTNode* node) const {
-  auto* block = node->mutable_block_expr();
-  for (const auto& stmt : expr.getBody()) {
-    *block->add_body() = serialize(*stmt);
-  }
+  serializeBlockInto(expr, node->mutable_block_expr());
 }
 
 void ASTSerializer::serializeIf(const IfExprAST& expr,
@@ -665,10 +672,7 @@ void ASTSerializer::serializeReturn(const ReturnExprAST& expr,
 void ASTSerializer::serializeUnsafeBlock(const UnsafeBlockAST& expr,
                                          ast::ASTNode* node) const {
   auto* unsafe = node->mutable_unsafe_block();
-  auto* body = unsafe->mutable_body();
-  for (const auto& stmt : expr.getBody().getBody()) {
-    *body->add_body() = serialize(*stmt);
-  }
+  serializeBlockInto(expr.getBody(), unsafe->mutable_body());
 }
 
 void ASTSerializer::serializeFunction(const FunctionAST& expr,
@@ -682,21 +686,14 @@ void ASTSerializer::serializeFunction(const FunctionAST& expr,
   // Sun name mangling and lose its symbol.
   func->set_body_present(expr.hasBody());
   auto* body = func->mutable_body();
-  if (expr.hasBody()) {
-    for (const auto& stmt : expr.getBody().getBody()) {
-      *body->add_body() = serialize(*stmt);
-    }
-  }
+  if (expr.hasBody()) serializeBlockInto(expr.getBody(), body);
 }
 
 void ASTSerializer::serializeLambda(const LambdaAST& expr,
                                     ast::ASTNode* node) const {
   auto* lambda = node->mutable_lambda_expr();
   *lambda->mutable_proto() = serializePrototype(expr.getProto());
-  auto* body = lambda->mutable_body();
-  for (const auto& stmt : expr.getBody().getBody()) {
-    *body->add_body() = serialize(*stmt);
-  }
+  serializeBlockInto(expr.getBody(), lambda->mutable_body());
 }
 
 void ASTSerializer::serializeCall(const CallExprAST& expr,
@@ -765,10 +762,7 @@ void ASTSerializer::serializeModule(const ModuleAST& expr,
   auto* mod = node->mutable_module_def();
   mod->set_name(expr.getName());
   mod->set_visibility(toProto(expr.getVisibility()));
-  auto* body = mod->mutable_body();
-  for (const auto& stmt : expr.getBody().getBody()) {
-    *body->add_body() = serialize(*stmt);
-  }
+  serializeBlockInto(expr.getBody(), mod->mutable_body());
 }
 
 void ASTSerializer::serializeUsing(const UsingAST& expr,
@@ -825,11 +819,13 @@ void ASTSerializer::serializeClassDef(const ClassDefinitionAST& expr,
         serializePrototype(method.function->getProto());
     auto* body = funcProto->mutable_body();
     if (method.function->hasBody()) {
-      for (const auto& stmt : method.function->getBody().getBody()) {
-        *body->add_body() = serialize(*stmt);
-      }
+      serializeBlockInto(method.function->getBody(), body);
     }
     funcProto->set_visibility(toProto(method.function->getVisibility()));
+    if (config_.include_location && method.function->getLocation().endOffset) {
+      *funcProto->mutable_location() =
+          serializePosition(method.function->getLocation());
+    }
     methodProto->set_is_constructor(method.isConstructor);
     methodProto->set_is_const(method.isConst);
   }
@@ -867,11 +863,13 @@ void ASTSerializer::serializeInterfaceDef(const InterfaceDefinitionAST& expr,
         serializePrototype(method.function->getProto());
     auto* body = funcProto->mutable_body();
     if (method.function->hasBody()) {
-      for (const auto& stmt : method.function->getBody().getBody()) {
-        *body->add_body() = serialize(*stmt);
-      }
+      serializeBlockInto(method.function->getBody(), body);
     }
     funcProto->set_visibility(toProto(method.function->getVisibility()));
+    if (config_.include_location && method.function->getLocation().endOffset) {
+      *funcProto->mutable_location() =
+          serializePosition(method.function->getLocation());
+    }
     methodProto->set_has_default_impl(method.hasDefaultImpl);
     methodProto->set_is_const(method.isConst);
   }
@@ -923,10 +921,7 @@ void ASTSerializer::serializeTryCatch(const TryCatchExprAST& expr,
   auto* tryCatch = node->mutable_try_catch();
 
   // Serialize try block
-  auto* tryBlock = tryCatch->mutable_try_block();
-  for (const auto& stmt : expr.getTryBlock().getBody()) {
-    *tryBlock->add_body() = serialize(*stmt);
-  }
+  serializeBlockInto(expr.getTryBlock(), tryCatch->mutable_try_block());
 
   // Serialize catch clauses (source order)
   for (const auto& cc : expr.getCatchClauses()) {
@@ -936,10 +931,7 @@ void ASTSerializer::serializeTryCatch(const TryCatchExprAST& expr,
       *catchClause->mutable_binding_type() =
           serializeTypeAnnotation(*cc.bindingType);
     }
-    auto* catchBody = catchClause->mutable_body();
-    for (const auto& stmt : cc.body->getBody()) {
-      *catchBody->add_body() = serialize(*stmt);
-    }
+    serializeBlockInto(*cc.body, catchClause->mutable_body());
   }
 }
 

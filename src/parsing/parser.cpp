@@ -3005,8 +3005,10 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
 void Parser::createModuleStubs(
     const sun::moon::ModuleMetadata& metadata,
     std::vector<std::unique_ptr<ExprAST>>& collectedAST) {
-  // Use ASTDeserializer to convert proto nodes
-  sun::serialization::ASTDeserializer deserializer;
+  // Use ASTDeserializer to convert proto nodes. Positions inside the bundle
+  // carry no file of their own; they all belong to the module's source file
+  sun::serialization::ASTDeserializer deserializer(
+      {.default_file_path = metadata.source_path()});
 
   // Build the scope path for qualified names:
   // Content hash ensures symbol isolation between library versions
@@ -3030,6 +3032,9 @@ void Parser::createModuleStubs(
   for (int i = 0; i < metadata.interfaces_size(); ++i) {
     sun::ast::ASTNode node;
     *node.mutable_interface_def() = metadata.interfaces(i);
+    if (node.interface_def().has_location()) {
+      *node.mutable_location() = node.interface_def().location();
+    }
 
     auto ast = deserializer.deserialize(node);
     if (ast) {
@@ -3046,6 +3051,9 @@ void Parser::createModuleStubs(
   for (int i = 0; i < metadata.classes_size(); ++i) {
     sun::ast::ASTNode node;
     *node.mutable_class_def() = metadata.classes(i);
+    if (node.class_def().has_location()) {
+      *node.mutable_location() = node.class_def().location();
+    }
 
     auto ast = deserializer.deserialize(node);
     if (ast) {
@@ -3080,6 +3088,9 @@ void Parser::createModuleStubs(
   for (int i = 0; i < metadata.enums_size(); ++i) {
     sun::ast::ASTNode node;
     *node.mutable_enum_def() = metadata.enums(i);
+    if (node.enum_def().has_location()) {
+      *node.mutable_location() = node.enum_def().location();
+    }
 
     auto ast = deserializer.deserialize(node);
     if (ast) {
@@ -3091,6 +3102,9 @@ void Parser::createModuleStubs(
   for (int i = 0; i < metadata.functions_size(); ++i) {
     sun::ast::ASTNode node;
     *node.mutable_function_def() = metadata.functions(i);
+    if (node.function_def().has_location()) {
+      *node.mutable_location() = node.function_def().location();
+    }
 
     auto ast = deserializer.deserialize(node);
     if (ast) {

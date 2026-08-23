@@ -21,6 +21,8 @@ Position ASTDeserializer::deserializePosition(const ast::Position& pos) const {
   result.offset = pos.offset();
   if (pos.has_file_path()) {
     result.filePath = pos.file_path();
+  } else if (!config_.default_file_path.empty()) {
+    result.filePath = config_.default_file_path;
   }
   if (pos.has_end_line()) {
     result.endLine = pos.end_line();
@@ -354,7 +356,11 @@ std::unique_ptr<BlockExprAST> ASTDeserializer::deserializeBlockExpr(
   for (const auto& stmt : proto.body()) {
     body.push_back(deserialize(stmt));
   }
-  return std::make_unique<BlockExprAST>(std::move(body));
+  auto block = std::make_unique<BlockExprAST>(std::move(body));
+  if (proto.has_location()) {
+    block->setLocation(deserializePosition(proto.location()));
+  }
+  return block;
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeNumber(
@@ -812,6 +818,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
     method.function =
         std::make_unique<FunctionAST>(std::move(prototype), std::move(body));
     method.function->setVisibility(fromProto(funcProto.visibility()));
+    if (funcProto.has_location()) {
+      method.function->setLocation(deserializePosition(funcProto.location()));
+    }
     method.isConstructor = methodProto.is_constructor();
     method.isConst = methodProto.is_const();
     methods.push_back(std::move(method));
@@ -861,6 +870,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeInterfaceDef(
     method.function =
         std::make_unique<FunctionAST>(std::move(prototype), std::move(body));
     method.function->setVisibility(fromProto(funcProto.visibility()));
+    if (funcProto.has_location()) {
+      method.function->setLocation(deserializePosition(funcProto.location()));
+    }
     method.hasDefaultImpl = methodProto.has_default_impl();
     method.isConst = methodProto.is_const();
     methods.push_back(std::move(method));

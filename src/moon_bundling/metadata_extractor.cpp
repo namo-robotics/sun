@@ -87,6 +87,7 @@ void extractFunction(const FunctionAST& func, moon::ModuleMetadata& metadata,
   // Add to metadata
   ast::FunctionDef* funcDef = metadata.add_functions();
   *funcDef = node.function_def();
+  if (node.has_location()) *funcDef->mutable_location() = node.location();
 
   // Clear body if not generic
   if (!isGeneric(func.getProto())) {
@@ -103,6 +104,7 @@ void extractClass(const ClassDefinitionAST& cls, moon::ModuleMetadata& metadata,
   // Add to metadata
   ast::ClassDef* classDef = metadata.add_classes();
   *classDef = node.class_def();
+  if (node.has_location()) *classDef->mutable_location() = node.location();
 
   // Clear bodies of non-generic methods
   clearNonGenericBodies(classDef, cls);
@@ -118,6 +120,7 @@ void extractInterface(const InterfaceDefinitionAST& iface,
   // Add to metadata
   ast::InterfaceDef* ifaceDef = metadata.add_interfaces();
   *ifaceDef = node.interface_def();
+  if (node.has_location()) *ifaceDef->mutable_location() = node.location();
 
   // Clear bodies of non-generic methods
   clearNonGenericBodies(ifaceDef, iface);
@@ -148,6 +151,7 @@ void extractEnum(const EnumDefinitionAST& enumDef,
   // Add to metadata
   ast::EnumDef* enumProto = metadata.add_enums();
   *enumProto = node.enum_def();
+  if (node.has_location()) *enumProto->mutable_location() = node.location();
 }
 
 // Recursively extract from statements
@@ -265,12 +269,14 @@ std::vector<moon::ModuleMetadata> extractAllMetadata(
                                 : sourceHash + "-" + std::to_string(idx));
     ++idx;
     md.set_version("1.0.0");
+    md.set_source_path(filePath);
     out.push_back(std::move(md));
   }
   if (out.empty()) {
     moon::ModuleMetadata md;
     md.set_source_hash(sourceHash);
     md.set_version("1.0.0");
+    md.set_source_path(filePath);
     out.push_back(std::move(md));
   }
   return out;
@@ -286,9 +292,17 @@ std::optional<std::vector<moon::ModuleMetadata>> extractAllMetadataFromFile(
   }
   std::stringstream buffer;
   buffer << file.rdbuf();
+  // The bundle records where each module came from, so editors can open the
+  // library source behind an imported declaration
+  std::string sourcePath = filename;
+  try {
+    sourcePath = std::filesystem::canonical(filename).string();
+  } catch (const std::filesystem::filesystem_error&) {
+    sourcePath = std::filesystem::absolute(filename).string();
+  }
   return extractAllMetadataFromSource(
-      buffer.str(), filename,
-      std::filesystem::path(filename).parent_path().string());
+      buffer.str(), sourcePath,
+      std::filesystem::path(sourcePath).parent_path().string());
 }
 
 std::optional<std::vector<moon::ModuleMetadata>>
