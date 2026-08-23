@@ -6,6 +6,7 @@
 #include <fstream>
 #include <sstream>
 
+#include "moon_bundling/moon_cache.h"
 #include "parsing/parser.h"
 #include "support/sun_path.h"
 
@@ -48,7 +49,9 @@ ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
   }
 
   for (const auto& moonDep : manifest.getMoons()) {
-    std::string resolved = resolvePath(moonDep.path, baseDir);
+    std::string resolved =
+        moonDep.url ? MoonCache::fetch(*moonDep.url, moonDep.hash).string()
+                    : resolvePath(moonDep.path, baseDir);
     if (moonDep.rename.has_value()) {
       out.moonImports.emplace_back(resolved, moonDep.rename.value(),
                                    moonDep.rename.value());

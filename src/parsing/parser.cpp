@@ -2460,7 +2460,8 @@ std::vector<ManifestSunDependency> Parser::parseManifestSuns() {
 }
 
 // Parse moons array: [ "lib.moon", { path: "x.moon", hash: "def", rename:
-// "y" } ]
+// "y" }, { url: "https://example.com/lib.moon" } ]
+// A struct entry needs exactly one of 'path' or 'url'.
 std::vector<ManifestMoonDependency> Parser::parseManifestMoons() {
   expectCurrentTokenKind(TokenKind::BRACKET_OPEN,
                          "expected '[' after 'moons:'");
@@ -2496,6 +2497,8 @@ std::vector<ManifestMoonDependency> Parser::parseManifestMoons() {
 
         if (fieldName == "path") {
           dep.path = value;
+        } else if (fieldName == "url") {
+          dep.url = value;
         } else if (fieldName == "hash") {
           dep.hash = value;
         } else if (fieldName == "rename") {
@@ -2513,8 +2516,11 @@ std::vector<ManifestMoonDependency> Parser::parseManifestMoons() {
                              "expected '}' at end of moon dependency");
       getNextToken();  // eat '}'
 
-      if (dep.path.empty()) {
-        parsingError("moon dependency missing required 'path' field");
+      if (!dep.path.empty() && dep.url.has_value()) {
+        parsingError("moon dependency cannot have both 'path' and 'url'");
+      }
+      if (dep.path.empty() && !dep.url.has_value()) {
+        parsingError("moon dependency requires a 'path' or 'url' field");
       }
     } else {
       parsingError("expected string or '{' in moons array");

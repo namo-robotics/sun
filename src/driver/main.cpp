@@ -18,6 +18,7 @@
 #include "moon_bundling/library_cache.h"
 #include "moon_bundling/moon_builder.h"
 #include "moon_bundling/moon.h"
+#include "moon_bundling/moon_cache.h"
 #include "moon_bundling/moon_import.h"
 #include "parsing/parser.h"
 #include "support/sun_path.h"
@@ -63,6 +64,10 @@ static void printUsage(const char* programName) {
   llvm::errs() << "  --moon <spec>     Load precompiled .moon library\n";
   llvm::errs() << "                    Format: path.moon or "
                   "path.moon:module=alias\n";
+  llvm::errs() << "  --gh-token <tok>  GitHub token for manifest moon urls "
+                  "on private repos\n";
+  llvm::errs() << "                    (default: GH_TOKEN or GITHUB_TOKEN "
+                  "environment variable)\n";
   llvm::errs() << "  -h, --help        Show this help message\n";
   llvm::errs() << "  --version         Print version and git commit hash\n";
   llvm::errs() << "\nSubcommands:\n";
@@ -286,6 +291,8 @@ int main(int argc, char* argv[]) {
         return 1;
       }
       moonImports.push_back(std::move(*moonImport));
+    } else if (arg == "--gh-token" && i + 1 < argc) {
+      sun::MoonCache::setGithubToken(argv[++i]);
     } else if (arg == "-h" || arg == "--help") {
       printUsage(argv[0]);
       return 0;

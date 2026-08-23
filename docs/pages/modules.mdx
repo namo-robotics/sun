@@ -92,6 +92,63 @@ manifest {
 }
 ```
 
+### Moon Files from a URL
+
+A moon entry can point at a URL instead of a local path:
+
+```sun
+manifest {
+    moons: [{ url: "https://example.com/libs/mylib.moon" }]
+}
+```
+
+The compiler downloads the bundle with `curl` into `~/.sun/cache/moons/` on
+first use and reuses the cached copy afterwards, so later builds work offline.
+Supported schemes are `http://`, `https://` and `file://`. Set the
+`SUN_MOON_CACHE` environment variable to move the cache directory.
+
+Add a `hash` field to pin the bundle to its exact contents — the lowercase
+hex SHA-256 of the file (as printed by `sha256sum`):
+
+```sun
+manifest {
+    moons: [{
+        url: "https://example.com/libs/mylib.moon",
+        hash: "c2e6500466f386836814c860fffcd6fe3dc3f236230746ac977c07c82290613e"
+    }]
+}
+```
+
+When the cached copy no longer matches the hash, the bundle is downloaded
+again; if the fresh download still does not match, compilation fails. An
+entry has either a `path` or a `url`, never both; `hash` and `rename` work
+with either.
+
+#### Private GitHub Assets
+
+For a moon hosted on a private GitHub repository, pass a token with
+`--gh-token` (or set the `GH_TOKEN` or `GITHUB_TOKEN` environment variable,
+which also covers the language server):
+
+```bash
+sun --gh-token ghp_yourtoken main.sun
+```
+
+The token is sent as an `Authorization` header, and only to GitHub hosts
+(`github.com`, `*.github.com`, `*.githubusercontent.com`) — never to other
+servers. Private release assets must be fetched through the GitHub API asset
+URL, which returns the file itself when asked for `application/octet-stream`
+(the compiler sets that header for `api.github.com` automatically):
+
+```sun
+manifest {
+    moons: [{ url: "https://api.github.com/repos/OWNER/REPO/releases/assets/ASSET_ID" }]
+}
+```
+
+Files committed to a private repository work through
+`https://raw.githubusercontent.com/OWNER/REPO/BRANCH/path/lib.moon`.
+
 ### Creating Moon Files
 
 Create a moon from an entrypoint file with a manifest:

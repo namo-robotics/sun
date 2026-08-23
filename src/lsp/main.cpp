@@ -161,8 +161,15 @@ class EntrypointManager {
       return std::nullopt;
     }
 
-    auto resolved =
-        sun::ManifestProcessor::fromEntrypointFile(entrypointPath.string());
+    std::optional<sun::ResolvedManifest> resolved;
+    try {
+      resolved =
+          sun::ManifestProcessor::fromEntrypointFile(entrypointPath.string());
+    } catch (const std::exception&) {
+      // A failed moon download degrades to per-file mode instead of
+      // crashing the server.
+      return std::nullopt;
+    }
     if (!resolved) {
       return std::nullopt;
     }

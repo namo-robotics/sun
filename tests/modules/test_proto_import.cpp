@@ -114,6 +114,55 @@ TEST(Modules_ProtoImport, manifest_unknown_key_names_protos_in_error) {
   }
 }
 
+TEST(Modules_ProtoImport, manifest_moon_url_parses) {
+  std::unique_ptr<BlockExprAST> ast;
+  const auto* manifest = parseManifest(R"(
+    manifest {
+      moons: [{ url: "https://example.com/libs/mylib.moon", hash: "abc123", rename: "ml" }]
+    }
+    function main() i32 { return 0; }
+  )",
+                                       ast);
+  ASSERT_NE(manifest, nullptr);
+  ASSERT_EQ(manifest->getMoons().size(), 1u);
+  const auto& moon = manifest->getMoons()[0];
+  EXPECT_TRUE(moon.path.empty());
+  ASSERT_TRUE(moon.url.has_value());
+  EXPECT_EQ(*moon.url, "https://example.com/libs/mylib.moon");
+  ASSERT_TRUE(moon.hash.has_value());
+  EXPECT_EQ(*moon.hash, "abc123");
+  ASSERT_TRUE(moon.rename.has_value());
+  EXPECT_EQ(*moon.rename, "ml");
+}
+
+TEST(Modules_ProtoImport, manifest_moon_url_and_path_conflict) {
+  EXPECT_THROW(
+      {
+        std::unique_ptr<BlockExprAST> ast;
+        parseManifest(R"(
+          manifest {
+            moons: [{ path: "a.moon", url: "https://example.com/a.moon" }]
+          }
+          function main() i32 { return 0; }
+        )",
+                      ast);
+      },
+      std::exception);
+}
+
+TEST(Modules_ProtoImport, manifest_moon_requires_path_or_url) {
+  EXPECT_THROW(
+      {
+        std::unique_ptr<BlockExprAST> ast;
+        parseManifest(R"(
+          manifest { moons: [{ hash: "abc" }] }
+          function main() i32 { return 0; }
+        )",
+                      ast);
+      },
+      std::exception);
+}
+
 // ============================================================================
 // Serialization round-trip
 // ============================================================================
@@ -139,6 +188,36 @@ TEST(Modules_ProtoImport, manifest_protos_serialization_roundtrip) {
   ASSERT_EQ(manifest.getProtos().size(), 2u);
   EXPECT_EQ(manifest.getProtos()[0].path, "schemas/telemetry.proto");
   EXPECT_EQ(manifest.getProtos()[1].path, "schemas/control.proto");
+}
+
+TEST(Modules_ProtoImport, manifest_moon_url_serialization_roundtrip) {
+  std::vector<ManifestSunDependency> suns;
+  std::vector<ManifestMoonDependency> moons;
+  std::vector<ManifestProtoDependency> protos;
+  ManifestMoonDependency dep;
+  dep.url = "https://example.com/lib.moon";
+  dep.hash = "abc123";
+  moons.push_back(std::move(dep));
+  auto ast = std::make_unique<ManifestAST>(std::move(suns), std::move(moons),
+                                           std::move(protos));
+
+  sun::serialization::ASTSerializer serializer;
+  std::string data = serializer.serializeToString(*ast);
+
+  sun::serialization::ASTDeserializer deserializer;
+  auto restored = deserializer.deserializeFromString(data);
+
+  ASSERT_NE(restored, nullptr);
+  ASSERT_EQ(restored->getType(), ASTNodeType::MANIFEST);
+  const auto& manifest = static_cast<const ManifestAST&>(*restored);
+  ASSERT_EQ(manifest.getMoons().size(), 1u);
+  const auto& moon = manifest.getMoons()[0];
+  EXPECT_TRUE(moon.path.empty());
+  ASSERT_TRUE(moon.url.has_value());
+  EXPECT_EQ(*moon.url, "https://example.com/lib.moon");
+  ASSERT_TRUE(moon.hash.has_value());
+  EXPECT_EQ(*moon.hash, "abc123");
+  EXPECT_FALSE(moon.rename.has_value());
 }
 
 // ============================================================================
