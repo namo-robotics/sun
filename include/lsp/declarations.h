@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -10,6 +11,7 @@
 #include <vector>
 
 #include "ast/block_expr_ast.h"
+#include "ast/try_catch_expr_ast.h"
 #include "ast/type_annotation.h"
 #include "semantic_analysis/qualified_name.h"
 #include "semantic_analysis/types.h"
@@ -68,6 +70,10 @@ struct Target {
 std::optional<Target> locate(const BlockExprAST& program,
                              const std::string& documentPath, int offset);
 
+// First specialization of a generic class or function, with its bindings;
+// null when the node is not a generic template or was never used
+const ExprAST* firstSpecialization(const ExprAST& node, Bindings& bindings);
+
 // ---------------------------------------------------------------------------
 // Finding the declaration behind a symbol
 // ---------------------------------------------------------------------------
@@ -122,12 +128,62 @@ std::optional<Declaration> findDeclarationOf(
     const BlockExprAST& program, const std::vector<const ExprAST*>& chain,
     const ExprAST& node);
 
+// The member behind `object.member`: a module's item (the analyzer records
+// which module's in `resolvedQualifiedName`), or a field, method or variant
+// of the object's type. A match pattern's object carries no type, so a bare
+// name there is looked up as a type.
+std::optional<Declaration> findMemberDeclaration(
+    const BlockExprAST& program, const ExprAST& object,
+    const std::string& member, const std::string& resolvedQualifiedName);
+
+// The nearest enclosing function or lambda declaring `name` as a parameter
+std::optional<Declaration> findParameter(
+    const std::vector<const ExprAST*>& chain, const std::string& name);
+
+// The declaration a name-bearing node refers to: a local, a parameter, or
+// what findDeclarationOf finds. Used for the cursor and for every candidate
+// reference alike, so both land on the same declaration.
+std::optional<Declaration> resolveSymbol(
+    const BlockExprAST& program, const std::vector<const ExprAST*>& chain,
+    const ExprAST& node);
+
+// The declaration for a cursor on a definition's own header: the definition,
+// or the field, variant, parameter or binding written there
+std::optional<Declaration> ownDeclaration(const ExprAST& node, int offset,
+                                          const std::string& source);
+
+// The declaration behind the node under the cursor
+std::optional<Declaration> declarationUnder(const BlockExprAST& program,
+                                            const Target& target, int offset,
+                                            const std::string& source);
+
+// Where the symbol at byteOffset was declared: the type a written annotation
+// names, else the declaration behind the node under the cursor
+std::optional<Declaration> findDeclarationAt(const BlockExprAST& program,
+                                             const std::string& documentPath,
+                                             const std::string& source,
+                                             int byteOffset);
+
+// Catch clauses with the span that declares each one's binding: a binding
+// has no position of its own, so it is the text between the previous block
+// and the clause's body
+using CatchBindingFn =
+    std::function<void(const CatchClause&, const Position& header)>;
+void forEachCatchBinding(const TryCatchExprAST& tryCatch,
+                         const CatchBindingFn& fn);
+
 // Text of the file a declaration lives in: the document itself, or a file
 // registered during compilation (another file of the same manifest); empty
 // when neither
 std::string sourceFor(const Position& declaration,
                       const std::string& documentPath,
                       const std::string& documentSource);
+
+// Every annotation written on a node: parameter and return types, a
+// variable's or loop variable's type, field and payload types, type
+// arguments, catch binding types
+using AnnotationFn = std::function<void(const TypeAnnotation&)>;
+void forEachAnnotation(const ExprAST& node, const AnnotationFn& fn);
 
 // The annotation under the cursor among those written on a node, or null
 const TypeAnnotation* annotationIn(const ExprAST& node, int offset);

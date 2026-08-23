@@ -194,6 +194,8 @@ add_library(sun_lib
     src/lsp/declarations.cpp
     src/lsp/hover.cpp
     src/lsp/definition.cpp
+    src/lsp/name_ranges.cpp
+    src/lsp/references.cpp
     # Add other implementation files here (but NOT main.cpp)
 )
 

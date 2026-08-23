@@ -51,7 +51,7 @@ size_t offsetOf(const std::string& source, const std::string& needle,
   return pos;
 }
 
-std::optional<sun::lsp::DefinitionLocation> definitionAt(
+std::optional<sun::lsp::SymbolLocation> definitionAt(
     const std::string& source, const std::string& needle,
     bool withStdlib = false, int occurrence = 0) {
   size_t pos = offsetOf(source, needle, occurrence);
@@ -68,7 +68,7 @@ std::optional<sun::lsp::DefinitionLocation> definitionAt(
 }
 
 std::string rangeText(const std::string& text,
-                      const sun::lsp::DefinitionLocation& def) {
+                      const sun::lsp::SymbolLocation& def) {
   return text.substr(def.range.offset,
                      def.range.endOffset.value_or(def.range.offset) -
                          def.range.offset);
