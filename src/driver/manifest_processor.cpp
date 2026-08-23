@@ -2,15 +2,69 @@
 
 #include "driver/manifest_processor.h"
 
+#include <cctype>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <sstream>
 
 #include "moon_bundling/moon_cache.h"
 #include "parsing/parser.h"
+#include "support/error.h"
 #include "support/sun_path.h"
 
 namespace sun {
+
+namespace {
+std::map<std::string, std::string>& pathVariables() {
+  static std::map<std::string, std::string> vars;
+  return vars;
+}
+}  // namespace
+
+void ManifestProcessor::setPathVariable(const std::string& name,
+                                        const std::string& value) {
+  pathVariables()[name] = value;
+}
+
+void ManifestProcessor::clearPathVariables() { pathVariables().clear(); }
+
+std::string ManifestProcessor::expandPathVariables(const std::string& input) {
+  std::string out;
+  size_t i = 0;
+  while (i < input.size()) {
+    if (input[i] != '$') {
+      out += input[i++];
+      continue;
+    }
+    size_t nameStart = i + 1;
+    size_t nameEnd = nameStart;
+    while (nameEnd < input.size() &&
+           (std::isalnum(static_cast<unsigned char>(input[nameEnd])) ||
+            input[nameEnd] == '_')) {
+      ++nameEnd;
+    }
+    if (nameEnd == nameStart) {
+      logAndThrowError("expected a variable name after '$' in manifest entry '" +
+                       input + "'");
+    }
+    std::string name = input.substr(nameStart, nameEnd - nameStart);
+    auto it = pathVariables().find(name);
+    if (it != pathVariables().end()) {
+      out += it->second;
+    } else if (const char* env = std::getenv(name.c_str())) {
+      out += env;
+    } else {
+      logAndThrowError("undefined path variable '$" + name +
+                       "' in manifest entry '" + input +
+                       "'; define it with --path-var " + name +
+                       "=<dir> or in the environment");
+    }
+    i = nameEnd;
+  }
+  return out;
+}
 
 const ManifestAST* ManifestProcessor::findManifest(
     const BlockExprAST& program) {
@@ -45,13 +99,16 @@ ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
   out.baseDir = baseDir;
 
   for (const auto& sunDep : manifest.getSuns()) {
-    out.sunFiles.push_back(resolvePath(sunDep.path, baseDir));
+    out.sunFiles.push_back(
+        resolvePath(expandPathVariables(sunDep.path), baseDir));
   }
 
   for (const auto& moonDep : manifest.getMoons()) {
     std::string resolved =
-        moonDep.url ? MoonCache::fetch(*moonDep.url, moonDep.hash).string()
-                    : resolvePath(moonDep.path, baseDir);
+        moonDep.url
+            ? MoonCache::fetch(expandPathVariables(*moonDep.url), moonDep.hash)
+                  .string()
+            : resolvePath(expandPathVariables(moonDep.path), baseDir);
     if (moonDep.rename.has_value()) {
       out.moonImports.emplace_back(resolved, moonDep.rename.value(),
                                    moonDep.rename.value());
@@ -61,7 +118,8 @@ ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
   }
 
   for (const auto& protoDep : manifest.getProtos()) {
-    out.protoFiles.push_back(resolvePath(protoDep.path, baseDir));
+    out.protoFiles.push_back(
+        resolvePath(expandPathVariables(protoDep.path), baseDir));
   }
 
   return out;

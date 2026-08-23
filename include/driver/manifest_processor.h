@@ -3,7 +3,8 @@
 // paths (relative to the entrypoint's directory, then SUN_PATH), and split
 // the entries into .sun files, .moon imports and .proto schemas. Moon
 // entries with a url are fetched into the download cache (MoonCache) and
-// resolved to the cached file.
+// resolved to the cached file. Entries may reference path variables
+// ("$LIBS/util.moon"), set with --path-var or taken from the environment.
 
 #pragma once
 
@@ -33,6 +34,18 @@ class ManifestProcessor {
   // through SUN_PATH, else returned unchanged (errors surface later)
   static std::string resolvePath(const std::string& path,
                                  const std::string& baseDir);
+
+  // Define a path variable for manifest entries (--path-var NAME=DIR)
+  static void setPathVariable(const std::string& name,
+                              const std::string& value);
+
+  // Drop all defined path variables (used by tests)
+  static void clearPathVariables();
+
+  // Replace every $NAME in a manifest entry with the variable's value —
+  // --path-var definitions first, then the environment. Throws SunError for
+  // a variable defined in neither.
+  static std::string expandPathVariables(const std::string& input);
 
   // Resolve every entry of a manifest against baseDir
   static ResolvedManifest process(const ManifestAST& manifest,

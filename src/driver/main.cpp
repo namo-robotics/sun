@@ -13,6 +13,7 @@
 #include "ast/manifest_ast.h"
 #include "driver/compiler.h"
 #include "driver/driver.h"
+#include "driver/manifest_processor.h"
 #include "support/error.h"
 #include "parsing/formatter.h"
 #include "moon_bundling/library_cache.h"
@@ -68,6 +69,11 @@ static void printUsage(const char* programName) {
                   "on private repos\n";
   llvm::errs() << "                    (default: GH_TOKEN or GITHUB_TOKEN "
                   "environment variable)\n";
+  llvm::errs() << "  --path-var NAME=<dir>\n";
+  llvm::errs() << "                    Define $NAME for manifest entries, "
+                  "e.g. suns: [\"$NAME/util.sun\"]\n";
+  llvm::errs() << "                    (undefined names fall back to the "
+                  "environment)\n";
   llvm::errs() << "  -h, --help        Show this help message\n";
   llvm::errs() << "  --version         Print version and git commit hash\n";
   llvm::errs() << "\nSubcommands:\n";
@@ -293,6 +299,16 @@ int main(int argc, char* argv[]) {
       moonImports.push_back(std::move(*moonImport));
     } else if (arg == "--gh-token" && i + 1 < argc) {
       sun::MoonCache::setGithubToken(argv[++i]);
+    } else if (arg == "--path-var" && i + 1 < argc) {
+      std::string spec = argv[++i];
+      auto eq = spec.find('=');
+      if (eq == std::string::npos || eq == 0) {
+        llvm::errs() << "Invalid --path-var format: " << spec << "\n";
+        llvm::errs() << "Expected: NAME=<dir>\n";
+        return 1;
+      }
+      sun::ManifestProcessor::setPathVariable(spec.substr(0, eq),
+                                              spec.substr(eq + 1));
     } else if (arg == "-h" || arg == "--help") {
       printUsage(argv[0]);
       return 0;

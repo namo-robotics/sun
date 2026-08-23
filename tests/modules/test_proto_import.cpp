@@ -246,6 +246,88 @@ TEST(Modules_ProtoImport, manifest_processor_resolves_protos_relative_to_base) {
   EXPECT_TRUE(resolved->sunFiles.empty());
 }
 
+TEST(Modules_ProtoImport, manifest_path_variables_expand_in_all_entry_kinds) {
+  fs::path dir = fs::temp_directory_path() / "sun_pathvar_test";
+  fs::remove_all(dir);
+  fs::create_directories(dir / "libs");
+  {
+    std::ofstream out(dir / "libs" / "helper.sun");
+    out << "public function helper() i32 { return 1; }\n";
+  }
+  {
+    std::ofstream out(dir / "libs" / "t.proto");
+    out << "syntax = \"proto3\";\n";
+  }
+  {
+    std::ofstream out(dir / "main.sun");
+    out << "manifest {\n"
+           "  suns: [\"$TESTLIBS/helper.sun\"]\n"
+           "  moons: [\"$TESTLIBS/lib.moon\"]\n"
+           "  protos: [\"$TESTLIBS/t.proto\"]\n"
+           "}\n"
+           "function main() i32 { return 0; }\n";
+  }
+
+  sun::ManifestProcessor::setPathVariable("TESTLIBS",
+                                          (dir / "libs").string());
+  auto resolved =
+      sun::ManifestProcessor::fromEntrypointFile((dir / "main.sun").string());
+  sun::ManifestProcessor::clearPathVariables();
+
+  ASSERT_TRUE(resolved.has_value());
+  ASSERT_EQ(resolved->sunFiles.size(), 1u);
+  EXPECT_EQ(fs::path(resolved->sunFiles[0]).lexically_normal(),
+            (dir / "libs" / "helper.sun").lexically_normal());
+  ASSERT_EQ(resolved->moonImports.size(), 1u);
+  EXPECT_EQ(fs::path(resolved->moonImports[0].path).lexically_normal(),
+            (dir / "libs" / "lib.moon").lexically_normal());
+  ASSERT_EQ(resolved->protoFiles.size(), 1u);
+  EXPECT_EQ(fs::path(resolved->protoFiles[0]).lexically_normal(),
+            (dir / "libs" / "t.proto").lexically_normal());
+}
+
+TEST(Modules_ProtoImport, manifest_path_variable_falls_back_to_environment) {
+  fs::path dir = fs::temp_directory_path() / "sun_pathvar_env_test";
+  fs::remove_all(dir);
+  fs::create_directories(dir);
+  {
+    std::ofstream out(dir / "main.sun");
+    out << "manifest { moons: [\"$SUN_TEST_ENV_LIBS/lib.moon\"] }\n"
+           "function main() i32 { return 0; }\n";
+  }
+
+  sun::ManifestProcessor::clearPathVariables();
+  setenv("SUN_TEST_ENV_LIBS", "/opt/sunlibs", 1);
+  auto resolved =
+      sun::ManifestProcessor::fromEntrypointFile((dir / "main.sun").string());
+  unsetenv("SUN_TEST_ENV_LIBS");
+
+  ASSERT_TRUE(resolved.has_value());
+  ASSERT_EQ(resolved->moonImports.size(), 1u);
+  EXPECT_EQ(resolved->moonImports[0].path, "/opt/sunlibs/lib.moon");
+}
+
+TEST(Modules_ProtoImport, manifest_undefined_path_variable_is_an_error) {
+  fs::path dir = fs::temp_directory_path() / "sun_pathvar_undef_test";
+  fs::remove_all(dir);
+  fs::create_directories(dir);
+  {
+    std::ofstream out(dir / "main.sun");
+    out << "manifest { suns: [\"$SUN_TEST_NO_SUCH_VAR/x.sun\"] }\n"
+           "function main() i32 { return 0; }\n";
+  }
+
+  sun::ManifestProcessor::clearPathVariables();
+  unsetenv("SUN_TEST_NO_SUCH_VAR");
+  try {
+    sun::ManifestProcessor::fromEntrypointFile((dir / "main.sun").string());
+    FAIL() << "expected an undefined-variable error";
+  } catch (const SunError& e) {
+    EXPECT_NE(std::string(e.what()).find("SUN_TEST_NO_SUCH_VAR"),
+              std::string::npos);
+  }
+}
+
 TEST(Modules_ProtoImport, manifest_processor_returns_nullopt_without_manifest) {
   fs::path dir = fs::temp_directory_path() / "sun_proto_manifest_test2";
   fs::create_directories(dir);
