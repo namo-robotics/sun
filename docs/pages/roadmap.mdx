@@ -54,13 +54,15 @@ they bounce off a language.
 ## 4. Language Server Navigation
 
 The LSP serves diagnostics, formatting, semantic tokens, hover type
-information and go-to-definition today, plus a VS Code extension in
-`extensions/vscode-sun`. The remaining navigation features are the gap.
+information, go-to-definition and find references today, plus a VS Code
+extension in `extensions/vscode-sun`. The remaining navigation features are
+the gap.
 
 - [x] Go-to-definition, including into library sources: a `.moon` bundle
       records each module's source file, so a symbol from `stdlib.moon`
       opens the declaration in `stdlib/*.sun` when that file is on disk.
-- [ ] Find references
+- [x] Find references, across the files of a manifest. Uses inside a `.moon`
+      bundle are not listed: bundles carry no function bodies.
 - [x] Hover type info, with the comment above the symbol's declaration.
       Inside a generic body the types come from the first specialization,
       printed in terms of the type parameters; a generic that is never used

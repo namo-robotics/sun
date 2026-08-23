@@ -20,6 +20,7 @@
 #include "parsing/formatter.h"
 #include "parsing/lexer.h"
 #include "lsp/definition.h"
+#include "lsp/references.h"
 #include "lsp/hover.h"
 #include "lsp/text_positions.h"
 #include "driver/manifest_processor.h"
@@ -993,6 +994,7 @@ int main() {
       capabilities["documentFormattingProvider"] = true;
       capabilities["hoverProvider"] = true;
       capabilities["definitionProvider"] = true;
+      capabilities["referencesProvider"] = true;
 
       llvm::json::Object serverInfo;
       serverInfo["name"] = "sun-lsp";
@@ -1372,7 +1374,7 @@ int main() {
 
       const OpenDocument& document = documentIter->second;
       const AnalyzedDocument* analyzed = getAnalyzedDocument(document);
-      std::optional<sun::lsp::DefinitionLocation> definition;
+      std::optional<sun::lsp::SymbolLocation> definition;
       if (analyzed) {
         int offset = sun::lsp::byteOffsetFromLspPosition(document.text, line,
                                                          character);
@@ -1394,6 +1396,76 @@ int main() {
           makeRange(definition->start.line, definition->start.character,
                     definition->end.line, definition->end.character);
       sendResponse(*id, std::move(location));
+      continue;
+    }
+
+    if (methodName == "textDocument/references" && params) {
+      if (!id) continue;
+
+      llvm::json::Object* textDocument = nullptr;
+      if (llvm::json::Value* rawTextDocument = params->get("textDocument")) {
+        textDocument = rawTextDocument->getAsObject();
+      }
+      if (!textDocument) {
+        sendErrorResponse(*id, -32602, "Missing textDocument parameter");
+        continue;
+      }
+
+      std::optional<llvm::StringRef> uri = textDocument->getString("uri");
+      if (!uri) {
+        sendErrorResponse(*id, -32602, "Missing textDocument.uri");
+        continue;
+      }
+
+      llvm::json::Object* position = nullptr;
+      if (llvm::json::Value* rawPosition = params->get("position")) {
+        position = rawPosition->getAsObject();
+      }
+      if (!position) {
+        sendErrorResponse(*id, -32602, "Missing position parameter");
+        continue;
+      }
+      int line = static_cast<int>(position->getInteger("line").value_or(0));
+      int character =
+          static_cast<int>(position->getInteger("character").value_or(0));
+
+      bool includeDeclaration = false;
+      if (llvm::json::Object* context = params->getObject("context")) {
+        includeDeclaration =
+            context->getBoolean("includeDeclaration").value_or(false);
+      }
+
+      auto documentIter = openDocuments.find(uri->str());
+      if (documentIter == openDocuments.end()) {
+        sendErrorResponse(*id, -32602, "Document not open");
+        continue;
+      }
+
+      const OpenDocument& document = documentIter->second;
+      const AnalyzedDocument* analyzed = getAnalyzedDocument(document);
+      std::vector<sun::lsp::SymbolLocation> references;
+      if (analyzed) {
+        int offset = sun::lsp::byteOffsetFromLspPosition(document.text, line,
+                                                         character);
+        try {
+          references = sun::lsp::computeReferences(
+              *analyzed->ast, document.path, document.text, offset,
+              includeDeclaration);
+        } catch (const std::exception&) {
+          references.clear();
+        }
+      }
+
+      llvm::json::Array locations;
+      for (const auto& reference : references) {
+        llvm::json::Object location;
+        location["uri"] = pathToUri(reference.filePath);
+        location["range"] =
+            makeRange(reference.start.line, reference.start.character,
+                      reference.end.line, reference.end.character);
+        locations.push_back(std::move(location));
+      }
+      sendResponse(*id, std::move(locations));
       continue;
     }
 
