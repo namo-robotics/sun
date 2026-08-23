@@ -256,6 +256,7 @@ message PackExpansion {
 
 message BlockExpr {
   repeated ASTNode body = 1;
+  optional Position location = 2;  // Span of the braces
 }
 
 message IfExpr {
@@ -361,6 +362,9 @@ message FunctionDef {
   bool is_c_extern = 4;
   bool body_present = 5;  // Distinguishes "no body" from "empty body"
   Visibility visibility = 6;
+  // Span of the whole declaration, for functions stored without a node
+  // wrapper: class and interface methods, and .moon bundle exports
+  optional Position location = 7;
 }
 
 message LambdaExpr {
@@ -470,6 +474,7 @@ message ClassDef {
   bool is_packed = 7;  // packed_class: fields laid out with no padding
   Visibility visibility = 8;
   string doc = 9;  // Comment written above the class
+  optional Position location = 10;  // Declaration span (bundle exports only)
 }
 
 // Interface field declaration
@@ -495,6 +500,7 @@ message InterfaceDef {
   repeated InterfaceMethod methods = 4;
   Visibility visibility = 5;
   string doc = 6;  // Comment written above the interface
+  optional Position location = 7;  // Declaration span (bundle exports only)
 }
 
 // Enum variant declaration
@@ -512,6 +518,7 @@ message EnumDef {
   repeated string type_parameters = 3;  // generic enums: enum Option<T>
   Visibility visibility = 4;
   string doc = 5;  // Comment written above the enum
+  optional Position location = 6;  // Declaration span (bundle exports only)
 }
 
 message ThisExpr {

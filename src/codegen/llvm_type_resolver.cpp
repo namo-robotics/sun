@@ -264,6 +264,13 @@ Type* LLVMTypeResolver::resolve(const sun::Type& type) {
       result = nullptr;
       break;
     }
+
+    case sun::Type::Kind::Module: {
+      // A module name is only ever the left side of `m.item`; it has no
+      // runtime value
+      result = nullptr;
+      break;
+    }
   }
 
   // Cache the result

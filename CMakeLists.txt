@@ -191,7 +191,9 @@ add_library(sun_lib
     src/debug/ast_dot_generator.cpp
     src/debug/scope_tree_generator.cpp
     # Language server helpers (the sun-lsp executable is src/lsp/main.cpp)
+    src/lsp/declarations.cpp
     src/lsp/hover.cpp
+    src/lsp/definition.cpp
     # Add other implementation files here (but NOT main.cpp)
 )
 

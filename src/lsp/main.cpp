@@ -19,6 +19,7 @@
 #include "support/error.h"
 #include "parsing/formatter.h"
 #include "parsing/lexer.h"
+#include "lsp/definition.h"
 #include "lsp/hover.h"
 #include "lsp/text_positions.h"
 #include "driver/manifest_processor.h"
@@ -377,6 +378,24 @@ std::string uriToPath(const std::string& uri) {
   return pathPart;
 }
 
+// `file://` URI for an absolute path; bytes outside the unreserved set are
+// percent-encoded (the inverse of uriToPath)
+std::string pathToUri(const std::string& path) {
+  static const char* hex = "0123456789ABCDEF";
+  std::string uri = "file://";
+  for (unsigned char ch : path) {
+    if (std::isalnum(ch) || ch == '-' || ch == '.' || ch == '_' || ch == '~' ||
+        ch == '/') {
+      uri.push_back(static_cast<char>(ch));
+    } else {
+      uri.push_back('%');
+      uri.push_back(hex[ch >> 4]);
+      uri.push_back(hex[ch & 15]);
+    }
+  }
+  return uri;
+}
+
 std::string toJsonPayload(llvm::json::Value value) {
   return llvm::formatv("{0}", std::move(value)).str();
 }
@@ -716,6 +735,19 @@ llvm::json::Array analyzeDiagnostics(const OpenDocument& document) {
       diagnostic["source"] = "sun";
       diagnostic["message"] = error.getMessage();
       diagnostics.push_back(std::move(diagnostic));
+    } else {
+      // An error in another file (a manifest sibling, or a library body
+      // instantiated from a bundle) is shown at the top of this document,
+      // naming where it came from
+      const Position& location = *error.getLocation();
+      llvm::json::Object diagnostic;
+      diagnostic["range"] = makeRange(0, 0, 0, 1);
+      diagnostic["severity"] = 1;
+      diagnostic["source"] = "sun";
+      diagnostic["message"] = *location.filePath + ":" +
+                              std::to_string(location.line) + ": " +
+                              error.getMessage();
+      diagnostics.push_back(std::move(diagnostic));
     }
   } catch (const std::exception& error) {
     llvm::json::Object diagnostic;
@@ -960,6 +992,7 @@ int main() {
           std::move(semanticTokensProvider);
       capabilities["documentFormattingProvider"] = true;
       capabilities["hoverProvider"] = true;
+      capabilities["definitionProvider"] = true;
 
       llvm::json::Object serverInfo;
       serverInfo["name"] = "sun-lsp";
@@ -1298,6 +1331,69 @@ int main() {
       result["range"] =
           makeRange(start.line, start.character, end.line, end.character);
       sendResponse(*id, std::move(result));
+      continue;
+    }
+
+    if (methodName == "textDocument/definition" && params) {
+      if (!id) continue;
+
+      llvm::json::Object* textDocument = nullptr;
+      if (llvm::json::Value* rawTextDocument = params->get("textDocument")) {
+        textDocument = rawTextDocument->getAsObject();
+      }
+      if (!textDocument) {
+        sendErrorResponse(*id, -32602, "Missing textDocument parameter");
+        continue;
+      }
+
+      std::optional<llvm::StringRef> uri = textDocument->getString("uri");
+      if (!uri) {
+        sendErrorResponse(*id, -32602, "Missing textDocument.uri");
+        continue;
+      }
+
+      llvm::json::Object* position = nullptr;
+      if (llvm::json::Value* rawPosition = params->get("position")) {
+        position = rawPosition->getAsObject();
+      }
+      if (!position) {
+        sendErrorResponse(*id, -32602, "Missing position parameter");
+        continue;
+      }
+      int line = static_cast<int>(position->getInteger("line").value_or(0));
+      int character =
+          static_cast<int>(position->getInteger("character").value_or(0));
+
+      auto documentIter = openDocuments.find(uri->str());
+      if (documentIter == openDocuments.end()) {
+        sendErrorResponse(*id, -32602, "Document not open");
+        continue;
+      }
+
+      const OpenDocument& document = documentIter->second;
+      const AnalyzedDocument* analyzed = getAnalyzedDocument(document);
+      std::optional<sun::lsp::DefinitionLocation> definition;
+      if (analyzed) {
+        int offset = sun::lsp::byteOffsetFromLspPosition(document.text, line,
+                                                         character);
+        try {
+          definition = sun::lsp::computeDefinition(
+              *analyzed->ast, document.path, document.text, offset);
+        } catch (const std::exception&) {
+          definition.reset();
+        }
+      }
+      if (!definition) {
+        sendResponse(*id, llvm::json::Value(nullptr));
+        continue;
+      }
+
+      llvm::json::Object location;
+      location["uri"] = pathToUri(definition->filePath);
+      location["range"] =
+          makeRange(definition->start.line, definition->start.character,
+                    definition->end.line, definition->end.character);
+      sendResponse(*id, std::move(location));
       continue;
     }
 

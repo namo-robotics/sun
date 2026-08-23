@@ -53,6 +53,11 @@ class ASTSerializer {
   // Set common ExprAST fields on the proto message
   void serializeExprBase(const ExprAST& expr, ast::ASTNode* node) const;
 
+  // Statements and span of a block that is stored without a node wrapper
+  // (function bodies, module bodies, try and catch blocks)
+  void serializeBlockInto(const BlockExprAST& block,
+                          ast::BlockExpr* proto) const;
+
   // Individual node type serializers (dispatch by ASTNodeType)
   void serializeNumber(const NumberExprAST& expr, ast::ASTNode* node) const;
   void serializeString(const StringLiteralAST& expr, ast::ASTNode* node) const;
