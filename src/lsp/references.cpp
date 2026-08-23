@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <map>
 #include <optional>
 #include <set>
 #include <tuple>
@@ -22,31 +23,58 @@ namespace sun::lsp {
 
 namespace {
 
-// Identity of a declaration: where it is. Specialization clones keep the
-// template's spans, so a declaration reached through a clone and through
-// the template compare equal. Parameters share their function's span and
-// are told apart by name.
-struct DeclarationKey {
-  std::string file;
-  int offset = 0;
-  int end = -1;
-  std::string parameter;
-  bool operator==(const DeclarationKey&) const = default;
-};
+// The key of a declaration known to live in `normalizedFile`
+DeclarationKey keyIn(const Declaration& declaration,
+                     std::string normalizedFile) {
+  DeclarationKey key;
+  key.file = std::move(normalizedFile);
+  key.offset = declaration.location.offset;
+  key.end = declaration.location.endOffset.value_or(-1);
+  const PrototypeAST* proto =
+      declaration.node ? prototypeOf(*declaration.node) : nullptr;
+  if (proto && declaresParameter(*proto, declaration.name)) {
+    key.parameter = declaration.name;
+  }
+  return key;
+}
 
-// Gathers the matching ranges, one per span, with the text of each file
+}  // namespace
+
+DeclarationKey declarationKey(const Declaration& declaration,
+                              const std::string& file) {
+  return keyIn(declaration,
+               normalizePath(declaration.location.filePath.value_or(file)));
+}
+
+namespace {
+
+// Gathers the ranges naming any of the targets, one per span, with the
+// text of each file
 class Collector {
  public:
   Collector(std::string documentPath, const std::string& source)
       : documentPath_(std::move(documentPath)), source_(source) {}
 
-  // A location without a file belongs to `file`
-  void setTarget(const Declaration& declaration, const std::string& file) {
-    target_ = keyOf(declaration, file);
+  void addTarget(const Declaration& declaration, const std::string& file) {
+    DeclarationKey key = keyOf(declaration, file);
+    if (std::find(targets_.begin(), targets_.end(), key) == targets_.end()) {
+      targets_.push_back(std::move(key));
+    }
+  }
+
+  size_t targetCount() const { return targets_.size(); }
+
+  // Index of the target a declaration is, or -1
+  int indexOf(const Declaration& declaration, const std::string& file) {
+    DeclarationKey key = keyOf(declaration, file);
+    for (size_t i = 0; i < targets_.size(); ++i) {
+      if (targets_[i] == key) return static_cast<int>(i);
+    }
+    return -1;
   }
 
   bool matches(const Declaration& declaration, const std::string& file) {
-    return keyOf(declaration, file) == target_;
+    return indexOf(declaration, file) >= 0;
   }
 
   // Text of a file, or null when it cannot be read
@@ -61,14 +89,19 @@ class Collector {
     return cached->second ? &*cached->second : nullptr;
   }
 
-  void add(const std::string& file, int offset, int end) {
+  void add(const std::string& file, int offset, int end,
+           bool isDeclaration = false) {
     if (end <= offset) return;
-    ranges_.emplace(normalize(file), offset, end);
+    auto [entry, inserted] = ranges_.emplace(
+        std::make_tuple(normalize(file), offset, end), isDeclaration);
+    if (!inserted && !isDeclaration) entry->second = false;
   }
 
-  std::vector<SymbolLocation> results() {
+  std::vector<SymbolLocation> results(bool includeDeclarations) {
     std::vector<SymbolLocation> locations;
-    for (const auto& [file, offset, end] : ranges_) {
+    for (const auto& [span, isDeclaration] : ranges_) {
+      if (isDeclaration && !includeDeclarations) continue;
+      const auto& [file, offset, end] = span;
       const std::string* source = text(file);
       if (!source) continue;
       Position range;
@@ -89,26 +122,20 @@ class Collector {
     return cached->second;
   }
 
+  // declarationKey with the path normalization cached
   DeclarationKey keyOf(const Declaration& declaration,
                        const std::string& file) {
-    DeclarationKey key;
-    key.file = normalize(declaration.location.filePath.value_or(file));
-    key.offset = declaration.location.offset;
-    key.end = declaration.location.endOffset.value_or(-1);
-    const PrototypeAST* proto =
-        declaration.node ? prototypeOf(*declaration.node) : nullptr;
-    if (proto && declaresParameter(*proto, declaration.name)) {
-      key.parameter = declaration.name;
-    }
-    return key;
+    return keyIn(declaration,
+                 normalize(declaration.location.filePath.value_or(file)));
   }
 
   std::string documentPath_;
   const std::string& source_;
-  DeclarationKey target_;
+  std::vector<DeclarationKey> targets_;
   std::unordered_map<std::string, std::string> normalized_;
   std::unordered_map<std::string, std::optional<std::string>> texts_;
-  std::set<std::tuple<std::string, int, int>> ranges_;
+  // Each range, flagged when it is only a declaration's name
+  std::map<std::tuple<std::string, int, int>, bool> ranges_;
 };
 
 // An annotation and every one nested in it: type arguments, element,
@@ -132,16 +159,17 @@ void forEachNestedAnnotation(
 }
 
 // Finds names written in the tree as parsed: type names in annotations and
-// `implements` lists, and (when asked) the declarations themselves.
-// Specialization clones carry no annotation spans, so this walks the
-// templates.
+// `implements` lists, and the declarations themselves. Specialization
+// clones carry no annotation spans, so this walks the templates.
 class DeclaredNameFinder {
  public:
-  DeclaredNameFinder(const BlockExprAST& program, bool includeDeclaration,
-                     Collector& out)
-      : program_(program), includeDeclaration_(includeDeclaration), out_(out) {}
+  DeclaredNameFinder(const BlockExprAST& program, Collector& out)
+      : program_(program), out_(out) {}
 
-  bool foundDeclaration() const { return foundDeclaration_; }
+  // Every target's declaration was met in the tree
+  bool foundAllDeclarations() const {
+    return found_.size() == out_.targetCount();
+  }
 
   void visit(const ExprAST& node, const std::string& inheritedFile) {
     if (node.getType() == ASTNodeType::MOON_SCOPE) return;
@@ -154,7 +182,7 @@ class DeclaredNameFinder {
         collectImplements(static_cast<const ClassDefinitionAST&>(node), file,
                           *text);
       }
-      if (includeDeclaration_) collectDeclarations(node, file, *text);
+      collectDeclarations(node, file, *text);
     }
     forEachChild(node, [&](const ExprAST& child) { visit(child, file); });
   }
@@ -202,10 +230,12 @@ class DeclaredNameFinder {
   void collectDeclarations(const ExprAST& node, const std::string& file,
                            const std::string& text) {
     auto consider = [&](const Declaration& declaration) {
-      if (!out_.matches(declaration, file)) return;
+      int index = out_.indexOf(declaration, file);
+      if (index < 0) return;
       Position range = nameRangeOf(declaration, text);
-      out_.add(file, range.offset, range.endOffset.value_or(range.offset));
-      foundDeclaration_ = true;
+      out_.add(file, range.offset, range.endOffset.value_or(range.offset),
+               true);
+      found_.insert(index);
     };
     switch (node.getType()) {
       case ASTNodeType::FUNCTION:
@@ -278,9 +308,8 @@ class DeclaredNameFinder {
   }
 
   const BlockExprAST& program_;
-  bool includeDeclaration_;
   Collector& out_;
-  bool foundDeclaration_ = false;
+  std::set<int> found_;  // Indices of the targets whose declaration was met
 };
 
 // Finds the uses: every expression naming a symbol, resolved the way the
@@ -435,6 +464,130 @@ class UseFinder {
 
 }  // namespace
 
+namespace {
+
+// Every class and interface definition in the tree, templates included
+void forEachTypeDefinition(const ExprAST& node,
+                           const std::function<void(const ExprAST&)>& fn) {
+  if (node.getType() == ASTNodeType::MOON_SCOPE) return;
+  if (node.getType() == ASTNodeType::CLASS_DEFINITION ||
+      node.getType() == ASTNodeType::INTERFACE_DEFINITION) {
+    fn(node);
+  }
+  forEachChild(node,
+               [&](const ExprAST& child) { forEachTypeDefinition(child, fn); });
+}
+
+// Members of the interfaces the compiler declares itself, with no node in
+// any tree
+bool isBuiltinInterfaceMember(const std::string& interface,
+                              const std::string& member) {
+  return interface == "IError" && (member == "code" || member == "message");
+}
+
+// Builds a MemberGroup, deduplicating by declaration key
+class GroupBuilder {
+ public:
+  GroupBuilder(const BlockExprAST& program, const std::string& documentPath)
+      : program_(program), documentPath_(documentPath) {}
+
+  MemberGroup around(const Declaration& member) {
+    if (member.name.empty()) return {{member}, ""};
+    const ExprAST* owner = nullptr;
+    forEachTypeDefinition(program_, [&](const ExprAST& def) {
+      std::optional<Declaration> own = findMember(def, member.name);
+      if (own && sameDeclaration(*own, member)) owner = &def;
+    });
+    if (!owner) return {{member}, ""};
+    name_ = member.name;
+    add(member);
+    if (owner->getType() == ASTNodeType::INTERFACE_DEFINITION) {
+      addImplementers(*owner);
+    } else {
+      const auto& cls = static_cast<const ClassDefinitionAST&>(*owner);
+      for (const auto& iface : cls.getImplementedInterfaces()) {
+        const ExprAST* decl = findDeclaration(program_, iface.name, {});
+        if (!decl) {
+          if (isBuiltinInterfaceMember(iface.name, name_)) {
+            group_.builtinInterface = iface.name;
+          }
+          continue;
+        }
+        std::optional<Declaration> shared = findMember(*decl, name_);
+        if (!shared) continue;
+        add(*shared);
+        addImplementers(*decl);
+      }
+    }
+    return std::move(group_);
+  }
+
+ private:
+  bool sameDeclaration(const Declaration& a, const Declaration& b) const {
+    return declarationKey(a, documentPath_) == declarationKey(b, documentPath_);
+  }
+
+  void add(const Declaration& declaration) {
+    DeclarationKey key = declarationKey(declaration, documentPath_);
+    if (std::find(keys_.begin(), keys_.end(), key) != keys_.end()) return;
+    keys_.push_back(std::move(key));
+    group_.members.push_back(declaration);
+  }
+
+  // The member in every class implementing `interface`
+  void addImplementers(const ExprAST& interface) {
+    forEachTypeDefinition(program_, [&](const ExprAST& def) {
+      if (def.getType() != ASTNodeType::CLASS_DEFINITION) return;
+      const auto& cls = static_cast<const ClassDefinitionAST&>(def);
+      bool implements = false;
+      for (const auto& iface : cls.getImplementedInterfaces()) {
+        const ExprAST* decl = findDeclaration(program_, iface.name, {});
+        if (decl && sameDeclaration(declarationOf(*decl),
+                                    declarationOf(interface))) {
+          implements = true;
+          break;
+        }
+      }
+      if (!implements) return;
+      if (std::optional<Declaration> own = findMember(def, name_)) add(*own);
+    });
+  }
+
+  const BlockExprAST& program_;
+  const std::string& documentPath_;
+  std::string name_;
+  std::vector<DeclarationKey> keys_;
+  MemberGroup group_;
+};
+
+}  // namespace
+
+MemberGroup memberGroupOf(const BlockExprAST& program,
+                          const Declaration& declaration,
+                          const std::string& documentPath) {
+  return GroupBuilder(program, documentPath).around(declaration);
+}
+
+Occurrences findOccurrences(const BlockExprAST& program,
+                            const std::string& documentPath,
+                            const std::string& source,
+                            const std::vector<Declaration>& targets,
+                            bool includeDeclaration) {
+  Collector out(documentPath, source);
+  for (const Declaration& target : targets) {
+    out.addTarget(target, documentPath);
+  }
+  DeclaredNameFinder names(program, out);
+  names.visit(program, "");
+  UseFinder uses(program, out);
+  uses.visit(program, "");
+
+  Occurrences occurrences;
+  occurrences.allDeclared = names.foundAllDeclarations();
+  occurrences.locations = out.results(includeDeclaration);
+  return occurrences;
+}
+
 std::vector<SymbolLocation> computeReferences(const BlockExprAST& program,
                                               const std::string& filePath,
                                               const std::string& source,
@@ -445,23 +598,33 @@ std::vector<SymbolLocation> computeReferences(const BlockExprAST& program,
       findDeclarationAt(program, documentPath, source, byteOffset);
   if (!declaration) return {};
 
-  Collector out(documentPath, source);
-  out.setTarget(*declaration, documentPath);
-  DeclaredNameFinder names(program, includeDeclaration, out);
-  names.visit(program, "");
-  UseFinder uses(program, out);
-  uses.visit(program, "");
+  Occurrences occurrences = findOccurrences(
+      program, documentPath, source,
+      memberGroupOf(program, *declaration, documentPath).members,
+      includeDeclaration);
+  std::vector<SymbolLocation>& locations = occurrences.locations;
 
   // A declaration outside the walked tree: one loaded from a bundle
-  if (includeDeclaration && !names.foundDeclaration() &&
+  if (includeDeclaration && !occurrences.allDeclared &&
       declaration->location.filePath) {
     const std::string& file = *declaration->location.filePath;
-    if (const std::string* text = out.text(file)) {
+    Position location;
+    location.filePath = file;
+    std::optional<std::string> text = textOf(location, documentPath, source);
+    if (text) {
       Position range = nameRangeOf(*declaration, *text);
-      out.add(file, range.offset, range.endOffset.value_or(range.offset));
+      if (range.endOffset.value_or(range.offset) > range.offset) {
+        locations.push_back(
+            makeSymbolLocation(normalizePath(file), range, *text));
+        std::sort(locations.begin(), locations.end(),
+                  [](const SymbolLocation& a, const SymbolLocation& b) {
+                    return std::tie(a.filePath, a.range.offset) <
+                           std::tie(b.filePath, b.range.offset);
+                  });
+      }
     }
   }
-  return out.results();
+  return locations;
 }
 
 }  // namespace sun::lsp

@@ -54,22 +54,26 @@ they bounce off a language.
 ## 4. Language Server Navigation
 
 The LSP serves diagnostics, formatting, semantic tokens, hover type
-information, go-to-definition and find references today, plus a VS Code
-extension in `extensions/vscode-sun`. The remaining navigation features are
-the gap.
+information, go-to-definition, find references and rename symbol today, plus
+a VS Code extension in `extensions/vscode-sun`. Autocomplete is the gap.
 
 - [x] Go-to-definition, including into library sources: a `.moon` bundle
       records each module's source file, so a symbol from `stdlib.moon`
       opens the declaration in `stdlib/*.sun` when that file is on disk.
-- [x] Find references, across the files of a manifest. Uses inside a `.moon`
-      bundle are not listed: bundles carry no function bodies.
+- [x] Find references, across the files of a manifest. An interface member
+      and the class members implementing it are listed together, as one
+      group. Uses inside a `.moon` bundle are not listed: bundles carry no
+      function bodies.
 - [x] Hover type info, with the comment above the symbol's declaration.
       Inside a generic body the types come from the first specialization,
       printed in terms of the type parameters; a generic that is never used
       only shows its written annotations.
 - [ ] Autocomplete (must hide items that are not accessible from the cursor's
       module — use `sun::access::isAccessible`)
-- [ ] Rename symbol
+- [x] Rename symbol, across the files of a manifest. An interface member and
+      the class members implementing it are renamed together, since renaming
+      one side alone would break the program. A symbol declared in a `.moon`
+      bundle is refused: its uses inside the library cannot be edited.
 
 ## 5. Testing
 
@@ -143,6 +147,10 @@ libprotobuf. Docs: `docs/pages/protobuf.mdx`. Deferred:
 - [ ] Extensions
 - [ ] Recursive messages by value (need indirection)
 - [ ] `--dump-proto-sun` in the LSP
+
+## 12. MacOS Target
+
+- [ ] Compile Sun binaries and moon libries for MacOS.
 
 ## 12. WebAssembly Target
 

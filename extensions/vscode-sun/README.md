@@ -9,7 +9,8 @@ a compiled language with Rust-style borrow checking and an LLVM backend.
 - **Diagnostics** from the Sun compiler as you type: parse errors, type errors and borrow-checker errors.
 - **Hover** to see the type of a variable, field, function or method.
 - **Go to definition**, including into library sources: symbols from a `.moon` bundle open the original `.sun` file when it is on disk.
-- **Find references** to every use of a symbol across the files of a manifest.
+- **Find references** to every use of a symbol across the files of a manifest. Referencing an interface member also lists the class members implementing it, and the other way around.
+- **Rename symbol** across the files of a manifest. An interface member is renamed together with the class members implementing it. Symbols declared in a library cannot be renamed.
 - **Formatting** via "Format Document" and format-on-save.
 - **Cross-file analysis**: files listed in a `manifest` block are analyzed together with their entrypoint. Manifests are discovered automatically, or set explicitly with `sun.entrypoints`.
 

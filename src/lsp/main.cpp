@@ -21,6 +21,7 @@
 #include "parsing/lexer.h"
 #include "lsp/definition.h"
 #include "lsp/references.h"
+#include "lsp/rename.h"
 #include "lsp/hover.h"
 #include "lsp/text_positions.h"
 #include "driver/manifest_processor.h"
@@ -995,6 +996,9 @@ int main() {
       capabilities["hoverProvider"] = true;
       capabilities["definitionProvider"] = true;
       capabilities["referencesProvider"] = true;
+      llvm::json::Object renameProvider;
+      renameProvider["prepareProvider"] = true;
+      capabilities["renameProvider"] = std::move(renameProvider);
 
       llvm::json::Object serverInfo;
       serverInfo["name"] = "sun-lsp";
@@ -1466,6 +1470,128 @@ int main() {
         locations.push_back(std::move(location));
       }
       sendResponse(*id, std::move(locations));
+      continue;
+    }
+
+    if ((methodName == "textDocument/prepareRename" ||
+         methodName == "textDocument/rename") &&
+        params) {
+      if (!id) continue;
+      bool isRename = methodName == "textDocument/rename";
+
+      llvm::json::Object* textDocument = nullptr;
+      if (llvm::json::Value* rawTextDocument = params->get("textDocument")) {
+        textDocument = rawTextDocument->getAsObject();
+      }
+      if (!textDocument) {
+        sendErrorResponse(*id, -32602, "Missing textDocument parameter");
+        continue;
+      }
+
+      std::optional<llvm::StringRef> uri = textDocument->getString("uri");
+      if (!uri) {
+        sendErrorResponse(*id, -32602, "Missing textDocument.uri");
+        continue;
+      }
+
+      llvm::json::Object* position = nullptr;
+      if (llvm::json::Value* rawPosition = params->get("position")) {
+        position = rawPosition->getAsObject();
+      }
+      if (!position) {
+        sendErrorResponse(*id, -32602, "Missing position parameter");
+        continue;
+      }
+      int line = static_cast<int>(position->getInteger("line").value_or(0));
+      int character =
+          static_cast<int>(position->getInteger("character").value_or(0));
+
+      std::string newName;
+      if (isRename) {
+        std::optional<llvm::StringRef> rawName = params->getString("newName");
+        if (!rawName) {
+          sendErrorResponse(*id, -32602, "Missing newName parameter");
+          continue;
+        }
+        newName = rawName->str();
+        std::string problem = sun::lsp::checkNewName(newName);
+        if (!problem.empty()) {
+          sendErrorResponse(*id, -32602, problem);
+          continue;
+        }
+      }
+
+      auto documentIter = openDocuments.find(uri->str());
+      if (documentIter == openDocuments.end()) {
+        sendErrorResponse(*id, -32602, "Document not open");
+        continue;
+      }
+
+      const OpenDocument& document = documentIter->second;
+      const AnalyzedDocument* analyzed = getAnalyzedDocument(document);
+      std::optional<sun::lsp::Rename> rename;
+      int offset = 0;
+      if (analyzed) {
+        offset = sun::lsp::byteOffsetFromLspPosition(document.text, line,
+                                                     character);
+        try {
+          rename = sun::lsp::computeRename(*analyzed->ast, document.path,
+                                           document.text, offset);
+        } catch (const std::exception&) {
+          rename.reset();
+        }
+      }
+      if (!rename) {
+        sendResponse(*id, llvm::json::Value(nullptr));
+        continue;
+      }
+
+      if (!isRename) {
+        // The identifier under the cursor, with its current name to edit
+        std::optional<sun::lsp::SymbolLocation> site =
+            sun::lsp::siteAt(*rename, document.path, offset);
+        if (!site || !rename->refusal.empty()) {
+          sendResponse(*id, llvm::json::Value(nullptr));
+          continue;
+        }
+        llvm::json::Object result;
+        result["range"] = makeRange(site->start.line, site->start.character,
+                                    site->end.line, site->end.character);
+        result["placeholder"] = rename->name;
+        sendResponse(*id, std::move(result));
+        continue;
+      }
+
+      if (!rename->refusal.empty()) {
+        sendErrorResponse(*id, -32803, rename->refusal);
+        continue;
+      }
+
+      // One text edit per site, grouped by file; the sites arrive sorted by
+      // file so each file's edits are contiguous
+      llvm::json::Object changes;
+      std::string currentUri;
+      llvm::json::Array edits;
+      auto flush = [&]() {
+        if (!currentUri.empty()) changes[currentUri] = std::move(edits);
+        edits = llvm::json::Array();
+      };
+      for (const auto& site : rename->sites) {
+        std::string siteUri = pathToUri(site.filePath);
+        if (siteUri != currentUri) {
+          flush();
+          currentUri = siteUri;
+        }
+        llvm::json::Object edit;
+        edit["range"] = makeRange(site.start.line, site.start.character,
+                                  site.end.line, site.end.character);
+        edit["newText"] = newName;
+        edits.push_back(std::move(edit));
+      }
+      flush();
+      llvm::json::Object workspaceEdit;
+      workspaceEdit["changes"] = std::move(changes);
+      sendResponse(*id, std::move(workspaceEdit));
       continue;
     }
 
