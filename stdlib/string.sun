@@ -97,9 +97,8 @@ public module sun {
       this.len = srcLen;
 
       // Copy bytes from literal to heap
-      for (var i: i64 = 0; i < srcLen; i = i + 1) {
-        var byte: u8 = unsafe { _load<u8>(srcData, i); };
-        this.data.set_unchecked(i, byte);
+      if (srcLen > 0) {
+        unsafe { _memcpy(this.data.rawData(), srcData, srcLen); };
       }
     }
 
@@ -216,12 +215,13 @@ public module sun {
     // Append another string
     public function append(other: const ref String) void {
       var otherLen: i64 = other.length();
-      this.ensure_capacity(otherLen);
-      for (var i: i64 = 0; i < otherLen; i = i + 1) {
-        var ch: u8 = other.at(i);
-        this.data.set_unchecked(this.len, ch);
-        this.len = this.len + 1;
+      if (otherLen == 0) {
+        return;
       }
+      this.ensure_capacity(otherLen);
+      var dst: raw_ptr<u8> = unsafe { _ptr_offset(this.data.rawData(), this.len); };
+      unsafe { _memcpy(dst, other.data.rawData(), otherLen); };
+      this.len = this.len + otherLen;
     }
 
     // ========================================================================
@@ -271,15 +271,14 @@ public module sun {
 
     // Append string literal
     public function append_literal(literal: static_ptr<u8>) void {
-      var srcData: raw_ptr<u8> = literal.raw();
       var srcLen: i64 = literal.length();
-
-      this.ensure_capacity(srcLen);
-      for (var i: i64 = 0; i < srcLen; i = i + 1) {
-        var byte: u8 = unsafe { _load<u8>(srcData, i); };
-        this.data.set_unchecked(this.len, byte);
-        this.len = this.len + 1;
+      if (srcLen == 0) {
+        return;
       }
+      this.ensure_capacity(srcLen);
+      var dst: raw_ptr<u8> = unsafe { _ptr_offset(this.data.rawData(), this.len); };
+      unsafe { _memcpy(dst, literal.raw(), srcLen); };
+      this.len = this.len + srcLen;
     }
 
     // Check if string equals a literal

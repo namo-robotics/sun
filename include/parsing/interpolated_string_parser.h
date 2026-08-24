@@ -70,6 +70,8 @@ class InterpolatedStringParser {
       const std::string& name, const Position& loc);
 
   // Helper: create string literal AST
+  static std::unique_ptr<NumberExprAST> makeNumberLiteral(int64_t value,
+                                                          const Position& loc);
   static std::unique_ptr<StringLiteralAST> makeStringLiteral(
       const std::string& value, const Position& loc);
 

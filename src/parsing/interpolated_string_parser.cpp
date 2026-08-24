@@ -243,6 +243,28 @@ std::unique_ptr<BlockExprAST> InterpolatedStringParser::desugar(
   block->addExpression(
       makeVarCreate("interp_result_", std::move(stringCall), loc));
 
+  // interp_result_.reserve(n)
+  //
+  // The literal segments' total size is known here, so the buffer can be
+  // sized once instead of doubling its way there one append at a time.
+  // Interpolated values are not counted: their length is a runtime property,
+  // and guessing it made short values slower by forcing an allocation the
+  // default capacity would have covered. Under-reserving simply grows as
+  // before. The 16 of slack mirrors what String's own constructor adds, and
+  // is also the floor below which a reserve call would achieve nothing.
+  size_t literalBytes = 0;
+  for (const auto& segment : node.getSegments()) {
+    if (segment.isLiteral) literalBytes += segment.cookedText.size();
+  }
+  if (literalBytes > 16) {
+    std::vector<std::unique_ptr<ExprAST>> reserveArgs;
+    reserveArgs.push_back(
+        makeNumberLiteral(static_cast<int64_t>(literalBytes + 16), loc));
+    block->addExpression(makeCall(
+        makeMemberAccess(makeVarRef("interp_result_", loc), "reserve", loc),
+        std::move(reserveArgs), loc));
+  }
+
   // For each segment, emit interp_result_.append*(...)
   for (auto& segment : node.getSegmentsMutable()) {
     std::vector<std::unique_ptr<ExprAST>> appendArgs;
@@ -277,6 +299,13 @@ std::unique_ptr<BlockExprAST> InterpolatedStringParser::desugar(
 std::unique_ptr<VariableReferenceAST> InterpolatedStringParser::makeVarRef(
     const std::string& name, const Position& loc) {
   auto node = std::make_unique<VariableReferenceAST>(name);
+  node->setLocation(loc);
+  return node;
+}
+
+std::unique_ptr<NumberExprAST> InterpolatedStringParser::makeNumberLiteral(
+    int64_t value, const Position& loc) {
+  auto node = std::make_unique<NumberExprAST>(value);
   node->setLocation(loc);
   return node;
 }
