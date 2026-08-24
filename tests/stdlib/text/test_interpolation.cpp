@@ -236,6 +236,25 @@ TEST(Stdlib_Text_Interpolation, fails_without_stdlib) {
                SunError);
 }
 
+TEST(Stdlib_Text_Interpolation, long_template_content_is_exact) {
+  // The desugar reserves the literal bytes up front; this checks the
+  // reserved path produces exactly the same bytes as growing would.
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    function main() i64 {
+        var n: i64 = 42;
+        var alloc = make_heap_allocator();
+        var who = String(alloc, "alice");
+        var s = `timestamp=${n} user=${who} status=active region=eu-west-1`;
+        if (s.equals_literal("timestamp=42 user=alice status=active region=eu-west-1") == false) {
+            return 1;
+        }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
 TEST(Stdlib_Text_Interpolation, returned_from_function_keeps_contents) {
   // Interpolation lowers to a block expression, whose value is a temporary
   // owned by nobody. Returning one used to leave the caller with a String of
