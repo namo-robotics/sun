@@ -81,6 +81,18 @@ sun (${full_version}) unstable; urgency=medium
 EOF
 }
 
+# tls.moon embeds static OpenSSL; without the archives CMake skips the bundle
+# and the package would ship no TLS support.
+ensure_openssl() {
+    if [ -f third_party/openssl/x86_64-linux-musl/libssl.a ] && \
+       [ -f third_party/openssl/x86_64-linux-musl/libcrypto.a ]; then
+        log "Static OpenSSL archives present"
+        return
+    fi
+    log "Fetching static OpenSSL archives for tls.moon..."
+    ./scripts/fetch-openssl.sh
+}
+
 # Build the package
 build_package() {
     log "Building Debian package..."
@@ -94,6 +106,10 @@ build_package() {
     
     # Copy source to build directory
     cp -a . "$build_dir/sun"
+    # Drop any local build tree: sun-config.json lists build/ as a bundle
+    # search path, and a stale stdlib.moon there would shadow the one this
+    # package build produces in obj-*/.
+    rm -rf "$build_dir/sun/build" "$build_dir/sun/dist"
     cd "$build_dir/sun"
     
     # Build the package (unsigned for CI)
@@ -102,6 +118,10 @@ build_package() {
     # Move the built package to dist directory in original location
     mkdir -p "$PROJECT_ROOT/dist"
     mv "$build_dir"/*.deb "$PROJECT_ROOT/dist/" 2>/dev/null || true
+    # Publish the bundles on their own too, for users who want to drop them
+    # next to an existing compiler instead of installing the package
+    cp "$build_dir"/sun/obj-*/stdlib.moon "$PROJECT_ROOT/dist/" 2>/dev/null || true
+    cp "$build_dir"/sun/obj-*/tls.moon "$PROJECT_ROOT/dist/" 2>/dev/null || true
     mv "$build_dir"/*.buildinfo "$PROJECT_ROOT/dist/" 2>/dev/null || true
     mv "$build_dir"/*.changes "$PROJECT_ROOT/dist/" 2>/dev/null || true
     
@@ -164,6 +184,7 @@ main() {
     done
     
     check_dependencies
+    ensure_openssl
     update_version "$version"
     build_package
     

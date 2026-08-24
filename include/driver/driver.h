@@ -3,10 +3,12 @@
 #include <llvm/ExecutionEngine/Orc/AbsoluteSymbols.h>
 #include <llvm/Support/TargetSelect.h>
 
+#include <filesystem>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -46,6 +48,18 @@ class Driver {
   std::vector<sun::MoonImport> moonImports_;
   std::vector<std::string> protoFiles_;
   bool dumpProtoSun_ = false;
+
+  // Static archives carried by imported .moon bundles, extracted to a temp
+  // directory that lives as long as this Driver.
+  std::vector<std::string> nativeArchivePaths_;
+  std::filesystem::path archiveTempDir_;
+
+  // Extract the archives carried by the bundles just linked, so AOT can pass
+  // them to the linker and the JIT can resolve their symbols.
+  void collectNativeArchives(const std::set<std::string>& linkedModules);
+
+  // Make bundle-carried archives resolvable by the JIT.
+  void registerArchivesWithJIT();
 
   // Private constructor - use factory methods
   Driver(std::unique_ptr<CodegenContext> ctx,
@@ -188,6 +202,12 @@ class Driver {
 
   /// Access the underlying module (for emitting object code after compilation)
   llvm::Module& getModule() { return *ctx->mainModule; }
+
+  // Static archives carried by the .moon bundles this compilation linked
+  // against, as paths on disk. Empty unless a bundle carried any.
+  const std::vector<std::string>& getNativeArchivePaths() const {
+    return nativeArchivePaths_;
+  }
 
   /// Enable/disable LLVM IR dumping to stdout
   void setDumpIR(bool dump) { dumpIR = dump; }

@@ -24,6 +24,7 @@ struct ResolvedManifest {
   std::vector<std::string> sunFiles;    // resolved .sun paths (manifest order)
   std::vector<MoonImport> moonImports;  // resolved .moon imports
   std::vector<std::string> protoFiles;  // resolved .proto paths
+  std::vector<std::string> archiveFiles;  // resolved native .a archives
   std::string baseDir;                  // directory the paths were resolved in
 };
 

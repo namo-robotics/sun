@@ -36,6 +36,38 @@ public module sun {
   public var SO_REUSEADDR: i32 = 2;
 
   // -------------------------------------------------------------------
+  // DNS resolution
+  // -------------------------------------------------------------------
+
+  // Resolve a hostname to its first IPv4 address, returned in network byte
+  // order (the shape connect_ip takes). Throws when the name does not resolve
+  // or has no IPv4 address. Field offsets are documented at the getaddrinfo
+  // declaration in sys.sun.
+  public function resolve_host_ipv4(host: ref String) i32, IError {
+    var list: raw_ptr<u8> = null;
+    var rc: i32 = unsafe { c_getaddrinfo(host.c_str(), null, null, _address_of<raw_ptr<u8>>(list)); };
+    if (rc != 0) {
+      var alloc: HeapAllocator = HeapAllocator();
+      var msg: String = from_c_str(alloc, unsafe { c_gai_strerror(rc); });
+      throw Error(rc, msg);
+    }
+    var entry: raw_ptr<u8> = list;
+    while (entry != null) {
+      var family: i32 = unsafe { _load<i32>(entry, 1); };  // ai_family @4
+      var socktype: i32 = unsafe { _load<i32>(entry, 2); };  // ai_socktype @8
+      if (family == AF_INET and socktype == SOCK_STREAM) {
+        var sa: raw_ptr<u8> = unsafe { _load<raw_ptr<u8>>(entry, 3); };  // ai_addr @24
+        var ip: i32 = unsafe { _load<i32>(sa, 1); };  // sin_addr @4, network order
+        unsafe { c_freeaddrinfo(list); };
+        return ip;
+      }
+      entry = unsafe { _load<raw_ptr<u8>>(entry, 5); };  // ai_next @40
+    }
+    unsafe { c_freeaddrinfo(list); };
+    throw Error(-1, "host has no IPv4 address");
+  }
+
+  // -------------------------------------------------------------------
   // TcpStream - TCP connection (client or accepted)
   // -------------------------------------------------------------------
 
@@ -76,6 +108,12 @@ public module sun {
       if (result < 0) {
         throw Error(result, "failed to connect");
       }
+    }
+
+    // Resolve a hostname and connect to its first IPv4 address
+    public function connect_host(host: ref String, port: i32) void, IError {
+      var ip: i32 = resolve_host_ipv4(host);
+      this.connect_ip(ip, port);
     }
 
     // Send string data
@@ -119,6 +157,7 @@ public module sun {
     public function close() void {
       if (this.fd >= 0) {
         unsafe { __shutdown(this.fd, SHUT_RDWR); };
+        unsafe { c_close(this.fd); };
         this.fd = -1;
       }
     }
@@ -206,6 +245,7 @@ public module sun {
     public function close() void {
       if (this.fd >= 0) {
         unsafe { __shutdown(this.fd, SHUT_RDWR); };
+        unsafe { c_close(this.fd); };
         this.fd = -1;
       }
     }

@@ -60,14 +60,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sun-deb-package-${{ github.sha }}
-          path: dist/*.deb
+          path: dist/*
           retention-days: 30
 
       - name: Upload to release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.deb
+          files: dist/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -78,7 +78,7 @@ jobs:
           tag_name: dev
           name: Development Build
           prerelease: true
-          files: dist/*.deb
+          files: dist/*
           body: |
             Latest development build from main branch.
             
@@ -136,3 +136,29 @@ jobs:
           # AOT: needs a C link driver (cc), libc6-dev and libstdc++ dev files
           sun -c -o test_aot test.sun
           ./test_aot
+          # TLS: tls.moon carries its own static OpenSSL, so this needs no
+          # libssl installed and no linker flags.
+          cat > tls_test.sun << 'EOF'
+          using sun;
+          using tls;
+          function main() i32 {
+              var alloc = make_heap_allocator();
+              var client = HttpsClient(alloc);
+              var host = String(alloc, "example.com");
+              try {
+                  var resp = client.get(host, "/");
+                  println(resp.status);
+                  if (resp.status == 200) { return 0; }
+                  return 1;
+              } catch (e: IError) {
+                  var msg = e.message();
+                  println(msg);
+                  return 2;
+              }
+          }
+          manifest {
+              moons: ["stdlib.moon", "tls.moon"]
+          }
+          EOF
+          sun -c --dynamic -o tls_aot tls_test.sun
+          ./tls_aot

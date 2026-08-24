@@ -1,5 +1,6 @@
 #pragma once
 
+#include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 
 #include <map>
@@ -79,10 +80,10 @@ class ModuleLinker {
       const std::unordered_map<std::string, std::string>& moduleRemap) const;
 
   llvm::Module& target_;
-  // Code images parsed by declareAvailableFunctions(), keyed by bitcode id and
-  // held for linkModuleRecursive() to claim instead of re-parsing them.
-  std::unordered_map<std::string, std::unique_ptr<llvm::Module>>
-      scannedModules_;
+  // Context for modules parsed by declareAvailableFunctions(). Scans use
+  // their own context so the target never shares struct type objects with a
+  // future llvm::Linker source module.
+  std::unique_ptr<llvm::LLVMContext> scanContext_;
   std::set<std::string> linkedModules_;
   std::set<std::string>
       linkedContentHashes_;  // Content hashes of linked bitcode

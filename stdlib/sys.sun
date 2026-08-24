@@ -48,6 +48,17 @@ public module sun {
 
   extern "C" function c_poll(fds: raw_ptr<u8>, nfds: i64, timeout_ms: i32) i32 as "poll";
 
+  // --- dns -------------------------------------------------------------------
+  // struct addrinfo lays out the same on glibc and musl 64-bit Linux:
+  //   ai_flags@0 ai_family@4 ai_socktype@8 ai_protocol@12 (i32 each),
+  //   ai_addrlen@16 (u32, padded to 8), ai_addr@24 ai_canonname@32 ai_next@40
+  //   (pointers). Callers walk the result list with _load at those offsets,
+  //   so no struct mirror is needed.
+
+  extern "C" function c_getaddrinfo(node: raw_ptr<u8>, service: raw_ptr<u8>, hints: raw_ptr<u8>, res: raw_ptr<raw_ptr<u8>>) i32 as "getaddrinfo";
+  extern "C" function c_freeaddrinfo(res: raw_ptr<u8>) void as "freeaddrinfo";
+  extern "C" function c_gai_strerror(code: i32) raw_ptr<u8> as "gai_strerror";
+
   // --- environment ---------------------------------------------------------
 
   extern "C" function c_getenv(name: raw_ptr<u8>) raw_ptr<u8> as "getenv";

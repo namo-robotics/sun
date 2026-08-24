@@ -32,6 +32,8 @@ Description: The Sun Programming Language Compiler
  .
  Features:
   - Fast: Statically compiled and optimized with LLVM
+  - HTTPS built in: tls.moon carries its own static OpenSSL, so TLS programs
+    need no system OpenSSL and no linker flags
   - Designed for AI: N-D matrices and linear algebra built-in
   - Memory safe: Rust-style borrow checking (in development)
   - Readable: Straightforward syntax for humans and AIs

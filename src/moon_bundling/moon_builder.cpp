@@ -2,6 +2,8 @@
 
 #include "moon_bundling/moon_builder.h"
 
+#include <fstream>
+
 #include "driver/driver.h"
 #include "support/error.h"
 #include "driver/manifest_processor.h"
@@ -45,6 +47,7 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
                               manifest->moonImports.begin(),
                               manifest->moonImports.end());
     report.protoFiles = std::move(manifest->protoFiles);
+    report.archiveFiles = std::move(manifest->archiveFiles);
   }
   report.sunFiles.insert(report.sunFiles.begin(), entrypointPath.string());
 
@@ -92,6 +95,16 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   MoonWriter writer;
   for (const auto& metadata : allMetadata) {
     writer.addModule(driver->getModule(), metadata);
+  }
+  // Native archives named by `archives:` travel inside the bundle, so
+  // importers link against them without naming -l flags.
+  for (const auto& archivePath : report.archiveFiles) {
+    std::ifstream archiveIn(archivePath, std::ios::binary);
+    if (!archiveIn) fail("Cannot read native archive: " + archivePath);
+    std::string data((std::istreambuf_iterator<char>(archiveIn)),
+                     std::istreambuf_iterator<char>());
+    writer.addNativeArchive(fs::path(archivePath).filename().string(),
+                            std::move(data));
   }
   if (!writer.write(outputPath)) {
     fail("Error writing moon: " + writer.getError());

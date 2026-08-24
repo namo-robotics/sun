@@ -1,0 +1,42 @@
+// An HTTPS GET with the tls bundle's HttpsClient.
+//
+// The certificate is verified against the system CA store and checked
+// against the hostname; a bad certificate throws rather than returning a
+// response.
+
+using sun;
+using tls;
+
+function main() i32 {
+  var alloc = make_heap_allocator();
+  var client = HttpsClient(alloc);
+  var host = String(alloc, "example.com");
+
+  try {
+    var response = client.get(host, "/");
+
+    print("status: ");
+    println(response.status);
+    print("body bytes: ");
+    println(response.body.length());
+
+    // Print the first line of the body
+    var end: i64 = 0;
+    while (end < response.body.length() and response.body.at(end) != 10) {
+      end = end + 1;
+    }
+    var first_line = response.body.substr(alloc, 0, end);
+    println(first_line);
+
+    return 0;
+  } catch (e: IError) {
+    var message = e.message();
+    print("request failed: ");
+    println(message);
+    return 1;
+  }
+}
+
+manifest {
+    moons: ["stdlib.moon", "tls.moon"]
+}

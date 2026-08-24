@@ -356,6 +356,9 @@ int main(int argc, char* argv[]) {
   sun::LibraryCache::instance().initFromEnvironment();
   for (const auto& libPath : libPaths) {
     sun::LibraryCache::instance().addSearchPath(libPath);
+    // Manifest `moons:` entries resolve through SunPath, so --lib-path has to
+    // reach it too, not just the bundle cache.
+    sun::SunPath::addSearchPath(libPath);
   }
 
   // Handle --emit-moon mode (create .moon library from entrypoint with
@@ -467,6 +470,11 @@ int main(int argc, char* argv[]) {
             sun::emitObjectFile(driver->getModule(), outputFile, errorMsg);
       } else {
         linkOpts.targetTriple = targetTriple;
+        // Imported bundles may carry their own static libraries; link those
+        // too, so a program using such a bundle needs no -l flags.
+        const auto& bundled = driver->getNativeArchivePaths();
+        linkOpts.archives.insert(linkOpts.archives.end(), bundled.begin(),
+                                 bundled.end());
         success = sun::compileToExecutable(driver->getModule(), outputFile,
                                            errorMsg, /*keepObjectFile=*/false,
                                            linkOpts);

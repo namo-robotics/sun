@@ -67,6 +67,14 @@ class LibraryCache {
   /// Find the bundle containing a module (for error reporting)
   MoonReader* findBundleForModule(const std::string& moduleKey);
 
+  /// Extract the native static archives carried by the bundles providing
+  /// these modules into destDir (one subdirectory per bundle, so bundles
+  /// carrying the same file name do not collide).
+  /// @return extracted archive paths, in bundle then manifest order
+  std::vector<std::string> extractNativeArchives(
+      const std::set<std::string>& moduleKeys,
+      const std::filesystem::path& destDir);
+
   /// Set the compilation target. When several discovered bundles claim the
   /// same module (e.g. the host build/stdlib.moon and the cross
   /// build/aarch64-linux-gnu/stdlib.moon), the one compiled for this target

@@ -108,7 +108,25 @@ community-supplyable now that FFI has landed.
 - [ ] `String.c_str()` as a `const function`: it writes the terminating NUL on
       demand, so every path-taking function (`sun.io`, `sun.env`,
       `sun.process`) still takes `ref String`. Keeping the NUL as an invariant
-      of the buffer would let them take `const ref String`
+      of the buffer would let them take `const ref String`. TLS is in the same
+      position: `TlsStream.connect` and `HttpsClient.get` take the host as
+      `ref String` for exactly this reason
+
+## 7a. Networking and TLS
+
+A TLS client, hostname resolution and an HTTPS client have landed:
+`tls.moon` wraps OpenSSL and carries a static copy of it, so TLS programs
+need no linker flags and no OpenSSL on the target. Remaining work:
+
+- [ ] TLS server support, so `HttpServer` can serve HTTPS
+- [ ] IPv6, and connect/read timeouts on both `TcpStream` and `TlsStream`
+- [ ] Redirect following and connection reuse in `HttpsClient`
+- [ ] Fetch remote `.moon` bundles with the native client instead of shelling
+      out to `curl`, dropping the package's `curl` dependency
+- [ ] Cross-target archives: `tls.moon` carries x86-64 musl archives, so a
+      cross build needs a per-target bundle the way `stdlib.moon` already does
+- [ ] Revisit the backend behind the same Sun API — a smaller vendored TLS
+      library, or a pure-Sun implementation, without changing user code
 
 ## 8. Data Structures
 

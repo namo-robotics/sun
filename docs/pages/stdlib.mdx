@@ -598,6 +598,67 @@ C's `tm_year`/`tm_mon` offsets. It also carries `day`, `hour`, `minute`,
 `second`, `weekday` (Sunday = 0), `yearday` and `utc_offset`.
 
 
+## Networking
+
+TCP sockets and hostname resolution, from `networking.sun`. For TLS and
+HTTPS see [TLS & HTTPS](/tls).
+
+```sun
+using sun;
+
+// Client
+var stream = TcpStream();
+var host = String(alloc, "example.com");
+stream.connect_host(host, 80);       // resolve a name, then connect
+stream.connect_ip(ip, 80);           // or an address already in hand
+stream.connect_local(8080);          // or 127.0.0.1
+
+stream.send_str("ping");
+stream.send_string(message);
+var buf = ContiguousBuffer<u8>(alloc, 4096);
+var n = stream.recv(buf);            // bytes read; 0 at end of stream
+stream.close();
+
+// Server
+var listener = TcpListener();
+listener.bind_port(8080);            // 0.0.0.0; bind_loopback for 127.0.0.1
+listener.listen(128);
+var client = listener.accept();
+```
+
+`resolve_host_ipv4` does name resolution on its own, returning the first A
+record in network byte order — the form `connect_ip` takes:
+
+```sun
+var ip: i32 = resolve_host_ipv4(host);
+```
+
+It throws when the name does not resolve or has no IPv4 address. IPv4 and
+blocking sockets only for now: no IPv6, no timeouts, no non-blocking mode.
+
+## HTTP server
+
+`http.sun` builds an HTTP/1.1 server on `TcpListener`. The server owns the
+accept loop and all framing; the handler only reads the request and fills in
+the response.
+
+```sun
+var server = HttpServer(alloc);
+server.bind(8080);
+server.serve(lambda (req: ref HttpRequest, resp: ref HttpResponse) void {
+    if (req.path.equals_literal("/")) {
+        resp.set_body("<h1>Hello</h1>");
+    } else {
+        resp.set_status(404);
+        resp.set_body("not found");
+    }
+});
+```
+
+It handles one connection at a time, parses request line and headers (not
+bodies), and always answers `Connection: close`. For outgoing requests, use
+`HttpsClient` from the tls bundle.
+
 ## Option\<T\> and Result\<T, E\>
 
 Payload enums for absence and fallibility, defined in `option.sun`:

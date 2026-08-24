@@ -153,6 +153,11 @@ ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
         expandPathVariables(protoDep.path, config), baseDir, config));
   }
 
+  for (const auto& archiveDep : manifest.getArchives()) {
+    out.archiveFiles.push_back(resolvePath(
+        expandPathVariables(archiveDep.path, config), baseDir, config));
+  }
+
   return out;
 }
 

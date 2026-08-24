@@ -2326,6 +2326,7 @@ unique_ptr<ManifestAST> Parser::parseManifest() {
   std::vector<ManifestSunDependency> suns;
   std::vector<ManifestMoonDependency> moons;
   std::vector<ManifestProtoDependency> protos;
+  std::vector<ManifestArchiveDependency> archives;
 
   while (curTok.kind == TokenKind::IDENTIFIER) {
     auto ident = curTok.getIdentifier().value();
@@ -2341,9 +2342,12 @@ unique_ptr<ManifestAST> Parser::parseManifest() {
       moons = parseManifestMoons();
     } else if (ident == "protos") {
       protos = parseManifestProtos();
+    } else if (ident == "archives") {
+      archives = parseManifestArchives();
     } else {
       parsingError("unexpected identifier '" + ident +
-                   "' in manifest; expected 'suns', 'moons' or 'protos'");
+                   "' in manifest; expected 'suns', 'moons', 'protos' or "
+                   "'archives'");
     }
 
     // Entries are newline-separated; a trailing ';' is tolerated
@@ -2358,8 +2362,36 @@ unique_ptr<ManifestAST> Parser::parseManifest() {
 
   return finishNode(std::make_unique<ManifestAST>(std::move(suns),
                                                   std::move(moons),
-                                                  std::move(protos)),
+                                                  std::move(protos),
+                                                  std::move(archives)),
                     start);
+}
+
+// Parse archives array: [ "vendor/libssl.a", ... ]
+std::vector<ManifestArchiveDependency> Parser::parseManifestArchives() {
+  expectCurrentTokenKind(TokenKind::BRACKET_OPEN,
+                         "expected '[' after 'archives:'");
+  getNextToken();  // eat '['
+
+  std::vector<ManifestArchiveDependency> archives;
+
+  while (curTok.kind != TokenKind::BRACKET_CLOSE) {
+    expectCurrentTokenKind(TokenKind::STRING,
+                           "expected string path in archives array");
+    ManifestArchiveDependency dep;
+    dep.path = curTok.getString().value();
+    getNextToken();  // eat string
+    archives.push_back(std::move(dep));
+
+    if (curTok.kind == TokenKind::COMMA) {
+      getNextToken();  // eat ','
+    } else if (curTok.kind != TokenKind::BRACKET_CLOSE) {
+      parsingError("expected ',' or ']' in archives array");
+    }
+  }
+
+  getNextToken();  // eat ']'
+  return archives;
 }
 
 // Parse protos array: [ "schemas/telemetry.proto", ... ]

@@ -30,6 +30,7 @@ struct MoonBuildReport {
   std::vector<std::string> protoFiles;  // synthesized .proto schemas
   std::vector<MoonImport> moonImports;  // bundles linked against
   std::vector<std::string> modules;     // exported module names (dotted)
+  std::vector<std::string> archiveFiles;  // native archives in the bundle
 };
 
 class MoonBuilder {
