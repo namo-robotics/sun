@@ -74,6 +74,28 @@ static bool hasStdlibImport(const std::vector<sun::MoonImport>& moonImports) {
   return false;
 }
 
+/// Does this block declare `class String` directly inside `module sun`?
+/// Interpolation desugars to `sun.String` and `sun.HeapAllocator`, so the
+/// stdlib's own sources satisfy it without importing stdlib.moon — which
+/// they cannot do, being that library.
+static bool declaresStdlibString(const BlockExprAST& block) {
+  for (const auto& stmt : block.getBody()) {
+    if (!stmt || stmt->getType() != ASTNodeType::MODULE) continue;
+    const auto& module = static_cast<const ModuleAST&>(*stmt);
+    if (module.getName() != "sun") continue;
+    for (const auto& member : module.getBody().getBody()) {
+      if (!member || member->getType() != ASTNodeType::CLASS_DEFINITION) {
+        continue;
+      }
+      if (static_cast<const ClassDefinitionAST&>(*member).getName() ==
+          "String") {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 // Factory method for JIT execution
 std::unique_ptr<Driver> Driver::createForJIT(const std::string& moduleName,
                                              bool debugInfo) {
@@ -421,9 +443,11 @@ void Driver::analyzeProgram(BlockExprAST& blockAst, Parser& parser) {
   LoweringPass lowering;
   lowering.run(blockAst);
 
-  // Check if string interpolation is used without stdlib
+  // Interpolation desugars to sun.String / sun.HeapAllocator, so those types
+  // have to come from somewhere: an imported stdlib.moon, or — when
+  // compiling the standard library itself — its own sources.
   if ((parser.usesStringInterpolation() || lowering.usedInterpolation()) &&
-      !hasStdlibImport(moonImports_)) {
+      !hasStdlibImport(moonImports_) && !declaresStdlibString(blockAst)) {
     logAndThrowError(
         "String interpolation requires the standard library. Add "
         "'moon \"stdlib.moon\"' to your manifest or use --moon stdlib.moon");
