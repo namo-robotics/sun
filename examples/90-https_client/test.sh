@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
-# Fetches https://example.com and checks the status line. Needs network
-# access; skips (exit 0) when there is none. Exit 0 = pass.
+# Fetches https://example.com and checks the status line. Skips (exit 0) when
+# the TLS bundle has not been built or there is no network access.
+# Exit 0 = pass.
 set -euo pipefail
 DIR=$(dirname "$0")
 cd "$DIR"
+
+if [ ! -f ../../build/tls.moon ]; then
+  echo "SKIP: ../../build/tls.moon not built — run ./scripts/fetch-openssl.sh"
+  exit 0
+fi
 
 if ! curl -fsS --max-time 10 -o /dev/null https://example.com/ 2>/dev/null; then
   echo "SKIP: no network access"
