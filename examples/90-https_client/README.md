@@ -1,7 +1,3 @@
----
-docs-page: examples
----
-
 # HTTPS Client
 
 An HTTPS request with `HttpsClient` from the `tls` bundle. The client opens a

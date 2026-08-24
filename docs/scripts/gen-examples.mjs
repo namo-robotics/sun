@@ -146,7 +146,21 @@ console.log(`Generated ${OUT_FILE} from ${pageExamples.length} examples.`)
 
 mkdirSync(GENERATED_DIR, { recursive: true })
 for (const example of partials) {
-  const out = join(GENERATED_DIR, basename(example.dir) + '.mdx')
+  const name = basename(example.dir)
+  const page = example.meta['docs-page']
+  // A partial is only visible if its host page imports it, so a docs-page that
+  // names a missing or non-importing page would silently drop the example.
+  const host = join(DOCS_DIR, 'pages', page + '.mdx')
+  if (!existsSync(host)) {
+    throw new Error(`examples/${name}/README.md names docs-page "${page}", but pages/${page}.mdx does not exist.`)
+  }
+  if (!readFileSync(host, 'utf8').includes(`generated/${name}.mdx`)) {
+    throw new Error(
+      `examples/${name}/README.md names docs-page "${page}", but pages/${page}.mdx never imports generated/${name}.mdx, ` +
+        `so the example would appear nowhere. Add the import, or drop the frontmatter to list it on the Examples page.`,
+    )
+  }
+  const out = join(GENERATED_DIR, name + '.mdx')
   writeFileSync(out, renderPartial(example))
-  console.log(`Generated ${out} for the ${example.meta['docs-page']} page.`)
+  console.log(`Generated ${out} for the ${page} page.`)
 }
