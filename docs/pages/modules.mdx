@@ -29,6 +29,7 @@ manifest {
     suns: ["file1.sun", "file2.sun"]   // Optional: additional source files
     moons: ["lib1.moon", "lib2.moon"]  // Optional: precompiled libraries
     protos: ["schemas/msgs.proto"]     // Optional: protobuf schemas to import
+    archives: ["vendor/libfoo.a"]      // Optional: C libraries to carry along
 }
 ```
 
@@ -36,6 +37,9 @@ manifest {
 - **moons** — Precompiled library bundles (`.moon`) to link
 - **protos** — Protobuf schemas (`.proto`) compiled into message classes; see
   [Protobuf](/protobuf)
+- **archives** — Native static libraries (`.a`) to carry inside the bundle
+  being built, so importers link against them without `-l` flags; only
+  meaningful with `--emit-moon`. See [C FFI](/c-ffi)
 
 All fields are optional (entries are newline-separated; a trailing `;` is
 tolerated). A minimal program needs only a `main()` function.
@@ -202,7 +206,7 @@ manifest {
 | `bigint.sun` | Arbitrary-precision `BigUint` |
 | `env.sun` | `sun.env` — environment variables, working directory, `args` |
 | `errors.sun` | Standard error types (`EmptyError`, `NotFoundError`, etc.) |
-| `http.sun` | HTTP client and server |
+| `http.sun` | HTTP/1.1 server (`HttpServer`); the client is in `tls.moon` |
 | `io.sun` | `sun.io` — files, directories, `Poller` |
 | `iterator.sun` | Iteration protocol (`IIterator<T, Container>`, `IIterable<T, Self>`) |
 | `json.sun` | `Json` parsing and serialization |
@@ -210,7 +214,7 @@ manifest {
 | `map.sun` | Generic hash map `Map<K, V>` |
 | `matrix.sun` | `Matrix<T>` and `MatrixView<T>` N-dimensional arrays |
 | `mutex.sun` | `Mutex` for thread synchronization |
-| `networking.sun` | TCP sockets (`TcpStream`, `TcpListener`) |
+| `networking.sun` | TCP sockets (`TcpStream`, `TcpListener`) and DNS |
 | `option.sun` | `Option<T>` and `Result<T, E>` payload enums |
 | `print.sun` | Overloaded `print`/`println`/`eprint`/`eprintln` |
 | `process.sun` | `sun.process` — `Command`, signals, raw fork/exec |
@@ -227,6 +231,21 @@ When building from source, the stdlib is automatically compiled:
 cmake -B build && cmake --build build
 # Creates build/stdlib.moon
 ```
+
+### The TLS Bundle
+
+TLS ships as its own bundle, `tls.moon`, rather than as part of the standard
+library, so programs that do not speak TLS carry none of it:
+
+```sun
+manifest {
+    moons: ["stdlib.moon", "tls.moon"]
+}
+```
+
+It holds `TlsStream`, `HttpsClient` and the OpenSSL bindings, and carries a
+static copy of OpenSSL inside the bundle — so nothing needs `-lssl` and the
+compiled binary needs no OpenSSL installed. See [TLS & HTTPS](/tls).
 
 ### Example: Building a Custom Moon
 
@@ -316,6 +335,42 @@ export SUN_PATH=~/.sun/lib
 manifest {
     moons: ["mylib.moon"]   // Found via SUN_PATH
 }
+```
+
+The Debian package installs `stdlib.moon` and `tls.moon` to `/usr/lib/sun`,
+which is searched without any `SUN_PATH` setting.
+
+### Installing a Released Bundle
+
+Releases carry `stdlib.moon` and `tls.moon` as downloads of their own, for
+dropping next to a compiler you already have.
+
+A bundle's bitcode is compiled for one architecture, and the compiler rejects
+one built for another — so each file is named for its target. Take the one
+matching yours and install it under the canonical name, since manifests
+resolve bundles by exact file name:
+
+```bash
+curl -LO https://github.com/namo-robotics/sun/releases/download/dev/stdlib-x86_64-linux-gnu.moon
+sudo cp stdlib-x86_64-linux-gnu.moon /usr/lib/sun/stdlib.moon
+```
+
+Any directory on `SUN_PATH` — or one passed with `--lib-path`, or listed in a
+`sun-config.json` — works as well as `/usr/lib/sun`.
+
+A bundle for another target goes in a directory named for its triple, which
+is where a cross build looks:
+
+```bash
+mkdir -p ~/.sun/lib/aarch64-linux-gnu
+cp stdlib-aarch64-linux-gnu.moon ~/.sun/lib/aarch64-linux-gnu/stdlib.moon
+```
+
+Picking the wrong file is not silent — the compiler names both triples:
+
+```
+Module '07f0c36b...' was compiled for 'aarch64-linux-gnu' but the current
+target is 'x86_64-pc-linux-gnu'; rebuild the .moon with --target ...
 ```
 
 ## Namespaces (module blocks)

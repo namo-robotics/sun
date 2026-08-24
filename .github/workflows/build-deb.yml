@@ -68,6 +68,19 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
+          body: |
+            The `.deb` installs the compiler and both bundles. The `.moon`
+            files are the same bundles on their own, for dropping next to an
+            existing compiler; each is named for the target it was built for.
+            Install one under its canonical name in a bundle search directory:
+
+            ```bash
+            mv stdlib-x86_64-linux-gnu.moon /usr/lib/sun/stdlib.moon
+            mv tls-x86_64-linux-gnu.moon    /usr/lib/sun/tls.moon
+            ```
+
+            A bundle built for another architecture is rejected at link time,
+            so take the one matching your target.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -81,8 +94,21 @@ jobs:
           files: dist/*
           body: |
             Latest development build from main branch.
-            
+
             Commit: ${{ github.sha }}
+
+            The `.deb` installs the compiler and both bundles. The `.moon`
+            files are the same bundles on their own, for dropping next to an
+            existing compiler; each is named for the target it was built for.
+            Install one under its canonical name in a bundle search directory:
+
+            ```bash
+            mv stdlib-x86_64-linux-gnu.moon /usr/lib/sun/stdlib.moon
+            mv tls-x86_64-linux-gnu.moon    /usr/lib/sun/tls.moon
+            ```
+
+            A bundle built for another architecture is rejected at link time,
+            so take the one matching your target.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
