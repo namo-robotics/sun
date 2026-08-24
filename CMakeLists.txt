@@ -352,6 +352,47 @@ if(NOT SKIP_STDLIB)
     if(CROSS_MOONS)
         add_custom_target(stdlib_cross_moons ALL DEPENDS ${CROSS_MOONS})
     endif()
+
+    # --------------------------------------------------------------
+    # tls.moon — TLS client support, bundled separately from the stdlib
+    # --------------------------------------------------------------
+    # The bundle carries static OpenSSL archives (see the manifest's `libs:`),
+    # so programs using TLS need no -lssl/-lcrypto and no OpenSSL installed.
+    # Build the archives once with scripts/fetch-openssl.sh; without them
+    # tls.moon is skipped rather than failing the build.
+    set(SUN_OPENSSL_DIR ${CMAKE_SOURCE_DIR}/third_party/openssl/x86_64-linux-musl
+        CACHE PATH "Directory holding the static libssl.a/libcrypto.a for tls.moon")
+
+    if(EXISTS ${SUN_OPENSSL_DIR}/libssl.a AND EXISTS ${SUN_OPENSSL_DIR}/libcrypto.a)
+        set(TLS_MOON ${CMAKE_BINARY_DIR}/tls.moon)
+        set(TLS_ENTRYPOINT ${CMAKE_SOURCE_DIR}/tls/tls.sun)
+        set(TLS_SOURCES
+            ${TLS_ENTRYPOINT}
+            ${CMAKE_SOURCE_DIR}/tls/openssl.sun
+            ${CMAKE_SOURCE_DIR}/tls/tls_stream.sun
+            ${CMAKE_SOURCE_DIR}/tls/https_client.sun
+        )
+
+        # sun-config.json at the repo root supplies $OPENSSL_LIBS; --lib-path
+        # points at this build directory, which need not be <source>/build.
+        add_custom_command(
+            OUTPUT ${TLS_MOON}
+            COMMAND $<TARGET_FILE:sun> --emit-moon -g
+                    --lib-path ${CMAKE_BINARY_DIR}
+                    -o ${TLS_MOON} ${TLS_ENTRYPOINT}
+            DEPENDS sun ${STDLIB_MOON} ${TLS_SOURCES}
+                    ${SUN_OPENSSL_DIR}/libssl.a ${SUN_OPENSSL_DIR}/libcrypto.a
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            COMMENT "Building precompiled tls.moon (with static OpenSSL)"
+            VERBATIM
+        )
+
+        add_custom_target(tls_moon ALL DEPENDS ${TLS_MOON})
+    else()
+        message(STATUS
+            "tls.moon skipped: no static OpenSSL in ${SUN_OPENSSL_DIR}. "
+            "Run ./scripts/fetch-openssl.sh to enable TLS support.")
+    endif()
 endif()
 
 # ------------------------------------------------------------------

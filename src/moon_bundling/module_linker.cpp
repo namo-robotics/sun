@@ -12,89 +12,112 @@ namespace sun {
 
 namespace {
 
-/// Remap a type from a loaded module to the target module's equivalent type.
-/// Handles renaming of known struct types like static_ptr_struct.N ->
-/// static_ptr_struct
-llvm::Type* remapTypeToTarget(llvm::Type* srcType, llvm::LLVMContext& ctx) {
-  if (!srcType) return nullptr;
-
-  // Handle struct types with numbered suffixes (e.g., static_ptr_struct.19)
-  if (auto* structTy = llvm::dyn_cast<llvm::StructType>(srcType)) {
-    if (structTy->hasName()) {
-      llvm::StringRef name = structTy->getName();
-
-      // Check against all well-known struct types
-      for (const auto& info : sun::StructNames::All) {
-        if (name.starts_with(info.name)) {
-          // Get or create the canonical type in the context
-          llvm::StructType* canonical =
-              llvm::StructType::getTypeByName(ctx, info.name);
-          if (!canonical) {
-            canonical = llvm::StructType::create(ctx, info.name);
-            auto* ptrTy = llvm::PointerType::getUnqual(ctx);
-            switch (info.layout) {
-              case sun::StructNames::Layout::Ptr:
-                canonical->setBody({ptrTy});
-                break;
-              case sun::StructNames::Layout::PtrPtr:
-                canonical->setBody({ptrTy, ptrTy});
-                break;
-              case sun::StructNames::Layout::PtrI64:
-                canonical->setBody({ptrTy, llvm::Type::getInt64Ty(ctx)});
-                break;
-              case sun::StructNames::Layout::PtrI32Ptr:
-                canonical->setBody({ptrTy, llvm::Type::getInt32Ty(ctx), ptrTy});
-                break;
-            }
-          }
-          return canonical;
-        }
-      }
-
-      // Sun class/enum structs are named "<mangled>_struct" and every module
-      // that mentions them mints its own copy, which LLVM keeps apart with a
-      // ".N" suffix. Codegen for the target module creates (or will create)
-      // the unsuffixed one from the Sun type, so declare library functions
-      // against that canonical struct.
-      size_t dot = name.rfind('.');
-      if (dot != llvm::StringRef::npos && dot + 1 < name.size() &&
-          name.substr(dot + 1).find_first_not_of("0123456789") ==
-              llvm::StringRef::npos &&
-          name.substr(0, dot).ends_with("_struct")) {
-        std::string base = name.substr(0, dot).str();
-        llvm::StructType* canonical = llvm::StructType::getTypeByName(ctx, base);
-        if (!canonical) {
-          canonical = llvm::StructType::create(ctx, base);
-        }
-        if (canonical->isOpaque() && !structTy->isOpaque()) {
-          llvm::SmallVector<llvm::Type*, 8> elems;
-          for (llvm::Type* elem : structTy->elements()) {
-            elems.push_back(remapTypeToTarget(elem, ctx));
-          }
-          canonical->setBody(elems, structTy->isPacked());
-        }
-        return canonical;
-      }
-    }
+/// The canonical name a struct from a scanned module should unify under in
+/// the target: well-known runtime structs map to their unsuffixed name, and a
+/// trailing ".N" that LLVM added to keep same-named types apart is stripped
+/// (codegen mints the unsuffixed one from the Sun type).
+std::string canonicalStructName(llvm::StringRef name) {
+  for (const auto& info : sun::StructNames::All) {
+    if (name.starts_with(info.name)) return info.name;
   }
-
-  // No remapping needed
-  return srcType;
+  size_t dot = name.rfind('.');
+  if (dot != llvm::StringRef::npos && dot + 1 < name.size() &&
+      name.substr(dot + 1).find_first_not_of("0123456789") ==
+          llvm::StringRef::npos) {
+    return name.substr(0, dot).str();
+  }
+  return name.str();
 }
 
-/// Create a function type with remapped parameter and return types
-llvm::FunctionType* remapFunctionType(llvm::FunctionType* srcFuncType,
-                                      llvm::LLVMContext& ctx) {
-  // Remap return type
-  llvm::Type* retType = remapTypeToTarget(srcFuncType->getReturnType(), ctx);
+/// Map a type from a scanned module to the target context. Scanned modules
+/// live in their own LLVMContext, so every type is rebuilt: named structs
+/// unify by canonical name, everything else structurally. `visited` carries
+/// in-progress structs so recursive types terminate.
+llvm::Type* mapTypeToTarget(
+    llvm::Type* srcType, llvm::LLVMContext& ctx,
+    std::unordered_map<llvm::Type*, llvm::Type*>& visited) {
+  if (!srcType) return nullptr;
+  auto it = visited.find(srcType);
+  if (it != visited.end()) return it->second;
 
-  // Remap parameter types
-  llvm::SmallVector<llvm::Type*, 8> paramTypes;
-  for (llvm::Type* paramType : srcFuncType->params()) {
-    paramTypes.push_back(remapTypeToTarget(paramType, ctx));
+  llvm::Type* mapped = nullptr;
+  if (auto* structTy = llvm::dyn_cast<llvm::StructType>(srcType)) {
+    if (structTy->isLiteral()) {
+      llvm::SmallVector<llvm::Type*, 8> elems;
+      for (llvm::Type* elem : structTy->elements()) {
+        elems.push_back(mapTypeToTarget(elem, ctx, visited));
+      }
+      mapped = llvm::StructType::get(ctx, elems, structTy->isPacked());
+      visited[srcType] = mapped;
+      return mapped;
+    }
+    // Identified struct: unify by canonical name; create-then-fill so a
+    // recursive body can refer back to the struct being built.
+    llvm::StructType* dst = nullptr;
+    if (structTy->hasName()) {
+      std::string name = canonicalStructName(structTy->getName());
+      dst = llvm::StructType::getTypeByName(ctx, name);
+      if (!dst) dst = llvm::StructType::create(ctx, name);
+    } else {
+      dst = llvm::StructType::create(ctx);
+    }
+    visited[srcType] = dst;
+    if (dst->isOpaque() && !structTy->isOpaque()) {
+      llvm::SmallVector<llvm::Type*, 8> elems;
+      for (llvm::Type* elem : structTy->elements()) {
+        elems.push_back(mapTypeToTarget(elem, ctx, visited));
+      }
+      dst->setBody(elems, structTy->isPacked());
+    }
+    return dst;
   }
+  if (auto* intTy = llvm::dyn_cast<llvm::IntegerType>(srcType)) {
+    mapped = llvm::IntegerType::get(ctx, intTy->getBitWidth());
+  } else if (auto* ptrTy = llvm::dyn_cast<llvm::PointerType>(srcType)) {
+    mapped = llvm::PointerType::get(ctx, ptrTy->getAddressSpace());
+  } else if (auto* arrTy = llvm::dyn_cast<llvm::ArrayType>(srcType)) {
+    mapped = llvm::ArrayType::get(
+        mapTypeToTarget(arrTy->getElementType(), ctx, visited),
+        arrTy->getNumElements());
+  } else if (auto* vecTy = llvm::dyn_cast<llvm::VectorType>(srcType)) {
+    mapped = llvm::VectorType::get(
+        mapTypeToTarget(vecTy->getElementType(), ctx, visited),
+        vecTy->getElementCount());
+  } else if (auto* fnTy = llvm::dyn_cast<llvm::FunctionType>(srcType)) {
+    llvm::SmallVector<llvm::Type*, 8> params;
+    for (llvm::Type* p : fnTy->params()) {
+      params.push_back(mapTypeToTarget(p, ctx, visited));
+    }
+    mapped = llvm::FunctionType::get(
+        mapTypeToTarget(fnTy->getReturnType(), ctx, visited), params,
+        fnTy->isVarArg());
+  } else if (srcType->isVoidTy()) {
+    mapped = llvm::Type::getVoidTy(ctx);
+  } else if (srcType->isHalfTy()) {
+    mapped = llvm::Type::getHalfTy(ctx);
+  } else if (srcType->isBFloatTy()) {
+    mapped = llvm::Type::getBFloatTy(ctx);
+  } else if (srcType->isFloatTy()) {
+    mapped = llvm::Type::getFloatTy(ctx);
+  } else if (srcType->isDoubleTy()) {
+    mapped = llvm::Type::getDoubleTy(ctx);
+  } else if (srcType->isFP128Ty()) {
+    mapped = llvm::Type::getFP128Ty(ctx);
+  } else {
+    // Only reached for exotic types that never appear in Sun signatures
+    mapped = srcType;
+  }
+  visited[srcType] = mapped;
+  return mapped;
+}
 
-  return llvm::FunctionType::get(retType, paramTypes, srcFuncType->isVarArg());
+/// Create a function type in the target context with mapped parameter and
+/// return types
+llvm::FunctionType* remapFunctionType(
+    llvm::FunctionType* srcFuncType, llvm::LLVMContext& ctx,
+    std::unordered_map<llvm::Type*, llvm::Type*>& visited) {
+  return llvm::cast<llvm::FunctionType>(
+      mapTypeToTarget(srcFuncType, ctx, visited));
 }
 
 }  // namespace
@@ -190,6 +213,11 @@ void ModuleLinker::buildSymbolMap(const std::string& moduleKey) {
 void ModuleLinker::declareAvailableFunctions() {
   auto& ctx = target_.getContext();
 
+  // Scanned modules get their own context: sharing struct types between the
+  // target and a future link source corrupts llvm::Linker's type mapping (it
+  // strips names off types the target's own definitions still use).
+  if (!scanContext_) scanContext_ = std::make_unique<llvm::LLVMContext>();
+
   // Every module of a bundle normally points at one shared code image, so
   // scanning per module key would parse the same bitcode once per module.
   // Scan each (code image, aliasing) pair once instead; a repeat scan can only
@@ -219,16 +247,13 @@ void ModuleLinker::declareAvailableFunctions() {
     // This captures all concrete functions including generic specializations
     // NOTE: Symbols in the bitcode are ALREADY prefixed with the content hash
     // (done at moon bundle creation time), so we don't add prefixes here.
-    auto owned = LibraryCache::instance().loadModule(moduleKey, ctx);
+    auto owned = LibraryCache::instance().loadModule(moduleKey, *scanContext_);
     if (!owned) continue;
 
-    // Scanning does not touch the module, so keep it for the link step rather
-    // than parsing the same code image a second time. Anything left unclaimed
-    // is dropped when the linker goes out of scope.
     llvm::Module* libModule = owned.get();
-    if (!bitcodeId.empty()) {
-      scannedModules_[bitcodeId] = std::move(owned);
-    }
+    // Cache for cross-context type mapping, shared by every declaration made
+    // from this code image
+    std::unordered_map<llvm::Type*, llvm::Type*> typeMap;
 
     // Scan all defined functions in the bitcode and create declarations
     for (const auto& func : libModule->functions()) {
@@ -255,11 +280,10 @@ void ModuleLinker::declareAvailableFunctions() {
       // Skip if already declared in target
       if (target_.getFunction(declaredName)) continue;
 
-      // Clone the function type and remap struct types to target module's types
-      // This fixes type mismatches like static_ptr_struct vs
-      // static_ptr_struct.19
+      // Rebuild the function type in the target context, unifying struct
+      // types by canonical name (static_ptr_struct.19 -> static_ptr_struct)
       llvm::FunctionType* funcType =
-          remapFunctionType(func.getFunctionType(), ctx);
+          remapFunctionType(func.getFunctionType(), ctx, typeMap);
 
       // Create external declaration with the (potentially aliased) name
       llvm::Function* decl = llvm::Function::Create(
@@ -387,18 +411,12 @@ bool ModuleLinker::linkModuleRecursive(const std::string& moduleKey) {
   // 1. Symbol isolation between different library versions
   // 2. Integrity verification - if bitcode is modified, symbols won't match
   // 3. Struct type isolation to prevent LLVM type merging issues
-  // declareAvailableFunctions() already parsed this code image into the
-  // target's context and left it untouched; claim it rather than parse again.
-  std::unique_ptr<llvm::Module> libModule;
-  std::string bitcodeId = LibraryCache::instance().getBitcodeId(moduleKey);
-  auto scannedIt = scannedModules_.find(bitcodeId);
-  if (!bitcodeId.empty() && scannedIt != scannedModules_.end()) {
-    libModule = std::move(scannedIt->second);
-    scannedModules_.erase(scannedIt);
-  } else {
-    libModule =
-        LibraryCache::instance().loadModule(moduleKey, target_.getContext());
-  }
+  // Parse a fresh copy into the target's context. The copy scanned by
+  // declareAvailableFunctions() lives in a separate context on purpose: the
+  // link source must not share struct type objects with the target, or
+  // llvm::Linker's type mapper mangles the types the target already uses.
+  std::unique_ptr<llvm::Module> libModule =
+      LibraryCache::instance().loadModule(moduleKey, target_.getContext());
   if (!libModule) {
     // Get detailed error from the reader
     auto* bundle = LibraryCache::instance().findBundleForModule(moduleKey);

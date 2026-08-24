@@ -1,0 +1,7 @@
+{
+    "sunPath": ["build"],
+    "pathVariables": {
+        "OPENSSL_LIBS": "third_party/openssl/x86_64-linux-musl"
+    },
+    "root": true
+}

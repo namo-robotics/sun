@@ -64,6 +64,15 @@ class SunJIT {
     if (auto Err = ES->endSession()) ES->reportError(std::move(Err));
   }
 
+  /// Resolve symbols out of a native static library (.a), the way the AOT
+  /// linker would. Used for archives carried inside .moon bundles.
+  Error addStaticLibrary(const std::string &Path) {
+    auto G = StaticLibraryDefinitionGenerator::Load(ObjectLayer, Path.c_str());
+    if (!G) return G.takeError();
+    MainJD.addGenerator(std::move(*G));
+    return Error::success();
+  }
+
   static Expected<std::unique_ptr<SunJIT>> Create() {
     auto EPC = SelfExecutorProcessControl::Create();
     if (!EPC) return EPC.takeError();

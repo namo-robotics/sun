@@ -1,0 +1,228 @@
+// tls/tls_stream.sun - TLS client connection over a TcpStream
+//
+// Certificate verification is always on: the peer must present a chain that
+// validates against the system CA store (SSL_CTX_set_default_verify_paths,
+// which also honors the SSL_CERT_FILE and SSL_CERT_DIR environment
+// variables), and the certificate must match the hostname passed to
+// connect(). SNI is always sent.
+//
+// Usage:
+//   using sun;
+//   using tls;
+//
+//   var stream = TlsStream();
+//   var host = String("example.com");
+//   stream.connect(host, 443);
+//   stream.send_str("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n");
+//   var buf = ContiguousBuffer<u8>(alloc, 4096);
+//   var n = stream.recv(buf);
+//   stream.close();
+
+public module tls {
+  using sun;
+
+  // SSL_CTX_set_verify mode
+  var SSL_VERIFY_PEER: i32 = 1;
+  // SSL_ctrl command + argument implementing the SSL_set_tlsext_host_name
+  // macro (SNI); values are ABI-stable OpenSSL constants.
+  var SSL_CTRL_SET_TLSEXT_HOSTNAME: i32 = 55;
+  var TLSEXT_NAMETYPE_HOST_NAME: i64 = 0;
+  // SSL_get_verify_result success
+  var X509_V_OK: i64 = 0;
+  // SSL_get_error codes
+  var SSL_ERROR_ZERO_RETURN: i32 = 6;
+  var SSL_ERROR_SYSCALL: i32 = 5;
+  var SSL_ERROR_SSL: i32 = 1;
+  // ERR_GET_REASON(code) == code & 0x7FFFFF (OpenSSL 3.x packing)
+  var OPENSSL_REASON_MASK: u64 = 8388607;
+  // SSL_R_UNEXPECTED_EOF_WHILE_READING
+  var SSL_REASON_UNEXPECTED_EOF: u64 = 294;
+
+  // Error carrying the OpenSSL error-queue text (or the X.509 verification
+  // failure reason) for the operation that failed.
+  public class TlsError implements IError {
+    var code_: i32;
+    var message_: String;
+
+    public function init(code: i32, message: const ref String) {
+      var alloc: HeapAllocator = HeapAllocator();
+      this.code_ = code;
+      this.message_ = message.clone(alloc);
+    }
+
+    public function init(code: i32, message: static_ptr<u8>) {
+      this.code_ = code;
+      this.message_ = String(message);
+    }
+
+    public function code() i32 {
+      return this.code_;
+    }
+
+    public function message() String {
+      var alloc: HeapAllocator = HeapAllocator();
+      return this.message_.clone(alloc);
+    }
+  }
+
+  // The queued OpenSSL error as text, with a fallback for an empty queue.
+  function take_openssl_error(context: static_ptr<u8>) String {
+    var alloc: HeapAllocator = HeapAllocator();
+    var out = String(alloc, "");
+    out.append(context);
+    var code: u64 = unsafe { c_err_get_error(); };
+    if (code == 0) {
+      return out;
+    }
+    var buf = ContiguousBuffer<u8>(alloc, 256);
+    buf.fill(0);
+    unsafe { c_err_error_string_n(code, buf.rawData(), buf.size()); };
+    out.append(": ");
+    var text: String = from_c_str(alloc, buf.rawData());
+    out.append(text);
+    return out;
+  }
+
+  // TLS client connection. Owns the TCP socket and the OpenSSL handles;
+  // close() (or drop) releases everything in order.
+  public class TlsStream {
+    var tcp: TcpStream;
+    var ctx: raw_ptr<u8>;  // SSL_CTX*
+    var ssl: raw_ptr<u8>;  // SSL*
+
+    public function init() {
+      this.tcp = TcpStream();
+      this.ctx = null;
+      this.ssl = null;
+    }
+
+    function deinit() void {
+      this.close();
+    }
+
+    // Resolve the host, connect, and complete a verified TLS handshake.
+    public function connect(host: ref String, port: i32) void, IError {
+      this.tcp.connect_host(host, port);
+
+      var method: raw_ptr<u8> = unsafe { c_tls_client_method(); };
+      this.ctx = unsafe { c_ssl_ctx_new(method); };
+      if (this.ctx == null) {
+        this.close();
+        var err_ctx: String = take_openssl_error("SSL_CTX_new failed");
+        throw TlsError(-1, err_ctx);
+      }
+      unsafe { c_ssl_ctx_set_verify(this.ctx, SSL_VERIFY_PEER, null); };
+      if (unsafe { c_ssl_ctx_set_default_verify_paths(this.ctx); } != 1) {
+        this.close();
+        var err_paths: String = take_openssl_error("failed to load system CA store");
+        throw TlsError(-1, err_paths);
+      }
+
+      this.ssl = unsafe { c_ssl_new(this.ctx); };
+      if (this.ssl == null) {
+        this.close();
+        var err_new: String = take_openssl_error("SSL_new failed");
+        throw TlsError(-1, err_new);
+      }
+
+      // Verify the certificate against this hostname, and send it as SNI.
+      if (unsafe { c_ssl_set1_host(this.ssl, host.c_str()); } != 1) {
+        this.close();
+        var err_host: String = take_openssl_error("SSL_set1_host failed");
+        throw TlsError(-1, err_host);
+      }
+      unsafe { c_ssl_ctrl(this.ssl, SSL_CTRL_SET_TLSEXT_HOSTNAME, TLSEXT_NAMETYPE_HOST_NAME, host.c_str()); };
+
+      if (unsafe { c_ssl_set_fd(this.ssl, this.tcp.get_fd()); } != 1) {
+        this.close();
+        var err_fd: String = take_openssl_error("SSL_set_fd failed");
+        throw TlsError(-1, err_fd);
+      }
+
+      if (unsafe { c_ssl_connect(this.ssl); } != 1) {
+        // A failed verification is the most useful thing to report.
+        var verify: i64 = unsafe { c_ssl_get_verify_result(this.ssl); };
+        if (verify != X509_V_OK) {
+          var alloc: HeapAllocator = HeapAllocator();
+          var msg = String(alloc, "certificate verification failed: ");
+          var reason: String = from_c_str(alloc, unsafe { c_x509_verify_cert_error_string(verify); });
+          msg.append(reason);
+          this.close();
+          throw TlsError(-1, msg);
+        }
+        var handshake_err: String = take_openssl_error("TLS handshake failed");
+        this.close();
+        throw TlsError(-1, handshake_err);
+      }
+    }
+
+    // Send string data
+    public function send_str(data: static_ptr<u8>) i64, IError {
+      return this.send_bytes(data.raw(), data.length());
+    }
+
+    // Send a String's contents. Takes ref (not const ref) because c_str()
+    // may append the terminating NUL.
+    public function send_string(data: ref String) i64, IError {
+      return this.send_bytes(data.c_str(), data.length());
+    }
+
+    // Send raw bytes; on a blocking socket SSL_write writes everything or
+    // fails.
+    public function send_bytes(data: raw_ptr<u8>, len: i64) i64, IError {
+      var result: i32 = unsafe { c_ssl_write(this.ssl, data, _convert<i32>(len)); };
+      if (result <= 0) {
+        var err_write: String = take_openssl_error("TLS write failed");
+        throw TlsError(result, err_write);
+      }
+      return _convert<i64>(result);
+    }
+
+    // Receive into a ContiguousBuffer. Returns the byte count, or 0 once
+    // the peer has closed the connection.
+    public function recv(buf: ref ContiguousBuffer<u8>) i64, IError {
+      var result: i32 = unsafe { c_ssl_read(this.ssl, buf.rawData(), _convert<i32>(buf.size())); };
+      if (result > 0) {
+        return _convert<i64>(result);
+      }
+      var reason: i32 = unsafe { c_ssl_get_error(this.ssl, result); };
+      if (reason == SSL_ERROR_ZERO_RETURN) {
+        return 0;  // clean TLS shutdown
+      }
+      // Peers commonly drop the socket without a close_notify. OpenSSL 1.1.1
+      // reports that as a syscall error with an empty queue, 3.x as an SSL
+      // error with the unexpected-eof reason. Both are end-of-stream here:
+      // framed protocols (Content-Length, chunked) detect real truncation
+      // above this layer.
+      if (reason == SSL_ERROR_SYSCALL and unsafe { c_err_peek_error(); } == 0) {
+        return 0;
+      }
+      if (reason == SSL_ERROR_SSL) {
+        var peeked: u64 = unsafe { c_err_peek_error(); };
+        if ((peeked & OPENSSL_REASON_MASK) == SSL_REASON_UNEXPECTED_EOF) {
+          return 0;
+        }
+      }
+      var err_read: String = take_openssl_error("TLS read failed");
+      throw TlsError(reason, err_read);
+    }
+
+    // Shut the session down and release the handles. Safe to call twice.
+    public function close() void {
+      if (this.ssl != null) {
+        unsafe { c_ssl_shutdown(this.ssl); };
+        unsafe { c_ssl_free(this.ssl); };
+        this.ssl = null;
+      }
+      if (this.ctx != null) {
+        unsafe { c_ssl_ctx_free(this.ctx); };
+        this.ctx = null;
+      }
+      this.tcp.close();
+    }
+
+    public function is_open() bool {
+      return this.ssl != null;
+    }
+  }
+}

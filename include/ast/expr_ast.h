@@ -122,7 +122,10 @@ class ExprAST {
     ASTNodeType t = getType();
     // CALL and GENERIC_CALL produce temporaries when returning class values
     // The resolved type should be checked by the caller to confirm it's a class
-    return t == ASTNodeType::CALL || t == ASTNodeType::GENERIC_CALL;
+    // BLOCK is the value of a block expression — string interpolation lowers
+    // to one — and is owned by nobody, so it transfers like any temporary.
+    return t == ASTNodeType::CALL || t == ASTNodeType::GENERIC_CALL ||
+           t == ASTNodeType::BLOCK;
   }
 
   /// Returns true if this expression is an lvalue (can be assigned to,

@@ -4,6 +4,7 @@
 #include <llvm/TargetParser/Triple.h>
 
 #include <algorithm>
+#include <fstream>
 
 #include "support/sun_path.h"
 
@@ -159,6 +160,42 @@ MoonReader* LibraryCache::findBundleForModule(const std::string& moduleKey) {
   }
 
   return nullptr;
+}
+
+std::vector<std::string> LibraryCache::extractNativeArchives(
+    const std::set<std::string>& moduleKeys,
+    const std::filesystem::path& destDir) {
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  std::vector<std::string> extracted;
+  std::set<MoonReader*> seenBundles;
+
+  for (const auto& moduleKey : moduleKeys) {
+    auto* bundle = findBundleForModule(moduleKey);
+    if (!bundle) continue;
+    if (bundle->getNativeArchives().empty()) continue;
+    if (!seenBundles.insert(bundle).second) continue;  // one visit per bundle
+
+    std::error_code ec;
+    std::filesystem::path bundleDir =
+        destDir / bundle->getPath().stem().string();
+    std::filesystem::create_directories(bundleDir, ec);
+    if (ec) continue;
+
+    for (const auto& entry : bundle->getNativeArchives()) {
+      std::vector<char> data;
+      if (!bundle->readNativeArchive(entry.name, data)) continue;
+      std::filesystem::path out = bundleDir / entry.name;
+      std::ofstream file(out, std::ios::binary);
+      if (!file) continue;
+      file.write(data.data(), static_cast<std::streamsize>(data.size()));
+      if (!file.good()) continue;
+      file.close();
+      extracted.push_back(out.string());
+    }
+  }
+
+  return extracted;
 }
 
 bool LibraryCache::hasModule(const std::string& moduleKey) {

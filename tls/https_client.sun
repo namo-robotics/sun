@@ -1,0 +1,270 @@
+// tls/https_client.sun - Minimal HTTPS client on top of TlsStream
+//
+// Sends HTTP/1.1 requests with Connection: close and reads the response to
+// end-of-stream. Bodies framed with Content-Length or chunked transfer
+// encoding are both understood. Not in this version: redirects, compression,
+// connection reuse.
+//
+// Usage:
+//   using sun;
+//   using tls;
+//
+//   var alloc = make_heap_allocator();
+//   var client = HttpsClient(alloc);
+//   var host = String(alloc, "example.com");
+//   var resp = client.get(host, "/");
+//   println(resp.status);
+//   println(resp.body);
+
+public module tls {
+  using sun;
+
+  // -------------------------------------------------------------------
+  // HttpClientResponse - parsed response
+  // -------------------------------------------------------------------
+
+  public class HttpClientResponse {
+    public var status: i32;
+    public var headers: String;  // raw header block after the status line
+    public var body: String;  // decoded body
+
+    public function init(alloc: ref HeapAllocator) {
+      this.status = 0;
+      this.headers = String(alloc, "");
+      this.body = String(alloc, "");
+    }
+  }
+
+  // -------------------------------------------------------------------
+  // Response parsing
+  // -------------------------------------------------------------------
+
+  // The Content-Length value in a lowercased header block, or -1
+  function find_content_length(headers_lower: const ref String) i64 {
+    var idx: i64 = match headers_lower.find("content-length:") {
+      Option.Some(v) => v,
+      Option.None => -1
+    };
+    if (idx < 0) {
+      return -1;
+    }
+    var i: i64 = idx + 15;
+    var n: i64 = headers_lower.length();
+    while (i < n and headers_lower.at(i) == HTTP_SP) {
+      i = i + 1;
+    }
+    var val: i64 = 0;
+    var saw_digit: bool = false;
+    while (i < n) {
+      var c: u8 = headers_lower.at(i);
+      if (c < 48 or c > 57) {
+        break;
+      }
+      val = val * 10 + _convert<i64>(c) - 48;
+      saw_digit = true;
+      i = i + 1;
+    }
+    if (saw_digit == false) {
+      return -1;
+    }
+    return val;
+  }
+
+  // Decode a chunked body from raw[start..] into out
+  function decode_chunked(raw: const ref String, start: i64, out: ref String) void, IError {
+    var i: i64 = start;
+    var n: i64 = raw.length();
+    while (i < n) {
+      // Chunk size is lowercase or uppercase hex
+      var size: i64 = 0;
+      var saw_digit: bool = false;
+      while (i < n) {
+        var c: u8 = raw.at(i);
+        var digit: i64 = -1;
+        if (c >= 48 and c <= 57) {
+          digit = _convert<i64>(c) - 48;
+        }
+        if (c >= 97 and c <= 102) {
+          digit = _convert<i64>(c) - 87;
+        }
+        if (c >= 65 and c <= 70) {
+          digit = _convert<i64>(c) - 55;
+        }
+        if (digit < 0) {
+          break;
+        }
+        size = size * 16 + digit;
+        saw_digit = true;
+        i = i + 1;
+      }
+      if (saw_digit == false) {
+        throw Error(-1, "malformed chunked body");
+      }
+      // Skip any chunk extension up to the end of the size line
+      while (i < n and raw.at(i) != HTTP_LF) {
+        i = i + 1;
+      }
+      i = i + 1;
+      if (size == 0) {
+        return;  // terminating chunk; any trailers are ignored
+      }
+      if (i + size > n) {
+        throw Error(-1, "truncated chunked body");
+      }
+      var end: i64 = i + size;
+      while (i < end) {
+        out.append_char(raw.at(i));
+        i = i + 1;
+      }
+      i = i + 2;  // CRLF after the chunk data
+    }
+    throw Error(-1, "chunked body missing terminating chunk");
+  }
+
+  // Split a raw response into status, header block, and decoded body.
+  // Public like http.sun's request parser, so code driving a TlsStream
+  // itself can reuse the framing.
+  public function parse_response(alloc: ref HeapAllocator, raw: const ref String, resp: ref HttpClientResponse) void, IError {
+    var n: i64 = raw.length();
+    var header_end: i64 = http_find_header_end(raw);
+    if (header_end < 0) {
+      throw Error(-1, "malformed HTTP response: missing header terminator");
+    }
+
+    // Status code: the digits after the first space of "HTTP/1.1 200 OK"
+    var i: i64 = 0;
+    while (i < n and raw.at(i) != HTTP_SP) {
+      i = i + 1;
+    }
+    i = i + 1;
+    var status: i64 = 0;
+    var saw_digit: bool = false;
+    while (i < n) {
+      var c: u8 = raw.at(i);
+      if (c < 48 or c > 57) {
+        break;
+      }
+      status = status * 10 + _convert<i64>(c) - 48;
+      saw_digit = true;
+      i = i + 1;
+    }
+    if (saw_digit == false) {
+      throw Error(-1, "malformed HTTP response: no status code");
+    }
+    resp.status = _convert<i32>(status);
+
+    // Header block: after the status line, up to the CRLFCRLF terminator
+    while (i < n and raw.at(i) != HTTP_LF) {
+      i = i + 1;
+    }
+    i = i + 1;
+    while (i < header_end) {
+      resp.headers.append_char(raw.at(i));
+      i = i + 1;
+    }
+
+    // Body: chunked when declared, else Content-Length, else read-to-end
+    var body_start: i64 = header_end + 4;
+    var lower: String = resp.headers.clone(alloc);
+    lower.to_lower();
+    if (lower.contains("transfer-encoding: chunked")) {
+      decode_chunked(raw, body_start, resp.body);
+      return;
+    }
+    var content_length: i64 = find_content_length(lower);
+    var body_end: i64 = n;
+    if (content_length >= 0 and body_start + content_length < n) {
+      body_end = body_start + content_length;
+    }
+    var j: i64 = body_start;
+    while (j < body_end) {
+      resp.body.append_char(raw.at(j));
+      j = j + 1;
+    }
+  }
+
+  // -------------------------------------------------------------------
+  // HttpsClient - one TLS connection per request
+  // -------------------------------------------------------------------
+
+  public class HttpsClient {
+    var alloc: HeapAllocator;
+
+    public function init(allocator: ref HeapAllocator) {
+      this.alloc = allocator.copy();
+    }
+
+    // GET https://host{path} on port 443
+    public function get(host: ref String, path: static_ptr<u8>) HttpClientResponse, IError {
+      return this.get(host, 443, path);
+    }
+
+    public function get(host: ref String, port: i32, path: static_ptr<u8>) HttpClientResponse, IError {
+      var req = String(this.alloc, "GET ");
+      req.append(path);
+      req.append(" HTTP/1.1");
+      http_append_crlf(req);
+      this.append_common_headers(req, host);
+      http_append_crlf(req);
+      return this.exchange(host, port, req);
+    }
+
+    // POST a body to https://host{path} on port 443
+    public function post(host: ref String, path: static_ptr<u8>, content_type: static_ptr<u8>, body: const ref String) HttpClientResponse, IError {
+      return this.post(host, 443, path, content_type, body);
+    }
+
+    public function post(host: ref String, port: i32, path: static_ptr<u8>, content_type: static_ptr<u8>, body: const ref String) HttpClientResponse, IError {
+      var req = String(this.alloc, "POST ");
+      req.append(path);
+      req.append(" HTTP/1.1");
+      http_append_crlf(req);
+      this.append_common_headers(req, host);
+      req.append("Content-Type: ");
+      req.append(content_type);
+      http_append_crlf(req);
+      req.append("Content-Length: ");
+      req.append(body.length());
+      http_append_crlf(req);
+      http_append_crlf(req);
+      req.append(body);
+      return this.exchange(host, port, req);
+    }
+
+    function append_common_headers(req: ref String, host: ref String) void {
+      req.append("Host: ");
+      req.append(host);
+      http_append_crlf(req);
+      req.append("Connection: close");
+      http_append_crlf(req);
+      req.append("Accept: */*");
+      http_append_crlf(req);
+    }
+
+    // Connect, send the request, read to end-of-stream, and parse
+    function exchange(host: ref String, port: i32, request: ref String) HttpClientResponse, IError {
+      var stream = TlsStream();
+      stream.connect(host, port);
+      stream.send_string(request);
+
+      var raw = String(this.alloc, "");
+      var chunk = ContiguousBuffer<u8>(this.alloc, 8192);
+      var done: bool = false;
+      while (done == false) {
+        var n: i64 = stream.recv(chunk);
+        if (n <= 0) {
+          done = true;
+        } else {
+          for (var i: i64 = 0; i < n; i = i + 1) {
+            raw.append_char(chunk.get_unchecked(i));
+          }
+        }
+      }
+      stream.close();
+
+      var resp = HttpClientResponse(this.alloc);
+      parse_response(this.alloc, raw, resp);
+      return resp;
+    }
+  }
+}

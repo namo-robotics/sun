@@ -24,18 +24,28 @@ struct ManifestProtoDependency {
   std::string path;
 };
 
+// A native static library (.a) carried inside the .moon being built, so
+// importers link against it without naming -l flags. Only meaningful when
+// building a bundle.
+struct ManifestArchiveDependency {
+  std::string path;
+};
+
 class ManifestAST : public ExprAST {
   std::vector<ManifestSunDependency> suns;
   std::vector<ManifestMoonDependency> moons;
   std::vector<ManifestProtoDependency> protos;
+  std::vector<ManifestArchiveDependency> archives;
 
  public:
   ManifestAST(std::vector<ManifestSunDependency> suns,
               std::vector<ManifestMoonDependency> moons,
-              std::vector<ManifestProtoDependency> protos = {})
+              std::vector<ManifestProtoDependency> protos = {},
+              std::vector<ManifestArchiveDependency> archives = {})
       : suns(std::move(suns)),
         moons(std::move(moons)),
-        protos(std::move(protos)) {}
+        protos(std::move(protos)),
+        archives(std::move(archives)) {}
 
   ASTNodeType getType() const override { return ASTNodeType::MANIFEST; }
   std::string toString() const override { return "manifest"; }
@@ -44,6 +54,9 @@ class ManifestAST : public ExprAST {
   const std::vector<ManifestMoonDependency>& getMoons() const { return moons; }
   const std::vector<ManifestProtoDependency>& getProtos() const {
     return protos;
+  }
+  const std::vector<ManifestArchiveDependency>& getArchives() const {
+    return archives;
   }
   std::string dotLabel() const override { return "Manifest"; }
 };

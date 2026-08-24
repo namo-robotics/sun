@@ -1,0 +1,158 @@
+# TLS & HTTPS
+
+import { Callout } from 'nextra/components'
+
+TLS lives in its own bundle, `tls.moon`, rather than the standard library, so
+programs that do not speak TLS carry none of it. The bundle wraps OpenSSL and
+**embeds its own static copy** of it, so a program using TLS needs no linker
+flags and no OpenSSL installed on the machine it runs on.
+
+```sun
+using sun;
+using tls;
+
+function main() i32 {
+    var alloc = make_heap_allocator();
+    var client = HttpsClient(alloc);
+    var host = String(alloc, "example.com");
+
+    try {
+        var response = client.get(host, "/");
+        println(response.status);   // 200
+        println(response.body);
+        return 0;
+    } catch (e: IError) {
+        var message = e.message();
+        println(message);
+        return 1;
+    }
+}
+
+manifest {
+    moons: ["stdlib.moon", "tls.moon"]
+}
+```
+
+```bash
+sun client.sun              # run it
+sun --compile -o client client.sun
+```
+
+## Certificate verification
+
+Verification is on and cannot be switched off. A connection only succeeds if
+the peer's certificate chain validates against the trusted CA store **and**
+the certificate matches the hostname passed to `connect`. Anything else
+throws, with the reason in the error message:
+
+```
+certificate verification failed: self-signed certificate
+certificate verification failed: hostname mismatch
+```
+
+Trust comes from the system CA store (`/etc/ssl`). Two environment variables
+override it, which is how you test against a private CA:
+
+| Variable | Meaning |
+| --- | --- |
+| `SSL_CERT_FILE` | A PEM file of trusted certificates |
+| `SSL_CERT_DIR` | A directory of trusted certificates |
+
+The client also sends SNI, so it works with virtual hosts.
+
+## HttpsClient
+
+`get` and `post` open a connection, exchange one request, and close it. Both
+take the host as a `String` and the path as a literal; both have an overload
+taking a port, which defaults to 443.
+
+```sun
+public function get(host: ref String, path: static_ptr<u8>) HttpClientResponse, IError
+public function get(host: ref String, port: i32, path: static_ptr<u8>) HttpClientResponse, IError
+public function post(host: ref String, path: static_ptr<u8>, content_type: static_ptr<u8>,
+                     body: const ref String) HttpClientResponse, IError
+```
+
+The response carries the status, the raw header block, and the decoded body:
+
+```sun
+public class HttpClientResponse {
+    public var status: i32;
+    public var headers: String;
+    public var body: String;
+}
+```
+
+Bodies framed with `Content-Length` and with chunked transfer encoding are
+both decoded. `parse_response` is public, so code driving a `TlsStream`
+directly can reuse the same framing.
+
+<Callout type="info">
+  This first version does not follow redirects, reuse connections, or decode
+  compressed bodies. A 301 or 302 comes back as-is for the caller to act on.
+</Callout>
+
+## TlsStream
+
+For protocols other than HTTP, `TlsStream` is the connection itself — the
+same shape as `TcpStream`, with the handshake done in `connect`.
+
+```sun
+var stream = TlsStream();
+stream.connect(host, 443);
+stream.send_str("PING\r\n");
+
+var buf = ContiguousBuffer<u8>(alloc, 4096);
+var n = stream.recv(buf);   // 0 once the peer closes
+stream.close();
+```
+
+`close` shuts the session down and releases everything; dropping the value
+does the same.
+
+## Hostnames
+
+Name resolution is in the standard library, not the TLS bundle, so plain TCP
+can use it too:
+
+```sun
+using sun;
+
+var stream = TcpStream();
+stream.connect_host(host, 8080);          // resolve, then connect
+
+var ip: i32 = resolve_host_ipv4(host);    // first A record, network order
+```
+
+Both throw if the name does not resolve or has no IPv4 address. IPv6 is not
+supported yet.
+
+## Building the bundle
+
+`tls.moon` embeds `libssl.a` and `libcrypto.a`, which the repository does not
+carry. Fetch them once:
+
+```bash
+./scripts/fetch-openssl.sh
+./build.sh
+```
+
+The script takes Alpine's `openssl-libs-static` package: Alpine is
+musl-based, matching the toolchain Sun links static binaries with, and builds
+OpenSSL without the optional compression and jitter-entropy backends, so the
+archives depend on nothing outside themselves. Without them the build skips
+`tls.moon` and says so.
+
+The manifest names the archives, and the bundle carries them:
+
+```sun
+manifest {
+    suns: ["openssl.sun", "tls_stream.sun", "https_client.sun"]
+    moons: ["stdlib.moon"]
+    archives: ["$OPENSSL_LIBS/libssl.a", "$OPENSSL_LIBS/libcrypto.a"]
+}
+```
+
+`archives:` works for any bundle wrapping a C library. Importers link against
+what the bundle carries automatically — no `-l` flags, and nothing to install
+alongside the finished program.

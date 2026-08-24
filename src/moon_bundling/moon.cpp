@@ -208,6 +208,10 @@ void MoonWriter::addModule(llvm::Module& module,
   modules_.push_back(std::move(data));
 }
 
+void MoonWriter::addNativeArchive(std::string name, std::string data) {
+  nativeArchives_.emplace_back(std::move(name), std::move(data));
+}
+
 bool MoonWriter::write(const std::filesystem::path& outputPath) {
   std::ofstream out(outputPath, std::ios::binary);
   if (!out) {
@@ -308,6 +312,18 @@ bool MoonWriter::write(const std::filesystem::path& outputPath) {
     index.push_back(entry);
   }
 
+  // Write carried native archives, recording where each landed
+  std::vector<NativeArchiveEntry> archiveIndex;
+  archiveIndex.reserve(nativeArchives_.size());
+  for (const auto& [name, data] : nativeArchives_) {
+    NativeArchiveEntry entry;
+    entry.name = name;
+    entry.offset = static_cast<uint64_t>(out.tellp());
+    entry.size = data.size();
+    out.write(data.data(), static_cast<std::streamsize>(data.size()));
+    archiveIndex.push_back(std::move(entry));
+  }
+
   // Write index
   header.indexOffset = static_cast<uint64_t>(out.tellp());
 
@@ -326,6 +342,18 @@ bool MoonWriter::write(const std::filesystem::path& outputPath) {
               sizeof(entry.metadataOffset));
     out.write(reinterpret_cast<const char*>(&entry.metadataSize),
               sizeof(entry.metadataSize));
+  }
+
+  // Native archive index follows the module index
+  uint64_t archiveCount = archiveIndex.size();
+  out.write(reinterpret_cast<const char*>(&archiveCount), sizeof(archiveCount));
+  for (const auto& entry : archiveIndex) {
+    uint32_t nameLen = static_cast<uint32_t>(entry.name.size());
+    out.write(reinterpret_cast<const char*>(&nameLen), sizeof(nameLen));
+    out.write(entry.name.data(), nameLen);
+    out.write(reinterpret_cast<const char*>(&entry.offset),
+              sizeof(entry.offset));
+    out.write(reinterpret_cast<const char*>(&entry.size), sizeof(entry.size));
   }
 
   // Update header with index offset
@@ -394,7 +422,35 @@ std::unique_ptr<MoonReader> MoonReader::open(
     reader->index_.push_back(entry);
   }
 
+  // Native archive index follows the module index
+  uint64_t archiveCount = 0;
+  in.read(reinterpret_cast<char*>(&archiveCount), sizeof(archiveCount));
+  if (in.good()) {
+    for (uint64_t i = 0; i < archiveCount; ++i) {
+      NativeArchiveEntry entry;
+      uint32_t nameLen = 0;
+      in.read(reinterpret_cast<char*>(&nameLen), sizeof(nameLen));
+      entry.name.resize(nameLen);
+      in.read(entry.name.data(), nameLen);
+      in.read(reinterpret_cast<char*>(&entry.offset), sizeof(entry.offset));
+      in.read(reinterpret_cast<char*>(&entry.size), sizeof(entry.size));
+      if (!in.good()) break;
+      reader->nativeArchives_.push_back(std::move(entry));
+    }
+  }
+
   return reader;
+}
+
+bool MoonReader::readNativeArchive(const std::string& name,
+                                   std::vector<char>& out) {
+  for (const auto& entry : nativeArchives_) {
+    if (entry.name == name) {
+      return readBytes(entry.offset, entry.size, out);
+    }
+  }
+  error_ = "Native archive not found in bundle: " + name;
+  return false;
 }
 
 bool MoonReader::hasModule(const std::string& moduleKey) const {

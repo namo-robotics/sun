@@ -17,6 +17,7 @@
   "modules": "Modules & Namespaces",
   "protobuf": "Protobuf",
   "stdlib": "Standard Library",
+  "tls": "TLS & HTTPS",
   "intrinsics": "Compiler Intrinsics",
   "c-ffi": "C FFI",
   "formatting": "Formatting",

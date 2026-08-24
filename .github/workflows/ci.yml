@@ -31,6 +31,20 @@ jobs:
           key: ci-clang20
           max-size: 2G
 
+      - name: Cache static OpenSSL archives
+        uses: actions/cache@v4
+        with:
+          path: third_party/openssl
+          key: openssl-static-${{ hashFiles('scripts/fetch-openssl.sh') }}
+
+      - name: Fetch static OpenSSL
+        # tls.moon embeds these; without them CMake skips the bundle and the
+        # TLS tests and the https_client example have nothing to link against.
+        run: |
+          if [ ! -f third_party/openssl/x86_64-linux-musl/libcrypto.a ]; then
+            ./scripts/fetch-openssl.sh
+          fi
+
       - name: Configure
         run: |
           cmake -B build -G Ninja \
@@ -41,6 +55,11 @@ jobs:
 
       - name: Build
         run: cmake --build build -j$(nproc)
+
+      - name: Check tls.moon was built
+        # The example skips itself when the bundle is missing; without this
+        # a failed fetch would look like a pass.
+        run: test -f build/tls.moon
 
       - name: Test
         run: |

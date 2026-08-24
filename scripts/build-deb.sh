@@ -81,6 +81,69 @@ sun (${full_version}) unstable; urgency=medium
 EOF
 }
 
+# tls.moon embeds static OpenSSL; without the archives CMake skips the bundle
+# and the package would ship no TLS support.
+ensure_openssl() {
+    if [ -f third_party/openssl/x86_64-linux-musl/libssl.a ] && \
+       [ -f third_party/openssl/x86_64-linux-musl/libcrypto.a ]; then
+        log "Static OpenSSL archives present"
+        return
+    fi
+    log "Fetching static OpenSSL archives for tls.moon..."
+    ./scripts/fetch-openssl.sh
+}
+
+# The triple this machine builds for, named the way the cross bundle
+# directories are (x86_64-linux-gnu, aarch64-linux-gnu).
+host_triple() {
+    local triple
+    triple=$(gcc -dumpmachine 2>/dev/null) && [ -n "$triple" ] && { echo "$triple"; return; }
+    triple=$(dpkg-architecture -qDEB_HOST_GNU_TYPE 2>/dev/null) && [ -n "$triple" ] && { echo "$triple"; return; }
+    echo "$(uname -m)-linux-gnu"
+}
+
+# Publish the .moon bundles on their own, for users who drop them next to an
+# existing compiler instead of installing the package.
+#
+# A bundle is target-specific: its bitcode is compiled for one architecture
+# and the compiler refuses to link one built for another. So each release
+# asset carries the triple it was built for. Install it under the canonical
+# name (stdlib.moon, tls.moon) in a bundle search directory, or for a cross
+# target under <triple>/stdlib.moon.
+publish_bundles() {
+    local src_root="$1"
+    local obj_dir
+    obj_dir=$(ls -d "$src_root"/obj-* 2>/dev/null | head -1)
+
+    if [ -z "$obj_dir" ]; then
+        warn "no build directory found; skipping standalone bundles"
+        return
+    fi
+
+    local triple
+    triple=$(host_triple)
+    for moon in stdlib tls; do
+        if [ -f "$obj_dir/$moon.moon" ]; then
+            cp "$obj_dir/$moon.moon" "$PROJECT_ROOT/dist/$moon-$triple.moon"
+            log "published $moon-$triple.moon"
+        fi
+    done
+
+    # Cross-built bundles live in a directory named for their triple; a
+    # directory holding no bundle is just a normal build subdirectory.
+    for dir in "$obj_dir"/*/; do
+        [ -d "$dir" ] || continue
+        local cross_triple
+        cross_triple=$(basename "$dir")
+        for moon in stdlib tls; do
+            if [ -f "$dir/$moon.moon" ]; then
+                cp "$dir/$moon.moon" "$PROJECT_ROOT/dist/$moon-$cross_triple.moon"
+                log "published $moon-$cross_triple.moon"
+            fi
+        done
+    done
+}
+
 # Build the package
 build_package() {
     log "Building Debian package..."
@@ -94,6 +157,10 @@ build_package() {
     
     # Copy source to build directory
     cp -a . "$build_dir/sun"
+    # Drop any local build tree: sun-config.json lists build/ as a bundle
+    # search path, and a stale stdlib.moon there would shadow the one this
+    # package build produces in obj-*/.
+    rm -rf "$build_dir/sun/build" "$build_dir/sun/dist"
     cd "$build_dir/sun"
     
     # Build the package (unsigned for CI)
@@ -102,6 +169,7 @@ build_package() {
     # Move the built package to dist directory in original location
     mkdir -p "$PROJECT_ROOT/dist"
     mv "$build_dir"/*.deb "$PROJECT_ROOT/dist/" 2>/dev/null || true
+    publish_bundles "$build_dir/sun"
     mv "$build_dir"/*.buildinfo "$PROJECT_ROOT/dist/" 2>/dev/null || true
     mv "$build_dir"/*.changes "$PROJECT_ROOT/dist/" 2>/dev/null || true
     
@@ -164,6 +232,7 @@ main() {
     done
     
     check_dependencies
+    ensure_openssl
     update_version "$version"
     build_package
     

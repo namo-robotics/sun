@@ -329,6 +329,7 @@ class Parser {
   std::vector<ManifestSunDependency> parseManifestSuns();
   std::vector<ManifestMoonDependency> parseManifestMoons();
   std::vector<ManifestProtoDependency> parseManifestProtos();
+  std::vector<ManifestArchiveDependency> parseManifestArchives();
 
   // Declare statement parsing:
   // - Forward function declaration: declare function name(args) RetType;

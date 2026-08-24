@@ -27,6 +27,10 @@ namespace sun {
 struct LinkOptions {
   std::vector<std::string> libraries;      // -lfoo  -> "foo"
   std::vector<std::string> searchPaths;    // -Ldir  -> "dir"
+  // Static archives carried inside imported .moon bundles, extracted to
+  // disk. Passed to the linker by path, after -l libraries so they can
+  // satisfy those libraries' undefined symbols.
+  std::vector<std::string> archives;
   std::string targetTriple;                // --target -> cross linker needed
   std::string sysroot;                     // --sysroot -> target's root fs
   bool staticLink = false;                 // --static -> self-contained binary
@@ -272,6 +276,16 @@ inline bool linkExecutable(const std::string& objectPath,
   }
   for (const auto& lib : linkOpts.libraries) {
     cmd += " -l" + shellQuote(lib);
+  }
+  // Bundle-carried archives go in by path. --start-group/--end-group lets
+  // them resolve each other's symbols regardless of order (libssl needs
+  // libcrypto, and a bundle may carry them either way round).
+  if (!linkOpts.archives.empty()) {
+    cmd += " -Wl,--start-group";
+    for (const auto& archive : linkOpts.archives) {
+      cmd += " " + shellQuote(archive);
+    }
+    cmd += " -Wl,--end-group";
   }
 
   cmd += " -lstdc++";

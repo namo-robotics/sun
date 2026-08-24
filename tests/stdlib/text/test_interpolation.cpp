@@ -236,6 +236,73 @@ TEST(Stdlib_Text_Interpolation, fails_without_stdlib) {
                SunError);
 }
 
+TEST(Stdlib_Text_Interpolation, returned_from_function_keeps_contents) {
+  // Interpolation lowers to a block expression, whose value is a temporary
+  // owned by nobody. Returning one used to leave the caller with a String of
+  // the right length over a freed buffer.
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    function label(n: i64) String {
+        return `v=${n}`;
+    }
+    function main() i64 {
+        var s = label(7);
+        if (s.length() != 3) { return 1; }
+        if (s.equals_literal("v=7") == false) { return 2; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(Stdlib_Text_Interpolation, passed_by_value_keeps_contents) {
+  // Same ownership transfer, in argument position
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+    function take(s: String) i64 {
+        if (s.equals_literal("v=7") == false) { return 2; }
+        return 0;
+    }
+    function main() i64 {
+        return take(`v=${7}`);
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(Stdlib_Text_Interpolation, allowed_when_sources_declare_sun_string) {
+  // No stdlib.moon: interpolation needs sun.String and sun.HeapAllocator to
+  // exist, and this compilation declares them itself — the situation the
+  // standard library's own sources are in.
+  auto value = executeString(R"(
+    public module sun {
+      public class HeapAllocator {
+        public function init() {}
+      }
+      public class String {
+        var len: i64;
+        public function init(alloc: const ref HeapAllocator, literal: static_ptr<u8>) {
+          this.len = literal.length();
+        }
+        public function append_literal(literal: static_ptr<u8>) void {
+          this.len = this.len + literal.length();
+        }
+        public function append(value: i64) void {
+          this.len = this.len + 1;
+        }
+        public function length() i64 { return this.len; }
+      }
+    }
+
+    function main() i64 {
+        var x: i64 = 7;
+        var s = `n=${x}`;
+        return s.length() - 3;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
 TEST(Stdlib_Text_Interpolation, println_interpolated_direct) {
   // Interpolated string passed directly as a ref String argument
   auto value = executeStringWithStdlib(R"(

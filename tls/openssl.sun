@@ -1,0 +1,41 @@
+// tls/openssl.sun - The tls bundle's OpenSSL C boundary
+//
+// Every libssl/libcrypto symbol the bundle calls is declared here exactly
+// once, following the sys.sun pattern: none of it is public, the `c_` prefix
+// is only for readability at the call site. Opaque OpenSSL handles
+// (SSL_CTX*, SSL*, SSL_METHOD*) travel as raw_ptr<u8>.
+//
+// Minimum OpenSSL version: 1.1.1. Only real exported symbols are declared.
+// C macros such as SSL_set_tlsext_host_name have no symbol of their own and
+// are expressed through SSL_ctrl instead (see tls_stream.sun).
+
+public module tls {
+  // --- context ------------------------------------------------------------
+
+  extern "C" function c_tls_client_method() raw_ptr<u8> as "TLS_client_method";
+  extern "C" function c_ssl_ctx_new(method: raw_ptr<u8>) raw_ptr<u8> as "SSL_CTX_new";
+  extern "C" function c_ssl_ctx_free(ctx: raw_ptr<u8>) void as "SSL_CTX_free";
+  extern "C" function c_ssl_ctx_set_verify(ctx: raw_ptr<u8>, mode: i32, callback: raw_ptr<u8>) void as "SSL_CTX_set_verify";
+  extern "C" function c_ssl_ctx_set_default_verify_paths(ctx: raw_ptr<u8>) i32 as "SSL_CTX_set_default_verify_paths";
+
+  // --- connection ----------------------------------------------------------
+
+  extern "C" function c_ssl_new(ctx: raw_ptr<u8>) raw_ptr<u8> as "SSL_new";
+  extern "C" function c_ssl_free(ssl: raw_ptr<u8>) void as "SSL_free";
+  extern "C" function c_ssl_set_fd(ssl: raw_ptr<u8>, fd: i32) i32 as "SSL_set_fd";
+  extern "C" function c_ssl_set1_host(ssl: raw_ptr<u8>, hostname: raw_ptr<u8>) i32 as "SSL_set1_host";
+  extern "C" function c_ssl_ctrl(ssl: raw_ptr<u8>, cmd: i32, larg: i64, parg: raw_ptr<u8>) i64 as "SSL_ctrl";
+  extern "C" function c_ssl_connect(ssl: raw_ptr<u8>) i32 as "SSL_connect";
+  extern "C" function c_ssl_read(ssl: raw_ptr<u8>, buf: raw_ptr<u8>, num: i32) i32 as "SSL_read";
+  extern "C" function c_ssl_write(ssl: raw_ptr<u8>, buf: raw_ptr<u8>, num: i32) i32 as "SSL_write";
+  extern "C" function c_ssl_shutdown(ssl: raw_ptr<u8>) i32 as "SSL_shutdown";
+
+  // --- errors and verification ----------------------------------------------
+
+  extern "C" function c_ssl_get_error(ssl: raw_ptr<u8>, ret: i32) i32 as "SSL_get_error";
+  extern "C" function c_ssl_get_verify_result(ssl: raw_ptr<u8>) i64 as "SSL_get_verify_result";
+  extern "C" function c_x509_verify_cert_error_string(code: i64) raw_ptr<u8> as "X509_verify_cert_error_string";
+  extern "C" function c_err_get_error() u64 as "ERR_get_error";
+  extern "C" function c_err_peek_error() u64 as "ERR_peek_error";
+  extern "C" function c_err_error_string_n(code: u64, buf: raw_ptr<u8>, len: i64) void as "ERR_error_string_n";
+}

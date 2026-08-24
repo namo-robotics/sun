@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -13,9 +14,25 @@ namespace sun {
 /// SUN_PATH is a colon-separated list of directories used to resolve imports.
 class SunPath {
  public:
-  /// Get the parsed list of directories from the SUN_PATH environment variable.
+  /// Directories added with --lib-path (or by an embedding tool). Searched
+  /// ahead of SUN_PATH, so an explicit flag wins over the environment.
+  static std::vector<std::filesystem::path>& extraPaths() {
+    static std::vector<std::filesystem::path> paths;
+    return paths;
+  }
+
+  /// Add a directory to search for .moon bundles
+  static void addSearchPath(const std::filesystem::path& dir) {
+    auto& paths = extraPaths();
+    if (std::find(paths.begin(), paths.end(), dir) == paths.end()) {
+      paths.push_back(dir);
+    }
+  }
+
+  /// Get the directories imports resolve against: --lib-path first, then
+  /// the SUN_PATH environment variable.
   static std::vector<std::filesystem::path> getPaths() {
-    std::vector<std::filesystem::path> paths;
+    std::vector<std::filesystem::path> paths = extraPaths();
     const char* env = std::getenv("SUN_PATH");
     if (!env || std::strlen(env) == 0) return paths;
 

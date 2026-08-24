@@ -3,10 +3,13 @@
 #include "moon_bundling/library_cache.h"
 
 #include <llvm/IR/DebugInfo.h>
+#include <llvm/Support/DynamicLibrary.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Transforms/IPO/GlobalDCE.h>
 #include <llvm/Transforms/Utils/Cloning.h>
+
+#include <unistd.h>
 
 #include <filesystem>
 #include <fstream>
@@ -66,6 +69,28 @@ static bool hasStdlibImport(const std::vector<sun::MoonImport>& moonImports) {
     // Check if the path ends with stdlib.moon
     if (moonImport.path.find("stdlib.moon") != std::string::npos) {
       return true;
+    }
+  }
+  return false;
+}
+
+/// Does this block declare `class String` directly inside `module sun`?
+/// Interpolation desugars to `sun.String` and `sun.HeapAllocator`, so the
+/// stdlib's own sources satisfy it without importing stdlib.moon — which
+/// they cannot do, being that library.
+static bool declaresStdlibString(const BlockExprAST& block) {
+  for (const auto& stmt : block.getBody()) {
+    if (!stmt || stmt->getType() != ASTNodeType::MODULE) continue;
+    const auto& module = static_cast<const ModuleAST&>(*stmt);
+    if (module.getName() != "sun") continue;
+    for (const auto& member : module.getBody().getBody()) {
+      if (!member || member->getType() != ASTNodeType::CLASS_DEFINITION) {
+        continue;
+      }
+      if (static_cast<const ClassDefinitionAST&>(*member).getName() ==
+          "String") {
+        return true;
+      }
     }
   }
   return false;
@@ -349,14 +374,80 @@ static void processMoonImports(
   }
 }
 
+void Driver::collectNativeArchives(
+    const std::set<std::string>& linkedModules) {
+  if (linkedModules.empty()) return;
+
+  std::error_code ec;
+  if (archiveTempDir_.empty()) {
+    archiveTempDir_ = std::filesystem::temp_directory_path(ec) /
+                      ("sun-archives-" + std::to_string(::getpid()));
+    if (ec) {
+      archiveTempDir_.clear();
+      return;
+    }
+    std::filesystem::create_directories(archiveTempDir_, ec);
+    if (ec) {
+      archiveTempDir_.clear();
+      return;
+    }
+  }
+
+  nativeArchivePaths_ = sun::LibraryCache::instance().extractNativeArchives(
+      linkedModules, archiveTempDir_);
+}
+
+// Try to load the system shared library matching a bundled archive
+// (libssl.a -> libssl.so / libssl.so.3). The loader's own search path finds
+// it, so no -L is needed.
+static bool loadSharedCounterpart(const std::filesystem::path& archive) {
+  std::string stem = archive.stem().string();  // "libssl"
+  if (stem.rfind("lib", 0) != 0) return false;
+  for (const char* suffix : {".so", ".so.3", ".so.1.1"}) {
+    std::string candidate = stem + suffix;
+    if (!llvm::sys::DynamicLibrary::LoadLibraryPermanently(candidate.c_str(),
+                                                           nullptr)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void Driver::registerArchivesWithJIT() {
+  if (!ctx->jit || nativeArchivePaths_.empty()) return;
+
+  // Prefer the system's shared libraries when they are all present: the
+  // JIT's RTDyld linker handles large static archives (OpenSSL's especially)
+  // poorly, and a development machine running the JIT normally has them.
+  // AOT linking always uses the bundled archives, so shipped binaries stay
+  // self-contained either way.
+  bool allShared = true;
+  for (const auto& archive : nativeArchivePaths_) {
+    if (!loadSharedCounterpart(archive)) {
+      allShared = false;
+      break;
+    }
+  }
+  if (allShared) return;
+
+  for (const auto& archive : nativeArchivePaths_) {
+    if (auto err = ctx->jit->addStaticLibrary(archive)) {
+      llvm::errs() << "Warning: could not load bundled library '" << archive
+                   << "': " << llvm::toString(std::move(err)) << "\n";
+    }
+  }
+}
+
 void Driver::analyzeProgram(BlockExprAST& blockAst, Parser& parser) {
   // Lower the lossless parse tree into the core AST before semantic analysis
   LoweringPass lowering;
   lowering.run(blockAst);
 
-  // Check if string interpolation is used without stdlib
+  // Interpolation desugars to sun.String / sun.HeapAllocator, so those types
+  // have to come from somewhere: an imported stdlib.moon, or — when
+  // compiling the standard library itself — its own sources.
   if ((parser.usesStringInterpolation() || lowering.usedInterpolation()) &&
-      !hasStdlibImport(moonImports_)) {
+      !hasStdlibImport(moonImports_) && !declaresStdlibString(blockAst)) {
     logAndThrowError(
         "String interpolation requires the standard library. Add "
         "'moon \"stdlib.moon\"' to your manifest or use --moon stdlib.moon");
@@ -463,6 +554,9 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
     if (!ctx->debugInfoEnabled()) {
       sun::DebugInfoBuilder::stripFromModule(*ctx->mainModule);
     }
+    // A bundle binding a C library carries that library's static archives;
+    // put them on disk so the link (or the JIT) can use them.
+    collectNativeArchives(linker.getLinkedModules());
   }
 
   // All codegen is done (including static init); emit the DI finalization
@@ -559,6 +653,9 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
   stripUnreachableForJIT(*moduleClone);
 
   // Add the cloned module to JIT with its own context
+  // Archives carried by imported bundles resolve like linked libraries
+  registerArchivesWithJIT();
+
   auto RT = ctx->jit->getMainJITDylib().createResourceTracker();
   ExitOnErr(ctx->jit->addModule(
       ThreadSafeModule(std::move(moduleClone), std::move(anonContext)), RT));
@@ -1089,6 +1186,9 @@ sun::SunValue Driver::executeFiles(
   auto anonContext = std::make_unique<llvm::LLVMContext>();
   auto moduleClone = llvm::CloneModule(*ctx->mainModule);
   stripUnreachableForJIT(*moduleClone);
+
+  // Archives carried by imported bundles resolve like linked libraries
+  registerArchivesWithJIT();
 
   auto RT = ctx->jit->getMainJITDylib().createResourceTracker();
   llvm::ExitOnError ExitOnErr;

@@ -20,8 +20,8 @@ namespace sun {
 /// Binary header for .moon format
 struct MoonHeader {
   static constexpr uint32_t MAGIC = 0x53554E4C;  // "SUNL"
-  static constexpr uint32_t VERSION = 6;  // V6: 64-bit index offset and count,
-                                          // no redundant module count
+  static constexpr uint32_t VERSION = 7;  // V7: native static archives carried
+                                          // alongside the module index
 
   uint32_t magic = MAGIC;
   uint32_t version = VERSION;
@@ -39,6 +39,15 @@ struct ModuleIndexEntry {
   uint64_t metadataSize;
 };
 
+/// A native static library (`.a`) carried inside the bundle, so a moon that
+/// binds a C library brings that library's code with it. Programs importing
+/// the bundle link (AOT) or load (JIT) these without naming -l flags.
+struct NativeArchiveEntry {
+  std::string name;  // file name, e.g. "libssl.a"
+  uint64_t offset = 0;
+  uint64_t size = 0;
+};
+
 // =============================================================================
 // Writer and Reader classes
 // =============================================================================
@@ -52,6 +61,11 @@ class MoonWriter {
   /// @param module The compiled LLVM module
   /// @param metadata Module metadata (protobuf) including AST nodes
   void addModule(llvm::Module& module, const moon::ModuleMetadata& metadata);
+
+  /// Carry a native static library inside the bundle
+  /// @param name File name recorded in the bundle (e.g. "libssl.a")
+  /// @param data Raw archive contents
+  void addNativeArchive(std::string name, std::string data);
 
   /// Write the bundle to disk
   /// @param outputPath Path to write the .moon file
@@ -74,6 +88,7 @@ class MoonWriter {
   std::unordered_map<const llvm::Module*, size_t> blobIndexByModule_;
 
   std::vector<ModuleData> modules_;
+  std::vector<std::pair<std::string, std::string>> nativeArchives_;
   std::string error_;
 };
 
@@ -119,6 +134,15 @@ class MoonReader {
   /// from the first module's metadata. Empty for pre-V4 legacy bundles.
   std::string getTargetTriple();
 
+  /// Native static libraries carried by this bundle, in link order
+  const std::vector<NativeArchiveEntry>& getNativeArchives() const {
+    return nativeArchives_;
+  }
+
+  /// Read one carried archive's bytes
+  /// @return false if the name is unknown or the read failed
+  bool readNativeArchive(const std::string& name, std::vector<char>& out);
+
  private:
   MoonReader() = default;
 
@@ -126,6 +150,7 @@ class MoonReader {
   std::vector<ModuleIndexEntry> index_;
   std::unordered_map<std::string, size_t> indexMap_;
   std::unordered_map<std::string, moon::ModuleMetadata> metadataCache_;
+  std::vector<NativeArchiveEntry> nativeArchives_;
   std::string error_;
 
   /// Read raw bytes from the bundle file
