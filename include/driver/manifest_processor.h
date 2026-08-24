@@ -1,7 +1,11 @@
 // manifest_processor.h — Shared manifest handling for the driver, the
 // --emit-moon path and the LSP: locate the manifest block, resolve entry
 // paths (relative to the entrypoint's directory, then SUN_PATH), and split
-// the entries into .sun files, .moon imports and .proto schemas.
+// the entries into .sun files, .moon imports and .proto schemas. Moon
+// entries with a url are fetched into the download cache (MoonCache) and
+// resolved to the cached file. Entries may reference path variables
+// ("$LIBS/util.moon"), defined by the nearest sun-config.json (which wins),
+// --path-var / language-server settings, or the environment.
 
 #pragma once
 
@@ -11,6 +15,7 @@
 
 #include "ast/block_expr_ast.h"
 #include "ast/manifest_ast.h"
+#include "driver/sun_config.h"
 #include "moon_bundling/moon_import.h"
 
 namespace sun {
@@ -28,9 +33,25 @@ class ManifestProcessor {
   static const ManifestAST* findManifest(const BlockExprAST& program);
 
   // Resolve a manifest path: absolute as-is, else relative to baseDir, else
-  // through SUN_PATH, else returned unchanged (errors surface later)
+  // through the config's sunPath dirs, else SUN_PATH, else returned
+  // unchanged (errors surface later)
   static std::string resolvePath(const std::string& path,
-                                 const std::string& baseDir);
+                                 const std::string& baseDir,
+                                 const SunConfig* config = nullptr);
+
+  // Define a path variable for manifest entries (--path-var NAME=DIR)
+  static void setPathVariable(const std::string& name,
+                              const std::string& value);
+
+  // Drop all defined path variables (used by tests)
+  static void clearPathVariables();
+
+  // Replace every $NAME in a manifest entry with the variable's value —
+  // the config's pathVariables first, then --path-var / language-server
+  // definitions, then the environment. Throws SunError for a variable
+  // defined nowhere.
+  static std::string expandPathVariables(const std::string& input,
+                                         const SunConfig* config = nullptr);
 
   // Resolve every entry of a manifest against baseDir
   static ResolvedManifest process(const ManifestAST& manifest,

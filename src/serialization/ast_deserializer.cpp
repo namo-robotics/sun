@@ -732,6 +732,10 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeManifest(
     ManifestMoonDependency moon;
     moon.path = moonProto.path();
 
+    if (moonProto.has_url()) {
+      moon.url = moonProto.url();
+    }
+
     if (moonProto.has_hash()) {
       moon.hash = moonProto.hash();
     }

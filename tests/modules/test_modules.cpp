@@ -766,6 +766,41 @@ TEST(Modules, moon_free_function_throw_is_caught_by_importer) {
   EXPECT_EQ(value, 1078);
 }
 
+// A manifest can name a moon by url; it is fetched into the moon cache
+// (file:// keeps the test offline) and imported from there.
+TEST(Modules, manifest_moon_url_is_fetched_and_imported) {
+  initTestEnvironment();
+  namespace fs = std::filesystem;
+  auto moonPath = writeMoonLib("urllib", R"(
+    public module urllib {
+        public function seven() i32 { return 7; }
+    }
+  )");
+
+  fs::path dir = fs::temp_directory_path() / "sun_moon_url_test";
+  fs::remove_all(dir);
+  fs::create_directories(dir / "cache");
+  setenv("SUN_MOON_CACHE", (dir / "cache").c_str(), 1);
+
+  fs::path mainFile = dir / "main.sun";
+  {
+    std::ofstream out(mainFile);
+    out << "manifest { moons: [{ url: \"file://" +
+               fs::absolute(moonPath).string() +
+               "\" }] }\n"
+               "using urllib;\n"
+               "function main() i32 { return seven(); }\n";
+  }
+
+  auto driver = Driver::createForJIT("moon_url_main");
+  auto value = driver->executeFile(mainFile.string());
+  unsetenv("SUN_MOON_CACHE");
+  EXPECT_EQ(value, 7);
+
+  // The bundle landed in the cache directory
+  EXPECT_FALSE(fs::is_empty(dir / "cache"));
+}
+
 // Struct types for the same class minted by the library and by the importer
 // must agree, or by-value class arguments fail to type-check at the call.
 TEST(Modules, moon_method_taking_class_by_value) {

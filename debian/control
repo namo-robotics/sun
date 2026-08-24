@@ -23,7 +23,8 @@ Depends: ${shlibs:Depends},
          libllvm20,
          gcc | clang,
          libc6-dev | libc-dev,
-         g++ | libstdc++-dev
+         g++ | libstdc++-dev,
+         curl
 Suggests: lld,
           gcc-aarch64-linux-gnu
 Description: The Sun Programming Language Compiler

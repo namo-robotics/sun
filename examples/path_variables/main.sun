@@ -1,0 +1,10 @@
+using sun;
+using mathlib;
+
+function main() void {
+  println(triple(14));
+}
+
+manifest {
+    moons: ["stdlib.moon", "$LIBS/mathlib.moon"]
+}

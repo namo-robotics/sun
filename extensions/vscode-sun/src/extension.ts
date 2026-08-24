@@ -98,8 +98,15 @@ function getMergedEntrypoints(workspaceFolder: string | undefined): string[] {
   return Array.from(discoveredEntrypoints);
 }
 
-/** Send entrypoints update to LSP */
-async function sendEntrypointsToLSP(workspaceFolder: string | undefined): Promise<void> {
+/** Get configured manifest path variables */
+function getPathVariables(): Record<string, string> {
+  return vscode.workspace
+    .getConfiguration('sun')
+    .get<Record<string, string>>('pathVariables', {});
+}
+
+/** Send entrypoints and path variables to LSP */
+async function sendConfigurationToLSP(workspaceFolder: string | undefined): Promise<void> {
   if (!client) return;
 
   const entrypoints = getMergedEntrypoints(workspaceFolder);
@@ -108,6 +115,7 @@ async function sendEntrypointsToLSP(workspaceFolder: string | undefined): Promis
     settings: {
       sun: {
         entrypoints,
+        pathVariables: getPathVariables(),
       },
     },
   });
@@ -179,6 +187,7 @@ export async function activate(_context: vscode.ExtensionContext): Promise<void>
     documentSelector: [{ scheme: 'file', language: 'sun' }],
     initializationOptions: {
       entrypoints,
+      pathVariables: getPathVariables(),
     },
   };
 
@@ -186,8 +195,11 @@ export async function activate(_context: vscode.ExtensionContext): Promise<void>
 
   // Handle manual configuration changes
   const configChangeDisposable = vscode.workspace.onDidChangeConfiguration(async (e) => {
-    if (e.affectsConfiguration('sun.entrypoints')) {
-      await sendEntrypointsToLSP(workspaceFolder);
+    if (
+      e.affectsConfiguration('sun.entrypoints') ||
+      e.affectsConfiguration('sun.pathVariables')
+    ) {
+      await sendConfigurationToLSP(workspaceFolder);
     }
   });
 
@@ -201,10 +213,10 @@ export async function activate(_context: vscode.ExtensionContext): Promise<void>
 
     if (hasManifest && !hadManifest) {
       discoveredEntrypoints.add(filePath);
-      await sendEntrypointsToLSP(workspaceFolder);
+      await sendConfigurationToLSP(workspaceFolder);
     } else if (!hasManifest && hadManifest) {
       discoveredEntrypoints.delete(filePath);
-      await sendEntrypointsToLSP(workspaceFolder);
+      await sendConfigurationToLSP(workspaceFolder);
     }
   };
 
@@ -212,7 +224,7 @@ export async function activate(_context: vscode.ExtensionContext): Promise<void>
   fileWatcher.onDidChange(checkAndUpdateManifest);
   fileWatcher.onDidDelete(async (uri) => {
     if (discoveredEntrypoints.delete(uri.fsPath)) {
-      await sendEntrypointsToLSP(workspaceFolder);
+      await sendConfigurationToLSP(workspaceFolder);
     }
   });
 

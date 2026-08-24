@@ -112,6 +112,7 @@ add_library(sun_lib
     # Driver: pipeline orchestration (the sun executable is src/driver/main.cpp)
     src/driver/driver.cpp
     src/driver/manifest_processor.cpp
+    src/driver/sun_config.cpp
     # Parsing
     src/parsing/parser.cpp
     src/parsing/interpolated_string_parser.cpp
@@ -183,6 +184,7 @@ add_library(sun_lib
     src/moon_bundling/moon.cpp
     src/moon_bundling/moon_builder.cpp
     src/moon_bundling/library_cache.cpp
+    src/moon_bundling/moon_cache.cpp
     src/moon_bundling/module_linker.cpp
     src/moon_bundling/module_types.cpp
     src/moon_bundling/metadata_extractor.cpp

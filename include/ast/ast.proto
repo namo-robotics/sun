@@ -405,6 +405,7 @@ message ManifestMoonDependency {
   string path = 1;
   optional string hash = 2;
   optional string rename_module = 3;
+  optional string url = 4;
 }
 
 message ManifestSunDependency {

@@ -3,7 +3,7 @@
     "displayName": "Sun Language",
     "description": "Syntax highlighting, diagnostics, formatting, hover type information, go-to-definition, find references and rename symbol for Sun",
     "icon": "images/sun-logo.png",
-    "version": "0.1.19",
+    "version": "0.1.21",
     "publisher": "namo-robotics",
     "license": "MIT",
     "repository": {
@@ -97,6 +97,14 @@
                     },
                     "default": [],
                     "description": "List of entrypoint files with manifest blocks. Files listed in an entrypoint's manifest will use the full manifest context for cross-file analysis."
+                },
+                "sun.pathVariables": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    },
+                    "default": {},
+                    "description": "Path variables for manifest entries, e.g. {\"LIBS\": \"libs\"}. Equivalent to passing --path-var NAME=<dir> to the compiler; relative values resolve against the entrypoint's directory. A sun-config.json in the entrypoint's folder (or a parent) overrides these."
                 }
             }
         }

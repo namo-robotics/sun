@@ -742,6 +742,9 @@ void ASTSerializer::serializeManifest(const ManifestAST& expr,
   for (const auto& moon : expr.getMoons()) {
     auto* moonProto = moons->Add();
     moonProto->set_path(moon.path);
+    if (moon.url) {
+      moonProto->set_url(*moon.url);
+    }
     if (moon.hash) {
       moonProto->set_hash(*moon.hash);
     }
