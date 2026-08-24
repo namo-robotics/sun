@@ -6,7 +6,7 @@ docs-page: modules
 
 Manifest entries can reference variables with `$NAME` — in `suns`, `moons`
 (paths and urls) and `protos` entries alike. Here the manifest asks for
-`$LIBS/mathlib.moon`, and the build supplies the directory:
+`$LIBS/mathlib.moon`:
 
 ```sun
 manifest {
@@ -14,22 +14,30 @@ manifest {
 }
 ```
 
-```bash
-sun --path-var LIBS=libs --compile -o main main.sun
+This folder's `sun-config.json` supplies both the library search path (where
+`stdlib.moon` is found) and the variable:
+
+```json
+{
+    "sunPath": ["../../build"],
+    "pathVariables": { "LIBS": "libs" }
+}
 ```
 
-A variable not defined with `--path-var` falls back to the environment, so
-this works too:
+The compiler uses the nearest `sun-config.json` in the entrypoint's folder or
+any parent; relative entries resolve against the config file's folder. Its
+definitions override variables supplied from outside the folder — `--path-var`
+flags, the `sun.pathVariables` editor setting, and the environment:
 
 ```bash
-LIBS=libs sun --compile -o main main.sun
+sun --path-var LIBS=libs --compile -o main main.sun   # without a config file
+LIBS=libs sun --compile -o main main.sun              # environment works too
 ```
 
-Using a variable that is defined in neither place is a compile error.
-Variables are expanded before path resolution, so a variable can hold a
-relative directory — which keeps a manifest portable when libraries live
-in a different place on each machine. In VS Code, the `sun.pathVariables`
-setting supplies the same variables to the language server.
+Using a variable that is defined nowhere is a compile error. Variables are
+expanded before path resolution, so a variable can hold a relative directory —
+which keeps a manifest portable when libraries live in a different place on
+each machine.
 
 ```bash
 ./build.sh

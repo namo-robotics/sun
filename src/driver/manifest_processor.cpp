@@ -30,7 +30,8 @@ void ManifestProcessor::setPathVariable(const std::string& name,
 
 void ManifestProcessor::clearPathVariables() { pathVariables().clear(); }
 
-std::string ManifestProcessor::expandPathVariables(const std::string& input) {
+std::string ManifestProcessor::expandPathVariables(const std::string& input,
+                                                   const SunConfig* config) {
   std::string out;
   size_t i = 0;
   while (i < input.size()) {
@@ -50,15 +51,28 @@ std::string ManifestProcessor::expandPathVariables(const std::string& input) {
                        input + "'");
     }
     std::string name = input.substr(nameStart, nameEnd - nameStart);
-    auto it = pathVariables().find(name);
-    if (it != pathVariables().end()) {
-      out += it->second;
+    const std::string* value = nullptr;
+    if (config) {
+      auto it = config->pathVariables.find(name);
+      if (it != config->pathVariables.end()) {
+        value = &it->second;
+      }
+    }
+    if (!value) {
+      auto it = pathVariables().find(name);
+      if (it != pathVariables().end()) {
+        value = &it->second;
+      }
+    }
+    if (value) {
+      out += *value;
     } else if (const char* env = std::getenv(name.c_str())) {
       out += env;
     } else {
       logAndThrowError("undefined path variable '$" + name +
                        "' in manifest entry '" + input +
-                       "'; define it with --path-var " + name +
+                       "'; define it in sun-config.json, with --path-var " +
+                       name +
                        "=<dir>, the sun.pathVariables editor setting, or in "
                        "the environment");
     }
@@ -78,7 +92,8 @@ const ManifestAST* ManifestProcessor::findManifest(
 }
 
 std::string ManifestProcessor::resolvePath(const std::string& path,
-                                           const std::string& baseDir) {
+                                           const std::string& baseDir,
+                                           const SunConfig* config) {
   std::filesystem::path p(path);
   if (p.is_absolute()) {
     return path;
@@ -86,6 +101,14 @@ std::string ManifestProcessor::resolvePath(const std::string& path,
   auto relative = std::filesystem::path(baseDir) / p;
   if (std::filesystem::exists(relative)) {
     return relative.lexically_normal().string();
+  }
+  if (config) {
+    for (const auto& dir : config->sunPath) {
+      auto candidate = std::filesystem::path(dir) / p;
+      if (std::filesystem::exists(candidate)) {
+        return candidate.lexically_normal().string();
+      }
+    }
   }
   auto resolved = SunPath::resolve(path);
   if (!resolved.empty()) {
@@ -99,17 +122,24 @@ ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
   ResolvedManifest out;
   out.baseDir = baseDir;
 
+  // The nearest sun-config.json overrides configuration supplied from
+  // outside the folder (--path-var, editor settings, environment).
+  auto configOpt = SunConfig::findFrom(baseDir);
+  const SunConfig* config = configOpt ? &*configOpt : nullptr;
+
   for (const auto& sunDep : manifest.getSuns()) {
     out.sunFiles.push_back(
-        resolvePath(expandPathVariables(sunDep.path), baseDir));
+        resolvePath(expandPathVariables(sunDep.path, config), baseDir, config));
   }
 
   for (const auto& moonDep : manifest.getMoons()) {
     std::string resolved =
         moonDep.url
-            ? MoonCache::fetch(expandPathVariables(*moonDep.url), moonDep.hash)
+            ? MoonCache::fetch(expandPathVariables(*moonDep.url, config),
+                               moonDep.hash)
                   .string()
-            : resolvePath(expandPathVariables(moonDep.path), baseDir);
+            : resolvePath(expandPathVariables(moonDep.path, config), baseDir,
+                          config);
     if (moonDep.rename.has_value()) {
       out.moonImports.emplace_back(resolved, moonDep.rename.value(),
                                    moonDep.rename.value());
@@ -119,8 +149,8 @@ ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
   }
 
   for (const auto& protoDep : manifest.getProtos()) {
-    out.protoFiles.push_back(
-        resolvePath(expandPathVariables(protoDep.path), baseDir));
+    out.protoFiles.push_back(resolvePath(
+        expandPathVariables(protoDep.path, config), baseDir, config));
   }
 
   return out;

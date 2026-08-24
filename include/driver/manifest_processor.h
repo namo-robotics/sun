@@ -4,7 +4,8 @@
 // the entries into .sun files, .moon imports and .proto schemas. Moon
 // entries with a url are fetched into the download cache (MoonCache) and
 // resolved to the cached file. Entries may reference path variables
-// ("$LIBS/util.moon"), set with --path-var or taken from the environment.
+// ("$LIBS/util.moon"), defined by the nearest sun-config.json (which wins),
+// --path-var / language-server settings, or the environment.
 
 #pragma once
 
@@ -14,6 +15,7 @@
 
 #include "ast/block_expr_ast.h"
 #include "ast/manifest_ast.h"
+#include "driver/sun_config.h"
 #include "moon_bundling/moon_import.h"
 
 namespace sun {
@@ -31,9 +33,11 @@ class ManifestProcessor {
   static const ManifestAST* findManifest(const BlockExprAST& program);
 
   // Resolve a manifest path: absolute as-is, else relative to baseDir, else
-  // through SUN_PATH, else returned unchanged (errors surface later)
+  // through the config's sunPath dirs, else SUN_PATH, else returned
+  // unchanged (errors surface later)
   static std::string resolvePath(const std::string& path,
-                                 const std::string& baseDir);
+                                 const std::string& baseDir,
+                                 const SunConfig* config = nullptr);
 
   // Define a path variable for manifest entries (--path-var NAME=DIR)
   static void setPathVariable(const std::string& name,
@@ -43,9 +47,11 @@ class ManifestProcessor {
   static void clearPathVariables();
 
   // Replace every $NAME in a manifest entry with the variable's value —
-  // --path-var definitions first, then the environment. Throws SunError for
-  // a variable defined in neither.
-  static std::string expandPathVariables(const std::string& input);
+  // the config's pathVariables first, then --path-var / language-server
+  // definitions, then the environment. Throws SunError for a variable
+  // defined nowhere.
+  static std::string expandPathVariables(const std::string& input,
+                                         const SunConfig* config = nullptr);
 
   // Resolve every entry of a manifest against baseDir
   static ResolvedManifest process(const ManifestAST& manifest,

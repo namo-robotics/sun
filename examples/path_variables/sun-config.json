@@ -1,0 +1,4 @@
+{
+    "sunPath": ["../../build"],
+    "pathVariables": { "LIBS": "libs" }
+}

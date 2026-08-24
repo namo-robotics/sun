@@ -2,7 +2,7 @@ set -euo pipefail
 DIR=$(dirname "$0")
 cd "$DIR"
 
-export SUN_PATH="${DIR}:${DIR}/../../build"
+# sun-config.json supplies the library search path and the $LIBS variable
 mkdir -p libs
 sun --emit-moon -o libs/mathlib.moon mathlib/entry.sun
-sun --path-var LIBS=libs --compile -o main main.sun
+sun --compile -o main main.sun

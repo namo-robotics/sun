@@ -84,6 +84,10 @@ static void printUsage(const char* programName) {
                   "change a file)\n";
   llvm::errs() << "\nArguments after the script file (or after --) are passed "
                   "to main(argc, argv).\n";
+  llvm::errs() << "\nA sun-config.json in the entrypoint's folder (or a "
+                  "parent) can define sunPath and\npathVariables; its "
+                  "definitions override --path-var, editor settings and the "
+                  "environment.\n";
   llvm::errs() << "\nExamples:\n";
   llvm::errs()
       << "  sun program.sun                              # JIT execute\n";

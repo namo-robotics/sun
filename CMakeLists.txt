@@ -112,6 +112,7 @@ add_library(sun_lib
     # Driver: pipeline orchestration (the sun executable is src/driver/main.cpp)
     src/driver/driver.cpp
     src/driver/manifest_processor.cpp
+    src/driver/sun_config.cpp
     # Parsing
     src/parsing/parser.cpp
     src/parsing/interpolated_string_parser.cpp

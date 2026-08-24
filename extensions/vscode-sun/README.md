@@ -29,6 +29,11 @@ elsewhere (for example a local build at `build/sun-lsp`).
 | `sun.entrypoints` | Entrypoint files containing a `manifest` block. When set, replaces automatic manifest discovery. |
 | `sun.pathVariables` | Path variables for manifest entries, e.g. `{"LIBS": "libs"}` for `moons: ["$LIBS/mathlib.moon"]`. Equivalent to the compiler's `--path-var` flag; relative values resolve against the entrypoint's directory. |
 
+A folder can also hold a `sun-config.json` defining `sunPath` and
+`pathVariables` for the entrypoints in and below it. Both the compiler and
+the language server use the nearest one, and its definitions override the
+settings above.
+
 ## Learn more
 
 - [Sun documentation](https://namo-robotics.github.io/sun/)
