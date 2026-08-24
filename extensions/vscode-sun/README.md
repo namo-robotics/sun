@@ -31,8 +31,9 @@ elsewhere (for example a local build at `build/sun-lsp`).
 
 A folder can also hold a `sun-config.json` defining `sunPath` and
 `pathVariables` for the entrypoints in and below it. Both the compiler and
-the language server use the nearest one, and its definitions override the
-settings above.
+the language server merge every config from the entrypoint's folder upward
+(nearest definitions win; `"root": true` stops the search), and the merged
+definitions override the settings above.
 
 ## Learn more
 

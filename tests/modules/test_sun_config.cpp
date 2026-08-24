@@ -85,6 +85,49 @@ TEST(Modules_SunConfig, config_sun_path_resolves_manifest_entries) {
             (dir / "deps" / "util.moon").lexically_normal());
 }
 
+TEST(Modules_SunConfig, configs_merge_up_the_parent_chain) {
+  fs::path dir = freshDir("merge");
+  writeFile(dir / "sun-config.json",
+            "{ \"sunPath\": [\"pdeps\"], "
+            "\"pathVariables\": { \"SHARED\": \"common\", \"LIBS\": "
+            "\"parentlibs\" } }\n");
+  writeFile(dir / "sub" / "sun-config.json",
+            "{ \"sunPath\": [\"cdeps\"], "
+            "\"pathVariables\": { \"LIBS\": \"libs\" } }\n");
+
+  auto config = sun::SunConfig::findFrom(dir / "sub");
+  ASSERT_TRUE(config.has_value());
+  // The nearest definition of a variable wins; others are inherited
+  EXPECT_EQ(config->pathVariables.at("LIBS"),
+            (dir / "sub" / "libs").lexically_normal().string());
+  EXPECT_EQ(config->pathVariables.at("SHARED"),
+            (dir / "common").lexically_normal().string());
+  // Search dirs concatenate nearest-first
+  ASSERT_EQ(config->sunPath.size(), 2u);
+  EXPECT_EQ(config->sunPath[0],
+            (dir / "sub" / "cdeps").lexically_normal().string());
+  EXPECT_EQ(config->sunPath[1], (dir / "pdeps").lexically_normal().string());
+}
+
+TEST(Modules_SunConfig, root_true_stops_the_parent_walk) {
+  fs::path dir = freshDir("root_stop");
+  writeFile(dir / "sun-config.json",
+            "{ \"pathVariables\": { \"SHARED\": \"common\" } }\n");
+  writeFile(dir / "sub" / "sun-config.json",
+            "{ \"root\": true, \"pathVariables\": { \"LIBS\": \"libs\" } }\n");
+
+  auto config = sun::SunConfig::findFrom(dir / "sub");
+  ASSERT_TRUE(config.has_value());
+  EXPECT_EQ(config->pathVariables.count("LIBS"), 1u);
+  EXPECT_EQ(config->pathVariables.count("SHARED"), 0u);
+}
+
+TEST(Modules_SunConfig, root_must_be_boolean) {
+  fs::path dir = freshDir("root_type");
+  writeFile(dir / "sun-config.json", "{ \"root\": \"yes\" }\n");
+  EXPECT_THROW(sun::SunConfig::loadFile(dir / "sun-config.json"), SunError);
+}
+
 TEST(Modules_SunConfig, malformed_config_is_an_error) {
   fs::path dir = freshDir("malformed");
   writeFile(dir / "sun-config.json", "{ not json\n");

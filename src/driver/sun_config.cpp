@@ -33,17 +33,34 @@ std::optional<SunConfig> SunConfig::findFrom(
   if (ec) {
     dir = startDir;
   }
+  std::optional<SunConfig> merged;
   while (true) {
     auto candidate = dir / kFileName;
     if (std::filesystem::exists(candidate)) {
-      return loadFile(candidate);
+      SunConfig config = loadFile(candidate);
+      bool stop = config.root;
+      if (!merged) {
+        merged = std::move(config);
+      } else {
+        // Nearer definitions win: emplace keeps an existing variable, and
+        // parent search dirs append after the child's.
+        for (const auto& [name, value] : config.pathVariables) {
+          merged->pathVariables.emplace(name, value);
+        }
+        merged->sunPath.insert(merged->sunPath.end(), config.sunPath.begin(),
+                               config.sunPath.end());
+      }
+      if (stop) {
+        break;
+      }
     }
     auto parent = dir.parent_path();
     if (parent == dir) {
-      return std::nullopt;
+      break;
     }
     dir = parent;
   }
+  return merged;
 }
 
 SunConfig SunConfig::loadFile(const std::filesystem::path& file) {
@@ -101,9 +118,15 @@ SunConfig SunConfig::loadFile(const std::filesystem::path& file) {
         config.pathVariables[llvm::StringRef(varName).str()] =
             anchorAtConfigDir(str->str(), config.configDir);
       }
+    } else if (name == "root") {
+      auto flag = value.getAsBoolean();
+      if (!flag) {
+        logAndThrowError("'root' must be true or false in " + file.string());
+      }
+      config.root = *flag;
     } else {
       logAndThrowError("unknown key '" + name + "' in " + file.string() +
-                       "; expected 'sunPath' or 'pathVariables'");
+                       "; expected 'sunPath', 'pathVariables' or 'root'");
     }
   }
 

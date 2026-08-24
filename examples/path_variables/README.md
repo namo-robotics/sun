@@ -20,14 +20,20 @@ This folder's `sun-config.json` supplies both the library search path (where
 ```json
 {
     "sunPath": ["../../build"],
-    "pathVariables": { "LIBS": "libs" }
+    "pathVariables": { "LIBS": "libs" },
+    "root": true
 }
 ```
 
-The compiler uses the nearest `sun-config.json` in the entrypoint's folder or
-any parent; relative entries resolve against the config file's folder. Its
-definitions override variables supplied from outside the folder — `--path-var`
-flags, the `sun.pathVariables` editor setting, and the environment:
+The compiler merges every `sun-config.json` from the entrypoint's folder up
+to the filesystem root: the nearest definition of a variable wins, search
+dirs are searched nearest-first, and relative entries resolve against their
+own config file's folder. So a workspace root can define `sunPath` and shared
+variables once, while each subfolder adds or overrides only what is local to
+it. A config with `"root": true` stops the upward search — this example uses
+it to stay self-contained. Config definitions override variables supplied
+from outside the folders — `--path-var` flags, the `sun.pathVariables`
+editor setting, and the environment:
 
 ```bash
 sun --path-var LIBS=libs --compile -o main main.sun   # without a config file

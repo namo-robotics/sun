@@ -3,12 +3,17 @@
 //
 //   {
 //     "sunPath": ["../build", "/opt/sun/libs"],
-//     "pathVariables": { "LIBS": "libs" }
+//     "pathVariables": { "LIBS": "libs" },
+//     "root": true
 //   }
 //
-// Relative entries resolve against the config file's directory. Definitions
-// here override configuration supplied from outside the folder: --path-var
-// flags, language-server settings, and environment variables.
+// Relative entries resolve against the config file's directory. Every
+// sun-config.json from the entrypoint's folder up to the filesystem root is
+// merged: path variables union with the nearest definition winning, and
+// search dirs concatenate nearest-first. "root": true stops the upward
+// search at that file. Definitions here override configuration supplied
+// from outside the folders: --path-var flags, language-server settings, and
+// environment variables.
 
 #pragma once
 
@@ -23,12 +28,14 @@ namespace sun {
 struct SunConfig {
   static constexpr const char* kFileName = "sun-config.json";
 
-  std::filesystem::path configDir;  // directory the file was found in
+  std::filesystem::path configDir;  // directory of the nearest config file
   std::vector<std::string> sunPath;  // extra library search dirs (absolute)
   std::map<std::string, std::string> pathVariables;  // values made absolute
+  bool root = false;  // stop the upward search at this file
 
-  // The nearest sun-config.json in startDir or one of its parents; nullopt
-  // when no folder on the way up has one.
+  // The merged view of every sun-config.json in startDir and its parents
+  // (nearest definitions win, search dirs concatenate nearest-first, a
+  // "root": true file ends the walk); nullopt when no folder has one.
   static std::optional<SunConfig> findFrom(
       const std::filesystem::path& startDir);
 
