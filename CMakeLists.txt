@@ -176,10 +176,9 @@ add_library(sun_lib
     src/codegen/intrinsics/atomic.cpp
     src/codegen/intrinsics/bits.cpp
     src/codegen/intrinsics/network.cpp
-    # AST serialization and caching
+    # AST serialization
     src/serialization/ast_serializer.cpp
     src/serialization/ast_deserializer.cpp
-    src/serialization/ast_cache.cpp
     # Precompiled library support (moon format)
     src/moon_bundling/moon.cpp
     src/moon_bundling/moon_builder.cpp

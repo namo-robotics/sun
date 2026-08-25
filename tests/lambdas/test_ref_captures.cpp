@@ -435,12 +435,143 @@ TEST(Lambdas_RefCaptures, capture_list_names_on_proto) {
   EXPECT_EQ(names[1], "b");
 }
 
-TEST(Lambdas_RefCaptures, capture_list_without_ref_is_parse_error) {
-  EXPECT_THROW(executeString(R"(
+// ============================================================================
+// Owned captures: a capture list entry without `ref`
+// ============================================================================
+
+// A scalar has nothing to move, so [x] copies it, as an unlisted capture does
+TEST(Lambdas_RefCaptures, owned_scalar_capture_copies) {
+  auto value = executeString(R"(
       function main() i32 {
           var x: i32 = 1;
-          var f = lambda [x] () i32 { return x; };
+          var f = lambda [x] () i32 { return x + 41; };
           return f();
+      }
+    )");
+  EXPECT_EQ(value, 42);
+}
+
+// The copy is the closure's own, so writing it leaves the original alone
+TEST(Lambdas_RefCaptures, owned_scalar_capture_is_mutable_inside) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var x: i32 = 1;
+          var f = lambda [x] () i32 { x = x + 1; return x; };
+          var a = f();
+          return a * 10 + x;
+      }
+    )");
+  EXPECT_EQ(value, 21);
+}
+
+// A class moves into the closure, which owns it from then on
+TEST(Lambdas_RefCaptures, owned_class_capture_moves) {
+  auto value = executeString(R"(
+      class Point {
+          public var x: i32;
+          function init(x: i32) { this.x = x; }
+      }
+      function main() i32 {
+          var p = Point(42);
+          var f = lambda [p] () i32 { return p.x; };
+          return f();
+      }
+    )");
+  EXPECT_EQ(value, 42);
+}
+
+// ...so the name it came from is gone. The borrow checker reports the detail
+// on stderr and throws a summary, so this asserts on the throw.
+TEST(Lambdas_RefCaptures, owned_class_capture_leaves_source_moved) {
+  EXPECT_THROW(executeString(R"(
+      class Point {
+          public var x: i32;
+          function init(x: i32) { this.x = x; }
+      }
+      function main() i32 {
+          var p = Point(42);
+          var f = lambda [p] () i32 { return p.x; };
+          return p.x;
+      }
+    )"),
+               SunError);
+}
+
+// The closure owns the value, so it drops it exactly once
+TEST(Lambdas_RefCaptures, owned_class_capture_drops_once) {
+  auto value = executeString(R"(
+      var drops: i32 = 0;
+      class Res {
+          public var v: i32;
+          function init(v: i32) { this.v = v; }
+          function deinit() void { if (this.v != 0) { drops = drops + 1; } }
+      }
+      function main() i32 {
+          if (true) {
+              var r = Res(7);
+              var f = lambda [r] () i32 { return r.v; };
+              var used = f();
+          }
+          return drops;
+      }
+    )");
+  EXPECT_EQ(value, 1);
+}
+
+// A borrow is somebody else's value; it cannot be laundered into an owned one
+TEST(Lambdas_RefCaptures, owned_capture_of_a_ref_is_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      class Point {
+          public var x: i32;
+          function init(x: i32) { this.x = x; }
+      }
+      function read(p: ref Point) i32 {
+          var f = lambda [p] () i32 { return p.x; };
+          return f();
+      }
+      function main() i32 {
+          var p = Point(1);
+          return read(p);
+      }
+    )"),
+                                "it is a reference");
+}
+
+TEST(Lambdas_RefCaptures, capture_named_twice_is_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      function main() i32 {
+          var x: i32 = 1;
+          var f = lambda [ref x, x] () i32 { return x; };
+          return f();
+      }
+    )"),
+                                "twice");
+}
+
+TEST(Lambdas_RefCaptures, owned_capture_unused_in_body_is_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      function main() i32 {
+          var x: i32 = 1;
+          var f = lambda [x] () i32 { return 1; };
+          return f();
+      }
+    )"),
+                                "does not use it");
+}
+
+// Moving a value into a lambda while it is borrowed would leave the borrow
+// pointing at a husk
+TEST(Lambdas_RefCaptures, owned_capture_while_borrowed_is_rejected) {
+  EXPECT_THROW(executeString(R"(
+      class Point {
+          public var x: i32;
+          function init(x: i32) { this.x = x; }
+      }
+      function main() i32 {
+          var p = Point(1);
+          var r: ref Point = p;
+          var f = lambda [p] () i32 { return p.x; };
+          return r.x;
       }
     )"),
                SunError);

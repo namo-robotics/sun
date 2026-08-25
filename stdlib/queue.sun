@@ -1,0 +1,103 @@
+// First-in, first-out queue.
+//
+// Items leave in the order they arrived: push() adds at the back, pop() takes
+// from the front. Both are constant time — the queue is a thin front over
+// LinkedList<T>, which already links from both ends.
+//
+// The queue owns what it holds. pop() moves an item out to the caller; peek()
+// hands back a borrow, since the queue keeps ownership. Whatever is still in
+// the queue when it goes out of scope is dropped with it.
+//
+// Usage:
+//   var alloc = make_heap_allocator();
+//   var q = Queue<i64>(alloc);
+//   q.push(1);
+//   q.push(2);
+//   match (q.pop()) {
+//     Option.Some(v) => println(v),   // 1
+//     Option.None => {},
+//   };
+public module sun {
+  public class Queue<T> implements IIterable<ref T, Queue<T>> {
+    var items: LinkedList<T>;
+
+    public function init(allocator: const ref HeapAllocator) {
+      this.items = LinkedList<T>(allocator);
+    }
+
+    // Add to the back of the queue. The value moves in.
+    public function push(value: T) void {
+      this.items.push_back(value);
+    }
+
+    // Take the front item; None when the queue is empty. Ownership moves to
+    // the caller.
+    public function pop() Option<T> {
+      if (this.items.is_empty()) {
+        return Option.None;
+      }
+      try {
+        return Option.Some(this.items.pop_front());
+      } catch (e: IError) {
+        return Option.None;
+      }
+    }
+
+    // Borrow the front item without taking it; None when empty.
+    public const function peek() Option<ref T> {
+      return this.items.first();
+    }
+
+    // Borrow the item that was added most recently; None when empty.
+    public const function peek_back() Option<ref T> {
+      return this.items.last();
+    }
+
+    public const function size() i64 {
+      return this.items.size();
+    }
+
+    public const function is_empty() bool {
+      return this.items.is_empty();
+    }
+
+    // Drop every item still queued.
+    public function clear() void {
+      this.items.clear();
+    }
+
+    // The backing list, for QueueIterator. Private to the module.
+    function items_ref() ref LinkedList<T> {
+      return this.items;
+    }
+
+    // Walk the queue front to back without taking anything out.
+    public function iter() QueueIterator<T> {
+      return QueueIterator<T>();
+    }
+  }
+
+  public class QueueIterator<T> implements IIterator<ref T, Queue<T>> {
+    var inner: LinkedListIterator<T>;
+
+    public function init() {
+      this.inner = LinkedListIterator<T>();
+    }
+
+    // Next item, or None once the queue is exhausted. Items are borrowed: the
+    // queue still owns them.
+    public function next(queue: ref Queue<T>) Option<ref T> {
+      return this.inner.next(queue.items_ref());
+    }
+  }
+
+  // ============================================================================
+  // Precompiled Specializations
+  // ============================================================================
+
+  public declare Queue_i32 = Queue<i32>;
+  public declare Queue_i64 = Queue<i64>;
+
+  public declare QueueIterator_i32 = QueueIterator<i32>;
+  public declare QueueIterator_i64 = QueueIterator<i64>;
+}  // module sun

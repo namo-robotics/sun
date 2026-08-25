@@ -195,9 +195,29 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
   // Derive the mangled name from the qualified name
   std::string mangledName = specializedQName.mangled();
 
-  // Check if already instantiated (both class type AND AST specialization)
+  // `Unique<T>` where T is still a type parameter is not a specialization —
+  // it is the template's own shape, named by a signature nobody has
+  // instantiated yet (`create_unique<T>() Unique<T>`, or `ref Pair<T>` inside
+  // `unwrap<T>`). The shape is still built, because a template body resolves
+  // against it: `create_unique<T>`'s own body constructs `Unique<T>`, so it
+  // needs those substituted members. What it must never become is something
+  // to emit — codegen walks the specializations recorded on the generic and
+  // would assert trying to lay out a type parameter. So it is never recorded
+  // as one; the class the code actually uses is built when
+  // `create_unique<i32>` is.
+  bool abstractShape = false;
+  for (const auto& arg : typeArgs) {
+    if (arg && arg->isTypeParameter()) {
+      abstractShape = true;
+      break;
+    }
+  }
+
+  // Check if already instantiated (both class type AND AST specialization).
+  // An abstract shape records no AST, so having the type is all there is.
   auto existing = lookupClass(specializedQName.baseName);
-  if (existing && genericClassInfo->AST->hasSpecialization(mangledName)) {
+  if (existing && (abstractShape ||
+                   genericClassInfo->AST->hasSpecialization(mangledName))) {
     // Both type and AST exist - nothing more to do
     return existing;
   }
@@ -431,7 +451,9 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
     specializedAST->setVisibility(genericClassInfo->AST->getVisibility());
 
     // Store specialization on the generic class AST for codegen access
-    genericClassInfo->AST->addSpecialization(mangledName, specializedAST);
+    if (!abstractShape) {
+      genericClassInfo->AST->addSpecialization(mangledName, specializedAST);
+    }
 
     // Restore old class context
     setCurrentClass(savedClass);
@@ -464,7 +486,9 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
   }
 
   // Store specialization on the generic class AST for codegen access
-  genericClassInfo->AST->addSpecialization(mangledName, specializedAST);
+  if (!abstractShape) {
+    genericClassInfo->AST->addSpecialization(mangledName, specializedAST);
+  }
 
   // PASS 2: Analyze all cloned method bodies — unless requested from the
   // declaration pre-pass, where bodies are deferred until every declaration

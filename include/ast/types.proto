@@ -31,12 +31,19 @@ message TypeAnnotation {
   bool const_ref = 8;                           // `const ref T`
 }
 
+// How a lambda takes hold of a variable (mirrors CaptureKind in ast_common.h)
+enum CaptureKind {
+  CAPTURE_BY_VALUE = 0;  // Not in the capture list: a copy it may only read
+  CAPTURE_OWNED = 1;     // [x]: the closure owns it; a compound moves in
+  CAPTURE_BORROW = 2;    // [ref x], or [const ref x] when is_const
+}
+
 // Lambda capture (mirrors Capture in ast_common.h)
 message Capture {
+  reserved 3, 5;  // was by_ref / owned, now folded into kind
   string name = 1;
-  string type_signature = 2;  // Type stored as string signature
-  bool by_ref = 3;            // Captured by reference via [ref x]
-  bool is_const = 4;          // The captured variable is immutable
+  bool is_const = 4;  // The binding is immutable inside the lambda
+  CaptureKind kind = 6;
 }
 
 // Token kind enumeration (mirrors TokenKind in lexer.h)

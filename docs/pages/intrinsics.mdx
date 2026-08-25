@@ -319,6 +319,20 @@ Atomically loads the `i32` value at `ptr`.
 var current = _atomic_load_i32(_address_of<i32>(state));
 ```
 
+### `_atomic_fetch_add_i32(ptr, delta)` / `_atomic_fetch_sub_i32(ptr, delta)`
+
+Atomically add or subtract `delta` at `ptr`, returning the value from *before*
+the operation. That is what a reference count needs: whoever reads 1 from a
+decrement was the last owner, so exactly one caller runs the cleanup.
+
+```sun
+// One more owner
+_atomic_fetch_add_i32(_address_of<i32>(count), 1);
+
+// One fewer. was == 1 means this was the last handle.
+var was = _atomic_fetch_sub_i32(_address_of<i32>(count), 1);
+```
+
 ## Bit Intrinsics
 
 Wide multiplication and zero counts, the building blocks of multi-limb integer
@@ -430,6 +444,8 @@ class Vec<T> {
 | `_atomic_cmpxchg_i32` | `ptr, expected, desired` | `i32` | Atomic compare-and-exchange |
 | `_atomic_store_i32` | `ptr, value` | `void` | Atomic store |
 | `_atomic_load_i32` | `ptr` | `i32` | Atomic load |
+| `_atomic_fetch_add_i32` | `ptr, delta` | `i32` | Atomic add, returns the old value |
+| `_atomic_fetch_sub_i32` | `ptr, delta` | `i32` | Atomic subtract, returns the old value |
 | `_mul_hi_u64` | `a: u64, b: u64` | `u64` | High 64 bits of the 128-bit product |
 | `_ctlz_u64` | `x: u64` | `u64` | Leading zero bits (64 for 0) |
 | `_cttz_u64` | `x: u64` | `u64` | Trailing zero bits (64 for 0) |

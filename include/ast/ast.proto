@@ -97,9 +97,6 @@ message ASTNode {
     ThrowExpr throw_expr = 91;
     DeclareType declare_type = 92;
   }
-  
-  // Optional analysis data (when serializing analyzed AST)
-  optional ExprAnalysis analysis = 100;
 }
 
 // =============================================================================
@@ -349,16 +346,14 @@ message Prototype {
   optional TypeAnnotation variadic_constraint = 7;
   repeated string ref_captures = 8;  // Declared [ref x, ...] capture list
   optional Position location = 9;    // Source span of the signature
-
-  // Optional analysis data
-  optional PrototypeAnalysis analysis = 10;
-
   bool c_variadic = 11;             // C-style trailing `...`
   optional string link_name = 12;   // `as "c_symbol"` override
   bool is_const_method = 13;        // `const function`: `this` is immutable
   string doc = 14;                  // Comment written above the function
   // The subset of ref_captures declared `[const ref x]` (read-only borrow)
   repeated string const_ref_captures = 15;
+  // Capture list entries written without `ref`: the closure owns them
+  repeated string owned_captures = 16;
 }
 
 message FunctionDef {
@@ -567,37 +562,10 @@ message DeclareType {
 }
 
 // =============================================================================
-// Analysis metadata messages (for serializing analyzed AST)
-// =============================================================================
-
-// Base expression analysis
-message ExprAnalysis {
-  string resolved_type = 1;  // Type stored as string signature
-  bool moved = 2;            // Borrow checker moved flag (ownership transferred)
-  string qualified_name = 3; // For variable/class/interface nodes
-}
-
-// Prototype-specific analysis
-message PrototypeAnalysis {
-  string qualified_name = 1;
-  repeated string resolved_param_types = 2;
-  string resolved_return_type = 3;
-  repeated string resolved_variadic_types = 4;
-  
-  // Type bindings for generic instantiation
-  message TypeBinding {
-    string param_name = 1;
-    string bound_type = 2;
-  }
-  repeated TypeBinding type_bindings = 5;
-}
-
-// =============================================================================
 // Top-level program message
 // =============================================================================
 
 message Program {
-  uint32 version = 1;        // Schema version for compatibility
-  BlockExpr body = 2;        // Root block containing all declarations
-  bool has_analysis = 3;     // True if analysis data is included
+  uint32 version = 1;  // Schema version for compatibility
+  BlockExpr body = 2;  // Root block containing all declarations
 }

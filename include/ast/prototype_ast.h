@@ -27,6 +27,9 @@ class PrototypeAST {
   // The subset of refCaptureNames written `[const ref x]`: a read-only
   // borrow, so several lambdas may capture the same variable
   std::vector<std::string> constRefCaptureNames;
+  // Names written in the capture list without `ref`: the closure owns them.
+  // A compound value moves in and is dropped with the closure's scope.
+  std::vector<std::string> ownedCaptureNames;
   std::optional<std::string>
       variadicParamName_;  // Name of variadic param if present
   std::optional<TypeAnnotation> variadicConstraint_;  // e.g., _init_args<T>
@@ -66,7 +69,7 @@ class PrototypeAST {
   bool hasClosure() const { return !captures.empty(); }
 
   // Names declared in the lambda's [ref x, ...] capture list (parser-derived
-  // source of truth; Capture::byRef is derived from it during analysis)
+  // source of truth; Capture::kind is derived from it during analysis)
   void setRefCaptureNames(std::vector<std::string> names) {
     refCaptureNames = std::move(names);
   }
@@ -84,9 +87,23 @@ class PrototypeAST {
     return std::find(constRefCaptureNames.begin(), constRefCaptureNames.end(),
                      name) != constRefCaptureNames.end();
   }
+  void setOwnedCaptureNames(std::vector<std::string> names) {
+    ownedCaptureNames = std::move(names);
+  }
+  const std::vector<std::string>& getOwnedCaptureNames() const {
+    return ownedCaptureNames;
+  }
+  // True if `name` was written in the capture list without `ref`
+  bool isOwnedCapture(const std::string& name) const {
+    return std::find(ownedCaptureNames.begin(), ownedCaptureNames.end(),
+                     name) != ownedCaptureNames.end();
+  }
+  // True if the closure holds state bound to the frame that built it: a
+  // borrow of a local, or a value it owns and drops there. Either way the
+  // closure must not outlive that frame.
   bool hasRefCaptures() const {
     for (const auto& cap : captures) {
-      if (cap.byRef) return true;
+      if (cap.kind != CaptureKind::ByValue) return true;
     }
     return false;
   }

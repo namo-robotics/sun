@@ -1428,17 +1428,12 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
           {alloca, ConstantInt::get(Type::getInt32Ty(ctx.getContext()), 0),
            ConstantInt::get(Type::getInt64Ty(ctx.getContext()), structSize)});
 
-      // Call constructor (init method) if it exists
-      // Get the init method info from the class type
-      const sun::ClassMethod* initMethod = classType->getMethod("init");
-
-      std::string baseCtorName;
-      if (initMethod) {
-        baseCtorName =
-            classType->getMangledMethodName("init", initMethod->paramTypes);
-      } else {
-        baseCtorName = classType->getMangledMethodName("init");
-      }
+      // Call the constructor the arguments select. Resolving on the name
+      // alone would always pick the first `init`, so a class with several
+      // of them would construct through the wrong one — or, when the arity
+      // did not match, through none at all.
+      ConstructorLookup ctor =
+          lookupConstructor(classType.get(), expr.getArgs());
 
       Function* ctorFunc = nullptr;
       size_t argCount = expr.getArgs().size();
@@ -1446,10 +1441,10 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
       // Find the constructor; declare an external if the init method exists
       // but isn't in the module yet (class codegen hasn't run)
       Function* candidate =
-          initMethod ? getOrDeclareMethodFunction(
-                           baseCtorName, initMethod->paramTypes,
-                           initMethod->returnType, initMethod->canThrow)
-                     : module->getFunction(baseCtorName);
+          ctor.method ? getOrDeclareMethodFunction(
+                            ctor.mangledName, ctor.method->paramTypes,
+                            ctor.method->returnType, ctor.method->canThrow)
+                      : module->getFunction(ctor.mangledName);
 
       if (candidate && candidate->arg_size() == argCount + 1) {
         ctorFunc = candidate;
@@ -1457,12 +1452,20 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
 
       if (ctorFunc) {
         const auto& paramTypes =
-            initMethod ? initMethod->paramTypes : std::vector<sun::TypePtr>{};
+            ctor.method ? ctor.method->paramTypes : std::vector<sun::TypePtr>{};
 
         std::vector<Value*> ctorArgs =
             generateCtorArgs(ctorFunc, alloca, expr.getArgs(),
                              expr.getArgConversions(), paramTypes);
         ctx.builder->CreateCall(ctorFunc, ctorArgs);
+      } else if (argCount > 0) {
+        // Zeroed storage fully describes a class with no constructor, so an
+        // argument-free miss is fine. Arguments that reach no constructor
+        // would be dropped on the floor, which is a miscompile.
+        logAndThrowError("No constructor to initialize " +
+                             classType->getDisplayName() + " with " +
+                             std::to_string(argCount) + " argument(s)",
+                         expr.getLocation());
       }
 
       // Track the temporary for deinit ONLY if not moved (ownership
@@ -1505,16 +1508,10 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
          ConstantInt::get(Type::getInt64Ty(ctx.getContext()), structSize)});
 
     // Call constructor (init method) if it exists
-    // Get the init method info from the class type
-    const sun::ClassMethod* initMethod = fallbackClassType->getMethod("init");
-
-    std::string baseCtorName;
-    if (initMethod) {
-      baseCtorName = fallbackClassType->getMangledMethodName(
-          "init", initMethod->paramTypes);
-    } else {
-      baseCtorName = fallbackClassType->getMangledMethodName("init");
-    }
+    // Resolve on the argument types, not the name alone — see the matching
+    // comment above.
+    ConstructorLookup ctor =
+        lookupConstructor(fallbackClassType.get(), expr.getArgs());
 
     Function* ctorFunc = nullptr;
     size_t argCount = expr.getArgs().size();
@@ -1522,10 +1519,10 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
     // Find the constructor; declare an external if the init method exists
     // but isn't in the module yet
     Function* candidate =
-        initMethod ? getOrDeclareMethodFunction(
-                         baseCtorName, initMethod->paramTypes,
-                         initMethod->returnType, initMethod->canThrow)
-                   : module->getFunction(baseCtorName);
+        ctor.method ? getOrDeclareMethodFunction(
+                          ctor.mangledName, ctor.method->paramTypes,
+                          ctor.method->returnType, ctor.method->canThrow)
+                    : module->getFunction(ctor.mangledName);
 
     if (candidate && candidate->arg_size() == argCount + 1) {
       ctorFunc = candidate;
@@ -1533,12 +1530,17 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
 
     if (ctorFunc) {
       const auto& paramTypes =
-          initMethod ? initMethod->paramTypes : std::vector<sun::TypePtr>{};
+          ctor.method ? ctor.method->paramTypes : std::vector<sun::TypePtr>{};
 
       std::vector<Value*> ctorArgs =
           generateCtorArgs(ctorFunc, alloca, expr.getArgs(),
                            expr.getArgConversions(), paramTypes);
       ctx.builder->CreateCall(ctorFunc, ctorArgs);
+    } else if (argCount > 0) {
+      logAndThrowError("No constructor to initialize " +
+                           fallbackClassType->getDisplayName() + " with " +
+                           std::to_string(argCount) + " argument(s)",
+                       expr.getLocation());
     }
 
     // Track the temporary for deinit ONLY if not moved (ownership

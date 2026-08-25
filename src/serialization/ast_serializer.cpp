@@ -10,10 +10,6 @@
 namespace sun {
 namespace serialization {
 
-static ast::Visibility toProto(sun::Visibility v) {
-  return v == sun::Visibility::Public ? ast::PUBLIC : ast::PRIVATE;
-}
-
 ast::Position ASTSerializer::serializePosition(const Position& pos) const {
   ast::Position proto;
   proto.set_line(pos.line);
@@ -74,11 +70,18 @@ ast::TypeAnnotation ASTSerializer::serializeTypeAnnotation(
 ast::Capture ASTSerializer::serializeCapture(const Capture& cap) const {
   ast::Capture proto;
   proto.set_name(cap.name);
-  if (cap.type) {
-    proto.set_type_signature(cap.type->toString());
-  }
-  proto.set_by_ref(cap.byRef);
   proto.set_is_const(cap.isConst);
+  switch (cap.kind) {
+    case CaptureKind::Owned:
+      proto.set_kind(ast::CAPTURE_OWNED);
+      break;
+    case CaptureKind::Borrow:
+      proto.set_kind(ast::CAPTURE_BORROW);
+      break;
+    case CaptureKind::ByValue:
+      proto.set_kind(ast::CAPTURE_BY_VALUE);
+      break;
+  }
   return proto;
 }
 
@@ -90,21 +93,11 @@ void ASTSerializer::serializeExprBase(const ExprAST& expr,
   node->set_precompiled(expr.isPrecompiled());
   node->set_skip_codegen(expr.shouldSkipCodegen());
   node->set_symbol_prefix(expr.getSymbolPrefix());
-
-  if (config_.include_analysis && expr.hasAnalysis()) {
-    auto* analysis = node->mutable_analysis();
-    if (expr.hasResolvedType()) {
-      analysis->set_resolved_type(expr.getResolvedType()->toString());
-    }
-    analysis->set_moved(expr.isMoved());
-  }
 }
 
 ast::Program ASTSerializer::serializeProgram(const BlockExprAST& root) const {
   ast::Program program;
   program.set_version(1);
-  program.set_has_analysis(config_.include_analysis);
-
   serializeBlockInto(root, program.mutable_body());
   return program;
 }
@@ -151,6 +144,10 @@ ast::Prototype ASTSerializer::serializePrototype(
     result.add_const_ref_captures(refName);
   }
 
+  for (const auto& ownedName : proto.getOwnedCaptureNames()) {
+    result.add_owned_captures(ownedName);
+  }
+
   if (proto.hasVariadicParam()) {
     result.set_variadic_param_name(*proto.getVariadicParamName());
   }
@@ -171,25 +168,6 @@ ast::Prototype ASTSerializer::serializePrototype(
     *result.mutable_location() = serializePosition(proto.getLocation());
   }
 
-  // Serialize prototype analysis if requested
-  if (config_.include_analysis && proto.hasAnalysis()) {
-    auto* analysis = result.mutable_analysis();
-    analysis->set_qualified_name(proto.getMangledName());
-    // Add resolved types if available
-    const auto* protoAnalysis = proto.getAnalysis();
-    if (protoAnalysis) {
-      for (const auto& pt : protoAnalysis->resolvedParamTypes) {
-        if (pt) {
-          analysis->add_resolved_param_types(pt->toString());
-        }
-      }
-      if (protoAnalysis->resolvedReturnType) {
-        analysis->set_resolved_return_type(
-            protoAnalysis->resolvedReturnType->toString());
-      }
-    }
-  }
-
   return result;
 }
 
@@ -208,7 +186,7 @@ ast::ASTNode ASTSerializer::serialize(const ExprAST& expr) const {
       serializeString(static_cast<const StringLiteralAST&>(expr), &node);
       break;
     case ASTNodeType::NULL_LITERAL:
-      serializeNull(static_cast<const NullLiteralAST&>(expr), &node);
+      node.mutable_null_literal();
       break;
     case ASTNodeType::BOOL_LITERAL:
       serializeBool(static_cast<const BoolLiteralAST&>(expr), &node);
@@ -294,10 +272,10 @@ ast::ASTNode ASTSerializer::serialize(const ExprAST& expr) const {
       serializeWhile(static_cast<const WhileExprAST&>(expr), &node);
       break;
     case ASTNodeType::BREAK_STMT:
-      serializeBreak(static_cast<const BreakAST&>(expr), &node);
+      node.mutable_break_stmt();
       break;
     case ASTNodeType::CONTINUE_STMT:
-      serializeContinue(static_cast<const ContinueAST&>(expr), &node);
+      node.mutable_continue_stmt();
       break;
     case ASTNodeType::RETURN:
       serializeReturn(static_cast<const ReturnExprAST&>(expr), &node);
@@ -327,16 +305,8 @@ ast::ASTNode ASTSerializer::serialize(const ExprAST& expr) const {
       serializeManifest(static_cast<const ManifestAST&>(expr), &node);
       break;
     case ASTNodeType::MOON_SCOPE:
-      // MoonScopeAST should never be serialized - it's an ephemeral import
-      // wrapper If we reach here, just serialize the contained modules This
-      // shouldn't happen in normal use since moon stubs are precompiled
-      for (const auto& bodyExpr :
-           static_cast<const MoonScopeAST&>(expr).getBody().getBody()) {
-        // Serialize each contained module (they'll likely be skipped as
-        // precompiled)
-        serialize(*bodyExpr);
-      }
-      // Return empty block_expr as placeholder
+      // An ephemeral wrapper around already-precompiled imports, so it never
+      // reaches a serialized tree. Stand an empty block in for it.
       node.mutable_block_expr();
       break;
     case ASTNodeType::USING:
@@ -356,7 +326,7 @@ ast::ASTNode ASTSerializer::serialize(const ExprAST& expr) const {
       serializeEnumDef(static_cast<const EnumDefinitionAST&>(expr), &node);
       break;
     case ASTNodeType::THIS:
-      serializeThis(static_cast<const ThisExprAST&>(expr), &node);
+      node.mutable_this_expr();
       break;
     case ASTNodeType::MEMBER_ACCESS:
       serializeMemberAccess(static_cast<const MemberAccessAST&>(expr), &node);
@@ -417,11 +387,6 @@ void ASTSerializer::serializeString(const StringLiteralAST& expr,
   node->mutable_string_literal()->set_value(expr.getValue());
 }
 
-void ASTSerializer::serializeNull(const NullLiteralAST& expr,
-                                  ast::ASTNode* node) const {
-  node->mutable_null_literal();  // Just set the oneof
-}
-
 void ASTSerializer::serializeBool(const BoolLiteralAST& expr,
                                   ast::ASTNode* node) const {
   node->mutable_bool_literal()->set_value(expr.getValue());
@@ -448,16 +413,20 @@ void ASTSerializer::serializeArray(const ArrayLiteralAST& expr,
   }
 }
 
+void ASTSerializer::serializeSliceInto(const SliceExprAST& slice,
+                                       ast::SliceExpr* proto) const {
+  if (slice.getStart()) {
+    *proto->mutable_start() = serialize(*slice.getStart());
+  }
+  if (slice.getEnd()) {
+    *proto->mutable_end() = serialize(*slice.getEnd());
+  }
+  proto->set_is_range(slice.isRange());
+}
+
 void ASTSerializer::serializeSlice(const SliceExprAST& expr,
                                    ast::ASTNode* node) const {
-  auto* slice = node->mutable_slice_expr();
-  if (expr.getStart()) {
-    *slice->mutable_start() = serialize(*expr.getStart());
-  }
-  if (expr.getEnd()) {
-    *slice->mutable_end() = serialize(*expr.getEnd());
-  }
-  slice->set_is_range(expr.isRange());
+  serializeSliceInto(expr, node->mutable_slice_expr());
 }
 
 void ASTSerializer::serializeIndex(const IndexAST& expr,
@@ -465,14 +434,7 @@ void ASTSerializer::serializeIndex(const IndexAST& expr,
   auto* idx = node->mutable_index_expr();
   *idx->mutable_target() = serialize(*expr.getTarget());
   for (const auto& slice : expr.getIndices()) {
-    auto* sliceProto = idx->add_indices();
-    if (slice->getStart()) {
-      *sliceProto->mutable_start() = serialize(*slice->getStart());
-    }
-    if (slice->getEnd()) {
-      *sliceProto->mutable_end() = serialize(*slice->getEnd());
-    }
-    sliceProto->set_is_range(slice->isRange());
+    serializeSliceInto(*slice, idx->add_indices());
   }
 }
 
@@ -665,16 +627,6 @@ void ASTSerializer::serializeWhile(const WhileExprAST& expr,
   *whileExpr->mutable_body() = serialize(*expr.getBody());
 }
 
-void ASTSerializer::serializeBreak(const BreakAST& expr,
-                                   ast::ASTNode* node) const {
-  node->mutable_break_stmt();  // Just set the oneof
-}
-
-void ASTSerializer::serializeContinue(const ContinueAST& expr,
-                                      ast::ASTNode* node) const {
-  node->mutable_continue_stmt();  // Just set the oneof
-}
-
 void ASTSerializer::serializeReturn(const ReturnExprAST& expr,
                                     ast::ASTNode* node) const {
   auto* ret = node->mutable_return_expr();
@@ -701,6 +653,18 @@ void ASTSerializer::serializeFunction(const FunctionAST& expr,
   func->set_body_present(expr.hasBody());
   auto* body = func->mutable_body();
   if (expr.hasBody()) serializeBlockInto(expr.getBody(), body);
+}
+
+void ASTSerializer::serializeMethodFunction(const FunctionAST& function,
+                                            ast::FunctionDef* proto) const {
+  *proto->mutable_proto() = serializePrototype(function.getProto());
+  if (function.hasBody()) {
+    serializeBlockInto(function.getBody(), proto->mutable_body());
+  }
+  proto->set_visibility(toProto(function.getVisibility()));
+  if (config_.include_location && function.getLocation().endOffset) {
+    *proto->mutable_location() = serializePosition(function.getLocation());
+  }
 }
 
 void ASTSerializer::serializeLambda(const LambdaAST& expr,
@@ -818,31 +782,12 @@ void ASTSerializer::serializeClassDef(const ClassDefinitionAST& expr,
   }
 
   for (const auto& field : expr.getFields()) {
-    auto* fieldProto = cls->add_fields();
-    fieldProto->set_name(field.name);
-    *fieldProto->mutable_type() = serializeTypeAnnotation(field.type);
-    if (config_.include_location) {
-      *fieldProto->mutable_location() = serializePosition(field.location);
-    }
-    fieldProto->set_visibility(toProto(field.visibility));
-    fieldProto->set_doc(field.doc);
+    serializeFieldInto(field, cls->add_fields());
   }
 
   for (const auto& method : expr.getMethods()) {
     auto* methodProto = cls->add_methods();
-    // Serialize the function
-    auto* funcProto = methodProto->mutable_function();
-    *funcProto->mutable_proto() =
-        serializePrototype(method.function->getProto());
-    auto* body = funcProto->mutable_body();
-    if (method.function->hasBody()) {
-      serializeBlockInto(method.function->getBody(), body);
-    }
-    funcProto->set_visibility(toProto(method.function->getVisibility()));
-    if (config_.include_location && method.function->getLocation().endOffset) {
-      *funcProto->mutable_location() =
-          serializePosition(method.function->getLocation());
-    }
+    serializeMethodFunction(*method.function, methodProto->mutable_function());
     methodProto->set_is_constructor(method.isConstructor);
     methodProto->set_is_const(method.isConst);
   }
@@ -863,30 +808,12 @@ void ASTSerializer::serializeInterfaceDef(const InterfaceDefinitionAST& expr,
   }
 
   for (const auto& field : expr.getFields()) {
-    auto* fieldProto = iface->add_fields();
-    fieldProto->set_name(field.name);
-    *fieldProto->mutable_type() = serializeTypeAnnotation(field.type);
-    if (config_.include_location) {
-      *fieldProto->mutable_location() = serializePosition(field.location);
-    }
-    fieldProto->set_visibility(toProto(field.visibility));
-    fieldProto->set_doc(field.doc);
+    serializeFieldInto(field, iface->add_fields());
   }
 
   for (const auto& method : expr.getMethods()) {
     auto* methodProto = iface->add_methods();
-    auto* funcProto = methodProto->mutable_function();
-    *funcProto->mutable_proto() =
-        serializePrototype(method.function->getProto());
-    auto* body = funcProto->mutable_body();
-    if (method.function->hasBody()) {
-      serializeBlockInto(method.function->getBody(), body);
-    }
-    funcProto->set_visibility(toProto(method.function->getVisibility()));
-    if (config_.include_location && method.function->getLocation().endOffset) {
-      *funcProto->mutable_location() =
-          serializePosition(method.function->getLocation());
-    }
+    serializeMethodFunction(*method.function, methodProto->mutable_function());
     methodProto->set_has_default_impl(method.hasDefaultImpl);
     methodProto->set_is_const(method.isConst);
   }
@@ -916,11 +843,6 @@ void ASTSerializer::serializeEnumDef(const EnumDefinitionAST& expr,
       *variantProto->add_payload_types() = serializeTypeAnnotation(payloadType);
     }
   }
-}
-
-void ASTSerializer::serializeThis(const ThisExprAST& expr,
-                                  ast::ASTNode* node) const {
-  node->mutable_this_expr();  // Just set the oneof
 }
 
 void ASTSerializer::serializeMemberAccess(const MemberAccessAST& expr,

@@ -343,33 +343,50 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const LambdaAST& lambda) {
   auto isDeclaredRef = [&](const std::string& name) {
     return std::find(refNames.begin(), refNames.end(), name) != refNames.end();
   };
+  const auto& ownedNames = proto.getOwnedCaptureNames();
 
-  // Every declared [ref x] must name a variable that is actually captured
-  for (const auto& refName : refNames) {
-    if (!freeVars.count(refName)) {
-      logAndThrowError("Capture list names '" + refName +
+  // Every name in the capture list must be a variable the body actually uses
+  auto checkListedName = [&](const std::string& name,
+                             bool byRef) -> VariableInfo* {
+    if (!freeVars.count(name)) {
+      logAndThrowError("Capture list names '" + name +
                            "' but the lambda body does not use it",
                        lambda.getLocation());
     }
-    VariableInfo* varInfo = lookupVariable(refName);
+    VariableInfo* varInfo = lookupVariable(name);
     if (!varInfo || !varInfo->type) {
-      logAndThrowError(
-          "Unknown variable '" + refName + "' in lambda capture list",
-          lambda.getLocation());
-    }
-    if (varInfo->isGlobal) {
-      logAndThrowError("Cannot capture global variable '" + refName +
-                           "' by reference; globals are accessed directly",
+      logAndThrowError("Unknown variable '" + name + "' in lambda capture list",
                        lambda.getLocation());
     }
-    // A by-ref capture of a name the enclosing lambda captured by value
-    // would alias the enclosing env's private copy - reject
-    if (varInfo->isCapture && !varInfo->isByRefCapture) {
+    if (varInfo->isGlobal) {
       logAndThrowError(
-          "Cannot capture '" + refName +
-              "' by reference: the enclosing lambda captures it by value",
+          "Cannot capture global variable '" + name +
+              (byRef ? "' by reference; globals are accessed directly"
+                     : "'; globals are accessed directly"),
           lambda.getLocation());
     }
+    // Capturing a name the enclosing lambda holds by value would reach into
+    // that closure's own storage — as a borrow it would alias it, and as an
+    // owned capture it would take it away.
+    if (varInfo->captureKind && *varInfo->captureKind != CaptureKind::Borrow) {
+      logAndThrowError("Cannot capture '" + name +
+                           (byRef ? "' by reference" : "'") +
+                           ": the enclosing lambda captures it by value",
+                       lambda.getLocation());
+    }
+    return varInfo;
+  };
+
+  for (const auto& refName : refNames) {
+    checkListedName(refName, /*byRef=*/true);
+  }
+  for (const auto& ownedName : ownedNames) {
+    if (isDeclaredRef(ownedName)) {
+      logAndThrowError("Capture list names '" + ownedName +
+                           "' twice; a capture is either borrowed or owned",
+                       lambda.getLocation());
+    }
+    checkListedName(ownedName, /*byRef=*/false);
   }
 
   std::vector<Capture> captures;
@@ -380,23 +397,43 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const LambdaAST& lambda) {
       if (varInfo->isGlobal) {
         continue;  // Skip global variables - they don't need to be captured
       }
-      bool byRef = isDeclaredRef(var);
-      bool declaredConstRef = byRef && proto.isConstRefCapture(var);
-      // Compound types (classes, interfaces, arrays) cannot be captured by
-      // value - the env copy silently breaks aliasing
-      if (!byRef && sun::unwrapRef(varInfo->type)->isCompound()) {
+      CaptureKind kind = isDeclaredRef(var)          ? CaptureKind::Borrow
+                         : proto.isOwnedCapture(var) ? CaptureKind::Owned
+                                                     : CaptureKind::ByValue;
+      // A compound value cannot be picked up implicitly — the env copy would
+      // silently break aliasing. Naming it in the capture list says which of
+      // the three things you meant.
+      if (kind == CaptureKind::ByValue &&
+          sun::unwrapRef(varInfo->type)->isCompound()) {
         logAndThrowError("Cannot capture '" + var + "' of compound type '" +
                              varInfo->type->toDisplayString() +
                              "' by value; capture it by reference with "
                              "'lambda [ref " +
+                             var + "]', read it with 'lambda [const ref " +
+                             var +
+                             "]', or move it into the lambda with "
+                             "'lambda [" +
                              var + "]'",
                          lambda.getLocation());
       }
+      // An owned capture of a borrow would launder the borrow into a value
+      if (kind == CaptureKind::Owned && varInfo->type->isReference()) {
+        logAndThrowError(
+            "Cannot move '" + var +
+                "' into the lambda: it is a reference, so the value belongs to "
+                "someone else. Capture it with 'lambda [ref " +
+                var + "]' or 'lambda [const ref " + var + "]'",
+            lambda.getLocation());
+      }
       // A constant stays constant inside the lambda, however it is captured;
-      // `[const ref x]` makes an otherwise mutable variable read-only there
-      bool isConst = declaredConstRef || varInfo->isConst ||
-                     sun::isConstRef(varInfo->type);
-      captures.push_back({var, varInfo->type, byRef, isConst});
+      // `[const ref x]` makes an otherwise mutable variable read-only there.
+      // An owned capture is the closure's own value, so it is mutable there
+      // even when the variable it came from was constant.
+      bool isConst =
+          kind != CaptureKind::Owned &&
+          ((kind == CaptureKind::Borrow && proto.isConstRefCapture(var)) ||
+           varInfo->isConst || sun::isConstRef(varInfo->type));
+      captures.push_back({var, varInfo->type, kind, isConst});
     }
   }
 

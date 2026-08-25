@@ -15,10 +15,12 @@ using namespace llvm;
 // captures, the pointer stored in the slot (the original variable's
 // storage). Returns nullptr when name is not a capture of any enclosing
 // closure. valueTypeOut receives the capture's value type; byRefOut whether
-// the capture was declared [ref name].
+// the capture was declared [ref name]; ownedOut whether it was listed without
+// `ref`, which makes the slot the value's own storage rather than a copy.
 llvm::Value* CodegenVisitor::createCaptureSlotAddress(const std::string& name,
                                                       llvm::Type** valueTypeOut,
-                                                      bool* byRefOut) {
+                                                      bool* byRefOut,
+                                                      bool* ownedOut) {
   // Search from innermost -> outermost closure
   for (auto it = closureStack.rbegin(); it != closureStack.rend(); ++it) {
     auto& closure = *it;
@@ -51,14 +53,17 @@ llvm::Value* CodegenVisitor::createCaptureSlotAddress(const std::string& name,
         closure.envType, envPtr, envFieldIndex, name + ".slot");
 
     bool byRef = false;
+    bool owned = false;
     for (const auto& cap : closure.captures) {
       if (cap.name == name) {
-        byRef = cap.byRef;
+        byRef = cap.kind == CaptureKind::Borrow;
+        owned = cap.kind == CaptureKind::Owned;
         break;
       }
     }
     if (valueTypeOut) *valueTypeOut = closure.captureTypes[name];
     if (byRefOut) *byRefOut = byRef;
+    if (ownedOut) *ownedOut = owned;
 
     if (byRef) {
       // The slot holds a pointer to the original storage
@@ -81,11 +86,13 @@ llvm::LoadInst* CodegenVisitor::createLoadVarFromClosure(
 }
 
 // Value stored into an env slot at closure creation: the current value for
-// by-value captures, the referent's address for by-ref captures
+// by-value captures, the referent's address for by-ref captures. Owned
+// captures of compound values do not come through here — they move, which
+// fillCaptureSlots handles.
 llvm::Value* CodegenVisitor::computeCaptureInitValue(const Capture& cap) {
   const std::string& varName = cap.name;
 
-  if (cap.byRef) {
+  if (cap.kind == CaptureKind::Borrow) {
     if (AllocaInst* alloca = findVariable(varName)) {
       // Ref-typed variables hold a pointer; flatten so the env points at the
       // referent, not the ref cell (mirror tryCodegenAddress)
@@ -130,8 +137,9 @@ llvm::StructType* CodegenVisitor::createEnvTypeForFunc(
   std::vector<llvm::Type*> capturedTypes;
   for (const auto& cap : proto.getCaptures()) {
     // By-ref captures store a pointer to the original storage
-    capturedTypes.push_back(cap.byRef ? PointerType::getUnqual(ctx.getContext())
-                                      : typeResolver.resolve(cap.type));
+    capturedTypes.push_back(cap.kind == CaptureKind::Borrow
+                                ? PointerType::getUnqual(ctx.getContext())
+                                : typeResolver.resolve(cap.type));
   }
   return StructType::create(ctx.getContext(), capturedTypes,
                             proto.getName() + ".env");
@@ -178,17 +186,8 @@ llvm::Value* CodegenVisitor::createFatClosure(Function* func,
       envType,  // ← we use the envType we just reconstructed
       nullptr, "closure.env");
 
-  for (size_t i = 0; i < proto.getCaptures().size(); ++i) {
-    const Capture& cap = proto.getCaptures()[i];
-
-    Value* capturedValue = computeCaptureInitValue(cap);
-    if (!capturedValue) return nullptr;
-
-    Value* fieldPtr = ctx.builder->CreateStructGEP(
-        envType, envAlloca, (unsigned)i, "env." + cap.name);
-
-    ctx.builder->CreateStore(capturedValue, fieldPtr);
-  }
+  if (!fillCaptureSlots(envType, envAlloca, proto, entryBuilder))
+    return nullptr;
 
   AllocaInst* fatAlloca = entryBuilder.CreateAlloca(fatType, nullptr, "fatptr");
   ctx.builder->CreateStore(func,
@@ -213,18 +212,80 @@ llvm::Value* CodegenVisitor::createEnvClosure(StructType* envType,
   AllocaInst* envAlloca =
       entryBuilder.CreateAlloca(envType, nullptr, proto.getName() + ".env");
 
+  if (!fillCaptureSlots(envType, envAlloca, proto, entryBuilder))
+    return nullptr;
+
+  return envAlloca;  // returns %env*
+}
+
+// Fill in a closure environment's capture slots.
+//
+// A borrowed capture stores the referent's address and a by-value scalar
+// stores a copy, both of which the environment merely holds. An owned
+// capture of a compound value is different: the value MOVES into the slot,
+// which then owns it, so the slot is registered for drop in the scope that
+// built the closure. That scope also joins any thread spawned with this
+// lambda first — the thread handle is tracked after these slots, and cleanup
+// runs in reverse — so the thread has finished before its captures go away.
+//
+// The slot addresses come from `entryBuilder` rather than the current insert
+// point: cleanup for a scope is emitted wherever the scope ends, which the
+// block building the closure need not dominate. Entry-block addresses
+// dominate the whole function. For the same reason an owned slot is zeroed up
+// front, so a path that never reaches the closure still drops something inert.
+bool CodegenVisitor::fillCaptureSlots(StructType* envType,
+                                      llvm::Value* envAlloca,
+                                      const PrototypeAST& proto,
+                                      IRBuilder<>& entryBuilder) {
+  const DataLayout& DL = module->getDataLayout();
+
   for (size_t i = 0; i < proto.getCaptures().size(); ++i) {
     const Capture& cap = proto.getCaptures()[i];
 
-    Value* capturedValue = computeCaptureInitValue(cap);
-    if (!capturedValue) return nullptr;
-
-    Value* fieldPtr = ctx.builder->CreateStructGEP(
+    Value* fieldPtr = entryBuilder.CreateStructGEP(
         envType, envAlloca, (unsigned)i, "env." + cap.name);
-    ctx.builder->CreateStore(capturedValue, fieldPtr);
-  }
 
-  return envAlloca;  // returns %env*
+    // An owned capture of anything a read cannot honestly duplicate — a class
+    // or a payload enum — takes the value rather than a copy of it.
+    bool movesIn = cap.kind == CaptureKind::Owned && cap.type &&
+                   !sun::typeCopiesByRead(cap.type);
+    if (!movesIn) {
+      Value* capturedValue = computeCaptureInitValue(cap);
+      if (!capturedValue) return false;
+      ctx.builder->CreateStore(capturedValue, fieldPtr);
+      continue;
+    }
+
+    llvm::Type* slotType = typeResolver.resolve(cap.type);
+    llvm::FunctionCallee memsetFn = module->getOrInsertFunction(
+        "memset", FunctionType::get(PointerType::getUnqual(ctx.getContext()),
+                                    {PointerType::getUnqual(ctx.getContext()),
+                                     Type::getInt32Ty(ctx.getContext()),
+                                     Type::getInt64Ty(ctx.getContext())},
+                                    false));
+    entryBuilder.CreateCall(
+        memsetFn,
+        {fieldPtr, ConstantInt::get(Type::getInt32Ty(ctx.getContext()), 0),
+         ConstantInt::get(Type::getInt64Ty(ctx.getContext()),
+                          DL.getTypeAllocSize(slotType))});
+
+    // Compounds are carried by address, so the source is the variable's
+    // storage; applyMoveSemantics loads it and invalidates the source.
+    Value* sourceAddr = findVariable(cap.name);
+    if (!sourceAddr) sourceAddr = createCaptureSlotAddress(cap.name);
+    if (!sourceAddr) {
+      logAndThrowError("Cannot move variable into closure: " + cap.name);
+      return false;
+    }
+    Value* moved = applyMoveSemantics(sourceAddr, cap.type);
+    if (!moved) return false;
+    ctx.builder->CreateStore(moved, fieldPtr);
+
+    // Register the drop as soon as the slot owns something, so a capture
+    // whose neighbour's initializer unwinds is still released.
+    trackClassAllocation(fieldPtr, "env." + cap.name, cap.type);
+  }
+  return true;
 }
 
 // -------------------------------------------------------------------

@@ -293,9 +293,10 @@ Value* CodegenVisitor::codegen(const VariableAssignmentAST& expr) {
     return value;
   }
 
-  // Captured variables: store through the capture slot address (for [ref x]
-  // captures that is the original variable's storage; by-value captures are
-  // rejected in semantic analysis before reaching here)
+  // Captured variables: store through the capture slot address. For [ref x]
+  // that is the original variable's storage, and for an owned capture it is
+  // the closure's own; an implicit by-value capture is rejected in semantic
+  // analysis before reaching here.
   if (Value* slotAddr = createCaptureSlotAddress(expr.getName())) {
     Value* value = codegen(*expr.getValue());
     if (isLambdaLiteral && savedBlock) {
@@ -307,7 +308,11 @@ Value* CodegenVisitor::codegen(const VariableAssignmentAST& expr) {
                                         valueAlloca, "closure.load");
       }
     }
-    ctx.builder->CreateStore(value, slotAddr);
+    // A compound value arrives as an address, so go through the same store
+    // path a local uses: it drops what the slot held and moves the new value
+    // in rather than storing the pointer itself.
+    assignToVariableSlot(slotAddr, value, expr.getResolvedType(),
+                         expr.getName());
     return value;
   }
 

@@ -75,6 +75,8 @@ enum class Intrinsic {
   AtomicCmpxchgI32,  // _atomic_cmpxchg_i32(ptr, expected, desired) -> old_value
   AtomicStoreI32,    // _atomic_store_i32(ptr, value) -> void
   AtomicLoadI32,     // _atomic_load_i32(ptr) -> i32
+  AtomicFetchAddI32,  // _atomic_fetch_add_i32(ptr, delta) -> old_value
+  AtomicFetchSubI32,  // _atomic_fetch_sub_i32(ptr, delta) -> old_value
 
   // Futex intrinsics (Linux-specific thread synchronization)
   FutexWait,  // _futex_wait(ptr, expected) -> void
@@ -165,6 +167,8 @@ inline Intrinsic getIntrinsic(const std::string& name) {
   if (name == "_atomic_cmpxchg_i32") return Intrinsic::AtomicCmpxchgI32;
   if (name == "_atomic_store_i32") return Intrinsic::AtomicStoreI32;
   if (name == "_atomic_load_i32") return Intrinsic::AtomicLoadI32;
+  if (name == "_atomic_fetch_add_i32") return Intrinsic::AtomicFetchAddI32;
+  if (name == "_atomic_fetch_sub_i32") return Intrinsic::AtomicFetchSubI32;
 
   // Futex intrinsics
   if (name == "_futex_wait") return Intrinsic::FutexWait;

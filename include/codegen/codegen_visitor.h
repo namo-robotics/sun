@@ -38,10 +38,13 @@ struct OwnedAllocation {
 // class instances (deinit + field recursion) or payload enums with owning
 // payloads (synthesized drop function)
 struct ClassAllocation {
-  llvm::AllocaInst* alloca;  // Alloca storing the instance/storage
-  std::string varName;       // Variable name (for debugging)
-  bool moved;                // If true, ownership transferred - don't drop
-  sun::TypePtr type;         // Class or payload-enum type
+  // Address of the instance/storage. Usually an alloca; an owned lambda
+  // capture is a slot inside the closure environment instead, so this is the
+  // address rather than the alloca itself.
+  llvm::Value* alloca;
+  std::string varName;  // Variable name (for debugging)
+  bool moved;           // If true, ownership transferred - don't drop
+  sun::TypePtr type;    // Class or payload-enum type
 };
 
 // Scope object containing variables and allocation tracking
@@ -626,6 +629,9 @@ class CodegenVisitor {
   llvm::Value* codegenAtomicCmpxchgI32Intrinsic(const CallExprAST& expr);
   llvm::Value* codegenAtomicStoreI32Intrinsic(const CallExprAST& expr);
   llvm::Value* codegenAtomicLoadI32Intrinsic(const CallExprAST& expr);
+  // Shared by _atomic_fetch_add_i32 and _atomic_fetch_sub_i32
+  llvm::Value* codegenAtomicFetchOpI32Intrinsic(const CallExprAST& expr,
+                                                bool subtract);
 
   // Futex intrinsics (in intrinsics.cpp)
   llvm::Value* codegenFutexWaitIntrinsic(const CallExprAST& expr);
@@ -846,7 +852,7 @@ class CodegenVisitor {
   // need drop code. An alloca already tracked (e.g. a constructor temporary
   // later adopted by a variable) keeps its single entry — double-tracking
   // would double-drop.
-  void trackClassAllocation(llvm::AllocaInst* alloca, const std::string& name,
+  void trackClassAllocation(llvm::Value* alloca, const std::string& name,
                             sun::TypePtr type) {
     if (scopes.empty()) return;
     if (type && type->isEnum() && !sun::typeNeedsDrop(type)) return;
@@ -941,7 +947,8 @@ class CodegenVisitor {
   // not a capture.
   llvm::Value* createCaptureSlotAddress(const std::string& name,
                                         llvm::Type** valueTypeOut = nullptr,
-                                        bool* byRefOut = nullptr);
+                                        bool* byRefOut = nullptr,
+                                        bool* ownedOut = nullptr);
 
   // Env-slot initializer at closure creation: value for by-value captures,
   // referent address for [ref x] captures
@@ -1106,6 +1113,12 @@ class CodegenVisitor {
                                 StructType* envType, const PrototypeAST& proto);
 
   llvm::Value* createEnvClosure(StructType* envType, const PrototypeAST& proto);
+
+  // Fill a closure environment's capture slots. Owned captures of compound
+  // values move in and the slot is registered for drop.
+  bool fillCaptureSlots(StructType* envType, llvm::Value* envAlloca,
+                        const PrototypeAST& proto,
+                        llvm::IRBuilder<>& entryBuilder);
 
   // Built-in intrinsics (libc calls; see intrinsics/libc.h). The registry
   // and dispatcher live in src/codegen/intrinsics/builtins.cpp; the codegen

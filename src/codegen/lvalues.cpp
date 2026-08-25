@@ -164,13 +164,15 @@ Value* CodegenVisitor::tryCodegenAddress(const ExprAST& expr) {
       }
 
       // [ref x] captures have a genuine storage address (the pointer stored
-      // in the env slot). By-value captures stay non-addressable - handing
-      // out the copy's address would let callers mutate it.
+      // in the env slot), and an owned capture's slot IS the value's storage.
+      // An implicit by-value capture stays non-addressable - handing out the
+      // copy's address would let callers mutate it.
       {
         bool byRef = false;
+        bool owned = false;
         Value* slotAddr =
-            createCaptureSlotAddress(varRef.getName(), nullptr, &byRef);
-        if (slotAddr && byRef) return slotAddr;
+            createCaptureSlotAddress(varRef.getName(), nullptr, &byRef, &owned);
+        if (slotAddr && (byRef || owned)) return slotAddr;
       }
 
       // Globals: mangled name first (module-qualified), then plain
