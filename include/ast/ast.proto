@@ -357,6 +357,8 @@ message Prototype {
   optional string link_name = 12;   // `as "c_symbol"` override
   bool is_const_method = 13;        // `const function`: `this` is immutable
   string doc = 14;                  // Comment written above the function
+  // The subset of ref_captures declared `[const ref x]` (read-only borrow)
+  repeated string const_ref_captures = 15;
 }
 
 message FunctionDef {

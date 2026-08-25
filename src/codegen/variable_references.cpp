@@ -174,11 +174,14 @@ Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
     logAndThrowError("Array variable not found: " + expr.getName());
   }
 
-  // For class and payload-enum types, return the alloca pointer (not load
-  // the struct value). Methods expect 'this' as a pointer to the struct;
-  // match destructuring GEPs payloads out of the storage. Indirect bindings
-  // (compound match payloads) yield the borrowed slot's address instead.
-  if (varType && (varType->isClass() || isPayloadEnum(varType))) {
+  // For class, payload-enum and thread-handle types, return the alloca
+  // pointer (not load the struct value). Methods expect 'this' as a pointer
+  // to the struct; match destructuring GEPs payloads out of the storage;
+  // join() marks the handle slot joined through its address. Indirect
+  // bindings (compound match payloads) yield the borrowed slot's address
+  // instead.
+  if (varType &&
+      (varType->isClass() || isPayloadEnum(varType) || varType->isThread())) {
     if (Value* addr = compoundStorageAddress(expr.getName())) {
       return addr;
     }
@@ -341,8 +344,10 @@ Value* CodegenVisitor::codegen(const VariableAssignmentAST& expr) {
 void CodegenVisitor::assignToVariableSlot(Value* slot, Value* value,
                                           const sun::TypePtr& varType,
                                           const std::string& name) {
-  bool compound = varType && (varType->isClass() || isPayloadEnum(varType)) &&
-                  value->getType()->isPointerTy();
+  bool compound =
+      varType &&
+      (varType->isClass() || isPayloadEnum(varType) || varType->isThread()) &&
+      value->getType()->isPointerTy();
   if (compound) {
     // Self-assignment would drop the object and then copy from the corpse;
     // it has no effect, so emit nothing.

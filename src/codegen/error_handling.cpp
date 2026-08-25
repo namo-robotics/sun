@@ -209,10 +209,9 @@ Value* CodegenVisitor::codegen(const ThrowExprAST& expr) {
   sun::TypePtr errType =
       expr.hasErrorExpr() ? expr.getErrorExpr().getResolvedType() : nullptr;
 
-  if (errType && errType->isClass()) {
+  if (auto* classType = sun::tryGetType<sun::ClassType>(errType)) {
     // Concrete class: copy the object into the exception buffer and build a
     // fat pointer that references the embedded copy.
-    auto* classType = static_cast<sun::ClassType*>(errType.get());
     llvm::StructType* classStruct = classType->getStructType(ctx.getContext());
     uint64_t objSize = DL.getTypeAllocSize(classStruct);
 

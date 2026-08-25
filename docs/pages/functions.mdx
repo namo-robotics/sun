@@ -108,13 +108,26 @@ function main() i32 {
 }
 ```
 
+A capture the lambda only reads is written `[const ref x]`. It borrows the variable read-only, so writing it inside the lambda is a compile error:
+
+```sun
+function main() i32 {
+    var limit: i32 = 10;
+    var under = lambda [const ref limit] () bool {
+        return limit > 5;     // reading is fine; limit = 5 would not compile
+    };
+    return under() ? 1 : 0;
+}
+```
+
 Capture rules:
 
 - **Scalars** (integers, floats, bool) capture by value by default. Mutating a by-value capture is a compile error with a hint to add `[ref x]`.
-- **Compound types** (classes, interfaces, arrays) must be captured with `[ref …]` — copying them into a closure would silently break aliasing.
+- **Compound types** (classes, interfaces, arrays) must be captured with `[ref …]` or `[const ref …]` — copying them into a closure would silently break aliasing.
 - **Globals** are accessed directly and cannot appear in a capture list.
-- A by-ref capture registers a **mutable borrow** of the variable for as long as the lambda value is in scope, so conflicting `ref`s are rejected.
-- A lambda with by-ref captures holds pointers into the enclosing frame, so it **cannot be returned** from the function or passed to `spawn` — the captured variables would be dead (or racing) when used.
+- A `[ref x]` capture registers a **mutable borrow** of the variable for as long as the lambda value is in scope, so conflicting `ref`s — including a second lambda capturing the same variable — are rejected.
+- A `[const ref x]` capture registers a **shared borrow** instead, so several lambdas may capture the same variable at once. Everything reached through it is read-only: fields cannot be assigned, and only `const function` methods can be called.
+- A lambda with by-ref captures holds pointers into the enclosing frame, so it **cannot be returned** from the function — the captured variables would be dead when used. Passing it to `spawn` is fine: the thread is joined when its handle's scope ends, while those variables are still alive (see [Threads](/threads)).
 
 ## Semantic Differences
 

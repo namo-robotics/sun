@@ -151,6 +151,12 @@ std::unique_ptr<PrototypeAST> ASTDeserializer::deserializePrototype(
   }
   result->setRefCaptureNames(std::move(refCaptureNames));
 
+  std::vector<std::string> constRefCaptureNames;
+  for (const auto& refName : proto.const_ref_captures()) {
+    constRefCaptureNames.push_back(refName);
+  }
+  result->setConstRefCaptureNames(std::move(constRefCaptureNames));
+
   if (proto.has_location()) {
     result->setLocation(deserializePosition(proto.location()));
   }

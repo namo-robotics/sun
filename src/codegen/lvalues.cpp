@@ -85,33 +85,20 @@ std::pair<Value*, sun::ClassType*> CodegenVisitor::codegenObjectPtr(
   }
 
   // Pointer-to-class: the pointer value is already the object pointer
-  if (objectType &&
-      (objectType->isRawPointer() || objectType->isStaticPointer())) {
-    sun::TypePtr pointeeType = nullptr;
-    if (objectType->isRawPointer()) {
-      pointeeType =
-          static_cast<sun::RawPointerType*>(objectType.get())->getPointeeType();
-    } else {
-      pointeeType = static_cast<sun::StaticPointerType*>(objectType.get())
-                        ->getPointeeType();
-    }
-    if (pointeeType && pointeeType->isClass()) {
-      objectType = pointeeType;
-    }
+  sun::TypePtr pointeeType = sun::getPointeeType(objectType);
+  if (pointeeType && pointeeType->isClass()) {
+    objectType = pointeeType;
   }
 
   // Reference-to-class: the reference value is already the object pointer
-  if (objectType && objectType->isReference()) {
-    sun::TypePtr referencedType =
-        static_cast<sun::ReferenceType*>(objectType.get())->getReferencedType();
-    if (referencedType && referencedType->isClass()) {
-      objectType = referencedType;
+  if (auto* refType = sun::tryGetType<sun::ReferenceType>(objectType)) {
+    if (refType->getReferencedType() &&
+        refType->getReferencedType()->isClass()) {
+      objectType = refType->getReferencedType();
     }
   }
 
-  if (!objectType || !objectType->isClass()) return {objectPtr, nullptr};
-
-  return {objectPtr, static_cast<sun::ClassType*>(objectType.get())};
+  return {objectPtr, sun::tryGetType<sun::ClassType>(objectType)};
 }
 
 // -------------------------------------------------------------------

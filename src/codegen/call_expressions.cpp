@@ -80,10 +80,21 @@ Value* CodegenVisitor::applyMoveSemantics(Value* argVal,
     return structVal;
   }
 
-  // Only apply move semantics to class types that are pointers (addressable)
-  if (!argSunType->isClass()) return argVal;
+  // A thread handle moves by loading it and nulling the source slot, so only
+  // the destination joins the thread
+  if (argSunType->isThread()) {
+    llvm::StructType* handleTy = threadUtils.getThreadHandleType();
+    Value* handle = ctx.builder->CreateLoad(handleTy, argVal, "move.thread");
+    ctx.builder->CreateStore(
+        ConstantPointerNull::get(PointerType::getUnqual(ctx.getContext())),
+        ctx.builder->CreateStructGEP(handleTy, argVal, 0, "move.thread.ptr"));
+    return handle;
+  }
 
-  auto* classType = static_cast<sun::ClassType*>(argSunType.get());
+  // Only apply move semantics to class types that are pointers (addressable)
+  auto* classType = sun::tryGetType<sun::ClassType>(argSunType);
+  if (!classType) return argVal;
+
   llvm::StructType* structType = classType->getStructType(ctx.getContext());
 
   // Load the struct value from the source
@@ -192,20 +203,15 @@ Value* CodegenVisitor::prepareClassForRefInterface(Value* classPtr,
                                                    sun::TypePtr argType,
                                                    sun::TypePtr paramType) {
   // Check if conversion is needed: param is ref Interface and arg is class
-  if (!paramType || !paramType->isReference()) {
-    return nullptr;  // Not a ref param
-  }
-  auto* refType = static_cast<sun::ReferenceType*>(paramType.get());
-  sun::TypePtr innerType = refType->getReferencedType();
-  if (!innerType || !innerType->isInterface()) {
-    return nullptr;  // Not ref Interface
-  }
-  if (!argType || !argType->isClass()) {
-    return nullptr;  // Arg is not a class
-  }
+  auto* refType = sun::tryGetType<sun::ReferenceType>(paramType);
+  if (!refType) return nullptr;  // Not a ref param
 
-  auto* classType = static_cast<sun::ClassType*>(argType.get());
-  auto* ifaceType = static_cast<sun::InterfaceType*>(innerType.get());
+  auto* ifaceType =
+      sun::tryGetType<sun::InterfaceType>(refType->getReferencedType());
+  if (!ifaceType) return nullptr;  // Not ref Interface
+
+  auto* classType = sun::tryGetType<sun::ClassType>(argType);
+  if (!classType) return nullptr;  // Arg is not a class
 
   // Create interface fat pointer value
   Value* fatPtr = createInterfaceFatPointer(classPtr, classType, ifaceType);
@@ -525,7 +531,7 @@ Value* CodegenVisitor::prepareRefArgument(const ExprAST* argExpr,
       ctx.builder->CreateStore(tempVal, tempAlloca);
 
       // Track for cleanup - caller owns the temporary
-      auto classTypePtr = std::dynamic_pointer_cast<sun::ClassType>(argSunType);
+      auto classTypePtr = sun::tryGetTypePtr<sun::ClassType>(argSunType);
       if (classTypePtr) {
         trackClassAllocation(tempAlloca, "ref.temp", classTypePtr);
       }
@@ -580,22 +586,19 @@ Value* CodegenVisitor::codegenBuiltinTypeMethod(const CallExprAST& expr,
 
   // A ref static_ptr<T> receiver was loaded by codegen(); treat it as the
   // fat pointer value.
-  if (objectType->isReference()) {
-    sun::TypePtr inner =
-        static_cast<sun::ReferenceType*>(objectType.get())->getReferencedType();
+  if (auto* refType = sun::tryGetType<sun::ReferenceType>(objectType)) {
+    sun::TypePtr inner = refType->getReferencedType();
     if (inner && inner->isStaticPointer()) objectType = inner;
   }
 
   // Handle Thread<T>.join()
-  if (objectType->isThread()) {
+  if (auto* threadType = sun::tryGetType<sun::ThreadType>(objectType)) {
     if (methodName == "join") {
       if (!expr.getArgs().empty()) {
         logAndThrowError("Thread.join() takes no arguments");
         return nullptr;
       }
-      auto* threadType = static_cast<sun::ThreadType*>(objectType.get());
-      sun::TypePtr resultType = threadType->getResultType();
-      return codegenThreadJoin(objectPtr, resultType);
+      return codegenThreadJoin(objectPtr, threadType->getResultType());
     }
     logAndThrowError("Unknown method on Thread: " + methodName);
     return nullptr;
@@ -603,10 +606,8 @@ Value* CodegenVisitor::codegenBuiltinTypeMethod(const CallExprAST& expr,
 
   // static_ptr<T>.length() -> i64, static_ptr<T>.raw() -> raw_ptr<T>.
   // A static_ptr<Class> dispatches to the class's own methods instead.
-  if (objectType->isStaticPointer()) {
-    sun::TypePtr pointeeType =
-        static_cast<sun::StaticPointerType*>(objectType.get())
-            ->getPointeeType();
+  if (auto* staticPtr = sun::tryGetType<sun::StaticPointerType>(objectType)) {
+    sun::TypePtr pointeeType = staticPtr->getPointeeType();
     if (pointeeType && pointeeType->isClass()) return nullptr;
 
     if (methodName == "length" || methodName == "raw") {
@@ -654,11 +655,8 @@ Value* CodegenVisitor::codegenModuleFunctionCall(
   // without it every coercion degrades to a no-op, which is what this call
   // path used to do unconditionally.
   std::vector<sun::TypePtr> paramTypes;
-  if (auto calleeType = memberAccess.getResolvedType()) {
-    if (calleeType->isFunction()) {
-      paramTypes =
-          static_cast<sun::FunctionType*>(calleeType.get())->getParamTypes();
-    }
+  if (auto* calleeType = sun::tryGetType<sun::FunctionType>(memberAccess)) {
+    paramTypes = calleeType->getParamTypes();
   }
 
   // An extern "C" target whose signature needed ABI rewriting must be
@@ -780,17 +778,12 @@ Value* CodegenVisitor::codegenClassMethodCall(
     return nullptr;
   }
 
-  sun::TypePtr resolvedType = memberAccess->getResolvedType();
-  if (!resolvedType || !resolvedType->isFunction()) {
-    logAndThrowError("Method '" + methodName + "' on class " +
-                     classType->getDisplayName() +
-                     " was not resolved by semantic analysis");
-    return nullptr;
-  }
-
   // Use the param types from semantic analysis to find the exact method
   const auto& paramTypes =
-      static_cast<sun::FunctionType*>(resolvedType.get())->getParamTypes();
+      sun::requireType<sun::FunctionType>(
+          *memberAccess,
+          "method '" + methodName + "' on class " + classType->getDisplayName())
+          .getParamTypes();
   method = classType->getMethodForArgs(methodName, paramTypes);
 
   // Fallback: for generic methods, type parameters won't match concrete args,
@@ -849,16 +842,10 @@ Value* CodegenVisitor::codegenClassMethodCall(
     std::vector<Value*> argValues;
     argValues.push_back(materializeMethodClosure(specializedFunc, objectPtr));
 
-    sun::TypePtr calleeType = expr.getCallee()->getResolvedType();
-    if (!calleeType || !calleeType->isFunction()) {
-      logAndThrowError(
-          "Generic method call signature not resolved by semantic analysis: " +
-          methodName);
-      return nullptr;
-    }
     const auto& paramTypes =
-        static_cast<const sun::FunctionType*>(calleeType.get())
-            ->getParamTypes();
+        sun::requireType<sun::FunctionType>(
+            *expr.getCallee(), "generic method call '" + methodName + "'")
+            .getParamTypes();
     if (!emitCallArguments(expr.getArgs(), expr.getArgConversions(), paramTypes,
                            specializedFunc->getFunctionType(), argValues,
                            methodName)) {
@@ -914,47 +901,41 @@ Value* CodegenVisitor::codegenMethodCall(const CallExprAST& expr,
   sun::TypePtr objectType = memberAccess.getObject()->getResolvedType();
   const std::string& methodName = memberAccess.getMemberName();
 
-  // Check if the full member access resolves to a class type (constructor call)
-  // This handles module-qualified generic class instantiation like
-  // Test.Inner<T>(v)
-  sun::TypePtr memberAccessType = memberAccess.getResolvedType();
-  if (memberAccessType && memberAccessType->isClass()) {
-    return codegenStackClassInstance(
-        expr, methodName, static_cast<sun::ClassType&>(*memberAccessType));
+  // A member access that resolves to a class type is a constructor call only
+  // when it reaches through a module, as module-qualified generic class
+  // instantiation does (Test.Inner<T>(v)). A method that returns a class —
+  // `t.join()` on a Thread<Res> — resolves the same way but is a call.
+  if (auto* memberClass = sun::tryGetType<sun::ClassType>(memberAccess)) {
+    if (!objectType || objectType->isModule()) {
+      return codegenStackClassInstance(expr, methodName, *memberClass);
+    }
   }
 
   // Handle module-qualified function call: mymod.foo()
-  if (objectType && objectType->isModule()) {
-    return codegenModuleFunctionCall(
-        expr, static_cast<sun::ModuleType*>(objectType.get()), methodName,
-        memberAccess);
+  if (auto* moduleType = sun::tryGetType<sun::ModuleType>(objectType)) {
+    return codegenModuleFunctionCall(expr, moduleType, methodName,
+                                     memberAccess);
   }
 
   // Enum variant construction: EnumName.Variant(args...). Sema resolved the
   // object to the enum type and validated arity/types.
-  if (objectType && objectType->isEnum()) {
-    auto& enumType = static_cast<sun::EnumType&>(*objectType);
-    const auto* variant = enumType.getVariant(methodName);
+  if (auto* enumType = sun::tryGetType<sun::EnumType>(objectType)) {
+    const auto* variant = enumType->getVariant(methodName);
     if (variant && variant->hasPayload()) {
-      return codegenEnumVariantConstruction(expr, enumType, *variant);
+      return codegenEnumVariantConstruction(expr, *enumType, *variant);
     }
     logAndThrowError("Variant '" + methodName + "' of enum '" +
-                     enumType.getDisplayName() + "' carries no payload");
+                     enumType->getDisplayName() + "' carries no payload");
   }
 
   // Handle array.shape() builtin
-  if (objectType && (objectType->isArray() ||
-                     (objectType->isReference() &&
-                      static_cast<sun::ReferenceType*>(objectType.get())
-                          ->getReferencedType()
-                          ->isArray()))) {
-    if (methodName == "shape") {
-      if (!expr.getArgs().empty()) {
-        logAndThrowError("shape() takes no arguments");
-        return nullptr;
-      }
-      return codegenArrayShape(memberAccess);
+  if (methodName == "shape" &&
+      sun::tryGetType<sun::ArrayType>(sun::unwrapRef(objectType))) {
+    if (!expr.getArgs().empty()) {
+      logAndThrowError("shape() takes no arguments");
+      return nullptr;
     }
+    return codegenArrayShape(memberAccess);
   }
 
   // Generate object pointer
@@ -980,40 +961,23 @@ Value* CodegenVisitor::codegenMethodCall(const CallExprAST& expr,
   }
 
   // Handle pointer-to-class: unwrap to get the underlying class type
-  if (objectType &&
-      (objectType->isRawPointer() || objectType->isStaticPointer())) {
-    sun::TypePtr pointeeType = nullptr;
-    if (objectType->isRawPointer()) {
-      pointeeType =
-          static_cast<sun::RawPointerType*>(objectType.get())->getPointeeType();
-    } else {
-      pointeeType = static_cast<sun::StaticPointerType*>(objectType.get())
-                        ->getPointeeType();
+  if (auto* cls =
+          sun::tryGetType<sun::ClassType>(sun::getPointeeType(objectType))) {
+    auto registeredClass = typeRegistry->getClass(cls->getMangledName());
+    if (!registeredClass) {
+      logAndThrowError("Class not found in type registry: " +
+                       cls->getMangledName());
+      return nullptr;
     }
-
-    if (pointeeType && pointeeType->isClass()) {
-      auto* cls = static_cast<sun::ClassType*>(pointeeType.get());
-      auto registeredClass = typeRegistry->getClass(cls->getMangledName());
-      if (!registeredClass) {
-        logAndThrowError("Class not found in type registry: " +
-                         cls->getMangledName());
-        return nullptr;
-      }
-      objectType = registeredClass;
-    }
+    objectType = registeredClass;
   }
 
   // Handle reference types - unwrap to get the underlying type
-  if (objectType && objectType->isReference()) {
-    objectType =
-        static_cast<sun::ReferenceType*>(objectType.get())->getReferencedType();
-  }
+  objectType = sun::unwrapRef(objectType);
 
   // Handle interface dispatch
-  if (objectType && objectType->isInterface()) {
-    return codegenInterfaceMethodCall(
-        expr, objectPtr, static_cast<sun::InterfaceType*>(objectType.get()),
-        methodName);
+  if (auto* ifaceType = sun::tryGetType<sun::InterfaceType>(objectType)) {
+    return codegenInterfaceMethodCall(expr, objectPtr, ifaceType, methodName);
   }
 
   // Handle Thread type (if not caught by builtin method handler)
@@ -1023,15 +987,11 @@ Value* CodegenVisitor::codegenMethodCall(const CallExprAST& expr,
   }
 
   // Must be a class method call
-  if (!objectType || !objectType->isClass()) {
-    logAndThrowError("Method call on non-class type: " +
-                     (objectType ? objectType->toDisplayString() : "null"));
-    return nullptr;
-  }
+  auto& classType = sun::requireType<sun::ClassType>(
+      objectType, "method call receiver", memberAccess.getLocation());
 
-  return codegenClassMethodCall(expr, objectPtr,
-                                static_cast<sun::ClassType*>(objectType.get()),
-                                methodName, &memberAccess);
+  return codegenClassMethodCall(expr, objectPtr, &classType, methodName,
+                                &memberAccess);
 }
 
 // -------------------------------------------------------------------
@@ -1058,10 +1018,9 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
 
     // Check if this is a stack-allocated class constructor call:
     // ClassName(args...)
-    sun::TypePtr calleeType = expr.getCallee()->getResolvedType();
-    if (calleeType && calleeType->isClass()) {
-      return codegenStackClassInstance(
-          expr, calleeName, static_cast<sun::ClassType&>(*calleeType));
+    if (auto* calleeClass =
+            sun::tryGetType<sun::ClassType>(*expr.getCallee())) {
+      return codegenStackClassInstance(expr, calleeName, *calleeClass);
     }
   } else if (auto* qualName =
                  dynamic_cast<const QualifiedNameAST*>(expr.getCallee())) {
@@ -1084,11 +1043,9 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
   // Handle Lambda type: fat pointer call with closure
   Value* result;
   sun::TypePtr calleeReturnType;
-  if (calleeSunType->isLambda()) {
-    const auto& lambdaType =
-        static_cast<const sun::LambdaType&>(*calleeSunType);
-    result = codegenLambdaCall(expr, calleeName, lambdaType);
-    calleeReturnType = lambdaType.getReturnType();
+  if (auto* lambdaType = sun::tryGetType<sun::LambdaType>(calleeSunType)) {
+    result = codegenLambdaCall(expr, calleeName, *lambdaType);
+    calleeReturnType = lambdaType->getReturnType();
   } else {
     // Handle Function type: direct call
     const auto& funcType =
@@ -1100,10 +1057,8 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
   // Handle array returns: copy data/dims to caller's stack
   // Arrays returned by value have pointers to callee's stack which become
   // dangling after return. Copy to caller's stack to fix this.
-  sun::TypePtr returnType = expr.getResolvedType();
-  if (returnType && returnType->isArray() && result) {
-    auto* arrayType = static_cast<sun::ArrayType*>(returnType.get());
-    if (!arrayType->getDimensions().empty()) {
+  if (auto* arrayType = sun::tryGetType<sun::ArrayType>(expr)) {
+    if (result && !arrayType->getDimensions().empty()) {
       result = copyArrayToCallerStack(result, arrayType);
     }
   }

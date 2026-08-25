@@ -381,6 +381,7 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const LambdaAST& lambda) {
         continue;  // Skip global variables - they don't need to be captured
       }
       bool byRef = isDeclaredRef(var);
+      bool declaredConstRef = byRef && proto.isConstRefCapture(var);
       // Compound types (classes, interfaces, arrays) cannot be captured by
       // value - the env copy silently breaks aliasing
       if (!byRef && sun::unwrapRef(varInfo->type)->isCompound()) {
@@ -391,8 +392,10 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const LambdaAST& lambda) {
                              var + "]'",
                          lambda.getLocation());
       }
-      // A constant stays constant inside the lambda, however it is captured
-      bool isConst = varInfo->isConst || sun::isConstRef(varInfo->type);
+      // A constant stays constant inside the lambda, however it is captured;
+      // `[const ref x]` makes an otherwise mutable variable read-only there
+      bool isConst = declaredConstRef || varInfo->isConst ||
+                     sun::isConstRef(varInfo->type);
       captures.push_back({var, varInfo->type, byRef, isConst});
     }
   }

@@ -26,13 +26,7 @@ Value* CodegenVisitor::codegen(const ArrayLiteralAST& expr) {
   }
 
   // Get the resolved type from semantic analysis
-  auto arrayType = expr.getResolvedType();
-  if (!arrayType || !arrayType->isArray()) {
-    logAndThrowError("Array literal must have resolved array type");
-    return nullptr;
-  }
-
-  auto* sunArrayType = static_cast<sun::ArrayType*>(arrayType.get());
+  auto* sunArrayType = &sun::requireType<sun::ArrayType>(expr, "array literal");
   const auto& dims = sunArrayType->getDimensions();
 
   if (dims.empty()) {
@@ -152,28 +146,24 @@ Value* CodegenVisitor::codegen(const IndexAST& expr) {
   sun::TypePtr targetType = sun::unwrapRef(expr.getTarget()->getResolvedType());
 
   // Class targets dispatch to the __index__/__slice__ method protocol
-  if (targetType && targetType->isClass()) {
+  if (auto* classType = sun::tryGetType<sun::ClassType>(targetType)) {
     Value* targetVal = codegen(*expr.getTarget());
     if (!targetVal) return nullptr;
-    auto* classType = static_cast<sun::ClassType*>(targetType.get());
     if (expr.hasSlices()) {
       return codegenClassSlice(expr, targetVal, classType);
     }
     return codegenClassIndex(expr, targetVal, classType);
   }
 
-  if (!targetType || !targetType->isArray()) {
-    logAndThrowError("Cannot index non-array type");
-    return nullptr;
-  }
+  auto& sunArrayType = sun::requireType<sun::ArrayType>(
+      targetType, "index target", expr.getLocation());
 
   // Array element: address via the shared helper, then load
   Value* elemPtr = codegenIndexElementPtr(expr);
   if (!elemPtr) return nullptr;
 
-  auto* sunArrayType = static_cast<sun::ArrayType*>(targetType.get());
   llvm::Type* elemType =
-      sunArrayType->getElementType()->toLLVMType(ctx.getContext());
+      sunArrayType.getElementType()->toLLVMType(ctx.getContext());
   return ctx.builder->CreateLoad(elemType, elemPtr, "arr.elem");
 }
 
@@ -191,20 +181,15 @@ Value* CodegenVisitor::codegenIndexElementPtr(const IndexAST& expr) {
   auto exprType = expr.getTarget()->getResolvedType();
   sun::TypePtr arrayType = exprType;
 
-  if (exprType && exprType->isReference()) {
-    auto* refType = static_cast<const sun::ReferenceType*>(exprType.get());
+  if (auto* refType = sun::tryGetType<sun::ReferenceType>(exprType)) {
     arrayType = refType->getReferencedType();
     llvm::StructType* fatType =
         sun::ArrayType::getArrayStructType(ctx.getContext());
     arrayVal = ctx.builder->CreateLoad(fatType, arrayVal, "arr.fat.load");
   }
 
-  if (!arrayType || !arrayType->isArray()) {
-    logAndThrowError("Cannot index non-array type");
-    return nullptr;
-  }
-
-  auto* sunArrayType = static_cast<sun::ArrayType*>(arrayType.get());
+  auto* sunArrayType = &sun::requireType<sun::ArrayType>(
+      arrayType, "index target", expr.getLocation());
   const auto& indices = expr.getIndices();
 
   // Extract from fat struct
@@ -323,8 +308,7 @@ Value* CodegenVisitor::codegenArrayShape(const MemberAccessAST& expr) {
   sun::TypePtr objectType = expr.getObject()->getResolvedType();
   sun::TypePtr arrayType = objectType;
 
-  if (objectType && objectType->isReference()) {
-    auto* refType = static_cast<sun::ReferenceType*>(objectType.get());
+  if (auto* refType = sun::tryGetType<sun::ReferenceType>(objectType)) {
     arrayType = refType->getReferencedType();
     // Load the fat struct from the reference
     llvm::StructType* fatType =
@@ -332,12 +316,8 @@ Value* CodegenVisitor::codegenArrayShape(const MemberAccessAST& expr) {
     arrayVal = ctx.builder->CreateLoad(fatType, arrayVal, "arr.fat.load");
   }
 
-  if (!arrayType || !arrayType->isArray()) {
-    logAndThrowError("Cannot get shape of non-array type");
-    return nullptr;
-  }
-
-  auto* sunArrayType = static_cast<sun::ArrayType*>(arrayType.get());
+  auto* sunArrayType = &sun::requireType<sun::ArrayType>(
+      arrayType, "shape() receiver", expr.getLocation());
   llvm::Type* i64Ty = llvm::Type::getInt64Ty(ctx.getContext());
 
   // Extract ndims and dims pointer from fat struct

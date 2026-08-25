@@ -6,7 +6,7 @@ import { Callout } from 'nextra/components'
 
 ## Spawning Threads
 
-Use `spawn` with a lambda to create a new OS thread. The lambda must take no arguments and return a value:
+Use `spawn` with a lambda to create a new OS thread. The lambda must take no arguments:
 
 ```sun
 function main() i32 {
@@ -36,9 +36,55 @@ function main() i32 {
 }
 ```
 
+## Threads Are Scoped
+
+A thread never outlives the scope that spawned it. The handle `spawn` returns
+owns the running thread, and dropping it joins: when the handle goes out of
+scope — at the end of the block, on a `return`, a `break`, or an exception
+unwinding past it — the thread is joined right there, unless `join()` already
+ran.
+
+```sun
+function main() i32 {
+    var x: i32 = 0;
+    if (true) {
+        var t = spawn(lambda [ref x]() i32 { x = 7; return 0; });
+    }   // t is dropped here, which joins the thread
+    return x;  // 7 — the thread has finished
+}
+```
+
+That is what makes captures safe: the lambda's captured environment lives in
+the frame that spawned the thread, so the thread must finish while that frame
+is still standing.
+
+## The Thread's Result
+
+`join()` hands you the value the thread returned, and you own it from then on:
+if it is a class or a payload enum, it is dropped at the end of your scope,
+like any other value you own.
+
+```sun
+class Report {
+    public var rows: i32;
+    public function init(rows: i32) { this.rows = rows; }
+    public function deinit() void { /* release what the report holds */ }
+}
+
+function main() i32 {
+    var t = spawn(lambda() Report { return Report(12); });
+    var r = t.join();  // r owns the report
+    return r.rows;     // r is dropped here
+}
+```
+
+A thread joined at scope exit hands its result to nobody, so the result is
+dropped right there instead.
+
 ## Capturing Variables
 
-Spawned lambdas can capture variables from the enclosing scope:
+Spawned lambdas can capture variables from the enclosing scope. A by-value
+capture takes a copy, which the thread can read but not mutate:
 
 ```sun
 function main() i32 {
@@ -48,13 +94,88 @@ function main() i32 {
 }
 ```
 
+To share state with the thread, capture it by reference with `lambda [ref x]`.
+Both the thread and the parent then work on the same value, so guard it with a
+`Mutex`:
+
+```sun
+using sun;
+
+class Shared {
+    public var counter: i64;
+    public var m: Mutex;
+    public function init() { this.counter = 0; this.m = Mutex(); }
+}
+
+function main() i32 {
+    var s = Shared();
+    var t = spawn(lambda [ref s]() i64 {
+        var i: i64 = 0;
+        while (i < 100000) {
+            s.m.lock(); s.counter = s.counter + 1; s.m.unlock();
+            i = i + 1;
+        }
+        return 0;
+    });
+
+    var i: i64 = 0;
+    while (i < 100000) {
+        s.m.lock(); s.counter = s.counter + 1; s.m.unlock();
+        i = i + 1;
+    }
+
+    var r = t.join();
+    println(s.counter);  // 200000
+    return 0;
+}
+
+manifest { moons: ["stdlib.moon"] }
+```
+
+### Sharing one value with several threads
+
+A `[ref x]` capture is a mutable borrow, and mutable borrows are exclusive, so
+only one thread can capture a given variable that way. A thread that only
+*reads* the value captures it with `[const ref x]` — a shared borrow, which any
+number of threads can hold at once:
+
+```sun
+class Config {
+    public var limit: i32;
+    public function init(limit: i32) { this.limit = limit; }
+}
+
+function main() i32 {
+    var cfg = Config(20);
+    var t1 = spawn(lambda [const ref cfg]() i32 { return cfg.limit; });
+    var t2 = spawn(lambda [const ref cfg]() i32 { return cfg.limit; });
+    return t1.join() + t2.join();  // 40
+}
+```
+
+Everything reached through a `const ref` capture is read-only: assigning a
+field or calling a method that is not a `const function` is a compile error.
+
 <Callout type="warning">
-  Captured variables are copied into the lambda's closure and are read-only —
-  mutating one is a compile error. By-reference captures (`lambda [ref x]`)
-  are rejected in `spawn`, since the thread could outlive the captured
-  variable. Share state between threads via module-level globals guarded by a
-  `Mutex`.
+  Two threads that both *write* one value are not expressible yet — that needs
+  a shared mutable type, which Sun does not have. Give each writing thread its
+  own state, share what they only read with `[const ref …]`, or share mutable
+  state with the parent as above.
 </Callout>
+
+## Thread Handles Are Values
+
+A handle is an ordinary owned value, so the usual rules apply: binding it to a
+second name moves it, and the old name can no longer be joined. Overwriting a
+handle joins the thread it held first.
+
+```sun
+function main() i32 {
+    var t = spawn(lambda() i32 { return 11; });
+    var t2 = t;
+    return t2.join();  // t has been moved out of; t.join() would not compile
+}
+```
 
 ## Multiple Threads
 
@@ -106,8 +227,11 @@ The `Mutex` implementation uses atomic compare-and-swap with futex-based blockin
 
 - `spawn` requires a lambda expression (not a named function reference)
 - The lambda must take **no arguments**
-- The lambda must have a return type (cannot be `void`)
-- Thread handles must be joined before going out of scope
+- A thread is joined when its handle goes out of scope, so a thread spawned
+  inside a loop body is joined at the end of that iteration. To run several
+  threads at once, spawn them all in the same scope
+- Several threads can capture the same variable with `[const ref x]`, but only
+  one can capture it with `[ref x]`: two threads cannot both write one value yet
 
 ## Example: Parallel Computation
 

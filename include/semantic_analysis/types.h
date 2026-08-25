@@ -145,7 +145,9 @@ class TypeParameterType : public Type {
   explicit TypeParameterType(std::string paramName)
       : name(std::move(paramName)) {}
 
-  Kind getKind() const override { return Kind::TypeParameter; }
+  // The kind every value of this class carries; TypeCheck<T> keys off it
+  static constexpr Kind StaticKind = Kind::TypeParameter;
+  Kind getKind() const override { return StaticKind; }
   const std::string& getName() const { return name; }
 
   std::string toString() const override { return name; }
@@ -259,7 +261,9 @@ class FunctionType : public Type {
         paramTypes(std::move(params)),
         canThrow_(canThrow) {}
 
-  Kind getKind() const override { return Kind::Function; }
+  // The kind every value of this class carries; TypeCheck<T> keys off it
+  static constexpr Kind StaticKind = Kind::Function;
+  Kind getKind() const override { return StaticKind; }
   const TypePtr& getReturnType() const { return returnType; }
   const std::vector<TypePtr>& getParamTypes() const { return paramTypes; }
 
@@ -353,7 +357,9 @@ class LambdaType : public Type {
         paramTypes(std::move(params)),
         canThrow_(canThrow) {}
 
-  Kind getKind() const override { return Kind::Lambda; }
+  // The kind every value of this class carries; TypeCheck<T> keys off it
+  static constexpr Kind StaticKind = Kind::Lambda;
+  Kind getKind() const override { return StaticKind; }
   const TypePtr& getReturnType() const { return returnType; }
   const std::vector<TypePtr>& getParamTypes() const { return paramTypes; }
   bool canThrow() const { return canThrow_; }
@@ -441,7 +447,9 @@ class RawPointerType : public Type {
  public:
   explicit RawPointerType(TypePtr pointee) : pointeeType(std::move(pointee)) {}
 
-  Kind getKind() const override { return Kind::RawPointer; }
+  // The kind every value of this class carries; TypeCheck<T> keys off it
+  static constexpr Kind StaticKind = Kind::RawPointer;
+  Kind getKind() const override { return StaticKind; }
   const TypePtr& getPointeeType() const { return pointeeType; }
 
   std::string toString() const override {
@@ -479,7 +487,9 @@ class StaticPointerType : public Type {
   explicit StaticPointerType(TypePtr pointee)
       : pointeeType(std::move(pointee)) {}
 
-  Kind getKind() const override { return Kind::StaticPointer; }
+  // The kind every value of this class carries; TypeCheck<T> keys off it
+  static constexpr Kind StaticKind = Kind::StaticPointer;
+  Kind getKind() const override { return StaticKind; }
   const TypePtr& getPointeeType() const { return pointeeType; }
 
   std::string toString() const override {
@@ -538,7 +548,9 @@ class NullPointerType : public Type {
  public:
   NullPointerType() = default;
 
-  Kind getKind() const override { return Kind::NullPointer; }
+  // The kind every value of this class carries; TypeCheck<T> keys off it
+  static constexpr Kind StaticKind = Kind::NullPointer;
+  Kind getKind() const override { return StaticKind; }
 
   std::string toString() const override { return "null"; }
 
@@ -569,7 +581,9 @@ class ReferenceType : public Type {
   explicit ReferenceType(TypePtr referenced, bool isMutable = true)
       : referencedType(std::move(referenced)), mutable_(isMutable) {}
 
-  Kind getKind() const override { return Kind::Reference; }
+  // The kind every value of this class carries; TypeCheck<T> keys off it
+  static constexpr Kind StaticKind = Kind::Reference;
+  Kind getKind() const override { return StaticKind; }
   const TypePtr& getReferencedType() const { return referencedType; }
   bool isMutable() const { return mutable_; }
 
@@ -644,7 +658,9 @@ class ErrorUnionType : public Type {
  public:
   explicit ErrorUnionType(TypePtr value) : valueType(std::move(value)) {}
 
-  Kind getKind() const override { return Kind::ErrorUnion; }
+  // The kind every value of this class carries; TypeCheck<T> keys off it
+  static constexpr Kind StaticKind = Kind::ErrorUnion;
+  Kind getKind() const override { return StaticKind; }
   const TypePtr& getValueType() const { return valueType; }
 
   std::string toString() const override {
@@ -699,7 +715,9 @@ class ArrayType : public Type {
   ArrayType(TypePtr elemType, std::vector<size_t> dims)
       : elementType(std::move(elemType)), dimensions(std::move(dims)) {}
 
-  Kind getKind() const override { return Kind::Array; }
+  // The kind every value of this class carries; TypeCheck<T> keys off it
+  static constexpr Kind StaticKind = Kind::Array;
+  Kind getKind() const override { return StaticKind; }
   const TypePtr& getElementType() const { return elementType; }
   const std::vector<size_t>& getDimensions() const { return dimensions; }
 
@@ -839,7 +857,9 @@ class SliceType : public Type {
  public:
   SliceType() = default;
 
-  Kind getKind() const override { return Kind::Slice; }
+  // The kind every value of this class carries; TypeCheck<T> keys off it
+  static constexpr Kind StaticKind = Kind::Slice;
+  Kind getKind() const override { return StaticKind; }
 
   std::string toString() const override { return "slice"; }
 
@@ -874,7 +894,9 @@ class ModuleType : public Type {
  public:
   explicit ModuleType(std::string path) : modulePath(std::move(path)) {}
 
-  Kind getKind() const override { return Kind::Module; }
+  // The kind every value of this class carries; TypeCheck<T> keys off it
+  static constexpr Kind StaticKind = Kind::Module;
+  Kind getKind() const override { return StaticKind; }
   const std::string& getModulePath() const { return modulePath; }
 
   std::string toString() const override { return "module<" + modulePath + ">"; }
@@ -1043,7 +1065,9 @@ class ClassType : public Type {
         typeArguments(std::move(typeArgs)),
         baseGenericName(std::move(baseName)) {}
 
-  Kind getKind() const override { return Kind::Class; }
+  // The kind every value of this class carries; TypeCheck<T> keys off it
+  static constexpr Kind StaticKind = Kind::Class;
+  Kind getKind() const override { return StaticKind; }
   const std::string& getMangledName() const { return mangledName; }
 
   // Base name accessors (user-written name for error messages)
@@ -1527,7 +1551,9 @@ class InterfaceType : public Type {
         typeArguments(std::move(typeArgs)),
         baseGenericName(std::move(baseName)) {}
 
-  Kind getKind() const override { return Kind::Interface; }
+  // The kind every value of this class carries; TypeCheck<T> keys off it
+  static constexpr Kind StaticKind = Kind::Interface;
+  Kind getKind() const override { return StaticKind; }
   const std::string& getName() const { return name; }
 
   // Base name accessors (user-written name for error messages)
@@ -1790,7 +1816,9 @@ class EnumType : public Type {
         variants(std::move(vars)),
         baseName_(std::move(baseName)) {}
 
-  Kind getKind() const override { return Kind::Enum; }
+  // The kind every value of this class carries; TypeCheck<T> keys off it
+  static constexpr Kind StaticKind = Kind::Enum;
+  Kind getKind() const override { return StaticKind; }
   const std::string& getName() const { return mangledName_; }
   const std::vector<EnumVariant>& getVariants() const { return variants; }
 
@@ -2517,7 +2545,9 @@ class ThreadType : public Type {
  public:
   explicit ThreadType(TypePtr result) : resultType(std::move(result)) {}
 
-  Kind getKind() const override { return Kind::Thread; }
+  // The kind every value of this class carries; TypeCheck<T> keys off it
+  static constexpr Kind StaticKind = Kind::Thread;
+  Kind getKind() const override { return StaticKind; }
   const TypePtr& getResultType() const { return resultType; }
 
   std::string toString() const override {

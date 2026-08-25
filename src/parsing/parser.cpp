@@ -363,22 +363,30 @@ unique_ptr<FunctionAST> Parser::parseFunction() {
       start);
 }
 
-// Parse lambda: lambda [ref x, ref y] (args) returnType { body }
+// Parse lambda: lambda [ref x, const ref y] (args) returnType { body }
 // The optional bracketed list declares by-reference captures; all other
-// captures are by value.
+// captures are by value. `const ref x` borrows x read-only.
 unique_ptr<LambdaAST> Parser::parseLambda() {
   Position lambdaLoc = captureStart();
   getNextToken();  // eat 'lambda'
 
-  // Optional capture list: [ ref IDENT (, ref IDENT)* ]
+  // Optional capture list: [ [const] ref IDENT (, [const] ref IDENT)* ]
   std::vector<std::string> refCaptureNames;
+  std::vector<std::string> constRefCaptureNames;
   if (curTok.kind == TokenKind::BRACKET_OPEN) {
     getNextToken();  // eat '['
     while (curTok.kind != TokenKind::BRACKET_CLOSE) {
+      bool isConst = curTok.kind == TokenKind::CONST;
+      if (isConst) {
+        getNextToken();  // eat 'const'
+      }
       if (curTok.kind != TokenKind::REF) {
         parsingError(
-            "expected 'ref' in lambda capture list (only by-reference "
-            "captures are declared, e.g. [ref x])");
+            isConst
+                ? "expected 'ref' after 'const' in lambda capture list (e.g. "
+                  "[const ref x])"
+                : "expected 'ref' in lambda capture list (only by-reference "
+                  "captures are declared, e.g. [ref x] or [const ref x])");
       }
       getNextToken();  // eat 'ref'
 
@@ -387,6 +395,9 @@ unique_ptr<LambdaAST> Parser::parseLambda() {
             "expected variable name after 'ref' in capture list");
       }
       refCaptureNames.push_back(curTok.getIdentifier().value());
+      if (isConst) {
+        constRefCaptureNames.push_back(curTok.getIdentifier().value());
+      }
       getNextToken();  // eat identifier
 
       if (curTok.kind == TokenKind::COMMA) {
@@ -406,6 +417,8 @@ unique_ptr<LambdaAST> Parser::parseLambda() {
     if (!refCaptureNames.empty()) {
       const_cast<PrototypeAST&>(lambda->getProto())
           .setRefCaptureNames(std::move(refCaptureNames));
+      const_cast<PrototypeAST&>(lambda->getProto())
+          .setConstRefCaptureNames(std::move(constRefCaptureNames));
     }
   }
   return lambda;
