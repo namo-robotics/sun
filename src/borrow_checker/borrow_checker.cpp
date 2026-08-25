@@ -175,17 +175,13 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
       break;
 
     case ASTNodeType::SPAWN: {
+      // A spawned thread cannot outlive the scope it was spawned in: its
+      // handle joins the thread when that scope ends (see codegen's
+      // emitThreadJoinIfNeeded). Both the lambda's environment and any
+      // [ref x] capture point into a frame that is still standing then, so
+      // by-ref captures need no extra rule here.
       const auto& spawnExpr = static_cast<const SpawnExprAST&>(expr);
       checkExpr(spawnExpr.getLambda());
-      // A spawned thread may outlive the enclosing frame; pointers into it
-      // (by-ref captures) would dangle and race
-      if (isRefCapturingLambdaExpr(spawnExpr.getLambda())) {
-        const auto& pos = spawnExpr.getLocation();
-        reportError(
-            "cannot spawn a lambda that captures variables by reference - "
-            "the thread may outlive the captured variables",
-            pos.line, pos.column);
-      }
       break;
     }
 
@@ -1079,10 +1075,12 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
     }
   }
 
-  // Register a mutable borrow for every [ref x] capture in the ENCLOSING
-  // scope, before entering the lambda's own scope. Scope-depth expiry gives
-  // the loan exactly the enclosing block's lifetime, so conflicting refs to
-  // captured variables are rejected while the lambda value is live.
+  // Register a borrow for every [ref x] capture in the ENCLOSING scope,
+  // before entering the lambda's own scope. Scope-depth expiry gives the loan
+  // exactly the enclosing block's lifetime, so conflicting refs to captured
+  // variables are rejected while the lambda value is live. A `[const ref x]`
+  // capture reads and never writes, so it takes a shared loan: several
+  // lambdas — and so several threads — may hold one at the same time.
   const auto& pos = lambda.getLocation();
   for (const auto& cap : proto.getCaptures()) {
     if (!cap.byRef) continue;
@@ -1105,8 +1103,10 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
     std::string refName = "$capture:" + cap.name + "@" +
                           std::to_string(pos.line) + ":" +
                           std::to_string(pos.column);
-    auto result = state_.addBorrow(targetInfo.actualTarget, refName,
-                                   BorrowKind::Mutable, currentScope_, loc);
+    auto result =
+        state_.addBorrow(targetInfo.actualTarget, refName,
+                         cap.isConst ? BorrowKind::Shared : BorrowKind::Mutable,
+                         currentScope_, loc);
     if (!result.allowed) {
       reportConflict(result.errorMessage, pos.line, pos.column,
                      result.conflictingLoan);

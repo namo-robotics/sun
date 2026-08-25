@@ -1164,16 +1164,17 @@ class CodegenVisitor {
    * Generates IR for a spawn(lambda) expression.
    *
    * Emits code that:
-   *   1. Allocates a stack for the child thread (via mmap)
-   *   2. Allocates and initializes a ThreadContext struct
-   *   3. Allocates space for the result value
-   *   4. Copies the lambda's captures into the context
-   *   5. Calls clone() to create the child thread
-   *   6. In the child: jumps to the trampoline
-   *   7. In the parent: builds and returns the ThreadHandle
+   *   1. Allocates and fills a thread context { func, env, result slot, tid }
+   *   2. Calls pthread_create with the trampoline and that context
+   *   3. Stores the context in a handle slot on the stack
+   *
+   * The handle slot is drop-tracked like a class instance, so the thread is
+   * joined when the slot's scope ends (see emitThreadJoinIfNeeded). That is
+   * what keeps the lambda's environment — and anything it captured by
+   * reference — alive for as long as the thread runs.
    *
    * @param expr The SpawnExprAST containing the lambda to spawn.
-   * @return ThreadHandle struct value for use with join().
+   * @return The handle slot (a pointer), for join() and for scope cleanup.
    */
   llvm::Value* codegen(const SpawnExprAST& expr);
 
@@ -1181,21 +1182,40 @@ class CodegenVisitor {
    * Generates IR for Thread<T>.join() method call.
    *
    * Emits code that:
-   *   1. Extracts the ThreadContext pointer from the handle
-   *   2. Loops on futex_wait until context->futex_word != 1
-   *   3. Loads the result from context->result_slot
-   *   4. Frees the thread's stack and context memory (munmap)
-   *   5. Returns the result value
+   *   1. Extracts the thread context pointer from the handle
+   *   2. Calls pthread_join, blocking until the thread has exited
+   *   3. Loads the result from the context's result slot
+   *   4. Frees the result slot and the context
+   *   5. Nulls the handle slot, so the automatic join at scope exit is a
+   *      no-op for a thread that was joined by hand
    *
-   * After join() returns, the thread resources are fully cleaned up
-   * and the handle should not be used again.
-   *
-   * @param threadHandle The ThreadHandle returned by spawn().
+   * @param threadHandle The handle slot (or handle value) from spawn().
    * @param resultType Sun type of the thread's result (T in Thread<T>).
    * @return The value returned by the spawned lambda.
    */
   llvm::Value* codegenThreadJoin(llvm::Value* threadHandle,
                                  sun::TypePtr resultType);
+
+  /**
+   * Joins the thread held in a handle slot, unless the slot is null because
+   * join() already ran. Emitted as the drop of a Thread<T> value: at scope
+   * exit, on a return, a break/continue that leaves the scope, and on an
+   * exception unwinding past it.
+   *
+   * @param handleSlot Pointer to the handle struct { ptr context }.
+   * @param name Variable name, for readable IR.
+   */
+  void emitThreadJoinIfNeeded(llvm::Value* handleSlot, const std::string& name);
+
+  /**
+   * Emits pthread_join for a thread context and releases it. With a non-void
+   * result type the thread's result is loaded before the slot is freed and
+   * returned; otherwise the void-typed free call is returned so callers see a
+   * non-null value.
+   */
+  llvm::Value* emitThreadJoinCall(llvm::Value* contextPtr,
+                                  llvm::Type* resultLLVMType,
+                                  const std::string& name);
 
   // Error handling context: tracks if current function can return errors
   bool currentFunctionCanError = false;

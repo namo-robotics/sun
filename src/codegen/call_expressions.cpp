@@ -80,6 +80,17 @@ Value* CodegenVisitor::applyMoveSemantics(Value* argVal,
     return structVal;
   }
 
+  // A thread handle moves by loading it and nulling the source slot, so only
+  // the destination joins the thread
+  if (argSunType->isThread()) {
+    llvm::StructType* handleTy = threadUtils.getThreadHandleType();
+    Value* handle = ctx.builder->CreateLoad(handleTy, argVal, "move.thread");
+    ctx.builder->CreateStore(
+        ConstantPointerNull::get(PointerType::getUnqual(ctx.getContext())),
+        ctx.builder->CreateStructGEP(handleTy, argVal, 0, "move.thread.ptr"));
+    return handle;
+  }
+
   // Only apply move semantics to class types that are pointers (addressable)
   if (!argSunType->isClass()) return argVal;
 

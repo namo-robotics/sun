@@ -147,6 +147,10 @@ ast::Prototype ASTSerializer::serializePrototype(
     result.add_ref_captures(refName);
   }
 
+  for (const auto& refName : proto.getConstRefCaptureNames()) {
+    result.add_const_ref_captures(refName);
+  }
+
   if (proto.hasVariadicParam()) {
     result.set_variadic_param_name(*proto.getVariadicParamName());
   }

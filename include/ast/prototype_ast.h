@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string>
@@ -23,6 +24,9 @@ class PrototypeAST {
   std::optional<TypeAnnotation> returnType;
   std::vector<Capture> captures;
   std::vector<std::string> refCaptureNames;  // Declared [ref x, ...] list
+  // The subset of refCaptureNames written `[const ref x]`: a read-only
+  // borrow, so several lambdas may capture the same variable
+  std::vector<std::string> constRefCaptureNames;
   std::optional<std::string>
       variadicParamName_;  // Name of variadic param if present
   std::optional<TypeAnnotation> variadicConstraint_;  // e.g., _init_args<T>
@@ -68,6 +72,17 @@ class PrototypeAST {
   }
   const std::vector<std::string>& getRefCaptureNames() const {
     return refCaptureNames;
+  }
+  void setConstRefCaptureNames(std::vector<std::string> names) {
+    constRefCaptureNames = std::move(names);
+  }
+  const std::vector<std::string>& getConstRefCaptureNames() const {
+    return constRefCaptureNames;
+  }
+  // True if `name` was written `[const ref name]` rather than `[ref name]`
+  bool isConstRefCapture(const std::string& name) const {
+    return std::find(constRefCaptureNames.begin(), constRefCaptureNames.end(),
+                     name) != constRefCaptureNames.end();
   }
   bool hasRefCaptures() const {
     for (const auto& cap : captures) {

@@ -128,6 +128,78 @@ TEST(Lambdas_RefCaptures, read_only_byvalue_still_works) {
 }
 
 // ============================================================================
+// Read-only captures: lambda [const ref x]
+// ============================================================================
+
+TEST(Lambdas_RefCaptures, const_ref_capture_reads_the_original) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var x: i32 = 10;
+          var read = lambda [const ref x] () i32 { return x; };
+          x = 42;
+          return read();
+      }
+    )");
+  EXPECT_EQ(value, 42);
+}
+
+// Shared loans coexist, so two lambdas can read the same variable
+TEST(Lambdas_RefCaptures, two_const_ref_captures_of_one_variable) {
+  auto value = executeString(R"(
+      function main() i32 {
+          var x: i32 = 20;
+          var a = lambda [const ref x] () i32 { return x; };
+          var b = lambda [const ref x] () i32 { return x + 2; };
+          return a() + b();
+      }
+    )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Lambdas_RefCaptures, const_ref_capture_of_a_class_is_read_only) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      class Point {
+          public var x: i32;
+          public function init() { this.x = 1; }
+      }
+      function main() i32 {
+          var p = Point();
+          var f = lambda [const ref p] () i32 {
+              p.x = 5;
+              return p.x;
+          };
+          return f();
+      }
+    )"),
+                                "Cannot assign to field 'x' of constant 'p'");
+}
+
+TEST(Lambdas_RefCaptures, const_ref_capture_cannot_be_assigned) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      function main() i32 {
+          var x: i32 = 1;
+          var f = lambda [const ref x] () i32 {
+              x = 2;
+              return x;
+          };
+          return f();
+      }
+    )"),
+                                "Cannot assign to constant 'x'");
+}
+
+TEST(Lambdas_RefCaptures, const_without_ref_is_a_parse_error) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      function main() i32 {
+          var x: i32 = 1;
+          var f = lambda [const x] () i32 { return x; };
+          return f();
+      }
+    )"),
+                                "expected 'ref' after 'const'");
+}
+
+// ============================================================================
 // Rejected: mutation of by-value captures
 // ============================================================================
 
@@ -263,34 +335,40 @@ TEST(Lambdas_RefCaptures, nested_byref_of_byvalue_rejected) {
 }
 
 // ============================================================================
-// Escape rules: no spawn, no return
+// Escape rules: spawn is scoped, return is not allowed
 // ============================================================================
 
-TEST(Lambdas_RefCaptures, spawn_byref_lambda_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+// Issue #122: a spawned thread is joined when its handle's scope ends, so a
+// by-ref capture cannot outlive what it points at
+TEST(Lambdas_RefCaptures, spawn_byref_lambda_accepted) {
+  auto value = executeString(R"(
       function main() i32 {
           var x: i32 = 0;
           var t = spawn(lambda [ref x] () i32 {
-              return x;
+              x = 7;
+              return 0;
           });
-          return 0;
+          var r = t.join();
+          return x;
       }
-    )"),
-                                "Borrow check failed");
+    )");
+  EXPECT_EQ(value, 7);
 }
 
-TEST(Lambdas_RefCaptures, spawn_byref_lambda_via_variable_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+TEST(Lambdas_RefCaptures, spawn_byref_lambda_via_variable_accepted) {
+  auto value = executeString(R"(
       function main() i32 {
           var x: i32 = 0;
           var f = lambda [ref x] () i32 {
-              return x;
+              x = 9;
+              return 0;
           };
           var t = spawn(f);
-          return 0;
+          var r = t.join();
+          return x;
       }
-    )"),
-                                "Borrow check failed");
+    )");
+  EXPECT_EQ(value, 9);
 }
 
 TEST(Lambdas_RefCaptures, return_byref_lambda_rejected) {

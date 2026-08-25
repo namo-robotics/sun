@@ -640,6 +640,7 @@ class Formatter {
       out_ += "[";
       for (size_t i = 0; i < caps.size(); ++i) {
         if (i) out_ += ", ";
+        if (l.getProto().isConstRefCapture(caps[i])) out_ += "const ";
         out_ += "ref ";
         out_ += caps[i];
       }
