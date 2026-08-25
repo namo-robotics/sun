@@ -109,11 +109,8 @@ Value* CodegenVisitor::codegen(const VariableCreationAST& expr) {
           expr.getLocation());
     }
     // Global class variables need runtime initialization
-    if (varSunType->isClass()) {
-      auto classType = std::dynamic_pointer_cast<sun::ClassType>(varSunType);
-      if (classType) {
-        return genGlobalClassVar(expr, *classType);
-      }
+    if (auto* classType = sun::tryGetType<sun::ClassType>(varSunType)) {
+      return genGlobalClassVar(expr, *classType);
     }
     return genGlobalVarForConstantExpr(expr, varType);
   }
@@ -260,19 +257,13 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
   }
 
   // Handle interface types
-  if (varSunType && varSunType->isInterface()) {
-    sun::TypePtr valueSunType = expr.getValue()->getResolvedType();
+  if (auto* ifaceType = sun::tryGetType<sun::InterfaceType>(varSunType)) {
     // Unwrap reference if needed
-    if (valueSunType && valueSunType->isReference()) {
-      valueSunType = static_cast<sun::ReferenceType*>(valueSunType.get())
-                         ->getReferencedType();
-    }
+    sun::TypePtr valueSunType =
+        sun::unwrapRef(expr.getValue()->getResolvedType());
 
     // Case 1: Class to interface conversion - create fat pointer
-    if (valueSunType && valueSunType->isClass()) {
-      auto* classType = static_cast<sun::ClassType*>(valueSunType.get());
-      auto* ifaceType = static_cast<sun::InterfaceType*>(varSunType.get());
-
+    if (auto* classType = sun::tryGetType<sun::ClassType>(valueSunType)) {
       // value is the object pointer (alloca or struct pointer)
       Value* fatPtr = createInterfaceFatPointer(value, classType, ifaceType);
       if (!fatPtr) return nullptr;
@@ -318,11 +309,8 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
                         expr.getLocation());
 
       // Track class allocation for automatic deinit at scope exit
-      if (varSunType && varSunType->isClass()) {
-        auto classType = std::dynamic_pointer_cast<sun::ClassType>(varSunType);
-        if (classType) {
-          trackClassAllocation(allocaValue, expr.getName(), classType);
-        }
+      if (auto classType = sun::tryGetTypePtr<sun::ClassType>(varSunType)) {
+        trackClassAllocation(allocaValue, expr.getName(), classType);
       }
       return allocaValue;
     }
@@ -338,8 +326,7 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
       debugDeclareLocal(alloca, expr.getName(), varSunType, expr.getLocation());
 
       // Track class allocation for automatic deinit at scope exit
-      auto classType = std::dynamic_pointer_cast<sun::ClassType>(varSunType);
-      if (classType) {
+      if (auto classType = sun::tryGetTypePtr<sun::ClassType>(varSunType)) {
         trackClassAllocation(alloca, expr.getName(), classType);
       }
       return alloca;
@@ -348,10 +335,8 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
     // For class types, if value is a pointer to struct (from member access),
     // implement MOVE SEMANTICS: load the struct, zero out the source field,
     // and track the destination for deinit. This prevents double-free.
-    if (varSunType && varSunType->isClass() &&
-        value->getType()->isPointerTy()) {
-      auto classType = std::dynamic_pointer_cast<sun::ClassType>(varSunType);
-      if (classType) {
+    if (value->getType()->isPointerTy()) {
+      if (auto classType = sun::tryGetTypePtr<sun::ClassType>(varSunType)) {
         llvm::StructType* structType =
             classType->getStructType(ctx.getContext());
         // Load the struct value from the source pointer
@@ -503,13 +488,8 @@ llvm::Constant* CodegenVisitor::genGlobalArray(
     const VariableCreationAST& expr) {
   assert(scopes.empty() && "genGlobalArray should only be called at top-level");
 
-  sun::TypePtr varType = expr.getResolvedType();
-  if (!varType || !varType->isArray()) {
-    logAndThrowError("genGlobalArray called on non-array type: " +
-                     expr.getName());
-  }
-
-  auto* arrayType = static_cast<sun::ArrayType*>(varType.get());
+  auto* arrayType = &sun::requireType<sun::ArrayType>(
+      expr, "global array '" + expr.getName() + "'");
   const auto& dims = arrayType->getDimensions();
 
   if (dims.empty()) {
@@ -692,10 +672,9 @@ void CodegenVisitor::emitFieldCleanup(llvm::Value* objectPtr,
       ctx.builder->CreateBr(skipRawBB);
 
       ctx.builder->SetInsertPoint(skipRawBB);
-    } else if (field.type->isClass()) {
+    } else if (auto* nestedClass =
+                   sun::tryGetType<sun::ClassType>(field.type)) {
       // Embedded class field - recursively call deinit on it if it has one
-      auto* nestedClass = static_cast<sun::ClassType*>(field.type.get());
-
       // Generate GEP to access the embedded struct field
       llvm::Value* fieldPtr = ctx.builder->CreateStructGEP(
           structType, objectPtr, field.index, baseName + "." + field.name);
@@ -733,9 +712,7 @@ void CodegenVisitor::emitFieldDeinit(llvm::Value* objectPtr,
   llvm::StructType* structType = classType->getStructType(ctx.getContext());
 
   for (const auto& field : classType->getFields()) {
-    if (field.type->isClass()) {
-      auto* nestedClass = static_cast<sun::ClassType*>(field.type.get());
-
+    if (auto* nestedClass = sun::tryGetType<sun::ClassType>(field.type)) {
       // Generate GEP to access the embedded struct field
       llvm::Value* fieldPtr = ctx.builder->CreateStructGEP(
           structType, objectPtr, field.index, baseName + "." + field.name);
@@ -755,16 +732,15 @@ void CodegenVisitor::emitFieldDeinit(llvm::Value* objectPtr,
 void CodegenVisitor::emitDropInPlace(const sun::TypePtr& type, llvm::Value* ptr,
                                      const std::string& name) {
   if (!type || !ptr) return;
-  if (type->isClass()) {
-    auto* classType = static_cast<sun::ClassType*>(type.get());
+  if (auto* classType = sun::tryGetType<sun::ClassType>(type)) {
     emitDeinitCall(classType, ptr);
     emitFieldDeinit(ptr, classType, name);
   } else if (type->isEnum()) {
     emitEnumDrop(static_cast<sun::EnumType&>(*type), ptr);
-  } else if (type->isThread()) {
+  } else if (auto* threadType = sun::tryGetType<sun::ThreadType>(type)) {
     // Dropping a thread handle joins the thread, so it cannot outlive the
     // scope that spawned it — nor, therefore, anything it captured
-    emitThreadJoinIfNeeded(ptr, name);
+    emitThreadJoinIfNeeded(ptr, threadType->getResultType(), name);
   }
 }
 
@@ -828,8 +804,7 @@ void CodegenVisitor::emitCleanupForScope(CodegenScope& scope) {
 
       ctx.builder->SetInsertPoint(freeBB);
 
-      if (it->pointeeType && it->pointeeType->isClass()) {
-        auto* classType = static_cast<sun::ClassType*>(it->pointeeType.get());
+      if (auto* classType = sun::tryGetType<sun::ClassType>(it->pointeeType)) {
         emitDeinitCall(classType, ptrToFree);
         // Recursively deinit class fields and free nested ptr<T> fields
         emitFieldDeinit(ptrToFree, classType, it->varName);
@@ -853,9 +828,7 @@ void CodegenVisitor::emitCleanupForScope(CodegenScope& scope) {
 
 Value* CodegenVisitor::codegen(const ReferenceCreationAST& expr) {
   sun::TypePtr refSunType = expr.getResolvedType();
-  if (!refSunType || !refSunType->isReference()) {
-    logAndThrowError("Reference creation has no type or invalid type");
-  }
+  sun::requireType<sun::ReferenceType>(expr, "reference creation");
 
   // A reference stores a pointer to the target's storage. Any addressable
   // lvalue qualifies: variables, fields (obj.f), and array elements (arr[i]).
@@ -907,8 +880,7 @@ GlobalVariable* CodegenVisitor::genGlobalClassVar(
   info.globalVar = gv;
   info.varName = expr.getName();
   info.varType = expr.getResolvedType();
-  info.classType =
-      std::dynamic_pointer_cast<sun::ClassType>(expr.getResolvedType());
+  info.classType = sun::tryGetTypePtr<sun::ClassType>(expr);
   info.initExpr = expr.getValue();
   info.location = expr.getLocation();
   staticInits.push_back(std::move(info));
@@ -959,16 +931,15 @@ static const std::vector<std::unique_ptr<ExprAST>>* constructorArgsForGlobal(
     const ExprAST& initExpr) {
   if (initExpr.getType() == ASTNodeType::CALL) {
     const auto& call = static_cast<const CallExprAST&>(initExpr);
-    sun::TypePtr calleeType = call.getCallee()->getResolvedType();
-    if (calleeType && calleeType->isClass()) return &call.getArgs();
+    if (sun::tryGetType<sun::ClassType>(*call.getCallee()))
+      return &call.getArgs();
     return nullptr;
   }
   if (initExpr.getType() == ASTNodeType::GENERIC_CALL) {
     const auto& call = static_cast<const GenericCallAST&>(initExpr);
     if (call.getGenericFunctionAST()) return nullptr;
     if (sun::isIntrinsic(call.getFunctionName())) return nullptr;
-    sun::TypePtr resolved = call.getResolvedType();
-    if (resolved && resolved->isClass()) return &call.getArgs();
+    if (sun::tryGetType<sun::ClassType>(call)) return &call.getArgs();
   }
   return nullptr;
 }

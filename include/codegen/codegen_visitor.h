@@ -16,6 +16,7 @@
 #include "codegen/extern_c.h"            // The extern "C" boundary
 #include "codegen/llvm_type_resolver.h"  // LLVM type resolution
 #include "codegen/thread_utils.h"        // Thread support utilities
+#include "codegen/type_checks.h"         // requireType / tryGetType helpers
 #include "semantic_analysis/types.h"     // Type system
 #include "support/error.h"               // Error handling
 
@@ -1202,19 +1203,30 @@ class CodegenVisitor {
    * exit, on a return, a break/continue that leaves the scope, and on an
    * exception unwinding past it.
    *
+   * Nobody receives the result of a thread joined this way, so whatever the
+   * result slot holds is dropped before the slot is freed.
+   *
    * @param handleSlot Pointer to the handle struct { ptr context }.
+   * @param resultType Sun type of the thread's result (T in Thread<T>).
    * @param name Variable name, for readable IR.
    */
-  void emitThreadJoinIfNeeded(llvm::Value* handleSlot, const std::string& name);
+  void emitThreadJoinIfNeeded(llvm::Value* handleSlot,
+                              const sun::TypePtr& resultType,
+                              const std::string& name);
 
   /**
    * Emits pthread_join for a thread context and releases it. With a non-void
    * result type the thread's result is loaded before the slot is freed and
    * returned; otherwise the void-typed free call is returned so callers see a
    * non-null value.
+   *
+   * @param dropResultType Set when no one takes the result, to drop what it
+   *   owns in place before the slot is freed. Freeing the slot alone releases
+   *   the result's own bytes and nothing they point at.
    */
   llvm::Value* emitThreadJoinCall(llvm::Value* contextPtr,
                                   llvm::Type* resultLLVMType,
+                                  const sun::TypePtr& dropResultType,
                                   const std::string& name);
 
   // Error handling context: tracks if current function can return errors

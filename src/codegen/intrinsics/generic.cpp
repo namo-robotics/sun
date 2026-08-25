@@ -47,12 +47,11 @@ Value* CodegenVisitor::codegenInitIntrinsic(
   }
 
   // Only class types have constructors
-  if (!targetType->isClass()) {
+  auto* classType = sun::tryGetType<sun::ClassType>(targetType);
+  if (!classType) {
     // For non-class types, _init is a no-op (primitives are zero-initialized)
     return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
   }
-
-  auto* classType = static_cast<sun::ClassType*>(targetType.get());
 
   // Zero the target first (like stack construction does): field assignments
   // in the constructor drop the field's previous value, which must be the
@@ -341,8 +340,7 @@ Value* CodegenVisitor::codegenIsIntrinsic(
       break;
     case sun::TypeTrait::None:
       // Not a built-in trait - check for concrete type or interface
-      if (valueType->isClass()) {
-        auto* classType = static_cast<sun::ClassType*>(valueType.get());
+      if (auto* classType = sun::tryGetType<sun::ClassType>(valueType)) {
         // Check if targetName is an interface this class implements
         if (classType->implementsInterface(targetName)) {
           result = true;
@@ -375,9 +373,7 @@ Value* CodegenVisitor::codegenDeinitIntrinsic(
   llvm::Value* ptr = codegen(*args[0]);
   if (!ptr) return nullptr;
 
-  if (typeArg && typeArg->isClass()) {
-    auto* classType = static_cast<sun::ClassType*>(typeArg.get());
-
+  if (auto* classType = sun::tryGetType<sun::ClassType>(typeArg)) {
     emitDeinitCall(classType, ptr);
 
     // Recursively deinit class fields that have deinit methods

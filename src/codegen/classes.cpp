@@ -162,9 +162,8 @@ void CodegenVisitor::declareBlockClassMethods(const ClassDefinitionAST& expr) {
   }
 
   std::string className = expr.getName();
-  if (expr.getResolvedType() && expr.getResolvedType()->isClass()) {
-    className = static_cast<sun::ClassType*>(expr.getResolvedType().get())
-                    ->getMangledName();
+  if (auto* resolvedClass = sun::tryGetType<sun::ClassType>(expr)) {
+    className = resolvedClass->getMangledName();
   }
   declareClassMethods(expr, typeRegistry->getClass(className));
 }
@@ -177,9 +176,7 @@ Value* CodegenVisitor::codegen(const ClassDefinitionAST& expr) {
   // Get the class name - check if there's a qualified name via resolved type
   // The semantic analyzer may have qualified the name (e.g., sun_SliceRange)
   std::string className = expr.getName();
-  if (expr.getResolvedType() && expr.getResolvedType()->isClass()) {
-    auto* resolvedClass =
-        static_cast<sun::ClassType*>(expr.getResolvedType().get());
+  if (auto* resolvedClass = sun::tryGetType<sun::ClassType>(expr)) {
     className = resolvedClass->getMangledName();
   }
 
@@ -683,12 +680,9 @@ Value* CodegenVisitor::codegen(const MemberAccessAST& expr) {
 
   // Handle module member access: mod_x.mod_y or mod_x.var
   sun::TypePtr objectType = expr.getObject()->getResolvedType();
-  if (objectType && objectType->isModule()) {
-    auto* moduleType = static_cast<sun::ModuleType*>(objectType.get());
-
+  if (auto* moduleType = sun::tryGetType<sun::ModuleType>(objectType)) {
     // Check if the result type is also a module (nested module access)
-    sun::TypePtr resultType = expr.getResolvedType();
-    if (resultType && resultType->isModule()) {
+    if (sun::tryGetType<sun::ModuleType>(expr)) {
       // Return null sentinel - next member access will handle it
       return llvm::ConstantPointerNull::get(
           llvm::PointerType::getUnqual(ctx.getContext()));
@@ -726,11 +720,9 @@ Value* CodegenVisitor::codegen(const MemberAccessAST& expr) {
   if (expr.getObject()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
     const auto& varRef =
         static_cast<const VariableReferenceAST&>(*expr.getObject());
-    std::shared_ptr<sun::EnumType> enumType;
-    sun::TypePtr objResolved = expr.getObject()->getResolvedType();
-    if (objResolved && objResolved->isEnum()) {
-      enumType = std::static_pointer_cast<sun::EnumType>(objResolved);
-    } else if (typeRegistry->hasEnum(varRef.getName())) {
+    std::shared_ptr<sun::EnumType> enumType =
+        sun::tryGetTypePtr<sun::EnumType>(*expr.getObject());
+    if (!enumType && typeRegistry->hasEnum(varRef.getName())) {
       enumType = typeRegistry->getEnum(varRef.getName());
     }
     if (enumType && enumType->getNumVariants() > 0) {
@@ -747,14 +739,9 @@ Value* CodegenVisitor::codegen(const MemberAccessAST& expr) {
   }
 
   // Handle array.shape() - returns a 1D array of dimension sizes
-  if (objectType && (objectType->isArray() ||
-                     (objectType->isReference() &&
-                      static_cast<sun::ReferenceType*>(objectType.get())
-                          ->getReferencedType()
-                          ->isArray()))) {
-    if (memberName == "shape") {
-      return codegenArrayShape(expr);
-    }
+  if (memberName == "shape" &&
+      sun::tryGetType<sun::ArrayType>(sun::unwrapRef(objectType))) {
+    return codegenArrayShape(expr);
   }
 
   // Resolve the object down to (pointer, class type)
@@ -802,19 +789,14 @@ Value* CodegenVisitor::codegen(const MemberAccessAST& expr) {
 Value* CodegenVisitor::codegenBoundMethodReference(const MemberAccessAST& expr,
                                                    Value* objectPtr,
                                                    sun::ClassType* classType) {
-  sun::TypePtr resolvedType = expr.getResolvedType();
-  if (!resolvedType || !resolvedType->isLambda()) {
-    logAndThrowError(
-        "Internal error: bound method reference without lambda type");
-    return nullptr;
-  }
-  auto* lambdaType = static_cast<sun::LambdaType*>(resolvedType.get());
+  auto& lambdaType =
+      sun::requireType<sun::LambdaType>(expr, "bound method reference");
   const std::string& methodName = expr.getMemberName();
 
   // Semantic analysis picked the exact overload; its param types are the
   // lambda's param types.
   const sun::ClassMethod* method =
-      classType->getMethodForArgs(methodName, lambdaType->getParamTypes());
+      classType->getMethodForArgs(methodName, lambdaType.getParamTypes());
   if (!method) {
     logAndThrowError("Unknown method: " + methodName + " on class " +
                      classType->getDisplayName());
@@ -998,9 +980,8 @@ Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
   // Handle ref array<T> assigned to array<T> field - load the fat struct from
   // the ref
   sun::TypePtr valueSunType = expr.getValue()->getResolvedType();
-  if (valueSunType && valueSunType->isReference() && field->type->isArray()) {
-    auto* refType = static_cast<sun::ReferenceType*>(valueSunType.get());
-    if (refType->getReferencedType()->isArray()) {
+  if (auto* refType = sun::tryGetType<sun::ReferenceType>(valueSunType)) {
+    if (field->type->isArray() && refType->getReferencedType()->isArray()) {
       // value is a pointer to the fat struct, load it
       llvm::StructType* fatType =
           sun::ArrayType::getArrayStructType(ctx.getContext());
@@ -1032,8 +1013,7 @@ Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
   // Handle class-typed fields: the source instance MOVES into the field.
   // The overwritten field value is dropped first (a no-op on freshly
   // zeroed storage), then the source is copied in and invalidated.
-  if (field->type->isClass()) {
-    auto* fieldClassType = static_cast<sun::ClassType*>(field->type.get());
+  if (auto* fieldClassType = sun::tryGetType<sun::ClassType>(field->type)) {
     llvm::StructType* fieldStructType =
         fieldClassType->getStructType(ctx.getContext());
     const DataLayout& DL = module->getDataLayout();
@@ -1420,9 +1400,8 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
   // Get the mangled class name - use resolved type if available to handle
   // qualified names from using imports (e.g., Unique -> sun_Unique)
   std::string baseName = funcName;
-  if (expr.getResolvedType() && expr.getResolvedType()->isClass()) {
-    baseName = static_cast<sun::ClassType*>(expr.getResolvedType().get())
-                   ->getMangledName();
+  if (auto* resolvedClass = sun::tryGetType<sun::ClassType>(expr)) {
+    baseName = resolvedClass->getMangledName();
     // Strip any trailing template params that may already be in the name
     size_t parenPos = baseName.find('_');
     // Actually the ClassType name should already be the full mangled name
@@ -1586,14 +1565,7 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
 // to lay the bytes down. Returns the object's address, like other class-
 // valued expressions.
 Value* CodegenVisitor::codegen(const StructLiteralAST& expr) {
-  sun::TypePtr resolved = expr.getResolvedType();
-  if (!resolved || !resolved->isClass()) {
-    logAndThrowError("Struct literal has no resolved class type",
-                     expr.getLocation());
-    return nullptr;
-  }
-
-  auto* classType = static_cast<sun::ClassType*>(resolved.get());
+  auto* classType = &sun::requireType<sun::ClassType>(expr, "struct literal");
   llvm::StructType* structType = classType->getStructType(ctx.getContext());
 
   Function* parentFunc = ctx.builder->GetInsertBlock()->getParent();

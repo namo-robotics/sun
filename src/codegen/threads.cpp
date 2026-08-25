@@ -30,15 +30,9 @@ Value* CodegenVisitor::codegen(const SpawnExprAST& expr) {
 
   // Get the lambda expression and its type
   const ExprAST& lambdaExpr = expr.getLambda();
-  sun::TypePtr lambdaSunType = lambdaExpr.getResolvedType();
-
-  if (!lambdaSunType || !lambdaSunType->isLambda()) {
-    logAndThrowError("spawn requires a lambda expression");
-    return nullptr;
-  }
-
-  auto* lambdaType = static_cast<sun::LambdaType*>(lambdaSunType.get());
-  sun::TypePtr returnType = lambdaType->getReturnType();
+  auto& lambdaType =
+      sun::requireType<sun::LambdaType>(lambdaExpr, "spawn argument");
+  sun::TypePtr returnType = lambdaType.getReturnType();
   Type* resultLLVMType = typeResolver.resolveForReturn(returnType);
 
   BasicBlock* currentBB = ctx.builder->GetInsertBlock();
@@ -57,7 +51,7 @@ Value* CodegenVisitor::codegen(const SpawnExprAST& expr) {
     return nullptr;
   }
 
-  StructType* fatType = cast<StructType>(lambdaType->toLLVMType(llvmCtx));
+  StructType* fatType = cast<StructType>(lambdaType.toLLVMType(llvmCtx));
   Value* lambdaFat =
       lambdaVal->getType()->isPointerTy()
           ? ctx.builder->CreateLoad(fatType, lambdaVal, "spawn.fat")
@@ -101,7 +95,7 @@ Value* CodegenVisitor::codegen(const SpawnExprAST& expr) {
   Value* tidFieldPtr =
       ctx.builder->CreateStructGEP(contextType, contextPtr, 3, "ctx.tid");
 
-  FunctionType* lambdaFuncType = lambdaType->toLLVMFunctionType(llvmCtx);
+  FunctionType* lambdaFuncType = lambdaType.toLLVMFunctionType(llvmCtx);
   Function* trampoline = threadUtils.getOrCreateThreadTrampoline(
       lambdaFuncType, fatType, resultLLVMType);
 
@@ -130,8 +124,10 @@ Value* CodegenVisitor::codegen(const SpawnExprAST& expr) {
 }
 
 // Join the thread this handle slot still holds, if any. join() nulls the
-// slot, so a hand-written join makes this a no-op.
+// slot, so a hand-written join makes this a no-op. Nobody is taking the
+// result of a thread joined this way, so `resultType` is dropped in place.
 void CodegenVisitor::emitThreadJoinIfNeeded(Value* handleSlot,
+                                            const sun::TypePtr& resultType,
                                             const std::string& name) {
   LLVMContext& llvmCtx = ctx.getContext();
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
@@ -149,7 +145,7 @@ void CodegenVisitor::emitThreadJoinIfNeeded(Value* handleSlot,
   ctx.builder->CreateCondBr(isNull, doneBB, joinBB);
 
   ctx.builder->SetInsertPoint(joinBB);
-  emitThreadJoinCall(contextPtr, /*resultLLVMType=*/nullptr, name);
+  emitThreadJoinCall(contextPtr, /*resultLLVMType=*/nullptr, resultType, name);
   ctx.builder->CreateStore(
       ConstantPointerNull::get(cast<PointerType>(ptrTy)),
       ctx.builder->CreateStructGEP(handleType, handleSlot, 0));
@@ -166,8 +162,15 @@ void CodegenVisitor::emitThreadJoinIfNeeded(Value* handleSlot,
 // non-void result type the result is read out of the slot before the slot is
 // freed and handed back; otherwise the (void-typed) free call is, so callers
 // see a non-null value.
+//
+// The slot is raw memory, so freeing it releases the result's own bytes and
+// nothing they point at. Reading the result out is therefore a move: the
+// caller takes over whatever it owns. When nobody reads it — the automatic
+// join at scope exit — `dropResultType` says what the slot holds so its
+// deinit still runs.
 Value* CodegenVisitor::emitThreadJoinCall(Value* contextPtr,
                                           Type* resultLLVMType,
+                                          const sun::TypePtr& dropResultType,
                                           const std::string& name) {
   LLVMContext& llvmCtx = ctx.getContext();
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
@@ -192,6 +195,8 @@ Value* CodegenVisitor::emitThreadJoinCall(Value* contextPtr,
   if (resultLLVMType && !resultLLVMType->isVoidTy()) {
     result = ctx.builder->CreateLoad(resultLLVMType, resultSlotPtr,
                                      name + ".result");
+  } else if (sun::typeNeedsDrop(dropResultType)) {
+    emitDropInPlace(dropResultType, resultSlotPtr, name + ".result");
   }
 
   // Free result slot (null for void threads - free(null) is a no-op) and
@@ -222,8 +227,10 @@ Value* CodegenVisitor::codegenThreadJoin(Value* threadHandle,
   Value* contextPtr =
       ctx.builder->CreateExtractValue(handle, 0, "join.context");
 
-  Value* result = emitThreadJoinCall(
-      contextPtr, typeResolver.resolveForReturn(resultType), "join");
+  // The result is handed to the caller, so it is moved out, not dropped
+  Value* result =
+      emitThreadJoinCall(contextPtr, typeResolver.resolveForReturn(resultType),
+                         /*dropResultType=*/nullptr, "join");
 
   // Record that this thread is joined, so the automatic join at scope exit
   // does nothing

@@ -234,16 +234,10 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
   Value* containerObj = iterableObj;
 
   // Class name for method lookup (includes hash prefix for imported types)
-  std::string iterableTypeName;
-  std::shared_ptr<sun::ClassType> iterableClassType;
-  if (auto ct = std::dynamic_pointer_cast<sun::ClassType>(iterableType)) {
-    iterableTypeName = ct->getMangledName();
-    iterableClassType = ct;
-  } else {
-    logAndThrowError(
-        "Iterator in for-in loop must be a class type with next() method");
-    return nullptr;
-  }
+  auto iterableClassType = sun::requireTypePtr<sun::ClassType>(
+      iterableType, "for-in iterable (needs a next() method)",
+      expr.getIterable()->getLocation());
+  std::string iterableTypeName = iterableClassType->getMangledName();
 
   // The iterable is either the iterator itself (has next()) or a container
   // whose iter() produces one
@@ -280,13 +274,13 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
     // The iterator's sun type comes from iter()'s return type (carries the
     // correct hash prefix, unlike LLVM struct names)
     const auto* iterMethod = iterableClassType->getMethod("iter");
-    if (!iterMethod || !iterMethod->returnType ||
-        !iterMethod->returnType->isClass()) {
+    iteratorClassType =
+        iterMethod ? sun::tryGetTypePtr<sun::ClassType>(iterMethod->returnType)
+                   : nullptr;
+    if (!iteratorClassType) {
       logAndThrowError("iter() must return a class type with a next() method");
       return nullptr;
     }
-    iteratorClassType =
-        std::dynamic_pointer_cast<sun::ClassType>(iterMethod->returnType);
     nextFunc = findClassMethod(iteratorClassType,
                                iteratorClassType->getMangledName(), "next");
     if (!nextFunc) {
@@ -298,7 +292,7 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
   // next() returns Option<T>: sema verified the shape and that T matches the
   // loop variable annotation
   const auto* nextMethod = iteratorClassType->getMethod("next");
-  auto optionType = nextMethod ? std::dynamic_pointer_cast<sun::EnumType>(
+  auto optionType = nextMethod ? sun::tryGetTypePtr<sun::EnumType>(
                                      sun::unwrapRef(nextMethod->returnType))
                                : nullptr;
   if (!optionType || !optionType->getVariant("Some") ||

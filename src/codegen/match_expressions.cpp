@@ -12,8 +12,8 @@ Value* CodegenVisitor::codegen(const MatchExprAST& expr) {
   // discriminants (ints, floats, strings).
   sun::TypePtr discType =
       sun::unwrapRef(expr.getDiscriminant()->getResolvedType());
-  if (discType && discType->isEnum()) {
-    return codegenEnumMatch(expr, static_cast<sun::EnumType&>(*discType));
+  if (auto* enumType = sun::tryGetType<sun::EnumType>(discType)) {
+    return codegenEnumMatch(expr, *enumType);
   }
 
   // Generate code for the discriminant (value being matched)

@@ -3210,10 +3210,19 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
     calleeSunType = inferType(*callExpr.getCallee());
   }
   // A module-qualified constructor call (`m.Point(...)`) resolves the callee
-  // to the class type; treat it like `Point(...)` below
+  // to the class type; treat it like `Point(...)` below. Only a member of a
+  // module names a class this way — a method that returns a class, such as
+  // `t.join()` on a `Thread<Point>`, has the same callee type but is a call,
+  // not a construction.
   if (!classType && calleeSunType && calleeSunType->isClass() &&
       callExpr.getCallee()->getType() == ASTNodeType::MEMBER_ACCESS) {
-    classType = std::static_pointer_cast<sun::ClassType>(calleeSunType);
+    const auto& calleeMember =
+        static_cast<const MemberAccessAST&>(*callExpr.getCallee());
+    sun::TypePtr ownerType = calleeMember.getObject()->getResolvedType();
+    if (!ownerType) ownerType = inferType(*calleeMember.getObject());
+    if (ownerType && ownerType->isModule()) {
+      classType = std::static_pointer_cast<sun::ClassType>(calleeSunType);
+    }
   }
   std::vector<sun::TypePtr> paramTypes;
   // Whether paramTypes came from a callee whose signature we actually know.

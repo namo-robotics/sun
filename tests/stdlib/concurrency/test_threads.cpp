@@ -389,3 +389,122 @@ TEST(Stdlib_Concurrency_Threads, const_ref_and_ref_captures_conflict) {
   )"),
                SunError);
 }
+// ============================================================================
+// Thread results that own resources
+// ============================================================================
+
+// A thread returning a class hands its result to the joiner: the result slot
+// is raw memory, so freeing it releases the result's own bytes and nothing
+// they point at. The joiner owns what it took, and drops it once.
+TEST(Stdlib_Concurrency_Threads, joined_class_result_is_owned_by_the_joiner) {
+  auto value = executeString(R"(
+    var dropped: i32 = 0;
+
+    class Res {
+      public var v: i32;
+      public function init(v: i32) { this.v = v; }
+      public function deinit() void { dropped = dropped + 1; }
+    }
+
+    function run() i32 {
+      var t = spawn(lambda() Res { return Res(7); });
+      var r = t.join();
+      return r.v;
+    }
+
+    function main() i32 {
+      var v = run();
+      return v * 10 + dropped;
+    }
+  )");
+  EXPECT_EQ(value, 71);
+}
+
+// Nobody takes the result of a thread joined at scope exit, so its deinit
+// runs there rather than the result being freed as raw bytes
+TEST(Stdlib_Concurrency_Threads, unjoined_class_result_is_dropped) {
+  auto value = executeString(R"(
+    var dropped: i32 = 0;
+
+    class Res {
+      public var v: i32;
+      public function init(v: i32) { this.v = v; }
+      public function deinit() void { dropped = dropped + 1; }
+    }
+
+    function run() void {
+      var t = spawn(lambda() Res { return Res(7); });
+    }
+
+    function main() i32 {
+      run();
+      return dropped;
+    }
+  )");
+  EXPECT_EQ(value, 1);
+}
+
+// The same holds for a class that owns heap memory: one release, no double
+// free, whether the result is taken or dropped at scope exit
+TEST(Stdlib_Concurrency_Threads, class_result_owning_heap_is_released_once) {
+  auto value = executeString(R"(
+    class Buffer {
+      public var v: i32;
+      public var data: raw_ptr<i8>;
+      public function init(v: i32) {
+        this.v = v;
+        var size: i64 = 8;
+        this.data = unsafe { _malloc(size); };
+      }
+      public function get() i32 { return this.v; }
+      public function deinit() void {
+        if (this.data != null) {
+          unsafe { _free(this.data); };
+          this.data = null;
+        }
+      }
+    }
+
+    function taken() i32 {
+      var t = spawn(lambda() Buffer { return Buffer(9); });
+      var b = t.join();
+      return b.get();
+    }
+
+    function dropped_at_scope_exit() void {
+      var t = spawn(lambda() Buffer { return Buffer(4); });
+    }
+
+    function main() i32 {
+      var v = taken();
+      dropped_at_scope_exit();
+      return v;
+    }
+  )");
+  EXPECT_EQ(value, 9);
+}
+
+// An unjoined thread whose result is a payload enum drops the payload too
+TEST(Stdlib_Concurrency_Threads, unjoined_enum_result_drops_its_payload) {
+  auto value = executeString(R"(
+    var dropped: i32 = 0;
+
+    class Res {
+      public var v: i32;
+      public function init(v: i32) { this.v = v; }
+      public function deinit() void { dropped = dropped + 1; }
+    }
+
+    enum Maybe { Some(Res), Nothing }
+
+    function run() void {
+      var t = spawn(lambda() Maybe { return Maybe.Some(Res(7)); });
+    }
+
+    function main() i32 {
+      run();
+      return dropped;
+    }
+  )");
+  EXPECT_EQ(value, 1);
+}

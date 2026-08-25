@@ -58,6 +58,29 @@ That is what makes captures safe: the lambda's captured environment lives in
 the frame that spawned the thread, so the thread must finish while that frame
 is still standing.
 
+## The Thread's Result
+
+`join()` hands you the value the thread returned, and you own it from then on:
+if it is a class or a payload enum, it is dropped at the end of your scope,
+like any other value you own.
+
+```sun
+class Report {
+    public var rows: i32;
+    public function init(rows: i32) { this.rows = rows; }
+    public function deinit() void { /* release what the report holds */ }
+}
+
+function main() i32 {
+    var t = spawn(lambda() Report { return Report(12); });
+    var r = t.join();  // r owns the report
+    return r.rows;     // r is dropped here
+}
+```
+
+A thread joined at scope exit hands its result to nobody, so the result is
+dropped right there instead.
+
 ## Capturing Variables
 
 Spawned lambdas can capture variables from the enclosing scope. A by-value
