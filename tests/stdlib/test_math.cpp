@@ -7,7 +7,7 @@
 #include "driver/execution_utils.h"
 
 // ============================================================================
-// min<T>
+// compute_min<T>
 // ============================================================================
 
 TEST(Stdlib_Math, min_i32) {
@@ -15,7 +15,7 @@ TEST(Stdlib_Math, min_i32) {
     using sun;
 
     function main() i32 {
-        return min<i32>(10, 5);
+        return compute_min<i32>(10, 5);
     }
   )");
   EXPECT_EQ(value, 5);
@@ -26,7 +26,7 @@ TEST(Stdlib_Math, min_i32_reversed) {
     using sun;
 
     function main() i32 {
-        return min<i32>(3, 9);
+        return compute_min<i32>(3, 9);
     }
   )");
   EXPECT_EQ(value, 3);
@@ -37,7 +37,7 @@ TEST(Stdlib_Math, min_f64) {
     using sun;
 
     function main() i32 {
-        var result = min<f64>(3.5, 2.1);
+        var result = compute_min<f64>(3.5, 2.1);
         if (result < 2.2) {
             if (result > 2.0) {
                 return 1;
@@ -50,7 +50,7 @@ TEST(Stdlib_Math, min_f64) {
 }
 
 // ============================================================================
-// max<T>
+// compute_max<T>
 // ============================================================================
 
 TEST(Stdlib_Math, max_i32) {
@@ -58,7 +58,7 @@ TEST(Stdlib_Math, max_i32) {
     using sun;
 
     function main() i32 {
-        return max<i32>(10, 5);
+        return compute_max<i32>(10, 5);
     }
   )");
   EXPECT_EQ(value, 10);
@@ -69,14 +69,14 @@ TEST(Stdlib_Math, max_i64) {
     using sun;
 
     function main() i64 {
-        return max<i64>(100, 200);
+        return compute_max<i64>(100, 200);
     }
   )");
   EXPECT_EQ(value, 200);
 }
 
 // ============================================================================
-// abs<T>
+// compute_abs<T>
 // ============================================================================
 
 TEST(Stdlib_Math, abs_positive) {
@@ -84,7 +84,7 @@ TEST(Stdlib_Math, abs_positive) {
     using sun;
 
     function main() i32 {
-        return abs<i32>(42);
+        return compute_abs<i32>(42);
     }
   )");
   EXPECT_EQ(value, 42);
@@ -95,7 +95,7 @@ TEST(Stdlib_Math, abs_negative) {
     using sun;
 
     function main() i32 {
-        return abs<i32>(-42);
+        return compute_abs<i32>(-42);
     }
   )");
   EXPECT_EQ(value, 42);
@@ -106,7 +106,7 @@ TEST(Stdlib_Math, abs_zero) {
     using sun;
 
     function main() i32 {
-        return abs<i32>(0);
+        return compute_abs<i32>(0);
     }
   )");
   EXPECT_EQ(value, 0);
@@ -150,7 +150,7 @@ TEST(Stdlib_Math, clamp_above_max) {
 }
 
 // ============================================================================
-// sign<T>
+// compute_sign<T>
 // ============================================================================
 
 TEST(Stdlib_Math, sign_positive) {
@@ -158,7 +158,7 @@ TEST(Stdlib_Math, sign_positive) {
     using sun;
 
     function main() i32 {
-        return sign<i32>(42);
+        return compute_sign<i32>(42);
     }
   )");
   EXPECT_EQ(value, 1);
@@ -169,7 +169,7 @@ TEST(Stdlib_Math, sign_negative) {
     using sun;
 
     function main() i32 {
-        return sign<i32>(-42);
+        return compute_sign<i32>(-42);
     }
   )");
   EXPECT_EQ(value, -1);
@@ -180,14 +180,14 @@ TEST(Stdlib_Math, sign_zero) {
     using sun;
 
     function main() i32 {
-        return sign<i32>(0);
+        return compute_sign<i32>(0);
     }
   )");
   EXPECT_EQ(value, 0);
 }
 
 // ============================================================================
-// in_range<T>
+// is_in_range<T>
 // ============================================================================
 
 TEST(Stdlib_Math, in_range_true) {
@@ -195,7 +195,7 @@ TEST(Stdlib_Math, in_range_true) {
     using sun;
 
     function main() i32 {
-        if (in_range<i32>(5, 0, 10)) {
+        if (is_in_range<i32>(5, 0, 10)) {
             return 1;
         }
         return 0;
@@ -210,8 +210,8 @@ TEST(Stdlib_Math, in_range_at_boundary) {
 
     function main() i32 {
         var count: i32 = 0;
-        if (in_range<i32>(0, 0, 10)) { count = count + 1; }
-        if (in_range<i32>(10, 0, 10)) { count = count + 1; }
+        if (is_in_range<i32>(0, 0, 10)) { count = count + 1; }
+        if (is_in_range<i32>(10, 0, 10)) { count = count + 1; }
         return count;
     }
   )");
@@ -223,7 +223,7 @@ TEST(Stdlib_Math, in_range_false) {
     using sun;
 
     function main() i32 {
-        if (in_range<i32>(15, 0, 10)) {
+        if (is_in_range<i32>(15, 0, 10)) {
             return 1;
         }
         return 0;
@@ -244,17 +244,17 @@ TEST(Stdlib_Math, combined_min_max) {
         var a: i32 = 5;
         var b: i32 = 10;
         var c: i32 = 3;
-        // min of max pairs
-        var m1 = max<i32>(a, b);  // 10
-        var m2 = max<i32>(b, c);  // 10
-        return min<i32>(m1, m2);  // 10
+        // compute_min of compute_max pairs
+        var m1 = compute_max<i32>(a, b);  // 10
+        var m2 = compute_max<i32>(b, c);  // 10
+        return compute_min<i32>(m1, m2);  // 10
     }
   )");
   EXPECT_EQ(value, 10);
 }
 
 TEST(Stdlib_Math, clamp_uses_minmax_pattern) {
-  // Verify clamp behaves like max(lo, min(x, hi))
+  // Verify clamp behaves like compute_max(lo, compute_min(x, hi))
   auto value = executeStringWithStdlib(R"(
     using sun;
 
@@ -263,7 +263,7 @@ TEST(Stdlib_Math, clamp_uses_minmax_pattern) {
         var lo: i32 = 0;
         var hi: i32 = 10;
         var clamped = clamp<i32>(x, lo, hi);
-        var manual = max<i32>(lo, min<i32>(x, hi));
+        var manual = compute_max<i32>(lo, compute_min<i32>(x, hi));
         if (clamped == manual) {
             return clamped;
         }

@@ -167,7 +167,7 @@ inline std::string dumpBufferProgramTail(const fs::path& outFile) {
   return "  var fd: i32 = unsafe { __file_open(\"" + outFile.string() +
          "\", 1); };\n"
          "  if (fd < 0) { return 1; }\n"
-         "  unsafe { __write(fd, buf.rawData(), buf.size()); };\n"
+         "  unsafe { __write(fd, buf.raw_data(), buf.size()); };\n"
          "  unsafe { __file_close(fd); };\n"
          "  return 0;\n}\n";
 }

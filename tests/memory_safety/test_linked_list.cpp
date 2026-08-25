@@ -24,15 +24,15 @@ TEST(MemorySafety_LinkedList, two_nodes_linked) {
             this.value = v;
         }
 
-        function getValue() i32 {
+        function get_value() i32 {
             return this.value;
         }
 
-        function setNext(n: raw_ptr<Node>) void {
+        function set_next(n: raw_ptr<Node>) void {
             this.next = n;
         }
 
-        function getNext() raw_ptr<Node> {
+        function get_next() raw_ptr<Node> {
             return this.next;
         }
     }
@@ -41,8 +41,8 @@ TEST(MemorySafety_LinkedList, two_nodes_linked) {
         var allocator = make_heap_allocator();
         var first = allocator.create<Node>(10);
         var second = allocator.create<Node>(20);
-        unsafe { first.setNext(second); };
-        return unsafe { first.getValue(); } + unsafe { first.getNext().getValue(); };
+        unsafe { first.set_next(second); };
+        return unsafe { first.get_value(); } + unsafe { first.get_next().get_value(); };
     }
   )");
   EXPECT_EQ(value, 30);
@@ -60,15 +60,15 @@ TEST(MemorySafety_LinkedList, three_nodes_chain) {
             this.value = v;
         }
 
-        function getValue() i32 {
+        function get_value() i32 {
             return this.value;
         }
 
-        function setNext(n: raw_ptr<Node>) void {
+        function set_next(n: raw_ptr<Node>) void {
             this.next = n;
         }
 
-        function getNext() raw_ptr<Node> {
+        function get_next() raw_ptr<Node> {
             return this.next;
         }
     }
@@ -81,14 +81,14 @@ TEST(MemorySafety_LinkedList, three_nodes_chain) {
         var allocator = make_heap_allocator();
         var n1 = allocator.create<Node>(1);
         // Build chain: n1 -> n2 -> n3
-        // After setNext, access through the chain, not original vars
-        unsafe { n1.setNext(createNode(allocator, 2)); };
-        unsafe { n1.getNext().setNext(createNode(allocator, 3)); };
+        // After set_next, access through the chain, not original vars
+        unsafe { n1.set_next(createNode(allocator, 2)); };
+        unsafe { n1.get_next().set_next(createNode(allocator, 3)); };
 
         // Traverse: n1 -> n2 -> n3
-        var sum = unsafe { n1.getValue(); };
-        sum = sum + unsafe { n1.getNext().getValue(); };
-        sum = sum + unsafe { n1.getNext().getNext().getValue(); };
+        var sum = unsafe { n1.get_value(); };
+        sum = sum + unsafe { n1.get_next().get_value(); };
+        sum = sum + unsafe { n1.get_next().get_next().get_value(); };
         return sum;
     }
   )");
@@ -107,19 +107,19 @@ TEST(MemorySafety_LinkedList, modify_through_pointer) {
             this.value = v;
         }
 
-        function getValue() i32 {
+        function get_value() i32 {
             return this.value;
         }
 
-        function setValue(v: i32) void {
+        function set_value(v: i32) void {
             this.value = v;
         }
 
-        function setNext(n: raw_ptr<Node>) void {
+        function set_next(n: raw_ptr<Node>) void {
             this.next = n;
         }
 
-        function getNext() raw_ptr<Node> {
+        function get_next() raw_ptr<Node> {
             return this.next;
         }
     }
@@ -131,13 +131,13 @@ TEST(MemorySafety_LinkedList, modify_through_pointer) {
     function main() i32 {
         var allocator = make_heap_allocator();
         var head = allocator.create<Node>(100);
-        unsafe { head.setNext(createNode(allocator, 200)); };
+        unsafe { head.set_next(createNode(allocator, 200)); };
 
         // Modify tail through head's next pointer
-        unsafe { head.getNext().setValue(999); };
+        unsafe { head.get_next().set_value(999); };
 
         // Access through the chain (not through moved var)
-        return unsafe { head.getNext().getValue(); };
+        return unsafe { head.get_next().get_value(); };
     }
   )");
   EXPECT_EQ(value, 999);
@@ -155,15 +155,15 @@ TEST(MemorySafety_LinkedList, access_deep_chain) {
             this.value = v;
         }
 
-        function getValue() i32 {
+        function get_value() i32 {
             return this.value;
         }
 
-        function setNext(n: raw_ptr<Node>) void {
+        function set_next(n: raw_ptr<Node>) void {
             this.next = n;
         }
 
-        function getNext() raw_ptr<Node> {
+        function get_next() raw_ptr<Node> {
             return this.next;
         }
     }
@@ -176,12 +176,12 @@ TEST(MemorySafety_LinkedList, access_deep_chain) {
         var allocator = make_heap_allocator();
         var a = allocator.create<Node>(1);
         // Build chain: a -> b -> c -> d
-        unsafe { a.setNext(createNode(allocator, 2)); };
-        unsafe { a.getNext().setNext(createNode(allocator, 3)); };
-        unsafe { a.getNext().getNext().setNext(createNode(allocator, 4)); };
+        unsafe { a.set_next(createNode(allocator, 2)); };
+        unsafe { a.get_next().set_next(createNode(allocator, 3)); };
+        unsafe { a.get_next().get_next().set_next(createNode(allocator, 4)); };
 
         // Access 4th element: a -> b -> c -> d
-        return unsafe { a.getNext().getNext().getNext().getValue(); };
+        return unsafe { a.get_next().get_next().get_next().get_value(); };
     }
   )");
   EXPECT_EQ(value, 4);
@@ -200,15 +200,15 @@ TEST(MemorySafety_LinkedList, null_terminated_list) {
             this.next = null;
         }
 
-        function getValue() i32 {
+        function get_value() i32 {
             return this.value;
         }
 
-        function setNext(n: raw_ptr<Node>) void {
+        function set_next(n: raw_ptr<Node>) void {
             this.next = n;
         }
 
-        function getNext() raw_ptr<Node> {
+        function get_next() raw_ptr<Node> {
             return this.next;
         }
 
@@ -225,16 +225,16 @@ TEST(MemorySafety_LinkedList, null_terminated_list) {
         var allocator = make_heap_allocator();
         var n1 = allocator.create<Node>(10);
         // Build chain without reusing moved vars
-        unsafe { n1.setNext(createNode(allocator, 20)); };
-        unsafe { n1.getNext().setNext(createNode(allocator, 30)); };
+        unsafe { n1.set_next(createNode(allocator, 20)); };
+        unsafe { n1.get_next().set_next(createNode(allocator, 30)); };
         // n3.next is null by default from init
 
         // Sum all values by checking for null
-        var sum = unsafe { n1.getValue(); };
+        var sum = unsafe { n1.get_value(); };
         if (unsafe { n1.hasNext(); }) {
-            sum = sum + unsafe { n1.getNext().getValue(); };
-            if (unsafe { n1.getNext().hasNext(); }) {
-                sum = sum + unsafe { n1.getNext().getNext().getValue(); };
+            sum = sum + unsafe { n1.get_next().get_value(); };
+            if (unsafe { n1.get_next().hasNext(); }) {
+                sum = sum + unsafe { n1.get_next().get_next().get_value(); };
             }
         }
         return sum;
@@ -256,15 +256,15 @@ TEST(MemorySafety_LinkedList, while_loop_traversal) {
             this.next = null;
         }
 
-        function getValue() i32 {
+        function get_value() i32 {
             return this.value;
         }
 
-        function setNext(n: raw_ptr<Node>) void {
+        function set_next(n: raw_ptr<Node>) void {
             this.next = n;
         }
 
-        function getNext() raw_ptr<Node> {
+        function get_next() raw_ptr<Node> {
             return this.next;
         }
 
@@ -281,17 +281,17 @@ TEST(MemorySafety_LinkedList, while_loop_traversal) {
         var allocator = make_heap_allocator();
         // Build list: 1 -> 2 -> 3 -> 4 -> 5 -> null
         var head = allocator.create<Node>(1);
-        unsafe { head.setNext(createNode(allocator, 2)); };
-        unsafe { head.getNext().setNext(createNode(allocator, 3)); };
-        unsafe { head.getNext().getNext().setNext(createNode(allocator, 4)); };
-        unsafe { head.getNext().getNext().getNext().setNext(createNode(allocator, 5)); };
+        unsafe { head.set_next(createNode(allocator, 2)); };
+        unsafe { head.get_next().set_next(createNode(allocator, 3)); };
+        unsafe { head.get_next().get_next().set_next(createNode(allocator, 4)); };
+        unsafe { head.get_next().get_next().get_next().set_next(createNode(allocator, 5)); };
 
         // Traverse with while loop
         var sum = 0;
         var curr: raw_ptr<Node> = head;
         while (curr != null) {
-            sum = sum + unsafe { curr.getValue(); };
-            curr = unsafe { curr.getNext(); };
+            sum = sum + unsafe { curr.get_value(); };
+            curr = unsafe { curr.get_next(); };
         }
         return sum;
     }
@@ -312,15 +312,15 @@ TEST(MemorySafety_LinkedList, list_class_with_methods) {
             this.next = null;
         }
 
-        function getValue() i32 {
+        function get_value() i32 {
             return this.value;
         }
 
-        function setNext(n: raw_ptr<Node>) void {
+        function set_next(n: raw_ptr<Node>) void {
             this.next = n;
         }
 
-        function getNext() raw_ptr<Node> {
+        function get_next() raw_ptr<Node> {
             return this.next;
         }
 
@@ -345,8 +345,8 @@ TEST(MemorySafety_LinkedList, list_class_with_methods) {
         function append(alloc: ref HeapAllocator, v: i32) void {
             if (this.tail != null) {
                 // Append to existing list - create node and link via tail
-                unsafe { this.tail.setNext(createNode(alloc, v)); };
-                this.tail = unsafe { this.tail.getNext(); };
+                unsafe { this.tail.set_next(createNode(alloc, v)); };
+                this.tail = unsafe { this.tail.get_next(); };
             } else {
                 // First node - set both head and tail
                 this.head = createNode(alloc, v);
@@ -358,8 +358,8 @@ TEST(MemorySafety_LinkedList, list_class_with_methods) {
             var total = 0;
             var curr: raw_ptr<Node> = this.head;
             while (curr != null) {
-                total = total + unsafe { curr.getValue(); };
-                curr = unsafe { curr.getNext(); };
+                total = total + unsafe { curr.get_value(); };
+                curr = unsafe { curr.get_next(); };
             }
             return total;
         }

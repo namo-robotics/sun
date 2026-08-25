@@ -518,13 +518,13 @@ TEST(Modules_ProtoImport, wire_tags_limits_and_skip_unknown) {
       var seen3: u64 = 0;
       try {
         var t1: u64 = r.read_tag();
-        if (proto_tag_field(t1) != 3) { return -1; }
-        if (proto_tag_wire_type(t1) != 0) { return -2; }
+        if (proto_read_tag_field(t1) != 3) { return -1; }
+        if (proto_read_tag_wire_type(t1) != 0) { return -2; }
         seen3 = r.read_varint();
         var t2: u64 = r.read_tag();
-        r.skip_field(proto_tag_wire_type(t2), t2, unknown);
+        r.skip_field(proto_read_tag_wire_type(t2), t2, unknown);
         var t3: u64 = r.read_tag();
-        r.skip_field(proto_tag_wire_type(t3), t3, unknown);
+        r.skip_field(proto_read_tag_wire_type(t3), t3, unknown);
       } catch (e: IError) { return -3; }
       if (seen3 != 150) { return -4; }
       if (r.at_end() == false) { return -5; }

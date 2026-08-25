@@ -14,6 +14,7 @@ Sun supports the following primitive types:
 | `u8`, `u16`, `u32`, `u64` | Unsigned integers | 1, 2, 4, 8 bytes |
 | `f32`, `f64` | Floating-point numbers | 4, 8 bytes |
 | `bool` | Boolean (`true` or `false`) | 1 byte |
+| `char` | One Unicode scalar value | 4 bytes |
 | `void` | No value (for functions with no return) | — |
 
 ```sun
@@ -21,7 +22,79 @@ var a: i32 = 42;
 var b: f64 = 3.14159;
 var c: bool = true;
 var d: u8 = 255;
+var e: char = 'k';
 ```
+
+## Characters and Bytes
+
+`char` holds one Unicode scalar value — any code point from `U+0000` to
+`U+10FFFF` except the UTF-16 surrogates. It is a distinct type, not a small
+integer: it compares with another `char` and takes no part in arithmetic.
+
+```sun
+var letter: char = 'a';
+var accented: char = 'é';
+var emoji: char = '😀';
+
+if (letter < accented) { ... }   // ordered by scalar value
+```
+
+Text in Sun is UTF-8 and `String` is indexed by byte, so code that scans bytes
+wants a byte, not a scalar value. That is what a **byte literal** is for:
+
+```sun
+var newline: u8 = b'\n';
+
+// String.at() returns a u8, so compare it against a byte literal
+while (i < s.length() and s.at(i) != b'\n') { i = i + 1; }
+```
+
+The two never mix silently — `s.at(i) == 'a'` is a compile error, because one
+side is a byte and the other a scalar value.
+
+### Escapes
+
+| Escape | Meaning |
+|--------|---------|
+| `\n` `\t` `\r` | Newline, tab, carriage return |
+| `\\` `\'` `\0` | Backslash, single quote, NUL |
+| `\xNN` | Hex. In `'…'` up to `\x7F`; in `b'…'` the full `\x00`–`\xFF` |
+| `\u{...}` | A scalar value by code point, 1–6 hex digits. Character literals only |
+
+Above `U+007F` a byte and a scalar value stop agreeing, which is why `'\xFF'`
+is rejected and `'\u{FF}'` is the way to write U+00FF.
+
+### Converting
+
+`_convert` moves between `char` and the integer types, and refuses floats and
+`bool`. Not every `u32` is a scalar value, so `char_of` is the checked form:
+
+```sun
+var n: i64 = _convert<i64>('a');       // 97
+var c: char = _convert<char>(b'a');    // 'a'
+
+// None for a surrogate or anything above U+10FFFF
+var maybe: Option<char> = char_of(128512);
+```
+
+### Iterating text
+
+`String` is byte-indexed, so scalar values come from `iterate_chars()`:
+
+```sun
+var s = String(alloc, "héllo😀");
+s.length();      // 10 bytes
+s.count_chars();  // 6 scalar values
+
+var it = s.iterate_chars();
+for (var c: char in it) { print(c); }
+
+s.push('!');            // appends the UTF-8 encoding
+s.find('😀');           // byte index, or None
+```
+
+Bytes that are not valid UTF-8 decode as `U+FFFD` and advance one byte, so
+iteration always terminates and always covers the whole string.
 
 ## Arrays
 

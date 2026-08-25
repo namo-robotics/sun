@@ -23,7 +23,8 @@ cd build && ctest -j8 --output-on-failure
 
 ## Type System
 
-- **Primitives**: i8–i64, u8–u64, f32, f64, bool — passed/returned by value.
+- **Primitives**: i8–i64, u8–u64, f32, f64, bool, char — passed/returned by value.
+- **char**: one Unicode scalar value (`0..=0x10FFFF`, no surrogates), 4 bytes, LLVM `i32`. Primitive but deliberately *not* `isNumeric()`/`isIntegral()` (`types.h`), so every arithmetic and widening path rejects it; `SemanticAnalyzer::checkCharOperands` restricts it to comparisons against another `char`. Two literal forms: `'a'` is a `char`, `b'a'` is a `u8` for byte-oriented code. Both lex to one `CharLiteralAST` (an `isByte` flag) rather than a `NumberExprAST`, because neither takes its type from context. `_convert` moves between `char` and the integer types; `sun.char_of` is the checked form.
 - **Classes**: Value types, stack-allocated. Pass by `ref` to borrow; passing by value **moves**. Returned by value (moves to caller).
 - **Payload enums**: Tagged unions `{ i32 tag, [N x unit] }`; same ownership rules as classes. A `ref T` payload stores the referent's address and owns nothing — that is how a peek returns `Option<ref T>`.
 - **Arrays**: Fat pointer `{ ptr data, i32 ndims, ptr dims }`.

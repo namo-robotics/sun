@@ -57,6 +57,7 @@ public module sun {
       return this.limbs.get_unchecked(i);
     }
 
+    // Report whether the value is zero. Zero is stored as an empty limb list.
     public const function is_zero() bool {
       return this.limbs.size() == 0;
     }
@@ -145,10 +146,13 @@ public module sun {
       return 0;
     }
 
+    // Report whether two big integers hold the same value.
     public const function equals(other: const ref BigUint) bool {
       return this.compare(other) == 0;
     }
 
+    // Compare against a single 64-bit value: -1 if this is smaller, 0 if equal,
+    // 1 if larger.
     public const function compare_u64(value: u64) i64 {
       if (this.limbs.size() > 1) {
         return 1;
@@ -187,6 +191,7 @@ public module sun {
       }
     }
 
+    // Add another big integer into this one, in place.
     public function add(other: const ref BigUint) void {
       var n: i64 = other.limbs.size();
       while (this.limbs.size() < n) {
@@ -427,7 +432,7 @@ public module sun {
     // Append the decimal digits of the value
     public const function append_decimal(out: ref String) void {
       if (this.is_zero()) {
-        out.append_char(48);
+        out.append_char(b'0');
         return;
       }
       // Peel off 9 digits at a time (10^9 fits a u32 divisor)
@@ -450,7 +455,7 @@ public module sun {
         // Zero-pad inner chunks to 9 digits
         var scale: i64 = 100000000;
         while (scale > 1 and chunk < scale) {
-          out.append_char(48);
+          out.append_char(b'0');
           scale = scale / 10;
         }
         out.append_u64(chunk);
@@ -467,12 +472,12 @@ public module sun {
       }
       for (var i: i64 = 0; i < text.length(); i = i + 1) {
         var ch: u8 = text.at(i);
-        if (ch < 48 or ch > 57) {
+        if (ch < b'0' or ch > b'9') {
           this.limbs.clear();
           return false;
         }
         this.mul_small(10);
-        this.add_small(_convert<u64>(ch) - 48);
+        this.add_small(_convert<u64>(ch - b'0'));
       }
       return true;
     }

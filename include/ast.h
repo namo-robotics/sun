@@ -18,6 +18,7 @@
 #include "ast/array_literal_ast.h"
 #include "ast/struct_literal_ast.h"
 #include "ast/bool_literal_ast.h"
+#include "ast/char_literal_ast.h"
 #include "ast/null_literal_ast.h"
 #include "ast/number_expr_ast.h"
 #include "ast/string_literal_ast.h"

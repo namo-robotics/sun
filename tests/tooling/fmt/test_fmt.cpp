@@ -640,3 +640,25 @@ TEST(Tooling_Fmt, GenericEnumDeclaration) {
   EXPECT_EQ(fmt("enum Option<T>{Some(T),None}"),
             "enum Option<T> { Some(T), None }\n");
 }
+
+// ------------------------------------------------------------------
+// Character and byte literals
+// ------------------------------------------------------------------
+
+// Literals are reprinted as a verbatim source slice, so every spelling --
+// escapes, raw UTF-8, \u{...}, and the byte form -- survives untouched.
+TEST(Tooling_Fmt, CharAndByteLiteralsRoundTrip) {
+  const std::string src =
+      "function main() i32 {\n"
+      "  var a: char = 'a';\n"
+      "  var b: char = '\\n';\n"
+      "  var c: char = '\\u{1F600}';\n"
+      "  var d: char = '\xC3\xA9';\n"
+      "  var e: char = '\\'';\n"
+      "  var f: u8 = b'\\xFF';\n"
+      "  var g: u8 = b' ';\n"
+      "  return 0;\n"
+      "}\n";
+  EXPECT_EQ(fmt(src), src);
+  EXPECT_EQ(fmt(fmt(src)), src);  // idempotent
+}

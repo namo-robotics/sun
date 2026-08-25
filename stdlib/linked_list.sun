@@ -28,6 +28,7 @@ public module sun {
     var next: raw_ptr<LinkedListNode<T>>;
     var prev: raw_ptr<LinkedListNode<T>>;
 
+    // Build a detached node that owns the given value.
     public function init(v: T) {
       this.value = v;
       this.next = null;
@@ -35,47 +36,53 @@ public module sun {
     }
 
     // Borrow the stored value; the node keeps ownership
-    public const function getValue() ref T {
+    public const function get_value() ref T {
       return unsafe { _to_ref<T>(_address_of<T>(this.value)); };
     }
 
     // Move the stored value out. The move zeroes the slot, so the node's own
     // drop is a no-op. Only for callers that are freeing or reusing the node.
-    public function takeValue() T {
+    public function take_value() T {
       var value: T = this.value;
       return value;
     }
 
-    public function setValue(v: T) void {
+    // Overwrite the stored value without dropping the old one. Only safe on a
+    // slot that was already moved out of.
+    public function set_value(v: T) void {
       this.value = v;
     }
 
     // Replace the stored value, dropping the old one first (no-op for
     // non-owning types)
-    public function replaceValue(v: T) void {
+    public function replace_value(v: T) void {
       unsafe { _deinit<T>(_address_of<T>(this.value)); };
       this.value = v;
     }
 
     // Drop the stored value in place (used when freeing nodes that still own
     // their payload)
-    function dropValue() void {
+    function drop_value() void {
       unsafe { _deinit<T>(_address_of<T>(this.value)); };
     }
 
-    public const function getNext() raw_ptr<LinkedListNode<T>> {
+    // The node after this one, or null at the tail.
+    public const function get_next() raw_ptr<LinkedListNode<T>> {
       return this.next;
     }
 
-    public const function getPrev() raw_ptr<LinkedListNode<T>> {
+    // The node before this one, or null at the head.
+    public const function get_prev() raw_ptr<LinkedListNode<T>> {
       return this.prev;
     }
 
-    public function setNext(n: raw_ptr<LinkedListNode<T>>) void {
+    // Point this node at its successor. Does not touch the other node's links.
+    public function set_next(n: raw_ptr<LinkedListNode<T>>) void {
       this.next = n;
     }
 
-    public function setPrev(p: raw_ptr<LinkedListNode<T>>) void {
+    // Point this node at its predecessor. Does not touch the other node's links.
+    public function set_prev(p: raw_ptr<LinkedListNode<T>>) void {
       this.prev = p;
     }
   }
@@ -111,8 +118,8 @@ public module sun {
     public function push_back(value: T) void {
       var node: raw_ptr<LinkedListNode<T>> = this.alloc.create<LinkedListNode<T>>(value);
       if (this.tail != null) {
-        unsafe { this.tail.setNext(node); };
-        unsafe { node.setPrev(this.tail); };
+        unsafe { this.tail.set_next(node); };
+        unsafe { node.set_prev(this.tail); };
         this.tail = node;
       } else {
         this.head = node;
@@ -125,8 +132,8 @@ public module sun {
     public function push_front(value: T) void {
       var node: raw_ptr<LinkedListNode<T>> = this.alloc.create<LinkedListNode<T>>(value);
       if (this.head != null) {
-        unsafe { this.head.setPrev(node); };
-        unsafe { node.setNext(this.head); };
+        unsafe { this.head.set_prev(node); };
+        unsafe { node.set_next(this.head); };
         this.head = node;
       } else {
         this.head = node;
@@ -141,10 +148,10 @@ public module sun {
         throw EmptyError();
       }
       var node: raw_ptr<LinkedListNode<T>> = this.tail;
-      var value: T = unsafe { node.takeValue(); };
-      this.tail = unsafe { node.getPrev(); };
+      var value: T = unsafe { node.take_value(); };
+      this.tail = unsafe { node.get_prev(); };
       if (this.tail != null) {
-        unsafe { this.tail.setNext(null); };
+        unsafe { this.tail.set_next(null); };
       } else {
         this.head = null;
       }
@@ -159,10 +166,10 @@ public module sun {
         throw EmptyError();
       }
       var node: raw_ptr<LinkedListNode<T>> = this.head;
-      var value: T = unsafe { node.takeValue(); };
-      this.head = unsafe { node.getNext(); };
+      var value: T = unsafe { node.take_value(); };
+      this.head = unsafe { node.get_next(); };
       if (this.head != null) {
-        unsafe { this.head.setPrev(null); };
+        unsafe { this.head.set_prev(null); };
       } else {
         this.tail = null;
       }
@@ -181,8 +188,8 @@ public module sun {
       if (index >= this.size_) {
         throw NotFoundError();
       }
-      var node: raw_ptr<LinkedListNode<T>> = this.nodeAt(index);
-      return unsafe { node.getValue(); };
+      var node: raw_ptr<LinkedListNode<T>> = this.find_node_at(index);
+      return unsafe { node.get_value(); };
     }
 
     // Set element at index
@@ -193,8 +200,8 @@ public module sun {
       if (index >= this.size_) {
         throw NotFoundError();
       }
-      var node: raw_ptr<LinkedListNode<T>> = this.nodeAt(index);
-      unsafe { node.replaceValue(value); };
+      var node: raw_ptr<LinkedListNode<T>> = this.find_node_at(index);
+      unsafe { node.replace_value(value); };
     }
 
     // Remove element at index and return its value
@@ -205,9 +212,9 @@ public module sun {
       if (index >= this.size_) {
         throw NotFoundError();
       }
-      var node: raw_ptr<LinkedListNode<T>> = this.nodeAt(index);
-      var value: T = unsafe { node.takeValue(); };
-      this.unlinkNode(node);
+      var node: raw_ptr<LinkedListNode<T>> = this.find_node_at(index);
+      var value: T = unsafe { node.take_value(); };
+      this.unlink_node(node);
       unsafe { _free(node); };
       this.size_ = this.size_ - 1;
       return value;
@@ -218,7 +225,7 @@ public module sun {
       if (this.head == null) {
         return Option.None;
       }
-      return Option.Some(unsafe { this.head.getValue(); });
+      return Option.Some(unsafe { this.head.get_value(); });
     }
 
     // Borrow the last element; None when empty
@@ -226,7 +233,7 @@ public module sun {
       if (this.tail == null) {
         return Option.None;
       }
-      return Option.Some(unsafe { this.tail.getValue(); });
+      return Option.Some(unsafe { this.tail.get_value(); });
     }
 
     // Get current size
@@ -235,7 +242,7 @@ public module sun {
     }
 
     // Check if empty
-    public const function isEmpty() bool {
+    public const function is_empty() bool {
       return this.size_ == 0;
     }
 
@@ -244,8 +251,8 @@ public module sun {
     public function clear() void {
       var curr: raw_ptr<LinkedListNode<T>> = this.head;
       while (curr != null) {
-        var next: raw_ptr<LinkedListNode<T>> = unsafe { curr.getNext(); };
-        unsafe { curr.dropValue(); };
+        var next: raw_ptr<LinkedListNode<T>> = unsafe { curr.get_next(); };
+        unsafe { curr.drop_value(); };
         unsafe { _free(curr); };
         curr = next;
       }
@@ -259,34 +266,34 @@ public module sun {
     // ========================================================================
 
     // Get node at index, traversing from nearest end
-    const function nodeAt(index: i64) raw_ptr<LinkedListNode<T>> {
+    const function find_node_at(index: i64) raw_ptr<LinkedListNode<T>> {
       if (index < this.size_ / 2) {
         // Traverse from head
         var node: raw_ptr<LinkedListNode<T>> = this.head;
         for (var i: i64 = 0; i < index; i = i + 1) {
-          node = unsafe { node.getNext(); };
+          node = unsafe { node.get_next(); };
         }
         return node;
       }
       // Traverse from tail
       var node: raw_ptr<LinkedListNode<T>> = this.tail;
       for (var i: i64 = this.size_ - 1; i > index; i = i - 1) {
-        node = unsafe { node.getPrev(); };
+        node = unsafe { node.get_prev(); };
       }
       return node;
     }
 
     // Unlink a node from the list (does not free or adjust size)
-    function unlinkNode(node: raw_ptr<LinkedListNode<T>>) void {
-      var prev: raw_ptr<LinkedListNode<T>> = unsafe { node.getPrev(); };
-      var next: raw_ptr<LinkedListNode<T>> = unsafe { node.getNext(); };
+    function unlink_node(node: raw_ptr<LinkedListNode<T>>) void {
+      var prev: raw_ptr<LinkedListNode<T>> = unsafe { node.get_prev(); };
+      var next: raw_ptr<LinkedListNode<T>> = unsafe { node.get_next(); };
       if (prev != null) {
-        unsafe { prev.setNext(next); };
+        unsafe { prev.set_next(next); };
       } else {
         this.head = next;
       }
       if (next != null) {
-        unsafe { next.setPrev(prev); };
+        unsafe { next.set_prev(prev); };
       } else {
         this.tail = prev;
       }
@@ -310,6 +317,7 @@ public module sun {
     var current: raw_ptr<LinkedListNode<T>>;
     var started: bool;
 
+    // Build an iterator positioned before the first node.
     public function init() {
       this.current = null;
       this.started = false;
@@ -322,12 +330,12 @@ public module sun {
         this.current = list.head;
         this.started = true;
       } else if (this.current != null) {
-        this.current = unsafe { this.current.getNext(); };
+        this.current = unsafe { this.current.get_next(); };
       }
       if (this.current == null) {
         return Option.None;
       }
-      return Option.Some(unsafe { this.current.getValue(); });
+      return Option.Some(unsafe { this.current.get_value(); });
     }
   }
 

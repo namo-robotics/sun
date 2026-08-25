@@ -74,10 +74,12 @@ public module sun {
   public class TcpStream {
     var fd: i32;
 
+    // Build a closed socket. Connect or bind it before use.
     public function init() {
       this.fd = -1;
     }
 
+    // Close the socket if it is still open.
     function deinit() void {
       this.close();
     }
@@ -140,12 +142,12 @@ public module sun {
 
     // Send a String's contents
     public function send_string(data: const ref String) i64, IError {
-      return this.send_bytes(data.data.rawData(), data.length());
+      return this.send_bytes(data.data.raw_data(), data.length());
     }
 
     // Receive into ContiguousBuffer, returns bytes read
     public function recv(buf: ref ContiguousBuffer<u8>) i64, IError {
-      var result: i64 = unsafe { __recv(this.fd, buf.rawData(), buf.size(), 0); };
+      var result: i64 = unsafe { __recv(this.fd, buf.raw_data(), buf.size(), 0); };
       if (result < 0) {
         var err_code: i32 = -1;
         throw Error(err_code, "recv failed");
@@ -162,10 +164,13 @@ public module sun {
       }
     }
 
+    // Report whether the socket still holds a live file descriptor.
     public function is_open() bool {
       return this.fd >= 0;
     }
 
+    // The underlying file descriptor, for code that needs to poll or hand it to
+    // a C call.
     public function get_fd() i32 {
       return this.fd;
     }
@@ -178,10 +183,12 @@ public module sun {
   public class TcpListener {
     var fd: i32;
 
+    // Build a closed listener. Bind it before use.
     public function init() {
       this.fd = -1;
     }
 
+    // Close the listening socket if it is still open.
     function deinit() void {
       this.close();
     }
@@ -250,10 +257,12 @@ public module sun {
       }
     }
 
+    // Report whether the listener still holds a live file descriptor.
     public function is_open() bool {
       return this.fd >= 0;
     }
 
+    // The underlying file descriptor, for polling or C calls.
     public function get_fd() i32 {
       return this.fd;
     }

@@ -12,6 +12,7 @@
 #include <variant>
 
 #include "support/error.h"
+#include "parsing/escapes.h"
 #include "parsing/nfa.h"
 
 enum class TokenKind {
@@ -73,7 +74,10 @@ enum class TokenKind {
   TYPE_F64,              // f64
   TYPE_BOOL,             // bool
   TYPE_VOID,             // void
+  TYPE_CHAR,             // char
   STRING,                // string literal "..."
+  CHAR_LITERAL,          // character literal 'a' (one Unicode scalar value)
+  BYTE_LITERAL,          // byte literal b'a' (one u8)
   TEMPLATE_STRING,       // template string literal `...` (may contain ${expr})
   BRACE_OPEN,            // {
   BRACE_CLOSE,           // }
@@ -193,7 +197,14 @@ static const std::map<TokenKind, std::string> tokenRegexes = {
     {TokenKind::TYPE_F64, "f64"},
     {TokenKind::TYPE_BOOL, "bool"},
     {TokenKind::TYPE_VOID, "void"},
+    {TokenKind::TYPE_CHAR, "char"},
     {TokenKind::STRING, "\"([^\"\\\\]|\\\\.)*\""},
+    // Deliberately permissive: the body is validated while decoding so that
+    // 'ab', '' and a bad escape get a real diagnostic instead of the generic
+    // "unrecognized token". b'…' outruns the IDENTIFIER match on `b` because
+    // the longest match wins.
+    {TokenKind::CHAR_LITERAL, "'([^'\\\\]|\\\\.)*'"},
+    {TokenKind::BYTE_LITERAL, "b'([^'\\\\]|\\\\.)*'"},
     {TokenKind::TEMPLATE_STRING, "`([^`\\\\]|\\\\.)*`"},
     {TokenKind::INTRINSIC_IDENTIFIER, "_[a-zA-Z0-9_]+"},
     {TokenKind::IDENTIFIER, "[a-zA-Z][a-zA-Z0-9_]*"},
@@ -368,6 +379,7 @@ inline const std::map<TokenKind, TokenInfo>& getTokenInfo() {
       {TokenKind::TYPE_F64, {"f64"}},
       {TokenKind::TYPE_BOOL, {"bool"}},
       {TokenKind::TYPE_VOID, {"void"}},
+      {TokenKind::TYPE_CHAR, {"char"}},
       {TokenKind::BRACE_OPEN, {"{"}},
       {TokenKind::BRACE_CLOSE, {"}"}},
       {TokenKind::BRACKET_OPEN, {"["}},
@@ -478,6 +490,13 @@ struct Token {
     return {TokenKind::STRING, std::move(str), s, e, ""};
   }
 
+  // Character ('a') and byte (b'a') literal factory; `value` is the decoded
+  // Unicode scalar value or byte.
+  static Token charLiteral(TokenKind k, int64_t value, const Position& s,
+                           const Position& e, std::string txt) {
+    return {k, value, s, e, std::move(txt)};
+  }
+
   // Comment token factory (COMMENT or BLOCK_COMMENT); text is the raw
   // comment including delimiters
   static Token comment(TokenKind k, std::string txt, const Position& s, const Position& e) {
@@ -509,6 +528,13 @@ struct Token {
 
   std::optional<double> getFloat() const {
     if (kind == TokenKind::FLOAT) return std::get<double>(value);
+    return std::nullopt;
+  }
+
+  // Decoded scalar value of a character literal, or byte of a byte literal.
+  std::optional<int64_t> getCharValue() const {
+    if (kind == TokenKind::CHAR_LITERAL || kind == TokenKind::BYTE_LITERAL)
+      return std::get<int64_t>(value);
     return std::nullopt;
   }
 
@@ -550,39 +576,161 @@ class Lexer {
     return c == ' ' || c == '\n' || c == '\t' || c == '\r';
   }
 
+  [[noreturn]] void literalError(const Position& at,
+                                 const std::string& message) const {
+    logParsingError(at, message, getSourceLine(at.line),
+                    at.line > 1 ? getSourceLine(at.line - 1) : "");
+  }
+
+  // Decode the body of a character literal ('a') or a byte literal (b'a') --
+  // the text between the quotes, which the token regex has already delimited.
+  //
+  // A character literal holds one Unicode scalar value: the source is UTF-8,
+  // \xNN reaches U+0000..U+007F, and \u{...} names anything above that. A byte
+  // literal holds one byte: the source must be ASCII and \xNN covers 00..FF.
+  int64_t decodeLiteralBody(std::string_view body, bool isByte,
+                            const Position& at) const {
+    const std::string what = isByte ? "byte literal" : "character literal";
+    const std::string quoted = isByte ? "b'...'" : "'...'";
+
+    if (body.empty()) {
+      literalError(at, "Empty " + what + "; " + quoted +
+                           " must hold exactly one " +
+                           (isByte ? "byte" : "character"));
+    }
+
+    uint32_t value = 0;
+    size_t consumed = 0;
+
+    if (body[0] != '\\') {
+      int length = 1;
+      if (isByte) {
+        if (static_cast<unsigned char>(body[0]) >= 0x80) {
+          literalError(at,
+                       "A byte literal holds a single byte, so it cannot hold "
+                       "a non-ASCII character; write the character as '...' or "
+                       "the byte as b'\\xNN'");
+        }
+        value = static_cast<unsigned char>(body[0]);
+      } else {
+        auto scalar = sun::escapes::decodeUtf8(body, length);
+        if (!scalar) {
+          literalError(at, "Character literal is not valid UTF-8");
+        }
+        value = *scalar;
+      }
+      consumed = static_cast<size_t>(length);
+    } else {
+      if (body.size() < 2) {
+        literalError(at, "Unfinished escape sequence in " + what);
+      }
+      const char next = body[1];
+      consumed = 2;
+
+      if (next == '\'') {
+        value = '\'';
+      } else if (next == '"') {
+        value = '"';
+      } else if (auto simple = sun::escapes::simple(next)) {
+        value = static_cast<unsigned char>(*simple);
+      } else if (next == 'x') {
+        if (body.size() < 4 || sun::escapes::hexDigit(body[2]) < 0 ||
+            sun::escapes::hexDigit(body[3]) < 0) {
+          literalError(at, "\\x needs exactly two hex digits, as in " +
+                               std::string(isByte ? "b'\\x7F'" : "'\\x7F'"));
+        }
+        value = static_cast<uint32_t>(sun::escapes::hexDigit(body[2]) * 16 +
+                                      sun::escapes::hexDigit(body[3]));
+        // Above 0x7F a byte and a scalar value stop agreeing, so a character
+        // literal spells those with \u{...} instead.
+        if (!isByte && value > 0x7F) {
+          literalError(at,
+                       "\\x in a character literal only reaches \\x7F; write "
+                       "\\u{" +
+                           toHex(value) + "} for U+" + toHex(value));
+        }
+        consumed = 4;
+      } else if (next == 'u') {
+        if (isByte) {
+          literalError(at,
+                       "\\u{...} names a Unicode scalar value, which does not "
+                       "fit in a byte; use a character literal '\\u{...}'");
+        }
+        if (body.size() < 4 || body[2] != '{') {
+          literalError(at, "\\u must be followed by a braced hex scalar "
+                           "value, as in '\\u{1F600}'");
+        }
+        size_t i = 3;
+        int digits = 0;
+        uint32_t scalar = 0;
+        while (i < body.size() && body[i] != '}') {
+          int digit = sun::escapes::hexDigit(body[i]);
+          if (digit < 0) {
+            literalError(at, "'" + std::string(1, body[i]) +
+                                 "' is not a hex digit in \\u{...}");
+          }
+          if (++digits > 6) {
+            literalError(at, "\\u{...} takes at most six hex digits");
+          }
+          scalar = scalar * 16 + static_cast<uint32_t>(digit);
+          ++i;
+        }
+        if (digits == 0) literalError(at, "\\u{} needs at least one hex digit");
+        if (i >= body.size()) literalError(at, "\\u{...} is missing its '}'");
+        if (scalar > sun::escapes::kMaxScalar) {
+          literalError(at, "U+" + toHex(scalar) +
+                               " is above the highest Unicode scalar value, "
+                               "U+10FFFF");
+        }
+        if (sun::escapes::isSurrogate(scalar)) {
+          literalError(at, "U+" + toHex(scalar) +
+                               " is a UTF-16 surrogate, not a Unicode scalar "
+                               "value");
+        }
+        value = scalar;
+        consumed = i + 1;  // past the '}'
+      } else {
+        literalError(at, "Unknown escape '\\" + std::string(1, next) +
+                             "' in " + what);
+      }
+    }
+
+    if (consumed != body.size()) {
+      literalError(at, "A " + what + " holds exactly one " +
+                           (isByte ? "byte" : "character") + "; " + quoted +
+                           " has more than one");
+    }
+    return static_cast<int64_t>(value);
+  }
+
+  static std::string toHex(uint32_t value) {
+    static const char* kDigits = "0123456789ABCDEF";
+    std::string out;
+    do {
+      out.insert(out.begin(), kDigits[value % 16]);
+      value /= 16;
+    } while (value != 0);
+    return out;
+  }
+
   // Process escape sequences in regular string literals.
   // Mirrors InterpolatedStringParser::processEscapes (template strings),
-  // with \" instead of the template-specific \` and \$.
+  // with \" instead of the template-specific \` and \$. The shared core
+  // (\n \t \r \\ \0) comes from sun::escapes::simple.
   static std::string processStringEscapes(std::string_view raw) {
     std::string result;
     result.reserve(raw.size());
     for (size_t i = 0; i < raw.size(); i++) {
       if (raw[i] == '\\' && i + 1 < raw.size()) {
         char next = raw[i + 1];
-        switch (next) {
-          case '"':
-            result += '"';
-            break;
-          case 'n':
-            result += '\n';
-            break;
-          case 't':
-            result += '\t';
-            break;
-          case 'r':
-            result += '\r';
-            break;
-          case '\\':
-            result += '\\';
-            break;
-          case '0':
-            result += '\0';
-            break;
-          default:
-            // Unknown escape - keep as-is
-            result += raw[i];
-            result += next;
-            break;
+        if (next == '"') {
+          result += '"';
+        } else if (auto c = sun::escapes::simple(next)) {
+          result += *c;
+        } else {
+          // Unknown escape - keep as-is
+          result += raw[i];
+          result += next;
         }
         i++;  // Skip the escaped character
       } else {
@@ -872,6 +1020,17 @@ class Lexer {
         return Token::stringLiteral(
             processStringEscapes(matched.substr(1, matched.size() - 2)),
             startPos, endPos);
+      }
+      case TokenKind::CHAR_LITERAL:
+      case TokenKind::BYTE_LITERAL: {
+        // 'a' keeps one quote either side; b'a' has the leading b as well.
+        const bool isByte = kind == TokenKind::BYTE_LITERAL;
+        const size_t open = isByte ? 2 : 1;
+        std::string_view body =
+            matched.substr(open, matched.size() - open - 1);
+        return Token::charLiteral(kind,
+                                  decodeLiteralBody(body, isByte, startPos),
+                                  startPos, endPos, std::string(matched));
       }
       case TokenKind::TEMPLATE_STRING: {
         // Remove the surrounding backticks from the matched string

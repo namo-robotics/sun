@@ -432,6 +432,11 @@ class SemanticAnalyzer : public AccessContext {
   static void coerceBinaryLiteralOperands(const BinaryExprAST& binExpr,
                                           const sun::TypePtr& expectedType);
 
+  // A char only compares with a char, and never takes part in arithmetic.
+  // Without this `'a' + 1` and `c == 65` would quietly fall through to the
+  // integer paths, since a char is an i32 underneath.
+  static void checkCharOperands(const BinaryExprAST& binExpr);
+
   // The type an arithmetic/bitwise/shift binary expression produces: the wider
   // of the two operand types, mirroring codegen's operand unification.
   static sun::TypePtr promoteBinaryOperands(const sun::TypePtr& lhsType,

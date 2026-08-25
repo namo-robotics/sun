@@ -35,6 +35,7 @@ message ASTNode {
     ArrayLiteral array_literal = 14;
     StructLiteral struct_literal = 16;
     InterpolatedString interpolated_string = 15;
+    CharLiteral char_literal = 17;
     
     // Indexing/slicing
     SliceExpr slice_expr = 20;
@@ -122,6 +123,12 @@ message NullLiteral {
 
 message BoolLiteral {
   bool value = 1;
+}
+
+// 'a' (a char) or b'a' (a u8).
+message CharLiteral {
+  uint32 value = 1;   // Unicode scalar value, or the byte
+  bool is_byte = 2;   // true for b'a'
 }
 
 message ArrayLiteral {

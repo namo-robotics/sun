@@ -417,7 +417,7 @@ function getRef(x: ref i32) ref i32 {
 }
 
 // ✓ OK: Return the value (it gets copied)
-function getValue(x: ref i32) i32 {
+function get_value(x: ref i32) i32 {
     return x;  // Returns the dereferenced value
 }
 ```
@@ -589,10 +589,10 @@ When assigning a class-typed variable:
 
 ```cpp
 void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
-  if (var.getValue() && 
-      var.getValue()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
-    const auto& srcRef = static_cast<const VariableReferenceAST&>(*var.getValue());
-    auto srcType = var.getValue()->getResolvedType();
+  if (var.get_value() && 
+      var.get_value()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
+    const auto& srcRef = static_cast<const VariableReferenceAST&>(*var.get_value());
+    auto srcType = var.get_value()->getResolvedType();
     
     if (srcType && srcType->isClass()) {
       movedVariables_.insert(srcRef.getName());  // Mark as moved

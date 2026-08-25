@@ -17,7 +17,7 @@ TEST(Stdlib_Collections_LinkedList, empty_list) {
     function main() i32 {
         var allocator = make_heap_allocator();
         var ll = LinkedList<i32>(allocator);
-        if (ll.isEmpty()) {
+        if (ll.is_empty()) {
             return ll.size();
         }
         return -1;
@@ -159,7 +159,7 @@ TEST(Stdlib_Collections_LinkedList, drain_list) {
         } catch (e: IError) {
             return -1;
         }
-        if (ll.isEmpty()) {
+        if (ll.is_empty()) {
             return sum;
         }
         return -2;
@@ -474,7 +474,7 @@ TEST(Stdlib_Collections_LinkedList, iterate_class_objects) {
             this.value = v;
         }
 
-        function getValue() i32 {
+        function get_value() i32 {
             return this.value;
         }
     }
@@ -490,7 +490,7 @@ TEST(Stdlib_Collections_LinkedList, iterate_class_objects) {
 
         var sum = 0;
         for (var w: Weight in list) {
-            sum = sum + w.getValue();
+            sum = sum + w.get_value();
         }
         return sum;
     }
@@ -525,7 +525,7 @@ TEST(Stdlib_Collections_LinkedList, DISABLED_use_after_free_stale_raw_ptr) {
         try { var v = ll.pop_front(); } catch (e: IError) { return -1; }
 
         // UB: stale points to freed memory
-        return stale.getValue();
+        return stale.get_value();
     }
   )");
   // UB: may return 42 (stale read) or anything else

@@ -660,6 +660,7 @@ class Formatter {
       // Literals: verbatim source slice (escapes, float spellings preserved)
       case ASTNodeType::NUMBER:
       case ASTNodeType::STRING_LITERAL:
+      case ASTNodeType::CHAR_LITERAL:
       case ASTNodeType::BOOL_LITERAL:
       case ASTNodeType::NULL_LITERAL:
       case ASTNodeType::INTERPOLATED_STRING: {

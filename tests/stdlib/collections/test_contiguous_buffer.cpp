@@ -32,7 +32,7 @@ TEST(Stdlib_Collections_ContiguousBuffer, empty_buffer) {
     function main() i32 {
         var alloc = make_heap_allocator();
         var buf = ContiguousBuffer<i32>(alloc, 0);
-        if (buf.isEmpty()) {
+        if (buf.is_empty()) {
             return 1;
         }
         return 0;
@@ -48,7 +48,7 @@ TEST(Stdlib_Collections_ContiguousBuffer, non_empty_buffer) {
     function main() i32 {
         var alloc = make_heap_allocator();
         var buf = ContiguousBuffer<i32>(alloc, 5);
-        if (buf.isEmpty()) {
+        if (buf.is_empty()) {
             return 0;
         }
         return 1;
@@ -445,7 +445,7 @@ TEST(Stdlib_Collections_ContiguousBuffer, raw_data_not_null) {
     function main() i32 {
         var alloc = make_heap_allocator();
         var buf = ContiguousBuffer<i32>(alloc, 5);
-        if (buf.rawData() != null) {
+        if (buf.raw_data() != null) {
             return 1;
         }
         return 0;

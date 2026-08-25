@@ -17,6 +17,7 @@ public module sun {
     // Lock state: 0=unlocked, 1=locked, 2=locked+waiters
     var state: i32;
 
+    // Build an unlocked mutex.
     public function init() {
       this.state = 0;
     }

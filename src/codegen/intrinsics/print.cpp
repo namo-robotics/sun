@@ -380,6 +380,95 @@ Value* CodegenVisitor::codegenPrintString(const CallExprAST& expr) {
   return ctx.builder->CreateCall(helper, {val});
 }
 
+// void __sun_print_char(i32 %scalar) — write one char to stdout as UTF-8.
+//
+// Branch-free: all four bytes are computed with selects and stored into a
+// 4-byte buffer, then only the first `len` of them are written. A scalar
+// value that is somehow out of range (only reachable through an unchecked
+// _convert) is written as U+FFFD rather than as invalid UTF-8.
+static Function* getOrCreatePrintCharHelper(llvm::Module* module,
+                                            LLVMContext& llvmCtx) {
+  Function* func = module->getFunction("__sun_print_char");
+  if (func) return func;
+
+  FunctionType* funcType = FunctionType::get(
+      Type::getVoidTy(llvmCtx), {Type::getInt32Ty(llvmCtx)}, false);
+  func = Function::Create(funcType, Function::InternalLinkage,
+                          "__sun_print_char", module);
+
+  BasicBlock* entryBB = BasicBlock::Create(llvmCtx, "entry", func);
+  IRBuilder<> builder(entryBB);
+  llvm::Type* i32 = Type::getInt32Ty(llvmCtx);
+  llvm::Type* i8 = Type::getInt8Ty(llvmCtx);
+  auto k = [&](uint32_t v) { return ConstantInt::get(i32, v); };
+
+  Value* raw = func->arg_begin();
+
+  // Substitute U+FFFD for anything that is not a Unicode scalar value.
+  Value* tooBig = builder.CreateICmpUGT(raw, k(0x10FFFF), "too_big");
+  Value* isSurrogate = builder.CreateAnd(
+      builder.CreateICmpUGE(raw, k(0xD800)),
+      builder.CreateICmpULE(raw, k(0xDFFF)), "is_surrogate");
+  Value* c = builder.CreateSelect(builder.CreateOr(tooBig, isSurrogate),
+                                  k(0xFFFD), raw, "scalar");
+
+  Value* is1 = builder.CreateICmpULT(c, k(0x80), "is1");
+  Value* is2 = builder.CreateICmpULT(c, k(0x800), "is2");
+  Value* is3 = builder.CreateICmpULT(c, k(0x10000), "is3");
+
+  Value* len = builder.CreateSelect(
+      is1, k(1),
+      builder.CreateSelect(is2, k(2), builder.CreateSelect(is3, k(3), k(4))),
+      "len");
+
+  // Continuation byte: 0x80 | ((c >> shift) & 0x3F)
+  auto cont = [&](unsigned shift) {
+    Value* v = shift ? builder.CreateLShr(c, k(shift)) : c;
+    return builder.CreateOr(builder.CreateAnd(v, k(0x3F)), k(0x80));
+  };
+  // Leading byte: mask | (c >> shift)
+  auto lead = [&](uint32_t mask, unsigned shift) {
+    return builder.CreateOr(builder.CreateLShr(c, k(shift)), k(mask));
+  };
+
+  Value* b0 = builder.CreateSelect(
+      is1, c,
+      builder.CreateSelect(
+          is2, lead(0xC0, 6),
+          builder.CreateSelect(is3, lead(0xE0, 12), lead(0xF0, 18))),
+      "b0");
+  Value* b1 = builder.CreateSelect(
+      is2, cont(0), builder.CreateSelect(is3, cont(6), cont(12)), "b1");
+  Value* b2 = builder.CreateSelect(is3, cont(0), cont(6), "b2");
+  Value* b3 = cont(0);
+
+  llvm::Type* bufType = ArrayType::get(i8, 4);
+  AllocaInst* buffer = builder.CreateAlloca(bufType, nullptr, "utf8");
+  Value* bytes[4] = {b0, b1, b2, b3};
+  for (unsigned i = 0; i < 4; ++i) {
+    Value* slot = builder.CreateGEP(bufType, buffer, {k(0), k(i)});
+    builder.CreateStore(builder.CreateTrunc(bytes[i], i8), slot);
+  }
+
+  emitLibcWriteInline(builder, module, ConstantInt::get(i32, 1), buffer,
+                      builder.CreateZExt(len, Type::getInt64Ty(llvmCtx)));
+  builder.CreateRetVoid();
+  return func;
+}
+
+// _print_char(c: char) -> void
+Value* CodegenVisitor::codegenPrintChar(const CallExprAST& expr) {
+  if (expr.getArgs().size() != 1) {
+    logAndThrowError("_print_char expects 1 argument: (c: char)");
+    return nullptr;
+  }
+  LLVMContext& llvmCtx = ctx.getContext();
+  Value* val = codegen(*expr.getArgs()[0]);
+  if (!val) return nullptr;
+  Function* helper = getOrCreatePrintCharHelper(module, llvmCtx);
+  return ctx.builder->CreateCall(helper, {val});
+}
+
 // Emit code to write raw bytes to stdout
 // _print_bytes(ptr: raw_ptr<i8>, len: i64) -> void
 Value* CodegenVisitor::codegenPrintBytes(const CallExprAST& expr) {

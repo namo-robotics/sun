@@ -423,7 +423,7 @@ TEST(Classes_ConstMethods, const_vec_reads) {
           v.push(2);
           v.push(3);
           const ref cv = v;
-          if (cv.isEmpty()) { return -1; }
+          if (cv.is_empty()) { return -1; }
           return total(v) + _convert<i32>(cv.size());
       }
     )");

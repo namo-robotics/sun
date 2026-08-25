@@ -205,7 +205,7 @@ TEST(Stdlib_Text_String, append_literal) {
         return s.length();
     }
   )");
-  EXPECT_EQ(value, 12);  // "Hello, Sun" = 12 chars
+  EXPECT_EQ(value, 12);  // "Hello, Sun" = 12 iterate_chars
 }
 TEST(Stdlib_Text_String, append_string) {
   auto value = executeStringWithStdlib(R"(
@@ -560,7 +560,7 @@ TEST(Stdlib_Text_String, literal_escape_quote_and_backslash) {
     function main() i64 {
         var allocator = make_heap_allocator();
         var s = String(allocator, "say \"hi\" \\ done");
-        // s = say "hi" \ done  (15 chars)
+        // s = say "hi" \ done  (15 iterate_chars)
         if (s.length() != 15) { return 1; }
         if (s.at(4) != 34) { return 2; }   // '"'
         if (s.at(9) != 92) { return 3; }   // '\'
@@ -714,7 +714,7 @@ TEST(Stdlib_Text_String, trim_variants) {
 
         var blank = String(alloc, "   ");
         blank.trim();
-        if (not blank.isEmpty()) { return 4; }
+        if (not blank.is_empty()) { return 4; }
 
         var none = String(alloc, "hi");
         none.trim();
@@ -770,7 +770,7 @@ TEST(Stdlib_Text_String, substr_and_clone) {
         var mid = s.substr(alloc, 2, 3);
         if (not mid.equals_literal("cde")) { return 1; }
         var empty = s.substr(alloc, 6, 0);
-        if (not empty.isEmpty()) { return 2; }
+        if (not empty.is_empty()) { return 2; }
 
         var copy = s.clone(alloc);
         if (not copy.equals(s)) { return 3; }
@@ -798,7 +798,7 @@ TEST(Stdlib_Text_String, split_on_byte_and_string) {
         var parts = csv.split(alloc, 44);  // ','
         if (parts.size() != 4) { return 1; }
         if (not parts.get_unchecked(0).equals_literal("a")) { return 2; }
-        if (not parts.get_unchecked(2).isEmpty()) { return 3; }
+        if (not parts.get_unchecked(2).is_empty()) { return 3; }
         if (not parts.get_unchecked(3).equals_literal("c")) { return 4; }
 
         var plain = String(alloc, "no separators here");
@@ -851,6 +851,36 @@ TEST(Stdlib_Text_String, split_nonempty_skips_empty_pieces) {
         var blank = String(alloc, "");
         var nothing = blank.split_nonempty(alloc, "");
         if (nothing.size() != 0) { return 10; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+// The five split entry points share one implementation, so the empty
+// separator and empty subject cases are pinned here.
+TEST(Stdlib_Text_String, split_edge_cases) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        var s = String(alloc, "abc");
+        var empty = String(alloc, "");
+
+        // An empty separator cuts nothing: the whole string is one piece
+        var whole = s.split(alloc, "");
+        if (whole.size() != 1) { return 1; }
+        if (not whole.get_unchecked(0).equals_literal("abc")) { return 2; }
+        if (s.split_nonempty(alloc, "").size() != 1) { return 3; }
+
+        // An empty subject yields one empty piece, or none when empty pieces
+        // are dropped
+        if (empty.split(alloc, "").size() != 1) { return 4; }
+        if (empty.split_nonempty(alloc, "").size() != 0) { return 5; }
+        if (empty.split(alloc, b',').size() != 1) { return 6; }
+        if (empty.split_nonempty(alloc, b',').size() != 0) { return 7; }
+        if (empty.split_whitespace(alloc).size() != 0) { return 8; }
         return 0;
     }
   )");
@@ -1012,9 +1042,173 @@ TEST(Stdlib_Text_String, from_c_str_handles_empty_and_null) {
         var alloc = make_heap_allocator();
         var empty = String(alloc, "");
         var a = from_c_str(alloc, empty.c_str());
-        if (not a.isEmpty()) { return 1; }
+        if (not a.is_empty()) { return 1; }
         var b = from_c_str(alloc, null);
-        if (not b.isEmpty()) { return 2; }
+        if (not b.is_empty()) { return 2; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+// ============================================================================
+// Unicode scalar values: push / iterate_chars / find
+// ============================================================================
+
+TEST(Stdlib_Text_String, push_encodes_utf8) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        var s = String(alloc, "");
+        s.push('a');
+        if (s.length() != 1) { return 1; }
+        s.push('é');                     // 2 bytes
+        if (s.length() != 3) { return 2; }
+        s.push('你');                    // 3 bytes
+        if (s.length() != 6) { return 3; }
+        s.push('😀');                    // 4 bytes
+        if (s.length() != 10) { return 4; }
+        // é is C3 A9
+        if (s.at(1) != b'\xC3' or s.at(2) != b'\xA9') { return 5; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(Stdlib_Text_String, char_count_counts_scalars_not_bytes) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        var s = String(alloc, "héllo😀");
+        if (s.length() != 10) { return 1; }      // bytes
+        if (s.count_chars() != 6) { return 2; }   // scalar values
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(Stdlib_Text_String, chars_round_trips_through_push) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        var s = String(alloc, "héllo😀");
+        var out = String(alloc, "");
+        var it = s.iterate_chars();
+        for (var c: char in it) {
+            out.push(c);
+        }
+        if (not out.equals(s)) { return 1; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(Stdlib_Text_String, chars_yields_the_scalar_values) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        var s = String(alloc, "a😀");
+        var seen = 0;
+        var it = s.iterate_chars();
+        for (var c: char in it) {
+            if (seen == 0 and c != 'a') { return 1; }
+            if (seen == 1 and c != '\u{1F600}') { return 2; }
+            seen = seen + 1;
+        }
+        if (seen != 2) { return 3; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+// Malformed bytes must not stall or overrun iteration: each bad byte becomes
+// one U+FFFD and the scan moves on.
+TEST(Stdlib_Text_String, chars_replaces_malformed_bytes) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        var s = String(alloc, "a");
+        s.append_char(b'\xFF');     // not a valid lead byte
+        s.append_char(b'b');
+        s.append_char(b'\xE2');     // 3-byte lead...
+        s.append_char(b'c');        // ...with a bad continuation
+        if (s.count_chars() != 5) { return 1; }
+        var replacements = 0;
+        var it = s.iterate_chars();
+        for (var c: char in it) {
+            if (c == '\u{FFFD}') { replacements = replacements + 1; }
+        }
+        if (replacements != 2) { return 2; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(Stdlib_Text_String, find_returns_the_byte_index_of_a_char) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        var s = String(alloc, "héllo😀");
+        var at_e = match s.find('é') { Option.Some(i) => i, Option.None => -1 };
+        if (at_e != 1) { return 1; }
+        var at_emoji = match s.find('😀') { Option.Some(i) => i, Option.None => -1 };
+        if (at_emoji != 6) { return 2; }
+        var absent = match s.find('z') { Option.Some(i) => i, Option.None => -1 };
+        if (absent != -1) { return 3; }
+        var last_l = match s.rfind('l') { Option.Some(i) => i, Option.None => -1 };
+        if (last_l != 4) { return 4; }
+        if (not s.contains('h') or s.contains('z')) { return 5; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(Stdlib_Text_String, char_of_rejects_non_scalar_values) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var ok = match char_of(65) { Option.Some(c) => c == 'A', Option.None => false };
+        if (not ok) { return 1; }
+        var surrogate = match char_of(55296) { Option.Some(c) => true, Option.None => false };
+        if (surrogate) { return 2; }
+        var too_big = match char_of(1114112) { Option.Some(c) => true, Option.None => false };
+        if (too_big) { return 3; }
+        if (code_of('😀') != 128512) { return 4; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
+TEST(Stdlib_Text_String, interpolating_a_char_writes_utf8) {
+  auto value = executeStringWithStdlib(R"(
+    using sun;
+
+    function main() i32 {
+        var alloc = make_heap_allocator();
+        var c: char = '😀';
+        var s = `[${c}]`;
+        if (s.length() != 6) { return 1; }   // '[' + 4 bytes + ']'
+        if (s.at(0) != b'[' or s.at(5) != b']') { return 2; }
         return 0;
     }
   )");

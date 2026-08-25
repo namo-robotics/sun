@@ -113,8 +113,8 @@ TEST_F(Stdlib_Sys_Env, cwd_reports_the_working_directory) {
     function main() i32 {
         var a = make_heap_allocator();
         try {
-            var dir = cwd(a);
-            if (dir.isEmpty()) { return 1; }
+            var dir = get_cwd(a);
+            if (dir.is_empty()) { return 1; }
             // An absolute path, so it starts with '/'
             if (dir.at(0) != 47) { return 2; }
             if (not dir.equals_literal(")" +
@@ -137,7 +137,7 @@ TEST_F(Stdlib_Sys_Env, set_cwd_changes_and_cwd_reflects_it) {
         var a = make_heap_allocator();
         try {
             set_cwd("/tmp");
-            var dir = cwd(a);
+            var dir = get_cwd(a);
             if (not dir.equals_literal("/tmp")) { return 1; }
         } catch (e: IError) {
             return 2;
@@ -175,7 +175,7 @@ TEST_F(Stdlib_Sys_Env, args_reads_argc_and_argv_from_main) {
 
     function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
         var a = make_heap_allocator();
-        var cli = args(a, argc, argv);
+        var cli = collect_args(a, argc, argv);
         if (cli.size() != 3) { return 1; }
         var first = cli.get_unchecked(0);
         if (not first.equals_literal("prog")) { return 2; }
@@ -197,7 +197,7 @@ TEST_F(Stdlib_Sys_Env, args_with_no_arguments_is_empty) {
 
     function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
         var a = make_heap_allocator();
-        var cli = args(a, argc, argv);
+        var cli = collect_args(a, argc, argv);
         return _convert<i32>(cli.size());
     }
   )");

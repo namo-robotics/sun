@@ -15,12 +15,12 @@
 TEST(Errors, basic_function_call) {
   // Functions that don't throw can be called directly, no try/catch needed
   auto value = executeString(R"(
-    function getValue() i32 {
+    function get_value() i32 {
       return 42;
     }
 
     function main() i32 {
-      return getValue();
+      return get_value();
     }
   )");
   EXPECT_EQ(value, 42);

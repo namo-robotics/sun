@@ -10,6 +10,7 @@
 enum class ASTNodeType {
   NUMBER,
   STRING_LITERAL,
+  CHAR_LITERAL,  // 'a' (a char) or b'a' (a u8)
   NULL_LITERAL,
   BOOL_LITERAL,
   ARRAY_LITERAL,  // [1, 2, 3] or [[1, 2], [3, 4]]

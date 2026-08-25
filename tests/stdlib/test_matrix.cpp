@@ -101,14 +101,14 @@ TEST(Stdlib_Matrix, slice_range_construction) {
         // Create a slice range representing [2:5]
         var s = SliceRange(2, 5, true, true);
         
-        // getStart should return 2
-        var start: i64 = s.getStart();
+        // get_start should return 2
+        var start: i64 = s.get_start();
         
-        // getEnd should return 5 (for any dim size)
-        var end: i64 = s.getEnd(10);
+        // get_end should return 5 (for any dim size)
+        var end: i64 = s.get_end(10);
         
         // size should be 3
-        var sz: i64 = s.size(10);
+        var sz: i64 = s.compute_size(10);
         
         return start * 100 + end * 10 + sz;
     }
@@ -124,18 +124,18 @@ TEST(Stdlib_Matrix, slice_range_open_ends) {
     function main() i64 {
         // Slice [:5] - from start to 5
         var s1 = SliceRange(0, 5, false, true);
-        var start1: i64 = s1.getStart();  // should be 0
-        var end1: i64 = s1.getEnd(10);    // should be 5
+        var start1: i64 = s1.get_start();  // should be 0
+        var end1: i64 = s1.get_end(10);    // should be 5
         
         // Slice [3:] - from 3 to end
         var s2 = SliceRange(3, 0, true, false);
-        var start2: i64 = s2.getStart();  // should be 3
-        var end2: i64 = s2.getEnd(10);    // should be 10 (dim size)
+        var start2: i64 = s2.get_start();  // should be 3
+        var end2: i64 = s2.get_end(10);    // should be 10 (dim size)
         
         // Full slice [:] - from start to end
         var s3 = SliceRange(0, 0, false, false);
         var full: i64 = 0;
-        if (s3.isFullRange()) { full = 1; }
+        if (s3.is_full_range()) { full = 1; }
         
         return start1 * 1000 + start2 * 100 + end1 * 10 + full;
     }

@@ -173,6 +173,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserialize(
     case ast::ASTNode::kNumberExpr:
       result = deserializeNumber(node.number_expr());
       break;
+    case ast::ASTNode::kCharLiteral:
+      result = deserializeCharLiteral(node.char_literal());
+      break;
     case ast::ASTNode::kStringLiteral:
       result = deserializeString(node.string_literal());
       break;
@@ -369,6 +372,11 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeNumber(
     return std::make_unique<NumberExprAST>(proto.int_value());
   }
   return std::make_unique<NumberExprAST>(proto.float_value());
+}
+
+std::unique_ptr<ExprAST> ASTDeserializer::deserializeCharLiteral(
+    const ast::CharLiteral& proto) const {
+  return std::make_unique<CharLiteralAST>(proto.value(), proto.is_byte());
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeString(

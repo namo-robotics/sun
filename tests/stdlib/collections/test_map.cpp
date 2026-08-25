@@ -127,7 +127,7 @@ TEST(Stdlib_Collections_Map, get_or_default_found) {
         var m = Map<i64, i32>(allocator, 16);
         m.insert(42, 100);
         var fallback: i32 = -1;
-        return m.getOrDefault(42, fallback);
+        return m.get_or_default(42, fallback);
     }
   )");
   EXPECT_EQ(value, 100);
@@ -142,7 +142,7 @@ TEST(Stdlib_Collections_Map, get_or_default_not_found) {
         var m = Map<i64, i32>(allocator, 16);
         m.insert(42, 100);
         var fallback: i32 = -1;
-        return m.getOrDefault(99, fallback);
+        return m.get_or_default(99, fallback);
     }
   )");
   EXPECT_EQ(value, -1);

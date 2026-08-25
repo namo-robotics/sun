@@ -48,7 +48,7 @@ public module sun {
     // deinit). Internal helper for deinit/clear/set.
     function drop_range(from: i64, to: i64) void {
       for (var i: i64 = from; i < to; i = i + 1) {
-        unsafe { _deinit<T>(_ptr_offset(this.data.rawData(), i * _sizeof<T>())); };
+        unsafe { _deinit<T>(_ptr_offset(this.data.raw_data(), i * _sizeof<T>())); };
       }
     }
 
@@ -122,7 +122,7 @@ public module sun {
     }
 
     // Check if empty
-    public const function isEmpty() bool {
+    public const function is_empty() bool {
       return this.size_ == 0;
     }
 
@@ -154,8 +154,8 @@ public module sun {
     }
 
     // Get raw data pointer (for interop)
-    public const function rawData() raw_ptr<u8> {
-      return this.data.rawData();
+    public const function raw_data() raw_ptr<u8> {
+      return this.data.raw_data();
     }
 
     // Borrow the last element; None when empty
@@ -218,6 +218,7 @@ public module sun {
   public class VecIterator<T> implements IIterator<ref T, Vec<T>> {
     var current: i64;
 
+    // Build an iterator positioned before the first element.
     public function init() {
       this.current = 0;
     }

@@ -76,9 +76,9 @@ public module tls {
     }
     var buf = ContiguousBuffer<u8>(alloc, 256);
     buf.fill(0);
-    unsafe { c_err_error_string_n(code, buf.rawData(), buf.size()); };
+    unsafe { c_err_error_string_n(code, buf.raw_data(), buf.size()); };
     out.append(": ");
-    var text: String = from_c_str(alloc, buf.rawData());
+    var text: String = from_c_str(alloc, buf.raw_data());
     out.append(text);
     return out;
   }
@@ -181,7 +181,7 @@ public module tls {
     // Receive into a ContiguousBuffer. Returns the byte count, or 0 once
     // the peer has closed the connection.
     public function recv(buf: ref ContiguousBuffer<u8>) i64, IError {
-      var result: i32 = unsafe { c_ssl_read(this.ssl, buf.rawData(), _convert<i32>(buf.size())); };
+      var result: i32 = unsafe { c_ssl_read(this.ssl, buf.raw_data(), _convert<i32>(buf.size())); };
       if (result > 0) {
         return _convert<i64>(result);
       }

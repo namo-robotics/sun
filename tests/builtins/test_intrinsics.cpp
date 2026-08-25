@@ -434,7 +434,7 @@ TEST(Builtins_IsIntrinsic, is_in_generic_class_with_non_numeric) {
 
 TEST(Builtins_IsIntrinsic, branch_on_type_in_generic) {
   auto value = executeString(R"(
-    function getValue<T>(x: T) i32 {
+    function get_value<T>(x: T) i32 {
         if (_is<_Integer>(x)) {
             return 1;
         }
@@ -445,8 +445,8 @@ TEST(Builtins_IsIntrinsic, branch_on_type_in_generic) {
     }
     
     function main() i32 {
-        var a = getValue<i32>(42);
-        var b = getValue<f64>(3.14);
+        var a = get_value<i32>(42);
+        var b = get_value<f64>(3.14);
         return a * 10 + b;
     }
   )");
@@ -517,7 +517,7 @@ TEST(Builtins_IsIntrinsic, type_narrowing_with_interface) {
 TEST(Builtins_IsIntrinsic, type_narrowing_method_call_in_generic) {
   auto value = executeString(R"(
     interface IValue {
-        function getValue() i32;
+        function get_value() i32;
     }
     
     class Box implements IValue {
@@ -527,14 +527,14 @@ TEST(Builtins_IsIntrinsic, type_narrowing_method_call_in_generic) {
             this.val = v;
         }
         
-        function getValue() i32 {
+        function get_value() i32 {
             return this.val;
         }
     }
     
     function extractValue<T>(obj: ref T) i32 {
         if (_is<IValue>(obj)) {
-            return obj.getValue();
+            return obj.get_value();
         }
         return -1;
     }
@@ -757,20 +757,20 @@ TEST(Builtins_IsIntrinsic, nested_generic_function_definition) {
   // Generic function defined inside another generic function
   auto value = executeString(R"(
     interface IValue {
-        function getValue() i32;
+        function get_value() i32;
     }
     
     class Wrapper implements IValue {
         var data: i32;
         function init(d: i32) { this.data = d; }
-        function getValue() i32 { return this.data; }
+        function get_value() i32 { return this.data; }
     }
     
     function outer<T>(x: ref T, multiplier: i32) i32 {
         // Define a generic function inside another generic function
         function inner<U>(y: ref U) i32 {
             if (_is<IValue>(y)) {
-                return y.getValue();
+                return y.get_value();
             }
             return 0;
         }

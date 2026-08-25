@@ -15,22 +15,32 @@ public module sun {
     _print_i32(value);
   }
 
+  // Write a signed 64-bit number to standard output.
   public function print(value: i64) void {
     _print_i64(value);
   }
 
+  // Write an unsigned 32-bit number to standard output.
   public function print(value: u32) void {
     _print_i64(value);
   }
 
+  // Write an unsigned 64-bit number to standard output.
   public function print(value: u64) void {
     _print_i64(value);
   }
 
+  // Write a floating-point number to standard output.
   public function print(value: f64) void {
     _print_f64(value);
   }
 
+  // Write one character to standard output, encoded as UTF-8.
+  public function print(value: char) void {
+    _print_char(value);
+  }
+
+  // Write "true" or "false" to standard output.
   public function print(value: bool) void {
     if (value) {
       print("true");
@@ -39,12 +49,14 @@ public module sun {
     }
   }
 
+  // Write a string literal to standard output.
   public function print(s: static_ptr<u8>) void {
     _print_bytes(s.raw(), s.length());
   }
 
+  // Write a String to standard output. The String is borrowed, not consumed.
   public function print(s: const ref String) void {
-    _print_bytes(s.data.rawData(), s.length());
+    _print_bytes(s.data.raw_data(), s.length());
   }
 
   // ---- println (with newline) ----
@@ -53,41 +65,55 @@ public module sun {
     _print_newline();
   }
 
+  // Write a signed 32-bit number and a newline to standard output.
   public function println(value: i32) void {
     print(value);
     _print_newline();
   }
 
+  // Write a signed 64-bit number and a newline to standard output.
   public function println(value: i64) void {
     print(value);
     _print_newline();
   }
 
+  // Write an unsigned 32-bit number and a newline to standard output.
   public function println(value: u32) void {
     print(value);
     _print_newline();
   }
 
+  // Write an unsigned 64-bit number and a newline to standard output.
   public function println(value: u64) void {
     print(value);
     _print_newline();
   }
 
+  // Write a floating-point number and a newline to standard output.
   public function println(value: f64) void {
     print(value);
     _print_newline();
   }
 
+  // Write one character and a newline to standard output.
+  public function println(value: char) void {
+    print(value);
+    _print_newline();
+  }
+
+  // Write "true" or "false" and a newline to standard output.
   public function println(value: bool) void {
     print(value);
     _print_newline();
   }
 
+  // Write a string literal and a newline to standard output.
   public function println(s: static_ptr<u8>) void {
     print(s);
     _print_newline();
   }
 
+  // Write a String and a newline to standard output.
   public function println(s: const ref String) void {
     print(s);
     _print_newline();
@@ -102,19 +128,23 @@ public module sun {
     unsafe { c_write(2, s.raw(), s.length()); };
   }
 
+  // Write a String to standard error.
   public function eprint(s: const ref String) void {
-    unsafe { c_write(2, s.data.rawData(), s.length()); };
+    unsafe { c_write(2, s.data.raw_data(), s.length()); };
   }
 
+  // Write a newline to standard error.
   public function eprintln() void {
     unsafe { c_write(2, "\n".raw(), 1); };
   }
 
+  // Write a string literal and a newline to standard error.
   public function eprintln(s: static_ptr<u8>) void {
     eprint(s);
     eprintln();
   }
 
+  // Write a String and a newline to standard error.
   public function eprintln(s: const ref String) void {
     eprint(s);
     eprintln();

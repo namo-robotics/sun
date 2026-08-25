@@ -1,9 +1,11 @@
 // Simple math library for testing sunlib
 public module sun {
+  // Return the sum of two 32-bit integers.
   public function add(a: i32, b: i32) i32 {
     return a + b;
   }
 
+  // Return the product of two 32-bit integers.
   public function multiply(a: i32, b: i32) i32 {
     return a * b;
   }

@@ -61,6 +61,7 @@ public module sun {
       var events: i16;
       var revents: i16;
 
+      // Build a poll record for one descriptor and the events to watch for.
       public function init(fd: i32, events: i16) {
         this.fd = fd;
         this.events = events;
@@ -68,6 +69,7 @@ public module sun {
       }
     }
 
+    // Translate a FileMode into the C open() flag bits it stands for.
     function open_flags(mode: FileMode) i32 {
       return match mode {
         FileMode.Read => O_RDONLY,
@@ -76,7 +78,8 @@ public module sun {
       };
     }
 
-    function whence_of(w: Whence) i32 {
+    // Translate a Whence into the C lseek() constant it stands for.
+    function convert_whence(w: Whence) i32 {
       return match w {
         Whence.Start => 0,
         Whence.Current => 1,
@@ -90,6 +93,7 @@ public module sun {
       // fd 0 would close stdin.
       var fd: i32;
 
+      // Build a File that holds no descriptor. Open or adopt one before use.
       public function init() {
         this.fd = 0;
       }
@@ -99,10 +103,12 @@ public module sun {
         this.open_cstr(path.raw(), mode);
       }
 
+      // Open a file named at runtime. Throws if the system refuses.
       public function open(path: ref String, mode: FileMode) void, IError {
         this.open_cstr(path.c_str(), mode);
       }
 
+      // Open a file named by a C string. The one place the open syscall is made.
       function open_cstr(path: raw_ptr<u8>, mode: FileMode) void, IError {
         var result: i32 = unsafe { c_open(path, open_flags(mode), CREATE_MODE); };
         if (result < 0) {
@@ -123,6 +129,8 @@ public module sun {
         return unsafe { c_write(this.fd, data.raw(), data.length()); };
       }
 
+      // Write a String's bytes. Returns how many bytes went out, or a negative
+      // value on failure.
       public function write(data: ref String) i64 {
         return unsafe { c_write(this.fd, data.c_str(), data.length()); };
       }
@@ -131,12 +139,12 @@ public module sun {
       public function read_all(alloc: ref HeapAllocator) String, IError {
         var out: String = String(alloc, "");
         var chunk: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 4096);
-        var n: i64 = unsafe { c_read(this.fd, chunk.rawData(), 4096); };
+        var n: i64 = unsafe { c_read(this.fd, chunk.raw_data(), 4096); };
         while (n > 0) {
           for (var i: i64 = 0; i < n; i = i + 1) {
             out.append_char(chunk.get_unchecked(i));
           }
-          n = unsafe { c_read(this.fd, chunk.rawData(), 4096); };
+          n = unsafe { c_read(this.fd, chunk.raw_data(), 4096); };
         }
         if (n < 0) {
           throw Error(errno(), "failed to read file");
@@ -152,6 +160,7 @@ public module sun {
         }
       }
 
+      // Report whether this File still holds a descriptor.
       public function is_open() bool {
         return this.fd > 0;
       }
@@ -164,9 +173,10 @@ public module sun {
       // Seek to a position in the file
       // Returns the new offset from the beginning of the file
       public function seek(offset: i64, whence: Whence) i64 {
-        return unsafe { c_lseek(this.fd, offset, whence_of(whence)); };
+        return unsafe { c_lseek(this.fd, offset, convert_whence(whence)); };
       }
 
+      // The current read/write offset from the start of the file.
       public function tell() i64 {
         return this.seek(0, Whence.Current);
       }
@@ -205,6 +215,7 @@ public module sun {
         return unsafe { c_read(this.fd, buf, len); };
       }
 
+      // Close the descriptor if the File still holds one.
       function deinit() void {
         this.close();
       }
@@ -222,6 +233,7 @@ public module sun {
       return text;
     }
 
+    // Read a whole file named at runtime into a new String.
     public function read_to_string(alloc: ref HeapAllocator, path: ref String) String, IError {
       var f: File = File();
       f.open(path, FileMode.Read);
@@ -230,6 +242,7 @@ public module sun {
       return text;
     }
 
+    // Write a String over a file named by a literal, replacing what was there.
     public function write_string(path: static_ptr<u8>, contents: ref String) void, IError {
       var f: File = File();
       f.open(path, FileMode.Write);
@@ -239,6 +252,7 @@ public module sun {
       f.close();
     }
 
+    // Write a String over a file named at runtime, replacing what was there.
     public function write_string(path: ref String, contents: ref String) void, IError {
       var f: File = File();
       f.open(path, FileMode.Write);
@@ -264,10 +278,13 @@ public module sun {
       remove_file_cstr(path.raw());
     }
 
+    // Delete a file named at runtime. Throws if it cannot be removed.
     public function remove_file(path: ref String) void, IError {
       remove_file_cstr(path.c_str());
     }
 
+    // Rename a file, both paths as C strings. The one place the rename syscall is
+    // made.
     function rename_file_cstr(old_path: raw_ptr<u8>, new_path: raw_ptr<u8>) void, IError {
       var result: i32 = unsafe { c_rename(old_path, new_path); };
       if (result < 0) {
@@ -280,18 +297,23 @@ public module sun {
       rename_file_cstr(old_path.raw(), new_path.raw());
     }
 
+    // Rename a file from a literal path to one built at runtime.
     public function rename_file(old_path: static_ptr<u8>, new_path: ref String) void, IError {
       rename_file_cstr(old_path.raw(), new_path.c_str());
     }
 
+    // Rename a file from a path built at runtime to a literal one.
     public function rename_file(old_path: ref String, new_path: static_ptr<u8>) void, IError {
       rename_file_cstr(old_path.c_str(), new_path.raw());
     }
 
+    // Rename a file, both paths built at runtime.
     public function rename_file(old_path: ref String, new_path: ref String) void, IError {
       rename_file_cstr(old_path.c_str(), new_path.c_str());
     }
 
+    // Create a directory named by a C string. The one place the mkdir syscall is
+    // made.
     function make_dir_cstr(path: raw_ptr<u8>, mode: i32) void, IError {
       var result: i32 = unsafe { c_mkdir(path, mode); };
       if (result < 0) {
@@ -304,10 +326,13 @@ public module sun {
       make_dir_cstr(path.raw(), mode);
     }
 
+    // Create a directory named at runtime, with the given permission bits.
     public function make_dir(path: ref String, mode: i32) void, IError {
       make_dir_cstr(path.c_str(), mode);
     }
 
+    // Remove a directory named by a C string. The one place the rmdir syscall is
+    // made.
     function remove_dir_cstr(path: raw_ptr<u8>) void, IError {
       var result: i32 = unsafe { c_rmdir(path); };
       if (result < 0) {
@@ -320,6 +345,7 @@ public module sun {
       remove_dir_cstr(path.raw());
     }
 
+    // Remove a directory named at runtime. It must already be empty.
     public function remove_dir(path: ref String) void, IError {
       remove_dir_cstr(path.c_str());
     }
@@ -340,10 +366,12 @@ public module sun {
       return exists_cstr(path.raw());
     }
 
+    // Report whether anything exists at a path built at runtime.
     public function exists(path: ref String) bool {
       return exists_cstr(path.c_str());
     }
 
+    // Report whether a path named by a C string is a directory.
     function is_dir_cstr(path: raw_ptr<u8>) bool {
       var dir: raw_ptr<u8> = unsafe { c_opendir(path); };
       if (dir == null) {
@@ -353,23 +381,29 @@ public module sun {
       return true;
     }
 
+    // Report whether a literal path is a directory.
     public function is_dir(path: static_ptr<u8>) bool {
       return is_dir_cstr(path.raw());
     }
 
+    // Report whether a path built at runtime is a directory.
     public function is_dir(path: ref String) bool {
       return is_dir_cstr(path.c_str());
     }
 
+    // Report whether a literal path is an ordinary file.
     public function is_file(path: static_ptr<u8>) bool {
       return exists(path) and not is_dir(path);
     }
 
+    // Report whether a path built at runtime is an ordinary file.
     public function is_file(path: ref String) bool {
       return exists(path) and not is_dir(path);
     }
 
-    public function file_size(path: static_ptr<u8>) i64, IError {
+    // The size in bytes of the file at a literal path. Throws if it cannot be
+    // opened.
+    public function get_file_size(path: static_ptr<u8>) i64, IError {
       var f: File = File();
       f.open(path, FileMode.Read);
       var size: i64 = f.seek(0, Whence.End);
@@ -380,7 +414,8 @@ public module sun {
       return size;
     }
 
-    public function file_size(path: ref String) i64, IError {
+    // The size in bytes of the file at a path built at runtime.
+    public function get_file_size(path: ref String) i64, IError {
       var f: File = File();
       f.open(path, FileMode.Read);
       var size: i64 = f.seek(0, Whence.End);
@@ -401,6 +436,7 @@ public module sun {
       var name_: String;
       var kind_: FileKind;
 
+      // Build a directory entry. The name moves in.
       public function init(name: String, kind: FileKind) {
         this.name_ = name;
         this.kind_ = kind;
@@ -411,14 +447,17 @@ public module sun {
         return unsafe { _to_ref<String>(_address_of<String>(this.name_)); };
       }
 
+      // Whether the entry is a file, a directory, or something else.
       public function kind() FileKind {
         return this.kind_;
       }
 
+      // Report whether this entry is a directory.
       public function is_dir() bool {
         return this.kind_ == FileKind.Dir;
       }
 
+      // Report whether this entry is an ordinary file.
       public function is_file() bool {
         return this.kind_ == FileKind.File;
       }
@@ -426,32 +465,26 @@ public module sun {
 
     // DT_* values from the directory record's d_type byte.
     function kind_of(d_type: u8) FileKind {
-      if (d_type == 4) {
-        return FileKind.Dir;
-      }
-      if (d_type == 8) {
-        return FileKind.File;
-      }
-      if (d_type == 10) {
-        return FileKind.Symlink;
-      }
-      if (d_type == 0) {
-        return FileKind.Unknown;
-      }
-      return FileKind.Other;
+      return match d_type {
+        4 => FileKind.Dir,
+        8 => FileKind.File,
+        10 => FileKind.Symlink,
+        0 => FileKind.Unknown,
+        _ => FileKind.Other
+      };
     }
 
     // Is the record's name "." or ".."?
     function is_dot_entry(name: raw_ptr<u8>) bool {
       var first: u8 = unsafe { _load<u8>(name, 0); };
-      if (first != 46) {
+      if (first != b'.') {
         return false;
       }
       var second: u8 = unsafe { _load<u8>(name, 1); };
       if (second == 0) {
         return true;
       }
-      if (second != 46) {
+      if (second != b'.') {
         return false;
       }
       return unsafe { _load<u8>(name, 2); } == 0;
@@ -481,10 +514,13 @@ public module sun {
       return entries;
     }
 
+    // List the entries of a directory at a literal path. '.' and '..' are left
+    // out.
     public function read_dir(alloc: ref HeapAllocator, path: static_ptr<u8>) Vec<DirEntry>, IError {
       return read_dir_cstr(alloc, path.raw());
     }
 
+    // List the entries of a directory at a path built at runtime.
     public function read_dir(alloc: ref HeapAllocator, path: ref String) Vec<DirEntry>, IError {
       return read_dir_cstr(alloc, path.c_str());
     }
@@ -501,7 +537,7 @@ public module sun {
       var byte: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 1);
       var got_any: bool = false;
 
-      var n: i64 = unsafe { c_read(STDIN_FD, byte.rawData(), 1); };
+      var n: i64 = unsafe { c_read(STDIN_FD, byte.raw_data(), 1); };
       while (n > 0) {
         got_any = true;
         var ch: u8 = byte.get_unchecked(0);
@@ -509,7 +545,7 @@ public module sun {
           return Option.Some(line);
         }
         line.append_char(ch);
-        n = unsafe { c_read(STDIN_FD, byte.rawData(), 1); };
+        n = unsafe { c_read(STDIN_FD, byte.raw_data(), 1); };
       }
 
       if (not got_any) {
@@ -527,6 +563,7 @@ public module sun {
     public class Poller {
       var fds: Vec<PollFd>;
 
+      // Build an empty poller. Add descriptors before waiting.
       public function init(alloc: ref HeapAllocator) {
         this.fds = Vec<PollFd>(alloc, 4);
       }
@@ -546,14 +583,17 @@ public module sun {
         this.fds.push(PollFd(fd, POLLOUT));
       }
 
+      // Watch a descriptor for both readable data and room to write.
       public function add_read_write(fd: i32) void {
         this.fds.push(PollFd(fd, POLLIN | POLLOUT));
       }
 
+      // Forget every descriptor. Positions restart from zero after this.
       public function clear() void {
         this.fds.clear();
       }
 
+      // How many descriptors are being watched.
       public function count() i64 {
         return this.fds.size();
       }
@@ -566,7 +606,7 @@ public module sun {
         }
         var ready: i32 = unsafe {
           c_poll(
-            this.fds.rawData(),
+            this.fds.raw_data(),
             this.fds.size(),
             timeout_ms
           );
@@ -577,18 +617,22 @@ public module sun {
         return ready;
       }
 
+      // The descriptor added i-th.
       public function fd_at(i: i64) i32 {
         return this.fds.get_unchecked(i).fd;
       }
 
+      // The raw POLL* bits the system reported for the descriptor added i-th.
       public function revents(i: i64) i16 {
         return this.fds.get_unchecked(i).revents;
       }
 
+      // Report whether the descriptor added i-th has data to read.
       public function is_readable(i: i64) bool {
         return (this.revents(i) & POLLIN) != 0;
       }
 
+      // Report whether the descriptor added i-th has room to write.
       public function is_writable(i: i64) bool {
         return (this.revents(i) & POLLOUT) != 0;
       }
@@ -598,6 +642,7 @@ public module sun {
         return (this.revents(i) & POLLHUP) != 0;
       }
 
+      // Report whether the system flagged an error on the descriptor added i-th.
       public function is_error(i: i64) bool {
         return (this.revents(i) & POLLERR) != 0;
       }

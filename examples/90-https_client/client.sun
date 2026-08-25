@@ -22,7 +22,7 @@ function main() i32 {
 
     // Print the first line of the body
     var end: i64 = 0;
-    while (end < response.body.length() and response.body.at(end) != 10) {
+    while (end < response.body.length() and response.body.at(end) != b'\n') {
       end = end + 1;
     }
     var first_line = response.body.substr(alloc, 0, end);

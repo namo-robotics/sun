@@ -32,12 +32,12 @@ TEST_F(Stdlib_Sys_Command, output_captures_stdout_and_status) {
         var a = make_heap_allocator();
         try {
             var cmd = Command(a, "/bin/sh");
-            cmd.arg("-c");
-            cmd.arg("printf hello");
+            cmd.add_arg("-c");
+            cmd.add_arg("printf hello");
             var out = cmd.output();
             if (out.status() != 0) { return 1; }
             if (not out.stdout().equals_literal("hello")) { return 2; }
-            if (not out.stderr().isEmpty()) { return 3; }
+            if (not out.stderr().is_empty()) { return 3; }
         } catch (e: IError) {
             return 4;
         }
@@ -56,8 +56,8 @@ TEST_F(Stdlib_Sys_Command, non_zero_exit_is_reported) {
         var a = make_heap_allocator();
         try {
             var cmd = Command(a, "/bin/sh");
-            cmd.arg("-c");
-            cmd.arg("exit 3");
+            cmd.add_arg("-c");
+            cmd.add_arg("exit 3");
             return cmd.output().status();
         } catch (e: IError) {
             return -1;
@@ -76,8 +76,8 @@ TEST_F(Stdlib_Sys_Command, stderr_is_captured_separately) {
         var a = make_heap_allocator();
         try {
             var cmd = Command(a, "/bin/sh");
-            cmd.arg("-c");
-            cmd.arg("printf out; printf err >&2");
+            cmd.add_arg("-c");
+            cmd.add_arg("printf out; printf err >&2");
             var res = cmd.output();
             if (not res.stdout().equals_literal("out")) { return 1; }
             if (not res.stderr().equals_literal("err")) { return 2; }
@@ -101,8 +101,8 @@ TEST_F(Stdlib_Sys_Command, large_output_does_not_deadlock) {
         var a = make_heap_allocator();
         try {
             var cmd = Command(a, "/bin/sh");
-            cmd.arg("-c");
-            cmd.arg("yes abcdefgh | head -c 200000; printf e >&2");
+            cmd.add_arg("-c");
+            cmd.add_arg("yes abcdefgh | head -c 200000; printf e >&2");
             var res = cmd.output();
             if (res.stdout().length() != 200000) { return 1; }
             if (not res.stderr().equals_literal("e")) { return 2; }
@@ -125,11 +125,11 @@ TEST_F(Stdlib_Sys_Command, arguments_are_passed_separately_not_reparsed) {
         try {
             // A space inside one argument stays inside it.
             var cmd = Command(a, "/bin/sh");
-            cmd.arg("-c");
-            cmd.arg("printf '%s|%s' \"$1\" \"$2\"");
-            cmd.arg("sh");
-            cmd.arg("one two");
-            cmd.arg("three");
+            cmd.add_arg("-c");
+            cmd.add_arg("printf '%s|%s' \"$1\" \"$2\"");
+            cmd.add_arg("sh");
+            cmd.add_arg("one two");
+            cmd.add_arg("three");
             var res = cmd.output();
             if (not res.stdout().equals_literal("one two|three")) { return 1; }
         } catch (e: IError) {
@@ -151,8 +151,8 @@ TEST_F(Stdlib_Sys_Command, string_arguments_are_accepted) {
         try {
             var script = String(a, "printf built-at-runtime");
             var cmd = Command(a, "/bin/sh");
-            cmd.arg("-c");
-            cmd.arg(script);
+            cmd.add_arg("-c");
+            cmd.add_arg(script);
             var res = cmd.output();
             if (not res.stdout().equals_literal("built-at-runtime")) { return 1; }
             // arg(ref String) borrows; the caller still owns it
@@ -175,8 +175,8 @@ TEST_F(Stdlib_Sys_Command, status_runs_with_inherited_streams) {
         var a = make_heap_allocator();
         try {
             var cmd = Command(a, "/bin/sh");
-            cmd.arg("-c");
-            cmd.arg("exit 7");
+            cmd.add_arg("-c");
+            cmd.add_arg("exit 7");
             return cmd.status();
         } catch (e: IError) {
             return -1;
@@ -195,8 +195,8 @@ TEST_F(Stdlib_Sys_Command, start_then_wait_gives_the_exit_code) {
         var a = make_heap_allocator();
         try {
             var cmd = Command(a, "/bin/sh");
-            cmd.arg("-c");
-            cmd.arg("exit 5");
+            cmd.add_arg("-c");
+            cmd.add_arg("exit 5");
             var child = cmd.start();
             if (child.id() <= 0) { return 1; }
             return child.wait();
@@ -217,10 +217,10 @@ TEST_F(Stdlib_Sys_Command, child_stdin_can_be_written) {
         var a = make_heap_allocator();
         try {
             var cmd = Command(a, "/bin/sh");
-            cmd.arg("-c");
-            cmd.arg("cat");
-            cmd.stdin(Stdio.Piped);
-            cmd.stdout(Stdio.Piped);
+            cmd.add_arg("-c");
+            cmd.add_arg("cat");
+            cmd.set_stdin(Stdio.Piped);
+            cmd.set_stdout(Stdio.Piped);
             var child = cmd.start();
             var payload = String(a, "echoed back");
             child.write_stdin(payload);
@@ -246,10 +246,10 @@ TEST_F(Stdlib_Sys_Command, a_signalled_child_reports_128_plus_the_signal) {
         var a = make_heap_allocator();
         try {
             var cmd = Command(a, "/bin/sh");
-            cmd.arg("-c");
-            cmd.arg("kill -9 $$");
-            cmd.stdout(Stdio.Null);
-            cmd.stderr(Stdio.Null);
+            cmd.add_arg("-c");
+            cmd.add_arg("kill -9 $$");
+            cmd.set_stdout(Stdio.Null);
+            cmd.set_stderr(Stdio.Null);
             return cmd.status();
         } catch (e: IError) {
             return -1;
@@ -268,7 +268,7 @@ TEST_F(Stdlib_Sys_Command, missing_program_exits_127) {
         var a = make_heap_allocator();
         try {
             var cmd = Command(a, "/no/such/program/anywhere");
-            cmd.stderr(Stdio.Null);
+            cmd.set_stderr(Stdio.Null);
             return cmd.status();
         } catch (e: IError) {
             return -1;

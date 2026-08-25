@@ -46,6 +46,16 @@ std::unique_ptr<ExprAST> Parser::parseNumberExpr() {
   return finishNode(std::move(result), start);
 }
 
+// 'a' (a char) and b'a' (a u8); the lexer has already decoded the escape.
+std::unique_ptr<ExprAST> Parser::parseCharLiteral() {
+  Position start = captureStart();
+  bool isByte = curTok.kind == TokenKind::BYTE_LITERAL;
+  auto result = std::make_unique<CharLiteralAST>(
+      static_cast<uint32_t>(curTok.getCharValue().value()), isByte);
+  getNextToken();  // consume the literal
+  return finishNode(std::move(result), start);
+}
+
 std::unique_ptr<ExprAST> Parser::parseStringLiteral() {
   Position start = captureStart();
   auto result = std::make_unique<StringLiteralAST>(curTok.getString().value());
@@ -838,6 +848,10 @@ unique_ptr<ExprAST> Parser::parsePrimary() {
     case TokenKind::STRING:
       base = parseStringLiteral();
       break;
+    case TokenKind::CHAR_LITERAL:
+    case TokenKind::BYTE_LITERAL:
+      base = parseCharLiteral();
+      break;
     case TokenKind::TEMPLATE_STRING: {
       // Parse interpolated template string: `Hello ${name}!`
       std::string content = curTok.getTemplateString().value();
@@ -1126,6 +1140,7 @@ bool Parser::isTypeToken(TokenKind kind) {
     case TokenKind::TYPE_F64:
     case TokenKind::TYPE_BOOL:
     case TokenKind::TYPE_VOID:
+    case TokenKind::TYPE_CHAR:
     case TokenKind::PTR:
     case TokenKind::RAW_PTR:
     case TokenKind::STATIC_PTR:
@@ -1368,6 +1383,9 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
         break;
       case TokenKind::TYPE_VOID:
         type.baseName = "void";
+        break;
+      case TokenKind::TYPE_CHAR:
+        type.baseName = "char";
         break;
       case TokenKind::IDENTIFIER:
       case TokenKind::INTRINSIC_IDENTIFIER:
@@ -3191,6 +3209,11 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
   }
   if (cleanType == "bool") {
     TypeAnnotation result("bool");
+    result.canError = canError;
+    return result;
+  }
+  if (cleanType == "char") {
+    TypeAnnotation result("char");
     result.canError = canError;
     return result;
   }

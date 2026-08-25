@@ -127,6 +127,13 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       break;
     }
 
+    case ASTNodeType::CHAR_LITERAL: {
+      // 'a' is always a char and b'a' is always a u8; neither takes its type
+      // from context the way an integer literal does.
+      expr.setResolvedType(inferType(expr));
+      break;
+    }
+
     case ASTNodeType::STRING_LITERAL: {
       expr.setResolvedType(inferType(expr));
       break;
@@ -803,6 +810,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
           }
         }
       }
+      checkCharOperands(binExpr);
       coerceBinaryLiteralOperands(binExpr, expectedType);
       expr.setResolvedType(inferType(expr));
       break;
@@ -2598,6 +2606,7 @@ void SemanticAnalyzer::clearResolvedTypes(ExprAST& expr) {
     // Terminal nodes (no children to recurse into)
     case ASTNodeType::NUMBER:
     case ASTNodeType::STRING_LITERAL:
+    case ASTNodeType::CHAR_LITERAL:
     case ASTNodeType::BOOL_LITERAL:
     case ASTNodeType::NULL_LITERAL:
     case ASTNodeType::VARIABLE_REFERENCE:

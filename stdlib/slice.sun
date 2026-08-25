@@ -9,78 +9,85 @@
 //   :b   -> SliceRange(0, b, false, true)
 //   :    -> SliceRange(0, 0, false, false)
 //
-// When hasStart=false, start should be treated as 0 (beginning of dimension).
-// When hasEnd=false, end should be treated as dimension size (end of dimension).
+// When has_start=false, start should be treated as 0 (beginning of dimension).
+// When has_end=false, end should be treated as dimension size (end of dimension).
 
 public module sun {
   public class SliceRange {
-    public var start: i64;  // Start index (ignored if hasStart=false)
-    public var end: i64;  // End index, exclusive (ignored if hasEnd=false)
-    public var hasStart: bool;  // true if explicit start was provided
-    public var hasEnd: bool;  // true if explicit end was provided
+    public var start: i64;  // Start index (ignored if has_start=false)
+    public var end: i64;  // End index, exclusive (ignored if has_end=false)
+    public var has_start: bool;  // true if explicit start was provided
+    public var has_end: bool;  // true if explicit end was provided
 
-    // Constructor with all fields
-    public function init(start_: i64, end_: i64, hasStart_: bool, hasEnd_: bool) {
+    // Build a range from all four fields. The compiler emits this shape
+    // directly, so the field order here is part of the slicing ABI.
+    public function init(start_: i64, end_: i64, has_start_: bool,
+                         has_end_: bool) {
       this.start = start_;
       this.end = end_;
-      this.hasStart = hasStart_;
-      this.hasEnd = hasEnd_;
+      this.has_start = has_start_;
+      this.has_end = has_end_;
     }
 
-    // Get effective start index (0 if not specified)
-    public const function getStart() i64 {
-      if (this.hasStart) {
+    // Return the index this range starts at, or 0 when the slice left the
+    // start blank.
+    public const function get_start() i64 {
+      if (this.has_start) {
         return this.start;
       }
       return 0;
     }
 
-    // Get effective end index, given dimension size
-    public const function getEnd(dimSize: i64) i64 {
-      if (this.hasEnd) {
+    // Return the index this range stops before, or the dimension's size when
+    // the slice left the end blank.
+    public const function get_end(dim_size: i64) i64 {
+      if (this.has_end) {
         return this.end;
       }
-      return dimSize;
+      return dim_size;
     }
 
-    // Check if this is a full-range slice (:)
-    public const function isFullRange() bool {
-      if (this.hasStart) {
+    // Report whether this range covers a whole dimension, as a bare ':' does.
+    public const function is_full_range() bool {
+      if (this.has_start) {
         return false;
       }
-      if (this.hasEnd) {
+      if (this.has_end) {
         return false;
       }
       return true;
     }
 
-    // Compute the size of this slice given dimension size
-    public const function size(dimSize: i64) i64 {
-      var s: i64 = this.getStart();
-      var e: i64 = this.getEnd(dimSize);
+    // Return how many elements this range selects out of a dimension of the
+    // given size.
+    public const function compute_size(dim_size: i64) i64 {
+      var s: i64 = this.get_start();
+      var e: i64 = this.get_end(dim_size);
       return e - s;
     }
   }
 
-  // Helper function to create a full-range slice (:)
-  public function SliceRange_full() SliceRange {
+  // Build the range written ':' — every element of the dimension.
+  public function create_full_range() SliceRange {
     var zero: i64 = 0;
     return SliceRange(zero, zero, false, false);
   }
 
-  // Helper function to create an explicit range slice (a:b)
-  public function SliceRange_range(start: i64, end: i64) SliceRange {
+  // Build the range written 'start:end', with both ends given.
+  public function create_range(start: i64, end: i64) SliceRange {
     return SliceRange(start, end, true, true);
   }
 
-  // Helper function to create a from-start slice (a:)
-  public function SliceRange_from(start: i64) SliceRange {
+  // Build the range written 'start:' — from an index to the end of the
+  // dimension.
+  public function create_range_from(start: i64) SliceRange {
     var zero: i64 = 0;
     return SliceRange(start, zero, true, false);
   }
 
-  // Helper function to create a to-end slice (:b)
-  public function SliceRange_to(end: i64) SliceRange {
+  // Build the range written ':end' — from the start of the dimension up to an
+  // index.
+  public function create_range_to(end: i64) SliceRange {
     var zero: i64 = 0;
     return SliceRange(zero, end, false, true);
   }

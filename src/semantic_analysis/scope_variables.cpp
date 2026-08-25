@@ -964,6 +964,9 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
   registernFunctionInCurrentScope("_print_f64",
                                   {Types::Void(), {Types::Float64()}, {}});
   registernFunctionInCurrentScope("_print_newline", {Types::Void(), {}, {}});
+  // _print_char intrinsic: write one char as UTF-8
+  registernFunctionInCurrentScope("_print_char",
+                                  {Types::Void(), {Types::Char()}, {}});
   // _print_bytes intrinsic: write raw bytes to stdout
   registernFunctionInCurrentScope(
       "_print_bytes",

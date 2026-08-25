@@ -13,7 +13,7 @@
 //   m.insert(42, 100);
 //   var val = m.get(42);              // Borrows 100, throws if not found
 //   var fallback = 0;
-//   var val2 = m.getOrDefault(99, fallback); // Borrows the default: 99 absent
+//   var val2 = m.get_or_default(99, fallback); // Borrows the default: 99 absent
 //   m.remove(42);                     // Removes and returns value
 //
 //   // Check existence
@@ -76,40 +76,49 @@ public module sun {
   // specialization, so Map<i64, V>, Map<i32, V>, Map<u32, V> and
   // Map<String, V> each pick the matching pair. String keys are compared by
   // content through references (never copied out of the bucket).
-  function map_key_hash(k: i64) i64 {
+  function hash_map_key(k: i64) i64 {
     return hash_i64(k);
   }
-  function map_key_hash(k: i32) i64 {
+  // Hash a 32-bit signed key.
+  function hash_map_key(k: i32) i64 {
     return hash_i64(k);
   }
-  function map_key_hash(k: u32) i64 {
+  // Hash a 32-bit unsigned key.
+  function hash_map_key(k: u32) i64 {
     return hash_i64(k);
   }
-  function map_key_hash(k: u64) i64 {
+  // Hash a 64-bit unsigned key.
+  function hash_map_key(k: u64) i64 {
     return hash_i64(_convert<i64>(k));
   }
-  function map_key_hash(k: const ref String) i64 {
+  // Hash a String key by its bytes.
+  function hash_map_key(k: const ref String) i64 {
     return hash_string(k);
   }
 
-  function map_keys_equal(a: const ref i64, b: i64) bool {
+  // Compare a stored 64-bit signed key against a lookup key.
+  function compare_map_keys(a: const ref i64, b: i64) bool {
     return a == b;
   }
-  function map_keys_equal(a: const ref i32, b: i32) bool {
+  // Compare a stored 32-bit signed key against a lookup key.
+  function compare_map_keys(a: const ref i32, b: i32) bool {
     return a == b;
   }
-  function map_keys_equal(a: const ref u32, b: u32) bool {
+  // Compare a stored 32-bit unsigned key against a lookup key.
+  function compare_map_keys(a: const ref u32, b: u32) bool {
     return a == b;
   }
-  function map_keys_equal(a: const ref u64, b: u64) bool {
+  // Compare a stored 64-bit unsigned key against a lookup key.
+  function compare_map_keys(a: const ref u64, b: u64) bool {
     return a == b;
   }
-  function map_keys_equal(a: const ref String, b: const ref String) bool {
+  // Compare a stored String key against a lookup key, byte for byte.
+  function compare_map_keys(a: const ref String, b: const ref String) bool {
     return a.equals(b);
   }
 
   // Modulo operation (a mod b)
-  function mod(a: i64, b: i64) i64 {
+  function compute_mod(a: i64, b: i64) i64 {
     return a - (a / b) * b;
   }
 
@@ -153,12 +162,12 @@ public module sun {
 
     // Drop the key stored at bucket probe (no-op for non-owning key types)
     function drop_key(probe: i64) void {
-      unsafe { _deinit<K>(_ptr_offset(this.keys.rawData(), probe * _sizeof<K>())); };
+      unsafe { _deinit<K>(_ptr_offset(this.keys.raw_data(), probe * _sizeof<K>())); };
     }
 
     // Drop the value stored at bucket probe (no-op for non-owning value types)
     function drop_value(probe: i64) void {
-      unsafe { _deinit<V>(_ptr_offset(this.values.rawData(), probe * _sizeof<V>())); };
+      unsafe { _deinit<V>(_ptr_offset(this.values.raw_data(), probe * _sizeof<V>())); };
     }
 
     // ========================================================================
@@ -173,13 +182,13 @@ public module sun {
         this.grow();
       }
 
-      var hash: i64 = map_key_hash(key);
-      var start: i64 = mod(hash, this.capacity_);
+      var hash: i64 = hash_map_key(key);
+      var start: i64 = compute_mod(hash, this.capacity_);
       var first_deleted: i64 = -1;
 
       // Linear probing
       for (var i: i64 = 0; i < this.capacity_; i = i + 1) {
-        var probe: i64 = mod(start + i, this.capacity_);
+        var probe: i64 = compute_mod(start + i, this.capacity_);
         var state: i8 = this.states.get(probe);
 
         if (state == 0) {
@@ -229,7 +238,7 @@ public module sun {
     // ownership, so this hands back a reference — copying the value out would
     // leave two owners of anything it holds. Use remove() to move it out.
     public const function get(key: K) ref V, IError {
-      var probe: i64 = this.findIndex(key);
+      var probe: i64 = this.find_index(key);
       if (probe < 0) {
         throw NotFoundError();
       }
@@ -238,7 +247,7 @@ public module sun {
 
     // Borrow the value stored under key; None if not present
     public const function find(key: K) Option<ref V> {
-      var probe: i64 = this.findIndex(key);
+      var probe: i64 = this.find_index(key);
       if (probe < 0) {
         return Option.None;
       }
@@ -246,8 +255,8 @@ public module sun {
     }
 
     // Borrow the value stored under key, or the caller's default when absent
-    public const function getOrDefault(key: K, default_value: ref V) ref V {
-      var probe: i64 = this.findIndex(key);
+    public const function get_or_default(key: K, default_value: ref V) ref V {
+      var probe: i64 = this.find_index(key);
       if (probe < 0) {
         return default_value;
       }
@@ -256,7 +265,7 @@ public module sun {
 
     // Remove key and return its value, throws IError if not found
     public function remove(key: K) V, IError {
-      var probe: i64 = this.findIndex(key);
+      var probe: i64 = this.find_index(key);
       if (probe < 0) {
         throw NotFoundError();
       }
@@ -270,7 +279,7 @@ public module sun {
 
     // Check if key exists
     public const function contains(key: K) bool {
-      return this.findIndex(key) >= 0;
+      return this.find_index(key) >= 0;
     }
 
     // Get number of elements
@@ -284,7 +293,7 @@ public module sun {
     }
 
     // Check if map is empty
-    public const function isEmpty() bool {
+    public const function is_empty() bool {
       return this.size_ == 0;
     }
 
@@ -310,35 +319,35 @@ public module sun {
     // ========================================================================
 
     // True if bucket i holds a live entry
-    public const function bucket_occupied(i: i64) bool {
+    public const function is_bucket_occupied(i: i64) bool {
       return this.states.get_unchecked(i) == 1;
     }
 
     // Borrow the key stored in bucket i (must be occupied)
-    public const function bucket_key(i: i64) ref K {
-      return unsafe { _to_ref<K>(_ptr_as_raw<K>(_ptr_offset(this.keys.rawData(), i * _sizeof<K>()))); };
+    public const function get_bucket_key(i: i64) ref K {
+      return unsafe { _to_ref<K>(_ptr_as_raw<K>(_ptr_offset(this.keys.raw_data(), i * _sizeof<K>()))); };
     }
 
     // Borrow the value stored in bucket i (must be occupied)
-    public const function bucket_value(i: i64) ref V {
-      return unsafe { _to_ref<V>(_ptr_as_raw<V>(_ptr_offset(this.values.rawData(), i * _sizeof<V>()))); };
+    public const function get_bucket_value(i: i64) ref V {
+      return unsafe { _to_ref<V>(_ptr_as_raw<V>(_ptr_offset(this.values.raw_data(), i * _sizeof<V>()))); };
     }
 
     // Compare the key stored in bucket probe against `key` in place
     const function key_at_equals(probe: i64, key: const ref K) bool {
-      var slot: raw_ptr<K> = unsafe { _ptr_as_raw<K>(_ptr_offset(this.keys.rawData(), probe * _sizeof<K>())); };
-      return unsafe { map_keys_equal(_to_ref<K>(slot), key); };
+      var slot: raw_ptr<K> = unsafe { _ptr_as_raw<K>(_ptr_offset(this.keys.raw_data(), probe * _sizeof<K>())); };
+      return unsafe { compare_map_keys(_to_ref<K>(slot), key); };
     }
 
     // Find index of key, returns -1 if not found. The key is borrowed for
     // the comparisons and dropped when this call ends (String keys own their
     // buffer; the bucket keeps its own copy).
-    const function findIndex(key: K) i64 {
-      var hash: i64 = map_key_hash(key);
-      var start: i64 = mod(hash, this.capacity_);
+    const function find_index(key: K) i64 {
+      var hash: i64 = hash_map_key(key);
+      var start: i64 = compute_mod(hash, this.capacity_);
 
       for (var i: i64 = 0; i < this.capacity_; i = i + 1) {
-        var probe: i64 = mod(start + i, this.capacity_);
+        var probe: i64 = compute_mod(start + i, this.capacity_);
         var state: i8 = this.states.get(probe);
 
         if (state == 0) {
@@ -412,6 +421,7 @@ public module sun {
   public class MapIterator<K, V> implements IIterator<ref V, Map<K, V>> {
     var current: i64;
 
+    // Build an iterator positioned before the first bucket.
     public function init() {
       this.current = 0;
     }

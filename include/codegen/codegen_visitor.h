@@ -243,6 +243,7 @@ class CodegenVisitor {
  private:
   // Expression handlers
   llvm::Value* codegen(const NumberExprAST& expr);
+  llvm::Value* codegen(const CharLiteralAST& expr);
   llvm::Value* codegen(const StringLiteralAST& expr);
   llvm::Value* codegen(const VariableReferenceAST& expr);
   llvm::Value* codegen(const VariableAssignmentAST& expr);
@@ -1116,6 +1117,7 @@ class CodegenVisitor {
   llvm::Value* codegenPrintF64(const CallExprAST& expr);
   llvm::Value* codegenPrintString(const CallExprAST& expr);
   llvm::Value* codegenPrintBytes(const CallExprAST& expr);
+  llvm::Value* codegenPrintChar(const CallExprAST& expr);
   llvm::Value* codegenPrintNewline();
 
   // File I/O built-ins

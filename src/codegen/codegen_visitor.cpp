@@ -30,6 +30,8 @@ Value* CodegenVisitor::codegenExpression(const ExprAST& expr) {
   switch (expr.getType()) {
     case ASTNodeType::NUMBER:
       return codegen(static_cast<const NumberExprAST&>(expr));
+    case ASTNodeType::CHAR_LITERAL:
+      return codegen(static_cast<const CharLiteralAST&>(expr));
     case ASTNodeType::STRING_LITERAL:
       return codegen(static_cast<const StringLiteralAST&>(expr));
     case ASTNodeType::STRUCT_LITERAL:
@@ -187,6 +189,13 @@ Value* CodegenVisitor::codegenExpression(const ExprAST& expr) {
 // -------------------------------------------------------------------
 // Number and string literals
 // -------------------------------------------------------------------
+
+Value* CodegenVisitor::codegen(const CharLiteralAST& expr) {
+  // A byte literal is a u8; a char is a Unicode scalar value in an i32.
+  return ConstantInt::get(expr.isByte() ? Type::getInt8Ty(ctx.getContext())
+                                        : Type::getInt32Ty(ctx.getContext()),
+                          expr.getValue());
+}
 
 Value* CodegenVisitor::codegen(const NumberExprAST& expr) {
   if (expr.isInteger()) {

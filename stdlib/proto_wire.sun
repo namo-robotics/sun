@@ -14,14 +14,17 @@ public module sun {
   public class ProtoDecodeError implements IError {
     var message_: static_ptr<u8>;
 
+    // Build a decode error carrying a literal explanation.
     public function init(message: static_ptr<u8>) {
       this.message_ = message;
     }
 
+    // Always 100, the code for a protobuf decode failure.
     public function code() i32 {
       return 40;
     }
 
+    // A fresh copy of the explanation, owned by the caller.
     public function message() String {
       return String(this.message_);
     }
@@ -40,28 +43,35 @@ public module sun {
     buf.push(_convert<u8>(v));
   }
 
+  // Append a field tag: the field number and wire type packed into one varint.
   public function proto_write_tag(buf: ref Vec<u8>, field: i64, wire_type: i64) void {
     var key: u64 = _convert<u64>(field * 8 + wire_type);
     proto_write_varint(buf, key);
   }
 
+  // Append an int32 field value. Negative values sign-extend to ten bytes, as
+  // the protobuf spec requires.
   public function proto_write_int32(buf: ref Vec<u8>, value: i32) void {
     // Negative int32 sign-extends to a 10-byte varint (protobuf spec)
     proto_write_varint(buf, _convert<u64>(value));
   }
 
+  // Append an int64 field value as a varint.
   public function proto_write_int64(buf: ref Vec<u8>, value: i64) void {
     proto_write_varint(buf, _convert<u64>(value));
   }
 
+  // Append a uint32 field value as a varint.
   public function proto_write_uint32(buf: ref Vec<u8>, value: u32) void {
     proto_write_varint(buf, _convert<u64>(value));
   }
 
+  // Append a uint64 field value as a varint.
   public function proto_write_uint64(buf: ref Vec<u8>, value: u64) void {
     proto_write_varint(buf, value);
   }
 
+  // Append a bool field value as a single 0 or 1 byte.
   public function proto_write_bool(buf: ref Vec<u8>, value: bool) void {
     if (value) {
       buf.push(1);
@@ -70,24 +80,30 @@ public module sun {
     }
   }
 
-  public function proto_zigzag64(value: i64) u64 {
+  // Fold a signed value into an unsigned one so small negatives stay short:
+  // 0, -1, 1, -2 become 0, 1, 2, 3.
+  public function proto_encode_zigzag64(value: i64) u64 {
     return (_convert<u64>(value) << 1) ^ _convert<u64>(value >> 63);
   }
 
-  public function proto_unzigzag64(value: u64) i64 {
+  // Undo the zigzag folding, recovering the signed value.
+  public function proto_decode_zigzag64(value: u64) i64 {
     var half: i64 = _convert<i64>(value >> 1);
     var neg: i64 = 0 - _convert<i64>(value & 1);
     return half ^ neg;
   }
 
+  // Append a sint32 field value, zigzag encoded.
   public function proto_write_sint32(buf: ref Vec<u8>, value: i32) void {
-    proto_write_varint(buf, proto_zigzag64(_convert<i64>(value)));
+    proto_write_varint(buf, proto_encode_zigzag64(_convert<i64>(value)));
   }
 
+  // Append a sint64 field value, zigzag encoded.
   public function proto_write_sint64(buf: ref Vec<u8>, value: i64) void {
-    proto_write_varint(buf, proto_zigzag64(value));
+    proto_write_varint(buf, proto_encode_zigzag64(value));
   }
 
+  // Append a fixed32 field value: four bytes, least significant first.
   public function proto_write_fixed32(buf: ref Vec<u8>, value: u32) void {
     var v: u32 = value;
     buf.push(_convert<u8>(v & 255));
@@ -96,6 +112,7 @@ public module sun {
     buf.push(_convert<u8>((v >> 24) & 255));
   }
 
+  // Append a fixed64 field value: eight bytes, least significant first.
   public function proto_write_fixed64(buf: ref Vec<u8>, value: u64) void {
     var v: u64 = value;
     for (var i: i32 = 0; i < 8; i = i + 1) {
@@ -104,18 +121,22 @@ public module sun {
     }
   }
 
+  // Append an sfixed32 field value: four bytes of the two's complement form.
   public function proto_write_sfixed32(buf: ref Vec<u8>, value: i32) void {
     proto_write_fixed32(buf, _convert<u32>(value));
   }
 
+  // Append an sfixed64 field value: eight bytes of the two's complement form.
   public function proto_write_sfixed64(buf: ref Vec<u8>, value: i64) void {
     proto_write_fixed64(buf, _convert<u64>(value));
   }
 
+  // Append a float field value as its four raw IEEE-754 bytes.
   public function proto_write_float(buf: ref Vec<u8>, value: f32) void {
     proto_write_fixed32(buf, _bitcast<u32>(value));
   }
 
+  // Append a double field value as its eight raw IEEE-754 bytes.
   public function proto_write_double(buf: ref Vec<u8>, value: f64) void {
     proto_write_fixed64(buf, _bitcast<u64>(value));
   }
@@ -160,20 +181,25 @@ public module sun {
     var len: i64;  // current limit (end of the message being decoded)
     var pos: i64;
 
+    // Build a reader over a buffer. The buffer stays borrowed for the reader's
+    // whole life, so its bytes cannot move underneath it.
     public function init(buf: ref Vec<u8>) {
-      this.data = buf.rawData();
+      this.data = buf.raw_data();
       this.len = buf.size();
       this.pos = 0;
     }
 
+    // Report whether the reader has consumed everything up to the current limit.
     public function at_end() bool {
       return this.pos >= this.len;
     }
 
+    // The current byte offset into the buffer.
     public function position() i64 {
       return this.pos;
     }
 
+    // Read one byte and step past it. Throws at the end of the buffer.
     public function read_byte() u8, IError {
       if (this.pos >= this.len) {
         throw ProtoDecodeError("unexpected end of buffer");
@@ -183,6 +209,7 @@ public module sun {
       return b;
     }
 
+    // Read a base-128 varint. Throws on a truncated or over-long encoding.
     public function read_varint() u64, IError {
       var result: u64 = 0;
       var shift: u64 = 0;
@@ -203,34 +230,42 @@ public module sun {
       return this.read_varint();
     }
 
+    // Read an int32 field value.
     public function read_int32() i32, IError {
       return _convert<i32>(this.read_varint());
     }
 
+    // Read an int64 field value.
     public function read_int64() i64, IError {
       return _convert<i64>(this.read_varint());
     }
 
+    // Read a uint32 field value.
     public function read_uint32() u32, IError {
       return _convert<u32>(this.read_varint());
     }
 
+    // Read a uint64 field value.
     public function read_uint64() u64, IError {
       return this.read_varint();
     }
 
+    // Read a bool field value. Any non-zero varint counts as true.
     public function read_bool() bool, IError {
       return this.read_varint() != 0;
     }
 
+    // Read a zigzag-encoded sint32 field value.
     public function read_sint32() i32, IError {
-      return _convert<i32>(proto_unzigzag64(this.read_varint()));
+      return _convert<i32>(proto_decode_zigzag64(this.read_varint()));
     }
 
+    // Read a zigzag-encoded sint64 field value.
     public function read_sint64() i64, IError {
-      return proto_unzigzag64(this.read_varint());
+      return proto_decode_zigzag64(this.read_varint());
     }
 
+    // Read four bytes as a fixed32 field value, least significant first.
     public function read_fixed32() u32, IError {
       var b0: u32 = _convert<u32>(this.read_byte());
       var b1: u32 = _convert<u32>(this.read_byte());
@@ -239,6 +274,7 @@ public module sun {
       return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
     }
 
+    // Read eight bytes as a fixed64 field value, least significant first.
     public function read_fixed64() u64, IError {
       var result: u64 = 0;
       var shift: u64 = 0;
@@ -250,18 +286,22 @@ public module sun {
       return result;
     }
 
+    // Read four bytes as a signed sfixed32 field value.
     public function read_sfixed32() i32, IError {
       return _convert<i32>(this.read_fixed32());
     }
 
+    // Read eight bytes as a signed sfixed64 field value.
     public function read_sfixed64() i64, IError {
       return _convert<i64>(this.read_fixed64());
     }
 
+    // Read four bytes as an IEEE-754 float.
     public function read_float() f32, IError {
       return _bitcast<f32>(this.read_fixed32());
     }
 
+    // Read eight bytes as an IEEE-754 double.
     public function read_double() f64, IError {
       return _bitcast<f64>(this.read_fixed64());
     }
@@ -287,6 +327,7 @@ public module sun {
       return old;
     }
 
+    // Restore the limit that push_limit returned, after a nested message ends.
     public function pop_limit(old_end: i64) void {
       this.len = old_end;
     }
@@ -366,11 +407,12 @@ public module sun {
   }
 
   // Tag helpers
-  public function proto_tag_field(tag: u64) i64 {
+  public function proto_read_tag_field(tag: u64) i64 {
     return _convert<i64>(tag >> 3);
   }
 
-  public function proto_tag_wire_type(tag: u64) i64 {
+  // The wire type packed into a tag: its low three bits.
+  public function proto_read_tag_wire_type(tag: u64) i64 {
     return _convert<i64>(tag & 7);
   }
 }  // module sun

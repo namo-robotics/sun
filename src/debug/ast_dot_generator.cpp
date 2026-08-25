@@ -357,6 +357,7 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
     // Leaf nodes with no children
     case ASTNodeType::NUMBER:
     case ASTNodeType::STRING_LITERAL:
+    case ASTNodeType::CHAR_LITERAL:
     case ASTNodeType::BOOL_LITERAL:
     case ASTNodeType::NULL_LITERAL:
     case ASTNodeType::VARIABLE_REFERENCE:

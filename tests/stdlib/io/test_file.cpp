@@ -318,7 +318,7 @@ TEST_F(Stdlib_Io_File, sun_io_file_runtime_string_path) {
 
             var back = read_to_string(a, dir);
             if (not back.equals_literal("runtime path")) { return 1; }
-            if (file_size(dir) != 12) { return 2; }
+            if (get_file_size(dir) != 12) { return 2; }
         } catch (e: IError) {
             return 3;
         }

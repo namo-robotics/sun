@@ -116,6 +116,40 @@ TEST(Tooling_Serialization, BoolLiteralFalse) {
   EXPECT_FALSE(b->getValue());
 }
 
+// Both literal forms share one node, so the round-trip must keep the value
+// and which form it was.
+TEST(Tooling_Serialization, CharLiteralRoundtrip) {
+  auto ast = std::make_unique<CharLiteralAST>(0x1F600, /*isByte=*/false);
+
+  ASTSerializer serializer;
+  std::string data = serializer.serializeToString(*ast);
+
+  ASTDeserializer deserializer;
+  auto restored = deserializer.deserializeFromString(data);
+
+  ASSERT_NE(restored, nullptr);
+  ASSERT_EQ(restored->getType(), ASTNodeType::CHAR_LITERAL);
+  auto* c = static_cast<CharLiteralAST*>(restored.get());
+  EXPECT_EQ(c->getValue(), 0x1F600u);
+  EXPECT_FALSE(c->isByte());
+}
+
+TEST(Tooling_Serialization, ByteLiteralRoundtrip) {
+  auto ast = std::make_unique<CharLiteralAST>(0xFF, /*isByte=*/true);
+
+  ASTSerializer serializer;
+  std::string data = serializer.serializeToString(*ast);
+
+  ASTDeserializer deserializer;
+  auto restored = deserializer.deserializeFromString(data);
+
+  ASSERT_NE(restored, nullptr);
+  ASSERT_EQ(restored->getType(), ASTNodeType::CHAR_LITERAL);
+  auto* c = static_cast<CharLiteralAST*>(restored.get());
+  EXPECT_EQ(c->getValue(), 0xFFu);
+  EXPECT_TRUE(c->isByte());
+}
+
 TEST(Tooling_Serialization, NullLiteralRoundtrip) {
   auto ast = std::make_unique<NullLiteralAST>();
 

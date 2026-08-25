@@ -88,7 +88,7 @@ var len = v.size();       // 2
 | `set(index, value)` | `(i64, T) void` | Set element at index |
 | `size()` | `() i64` | Current number of elements |
 | `capacity()` | `() i64` | Current allocated capacity |
-| `isEmpty()` | `() bool` | Check if empty |
+| `is_empty()` | `() bool` | Check if empty |
 | `reserve(n)` | `(i64) void` | Ensure capacity for at least n elements |
 | `clear()` | `() void` | Remove all elements (doesn't deallocate) |
 | `first()` | `() Option<T>` | Get first element; `None` when empty |
@@ -123,7 +123,7 @@ A generic hash map using open addressing with linear probing. Implements `IItera
 var allocator = make_heap_allocator();
 var m = Map<i64, i32>(allocator, 16);  // Initial capacity 16
 m.insert(42, 100);
-var val = m.getOrDefault(42, 0);   // 100
+var val = m.get_or_default(42, 0);   // 100
 m.remove(42);
 ```
 
@@ -132,12 +132,12 @@ m.remove(42);
 | `insert(key, value)` | `(K, V) void` | Insert or update a key-value pair |
 | `get(key)` | `(K) V, IError` | Get value by key (throws if not found) |
 | `find(key)` | `(K) Option<V>` | Get value by key; `None` if not present |
-| `getOrDefault(key, default)` | `(K, V) V` | Get value or return default |
+| `get_or_default(key, default)` | `(K, V) V` | Get value or return default |
 | `remove(key)` | `(K) V, IError` | Remove and return value (throws if not found) |
 | `contains(key)` | `(K) bool` | Check if key exists |
 | `size()` | `() i64` | Number of entries |
 | `capacity()` | `() i64` | Number of buckets |
-| `isEmpty()` | `() bool` | Check if empty |
+| `is_empty()` | `() bool` | Check if empty |
 | `clear()` | `() void` | Remove all entries |
 | `iter()` | `() MapIterator<K, V>` | Get iterator over values |
 
@@ -166,15 +166,22 @@ var allocator = make_heap_allocator();
 var s = String(allocator, "Hello");
 var t = String("literal only");  // allocator-less: uses a fresh HeapAllocator
 println(s.length());   // 5
-var ch = s.at(0);          // 72 ('H')
-s.append_char(33);         // Append '!'
+var ch = s.at(0);          // b'H'
+s.append_char(b'!');       // Append a byte
+s.push('😀');              // Append a char, UTF-8 encoded
 ```
+
+A `String` holds UTF-8 and is indexed by **byte**: `at`, `length` and the
+`*_char` methods all work in bytes, so they pair with byte literals (`b'!'`).
+The methods that speak in Unicode scalar values — `push`, `iterate_chars`,
+`count_chars`, and the `char` overloads of `find` / `rfind` / `contains` — take
+and yield `char`. See [Characters and Bytes](/builtin-types#characters-and-bytes).
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `length()` | `() i64` | Current string length |
 | `capacity()` | `() i64` | Allocated capacity |
-| `isEmpty()` | `() bool` | True when the string has no bytes |
+| `is_empty()` | `() bool` | True when the string has no bytes |
 | `at(i)` | `(i64) u8` | Get byte at index |
 | `set_at(i, val)` | `(i64, u8) void` | Set byte at index |
 | `append_char(ch)` | `(u8) void` | Append a single byte |
@@ -184,6 +191,12 @@ s.append_char(33);         // Append '!'
 | `find_char(ch)` | `(u8) Option<i64>` | Index of first occurrence; `None` if absent |
 | `rfind_char(ch)` | `(u8) Option<i64>` | Index of last occurrence; `None` if absent |
 | `contains_char(ch)` | `(u8) bool` | Check if the byte occurs |
+| `push(c)` | `(char) void` | Append the UTF-8 encoding of a char (1 to 4 bytes) |
+| `iterate_chars()` | `() Chars` | Iterate the string as Unicode scalar values |
+| `count_chars()` | `() i64` | Number of scalar values, which is `length()` only for ASCII |
+| `find(c)` | `(char) Option<i64>` | Byte index of the first occurrence of a char; `None` if absent |
+| `rfind(c)` | `(char) Option<i64>` | Byte index of the last occurrence of a char; `None` if absent |
+| `contains(c)` | `(char) bool` | Check if the char occurs |
 | `find(needle)` | `(static_ptr<u8>) Option<i64>`, `(const ref String) Option<i64>` | Index of first occurrence of a substring; `None` if absent |
 | `contains(needle)` | `(static_ptr<u8>) bool`, `(const ref String) bool` | Check if the substring occurs |
 | `starts_with(s)` / `ends_with(s)` | `(static_ptr<u8>) bool`, `(const ref String) bool` | Prefix / suffix check |
@@ -243,6 +256,47 @@ var s = String(allocator, "Hello, World!");
 var view = s[0:5];   // StringView of "Hello"
 println(view.length());  // 5
 ```
+
+### Character helpers
+
+Free functions in `sun` for moving between `char` and code points.
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `char_of(code)` | `(i64) Option<char>` | A char from a code point; `None` for a surrogate or anything above `U+10FFFF` |
+| `code_of(c)` | `(char) i64` | The code point of a char |
+| `compute_utf8_len(code)` | `(i64) i64` | Bytes the UTF-8 encoding of a code point occupies |
+| `encode_utf8_byte(code, j)` | `(i64, i64) u8` | Byte `j` of that encoding |
+
+`char_of` is the checked counterpart to `_convert<char>(n)`, which does not
+verify that `n` is a Unicode scalar value.
+
+## Chars
+
+Iterates a `String` as Unicode scalar values, decoding UTF-8 as it goes.
+Obtained from `String.iterate_chars()`.
+
+```sun
+var s = String(alloc, "héllo😀");
+s.length();       // 10 bytes
+s.count_chars();   // 6 scalar values
+
+var it = s.iterate_chars();
+for (var c: char in it) {
+    print(c);
+}
+```
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `next(self)` | `(ref Chars) Option<char>` | Next scalar value; `None` at the end |
+| `offset()` | `() i64` | Byte offset of the scalar value `next` will return |
+
+Bytes that are not well-formed UTF-8 decode as `U+FFFD` and advance one byte,
+so iteration always terminates and always covers the whole string.
+
+A `Chars` borrows the string's bytes: it must not outlive the `String`, and any
+mutation of that `String` invalidates it.
 
 ## StringView
 
@@ -364,7 +418,7 @@ Free functions:
 | `rename_file` | `(old_path: Path, new_path: Path) void, IError` |
 | `make_dir` | `(path: Path, mode: i32) void, IError` |
 | `exists` / `is_dir` / `is_file` | `(path: Path) bool` |
-| `file_size` | `(path: Path) i64, IError` |
+| `get_file_size` | `(path: Path) i64, IError` |
 | `read_line` | `(alloc: ref HeapAllocator) Option<String>` |
 
 `Path` stands for the two overloads each of these has: `static_ptr<u8>` (a
@@ -451,7 +505,7 @@ var home = match get(alloc, "HOME") {
 };
 
 try { set("LANG", "C"); } catch (e: IError) { }
-var here = cwd(alloc);
+var here = get_cwd(alloc);
 ```
 
 | Function | Signature | Description |
@@ -475,7 +529,7 @@ script's — see [Entry point](/functions#entry-point).
 ```sun
 function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
     var alloc = make_heap_allocator();
-    var cli = args(alloc, argc, argv);
+    var cli = collect_args(alloc, argc, argv);
     for (var s: String in cli) { println(s); }
     return 0;
 }
@@ -493,8 +547,8 @@ the raw POSIX calls are there for programs that drive the fork themselves.
 using sun.process;
 
 var cmd = Command(alloc, "/bin/sh");
-cmd.arg("-c");
-cmd.arg("printf hello");
+cmd.add_arg("-c");
+cmd.add_arg("printf hello");
 var out = cmd.output();
 
 println(out.status());     // 0
@@ -544,12 +598,12 @@ or killing on that would touch a process the object no longer stands for. Call
 | `uid` / `euid` | `() u32` | |
 | `kill` | `(target: i32, sig: i32) void, IError` | |
 | `set_pgid` | `(target: i32, pgid: i32) void, IError` | 0 means "this one" |
-| `new_session` | `() i32, IError` | `setsid` |
+| `create_new_session` | `() i32, IError` | `setsid` |
 | `exit` / `exit_now` | `(code: i32) void` | With / without atexit handlers |
 | `fork` | `() i32, IError` | 0 in the child, the child's pid in the parent |
 | `exec` | `(cmd: ref Command) void, IError` | Only returns on failure |
 | `wait_pid` | `(target: i32, options: i32) i32, IError` | Raw wait status; -1 = any child |
-| `exited` / `exit_status` / `signaled` / `term_signal` | `(status: i32)` | Read a wait status |
+| `exited` / `exit_status` / `signaled` / `get_term_signal` | `(status: i32)` | Read a wait status |
 | `open_pipe` | `(alloc: ref HeapAllocator) Pipe, IError` | `read_fd()` / `write_fd()` |
 | `dup_fd` | `(old_fd: i32, new_fd: i32) void, IError` | `dup2` |
 
@@ -569,10 +623,10 @@ written to that rule; hand-rolled forks have to be too.
 using sun.time;
 
 var start = now();
-sleep(millis(50));
+sleep(create_duration_millis(50));
 println(start.elapsed().as_millis());
 
-println(format(alloc, utc(unix_time()), "%Y-%m-%d %H:%M:%S"));
+println(format(alloc, convert_to_utc(read_unix_time()), "%Y-%m-%d %H:%M:%S"));
 ```
 
 | Item | Signature | Description |
@@ -584,7 +638,7 @@ println(format(alloc, utc(unix_time()), "%Y-%m-%d %H:%M:%S"));
 | `now` | `() Instant` | Monotonic clock |
 | `Instant.elapsed` | `() Duration` | Time since it was taken |
 | `Instant.since` | `(earlier: const ref Instant) Duration` | Zero if this is the earlier |
-| `unix_time` / `unix_time_millis` | `() i64` | Wall clock, since the epoch |
+| `read_unix_time` / `read_unix_time_millis` | `() i64` | Wall clock, since the epoch |
 | `sleep` | `(d: const ref Duration) void` | A signal can cut it short |
 | `utc` / `local` | `(unix_secs: i64) DateTime` | Break into calendar fields |
 | `to_unix_utc` / `to_unix_local` | `(dt: const ref DateTime) i64` | And back |
@@ -840,13 +894,13 @@ scan), numbers are `Int(i64)` when the text is an integer that fits and
 
 ```sun
 var alloc = make_heap_allocator();
-var doc = json_parse(alloc, "{\"name\": \"sun\", \"tags\": [1, 2.5]}");
+var doc = parse_json(alloc, "{\"name\": \"sun\", \"tags\": [1, 2.5]}");
 var name: ref String = doc.get("name").as_string();
 var second: f64 = doc.get("tags").at(1).as_f64();
 
-var obj = json_object(alloc);
+var obj = create_json_object(alloc);
 obj.set(String(alloc, "ok"), Json(true));
-obj.set(String(alloc, "tags"), json_array(alloc));
+obj.set(String(alloc, "tags"), create_json_array(alloc));
 obj.get("tags").push(Json(42));
 println(obj.to_string(alloc));            // {"ok":true,"tags":[42]}
 println(obj.to_pretty_string(alloc, 2));
@@ -865,11 +919,11 @@ The tree owns everything in it. `Json(s)`, `push(item)` and `set(key, value)`
 take their `String` and `Json` arguments by value, which in Sun means they are
 moved in: the caller cannot use them afterwards, and the borrow checker rejects
 a later use. When a value is still needed after being placed in a document,
-store a copy instead. `json_string(alloc, ref s)` does that for a `String`:
+store a copy instead. `create_json_string(alloc, ref s)` does that for a `String`:
 
 ```sun
 // cfg.model is still needed later, so the document gets a copy
-req.set(String(alloc, "model"), json_string(alloc, cfg.model));
+req.set(String(alloc, "model"), create_json_string(alloc, cfg.model));
 // Equivalent to an explicit clone:
 req.set(String(alloc, "model"), Json(cfg.model.clone(alloc)));
 // Moves cfg.model into the document; using it again is a compile error
@@ -878,10 +932,10 @@ req.set(String(alloc, "model"), Json(cfg.model));
 
 | Function / Method | Signature | Description |
 |--------|-----------|-------------|
-| `json_parse(alloc, text)` | `(ref HeapAllocator, ref String) Json, IError` | Parse a complete document (also accepts a `static_ptr<u8>` literal). Rejects trailing text, leading zeros, control characters in strings, and nesting deeper than 256 |
+| `parse_json(alloc, text)` | `(ref HeapAllocator, ref String) Json, IError` | Parse a complete document (also accepts a `static_ptr<u8>` literal). Rejects trailing text, leading zeros, control characters in strings, and nesting deeper than 256 |
 | `Json()`, `Json(b)`, `Json(n)`, `Json(x)`, `Json(s)` | `()`, `(bool)`, `(i64)`, `(f64)`, `(String)` | Build a scalar node (`Json(s)` moves the `String` into the node; see above) |
-| `json_array(alloc)` / `json_object(alloc)` | `(ref HeapAllocator) Json` | Empty array / object |
-| `json_string(alloc, text)` | `(ref HeapAllocator, static_ptr<u8>) Json`, `(ref HeapAllocator, ref String) Json` | String node from a literal, or a copy of a borrowed `String` (the caller keeps its own) |
+| `create_json_array(alloc)` / `create_json_object(alloc)` | `(ref HeapAllocator) Json` | Empty array / object |
+| `create_json_string(alloc, text)` | `(ref HeapAllocator, static_ptr<u8>) Json`, `(ref HeapAllocator, ref String) Json` | String node from a literal, or a copy of a borrowed `String` (the caller keeps its own) |
 | `is_null()`, `is_bool()`, `is_int()`, `is_float()`, `is_number()`, `is_string()`, `is_array()`, `is_object()` | `() bool` | Kind checks |
 | `as_bool()`, `as_i64()`, `as_f64()` | `() T, IError` | Scalar readers; `as_i64` accepts an integral `Float`, `as_f64` accepts an `Int` |
 | `as_string()` | `() ref String, IError` | Borrow the string |
@@ -923,7 +977,7 @@ object itself.
 
 ```sun
 function pop_first(v: ref Vec<i32>) i32, IError {
-    if (v.isEmpty()) {
+    if (v.is_empty()) {
         throw EmptyError();
     }
     return v.get(0);

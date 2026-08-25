@@ -119,7 +119,7 @@ TEST(Stdlib_Collections_Vec, is_empty) {
     function main() i32 {
         var allocator = make_heap_allocator();
         var v = Vec<i64>(allocator, 8);
-        if (v.isEmpty()) {
+        if (v.is_empty()) {
             return 1;
         }
         return 0;
