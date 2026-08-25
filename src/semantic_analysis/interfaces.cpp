@@ -377,7 +377,7 @@ void SemanticAnalyzer::validateInterfaceImplementation(
           for (const auto& pt : interfaceMethod.paramTypes) {
             methodParamTypes.push_back(pt);
           }
-          registernFunctionInCurrentScope(
+          registerFunctionInCurrentScope(
               mangledName, {interfaceMethod.returnType, methodParamTypes, {}});
         } else {
           // Required method not implemented

@@ -261,5 +261,5 @@ void SemanticAnalyzer::collectFunctionSignature(FunctionAST& func) {
   info.isCExtern = func.isCExtern();
   info.visibility = func.getVisibility();
 
-  registernFunctionInCurrentScope(qualifiedName.baseName, info);
+  registerFunctionInCurrentScope(qualifiedName.baseName, info);
 }

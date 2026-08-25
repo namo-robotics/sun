@@ -490,8 +490,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       // Only register non-generic functions in the normal function table.
       // Generic functions are looked up via genericFunctions table instead.
       if (!proto.isGeneric()) {
-        registernFunctionInCurrentScope(funcInfo.qualifiedName.baseName,
-                                        funcInfo);
+        registerFunctionInCurrentScope(funcInfo.qualifiedName.baseName,
+                                       funcInfo);
       }
 
       // Analyze the function body
@@ -1190,8 +1190,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
         sun::TypePtr returnType = proto.hasResolvedReturnType()
                                       ? proto.getResolvedReturnType()
                                       : sun::Types::Void();
-        registernFunctionInCurrentScope(mangledName,
-                                        {returnType, methodParamTypes, {}});
+        registerFunctionInCurrentScope(mangledName,
+                                       {returnType, methodParamTypes, {}});
       }
 
       // PASS 2: Analyze all method bodies
@@ -2033,7 +2033,7 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
       for (const auto& pt : methodInfo.paramTypes) {
         methodParamTypes.push_back(pt);
       }
-      registernFunctionInCurrentScope(
+      registerFunctionInCurrentScope(
           mangledName, {methodInfo.returnType, methodParamTypes, {}});
     }
 

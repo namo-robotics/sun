@@ -412,8 +412,8 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
       for (const auto& pt : paramTypes) {
         methodParamTypes.push_back(pt);
       }
-      registernFunctionInCurrentScope(methodMangledName,
-                                      {returnType, methodParamTypes, {}});
+      registerFunctionInCurrentScope(methodMangledName,
+                                     {returnType, methodParamTypes, {}});
     }
   }
 

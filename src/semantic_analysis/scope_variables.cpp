@@ -898,7 +898,7 @@ std::string SemanticAnalyzer::getFunctionSignature(
   return sig;
 }
 
-void SemanticAnalyzer::registernFunctionInCurrentScope(
+void SemanticAnalyzer::registerFunctionInCurrentScope(
     const std::string& name, const FunctionInfo& info) {
   // Functions are registered in their enclosing scope. For nested functions,
   // this is the parent function's scope - the scope hierarchy naturally
@@ -944,11 +944,6 @@ std::optional<FunctionInfo> SemanticAnalyzer::lookupFunction(
   return currentScope->lookupFunction(name, argTypes);
 }
 
-void SemanticAnalyzer::registerGlobal(const std::string& name,
-                                      sun::TypePtr type) {
-  rootScope->variables[name] = {type, true, false, false};
-}
-
 // -------------------------------------------------------------------
 // Builtin function registration
 // -------------------------------------------------------------------
@@ -957,62 +952,62 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
   using sun::Types;
 
   // Low-level print intrinsics (used by stdlib print functions)
-  registernFunctionInCurrentScope("_print_i32",
-                                  {Types::Void(), {Types::Int32()}, {}});
-  registernFunctionInCurrentScope("_print_i64",
-                                  {Types::Void(), {Types::Int64()}, {}});
-  registernFunctionInCurrentScope("_print_f64",
-                                  {Types::Void(), {Types::Float64()}, {}});
-  registernFunctionInCurrentScope("_print_newline", {Types::Void(), {}, {}});
+  registerFunctionInCurrentScope("_print_i32",
+                                 {Types::Void(), {Types::Int32()}, {}});
+  registerFunctionInCurrentScope("_print_i64",
+                                 {Types::Void(), {Types::Int64()}, {}});
+  registerFunctionInCurrentScope("_print_f64",
+                                 {Types::Void(), {Types::Float64()}, {}});
+  registerFunctionInCurrentScope("_print_newline", {Types::Void(), {}, {}});
   // _print_char intrinsic: write one char as UTF-8
-  registernFunctionInCurrentScope("_print_char",
-                                  {Types::Void(), {Types::Char()}, {}});
+  registerFunctionInCurrentScope("_print_char",
+                                 {Types::Void(), {Types::Char()}, {}});
   // _print_bytes intrinsic: write raw bytes to stdout
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "_print_bytes",
       {Types::Void(), {Types::RawPointer(Types::Int8()), Types::Int64()}, {}});
   // _println_str: print string literal with newline
-  registernFunctionInCurrentScope("_println_str",
-                                  {Types::Void(), {Types::String()}, {}});
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope("_println_str",
+                                 {Types::Void(), {Types::String()}, {}});
+  registerFunctionInCurrentScope(
       "_println_str", {Types::Void(), {Types::RawPointer(Types::UInt8())}, {}});
 
   // File I/O intrinsics
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "__file_open", {Types::Int32(), {Types::String(), Types::Int32()}, {}});
-  registernFunctionInCurrentScope("__file_close",
-                                  {Types::Int32(), {Types::Int32()}, {}});
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope("__file_close",
+                                 {Types::Int32(), {Types::Int32()}, {}});
+  registerFunctionInCurrentScope(
       "__file_write", {Types::Int32(), {Types::Int32(), Types::String()}, {}});
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "__file_read",
       {Types::RawPointer(Types::Int8()), {Types::Int32(), Types::Int32()}, {}});
 
   // Extended file I/O intrinsics
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "__lseek",
       {Types::Int64(), {Types::Int32(), Types::Int64(), Types::Int32()}, {}});
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "__fstat",
       {Types::Int32(), {Types::Int32(), Types::RawPointer(Types::Int8())}, {}});
-  registernFunctionInCurrentScope("__fsync",
-                                  {Types::Int32(), {Types::Int32()}, {}});
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope("__fsync",
+                                 {Types::Int32(), {Types::Int32()}, {}});
+  registerFunctionInCurrentScope(
       "__ftruncate", {Types::Int32(), {Types::Int32(), Types::Int64()}, {}});
-  registernFunctionInCurrentScope("__unlink",
-                                  {Types::Int32(), {Types::String()}, {}});
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope("__unlink",
+                                 {Types::Int32(), {Types::String()}, {}});
+  registerFunctionInCurrentScope(
       "__rename", {Types::Int32(), {Types::String(), Types::String()}, {}});
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "__mkdir", {Types::Int32(), {Types::String(), Types::Int32()}, {}});
-  registernFunctionInCurrentScope("__rmdir",
-                                  {Types::Int32(), {Types::String()}, {}});
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope("__rmdir",
+                                 {Types::Int32(), {Types::String()}, {}});
+  registerFunctionInCurrentScope(
       "__write",
       {Types::Int64(),
        {Types::Int32(), Types::RawPointer(Types::UInt8()), Types::Int64()},
        {}});
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "__read",
       {Types::Int64(),
        {Types::Int32(), Types::RawPointer(Types::UInt8()), Types::Int64()},
@@ -1020,11 +1015,11 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
 
   // Low-level memory access intrinsics
   // _load_i64(ptr, index) - load i64 from ptr at byte offset index*8
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "_load_i64",
       {Types::Int64(), {Types::RawPointer(Types::Int8()), Types::Int64()}, {}});
   // _store_i64(ptr, index, value) - store i64 to ptr at byte offset index*8
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "_store_i64",
       {Types::Void(),
        {Types::RawPointer(Types::Int8()), Types::Int64(), Types::Int64()},
@@ -1032,26 +1027,26 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
 
   // Memory allocation intrinsics
   // _malloc(size) - allocate size bytes, returns raw_ptr<i8>
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "_malloc", {Types::RawPointer(Types::Int8()), {Types::Int64()}, {}});
   // _free(ptr) - free previously allocated memory
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "_free", {Types::Void(), {Types::RawPointer(Types::Int8())}, {}});
   // _memcpy(dst, src, len) - copy len bytes from src to dst
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "_memcpy",
       {Types::Void(),
        {Types::RawPointer(Types::UInt8()), Types::RawPointer(Types::UInt8()),
         Types::Int64()},
        {}});
   // _memset(dst, value, len) - set len bytes at dst to value
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "_memset",
       {Types::Void(),
        {Types::RawPointer(Types::UInt8()), Types::Int32(), Types::Int64()},
        {}});
   // _ptr_offset(ptr, byte_offset) - offset a pointer by byte_offset bytes
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "_ptr_offset",
       {Types::RawPointer(Types::UInt8()),
        {Types::RawPointer(Types::UInt8()), Types::Int64()},
@@ -1059,92 +1054,92 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
 
   // Atomic intrinsics
   // _atomic_cmpxchg_i32(ptr, expected, desired) - atomic compare-and-swap
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "_atomic_cmpxchg_i32",
       {Types::Int32(),
        {Types::RawPointer(Types::Int32()), Types::Int32(), Types::Int32()},
        {}});
   // _atomic_store_i32(ptr, value) - atomic store with release ordering
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "_atomic_store_i32",
       {Types::Void(), {Types::RawPointer(Types::Int32()), Types::Int32()}, {}});
   // _atomic_load_i32(ptr) - atomic load with acquire ordering
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "_atomic_load_i32",
       {Types::Int32(), {Types::RawPointer(Types::Int32())}, {}});
 
   // Bit intrinsics
   // _mul_hi_u64(a, b) - high 64 bits of the 128-bit product a * b
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "_mul_hi_u64", {Types::UInt64(), {Types::UInt64(), Types::UInt64()}, {}});
   // _ctlz_u64(x) / _cttz_u64(x) - leading / trailing zero bit count (64 for 0)
-  registernFunctionInCurrentScope("_ctlz_u64",
-                                  {Types::UInt64(), {Types::UInt64()}, {}});
-  registernFunctionInCurrentScope("_cttz_u64",
-                                  {Types::UInt64(), {Types::UInt64()}, {}});
+  registerFunctionInCurrentScope("_ctlz_u64",
+                                 {Types::UInt64(), {Types::UInt64()}, {}});
+  registerFunctionInCurrentScope("_cttz_u64",
+                                 {Types::UInt64(), {Types::UInt64()}, {}});
 
   // Futex intrinsics (Linux-specific thread synchronization)
   // _futex_wait(ptr, expected) - block if *ptr == expected
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "_futex_wait",
       {Types::Void(), {Types::RawPointer(Types::Int32()), Types::Int32()}, {}});
   // _futex_wake(ptr) - wake one waiter
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "_futex_wake", {Types::Void(), {Types::RawPointer(Types::Int32())}, {}});
 
   // Network socket intrinsics (libc sockets)
   // __socket(domain, type, protocol) -> fd
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "__socket",
       {Types::Int32(), {Types::Int32(), Types::Int32(), Types::Int32()}, {}});
   // __bind(fd, addr, addrlen) -> result
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "__bind",
       {Types::Int32(),
        {Types::Int32(), Types::RawPointer(Types::UInt8()), Types::Int32()},
        {}});
   // __listen(fd, backlog) -> result
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "__listen", {Types::Int32(), {Types::Int32(), Types::Int32()}, {}});
   // __accept(fd, addr, addrlen_ptr) -> new_fd
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "__accept",
       {Types::Int32(),
        {Types::Int32(), Types::RawPointer(Types::UInt8()),
         Types::RawPointer(Types::Int32())},
        {}});
   // __connect(fd, addr, addrlen) -> result
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "__connect",
       {Types::Int32(),
        {Types::Int32(), Types::RawPointer(Types::UInt8()), Types::Int32()},
        {}});
   // __send(fd, buf, len, flags) -> bytes_sent
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "__send",
       {Types::Int64(),
        {Types::Int32(), Types::RawPointer(Types::UInt8()), Types::Int64(),
         Types::Int32()},
        {}});
   // __recv(fd, buf, len, flags) -> bytes_received
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "__recv",
       {Types::Int64(),
        {Types::Int32(), Types::RawPointer(Types::UInt8()), Types::Int64(),
         Types::Int32()},
        {}});
   // __shutdown(fd, how) -> result
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "__shutdown", {Types::Int32(), {Types::Int32(), Types::Int32()}, {}});
   // __setsockopt(fd, level, optname, optval, optlen) -> result
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "__setsockopt",
       {Types::Int32(),
        {Types::Int32(), Types::Int32(), Types::Int32(),
         Types::RawPointer(Types::UInt8()), Types::Int32()},
        {}});
   // __getsockopt(fd, level, optname, optval, optlen_ptr) -> result
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "__getsockopt",
       {Types::Int32(),
        {Types::Int32(), Types::Int32(), Types::Int32(),
@@ -1153,16 +1148,16 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
 
   // High-level IPv4 socket intrinsics (build sockaddr_in internally)
   // __bind_ipv4(fd, ip, port) -> result
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "__bind_ipv4",
       {Types::Int32(), {Types::Int32(), Types::Int32(), Types::Int32()}, {}});
   // __connect_ipv4(fd, ip, port) -> result
-  registernFunctionInCurrentScope(
+  registerFunctionInCurrentScope(
       "__connect_ipv4",
       {Types::Int32(), {Types::Int32(), Types::Int32(), Types::Int32()}, {}});
   // __accept_fd(fd) -> new_fd
-  registernFunctionInCurrentScope("__accept_fd",
-                                  {Types::Int32(), {Types::Int32()}, {}});
+  registerFunctionInCurrentScope("__accept_fd",
+                                 {Types::Int32(), {Types::Int32()}, {}});
 }
 
 // -------------------------------------------------------------------
