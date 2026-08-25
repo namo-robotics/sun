@@ -77,9 +77,18 @@ ast::Capture ASTSerializer::serializeCapture(const Capture& cap) const {
   if (cap.type) {
     proto.set_type_signature(cap.type->toString());
   }
-  proto.set_by_ref(cap.byRef);
   proto.set_is_const(cap.isConst);
-  proto.set_owned(cap.owned);
+  switch (cap.kind) {
+    case CaptureKind::Owned:
+      proto.set_kind(ast::CAPTURE_OWNED);
+      break;
+    case CaptureKind::Borrow:
+      proto.set_kind(ast::CAPTURE_BORROW);
+      break;
+    case CaptureKind::ByValue:
+      proto.set_kind(ast::CAPTURE_BY_VALUE);
+      break;
+  }
   return proto;
 }
 

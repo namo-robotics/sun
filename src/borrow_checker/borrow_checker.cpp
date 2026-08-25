@@ -1088,7 +1088,8 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
   // into the closure's environment, so the name it came from is gone from
   // here on and the enclosing scope no longer drops it.
   for (const auto& cap : proto.getCaptures()) {
-    if (!cap.owned || !cap.type || !cap.type->isCompound()) continue;
+    if (cap.kind != CaptureKind::Owned || !cap.type || !cap.type->isCompound())
+      continue;
     if (!state_.getActiveLoans(cap.name).empty()) {
       reportError(
           "cannot move '" + cap.name + "' into the lambda while it is borrowed",
@@ -1106,13 +1107,14 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
   }
 
   for (const auto& cap : proto.getCaptures()) {
-    if (!cap.byRef) continue;
+    if (cap.kind != CaptureKind::Borrow) continue;
     // A by-ref capture of an enclosing lambda's by-ref capture aliases the
     // existing loan rather than creating a new one
     bool aliasesEnclosingCapture = false;
     for (const auto* enclosing : lambdaProtoStack_) {
       for (const auto& enclosingCap : enclosing->getCaptures()) {
-        if (enclosingCap.name == cap.name && enclosingCap.byRef) {
+        if (enclosingCap.name == cap.name &&
+            enclosingCap.kind == CaptureKind::Borrow) {
           aliasesEnclosingCapture = true;
           break;
         }
@@ -1154,7 +1156,7 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
   // The name is gone from the enclosing scope, but inside the body it is the
   // closure's own value again — that is the point of moving it in.
   for (const auto& cap : proto.getCaptures()) {
-    if (cap.owned) movedVariables_.erase(cap.name);
+    if (cap.kind == CaptureKind::Owned) movedVariables_.erase(cap.name);
   }
 
   // Track reference parameters and their lifetimes

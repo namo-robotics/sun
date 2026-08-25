@@ -352,8 +352,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
                              varAssign.getName() + "'",
                          varAssign.getLocation());
       }
-      if (varInfo && varInfo->isCapture && !varInfo->isByRefCapture &&
-          !varInfo->isOwnedCapture) {
+      if (varInfo && varInfo->captureKind == CaptureKind::ByValue) {
         logAndThrowError("Cannot mutate by-value captured variable '" +
                              varAssign.getName() +
                              "': capture it by reference with 'lambda [ref " +
@@ -407,8 +406,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
         const auto& varRef =
             static_cast<const VariableReferenceAST&>(*compound.getTarget());
         VariableInfo* varInfo = lookupVariable(varRef.getName());
-        if (varInfo && varInfo->isCapture && !varInfo->isByRefCapture &&
-            !varInfo->isOwnedCapture) {
+        if (varInfo && varInfo->captureKind == CaptureKind::ByValue) {
           logAndThrowError("Cannot mutate by-value captured variable '" +
                                varRef.getName() +
                                "': capture it by reference with 'lambda [ref " +
@@ -2378,9 +2376,7 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
   for (const auto& cap : proto.getCaptures()) {
     declareVariable(cap.name, cap.type);
     if (VariableInfo* vi = lookupVariable(cap.name)) {
-      vi->isCapture = true;
-      vi->isByRefCapture = cap.byRef;
-      vi->isOwnedCapture = cap.owned;
+      vi->captureKind = cap.kind;
       vi->isConst = cap.isConst;
     }
   }
@@ -2445,9 +2441,7 @@ void SemanticAnalyzer::analyzeLambda(LambdaAST& lambda) {
   for (const auto& cap : proto.getCaptures()) {
     declareVariable(cap.name, cap.type);
     if (VariableInfo* vi = lookupVariable(cap.name)) {
-      vi->isCapture = true;
-      vi->isByRefCapture = cap.byRef;
-      vi->isOwnedCapture = cap.owned;
+      vi->captureKind = cap.kind;
       vi->isConst = cap.isConst;
     }
   }

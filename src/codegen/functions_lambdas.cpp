@@ -56,8 +56,8 @@ llvm::Value* CodegenVisitor::createCaptureSlotAddress(const std::string& name,
     bool owned = false;
     for (const auto& cap : closure.captures) {
       if (cap.name == name) {
-        byRef = cap.byRef;
-        owned = cap.owned;
+        byRef = cap.kind == CaptureKind::Borrow;
+        owned = cap.kind == CaptureKind::Owned;
         break;
       }
     }
@@ -92,7 +92,7 @@ llvm::LoadInst* CodegenVisitor::createLoadVarFromClosure(
 llvm::Value* CodegenVisitor::computeCaptureInitValue(const Capture& cap) {
   const std::string& varName = cap.name;
 
-  if (cap.byRef) {
+  if (cap.kind == CaptureKind::Borrow) {
     if (AllocaInst* alloca = findVariable(varName)) {
       // Ref-typed variables hold a pointer; flatten so the env points at the
       // referent, not the ref cell (mirror tryCodegenAddress)
@@ -137,8 +137,9 @@ llvm::StructType* CodegenVisitor::createEnvTypeForFunc(
   std::vector<llvm::Type*> capturedTypes;
   for (const auto& cap : proto.getCaptures()) {
     // By-ref captures store a pointer to the original storage
-    capturedTypes.push_back(cap.byRef ? PointerType::getUnqual(ctx.getContext())
-                                      : typeResolver.resolve(cap.type));
+    capturedTypes.push_back(cap.kind == CaptureKind::Borrow
+                                ? PointerType::getUnqual(ctx.getContext())
+                                : typeResolver.resolve(cap.type));
   }
   return StructType::create(ctx.getContext(), capturedTypes,
                             proto.getName() + ".env");
@@ -246,7 +247,8 @@ bool CodegenVisitor::fillCaptureSlots(StructType* envType,
 
     // An owned capture of anything a read cannot honestly duplicate — a class
     // or a payload enum — takes the value rather than a copy of it.
-    bool movesIn = cap.owned && cap.type && !sun::typeCopiesByRead(cap.type);
+    bool movesIn = cap.kind == CaptureKind::Owned && cap.type &&
+                   !sun::typeCopiesByRead(cap.type);
     if (!movesIn) {
       Value* capturedValue = computeCaptureInitValue(cap);
       if (!capturedValue) return false;

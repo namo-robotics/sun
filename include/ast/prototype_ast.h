@@ -69,7 +69,7 @@ class PrototypeAST {
   bool hasClosure() const { return !captures.empty(); }
 
   // Names declared in the lambda's [ref x, ...] capture list (parser-derived
-  // source of truth; Capture::byRef is derived from it during analysis)
+  // source of truth; Capture::kind is derived from it during analysis)
   void setRefCaptureNames(std::vector<std::string> names) {
     refCaptureNames = std::move(names);
   }
@@ -103,7 +103,7 @@ class PrototypeAST {
   // closure must not outlive that frame.
   bool hasRefCaptures() const {
     for (const auto& cap : captures) {
-      if (cap.byRef || cap.owned) return true;
+      if (cap.kind != CaptureKind::ByValue) return true;
     }
     return false;
   }

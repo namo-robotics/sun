@@ -368,7 +368,7 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const LambdaAST& lambda) {
     // Capturing a name the enclosing lambda holds by value would reach into
     // that closure's own storage — as a borrow it would alias it, and as an
     // owned capture it would take it away.
-    if (varInfo->isCapture && !varInfo->isByRefCapture) {
+    if (varInfo->captureKind && *varInfo->captureKind != CaptureKind::Borrow) {
       logAndThrowError("Cannot capture '" + name +
                            (byRef ? "' by reference" : "'") +
                            ": the enclosing lambda captures it by value",
@@ -397,13 +397,14 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const LambdaAST& lambda) {
       if (varInfo->isGlobal) {
         continue;  // Skip global variables - they don't need to be captured
       }
-      bool byRef = isDeclaredRef(var);
-      bool owned = !byRef && proto.isOwnedCapture(var);
-      bool declaredConstRef = byRef && proto.isConstRefCapture(var);
+      CaptureKind kind = isDeclaredRef(var)          ? CaptureKind::Borrow
+                         : proto.isOwnedCapture(var) ? CaptureKind::Owned
+                                                     : CaptureKind::ByValue;
       // A compound value cannot be picked up implicitly — the env copy would
       // silently break aliasing. Naming it in the capture list says which of
       // the three things you meant.
-      if (!byRef && !owned && sun::unwrapRef(varInfo->type)->isCompound()) {
+      if (kind == CaptureKind::ByValue &&
+          sun::unwrapRef(varInfo->type)->isCompound()) {
         logAndThrowError("Cannot capture '" + var + "' of compound type '" +
                              varInfo->type->toDisplayString() +
                              "' by value; capture it by reference with "
@@ -416,7 +417,7 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const LambdaAST& lambda) {
                          lambda.getLocation());
       }
       // An owned capture of a borrow would launder the borrow into a value
-      if (owned && varInfo->type->isReference()) {
+      if (kind == CaptureKind::Owned && varInfo->type->isReference()) {
         logAndThrowError(
             "Cannot move '" + var +
                 "' into the lambda: it is a reference, so the value belongs to "
@@ -428,9 +429,11 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const LambdaAST& lambda) {
       // `[const ref x]` makes an otherwise mutable variable read-only there.
       // An owned capture is the closure's own value, so it is mutable there
       // even when the variable it came from was constant.
-      bool isConst = !owned && (declaredConstRef || varInfo->isConst ||
-                                sun::isConstRef(varInfo->type));
-      captures.push_back({var, varInfo->type, byRef, isConst, owned});
+      bool isConst =
+          kind != CaptureKind::Owned &&
+          ((kind == CaptureKind::Borrow && proto.isConstRefCapture(var)) ||
+           varInfo->isConst || sun::isConstRef(varInfo->type));
+      captures.push_back({var, varInfo->type, kind, isConst});
     }
   }
 

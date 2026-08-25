@@ -65,12 +65,29 @@ enum class ASTNodeType {
   PAREN_EXPR             // (expr) grouping (parse tree only; lowered away)
 };
 
+// How a lambda takes hold of a variable from the enclosing scope. These are
+// the three mutually exclusive ways; whether the binding is writable inside
+// the lambda is a separate question (Capture::isConst).
+enum class CaptureKind {
+  // Not named in the capture list: the closure gets a copy it may only read.
+  // A compound value cannot be captured this way — the copy would alias.
+  ByValue,
+  // `[x]`: the closure owns the value. A compound moves in and the scope
+  // that built the closure drops it; a scalar is copied. Either way it is
+  // the closure's to change.
+  Owned,
+  // `[ref x]`, or `[const ref x]` when isConst: a borrow of the original.
+  // The env slot holds the referent's address, and the borrow checker holds
+  // a loan on it — mutable for `ref`, shared for `const ref`.
+  Borrow,
+};
+
 struct Capture {
   std::string name;
   sun::TypePtr type;
-  bool byRef = false;    // Declared in the lambda's [ref x, ...] capture list
-  bool isConst = false;  // The captured variable is a constant / const ref
-  // Written in the capture list without `ref`: the closure owns this value.
-  // A compound value moved in, and the closure's scope drops it.
-  bool owned = false;
+  CaptureKind kind = CaptureKind::ByValue;
+  // The binding cannot be written inside the lambda. Always true for
+  // `[const ref x]`; also true when a by-value capture picked up a `const`
+  // variable, which stays constant however it was captured.
+  bool isConst = false;
 };

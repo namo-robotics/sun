@@ -19,14 +19,12 @@
 // Information about a variable in the symbol table
 struct VariableInfo {
   sun::TypePtr type;
-  bool isGlobal;           // Declared at module level (not inside a function)
-  bool isFunctionParam;    // Is it a parameter vs let binding
-  bool isMoved = false;    // Has ownership been transferred (move semantics)
-  bool isCapture = false;  // Declared as a lambda/function capture
-  bool isByRefCapture = false;  // Captured via [ref x] - mutable through env
-  // Captured via [x]: the closure owns this value, so it is the closure's to
-  // change. Distinct from an implicit by-value capture, which is read-only.
-  bool isOwnedCapture = false;
+  bool isGlobal;         // Declared at module level (not inside a function)
+  bool isFunctionParam;  // Is it a parameter vs let binding
+  bool isMoved = false;  // Has ownership been transferred (move semantics)
+  // Set when the name is a lambda/function capture rather than an ordinary
+  // local, and says how it was taken. Empty for everything else.
+  std::optional<CaptureKind> captureKind;
   bool isConst = false;  // `const x`: the binding and its value never change
   sun::QualifiedName qualifiedName;  // Full qualified name (empty for locals)
   sun::Visibility visibility = sun::Visibility::Private;  // globals only

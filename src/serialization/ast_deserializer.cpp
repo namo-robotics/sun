@@ -80,9 +80,18 @@ TypeAnnotation ASTDeserializer::deserializeTypeAnnotation(
 Capture ASTDeserializer::deserializeCapture(const ast::Capture& cap) const {
   Capture result;
   result.name = cap.name();
-  result.byRef = cap.by_ref();
   result.isConst = cap.is_const();
-  result.owned = cap.owned();
+  switch (cap.kind()) {
+    case ast::CAPTURE_OWNED:
+      result.kind = CaptureKind::Owned;
+      break;
+    case ast::CAPTURE_BORROW:
+      result.kind = CaptureKind::Borrow;
+      break;
+    default:
+      result.kind = CaptureKind::ByValue;
+      break;
+  }
   // Note: type is stored as string signature, not reconstructed as TypePtr
   // The semantic analyzer will need to re-resolve the type
   return result;
