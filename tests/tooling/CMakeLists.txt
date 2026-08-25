@@ -1,4 +1,5 @@
 add_subdirectory(backend)
+add_subdirectory(diagnostics)
 add_subdirectory(fmt)
 add_subdirectory(frontend)
 add_subdirectory(lsp)

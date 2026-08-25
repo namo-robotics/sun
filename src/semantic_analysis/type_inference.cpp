@@ -138,7 +138,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
           if (sliceMethod) {
             return sliceMethod->returnType;
           }
-          logAndThrowError("Class " + classType->getMangledName() +
+          logAndThrowError("Class " + classType->getDisplayName() +
                                " does not implement __slice__ for slicing",
                            arrIdx.getLocation());
           return nullptr;
@@ -149,7 +149,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
           if (indexMethod) {
             return indexMethod->returnType;
           }
-          logAndThrowError("Class " + classType->getMangledName() +
+          logAndThrowError("Class " + classType->getDisplayName() +
                                " does not implement __index__ for indexing",
                            arrIdx.getLocation());
           return nullptr;
@@ -697,10 +697,10 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
         auto* lambda = static_cast<sun::LambdaType*>(lambdaType.get());
         return std::make_shared<sun::ThreadType>(lambda->getReturnType());
       }
-      logAndThrowError("spawn requires a lambda expression, got '" +
-                           (lambdaType ? lambdaType->toString() : "unknown") +
-                           "'",
-                       spawnExpr.getLocation());
+      logAndThrowError(
+          "spawn requires a lambda expression, got '" +
+              (lambdaType ? lambdaType->toDisplayString() : "unknown") + "'",
+          spawnExpr.getLocation());
     }
 
     case ASTNodeType::GENERIC_CALL: {
@@ -922,7 +922,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
         return objectType;  // Enum variant has the enum type
       }
       logAndThrowError("Unknown variant '" + memberName + "' in enum '" +
-                           enumType->getName() + "'",
+                           enumType->getDisplayName() + "'",
                        memberAccess.getLocation());
     }
 
@@ -1023,7 +1023,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
       }
 
       logAndThrowError("Unknown member '" + memberName + "' on class '" +
-                           classType->getMangledName() + "'",
+                           classType->getDisplayName() + "'",
                        memberAccess.getLocation());
     }
 
@@ -1046,7 +1046,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
       }
 
       logAndThrowError("Unknown member '" + memberName + "' on interface '" +
-                           ifaceType->getName() + "'",
+                           ifaceType->toDisplayString() + "'",
                        memberAccess.getLocation());
     }
 
@@ -1075,7 +1075,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
               return sun::Types::Function(method->returnType,
                                           method->paramTypes);
             logAndThrowError("Unknown member '" + memberName + "' on class '" +
-                                 classType->getMangledName() + "'",
+                                 classType->getDisplayName() + "'",
                              memberAccess.getLocation());
           }
           if (narrowedType->isInterface()) {
@@ -1090,8 +1090,8 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
               return sun::Types::Function(method->returnType,
                                           method->paramTypes);
             logAndThrowError("Unknown member '" + memberName +
-                                 "' on interface '" + ifaceType->getName() +
-                                 "'",
+                                 "' on interface '" +
+                                 ifaceType->toDisplayString() + "'",
                              memberAccess.getLocation());
           }
         }
@@ -1099,7 +1099,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
       // No narrowing available - type parameter has no known members
       logAndThrowError("Cannot access member '" + memberName +
                            "' on unconstrained type parameter '" +
-                           objectType->toString() + "'",
+                           objectType->toDisplayString() + "'",
                        memberAccess.getLocation());
     }
 
@@ -1116,7 +1116,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
 
     default:
       logAndThrowError("Cannot access member '" + memberName + "' on type '" +
-                           objectType->toString() + "'",
+                           objectType->toDisplayString() + "'",
                        memberAccess.getLocation());
   }
 }

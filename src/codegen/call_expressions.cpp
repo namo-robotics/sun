@@ -1027,7 +1027,7 @@ Value* CodegenVisitor::codegenMethodCall(const CallExprAST& expr,
   // Must be a class method call
   if (!objectType || !objectType->isClass()) {
     logAndThrowError("Method call on non-class type: " +
-                     (objectType ? objectType->toString() : "null"));
+                     (objectType ? objectType->toDisplayString() : "null"));
     return nullptr;
   }
 

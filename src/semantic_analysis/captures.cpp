@@ -314,7 +314,7 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const FunctionAST& func) {
       // capture compound types at all.
       if (sun::unwrapRef(varInfo->type)->isCompound()) {
         logAndThrowError("Cannot capture '" + var + "' of compound type '" +
-                             varInfo->type->toString() +
+                             varInfo->type->toDisplayString() +
                              "' by value in a nested function; use a lambda "
                              "with a [ref " +
                              var + "] capture list instead",
@@ -385,7 +385,7 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const LambdaAST& lambda) {
       // value - the env copy silently breaks aliasing
       if (!byRef && sun::unwrapRef(varInfo->type)->isCompound()) {
         logAndThrowError("Cannot capture '" + var + "' of compound type '" +
-                             varInfo->type->toString() +
+                             varInfo->type->toDisplayString() +
                              "' by value; capture it by reference with "
                              "'lambda [ref " +
                              var + "]'",

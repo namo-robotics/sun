@@ -279,6 +279,16 @@ class FunctionType : public Type {
     return result;
   }
 
+  std::string toDisplayString() const override {
+    std::string result = "(";
+    for (size_t i = 0; i < paramTypes.size(); ++i) {
+      if (i > 0) result += ", ";
+      result += paramTypes[i]->toDisplayString();
+    }
+    result += ") -> " + returnType->toDisplayString();
+    return result;
+  }
+
   bool equals(const Type& other) const override {
     if (auto* f = dynamic_cast<const FunctionType*>(&other)) {
       if (!returnType->equals(*f->returnType)) return false;
@@ -361,6 +371,17 @@ class LambdaType : public Type {
     return result;
   }
 
+  std::string toDisplayString() const override {
+    std::string result = "(";
+    for (size_t i = 0; i < paramTypes.size(); ++i) {
+      if (i > 0) result += ", ";
+      result += paramTypes[i]->toDisplayString();
+    }
+    result += ") -> " + returnType->toDisplayString();
+    if (canThrow_) result += ", IError";
+    return result;
+  }
+
   bool equals(const Type& other) const override {
     if (auto* l = dynamic_cast<const LambdaType*>(&other)) {
       if (canThrow_ != l->canThrow_) return false;
@@ -427,6 +448,10 @@ class RawPointerType : public Type {
     return "raw_ptr(" + pointeeType->toString() + ")";
   }
 
+  std::string toDisplayString() const override {
+    return "raw_ptr<" + pointeeType->toDisplayString() + ">";
+  }
+
   // Defined out-of-line below (needs StaticPointerType to be complete)
   bool equals(const Type& other) const override;
 
@@ -459,6 +484,10 @@ class StaticPointerType : public Type {
 
   std::string toString() const override {
     return "static_ptr(" + pointeeType->toString() + ")";
+  }
+
+  std::string toDisplayString() const override {
+    return "static_ptr<" + pointeeType->toDisplayString() + ">";
   }
 
   bool equals(const Type& other) const override {
@@ -622,6 +651,11 @@ class ErrorUnionType : public Type {
     return valueType->toString() + ", error";
   }
 
+  // Spelled the way the source spells it: "i32, IError"
+  std::string toDisplayString() const override {
+    return valueType->toDisplayString() + ", IError";
+  }
+
   bool equals(const Type& other) const override {
     if (auto* e = dynamic_cast<const ErrorUnionType*>(&other)) {
       return valueType->equals(*e->valueType);
@@ -705,6 +739,15 @@ class ArrayType : public Type {
 
   std::string toString() const override {
     std::string result = "array<" + elementType->toString();
+    for (size_t dim : dimensions) {
+      result += ", " + std::to_string(dim);
+    }
+    result += ">";
+    return result;
+  }
+
+  std::string toDisplayString() const override {
+    std::string result = "array<" + elementType->toDisplayString();
     for (size_t dim : dimensions) {
       result += ", " + std::to_string(dim);
     }
@@ -835,6 +878,16 @@ class ModuleType : public Type {
   const std::string& getModulePath() const { return modulePath; }
 
   std::string toString() const override { return "module<" + modulePath + ">"; }
+
+  // Drop the "$hash$_" a moon import prefixes and spell the path with dots
+  std::string toDisplayString() const override {
+    std::string path =
+        modulePath.substr(QualifiedName::extractHashPrefix(modulePath).size());
+    for (char& c : path) {
+      if (c == '_') c = '.';
+    }
+    return "module<" + path + ">";
+  }
 
   bool equals(const Type& other) const override {
     if (!other.isModule()) return false;
@@ -2472,6 +2525,10 @@ class ThreadType : public Type {
 
   std::string toString() const override {
     return "Thread<" + resultType->toString() + ">";
+  }
+
+  std::string toDisplayString() const override {
+    return "Thread<" + resultType->toDisplayString() + ">";
   }
 
   bool equals(const Type& other) const override {
