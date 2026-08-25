@@ -269,7 +269,7 @@ class Parser {
   unique_ptr<PrototypeAST> parsePrototype();
   unique_ptr<ExprAST> parseFunctionLiteral(
       const std::string& name = "",
-      std::vector<std::string> typeParameters = {}, bool isLambda = false);
+      std::vector<TypeParameter> typeParameters = {}, bool isLambda = false);
   unique_ptr<FunctionAST> parseFunction();
   unique_ptr<LambdaAST> parseLambda();
   unique_ptr<PrototypeAST> parseExtern();
@@ -287,6 +287,16 @@ class Parser {
   // Consumes an optional `const` before a class/interface member.
   bool parseConstModifier();
   unique_ptr<ExprAST> parseStatementList();
+
+  // `<T, U: _Numeric>` after a function, class, interface or enum name.
+  // Returns empty when there is no '<' — the declaration is not generic.
+  // Each parameter may carry one constraint the type argument must satisfy:
+  // a built-in trait, an interface name, or the keyword `lambda`.
+  std::vector<TypeParameter> parseTypeParameterList();
+
+  // The constraint after the colon in `<T: _Numeric>`. Stamps the source span
+  // the way parseTypeAnnotation does, so diagnostics can point at it.
+  TypeConstraint parseTypeConstraint(const std::string& paramName);
 
   // Type parsing. parseTypeAnnotation stamps the source span; the Impl
   // variant holds the grammar and leaves the span unset.

@@ -34,8 +34,8 @@ struct InterfaceMethodDecl {
 // Interface definition: interface Name<T, U> { fields and methods }
 class InterfaceDefinitionAST : public ExprAST {
   std::string name;  // Source name as written by user (for error messages)
-  std::vector<std::string>
-      typeParameters;  // Generic type parameters: T, U, etc.
+  std::vector<TypeParameter>
+      typeParameters;  // Generic type parameters: <T, U: Trait>
   std::vector<InterfaceFieldDecl> fields;
   std::vector<InterfaceMethodDecl> methods;
   std::string doc_;  // Comment written above the interface
@@ -56,7 +56,7 @@ class InterfaceDefinitionAST : public ExprAST {
   }
 
  public:
-  InterfaceDefinitionAST(std::string name, std::vector<std::string> typeParams,
+  InterfaceDefinitionAST(std::string name, std::vector<TypeParameter> typeParams,
                          std::vector<InterfaceFieldDecl> fields,
                          std::vector<InterfaceMethodDecl> methods,
                          bool precompiled = false)
@@ -77,7 +77,7 @@ class InterfaceDefinitionAST : public ExprAST {
       result += "<";
       for (size_t i = 0; i < typeParameters.size(); ++i) {
         if (i > 0) result += ", ";
-        result += typeParameters[i];
+        result += typeParameters[i].toString();
       }
       result += ">";
     }
@@ -102,8 +102,11 @@ class InterfaceDefinitionAST : public ExprAST {
     return analysis_ &&
            !static_cast<InterfaceAnalysis&>(*analysis_).qualifiedName.empty();
   }
-  const std::vector<std::string>& getTypeParameters() const {
+  const std::vector<TypeParameter>& getTypeParameters() const {
     return typeParameters;
+  }
+  std::vector<std::string> getTypeParameterNames() const {
+    return typeParameterNames(typeParameters);
   }
   bool isGeneric() const { return !typeParameters.empty(); }
   const std::vector<InterfaceFieldDecl>& getFields() const { return fields; }

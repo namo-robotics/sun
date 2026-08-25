@@ -42,8 +42,8 @@ struct ImplementedInterfaceAST {
 // fields and methods }
 class ClassDefinitionAST : public ExprAST {
   std::string name;  // Source name as written by user (for error messages)
-  std::vector<std::string>
-      typeParameters;  // Generic type parameters: T, U, etc.
+  std::vector<TypeParameter>
+      typeParameters;  // Generic type parameters: <T, U: Trait>
   std::vector<ImplementedInterfaceAST>
       implementedInterfaces;  // Interfaces with type args
   std::vector<ClassFieldDecl> fields;
@@ -68,7 +68,7 @@ class ClassDefinitionAST : public ExprAST {
   }
 
  public:
-  ClassDefinitionAST(std::string name, std::vector<std::string> typeParams,
+  ClassDefinitionAST(std::string name, std::vector<TypeParameter> typeParams,
                      std::vector<ImplementedInterfaceAST> interfaces,
                      std::vector<ClassFieldDecl> fields,
                      std::vector<ClassMethodDecl> methods,
@@ -97,7 +97,7 @@ class ClassDefinitionAST : public ExprAST {
       result += "<";
       for (size_t i = 0; i < typeParameters.size(); ++i) {
         if (i > 0) result += ", ";
-        result += typeParameters[i];
+        result += typeParameters[i].toString();
       }
       result += ">";
     }
@@ -132,8 +132,11 @@ class ClassDefinitionAST : public ExprAST {
     return analysis_ &&
            !static_cast<ClassAnalysis&>(*analysis_).qualifiedName.empty();
   }
-  const std::vector<std::string>& getTypeParameters() const {
+  const std::vector<TypeParameter>& getTypeParameters() const {
     return typeParameters;
+  }
+  std::vector<std::string> getTypeParameterNames() const {
+    return typeParameterNames(typeParameters);
   }
   bool isGeneric() const { return !typeParameters.empty(); }
   bool hasGenericMethods() const {

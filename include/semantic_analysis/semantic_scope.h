@@ -272,7 +272,7 @@ struct SymbolMatch {
 // Information about a generic class definition (template)
 struct GenericClassInfo {
   const ClassDefinitionAST* AST;            // Original AST node
-  std::vector<std::string> typeParameters;  // ["T", "U", etc.]
+  std::vector<TypeParameter> typeParameters;  // <T, U: Trait>
   std::weak_ptr<SemanticScopeBase> definitionScope;
   sun::QualifiedName qualifiedName;  // Captured at registration
 };
@@ -280,7 +280,7 @@ struct GenericClassInfo {
 // Information about a generic interface definition (template)
 struct GenericInterfaceInfo {
   const InterfaceDefinitionAST* AST;        // Original AST node
-  std::vector<std::string> typeParameters;  // ["T", "U", etc.]
+  std::vector<TypeParameter> typeParameters;  // <T, U: Trait>
   sun::QualifiedName qualifiedName;         // Captured at registration
   std::weak_ptr<SemanticScopeBase> definitionScope;
 };
@@ -288,16 +288,16 @@ struct GenericInterfaceInfo {
 // Information about a generic enum definition (template)
 struct GenericEnumInfo {
   const EnumDefinitionAST* AST;             // Original AST node
-  std::vector<std::string> typeParameters;  // ["T", "U", etc.]
+  std::vector<TypeParameter> typeParameters;  // <T, U: Trait>
   sun::QualifiedName qualifiedName;         // Captured at registration
   std::weak_ptr<SemanticScopeBase> definitionScope;
 };
 
 // Information about a generic function definition (template)
 struct GenericFunctionInfo {
-  const FunctionAST* AST;                    // Original AST node
-  std::vector<std::string> typeParameters;   // ["T", "U", etc.]
-  std::optional<TypeAnnotation> returnType;  // Return type annotation
+  const FunctionAST* AST;                     // Original AST node
+  std::vector<TypeParameter> typeParameters;  // <T, U: Trait>
+  std::optional<TypeAnnotation> returnType;   // Return type annotation
   std::vector<std::pair<std::string, TypeAnnotation>> params;  // Parameters
   sun::QualifiedName qualifiedName;  // Captured at registration
   std::weak_ptr<SemanticScopeBase> definitionScope;

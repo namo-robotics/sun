@@ -70,6 +70,75 @@ var n = b.twice(21);      // U = i32
 var m = b.as<i32>(ms);    // R = i32 as written, U = i64 from ms
 ```
 
+### Constraints
+
+A type parameter can require something of the type it stands for. Write the
+requirement after a colon:
+
+```sun
+function twice<T: _Numeric>(x: T) T { return x + x; }
+
+function main() i32 {
+    return twice<i32>(21);   // 42
+    // twice<bool>(true) is rejected: bool is not numeric
+}
+```
+
+The constraint is checked wherever the generic is used with a real type:
+
+```
+type argument 'bool' does not satisfy constraint '_Numeric' on type parameter 'T' of generic function 'twice'
+```
+
+Three kinds of requirement can appear after the colon:
+
+| Constraint | Satisfied by |
+| --- | --- |
+| `_Integer`, `_Signed`, `_Unsigned`, `_Float`, `_Numeric`, `_Primitive` | the built-in traits below |
+| an interface name, such as `IError` | any class implementing it |
+| `lambda` | any closure type, however it was written |
+
+The built-in traits are:
+
+| Trait | Types |
+| --- | --- |
+| `_Integer` | `i8`–`i64`, `u8`–`u64` |
+| `_Signed` | `i8`–`i64` |
+| `_Unsigned` | `u8`–`u64` |
+| `_Float` | `f32`, `f64` |
+| `_Numeric` | `_Integer` and `_Float` |
+| `_Primitive` | `_Numeric` and `bool` |
+
+Constraints work on every generic declaration, not only functions:
+
+```sun
+class Box<T: _Numeric> { var v: T; }
+enum Maybe<T: _Numeric> { Some(T), None }
+interface IStore<T: _Numeric> { public function get() T; }
+function run<F: lambda>(f: F) i32 { ... }
+```
+
+Only some parameters need constraining — `<T, U: _Numeric>` leaves `T` open.
+
+A constraint and `_is<T>` ask the same question and use the same vocabulary;
+the difference is where the question is asked. A constraint states a
+requirement in the signature, so a bad type argument is rejected at the call.
+`_is<T>` asks in the body, so the function can branch on what it was given:
+
+```sun
+function describe<T: _Numeric>(x: T) i32 {
+    if (_is<_Float>(x)) { return 2; }   // T is numeric for sure...
+    return 1;                            // ...but which kind is a body question
+}
+```
+
+<Callout type="info">
+  A constraint is enforced at the use site, not inside the template body. A
+  constrained parameter does not yet expose the constrained interface's
+  members within the body — `<T: IShape>` guarantees the caller passed a shape,
+  but calling `x.area()` on it is not supported yet.
+</Callout>
+
 ### Generic Functions with Type Checking
 
 Combine generic functions with `_is<T>` for type-specific behavior:

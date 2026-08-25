@@ -118,7 +118,9 @@ ast::Prototype ASTSerializer::serializePrototype(
   result.set_name(proto.getName());
 
   for (const auto& tp : proto.getTypeParameters()) {
-    result.add_type_parameters(tp);
+    auto* out = result.add_type_params();
+    out->set_name(tp.name);
+    if (tp.constraint) out->set_constraint(tp.constraint->name);
   }
 
   for (const auto& [name, type] : proto.getArgs()) {
@@ -770,7 +772,9 @@ void ASTSerializer::serializeClassDef(const ClassDefinitionAST& expr,
   cls->set_name(expr.getName());
 
   for (const auto& tp : expr.getTypeParameters()) {
-    cls->add_type_parameters(tp);
+    auto* out = cls->add_type_params();
+    out->set_name(tp.name);
+    if (tp.constraint) out->set_constraint(tp.constraint->name);
   }
 
   for (const auto& iface : expr.getImplementedInterfaces()) {
@@ -804,7 +808,9 @@ void ASTSerializer::serializeInterfaceDef(const InterfaceDefinitionAST& expr,
   iface->set_name(expr.getName());
 
   for (const auto& tp : expr.getTypeParameters()) {
-    iface->add_type_parameters(tp);
+    auto* out = iface->add_type_params();
+    out->set_name(tp.name);
+    if (tp.constraint) out->set_constraint(tp.constraint->name);
   }
 
   for (const auto& field : expr.getFields()) {
@@ -827,8 +833,10 @@ void ASTSerializer::serializeEnumDef(const EnumDefinitionAST& expr,
   enumDef->set_name(expr.getName());
   enumDef->set_visibility(toProto(expr.getVisibility()));
   enumDef->set_doc(expr.getDoc());
-  for (const auto& typeParam : expr.getTypeParameters()) {
-    enumDef->add_type_parameters(typeParam);
+  for (const auto& tp : expr.getTypeParameters()) {
+    auto* out = enumDef->add_type_params();
+    out->set_name(tp.name);
+    if (tp.constraint) out->set_constraint(tp.constraint->name);
   }
 
   for (const auto& variant : expr.getVariants()) {

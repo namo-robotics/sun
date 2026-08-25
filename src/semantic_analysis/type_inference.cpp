@@ -1256,7 +1256,7 @@ sun::TypePtr SemanticAnalyzer::inferGenericFunctionCallType(
   // No specialization - type args contain type parameters
   // Compute return type from generic function's declared return type
   if (genFuncInfo->returnType.has_value()) {
-    const auto& typeParams = genFuncInfo->typeParameters;
+    auto typeParams = typeParameterNames(genFuncInfo->typeParameters);
     enterTypeParamScope(typeParams, typeArgs);
     sun::TypePtr returnType = typeAnnotationToType(*genFuncInfo->returnType);
     returnType = substituteTypeParameters(returnType);

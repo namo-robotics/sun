@@ -1280,7 +1280,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
         // Create a generic interface type (for type checking generic
         // references)
         auto interfaceType = typeRegistry->getGenericInterface(
-            interfaceDef.getName(), interfaceDef.getTypeParameters());
+            interfaceDef.getName(), interfaceDef.getTypeParameterNames());
         interfaceType->visibility = interfaceDef.getVisibility();
         interfaceType->setQualifiedName(qualifiedInterface);
         registerInterface(interfaceDef.getName(), interfaceType);
@@ -1325,7 +1325,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
         // Add method to interface type (include generic type parameters)
         auto& method = interfaceType->addMethod(
             proto.getName(), methodInfo.returnType, methodInfo.paramTypes,
-            methodDecl.hasDefaultImpl, proto.getTypeParameters());
+            methodDecl.hasDefaultImpl, proto.getTypeParameterNames());
         method.visibility = methodVisibility(*methodDecl.function);
         method.isConst = methodDecl.isConst;
       }
@@ -1841,7 +1841,8 @@ void SemanticAnalyzer::registerClassShape(
     applyFunctionInfoToProto(proto, methodInfo);
     auto& method = classType->addMethod(
         proto.getName(), methodInfo.returnType, methodInfo.paramTypes,
-        methodDecl.isConstructor, proto.getTypeParameters(), proto.canThrow());
+        methodDecl.isConstructor, proto.getTypeParameterNames(),
+        proto.canThrow());
     method.visibility = methodVisibility(*methodDecl.function);
     method.isConst = methodDecl.isConst;
   }
@@ -2016,7 +2017,7 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
 
       auto& method = existingClass->addMethod(
           proto.getName(), methodInfo.returnType, methodInfo.paramTypes,
-          methodDecl.isConstructor, proto.getTypeParameters(),
+          methodDecl.isConstructor, proto.getTypeParameterNames(),
           proto.canThrow());
       method.visibility = methodVisibility(*methodDecl.function);
       method.isConst = methodDecl.isConst;
@@ -2356,10 +2357,10 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
 
   // If this is a generic function/method, bind its type parameters
   if (proto.isGeneric()) {
-    const auto& typeParams = proto.getTypeParameters();
+    std::vector<std::string> typeParams = proto.getTypeParameterNames();
     std::vector<sun::TypePtr> typeParamTypes;
-    for (const auto& tp : typeParams) {
-      typeParamTypes.push_back(typeAnnotationToType(TypeAnnotation(tp)));
+    for (const auto& name : typeParams) {
+      typeParamTypes.push_back(typeAnnotationToType(TypeAnnotation(name)));
     }
     addTypeParameterBindings(typeParams, typeParamTypes);
   }

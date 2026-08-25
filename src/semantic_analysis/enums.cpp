@@ -255,6 +255,8 @@ std::shared_ptr<sun::EnumType> SemanticAnalyzer::instantiateGenericEnum(
                      " type argument(s), got " +
                      std::to_string(typeArgs.size()));
   }
+  checkTypeParameterConstraints(genericInfo->typeParameters, typeArgs,
+                                "generic enum", baseName);
 
   auto specialized = typeRegistry->getEnum(mangledName);
   specialized->setBaseName(templateName);
@@ -268,7 +270,8 @@ std::shared_ptr<sun::EnumType> SemanticAnalyzer::instantiateGenericEnum(
     // Payload annotations resolve in the enum's definition scope; the result
     // is registered in the requesting scope below
     ScopeSwitchGuard definitionScope(*this, definitionScopeOf(*genericInfo));
-    enterTypeParamScope(genericInfo->typeParameters, typeArgs);
+    enterTypeParamScope(typeParameterNames(genericInfo->typeParameters),
+                        typeArgs);
     for (const auto& variant : genericInfo->AST->getVariants()) {
       specialized->addVariant(variant.name, variant.value);
       if (!variant.hasPayload()) continue;
@@ -424,7 +427,8 @@ void SemanticAnalyzer::analyzeGenericEnumConstruction(
     std::string conflictParam;
     if (!unifyPayloadTypeParam(
             variant->payloadTypes[i], args[i]->getResolvedType(),
-            genericInfo.typeParameters, bindings, conflictParam)) {
+            typeParameterNames(genericInfo.typeParameters), bindings,
+            conflictParam)) {
       logAndThrowError("Conflicting types inferred for type parameter '" +
                            conflictParam + "' of '" + genericName + "." +
                            variantName + "'",
@@ -447,7 +451,7 @@ void SemanticAnalyzer::analyzeGenericEnumConstruction(
 
   std::vector<sun::TypePtr> typeArgs;
   for (size_t i = 0; i < genericInfo.typeParameters.size(); ++i) {
-    const std::string& param = genericInfo.typeParameters[i];
+    const std::string& param = genericInfo.typeParameters[i].name;
     auto it = bindings.find(param);
     if (it != bindings.end()) {
       // Unification reads through a reference argument, so a `ref X` argument

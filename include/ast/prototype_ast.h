@@ -19,7 +19,7 @@
 // Top-level nodes (not derived from ExprAST)
 class PrototypeAST {
   std::string Name;  // Source name as written by user (for error messages)
-  std::vector<std::string> typeParameters;  // Generic type parameters: <T, U>
+  std::vector<TypeParameter> typeParameters;  // Generic type params: <T, U: X>
   std::vector<std::pair<std::string, TypeAnnotation>> args;
   std::optional<TypeAnnotation> returnType;
   std::vector<Capture> captures;
@@ -54,7 +54,7 @@ class PrototypeAST {
   PrototypeAST(std::string Name,
                std::vector<std::pair<std::string, TypeAnnotation>> args,
                std::optional<TypeAnnotation> retType = std::nullopt,
-               std::vector<std::string> typeParams = {},
+               std::vector<TypeParameter> typeParams = {},
                std::optional<std::string> variadicParam = std::nullopt,
                std::optional<TypeAnnotation> variadicConstraint = std::nullopt)
       : Name(std::move(Name)),
@@ -140,8 +140,11 @@ class PrototypeAST {
   }
 
   // Generic method support
-  const std::vector<std::string>& getTypeParameters() const {
+  const std::vector<TypeParameter>& getTypeParameters() const {
     return typeParameters;
+  }
+  std::vector<std::string> getTypeParameterNames() const {
+    return typeParameterNames(typeParameters);
   }
   bool isGeneric() const { return !typeParameters.empty(); }
   void clearTypeParameters() { typeParameters.clear(); }

@@ -286,76 +286,23 @@ Value* CodegenVisitor::codegenToRefIntrinsic(
 Value* CodegenVisitor::codegenIsIntrinsic(
     const std::string& targetName,
     const std::vector<std::unique_ptr<ExprAST>>& args) {
-  // _is<T>(value) - compile-time type check
-  // Returns true/false as a compile-time constant
-  //
-  // Built-in type traits (pseudo-interfaces):
-  //   _Integer  - i8, i16, i32, i64, u8, u16, u32, u64
-  //   _Signed   - i8, i16, i32, i64
-  //   _Unsigned - u8, u16, u32, u64
-  //   _Float    - f32, f64
-  //   _Numeric  - _Integer + _Float
-  //   _Primitive- _Numeric + bool
-  //
-  // Concrete types: exact match (e.g., _is<i64>(x), _is<Point>(obj))
-  // Interfaces: check implementsInterface (e.g., _is<IHashable>(key))
+  // _is<T>(value) - compile-time type check, folded to a constant here.
+  // Which types satisfy which trait is sun::traits::satisfies (see
+  // semantic_analysis/type_traits.h); a `<T: Trait>` constraint asks that same
+  // predicate at a signature.
 
   if (args.size() != 1) {
     logAndThrowError("_is<T>(value) requires exactly one argument");
     return nullptr;
   }
 
-  // Get the type of the value being checked
   sun::TypePtr valueType = args[0]->getResolvedType();
   if (!valueType) {
     logAndThrowError("Cannot determine type of argument to _is<T>");
     return nullptr;
   }
 
-  // Unwrap reference types
-  valueType = sun::unwrapRef(valueType);
-
-  bool result = false;
-
-  // Check built-in type traits first
-  sun::TypeTrait trait = sun::getTypeTrait(targetName);
-  switch (trait) {
-    case sun::TypeTrait::Integer:
-      result = valueType->isSigned() || valueType->isUnsigned();
-      break;
-    case sun::TypeTrait::Signed:
-      result = valueType->isSigned();
-      break;
-    case sun::TypeTrait::Unsigned:
-      result = valueType->isUnsigned();
-      break;
-    case sun::TypeTrait::Float:
-      result = valueType->isFloat32() || valueType->isFloat64();
-      break;
-    case sun::TypeTrait::Numeric:
-      result = valueType->isNumeric();
-      break;
-    case sun::TypeTrait::Primitive:
-      result = valueType->isPrimitive();
-      break;
-    case sun::TypeTrait::None:
-      // Not a built-in trait - check for concrete type or interface
-      if (auto* classType = sun::tryGetType<sun::ClassType>(valueType)) {
-        // Check if targetName is an interface this class implements
-        if (classType->implementsInterface(targetName)) {
-          result = true;
-        } else {
-          // Check for exact class name match
-          result = classType->getMangledName() == targetName;
-        }
-      } else {
-        // For non-class types, check exact type name match
-        result = valueType->toString() == targetName;
-      }
-      break;
-  }
-
-  // Return compile-time constant
+  bool result = sun::traits::satisfies(valueType, targetName);
   return llvm::ConstantInt::get(llvm::Type::getInt1Ty(ctx.getContext()),
                                 result ? 1 : 0);
 }

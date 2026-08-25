@@ -2,9 +2,13 @@
 
 #pragma once
 
+#include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "ast/ast_fwd.h"
+#include "ast/type_constraint.h"
 #include "semantic_analysis/types.h"
 
 enum class ASTNodeType {
@@ -64,6 +68,43 @@ enum class ASTNodeType {
   INTERPOLATED_STRING,   // `text ${expr}` (parse tree only; lowered away)
   PAREN_EXPR             // (expr) grouping (parse tree only; lowered away)
 };
+
+// One generic type parameter, as written between the angle brackets: a name,
+// and optionally a constraint the type argument must satisfy.
+//
+//   <T>            name "T", no constraint — any type
+//   <T: _Numeric>  see TypeConstraint for the forms a constraint can take
+//
+// The constraint is checked when the generic is instantiated with a concrete
+// type argument, by the same predicate `_is<T>` uses in a function body.
+struct TypeParameter {
+  std::string name;
+  std::optional<TypeConstraint> constraint;
+
+  TypeParameter() = default;
+  explicit TypeParameter(std::string n,
+                         std::optional<TypeConstraint> c = std::nullopt)
+      : name(std::move(n)), constraint(std::move(c)) {}
+
+  bool operator==(const TypeParameter& other) const {
+    return name == other.name && constraint == other.constraint;
+  }
+
+  // `T`, or `T: _Numeric` — how the parameter reads in source.
+  std::string toString() const {
+    return constraint ? name + ": " + constraint->toString() : name;
+  }
+};
+
+// The names alone, for the many places that only care what a parameter is
+// called (substitution, mangling, scope registration).
+inline std::vector<std::string> typeParameterNames(
+    const std::vector<TypeParameter>& params) {
+  std::vector<std::string> names;
+  names.reserve(params.size());
+  for (const auto& p : params) names.push_back(p.name);
+  return names;
+}
 
 // How a lambda takes hold of a variable from the enclosing scope. These are
 // the three mutually exclusive ways; whether the binding is writable inside

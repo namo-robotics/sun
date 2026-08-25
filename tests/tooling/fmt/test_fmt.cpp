@@ -640,6 +640,48 @@ TEST(Tooling_Fmt, GenericEnumDeclaration) {
             "enum Option<T> { Some(T), None }\n");
 }
 
+// A constraint dropped here would silently rewrite working code into code
+// that no longer compiles, so every declaration form round-trips it.
+TEST(Tooling_Fmt, TypeParameterConstraintOnFunction) {
+  EXPECT_EQ(fmt("function twice<T:_Numeric>(x:T)T{return x+x;}"),
+            "function twice<T: _Numeric>(x: T) T {\n"
+            "  return x + x;\n"
+            "}\n");
+}
+
+TEST(Tooling_Fmt, TypeParameterConstraintLambda) {
+  EXPECT_EQ(fmt("function run<F:lambda>(f:F)i32{return 0;}"),
+            "function run<F: lambda>(f: F) i32 {\n"
+            "  return 0;\n"
+            "}\n");
+}
+
+TEST(Tooling_Fmt, TypeParameterConstraintMixedWithPlainParams) {
+  EXPECT_EQ(fmt("function pair<T,U:_Numeric>(a:T,b:U)i32{return 0;}"),
+            "function pair<T, U: _Numeric>(a: T, b: U) i32 {\n"
+            "  return 0;\n"
+            "}\n");
+}
+
+TEST(Tooling_Fmt, TypeParameterConstraintOnClass) {
+  EXPECT_EQ(fmt("class Box<T:_Numeric>{var v:T;}"),
+            "class Box<T: _Numeric> {\n"
+            "  var v: T;\n"
+            "}\n");
+}
+
+TEST(Tooling_Fmt, TypeParameterConstraintOnEnum) {
+  EXPECT_EQ(fmt("enum Maybe<T:_Numeric>{Some(T),None}"),
+            "enum Maybe<T: _Numeric> { Some(T), None }\n");
+}
+
+TEST(Tooling_Fmt, TypeParameterConstraintOnInterface) {
+  EXPECT_EQ(fmt("interface IBox<T:_Numeric>{public function get()T;}"),
+            "interface IBox<T: _Numeric> {\n"
+            "  public function get() T;\n"
+            "}\n");
+}
+
 // ------------------------------------------------------------------
 // Character and byte literals
 // ------------------------------------------------------------------

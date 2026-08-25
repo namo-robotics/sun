@@ -332,30 +332,7 @@ unique_ptr<FunctionAST> Parser::parseFunction() {
   getNextToken();  // eat function name
 
   // Parse optional type parameters: function name<T, U>(...)
-  std::vector<std::string> typeParameters;
-  if (curTok.kind == TokenKind::LESS) {
-    getNextToken();  // eat '<'
-
-    // Parse comma-separated list of type parameter names
-    while (curTok.kind == TokenKind::IDENTIFIER) {
-      typeParameters.push_back(curTok.getIdentifier().value());
-      getNextToken();  // eat type parameter name
-
-      if (curTok.kind == TokenKind::COMMA) {
-        getNextToken();  // eat ','
-      } else {
-        break;
-      }
-    }
-
-    if (typeParameters.empty()) {
-      throwIdentifierError("expected type parameter name after '<'");
-    }
-
-    expectCurrentTokenKind(TokenKind::GREATER,
-                           "expected '>' after type parameters");
-    getNextToken();  // eat '>'
-  }
+  std::vector<TypeParameter> typeParameters = parseTypeParameterList();
 
   auto result =
       parseFunctionLiteral(funcName, std::move(typeParameters), false);
@@ -438,7 +415,7 @@ unique_ptr<LambdaAST> Parser::parseLambda() {
 
 // Parse a function literal: (args) returnType { body }
 unique_ptr<ExprAST> Parser::parseFunctionLiteral(
-    const std::string& name, std::vector<std::string> typeParameters,
+    const std::string& name, std::vector<TypeParameter> typeParameters,
     bool isLambda) {
   Position start = captureStart();
   expectCurrentTokenKind(TokenKind::PAREN_OPEN,
@@ -756,7 +733,8 @@ unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
 
     // Try to parse type arguments (one or more separated by commas)
     bool isGenericCall = false;
-    if (isTypeToken(curTok.kind) || curTok.kind == TokenKind::IDENTIFIER) {
+    if (isTypeToken(curTok.kind) || curTok.kind == TokenKind::IDENTIFIER ||
+        curTok.kind == TokenKind::LAMBDA) {
       std::vector<std::unique_ptr<TypeAnnotation>> typeArgs;
       auto typeArg = parseTypeAnnotation();
       typeArgs.push_back(std::make_unique<TypeAnnotation>(std::move(typeArg)));
@@ -1073,7 +1051,8 @@ unique_ptr<ExprAST> Parser::parsePostfixExpr(unique_ptr<ExprAST> base) {
 
         // Try to parse type arguments
         bool isGenericMethod = false;
-        if (isTypeToken(curTok.kind) || curTok.kind == TokenKind::IDENTIFIER) {
+        if (isTypeToken(curTok.kind) || curTok.kind == TokenKind::IDENTIFIER ||
+            curTok.kind == TokenKind::LAMBDA) {
           std::vector<std::unique_ptr<TypeAnnotation>> tempTypeArgs;
           tempTypeArgs.push_back(
               std::make_unique<TypeAnnotation>(parseTypeAnnotation()));
@@ -1179,6 +1158,63 @@ bool Parser::isTypeToken(TokenKind kind) {
   }
 }
 
+// Parse the constraint after the colon in `<T: _Numeric>`. Three spellings are
+// accepted: a built-in trait (`_Numeric`, an intrinsic identifier), an
+// interface name (a plain identifier), and the `lambda` keyword. Which of the
+// three a name turns out to be is settled in semantic analysis, not here.
+TypeConstraint Parser::parseTypeConstraint(const std::string& paramName) {
+  Position start = captureStart();
+
+  std::string name;
+  if (curTok.kind == TokenKind::LAMBDA) {
+    name = "lambda";
+  } else if (curTok.kind == TokenKind::IDENTIFIER ||
+             curTok.kind == TokenKind::INTRINSIC_IDENTIFIER) {
+    name = std::get<std::string>(curTok.value);
+  } else {
+    parsingError("expected a constraint after ':' on type parameter '" +
+                 paramName + "'");
+  }
+  getNextToken();  // eat the constraint
+
+  start.setEnd(prevTok_.end.line, prevTok_.end.column, prevTok_.end.offset);
+  return TypeConstraint(std::move(name), std::move(start));
+}
+
+// Parse a generic parameter list: <T>, <T, U>, <T: _Numeric>, <F: lambda>.
+// Shared by functions, classes, interfaces and interface methods, so a
+// constraint written on any of them means the same thing.
+std::vector<TypeParameter> Parser::parseTypeParameterList() {
+  std::vector<TypeParameter> typeParameters;
+  if (curTok.kind != TokenKind::LESS) return typeParameters;
+  getNextToken();  // eat '<'
+
+  while (curTok.kind == TokenKind::IDENTIFIER) {
+    TypeParameter param(curTok.getIdentifier().value());
+    getNextToken();  // eat type parameter name
+
+    if (curTok.kind == TokenKind::COLON) {
+      getNextToken();  // eat ':'
+      param.constraint = parseTypeConstraint(param.name);
+    }
+
+    typeParameters.push_back(std::move(param));
+
+    if (curTok.kind == TokenKind::COMMA) {
+      getNextToken();  // eat ','
+    } else {
+      break;
+    }
+  }
+
+  if (typeParameters.empty()) {
+    throwIdentifierError("expected type parameter name after '<'");
+  }
+
+  consumeGreater("expected '>' after type parameters");
+  return typeParameters;
+}
+
 // Parse type annotation: i32, f64, matrix(i32, 2, 3), _(param_types)
 // return_type (function), (param_types) return_type (lambda)
 TypeAnnotation Parser::parseTypeAnnotation() {
@@ -1191,6 +1227,15 @@ TypeAnnotation Parser::parseTypeAnnotation() {
 
 TypeAnnotation Parser::parseTypeAnnotationImpl() {
   TypeAnnotation type;
+
+  // `lambda` standing alone is the trait naming every closure type, as in
+  // `_is<lambda>(f)` — the same name a `<F: lambda>` constraint uses. A
+  // concrete lambda type is spelled `(A) R`, handled further down.
+  if (curTok.kind == TokenKind::LAMBDA) {
+    type.baseName = "lambda";
+    getNextToken();  // eat 'lambda'
+    return type;
+  }
 
   // Check for function type: _(param_types) return_type (named function)
   if (curTok.kind == TokenKind::UNDERSCORE) {
@@ -1665,31 +1710,7 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
   getNextToken();
 
   // Parse optional type parameters: function name<T, U>(...)
-  std::vector<std::string> typeParameters;
-  if (curTok.kind == TokenKind::LESS) {
-    getNextToken();  // eat '<'
-
-    // Parse comma-separated list of type parameter names
-    while (curTok.kind == TokenKind::IDENTIFIER) {
-      typeParameters.push_back(curTok.getIdentifier().value());
-      getNextToken();  // eat type parameter name
-
-      if (curTok.kind == TokenKind::COMMA) {
-        getNextToken();  // eat ','
-      } else {
-        break;
-      }
-    }
-
-    if (typeParameters.empty()) {
-      throwIdentifierError("expected type parameter name after '<'");
-    }
-
-    if (curTok.kind != TokenKind::GREATER) {
-      parsingError("expected '>' after type parameters");
-    }
-    getNextToken();  // eat '>'
-  }
+  std::vector<TypeParameter> typeParameters = parseTypeParameterList();
 
   expectCurrentTokenKind(TokenKind::PAREN_OPEN, "Expected '(' in prototype");
 
@@ -3503,31 +3524,7 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
   getNextToken();  // eat class name
 
   // Parse optional type parameters: class Name<T, U, ...>
-  std::vector<std::string> typeParameters;
-  if (curTok.kind == TokenKind::LESS) {
-    getNextToken();  // eat '<'
-
-    // Parse comma-separated list of type parameter names
-    while (curTok.kind == TokenKind::IDENTIFIER) {
-      typeParameters.push_back(curTok.getIdentifier().value());
-      getNextToken();  // eat type parameter name
-
-      if (curTok.kind == TokenKind::COMMA) {
-        getNextToken();  // eat ','
-      } else {
-        break;
-      }
-    }
-
-    if (typeParameters.empty()) {
-      throwIdentifierError("expected type parameter name after '<'");
-      return nullptr;
-    }
-
-    expectCurrentTokenKind(TokenKind::GREATER,
-                           "expected '>' after type parameters");
-    getNextToken();  // eat '>'
-  }
+  std::vector<TypeParameter> typeParameters = parseTypeParameterList();
 
   // Parse optional implements clause
   std::vector<ImplementedInterfaceAST> implementedInterfaces;
@@ -3670,33 +3667,7 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
   getNextToken();  // eat interface name
 
   // Parse optional type parameters: interface Name<T, U, ...>
-  std::vector<std::string> typeParameters;
-  if (curTok.kind == TokenKind::LESS) {
-    getNextToken();  // eat '<'
-
-    // Parse comma-separated list of type parameter names
-    while (curTok.kind == TokenKind::IDENTIFIER) {
-      typeParameters.push_back(curTok.getIdentifier().value());
-      getNextToken();  // eat type parameter name
-
-      if (curTok.kind == TokenKind::COMMA) {
-        getNextToken();  // eat ','
-      } else {
-        break;
-      }
-    }
-
-    if (typeParameters.empty()) {
-      throwIdentifierError("expected type parameter name after '<'");
-      return nullptr;
-    }
-
-    if (curTok.kind != TokenKind::GREATER) {
-      parsingError("expected '>' after type parameters");
-      return nullptr;
-    }
-    getNextToken();  // eat '>'
-  }
+  std::vector<TypeParameter> typeParameters = parseTypeParameterList();
 
   if (curTok.kind != TokenKind::BRACE_OPEN) {
     parsingError("expected '{' after interface name");
@@ -3770,31 +3741,7 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
       getNextToken();  // eat function name
 
       // Parse optional type parameters: function name<T, U>(...)
-      std::vector<std::string> typeParameters;
-      if (curTok.kind == TokenKind::LESS) {
-        getNextToken();  // eat '<'
-
-        // Parse comma-separated list of type parameter names
-        while (curTok.kind == TokenKind::IDENTIFIER) {
-          typeParameters.push_back(curTok.getIdentifier().value());
-          getNextToken();  // eat type parameter name
-
-          if (curTok.kind == TokenKind::COMMA) {
-            getNextToken();  // eat ','
-          } else {
-            break;
-          }
-        }
-
-        if (typeParameters.empty()) {
-          throwIdentifierError("expected type parameter name after '<'");
-          return nullptr;
-        }
-
-        expectCurrentTokenKind(TokenKind::GREATER,
-                               "expected '>' after type parameters");
-        getNextToken();  // eat '>'
-      }
+      std::vector<TypeParameter> typeParameters = parseTypeParameterList();
 
       expectCurrentTokenKind(TokenKind::PAREN_OPEN,
                              "Expected '(' in method declaration");
@@ -3928,20 +3875,7 @@ unique_ptr<EnumDefinitionAST> Parser::parseEnumDefinition() {
   getNextToken();  // eat enum name
 
   // Optional type parameters: enum Option<T> { ... }
-  std::vector<std::string> typeParameters;
-  if (curTok.kind == TokenKind::LESS) {
-    getNextToken();  // eat '<'
-    while (curTok.kind == TokenKind::IDENTIFIER) {
-      typeParameters.push_back(curTok.getIdentifier().value());
-      getNextToken();  // eat type parameter name
-      if (curTok.kind == TokenKind::COMMA) {
-        getNextToken();  // eat ','
-      } else {
-        break;
-      }
-    }
-    consumeGreater("expected '>' after enum type parameters");
-  }
+  std::vector<TypeParameter> typeParameters = parseTypeParameterList();
 
   expectCurrentTokenKind(TokenKind::BRACE_OPEN, "expected '{' after enum name");
   getNextToken();  // eat '{'

@@ -32,7 +32,7 @@ struct EnumVariantDecl {
 class EnumDefinitionAST : public ExprAST {
   std::string name;
   std::vector<EnumVariantDecl> variants;
-  std::vector<std::string> typeParameters;  // empty = non-generic
+  std::vector<TypeParameter> typeParameters;  // empty = non-generic
   std::string doc_;                         // Comment written above the enum
   // Populated during semantic analysis (mutable, like ClassAnalysis
   // specializations on ClassDefinitionAST)
@@ -42,15 +42,18 @@ class EnumDefinitionAST : public ExprAST {
  public:
   EnumDefinitionAST(std::string name, std::vector<EnumVariantDecl> variants,
                     bool precompiled = false,
-                    std::vector<std::string> typeParams = {})
+                    std::vector<TypeParameter> typeParams = {})
       : name(std::move(name)),
         variants(std::move(variants)),
         typeParameters(std::move(typeParams)) {
     precompiled_ = precompiled;
   }
 
-  const std::vector<std::string>& getTypeParameters() const {
+  const std::vector<TypeParameter>& getTypeParameters() const {
     return typeParameters;
+  }
+  std::vector<std::string> getTypeParameterNames() const {
+    return typeParameterNames(typeParameters);
   }
   bool isGeneric() const { return !typeParameters.empty(); }
 
