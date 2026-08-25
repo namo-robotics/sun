@@ -439,8 +439,26 @@ std::string SemanticAnalyzer::immutableBaseOf(const ExprAST& place) {
 
     case ASTNodeType::MEMBER_ACCESS: {
       const auto& access = static_cast<const MemberAccessAST&>(place);
+      sun::TypePtr objectType = access.getObject()->getResolvedType();
+      // mod.name names the module's own variable, so its own constness
+      // decides — a module has no mutability of its own to inherit
+      if (objectType && objectType->isModule()) {
+        const auto& mod = static_cast<const sun::ModuleType&>(*objectType);
+        SymbolMatch match =
+            findSymbolInModule(mod.getModulePath(), access.getMemberName());
+        if (match.kind != SymbolKind::Variable || !match.variableInfo) {
+          return "";
+        }
+        // display() names the declaring module without any library-hash scope
+        std::string full = match.variableInfo->qualifiedName.display();
+        if (match.variableInfo->isConst) return "constant '" + full + "'";
+        if (sun::isConstRef(match.variableInfo->type)) {
+          return "const reference '" + full + "'";
+        }
+        return "";
+      }
       // Through a mutable borrow the referent may be changed
-      if (sun::isMutableRef(access.getObject()->getResolvedType())) return "";
+      if (sun::isMutableRef(objectType)) return "";
       return immutableBaseOf(*access.getObject());
     }
 

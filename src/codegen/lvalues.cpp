@@ -199,6 +199,17 @@ Value* CodegenVisitor::tryCodegenAddress(const ExprAST& expr) {
 
     case ASTNodeType::MEMBER_ACCESS: {
       const auto& memberAccess = static_cast<const MemberAccessAST&>(expr);
+
+      // mod.global: the module is compile-time only, so the storage is the
+      // global emitted under the member's mangled name
+      if (llvm::GlobalVariable* gv = moduleMemberGlobal(
+              *memberAccess.getObject(), memberAccess.getMemberName(),
+              memberAccess.hasResolvedQualifiedName()
+                  ? memberAccess.getResolvedQualifiedName()
+                  : std::string{})) {
+        return gv;
+      }
+
       auto [objectPtr, classType] =
           codegenObjectPtr(*memberAccess.getObject());
       if (!objectPtr || !classType) return nullptr;

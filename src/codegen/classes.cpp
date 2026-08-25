@@ -660,6 +660,33 @@ Value* CodegenVisitor::codegen(const ThisExprAST& expr) {
 }
 
 // -------------------------------------------------------------------
+// Module member helpers
+// -------------------------------------------------------------------
+
+// Name a module member is emitted under: the one semantic analysis resolved
+// (it carries any library-hash prefix and overload suffix), or the module path
+// mangled onto the member name.
+std::string CodegenVisitor::moduleMemberSymbol(const ExprAST& object,
+                                               const std::string& memberName,
+                                               const std::string& resolved) {
+  if (!resolved.empty()) return resolved;
+  auto* moduleType =
+      static_cast<sun::ModuleType*>(object.getResolvedType().get());
+  return mangleModulePath(moduleType->getModulePath()) + "_" + memberName;
+}
+
+// The global backing `mod.name`, or null when the object is not a module or
+// the member names something other than a global variable.
+GlobalVariable* CodegenVisitor::moduleMemberGlobal(
+    const ExprAST& object, const std::string& memberName,
+    const std::string& resolved) {
+  sun::TypePtr objectType = object.getResolvedType();
+  if (!objectType || !objectType->isModule()) return nullptr;
+  return module->getGlobalVariable(
+      moduleMemberSymbol(object, memberName, resolved));
+}
+
+// -------------------------------------------------------------------
 // Member access codegen (field read)
 // -------------------------------------------------------------------
 
@@ -670,14 +697,11 @@ Value* CodegenVisitor::codegen(const MemberAccessAST& expr) {
   sun::TypePtr objectType = expr.getObject()->getResolvedType();
   if (objectType && objectType->isModule()) {
     auto* moduleType = static_cast<sun::ModuleType*>(objectType.get());
-    // Use resolved name from semantic analysis (includes library hash prefix)
-    std::string qualifiedName;
-    if (expr.hasResolvedQualifiedName()) {
-      qualifiedName = expr.getResolvedQualifiedName();
-    } else {
-      qualifiedName =
-          mangleModulePath(moduleType->getModulePath()) + "_" + memberName;
-    }
+    std::string qualifiedName =
+        moduleMemberSymbol(*expr.getObject(), memberName,
+                           expr.hasResolvedQualifiedName()
+                               ? expr.getResolvedQualifiedName()
+                               : std::string{});
 
     // Check if the result type is also a module (nested module access)
     sun::TypePtr resultType = expr.getResolvedType();
@@ -947,6 +971,19 @@ CodegenVisitor::ConstructorLookup CodegenVisitor::lookupConstructor(
 // -------------------------------------------------------------------
 
 Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
+  // mod.global = value: the module is compile-time only, so this writes the
+  // global directly
+  if (GlobalVariable* gv =
+          moduleMemberGlobal(*expr.getObject(), expr.getMemberName(),
+                             expr.getResolvedQualifiedName())) {
+    Value* value = codegen(*expr.getValue());
+    if (!value) return nullptr;
+    assignToVariableSlot(gv, value,
+                         sun::unwrapRef(expr.getValue()->getResolvedType()),
+                         expr.getMemberName());
+    return value;
+  }
+
   // Resolve the object down to (pointer, class type); the shared helper also
   // unwraps ref-to-class objects, which this path previously rejected
   auto [objectPtr, classType] = codegenObjectPtr(*expr.getObject());

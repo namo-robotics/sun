@@ -912,6 +912,31 @@ TEST(Modules, moon_exports_module_variables) {
   EXPECT_EQ(value, 51);
 }
 
+// The importer writes the bundle's storage, so a write from the importer and
+// one from inside the bundle are seen by both.
+TEST(Modules, moon_module_variables_are_assignable) {
+  auto moonPath = writeMoonLib("mutglobals", R"(
+    public module conf {
+      public var LIMIT: i32 = 42;
+      public function bump() void { LIMIT = LIMIT + 1; }
+    }
+  )");
+
+  auto driver = Driver::createForJIT("mut_globals_main");
+  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  auto value = driver->executeString(R"(
+    using conf;
+
+    function main() i32 {
+        LIMIT = 10;
+        bump();          // the bundle's own code sees the new value
+        conf.LIMIT += 1;
+        return LIMIT;
+    }
+  )");
+  EXPECT_EQ(value, 12);
+}
+
 // A private module variable is carried (code in the bundle reads it) but must
 // stay unreachable from an importer.
 TEST(Modules, moon_private_module_variable_is_hidden) {
@@ -979,8 +1004,148 @@ TEST(Modules, moon_keeps_const_declarations) {
         message);
   };
   rejects("LIMIT = 1;", "Cannot assign to constant 'LIMIT'");
+  // Qualified: the message names the declaring module, not its library hash
+  rejects("constlib.LIMIT = 1;", "Cannot assign to constant 'constlib.LIMIT'");
+  rejects("constlib.LIMIT += 1;",
+          "Cannot assign to constant 'constlib.LIMIT'");
   rejects("const c = Counter(1); c.bump();",
           "Cannot call non-const method 'bump' on constant 'c'");
   rejects("var c = Counter(1); var r: const ref Counter = c; r.bump();",
           "Cannot call non-const method 'bump' on const reference 'r'");
+}
+
+// === Module-level variables (issue #124) ===
+//
+// A module-level `var` is shared mutable state: it is written from inside its
+// module, through a `using` import, and by its qualified name. All three reach
+// the same global, which is emitted under the module-mangled name.
+
+TEST(Modules, module_variable_assigned_within_module) {
+  auto value = executeString(R"(
+    module dds {
+      public var counter: i64 = 0;
+      public function bump() void { counter = counter + 3; }
+    }
+    using dds;
+    function main() i32 {
+      bump();
+      bump();
+      return counter;
+    }
+  )");
+  EXPECT_EQ(value, 6);
+}
+
+TEST(Modules, module_variable_assigned_through_using_import) {
+  auto value = executeString(R"(
+    module dds { public var counter: i64 = 0; }
+    using dds;
+    function main() i32 {
+      counter = 9;
+      counter += 5;
+      return counter;
+    }
+  )");
+  EXPECT_EQ(value, 14);
+}
+
+TEST(Modules, module_variable_assigned_by_qualified_name) {
+  auto value = executeString(R"(
+    module dds { public var counter: i64 = 0; }
+    function main() i32 {
+      dds.counter = 7;
+      dds.counter += 4;
+      return dds.counter;
+    }
+  )");
+  EXPECT_EQ(value, 11);
+}
+
+TEST(Modules, nested_module_variable_is_assignable) {
+  auto value = executeString(R"(
+    public module dds {
+      public module inner { public var counter: i64 = 0; }
+      public function bump() void { inner.counter += 1; }
+    }
+    function main() i32 {
+      dds.inner.counter = 3;
+      dds.bump();
+      return dds.inner.counter;
+    }
+  )");
+  EXPECT_EQ(value, 4);
+}
+
+// A compound global is owned like any other: the overwritten value is dropped
+// and the new one moved in, rather than bitwise copied.
+TEST(Modules, class_typed_module_variable_is_assignable) {
+  auto value = executeString(R"(
+    class Counter {
+      var n: i32;
+      public function init(n: i32) { this.n = n; }
+      public function get() i32 { return this.n; }
+    }
+    module dds {
+      public var c: Counter = Counter(1);
+      public function reset(n: i32) void { c = Counter(n); }
+    }
+    function main() i32 {
+      dds.reset(5);
+      var a = dds.c.get();
+      dds.c = Counter(9);
+      return a + dds.c.get();
+    }
+  )");
+  EXPECT_EQ(value, 14);
+}
+
+TEST(Modules, module_constant_cannot_be_assigned) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    module dds {
+      public const limit: i64 = 5;
+      public function bad() void { limit = 7; }
+    }
+    function main() i32 { dds.bad(); return 0; }
+  )"),
+                                "Cannot assign to constant 'limit'");
+
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    module dds { public const limit: i64 = 5; }
+    function main() i32 { dds.limit = 7; return 0; }
+  )"),
+                                "Cannot assign to constant 'dds.limit'");
+
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    module dds { public const limit: i64 = 5; }
+    function main() i32 { dds.limit += 7; return 0; }
+  )"),
+                                "Cannot assign to constant 'dds.limit'");
+}
+
+TEST(Modules, qualified_module_variable_assignment_is_type_checked) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    module dds { public var counter: i64 = 0; }
+    function main() i32 { dds.counter = true; return 0; }
+  )"),
+                                "Cannot assign value of type 'bool'");
+
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    module dds { public var counter: i64 = 0; }
+    function main() i32 { dds.nope = 1; return 0; }
+  )"),
+                                "Unknown member 'nope' in module 'dds'");
+
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    module dds { public function f() i32 { return 1; } }
+    function main() i32 { dds.f = 3; return 0; }
+  )"),
+                                "it is not a variable");
+}
+
+TEST(Modules, private_module_variable_cannot_be_assigned_from_outside) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    module dds { var counter: i64 = 0; }
+    function main() i32 { dds.counter = 1; return 0; }
+  )"),
+                                "is private to module 'dds'");
 }

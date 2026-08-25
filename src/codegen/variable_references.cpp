@@ -308,8 +308,10 @@ Value* CodegenVisitor::codegen(const VariableAssignmentAST& expr) {
     return value;
   }
 
-  // Check for global variable
-  GlobalVariable* gv = module->getGlobalVariable(expr.getName());
+  // Check for global variable: mangled name first (module-qualified), then
+  // the name as written (root-level globals)
+  GlobalVariable* gv = module->getGlobalVariable(expr.getMangledName());
+  if (!gv) gv = module->getGlobalVariable(expr.getName());
   if (gv) {
     Value* value = codegen(*expr.getValue());
     if (isLambdaLiteral && savedBlock) {

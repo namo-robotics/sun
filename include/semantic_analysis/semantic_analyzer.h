@@ -571,6 +571,12 @@ class SemanticAnalyzer : public AccessContext {
       const MemberAccessAST& memberAccess, const sun::TypePtr& objectType,
       const std::vector<sun::TypePtr>& argTypes) const;
 
+  // Check `mod.name = value`: the target must be a visible, assignable
+  // module-level variable, and the value must fit its type. Also records the
+  // global's symbol name on the node for codegen.
+  void analyzeModuleGlobalAssignment(MemberAssignmentAST& assign,
+                                     const sun::Type& objectType);
+
   // Get all active using imports (from all enclosing scopes)
   std::vector<UsingImport> getActiveUsingImports() const;
 

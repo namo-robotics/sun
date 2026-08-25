@@ -338,6 +338,11 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
 
       // Look up the variable's type first for expected type propagation
       VariableInfo* varInfo = lookupVariable(varAssign.getName());
+      // A module-level global is emitted under its mangled name; record it so
+      // codegen can find the symbol (locals keep the name as written).
+      if (varInfo && varInfo->isGlobal) {
+        varAssign.setQualifiedName(resolveNameWithUsings(varAssign.getName()));
+      }
       if (varInfo && varInfo->isConst) {
         logAndThrowError("Cannot assign to constant '" + varAssign.getName() +
                              "'; declare it with 'var' if it must change",
@@ -1415,6 +1420,13 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       sun::TypePtr objectType = memberAssign.getObject()->getResolvedType();
       objectType = unwrapRef(objectType);
 
+      // mod.global = value: a write to a module-level variable, not a field
+      if (objectType && objectType->isModule()) {
+        analyzeModuleGlobalAssignment(memberAssign, *objectType);
+        expr.setResolvedType(sun::Types::Void());
+        break;
+      }
+
       sun::TypePtr expectedFieldType;
       if (objectType && objectType->isClass()) {
         auto* classType = static_cast<sun::ClassType*>(objectType.get());
@@ -2139,6 +2151,60 @@ void SemanticAnalyzer::checkExternCallAllowed(const FunctionInfo& info,
           "checker's guarantees. Wrap the call in `unsafe { ... }`, or "
           "expose it through a safe Sun wrapper.",
       loc);
+}
+
+// `mod.name = value`. A module is a namespace rather than an object, so the
+// target is the module's own variable: it must exist, be visible, be
+// assignable, and take the value's type. Codegen writes the global directly.
+void SemanticAnalyzer::analyzeModuleGlobalAssignment(
+    MemberAssignmentAST& assign, const sun::Type& objectType) {
+  const auto& moduleType = static_cast<const sun::ModuleType&>(objectType);
+  const std::string& modPath = moduleType.getModulePath();
+  const std::string& memberName = assign.getMemberName();
+
+  SymbolMatch match = findSymbolInModule(modPath, memberName);
+  if (!match) {
+    logAndThrowError(
+        "Unknown member '" + memberName + "' in module '" + modPath + "'",
+        assign.getLocation());
+  }
+  if (match.kind != SymbolKind::Variable || !match.variableInfo) {
+    logAndThrowError(
+        "Cannot assign to '" + match.display() + "': it is not a variable",
+        assign.getLocation());
+  }
+
+  const VariableInfo& target = *match.variableInfo;
+  // display() names the declaring module without any library-hash scope
+  std::string full = target.qualifiedName.display();
+  if (target.isConst) {
+    logAndThrowError("Cannot assign to constant '" + full +
+                         "'; declare it with 'var' if it must change",
+                     assign.getLocation());
+  }
+  if (sun::isConstRef(target.type)) {
+    logAndThrowError("Cannot assign through const reference '" + full + "'",
+                     assign.getLocation());
+  }
+
+  // Codegen looks the global up by this name (it carries any library hash)
+  assign.setResolvedQualifiedName(match.mangled());
+
+  sun::TypePtr expectedType = unwrapRef(target.type);
+  analyzeExpr(const_cast<ExprAST&>(*assign.getValue()), expectedType);
+  checkMoveSource(*assign.getValue(), assign.getLocation());
+
+  sun::TypePtr rhsType = assign.getValue()->getResolvedType();
+  if (rhsType && expectedType && !isAssignableTo(rhsType, expectedType)) {
+    if (!tryCoerceIntegerLiteral(const_cast<ExprAST*>(assign.getValue()),
+                                 expectedType, false)) {
+      logAndThrowError("Cannot assign value of type '" +
+                           rhsType->toDisplayString() + "' to '" + full +
+                           "' of type '" + expectedType->toDisplayString() +
+                           "'",
+                       assign.getLocation());
+    }
+  }
 }
 
 const FunctionInfo* SemanticAnalyzer::resolveModuleQualifiedCall(

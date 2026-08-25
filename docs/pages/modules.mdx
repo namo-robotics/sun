@@ -429,6 +429,43 @@ public module math {
 }
 ```
 
+### Module-Level Variables
+
+A `var` declared directly in a module is a single piece of storage shared by
+the whole program — it lives for the life of the process rather than for a
+call. It can be read and written from inside its module, through a `using`
+import, and by its qualified name:
+
+```sun
+public module registry {
+    public var count: i64 = 0;
+
+    public function add() void {
+        count = count + 1;      // same module
+    }
+}
+
+using registry;
+
+function main() i32 {
+    add();
+    count += 1;                 // through the `using` import
+    registry.count = 10;        // by qualified name
+    return registry.count;      // 10
+}
+```
+
+Use `const` instead of `var` for one that never changes; assigning to it is a
+compile error. A module-level variable of a class or payload-enum type is owned
+like any other value: assigning to it drops what was there and moves the new
+value in.
+
+<Callout type="warning">
+  A module-level `var` is ordinary shared mutable state, and nothing
+  synchronizes it. When more than one thread touches it, guard it with a
+  `Mutex` — see [Threads](/threads).
+</Callout>
+
 ## Visibility
 
 Everything is **private by default**. `public` is the only modifier; there is
