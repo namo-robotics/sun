@@ -428,6 +428,13 @@ static llvm::Constant* genConstantElement(const ExprAST* elemExpr,
                                       /*isSigned=*/true);
       }
     }
+    case ASTNodeType::CHAR_LITERAL: {
+      const auto& lit = static_cast<const CharLiteralAST&>(*elemExpr);
+      auto elemType = elemExpr->getResolvedType();
+      if (!elemType) return nullptr;
+      return llvm::ConstantInt::get(elemType->toLLVMType(llvmCtx),
+                                    lit.getValue(), /*isSigned=*/false);
+    }
     default:
       return nullptr;
   }

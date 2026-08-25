@@ -62,6 +62,8 @@ class ASTDeserializer {
   // Individual node type deserializers
   std::unique_ptr<ExprAST> deserializeNumber(
       const ast::NumberExpr& proto) const;
+  std::unique_ptr<ExprAST> deserializeCharLiteral(
+      const ast::CharLiteral& proto) const;
   std::unique_ptr<ExprAST> deserializeString(
       const ast::StringLiteral& proto) const;
   std::unique_ptr<ExprAST> deserializeNull(const ast::NullLiteral& proto) const;

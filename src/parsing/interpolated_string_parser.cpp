@@ -7,6 +7,7 @@
 
 #include "ast.h"
 #include "support/error.h"
+#include "parsing/escapes.h"
 #include "parsing/lexer.h"
 #include "parsing/parser.h"
 
@@ -118,33 +119,14 @@ std::string InterpolatedStringParser::processEscapes(const std::string& raw) {
   for (size_t i = 0; i < raw.size(); i++) {
     if (raw[i] == '\\' && i + 1 < raw.size()) {
       char next = raw[i + 1];
-      switch (next) {
-        case '`':
-          result += '`';
-          break;
-        case 'n':
-          result += '\n';
-          break;
-        case 't':
-          result += '\t';
-          break;
-        case 'r':
-          result += '\r';
-          break;
-        case '\\':
-          result += '\\';
-          break;
-        case '$':
-          result += '$';
-          break;  // Escape ${
-        case '0':
-          result += '\0';
-          break;
-        default:
-          // Unknown escape - keep as-is
-          result += raw[i];
-          result += next;
-          break;
+      if (next == '`' || next == '$') {
+        result += next;  // \` and \$ are the template-specific escapes
+      } else if (auto c = sun::escapes::simple(next)) {
+        result += *c;
+      } else {
+        // Unknown escape - keep as-is
+        result += raw[i];
+        result += next;
       }
       i++;  // Skip the escaped character
     } else {

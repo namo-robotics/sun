@@ -398,21 +398,35 @@ Value* CodegenVisitor::codegenConvertIntrinsic(
   // extend (sign-extending from signed sources, zero-extending from unsigned);
   // int<->float convert by value. The one escape hatch Sun offers for
   // narrowing, since assignments never narrow implicitly.
+  //
+  // char joins as an integer-only party: a char converts to and from the
+  // integer types (unchecked, like every other narrowing here — sun.char_of
+  // is the checked form), but never to or from a float or a bool.
   if (args.size() != 1) {
     logAndThrowError("_convert<T>() requires exactly 1 argument");
     return nullptr;
   }
-  if (!targetType || !targetType->isNumeric()) {
-    logAndThrowError("_convert<T>: T must be a numeric type");
+  if (!targetType || (!targetType->isNumeric() && !targetType->isChar())) {
+    logAndThrowError("_convert<T>: T must be a numeric type or char");
     return nullptr;
+  }
+  sun::TypePtr srcType = args[0]->getResolvedType();
+  if (targetType->isChar() || (srcType && srcType->isChar())) {
+    const sun::TypePtr& other = targetType->isChar() ? srcType : targetType;
+    if (other && (other->isFloatingPoint() || other->isBool())) {
+      logAndThrowError("_convert<T>: char converts to and from the integer "
+                       "types only, not '" +
+                       other->toDisplayString() + "'");
+      return nullptr;
+    }
   }
   llvm::Value* v = codegen(*args[0]);
   if (!v) return nullptr;
-  sun::TypePtr srcType = args[0]->getResolvedType();
   llvm::Type* dstTy = typeResolver.resolve(targetType);
   llvm::Type* srcTy = v->getType();
   if (srcTy == dstTy) return v;
 
+  // A char is a non-negative scalar value, so it always zero-extends.
   bool srcSigned = srcType && srcType->isIntegral() && !srcType->isUnsigned();
   bool dstSigned = !targetType->isUnsigned();
 

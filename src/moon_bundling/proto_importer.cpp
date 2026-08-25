@@ -653,12 +653,12 @@ class MessageGenerator {
       const FD* k = entry->map_key();
       const FD* v = entry->map_value();
       w_.open("for (var i: i64 = 0; i < " + fld + ".capacity(); i = i + 1) {");
-      w_.open("if (" + fld + ".bucket_occupied(i)) {");
+      w_.open("if (" + fld + ".is_bucket_occupied(i)) {");
       w_.line("var body = Vec<u8>(this.alloc_, 16);");
       w_.line(tagLine("body", 1, T::wireType(k)));
-      w_.line(T::writeStmt(k, fld + ".bucket_key(i)", "body"));
+      w_.line(T::writeStmt(k, fld + ".get_bucket_key(i)", "body"));
       w_.line(tagLine("body", 2, T::wireType(v)));
-      w_.line(T::writeStmt(v, fld + ".bucket_value(i)", "body"));
+      w_.line(T::writeStmt(v, fld + ".get_bucket_value(i)", "body"));
       w_.line(tagLine("buf", number, 2));
       w_.line("proto_write_bytes(buf, body);");
       w_.close();
@@ -731,8 +731,8 @@ class MessageGenerator {
     w_.line("var msg = " + name_ + "(alloc);");
     w_.open("while (r.at_end() == false) {");
     w_.line("var tag: u64 = r.read_tag();");
-    w_.line("var field: i64 = proto_tag_field(tag);");
-    w_.line("var wire: i64 = proto_tag_wire_type(tag);");
+    w_.line("var field: i64 = proto_read_tag_field(tag);");
+    w_.line("var wire: i64 = proto_read_tag_wire_type(tag);");
     bool first = true;
     for (int i = 0; i < d_->field_count(); ++i) {
       const FD* f = d_->field(i);
@@ -791,7 +791,7 @@ class MessageGenerator {
     w_.line("var val: " + T::elementType(v) + " = " + T::zeroValue(v) + ";");
     w_.open("while (r.at_end() == false) {");
     w_.line("var etag: u64 = r.read_tag();");
-    w_.line("var efield: i64 = proto_tag_field(etag);");
+    w_.line("var efield: i64 = proto_read_tag_field(etag);");
     w_.open("if (efield == 1) {");
     w_.line("key = " + T::readExpr(k) + ";");
     w_.close("} else if (efield == 2) {");
@@ -799,7 +799,7 @@ class MessageGenerator {
     w_.line("val = " + T::readExpr(v) + ";");
     w_.close("} else {");
     w_.open("");
-    w_.line("r.skip_field(proto_tag_wire_type(etag), etag, msg.unknown_fields);");
+    w_.line("r.skip_field(proto_read_tag_wire_type(etag), etag, msg.unknown_fields);");
     w_.close();
     w_.close();
     w_.line("r.pop_limit(old);");

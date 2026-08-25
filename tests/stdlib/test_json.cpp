@@ -19,25 +19,25 @@ TEST(Stdlib_Json, parse_scalars) {
   auto value = executeStringWithStdlib(withMain(R"(
     function main() i32, IError {
         var alloc = make_heap_allocator();
-        if (json_parse(alloc, "null").is_null() == false) { return 1; }
-        if (json_parse(alloc, "true").as_bool() == false) { return 2; }
-        if (json_parse(alloc, "false").as_bool()) { return 3; }
-        if (json_parse(alloc, "42").as_i64() != 42) { return 4; }
-        if (json_parse(alloc, "-7").as_i64() != -7) { return 5; }
-        if (json_parse(alloc, "2.5").as_f64() != 2.5) { return 6; }
-        if (json_parse(alloc, "-1e2").as_f64() != -100.0) { return 7; }
-        if (json_parse(alloc, "1E-2").as_f64() != 0.01) { return 8; }
-        if (json_parse(alloc, "0").as_i64() != 0) { return 9; }
-        if (json_parse(alloc, "  \n\t 5 \r\n").as_i64() != 5) { return 10; }
-        var n = json_parse(alloc, "42");
+        if (parse_json(alloc, "null").is_null() == false) { return 1; }
+        if (parse_json(alloc, "true").as_bool() == false) { return 2; }
+        if (parse_json(alloc, "false").as_bool()) { return 3; }
+        if (parse_json(alloc, "42").as_i64() != 42) { return 4; }
+        if (parse_json(alloc, "-7").as_i64() != -7) { return 5; }
+        if (parse_json(alloc, "2.5").as_f64() != 2.5) { return 6; }
+        if (parse_json(alloc, "-1e2").as_f64() != -100.0) { return 7; }
+        if (parse_json(alloc, "1E-2").as_f64() != 0.01) { return 8; }
+        if (parse_json(alloc, "0").as_i64() != 0) { return 9; }
+        if (parse_json(alloc, "  \n\t 5 \r\n").as_i64() != 5) { return 10; }
+        var n = parse_json(alloc, "42");
         if (n.is_int() == false or n.is_float() or n.is_number() == false) { return 11; }
-        var f = json_parse(alloc, "4.0");
+        var f = parse_json(alloc, "4.0");
         if (f.is_float() == false or f.is_int()) { return 12; }
         if (f.as_i64() != 4) { return 13; }
-        if (json_parse(alloc, "9223372036854775807").as_i64() != 9223372036854775807) { return 14; }
-        var huge = json_parse(alloc, "9223372036854775808");
+        if (parse_json(alloc, "9223372036854775807").as_i64() != 9223372036854775807) { return 14; }
+        var huge = parse_json(alloc, "9223372036854775808");
         if (huge.is_float() == false) { return 15; }
-        var s = json_parse(alloc, "\"hi\"");
+        var s = parse_json(alloc, "\"hi\"");
         if (s.is_string() == false) { return 16; }
         if (s.as_string().equals_literal("hi") == false) { return 17; }
         return 0;
@@ -50,7 +50,7 @@ TEST(Stdlib_Json, parse_string_escapes) {
   auto value = executeStringWithStdlib(withMain(R"(
     function main() i32, IError {
         var alloc = make_heap_allocator();
-        var s = json_parse(alloc, "\"a\\\"b\\\\c\\/d\\n\\t\\r\\b\\f\"");
+        var s = parse_json(alloc, "\"a\\\"b\\\\c\\/d\\n\\t\\r\\b\\f\"");
         var text: ref String = s.as_string();
         if (text.length() != 12) { return 1; }
         if (text.at(1) != 34) { return 2; }
@@ -62,17 +62,17 @@ TEST(Stdlib_Json, parse_string_escapes) {
         if (text.at(10) != 8 or text.at(11) != 12) { return 8; }
         // \u escapes decode to UTF-8: é (2 bytes), € (3 bytes), 😀 as a
         // surrogate pair (4 bytes)
-        var u = json_parse(alloc, "\"\\u00e9\\u20AC\\ud83d\\ude00\"");
+        var u = parse_json(alloc, "\"\\u00e9\\u20AC\\ud83d\\ude00\"");
         var ut: ref String = u.as_string();
         if (ut.length() != 9) { return 9; }
         if (ut.at(0) != 195 or ut.at(1) != 169) { return 10; }
         if (ut.at(2) != 226 or ut.at(3) != 130 or ut.at(4) != 172) { return 11; }
         if (ut.at(5) != 240 or ut.at(6) != 159 or ut.at(7) != 152 or ut.at(8) != 128) { return 12; }
         // A lone surrogate becomes U+FFFD (3 bytes)
-        var lone = json_parse(alloc, "\"\\ud83d\"");
+        var lone = parse_json(alloc, "\"\\ud83d\"");
         if (lone.as_string().length() != 3) { return 13; }
         // Raw UTF-8 passes through
-        var raw = json_parse(alloc, "\"héllo\"");
+        var raw = parse_json(alloc, "\"héllo\"");
         if (raw.as_string().length() != 6) { return 14; }
         return 0;
     }
@@ -84,7 +84,7 @@ TEST(Stdlib_Json, parse_nested_and_access) {
   auto value = executeStringWithStdlib(withMain(R"(
     function main() i32, IError {
         var alloc = make_heap_allocator();
-        var doc = json_parse(alloc, "{\"name\": \"sun\", \"tags\": [1, 2.5, true, null, {\"deep\": [[]]}], \"empty\": {}}");
+        var doc = parse_json(alloc, "{\"name\": \"sun\", \"tags\": [1, 2.5, true, null, {\"deep\": [[]]}], \"empty\": {}}");
         if (doc.is_object() == false) { return 1; }
         if (doc.len() != 3) { return 2; }
         if (doc.get("name").as_string().equals_literal("sun") == false) { return 3; }
@@ -117,7 +117,7 @@ TEST(Stdlib_Json, reader_kind_mismatch_throws) {
         var alloc = make_heap_allocator();
         var codes: i32 = 0;
         try {
-            var doc = json_parse(alloc, "{\"a\": [1], \"s\": \"x\", \"f\": 1.5}");
+            var doc = parse_json(alloc, "{\"a\": [1], \"s\": \"x\", \"f\": 1.5}");
             try { doc.get("s").as_i64(); } catch (e: IError) { codes = codes + 1; }
             try { doc.get("f").as_i64(); } catch (e: IError) { codes = codes + 1; }
             try { doc.get("a").as_bool(); } catch (e: IError) { codes = codes + 1; }
@@ -149,12 +149,12 @@ TEST(Stdlib_Json, parse_errors_report_offsets) {
     // Returns the offset of the parse error, or -1 if the text parsed
     function bad(alloc: ref HeapAllocator, text: static_ptr<u8>) i64 {
         try {
-            var doc = json_parse(alloc, text);
+            var doc = parse_json(alloc, text);
             return -1;
         } catch (e: IError) {
             if (e.code() != 60) { return -100; }
             var msg: String = e.message();
-            if (msg.isEmpty()) { return -101; }
+            if (msg.is_empty()) { return -101; }
             return -2;
         }
     }
@@ -209,7 +209,7 @@ TEST(Stdlib_Json, deep_nesting_is_rejected) {
         for (var i: i64 = 0; i < 300; i = i + 1) { text.append_char(91); }
         for (var i: i64 = 0; i < 300; i = i + 1) { text.append_char(93); }
         try {
-            var doc = json_parse(alloc, text);
+            var doc = parse_json(alloc, text);
             return 1;
         } catch (e: IError) {
             return e.code();
@@ -228,7 +228,7 @@ TEST(Stdlib_Json, deep_but_allowed_nesting) {
         for (var i: i64 = 0; i < 200; i = i + 1) { text.append_char(91); }
         text.append_literal("7");
         for (var i: i64 = 0; i < 200; i = i + 1) { text.append_char(93); }
-        var doc = json_parse(alloc, text);
+        var doc = parse_json(alloc, text);
         var out = doc.to_string(alloc);
         if (out.equals(text) == false) { return 1; }
         return 0;
@@ -241,17 +241,17 @@ TEST(Stdlib_Json, build_and_write_compact) {
   auto value = executeStringWithStdlib(withMain(R"(
     function main() i32, IError {
         var alloc = make_heap_allocator();
-        var obj = json_object(alloc);
+        var obj = create_json_object(alloc);
         obj.set(String(alloc, "ok"), Json(true));
         obj.set(String(alloc, "n"), Json(42));
         obj.set(String(alloc, "x"), Json(0.1));
         obj.set(String(alloc, "none"), Json());
-        var arr = json_array(alloc);
+        var arr = create_json_array(alloc);
         arr.push(Json(1));
-        arr.push(json_string(alloc, "two"));
+        arr.push(create_json_string(alloc, "two"));
         arr.push(Json(-3.5));
-        arr.push(json_array(alloc));
-        arr.push(json_object(alloc));
+        arr.push(create_json_array(alloc));
+        arr.push(create_json_object(alloc));
         obj.set(String(alloc, "list"), arr);
         obj.set(String(alloc, "s"), Json(String(alloc, "q\"\\\n")));
         // Overwrite keeps the member position and drops the old value
@@ -268,7 +268,7 @@ TEST(Stdlib_Json, build_and_write_compact) {
   EXPECT_EQ(value, 0);
 }
 
-// Issue #94: Json(s) moves the String in; json_string(alloc, ref s) stores a
+// Issue #94: Json(s) moves the String in; create_json_string(alloc, ref s) stores a
 // copy so the caller can keep using the original.
 TEST(Stdlib_Json, json_string_copies_a_borrowed_string) {
   auto value = executeStringWithStdlib(withMain(R"(
@@ -280,9 +280,9 @@ TEST(Stdlib_Json, json_string_copies_a_borrowed_string) {
     function main() i32, IError {
         var alloc = make_heap_allocator();
         var cfg = Config(String(alloc, "sun-1"));
-        var req = json_object(alloc);
-        req.set(String(alloc, "model"), json_string(alloc, cfg.model));
-        req.set(String(alloc, "again"), json_string(alloc, cfg.model));
+        var req = create_json_object(alloc);
+        req.set(String(alloc, "model"), create_json_string(alloc, cfg.model));
+        req.set(String(alloc, "again"), create_json_string(alloc, cfg.model));
         // The original is intact after both calls
         if (cfg.model.equals_literal("sun-1") == false) { return 1; }
         var out = req.to_string(alloc);
@@ -305,7 +305,7 @@ TEST(Stdlib_Json, json_constructor_takes_ownership_of_string) {
     function main() i32, IError {
         var alloc = make_heap_allocator();
         var s = String(alloc, "moved");
-        var req = json_object(alloc);
+        var req = create_json_object(alloc);
         req.set(String(alloc, "s"), Json(s));
         // s was moved into the document; this is a use after move
         if (s.length() == 0) { return 1; }
@@ -319,14 +319,14 @@ TEST(Stdlib_Json, write_pretty) {
   auto value = executeStringWithStdlib(withMain(R"(
     function main() i32, IError {
         var alloc = make_heap_allocator();
-        var doc = json_parse(alloc, "{\"a\":[1,{\"b\":null}],\"c\":{},\"d\":[]}");
+        var doc = parse_json(alloc, "{\"a\":[1,{\"b\":null}],\"c\":{},\"d\":[]}");
         var out = doc.to_pretty_string(alloc, 2);
         var expected = String(alloc, "{\n  \"a\": [\n    1,\n    {\n      \"b\": null\n    }\n  ],\n  \"c\": {},\n  \"d\": []\n}");
         if (out.equals(expected) == false) {
             println(out);
             return 1;
         }
-        var scalar = json_parse(alloc, "5");
+        var scalar = parse_json(alloc, "5");
         if (scalar.to_pretty_string(alloc, 4).equals_literal("5") == false) { return 2; }
         return 0;
     }
@@ -355,9 +355,9 @@ TEST(Stdlib_Json, number_formatting) {
         if (fmt(alloc, Json(0.0 - inf), "null") == false) { return 8; }
         if (fmt(alloc, Json(inf - inf), "null") == false) { return 9; }
         // Round trip keeps kinds
-        var back = json_parse(alloc, Json(5.0).to_string(alloc));
+        var back = parse_json(alloc, Json(5.0).to_string(alloc));
         if (back.is_float() == false) { return 10; }
-        var big = json_parse(alloc, "12345678901234567890");
+        var big = parse_json(alloc, "12345678901234567890");
         if (big.is_float() == false) { return 11; }
         if (fmt(alloc, big, "1.2345678901234567e+19") == false) { return 12; }
         return 0;
@@ -371,9 +371,9 @@ TEST(Stdlib_Json, round_trip) {
     function main() i32, IError {
         var alloc = make_heap_allocator();
         var text = String(alloc, "{\"name\":\"s\\u00fcn\",\"list\":[1,2.5,-3,true,false,null,\"\\\"\"],\"nested\":{\"a\":{\"b\":[[],{}]}},\"e\":\"\"}");
-        var doc = json_parse(alloc, text);
+        var doc = parse_json(alloc, text);
         var once = doc.to_string(alloc);
-        var again = json_parse(alloc, once).to_string(alloc);
+        var again = parse_json(alloc, once).to_string(alloc);
         if (once.equals(again) == false) { return 1; }
         // \u00fc is written as raw UTF-8, everything else is stable
         if (once.equals_literal("{\"name\":\"sün\",\"list\":[1,2.5,-3,true,false,null,\"\\\"\"],\"nested\":{\"a\":{\"b\":[[],{}]}},\"e\":\"\"}") == false) {
@@ -400,7 +400,7 @@ TEST(Stdlib_Json, control_characters_are_escaped_on_write) {
             println(out);
             return 1;
         }
-        var back = json_parse(alloc, out);
+        var back = parse_json(alloc, out);
         if (back.as_string().length() != 5) { return 2; }
         return 0;
     }
@@ -412,7 +412,7 @@ TEST(Stdlib_Json, iterate_object_members_and_array_items) {
   auto value = executeStringWithStdlib(withMain(R"(
     function main() i32, IError {
         var alloc = make_heap_allocator();
-        var doc = json_parse(alloc, "{\"a\": 1, \"b\": 2, \"c\": [10, 20, 30]}");
+        var doc = parse_json(alloc, "{\"a\": 1, \"b\": 2, \"c\": [10, 20, 30]}");
         var total: i64 = 0;
         for (var i: i64 = 0; i < doc.len(); i = i + 1) {
             var v: ref Json = doc.value_at(i);
@@ -443,12 +443,12 @@ TEST(Stdlib_Json, large_document_builds_and_drops) {
         var alloc = make_heap_allocator();
         var total: i64 = 0;
         for (var round: i64 = 0; round < 3; round = round + 1) {
-            var root = json_object(alloc);
+            var root = create_json_object(alloc);
             for (var i: i64 = 0; i < 200; i = i + 1) {
-                var item = json_object(alloc);
+                var item = create_json_object(alloc);
                 item.set(String(alloc, "id"), Json(i));
-                item.set(String(alloc, "name"), json_string(alloc, "item"));
-                var nums = json_array(alloc);
+                item.set(String(alloc, "name"), create_json_string(alloc, "item"));
+                var nums = create_json_array(alloc);
                 for (var k: i64 = 0; k < 5; k = k + 1) { nums.push(Json(_convert<f64>(k) * 0.5)); }
                 item.set(String(alloc, "nums"), nums);
                 var key = String(alloc, "k");
@@ -462,7 +462,7 @@ TEST(Stdlib_Json, large_document_builds_and_drops) {
                 root.set(key, Json(i));
             }
             var text = root.to_string(alloc);
-            var back = json_parse(alloc, text);
+            var back = parse_json(alloc, text);
             total = total + back.len();
         }
         return _convert<i32>(total);
@@ -487,7 +487,7 @@ TEST(Stdlib_Json, json_value_enum_is_matchable) {
 
     function main() i32, IError {
         var alloc = make_heap_allocator();
-        var doc = json_parse(alloc, "[null, true, 1, 1.5, \"s\", [], {}]");
+        var doc = parse_json(alloc, "[null, true, 1, 1.5, \"s\", [], {}]");
         var sum: i32 = 0;
         for (var i: i64 = 0; i < doc.len(); i = i + 1) {
             sum = sum * 10 + describe(doc.at(i));

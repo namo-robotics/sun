@@ -212,19 +212,19 @@ TEST(Classes_Generic, generic_method_returns_field) {
         this.value = v;
       }
 
-      function getValue() T {
+      function get_value() T {
         return this.value;
       }
 
-      function setValue(v: T) void {
+      function set_value(v: T) void {
         this.value = v;
       }
     }
 
     function main() i32 {
         var d = Data<i32>(5);
-        d.setValue(10);
-        return d.getValue();
+        d.set_value(10);
+        return d.get_value();
     }
   )");
   EXPECT_EQ(value, 10);
@@ -303,7 +303,7 @@ TEST(Classes_Generic, mixed_type_parameters) {
         return this.key;
       }
 
-      function getValue() V {
+      function get_value() V {
         return this.value;
       }
     }
@@ -311,7 +311,7 @@ TEST(Classes_Generic, mixed_type_parameters) {
     function main() i32 {
         var kv = KeyValue<i32, f64>(42, 3.14);
         var k = kv.getKey();
-        var v = kv.getValue();
+        var v = kv.get_value();
         if (k == 42) {
           if (v > 3.0) {
             return 1;

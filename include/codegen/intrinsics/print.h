@@ -16,6 +16,7 @@ namespace sun {
 //   _print_f64(value) -> void       Print 64-bit float
 //   _print_newline() -> void        Print newline character
 //   _print_bytes(ptr, len) -> void  Print len bytes from ptr
+//   _print_char(c) -> void         Print a char as UTF-8
 //   _println_str(str) -> void       Print string with newline
 
 }  // namespace sun

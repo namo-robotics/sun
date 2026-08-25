@@ -22,11 +22,6 @@
 //   }
 
 public module sun {
-  // ASCII bytes used when scanning request bytes
-  public var HTTP_CR: u8 = 13;
-  public var HTTP_LF: u8 = 10;
-  public var HTTP_SP: u8 = 32;
-
   // Cap on total request header size
   public var HTTP_MAX_REQUEST: i64 = 65536;
 
@@ -39,6 +34,7 @@ public module sun {
     public var path: String;  // "/index.html"
     public var headers: String;  // raw header block after the request line
 
+    // Build an empty request. The parser fills in the fields.
     public function init(alloc: ref HeapAllocator) {
       this.method = String(alloc, "");
       this.path = String(alloc, "");
@@ -55,26 +51,31 @@ public module sun {
     public var content_type: String;
     public var body: String;
 
+    // Build a 200 response with an empty HTML body.
     public function init(alloc: ref HeapAllocator) {
       this.status = 200;
       this.content_type = String(alloc, "text/html");
       this.body = String(alloc, "");
     }
 
+    // Set the status code sent on the response line.
     public function set_status(code: i32) void {
       this.status = code;
     }
 
+    // Replace the Content-Type header value.
     public function set_content_type(ct: static_ptr<u8>) void {
       this.content_type.clear();
       this.content_type.append(ct);
     }
 
+    // Replace the body with a literal.
     public function set_body(content: static_ptr<u8>) void {
       this.body.clear();
       this.body.append(content);
     }
 
+    // Replace the body with text built at runtime. The String is copied in.
     public function set_body_string(content: const ref String) void {
       this.body.clear();
       this.body.append(content);
@@ -85,68 +86,51 @@ public module sun {
   // Framing helpers
   // -------------------------------------------------------------------
 
-  public function http_append_crlf(out: ref String) void {
+  public function append_crlf(out: ref String) void {
     out.append("\r\n");
   }
 
   // Index of the CRLFCRLF header terminator, or -1 if not yet received
-  public function http_find_header_end(s: const ref String) i64 {
-    var n: i64 = s.length();
-    for (var i: i64 = 0; i + 3 < n; i = i + 1) {
-      if (s.at(i) == HTTP_CR) {
-        if (s.at(i + 1) == HTTP_LF) {
-          if (s.at(i + 2) == HTTP_CR) {
-            if (s.at(i + 3) == HTTP_LF) {
-              return i;
-            }
-          }
-        }
-      }
-    }
-    return -1;
+  public function find_header_end(s: const ref String) i64 {
+    return match s.find("\r\n\r\n") {
+      Option.Some(i) => i,
+      Option.None => -1
+    };
   }
 
   // Parse "METHOD path HTTP/1.1" request line and raw header block
-  public function http_parse_request(raw: const ref String, req: ref HttpRequest) void {
+  public function parse_http_request(raw: const ref String, req: ref HttpRequest) void {
     var n: i64 = raw.length();
     var i: i64 = 0;
 
     while (i < n) {
       var c: u8 = raw.at(i);
-      if (c == HTTP_SP) {
-        break;
-      }
-      if (c == HTTP_CR) {
+      if (c == b' ' or c == b'\r') {
         break;
       }
       req.method.append_char(c);
       i = i + 1;
     }
-    if (i < n) {
-      if (raw.at(i) == HTTP_SP) {
-        i = i + 1;
-      }
+    if (i < n and raw.at(i) == b' ') {
+      i = i + 1;
     }
     while (i < n) {
       var c: u8 = raw.at(i);
-      if (c == HTTP_SP) {
-        break;
-      }
-      if (c == HTTP_CR) {
+      if (c == b' ' or c == b'\r') {
         break;
       }
       req.path.append_char(c);
       i = i + 1;
     }
     while (i < n) {
-      if (raw.at(i) == HTTP_LF) {
+      if (raw.at(i) == b'\n') {
         break;
       }
       i = i + 1;
     }
     i = i + 1;
 
-    var end: i64 = http_find_header_end(raw);
+    var end: i64 = find_header_end(raw);
     if (end < 0) {
       end = n;
     }
@@ -156,48 +140,24 @@ public module sun {
     }
   }
 
-  public function http_append_reason(out: ref String, code: i32) void {
-    if (code == 200) {
-      out.append("OK");
-      return;
-    }
-    if (code == 201) {
-      out.append("Created");
-      return;
-    }
-    if (code == 204) {
-      out.append("No Content");
-      return;
-    }
-    if (code == 301) {
-      out.append("Moved Permanently");
-      return;
-    }
-    if (code == 302) {
-      out.append("Found");
-      return;
-    }
-    if (code == 400) {
-      out.append("Bad Request");
-      return;
-    }
-    if (code == 403) {
-      out.append("Forbidden");
-      return;
-    }
-    if (code == 404) {
-      out.append("Not Found");
-      return;
-    }
-    if (code == 405) {
-      out.append("Method Not Allowed");
-      return;
-    }
-    if (code == 500) {
-      out.append("Internal Server Error");
-      return;
-    }
-    out.append("Status");
+  // Append the standard reason phrase for a status code, e.g. "OK" for 200.
+  // Unknown codes get a generic phrase for their class.
+  public function append_reason_phrase(out: ref String, code: i32) void {
+    out.append(
+      match code {
+        200 => "OK",
+        201 => "Created",
+        204 => "No Content",
+        301 => "Moved Permanently",
+        302 => "Found",
+        400 => "Bad Request",
+        403 => "Forbidden",
+        404 => "Not Found",
+        405 => "Method Not Allowed",
+        500 => "Internal Server Error",
+        _ => "Status"
+      }
+    );
   }
 
   // -------------------------------------------------------------------
@@ -209,12 +169,14 @@ public module sun {
     var alloc: HeapAllocator;
     var running: bool;
 
+    // Build a server with no socket bound yet.
     public function init(allocator: ref HeapAllocator) {
       this.alloc = allocator.copy();
       this.listener = TcpListener();
       this.running = false;
     }
 
+    // Close the listening socket.
     function deinit() void {
       this.listener.close();
     }
@@ -231,6 +193,8 @@ public module sun {
       this.listener.listen(128);
     }
 
+    // Ask the serve loop to finish and close the listening socket. Safe to call
+    // from a request handler.
     public function stop() void {
       this.running = false;
       this.listener.close();
@@ -280,7 +244,7 @@ public module sun {
           for (var i: i64 = 0; i < n; i = i + 1) {
             raw.append_char(chunk.get_unchecked(i));
           }
-          if (http_find_header_end(raw) >= 0) {
+          if (find_header_end(raw) >= 0) {
             done = true;
           }
           if (raw.length() > HTTP_MAX_REQUEST) {
@@ -288,25 +252,25 @@ public module sun {
           }
         }
       }
-      http_parse_request(raw, req);
+      parse_http_request(raw, req);
     }
 
     // Serialize status line, headers, and body
     public function send_response(client: ref TcpStream, resp: ref HttpResponse) void, IError {
       var out = String(this.alloc, "HTTP/1.1 ");
       out.append(resp.status);
-      out.append_char(HTTP_SP);
-      http_append_reason(out, resp.status);
-      http_append_crlf(out);
+      out.append_char(b' ');
+      append_reason_phrase(out, resp.status);
+      append_crlf(out);
       out.append("Content-Type: ");
       out.append(resp.content_type);
-      http_append_crlf(out);
+      append_crlf(out);
       out.append("Content-Length: ");
       out.append(resp.body.length());
-      http_append_crlf(out);
+      append_crlf(out);
       out.append("Connection: close");
-      http_append_crlf(out);
-      http_append_crlf(out);
+      append_crlf(out);
+      append_crlf(out);
       out.append(resp.body);
       client.send_string(out);
     }

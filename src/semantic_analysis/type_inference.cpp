@@ -30,6 +30,12 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       return sun::Types::Float64();
     }
 
+    case ASTNodeType::CHAR_LITERAL: {
+      // Unlike an integer literal, this never takes its type from context.
+      const auto& lit = static_cast<const CharLiteralAST&>(expr);
+      return lit.isByte() ? sun::Types::UInt8() : sun::Types::Char();
+    }
+
     case ASTNodeType::STRING_LITERAL: {
       return sun::Types::String();
     }

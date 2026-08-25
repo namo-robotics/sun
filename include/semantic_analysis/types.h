@@ -43,6 +43,7 @@ class Type {
     UInt64,   // u64
     Float32,  // f32
     Float64,  // f64 (current "double")
+    Char,     // char: one Unicode scalar value, 4 bytes
     // Composite types
     Function,
     Lambda,
@@ -82,6 +83,7 @@ class Type {
   bool isUInt64() const { return getKind() == Kind::UInt64; }
   bool isFloat32() const { return getKind() == Kind::Float32; }
   bool isFloat64() const { return getKind() == Kind::Float64; }
+  bool isChar() const { return getKind() == Kind::Char; }
   bool isSigned() const {
     Kind k = getKind();
     return k == Kind::Int8 || k == Kind::Int16 || k == Kind::Int32 ||
@@ -92,12 +94,17 @@ class Type {
     return k == Kind::UInt8 || k == Kind::UInt16 || k == Kind::UInt32 ||
            k == Kind::UInt64;
   }
+  // `char` is primitive (passed by value, no ownership) but deliberately not
+  // numeric or integral: arithmetic and implicit widening are keyed off
+  // isNumeric()/isIntegral(), so leaving it out of those rejects `'a' + 1`
+  // and any silent char/integer mixing.
   bool isPrimitive() const {
     Kind k = getKind();
     return k == Kind::Void || k == Kind::Bool || k == Kind::Int8 ||
            k == Kind::Int16 || k == Kind::Int32 || k == Kind::Int64 ||
            k == Kind::UInt8 || k == Kind::UInt16 || k == Kind::UInt32 ||
-           k == Kind::UInt64 || k == Kind::Float32 || k == Kind::Float64;
+           k == Kind::UInt64 || k == Kind::Float32 || k == Kind::Float64 ||
+           k == Kind::Char;
   }
   // Convenience checks for composite types
   bool isFunction() const { return getKind() == Kind::Function; }
@@ -193,6 +200,8 @@ class PrimitiveType : public Type {
         return "f32";
       case Kind::Float64:
         return "f64";
+      case Kind::Char:
+        return "char";
       default:
         return "unknown";
     }
@@ -229,6 +238,8 @@ class PrimitiveType : public Type {
         return llvm::Type::getFloatTy(ctx);
       case Kind::Float64:
         return llvm::Type::getDoubleTy(ctx);
+      case Kind::Char:
+        return llvm::Type::getInt32Ty(ctx);  // a Unicode scalar value
       default:
         return nullptr;
     }
@@ -1900,6 +1911,10 @@ class Types {
     static auto t = std::make_shared<PrimitiveType>(Type::Kind::Float64);
     return t;
   }
+  static TypePtr Char() {
+    static auto t = std::make_shared<PrimitiveType>(Type::Kind::Char);
+    return t;
+  }
 
   // Slice type singleton: builtin { i64 start, i64 end } for indexing
   static TypePtr Slice() {
@@ -2100,6 +2115,7 @@ class Types {
     if (name == "u64") return UInt64();
     if (name == "f32") return Float32();
     if (name == "f64") return Float64();
+    if (name == "char") return Char();
     if (name == "slice") return Slice();
     return nullptr;  // Unknown type
   }

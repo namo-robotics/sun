@@ -66,6 +66,15 @@
                             "match": "\\\\."
                         }
                     ]
+                },
+                {
+                    "name": "string.quoted.single.sun",
+                    "match": "b?'(\\\\(u\\{[0-9a-fA-F]{1,6}\\}|x[0-9a-fA-F]{2}|.)|[^'\\\\])'",
+                    "captures": {
+                        "1": {
+                            "name": "constant.character.escape.sun"
+                        }
+                    }
                 }
             ]
         },
@@ -97,7 +106,7 @@
             "patterns": [
                 {
                     "name": "storage.type.sun",
-                    "match": "\\b(?:void|bool|i8|i16|i32|i64|u8|u16|u32|u64|f32|f64|string|slice|IError|array|fn|lambda)\\b"
+                    "match": "\\b(?:void|bool|i8|i16|i32|i64|u8|u16|u32|u64|f32|f64|char|string|slice|IError|array|fn|lambda)\\b"
                 }
             ]
         },

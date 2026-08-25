@@ -17,7 +17,7 @@ TEST(Stdlib_Sys_Time, duration_conversions) {
     using sun.time;
 
     function main() i32 {
-        var d = millis(1500);
+        var d = create_duration_millis(1500);
         if (d.as_secs() != 1) { return 1; }
         if (d.as_millis() != 1500) { return 2; }
         if (d.as_micros() != 1500000) { return 3; }
@@ -25,9 +25,9 @@ TEST(Stdlib_Sys_Time, duration_conversions) {
         if (d.subsec_nanos() != 500000000) { return 5; }
         if (d.as_secs_f64() < 1.49 or d.as_secs_f64() > 1.51) { return 6; }
 
-        if (seconds(2).as_millis() != 2000) { return 7; }
-        if (micros(2500).as_nanos() != 2500000) { return 8; }
-        if (nanos(1).as_nanos() != 1) { return 9; }
+        if (create_duration_seconds(2).as_millis() != 2000) { return 7; }
+        if (create_duration_micros(2500).as_nanos() != 2500000) { return 8; }
+        if (create_duration_nanos(1).as_nanos() != 1) { return 9; }
         return 0;
     }
   )");
@@ -59,7 +59,7 @@ TEST(Stdlib_Sys_Time, sleep_waits_at_least_the_requested_time) {
 
     function main() i32 {
         var start = now();
-        sleep(millis(50));
+        sleep(create_duration_millis(50));
         // Lower bound only, with slack for clock granularity.
         if (start.elapsed().as_millis() < 40) { return 1; }
         return 0;
@@ -75,7 +75,7 @@ TEST(Stdlib_Sys_Time, unix_time_agrees_with_the_host_clock) {
     using sun.time;
 
     function main() i64 {
-        return unix_time();
+        return read_unix_time();
     }
   )");
   auto after = static_cast<int64_t>(std::time(nullptr));
@@ -89,8 +89,8 @@ TEST(Stdlib_Sys_Time, unix_time_millis_is_consistent_with_seconds) {
     using sun.time;
 
     function main() i32 {
-        var secs = unix_time();
-        var ms = unix_time_millis();
+        var secs = read_unix_time();
+        var ms = read_unix_time_millis();
         var derived = ms / 1000;
         if (derived < secs - 2) { return 1; }
         if (derived > secs + 2) { return 2; }
@@ -107,7 +107,7 @@ TEST(Stdlib_Sys_Time, utc_breaks_a_fixed_timestamp_into_calendar_fields) {
     using sun.time;
 
     function main() i32 {
-        var d = utc(1700000000);
+        var d = convert_to_utc(1700000000);
         if (d.year != 2023) { return 1; }
         if (d.month != 11) { return 2; }   // 1-based, not tm_mon
         if (d.day != 14) { return 3; }
@@ -129,7 +129,7 @@ TEST(Stdlib_Sys_Time, to_unix_utc_round_trips) {
 
     function main() i32 {
         var stamp: i64 = 1700000000;
-        if (to_unix_utc(utc(stamp)) != stamp) { return 1; }
+        if (to_unix_utc(convert_to_utc(stamp)) != stamp) { return 1; }
         // And an epoch date built by hand
         var d = DateTime(1970, 1, 1, 0, 0, 0);
         if (to_unix_utc(d) != 0) { return 2; }
@@ -146,7 +146,7 @@ TEST(Stdlib_Sys_Time, format_renders_a_fixed_timestamp) {
 
     function main() i32 {
         var a = make_heap_allocator();
-        var d = utc(1700000000);
+        var d = convert_to_utc(1700000000);
         var text = format(a, d, "%Y-%m-%d %H:%M:%S");
         if (not text.equals_literal("2023-11-14 22:13:20")) { return 1; }
         var day = format(a, d, "%Y-%m-%d");
@@ -166,7 +166,7 @@ TEST(Stdlib_Sys_Time, local_uses_the_timezone) {
     using sun.time;
 
     function main() i32 {
-        var d = local(1700000000);
+        var d = convert_to_local(1700000000);
         if (d.year != 2023) { return 1; }
         if (d.hour != 22) { return 2; }
         if (to_unix_local(d) != 1700000000) { return 3; }

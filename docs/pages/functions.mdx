@@ -73,7 +73,7 @@ using sun.env;
 
 function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
     var alloc = make_heap_allocator();
-    var cli = args(alloc, argc, argv);
+    var cli = collect_args(alloc, argc, argv);
     for (var arg: String in cli) { println(arg); }
     return 0;
 }

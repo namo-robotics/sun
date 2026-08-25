@@ -9,6 +9,7 @@ class ExprAST;
 // Literal nodes
 class NumberExprAST;
 class StringLiteralAST;
+class CharLiteralAST;
 class NullLiteralAST;
 class BoolLiteralAST;
 class ArrayLiteralAST;

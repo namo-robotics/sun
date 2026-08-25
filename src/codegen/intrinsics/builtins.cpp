@@ -17,7 +17,8 @@ using namespace llvm;
 bool CodegenVisitor::isBuiltinFunction(const std::string& name) {
   return name == "_print_i32" || name == "_print_i64" || name == "_print_f64" ||
          name == "_print_newline" || name == "_println_str" ||
-         name == "_print_bytes" || name == "__file_open" ||
+         name == "_print_bytes" || name == "_print_char" ||
+         name == "__file_open" ||
          name == "__file_close" || name == "__file_write" ||
          name == "__file_read" || name == "__lseek" || name == "__fstat" ||
          name == "__fsync" || name == "__ftruncate" || name == "__unlink" ||
@@ -63,6 +64,9 @@ Value* CodegenVisitor::codegenBuiltin(const std::string& name,
     Value* result = codegenPrintString(expr);
     codegenPrintNewline();
     return result;
+  }
+  if (name == "_print_char") {
+    return codegenPrintChar(expr);
   }
   if (name == "_print_bytes") {
     return codegenPrintBytes(expr);

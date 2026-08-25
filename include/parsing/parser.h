@@ -264,6 +264,7 @@ class Parser {
   };
   ParsedPattern parsePattern();
   unique_ptr<ExprAST> parseNumberExpr();
+  unique_ptr<ExprAST> parseCharLiteral();
   unique_ptr<ExprAST> parseStringLiteral();
   unique_ptr<ExprAST> parseArrayLiteral();
   unique_ptr<ExprAST> parseParenExpr();

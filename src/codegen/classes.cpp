@@ -1050,7 +1050,9 @@ Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
 
   // Handle implicit widening for literals assigned to wider types
   if (valueType != fieldLLVMType) {
-    bool valueIsLiteral = expr.getValue()->getType() == ASTNodeType::NUMBER;
+    ASTNodeType valueKind = expr.getValue()->getType();
+    bool valueIsLiteral = valueKind == ASTNodeType::NUMBER ||
+                          valueKind == ASTNodeType::CHAR_LITERAL;
 
     if (valueIsLiteral) {
       // Integer widening

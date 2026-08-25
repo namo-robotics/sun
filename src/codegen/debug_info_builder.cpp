@@ -294,6 +294,8 @@ DIType* DebugInfoBuilder::resolveTypeImpl(const Type& type) {
       return di_->createBasicType("f32", 32, dwarf::DW_ATE_float);
     case Type::Kind::Float64:
       return di_->createBasicType("f64", 64, dwarf::DW_ATE_float);
+    case Type::Kind::Char:
+      return di_->createBasicType("char", 32, dwarf::DW_ATE_UTF);
 
     case Type::Kind::Reference: {
       const auto& ref = static_cast<const ReferenceType&>(type);

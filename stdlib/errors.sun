@@ -17,7 +17,7 @@
 //   using sun;
 //
 //   function pop_front() T, IError {
-//       if (this.isEmpty()) {
+//       if (this.is_empty()) {
 //           throw EmptyError();
 //       }
 //       // ...
@@ -32,6 +32,7 @@ public module sun {
     var code_: i32;
     var message_: String;
 
+    // Build an error from a code and a literal message.
     public function init(code: i32, message: static_ptr<u8>) {
       this.code_ = code;
       this.message_ = String(message);
@@ -45,10 +46,12 @@ public module sun {
       this.message_ = message.clone(alloc);
     }
 
+    // The numeric code this error was built with.
     public function code() i32 {
       return this.code_;
     }
 
+    // A fresh copy of the message text, owned by the caller.
     public function message() String {
       var alloc: HeapAllocator = HeapAllocator();
       return this.message_.clone(alloc);
@@ -60,12 +63,15 @@ public module sun {
   // ============================================================================
 
   public class EmptyError implements IError {
+    // Build the error reporting that a container held nothing.
     public function init() {}
 
+    // Always 1.
     public function code() i32 {
       return 1;
     }
 
+    // Fixed text: the container is empty.
     public function message() String {
       return String("container is empty");
     }
@@ -76,12 +82,15 @@ public module sun {
   // ============================================================================
 
   public class NotFoundError implements IError {
+    // Build the error reporting that a lookup found nothing.
     public function init() {}
 
+    // Always 2.
     public function code() i32 {
       return 2;
     }
 
+    // Fixed text: the element was not found.
     public function message() String {
       return String("element not found");
     }
@@ -94,18 +103,22 @@ public module sun {
   public class IndexOutOfBoundsError implements IError {
     var index_: i64;
 
+    // Build the error, recording the index that was out of range.
     public function init(index: i64) {
       this.index_ = index;
     }
 
+    // Always 3.
     public function code() i32 {
       return 3;
     }
 
+    // Fixed text: the index was out of bounds.
     public function message() String {
       return String("index out of bounds");
     }
 
+    // The offending index, for a caller that wants to report it.
     public function index() i64 {
       return this.index_;
     }
@@ -116,12 +129,15 @@ public module sun {
   // ============================================================================
 
   public class DivisionByZeroError implements IError {
+    // Build the error reporting a divide by zero.
     public function init() {}
 
+    // Always 4.
     public function code() i32 {
       return 4;
     }
 
+    // Fixed text: division by zero.
     public function message() String {
       return String("division by zero");
     }
@@ -132,12 +148,15 @@ public module sun {
   // ============================================================================
 
   public class OverflowError implements IError {
+    // Build the error reporting that arithmetic went out of range.
     public function init() {}
 
+    // Always 5.
     public function code() i32 {
       return 5;
     }
 
+    // Fixed text: arithmetic overflow.
     public function message() String {
       return String("arithmetic overflow");
     }
@@ -150,19 +169,24 @@ public module sun {
   public class InvalidArgumentError implements IError {
     var message_: String;
 
+    // Build the error from a literal explaining what was wrong.
     public function init(message: static_ptr<u8>) {
       this.message_ = String(message);
     }
 
+    // Build the error from a message put together at runtime. The text is
+    // copied, so the caller's String can go out of scope.
     public function init(message: const ref String) {
       var alloc: HeapAllocator = HeapAllocator();
       this.message_ = message.clone(alloc);
     }
 
+    // Always 6.
     public function code() i32 {
       return 6;
     }
 
+    // A fresh copy of the explanation, owned by the caller.
     public function message() String {
       var alloc: HeapAllocator = HeapAllocator();
       return this.message_.clone(alloc);
@@ -176,18 +200,22 @@ public module sun {
   public class IOError implements IError {
     var errno_: i32;
 
+    // Build the error from the C errno value the failing call left behind.
     public function init(errno: i32) {
       this.errno_ = errno;
     }
 
+    // The errno value, passed straight through.
     public function code() i32 {
       return this.errno_;
     }
 
+    // Fixed text: an I/O call failed.
     public function message() String {
       return String("I/O error");
     }
 
+    // The errno value, under a name that says where it came from.
     public function errno() i32 {
       return this.errno_;
     }
@@ -200,19 +228,23 @@ public module sun {
   public class AllocationError implements IError {
     var size_: i64;
 
+    // Build the error, recording how many bytes were asked for.
     public function init(size: i64) {
       this.size_ = size;
     }
 
+    // Always 7.
     public function code() i32 {
       return 7;
     }
 
+    // Fixed text: the allocator could not satisfy the request.
     public function message() String {
       return String("memory allocation failed");
     }
 
-    public function requestedSize() i64 {
+    // How many bytes the failed request asked for.
+    public function requested_size() i64 {
       return this.size_;
     }
   }
@@ -222,12 +254,15 @@ public module sun {
   // ============================================================================
 
   public class ConversionError implements IError {
+    // Build the error reporting that a value did not fit its new type.
     public function init() {}
 
+    // Always 9.
     public function code() i32 {
       return 9;
     }
 
+    // Fixed text: the value was out of range for the target type.
     public function message() String {
       return String("value out of range for the target type");
     }

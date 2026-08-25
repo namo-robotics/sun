@@ -165,7 +165,8 @@ Type* LLVMTypeResolver::resolve(const sun::Type& type) {
     case sun::Type::Kind::UInt32:
     case sun::Type::Kind::UInt64:
     case sun::Type::Kind::Float32:
-    case sun::Type::Kind::Float64: {
+    case sun::Type::Kind::Float64:
+    case sun::Type::Kind::Char: {
       result = type.toLLVMType(ctx);
       break;
     }

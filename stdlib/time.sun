@@ -4,10 +4,10 @@
 //   using sun.time;
 //
 //   var start = now();
-//   sleep(millis(50));
+//   sleep(create_duration_millis(50));
 //   println(start.elapsed().as_millis());
 //
-//   var today = utc(unix_time());
+//   var today = convert_to_utc(read_unix_time());
 //   println(format(alloc, today, "%Y-%m-%d"));
 
 public module sun {
@@ -24,6 +24,8 @@ public module sun {
       var secs: i64;
       var nanos: i64;  // 0 .. 999999999
 
+      // Build a duration, carrying any whole seconds out of the nanosecond part.
+      // A negative result is clamped to zero.
       public function init(secs: i64, nanos: i64) {
         var extra: i64 = nanos / NANOS_PER_SEC;
         this.secs = secs + extra;
@@ -34,22 +36,27 @@ public module sun {
         }
       }
 
+      // Whole seconds, with the nanosecond remainder dropped.
       public const function as_secs() i64 {
         return this.secs;
       }
 
+      // The whole duration in milliseconds.
       public const function as_millis() i64 {
         return this.secs * 1000 + this.nanos / 1000000;
       }
 
+      // The whole duration in microseconds.
       public const function as_micros() i64 {
         return this.secs * 1000000 + this.nanos / 1000;
       }
 
+      // The whole duration in nanoseconds.
       public const function as_nanos() i64 {
         return this.secs * NANOS_PER_SEC + this.nanos;
       }
 
+      // The whole duration in seconds, including the fraction.
       public const function as_secs_f64() f64 {
         return _convert<f64>(this.secs) + _convert<f64>(this.nanos) / 1000000000.0;
       }
@@ -60,19 +67,23 @@ public module sun {
       }
     }
 
-    public function nanos(n: i64) Duration {
+    // Build a duration of n nanoseconds.
+    public function create_duration_nanos(n: i64) Duration {
       return Duration(0, n);
     }
 
-    public function micros(n: i64) Duration {
+    // Build a duration of n microseconds.
+    public function create_duration_micros(n: i64) Duration {
       return Duration(0, n * 1000);
     }
 
-    public function millis(n: i64) Duration {
+    // Build a duration of n milliseconds.
+    public function create_duration_millis(n: i64) Duration {
       return Duration(0, n * 1000000);
     }
 
-    public function seconds(n: i64) Duration {
+    // Build a duration of n seconds.
+    public function create_duration_seconds(n: i64) Duration {
       return Duration(n, 0);
     }
 
@@ -83,6 +94,7 @@ public module sun {
       var secs: i64;
       var nanos: i64;
 
+      // Build an instant from a raw monotonic clock reading.
       public function init(secs: i64, nanos: i64) {
         this.secs = secs;
         this.nanos = nanos;
@@ -118,13 +130,14 @@ public module sun {
     }
 
     // Seconds since the Unix epoch, from the wall clock.
-    public function unix_time() i64 {
+    public function read_unix_time() i64 {
       var ts: Timespec = Timespec(0, 0);
       unsafe { c_clock_gettime(CLOCK_REALTIME, ts); };
       return ts.sec;
     }
 
-    public function unix_time_millis() i64 {
+    // Milliseconds since the Unix epoch, from the wall clock.
+    public function read_unix_time_millis() i64 {
       var ts: Timespec = Timespec(0, 0);
       unsafe { c_clock_gettime(CLOCK_REALTIME, ts); };
       return ts.sec * 1000 + ts.nsec / 1000000;
@@ -149,6 +162,8 @@ public module sun {
       public var yearday: i32;  // 0-365
       public var utc_offset: i64;  // seconds east of UTC
 
+      // Build a calendar time from its date and clock fields. Weekday, day of year
+      // and UTC offset start at zero; the conversion functions fill them in.
       public function init(year: i32, month: i32, day: i32, hour: i32, minute: i32, second: i32) {
         this.year = year;
         this.month = month;
@@ -162,6 +177,7 @@ public module sun {
       }
     }
 
+    // Convert C's struct tm into a DateTime, undoing its year and month offsets.
     function from_ctm(tm: const ref CTm) DateTime {
       var dt: DateTime = DateTime(
         tm.year + 1900,
@@ -177,6 +193,8 @@ public module sun {
       return dt;
     }
 
+    // Convert a DateTime into C's struct tm, reapplying its year and month
+    // offsets and leaving the DST flag for C to work out.
     function to_ctm(dt: const ref DateTime) CTm {
       var tm: CTm = CTm();
       tm.year = dt.year - 1900;
@@ -190,7 +208,7 @@ public module sun {
     }
 
     // Break a Unix timestamp into UTC calendar fields.
-    public function utc(unix_secs: i64) DateTime {
+    public function convert_to_utc(unix_secs: i64) DateTime {
       var t: i64 = unix_secs;
       var tm: CTm = CTm();
       unsafe { c_gmtime_r(_address_of<i64>(t), tm); };
@@ -198,7 +216,7 @@ public module sun {
     }
 
     // Break a Unix timestamp into local calendar fields, per $TZ.
-    public function local(unix_secs: i64) DateTime {
+    public function convert_to_local(unix_secs: i64) DateTime {
       var t: i64 = unix_secs;
       var tm: CTm = CTm();
       unsafe { c_localtime_r(_address_of<i64>(t), tm); };
@@ -225,11 +243,11 @@ public module sun {
       tm.wday = dt.weekday;
       tm.yday = dt.yearday;
       var buf: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 256);
-      var written: i64 = unsafe { c_strftime(buf.rawData(), 256, fmt, tm); };
+      var written: i64 = unsafe { c_strftime(buf.raw_data(), 256, fmt, tm); };
       if (written <= 0) {
         return String(alloc, "");
       }
-      return from_c_str(alloc, buf.rawData());
+      return from_c_str(alloc, buf.raw_data());
     }
   }  // module sun.time
 }

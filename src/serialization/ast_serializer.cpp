@@ -197,6 +197,9 @@ ast::ASTNode ASTSerializer::serialize(const ExprAST& expr) const {
     case ASTNodeType::NUMBER:
       serializeNumber(static_cast<const NumberExprAST&>(expr), &node);
       break;
+    case ASTNodeType::CHAR_LITERAL:
+      serializeCharLiteral(static_cast<const CharLiteralAST&>(expr), &node);
+      break;
     case ASTNodeType::STRING_LITERAL:
       serializeString(static_cast<const StringLiteralAST&>(expr), &node);
       break;
@@ -396,6 +399,13 @@ void ASTSerializer::serializeNumber(const NumberExprAST& expr,
   } else {
     num->set_float_value(expr.getFloatVal());
   }
+}
+
+void ASTSerializer::serializeCharLiteral(const CharLiteralAST& expr,
+                                         ast::ASTNode* node) const {
+  auto* lit = node->mutable_char_literal();
+  lit->set_value(expr.getValue());
+  lit->set_is_byte(expr.isByte());
 }
 
 void ASTSerializer::serializeString(const StringLiteralAST& expr,

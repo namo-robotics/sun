@@ -67,7 +67,7 @@ TEST_F(Stdlib_Io_Paths, whole_file_helpers_take_a_computed_path) {
         write_string(path, body);
         var back: String = read_to_string(a, path);
         if (not back.equals(body)) { return -2; }
-        return _convert<i32>(file_size(path));
+        return _convert<i32>(get_file_size(path));
     }
 
     function main() i32 {

@@ -87,6 +87,46 @@ static int integerBitWidth(const sun::TypePtr& type) {
   }
 }
 
+// A char is a Unicode scalar value, not a small number: it compares with
+// another char and does nothing else. Both are an i32 underneath, so without
+// this check `'a' + 1` and `c == 65` would quietly take the integer path.
+void SemanticAnalyzer::checkCharOperands(const BinaryExprAST& binExpr) {
+  const ExprAST* lhs = binExpr.getLHS();
+  const ExprAST* rhs = binExpr.getRHS();
+  if (!lhs || !rhs) return;
+
+  auto lhsType = unwrapRef(lhs->getResolvedType());
+  auto rhsType = unwrapRef(rhs->getResolvedType());
+  bool lhsIsChar = lhsType && lhsType->isChar();
+  bool rhsIsChar = rhsType && rhsType->isChar();
+  if (!lhsIsChar && !rhsIsChar) return;
+
+  TokenKind op = binExpr.getOp().kind;
+  bool isComparison = op == TokenKind::LESS || op == TokenKind::GREATER ||
+                      op == TokenKind::LESS_EQUAL ||
+                      op == TokenKind::GREATER_EQUAL ||
+                      op == TokenKind::EQUAL_EQUAL || op == TokenKind::NOT_EQUAL;
+  if (!isComparison) {
+    const auto& info = getTokenInfo();
+    auto it = info.find(op);
+    std::string opText =
+        it != info.end() ? std::string(it->second.text) : "operator";
+    logAndThrowError(
+        "'" + opText +
+            "' is not defined for 'char'; convert it first with _convert<i32>",
+        binExpr.getLocation());
+  }
+  if (!lhsIsChar || !rhsIsChar) {
+    const sun::TypePtr& other = lhsIsChar ? rhsType : lhsType;
+    logAndThrowError(
+        "Cannot compare 'char' with '" +
+            (other ? other->toDisplayString() : std::string("unknown")) +
+            "'; write the other side as a char literal, or convert the char "
+            "with _convert<i32>",
+        binExpr.getLocation());
+  }
+}
+
 // An untyped numeric literal takes its type from context: the type the
 // surrounding expression expects, or failing that the operand it is combined
 // with. Without this the literal keeps its default i32/f64 type and codegen

@@ -59,7 +59,7 @@ public module sun {
     }
 
     // Compute linear index from n-dimensional indices (row-major order)
-    public const function linearIndex(indices: const ref array<i64>) i64 {
+    public const function compute_linear_index(indices: const ref array<i64>) i64 {
       var offset: i64 = 0;
       var stride: i64 = 1;
 
@@ -74,13 +74,13 @@ public module sun {
 
     // Get element at indices
     public const function get(indices: const ref array<i64>) T {
-      var idx: i64 = this.linearIndex(indices);
+      var idx: i64 = this.compute_linear_index(indices);
       return this.data.get_unchecked(idx);
     }
 
     // Set element at indices
     public function set(indices: const ref array<i64>, value: T) void {
-      var idx: i64 = this.linearIndex(indices);
+      var idx: i64 = this.compute_linear_index(indices);
       this.data.set_unchecked(idx, value);
     }
 
@@ -117,20 +117,20 @@ public module sun {
     public const function __slice__(ranges: const ref array<SliceRange>) MatrixView<T> {
       // For 1D matrices, slicing is straightforward
       var range: SliceRange = ranges[0];
-      var start: i64 = range.getStart();
-      var end: i64 = range.getEnd(this.dims[0]);
+      var start: i64 = range.get_start();
+      var end: i64 = range.get_end(this.dims[0]);
 
       // Build shape and strides for the view
       var new_shape: array<i64, 1> = [end - start];
       var strides: array<i64, 1> = [1];  // 1D contiguous
 
       // Pass raw pointer to MatrixView (non-owning view over our data)
-      return MatrixView<T>(this.data.rawData(), start, new_shape, strides);
+      return MatrixView<T>(this.data.raw_data(), start, new_shape, strides);
     }
 
     // Get raw data pointer (escape hatch for interop)
-    public const function rawData() raw_ptr<u8> {
-      return this.data.rawData();
+    public const function raw_data() raw_ptr<u8> {
+      return this.data.raw_data();
     }
   }
 
@@ -162,7 +162,7 @@ public module sun {
     }
 
     // Compute linear index using strides (includes base offset)
-    public const function linearIndex(indices: const ref array<i64>) i64 {
+    public const function compute_linear_index(indices: const ref array<i64>) i64 {
       var offset: i64 = this.base_offset;
       for (var i: i64 = 0; i < this.ndims_; i = i + 1) {
         offset = offset + indices[i] * this.strides[i];
@@ -172,13 +172,13 @@ public module sun {
 
     // Get element at indices
     public const function get(indices: const ref array<i64>) T {
-      var idx: i64 = this.linearIndex(indices);
+      var idx: i64 = this.compute_linear_index(indices);
       return unsafe { _load<T>(this.data, idx); };
     }
 
     // Set element at indices (views allow modification)
     public function set(indices: const ref array<i64>, value: T) void {
-      var idx: i64 = this.linearIndex(indices);
+      var idx: i64 = this.compute_linear_index(indices);
       unsafe { _store<T>(this.data, idx, value); };
     }
 

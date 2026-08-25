@@ -137,7 +137,7 @@ TEST_F(Stdlib_Io_Dir, metadata_predicates) {
         if (not is_file(")" + testDir + R"(/file.txt")) { return 5; }
         if (is_file(")" + testDir + R"(/adir")) { return 6; }
         try {
-            if (file_size(")" + testDir + R"(/file.txt") != 5) { return 7; }
+            if (get_file_size(")" + testDir + R"(/file.txt") != 5) { return 7; }
         } catch (e: IError) { return 8; }
         return 0;
     }

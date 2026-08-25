@@ -30,10 +30,14 @@
 
 public module sun {
   public interface IIterator<T, Container> {
+    // Hand back the next item, or None once the container is exhausted. The
+    // container is passed by reference because the loop lowering supplies its
+    // address.
     function next(container: ref Container) Option<T>;
   }
 
   public interface IIterable<T, Self> {
+    // Build a fresh iterator positioned at the start of this container.
     function iter() IIterator<T, Self>;
   }
 }

@@ -79,7 +79,7 @@ TEST(Tooling_Frontend_Lexer, EveryKeywordLexesAsItself) {
     // A keyword token carries its spelling as text.
     EXPECT_EQ(lexAll(std::string(*word))[0].text, *word);
   }
-  EXPECT_EQ(count, 54);
+  EXPECT_EQ(count, 55);
 }
 
 // ------------------------------------------------------------------
@@ -120,6 +120,98 @@ TEST(Tooling_Frontend_Lexer, ColumnsCountBytes) {
   EXPECT_EQ(tokens[0].end.column, 5);  // quote + 2 bytes + quote
   EXPECT_EQ(tokens[1].kind, TokenKind::IDENTIFIER);
   EXPECT_EQ(tokens[1].start.column, 6);
+}
+
+// ------------------------------------------------------------------
+// Character and byte literals
+// ------------------------------------------------------------------
+
+// Decoded value of the single literal in `source`.
+static int64_t charValueOf(const std::string& source) {
+  auto tokens = lexAll(source);
+  EXPECT_GE(tokens.size(), 1u);
+  return tokens[0].getCharValue().value();
+}
+
+TEST(Tooling_Frontend_Lexer, CharLiteralAscii) {
+  EXPECT_EQ(kindsOf("'a'"), std::vector<TokenKind>{TokenKind::CHAR_LITERAL});
+  EXPECT_EQ(charValueOf("'a'"), 97);
+  EXPECT_EQ(charValueOf("' '"), 32);
+  EXPECT_EQ(charValueOf("'\"'"), 34);
+}
+
+TEST(Tooling_Frontend_Lexer, CharLiteralEscapes) {
+  EXPECT_EQ(charValueOf("'\\n'"), 10);
+  EXPECT_EQ(charValueOf("'\\t'"), 9);
+  EXPECT_EQ(charValueOf("'\\r'"), 13);
+  EXPECT_EQ(charValueOf("'\\\\'"), 92);
+  EXPECT_EQ(charValueOf("'\\0'"), 0);
+  EXPECT_EQ(charValueOf("'\\''"), 39);
+  EXPECT_EQ(charValueOf("'\\x41'"), 65);
+  EXPECT_EQ(charValueOf("'\\x7F'"), 127);
+}
+
+TEST(Tooling_Frontend_Lexer, CharLiteralUnicode) {
+  EXPECT_EQ(charValueOf("'\xC3\xA9'"), 0xE9);          // é, 2 UTF-8 bytes
+  EXPECT_EQ(charValueOf("'\xE4\xBD\xA0'"), 0x4F60);    // 你, 3 bytes
+  EXPECT_EQ(charValueOf("'\xF0\x9F\x98\x80'"), 0x1F600);  // 😀, 4 bytes
+  EXPECT_EQ(charValueOf("'\\u{7}'"), 7);
+  EXPECT_EQ(charValueOf("'\\u{E9}'"), 0xE9);
+  EXPECT_EQ(charValueOf("'\\u{1F600}'"), 0x1F600);
+  EXPECT_EQ(charValueOf("'\\u{10FFFF}'"), 0x10FFFF);
+}
+
+TEST(Tooling_Frontend_Lexer, ByteLiteral) {
+  EXPECT_EQ(kindsOf("b'a'"), std::vector<TokenKind>{TokenKind::BYTE_LITERAL});
+  EXPECT_EQ(charValueOf("b'a'"), 97);
+  EXPECT_EQ(charValueOf("b'\\n'"), 10);
+  EXPECT_EQ(charValueOf("b'\\xFF'"), 255);  // full byte range, unlike a char
+  EXPECT_EQ(charValueOf("b'\\''"), 39);
+}
+
+// b'a' is 4 bytes and the bare identifier `b` is 1, so longest-match settles
+// this outright; the tie-break on enum order never comes into it.
+TEST(Tooling_Frontend_Lexer, ByteLiteralBeatsIdentifier) {
+  EXPECT_EQ(kindsOf("b"), std::vector<TokenKind>{TokenKind::IDENTIFIER});
+  EXPECT_EQ(kindsOf("b'a'"), std::vector<TokenKind>{TokenKind::BYTE_LITERAL});
+  // The b must lead: `ab'c'` is an identifier followed by a char literal.
+  EXPECT_EQ(kindsOf("ab'c'"), (std::vector<TokenKind>{TokenKind::IDENTIFIER,
+                                                      TokenKind::CHAR_LITERAL}));
+}
+
+// Columns count bytes here too (see ColumnsCountBytes).
+TEST(Tooling_Frontend_Lexer, CharLiteralColumnsCountBytes) {
+  auto tokens = lexAll("'\xC3\xA9' x");
+  ASSERT_GE(tokens.size(), 2u);
+  EXPECT_EQ(tokens[0].kind, TokenKind::CHAR_LITERAL);
+  EXPECT_EQ(tokens[0].start.column, 1);
+  EXPECT_EQ(tokens[0].end.column, 5);  // quote + 2 bytes + quote
+  EXPECT_EQ(tokens[1].start.column, 6);
+}
+
+TEST(Tooling_Frontend_Lexer, CharLiteralErrors) {
+  EXPECT_THROW(lexAll("''"), SunError);            // empty
+  EXPECT_THROW(lexAll("'ab'"), SunError);          // more than one
+  EXPECT_THROW(lexAll("'\\q'"), SunError);         // unknown escape
+  EXPECT_THROW(lexAll("'\\x'"), SunError);         // \x needs two digits
+  EXPECT_THROW(lexAll("'\\xG1'"), SunError);       // ...and they must be hex
+  EXPECT_THROW(lexAll("'\\xFF'"), SunError);       // \x stops at 7F for a char
+  EXPECT_THROW(lexAll("'\\u{}'"), SunError);       // needs a digit
+  EXPECT_THROW(lexAll("'\\u{1234567}'"), SunError);  // at most six
+  EXPECT_THROW(lexAll("'\\u{110000}'"), SunError);   // above U+10FFFF
+  EXPECT_THROW(lexAll("'\\u{D800}'"), SunError);     // surrogate
+  EXPECT_THROW(lexAll("'\xFF'"), SunError);          // not valid UTF-8
+}
+
+TEST(Tooling_Frontend_Lexer, ByteLiteralErrors) {
+  EXPECT_THROW(lexAll("b''"), SunError);
+  EXPECT_THROW(lexAll("b'ab'"), SunError);
+  EXPECT_THROW(lexAll("b'\xC3\xA9'"), SunError);   // non-ASCII needs '...'
+  EXPECT_THROW(lexAll("b'\\u{41}'"), SunError);    // \u is char-only
+}
+
+TEST(Tooling_Frontend_Lexer, CharKeywordLexesAsType) {
+  EXPECT_EQ(kindsOf("char"), std::vector<TokenKind>{TokenKind::TYPE_CHAR});
 }
 
 // ------------------------------------------------------------------

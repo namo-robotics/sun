@@ -50,7 +50,7 @@ public module tls {
     }
     var i: i64 = idx + 15;
     var n: i64 = headers_lower.length();
-    while (i < n and headers_lower.at(i) == HTTP_SP) {
+    while (i < n and headers_lower.at(i) == b' ') {
       i = i + 1;
     }
     var val: i64 = 0;
@@ -81,14 +81,14 @@ public module tls {
       while (i < n) {
         var c: u8 = raw.at(i);
         var digit: i64 = -1;
-        if (c >= 48 and c <= 57) {
-          digit = _convert<i64>(c) - 48;
+        if (c >= b'0' and c <= b'9') {
+          digit = _convert<i64>(c - b'0');
         }
-        if (c >= 97 and c <= 102) {
-          digit = _convert<i64>(c) - 87;
+        if (c >= b'a' and c <= b'f') {
+          digit = _convert<i64>(c - b'a') + 10;
         }
-        if (c >= 65 and c <= 70) {
-          digit = _convert<i64>(c) - 55;
+        if (c >= b'A' and c <= b'F') {
+          digit = _convert<i64>(c - b'A') + 10;
         }
         if (digit < 0) {
           break;
@@ -101,7 +101,7 @@ public module tls {
         throw Error(-1, "malformed chunked body");
       }
       // Skip any chunk extension up to the end of the size line
-      while (i < n and raw.at(i) != HTTP_LF) {
+      while (i < n and raw.at(i) != b'\n') {
         i = i + 1;
       }
       i = i + 1;
@@ -126,14 +126,14 @@ public module tls {
   // itself can reuse the framing.
   public function parse_response(alloc: ref HeapAllocator, raw: const ref String, resp: ref HttpClientResponse) void, IError {
     var n: i64 = raw.length();
-    var header_end: i64 = http_find_header_end(raw);
+    var header_end: i64 = find_header_end(raw);
     if (header_end < 0) {
       throw Error(-1, "malformed HTTP response: missing header terminator");
     }
 
     // Status code: the digits after the first space of "HTTP/1.1 200 OK"
     var i: i64 = 0;
-    while (i < n and raw.at(i) != HTTP_SP) {
+    while (i < n and raw.at(i) != b' ') {
       i = i + 1;
     }
     i = i + 1;
@@ -154,7 +154,7 @@ public module tls {
     resp.status = _convert<i32>(status);
 
     // Header block: after the status line, up to the CRLFCRLF terminator
-    while (i < n and raw.at(i) != HTTP_LF) {
+    while (i < n and raw.at(i) != b'\n') {
       i = i + 1;
     }
     i = i + 1;
@@ -203,9 +203,9 @@ public module tls {
       var req = String(this.alloc, "GET ");
       req.append(path);
       req.append(" HTTP/1.1");
-      http_append_crlf(req);
+      append_crlf(req);
       this.append_common_headers(req, host);
-      http_append_crlf(req);
+      append_crlf(req);
       return this.exchange(host, port, req);
     }
 
@@ -218,15 +218,15 @@ public module tls {
       var req = String(this.alloc, "POST ");
       req.append(path);
       req.append(" HTTP/1.1");
-      http_append_crlf(req);
+      append_crlf(req);
       this.append_common_headers(req, host);
       req.append("Content-Type: ");
       req.append(content_type);
-      http_append_crlf(req);
+      append_crlf(req);
       req.append("Content-Length: ");
       req.append(body.length());
-      http_append_crlf(req);
-      http_append_crlf(req);
+      append_crlf(req);
+      append_crlf(req);
       req.append(body);
       return this.exchange(host, port, req);
     }
@@ -234,11 +234,11 @@ public module tls {
     function append_common_headers(req: ref String, host: ref String) void {
       req.append("Host: ");
       req.append(host);
-      http_append_crlf(req);
+      append_crlf(req);
       req.append("Connection: close");
-      http_append_crlf(req);
+      append_crlf(req);
       req.append("Accept: */*");
-      http_append_crlf(req);
+      append_crlf(req);
     }
 
     // Connect, send the request, read to end-of-stream, and parse

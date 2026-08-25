@@ -98,7 +98,7 @@ public module sun {
     }
 
     // Check if buffer is empty
-    public const function isEmpty() bool {
+    public const function is_empty() bool {
       return this.size_ == 0;
     }
 
@@ -107,7 +107,7 @@ public module sun {
       var copy: ContiguousBuffer<T> = ContiguousBuffer<T>(this.alloc, this.size_);
       var byte_count: i64 = this.size_ * _sizeof<T>();
       unsafe {
-        _memcpy(copy.rawData(), this.data.get_raw(), byte_count);
+        _memcpy(copy.raw_data(), this.data.get_raw(), byte_count);
       };
       return copy;
     }
@@ -137,7 +137,7 @@ public module sun {
       }
       // Copy elements using fast memcpy
       var byte_count: i64 = count * _sizeof<T>();
-      var src_ptr: raw_ptr<u8> = source.rawData();
+      var src_ptr: raw_ptr<u8> = source.raw_data();
       var dst_ptr: raw_ptr<u8> = this.data.get_raw();
       var src_byte_offset: i64 = src_offset * _sizeof<T>();
       var dst_byte_offset: i64 = dst_offset * _sizeof<T>();
@@ -151,7 +151,7 @@ public module sun {
     }
 
     // Get raw data pointer (escape hatch for interop)
-    public const function rawData() raw_ptr<u8> {
+    public const function raw_data() raw_ptr<u8> {
       return this.data.get_raw();
     }
 
@@ -229,6 +229,7 @@ public module sun {
   public class ContiguousBufferIterator<T> implements IIterator<ref T, ContiguousBuffer<T>> {
     var current: i64;
 
+    // Build an iterator positioned before the first element.
     public function init() {
       this.current = 0;
     }

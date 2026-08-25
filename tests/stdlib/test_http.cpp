@@ -11,10 +11,10 @@
 static const char* kBuildRequest = R"(
     function build_request(alloc: ref HeapAllocator) String {
         var raw = String(alloc, "GET /index.html HTTP/1.1");
-        http_append_crlf(raw);
+        append_crlf(raw);
         raw.append("Host: x");
-        http_append_crlf(raw);
-        http_append_crlf(raw);
+        append_crlf(raw);
+        append_crlf(raw);
         return raw;
     }
 )";
@@ -25,7 +25,7 @@ TEST(Stdlib_Http, parse_request_method_and_path) {
         var alloc = make_heap_allocator();
         var raw = build_request(alloc);
         var req = HttpRequest(alloc);
-        http_parse_request(raw, req);
+        parse_http_request(raw, req);
         if (req.method.equals_literal("GET") == false) { return 1; }
         if (req.path.equals_literal("/index.html") == false) { return 2; }
         if (req.headers.starts_with("Host: x") == false) { return 3; }
@@ -41,9 +41,43 @@ TEST(Stdlib_Http, find_header_end) {
         var alloc = make_heap_allocator();
         var complete = build_request(alloc);
         var incomplete = String(alloc, "GET / HTTP/1.1");
-        http_append_crlf(incomplete);
-        if (http_find_header_end(incomplete) >= 0) { return 1; }
-        if (http_find_header_end(complete) < 0) { return 2; }
+        append_crlf(incomplete);
+        if (find_header_end(incomplete) >= 0) { return 1; }
+        if (find_header_end(complete) < 0) { return 2; }
+        return 0;
+    }
+  )";
+  EXPECT_EQ(executeStringWithStdlib(source), 0);
+}
+
+// The terminator is CRLFCRLF, so the lone CRLFs that end each header line
+// must not match, and the index returned is the start of the run.
+TEST(Stdlib_Http, find_header_end_returns_the_run_start) {
+  std::string source = R"(
+    using sun;
+
+    function main() i64 {
+        var alloc = make_heap_allocator();
+        var s = String(alloc, "GET / HTTP/1.1\r\nHost: x\r\n\r\nbody");
+        // The run starts at the CRLF that ends the last header line, not
+        // after it: "GET / HTTP/1.1" (14) + CRLF (2) + "Host: x" (7) = 23.
+        if (find_header_end(s) != 23) { return 1; }
+
+        // A terminator at the very start, and one at the very end
+        var lead = String(alloc, "\r\n\r\nrest");
+        if (find_header_end(lead) != 0) { return 2; }
+        var trail = String(alloc, "ab\r\n\r\n");
+        if (find_header_end(trail) != 2) { return 3; }
+
+        // Three CRs in a row: the match starts at the first complete run
+        var tricky = String(alloc, "\r\r\n\r\n");
+        if (find_header_end(tricky) != 1) { return 4; }
+
+        // Never a partial match
+        var cut = String(alloc, "a\r\n\r");
+        if (find_header_end(cut) >= 0) { return 5; }
+        var empty = String(alloc, "");
+        if (find_header_end(empty) >= 0) { return 6; }
         return 0;
     }
   )";
@@ -80,15 +114,15 @@ TEST(Stdlib_Http, status_reason_phrases) {
     function main() i64 {
         var alloc = make_heap_allocator();
         var ok = String(alloc, "");
-        http_append_reason(ok, 200);
+        append_reason_phrase(ok, 200);
         if (ok.equals_literal("OK") == false) { return 1; }
 
         var nf = String(alloc, "");
-        http_append_reason(nf, 404);
+        append_reason_phrase(nf, 404);
         if (nf.equals_literal("Not Found") == false) { return 2; }
 
         var unknown = String(alloc, "");
-        http_append_reason(unknown, 599);
+        append_reason_phrase(unknown, 599);
         if (unknown.equals_literal("Status") == false) { return 3; }
         return 0;
     }

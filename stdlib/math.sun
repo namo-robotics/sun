@@ -7,31 +7,33 @@ public module sun {
   public var F64_MIN_POSITIVE: f64 = 2.2250738585072014e-308;  // smallest normal
   public var F64_EPSILON: f64 = 2.220446049250313e-16;
 
-  // Return the minimum of two values
-  public function min<T>(a: T, b: T) T {
+  // Return whichever of the two values is smaller.
+  public function compute_min<T>(a: T, b: T) T {
     if (a < b) {
       return a;
     }
     return b;
   }
 
-  // Return the maximum of two values
-  public function max<T>(a: T, b: T) T {
+  // Return whichever of the two values is larger.
+  public function compute_max<T>(a: T, b: T) T {
     if (a > b) {
       return a;
     }
     return b;
   }
 
-  // Return the absolute value (requires T supports comparison and negation)
-  public function abs<T>(x: T) T {
+  // Return the value with its sign removed. T must support comparison and
+  // negation.
+  public function compute_abs<T>(x: T) T {
     if (x < 0) {
       return 0 - x;
     }
     return x;
   }
 
-  // Clamp a value between a minimum and maximum
+  // Pull a value into the range lo..hi, returning lo or hi when it falls
+  // outside.
   public function clamp<T>(x: T, lo: T, hi: T) T {
     if (x < lo) {
       return lo;
@@ -42,8 +44,8 @@ public module sun {
     return x;
   }
 
-  // Return the sign of a value: -1, 0, or 1
-  public function sign<T>(x: T) i32 {
+  // Return -1 for a negative value, 1 for a positive one, and 0 for zero.
+  public function compute_sign<T>(x: T) i32 {
     if (x < 0) {
       return -1;
     }
@@ -53,18 +55,14 @@ public module sun {
     return 0;
   }
 
-  // Check if a value is within a range [lo, hi] (inclusive)
-  public function in_range<T>(x: T, lo: T, hi: T) bool {
-    if (x >= lo) {
-      if (x <= hi) {
-        return true;
-      }
-    }
-    return false;
+  // Report whether a value sits between lo and hi, counting both ends.
+  public function is_in_range<T>(x: T, lo: T, hi: T) bool {
+    return x >= lo and x <= hi;
   }
 
-  // 2^bits as an f64 (exact: a power of two)
-  function two_to_the(bits: i64) f64 {
+  // Return 2 raised to `bits` as an f64. Powers of two are exact in binary
+  // floating point, so the result is never rounded.
+  function compute_power_of_two(bits: i64) f64 {
     var r: f64 = 1.0;
     var i: i64 = 0;
     while (i < bits) {
@@ -103,9 +101,9 @@ public module sun {
       }
       var bits: i64 = _sizeof<T>() * 8;
       var lo: f64 = 0.0;
-      var hi: f64 = two_to_the(bits);
+      var hi: f64 = compute_power_of_two(bits);
       if (_is<_Signed>(zero)) {
-        hi = two_to_the(bits - 1);
+        hi = compute_power_of_two(bits - 1);
         lo = 0.0 - hi;
       }
       if (f < lo or f >= hi) {

@@ -129,12 +129,12 @@ TEST(ControlFlow_Match, MatchWithBlockBody) {
 
 TEST(ControlFlow_Match, MatchOnFunctionResult) {
   auto value = executeString(R"(
-    function getValue() i32 {
+    function get_value() i32 {
       return 3;
     }
 
     function main() i32 {
-      return match getValue() {
+      return match get_value() {
         1 => 100,
         2 => 200,
         3 => 300,

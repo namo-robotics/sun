@@ -331,6 +331,8 @@ int tokenKindToLSPType(TokenKind kind) {
       return LSPTokenType::Number;
 
     case TokenKind::STRING:
+    case TokenKind::CHAR_LITERAL:
+    case TokenKind::BYTE_LITERAL:
       return LSPTokenType::String;
 
     case TokenKind::PLUS:
@@ -667,8 +669,10 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
       afterColon = afterArrow = afterImplements = false;
     }
 
-    // Special case for string length (includes quotes)
-    if (tok.kind == TokenKind::STRING)
+    // Special case for literal length (includes the quotes). Without this a
+    // literal has length 0 and is dropped below.
+    if (tok.kind == TokenKind::STRING || tok.kind == TokenKind::CHAR_LITERAL ||
+        tok.kind == TokenKind::BYTE_LITERAL)
       length = tok.end.column - tok.start.column;
 
     if (tokenType >= 0 && length > 0) {

@@ -11,8 +11,8 @@
 //   var allocator = make_heap_allocator();
 //   var s = String(allocator, "Hello");
 //   println(s.length());  // 5
-//   var ch = s.at(0);         // 'H' (72)
-//   s.append_char(33);        // Append '!'
+//   var ch = s.at(0);         // b'H'
+//   s.append_char(b'!');
 //
 //   // Slicing returns a view (no copy)
 //   var view = s[1:4];        // "ell"
@@ -28,8 +28,119 @@ public module sun {
   // Number formatting/parsing goes through c_snprintf / c_strtod in sys.sun.
 
   // Space, tab, newline, carriage return, vertical tab, form feed
-  function ascii_is_space(ch: u8) bool {
-    return ch == 32 or (ch >= 9 and ch <= 13);
+  function is_ascii_space(ch: u8) bool {
+    return ch == b' ' or (ch >= b'\t' and ch <= b'\r');
+  }
+
+  // ---- UTF-8 ----------------------------------------------------------
+  // The one UTF-8 codec in the stdlib; json.sun encodes through it too.
+
+  // U+FFFD, substituted for anything that is not a Unicode scalar value so
+  // that encoding never produces invalid UTF-8.
+  const REPLACEMENT: i64 = 65533;
+
+  // Pass a code point through unchanged when it is a Unicode scalar value, and
+  // substitute U+FFFD when it is not. Everything that encodes goes through here,
+  // so the encoder can never emit invalid UTF-8.
+  function resolve_utf8_scalar(code: i64) i64 {
+    if (code < 0 or code > 1114111) {
+      return REPLACEMENT;
+    }
+    if (code >= 55296 and code <= 57343) {
+      return REPLACEMENT;  // surrogate
+    }
+    return code;
+  }
+
+  // Bytes the UTF-8 encoding of `code` occupies.
+  public function compute_utf8_len(code: i64) i64 {
+    var c: i64 = resolve_utf8_scalar(code);
+    if (c < 128) {
+      return 1;
+    }
+    if (c < 2048) {
+      return 2;
+    }
+    if (c < 65536) {
+      return 3;
+    }
+    return 4;
+  }
+
+  // Bytes in the UTF-8 sequence that starts with `lead`, or 0 if `lead`
+  // cannot start one.
+  function compute_utf8_sequence_len(lead: u8) i64 {
+    if (lead < 128) {
+      return 1;
+    }
+    if ((lead & 224) == 192) {
+      return 2;
+    }
+    if ((lead & 240) == 224) {
+      return 3;
+    }
+    if ((lead & 248) == 240) {
+      return 4;
+    }
+    return 0;
+  }
+
+  // Smallest scalar value a sequence of `len` bytes may encode. Anything
+  // below this is an overlong form and must be rejected.
+  function compute_utf8_min(len: i64) i64 {
+    if (len == 2) {
+      return 128;
+    }
+    if (len == 3) {
+      return 2048;
+    }
+    if (len == 4) {
+      return 65536;
+    }
+    return 0;
+  }
+
+  // Byte `j` of the UTF-8 encoding of `code`, for j < compute_utf8_len(code).
+  // Every encode in the stdlib goes through this.
+  public function encode_utf8_byte(code: i64, j: i64) u8 {
+    var c: i64 = resolve_utf8_scalar(code);
+    var width: i64 = compute_utf8_len(c);
+    if (j == width - 1) {
+      // The last byte is the low 6 bits, plain for ASCII.
+      if (width == 1) {
+        return _convert<u8>(c);
+      }
+      return _convert<u8>(128 | (c & 63));
+    }
+    if (j == 0) {
+      if (width == 2) {
+        return _convert<u8>(192 | (c >> 6));
+      }
+      if (width == 3) {
+        return _convert<u8>(224 | (c >> 12));
+      }
+      return _convert<u8>(240 | (c >> 18));
+    }
+    // A middle continuation byte: shift past the bytes that follow it.
+    var shift: i64 = (width - 1 - j) * 6;
+    return _convert<u8>(128 | ((c >> shift) & 63));
+  }
+
+  // A char from a code point, or None if it is not a Unicode scalar value.
+  // The checked counterpart to _convert<char>(v).
+  public function char_of(code: i64) Option<char> {
+    if (code < 0 or code > 1114111) {
+      return Option.None;
+    }
+    if (code >= 55296 and code <= 57343) {
+      return Option.None;
+    }
+    return Option.Some(_convert<char>(code));
+  }
+
+  // The code point of a char. Always defined, so it needs no Option.
+  public function code_of(c: char) i64 {
+    return _convert<i64>(c);
   }
 
   // Non-owning view into a String
@@ -58,22 +169,104 @@ public module sun {
 
     // Check if view equals a literal
     public const function equals_literal(literal: static_ptr<u8>) bool {
-      var srcData: raw_ptr<u8> = literal.raw();
-      var srcLen: i64 = literal.length();
+      var src_data: raw_ptr<u8> = literal.raw();
+      var src_len: i64 = literal.length();
 
-      var myLen: i64 = this.length();
-      if (myLen != srcLen) {
+      var my_len: i64 = this.length();
+      if (my_len != src_len) {
         return false;
       }
 
-      for (var i: i64 = 0; i < srcLen; i = i + 1) {
+      for (var i: i64 = 0; i < src_len; i = i + 1) {
         var a: u8 = this.at(i);
-        var b: u8 = unsafe { _load<u8>(srcData, i); };
+        var b: u8 = unsafe { _load<u8>(src_data, i); };
         if (a != b) {
           return false;
         }
       }
       return true;
+    }
+  }
+
+  // Decodes a String's bytes as Unicode scalar values. Malformed bytes yield
+  // U+FFFD and advance one byte, so iteration always terminates and always
+  // covers the whole string.
+  //
+  // WARNING: a Chars must not outlive the String it reads, and any mutation
+  // of that String invalidates it.
+  // NOTE: Defined before String because String.iterate_chars() returns one.
+  public class Chars implements IIterator<char, Chars> {
+    var data: raw_ptr<u8>;
+    var len: i64;
+    var pos: i64;
+
+    // Build an iterator over a byte range. The caller must keep the bytes alive
+    // for as long as the iterator is used.
+    public function init(data: raw_ptr<u8>, len: i64) {
+      this.data = data;
+      this.len = len;
+      this.pos = 0;
+    }
+
+    // Byte offset of the scalar value that next() will return.
+    public const function offset() i64 {
+      return this.pos;
+    }
+
+    // The raw byte at an offset, with no bounds check.
+    const function byte_at(i: i64) u8 {
+      return unsafe { _load<u8>(this.data, i); };
+    }
+
+    // Decode the character at the current position and step past it, or return
+    // None at the end. Malformed bytes yield U+FFFD and advance one byte, so a
+    // corrupt string still iterates to completion.
+    public function next(self: ref Chars) Option<char> {
+      if (this.pos >= this.len) {
+        return Option.None;
+      }
+
+      var lead: u8 = this.byte_at(this.pos);
+      var width: i64 = compute_utf8_sequence_len(lead);
+
+      // A bad lead byte, or a sequence running past the end: one U+FFFD for
+      // the offending byte, then carry on from the next one.
+      if (width == 0 or this.pos + width > this.len) {
+        this.pos = this.pos + 1;
+        return char_of(REPLACEMENT);
+      }
+
+      var code: i64 = 0;
+      if (width == 1) {
+        code = _convert<i64>(lead);
+      } else if (width == 2) {
+        code = _convert<i64>(lead & 31);
+      } else if (width == 3) {
+        code = _convert<i64>(lead & 15);
+      } else {
+        code = _convert<i64>(lead & 7);
+      }
+
+      for (var i: i64 = 1; i < width; i = i + 1) {
+        var cont: u8 = this.byte_at(this.pos + i);
+        if ((cont & 192) != 128) {
+          // Truncated sequence: consume only the lead byte.
+          this.pos = this.pos + 1;
+          return char_of(REPLACEMENT);
+        }
+        code = (code << 6) | _convert<i64>(cont & 63);
+      }
+
+      this.pos = this.pos + width;
+
+      // Overlong forms and surrogates are not valid UTF-8.
+      if (code < compute_utf8_min(width)) {
+        return char_of(REPLACEMENT);
+      }
+      return match char_of(code) {
+        Option.Some(c) => Option.Some(c),
+        Option.None => char_of(REPLACEMENT)
+      };
     }
   }
 
@@ -87,18 +280,18 @@ public module sun {
     // Copies bytes from static_ptr<u8> (fat pointer) to heap
     public function init(alloc: const ref HeapAllocator, literal: static_ptr<u8>) {
       // Extract data pointer and length from fat pointer struct
-      var srcData: raw_ptr<u8> = literal.raw();
-      var srcLen: i64 = literal.length();
+      var src_data: raw_ptr<u8> = literal.raw();
+      var src_len: i64 = literal.length();
 
       // Allocate with some extra capacity for growth
-      var capacity: i64 = srcLen + 16;
+      var capacity: i64 = src_len + 16;
       this.data = ContiguousBuffer<u8>(alloc, capacity);
       this.capacity_ = capacity;
-      this.len = srcLen;
+      this.len = src_len;
 
       // Copy bytes from literal to heap
-      if (srcLen > 0) {
-        unsafe { _memcpy(this.data.rawData(), srcData, srcLen); };
+      if (src_len > 0) {
+        unsafe { _memcpy(this.data.raw_data(), src_data, src_len); };
       }
     }
 
@@ -107,16 +300,16 @@ public module sun {
     // own copy and frees itself through it as usual.
     public function init(literal: static_ptr<u8>) {
       var alloc: HeapAllocator = HeapAllocator();
-      var srcData: raw_ptr<u8> = literal.raw();
-      var srcLen: i64 = literal.length();
+      var src_data: raw_ptr<u8> = literal.raw();
+      var src_len: i64 = literal.length();
 
-      var capacity: i64 = srcLen + 16;
+      var capacity: i64 = src_len + 16;
       this.data = ContiguousBuffer<u8>(alloc, capacity);
       this.capacity_ = capacity;
-      this.len = srcLen;
+      this.len = src_len;
 
-      for (var i: i64 = 0; i < srcLen; i = i + 1) {
-        var byte: u8 = unsafe { _load<u8>(srcData, i); };
+      for (var i: i64 = 0; i < src_len; i = i + 1) {
+        var byte: u8 = unsafe { _load<u8>(src_data, i); };
         this.data.set_unchecked(i, byte);
       }
     }
@@ -152,7 +345,7 @@ public module sun {
     }
 
     // Check if the string has no bytes
-    public const function isEmpty() bool {
+    public const function is_empty() bool {
       return this.len == 0;
     }
 
@@ -202,7 +395,7 @@ public module sun {
     public function c_str() raw_ptr<u8> {
       this.ensure_capacity(1);
       this.data.set_unchecked(this.len, 0);
-      return this.data.rawData();
+      return this.data.raw_data();
     }
 
     // Append a single byte/character
@@ -212,16 +405,32 @@ public module sun {
       this.len = this.len + 1;
     }
 
+    // Append the UTF-8 encoding of a code point. Anything that is not a
+    // Unicode scalar value is written as U+FFFD, so the string always stays
+    // valid UTF-8. Module-private; push(char) is the public spelling.
+    function push_code(code: i64) void {
+      var c: i64 = resolve_utf8_scalar(code);
+      var width: i64 = compute_utf8_len(c);
+      for (var j: i64 = 0; j < width; j = j + 1) {
+        this.append_char(encode_utf8_byte(c, j));
+      }
+    }
+
+    // Append the UTF-8 encoding of a char (1 to 4 bytes)
+    public function push(c: char) void {
+      this.push_code(code_of(c));
+    }
+
     // Append another string
     public function append(other: const ref String) void {
-      var otherLen: i64 = other.length();
-      if (otherLen == 0) {
+      var other_len: i64 = other.length();
+      if (other_len == 0) {
         return;
       }
-      this.ensure_capacity(otherLen);
-      var dst: raw_ptr<u8> = unsafe { _ptr_offset(this.data.rawData(), this.len); };
-      unsafe { _memcpy(dst, other.data.rawData(), otherLen); };
-      this.len = this.len + otherLen;
+      this.ensure_capacity(other_len);
+      var dst: raw_ptr<u8> = unsafe { _ptr_offset(this.data.raw_data(), this.len); };
+      unsafe { _memcpy(dst, other.data.raw_data(), other_len); };
+      this.len = this.len + other_len;
     }
 
     // ========================================================================
@@ -259,6 +468,11 @@ public module sun {
       this.append_bool(val);
     }
 
+    // Append a char (overload for interpolation)
+    public function append(val: char) void {
+      this.push(val);
+    }
+
     // Append 64-bit float (overload for interpolation)
     public function append(val: f64) void {
       this.append_f64(val);
@@ -271,33 +485,33 @@ public module sun {
 
     // Append string literal
     public function append_literal(literal: static_ptr<u8>) void {
-      var srcLen: i64 = literal.length();
-      if (srcLen == 0) {
+      var src_len: i64 = literal.length();
+      if (src_len == 0) {
         return;
       }
-      this.ensure_capacity(srcLen);
-      var dst: raw_ptr<u8> = unsafe { _ptr_offset(this.data.rawData(), this.len); };
-      unsafe { _memcpy(dst, literal.raw(), srcLen); };
-      this.len = this.len + srcLen;
+      this.ensure_capacity(src_len);
+      var dst: raw_ptr<u8> = unsafe { _ptr_offset(this.data.raw_data(), this.len); };
+      unsafe { _memcpy(dst, literal.raw(), src_len); };
+      this.len = this.len + src_len;
     }
 
-    // Check if string equals a literal
-    public const function equals_literal(literal: static_ptr<u8>) bool {
-      var srcData: raw_ptr<u8> = literal.raw();
-      var srcLen: i64 = literal.length();
-
-      if (this.len != srcLen) {
-        return false;
-      }
-
-      for (var i: i64 = 0; i < srcLen; i = i + 1) {
-        var a: u8 = this.at(i);
-        var b: u8 = unsafe { _load<u8>(srcData, i); };
-        if (a != b) {
+    // Whether the `needle_len` bytes at `at` equal `needle`. The one byte-run
+    // comparison the search and prefix/suffix methods share.
+    const function match_bytes_at(at: i64, needle: raw_ptr<u8>, needle_len: i64) bool {
+      for (var j: i64 = 0; j < needle_len; j = j + 1) {
+        if (this.data.get_unchecked(at + j) != unsafe { _load<u8>(needle, j); }) {
           return false;
         }
       }
       return true;
+    }
+
+    // Check if string equals a literal
+    public const function equals_literal(literal: static_ptr<u8>) bool {
+      if (this.len != literal.length()) {
+        return false;
+      }
+      return this.match_bytes_at(0, literal.raw(), literal.length());
     }
 
     // ========================================================================
@@ -395,43 +609,85 @@ public module sun {
       };
     }
 
-    // Check if string starts with literal
-    public const function starts_with(literal: static_ptr<u8>) bool {
-      var srcData: raw_ptr<u8> = literal.raw();
-      var srcLen: i64 = literal.length();
+    // Iterate the string as Unicode scalar values rather than bytes:
+    //   for (var c: char in s.iterate_chars()) { ... }
+    public const function iterate_chars() Chars {
+      return Chars(this.data.raw_data(), this.len);
+    }
 
-      if (srcLen > this.len) {
-        return false;
+    // Number of Unicode scalar values, which is length() only for ASCII.
+    public const function count_chars() i64 {
+      var n: i64 = 0;
+      var it = this.iterate_chars();
+      for (var c: char in it) {
+        n = n + 1;
       }
+      return n;
+    }
 
-      for (var i: i64 = 0; i < srcLen; i = i + 1) {
-        var a: u8 = this.data.get_unchecked(i);
-        var b: u8 = unsafe { _load<u8>(srcData, i); };
-        if (a != b) {
+    // Byte index of the first occurrence of a char; None if absent.
+    // UTF-8 is self-synchronizing, so matching the encoded bytes is exact:
+    // a multi-byte sequence never appears inside another one.
+    public const function find(c: char) Option<i64> {
+      var code: i64 = code_of(c);
+      var width: i64 = compute_utf8_len(code);
+      var i: i64 = 0;
+      while (i + width <= this.len) {
+        if (this.matches_at(code, width, i)) {
+          return Option.Some(i);
+        }
+        i = i + 1;
+      }
+      return Option.None;
+    }
+
+    // Byte index of the last occurrence of a char; None if absent.
+    public const function rfind(c: char) Option<i64> {
+      var code: i64 = code_of(c);
+      var width: i64 = compute_utf8_len(code);
+      var i: i64 = this.len - width;
+      while (i >= 0) {
+        if (this.matches_at(code, width, i)) {
+          return Option.Some(i);
+        }
+        i = i - 1;
+      }
+      return Option.None;
+    }
+
+    // Whether the string contains a char.
+    public const function contains(c: char) bool {
+      return match this.find(c) {
+        Option.Some(i) => true,
+        Option.None => false
+      };
+    }
+
+    // Report whether the UTF-8 encoding of a code point sits at a byte offset.
+    // The caller supplies the width so it is not recomputed per position.
+    const function matches_at(code: i64, width: i64, at: i64) bool {
+      for (var j: i64 = 0; j < width; j = j + 1) {
+        if (this.data.get_unchecked(at + j) != encode_utf8_byte(code, j)) {
           return false;
         }
       }
       return true;
     }
 
-    // Check if string ends with literal
-    public const function ends_with(literal: static_ptr<u8>) bool {
-      var srcData: raw_ptr<u8> = literal.raw();
-      var srcLen: i64 = literal.length();
-
-      if (srcLen > this.len) {
+    // Check if string starts with literal
+    public const function starts_with(literal: static_ptr<u8>) bool {
+      if (literal.length() > this.len) {
         return false;
       }
+      return this.match_bytes_at(0, literal.raw(), literal.length());
+    }
 
-      var offset: i64 = this.len - srcLen;
-      for (var i: i64 = 0; i < srcLen; i = i + 1) {
-        var a: u8 = this.data.get_unchecked(offset + i);
-        var b: u8 = unsafe { _load<u8>(srcData, i); };
-        if (a != b) {
-          return false;
-        }
+    // Check if string ends with literal
+    public const function ends_with(literal: static_ptr<u8>) bool {
+      if (literal.length() > this.len) {
+        return false;
       }
-      return true;
+      return this.match_bytes_at(this.len - literal.length(), literal.raw(), literal.length());
     }
 
     // Check if string starts with another string
@@ -439,12 +695,7 @@ public module sun {
       if (other.len > this.len) {
         return false;
       }
-      for (var i: i64 = 0; i < other.len; i = i + 1) {
-        if (this.data.get_unchecked(i) != other.data.get_unchecked(i)) {
-          return false;
-        }
-      }
-      return true;
+      return this.match_bytes_at(0, other.data.raw_data(), other.len);
     }
 
     // Check if string ends with another string
@@ -452,13 +703,7 @@ public module sun {
       if (other.len > this.len) {
         return false;
       }
-      var offset: i64 = this.len - other.len;
-      for (var i: i64 = 0; i < other.len; i = i + 1) {
-        if (this.data.get_unchecked(offset + i) != other.data.get_unchecked(i)) {
-          return false;
-        }
-      }
-      return true;
+      return this.match_bytes_at(this.len - other.len, other.data.raw_data(), other.len);
     }
 
     // Helper: first index at or after `start` where `needle` occurs
@@ -468,15 +713,7 @@ public module sun {
       }
       var last: i64 = this.len - needle_len;
       for (var i: i64 = start; i <= last; i = i + 1) {
-        var matched: bool = true;
-        for (var j: i64 = 0; j < needle_len; j = j + 1) {
-          var b: u8 = unsafe { _load<u8>(needle, j); };
-          if (this.data.get_unchecked(i + j) != b) {
-            matched = false;
-            break;
-          }
-        }
-        if (matched) {
+        if (this.match_bytes_at(i, needle, needle_len)) {
           return Option.Some(i);
         }
       }
@@ -490,7 +727,7 @@ public module sun {
 
     // Find first occurrence of another string; None if not found
     public const function find(needle: const ref String) Option<i64> {
-      return this.find_bytes(needle.data.rawData(), needle.len, 0);
+      return this.find_bytes(needle.data.raw_data(), needle.len, 0);
     }
 
     // Check if string contains a literal
@@ -565,9 +802,8 @@ public module sun {
     public function to_lower() void {
       for (var i: i64 = 0; i < this.len; i = i + 1) {
         var ch: u8 = this.data.get_unchecked(i);
-        // 'A'..'Z'
-        if (ch >= 65 and ch <= 90) {
-          this.data.set_unchecked(i, ch + 32);
+        if (ch >= b'A' and ch <= b'Z') {
+          this.data.set_unchecked(i, ch + (b'a' - b'A'));
         }
       }
     }
@@ -576,9 +812,8 @@ public module sun {
     public function to_upper() void {
       for (var i: i64 = 0; i < this.len; i = i + 1) {
         var ch: u8 = this.data.get_unchecked(i);
-        // 'a'..'z'
-        if (ch >= 97 and ch <= 122) {
-          this.data.set_unchecked(i, ch - 32);
+        if (ch >= b'a' and ch <= b'z') {
+          this.data.set_unchecked(i, ch - (b'a' - b'A'));
         }
       }
     }
@@ -586,7 +821,7 @@ public module sun {
     // Drop leading ASCII whitespace in-place
     public function trim_start() void {
       var start: i64 = 0;
-      while (start < this.len and ascii_is_space(this.data.get_unchecked(start))) {
+      while (start < this.len and is_ascii_space(this.data.get_unchecked(start))) {
         start = start + 1;
       }
       if (start == 0) {
@@ -601,7 +836,7 @@ public module sun {
 
     // Drop trailing ASCII whitespace in-place
     public function trim_end() void {
-      while (this.len > 0 and ascii_is_space(this.data.get_unchecked(this.len - 1))) {
+      while (this.len > 0 and is_ascii_space(this.data.get_unchecked(this.len - 1))) {
         this.len = this.len - 1;
       }
     }
@@ -668,7 +903,7 @@ public module sun {
 
     // Replace every occurrence of a string with another string, in-place
     public function replace(from: const ref String, to: const ref String) void {
-      this.replace_bytes(from.data.rawData(), from.len, to.data.rawData(), to.len);
+      this.replace_bytes(from.data.raw_data(), from.len, to.data.raw_data(), to.len);
     }
 
     // ========================================================================
@@ -706,95 +941,25 @@ public module sun {
     // Adjacent separators produce empty pieces, so the result always holds
     // one more piece than there are separators.
     public const function split(alloc: const ref HeapAllocator, sep: u8) Vec<String> {
-      var parts: Vec<String> = Vec<String>(alloc, 4);
-      var start: i64 = 0;
-      for (var i: i64 = 0; i < this.len; i = i + 1) {
-        if (this.data.get_unchecked(i) == sep) {
-          parts.push(this.copy_range(alloc, start, i - start));
-          start = i + 1;
-        }
-      }
-      parts.push(this.copy_range(alloc, start, this.len - start));
-      return parts;
+      return this.split_on_byte(alloc, sep, true);
     }
 
     // Split on a separator string into owned strings.
     // An empty separator yields the whole string as a single piece.
     public const function split(alloc: const ref HeapAllocator, sep: static_ptr<u8>) Vec<String> {
-      var sep_data: raw_ptr<u8> = sep.raw();
-      var sep_len: i64 = sep.length();
-      var parts: Vec<String> = Vec<String>(alloc, 4);
-      if (sep_len == 0) {
-        parts.push(this.clone(alloc));
-        return parts;
-      }
-      var start: i64 = 0;
-      var searching: bool = true;
-      while (searching) {
-        match this.find_bytes(sep_data, sep_len, start) {
-          Option.Some(i) => {
-            parts.push(this.copy_range(alloc, start, i - start));
-            start = i + sep_len;
-          },
-          Option.None => {
-            searching = false;
-          }
-        };
-      }
-      parts.push(this.copy_range(alloc, start, this.len - start));
-      return parts;
+      return this.split_on_bytes(alloc, sep.raw(), sep.length(), true);
     }
 
     // Split on a separator byte, keeping only non-empty pieces.
     // Adjacent, leading, and trailing separators yield nothing.
     public const function split_nonempty(alloc: const ref HeapAllocator, sep: u8) Vec<String> {
-      var parts: Vec<String> = Vec<String>(alloc, 4);
-      var start: i64 = 0;
-      for (var i: i64 = 0; i < this.len; i = i + 1) {
-        if (this.data.get_unchecked(i) == sep) {
-          if (i > start) {
-            parts.push(this.copy_range(alloc, start, i - start));
-          }
-          start = i + 1;
-        }
-      }
-      if (this.len > start) {
-        parts.push(this.copy_range(alloc, start, this.len - start));
-      }
-      return parts;
+      return this.split_on_byte(alloc, sep, false);
     }
 
     // Split on a separator string, keeping only non-empty pieces.
     // An empty separator yields the whole string, or nothing if it is empty.
     public const function split_nonempty(alloc: const ref HeapAllocator, sep: static_ptr<u8>) Vec<String> {
-      var sep_data: raw_ptr<u8> = sep.raw();
-      var sep_len: i64 = sep.length();
-      var parts: Vec<String> = Vec<String>(alloc, 4);
-      if (sep_len == 0) {
-        if (this.len > 0) {
-          parts.push(this.clone(alloc));
-        }
-        return parts;
-      }
-      var start: i64 = 0;
-      var searching: bool = true;
-      while (searching) {
-        match this.find_bytes(sep_data, sep_len, start) {
-          Option.Some(i) => {
-            if (i > start) {
-              parts.push(this.copy_range(alloc, start, i - start));
-            }
-            start = i + sep_len;
-          },
-          Option.None => {
-            searching = false;
-          }
-        };
-      }
-      if (this.len > start) {
-        parts.push(this.copy_range(alloc, start, this.len - start));
-      }
-      return parts;
+      return this.split_on_bytes(alloc, sep.raw(), sep.length(), false);
     }
 
     // Split on runs of ASCII whitespace, keeping only non-empty pieces.
@@ -803,16 +968,61 @@ public module sun {
       var parts: Vec<String> = Vec<String>(alloc, 4);
       var start: i64 = 0;
       for (var i: i64 = 0; i < this.len; i = i + 1) {
-        if (ascii_is_space(this.data.get_unchecked(i))) {
-          if (i > start) {
-            parts.push(this.copy_range(alloc, start, i - start));
-          }
+        if (is_ascii_space(this.data.get_unchecked(i))) {
+          this.push_piece(alloc, parts, start, i, false);
           start = i + 1;
         }
       }
-      if (this.len > start) {
-        parts.push(this.copy_range(alloc, start, this.len - start));
+      this.push_piece(alloc, parts, start, this.len, false);
+      return parts;
+    }
+
+    // The three split families differ only in how they find a separator and
+    // whether empty pieces are kept, so the piece-cutting lives here.
+    const function push_piece(alloc: const ref HeapAllocator, parts: ref Vec<String>, start: i64, end: i64, keep_empty: bool) void {
+      if (keep_empty or end > start) {
+        parts.push(this.copy_range(alloc, start, end - start));
       }
+    }
+
+    // Cut the string at every occurrence of one byte. keep_empty decides whether
+    // zero-length pieces survive.
+    const function split_on_byte(alloc: const ref HeapAllocator, sep: u8, keep_empty: bool) Vec<String> {
+      var parts: Vec<String> = Vec<String>(alloc, 4);
+      var start: i64 = 0;
+      for (var i: i64 = 0; i < this.len; i = i + 1) {
+        if (this.data.get_unchecked(i) == sep) {
+          this.push_piece(alloc, parts, start, i, keep_empty);
+          start = i + 1;
+        }
+      }
+      this.push_piece(alloc, parts, start, this.len, keep_empty);
+      return parts;
+    }
+
+    // Cut the string at every occurrence of a multi-byte separator. An empty
+    // separator cuts nothing and yields the whole string as one piece.
+    const function split_on_bytes(alloc: const ref HeapAllocator, sep_data: raw_ptr<u8>, sep_len: i64, keep_empty: bool) Vec<String> {
+      var parts: Vec<String> = Vec<String>(alloc, 4);
+      // An empty separator cuts nothing, so the whole string is the one piece.
+      if (sep_len == 0) {
+        this.push_piece(alloc, parts, 0, this.len, keep_empty);
+        return parts;
+      }
+      var start: i64 = 0;
+      var searching: bool = true;
+      while (searching) {
+        match this.find_bytes(sep_data, sep_len, start) {
+          Option.Some(i) => {
+            this.push_piece(alloc, parts, start, i, keep_empty);
+            start = i + sep_len;
+          },
+          Option.None => {
+            searching = false;
+          }
+        };
+      }
+      this.push_piece(alloc, parts, start, this.len, keep_empty);
       return parts;
     }
 
@@ -821,7 +1031,7 @@ public module sun {
     // ========================================================================
 
     // Helper: append a decimal digit (0-9)
-    function appendDecDigit(d: i64) void {
+    function append_dec_digit(d: i64) void {
       var ch: u8 = match d {
         0 => 48,
         1 => 49,
@@ -838,7 +1048,7 @@ public module sun {
     }
 
     // Helper: append a hex digit (0-15)
-    function appendHexDigit(d: i64) void {
+    function append_hex_digit(d: i64) void {
       var ch: u8 = match d {
         0 => 48,
         1 => 49,
@@ -863,7 +1073,7 @@ public module sun {
     // Append an unsigned integer in decimal
     public function append_u64(val: i64) void {
       if (val == 0) {
-        this.append_char(48);  // '0'
+        this.append_char(b'0');
         return;
       }
 
@@ -875,7 +1085,7 @@ public module sun {
         // n % 10 without modulo operator
         var q: i64 = n / 10;
         var r: i64 = n - q * 10;
-        this.appendDecDigit(r);
+        this.append_dec_digit(r);
         n = q;
       }
 
@@ -896,7 +1106,7 @@ public module sun {
         this.append_u64(val);
         return;
       }
-      this.append_char(45);  // '-'
+      this.append_char(b'-');
       // Handle i64 min value edge case
       if (val == I64_MIN) {
         this.append_literal("9223372036854775808");
@@ -908,7 +1118,7 @@ public module sun {
     // Append an integer in hexadecimal (lowercase)
     public function append_hex(val: i64) void {
       if (val == 0) {
-        this.append_char(48);  // '0'
+        this.append_char(b'0');
         return;
       }
 
@@ -921,7 +1131,7 @@ public module sun {
         if (nibble < 0) {
           nibble = nibble + 16;
         }
-        this.appendHexDigit(nibble);
+        this.append_hex_digit(nibble);
         n = n / 16;
       }
 
@@ -951,7 +1161,7 @@ public module sun {
     public function append_f64(val: f64) void {
       var room: i64 = 32;
       this.ensure_capacity(room);
-      var dst: raw_ptr<u8> = unsafe { _ptr_offset(this.data.rawData(), this.len); };
+      var dst: raw_ptr<u8> = unsafe { _ptr_offset(this.data.raw_data(), this.len); };
       var written: i32 = unsafe { c_snprintf(dst, room, "%.15g", val); };
       var back: f64 = unsafe { c_strtod(dst, null); };
       if (back != val) {
@@ -976,12 +1186,9 @@ public module sun {
     public const function parse_i64() Option<i64> {
       var i: i64 = 0;
       var negative: bool = false;
-      if (this.len > 0) {
-        if (this.at(0) == 45) {
-          // '-'
-          negative = true;
-          i = 1;
-        }
+      if (this.len > 0 and this.at(0) == b'-') {
+        negative = true;
+        i = 1;
       }
       if (i >= this.len) {
         return Option.None;
@@ -1025,21 +1232,21 @@ public module sun {
       var i: i64 = 0;
       if (i < this.len) {
         var sign: u8 = this.at(i);
-        if (sign == 45 or sign == 43) {
+        if (sign == b'-' or sign == b'+') {
           // '-' '+'
           i = i + 1;
         }
       }
       var int_digits: i64 = 0;
-      while (i < this.len and this.at(i) >= 48 and this.at(i) <= 57) {
+      while (i < this.len and this.at(i) >= b'0' and this.at(i) <= b'9') {
         i = i + 1;
         int_digits = int_digits + 1;
       }
       var frac_digits: i64 = 0;
-      if (i < this.len and this.at(i) == 46) {
+      if (i < this.len and this.at(i) == b'.') {
         // '.'
         i = i + 1;
-        while (i < this.len and this.at(i) >= 48 and this.at(i) <= 57) {
+        while (i < this.len and this.at(i) >= b'0' and this.at(i) <= b'9') {
           i = i + 1;
           frac_digits = frac_digits + 1;
         }
@@ -1047,14 +1254,14 @@ public module sun {
       if (int_digits + frac_digits == 0) {
         return false;
       }
-      if (i < this.len and (this.at(i) == 101 or this.at(i) == 69)) {
+      if (i < this.len and (this.at(i) == b'e' or this.at(i) == b'E')) {
         // 'e' 'E'
         i = i + 1;
-        if (i < this.len and (this.at(i) == 45 or this.at(i) == 43)) {
+        if (i < this.len and (this.at(i) == b'-' or this.at(i) == b'+')) {
           i = i + 1;
         }
         var exp_digits: i64 = 0;
-        while (i < this.len and this.at(i) >= 48 and this.at(i) <= 57) {
+        while (i < this.len and this.at(i) >= b'0' and this.at(i) <= b'9') {
           i = i + 1;
           exp_digits = exp_digits + 1;
         }
@@ -1084,16 +1291,16 @@ public module sun {
     public const function __slice__(ranges: const ref array<SliceRange>) StringView {
       // For strings, we only support 1D slicing
       var range: SliceRange = ranges[0];
-      var start: i64 = range.getStart();
-      var end: i64 = range.getEnd(this.len);
+      var start: i64 = range.get_start();
+      var end: i64 = range.get_end(this.len);
 
       // Build shape and strides for the view
       var new_shape: array<i64, 1> = [end - start];
       var strides: array<i64, 1> = [1];  // 1D contiguous
 
       // Create MatrixView from raw pointer
-      var matView: MatrixView<u8> = MatrixView<u8>(this.data.rawData(), start, new_shape, strides);
-      return StringView(matView);
+      var mat_view: MatrixView<u8> = MatrixView<u8>(this.data.raw_data(), start, new_shape, strides);
+      return StringView(mat_view);
     }
   }
 

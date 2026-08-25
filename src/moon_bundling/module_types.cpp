@@ -73,6 +73,7 @@ TypePtr ModuleTypeResolver::parseType(const std::string& sig, size_t& pos) {
     return std::make_shared<PrimitiveType>(Type::Kind::Float32);
   if (name == "f64")
     return std::make_shared<PrimitiveType>(Type::Kind::Float64);
+  if (name == "char") return std::make_shared<PrimitiveType>(Type::Kind::Char);
 
   // Check for generic type: Name<T1, T2> or Name(T1, T2)
   // The parenthesized form is used in serialized type signatures

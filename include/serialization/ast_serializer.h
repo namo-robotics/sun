@@ -60,6 +60,8 @@ class ASTSerializer {
 
   // Individual node type serializers (dispatch by ASTNodeType)
   void serializeNumber(const NumberExprAST& expr, ast::ASTNode* node) const;
+  void serializeCharLiteral(const CharLiteralAST& expr,
+                            ast::ASTNode* node) const;
   void serializeString(const StringLiteralAST& expr, ast::ASTNode* node) const;
   void serializeNull(const NullLiteralAST& expr, ast::ASTNode* node) const;
   void serializeBool(const BoolLiteralAST& expr, ast::ASTNode* node) const;

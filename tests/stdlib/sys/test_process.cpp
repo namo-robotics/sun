@@ -80,12 +80,12 @@ TEST(Stdlib_Sys_Process, wait_status_decoding) {
         // exit(3): status 0x0300
         if (not exited(768)) { return 1; }
         if (exit_status(768) != 3) { return 2; }
-        if (signaled(768)) { return 3; }
+        if (is_signaled(768)) { return 3; }
 
         // killed by SIGKILL (9)
         if (exited(9)) { return 4; }
-        if (not signaled(9)) { return 5; }
-        if (term_signal(9) != 9) { return 6; }
+        if (not is_signaled(9)) { return 5; }
+        if (get_term_signal(9) != 9) { return 6; }
 
         // exit(0)
         if (not exited(0)) { return 7; }
