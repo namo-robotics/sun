@@ -217,8 +217,7 @@ TEST(Operators_CompoundAssignment, variable_target_is_compound_node) {
   auto* compound = static_cast<CompoundAssignmentAST*>(ast.get());
   EXPECT_EQ(compound->getOp().kind, TokenKind::PLUS_ASSIGN);
   EXPECT_EQ(compound->binaryOpKind(), TokenKind::PLUS);
-  EXPECT_EQ(compound->getTarget()->getType(),
-            ASTNodeType::VARIABLE_REFERENCE);
+  EXPECT_EQ(compound->getTarget()->getType(), ASTNodeType::VARIABLE_REFERENCE);
   EXPECT_EQ(compound->getValue()->getType(), ASTNodeType::VARIABLE_REFERENCE);
 }
 

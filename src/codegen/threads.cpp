@@ -137,17 +137,17 @@ Value* CodegenVisitor::codegenThreadJoin(Value* threadHandle,
 
   // The receiver may arrive as the handle alloca (pointer) or as an
   // already-loaded handle struct value
-  Value* handle = threadHandle->getType()->isPointerTy()
-                      ? ctx.builder->CreateLoad(handleType, threadHandle,
-                                                "join.handle")
-                      : threadHandle;
+  Value* handle =
+      threadHandle->getType()->isPointerTy()
+          ? ctx.builder->CreateLoad(handleType, threadHandle, "join.handle")
+          : threadHandle;
 
   Value* contextPtr =
       ctx.builder->CreateExtractValue(handle, 0, "join.context");
 
   // pthread_join blocks until the thread has fully exited
-  Value* tidFieldPtr = ctx.builder->CreateStructGEP(contextType, contextPtr, 3,
-                                                    "join.tid_ptr");
+  Value* tidFieldPtr =
+      ctx.builder->CreateStructGEP(contextType, contextPtr, 3, "join.tid_ptr");
   Value* tid = ctx.builder->CreateLoad(i64Ty, tidFieldPtr, "join.tid");
   Value* nullPtr = ConstantPointerNull::get(cast<PointerType>(ptrTy));
   ctx.builder->CreateCall(sun::libc::pthreadJoin(module), {tid, nullPtr},

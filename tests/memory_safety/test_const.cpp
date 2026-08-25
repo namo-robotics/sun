@@ -178,29 +178,32 @@ TEST(MemorySafety_Const, for_in_const_binding_is_not_assignable) {
 // ============================================================================
 
 TEST(MemorySafety_Const, ref_statement_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
       function main() i32 {
           const x: i32 = 1;
           ref r = x;
           return r;
       }
     )"),
-                                "Cannot take a mutable reference to constant 'x'");
+      "Cannot take a mutable reference to constant 'x'");
 }
 
 TEST(MemorySafety_Const, annotated_ref_binding_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
       function main() i32 {
           const x: i32 = 1;
           var r: ref i32 = x;
           return r;
       }
     )"),
-                                "Cannot take a mutable reference to constant 'x'");
+      "Cannot take a mutable reference to constant 'x'");
 }
 
 TEST(MemorySafety_Const, ref_argument_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
       function bump(x: ref i32) void { x = x + 1; }
       function main() i32 {
           const x: i32 = 1;
@@ -208,11 +211,12 @@ TEST(MemorySafety_Const, ref_argument_is_rejected) {
           return x;
       }
     )"),
-                                "Cannot pass as 'ref' argument 1 of 'bump' constant 'x'");
+      "Cannot pass as 'ref' argument 1 of 'bump' constant 'x'");
 }
 
 TEST(MemorySafety_Const, ref_argument_of_field_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
       class Point { var x: i32; function init() { this.x = 0; } }
       function bump(x: ref i32) void { x = x + 1; }
       function main() i32 {
@@ -221,7 +225,7 @@ TEST(MemorySafety_Const, ref_argument_of_field_is_rejected) {
           return p.x;
       }
     )"),
-                                "Cannot pass as 'ref' argument 1 of 'bump' constant 'p'");
+      "Cannot pass as 'ref' argument 1 of 'bump' constant 'p'");
 }
 
 TEST(MemorySafety_Const, const_ref_of_const_is_allowed) {
@@ -271,7 +275,8 @@ TEST(MemorySafety_Const, returning_const_local_is_allowed) {
 }
 
 TEST(MemorySafety_Const, partial_move_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
       class Inner { var v: i32; function init() { this.v = 1; } }
       class Outer { var inner: Inner; function init() { this.inner = Inner(); } }
       function main() i32 {
@@ -280,11 +285,12 @@ TEST(MemorySafety_Const, partial_move_is_rejected) {
           return i.v;
       }
     )"),
-                                "Cannot move field 'inner' out of constant 'o'");
+      "Cannot move field 'inner' out of constant 'o'");
 }
 
 TEST(MemorySafety_Const, partial_move_by_argument_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
       class Inner { var v: i32; function init() { this.v = 1; } }
       class Outer { var inner: Inner; function init() { this.inner = Inner(); } }
       function take(i: Inner) i32 { return i.v; }
@@ -293,7 +299,7 @@ TEST(MemorySafety_Const, partial_move_by_argument_is_rejected) {
           return take(o.inner);
       }
     )"),
-                                "Cannot move field 'inner' out of constant 'o'");
+      "Cannot move field 'inner' out of constant 'o'");
 }
 
 TEST(MemorySafety_Const, moving_const_global_is_rejected) {
@@ -382,7 +388,8 @@ TEST(MemorySafety_Const, const_string_reads_and_prints) {
 }
 
 TEST(MemorySafety_Const, const_string_cannot_be_appended) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeStringWithStdlib(R"(
       using sun;
       function main() i32 {
           var allocator = make_heap_allocator();
@@ -391,5 +398,5 @@ TEST(MemorySafety_Const, const_string_cannot_be_appended) {
           return 0;
       }
     )"),
-                                "Cannot call non-const method 'append' on constant 's'");
+      "Cannot call non-const method 'append' on constant 's'");
 }

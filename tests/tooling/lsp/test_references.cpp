@@ -55,9 +55,11 @@ size_t offsetOf(const std::string& source, const std::string& needle,
   return pos;
 }
 
-std::vector<sun::lsp::SymbolLocation> referencesAt(
-    const std::string& source, const std::string& needle,
-    bool includeDeclaration, int occurrence = 0, bool withStdlib = false) {
+std::vector<sun::lsp::SymbolLocation> referencesAt(const std::string& source,
+                                                   const std::string& needle,
+                                                   bool includeDeclaration,
+                                                   int occurrence = 0,
+                                                   bool withStdlib = false) {
   size_t pos = offsetOf(source, needle, occurrence);
   if (pos == std::string::npos) return {};
   Analysis analysis = analyze(source, withStdlib);
@@ -68,8 +70,7 @@ std::vector<sun::lsp::SymbolLocation> referencesAt(
     return {};
   }
   return sun::lsp::computeReferences(*analysis.program.ast, kPath, source,
-                                     static_cast<int>(pos),
-                                     includeDeclaration);
+                                     static_cast<int>(pos), includeDeclaration);
 }
 
 std::string rangeText(const std::string& text,
@@ -116,8 +117,8 @@ testing::AssertionResult refersTo(const std::string& source,
                                   bool includeDeclaration,
                                   const std::vector<ExpectedName>& expected,
                                   int needleOccurrence = 0) {
-  auto results = referencesAt(source, needle, includeDeclaration,
-                              needleOccurrence);
+  auto results =
+      referencesAt(source, needle, includeDeclaration, needleOccurrence);
   std::map<int, std::string> wanted;
   for (const auto& item : expected) {
     size_t at = offsetOf(source, item.needle, item.occurrence);
@@ -144,8 +145,8 @@ testing::AssertionResult refersTo(const std::string& source,
   for (const auto& [offset, name] : wanted) want.push_back(offset);
   if (got != want) {
     return testing::AssertionFailure()
-           << "references of " << needle << " are "
-           << describe(source, results) << ", expected " << wantedText;
+           << "references of " << needle << " are " << describe(source, results)
+           << ", expected " << wantedText;
   }
   for (const auto& result : results) {
     if (rangeText(source, result) != wanted[result.range.offset]) {
@@ -234,9 +235,9 @@ TEST(Tooling_Lsp_References, LocalVariableIncludingAssignments) {
                         {"total + 1"},
                         {"total += a"},
                         {"total;"}}));
-  EXPECT_TRUE(refersTo(
-      kProgram, "total + 1", false,
-      {{"total = total"}, {"total + 1"}, {"total += a"}, {"total;"}}));
+  EXPECT_TRUE(
+      refersTo(kProgram, "total + 1", false,
+               {{"total = total"}, {"total + 1"}, {"total += a"}, {"total;"}}));
 }
 
 TEST(Tooling_Lsp_References, Parameter) {
@@ -257,8 +258,8 @@ TEST(Tooling_Lsp_References, Field) {
                         {"x * k"},
                         {"x;\n    var pair"}}));
   // Pair.x, named in a struct literal, is a different field
-  EXPECT_TRUE(refersTo(kProgram, "x: 3", true,
-                       {{"x: i32;", 1}, {"x: 3"}, {"x + n"}}));
+  EXPECT_TRUE(
+      refersTo(kProgram, "x: 3", true, {{"x: i32;", 1}, {"x: 3"}, {"x + n"}}));
 }
 
 TEST(Tooling_Lsp_References, MethodCallsThroughVarAndRef) {
@@ -302,9 +303,9 @@ TEST(Tooling_Lsp_References, MatchBinding) {
 }
 
 TEST(Tooling_Lsp_References, ForLoopVariable) {
-  EXPECT_TRUE(refersTo(kProgram, "i < 3", true,
-                       {{"i: i32 = 0"}, {"i < 3"}, {"i = i + 1"},
-                        {"i + 1"}, {"i;\n    }"}}));
+  EXPECT_TRUE(refersTo(
+      kProgram, "i < 3", true,
+      {{"i: i32 = 0"}, {"i < 3"}, {"i = i + 1"}, {"i + 1"}, {"i;\n    }"}}));
 }
 
 TEST(Tooling_Lsp_References, This) {
@@ -340,8 +341,8 @@ function main() i32 {
   EXPECT_TRUE(refersTo(source, "v;", true, {{"v: T"}, {"v;"}}));
   EXPECT_TRUE(refersTo(source, "take<i32>", true,
                        {{"take<T>"}, {"take<i64>"}, {"take<i32>"}}));
-  EXPECT_TRUE(refersTo(source, "Pool, v", true,
-                       {{"Pool {"}, {"Pool, v"}, {"Pool()"}}));
+  EXPECT_TRUE(
+      refersTo(source, "Pool, v", true, {{"Pool {"}, {"Pool, v"}, {"Pool()"}}));
 }
 
 TEST(Tooling_Lsp_References, GenericClassBody) {
@@ -390,9 +391,10 @@ function main() i32 {
 )";
   EXPECT_TRUE(
       refersTo(source, "delta; }", true, {{"delta: i32"}, {"delta; }"}}));
+  EXPECT_TRUE(refersTo(source, "base + delta", true,
+                       {{"base = 10"}, {"base + delta"}}));
   EXPECT_TRUE(
-      refersTo(source, "base + delta", true, {{"base = 10"}, {"base + delta"}}));
-  EXPECT_TRUE(refersTo(source, "f(1)", true, {{"f = lambda"}, {"f(1)"}, {"f(2)"}}));
+      refersTo(source, "f(1)", true, {{"f = lambda"}, {"f(1)"}, {"f(2)"}}));
 }
 
 TEST(Tooling_Lsp_References, CatchBinding) {
@@ -419,8 +421,8 @@ function main() i32 {
   // The cursor on the binding's own declaration
   EXPECT_TRUE(refersTo(source, "err: IError", true,
                        {{"err: IError"}, {"err.code() +"}, {"err.code();"}}));
-  EXPECT_TRUE(refersTo(source, "Oops();", true,
-                       {{"Oops implements"}, {"Oops();"}}));
+  EXPECT_TRUE(
+      refersTo(source, "Oops();", true, {{"Oops implements"}, {"Oops();"}}));
 }
 
 TEST(Tooling_Lsp_References, MergedFiles) {
@@ -509,21 +511,20 @@ function main() i64 {
     }
     std::vector<int> want;
     for (const auto& item : expected) {
-      want.push_back(static_cast<int>(offsetOf(source, item.needle,
-                                               item.occurrence)));
+      want.push_back(
+          static_cast<int>(offsetOf(source, item.needle, item.occurrence)));
     }
     std::sort(want.begin(), want.end());
     EXPECT_EQ(got, want) << describe(source, results);
     ASSERT_EQ(library.size(), 1u) << describe(source, results);
-    EXPECT_TRUE(library[0].filePath.size() > file.size() &&
-                library[0].filePath.compare(
-                    library[0].filePath.size() - file.size(), file.size(),
-                    file) == 0)
+    EXPECT_TRUE(
+        library[0].filePath.size() > file.size() &&
+        library[0].filePath.compare(library[0].filePath.size() - file.size(),
+                                    file.size(), file) == 0)
         << library[0].filePath;
     EXPECT_EQ(rangeText(readFile(library[0].filePath), library[0]), name);
   };
-  expectStdlib("push(1)", {{"push(1)"}, {"push(2)"}}, "stdlib/vec.sun",
-               "push");
+  expectStdlib("push(1)", {{"push(1)"}, {"push(2)"}}, "stdlib/vec.sun", "push");
   expectStdlib("Vec<i64>(", {{"Vec<i64>("}}, "stdlib/vec.sun", "Vec");
   // The loop variable is declared in the document itself
   auto item = referencesAt(source, "item;", true, 0, true);

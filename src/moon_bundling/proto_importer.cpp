@@ -2,7 +2,8 @@
 //
 // Structure:
 //   SchemaValidator   rejects constructs outside the supported proto3 subset
-//   TypeMapper        proto descriptor → Sun spelling (types, names, wire types,
+//   TypeMapper        proto descriptor → Sun spelling (types, names, wire
+//   types,
 //                     read/write expressions)
 //   MessageGenerator  emits the Sun class + decode functions for one message
 //   emitFile          emits one .proto file's module (enums + messages)
@@ -21,7 +22,8 @@
 //       function init(alloc: ref HeapAllocator) { ...zero values... }
 //       function encode(buf: ref Vec<u8>) void { ... }
 //     }
-//     function <Msg>_decode(alloc: ref HeapAllocator, buf: ref Vec<u8>) <Msg>, IError
+//     function <Msg>_decode(alloc: ref HeapAllocator, buf: ref Vec<u8>) <Msg>,
+//     IError
 //   }
 //
 // Nested messages/enums flatten to Outer_Inner. Sun has no static methods, so
@@ -29,6 +31,8 @@
 
 #include "moon_bundling/proto_importer.h"
 
+#include <google/protobuf/compiler/importer.h>
+#include <google/protobuf/descriptor.h>
 #include <llvm/Support/SHA256.h>
 
 #include <cctype>
@@ -37,9 +41,6 @@
 #include <functional>
 #include <set>
 #include <sstream>
-
-#include <google/protobuf/compiler/importer.h>
-#include <google/protobuf/descriptor.h>
 
 #include "support/error.h"
 #include "support/sun_path.h"
@@ -137,13 +138,15 @@ std::vector<const pb::Descriptor*> allMessages(const pb::FileDescriptor* file) {
 }
 
 // Every enum in the file, nested ones included
-std::vector<const pb::EnumDescriptor*> allEnums(const pb::FileDescriptor* file) {
+std::vector<const pb::EnumDescriptor*> allEnums(
+    const pb::FileDescriptor* file) {
   std::vector<const pb::EnumDescriptor*> out;
   for (int i = 0; i < file->enum_type_count(); ++i) {
     out.push_back(file->enum_type(i));
   }
   for (const pb::Descriptor* d : allMessages(file)) {
-    for (int i = 0; i < d->enum_type_count(); ++i) out.push_back(d->enum_type(i));
+    for (int i = 0; i < d->enum_type_count(); ++i)
+      out.push_back(d->enum_type(i));
   }
   return out;
 }
@@ -157,7 +160,8 @@ std::vector<const pb::Descriptor*> messagesInDependencyOrder(
   std::function<void(const pb::Descriptor*)> visit =
       [&](const pb::Descriptor* d) {
         if (!done.insert(d).second) return;
-        for (int i = 0; i < d->nested_type_count(); ++i) visit(d->nested_type(i));
+        for (int i = 0; i < d->nested_type_count(); ++i)
+          visit(d->nested_type(i));
         for (int i = 0; i < d->field_count(); ++i) {
           const FD* f = d->field(i);
           if (f->type() == FD::TYPE_MESSAGE &&
@@ -516,7 +520,8 @@ void emitEnum(Writer& w, const pb::EnumDescriptor* e) {
   w.close();
   w.line();
 
-  w.open("public function proto_enum_to_i32_" + name + "(v: " + name + ") i32 {");
+  w.open("public function proto_enum_to_i32_" + name + "(v: " + name +
+         ") i32 {");
   w.open("return match v {");
   for (int i = 0; i < e->value_count(); ++i) {
     std::string sep = (i + 1 < e->value_count()) ? "," : "";
@@ -527,7 +532,8 @@ void emitEnum(Writer& w, const pb::EnumDescriptor* e) {
   w.close();
   w.line();
 
-  w.open("public function proto_enum_from_i32_" + name + "(v: i32) " + name + " {");
+  w.open("public function proto_enum_from_i32_" + name + "(v: i32) " + name +
+         " {");
   for (int i = 0; i < e->value_count(); ++i) {
     w.line("if (v == " + std::to_string(e->value(i)->number()) + ") { return " +
            name + "." + e->value(i)->name() + "; }");
@@ -799,7 +805,9 @@ class MessageGenerator {
     w_.line("val = " + T::readExpr(v) + ";");
     w_.close("} else {");
     w_.open("");
-    w_.line("r.skip_field(proto_read_tag_wire_type(etag), etag, msg.unknown_fields);");
+    w_.line(
+        "r.skip_field(proto_read_tag_wire_type(etag), etag, "
+        "msg.unknown_fields);");
     w_.close();
     w_.close();
     w_.line("r.pop_limit(old);");
@@ -809,7 +817,8 @@ class MessageGenerator {
   // Nested (length-prefixed), whole-buffer, and delimited entry points
   void emitDecodeHelpers() {
     const std::string sig = "(alloc: ref HeapAllocator, r: ref ProtoReader) ";
-    w_.open("public function " + name_ + "_decode_nested" + sig + name_ + ", IError {");
+    w_.open("public function " + name_ + "_decode_nested" + sig + name_ +
+            ", IError {");
     w_.line("var end: i64 = r.read_length();");
     w_.line("var old: i64 = r.push_limit(end);");
     w_.line("var msg = " + name_ + "_decode_from(alloc, r);");
@@ -896,7 +905,8 @@ std::string readFile(const std::filesystem::path& p) {
 // Public API
 // ---------------------------------------------------------------------------
 
-std::vector<std::string> ProtoImporter::importDirsFor(const std::string& baseDir) {
+std::vector<std::string> ProtoImporter::importDirsFor(
+    const std::string& baseDir) {
   std::vector<std::string> dirs;
   if (!baseDir.empty()) dirs.push_back(baseDir);
   for (const auto& dir : SunPath::getPaths()) dirs.push_back(dir.string());

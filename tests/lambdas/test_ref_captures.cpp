@@ -1,5 +1,5 @@
-// tests/lambdas/test_ref_captures.cpp - Tests for lambda by-reference capture lists:
-// lambda [ref x] (params) ret { body }
+// tests/lambdas/test_ref_captures.cpp - Tests for lambda by-reference capture
+// lists: lambda [ref x] (params) ret { body }
 
 #include <gtest/gtest.h>
 
@@ -132,7 +132,8 @@ TEST(Lambdas_RefCaptures, read_only_byvalue_still_works) {
 // ============================================================================
 
 TEST(Lambdas_RefCaptures, byvalue_mutation_rejected_with_hint) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
       function main() i32 {
           var x: i32 = 10;
           var f = lambda () void {
@@ -142,7 +143,7 @@ TEST(Lambdas_RefCaptures, byvalue_mutation_rejected_with_hint) {
           return x;
       }
     )"),
-                                "capture it by reference with 'lambda [ref x]'");
+      "capture it by reference with 'lambda [ref x]'");
 }
 
 TEST(Lambdas_RefCaptures, byvalue_plain_assignment_rejected) {

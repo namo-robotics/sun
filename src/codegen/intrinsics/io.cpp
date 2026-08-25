@@ -297,9 +297,8 @@ static Function* getOrCreateLseekHelper(llvm::Module* module,
                                         LLVMContext& llvmCtx) {
   auto* i32Ty = Type::getInt32Ty(llvmCtx);
   auto* i64Ty = Type::getInt64Ty(llvmCtx);
-  return sun::libc::forwarder(module, "__sun_lseek",
-                                  sun::libc::lseek(module),
-                                  {i32Ty, i64Ty, i32Ty}, i64Ty);
+  return sun::libc::forwarder(module, "__sun_lseek", sun::libc::lseek(module),
+                              {i32Ty, i64Ty, i32Ty}, i64Ty);
 }
 
 // __sun_fstat: fstat(fd, stat_buf) -> result. The buffer layout is the
@@ -308,17 +307,16 @@ static Function* getOrCreateFstatHelper(llvm::Module* module,
                                         LLVMContext& llvmCtx) {
   auto* i32Ty = Type::getInt32Ty(llvmCtx);
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  return sun::libc::forwarder(module, "__sun_fstat",
-                                  sun::libc::fstat(module), {i32Ty, ptrTy},
-                                  i32Ty);
+  return sun::libc::forwarder(module, "__sun_fstat", sun::libc::fstat(module),
+                              {i32Ty, ptrTy}, i32Ty);
 }
 
 // __sun_fsync: fsync(fd) -> result
 static Function* getOrCreateFsyncHelper(llvm::Module* module,
                                         LLVMContext& llvmCtx) {
   auto* i32Ty = Type::getInt32Ty(llvmCtx);
-  return sun::libc::forwarder(module, "__sun_fsync",
-                                  sun::libc::fsync(module), {i32Ty}, i32Ty);
+  return sun::libc::forwarder(module, "__sun_fsync", sun::libc::fsync(module),
+                              {i32Ty}, i32Ty);
 }
 
 // __sun_ftruncate: ftruncate(fd, length) -> result
@@ -327,8 +325,8 @@ static Function* getOrCreateFtruncateHelper(llvm::Module* module,
   auto* i32Ty = Type::getInt32Ty(llvmCtx);
   auto* i64Ty = Type::getInt64Ty(llvmCtx);
   return sun::libc::forwarder(module, "__sun_ftruncate",
-                                  sun::libc::ftruncate(module),
-                                  {i32Ty, i64Ty}, i32Ty);
+                              sun::libc::ftruncate(module), {i32Ty, i64Ty},
+                              i32Ty);
 }
 
 // __sun_unlink: unlink(path) -> result
@@ -336,8 +334,8 @@ static Function* getOrCreateUnlinkHelper(llvm::Module* module,
                                          LLVMContext& llvmCtx) {
   auto* i32Ty = Type::getInt32Ty(llvmCtx);
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  return sun::libc::forwarder(module, "__sun_unlink",
-                                  sun::libc::unlink(module), {ptrTy}, i32Ty);
+  return sun::libc::forwarder(module, "__sun_unlink", sun::libc::unlink(module),
+                              {ptrTy}, i32Ty);
 }
 
 // __sun_rename: rename(old_path, new_path) -> result
@@ -345,9 +343,8 @@ static Function* getOrCreateRenameHelper(llvm::Module* module,
                                          LLVMContext& llvmCtx) {
   auto* i32Ty = Type::getInt32Ty(llvmCtx);
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  return sun::libc::forwarder(module, "__sun_rename",
-                                  sun::libc::rename(module), {ptrTy, ptrTy},
-                                  i32Ty);
+  return sun::libc::forwarder(module, "__sun_rename", sun::libc::rename(module),
+                              {ptrTy, ptrTy}, i32Ty);
 }
 
 // __sun_mkdir: mkdir(path, mode) -> result
@@ -355,9 +352,8 @@ static Function* getOrCreateMkdirHelper(llvm::Module* module,
                                         LLVMContext& llvmCtx) {
   auto* i32Ty = Type::getInt32Ty(llvmCtx);
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  return sun::libc::forwarder(module, "__sun_mkdir",
-                                  sun::libc::mkdir(module), {ptrTy, i32Ty},
-                                  i32Ty);
+  return sun::libc::forwarder(module, "__sun_mkdir", sun::libc::mkdir(module),
+                              {ptrTy, i32Ty}, i32Ty);
 }
 
 // __sun_rmdir: rmdir(path) -> result
@@ -365,8 +361,8 @@ static Function* getOrCreateRmdirHelper(llvm::Module* module,
                                         LLVMContext& llvmCtx) {
   auto* i32Ty = Type::getInt32Ty(llvmCtx);
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  return sun::libc::forwarder(module, "__sun_rmdir",
-                                  sun::libc::rmdir(module), {ptrTy}, i32Ty);
+  return sun::libc::forwarder(module, "__sun_rmdir", sun::libc::rmdir(module),
+                              {ptrTy}, i32Ty);
 }
 
 // __sun_write: write(fd, buf, len) -> bytes_written
@@ -375,9 +371,8 @@ static Function* getOrCreateWriteHelper(llvm::Module* module,
   auto* i32Ty = Type::getInt32Ty(llvmCtx);
   auto* i64Ty = Type::getInt64Ty(llvmCtx);
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  return sun::libc::forwarder(module, "__sun_write",
-                                  sun::libc::write(module),
-                                  {i32Ty, ptrTy, i64Ty}, i64Ty);
+  return sun::libc::forwarder(module, "__sun_write", sun::libc::write(module),
+                              {i32Ty, ptrTy, i64Ty}, i64Ty);
 }
 
 // __sun_read: read(fd, buf, len) -> bytes_read
@@ -386,9 +381,8 @@ static Function* getOrCreateReadHelper(llvm::Module* module,
   auto* i32Ty = Type::getInt32Ty(llvmCtx);
   auto* i64Ty = Type::getInt64Ty(llvmCtx);
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  return sun::libc::forwarder(module, "__sun_read",
-                                  sun::libc::read(module),
-                                  {i32Ty, ptrTy, i64Ty}, i64Ty);
+  return sun::libc::forwarder(module, "__sun_read", sun::libc::read(module),
+                              {i32Ty, ptrTy, i64Ty}, i64Ty);
 }
 
 // -------------------------------------------------------------------

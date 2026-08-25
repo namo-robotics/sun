@@ -226,41 +226,38 @@ TEST(Operators_Char, works_as_a_class_field) {
 
 // char is a scalar value, not a small number: it never joins arithmetic.
 TEST(Operators_Char, arithmetic_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
         function main() i32 {
             var c: char = 'a';
             var n = c + 1;
             return 0;
         }
       )"),
-      "is not defined for 'char'");
+                                "is not defined for 'char'");
 }
 
 TEST(Operators_Char, comparing_with_an_integer_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
         function main() i32 {
             var c: char = 'a';
             if (c == 65) { return 1; }
             return 0;
         }
       )"),
-      "Cannot compare 'char' with 'i32'");
+                                "Cannot compare 'char' with 'i32'");
 }
 
 // The motivating mistake: String.at() hands back a byte, so it must be
 // compared against a byte literal rather than a char.
 TEST(Operators_Char, comparing_a_byte_with_a_char_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
         function main() i32 {
             var b: u8 = 97;
             if (b == 'a') { return 1; }
             return 0;
         }
       )"),
-      "Cannot compare 'char' with 'u8'");
+                                "Cannot compare 'char' with 'u8'");
 }
 
 TEST(Operators_Char, an_integer_literal_is_not_a_char) {

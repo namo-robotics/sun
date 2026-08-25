@@ -5,8 +5,8 @@
 // - _futex_wait, _futex_wake (Linux futex syscalls)
 
 #include "codegen/codegen_visitor.h"
-#include "support/error.h"
 #include "codegen/thread_utils.h"
+#include "support/error.h"
 
 using namespace llvm;
 

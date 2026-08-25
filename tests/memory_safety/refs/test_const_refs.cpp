@@ -90,7 +90,8 @@ TEST(MemorySafety_Refs_ConstRefs, mutable_ref_passes_to_const_ref) {
 // Writing through a const ref is rejected
 // ============================================================================
 
-TEST(MemorySafety_Refs_ConstRefs, assignment_through_statement_ref_is_rejected) {
+TEST(MemorySafety_Refs_ConstRefs,
+     assignment_through_statement_ref_is_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       function main() i32 {
           var x: i32 = 1;
@@ -115,7 +116,8 @@ TEST(MemorySafety_Refs_ConstRefs, assignment_through_parameter_is_rejected) {
 }
 
 TEST(MemorySafety_Refs_ConstRefs, field_write_through_parameter_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
       class Point { var x: i32; function init() { this.x = 0; } }
       function set(p: const ref Point) void { p.x = 2; }
       function main() i32 {
@@ -124,11 +126,13 @@ TEST(MemorySafety_Refs_ConstRefs, field_write_through_parameter_is_rejected) {
           return p.x;
       }
     )"),
-                                "Cannot assign to field 'x' of const reference 'p'");
+      "Cannot assign to field 'x' of const reference 'p'");
 }
 
-TEST(MemorySafety_Refs_ConstRefs, non_const_method_through_parameter_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+TEST(MemorySafety_Refs_ConstRefs,
+     non_const_method_through_parameter_is_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
       class Counter {
           var n: i32;
           function init() { this.n = 0; }
@@ -141,7 +145,7 @@ TEST(MemorySafety_Refs_ConstRefs, non_const_method_through_parameter_is_rejected
           return c.n;
       }
     )"),
-                                "Cannot call non-const method 'bump' on const reference 'c'");
+      "Cannot call non-const method 'bump' on const reference 'c'");
 }
 
 // ============================================================================
@@ -149,7 +153,8 @@ TEST(MemorySafety_Refs_ConstRefs, non_const_method_through_parameter_is_rejected
 // ============================================================================
 
 TEST(MemorySafety_Refs_ConstRefs, rebinding_as_mutable_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
       function main() i32 {
           var x: i32 = 1;
           var r: const ref i32 = x;
@@ -158,11 +163,12 @@ TEST(MemorySafety_Refs_ConstRefs, rebinding_as_mutable_is_rejected) {
           return x;
       }
     )"),
-                                "Cannot take a mutable reference to const reference 'r'");
+      "Cannot take a mutable reference to const reference 'r'");
 }
 
 TEST(MemorySafety_Refs_ConstRefs, const_ref_argument_to_ref_param_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
       function bump(x: ref i32) void { x = x + 1; }
       function relay(x: const ref i32) void { bump(x); }
       function main() i32 {
@@ -171,7 +177,7 @@ TEST(MemorySafety_Refs_ConstRefs, const_ref_argument_to_ref_param_is_rejected) {
           return x;
       }
     )"),
-                                "No matching overload of 'bump' for argument types (const ref i32)");
+      "No matching overload of 'bump' for argument types (const ref i32)");
 }
 
 TEST(MemorySafety_Refs_ConstRefs, downgrade_of_rebinding_is_allowed) {
@@ -225,7 +231,8 @@ TEST(MemorySafety_Refs_ConstRefs, ref_result_cannot_bind_mutable_ref) {
 }
 
 TEST(MemorySafety_Refs_ConstRefs, ref_result_cannot_be_written_through) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
       class Inner { var x: i32; function init() { this.x = 0; } }
       class Cell {
           var inner: Inner;
@@ -238,7 +245,7 @@ TEST(MemorySafety_Refs_ConstRefs, ref_result_cannot_be_written_through) {
           return c.inner.x;
       }
     )"),
-                                "Cannot assign to field 'x' of a const reference");
+      "Cannot assign to field 'x' of a const reference");
 }
 
 TEST(MemorySafety_Refs_ConstRefs, ref_result_stays_mutable_on_var_receiver) {

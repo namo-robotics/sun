@@ -149,8 +149,7 @@ Value* CodegenVisitor::codegen(const ArrayLiteralAST& expr) {
 // -------------------------------------------------------------------
 
 Value* CodegenVisitor::codegen(const IndexAST& expr) {
-  sun::TypePtr targetType =
-      sun::unwrapRef(expr.getTarget()->getResolvedType());
+  sun::TypePtr targetType = sun::unwrapRef(expr.getTarget()->getResolvedType());
 
   // Class targets dispatch to the __index__/__slice__ method protocol
   if (targetType && targetType->isClass()) {
@@ -495,7 +494,8 @@ AllocaInst* CodegenVisitor::boxIndicesToArrayRef(const IndexAST& expr) {
   // Build the fat struct for the array { ptr data, i32 ndims, ptr dims }
   llvm::StructType* fatType =
       sun::ArrayType::getArrayStructType(ctx.getContext());
-  AllocaInst* arrAlloca = ctx.builder->CreateAlloca(fatType, nullptr, "idx.arr");
+  AllocaInst* arrAlloca =
+      ctx.builder->CreateAlloca(fatType, nullptr, "idx.arr");
 
   Value* fatVal = llvm::UndefValue::get(fatType);
   fatVal = ctx.builder->CreateInsertValue(fatVal, arrData, 0);
@@ -507,8 +507,7 @@ AllocaInst* CodegenVisitor::boxIndicesToArrayRef(const IndexAST& expr) {
 }
 
 // Call obj.__index__(indices) with a pre-boxed index array
-Value* CodegenVisitor::emitClassIndexCall(Value* objectPtr,
-                                          AllocaInst* idxArr,
+Value* CodegenVisitor::emitClassIndexCall(Value* objectPtr, AllocaInst* idxArr,
                                           sun::ClassType* classType) {
   const sun::ClassMethod* method = classType->getMethod("__index__");
   if (!method) {

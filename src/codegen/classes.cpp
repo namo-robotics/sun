@@ -163,9 +163,8 @@ void CodegenVisitor::declareBlockClassMethods(const ClassDefinitionAST& expr) {
 
   std::string className = expr.getName();
   if (expr.getResolvedType() && expr.getResolvedType()->isClass()) {
-    className =
-        static_cast<sun::ClassType*>(expr.getResolvedType().get())
-            ->getMangledName();
+    className = static_cast<sun::ClassType*>(expr.getResolvedType().get())
+                    ->getMangledName();
   }
   declareClassMethods(expr, typeRegistry->getClass(className));
 }
@@ -660,6 +659,22 @@ Value* CodegenVisitor::codegen(const ThisExprAST& expr) {
 }
 
 // -------------------------------------------------------------------
+// Module member helpers
+// -------------------------------------------------------------------
+
+// The global backing `mod.name`, or null when the object is not a module or
+// the member names something other than a global variable. `symbol` is the
+// name semantic analysis took from the member's own declaration; codegen never
+// rebuilds it from the module path, since only the declaration knows the
+// library-hash scope the symbol was emitted under.
+GlobalVariable* CodegenVisitor::moduleMemberGlobal(const ExprAST& object,
+                                                   const std::string& symbol) {
+  sun::TypePtr objectType = object.getResolvedType();
+  if (!objectType || !objectType->isModule() || symbol.empty()) return nullptr;
+  return module->getGlobalVariable(symbol);
+}
+
+// -------------------------------------------------------------------
 // Member access codegen (field read)
 // -------------------------------------------------------------------
 
@@ -670,14 +685,6 @@ Value* CodegenVisitor::codegen(const MemberAccessAST& expr) {
   sun::TypePtr objectType = expr.getObject()->getResolvedType();
   if (objectType && objectType->isModule()) {
     auto* moduleType = static_cast<sun::ModuleType*>(objectType.get());
-    // Use resolved name from semantic analysis (includes library hash prefix)
-    std::string qualifiedName;
-    if (expr.hasResolvedQualifiedName()) {
-      qualifiedName = expr.getResolvedQualifiedName();
-    } else {
-      qualifiedName =
-          mangleModulePath(moduleType->getModulePath()) + "_" + memberName;
-    }
 
     // Check if the result type is also a module (nested module access)
     sun::TypePtr resultType = expr.getResolvedType();
@@ -686,6 +693,10 @@ Value* CodegenVisitor::codegen(const MemberAccessAST& expr) {
       return llvm::ConstantPointerNull::get(
           llvm::PointerType::getUnqual(ctx.getContext()));
     }
+
+    // Semantic analysis took this from the member's own declaration, so it
+    // names the symbol that declaration emitted, library-hash scope included
+    const std::string& qualifiedName = expr.getResolvedQualifiedName();
 
     // Check for global variable in this module
     GlobalVariable* gv = module->getGlobalVariable(qualifiedName);
@@ -869,9 +880,8 @@ Value* CodegenVisitor::codegenStackClassInstance(const CallExprAST& expr,
     const auto& paramTypes =
         ctor.method ? ctor.method->paramTypes : std::vector<sun::TypePtr>{};
 
-    std::vector<Value*> ctorArgs =
-        generateCtorArgs(ctorFunc, alloca, expr.getArgs(),
-                             expr.getArgConversions(), paramTypes);
+    std::vector<Value*> ctorArgs = generateCtorArgs(
+        ctorFunc, alloca, expr.getArgs(), expr.getArgConversions(), paramTypes);
     ctx.builder->CreateCall(ctorFunc, ctorArgs);
   }
 
@@ -947,6 +957,18 @@ CodegenVisitor::ConstructorLookup CodegenVisitor::lookupConstructor(
 // -------------------------------------------------------------------
 
 Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
+  // mod.global = value: the module is compile-time only, so this writes the
+  // global directly
+  if (GlobalVariable* gv = moduleMemberGlobal(
+          *expr.getObject(), expr.getResolvedQualifiedName())) {
+    Value* value = codegen(*expr.getValue());
+    if (!value) return nullptr;
+    assignToVariableSlot(gv, value,
+                         sun::unwrapRef(expr.getValue()->getResolvedType()),
+                         expr.getMemberName());
+    return value;
+  }
+
   // Resolve the object down to (pointer, class type); the shared helper also
   // unwraps ref-to-class objects, which this path previously rejected
   auto [objectPtr, classType] = codegenObjectPtr(*expr.getObject());
@@ -1041,9 +1063,9 @@ Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
       // Move: the field owns the payload now. Release the source's tracking
       // entry and zero it so its own drop is a no-op.
       markClassAllocationAsDeinited(value);
-      ctx.builder->CreateMemSet(value,
-                                ConstantInt::get(Type::getInt8Ty(ctx.getContext()), 0),
-                                structSize, srcAlign);
+      ctx.builder->CreateMemSet(
+          value, ConstantInt::get(Type::getInt8Ty(ctx.getContext()), 0),
+          structSize, srcAlign);
     }
     return value;
   }
@@ -1198,8 +1220,8 @@ Value* CodegenVisitor::codegen(const InterfaceDefinitionAST& expr) {
           ctx.builder->CreateAlloca(argLLVMType, nullptr, argName);
       ctx.builder->CreateStore(&*argIt, alloca);
       scopes.back().variables[argName] = alloca;
-      debugDeclareParam(alloca, argName, proto,
-                        static_cast<unsigned>(paramIdx), /*argNoBase=*/2);
+      debugDeclareParam(alloca, argName, proto, static_cast<unsigned>(paramIdx),
+                        /*argNoBase=*/2);
       ++argIt;
       ++paramIdx;
     }
@@ -1377,9 +1399,9 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
       return nullptr;
     }
 
-    Value* result = emitPossiblyThrowingCall(
-        specializedFunc->getFunctionType(), specializedFunc, argValues,
-        canThrow, "generic.call");
+    Value* result = emitPossiblyThrowingCall(specializedFunc->getFunctionType(),
+                                             specializedFunc, argValues,
+                                             canThrow, "generic.call");
     return materializeStructReturn(result);
   }
 
@@ -1536,7 +1558,7 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
 
       std::vector<Value*> ctorArgs =
           generateCtorArgs(ctorFunc, alloca, expr.getArgs(),
-                             expr.getArgConversions(), paramTypes);
+                           expr.getArgConversions(), paramTypes);
       ctx.builder->CreateCall(ctorFunc, ctorArgs);
     }
 

@@ -72,10 +72,10 @@ Value* CodegenVisitor::codegenLogicalOp(const BinaryExprAST& expr) {
   if (!L->getType()->isIntegerTy(1)) {
     if (L->getType()->isFloatingPointTy()) {
       L = ctx.builder->CreateFCmpONE(L, ConstantFP::get(L->getType(), 0.0),
-                                      "tobool");
+                                     "tobool");
     } else if (L->getType()->isIntegerTy()) {
       L = ctx.builder->CreateICmpNE(L, ConstantInt::get(L->getType(), 0),
-                                     "tobool");
+                                    "tobool");
     } else {
       logAndThrowError("Logical operator requires boolean-compatible operand",
                        expr.getLocation());
@@ -86,16 +86,17 @@ Value* CodegenVisitor::codegenLogicalOp(const BinaryExprAST& expr) {
 
   // For 'and': if LHS is false, result is false (don't evaluate RHS)
   // For 'or': if LHS is true, result is true (don't evaluate RHS)
-  BasicBlock* EvalRhsBB =
-      BasicBlock::Create(ctx.getContext(), isAnd ? "and.rhs" : "or.rhs", TheFunction);
-  BasicBlock* MergeBB =
-      BasicBlock::Create(ctx.getContext(), isAnd ? "and.end" : "or.end", TheFunction);
+  BasicBlock* EvalRhsBB = BasicBlock::Create(
+      ctx.getContext(), isAnd ? "and.rhs" : "or.rhs", TheFunction);
+  BasicBlock* MergeBB = BasicBlock::Create(
+      ctx.getContext(), isAnd ? "and.end" : "or.end", TheFunction);
 
   // Remember the block where LHS was evaluated (for PHI)
   BasicBlock* LhsBB = ctx.builder->GetInsertBlock();
 
-  // For 'and': branch to RHS evaluation if LHS is true, otherwise short-circuit to merge
-  // For 'or': branch to RHS evaluation if LHS is false, otherwise short-circuit to merge
+  // For 'and': branch to RHS evaluation if LHS is true, otherwise short-circuit
+  // to merge For 'or': branch to RHS evaluation if LHS is false, otherwise
+  // short-circuit to merge
   if (isAnd) {
     ctx.builder->CreateCondBr(L, EvalRhsBB, MergeBB);
   } else {
@@ -111,10 +112,10 @@ Value* CodegenVisitor::codegenLogicalOp(const BinaryExprAST& expr) {
   if (!R->getType()->isIntegerTy(1)) {
     if (R->getType()->isFloatingPointTy()) {
       R = ctx.builder->CreateFCmpONE(R, ConstantFP::get(R->getType(), 0.0),
-                                      "tobool");
+                                     "tobool");
     } else if (R->getType()->isIntegerTy()) {
       R = ctx.builder->CreateICmpNE(R, ConstantInt::get(R->getType(), 0),
-                                     "tobool");
+                                    "tobool");
     } else {
       logAndThrowError("Logical operator requires boolean-compatible operand",
                        expr.getLocation());
@@ -130,12 +131,12 @@ Value* CodegenVisitor::codegenLogicalOp(const BinaryExprAST& expr) {
   // Emit merge block with PHI node
   ctx.builder->SetInsertPoint(MergeBB);
   PHINode* PN = ctx.builder->CreatePHI(Type::getInt1Ty(ctx.getContext()), 2,
-                                        isAnd ? "and.result" : "or.result");
+                                       isAnd ? "and.result" : "or.result");
 
   // For 'and': short-circuit value is false, evaluated value is RHS
   // For 'or': short-circuit value is true, evaluated value is RHS
   Value* ShortCircuitVal = isAnd ? ConstantInt::getFalse(ctx.getContext())
-                                  : ConstantInt::getTrue(ctx.getContext());
+                                 : ConstantInt::getTrue(ctx.getContext());
   PN->addIncoming(ShortCircuitVal, LhsBB);
   PN->addIncoming(R, RhsBB);
 
@@ -150,7 +151,8 @@ void CodegenVisitor::emitCxaThrowAndUnreachable(Value* excPtr) {
   Function* func = ctx.builder->GetInsertBlock()->getParent();
   FunctionCallee cxaThrow = getCxaThrow();
   Value* tinfo = getSunExceptionTypeInfo();
-  Value* nullPtr = ConstantPointerNull::get(PointerType::getUnqual(ctx.getContext()));
+  Value* nullPtr =
+      ConstantPointerNull::get(PointerType::getUnqual(ctx.getContext()));
 
   if (!tryStack.empty()) {
     ensurePersonality(func);
@@ -199,8 +201,8 @@ Value* CodegenVisitor::codegen(const ThrowExprAST& expr) {
   uint64_t objOffset = idSize + fatSize;
 
   auto storeAt = [&](Value* base, uint64_t off, Value* val) {
-    Value* slot = ctx.builder->CreateGEP(i8Ty, base,
-                                         {ConstantInt::get(i64Ty, off)});
+    Value* slot =
+        ctx.builder->CreateGEP(i8Ty, base, {ConstantInt::get(i64Ty, off)});
     ctx.builder->CreateStore(val, slot);
   };
 
@@ -249,7 +251,8 @@ Value* CodegenVisitor::codegen(const ThrowExprAST& expr) {
     // 'IError' catch-all can re-catch it). The underlying object outlives the
     // throw (its owning exception is released only by __cxa_end_catch, which
     // the unreachable throw path skips).
-    Value* fatVal = expr.hasErrorExpr() ? codegen(expr.getErrorExpr()) : nullptr;
+    Value* fatVal =
+        expr.hasErrorExpr() ? codegen(expr.getErrorExpr()) : nullptr;
     Value* exc = ctx.builder->CreateCall(
         getCxaAllocateException(), {ConstantInt::get(i64Ty, objOffset)}, "exc");
     ctx.builder->CreateStore(ConstantInt::get(i64Ty, 0), exc);
@@ -276,7 +279,8 @@ Value* CodegenVisitor::codegen(const ThrowExprAST& expr) {
 }
 
 // Codegen for unsafe block: unsafe { ... }
-// Simply generates code for the body - safety checks are done at semantic analysis
+// Simply generates code for the body - safety checks are done at semantic
+// analysis
 Value* CodegenVisitor::codegen(const UnsafeBlockAST& expr) {
   return codegen(expr.getBody());
 }
@@ -337,8 +341,7 @@ Value* CodegenVisitor::codegen(const TryCatchExprAST& expr) {
 
   // ---- Catch dispatch ----
   ctx.builder->SetInsertPoint(dispatchBB);
-  Value* obj =
-      ctx.builder->CreateCall(getCxaBeginCatch(), {excPhi}, "exc.obj");
+  Value* obj = ctx.builder->CreateCall(getCxaBeginCatch(), {excPhi}, "exc.obj");
 
   // Exception header (see codegen(ThrowExprAST)): { i64 typeId, InterfaceFat }.
   llvm::StructType* fatTy =
@@ -374,7 +377,8 @@ Value* CodegenVisitor::codegen(const TryCatchExprAST& expr) {
     if (clause.isCatchAll) {
       ctx.builder->CreateBr(bodyBBs[i]);
     } else {
-      Value* want = ConstantInt::get(i64Ty, sunTypeId(clause.resolvedMangledName));
+      Value* want =
+          ConstantInt::get(i64Ty, sunTypeId(clause.resolvedMangledName));
       Value* m = ctx.builder->CreateICmpEQ(typeId, want, "catch.match");
       BasicBlock* elseBB = (i + 1 < n) ? testBBs[i + 1] : nomatchBB;
       ctx.builder->CreateCondBr(m, bodyBBs[i], elseBB);
@@ -619,8 +623,8 @@ Value* CodegenVisitor::emitPossiblyThrowingCall(FunctionType* fnTy,
     unwindDest = padBB;
   }
 
-  Value* inv = ctx.builder->CreateInvoke(fnTy, callee, contBB, unwindDest,
-                                         args, isVoid ? "" : name);
+  Value* inv = ctx.builder->CreateInvoke(fnTy, callee, contBB, unwindDest, args,
+                                         isVoid ? "" : name);
   ctx.builder->SetInsertPoint(contBB);
   return inv;
 }

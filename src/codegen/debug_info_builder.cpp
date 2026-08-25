@@ -52,9 +52,9 @@ DIFile* DebugInfoBuilder::getFile(const std::optional<std::string>& path) {
   auto it = fileCache_.find(*path);
   if (it != fileCache_.end()) return it->second;
   std::filesystem::path p(*path);
-  DIFile* file = di_->createFile(p.filename().string(),
-                                 p.has_parent_path() ? p.parent_path().string()
-                                                     : std::string("."));
+  DIFile* file = di_->createFile(
+      p.filename().string(),
+      p.has_parent_path() ? p.parent_path().string() : std::string("."));
   fileCache_[*path] = file;
   return file;
 }
@@ -67,10 +67,10 @@ DISubprogram* DebugInfoBuilder::enterFunction(llvm::IRBuilderBase& builder,
   ensureCompileUnit(loc.filePath);
   DIFile* file = getFile(loc.filePath);
   auto* spType = di_->createSubroutineType(di_->getOrCreateTypeArray({}));
-  auto* sp = di_->createFunction(
-      file, name, func->getName(), file, loc.line, spType,
-      /*ScopeLine=*/loc.line, DINode::FlagPrototyped,
-      DISubprogram::SPFlagDefinition);
+  auto* sp =
+      di_->createFunction(file, name, func->getName(), file, loc.line, spType,
+                          /*ScopeLine=*/loc.line, DINode::FlagPrototyped,
+                          DISubprogram::SPFlagDefinition);
   func->setSubprogram(sp);
   scopeStack_.push_back(sp);
   // Drop any location inherited from the enclosing function's codegen
@@ -179,7 +179,8 @@ void DebugInfoBuilder::declareThisParameter(llvm::IRBuilderBase& builder,
   auto* var = di_->createParameterVariable(
       scope, "this", 1, ensureCompileUnit(std::nullopt)->getFile(), 0,
       pointerTo(resolveType(classType)),
-      /*AlwaysPreserve=*/true, DINode::FlagArtificial | DINode::FlagObjectPointer);
+      /*AlwaysPreserve=*/true,
+      DINode::FlagArtificial | DINode::FlagObjectPointer);
   declareVariable(builder, alloca, var, Position(0, 0), scope);
 }
 
@@ -212,8 +213,8 @@ DIType* DebugInfoBuilder::structFor(
   DIFile* file = ensureCompileUnit(std::nullopt)->getFile();
   SmallVector<Metadata*, 8> elems;
   // Forward-declare so member types may refer back to this struct.
-  auto* fwd = di_->createReplaceableCompositeType(
-      dwarf::DW_TAG_structure_type, name, cu_, file, 0);
+  auto* fwd = di_->createReplaceableCompositeType(dwarf::DW_TAG_structure_type,
+                                                  name, cu_, file, 0);
   for (size_t i = 0; i < members.size(); ++i) {
     llvm::Type* elemTy = st->getElementType(i);
     elems.push_back(di_->createMemberType(
@@ -315,9 +316,8 @@ DIType* DebugInfoBuilder::resolveTypeImpl(const Type& type) {
       auto* st = dyn_cast<llvm::StructType>(sp.toLLVMType(ctx));
       return structFor(sp.toString(), st,
                        {{"data", pointerTo(resolveType(sp.getPointeeType()))},
-                        {"length",
-                         di_->createBasicType("u64", 64,
-                                              dwarf::DW_ATE_unsigned)}});
+                        {"length", di_->createBasicType(
+                                       "u64", 64, dwarf::DW_ATE_unsigned)}});
     }
 
     case Type::Kind::Enum: {
@@ -341,13 +341,12 @@ DIType* DebugInfoBuilder::resolveTypeImpl(const Type& type) {
         return di_->createUnspecifiedType(et.getDisplayName());
       }
       llvm::Type* payloadTy = st->getElementType(1);
-      auto* byteDI =
-          di_->createBasicType("u8", 8, dwarf::DW_ATE_unsigned_char);
+      auto* byteDI = di_->createBasicType("u8", 8, dwarf::DW_ATE_unsigned_char);
       auto* payloadDI = di_->createArrayType(
           dl.getTypeSizeInBits(payloadTy),
           dl.getABITypeAlign(payloadTy).value() * 8, byteDI,
-          di_->getOrCreateArray({di_->getOrCreateSubrange(
-              0, dl.getTypeAllocSize(payloadTy))}));
+          di_->getOrCreateArray(
+              {di_->getOrCreateSubrange(0, dl.getTypeAllocSize(payloadTy))}));
       return structFor(et.getDisplayName(), st,
                        {{"tag", tagDI}, {"payload", payloadDI}});
     }
@@ -416,9 +415,9 @@ DIType* DebugInfoBuilder::resolveTypeImpl(const Type& type) {
       // Callable values are closure structs { ptr func, ptr env }.
       auto* st = llvm::StructType::get(
           ctx, {PointerType::getUnqual(ctx), PointerType::getUnqual(ctx)});
-      return structFor(type.toString(), st,
-                       {{"func", pointerTo(nullptr)},
-                        {"env", pointerTo(nullptr)}});
+      return structFor(
+          type.toString(), st,
+          {{"func", pointerTo(nullptr)}, {"env", pointerTo(nullptr)}});
     }
 
     default: {

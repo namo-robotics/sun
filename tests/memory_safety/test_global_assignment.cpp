@@ -5,8 +5,8 @@
 
 #include <gtest/gtest.h>
 
-#include "support/error.h"
 #include "driver/execution_utils.h"
+#include "support/error.h"
 
 namespace {
 
@@ -90,7 +90,8 @@ TEST(MemorySafety_GlobalAssignment, use_after_move_into_global_rejected) {
 
 // Issue #70: assigning a String to a global used to store the source's
 // address over the global's data pointer.
-TEST(MemorySafety_GlobalAssignment, string_global_assignment_transfers_ownership) {
+TEST(MemorySafety_GlobalAssignment,
+     string_global_assignment_transfers_ownership) {
   auto value = executeStringWithStdlib(R"(
     using sun;
     var g: String = String(make_heap_allocator(), "");
@@ -115,7 +116,8 @@ TEST(MemorySafety_GlobalAssignment, string_global_assignment_transfers_ownership
 // Issue #71: a global String assigned in one function and mutated in place
 // afterwards must keep owning its own heap buffer, so Strings built later in
 // nested scopes never alias it.
-TEST(MemorySafety_GlobalAssignment, string_global_queue_pop_keeps_buffers_distinct) {
+TEST(MemorySafety_GlobalAssignment,
+     string_global_queue_pop_keeps_buffers_distinct) {
   auto value = executeStringWithStdlib(R"(
     using sun;
     var g_queue: String = String(make_heap_allocator(), "");

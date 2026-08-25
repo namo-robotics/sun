@@ -40,10 +40,9 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
         // Generic enums register as templates, instantiated at use sites
         if (enumDef.isGeneric()) {
           if (!lookupGenericEnum(enumDef.getName())) {
-            registerGenericEnum(
-                enumDef.getName(),
-                {&enumDef, enumDef.getTypeParameters(),
-                 makeQualifiedName(enumDef.getName())});
+            registerGenericEnum(enumDef.getName(),
+                                {&enumDef, enumDef.getTypeParameters(),
+                                 makeQualifiedName(enumDef.getName())});
           }
           break;
         }
@@ -154,9 +153,9 @@ void SemanticAnalyzer::collectDeclarations(BlockExprAST& block) {
     if (expr->getType() != ASTNodeType::CLASS_DEFINITION) continue;
     auto& classDef = static_cast<ClassDefinitionAST&>(*expr);
     if (classDef.isPartial() || classDef.isGeneric()) continue;
-    sun::QualifiedName qualifiedClass = classDef.hasQualifiedName()
-                                            ? classDef.getQualifiedName()
-                                            : makeQualifiedName(classDef.getName());
+    sun::QualifiedName qualifiedClass =
+        classDef.hasQualifiedName() ? classDef.getQualifiedName()
+                                    : makeQualifiedName(classDef.getName());
     if (preRegisteredClassShapes_.count(qualifiedClass.mangled())) continue;
     auto classType = lookupClass(classDef.getName());
     if (!classType) continue;
@@ -261,5 +260,5 @@ void SemanticAnalyzer::collectFunctionSignature(FunctionAST& func) {
   info.isCExtern = func.isCExtern();
   info.visibility = func.getVisibility();
 
-  registernFunctionInCurrentScope(qualifiedName.baseName, info);
+  registerFunctionInCurrentScope(qualifiedName.baseName, info);
 }

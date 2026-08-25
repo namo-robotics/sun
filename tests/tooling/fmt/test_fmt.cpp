@@ -4,8 +4,8 @@
 
 #include <string>
 
-#include "support/error.h"
 #include "parsing/formatter.h"
+#include "support/error.h"
 
 static std::string fmt(const std::string& src) {
   return sun::formatSource(src);
@@ -537,9 +537,9 @@ TEST(Tooling_Fmt, MultipleFilesOneParserNoCommentBleed) {
 #include <sstream>
 #include <vector>
 
-#include "serialization/ast_serializer.h"
 #include "parsing/lowering_pass.h"
 #include "parsing/parser.h"
+#include "serialization/ast_serializer.h"
 
 namespace {
 
@@ -622,14 +622,14 @@ TEST(Tooling_Fmt, EnumPayloadVariants) {
 }
 
 TEST(Tooling_Fmt, MatchDestructuringPattern) {
-  std::string once = fmt(
-      "function area(s: ref Shape) f64 {\n"
-      "return match s {\n"
-      "Shape.Circle(r) => 3.0 * r * r,\n"
-      "Shape.Rect(w, _) => w,\n"
-      "_ => 0.0\n"
-      "};\n"
-      "}");
+  std::string once =
+      fmt("function area(s: ref Shape) f64 {\n"
+          "return match s {\n"
+          "Shape.Circle(r) => 3.0 * r * r,\n"
+          "Shape.Rect(w, _) => w,\n"
+          "_ => 0.0\n"
+          "};\n"
+          "}");
   // Idempotency: formatting the formatted output is a fixed point
   EXPECT_EQ(fmt(once), once);
   EXPECT_NE(once.find("Shape.Circle(r) => "), std::string::npos);

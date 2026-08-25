@@ -13,11 +13,11 @@ enum class ASTNodeType {
   CHAR_LITERAL,  // 'a' (a char) or b'a' (a u8)
   NULL_LITERAL,
   BOOL_LITERAL,
-  ARRAY_LITERAL,  // [1, 2, 3] or [[1, 2], [3, 4]]
+  ARRAY_LITERAL,   // [1, 2, 3] or [[1, 2], [3, 4]]
   STRUCT_LITERAL,  // { color: "red", speed: 120 }
-  ARRAY_INDEX,    // x[i] or x[i, j] for n-dimensional (legacy)
-  INDEX,          // x[i] or x[i, j] or x[1:10, 3:5] for indexing/slicing
-  SLICE,          // Slice expression: start:end or single index
+  ARRAY_INDEX,     // x[i] or x[i, j] for n-dimensional (legacy)
+  INDEX,           // x[i] or x[i, j] or x[1:10, 3:5] for indexing/slicing
+  SLICE,           // Slice expression: start:end or single index
   VARIABLE_REFERENCE,
   VARIABLE_CREATION,
   VARIABLE_ASSIGNMENT,
@@ -68,6 +68,6 @@ enum class ASTNodeType {
 struct Capture {
   std::string name;
   sun::TypePtr type;
-  bool byRef = false;  // Declared in the lambda's [ref x, ...] capture list
+  bool byRef = false;    // Declared in the lambda's [ref x, ...] capture list
   bool isConst = false;  // The captured variable is a constant / const ref
 };

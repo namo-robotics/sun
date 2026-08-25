@@ -7,9 +7,9 @@
 #include "ast/expr_ast.h"
 
 struct ManifestMoonDependency {
-  std::string path;                  // local path; empty when url is set
-  std::optional<std::string> url;    // downloaded to the moon cache
-  std::optional<std::string> hash;   // lowercase hex SHA-256 of the file
+  std::string path;                 // local path; empty when url is set
+  std::optional<std::string> url;   // downloaded to the moon cache
+  std::optional<std::string> hash;  // lowercase hex SHA-256 of the file
   std::optional<std::string> rename;
 };
 

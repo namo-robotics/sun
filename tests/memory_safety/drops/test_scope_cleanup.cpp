@@ -115,7 +115,8 @@ TEST(MemorySafety_Drops_ScopeCleanup, break_drops_body_owner) {
   EXPECT_EQ(value, 1);
 }
 
-TEST(MemorySafety_Drops_ScopeCleanup, break_from_nested_if_drops_all_jumped_scopes) {
+TEST(MemorySafety_Drops_ScopeCleanup,
+     break_from_nested_if_drops_all_jumped_scopes) {
   auto value = executeString(withPreamble(R"(
     function helper() i32 {
       while (true) {
@@ -136,7 +137,8 @@ TEST(MemorySafety_Drops_ScopeCleanup, break_from_nested_if_drops_all_jumped_scop
   EXPECT_EQ(value, 2);
 }
 
-TEST(MemorySafety_Drops_ScopeCleanup, continue_drops_body_owner_each_iteration) {
+TEST(MemorySafety_Drops_ScopeCleanup,
+     continue_drops_body_owner_each_iteration) {
   auto value = executeString(withPreamble(R"(
     function helper() i32 {
       for (var i: i32 = 0; i < 3; i = i + 1) {
@@ -153,7 +155,8 @@ TEST(MemorySafety_Drops_ScopeCleanup, continue_drops_body_owner_each_iteration) 
   EXPECT_EQ(value, 3);
 }
 
-TEST(MemorySafety_Drops_ScopeCleanup, return_from_nested_block_drops_outer_scopes) {
+TEST(MemorySafety_Drops_ScopeCleanup,
+     return_from_nested_block_drops_outer_scopes) {
   auto value = executeString(withPreamble(R"(
     function helper() i32 {
       var outer = Owner();
@@ -215,7 +218,8 @@ TEST(MemorySafety_Drops_ScopeCleanup, explicit_deinit_in_block_no_double_drop) {
   EXPECT_EQ(value, 1);
 }
 
-TEST(MemorySafety_Drops_ScopeCleanup, loop_scoped_init_var_dropped_once_after_loop) {
+TEST(MemorySafety_Drops_ScopeCleanup,
+     loop_scoped_init_var_dropped_once_after_loop) {
   auto value = executeString(withPreamble(R"(
     function helper() i32 {
       var before: i32 = 0;

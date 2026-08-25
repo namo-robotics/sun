@@ -296,16 +296,14 @@ TEST(Tooling_Lsp_Rename, Field) {
 TEST(Tooling_Lsp_Rename, Class) {
   EXPECT_TRUE(renames(kProgram, "Point {",
                       {{"Point {"}, {"Point, k"}, {"Point(1, 2)"}}));
-  EXPECT_TRUE(renames(kProgram, "Square(3)",
-                      {{"Square implements"}, {"Square(3)"}}));
+  EXPECT_TRUE(
+      renames(kProgram, "Square(3)", {{"Square implements"}, {"Square(3)"}}));
 }
 
 TEST(Tooling_Lsp_Rename, Interface) {
-  EXPECT_TRUE(renames(kProgram, "IShape {",
-                      {{"IShape {"},
-                       {"IShape {", 1},
-                       {"IShape {", 2},
-                       {"IShape) i32"}}));
+  EXPECT_TRUE(renames(
+      kProgram, "IShape {",
+      {{"IShape {"}, {"IShape {", 1}, {"IShape {", 2}, {"IShape) i32"}}));
 }
 
 TEST(Tooling_Lsp_Rename, EnumAndVariant) {
@@ -337,8 +335,8 @@ TEST(Tooling_Lsp_Rename, InterfaceMemberGroup) {
   EXPECT_TRUE(renames(kProgram, "area() + m", group));
   EXPECT_TRUE(renames(kProgram, "area() i32 {",
                       {{"area() i32 {", 2}, {"area() + sq"}}, 2));
-  EXPECT_TRUE(renames(kProgram, "area() + sq",
-                      {{"area() i32 {", 2}, {"area() + sq"}}));
+  EXPECT_TRUE(
+      renames(kProgram, "area() + sq", {{"area() i32 {", 2}, {"area() + sq"}}));
 }
 
 TEST(Tooling_Lsp_Rename, ClassMethodWithoutInterface) {
@@ -404,8 +402,8 @@ TEST(Tooling_Lsp_Rename, PrepareRename) {
   int start = static_cast<int>(offsetOf(source, "total + 1"));
   // Start, middle and end of the identifier
   for (int offset : {start, start + 2, start + 5}) {
-    std::optional<sun::lsp::Rename> rename = sun::lsp::computeRename(
-        *analysis.program.ast, kPath, source, offset);
+    std::optional<sun::lsp::Rename> rename =
+        sun::lsp::computeRename(*analysis.program.ast, kPath, source, offset);
     ASSERT_TRUE(rename) << "at " << offset;
     EXPECT_EQ(rename->name, "total");
     std::optional<sun::lsp::SymbolLocation> site =
@@ -452,8 +450,8 @@ function main() i32 {
     return b.get();
 }
 )";
-  EXPECT_TRUE(renames(source, "value; }",
-                      {{"value: T"}, {"value = v"}, {"value; }"}}));
+  EXPECT_TRUE(
+      renames(source, "value; }", {{"value: T"}, {"value = v"}, {"value; }"}}));
   EXPECT_TRUE(
       renames(source, "get();", {{"get() T"}, {"get();"}, {"get();", 1}}));
   EXPECT_TRUE(
@@ -563,7 +561,8 @@ function main() i64 {
     return item;
 }
 )";
-  std::optional<sun::lsp::Rename> rename = renameAt(source, "Vec<i64>", 0, true);
+  std::optional<sun::lsp::Rename> rename =
+      renameAt(source, "Vec<i64>", 0, true);
   ASSERT_TRUE(rename);
   EXPECT_EQ(rename->name, "Vec");
   EXPECT_NE(rename->refusal.find("library"), std::string::npos)

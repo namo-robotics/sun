@@ -308,8 +308,10 @@ Value* CodegenVisitor::codegen(const VariableAssignmentAST& expr) {
     return value;
   }
 
-  // Check for global variable
-  GlobalVariable* gv = module->getGlobalVariable(expr.getName());
+  // Check for global variable: mangled name first (module-qualified), then
+  // the name as written (root-level globals)
+  GlobalVariable* gv = module->getGlobalVariable(expr.getMangledName());
+  if (!gv) gv = module->getGlobalVariable(expr.getName());
   if (gv) {
     Value* value = codegen(*expr.getValue());
     if (isLambdaLiteral && savedBlock) {
@@ -337,11 +339,10 @@ Value* CodegenVisitor::codegen(const VariableAssignmentAST& expr) {
 // the source so its own drop is a no-op. The borrow checker already rejects
 // later uses of the source.
 void CodegenVisitor::assignToVariableSlot(Value* slot, Value* value,
-                                         const sun::TypePtr& varType,
-                                         const std::string& name) {
-  bool compound =
-      varType && (varType->isClass() || isPayloadEnum(varType)) &&
-      value->getType()->isPointerTy();
+                                          const sun::TypePtr& varType,
+                                          const std::string& name) {
+  bool compound = varType && (varType->isClass() || isPayloadEnum(varType)) &&
+                  value->getType()->isPointerTy();
   if (compound) {
     // Self-assignment would drop the object and then copy from the corpse;
     // it has no effect, so emit nothing.

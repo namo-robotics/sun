@@ -867,4 +867,3 @@ TEST(Builtins_PrintI64, prints_small_values_unchanged) {
   )"),
             "42-42");
 }
-

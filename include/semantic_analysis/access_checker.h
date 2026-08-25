@@ -8,8 +8,8 @@
 
 #include <string>
 
-#include "support/position.h"
 #include "semantic_analysis/visibility.h"
+#include "support/position.h"
 
 namespace sun::access {
 
@@ -19,7 +19,7 @@ struct ItemRef {
   std::string name;           // Item name as written by the user
   std::string ownerTypeName;  // Class/interface display name for members
   Visibility visibility;
-  ModulePath owner;           // QualifiedName::owner() of the item (or type)
+  ModulePath owner;  // QualifiedName::owner() of the item (or type)
 };
 
 // "class 'Vec' in module 'sun'" | "module 'sun'" |

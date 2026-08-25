@@ -1199,8 +1199,7 @@ TEST(Errors, throw_and_catch_work_without_stdlib) {
 // ============================================================================
 
 TEST(Errors, argument_mismatch_on_a_method_names_the_method) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
         class Counter {
           var n: i32;
           function init() { this.n = 0; }
@@ -1213,12 +1212,11 @@ TEST(Errors, argument_mismatch_on_a_method_names_the_method) {
           return 0;
         }
       )"),
-      "call to 'add'");
+                                "call to 'add'");
 }
 
 TEST(Errors, no_matching_constructor_lists_the_candidates) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
         class Pair {
           var a: i32;
           function init(a: i32) { this.a = a; }
@@ -1230,5 +1228,5 @@ TEST(Errors, no_matching_constructor_lists_the_candidates) {
           return 0;
         }
       )"),
-      "candidate: init(i32, i32)");
+                                "candidate: init(i32, i32)");
 }

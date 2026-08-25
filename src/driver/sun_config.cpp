@@ -104,15 +104,15 @@ SunConfig SunConfig::loadFile(const std::filesystem::path& file) {
     } else if (name == "pathVariables") {
       const llvm::json::Object* vars = value.getAsObject();
       if (!vars) {
-        logAndThrowError("'pathVariables' must be an object of NAME: dir "
-                         "pairs in " +
-                         file.string());
+        logAndThrowError(
+            "'pathVariables' must be an object of NAME: dir "
+            "pairs in " +
+            file.string());
       }
       for (const auto& [varName, varValue] : *vars) {
         auto str = varValue.getAsString();
         if (!str) {
-          logAndThrowError("path variable '" +
-                           llvm::StringRef(varName).str() +
+          logAndThrowError("path variable '" + llvm::StringRef(varName).str() +
                            "' must be a string in " + file.string());
         }
         config.pathVariables[llvm::StringRef(varName).str()] =

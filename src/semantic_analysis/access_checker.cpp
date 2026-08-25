@@ -73,7 +73,8 @@ sun::Visibility SemanticAnalyzer::methodVisibility(const FunctionAST& method) {
   return method.getVisibility();
 }
 
-// Display name without library-hash prefixes ("$hash$.sun.Vec<i32>" -> "sun.Vec<i32>")
+// Display name without library-hash prefixes ("$hash$.sun.Vec<i32>" ->
+// "sun.Vec<i32>")
 static std::string cleanTypeName(std::string name) {
   while (!name.empty() && name.front() == '$') {
     size_t close = name.find('$', 1);
@@ -88,8 +89,9 @@ static std::string cleanTypeName(std::string name) {
 // Members are owned by their type's module
 sun::access::ItemRef SemanticAnalyzer::fieldRef(const sun::ClassType& cls,
                                                 const sun::ClassField& f) {
-  return {"field", f.name, "class '" + cleanTypeName(cls.getDisplayName()) + "'",
-          f.visibility, cls.getQualifiedName().owner()};
+  return {"field", f.name,
+          "class '" + cleanTypeName(cls.getDisplayName()) + "'", f.visibility,
+          cls.getQualifiedName().owner()};
 }
 
 sun::access::ItemRef SemanticAnalyzer::methodRef(const sun::ClassType& cls,
@@ -110,7 +112,6 @@ sun::access::ItemRef SemanticAnalyzer::methodRef(
   return {"method", m.name, "interface '" + iface.getBaseName() + "'",
           m.visibility, iface.getQualifiedName().owner()};
 }
-
 
 const sun::ClassField* SemanticAnalyzer::accessibleField(
     const sun::ClassType& cls, const std::string& name,
@@ -156,7 +157,8 @@ void SemanticAnalyzer::requireModuleAccessible(
     const SemanticScopeBase& moduleScope, const Position& loc) const {
   for (auto* s = &moduleScope; s && s->getType() == ScopeType::Module;
        s = s->parent) {
-    if (isLibraryScope(s->scopeName)) continue;  // bundle boundary, not a module
+    if (isLibraryScope(s->scopeName))
+      continue;  // bundle boundary, not a module
     requireAccessible(moduleRef(static_cast<const ModuleScope&>(*s)), loc);
   }
 }

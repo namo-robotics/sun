@@ -15,8 +15,8 @@
 #include <vector>
 
 #include "ast.h"
-#include "support/error.h"
 #include "parsing/parser.h"
+#include "support/error.h"
 
 namespace sun {
 namespace {
@@ -372,10 +372,9 @@ class Formatter {
       members.push_back(
           {loc.offset, loc.line, endLineOf(loc), nullptr, m.function.get()});
     }
-    std::sort(members.begin(), members.end(),
-              [](const Member& a, const Member& b) {
-                return a.offset < b.offset;
-              });
+    std::sort(
+        members.begin(), members.end(),
+        [](const Member& a, const Member& b) { return a.offset < b.offset; });
 
     for (const auto& m : members) {
       flushCommentsBefore(m.offset);
@@ -399,8 +398,8 @@ class Formatter {
       out_ += '\n';
     }
 
-    int endOffset = c.getLocation().endOffset.value_or(
-        static_cast<int>(src_.size()));
+    int endOffset =
+        c.getLocation().endOffset.value_or(static_cast<int>(src_.size()));
     flushCommentsBefore(endOffset);
     --indent_;
     writeIndent();
@@ -441,10 +440,9 @@ class Formatter {
       const Position& loc = m.function->getLocation();
       members.push_back({loc.offset, loc.line, endLineOf(loc), nullptr, &m});
     }
-    std::sort(members.begin(), members.end(),
-              [](const Member& a, const Member& b) {
-                return a.offset < b.offset;
-              });
+    std::sort(
+        members.begin(), members.end(),
+        [](const Member& a, const Member& b) { return a.offset < b.offset; });
 
     for (const auto& m : members) {
       flushCommentsBefore(m.offset);
@@ -474,8 +472,8 @@ class Formatter {
       out_ += '\n';
     }
 
-    int endOffset = n.getLocation().endOffset.value_or(
-        static_cast<int>(src_.size()));
+    int endOffset =
+        n.getLocation().endOffset.value_or(static_cast<int>(src_.size()));
     flushCommentsBefore(endOffset);
     --indent_;
     writeIndent();
@@ -528,8 +526,8 @@ class Formatter {
       emitTrailingComments(lastLine_);
       out_ += '\n';
     }
-    int endOffset = n.getLocation().endOffset.value_or(
-        static_cast<int>(src_.size()));
+    int endOffset =
+        n.getLocation().endOffset.value_or(static_cast<int>(src_.size()));
     flushCommentsBefore(endOffset);
     --indent_;
     writeIndent();
@@ -595,8 +593,8 @@ class Formatter {
       }
       out_ += '\n';
     }
-    int endOffset = m.getLocation().endOffset.value_or(
-        static_cast<int>(src_.size()));
+    int endOffset =
+        m.getLocation().endOffset.value_or(static_cast<int>(src_.size()));
     flushCommentsBefore(endOffset);
     --indent_;
     writeIndent();

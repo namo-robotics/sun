@@ -16,12 +16,12 @@
 #include <string>
 
 // Include scoped headers for documentation and type traits
-#include "codegen/intrinsics/generic.h"
-#include "codegen/intrinsics/memory.h"
 #include "codegen/intrinsics/atomic.h"
-#include "codegen/intrinsics/print.h"
+#include "codegen/intrinsics/generic.h"
 #include "codegen/intrinsics/io.h"
+#include "codegen/intrinsics/memory.h"
 #include "codegen/intrinsics/network.h"
+#include "codegen/intrinsics/print.h"
 
 namespace sun {
 
@@ -34,29 +34,29 @@ enum class Intrinsic {
   // =========================================================================
   // Generic intrinsics (require type argument)
   // =========================================================================
-  Sizeof,         // _sizeof<T>() -> i64
-  Init,           // _init<T>(ptr, args...) -> void
-  Load,           // _load<T>(ptr, index) -> T
-  Store,          // _store<T>(ptr, index, value) -> void
-  PtrAsRaw,       // _ptr_as_raw<T>(ptr<T>) -> raw_ptr<T>
-  Is,             // _is<T>(value) -> bool (compile-time type check)
-  AddressOf,      // _address_of<T>(ref T) -> raw_ptr<T>
-  ToRef,          // _to_ref<T>(raw_ptr<T>) -> ref T (unsafe dereference)
-  Deinit,         // _deinit<T>(raw_ptr<T>) -> void (call T.deinit if exists)
-  Convert,        // _convert<T>(numeric) -> T (explicit numeric conversion:
-                  // trunc / extend / int<->float)
-  Bitcast,        // _bitcast<T>(value) -> T (same-size bit reinterpretation,
-                  // e.g. f32 <-> u32, f64 <-> u64)
+  Sizeof,     // _sizeof<T>() -> i64
+  Init,       // _init<T>(ptr, args...) -> void
+  Load,       // _load<T>(ptr, index) -> T
+  Store,      // _store<T>(ptr, index, value) -> void
+  PtrAsRaw,   // _ptr_as_raw<T>(ptr<T>) -> raw_ptr<T>
+  Is,         // _is<T>(value) -> bool (compile-time type check)
+  AddressOf,  // _address_of<T>(ref T) -> raw_ptr<T>
+  ToRef,      // _to_ref<T>(raw_ptr<T>) -> ref T (unsafe dereference)
+  Deinit,     // _deinit<T>(raw_ptr<T>) -> void (call T.deinit if exists)
+  Convert,    // _convert<T>(numeric) -> T (explicit numeric conversion:
+              // trunc / extend / int<->float)
+  Bitcast,    // _bitcast<T>(value) -> T (same-size bit reinterpretation,
+              // e.g. f32 <-> u32, f64 <-> u64)
 
   // =========================================================================
   // Memory intrinsics
   // =========================================================================
-  LoadI64,   // _load_i64(ptr, index) -> i64
-  StoreI64,  // _store_i64(ptr, index, value) -> void
-  Malloc,    // _malloc(size) -> raw_ptr<i8>
-  Free,      // _free(ptr) -> void
-  Memcpy,    // _memcpy(dst, src, len) -> void
-  PtrOffset, // _ptr_offset(ptr, byte_offset) -> raw_ptr
+  LoadI64,    // _load_i64(ptr, index) -> i64
+  StoreI64,   // _store_i64(ptr, index, value) -> void
+  Malloc,     // _malloc(size) -> raw_ptr<i8>
+  Free,       // _free(ptr) -> void
+  Memcpy,     // _memcpy(dst, src, len) -> void
+  PtrOffset,  // _ptr_offset(ptr, byte_offset) -> raw_ptr
 
   // =========================================================================
   // Print intrinsics

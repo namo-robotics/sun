@@ -144,7 +144,8 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
 
     case ASTNodeType::GENERIC_CALL:
       // Intrinsics and generic functions: arguments still use variables
-      for (const auto& arg : static_cast<const GenericCallAST&>(expr).getArgs()) {
+      for (const auto& arg :
+           static_cast<const GenericCallAST&>(expr).getArgs()) {
         if (arg) checkExpr(*arg);
       }
       break;
@@ -551,9 +552,8 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
     for (const auto& arg : args) {
       argTypes.push_back(arg ? arg->getResolvedType() : nullptr);
     }
-    const ClassMethod* init =
-        static_cast<const ClassType&>(*calleeType)
-            .getMethodForArgs("init", argTypes);
+    const ClassMethod* init = static_cast<const ClassType&>(*calleeType)
+                                  .getMethodForArgs("init", argTypes);
     if (!init) return;
     paramTypes = init->paramTypes;
   } else {

@@ -10,8 +10,8 @@
 #include <set>
 #include <sstream>
 
-#include "support/error.h"
 #include "semantic_analysis/semantic_scope.h"
+#include "support/error.h"
 
 namespace {
 
@@ -178,8 +178,8 @@ const GenericFunctionInfo* SemanticScopeBase::lookupGenericFunction(
   auto scopePath = getCurrentScopePath();
   sun::QualifiedName qname(scopePath, name);
   AccessFilter filter(this);
-  auto probe = [&](const SemanticScopeBase* s, const sun::QualifiedName& qn)
-      -> const GenericFunctionInfo* {
+  auto probe = [&](const SemanticScopeBase* s,
+                   const sun::QualifiedName& qn) -> const GenericFunctionInfo* {
     auto found = s->genericFunctions.find(qn);
     if (found == s->genericFunctions.end()) return nullptr;
     return filter.admit(&found->second) ? &found->second : nullptr;
@@ -357,7 +357,8 @@ static bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
     return classType->convertibleToInterface(ifaceType->getName());
   }
 
-  // Class -> ref Interface (class can be passed as ref to interface it implements)
+  // Class -> ref Interface (class can be passed as ref to interface it
+  // implements)
   if (to->isReference() && from->isClass()) {
     auto* toRef = static_cast<const sun::ReferenceType*>(to.get());
     sun::TypePtr innerTo = toRef->getReferencedType();
@@ -532,8 +533,7 @@ std::optional<FunctionInfo> SemanticScopeBase::lookupFunctionLocal(
 }
 
 std::optional<FunctionInfo> SemanticScopeBase::lookupFunction(
-    const std::string& name,
-    const std::vector<sun::TypePtr>& argTypes) const {
+    const std::string& name, const std::vector<sun::TypePtr>& argTypes) const {
   AccessFilter filter(this);
   auto findInScope =
       [&](const SemanticScopeBase* scope) -> std::optional<FunctionInfo> {
@@ -813,7 +813,8 @@ sun::QualifiedName SemanticScopeBase::resolveNameWithUsings(
 
   // 1. Check enclosing module scopes by walking up the parent chain
   for (auto* s = this; s != nullptr; s = s->parent) {
-    if (s->getType() == ScopeType::Module && s->hasAccessibleSymbol(name, filter)) {
+    if (s->getType() == ScopeType::Module &&
+        s->hasAccessibleSymbol(name, filter)) {
       addCandidate(const_cast<SemanticScopeBase*>(s));
     }
   }
@@ -847,7 +848,8 @@ sun::QualifiedName SemanticScopeBase::resolveNameWithUsings(
   while (rootScope->parent != nullptr) {
     rootScope = rootScope->parent;
   }
-  if (rootScope->getType() == ScopeType::Global && rootScope->hasAccessibleSymbol(name, filter)) {
+  if (rootScope->getType() == ScopeType::Global &&
+      rootScope->hasAccessibleSymbol(name, filter)) {
     std::vector<std::string> emptyPath;
     if (candidates.find(emptyPath) == candidates.end()) {
       candidates[emptyPath] = {emptyPath,
@@ -874,8 +876,7 @@ sun::QualifiedName SemanticScopeBase::resolveNameWithUsings(
     // actual qualified name (which includes paramSuffix for overload mangling)
     if (info.second) {
       if (auto* overloads = info.second->functions.getOverloads(name)) {
-        if (overloads->size() == 1 &&
-            !(*overloads)[0]->qualifiedName.empty()) {
+        if (overloads->size() == 1 && !(*overloads)[0]->qualifiedName.empty()) {
           return (*overloads)[0]->qualifiedName;
         }
       }

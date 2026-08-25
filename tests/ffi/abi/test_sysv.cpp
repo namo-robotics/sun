@@ -11,7 +11,6 @@
 // approximate shape checks.
 
 #include <gtest/gtest.h>
-
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
@@ -26,8 +25,9 @@ class Ffi_Abi_SysV : public ::testing::Test {
  protected:
   llvm::LLVMContext ctx;
   // Standard x86-64 Linux layout, so the test does not depend on the host.
-  llvm::DataLayout dl{"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-"
-                      "i128:128-f80:128-n8:16:32:64-S128"};
+  llvm::DataLayout dl{
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-"
+      "i128:128-f80:128-n8:16:32:64-S128"};
 
   llvm::Type* i8() { return llvm::Type::getInt8Ty(ctx); }
   llvm::Type* i16() { return llvm::Type::getInt16Ty(ctx); }
@@ -55,7 +55,8 @@ TEST_F(Ffi_Abi_SysV, scalars_are_direct) {
 }
 
 TEST_F(Ffi_Abi_SysV, void_return_is_direct) {
-  EXPECT_TRUE(sun::abi::sysv::lowerReturn(llvm::Type::getVoidTy(ctx), dl).isDirect());
+  EXPECT_TRUE(
+      sun::abi::sysv::lowerReturn(llvm::Type::getVoidTy(ctx), dl).isDirect());
 }
 
 // --- register-class aggregates ----------------------------------------------
@@ -115,7 +116,8 @@ TEST_F(Ffi_Abi_SysV, single_float_stays_a_float) {
 
 TEST_F(Ffi_Abi_SysV, three_floats_split_into_a_vector_and_a_float) {
   // struct { float, float, float } -> void tf3(<2 x float>, float)
-  auto lowering = sun::abi::sysv::lowerArgument(structOf({f32(), f32(), f32()}), dl);
+  auto lowering =
+      sun::abi::sysv::lowerArgument(structOf({f32(), f32(), f32()}), dl);
   ASSERT_EQ(lowering.pieces.size(), 2u);
   EXPECT_EQ(lowering.pieces[0], llvm::FixedVectorType::get(f32(), 2));
   EXPECT_EQ(lowering.pieces[1], f32());
@@ -151,7 +153,8 @@ TEST_F(Ffi_Abi_SysV, integer_width_is_exact_not_rounded_up) {
                structOf({llvm::ArrayType::get(i8(), n)}), dl)
         .pieces[0];
   };
-  EXPECT_EQ(sun::abi::sysv::lowerArgument(structOf({i16()}), dl).pieces[0], i16());
+  EXPECT_EQ(sun::abi::sysv::lowerArgument(structOf({i16()}), dl).pieces[0],
+            i16());
   EXPECT_EQ(bytes(1), llvm::IntegerType::get(ctx, 8));
   EXPECT_EQ(bytes(3), llvm::IntegerType::get(ctx, 24));
   EXPECT_EQ(bytes(5), llvm::IntegerType::get(ctx, 40));
@@ -177,8 +180,8 @@ TEST_F(Ffi_Abi_SysV, nested_struct_is_flattened_before_classifying) {
 }
 
 TEST_F(Ffi_Abi_SysV, small_array_member_is_flattened_too) {
-  auto lowering =
-      sun::abi::sysv::lowerArgument(structOf({llvm::ArrayType::get(i32(), 2)}), dl);
+  auto lowering = sun::abi::sysv::lowerArgument(
+      structOf({llvm::ArrayType::get(i32(), 2)}), dl);
   ASSERT_TRUE(lowering.isCoerced());
   ASSERT_EQ(lowering.pieces.size(), 1u);
   EXPECT_EQ(lowering.pieces[0], i64());
@@ -263,7 +266,8 @@ TEST_F(Ffi_Abi_SysV, lowered_type_prepends_the_sret_pointer) {
 
 TEST_F(Ffi_Abi_SysV, two_piece_return_becomes_an_anonymous_struct) {
   // struct S16 r16(void) -> { i32, i64 } @r16()
-  auto lowering = sun::abi::sysv::lowerCSignature(structOf({i32(), i64()}), {}, dl);
+  auto lowering =
+      sun::abi::sysv::lowerCSignature(structOf({i32(), i64()}), {}, dl);
   auto* fnTy = sun::abi::buildLoweredFunctionType(lowering, ctx, false);
   auto* retTy = llvm::dyn_cast<llvm::StructType>(fnTy->getReturnType());
   ASSERT_NE(retTy, nullptr);

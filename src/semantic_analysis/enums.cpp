@@ -5,8 +5,8 @@
 #include <map>
 #include <set>
 
-#include "support/error.h"
 #include "semantic_analysis/semantic_analyzer.h"
+#include "support/error.h"
 
 using sun::unwrapRef;
 
@@ -140,10 +140,9 @@ void SemanticAnalyzer::analyzeEnumDefinition(EnumDefinitionAST& enumDef) {
   // resolved per instantiation with the type arguments bound
   if (enumDef.isGeneric()) {
     if (!lookupGenericEnum(enumDef.getName())) {
-      registerGenericEnum(
-          enumDef.getName(),
-          {&enumDef, enumDef.getTypeParameters(),
-           makeQualifiedName(enumDef.getName())});
+      registerGenericEnum(enumDef.getName(),
+                          {&enumDef, enumDef.getTypeParameters(),
+                           makeQualifiedName(enumDef.getName())});
     }
     definedSymbols_.insert(enumDef.getName());
     enumDef.setResolvedType(sun::Types::Void());
@@ -204,9 +203,8 @@ void SemanticAnalyzer::validateEnumPayloadType(
   // `Option<ref T>` for a peek instead of a copy of an element it still
   // owns). Arrays, slices, lambdas, threads etc. are deferred.
   bool allowed = type->isPrimitive() || type->isRawPointer() ||
-                 type->isStaticPointer() || type->isEnum() ||
-                 type->isClass() || type->isInterface() ||
-                 type->isReference();
+                 type->isStaticPointer() || type->isEnum() || type->isClass() ||
+                 type->isInterface() || type->isReference();
   if (!allowed) {
     logAndThrowError(context + " has unsupported type '" +
                          type->toDisplayString() +
@@ -262,9 +260,9 @@ std::shared_ptr<sun::EnumType> SemanticAnalyzer::instantiateGenericEnum(
   specialized->setBaseName(templateName);
   specialized->setGenericOrigin(templateName, typeArgs);
   specialized->visibility = genericInfo->AST->getVisibility();
-  specialized->setQualifiedName(sun::QualifiedName(
-      genericInfo->qualifiedName.scopePath, mangledName,
-      genericInfo->qualifiedName.modulePath));
+  specialized->setQualifiedName(
+      sun::QualifiedName(genericInfo->qualifiedName.scopePath, mangledName,
+                         genericInfo->qualifiedName.modulePath));
 
   {
     // Payload annotations resolve in the enum's definition scope; the result
@@ -307,10 +305,9 @@ bool SemanticAnalyzer::tryAnalyzeEnumConstruction(CallExprAST& callExpr,
   if (callExpr.getCallee()->getType() != ASTNodeType::MEMBER_ACCESS) {
     return false;
   }
-  auto& memberAccess =
-      static_cast<MemberAccessAST&>(const_cast<ExprAST&>(*callExpr.getCallee()));
-  if (memberAccess.getObject()->getType() !=
-      ASTNodeType::VARIABLE_REFERENCE) {
+  auto& memberAccess = static_cast<MemberAccessAST&>(
+      const_cast<ExprAST&>(*callExpr.getCallee()));
+  if (memberAccess.getObject()->getType() != ASTNodeType::VARIABLE_REFERENCE) {
     return false;
   }
   const auto& objRef =
@@ -343,20 +340,18 @@ void SemanticAnalyzer::analyzeEnumVariantConstruction(
                      memberAccess.getLocation());
   }
   if (!variant->hasPayload()) {
-    logAndThrowError("Variant '" + variantName + "' of enum '" +
-                         enumType->getDisplayName() +
-                         "' carries no payload; write '" +
-                         enumType->getBaseName() + "." + variantName +
-                         "' without arguments",
-                     callExpr.getLocation());
+    logAndThrowError(
+        "Variant '" + variantName + "' of enum '" + enumType->getDisplayName() +
+            "' carries no payload; write '" + enumType->getBaseName() + "." +
+            variantName + "' without arguments",
+        callExpr.getLocation());
   }
 
   const auto& args = callExpr.getArgs();
   if (args.size() != variant->payloadTypes.size()) {
     logAndThrowError(
-        "Variant '" + variantName + "' of enum '" +
-            enumType->getDisplayName() + "' expects " +
-            std::to_string(variant->payloadTypes.size()) +
+        "Variant '" + variantName + "' of enum '" + enumType->getDisplayName() +
+            "' expects " + std::to_string(variant->payloadTypes.size()) +
             " payload value(s), got " + std::to_string(args.size()),
         callExpr.getLocation());
   }
@@ -368,8 +363,7 @@ void SemanticAnalyzer::analyzeEnumVariantConstruction(
     // A `ref X` payload borrows, so it accepts an X the same way a `ref X`
     // parameter does: the variant stores the argument's address.
     if (argType && payloadType && payloadType->isReference() &&
-        !argType->isReference() &&
-        unwrapRef(payloadType)->equals(*argType)) {
+        !argType->isReference() && unwrapRef(payloadType)->equals(*argType)) {
       continue;
     }
     if (argType && !isAssignableTo(argType, payloadType)) {
@@ -400,9 +394,9 @@ void SemanticAnalyzer::analyzeGenericEnumConstruction(
   const std::string& variantName = memberAccess.getMemberName();
   const EnumVariantDecl* variant = genericInfo.AST->getVariant(variantName);
   if (!variant) {
-    logAndThrowError("Unknown variant '" + variantName + "' in enum '" +
-                         genericName + "'",
-                     memberAccess.getLocation());
+    logAndThrowError(
+        "Unknown variant '" + variantName + "' in enum '" + genericName + "'",
+        memberAccess.getLocation());
   }
   if (!variant->hasPayload()) {
     logAndThrowError("Variant '" + variantName + "' of enum '" + genericName +
@@ -413,12 +407,11 @@ void SemanticAnalyzer::analyzeGenericEnumConstruction(
 
   const auto& args = callExpr.getArgs();
   if (args.size() != variant->payloadTypes.size()) {
-    logAndThrowError("Variant '" + variantName + "' of enum '" + genericName +
-                         "' expects " +
-                         std::to_string(variant->payloadTypes.size()) +
-                         " payload value(s), got " +
-                         std::to_string(args.size()),
-                     callExpr.getLocation());
+    logAndThrowError(
+        "Variant '" + variantName + "' of enum '" + genericName + "' expects " +
+            std::to_string(variant->payloadTypes.size()) +
+            " payload value(s), got " + std::to_string(args.size()),
+        callExpr.getLocation());
   }
 
   // Analyze arguments to learn their types for unification
@@ -429,10 +422,9 @@ void SemanticAnalyzer::analyzeGenericEnumConstruction(
   std::map<std::string, sun::TypePtr> bindings;
   for (size_t i = 0; i < args.size(); ++i) {
     std::string conflictParam;
-    if (!unifyPayloadTypeParam(variant->payloadTypes[i],
-                               args[i]->getResolvedType(),
-                               genericInfo.typeParameters, bindings,
-                               conflictParam)) {
+    if (!unifyPayloadTypeParam(
+            variant->payloadTypes[i], args[i]->getResolvedType(),
+            genericInfo.typeParameters, bindings, conflictParam)) {
       logAndThrowError("Conflicting types inferred for type parameter '" +
                            conflictParam + "' of '" + genericName + "." +
                            variantName + "'",
@@ -486,8 +478,7 @@ void SemanticAnalyzer::analyzeGenericEnumConstruction(
 
   auto specialized = instantiateGenericEnum(genericName, typeArgs);
   if (!specialized) {
-    logAndThrowError("Failed to instantiate generic enum '" + genericName +
-                         "'",
+    logAndThrowError("Failed to instantiate generic enum '" + genericName + "'",
                      callExpr.getLocation());
   }
   const_cast<ExprAST&>(*memberAccess.getObject()).setResolvedType(specialized);
@@ -502,8 +493,7 @@ void SemanticAnalyzer::analyzeGenericEnumConstruction(
 // here (resolved type set); false lets the MEMBER_ACCESS case continue.
 bool SemanticAnalyzer::tryAnalyzeGenericEnumUnitVariant(
     MemberAccessAST& memberAccess, sun::TypePtr expectedType) {
-  if (memberAccess.getObject()->getType() !=
-      ASTNodeType::VARIABLE_REFERENCE) {
+  if (memberAccess.getObject()->getType() != ASTNodeType::VARIABLE_REFERENCE) {
     return false;
   }
   const auto& varRef =
@@ -534,12 +524,11 @@ bool SemanticAnalyzer::tryAnalyzeGenericEnumUnitVariant(
                      memberAccess.getLocation());
   }
   if (variant->hasPayload()) {
-    logAndThrowError("Variant '" + memberAccess.getMemberName() +
-                         "' of enum '" + varRef.getName() +
-                         "' carries a payload; construct it with '" +
-                         varRef.getName() + "." +
-                         memberAccess.getMemberName() + "(...)'",
-                     memberAccess.getLocation());
+    logAndThrowError(
+        "Variant '" + memberAccess.getMemberName() + "' of enum '" +
+            varRef.getName() + "' carries a payload; construct it with '" +
+            varRef.getName() + "." + memberAccess.getMemberName() + "(...)'",
+        memberAccess.getLocation());
   }
   const_cast<ExprAST&>(*memberAccess.getObject()).setResolvedType(expected);
   memberAccess.setResolvedType(expected);
@@ -567,20 +556,19 @@ void SemanticAnalyzer::analyzeEnumMatch(
       continue;
     }
     if (sawWildcard) {
-      logWarning("Match arm after wildcard '_' is unreachable",
-                 arm.pattern ? arm.pattern->getLocation()
-                             : matchExpr.getLocation());
+      logWarning(
+          "Match arm after wildcard '_' is unreachable",
+          arm.pattern ? arm.pattern->getLocation() : matchExpr.getLocation());
     }
 
     // Patterns on enum discriminants must be variant paths: Enum.Variant or
     // Enum.Variant(bindings). Resolve structurally - the last path segment
     // names the variant.
     if (arm.pattern->getType() != ASTNodeType::MEMBER_ACCESS) {
-      logAndThrowError(
-          "Match on enum '" + enumType->getDisplayName() +
-              "' requires variant patterns (e.g. '" +
-              enumType->getBaseName() + ".Variant') or '_'",
-          arm.pattern->getLocation());
+      logAndThrowError("Match on enum '" + enumType->getDisplayName() +
+                           "' requires variant patterns (e.g. '" +
+                           enumType->getBaseName() + ".Variant') or '_'",
+                       arm.pattern->getLocation());
     }
     auto& patternAccess = static_cast<MemberAccessAST&>(*arm.pattern);
     const std::string& variantName = patternAccess.getMemberName();
@@ -590,8 +578,8 @@ void SemanticAnalyzer::analyzeEnumMatch(
     sun::TypePtr objectType;
     if (patternAccess.getObject()->getType() ==
         ASTNodeType::VARIABLE_REFERENCE) {
-      const auto& varRef = static_cast<const VariableReferenceAST&>(
-          *patternAccess.getObject());
+      const auto& varRef =
+          static_cast<const VariableReferenceAST&>(*patternAccess.getObject());
       objectType = lookupEnum(varRef.getName());
       if (!objectType && (varRef.getName() == enumType->getGenericBase() ||
                           varRef.getName() == enumType->getBaseName())) {
@@ -617,20 +605,19 @@ void SemanticAnalyzer::analyzeEnumMatch(
     // Payload arity: bindings must match the variant's payload count
     if (variant->hasPayload()) {
       if (!arm.hasPayloadParens) {
-        logAndThrowError(
-            "Variant '" + variantName + "' carries " +
-                std::to_string(variant->payloadTypes.size()) +
-                " payload value(s); bind them with '" +
-                enumType->getBaseName() + "." + variantName + "(...)' or '_'",
-            arm.pattern->getLocation());
+        logAndThrowError("Variant '" + variantName + "' carries " +
+                             std::to_string(variant->payloadTypes.size()) +
+                             " payload value(s); bind them with '" +
+                             enumType->getBaseName() + "." + variantName +
+                             "(...)' or '_'",
+                         arm.pattern->getLocation());
       }
       if (arm.bindings.size() != variant->payloadTypes.size()) {
-        logAndThrowError(
-            "Variant '" + variantName + "' has " +
-                std::to_string(variant->payloadTypes.size()) +
-                " payload value(s), but pattern binds " +
-                std::to_string(arm.bindings.size()),
-            arm.pattern->getLocation());
+        logAndThrowError("Variant '" + variantName + "' has " +
+                             std::to_string(variant->payloadTypes.size()) +
+                             " payload value(s), but pattern binds " +
+                             std::to_string(arm.bindings.size()),
+                         arm.pattern->getLocation());
       }
     } else if (arm.hasPayloadParens) {
       logAndThrowError("Variant '" + variantName +
@@ -639,9 +626,9 @@ void SemanticAnalyzer::analyzeEnumMatch(
     }
 
     if (coveredTags.count(static_cast<int>(variant->value))) {
-      logWarning("Unreachable arm: variant '" + variantName +
-                     "' is already matched",
-                 arm.pattern->getLocation());
+      logWarning(
+          "Unreachable arm: variant '" + variantName + "' is already matched",
+          arm.pattern->getLocation());
     }
     coveredTags.insert(static_cast<int>(variant->value));
     arm.resolvedVariantTag = static_cast<int>(variant->value);
@@ -649,8 +636,7 @@ void SemanticAnalyzer::analyzeEnumMatch(
     // Set resolved types on the pattern nodes so codegen and tooling see a
     // consistent tree (they are not analyzed via analyzeExpr).
     patternAccess.setResolvedType(enumType);
-    const_cast<ExprAST&>(*patternAccess.getObject())
-        .setResolvedType(enumType);
+    const_cast<ExprAST&>(*patternAccess.getObject()).setResolvedType(enumType);
 
     // Bindings live in a per-arm scope
     enterScope();
@@ -697,10 +683,9 @@ void SemanticAnalyzer::collectEnumDeclarations(const BlockExprAST& block) {
     auto& enumDef = static_cast<EnumDefinitionAST&>(*expr);
     if (enumDef.isGeneric()) {
       if (!lookupGenericEnum(enumDef.getName())) {
-        registerGenericEnum(
-            enumDef.getName(),
-            {&enumDef, enumDef.getTypeParameters(),
-             makeQualifiedName(enumDef.getName())});
+        registerGenericEnum(enumDef.getName(),
+                            {&enumDef, enumDef.getTypeParameters(),
+                             makeQualifiedName(enumDef.getName())});
       }
       continue;
     }

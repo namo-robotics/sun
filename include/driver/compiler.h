@@ -3,16 +3,15 @@
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
 #include <llvm/MC/TargetRegistry.h>
+#include <llvm/Support/DynamicLibrary.h>
 #include <llvm/Support/FileSystem.h>
+#include <llvm/Support/Path.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/TargetParser/Host.h>
 #include <llvm/TargetParser/Triple.h>
-
-#include <llvm/Support/DynamicLibrary.h>
-#include <llvm/Support/Path.h>
 
 #include <cstdlib>
 #include <string>
@@ -25,17 +24,16 @@ namespace sun {
 /// Distinct from LibraryCache's search paths, which locate Sun .moon
 /// libraries rather than native shared objects.
 struct LinkOptions {
-  std::vector<std::string> libraries;      // -lfoo  -> "foo"
-  std::vector<std::string> searchPaths;    // -Ldir  -> "dir"
+  std::vector<std::string> libraries;    // -lfoo  -> "foo"
+  std::vector<std::string> searchPaths;  // -Ldir  -> "dir"
   // Static archives carried inside imported .moon bundles, extracted to
   // disk. Passed to the linker by path, after -l libraries so they can
   // satisfy those libraries' undefined symbols.
   std::vector<std::string> archives;
-  std::string targetTriple;                // --target -> cross linker needed
-  std::string sysroot;                     // --sysroot -> target's root fs
-  bool staticLink = false;                 // --static -> self-contained binary
+  std::string targetTriple;  // --target -> cross linker needed
+  std::string sysroot;       // --sysroot -> target's root fs
+  bool staticLink = false;   // --static -> self-contained binary
 };
-
 
 /// Quote a string for safe use as a single argument in a /bin/sh command.
 /// The link command runs through std::system, and -l/-L values come from the
@@ -72,9 +70,8 @@ inline std::string linkerCommandFor(const std::string& targetTriple,
   }
 
   auto haveTool = [](const std::string& tool) {
-    return std::system(
-               ("command -v " + shellQuote(tool) + " >/dev/null 2>&1")
-                   .c_str()) == 0;
+    return std::system(("command -v " + shellQuote(tool) + " >/dev/null 2>&1")
+                           .c_str()) == 0;
   };
 
   if (staticLink) {
@@ -236,8 +233,7 @@ inline bool emitObjectFile(llvm::Module& module, const std::string& outputPath,
 /// Uses the system C compiler (cc) as the linker
 /// Returns true on success, false on failure
 inline bool linkExecutable(const std::string& objectPath,
-                           const std::string& outputPath,
-                           std::string& errorMsg,
+                           const std::string& outputPath, std::string& errorMsg,
                            const LinkOptions& linkOpts = {}) {
   // Build linker command using a C compiler driver so it handles the C
   // runtime and startup files. -lstdc++ provides the Itanium C++ ABI runtime

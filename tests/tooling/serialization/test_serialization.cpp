@@ -1,4 +1,5 @@
-// tests/tooling/serialization/test_serialization.cpp — Unit tests for AST serialization
+// tests/tooling/serialization/test_serialization.cpp — Unit tests for AST
+// serialization
 
 #include <gtest/gtest.h>
 
@@ -7,10 +8,10 @@
 #include <string>
 
 #include "ast.h"
-#include "serialization/ast_deserializer.h"
-#include "serialization/ast_serializer.h"
 #include "parsing/lexer.h"
 #include "parsing/parser.h"
+#include "serialization/ast_deserializer.h"
+#include "serialization/ast_serializer.h"
 #include "serialization/token_kind_proto_map.h"
 
 using namespace sun::serialization;
@@ -289,8 +290,7 @@ TEST(Tooling_Serialization, CompoundAssignmentRoundtrip) {
   auto* compound = static_cast<CompoundAssignmentAST*>(restored.get());
   EXPECT_EQ(compound->getOp().kind, TokenKind::PLUS_ASSIGN);
   EXPECT_EQ(compound->binaryOpKind(), TokenKind::PLUS);
-  EXPECT_EQ(compound->getTarget()->getType(),
-            ASTNodeType::VARIABLE_REFERENCE);
+  EXPECT_EQ(compound->getTarget()->getType(), ASTNodeType::VARIABLE_REFERENCE);
   EXPECT_EQ(compound->getValue()->getType(), ASTNodeType::NUMBER);
 }
 
@@ -551,8 +551,9 @@ TEST(Tooling_Serialization, PackedClassModifierRoundtrip) {
   ASSERT_FALSE(restoredBlock->getBody().empty());
   ASSERT_EQ(restoredBlock->getBody()[0]->getType(),
             ASTNodeType::CLASS_DEFINITION);
-  EXPECT_TRUE(static_cast<ClassDefinitionAST*>(restoredBlock->getBody()[0].get())
-                  ->isPacked());
+  EXPECT_TRUE(
+      static_cast<ClassDefinitionAST*>(restoredBlock->getBody()[0].get())
+          ->isPacked());
 }
 
 // Regression: isPartial_ used to be dropped because the deserializer passed
@@ -576,8 +577,9 @@ TEST(Tooling_Serialization, PartialClassModifierRoundtrip) {
   ASSERT_NE(restored, nullptr);
   auto* restoredBlock = static_cast<BlockExprAST*>(restored.get());
   ASSERT_FALSE(restoredBlock->getBody().empty());
-  EXPECT_TRUE(static_cast<ClassDefinitionAST*>(restoredBlock->getBody()[0].get())
-                  ->isPartial());
+  EXPECT_TRUE(
+      static_cast<ClassDefinitionAST*>(restoredBlock->getBody()[0].get())
+          ->isPartial());
 }
 
 TEST(Tooling_Serialization, InterfaceDefinitionRoundtrip) {
@@ -757,8 +759,7 @@ TEST(Tooling_Serialization, InterpolatedStringRoundtrip) {
   EXPECT_EQ(segments[0].rawText, "Hello ");
   EXPECT_FALSE(segments[1].isLiteral);
   ASSERT_NE(segments[1].expression, nullptr);
-  EXPECT_EQ(segments[1].expression->getType(),
-            ASTNodeType::VARIABLE_REFERENCE);
+  EXPECT_EQ(segments[1].expression->getType(), ASTNodeType::VARIABLE_REFERENCE);
   EXPECT_TRUE(segments[2].isLiteral);
 
   // clone() must not silently return nullptr
@@ -1023,8 +1024,7 @@ TEST(Tooling_Serialization, EnumPayloadRoundtrip) {
   variants.back().payloadTypes.push_back(TypeAnnotation("f64"));
   variants.back().payloadTypes.push_back(TypeAnnotation("f64"));
   variants.push_back({"Empty", 2, Position{}, {}});
-  auto ast =
-      std::make_unique<EnumDefinitionAST>("Shape", std::move(variants));
+  auto ast = std::make_unique<EnumDefinitionAST>("Shape", std::move(variants));
 
   ASTSerializer serializer;
   std::string data = serializer.serializeToString(*ast);
@@ -1064,10 +1064,8 @@ TEST(Tooling_Serialization, MatchBindingsRoundtrip) {
   PatternBinding b2;
   b2.isWildcard = true;
   arms.back().bindings.push_back(std::move(b2));
-  arms.emplace_back(nullptr, true,
-                    std::make_unique<VariableReferenceAST>("y"));
-  auto ast =
-      std::make_unique<MatchExprAST>(std::move(disc), std::move(arms));
+  arms.emplace_back(nullptr, true, std::make_unique<VariableReferenceAST>("y"));
+  auto ast = std::make_unique<MatchExprAST>(std::move(disc), std::move(arms));
 
   ASTSerializer serializer;
   std::string data = serializer.serializeToString(*ast);
@@ -1093,9 +1091,9 @@ TEST(Tooling_Serialization, GenericEnumTypeParamsRoundtrip) {
   variants.push_back({"Some", 0, Position{}, {}});
   variants.back().payloadTypes.push_back(TypeAnnotation("T"));
   variants.push_back({"None", 1, Position{}, {}});
-  auto ast = std::make_unique<EnumDefinitionAST>(
-      "Option", std::move(variants), /*precompiled=*/false,
-      std::vector<std::string>{"T"});
+  auto ast = std::make_unique<EnumDefinitionAST>("Option", std::move(variants),
+                                                 /*precompiled=*/false,
+                                                 std::vector<std::string>{"T"});
 
   ASTSerializer serializer;
   std::string data = serializer.serializeToString(*ast);

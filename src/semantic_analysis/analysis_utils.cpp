@@ -3,9 +3,9 @@
 // Contains type assignability checking, integer literal coercion,
 // and type guard extraction.
 
-#include "support/error.h"
 #include "codegen/intrinsics/intrinsics.h"
 #include "semantic_analysis/semantic_analyzer.h"
+#include "support/error.h"
 
 using sun::unwrapRef;
 
@@ -102,10 +102,10 @@ void SemanticAnalyzer::checkCharOperands(const BinaryExprAST& binExpr) {
   if (!lhsIsChar && !rhsIsChar) return;
 
   TokenKind op = binExpr.getOp().kind;
-  bool isComparison = op == TokenKind::LESS || op == TokenKind::GREATER ||
-                      op == TokenKind::LESS_EQUAL ||
-                      op == TokenKind::GREATER_EQUAL ||
-                      op == TokenKind::EQUAL_EQUAL || op == TokenKind::NOT_EQUAL;
+  bool isComparison =
+      op == TokenKind::LESS || op == TokenKind::GREATER ||
+      op == TokenKind::LESS_EQUAL || op == TokenKind::GREATER_EQUAL ||
+      op == TokenKind::EQUAL_EQUAL || op == TokenKind::NOT_EQUAL;
   if (!isComparison) {
     const auto& info = getTokenInfo();
     auto it = info.find(op);
@@ -161,10 +161,10 @@ void SemanticAnalyzer::coerceBinaryLiteralOperands(
 
   // A comparison's expected type describes its bool result, not its operands
   TokenKind op = binExpr.getOp().kind;
-  bool isComparison = op == TokenKind::LESS || op == TokenKind::GREATER ||
-                      op == TokenKind::LESS_EQUAL ||
-                      op == TokenKind::GREATER_EQUAL ||
-                      op == TokenKind::EQUAL_EQUAL || op == TokenKind::NOT_EQUAL;
+  bool isComparison =
+      op == TokenKind::LESS || op == TokenKind::GREATER ||
+      op == TokenKind::LESS_EQUAL || op == TokenKind::GREATER_EQUAL ||
+      op == TokenKind::EQUAL_EQUAL || op == TokenKind::NOT_EQUAL;
   auto expected = unwrapRef(expectedType);
   if (!isComparison && expected && expected->isNumeric()) {
     bool coerced = false;
@@ -439,8 +439,26 @@ std::string SemanticAnalyzer::immutableBaseOf(const ExprAST& place) {
 
     case ASTNodeType::MEMBER_ACCESS: {
       const auto& access = static_cast<const MemberAccessAST&>(place);
+      sun::TypePtr objectType = access.getObject()->getResolvedType();
+      // mod.name names the module's own variable, so its own constness
+      // decides — a module has no mutability of its own to inherit
+      if (objectType && objectType->isModule()) {
+        const auto& mod = static_cast<const sun::ModuleType&>(*objectType);
+        SymbolMatch match =
+            findSymbolInModule(mod.getModulePath(), access.getMemberName());
+        if (match.kind != SymbolKind::Variable || !match.variableInfo) {
+          return "";
+        }
+        // display() names the declaring module without any library-hash scope
+        std::string full = match.variableInfo->qualifiedName.display();
+        if (match.variableInfo->isConst) return "constant '" + full + "'";
+        if (sun::isConstRef(match.variableInfo->type)) {
+          return "const reference '" + full + "'";
+        }
+        return "";
+      }
       // Through a mutable borrow the referent may be changed
-      if (sun::isMutableRef(access.getObject()->getResolvedType())) return "";
+      if (sun::isMutableRef(objectType)) return "";
       return immutableBaseOf(*access.getObject());
     }
 

@@ -9,14 +9,14 @@
 #include <fstream>
 #include <string>
 
-#include "serialization/ast_deserializer.h"
-#include "serialization/ast_serializer.h"
 #include "driver/execution_utils.h"
-#include "parsing/formatter.h"
-#include "parsing/lexer.h"
 #include "moon_bundling/moon_builder.h"
 #include "moon_bundling/moon_import.h"
+#include "parsing/formatter.h"
+#include "parsing/lexer.h"
 #include "parsing/parser.h"
+#include "serialization/ast_deserializer.h"
+#include "serialization/ast_serializer.h"
 
 namespace {
 
@@ -87,7 +87,8 @@ TEST(Modules_AccessModifiers, parser_accepts_public_on_every_item_kind) {
   auto* outer = static_cast<const ModuleAST*>(ast->getBody()[0].get());
   EXPECT_TRUE(outer->isPublic());
   // `public module a.b` makes every synthesized level public
-  auto* inner = static_cast<const ModuleAST*>(outer->getBody().getBody()[0].get());
+  auto* inner =
+      static_cast<const ModuleAST*>(outer->getBody().getBody()[0].get());
   EXPECT_EQ(inner->getName(), "b");
   EXPECT_TRUE(inner->isPublic());
   for (const auto& stmt : inner->getBody().getBody()) {
@@ -104,16 +105,19 @@ TEST(Modules_AccessModifiers, parser_accepts_public_on_every_item_kind) {
 TEST(Modules_AccessModifiers, parser_rejects_public_inside_function_body) {
   EXPECT_THROW(compileString(R"(
     function main() i32 { public var x: i32 = 1; return x; }
-  )"), SunError);
+  )"),
+               SunError);
 }
 
 TEST(Modules_AccessModifiers, parser_rejects_public_on_non_declarations) {
-  EXPECT_THROW(compileString("public using m;\nfunction main() i32 { return 0; }"),
-               SunError);
+  EXPECT_THROW(
+      compileString("public using m;\nfunction main() i32 { return 0; }"),
+      SunError);
   EXPECT_THROW(compileString(R"(
     public module m { public public function f() i32 { return 1; } }
     function main() i32 { return 0; }
-  )"), SunError);
+  )"),
+               SunError);
 }
 
 TEST(Modules_AccessModifiers, formatter_round_trips_public) {
@@ -154,8 +158,8 @@ TEST(Modules_AccessModifiers, serialization_round_trips_visibility) {
   ASSERT_NE(back, nullptr);
   auto* mod = static_cast<const ModuleAST*>(back.get());
   EXPECT_TRUE(mod->isPublic());
-  auto* cls = static_cast<const ClassDefinitionAST*>(
-      mod->getBody().getBody()[0].get());
+  auto* cls =
+      static_cast<const ClassDefinitionAST*>(mod->getBody().getBody()[0].get());
   EXPECT_TRUE(cls->isPublic());
   EXPECT_EQ(cls->getFields()[0].visibility, sun::Visibility::Public);
   EXPECT_EQ(cls->getFields()[1].visibility, sun::Visibility::Private);
@@ -169,8 +173,9 @@ TEST(Modules_AccessModifiers, serialization_round_trips_visibility) {
 // ---------------------------------------------------------------------------
 
 TEST(Modules_AccessModifiers, public_api_is_reachable_from_outside) {
-  auto value = executeString(program(
-      "var b = m.make(3); return b.reveal() + b.v + m.pubinner.g() + m.visible;"));
+  auto value =
+      executeString(program("var b = m.make(3); return b.reveal() + b.v + "
+                            "m.pubinner.g() + m.visible;"));
   EXPECT_EQ(value, 106 + 3 + 2 + 8);
 }
 
@@ -276,12 +281,14 @@ TEST(Modules_AccessModifiers, private_nested_module_denied) {
       "module 'inner' is private to module 'm'");
 }
 
-TEST(Modules_AccessModifiers, module_reopened_with_conflicting_visibility_is_error) {
+TEST(Modules_AccessModifiers,
+     module_reopened_with_conflicting_visibility_is_error) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(R"(
     public module m { public function f() i32 { return 1; } }
     module m { public function g() i32 { return 2; } }
     function main() i32 { return m.f() + m.g(); }
-  )"), "all declarations of a module must agree");
+  )"),
+                                "all declarations of a module must agree");
 }
 
 // ---------------------------------------------------------------------------
@@ -301,12 +308,14 @@ TEST(Modules_AccessModifiers, private_init_with_public_factory) {
     function main() i32 { var t = m.issue(9); return t.id; }
   )");
   EXPECT_EQ(value, 9);
-  EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      compileString(R"(
     public module m {
         public class Token { public var id: i32; function init(id: i32) { this.id = id; } }
     }
     function main() i32 { var t = m.Token(9); return t.id; }
-  )"), "'init' is private to class 'Token' in module 'm'");
+  )"),
+      "'init' is private to class 'Token' in module 'm'");
 }
 
 TEST(Modules_AccessModifiers, deinit_is_always_callable) {
@@ -321,13 +330,15 @@ TEST(Modules_AccessModifiers, deinit_is_always_callable) {
 }
 
 TEST(Modules_AccessModifiers, private_index_operator_denied) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      compileString(R"(
     public module m {
         public class Arr { public var v: i32; public function init() { this.v = 1; }
                            function __index__(i: i64) i32 { return this.v; } }
     }
     function main() i32 { var a = m.Arr(); return a[0]; }
-  )"), "'__index__' is private to class 'Arr' in module 'm'");
+  )"),
+      "'__index__' is private to class 'Arr' in module 'm'");
 }
 
 TEST(Modules_AccessModifiers, struct_literal_needs_accessible_fields) {
@@ -345,7 +356,8 @@ TEST(Modules_AccessModifiers, struct_literal_needs_accessible_fields) {
     }
     using m;
     function main() i32 { var p: P = { x: 1, y: 2 }; return p.x; }
-  )"), "'y' is private to class 'P' in module 'm'");
+  )"),
+                                "'y' is private to class 'P' in module 'm'");
 }
 
 // ---------------------------------------------------------------------------
@@ -378,17 +390,21 @@ TEST(Modules_AccessModifiers, generic_bodies_keep_their_module_context) {
 // Interfaces
 // ---------------------------------------------------------------------------
 
-TEST(Modules_AccessModifiers, public_interface_member_needs_public_implementation) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(R"(
+TEST(Modules_AccessModifiers,
+     public_interface_member_needs_public_implementation) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      compileString(R"(
     public module m {
         public interface IShow { public function show() i32; }
         public class C implements IShow { public function init() {} function show() i32 { return 1; } }
     }
     function main() i32 { return 0; }
-  )"), "implements public member 'IShow.show' and must be public");
+  )"),
+      "implements public member 'IShow.show' and must be public");
 }
 
-TEST(Modules_AccessModifiers, private_interface_member_only_reachable_in_module) {
+TEST(Modules_AccessModifiers,
+     private_interface_member_only_reachable_in_module) {
   auto value = executeString(R"(
     public module m {
         public interface IShow { function show() i32; }
@@ -399,7 +415,8 @@ TEST(Modules_AccessModifiers, private_interface_member_only_reachable_in_module)
     function main() i32 { var c = m.make(); return m.twice(c); }
   )");
   EXPECT_EQ(value, 8);
-  EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      compileString(R"(
     public module m {
         public interface IShow { function show() i32; }
         public class C implements IShow { public function init() {} public function show() i32 { return 4; } }
@@ -408,10 +425,12 @@ TEST(Modules_AccessModifiers, private_interface_member_only_reachable_in_module)
     using m;
     function via(i: ref IShow) i32 { return i.show(); }
     function main() i32 { var c = make(); return via(c); }
-  )"), "'show' is private to interface 'IShow' in module 'm'");
+  )"),
+      "'show' is private to interface 'IShow' in module 'm'");
 }
 
-TEST(Modules_AccessModifiers, inherited_interface_field_keeps_interface_visibility) {
+TEST(Modules_AccessModifiers,
+     inherited_interface_field_keeps_interface_visibility) {
   auto value = executeString(R"(
     public module m {
         public interface IHas { public var n: i32; }
@@ -440,7 +459,8 @@ fs::path writeLib(const std::string& name, const std::string& src) {
 }
 }  // namespace
 
-TEST(Modules_AccessModifiers, moon_hides_private_items_but_generics_still_work) {
+TEST(Modules_AccessModifiers,
+     moon_hides_private_items_but_generics_still_work) {
   initTestEnvironment();
   fs::path libSrc = writeLib("acclib", R"(
     public module acclib {
@@ -468,10 +488,12 @@ TEST(Modules_AccessModifiers, moon_hides_private_items_but_generics_still_work) 
   {
     auto driver = Driver::createForJIT("moon_main_denied");
     driver->setMoonImports({sun::MoonImport(moonPath.string())});
-    EXPECT_SUN_ERROR_WITH_MESSAGE(driver->executeString(R"(
+    EXPECT_SUN_ERROR_WITH_MESSAGE(
+        driver->executeString(R"(
       using acclib;
       function main() i32 { return helper(); }
-    )"), "function 'helper' is private to module 'acclib'");
+    )"),
+        "function 'helper' is private to module 'acclib'");
   }
   {
     auto driver = Driver::createForJIT("moon_main_field");
@@ -479,7 +501,8 @@ TEST(Modules_AccessModifiers, moon_hides_private_items_but_generics_still_work) 
     EXPECT_SUN_ERROR_WITH_MESSAGE(driver->executeString(R"(
       using acclib;
       function main() i32 { var c = make(); return c.n; }
-    )"), "'n' is private to class");
+    )"),
+                                  "'n' is private to class");
   }
 }
 
@@ -489,18 +512,22 @@ TEST(Modules_AccessModifiers, moon_rejects_private_root_module) {
     module privroot { public function f() i32 { return 1; } }
   )");
   fs::path moonPath = libSrc.parent_path() / "privroot.moon";
-  EXPECT_SUN_ERROR_WITH_MESSAGE(sun::MoonBuilder::build(libSrc.string(), moonPath),
-                                "top-level module 'privroot' must be declared 'public'");
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      sun::MoonBuilder::build(libSrc.string(), moonPath),
+      "top-level module 'privroot' must be declared 'public'");
 }
 
 // The stdlib's own internals are hidden from user code
 TEST(Modules_AccessModifiers, stdlib_internals_are_private) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      compileString(R"(
     using sun;
     function main() i32 {
         var allocator = make_heap_allocator();
         var v = Vec<i32>(allocator, 4);
         return v.size_;
     }
-  )", /*includeStdlib=*/true), "'size_' is private to class 'sun.Vec<i32>' in module 'sun'");
+  )",
+                    /*includeStdlib=*/true),
+      "'size_' is private to class 'sun.Vec<i32>' in module 'sun'");
 }

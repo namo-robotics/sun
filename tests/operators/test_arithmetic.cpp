@@ -1,4 +1,5 @@
-// tests/operators/test_arithmetic.cpp - Tests for arithmetic operations (+, -, *, /, %)
+// tests/operators/test_arithmetic.cpp - Tests for arithmetic operations (+, -,
+// *, /, %)
 
 #include <gtest/gtest.h>
 

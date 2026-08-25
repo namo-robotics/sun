@@ -5,11 +5,11 @@
 #include <fstream>
 
 #include "driver/driver.h"
-#include "support/error.h"
 #include "driver/manifest_processor.h"
 #include "moon_bundling/metadata_extractor.h"
 #include "moon_bundling/moon.h"
 #include "moon_bundling/proto_importer.h"
+#include "support/error.h"
 
 namespace sun {
 

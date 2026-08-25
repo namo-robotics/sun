@@ -288,7 +288,8 @@ TEST_F(Stdlib_Io_File, sun_io_file_literal_path_round_trip) {
             f.write("written by File");
             f.close();
 
-            var text = read_to_string(a, ")" + path + R"(");
+            var text = read_to_string(a, ")" +
+                                       path + R"(");
             if (not text.equals_literal("written by File")) { return 1; }
         } catch (e: IError) {
             return 2;
@@ -310,7 +311,8 @@ TEST_F(Stdlib_Io_File, sun_io_file_runtime_string_path) {
         var a = make_heap_allocator();
         try {
             // The path is built at runtime, which the intrinsics cannot take.
-            var dir = String(a, ")" + testDir + R"(");
+            var dir = String(a, ")" + testDir +
+                                       R"(");
             dir.append_literal("/runtime.txt");
 
             var body = String(a, "runtime path");
@@ -389,7 +391,8 @@ TEST_F(Stdlib_Io_File, sun_io_open_missing_file_throws) {
     function main() i32 {
         var f = File();
         try {
-            f.open(")" + testFile("nope.txt") + R"(", FileMode.Read);
+            f.open(")" + testFile("nope.txt") +
+                                       R"(", FileMode.Read);
         } catch (e: IError) {
             return 42;
         }
@@ -409,16 +412,24 @@ TEST_F(Stdlib_Io_File, sun_io_remove_rename_and_directories) {
 
     function main() i32 {
         try {
-            rename_file(")" + path + R"(", ")" + testFile("renamed.txt") + R"(");
+            rename_file(")" + path + R"(", ")" +
+                                       testFile("renamed.txt") + R"(");
             if (exists(")" + path + R"(")) { return 1; }
-            if (not exists(")" + testFile("renamed.txt") + R"(")) { return 2; }
-            remove_file(")" + testFile("renamed.txt") + R"(");
-            if (exists(")" + testFile("renamed.txt") + R"(")) { return 3; }
+            if (not exists(")" + testFile("renamed.txt") +
+                                       R"(")) { return 2; }
+            remove_file(")" + testFile("renamed.txt") +
+                                       R"(");
+            if (exists(")" + testFile("renamed.txt") +
+                                       R"(")) { return 3; }
 
-            make_dir(")" + testFile("newdir") + R"(", 493);
-            if (not is_dir(")" + testFile("newdir") + R"(")) { return 4; }
-            remove_dir(")" + testFile("newdir") + R"(");
-            if (exists(")" + testFile("newdir") + R"(")) { return 5; }
+            make_dir(")" + testFile("newdir") +
+                                       R"(", 493);
+            if (not is_dir(")" + testFile("newdir") +
+                                       R"(")) { return 4; }
+            remove_dir(")" + testFile("newdir") +
+                                       R"(");
+            if (exists(")" + testFile("newdir") +
+                                       R"(")) { return 5; }
         } catch (e: IError) {
             return 6;
         }

@@ -90,14 +90,19 @@ TEST(Tooling_Frontend_Lexer, Utf8InStringLiteral) {
   auto tokens = lexAll("\"h\xC3\xA9llo \xE4\xB8\x96\xE7\x95\x8C\"");
   ASSERT_EQ(tokens.size(), 2u);
   EXPECT_EQ(tokens[0].kind, TokenKind::STRING);
-  EXPECT_EQ(tokens[0].getString().value(), "h\xC3\xA9llo \xE4\xB8\x96\xE7\x95\x8C");
+  EXPECT_EQ(tokens[0].getString().value(),
+            "h\xC3\xA9llo \xE4\xB8\x96\xE7\x95\x8C");
 }
 
 TEST(Tooling_Frontend_Lexer, Utf8InComments) {
-  auto tokens = lexAll("// \xC3\xBCn\xC3\xAF" "code\n/* \xCF\x80 */ 1");
+  auto tokens = lexAll(
+      "// \xC3\xBCn\xC3\xAF"
+      "code\n/* \xCF\x80 */ 1");
   ASSERT_EQ(tokens.size(), 4u);
   EXPECT_EQ(tokens[0].kind, TokenKind::COMMENT);
-  EXPECT_EQ(tokens[0].text, "// \xC3\xBCn\xC3\xAF" "code");
+  EXPECT_EQ(tokens[0].text,
+            "// \xC3\xBCn\xC3\xAF"
+            "code");
   EXPECT_EQ(tokens[1].kind, TokenKind::BLOCK_COMMENT);
   EXPECT_EQ(tokens[1].text, "/* \xCF\x80 */");
   EXPECT_EQ(tokens[2].kind, TokenKind::INTEGER);
@@ -152,8 +157,8 @@ TEST(Tooling_Frontend_Lexer, CharLiteralEscapes) {
 }
 
 TEST(Tooling_Frontend_Lexer, CharLiteralUnicode) {
-  EXPECT_EQ(charValueOf("'\xC3\xA9'"), 0xE9);          // é, 2 UTF-8 bytes
-  EXPECT_EQ(charValueOf("'\xE4\xBD\xA0'"), 0x4F60);    // 你, 3 bytes
+  EXPECT_EQ(charValueOf("'\xC3\xA9'"), 0xE9);             // é, 2 UTF-8 bytes
+  EXPECT_EQ(charValueOf("'\xE4\xBD\xA0'"), 0x4F60);       // 你, 3 bytes
   EXPECT_EQ(charValueOf("'\xF0\x9F\x98\x80'"), 0x1F600);  // 😀, 4 bytes
   EXPECT_EQ(charValueOf("'\\u{7}'"), 7);
   EXPECT_EQ(charValueOf("'\\u{E9}'"), 0xE9);
@@ -175,8 +180,9 @@ TEST(Tooling_Frontend_Lexer, ByteLiteralBeatsIdentifier) {
   EXPECT_EQ(kindsOf("b"), std::vector<TokenKind>{TokenKind::IDENTIFIER});
   EXPECT_EQ(kindsOf("b'a'"), std::vector<TokenKind>{TokenKind::BYTE_LITERAL});
   // The b must lead: `ab'c'` is an identifier followed by a char literal.
-  EXPECT_EQ(kindsOf("ab'c'"), (std::vector<TokenKind>{TokenKind::IDENTIFIER,
-                                                      TokenKind::CHAR_LITERAL}));
+  EXPECT_EQ(
+      kindsOf("ab'c'"),
+      (std::vector<TokenKind>{TokenKind::IDENTIFIER, TokenKind::CHAR_LITERAL}));
 }
 
 // Columns count bytes here too (see ColumnsCountBytes).
@@ -190,13 +196,13 @@ TEST(Tooling_Frontend_Lexer, CharLiteralColumnsCountBytes) {
 }
 
 TEST(Tooling_Frontend_Lexer, CharLiteralErrors) {
-  EXPECT_THROW(lexAll("''"), SunError);            // empty
-  EXPECT_THROW(lexAll("'ab'"), SunError);          // more than one
-  EXPECT_THROW(lexAll("'\\q'"), SunError);         // unknown escape
-  EXPECT_THROW(lexAll("'\\x'"), SunError);         // \x needs two digits
-  EXPECT_THROW(lexAll("'\\xG1'"), SunError);       // ...and they must be hex
-  EXPECT_THROW(lexAll("'\\xFF'"), SunError);       // \x stops at 7F for a char
-  EXPECT_THROW(lexAll("'\\u{}'"), SunError);       // needs a digit
+  EXPECT_THROW(lexAll("''"), SunError);       // empty
+  EXPECT_THROW(lexAll("'ab'"), SunError);     // more than one
+  EXPECT_THROW(lexAll("'\\q'"), SunError);    // unknown escape
+  EXPECT_THROW(lexAll("'\\x'"), SunError);    // \x needs two digits
+  EXPECT_THROW(lexAll("'\\xG1'"), SunError);  // ...and they must be hex
+  EXPECT_THROW(lexAll("'\\xFF'"), SunError);  // \x stops at 7F for a char
+  EXPECT_THROW(lexAll("'\\u{}'"), SunError);  // needs a digit
   EXPECT_THROW(lexAll("'\\u{1234567}'"), SunError);  // at most six
   EXPECT_THROW(lexAll("'\\u{110000}'"), SunError);   // above U+10FFFF
   EXPECT_THROW(lexAll("'\\u{D800}'"), SunError);     // surrogate
@@ -206,8 +212,8 @@ TEST(Tooling_Frontend_Lexer, CharLiteralErrors) {
 TEST(Tooling_Frontend_Lexer, ByteLiteralErrors) {
   EXPECT_THROW(lexAll("b''"), SunError);
   EXPECT_THROW(lexAll("b'ab'"), SunError);
-  EXPECT_THROW(lexAll("b'\xC3\xA9'"), SunError);   // non-ASCII needs '...'
-  EXPECT_THROW(lexAll("b'\\u{41}'"), SunError);    // \u is char-only
+  EXPECT_THROW(lexAll("b'\xC3\xA9'"), SunError);  // non-ASCII needs '...'
+  EXPECT_THROW(lexAll("b'\\u{41}'"), SunError);   // \u is char-only
 }
 
 TEST(Tooling_Frontend_Lexer, CharKeywordLexesAsType) {
@@ -224,7 +230,8 @@ TEST(Tooling_Frontend_Lexer, LongestMatchWins) {
   EXPECT_EQ(kindsOf(">>"), std::vector<TokenKind>{TokenKind::RIGHT_SHIFT});
   EXPECT_EQ(kindsOf(">="), std::vector<TokenKind>{TokenKind::GREATER_EQUAL});
   EXPECT_EQ(kindsOf(">"), std::vector<TokenKind>{TokenKind::GREATER});
-  EXPECT_EQ(kindsOf("<<="), std::vector<TokenKind>{TokenKind::LEFT_SHIFT_ASSIGN});
+  EXPECT_EQ(kindsOf("<<="),
+            std::vector<TokenKind>{TokenKind::LEFT_SHIFT_ASSIGN});
   EXPECT_EQ(kindsOf("..."), std::vector<TokenKind>{TokenKind::ELLIPSIS});
   EXPECT_EQ(kindsOf("::"), std::vector<TokenKind>{TokenKind::DOUBLE_COLON});
   EXPECT_EQ(kindsOf("=>"), std::vector<TokenKind>{TokenKind::FAT_ARROW});
@@ -239,7 +246,8 @@ TEST(Tooling_Frontend_Lexer, FloatBeatsIntegerFollowedByDot) {
 }
 
 TEST(Tooling_Frontend_Lexer, KeywordVsIdentifierPriority) {
-  EXPECT_EQ(kindsOf("static_ptr"), std::vector<TokenKind>{TokenKind::STATIC_PTR});
+  EXPECT_EQ(kindsOf("static_ptr"),
+            std::vector<TokenKind>{TokenKind::STATIC_PTR});
   EXPECT_EQ(kindsOf("raw_ptr"), std::vector<TokenKind>{TokenKind::RAW_PTR});
   EXPECT_EQ(kindsOf("ptr"), std::vector<TokenKind>{TokenKind::PTR});
   EXPECT_EQ(kindsOf("i32"), std::vector<TokenKind>{TokenKind::TYPE_I32});
@@ -336,7 +344,8 @@ TEST(Tooling_Frontend_Lexer, RelexAfterInputExhausted) {
 
 // The generic-vs-comparison backtrack with nothing following it
 TEST(Tooling_Frontend_Lexer, ParsesComparisonAtEndOfInput) {
-  const std::string source = "function f(a: i32, b: i32) bool { return a < b; }";
+  const std::string source =
+      "function f(a: i32, b: i32) bool { return a < b; }";
   std::istringstream ss(source);
   Parser parser(ss);
   EXPECT_NO_THROW({ auto ast = parser.parseString(source); });
@@ -404,9 +413,9 @@ TEST(Tooling_Frontend_Lexer, DISABLED_ThroughputMBps) {
     Lexer lexer(ss);
     while (!lexer.getNextToken().isEof()) ++tokens;
   }
-  auto elapsed = std::chrono::duration<double>(
-                     std::chrono::steady_clock::now() - begin)
-                     .count();
+  auto elapsed =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - begin)
+          .count();
 
   const double bytes = static_cast<double>(source.size()) * kRuns;
   std::printf(
@@ -425,9 +434,9 @@ TEST(Tooling_Frontend_Lexer, DISABLED_ConstructionCost) {
     Lexer lexer(ss);
     (void)lexer;
   }
-  auto elapsed = std::chrono::duration<double>(
-                     std::chrono::steady_clock::now() - begin)
-                     .count();
+  auto elapsed =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - begin)
+          .count();
   std::printf("\n  1000 Lexer constructions in %.6f s (%.3f us each)\n\n",
               elapsed, elapsed * 1e6 / 1000);
 }

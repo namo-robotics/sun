@@ -11,18 +11,18 @@
 #include <unordered_map>
 #include <vector>
 
-#include "semantic_analysis/access_checker.h"
 #include "ast.h"
+#include "semantic_analysis/access_checker.h"
 #include "semantic_analysis/qualified_name.h"
 #include "semantic_analysis/types.h"
 
 // Information about a variable in the symbol table
 struct VariableInfo {
   sun::TypePtr type;
-  bool isGlobal;         // Declared at module level (not inside a function)
-  bool isFunctionParam;  // Is it a parameter vs let binding
-  bool isMoved = false;  // Has ownership been transferred (move semantics)
-  bool isCapture = false;       // Declared as a lambda/function capture
+  bool isGlobal;           // Declared at module level (not inside a function)
+  bool isFunctionParam;    // Is it a parameter vs let binding
+  bool isMoved = false;    // Has ownership been transferred (move semantics)
+  bool isCapture = false;  // Declared as a lambda/function capture
   bool isByRefCapture = false;  // Captured via [ref x] - mutable through env
   bool isConst = false;  // `const x`: the binding and its value never change
   sun::QualifiedName qualifiedName;  // Full qualified name (empty for locals)
@@ -270,10 +270,10 @@ struct SymbolMatch {
 
 // Information about a generic class definition (template)
 struct GenericClassInfo {
-  const ClassDefinitionAST* AST;                     // Original AST node
-  std::vector<std::string> typeParameters;           // ["T", "U", etc.]
+  const ClassDefinitionAST* AST;            // Original AST node
+  std::vector<std::string> typeParameters;  // ["T", "U", etc.]
   std::weak_ptr<SemanticScopeBase> definitionScope;
-  sun::QualifiedName qualifiedName;                  // Captured at registration
+  sun::QualifiedName qualifiedName;  // Captured at registration
 };
 
 // Information about a generic interface definition (template)
@@ -298,7 +298,7 @@ struct GenericFunctionInfo {
   std::vector<std::string> typeParameters;   // ["T", "U", etc.]
   std::optional<TypeAnnotation> returnType;  // Return type annotation
   std::vector<std::pair<std::string, TypeAnnotation>> params;  // Parameters
-  sun::QualifiedName qualifiedName;          // Captured at registration
+  sun::QualifiedName qualifiedName;  // Captured at registration
   std::weak_ptr<SemanticScopeBase> definitionScope;
 };
 
@@ -322,8 +322,8 @@ struct SpecializedFunctionInfo {
   // The specialization seen as an ordinary resolved function — what a call
   // site that named the template ends up calling.
   FunctionInfo asFunctionInfo() const {
-    return FunctionInfo{returnType,    paramTypes, captures,
-                        qualifiedName, canThrow()};
+    return FunctionInfo{returnType, paramTypes, captures, qualifiedName,
+                        canThrow()};
   }
 
   // Type of the call itself, for the callee expression
@@ -350,9 +350,10 @@ using SemanticScope = SemanticScopeBase;
 // Access control hooks for symbol lookup
 //
 // Lookups filter out symbols the asking code may not see (see
-// include/semantic_analysis/visibility.h). The analyzer installs an AccessContext on the root
-// scope; it answers "which module is asking" and reports a denial. Without a
-// context (no analyzer attached) lookups are unfiltered.
+// include/semantic_analysis/visibility.h). The analyzer installs an
+// AccessContext on the root scope; it answers "which module is asking" and
+// reports a denial. Without a context (no analyzer attached) lookups are
+// unfiltered.
 // ===================================================================
 struct AccessContext {
   virtual ~AccessContext() = default;
@@ -376,7 +377,8 @@ struct SemanticScopeBase
 
   // ===== Identification (for persistent scopes) =====
   std::string scopeName;  // Display name (module name, source file, etc.)
-  std::vector<std::string> scopePath;  // Scope path segments for qualified names
+  std::vector<std::string>
+      scopePath;  // Scope path segments for qualified names
 
   // ===== Symbol tables (used by persistent scopes - Global/Module/Import)
   // =====
@@ -485,8 +487,7 @@ struct SemanticScopeBase
 
   // Lookup function by name and exact argument types (overload resolution)
   std::optional<FunctionInfo> lookupFunction(
-      const std::string& name,
-      const std::vector<sun::TypePtr>& argTypes) const;
+      const std::string& name, const std::vector<sun::TypePtr>& argTypes) const;
 
   // Same overload resolution, but restricted to this scope's own function
   // table — no walk to parents. Used for module-qualified calls, where the
@@ -577,7 +578,8 @@ struct FunctionScope : SemanticScopeBase {
   // variadic body. Holds the pack's name (e.g. "args") and the resolved type of
   // each expanded element. Used to expand `args...` into concrete, typed
   // argument nodes during call analysis.
-  std::optional<std::pair<std::string, std::vector<sun::TypePtr>>> variadicParam;
+  std::optional<std::pair<std::string, std::vector<sun::TypePtr>>>
+      variadicParam;
 };
 
 // ===================================================================
@@ -702,7 +704,8 @@ inline sun::access::ItemRef accessItem(const GenericInterfaceInfo* g) {
           g->AST ? g->AST->getVisibility() : sun::Visibility::Private,
           g->qualifiedName.owner()};
 }
-inline sun::access::ItemRef accessItem(const std::shared_ptr<sun::EnumType>& e) {
+inline sun::access::ItemRef accessItem(
+    const std::shared_ptr<sun::EnumType>& e) {
   return {"enum", e->getBaseName(), "", e->visibility,
           e->getQualifiedName().owner()};
 }

@@ -8,8 +8,8 @@
 #include <string>
 
 #include "driver/driver.h"
-#include "support/error.h"
 #include "driver/execution_utils.h"
+#include "support/error.h"
 
 // ============================================================================
 // Debug Mode Tests

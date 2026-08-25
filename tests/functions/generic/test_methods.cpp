@@ -149,14 +149,15 @@ TEST(Functions_Generic_Methods, inference_inside_generic_class_body) {
 }
 
 TEST(Functions_Generic_Methods, uninferable_type_argument_is_error) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
     class F {
       function init() {}
       function make<T>() T { return _convert<T>(0); }
     }
     function main() i32 { var f = F(); return f.make(); }
   )"),
-                                "Cannot infer type argument 'T' of generic method 'F.make'");
+      "Cannot infer type argument 'T' of generic method 'F.make'");
 }
 
 TEST(Functions_Generic_Methods, partial_type_arguments_uninferable_is_error) {

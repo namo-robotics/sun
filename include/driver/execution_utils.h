@@ -10,11 +10,11 @@
 #include <vector>
 
 #include "driver/driver.h"
-#include "support/error.h"
+#include "driver/sun_value.h"
 #include "moon_bundling/library_cache.h"
 #include "moon_bundling/moon_import.h"
+#include "support/error.h"
 #include "support/sun_path.h"
-#include "driver/sun_value.h"
 
 // Helper macro for testing SunError with message content
 #define EXPECT_SUN_ERROR_WITH_MESSAGE(stmt, expected_substr)            \

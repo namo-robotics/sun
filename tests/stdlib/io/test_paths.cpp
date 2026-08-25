@@ -34,7 +34,8 @@ TEST_F(Stdlib_Io_Paths, open_and_write_a_computed_path) {
     using sun.io;
 
     function run(a: ref HeapAllocator) i32, IError {
-        var path = String(a, ")" + testDir + R"(/");
+        var path = String(a, ")" + testDir +
+                                       R"(/");
         path.append("computed.txt");
 
         var f = File();
@@ -60,7 +61,8 @@ TEST_F(Stdlib_Io_Paths, whole_file_helpers_take_a_computed_path) {
     using sun.io;
 
     function run(a: ref HeapAllocator) i32, IError {
-        var path = String(a, ")" + testDir + R"(/");
+        var path = String(a, ")" + testDir +
+                                       R"(/");
         path.append("round_trip.txt");
         var body = String(a, "round trip");
 
@@ -87,10 +89,13 @@ TEST_F(Stdlib_Io_Paths, metadata_queries_take_a_computed_path) {
 
     function main() i32 {
         var a = make_heap_allocator();
-        var dir = String(a, ")" + testDir + R"(");
-        var file = String(a, ")" + testDir + R"(/");
+        var dir = String(a, ")" + testDir +
+                                       R"(");
+        var file = String(a, ")" + testDir +
+                                       R"(/");
         file.append("there.txt");
-        var missing = String(a, ")" + testDir + R"(/");
+        var missing = String(a, ")" + testDir +
+                                       R"(/");
         missing.append("nope.txt");
 
         if (not exists(file)) { return -1; }
@@ -110,12 +115,14 @@ TEST_F(Stdlib_Io_Paths, directory_calls_take_a_computed_path) {
     using sun.io;
 
     function run(a: ref HeapAllocator) i32, IError {
-        var dir = String(a, ")" + testDir + R"(/");
+        var dir = String(a, ")" + testDir +
+                                       R"(/");
         dir.append("made");
         make_dir(dir, 493);
         if (not is_dir(dir)) { return -2; }
 
-        var inner = String(a, ")" + testDir + R"(/made/");
+        var inner = String(a, ")" + testDir +
+                                       R"(/made/");
         inner.append("one.txt");
         var body = String(a, "1");
         write_string(inner, body);
@@ -123,7 +130,8 @@ TEST_F(Stdlib_Io_Paths, directory_calls_take_a_computed_path) {
         var entries: Vec<DirEntry> = read_dir(a, dir);
         var count: i32 = _convert<i32>(entries.size());
 
-        var renamed = String(a, ")" + testDir + R"(/made/");
+        var renamed = String(a, ")" + testDir +
+                                       R"(/made/");
         renamed.append("two.txt");
         rename_file(inner, renamed);
         if (exists(inner)) { return -3; }
@@ -151,7 +159,8 @@ TEST_F(Stdlib_Io_Paths, literals_still_pick_the_static_ptr_overload) {
         var body = String(a, "literal path");
         write_string(")" + testDir + R"(/literal.txt", body);
         if (not exists(")" + testDir + R"(/literal.txt")) { return -2; }
-        var back: String = read_to_string(a, ")" + testDir + R"(/literal.txt");
+        var back: String = read_to_string(a, ")" +
+                                       testDir + R"(/literal.txt");
         remove_file(")" + testDir + R"(/literal.txt");
         return _convert<i32>(back.length());
     }

@@ -68,9 +68,9 @@ TEST(Tooling_Lsp_TextPositions, RoundTrip) {
                              : 0;
     if ((byte & 0xC0) == 0x80) continue;
     auto position = lspPositionFromByteOffset(text, offset);
-    EXPECT_EQ(byteOffsetFromLspPosition(text, position.line,
-                                        position.character),
-              offset)
+    EXPECT_EQ(
+        byteOffsetFromLspPosition(text, position.line, position.character),
+        offset)
         << "offset " << offset;
   }
 }

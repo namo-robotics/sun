@@ -5,8 +5,8 @@
 // - _ptr_as_raw<T>, _address_of<T>, _to_ref<T>, _is<T>
 
 #include "codegen/codegen_visitor.h"
-#include "support/error.h"
 #include "codegen/intrinsics/intrinsics.h"
+#include "support/error.h"
 
 using namespace llvm;
 
@@ -363,8 +363,7 @@ Value* CodegenVisitor::codegenIsIntrinsic(
 }
 
 Value* CodegenVisitor::codegenDeinitIntrinsic(
-    sun::TypePtr typeArg,
-    const std::vector<std::unique_ptr<ExprAST>>& args) {
+    sun::TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args) {
   // _deinit<T>(raw_ptr<T>) - call T.deinit() on the pointee if T is a class
   // with a deinit method, then recursively deinit class fields. No-op for
   // non-class types or classes without deinit.
@@ -414,9 +413,10 @@ Value* CodegenVisitor::codegenConvertIntrinsic(
   if (targetType->isChar() || (srcType && srcType->isChar())) {
     const sun::TypePtr& other = targetType->isChar() ? srcType : targetType;
     if (other && (other->isFloatingPoint() || other->isBool())) {
-      logAndThrowError("_convert<T>: char converts to and from the integer "
-                       "types only, not '" +
-                       other->toDisplayString() + "'");
+      logAndThrowError(
+          "_convert<T>: char converts to and from the integer "
+          "types only, not '" +
+          other->toDisplayString() + "'");
       return nullptr;
     }
   }

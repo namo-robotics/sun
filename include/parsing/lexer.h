@@ -11,9 +11,9 @@
 #include <string_view>
 #include <variant>
 
-#include "support/error.h"
 #include "parsing/escapes.h"
 #include "parsing/nfa.h"
+#include "support/error.h"
 
 enum class TokenKind {
   TOK_EOF,
@@ -23,19 +23,19 @@ enum class TokenKind {
   DEF,
   EXTERN,
   VAR,
-  MANIFEST,       // manifest keyword for module metadata
-  MODULE,         // module keyword (preferred over namespace)
-  USING,          // using keyword for namespace imports
-  CLASS,          // class keyword
-  PARTIAL,        // partial keyword for class extensions
-  PUBLIC,         // public keyword: visibility modifier (private is the default)
-  PACKED_CLASS,   // packed_class keyword: class with no inter-field padding
-  INTERFACE,      // interface keyword
-  ENUM,           // enum keyword
-  IMPLEMENTS,     // implements keyword
-  THIS,           // this keyword
-  NULL_LITERAL,   // null keyword
-  TRUE_LITERAL,   // true keyword
+  MANIFEST,      // manifest keyword for module metadata
+  MODULE,        // module keyword (preferred over namespace)
+  USING,         // using keyword for namespace imports
+  CLASS,         // class keyword
+  PARTIAL,       // partial keyword for class extensions
+  PUBLIC,        // public keyword: visibility modifier (private is the default)
+  PACKED_CLASS,  // packed_class keyword: class with no inter-field padding
+  INTERFACE,     // interface keyword
+  ENUM,          // enum keyword
+  IMPLEMENTS,    // implements keyword
+  THIS,          // this keyword
+  NULL_LITERAL,  // null keyword
+  TRUE_LITERAL,  // true keyword
   FALSE_LITERAL,  // false keyword
   IF,
   MATCH,  // match keyword for pattern matching
@@ -53,47 +53,47 @@ enum class TokenKind {
   SPAWN,     // spawn keyword for OS thread creation
   UNSAFE,    // unsafe keyword for unsafe blocks
   // Type keywords (must come before IDENTIFIER for priority)
-  STATIC_PTR,            // static_ptr (pointer to immortal static data)
-  PTR,                   // ptr (unique/owning pointer with RAII)
-  RAW_PTR,               // raw_ptr (non-owning pointer for C interop)
-  REF,                   // ref (reference type)
-  CONST,                 // const (constant variable / const ref / const method)
-  ARRAY,                 // array (fixed-size array type)
-  ARROW,                 // ->
-  FAT_ARROW,             // =>
-  UNDERSCORE,            // _
-  TYPE_I8,               // i8
-  TYPE_I16,              // i16
-  TYPE_I32,              // i32
-  TYPE_I64,              // i64
-  TYPE_U8,               // u8
-  TYPE_U16,              // u16
-  TYPE_U32,              // u32
-  TYPE_U64,              // u64
-  TYPE_F32,              // f32
-  TYPE_F64,              // f64
-  TYPE_BOOL,             // bool
-  TYPE_VOID,             // void
-  TYPE_CHAR,             // char
-  STRING,                // string literal "..."
-  CHAR_LITERAL,          // character literal 'a' (one Unicode scalar value)
-  BYTE_LITERAL,          // byte literal b'a' (one u8)
-  TEMPLATE_STRING,       // template string literal `...` (may contain ${expr})
-  BRACE_OPEN,            // {
-  BRACE_CLOSE,           // }
-  BRACKET_OPEN,          // [
-  BRACKET_CLOSE,         // ]
-  PLUS,                  // +
-  MINUS,                 // -
-  STAR,                  // *
-  SLASH,                 // /
-  PERCENT,               // %
-  AMPERSAND,             // & (bitwise AND)
-  PIPE,                  // | (bitwise OR)
-  CARET,                 // ^ (bitwise XOR)
-  LEFT_SHIFT,            // <<
-  RIGHT_SHIFT,           // >>
-  TILDE,                 // ~ (bitwise NOT)
+  STATIC_PTR,       // static_ptr (pointer to immortal static data)
+  PTR,              // ptr (unique/owning pointer with RAII)
+  RAW_PTR,          // raw_ptr (non-owning pointer for C interop)
+  REF,              // ref (reference type)
+  CONST,            // const (constant variable / const ref / const method)
+  ARRAY,            // array (fixed-size array type)
+  ARROW,            // ->
+  FAT_ARROW,        // =>
+  UNDERSCORE,       // _
+  TYPE_I8,          // i8
+  TYPE_I16,         // i16
+  TYPE_I32,         // i32
+  TYPE_I64,         // i64
+  TYPE_U8,          // u8
+  TYPE_U16,         // u16
+  TYPE_U32,         // u32
+  TYPE_U64,         // u64
+  TYPE_F32,         // f32
+  TYPE_F64,         // f64
+  TYPE_BOOL,        // bool
+  TYPE_VOID,        // void
+  TYPE_CHAR,        // char
+  STRING,           // string literal "..."
+  CHAR_LITERAL,     // character literal 'a' (one Unicode scalar value)
+  BYTE_LITERAL,     // byte literal b'a' (one u8)
+  TEMPLATE_STRING,  // template string literal `...` (may contain ${expr})
+  BRACE_OPEN,       // {
+  BRACE_CLOSE,      // }
+  BRACKET_OPEN,     // [
+  BRACKET_CLOSE,    // ]
+  PLUS,             // +
+  MINUS,            // -
+  STAR,             // *
+  SLASH,            // /
+  PERCENT,          // %
+  AMPERSAND,        // & (bitwise AND)
+  PIPE,             // | (bitwise OR)
+  CARET,            // ^ (bitwise XOR)
+  LEFT_SHIFT,       // <<
+  RIGHT_SHIFT,      // >>
+  TILDE,            // ~ (bitwise NOT)
   // Compound assignment operators (desugared in the parser; never serialized)
   PLUS_ASSIGN,           // +=
   MINUS_ASSIGN,          // -=
@@ -448,8 +448,8 @@ struct Token {
   // this runs once per operator/keyword/punctuation token, and a red-black
   // tree walk per token was measurable in the lexer's profile.
   static Token make(TokenKind k, const Position& s, const Position& e) {
-    static const std::array<const TokenInfo*, static_cast<size_t>(
-                                                  TokenKind::COUNT)>
+    static const std::array<const TokenInfo*,
+                            static_cast<size_t>(TokenKind::COUNT)>
         byKind = [] {
           std::array<const TokenInfo*, static_cast<size_t>(TokenKind::COUNT)>
               a{};
@@ -461,32 +461,39 @@ struct Token {
 
     const TokenInfo* info = byKind[static_cast<size_t>(k)];
     if (info) {
-      return {k, std::monostate{}, s, e, std::string(info->text),
-              info->precedence};
+      return {k, std::monostate{},        s,
+              e, std::string(info->text), info->precedence};
     }
     return {k, std::monostate{}, s, e, "", -1};
   }
 
   // Factories for value-carrying tokens
-  static Token eof(const Position& pos) { return make(TokenKind::TOK_EOF, pos, pos); }
+  static Token eof(const Position& pos) {
+    return make(TokenKind::TOK_EOF, pos, pos);
+  }
 
-  static Token identifier(std::string id, const Position& s, const Position& e) {
+  static Token identifier(std::string id, const Position& s,
+                          const Position& e) {
     return {TokenKind::IDENTIFIER, id, s, e, std::move(id)};
   }
 
-  static Token intrinsicIdentifier(std::string id, const Position& s, const Position& e) {
+  static Token intrinsicIdentifier(std::string id, const Position& s,
+                                   const Position& e) {
     return {TokenKind::INTRINSIC_IDENTIFIER, id, s, e, std::move(id)};
   }
 
-  static Token integer(int64_t num, const Position& s, const Position& e, std::string txt) {
+  static Token integer(int64_t num, const Position& s, const Position& e,
+                       std::string txt) {
     return {TokenKind::INTEGER, num, s, e, std::move(txt)};
   }
 
-  static Token floatNum(double num, const Position& s, const Position& e, std::string txt) {
+  static Token floatNum(double num, const Position& s, const Position& e,
+                        std::string txt) {
     return {TokenKind::FLOAT, num, s, e, std::move(txt)};
   }
 
-  static Token stringLiteral(std::string str, const Position& s, const Position& e) {
+  static Token stringLiteral(std::string str, const Position& s,
+                             const Position& e) {
     return {TokenKind::STRING, std::move(str), s, e, ""};
   }
 
@@ -499,12 +506,14 @@ struct Token {
 
   // Comment token factory (COMMENT or BLOCK_COMMENT); text is the raw
   // comment including delimiters
-  static Token comment(TokenKind k, std::string txt, const Position& s, const Position& e) {
+  static Token comment(TokenKind k, std::string txt, const Position& s,
+                       const Position& e) {
     return {k, txt, s, e, std::move(txt)};
   }
 
   // Template string token factory
-  static Token templateString(std::string str, const Position& s, const Position& e) {
+  static Token templateString(std::string str, const Position& s,
+                              const Position& e) {
     return {TokenKind::TEMPLATE_STRING, std::move(str), s, e, ""};
   }
 
@@ -657,8 +666,9 @@ class Lexer {
                        "fit in a byte; use a character literal '\\u{...}'");
         }
         if (body.size() < 4 || body[2] != '{') {
-          literalError(at, "\\u must be followed by a braced hex scalar "
-                           "value, as in '\\u{1F600}'");
+          literalError(at,
+                       "\\u must be followed by a braced hex scalar "
+                       "value, as in '\\u{1F600}'");
         }
         size_t i = 3;
         int digits = 0;
@@ -690,8 +700,8 @@ class Lexer {
         value = scalar;
         consumed = i + 1;  // past the '}'
       } else {
-        literalError(at, "Unknown escape '\\" + std::string(1, next) +
-                             "' in " + what);
+        literalError(
+            at, "Unknown escape '\\" + std::string(1, next) + "' in " + what);
       }
     }
 
@@ -977,7 +987,8 @@ class Lexer {
       commitPosition(startLine, startCol, startOffset);
       std::string sourceLine = getSourceLine(at.line);
       logParsingError(
-          at, "Unrecognized token '" + std::string(1, buffer[startOffset]) + "'",
+          at,
+          "Unrecognized token '" + std::string(1, buffer[startOffset]) + "'",
           sourceLine, at.line > 1 ? getSourceLine(at.line - 1) : "");
     }
 
@@ -990,8 +1001,9 @@ class Lexer {
     // value-carrying kinds below materialize a string from it -- operators,
     // keywords and punctuation take their text from the static table, and a
     // skipped comment needs no text at all.
-    const std::string_view matched(buffer.data() + startOffset,
-                                   static_cast<size_t>(bestOffset - startOffset));
+    const std::string_view matched(
+        buffer.data() + startOffset,
+        static_cast<size_t>(bestOffset - startOffset));
 
     switch (kind) {
       case TokenKind::COMMENT:
@@ -1026,8 +1038,7 @@ class Lexer {
         // 'a' keeps one quote either side; b'a' has the leading b as well.
         const bool isByte = kind == TokenKind::BYTE_LITERAL;
         const size_t open = isByte ? 2 : 1;
-        std::string_view body =
-            matched.substr(open, matched.size() - open - 1);
+        std::string_view body = matched.substr(open, matched.size() - open - 1);
         return Token::charLiteral(kind,
                                   decodeLiteralBody(body, isByte, startPos),
                                   startPos, endPos, std::string(matched));

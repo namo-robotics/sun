@@ -22,9 +22,9 @@
 #include <vector>
 
 #include "ast/type_annotation.h"
-#include "support/position.h"
 #include "semantic_analysis/semantic_scope.h"
 #include "semantic_analysis/types.h"
+#include "support/position.h"
 
 namespace sun::generics {
 
@@ -35,8 +35,9 @@ namespace sun::generics {
 // may still be a type parameter when the call sits in a template body.
 // Throws a compile error naming the type parameter that could not be bound.
 std::vector<TypePtr> inferGenericTypeArguments(
-    const GenericFunctionInfo& genericInfo, const std::vector<TypePtr>& argTypes,
-    const std::string& displayName, std::optional<Position> loc,
+    const GenericFunctionInfo& genericInfo,
+    const std::vector<TypePtr>& argTypes, const std::string& displayName,
+    std::optional<Position> loc,
     const std::vector<TypePtr>& explicitTypeArgs = {});
 
 // The same for a class method (`obj.m(x)`, `obj.m<i32>(x)`), matching the

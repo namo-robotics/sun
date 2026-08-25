@@ -11,13 +11,13 @@
 #include <unordered_set>
 #include <vector>
 
-#include "support/error.h"
-#include "semantic_analysis/visibility.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
 #include "semantic_analysis/qualified_name.h"
 #include "semantic_analysis/struct_names.h"
+#include "semantic_analysis/visibility.h"
+#include "support/error.h"
 
 namespace sun {
 
@@ -930,7 +930,7 @@ struct ClassMethod {
   std::vector<TypePtr> paramTypes;  // Excludes implicit 'this' parameter
   bool isConstructor;               // true if this is the 'init' method
   bool canThrow = false;            // declared with ', IError' — may unwind
-  bool isConst = false;  // `const function`: does not change `this`
+  bool isConst = false;             // `const function`: does not change `this`
   sun::Visibility visibility = sun::Visibility::Private;
 
   bool isGeneric() const { return !typeParameters.empty(); }
@@ -1023,7 +1023,7 @@ class ClassType : public Type {
       implementedInterfaces;  // Names of interfaces this class implements
   std::vector<std::string>
       staticOnlyInterfaces;  // Implemented, but not convertible to (see below)
-  bool isPacked_ = false;     // "packed class": lay fields out with no padding
+  bool isPacked_ = false;    // "packed class": lay fields out with no padding
   mutable llvm::StructType* cachedLLVMType = nullptr;
 
  public:
@@ -1228,8 +1228,8 @@ class ClassType : public Type {
       return fromWidth <= toWidth;
     }
 
-    bool fromFloat = fromKind == Type::Kind::Float32 ||
-                     fromKind == Type::Kind::Float64;
+    bool fromFloat =
+        fromKind == Type::Kind::Float32 || fromKind == Type::Kind::Float64;
     bool toFloat =
         toKind == Type::Kind::Float32 || toKind == Type::Kind::Float64;
     return fromFloat && toFloat;
@@ -1283,8 +1283,7 @@ class ClassType : public Type {
           }
           // A borrow of the other mutability: only ref -> const ref
           if (argTypes[i]->isReference()) {
-            auto* argRef =
-                static_cast<const ReferenceType*>(argTypes[i].get());
+            auto* argRef = static_cast<const ReferenceType*>(argTypes[i].get());
             if (refMutabilityConvertible(*argRef, *refType) &&
                 referenced->equals(*argRef->getReferencedType())) {
               continue;
@@ -1416,8 +1415,8 @@ class ClassType : public Type {
       cachedLLVMType = existing;
       return cachedLLVMType;
     }
-    cachedLLVMType = llvm::StructType::create(ctx, fieldTypes,
-                                              mangledName + "_struct", isPacked_);
+    cachedLLVMType = llvm::StructType::create(
+        ctx, fieldTypes, mangledName + "_struct", isPacked_);
     return cachedLLVMType;
   }
 
@@ -1479,7 +1478,7 @@ struct InterfaceMethod {
   std::vector<std::string> typeParameters;  // Generic type params: <T, U>
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;  // Excludes implicit 'this' parameter
-  bool hasDefaultImpl;  // true if this method has a default implementation
+  bool hasDefaultImpl;   // true if this method has a default implementation
   bool isConst = false;  // `const function`: does not change `this`
   sun::Visibility visibility = sun::Visibility::Private;
 
@@ -1766,11 +1765,10 @@ using EnumTypePtr = std::shared_ptr<EnumType>;
 // Enums are represented as i32 values, with variants as named constants
 // Example: enum Color { Red, Green, Blue }
 class EnumType : public Type {
-  std::string
-      mangledName_;       // Mangled name (e.g., "$hash$_sun_Color")
-  std::string baseName_;  // User-written base name (e.g., "Color")
+  std::string mangledName_;  // Mangled name (e.g., "$hash$_sun_Color")
+  std::string baseName_;     // User-written base name (e.g., "Color")
   std::vector<EnumVariant> variants;
-  std::string genericBase_;          // e.g. "Option" for Option_i32
+  std::string genericBase_;           // e.g. "Option" for Option_i32
   std::vector<TypePtr> genericArgs_;  // e.g. [i32] for Option_i32
   sun::QualifiedName qualifiedName_;
 
@@ -1784,8 +1782,7 @@ class EnumType : public Type {
   }
 
   EnumType(std::string mangledName, std::string baseName = "")
-      : mangledName_(std::move(mangledName)),
-        baseName_(std::move(baseName)) {}
+      : mangledName_(std::move(mangledName)), baseName_(std::move(baseName)) {}
 
   EnumType(std::string mangledName, std::vector<EnumVariant> vars,
            std::string baseName = "")

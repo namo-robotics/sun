@@ -16,12 +16,12 @@
 
 // Literal nodes
 #include "ast/array_literal_ast.h"
-#include "ast/struct_literal_ast.h"
 #include "ast/bool_literal_ast.h"
 #include "ast/char_literal_ast.h"
 #include "ast/null_literal_ast.h"
 #include "ast/number_expr_ast.h"
 #include "ast/string_literal_ast.h"
+#include "ast/struct_literal_ast.h"
 
 // Index/Slice nodes
 #include "ast/array_index_ast.h"
@@ -45,11 +45,11 @@
 // Control flow nodes
 #include "ast/block_expr_ast.h"
 #include "ast/break_ast.h"
+#include "ast/compound_assignment_ast.h"
 #include "ast/continue_ast.h"
 #include "ast/for_expr_ast.h"
 #include "ast/for_in_expr_ast.h"
 #include "ast/if_expr_ast.h"
-#include "ast/compound_assignment_ast.h"
 #include "ast/indexed_assignment_ast.h"
 #include "ast/match_expr_ast.h"
 #include "ast/return_expr_ast.h"

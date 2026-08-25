@@ -51,9 +51,10 @@ size_t offsetOf(const std::string& source, const std::string& needle,
   return pos;
 }
 
-std::optional<sun::lsp::SymbolLocation> definitionAt(
-    const std::string& source, const std::string& needle,
-    bool withStdlib = false, int occurrence = 0) {
+std::optional<sun::lsp::SymbolLocation> definitionAt(const std::string& source,
+                                                     const std::string& needle,
+                                                     bool withStdlib = false,
+                                                     int occurrence = 0) {
   size_t pos = offsetOf(source, needle, occurrence);
   if (pos == std::string::npos) return std::nullopt;
   Analysis analysis = analyze(source, withStdlib);
@@ -69,9 +70,9 @@ std::optional<sun::lsp::SymbolLocation> definitionAt(
 
 std::string rangeText(const std::string& text,
                       const sun::lsp::SymbolLocation& def) {
-  return text.substr(def.range.offset,
-                     def.range.endOffset.value_or(def.range.offset) -
-                         def.range.offset);
+  return text.substr(
+      def.range.offset,
+      def.range.endOffset.value_or(def.range.offset) - def.range.offset);
 }
 
 // The definition of the symbol at `needle` is the name starting at

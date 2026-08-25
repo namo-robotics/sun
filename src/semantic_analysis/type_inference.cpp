@@ -2,9 +2,9 @@
 
 #include <unordered_set>
 
-#include "support/error.h"
 #include "codegen/intrinsics/intrinsics.h"
 #include "semantic_analysis/semantic_analyzer.h"
+#include "support/error.h"
 
 using sun::unwrapRef;
 
@@ -347,28 +347,26 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
                     memberAccess.getObject()->getResolvedType()) {
               return resolvedObj;
             }
-            logAndThrowError(
-                "Cannot infer type arguments for '" + objRef.getName() + "." +
-                    memberAccess.getMemberName() +
-                    "'; add a type annotation to the target",
-                callExpr.getLocation());
+            logAndThrowError("Cannot infer type arguments for '" +
+                                 objRef.getName() + "." +
+                                 memberAccess.getMemberName() +
+                                 "'; add a type annotation to the target",
+                             callExpr.getLocation());
           }
         }
         sun::TypePtr objectType = inferType(*memberAccess.getObject());
         if (auto* staticPtr = asNonClassStaticPtr(unwrapRef(objectType))) {
-          return inferStaticPtrMethodType(*staticPtr,
-                                          memberAccess.getMemberName(),
-                                          callExpr.getArgs().size(),
-                                          memberAccess.getLocation());
+          return inferStaticPtrMethodType(
+              *staticPtr, memberAccess.getMemberName(),
+              callExpr.getArgs().size(), memberAccess.getLocation());
         }
         if (objectType && objectType->isModule()) {
           std::vector<sun::TypePtr> argTypes;
           for (const auto& arg : callExpr.getArgs()) {
             argTypes.push_back(inferType(*arg));
           }
-          if (const FunctionInfo* info =
-                  resolveModuleQualifiedCall(memberAccess, objectType,
-                                             argTypes)) {
+          if (const FunctionInfo* info = resolveModuleQualifiedCall(
+                  memberAccess, objectType, argTypes)) {
             return info->returnType;
           }
         }
@@ -560,8 +558,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       }
 
       // Lambdas always get LambdaType (fat pointer closure)
-      bool canThrow =
-          proto.hasReturnType() && proto.getReturnType()->canError;
+      bool canThrow = proto.hasReturnType() && proto.getReturnType()->canError;
       auto lambdaType =
           sun::Types::Lambda(returnType, std::move(paramTypes), canThrow);
       // Metadata for spawn/return escape checks (survives variable binding)
@@ -747,8 +744,8 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
       if (auto resolved = memberAccess.getResolvedType()) {
         return resolved;
       }
-      logAndThrowError("Cannot infer type arguments for '" +
-                           varRef.getName() + "." + memberName +
+      logAndThrowError("Cannot infer type arguments for '" + varRef.getName() +
+                           "." + memberName +
                            "'; add a type annotation to the target",
                        memberAccess.getLocation());
     }
@@ -808,13 +805,19 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
         // Set the resolved qualified name on the AST for codegen
         // e.g., "$d9b854ae$_sun_make_heap_allocator" for
         // sun.make_heap_allocator.
-        // Functions carry their own mangled name, which includes the overload
-        // param suffix; rebuilding it from the module path here would drop
-        // that suffix and reference a symbol codegen never emits.
-        std::string resolvedName =
-            match.kind == SymbolKind::Function && match.functionInfo
-                ? match.functionInfo->qualifiedName.mangled()
-                : mangleModulePath(match.modulePath) + "_" + memberName;
+        // A function or a variable is a symbol codegen emits, and it emits it
+        // under the qualified name its own declaration was registered with —
+        // so take the name from there. Rebuilding it from the module path
+        // would drop a function's overload param suffix and name a symbol
+        // that was never emitted.
+        std::string resolvedName;
+        if (match.kind == SymbolKind::Function && match.functionInfo) {
+          resolvedName = match.functionInfo->qualifiedName.mangled();
+        } else if (match.kind == SymbolKind::Variable && match.variableInfo) {
+          resolvedName = match.variableInfo->qualifiedName.mangled();
+        } else {
+          resolvedName = mangleModulePath(match.modulePath) + "_" + memberName;
+        }
         memberAccess.setResolvedQualifiedName(resolvedName);
 
         switch (match.kind) {
@@ -878,11 +881,11 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
             // specialization rather than at the template's name.
             if (!memberAccess.hasTypeArguments() ||
                 !match.genericFunctionInfo) {
-              logAndThrowError(
-                  "Generic function '" + memberName + "' in module '" +
-                      modPath + "' needs type arguments, e.g. " + memberName +
-                      "<i32>(...)",
-                  memberAccess.getLocation());
+              logAndThrowError("Generic function '" + memberName +
+                                   "' in module '" + modPath +
+                                   "' needs type arguments, e.g. " +
+                                   memberName + "<i32>(...)",
+                               memberAccess.getLocation());
             }
             auto typeArgs = resolveTypeArguments(
                 memberAccess.getTypeArguments(), memberAccess.getLocation(),

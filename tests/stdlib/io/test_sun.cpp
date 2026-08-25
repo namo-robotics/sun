@@ -1,6 +1,7 @@
 // tests/stdlib/io/test_sun.cpp - Extended File I/O tests
 //
-// Tests for: __lseek, __fsync, __ftruncate, __unlink, __rename, __mkdir, __rmdir
+// Tests for: __lseek, __fsync, __ftruncate, __unlink, __rename, __mkdir,
+// __rmdir
 
 #include <gtest/gtest.h>
 
@@ -171,7 +172,7 @@ TEST_F(Stdlib_Io_Sun, unlink_file) {
   auto value = executeString(R"(
     function main() i32 {
         return unsafe { __unlink(")" +
-                      path + R"("); };
+                             path + R"("); };
     };
   )");
 
@@ -185,7 +186,7 @@ TEST_F(Stdlib_Io_Sun, unlink_nonexistent) {
   auto value = executeString(R"(
     function main() i32 {
         return unsafe { __unlink(")" +
-                      path + R"("); };
+                             path + R"("); };
     };
   )");
 
@@ -205,7 +206,7 @@ TEST_F(Stdlib_Io_Sun, rename_file) {
   auto value = executeString(R"(
     function main() i32 {
         return unsafe { __rename(")" +
-                      oldPath + R"(", ")" + newPath + R"("); };
+                             oldPath + R"(", ")" + newPath + R"("); };
     };
   )");
 
@@ -226,7 +227,7 @@ TEST_F(Stdlib_Io_Sun, mkdir_and_rmdir) {
   auto mkdirResult = executeString(R"(
     function main() i32 {
         return unsafe { __mkdir(")" +
-                      dirPath + R"(", 493); };
+                                   dirPath + R"(", 493); };
     };
   )");  // 493 = 0755
 
@@ -237,7 +238,7 @@ TEST_F(Stdlib_Io_Sun, mkdir_and_rmdir) {
   auto rmdirResult = executeString(R"(
     function main() i32 {
         return unsafe { __rmdir(")" +
-                      dirPath + R"("); };
+                                   dirPath + R"("); };
     };
   )");
 
@@ -253,7 +254,7 @@ TEST_F(Stdlib_Io_Sun, rmdir_nonempty_fails) {
   auto value = executeString(R"(
     function main() i32 {
         return unsafe { __rmdir(")" +
-                      dirPath + R"("); };
+                             dirPath + R"("); };
     };
   )");
 
@@ -283,7 +284,7 @@ TEST_F(Stdlib_Io_Sun, write_and_read_raw_bytes) {
         
         // Re-open and verify we can seek
         var fd2: i32 = unsafe { __file_open(")" +
-                              path + R"(", 0); };
+                             path + R"(", 0); };
         var pos: i64 = unsafe { __lseek(fd2, 2, 0); };  // Seek to offset 2
         if (pos != 2) { return 2; }
         

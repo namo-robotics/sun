@@ -120,7 +120,8 @@ TEST(MemorySafety_Drops_Containers, vec_pop_moves_ownership_no_double_drop) {
   EXPECT_EQ(value, 2);
 }
 
-TEST(MemorySafety_Drops_Containers, vec_take_transfers_ownership_no_double_drop) {
+TEST(MemorySafety_Drops_Containers,
+     vec_take_transfers_ownership_no_double_drop) {
   auto value = executeStringWithStdlib(withPreamble(R"(
     function helper() i32, IError {
       var alloc = make_heap_allocator();
@@ -373,7 +374,8 @@ TEST(MemorySafety_Drops_Containers, vec_get_borrows_owning_element) {
   EXPECT_EQ(value, 5);
 }
 
-TEST(MemorySafety_Drops_Containers, vec_index_and_peeks_borrow_owning_elements) {
+TEST(MemorySafety_Drops_Containers,
+     vec_index_and_peeks_borrow_owning_elements) {
   auto value = executeStringWithStdlib(R"(
     using sun;
 
@@ -417,7 +419,8 @@ TEST(MemorySafety_Drops_Containers, map_and_list_peeks_borrow_owning_values) {
 }
 
 // A borrow is a real reference, not a copy that happens to read the same value
-TEST(MemorySafety_Drops_Containers, writing_through_a_borrow_hits_the_container) {
+TEST(MemorySafety_Drops_Containers,
+     writing_through_a_borrow_hits_the_container) {
   auto value = executeStringWithStdlib(R"(
     using sun;
 
@@ -471,7 +474,8 @@ TEST(MemorySafety_Drops_Containers, take_moves_the_element_out) {
 // double free, one step removed. Every by-value context has to reject it.
 // ============================================================================
 
-TEST(MemorySafety_Drops_Containers, borrowed_element_is_not_assignable_to_a_value) {
+TEST(MemorySafety_Drops_Containers,
+     borrowed_element_is_not_assignable_to_a_value) {
   EXPECT_THROW(executeStringWithStdlib(R"(
     using sun;
     function main() i32 {
@@ -485,7 +489,8 @@ TEST(MemorySafety_Drops_Containers, borrowed_element_is_not_assignable_to_a_valu
                std::exception);
 }
 
-TEST(MemorySafety_Drops_Containers, borrowed_element_is_not_a_by_value_argument) {
+TEST(MemorySafety_Drops_Containers,
+     borrowed_element_is_not_a_by_value_argument) {
   EXPECT_THROW(executeStringWithStdlib(R"(
     using sun;
     function by_value(s: String) i64 { return s.length(); }
@@ -510,7 +515,8 @@ TEST(MemorySafety_Drops_Containers, borrowed_element_is_not_returned_by_value) {
 
 // An iterator that claims to yield owning elements by value out of a container
 // it only borrows: each next() would have to move an element out of the Vec
-TEST(MemorySafety_Drops_Containers, borrowed_element_is_not_an_owning_enum_payload) {
+TEST(MemorySafety_Drops_Containers,
+     borrowed_element_is_not_an_owning_enum_payload) {
   EXPECT_THROW(executeStringWithStdlib(R"(
     using sun;
     function grab(v: ref Vec<String>) Option<String> {
@@ -562,7 +568,8 @@ TEST(MemorySafety_Drops_Containers, borrowed_scalar_copies_out_normally) {
 // ============================================================================
 
 // An iterator over Vec<String> declaring String as its item type
-TEST(MemorySafety_Drops_Containers, by_value_iterator_over_owning_elements_is_rejected) {
+TEST(MemorySafety_Drops_Containers,
+     by_value_iterator_over_owning_elements_is_rejected) {
   EXPECT_THROW(executeStringWithStdlib(R"(
     using sun;
 
@@ -583,7 +590,8 @@ TEST(MemorySafety_Drops_Containers, by_value_iterator_over_owning_elements_is_re
 }
 
 // The same thing through a full IIterable container reached by for-in
-TEST(MemorySafety_Drops_Containers, by_value_iterable_of_owning_elements_is_rejected) {
+TEST(MemorySafety_Drops_Containers,
+     by_value_iterable_of_owning_elements_is_rejected) {
   EXPECT_THROW(executeStringWithStdlib(R"(
     using sun;
 
@@ -621,7 +629,8 @@ TEST(MemorySafety_Drops_Containers, by_value_iterable_of_owning_elements_is_reje
 }
 
 // A loop body cannot launder the borrowed element into an owned variable
-TEST(MemorySafety_Drops_Containers, owning_the_loop_element_of_an_owning_vec_is_rejected) {
+TEST(MemorySafety_Drops_Containers,
+     owning_the_loop_element_of_an_owning_vec_is_rejected) {
   EXPECT_THROW(executeStringWithStdlib(R"(
     using sun;
     function main() i32 {
@@ -663,7 +672,8 @@ TEST(MemorySafety_Drops_Containers, for_in_over_owning_vec_binds_a_borrow) {
 
 // A draining iterator yields by value legitimately: pop() moves the element
 // out, so the loop owns it and the Vec no longer does
-TEST(MemorySafety_Drops_Containers, draining_iterator_may_yield_owning_elements_by_value) {
+TEST(MemorySafety_Drops_Containers,
+     draining_iterator_may_yield_owning_elements_by_value) {
   auto value = executeStringWithStdlib(R"(
     using sun;
 

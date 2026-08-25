@@ -14,11 +14,11 @@
 
 #include "codegen/codegen.h"
 #include "codegen/codegen_visitor.h"
-#include "support/error.h"
+#include "driver/sun_value.h"
 #include "moon_bundling/moon_import.h"
 #include "parsing/parser.h"
 #include "semantic_analysis/semantic_analyzer.h"
-#include "driver/sun_value.h"
+#include "support/error.h"
 
 /// Driver orchestrates the compilation pipeline: parse → analyze → codegen →
 /// execute. It owns all compilation components and provides static factory
@@ -195,10 +195,10 @@ class Driver {
   /// @param moonImports Precompiled .moon libraries with optional aliasing
   /// @param argc Argument count for main()
   /// @param argv Argument vector for main()
-  sun::SunValue executeFiles(const std::vector<std::string>& sourceFiles,
-                             const std::vector<sun::MoonImport>& moonImports = {},
-                             int argc = 0, char** argv = nullptr,
-                             const std::vector<std::string>& protoFiles = {});
+  sun::SunValue executeFiles(
+      const std::vector<std::string>& sourceFiles,
+      const std::vector<sun::MoonImport>& moonImports = {}, int argc = 0,
+      char** argv = nullptr, const std::vector<std::string>& protoFiles = {});
 
   /// Access the underlying module (for emitting object code after compilation)
   llvm::Module& getModule() { return *ctx->mainModule; }

@@ -33,12 +33,24 @@ class CharLiteralAST : public ExprAST {
   std::string toString() const override {
     std::string out = isByte_ ? "b'" : "'";
     switch (value_) {
-      case '\n': out += "\\n"; break;
-      case '\t': out += "\\t"; break;
-      case '\r': out += "\\r"; break;
-      case '\\': out += "\\\\"; break;
-      case '\0': out += "\\0"; break;
-      case '\'': out += "\\'"; break;
+      case '\n':
+        out += "\\n";
+        break;
+      case '\t':
+        out += "\\t";
+        break;
+      case '\r':
+        out += "\\r";
+        break;
+      case '\\':
+        out += "\\\\";
+        break;
+      case '\0':
+        out += "\\0";
+        break;
+      case '\'':
+        out += "\\'";
+        break;
       default:
         if (value_ >= 0x20 && value_ < 0x7F) {
           out += static_cast<char>(value_);

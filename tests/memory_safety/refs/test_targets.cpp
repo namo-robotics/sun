@@ -1,5 +1,5 @@
-// tests/memory_safety/refs/test_targets.cpp - Tests for references to fields and array
-// elements (ref r = obj.field; / ref r = arr[i];)
+// tests/memory_safety/refs/test_targets.cpp - Tests for references to fields
+// and array elements (ref r = obj.field; / ref r = arr[i];)
 
 #include <gtest/gtest.h>
 

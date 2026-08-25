@@ -9,11 +9,11 @@
 
 #include "ast.h"
 #include "ast/manifest_ast.h"
-#include "serialization/ast_cache.h"
-#include "support/error.h"
-#include "parsing/lexer.h"
 #include "moon_bundling/moon.h"
 #include "moon_bundling/moon_import.h"
+#include "parsing/lexer.h"
+#include "serialization/ast_cache.h"
+#include "support/error.h"
 
 using std::unique_ptr;
 
@@ -133,11 +133,10 @@ class Parser {
       // Split off the leading '>' and push the remainder back. Spans are
       // split at the character boundary so type annotations sliced from
       // source don't absorb the remainder (e.g. Vec<Vec<i32>>).
-      TokenKind remainderKind = curTok.kind == TokenKind::RIGHT_SHIFT
-                                    ? TokenKind::GREATER
-                                : curTok.kind == TokenKind::GREATER_EQUAL
-                                    ? TokenKind::EQUAL
-                                    : TokenKind::GREATER_EQUAL;
+      TokenKind remainderKind =
+          curTok.kind == TokenKind::RIGHT_SHIFT     ? TokenKind::GREATER
+          : curTok.kind == TokenKind::GREATER_EQUAL ? TokenKind::EQUAL
+                                                    : TokenKind::GREATER_EQUAL;
       Position mid = curTok.start;
       mid.column += 1;
       mid.offset += 1;
@@ -223,8 +222,7 @@ class Parser {
   template <typename NodeT>
   unique_ptr<NodeT> finishNode(unique_ptr<NodeT> node, Position start) const {
     if (node) {
-      start.setEnd(prevTok_.end.line, prevTok_.end.column,
-                   prevTok_.end.offset);
+      start.setEnd(prevTok_.end.line, prevTok_.end.column, prevTok_.end.offset);
       node->setLocation(std::move(start));
     }
     return node;

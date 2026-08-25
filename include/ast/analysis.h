@@ -8,8 +8,8 @@
 #include <utility>
 #include <vector>
 
-#include "semantic_analysis/argument_conversion.h"
 #include "ast/ast_fwd.h"
+#include "semantic_analysis/argument_conversion.h"
 #include "semantic_analysis/qualified_name.h"
 #include "semantic_analysis/types.h"
 
@@ -28,15 +28,6 @@ struct ExprAnalysis {
   ExprAnalysis& operator=(const ExprAnalysis&) = default;
   ExprAnalysis(ExprAnalysis&&) = default;
   ExprAnalysis& operator=(ExprAnalysis&&) = default;
-};
-
-/// Analysis data for nodes with qualified names (variables, classes, etc.)
-struct QualifiedNameAnalysis {
-  sun::QualifiedName qualifiedName;
-
-  QualifiedNameAnalysis() = default;
-  QualifiedNameAnalysis(const QualifiedNameAnalysis&) = default;
-  QualifiedNameAnalysis& operator=(const QualifiedNameAnalysis&) = default;
 };
 
 /// Analysis data for PrototypeAST (function signatures)

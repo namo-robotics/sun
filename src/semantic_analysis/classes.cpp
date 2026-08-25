@@ -2,9 +2,9 @@
 
 #include <algorithm>
 
-#include "support/error.h"
 #include "semantic_analysis/packed_layout.h"
 #include "semantic_analysis/semantic_analyzer.h"
+#include "support/error.h"
 
 // -------------------------------------------------------------------
 // Class support
@@ -62,12 +62,11 @@ void SemanticAnalyzer::checkPackedRefArguments(
     if (args[i]->getType() != ASTNodeType::MEMBER_ACCESS) continue;
     std::string ownerName;
     if (sun::packed::isFieldAccess(*args[i], &ownerName)) {
-      logAndThrowError(
-          sun::packed::borrowRejection(
-              "pass a " + sun::packed::fieldPhrase(ownerName) +
-                  " to a ref parameter",
-              "Pass a copy instead."),
-          args[i]->getLocation());
+      logAndThrowError(sun::packed::borrowRejection(
+                           "pass a " + sun::packed::fieldPhrase(ownerName) +
+                               " to a ref parameter",
+                           "Pass a copy instead."),
+                       args[i]->getLocation());
     }
   }
 }
@@ -122,8 +121,9 @@ const GenericClassInfo* SemanticAnalyzer::lookupGenericClassOf(
 SemanticScope* SemanticAnalyzer::classDefinitionScope(
     const sun::ClassType& classType) const {
   const GenericClassInfo* info =
-      classType.isSpecialized() ? lookupGenericClassOf(classType)
-                                : lookupGenericClass(classType.getQualifiedName());
+      classType.isSpecialized()
+          ? lookupGenericClassOf(classType)
+          : lookupGenericClass(classType.getQualifiedName());
   return info ? definitionScopeOf(*info) : nullptr;
 }
 
@@ -176,10 +176,9 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
 
   // Verify type argument count matches
   if (typeArgs.size() != genericClassInfo->typeParameters.size()) {
-    logAndThrowError(
-        "Generic class '" + baseName + "' expects " +
-        std::to_string(genericClassInfo->typeParameters.size()) +
-        " type arguments, got " + std::to_string(typeArgs.size()));
+    logAndThrowError("Generic class '" + baseName + "' expects " +
+                     std::to_string(genericClassInfo->typeParameters.size()) +
+                     " type arguments, got " + std::to_string(typeArgs.size()));
   }
 
   // Construct the specialized QualifiedName from the generic's qualified name
@@ -240,7 +239,8 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
       specializedClass = typeRegistry->getSpecializedClass(
           genericClassInfo->qualifiedName.mangled(), typeArgs);
       specializedClass->setQualifiedName(specializedQName);
-      specializedClass->setGenericQualifiedName(genericClassInfo->qualifiedName);
+      specializedClass->setGenericQualifiedName(
+          genericClassInfo->qualifiedName);
     }
 
     // Register the specialized class so methods can reference it
@@ -261,8 +261,7 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
   // from: names resolve as they do at the definition site (transitive
   // dependencies of its module included) and access control sees the
   // template's own module.
-  ScopeSwitchGuard definitionScope(*this,
-                                   definitionScopeOf(*genericClassInfo));
+  ScopeSwitchGuard definitionScope(*this, definitionScopeOf(*genericClassInfo));
 
   // Push a scope for class-level type parameter bindings
   enterClassScope(specializedQName);
@@ -412,8 +411,8 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
       for (const auto& pt : paramTypes) {
         methodParamTypes.push_back(pt);
       }
-      registernFunctionInCurrentScope(methodMangledName,
-                                      {returnType, methodParamTypes, {}});
+      registerFunctionInCurrentScope(methodMangledName,
+                                     {returnType, methodParamTypes, {}});
     }
   }
 
@@ -512,8 +511,7 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
 void SemanticAnalyzer::analyzeDeferredSpecializations() {
   for (size_t i = 0; i < deferredSpecializations_.size(); ++i) {
     DeferredSpecialization d = deferredSpecializations_[i];
-    ScopeSwitchGuard definitionScope(*this,
-                                     definitionScopeOf(*d.genericInfo));
+    ScopeSwitchGuard definitionScope(*this, definitionScopeOf(*d.genericInfo));
 
     enterClassScope(d.specializedClass->getQualifiedName());
     addTypeParameterBindings(d.genericInfo->typeParameters, d.typeArgs);
@@ -684,8 +682,7 @@ SemanticAnalyzer::instantiateGenericFunction(
     // Declare parameters in scope for body analysis - use the mangled qualified
     // name so nested functions get correct context
     enterFunctionScope(funcSig, clonedProto.getQualifiedName(),
-                       proto.canThrow(),
-                       clonedProto.getResolvedReturnType());
+                       proto.canThrow(), clonedProto.getResolvedReturnType());
 
     // Record the variadic pack on the function scope (see method path). Today
     // the function path never resolves variadic types, so this is a no-op until
@@ -815,8 +812,8 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   if (variadicArgTypes) {
     std::string hashPrefix =
         sun::QualifiedName::extractHashPrefix(classType->getMangledName());
-    mangledName +=
-        sun::QualifiedName::buildVariadicArgSuffix(*variadicArgTypes, hashPrefix);
+    mangledName += sun::QualifiedName::buildVariadicArgSuffix(*variadicArgTypes,
+                                                              hashPrefix);
   }
 
   // Check cache
@@ -827,8 +824,8 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   }
 
   // Find the method's FunctionAST from the class definition
-  FunctionAST* genericMethodAST = findGenericMethodAST(classType.get(),
-                                                       methodName);
+  FunctionAST* genericMethodAST =
+      findGenericMethodAST(classType.get(), methodName);
   if (!genericMethodAST) {
     return nullptr;  // Generic method not found
   }
@@ -974,10 +971,10 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   // const view of its return type (borrows of `this` are `const ref` there).
   sun::TypePtr bodyReturnType = proto.getResolvedReturnType();
   if (proto.isConstMethod()) bodyReturnType = createConstView(bodyReturnType);
-  enterFunctionScope(methodSig,
-                     sun::QualifiedName(classType->getQualifiedName().scopePath,
-                                        mangledName),
-                     proto.canThrow(), bodyReturnType);
+  enterFunctionScope(
+      methodSig,
+      sun::QualifiedName(classType->getQualifiedName().scopePath, mangledName),
+      proto.canThrow(), bodyReturnType);
 
   // Record the variadic pack (name + resolved element types) on the function
   // scope so `args...` can be expanded into concrete typed args during body

@@ -79,8 +79,7 @@ std::string renderType(const sun::Type& type, const Bindings& bindings) {
           bindings);
     case sun::Type::Kind::Interface:
       return renderWithArguments(
-          type,
-          static_cast<const sun::InterfaceType&>(type).getTypeArguments(),
+          type, static_cast<const sun::InterfaceType&>(type).getTypeArguments(),
           bindings);
     case sun::Type::Kind::Enum:
       return renderWithArguments(
@@ -111,9 +110,8 @@ std::string renderTypeParameters(const std::vector<std::string>& params) {
 // `function name(a: i32, b: i32) i32` — resolved types when the analyzer
 // recorded them (specializations), otherwise the annotations as written
 std::string renderPrototype(const PrototypeAST& proto,
-                            const std::string& keyword,
-                            const std::string& name, bool isPublic,
-                            const std::string& source,
+                            const std::string& keyword, const std::string& name,
+                            bool isPublic, const std::string& source,
                             const Bindings& bindings) {
   std::string out;
   if (isPublic) out += "public ";
@@ -205,8 +203,9 @@ std::optional<Hover> hoverInterface(const InterfaceDefinitionAST& iface,
     Position span = field.location;
     if (field.type.span.endOffset) span.endOffset = field.type.span.endOffset;
     if (!spanContains(span, offset)) continue;
-    return Hover{"var " + field.name + ": " + annotationText(field.type, source),
-                 field.doc, span};
+    return Hover{
+        "var " + field.name + ": " + annotationText(field.type, source),
+        field.doc, span};
   }
   std::string out = iface.isPublic() ? "public " : "";
   out += "interface " + iface.getName() +
@@ -257,9 +256,8 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
 
     case ASTNodeType::VARIABLE_CREATION: {
       const auto& decl = static_cast<const VariableCreationAST&>(node);
-      std::string prefix =
-          std::string(decl.isConst() ? "const " : "var ") + decl.getName() +
-          ": ";
+      std::string prefix = std::string(decl.isConst() ? "const " : "var ") +
+                           decl.getName() + ": ";
       if (type) {
         return Hover{prefix + renderType(*type, bindings), decl.getDoc(),
                      range};
@@ -289,9 +287,8 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
 
     case ASTNodeType::FOR_IN_LOOP: {
       const auto& loop = static_cast<const ForInExprAST&>(node);
-      std::string prefix =
-          std::string(loop.isConst() ? "const " : "var ") + loop.getLoopVar() +
-          ": ";
+      std::string prefix = std::string(loop.isConst() ? "const " : "var ") +
+                           loop.getLoopVar() + ": ";
       if (loop.hasResolvedLoopVarType()) {
         return Hover{
             prefix + renderType(*loop.getResolvedLoopVarType(), bindings), "",
@@ -303,10 +300,10 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
 
     case ASTNodeType::FUNCTION: {
       const auto& fn = static_cast<const FunctionAST&>(node);
-      return Hover{renderPrototype(fn.getProto(), "function",
-                                   fn.getProto().getName(), fn.isPublic(),
-                                   source, bindings),
-                   fn.getProto().getDoc(), range};
+      return Hover{
+          renderPrototype(fn.getProto(), "function", fn.getProto().getName(),
+                          fn.isPublic(), source, bindings),
+          fn.getProto().getDoc(), range};
     }
     case ASTNodeType::LAMBDA: {
       const auto& lambda = static_cast<const LambdaAST&>(node);
@@ -320,8 +317,7 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
       const auto& call = static_cast<const CallExprAST&>(node);
       std::string callee = sliceSpan(source, call.getCallee()->getLocation());
       if (callee.empty()) callee = call.getCallee()->toString();
-      return Hover{callee + "(...): " + renderType(*type, bindings), "",
-                   range};
+      return Hover{callee + "(...): " + renderType(*type, bindings), "", range};
     }
     case ASTNodeType::GENERIC_CALL: {
       if (!type) return std::nullopt;
@@ -335,8 +331,7 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
         }
         if (!typeArgs.empty()) callee += ">";
       }
-      return Hover{callee + "(...): " + renderType(*type, bindings), "",
-                   range};
+      return Hover{callee + "(...): " + renderType(*type, bindings), "", range};
     }
 
     case ASTNodeType::CLASS_DEFINITION:
@@ -368,9 +363,9 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
         for (const auto& binding : arm.bindings) {
           if (binding.isWildcard || !binding.resolvedType) continue;
           if (!spanContains(binding.location, offset)) continue;
-          return Hover{binding.name + ": " +
-                           renderType(*binding.resolvedType, bindings),
-                       "", binding.location};
+          return Hover{
+              binding.name + ": " + renderType(*binding.resolvedType, bindings),
+              "", binding.location};
         }
       }
       return std::nullopt;
@@ -421,8 +416,8 @@ std::optional<Hover> hoverAnnotation(const ExprAST& decl,
                              -1, source);
       break;
     case ASTNodeType::ENUM_DEFINITION:
-      hover = hoverEnum(static_cast<const EnumDefinitionAST&>(decl), -1,
-                        source);
+      hover =
+          hoverEnum(static_cast<const EnumDefinitionAST&>(decl), -1, source);
       break;
     case ASTNodeType::DECLARE_TYPE: {
       const auto& alias = static_cast<const DeclareTypeAST&>(decl);

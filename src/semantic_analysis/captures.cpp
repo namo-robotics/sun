@@ -353,9 +353,9 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const LambdaAST& lambda) {
     }
     VariableInfo* varInfo = lookupVariable(refName);
     if (!varInfo || !varInfo->type) {
-      logAndThrowError("Unknown variable '" + refName +
-                           "' in lambda capture list",
-                       lambda.getLocation());
+      logAndThrowError(
+          "Unknown variable '" + refName + "' in lambda capture list",
+          lambda.getLocation());
     }
     if (varInfo->isGlobal) {
       logAndThrowError("Cannot capture global variable '" + refName +

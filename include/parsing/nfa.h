@@ -185,7 +185,6 @@ class NFA {
     return nfa;
   }
 
-
   // --- compiled form ------------------------------------------------------
   //
   // Flattens the pointer graph into dense arrays for the DFA to determinize:
@@ -255,8 +254,8 @@ class NFA {
     for (int i = 0; i < numStates_; ++i) {
       const State* st = allStates[i].get();
       for (const auto& [ch, targets] : st->transitions) {
-        size_t slot = static_cast<size_t>(i) * kAlphabet +
-                      static_cast<unsigned char>(ch);
+        size_t slot =
+            static_cast<size_t>(i) * kAlphabet + static_cast<unsigned char>(ch);
         charOff_[slot] = static_cast<int>(charTargets_.size());
         charTargets_.push_back(static_cast<int>(targets.size()));
         for (State* t : targets) charTargets_.push_back(idOf_[t]);
@@ -327,13 +326,19 @@ class NFA {
       bool ok = false;
       for (const auto& [ch, targets] : st->transitions) {
         for (State* nx : targets) {
-          if (canReach[idOf_[nx]]) { ok = true; break; }
+          if (canReach[idOf_[nx]]) {
+            ok = true;
+            break;
+          }
         }
         if (ok) break;
       }
       if (!ok) {
         for (State* nx : st->anyCharTransitions) {
-          if (canReach[idOf_[nx]]) { ok = true; break; }
+          if (canReach[idOf_[nx]]) {
+            ok = true;
+            break;
+          }
         }
       }
       reachNonEmpty_[i] = ok;
@@ -354,7 +359,6 @@ class NFA {
       }
     }
   }
-
 };
 
 // ------------------------------------------------------------------
@@ -380,7 +384,7 @@ class NFA {
 class DFA {
  public:
   static constexpr int kAlphabet = 256;
-  static constexpr int32_t kDead = 0;        // reserved: the empty state set
+  static constexpr int32_t kDead = 0;         // reserved: the empty state set
   static constexpr int32_t kUncomputed = -1;  // sentinel inside trans_
   static constexpr int32_t kNoAccept = -1;    // acceptKind_ of a non-accepting
 

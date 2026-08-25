@@ -1,4 +1,5 @@
-// tests/operators/test_logical.cpp - Tests for logical operations (and, or, not)
+// tests/operators/test_logical.cpp - Tests for logical operations (and, or,
+// not)
 
 #include <gtest/gtest.h>
 
@@ -306,7 +307,9 @@ TEST(Operators_Logical, mixed_chain) {
           return true and false or true and true;
       }
     )");
-  EXPECT_EQ(value, true);  // (true and false) or (true and true) = false or true = true
+  EXPECT_EQ(
+      value,
+      true);  // (true and false) or (true and true) = false or true = true
 }
 
 TEST(Operators_Logical, integers_as_bool) {

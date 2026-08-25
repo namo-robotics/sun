@@ -3,6 +3,7 @@
 #include <map>
 #include <stdexcept>
 
+#include "driver/sun_jit.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/BasicBlock.h"
@@ -15,10 +16,10 @@
 #include "llvm/IR/PassManager.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/MC/TargetRegistry.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/StandardInstrumentations.h"
 #include "llvm/Support/TargetSelect.h"
-#include "llvm/MC/TargetRegistry.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/TargetParser/Host.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
@@ -27,7 +28,6 @@
 #include "llvm/Transforms/Scalar/Reassociate.h"
 #include "llvm/Transforms/Scalar/SimplifyCFG.h"
 #include "llvm/Transforms/Utils/Mem2Reg.h"
-#include "driver/sun_jit.h"
 
 using namespace llvm;
 
@@ -63,8 +63,7 @@ class CodegenContext {
   explicit CodegenContext(std::string moduleName,
                           const std::shared_ptr<SunJIT>& jit,
                           LLVMContext* existingContext = nullptr,
-                          std::string targetTriple = "",
-                          bool debugInfo = false)
+                          std::string targetTriple = "", bool debugInfo = false)
       : moduleName(std::move(moduleName)),
         jit(jit),
         targetTriple_(std::move(targetTriple)),

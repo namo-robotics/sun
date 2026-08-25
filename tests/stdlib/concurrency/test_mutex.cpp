@@ -1,4 +1,5 @@
-// tests/stdlib/concurrency/test_mutex.cpp - Tests for Mutex synchronization primitive
+// tests/stdlib/concurrency/test_mutex.cpp - Tests for Mutex synchronization
+// primitive
 
 #include <gtest/gtest.h>
 
@@ -6,8 +7,8 @@
 #include <sstream>
 #include <string>
 
-#include "support/error.h"
 #include "driver/execution_utils.h"
+#include "support/error.h"
 
 // ============================================================================
 // Atomic Intrinsic Compilation Tests

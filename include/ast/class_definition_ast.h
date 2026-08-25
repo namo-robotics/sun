@@ -202,5 +202,7 @@ class ClassDefinitionAST : public ExprAST {
   }
 
   // Keyword that introduces this declaration in source
-  const char* classKeyword() const { return isPacked_ ? "packed_class" : "class"; }
+  const char* classKeyword() const {
+    return isPacked_ ? "packed_class" : "class";
+  }
 };

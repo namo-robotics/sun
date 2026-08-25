@@ -6,18 +6,18 @@
 #include <stdexcept>
 
 #include "ast.h"
-#include "support/error.h"
 #include "parsing/escapes.h"
 #include "parsing/lexer.h"
 #include "parsing/parser.h"
+#include "support/error.h"
 
 std::unique_ptr<InterpolatedStringAST> InterpolatedStringParser::parseToAst(
     const std::string& content, const Position& start, const Position& end,
     const std::string& filePath) {
   auto segments = tokenize(content, start, filePath);
 
-  auto node = std::make_unique<InterpolatedStringAST>(content,
-                                                      std::move(segments));
+  auto node =
+      std::make_unique<InterpolatedStringAST>(content, std::move(segments));
   Position loc = start;
   if (!filePath.empty()) loc.filePath = filePath;
   loc.setEnd(end.line, end.column, end.offset);
@@ -220,8 +220,9 @@ std::unique_ptr<BlockExprAST> InterpolatedStringParser::desugar(
   std::vector<std::unique_ptr<ExprAST>> stringArgs;
   stringArgs.push_back(makeVarRef("interp_alloc_", loc));
   stringArgs.push_back(makeStringLiteral("", loc));
-  auto stringCall = makeCall(makeMemberAccess(makeVarRef("sun", loc), "String", loc),
-                             std::move(stringArgs), loc);
+  auto stringCall =
+      makeCall(makeMemberAccess(makeVarRef("sun", loc), "String", loc),
+               std::move(stringArgs), loc);
   block->addExpression(
       makeVarCreate("interp_result_", std::move(stringCall), loc));
 
@@ -308,8 +309,8 @@ std::unique_ptr<MemberAccessAST> InterpolatedStringParser::makeMemberAccess(
 }
 
 std::unique_ptr<CallExprAST> InterpolatedStringParser::makeCall(
-    std::unique_ptr<ExprAST> callee,
-    std::vector<std::unique_ptr<ExprAST>> args, const Position& loc) {
+    std::unique_ptr<ExprAST> callee, std::vector<std::unique_ptr<ExprAST>> args,
+    const Position& loc) {
   auto node = std::make_unique<CallExprAST>(std::move(callee), std::move(args));
   node->setLocation(loc);
   return node;

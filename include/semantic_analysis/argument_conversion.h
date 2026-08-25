@@ -12,25 +12,25 @@
 #include <string>
 #include <vector>
 
-#include "support/position.h"
 #include "semantic_analysis/types.h"
+#include "support/position.h"
 
 namespace sun {
 
 enum class ArgConversion : uint8_t {
-  PassValue,  // the value as it is: scalars, arrays, pointers, interface and
-              // lambda values (and anything read out of a borrow)
-  Move,       // a class or payload enum by value: the source is invalidated
-  Borrow,     // a `ref T` parameter: the argument's address
-  RawPtrAsRef,          // raw_ptr<T> to `ref T`: the pointer is the address
+  PassValue,    // the value as it is: scalars, arrays, pointers, interface and
+                // lambda values (and anything read out of a borrow)
+  Move,         // a class or payload enum by value: the source is invalidated
+  Borrow,       // a `ref T` parameter: the argument's address
+  RawPtrAsRef,  // raw_ptr<T> to `ref T`: the pointer is the address
   ClassToInterface,     // a class to an interface it implements: fat pointer
   ClassToRefInterface,  // a class to `ref Interface`: a fat pointer spilled
                         // to the stack, its address passed
-  WidenNumeric,    // a narrower integer or float to a wider parameter
-  StaticToRawPtr,  // static_ptr<T> to raw_ptr<T>: its data pointer
-  DerefRawPtr,     // raw_ptr<T> to a primitive T: the pointee is loaded
-  CVararg,         // past the declared parameters of a C-variadic callee:
-                   // C's default argument promotions
+  WidenNumeric,         // a narrower integer or float to a wider parameter
+  StaticToRawPtr,       // static_ptr<T> to raw_ptr<T>: its data pointer
+  DerefRawPtr,          // raw_ptr<T> to a primitive T: the pointee is loaded
+  CVararg,              // past the declared parameters of a C-variadic callee:
+                        // C's default argument promotions
 };
 
 namespace conversions {
@@ -50,8 +50,9 @@ std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
 // classifyArgument for every argument of a call, in order. Throws the
 // compile error for a pair with no lowering.
 std::vector<ArgConversion> classifyArguments(
-    const std::vector<TypePtr>& argTypes, const std::vector<TypePtr>& paramTypes,
-    bool cVariadic, const std::string& calleeName, std::optional<Position> loc);
+    const std::vector<TypePtr>& argTypes,
+    const std::vector<TypePtr>& paramTypes, bool cVariadic,
+    const std::string& calleeName, std::optional<Position> loc);
 
 }  // namespace conversions
 }  // namespace sun

@@ -11,9 +11,9 @@
 #include "ast/analysis.h"
 #include "ast/ast_common.h"
 #include "ast/type_annotation.h"
-#include "support/position.h"
 #include "semantic_analysis/qualified_name.h"
 #include "semantic_analysis/types.h"
+#include "support/position.h"
 
 // Top-level nodes (not derived from ExprAST)
 class PrototypeAST {
@@ -26,7 +26,7 @@ class PrototypeAST {
   std::optional<std::string>
       variadicParamName_;  // Name of variadic param if present
   std::optional<TypeAnnotation> variadicConstraint_;  // e.g., _init_args<T>
-  bool cVariadic_ = false;  // C-style trailing `...` (extern declarations)
+  bool cVariadic_ = false;    // C-style trailing `...` (extern declarations)
   bool constMethod_ = false;  // `const function`: `this` is immutable
   std::optional<std::string> linkName_;  // `as "c_symbol"` override
   Position location_;                    // Source span of the signature

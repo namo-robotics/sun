@@ -1,4 +1,5 @@
-// tests/stdlib/collections/test_contiguous_buffer.cpp - Tests for ContiguousBuffer<T>
+// tests/stdlib/collections/test_contiguous_buffer.cpp - Tests for
+// ContiguousBuffer<T>
 
 #include <gtest/gtest.h>
 
@@ -21,7 +22,8 @@ TEST(Stdlib_Collections_ContiguousBuffer, basic_allocation_and_size) {
         var buf = ContiguousBuffer<i32>(alloc, 10);
         return buf.size();
     }
-  )", 0, nullptr, true);
+  )",
+                                            0, nullptr, true);
   EXPECT_EQ(value, 10);
 }
 
