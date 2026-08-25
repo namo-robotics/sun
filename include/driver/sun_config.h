@@ -28,7 +28,7 @@ namespace sun {
 struct SunConfig {
   static constexpr const char* kFileName = "sun-config.json";
 
-  std::filesystem::path configDir;  // directory of the nearest config file
+  std::filesystem::path configDir;   // directory of the nearest config file
   std::vector<std::string> sunPath;  // extra library search dirs (absolute)
   std::map<std::string, std::string> pathVariables;  // values made absolute
   bool root = false;  // stop the upward search at this file

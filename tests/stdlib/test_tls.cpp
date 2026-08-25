@@ -37,7 +37,9 @@ sun::SunValue executeWithTls(const std::string& source) {
   return driver->executeString(source);
 }
 
-bool haveOpenSSLTool() { return std::system("which openssl > /dev/null 2>&1") == 0; }
+bool haveOpenSSLTool() {
+  return std::system("which openssl > /dev/null 2>&1") == 0;
+}
 
 // A self-signed certificate plus an s_server serving it, torn down with the
 // fixture. Trusting it means pointing SSL_CERT_FILE at the same PEM.
@@ -51,11 +53,10 @@ class TlsServer {
     certPath_ = (dir_ / "cert.pem").string();
     std::string keyPath = (dir_ / "key.pem").string();
 
-    std::string gen = "openssl req -x509 -newkey rsa:2048 -keyout " + keyPath +
-                      " -out " + certPath_ +
-                      " -days 1 -nodes -subj '/CN=" + commonName +
-                      "' -addext 'subjectAltName=DNS:" + commonName +
-                      "' > /dev/null 2>&1";
+    std::string gen =
+        "openssl req -x509 -newkey rsa:2048 -keyout " + keyPath + " -out " +
+        certPath_ + " -days 1 -nodes -subj '/CN=" + commonName +
+        "' -addext 'subjectAltName=DNS:" + commonName + "' > /dev/null 2>&1";
     ok_ = std::system(gen.c_str()) == 0;
     if (!ok_) return;
 
@@ -68,8 +69,8 @@ class TlsServer {
   }
 
   ~TlsServer() {
-    std::system(("kill $(cat " + (dir_ / "pid").string() + ") 2>/dev/null")
-                    .c_str());
+    std::system(
+        ("kill $(cat " + (dir_ / "pid").string() + ") 2>/dev/null").c_str());
     std::error_code ec;
     std::filesystem::remove_all(dir_, ec);
   }

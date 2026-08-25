@@ -14,8 +14,8 @@
 #include "codegen/codegen.h"
 #include "codegen/codegen_visitor.h"
 #include "driver/execution_utils.h"
-#include "parsing/lexer.h"
 #include "moon_bundling/moon_builder.h"
+#include "parsing/lexer.h"
 #include "parsing/parser.h"
 #include "semantic_analysis/semantic_analyzer.h"
 
@@ -1006,8 +1006,7 @@ TEST(Modules, moon_keeps_const_declarations) {
   rejects("LIMIT = 1;", "Cannot assign to constant 'LIMIT'");
   // Qualified: the message names the declaring module, not its library hash
   rejects("constlib.LIMIT = 1;", "Cannot assign to constant 'constlib.LIMIT'");
-  rejects("constlib.LIMIT += 1;",
-          "Cannot assign to constant 'constlib.LIMIT'");
+  rejects("constlib.LIMIT += 1;", "Cannot assign to constant 'constlib.LIMIT'");
   rejects("const c = Counter(1); c.bump();",
           "Cannot call non-const method 'bump' on constant 'c'");
   rejects("var c = Counter(1); var r: const ref Counter = c; r.bump();",

@@ -8,8 +8,8 @@
 #include <set>
 #include <sstream>
 
-#include "support/error.h"
 #include "semantic_analysis/semantic_analyzer.h"
+#include "support/error.h"
 
 using sun::unwrapRef;
 
@@ -37,7 +37,8 @@ bool SemanticScope::hasSymbol(const std::string& name) const {
 bool SemanticScope::hasAccessibleSymbol(const std::string& name,
                                         AccessFilter& filter) const {
   if (!filter.enabled()) return hasSymbol(name);
-  if (auto it = classes.find(name); it != classes.end() && filter.admit(it->second))
+  if (auto it = classes.find(name);
+      it != classes.end() && filter.admit(it->second))
     return true;
   if (auto it = genericClasses.find(name);
       it != genericClasses.end() && filter.admit(&it->second))
@@ -697,8 +698,7 @@ SymbolMatch SemanticAnalyzer::findSymbolInModule(
 
     // Check generic functions (templates, keyed by qualified name)
     if (matchesFilter(SymbolKind::GenericFunction)) {
-      auto genFuncIt =
-          scope->genericFunctions.find({scope->scopePath, name});
+      auto genFuncIt = scope->genericFunctions.find({scope->scopePath, name});
       if (genFuncIt != scope->genericFunctions.end()) {
         SymbolMatch match;
         match.kind = SymbolKind::GenericFunction;
@@ -1034,23 +1034,20 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
       "_free", {Types::Void(), {Types::RawPointer(Types::Int8())}, {}});
   // _memcpy(dst, src, len) - copy len bytes from src to dst
   registerFunctionInCurrentScope(
-      "_memcpy",
-      {Types::Void(),
-       {Types::RawPointer(Types::UInt8()), Types::RawPointer(Types::UInt8()),
-        Types::Int64()},
-       {}});
+      "_memcpy", {Types::Void(),
+                  {Types::RawPointer(Types::UInt8()),
+                   Types::RawPointer(Types::UInt8()), Types::Int64()},
+                  {}});
   // _memset(dst, value, len) - set len bytes at dst to value
-  registerFunctionInCurrentScope(
-      "_memset",
-      {Types::Void(),
-       {Types::RawPointer(Types::UInt8()), Types::Int32(), Types::Int64()},
-       {}});
+  registerFunctionInCurrentScope("_memset", {Types::Void(),
+                                             {Types::RawPointer(Types::UInt8()),
+                                              Types::Int32(), Types::Int64()},
+                                             {}});
   // _ptr_offset(ptr, byte_offset) - offset a pointer by byte_offset bytes
   registerFunctionInCurrentScope(
-      "_ptr_offset",
-      {Types::RawPointer(Types::UInt8()),
-       {Types::RawPointer(Types::UInt8()), Types::Int64()},
-       {}});
+      "_ptr_offset", {Types::RawPointer(Types::UInt8()),
+                      {Types::RawPointer(Types::UInt8()), Types::Int64()},
+                      {}});
 
   // Atomic intrinsics
   // _atomic_cmpxchg_i32(ptr, expected, desired) - atomic compare-and-swap
@@ -1103,11 +1100,10 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
       "__listen", {Types::Int32(), {Types::Int32(), Types::Int32()}, {}});
   // __accept(fd, addr, addrlen_ptr) -> new_fd
   registerFunctionInCurrentScope(
-      "__accept",
-      {Types::Int32(),
-       {Types::Int32(), Types::RawPointer(Types::UInt8()),
-        Types::RawPointer(Types::Int32())},
-       {}});
+      "__accept", {Types::Int32(),
+                   {Types::Int32(), Types::RawPointer(Types::UInt8()),
+                    Types::RawPointer(Types::Int32())},
+                   {}});
   // __connect(fd, addr, addrlen) -> result
   registerFunctionInCurrentScope(
       "__connect",
@@ -1116,28 +1112,25 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
        {}});
   // __send(fd, buf, len, flags) -> bytes_sent
   registerFunctionInCurrentScope(
-      "__send",
-      {Types::Int64(),
-       {Types::Int32(), Types::RawPointer(Types::UInt8()), Types::Int64(),
-        Types::Int32()},
-       {}});
+      "__send", {Types::Int64(),
+                 {Types::Int32(), Types::RawPointer(Types::UInt8()),
+                  Types::Int64(), Types::Int32()},
+                 {}});
   // __recv(fd, buf, len, flags) -> bytes_received
   registerFunctionInCurrentScope(
-      "__recv",
-      {Types::Int64(),
-       {Types::Int32(), Types::RawPointer(Types::UInt8()), Types::Int64(),
-        Types::Int32()},
-       {}});
+      "__recv", {Types::Int64(),
+                 {Types::Int32(), Types::RawPointer(Types::UInt8()),
+                  Types::Int64(), Types::Int32()},
+                 {}});
   // __shutdown(fd, how) -> result
   registerFunctionInCurrentScope(
       "__shutdown", {Types::Int32(), {Types::Int32(), Types::Int32()}, {}});
   // __setsockopt(fd, level, optname, optval, optlen) -> result
   registerFunctionInCurrentScope(
-      "__setsockopt",
-      {Types::Int32(),
-       {Types::Int32(), Types::Int32(), Types::Int32(),
-        Types::RawPointer(Types::UInt8()), Types::Int32()},
-       {}});
+      "__setsockopt", {Types::Int32(),
+                       {Types::Int32(), Types::Int32(), Types::Int32(),
+                        Types::RawPointer(Types::UInt8()), Types::Int32()},
+                       {}});
   // __getsockopt(fd, level, optname, optval, optlen_ptr) -> result
   registerFunctionInCurrentScope(
       "__getsockopt",

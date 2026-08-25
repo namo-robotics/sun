@@ -450,7 +450,8 @@ TEST(MemorySafety_BorrowChecker, ref_return_through_match_binding_of_this) {
   EXPECT_EQ(value, 6);
 }
 
-TEST(MemorySafety_BorrowChecker, ref_return_through_match_binding_of_local_is_dangling) {
+TEST(MemorySafety_BorrowChecker,
+     ref_return_through_match_binding_of_local_is_dangling) {
   EXPECT_THROW(executeStringWithStdlib(R"(
     using sun;
 
@@ -512,7 +513,8 @@ TEST(MemorySafety_BorrowChecker, return_in_catch_does_not_move_on_fallthrough) {
   EXPECT_EQ(value, 1);
 }
 
-TEST(MemorySafety_BorrowChecker, catch_clauses_are_alternatives_not_a_sequence) {
+TEST(MemorySafety_BorrowChecker,
+     catch_clauses_are_alternatives_not_a_sequence) {
   auto value = executeStringWithStdlib(R"(
     using sun;
 
@@ -541,7 +543,8 @@ TEST(MemorySafety_BorrowChecker, catch_clauses_are_alternatives_not_a_sequence) 
   EXPECT_EQ(value, 0);
 }
 
-TEST(MemorySafety_BorrowChecker, return_in_match_arm_does_not_move_on_fallthrough) {
+TEST(MemorySafety_BorrowChecker,
+     return_in_match_arm_does_not_move_on_fallthrough) {
   auto value = executeStringWithStdlib(R"(
     using sun;
 
@@ -903,7 +906,8 @@ TEST(MemorySafety_BorrowChecker, error_on_field_moved_every_iteration) {
                                 "Borrow check failed");
 }
 
-TEST(MemorySafety_BorrowChecker, loop_moves_a_value_made_in_the_same_iteration) {
+TEST(MemorySafety_BorrowChecker,
+     loop_moves_a_value_made_in_the_same_iteration) {
   // A value created inside the body is fresh each time round
   auto value = executeString(R"(
     class Inner {

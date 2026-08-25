@@ -225,8 +225,8 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
       }
     }
 
-    AllocaInst* alloca = createEntryBlockAlloca(func, expr.getName(),
-                                                storageTy);
+    AllocaInst* alloca =
+        createEntryBlockAlloca(func, expr.getName(), storageTy);
     Value* structVal = value;
     if (value->getType()->isPointerTy()) {
       // Move: load the storage and poison the source tag (the new variable
@@ -379,9 +379,9 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
       unsigned valueBits = valueType->getIntegerBitWidth();
       unsigned varBits = varType->getIntegerBitWidth();
       if (valueBits < varBits) {
-        value = extendInt(value, varType,
-                          expr.getValue() ? expr.getValue()->getResolvedType()
-                                          : nullptr);
+        value = extendInt(
+            value, varType,
+            expr.getValue() ? expr.getValue()->getResolvedType() : nullptr);
       } else if (valueBits > varBits) {
         value = ctx.builder->CreateTrunc(value, varType, "trunc");
       }
@@ -653,8 +653,7 @@ void CodegenVisitor::emitFieldCleanup(llvm::Value* objectPtr,
       llvm::Type* ptrTy = llvm::PointerType::getUnqual(ctx.getContext());
       llvm::Align ptrAlign = fieldAlign(classType, ptrTy);
       llvm::Value* fieldValue = ctx.builder->CreateAlignedLoad(
-          ptrTy, fieldPtr, ptrAlign,
-          baseName + "." + field.name + ".value");
+          ptrTy, fieldPtr, ptrAlign, baseName + "." + field.name + ".value");
 
       // Null-check raw_ptr fields too
       llvm::BasicBlock* freeRawBB = llvm::BasicBlock::Create(
@@ -734,8 +733,7 @@ void CodegenVisitor::emitFieldDeinit(llvm::Value* objectPtr,
   }
 }
 
-void CodegenVisitor::emitDropInPlace(const sun::TypePtr& type,
-                                     llvm::Value* ptr,
+void CodegenVisitor::emitDropInPlace(const sun::TypePtr& type, llvm::Value* ptr,
                                      const std::string& name) {
   if (!type || !ptr) return;
   if (type->isClass()) {

@@ -15,7 +15,7 @@ class VariableCreationAST : public ExprAST {
   std::string name;
   std::unique_ptr<ExprAST> value;
   std::optional<TypeAnnotation> typeAnnotation;
-  bool isConst_;  // `const x = ...`: the binding and its value never change
+  bool isConst_;     // `const x = ...`: the binding and its value never change
   std::string doc_;  // Comment written above the declaration
 
  protected:

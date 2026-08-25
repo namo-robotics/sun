@@ -40,7 +40,8 @@ class DeclareTypeAST : public ExprAST {
   std::string toString() const override {
     std::string prefix = isPublic() ? "public " : "";
     if (aliasName) {
-      return prefix + "declare " + *aliasName + " = " + typeAnnotation.toString();
+      return prefix + "declare " + *aliasName + " = " +
+             typeAnnotation.toString();
     }
     return prefix + "declare " + typeAnnotation.toString();
   }

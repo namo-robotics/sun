@@ -1,4 +1,5 @@
-// tests/stdlib/test_json.cpp - stdlib/json.sun: parsing, access, building, writing
+// tests/stdlib/test_json.cpp - stdlib/json.sun: parsing, access, building,
+// writing
 
 #include <gtest/gtest.h>
 
@@ -268,8 +269,8 @@ TEST(Stdlib_Json, build_and_write_compact) {
   EXPECT_EQ(value, 0);
 }
 
-// Issue #94: Json(s) moves the String in; create_json_string(alloc, ref s) stores a
-// copy so the caller can keep using the original.
+// Issue #94: Json(s) moves the String in; create_json_string(alloc, ref s)
+// stores a copy so the caller can keep using the original.
 TEST(Stdlib_Json, json_string_copies_a_borrowed_string) {
   auto value = executeStringWithStdlib(withMain(R"(
     class Config {

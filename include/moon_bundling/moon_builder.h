@@ -18,18 +18,18 @@
 namespace sun {
 
 struct MoonBuildOptions {
-  std::string targetTriple;                 // empty = host
-  bool debugInfo = false;                   // -g
-  bool dumpProtoSun = false;                // print synthesized proto source
-  std::vector<MoonImport> extraMoons;       // CLI --moon imports
+  std::string targetTriple;            // empty = host
+  bool debugInfo = false;              // -g
+  bool dumpProtoSun = false;           // print synthesized proto source
+  std::vector<MoonImport> extraMoons;  // CLI --moon imports
 };
 
 // What went into a bundle (for logging / assertions)
 struct MoonBuildReport {
-  std::vector<std::string> sunFiles;    // compiled .sun files (entrypoint first)
-  std::vector<std::string> protoFiles;  // synthesized .proto schemas
-  std::vector<MoonImport> moonImports;  // bundles linked against
-  std::vector<std::string> modules;     // exported module names (dotted)
+  std::vector<std::string> sunFiles;  // compiled .sun files (entrypoint first)
+  std::vector<std::string> protoFiles;    // synthesized .proto schemas
+  std::vector<MoonImport> moonImports;    // bundles linked against
+  std::vector<std::string> modules;       // exported module names (dotted)
   std::vector<std::string> archiveFiles;  // native archives in the bundle
 };
 

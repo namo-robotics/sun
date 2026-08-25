@@ -298,10 +298,9 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
   // next() returns Option<T>: sema verified the shape and that T matches the
   // loop variable annotation
   const auto* nextMethod = iteratorClassType->getMethod("next");
-  auto optionType =
-      nextMethod ? std::dynamic_pointer_cast<sun::EnumType>(
-                       sun::unwrapRef(nextMethod->returnType))
-                 : nullptr;
+  auto optionType = nextMethod ? std::dynamic_pointer_cast<sun::EnumType>(
+                                     sun::unwrapRef(nextMethod->returnType))
+                               : nullptr;
   if (!optionType || !optionType->getVariant("Some") ||
       !optionType->getVariant("None")) {
     logAndThrowError("for-in loop: next() must return Option<T>");
@@ -309,7 +308,8 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
   }
   StructType* optionStorageTy = typeResolver.getEnumStorageType(*optionType);
   StructType* someTy = typeResolver.getEnumVariantStruct(*optionType, "Some");
-  unsigned payloadIdx = typeResolver.enumPayloadFieldIndex(*optionType, "Some", 0);
+  unsigned payloadIdx =
+      typeResolver.enumPayloadFieldIndex(*optionType, "Some", 0);
   int64_t someTag = optionType->getVariant("Some")->value;
 
   // Loop variable (type from semantic analysis)
@@ -345,11 +345,11 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
   Value* nextClosure =
       materializeMethodClosure(nextFunc, iteratorObj, "next.closure");
   // next(ref Container): sema verified Container is the iterable's type
-  Value* nextResult = ctx.builder->CreateCall(
-      nextFunc, {nextClosure, containerObj}, "nextval");
+  Value* nextResult =
+      ctx.builder->CreateCall(nextFunc, {nextClosure, containerObj}, "nextval");
   if (nextResult->getType()->isPointerTy()) {
-    nextResult = ctx.builder->CreateLoad(optionStorageTy, nextResult,
-                                         "nextval.load");
+    nextResult =
+        ctx.builder->CreateLoad(optionStorageTy, nextResult, "nextval.load");
   }
   ctx.builder->CreateStore(nextResult, nextAlloca);
   Value* tagPtr = ctx.builder->CreateStructGEP(optionStorageTy, nextAlloca, 0,

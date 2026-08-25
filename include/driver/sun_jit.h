@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
@@ -10,7 +11,6 @@
 #include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h"
-#include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
@@ -66,7 +66,7 @@ class SunJIT {
 
   /// Resolve symbols out of a native static library (.a), the way the AOT
   /// linker would. Used for archives carried inside .moon bundles.
-  Error addStaticLibrary(const std::string &Path) {
+  Error addStaticLibrary(const std::string& Path) {
     auto G = StaticLibraryDefinitionGenerator::Load(ObjectLayer, Path.c_str());
     if (!G) return G.takeError();
     MainJD.addGenerator(std::move(*G));

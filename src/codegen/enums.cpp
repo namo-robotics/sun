@@ -64,7 +64,8 @@ Function* CodegenVisitor::getOrCreateEnumDropFunction(sun::EnumType& enumType) {
     for (size_t i = 0; i < variant.payloadTypes.size(); ++i) {
       const sun::TypePtr& pt = variant.payloadTypes[i];
       if (!pt || !sun::typeNeedsDrop(pt)) continue;
-      unsigned idx = typeResolver.enumPayloadFieldIndex(enumType, variant.name, i);
+      unsigned idx =
+          typeResolver.enumPayloadFieldIndex(enumType, variant.name, i);
       Value* fieldPtr = ctx.builder->CreateStructGEP(
           variantTy, storage, idx, "drop.payload." + variant.name);
       emitDropInPlace(pt, fieldPtr, "enum.payload");
@@ -104,7 +105,8 @@ Value* CodegenVisitor::codegenEnumVariantConstruction(
       func, enumType.getBaseName() + "." + variant.name, storageTy);
 
   // Store the tag (field 0 has the same offset in storage and variant view)
-  Value* tagPtr = ctx.builder->CreateStructGEP(storageTy, storage, 0, "tag.ptr");
+  Value* tagPtr =
+      ctx.builder->CreateStructGEP(storageTy, storage, 0, "tag.ptr");
   ctx.builder->CreateStore(
       ConstantInt::get(Type::getInt32Ty(ctx.getContext()), variant.value),
       tagPtr);
@@ -112,7 +114,8 @@ Value* CodegenVisitor::codegenEnumVariantConstruction(
   // Store each payload value through the variant view struct
   const auto& args = expr.getArgs();
   for (size_t i = 0; i < args.size(); ++i) {
-    unsigned idx = typeResolver.enumPayloadFieldIndex(enumType, variant.name, i);
+    unsigned idx =
+        typeResolver.enumPayloadFieldIndex(enumType, variant.name, i);
     llvm::Type* fieldTy = variantTy->getElementType(idx);
     Value* fieldPtr = ctx.builder->CreateStructGEP(variantTy, storage, idx,
                                                    "payload." + variant.name);
@@ -232,8 +235,7 @@ Value* CodegenVisitor::codegenEnumMatch(const MatchExprAST& expr,
       TheFunction);
 
   size_t numCases = arms.size() - (wildcardArm ? 1 : 0);
-  SwitchInst* switchInst =
-      ctx.builder->CreateSwitch(tag, DefaultBB, numCases);
+  SwitchInst* switchInst = ctx.builder->CreateSwitch(tag, DefaultBB, numCases);
 
   std::vector<std::pair<Value*, BasicBlock*>> armResults;
 
@@ -282,16 +284,16 @@ Value* CodegenVisitor::codegenEnumMatch(const MatchExprAST& expr,
         if (binding.isWildcard) continue;
         unsigned idx = typeResolver.enumPayloadFieldIndex(
             enumType, patternAccess.getMemberName(), i);
-        Value* fieldPtr = ctx.builder->CreateStructGEP(
-            variantTy, discPtr, idx, binding.name + ".ptr");
+        Value* fieldPtr = ctx.builder->CreateStructGEP(variantTy, discPtr, idx,
+                                                       binding.name + ".ptr");
         llvm::Type* fieldTy = variantTy->getElementType(idx);
         if (binding.resolvedType && binding.resolvedType->isCompound()) {
           // Compound payload: bind BY POINTER (a borrow of the payload slot
           // inside the discriminant — never an implicit copy). The alloca
           // holds the slot address; reads go through the indirection.
-          AllocaInst* alloca = createEntryBlockAlloca(
-              TheFunction, binding.name + ".ref",
-              PointerType::getUnqual(ctx.getContext()));
+          AllocaInst* alloca =
+              createEntryBlockAlloca(TheFunction, binding.name + ".ref",
+                                     PointerType::getUnqual(ctx.getContext()));
           ctx.builder->CreateStore(fieldPtr, alloca);
           scopes.back().variables[binding.name] = alloca;
           scopes.back().indirectBindings.insert(binding.name);
@@ -310,8 +312,7 @@ Value* CodegenVisitor::codegenEnumMatch(const MatchExprAST& expr,
     }
 
     Value* bodyVal = codegen(*arm.body);
-    bool terminated =
-        ctx.builder->GetInsertBlock()->getTerminator() != nullptr;
+    bool terminated = ctx.builder->GetInsertBlock()->getTerminator() != nullptr;
     if (!terminated) {
       bodyVal = convertArmValue(bodyVal, arm);
     }
@@ -331,10 +332,9 @@ Value* CodegenVisitor::codegenEnumMatch(const MatchExprAST& expr,
     if (arm.isWildcard) continue;
     BasicBlock* ArmBB = BasicBlock::Create(
         ctx.getContext(), "match.arm." + std::to_string(i), TheFunction);
-    switchInst->addCase(
-        ConstantInt::get(Type::getInt32Ty(ctx.getContext()),
-                         arm.resolvedVariantTag),
-        ArmBB);
+    switchInst->addCase(ConstantInt::get(Type::getInt32Ty(ctx.getContext()),
+                                         arm.resolvedVariantTag),
+                        ArmBB);
     emitArmBody(arm, ArmBB);
   }
 

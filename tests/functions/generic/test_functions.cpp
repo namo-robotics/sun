@@ -174,7 +174,8 @@ TEST(Functions_Generic, body_cannot_see_requesters_locals) {
         var secret: i32 = 5;
         return leak<i32>(1);
     }
-  )"), "Unknown variable");
+  )"),
+                                "Unknown variable");
 }
 
 TEST(Functions_Generic, module_private_helper_reachable_from_two_requesters) {

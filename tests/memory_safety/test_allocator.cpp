@@ -1,4 +1,5 @@
-// tests/memory_safety/test_allocator.cpp - Tests for allocator-based memory allocation
+// tests/memory_safety/test_allocator.cpp - Tests for allocator-based memory
+// allocation
 
 #include <gtest/gtest.h>
 

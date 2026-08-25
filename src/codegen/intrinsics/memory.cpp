@@ -107,7 +107,8 @@ Value* CodegenVisitor::codegenMemcpyIntrinsic(const CallExprAST& expr) {
   if (!dst || !src || !len) return nullptr;
 
   // Use LLVM's memcpy intrinsic for optimal codegen
-  ctx.builder->CreateMemCpy(dst, llvm::MaybeAlign(1), src, llvm::MaybeAlign(1), len);
+  ctx.builder->CreateMemCpy(dst, llvm::MaybeAlign(1), src, llvm::MaybeAlign(1),
+                            len);
   return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
 }
 

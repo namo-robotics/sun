@@ -10,10 +10,10 @@
 #include <vector>
 
 // Include your public headers
-#include "ast.h"     // Needed to inspect the parsed AST nodes
-#include "support/error.h"   // For SunError exception type
-#include "parsing/lexer.h"   // If needed for Token checks
+#include "ast.h"            // Needed to inspect the parsed AST nodes
+#include "parsing/lexer.h"  // If needed for Token checks
 #include "parsing/parser.h"  // This should be in include/ (or include/SunCompiler/)
+#include "support/error.h"  // For SunError exception type
 
 // Helper to parse a string and return the parsed AST (for top-level
 // expressions)
@@ -113,8 +113,7 @@ TEST(Tooling_Frontend_Parser, ParseTemplateString) {
   EXPECT_FALSE(segments[1].isLiteral);
   EXPECT_EQ(segments[1].rawText, "name");
   ASSERT_NE(segments[1].expression, nullptr);
-  EXPECT_EQ(segments[1].expression->getType(),
-            ASTNodeType::VARIABLE_REFERENCE);
+  EXPECT_EQ(segments[1].expression->getType(), ASTNodeType::VARIABLE_REFERENCE);
   EXPECT_TRUE(segments[2].isLiteral);
   EXPECT_EQ(segments[2].rawText, "!");
 }
@@ -127,7 +126,7 @@ TEST(Tooling_Frontend_Parser, TemplateStringRawVsCookedEscapes) {
   ASSERT_NE(interp, nullptr);
   const auto& segments = interp->getSegments();
   ASSERT_EQ(segments.size(), 1u);
-  EXPECT_EQ(segments[0].rawText, "a\\nb");   // escapes unprocessed
+  EXPECT_EQ(segments[0].rawText, "a\\nb");    // escapes unprocessed
   EXPECT_EQ(segments[0].cookedText, "a\nb");  // escapes processed
 }
 
@@ -637,7 +636,8 @@ function main() i32 {
 )");
   EXPECT_TRUE(what.find("unexpected '&&'") != std::string::npos) << what;
   EXPECT_TRUE(what.find("'and'") != std::string::npos) << what;
-  EXPECT_TRUE(what.find("3:14") != std::string::npos) << what;  // points at '&&'
+  EXPECT_TRUE(what.find("3:14") != std::string::npos)
+      << what;  // points at '&&'
 }
 
 TEST(Tooling_Frontend_Parser_Errors, DoublePipeSuggestsOr) {
@@ -716,8 +716,7 @@ function main() i32 {
     return 0;
 }
 )");
-  EXPECT_TRUE(what.find("expected identifier after 'var'") !=
-              std::string::npos)
+  EXPECT_TRUE(what.find("expected identifier after 'var'") != std::string::npos)
       << what;
   EXPECT_TRUE(what.find("reserved word") == std::string::npos) << what;
 }
@@ -1026,8 +1025,8 @@ TEST(Tooling_Frontend_Comments, BlockCommentsDoNotNest) {
   std::istringstream dummy("");
   Parser parser(dummy);
   parser.setCollectComments(true);
-  auto ast = parser.parseString(
-      "function main() i32 { return /* a /* b */ 5; }");
+  auto ast =
+      parser.parseString("function main() i32 { return /* a /* b */ 5; }");
   ASSERT_NE(ast, nullptr);
   ASSERT_EQ(parser.getComments().size(), 1u);
   EXPECT_EQ(parser.getComments().begin()->second.text, "/* a /* b */");
@@ -1037,8 +1036,8 @@ TEST(Tooling_Frontend_Comments, StarsInsideBlockComment) {
   std::istringstream dummy("");
   Parser parser(dummy);
   parser.setCollectComments(true);
-  auto ast = parser.parseString(
-      "function main() i32 { return /* ** * *** */ 5; }");
+  auto ast =
+      parser.parseString("function main() i32 { return /* ** * *** */ 5; }");
   ASSERT_NE(ast, nullptr);
   ASSERT_EQ(parser.getComments().size(), 1u);
   EXPECT_EQ(parser.getComments().begin()->second.text, "/* ** * *** */");

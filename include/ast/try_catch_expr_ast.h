@@ -19,20 +19,20 @@ struct CatchClause {
   std::unique_ptr<BlockExprAST> body;         // the catch body
 
   // Filled in by semantic analysis, consumed by codegen for typed matching:
-  bool isCatchAll = false;           // true for `catch (e: IError)` (matches any)
-  std::string resolvedMangledName;   // concrete error class's mangled name
-                                     // (empty when isCatchAll)
+  bool isCatchAll = false;  // true for `catch (e: IError)` (matches any)
+  std::string resolvedMangledName;  // concrete error class's mangled name
+                                    // (empty when isCatchAll)
 
   CatchClause() = default;
   CatchClause(CatchClause&&) = default;
   CatchClause& operator=(CatchClause&&) = default;
 };
 
-// Try-catch expression: try { ... } catch (e: A) { ... } catch (e: IError) { ... }
-// Supports multiple typed catch handlers, tested in source order.
+// Try-catch expression: try { ... } catch (e: A) { ... } catch (e: IError) {
+// ... } Supports multiple typed catch handlers, tested in source order.
 class TryCatchExprAST : public ExprAST {
-  std::unique_ptr<BlockExprAST> tryBlock;    // The try block
-  std::vector<CatchClause> catchClauses;     // One or more catch handlers
+  std::unique_ptr<BlockExprAST> tryBlock;  // The try block
+  std::vector<CatchClause> catchClauses;   // One or more catch handlers
 
  public:
   TryCatchExprAST(std::unique_ptr<BlockExprAST> tryBlk,

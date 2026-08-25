@@ -67,7 +67,8 @@ class CallExprAST : public ExprAST {
     for (auto& arg : Args) fn(arg);
   }
 
-  // Returns the resolved types of all arguments (for constructor overload resolution)
+  // Returns the resolved types of all arguments (for constructor overload
+  // resolution)
   std::vector<sun::TypePtr> getResolvedArgTypes() const {
     std::vector<sun::TypePtr> types;
     types.reserve(Args.size());

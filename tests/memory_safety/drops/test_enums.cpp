@@ -432,7 +432,8 @@ TEST(MemorySafety_Drops_Enums, vec_of_option_of_owner_drops_elements) {
   EXPECT_EQ(value, 2);
 }
 
-TEST(MemorySafety_Drops_Enums, non_owning_payload_enum_still_copies_scalars_in_match) {
+TEST(MemorySafety_Drops_Enums,
+     non_owning_payload_enum_still_copies_scalars_in_match) {
   auto value = executeString(R"(
     enum Opt { Some(i32), None }
     function main() i32 {
@@ -534,7 +535,8 @@ TEST(MemorySafety_Drops_Enums, cross_moon_owning_enum_drops_once) {
 
 // Small scalar payload next to a large, 8-byte-aligned payload: the scalar
 // must not live in the tag's alignment padding, or aggregate moves lose it.
-TEST(MemorySafety_Drops_Enums, small_payload_survives_move_next_to_owning_payload) {
+TEST(MemorySafety_Drops_Enums,
+     small_payload_survives_move_next_to_owning_payload) {
   auto value = executeString(withPreamble(R"(
     class Wide {
       var a: i64;

@@ -1,5 +1,6 @@
-// tests/memory_safety/test_memory_safety.cpp - Memory safety tests for Sun language
-// Tests borrow checker enforcement: use-after-move, borrow conflicts, etc.
+// tests/memory_safety/test_memory_safety.cpp - Memory safety tests for Sun
+// language Tests borrow checker enforcement: use-after-move, borrow conflicts,
+// etc.
 
 #include <gtest/gtest.h>
 

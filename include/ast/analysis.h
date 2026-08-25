@@ -8,8 +8,8 @@
 #include <utility>
 #include <vector>
 
-#include "semantic_analysis/argument_conversion.h"
 #include "ast/ast_fwd.h"
+#include "semantic_analysis/argument_conversion.h"
 #include "semantic_analysis/qualified_name.h"
 #include "semantic_analysis/types.h"
 

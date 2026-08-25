@@ -16,16 +16,16 @@
 
 #include "ast/manifest_ast.h"
 #include "driver/driver.h"
-#include "support/error.h"
-#include "parsing/formatter.h"
-#include "parsing/lexer.h"
+#include "driver/manifest_processor.h"
 #include "lsp/definition.h"
+#include "lsp/hover.h"
 #include "lsp/references.h"
 #include "lsp/rename.h"
-#include "lsp/hover.h"
 #include "lsp/text_positions.h"
-#include "driver/manifest_processor.h"
+#include "parsing/formatter.h"
+#include "parsing/lexer.h"
 #include "parsing/parser.h"
+#include "support/error.h"
 #include "support/sun_path.h"
 
 // =============================================================================
@@ -852,8 +852,7 @@ static std::unordered_map<std::string, AnalyzedDocument> analyzedDocuments;
 const AnalyzedDocument* getAnalyzedDocument(const OpenDocument& document) {
   std::string hash = DiagnosticsCache::computeHash(document.text);
   auto cached = analyzedDocuments.find(document.uri);
-  if (cached != analyzedDocuments.end() &&
-      cached->second.contentHash == hash) {
+  if (cached != analyzedDocuments.end() && cached->second.contentHash == hash) {
     return &cached->second;
   }
   analyzedDocuments.erase(document.uri);
@@ -867,9 +866,9 @@ const AnalyzedDocument* getAnalyzedDocument(const OpenDocument& document) {
       // Manifest context; the open buffer stands in for its file on disk
       std::map<std::string, std::string> overrides;
       overrides[normalizePath(document.path)] = document.text;
-      program = driver->analyzeFiles(entrypoint->sunFiles,
-                                     entrypoint->moonImports,
-                                     entrypoint->protoFiles, overrides);
+      program =
+          driver->analyzeFiles(entrypoint->sunFiles, entrypoint->moonImports,
+                               entrypoint->protoFiles, overrides);
     } else {
       program = driver->analyzeString(document.text, document.path);
     }
@@ -879,7 +878,8 @@ const AnalyzedDocument* getAnalyzedDocument(const OpenDocument& document) {
     analyzed.contentHash = std::move(hash);
     analyzed.driver = std::move(driver);
     analyzed.ast = std::move(program.ast);
-    auto inserted = analyzedDocuments.emplace(document.uri, std::move(analyzed));
+    auto inserted =
+        analyzedDocuments.emplace(document.uri, std::move(analyzed));
     return &inserted.first->second;
   } catch (const std::exception&) {
     return nullptr;
@@ -1331,8 +1331,8 @@ int main() {
       const AnalyzedDocument* analyzed = getAnalyzedDocument(document);
       std::optional<sun::lsp::Hover> hover;
       if (analyzed) {
-        int offset = sun::lsp::byteOffsetFromLspPosition(document.text, line,
-                                                         character);
+        int offset =
+            sun::lsp::byteOffsetFromLspPosition(document.text, line, character);
         try {
           hover = sun::lsp::computeHover(*analyzed->ast, document.path,
                                          document.text, offset);
@@ -1345,8 +1345,8 @@ int main() {
         continue;
       }
 
-      auto start =
-          sun::lsp::lspPositionFromByteOffset(document.text, hover->range.offset);
+      auto start = sun::lsp::lspPositionFromByteOffset(document.text,
+                                                       hover->range.offset);
       auto end = sun::lsp::lspPositionFromByteOffset(
           document.text, hover->range.endOffset.value_or(hover->range.offset));
 
@@ -1406,8 +1406,8 @@ int main() {
       const AnalyzedDocument* analyzed = getAnalyzedDocument(document);
       std::optional<sun::lsp::SymbolLocation> definition;
       if (analyzed) {
-        int offset = sun::lsp::byteOffsetFromLspPosition(document.text, line,
-                                                         character);
+        int offset =
+            sun::lsp::byteOffsetFromLspPosition(document.text, line, character);
         try {
           definition = sun::lsp::computeDefinition(
               *analyzed->ast, document.path, document.text, offset);
@@ -1475,12 +1475,12 @@ int main() {
       const AnalyzedDocument* analyzed = getAnalyzedDocument(document);
       std::vector<sun::lsp::SymbolLocation> references;
       if (analyzed) {
-        int offset = sun::lsp::byteOffsetFromLspPosition(document.text, line,
-                                                         character);
+        int offset =
+            sun::lsp::byteOffsetFromLspPosition(document.text, line, character);
         try {
-          references = sun::lsp::computeReferences(
-              *analyzed->ast, document.path, document.text, offset,
-              includeDeclaration);
+          references = sun::lsp::computeReferences(*analyzed->ast,
+                                                   document.path, document.text,
+                                                   offset, includeDeclaration);
         } catch (const std::exception&) {
           references.clear();
         }
@@ -1558,8 +1558,8 @@ int main() {
       std::optional<sun::lsp::Rename> rename;
       int offset = 0;
       if (analyzed) {
-        offset = sun::lsp::byteOffsetFromLspPosition(document.text, line,
-                                                     character);
+        offset =
+            sun::lsp::byteOffsetFromLspPosition(document.text, line, character);
         try {
           rename = sun::lsp::computeRename(*analyzed->ast, document.path,
                                            document.text, offset);

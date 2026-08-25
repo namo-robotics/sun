@@ -163,9 +163,8 @@ void CodegenVisitor::declareBlockClassMethods(const ClassDefinitionAST& expr) {
 
   std::string className = expr.getName();
   if (expr.getResolvedType() && expr.getResolvedType()->isClass()) {
-    className =
-        static_cast<sun::ClassType*>(expr.getResolvedType().get())
-            ->getMangledName();
+    className = static_cast<sun::ClassType*>(expr.getResolvedType().get())
+                    ->getMangledName();
   }
   declareClassMethods(expr, typeRegistry->getClass(className));
 }
@@ -881,9 +880,8 @@ Value* CodegenVisitor::codegenStackClassInstance(const CallExprAST& expr,
     const auto& paramTypes =
         ctor.method ? ctor.method->paramTypes : std::vector<sun::TypePtr>{};
 
-    std::vector<Value*> ctorArgs =
-        generateCtorArgs(ctorFunc, alloca, expr.getArgs(),
-                             expr.getArgConversions(), paramTypes);
+    std::vector<Value*> ctorArgs = generateCtorArgs(
+        ctorFunc, alloca, expr.getArgs(), expr.getArgConversions(), paramTypes);
     ctx.builder->CreateCall(ctorFunc, ctorArgs);
   }
 
@@ -1065,9 +1063,9 @@ Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
       // Move: the field owns the payload now. Release the source's tracking
       // entry and zero it so its own drop is a no-op.
       markClassAllocationAsDeinited(value);
-      ctx.builder->CreateMemSet(value,
-                                ConstantInt::get(Type::getInt8Ty(ctx.getContext()), 0),
-                                structSize, srcAlign);
+      ctx.builder->CreateMemSet(
+          value, ConstantInt::get(Type::getInt8Ty(ctx.getContext()), 0),
+          structSize, srcAlign);
     }
     return value;
   }
@@ -1222,8 +1220,8 @@ Value* CodegenVisitor::codegen(const InterfaceDefinitionAST& expr) {
           ctx.builder->CreateAlloca(argLLVMType, nullptr, argName);
       ctx.builder->CreateStore(&*argIt, alloca);
       scopes.back().variables[argName] = alloca;
-      debugDeclareParam(alloca, argName, proto,
-                        static_cast<unsigned>(paramIdx), /*argNoBase=*/2);
+      debugDeclareParam(alloca, argName, proto, static_cast<unsigned>(paramIdx),
+                        /*argNoBase=*/2);
       ++argIt;
       ++paramIdx;
     }
@@ -1401,9 +1399,9 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
       return nullptr;
     }
 
-    Value* result = emitPossiblyThrowingCall(
-        specializedFunc->getFunctionType(), specializedFunc, argValues,
-        canThrow, "generic.call");
+    Value* result = emitPossiblyThrowingCall(specializedFunc->getFunctionType(),
+                                             specializedFunc, argValues,
+                                             canThrow, "generic.call");
     return materializeStructReturn(result);
   }
 
@@ -1560,7 +1558,7 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
 
       std::vector<Value*> ctorArgs =
           generateCtorArgs(ctorFunc, alloca, expr.getArgs(),
-                             expr.getArgConversions(), paramTypes);
+                           expr.getArgConversions(), paramTypes);
       ctx.builder->CreateCall(ctorFunc, ctorArgs);
     }
 

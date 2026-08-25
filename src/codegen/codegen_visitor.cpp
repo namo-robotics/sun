@@ -1,7 +1,9 @@
 // codegen_visitor.cpp - Main expression dispatch and basic expression codegen
 
 #include "codegen/codegen_visitor.h"
+
 #include <cstdint>
+
 #include "codegen/codegen.h"
 
 static ExitOnError ExitOnErr;
@@ -338,12 +340,10 @@ void CodegenVisitor::unifyBinaryOperands(Value*& L, Value*& R,
     }
   } else if (LT->isIntegerTy() && RT->isFloatingPointTy()) {
     logAndThrowError(
-        "Type mismatch in binary operation: cannot mix integer and float",
-        loc);
+        "Type mismatch in binary operation: cannot mix integer and float", loc);
   } else if (LT->isFloatingPointTy() && RT->isIntegerTy()) {
     logAndThrowError(
-        "Type mismatch in binary operation: cannot mix float and integer",
-        loc);
+        "Type mismatch in binary operation: cannot mix float and integer", loc);
   } else {
     logAndThrowError(
         "Type mismatch in binary operation: incompatible operand types", loc);

@@ -14,11 +14,11 @@
 
 #include "ast.h"
 #include "ast.pb.h"
-#include "serialization/ast_serializer.h"
+#include "moon.pb.h"
 #include "parsing/doc_comments.h"
 #include "parsing/lowering_pass.h"
-#include "moon.pb.h"
 #include "parsing/parser.h"
+#include "serialization/ast_serializer.h"
 
 namespace sun {
 
@@ -185,8 +185,8 @@ void extractFromStatements(const std::vector<std::unique_ptr<ExprAST>>& stmts,
       const auto& u = static_cast<const UsingAST&>(*stmt);
       std::string path = u.getNamespacePathString();
       std::string target = u.getTarget();
-      std::string full = path.empty() ? target
-                         : (target == "*" ? path : path + "." + target);
+      std::string full =
+          path.empty() ? target : (target == "*" ? path : path + "." + target);
       auto& metadata = collector.forModule(modulePath);
       bool seen = false;
       for (const auto& existing : metadata.usings()) {
@@ -305,10 +305,9 @@ std::optional<std::vector<moon::ModuleMetadata>> extractAllMetadataFromFile(
       std::filesystem::path(sourcePath).parent_path().string());
 }
 
-std::optional<std::vector<moon::ModuleMetadata>>
-extractAllMetadataFromSource(const std::string& source,
-                             const std::string& displayName,
-                             const std::string& baseDir) {
+std::optional<std::vector<moon::ModuleMetadata>> extractAllMetadataFromSource(
+    const std::string& source, const std::string& displayName,
+    const std::string& baseDir) {
   // Compute SHA-256 hash of source contents
   llvm::SHA256 sha;
   sha.update(llvm::StringRef(source));

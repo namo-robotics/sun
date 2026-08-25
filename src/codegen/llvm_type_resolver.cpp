@@ -34,15 +34,15 @@ StructType* LLVMTypeResolver::getStaticPtrType() {
 // Payload enum layout
 // -----------------------------------------------------------------------------
 
-void LLVMTypeResolver::prepareEnumFieldStorage(const sun::ClassType& classType) {
+void LLVMTypeResolver::prepareEnumFieldStorage(
+    const sun::ClassType& classType) {
   for (const auto& field : classType.getFields()) {
     if (!field.type) continue;
     if (field.type->isEnum()) {
       const auto& enumType = static_cast<const sun::EnumType&>(*field.type);
       if (enumType.hasPayload()) getEnumStorageType(enumType);
     } else if (field.type->isClass()) {
-      prepareEnumFieldStorage(
-          static_cast<const sun::ClassType&>(*field.type));
+      prepareEnumFieldStorage(static_cast<const sun::ClassType&>(*field.type));
     }
   }
 }
@@ -55,14 +55,13 @@ StructType* LLVMTypeResolver::getEnumStorageType(
                      "' layout requires a module DataLayout (compiler bug)");
   }
 
-  uint64_t maxSize = 8;   // at least { i32 tag } rounded to a unit
-  Align maxAlign(4);      // at least the i32 tag
+  uint64_t maxSize = 8;  // at least { i32 tag } rounded to a unit
+  Align maxAlign(4);     // at least the i32 tag
   for (const auto& v : enumType.getVariants()) {
     if (!v.hasPayload()) continue;
     StructType* variantStruct = getEnumVariantStruct(enumType, v.name);
-    maxSize = std::max(maxSize,
-                       dataLayout->getTypeAllocSize(variantStruct)
-                           .getFixedValue());
+    maxSize = std::max(
+        maxSize, dataLayout->getTypeAllocSize(variantStruct).getFixedValue());
     maxAlign = std::max(maxAlign, dataLayout->getABITypeAlign(variantStruct));
   }
 

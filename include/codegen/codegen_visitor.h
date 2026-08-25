@@ -10,14 +10,14 @@
 #include <map>
 #include <set>
 
-#include "ast.h"                 // Your pure AST header with ASTNodeType
-#include "codegen/codegen.h"             // Your CodegenContext definition
+#include "ast.h"              // Your pure AST header with ASTNodeType
+#include "codegen/codegen.h"  // Your CodegenContext definition
 #include "codegen/debug_info_builder.h"  // DWARF emission (-g)
-#include "support/error.h"               // Error handling
 #include "codegen/extern_c.h"            // The extern "C" boundary
 #include "codegen/llvm_type_resolver.h"  // LLVM type resolution
 #include "codegen/thread_utils.h"        // Thread support utilities
-#include "semantic_analysis/types.h"               // Type system
+#include "semantic_analysis/types.h"     // Type system
+#include "support/error.h"               // Error handling
 
 using NamedValueMap = std::map<std::string, llvm::AllocaInst*>;
 
@@ -26,9 +26,9 @@ llvm::Value* coerceCondToBool(CodegenContext& ctx, llvm::Value* condV);
 
 // Information about a heap allocation that needs automatic cleanup
 struct OwnedAllocation {
-  llvm::Value* ptrAlloca;  // Alloca storing the heap pointer
-  std::string varName;     // Variable name (for debugging)
-  bool moved;              // If true, ownership was transferred - don't free
+  llvm::Value* ptrAlloca;    // Alloca storing the heap pointer
+  std::string varName;       // Variable name (for debugging)
+  bool moved;                // If true, ownership was transferred - don't free
   sun::TypePtr pointeeType;  // Type of the pointed-to object (for recursive
                              // field cleanup)
 };
@@ -177,7 +177,6 @@ class CodegenVisitor {
   // order.
   std::map<std::pair<std::string, std::string>, llvm::GlobalVariable*>
       vtableGlobals;
-
 
   // Functions declared from precompiled bitcode (before codegen starts)
   // Used to distinguish library declarations from codegen-created forward decls
@@ -384,8 +383,8 @@ class CodegenVisitor {
       const std::vector<std::unique_ptr<ExprAST>>& args);
 
   // Overload for pre-collected argument types
-  ConstructorLookup lookupConstructor(sun::ClassType* classType,
-                                      const std::vector<sun::TypePtr>& argTypes);
+  ConstructorLookup lookupConstructor(
+      sun::ClassType* classType, const std::vector<sun::TypePtr>& argTypes);
 
   // Interface dynamic dispatch support
   // Creates a fat pointer { data_ptr, vtable_ptr } for passing a class instance
@@ -537,8 +536,7 @@ class CodegenVisitor {
   // on incompatible types
   void unifyBinaryOperands(llvm::Value*& L, llvm::Value*& R,
                            const sun::TypePtr& lhsSunType,
-                           const sun::TypePtr& rhsSunType,
-                           const Position& loc);
+                           const sun::TypePtr& rhsSunType, const Position& loc);
 
   // Emit an arithmetic/bitwise/shift op on unified operands; shared by
   // binary expressions and compound assignment
@@ -556,9 +554,9 @@ class CodegenVisitor {
   // hidden first argument; env holds the receiver ('this'). Returns a ptr to
   // an entry-block alloca holding { fnPtr, receiverPtr } (stores emitted at
   // the current insert point, so loops don't grow the stack).
-  llvm::Value* materializeMethodClosure(llvm::Value* fnPtr,
-                                        llvm::Value* receiverPtr,
-                                        llvm::StringRef name = "method.closure");
+  llvm::Value* materializeMethodClosure(
+      llvm::Value* fnPtr, llvm::Value* receiverPtr,
+      llvm::StringRef name = "method.closure");
 
   // Closure struct VALUE { fnPtr, receiverPtr } via insertvalue (for method
   // references in value position).
@@ -603,8 +601,7 @@ class CodegenVisitor {
       const std::string& targetName,
       const std::vector<std::unique_ptr<ExprAST>>& args);
   llvm::Value* codegenDeinitIntrinsic(
-      sun::TypePtr typeArg,
-      const std::vector<std::unique_ptr<ExprAST>>& args);
+      sun::TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args);
   llvm::Value* codegenLoadI64Intrinsic(const CallExprAST& expr);
   llvm::Value* codegenStoreI64Intrinsic(const CallExprAST& expr);
   llvm::Value* codegenMallocIntrinsic(const CallExprAST& expr);
@@ -699,8 +696,8 @@ class CodegenVisitor {
 
   // Safe arithmetic: returns error on division by zero
   llvm::Value* codegenSafeDivision(llvm::Value* L, llvm::Value* R,
-                                    bool isModulo = false,
-                                    bool isUnsigned = false);
+                                   bool isModulo = false,
+                                   bool isUnsigned = false);
 
   // Short-circuit logical operators (and, or)
   llvm::Value* codegenLogicalOp(const BinaryExprAST& expr);
@@ -931,7 +928,6 @@ class CodegenVisitor {
     }
     return nullptr;
   }
-
 
   /**
    * Loads a variable from the closure context if it exists.

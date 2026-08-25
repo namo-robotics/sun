@@ -1,4 +1,5 @@
-// tests/stdlib/collections/test_linked_list.cpp - Tests for stdlib LinkedList<T>
+// tests/stdlib/collections/test_linked_list.cpp - Tests for stdlib
+// LinkedList<T>
 
 #include <gtest/gtest.h>
 

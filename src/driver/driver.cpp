@@ -1,14 +1,11 @@
 #include "driver/driver.h"
 
-#include "moon_bundling/library_cache.h"
-
 #include <llvm/IR/DebugInfo.h>
-#include <llvm/Support/DynamicLibrary.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Passes/PassBuilder.h>
+#include <llvm/Support/DynamicLibrary.h>
 #include <llvm/Transforms/IPO/GlobalDCE.h>
 #include <llvm/Transforms/Utils/Cloning.h>
-
 #include <unistd.h>
 
 #include <filesystem>
@@ -19,11 +16,12 @@
 #include "borrow_checker/borrow_checker.h"
 #include "debug/ast_dot_generator.h"
 #include "debug/scope_tree_generator.h"
-#include "support/error.h"
-#include "parsing/lowering_pass.h"
 #include "driver/manifest_processor.h"
+#include "moon_bundling/library_cache.h"
 #include "moon_bundling/module_linker.h"
 #include "moon_bundling/proto_importer.h"
+#include "parsing/lowering_pass.h"
+#include "support/error.h"
 #include "support/source_manager.h"
 #include "support/sun_path.h"
 
@@ -142,10 +140,9 @@ std::unique_ptr<Driver> Driver::createForAOT(const std::string& moduleName,
   // key off this; setting it here keeps API users consistent with the CLI.
   sun::LibraryCache::instance().setTargetTriple(targetTriple);
 
-  auto ctx =
-      std::make_unique<CodegenContext>(moduleName, nullptr,
-                                       /*existingContext=*/nullptr,
-                                       targetTriple, debugInfo);
+  auto ctx = std::make_unique<CodegenContext>(moduleName, nullptr,
+                                              /*existingContext=*/nullptr,
+                                              targetTriple, debugInfo);
   auto typeRegistry = std::make_shared<sun::TypeRegistry>();
   auto codegenVisitor = std::make_unique<CodegenVisitor>(*ctx, typeRegistry);
   auto analyzer = std::make_unique<SemanticAnalyzer>(typeRegistry);
@@ -278,13 +275,14 @@ void Driver::writeUserDefinedIR(const std::string& path) {
   std::error_code EC;
   llvm::raw_fd_ostream OS(path, EC);
   if (EC) {
-    llvm::errs() << "Warning: Could not write " << path << ": "
-                 << EC.message() << "\n";
+    llvm::errs() << "Warning: Could not write " << path << ": " << EC.message()
+                 << "\n";
     return;
   }
 
   OS << "; LLVM IR (user-defined only)\n";
-  OS << "; Generated in debug mode - library and imported symbols filtered out\n\n";
+  OS << "; Generated in debug mode - library and imported symbols filtered "
+        "out\n\n";
 
   dumpUserDefinedIR(OS);
 }
@@ -296,8 +294,7 @@ void Driver::writeUserDefinedIR(const std::string& path) {
 /// Process moon imports: collect stubs, deduplicate, check for collisions
 /// with source modules and between moons, then prepend to AST.
 static void processMoonImports(
-    BlockExprAST& blockAst,
-    Parser& parser,
+    BlockExprAST& blockAst, Parser& parser,
     const std::vector<sun::MoonImport>& moonImports) {
   if (moonImports.empty()) {
     return;
@@ -374,8 +371,7 @@ static void processMoonImports(
   }
 }
 
-void Driver::collectNativeArchives(
-    const std::set<std::string>& linkedModules) {
+void Driver::collectNativeArchives(const std::set<std::string>& linkedModules) {
   if (linkedModules.empty()) return;
 
   std::error_code ec;
@@ -563,7 +559,8 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
   // before any module verification.
   codegenVisitor->finalizeDebugInfo();
 
-  // Debug mode: dump only user-defined IR after codegen (filters out stdlib / moon imports)
+  // Debug mode: dump only user-defined IR after codegen (filters out stdlib /
+  // moon imports)
   if (debugMode_ && !debugFolder_.empty()) {
     std::string irPath = debugFolder_ + "/ir.ll";
     writeUserDefinedIR(irPath);
@@ -1081,9 +1078,9 @@ void Driver::parseSynthesizedProtoModules(
     parser.setFilePath(synthesized.pseudoPath);
     auto blockAst = parser.parseProgram();
     if (!blockAst) {
-      throw SunError(SunError::Kind::Parse,
-                     "Failed to parse synthesized module for " +
-                         synthesized.pseudoPath);
+      throw SunError(
+          SunError::Kind::Parse,
+          "Failed to parse synthesized module for " + synthesized.pseudoPath);
     }
     canonicalPaths.push_back(synthesized.pseudoPath);
     parsedFiles.push_back(std::move(blockAst));
@@ -1155,7 +1152,8 @@ void Driver::compileFiles(const std::vector<std::string>& sourceFiles,
   // Create a parser for runPipeline (used for precompiled imports lookup)
   auto stubParser = Parser::createStringParser("");
 
-  // Set moonImports_ so runPipeline can use them for stub injection and linker setup
+  // Set moonImports_ so runPipeline can use them for stub injection and linker
+  // setup
   moonImports_ = moonImports;
 
   // Run the shared compilation pipeline

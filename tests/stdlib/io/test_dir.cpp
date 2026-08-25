@@ -41,7 +41,8 @@ TEST_F(Stdlib_Io_Dir, read_dir_lists_entries_without_dot_and_dotdot) {
     using sun.io;
 
     function count(a: ref HeapAllocator) i32, IError {
-        var entries = read_dir(a, ")" + testDir + R"(");
+        var entries = read_dir(a, ")" + testDir +
+                                       R"(");
         var files: i32 = 0;
         var dirs: i32 = 0;
         for (var e: DirEntry in entries) {
@@ -69,7 +70,8 @@ TEST_F(Stdlib_Io_Dir, read_dir_finds_a_named_entry) {
     using sun.io;
 
     function find(a: ref HeapAllocator) bool, IError {
-        var entries = read_dir(a, ")" + testDir + R"(");
+        var entries = read_dir(a, ")" + testDir +
+                                       R"(");
         for (var e: DirEntry in entries) {
             if (e.name().equals_literal("needle.txt")) { return true; }
         }
@@ -91,7 +93,8 @@ TEST_F(Stdlib_Io_Dir, read_dir_on_empty_directory) {
     using sun.io;
 
     function size_of(a: ref HeapAllocator) i64, IError {
-        var entries = read_dir(a, ")" + testDir + R"(");
+        var entries = read_dir(a, ")" + testDir +
+                                       R"(");
         return entries.size();
     }
 
@@ -111,7 +114,8 @@ TEST_F(Stdlib_Io_Dir, read_dir_on_missing_directory_throws) {
     function main() i32 {
         var a = make_heap_allocator();
         try {
-            var entries = read_dir(a, ")" + testDir + R"(/nope");
+            var entries = read_dir(a, ")" +
+                                       testDir + R"(/nope");
             return _convert<i32>(entries.size());
         } catch (e: IError) {
             return 99;
@@ -137,7 +141,8 @@ TEST_F(Stdlib_Io_Dir, metadata_predicates) {
         if (not is_file(")" + testDir + R"(/file.txt")) { return 5; }
         if (is_file(")" + testDir + R"(/adir")) { return 6; }
         try {
-            if (get_file_size(")" + testDir + R"(/file.txt") != 5) { return 7; }
+            if (get_file_size(")" + testDir +
+                                       R"(/file.txt") != 5) { return 7; }
         } catch (e: IError) { return 8; }
         return 0;
     }
@@ -154,7 +159,8 @@ TEST_F(Stdlib_Io_Dir, read_dir_accepts_a_runtime_string_path) {
 
     function count(a: ref HeapAllocator) i64, IError {
         // A path built at runtime, not a literal
-        var dir = String(a, ")" + testDir + R"(");
+        var dir = String(a, ")" + testDir +
+                                       R"(");
         var entries = read_dir(a, dir);
         return entries.size();
     }

@@ -24,14 +24,14 @@ class ProtoImporter {
   // `importDirs` in order. Throws SunError with file:line:col diagnostics on
   // schema errors and on unsupported constructs.
   static SynthesizedProtoModule import(
-      const std::string& protoPath,
-      const std::vector<std::string>& importDirs);
+      const std::string& protoPath, const std::vector<std::string>& importDirs);
 
   // The standard import directories for schemas listed in a manifest: the
   // manifest's base directory followed by the SUN_PATH entries.
   static std::vector<std::string> importDirsFor(const std::string& baseDir);
 
-  // Import every schema of a manifest (resolved paths) with importDirsFor(baseDir).
+  // Import every schema of a manifest (resolved paths) with
+  // importDirsFor(baseDir).
   static std::vector<SynthesizedProtoModule> importAll(
       const std::vector<std::string>& protoFiles, const std::string& baseDir);
 };

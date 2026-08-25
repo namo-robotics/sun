@@ -29,8 +29,7 @@ Function* CodegenVisitor::findClassMethod(
 // Externals are resolved from the defining module at link/JIT time
 // (imported/precompiled classes).
 Function* CodegenVisitor::getOrDeclareMethodFunction(
-    const std::string& mangledName,
-    const std::vector<sun::TypePtr>& paramTypes,
+    const std::string& mangledName, const std::vector<sun::TypePtr>& paramTypes,
     const sun::TypePtr& returnType, bool canThrow) {
   if (Function* existing = module->getFunction(mangledName)) return existing;
 
@@ -53,7 +52,6 @@ Function* CodegenVisitor::getOrDeclareMethodFunction(
 // -------------------------------------------------------------------
 // Helper for unwrapping error union from call results
 // -------------------------------------------------------------------
-
 
 // -------------------------------------------------------------------
 // Helper: Apply move semantics for class arguments passed by value
@@ -145,9 +143,9 @@ GlobalVariable* CodegenVisitor::getOrCreateInterfaceVtable(
 
   std::string vtableName = className + "_" + interfaceName + "_vtable";
   Constant* vtableInit = ConstantStruct::get(vtableType, vtableEntries);
-  auto* vtableGlobal = new GlobalVariable(
-      *module, vtableType, /*isConstant=*/true, GlobalValue::InternalLinkage,
-      vtableInit, vtableName);
+  auto* vtableGlobal =
+      new GlobalVariable(*module, vtableType, /*isConstant=*/true,
+                         GlobalValue::InternalLinkage, vtableInit, vtableName);
 
   vtableGlobals[{className, interfaceName}] = vtableGlobal;
   return vtableGlobal;
@@ -184,7 +182,6 @@ Value* CodegenVisitor::createInterfaceFatPointer(
 // -------------------------------------------------------------------
 // Helper: Convert class to interface fat pointer if needed
 // -------------------------------------------------------------------
-
 
 // -------------------------------------------------------------------
 // Helper: Prepare class argument for ref Interface parameter
@@ -301,7 +298,8 @@ Value* CodegenVisitor::loadIfRef(Value* value, const sun::TypePtr& type) {
   // carried as addresses everywhere; loading one here would make the aliasing
   // copy a borrow exists to avoid, and interface arguments load their own fat
   // pointer at the call. A type parameter means an unsubstituted template body.
-  if (!referenced || referenced->isTypeParameter() || referenced->isCompound()) {
+  if (!referenced || referenced->isTypeParameter() ||
+      referenced->isCompound()) {
     return value;
   }
   llvm::Type* valueTy = typeResolver.resolve(referenced);
@@ -399,8 +397,7 @@ Value* CodegenVisitor::emitMarshalledExternCall(
       [&](llvm::FunctionType* fnTy, Value* callee,
           llvm::ArrayRef<Value*> callArgs) {
         return emitPossiblyThrowingCall(
-            fnTy, callee,
-            std::vector<Value*>(callArgs.begin(), callArgs.end()),
+            fnTy, callee, std::vector<Value*>(callArgs.begin(), callArgs.end()),
             func->hasFnAttribute("sun.canthrow"), "calltmp");
       });
 }
@@ -513,10 +510,10 @@ Value* CodegenVisitor::prepareRefArgument(const ExprAST* argExpr,
       Value* tempVal = codegen(*argExpr);
       if (!tempVal) return nullptr;
 
-      // If codegen returned a pointer, it's already an alloca - use it directly.
-      // The original temporary is already tracked for deinit, no need to copy.
-      // Copying would cause double-free since both would try to deinit the same
-      // owned resources (e.g., Unique<T> pointers).
+      // If codegen returned a pointer, it's already an alloca - use it
+      // directly. The original temporary is already tracked for deinit, no need
+      // to copy. Copying would cause double-free since both would try to deinit
+      // the same owned resources (e.g., Unique<T> pointers).
       if (tempVal->getType()->isPointerTy()) {
         return tempVal;
       }
@@ -568,10 +565,10 @@ Value* CodegenVisitor::extractStaticPtrField(Value* fatPtr, unsigned index,
   // Still an address of the fat pointer (e.g. an alloca): load the field.
   llvm::Type* fatTy = typeResolver.resolve(staticPtrType);
   Value* fieldAddr = ctx.builder->CreateStructGEP(fatTy, fatPtr, index);
-  llvm::Type* fieldTy = index == 0
-                            ? static_cast<llvm::Type*>(
-                                  llvm::PointerType::getUnqual(ctx.getContext()))
-                            : llvm::Type::getInt64Ty(ctx.getContext());
+  llvm::Type* fieldTy =
+      index == 0 ? static_cast<llvm::Type*>(
+                       llvm::PointerType::getUnqual(ctx.getContext()))
+                 : llvm::Type::getInt64Ty(ctx.getContext());
   return ctx.builder->CreateLoad(fieldTy, fieldAddr, name);
 }
 
@@ -614,8 +611,7 @@ Value* CodegenVisitor::codegenBuiltinTypeMethod(const CallExprAST& expr,
 
     if (methodName == "length" || methodName == "raw") {
       if (!expr.getArgs().empty()) {
-        logAndThrowError("static_ptr." + methodName +
-                         "() takes no arguments");
+        logAndThrowError("static_ptr." + methodName + "() takes no arguments");
         return nullptr;
       }
       return methodName == "length"
@@ -678,9 +674,9 @@ Value* CodegenVisitor::codegenModuleFunctionCall(
     return nullptr;
   }
 
-  Value* result = emitPossiblyThrowingCall(
-      func->getFunctionType(), func, argValues,
-      func->hasFnAttribute("sun.canthrow"), "calltmp");
+  Value* result =
+      emitPossiblyThrowingCall(func->getFunctionType(), func, argValues,
+                               func->hasFnAttribute("sun.canthrow"), "calltmp");
   return materializeStructReturn(result);
 }
 
@@ -750,7 +746,8 @@ Value* CodegenVisitor::codegenInterfaceMethodCall(
   // Build argument list: method closure with data_ptr as receiver, then
   // user arguments
   std::vector<Value*> argValues;
-  argValues.push_back(materializeMethodClosure(funcPtr, dataPtr, "iface.closure"));
+  argValues.push_back(
+      materializeMethodClosure(funcPtr, dataPtr, "iface.closure"));
 
   if (!emitCallArguments(expr.getArgs(), expr.getArgConversions(),
                          ifaceMethod->paramTypes, funcType, argValues,
@@ -860,16 +857,17 @@ Value* CodegenVisitor::codegenClassMethodCall(
       return nullptr;
     }
     const auto& paramTypes =
-        static_cast<const sun::FunctionType*>(calleeType.get())->getParamTypes();
+        static_cast<const sun::FunctionType*>(calleeType.get())
+            ->getParamTypes();
     if (!emitCallArguments(expr.getArgs(), expr.getArgConversions(), paramTypes,
                            specializedFunc->getFunctionType(), argValues,
                            methodName)) {
       return nullptr;
     }
 
-    Value* result = emitPossiblyThrowingCall(
-        specializedFunc->getFunctionType(), specializedFunc, argValues,
-        method->canThrow, "method.call");
+    Value* result = emitPossiblyThrowingCall(specializedFunc->getFunctionType(),
+                                             specializedFunc, argValues,
+                                             method->canThrow, "method.call");
     return materializeStructReturn(result);
   }
 
@@ -900,9 +898,9 @@ Value* CodegenVisitor::codegenClassMethodCall(
     markClassAllocationAsDeinited(objectPtr);
   }
 
-  Value* result = emitPossiblyThrowingCall(
-      methodFunc->getFunctionType(), methodFunc, argValues, method->canThrow,
-      "method.call");
+  Value* result =
+      emitPossiblyThrowingCall(methodFunc->getFunctionType(), methodFunc,
+                               argValues, method->canThrow, "method.call");
   return materializeStructReturn(result);
 }
 
@@ -1154,8 +1152,8 @@ bool CodegenVisitor::emitCallArguments(
       case sun::ArgConversion::ClassToRefInterface: {
         Value* classPtr = prepareRefArgument(argExpr, argSunType);
         if (!classPtr) return false;
-        argVal = prepareClassForRefInterface(classPtr, sun::unwrapRef(argSunType),
-                                             paramType);
+        argVal = prepareClassForRefInterface(
+            classPtr, sun::unwrapRef(argSunType), paramType);
         break;
       }
 
@@ -1190,8 +1188,8 @@ bool CodegenVisitor::emitCallArguments(
       case sun::ArgConversion::DerefRawPtr:
         argVal = codegen(*argExpr);
         if (!argVal) return false;
-        argVal = ctx.builder->CreateLoad(typeResolver.resolve(paramType), argVal,
-                                         "auto_deref_arg");
+        argVal = ctx.builder->CreateLoad(typeResolver.resolve(paramType),
+                                         argVal, "auto_deref_arg");
         break;
 
       case sun::ArgConversion::CVararg:
@@ -1263,7 +1261,8 @@ bool CodegenVisitor::emitExternArguments(
         break;
       case sun::ArgConversion::WidenNumeric:
         argVal = codegen(*argExpr);
-        if (argVal) argVal = widenNumericIfNeeded(argVal, paramType, argSunType);
+        if (argVal)
+          argVal = widenNumericIfNeeded(argVal, paramType, argSunType);
         break;
       case sun::ArgConversion::StaticToRawPtr:
         argVal = codegen(*argExpr);
@@ -1374,8 +1373,8 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
   // block it must be `invoke`d so its exception routes to the local landing
   // pad. Exceptions now propagate natively — no error-union unwrapping.
   bool canThrow = func->hasFnAttribute("sun.canthrow") || funcType.canThrow();
-  Value* callResult = emitPossiblyThrowingCall(
-      func->getFunctionType(), func, argValues, canThrow, "calltmp");
+  Value* callResult = emitPossiblyThrowingCall(func->getFunctionType(), func,
+                                               argValues, canThrow, "calltmp");
 
   // Handle struct return values (classes returned by value)
   return materializeStructReturn(callResult);

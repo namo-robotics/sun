@@ -1,7 +1,7 @@
 // semantic_analysis/interfaces.cpp — Interface, enum support, and validation
 
-#include "support/error.h"
 #include "semantic_analysis/semantic_analyzer.h"
+#include "support/error.h"
 
 // -------------------------------------------------------------------
 // Interface support
@@ -90,9 +90,9 @@ SemanticAnalyzer::instantiateGenericInterface(
   auto specializedInterface =
       typeRegistry->getSpecializedInterface(baseName, typeArgs);
   specializedInterface->visibility = genericInfo->AST->getVisibility();
-  specializedInterface->setQualifiedName(sun::QualifiedName(
-      genericInfo->qualifiedName.scopePath, mangledName,
-      genericInfo->qualifiedName.modulePath));
+  specializedInterface->setQualifiedName(
+      sun::QualifiedName(genericInfo->qualifiedName.scopePath, mangledName,
+                         genericInfo->qualifiedName.modulePath));
 
   {
     // Member annotations resolve in the interface's definition scope; the
@@ -209,8 +209,7 @@ void SemanticAnalyzer::inheritInterfaceFields(
           logAndThrowError(
               "Class '" + classDef.getName() + "' declares field '" +
                   field.name + "' with type '" +
-                  existingField->type->toDisplayString() +
-                      "' but interface '" +
+                  existingField->type->toDisplayString() + "' but interface '" +
                   interfaceDisplayName + "' requires type '" +
                   field.type->toDisplayString() + "'",
               classDef.getLocation());
@@ -218,8 +217,7 @@ void SemanticAnalyzer::inheritInterfaceFields(
         continue;
       }
       // Add interface field to class with the interface's visibility
-      classType->addField(field.name, field.type).visibility =
-          field.visibility;
+      classType->addField(field.name, field.type).visibility = field.visibility;
     }
 
     // Record the implementation now (conformance is validated after the
@@ -287,23 +285,21 @@ void SemanticAnalyzer::validateInterfaceImplementation(
         // A const interface member may be called on a constant receiver, so
         // the implementing method must promise the same
         if (interfaceMethod.isConst && !classMethodInfo->isConst) {
-          logSemanticError("method '" + interfaceMethod.name + "' of class '" +
-                               classType->getDisplayName() +
-                               "' implements const member '" +
-                               interfaceDisplayName + "." +
-                               interfaceMethod.name +
-                               "' and must be declared 'const function'",
-                           classDef.getLocation());
+          logSemanticError(
+              "method '" + interfaceMethod.name + "' of class '" +
+                  classType->getDisplayName() + "' implements const member '" +
+                  interfaceDisplayName + "." + interfaceMethod.name +
+                  "' and must be declared 'const function'",
+              classDef.getLocation());
         }
         // Verify return type matches. A class return where the interface
         // declares an interface type it implements is accepted (IIterable's
         // iter() returns the concrete iterator), but such a method cannot be
         // dispatched through a fat pointer, so the class is not convertible
         // to this interface.
-        bool returnOk = !classMethodInfo->returnType ||
-                        !interfaceMethod.returnType ||
-                        classMethodInfo->returnType->equals(
-                            *interfaceMethod.returnType);
+        bool returnOk =
+            !classMethodInfo->returnType || !interfaceMethod.returnType ||
+            classMethodInfo->returnType->equals(*interfaceMethod.returnType);
         if (!returnOk && interfaceMethod.returnType->isInterface() &&
             classMethodInfo->returnType->isClass()) {
           auto* required = static_cast<const sun::InterfaceType*>(
@@ -316,16 +312,14 @@ void SemanticAnalyzer::validateInterfaceImplementation(
           }
         }
         if (!returnOk) {
-          logAndThrowError("Class '" + classType->getDisplayName() + "' method '" +
-                               interfaceMethod.name + "' has return type '" +
-                               classMethodInfo->returnType
-                                   ->toDisplayString() +
-                               "' but interface '" + interfaceDisplayName +
-                               "' requires return type '" +
-                               interfaceMethod.returnType
-                                   ->toDisplayString() +
-                               "'",
-                           classDef.getLocation());
+          logAndThrowError(
+              "Class '" + classType->getDisplayName() + "' method '" +
+                  interfaceMethod.name + "' has return type '" +
+                  classMethodInfo->returnType->toDisplayString() +
+                  "' but interface '" + interfaceDisplayName +
+                  "' requires return type '" +
+                  interfaceMethod.returnType->toDisplayString() + "'",
+              classDef.getLocation());
         }
         // Verify parameter count matches
         if (classMethodInfo->paramTypes.size() !=
@@ -344,17 +338,15 @@ void SemanticAnalyzer::validateInterfaceImplementation(
           for (size_t i = 0; i < classMethodInfo->paramTypes.size(); ++i) {
             if (!classMethodInfo->paramTypes[i]->equals(
                     *interfaceMethod.paramTypes[i])) {
-              logAndThrowError("Class '" + classType->getDisplayName() + "' method '" +
-                                   interfaceMethod.name + "' parameter " +
-                                   std::to_string(i + 1) + " has type '" +
-                                   classMethodInfo->paramTypes[i]
-                                       ->toDisplayString() +
-                                   "' but interface '" + interfaceDisplayName +
-                                   "' requires type '" +
-                                   interfaceMethod.paramTypes[i]
-                                       ->toDisplayString() +
-                                   "'",
-                               classDef.getLocation());
+              logAndThrowError(
+                  "Class '" + classType->getDisplayName() + "' method '" +
+                      interfaceMethod.name + "' parameter " +
+                      std::to_string(i + 1) + " has type '" +
+                      classMethodInfo->paramTypes[i]->toDisplayString() +
+                      "' but interface '" + interfaceDisplayName +
+                      "' requires type '" +
+                      interfaceMethod.paramTypes[i]->toDisplayString() + "'",
+                  classDef.getLocation());
             }
           }
         }
@@ -363,9 +355,10 @@ void SemanticAnalyzer::validateInterfaceImplementation(
         if (interfaceMethod.hasDefaultImpl) {
           // Add the default method to the class type so it can be found during
           // lookup (preserve generic type parameters)
-          auto& method = classType->addMethod(
-              interfaceMethod.name, interfaceMethod.returnType,
-              interfaceMethod.paramTypes, false, interfaceMethod.typeParameters);
+          auto& method = classType->addMethod(interfaceMethod.name,
+                                              interfaceMethod.returnType,
+                                              interfaceMethod.paramTypes, false,
+                                              interfaceMethod.typeParameters);
           method.visibility = interfaceMethod.visibility;
           method.isConst = interfaceMethod.isConst;
 

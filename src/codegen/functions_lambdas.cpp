@@ -130,9 +130,8 @@ llvm::StructType* CodegenVisitor::createEnvTypeForFunc(
   std::vector<llvm::Type*> capturedTypes;
   for (const auto& cap : proto.getCaptures()) {
     // By-ref captures store a pointer to the original storage
-    capturedTypes.push_back(cap.byRef
-                                ? PointerType::getUnqual(ctx.getContext())
-                                : typeResolver.resolve(cap.type));
+    capturedTypes.push_back(cap.byRef ? PointerType::getUnqual(ctx.getContext())
+                                      : typeResolver.resolve(cap.type));
   }
   return StructType::create(ctx.getContext(), capturedTypes,
                             proto.getName() + ".env");
@@ -523,8 +522,9 @@ Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
 
   if (proto.hasClosure()) {
     if (isGlobalScope) {
-      logAndThrowError("Global named functions with captures are not supported: " +
-                       proto.getName());
+      logAndThrowError(
+          "Global named functions with captures are not supported: " +
+          proto.getName());
     }
     resultPtr = createEnvClosure(envType, proto);
     scopes.back().variables[proto.getName()] = cast<AllocaInst>(resultPtr);
@@ -641,8 +641,7 @@ Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
   debugInfo.exitFunction(func);
 
   if (llvm::verifyFunction(*func, &llvm::errs())) {
-    logAndThrowError("Function verification failed: " +
-                     func->getName().str());
+    logAndThrowError("Function verification failed: " + func->getName().str());
   }
 
   // Track user-defined functions for IR filtering (exclude precompiled library
@@ -718,8 +717,8 @@ llvm::Value* CodegenVisitor::codegenLambda(LambdaAST& lambdaAst) {
     if (funcConst->getType() != expectedFuncTy) {
       funcConst = ConstantExpr::getBitCast(func, expectedFuncTy);
     }
-    llvm::Constant* nullEnv = ConstantPointerNull::get(
-        cast<PointerType>(fatType->getElementType(1)));
+    llvm::Constant* nullEnv =
+        ConstantPointerNull::get(cast<PointerType>(fatType->getElementType(1)));
     resultPtr = ConstantStruct::get(fatType, {funcConst, nullEnv});
   } else {
     resultPtr = createFatClosure(func, fatType, envType, proto);

@@ -143,7 +143,7 @@ TEST(Stdlib_Convert, error_message_is_readable) {
     try { var t: i32 = safe_convert<i32>(big); return 0; }
     catch (e: IError) { var m: String = e.message(); return _convert<i32>(m.length()); }
   )");
-  EXPECT_EQ(value, static_cast<int>(
-                       std::string("value out of range for the target type")
-                           .size()));
+  EXPECT_EQ(value,
+            static_cast<int>(
+                std::string("value out of range for the target type").size()));
 }

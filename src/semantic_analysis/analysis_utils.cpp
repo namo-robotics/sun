@@ -3,9 +3,9 @@
 // Contains type assignability checking, integer literal coercion,
 // and type guard extraction.
 
-#include "support/error.h"
 #include "codegen/intrinsics/intrinsics.h"
 #include "semantic_analysis/semantic_analyzer.h"
+#include "support/error.h"
 
 using sun::unwrapRef;
 
@@ -102,10 +102,10 @@ void SemanticAnalyzer::checkCharOperands(const BinaryExprAST& binExpr) {
   if (!lhsIsChar && !rhsIsChar) return;
 
   TokenKind op = binExpr.getOp().kind;
-  bool isComparison = op == TokenKind::LESS || op == TokenKind::GREATER ||
-                      op == TokenKind::LESS_EQUAL ||
-                      op == TokenKind::GREATER_EQUAL ||
-                      op == TokenKind::EQUAL_EQUAL || op == TokenKind::NOT_EQUAL;
+  bool isComparison =
+      op == TokenKind::LESS || op == TokenKind::GREATER ||
+      op == TokenKind::LESS_EQUAL || op == TokenKind::GREATER_EQUAL ||
+      op == TokenKind::EQUAL_EQUAL || op == TokenKind::NOT_EQUAL;
   if (!isComparison) {
     const auto& info = getTokenInfo();
     auto it = info.find(op);
@@ -161,10 +161,10 @@ void SemanticAnalyzer::coerceBinaryLiteralOperands(
 
   // A comparison's expected type describes its bool result, not its operands
   TokenKind op = binExpr.getOp().kind;
-  bool isComparison = op == TokenKind::LESS || op == TokenKind::GREATER ||
-                      op == TokenKind::LESS_EQUAL ||
-                      op == TokenKind::GREATER_EQUAL ||
-                      op == TokenKind::EQUAL_EQUAL || op == TokenKind::NOT_EQUAL;
+  bool isComparison =
+      op == TokenKind::LESS || op == TokenKind::GREATER ||
+      op == TokenKind::LESS_EQUAL || op == TokenKind::GREATER_EQUAL ||
+      op == TokenKind::EQUAL_EQUAL || op == TokenKind::NOT_EQUAL;
   auto expected = unwrapRef(expectedType);
   if (!isComparison && expected && expected->isNumeric()) {
     bool coerced = false;

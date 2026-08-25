@@ -12,9 +12,10 @@
 namespace sun::lsp {
 
 struct Rename {
-  std::string name;                   // The name as currently written
-  std::vector<SymbolLocation> sites;  // Every place to edit, declaration included
-  std::string refusal;                // Why the symbol cannot be renamed, or empty
+  std::string name;  // The name as currently written
+  std::vector<SymbolLocation>
+      sites;            // Every place to edit, declaration included
+  std::string refusal;  // Why the symbol cannot be renamed, or empty
 };
 
 // The symbol at byteOffset with every place its name is written, found as

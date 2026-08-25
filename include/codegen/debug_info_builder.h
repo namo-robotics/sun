@@ -17,8 +17,8 @@
 #include <string>
 #include <vector>
 
-#include "support/position.h"
 #include "semantic_analysis/types.h"
+#include "support/position.h"
 
 namespace sun {
 

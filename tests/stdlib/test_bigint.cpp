@@ -1,5 +1,5 @@
-// tests/stdlib/test_bigint.cpp - stdlib/bigint.sun (BigUint) and the bit intrinsics
-// it builds on (_mul_hi_u64, _ctlz_u64, _cttz_u64)
+// tests/stdlib/test_bigint.cpp - stdlib/bigint.sun (BigUint) and the bit
+// intrinsics it builds on (_mul_hi_u64, _ctlz_u64, _cttz_u64)
 
 #include <gtest/gtest.h>
 

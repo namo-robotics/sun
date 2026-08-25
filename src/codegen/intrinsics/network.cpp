@@ -5,12 +5,12 @@
 // - __send, __recv, __shutdown
 // - __setsockopt, __getsockopt
 //
-// All socket operations call libc (see include/codegen/intrinsics/libc.h), which
-// keeps the emitted IR target-neutral.
+// All socket operations call libc (see include/codegen/intrinsics/libc.h),
+// which keeps the emitted IR target-neutral.
 
 #include "codegen/codegen_visitor.h"
-#include "support/error.h"
 #include "codegen/intrinsics/libc.h"
+#include "support/error.h"
 
 using namespace llvm;
 
@@ -22,8 +22,7 @@ using namespace llvm;
 static Function* getOrCreateSocketHelper(llvm::Module* module,
                                          LLVMContext& llvmCtx) {
   auto* i32Ty = Type::getInt32Ty(llvmCtx);
-  return sun::libc::forwarder(module, "__sun_socket",
-                              sun::libc::socket(module),
+  return sun::libc::forwarder(module, "__sun_socket", sun::libc::socket(module),
                               {i32Ty, i32Ty, i32Ty}, i32Ty);
 }
 
@@ -40,9 +39,8 @@ static Function* getOrCreateBindHelper(llvm::Module* module,
 static Function* getOrCreateListenHelper(llvm::Module* module,
                                          LLVMContext& llvmCtx) {
   auto* i32Ty = Type::getInt32Ty(llvmCtx);
-  return sun::libc::forwarder(module, "__sun_listen",
-                              sun::libc::listen(module), {i32Ty, i32Ty},
-                              i32Ty);
+  return sun::libc::forwarder(module, "__sun_listen", sun::libc::listen(module),
+                              {i32Ty, i32Ty}, i32Ty);
 }
 
 // __sun_accept: accept(fd, addr, addrlen) -> client_fd
@@ -50,8 +48,7 @@ static Function* getOrCreateAcceptHelper(llvm::Module* module,
                                          LLVMContext& llvmCtx) {
   auto* i32Ty = Type::getInt32Ty(llvmCtx);
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  return sun::libc::forwarder(module, "__sun_accept",
-                              sun::libc::accept(module),
+  return sun::libc::forwarder(module, "__sun_accept", sun::libc::accept(module),
                               {i32Ty, ptrTy, ptrTy}, i32Ty);
 }
 
@@ -61,8 +58,8 @@ static Function* getOrCreateConnectHelper(llvm::Module* module,
   auto* i32Ty = Type::getInt32Ty(llvmCtx);
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
   return sun::libc::forwarder(module, "__sun_connect",
-                              sun::libc::connect(module),
-                              {i32Ty, ptrTy, i32Ty}, i32Ty);
+                              sun::libc::connect(module), {i32Ty, ptrTy, i32Ty},
+                              i32Ty);
 }
 
 // __sun_send: send(fd, buf, len, flags) -> bytes_sent
@@ -147,8 +144,7 @@ Value* CodegenVisitor::codegenSocket(const CallExprAST& expr) {
   }
 
   Function* helper = getOrCreateSocketHelper(module, llvmCtx);
-  return ctx.builder->CreateCall(helper, {domain, type, protocol},
-                                 "socket_fd");
+  return ctx.builder->CreateCall(helper, {domain, type, protocol}, "socket_fd");
 }
 
 // __bind(fd: i32, addr: raw_ptr<u8>, addrlen: i32) -> i32

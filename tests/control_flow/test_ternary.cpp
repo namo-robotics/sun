@@ -1,5 +1,5 @@
-// tests/control_flow/test_ternary.cpp - Tests for the ternary conditional operator
-// (cond ? then : else)
+// tests/control_flow/test_ternary.cpp - Tests for the ternary conditional
+// operator (cond ? then : else)
 
 #include <gtest/gtest.h>
 

@@ -38,24 +38,22 @@ std::string computeContentHash(const std::string& data) {
 // Known external C runtime functions that should NOT be prefixed
 bool shouldSkipRename(const std::string& name) {
   static const std::set<std::string> cRuntimeFunctions = {
-      "malloc",    "free",     "realloc", "calloc",  "memset",  "memcpy",
-      "memmove",   "memcmp",   "strlen",  "strcpy",  "strncpy", "strcmp",
-      "strncmp",   "strcat",   "strncat", "printf",  "fprintf", "sprintf",
-      "snprintf",  "puts",     "putchar", "getchar", "fopen",   "fclose",
-      "fread",     "fwrite",   "fseek",   "ftell",   "fflush",  "exit",
-      "abort",     "atexit",   "atoi",    "atof",    "atol",    "strtol",
-      "strtod",    "qsort",    "bsearch", "rand",    "srand",   "time",
-      "clock",     "difftime", "mktime",  "asctime", "ctime",   "gmtime",
-      "localtime", "strftime", "sin",     "cos",     "tan",     "asin",
-      "acos",      "atan",     "atan2",   "sinh",    "cosh",    "tanh",
-      "exp",       "log",      "log10",   "pow",     "sqrt",    "ceil",
-      "floor",     "fabs",     "fmod",    "frexp",   "ldexp",   "modf",
-      // POSIX symbols the intrinsics call (mirrors include/codegen/intrinsics/libc.h)
-      "write",     "read",     "open",    "close",   "lseek",   "fstat",
-      "fsync",     "ftruncate", "unlink", "rename",  "mkdir",   "rmdir",
-      "socket",    "bind",     "listen",  "accept",  "connect", "send",
-      "recv",      "shutdown", "setsockopt", "getsockopt", "syscall",
-      "pthread_create", "pthread_join"};
+      "malloc", "free", "realloc", "calloc", "memset", "memcpy", "memmove",
+      "memcmp", "strlen", "strcpy", "strncpy", "strcmp", "strncmp", "strcat",
+      "strncat", "printf", "fprintf", "sprintf", "snprintf", "puts", "putchar",
+      "getchar", "fopen", "fclose", "fread", "fwrite", "fseek", "ftell",
+      "fflush", "exit", "abort", "atexit", "atoi", "atof", "atol", "strtol",
+      "strtod", "qsort", "bsearch", "rand", "srand", "time", "clock",
+      "difftime", "mktime", "asctime", "ctime", "gmtime", "localtime",
+      "strftime", "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "sinh",
+      "cosh", "tanh", "exp", "log", "log10", "pow", "sqrt", "ceil", "floor",
+      "fabs", "fmod", "frexp", "ldexp", "modf",
+      // POSIX symbols the intrinsics call (mirrors
+      // include/codegen/intrinsics/libc.h)
+      "write", "read", "open", "close", "lseek", "fstat", "fsync", "ftruncate",
+      "unlink", "rename", "mkdir", "rmdir", "socket", "bind", "listen",
+      "accept", "connect", "send", "recv", "shutdown", "setsockopt",
+      "getsockopt", "syscall", "pthread_create", "pthread_join"};
 
   if (name.starts_with("llvm.")) return true;
   if (name.starts_with("$")) return true;

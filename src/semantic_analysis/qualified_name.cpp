@@ -19,8 +19,7 @@ std::string QualifiedName::canonicalTypeString(const TypePtr& type,
     // one — the library mangled those names before its symbols were prefixed.
     if (!hashPrefix.empty()) {
       for (size_t at = typeMangledName.find(hashPrefix);
-           at != std::string::npos;
-           at = typeMangledName.find(hashPrefix, at)) {
+           at != std::string::npos; at = typeMangledName.find(hashPrefix, at)) {
         typeMangledName.erase(at, hashPrefix.size());
       }
     }

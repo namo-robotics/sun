@@ -11,9 +11,9 @@
 #include <string>
 
 #include "ast.h"
-#include "serialization/ast_serializer.h"
 #include "parsing/lowering_pass.h"
 #include "parsing/parser.h"
+#include "serialization/ast_serializer.h"
 
 namespace {
 
@@ -179,10 +179,8 @@ TEST(Tooling_Frontend_Lowering, DesugarsInterpolatedString) {
   ASSERT_EQ(var->getValue()->getType(), ASTNodeType::BLOCK);
   const auto* desugared = static_cast<const BlockExprAST*>(var->getValue());
   ASSERT_EQ(desugared->getBody().size(), 5u);
-  EXPECT_EQ(desugared->getBody()[0]->getType(),
-            ASTNodeType::VARIABLE_CREATION);
-  EXPECT_EQ(desugared->getBody()[1]->getType(),
-            ASTNodeType::VARIABLE_CREATION);
+  EXPECT_EQ(desugared->getBody()[0]->getType(), ASTNodeType::VARIABLE_CREATION);
+  EXPECT_EQ(desugared->getBody()[1]->getType(), ASTNodeType::VARIABLE_CREATION);
   EXPECT_EQ(desugared->getBody()[2]->getType(), ASTNodeType::CALL);
   EXPECT_EQ(desugared->getBody()[3]->getType(), ASTNodeType::CALL);
   EXPECT_EQ(desugared->getBody()[4]->getType(),
@@ -208,7 +206,8 @@ TEST(Tooling_Frontend_Lowering, DesugaredNodesCarryTemplateLocation) {
   }
 }
 
-TEST(Tooling_Frontend_Lowering, InterpolationSubExpressionPositionsAreAbsolute) {
+TEST(Tooling_Frontend_Lowering,
+     InterpolationSubExpressionPositionsAreAbsolute) {
   std::string src = "var s = `x = ${foo}`;";
   auto block = parseProgram(src);
   ASSERT_NE(block, nullptr);

@@ -97,8 +97,7 @@ class LibraryCache {
   /// arch-correct bundle, and the linker must agree with it); explicit
   /// addBundle() registration breaks ties among same-arch candidates. A
   /// wrong pick is still caught by the linker's triple check.
-  MoonReader* selectBundle(
-      const std::vector<MoonReader*>& candidates) const;
+  MoonReader* selectBundle(const std::vector<MoonReader*>& candidates) const;
 
   std::vector<std::filesystem::path> searchPaths_;
   std::vector<std::unique_ptr<MoonReader>> bundles_;

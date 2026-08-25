@@ -208,8 +208,7 @@ Value* CodegenVisitor::tryCodegenAddress(const ExprAST& expr) {
         return gv;
       }
 
-      auto [objectPtr, classType] =
-          codegenObjectPtr(*memberAccess.getObject());
+      auto [objectPtr, classType] = codegenObjectPtr(*memberAccess.getObject());
       if (!objectPtr || !classType) return nullptr;
 
       const sun::ClassField* field =
@@ -320,17 +319,17 @@ Value* CodegenVisitor::emitCompoundOpValue(const CompoundAssignmentAST& expr,
   const Position& loc = expr.getLocation();
   bool unsignedOp = slotSunType && slotSunType->isUnsigned();
 
-  unifyBinaryOperands(cur, rhs, slotSunType,
-                      expr.getValue()->getResolvedType(), loc);
+  unifyBinaryOperands(cur, rhs, slotSunType, expr.getValue()->getResolvedType(),
+                      loc);
   Value* result = emitBinaryOp(expr.binaryOpKind(), cur, rhs, unsignedOp, loc);
   if (!result) return nullptr;
 
   if (result->getType() != slotTy) {
     if (result->getType()->isIntegerTy() && slotTy->isIntegerTy()) {
-      result = result->getType()->getIntegerBitWidth() >
-                       slotTy->getIntegerBitWidth()
-                   ? ctx.builder->CreateTrunc(result, slotTy, "compound.trunc")
-                   : extendInt(result, slotTy, slotSunType);
+      result =
+          result->getType()->getIntegerBitWidth() > slotTy->getIntegerBitWidth()
+              ? ctx.builder->CreateTrunc(result, slotTy, "compound.trunc")
+              : extendInt(result, slotTy, slotSunType);
     } else if (result->getType()->isDoubleTy() && slotTy->isFloatTy()) {
       result = ctx.builder->CreateFPTrunc(result, slotTy, "compound.trunc");
     } else if (result->getType()->isFloatTy() && slotTy->isDoubleTy()) {

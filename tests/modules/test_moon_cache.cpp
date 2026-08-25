@@ -2,7 +2,6 @@
 // dependencies. All tests are offline: file:// URLs plus pre-seeded caches.
 
 #include <gtest/gtest.h>
-
 #include <llvm/Support/SHA256.h>
 
 #include <filesystem>
@@ -125,8 +124,7 @@ TEST(Modules_MoonCache, github_token_is_sent_only_to_github_hosts) {
 
   auto github = sun::MoonCache::buildCurlCommand(
       "https://github.com/o/r/releases/download/v1/lib.moon", "out.moon");
-  EXPECT_NE(github.find("Authorization: Bearer ghp_abc123"),
-            std::string::npos);
+  EXPECT_NE(github.find("Authorization: Bearer ghp_abc123"), std::string::npos);
 
   auto raw = sun::MoonCache::buildCurlCommand(
       "https://raw.githubusercontent.com/o/r/main/lib.moon", "out.moon");
@@ -137,12 +135,11 @@ TEST(Modules_MoonCache, github_token_is_sent_only_to_github_hosts) {
       "https://api.github.com/repos/o/r/releases/assets/123", "out.moon");
   EXPECT_NE(api.find("Authorization: Bearer"), std::string::npos);
   EXPECT_NE(api.find("Accept: application/octet-stream"), std::string::npos);
-  EXPECT_EQ(github.find("Accept: application/octet-stream"),
-            std::string::npos);
+  EXPECT_EQ(github.find("Accept: application/octet-stream"), std::string::npos);
 
   // Never sent to other servers — including lookalike hosts
-  auto other = sun::MoonCache::buildCurlCommand(
-      "https://example.com/lib.moon", "out.moon");
+  auto other = sun::MoonCache::buildCurlCommand("https://example.com/lib.moon",
+                                                "out.moon");
   EXPECT_EQ(other.find("Authorization"), std::string::npos);
   auto lookalike = sun::MoonCache::buildCurlCommand(
       "https://evilgithub.com/lib.moon", "out.moon");
@@ -173,13 +170,13 @@ TEST(Modules_MoonCache, github_token_with_bad_characters_is_rejected) {
 
 TEST(Modules_MoonCache, fetch_rejects_malformed_url) {
   CacheFixture fx("malformed");
-  EXPECT_THROW(sun::MoonCache::fetch("ftp://x/lib.moon", std::nullopt,
-                                     fx.cacheDir),
-               SunError);
-  EXPECT_THROW(sun::MoonCache::fetch("https://x/lib'.moon", std::nullopt,
-                                     fx.cacheDir),
-               SunError);
-  EXPECT_THROW(sun::MoonCache::fetch("https://x/a b.moon", std::nullopt,
-                                     fx.cacheDir),
-               SunError);
+  EXPECT_THROW(
+      sun::MoonCache::fetch("ftp://x/lib.moon", std::nullopt, fx.cacheDir),
+      SunError);
+  EXPECT_THROW(
+      sun::MoonCache::fetch("https://x/lib'.moon", std::nullopt, fx.cacheDir),
+      SunError);
+  EXPECT_THROW(
+      sun::MoonCache::fetch("https://x/a b.moon", std::nullopt, fx.cacheDir),
+      SunError);
 }

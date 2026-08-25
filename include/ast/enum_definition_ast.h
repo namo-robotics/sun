@@ -3,11 +3,10 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
-
-#include <map>
 
 #include "ast/expr_ast.h"
 #include "ast/type_annotation.h"
@@ -34,7 +33,7 @@ class EnumDefinitionAST : public ExprAST {
   std::string name;
   std::vector<EnumVariantDecl> variants;
   std::vector<std::string> typeParameters;  // empty = non-generic
-  std::string doc_;  // Comment written above the enum
+  std::string doc_;                         // Comment written above the enum
   // Populated during semantic analysis (mutable, like ClassAnalysis
   // specializations on ClassDefinitionAST)
   mutable std::map<std::string, std::shared_ptr<sun::EnumType>>
@@ -71,7 +70,8 @@ class EnumDefinitionAST : public ExprAST {
 
   ASTNodeType getType() const override { return ASTNodeType::ENUM_DEFINITION; }
   std::string toString() const override {
-    std::string result = std::string(isPublic() ? "public " : "") + "enum " + name + " { ";
+    std::string result =
+        std::string(isPublic() ? "public " : "") + "enum " + name + " { ";
     for (size_t i = 0; i < variants.size(); ++i) {
       if (i > 0) result += ", ";
       result += variants[i].name;

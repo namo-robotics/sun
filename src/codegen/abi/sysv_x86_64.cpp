@@ -71,13 +71,13 @@ bool classifyLeaves(llvm::Type* type, uint64_t offset,
 
   uint64_t first = offset / 8;
   uint64_t last = (offset + size - 1) / 8;
-  if (last > 1) return false;  // beyond the two eightbytes we handle
+  if (last > 1) return false;       // beyond the two eightbytes we handle
   if (first != last) return false;  // straddles a boundary -> MEMORY
 
   // Only float and double land in SSE registers; everything else Sun can
   // express in a struct (integers, bools, pointers) is INTEGER.
-  EightbyteClass cls = type->isFloatingPointTy() ? EightbyteClass::SSE
-                                                 : EightbyteClass::Integer;
+  EightbyteClass cls =
+      type->isFloatingPointTy() ? EightbyteClass::SSE : EightbyteClass::Integer;
   if (cls == EightbyteClass::SSE && !type->isFloatTy()) {
     eightbytes[first].allFloat32 = false;
   }
@@ -103,8 +103,7 @@ llvm::Type* pieceType(const EightbyteInfo& eb, llvm::LLVMContext& ctx) {
     }
     return llvm::Type::getDoubleTy(ctx);
   }
-  return llvm::IntegerType::get(ctx,
-                                static_cast<unsigned>(eb.usedBytes * 8));
+  return llvm::IntegerType::get(ctx, static_cast<unsigned>(eb.usedBytes * 8));
 }
 
 bool isAggregate(llvm::Type* type) {

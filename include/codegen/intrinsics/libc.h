@@ -166,7 +166,8 @@ inline llvm::FunctionCallee recv(llvm::Module* m) {
 inline llvm::FunctionCallee shutdown(llvm::Module* m) {
   return get(m, "shutdown", i32(m), {i32(m), i32(m)});
 }
-// int setsockopt(int fd, int level, int optname, const void *val, socklen_t len)
+// int setsockopt(int fd, int level, int optname, const void *val, socklen_t
+// len)
 inline llvm::FunctionCallee setsockopt(llvm::Module* m) {
   return get(m, "setsockopt", i32(m), {i32(m), i32(m), i32(m), ptr(m), i32(m)});
 }

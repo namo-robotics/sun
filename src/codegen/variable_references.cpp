@@ -339,11 +339,10 @@ Value* CodegenVisitor::codegen(const VariableAssignmentAST& expr) {
 // the source so its own drop is a no-op. The borrow checker already rejects
 // later uses of the source.
 void CodegenVisitor::assignToVariableSlot(Value* slot, Value* value,
-                                         const sun::TypePtr& varType,
-                                         const std::string& name) {
-  bool compound =
-      varType && (varType->isClass() || isPayloadEnum(varType)) &&
-      value->getType()->isPointerTy();
+                                          const sun::TypePtr& varType,
+                                          const std::string& name) {
+  bool compound = varType && (varType->isClass() || isPayloadEnum(varType)) &&
+                  value->getType()->isPointerTy();
   if (compound) {
     // Self-assignment would drop the object and then copy from the corpse;
     // it has no effect, so emit nothing.

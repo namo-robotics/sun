@@ -14,10 +14,10 @@
 #include <string>
 
 #include "ast.h"
-#include "parsing/doc_comments.h"
 #include "driver/driver.h"
 #include "driver/execution_utils.h"
 #include "lsp/hover.h"
+#include "parsing/doc_comments.h"
 #include "parsing/parser.h"
 
 namespace {
@@ -321,7 +321,8 @@ function main() i32 {
     return total + p.len() + p.x;
 }
 )";
-  EXPECT_EQ(docAt(source, "function add"), "Adds two numbers.\nReturns the sum.");
+  EXPECT_EQ(docAt(source, "function add"),
+            "Adds two numbers.\nReturns the sum.");
   EXPECT_EQ(docAt(source, "add(1, 2)"), "Adds two numbers.\nReturns the sum.");
   EXPECT_EQ(docAt(source, "class Point"), "A point on the plane.");
   EXPECT_EQ(docAt(source, "Point();"), "A point on the plane.");
@@ -433,7 +434,8 @@ function main() i32 {
 )";
   auto annotation = fullHoverAt(source, "HeapAllocator) i32", true);
   ASSERT_TRUE(annotation);
-  EXPECT_EQ(annotation->code, "public class HeapAllocator implements IAllocator");
+  EXPECT_EQ(annotation->code,
+            "public class HeapAllocator implements IAllocator");
   EXPECT_NE(annotation->documentation.find("default system allocator"),
             std::string::npos)
       << annotation->documentation;
@@ -525,9 +527,9 @@ TEST(Tooling_Lsp_Hover, MergedFilesUseInMemoryOverride) {
   ASSERT_TRUE(program.ast);
   EXPECT_FALSE(program.error.has_value());
 
-  auto hover = sun::lsp::computeHover(
-      *program.ast, path, buffer,
-      static_cast<int>(offsetOf(buffer, "count", 0)));
+  auto hover =
+      sun::lsp::computeHover(*program.ast, path, buffer,
+                             static_cast<int>(offsetOf(buffer, "count", 0)));
   ASSERT_TRUE(hover);
   EXPECT_EQ(hover->code, "var count: i64");
   std::filesystem::remove(path);

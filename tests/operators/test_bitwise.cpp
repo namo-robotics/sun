@@ -1,4 +1,5 @@
-// tests/operators/test_bitwise.cpp - Tests for bitwise operations (&, |, ^, <<, >>)
+// tests/operators/test_bitwise.cpp - Tests for bitwise operations (&, |, ^, <<,
+// >>)
 
 #include <gtest/gtest.h>
 
@@ -398,7 +399,8 @@ TEST(Operators_Bitwise, extract_nibble) {
           return (x >> 8) & 15;
       }
     )");
-  EXPECT_EQ(value, 6);  // Extract second nibble from low byte (0x12345678 >> 8) & 0xF = 0x56 & 0xF = 6
+  EXPECT_EQ(value, 6);  // Extract second nibble from low byte (0x12345678 >> 8)
+                        // & 0xF = 0x56 & 0xF = 6
 }
 
 TEST(Operators_Bitwise, all_bits_set) {

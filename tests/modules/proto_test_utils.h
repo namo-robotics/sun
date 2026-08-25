@@ -150,8 +150,7 @@ class LibprotobufSchema {
 
  private:
   struct Collector : google::protobuf::compiler::MultiFileErrorCollector {
-    void AddError(const std::string&, int, int,
-                  const std::string& m) override {
+    void AddError(const std::string&, int, int, const std::string& m) override {
       messages += m;
     }
     std::string messages;

@@ -14,16 +14,16 @@
 #include "driver/compiler.h"
 #include "driver/driver.h"
 #include "driver/manifest_processor.h"
-#include "support/error.h"
-#include "parsing/formatter.h"
 #include "moon_bundling/library_cache.h"
-#include "moon_bundling/moon_builder.h"
 #include "moon_bundling/moon.h"
+#include "moon_bundling/moon_builder.h"
 #include "moon_bundling/moon_cache.h"
 #include "moon_bundling/moon_import.h"
+#include "parsing/formatter.h"
 #include "parsing/parser.h"
-#include "support/sun_path.h"
 #include "sun_version.h"
+#include "support/error.h"
+#include "support/sun_path.h"
 
 static void printUsage(const char* programName) {
   llvm::errs() << "Usage: " << programName
@@ -475,9 +475,9 @@ int main(int argc, char* argv[]) {
         const auto& bundled = driver->getNativeArchivePaths();
         linkOpts.archives.insert(linkOpts.archives.end(), bundled.begin(),
                                  bundled.end());
-        success = sun::compileToExecutable(driver->getModule(), outputFile,
-                                           errorMsg, /*keepObjectFile=*/false,
-                                           linkOpts);
+        success =
+            sun::compileToExecutable(driver->getModule(), outputFile, errorMsg,
+                                     /*keepObjectFile=*/false, linkOpts);
       }
 
       if (!success) {
@@ -520,8 +520,8 @@ int main(int argc, char* argv[]) {
 
     sun::SunValue result;
     if (inputFiles.size() > 1) {
-      result = driver->executeFiles(inputFiles, {}, programArgc,
-                                    programArgv.data());
+      result =
+          driver->executeFiles(inputFiles, {}, programArgc, programArgv.data());
     } else {
       result = driver->executeFile(inputFile, programArgc, programArgv.data());
     }

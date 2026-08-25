@@ -3,8 +3,8 @@
 
 #include "semantic_analysis/argument_conversion.h"
 
-#include "support/error.h"
 #include "semantic_analysis/generic_type_arguments.h"
+#include "support/error.h"
 
 namespace sun::conversions {
 
@@ -105,7 +105,8 @@ std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
     if (argType->isRawPointer() && target) {
       const TypePtr& pointee =
           static_cast<const RawPointerType*>(argType.get())->getPointeeType();
-      if (pointee && pointee->equals(*target)) return ArgConversion::RawPtrAsRef;
+      if (pointee && pointee->equals(*target))
+        return ArgConversion::RawPtrAsRef;
     }
     if (value && value->isClass() && target && target->isInterface()) {
       return ArgConversion::ClassToRefInterface;
@@ -124,7 +125,8 @@ std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
   if (argType->isRawPointer() && paramType->isPrimitive()) {
     const TypePtr& pointee =
         static_cast<const RawPointerType*>(argType.get())->getPointeeType();
-    if (pointee && pointee->equals(*paramType)) return ArgConversion::DerefRawPtr;
+    if (pointee && pointee->equals(*paramType))
+      return ArgConversion::DerefRawPtr;
   }
 
   if (value && paramType->equals(*value)) return byValue(argType);
@@ -149,8 +151,9 @@ std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
 }
 
 std::vector<ArgConversion> classifyArguments(
-    const std::vector<TypePtr>& argTypes, const std::vector<TypePtr>& paramTypes,
-    bool cVariadic, const std::string& calleeName, std::optional<Position> loc) {
+    const std::vector<TypePtr>& argTypes,
+    const std::vector<TypePtr>& paramTypes, bool cVariadic,
+    const std::string& calleeName, std::optional<Position> loc) {
   std::vector<ArgConversion> conversions;
   conversions.reserve(argTypes.size());
   for (size_t i = 0; i < argTypes.size(); ++i) {

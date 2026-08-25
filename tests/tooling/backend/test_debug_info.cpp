@@ -144,10 +144,8 @@ TEST(Tooling_Backend_DebugInfo, locals_and_params_have_dbg_declares) {
 
   EXPECT_NE(ir.find("#dbg_declare"), std::string::npos);
   EXPECT_NE(ir.find("!DILocalVariable(name: \"sum\""), std::string::npos);
-  EXPECT_NE(ir.find("!DILocalVariable(name: \"a\", arg: 1"),
-            std::string::npos);
-  EXPECT_NE(ir.find("!DILocalVariable(name: \"b\", arg: 2"),
-            std::string::npos);
+  EXPECT_NE(ir.find("!DILocalVariable(name: \"a\", arg: 1"), std::string::npos);
+  EXPECT_NE(ir.find("!DILocalVariable(name: \"b\", arg: 2"), std::string::npos);
 }
 
 TEST(Tooling_Backend_DebugInfo, class_types_described_with_members) {
@@ -182,8 +180,8 @@ function main() i32 {
   // Both x's exist as distinct variables (one function-scoped, one
   // block-scoped) — count the DILocalVariable entries named x.
   size_t count = 0;
-  for (size_t pos = 0;
-       (pos = ir.find("!DILocalVariable(name: \"x\"", pos)) != std::string::npos;
+  for (size_t pos = 0; (pos = ir.find("!DILocalVariable(name: \"x\"", pos)) !=
+                       std::string::npos;
        ++pos) {
     ++count;
   }
@@ -208,8 +206,7 @@ function main() i32 {
   // The linked stdlib println must arrive with its subprogram intact.
   llvm::DISubprogram* printlnSP = nullptr;
   for (auto& func : driver->getModule()) {
-    if (auto* sp = func.getSubprogram();
-        sp && sp->getName() == "println") {
+    if (auto* sp = func.getSubprogram(); sp && sp->getName() == "println") {
       printlnSP = sp;
     }
   }
@@ -323,14 +320,14 @@ TEST(Tooling_Backend_DebugInfo, gdb_breaks_reads_args_and_steps) {
   if (binary.empty()) GTEST_SKIP() << skipReason;
 
   std::string outPath = ::testing::TempDir() + "sun_debug_info_gdb.out";
-  std::string cmd = "gdb --batch -q -ex 'break add' -ex run -ex 'info args' "
-                    "-ex next -ex 'print sum' " +
-                    binary + " > " + outPath + " 2>&1";
+  std::string cmd =
+      "gdb --batch -q -ex 'break add' -ex run -ex 'info args' "
+      "-ex next -ex 'print sum' " +
+      binary + " > " + outPath + " 2>&1";
   ASSERT_EQ(WEXITSTATUS(std::system(cmd.c_str())), 0);
 
   std::string out = readFile(outPath);
-  EXPECT_NE(out.find("Breakpoint 1, add (a=3, b=4)"), std::string::npos)
-      << out;
+  EXPECT_NE(out.find("Breakpoint 1, add (a=3, b=4)"), std::string::npos) << out;
   EXPECT_NE(out.find("var sum: i32 = a + b;"), std::string::npos) << out;
   EXPECT_NE(out.find("$1 = 7"), std::string::npos) << out;
 }

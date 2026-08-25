@@ -63,7 +63,8 @@ class LLVMTypeResolver {
                                  const std::string& variantName, size_t i) {
     llvm::StructType* vt = getEnumVariantStruct(enumType, variantName);
     const sun::EnumVariant* v = enumType.getVariant(variantName);
-    unsigned base = vt->getNumElements() - static_cast<unsigned>(v->payloadTypes.size());
+    unsigned base =
+        vt->getNumElements() - static_cast<unsigned>(v->payloadTypes.size());
     return base + static_cast<unsigned>(i);
   }
 

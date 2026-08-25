@@ -43,7 +43,8 @@ class FunctionAST : public ExprAST {
     if (Body) Body->forEachChildSlot(fn);
   }
   std::string toString() const override {
-    std::string result = std::string(isPublic() ? "public " : "") + "function " + Proto->getName() + "(";
+    std::string result = std::string(isPublic() ? "public " : "") +
+                         "function " + Proto->getName() + "(";
     const auto& args = Proto->getArgs();
     for (size_t i = 0; i < args.size(); ++i) {
       if (i > 0) result += ", ";

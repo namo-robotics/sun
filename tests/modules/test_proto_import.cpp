@@ -8,12 +8,12 @@
 #include <fstream>
 
 #include "ast.h"
-#include "serialization/ast_deserializer.h"
-#include "serialization/ast_serializer.h"
 #include "driver/execution_utils.h"
 #include "driver/manifest_processor.h"
 #include "parsing/parser.h"
 #include "proto_test_utils.h"
+#include "serialization/ast_deserializer.h"
+#include "serialization/ast_serializer.h"
 
 namespace fs = std::filesystem;
 using proto_test::LibprotobufSchema;
@@ -268,8 +268,7 @@ TEST(Modules_ProtoImport, manifest_path_variables_expand_in_all_entry_kinds) {
            "function main() i32 { return 0; }\n";
   }
 
-  sun::ManifestProcessor::setPathVariable("TESTLIBS",
-                                          (dir / "libs").string());
+  sun::ManifestProcessor::setPathVariable("TESTLIBS", (dir / "libs").string());
   auto resolved =
       sun::ManifestProcessor::fromEntrypointFile((dir / "main.sun").string());
   sun::ManifestProcessor::clearPathVariables();
@@ -796,7 +795,8 @@ TEST(Modules_ProtoImport, nested_message_types_flatten_with_underscore) {
       Kind kind = 2;
       repeated Inner more = 3;
     }
-  )", R"(
+  )",
+                            R"(
     using sun;
     using n;
     function main() i32 {
@@ -859,7 +859,9 @@ TEST(Modules_ProtoImport, proto2_syntax_is_rejected) {
     syntax = "proto2";
     package p;
     message M { optional int32 a = 1; }
-  )", "function main() i32 { return 0; }"), std::exception);
+  )",
+                            "function main() i32 { return 0; }"),
+               std::exception);
 }
 
 TEST(Modules_ProtoImport, recursive_message_is_rejected) {
@@ -868,7 +870,8 @@ TEST(Modules_ProtoImport, recursive_message_is_rejected) {
       syntax = "proto3";
       package p;
       message Node { Node child = 1; }
-    )", "function main() i32 { return 0; }");
+    )",
+                 "function main() i32 { return 0; }");
     FAIL() << "expected rejection";
   } catch (const std::exception& e) {
     EXPECT_NE(std::string(e.what()).find("recursive"), std::string::npos);
@@ -881,7 +884,8 @@ TEST(Modules_ProtoImport, proto_syntax_error_reports_file_line_column) {
       syntax = "proto3";
       package p;
       message M { int32 a = ; }
-    )", "function main() i32 { return 0; }");
+    )",
+                 "function main() i32 { return 0; }");
     FAIL() << "expected rejection";
   } catch (const std::exception& e) {
     std::string msg = e.what();
@@ -1114,10 +1118,11 @@ TEST(Modules_ProtoImport, proto_imports_generate_dependency_modules) {
                  "syntax = \"proto3\";\npackage common;\n"
                  "message Stamp { int64 secs = 1; int32 nanos = 2; }\n"
                  "enum Level { LOW = 0; HIGH = 1; }\n")
-      .addSchema("uses.proto",
-                 "syntax = \"proto3\";\npackage app;\nimport \"common.proto\";\n"
-                 "message Event { common.Stamp when = 1; common.Level level = 2; "
-                 "string what = 3; }\n")
+      .addSchema(
+          "uses.proto",
+          "syntax = \"proto3\";\npackage app;\nimport \"common.proto\";\n"
+          "message Event { common.Stamp when = 1; common.Level level = 2; "
+          "string what = 3; }\n")
       // Only the importing schema is listed; common.proto comes in through it
       .setProgram(R"(
         using sun;

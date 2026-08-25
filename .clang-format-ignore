@@ -1,0 +1,18 @@
+# Paths clang-format should never touch. Patterns are relative to this file;
+# `*` does not cross a `/`, so recursive matches need `**`.
+
+# Build and packaging output
+build/**
+build-tmp/**
+obj-*/**
+dist/**
+Testing/**
+tmp/**
+
+# Vendored third-party sources
+third_party/**
+**/node_modules/**
+
+# The VS Code extension is TypeScript with its own formatter; `out/` is
+# compiled output.
+extensions/**

@@ -65,18 +65,20 @@ TEST(Classes_ConstMethods, const_method_calls_const_method_on_this) {
 }
 
 TEST(Classes_ConstMethods, non_const_method_on_const_receiver_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(std::string(kCounter) + R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(std::string(kCounter) + R"(
       function main() i32 {
           const c = Counter(1);
           c.bump();
           return c.get();
       }
     )"),
-                                "Cannot call non-const method 'bump' on constant 'c'");
+      "Cannot call non-const method 'bump' on constant 'c'");
 }
 
 TEST(Classes_ConstMethods, non_const_method_on_const_field_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(std::string(kCounter) + R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(std::string(kCounter) + R"(
       class Holder {
           var c: Counter;
           function init() { this.c = Counter(0); }
@@ -87,7 +89,7 @@ TEST(Classes_ConstMethods, non_const_method_on_const_field_is_rejected) {
           return h.c.get();
       }
     )"),
-                                "Cannot call non-const method 'bump' on constant 'h'");
+      "Cannot call non-const method 'bump' on constant 'h'");
 }
 
 // ============================================================================
@@ -95,7 +97,8 @@ TEST(Classes_ConstMethods, non_const_method_on_const_field_is_rejected) {
 // ============================================================================
 
 TEST(Classes_ConstMethods, field_store_in_const_method_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
       class Counter {
           var n: i32;
           function init() { this.n = 0; }
@@ -107,11 +110,12 @@ TEST(Classes_ConstMethods, field_store_in_const_method_is_rejected) {
           return c.n;
       }
     )"),
-                                "Cannot assign to field 'n' of 'this' inside a const method");
+      "Cannot assign to field 'n' of 'this' inside a const method");
 }
 
 TEST(Classes_ConstMethods, non_const_call_on_this_in_const_method_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
       class Counter {
           var n: i32;
           function init() { this.n = 0; }
@@ -124,11 +128,12 @@ TEST(Classes_ConstMethods, non_const_call_on_this_in_const_method_is_rejected) {
           return c.n;
       }
     )"),
-                                "Cannot call non-const method 'bump' on 'this' inside a const method");
+      "Cannot call non-const method 'bump' on 'this' inside a const method");
 }
 
 TEST(Classes_ConstMethods, mutating_field_object_in_const_method_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeStringWithStdlib(R"(
       using sun;
       class Bag {
           var items: Vec<i32>;
@@ -142,11 +147,12 @@ TEST(Classes_ConstMethods, mutating_field_object_in_const_method_is_rejected) {
           return b.items.size();
       }
     )"),
-                                "Cannot call non-const method 'push' on 'this' inside a const method");
+      "Cannot call non-const method 'push' on 'this' inside a const method");
 }
 
 TEST(Classes_ConstMethods, mutable_ref_of_field_in_const_method_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
       class Counter {
           var n: i32;
           function init() { this.n = 0; }
@@ -158,11 +164,12 @@ TEST(Classes_ConstMethods, mutable_ref_of_field_in_const_method_is_rejected) {
           return c.n;
       }
     )"),
-                                "Cannot take a mutable reference to 'this' inside a const method");
+      "Cannot take a mutable reference to 'this' inside a const method");
 }
 
 TEST(Classes_ConstMethods, ref_argument_of_field_in_const_method_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
       function bump(x: ref i32) void { x = x + 1; }
       class Counter {
           var n: i32;
@@ -175,7 +182,7 @@ TEST(Classes_ConstMethods, ref_argument_of_field_in_const_method_is_rejected) {
           return c.n;
       }
     )"),
-                                "Cannot pass as 'ref' argument 1 of 'bump' 'this' inside a const method");
+      "Cannot pass as 'ref' argument 1 of 'bump' 'this' inside a const method");
 }
 
 TEST(Classes_ConstMethods, const_method_may_read_and_borrow_const) {
@@ -224,11 +231,12 @@ TEST(Classes_ConstMethods, const_field_is_rejected) {
 }
 
 TEST(Classes_ConstMethods, const_free_function_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
       const function f() i32 { return 1; }
       function main() i32 { return f(); }
     )"),
-                                "'const function' is only allowed on class and interface methods");
+      "'const function' is only allowed on class and interface methods");
 }
 
 TEST(Classes_ConstMethods, public_const_order) {
@@ -261,8 +269,10 @@ TEST(Classes_ConstMethods, bound_const_method_on_const_receiver) {
   EXPECT_EQ(value, 9);
 }
 
-TEST(Classes_ConstMethods, bound_non_const_method_on_const_receiver_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(std::string(kCounter) + R"(
+TEST(Classes_ConstMethods,
+     bound_non_const_method_on_const_receiver_is_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(std::string(kCounter) + R"(
       function main() i32 {
           const c = Counter(9);
           var bump = c.bump;
@@ -270,7 +280,7 @@ TEST(Classes_ConstMethods, bound_non_const_method_on_const_receiver_is_rejected)
           return c.get();
       }
     )"),
-                                "Cannot call non-const method 'bump' on constant 'c'");
+      "Cannot call non-const method 'bump' on constant 'c'");
 }
 
 // ============================================================================
@@ -308,7 +318,8 @@ TEST(Classes_ConstMethods, interface_const_method_needs_const_implementation) {
       }
       function main() i32 { return 0; }
     )"),
-                                "implements const member 'IShape.area' and must be declared 'const function'");
+                                "implements const member 'IShape.area' and "
+                                "must be declared 'const function'");
 }
 
 TEST(Classes_ConstMethods, class_may_add_const_beyond_interface) {
@@ -329,8 +340,10 @@ TEST(Classes_ConstMethods, class_may_add_const_beyond_interface) {
   EXPECT_EQ(value, 9);
 }
 
-TEST(Classes_ConstMethods, non_const_interface_method_on_const_ref_is_rejected) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+TEST(Classes_ConstMethods,
+     non_const_interface_method_on_const_ref_is_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
       interface IShape {
           function grow() void;
       }
@@ -346,7 +359,7 @@ TEST(Classes_ConstMethods, non_const_interface_method_on_const_ref_is_rejected) 
           return sq.side;
       }
     )"),
-                                "Cannot call non-const method 'grow' on const reference 's'");
+      "Cannot call non-const method 'grow' on const reference 's'");
 }
 
 // ============================================================================
@@ -368,7 +381,8 @@ TEST(Classes_ConstMethods, generic_class_keeps_const) {
     )");
   EXPECT_EQ(value, 42);
 
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
       class Box<T> {
           var v: T;
           function init(v: T) { this.v = v; }
@@ -381,11 +395,12 @@ TEST(Classes_ConstMethods, generic_class_keeps_const) {
           return b.get();
       }
     )"),
-                                "Cannot call non-const method 'set' on constant 'b'");
+      "Cannot call non-const method 'set' on constant 'b'");
 }
 
 TEST(Classes_ConstMethods, generic_const_method_body_is_checked) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
       class Box<T> {
           var v: T;
           function init(v: T) { this.v = v; }
@@ -397,7 +412,7 @@ TEST(Classes_ConstMethods, generic_const_method_body_is_checked) {
           return b.v;
       }
     )"),
-                                "Cannot assign to field 'v' of 'this' inside a const method");
+      "Cannot assign to field 'v' of 'this' inside a const method");
 }
 
 // ============================================================================
@@ -431,7 +446,8 @@ TEST(Classes_ConstMethods, const_vec_reads) {
 }
 
 TEST(Classes_ConstMethods, const_vec_cannot_push_or_set) {
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeStringWithStdlib(R"(
       using sun;
       function main() i32 {
           var allocator = make_heap_allocator();
@@ -441,9 +457,10 @@ TEST(Classes_ConstMethods, const_vec_cannot_push_or_set) {
           return 0;
       }
     )"),
-                                "Cannot call non-const method 'push' on const reference 'cv'");
+      "Cannot call non-const method 'push' on const reference 'cv'");
 
-  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeStringWithStdlib(R"(
       using sun;
       function main() i32 {
           var allocator = make_heap_allocator();
@@ -454,7 +471,7 @@ TEST(Classes_ConstMethods, const_vec_cannot_push_or_set) {
           return 0;
       }
     )"),
-                                "Cannot assign to an element of const reference 'cv'");
+      "Cannot assign to an element of const reference 'cv'");
 }
 
 // A const method's result is its "const view": every `ref` in it, including

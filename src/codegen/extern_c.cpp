@@ -37,9 +37,9 @@ llvm::Function* ExternCEmitter::declare(
     // needsMarshalling() would silently answer no and calls would skip the
     // ABI rewriting the signature was built with.
     if (!lowerings_.count(symbol)) {
-      auto lowering = abi::lowerCSignature(targetTriple(module_), returnType,
-                                           paramTypes,
-                                           module_->getDataLayout());
+      auto lowering =
+          abi::lowerCSignature(targetTriple(module_), returnType, paramTypes,
+                               module_->getDataLayout());
       llvm::FunctionType* expected = abi::buildLoweredFunctionType(
           lowering, ctx_.getContext(), proto.isCVariadic());
       if (expected != existing->getFunctionType()) {
@@ -119,8 +119,8 @@ void ExternCEmitter::applyAttributes(
   };
 
   if (lowering.usesSret()) {
-    func->addParamAttr(idx, llvm::Attribute::getWithStructRetType(
-                                llvmCtx, lowering.ret.type));
+    func->addParamAttr(
+        idx, llvm::Attribute::getWithStructRetType(llvmCtx, lowering.ret.type));
     addAlign(idx, lowering.ret.align);
     ++idx;
   }
@@ -183,8 +183,7 @@ llvm::Value* ExternCEmitter::promoteVararg(llvm::Value* value,
   if (value->getType()->isIntegerTy() &&
       value->getType()->getIntegerBitWidth() < 32) {
     llvm::Type* i32Ty = llvm::Type::getInt32Ty(llvmCtx);
-    bool isUnsigned =
-        sunType && sunType->isIntegral() && !sunType->isSigned();
+    bool isUnsigned = sunType && sunType->isIntegral() && !sunType->isSigned();
     return isUnsigned ? ctx_.builder->CreateZExt(value, i32Ty, "vararg.zext")
                       : ctx_.builder->CreateSExt(value, i32Ty, "vararg.sext");
   }
@@ -218,15 +217,14 @@ llvm::Value* ExternCEmitter::loadPiece(llvm::Value* aggregateAddr,
 }
 
 void ExternCEmitter::storePiece(llvm::Value* piece, llvm::Value* aggregateAddr,
-                                uint64_t offset,
-                                uint64_t aggregateSize) const {
+                                uint64_t offset, uint64_t aggregateSize) const {
   const llvm::DataLayout& dl = module_->getDataLayout();
   llvm::Type* i8Ty = llvm::Type::getInt8Ty(ctx_.getContext());
 
   llvm::Value* dest = aggregateAddr;
   if (offset != 0) {
-    dest = ctx_.builder->CreateConstInBoundsGEP1_64(i8Ty, aggregateAddr,
-                                                    offset, "cabi.ret.addr");
+    dest = ctx_.builder->CreateConstInBoundsGEP1_64(i8Ty, aggregateAddr, offset,
+                                                    "cabi.ret.addr");
   }
 
   // Mirror of loadPiece: never write the coerced type's padding over memory
@@ -295,9 +293,8 @@ llvm::Value* ExternCEmitter::emitCall(llvm::Function* func,
     // wants, one LLVM argument each.
     uint64_t aggregateSize = dl.getTypeAllocSize(plan->type);
     for (size_t piece = 0; piece < plan->pieces.size(); ++piece) {
-      loweredArgs.push_back(loadPiece(addr, plan->pieces[piece],
-                                      plan->pieceOffsets[piece],
-                                      aggregateSize));
+      loweredArgs.push_back(loadPiece(
+          addr, plan->pieces[piece], plan->pieceOffsets[piece], aggregateSize));
     }
   }
 
@@ -328,8 +325,7 @@ llvm::Value* ExternCEmitter::emitCall(llvm::Function* func,
 
   // A Direct aggregate return (AAPCS64 HFAs stay the literal struct type)
   // still needs an address to act as a Sun struct value.
-  if (lowering->ret.isDirect() && result &&
-      result->getType()->isStructTy()) {
+  if (lowering->ret.isDirect() && result && result->getType()->isStructTy()) {
     llvm::AllocaInst* slot = entryAlloca(lowering->ret.type, "cabi.ret");
     ctx_.builder->CreateStore(result, slot);
     return slot;

@@ -41,8 +41,7 @@ std::string MoonCache::computeSha256Hex(const std::string& content) {
   return hash;
 }
 
-std::string MoonCache::computeFileSha256Hex(
-    const std::filesystem::path& path) {
+std::string MoonCache::computeFileSha256Hex(const std::filesystem::path& path) {
   std::ifstream file(path, std::ios::binary);
   if (!file) {
     return "";
@@ -60,8 +59,8 @@ std::filesystem::path MoonCache::getCachePathFor(
   auto lastSlash = url.find_last_of('/');
   if (lastSlash != std::string::npos) {
     for (char c : url.substr(lastSlash + 1)) {
-      if (std::isalnum(static_cast<unsigned char>(c)) || c == '.' ||
-          c == '_' || c == '-') {
+      if (std::isalnum(static_cast<unsigned char>(c)) || c == '.' || c == '_' ||
+          c == '-') {
         basename += c;
       }
     }
@@ -76,8 +75,7 @@ std::filesystem::path MoonCache::getCachePathFor(
 // escaping, reject anything a quoted URL should never contain.
 void MoonCache::validateUrl(const std::string& url) {
   bool schemeOk = url.rfind("http://", 0) == 0 ||
-                  url.rfind("https://", 0) == 0 ||
-                  url.rfind("file://", 0) == 0;
+                  url.rfind("https://", 0) == 0 || url.rfind("file://", 0) == 0;
   if (!schemeOk) {
     logAndThrowError("moon url must start with http://, https:// or file://: " +
                      url);
@@ -120,9 +118,9 @@ bool MoonCache::hasGithubHost(const std::string& url) {
   }
   auto hostStart = schemeEnd + 3;
   auto hostEnd = url.find('/', hostStart);
-  std::string host = url.substr(hostStart, hostEnd == std::string::npos
-                                               ? std::string::npos
-                                               : hostEnd - hostStart);
+  std::string host =
+      url.substr(hostStart, hostEnd == std::string::npos ? std::string::npos
+                                                         : hostEnd - hostStart);
   auto endsWith = [&](const std::string& suffix) {
     return host.size() >= suffix.size() &&
            host.compare(host.size() - suffix.size(), suffix.size(), suffix) ==

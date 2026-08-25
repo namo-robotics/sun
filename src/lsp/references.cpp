@@ -83,8 +83,8 @@ class Collector {
     if (cached == texts_.end()) {
       Position location;
       location.filePath = file;
-      cached = texts_.emplace(file, textOf(location, documentPath_, source_))
-                   .first;
+      cached =
+          texts_.emplace(file, textOf(location, documentPath_, source_)).first;
     }
     return cached->second ? &*cached->second : nullptr;
   }
@@ -208,14 +208,15 @@ class DeclaredNameFinder {
   }
 
   // Interface names follow the class name in the header, before its body
-  void collectImplements(const ClassDefinitionAST& cls,
-                         const std::string& file, const std::string& text) {
+  void collectImplements(const ClassDefinitionAST& cls, const std::string& file,
+                         const std::string& text) {
     if (cls.getImplementedInterfaces().empty()) return;
     const Position& span = cls.getLocation();
     if (!span.endOffset) return;
     int end = *span.endOffset;
     size_t brace = text.find('{', span.offset);
-    if (brace != std::string::npos) end = std::min(end, static_cast<int>(brace));
+    if (brace != std::string::npos)
+      end = std::min(end, static_cast<int>(brace));
     int from = findWord(text, cls.getName(), span.offset, end);
     if (from < 0) return;
     from += static_cast<int>(cls.getName().size());
@@ -282,11 +283,13 @@ class DeclaredNameFinder {
         consider(declarationOf(node));
         break;
       case ASTNodeType::FOR_IN_LOOP:
-        consider(Declaration{node.getLocation(), "", &node,
-                             static_cast<const ForInExprAST&>(node).getLoopVar()});
+        consider(
+            Declaration{node.getLocation(), "", &node,
+                        static_cast<const ForInExprAST&>(node).getLoopVar()});
         break;
       case ASTNodeType::MATCH: {
-        for (const auto& arm : static_cast<const MatchExprAST&>(node).getArms()) {
+        for (const auto& arm :
+             static_cast<const MatchExprAST&>(node).getArms()) {
           for (const auto& binding : arm.bindings) {
             if (!binding.isWildcard) {
               consider(Declaration{binding.location, "", &node, binding.name});
@@ -410,8 +413,7 @@ class UseFinder {
         considerRange(
             node, file,
             identifierRange(
-                loc,
-                static_cast<const GenericCallAST&>(node).getFunctionName(),
+                loc, static_cast<const GenericCallAST&>(node).getFunctionName(),
                 *text));
         break;
       case ASTNodeType::MEMBER_ACCESS: {
@@ -431,8 +433,7 @@ class UseFinder {
         break;
       }
       case ASTNodeType::STRUCT_LITERAL:
-        considerFields(static_cast<const StructLiteralAST&>(node), file,
-                       *text);
+        considerFields(static_cast<const StructLiteralAST&>(node), file, *text);
         break;
       default:
         break;
@@ -542,8 +543,8 @@ class GroupBuilder {
       bool implements = false;
       for (const auto& iface : cls.getImplementedInterfaces()) {
         const ExprAST* decl = findDeclaration(program_, iface.name, {});
-        if (decl && sameDeclaration(declarationOf(*decl),
-                                    declarationOf(interface))) {
+        if (decl &&
+            sameDeclaration(declarationOf(*decl), declarationOf(interface))) {
           implements = true;
           break;
         }

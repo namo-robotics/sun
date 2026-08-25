@@ -25,10 +25,8 @@ std::optional<Position> signatureSpan(const ExprAST& owner) {
   if (span.endOffset) return span;
   if (owner.getType() != ASTNodeType::LAMBDA) return std::nullopt;
   span = owner.getLocation();
-  span.endOffset = static_cast<const LambdaAST&>(owner)
-                       .getBody()
-                       .getLocation()
-                       .offset;
+  span.endOffset =
+      static_cast<const LambdaAST&>(owner).getBody().getLocation().offset;
   return span;
 }
 
@@ -157,8 +155,8 @@ SymbolLocation makeSymbolLocation(const std::string& filePath,
   location.filePath = filePath;
   location.range = range;
   location.start = lspPositionFromByteOffset(text, range.offset);
-  location.end = lspPositionFromByteOffset(
-      text, range.endOffset.value_or(range.offset));
+  location.end =
+      lspPositionFromByteOffset(text, range.endOffset.value_or(range.offset));
   return location;
 }
 

@@ -38,7 +38,8 @@ TEST_F(Stdlib_Sys_Env, get_returns_none_when_unset) {
 
     function main() i32 {
         var a = make_heap_allocator();
-        return match get(a, ")" + varName + R"(") {
+        return match get(a, ")" + varName +
+                                       R"(") {
             Option.Some(v) => 1,
             Option.None => 0
         };
@@ -56,7 +57,8 @@ TEST_F(Stdlib_Sys_Env, get_reads_a_variable_set_from_outside) {
 
     function main() i32 {
         var a = make_heap_allocator();
-        var v = match get(a, ")" + varName + R"(") {
+        var v = match get(a, ")" + varName +
+                                       R"(") {
             Option.Some(s) => s,
             Option.None => String(a, "")
         };
@@ -79,7 +81,8 @@ TEST_F(Stdlib_Sys_Env, set_get_remove_round_trip) {
             set(")" + varName + R"(", "value-one");
             if (not has(")" + varName + R"(")) { return 2; }
 
-            var v = match get(a, ")" + varName + R"(") {
+            var v = match get(a, ")" + varName +
+                                       R"(") {
                 Option.Some(s) => s,
                 Option.None => String(a, "")
             };
@@ -87,7 +90,8 @@ TEST_F(Stdlib_Sys_Env, set_get_remove_round_trip) {
 
             // Setting again replaces
             set(")" + varName + R"(", "value-two");
-            var w = match get(a, ")" + varName + R"(") {
+            var w = match get(a, ")" + varName +
+                                       R"(") {
                 Option.Some(s) => s,
                 Option.None => String(a, "")
             };
@@ -106,7 +110,8 @@ TEST_F(Stdlib_Sys_Env, set_get_remove_round_trip) {
 }
 
 TEST_F(Stdlib_Sys_Env, cwd_reports_the_working_directory) {
-  auto value = executeStringWithStdlib(R"(
+  auto value =
+      executeStringWithStdlib(R"(
     using sun;
     using sun.env;
 
@@ -118,7 +123,7 @@ TEST_F(Stdlib_Sys_Env, cwd_reports_the_working_directory) {
             // An absolute path, so it starts with '/'
             if (dir.at(0) != 47) { return 2; }
             if (not dir.equals_literal(")" +
-                                       originalCwd.string() + R"(")) { return 3; }
+                              originalCwd.string() + R"(")) { return 3; }
         } catch (e: IError) {
             return 4;
         }

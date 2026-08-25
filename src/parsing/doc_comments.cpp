@@ -30,11 +30,16 @@ bool endsWith(const std::string& text, const std::string& suffix) {
 std::string stripCommentLine(std::string line) {
   line = trim(line);
   if (endsWith(line, "*/")) line = line.substr(0, line.size() - 2);
-  if (startsWith(line, "///")) line = line.substr(3);
-  else if (startsWith(line, "//")) line = line.substr(2);
-  else if (startsWith(line, "/**")) line = line.substr(3);
-  else if (startsWith(line, "/*")) line = line.substr(2);
-  else if (startsWith(line, "*")) line = line.substr(1);
+  if (startsWith(line, "///"))
+    line = line.substr(3);
+  else if (startsWith(line, "//"))
+    line = line.substr(2);
+  else if (startsWith(line, "/**"))
+    line = line.substr(3);
+  else if (startsWith(line, "/*"))
+    line = line.substr(2);
+  else if (startsWith(line, "*"))
+    line = line.substr(1);
   return trim(line);
 }
 
@@ -87,8 +92,8 @@ class DocAttacher {
   void visit(ExprAST& node) {
     switch (node.getType()) {
       case ASTNodeType::MODULE:
-        visitBlock(const_cast<BlockExprAST&>(
-            static_cast<ModuleAST&>(node).getBody()));
+        visitBlock(
+            const_cast<BlockExprAST&>(static_cast<ModuleAST&>(node).getBody()));
         break;
       case ASTNodeType::FUNCTION: {
         auto& fn = static_cast<FunctionAST&>(node);
@@ -116,8 +121,8 @@ class DocAttacher {
         }
         for (auto& method : iface.getMutableMethods()) {
           if (!method.function) continue;
-          method.function->getProtoMut().setDoc(memberDocAt(
-              method.function->getLocation(), iface.getLocation()));
+          method.function->getProtoMut().setDoc(
+              memberDocAt(method.function->getLocation(), iface.getLocation()));
         }
         break;
       }
@@ -153,8 +158,7 @@ class DocAttacher {
       }
     } else if (endsWith(above, "*/")) {
       int start = index;
-      while (start >= 0 &&
-             trim(lines[start]).find("/*") == std::string::npos) {
+      while (start >= 0 && trim(lines[start]).find("/*") == std::string::npos) {
         --start;
       }
       if (start < 0) return "";

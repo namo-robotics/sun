@@ -50,7 +50,8 @@ inline int byteOffsetFromLspPosition(const std::string& text, int line,
   size_t offset = detail::lineStart(text, line);
   int units = 0;
   while (offset < text.size() && text[offset] != '\n') {
-    size_t length = detail::utf8Length(static_cast<unsigned char>(text[offset]));
+    size_t length =
+        detail::utf8Length(static_cast<unsigned char>(text[offset]));
     int width = detail::utf16Units(length);
     if (units + width > character) break;
     units += width;
@@ -74,7 +75,8 @@ inline LspPosition lspPositionFromByteOffset(const std::string& text,
       ++current;
       continue;
     }
-    size_t length = detail::utf8Length(static_cast<unsigned char>(text[current]));
+    size_t length =
+        detail::utf8Length(static_cast<unsigned char>(text[current]));
     position.character += detail::utf16Units(length);
     current += length;
   }

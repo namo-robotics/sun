@@ -1,12 +1,13 @@
 // Inferring the type arguments of a generic call from its arguments. See
-// include/semantic_analysis/generic_type_arguments.h for the shapes that are matched.
+// include/semantic_analysis/generic_type_arguments.h for the shapes that are
+// matched.
 
 #include "semantic_analysis/generic_type_arguments.h"
 
 #include <algorithm>
 
-#include "support/error.h"
 #include "semantic_analysis/semantic_analyzer.h"
+#include "support/error.h"
 
 namespace sun::generics {
 
@@ -153,7 +154,8 @@ void bindTypeParameters(const TypePtr& param, const TypePtr& argType,
 
   // Vec<T>, Map<K, V>, Option<T>: bind against the argument's type arguments
   const std::vector<TypePtr>* paramArgs = typeArgumentsOf(param);
-  const std::vector<TypePtr>* args = paramArgs ? typeArgumentsOf(value) : nullptr;
+  const std::vector<TypePtr>* args =
+      paramArgs ? typeArgumentsOf(value) : nullptr;
   if (!paramArgs || !args) return;
   for (size_t i = 0; i < paramArgs->size() && i < args->size(); ++i) {
     bindTypeParameters((*paramArgs)[i], (*args)[i], typeParams, bindings);
@@ -215,8 +217,7 @@ std::vector<TypePtr> completeTypeArguments(
 std::vector<TypePtr> inferGenericTypeArguments(
     const GenericFunctionInfo& genericInfo,
     const std::vector<TypePtr>& argTypes, const std::string& displayName,
-    std::optional<Position> loc,
-    const std::vector<TypePtr>& explicitTypeArgs) {
+    std::optional<Position> loc, const std::vector<TypePtr>& explicitTypeArgs) {
   std::map<std::string, TypePtr> bindings;
   for (size_t i = 0; i < genericInfo.params.size() && i < argTypes.size();
        ++i) {
@@ -233,10 +234,9 @@ std::vector<TypePtr> inferMethodTypeArguments(
     const std::string& displayName, std::optional<Position> loc,
     const std::vector<TypePtr>& explicitTypeArgs) {
   std::map<std::string, TypePtr> bindings;
-  for (size_t i = 0; i < method.paramTypes.size() && i < argTypes.size();
-       ++i) {
-    bindTypeParameters(method.paramTypes[i], argTypes[i],
-                       method.typeParameters, bindings);
+  for (size_t i = 0; i < method.paramTypes.size() && i < argTypes.size(); ++i) {
+    bindTypeParameters(method.paramTypes[i], argTypes[i], method.typeParameters,
+                       bindings);
   }
   return completeTypeArguments(method.typeParameters, bindings,
                                explicitTypeArgs, "generic method", displayName,
@@ -253,10 +253,10 @@ sun::TypePtr SemanticAnalyzer::genericFunctionSignature(
   for (const auto& [name, annot] : genericInfo.params) {
     paramTypes.push_back(substituteTypeParameters(typeAnnotationToType(annot)));
   }
-  sun::TypePtr returnType =
-      genericInfo.returnType
-          ? substituteTypeParameters(typeAnnotationToType(*genericInfo.returnType))
-          : sun::Types::Void();
+  sun::TypePtr returnType = genericInfo.returnType
+                                ? substituteTypeParameters(typeAnnotationToType(
+                                      *genericInfo.returnType))
+                                : sun::Types::Void();
   exitScope();
   bool canThrow = genericInfo.AST && genericInfo.AST->getProto().canThrow();
   return sun::Types::Function(returnType, paramTypes, canThrow);

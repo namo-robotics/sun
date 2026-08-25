@@ -47,8 +47,9 @@ std::string ManifestProcessor::expandPathVariables(const std::string& input,
       ++nameEnd;
     }
     if (nameEnd == nameStart) {
-      logAndThrowError("expected a variable name after '$' in manifest entry '" +
-                       input + "'");
+      logAndThrowError(
+          "expected a variable name after '$' in manifest entry '" + input +
+          "'");
     }
     std::string name = input.substr(nameStart, nameEnd - nameStart);
     const std::string* value = nullptr;
@@ -69,12 +70,11 @@ std::string ManifestProcessor::expandPathVariables(const std::string& input,
     } else if (const char* env = std::getenv(name.c_str())) {
       out += env;
     } else {
-      logAndThrowError("undefined path variable '$" + name +
-                       "' in manifest entry '" + input +
-                       "'; define it in sun-config.json, with --path-var " +
-                       name +
-                       "=<dir>, the sun.pathVariables editor setting, or in "
-                       "the environment");
+      logAndThrowError(
+          "undefined path variable '$" + name + "' in manifest entry '" +
+          input + "'; define it in sun-config.json, with --path-var " + name +
+          "=<dir>, the sun.pathVariables editor setting, or in "
+          "the environment");
     }
     i = nameEnd;
   }

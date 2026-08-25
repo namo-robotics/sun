@@ -1,18 +1,18 @@
 // thread_utils.cpp — Thread support utilities for code generation
 //
-// Threads are pthreads (see include/codegen/intrinsics/libc.h). The futex primitive
-// Mutex builds on has no libc wrapper, so it goes through libc's syscall()
-// with a per-target syscall number.
+// Threads are pthreads (see include/codegen/intrinsics/libc.h). The futex
+// primitive Mutex builds on has no libc wrapper, so it goes through libc's
+// syscall() with a per-target syscall number.
 
 #include "codegen/thread_utils.h"
 
 #include <llvm/TargetParser/Triple.h>
 
-#include "support/error.h"
 #include "codegen/intrinsics/libc.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
 #include "semantic_analysis/struct_names.h"
+#include "support/error.h"
 
 using namespace llvm;
 
@@ -74,8 +74,9 @@ void ThreadUtils::emitSyscallFutexWake(Value* addr) {
 // Thread trampoline
 // -------------------------------------------------------------------
 
-Function* ThreadUtils::getOrCreateThreadTrampoline(
-    FunctionType* lambdaFuncType, StructType* fatType, Type* resultLLVMType) {
+Function* ThreadUtils::getOrCreateThreadTrampoline(FunctionType* lambdaFuncType,
+                                                   StructType* fatType,
+                                                   Type* resultLLVMType) {
   LLVMContext& llvmCtx = ctx.getContext();
 
   // Two spawns of same-typed lambdas share one trampoline.

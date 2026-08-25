@@ -86,7 +86,7 @@ class SemanticAnalyzer : public AccessContext {
     std::shared_ptr<sun::ClassType> specializedClass;
     const GenericClassInfo *genericInfo;
     std::vector<sun::TypePtr> typeArgs;
-    std::shared_ptr<ClassDefinitionAST> specializedAST; // bodies unanalyzed
+    std::shared_ptr<ClassDefinitionAST> specializedAST;  // bodies unanalyzed
   };
   std::vector<DeferredSpecialization> deferredSpecializations_;
 
@@ -100,8 +100,7 @@ class SemanticAnalyzer : public AccessContext {
   /** True when not inside any function scope (i.e. at module/global level). */
   bool isAtModuleLevel() const {
     for (auto *s = currentScope; s != nullptr; s = s->parent)
-      if (s->getType() == ScopeType::Function)
-        return false;
+      if (s->getType() == ScopeType::Function) return false;
     return true;
   }
 
@@ -113,11 +112,11 @@ class SemanticAnalyzer : public AccessContext {
     return nullptr;
   }
 
-public:
+ public:
   /** Start with an empty global scope holding the builtin functions. */
   explicit SemanticAnalyzer(std::shared_ptr<sun::TypeRegistry> registry)
       : typeRegistry(std::move(registry)) {
-    rootScope->accessContext = this; // lookups filter by visibility
+    rootScope->accessContext = this;  // lookups filter by visibility
     registerBuiltinFunctions();
   }
 
@@ -285,17 +284,15 @@ public:
    * Look up a function by name and exact argument types. Returns nullopt when
    * no overload matches.
    */
-  std::optional<FunctionInfo>
-  lookupFunction(const std::string &name,
-                 const std::vector<sun::TypePtr> &argTypes) const;
+  std::optional<FunctionInfo> lookupFunction(
+      const std::string &name, const std::vector<sun::TypePtr> &argTypes) const;
 
   /** Every overload declared under the given name. */
   std::vector<FunctionInfo> getAllFunctions(const std::string &name) const;
 
   /** Build a function signature string: "name(type1,type2,...)". */
-  static std::string
-  getFunctionSignature(const std::string &name,
-                       const std::vector<sun::TypePtr> &paramTypes);
+  static std::string getFunctionSignature(
+      const std::string &name, const std::vector<sun::TypePtr> &paramTypes);
 
   /**
    * Find a variable by name in the scope chain (public so codegen can read
@@ -376,9 +373,9 @@ public:
                                    const Position &loc) const;
 
   /** The same rule for an argument passed to a `ref T` parameter. */
-  void
-  checkPackedRefArguments(const std::vector<std::unique_ptr<ExprAST>> &args,
-                          const std::vector<sun::TypePtr> &paramTypes) const;
+  void checkPackedRefArguments(
+      const std::vector<std::unique_ptr<ExprAST>> &args,
+      const std::vector<sun::TypePtr> &paramTypes) const;
 
   /** Reject a field type a packed class cannot lay out. */
   void checkPackedFieldType(const ClassDefinitionAST &classDef,
@@ -397,25 +394,24 @@ public:
   const GenericClassInfo *lookupGenericClass(const std::string &name) const;
 
   /** The same by qualified name, for a template in a known module. */
-  const GenericClassInfo *
-  lookupGenericClass(const sun::QualifiedName &qualifiedName) const;
+  const GenericClassInfo *lookupGenericClass(
+      const sun::QualifiedName &qualifiedName) const;
 
   /** The generic definition a specialized class was instantiated from. */
-  const GenericClassInfo *
-  lookupGenericClassOf(const sun::ClassType &specialized) const;
+  const GenericClassInfo *lookupGenericClassOf(
+      const sun::ClassType &specialized) const;
 
   /**
    * Monomorphize a generic class for the given type arguments, reusing the
    * specialization if it already exists.
    */
-  std::shared_ptr<sun::ClassType>
-  instantiateGenericClass(const std::string &baseName,
-                          const std::vector<sun::TypePtr> &typeArgs);
+  std::shared_ptr<sun::ClassType> instantiateGenericClass(
+      const std::string &baseName, const std::vector<sun::TypePtr> &typeArgs);
 
   /** The same when the template has already been looked up. */
-  std::shared_ptr<sun::ClassType>
-  instantiateGenericClass(const GenericClassInfo &genericClassInfo,
-                          const std::vector<sun::TypePtr> &typeArgs);
+  std::shared_ptr<sun::ClassType> instantiateGenericClass(
+      const GenericClassInfo &genericClassInfo,
+      const std::vector<sun::TypePtr> &typeArgs);
 
   /**
    * Record a generic function template in the current scope, along with the
@@ -428,16 +424,16 @@ public:
    * falls back to enclosing function prefix + name (for nested generic
    * functions).
    */
-  const GenericFunctionInfo *
-  lookupGenericFunction(const std::string &name) const;
+  const GenericFunctionInfo *lookupGenericFunction(
+      const std::string &name) const;
 
   /**
    * Monomorphize a generic function for the given type arguments, reusing the
    * cached specialization when there is one. Empty when it cannot be built.
    */
-  std::optional<SpecializedFunctionInfo>
-  instantiateGenericFunction(const GenericFunctionInfo &genericInfo,
-                             const std::vector<sun::TypePtr> &typeArgs);
+  std::optional<SpecializedFunctionInfo> instantiateGenericFunction(
+      const GenericFunctionInfo &genericInfo,
+      const std::vector<sun::TypePtr> &typeArgs);
 
   /**
    * Type-argument inference itself is sun::generics
@@ -445,19 +441,18 @@ public:
    * the given type arguments, without instantiating it: what a call in a
    * template body resolves to until the enclosing generic is specialized.
    */
-  sun::TypePtr
-  genericFunctionSignature(const GenericFunctionInfo &genericInfo,
-                           const std::vector<sun::TypePtr> &typeArgs);
+  sun::TypePtr genericFunctionSignature(
+      const GenericFunctionInfo &genericInfo,
+      const std::vector<sun::TypePtr> &typeArgs);
 
   /**
    * Instantiate for a call site: same as instantiateGenericFunction, but a
    * failure is the call's error rather than an empty optional to unpack.
    */
-  SpecializedFunctionInfo
-  requireGenericSpecialization(const GenericFunctionInfo &genericInfo,
-                               const std::vector<sun::TypePtr> &typeArgs,
-                               const std::string &displayName,
-                               std::optional<Position> loc);
+  SpecializedFunctionInfo requireGenericSpecialization(
+      const GenericFunctionInfo &genericInfo,
+      const std::vector<sun::TypePtr> &typeArgs, const std::string &displayName,
+      std::optional<Position> loc);
 
   /**
    * Instantiates a generic method on a class with specific type arguments.
@@ -506,8 +501,8 @@ public:
    * Find an interface by name in the scope chain, falling back to the builtin
    * interfaces (IError).
    */
-  std::shared_ptr<sun::InterfaceType>
-  lookupInterface(const std::string &name) const;
+  std::shared_ptr<sun::InterfaceType> lookupInterface(
+      const std::string &name) const;
 
   /** Record a generic interface template in the current scope. */
   void registerGenericInterface(const std::string &name,
@@ -515,16 +510,15 @@ public:
                                 std::optional<Position> loc = std::nullopt);
 
   /** Find a generic interface template by name in the scope chain. */
-  const GenericInterfaceInfo *
-  lookupGenericInterface(const std::string &name) const;
+  const GenericInterfaceInfo *lookupGenericInterface(
+      const std::string &name) const;
 
   /**
    * Monomorphize a generic interface for the given type arguments, reusing
    * the specialization if it already exists.
    */
-  std::shared_ptr<sun::InterfaceType>
-  instantiateGenericInterface(const std::string &baseName,
-                              const std::vector<sun::TypePtr> &typeArgs);
+  std::shared_ptr<sun::InterfaceType> instantiateGenericInterface(
+      const std::string &baseName, const std::vector<sun::TypePtr> &typeArgs);
 
   /** Record an enum in the current scope. */
   void registerEnum(const std::string &name,
@@ -544,9 +538,9 @@ public:
    * Check that a class implements every method its interfaces require, with
    * matching signatures and constness.
    */
-  void
-  validateInterfaceImplementation(const ClassDefinitionAST &classDef,
-                                  std::shared_ptr<sun::ClassType> classType);
+  void validateInterfaceImplementation(
+      const ClassDefinitionAST &classDef,
+      std::shared_ptr<sun::ClassType> classType);
 
   // Module/namespace support (module scopes are tracked via the scope stack)
   // enterModuleScope() and exitScope() are used to manage module scopes
@@ -575,8 +569,8 @@ public:
 
   /** Find a function by its dotted name (`a.b.f`); undotted names never match.
    */
-  const FunctionInfo *
-  lookupQualifiedFunction(const std::string &qualifiedName) const;
+  const FunctionInfo *lookupQualifiedFunction(
+      const std::string &qualifiedName) const;
 
   /**
    * Resolve a bare name against the `using` imports in scope, giving the
@@ -590,7 +584,7 @@ public:
   /** Add a scope-based import binding. */
   void addImportBinding(const ImportBinding &binding);
 
-private:
+ private:
   /** True for a name starting with '_', which is reserved for builtins. */
   static bool isReservedIdentifier(const std::string &name);
 
@@ -649,8 +643,8 @@ private:
    * Extract type guard pattern from condition (_is<T>(var)).
    * Returns (varName, narrowedType) if matched.
    */
-  std::optional<std::pair<std::string, sun::TypePtr>>
-  extractTypeGuard(const ExprAST &cond);
+  std::optional<std::pair<std::string, sun::TypePtr>> extractTypeGuard(
+      const ExprAST &cond);
 
   /**
    * Validate parameter names and resolve their types from prototype.
@@ -661,10 +655,9 @@ private:
    * when that policy is enabled: passing a struct by value is what the C ABI
    * specifies, so it is the callee's signature rather than a Sun choice.
    */
-  std::vector<sun::TypePtr>
-  validateAndResolveParamTypes(PrototypeAST &proto,
-                               std::optional<Position> loc = std::nullopt,
-                               bool allowByValueObjects = false);
+  std::vector<sun::TypePtr> validateAndResolveParamTypes(
+      PrototypeAST &proto, std::optional<Position> loc = std::nullopt,
+      bool allowByValueObjects = false);
 
   /** Register built-in functions (print, println, file I/O, etc.). */
   void registerBuiltinFunctions();
@@ -788,10 +781,10 @@ private:
    * symbol is a function; without it the first registered overload is
    * returned. Throws when the same name is found in several libraries.
    */
-  SymbolMatch
-  findSymbolInModule(const std::string &modulePath, const std::string &name,
-                     SymbolKind filterKind = SymbolKind::None,
-                     const std::vector<sun::TypePtr> *argTypes = nullptr) const;
+  SymbolMatch findSymbolInModule(
+      const std::string &modulePath, const std::string &name,
+      SymbolKind filterKind = SymbolKind::None,
+      const std::vector<sun::TypePtr> *argTypes = nullptr) const;
 
   /**
    * Calling into C leaves everything the borrow checker and type system
@@ -810,10 +803,9 @@ private:
    * drop the overload param suffix and name a symbol codegen never emits.
    * Returns nullptr if the module has no overload matching those arguments.
    */
-  const FunctionInfo *
-  resolveModuleQualifiedCall(const MemberAccessAST &memberAccess,
-                             const sun::TypePtr &objectType,
-                             const std::vector<sun::TypePtr> &argTypes) const;
+  const FunctionInfo *resolveModuleQualifiedCall(
+      const MemberAccessAST &memberAccess, const sun::TypePtr &objectType,
+      const std::vector<sun::TypePtr> &argTypes) const;
 
   /**
    * Check `mod.name = value`: the target must be a visible, assignable
@@ -875,16 +867,15 @@ private:
    * The variables an expression reads but does not bind — what a lambda has
    * to capture. `bound` names the ones already in scope.
    */
-  std::set<std::string>
-  collectFreeVariables(const ExprAST &expr, const std::set<std::string> &bound);
+  std::set<std::string> collectFreeVariables(
+      const ExprAST &expr, const std::set<std::string> &bound);
 
   /**
    * The same over a block, adding each declaration to `bound` as it is
    * reached so later statements do not count it as free.
    */
-  std::set<std::string>
-  collectFreeVariablesInBlock(const BlockExprAST &block,
-                              std::set<std::string> bound);
+  std::set<std::string> collectFreeVariablesInBlock(
+      const BlockExprAST &block, std::set<std::string> bound);
 
   /** The captures a nested function needs, from its free variables. */
   std::vector<Capture> buildCaptures(const FunctionAST &func);
@@ -979,9 +970,8 @@ private:
 
   /** Instantiate Option<i32> from a generic enum template (monomorphization).
    */
-  std::shared_ptr<sun::EnumType>
-  instantiateGenericEnum(const std::string &baseName,
-                         const std::vector<sun::TypePtr> &typeArgs);
+  std::shared_ptr<sun::EnumType> instantiateGenericEnum(
+      const std::string &baseName, const std::vector<sun::TypePtr> &typeArgs);
 
   /**
    * Option.Some(42): infer type arguments from payload args (falling back to
@@ -1046,7 +1036,7 @@ private:
   // raised inside lookups can still point at source.
   std::vector<const Position *> locationStack_;
 
-public:
+ public:
   /**
    * Make `target` the current scope for the enclosed block (restored on
    * exit, including by exception). Generic instantiation uses it to analyze
@@ -1057,8 +1047,7 @@ public:
     SemanticScope *saved;
     ScopeSwitchGuard(SemanticAnalyzer &s, SemanticScope *target)
         : sema(s), saved(s.currentScope) {
-      if (target)
-        sema.currentScope = target;
+      if (target) sema.currentScope = target;
     }
     ~ScopeSwitchGuard() { sema.currentScope = saved; }
     ScopeSwitchGuard(const ScopeSwitchGuard &) = delete;
@@ -1097,8 +1086,7 @@ public:
 
   /** The innermost location a LocationGuard recorded, if any. */
   std::optional<Position> currentLocation() const {
-    if (locationStack_.empty())
-      return std::nullopt;
+    if (locationStack_.empty()) return std::nullopt;
     return *locationStack_.back();
   }
 
@@ -1119,8 +1107,7 @@ public:
 
   /** The same, pointing at the innermost recorded location. */
   void requireAccessible(const sun::access::ItemRef &item) const {
-    if (!isAccessible(item))
-      denyAccess(item);
+    if (!isAccessible(item)) denyAccess(item);
   }
 
   /** True when `item` is reachable from the current module. */
@@ -1142,10 +1129,9 @@ public:
                                            const Position &loc) const;
 
   /** The same, picking the overload that matches the argument types. */
-  const sun::ClassMethod *
-  accessibleMethodForArgs(const sun::ClassType &cls, const std::string &name,
-                          const std::vector<sun::TypePtr> &argTypes,
-                          const Position &loc) const;
+  const sun::ClassMethod *accessibleMethodForArgs(
+      const sun::ClassType &cls, const std::string &name,
+      const std::vector<sun::TypePtr> &argTypes, const Position &loc) const;
 
   /**
    * Throws "No matching overload" when the class has methods called `name`

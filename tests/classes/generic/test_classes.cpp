@@ -6,8 +6,8 @@
 #include <sstream>
 #include <string>
 
-#include "support/error.h"
 #include "driver/execution_utils.h"
+#include "support/error.h"
 
 // ============================================================================
 // Generic Class Definition Tests
@@ -395,10 +395,12 @@ TEST(Classes_Generic_Scoping, method_body_cannot_see_requesters_locals) {
         var b = Box<i32>(1);
         return b.get();
     }
-  )"), "Unknown variable");
+  )"),
+                                "Unknown variable");
 }
 
-TEST(Classes_Generic_Scoping, qualified_cross_module_instantiation_without_using) {
+TEST(Classes_Generic_Scoping,
+     qualified_cross_module_instantiation_without_using) {
   auto value = executeString(R"(
     public module lib {
         function bonus() i32 { return 100; }

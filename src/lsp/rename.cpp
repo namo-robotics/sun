@@ -59,7 +59,8 @@ std::optional<Rename> computeRename(const BlockExprAST& program,
     rename.refusal =
         "'" + rename.name + "' is declared in a library and cannot be renamed";
   } else if (!group.builtinInterface.empty()) {
-    rename.refusal = "'" + rename.name + "' implements a member of the builtin " +
+    rename.refusal = "'" + rename.name +
+                     "' implements a member of the builtin " +
                      group.builtinInterface + " and cannot be renamed";
   }
   return rename;

@@ -20,8 +20,7 @@ struct Hover {
 // Nodes without a span (module wrappers from merged compilation) are looked
 // through; moon import stubs and nodes from other files are skipped.
 const ExprAST* findInnermostNodeAt(const BlockExprAST& program,
-                                   const std::string& filePath,
-                                   int byteOffset);
+                                   const std::string& filePath, int byteOffset);
 
 // Hover text for the construct at byteOffset in an analyzed program:
 // `name: T` for variables and members, full signatures for functions,

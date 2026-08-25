@@ -1,8 +1,8 @@
 // semantic_analysis/type_conversion.cpp — Type annotation conversion and
 // substitution
 
-#include "support/error.h"
 #include "semantic_analysis/semantic_analyzer.h"
+#include "support/error.h"
 
 // -------------------------------------------------------------------
 // Type parameter substitution
@@ -320,9 +320,9 @@ sun::TypePtr SemanticAnalyzer::typeAnnotationToType(
   // module path, so the lookups below can find the symbol inside that module
   // (the generic branch above does the same).
   sun::QualifiedName resolved = resolveNameWithUsings(annot.baseName);
-  const std::string& lookupName =
-      annot.baseName.find('.') != std::string::npos ? annot.baseName
-                                                    : resolved.baseName;
+  const std::string& lookupName = annot.baseName.find('.') != std::string::npos
+                                      ? annot.baseName
+                                      : resolved.baseName;
 
   // Check for type aliases (lexically scoped)
   auto aliasType = findTypeAlias(lookupName);
@@ -402,7 +402,8 @@ sun::TypePtr SemanticAnalyzer::createConstView(sun::TypePtr type) {
       args.push_back(viewed);
     }
     if (!changed) return type;
-    if (auto viewed = instantiateGenericEnum(enumType->getGenericBase(), args)) {
+    if (auto viewed =
+            instantiateGenericEnum(enumType->getGenericBase(), args)) {
       return viewed;
     }
   }

@@ -12,15 +12,15 @@
 #include <string>
 
 #include "codegen/abi/c_abi.h"
-#include "serialization/ast_deserializer.h"
-#include "serialization/ast_serializer.h"
+#include "codegen/extern_c.h"
 #include "driver/compiler.h"
 #include "driver/execution_utils.h"
-#include "codegen/extern_c.h"
 #include "moon_bundling/metadata_extractor.h"
 #include "moon_bundling/moon.h"
 #include "moon_bundling/moon_import.h"
 #include "parsing/parser.h"
+#include "serialization/ast_deserializer.h"
+#include "serialization/ast_serializer.h"
 
 // ============================================================================
 // Calling C functions
@@ -378,9 +378,9 @@ TEST(Ffi_Link, symbols_are_unavailable_before_the_library_is_loaded) {
   // the library would prove nothing. Declared before the loading test since
   // dlopen is process-wide and irreversible (under ctest each test is its
   // own process anyway).
-  EXPECT_EQ(llvm::sys::DynamicLibrary::SearchForAddressOfSymbol(
-                "sun_ffi_triple"),
-            nullptr);
+  EXPECT_EQ(
+      llvm::sys::DynamicLibrary::SearchForAddressOfSymbol("sun_ffi_triple"),
+      nullptr);
 }
 
 TEST(Ffi_Link, loads_library_from_search_path_and_calls_into_it) {
@@ -754,12 +754,12 @@ TEST(Ffi_StructValue, predeclared_function_still_registers_marshalling) {
 
   // Pre-create the function with the lowered type, as bitcode linking would.
   auto lowering =
-      sun::abi::lowerCSignature(llvm::Triple(module->getTargetTriple()),
-                                i32Ty, params, module->getDataLayout());
+      sun::abi::lowerCSignature(llvm::Triple(module->getTargetTriple()), i32Ty,
+                                params, module->getDataLayout());
   auto* loweredTy =
       sun::abi::buildLoweredFunctionType(lowering, lctx, /*isVarArg=*/false);
-  llvm::Function::Create(loweredTy, llvm::Function::ExternalLinkage,
-                         "pre_pair", module);
+  llvm::Function::Create(loweredTy, llvm::Function::ExternalLinkage, "pre_pair",
+                         module);
 
   llvm::Function* declared = emitter.declare(proto, i32Ty, params);
   ASSERT_NE(declared, nullptr);
@@ -823,8 +823,8 @@ TEST(Ffi, extern_symbol_survives_moon_bundling) {
 
 TEST(Ffi, extern_coexists_with_intrinsic_of_same_symbol) {
   // The compiler's own intrinsics declare libc symbols (see
-  // include/codegen/intrinsics/libc.h). An extern naming one of them must agree on
-  // the signature — `open` is C-variadic there, so it must be here too.
+  // include/codegen/intrinsics/libc.h). An extern naming one of them must agree
+  // on the signature — `open` is C-variadic there, so it must be here too.
   auto value = executeString(R"(
     extern "C" function c_close(fd: i32) i32 as "close";
 

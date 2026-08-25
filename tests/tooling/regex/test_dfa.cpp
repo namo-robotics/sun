@@ -41,9 +41,11 @@ void expectMatches(const std::string& regex,
 // ------------------------------------------------------------------
 
 TEST(Tooling_Regex_Dfa, AlternationAndRepetition) {
-  expectMatches("(0|1|2|3|4|5|6|7)*",
-                {{"", true}, {"0", true}, {"12321", true}, {"9", false},
-                 {"1239", false}});
+  expectMatches("(0|1|2|3|4|5|6|7)*", {{"", true},
+                                       {"0", true},
+                                       {"12321", true},
+                                       {"9", false},
+                                       {"1239", false}});
   expectMatches("alice|bob", {{"alice", true},
                               {"bob", true},
                               {"alic", false},
@@ -62,11 +64,9 @@ TEST(Tooling_Regex_Dfa, CharacterClasses) {
                            {"xyz", false},
                            {"", false}});
   expectMatches("[a-c]*", {{"abc", true}, {"", true}, {"d", false}});
-  expectMatches("[a-cD-F]+", {{"a", true},
-                              {"D", true},
-                              {"aDbEcF", true},
-                              {"G", false},
-                              {"0", false}});
+  expectMatches(
+      "[a-cD-F]+",
+      {{"a", true}, {"D", true}, {"aDbEcF", true}, {"G", false}, {"0", false}});
   expectMatches("[a-c]+[D-F\\(]+",
                 {{"abcDEF(", true}, {"a", false}, {"DFGabc", false}});
 }
@@ -74,13 +74,14 @@ TEST(Tooling_Regex_Dfa, CharacterClasses) {
 TEST(Tooling_Regex_Dfa, WildcardMatchesEveryByte) {
   expectMatches("a.b", {{"acb", true},
                         {"a\nb", true},
-                        {"a\xFF" "b", true},
+                        {"a\xFF"
+                         "b",
+                         true},
                         {"abc", false},
                         {"ab", false}});
-  expectMatches("a.*b", {{"ab", true},
-                         {"acccccccccccccb", true},
-                         {"b", false},
-                         {"abc", false}});
+  expectMatches(
+      "a.*b",
+      {{"ab", true}, {"acccccccccccccb", true}, {"b", false}, {"abc", false}});
   expectMatches("(a.)*b", {{"b", true},
                            {"aaaab", true},
                            {"a_a_a_a_b", true},
@@ -235,7 +236,8 @@ TEST(Tooling_Regex_Dfa, AcceptKindIsLowestTokenKindOnTies) {
   // lower TokenKind index (declaration order) wins.
   DFA& dfa = Lexer::getTokenDFA();
   int32_t s = dfa.startState();
-  for (char c : std::string("i32")) s = dfa.step(s, static_cast<unsigned char>(c));
+  for (char c : std::string("i32"))
+    s = dfa.step(s, static_cast<unsigned char>(c));
   ASSERT_FALSE(DFA::isDead(s));
   EXPECT_EQ(dfa.acceptKind(s), static_cast<int>(TokenKind::TYPE_I32));
   EXPECT_LT(static_cast<int>(TokenKind::TYPE_I32),

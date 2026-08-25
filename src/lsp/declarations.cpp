@@ -166,7 +166,9 @@ std::string declarationName(const ExprAST& node) {
 sun::QualifiedName declarationQualifiedName(const ExprAST& node) {
   switch (node.getType()) {
     case ASTNodeType::FUNCTION:
-      return static_cast<const FunctionAST&>(node).getProto().getQualifiedName();
+      return static_cast<const FunctionAST&>(node)
+          .getProto()
+          .getQualifiedName();
     case ASTNodeType::CLASS_DEFINITION:
       return static_cast<const ClassDefinitionAST&>(node).getQualifiedName();
     case ASTNodeType::INTERFACE_DEFINITION:
@@ -206,9 +208,8 @@ void forEachDeclaration(const ExprAST& node,
     case ASTNodeType::BLOCK:
     case ASTNodeType::MODULE:
     case ASTNodeType::MOON_SCOPE:
-      forEachChild(node, [&](const ExprAST& child) {
-        forEachDeclaration(child, fn);
-      });
+      forEachChild(
+          node, [&](const ExprAST& child) { forEachDeclaration(child, fn); });
       break;
     default:
       fn(node);
@@ -245,9 +246,8 @@ Declaration declarationOf(const ExprAST& node) {
   // signature's
   if (node.getType() == ASTNodeType::FUNCTION &&
       !declaration.location.endOffset) {
-    const Position& proto = static_cast<const FunctionAST&>(node)
-                                .getProto()
-                                .getLocation();
+    const Position& proto =
+        static_cast<const FunctionAST&>(node).getProto().getLocation();
     if (proto.endOffset) declaration.location = proto;
   }
   return declaration;
@@ -270,9 +270,8 @@ const ExprAST* findDeclaration(const BlockExprAST& program,
 
 const sun::Type* stripReference(const sun::Type* type) {
   while (type && type->getKind() == sun::Type::Kind::Reference) {
-    type = static_cast<const sun::ReferenceType*>(type)
-               ->getReferencedType()
-               .get();
+    type =
+        static_cast<const sun::ReferenceType*>(type)->getReferencedType().get();
   }
   return type;
 }
@@ -371,8 +370,8 @@ std::optional<Declaration> findLocalDeclaration(
     const ExprAST& ancestor = **it;
     if (ancestor.getType() == ASTNodeType::BLOCK) {
       const ExprAST* latest = nullptr;
-      for (const auto& stmt : static_cast<const BlockExprAST&>(ancestor)
-                                  .getBody()) {
+      for (const auto& stmt :
+           static_cast<const BlockExprAST&>(ancestor).getBody()) {
         if (!stmt || stmt->getLocation().offset >= offset) continue;
         if (stmt->getType() == ASTNodeType::VARIABLE_CREATION &&
             static_cast<const VariableCreationAST&>(*stmt).getName() == name) {
@@ -390,8 +389,8 @@ std::optional<Declaration> findLocalDeclaration(
       }
     } else if (ancestor.getType() == ASTNodeType::MATCH) {
       // A payload binding is visible in its own arm's body
-      for (const auto& arm : static_cast<const MatchExprAST&>(ancestor)
-                                 .getArms()) {
+      for (const auto& arm :
+           static_cast<const MatchExprAST&>(ancestor).getArms()) {
         if (!arm.body || !spanContains(arm.body->getLocation(), offset)) {
           continue;
         }
@@ -439,8 +438,7 @@ std::optional<Declaration> findLocalDeclaration(
 std::optional<Declaration> findMemberDeclaration(
     const BlockExprAST& program, const ExprAST& object,
     const std::string& member, const std::string& resolvedQualifiedName) {
-  const sun::Type* objectType =
-      stripReference(object.getResolvedType().get());
+  const sun::Type* objectType = stripReference(object.getResolvedType().get());
   if (!objectType) {
     // A match pattern's object is never typed: `Shape.Circle(r)` names the
     // enum directly
@@ -736,7 +734,8 @@ std::optional<Declaration> parameterUnder(const ExprAST& owner, int offset,
   const PrototypeAST* proto = prototypeOf(owner);
   if (!proto) return std::nullopt;
   std::vector<std::string> names = proto->getArgNames();
-  if (proto->hasVariadicParam()) names.push_back(*proto->getVariadicParamName());
+  if (proto->hasVariadicParam())
+    names.push_back(*proto->getVariadicParamName());
   for (const auto& name : names) {
     std::optional<Position> range = parameterRange(owner, name, source);
     if (range && spanContains(*range, offset)) {

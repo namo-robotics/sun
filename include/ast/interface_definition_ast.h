@@ -71,7 +71,8 @@ class InterfaceDefinitionAST : public ExprAST {
     return ASTNodeType::INTERFACE_DEFINITION;
   }
   std::string toString() const override {
-    std::string result = std::string(isPublic() ? "public " : "") + "interface " + name;
+    std::string result =
+        std::string(isPublic() ? "public " : "") + "interface " + name;
     if (!typeParameters.empty()) {
       result += "<";
       for (size_t i = 0; i < typeParameters.size(); ++i) {

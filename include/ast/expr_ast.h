@@ -19,7 +19,8 @@ class ExprAST {
   bool precompiled_ = false;  // True if from precompiled library
   bool skipCodegen_ = false;  // Set by semantic analyzer for diamond duplicates
   std::string symbolPrefix_;  // Hash prefix for moon symbol isolation
-  sun::Visibility visibility_ = sun::Visibility::Private;  // Declaration visibility
+  sun::Visibility visibility_ =
+      sun::Visibility::Private;  // Declaration visibility
 
   // Virtual method to ensure analysis is allocated with the correct type
   // Derived classes with specialized analysis types should override this

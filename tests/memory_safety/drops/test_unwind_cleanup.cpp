@@ -79,7 +79,8 @@ TEST(MemorySafety_Drops_UnwindCleanup, unwind_through_two_frames_drops_both) {
   EXPECT_EQ(value, 2);
 }
 
-TEST(MemorySafety_Drops_UnwindCleanup, local_throw_drops_try_scoped_owner_exactly_once) {
+TEST(MemorySafety_Drops_UnwindCleanup,
+     local_throw_drops_try_scoped_owner_exactly_once) {
   auto value = executeString(withPreamble(R"(
     function helper() i32, IError {
       try {
@@ -105,7 +106,8 @@ TEST(MemorySafety_Drops_UnwindCleanup, local_throw_drops_try_scoped_owner_exactl
   EXPECT_EQ(value, 1);
 }
 
-TEST(MemorySafety_Drops_UnwindCleanup, local_throw_from_nested_block_drops_all_left_scopes) {
+TEST(MemorySafety_Drops_UnwindCleanup,
+     local_throw_from_nested_block_drops_all_left_scopes) {
   auto value = executeString(withPreamble(R"(
     function helper() i32, IError {
       try {
@@ -133,7 +135,8 @@ TEST(MemorySafety_Drops_UnwindCleanup, local_throw_from_nested_block_drops_all_l
   EXPECT_EQ(value, 2);
 }
 
-TEST(MemorySafety_Drops_UnwindCleanup, moved_owner_not_dropped_twice_on_unwind) {
+TEST(MemorySafety_Drops_UnwindCleanup,
+     moved_owner_not_dropped_twice_on_unwind) {
   auto value = executeString(withPreamble(R"(
     function middle() void, IError {
       var a = Owner();
@@ -154,7 +157,8 @@ TEST(MemorySafety_Drops_UnwindCleanup, moved_owner_not_dropped_twice_on_unwind) 
   EXPECT_EQ(value, 1);
 }
 
-TEST(MemorySafety_Drops_UnwindCleanup, owner_declared_after_throwing_call_not_dropped) {
+TEST(MemorySafety_Drops_UnwindCleanup,
+     owner_declared_after_throwing_call_not_dropped) {
   auto value = executeString(withPreamble(R"(
     function middle() void, IError {
       var a = Owner();
@@ -176,7 +180,8 @@ TEST(MemorySafety_Drops_UnwindCleanup, owner_declared_after_throwing_call_not_dr
   EXPECT_EQ(value, 1);
 }
 
-TEST(MemorySafety_Drops_UnwindCleanup, caught_locally_then_normal_exit_no_extra_drops) {
+TEST(MemorySafety_Drops_UnwindCleanup,
+     caught_locally_then_normal_exit_no_extra_drops) {
   auto value = executeString(withPreamble(R"(
     function helper() i32, IError {
       var outside = Owner();
@@ -221,7 +226,8 @@ TEST(MemorySafety_Drops_UnwindCleanup, no_owners_unwind_still_works) {
   EXPECT_EQ(value, 42);
 }
 
-TEST(MemorySafety_Drops_UnwindCleanup, thrown_error_object_survives_frame_cleanup) {
+TEST(MemorySafety_Drops_UnwindCleanup,
+     thrown_error_object_survives_frame_cleanup) {
   auto value = executeString(R"(
     var counter: i32 = 0;
 

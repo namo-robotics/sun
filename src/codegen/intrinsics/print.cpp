@@ -159,8 +159,8 @@ static Function* getOrCreatePrintI64Helper(llvm::Module* module,
       builder.CreateICmpSLT(val, ConstantInt::get(i64Ty, 0), "is_neg");
   // Digits are extracted with unsigned div/rem, so negating INT64_MIN (which
   // overflows back to itself) still yields the correct magnitude bit pattern.
-  Value* absVal = builder.CreateSelect(isNegative, builder.CreateNeg(val, "neg"),
-                                       val, "abs");
+  Value* absVal = builder.CreateSelect(
+      isNegative, builder.CreateNeg(val, "neg"), val, "abs");
 
   AllocaInst* numAlloca = builder.CreateAlloca(i64Ty);
   builder.CreateStore(absVal, numAlloca);
@@ -195,8 +195,8 @@ static Function* getOrCreatePrintI64Helper(llvm::Module* module,
   Value* minusIdx = builder.CreateLoad(i32Ty, idxAlloca);
   Value* minusPtr = builder.CreateGEP(i8Ty, buffer, minusIdx);
   builder.CreateStore(ConstantInt::get(i8Ty, '-'), minusPtr);
-  builder.CreateStore(
-      builder.CreateSub(minusIdx, ConstantInt::get(i32Ty, 1)), idxAlloca);
+  builder.CreateStore(builder.CreateSub(minusIdx, ConstantInt::get(i32Ty, 1)),
+                      idxAlloca);
   builder.CreateBr(writeBB);
 
   // Write to stdout
@@ -406,9 +406,9 @@ static Function* getOrCreatePrintCharHelper(llvm::Module* module,
 
   // Substitute U+FFFD for anything that is not a Unicode scalar value.
   Value* tooBig = builder.CreateICmpUGT(raw, k(0x10FFFF), "too_big");
-  Value* isSurrogate = builder.CreateAnd(
-      builder.CreateICmpUGE(raw, k(0xD800)),
-      builder.CreateICmpULE(raw, k(0xDFFF)), "is_surrogate");
+  Value* isSurrogate =
+      builder.CreateAnd(builder.CreateICmpUGE(raw, k(0xD800)),
+                        builder.CreateICmpULE(raw, k(0xDFFF)), "is_surrogate");
   Value* c = builder.CreateSelect(builder.CreateOr(tooBig, isSurrogate),
                                   k(0xFFFD), raw, "scalar");
 

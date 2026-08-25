@@ -235,8 +235,8 @@ void ModuleLinker::declareAvailableFunctions() {
     if (!bitcodeId.empty()) {
       std::string scanKey = bitcodeId;
       if (remap) {
-        for (const auto& [from, to] : std::map<std::string, std::string>(
-                 remap->begin(), remap->end())) {
+        for (const auto& [from, to] :
+             std::map<std::string, std::string>(remap->begin(), remap->end())) {
           scanKey += "|" + from + "=" + to;
         }
       }
@@ -305,7 +305,8 @@ void ModuleLinker::declareAvailableFunctions() {
     // Same for module-level variables the bitcode defines: the importer holds
     // a declaration, so the defining module has to be pulled in.
     for (const auto& global : libModule->globals()) {
-      if (!global.hasInitializer()) continue;  // a declaration, not a definition
+      if (!global.hasInitializer())
+        continue;  // a declaration, not a definition
       if (!global.hasName() || global.getName().empty()) continue;
 
       std::string globalName = global.getName().str();
@@ -384,8 +385,7 @@ bool ModuleLinker::linkModuleRecursive(const std::string& moduleKey) {
       error_ = "Module '" + moduleKey + "' was compiled for '" +
                metadata->target_triple() + "' but the current target is '" +
                target_.getTargetTriple() +
-               "'; rebuild the .moon with --target " +
-               targetTriple.str();
+               "'; rebuild the .moon with --target " + targetTriple.str();
       return false;
     }
   }

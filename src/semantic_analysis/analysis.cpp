@@ -3,11 +3,11 @@
 #include <set>
 #include <unordered_set>
 
+#include "codegen/intrinsics/intrinsics.h"
+#include "semantic_analysis/generic_type_arguments.h"
+#include "semantic_analysis/semantic_analyzer.h"
 #include "support/config.h"
 #include "support/error.h"
-#include "semantic_analysis/generic_type_arguments.h"
-#include "codegen/intrinsics/intrinsics.h"
-#include "semantic_analysis/semantic_analyzer.h"
 
 using sun::unwrapRef;
 
@@ -51,11 +51,11 @@ void SemanticAnalyzer::reportNoMethodForArgCount(
   }
   if (candidates.empty()) return;
 
-  logAndThrowError("No matching overload of '" + name +
-                       "' for argument types (" + formatTypeList(argTypes) +
-                       "). Available overloads:" +
-                       formatCandidates(name, candidates),
-                   loc);
+  logAndThrowError(
+      "No matching overload of '" + name + "' for argument types (" +
+          formatTypeList(argTypes) +
+          "). Available overloads:" + formatCandidates(name, candidates),
+      loc);
 }
 
 // -------------------------------------------------------------------
@@ -186,7 +186,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       // other: it needs a mutable receiver unless declared const, and a
       // `ref T` result seen through a constant receiver is `const ref T`
       bool receiverImmutable = false;
-      sun::TypePtr targetType = unwrapRef(arrIdx.getTarget()->getResolvedType());
+      sun::TypePtr targetType =
+          unwrapRef(arrIdx.getTarget()->getResolvedType());
       if (targetType && targetType->isClass()) {
         const auto* classType =
             static_cast<const sun::ClassType*>(targetType.get());
@@ -291,12 +292,11 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
           if (!tryCoerceIntegerLiteral(
                   const_cast<ExprAST*>(varCreate.getValue()), declaredType,
                   false)) {
-            logAndThrowError("Cannot assign value of type '" +
-                                 rhsType->toDisplayString() +
-                                 "' to variable '" + varCreate.getName() +
-                                 "' of type '" +
-                                 declaredType->toDisplayString() + "'",
-                             varCreate.getLocation());
+            logAndThrowError(
+                "Cannot assign value of type '" + rhsType->toDisplayString() +
+                    "' to variable '" + varCreate.getName() + "' of type '" +
+                    declaredType->toDisplayString() + "'",
+                varCreate.getLocation());
           }
         }
         type = declaredType;
@@ -308,10 +308,9 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       // `var` has nothing to infer from a call that returns nothing.
       if (type && sun::unwrapRef(type)->isVoid()) {
         logAndThrowError(
-            declaredType
-                ? "Variable '" + varName + "' cannot have type 'void'"
-                : "Cannot infer a type for variable '" + varName +
-                      "': the value assigned to it produces no result",
+            declaredType ? "Variable '" + varName + "' cannot have type 'void'"
+                         : "Cannot infer a type for variable '" + varName +
+                               "': the value assigned to it produces no result",
             varCreate.getLocation());
       }
 
@@ -385,12 +384,11 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
           if (!tryCoerceIntegerLiteral(
                   const_cast<ExprAST*>(varAssign.getValue()),
                   expectedTargetType, false)) {
-            logAndThrowError("Cannot assign value of type '" +
-                                 rhsType->toDisplayString() +
-                                 "' to variable '" + varAssign.getName() +
-                                 "' of type '" +
-                                 varInfo->type->toDisplayString() + "'",
-                             varAssign.getLocation());
+            logAndThrowError(
+                "Cannot assign value of type '" + rhsType->toDisplayString() +
+                    "' to variable '" + varAssign.getName() + "' of type '" +
+                    varInfo->type->toDisplayString() + "'",
+                varAssign.getLocation());
           }
         }
         expr.setResolvedType(varInfo->type);
@@ -697,10 +695,9 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       std::shared_ptr<sun::ClassType> iteratorType = classType;
       if (!implementsIterator) {
         const auto* iterMethod = classType->getMethod("iter");
-        iteratorType =
-            iterMethod ? std::dynamic_pointer_cast<sun::ClassType>(
-                             sun::unwrapRef(iterMethod->returnType))
-                       : nullptr;
+        iteratorType = iterMethod ? std::dynamic_pointer_cast<sun::ClassType>(
+                                        sun::unwrapRef(iterMethod->returnType))
+                                  : nullptr;
         if (!iteratorType) {
           logAndThrowError("for-in loop: '" + classType->getDisplayName() +
                                "' must define iter() returning an iterator "
@@ -742,8 +739,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       if (auto* opt = dynamic_cast<sun::EnumType*>(
               sun::unwrapRef(nextMethod->returnType).get())) {
         const sun::EnumVariant* some = opt->getVariant("Some");
-        if (some && some->payloadTypes.size() == 1 &&
-            opt->hasVariant("None")) {
+        if (some && some->payloadTypes.size() == 1 && opt->hasVariant("None")) {
           elementType = some->payloadTypes[0];
         }
       }
@@ -801,8 +797,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       // Payload enums have no structural equality; match is the eliminator
       TokenKind binOp = binExpr.getOp().kind;
       if (binOp == TokenKind::EQUAL_EQUAL || binOp == TokenKind::NOT_EQUAL) {
-        for (const ExprAST* side :
-             {binExpr.getLHS(), binExpr.getRHS()}) {
+        for (const ExprAST* side : {binExpr.getLHS(), binExpr.getRHS()}) {
           sun::TypePtr sideType = unwrapRef(side->getResolvedType());
           if (sideType && sideType->isEnum() &&
               static_cast<sun::EnumType*>(sideType.get())->hasPayload()) {
@@ -834,9 +829,9 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
         switch (op) {
           case TokenKind::NOT:
             if (!operandType->isBool()) {
-              logAndThrowError("'not' requires a bool operand, got '" + name +
-                                   "'",
-                               expr.getLocation());
+              logAndThrowError(
+                  "'not' requires a bool operand, got '" + name + "'",
+                  expr.getLocation());
             }
             break;
           case TokenKind::TILDE:
@@ -849,14 +844,14 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
             break;
           case TokenKind::MINUS:
             if (!operandType->isNumeric()) {
-              logAndThrowError("Unary minus requires a numeric operand, got '" +
-                                   name + "'",
-                               expr.getLocation());
+              logAndThrowError(
+                  "Unary minus requires a numeric operand, got '" + name + "'",
+                  expr.getLocation());
             }
             if (operandType->isUnsigned()) {
-              logAndThrowError("Cannot negate a value of unsigned type '" +
-                                   name + "'",
-                               expr.getLocation());
+              logAndThrowError(
+                  "Cannot negate a value of unsigned type '" + name + "'",
+                  expr.getLocation());
             }
             break;
           default:
@@ -921,8 +916,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
             !declaredReturn->isReference() &&
             !sun::typeCopiesByRead(declaredReturn)) {
           logAndThrowError(
-              "Cannot return a borrowed '" +
-                  declaredReturn->toDisplayString() +
+              "Cannot return a borrowed '" + declaredReturn->toDisplayString() +
                   "' by value: reading it out of the borrow would copy it. "
                   "Return 'ref " +
                   declaredReturn->toDisplayString() +
@@ -1412,10 +1406,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       // Analyze the object first so the field type can flow into the value
       // as the expected type (e.g. `this.value = Option.None;`)
       analyzeExpr(const_cast<ExprAST&>(*memberAssign.getObject()));
-      requireMutablePlace(*memberAssign.getObject(),
-                          "assign to field '" + memberAssign.getMemberName() +
-                              "' of",
-                          memberAssign.getLocation());
+      requireMutablePlace(
+          *memberAssign.getObject(),
+          "assign to field '" + memberAssign.getMemberName() + "' of",
+          memberAssign.getLocation());
 
       sun::TypePtr objectType = memberAssign.getObject()->getResolvedType();
       objectType = unwrapRef(objectType);
@@ -1453,13 +1447,11 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
             if (!tryCoerceIntegerLiteral(
                     const_cast<ExprAST*>(memberAssign.getValue()), fieldType,
                     false)) {
-              logAndThrowError("Cannot assign value of type '" +
-                                   rhsType->toDisplayString() +
-                                   "' to field '" +
-                                   memberAssign.getMemberName() +
-                                   "' of type '" +
-                                   fieldType->toDisplayString() + "'",
-                               memberAssign.getLocation());
+              logAndThrowError(
+                  "Cannot assign value of type '" + rhsType->toDisplayString() +
+                      "' to field '" + memberAssign.getMemberName() +
+                      "' of type '" + fieldType->toDisplayString() + "'",
+                  memberAssign.getLocation());
             }
           }
         }
@@ -1586,7 +1578,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
         // Get the builtin IError interface for comparison
         auto builtinIError = typeRegistry->getInterface("IError");
 
-        // Check if it's the IError interface itself (e.g., re-throwing caught error)
+        // Check if it's the IError interface itself (e.g., re-throwing caught
+        // error)
         if (errorType->isInterface()) {
           // IError itself is throwable
           if (errorType.get() == builtinIError.get()) {
@@ -1860,7 +1853,8 @@ void SemanticAnalyzer::registerClassShape(
   // IError.message() returns an owned String clone, and every implementation
   // compiled after this line must match that signature.
   if (typeRegistry && qualifiedClass.baseName == "String" &&
-      !qualifiedClass.owner().empty() && qualifiedClass.owner().back() == "sun") {
+      !qualifiedClass.owner().empty() &&
+      qualifiedClass.owner().back() == "sun") {
     if (auto ierror = typeRegistry->getInterface("IError")) {
       ierror->setMethodReturnType("message", classType);
     }
@@ -2084,7 +2078,8 @@ void SemanticAnalyzer::analyzeStructLiteral(StructLiteralAST& literal,
   if (classType->getMethod("init")) {
     logAndThrowError("Class '" + classType->getDisplayName() +
                          "' declares an 'init', so construct it with "
-                         "'" + classType->getDisplayName() +
+                         "'" +
+                         classType->getDisplayName() +
                          "(...)' rather than a '{ field: value }' literal.",
                      literal.getLocation());
     return;
@@ -2101,9 +2096,9 @@ void SemanticAnalyzer::analyzeStructLiteral(StructLiteralAST& literal,
       continue;
     }
     if (!seen.insert(field.name).second) {
-      logAndThrowError("Field '" + field.name +
-                           "' is initialized more than once",
-                       field.location);
+      logAndThrowError(
+          "Field '" + field.name + "' is initialized more than once",
+          field.location);
       continue;
     }
 
@@ -2114,12 +2109,11 @@ void SemanticAnalyzer::analyzeStructLiteral(StructLiteralAST& literal,
         !isAssignableTo(valueType, classField->type)) {
       if (!tryCoerceIntegerLiteral(field.value.get(), classField->type,
                                    false)) {
-        logAndThrowError("Cannot initialize field '" + field.name +
-                             "' of type '" +
-                             classField->type->toDisplayString() +
-                             "' with a value of type '" +
-                             valueType->toDisplayString() + "'",
-                         field.location);
+        logAndThrowError(
+            "Cannot initialize field '" + field.name + "' of type '" +
+                classField->type->toDisplayString() +
+                "' with a value of type '" + valueType->toDisplayString() + "'",
+            field.location);
       }
     }
   }
@@ -2214,10 +2208,9 @@ const FunctionInfo* SemanticAnalyzer::resolveModuleQualifiedCall(
   if (!objectType || !objectType->isModule()) return nullptr;
 
   auto* moduleType = static_cast<sun::ModuleType*>(objectType.get());
-  SymbolMatch match =
-      findSymbolInModule(moduleType->getModulePath(),
-                         memberAccess.getMemberName(), SymbolKind::Function,
-                         &argTypes);
+  SymbolMatch match = findSymbolInModule(moduleType->getModulePath(),
+                                         memberAccess.getMemberName(),
+                                         SymbolKind::Function, &argTypes);
   if (!match || !match.functionInfo) return nullptr;
 
   checkExternCallAllowed(*match.functionInfo, memberAccess.getMemberName(),
@@ -2323,10 +2316,11 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
   // Sun has no va_arg, so C varargs are only meaningful on an extern
   // declaration where the callee is C code.
   if (proto.isCVariadic()) {
-    logAndThrowError("C varargs ('...') are only allowed on 'extern function' "
-                     "declarations; '" +
-                         proto.getName() + "' has a body",
-                     func.getLocation());
+    logAndThrowError(
+        "C varargs ('...') are only allowed on 'extern function' "
+        "declarations; '" +
+            proto.getName() + "' has a body",
+        func.getLocation());
   }
 
   // Compute function signature from qualified name and resolved param types
@@ -2735,7 +2729,8 @@ void SemanticAnalyzer::analyzeMethodWithBindings(
         substituteTypeParameters(typeAnnotationToType(*proto.getReturnType()));
   }
   // A const method body sees the const view of its return type
-  if (proto.isConstMethod()) methodReturnType = createConstView(methodReturnType);
+  if (proto.isConstMethod())
+    methodReturnType = createConstView(methodReturnType);
   enterFunctionScope(methodSig,
                      sun::QualifiedName(classType->getQualifiedName().scopePath,
                                         mangledMethodName),
@@ -3032,8 +3027,7 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
               genericFunctionSignature(*genericFunc, typeArgs));
         } else {
           SpecializedFunctionInfo specialized = requireGenericSpecialization(
-              *genericFunc, typeArgs, varRef.getName(),
-              callExpr.getLocation());
+              *genericFunc, typeArgs, varRef.getName(), callExpr.getLocation());
           resolvedFunc = specialized.asFunctionInfo();
           varRef.setQualifiedName(specialized.qualifiedName);
           varRef.setResolvedType(specialized.functionType());
@@ -3110,7 +3104,8 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
           typeArgPtrs.push_back(typeAnnotationToType(*ta));
         }
         memberAccess.setResolvedTypeArgs(typeArgPtrs);
-        // create<T>(args...) has no fixed params, so all call args are variadic.
+        // create<T>(args...) has no fixed params, so all call args are
+        // variadic.
         memberAccess.setResolvedVariadicArgTypes(argTypes);
 
         auto mutableClassType =
@@ -3138,9 +3133,11 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
             memberAccess.getTypeArguments(), memberAccess.getLocation(),
             "generic method call");
         if (method && written.size() < method->typeParameters.size()) {
-          memberAccess.setResolvedTypeArgs(sun::generics::inferMethodTypeArguments(
-              *method, argTypes, classType->getDisplayName() + "." + methodName,
-              memberAccess.getLocation(), written));
+          memberAccess.setResolvedTypeArgs(
+              sun::generics::inferMethodTypeArguments(
+                  *method, argTypes,
+                  classType->getDisplayName() + "." + methodName,
+                  memberAccess.getLocation(), written));
         }
         memberAccess.setResolvedType(inferType(memberAccess));
         if (method) {
@@ -3193,7 +3190,8 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
       if (objectType && objectType->isInterface()) {
         const auto* iface =
             static_cast<const sun::InterfaceType*>(objectType.get());
-        if (const auto* method = iface->getMethod(memberAccess.getMemberName())) {
+        if (const auto* method =
+                iface->getMethod(memberAccess.getMemberName())) {
           receiverImmutable = checkMethodReceiver(
               *memberAccess.getObject(), method->name, method->isConst,
               /*isConstructor=*/false, memberAccess.getLocation());
@@ -3270,8 +3268,9 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
         std::string params;
         for (size_t i = 0; i < method.paramTypes.size(); ++i) {
           if (i > 0) params += ", ";
-          params += method.paramTypes[i] ? method.paramTypes[i]->toDisplayString()
-                                         : "?";
+          params += method.paramTypes[i]
+                        ? method.paramTypes[i]->toDisplayString()
+                        : "?";
         }
         candidates += "\n       candidate: init(" + params + ")";
       }
@@ -3286,14 +3285,14 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
   // intrinsic, so the intrinsic-only conversions below key off that form.
   std::string funcName = "<unknown>";
   if (calleeASTType == ASTNodeType::VARIABLE_REFERENCE) {
-    funcName =
-        static_cast<const VariableReferenceAST&>(*callExpr.getCallee()).getName();
+    funcName = static_cast<const VariableReferenceAST&>(*callExpr.getCallee())
+                   .getName();
   } else if (calleeASTType == ASTNodeType::MEMBER_ACCESS) {
     funcName = static_cast<const MemberAccessAST&>(*callExpr.getCallee())
                    .getMemberName();
   }
-  bool calleeIsIntrinsic = calleeASTType == ASTNodeType::VARIABLE_REFERENCE &&
-                           isIntrinsic(funcName);
+  bool calleeIsIntrinsic =
+      calleeASTType == ASTNodeType::VARIABLE_REFERENCE && isIntrinsic(funcName);
 
   // Check argument count. A C-variadic callee fixes only its leading
   // parameters, so extra trailing arguments are allowed.
@@ -3459,11 +3458,10 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
           std::string hint;
           if (argType->isReference() && !paramType->isReference() &&
               !sun::typeCopiesByRead(paramType)) {
-            hint =
-                ". It is borrowed, and a '" + paramType->toDisplayString() +
-                "' cannot be read out of a borrow: take the parameter by "
-                "'ref', pass a clone(), or move the value out first "
-                "(take()/pop()/remove() on a container)";
+            hint = ". It is borrowed, and a '" + paramType->toDisplayString() +
+                   "' cannot be read out of a borrow: take the parameter by "
+                   "'ref', pass a clone(), or move the value out first "
+                   "(take()/pop()/remove() on a container)";
           }
           logAndThrowError("Type mismatch in argument " +
                                std::to_string(i + 1) + " of call to '" +
@@ -3501,8 +3499,8 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
   // out and never compares Sun types at the call boundary itself.
   if (knownSignature) {
     callExpr.setArgConversions(sun::conversions::classifyArguments(
-        callExpr.getResolvedArgTypes(), paramTypes, calleeIsCVariadic,
-        funcName, callExpr.getLocation()));
+        callExpr.getResolvedArgTypes(), paramTypes, calleeIsCVariadic, funcName,
+        callExpr.getLocation()));
   }
 
   // A borrow handed out by a method seen through an immutable receiver may
@@ -3544,8 +3542,8 @@ void SemanticAnalyzer::expandPackArguments(
   for (auto& a : args) {
     if (isPack(a)) {
       for (size_t i = 0; i < types.size(); ++i) {
-        auto vref = std::make_unique<VariableReferenceAST>(
-            packName + "." + std::to_string(i));
+        auto vref = std::make_unique<VariableReferenceAST>(packName + "." +
+                                                           std::to_string(i));
         vref->setResolvedType(types[i]);
         rebuilt.push_back(std::move(vref));
       }
@@ -3561,7 +3559,8 @@ void SemanticAnalyzer::analyzeIntrinsicCall(GenericCallAST& genericCall) {
   for (const auto& arg : genericCall.getArgs()) {
     analyzeExpr(const_cast<ExprAST&>(*arg));
   }
-  // Expand any variadic pack into concrete typed args (e.g. _init<T>(p, args...))
+  // Expand any variadic pack into concrete typed args (e.g. _init<T>(p,
+  // args...))
   expandPackArguments(genericCall.getArgsMutable());
   genericCall.setResolvedType(inferGenericCallType(genericCall));
 }
