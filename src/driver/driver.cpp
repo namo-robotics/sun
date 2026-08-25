@@ -23,6 +23,7 @@
 #include "parsing/lowering_pass.h"
 #include "support/error.h"
 #include "support/source_manager.h"
+#include "support/stage_timer.h"
 #include "support/sun_path.h"
 
 static llvm::ExitOnError ExitOnErr;
@@ -437,7 +438,10 @@ void Driver::registerArchivesWithJIT() {
 void Driver::analyzeProgram(BlockExprAST& blockAst, Parser& parser) {
   // Lower the lossless parse tree into the core AST before semantic analysis
   LoweringPass lowering;
-  lowering.run(blockAst);
+  {
+    sun::ScopedStage stage("lowering");
+    lowering.run(blockAst);
+  }
 
   // Interpolation desugars to sun.String / sun.HeapAllocator, so those types
   // have to come from somewhere: an imported stdlib.moon, or — when
@@ -450,10 +454,16 @@ void Driver::analyzeProgram(BlockExprAST& blockAst, Parser& parser) {
   }
 
   // Inject AST stubs from moon imports before semantic analysis
-  processMoonImports(blockAst, parser, moonImports_);
+  {
+    sun::ScopedStage stage("moon imports");
+    processMoonImports(blockAst, parser, moonImports_);
+  }
 
   // Run semantic analysis on the unified AST
-  analyzer->analyzeBlock(blockAst);
+  {
+    sun::ScopedStage stage("sema");
+    analyzer->analyzeBlock(blockAst);
+  }
 }
 
 sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
@@ -499,7 +509,11 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
   // Run borrow checking on the unified AST
   // Uses compile-time settings from sun::Config
   sun::BorrowChecker borrowChecker;
-  auto borrowErrors = borrowChecker.check(*blockAst);
+  std::vector<sun::BorrowError> borrowErrors;
+  {
+    sun::ScopedStage stage("borrow check");
+    borrowErrors = borrowChecker.check(*blockAst);
+  }
   if (!borrowErrors.empty()) {
     for (const auto& err : borrowErrors) {
       std::cerr << err.format() << "\n";
@@ -533,13 +547,17 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
   codegenVisitor->snapshotPrecompiledFunctions();
 
   // Generate code into single module
-  codegenVisitor->codegen(*blockAst);
-  // Emit static initialization function for globals that need runtime init
-  codegenVisitor->emitStaticInitFunction();
+  {
+    sun::ScopedStage stage("codegen");
+    codegenVisitor->codegen(*blockAst);
+    // Emit static initialization function for globals that need runtime init
+    codegenVisitor->emitStaticInitFunction();
+  }
 
   // Link only the modules that provide symbols actually used by the code
   // This happens AFTER codegen so we know exactly which symbols are needed
   if (hasMoonImports) {
+    sun::ScopedStage stage("moon link");
     if (!linker.linkOnlyUsedSymbols()) {
       throw SunError(SunError::Kind::Semantic,
                      "Failed to link precompiled module: " + linker.getError());
@@ -612,8 +630,11 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
     }
 
     // Verify the module - invalid IR is a hard compile failure
-    if (llvm::verifyModule(*ctx->mainModule, &llvm::errs())) {
-      throw SunError(SunError::Kind::Compile, "Module verification failed");
+    {
+      sun::ScopedStage stage("verify");
+      if (llvm::verifyModule(*ctx->mainModule, &llvm::errs())) {
+        throw SunError(SunError::Kind::Compile, "Module verification failed");
+      }
     }
     return result;
   }
@@ -628,8 +649,11 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
   }
 
   // Verify before executing - never run invalid IR
-  if (llvm::verifyModule(*ctx->mainModule, &llvm::errs())) {
-    throw SunError(SunError::Kind::Compile, "Module verification failed");
+  {
+    sun::ScopedStage stage("verify");
+    if (llvm::verifyModule(*ctx->mainModule, &llvm::errs())) {
+      throw SunError(SunError::Kind::Compile, "Module verification failed");
+    }
   }
 
   llvm::Function* func = ctx->mainModule->getFunction("main");
@@ -643,6 +667,7 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
   size_t mainArgCount = func->arg_size();
 
   // Create a NEW context for the JIT module
+  auto jitStage = std::make_unique<sun::ScopedStage>("jit compile");
   auto anonContext = std::make_unique<llvm::LLVMContext>();
 
   // Clone the module into the new context
@@ -668,6 +693,8 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
 
   // Lookup and execute with appropriate type
   auto ExprSymbol = ExitOnErr(ctx->jit->lookup("main"));
+
+  jitStage.reset();
 
   // Check if main takes arguments (argc, argv)
   bool mainHasArgs = (mainArgCount == 2);
@@ -1181,6 +1208,7 @@ sun::SunValue Driver::executeFiles(
   size_t mainArgCount = func->arg_size();
 
   // Clone module for JIT
+  auto jitStage = std::make_unique<sun::ScopedStage>("jit compile");
   auto anonContext = std::make_unique<llvm::LLVMContext>();
   auto moduleClone = llvm::CloneModule(*ctx->mainModule);
   stripUnreachableForJIT(*moduleClone);
@@ -1205,6 +1233,7 @@ sun::SunValue Driver::executeFiles(
 
   // Execute main
   auto ExprSymbol = ExitOnErr(ctx->jit->lookup("main"));
+  jitStage.reset();
   bool mainHasArgs = (mainArgCount == 2);
 
   if (returnType->isVoidTy()) {

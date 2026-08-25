@@ -1,0 +1,71 @@
+using sun;
+using sun.time;
+
+// Take the front item, if there is one. The lock is held for exactly as long
+// as this function runs: the guard is released when `g` goes out of scope at
+// the end of it, so the caller can wait without stalling the producer.
+function take_one(q: const ref Shared<Queue<i64>>) Option<i64> {
+  var g = q.lock();
+  return g.get().pop();
+}
+
+function main() i32 {
+  var alloc = make_heap_allocator();
+
+  // One queue, two owners. Sun never copies a class implicitly, so each
+  // thread needs its own handle, made with an explicit clone().
+  var queue = Shared<Queue<i64>>(alloc, Queue<i64>(alloc));
+  var producer_queue = queue.clone();
+  var consumer_queue = queue.clone();
+
+  // A capture list entry without `ref` is owned by the closure, so the clone
+  // moves into the thread and is dropped there when the lambda ends.
+  var producer = spawn(lambda [producer_queue] () i32 {
+    var i: i64 = 1;
+    while (i <= 10) {
+      // The lock is held just long enough to push: the guard is released at
+      // the end of each iteration.
+      var g = producer_queue.lock();
+      g.get().push(i * i);
+      i = i + 1;
+    }
+    return 0;
+  });
+
+  // The consumer knows how many items to expect, so it stops after ten
+  // rather than needing the producer to tell it when to stop.
+  var consumer = spawn(lambda [consumer_queue] () i32 {
+    var received: i64 = 0;
+    var total: i64 = 0;
+
+    while (received < 10) {
+      match (take_one(consumer_queue)) {
+        Option.Some(item) => {
+          received = received + 1;
+          total = total + item;
+        },
+        // Nothing queued yet. Step aside rather than spin on the lock —
+        // take_one released it before returning.
+        Option.None => {
+          sleep(create_duration_micros(100));
+        }
+      };
+    }
+
+    return _convert<i32>(total);
+  });
+
+  producer.join();
+  var total = consumer.join();
+
+  // Both threads have finished, so the last handle can read without a race.
+  var g = queue.lock();
+  println(`items left: ${g.get().size()}`);
+  println(`total: ${total}`);
+
+  return 0;
+}
+
+manifest {
+    moons: ["stdlib.moon"]
+}

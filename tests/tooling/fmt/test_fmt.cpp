@@ -567,7 +567,6 @@ std::string loweredFingerprint(BlockExprAST& ast) {
   LoweringPass lowering;
   lowering.run(ast);
   sun::serialization::SerializerConfig config;
-  config.include_analysis = false;
   config.include_location = false;
   sun::serialization::ASTSerializer serializer(config);
   return serializer.serializeProgram(ast).SerializeAsString();

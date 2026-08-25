@@ -10,8 +10,10 @@
 namespace sun {
 namespace serialization {
 
-static sun::Visibility fromProto(ast::Visibility v) {
-  return v == ast::PUBLIC ? sun::Visibility::Public : sun::Visibility::Private;
+// Copy a repeated string field into a plain vector
+template <typename Repeated>
+static std::vector<std::string> toStringVector(const Repeated& field) {
+  return std::vector<std::string>(field.begin(), field.end());
 }
 
 Position ASTDeserializer::deserializePosition(const ast::Position& pos) const {
@@ -105,9 +107,8 @@ void ASTDeserializer::deserializeExprBase(const ast::ASTNode& node,
   expr->setPrecompiled(node.precompiled());
   expr->setSkipCodegen(node.skip_codegen());
   expr->setSymbolPrefix(node.symbol_prefix());
-
-  // Note: Analysis data restoration is deferred - the semantic analyzer
-  // should re-analyze rather than rely on serialized analysis state
+  // A serialized tree carries no analysis: what comes back is a parse tree,
+  // and the semantic analyzer runs over it again.
 }
 
 std::unique_ptr<BlockExprAST> ASTDeserializer::deserializeProgram(
@@ -127,11 +128,6 @@ std::unique_ptr<PrototypeAST> ASTDeserializer::deserializePrototype(
     returnType = deserializeTypeAnnotation(proto.return_type());
   }
 
-  std::vector<std::string> typeParams;
-  for (const auto& tp : proto.type_parameters()) {
-    typeParams.push_back(tp);
-  }
-
   std::optional<std::string> variadicParam;
   if (proto.has_variadic_param_name()) {
     variadicParam = proto.variadic_param_name();
@@ -144,7 +140,7 @@ std::unique_ptr<PrototypeAST> ASTDeserializer::deserializePrototype(
 
   auto result = std::make_unique<PrototypeAST>(
       proto.name(), std::move(args), std::move(returnType),
-      std::move(typeParams), std::move(variadicParam),
+      toStringVector(proto.type_parameters()), std::move(variadicParam),
       std::move(variadicConstraint));
 
   // Restore captures
@@ -154,24 +150,10 @@ std::unique_ptr<PrototypeAST> ASTDeserializer::deserializePrototype(
   }
   result->setCaptures(captures);
 
-  // Restore the declared [ref x, ...] capture list
-  std::vector<std::string> refCaptureNames;
-  for (const auto& refName : proto.ref_captures()) {
-    refCaptureNames.push_back(refName);
-  }
-  result->setRefCaptureNames(std::move(refCaptureNames));
-
-  std::vector<std::string> constRefCaptureNames;
-  for (const auto& refName : proto.const_ref_captures()) {
-    constRefCaptureNames.push_back(refName);
-  }
-  result->setConstRefCaptureNames(std::move(constRefCaptureNames));
-
-  std::vector<std::string> ownedCaptureNames;
-  for (const auto& ownedName : proto.owned_captures()) {
-    ownedCaptureNames.push_back(ownedName);
-  }
-  result->setOwnedCaptureNames(std::move(ownedCaptureNames));
+  // Restore the declared capture list, as written
+  result->setRefCaptureNames(toStringVector(proto.ref_captures()));
+  result->setConstRefCaptureNames(toStringVector(proto.const_ref_captures()));
+  result->setOwnedCaptureNames(toStringVector(proto.owned_captures()));
 
   if (proto.has_location()) {
     result->setLocation(deserializePosition(proto.location()));
@@ -202,7 +184,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserialize(
       result = deserializeString(node.string_literal());
       break;
     case ast::ASTNode::kNullLiteral:
-      result = deserializeNull(node.null_literal());
+      result = std::make_unique<NullLiteralAST>();
       break;
     case ast::ASTNode::kBoolLiteral:
       result = deserializeBool(node.bool_literal());
@@ -280,10 +262,10 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserialize(
       result = deserializeWhile(node.while_expr());
       break;
     case ast::ASTNode::kBreakStmt:
-      result = deserializeBreak(node.break_stmt());
+      result = std::make_unique<BreakAST>();
       break;
     case ast::ASTNode::kContinueStmt:
-      result = deserializeContinue(node.continue_stmt());
+      result = std::make_unique<ContinueAST>();
       break;
     case ast::ASTNode::kReturnExpr:
       result = deserializeReturn(node.return_expr());
@@ -328,7 +310,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserialize(
       result = deserializeEnumDef(node.enum_def());
       break;
     case ast::ASTNode::kThisExpr:
-      result = deserializeThis(node.this_expr());
+      result = std::make_unique<ThisExprAST>();
       break;
     case ast::ASTNode::kMemberAccess:
       result = deserializeMemberAccess(node.member_access());
@@ -406,11 +388,6 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeString(
   return std::make_unique<StringLiteralAST>(proto.value());
 }
 
-std::unique_ptr<ExprAST> ASTDeserializer::deserializeNull(
-    const ast::NullLiteral& proto) const {
-  return std::make_unique<NullLiteralAST>();
-}
-
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeBool(
     const ast::BoolLiteral& proto) const {
   return std::make_unique<BoolLiteralAST>(proto.value());
@@ -441,7 +418,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeArray(
   return std::make_unique<ArrayLiteralAST>(std::move(elements));
 }
 
-std::unique_ptr<ExprAST> ASTDeserializer::deserializeSlice(
+std::unique_ptr<SliceExprAST> ASTDeserializer::deserializeSliceExpr(
     const ast::SliceExpr& proto) const {
   std::unique_ptr<ExprAST> start;
   std::unique_ptr<ExprAST> end;
@@ -455,21 +432,17 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeSlice(
                                         proto.is_range());
 }
 
+std::unique_ptr<ExprAST> ASTDeserializer::deserializeSlice(
+    const ast::SliceExpr& proto) const {
+  return deserializeSliceExpr(proto);
+}
+
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeIndex(
     const ast::IndexExpr& proto) const {
   auto target = deserialize(proto.target());
   std::vector<std::unique_ptr<SliceExprAST>> indices;
   for (const auto& idx : proto.indices()) {
-    std::unique_ptr<ExprAST> start;
-    std::unique_ptr<ExprAST> end;
-    if (idx.has_start()) {
-      start = deserialize(idx.start());
-    }
-    if (idx.has_end()) {
-      end = deserialize(idx.end());
-    }
-    indices.push_back(std::make_unique<SliceExprAST>(
-        std::move(start), std::move(end), idx.is_range()));
+    indices.push_back(deserializeSliceExpr(idx));
   }
   return std::make_unique<IndexAST>(std::move(target), std::move(indices));
 }
@@ -621,7 +594,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeMatch(
       PatternBinding binding;
       binding.name = bindingProto.name();
       binding.isWildcard = bindingProto.is_wildcard();
-      binding.location = deserializePosition(bindingProto.location());
+      if (bindingProto.has_location()) {
+        binding.location = deserializePosition(bindingProto.location());
+      }
       arms.back().bindings.push_back(std::move(binding));
     }
   }
@@ -662,16 +637,6 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeWhile(
     const ast::WhileExpr& proto) const {
   return std::make_unique<WhileExprAST>(deserialize(proto.condition()),
                                         deserialize(proto.body()));
-}
-
-std::unique_ptr<ExprAST> ASTDeserializer::deserializeBreak(
-    const ast::BreakStmt& proto) const {
-  return std::make_unique<BreakAST>();
-}
-
-std::unique_ptr<ExprAST> ASTDeserializer::deserializeContinue(
-    const ast::ContinueStmt& proto) const {
-  return std::make_unique<ContinueAST>();
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeReturn(
@@ -798,30 +763,34 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeModule(
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeUsing(
     const ast::UsingStmt& proto) const {
-  std::vector<std::string> path;
-  for (const auto& part : proto.namespace_path()) {
-    path.push_back(part);
-  }
   // Note: UsingAST computes isModuleImport_ from target == "*"
-  return std::make_unique<UsingAST>(std::move(path), proto.target());
+  return std::make_unique<UsingAST>(toStringVector(proto.namespace_path()),
+                                    proto.target());
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeQualifiedName(
     const ast::QualifiedName& proto) const {
-  std::vector<std::string> parts;
-  for (const auto& part : proto.parts()) {
-    parts.push_back(part);
+  return std::make_unique<QualifiedNameAST>(toStringVector(proto.parts()));
+}
+
+std::unique_ptr<FunctionAST> ASTDeserializer::deserializeMethodFunction(
+    const ast::FunctionDef& proto, bool emptyBodyMeansNone) const {
+  auto prototype = deserializePrototype(proto.proto());
+  std::unique_ptr<BlockExprAST> body;
+  if (!emptyBodyMeansNone || proto.body().body_size() > 0) {
+    body = deserializeBlockExpr(proto.body());
   }
-  return std::make_unique<QualifiedNameAST>(std::move(parts));
+  auto function =
+      std::make_unique<FunctionAST>(std::move(prototype), std::move(body));
+  function->setVisibility(fromProto(proto.visibility()));
+  if (proto.has_location()) {
+    function->setLocation(deserializePosition(proto.location()));
+  }
+  return function;
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
     const ast::ClassDef& proto) const {
-  std::vector<std::string> typeParams;
-  for (const auto& tp : proto.type_parameters()) {
-    typeParams.push_back(tp);
-  }
-
   std::vector<ImplementedInterfaceAST> interfaces;
   for (const auto& ifaceProto : proto.implemented_interfaces()) {
     ImplementedInterfaceAST iface;
@@ -834,27 +803,14 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
 
   std::vector<ClassFieldDecl> fields;
   for (const auto& fieldProto : proto.fields()) {
-    ClassFieldDecl field;
-    field.name = fieldProto.name();
-    field.type = deserializeTypeAnnotation(fieldProto.type());
-    field.location = deserializePosition(fieldProto.location());
-    field.visibility = fromProto(fieldProto.visibility());
-    field.doc = fieldProto.doc();
-    fields.push_back(std::move(field));
+    fields.push_back(deserializeField<ClassFieldDecl>(fieldProto));
   }
 
   std::vector<ClassMethodDecl> methods;
   for (const auto& methodProto : proto.methods()) {
     ClassMethodDecl method;
-    auto funcProto = methodProto.function();
-    auto prototype = deserializePrototype(funcProto.proto());
-    auto body = deserializeBlockExpr(funcProto.body());
-    method.function =
-        std::make_unique<FunctionAST>(std::move(prototype), std::move(body));
-    method.function->setVisibility(fromProto(funcProto.visibility()));
-    if (funcProto.has_location()) {
-      method.function->setLocation(deserializePosition(funcProto.location()));
-    }
+    method.function = deserializeMethodFunction(methodProto.function(),
+                                                /*emptyBodyMeansNone=*/false);
     method.isConstructor = methodProto.is_constructor();
     method.isConst = methodProto.is_const();
     methods.push_back(std::move(method));
@@ -865,8 +821,8 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
   // particular changes layout, so losing it would silently corrupt memory;
   // losing visibility would make every bundled item private.
   auto classDef = std::make_unique<ClassDefinitionAST>(
-      proto.name(), std::move(typeParams), std::move(interfaces),
-      std::move(fields), std::move(methods));
+      proto.name(), toStringVector(proto.type_parameters()),
+      std::move(interfaces), std::move(fields), std::move(methods));
   classDef->setIsPartial(proto.is_partial());
   classDef->setIsPacked(proto.is_packed());
   classDef->setVisibility(fromProto(proto.visibility()));
@@ -876,44 +832,23 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeInterfaceDef(
     const ast::InterfaceDef& proto) const {
-  std::vector<std::string> typeParams;
-  for (const auto& tp : proto.type_parameters()) {
-    typeParams.push_back(tp);
-  }
-
   std::vector<InterfaceFieldDecl> fields;
   for (const auto& fieldProto : proto.fields()) {
-    InterfaceFieldDecl field;
-    field.name = fieldProto.name();
-    field.type = deserializeTypeAnnotation(fieldProto.type());
-    field.location = deserializePosition(fieldProto.location());
-    field.visibility = fromProto(fieldProto.visibility());
-    field.doc = fieldProto.doc();
-    fields.push_back(std::move(field));
+    fields.push_back(deserializeField<InterfaceFieldDecl>(fieldProto));
   }
 
   std::vector<InterfaceMethodDecl> methods;
   for (const auto& methodProto : proto.methods()) {
     InterfaceMethodDecl method;
-    auto funcProto = methodProto.function();
-    auto prototype = deserializePrototype(funcProto.proto());
-    std::unique_ptr<BlockExprAST> body;
-    if (funcProto.body().body_size() > 0) {
-      body = deserializeBlockExpr(funcProto.body());
-    }
-    method.function =
-        std::make_unique<FunctionAST>(std::move(prototype), std::move(body));
-    method.function->setVisibility(fromProto(funcProto.visibility()));
-    if (funcProto.has_location()) {
-      method.function->setLocation(deserializePosition(funcProto.location()));
-    }
+    method.function = deserializeMethodFunction(methodProto.function(),
+                                                /*emptyBodyMeansNone=*/true);
     method.hasDefaultImpl = methodProto.has_default_impl();
     method.isConst = methodProto.is_const();
     methods.push_back(std::move(method));
   }
 
   auto iface = std::make_unique<InterfaceDefinitionAST>(
-      proto.name(), std::move(typeParams), std::move(fields),
+      proto.name(), toStringVector(proto.type_parameters()), std::move(fields),
       std::move(methods));
   iface->setVisibility(fromProto(proto.visibility()));
   iface->setDoc(proto.doc());
@@ -927,28 +862,21 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeEnumDef(
     EnumVariantDecl variant;
     variant.name = variantProto.name();
     variant.value = variantProto.value();
-    variant.location = deserializePosition(variantProto.location());
+    if (variantProto.has_location()) {
+      variant.location = deserializePosition(variantProto.location());
+    }
     variant.doc = variantProto.doc();
     for (const auto& payloadProto : variantProto.payload_types()) {
       variant.payloadTypes.push_back(deserializeTypeAnnotation(payloadProto));
     }
     variants.push_back(std::move(variant));
   }
-  std::vector<std::string> typeParams;
-  for (const auto& tp : proto.type_parameters()) {
-    typeParams.push_back(tp);
-  }
   auto enumDef = std::make_unique<EnumDefinitionAST>(
       proto.name(), std::move(variants), /*precompiled=*/false,
-      std::move(typeParams));
+      toStringVector(proto.type_parameters()));
   enumDef->setVisibility(fromProto(proto.visibility()));
   enumDef->setDoc(proto.doc());
   return enumDef;
-}
-
-std::unique_ptr<ExprAST> ASTDeserializer::deserializeThis(
-    const ast::ThisExpr& proto) const {
-  return std::make_unique<ThisExprAST>();
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeMemberAccess(
@@ -967,19 +895,15 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeTryCatch(
     const ast::TryCatch& proto) const {
   auto tryBlock = deserializeBlockExpr(proto.try_block());
 
-  auto deserializeClause = [&](const ast::CatchClause& cc) {
+  std::vector<CatchClause> catchClauses;
+  for (const auto& cc : proto.catch_clauses()) {
     CatchClause catchClause;
     catchClause.bindingName = cc.binding_name();
     if (cc.has_binding_type()) {
       catchClause.bindingType = deserializeTypeAnnotation(cc.binding_type());
     }
     catchClause.body = deserializeBlockExpr(cc.body());
-    return catchClause;
-  };
-
-  std::vector<CatchClause> catchClauses;
-  for (const auto& cc : proto.catch_clauses()) {
-    catchClauses.push_back(deserializeClause(cc));
+    catchClauses.push_back(std::move(catchClause));
   }
 
   return std::make_unique<TryCatchExprAST>(std::move(tryBlock),

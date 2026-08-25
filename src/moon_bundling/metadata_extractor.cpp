@@ -246,9 +246,7 @@ std::vector<moon::ModuleMetadata> extractAllMetadata(
   std::filesystem::path moduleDir =
       std::filesystem::path(filePath).parent_path();
 
-  // Create serializer (don't include analysis data, do include locations)
-  ASTSerializer serializer(
-      {.include_analysis = false, .include_location = true});
+  ASTSerializer serializer({.include_location = true});
 
   ModuleCollector collector;
   extractFromStatements(ast.getBody(), collector, "", serializer, moduleDir);

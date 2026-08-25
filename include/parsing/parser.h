@@ -12,7 +12,6 @@
 #include "moon_bundling/moon.h"
 #include "moon_bundling/moon_import.h"
 #include "parsing/lexer.h"
-#include "serialization/ast_cache.h"
 #include "support/error.h"
 
 using std::unique_ptr;

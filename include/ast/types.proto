@@ -42,8 +42,7 @@ enum CaptureKind {
 message Capture {
   reserved 3, 5;  // was by_ref / owned, now folded into kind
   string name = 1;
-  string type_signature = 2;  // Type stored as string signature
-  bool is_const = 4;          // The binding is immutable inside the lambda
+  bool is_const = 4;  // The binding is immutable inside the lambda
   CaptureKind kind = 6;
 }
 

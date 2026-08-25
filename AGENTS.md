@@ -121,6 +121,7 @@ Module tests require `SUN_PATH` env var pointing to workspace root.
 - Sun minimizes and discourages alternative syntaxes that do the same thing.
 - Use plain english with minimal jargon.
 - Sun DOES NOT ALLOW IMPLICIT COPIES.
+- Every function, class, interface, and method should have a block comment describing its function and purpose in concise plain-english. This includes sun files and c++ files.
 
 # Build
 

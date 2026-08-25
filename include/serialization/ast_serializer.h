@@ -11,10 +11,13 @@
 namespace sun {
 namespace serialization {
 
+inline ast::Visibility toProto(sun::Visibility v) {
+  return v == sun::Visibility::Public ? ast::PUBLIC : ast::PRIVATE;
+}
+
 // Configuration for AST serialization
 struct SerializerConfig {
-  bool include_analysis = false;  // Include semantic analysis data
-  bool include_location = true;   // Include source locations
+  bool include_location = true;  // Include source locations
 };
 
 // Serialize AST nodes to protobuf format
@@ -58,12 +61,31 @@ class ASTSerializer {
   void serializeBlockInto(const BlockExprAST& block,
                           ast::BlockExpr* proto) const;
 
+  // One index of a subscript: `a[i]` and `a[i..j]` share a slice message
+  void serializeSliceInto(const SliceExprAST& slice,
+                          ast::SliceExpr* proto) const;
+
+  // The function behind a class or interface method
+  void serializeMethodFunction(const FunctionAST& function,
+                               ast::FunctionDef* proto) const;
+
+  // Class and interface fields are declared alike, so they store alike
+  template <typename FieldDecl, typename FieldProto>
+  void serializeFieldInto(const FieldDecl& field, FieldProto* proto) const {
+    proto->set_name(field.name);
+    *proto->mutable_type() = serializeTypeAnnotation(field.type);
+    if (config_.include_location) {
+      *proto->mutable_location() = serializePosition(field.location);
+    }
+    proto->set_visibility(toProto(field.visibility));
+    proto->set_doc(field.doc);
+  }
+
   // Individual node type serializers (dispatch by ASTNodeType)
   void serializeNumber(const NumberExprAST& expr, ast::ASTNode* node) const;
   void serializeCharLiteral(const CharLiteralAST& expr,
                             ast::ASTNode* node) const;
   void serializeString(const StringLiteralAST& expr, ast::ASTNode* node) const;
-  void serializeNull(const NullLiteralAST& expr, ast::ASTNode* node) const;
   void serializeBool(const BoolLiteralAST& expr, ast::ASTNode* node) const;
   void serializeArray(const ArrayLiteralAST& expr, ast::ASTNode* node) const;
   void serializeStructLiteral(const StructLiteralAST& expr,
@@ -103,8 +125,6 @@ class ASTSerializer {
   void serializeFor(const ForExprAST& expr, ast::ASTNode* node) const;
   void serializeForIn(const ForInExprAST& expr, ast::ASTNode* node) const;
   void serializeWhile(const WhileExprAST& expr, ast::ASTNode* node) const;
-  void serializeBreak(const BreakAST& expr, ast::ASTNode* node) const;
-  void serializeContinue(const ContinueAST& expr, ast::ASTNode* node) const;
   void serializeReturn(const ReturnExprAST& expr, ast::ASTNode* node) const;
   void serializeUnsafeBlock(const UnsafeBlockAST& expr,
                             ast::ASTNode* node) const;
@@ -128,7 +148,6 @@ class ASTSerializer {
                              ast::ASTNode* node) const;
   void serializeEnumDef(const EnumDefinitionAST& expr,
                         ast::ASTNode* node) const;
-  void serializeThis(const ThisExprAST& expr, ast::ASTNode* node) const;
   void serializeMemberAccess(const MemberAccessAST& expr,
                              ast::ASTNode* node) const;
 

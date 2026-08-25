@@ -20,6 +20,7 @@
 #include "moon_bundling/metadata_extractor.h"
 #include "parsing/interpolated_string_parser.h"
 #include "serialization/ast_deserializer.h"
+#include "support/stage_timer.h"
 #include "support/sun_path.h"
 
 #define PARSER_TIMER_START(name) \
@@ -1820,6 +1821,7 @@ unique_ptr<BlockExprAST> Parser::parseBlock(bool itemLevel) {
 }
 
 unique_ptr<BlockExprAST> Parser::parseProgram() {
+  sun::ScopedStage stage("parse");
   Position start = captureStart();
   std::vector<unique_ptr<ExprAST>> body;
 

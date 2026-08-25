@@ -11,9 +11,12 @@
 namespace sun {
 namespace serialization {
 
+inline sun::Visibility fromProto(ast::Visibility v) {
+  return v == ast::PUBLIC ? sun::Visibility::Public : sun::Visibility::Private;
+}
+
 // Configuration for AST deserialization
 struct DeserializerConfig {
-  bool restore_analysis = false;  // Restore semantic analysis data
   // File given to positions that carry none (a .moon bundle stores the
   // module's source path once rather than on every position)
   std::string default_file_path;
@@ -59,6 +62,27 @@ class ASTDeserializer {
   // Restore common ExprAST fields from the proto message
   void deserializeExprBase(const ast::ASTNode& node, ExprAST* expr) const;
 
+  // The function behind a class or interface method. An interface method
+  // with no statements is a bare declaration, so it comes back without a
+  // body; a class method with no statements has an empty body, and dropping
+  // that would leave the method looking like an extern declaration.
+  std::unique_ptr<FunctionAST> deserializeMethodFunction(
+      const ast::FunctionDef& proto, bool emptyBodyMeansNone) const;
+
+  // Class and interface fields are declared alike, so they load alike
+  template <typename FieldDecl, typename FieldProto>
+  FieldDecl deserializeField(const FieldProto& proto) const {
+    FieldDecl field;
+    field.name = proto.name();
+    field.type = deserializeTypeAnnotation(proto.type());
+    if (proto.has_location()) {
+      field.location = deserializePosition(proto.location());
+    }
+    field.visibility = fromProto(proto.visibility());
+    field.doc = proto.doc();
+    return field;
+  }
+
   // Individual node type deserializers
   std::unique_ptr<ExprAST> deserializeNumber(
       const ast::NumberExpr& proto) const;
@@ -66,13 +90,14 @@ class ASTDeserializer {
       const ast::CharLiteral& proto) const;
   std::unique_ptr<ExprAST> deserializeString(
       const ast::StringLiteral& proto) const;
-  std::unique_ptr<ExprAST> deserializeNull(const ast::NullLiteral& proto) const;
   std::unique_ptr<ExprAST> deserializeBool(const ast::BoolLiteral& proto) const;
   std::unique_ptr<ExprAST> deserializeStructLiteral(
       const ast::StructLiteral& proto) const;
   std::unique_ptr<ExprAST> deserializeArray(
       const ast::ArrayLiteral& proto) const;
 
+  std::unique_ptr<SliceExprAST> deserializeSliceExpr(
+      const ast::SliceExpr& proto) const;
   std::unique_ptr<ExprAST> deserializeSlice(const ast::SliceExpr& proto) const;
   std::unique_ptr<ExprAST> deserializeIndex(const ast::IndexExpr& proto) const;
   std::unique_ptr<ExprAST> deserializeArrayIndex(
@@ -110,9 +135,6 @@ class ASTDeserializer {
   std::unique_ptr<ExprAST> deserializeFor(const ast::ForExpr& proto) const;
   std::unique_ptr<ExprAST> deserializeForIn(const ast::ForInExpr& proto) const;
   std::unique_ptr<ExprAST> deserializeWhile(const ast::WhileExpr& proto) const;
-  std::unique_ptr<ExprAST> deserializeBreak(const ast::BreakStmt& proto) const;
-  std::unique_ptr<ExprAST> deserializeContinue(
-      const ast::ContinueStmt& proto) const;
   std::unique_ptr<ExprAST> deserializeReturn(
       const ast::ReturnExpr& proto) const;
   std::unique_ptr<ExprAST> deserializeUnsafeBlock(
@@ -139,7 +161,6 @@ class ASTDeserializer {
   std::unique_ptr<ExprAST> deserializeInterfaceDef(
       const ast::InterfaceDef& proto) const;
   std::unique_ptr<ExprAST> deserializeEnumDef(const ast::EnumDef& proto) const;
-  std::unique_ptr<ExprAST> deserializeThis(const ast::ThisExpr& proto) const;
   std::unique_ptr<ExprAST> deserializeMemberAccess(
       const ast::MemberAccess& proto) const;
 

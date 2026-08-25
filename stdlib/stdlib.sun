@@ -20,6 +20,7 @@ manifest {
         "print.sun",
         "map.sun",
         "linked_list.sun",
+        "queue.sun",
         "mutex.sun",
         "shared.sun",
         "io.sun",
