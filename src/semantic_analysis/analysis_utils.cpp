@@ -60,7 +60,7 @@ bool SemanticAnalyzer::tryCoerceIntegerLiteral(ExprAST* expr,
   if (throwOnFail) {
     logAndThrowError("Integer literal " + std::to_string(val) +
                          " cannot be represented as '" +
-                         targetType->toString() + "'",
+                         targetType->toDisplayString() + "'",
                      expr->getLocation());
   }
   return false;
@@ -224,8 +224,8 @@ sun::TypePtr SemanticAnalyzer::unifyTernaryTypes(const sun::TypePtr& thenType,
   if (elseToThen) return thenType;
 
   logAndThrowError("Ternary branch types do not match: '" +
-                       thenType->toString() + "' vs '" + elseType->toString() +
-                       "'",
+                       thenType->toDisplayString() + "' vs '" +
+                       elseType->toDisplayString() + "'",
                    loc);
 }
 

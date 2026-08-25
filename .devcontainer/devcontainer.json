@@ -22,8 +22,10 @@
 		// Claude Code state: session transcripts (projects/), plans/, memory,
 		// settings and credentials. Keeps sessions across container rebuilds.
 		"source=sun-claude,target=/home/ubuntu/.claude,type=volume",
-		// GitHub CLI credentials (hosts.yml) so `gh auth login` survives rebuilds.
-		"source=sun-gh,target=/home/ubuntu/.config/gh,type=volume"
+		// GitHub CLI credentials (hosts.yml) bound from the host, so the
+		// container shares the host's `gh auth login` instead of needing its
+		// own. Requires ~/.config/gh to exist on the host.
+		"source=${localEnv:HOME}${localEnv:USERPROFILE}/.config/gh,target=/home/ubuntu/.config/gh,type=bind"
 	],
 	"remoteUser": "ubuntu",
 	"updateRemoteUserUID": true,
@@ -33,7 +35,7 @@
 		"CTEST_PARALLEL_LEVEL": "8"
 	},
 	// Named volumes are created root-owned; hand them to the ubuntu user.
-	"postCreateCommand": "sudo chown -R ubuntu:ubuntu /home/ubuntu/.cache/ccache /home/ubuntu/.claude /home/ubuntu/.config/gh",
+	"postCreateCommand": "sudo chown -R ubuntu:ubuntu /home/ubuntu/.cache/ccache /home/ubuntu/.claude",
 	"postAttachCommand": "bash",
 	"features": {
 		"ghcr.io/devcontainers/features/node:1": {

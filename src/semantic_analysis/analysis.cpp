@@ -428,11 +428,11 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
         // Allow integer literal coercion as a fallback
         if (!tryCoerceIntegerLiteral(const_cast<ExprAST*>(compound.getValue()),
                                      targetType, false)) {
-          logAndThrowError("Cannot apply '" + compound.getOp().text +
-                               "' with value of type '" + rhsType->toString() +
-                               "' to target of type '" +
-                               targetType->toString() + "'",
-                           compound.getLocation());
+          logAndThrowError(
+              "Cannot apply '" + compound.getOp().text +
+                  "' with value of type '" + rhsType->toDisplayString() +
+                  "' to target of type '" + targetType->toDisplayString() + "'",
+              compound.getLocation());
         }
       }
 
@@ -1501,7 +1501,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
           logAndThrowError(
               "catch type must be 'IError' or a class implementing IError, "
               "got '" +
-                  (bindingType ? bindingType->toString() : std::string("?")) +
+                  (bindingType ? bindingType->toDisplayString()
+                               : std::string("?")) +
                   "'",
               tryCatchExpr.getLocation());
         }
@@ -1604,7 +1605,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
         if (!implementsIError) {
           logAndThrowError(
               "throw expression must be a type implementing IError, got '" +
-                  errorType->toString() + "'",
+                  errorType->toDisplayString() + "'",
               throwExpr.getLocation());
         }
       }
@@ -1623,10 +1624,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       // Validate that the argument is a lambda
       sun::TypePtr lambdaType = inferType(spawnExpr.getLambda());
       if (!lambdaType || !lambdaType->isLambda()) {
-        logAndThrowError("spawn requires a lambda expression, got '" +
-                             (lambdaType ? lambdaType->toString() : "unknown") +
-                             "'",
-                         spawnExpr.getLocation());
+        logAndThrowError(
+            "spawn requires a lambda expression, got '" +
+                (lambdaType ? lambdaType->toDisplayString() : "unknown") + "'",
+            spawnExpr.getLocation());
       }
 
       // The lambda should take no arguments (for now)
@@ -1811,7 +1812,7 @@ void SemanticAnalyzer::registerClassShape(
       if (fieldType && fieldType->isReference()) {
         logAndThrowError("Field '" + field.name + "' in class '" +
                              classDef.getName() + "' has reference type '" +
-                             fieldType->toString() +
+                             fieldType->toDisplayString() +
                              "'. References cannot be stored in class "
                              "fields. Use a pointer type or store a copy.",
                          field.location);
@@ -1878,9 +1879,9 @@ std::vector<sun::TypePtr> SemanticAnalyzer::validateAndResolveParamTypes(
       if (!allowByValueObjects && paramType && paramType->isCompound()) {
         // Error: compound types must be passed by reference
         logAndThrowError("Parameter '" + argName + "' has compound type '" +
-                             paramType->toString() +
+                             paramType->toDisplayString() +
                              "' which cannot be passed by value. Use 'ref " +
-                             paramType->toString() + "' instead.",
+                             paramType->toDisplayString() + "' instead.",
                          loc);
       }
     }
@@ -2173,7 +2174,7 @@ void SemanticAnalyzer::validateExternSignature(FunctionAST& func) {
   }
 
   auto describe = [](const sun::TypePtr& t) {
-    return t ? t->toString() : std::string("<unresolved>");
+    return t ? t->toDisplayString() : std::string("<unresolved>");
   };
 
   // What codegen can lower to a C-compatible signature:
@@ -3181,10 +3182,10 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
       // on declaration order would silently change meaning if two same-typed
       // fields were ever reordered.
       logAndThrowError(
-          "Class '" + ct->toString() +
+          "Class '" + ct->toDisplayString() +
               "' declares no 'init', so it cannot be constructed positionally."
               " Use a struct literal naming each field: `var x: " +
-              ct->toString() + " = { ... };`",
+              ct->toDisplayString() + " = { ... };`",
           callExpr.getLocation());
     } else if (ct->getMethod("init")) {
       // The class declares one or more init methods but none are compatible
@@ -3207,7 +3208,7 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
         }
         candidates += "\n       candidate: init(" + params + ")";
       }
-      logAndThrowError("No matching constructor for '" + ct->toString() +
+      logAndThrowError("No matching constructor for '" + ct->toDisplayString() +
                            "' with arguments (" + argList + ")" + candidates,
                        callExpr.getLocation());
     }
@@ -3657,7 +3658,7 @@ void SemanticAnalyzer::analyzeGenericClassConstruction(
       expectedParamTypes = initMethod->paramTypes;
     } else if (!specializedClass->getMethod("init") && !args.empty()) {
       logAndThrowError(
-          "Class '" + specializedClass->toString() +
+          "Class '" + specializedClass->toDisplayString() +
               "' declares no 'init', so it cannot be constructed positionally."
               " Use a struct literal naming each field.",
           genericCall.getLocation());
@@ -3668,7 +3669,7 @@ void SemanticAnalyzer::analyzeGenericClassConstruction(
         argList += argTypes[i] ? argTypes[i]->toDisplayString() : "?";
       }
       logAndThrowError("No matching constructor for '" +
-                           specializedClass->toString() +
+                           specializedClass->toDisplayString() +
                            "' with arguments (" + argList + ")",
                        genericCall.getLocation());
     }
@@ -3682,13 +3683,14 @@ void SemanticAnalyzer::analyzeGenericClassConstruction(
 
   if (specializedClass) {
     checkArgumentPlaces(args, expectedParamTypes,
-                        specializedClass->toString() + ".init",
+                        specializedClass->toDisplayString() + ".init",
                         genericCall.getLocation());
     std::vector<sun::TypePtr> argTypes;
     for (const auto& arg : args) argTypes.push_back(arg->getResolvedType());
     genericCall.setArgConversions(sun::conversions::classifyArguments(
         argTypes, expectedParamTypes, /*cVariadic=*/false,
-        specializedClass->toString() + ".init", genericCall.getLocation()));
+        specializedClass->toDisplayString() + ".init",
+        genericCall.getLocation()));
   }
 
   genericCall.setResolvedType(inferGenericCallType(genericCall));

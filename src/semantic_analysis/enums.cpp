@@ -208,7 +208,8 @@ void SemanticAnalyzer::validateEnumPayloadType(
                  type->isClass() || type->isInterface() ||
                  type->isReference();
   if (!allowed) {
-    logAndThrowError(context + " has unsupported type '" + type->toString() +
+    logAndThrowError(context + " has unsupported type '" +
+                         type->toDisplayString() +
                          "'; supported: primitives, pointers, enums, "
                          "interfaces, and classes",
                      location);

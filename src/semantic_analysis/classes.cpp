@@ -616,9 +616,9 @@ SemanticAnalyzer::instantiateGenericFunction(
     // If a type parameter resolved to a compound type, error - must use ref
     if (paramType && paramType->isCompound() && !paramType->isReference()) {
       logAndThrowError("Parameter '" + argName + "' has compound type '" +
-                           paramType->toString() +
+                           paramType->toDisplayString() +
                            "' which cannot be passed by value. Use 'ref " +
-                           paramType->toString() + "' instead.",
+                           paramType->toDisplayString() + "' instead.",
                        genericFunc->getLocation());
     }
 
@@ -952,8 +952,8 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
                            : "?";
           }
           logAndThrowError("No matching constructor for '" +
-                               constraintType->toString() + "' with arguments (" +
-                               argList + ")",
+                               constraintType->toDisplayString() +
+                               "' with arguments (" + argList + ")",
                            genericMethodAST->getLocation());
         }
       }
