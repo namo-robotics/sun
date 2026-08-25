@@ -201,12 +201,10 @@ Value* CodegenVisitor::tryCodegenAddress(const ExprAST& expr) {
       const auto& memberAccess = static_cast<const MemberAccessAST&>(expr);
 
       // mod.global: the module is compile-time only, so the storage is the
-      // global emitted under the member's mangled name
-      if (llvm::GlobalVariable* gv = moduleMemberGlobal(
-              *memberAccess.getObject(), memberAccess.getMemberName(),
-              memberAccess.hasResolvedQualifiedName()
-                  ? memberAccess.getResolvedQualifiedName()
-                  : std::string{})) {
+      // global the member's declaration emitted
+      if (llvm::GlobalVariable* gv =
+              moduleMemberGlobal(*memberAccess.getObject(),
+                                 memberAccess.getResolvedQualifiedName())) {
         return gv;
       }
 

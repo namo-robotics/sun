@@ -30,15 +30,6 @@ struct ExprAnalysis {
   ExprAnalysis& operator=(ExprAnalysis&&) = default;
 };
 
-/// Analysis data for nodes with qualified names (variables, classes, etc.)
-struct QualifiedNameAnalysis {
-  sun::QualifiedName qualifiedName;
-
-  QualifiedNameAnalysis() = default;
-  QualifiedNameAnalysis(const QualifiedNameAnalysis&) = default;
-  QualifiedNameAnalysis& operator=(const QualifiedNameAnalysis&) = default;
-};
-
 /// Analysis data for PrototypeAST (function signatures)
 struct PrototypeAnalysis {
   sun::QualifiedName qualifiedName;

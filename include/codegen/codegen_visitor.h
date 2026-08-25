@@ -487,13 +487,9 @@ class CodegenVisitor {
                            const std::string& name);
 
   // Module members (classes.cpp): a module is compile-time only, so `mod.name`
-  // reads and writes the global emitted under the member's mangled name.
-  std::string moduleMemberSymbol(const ExprAST& object,
-                                 const std::string& memberName,
-                                 const std::string& resolved);
+  // reads and writes the global that the member's own declaration emitted.
   llvm::GlobalVariable* moduleMemberGlobal(const ExprAST& object,
-                                           const std::string& memberName,
-                                           const std::string& resolved);
+                                           const std::string& symbol);
 
   // Alignment for field accesses, honouring packed layout. Thin wrappers over
   // sun::packed (include/packed_layout.h) that supply the module's DataLayout.

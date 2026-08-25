@@ -2187,8 +2187,9 @@ void SemanticAnalyzer::analyzeModuleGlobalAssignment(
                      assign.getLocation());
   }
 
-  // Codegen looks the global up by this name (it carries any library hash)
-  assign.setResolvedQualifiedName(match.mangled());
+  // The declaration's own qualified name is the symbol codegen emitted the
+  // global under, so that is what the write is pointed at
+  assign.setResolvedQualifiedName(target.qualifiedName.mangled());
 
   sun::TypePtr expectedType = unwrapRef(target.type);
   analyzeExpr(const_cast<ExprAST&>(*assign.getValue()), expectedType);

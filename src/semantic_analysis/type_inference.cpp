@@ -808,13 +808,19 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
         // Set the resolved qualified name on the AST for codegen
         // e.g., "$d9b854ae$_sun_make_heap_allocator" for
         // sun.make_heap_allocator.
-        // Functions carry their own mangled name, which includes the overload
-        // param suffix; rebuilding it from the module path here would drop
-        // that suffix and reference a symbol codegen never emits.
-        std::string resolvedName =
-            match.kind == SymbolKind::Function && match.functionInfo
-                ? match.functionInfo->qualifiedName.mangled()
-                : mangleModulePath(match.modulePath) + "_" + memberName;
+        // A function or a variable is a symbol codegen emits, and it emits it
+        // under the qualified name its own declaration was registered with —
+        // so take the name from there. Rebuilding it from the module path
+        // would drop a function's overload param suffix and name a symbol
+        // that was never emitted.
+        std::string resolvedName;
+        if (match.kind == SymbolKind::Function && match.functionInfo) {
+          resolvedName = match.functionInfo->qualifiedName.mangled();
+        } else if (match.kind == SymbolKind::Variable && match.variableInfo) {
+          resolvedName = match.variableInfo->qualifiedName.mangled();
+        } else {
+          resolvedName = mangleModulePath(match.modulePath) + "_" + memberName;
+        }
         memberAccess.setResolvedQualifiedName(resolvedName);
 
         switch (match.kind) {

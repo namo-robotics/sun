@@ -663,27 +663,16 @@ Value* CodegenVisitor::codegen(const ThisExprAST& expr) {
 // Module member helpers
 // -------------------------------------------------------------------
 
-// Name a module member is emitted under: the one semantic analysis resolved
-// (it carries any library-hash prefix and overload suffix), or the module path
-// mangled onto the member name.
-std::string CodegenVisitor::moduleMemberSymbol(const ExprAST& object,
-                                               const std::string& memberName,
-                                               const std::string& resolved) {
-  if (!resolved.empty()) return resolved;
-  auto* moduleType =
-      static_cast<sun::ModuleType*>(object.getResolvedType().get());
-  return mangleModulePath(moduleType->getModulePath()) + "_" + memberName;
-}
-
 // The global backing `mod.name`, or null when the object is not a module or
-// the member names something other than a global variable.
-GlobalVariable* CodegenVisitor::moduleMemberGlobal(
-    const ExprAST& object, const std::string& memberName,
-    const std::string& resolved) {
+// the member names something other than a global variable. `symbol` is the
+// name semantic analysis took from the member's own declaration; codegen never
+// rebuilds it from the module path, since only the declaration knows the
+// library-hash scope the symbol was emitted under.
+GlobalVariable* CodegenVisitor::moduleMemberGlobal(const ExprAST& object,
+                                                   const std::string& symbol) {
   sun::TypePtr objectType = object.getResolvedType();
-  if (!objectType || !objectType->isModule()) return nullptr;
-  return module->getGlobalVariable(
-      moduleMemberSymbol(object, memberName, resolved));
+  if (!objectType || !objectType->isModule() || symbol.empty()) return nullptr;
+  return module->getGlobalVariable(symbol);
 }
 
 // -------------------------------------------------------------------
@@ -697,11 +686,6 @@ Value* CodegenVisitor::codegen(const MemberAccessAST& expr) {
   sun::TypePtr objectType = expr.getObject()->getResolvedType();
   if (objectType && objectType->isModule()) {
     auto* moduleType = static_cast<sun::ModuleType*>(objectType.get());
-    std::string qualifiedName =
-        moduleMemberSymbol(*expr.getObject(), memberName,
-                           expr.hasResolvedQualifiedName()
-                               ? expr.getResolvedQualifiedName()
-                               : std::string{});
 
     // Check if the result type is also a module (nested module access)
     sun::TypePtr resultType = expr.getResolvedType();
@@ -710,6 +694,10 @@ Value* CodegenVisitor::codegen(const MemberAccessAST& expr) {
       return llvm::ConstantPointerNull::get(
           llvm::PointerType::getUnqual(ctx.getContext()));
     }
+
+    // Semantic analysis took this from the member's own declaration, so it
+    // names the symbol that declaration emitted, library-hash scope included
+    const std::string& qualifiedName = expr.getResolvedQualifiedName();
 
     // Check for global variable in this module
     GlobalVariable* gv = module->getGlobalVariable(qualifiedName);
@@ -973,9 +961,8 @@ CodegenVisitor::ConstructorLookup CodegenVisitor::lookupConstructor(
 Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
   // mod.global = value: the module is compile-time only, so this writes the
   // global directly
-  if (GlobalVariable* gv =
-          moduleMemberGlobal(*expr.getObject(), expr.getMemberName(),
-                             expr.getResolvedQualifiedName())) {
+  if (GlobalVariable* gv = moduleMemberGlobal(
+          *expr.getObject(), expr.getResolvedQualifiedName())) {
     Value* value = codegen(*expr.getValue());
     if (!value) return nullptr;
     assignToVariableSlot(gv, value,
