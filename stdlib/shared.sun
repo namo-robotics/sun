@@ -1,0 +1,151 @@
+// Shared ownership smart pointer, safe to hand to several threads.
+//
+// Unique<T> is one owner; Shared<T> is many. The value lives in a heap box
+// alongside a reference count and a Mutex. clone() adds an owner, deinit
+// removes one, and the last one out drops the value and frees the box.
+// Sun has no implicit copies, so every extra owner is a visible clone() and
+// the reference count is right there in the source.
+//
+// Usage:
+//   var alloc = make_heap_allocator();
+//   var s = Shared<Counter>(alloc, Counter());
+//   var t = spawn(lambda [c = s.clone()]() i32 {
+//     var g = c.lock();
+//     g.get().n = g.get().n + 1;
+//     return 0;
+//   });
+public module sun {
+  // The heap payload: one per Shared "family". Not named by user code.
+  class SharedBox<T> {
+    var count: i32;  // Live handles; the one that sees 1 was the last
+    var lock: Mutex;
+    var value: T;
+
+    // Take ownership of the value. The box starts with one handle: the
+    // Shared<T> that built it.
+    public function init(value: T) {
+      this.count = 1;
+      this.lock = Mutex();
+      this.value = value;
+    }
+
+    // Count one more handle in.
+    function retain() void {
+      unsafe { _atomic_fetch_add_i32(_address_of<i32>(this.count), 1); };
+    }
+
+    // Count one handle out. Returns the count from before the decrement, so
+    // a result of 1 means the caller was the last owner.
+    function release() i32 {
+      return unsafe { _atomic_fetch_sub_i32(_address_of<i32>(this.count), 1); };
+    }
+
+    function count_now() i32 {
+      return unsafe { _atomic_load_i32(_address_of<i32>(this.count)); };
+    }
+
+    function acquire() void {
+      this.lock.lock();
+    }
+
+    function release_lock() void {
+      this.lock.unlock();
+    }
+
+    function value_ref() ref T {
+      return this.value;
+    }
+  }
+
+  // Holds the lock for as long as it is alive. Dropping it unlocks, including
+  // on an early return or while an exception unwinds past it.
+  public class SharedGuard<T> {
+    var box: raw_ptr<SharedBox<T>>;
+
+    // Only Shared<T>.lock() builds a guard, so a guard always holds the lock.
+    function init(box: raw_ptr<SharedBox<T>>) {
+      this.box = box;
+    }
+
+    // The shared value. Nobody else can reach it while this guard is alive.
+    public function get() ref T {
+      var b: ref SharedBox<T> = unsafe { _to_ref<SharedBox<T>>(this.box); };
+      return b.value_ref();
+    }
+
+    function deinit() void {
+      if (this.box != null) {
+        var b: ref SharedBox<T> = unsafe { _to_ref<SharedBox<T>>(this.box); };
+        b.release_lock();
+        this.box = null;
+      }
+    }
+  }
+
+  // Shared ownership of one value. Reach the value through lock().
+  //
+  // Every method reaches the box through a `ref` bound from _to_ref rather
+  // than calling straight through `this.box`. That is deliberate: inside a
+  // const function `this.box` is an immutable place, so a method called on it
+  // would either be rejected or come back as a read-only view. A mutable
+  // borrow re-grants mutability, and the mutex is what makes the write safe.
+  public class Shared<T> {
+    var box: raw_ptr<SharedBox<T>>;
+
+    // Take ownership of a value and put it behind a shared, locked box.
+    public function init(allocator: const ref HeapAllocator, value: T) {
+      var a = allocator.copy();
+      this.box = a.create<SharedBox<T>>(value);
+    }
+
+    // Adopt a box the caller has already counted in.
+    function init(box: raw_ptr<SharedBox<T>>) {
+      this.box = box;
+    }
+
+    // Another owner of the same value.
+    public const function clone() Shared<T> {
+      var b: ref SharedBox<T> = unsafe { _to_ref<SharedBox<T>>(this.box); };
+      b.retain();
+      return Shared<T>(this.box);
+    }
+
+    // Wait for the lock, then hand back a guard that holds it.
+    public const function lock() SharedGuard<T> {
+      var b: ref SharedBox<T> = unsafe { _to_ref<SharedBox<T>>(this.box); };
+      b.acquire();
+      return SharedGuard<T>(this.box);
+    }
+
+    // Report whether the box has been taken or was never set.
+    public const function is_null() bool {
+      return this.box == null;
+    }
+
+    // How many owners there are right now. For tests and diagnostics: by the
+    // time you read it, another thread may have cloned or dropped.
+    public const function count() i32 {
+      var b: ref SharedBox<T> = unsafe { _to_ref<SharedBox<T>>(this.box); };
+      return b.count_now();
+    }
+
+    // Drop one owner. The last one out drops the value and frees the box.
+    function deinit() void {
+      if (this.box != null) {
+        var b: ref SharedBox<T> = unsafe { _to_ref<SharedBox<T>>(this.box); };
+        if (b.release() == 1) {
+          _deinit<SharedBox<T>>(this.box);
+          unsafe { _free(this.box); };
+        }
+        this.box = null;
+      }
+    }
+  }
+
+  // ============================================================================
+  // Precompiled Specializations
+  // ============================================================================
+
+  public declare SharedGuard_i32 = SharedGuard<i32>;
+  public declare Shared_i32 = Shared<i32>;
+}  // module sun

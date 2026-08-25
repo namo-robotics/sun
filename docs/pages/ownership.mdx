@@ -465,6 +465,25 @@ function main() i32 {
 error: use of moved variable 'p1'. Ownership was transferred in a previous assignment.
 ```
 
+A lambda's capture list is another place a value moves. An entry that says
+`ref` borrows — `[ref x]` mutably, `[const ref x]` read-only — and an entry
+that says neither gives the value to the closure:
+
+```sun
+function main() i32 {
+    var p = Point(1, 2);
+    var f = lambda [p] () i32 { return p.x; };   // p moves into the closure
+
+    return p.x;           // ❌ ERROR: use of moved variable
+}
+```
+
+The closure owns what it took, so it may change it, and it is dropped when the
+closure's scope ends. A scalar has nothing to move, so `[x]` copies it. A
+compound value is never picked up implicitly: a lambda that uses one without
+naming it in the capture list is rejected, so you have to say which of the
+three you meant.
+
 ---
 
 ## Scope-Based Borrowing

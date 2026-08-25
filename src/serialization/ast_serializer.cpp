@@ -79,6 +79,7 @@ ast::Capture ASTSerializer::serializeCapture(const Capture& cap) const {
   }
   proto.set_by_ref(cap.byRef);
   proto.set_is_const(cap.isConst);
+  proto.set_owned(cap.owned);
   return proto;
 }
 
@@ -149,6 +150,10 @@ ast::Prototype ASTSerializer::serializePrototype(
 
   for (const auto& refName : proto.getConstRefCaptureNames()) {
     result.add_const_ref_captures(refName);
+  }
+
+  for (const auto& ownedName : proto.getOwnedCaptureNames()) {
+    result.add_owned_captures(ownedName);
   }
 
   if (proto.hasVariadicParam()) {

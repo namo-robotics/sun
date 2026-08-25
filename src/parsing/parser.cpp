@@ -363,40 +363,49 @@ unique_ptr<FunctionAST> Parser::parseFunction() {
       start);
 }
 
-// Parse lambda: lambda [ref x, const ref y] (args) returnType { body }
-// The optional bracketed list declares by-reference captures; all other
-// captures are by value. `const ref x` borrows x read-only.
+// Parse lambda: lambda [ref x, const ref y, z] (args) returnType { body }
+// An entry that says `ref` borrows: `[ref x]` mutably, `[const ref x]`
+// read-only. An entry that says neither is owned by the closure — a compound
+// value moves in, a scalar copies. Names left out of the list entirely are
+// captured by value, and compound types may not be.
 unique_ptr<LambdaAST> Parser::parseLambda() {
   Position lambdaLoc = captureStart();
   getNextToken();  // eat 'lambda'
 
-  // Optional capture list: [ [const] ref IDENT (, [const] ref IDENT)* ]
+  // Optional capture list: [ ([const] ref)? IDENT (, ...)* ]
   std::vector<std::string> refCaptureNames;
   std::vector<std::string> constRefCaptureNames;
+  std::vector<std::string> ownedCaptureNames;
   if (curTok.kind == TokenKind::BRACKET_OPEN) {
     getNextToken();  // eat '['
     while (curTok.kind != TokenKind::BRACKET_CLOSE) {
       bool isConst = curTok.kind == TokenKind::CONST;
       if (isConst) {
         getNextToken();  // eat 'const'
+        if (curTok.kind != TokenKind::REF) {
+          parsingError(
+              "expected 'ref' after 'const' in lambda capture list (e.g. "
+              "[const ref x])");
+        }
       }
-      if (curTok.kind != TokenKind::REF) {
-        parsingError(
-            isConst
-                ? "expected 'ref' after 'const' in lambda capture list (e.g. "
-                  "[const ref x])"
-                : "expected 'ref' in lambda capture list (only by-reference "
-                  "captures are declared, e.g. [ref x] or [const ref x])");
+      bool byRef = curTok.kind == TokenKind::REF;
+      if (byRef) {
+        getNextToken();  // eat 'ref'
       }
-      getNextToken();  // eat 'ref'
 
       if (curTok.kind != TokenKind::IDENTIFIER) {
         throwIdentifierError(
-            "expected variable name after 'ref' in capture list");
+            byRef ? "expected variable name after 'ref' in capture list"
+                  : "expected a variable name in the lambda capture list");
       }
-      refCaptureNames.push_back(curTok.getIdentifier().value());
-      if (isConst) {
-        constRefCaptureNames.push_back(curTok.getIdentifier().value());
+      const std::string& name = curTok.getIdentifier().value();
+      if (byRef) {
+        refCaptureNames.push_back(name);
+        if (isConst) {
+          constRefCaptureNames.push_back(name);
+        }
+      } else {
+        ownedCaptureNames.push_back(name);
       }
       getNextToken();  // eat identifier
 
@@ -414,11 +423,13 @@ unique_ptr<LambdaAST> Parser::parseLambda() {
       unique_ptr<LambdaAST>(static_cast<LambdaAST*>(result.release()));
   lambda = finishNode(std::move(lambda), std::move(lambdaLoc));
   if (lambda) {
+    auto& proto = const_cast<PrototypeAST&>(lambda->getProto());
     if (!refCaptureNames.empty()) {
-      const_cast<PrototypeAST&>(lambda->getProto())
-          .setRefCaptureNames(std::move(refCaptureNames));
-      const_cast<PrototypeAST&>(lambda->getProto())
-          .setConstRefCaptureNames(std::move(constRefCaptureNames));
+      proto.setRefCaptureNames(std::move(refCaptureNames));
+      proto.setConstRefCaptureNames(std::move(constRefCaptureNames));
+    }
+    if (!ownedCaptureNames.empty()) {
+      proto.setOwnedCaptureNames(std::move(ownedCaptureNames));
     }
   }
   return lambda;

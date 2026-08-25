@@ -636,13 +636,18 @@ class Formatter {
   void printLambda(const LambdaAST& l) {
     out_ += "lambda ";
     const auto& caps = l.getProto().getRefCaptureNames();
-    if (!caps.empty()) {
+    const auto& owned = l.getProto().getOwnedCaptureNames();
+    if (!caps.empty() || !owned.empty()) {
       out_ += "[";
       for (size_t i = 0; i < caps.size(); ++i) {
         if (i) out_ += ", ";
         if (l.getProto().isConstRefCapture(caps[i])) out_ += "const ";
         out_ += "ref ";
         out_ += caps[i];
+      }
+      for (size_t i = 0; i < owned.size(); ++i) {
+        if (i || !caps.empty()) out_ += ", ";
+        out_ += owned[i];
       }
       out_ += "] ";
     }

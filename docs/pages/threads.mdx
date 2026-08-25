@@ -83,8 +83,9 @@ dropped right there instead.
 
 ## Capturing Variables
 
-Spawned lambdas can capture variables from the enclosing scope. A by-value
-capture takes a copy, which the thread can read but not mutate:
+Spawned lambdas can capture variables from the enclosing scope. A variable the
+lambda simply uses is captured by value — a copy the thread can read but not
+mutate:
 
 ```sun
 function main() i32 {
@@ -94,6 +95,26 @@ function main() i32 {
 }
 ```
 
+Naming a variable in the capture list says which of three things you mean.
+`[ref x]` borrows it mutably, `[const ref x]` borrows it read-only, and an
+entry with no `ref` gives the value to the closure: a class or payload enum
+**moves** in, and a scalar is copied. What the closure owns is the closure's,
+so it may change it, and it is dropped when the closure's scope ends:
+
+```sun
+function main() i32 {
+    var p = Point(3, 4);
+    var t = spawn(lambda [p]() i32 {
+        return p.x + p.y;   // the thread owns p now
+    });
+    // p cannot be used here any more — it was moved into the lambda
+    return t.join();
+}
+```
+
+A compound value is never picked up implicitly; you have to say which one you
+meant.
+
 To share state with the thread, capture it by reference with `lambda [ref x]`.
 Both the thread and the parent then work on the same value, so guard it with a
 `Mutex`:
@@ -101,14 +122,14 @@ Both the thread and the parent then work on the same value, so guard it with a
 ```sun
 using sun;
 
-class Shared {
+class Tally {
     public var counter: i64;
     public var m: Mutex;
     public function init() { this.counter = 0; this.m = Mutex(); }
 }
 
 function main() i32 {
-    var s = Shared();
+    var s = Tally();
     var t = spawn(lambda [ref s]() i64 {
         var i: i64 = 0;
         while (i < 100000) {
@@ -156,12 +177,95 @@ function main() i32 {
 Everything reached through a `const ref` capture is read-only: assigning a
 field or calling a method that is not a `const function` is a compile error.
 
-<Callout type="warning">
-  Two threads that both *write* one value are not expressible yet — that needs
-  a shared mutable type, which Sun does not have. Give each writing thread its
-  own state, share what they only read with `[const ref …]`, or share mutable
-  state with the parent as above.
-</Callout>
+For two threads that both *write* one value, use `Shared<T>` — see below.
+
+## Sharing Mutable State: `Shared<T>`
+
+`Shared<T>` is the shared-ownership counterpart to `Unique<T>`: `Unique` has
+one owner, `Shared` has as many as you like. It puts the value in a heap box
+next to a `Mutex` and an atomic count of the live handles. `clone()` adds an
+owner, `lock()` waits for the lock and hands back a guard, and the last handle
+to go drops the value and frees the box.
+
+Because Sun never copies implicitly, every extra owner is a visible `clone()`,
+so you can see the count change in the source.
+
+```sun
+using sun;
+
+class Counter {
+    public var n: i64;
+    public function init() { this.n = 0; }
+}
+
+function main() i32 {
+    var alloc = make_heap_allocator();
+    var s = Shared<Counter>(alloc, Counter());
+
+    var c1 = s.clone();
+    var c2 = s.clone();
+
+    var t1 = spawn(lambda [c1]() i32 {
+        var i: i64 = 0;
+        while (i < 100000) {
+            var g = c1.lock();
+            g.get().n = g.get().n + 1;
+            i = i + 1;
+        }
+        return 0;
+    });
+    var t2 = spawn(lambda [c2]() i32 {
+        var i: i64 = 0;
+        while (i < 100000) {
+            var g = c2.lock();
+            g.get().n = g.get().n + 1;
+            i = i + 1;
+        }
+        return 0;
+    });
+
+    t1.join();
+    t2.join();
+
+    var g = s.lock();
+    println(g.get().n);  // 200000
+    return 0;
+}
+
+manifest { moons: ["stdlib.moon"] }
+```
+
+Each thread gets its own handle, moved in through the capture list. Several
+threads can also share one handle read-only with `[const ref s]` and lock
+through that — `lock()` is a `const function`, because taking the lock does not
+change the handle.
+
+### The guard
+
+`lock()` returns a `SharedGuard<T>` that holds the lock for as long as it is
+alive. `get()` gives you a reference to the value, and dropping the guard
+unlocks — at the end of the block, on an early `return`, or while an exception
+unwinds past it. There is no way to reach the value without a guard, and no way
+to make a guard except by locking.
+
+Hold a guard for as short a span as you can: while you have it, every other
+thread that wants the value is waiting.
+
+### Handles are values
+
+A `Shared<T>` handle follows the usual rules: binding it to a second name moves
+it, and the count does not change. Only `clone()` adds an owner.
+
+| Method | Description |
+|--------|-------------|
+| `clone()` | Another owner of the same value |
+| `lock()` | Wait for the lock, return a `SharedGuard<T>` that holds it |
+| `count()` | How many owners there are right now |
+| `is_null()` | Whether the handle has been moved out of |
+
+| `SharedGuard<T>` method | Description |
+|--------|-------------|
+| `get()` | The shared value, as a reference |
 
 ## Thread Handles Are Values
 
@@ -231,7 +335,8 @@ The `Mutex` implementation uses atomic compare-and-swap with futex-based blockin
   inside a loop body is joined at the end of that iteration. To run several
   threads at once, spawn them all in the same scope
 - Several threads can capture the same variable with `[const ref x]`, but only
-  one can capture it with `[ref x]`: two threads cannot both write one value yet
+  one can capture it with `[ref x]`. For two threads that both write one value,
+  give each a `Shared<T>` handle
 
 ## Example: Parallel Computation
 

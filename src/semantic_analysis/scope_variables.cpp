@@ -1064,6 +1064,18 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
   registerFunctionInCurrentScope(
       "_atomic_load_i32",
       {Types::Int32(), {Types::RawPointer(Types::Int32())}, {}});
+  // _atomic_fetch_add_i32(ptr, delta) - atomic add, returns the old value
+  registerFunctionInCurrentScope(
+      "_atomic_fetch_add_i32",
+      {Types::Int32(),
+       {Types::RawPointer(Types::Int32()), Types::Int32()},
+       {}});
+  // _atomic_fetch_sub_i32(ptr, delta) - atomic subtract, returns the old value
+  registerFunctionInCurrentScope(
+      "_atomic_fetch_sub_i32",
+      {Types::Int32(),
+       {Types::RawPointer(Types::Int32()), Types::Int32()},
+       {}});
 
   // Bit intrinsics
   // _mul_hi_u64(a, b) - high 64 bits of the 128-bit product a * b

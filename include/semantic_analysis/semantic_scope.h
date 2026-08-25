@@ -24,6 +24,9 @@ struct VariableInfo {
   bool isMoved = false;    // Has ownership been transferred (move semantics)
   bool isCapture = false;  // Declared as a lambda/function capture
   bool isByRefCapture = false;  // Captured via [ref x] - mutable through env
+  // Captured via [x]: the closure owns this value, so it is the closure's to
+  // change. Distinct from an implicit by-value capture, which is read-only.
+  bool isOwnedCapture = false;
   bool isConst = false;  // `const x`: the binding and its value never change
   sun::QualifiedName qualifiedName;  // Full qualified name (empty for locals)
   sun::Visibility visibility = sun::Visibility::Private;  // globals only

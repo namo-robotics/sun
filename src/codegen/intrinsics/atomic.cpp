@@ -92,6 +92,34 @@ Value* CodegenVisitor::codegenAtomicLoadI32Intrinsic(const CallExprAST& expr) {
   return load;
 }
 
+Value* CodegenVisitor::codegenAtomicFetchOpI32Intrinsic(const CallExprAST& expr,
+                                                        bool subtract) {
+  // _atomic_fetch_add_i32(ptr, delta) / _atomic_fetch_sub_i32(ptr, delta)
+  // Both return the value from before the operation, which is what a
+  // reference count needs: the owner that reads 1 was the last one.
+  const char* name =
+      subtract ? "_atomic_fetch_sub_i32" : "_atomic_fetch_add_i32";
+  const auto& args = expr.getArgs();
+  if (args.size() != 2) {
+    logAndThrowError(std::string(name) + " expects 2 arguments: (ptr, delta)");
+    return nullptr;
+  }
+
+  llvm::Value* ptr = codegen(*args[0]);
+  llvm::Value* delta = codegen(*args[1]);
+  if (!ptr || !delta) return nullptr;
+
+  auto* i32Ty = llvm::Type::getInt32Ty(ctx.getContext());
+  delta = ctx.builder->CreateTrunc(delta, i32Ty, "atomic.rmw.delta");
+
+  // AcquireRelease matches the ordering the cmpxchg above uses. The release
+  // half is what makes the final decrement safe: whoever drives a count to
+  // zero sees every other owner's writes before it runs the drop.
+  return ctx.builder->CreateAtomicRMW(
+      subtract ? llvm::AtomicRMWInst::Sub : llvm::AtomicRMWInst::Add, ptr,
+      delta, llvm::MaybeAlign(), llvm::AtomicOrdering::AcquireRelease);
+}
+
 // -------------------------------------------------------------------
 // Futex intrinsics: _futex_wait, _futex_wake
 // -------------------------------------------------------------------

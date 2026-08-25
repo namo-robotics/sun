@@ -561,8 +561,12 @@ sun::TypePtr SemanticAnalyzer::inferType(const ExprAST& expr) {
       bool canThrow = proto.hasReturnType() && proto.getReturnType()->canError;
       auto lambdaType =
           sun::Types::Lambda(returnType, std::move(paramTypes), canThrow);
-      // Metadata for spawn/return escape checks (survives variable binding)
-      if (proto.hasRefCaptures() || !proto.getRefCaptureNames().empty()) {
+      // Metadata for spawn/return escape checks (survives variable binding).
+      // An owned capture counts too: the closure's environment holds the value
+      // and the frame that built it drops it, so the closure is just as bound
+      // to that frame as a borrow makes it.
+      if (proto.hasRefCaptures() || !proto.getRefCaptureNames().empty() ||
+          !proto.getOwnedCaptureNames().empty()) {
         static_cast<sun::LambdaType*>(lambdaType.get())
             ->setHasRefCaptures(true);
       }

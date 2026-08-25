@@ -38,7 +38,8 @@ bool CodegenVisitor::isBuiltinFunction(const std::string& name) {
          name == "_memset" || name == "_ptr_offset" ||
          // Atomic intrinsics
          name == "_atomic_cmpxchg_i32" || name == "_atomic_store_i32" ||
-         name == "_atomic_load_i32" ||
+         name == "_atomic_load_i32" || name == "_atomic_fetch_add_i32" ||
+         name == "_atomic_fetch_sub_i32" ||
          // Futex intrinsics
          name == "_futex_wait" || name == "_futex_wake" ||
          // Bit intrinsics
@@ -144,6 +145,10 @@ Value* CodegenVisitor::codegenBuiltin(const std::string& name,
   }
   if (name == "_atomic_load_i32") {
     return codegenAtomicLoadI32Intrinsic(expr);
+  }
+  if (name == "_atomic_fetch_add_i32" || name == "_atomic_fetch_sub_i32") {
+    return codegenAtomicFetchOpI32Intrinsic(
+        expr, /*subtract=*/name == "_atomic_fetch_sub_i32");
   }
   // Bit intrinsics
   if (name == "_mul_hi_u64") {

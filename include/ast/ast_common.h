@@ -70,4 +70,7 @@ struct Capture {
   sun::TypePtr type;
   bool byRef = false;    // Declared in the lambda's [ref x, ...] capture list
   bool isConst = false;  // The captured variable is a constant / const ref
+  // Written in the capture list without `ref`: the closure owns this value.
+  // A compound value moved in, and the closure's scope drops it.
+  bool owned = false;
 };

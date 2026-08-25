@@ -17,6 +17,12 @@ namespace sun {
 //     Atomic store with release ordering
 //   _atomic_load_i32(ptr) -> i32
 //     Atomic load with acquire ordering
+//   _atomic_fetch_add_i32(ptr, delta) -> old_value
+//     Atomic add with acquire-release ordering
+//   _atomic_fetch_sub_i32(ptr, delta) -> old_value
+//     Atomic subtract with acquire-release ordering. The release half is what
+//     a reference count needs: the owner that drives the count to zero sees
+//     every other owner's writes before it runs the drop.
 //
 // Futex intrinsics (Linux-specific):
 //   _futex_wait(ptr, expected) -> void

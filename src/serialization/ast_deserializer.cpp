@@ -82,6 +82,7 @@ Capture ASTDeserializer::deserializeCapture(const ast::Capture& cap) const {
   result.name = cap.name();
   result.byRef = cap.by_ref();
   result.isConst = cap.is_const();
+  result.owned = cap.owned();
   // Note: type is stored as string signature, not reconstructed as TypePtr
   // The semantic analyzer will need to re-resolve the type
   return result;
@@ -156,6 +157,12 @@ std::unique_ptr<PrototypeAST> ASTDeserializer::deserializePrototype(
     constRefCaptureNames.push_back(refName);
   }
   result->setConstRefCaptureNames(std::move(constRefCaptureNames));
+
+  std::vector<std::string> ownedCaptureNames;
+  for (const auto& ownedName : proto.owned_captures()) {
+    ownedCaptureNames.push_back(ownedName);
+  }
+  result->setOwnedCaptureNames(std::move(ownedCaptureNames));
 
   if (proto.has_location()) {
     result->setLocation(deserializePosition(proto.location()));

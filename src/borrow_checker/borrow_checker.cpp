@@ -953,12 +953,13 @@ void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
   // Check the return value expression
   checkExpr(*value);
 
-  // A lambda holding pointers into this frame must not escape through return
+  // A lambda whose environment is bound to this frame must not escape through
+  // return — whether it borrows from the frame or owns a value the frame drops
   if (isRefCapturingLambdaExpr(*value)) {
     const auto& pos = ret.getLocation();
     reportError(
-        "cannot return a lambda that captures variables by reference - the "
-        "captured variables die when this function returns",
+        "cannot return a lambda with a capture list - its captured "
+        "environment lives in this frame and dies when the function returns",
         pos.line, pos.column);
   }
 
@@ -1082,6 +1083,28 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
   // capture reads and never writes, so it takes a shared loan: several
   // lambdas — and so several threads — may hold one at the same time.
   const auto& pos = lambda.getLocation();
+
+  // An owned capture takes no loan — it takes the value. A compound moves
+  // into the closure's environment, so the name it came from is gone from
+  // here on and the enclosing scope no longer drops it.
+  for (const auto& cap : proto.getCaptures()) {
+    if (!cap.owned || !cap.type || !cap.type->isCompound()) continue;
+    if (!state_.getActiveLoans(cap.name).empty()) {
+      reportError(
+          "cannot move '" + cap.name + "' into the lambda while it is borrowed",
+          pos.line, pos.column);
+      continue;
+    }
+    if (!checkMoveAllowed(cap.name, pos)) continue;
+    if (movedVariables_.count(cap.name)) {
+      reportError("use of moved variable '" + cap.name +
+                      "'. Ownership was transferred in a previous assignment.",
+                  pos.line, pos.column);
+      continue;
+    }
+    recordMove(cap.name, pos);
+  }
+
   for (const auto& cap : proto.getCaptures()) {
     if (!cap.byRef) continue;
     // A by-ref capture of an enclosing lambda's by-ref capture aliases the
@@ -1127,6 +1150,12 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
   // Enter function scope (anonymous)
   enterFunctionScope("<lambda>");
   currentFunctionReturnsRef_ = returnsRef;
+
+  // The name is gone from the enclosing scope, but inside the body it is the
+  // closure's own value again — that is the point of moving it in.
+  for (const auto& cap : proto.getCaptures()) {
+    if (cap.owned) movedVariables_.erase(cap.name);
+  }
 
   // Track reference parameters and their lifetimes
   for (const auto& [argName, argType] : proto.getArgs()) {

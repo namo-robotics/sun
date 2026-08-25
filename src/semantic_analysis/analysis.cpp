@@ -352,7 +352,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
                              varAssign.getName() + "'",
                          varAssign.getLocation());
       }
-      if (varInfo && varInfo->isCapture && !varInfo->isByRefCapture) {
+      if (varInfo && varInfo->isCapture && !varInfo->isByRefCapture &&
+          !varInfo->isOwnedCapture) {
         logAndThrowError("Cannot mutate by-value captured variable '" +
                              varAssign.getName() +
                              "': capture it by reference with 'lambda [ref " +
@@ -406,7 +407,8 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
         const auto& varRef =
             static_cast<const VariableReferenceAST&>(*compound.getTarget());
         VariableInfo* varInfo = lookupVariable(varRef.getName());
-        if (varInfo && varInfo->isCapture && !varInfo->isByRefCapture) {
+        if (varInfo && varInfo->isCapture && !varInfo->isByRefCapture &&
+            !varInfo->isOwnedCapture) {
           logAndThrowError("Cannot mutate by-value captured variable '" +
                                varRef.getName() +
                                "': capture it by reference with 'lambda [ref " +
@@ -2378,6 +2380,7 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
     if (VariableInfo* vi = lookupVariable(cap.name)) {
       vi->isCapture = true;
       vi->isByRefCapture = cap.byRef;
+      vi->isOwnedCapture = cap.owned;
       vi->isConst = cap.isConst;
     }
   }
@@ -2444,6 +2447,7 @@ void SemanticAnalyzer::analyzeLambda(LambdaAST& lambda) {
     if (VariableInfo* vi = lookupVariable(cap.name)) {
       vi->isCapture = true;
       vi->isByRefCapture = cap.byRef;
+      vi->isOwnedCapture = cap.owned;
       vi->isConst = cap.isConst;
     }
   }
@@ -2876,6 +2880,8 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
       "_atomic_cmpxchg_i32",
       "_atomic_store_i32",
       "_atomic_load_i32",
+      "_atomic_fetch_add_i32",
+      "_atomic_fetch_sub_i32",
       "_futex_wait",
       "_futex_wake",
       "__file_open",
