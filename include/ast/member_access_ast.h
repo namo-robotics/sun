@@ -80,8 +80,8 @@ class MemberAccessAST : public ExprAST {
   }
 
   // Resolved types of the actual variadic arguments for a generic method call
-  // with an _init_args<T> pack (set by semantic analyzer). Used by codegen to
-  // rebuild the same specialization mangled name.
+  // with an `args...` pack (set by semantic analyzer). They are part of the
+  // specialization's identity, and so of its name.
   void setResolvedVariadicArgTypes(std::vector<sun::TypePtr> types) const {
     memberAnalysis().resolvedVariadicArgTypes = std::move(types);
   }
@@ -99,16 +99,18 @@ class MemberAccessAST : public ExprAST {
            static_cast<MemberAccessAnalysis&>(*analysis_).isBoundMethodRef;
   }
 
-  // Resolved qualified name for module member access (set by semantic analyzer)
-  void setResolvedQualifiedName(std::string name) const {
-    memberAnalysis().resolvedQualifiedName = std::move(name);
+  // The symbol this access denotes — a module's function or variable, or the
+  // specialization instantiated for a generic call (set by the semantic
+  // analyzer). Codegen calls this name; it never spells one itself.
+  void setQualifiedName(sun::QualifiedName name) const {
+    memberAnalysis().qualifiedName = std::move(name);
   }
-  const std::string& getResolvedQualifiedName() const {
-    return memberAnalysis().resolvedQualifiedName;
+  const sun::QualifiedName& getQualifiedName() const {
+    return memberAnalysis().qualifiedName;
   }
-  bool hasResolvedQualifiedName() const {
+  bool hasQualifiedName() const {
     return analysis_ && !static_cast<MemberAccessAnalysis&>(*analysis_)
-                             .resolvedQualifiedName.empty();
+                             .qualifiedName.empty();
   }
 
   std::string dotLabel() const override {

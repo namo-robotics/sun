@@ -151,12 +151,12 @@ ast::Prototype ASTSerializer::serializePrototype(
   }
 
   if (proto.hasVariadicParam()) {
-    result.set_variadic_param_name(*proto.getVariadicParamName());
+    result.set_variadic_param_name(proto.getVariadicParamName());
   }
 
-  if (proto.hasVariadicConstraint()) {
-    *result.mutable_variadic_constraint() =
-        serializeTypeAnnotation(*proto.getVariadicConstraint());
+  if (proto.hasVariadicTypeAnnotation()) {
+    *result.mutable_variadic_type_annotation() =
+        serializeTypeAnnotation(proto.getVariadicTypeAnnotation());
   }
 
   result.set_c_variadic(proto.isCVariadic());

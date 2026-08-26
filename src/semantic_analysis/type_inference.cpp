@@ -806,23 +806,44 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
       // Use unified symbol lookup to find the member in this module
       SymbolMatch match = findSymbolInModule(modPath, memberName);
       if (match) {
-        // Set the resolved qualified name on the AST for codegen
-        // e.g., "$d9b854ae$_sun_make_heap_allocator" for
-        // sun.make_heap_allocator.
-        // A function or a variable is a symbol codegen emits, and it emits it
-        // under the qualified name its own declaration was registered with —
-        // so take the name from there. Rebuilding it from the module path
-        // would drop a function's overload param suffix and name a symbol
+        // Name the access after the declaration it resolved to — e.g.
+        // "$d9b854ae$_sun_make_heap_allocator" for sun.make_heap_allocator.
+        // Each declaration was given its name when it was declared, and
+        // codegen emits it under that name; rebuilding one from the module
+        // path here would drop a function's overload suffix and name a symbol
         // that was never emitted.
-        std::string resolvedName;
-        if (match.kind == SymbolKind::Function && match.functionInfo) {
-          resolvedName = match.functionInfo->qualifiedName.mangled();
-        } else if (match.kind == SymbolKind::Variable && match.variableInfo) {
-          resolvedName = match.variableInfo->qualifiedName.mangled();
-        } else {
-          resolvedName = mangleModulePath(match.modulePath) + "_" + memberName;
+        sun::QualifiedName resolvedName;
+        switch (match.kind) {
+          case SymbolKind::Function:
+            if (match.functionInfo) resolvedName = match.functionInfo->qualifiedName;
+            break;
+          case SymbolKind::Variable:
+            if (match.variableInfo) resolvedName = match.variableInfo->qualifiedName;
+            break;
+          case SymbolKind::Class:
+            if (match.classType) resolvedName = match.classType->getQualifiedName();
+            break;
+          case SymbolKind::GenericClass:
+            if (match.genericClassInfo)
+              resolvedName = match.genericClassInfo->qualifiedName;
+            break;
+          case SymbolKind::Interface:
+            if (match.interfaceType)
+              resolvedName = match.interfaceType->getQualifiedName();
+            break;
+          case SymbolKind::Enum:
+            if (match.enumType) resolvedName = match.enumType->getQualifiedName();
+            break;
+          default:
+            break;
         }
-        memberAccess.setResolvedQualifiedName(resolvedName);
+        // A kind that carries no name of its own (a nested module, say) still
+        // needs one a lookup can use.
+        if (resolvedName.empty()) {
+          resolvedName = sun::QualifiedName(
+              {}, mangleModulePath(match.modulePath) + "_" + memberName);
+        }
+        memberAccess.setQualifiedName(resolvedName);
 
         switch (match.kind) {
           case SymbolKind::Class:
@@ -898,8 +919,7 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
             SpecializedFunctionInfo specialized = requireGenericSpecialization(
                 *match.genericFunctionInfo, typeArgs, memberName,
                 memberAccess.getLocation());
-            memberAccess.setResolvedQualifiedName(
-                specialized.qualifiedName.mangled());
+            memberAccess.setQualifiedName(specialized.qualifiedName);
             return specialized.functionType();
           }
           case SymbolKind::Variable:
@@ -1013,7 +1033,13 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
             // specialized FunctionAST on the generic method for codegen access
             auto mutableClassType =
                 std::static_pointer_cast<sun::ClassType>(objectType);
-            instantiateGenericMethod(mutableClassType, memberName, typeArgPtrs);
+            // Point the call at the specialization, under the name given
+            // where it was instantiated.
+            if (auto specialized = instantiateGenericMethod(
+                    mutableClassType, memberName, typeArgPtrs)) {
+              memberAccess.setQualifiedName(
+                  specialized->getProto().getQualifiedName());
+            }
 
             enterTypeParamScope(typeParams, typeArgPtrs);
             returnType = substituteTypeParameters(returnType);
@@ -1273,10 +1299,22 @@ sun::TypePtr SemanticAnalyzer::inferGenericFunctionCallType(
                      genericCall.getLocation());
   }
 
-  // Generate mangled name for specialization lookup
-  std::string mangledName = funcName;
-  for (const auto& typeArg : typeArgs) {
-    mangledName += "_" + typeArg->toString();
+  // The name the call was actually instantiated under, when analysis has
+  // already recorded it — the only form that carries a pack's argument-type
+  // suffix. Otherwise rebuild the plain type-argument form off the template's
+  // registered name, the same base requireGenericSpecialization keys
+  // specializations on. The call's own spelling is not that name: a qualified
+  // call reads "m.inner" where the specialization is "m_inner_i32".
+  std::string mangledName;
+  if (genericCall.hasSpecializationName()) {
+    mangledName = genericCall.getSpecializationName().mangled();
+  } else {
+    // The qualified name is never empty: it is also the template's key in the
+    // scope's table, so a lookup that found it found it by this name.
+    mangledName =
+        sun::QualifiedName::specializationOf(genFuncInfo->qualifiedName,
+                                             typeArgs)
+            .mangled();
   }
 
   // If specialization exists (type args were concrete), use its return type

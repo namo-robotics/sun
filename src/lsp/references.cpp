@@ -249,7 +249,7 @@ class DeclaredNameFinder {
         }
         if (proto.hasVariadicParam()) {
           consider(Declaration{node.getLocation(), "", &node,
-                               *proto.getVariadicParamName()});
+                               proto.getVariadicParamName()});
         }
         break;
       }

@@ -25,7 +25,7 @@ TEST(MemorySafety_Allocator, variadic_method_local_allocator) {
 
     class MyAllocator {
         function init() {}
-        function create<T>(args...: _init_args<T>) raw_ptr<T> {
+        function create<T>(args...: _params_of<T>) raw_ptr<T> {
             var size: i64 = _sizeof<T>();
             var memory: raw_ptr<i8> = unsafe { _malloc(size); };
             _init<T>(memory, args...);
@@ -251,7 +251,7 @@ TEST(MemorySafety_Allocator, init_intrinsic_with_allocator) {
 }
 
 // ============================================================================
-// Overloaded constructors via _init_args<T> variadic factory
+// Overloaded constructors via _params_of<T> variadic factory
 // ============================================================================
 
 TEST(MemorySafety_Allocator, create_selects_init_overload_by_args) {
@@ -425,4 +425,60 @@ TEST(MemorySafety_Allocator, create_unique_returned_from_function) {
     }
   )");
   EXPECT_EQ(value, 15);
+}
+
+// ============================================================================
+// Fixed parameters before the pack
+// ============================================================================
+
+// A method may declare ordinary parameters before its `args...`. Only what is
+// left after them fills the pack — getting the split wrong pushes `tag` into
+// the pack and leaves Point without its arguments.
+TEST(MemorySafety_Allocator, method_fixed_params_precede_the_pack) {
+  auto value = executeString(R"(
+    class Point {
+        var x: i32;
+        var y: i32;
+        function init(x: i32, y: i32) { this.x = x; this.y = y; }
+        function sum() i32 { return this.x + this.y; }
+    }
+
+    class TaggedAllocator {
+        function init() {}
+        function create<T>(tag: i32, args...: _params_of<T>) i32 {
+            var size: i64 = _sizeof<T>();
+            var memory: raw_ptr<i8> = unsafe { _malloc(size); };
+            _init<T>(memory, args...);
+            var total = unsafe { _to_ref<T>(memory).sum(); };
+            unsafe { _free(memory); };
+            return tag * 100 + total;
+        }
+    }
+
+    function main() i32 {
+        var alloc = TaggedAllocator();
+        return alloc.create<Point>(2, 3, 4);
+    }
+  )");
+  EXPECT_EQ(value, 207);
+}
+
+TEST(MemorySafety_Allocator, method_too_few_arguments_for_fixed_params) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Point {
+        var x: i32;
+        function init(x: i32) { this.x = x; }
+    }
+
+    class TaggedAllocator {
+        function init() {}
+        function create<T>(tag: i32, args...: _params_of<T>) i32 { return tag; }
+    }
+
+    function main() i32 {
+        var alloc = TaggedAllocator();
+        return alloc.create<Point>();
+    }
+  )"),
+                                "expects at least 1 argument");
 }

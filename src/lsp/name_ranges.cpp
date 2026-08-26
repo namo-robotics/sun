@@ -95,7 +95,7 @@ bool declaresParameter(const PrototypeAST& proto, const std::string& name) {
   for (const auto& arg : proto.getArgs()) {
     if (arg.first == name) return true;
   }
-  return proto.hasVariadicParam() && *proto.getVariadicParamName() == name;
+  return proto.getVariadicParamName() == name;
 }
 
 std::optional<Position> parameterRange(const ExprAST& owner,

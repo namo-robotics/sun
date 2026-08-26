@@ -264,3 +264,32 @@ sun::TypePtr SemanticAnalyzer::genericFunctionSignature(
   bool canThrow = genericInfo.AST && genericInfo.AST->getProto().canThrow();
   return sun::Types::Function(returnType, paramTypes, canThrow);
 }
+
+bool SemanticAnalyzer::templateStillAbstract(
+    const GenericFunctionInfo& genericInfo,
+    const std::vector<sun::TypePtr>& typeArgs) {
+  if (std::any_of(typeArgs.begin(), typeArgs.end(),
+                  sun::generics::mentionsTypeParameter)) {
+    return true;
+  }
+  // A template with no type parameters of its own still cannot be
+  // specialized while a type parameter it borrows from an enclosing generic
+  // is unbound — `function build(args...: _params_of<T>)` inside `outer<T>`.
+  const PrototypeAST* proto =
+      genericInfo.AST ? &genericInfo.AST->getProto() : nullptr;
+  if (!proto || !proto->hasVariadicTypeAnnotation()) return false;
+  // `_params_of` is not a type of its own; what may still be abstract is what
+  // it is applied to.
+  const TypeAnnotation& annot = proto->getVariadicTypeAnnotation();
+  if (annot.typeArguments.empty()) return false;
+
+  enterTypeParamScope(typeParameterNames(genericInfo.typeParameters), typeArgs);
+  bool abstract = false;
+  for (const auto& arg : annot.typeArguments) {
+    abstract = abstract || sun::generics::mentionsTypeParameter(
+                               substituteTypeParameters(
+                                   typeAnnotationToType(*arg)));
+  }
+  exitScope();
+  return abstract;
+}

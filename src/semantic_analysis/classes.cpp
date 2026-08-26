@@ -595,6 +595,101 @@ void SemanticAnalyzer::analyzeDeferredSpecializations() {
 }
 
 // -------------------------------------------------------------------
+// Value packs
+// -------------------------------------------------------------------
+
+std::optional<std::vector<sun::TypePtr>> SemanticAnalyzer::splitPackArgTypes(
+    const PrototypeAST& proto, const std::vector<sun::TypePtr>& argTypes,
+    const std::string& displayName, std::optional<Position> loc) {
+  if (!proto.hasVariadicParam()) return std::nullopt;
+
+  const size_t fixed = proto.getArgs().size();
+  if (argTypes.size() < fixed) {
+    logAndThrowError("'" + displayName + "' expects at least " +
+                         std::to_string(fixed) +
+                         (fixed == 1 ? " argument, got " : " arguments, got ") +
+                         std::to_string(argTypes.size()),
+                     loc);
+  }
+  return std::vector<sun::TypePtr>(argTypes.begin() + fixed, argTypes.end());
+}
+
+void SemanticAnalyzer::declareVariadicPack(const PrototypeAST& proto) {
+  if (!proto.hasVariadicParam()) return;
+  auto* fnScope = currentFunctionScope();
+  if (!fnScope) return;
+
+  const VariadicParam& pack = proto.getVariadicParam();
+  const auto& types = proto.getResolvedVariadicTypes();
+
+  // The pack itself, so `args...` in the body can be expanded into concrete
+  // typed arguments. Recorded even when empty — an empty pack expands to no
+  // arguments, which is different from having no pack. exitScope() drops it.
+  fnScope->variadicParam = {pack.name, types};
+
+  // Its elements, under the names codegen gives the parameters. The expansion
+  // rewrites `args...` into references to exactly these.
+  for (size_t i = 0; i < types.size(); ++i) {
+    declareVariable(pack.elementName(i), types[i], /*isParam=*/true);
+  }
+}
+
+void SemanticAnalyzer::applyVariadicParamTypes(
+    PrototypeAST& clonedProto, const PrototypeAST& proto,
+    const std::vector<sun::TypePtr>& variadicArgTypes,
+    std::optional<Position> loc) {
+  // The pack's arity and element types come from the call, which is what lets
+  // one `create<Point>` site select init(i32) and another init(i32, i32).
+  clonedProto.setResolvedVariadicTypes(variadicArgTypes);
+
+  // A bare `args...` takes whatever the call passes. Anything other than
+  // `_params_of<T>` is recorded and left unchecked.
+  if (!proto.hasVariadicTypeAnnotation()) return;
+  const TypeAnnotation& annot = proto.getVariadicTypeAnnotation();
+  if (annot.baseName != "_params_of" || annot.typeArguments.empty()) return;
+
+  sun::TypePtr target =
+      substituteTypeParameters(typeAnnotationToType(*annot.typeArguments[0]));
+  if (!target) return;
+
+  const std::string got = "(" + sun::formatTypeList(variadicArgTypes) + ")";
+
+  // `_params_of<C>` for a class: the parameters of C's constructor. Which
+  // overload is selected happens downstream at _init, via lookupConstructor;
+  // here we only check that one of them matches.
+  if (target->isClass()) {
+    auto* targetClass = static_cast<sun::ClassType*>(target.get());
+    if (targetClass->getMethod("init") &&
+        !targetClass->getMethodForArgs("init", variadicArgTypes)) {
+      logAndThrowError("No matching constructor for '" +
+                           target->toDisplayString() + "' with arguments " +
+                           got,
+                       loc);
+    }
+    return;
+  }
+
+  // `_params_of<F>` for a lambda: the parameters that lambda takes. There is
+  // only one parameter list, so a mismatch is an error rather than a failed
+  // overload match.
+  if (target->isLambda()) {
+    const auto& params =
+        static_cast<sun::LambdaType*>(target.get())->getParamTypes();
+    bool matches = params.size() == variadicArgTypes.size();
+    for (size_t i = 0; matches && i < params.size(); ++i) {
+      matches = isAssignableTo(variadicArgTypes[i], params[i]);
+    }
+    if (!matches) {
+      logAndThrowError("Pack '" + proto.getVariadicParamName() +
+                           "' fills the parameters of " +
+                           target->toDisplayString() + ", which takes (" +
+                           sun::formatTypeList(params) + "); got " + got,
+                       loc);
+    }
+  }
+}
+
+// -------------------------------------------------------------------
 // Generic function support
 // -------------------------------------------------------------------
 
@@ -603,8 +698,10 @@ void SemanticAnalyzer::analyzeDeferredSpecializations() {
 SpecializedFunctionInfo SemanticAnalyzer::requireGenericSpecialization(
     const GenericFunctionInfo& genericInfo,
     const std::vector<sun::TypePtr>& typeArgs, const std::string& displayName,
-    std::optional<Position> loc) {
-  auto specialized = instantiateGenericFunction(genericInfo, typeArgs);
+    std::optional<Position> loc,
+    const std::optional<std::vector<sun::TypePtr>>& variadicArgTypes) {
+  auto specialized =
+      instantiateGenericFunction(genericInfo, typeArgs, variadicArgTypes);
   if (!specialized) {
     logAndThrowError("Failed to instantiate generic function '" + displayName +
                          "' with the given type arguments",
@@ -616,32 +713,52 @@ SpecializedFunctionInfo SemanticAnalyzer::requireGenericSpecialization(
 std::optional<SpecializedFunctionInfo>
 SemanticAnalyzer::instantiateGenericFunction(
     const GenericFunctionInfo& genericInfo,
-    const std::vector<sun::TypePtr>& typeArgs) {
+    const std::vector<sun::TypePtr>& typeArgs,
+    const std::optional<std::vector<sun::TypePtr>>& variadicArgTypes) {
   const FunctionAST* genericFunc = genericInfo.AST;
   if (!genericFunc) {
     return std::nullopt;
   }
   const PrototypeAST& proto = genericFunc->getProto();
+
+  // A pack's arity and types come from the actual call arguments. Without
+  // them (nullopt, e.g. from type inference) there is nothing to specialize
+  // yet; the call-site trigger supplies them and does the real work.
+  if (proto.hasVariadicParam() && !variadicArgTypes) {
+    return std::nullopt;
+  }
+
+  // Inside a template body the arguments are still type parameters; the real
+  // specialization is made when the enclosing generic gets concrete types.
+  auto isTypeParam = [](const sun::TypePtr& t) {
+    return t && t->isTypeParameter();
+  };
+  if (variadicArgTypes && std::any_of(variadicArgTypes->begin(),
+                                      variadicArgTypes->end(), isTypeParam)) {
+    return std::nullopt;
+  }
+
   // Name the specialization off the template's registration, which includes
   // enclosing function context (e.g. outer_i32_inner) and is fixed from the
   // moment the template is collected. The prototype's own mangled name only
   // gains its overload suffix once its definition is analyzed, so using it
   // would name the same specialization differently depending on whether the
   // call site sits above or below the definition.
-  std::string funcName = genericInfo.qualifiedName.empty()
-                             ? proto.getMangledName()
-                             : genericInfo.qualifiedName.mangled();
   std::vector<std::string> typeParams = proto.getTypeParameterNames();
+  // How the template is named in diagnostics below.
+  const std::string funcName = genericInfo.qualifiedName.empty()
+                                   ? proto.getMangledName()
+                                   : genericInfo.qualifiedName.mangled();
 
-  // Generate mangled name for cache lookup
-  std::string mangledName = funcName;
-  for (const auto& typeArg : typeArgs) {
-    mangledName += "_" + typeArg->toString();
-  }
-  // The name the specialization is emitted under. Type arguments are part of
-  // the name itself, so it carries no scope path or overload suffix — this is
-  // the same name the cloned prototype gets below.
-  const sun::QualifiedName specializedName({}, mangledName);
+  // The name the specialization is emitted under: the template's scope and
+  // module, with the type arguments folded into the base name. Codegen calls
+  // the name semantic analysis records on the call.
+  const sun::QualifiedName specializedName =
+      sun::QualifiedName::specializationOf(
+          genericInfo.qualifiedName, typeArgs,
+          variadicArgTypes.value_or(std::vector<sun::TypePtr>{}));
+  // Symbol form, used as the key of every specialization table below.
+  std::string mangledName = specializedName.mangled();
 
   // Check cache first
   auto cacheIt = specializedFunctionCache.find(mangledName);
@@ -723,9 +840,9 @@ SemanticAnalyzer::instantiateGenericFunction(
     PrototypeAST& clonedProto =
         const_cast<PrototypeAST&>(clonedFunc->getProto());
     clonedProto.setName(mangledName);
-    // Update qualified name to the mangled name so nested functions get correct
-    // scopePath (e.g., outer_i32 instead of outer)
-    clonedProto.setQualifiedName(sun::QualifiedName({}, mangledName));
+    // The specialization's own name, so nested functions declared in this body
+    // are qualified under it (e.g. outer_i32 rather than outer)
+    clonedProto.setQualifiedName(specializedName);
 
     // Build and store type parameter bindings (e.g., T -> i32)
     // These are used by codegen to resolve nested generic calls
@@ -740,6 +857,11 @@ SemanticAnalyzer::instantiateGenericFunction(
     clonedProto.setResolvedReturnType(returnType);
     clonedProto.setCaptures(substitutedCaptures);
 
+    if (variadicArgTypes) {
+      applyVariadicParamTypes(clonedProto, proto, *variadicArgTypes,
+                              genericFunc->getLocation());
+    }
+
     // Clear resolved types for fresh analysis
     clearResolvedTypes(*clonedFunc);
 
@@ -751,16 +873,7 @@ SemanticAnalyzer::instantiateGenericFunction(
     enterFunctionScope(funcSig, clonedProto.getQualifiedName(),
                        proto.canThrow(), clonedProto.getResolvedReturnType());
 
-    // Record the variadic pack on the function scope (see method path). Today
-    // the function path never resolves variadic types, so this is a no-op until
-    // generic-function variadics are supported.
-    if (clonedProto.hasVariadicParam() &&
-        clonedProto.hasResolvedVariadicTypes()) {
-      if (auto* fnScope = currentFunctionScope()) {
-        fnScope->variadicParam = {*clonedProto.getVariadicParamName(),
-                                  clonedProto.getResolvedVariadicTypes()};
-      }
-    }
+    declareVariadicPack(clonedProto);
 
     for (size_t i = 0; i < paramTypes.size(); ++i) {
       // Use parameter names from the cloned prototype
@@ -787,10 +900,17 @@ SemanticAnalyzer::instantiateGenericFunction(
 
   exitScope();  // type parameter scope
 
-  // Build result
+  // Build result. A pack's elements are ordinary positional parameters after
+  // the fixed ones, so the call's signature is the two lists joined — that is
+  // the order codegen emits them in, and what every argument check downstream
+  // lines up against.
   SpecializedFunctionInfo result;
   result.qualifiedName = specializedName;
   result.returnType = returnType;
+  if (variadicArgTypes) {
+    paramTypes.insert(paramTypes.end(), variadicArgTypes->begin(),
+                      variadicArgTypes->end());
+  }
   result.paramTypes = std::move(paramTypes);
   result.captures = std::move(substitutedCaptures);
   result.specializedAST = specializedAST;
@@ -866,22 +986,15 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
     return nullptr;
   }
 
-  // Build the specialized mangled name
-  // Format: ClassName_methodName_TypeArg1_TypeArg2...[$v$argType1$argType2...]
-  // The variadic suffix keys the specialization on the actual variadic argument
-  // types so overloaded factories (e.g. create<Point>(7) vs create<Point>(3,4))
-  // get distinct specializations. Codegen rebuilds this identically.
-  std::string baseMangledName = classType->getMangledMethodName(methodName);
-  std::string mangledName = baseMangledName;
-  for (const auto& typeArg : methodTypeArgs) {
-    mangledName += "_" + typeArg->toString();
-  }
-  if (variadicArgTypes) {
-    std::string hashPrefix =
-        sun::QualifiedName::extractHashPrefix(classType->getMangledName());
-    mangledName += sun::QualifiedName::buildVariadicArgSuffix(*variadicArgTypes,
-                                                              hashPrefix);
-  }
+  // Build the specialized mangled name off "ClassName_methodName". The pack
+  // suffix keys the specialization on the actual variadic argument types, so
+  // overloaded factories (e.g. create<Point>(7) vs create<Point>(3,4)) get
+  // distinct specializations. Codegen rebuilds this identically.
+  const sun::QualifiedName specializedName =
+      sun::QualifiedName::specializationOf(
+          classType->getQualifiedName().memberNamed(methodName), methodTypeArgs,
+          variadicArgTypes.value_or(std::vector<sun::TypePtr>{}));
+  std::string mangledName = specializedName.mangled();
 
   // Check cache
   auto cacheIt = specializedFunctionCache.find(mangledName);
@@ -903,7 +1016,7 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   // A variadic method's arity/types come from the actual call arguments. If we
   // weren't given them (nullopt, e.g. invoked from type inference), defer: the
   // call-site trigger will specialize with the real variadic arg types.
-  if (proto.hasVariadicConstraint() && !variadicArgTypes) {
+  if (proto.hasVariadicParam() && !variadicArgTypes) {
     return nullptr;
   }
 
@@ -972,8 +1085,10 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
 
   PrototypeAST& clonedProto = const_cast<PrototypeAST&>(clonedFunc->getProto());
 
-  // Set the specialized name on the prototype
+  // Name the specialization here, where it is made; call sites copy this
+  // name rather than spelling one of their own.
   clonedProto.setName(mangledName);
+  clonedProto.setQualifiedName(specializedName);
 
   // Store type bindings on the prototype
   std::vector<std::pair<std::string, sun::TypePtr>> bindings;
@@ -989,43 +1104,9 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   clonedProto.setResolvedParamTypes(paramTypes);
   clonedProto.setResolvedReturnType(returnType);
 
-  // Handle variadic constraint: _init_args<T>. The variadic arity/types are
-  // driven by the ACTUAL call arguments (variadicArgTypes), so that overloaded
-  // constructors are supported: create<Point>(7) selects init(i32) while
-  // create<Point>(3,4) selects init(i32,i32) from the same create<Point>. We
-  // only validate that T actually has a matching init overload here; the
-  // matching init is selected downstream at _init via lookupConstructor.
-  if (proto.hasVariadicConstraint() && variadicArgTypes) {
-    clonedProto.setResolvedVariadicTypes(*variadicArgTypes);
-
-    const auto& constraint = *proto.getVariadicConstraint();
-    bool isInitArgs =
-        (constraint.baseName == "_init_args" ||
-         constraint.baseName.find("_init_args") != std::string::npos);
-    if (isInitArgs && !constraint.typeArguments.empty()) {
-      sun::TypePtr constraintType =
-          typeAnnotationToType(*constraint.typeArguments[0]);
-      constraintType = substituteTypeParameters(constraintType);
-
-      if (constraintType && constraintType->isClass()) {
-        auto* targetClass = static_cast<sun::ClassType*>(constraintType.get());
-        // Validate that some init overload matches the call's argument types.
-        if (targetClass->getMethod("init") &&
-            !targetClass->getMethodForArgs("init", *variadicArgTypes)) {
-          std::string argList;
-          for (size_t i = 0; i < variadicArgTypes->size(); ++i) {
-            if (i > 0) argList += ", ";
-            argList += (*variadicArgTypes)[i]
-                           ? (*variadicArgTypes)[i]->toDisplayString()
-                           : "?";
-          }
-          logAndThrowError("No matching constructor for '" +
-                               constraintType->toDisplayString() +
-                               "' with arguments (" + argList + ")",
-                           genericMethodAST->getLocation());
-        }
-      }
-    }
+  if (proto.hasVariadicParam() && variadicArgTypes) {
+    applyVariadicParamTypes(clonedProto, proto, *variadicArgTypes,
+                            genericMethodAST->getLocation());
   }
 
   // Clear any stale resolved types from previous specializations
@@ -1047,17 +1128,7 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
       sun::QualifiedName(classType->getQualifiedName().scopePath, mangledName),
       proto.canThrow(), bodyReturnType);
 
-  // Record the variadic pack (name + resolved element types) on the function
-  // scope so `args...` can be expanded into concrete typed args during body
-  // analysis. Set it whenever the method has a variadic param, including the
-  // zero-element case (an empty pack expands to no args). exitScope() discards
-  // it.
-  if (clonedProto.hasVariadicParam()) {
-    if (auto* fnScope = currentFunctionScope()) {
-      fnScope->variadicParam = {*clonedProto.getVariadicParamName(),
-                                clonedProto.getResolvedVariadicTypes()};
-    }
-  }
+  declareVariadicPack(clonedProto);
 
   // Declare 'this' parameter (immutable inside a const method)
   declareVariable("this", classType, /*isParam=*/true,

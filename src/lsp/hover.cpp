@@ -138,9 +138,9 @@ std::string renderPrototype(const PrototypeAST& proto,
   }
   if (proto.hasVariadicParam()) {
     if (!args.empty()) out += ", ";
-    out += *proto.getVariadicParamName();
-    if (proto.hasVariadicConstraint()) {
-      out += ": " + annotationText(*proto.getVariadicConstraint(), source);
+    out += proto.getVariadicParamName();
+    if (proto.hasVariadicTypeAnnotation()) {
+      out += ": " + annotationText(proto.getVariadicTypeAnnotation(), source);
     }
     out += "...";
   }

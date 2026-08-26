@@ -295,13 +295,11 @@ bool CodegenVisitor::fillCaptureSlots(StructType* envType,
 std::pair<Function*, llvm::StructType*> CodegenVisitor::codegen(
     const PrototypeAST& proto, llvm::StructType* envType, bool isLambda,
     llvm::Type* returnType) {
-  // Generate a unique name for anonymous lambdas
-  std::string funcName = proto.getName();
+  // The qualified name semantic analysis gave it. An anonymous lambda has
+  // none to mangle, so give each one its own.
+  std::string funcName = proto.getMangledName();
   if (funcName.empty()) {
     funcName = "lambda" + std::to_string(lambdaCounter++);
-  } else {
-    // Use qualified name from semantic analysis
-    funcName = proto.getMangledName();
   }
 
   // Step 1: Reuse any existing forward declaration of this function.
@@ -352,25 +350,20 @@ std::pair<Function*, llvm::StructType*> CodegenVisitor::codegen(
     }
   }
 
-  // Append the user-visible args from proto
-  // Semantic analysis must have resolved all parameter types
-  const auto& args = proto.getArgs();
-  const auto& resolvedTypes = proto.getResolvedParamTypes();
-  bool useResolvedTypes = proto.hasResolvedParamTypes();
-
-  for (size_t i = 0; i < args.size(); i++) {
-    llvm::Type* llvmType = nullptr;
-    if (useResolvedTypes && i < resolvedTypes.size()) {
-      // Use pre-resolved type from semantic analysis
-      llvmType = typeResolver.resolve(resolvedTypes[i]);
-    } else {
-      // Semantic analysis should have resolved this
-      const auto& [argName, argType] = args[i];
-      logAndThrowError(
-          "Function parameter type not resolved by semantic analysis: " +
-          proto.getName() + " param " + argName);
-      return {nullptr, nullptr};
-    }
+  // Append the user-visible args from proto: the fixed parameters, then the
+  // elements of any `args...` pack. Semantic analysis must have resolved
+  // every one of them.
+  std::vector<std::string> argNames = proto.getAllParamNames();
+  std::vector<sun::TypePtr> paramTypes = proto.getAllParamTypes();
+  if (!proto.hasResolvedParamTypes() ||
+      paramTypes.size() != argNames.size()) {
+    logAndThrowError(
+        "Function parameter types not resolved by semantic analysis: " +
+        proto.getName());
+    return {nullptr, nullptr};
+  }
+  for (const auto& sunType : paramTypes) {
+    llvm::Type* llvmType = typeResolver.resolve(sunType);
     argTypes.push_back(llvmType ? llvmType
                                 : Type::getDoubleTy(ctx.getContext()));
   }
@@ -405,7 +398,7 @@ std::pair<Function*, llvm::StructType*> CodegenVisitor::codegen(
       arg.setName(useFatPointer ? "fat" : "env");
     } else {
       unsigned userArgIdx = needsClosureArg ? argIdx - 1 : argIdx;
-      arg.setName(proto.getArgNames()[userArgIdx]);
+      arg.setName(argNames[userArgIdx]);
     }
     argIdx++;
   }
@@ -549,7 +542,7 @@ FuncDeclResult CodegenVisitor::declareFuncSignature(PrototypeAST& proto) {
 Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
   if (funcAst.shouldSkipCodegen()) return nullptr;
 
-  if (funcAst.getProto().isGeneric()) {
+  if (funcAst.getProto().isTemplate()) {
     return codegenGenericFunc(funcAst);
   }
 

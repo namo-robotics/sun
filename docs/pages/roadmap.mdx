@@ -8,7 +8,7 @@ into "a user can do it themselves". Table stakes before novelty.
 
 ---
 
-## 1. Optionals — Remaining Work
+## Optionals — Remaining Work
 
 `Option<T>` / `Result<T, E>` ship in the stdlib (`stdlib/option.sun`) as ordinary
 generic payload enums with owning payloads and drop glue. The absence APIs
@@ -29,17 +29,18 @@ generic payload enums with owning payloads and drop glue. The absence APIs
 - [ ] Nested patterns in `match`
 - [ ] `DW_TAG_variant_part` debug info for payload enums
 
-## 2. Constants and Compile-Time Evaluation
+## Constants and Compile-Time Evaluation
 
 Routine requirements in embedded and safety-critical work, not niceties.
+Fixed-size array types (`array<i32, 4>`, `array<f64, 2, 3>`) exist and their
+dimensions are part of the type.
 
 - [ ] Compile-time evaluation of constant expressions (`const` variables,
       `const ref` and `const function` exist; a `const` global is still
       initialised at runtime)
 - [ ] Const generics: `array<T, const N>`
-- [ ] Fixed-size array types
 
-## 3. Iteration Ergonomics
+## Iteration Ergonomics
 
 `for (var x: Type in iterable)` works but requires an explicit type annotation and
 there are no adapters. Verbose iteration is the first thing people mention when
@@ -51,31 +52,16 @@ they bounce off a language.
 - [ ] Iteration over a constant container: `next(ref Container)` takes a
       mutable borrow, so `for … in` needs a `var` iterable
 
-## 4. Language Server Navigation
+## Language Server Navigation
 
 The LSP serves diagnostics, formatting, semantic tokens, hover type
 information, go-to-definition, find references and rename symbol today, plus
 a VS Code extension in `extensions/vscode-sun`. Autocomplete is the gap.
 
-- [x] Go-to-definition, including into library sources: a `.moon` bundle
-      records each module's source file, so a symbol from `stdlib.moon`
-      opens the declaration in `stdlib/*.sun` when that file is on disk.
-- [x] Find references, across the files of a manifest. An interface member
-      and the class members implementing it are listed together, as one
-      group. Uses inside a `.moon` bundle are not listed: bundles carry no
-      function bodies.
-- [x] Hover type info, with the comment above the symbol's declaration.
-      Inside a generic body the types come from the first specialization,
-      printed in terms of the type parameters; a generic that is never used
-      only shows its written annotations.
 - [ ] Autocomplete (must hide items that are not accessible from the cursor's
       module — use `sun::access::isAccessible`)
-- [x] Rename symbol, across the files of a manifest. An interface member and
-      the class members implementing it are renamed together, since renaming
-      one side alone would break the program. A symbol declared in a `.moon`
-      bundle is refused: its uses inside the library cannot be edited.
 
-## 5. Testing
+## Testing
 
 There is no `sun test`; the suites under `tests/` are GoogleTest in C++. Users
 cannot write tests in Sun, which suppresses exactly the library-writing that an
@@ -85,13 +71,13 @@ ecosystem is made of.
 - [ ] Test declarations in `.sun` source
 - [ ] Assertion builtins with useful failure output
 
-## 6. Error Handling Improvements
+## Error Handling Improvements
 
 - [ ] Stack traces on errors
 - [ ] `panic` / `assert` builtins
 - [ ] Error context and chaining
 
-## 7. Library Expansion
+## Library Expansion
 
 Roughly 5,000 lines of stdlib today. Files and directories (`sun.io`),
 environment (`sun.env`), processes (`sun.process`) and clocks (`sun.time`) all
@@ -112,7 +98,7 @@ community-supplyable now that FFI has landed.
       position: `TlsStream.connect` and `HttpsClient.get` take the host as
       `ref String` for exactly this reason
 
-## 7a. Networking and TLS
+## Networking and TLS
 
 A TLS client, hostname resolution and an HTTPS client have landed:
 `tls.moon` wraps OpenSSL and carries a static copy of it, so TLS programs
@@ -128,32 +114,32 @@ need no linker flags and no OpenSSL on the target. Remaining work:
 - [ ] Revisit the backend behind the same Sun API — a smaller vendored TLS
       library, or a pure-Sun implementation, without changing user code
 
-## 8. Data Structures
+## Data Structures
 
-`Vec<T>`, `Map<K, V>`, `LinkedList<T>`, `ContiguousBuffer<T>`, `String`, `Matrix<T>`
-and `Unique<T>` exist today.
+`Vec<T>`, `Map<K, V>`, `LinkedList<T>`, `Queue<T>`, `ContiguousBuffer<T>`,
+`String`, `Matrix<T>`, `BigUint`, `Unique<T>` and `Shared<T>` exist today.
 
 - [ ] `Set<T>`
-- [ ] `Queue<T>`, `Stack<T>`
+- [ ] `Stack<T>`
 - [ ] `OrderedMap<K, V>`
 
-## 9. Language Odds and Ends
+## Language Odds and Ends
 
-- [ ] Interface inheritance (`src/semantic_analysis/scope_variables.cpp:746`)
-- [ ] Explicit enum values: `Red = 1` (`src/parsing/parser.cpp:3367`)
+- [ ] Interface inheritance (`src/semantic_analysis/scope_variables.cpp:876`)
+- [ ] Explicit enum values: `Red = 1` (`src/parsing/parser.cpp:3904`)
 - [ ] More sophisticated borrow tracking for ref params
-      (`src/borrow_checker/borrow_checker.cpp:299`)
-- [ ] Proper i64 helper and float printing in
-      `src/codegen/call_expressions.cpp:1745` / `:1766`
+      (`src/borrow_checker/borrow_checker.cpp:385`)
+- [ ] Proper float printing; `print_f64` truncates to an integer
+      (`src/codegen/intrinsics/print.cpp:344`)
 
-## 10. Other Tooling
+## Other Tooling
 
 - [ ] Linter (`sunlint`)
 - [ ] Source maps for error traces
 - [ ] Re-enable the 11 `DISABLED_` tests in `tests/tooling/frontend/test_lexer.cpp`,
       `tests/stdlib/test_matrix.cpp`, `tests/stdlib/collections/test_linked_list.cpp`
 
-## 11. Native Protobuf Import — Deferred Items
+## Native Protobuf Import — Deferred Items
 
 `protos:` manifest imports synthesize Sun source per message (encode/decode,
 `_delimited` framing, `Option<T>` for proto3 `optional`, payload enums for
@@ -166,16 +152,16 @@ libprotobuf. Docs: `docs/pages/protobuf.mdx`. Deferred:
 - [ ] Recursive messages by value (need indirection)
 - [ ] `--dump-proto-sun` in the LSP
 
-## 12. MacOS Target
+## MacOS Target
 
 - [ ] Compile Sun binaries and moon libries for MacOS.
 
-## 12. WebAssembly Target
+## WebAssembly Target
 
 - [ ] WebAssembly — also the cheapest route to an online playground, which is
       the most effective adoption funnel a new language has
 
-## 13. Robotics Middleware
+## Robotics Middleware
 
 Robotics systems are dozens to hundreds of processes communicating over a DDS
 through a pub-sub middleware. Sun ships the message layer (native protobuf
@@ -185,7 +171,7 @@ import); the transport is the gap.
 - [ ] Pub-sub middleware on top of it, with protobuf messages as the payload
 - [ ] Interop with existing DDS implementations and ROS 2
 
-## 14. Hardware Accelerators
+## Hardware Accelerators
 
 `Matrix<T>` and linear algebra run on the CPU today. The design goal is
 builtin GPU/accelerator support without leaving the language.
@@ -194,7 +180,7 @@ builtin GPU/accelerator support without leaving the language.
 - [ ] Device memory ownership modelled by the borrow checker
 - [ ] `Matrix<T>` operations dispatched to the device when available
 
-## 15. Tuples (maybe)
+## Tuples (maybe)
 
 Under consideration, not committed to.
 

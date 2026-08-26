@@ -30,9 +30,7 @@ class PrototypeAST {
   // Names written in the capture list without `ref`: the closure owns them.
   // A compound value moves in and is dropped with the closure's scope.
   std::vector<std::string> ownedCaptureNames;
-  std::optional<std::string>
-      variadicParamName_;  // Name of variadic param if present
-  std::optional<TypeAnnotation> variadicConstraint_;  // e.g., _init_args<T>
+  std::optional<VariadicParam> variadicParam_;  // Trailing `args...` pack
   bool cVariadic_ = false;    // C-style trailing `...` (extern declarations)
   bool constMethod_ = false;  // `const function`: `this` is immutable
   std::optional<std::string> linkName_;  // `as "c_symbol"` override
@@ -55,14 +53,12 @@ class PrototypeAST {
                std::vector<std::pair<std::string, TypeAnnotation>> args,
                std::optional<TypeAnnotation> retType = std::nullopt,
                std::vector<TypeParameter> typeParams = {},
-               std::optional<std::string> variadicParam = std::nullopt,
-               std::optional<TypeAnnotation> variadicConstraint = std::nullopt)
+               std::optional<VariadicParam> variadicParam = std::nullopt)
       : Name(std::move(Name)),
         typeParameters(std::move(typeParams)),
         args(std::move(args)),
         returnType(std::move(retType)),
-        variadicParamName_(std::move(variadicParam)),
-        variadicConstraint_(std::move(variadicConstraint)) {}
+        variadicParam_(std::move(variadicParam)) {}
 
   void setCaptures(const std::vector<Capture>& caps) { captures = caps; }
   const std::vector<Capture>& getCaptures() const { return captures; }
@@ -147,6 +143,16 @@ class PrototypeAST {
     return typeParameterNames(typeParameters);
   }
   bool isGeneric() const { return !typeParameters.empty(); }
+  // Emitted as one function per specialization: either because it has type
+  // parameters, or because its `args...` pack is keyed on the call's argument
+  // types. A pack-only template has no type arguments but many arities.
+  //
+  // A specialization keeps its pack — codegen needs the name to number the
+  // elements — so what marks it as no longer a template is that the pack's
+  // types are resolved, the same way clearTypeParameters() does for `<T>`.
+  bool isTemplate() const {
+    return isGeneric() || (hasVariadicParam() && !hasResolvedVariadicTypes());
+  }
   void clearTypeParameters() { typeParameters.clear(); }
 
   const std::vector<std::pair<std::string, TypeAnnotation>>& getArgs() const {
@@ -173,14 +179,20 @@ class PrototypeAST {
   // Set the return type (used by semantic analyzer for type inference)
   void setReturnType(TypeAnnotation type) { returnType = std::move(type); }
 
-  // Variadic parameter support
-  bool hasVariadicParam() const { return variadicParamName_.has_value(); }
-  const std::optional<std::string>& getVariadicParamName() const {
-    return variadicParamName_;
+  // The trailing `args...` pack, when the signature declares one. Callers
+  // that only want a piece of it have the three shorthands below.
+  bool hasVariadicParam() const { return variadicParam_.has_value(); }
+  const VariadicParam& getVariadicParam() const { return *variadicParam_; }
+  // The pack's name, or empty when the signature declares no pack.
+  const std::string& getVariadicParamName() const {
+    static const std::string none;
+    return variadicParam_ ? variadicParam_->name : none;
   }
-  bool hasVariadicConstraint() const { return variadicConstraint_.has_value(); }
-  const std::optional<TypeAnnotation>& getVariadicConstraint() const {
-    return variadicConstraint_;
+  bool hasVariadicTypeAnnotation() const {
+    return variadicParam_ && variadicParam_->hasTypeAnnotation();
+  }
+  const TypeAnnotation& getVariadicTypeAnnotation() const {
+    return *variadicParam_->typeAnnotation;
   }
 
   // C-style trailing varargs: `fn(fmt: raw_ptr<u8>, ...)`. Unrelated to the
@@ -227,15 +239,39 @@ class PrototypeAST {
     return analysis_ && analysis_->resolvedReturnType != nullptr;
   }
 
-  // Resolved variadic param types for _init_args<T> expansion
+  // The pack's element types for this specialization, in order. An empty
+  // list is still a resolved pack — the call simply passed nothing.
   void setResolvedVariadicTypes(std::vector<sun::TypePtr> types) {
     analysis().resolvedVariadicTypes = std::move(types);
+    analysis().resolvedVariadicTypesSet = true;
   }
   const std::vector<sun::TypePtr>& getResolvedVariadicTypes() const {
     return analysis().resolvedVariadicTypes;
   }
   bool hasResolvedVariadicTypes() const {
-    return analysis_ && !analysis_->resolvedVariadicTypes.empty();
+    return analysis_ && analysis_->resolvedVariadicTypesSet;
+  }
+
+  // The full parameter list this specialization is emitted with: the fixed
+  // parameters followed by the pack's elements. Codegen appends them in this
+  // order, so every argument check lines up against the same list.
+  std::vector<sun::TypePtr> getAllParamTypes() const {
+    std::vector<sun::TypePtr> all = getResolvedParamTypes();
+    const auto& pack = getResolvedVariadicTypes();
+    all.insert(all.end(), pack.begin(), pack.end());
+    return all;
+  }
+
+  // Their names, in the same order. A pack's elements are `args.0`, `args.1`,
+  // … — the names the body's expanded references resolve against.
+  std::vector<std::string> getAllParamNames() const {
+    std::vector<std::string> names = getArgNames();
+    if (!hasVariadicParam()) return names;
+    const VariadicParam& pack = getVariadicParam();
+    for (size_t i = 0; i < getResolvedVariadicTypes().size(); ++i) {
+      names.push_back(pack.elementName(i));
+    }
+    return names;
   }
 
   // Type parameter bindings for specialized generic functions
