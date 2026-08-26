@@ -406,34 +406,6 @@ void SemanticAnalyzer::analyzeUnsafeBlock(UnsafeBlockAST& unsafeBlock) {
   unsafeBlock.setResolvedType(resultType ? resultType : sun::Types::Void());
 }
 
-void SemanticAnalyzer::analyzeSpawnExpr(SpawnExprAST& spawnExpr) {
-  // Analyze the lambda expression being spawned
-  analyzeExpr(const_cast<ExprAST&>(spawnExpr.getLambda()));
-
-  // Validate that the argument is a lambda
-  sun::TypePtr lambdaType = types_.inferType(spawnExpr.getLambda());
-  if (!lambdaType || !lambdaType->isLambda()) {
-    logAndThrowError(
-        "spawn requires a lambda expression, got '" +
-            (lambdaType ? lambdaType->toDisplayString() : "unknown") + "'",
-        spawnExpr.getLocation());
-  }
-
-  // The lambda should take no arguments (for now)
-  auto* lambda = static_cast<sun::LambdaType*>(lambdaType.get());
-  if (!lambda->getParamTypes().empty()) {
-    logAndThrowError("spawn lambda must take no arguments, got " +
-                         std::to_string(lambda->getParamTypes().size()) +
-                         " parameter(s)",
-                     spawnExpr.getLocation());
-  }
-
-  // Set the spawn expression type to Thread<T> where T is the lambda's
-  // return type
-  sun::TypePtr returnType = lambda->getReturnType();
-  spawnExpr.setResolvedType(std::make_shared<sun::ThreadType>(returnType));
-}
-
 void SemanticAnalyzer::analyzeReturnExpr(ReturnExprAST& returnExpr) {
   if (returnExpr.hasValue()) {
     // Propagate the function's return type for return-position inference

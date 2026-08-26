@@ -136,6 +136,11 @@ inline void compileString(const std::string& source,
   }
 }
 
+// Compile with stdlib preloaded
+inline void compileStringWithStdlib(const std::string& source) {
+  compileString(source, true);
+}
+
 // Compile multiple source files using the merged-AST model
 inline void compileFiles(const std::vector<std::string>& sourceFiles,
                          const std::vector<sun::MoonImport>& moonImports = {}) {

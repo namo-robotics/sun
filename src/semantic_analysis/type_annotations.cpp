@@ -7,14 +7,46 @@
 
 using sun::unwrapRef;
 
+namespace {
+
+// What `_return_type_of<F>` stands for once F is known. A lambda or function
+// answers with what it returns; a parameter that is still standing for itself
+// keeps the question open, carried as the parameter plus the projection.
+sun::TypePtr returnTypeOf(const sun::TypePtr& target,
+                          std::optional<Position> at) {
+  if (!target) return nullptr;
+  if (auto* lambda = sun::tryGetType<sun::LambdaType>(target)) {
+    return lambda->getReturnType();
+  }
+  if (auto* func = sun::tryGetType<sun::FunctionType>(target)) {
+    return func->getReturnType();
+  }
+  if (auto* param = sun::tryGetType<sun::TypeParameterType>(target)) {
+    return sun::Types::TypeParameterProjection(param->getProjectionBase(),
+                                               param->getConstraint(),
+                                               sun::TypeProjection::ReturnType);
+  }
+  logAndThrowError("_return_type_of<" + target->toDisplayString() +
+                       "> requires a lambda or function type",
+                   at);
+  return nullptr;
+}
+
+}  // namespace
+
 sun::TypePtr TypeInferer::substituteTypeParameters(sun::TypePtr type) {
   if (!type) return nullptr;
 
-  // If it's a type parameter, look up binding in scope stack
+  // If it's a type parameter, look up binding in scope stack. A projected one
+  // asks after its base and then applies the projection to whatever that
+  // turned out to be.
   if (type->isTypeParameter()) {
     auto* tp = dynamic_cast<sun::TypeParameterType*>(type.get());
-    auto bound = ctx_.findTypeParameter(tp->getName());
-    return bound ? bound : type;  // Return bound type or original if not bound
+    auto bound = ctx_.findTypeParameter(tp->getProjectionBase());
+    if (!bound) return type;
+    return tp->getProjection() == sun::TypeProjection::ReturnType
+               ? returnTypeOf(bound, std::nullopt)
+               : bound;
   }
 
   // Recursively substitute in compound types
@@ -253,6 +285,17 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
   auto typeParamBinding = ctx_.findTypeParameter(annot.baseName);
   if (typeParamBinding) {
     return typeParamBinding;
+  }
+
+  // _return_type_of<F>: what F returns. A type computed from another type
+  // rather than named outright, so it is resolved here rather than looked up.
+  if (annot.baseName == "_return_type_of") {
+    if (annot.typeArguments.size() != 1) {
+      logAndThrowError("_return_type_of takes exactly one type argument",
+                       annot.span);
+    }
+    return returnTypeOf(typeAnnotationToType(*annot.typeArguments[0]),
+                        annot.span);
   }
 
   // Check if this is a generic type usage like List<i32>

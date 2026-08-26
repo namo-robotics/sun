@@ -48,6 +48,13 @@ enum class Intrinsic {
   Bitcast,    // _bitcast<T>(value) -> T (same-size bit reinterpretation,
               // e.g. f32 <-> u32, f64 <-> u64)
 
+  // Thread intrinsics. The pthread trampoline is built per lambda signature,
+  // which cannot be written in Sun (pthread_create wants ptr(*)(ptr), Sun
+  // lambdas use the fat-pointer ABI), so stdlib sun.thread forwards to these.
+  Spawn,           // _spawn<F>(fn, args...) -> raw_ptr<ThreadContext>
+  ThreadJoin,      // _thread_join<T>(ctx) -> T (takes the thread's result)
+  ThreadJoinDrop,  // _thread_join_drop<T>(ctx) -> void (drops it instead)
+
   // =========================================================================
   // Memory intrinsics
   // =========================================================================
@@ -139,6 +146,9 @@ inline Intrinsic getIntrinsic(const std::string& name) {
   if (name == "_deinit") return Intrinsic::Deinit;
   if (name == "_convert") return Intrinsic::Convert;
   if (name == "_bitcast") return Intrinsic::Bitcast;
+  if (name == "_spawn") return Intrinsic::Spawn;
+  if (name == "_thread_join") return Intrinsic::ThreadJoin;
+  if (name == "_thread_join_drop") return Intrinsic::ThreadJoinDrop;
 
   // -------------------------------------------------------------------------
   // Memory intrinsics
@@ -228,6 +238,9 @@ inline bool isGenericIntrinsic(Intrinsic i) {
     case Intrinsic::Deinit:
     case Intrinsic::Convert:
     case Intrinsic::Bitcast:
+    case Intrinsic::Spawn:
+    case Intrinsic::ThreadJoin:
+    case Intrinsic::ThreadJoinDrop:
       return true;
     default:
       return false;

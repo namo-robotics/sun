@@ -1,12 +1,20 @@
 # Threads
 
-Sun provides OS-level threading via the `spawn` keyword and synchronization via the `Mutex` class.
+OS threads and the lock that guards what they share live in the standard
+library's `sun.thread` module, so a threaded program starts with:
+
+```sun
+using sun.thread;
+
+manifest { moons: ["stdlib.moon"] }
+```
 
 import { Callout } from 'nextra/components'
 
 ## Spawning Threads
 
-Use `spawn` with a lambda to create a new OS thread. The lambda must take no arguments:
+`spawn` takes a lambda and whatever that lambda's parameters need, and runs it
+on a new OS thread:
 
 ```sun
 function main() i32 {
@@ -15,13 +23,64 @@ function main() i32 {
 }
 ```
 
-The `spawn` expression returns a `Thread<T>` handle, where `T` is the lambda's return type.
+It hands back a `Thread<T>` handle, where `T` is what the lambda returns.
+
+`spawn` is an ordinary generic function, not a keyword:
+
+```sun
+public function spawn<F: _Lambda>(fn: F, args...: _params_of<F>)
+    Thread<_return_type_of<F>>
+```
+
+`_params_of<F>` is the parameter list of whatever lambda you passed, so the
+arguments you supply are checked against it, and `_return_type_of<F>` is what
+that lambda returns. Both are resolved when the call is compiled, so a wrong
+argument is a compile error like any other.
+
+## Arguments
+
+Give the thread what it should work on as arguments, and they **move** into it:
+
+```sun
+function main() i32 {
+    var t = spawn(lambda (a: i32, b: i32) i32 { return a + b; }, 40, 2);
+    return t.join();  // 42
+}
+```
+
+Because the work arrives as arguments, a thread body does not have to close
+over the frame that started it. It can be an ordinary lambda value — including
+one at global scope, which captures nothing and can be spawned as often as you
+like:
+
+```sun
+var work = lambda (n: i32) i32 { return n * 2; };
+
+function main() i32 {
+    var a = spawn(work, 20);
+    var b = spawn(work, 1);
+    return a.join() + b.join();  // 42
+}
+```
+
+A class or payload enum argument moves, so the thread owns it and the spawner
+cannot use it again. Bind it to a local in the body to say the thread should
+release it when it finishes — a by-value parameter left alone is nobody's to
+drop:
+
+```sun
+var consume = lambda (r: Report) i32 {
+    var owned = r;        // the thread owns it, and drops it at the end
+    return owned.rows;
+};
+```
 
 ## Thread Handles
 
 ### `Thread<T>`
 
-A thread handle representing a running OS thread. The type parameter `T` matches the return type of the spawned lambda.
+A handle to a running OS thread. The type parameter `T` matches the return
+type of the spawned lambda.
 
 | Method | Description |
 |--------|-------------|
@@ -29,8 +88,7 @@ A thread handle representing a running OS thread. The type parameter `T` matches
 
 ```sun
 function main() i32 {
-    var t = spawn(lambda() i64 { return 100; });
-    // t is inferred as Thread<i64>
+    var t: Thread<i64> = spawn(lambda() i64 { return 100; });
     var result: i64 = t.join();
     return 0;
 }
@@ -121,6 +179,7 @@ Both the thread and the parent then work on the same value, so guard it with a
 
 ```sun
 using sun;
+using sun.thread;
 
 class Tally {
     public var counter: i64;
@@ -192,37 +251,32 @@ so you can see the count change in the source.
 
 ```sun
 using sun;
+using sun.thread;
 
 class Counter {
     public var n: i64;
     public function init() { this.n = 0; }
 }
 
+// One body, spawned twice. `var h = handle;` makes the clone this thread's,
+// so it is released when the thread ends.
+var bump = lambda (handle: Shared<Counter>) i32 {
+    var h = handle;
+    var i: i64 = 0;
+    while (i < 100000) {
+        var g = h.lock();
+        g.get().n = g.get().n + 1;
+        i = i + 1;
+    }
+    return 0;
+};
+
 function main() i32 {
     var alloc = make_heap_allocator();
     var s = Shared<Counter>(alloc, Counter());
 
-    var c1 = s.clone();
-    var c2 = s.clone();
-
-    var t1 = spawn(lambda [c1]() i32 {
-        var i: i64 = 0;
-        while (i < 100000) {
-            var g = c1.lock();
-            g.get().n = g.get().n + 1;
-            i = i + 1;
-        }
-        return 0;
-    });
-    var t2 = spawn(lambda [c2]() i32 {
-        var i: i64 = 0;
-        while (i < 100000) {
-            var g = c2.lock();
-            g.get().n = g.get().n + 1;
-            i = i + 1;
-        }
-        return 0;
-    });
+    var t1 = spawn(bump, s.clone());
+    var t2 = spawn(bump, s.clone());
 
     t1.join();
     t2.join();
@@ -235,10 +289,12 @@ function main() i32 {
 manifest { moons: ["stdlib.moon"] }
 ```
 
-Each thread gets its own handle, moved in through the capture list. Several
-threads can also share one handle read-only with `[const ref s]` and lock
-through that — `lock()` is a `const function`, because taking the lock does not
-change the handle.
+Each thread gets its own handle, moved in as an argument. A capture list works
+too — `spawn(lambda [c1]() i32 { … })` — but passing the handle keeps the body
+independent of the frame that started it, so the same lambda serves both
+threads. Several threads can also share one handle read-only with
+`[const ref s]` and lock through that: `lock()` is a `const function`, because
+taking the lock does not change the handle.
 
 ### The guard
 
@@ -296,10 +352,10 @@ function main() i32 {
 
 ## Synchronization with Mutex
 
-For shared mutable state between threads, use `Mutex` from the standard library:
+For shared mutable state between threads, use `Mutex` from `sun.thread`:
 
 ```sun
-using sun;
+using sun.thread;
 
 function main() i32 {
     var m = Mutex();
@@ -329,14 +385,15 @@ The `Mutex` implementation uses atomic compare-and-swap with futex-based blockin
 
 ## Constraints
 
-- `spawn` requires a lambda expression (not a named function reference)
-- The lambda must take **no arguments**
+- `spawn` takes a lambda — a literal, a variable holding one, or a global. A
+  named function is not a lambda and is rejected by the `_Lambda` constraint
+- The arguments must match the lambda's parameters exactly, in number and type
 - A thread is joined when its handle goes out of scope, so a thread spawned
   inside a loop body is joined at the end of that iteration. To run several
   threads at once, spawn them all in the same scope
 - Several threads can capture the same variable with `[const ref x]`, but only
   one can capture it with `[ref x]`. For two threads that both write one value,
-  give each a `Shared<T>` handle
+  pass each a `Shared<T>` handle
 
 ## Example: Parallel Computation
 

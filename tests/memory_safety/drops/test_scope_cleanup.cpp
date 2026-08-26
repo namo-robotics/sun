@@ -237,3 +237,68 @@ TEST(MemorySafety_Drops_ScopeCleanup,
   // No owners in this loop at all; sanity-check counter stays 0
   EXPECT_EQ(value, 0);
 }
+
+// -------------------------------------------------------------------
+// A call result nobody takes
+// -------------------------------------------------------------------
+// A function returning a class by value hands the caller something the
+// caller owns. `var x = f();` adopts it, and passing it straight on moves
+// it, but a result that is simply discarded used to be materialized into an
+// untracked slot and never dropped.
+
+TEST(MemorySafety_Drops_ScopeCleanup, discarded_call_result_is_dropped) {
+  auto value = executeString(withPreamble(R"(
+    function make() Owner { return Owner(); }
+
+    function helper() i32 {
+      if (true) {
+        make();
+        make();
+      }
+      return counter;
+    }
+
+    function main() i32 { return helper(); }
+  )"));
+  EXPECT_EQ(value, 2);
+}
+
+// The taken and the discarded result must each be dropped exactly once —
+// tracking the temporary must not double up with the variable that adopts it.
+TEST(MemorySafety_Drops_ScopeCleanup, taken_and_discarded_results_drop_once) {
+  auto value = executeString(withPreamble(R"(
+    function make() Owner { return Owner(); }
+
+    function helper() i32 {
+      if (true) {
+        var a = make();
+        make();
+      }
+      return counter;
+    }
+
+    function main() i32 { return helper(); }
+  )"));
+  EXPECT_EQ(value, 2);
+}
+
+// A discarded method result is dropped the same way a free function's is.
+TEST(MemorySafety_Drops_ScopeCleanup, discarded_method_result_is_dropped) {
+  auto value = executeString(withPreamble(R"(
+    class Factory {
+      function init() {}
+      function make() Owner { return Owner(); }
+    }
+
+    function helper() i32 {
+      var f = Factory();
+      if (true) {
+        f.make();
+      }
+      return counter;
+    }
+
+    function main() i32 { return helper(); }
+  )"));
+  EXPECT_EQ(value, 1);
+}

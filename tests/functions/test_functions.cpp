@@ -366,3 +366,42 @@ TEST(Functions, widening_argument_conversions) {
   )");
   EXPECT_EQ(value, 42);
 }
+
+// -------------------------------------------------------------------
+// Returning a void expression
+// -------------------------------------------------------------------
+// `return f();` in a void function, where f is itself void. The expression
+// is evaluated for its effect and there is no value to hand back. This is
+// what lets a generic method forward a call whose result type is the type
+// parameter, in the specialization where that parameter is void.
+
+TEST(Functions, void_function_returns_a_void_call) {
+  auto value = executeString(R"(
+    var counter: i32 = 0;
+    function bump() void { counter = counter + 1; }
+    function forward() void { return bump(); }
+    function main() i32 {
+        forward();
+        forward();
+        return counter;
+    }
+  )");
+  EXPECT_EQ(value, 2);
+}
+
+// The forwarded call still runs before the early exit it causes.
+TEST(Functions, returning_a_void_call_stops_the_function) {
+  auto value = executeString(R"(
+    var counter: i32 = 0;
+    function bump() void { counter = counter + 1; }
+    function forward() void {
+        return bump();
+        counter = 100;
+    }
+    function main() i32 {
+        forward();
+        return counter;
+    }
+  )");
+  EXPECT_EQ(value, 1);
+}

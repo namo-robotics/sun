@@ -182,14 +182,6 @@ std::set<std::string> SemanticAnalyzer::collectFreeVariables(
       break;
     }
 
-    case ASTNodeType::SPAWN: {
-      // spawn(lambda) - analyze the lambda for captures
-      const auto& spawnExpr = static_cast<const SpawnExprAST&>(expr);
-      auto lambdaFree = collectFreeVariables(spawnExpr.getLambda(), bound);
-      free.insert(lambdaFree.begin(), lambdaFree.end());
-      break;
-    }
-
     case ASTNodeType::MEMBER_ACCESS: {
       const auto& access = static_cast<const MemberAccessAST&>(expr);
       auto objectFree = collectFreeVariables(*access.getObject(), bound);

@@ -213,6 +213,16 @@ function main() i32 {
 }
 ```
 
+That is the shape the standard library's `spawn` takes. Paired with
+[`_return_type_of<F>`](/intrinsics#_return_type_off), which names what `F`
+returns, it lets one function forward any lambda and any arguments to a new
+thread:
+
+```sun
+public function spawn<F: _Lambda>(fn: F, args...: _params_of<F>)
+    Thread<_return_type_of<F>>
+```
+
 The annotation is optional. `args...` on its own accepts whatever the call
 passes, and so does `_params_of<T>` for a `T` that is neither a class nor a
 lambda.

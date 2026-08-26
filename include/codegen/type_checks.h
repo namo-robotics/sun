@@ -58,8 +58,6 @@ inline const char* describeKind(Type::Kind kind) {
       return "a slice type";
     case Type::Kind::Module:
       return "a module reference";
-    case Type::Kind::Thread:
-      return "a Thread handle type";
     case Type::Kind::TypeParameter:
       return "a type parameter";
     default:

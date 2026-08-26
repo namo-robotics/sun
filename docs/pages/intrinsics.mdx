@@ -63,6 +63,40 @@ anything else the pack is accepted and left unchecked.
 
 See [Value Packs](/generics#value-packs) for the full rules.
 
+### `_return_type_of<F>`
+
+The type `F` returns. Like `_params_of<T>` it is computed rather than named,
+but unlike it, it is a type in its own right and goes wherever a type
+annotation goes. `F` must be a lambda or a function type.
+
+```sun
+public function spawn<F: _Lambda>(fn: F, args...: _params_of<F>)
+    Thread<_return_type_of<F>> {
+    return Thread<_return_type_of<F>>(unsafe { _spawn<F>(fn, args...); });
+}
+```
+
+Inside the template it stays symbolic — nothing can say what `F` returns until
+a call says what `F` is — and it is resolved when the call is specialized.
+
+### `_spawn<F>(fn, args...)`
+
+Starts an OS thread running `fn` with `args`, and returns the
+`raw_ptr<ThreadContext>` it allocated for it. The arguments move into the
+thread.
+
+The trampoline `pthread_create` needs is built per lambda signature, which
+cannot be written in Sun — `pthread_create` wants a `ptr(*)(ptr)`, and Sun
+lambdas use the fat-pointer ABI — so this is the one part of threading the
+compiler still does. Everything else is [`sun.thread`](/threads).
+
+### `_thread_join<T>(ctx)` and `_thread_join_drop<T>(ctx)`
+
+Wait for the thread to exit, then release its context. `_thread_join<T>` takes
+the thread's result and hands it back; `_thread_join_drop<T>` drops it in
+place, for a handle nobody joined by hand. Both are used only by
+`Thread<T>.join()` and `Thread<T>.deinit()`.
+
 ### `_load<T>(ptr, index)`
 
 Loads an element of type `T` from `ptr` at the given element index. Equivalent to `ptr[index]` in C.

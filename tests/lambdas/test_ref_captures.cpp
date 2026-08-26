@@ -341,7 +341,8 @@ TEST(Lambdas_RefCaptures, nested_byref_of_byvalue_rejected) {
 // Issue #122: a spawned thread is joined when its handle's scope ends, so a
 // by-ref capture cannot outlive what it points at
 TEST(Lambdas_RefCaptures, spawn_byref_lambda_accepted) {
-  auto value = executeString(R"(
+  auto value = executeStringWithStdlib(R"(
+    using sun.thread;
       function main() i32 {
           var x: i32 = 0;
           var t = spawn(lambda [ref x] () i32 {
@@ -356,7 +357,8 @@ TEST(Lambdas_RefCaptures, spawn_byref_lambda_accepted) {
 }
 
 TEST(Lambdas_RefCaptures, spawn_byref_lambda_via_variable_accepted) {
-  auto value = executeString(R"(
+  auto value = executeStringWithStdlib(R"(
+    using sun.thread;
       function main() i32 {
           var x: i32 = 0;
           var f = lambda [ref x] () i32 {

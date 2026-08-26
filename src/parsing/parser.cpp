@@ -898,9 +898,6 @@ unique_ptr<ExprAST> Parser::parsePrimary() {
     case TokenKind::THROW:
       base = parseThrow();
       break;
-    case TokenKind::SPAWN:
-      base = parseSpawn();
-      break;
     case TokenKind::UNSAFE:
       base = parseUnsafeBlock();
       break;
@@ -3931,36 +3928,6 @@ unique_ptr<ExprAST> Parser::parseThrow() {
 
   return finishNode(std::make_unique<ThrowExprAST>(std::move(errorExpr)),
                     start);
-}
-
-// Parse spawn expression: spawn(lambda)
-// Creates an OS thread that runs the lambda and returns Thread<T>
-unique_ptr<ExprAST> Parser::parseSpawn() {
-  Position loc = captureStart();
-  getNextToken();  // eat 'spawn'
-
-  // Expect '('
-  if (curTok.kind != TokenKind::PAREN_OPEN) {
-    parsingError("expected '(' after 'spawn'");
-    return nullptr;
-  }
-  getNextToken();  // eat '('
-
-  // Parse the lambda expression
-  auto lambdaExpr = parseExpression();
-  if (!lambdaExpr) {
-    parsingError("expected lambda expression in 'spawn'");
-    return nullptr;
-  }
-
-  // Expect ')'
-  if (curTok.kind != TokenKind::PAREN_CLOSE) {
-    parsingError("expected ')' after spawn argument");
-    return nullptr;
-  }
-  getNextToken();  // eat ')'
-
-  return finishNode(std::make_unique<SpawnExprAST>(std::move(lambdaExpr)), loc);
 }
 
 // Parse unsafe block: unsafe { ... }

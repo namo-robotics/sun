@@ -676,9 +676,9 @@ function class() i32 { return 0; }
 
 TEST(Tooling_Frontend_Parser_Errors, KeywordAsParameterNameIsReserved) {
   std::string what = parseErrorMessage(R"(
-function f(spawn: i32) i32 { return spawn; }
+function f(throw: i32) i32 { return throw; }
 )");
-  EXPECT_TRUE(what.find("'spawn' is a reserved word") != std::string::npos)
+  EXPECT_TRUE(what.find("'throw' is a reserved word") != std::string::npos)
       << what;
 }
 

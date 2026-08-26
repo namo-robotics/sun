@@ -117,7 +117,7 @@ TEST(Stdlib_Concurrency_Mutex, atomic_store_and_load) {
 
 TEST(Stdlib_Concurrency_Mutex, mutex_import_compiles) {
   EXPECT_NO_THROW(compileString(R"(
-    using sun;
+    using sun.thread;
 
     function main() i32 {
       var m = Mutex();
@@ -129,7 +129,7 @@ TEST(Stdlib_Concurrency_Mutex, mutex_import_compiles) {
 
 TEST(Stdlib_Concurrency_Mutex, mutex_lock_unlock_compiles) {
   EXPECT_NO_THROW(compileString(R"(
-    using sun;
+    using sun.thread;
 
     function main() i32 {
       var m = Mutex();
@@ -147,7 +147,7 @@ TEST(Stdlib_Concurrency_Mutex, mutex_lock_unlock_compiles) {
 
 TEST(Stdlib_Concurrency_Mutex, mutex_single_thread_lock_unlock) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using sun.thread;
 
     function main() i32 {
       var m = Mutex();
@@ -169,7 +169,7 @@ TEST(Stdlib_Concurrency_Mutex, mutex_single_thread_lock_unlock) {
 
 TEST(Stdlib_Concurrency_Mutex, mutex_multiple_lock_unlock) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using sun.thread;
 
     function main() i32 {
       var m = Mutex();
@@ -195,7 +195,7 @@ TEST(Stdlib_Concurrency_Mutex, mutex_multiple_lock_unlock) {
 
 TEST(Stdlib_Concurrency_Mutex, mutex_two_threads_sequential) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using sun.thread;
 
     var counter: i32 = 0;
     var mutex: Mutex = Mutex();
@@ -237,7 +237,7 @@ TEST(Stdlib_Concurrency_Mutex, mutex_two_threads_sequential) {
 
 TEST(Stdlib_Concurrency_Mutex, mutex_three_threads) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using sun.thread;
 
     var counter: i32 = 0;
     var mutex: Mutex = Mutex();
@@ -293,7 +293,7 @@ TEST(Stdlib_Concurrency_Mutex, mutex_prevents_races) {
   // Run the same test multiple times to increase chance of catching races
   for (int run = 0; run < 5; run++) {
     auto value = executeStringWithStdlib(R"(
-      using sun;
+      using sun.thread;
 
       var counter: i32 = 0;
       var mutex: Mutex = Mutex();

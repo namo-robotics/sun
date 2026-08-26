@@ -50,7 +50,6 @@ class FunctionAST;
 class LambdaAST;
 class CallExprAST;
 class GenericCallAST;
-class SpawnExprAST;
 
 // Class/interface/enum nodes
 class ClassDefinitionAST;

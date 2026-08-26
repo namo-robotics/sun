@@ -11,7 +11,6 @@
 #include "codegen/intrinsics/libc.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
-#include "semantic_analysis/struct_names.h"
 #include "support/error.h"
 
 using namespace llvm;
@@ -76,21 +75,25 @@ void ThreadUtils::emitSyscallFutexWake(Value* addr) {
 
 Function* ThreadUtils::getOrCreateThreadTrampoline(FunctionType* lambdaFuncType,
                                                    StructType* fatType,
-                                                   Type* resultLLVMType) {
+                                                   Type* resultLLVMType,
+                                                   StructType* contextType,
+                                                   StructType* argsType) {
   LLVMContext& llvmCtx = ctx.getContext();
 
-  // Two spawns of same-typed lambdas share one trampoline.
+  // Two spawns of same-typed lambdas share one trampoline. The argument
+  // struct is part of that sameness: two lambdas can agree on their return
+  // type and still take different arguments.
   std::string key;
   raw_string_ostream keyStream(key);
   lambdaFuncType->print(keyStream);
   resultLLVMType->print(keyStream);
+  if (argsType) argsType->print(keyStream);
   if (auto it = trampolineCache.find(keyStream.str());
       it != trampolineCache.end()) {
     return it->second;
   }
 
   auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  StructType* contextType = getThreadContextType();
 
   // ptr __sun_thread_start(ptr context) — LLVM uniques the name per module.
   FunctionType* funcType = FunctionType::get(ptrTy, {ptrTy}, false);
@@ -118,9 +121,32 @@ Function* ThreadUtils::getOrCreateThreadTrampoline(FunctionType* lambdaFuncType,
   AllocaInst* fatAlloca = builder.CreateAlloca(fatType, nullptr, "fat.alloca");
   builder.CreateStore(fat, fatAlloca);
 
+  // The arguments spawn moved into the context, in the order the lambda
+  // declares them. Each was stored as the very value an ordinary call would
+  // have passed, so reading it back needs no conversion.
+  std::vector<Value*> callArgs{fatAlloca};
+  Value* argsBlob = nullptr;
+  if (argsType) {
+    Value* argsFieldPtr =
+        builder.CreateStructGEP(contextType, contextPtr, 4, "ctx.args_ptr");
+    argsBlob = builder.CreateLoad(ptrTy, argsFieldPtr, "args.blob");
+    for (unsigned i = 0; i < argsType->getNumElements(); ++i) {
+      Value* slot = builder.CreateStructGEP(argsType, argsBlob, i,
+                                            "args." + std::to_string(i) + ".p");
+      callArgs.push_back(builder.CreateLoad(argsType->getElementType(i), slot,
+                                            "args." + std::to_string(i)));
+    }
+  }
+
   Value* result = builder.CreateCall(
-      lambdaFuncType, lambdaFunc, {fatAlloca},
+      lambdaFuncType, lambdaFunc, callArgs,
       lambdaFuncType->getReturnType()->isVoidTy() ? "" : "result");
+
+  // The arguments moved into the lambda's own parameter slots, so the blob is
+  // dead the moment the call returns and the thread releases it.
+  if (argsBlob) {
+    builder.CreateCall(sun::libc::free(module), {argsBlob});
+  }
 
   if (!resultLLVMType->isVoidTy()) {
     Value* resultFieldPtr =
@@ -134,35 +160,4 @@ Function* ThreadUtils::getOrCreateThreadTrampoline(FunctionType* lambdaFuncType,
 
   trampolineCache[keyStream.str()] = func;
   return func;
-}
-
-// -------------------------------------------------------------------
-// Thread structure types
-// -------------------------------------------------------------------
-
-StructType* ThreadUtils::getThreadContextType() {
-  LLVMContext& llvmCtx = ctx.getContext();
-
-  if (auto* existing = StructType::getTypeByName(llvmCtx, "thread_context")) {
-    return existing;
-  }
-
-  auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  auto* i64Ty = Type::getInt64Ty(llvmCtx);
-
-  // { func, env, result_slot, pthread_id }
-  return StructType::create(llvmCtx, {ptrTy, ptrTy, ptrTy, i64Ty},
-                            "thread_context");
-}
-
-StructType* ThreadUtils::getThreadHandleType() {
-  LLVMContext& llvmCtx = ctx.getContext();
-
-  if (auto* existing =
-          StructType::getTypeByName(llvmCtx, sun::StructNames::Thread)) {
-    return existing;
-  }
-
-  auto* ptrTy = PointerType::getUnqual(llvmCtx);
-  return StructType::create(llvmCtx, {ptrTy}, sun::StructNames::Thread);
 }

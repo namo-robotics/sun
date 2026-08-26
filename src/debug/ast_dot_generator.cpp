@@ -342,12 +342,6 @@ void AstDotGenerator::visitChildren(const ExprAST* node, int parentId) {
       emitEdge(valId);
       break;
     }
-    case ASTNodeType::SPAWN: {
-      const auto* sp = static_cast<const SpawnExprAST*>(node);
-      int lambdaId = visitNode(&sp->getLambda());
-      emitEdge(lambdaId, "lambda");
-      break;
-    }
     case ASTNodeType::UNSAFE_BLOCK: {
       const auto* ub = static_cast<const UnsafeBlockAST*>(node);
       int bodyId = visitNode(&ub->getBody());

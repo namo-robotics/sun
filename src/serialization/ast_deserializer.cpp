@@ -307,9 +307,6 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserialize(
     case ast::ASTNode::kGenericCallExpr:
       result = deserializeGenericCall(node.generic_call_expr());
       break;
-    case ast::ASTNode::kSpawnExpr:
-      result = deserializeSpawn(node.spawn_expr());
-      break;
     case ast::ASTNode::kModuleDef:
       result = deserializeModule(node.module_def());
       break;
@@ -723,11 +720,6 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeGenericCall(
   }
   return std::make_unique<GenericCallAST>(proto.function_name(),
                                           std::move(typeArgs), std::move(args));
-}
-
-std::unique_ptr<ExprAST> ASTDeserializer::deserializeSpawn(
-    const ast::SpawnExpr& proto) const {
-  return std::make_unique<SpawnExprAST>(deserialize(proto.lambda()));
 }
 
 std::unique_ptr<ExprAST> ASTDeserializer::deserializeManifest(

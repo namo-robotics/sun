@@ -406,6 +406,19 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
     genericClassInfo->AST->addSpecialization(mangledName, specializedAST);
   }
 
+  // An abstract shape's bodies are never checked here. Only its members are
+  // wanted, and those are in place by now; the bodies are checked when a real
+  // specialization is made, which is also the only version anyone emits.
+  // Checking them here would mean checking them against a type argument that
+  // is not a type — `Thread<_return_type_of<F>>` names what F returns, which
+  // nothing can answer until F is known.
+  if (abstractShape) {
+    ctx_.setCurrentClass(savedClass);
+    ctx_.exitScope();
+    classesBeingInstantiated_.erase(mangledName);
+    return specializedClass;
+  }
+
   // PASS 2: Analyze all cloned method bodies — unless requested from the
   // declaration pre-pass, where bodies are deferred until every declaration
   // (including functions the bodies may call) is registered.
@@ -624,10 +637,12 @@ GenericSpecializer::instantiateGenericFunction(
   // would name the same specialization differently depending on whether the
   // call site sits above or below the definition.
   std::vector<std::string> typeParams = proto.getTypeParameterNames();
-  // How the template is named in diagnostics below.
+  // How the template is named in diagnostics below — as it was written, not
+  // as it is emitted, so a stdlib template arriving through a bundle reads as
+  // `sun.thread.spawn` rather than `$ce09fa07$_sun_thread_spawn`.
   const std::string funcName = genericInfo.qualifiedName.empty()
                                    ? proto.getMangledName()
-                                   : genericInfo.qualifiedName.mangled();
+                                   : genericInfo.qualifiedName.display();
 
   // The name the specialization is emitted under: the template's scope and
   // module, with the type arguments folded into the base name. Codegen calls

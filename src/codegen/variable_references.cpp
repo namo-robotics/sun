@@ -181,7 +181,7 @@ Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
   // bindings (compound match payloads) yield the borrowed slot's address
   // instead.
   if (varType &&
-      (varType->isClass() || isPayloadEnum(varType) || varType->isThread())) {
+      (varType->isClass() || isPayloadEnum(varType))) {
     if (Value* addr = compoundStorageAddress(expr.getName())) {
       return addr;
     }
@@ -351,7 +351,7 @@ void CodegenVisitor::assignToVariableSlot(Value* slot, Value* value,
                                           const std::string& name) {
   bool compound =
       varType &&
-      (varType->isClass() || isPayloadEnum(varType) || varType->isThread()) &&
+      (varType->isClass() || isPayloadEnum(varType)) &&
       value->getType()->isPointerTy();
   if (compound) {
     // Self-assignment would drop the object and then copy from the corpse;

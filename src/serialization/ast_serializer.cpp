@@ -297,9 +297,6 @@ ast::ASTNode ASTSerializer::serialize(const ExprAST& expr) const {
     case ASTNodeType::GENERIC_CALL:
       serializeGenericCall(static_cast<const GenericCallAST&>(expr), &node);
       break;
-    case ASTNodeType::SPAWN:
-      serializeSpawn(static_cast<const SpawnExprAST&>(expr), &node);
-      break;
     case ASTNodeType::MODULE:
       serializeModule(static_cast<const ModuleAST&>(expr), &node);
       break;
@@ -695,12 +692,6 @@ void ASTSerializer::serializeGenericCall(const GenericCallAST& expr,
   for (const auto& arg : expr.getArgs()) {
     *call->add_args() = serialize(*arg);
   }
-}
-
-void ASTSerializer::serializeSpawn(const SpawnExprAST& expr,
-                                   ast::ASTNode* node) const {
-  auto* spawn = node->mutable_spawn_expr();
-  *spawn->mutable_lambda() = serialize(expr.getLambda());
 }
 
 void ASTSerializer::serializeManifest(const ManifestAST& expr,

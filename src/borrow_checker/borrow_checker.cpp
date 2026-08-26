@@ -174,17 +174,6 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
     case ASTNodeType::CONTINUE_STMT:
       break;
 
-    case ASTNodeType::SPAWN: {
-      // A spawned thread cannot outlive the scope it was spawned in: its
-      // handle joins the thread when that scope ends (see codegen's
-      // emitThreadJoinIfNeeded). Both the lambda's environment and any
-      // [ref x] capture point into a frame that is still standing then, so
-      // by-ref captures need no extra rule here.
-      const auto& spawnExpr = static_cast<const SpawnExprAST&>(expr);
-      checkExpr(spawnExpr.getLambda());
-      break;
-    }
-
     default:
       throw SunError(SunError::Kind::Compile,
                      "BorrowChecker: unhandled AST node type: " +

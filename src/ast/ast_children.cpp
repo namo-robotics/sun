@@ -194,9 +194,6 @@ void forEachChild(const ExprAST& node, const ChildFn& fn) {
       if (throwExpr.hasErrorExpr()) fn(throwExpr.getErrorExpr());
       break;
     }
-    case ASTNodeType::SPAWN:
-      fn(static_cast<const SpawnExprAST&>(node).getLambda());
-      break;
     case ASTNodeType::UNSAFE_BLOCK:
       fn(static_cast<const UnsafeBlockAST&>(node).getBody());
       break;
