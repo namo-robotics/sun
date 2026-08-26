@@ -1,4 +1,7 @@
-// semantic_analysis/scope_variables.cpp — Scope and variable management
+// semantic_context.cpp — The shared state and scope machinery of a semantic
+// analysis run (see semantic_context.h)
+
+#include "semantic_analysis/semantic_context.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -8,173 +11,42 @@
 #include <set>
 #include <sstream>
 
-#include "semantic_analysis/semantic_analyzer.h"
+#include "semantic_analysis/item_refs.h"
+#include "semantic_analysis/symbol_names.h"
 #include "support/error.h"
 
 using sun::unwrapRef;
+using sun::access::fieldRef;
+using sun::access::methodRef;
+using sun::access::moduleRef;
+using sun::names::getFunctionSignature;
+using sun::names::isReservedIdentifier;
 
 // isLibraryScope() and mangleModulePath() are provided by semantic_scope.h
 
-// -------------------------------------------------------------------
-// SemanticScope helpers
-// -------------------------------------------------------------------
-
-bool SemanticScope::hasSymbol(const std::string& name) const {
-  if (classes.contains(name)) return true;
-  if (genericClasses.contains(name)) return true;
-  if (interfaces.contains(name)) return true;
-  if (genericInterfaces.contains(name)) return true;
-  if (enums.contains(name)) return true;
-  if (genericEnums.contains(name)) return true;
-  if (namespacedVariables.contains(name)) return true;
-
-  // Check functions by name (O(1) via indexed FunctionTable)
-  if (functions.hasName(name)) return true;
-
-  return false;
+SemanticContext::SemanticContext(std::shared_ptr<sun::TypeRegistry> registry)
+    : typeRegistry_(std::move(registry)) {
+  rootScope_->accessContext = this;  // lookups filter by visibility
+  registerBuiltinFunctions();
 }
 
-bool SemanticScope::hasAccessibleSymbol(const std::string& name,
-                                        AccessFilter& filter) const {
-  if (!filter.enabled()) return hasSymbol(name);
-  if (auto it = classes.find(name);
-      it != classes.end() && filter.admit(it->second))
-    return true;
-  if (auto it = genericClasses.find(name);
-      it != genericClasses.end() && filter.admit(&it->second))
-    return true;
-  if (auto it = interfaces.find(name);
-      it != interfaces.end() && filter.admit(it->second))
-    return true;
-  if (auto it = genericInterfaces.find(name);
-      it != genericInterfaces.end() && filter.admit(&it->second))
-    return true;
-  if (auto it = enums.find(name); it != enums.end() && filter.admit(it->second))
-    return true;
-  if (auto it = genericEnums.find(name);
-      it != genericEnums.end() && filter.admit(&it->second))
-    return true;
-  if (auto it = namespacedVariables.find(name);
-      it != namespacedVariables.end() && filter.admit(&it->second))
-    return true;
-  if (auto* overloads = functions.getOverloads(name)) {
-    for (const auto* info : *overloads) {
-      if (filter.admit(info)) return true;
-    }
-  }
-  return false;
-}
-
-std::shared_ptr<sun::ClassType> SemanticScope::findClass(
-    const std::string& name) const {
-  auto it = classes.find(name);
-  if (it != classes.end()) return it->second;
-  return nullptr;
-}
-
-const GenericClassInfo* SemanticScope::findGenericClass(
-    const std::string& name) const {
-  auto it = genericClasses.find(name);
-  if (it != genericClasses.end()) return &it->second;
-  return nullptr;
-}
-
-std::shared_ptr<sun::InterfaceType> SemanticScope::findInterface(
-    const std::string& name) const {
-  auto it = interfaces.find(name);
-  if (it != interfaces.end()) return it->second;
-  return nullptr;
-}
-
-const GenericInterfaceInfo* SemanticScope::findGenericInterface(
-    const std::string& name) const {
-  auto it = genericInterfaces.find(name);
-  if (it != genericInterfaces.end()) return &it->second;
-  return nullptr;
-}
-
-std::shared_ptr<sun::EnumType> SemanticScope::findEnum(
-    const std::string& name) const {
-  auto it = enums.find(name);
-  if (it != enums.end()) return it->second;
-  return nullptr;
-}
-
-const GenericEnumInfo* SemanticScope::findGenericEnum(
-    const std::string& name) const {
-  auto it = genericEnums.find(name);
-  if (it != genericEnums.end()) return &it->second;
-  return nullptr;
-}
-
-void SemanticScope::collectFunctions(const std::string& prefix,
-                                     std::vector<FunctionInfo>& results) const {
-  // prefix is "name(" — extract the name part for indexed lookup
-  std::string name =
-      prefix.substr(0, prefix.size() - 1);  // remove trailing '('
-  if (auto* overloads = functions.getOverloads(name)) {
-    for (const auto* info : *overloads) {
-      results.push_back(*info);
-    }
-  }
+std::optional<Position> SemanticContext::currentLocation() const {
+  if (locationStack_.empty()) return std::nullopt;
+  return *locationStack_.back();
 }
 
 // -------------------------------------------------------------------
-// Scope management - tree-based scopes
+// Scope navigation
 // -------------------------------------------------------------------
 
-std::shared_ptr<SemanticScopeBase> SemanticScopeBase::cloneSymbols(
-    SemanticScopeBase* newParent) const {
-  std::shared_ptr<SemanticScopeBase> clone;
-  switch (getType()) {
-    case ScopeType::Global:
-      clone = std::make_shared<GlobalScope>();
-      break;
-    case ScopeType::Module:
-      clone = std::make_shared<ModuleScope>();
-      break;
-    case ScopeType::Import:
-      clone = std::make_shared<ImportScope>();
-      break;
-    default:
-      // Should never happen - only persistent scopes can clone
-      return nullptr;
-  }
-  clone->scopeName = scopeName;
-  clone->scopePath = scopePath;
-  clone->parent = newParent;
-  if (auto* mod = dynamic_cast<ModuleScope*>(clone.get())) {
-    const auto& src = static_cast<const ModuleScope&>(*this);
-    mod->qualifiedName = src.qualifiedName;
-    mod->visibility = src.visibility;
-    mod->visibilityDeclared = src.visibilityDeclared;
-  }
-  // Copy all symbol tables (shallow — shares type objects)
-  clone->functions = functions;
-  clone->classes = classes;
-  clone->classDefinitions = classDefinitions;
-  clone->genericClasses = genericClasses;
-  clone->interfaces = interfaces;
-  clone->genericInterfaces = genericInterfaces;
-  clone->enums = enums;
-  clone->genericEnums = genericEnums;
-  clone->genericFunctions = genericFunctions;
-  clone->childModules = childModules;
-  clone->namespacedVariables = namespacedVariables;
-  clone->variables = variables;
-  clone->usingImports = usingImports;
-  clone->importBindings = importBindings;
-  return clone;
-}
-
-void SemanticAnalyzer::enterTypeParamScope(
+void SemanticContext::enterTypeParamScope(
     const std::vector<std::string>& params,
     const std::vector<sun::TypePtr>& args) {
   enterScope(ScopeType::TypeParams);
   addTypeParameterBindings(params, args);
 }
 
-void SemanticAnalyzer::enterScope(ScopeType type) {
+void SemanticContext::enterScope(ScopeType type) {
   std::shared_ptr<SemanticScopeBase> child;
   switch (type) {
     case ScopeType::Global:
@@ -198,7 +70,7 @@ void SemanticAnalyzer::enterScope(ScopeType type) {
     case ScopeType::Block: {
       auto block = std::make_shared<BlockScope>();
       // Inherit unsafe context only for block scopes
-      block->inUnsafeContext = currentScope->inUnsafeContext;
+      block->inUnsafeContext = currentScope_->inUnsafeContext;
       child = block;
       break;
     }
@@ -206,31 +78,31 @@ void SemanticAnalyzer::enterScope(ScopeType type) {
       child = std::make_shared<TypeParamsScope>();
       break;
   }
-  child->parent = currentScope;
-  currentScope->children.push_back(child);
-  currentScope = child.get();
+  child->parent = currentScope_;
+  currentScope_->children.push_back(child);
+  currentScope_ = child.get();
 }
 
-void SemanticAnalyzer::enterModuleScope(const std::string& moduleName) {
+void SemanticContext::enterModuleScope(const std::string& moduleName) {
   // Create or reuse a child module scope in the current scope's tree
-  auto& child = currentScope->childModules[moduleName];
+  auto& child = currentScope_->childModules[moduleName];
   if (!child) {
     auto modScope = std::make_shared<ModuleScope>();
     modScope->scopeName = moduleName;
-    modScope->parent = currentScope;
+    modScope->parent = currentScope_;
     // Compute full scope path by extending parent's path
-    modScope->scopePath = currentScope->scopePath;
+    modScope->scopePath = currentScope_->scopePath;
     modScope->scopePath.push_back(moduleName);
     modScope->qualifiedName = sun::QualifiedName(
-        currentScope->scopePath, moduleName, currentScope->scopePath);
+        currentScope_->scopePath, moduleName, currentScope_->scopePath);
     child = modScope;
   }
-  currentScope = child.get();
+  currentScope_ = child.get();
 }
 
-void SemanticAnalyzer::declareModule(const ModuleAST& module) {
+void SemanticContext::declareModule(const ModuleAST& module) {
   enterModuleScope(module.getName());
-  auto* scope = static_cast<ModuleScope*>(currentScope);
+  auto* scope = static_cast<ModuleScope*>(currentScope_);
   if (scope->visibilityDeclared &&
       scope->visibility != module.getVisibility()) {
     logSemanticError(
@@ -243,19 +115,19 @@ void SemanticAnalyzer::declareModule(const ModuleAST& module) {
   scope->visibilityDeclared = true;
 }
 
-void SemanticAnalyzer::enterClassScope(const sun::QualifiedName& className) {
+void SemanticContext::enterClassScope(const sun::QualifiedName& className) {
   auto classScope = std::make_shared<ClassScope>();
   classScope->classBaseName = className.baseName;
   classScope->classMangledName = className.mangled();
   // Use the class's scope path directly
   classScope->scopePath = className.scopePath;
   classScope->scopePath.push_back(className.baseName);
-  classScope->parent = currentScope;
-  currentScope->children.push_back(classScope);
-  currentScope = classScope.get();
+  classScope->parent = currentScope_;
+  currentScope_->children.push_back(classScope);
+  currentScope_ = classScope.get();
 }
 
-void SemanticAnalyzer::enterInterfaceScope(
+void SemanticContext::enterInterfaceScope(
     const sun::QualifiedName& interfaceName) {
   auto ifaceScope = std::make_shared<InterfaceScope>();
   ifaceScope->interfaceBaseName = interfaceName.baseName;
@@ -263,33 +135,33 @@ void SemanticAnalyzer::enterInterfaceScope(
   // Use the interface's scope path directly
   ifaceScope->scopePath = interfaceName.scopePath;
   ifaceScope->scopePath.push_back(interfaceName.baseName);
-  ifaceScope->parent = currentScope;
-  currentScope->children.push_back(ifaceScope);
-  currentScope = ifaceScope.get();
+  ifaceScope->parent = currentScope_;
+  currentScope_->children.push_back(ifaceScope);
+  currentScope_ = ifaceScope.get();
 }
 
-void SemanticAnalyzer::enterFunctionScope(const std::string& funcSig,
-                                          const sun::QualifiedName& funcName,
-                                          bool canThrow,
-                                          sun::TypePtr returnType) {
+void SemanticContext::enterFunctionScope(const std::string& funcSig,
+                                         const sun::QualifiedName& funcName,
+                                         bool canThrow,
+                                         sun::TypePtr returnType) {
   auto funcScope = std::make_shared<FunctionScope>();
   funcScope->functionSignature = funcSig;
   funcScope->functionName = funcName;
   funcScope->functionCanThrow = canThrow;
   funcScope->functionReturnType = std::move(returnType);
-  funcScope->parent = currentScope;
+  funcScope->parent = currentScope_;
 
   // Set scopePath to include the function's mangled name so nested functions
   // get unique qualified names (e.g., inner inside outer_i32 ->
   // outer_i32_inner)
   funcScope->scopePath = {funcName.mangled()};
 
-  currentScope->children.push_back(funcScope);
-  currentScope = funcScope.get();
+  currentScope_->children.push_back(funcScope);
+  currentScope_ = funcScope.get();
 }
 
-sun::TypePtr SemanticAnalyzer::currentFunctionReturnType() const {
-  for (auto* s = currentScope; s != nullptr; s = s->parent) {
+sun::TypePtr SemanticContext::currentFunctionReturnType() const {
+  for (auto* s = currentScope_; s != nullptr; s = s->parent) {
     if (s->getType() == ScopeType::Function) {
       return static_cast<const FunctionScope*>(s)->functionReturnType;
     }
@@ -297,16 +169,16 @@ sun::TypePtr SemanticAnalyzer::currentFunctionReturnType() const {
   return nullptr;
 }
 
-void SemanticAnalyzer::exitScope() {
-  if (currentScope->parent) {
-    auto* parent = currentScope->parent;
+void SemanticContext::exitScope() {
+  if (currentScope_->parent) {
+    auto* parent = currentScope_->parent;
     // Keep all scopes in the tree for debugging/visualization.
     // Symbol lookups already don't descend into Function scopes.
-    currentScope = parent;
+    currentScope_ = parent;
   }
 }
 
-std::string SemanticAnalyzer::getCurrentModulePrefix() const {
+std::string SemanticContext::getCurrentModulePrefix() const {
   // Get module path from scope and mangle it for symbol prefixing
   auto scopePath = getCurrentScopePath();
   if (scopePath.empty()) return "";
@@ -320,9 +192,9 @@ std::string SemanticAnalyzer::getCurrentModulePrefix() const {
   return result + "_";
 }
 
-std::vector<std::string> SemanticAnalyzer::getCurrentScopePath() const {
+std::vector<std::string> SemanticContext::getCurrentScopePath() const {
   // Walk up to find the nearest scope with a scopePath (Module or Import).
-  for (auto* s = currentScope; s != nullptr; s = s->parent) {
+  for (auto* s = currentScope_; s != nullptr; s = s->parent) {
     if (!s->scopePath.empty()) {
       return s->scopePath;
     }
@@ -330,21 +202,21 @@ std::vector<std::string> SemanticAnalyzer::getCurrentScopePath() const {
   return {};
 }
 
-sun::QualifiedName SemanticAnalyzer::makeQualifiedName(
+sun::QualifiedName SemanticContext::makeQualifiedName(
     const std::string& baseName) const {
   return sun::QualifiedName(getCurrentScopePath(), baseName,
                             currentModulePath());
 }
 
-std::string SemanticAnalyzer::qualifyNameInCurrentModule(
+std::string SemanticContext::qualifyNameInCurrentModule(
     const std::string& name) const {
   std::string prefix = getCurrentModulePrefix();
   return prefix + name;
 }
 
-bool SemanticAnalyzer::isInThrowingFunction() const {
+bool SemanticContext::isInThrowingFunction() const {
   // Find the nearest enclosing function scope and check if it can throw
-  for (auto* s = currentScope; s != nullptr; s = s->parent) {
+  for (auto* s = currentScope_; s != nullptr; s = s->parent) {
     if (auto* funcScope = s->asFunction()) {
       return funcScope->functionCanThrow;
     }
@@ -352,9 +224,9 @@ bool SemanticAnalyzer::isInThrowingFunction() const {
   return false;
 }
 
-bool SemanticAnalyzer::isInTryBlock() const {
+bool SemanticContext::isInTryBlock() const {
   // Check if any scope in the chain has tryBlockDepth > 0
-  for (auto* s = currentScope; s != nullptr; s = s->parent) {
+  for (auto* s = currentScope_; s != nullptr; s = s->parent) {
     if (s->tryBlockDepth > 0) {
       return true;
     }
@@ -366,54 +238,55 @@ bool SemanticAnalyzer::isInTryBlock() const {
   return false;
 }
 
-void SemanticAnalyzer::enterTryBlock() {
-  if (currentScope) {
-    currentScope->tryBlockDepth++;
+void SemanticContext::enterTryBlock() {
+  if (currentScope_) {
+    currentScope_->tryBlockDepth++;
   }
 }
 
-void SemanticAnalyzer::exitTryBlock() {
-  if (currentScope && currentScope->tryBlockDepth > 0) {
-    currentScope->tryBlockDepth--;
+void SemanticContext::exitTryBlock() {
+  if (currentScope_ && currentScope_->tryBlockDepth > 0) {
+    currentScope_->tryBlockDepth--;
   }
 }
 
-bool SemanticAnalyzer::isInUnsafeBlock() const {
-  return currentScope && currentScope->inUnsafeContext;
+bool SemanticContext::isInUnsafeBlock() const {
+  return currentScope_ && currentScope_->inUnsafeContext;
 }
 
-void SemanticAnalyzer::enterUnsafeBlock() {
-  if (currentScope) {
-    currentScope->unsafeBlockDepth++;
-    currentScope->inUnsafeContext = true;
+void SemanticContext::enterUnsafeBlock() {
+  if (currentScope_) {
+    currentScope_->unsafeBlockDepth++;
+    currentScope_->inUnsafeContext = true;
   }
 }
 
-void SemanticAnalyzer::exitUnsafeBlock() {
-  if (currentScope && currentScope->unsafeBlockDepth > 0) {
-    currentScope->unsafeBlockDepth--;
-    if (currentScope->unsafeBlockDepth == 0) {
+void SemanticContext::exitUnsafeBlock() {
+  if (currentScope_ && currentScope_->unsafeBlockDepth > 0) {
+    currentScope_->unsafeBlockDepth--;
+    if (currentScope_->unsafeBlockDepth == 0) {
       // Restore based on parent (if we inherited from parent, stay in unsafe)
       // For function/module/import scopes, parent's context doesn't matter
-      currentScope->inUnsafeContext =
-          currentScope->parent && currentScope->getType() == ScopeType::Block &&
-          currentScope->parent->inUnsafeContext;
+      currentScope_->inUnsafeContext =
+          currentScope_->parent &&
+          currentScope_->getType() == ScopeType::Block &&
+          currentScope_->parent->inUnsafeContext;
     }
   }
 }
 
-bool SemanticAnalyzer::isModuleName(const std::string& name) const {
-  return currentScope->isModuleName(name);
+bool SemanticContext::isModuleName(const std::string& name) const {
+  return currentScope_->isModuleName(name);
 }
 
-SemanticScope* SemanticAnalyzer::lookupModuleScope(
+SemanticScope* SemanticContext::lookupModuleScope(
     const std::string& dotPath) const {
-  if (!currentScope) return nullptr;
-  return currentScope->lookupModuleScope(dotPath);
+  if (!currentScope_) return nullptr;
+  return currentScope_->lookupModuleScope(dotPath);
 }
 
-std::vector<UsingImport> SemanticAnalyzer::getActiveUsingImports() const {
-  return currentScope->getActiveUsingImports();
+std::vector<UsingImport> SemanticContext::getActiveUsingImports() const {
+  return currentScope_->getActiveUsingImports();
 }
 
 // -------------------------------------------------------------------
@@ -537,7 +410,7 @@ static std::vector<SemanticScope*> collectAllModuleScopes(
   return results;
 }
 
-SymbolMatch SemanticAnalyzer::findSymbolInModule(
+SymbolMatch SemanticContext::findSymbolInModule(
     const std::string& modulePath, const std::string& name,
     SymbolKind filterKind, const std::vector<sun::TypePtr>* argTypes) const {
   // Helper to extract visible module path by stripping $...$ prefixes
@@ -564,7 +437,7 @@ SymbolMatch SemanticAnalyzer::findSymbolInModule(
 
   // Access filtering: private symbols of other modules are skipped; if that
   // leaves nothing, the denial is reported instead of "unknown member".
-  AccessFilter accessFilter(currentScope);
+  AccessFilter accessFilter(currentScope_);
 
   // Helper to search a single scope for all symbol types
   auto searchInScope = [&](SemanticScope* scope) -> std::optional<SymbolMatch> {
@@ -737,7 +610,7 @@ SymbolMatch SemanticAnalyzer::findSymbolInModule(
   // scopes)
   std::vector<SymbolMatch> allMatches;
   if (!visiblePath.empty()) {
-    auto allScopes = collectAllModuleScopes(currentScope, visiblePath);
+    auto allScopes = collectAllModuleScopes(currentScope_, visiblePath);
     for (auto* scope : allScopes) {
       if (auto match = searchInScope(scope)) {
         allMatches.push_back(*match);
@@ -788,9 +661,9 @@ SymbolMatch SemanticAnalyzer::findSymbolInModule(
 // Variable management
 // -------------------------------------------------------------------
 
-void SemanticAnalyzer::declareVariable(const std::string& name,
-                                       sun::TypePtr type, bool isParam,
-                                       bool isConst) {
+void SemanticContext::declareVariable(const std::string& name,
+                                      sun::TypePtr type, bool isParam,
+                                      bool isConst) {
   // Block user-defined identifiers starting with underscore
   if (isReservedIdentifier(name)) {
     logAndThrowError(
@@ -798,7 +671,7 @@ void SemanticAnalyzer::declareVariable(const std::string& name,
         "' is invalid: names starting with '_' are reserved for builtins");
   }
   // Check for shadowing of global/module variables
-  for (auto* s = currentScope; s != nullptr; s = s->parent) {
+  for (auto* s = currentScope_; s != nullptr; s = s->parent) {
     if (s->getType() == ScopeType::Global ||
         s->getType() == ScopeType::Module) {
       if (s->variables.contains(name)) {
@@ -812,26 +685,26 @@ void SemanticAnalyzer::declareVariable(const std::string& name,
   }
   VariableInfo info{type, isAtModuleLevel(), isParam, false};
   info.isConst = isConst;
-  currentScope->variables[name] = info;
+  currentScope_->variables[name] = info;
 }
 
-VariableInfo* SemanticAnalyzer::lookupVariable(const std::string& name) {
-  return currentScope->lookupVariable(name);
+VariableInfo* SemanticContext::lookupVariable(const std::string& name) {
+  return currentScope_->lookupVariable(name);
 }
 
 // -------------------------------------------------------------------
 // Type narrowing (from _is<T> type guards)
 // -------------------------------------------------------------------
 
-void SemanticAnalyzer::narrowVariable(const std::string& varName,
-                                      sun::TypePtr narrowedType) {
-  currentScope->narrowedTypes[varName] = std::move(narrowedType);
+void SemanticContext::narrowVariable(const std::string& varName,
+                                     sun::TypePtr narrowedType) {
+  currentScope_->narrowedTypes[varName] = std::move(narrowedType);
 }
 
-sun::TypePtr SemanticAnalyzer::getNarrowedType(
-    const std::string& varName, sun::TypePtr originalType) const {
+sun::TypePtr SemanticContext::getNarrowedType(const std::string& varName,
+                                              sun::TypePtr originalType) const {
   // Search from innermost to outermost scope
-  for (auto* s = currentScope; s != nullptr; s = s->parent) {
+  for (auto* s = currentScope_; s != nullptr; s = s->parent) {
     auto found = s->narrowedTypes.find(varName);
     if (found != s->narrowedTypes.end()) {
       sun::TypePtr narrowedType = found->second;
@@ -887,19 +760,8 @@ sun::TypePtr SemanticAnalyzer::getNarrowedType(
 // Function registration
 // -------------------------------------------------------------------
 
-std::string SemanticAnalyzer::getFunctionSignature(
-    const std::string& name, const std::vector<sun::TypePtr>& paramTypes) {
-  std::string sig = name + "(";
-  for (size_t i = 0; i < paramTypes.size(); ++i) {
-    if (i > 0) sig += ",";
-    sig += paramTypes[i] ? paramTypes[i]->toString() : "?";
-  }
-  sig += ")";
-  return sig;
-}
-
-void SemanticAnalyzer::registerFunctionInCurrentScope(
-    const std::string& name, const FunctionInfo& info) {
+void SemanticContext::registerFunctionInCurrentScope(const std::string& name,
+                                                     const FunctionInfo& info) {
   // Functions are registered in their enclosing scope. For nested functions,
   // this is the parent function's scope - the scope hierarchy naturally
   // disambiguates between different generic instantiations.
@@ -907,11 +769,10 @@ void SemanticAnalyzer::registerFunctionInCurrentScope(
   // Always overwrite: the declaration pre-pass registers with minimal info
   // (no captures), and the normal pass overwrites with complete info.
   // This also handles diamond import re-registration gracefully.
-  currentScope->functions[sig] = info;
+  currentScope_->functions[sig] = info;
 }
 
-void SemanticAnalyzer::registerGenericFunctionInCurrentScope(
-    FunctionAST& func) {
+void SemanticContext::registerGenericFunctionInCurrentScope(FunctionAST& func) {
   PrototypeAST& proto = const_cast<PrototypeAST&>(func.getProto());
 
   GenericFunctionInfo genInfo;
@@ -925,30 +786,30 @@ void SemanticAnalyzer::registerGenericFunctionInCurrentScope(
   sun::QualifiedName qname(getCurrentScopePath(), proto.getName(),
                            currentModulePath());
   genInfo.qualifiedName = qname;
-  genInfo.definitionScope = currentScope->shared_from_this();
-  currentScope->genericFunctions[qname] = genInfo;
+  genInfo.definitionScope = currentScope_->shared_from_this();
+  currentScope_->genericFunctions[qname] = genInfo;
 }
 
-const GenericFunctionInfo* SemanticAnalyzer::lookupGenericFunction(
+const GenericFunctionInfo* SemanticContext::lookupGenericFunction(
     const std::string& name) const {
-  return currentScope->lookupGenericFunction(name);
+  return currentScope_->lookupGenericFunction(name);
 }
 
-std::vector<FunctionInfo> SemanticAnalyzer::getAllFunctions(
+std::vector<FunctionInfo> SemanticContext::getAllFunctions(
     const std::string& name) const {
-  return currentScope->getAllFunctions(name);
+  return currentScope_->getAllFunctions(name);
 }
 
-std::optional<FunctionInfo> SemanticAnalyzer::lookupFunction(
+std::optional<FunctionInfo> SemanticContext::lookupFunction(
     const std::string& name, const std::vector<sun::TypePtr>& argTypes) const {
-  return currentScope->lookupFunction(name, argTypes);
+  return currentScope_->lookupFunction(name, argTypes);
 }
 
 // -------------------------------------------------------------------
 // Builtin function registration
 // -------------------------------------------------------------------
 
-void SemanticAnalyzer::registerBuiltinFunctions() {
+void SemanticContext::registerBuiltinFunctions() {
   using sun::Types;
 
   // Low-level print intrinsics (used by stdlib print functions)
@@ -1169,54 +1030,25 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
 // Namespace-qualified symbols (separate from scope-based lookup)
 // -------------------------------------------------------------------
 
-void SemanticAnalyzer::registerPrecompiledModuleVariable(
-    VariableCreationAST& varCreate) {
-  sun::TypePtr type;
-  if (varCreate.hasTypeAnnotation()) {
-    type = typeAnnotationToType(*varCreate.getTypeAnnotation());
-  } else if (varCreate.hasValue()) {
-    // The declaration inferred its type, so the bundle kept the initializer
-    // for its type alone. Codegen still only declares the symbol.
-    analyzeExpr(const_cast<ExprAST&>(*varCreate.getValue()));
-    type = varCreate.getValue()->getResolvedType();
-  }
-  if (!type) return;
-  varCreate.setResolvedType(type);
-
-  // Bare-name lookup goes through `variables`, which body analysis would
-  // normally populate; there is no body to analyze here.
-  const std::string& name = varCreate.getName();
-  VariableInfo info{type, true, false, false};
-  info.visibility = varCreate.getVisibility();
-  info.isConst = varCreate.isConst();
-  info.qualifiedName = varCreate.getQualifiedName();
-  currentScope->variables[name] = info;
-
-  // The stub's qualified name is already scoped by content hash; it must be
-  // the one registered, since that is the symbol the bundle defines.
-  registerModuleVariable(name, varCreate.getQualifiedName().mangled(), type,
-                         varCreate.getVisibility(), varCreate.isConst());
-}
-
-void SemanticAnalyzer::registerModuleVariable(const std::string& baseName,
-                                              const std::string& qualifiedName,
-                                              sun::TypePtr type,
-                                              sun::Visibility visibility,
-                                              bool isConst) {
+void SemanticContext::registerModuleVariable(const std::string& baseName,
+                                             const std::string& qualifiedName,
+                                             sun::TypePtr type,
+                                             sun::Visibility visibility,
+                                             bool isConst) {
   VariableInfo info{type, true, false};
   info.visibility = visibility;
   info.isConst = isConst;
   info.qualifiedName = makeQualifiedName(baseName);
   // Store with qualified name for codegen lookup
-  rootScope->namespacedVariables[qualifiedName] = info;
-  if (currentScope != rootScope.get()) {
-    currentScope->namespacedVariables[qualifiedName] = info;
+  rootScope_->namespacedVariables[qualifiedName] = info;
+  if (currentScope_ != rootScope_.get()) {
+    currentScope_->namespacedVariables[qualifiedName] = info;
   }
   // Also store with plain name in current scope for hasSymbol lookup
-  currentScope->namespacedVariables[baseName] = info;
+  currentScope_->namespacedVariables[baseName] = info;
   // The plain-name entry created by declareVariable during body analysis
-  if (auto it = currentScope->variables.find(baseName);
-      it != currentScope->variables.end()) {
+  if (auto it = currentScope_->variables.find(baseName);
+      it != currentScope_->variables.end()) {
     it->second.visibility = visibility;
     it->second.isConst = isConst;
     if (it->second.qualifiedName.empty())
@@ -1224,16 +1056,16 @@ void SemanticAnalyzer::registerModuleVariable(const std::string& baseName,
   }
 }
 
-VariableInfo* SemanticAnalyzer::lookupQualifiedVariable(
+VariableInfo* SemanticContext::lookupQualifiedVariable(
     const std::string& qualifiedName) {
-  return currentScope->lookupQualifiedVariable(qualifiedName);
+  return currentScope_->lookupQualifiedVariable(qualifiedName);
 }
 
 // Helper: Get the full module path including library scope hashes
 // e.g., "b" -> "$hash$.b" if b is inside a library scope
-std::string SemanticAnalyzer::getFullModulePath(
+std::string SemanticContext::getFullModulePath(
     const std::string& visiblePath) const {
-  if (visiblePath.empty() || !currentScope) return visiblePath;
+  if (visiblePath.empty() || !currentScope_) return visiblePath;
 
   // Helper to find a segment and return its full path including library scopes
   // Throws on ambiguity (same name found in multiple library scopes)
@@ -1272,9 +1104,7 @@ std::string SemanticAnalyzer::getFullModulePath(
           found = candidate;
           foundInLib = modName;
         }
-      }
-
-      // Recursively check nested library scopes
+      }  // Recursively check nested library scopes
       auto result = findFullPath(*child, segment, libPath);
       if (!result.empty()) {
         // Keep first match, let symbol lookup resolve actual ambiguity
@@ -1288,7 +1118,7 @@ std::string SemanticAnalyzer::getFullModulePath(
 
   // Search from innermost scope outward (back to front) so that modules
   // registered in function scopes (via scoped imports) are resolved correctly.
-  for (auto* scopeIt = currentScope; scopeIt != nullptr;
+  for (auto* scopeIt = currentScope_; scopeIt != nullptr;
        scopeIt = scopeIt->parent) {
     std::string fullPath;
     const SemanticScope* current = scopeIt;
@@ -1319,30 +1149,30 @@ std::string SemanticAnalyzer::getFullModulePath(
   return visiblePath;
 }
 
-const FunctionInfo* SemanticAnalyzer::lookupQualifiedFunction(
+const FunctionInfo* SemanticContext::lookupQualifiedFunction(
     const std::string& qualifiedName) const {
-  return currentScope->lookupQualifiedFunction(qualifiedName);
+  return currentScope_->lookupQualifiedFunction(qualifiedName);
 }
 
-sun::QualifiedName SemanticAnalyzer::resolveNameWithUsings(
+sun::QualifiedName SemanticContext::resolveNameWithUsings(
     const std::string& name) const {
-  return currentScope->resolveNameWithUsings(name);
+  return currentScope_->resolveNameWithUsings(name);
 }
 
-void SemanticAnalyzer::addUsingImport(const UsingImport& import) {
+void SemanticContext::addUsingImport(const UsingImport& import) {
   // Skip if already present (idempotent for Pass 1 + Pass 2 double-processing)
-  for (const auto& existing : currentScope->usingImports) {
+  for (const auto& existing : currentScope_->usingImports) {
     if (existing.namespacePath == import.namespacePath &&
         existing.target == import.target) {
       return;
     }
   }
-  currentScope->usingImports.push_back(import);
+  currentScope_->usingImports.push_back(import);
 }
 
-void SemanticAnalyzer::addImportBinding(const ImportBinding& binding) {
+void SemanticContext::addImportBinding(const ImportBinding& binding) {
   // Skip if already present (idempotent for Pass 1 + Pass 2 double-processing)
-  for (const auto& existing : currentScope->importBindings) {
+  for (const auto& existing : currentScope_->importBindings) {
     if (existing.sourceScope == binding.sourceScope &&
         existing.isWildcard == binding.isWildcard &&
         existing.localName == binding.localName &&
@@ -1350,5 +1180,211 @@ void SemanticAnalyzer::addImportBinding(const ImportBinding& binding) {
       return;
     }
   }
-  currentScope->importBindings.push_back(binding);
+  currentScope_->importBindings.push_back(binding);
+}
+
+void SemanticContext::registerClass(const std::string& name,
+                                    std::shared_ptr<sun::ClassType> classType,
+                                    std::optional<Position> loc) {
+  // Skip if already registered (diamond import re-registration)
+  if (currentScope_->classes.contains(name)) {
+    return;
+  }
+  // Register in current scope
+  currentScope_->classes[name] = classType;
+}
+
+std::shared_ptr<sun::ClassType> SemanticContext::lookupClass(
+    const std::string& name) const {
+  return currentScope_->lookupClass(name);
+}
+
+void SemanticContext::setCurrentClass(
+    std::shared_ptr<sun::ClassType> classType) {
+  currentClass_ = std::move(classType);
+}
+
+std::shared_ptr<sun::ClassType> SemanticContext::getCurrentClass() const {
+  return currentClass_;
+}
+
+void SemanticContext::registerGenericClass(const std::string& name,
+                                           const GenericClassInfo& info,
+                                           std::optional<Position> loc) {
+  // Skip if already registered (diamond import re-registration)
+  if (currentScope_->genericClasses.contains(name)) {
+    return;
+  }
+  // Register in current scope
+  auto& slot = currentScope_->genericClasses[name];
+  slot = info;
+  slot.definitionScope = currentScope_->shared_from_this();
+}
+
+const GenericClassInfo* SemanticContext::lookupGenericClass(
+    const std::string& name) const {
+  return currentScope_->lookupGenericClass(name);
+}
+
+const GenericClassInfo* SemanticContext::lookupGenericClass(
+    const sun::QualifiedName& qualifiedName) const {
+  return currentScope_->lookupGenericClass(qualifiedName);
+}
+
+void SemanticContext::addTypeParameterBindings(
+    const std::vector<std::string>& params,
+    const std::vector<sun::TypePtr>& args) {
+  auto& scope = *currentScope_;
+  for (size_t i = 0; i < params.size() && i < args.size(); ++i) {
+    scope.typeParameters[params[i]] = args[i];
+  }
+}
+
+sun::TypePtr SemanticContext::findTypeParameter(const std::string& name) const {
+  // Search from innermost to outermost scope
+  for (auto* s = currentScope_; s != nullptr; s = s->parent) {
+    auto found = s->typeParameters.find(name);
+    if (found != s->typeParameters.end()) {
+      return found->second;
+    }
+  }
+  return nullptr;
+}
+
+sun::TypePtr SemanticContext::findTypeAlias(const std::string& name) const {
+  // Search from innermost to outermost scope
+  for (auto* s = currentScope_; s != nullptr; s = s->parent) {
+    auto found = s->typeAliases.find(name);
+    if (found != s->typeAliases.end()) {
+      return found->second;
+    }
+  }
+  return nullptr;
+}
+
+void SemanticContext::registerInterface(
+    const std::string& name, std::shared_ptr<sun::InterfaceType> interfaceType,
+    std::optional<Position> loc) {
+  // Skip if already registered (diamond import re-registration)
+  if (currentScope_->interfaces.contains(name)) {
+    return;
+  }
+  // Register in current scope
+  currentScope_->interfaces[name] = interfaceType;
+}
+
+std::shared_ptr<sun::InterfaceType> SemanticContext::lookupInterface(
+    const std::string& name) const {
+  auto result = currentScope_->lookupInterface(name);
+  if (result) return result;
+
+  // Check builtin interfaces in type registry (IError)
+  if (typeRegistry_) {
+    auto builtinInterface = typeRegistry_->lookupInterface(name);
+    if (builtinInterface) return builtinInterface;
+  }
+
+  return nullptr;
+}
+
+void SemanticContext::registerGenericInterface(const std::string& name,
+                                               const GenericInterfaceInfo& info,
+                                               std::optional<Position> loc) {
+  // Skip if already registered (diamond import re-registration)
+  if (currentScope_->genericInterfaces.contains(name)) {
+    return;
+  }
+  // Register in current scope
+  auto& slot = currentScope_->genericInterfaces[name];
+  slot = info;
+  slot.definitionScope = currentScope_->shared_from_this();
+}
+
+const GenericInterfaceInfo* SemanticContext::lookupGenericInterface(
+    const std::string& name) const {
+  return currentScope_->lookupGenericInterface(name);
+}
+
+std::shared_ptr<sun::EnumType> SemanticContext::lookupEnum(
+    const std::string& name) const {
+  return currentScope_->lookupEnum(name);
+}
+
+void SemanticContext::registerEnum(const std::string& name,
+                                   std::shared_ptr<sun::EnumType> enumType) {
+  // Register in current scope
+  currentScope_->enums[name] = enumType;
+}
+
+void SemanticContext::registerGenericEnum(const std::string& name,
+                                          GenericEnumInfo info) {
+  info.definitionScope = currentScope_->shared_from_this();
+  currentScope_->genericEnums[name] = std::move(info);
+}
+
+const GenericEnumInfo* SemanticContext::lookupGenericEnum(
+    const std::string& name) const {
+  return currentScope_->lookupGenericEnum(name);
+}
+
+sun::ModulePath SemanticContext::currentModulePath() const {
+  for (auto* s = currentScope_; s != nullptr; s = s->parent) {
+    if (s->getType() == ScopeType::Module) return s->scopePath;
+  }
+  return {};
+}
+
+void SemanticContext::denyAccess(const sun::access::ItemRef& item) const {
+  auto loc = currentLocation();
+  logSemanticError(sun::access::denialMessage(item), loc);
+}
+
+const sun::ClassField* SemanticContext::accessibleField(
+    const sun::ClassType& cls, const std::string& name,
+    const Position& loc) const {
+  const auto* f = cls.getField(name);
+  if (f) requireAccessible(fieldRef(cls, *f), loc);
+  return f;
+}
+
+const sun::ClassMethod* SemanticContext::accessibleMethod(
+    const sun::ClassType& cls, const std::string& name,
+    const Position& loc) const {
+  const auto* m = cls.getMethod(name);
+  if (m) requireAccessible(methodRef(cls, *m), loc);
+  return m;
+}
+
+const sun::ClassMethod* SemanticContext::accessibleMethodForArgs(
+    const sun::ClassType& cls, const std::string& name,
+    const std::vector<sun::TypePtr>& argTypes, const Position& loc) const {
+  const auto* m = cls.getMethodForArgs(name, argTypes);
+  if (m) requireAccessible(methodRef(cls, *m), loc);
+  return m;
+}
+
+const sun::InterfaceField* SemanticContext::accessibleField(
+    const sun::InterfaceType& iface, const std::string& name,
+    const Position& loc) const {
+  const auto* f = iface.getField(name);
+  if (f) requireAccessible(fieldRef(iface, *f), loc);
+  return f;
+}
+
+const sun::InterfaceMethod* SemanticContext::accessibleMethod(
+    const sun::InterfaceType& iface, const std::string& name,
+    const Position& loc) const {
+  const auto* m = iface.getMethod(name);
+  if (m) requireAccessible(methodRef(iface, *m), loc);
+  return m;
+}
+
+void SemanticContext::requireModuleAccessible(
+    const SemanticScopeBase& moduleScope, const Position& loc) const {
+  for (auto* s = &moduleScope; s && s->getType() == ScopeType::Module;
+       s = s->parent) {
+    if (isLibraryScope(s->scopeName))
+      continue;  // bundle boundary, not a module
+    requireAccessible(moduleRef(static_cast<const ModuleScope&>(*s)), loc);
+  }
 }

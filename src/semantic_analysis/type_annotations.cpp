@@ -1,21 +1,19 @@
-// semantic_analysis/type_conversion.cpp — Type annotation conversion and
-// substitution
+// type_annotations.cpp — Resolving a written type annotation to a type, and
+// the const view of a type (see type_inferer.h)
 
 #include "semantic_analysis/semantic_analyzer.h"
+#include "semantic_analysis/type_inferer.h"
 #include "support/error.h"
 
-// -------------------------------------------------------------------
-// Type parameter substitution
-// -------------------------------------------------------------------
+using sun::unwrapRef;
 
-// Substitute type parameters in a type using current bindings
-sun::TypePtr SemanticAnalyzer::substituteTypeParameters(sun::TypePtr type) {
+sun::TypePtr TypeInferer::substituteTypeParameters(sun::TypePtr type) {
   if (!type) return nullptr;
 
   // If it's a type parameter, look up binding in scope stack
   if (type->isTypeParameter()) {
     auto* tp = dynamic_cast<sun::TypeParameterType*>(type.get());
-    auto bound = findTypeParameter(tp->getName());
+    auto bound = ctx_.findTypeParameter(tp->getName());
     return bound ? bound : type;  // Return bound type or original if not bound
   }
 
@@ -94,8 +92,8 @@ sun::TypePtr SemanticAnalyzer::substituteTypeParameters(sun::TypePtr type) {
       }
       if (changed) {
         // Re-instantiate the generic with substituted type args
-        if (auto* info = lookupGenericClassOf(*ct)) {
-          return instantiateGenericClass(*info, newArgs);
+        if (auto* info = generics_.lookupGenericClassOf(*ct)) {
+          return generics_.instantiateGenericClass(*info, newArgs);
         }
         logAndThrowError("Cannot resolve generic class for '" +
                          ct->getDisplayName() + "'");
@@ -125,7 +123,7 @@ sun::TypePtr SemanticAnalyzer::substituteTypeParameters(sun::TypePtr type) {
         if (baseName.empty()) {
           baseName = it->getName();
         }
-        return instantiateGenericInterface(baseName, newArgs);
+        return generics_.instantiateGenericInterface(baseName, newArgs);
       }
     }
     return type;
@@ -145,7 +143,7 @@ sun::TypePtr SemanticAnalyzer::substituteTypeParameters(sun::TypePtr type) {
         if (newArg != arg) changed = true;
       }
       if (changed) {
-        return instantiateGenericEnum(et->getGenericBase(), newArgs);
+        return generics_.instantiateGenericEnum(et->getGenericBase(), newArgs);
       }
     }
     return type;
@@ -159,7 +157,7 @@ sun::TypePtr SemanticAnalyzer::substituteTypeParameters(sun::TypePtr type) {
 // Type argument resolution helper
 // -------------------------------------------------------------------
 
-std::vector<sun::TypePtr> SemanticAnalyzer::resolveTypeArguments(
+std::vector<sun::TypePtr> TypeInferer::resolveTypeArguments(
     const std::vector<std::unique_ptr<TypeAnnotation>>& typeAnnotations,
     const std::optional<Position>& location, const std::string& context) {
   std::vector<sun::TypePtr> typeArgs;
@@ -177,8 +175,7 @@ std::vector<sun::TypePtr> SemanticAnalyzer::resolveTypeArguments(
 // Type annotation to type conversion
 // -------------------------------------------------------------------
 
-sun::TypePtr SemanticAnalyzer::typeAnnotationToType(
-    const TypeAnnotation& annot) {
+sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
   // Raw pointer types: raw_ptr<T> non-owning pointer for C interop
   if (annot.isRawPointer()) {
     if (!annot.elementType) {
@@ -253,7 +250,7 @@ sun::TypePtr SemanticAnalyzer::typeAnnotationToType(
   }
 
   // Check for type parameter binding (in generic context)
-  auto typeParamBinding = findTypeParameter(annot.baseName);
+  auto typeParamBinding = ctx_.findTypeParameter(annot.baseName);
   if (typeParamBinding) {
     return typeParamBinding;
   }
@@ -273,7 +270,7 @@ sun::TypePtr SemanticAnalyzer::typeAnnotationToType(
     }
 
     // Resolve the base name through using imports
-    sun::QualifiedName resolved = resolveNameWithUsings(annot.baseName);
+    sun::QualifiedName resolved = ctx_.resolveNameWithUsings(annot.baseName);
 
     // Try to instantiate the generic class
     // Use the original dotted name for module-qualified lookups (e.g.,
@@ -284,17 +281,18 @@ sun::TypePtr SemanticAnalyzer::typeAnnotationToType(
                                  : resolved.baseName;
     // Generic enum (e.g., Option<i32>) — checked first to avoid the noisy
     // unknown-class/interface fallthrough below
-    if (currentScope->lookupGenericEnum(lookupName)) {
-      auto specializedEnum = instantiateGenericEnum(lookupName, typeArgs);
+    if (ctx_.scope()->lookupGenericEnum(lookupName)) {
+      auto specializedEnum =
+          generics_.instantiateGenericEnum(lookupName, typeArgs);
       if (specializedEnum) {
         return specializedEnum;
       }
     }
 
     // Generic interface (e.g., IIterator<i32, Range>)
-    if (lookupGenericInterface(lookupName)) {
+    if (ctx_.lookupGenericInterface(lookupName)) {
       auto specializedInterface =
-          instantiateGenericInterface(lookupName, typeArgs);
+          generics_.instantiateGenericInterface(lookupName, typeArgs);
       if (specializedInterface) {
         return specializedInterface;
       }
@@ -302,8 +300,9 @@ sun::TypePtr SemanticAnalyzer::typeAnnotationToType(
 
     // Guarded so the unknown-name case reports here, with a source location,
     // rather than from inside the instantiation helper.
-    if (lookupGenericClass(lookupName)) {
-      auto specializedClass = instantiateGenericClass(lookupName, typeArgs);
+    if (ctx_.lookupGenericClass(lookupName)) {
+      auto specializedClass =
+          generics_.instantiateGenericClass(lookupName, typeArgs);
       if (specializedClass) {
         return specializedClass;
       }
@@ -319,26 +318,26 @@ sun::TypePtr SemanticAnalyzer::typeAnnotationToType(
   // Resolve the base name through using imports. A dotted name keeps its
   // module path, so the lookups below can find the symbol inside that module
   // (the generic branch above does the same).
-  sun::QualifiedName resolved = resolveNameWithUsings(annot.baseName);
+  sun::QualifiedName resolved = ctx_.resolveNameWithUsings(annot.baseName);
   const std::string& lookupName = annot.baseName.find('.') != std::string::npos
                                       ? annot.baseName
                                       : resolved.baseName;
 
   // Check for type aliases (lexically scoped)
-  auto aliasType = findTypeAlias(lookupName);
+  auto aliasType = ctx_.findTypeAlias(lookupName);
   if (aliasType) {
     return aliasType;
   }
 
   // Check for user-defined class types
-  auto classType = lookupClass(lookupName);
+  auto classType = ctx_.lookupClass(lookupName);
   if (classType) {
     return classType;
   }
 
   // Check for generic class definitions (used as type parameter in nested
   // generics)
-  auto* genericInfo = lookupGenericClass(lookupName);
+  auto* genericInfo = ctx_.lookupGenericClass(lookupName);
   if (genericInfo) {
     // This is a reference to a generic class without type arguments
     // Return a type parameter type (this should really be an error in most
@@ -347,13 +346,13 @@ sun::TypePtr SemanticAnalyzer::typeAnnotationToType(
   }
 
   // Check for user-defined interface types
-  auto interfaceType = lookupInterface(lookupName);
+  auto interfaceType = ctx_.lookupInterface(lookupName);
   if (interfaceType) {
     return interfaceType;
   }
 
   // Check for user-defined enum types
-  auto enumType = lookupEnum(lookupName);
+  auto enumType = ctx_.lookupEnum(lookupName);
   if (enumType) {
     return enumType;
   }
@@ -384,7 +383,7 @@ sun::TypePtr SemanticAnalyzer::typeAnnotationToType(
 // lower to the same layout, so a value crosses between them through memory
 // without codegen help. Classes are not viewed (a class holding a borrow of
 // its receiver is not a pattern the stdlib uses).
-sun::TypePtr SemanticAnalyzer::createConstView(sun::TypePtr type) {
+sun::TypePtr TypeInferer::createConstView(sun::TypePtr type) {
   if (!type) return type;
   if (type->isReference()) {
     auto* ref = static_cast<const sun::ReferenceType*>(type.get());
@@ -402,8 +401,8 @@ sun::TypePtr SemanticAnalyzer::createConstView(sun::TypePtr type) {
       args.push_back(viewed);
     }
     if (!changed) return type;
-    if (auto viewed =
-            instantiateGenericEnum(enumType->getGenericBase(), args)) {
+    if (auto viewed = generics_.instantiateGenericEnum(
+            enumType->getGenericBase(), args)) {
       return viewed;
     }
   }

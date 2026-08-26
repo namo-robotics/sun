@@ -51,31 +51,18 @@ void requireAccessible(const ModulePath& from, const ItemRef& item,
 }  // namespace sun::access
 
 // ---------------------------------------------------------------------------
-// SemanticAnalyzer integration
+// Naming class and interface members (see item_refs.h)
 // ---------------------------------------------------------------------------
 
-#include "semantic_analysis/semantic_analyzer.h"
+#include "semantic_analysis/item_refs.h"
 
-sun::ModulePath SemanticAnalyzer::currentModulePath() const {
-  for (auto* s = currentScope; s != nullptr; s = s->parent) {
-    if (s->getType() == ScopeType::Module) return s->scopePath;
-  }
-  return {};
-}
+namespace sun::access {
 
-void SemanticAnalyzer::denyAccess(const sun::access::ItemRef& item) const {
-  auto loc = currentLocation();
-  logSemanticError(sun::access::denialMessage(item), loc);
-}
-
-sun::Visibility SemanticAnalyzer::methodVisibility(const FunctionAST& method) {
-  if (method.getProto().getName() == "deinit") return sun::Visibility::Public;
-  return method.getVisibility();
-}
+namespace {
 
 // Display name without library-hash prefixes ("$hash$.sun.Vec<i32>" ->
 // "sun.Vec<i32>")
-static std::string cleanTypeName(std::string name) {
+std::string cleanTypeName(std::string name) {
   while (!name.empty() && name.front() == '$') {
     size_t close = name.find('$', 1);
     if (close == std::string::npos) break;
@@ -86,79 +73,36 @@ static std::string cleanTypeName(std::string name) {
   return name;
 }
 
+}  // namespace
+
+Visibility methodVisibility(const FunctionAST& method) {
+  if (method.getProto().getName() == "deinit") return Visibility::Public;
+  return method.getVisibility();
+}
+
 // Members are owned by their type's module
-sun::access::ItemRef SemanticAnalyzer::fieldRef(const sun::ClassType& cls,
-                                                const sun::ClassField& f) {
+ItemRef fieldRef(const sun::ClassType& cls, const sun::ClassField& f) {
   return {"field", f.name,
           "class '" + cleanTypeName(cls.getDisplayName()) + "'", f.visibility,
           cls.getQualifiedName().owner()};
 }
 
-sun::access::ItemRef SemanticAnalyzer::methodRef(const sun::ClassType& cls,
-                                                 const sun::ClassMethod& m) {
+ItemRef methodRef(const sun::ClassType& cls, const sun::ClassMethod& m) {
   return {"method", m.name,
           "class '" + cleanTypeName(cls.getDisplayName()) + "'", m.visibility,
           cls.getQualifiedName().owner()};
 }
 
-sun::access::ItemRef SemanticAnalyzer::fieldRef(const sun::InterfaceType& iface,
-                                                const sun::InterfaceField& f) {
+ItemRef fieldRef(const sun::InterfaceType& iface,
+                 const sun::InterfaceField& f) {
   return {"field", f.name, "interface '" + iface.getBaseName() + "'",
           f.visibility, iface.getQualifiedName().owner()};
 }
 
-sun::access::ItemRef SemanticAnalyzer::methodRef(
-    const sun::InterfaceType& iface, const sun::InterfaceMethod& m) {
+ItemRef methodRef(const sun::InterfaceType& iface,
+                  const sun::InterfaceMethod& m) {
   return {"method", m.name, "interface '" + iface.getBaseName() + "'",
           m.visibility, iface.getQualifiedName().owner()};
 }
 
-const sun::ClassField* SemanticAnalyzer::accessibleField(
-    const sun::ClassType& cls, const std::string& name,
-    const Position& loc) const {
-  const auto* f = cls.getField(name);
-  if (f) requireAccessible(fieldRef(cls, *f), loc);
-  return f;
-}
-
-const sun::ClassMethod* SemanticAnalyzer::accessibleMethod(
-    const sun::ClassType& cls, const std::string& name,
-    const Position& loc) const {
-  const auto* m = cls.getMethod(name);
-  if (m) requireAccessible(methodRef(cls, *m), loc);
-  return m;
-}
-
-const sun::ClassMethod* SemanticAnalyzer::accessibleMethodForArgs(
-    const sun::ClassType& cls, const std::string& name,
-    const std::vector<sun::TypePtr>& argTypes, const Position& loc) const {
-  const auto* m = cls.getMethodForArgs(name, argTypes);
-  if (m) requireAccessible(methodRef(cls, *m), loc);
-  return m;
-}
-
-const sun::InterfaceField* SemanticAnalyzer::accessibleField(
-    const sun::InterfaceType& iface, const std::string& name,
-    const Position& loc) const {
-  const auto* f = iface.getField(name);
-  if (f) requireAccessible(fieldRef(iface, *f), loc);
-  return f;
-}
-
-const sun::InterfaceMethod* SemanticAnalyzer::accessibleMethod(
-    const sun::InterfaceType& iface, const std::string& name,
-    const Position& loc) const {
-  const auto* m = iface.getMethod(name);
-  if (m) requireAccessible(methodRef(iface, *m), loc);
-  return m;
-}
-
-void SemanticAnalyzer::requireModuleAccessible(
-    const SemanticScopeBase& moduleScope, const Position& loc) const {
-  for (auto* s = &moduleScope; s && s->getType() == ScopeType::Module;
-       s = s->parent) {
-    if (isLibraryScope(s->scopeName))
-      continue;  // bundle boundary, not a module
-    requireAccessible(moduleRef(static_cast<const ModuleScope&>(*s)), loc);
-  }
-}
+}  // namespace sun::access

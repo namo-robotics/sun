@@ -5,11 +5,24 @@
 
 #include "codegen/intrinsics/intrinsics.h"
 #include "semantic_analysis/generic_type_arguments.h"
+#include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/semantic_analyzer.h"
+#include "semantic_analysis/symbol_names.h"
+#include "semantic_analysis/type_rules.h"
 #include "support/config.h"
 #include "support/error.h"
 
 using sun::unwrapRef;
+using sun::access::methodVisibility;
+using sun::names::getFunctionSignature;
+using sun::names::isIntrinsic;
+using sun::names::isReservedIdentifier;
+using sun::rules::checkCharOperands;
+using sun::rules::coerceBinaryLiteralOperands;
+using sun::rules::isAssignableTo;
+using sun::rules::isBorrowableLvalue;
+using sun::rules::tryCoerceIntegerLiteral;
+using sun::rules::unifyTernaryTypes;
 
 namespace {
 
@@ -60,19 +73,6 @@ void SemanticAnalyzer::analyze(ExprAST& expr) { analyzeExpr(expr); }
 // Borrow targets
 // -------------------------------------------------------------------
 
-bool SemanticAnalyzer::isBorrowableLvalue(const ExprAST& target) {
-  ASTNodeType kind = target.getType();
-  // A conditional picks one of two slots at runtime; it borrows if both
-  // branches do.
-  if (kind == ASTNodeType::TERNARY) {
-    const auto& ternary = static_cast<const TernaryExprAST&>(target);
-    return isBorrowableLvalue(*ternary.getThen()) &&
-           isBorrowableLvalue(*ternary.getElse());
-  }
-  return kind == ASTNodeType::VARIABLE_REFERENCE ||
-         kind == ASTNodeType::MEMBER_ACCESS || kind == ASTNodeType::INDEX;
-}
-
 void SemanticAnalyzer::validateBorrowTarget(const ExprAST& target,
                                             const Position& loc) {
   if (!isBorrowableLvalue(target)) {
@@ -106,38 +106,31 @@ void SemanticAnalyzer::validateBorrowTarget(const ExprAST& target,
 // -------------------------------------------------------------------
 
 void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
-  LocationGuard locationGuard(*this, expr.getLocation());
+  SemanticContext::LocationGuard locationGuard(ctx_, expr.getLocation());
   switch (expr.getType()) {
-    case ASTNodeType::NUMBER: {
-      // If we have an expected type, try to use it for integer literals
-      if (expectedType && expectedType->isPrimitive()) {
-        if (tryCoerceIntegerLiteral(&expr, expectedType, false)) {
-          break;
-        }
-      }
-      expr.setResolvedType(inferType(expr));
+    case ASTNodeType::NUMBER:
+      analyzeNumberLiteral(expr, expectedType);
       break;
-    }
 
     case ASTNodeType::CHAR_LITERAL: {
       // 'a' is always a char and b'a' is always a u8; neither takes its type
       // from context the way an integer literal does.
-      expr.setResolvedType(inferType(expr));
+      expr.setResolvedType(types_.inferType(expr));
       break;
     }
 
     case ASTNodeType::STRING_LITERAL: {
-      expr.setResolvedType(inferType(expr));
+      expr.setResolvedType(types_.inferType(expr));
       break;
     }
 
     case ASTNodeType::BOOL_LITERAL: {
-      expr.setResolvedType(inferType(expr));
+      expr.setResolvedType(types_.inferType(expr));
       break;
     }
 
     case ASTNodeType::NULL_LITERAL: {
-      expr.setResolvedType(inferType(expr));
+      expr.setResolvedType(types_.inferType(expr));
       break;
     }
 
@@ -146,633 +139,77 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       break;
     }
 
-    case ASTNodeType::ARRAY_LITERAL: {
-      auto& arrLit = static_cast<ArrayLiteralAST&>(expr);
-      // Analyze each element
-      for (const auto& elem : arrLit.getElements()) {
-        analyzeExpr(const_cast<ExprAST&>(*elem));
-      }
-      // Always use inferType - it will use any expected type hint (from
-      // function parameter) to widen element types if needed, while computing
-      // proper dimensions
-      expr.setResolvedType(inferType(expr));
+    case ASTNodeType::ARRAY_LITERAL:
+      analyzeArrayLiteral(static_cast<ArrayLiteralAST&>(expr));
       break;
-    }
 
-    case ASTNodeType::INDEX: {
-      auto& arrIdx = static_cast<IndexAST&>(expr);
-      // Analyze the target expression
-      analyzeExpr(const_cast<ExprAST&>(*arrIdx.getTarget()));
-      // Analyze each index/slice expression and set slice type
-      for (const auto& idx : arrIdx.getIndices()) {
-        if (idx->hasStart()) {
-          analyzeExpr(const_cast<ExprAST&>(*idx->getStart()));
-        }
-        if (idx->hasEnd()) {
-          analyzeExpr(const_cast<ExprAST&>(*idx->getEnd()));
-        }
-        // Each SliceExprAST resolves to the slice type
-        const_cast<SliceExprAST&>(*idx).setResolvedType(sun::Types::Slice());
-      }
-      // `c[i]` on a class calls __index__ / __slice__, a method like any
-      // other: it needs a mutable receiver unless declared const, and a
-      // `ref T` result seen through a constant receiver is `const ref T`
-      bool receiverImmutable = false;
-      sun::TypePtr targetType =
-          unwrapRef(arrIdx.getTarget()->getResolvedType());
-      if (targetType && targetType->isClass()) {
-        const auto* classType =
-            static_cast<const sun::ClassType*>(targetType.get());
-        const char* opName = arrIdx.hasSlices() ? "__slice__" : "__index__";
-        if (const auto* method = classType->getMethod(opName)) {
-          receiverImmutable = checkMethodReceiver(
-              *arrIdx.getTarget(), opName, method->isConst,
-              /*isConstructor=*/false, arrIdx.getLocation());
-        }
-      }
-      // Set resolved type (element type of the array)
-      sun::TypePtr resultType = inferType(expr);
-      if (receiverImmutable) resultType = createConstView(resultType);
-      expr.setResolvedType(resultType);
+    case ASTNodeType::INDEX:
+      analyzeIndexExpr(static_cast<IndexAST&>(expr));
       break;
-    }
 
-    case ASTNodeType::SLICE: {
-      // SliceExprAST can appear standalone in some contexts
-      auto& sliceExpr = static_cast<SliceExprAST&>(expr);
-      if (sliceExpr.hasStart()) {
-        analyzeExpr(const_cast<ExprAST&>(*sliceExpr.getStart()));
-      }
-      if (sliceExpr.hasEnd()) {
-        analyzeExpr(const_cast<ExprAST&>(*sliceExpr.getEnd()));
-      }
-      expr.setResolvedType(sun::Types::Slice());
+    case ASTNodeType::SLICE:
+      analyzeSliceExpr(expr);
       break;
-    }
 
     case ASTNodeType::VARIABLE_REFERENCE: {
       auto& varRef = static_cast<VariableReferenceAST&>(expr);
-      expr.setResolvedType(inferType(expr));
-      sun::QualifiedName resolved = resolveNameWithUsings(varRef.getName());
+      expr.setResolvedType(types_.inferType(expr));
+      sun::QualifiedName resolved =
+          ctx_.resolveNameWithUsings(varRef.getName());
       varRef.setQualifiedName(resolved);
       break;
     }
 
-    case ASTNodeType::VARIABLE_CREATION: {
-      auto& varCreate = static_cast<VariableCreationAST&>(expr);
-      auto varName = varCreate.getName();
-      // Determine type first (before analyzing value, for array literals)
-      sun::TypePtr declaredType;
-      if (varCreate.hasTypeAnnotation()) {
-        declaredType = typeAnnotationToType(*varCreate.getTypeAnnotation());
-        // For array literals with explicit type annotation, set the type before
-        // analysis
-        if (varCreate.getValue()->getType() == ASTNodeType::ARRAY_LITERAL) {
-          const_cast<ExprAST&>(*varCreate.getValue())
-              .setResolvedType(declaredType);
-        }
-      }
-
-      // Named functions cannot be assigned to variables - only lambdas
-      if (varCreate.getValue()->isFunction()) {
-        logAndThrowError("Cannot assign a named function to variable '" +
-                             varCreate.getName() + "'. Use a lambda instead.",
-                         varCreate.getLocation());
-      }
-
-      // Analyze the value expression, passing declared type as expected type
-      analyzeExpr(const_cast<ExprAST&>(*varCreate.getValue()), declaredType);
-      sun::TypePtr rhsType = varCreate.getValue()->getResolvedType();
-
-      // Determine the final variable type
-      // `var r: ref T = <lvalue>` borrows the lvalue's storage - the same
-      // implicit borrow a `ref T` parameter takes at a call site. An RHS that
-      // is already a reference (a call returning `ref T`) goes through
-      // isAssignableTo instead.
-      bool bindsBorrow = false;
-      if (declaredType && declaredType->isReference() && rhsType &&
-          !rhsType->isReference()) {
-        auto referenced = static_cast<sun::ReferenceType*>(declaredType.get())
-                              ->getReferencedType();
-        if (isAssignableTo(rhsType, referenced)) {
-          if (!isBorrowableLvalue(*varCreate.getValue())) {
-            logAndThrowError("Cannot bind reference '" + varCreate.getName() +
-                                 "' to a temporary - a reference must bind a "
-                                 "variable, field, or array element",
-                             varCreate.getLocation());
-          }
-          bindsBorrow = true;
-          validateBorrowTarget(*varCreate.getValue(), varCreate.getLocation());
-          if (sun::isMutableRef(declaredType)) {
-            requireMutablePlace(*varCreate.getValue(),
-                                "take a mutable reference to",
-                                varCreate.getLocation());
-          }
-        }
-      }
-      // Taking the value moves it: a field cannot leave an immutable object
-      if (!bindsBorrow) {
-        checkMoveSource(*varCreate.getValue(), varCreate.getLocation());
-      }
-
-      sun::TypePtr type;
-      if (declaredType) {
-        // Check type compatibility: RHS must be assignable to declared type
-        // This enables interface polymorphism: var s: IShape = Circle(...)
-        if (!bindsBorrow && rhsType && !isAssignableTo(rhsType, declaredType)) {
-          // Allow integer literal coercion as a fallback
-          if (!tryCoerceIntegerLiteral(
-                  const_cast<ExprAST*>(varCreate.getValue()), declaredType,
-                  false)) {
-            logAndThrowError(
-                "Cannot assign value of type '" + rhsType->toDisplayString() +
-                    "' to variable '" + varCreate.getName() + "' of type '" +
-                    declaredType->toDisplayString() + "'",
-                varCreate.getLocation());
-          }
-        }
-        type = declaredType;
-      } else {
-        type = rhsType;
-      }
-
-      // Nothing can be stored in a variable of type void, and an inferred
-      // `var` has nothing to infer from a call that returns nothing.
-      if (type && sun::unwrapRef(type)->isVoid()) {
-        logAndThrowError(
-            declaredType ? "Variable '" + varName + "' cannot have type 'void'"
-                         : "Cannot infer a type for variable '" + varName +
-                               "': the value assigned to it produces no result",
-            varCreate.getLocation());
-      }
-
-      validateTypeParameter(type, varCreate);
-
-      // Note: Move semantics tracking is handled by the borrow checker
-      declareVariable(varCreate.getName(), type, /*isParam=*/false,
-                      varCreate.isConst());
-      // Set the resolved type on the variable creation node itself
-      expr.setResolvedType(type);
-
+    case ASTNodeType::VARIABLE_CREATION:
+      analyzeVariableCreation(static_cast<VariableCreationAST&>(expr));
       break;
-    }
 
-    case ASTNodeType::VARIABLE_ASSIGNMENT: {
-      auto& varAssign = static_cast<VariableAssignmentAST&>(expr);
-
-      // Named functions cannot be assigned to variables - only lambdas
-      if (varAssign.getValue()->isFunction()) {
-        logAndThrowError("Cannot assign a named function to variable '" +
-                             varAssign.getName() + "'. Use a lambda instead.",
-                         varAssign.getLocation());
-      }
-
-      // Look up the variable's type first for expected type propagation
-      VariableInfo* varInfo = lookupVariable(varAssign.getName());
-      // A module-level global is emitted under its mangled name; record it so
-      // codegen can find the symbol (locals keep the name as written).
-      if (varInfo && varInfo->isGlobal) {
-        varAssign.setQualifiedName(resolveNameWithUsings(varAssign.getName()));
-      }
-      if (varInfo && varInfo->isConst) {
-        logAndThrowError("Cannot assign to constant '" + varAssign.getName() +
-                             "'; declare it with 'var' if it must change",
-                         varAssign.getLocation());
-      }
-      if (varInfo && sun::isConstRef(varInfo->type)) {
-        logAndThrowError("Cannot assign through const reference '" +
-                             varAssign.getName() + "'",
-                         varAssign.getLocation());
-      }
-      if (varInfo && varInfo->captureKind == CaptureKind::ByValue) {
-        logAndThrowError("Cannot mutate by-value captured variable '" +
-                             varAssign.getName() +
-                             "': capture it by reference with 'lambda [ref " +
-                             varAssign.getName() + "]'",
-                         varAssign.getLocation());
-      }
-      sun::TypePtr expectedTargetType = nullptr;
-      if (varInfo) {
-        expectedTargetType = varInfo->type;
-        // For reference types, the target is the referenced type
-        if (expectedTargetType && expectedTargetType->isReference()) {
-          auto* refType =
-              static_cast<sun::ReferenceType*>(expectedTargetType.get());
-          expectedTargetType = refType->getReferencedType();
-        }
-      }
-
-      // Analyze the value expression with expected type
-      analyzeExpr(const_cast<ExprAST&>(*varAssign.getValue()),
-                  expectedTargetType);
-      sun::TypePtr rhsType = varAssign.getValue()->getResolvedType();
-      checkMoveSource(*varAssign.getValue(), varAssign.getLocation());
-
-      if (varInfo) {
-        // Check type compatibility for interface polymorphism
-        if (rhsType && expectedTargetType &&
-            !isAssignableTo(rhsType, expectedTargetType)) {
-          // Allow integer literal coercion as a fallback
-          if (!tryCoerceIntegerLiteral(
-                  const_cast<ExprAST*>(varAssign.getValue()),
-                  expectedTargetType, false)) {
-            logAndThrowError(
-                "Cannot assign value of type '" + rhsType->toDisplayString() +
-                    "' to variable '" + varAssign.getName() + "' of type '" +
-                    varInfo->type->toDisplayString() + "'",
-                varAssign.getLocation());
-          }
-        }
-        expr.setResolvedType(varInfo->type);
-      } else {
-        expr.setResolvedType(inferType(expr));
-      }
+    case ASTNodeType::VARIABLE_ASSIGNMENT:
+      analyzeVariableAssignment(static_cast<VariableAssignmentAST&>(expr));
       break;
-    }
 
-    case ASTNodeType::COMPOUND_ASSIGNMENT: {
-      auto& compound = static_cast<CompoundAssignmentAST&>(expr);
-
-      // By-value captures are immutable (mirror VARIABLE_ASSIGNMENT)
-      if (compound.getTarget()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
-        const auto& varRef =
-            static_cast<const VariableReferenceAST&>(*compound.getTarget());
-        VariableInfo* varInfo = lookupVariable(varRef.getName());
-        if (varInfo && varInfo->captureKind == CaptureKind::ByValue) {
-          logAndThrowError("Cannot mutate by-value captured variable '" +
-                               varRef.getName() +
-                               "': capture it by reference with 'lambda [ref " +
-                               varRef.getName() + "]'",
-                           compound.getLocation());
-        }
-      }
-
-      // Analyze the target as a read: gives the whole target subtree
-      // resolved types (codegen signedness depends on them)
-      analyzeExpr(const_cast<ExprAST&>(*compound.getTarget()));
-      requireMutablePlace(*compound.getTarget(), "assign to",
-                          compound.getLocation());
-      sun::TypePtr targetType =
-          sun::unwrapRef(compound.getTarget()->getResolvedType());
-
-      // Analyze the value with the target's type as expected
-      analyzeExpr(const_cast<ExprAST&>(*compound.getValue()), targetType);
-      sun::TypePtr rhsType = compound.getValue()->getResolvedType();
-
-      if (rhsType && targetType && !isAssignableTo(rhsType, targetType)) {
-        // Allow integer literal coercion as a fallback
-        if (!tryCoerceIntegerLiteral(const_cast<ExprAST*>(compound.getValue()),
-                                     targetType, false)) {
-          logAndThrowError(
-              "Cannot apply '" + compound.getOp().text +
-                  "' with value of type '" + rhsType->toDisplayString() +
-                  "' to target of type '" + targetType->toDisplayString() + "'",
-              compound.getLocation());
-        }
-      }
-
-      // Compound assignment is a statement; codegen returns the stored value
-      expr.setResolvedType(sun::Types::Void());
+    case ASTNodeType::COMPOUND_ASSIGNMENT:
+      analyzeCompoundAssignment(static_cast<CompoundAssignmentAST&>(expr));
       break;
-    }
 
-    case ASTNodeType::REFERENCE_CREATION: {
-      auto& refCreate = static_cast<ReferenceCreationAST&>(expr);
-      // Analyze the target expression
-      analyzeExpr(const_cast<ExprAST&>(*refCreate.getTarget()));
-
-      validateBorrowTarget(*refCreate.getTarget(), expr.getLocation());
-      // A mutable borrow needs a place that may be changed
-      if (refCreate.isMutable()) {
-        requireMutablePlace(*refCreate.getTarget(),
-                            "take a mutable reference to", expr.getLocation());
-      }
-      // Determine the type of the referenced expression. Rebinding through
-      // another reference borrows the same referent, not the reference.
-      sun::TypePtr targetType = unwrapRef(inferType(*refCreate.getTarget()));
-      // Create reference type: ref(T) or const ref(T)
-      sun::TypePtr refType =
-          sun::Types::Reference(targetType, refCreate.isMutable());
-      // Declare the reference variable
-      declareVariable(refCreate.getName(), refType);
-      // Set the resolved type
-      expr.setResolvedType(refType);
+    case ASTNodeType::REFERENCE_CREATION:
+      analyzeReferenceCreation(static_cast<ReferenceCreationAST&>(expr));
       break;
-    }
 
-    case ASTNodeType::FUNCTION: {
-      auto& func = static_cast<FunctionAST&>(expr);
-      PrototypeAST& proto = const_cast<PrototypeAST&>(func.getProto());
-
-      // Get function signature info (includes qualified name with function
-      // context)
-      FunctionInfo funcInfo = getFunctionInfo(func);
-
-      // Apply computed info to prototype
-      applyFunctionInfoToProto(proto, funcInfo);
-      proto.setQualifiedName(funcInfo.qualifiedName);
-
-      // Register templates for later instantiation. A pack makes a function a
-      // template even with no type parameters: its arity comes from the call.
-      if (proto.isTemplate() && !currentClass) {
-        registerGenericFunctionInCurrentScope(func);
-      }
-
-      // Only register non-template functions in the normal function table.
-      // Templates are looked up via the genericFunctions table instead.
-      if (!proto.isTemplate()) {
-        registerFunctionInCurrentScope(funcInfo.qualifiedName.baseName,
-                                       funcInfo);
-      }
-
-      // Analyze the function body
-      analyzeFunction(func);
-
-      // Set the function type on the function node
-      expr.setResolvedType(inferType(expr));
+    case ASTNodeType::FUNCTION:
+      analyzeFunctionDefinition(static_cast<FunctionAST&>(expr));
       break;
-    }
 
-    case ASTNodeType::LAMBDA: {
-      auto& lambda = static_cast<LambdaAST&>(expr);
-      PrototypeAST& proto = const_cast<PrototypeAST&>(lambda.getProto());
-
-      // Get lambda signature info (pure computation)
-      FunctionInfo lambdaInfo = getLambdaInfo(lambda);
-
-      // Apply computed info to prototype
-      applyFunctionInfoToProto(proto, lambdaInfo);
-
-      // Analyze the lambda body
-      analyzeLambda(lambda);
-
-      // Set the lambda type on the lambda node
-      expr.setResolvedType(inferType(expr));
+    case ASTNodeType::LAMBDA:
+      analyzeLambdaExpr(static_cast<LambdaAST&>(expr));
       break;
-    }
 
     case ASTNodeType::BLOCK: {
       auto& block = static_cast<BlockExprAST&>(expr);
       analyzeBlock(block);
-      expr.setResolvedType(inferType(expr));
+      expr.setResolvedType(types_.inferType(expr));
       break;
     }
 
-    case ASTNodeType::IF: {
-      auto& ifExpr = static_cast<IfExprAST&>(expr);
-      analyzeExpr(*ifExpr.getCond());
-
-      // Check for type guard pattern: _is<T>(var)
-      auto typeGuard = extractTypeGuard(*ifExpr.getCond());
-      if (typeGuard) {
-        // Apply type narrowing in the then-block
-        enterScope();
-        narrowVariable(typeGuard->first, typeGuard->second);
-        analyzeExpr(*ifExpr.getThen());
-        exitScope();
-      } else {
-        analyzeExpr(*ifExpr.getThen());
-      }
-
-      if (ifExpr.getElse()) {
-        analyzeExpr(*ifExpr.getElse());
-      }
-
-      // If expression type: use inferType (it handles with/without else)
-      expr.setResolvedType(inferType(expr));
+    case ASTNodeType::IF:
+      analyzeIfExpr(static_cast<IfExprAST&>(expr));
       break;
-    }
 
-    case ASTNodeType::MATCH: {
-      auto& matchExpr = static_cast<MatchExprAST&>(expr);
-      // Analyze the discriminant expression
-      analyzeExpr(const_cast<ExprAST&>(*matchExpr.getDiscriminant()));
-
-      // Enum discriminants get variant patterns, payload bindings, and
-      // exhaustiveness checking
-      sun::TypePtr discType =
-          unwrapRef(matchExpr.getDiscriminant()->getResolvedType());
-      if (discType && discType->isEnum()) {
-        analyzeEnumMatch(matchExpr,
-                         std::static_pointer_cast<sun::EnumType>(discType),
-                         expectedType);
-        expr.setResolvedType(inferType(expr));
-        break;
-      }
-
-      // Analyze each arm, propagating expectedType to arm bodies
-      for (const auto& arm : matchExpr.getArms()) {
-        if (arm.hasPayloadParens) {
-          logAndThrowError(
-              "Destructuring patterns require an enum discriminant",
-              arm.pattern ? arm.pattern->getLocation() : expr.getLocation());
-        }
-        if (arm.pattern) {
-          analyzeExpr(const_cast<ExprAST&>(*arm.pattern));
-        }
-        analyzeExpr(const_cast<ExprAST&>(*arm.body), expectedType);
-      }
-      // If we have an expected type and all arms resolved to it, use it
-      if (expectedType) {
-        bool allArmsMatch = true;
-        for (const auto& arm : matchExpr.getArms()) {
-          if (arm.body->getResolvedType() != expectedType) {
-            allArmsMatch = false;
-            break;
-          }
-        }
-        if (allArmsMatch) {
-          expr.setResolvedType(expectedType);
-          break;
-        }
-      }
-      expr.setResolvedType(inferType(expr));
+    case ASTNodeType::MATCH:
+      analyzeMatchExpr(static_cast<MatchExprAST&>(expr), expectedType);
       break;
-    }
 
-    case ASTNodeType::TERNARY: {
-      auto& ternary = static_cast<TernaryExprAST&>(expr);
-      // Condition is not required to be bool (matches if/while laxness);
-      // codegen coerces numeric conditions to i1.
-      analyzeExpr(*ternary.getCond());
-      analyzeExpr(*ternary.getThen(), expectedType);
-      analyzeExpr(*ternary.getElse(), expectedType);
-
-      sun::TypePtr thenType =
-          sun::unwrapRef(ternary.getThen()->getResolvedType());
-      sun::TypePtr elseType =
-          sun::unwrapRef(ternary.getElse()->getResolvedType());
-
-      // Integer literals adopt the other branch's type: c ? x : 0
-      if (thenType && elseType && !thenType->equals(*elseType)) {
-        if (tryCoerceIntegerLiteral(ternary.getThen(), elseType, false)) {
-          thenType = elseType;
-        } else if (tryCoerceIntegerLiteral(ternary.getElse(), thenType,
-                                           false)) {
-          elseType = thenType;
-        }
-      }
-
-      expr.setResolvedType(
-          unifyTernaryTypes(thenType, elseType, expr.getLocation()));
+    case ASTNodeType::TERNARY:
+      analyzeTernaryExpr(static_cast<TernaryExprAST&>(expr), expectedType);
       break;
-    }
 
-    case ASTNodeType::FOR_LOOP: {
-      auto& forExpr = static_cast<ForExprAST&>(expr);
-      // Create scope for loop variables (init may declare variables)
-      enterScope();
-      if (forExpr.getInit()) {
-        analyzeExpr(const_cast<ExprAST&>(*forExpr.getInit()));
-      }
-      if (forExpr.getCondition()) {
-        analyzeExpr(const_cast<ExprAST&>(*forExpr.getCondition()));
-      }
-      if (forExpr.getIncrement()) {
-        analyzeExpr(const_cast<ExprAST&>(*forExpr.getIncrement()));
-      }
-      analyzeExpr(const_cast<ExprAST&>(*forExpr.getBody()));
-      exitScope();
-      expr.setResolvedType(sun::Types::Float64());  // for loops return 0.0
+    case ASTNodeType::FOR_LOOP:
+      analyzeForLoop(static_cast<ForExprAST&>(expr));
       break;
-    }
 
-    case ASTNodeType::FOR_IN_LOOP: {
-      auto& forInExpr = static_cast<ForInExprAST&>(expr);
-      // Analyze the iterable expression
-      analyzeExpr(const_cast<ExprAST&>(*forInExpr.getIterable()));
-
-      // Get the type of the iterable
-      auto iterableType = forInExpr.getIterable()->getResolvedType();
-
-      // Convert loop variable type annotation to type
-      auto loopVarType = typeAnnotationToType(forInExpr.getLoopVarType());
-      forInExpr.setResolvedLoopVarType(loopVarType);
-
-      // Verify the iterable type implements IIterator<T> or IIterable<T>
-      auto classType = std::dynamic_pointer_cast<sun::ClassType>(iterableType);
-      if (!classType) {
-        logAndThrowError(
-            "for-in loop requires a class type that implements IIterator<T> "
-            "or IIterable<T>",
-            forInExpr.getLocation());
-      }
-      bool implementsIterator = false;
-      bool implementsIterable = false;
-      // Interface names are mangled and may be module-qualified
-      // (sun_IIterator_i32_Range); match on the base name
-      for (const auto& ifaceName : classType->getImplementedInterfaces()) {
-        if (ifaceName.find("IIterator_") != std::string::npos ||
-            ifaceName.find("IIterator<") != std::string::npos ||
-            ifaceName == "IIterator") {
-          implementsIterator = true;
-          break;
-        }
-        if (ifaceName.find("IIterable_") != std::string::npos ||
-            ifaceName.find("IIterable<") != std::string::npos ||
-            ifaceName == "IIterable") {
-          implementsIterable = true;
-          break;
-        }
-      }
-      if (!implementsIterator && !implementsIterable) {
-        logAndThrowError(
-            "for-in loop requires type that implements IIterator<T> or "
-            "IIterable<T>, but '" +
-                classType->getDisplayName() + "' does not implement either",
-            forInExpr.getLocation());
-      }
-
-      // Resolve the iterator class: the iterable itself, or what iter()
-      // returns. Codegen relies on these shapes, so they are all errors here.
-      std::shared_ptr<sun::ClassType> iteratorType = classType;
-      if (!implementsIterator) {
-        const auto* iterMethod = classType->getMethod("iter");
-        iteratorType = iterMethod ? std::dynamic_pointer_cast<sun::ClassType>(
-                                        sun::unwrapRef(iterMethod->returnType))
-                                  : nullptr;
-        if (!iteratorType) {
-          logAndThrowError("for-in loop: '" + classType->getDisplayName() +
-                               "' must define iter() returning an iterator "
-                               "class",
-                           forInExpr.getLocation());
-        }
-      }
-      const sun::ClassMethod* nextMethod = iteratorType->getMethod("next");
-      if (!nextMethod || !nextMethod->returnType) {
-        logAndThrowError("for-in loop: iterator '" +
-                             iteratorType->getDisplayName() +
-                             "' must define next(container: ref " +
-                             classType->getDisplayName() + ") Option<T>",
-                         forInExpr.getLocation());
-      }
-
-      // next() takes exactly the iterable by ref: codegen passes the
-      // iterable's address, so any other parameter type would reinterpret it
-      bool containerOk = nextMethod->paramTypes.size() == 1 &&
-                         nextMethod->paramTypes[0] &&
-                         nextMethod->paramTypes[0]->isReference();
-      if (containerOk) {
-        sun::TypePtr paramType = sun::unwrapRef(nextMethod->paramTypes[0]);
-        containerOk = paramType && (paramType->isTypeParameter() ||
-                                    paramType->equals(*classType));
-      }
-      if (!containerOk) {
-        logAndThrowError("for-in loop: iterator '" +
-                             iteratorType->getDisplayName() +
-                             "' must take the iterable by reference: "
-                             "next(container: ref " +
-                             classType->getDisplayName() + ")",
-                         forInExpr.getLocation());
-      }
-
-      // The element type is the payload of next()'s Option<T>; the loop
-      // variable annotation must agree with it
-      sun::TypePtr elementType;
-      if (auto* opt = dynamic_cast<sun::EnumType*>(
-              sun::unwrapRef(nextMethod->returnType).get())) {
-        const sun::EnumVariant* some = opt->getVariant("Some");
-        if (some && some->payloadTypes.size() == 1 && opt->hasVariant("None")) {
-          elementType = some->payloadTypes[0];
-        }
-      }
-      if (!elementType) {
-        logAndThrowError("for-in loop: iterator '" +
-                             iteratorType->getDisplayName() +
-                             "' must return Option<T> from next(), got '" +
-                             nextMethod->returnType->toDisplayString() + "'",
-                         forInExpr.getLocation());
-      }
-      // An iterator that yields Option<ref X> borrows: `for (var x: X in c)`
-      // binds x to the element in place rather than copying it out, which is
-      // what lets a container be iterated without duplicating elements it
-      // still owns. Writing `ref X` in the annotation says the same thing.
-      if (elementType->isReference() && loopVarType &&
-          !loopVarType->isReference() &&
-          sun::unwrapRef(elementType)->equals(*loopVarType)) {
-        loopVarType = elementType;
-        forInExpr.setResolvedLoopVarType(loopVarType);
-      }
-      if (loopVarType && !elementType->isTypeParameter() &&
-          !loopVarType->isTypeParameter() &&
-          !elementType->equals(*loopVarType)) {
-        logAndThrowError("for-in loop variable '" + forInExpr.getLoopVar() +
-                             "' has type '" + loopVarType->toDisplayString() +
-                             "' but the iterator yields '" +
-                             elementType->toDisplayString() + "'",
-                         forInExpr.getLocation());
-      }
-
-      // Create scope for loop body with loop variable
-      enterScope();
-      declareVariable(forInExpr.getLoopVar(), loopVarType, /*isParam=*/false,
-                      forInExpr.isConst());
-      analyzeExpr(const_cast<ExprAST&>(*forInExpr.getBody()));
-      exitScope();
-
-      expr.setResolvedType(sun::Types::Float64());  // for-in loops return 0.0
+    case ASTNodeType::FOR_IN_LOOP:
+      analyzeForInLoop(static_cast<ForInExprAST&>(expr));
       break;
-    }
 
     case ASTNodeType::WHILE_LOOP: {
       auto& whileExpr = static_cast<WhileExprAST&>(expr);
@@ -782,81 +219,13 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       break;
     }
 
-    case ASTNodeType::BINARY: {
-      auto& binExpr = static_cast<BinaryExprAST&>(expr);
-      analyzeExpr(const_cast<ExprAST&>(*binExpr.getLHS()));
-      analyzeExpr(const_cast<ExprAST&>(*binExpr.getRHS()));
-
-      // Payload enums have no structural equality; match is the eliminator
-      TokenKind binOp = binExpr.getOp().kind;
-      if (binOp == TokenKind::EQUAL_EQUAL || binOp == TokenKind::NOT_EQUAL) {
-        for (const ExprAST* side : {binExpr.getLHS(), binExpr.getRHS()}) {
-          sun::TypePtr sideType = unwrapRef(side->getResolvedType());
-          if (sideType && sideType->isEnum() &&
-              static_cast<sun::EnumType*>(sideType.get())->hasPayload()) {
-            logAndThrowError(
-                "Cannot compare enum '" +
-                    static_cast<sun::EnumType*>(sideType.get())
-                        ->getDisplayName() +
-                    "' with '==' ; use match to inspect payload enums",
-                expr.getLocation());
-          }
-        }
-      }
-      checkCharOperands(binExpr);
-      coerceBinaryLiteralOperands(binExpr, expectedType);
-      expr.setResolvedType(inferType(expr));
+    case ASTNodeType::BINARY:
+      analyzeBinaryExpr(static_cast<BinaryExprAST&>(expr), expectedType);
       break;
-    }
 
-    case ASTNodeType::UNARY: {
-      auto& unaryExpr = static_cast<UnaryExprAST&>(expr);
-      analyzeExpr(const_cast<ExprAST&>(*unaryExpr.getOperand()));
-
-      TokenKind op = unaryExpr.getOp().kind;
-      auto operandType = sun::unwrapRef(inferType(*unaryExpr.getOperand()));
-
-      // Unresolved generic operands are validated again at instantiation
-      if (operandType && !operandType->isTypeParameter()) {
-        const std::string name = operandType->toDisplayString();
-        switch (op) {
-          case TokenKind::NOT:
-            if (!operandType->isBool()) {
-              logAndThrowError(
-                  "'not' requires a bool operand, got '" + name + "'",
-                  expr.getLocation());
-            }
-            break;
-          case TokenKind::TILDE:
-            if (!operandType->isIntegral()) {
-              logAndThrowError(
-                  "Bitwise NOT (~) requires an integer operand, got '" + name +
-                      "'",
-                  expr.getLocation());
-            }
-            break;
-          case TokenKind::MINUS:
-            if (!operandType->isNumeric()) {
-              logAndThrowError(
-                  "Unary minus requires a numeric operand, got '" + name + "'",
-                  expr.getLocation());
-            }
-            if (operandType->isUnsigned()) {
-              logAndThrowError(
-                  "Cannot negate a value of unsigned type '" + name + "'",
-                  expr.getLocation());
-            }
-            break;
-          default:
-            break;
-        }
-      }
-
-      // Matches inferType's UNARY rule without re-walking the operand subtree
-      expr.setResolvedType(op == TokenKind::NOT ? sun::Types::Bool()
-                                                : operandType);
+    case ASTNodeType::UNARY:
+      analyzeUnaryExpr(static_cast<UnaryExprAST&>(expr));
       break;
-    }
 
     case ASTNodeType::CALL: {
       auto& callExpr = static_cast<CallExprAST&>(expr);
@@ -864,494 +233,39 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       break;
     }
 
-    case ASTNodeType::INDEXED_ASSIGNMENT: {
-      auto& assignment = static_cast<IndexedAssignmentAST&>(expr);
-      analyzeExpr(const_cast<ExprAST&>(*assignment.getTarget()));
-      requireMutablePlace(*assignment.getTarget(), "assign to an element of",
-                          assignment.getLocation());
-      analyzeExpr(const_cast<ExprAST&>(*assignment.getValue()));
-      checkMoveSource(*assignment.getValue(), assignment.getLocation());
-
-      // `obj[i] = v` on a class dispatches to __setindex__ (resolved in
-      // codegen); it must be accessible from here like any other member
-      if (assignment.getTarget()->getType() == ASTNodeType::INDEX) {
-        const auto& idx = static_cast<const IndexAST&>(*assignment.getTarget());
-        sun::TypePtr objType = unwrapRef(idx.getTarget()->getResolvedType());
-        if (objType && objType->isClass()) {
-          accessibleMethod(static_cast<const sun::ClassType&>(*objType),
-                           "__setindex__", assignment.getLocation());
-        }
-      }
-
-      // Get the element type from the target (what we're assigning to)
-      sun::TypePtr elementType = assignment.getTarget()->getResolvedType();
-      ExprAST* valueExpr = const_cast<ExprAST*>(assignment.getValue());
-
-      // Try to coerce integer literal to target type (throws if doesn't fit)
-      tryCoerceIntegerLiteral(valueExpr, elementType, /*throwOnFail=*/true);
-
-      expr.setResolvedType(inferType(expr));
+    case ASTNodeType::INDEXED_ASSIGNMENT:
+      analyzeIndexedAssignment(static_cast<IndexedAssignmentAST&>(expr));
       break;
-    }
 
-    case ASTNodeType::RETURN: {
-      auto& returnExpr = static_cast<ReturnExprAST&>(expr);
-      if (returnExpr.hasValue()) {
-        // Propagate the function's return type for return-position inference
-        // (e.g. `return Option.None;`)
-        sun::TypePtr declaredReturn = currentFunctionReturnType();
-        analyzeExpr(const_cast<ExprAST&>(*returnExpr.getValue()),
-                    declaredReturn);
-        sun::TypePtr valueType = inferType(*returnExpr.getValue());
-        // Returning by value out of a borrow would hand the caller a second
-        // value backed by the borrowed storage.
-        if (valueType && valueType->isReference() && declaredReturn &&
-            !declaredReturn->isReference() &&
-            !sun::typeCopiesByRead(declaredReturn)) {
-          logAndThrowError(
-              "Cannot return a borrowed '" + declaredReturn->toDisplayString() +
-                  "' by value: reading it out of the borrow would copy it. "
-                  "Return 'ref " +
-                  declaredReturn->toDisplayString() +
-                  "' to keep borrowing, copy it explicitly with clone(), or "
-                  "move the value out first (take()/pop()/remove() on a "
-                  "container).",
-              returnExpr.getLocation());
-        }
-        if (!declaredReturn || !declaredReturn->isReference()) {
-          checkMoveSource(*returnExpr.getValue(), returnExpr.getLocation());
-        }
-        expr.setResolvedType(valueType);
-      } else {
-        expr.setResolvedType(sun::Types::Void());
-      }
+    case ASTNodeType::RETURN:
+      analyzeReturnExpr(static_cast<ReturnExprAST&>(expr));
       break;
-    }
 
-    case ASTNodeType::MODULE: {
-      auto& nsDecl = static_cast<ModuleAST&>(expr);
-      // Enter the namespace scope
-      declareModule(nsDecl);
-
-      // Analyze the body of the namespace
-      // Functions handle their own qualified name registration in FUNCTION case
-      for (const auto& bodyExpr : nsDecl.getBody().getBody()) {
-        if (bodyExpr->getType() == ASTNodeType::VARIABLE_CREATION) {
-          // Variables need special handling to register in namespacedVariables
-          auto& varCreate = static_cast<VariableCreationAST&>(*bodyExpr);
-          if (bodyExpr->isPrecompiled()) {
-            // A global imported from a .moon: the storage and its initial
-            // value live in the bundle, so there is nothing to analyze — only
-            // the type to resolve and the name to register.
-            registerPrecompiledModuleVariable(varCreate);
-            continue;
-          }
-          analyzeExpr(*bodyExpr);
-          sun::QualifiedName qualifiedName =
-              makeQualifiedName(varCreate.getName());
-          varCreate.setQualifiedName(qualifiedName);
-          if (auto type = varCreate.getResolvedType()) {
-            registerModuleVariable(varCreate.getName(), qualifiedName.mangled(),
-                                   type, varCreate.getVisibility(),
-                                   varCreate.isConst());
-          }
-        } else if (bodyExpr->getType() == ASTNodeType::REFERENCE_CREATION) {
-          analyzeExpr(*bodyExpr);
-          auto& refCreate = static_cast<ReferenceCreationAST&>(*bodyExpr);
-          sun::QualifiedName qualifiedName =
-              makeQualifiedName(refCreate.getName());
-          refCreate.setQualifiedName(qualifiedName);
-        } else {
-          analyzeExpr(*bodyExpr);
-        }
-      }
-
-      // Exit the namespace scope
-      exitScope();
-      expr.setResolvedType(sun::Types::Void());
+    case ASTNodeType::MODULE:
+      analyzeModuleDefinition(static_cast<ModuleAST&>(expr));
       break;
-    }
 
-    case ASTNodeType::MOON_SCOPE: {
-      // MoonScopeAST wraps module stubs from a moon import
-      // Enter a scope with the content hash prefix for symbol isolation
-      auto& moonScope = static_cast<MoonScopeAST&>(expr);
-      const std::string& contentHash = moonScope.getContentHash();
-      if (!contentHash.empty()) {
-        enterModuleScope(contentHash);
-      }
-      // Analyze contained ModuleAST nodes
-      for (const auto& bodyExpr : moonScope.getBody().getBody()) {
-        analyzeExpr(*bodyExpr);
-      }
-      if (!contentHash.empty()) {
-        exitScope();
-      }
-      expr.setResolvedType(sun::Types::Void());
+    case ASTNodeType::MOON_SCOPE:
+      analyzeMoonScope(expr);
       break;
-    }
 
     case ASTNodeType::USING: {
-      registerUsing(static_cast<UsingAST&>(expr));
+      declarations_.registerUsing(static_cast<UsingAST&>(expr));
       expr.setResolvedType(sun::Types::Void());
       break;
     }
 
-    case ASTNodeType::QUALIFIED_NAME: {
-      auto& qualName = static_cast<QualifiedNameAST&>(expr);
-      std::string fullName = qualName.getFullName();
-
-      // Look up in namespaced variables first
-      VariableInfo* varInfo = lookupQualifiedVariable(fullName);
-      if (varInfo) {
-        // Set resolved mangled name from the variable's qualified name
-        if (!varInfo->qualifiedName.empty()) {
-          qualName.setResolvedMangledName(varInfo->qualifiedName.mangled());
-        }
-        expr.setResolvedType(varInfo->type);
-        break;
-      }
-
-      // Look up in namespaced functions - this searches all matching module
-      // scopes (including same-named modules in different import scopes)
-      const FunctionInfo* funcInfo = lookupQualifiedFunction(fullName);
-      if (funcInfo) {
-        // Set resolved mangled name from the function's actual qualified name
-        // This handles same-named modules in different import scopes correctly
-        if (!funcInfo->qualifiedName.empty()) {
-          qualName.setResolvedMangledName(funcInfo->qualifiedName.mangled());
-        }
-        expr.setResolvedType(sun::Types::Function(
-            funcInfo->returnType, funcInfo->paramTypes, funcInfo->canThrow));
-        break;
-      }
-
-      // Unknown qualified name - default to f64
-      expr.setResolvedType(sun::Types::Float64());
+    case ASTNodeType::QUALIFIED_NAME:
+      analyzeQualifiedName(static_cast<QualifiedNameAST&>(expr));
       break;
-    }
 
-    case ASTNodeType::CLASS_DEFINITION: {
-      auto& classDef = static_cast<ClassDefinitionAST&>(expr);
-      const std::string& baseName = classDef.getName();
-
-      // Partial classes: add methods to the primary class.
-      if (classDef.isPartial()) {
-        analyzePartialClass(classDef, expr);
-        return;
-      }
-
-      // Qualify class name with module prefix if inside a module
-      // For precompiled classes (from .moon), use the qualified name from
-      // metadata (includes content hash prefix for symbol isolation)
-      sun::QualifiedName qualifiedClass;
-      if (classDef.hasQualifiedName()) {
-        qualifiedClass = classDef.getQualifiedName();
-      } else {
-        qualifiedClass = makeQualifiedName(baseName);
-        classDef.setQualifiedName(qualifiedClass);
-      }
-      std::string mangledClassName = qualifiedClass.mangled();
-
-      // Forbid redefinition of class in same module
-      if (definedSymbols_.count(mangledClassName)) {
-        logAndThrowError("Redefinition of class '" + baseName + "'",
-                         classDef.getLocation());
-      }
-
-      // Validate class name
-      validateNotReserved(classDef.getName(), "Class name",
-                          classDef.getLocation());
-
-      // Check for redefinition of builtin types
-      if (typeRegistry->isBuiltinTypeName(classDef.getName())) {
-        logAndThrowError(
-            "Cannot redefine builtin type '" + classDef.getName() + "'",
-            classDef.getLocation());
-      }
-
-      // Validate field names
-      for (const auto& field : classDef.getFields()) {
-        validateNotReserved(field.name, "Field name", field.location);
-      }
-
-      // Validate method names
-      for (const auto& methodDecl : classDef.getMethods()) {
-        const std::string& methodName =
-            methodDecl.function->getProto().getName();
-        validateNotReserved(methodName, "Method name",
-                            methodDecl.function->getLocation());
-      }
-
-      // Register in generic class table if this is a generic class or has
-      // generic methods (needed for instantiateGenericMethod to find the def)
-      if (classDef.isGeneric() || classDef.hasGenericMethods()) {
-        GenericClassInfo genericInfo;
-        genericInfo.AST = &classDef;
-        genericInfo.typeParameters = classDef.getTypeParameters();
-        genericInfo.definitionScope = currentScope->shared_from_this();
-        genericInfo.qualifiedName = qualifiedClass;
-        registerGenericClass(baseName, genericInfo);
-
-        // Generic class templates are not analyzed further until instantiated
-        if (classDef.isGeneric()) {
-          expr.setResolvedType(sun::Types::Void());
-          return;
-        }
-      }
-
-      // Create the class type with the qualified name
-      auto classType = typeRegistry->getClass(qualifiedClass);
-
-      // Layout must be decided before any getStructType() call memoizes it
-      classType->setPacked(classDef.isPacked());
-      classType->visibility = classDef.getVisibility();
-
-      // Register the class BEFORE processing fields to allow self-referential
-      // types (e.g., var next: raw_ptr<Node> inside class Node)
-      registerClass(baseName, classType);
-
-      // Fields and method signatures are normally registered by the
-      // declaration pre-pass (registerClassShape); classes analyzed outside a
-      // pre-passed block register them here.
-      bool shapeRegistered =
-          preRegisteredClassShapes_.count(mangledClassName) > 0;
-      if (!shapeRegistered) {
-        registerClassShape(classDef, qualifiedClass, classType);
-      }
-
-      // Inherit interface fields BEFORE analyzing methods
-      // This adds interface fields to the class, which methods may access
-      inheritInterfaceFields(classDef, classType);
-
-      // Merge methods from any pending class extensions
-      // Extensions are collected during import processing and merged here
-      // so all methods (primary + extensions) can call each other
-      auto extIt = pendingExtensions_.find(baseName);
-      if (extIt != pendingExtensions_.end()) {
-        for (ClassDefinitionAST* extDef : extIt->second) {
-          // Validate: check for duplicate methods
-          for (const auto& extMethod : extDef->getMethods()) {
-            const std::string& methodName =
-                extMethod.function->getProto().getName();
-            // Check against primary's methods
-            for (const auto& primaryMethod : classDef.getMethods()) {
-              if (primaryMethod.function->getProto().getName() == methodName) {
-                logAndThrowError("Method '" + methodName +
-                                     "' already defined in class '" + baseName +
-                                     "'",
-                                 extMethod.function->getLocation());
-              }
-            }
-            // Check against other extension methods already merged
-            // (The getMutableMethods approach handles this via sequential
-            // merge)
-          }
-          // Merge extension methods into the primary class definition
-          for (auto& extMethod : extDef->getMutableMethods()) {
-            classDef.getMutableMethods().push_back(std::move(extMethod));
-          }
-        }
-        // Clear the pending extensions for this class (they're now merged)
-        pendingExtensions_.erase(extIt);
-      }
-
-      // Save old class context and set new one
-      auto savedClass = currentClass;
-      setCurrentClass(classType);
-
-      // Enter a Class scope to contain all method scopes in the tree
-      enterClassScope(qualifiedClass);
-
-      // PASS 1: Make the (already registered) method signatures resolvable
-      // by mangled name inside the class scope
-      for (const auto& methodDecl : classDef.getMethods()) {
-        const PrototypeAST& proto = methodDecl.function->getProto();
-        std::string mangledName =
-            classType->getMangledMethodName(proto.getName());
-        std::vector<sun::TypePtr> methodParamTypes;
-        methodParamTypes.push_back(classType);  // this parameter
-        for (const auto& pt : proto.getResolvedParamTypes()) {
-          methodParamTypes.push_back(pt);
-        }
-        sun::TypePtr returnType = proto.hasResolvedReturnType()
-                                      ? proto.getResolvedReturnType()
-                                      : sun::Types::Void();
-        registerFunctionInCurrentScope(mangledName,
-                                       {returnType, methodParamTypes, {}});
-      }
-
-      // PASS 2: Analyze all method bodies
-      for (size_t i = 0; i < classDef.getMethods().size(); ++i) {
-        const auto& methodDecl = classDef.getMethods()[i];
-        // Set qualified name: scopePath includes module and class context
-        PrototypeAST& proto =
-            const_cast<PrototypeAST&>(methodDecl.function->getProto());
-        std::vector<std::string> methodScopePath = qualifiedClass.scopePath;
-        methodScopePath.push_back(mangledClassName);
-        proto.setQualifiedName(
-            sun::QualifiedName(methodScopePath, proto.getName()));
-        analyzeFunction(*methodDecl.function);
-      }
-
-      // Validate interface implementations
-      validateInterfaceImplementation(classDef, classType);
-
-      exitScope();  // Class scope
-
-      // Restore old class context
-      setCurrentClass(savedClass);
-
-      // Track symbol for redefinition detection
-      definedSymbols_.insert(mangledClassName);
-
-      // Store primary AST for partial class merging (if a partial appears
-      // later)
-      currentScope->classDefinitions[baseName] = &classDef;
-
-      // Set resolved type to the class type so codegen can get the qualified
-      // name
-      expr.setResolvedType(classType);
+    case ASTNodeType::CLASS_DEFINITION:
+      analyzeClassDefinition(static_cast<ClassDefinitionAST&>(expr));
       break;
-    }
 
-    case ASTNodeType::INTERFACE_DEFINITION: {
-      auto& interfaceDef = static_cast<InterfaceDefinitionAST&>(expr);
-
-      // Qualify interface name with module prefix if inside a module
-      // For precompiled interfaces (from .moon), use the qualified name from
-      // metadata
-      sun::QualifiedName qualifiedInterface;
-      if (interfaceDef.hasQualifiedName()) {
-        qualifiedInterface = interfaceDef.getQualifiedName();
-      } else {
-        qualifiedInterface = makeQualifiedName(interfaceDef.getName());
-        interfaceDef.setQualifiedName(qualifiedInterface);
-      }
-      std::string interfaceName = qualifiedInterface.mangled();
-
-      // Forbid redefinition of interface in same module
-      if (definedSymbols_.count(interfaceName)) {
-        logAndThrowError(
-            "Redefinition of interface '" + interfaceDef.getName() + "'",
-            interfaceDef.getLocation());
-      }
-
-      // Validate interface name
-      validateNotReserved(interfaceDef.getName(), "Interface name",
-                          interfaceDef.getLocation());
-
-      // Check for redefinition of builtin types
-      if (typeRegistry->isBuiltinTypeName(interfaceDef.getName())) {
-        logAndThrowError("Cannot redefine builtin interface '" +
-                             interfaceDef.getName() + "'",
-                         interfaceDef.getLocation());
-      }
-
-      // Validate field names
-      for (const auto& field : interfaceDef.getFields()) {
-        validateNotReserved(field.name, "Interface field name", field.location);
-      }
-
-      // Validate method names
-      for (const auto& methodDecl : interfaceDef.getMethods()) {
-        const std::string& methodName =
-            methodDecl.function->getProto().getName();
-        validateNotReserved(methodName, "Interface method name",
-                            methodDecl.function->getLocation());
-      }
-
-      // Handle generic interfaces differently
-      if (interfaceDef.isGeneric()) {
-        // Register as generic interface template for later instantiation
-        GenericInterfaceInfo info;
-        info.AST = &interfaceDef;
-        info.typeParameters = interfaceDef.getTypeParameters();
-        info.qualifiedName = qualifiedInterface;
-        registerGenericInterface(interfaceDef.getName(), info);
-
-        // Create a generic interface type (for type checking generic
-        // references)
-        auto interfaceType = typeRegistry->getGenericInterface(
-            interfaceDef.getName(), interfaceDef.getTypeParameterNames());
-        interfaceType->visibility = interfaceDef.getVisibility();
-        interfaceType->setQualifiedName(qualifiedInterface);
-        registerInterface(interfaceDef.getName(), interfaceType);
-
-        expr.setResolvedType(sun::Types::Void());
-        break;
-      }
-
-      // Non-generic interface: create the interface type directly
-      auto interfaceType = typeRegistry->getInterface(interfaceName);
-      // Store the user-written base name for error messages
-      if (interfaceName != interfaceDef.getName()) {
-        interfaceType->setBaseName(interfaceDef.getName());
-      }
-      interfaceType->visibility = interfaceDef.getVisibility();
-      interfaceType->setQualifiedName(qualifiedInterface);
-
-      // Create a pseudo-class type for 'this' during interface method analysis
-      // This allows default implementations to access interface fields
-      auto pseudoClass =
-          typeRegistry->getClass("__interface_" + interfaceDef.getName());
-
-      // Add fields to the interface type and pseudo-class
-      for (const auto& field : interfaceDef.getFields()) {
-        sun::TypePtr fieldType = typeAnnotationToType(field.type);
-        interfaceType->addField(field.name, fieldType).visibility =
-            field.visibility;
-        pseudoClass->addField(field.name, fieldType).visibility =
-            field.visibility;
-      }
-
-      // Add methods to the interface type
-      for (const auto& methodDecl : interfaceDef.getMethods()) {
-        // Get method signature info (pure computation)
-        FunctionInfo methodInfo = getFunctionInfo(*methodDecl.function);
-        PrototypeAST& proto =
-            const_cast<PrototypeAST&>(methodDecl.function->getProto());
-
-        // Apply computed info to prototype
-        applyFunctionInfoToProto(proto, methodInfo);
-
-        // Add method to interface type (include generic type parameters)
-        auto& method = interfaceType->addMethod(
-            proto.getName(), methodInfo.returnType, methodInfo.paramTypes,
-            methodDecl.hasDefaultImpl, proto.getTypeParameterNames());
-        method.visibility = methodVisibility(*methodDecl.function);
-        method.isConst = methodDecl.isConst;
-      }
-
-      // Enter Interface scope to contain method scopes
-      enterInterfaceScope(qualifiedInterface);
-
-      // Analyze default method bodies
-      for (const auto& methodDecl : interfaceDef.getMethods()) {
-        if (methodDecl.hasDefaultImpl) {
-          // Set pseudo-class as currentClass so 'this' works
-          auto savedClass = currentClass;
-          currentClass = pseudoClass;
-
-          // Analyze the method body
-          analyzeFunction(*methodDecl.function);
-
-          // Restore original currentClass
-          currentClass = savedClass;
-        }
-      }
-
-      exitScope();  // Interface scope
-
-      // Register the interface
-      registerInterface(interfaceDef.getName(), interfaceType);
-
-      // Track symbol for redefinition detection
-      definedSymbols_.insert(interfaceName);
-
-      expr.setResolvedType(sun::Types::Void());
+    case ASTNodeType::INTERFACE_DEFINITION:
+      analyzeInterfaceDefinition(static_cast<InterfaceDefinitionAST&>(expr));
       break;
-    }
 
     case ASTNodeType::ENUM_DEFINITION: {
       analyzeEnumDefinition(static_cast<EnumDefinitionAST&>(expr));
@@ -1359,331 +273,37 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
     }
 
     case ASTNodeType::THIS: {
-      expr.setResolvedType(inferType(expr));
+      expr.setResolvedType(types_.inferType(expr));
       break;
     }
 
-    case ASTNodeType::MEMBER_ACCESS: {
-      auto& memberAccess = static_cast<MemberAccessAST&>(expr);
-
-      // Check for enum variant access: EnumName.VariantName
-      // Don't try to analyze the "object" if it's an enum type name
-      bool isEnumAccess = false;
-      if (memberAccess.getObject()->getType() ==
-          ASTNodeType::VARIABLE_REFERENCE) {
-        const auto& varRef =
-            static_cast<const VariableReferenceAST&>(*memberAccess.getObject());
-        if (lookupEnum(varRef.getName())) {
-          isEnumAccess = true;
-        } else if (tryAnalyzeGenericEnumUnitVariant(memberAccess,
-                                                    expectedType)) {
-          // Generic enum unit variant (Option.None): resolved from expected
-          // type in enums.cpp
-          break;
-        }
-      }
-
-      if (!isEnumAccess) {
-        // Analyze the object expression (only if not enum access)
-        analyzeExpr(const_cast<ExprAST&>(*memberAccess.getObject()));
-      }
-      expr.setResolvedType(inferType(expr));
-      // A method in value position becomes a bound method reference with
-      // lambda type (call-position callees don't route through this case).
-      maybeResolveBoundMethodRef(memberAccess, expectedType);
+    case ASTNodeType::MEMBER_ACCESS:
+      analyzeMemberAccess(static_cast<MemberAccessAST&>(expr), expectedType);
       break;
-    }
 
-    case ASTNodeType::MEMBER_ASSIGNMENT: {
-      auto& memberAssign = static_cast<MemberAssignmentAST&>(expr);
-      // Analyze the object first so the field type can flow into the value
-      // as the expected type (e.g. `this.value = Option.None;`)
-      analyzeExpr(const_cast<ExprAST&>(*memberAssign.getObject()));
-      requireMutablePlace(
-          *memberAssign.getObject(),
-          "assign to field '" + memberAssign.getMemberName() + "' of",
-          memberAssign.getLocation());
-
-      sun::TypePtr objectType = memberAssign.getObject()->getResolvedType();
-      objectType = unwrapRef(objectType);
-
-      // mod.global = value: a write to a module-level variable, not a field
-      if (objectType && objectType->isModule()) {
-        analyzeModuleGlobalAssignment(memberAssign, *objectType);
-        expr.setResolvedType(sun::Types::Void());
-        break;
-      }
-
-      sun::TypePtr expectedFieldType;
-      if (objectType && objectType->isClass()) {
-        auto* classType = static_cast<sun::ClassType*>(objectType.get());
-        if (const sun::ClassField* field =
-                accessibleField(*classType, memberAssign.getMemberName(),
-                                memberAssign.getLocation())) {
-          expectedFieldType = field->type;
-        }
-      }
-      analyzeExpr(const_cast<ExprAST&>(*memberAssign.getValue()),
-                  expectedFieldType);
-      checkMoveSource(*memberAssign.getValue(), memberAssign.getLocation());
-
-      if (objectType && objectType->isClass()) {
-        auto* classType = static_cast<sun::ClassType*>(objectType.get());
-        const sun::ClassField* field =
-            classType->getField(memberAssign.getMemberName());
-        if (field) {
-          sun::TypePtr rhsType = memberAssign.getValue()->getResolvedType();
-          sun::TypePtr fieldType = field->type;
-
-          if (rhsType && !isAssignableTo(rhsType, fieldType)) {
-            // Allow integer literal coercion as a fallback
-            if (!tryCoerceIntegerLiteral(
-                    const_cast<ExprAST*>(memberAssign.getValue()), fieldType,
-                    false)) {
-              logAndThrowError(
-                  "Cannot assign value of type '" + rhsType->toDisplayString() +
-                      "' to field '" + memberAssign.getMemberName() +
-                      "' of type '" + fieldType->toDisplayString() + "'",
-                  memberAssign.getLocation());
-            }
-          }
-        }
-      }
-
-      expr.setResolvedType(sun::Types::Void());
+    case ASTNodeType::MEMBER_ASSIGNMENT:
+      analyzeMemberAssignment(static_cast<MemberAssignmentAST&>(expr));
       break;
-    }
 
-    case ASTNodeType::TRY_CATCH: {
-      auto& tryCatchExpr = static_cast<TryCatchExprAST&>(expr);
-
-      // Track that we're inside a try block for error propagation checking
-      enterTryBlock();
-
-      // Analyze the try block
-      analyzeBlock(const_cast<BlockExprAST&>(tryCatchExpr.getTryBlock()));
-
-      // Exit try block tracking
-      exitTryBlock();
-
-      // Analyze each catch clause, tested in source order.
-      auto builtinIError = typeRegistry->getInterface("IError");
-      bool sawCatchAll = false;
-      auto& clauses = tryCatchExpr.getCatchClausesMutable();
-      for (auto& catchClause : clauses) {
-        if (catchClause.bindingName.empty() ||
-            !catchClause.bindingType.has_value()) {
-          logAndThrowError(
-              "catch clause requires a typed binding, e.g. catch (e: IError) "
-              "{ ... }",
-              tryCatchExpr.getLocation());
-        }
-
-        sun::TypePtr bindingType =
-            typeAnnotationToType(*catchClause.bindingType);
-
-        // The catch type must be IError or a class implementing IError.
-        bool isCatchAll = false;
-        bool valid = false;
-        if (bindingType && bindingType->isInterface()) {
-          if (bindingType.get() == builtinIError.get()) {
-            valid = true;
-            isCatchAll = true;  // catch (e: IError) matches any error
-          }
-        } else if (bindingType && bindingType->isClass()) {
-          valid = static_cast<sun::ClassType*>(bindingType.get())
-                      ->implementsInterface("IError");
-        }
-        if (!valid) {
-          logAndThrowError(
-              "catch type must be 'IError' or a class implementing IError, "
-              "got '" +
-                  (bindingType ? bindingType->toDisplayString()
-                               : std::string("?")) +
-                  "'",
-              tryCatchExpr.getLocation());
-        }
-
-        // A catch-all (IError) makes any following clause unreachable.
-        if (sawCatchAll) {
-          logAndThrowError(
-              "unreachable catch clause: a 'catch (e: IError)' catch-all must "
-              "be the last handler",
-              tryCatchExpr.getLocation());
-        }
-        if (isCatchAll) sawCatchAll = true;
-
-        // Record resolution for codegen's typed matching.
-        catchClause.isCatchAll = isCatchAll;
-        catchClause.resolvedMangledName =
-            isCatchAll ? std::string()
-                       : static_cast<sun::ClassType*>(bindingType.get())
-                             ->getMangledName();
-
-        enterScope();
-        declareVariable(catchClause.bindingName, bindingType);
-        analyzeBlock(const_cast<BlockExprAST&>(*catchClause.body));
-        exitScope();
-      }
-
-      // The result type is the type of the try block
-      sun::TypePtr resultType = inferType(tryCatchExpr.getTryBlock());
-      expr.setResolvedType(resultType ? resultType : sun::Types::Void());
+    case ASTNodeType::TRY_CATCH:
+      analyzeTryCatch(static_cast<TryCatchExprAST&>(expr));
       break;
-    }
 
-    case ASTNodeType::UNSAFE_BLOCK: {
-      auto& unsafeBlock = static_cast<UnsafeBlockAST&>(expr);
-
-      // Track that we're inside an unsafe block
-      enterUnsafeBlock();
-
-      // Analyze the body
-      analyzeBlock(unsafeBlock.getBody());
-
-      // Exit unsafe block tracking
-      exitUnsafeBlock();
-
-      // Infer the result type (inferType handles unsafe context internally)
-      sun::TypePtr resultType = inferType(expr);
-      expr.setResolvedType(resultType ? resultType : sun::Types::Void());
+    case ASTNodeType::UNSAFE_BLOCK:
+      analyzeUnsafeBlock(static_cast<UnsafeBlockAST&>(expr));
       break;
-    }
 
-    case ASTNodeType::THROW: {
-      auto& throwExpr = static_cast<ThrowExprAST&>(expr);
-
-      // Validate that throw is used inside a function declared with ", IError"
-      if (!isInThrowingFunction()) {
-        logAndThrowError(
-            "throw can only be used in functions declared with ', IError'",
-            throwExpr.getLocation());
-      }
-
-      // Analyze the error expression being thrown
-      analyzeExpr(const_cast<ExprAST&>(throwExpr.getErrorExpr()));
-
-      // Validate that the thrown expression implements IError
-      sun::TypePtr errorType = inferType(throwExpr.getErrorExpr());
-      if (errorType) {
-        bool implementsIError = false;
-
-        // Get the builtin IError interface for comparison
-        auto builtinIError = typeRegistry->getInterface("IError");
-
-        // Check if it's the IError interface itself (e.g., re-throwing caught
-        // error)
-        if (errorType->isInterface()) {
-          // IError itself is throwable
-          if (errorType.get() == builtinIError.get()) {
-            implementsIError = true;
-          }
-        }
-        // Check if it's a class that implements IError
-        else if (errorType->isClass()) {
-          auto* classType = static_cast<sun::ClassType*>(errorType.get());
-          implementsIError = classType->implementsInterface("IError");
-        }
-        // Check if it's a reference to a class that implements IError
-        else if (errorType->isReference()) {
-          auto* refType = static_cast<sun::ReferenceType*>(errorType.get());
-          sun::TypePtr innerType = refType->getReferencedType();
-          if (innerType && innerType->isClass()) {
-            auto* classType = static_cast<sun::ClassType*>(innerType.get());
-            implementsIError = classType->implementsInterface("IError");
-          }
-          // Also allow reference to IError interface
-          else if (innerType && innerType->isInterface()) {
-            if (innerType.get() == builtinIError.get()) {
-              implementsIError = true;
-            }
-          }
-        }
-
-        if (!implementsIError) {
-          logAndThrowError(
-              "throw expression must be a type implementing IError, got '" +
-                  errorType->toDisplayString() + "'",
-              throwExpr.getLocation());
-        }
-      }
-
-      // Throw doesn't return a value
-      expr.setResolvedType(sun::Types::Void());
+    case ASTNodeType::THROW:
+      analyzeThrowExpr(static_cast<ThrowExprAST&>(expr));
       break;
-    }
 
-    case ASTNodeType::SPAWN: {
-      auto& spawnExpr = static_cast<SpawnExprAST&>(expr);
-
-      // Analyze the lambda expression being spawned
-      analyzeExpr(const_cast<ExprAST&>(spawnExpr.getLambda()));
-
-      // Validate that the argument is a lambda
-      sun::TypePtr lambdaType = inferType(spawnExpr.getLambda());
-      if (!lambdaType || !lambdaType->isLambda()) {
-        logAndThrowError(
-            "spawn requires a lambda expression, got '" +
-                (lambdaType ? lambdaType->toDisplayString() : "unknown") + "'",
-            spawnExpr.getLocation());
-      }
-
-      // The lambda should take no arguments (for now)
-      auto* lambda = static_cast<sun::LambdaType*>(lambdaType.get());
-      if (!lambda->getParamTypes().empty()) {
-        logAndThrowError("spawn lambda must take no arguments, got " +
-                             std::to_string(lambda->getParamTypes().size()) +
-                             " parameter(s)",
-                         spawnExpr.getLocation());
-      }
-
-      // Set the spawn expression type to Thread<T> where T is the lambda's
-      // return type
-      sun::TypePtr returnType = lambda->getReturnType();
-      expr.setResolvedType(std::make_shared<sun::ThreadType>(returnType));
+    case ASTNodeType::SPAWN:
+      analyzeSpawnExpr(static_cast<SpawnExprAST&>(expr));
       break;
-    }
 
-    case ASTNodeType::GENERIC_CALL: {
-      auto& genericCall = static_cast<GenericCallAST&>(expr);
-      const std::string& funcName = genericCall.getFunctionName();
-
-      // Resolve the function/class name through using imports
-      sun::QualifiedName resolved = resolveNameWithUsings(funcName);
-      const std::string& lookupName = resolved.baseName;
-
-      // Resolve type arguments to sun::TypePtr
-      std::vector<sun::TypePtr> typeArgs;
-      for (const auto& ta : genericCall.getTypeArguments()) {
-        typeArgs.push_back(typeAnnotationToType(*ta));
-      }
-
-      // Store resolved type arguments on the AST for codegen
-      genericCall.setResolvedTypeArgs(typeArgs);
-
-      // Validate type args
-      for (auto& typeArg : typeArgs) {
-        validateTypeParameter(typeArg, genericCall);
-      }
-
-      // Dispatch based on call type: intrinsic, generic class, or generic
-      // function
-      bool isIntrinsicCall = sun::isIntrinsic(funcName);
-      auto* genericClassInfo = lookupGenericClass(lookupName);
-      auto* genFuncInfo = lookupGenericFunction(lookupName);
-
-      if (isIntrinsicCall) {
-        analyzeIntrinsicCall(genericCall);
-      } else if (genericClassInfo) {
-        analyzeGenericClassConstruction(genericCall);
-      } else if (genFuncInfo) {
-        analyzeGenericFunctionCall(genericCall);
-      } else {
-        logAndThrowError("Unknown generic function or class '" + funcName + "'",
-                         genericCall.getLocation());
-      }
+    case ASTNodeType::GENERIC_CALL:
+      analyzeGenericCallExpr(static_cast<GenericCallAST&>(expr));
       break;
-    }
 
     case ASTNodeType::PACK_EXPANSION: {
       // Pack expansion is handled at codegen time
@@ -1692,31 +312,9 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       break;
     }
 
-    case ASTNodeType::DECLARE_TYPE: {
-      auto& declareExpr = static_cast<DeclareTypeAST&>(expr);
-      // Trigger generic instantiation by resolving the type annotation
-      sun::TypePtr resolvedType =
-          typeAnnotationToType(declareExpr.getTypeAnnotation());
-      declareExpr.setResolvedDeclaredType(resolvedType);
-
-      // If there's an alias, register it
-      if (declareExpr.hasAlias()) {
-        const std::string& aliasName = declareExpr.getAliasName();
-        // Check current scope only for redefinition (shadowing is allowed)
-        if (currentScope->typeAliases.find(aliasName) !=
-            currentScope->typeAliases.end()) {
-          logAndThrowError(
-              "Type alias '" + aliasName + "' is already defined in this scope",
-              declareExpr.getLocation());
-        }
-        if (resolvedType) {
-          currentScope->typeAliases[aliasName] = resolvedType;
-        }
-      }
-
-      expr.setResolvedType(sun::Types::Void());
+    case ASTNodeType::DECLARE_TYPE:
+      analyzeDeclareType(static_cast<DeclareTypeAST&>(expr));
       break;
-    }
 
     default:
       break;
@@ -1730,7 +328,7 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
 void SemanticAnalyzer::analyzeBlock(BlockExprAST& block) {
   // Declaration pre-pass: register all top-level declarations so that
   // ordering doesn't matter at module level.
-  collectDeclarations(block);
+  declarations_.collectDeclarations(block);
 
   // Sequential analysis of all statements (bodies, expressions, etc.)
   for (const auto& expr : block.getBody()) {
@@ -1739,124 +337,7 @@ void SemanticAnalyzer::analyzeBlock(BlockExprAST& block) {
 }
 
 // -------------------------------------------------------------------
-// Identifier validation
-// -------------------------------------------------------------------
-
-void SemanticAnalyzer::validateNotReserved(const std::string& name,
-                                           const std::string& kind,
-                                           std::optional<Position> location) {
-  if (isReservedIdentifier(name)) {
-    logAndThrowError(kind + " '" + name +
-                         "' is invalid: names starting with '_' are "
-                         "reserved for builtins",
-                     location);
-  }
-}
-
-// -------------------------------------------------------------------
-// using declarations (idempotent: run by the pre-pass and the main pass)
-// -------------------------------------------------------------------
-
-void SemanticAnalyzer::registerUsing(UsingAST& usingDecl) {
-  // "using A.B;" where A.B is a module name means "import all from A.B"
-  std::string namespacePath = usingDecl.getNamespacePathString();
-  std::string target = usingDecl.getTarget();
-
-  if (!usingDecl.isModuleImport()) {
-    std::string displayPath =
-        namespacePath.empty() ? target : namespacePath + "." + target;
-    if (auto* modScope = lookupModuleScope(displayPath)) {
-      requireModuleAccessible(*modScope, usingDecl.getLocation());
-      UsingImport import(displayPath, "*");
-      addUsingImport(import);
-      addImportBinding(ImportBinding::wildcard(modScope));
-      return;
-    }
-  }
-
-  // Normal case: import symbol or wildcard from namespace
-  UsingImport import(namespacePath, target);
-  addUsingImport(import);
-  if (auto* modScope = lookupModuleScope(namespacePath)) {
-    requireModuleAccessible(*modScope, usingDecl.getLocation());
-    if (import.isWildcard) {
-      addImportBinding(ImportBinding::wildcard(modScope));
-    } else {
-      addImportBinding(ImportBinding(target, modScope, target));
-    }
-  }
-}
-
-// -------------------------------------------------------------------
-// Class shape registration (fields + method signatures)
-// -------------------------------------------------------------------
-
-void SemanticAnalyzer::registerClassShape(
-    ClassDefinitionAST& classDef, const sun::QualifiedName& qualifiedClass,
-    std::shared_ptr<sun::ClassType> classType) {
-  std::string mangledClassName = qualifiedClass.mangled();
-  if (!preRegisteredClassShapes_.insert(mangledClassName).second) return;
-
-  // Fields
-  for (const auto& field : classDef.getFields()) {
-    if (classType->hasField(field.name)) {
-      logAndThrowError("Field '" + field.name + "' already exists in class '" +
-                           classDef.getName() + "'",
-                       field.location);
-    }
-    sun::TypePtr fieldType = typeAnnotationToType(field.type);
-
-    if constexpr (sun::Config::FORBID_REF_FIELDS_IN_CLASSES) {
-      if (fieldType && fieldType->isReference()) {
-        logAndThrowError("Field '" + field.name + "' in class '" +
-                             classDef.getName() + "' has reference type '" +
-                             fieldType->toDisplayString() +
-                             "'. References cannot be stored in class "
-                             "fields. Use a pointer type or store a copy.",
-                         field.location);
-      }
-    }
-
-    checkPackedFieldType(classDef, field, fieldType);
-    classType->addField(field.name, fieldType).visibility = field.visibility;
-  }
-
-  // Implemented interfaces (fields inherited, implementation recorded)
-  inheritInterfaceFields(classDef, classType);
-
-  // Method signatures ('this' resolves against the class being shaped)
-  auto savedClass = currentClass;
-  setCurrentClass(classType);
-  for (const auto& methodDecl : classDef.getMethods()) {
-    FunctionInfo methodInfo = getFunctionInfo(*methodDecl.function);
-    PrototypeAST& proto =
-        const_cast<PrototypeAST&>(methodDecl.function->getProto());
-    applyFunctionInfoToProto(proto, methodInfo);
-    auto& method =
-        classType->addMethod(proto.getName(), methodInfo.returnType,
-                             methodInfo.paramTypes, methodDecl.isConstructor,
-                             proto.getTypeParameterNames(), proto.canThrow());
-    method.visibility = methodVisibility(*methodDecl.function);
-    method.isConst = methodDecl.isConst;
-  }
-  setCurrentClass(savedClass);
-
-  // The builtin IError predates all source, so it is registered with
-  // message() returning static_ptr<u8> — the only string type that exists at
-  // that point. The stdlib upgrades the contract: once sun.String is known,
-  // IError.message() returns an owned String clone, and every implementation
-  // compiled after this line must match that signature.
-  if (typeRegistry && qualifiedClass.baseName == "String" &&
-      !qualifiedClass.owner().empty() &&
-      qualifiedClass.owner().back() == "sun") {
-    if (auto ierror = typeRegistry->getInterface("IError")) {
-      ierror->setMethodReturnType("message", classType);
-    }
-  }
-}
-
-// -------------------------------------------------------------------
-// Helper: resolve parameter types from prototype
+// Parameter names and types
 // -------------------------------------------------------------------
 
 std::vector<sun::TypePtr> SemanticAnalyzer::validateAndResolveParamTypes(
@@ -1870,7 +351,7 @@ std::vector<sun::TypePtr> SemanticAnalyzer::validateAndResolveParamTypes(
   // Resolve parameter types
   std::vector<sun::TypePtr> paramTypes;
   for (auto& [argName, argType] : proto.getMutableArgs()) {
-    sun::TypePtr paramType = typeAnnotationToType(argType);
+    sun::TypePtr paramType = types_.typeAnnotationToType(argType);
 
     // Check for compound types being passed by value
     if constexpr (sun::Config::REQUIRE_REF_FOR_COMPOUND_PARAMS) {
@@ -1917,7 +398,7 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
   // Resolve return type if specified; Void for constructors (no return type)
   sun::TypePtr returnType = sun::Types::Void();
   if (proto.hasReturnType()) {
-    returnType = typeAnnotationToType(*proto.getReturnType());
+    returnType = types_.typeAnnotationToType(*proto.getReturnType());
     if (!returnType) {
       logAndThrowError("Failed to resolve return type for function '" +
                            proto.getName() + "'",
@@ -1934,11 +415,11 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
     // `public` and privacy mean what they say. Only the emitted symbol is
     // fixed by C — codegen takes that from the link name, never from here.
     // No overload suffix: C has no overloading.
-    qualifiedName = makeQualifiedName(proto.getName());
+    qualifiedName = ctx_.makeQualifiedName(proto.getName());
   } else if (proto.hasQualifiedName()) {
     qualifiedName = proto.getQualifiedName();
   } else {
-    qualifiedName = makeQualifiedName(proto.getName());
+    qualifiedName = ctx_.makeQualifiedName(proto.getName());
   }
 
   // Add param type suffix for overload disambiguation (unified with methods)
@@ -1976,11 +457,26 @@ void SemanticAnalyzer::applyFunctionInfoToProto(PrototypeAST& proto,
 // Partial class analysis
 // -------------------------------------------------------------------
 
+void SemanticAnalyzer::validateNotReserved(const std::string& name,
+                                           const std::string& kind,
+                                           std::optional<Position> location) {
+  if (isReservedIdentifier(name)) {
+    logAndThrowError(kind + " '" + name +
+                         "' is invalid: names starting with '_' are "
+                         "reserved for builtins",
+                     location);
+  }
+}
+
+// -------------------------------------------------------------------
+// Class shape registration (fields + method signatures)
+// -------------------------------------------------------------------
+
 void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
                                            ExprAST& expr) {
   const std::string& baseName = classDef.getName();
 
-  auto existingClass = lookupClass(baseName);
+  auto existingClass = ctx_.lookupClass(baseName);
   if (existingClass) {
     // Primary already analyzed — validate and merge methods now
     for (const auto& extMethod : classDef.getMethods()) {
@@ -1993,11 +489,11 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
     }
 
     // Register and analyze extension methods on the existing class
-    auto savedClass = currentClass;
-    setCurrentClass(existingClass);
+    auto savedClass = ctx_.getCurrentClass();
+    ctx_.setCurrentClass(existingClass);
 
     // Enter a Class scope to contain extension method scopes
-    enterClassScope(existingClass->getQualifiedName());
+    ctx_.enterClassScope(existingClass->getQualifiedName());
 
     // Register all extension methods first
     for (const auto& methodDecl : classDef.getMethods()) {
@@ -2021,7 +517,7 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
       for (const auto& pt : methodInfo.paramTypes) {
         methodParamTypes.push_back(pt);
       }
-      registerFunctionInCurrentScope(
+      ctx_.registerFunctionInCurrentScope(
           mangledName, {methodInfo.returnType, methodParamTypes, {}});
     }
 
@@ -2030,10 +526,10 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
       analyzeFunction(*methodDecl.function);
     }
 
-    exitScope();  // Class scope
+    ctx_.exitScope();  // Class scope
 
     // Merge methods into primary AST so codegen generates them
-    for (auto* s = currentScope; s != nullptr; s = s->parent) {
+    for (auto* s = ctx_.scope(); s != nullptr; s = s->parent) {
       auto it = s->classDefinitions.find(baseName);
       if (it != s->classDefinitions.end()) {
         for (auto& extMethod : classDef.getMutableMethods()) {
@@ -2043,10 +539,10 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
       }
     }
 
-    setCurrentClass(savedClass);
+    ctx_.setCurrentClass(savedClass);
   } else {
     // Primary not yet seen — stash for merging when primary is analyzed
-    pendingExtensions_[baseName].push_back(&classDef);
+    declarations_.deferExtension(baseName, &classDef);
   }
   expr.setResolvedType(sun::Types::Void());
 }
@@ -2082,7 +578,7 @@ void SemanticAnalyzer::analyzeStructLiteral(StructLiteralAST& literal,
   std::set<std::string> seen;
   for (auto& field : literal.getMutableFields()) {
     const sun::ClassField* classField =
-        accessibleField(*classType, field.name, field.location);
+        ctx_.accessibleField(*classType, field.name, field.location);
     if (!classField) {
       logAndThrowError("Class '" + classType->getDisplayName() +
                            "' has no field '" + field.name + "'",
@@ -2132,7 +628,7 @@ void SemanticAnalyzer::analyzeStructLiteral(StructLiteralAST& literal,
 void SemanticAnalyzer::checkExternCallAllowed(const FunctionInfo& info,
                                               const std::string& displayName,
                                               const Position& loc) const {
-  if (!info.isCExtern || isInUnsafeBlock()) return;
+  if (!info.isCExtern || ctx_.isInUnsafeBlock()) return;
   logAndThrowError(
       "Calling extern function '" + displayName +
           "' requires an unsafe block: C code is outside the borrow "
@@ -2150,7 +646,7 @@ void SemanticAnalyzer::analyzeModuleGlobalAssignment(
   const std::string& modPath = moduleType.getModulePath();
   const std::string& memberName = assign.getMemberName();
 
-  SymbolMatch match = findSymbolInModule(modPath, memberName);
+  SymbolMatch match = ctx_.findSymbolInModule(modPath, memberName);
   if (!match) {
     logAndThrowError(
         "Unknown member '" + memberName + "' in module '" + modPath + "'",
@@ -2202,9 +698,9 @@ const FunctionInfo* SemanticAnalyzer::resolveModuleQualifiedCall(
   if (!objectType || !objectType->isModule()) return nullptr;
 
   auto* moduleType = static_cast<sun::ModuleType*>(objectType.get());
-  SymbolMatch match = findSymbolInModule(moduleType->getModulePath(),
-                                         memberAccess.getMemberName(),
-                                         SymbolKind::Function, &argTypes);
+  SymbolMatch match = ctx_.findSymbolInModule(moduleType->getModulePath(),
+                                              memberAccess.getMemberName(),
+                                              SymbolKind::Function, &argTypes);
   if (!match || !match.functionInfo) return nullptr;
 
   checkExternCallAllowed(*match.functionInfo, memberAccess.getMemberName(),
@@ -2332,8 +828,8 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
   // specialized classes are active here).
   sun::TypePtr scopeReturnType = proto.getResolvedReturnType();
   if (!scopeReturnType && proto.hasReturnType() && !proto.isGeneric()) {
-    scopeReturnType =
-        substituteTypeParameters(typeAnnotationToType(*proto.getReturnType()));
+    scopeReturnType = types_.substituteTypeParameters(
+        types_.typeAnnotationToType(*proto.getReturnType()));
   }
 
   // Enter function scope with signature for nested function qualification
@@ -2341,15 +837,16 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
   // body sees the const view of its return type: borrows of `this` are
   // `const ref` there, and the declared `ref` result is what callers with a
   // mutable receiver get.
-  if (proto.isConstMethod()) scopeReturnType = createConstView(scopeReturnType);
-  enterFunctionScope(funcSig, proto.getQualifiedName(), proto.canThrow(),
-                     scopeReturnType);
+  if (proto.isConstMethod())
+    scopeReturnType = types_.createConstView(scopeReturnType);
+  ctx_.enterFunctionScope(funcSig, proto.getQualifiedName(), proto.canThrow(),
+                          scopeReturnType);
 
   // Declare 'this' for methods (when we're inside a class context); it is
   // immutable inside a const method
-  if (currentClass) {
-    declareVariable("this", currentClass, /*isParam=*/true,
-                    /*isConst=*/proto.isConstMethod());
+  if (ctx_.getCurrentClass()) {
+    ctx_.declareVariable("this", ctx_.getCurrentClass(), /*isParam=*/true,
+                         /*isConst=*/proto.isConstMethod());
   }
 
   // If this is a generic function/method, bind each type parameter to itself
@@ -2364,21 +861,21 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
       typeParamTypes.push_back(sun::Types::TypeParameter(
           tp.name, tp.constraint ? tp.constraint->name : ""));
     }
-    addTypeParameterBindings(typeParams, typeParamTypes);
+    ctx_.addTypeParameterBindings(typeParams, typeParamTypes);
   }
 
   // Declare parameters
   for (const auto& [argName, argType] : proto.getArgs()) {
-    sun::TypePtr paramType = typeAnnotationToType(argType);
-    declareVariable(argName, paramType, /*isParam=*/true);
+    sun::TypePtr paramType = types_.typeAnnotationToType(argType);
+    ctx_.declareVariable(argName, paramType, /*isParam=*/true);
   }
 
   // Add captured variables to scope (so nested functions can see them),
   // marked as captures so mutation checks and nested capture lists can
   // distinguish them from ordinary locals
   for (const auto& cap : proto.getCaptures()) {
-    declareVariable(cap.name, cap.type);
-    if (VariableInfo* vi = lookupVariable(cap.name)) {
+    ctx_.declareVariable(cap.name, cap.type);
+    if (VariableInfo* vi = ctx_.lookupVariable(cap.name)) {
       vi->captureKind = cap.kind;
       vi->isConst = cap.isConst;
     }
@@ -2387,7 +884,7 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
   // Analyze the function body
   analyzeBlock(const_cast<BlockExprAST&>(func.getBody()));
 
-  exitScope();
+  ctx_.exitScope();
 }
 
 // -------------------------------------------------------------------
@@ -2407,7 +904,7 @@ FunctionInfo SemanticAnalyzer::getLambdaInfo(LambdaAST& lambda) {
   // parser enforces this, but check defensively)
   sun::TypePtr returnType = sun::Types::Void();
   if (proto.hasReturnType()) {
-    returnType = typeAnnotationToType(*proto.getReturnType());
+    returnType = types_.typeAnnotationToType(*proto.getReturnType());
     if (!returnType) {
       logAndThrowError("Failed to resolve return type for lambda",
                        lambda.getLocation());
@@ -2427,23 +924,23 @@ void SemanticAnalyzer::analyzeLambda(LambdaAST& lambda) {
   // Enter function scope (empty signature - lambdas are anonymous)
   // Nested functions in lambdas will still get outer function prefixes
   // Pass canThrow flag from the lambda's prototype
-  enterFunctionScope("", sun::QualifiedName(), proto.canThrow(),
-                     proto.getResolvedReturnType());
+  ctx_.enterFunctionScope("", sun::QualifiedName(), proto.canThrow(),
+                          proto.getResolvedReturnType());
 
   // Lambdas don't have type parameters (no generic lambdas)
 
   // Declare parameters
   for (const auto& [argName, argType] : proto.getArgs()) {
-    sun::TypePtr paramType = typeAnnotationToType(argType);
-    declareVariable(argName, paramType, /*isParam=*/true);
+    sun::TypePtr paramType = types_.typeAnnotationToType(argType);
+    ctx_.declareVariable(argName, paramType, /*isParam=*/true);
   }
 
   // Add captured variables to scope (so nested functions can see them),
   // marked as captures so mutation checks and nested capture lists can
   // distinguish them from ordinary locals
   for (const auto& cap : proto.getCaptures()) {
-    declareVariable(cap.name, cap.type);
-    if (VariableInfo* vi = lookupVariable(cap.name)) {
+    ctx_.declareVariable(cap.name, cap.type);
+    if (VariableInfo* vi = ctx_.lookupVariable(cap.name)) {
       vi->captureKind = cap.kind;
       vi->isConst = cap.isConst;
     }
@@ -2452,7 +949,7 @@ void SemanticAnalyzer::analyzeLambda(LambdaAST& lambda) {
   // Analyze the lambda body
   analyzeBlock(const_cast<BlockExprAST&>(lambda.getBody()));
 
-  exitScope();
+  ctx_.exitScope();
 }
 
 // -------------------------------------------------------------------
@@ -2468,7 +965,7 @@ void SemanticAnalyzer::validateTypeParameter(const sun::TypePtr& type,
   // Type traits (_Integer, _Float, etc.) are not scope-bound type parameters
   if (sun::isTypeTrait(typeParam->getName())) return;
 
-  sun::TypePtr found = findTypeParameter(typeParam->getName());
+  sun::TypePtr found = ctx_.findTypeParameter(typeParam->getName());
   if (!found) {
     const Position& loc = node.getLocation();
     std::string msg = "Unknown type parameter '" + typeParam->getName() +
@@ -2699,13 +1196,13 @@ void SemanticAnalyzer::analyzeMethodWithBindings(
   bool needsTypeParamScope =
       !typeParams.empty() && typeParams.size() == typeArgs.size();
   if (needsTypeParamScope) {
-    enterTypeParamScope(typeParams, typeArgs);
+    ctx_.enterTypeParamScope(typeParams, typeArgs);
   }
 
   // Step 3: Set class context for 'this' member access resolution
-  auto savedClass = currentClass;
+  auto savedClass = ctx_.getCurrentClass();
   if (classType) {
-    setCurrentClass(classType);
+    ctx_.setCurrentClass(classType);
   }
 
   // Step 4: Enter method scope and declare 'this' parameter
@@ -2714,8 +1211,8 @@ void SemanticAnalyzer::analyzeMethodWithBindings(
   const auto& proto = methodFunc.getProto();
   std::vector<sun::TypePtr> substitutedParamTypes;
   for (const auto& [argName, argType] : proto.getArgs()) {
-    sun::TypePtr paramType = typeAnnotationToType(argType);
-    paramType = substituteTypeParameters(paramType);
+    sun::TypePtr paramType = types_.typeAnnotationToType(argType);
+    paramType = types_.substituteTypeParameters(paramType);
     substitutedParamTypes.push_back(paramType);
   }
   std::string methodSig = getFunctionSignature(
@@ -2726,25 +1223,26 @@ void SemanticAnalyzer::analyzeMethodWithBindings(
   // inference (e.g. `return Option.None;`) has the expected type
   sun::TypePtr methodReturnType;
   if (proto.hasReturnType()) {
-    methodReturnType =
-        substituteTypeParameters(typeAnnotationToType(*proto.getReturnType()));
+    methodReturnType = types_.substituteTypeParameters(
+        types_.typeAnnotationToType(*proto.getReturnType()));
   }
   // A const method body sees the const view of its return type
   if (proto.isConstMethod())
-    methodReturnType = createConstView(methodReturnType);
-  enterFunctionScope(methodSig,
-                     sun::QualifiedName(classType->getQualifiedName().scopePath,
-                                        mangledMethodName),
-                     proto.canThrow(), methodReturnType);
+    methodReturnType = types_.createConstView(methodReturnType);
+  ctx_.enterFunctionScope(
+      methodSig,
+      sun::QualifiedName(classType->getQualifiedName().scopePath,
+                         mangledMethodName),
+      proto.canThrow(), methodReturnType);
   if (classType) {
-    declareVariable("this", classType, /*isParam=*/true,
-                    /*isConst=*/proto.isConstMethod());
+    ctx_.declareVariable("this", classType, /*isParam=*/true,
+                         /*isConst=*/proto.isConstMethod());
   }
 
   // Step 5: Declare method parameters with substituted types
   for (size_t i = 0; i < proto.getArgs().size(); ++i) {
     const auto& [argName, argType] = proto.getArgs()[i];
-    declareVariable(argName, substitutedParamTypes[i], /*isParam=*/true);
+    ctx_.declareVariable(argName, substitutedParamTypes[i], /*isParam=*/true);
   }
 
   // Step 5.5: Clear old resolved types before re-analysis
@@ -2756,11 +1254,11 @@ void SemanticAnalyzer::analyzeMethodWithBindings(
   analyzeBlock(const_cast<BlockExprAST&>(methodFunc.getBody()));
 
   // Step 7: Pop scopes and restore context
-  exitScope();  // method scope
+  ctx_.exitScope();  // method scope
   if (needsTypeParamScope) {
-    exitScope();  // type param scope
+    ctx_.exitScope();  // type param scope
   }
-  setCurrentClass(savedClass);
+  ctx_.setCurrentClass(savedClass);
 }
 
 // -------------------------------------------------------------------
@@ -2858,76 +1356,301 @@ void SemanticAnalyzer::maybeResolveBoundMethodRef(MemberAccessAST& memberAccess,
   memberAccess.setIsBoundMethodRef(true);
 }
 
-void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
-                                   sun::TypePtr expectedType) {
+SemanticAnalyzer::CalleeResolution SemanticAnalyzer::resolveCallee(
+    CallExprAST& callExpr, const std::vector<sun::TypePtr>& argTypes) {
+  auto calleeASTType = callExpr.getCallee()->getType();
+  const auto& args = callExpr.getArgs();
+  std::optional<FunctionInfo> resolvedFunc;
+  std::shared_ptr<sun::ClassType> classType = nullptr;
   // Set when the callee swallows a variadic pack, whose arguments are not
-  // part of the recorded parameter list — the arity check below sits out.
+  // part of the recorded parameter list — the arity check sits out.
   bool calleeTakesPack = false;
   // Set when a method is called on a constant receiver (see
   // checkMethodReceiver): a `ref T` result becomes `const ref T`
   bool receiverImmutable = false;
-  // Check for unsafe intrinsic calls (non-generic)
-  // Generic intrinsics (_load<T>, _store<T>, _address_of<T>) are checked in
-  // type_inference.cpp
-  static const std::unordered_set<std::string> unsafeIntrinsics = {
-      "_malloc",
-      "_free",
-      "_load_i64",
-      "_store_i64",
-      "_atomic_cmpxchg_i32",
-      "_atomic_store_i32",
-      "_atomic_load_i32",
-      "_atomic_fetch_add_i32",
-      "_atomic_fetch_sub_i32",
-      "_futex_wait",
-      "_futex_wake",
-      "__file_open",
-      "__file_close",
-      "__file_write",
-      "__file_read",
-      "__lseek",
-      "__fstat",
-      "__fsync",
-      "__ftruncate",
-      "__unlink",
-      "__rename",
-      "__mkdir",
-      "__rmdir",
-      "__write",
-      "__read"};
 
-  auto calleeASTType = callExpr.getCallee()->getType();
+  // For function calls by name, do overload resolution before analyzing
+  // callee This avoids errors for overloaded functions referenced by name
   if (calleeASTType == ASTNodeType::VARIABLE_REFERENCE) {
-    const auto& varRef =
-        static_cast<const VariableReferenceAST&>(*callExpr.getCallee());
-    const std::string& funcName = varRef.getName();
-    if (unsafeIntrinsics.count(funcName) && !isInUnsafeBlock()) {
-      logAndThrowError("'" + funcName + "' can only be used in an unsafe block",
-                       callExpr.getLocation());
+    auto& varRef = static_cast<VariableReferenceAST&>(
+        const_cast<ExprAST&>(*callExpr.getCallee()));
+    // Resolve the name through using imports (e.g., Vec -> sun_Vec)
+    sun::QualifiedName resolved = ctx_.resolveNameWithUsings(varRef.getName());
+
+    // Store the qualified name so codegen doesn't need to do name resolution
+    if (resolved.mangled() != varRef.getName()) {
+      varRef.setQualifiedName(resolved);
     }
+
+    resolvedFunc = ctx_.lookupFunction(resolved.baseName, argTypes);
+    if (resolvedFunc) {
+      checkExternCallAllowed(*resolvedFunc, varRef.getName(),
+                             callExpr.getLocation());
+      // Set resolved type on the callee directly
+      varRef.setResolvedType(sun::Types::Function(resolvedFunc->returnType,
+                                                  resolvedFunc->paramTypes,
+                                                  resolvedFunc->canThrow));
+      // Set qualified name from the resolved function (handles import scopes)
+      if (!resolvedFunc->qualifiedName.empty()) {
+        varRef.setQualifiedName(resolvedFunc->qualifiedName);
+      }
+    } else {
+      // Check if this is a class constructor call: ClassName(args...)
+      // This creates a stack-allocated class instance
+      classType = ctx_.lookupClass(resolved.baseName);
+      // A generic function called without type arguments — `identity(42)`.
+      // The arguments say what T is, so instantiate that specialization and
+      // let the call resolve to it like any other named function.
+      const GenericFunctionInfo* genericFunc =
+          classType ? nullptr : ctx_.lookupGenericFunction(resolved.baseName);
+      if (classType) {
+        // Set resolved type on the callee to indicate this is a class
+        // constructor call (stack-allocated)
+        varRef.setResolvedType(classType);
+      } else if (genericFunc) {
+        // Inference reads the fixed parameters only — it stops at
+        // genericInfo.params — so a call filling a pack still says what T is
+        // from its leading arguments: `spawn(f, 1, 2)`.
+        auto typeArgs = sun::generics::inferGenericTypeArguments(
+            *genericFunc, argTypes, varRef.getName(), callExpr.getLocation());
+        if (generics_.templateStillAbstract(*genericFunc, typeArgs)) {
+          // In a template body the arguments are still type parameters; the
+          // specialization is made when the enclosing generic is
+          // instantiated. Until then the call has the substituted signature —
+          // which lists the fixed parameters only, so a pack callee's extra
+          // arguments must not be counted against it yet.
+          if (genericFunc->AST &&
+              genericFunc->AST->getProto().hasVariadicParam()) {
+            calleeTakesPack = true;
+          }
+          varRef.setResolvedType(
+              generics_.genericFunctionSignature(*genericFunc, typeArgs));
+        } else {
+          std::optional<std::vector<sun::TypePtr>> packArgTypes;
+          if (genericFunc->AST &&
+              genericFunc->AST->getProto().hasVariadicParam()) {
+            // No calleeTakesPack here: the specialization's parameter list
+            // already includes the pack's elements, so the ordinary
+            // exact-arity check below is the right one.
+            packArgTypes = generics_.splitPackArgTypes(
+                genericFunc->AST->getProto(), argTypes, varRef.getName(),
+                callExpr.getLocation());
+          }
+          SpecializedFunctionInfo specialized =
+              generics_.requireGenericSpecialization(
+                  *genericFunc, typeArgs, varRef.getName(),
+                  callExpr.getLocation(), packArgTypes);
+          resolvedFunc = specialized.asFunctionInfo();
+          varRef.setQualifiedName(specialized.qualifiedName);
+          varRef.setResolvedType(specialized.functionType());
+        }
+      } else {
+        // Check if there are overloads for this function name - if so,
+        // report a helpful "no matching overload" error
+        auto allOverloads = ctx_.getAllFunctions(resolved.baseName);
+        if (!allOverloads.empty()) {
+          // Build error message with arg types and available overloads
+          std::string argTypesStr;
+          for (size_t i = 0; i < argTypes.size(); ++i) {
+            if (i > 0) argTypesStr += ", ";
+            argTypesStr +=
+                argTypes[i] ? argTypes[i]->toDisplayString() : "unknown";
+          }
+          std::string overloadsStr;
+          for (const auto& overload : allOverloads) {
+            overloadsStr += "\n  - " + resolved.baseName + "(";
+            for (size_t i = 0; i < overload.paramTypes.size(); ++i) {
+              if (i > 0) overloadsStr += ", ";
+              overloadsStr += overload.paramTypes[i]
+                                  ? overload.paramTypes[i]->toDisplayString()
+                                  : "unknown";
+            }
+            if (overload.isCVariadic) {
+              overloadsStr += overload.paramTypes.empty() ? "..." : ", ...";
+            }
+            overloadsStr += ")";
+          }
+          logAndThrowError("No matching overload of '" + resolved.baseName +
+                               "' for argument types (" + argTypesStr +
+                               "). Available overloads:" + overloadsStr,
+                           callExpr.getLocation());
+        }
+        // Not a function or class - analyze normally (will check variables,
+        // etc.)
+        analyzeExpr(varRef);
+      }
+    }
+  } else if (calleeASTType == ASTNodeType::MEMBER_ACCESS) {
+    // Handle method calls: object.method(args...)
+    auto& memberAccess = static_cast<MemberAccessAST&>(
+        const_cast<ExprAST&>(*callExpr.getCallee()));
+
+    // First analyze the object expression to get its type
+    analyzeExpr(const_cast<ExprAST&>(*memberAccess.getObject()));
+
+    // Get object type (unwrap references)
+    sun::TypePtr objectType = memberAccess.getObject()->getResolvedType();
+    if (!objectType) {
+      objectType = types_.inferType(*memberAccess.getObject());
+    }
+    objectType = unwrapRef(objectType);
+
+    // For class types, do method overload resolution with argument types
+    if (objectType && objectType->isClass()) {
+      const auto* classType =
+          static_cast<const sun::ClassType*>(objectType.get());
+      const std::string& methodName = memberAccess.getMemberName();
+
+      // Generic method ending in an `args...` pack (e.g.
+      // allocator.create<Point>(...)): specialize HERE, where the actual call
+      // argument types are known, so overloaded constructors resolve and the
+      // specialization is keyed (mangled) by the pack's arg types. The
+      // inferType trigger defers variadic methods to this path.
+      FunctionAST* genericMethod =
+          generics_.findGenericMethodAST(classType, methodName);
+      bool variadicMethod =
+          genericMethod && genericMethod->getProto().hasVariadicParam();
+      if (variadicMethod && memberAccess.hasTypeArguments()) {
+        calleeTakesPack = true;
+        std::vector<sun::TypePtr> typeArgPtrs;
+        for (const auto& ta : memberAccess.getTypeArguments()) {
+          typeArgPtrs.push_back(types_.typeAnnotationToType(*ta));
+        }
+        memberAccess.setResolvedTypeArgs(typeArgPtrs);
+        // Only what is left after the method's fixed parameters fills the
+        // pack; `create<T>(args...)` has none, but `(x: i32, args...)` does.
+        std::vector<sun::TypePtr> packArgTypes = *generics_.splitPackArgTypes(
+            genericMethod->getProto(), argTypes, methodName,
+            memberAccess.getLocation());
+        memberAccess.setResolvedVariadicArgTypes(packArgTypes);
+
+        auto mutableClassType =
+            std::static_pointer_cast<sun::ClassType>(objectType);
+        // Point the call at the specialization, under the name given where
+        // it was instantiated (pack suffix included).
+        if (auto specialized = generics_.instantiateGenericMethod(
+                mutableClassType, methodName, typeArgPtrs, packArgTypes)) {
+          memberAccess.setQualifiedName(
+              specialized->getProto().getQualifiedName());
+        }
+
+        const sun::ClassMethod* method = ctx_.accessibleMethod(
+            *classType, methodName, memberAccess.getLocation());
+        if (method) {
+          memberAccess.setResolvedType(
+              sun::Types::Function(method->returnType, method->paramTypes));
+          receiverImmutable = checkMethodReceiver(
+              *memberAccess.getObject(), methodName, method->isConst,
+              method->isConstructor, memberAccess.getLocation());
+        }
+      } else if (genericMethod && !variadicMethod) {
+        // A generic method: whatever type arguments the call leaves out are
+        // inferred from its arguments, then types_.inferType() instantiates the
+        // specialization from the complete list (and does the same when all
+        // of them were written).
+        const sun::ClassMethod* method = ctx_.accessibleMethod(
+            *classType, methodName, memberAccess.getLocation());
+        std::vector<sun::TypePtr> written = types_.resolveTypeArguments(
+            memberAccess.getTypeArguments(), memberAccess.getLocation(),
+            "generic method call");
+        if (method && written.size() < method->typeParameters.size()) {
+          memberAccess.setResolvedTypeArgs(
+              sun::generics::inferMethodTypeArguments(
+                  *method, argTypes,
+                  classType->getDisplayName() + "." + methodName,
+                  memberAccess.getLocation(), written));
+        }
+        memberAccess.setResolvedType(types_.inferType(memberAccess));
+        if (method) {
+          receiverImmutable = checkMethodReceiver(
+              *memberAccess.getObject(), methodName, method->isConst,
+              method->isConstructor, memberAccess.getLocation());
+        }
+      } else {
+        // Try to find a method overload matching the argument types
+        const sun::ClassMethod* method = ctx_.accessibleMethodForArgs(
+            *classType, methodName, argTypes, memberAccess.getLocation());
+        if (method) {
+          // Set the resolved type on the member access for later use
+          memberAccess.setResolvedType(
+              sun::Types::Function(method->returnType, method->paramTypes));
+          receiverImmutable = checkMethodReceiver(
+              *memberAccess.getObject(), methodName, method->isConst,
+              method->isConstructor, memberAccess.getLocation());
+        } else {
+          // No overload took these arguments. When the mismatch is the
+          // argument *count*, say so here: the fallback below picks an
+          // arbitrary overload, and a zero-parameter one leaves nothing for
+          // the arity check to compare against (issue #87).
+          reportNoMethodForArgCount(*classType, methodName, argTypes,
+                                    memberAccess.getLocation());
+          // Fall back to first method with this name (will error on type
+          // mismatch). Set the type directly (the object is already
+          // analyzed) instead of analyzeExpr, so the callee is not converted
+          // to a bound-method lambda — call position requires a FunctionType.
+          memberAccess.setResolvedType(types_.inferType(memberAccess));
+        }
+      }
+    } else if (const FunctionInfo* modFunc = resolveModuleQualifiedCall(
+                   memberAccess, objectType, argTypes)) {
+      // Module-qualified call: the overload is chosen from the argument
+      // types here. types_.inferType() alone would only see the first overload.
+      memberAccess.setResolvedType(
+          sun::Types::Function(modFunc->returnType, modFunc->paramTypes));
+    } else if (auto* staticPtr = types_.asNonClassStaticPtr(objectType)) {
+      // static_ptr<T> builtin methods: length(), raw()
+      memberAccess.setResolvedType(types_.inferStaticPtrMethodType(
+          *staticPtr, memberAccess.getMemberName(), callExpr.getArgs().size(),
+          memberAccess.getLocation()));
+    } else {
+      // Not a class type (interface, module, ptr-to-class, builtin...).
+      // Set the type directly (the object is already analyzed) instead of
+      // analyzeExpr, so a ptr-to-class method callee is not converted to a
+      // bound-method lambda — call position requires a FunctionType.
+      memberAccess.setResolvedType(types_.inferType(memberAccess));
+      if (objectType && objectType->isInterface()) {
+        const auto* iface =
+            static_cast<const sun::InterfaceType*>(objectType.get());
+        if (const auto* method =
+                iface->getMethod(memberAccess.getMemberName())) {
+          receiverImmutable = checkMethodReceiver(
+              *memberAccess.getObject(), method->name, method->isConst,
+              /*isConstructor=*/false, memberAccess.getLocation());
+        }
+      }
+    }
+  } else {
+    // Not a simple variable reference or method call - analyze the callee
+    // expression
+    analyzeExpr(const_cast<ExprAST&>(*callExpr.getCallee()));
   }
 
-  // Enum variant construction: EnumName.Variant(args...) for concrete and
-  // generic enums; intercepted before generic callee analysis (see enums.cpp)
-  if (tryAnalyzeEnumConstruction(callExpr, expectedType)) {
-    return;
-  }
+  return {std::move(resolvedFunc), std::move(classType), calleeTakesPack,
+          receiverImmutable};
+}
 
+// The `args...` of a call, analyzed and typed. Arguments go first so that
+// overload resolution has real types to match, which means an argument that
+// needs a hint — an array literal, an overloaded bound method reference —
+// has to get it from a provisional look at the callee before it is analyzed.
+std::vector<sun::TypePtr> SemanticAnalyzer::analyzeCallArguments(
+    CallExprAST& callExpr, sun::TypePtr expectedType) {
+  auto calleeASTType = callExpr.getCallee()->getType();
   // Get parameter types early for array literal type propagation
   std::vector<sun::TypePtr> expectedParamTypes;
   if (calleeASTType == ASTNodeType::VARIABLE_REFERENCE) {
     const auto& varRef =
         static_cast<const VariableReferenceAST&>(*callExpr.getCallee());
     // Resolve the name through using imports
-    sun::QualifiedName resolved = resolveNameWithUsings(varRef.getName());
+    sun::QualifiedName resolved = ctx_.resolveNameWithUsings(varRef.getName());
     // Try to look up function parameters
-    auto allFuncs = getAllFunctions(resolved.baseName);
+    auto allFuncs = ctx_.getAllFunctions(resolved.baseName);
     if (!allFuncs.empty()) {
       // Use first overload's param types for type propagation
       expectedParamTypes = allFuncs[0].paramTypes;
     } else {
       // Check if this is a class constructor (use base name for lookup)
-      auto classType = lookupClass(resolved.baseName);
+      auto classType = ctx_.lookupClass(resolved.baseName);
       if (classType) {
         // Get init method parameters
         if (auto* initMethod = classType->getMethod("init")) {
@@ -2978,266 +1701,76 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
     argTypes.push_back(arg->getResolvedType());
   }
 
-  // For function calls by name, do overload resolution before analyzing
-  // callee This avoids errors for overloaded functions referenced by name
-  std::optional<FunctionInfo> resolvedFunc;
-  std::shared_ptr<sun::ClassType> classType = nullptr;
+  return argTypes;
+}
+
+void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
+                                   sun::TypePtr expectedType) {
+  // Check for unsafe intrinsic calls (non-generic)
+  // Generic intrinsics (_load<T>, _store<T>, _address_of<T>) are checked in
+  // type_inference.cpp
+  static const std::unordered_set<std::string> unsafeIntrinsics = {
+      "_malloc",
+      "_free",
+      "_load_i64",
+      "_store_i64",
+      "_atomic_cmpxchg_i32",
+      "_atomic_store_i32",
+      "_atomic_load_i32",
+      "_atomic_fetch_add_i32",
+      "_atomic_fetch_sub_i32",
+      "_futex_wait",
+      "_futex_wake",
+      "__file_open",
+      "__file_close",
+      "__file_write",
+      "__file_read",
+      "__lseek",
+      "__fstat",
+      "__fsync",
+      "__ftruncate",
+      "__unlink",
+      "__rename",
+      "__mkdir",
+      "__rmdir",
+      "__write",
+      "__read"};
+
+  auto calleeASTType = callExpr.getCallee()->getType();
   if (calleeASTType == ASTNodeType::VARIABLE_REFERENCE) {
-    auto& varRef = static_cast<VariableReferenceAST&>(
-        const_cast<ExprAST&>(*callExpr.getCallee()));
-    // Resolve the name through using imports (e.g., Vec -> sun_Vec)
-    sun::QualifiedName resolved = resolveNameWithUsings(varRef.getName());
-
-    // Store the qualified name so codegen doesn't need to do name resolution
-    if (resolved.mangled() != varRef.getName()) {
-      varRef.setQualifiedName(resolved);
+    const auto& varRef =
+        static_cast<const VariableReferenceAST&>(*callExpr.getCallee());
+    const std::string& funcName = varRef.getName();
+    if (unsafeIntrinsics.count(funcName) && !ctx_.isInUnsafeBlock()) {
+      logAndThrowError("'" + funcName + "' can only be used in an unsafe block",
+                       callExpr.getLocation());
     }
-
-    resolvedFunc = lookupFunction(resolved.baseName, argTypes);
-    if (resolvedFunc) {
-      checkExternCallAllowed(*resolvedFunc, varRef.getName(),
-                             callExpr.getLocation());
-      // Set resolved type on the callee directly
-      varRef.setResolvedType(sun::Types::Function(resolvedFunc->returnType,
-                                                  resolvedFunc->paramTypes,
-                                                  resolvedFunc->canThrow));
-      // Set qualified name from the resolved function (handles import scopes)
-      if (!resolvedFunc->qualifiedName.empty()) {
-        varRef.setQualifiedName(resolvedFunc->qualifiedName);
-      }
-    } else {
-      // Check if this is a class constructor call: ClassName(args...)
-      // This creates a stack-allocated class instance
-      classType = lookupClass(resolved.baseName);
-      // A generic function called without type arguments — `identity(42)`.
-      // The arguments say what T is, so instantiate that specialization and
-      // let the call resolve to it like any other named function.
-      const GenericFunctionInfo* genericFunc =
-          classType ? nullptr : lookupGenericFunction(resolved.baseName);
-      if (classType) {
-        // Set resolved type on the callee to indicate this is a class
-        // constructor call (stack-allocated)
-        varRef.setResolvedType(classType);
-      } else if (genericFunc) {
-        // Inference reads the fixed parameters only — it stops at
-        // genericInfo.params — so a call filling a pack still says what T is
-        // from its leading arguments: `spawn(f, 1, 2)`.
-        auto typeArgs = sun::generics::inferGenericTypeArguments(
-            *genericFunc, argTypes, varRef.getName(), callExpr.getLocation());
-        if (templateStillAbstract(*genericFunc, typeArgs)) {
-          // In a template body the arguments are still type parameters; the
-          // specialization is made when the enclosing generic is
-          // instantiated. Until then the call has the substituted signature —
-          // which lists the fixed parameters only, so a pack callee's extra
-          // arguments must not be counted against it yet.
-          if (genericFunc->AST &&
-              genericFunc->AST->getProto().hasVariadicParam()) {
-            calleeTakesPack = true;
-          }
-          varRef.setResolvedType(
-              genericFunctionSignature(*genericFunc, typeArgs));
-        } else {
-          std::optional<std::vector<sun::TypePtr>> packArgTypes;
-          if (genericFunc->AST &&
-              genericFunc->AST->getProto().hasVariadicParam()) {
-            // No calleeTakesPack here: the specialization's parameter list
-            // already includes the pack's elements, so the ordinary
-            // exact-arity check below is the right one.
-            packArgTypes =
-                splitPackArgTypes(genericFunc->AST->getProto(), argTypes,
-                                  varRef.getName(), callExpr.getLocation());
-          }
-          SpecializedFunctionInfo specialized = requireGenericSpecialization(
-              *genericFunc, typeArgs, varRef.getName(), callExpr.getLocation(),
-              packArgTypes);
-          resolvedFunc = specialized.asFunctionInfo();
-          varRef.setQualifiedName(specialized.qualifiedName);
-          varRef.setResolvedType(specialized.functionType());
-        }
-      } else {
-        // Check if there are overloads for this function name - if so,
-        // report a helpful "no matching overload" error
-        auto allOverloads = getAllFunctions(resolved.baseName);
-        if (!allOverloads.empty()) {
-          // Build error message with arg types and available overloads
-          std::string argTypesStr;
-          for (size_t i = 0; i < argTypes.size(); ++i) {
-            if (i > 0) argTypesStr += ", ";
-            argTypesStr +=
-                argTypes[i] ? argTypes[i]->toDisplayString() : "unknown";
-          }
-          std::string overloadsStr;
-          for (const auto& overload : allOverloads) {
-            overloadsStr += "\n  - " + resolved.baseName + "(";
-            for (size_t i = 0; i < overload.paramTypes.size(); ++i) {
-              if (i > 0) overloadsStr += ", ";
-              overloadsStr += overload.paramTypes[i]
-                                  ? overload.paramTypes[i]->toDisplayString()
-                                  : "unknown";
-            }
-            if (overload.isCVariadic) {
-              overloadsStr += overload.paramTypes.empty() ? "..." : ", ...";
-            }
-            overloadsStr += ")";
-          }
-          logAndThrowError("No matching overload of '" + resolved.baseName +
-                               "' for argument types (" + argTypesStr +
-                               "). Available overloads:" + overloadsStr,
-                           callExpr.getLocation());
-        }
-        // Not a function or class - analyze normally (will check variables,
-        // etc.)
-        analyzeExpr(varRef);
-      }
-    }
-  } else if (calleeASTType == ASTNodeType::MEMBER_ACCESS) {
-    // Handle method calls: object.method(args...)
-    auto& memberAccess = static_cast<MemberAccessAST&>(
-        const_cast<ExprAST&>(*callExpr.getCallee()));
-
-    // First analyze the object expression to get its type
-    analyzeExpr(const_cast<ExprAST&>(*memberAccess.getObject()));
-
-    // Get object type (unwrap references)
-    sun::TypePtr objectType = memberAccess.getObject()->getResolvedType();
-    if (!objectType) {
-      objectType = inferType(*memberAccess.getObject());
-    }
-    objectType = unwrapRef(objectType);
-
-    // For class types, do method overload resolution with argument types
-    if (objectType && objectType->isClass()) {
-      const auto* classType =
-          static_cast<const sun::ClassType*>(objectType.get());
-      const std::string& methodName = memberAccess.getMemberName();
-
-      // Generic method ending in an `args...` pack (e.g.
-      // allocator.create<Point>(...)): specialize HERE, where the actual call
-      // argument types are known, so overloaded constructors resolve and the
-      // specialization is keyed (mangled) by the pack's arg types. The
-      // inferType trigger defers variadic methods to this path.
-      FunctionAST* genericMethod = findGenericMethodAST(classType, methodName);
-      bool variadicMethod =
-          genericMethod && genericMethod->getProto().hasVariadicParam();
-      if (variadicMethod && memberAccess.hasTypeArguments()) {
-        calleeTakesPack = true;
-        std::vector<sun::TypePtr> typeArgPtrs;
-        for (const auto& ta : memberAccess.getTypeArguments()) {
-          typeArgPtrs.push_back(typeAnnotationToType(*ta));
-        }
-        memberAccess.setResolvedTypeArgs(typeArgPtrs);
-        // Only what is left after the method's fixed parameters fills the
-        // pack; `create<T>(args...)` has none, but `(x: i32, args...)` does.
-        std::vector<sun::TypePtr> packArgTypes =
-            *splitPackArgTypes(genericMethod->getProto(), argTypes, methodName,
-                               memberAccess.getLocation());
-        memberAccess.setResolvedVariadicArgTypes(packArgTypes);
-
-        auto mutableClassType =
-            std::static_pointer_cast<sun::ClassType>(objectType);
-        // Point the call at the specialization, under the name given where
-        // it was instantiated (pack suffix included).
-        if (auto specialized = instantiateGenericMethod(
-                mutableClassType, methodName, typeArgPtrs, packArgTypes)) {
-          memberAccess.setQualifiedName(
-              specialized->getProto().getQualifiedName());
-        }
-
-        const sun::ClassMethod* method = accessibleMethod(
-            *classType, methodName, memberAccess.getLocation());
-        if (method) {
-          memberAccess.setResolvedType(
-              sun::Types::Function(method->returnType, method->paramTypes));
-          receiverImmutable = checkMethodReceiver(
-              *memberAccess.getObject(), methodName, method->isConst,
-              method->isConstructor, memberAccess.getLocation());
-        }
-      } else if (genericMethod && !variadicMethod) {
-        // A generic method: whatever type arguments the call leaves out are
-        // inferred from its arguments, then inferType() instantiates the
-        // specialization from the complete list (and does the same when all
-        // of them were written).
-        const sun::ClassMethod* method = accessibleMethod(
-            *classType, methodName, memberAccess.getLocation());
-        std::vector<sun::TypePtr> written = resolveTypeArguments(
-            memberAccess.getTypeArguments(), memberAccess.getLocation(),
-            "generic method call");
-        if (method && written.size() < method->typeParameters.size()) {
-          memberAccess.setResolvedTypeArgs(
-              sun::generics::inferMethodTypeArguments(
-                  *method, argTypes,
-                  classType->getDisplayName() + "." + methodName,
-                  memberAccess.getLocation(), written));
-        }
-        memberAccess.setResolvedType(inferType(memberAccess));
-        if (method) {
-          receiverImmutable = checkMethodReceiver(
-              *memberAccess.getObject(), methodName, method->isConst,
-              method->isConstructor, memberAccess.getLocation());
-        }
-      } else {
-        // Try to find a method overload matching the argument types
-        const sun::ClassMethod* method = accessibleMethodForArgs(
-            *classType, methodName, argTypes, memberAccess.getLocation());
-        if (method) {
-          // Set the resolved type on the member access for later use
-          memberAccess.setResolvedType(
-              sun::Types::Function(method->returnType, method->paramTypes));
-          receiverImmutable = checkMethodReceiver(
-              *memberAccess.getObject(), methodName, method->isConst,
-              method->isConstructor, memberAccess.getLocation());
-        } else {
-          // No overload took these arguments. When the mismatch is the
-          // argument *count*, say so here: the fallback below picks an
-          // arbitrary overload, and a zero-parameter one leaves nothing for
-          // the arity check to compare against (issue #87).
-          reportNoMethodForArgCount(*classType, methodName, argTypes,
-                                    memberAccess.getLocation());
-          // Fall back to first method with this name (will error on type
-          // mismatch). Set the type directly (the object is already
-          // analyzed) instead of analyzeExpr, so the callee is not converted
-          // to a bound-method lambda — call position requires a FunctionType.
-          memberAccess.setResolvedType(inferType(memberAccess));
-        }
-      }
-    } else if (const FunctionInfo* modFunc = resolveModuleQualifiedCall(
-                   memberAccess, objectType, argTypes)) {
-      // Module-qualified call: the overload is chosen from the argument
-      // types here. inferType() alone would only see the first overload.
-      memberAccess.setResolvedType(
-          sun::Types::Function(modFunc->returnType, modFunc->paramTypes));
-    } else if (auto* staticPtr = asNonClassStaticPtr(objectType)) {
-      // static_ptr<T> builtin methods: length(), raw()
-      memberAccess.setResolvedType(inferStaticPtrMethodType(
-          *staticPtr, memberAccess.getMemberName(), callExpr.getArgs().size(),
-          memberAccess.getLocation()));
-    } else {
-      // Not a class type (interface, module, ptr-to-class, builtin...).
-      // Set the type directly (the object is already analyzed) instead of
-      // analyzeExpr, so a ptr-to-class method callee is not converted to a
-      // bound-method lambda — call position requires a FunctionType.
-      memberAccess.setResolvedType(inferType(memberAccess));
-      if (objectType && objectType->isInterface()) {
-        const auto* iface =
-            static_cast<const sun::InterfaceType*>(objectType.get());
-        if (const auto* method =
-                iface->getMethod(memberAccess.getMemberName())) {
-          receiverImmutable = checkMethodReceiver(
-              *memberAccess.getObject(), method->name, method->isConst,
-              /*isConstructor=*/false, memberAccess.getLocation());
-        }
-      }
-    }
-  } else {
-    // Not a simple variable reference or method call - analyze the callee
-    // expression
-    analyzeExpr(const_cast<ExprAST&>(*callExpr.getCallee()));
   }
+
+  // Enum variant construction: EnumName.Variant(args...) for concrete and
+  // generic enums; intercepted before generic callee analysis (see enums.cpp)
+  if (tryAnalyzeEnumConstruction(callExpr, expectedType)) {
+    return;
+  }
+
+  std::vector<sun::TypePtr> argTypes =
+      analyzeCallArguments(callExpr, expectedType);
+  const auto& args = callExpr.getArgs();
+
+  // Work out what is actually being called, and what that means for the
+  // arguments: which overload, whether it is a constructor, whether it
+  // swallows a pack, and whether its receiver was constant.
+  CalleeResolution callee = resolveCallee(callExpr, argTypes);
+  const std::optional<FunctionInfo>& resolvedFunc = callee.function;
+  // Not const: a module-qualified constructor call fills this in below.
+  std::shared_ptr<sun::ClassType>& classType = callee.classType;
+  const bool calleeTakesPack = callee.takesPack;
+  const bool receiverImmutable = callee.receiverImmutable;
 
   // Type check: verify argument types match parameter types
   sun::TypePtr calleeSunType = callExpr.getCallee()->getResolvedType();
   if (!calleeSunType) {
-    calleeSunType = inferType(*callExpr.getCallee());
+    calleeSunType = types_.inferType(*callExpr.getCallee());
   }
   // A module-qualified constructor call (`m.Point(...)`) resolves the callee
   // to the class type; treat it like `Point(...)` below. Only a member of a
@@ -3249,7 +1782,7 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
     const auto& calleeMember =
         static_cast<const MemberAccessAST&>(*callExpr.getCallee());
     sun::TypePtr ownerType = calleeMember.getObject()->getResolvedType();
-    if (!ownerType) ownerType = inferType(*calleeMember.getObject());
+    if (!ownerType) ownerType = types_.inferType(*calleeMember.getObject());
     if (ownerType && ownerType->isModule()) {
       classType = std::static_pointer_cast<sun::ClassType>(calleeSunType);
     }
@@ -3275,8 +1808,8 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
   } else if (classType && classType->isClass()) {
     // Class constructor call: look up init method with overload resolution
     auto* ct = static_cast<const sun::ClassType*>(classType.get());
-    const auto* initMethod =
-        accessibleMethodForArgs(*ct, "init", argTypes, callExpr.getLocation());
+    const auto* initMethod = ctx_.accessibleMethodForArgs(
+        *ct, "init", argTypes, callExpr.getLocation());
     if (initMethod) {
       paramTypes = initMethod->paramTypes;
       knownSignature = true;
@@ -3525,7 +2058,7 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
     }
   }
   if (calleeThrows) {
-    if (!isInTryBlock() && !isInThrowingFunction()) {
+    if (!ctx_.isInTryBlock() && !ctx_.isInThrowingFunction()) {
       logAndThrowError(
           "Call to throwing function '" + funcName +
               "' must be in a try block or in a function declared with ', "
@@ -3544,8 +2077,8 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
 
   // A borrow handed out by a method seen through an immutable receiver may
   // only be read through
-  sun::TypePtr resultType = inferType(callExpr);
-  if (receiverImmutable) resultType = createConstView(resultType);
+  sun::TypePtr resultType = types_.inferType(callExpr);
+  if (receiverImmutable) resultType = types_.createConstView(resultType);
   callExpr.setResolvedType(resultType);
 }
 
@@ -3555,7 +2088,7 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
 
 void SemanticAnalyzer::expandPackArguments(
     std::vector<std::unique_ptr<ExprAST>>& args) {
-  auto* fnScope = currentFunctionScope();
+  auto* fnScope = ctx_.currentFunctionScope();
   if (!fnScope || !fnScope->variadicParam) return;
   const auto& [packName, types] = *fnScope->variadicParam;
 
@@ -3601,7 +2134,7 @@ void SemanticAnalyzer::analyzeIntrinsicCall(GenericCallAST& genericCall) {
   // Expand any variadic pack into concrete typed args (e.g. _init<T>(p,
   // args...))
   expandPackArguments(genericCall.getArgsMutable());
-  genericCall.setResolvedType(inferGenericCallType(genericCall));
+  genericCall.setResolvedType(types_.inferGenericCallType(genericCall));
 }
 
 // -------------------------------------------------------------------
@@ -3613,10 +2146,10 @@ void SemanticAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
   const auto& args = genericCall.getArgs();
 
   // Resolve the function name through using imports
-  sun::QualifiedName resolved = resolveNameWithUsings(funcName);
+  sun::QualifiedName resolved = ctx_.resolveNameWithUsings(funcName);
   const std::string& lookupName = resolved.baseName;
 
-  auto* genFuncInfo = lookupGenericFunction(lookupName);
+  auto* genFuncInfo = ctx_.lookupGenericFunction(lookupName);
   if (!genFuncInfo) {
     logAndThrowError("Unknown generic function '" + funcName + "'",
                      genericCall.getLocation());
@@ -3659,8 +2192,8 @@ void SemanticAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
   // Everything past the fixed parameters fills the pack.
   std::optional<std::vector<sun::TypePtr>> packArgTypes;
   if (calleeTakesPack) {
-    packArgTypes = splitPackArgTypes(*calleeProto, argTypes, funcName,
-                                     genericCall.getLocation());
+    packArgTypes = generics_.splitPackArgTypes(*calleeProto, argTypes, funcName,
+                                               genericCall.getLocation());
   }
 
   // Try to get expected parameter types for array literal type propagation
@@ -3669,11 +2202,12 @@ void SemanticAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
   // we can't create a real specialization yet - it will be created when
   // the outer generic function is instantiated with concrete types.
   std::vector<sun::TypePtr> expectedParamTypes;
-  bool allConcrete = !templateStillAbstract(*genFuncInfo, typeArgs);
+  bool allConcrete = !generics_.templateStillAbstract(*genFuncInfo, typeArgs);
   if (allConcrete) {
     SpecializedFunctionInfo specializedFunc =
-        requireGenericSpecialization(*genFuncInfo, typeArgs, funcName,
-                                     genericCall.getLocation(), packArgTypes);
+        generics_.requireGenericSpecialization(*genFuncInfo, typeArgs, funcName,
+                                               genericCall.getLocation(),
+                                               packArgTypes);
     // Fixed parameters followed by the pack's elements, so the checks below
     // line up positionally with the expanded argument list.
     expectedParamTypes = specializedFunc.paramTypes;
@@ -3720,7 +2254,7 @@ void SemanticAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
         genericCall.getLocation()));
   }
 
-  genericCall.setResolvedType(inferGenericCallType(genericCall));
+  genericCall.setResolvedType(types_.inferGenericCallType(genericCall));
 }
 
 // -------------------------------------------------------------------
@@ -3734,10 +2268,10 @@ void SemanticAnalyzer::analyzeGenericClassConstruction(
   const auto& typeArgs = genericCall.getResolvedTypeArgs();
 
   // Resolve the class name through using imports
-  sun::QualifiedName resolved = resolveNameWithUsings(funcName);
+  sun::QualifiedName resolved = ctx_.resolveNameWithUsings(funcName);
   const std::string& lookupName = resolved.baseName;
 
-  auto* genericClassInfo = lookupGenericClass(lookupName);
+  auto* genericClassInfo = ctx_.lookupGenericClass(lookupName);
   if (!genericClassInfo) {
     logAndThrowError("Unknown generic class '" + funcName + "'",
                      genericCall.getLocation());
@@ -3745,10 +2279,11 @@ void SemanticAnalyzer::analyzeGenericClassConstruction(
 
   // Instantiate the generic class to get init method parameters
   std::vector<sun::TypePtr> expectedParamTypes;
-  auto specializedClass = instantiateGenericClass(lookupName, typeArgs);
+  auto specializedClass =
+      generics_.instantiateGenericClass(lookupName, typeArgs);
   if (specializedClass) {
-    if (auto* initMethod = accessibleMethod(*specializedClass, "init",
-                                            genericCall.getLocation())) {
+    if (auto* initMethod = ctx_.accessibleMethod(*specializedClass, "init",
+                                                 genericCall.getLocation())) {
       expectedParamTypes = initMethod->paramTypes;
     }
   }
@@ -3779,7 +2314,7 @@ void SemanticAnalyzer::analyzeGenericClassConstruction(
   if (specializedClass) {
     std::vector<sun::TypePtr> argTypes;
     for (const auto& arg : args) argTypes.push_back(arg->getResolvedType());
-    const auto* initMethod = accessibleMethodForArgs(
+    const auto* initMethod = ctx_.accessibleMethodForArgs(
         *specializedClass, "init", argTypes, genericCall.getLocation());
     if (initMethod) {
       expectedParamTypes = initMethod->paramTypes;
@@ -3820,7 +2355,7 @@ void SemanticAnalyzer::analyzeGenericClassConstruction(
         genericCall.getLocation()));
   }
 
-  genericCall.setResolvedType(inferGenericCallType(genericCall));
+  genericCall.setResolvedType(types_.inferGenericCallType(genericCall));
 }
 
 // -------------------------------------------------------------------

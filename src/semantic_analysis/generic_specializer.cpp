@@ -1,17 +1,27 @@
-// semantic_analysis/classes.cpp — Class and generic class support
+// generic_specializer.cpp — Monomorphization (see generic_specializer.h)
+
+#include "semantic_analysis/generic_specializer.h"
 
 #include <algorithm>
 
-#include "semantic_analysis/packed_layout.h"
+#include "semantic_analysis/generic_type_arguments.h"
+#include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/semantic_analyzer.h"
+#include "semantic_analysis/symbol_names.h"
+#include "semantic_analysis/type_rules.h"
 #include "semantic_analysis/type_traits.h"
 #include "support/error.h"
+
+using sun::unwrapRef;
+using sun::access::methodVisibility;
+using sun::names::getFunctionSignature;
+using sun::rules::isAssignableTo;
 
 // -------------------------------------------------------------------
 // Generic type parameter constraints
 // -------------------------------------------------------------------
 
-void SemanticAnalyzer::checkTypeParameterConstraints(
+void GenericSpecializer::checkTypeParameterConstraints(
     const std::vector<TypeParameter>& typeParams,
     const std::vector<sun::TypePtr>& typeArgs, const std::string& what,
     const std::string& name, std::optional<Position> loc) {
@@ -42,169 +52,35 @@ void SemanticAnalyzer::checkTypeParameterConstraints(
 }
 
 // -------------------------------------------------------------------
-// Class support
-// -------------------------------------------------------------------
 
-void SemanticAnalyzer::registerClass(const std::string& name,
-                                     std::shared_ptr<sun::ClassType> classType,
-                                     std::optional<Position> loc) {
-  // Skip if already registered (diamond import re-registration)
-  if (currentScope->classes.contains(name)) {
-    return;
-  }
-  // Register in current scope
-  currentScope->classes[name] = classType;
-}
-
-std::shared_ptr<sun::ClassType> SemanticAnalyzer::lookupClass(
-    const std::string& name) const {
-  return currentScope->lookupClass(name);
-}
-
-void SemanticAnalyzer::setCurrentClass(
-    std::shared_ptr<sun::ClassType> classType) {
-  currentClass = std::move(classType);
-}
-
-std::shared_ptr<sun::ClassType> SemanticAnalyzer::getCurrentClass() const {
-  return currentClass;
-}
-
-// -------------------------------------------------------------------
-// Packed class rules
-// -------------------------------------------------------------------
-
-// `ref p.field` would hand out an address the borrower accesses at the field
-// type's natural alignment, which a packed field does not satisfy.
-void SemanticAnalyzer::checkPackedFieldNotBorrowed(const ExprAST& target,
-                                                   const Position& loc) const {
-  if (target.getType() != ASTNodeType::MEMBER_ACCESS) return;
-  std::string ownerName;
-  if (!sun::packed::isFieldAccess(target, &ownerName)) return;
-  logAndThrowError(
-      sun::packed::borrowRejection(
-          "create a reference to a " + sun::packed::fieldPhrase(ownerName),
-          "Copy the field into a local instead."),
-      loc);
-}
-
-// A ref parameter takes the argument's address, so it has the same problem.
-void SemanticAnalyzer::checkPackedRefArguments(
-    const std::vector<std::unique_ptr<ExprAST>>& args,
-    const std::vector<sun::TypePtr>& paramTypes) const {
-  for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
-    if (!paramTypes[i] || !paramTypes[i]->isReference()) continue;
-    if (args[i]->getType() != ASTNodeType::MEMBER_ACCESS) continue;
-    std::string ownerName;
-    if (sun::packed::isFieldAccess(*args[i], &ownerName)) {
-      logAndThrowError(sun::packed::borrowRejection(
-                           "pass a " + sun::packed::fieldPhrase(ownerName) +
-                               " to a ref parameter",
-                           "Pass a copy instead."),
-                       args[i]->getLocation());
-    }
-  }
-}
-
-// Not every field type can live in a padding-free layout.
-void SemanticAnalyzer::checkPackedFieldType(
-    const ClassDefinitionAST& classDef, const ClassFieldDecl& field,
-    const sun::TypePtr& fieldType) const {
-  if (!classDef.isPacked()) return;
-  std::string reason = sun::packed::rejectFieldType(fieldType);
-  if (reason.empty()) return;
-  logAndThrowError("Field '" + field.name + "' in packed class '" +
-                       classDef.getName() + "' " + reason,
-                   field.location);
-}
-
-// -------------------------------------------------------------------
-// Generic class support
-// -------------------------------------------------------------------
-
-void SemanticAnalyzer::registerGenericClass(const std::string& name,
-                                            const GenericClassInfo& info,
-                                            std::optional<Position> loc) {
-  // Skip if already registered (diamond import re-registration)
-  if (currentScope->genericClasses.contains(name)) {
-    return;
-  }
-  // Register in current scope
-  auto& slot = currentScope->genericClasses[name];
-  slot = info;
-  slot.definitionScope = currentScope->shared_from_this();
-}
-
-const GenericClassInfo* SemanticAnalyzer::lookupGenericClass(
-    const std::string& name) const {
-  return currentScope->lookupGenericClass(name);
-}
-
-const GenericClassInfo* SemanticAnalyzer::lookupGenericClass(
-    const sun::QualifiedName& qualifiedName) const {
-  return currentScope->lookupGenericClass(qualifiedName);
-}
-
-const GenericClassInfo* SemanticAnalyzer::lookupGenericClassOf(
+const GenericClassInfo* GenericSpecializer::lookupGenericClassOf(
     const sun::ClassType& specialized) const {
-  return lookupGenericClass(specialized.getGenericQualifiedName());
+  return ctx_.lookupGenericClass(specialized.getGenericQualifiedName());
 }
 
 // Scope a class's template was declared in: for a specialization, the
 // generic's; for a plain class with generic methods, its own registration
 // (hasGenericMethods() registers a GenericClassInfo too). nullptr if unknown.
-SemanticScope* SemanticAnalyzer::classDefinitionScope(
+SemanticScope* GenericSpecializer::classDefinitionScope(
     const sun::ClassType& classType) const {
   const GenericClassInfo* info =
       classType.isSpecialized()
           ? lookupGenericClassOf(classType)
-          : lookupGenericClass(classType.getQualifiedName());
-  return info ? definitionScopeOf(*info) : nullptr;
-}
-
-void SemanticAnalyzer::addTypeParameterBindings(
-    const std::vector<std::string>& params,
-    const std::vector<sun::TypePtr>& args) {
-  auto& scope = *currentScope;
-  for (size_t i = 0; i < params.size() && i < args.size(); ++i) {
-    scope.typeParameters[params[i]] = args[i];
-  }
-}
-
-sun::TypePtr SemanticAnalyzer::findTypeParameter(
-    const std::string& name) const {
-  // Search from innermost to outermost scope
-  for (auto* s = currentScope; s != nullptr; s = s->parent) {
-    auto found = s->typeParameters.find(name);
-    if (found != s->typeParameters.end()) {
-      return found->second;
-    }
-  }
-  return nullptr;
-}
-
-sun::TypePtr SemanticAnalyzer::findTypeAlias(const std::string& name) const {
-  // Search from innermost to outermost scope
-  for (auto* s = currentScope; s != nullptr; s = s->parent) {
-    auto found = s->typeAliases.find(name);
-    if (found != s->typeAliases.end()) {
-      return found->second;
-    }
-  }
-  return nullptr;
+          : ctx_.lookupGenericClass(classType.getQualifiedName());
+  return info ? SemanticContext::definitionScopeOf(*info) : nullptr;
 }
 
 // Instantiate a generic class with specific type arguments
-std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
+std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
     const std::string& baseName, const std::vector<sun::TypePtr>& typeArgs) {
-  auto* genericClassInfo = lookupGenericClass(baseName);
+  auto* genericClassInfo = ctx_.lookupGenericClass(baseName);
   if (!genericClassInfo || !genericClassInfo->AST) {
     logAndThrowError("Unknown generic class '" + baseName + "'");
   }
   return instantiateGenericClass(*genericClassInfo, typeArgs);
 }
 
-std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
+std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
     const GenericClassInfo& info, const std::vector<sun::TypePtr>& typeArgs) {
   const GenericClassInfo* genericClassInfo = &info;
   const std::string& baseName = info.qualifiedName.baseName;
@@ -252,7 +128,7 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
 
   // Check if already instantiated (both class type AND AST specialization).
   // An abstract shape records no AST, so having the type is all there is.
-  auto existing = lookupClass(specializedQName.baseName);
+  auto existing = ctx_.lookupClass(specializedQName.baseName);
   if (existing && (abstractShape ||
                    genericClassInfo->AST->hasSpecialization(mangledName))) {
     // Both type and AST exist - nothing more to do
@@ -261,15 +137,15 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
 
   // Check if we're already in the process of instantiating this class
   // (breaks mutual recursion like Vec<T> <-> VecIterator<T>)
-  if (classesBeingInstantiated.count(mangledName)) {
+  if (classesBeingInstantiated_.count(mangledName)) {
     // Return the partially-created class type if it exists, or create a
     // placeholder This allows mutual references to be resolved
     if (existing) {
       return existing;
     }
     // Create and register a placeholder class type
-    auto placeholder = typeRegistry->getClass(specializedQName);
-    registerClass(specializedQName.baseName, placeholder);
+    auto placeholder = ctx_.types()->getClass(specializedQName);
+    ctx_.registerClass(specializedQName.baseName, placeholder);
     return placeholder;
   }
 
@@ -279,21 +155,21 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
   bool astOnlyMode = (existing != nullptr);
 
   // Mark this class as being instantiated to break mutual recursion
-  classesBeingInstantiated.insert(mangledName);
+  classesBeingInstantiated_.insert(mangledName);
 
   // Create or reuse the specialized class type
   std::shared_ptr<sun::ClassType> specializedClass;
   if (astOnlyMode) {
     specializedClass = existing;
   } else {
-    specializedClass = typeRegistry->getClass(specializedQName);
+    specializedClass = ctx_.types()->getClass(specializedQName);
 
     // Set type arguments for specialized class tracking
     // (getClass sets qualifiedName and baseName, but not type args)
     if (!specializedClass->isSpecialized()) {
       // This is a new class type - need to configure it as specialized
       // Get or create via getSpecializedClass for proper setup
-      specializedClass = typeRegistry->getSpecializedClass(
+      specializedClass = ctx_.types()->getSpecializedClass(
           genericClassInfo->qualifiedName.mangled(), typeArgs);
       specializedClass->setQualifiedName(specializedQName);
       specializedClass->setGenericQualifiedName(
@@ -301,14 +177,14 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
     }
 
     // Register the specialized class so methods can reference it
-    registerClass(specializedQName.baseName, specializedClass);
+    ctx_.registerClass(specializedQName.baseName, specializedClass);
 
     // If this class was already fully instantiated in another scope
     // (fields populated + specialization AST created), just register in
     // current scope and return - avoids duplicating fields/methods/interfaces
     if (!specializedClass->getFields().empty() &&
         genericClassInfo->AST->hasSpecialization(mangledName)) {
-      classesBeingInstantiated.erase(mangledName);
+      classesBeingInstantiated_.erase(mangledName);
       return specializedClass;
     }
   }
@@ -318,12 +194,13 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
   // from: names resolve as they do at the definition site (transitive
   // dependencies of its module included) and access control sees the
   // template's own module.
-  ScopeSwitchGuard definitionScope(*this, definitionScopeOf(*genericClassInfo));
+  SemanticContext::ScopeSwitchGuard definitionScope(
+      ctx_, SemanticContext::definitionScopeOf(*genericClassInfo));
 
   // Push a scope for class-level type parameter bindings
-  enterClassScope(specializedQName);
-  addTypeParameterBindings(typeParameterNames(genericClassInfo->typeParameters),
-                           typeArgs);
+  ctx_.enterClassScope(specializedQName);
+  ctx_.addTypeParameterBindings(
+      typeParameterNames(genericClassInfo->typeParameters), typeArgs);
 
   // Layout is a property of the generic definition, so every specialization
   // inherits it. Must precede the first getStructType(), which memoizes.
@@ -334,11 +211,11 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
   // has fields from a previous instantiation in another scope)
   if (!astOnlyMode && specializedClass->getFields().empty()) {
     for (const auto& field : genericClassInfo->AST->getFields()) {
-      auto fieldType = typeAnnotationToType(field.type);
-      fieldType = substituteTypeParameters(fieldType);
+      auto fieldType = sema_.types().typeAnnotationToType(field.type);
+      fieldType = sema_.types().substituteTypeParameters(fieldType);
       // Checked per specialization: whether a type argument is packable is
       // only knowable once T is substituted
-      checkPackedFieldType(*genericClassInfo->AST, field, fieldType);
+      sema_.checkPackedFieldType(*genericClassInfo->AST, field, fieldType);
       specializedClass->addField(field.name, fieldType).visibility =
           field.visibility;
     }
@@ -360,14 +237,14 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
         // Generic interface with type arguments - substitute and instantiate
         std::vector<sun::TypePtr> ifaceTypeArgs;
         for (const auto& typeArg : ifaceRef.typeArguments) {
-          auto argType = typeAnnotationToType(typeArg);
-          argType = substituteTypeParameters(argType);
+          auto argType = sema_.types().typeAnnotationToType(typeArg);
+          argType = sema_.types().substituteTypeParameters(argType);
           ifaceTypeArgs.push_back(argType);
         }
         interfaceType =
             instantiateGenericInterface(ifaceRef.name, ifaceTypeArgs);
       } else {
-        interfaceType = lookupInterface(ifaceRef.name);
+        interfaceType = ctx_.lookupInterface(ifaceRef.name);
       }
 
       // Add interface to class type
@@ -386,8 +263,8 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
   }
 
   // Save old class context and set new one for method analysis
-  auto savedClass = currentClass;
-  setCurrentClass(specializedClass);
+  auto savedClass = ctx_.getCurrentClass();
+  ctx_.setCurrentClass(specializedClass);
 
   // Clone fields for specialized AST (TypeAnnotation as-is - codegen uses
   // ClassType for resolved types)
@@ -418,8 +295,8 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
     // Get return type with substitution
     sun::TypePtr returnType;
     if (proto.getReturnType()) {
-      returnType = typeAnnotationToType(*proto.getReturnType());
-      returnType = substituteTypeParameters(returnType);
+      returnType = sema_.types().typeAnnotationToType(*proto.getReturnType());
+      returnType = sema_.types().substituteTypeParameters(returnType);
     } else {
       returnType = sun::Types::Void();
     }
@@ -427,8 +304,8 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
     // Get parameter types with substitution
     std::vector<sun::TypePtr> paramTypes;
     for (const auto& [argName, argType] : proto.getArgs()) {
-      auto paramType = typeAnnotationToType(argType);
-      paramType = substituteTypeParameters(paramType);
+      auto paramType = sema_.types().typeAnnotationToType(argType);
+      paramType = sema_.types().substituteTypeParameters(paramType);
       paramTypes.push_back(paramType);
     }
 
@@ -470,8 +347,8 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
       for (const auto& pt : paramTypes) {
         methodParamTypes.push_back(pt);
       }
-      registerFunctionInCurrentScope(methodMangledName,
-                                     {returnType, methodParamTypes, {}});
+      ctx_.registerFunctionInCurrentScope(methodMangledName,
+                                          {returnType, methodParamTypes, {}});
     }
   }
 
@@ -495,10 +372,10 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
     }
 
     // Restore old class context
-    setCurrentClass(savedClass);
-    exitScope();
+    ctx_.setCurrentClass(savedClass);
+    ctx_.exitScope();
     // Remove from "being instantiated" set now that we're done
-    classesBeingInstantiated.erase(mangledName);
+    classesBeingInstantiated_.erase(mangledName);
     return specializedClass;
   }
 
@@ -521,7 +398,7 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
   // Interface conformance is checked per specialization (signatures are
   // only known once T is substituted)
   if (!astOnlyMode) {
-    validateInterfaceImplementation(*specializedAST, specializedClass);
+    sema_.validateInterfaceImplementation(*specializedAST, specializedClass);
   }
 
   // Store specialization on the generic class AST for codegen access
@@ -532,7 +409,7 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
   // PASS 2: Analyze all cloned method bodies — unless requested from the
   // declaration pre-pass, where bodies are deferred until every declaration
   // (including functions the bodies may call) is registered.
-  bool deferBodies = declarationPrepassDepth_ > 0;
+  bool deferBodies = inPrepass_;
   if (!deferBodies) {
     for (auto& methodClone : specializedAST->getMutableMethods()) {
       FunctionAST* methodFunc = methodClone.function.get();
@@ -545,7 +422,7 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
 
       // Use the unified helper (type params already in outer scope, pass
       // empty). This analyzes the CLONED method, not the shared generic one
-      analyzeMethodWithBindings(*methodFunc, specializedClass, {}, {});
+      sema_.analyzeMethodWithBindings(*methodFunc, specializedClass, {}, {});
     }
   }
 
@@ -555,13 +432,13 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
   }
 
   // Restore old class context
-  setCurrentClass(savedClass);
+  ctx_.setCurrentClass(savedClass);
 
   // Pop the class-level type parameter scope
-  exitScope();
+  ctx_.exitScope();
 
   // Remove from "being instantiated" set now that we're done
-  classesBeingInstantiated.erase(mangledName);
+  classesBeingInstantiated_.erase(mangledName);
 
   return specializedClass;
 }
@@ -571,25 +448,26 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
 // bindings) inside the template's definition scope. Bodies may create
 // further specializations; those are analyzed immediately (the pre-pass is
 // over) so the loop is by index.
-void SemanticAnalyzer::analyzeDeferredSpecializations() {
+void GenericSpecializer::analyzeDeferredSpecializations() {
   for (size_t i = 0; i < deferredSpecializations_.size(); ++i) {
     DeferredSpecialization d = deferredSpecializations_[i];
-    ScopeSwitchGuard definitionScope(*this, definitionScopeOf(*d.genericInfo));
+    SemanticContext::ScopeSwitchGuard definitionScope(
+        ctx_, SemanticContext::definitionScopeOf(*d.genericInfo));
 
-    enterClassScope(d.specializedClass->getQualifiedName());
-    addTypeParameterBindings(typeParameterNames(d.genericInfo->typeParameters),
-                             d.typeArgs);
-    auto savedClass = currentClass;
-    setCurrentClass(d.specializedClass);
+    ctx_.enterClassScope(d.specializedClass->getQualifiedName());
+    ctx_.addTypeParameterBindings(
+        typeParameterNames(d.genericInfo->typeParameters), d.typeArgs);
+    auto savedClass = ctx_.getCurrentClass();
+    ctx_.setCurrentClass(d.specializedClass);
 
     for (auto& methodClone : d.specializedAST->getMutableMethods()) {
       FunctionAST* methodFunc = methodClone.function.get();
       if (methodFunc->getProto().isGeneric()) continue;
-      analyzeMethodWithBindings(*methodFunc, d.specializedClass, {}, {});
+      sema_.analyzeMethodWithBindings(*methodFunc, d.specializedClass, {}, {});
     }
 
-    setCurrentClass(savedClass);
-    exitScope();
+    ctx_.setCurrentClass(savedClass);
+    ctx_.exitScope();
   }
   deferredSpecializations_.clear();
 }
@@ -598,7 +476,7 @@ void SemanticAnalyzer::analyzeDeferredSpecializations() {
 // Value packs
 // -------------------------------------------------------------------
 
-std::optional<std::vector<sun::TypePtr>> SemanticAnalyzer::splitPackArgTypes(
+std::optional<std::vector<sun::TypePtr>> GenericSpecializer::splitPackArgTypes(
     const PrototypeAST& proto, const std::vector<sun::TypePtr>& argTypes,
     const std::string& displayName, std::optional<Position> loc) {
   if (!proto.hasVariadicParam()) return std::nullopt;
@@ -614,9 +492,9 @@ std::optional<std::vector<sun::TypePtr>> SemanticAnalyzer::splitPackArgTypes(
   return std::vector<sun::TypePtr>(argTypes.begin() + fixed, argTypes.end());
 }
 
-void SemanticAnalyzer::declareVariadicPack(const PrototypeAST& proto) {
+void GenericSpecializer::declareVariadicPack(const PrototypeAST& proto) {
   if (!proto.hasVariadicParam()) return;
-  auto* fnScope = currentFunctionScope();
+  auto* fnScope = ctx_.currentFunctionScope();
   if (!fnScope) return;
 
   const VariadicParam& pack = proto.getVariadicParam();
@@ -624,17 +502,18 @@ void SemanticAnalyzer::declareVariadicPack(const PrototypeAST& proto) {
 
   // The pack itself, so `args...` in the body can be expanded into concrete
   // typed arguments. Recorded even when empty — an empty pack expands to no
-  // arguments, which is different from having no pack. exitScope() drops it.
+  // arguments, which is different from having no pack. ctx_.exitScope() drops
+  // it.
   fnScope->variadicParam = {pack.name, types};
 
   // Its elements, under the names codegen gives the parameters. The expansion
   // rewrites `args...` into references to exactly these.
   for (size_t i = 0; i < types.size(); ++i) {
-    declareVariable(pack.elementName(i), types[i], /*isParam=*/true);
+    ctx_.declareVariable(pack.elementName(i), types[i], /*isParam=*/true);
   }
 }
 
-void SemanticAnalyzer::applyVariadicParamTypes(
+void GenericSpecializer::applyVariadicParamTypes(
     PrototypeAST& clonedProto, const PrototypeAST& proto,
     const std::vector<sun::TypePtr>& variadicArgTypes,
     std::optional<Position> loc) {
@@ -648,8 +527,8 @@ void SemanticAnalyzer::applyVariadicParamTypes(
   const TypeAnnotation& annot = proto.getVariadicTypeAnnotation();
   if (annot.baseName != "_params_of" || annot.typeArguments.empty()) return;
 
-  sun::TypePtr target =
-      substituteTypeParameters(typeAnnotationToType(*annot.typeArguments[0]));
+  sun::TypePtr target = sema_.types().substituteTypeParameters(
+      sema_.types().typeAnnotationToType(*annot.typeArguments[0]));
   if (!target) return;
 
   const std::string got = "(" + sun::formatTypeList(variadicArgTypes) + ")";
@@ -695,7 +574,7 @@ void SemanticAnalyzer::applyVariadicParamTypes(
 
 // Type-argument inference for calls lives in generic_type_arguments.cpp.
 
-SpecializedFunctionInfo SemanticAnalyzer::requireGenericSpecialization(
+SpecializedFunctionInfo GenericSpecializer::requireGenericSpecialization(
     const GenericFunctionInfo& genericInfo,
     const std::vector<sun::TypePtr>& typeArgs, const std::string& displayName,
     std::optional<Position> loc,
@@ -711,7 +590,7 @@ SpecializedFunctionInfo SemanticAnalyzer::requireGenericSpecialization(
 }
 
 std::optional<SpecializedFunctionInfo>
-SemanticAnalyzer::instantiateGenericFunction(
+GenericSpecializer::instantiateGenericFunction(
     const GenericFunctionInfo& genericInfo,
     const std::vector<sun::TypePtr>& typeArgs,
     const std::optional<std::vector<sun::TypePtr>>& variadicArgTypes) {
@@ -761,8 +640,8 @@ SemanticAnalyzer::instantiateGenericFunction(
   std::string mangledName = specializedName.mangled();
 
   // Check cache first
-  auto cacheIt = specializedFunctionCache.find(mangledName);
-  if (cacheIt != specializedFunctionCache.end()) {
+  auto cacheIt = specializedFunctionCache_.find(mangledName);
+  if (cacheIt != specializedFunctionCache_.end()) {
     return cacheIt->second;
   }
 
@@ -786,14 +665,15 @@ SemanticAnalyzer::instantiateGenericFunction(
   // Analyze the body in the scope the template was declared in (a module,
   // or the enclosing specialized function for nested generics — that is
   // where its captures and outer type bindings live)
-  ScopeSwitchGuard definitionScope(*this, definitionScopeOf(genericInfo));
-  enterTypeParamScope(typeParams, typeArgs);
+  SemanticContext::ScopeSwitchGuard definitionScope(
+      ctx_, SemanticContext::definitionScopeOf(genericInfo));
+  ctx_.enterTypeParamScope(typeParams, typeArgs);
 
   // Substitute parameter types
   std::vector<sun::TypePtr> paramTypes;
   for (const auto& [argName, argType] : proto.getArgs()) {
-    sun::TypePtr paramType = typeAnnotationToType(argType);
-    paramType = substituteTypeParameters(paramType);
+    sun::TypePtr paramType = sema_.types().typeAnnotationToType(argType);
+    paramType = sema_.types().substituteTypeParameters(paramType);
 
     // If a type parameter resolved to a compound type, error - must use ref
     if (paramType && paramType->isCompound() && !paramType->isReference()) {
@@ -810,8 +690,8 @@ SemanticAnalyzer::instantiateGenericFunction(
   // Substitute return type
   sun::TypePtr returnType;
   if (proto.hasReturnType()) {
-    returnType = typeAnnotationToType(*proto.getReturnType());
-    returnType = substituteTypeParameters(returnType);
+    returnType = sema_.types().typeAnnotationToType(*proto.getReturnType());
+    returnType = sema_.types().substituteTypeParameters(returnType);
   } else {
     returnType = sun::Types::Void();
   }
@@ -820,7 +700,7 @@ SemanticAnalyzer::instantiateGenericFunction(
   std::vector<Capture> substitutedCaptures;
   for (const auto& cap : proto.getCaptures()) {
     Capture subCap = cap;
-    subCap.type = substituteTypeParameters(cap.type);
+    subCap.type = sema_.types().substituteTypeParameters(cap.type);
     substitutedCaptures.push_back(subCap);
   }
 
@@ -864,33 +744,34 @@ SemanticAnalyzer::instantiateGenericFunction(
     }
 
     // Clear resolved types for fresh analysis
-    clearResolvedTypes(*clonedFunc);
+    sema_.clearResolvedTypes(*clonedFunc);
 
     // Compute function signature for nested function qualification
     std::string funcSig = getFunctionSignature(mangledName, paramTypes);
 
     // Declare parameters in scope for body analysis - use the mangled qualified
     // name so nested functions get correct context
-    enterFunctionScope(funcSig, clonedProto.getQualifiedName(),
-                       proto.canThrow(), clonedProto.getResolvedReturnType());
+    ctx_.enterFunctionScope(funcSig, clonedProto.getQualifiedName(),
+                            proto.canThrow(),
+                            clonedProto.getResolvedReturnType());
 
     declareVariadicPack(clonedProto);
 
     for (size_t i = 0; i < paramTypes.size(); ++i) {
       // Use parameter names from the cloned prototype
       std::string argName = proto.getArgs()[i].first;
-      declareVariable(argName, paramTypes[i], /*isParam=*/true);
+      ctx_.declareVariable(argName, paramTypes[i], /*isParam=*/true);
     }
 
     // Add captures to scope
     for (const auto& cap : substitutedCaptures) {
-      declareVariable(cap.name, cap.type);
+      ctx_.declareVariable(cap.name, cap.type);
     }
 
     // Analyze the body with current type parameter bindings
-    analyzeBlock(const_cast<BlockExprAST&>(clonedFunc->getBody()));
+    sema_.analyzeBlock(const_cast<BlockExprAST&>(clonedFunc->getBody()));
 
-    exitScope();  // parameter scope
+    ctx_.exitScope();  // parameter scope
 
     specializedAST = std::move(clonedFunc);
     // Specializations are NOT precompiled - even if the generic function
@@ -899,7 +780,7 @@ SemanticAnalyzer::instantiateGenericFunction(
     specializedAST->setPrecompiled(false);
   }
 
-  exitScope();  // type parameter scope
+  ctx_.exitScope();  // type parameter scope
 
   // Build result. A pack's elements are ordinary positional parameters after
   // the fixed ones, so the call's signature is the two lists joined — that is
@@ -922,7 +803,7 @@ SemanticAnalyzer::instantiateGenericFunction(
   }
 
   // Cache and return
-  specializedFunctionCache[mangledName] = result;
+  specializedFunctionCache_[mangledName] = result;
   return result;
 }
 
@@ -933,7 +814,7 @@ SemanticAnalyzer::instantiateGenericFunction(
 // Find the generic method's FunctionAST on a class by name. Resolves the class
 // definition (specialized AST when available, else the generic definition) and
 // returns the first generic method matching `methodName`, or nullptr.
-FunctionAST* SemanticAnalyzer::findGenericMethodAST(
+FunctionAST* GenericSpecializer::findGenericMethodAST(
     const sun::ClassType* classType, const std::string& methodName) {
   if (!classType) return nullptr;
 
@@ -948,15 +829,17 @@ FunctionAST* SemanticAnalyzer::findGenericMethodAST(
       classDef = specAST ? specAST.get() : genericInfo->AST;
     }
   } else if (classType->isGenericDefinition()) {
-    auto* genericInfo = lookupGenericClass(classType->getBaseName());
+    auto* genericInfo = ctx_.lookupGenericClass(classType->getBaseName());
     if (genericInfo) classDef = genericInfo->AST;
   } else {
     // Non-generic class - may still have generic methods
-    auto* genericInfo = lookupGenericClass(classType->getBaseName());
+    auto* genericInfo = ctx_.lookupGenericClass(classType->getBaseName());
     if (genericInfo) classDef = genericInfo->AST;
   }
 
   if (!classDef) return nullptr;
+
+  // End of instantiateGenericMethod
 
   for (const auto& methodDecl : classDef->getMethods()) {
     if (methodDecl.function->getProto().getName() == methodName &&
@@ -967,7 +850,7 @@ FunctionAST* SemanticAnalyzer::findGenericMethodAST(
   return nullptr;
 }
 
-std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
+std::shared_ptr<FunctionAST> GenericSpecializer::instantiateGenericMethod(
     std::shared_ptr<sun::ClassType> classType, const std::string& methodName,
     const std::vector<sun::TypePtr>& methodTypeArgs,
     const std::optional<std::vector<sun::TypePtr>>& variadicArgTypes) {
@@ -998,8 +881,8 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   std::string mangledName = specializedName.mangled();
 
   // Check cache
-  auto cacheIt = specializedFunctionCache.find(mangledName);
-  if (cacheIt != specializedFunctionCache.end() &&
+  auto cacheIt = specializedFunctionCache_.find(mangledName);
+  if (cacheIt != specializedFunctionCache_.end() &&
       cacheIt->second.specializedAST) {
     return cacheIt->second.specializedAST;
   }
@@ -1061,22 +944,24 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
 
   // Enter scope and add all type bindings, inside the class's definition
   // scope so the body resolves names as written at the definition site
-  ScopeSwitchGuard definitionScope(*this, classDefinitionScope(*classType));
-  enterTypeParamScope(allTypeParams, allTypeArgs);
+  SemanticContext::ScopeSwitchGuard definitionScope(
+      ctx_, classDefinitionScope(*classType));
+  ctx_.enterTypeParamScope(allTypeParams, allTypeArgs);
 
   // Substitute types in parameters
   std::vector<sun::TypePtr> paramTypes;
   for (const auto& [argName, argType] : proto.getArgs()) {
-    sun::TypePtr paramType = typeAnnotationToType(argType);
-    paramType = substituteTypeParameters(paramType);
+    sun::TypePtr paramType = sema_.types().typeAnnotationToType(argType);
+    paramType = sema_.types().substituteTypeParameters(paramType);
     paramTypes.push_back(paramType);
   }
 
   // Substitute return type
-  sun::TypePtr returnType = proto.hasReturnType()
-                                ? typeAnnotationToType(*proto.getReturnType())
-                                : sun::Types::Void();
-  returnType = substituteTypeParameters(returnType);
+  sun::TypePtr returnType =
+      proto.hasReturnType()
+          ? sema_.types().typeAnnotationToType(*proto.getReturnType())
+          : sun::Types::Void();
+  returnType = sema_.types().substituteTypeParameters(returnType);
 
   // Clone the function AST for specialization
   // clone() returns unique_ptr<ExprAST>, so cast to FunctionAST
@@ -1110,11 +995,11 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   }
 
   // Clear any stale resolved types from previous specializations
-  clearResolvedTypes(*clonedFunc);
+  sema_.clearResolvedTypes(*clonedFunc);
 
   // Analyze the method body
-  auto savedClass = currentClass;
-  setCurrentClass(classType);
+  auto savedClass = ctx_.getCurrentClass();
+  ctx_.setCurrentClass(classType);
 
   // Compute method signature for nested function qualification
   std::string methodSig = getFunctionSignature(mangledName, paramTypes);
@@ -1122,8 +1007,9 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   // Enter method scope and declare parameters. A const method body sees the
   // const view of its return type (borrows of `this` are `const ref` there).
   sun::TypePtr bodyReturnType = proto.getResolvedReturnType();
-  if (proto.isConstMethod()) bodyReturnType = createConstView(bodyReturnType);
-  enterFunctionScope(
+  if (proto.isConstMethod())
+    bodyReturnType = sema_.types().createConstView(bodyReturnType);
+  ctx_.enterFunctionScope(
       methodSig,
       sun::QualifiedName(classType->getQualifiedName().scopePath, mangledName),
       proto.canThrow(), bodyReturnType);
@@ -1131,21 +1017,21 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   declareVariadicPack(clonedProto);
 
   // Declare 'this' parameter (immutable inside a const method)
-  declareVariable("this", classType, /*isParam=*/true,
-                  /*isConst=*/clonedProto.isConstMethod());
+  ctx_.declareVariable("this", classType, /*isParam=*/true,
+                       /*isConst=*/clonedProto.isConstMethod());
 
   // Declare regular parameters
   for (size_t i = 0; i < paramTypes.size(); ++i) {
     const auto& [argName, argType] = proto.getArgs()[i];
-    declareVariable(argName, paramTypes[i], /*isParam=*/true);
+    ctx_.declareVariable(argName, paramTypes[i], /*isParam=*/true);
   }
 
   // Analyze the body
-  analyzeBlock(const_cast<BlockExprAST&>(clonedFunc->getBody()));
+  sema_.analyzeBlock(const_cast<BlockExprAST&>(clonedFunc->getBody()));
 
-  exitScope();  // method scope
-  setCurrentClass(savedClass);
-  exitScope();  // type parameter scope
+  ctx_.exitScope();  // method scope
+  ctx_.setCurrentClass(savedClass);
+  ctx_.exitScope();  // type parameter scope
 
   // Convert to shared_ptr for storage
   std::shared_ptr<FunctionAST> specializedAST = std::move(clonedFunc);
@@ -1160,7 +1046,242 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   result.returnType = returnType;
   result.paramTypes = paramTypes;
   result.specializedAST = specializedAST;
-  specializedFunctionCache[mangledName] = result;
+  specializedFunctionCache_[mangledName] = result;
 
   return specializedAST;
-}  // End of instantiateGenericMethod
+}
+
+using sun::access::methodVisibility;
+
+// -------------------------------------------------------------------
+// Interface support
+// -------------------------------------------------------------------
+
+// -------------------------------------------------------------------
+// Generic interface support
+// -------------------------------------------------------------------
+
+std::shared_ptr<sun::InterfaceType>
+GenericSpecializer::instantiateGenericInterface(
+    const std::string& baseName, const std::vector<sun::TypePtr>& typeArgs) {
+  // Look up the generic interface definition first
+  auto* genericInfo = ctx_.lookupGenericInterface(baseName);
+
+  // Use the AST's mangled name for generating specialized interface name
+  std::string effectiveBase = (genericInfo && genericInfo->AST)
+                                  ? genericInfo->AST->getMangledName()
+                                  : baseName;
+
+  // Generate mangled name for the specialized interface
+  std::string mangledName =
+      sun::Types::mangleGenericClassName(effectiveBase, typeArgs);
+
+  // Check if already instantiated
+  auto existing = ctx_.lookupInterface(mangledName);
+  if (existing) {
+    return existing;
+  }
+
+  if (!genericInfo || !genericInfo->AST) {
+    logAndThrowError("Unknown generic interface '" + baseName + "'");
+  }
+
+  // Verify type argument count matches
+  if (typeArgs.size() != genericInfo->typeParameters.size()) {
+    logAndThrowError("Generic interface '" + baseName + "' expects " +
+                     std::to_string(genericInfo->typeParameters.size()) +
+                     " type arguments, got " + std::to_string(typeArgs.size()));
+  }
+  checkTypeParameterConstraints(genericInfo->typeParameters, typeArgs,
+                                "generic interface", baseName);
+
+  // Create the specialized interface type
+  auto specializedInterface =
+      ctx_.types()->getSpecializedInterface(baseName, typeArgs);
+  specializedInterface->visibility = genericInfo->AST->getVisibility();
+  specializedInterface->setQualifiedName(
+      sun::QualifiedName(genericInfo->qualifiedName.scopePath, mangledName,
+                         genericInfo->qualifiedName.modulePath));
+
+  {
+    // Member annotations resolve in the interface's definition scope; the
+    // result is registered in the requesting scope below
+    SemanticContext::ScopeSwitchGuard definitionScope(
+        ctx_, SemanticContext::definitionScopeOf(*genericInfo));
+    // Push a scope for type parameter bindings
+    ctx_.enterTypeParamScope(typeParameterNames(genericInfo->typeParameters),
+                             typeArgs);
+
+    // Add fields with substituted types
+    for (const auto& field : genericInfo->AST->getFields()) {
+      auto fieldType = sema_.types().typeAnnotationToType(field.type);
+      fieldType = sema_.types().substituteTypeParameters(fieldType);
+      specializedInterface->addField(field.name, fieldType).visibility =
+          field.visibility;
+    }
+
+    // Add methods with substituted types
+    for (const auto& methodDecl : genericInfo->AST->getMethods()) {
+      const PrototypeAST& proto = methodDecl.function->getProto();
+
+      // Get return type with substitution
+      sun::TypePtr returnType;
+      if (proto.getReturnType()) {
+        returnType = sema_.types().typeAnnotationToType(*proto.getReturnType());
+        returnType = sema_.types().substituteTypeParameters(returnType);
+      } else {
+        returnType = sun::Types::Void();
+      }
+
+      // Get parameter types with substitution
+      std::vector<sun::TypePtr> paramTypes;
+      for (const auto& [argName, argType] : proto.getArgs()) {
+        auto paramType = sema_.types().typeAnnotationToType(argType);
+        paramType = sema_.types().substituteTypeParameters(paramType);
+        paramTypes.push_back(paramType);
+      }
+
+      // Add method to interface type (preserve method-level generic type
+      // parameters)
+      auto& method = specializedInterface->addMethod(
+          proto.getName(), returnType, paramTypes, methodDecl.hasDefaultImpl,
+          proto.getTypeParameterNames());
+      method.visibility = methodVisibility(*methodDecl.function);
+      method.isConst = methodDecl.isConst;
+    }
+
+    // Pop the scope
+    ctx_.exitScope();
+  }
+
+  // Register the specialized interface
+  ctx_.registerInterface(mangledName, specializedInterface);
+
+  return specializedInterface;
+}
+
+// -------------------------------------------------------------------
+// Generic enum instantiation (monomorphization, mirrors generic classes):
+// resolve each variant's payload annotations under the type parameter
+// bindings and register the specialized EnumType. Specializations are
+// recorded on the template AST, like other generic ASTs.
+// -------------------------------------------------------------------
+
+std::shared_ptr<sun::EnumType> GenericSpecializer::instantiateGenericEnum(
+    const std::string& baseName, const std::vector<sun::TypePtr>& typeArgs) {
+  auto* genericInfo = ctx_.lookupGenericEnum(baseName);
+  if (!genericInfo || !genericInfo->AST) {
+    return nullptr;
+  }
+
+  // Mangle from the template's registered name, not the spelling the caller
+  // used: `sun.Option<i32>` and `Option<i32>` name the same specialization
+  // (generic classes derive their name the same way).
+  const std::string& templateName = genericInfo->qualifiedName.baseName.empty()
+                                        ? baseName
+                                        : genericInfo->qualifiedName.baseName;
+  std::string mangledName =
+      sun::Types::mangleGenericClassName(templateName, typeArgs);
+  if (ctx_.types()->hasEnum(mangledName)) {
+    auto existing = ctx_.types()->getEnum(mangledName);
+    ctx_.registerEnum(mangledName, existing);
+    return existing;
+  }
+
+  if (typeArgs.size() != genericInfo->typeParameters.size()) {
+    logAndThrowError("Generic enum '" + baseName + "' expects " +
+                     std::to_string(genericInfo->typeParameters.size()) +
+                     " type argument(s), got " +
+                     std::to_string(typeArgs.size()));
+  }
+  checkTypeParameterConstraints(genericInfo->typeParameters, typeArgs,
+                                "generic enum", baseName);
+
+  auto specialized = ctx_.types()->getEnum(mangledName);
+  specialized->setBaseName(templateName);
+  specialized->setGenericOrigin(templateName, typeArgs);
+  specialized->visibility = genericInfo->AST->getVisibility();
+  specialized->setQualifiedName(
+      sun::QualifiedName(genericInfo->qualifiedName.scopePath, mangledName,
+                         genericInfo->qualifiedName.modulePath));
+
+  {
+    // Payload annotations resolve in the enum's definition scope; the result
+    // is registered in the requesting scope below
+    SemanticContext::ScopeSwitchGuard definitionScope(
+        ctx_, SemanticContext::definitionScopeOf(*genericInfo));
+    ctx_.enterTypeParamScope(typeParameterNames(genericInfo->typeParameters),
+                             typeArgs);
+    for (const auto& variant : genericInfo->AST->getVariants()) {
+      specialized->addVariant(variant.name, variant.value);
+      if (!variant.hasPayload()) continue;
+      std::vector<sun::TypePtr> payloadTypes;
+      for (const auto& annot : variant.payloadTypes) {
+        auto payloadType = sema_.types().typeAnnotationToType(annot);
+        payloadType = sema_.types().substituteTypeParameters(payloadType);
+        sema_.validateEnumPayloadType(payloadType, specialized, variant.name,
+                                      variant.location);
+        payloadTypes.push_back(std::move(payloadType));
+      }
+      specialized->setVariantPayloadTypes(variant.name,
+                                          std::move(payloadTypes));
+    }
+    ctx_.exitScope();
+  }
+
+  ctx_.registerEnum(mangledName, specialized);
+  // Record on the template AST (mirrors generic classes); codegen walks
+  // these to build storage structs
+  genericInfo->AST->addSpecialization(mangledName, specialized);
+  return specialized;
+}
+
+sun::TypePtr GenericSpecializer::genericFunctionSignature(
+    const GenericFunctionInfo& genericInfo,
+    const std::vector<sun::TypePtr>& typeArgs) {
+  ctx_.enterTypeParamScope(typeParameterNames(genericInfo.typeParameters),
+                           typeArgs);
+  std::vector<sun::TypePtr> paramTypes;
+  for (const auto& [name, annot] : genericInfo.params) {
+    paramTypes.push_back(sema_.types().substituteTypeParameters(
+        sema_.types().typeAnnotationToType(annot)));
+  }
+  sun::TypePtr returnType =
+      genericInfo.returnType
+          ? sema_.types().substituteTypeParameters(
+                sema_.types().typeAnnotationToType(*genericInfo.returnType))
+          : sun::Types::Void();
+  ctx_.exitScope();
+  bool canThrow = genericInfo.AST && genericInfo.AST->getProto().canThrow();
+  return sun::Types::Function(returnType, paramTypes, canThrow);
+}
+
+bool GenericSpecializer::templateStillAbstract(
+    const GenericFunctionInfo& genericInfo,
+    const std::vector<sun::TypePtr>& typeArgs) {
+  if (std::any_of(typeArgs.begin(), typeArgs.end(),
+                  sun::generics::mentionsTypeParameter)) {
+    return true;
+  }
+  // A template with no type parameters of its own still cannot be
+  // specialized while a type parameter it borrows from an enclosing generic
+  // is unbound — `function build(args...: _params_of<T>)` inside `outer<T>`.
+  const PrototypeAST* proto =
+      genericInfo.AST ? &genericInfo.AST->getProto() : nullptr;
+  if (!proto || !proto->hasVariadicTypeAnnotation()) return false;
+  // `_params_of` is not a type of its own; what may still be abstract is what
+  // it is applied to.
+  const TypeAnnotation& annot = proto->getVariadicTypeAnnotation();
+  if (annot.typeArguments.empty()) return false;
+
+  ctx_.enterTypeParamScope(typeParameterNames(genericInfo.typeParameters),
+                           typeArgs);
+  bool abstract = false;
+  for (const auto& arg : annot.typeArguments) {
+    abstract = abstract || sun::generics::mentionsTypeParameter(
+                               sema_.types().substituteTypeParameters(
+                                   sema_.types().typeAnnotationToType(*arg)));
+  }
+  ctx_.exitScope();
+  return abstract;
+}

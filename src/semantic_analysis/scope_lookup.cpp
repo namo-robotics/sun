@@ -11,7 +11,12 @@
 #include <sstream>
 
 #include "semantic_analysis/semantic_scope.h"
+#include "semantic_analysis/symbol_names.h"
+#include "semantic_analysis/type_rules.h"
 #include "support/error.h"
+
+using sun::names::isIntrinsic;
+using sun::rules::isAssignableTo;
 
 namespace {
 
@@ -32,6 +37,154 @@ DottedName splitDotted(const std::string& name) {
 }
 
 }  // namespace
+
+bool SemanticScope::hasSymbol(const std::string& name) const {
+  if (classes.contains(name)) return true;
+  if (genericClasses.contains(name)) return true;
+  if (interfaces.contains(name)) return true;
+  if (genericInterfaces.contains(name)) return true;
+  if (enums.contains(name)) return true;
+  if (genericEnums.contains(name)) return true;
+  if (namespacedVariables.contains(name)) return true;
+
+  // Check functions by name (O(1) via indexed FunctionTable)
+  if (functions.hasName(name)) return true;
+
+  return false;
+}
+
+bool SemanticScope::hasAccessibleSymbol(const std::string& name,
+                                        AccessFilter& filter) const {
+  if (!filter.enabled()) return hasSymbol(name);
+  if (auto it = classes.find(name);
+      it != classes.end() && filter.admit(it->second))
+    return true;
+  if (auto it = genericClasses.find(name);
+      it != genericClasses.end() && filter.admit(&it->second))
+    return true;
+  if (auto it = interfaces.find(name);
+      it != interfaces.end() && filter.admit(it->second))
+    return true;
+  if (auto it = genericInterfaces.find(name);
+      it != genericInterfaces.end() && filter.admit(&it->second))
+    return true;
+  if (auto it = enums.find(name); it != enums.end() && filter.admit(it->second))
+    return true;
+  if (auto it = genericEnums.find(name);
+      it != genericEnums.end() && filter.admit(&it->second))
+    return true;
+  if (auto it = namespacedVariables.find(name);
+      it != namespacedVariables.end() && filter.admit(&it->second))
+    return true;
+  if (auto* overloads = functions.getOverloads(name)) {
+    for (const auto* info : *overloads) {
+      if (filter.admit(info)) return true;
+    }
+  }
+  return false;
+}
+
+std::shared_ptr<sun::ClassType> SemanticScope::findClass(
+    const std::string& name) const {
+  auto it = classes.find(name);
+  if (it != classes.end()) return it->second;
+  return nullptr;
+}
+
+const GenericClassInfo* SemanticScope::findGenericClass(
+    const std::string& name) const {
+  auto it = genericClasses.find(name);
+  if (it != genericClasses.end()) return &it->second;
+  return nullptr;
+}
+
+std::shared_ptr<sun::InterfaceType> SemanticScope::findInterface(
+    const std::string& name) const {
+  auto it = interfaces.find(name);
+  if (it != interfaces.end()) return it->second;
+  return nullptr;
+}
+
+const GenericInterfaceInfo* SemanticScope::findGenericInterface(
+    const std::string& name) const {
+  auto it = genericInterfaces.find(name);
+  if (it != genericInterfaces.end()) return &it->second;
+  return nullptr;
+}
+
+std::shared_ptr<sun::EnumType> SemanticScope::findEnum(
+    const std::string& name) const {
+  auto it = enums.find(name);
+  if (it != enums.end()) return it->second;
+  return nullptr;
+}
+
+const GenericEnumInfo* SemanticScope::findGenericEnum(
+    const std::string& name) const {
+  auto it = genericEnums.find(name);
+  if (it != genericEnums.end()) return &it->second;
+  return nullptr;
+}
+
+void SemanticScope::collectFunctions(const std::string& prefix,
+                                     std::vector<FunctionInfo>& results) const {
+  // prefix is "name(" — extract the name part for indexed lookup
+  std::string name =
+      prefix.substr(0, prefix.size() - 1);  // remove trailing '('
+  if (auto* overloads = functions.getOverloads(name)) {
+    for (const auto* info : *overloads) {
+      results.push_back(*info);
+    }
+  }
+}
+
+// -------------------------------------------------------------------
+// Scope management - tree-based scopes
+// -------------------------------------------------------------------
+
+std::shared_ptr<SemanticScopeBase> SemanticScopeBase::cloneSymbols(
+    SemanticScopeBase* newParent) const {
+  std::shared_ptr<SemanticScopeBase> clone;
+  switch (getType()) {
+    case ScopeType::Global:
+      clone = std::make_shared<GlobalScope>();
+      break;
+    case ScopeType::Module:
+      clone = std::make_shared<ModuleScope>();
+      break;
+    case ScopeType::Import:
+      clone = std::make_shared<ImportScope>();
+      break;
+    default:
+      // Should never happen - only persistent scopes can clone
+      return nullptr;
+  }
+  clone->scopeName = scopeName;
+  clone->scopePath = scopePath;
+  clone->parent = newParent;
+  if (auto* mod = dynamic_cast<ModuleScope*>(clone.get())) {
+    const auto& src = static_cast<const ModuleScope&>(*this);
+    mod->qualifiedName = src.qualifiedName;
+    mod->visibility = src.visibility;
+    mod->visibilityDeclared = src.visibilityDeclared;
+  }
+  // Copy all symbol tables (shallow — shares type objects)
+  clone->functions = functions;
+  clone->classes = classes;
+  clone->classDefinitions = classDefinitions;
+  clone->genericClasses = genericClasses;
+  clone->interfaces = interfaces;
+  clone->genericInterfaces = genericInterfaces;
+  clone->enums = enums;
+  clone->genericEnums = genericEnums;
+  clone->genericFunctions = genericFunctions;
+  clone->childModules = childModules;
+  clone->namespacedVariables = namespacedVariables;
+  clone->variables = variables;
+  clone->usingImports = usingImports;
+  clone->importBindings = importBindings;
+  return clone;
+}
 
 // -------------------------------------------------------------------
 // lookupClass — find a class in the scope chain
@@ -271,133 +424,6 @@ std::vector<FunctionInfo> SemanticScopeBase::getAllFunctions(
 // -------------------------------------------------------------------
 // lookupFunction — overload resolution
 // -------------------------------------------------------------------
-
-// Helper: check if a function name is an intrinsic (starts with '_')
-static bool isIntrinsic(const std::string& name) {
-  return !name.empty() && name[0] == '_';
-}
-
-// Helper: check if argType is assignable to paramType
-static bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
-  if (!from || !to) return false;
-  if (to->equals(*from)) return true;
-
-  // A static_ptr narrows to a raw_ptr of the same pointee; a raw_ptr can
-  // never widen to a static_ptr (no length, no immortality promise).
-  if (from->isStaticPointer() && to->isRawPointer()) {
-    auto* s = static_cast<const sun::StaticPointerType*>(from.get());
-    auto* r = static_cast<const sun::RawPointerType*>(to.get());
-    if (s->getPointeeType()->equals(*r->getPointeeType())) return true;
-  }
-
-  // Numeric widening
-  if (from->isPrimitive() && to->isPrimitive()) {
-    auto fromKind = from->getKind();
-    auto toKind = to->getKind();
-
-    auto isInteger = [](sun::Type::Kind k) {
-      return k == sun::Type::Kind::Int8 || k == sun::Type::Kind::Int16 ||
-             k == sun::Type::Kind::Int32 || k == sun::Type::Kind::Int64 ||
-             k == sun::Type::Kind::UInt8 || k == sun::Type::Kind::UInt16 ||
-             k == sun::Type::Kind::UInt32 || k == sun::Type::Kind::UInt64;
-    };
-
-    auto intBitWidth = [](sun::Type::Kind k) -> int {
-      switch (k) {
-        case sun::Type::Kind::Int8:
-        case sun::Type::Kind::UInt8:
-          return 8;
-        case sun::Type::Kind::Int16:
-        case sun::Type::Kind::UInt16:
-          return 16;
-        case sun::Type::Kind::Int32:
-        case sun::Type::Kind::UInt32:
-          return 32;
-        case sun::Type::Kind::Int64:
-        case sun::Type::Kind::UInt64:
-          return 64;
-        default:
-          return 0;
-      }
-    };
-
-    if (isInteger(fromKind) && isInteger(toKind)) {
-      return intBitWidth(fromKind) <= intBitWidth(toKind);
-    }
-
-    if ((fromKind == sun::Type::Kind::Float32 ||
-         fromKind == sun::Type::Kind::Float64) &&
-        (toKind == sun::Type::Kind::Float32 ||
-         toKind == sun::Type::Kind::Float64)) {
-      return true;
-    }
-  }
-
-  // Non-throwing lambda is accepted where a throwing lambda is expected
-  if (to->isLambda() && from->isLambda()) {
-    auto* toL = static_cast<const sun::LambdaType*>(to.get());
-    auto* fromL = static_cast<const sun::LambdaType*>(from.get());
-    return toL->canThrow() && !fromL->canThrow() &&
-           fromL->equalsIgnoringThrow(*toL);
-  }
-
-  // Unwrap reference types (a const borrow never becomes a mutable one)
-  if (to->isReference() && from->isReference()) {
-    auto* toRef = static_cast<const sun::ReferenceType*>(to.get());
-    auto* fromRef = static_cast<const sun::ReferenceType*>(from.get());
-    if (!sun::refMutabilityConvertible(*fromRef, *toRef)) return false;
-    return isAssignableTo(fromRef->getReferencedType(),
-                          toRef->getReferencedType());
-  }
-
-  // Interface assignability: class implements interface
-  if (to->isInterface() && from->isClass()) {
-    auto* classType = static_cast<const sun::ClassType*>(from.get());
-    auto* ifaceType = static_cast<const sun::InterfaceType*>(to.get());
-    return classType->convertibleToInterface(ifaceType->getName());
-  }
-
-  // Class -> ref Interface (class can be passed as ref to interface it
-  // implements)
-  if (to->isReference() && from->isClass()) {
-    auto* toRef = static_cast<const sun::ReferenceType*>(to.get());
-    sun::TypePtr innerTo = toRef->getReferencedType();
-    if (innerTo && innerTo->isInterface()) {
-      auto* ifaceType = static_cast<const sun::InterfaceType*>(innerTo.get());
-      auto* classType = static_cast<const sun::ClassType*>(from.get());
-      return classType->convertibleToInterface(ifaceType->getName());
-    }
-  }
-
-  // ref Class -> Interface (unwrap ref, check class implements interface)
-  if (to->isInterface() && from->isReference()) {
-    auto* fromRef = static_cast<const sun::ReferenceType*>(from.get());
-    sun::TypePtr innerFrom = fromRef->getReferencedType();
-    if (innerFrom && innerFrom->isClass()) {
-      auto* ifaceType = static_cast<const sun::InterfaceType*>(to.get());
-      auto* classType = static_cast<const sun::ClassType*>(innerFrom.get());
-      return classType->convertibleToInterface(ifaceType->getName());
-    }
-  }
-
-  // ref(T) -> T: the value is read out of the reference. Only a scalar can
-  // be duplicated that way; a compound T is borrowed or cloned instead.
-  // Mirrors SemanticAnalyzer::isAssignableTo.
-  if (!to->isReference() && from->isReference()) {
-    if (!sun::typeCopiesByRead(to)) return false;
-    auto* fromRef = static_cast<const sun::ReferenceType*>(from.get());
-    return isAssignableTo(fromRef->getReferencedType(), to);
-  }
-
-  // Class-to-class: compare by mangled name
-  if (to->isClass() && from->isClass()) {
-    auto* toClass = static_cast<const sun::ClassType*>(to.get());
-    auto* fromClass = static_cast<const sun::ClassType*>(from.get());
-    return toClass->getMangledName() == fromClass->getMangledName();
-  }
-
-  return false;
-}
 
 // Resolve an overload against this scope's own function table only, without
 // walking to parents. Module-qualified calls need this: the callee's scope is

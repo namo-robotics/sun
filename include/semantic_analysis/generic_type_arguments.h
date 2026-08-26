@@ -13,8 +13,7 @@
 //
 // Nothing here needs the analyzer's state; the one step that does — the
 // signature a template has under a set of type arguments — is
-// SemanticAnalyzer::genericFunctionSignature, defined alongside these in
-// src/semantic_analysis/generic_type_arguments.cpp.
+// GenericSpecializer::genericFunctionSignature.
 
 #include <map>
 #include <optional>
