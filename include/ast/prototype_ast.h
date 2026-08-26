@@ -274,6 +274,26 @@ class PrototypeAST {
     return names;
   }
 
+  // The declared type of the parameter named `name`, or null if there is no
+  // such parameter. Codegen walks a function's LLVM arguments, which are
+  // named from getAllParamNames(), so asking by name rather than by index
+  // keeps the two lists from drifting — and a closure or fat-pointer
+  // argument, which is not a parameter at all, simply answers null.
+  sun::TypePtr paramTypeNamed(const std::string& name) const {
+    if (!hasResolvedParamTypes()) return nullptr;
+    const std::vector<sun::TypePtr>& fixed = getResolvedParamTypes();
+    for (size_t i = 0; i < args.size() && i < fixed.size(); ++i) {
+      if (args[i].first == name) return fixed[i];
+    }
+    if (!hasVariadicParam()) return nullptr;
+    const VariadicParam& pack = getVariadicParam();
+    const std::vector<sun::TypePtr>& packTypes = getResolvedVariadicTypes();
+    for (size_t i = 0; i < packTypes.size(); ++i) {
+      if (pack.elementName(i) == name) return packTypes[i];
+    }
+    return nullptr;
+  }
+
   // Type parameter bindings for specialized generic functions
   void setTypeBindings(
       std::vector<std::pair<std::string, sun::TypePtr>> bindings) {

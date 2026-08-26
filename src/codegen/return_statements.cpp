@@ -51,6 +51,15 @@ Value* CodegenVisitor::codegen(const ReturnExprAST& expr) {
     // THEN clean up owned allocations that weren't moved (move semantics)
     emitScopeCleanup();
 
+    // A void function may still be written `return <expr>;` when the
+    // expression is itself void — `return _thread_join<T>(c);` in a
+    // Thread<void>. The expression has been evaluated for its effect; there
+    // is no value to hand back.
+    if (retType->isVoidTy()) {
+      ctx.builder->CreateRetVoid();
+      return nullptr;
+    }
+
     // Convert return value to match function return type if needed
     if (retVal->getType() != retType) {
       // Handle return-by-value for compound types (classes):

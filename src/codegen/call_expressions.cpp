@@ -80,17 +80,6 @@ Value* CodegenVisitor::applyMoveSemantics(Value* argVal,
     return structVal;
   }
 
-  // A thread handle moves by loading it and nulling the source slot, so only
-  // the destination joins the thread
-  if (argSunType->isThread()) {
-    llvm::StructType* handleTy = threadUtils.getThreadHandleType();
-    Value* handle = ctx.builder->CreateLoad(handleTy, argVal, "move.thread");
-    ctx.builder->CreateStore(
-        ConstantPointerNull::get(PointerType::getUnqual(ctx.getContext())),
-        ctx.builder->CreateStructGEP(handleTy, argVal, 0, "move.thread.ptr"));
-    return handle;
-  }
-
   // Only apply move semantics to class types that are pointers (addressable)
   auto* classType = sun::tryGetType<sun::ClassType>(argSunType);
   if (!classType) return argVal;
@@ -591,19 +580,6 @@ Value* CodegenVisitor::codegenBuiltinTypeMethod(const CallExprAST& expr,
     if (inner && inner->isStaticPointer()) objectType = inner;
   }
 
-  // Handle Thread<T>.join()
-  if (auto* threadType = sun::tryGetType<sun::ThreadType>(objectType)) {
-    if (methodName == "join") {
-      if (!expr.getArgs().empty()) {
-        logAndThrowError("Thread.join() takes no arguments");
-        return nullptr;
-      }
-      return codegenThreadJoin(objectPtr, threadType->getResultType());
-    }
-    logAndThrowError("Unknown method on Thread: " + methodName);
-    return nullptr;
-  }
-
   // static_ptr<T>.length() -> i64, static_ptr<T>.raw() -> raw_ptr<T>.
   // A static_ptr<Class> dispatches to the class's own methods instead.
   if (auto* staticPtr = sun::tryGetType<sun::StaticPointerType>(objectType)) {
@@ -966,12 +942,6 @@ Value* CodegenVisitor::codegenMethodCall(const CallExprAST& expr,
     return codegenInterfaceMethodCall(expr, objectPtr, ifaceType, methodName);
   }
 
-  // Handle Thread type (if not caught by builtin method handler)
-  if (objectType && objectType->isThread()) {
-    logAndThrowError("Unknown method on Thread: " + methodName);
-    return nullptr;
-  }
-
   // Must be a class method call
   auto& classType = sun::requireType<sun::ClassType>(
       objectType, "method call receiver", memberAccess.getLocation());
@@ -990,7 +960,8 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
   // Check if this is a method call (MemberAccessAST as callee)
   if (auto* memberAccess =
           dynamic_cast<const MemberAccessAST*>(expr.getCallee())) {
-    return codegenMethodCall(expr, *memberAccess);
+    return trackCallTemporary(codegenMethodCall(expr, *memberAccess),
+                              expr.getResolvedType());
   }
 
   if (auto* varRef =
@@ -1049,7 +1020,7 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
     }
   }
 
-  return result;
+  return trackCallTemporary(result, expr.getResolvedType());
 }
 
 // -------------------------------------------------------------------
@@ -1060,13 +1031,16 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
 // method, lambda, interface, constructor). Semantic analysis recorded an
 // ArgConversion per argument; each case below only carries that decision out.
 // `paramTypes` supplies the target type where a conversion needs one, and
-// `calleeTy` the LLVM parameter types for closure values. Returns false if an
-// argument failed to codegen.
+// `calleeTy` the LLVM parameter types for closure values. `firstArg` skips
+// leading arguments the caller has already lowered itself — _spawn's first
+// argument is the lambda, which it takes apart rather than passing on.
+// Returns false if an argument failed to codegen.
 bool CodegenVisitor::emitCallArguments(
     const std::vector<std::unique_ptr<ExprAST>>& args,
     const std::vector<sun::ArgConversion>& conversions,
     const std::vector<sun::TypePtr>& paramTypes, llvm::FunctionType* calleeTy,
-    std::vector<Value*>& argValues, const std::string& calleeName) {
+    std::vector<Value*>& argValues, const std::string& calleeName,
+    size_t firstArg) {
   if (conversions.size() != args.size()) {
     logAndThrowError(
         "Argument conversions not resolved by semantic analysis for call to '" +
@@ -1074,10 +1048,12 @@ bool CodegenVisitor::emitCallArguments(
     return false;
   }
 
-  for (size_t i = 0; i < args.size(); ++i) {
+  for (size_t i = firstArg; i < args.size(); ++i) {
     const ExprAST* argExpr = args[i].get();
     sun::TypePtr argSunType = argExpr->getResolvedType();
-    sun::TypePtr paramType = i < paramTypes.size() ? paramTypes[i] : nullptr;
+    size_t paramIndex = i - firstArg;
+    sun::TypePtr paramType =
+        paramIndex < paramTypes.size() ? paramTypes[paramIndex] : nullptr;
     Value* argVal = nullptr;
 
     switch (conversions[i]) {

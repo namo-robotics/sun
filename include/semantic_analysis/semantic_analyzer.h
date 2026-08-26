@@ -152,7 +152,6 @@ class SemanticAnalyzer {
   void analyzeTryCatch(TryCatchExprAST &tryCatchExpr);
   void analyzeThrowExpr(ThrowExprAST &throwExpr);
   void analyzeUnsafeBlock(UnsafeBlockAST &unsafeBlock);
-  void analyzeSpawnExpr(SpawnExprAST &spawnExpr);
   void analyzeReturnExpr(ReturnExprAST &returnExpr);
 
   // Bindings and assignments (analysis_statements.cpp)
@@ -495,6 +494,10 @@ class SemanticAnalyzer {
    * the intrinsic does.
    */
   void analyzeIntrinsicCall(GenericCallAST &genericCall);
+
+  // Decide how each argument of a _spawn call reaches the spawned lambda's
+  // parameters, and mark what the thread takes over as moved.
+  void recordSpawnArgumentConversions(GenericCallAST &genericCall);
 
   /**
    * Analyze `f<T>(...)`: resolve the template, fill in any type arguments the

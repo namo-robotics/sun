@@ -1,0 +1,158 @@
+// stdlib/thread.sun - OS threads and the lock that guards what they share
+//
+// Usage:
+//   using sun.thread;
+//
+//   var t = spawn(lambda (n: i32) i32 { return n * 2; }, 21);
+//   var answer = t.join();   // 42
+//
+//   var m = Mutex();
+//   m.lock();
+//   // critical section
+//   m.unlock();
+//
+// A thread never outlives the scope that spawned it: the handle spawn hands
+// back owns the running thread, and dropping it joins.
+
+public module sun {
+  public module thread {
+    // What a running thread and whoever joins it share. spawn fills in the
+    // code pointer, the environment and the result slot; the OS writes the
+    // thread id; and the thread reads its arguments, releases them, and
+    // leaves its result behind before it exits.
+    //
+    // Raw runtime memory rather than allocator memory: spawn builds it and
+    // whoever joins releases it, so it has no deinit of its own. The compiler
+    // writes these five fields directly, so their order is load-bearing.
+    class ThreadContext {
+      var func: raw_ptr<i8>;    // the lambda's code pointer
+      var env: raw_ptr<i8>;     // the lambda's captured environment
+      var result: raw_ptr<i8>;  // where the result lands; null for void
+      var tid: i64;             // the OS thread id
+      var args: raw_ptr<i8>;    // the arguments moved in, or null
+    }
+
+    // A running OS thread, and the right to its result. The handle owns the
+    // thread, so binding it to a second name moves it and only the new name
+    // can join.
+    public class Thread<T> {
+      var ctx: raw_ptr<ThreadContext>;  // null once the thread is joined
+
+      // Built only by spawn(): a handle cannot be forged, and there is no way
+      // to reach a thread except through the one spawn handed back.
+      function init(ctx: raw_ptr<ThreadContext>) {
+        this.ctx = ctx;
+      }
+
+      // Wait for the thread to finish, and take what it returned. The result
+      // is yours from then on, and dropped at the end of your scope like any
+      // other value you own.
+      public function join() T {
+        var c = this.ctx;
+        this.ctx = null;
+        return unsafe { _thread_join<T>(c); };
+      }
+
+      // Dropping a handle joins the thread it still holds. Nobody is taking
+      // the result, so it is dropped where it lies. A moved-from handle is
+      // all-zero, which reads as null, so there is nothing left to release.
+      function deinit() void {
+        if (this.ctx != null) {
+          unsafe { _thread_join_drop<T>(this.ctx); };
+          this.ctx = null;
+        }
+      }
+    }
+
+    // Run `fn` on a new OS thread, with `args`, and hand back a handle to it.
+    //
+    // The arguments move into the thread, which owns them from the moment it
+    // starts — so a thread body can be an ordinary lambda taking what it
+    // works on, rather than a closure that had to capture it.
+    public function spawn<F: _Lambda>(fn: F, args...: _params_of<F>)
+        Thread<_return_type_of<F>> {
+      return Thread<_return_type_of<F>>(unsafe { _spawn<F>(fn, args...); });
+    }
+
+    // Mutual exclusion built on an atomic compare-and-swap for the
+    // uncontended case, falling back to futex blocking under contention.
+    //
+    // State values:
+    //   0 = unlocked
+    //   1 = locked (no waiters)
+    //   2 = locked (with waiters)
+    public class Mutex {
+      // Lock state: 0=unlocked, 1=locked, 2=locked+waiters
+      var state: i32;
+
+      // Build an unlocked mutex.
+      public function init() {
+        this.state = 0;
+      }
+
+      // Acquire the lock. Blocks until the lock is available.
+      public function lock() void {
+        // Fast path: try to acquire uncontended lock (0 -> 1)
+        var old = unsafe { _atomic_cmpxchg_i32(_address_of<i32>(this.state), 0, 1); };
+        if (old == 0) {
+          // Successfully acquired lock
+          return;
+        }
+
+        // Slow path: lock is contended
+        this.lock_slow();
+      }
+
+      // Slow path for lock acquisition with futex waiting
+      function lock_slow() void {
+        // Spin a few times before blocking (helps on short critical sections)
+        var spin_count = 0;
+        while (spin_count < 100) {
+          var current = unsafe { _atomic_load_i32(_address_of<i32>(this.state)); };
+          if (current == 0) {
+            // Lock appears free, try to acquire (set to 2 since we're in slow path)
+            var old = unsafe { _atomic_cmpxchg_i32(_address_of<i32>(this.state), 0, 2); };
+            if (old == 0) {
+              return;
+            }
+          }
+          spin_count = spin_count + 1;
+        }
+
+        // Must wait - set state to 2 (locked with waiters) and block
+        while (true) {
+          // Try to acquire lock directly (state 0 -> 2)
+          var old = unsafe { _atomic_cmpxchg_i32(_address_of<i32>(this.state), 0, 2); };
+          if (old == 0) {
+            // Got the lock
+            return;
+          }
+
+          // Lock is held. If state is 1, change to 2 to mark waiters exist
+          if (old == 1) {
+            unsafe { _atomic_cmpxchg_i32(_address_of<i32>(this.state), 1, 2); };
+          }
+
+          // Wait until state changes (futex_wait only blocks if state == 2)
+          unsafe { _futex_wait(_address_of<i32>(this.state), 2); };
+        }
+      }
+
+      // Release the lock. Must only be called by the thread holding the lock.
+      public function unlock() void {
+        // Get the old state and set to 0 (unlocked)
+        var old = unsafe { _atomic_cmpxchg_i32(_address_of<i32>(this.state), 1, 0); };
+
+        if (old == 1) {
+          // No waiters, we're done
+          return;
+        }
+
+        // There might be waiters (old was 2 or cmpxchg failed)
+        // Force state to 0 and wake one waiter
+        unsafe { _atomic_store_i32(_address_of<i32>(this.state), 0); };
+        unsafe { _futex_wake(_address_of<i32>(this.state)); };
+      }
+    }
+  }  // module thread
+}  // module sun

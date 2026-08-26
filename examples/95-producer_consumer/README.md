@@ -11,13 +11,18 @@ until it goes out of scope, and the last owner to be dropped frees the queue.
 Sun never copies a class implicitly, so a thread cannot reach the queue by
 accident — every extra owner is a visible `clone()`.
 
-The capture list is what puts an owner inside a thread. `[producer_queue]` has
-no `ref`, so the closure owns that clone: it moves in, the thread drops it when
-the lambda ends, and the name cannot be used in `main` afterwards. Borrowing
-with `[ref producer_queue]` is allowed for a single thread, but two threads
-cannot borrow the same handle — the second is rejected with *cannot borrow
-'producer_queue' as mutable because it is already borrowed*. Giving each
-thread its own clone is what makes two of them legal.
+`spawn` takes what the thread should work on as arguments and moves them in,
+so a thread body does not have to be a closure over the surrounding frame.
+That is why `produce` and `consume` are plain lambdas at global scope taking a
+`Shared<Queue<i64>>` parameter: each `spawn(produce, queue.clone())` hands one
+clone to one thread, `main` cannot use that clone afterwards, and the thread
+releases it when it finishes.
+
+Capturing still works: `spawn(lambda [ref q] () i32 { … })` borrows `q` for
+one thread. But two threads cannot borrow the same handle mutably — the second
+is rejected with *cannot borrow 'q' as mutable because it is already borrowed*
+— so passing each thread its own clone is both simpler and what makes two of
+them legal.
 
 Where the lock is taken decides how much the threads get in each other's way.
 `take_one` holds it only for the `pop()`, and has released it by the time it

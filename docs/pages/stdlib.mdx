@@ -68,7 +68,7 @@ p.is_null();   // Check if null
 
 The shared-ownership counterpart to `Unique<T>`: `Unique` has one owner,
 `Shared` has as many as you like, and it is safe to hand to several threads.
-The value lives in a heap box next to a `Mutex` and an atomic count of the live
+The value lives in a heap box next to a `sun.thread.Mutex` and an atomic count of the live
 handles. `clone()` adds an owner, and the last handle to go drops the value and
 frees the box.
 
@@ -382,9 +382,31 @@ var val = m[1, 1];  // 5
 
 See [Matrices](/matrices) for detailed documentation.
 
-## Mutex
+## Threads
 
-Thread synchronization primitive using atomic compare-and-swap with futex-based blocking.
+`stdlib/thread.sun` (module `sun.thread`). `spawn` starts an OS thread and
+hands back a handle that joins when it is dropped, so a thread never outlives
+the scope that started it.
+
+```sun
+using sun.thread;
+
+var t = spawn(lambda (n: i32) i32 { return n * 2; }, 21);
+var answer = t.join();   // 42
+```
+
+| Function | Signature | Description |
+|--------|-----------|-------------|
+| `spawn()` | `<F: _Lambda>(fn: F, args...: _params_of<F>) Thread<_return_type_of<F>>` | Run `fn` on a new thread with `args`, which move into it |
+
+| `Thread<T>` method | Signature | Description |
+|--------|-----------|-------------|
+| `join()` | `() T` | Block until the thread finishes, and take its result |
+
+### Mutex
+
+Mutual exclusion, using an atomic compare-and-swap for the uncontended case
+and futex blocking under contention.
 
 ```sun
 var m = Mutex();
@@ -398,7 +420,7 @@ m.unlock();
 | `lock()` | `() void` | Acquire the lock (blocks if contended) |
 | `unlock()` | `() void` | Release the lock |
 
-See [Threads](/threads) for usage with spawned threads.
+See [Threads](/threads) for the whole picture.
 
 ## File I/O
 

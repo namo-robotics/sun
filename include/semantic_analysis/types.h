@@ -59,7 +59,6 @@ class Type {
     Array,          // Fixed-size array: array<T, N, M, ...>
     Slice,          // Builtin slice type: { start: i64, end: i64 }
     Module,         // Module/namespace reference (for mod_x.mod_y.var access)
-    Thread          // Thread handle: Thread<T> for OS thread returning T
   };
 
   virtual ~Type() = default;
@@ -125,7 +124,6 @@ class Type {
   bool isArray() const { return getKind() == Kind::Array; }
   bool isSlice() const { return getKind() == Kind::Slice; }
   bool isCallable() const { return isFunction() || isLambda(); }
-  bool isThread() const { return getKind() == Kind::Thread; }
   // Compound types must be passed by reference (classes, interfaces, arrays,
   // payload-carrying enums). Payload-free enums are NOT compound - they are
   // i32 values and passed by value. Defined out-of-line (needs EnumType).
@@ -136,10 +134,20 @@ class Type {
   bool isString() const;
 };
 
+// Something computed from a type parameter rather than the parameter itself.
+// `_return_type_of<F>` names a type that is only known once F is, so until
+// then it travels as the parameter F plus the projection to apply to it.
+enum class TypeProjection : uint8_t {
+  None,        // the parameter itself
+  ReturnType,  // _return_type_of<F>: what F returns
+};
+
 // Type parameter (used in generic class/function definitions)
 // Represents a type variable like T, U, V in class List<T>
 class TypeParameterType : public Type {
-  std::string name;  // Parameter name: T, U, etc.
+  std::string name;  // Parameter name: T, U, etc. (F$ret when projected)
+  std::string base_;  // The parameter the projection applies to
+  TypeProjection projection_ = TypeProjection::None;
   // What `<T: Trait>` promised about whatever T stands for. Metadata only —
   // intentionally excluded from equals()/toString() so it never disturbs
   // substitution or identity. It travels with the parameter so a body being
@@ -147,17 +155,33 @@ class TypeParameterType : public Type {
   std::string constraint_;
 
  public:
-  explicit TypeParameterType(std::string paramName, std::string constraint = "")
-      : name(std::move(paramName)), constraint_(std::move(constraint)) {}
+  explicit TypeParameterType(std::string paramName, std::string constraint = "",
+                             TypeProjection projection = TypeProjection::None)
+      : name(paramName),
+        base_(std::move(paramName)),
+        projection_(projection),
+        constraint_(std::move(constraint)) {
+    // A projection needs a name of its own, or `Thread<F>` and
+    // `Thread<_return_type_of<F>>` would mangle to one specialization.
+    if (projection_ == TypeProjection::ReturnType) name = base_ + "$ret";
+  }
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::TypeParameter;
   Kind getKind() const override { return StaticKind; }
   const std::string& getName() const { return name; }
+  const std::string& getProjectionBase() const { return base_; }
+  TypeProjection getProjection() const { return projection_; }
   const std::string& getConstraint() const { return constraint_; }
   bool hasConstraint() const { return !constraint_.empty(); }
 
   std::string toString() const override { return name; }
+
+  std::string toDisplayString() const override {
+    return projection_ == TypeProjection::ReturnType
+               ? "_return_type_of<" + base_ + ">"
+               : name;
+  }
 
   bool equals(const Type& other) const override {
     if (auto* p = dynamic_cast<const TypeParameterType*>(&other))
@@ -2152,6 +2176,14 @@ class Types {
     return std::make_shared<TypeParameterType>(name, constraint);
   }
 
+  // `_return_type_of<F>` where F is not bound yet: what F returns, carried as
+  // F plus the projection until a specialization says what F is.
+  static TypePtr TypeParameterProjection(const std::string& base,
+                                         const std::string& constraint,
+                                         TypeProjection projection) {
+    return std::make_shared<TypeParameterType>(base, constraint, projection);
+  }
+
   // Create an interface type (cached by name)
   static std::shared_ptr<InterfaceType> Interface(const std::string& name) {
     auto& cache = getInterfaceCache();
@@ -2552,55 +2584,5 @@ inline bool RawPointerType::equals(const Type& other) const {
   }
   return false;
 }
-
-// Thread type for OS threads
-// Type annotation: Thread<T> where T is the return type of the thread function
-// Represented as a handle struct: { ptr context, ptr stack_base, i64 stack_size
-// } Create with spawn(lambda), join with thread.join() -> T
-class ThreadType : public Type {
-  TypePtr resultType;  // The return type of the thread function
-  mutable llvm::StructType* cachedLLVMType = nullptr;
-
- public:
-  explicit ThreadType(TypePtr result) : resultType(std::move(result)) {}
-
-  // The kind every value of this class carries; TypeCheck<T> keys off it
-  static constexpr Kind StaticKind = Kind::Thread;
-  Kind getKind() const override { return StaticKind; }
-  const TypePtr& getResultType() const { return resultType; }
-
-  std::string toString() const override {
-    return "Thread<" + resultType->toString() + ">";
-  }
-
-  std::string toDisplayString() const override {
-    return "Thread<" + resultType->toDisplayString() + ">";
-  }
-
-  bool equals(const Type& other) const override {
-    if (auto* t = dynamic_cast<const ThreadType*>(&other)) {
-      return resultType->equals(*t->resultType);
-    }
-    return false;
-  }
-
-  // Thread handle struct: { ptr context }
-  llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
-    if (!cachedLLVMType) {
-      cachedLLVMType = llvm::StructType::getTypeByName(ctx, "thread_handle");
-      if (!cachedLLVMType) {
-        cachedLLVMType = llvm::StructType::create(
-            ctx, {llvm::PointerType::getUnqual(ctx)},  // context ptr
-            "thread_handle");
-      }
-    }
-    return cachedLLVMType;
-  }
-
-  // Get the LLVM type for the result (for join)
-  llvm::Type* getResultLLVMType(llvm::LLVMContext& ctx) const {
-    return resultType->toLLVMType(ctx);
-  }
-};
 
 }  // namespace sun

@@ -586,6 +586,7 @@ void CodegenVisitor::generateMethodBody(const FunctionAST& methodFunc,
       debugDeclareParam(alloca, argName, proto, static_cast<unsigned>(i),
                         /*argNoBase=*/2);
     }
+    trackOwnedParam(alloca, argName, paramTypes[i]);
     ++argIt;
   }
 
@@ -1280,6 +1281,15 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
       return codegenConvertIntrinsic(getFirstTypeArg(), expr.getArgs());
     case sun::Intrinsic::Bitcast:
       return codegenBitcastIntrinsic(getFirstTypeArg(), expr.getArgs());
+    case sun::Intrinsic::Spawn:
+      return codegenSpawnIntrinsic(getFirstTypeArg(), expr.getResolvedType(),
+                                   expr.getArgs(), expr.getArgConversions());
+    case sun::Intrinsic::ThreadJoin:
+      return codegenThreadJoinIntrinsic(getFirstTypeArg(), expr.getArgs(),
+                                        /*dropResult=*/false);
+    case sun::Intrinsic::ThreadJoinDrop:
+      return codegenThreadJoinIntrinsic(getFirstTypeArg(), expr.getArgs(),
+                                        /*dropResult=*/true);
     default:
       break;  // Not a generic intrinsic, continue below
   }
@@ -1352,7 +1362,8 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
     Value* result = emitPossiblyThrowingCall(specializedFunc->getFunctionType(),
                                              specializedFunc, argValues,
                                              canThrow, "generic.call");
-    return materializeStructReturn(result);
+    return trackCallTemporary(materializeStructReturn(result),
+                              expr.getResolvedType());
   }
 
   // Check for generic class constructor: Box<i32>(42)

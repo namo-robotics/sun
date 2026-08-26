@@ -174,21 +174,6 @@ _print_bytes(bytes, n);
 
 Passing a `static_ptr<T>` where a `raw_ptr<T>` is expected narrows it to `raw()` automatically, so a string literal can be handed straight to a C function (see [C FFI](/c-ffi#strings)).
 
-## Thread Type
-
-### `Thread<T>`
-
-A handle to a spawned OS thread that will return a value of type `T`. Created via the `spawn` keyword; the type is inferred and cannot be written as an annotation.
-
-```sun
-var t = spawn(lambda() i32 { return 42; });
-var result: i32 = t.join();  // Blocks until thread completes
-```
-
-The handle owns the running thread: if it goes out of scope without `join()`, the thread is joined there.
-
-See [Threads](/threads) for detailed documentation.
-
 <Callout type="info">
   Classes in Sun are value types. Use `ref` to pass references to functions without copying.
 </Callout>

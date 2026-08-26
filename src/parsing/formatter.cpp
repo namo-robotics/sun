@@ -903,14 +903,6 @@ class Formatter {
         break;
       }
 
-      case ASTNodeType::SPAWN: {
-        const auto& n = static_cast<const SpawnExprAST&>(e);
-        out_ += "spawn(";
-        printExpr(n.getLambda());
-        out_ += ')';
-        break;
-      }
-
       case ASTNodeType::RETURN: {
         const auto& n = static_cast<const ReturnExprAST&>(e);
         out_ += "return";

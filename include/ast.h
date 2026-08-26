@@ -61,7 +61,6 @@
 #include "ast/function_ast.h"
 #include "ast/lambda_ast.h"
 #include "ast/prototype_ast.h"
-#include "ast/spawn_expr_ast.h"
 
 // Error handling nodes
 #include "ast/throw_expr_ast.h"

@@ -243,6 +243,7 @@ TEST(Stdlib_Concurrency_Shared, lock_works_through_a_const_ref_handle) {
 TEST(Stdlib_Concurrency_Shared, two_threads_write_one_value) {
   auto value = executeStringWithStdlib(R"(
     using sun;
+    using sun.thread;
     class Counter { public var n: i64; public function init() { this.n = 0; } }
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -271,6 +272,7 @@ TEST(Stdlib_Concurrency_Shared, two_threads_write_one_value) {
 TEST(Stdlib_Concurrency_Shared, four_threads_write_one_value) {
   auto value = executeStringWithStdlib(R"(
     using sun;
+    using sun.thread;
     class Counter { public var n: i64; public function init() { this.n = 0; } }
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -314,6 +316,7 @@ TEST(Stdlib_Concurrency_Shared, four_threads_write_one_value) {
 TEST(Stdlib_Concurrency_Shared, threads_share_one_handle_by_const_ref) {
   auto value = executeStringWithStdlib(R"(
     using sun;
+    using sun.thread;
     class Counter { public var n: i64; public function init() { this.n = 0; } }
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -344,6 +347,7 @@ TEST(Stdlib_Concurrency_Shared,
      an_unjoined_thread_finishes_before_its_clone_drops) {
   auto value = executeStringWithStdlib(R"(
     using sun;
+    using sun.thread;
     class Counter { public var n: i64; public function init() { this.n = 0; } }
     function main() i32 {
       var alloc = make_heap_allocator();

@@ -237,3 +237,238 @@ TEST(MemorySafety_Drops_ScopeCleanup,
   // No owners in this loop at all; sanity-check counter stays 0
   EXPECT_EQ(value, 0);
 }
+
+// -------------------------------------------------------------------
+// A call result nobody takes
+// -------------------------------------------------------------------
+// A function returning a class by value hands the caller something the
+// caller owns. `var x = f();` adopts it, and passing it straight on moves
+// it, but a result that is simply discarded used to be materialized into an
+// untracked slot and never dropped.
+
+TEST(MemorySafety_Drops_ScopeCleanup, discarded_call_result_is_dropped) {
+  auto value = executeString(withPreamble(R"(
+    function make() Owner { return Owner(); }
+
+    function helper() i32 {
+      if (true) {
+        make();
+        make();
+      }
+      return counter;
+    }
+
+    function main() i32 { return helper(); }
+  )"));
+  EXPECT_EQ(value, 2);
+}
+
+// The taken and the discarded result must each be dropped exactly once —
+// tracking the temporary must not double up with the variable that adopts it.
+TEST(MemorySafety_Drops_ScopeCleanup, taken_and_discarded_results_drop_once) {
+  auto value = executeString(withPreamble(R"(
+    function make() Owner { return Owner(); }
+
+    function helper() i32 {
+      if (true) {
+        var a = make();
+        make();
+      }
+      return counter;
+    }
+
+    function main() i32 { return helper(); }
+  )"));
+  EXPECT_EQ(value, 2);
+}
+
+// A discarded method result is dropped the same way a free function's is.
+TEST(MemorySafety_Drops_ScopeCleanup, discarded_method_result_is_dropped) {
+  auto value = executeString(withPreamble(R"(
+    class Factory {
+      function init() {}
+      function make() Owner { return Owner(); }
+    }
+
+    function helper() i32 {
+      var f = Factory();
+      if (true) {
+        f.make();
+      }
+      return counter;
+    }
+
+    function main() i32 { return helper(); }
+  )"));
+  EXPECT_EQ(value, 1);
+}
+
+// -------------------------------------------------------------------
+// By-value compound parameters
+// -------------------------------------------------------------------
+// Passing a class by value moves it, so the callee owns it from then on and
+// is what drops it. A parameter the body passes on is marked moved and
+// dropped wherever it landed instead.
+
+TEST(MemorySafety_Drops_ScopeCleanup, by_value_param_is_dropped_by_the_callee) {
+  auto value = executeString(withPreamble(R"(
+    function ignore(o: Owner) void { }
+
+    function helper() i32 {
+      if (true) {
+        ignore(Owner());
+      }
+      return counter;
+    }
+
+    function main() i32 { return helper(); }
+  )"));
+  EXPECT_EQ(value, 1);
+}
+
+// The parameter is read but not moved on, so the callee still drops it.
+TEST(MemorySafety_Drops_ScopeCleanup, read_only_param_is_still_dropped) {
+  auto value = executeString(withPreamble(R"(
+    class Boxed {
+      public var n: i32;
+      public function init(n: i32) { this.n = n; }
+      public function deinit() void { counter = counter + 1; }
+    }
+    function read(b: Boxed) i32 { return b.n; }
+
+    function helper() i32 {
+      if (true) {
+        var n = read(Boxed(7));
+      }
+      return counter;
+    }
+
+    function main() i32 { return helper(); }
+  )"));
+  EXPECT_EQ(value, 1);
+}
+
+// Handed straight on: dropped once, at the end of the chain.
+TEST(MemorySafety_Drops_ScopeCleanup, param_passed_on_is_dropped_once) {
+  auto value = executeString(withPreamble(R"(
+    function ignore(o: Owner) void { }
+    function relay(o: Owner) void { ignore(o); }
+    function relay2(o: Owner) void { relay(o); }
+
+    function helper() i32 {
+      if (true) {
+        relay2(Owner());
+      }
+      return counter;
+    }
+
+    function main() i32 { return helper(); }
+  )"));
+  EXPECT_EQ(value, 1);
+}
+
+// Returned rather than dropped: the caller takes it over.
+TEST(MemorySafety_Drops_ScopeCleanup, param_returned_is_dropped_by_the_caller) {
+  auto value = executeString(withPreamble(R"(
+    function give_back(o: Owner) Owner { return o; }
+
+    function helper() i32 {
+      var seen: i32 = 0;
+      if (true) {
+        var back = give_back(Owner());
+        seen = counter;   // nothing dropped yet
+      }
+      return seen * 10 + counter;
+    }
+
+    function main() i32 { return helper(); }
+  )"));
+  EXPECT_EQ(value, 1);  // 0 while the caller holds it, 1 once it goes
+}
+
+// Stored into a field: the object owns it, and drops it when the object goes.
+// Tagged rather than Owner because assigning a class-typed field drops what
+// the field held first, and a fresh object's field is zeroed — so this needs
+// the usual discipline of a deinit that is a no-op on the all-zero state.
+TEST(MemorySafety_Drops_ScopeCleanup, param_stored_in_a_field_is_dropped_once) {
+  auto value = executeString(withPreamble(R"(
+    class Tagged {
+      public var id: i32;
+      public function init(id: i32) { this.id = id; }
+      public function deinit() void {
+        if (this.id != 0) { counter = counter + 1; this.id = 0; }
+      }
+    }
+    class Holder {
+      public var t: Tagged;
+      public function init(t: Tagged) { this.t = t; }
+    }
+
+    function helper() i32 {
+      if (true) {
+        var h = Holder(Tagged(7));
+      }
+      return counter;
+    }
+
+    function main() i32 { return helper(); }
+  )"));
+  EXPECT_EQ(value, 1);
+}
+
+// A borrow is not an owner: only the caller's own value is dropped.
+TEST(MemorySafety_Drops_ScopeCleanup, ref_param_is_not_dropped_by_the_callee) {
+  auto value = executeString(withPreamble(R"(
+    function borrow(o: ref Owner) void { }
+    function look(o: const ref Owner) void { }
+
+    function helper() i32 {
+      if (true) {
+        var a = Owner();
+        borrow(a);
+        look(a);
+      }
+      return counter;
+    }
+
+    function main() i32 { return helper(); }
+  )"));
+  EXPECT_EQ(value, 1);
+}
+
+// A lambda parameter is owned the same way a function's is.
+TEST(MemorySafety_Drops_ScopeCleanup, by_value_lambda_param_is_dropped) {
+  auto value = executeString(withPreamble(R"(
+    function helper() i32 {
+      var take = lambda (o: Owner) i32 { return 0; };
+      if (true) {
+        var n = take(Owner());
+      }
+      return counter;
+    }
+
+    function main() i32 { return helper(); }
+  )"));
+  EXPECT_EQ(value, 1);
+}
+
+// A method's by-value parameter, and its receiver, which is a borrow.
+TEST(MemorySafety_Drops_ScopeCleanup, by_value_method_param_is_dropped) {
+  auto value = executeString(withPreamble(R"(
+    class Sink {
+      public function init() {}
+      public function take(o: Owner) i32 { return 0; }
+    }
+
+    function helper() i32 {
+      var s = Sink();
+      if (true) {
+        var n = s.take(Owner());
+      }
+      return counter;
+    }
+
+    function main() i32 { return helper(); }
+  )"));
+  EXPECT_EQ(value, 1);
+}

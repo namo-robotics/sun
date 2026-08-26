@@ -432,13 +432,14 @@ class CodegenVisitor {
   // per argument), appending to argValues. The one argument loop for every
   // kind of call. `paramTypes` supplies the target type where a conversion
   // needs one, `calleeTy` the LLVM parameter types for closure values.
+  // `firstArg` skips leading arguments the caller lowered itself.
   // Returns false if an argument failed to codegen.
   bool emitCallArguments(const std::vector<std::unique_ptr<ExprAST>>& args,
                          const std::vector<sun::ArgConversion>& conversions,
                          const std::vector<sun::TypePtr>& paramTypes,
                          llvm::FunctionType* calleeTy,
                          std::vector<llvm::Value*>& argValues,
-                         const std::string& calleeName);
+                         const std::string& calleeName, size_t firstArg = 0);
 
   // Generate the arguments for a call across the C boundary, carrying out
   // only Sun's own conversions. C-specific marshalling is ExternCEmitter's job.
@@ -868,6 +869,35 @@ class CodegenVisitor {
         {alloca, name, false, std::move(type)});
   }
 
+  // A call that hands back a compound by value hands back something the
+  // caller now owns. `var x = f();` adopts the very same slot and
+  // trackClassAllocation de-duplicates by alloca, and moving the result on
+  // marks it deinited, so this only decides what happens when nobody takes
+  // it: the temporary is dropped at the end of the scope that made it,
+  // rather than leaked. Only a materialized return (an alloca) is a
+  // temporary — a borrow handed back by a peek accessor is a pointer into
+  // storage someone else owns, and typeNeedsDrop already says no to `ref T`.
+  llvm::Value* trackCallTemporary(llvm::Value* result,
+                                  const sun::TypePtr& resultType) {
+    if (result && sun::typeNeedsDrop(resultType) &&
+        llvm::isa<llvm::AllocaInst>(result)) {
+      trackClassAllocation(result, "call.result", resultType);
+    }
+    return result;
+  }
+
+  // A by-value compound parameter arrives moved: the caller gave up its
+  // ownership at the call, so this frame is the one that drops it. Passing it
+  // on — into another call, a field, a container slot, a return — marks the
+  // slot deinited, so this only decides what happens when the body keeps it
+  // to the end. A `ref T` parameter is a borrow and answers false here.
+  void trackOwnedParam(llvm::Value* alloca, const std::string& name,
+                       const sun::TypePtr& type) {
+    if (alloca && sun::typeNeedsDrop(type)) {
+      trackClassAllocation(alloca, name, type);
+    }
+  }
+
   // Mark a class allocation as moved/deinited (don't auto-deinit at scope exit)
   void markClassAllocationAsDeinited(llvm::Value* alloca) {
     for (auto& scope : scopes) {
@@ -1175,72 +1205,49 @@ class CodegenVisitor {
   // -------------------------------------------------------------------
 
   /**
-   * Generates IR for a spawn(lambda) expression.
+   * Generates IR for _spawn<F>(fn, args...).
    *
-   * Emits code that:
-   *   1. Allocates and fills a thread context { func, env, result slot, tid }
-   *   2. Calls pthread_create with the trampoline and that context
-   *   3. Stores the context in a handle slot on the stack
+   * Builds the thread context on the heap — it must outlive this frame —
+   * moves the arguments into an argument block beside it, and starts the
+   * thread on a trampoline built for this lambda's signature. Hands back the
+   * context pointer; stdlib `spawn` wraps that in the Thread<T> handle that
+   * owns it, so the thread is joined when that handle is dropped.
    *
-   * The handle slot is drop-tracked like a class instance, so the thread is
-   * joined when the slot's scope ends (see emitThreadJoinIfNeeded). That is
-   * what keeps the lambda's environment — and anything it captured by
-   * reference — alive for as long as the thread runs.
-   *
-   * @param expr The SpawnExprAST containing the lambda to spawn.
-   * @return The handle slot (a pointer), for join() and for scope cleanup.
+   * @param lambdaSunType The lambda type F was inferred as.
+   * @param args The lambda followed by the arguments to move into the thread.
+   * @param conversions One ArgConversion per entry of `args`.
+   * @return The thread context pointer.
    */
-  llvm::Value* codegen(const SpawnExprAST& expr);
+  llvm::Value* codegenSpawnIntrinsic(
+      const sun::TypePtr& lambdaSunType, const sun::TypePtr& contextPtrType,
+      const std::vector<std::unique_ptr<ExprAST>>& args,
+      const std::vector<sun::ArgConversion>& conversions);
 
   /**
-   * Generates IR for Thread<T>.join() method call.
+   * Generates IR for _thread_join<T>(ctx) and _thread_join_drop<T>(ctx).
    *
-   * Emits code that:
-   *   1. Extracts the thread context pointer from the handle
-   *   2. Calls pthread_join, blocking until the thread has exited
-   *   3. Loads the result from the context's result slot
-   *   4. Frees the result slot and the context
-   *   5. Nulls the handle slot, so the automatic join at scope exit is a
-   *      no-op for a thread that was joined by hand
+   * Blocks until the thread has exited, then releases its context. Reading
+   * the result out of the slot is a move: the caller takes over whatever it
+   * owns. With `dropResult` nobody is taking it, so what the slot holds is
+   * dropped in place first — freeing the slot alone would release the
+   * result's own bytes and nothing they point at.
    *
-   * @param threadHandle The handle slot (or handle value) from spawn().
    * @param resultType Sun type of the thread's result (T in Thread<T>).
-   * @return The value returned by the spawned lambda.
+   * @param args The thread context, as a single argument.
+   * @param dropResult Drop the result rather than hand it back.
+   * @return The thread's result, or a non-null placeholder for void.
    */
-  llvm::Value* codegenThreadJoin(llvm::Value* threadHandle,
-                                 sun::TypePtr resultType);
+  llvm::Value* codegenThreadJoinIntrinsic(
+      const sun::TypePtr& resultType,
+      const std::vector<std::unique_ptr<ExprAST>>& args, bool dropResult);
 
   /**
-   * Joins the thread held in a handle slot, unless the slot is null because
-   * join() already ran. Emitted as the drop of a Thread<T> value: at scope
-   * exit, on a return, a break/continue that leaves the scope, and on an
-   * exception unwinding past it.
-   *
-   * Nobody receives the result of a thread joined this way, so whatever the
-   * result slot holds is dropped before the slot is freed.
-   *
-   * @param handleSlot Pointer to the handle struct { ptr context }.
-   * @param resultType Sun type of the thread's result (T in Thread<T>).
-   * @param name Variable name, for readable IR.
+   * The LLVM layout of sun.thread.ThreadContext, read off the raw_ptr type
+   * semantic analysis resolved rather than synthesized here, so there is one
+   * definition of it and codegen never spells the class's name.
    */
-  void emitThreadJoinIfNeeded(llvm::Value* handleSlot,
-                              const sun::TypePtr& resultType,
-                              const std::string& name);
-
-  /**
-   * Emits pthread_join for a thread context and releases it. With a non-void
-   * result type the thread's result is loaded before the slot is freed and
-   * returned; otherwise the void-typed free call is returned so callers see a
-   * non-null value.
-   *
-   * @param dropResultType Set when no one takes the result, to drop what it
-   *   owns in place before the slot is freed. Freeing the slot alone releases
-   *   the result's own bytes and nothing they point at.
-   */
-  llvm::Value* emitThreadJoinCall(llvm::Value* contextPtr,
-                                  llvm::Type* resultLLVMType,
-                                  const sun::TypePtr& dropResultType,
-                                  const std::string& name);
+  llvm::StructType* getThreadContextStruct(
+      const sun::TypePtr& contextPtrType);
 
   // Error handling context: tracks if current function can return errors
   bool currentFunctionCanError = false;

@@ -61,7 +61,6 @@ enum class ASTNodeType {
   GENERIC_CALL,          // Generic function call: create<Type>(args...)
   PACK_EXPANSION,        // args... - expand a variadic parameter pack
   DECLARE_TYPE,          // declare [Alias =] Type<Args>;
-  SPAWN,                 // spawn(lambda) - create OS thread
   UNSAFE_BLOCK,          // unsafe { ... } - unsafe operations block
   MOON_SCOPE,            // Wrapper for moon import stubs with content hash
   COMPOUND_ASSIGNMENT,   // target op= value (+=, -=, ...)

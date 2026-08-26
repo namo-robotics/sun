@@ -134,7 +134,6 @@ class ASTSerializer {
   void serializeCall(const CallExprAST& expr, ast::ASTNode* node) const;
   void serializeGenericCall(const GenericCallAST& expr,
                             ast::ASTNode* node) const;
-  void serializeSpawn(const SpawnExprAST& expr, ast::ASTNode* node) const;
 
   void serializeManifest(const ManifestAST& expr, ast::ASTNode* node) const;
   void serializeModule(const ModuleAST& expr, ast::ASTNode* node) const;

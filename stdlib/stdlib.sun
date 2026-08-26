@@ -21,7 +21,7 @@ manifest {
         "map.sun",
         "linked_list.sun",
         "queue.sun",
-        "mutex.sun",
+        "thread.sun",
         "shared.sun",
         "io.sun",
         "env.sun",

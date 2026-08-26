@@ -75,8 +75,9 @@ message ASTNode {
     LambdaExpr lambda_expr = 61;
     CallExpr call_expr = 62;
     GenericCallExpr generic_call_expr = 63;
-    SpawnExpr spawn_expr = 64;
-    
+    // 64 was SpawnExpr, before `spawn` became a stdlib function. Left retired
+    // so a stale bundle carrying it is ignored rather than misread.
+
     // Modules/imports/names
     Manifest manifest = 70;
     ManifestSunDependency  manifest_sun_dep = 71;
@@ -400,10 +401,6 @@ message GenericCallExpr {
   string function_name = 1;
   repeated TypeAnnotation type_arguments = 2;
   repeated ASTNode args = 3;
-}
-
-message SpawnExpr {
-  ASTNode lambda = 1;
 }
 
 // =============================================================================

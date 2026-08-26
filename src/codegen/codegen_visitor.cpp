@@ -118,8 +118,6 @@ Value* CodegenVisitor::codegenExpression(const ExprAST& expr) {
       return codegen(static_cast<const TryCatchExprAST&>(expr));
     case ASTNodeType::THROW:
       return codegen(static_cast<const ThrowExprAST&>(expr));
-    case ASTNodeType::SPAWN:
-      return codegen(static_cast<const SpawnExprAST&>(expr));
     case ASTNodeType::UNSAFE_BLOCK:
       return codegen(static_cast<const UnsafeBlockAST&>(expr));
     case ASTNodeType::GENERIC_CALL:

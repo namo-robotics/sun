@@ -130,13 +130,6 @@ sun::TypePtr TypeInferer::inferCallType(const CallExprAST& callExpr) {
     sun::TypePtr objectType = inferType(*memberAccess.getObject());
     const std::string& memberName = memberAccess.getMemberName();
 
-    // Thread<T>.join() returns T
-    if (memberName == "join") {
-      if (objectType && objectType->isThread()) {
-        return static_cast<sun::ThreadType*>(objectType.get())->getResultType();
-      }
-    }
-
     // If calleeType is non-null but not a function, it might be the return
     // type of a builtin method (e.g., static_ptr.length returns i64)
     if (calleeType) {
@@ -692,20 +685,6 @@ sun::TypePtr TypeInferer::inferType(const ExprAST& expr) {
       return sun::Types::Void();
     }
 
-    case ASTNodeType::SPAWN: {
-      // spawn(lambda) returns Thread<T> where T is the lambda's return type
-      const auto& spawnExpr = static_cast<const SpawnExprAST&>(expr);
-      sun::TypePtr lambdaType = inferType(spawnExpr.getLambda());
-      if (lambdaType && lambdaType->isLambda()) {
-        auto* lambda = static_cast<sun::LambdaType*>(lambdaType.get());
-        return std::make_shared<sun::ThreadType>(lambda->getReturnType());
-      }
-      logAndThrowError(
-          "spawn requires a lambda expression, got '" +
-              (lambdaType ? lambdaType->toDisplayString() : "unknown") + "'",
-          spawnExpr.getLocation());
-    }
-
     case ASTNodeType::GENERIC_CALL: {
       const auto& genericCall = static_cast<const GenericCallAST&>(expr);
       sun::TypePtr type = inferGenericCallType(genericCall);
@@ -1182,17 +1161,6 @@ sun::TypePtr TypeInferer::inferType(const MemberAccessAST& memberAccess) {
       return inferInterfaceMemberType(memberAccess, objectType, memberName);
     case sun::Type::Kind::TypeParameter:
       return inferTypeParameterMemberType(memberAccess, objectType, memberName);
-    case sun::Type::Kind::Thread: {
-      // Thread<T>.join() returns T
-      auto* threadType = static_cast<sun::ThreadType*>(objectType.get());
-      if (memberName == "join") {
-        return threadType->getResultType();
-      }
-      logAndThrowError(
-          "Thread has no member '" + memberName + "'; available: 'join'",
-          memberAccess.getLocation());
-    }
-
     default:
       logAndThrowError("Cannot access member '" + memberName + "' on type '" +
                            objectType->toDisplayString() + "'",
@@ -1258,6 +1226,24 @@ sun::TypePtr TypeInferer::inferIntrinsicCallType(
   }
   if (funcName == "_convert" || funcName == "_bitcast") {
     return typeArgs.empty() ? nullptr : typeArgs[0];
+  }
+  // _spawn hands back the context it allocated. The type is the stdlib's own
+  // ThreadContext, which only exists when sun.thread has been loaded — and
+  // _spawn is only ever written inside sun.thread, so it always has.
+  if (funcName == "_spawn") {
+    auto context = ctx_.scope()->lookupClass("sun.thread.ThreadContext");
+    if (!context) {
+      logAndThrowError(
+          "_spawn requires the standard library's sun.thread module",
+          genericCall.getLocation());
+    }
+    return sun::Types::RawPointer(context);
+  }
+  if (funcName == "_thread_join") {
+    return typeArgs.empty() ? nullptr : typeArgs[0];
+  }
+  if (funcName == "_thread_join_drop") {
+    return sun::Types::Void();
   }
 
   // Unknown intrinsic - return void as fallback

@@ -297,10 +297,6 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       analyzeThrowExpr(static_cast<ThrowExprAST&>(expr));
       break;
 
-    case ASTNodeType::SPAWN:
-      analyzeSpawnExpr(static_cast<SpawnExprAST&>(expr));
-      break;
-
     case ASTNodeType::GENERIC_CALL:
       analyzeGenericCallExpr(static_cast<GenericCallAST&>(expr));
       break;
@@ -1133,11 +1129,6 @@ void SemanticAnalyzer::clearResolvedTypes(ExprAST& expr) {
       if (th.hasErrorExpr()) {
         clearResolvedTypes(const_cast<ExprAST&>(th.getErrorExpr()));
       }
-      break;
-    }
-    case ASTNodeType::SPAWN: {
-      auto& sp = static_cast<SpawnExprAST&>(expr);
-      clearResolvedTypes(const_cast<ExprAST&>(sp.getLambda()));
       break;
     }
     case ASTNodeType::ARRAY_LITERAL: {
@@ -2135,6 +2126,52 @@ void SemanticAnalyzer::analyzeIntrinsicCall(GenericCallAST& genericCall) {
   // args...))
   expandPackArguments(genericCall.getArgsMutable());
   genericCall.setResolvedType(types_.inferGenericCallType(genericCall));
+
+  // _spawn is the one intrinsic that passes its arguments on to something
+  // else — the spawned lambda — so, like any other call, how each argument
+  // reaches its parameter is decided here rather than in codegen. A compound
+  // argument moves: the thread owns it from the moment it starts.
+  if (genericCall.getFunctionName() == "_spawn") {
+    recordSpawnArgumentConversions(genericCall);
+  }
+}
+
+// The lambda is argument 0 and is taken apart rather than passed on, so it
+// stands in for itself; everything after it fills the lambda's parameters.
+void SemanticAnalyzer::recordSpawnArgumentConversions(
+    GenericCallAST& genericCall) {
+  const auto& typeArgs = genericCall.getResolvedTypeArgs();
+  auto* lambda = typeArgs.empty()
+                     ? nullptr
+                     : sun::tryGetType<sun::LambdaType>(typeArgs[0]);
+  if (!lambda) {
+    logAndThrowError("_spawn<F> requires a lambda type argument",
+                     genericCall.getLocation());
+  }
+
+  const auto& args = genericCall.getArgs();
+  std::vector<sun::TypePtr> paramTypes{typeArgs[0]};
+  for (const auto& param : lambda->getParamTypes()) {
+    paramTypes.push_back(param);
+  }
+  if (args.size() != paramTypes.size()) {
+    logAndThrowError(
+        "_spawn<F> takes the lambda and one argument per parameter it "
+        "declares: " +
+            std::to_string(paramTypes.size()) + " in all, got " +
+            std::to_string(args.size()),
+        genericCall.getLocation());
+  }
+
+  std::vector<sun::TypePtr> argTypes;
+  for (const auto& arg : args) {
+    argTypes.push_back(arg->getResolvedType());
+    // Whatever the thread takes over cannot be used here afterwards.
+    checkMoveSource(*arg, genericCall.getLocation());
+  }
+  genericCall.setArgConversions(sun::conversions::classifyArguments(
+      argTypes, paramTypes, /*cVariadic=*/false, "_spawn",
+      genericCall.getLocation()));
 }
 
 // -------------------------------------------------------------------

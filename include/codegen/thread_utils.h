@@ -77,36 +77,19 @@ class ThreadUtils {
    *   ptr __sun_thread_start(ptr context)
    *
    * The trampoline loads {func, env} from the context, rebuilds the lambda
-   * fat pointer, calls the lambda, stores its result through the context's
-   * result slot, and returns null. Memoized by lambda signature since two
-   * spawns of same-typed lambdas can share one trampoline.
+   * fat pointer, reads the arguments spawn moved into the context, calls the
+   * lambda, releases the argument block, stores the result through the
+   * context's result slot, and returns null. Memoized by lambda signature and
+   * argument layout, since two spawns of same-typed lambdas share one
+   * trampoline.
+   *
+   * @param contextType The layout of sun.thread.ThreadContext, declared in
+   *        Sun so the trampoline and the standard library cannot drift apart.
+   * @param argsType The argument block's layout, or null when the lambda
+   *        takes no arguments.
    */
   llvm::Function* getOrCreateThreadTrampoline(
       llvm::FunctionType* lambdaFuncType, llvm::StructType* fatType,
-      llvm::Type* resultLLVMType);
-
-  // -------------------------------------------------------------------
-  // Thread structure types
-  // -------------------------------------------------------------------
-
-  /**
-   * Returns the LLVM struct type for thread context.
-   *
-   * Layout: {
-   *   ptr func,         // Lambda function pointer
-   *   ptr env,          // Lambda environment (captures)
-   *   ptr result_slot,  // Where child stores return value
-   *   i64 pthread_id    // pthread_t written by pthread_create
-   * }
-   *
-   * Allocated by spawn(), passed to the trampoline, used by join().
-   */
-  llvm::StructType* getThreadContextType();
-
-  /**
-   * Returns the LLVM struct type for thread handle (returned by spawn).
-   *
-   * Layout: { ptr context }
-   */
-  llvm::StructType* getThreadHandleType();
+      llvm::Type* resultLLVMType, llvm::StructType* contextType,
+      llvm::StructType* argsType);
 };

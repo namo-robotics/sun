@@ -286,3 +286,91 @@ TEST(Functions_Generic_Variadics, pack_template_survives_a_moon_round_trip) {
   )");
   EXPECT_EQ(value, 25);
 }
+
+// -------------------------------------------------------------------
+// _return_type_of<F>
+// -------------------------------------------------------------------
+// A type computed from another type rather than named outright. Inside the
+// template F is still standing for itself, so the return type stays symbolic
+// until a call says what F is. This is what lets stdlib `spawn` say it hands
+// back a handle to whatever its lambda returns.
+
+TEST(Functions_Generic_Variadics, return_type_of_follows_the_lambda) {
+  auto value = executeString(R"(
+    function run<F: _Lambda>(f: F, args...: _params_of<F>) _return_type_of<F> {
+        return f(args...);
+    }
+    function main() i32 {
+        var add = lambda (a: i32, b: i32) i32 { return a + b; };
+        var one = lambda (a: i32) i32 { return a; };
+        return run(add, 40, 2) - run(one, 1) + 1;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// Two lambdas returning different types make two specializations, each with
+// its own return type — the point of computing it rather than declaring it.
+TEST(Functions_Generic_Variadics, return_type_of_differs_per_specialization) {
+  auto value = executeString(R"(
+    function run<F: _Lambda>(f: F, args...: _params_of<F>) _return_type_of<F> {
+        return f(args...);
+    }
+    function main() i32 {
+        var small = lambda (a: i32) i32 { return a; };
+        var wide = lambda (a: i64) i64 { return a * 2; };
+        var w: i64 = run(wide, 20);
+        return run(small, 2) + _convert<i32>(w);
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// As a type argument to a generic class, which is the shape spawn's
+// `Thread<_return_type_of<F>>` takes.
+TEST(Functions_Generic_Variadics, return_type_of_as_a_type_argument) {
+  auto value = executeString(R"(
+    class Box<T> {
+        public var v: T;
+        public function init(v: T) { this.v = v; }
+    }
+    function boxed<F: _Lambda>(f: F, args...: _params_of<F>)
+        Box<_return_type_of<F>> {
+        return Box<_return_type_of<F>>(f(args...));
+    }
+    function main() i32 {
+        var add = lambda (a: i32, b: i32) i32 { return a + b; };
+        var b = boxed(add, 40, 2);
+        return b.v;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// A void lambda gives a void return type, so the forwarding call is a
+// `return <void expression>` — legal, and the only value is the effect.
+TEST(Functions_Generic_Variadics, return_type_of_a_void_lambda_is_void) {
+  auto value = executeString(R"(
+    var counter: i32 = 0;
+    function run<F: _Lambda>(f: F, args...: _params_of<F>) _return_type_of<F> {
+        return f(args...);
+    }
+    function main() i32 {
+        var bump = lambda (n: i32) void { counter = counter + n; };
+        run(bump, 40);
+        run(bump, 2);
+        return counter;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Functions_Generic_Variadics, return_type_of_a_non_lambda_is_an_error) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    function run<T>(args...: _params_of<T>) _return_type_of<T> {
+        return 0;
+    }
+    function main() i32 { return run<i32>(1); }
+  )"),
+                                "requires a lambda or function type");
+}

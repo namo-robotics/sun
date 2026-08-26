@@ -309,7 +309,9 @@ if(NOT SKIP_STDLIB)
         ${CMAKE_SOURCE_DIR}/stdlib/string.sun
         ${CMAKE_SOURCE_DIR}/stdlib/map.sun
         ${CMAKE_SOURCE_DIR}/stdlib/linked_list.sun
-        ${CMAKE_SOURCE_DIR}/stdlib/mutex.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/queue.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/thread.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/shared.sun
         ${CMAKE_SOURCE_DIR}/stdlib/math.sun
         ${CMAKE_SOURCE_DIR}/stdlib/networking.sun
         ${CMAKE_SOURCE_DIR}/stdlib/io.sun

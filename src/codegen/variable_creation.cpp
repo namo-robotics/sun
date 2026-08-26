@@ -237,25 +237,6 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
     return alloca;
   }
 
-  // A thread handle owns a running thread: the slot holding it joins that
-  // thread when the slot's scope ends. spawn already wrote a slot, so the
-  // variable adopts it; a handle moved out of another variable gets a fresh
-  // slot and leaves the source empty.
-  if (varSunType && varSunType->isThread()) {
-    AllocaInst* slot = dyn_cast<AllocaInst>(value);
-    if (expr.getValue()->getType() == ASTNodeType::SPAWN && slot) {
-      slot->setName(expr.getName());
-    } else {
-      Value* handle = applyMoveSemantics(value, varSunType);
-      slot = createEntryBlockAlloca(func, expr.getName(), varType);
-      ctx.builder->CreateStore(handle, slot);
-    }
-    scope[expr.getName()] = slot;
-    debugDeclareLocal(slot, expr.getName(), varSunType, expr.getLocation());
-    trackClassAllocation(slot, expr.getName(), varSunType);
-    return slot;
-  }
-
   // Handle interface types
   if (auto* ifaceType = sun::tryGetType<sun::InterfaceType>(varSunType)) {
     // Unwrap reference if needed
@@ -737,10 +718,6 @@ void CodegenVisitor::emitDropInPlace(const sun::TypePtr& type, llvm::Value* ptr,
     emitFieldDeinit(ptr, classType, name);
   } else if (type->isEnum()) {
     emitEnumDrop(static_cast<sun::EnumType&>(*type), ptr);
-  } else if (auto* threadType = sun::tryGetType<sun::ThreadType>(type)) {
-    // Dropping a thread handle joins the thread, so it cannot outlive the
-    // scope that spawned it — nor, therefore, anything it captured
-    emitThreadJoinIfNeeded(ptr, threadType->getResultType(), name);
   }
 }
 
