@@ -1,5 +1,5 @@
 // tests/functions/generic/test_constraints.cpp - Tests for generic type
-// parameter constraints: <T: _Numeric>, <T: IError>, <F: lambda>
+// parameter constraints: <T: _Numeric>, <T: IError>, <F: _Lambda>
 //
 // A constraint asks the same question `_is<T>` asks in a function body, only
 // at the signature instead, so these tests also pin that the two vocabularies
@@ -109,12 +109,12 @@ TEST(Functions_Generic_Constraints, interface_rejects_non_implementor) {
 }
 
 // -------------------------------------------------------------------
-// The lambda constraint
+// The _Lambda constraint
 // -------------------------------------------------------------------
 
 TEST(Functions_Generic_Constraints, lambda_accepts_a_closure) {
   auto value = executeString(R"(
-    function takes<F: lambda>(f: F) i32 { return 37; }
+    function takes<F: _Lambda>(f: F) i32 { return 37; }
     function main() i32 {
       var g = lambda (x: i32) i32 { return x + 1; };
       return takes(g);
@@ -126,18 +126,18 @@ TEST(Functions_Generic_Constraints, lambda_accepts_a_closure) {
 TEST(Functions_Generic_Constraints, lambda_rejects_a_number) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       executeString(R"(
-    function takes<F: lambda>(f: F) i32 { return 0; }
+    function takes<F: _Lambda>(f: F) i32 { return 0; }
     function main() i32 { return takes(5); }
   )"),
-      "type argument 'i32' does not satisfy constraint 'lambda' on type "
+      "type argument 'i32' does not satisfy constraint '_Lambda' on type "
       "parameter 'F' of generic function 'takes'");
 }
 
-// A constraint and `_is<T>` share one vocabulary, so `lambda` is a trait in
+// A constraint and `_is<T>` share one vocabulary, so `_Lambda` is a trait in
 // both positions: at a signature, and in a body.
-TEST(Functions_Generic_Constraints, is_lambda_is_true_for_a_closure) {
+TEST(Functions_Generic_Constraints, is_lambda_trait_is_true_for_a_closure) {
   auto value = executeString(R"(
-    function check(f: (i32) i32) bool { return _is<lambda>(f); }
+    function check(f: (i32) i32) bool { return _is<_Lambda>(f); }
     function main() i32 {
       var g = lambda (x: i32) i32 { return x; };
       if (check(g)) { return 1; }
@@ -147,12 +147,124 @@ TEST(Functions_Generic_Constraints, is_lambda_is_true_for_a_closure) {
   EXPECT_EQ(value, 1);
 }
 
-TEST(Functions_Generic_Constraints, is_lambda_is_false_for_a_number) {
+TEST(Functions_Generic_Constraints, is_lambda_trait_is_false_for_a_number) {
   auto value = executeString(R"(
-    function check(x: i32) bool { return _is<lambda>(x); }
+    function check(x: i32) bool { return _is<_Lambda>(x); }
     function main() i32 { if (check(5)) { return 1; } return 0; }
   )");
   EXPECT_EQ(value, 0);
+}
+
+// -------------------------------------------------------------------
+// An interface constraint makes its members reachable in the body
+// -------------------------------------------------------------------
+
+// Whatever T turns out to be, it implements the interface, so the interface's
+// methods can be called on a value of type T while the template is analyzed —
+// before any specialization exists.
+TEST(Functions_Generic_Constraints, interface_method_callable_in_body) {
+  auto value = executeString(R"(
+    interface IShape { public function area() i32; }
+    class Square implements IShape {
+      var side: i32;
+      public function init(s: i32) { this.side = s; }
+      public function area() i32 { return this.side * this.side; }
+    }
+    function measure<T: IShape>(s: ref T) i32 { return s.area(); }
+    function main() i32 { var sq = Square(6); return measure(sq); }
+  )");
+  EXPECT_EQ(value, 36);
+}
+
+TEST(Functions_Generic_Constraints, interface_field_readable_in_body) {
+  auto value = executeString(R"(
+    interface INamed { public var tag: i32; }
+    class Thing implements INamed {
+      public var tag: i32;
+      public function init(t: i32) { this.tag = t; }
+    }
+    function read<T: INamed>(x: ref T) i32 { return x.tag; }
+    function main() i32 { var t = Thing(10); return read(t); }
+  )");
+  EXPECT_EQ(value, 10);
+}
+
+TEST(Functions_Generic_Constraints, interface_constraint_on_generic_class_body) {
+  auto value = executeString(R"(
+    interface IShape { public function area() i32; }
+    class Square implements IShape {
+      var side: i32;
+      public function init(s: i32) { this.side = s; }
+      public function area() i32 { return this.side * this.side; }
+    }
+    class Holder<T: IShape> {
+      var item: T;
+      public function init(i: T) { this.item = i; }
+      public function measure() i32 { return this.item.area(); }
+    }
+    function main() i32 {
+      var h = Holder<Square>(Square(5));
+      return h.measure();
+    }
+  )");
+  EXPECT_EQ(value, 25);
+}
+
+TEST(Functions_Generic_Constraints, interface_constraint_on_generic_method) {
+  auto value = executeString(R"(
+    interface IShape { public function area() i32; }
+    class Square implements IShape {
+      var side: i32;
+      public function init(s: i32) { this.side = s; }
+      public function area() i32 { return this.side * this.side; }
+    }
+    class Ruler {
+      public function init() {}
+      public function measure<T: IShape>(s: ref T) i32 { return s.area(); }
+    }
+    function main() i32 {
+      var r = Ruler();
+      var sq = Square(4);
+      return r.measure(sq);
+    }
+  )");
+  EXPECT_EQ(value, 16);
+}
+
+// A member the interface does not declare is still an error, and the message
+// says which interface was consulted.
+TEST(Functions_Generic_Constraints, member_not_on_the_constraint_is_an_error) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
+    interface IShape { public function area() i32; }
+    class Square implements IShape {
+      var side: i32;
+      public function init(s: i32) { this.side = s; }
+      public function area() i32 { return this.side * this.side; }
+    }
+    function measure<T: IShape>(s: ref T) i32 { return s.perimeter(); }
+    function main() i32 { var sq = Square(6); return measure(sq); }
+  )"),
+      "Unknown member 'perimeter' on type parameter 'T', which is constrained "
+      "to interface 'IShape'");
+}
+
+// A trait says which types are allowed, not what members they carry.
+TEST(Functions_Generic_Constraints, trait_constraint_promises_no_members) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
+    function twice<T: _Numeric>(x: T) i32 { return x.area(); }
+    function main() i32 { return twice(1); }
+  )"),
+      "its constraint '_Numeric' is a type trait, which promises no members");
+}
+
+TEST(Functions_Generic_Constraints, unconstrained_parameter_has_no_members) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    function f<T>(x: T) i32 { return x.area(); }
+    function main() i32 { return f(1); }
+  )"),
+                                "unconstrained type parameter 'T'");
 }
 
 // -------------------------------------------------------------------

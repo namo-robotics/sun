@@ -1,7 +1,7 @@
 // type_traits.h — Built-in type traits, and the one predicate that tests them
 //
 // A trait is a pseudo-interface that types "implement" without declaring it:
-// `_Numeric` covers every number, `lambda` covers every closure type. The same
+// `_Numeric` covers every number, `_Lambda` covers every closure type. The same
 // vocabulary is used in two places, and `satisfies()` is what keeps them from
 // drifting apart:
 //
@@ -29,7 +29,7 @@ enum class TypeTrait {
   Float,      // f32, f64
   Numeric,    // Integer + Float
   Primitive,  // Numeric + bool
-  Lambda,     // any closure type, however it was written
+  Lambda,     // _Lambda: any closure type, however it was written
 };
 
 // Look up a trait by the name written in source. Returns None when the name is
@@ -42,7 +42,7 @@ inline TypeTrait getTypeTrait(const std::string& name) {
   if (name == "_Float") return TypeTrait::Float;
   if (name == "_Numeric") return TypeTrait::Numeric;
   if (name == "_Primitive") return TypeTrait::Primitive;
-  if (name == "lambda") return TypeTrait::Lambda;
+  if (name == "_Lambda") return TypeTrait::Lambda;
   return TypeTrait::None;
 }
 

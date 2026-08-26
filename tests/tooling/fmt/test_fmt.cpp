@@ -650,8 +650,8 @@ TEST(Tooling_Fmt, TypeParameterConstraintOnFunction) {
 }
 
 TEST(Tooling_Fmt, TypeParameterConstraintLambda) {
-  EXPECT_EQ(fmt("function run<F:lambda>(f:F)i32{return 0;}"),
-            "function run<F: lambda>(f: F) i32 {\n"
+  EXPECT_EQ(fmt("function run<F:_Lambda>(f:F)i32{return 0;}"),
+            "function run<F: _Lambda>(f: F) i32 {\n"
             "  return 0;\n"
             "}\n");
 }

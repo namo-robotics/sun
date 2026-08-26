@@ -291,7 +291,7 @@ class Parser {
   // `<T, U: _Numeric>` after a function, class, interface or enum name.
   // Returns empty when there is no '<' — the declaration is not generic.
   // Each parameter may carry one constraint the type argument must satisfy:
-  // a built-in trait, an interface name, or the keyword `lambda`.
+  // a built-in trait such as `_Numeric`, or an interface name.
   std::vector<TypeParameter> parseTypeParameterList();
 
   // The constraint after the colon in `<T: _Numeric>`. Stamps the source span

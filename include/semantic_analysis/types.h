@@ -140,15 +140,22 @@ class Type {
 // Represents a type variable like T, U, V in class List<T>
 class TypeParameterType : public Type {
   std::string name;  // Parameter name: T, U, etc.
+  // What `<T: Trait>` promised about whatever T stands for. Metadata only —
+  // intentionally excluded from equals()/toString() so it never disturbs
+  // substitution or identity. It travels with the parameter so a body being
+  // analyzed with T still standing for itself can see what T is known to be.
+  std::string constraint_;
 
  public:
-  explicit TypeParameterType(std::string paramName)
-      : name(std::move(paramName)) {}
+  explicit TypeParameterType(std::string paramName, std::string constraint = "")
+      : name(std::move(paramName)), constraint_(std::move(constraint)) {}
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::TypeParameter;
   Kind getKind() const override { return StaticKind; }
   const std::string& getName() const { return name; }
+  const std::string& getConstraint() const { return constraint_; }
+  bool hasConstraint() const { return !constraint_.empty(); }
 
   std::string toString() const override { return name; }
 
@@ -2128,9 +2135,11 @@ class Types {
     return type->toString();
   }
 
-  // Create a type parameter type
-  static TypePtr TypeParameter(const std::string& name) {
-    return std::make_shared<TypeParameterType>(name);
+  // Create a type parameter type. `constraint` is the name written after the
+  // colon in `<T: Trait>`, empty when the parameter is unconstrained.
+  static TypePtr TypeParameter(const std::string& name,
+                               const std::string& constraint = "") {
+    return std::make_shared<TypeParameterType>(name, constraint);
   }
 
   // Create an interface type (cached by name)

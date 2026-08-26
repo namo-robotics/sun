@@ -2355,12 +2355,17 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
                     /*isConst=*/proto.isConstMethod());
   }
 
-  // If this is a generic function/method, bind its type parameters
+  // If this is a generic function/method, bind each type parameter to itself
+  // so the body can be analyzed before any specialization exists. The binding
+  // carries the parameter's constraint, which is what lets `<T: IShape>` reach
+  // IShape's members on a value of type T (see inferMemberAccessType).
   if (proto.isGeneric()) {
-    std::vector<std::string> typeParams = proto.getTypeParameterNames();
+    std::vector<std::string> typeParams;
     std::vector<sun::TypePtr> typeParamTypes;
-    for (const auto& name : typeParams) {
-      typeParamTypes.push_back(typeAnnotationToType(TypeAnnotation(name)));
+    for (const auto& tp : proto.getTypeParameters()) {
+      typeParams.push_back(tp.name);
+      typeParamTypes.push_back(sun::Types::TypeParameter(
+          tp.name, tp.constraint ? tp.constraint->name : ""));
     }
     addTypeParameterBindings(typeParams, typeParamTypes);
   }

@@ -1103,7 +1103,39 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
           }
         }
       }
-      // No narrowing available - type parameter has no known members
+      // No narrowing. A `<T: ISomething>` constraint is the other way a type
+      // parameter can have known members: whatever T turns out to be, it
+      // implements that interface, so the interface's members are reachable
+      // here and every specialization will have them.
+      const auto* param =
+          static_cast<const sun::TypeParameterType*>(objectType.get());
+      if (param->hasConstraint()) {
+        const std::string& constraint = param->getConstraint();
+        if (auto ifaceType = lookupInterface(constraint)) {
+          const sun::InterfaceField* field = accessibleField(
+              *ifaceType, memberName, memberAccess.getLocation());
+          if (field) return field->type;
+          const sun::InterfaceMethod* method = accessibleMethod(
+              *ifaceType, memberName, memberAccess.getLocation());
+          if (method)
+            return sun::Types::Function(method->returnType, method->paramTypes);
+          logAndThrowError(
+              "Unknown member '" + memberName + "' on type parameter '" +
+                  param->getName() + "', which is constrained to interface '" +
+                  constraint + "'",
+              memberAccess.getLocation());
+        }
+        // A trait such as `_Numeric`, or `lambda`: it says which types are
+        // allowed, not which members they carry.
+        logAndThrowError("Cannot access member '" + memberName +
+                             "' on type parameter '" + param->getName() +
+                             "': its constraint '" + constraint +
+                             "' is a type trait, which promises no members. "
+                             "Constrain it to an interface to call methods on "
+                             "it.",
+                         memberAccess.getLocation());
+      }
+
       logAndThrowError("Cannot access member '" + memberName +
                            "' on unconstrained type parameter '" +
                            objectType->toDisplayString() + "'",
