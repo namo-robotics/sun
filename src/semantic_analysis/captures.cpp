@@ -304,7 +304,7 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const FunctionAST& func) {
   std::vector<Capture> captures;
   for (const auto& var : freeVars) {
     // Look up the variable's type
-    VariableInfo* varInfo = lookupVariable(var);
+    VariableInfo* varInfo = ctx_.lookupVariable(var);
     if (varInfo && varInfo->type) {
       if (varInfo->isGlobal) {
         continue;  // Skip global variables - they don't need to be captured
@@ -353,7 +353,7 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const LambdaAST& lambda) {
                            "' but the lambda body does not use it",
                        lambda.getLocation());
     }
-    VariableInfo* varInfo = lookupVariable(name);
+    VariableInfo* varInfo = ctx_.lookupVariable(name);
     if (!varInfo || !varInfo->type) {
       logAndThrowError("Unknown variable '" + name + "' in lambda capture list",
                        lambda.getLocation());
@@ -392,7 +392,7 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const LambdaAST& lambda) {
   std::vector<Capture> captures;
   for (const auto& var : freeVars) {
     // Look up the variable's type
-    VariableInfo* varInfo = lookupVariable(var);
+    VariableInfo* varInfo = ctx_.lookupVariable(var);
     if (varInfo && varInfo->type) {
       if (varInfo->isGlobal) {
         continue;  // Skip global variables - they don't need to be captured

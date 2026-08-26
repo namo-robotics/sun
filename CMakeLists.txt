@@ -125,22 +125,28 @@ add_library(sun_lib
     src/ast/call_expr_ast.cpp
     src/ast/ast_children.cpp
     # Semantic analysis
-    src/semantic_analysis/semantic_analyzer.cpp
     src/semantic_analysis/qualified_name.cpp
-    src/semantic_analysis/scope_variables.cpp
+    src/semantic_analysis/semantic_context.cpp
     src/semantic_analysis/scope_lookup.cpp
-    src/semantic_analysis/classes.cpp
+    src/semantic_analysis/packed_classes.cpp
+    src/semantic_analysis/generic_specializer.cpp
     src/semantic_analysis/argument_conversion.cpp
     src/semantic_analysis/generic_type_arguments.cpp
     src/semantic_analysis/interfaces.cpp
-    src/semantic_analysis/type_conversion.cpp
-    src/semantic_analysis/type_inference.cpp
+    src/semantic_analysis/type_annotations.cpp
+    src/semantic_analysis/type_inferer.cpp
     src/semantic_analysis/type_traits.cpp
     src/semantic_analysis/captures.cpp
     src/semantic_analysis/analysis.cpp
+    src/semantic_analysis/analysis_declarations.cpp
+    src/semantic_analysis/analysis_control_flow.cpp
+    src/semantic_analysis/analysis_statements.cpp
+    src/semantic_analysis/analysis_expressions.cpp
     src/semantic_analysis/analysis_utils.cpp
-    src/semantic_analysis/declaration_collection.cpp
+    src/semantic_analysis/declaration_collector.cpp
     src/semantic_analysis/access_checker.cpp
+    src/semantic_analysis/type_rules.cpp
+    src/semantic_analysis/symbol_names.cpp
     src/semantic_analysis/enums.cpp
     # Borrow checker
     src/borrow_checker/borrow_state.cpp

@@ -226,8 +226,7 @@ std::vector<TypePtr> inferGenericTypeArguments(
                        bindings);
   }
   return completeTypeArguments(typeParameterNames(genericInfo.typeParameters),
-                               bindings,
-                               explicitTypeArgs, "generic function",
+                               bindings, explicitTypeArgs, "generic function",
                                displayName, loc);
 }
 
@@ -246,50 +245,3 @@ std::vector<TypePtr> inferMethodTypeArguments(
 }
 
 }  // namespace sun::generics
-
-sun::TypePtr SemanticAnalyzer::genericFunctionSignature(
-    const GenericFunctionInfo& genericInfo,
-    const std::vector<sun::TypePtr>& typeArgs) {
-  enterTypeParamScope(typeParameterNames(genericInfo.typeParameters),
-                      typeArgs);
-  std::vector<sun::TypePtr> paramTypes;
-  for (const auto& [name, annot] : genericInfo.params) {
-    paramTypes.push_back(substituteTypeParameters(typeAnnotationToType(annot)));
-  }
-  sun::TypePtr returnType = genericInfo.returnType
-                                ? substituteTypeParameters(typeAnnotationToType(
-                                      *genericInfo.returnType))
-                                : sun::Types::Void();
-  exitScope();
-  bool canThrow = genericInfo.AST && genericInfo.AST->getProto().canThrow();
-  return sun::Types::Function(returnType, paramTypes, canThrow);
-}
-
-bool SemanticAnalyzer::templateStillAbstract(
-    const GenericFunctionInfo& genericInfo,
-    const std::vector<sun::TypePtr>& typeArgs) {
-  if (std::any_of(typeArgs.begin(), typeArgs.end(),
-                  sun::generics::mentionsTypeParameter)) {
-    return true;
-  }
-  // A template with no type parameters of its own still cannot be
-  // specialized while a type parameter it borrows from an enclosing generic
-  // is unbound — `function build(args...: _params_of<T>)` inside `outer<T>`.
-  const PrototypeAST* proto =
-      genericInfo.AST ? &genericInfo.AST->getProto() : nullptr;
-  if (!proto || !proto->hasVariadicTypeAnnotation()) return false;
-  // `_params_of` is not a type of its own; what may still be abstract is what
-  // it is applied to.
-  const TypeAnnotation& annot = proto->getVariadicTypeAnnotation();
-  if (annot.typeArguments.empty()) return false;
-
-  enterTypeParamScope(typeParameterNames(genericInfo.typeParameters), typeArgs);
-  bool abstract = false;
-  for (const auto& arg : annot.typeArguments) {
-    abstract = abstract || sun::generics::mentionsTypeParameter(
-                               substituteTypeParameters(
-                                   typeAnnotationToType(*arg)));
-  }
-  exitScope();
-  return abstract;
-}

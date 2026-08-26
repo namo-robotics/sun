@@ -1,165 +1,12 @@
 // semantic_analysis/interfaces.cpp — Interface, enum support, and validation
 
+#include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "support/error.h"
 
 // -------------------------------------------------------------------
-// Interface support
-// -------------------------------------------------------------------
-
-void SemanticAnalyzer::registerInterface(
-    const std::string& name, std::shared_ptr<sun::InterfaceType> interfaceType,
-    std::optional<Position> loc) {
-  // Skip if already registered (diamond import re-registration)
-  if (currentScope->interfaces.contains(name)) {
-    return;
-  }
-  // Register in current scope
-  currentScope->interfaces[name] = interfaceType;
-}
-
-std::shared_ptr<sun::InterfaceType> SemanticAnalyzer::lookupInterface(
-    const std::string& name) const {
-  auto result = currentScope->lookupInterface(name);
-  if (result) return result;
-
-  // Check builtin interfaces in type registry (IError)
-  if (typeRegistry) {
-    auto builtinInterface = typeRegistry->lookupInterface(name);
-    if (builtinInterface) return builtinInterface;
-  }
-
-  return nullptr;
-}
-
-// -------------------------------------------------------------------
-// Generic interface support
-// -------------------------------------------------------------------
-
-void SemanticAnalyzer::registerGenericInterface(
-    const std::string& name, const GenericInterfaceInfo& info,
-    std::optional<Position> loc) {
-  // Skip if already registered (diamond import re-registration)
-  if (currentScope->genericInterfaces.contains(name)) {
-    return;
-  }
-  // Register in current scope
-  auto& slot = currentScope->genericInterfaces[name];
-  slot = info;
-  slot.definitionScope = currentScope->shared_from_this();
-}
-
-const GenericInterfaceInfo* SemanticAnalyzer::lookupGenericInterface(
-    const std::string& name) const {
-  return currentScope->lookupGenericInterface(name);
-}
-
-std::shared_ptr<sun::InterfaceType>
-SemanticAnalyzer::instantiateGenericInterface(
-    const std::string& baseName, const std::vector<sun::TypePtr>& typeArgs) {
-  // Look up the generic interface definition first
-  auto* genericInfo = lookupGenericInterface(baseName);
-
-  // Use the AST's mangled name for generating specialized interface name
-  std::string effectiveBase = (genericInfo && genericInfo->AST)
-                                  ? genericInfo->AST->getMangledName()
-                                  : baseName;
-
-  // Generate mangled name for the specialized interface
-  std::string mangledName =
-      sun::Types::mangleGenericClassName(effectiveBase, typeArgs);
-
-  // Check if already instantiated
-  auto existing = lookupInterface(mangledName);
-  if (existing) {
-    return existing;
-  }
-
-  if (!genericInfo || !genericInfo->AST) {
-    logAndThrowError("Unknown generic interface '" + baseName + "'");
-  }
-
-  // Verify type argument count matches
-  if (typeArgs.size() != genericInfo->typeParameters.size()) {
-    logAndThrowError("Generic interface '" + baseName + "' expects " +
-                     std::to_string(genericInfo->typeParameters.size()) +
-                     " type arguments, got " + std::to_string(typeArgs.size()));
-  }
-  checkTypeParameterConstraints(genericInfo->typeParameters, typeArgs,
-                                "generic interface", baseName);
-
-  // Create the specialized interface type
-  auto specializedInterface =
-      typeRegistry->getSpecializedInterface(baseName, typeArgs);
-  specializedInterface->visibility = genericInfo->AST->getVisibility();
-  specializedInterface->setQualifiedName(
-      sun::QualifiedName(genericInfo->qualifiedName.scopePath, mangledName,
-                         genericInfo->qualifiedName.modulePath));
-
-  {
-    // Member annotations resolve in the interface's definition scope; the
-    // result is registered in the requesting scope below
-    ScopeSwitchGuard definitionScope(*this, definitionScopeOf(*genericInfo));
-    // Push a scope for type parameter bindings
-    enterTypeParamScope(typeParameterNames(genericInfo->typeParameters),
-                        typeArgs);
-
-    // Add fields with substituted types
-    for (const auto& field : genericInfo->AST->getFields()) {
-      auto fieldType = typeAnnotationToType(field.type);
-      fieldType = substituteTypeParameters(fieldType);
-      specializedInterface->addField(field.name, fieldType).visibility =
-          field.visibility;
-    }
-
-    // Add methods with substituted types
-    for (const auto& methodDecl : genericInfo->AST->getMethods()) {
-      const PrototypeAST& proto = methodDecl.function->getProto();
-
-      // Get return type with substitution
-      sun::TypePtr returnType;
-      if (proto.getReturnType()) {
-        returnType = typeAnnotationToType(*proto.getReturnType());
-        returnType = substituteTypeParameters(returnType);
-      } else {
-        returnType = sun::Types::Void();
-      }
-
-      // Get parameter types with substitution
-      std::vector<sun::TypePtr> paramTypes;
-      for (const auto& [argName, argType] : proto.getArgs()) {
-        auto paramType = typeAnnotationToType(argType);
-        paramType = substituteTypeParameters(paramType);
-        paramTypes.push_back(paramType);
-      }
-
-      // Add method to interface type (preserve method-level generic type
-      // parameters)
-      auto& method = specializedInterface->addMethod(
-          proto.getName(), returnType, paramTypes, methodDecl.hasDefaultImpl,
-          proto.getTypeParameterNames());
-      method.visibility = methodVisibility(*methodDecl.function);
-      method.isConst = methodDecl.isConst;
-    }
-
-    // Pop the scope
-    exitScope();
-  }
-
-  // Register the specialized interface
-  registerInterface(mangledName, specializedInterface);
-
-  return specializedInterface;
-}
-
-// -------------------------------------------------------------------
 // Enum lookup (the rest of enum analysis lives in enums.cpp)
 // -------------------------------------------------------------------
-
-std::shared_ptr<sun::EnumType> SemanticAnalyzer::lookupEnum(
-    const std::string& name) const {
-  return currentScope->lookupEnum(name);
-}
 
 // -------------------------------------------------------------------
 // Interface inheritance and validation
@@ -177,13 +24,14 @@ void SemanticAnalyzer::inheritInterfaceFields(
       // Convert type arguments, substituting any class type parameters
       std::vector<sun::TypePtr> typeArgs;
       for (const auto& typeArg : ifaceRef.typeArguments) {
-        auto argType = typeAnnotationToType(typeArg);
-        argType = substituteTypeParameters(argType);
+        auto argType = types_.typeAnnotationToType(typeArg);
+        argType = types_.substituteTypeParameters(argType);
         typeArgs.push_back(argType);
       }
 
       // Instantiate the generic interface
-      interfaceType = instantiateGenericInterface(ifaceRef.name, typeArgs);
+      interfaceType =
+          generics_.instantiateGenericInterface(ifaceRef.name, typeArgs);
       if (!interfaceType) {
         logAndThrowError("Class '" + classDef.getName() +
                              "' implements unknown generic interface '" +
@@ -193,7 +41,7 @@ void SemanticAnalyzer::inheritInterfaceFields(
       interfaceDisplayName = interfaceType->toDisplayString();
     } else {
       // Non-generic interface
-      interfaceType = lookupInterface(ifaceRef.name);
+      interfaceType = ctx_.lookupInterface(ifaceRef.name);
       if (!interfaceType) {
         logAndThrowError("Class '" + classDef.getName() +
                              "' implements unknown interface '" +
@@ -241,19 +89,20 @@ void SemanticAnalyzer::validateInterfaceImplementation(
       // Generic interface with type arguments
       std::vector<sun::TypePtr> typeArgs;
       for (const auto& typeArg : ifaceRef.typeArguments) {
-        auto argType = typeAnnotationToType(typeArg);
-        argType = substituteTypeParameters(argType);
+        auto argType = types_.typeAnnotationToType(typeArg);
+        argType = types_.substituteTypeParameters(argType);
         typeArgs.push_back(argType);
       }
 
-      interfaceType = instantiateGenericInterface(ifaceRef.name, typeArgs);
+      interfaceType =
+          generics_.instantiateGenericInterface(ifaceRef.name, typeArgs);
       if (!interfaceType) {
         // Already reported in inheritInterfaceFields
         continue;
       }
       interfaceDisplayName = interfaceType->toDisplayString();
     } else {
-      interfaceType = lookupInterface(ifaceRef.name);
+      interfaceType = ctx_.lookupInterface(ifaceRef.name);
       if (!interfaceType) {
         // Already reported in inheritInterfaceFields
         continue;
@@ -373,7 +222,7 @@ void SemanticAnalyzer::validateInterfaceImplementation(
           for (const auto& pt : interfaceMethod.paramTypes) {
             methodParamTypes.push_back(pt);
           }
-          registerFunctionInCurrentScope(
+          ctx_.registerFunctionInCurrentScope(
               mangledName, {interfaceMethod.returnType, methodParamTypes, {}});
         } else {
           // Required method not implemented
