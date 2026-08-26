@@ -455,8 +455,8 @@ std::optional<Declaration> findMemberDeclaration(
   }
   if (objectType->getKind() == sun::Type::Kind::Module) {
     // `m.f`: the analyzer recorded which module's `f` was meant
-    if (const ExprAST* decl = findDeclarationByMangledName(
-            program, member, qualifiedName)) {
+    if (const ExprAST* decl =
+            findDeclarationByMangledName(program, member, qualifiedName)) {
       return declarationOf(*decl);
     }
     return std::nullopt;
@@ -584,7 +584,8 @@ void forEachAnnotation(const ExprAST& node, const AnnotationFn& fn) {
   auto visitProto = [&](const PrototypeAST& proto) {
     for (const auto& arg : proto.getArgs()) fn(arg.second);
     if (proto.hasReturnType()) fn(*proto.getReturnType());
-    if (proto.hasVariadicTypeAnnotation()) fn(proto.getVariadicTypeAnnotation());
+    if (proto.hasVariadicTypeAnnotation())
+      fn(proto.getVariadicTypeAnnotation());
   };
 
   switch (node.getType()) {
@@ -734,8 +735,7 @@ std::optional<Declaration> parameterUnder(const ExprAST& owner, int offset,
   const PrototypeAST* proto = prototypeOf(owner);
   if (!proto) return std::nullopt;
   std::vector<std::string> names = proto->getArgNames();
-  if (proto->hasVariadicParam())
-    names.push_back(proto->getVariadicParamName());
+  if (proto->hasVariadicParam()) names.push_back(proto->getVariadicParamName());
   for (const auto& name : names) {
     std::optional<Position> range = parameterRange(owner, name, source);
     if (range && spanContains(*range, offset)) {

@@ -815,13 +815,16 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
         sun::QualifiedName resolvedName;
         switch (match.kind) {
           case SymbolKind::Function:
-            if (match.functionInfo) resolvedName = match.functionInfo->qualifiedName;
+            if (match.functionInfo)
+              resolvedName = match.functionInfo->qualifiedName;
             break;
           case SymbolKind::Variable:
-            if (match.variableInfo) resolvedName = match.variableInfo->qualifiedName;
+            if (match.variableInfo)
+              resolvedName = match.variableInfo->qualifiedName;
             break;
           case SymbolKind::Class:
-            if (match.classType) resolvedName = match.classType->getQualifiedName();
+            if (match.classType)
+              resolvedName = match.classType->getQualifiedName();
             break;
           case SymbolKind::GenericClass:
             if (match.genericClassInfo)
@@ -832,7 +835,8 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
               resolvedName = match.interfaceType->getQualifiedName();
             break;
           case SymbolKind::Enum:
-            if (match.enumType) resolvedName = match.enumType->getQualifiedName();
+            if (match.enumType)
+              resolvedName = match.enumType->getQualifiedName();
             break;
           default:
             break;
@@ -1145,11 +1149,11 @@ sun::TypePtr SemanticAnalyzer::inferType(const MemberAccessAST& memberAccess) {
               *ifaceType, memberName, memberAccess.getLocation());
           if (method)
             return sun::Types::Function(method->returnType, method->paramTypes);
-          logAndThrowError(
-              "Unknown member '" + memberName + "' on type parameter '" +
-                  param->getName() + "', which is constrained to interface '" +
-                  constraint + "'",
-              memberAccess.getLocation());
+          logAndThrowError("Unknown member '" + memberName +
+                               "' on type parameter '" + param->getName() +
+                               "', which is constrained to interface '" +
+                               constraint + "'",
+                           memberAccess.getLocation());
         }
         // A trait such as `_Numeric`, or `lambda`: it says which types are
         // allowed, not which members they carry.
@@ -1311,10 +1315,9 @@ sun::TypePtr SemanticAnalyzer::inferGenericFunctionCallType(
   } else {
     // The qualified name is never empty: it is also the template's key in the
     // scope's table, so a lookup that found it found it by this name.
-    mangledName =
-        sun::QualifiedName::specializationOf(genFuncInfo->qualifiedName,
-                                             typeArgs)
-            .mangled();
+    mangledName = sun::QualifiedName::specializationOf(
+                      genFuncInfo->qualifiedName, typeArgs)
+                      .mangled();
   }
 
   // If specialization exists (type args were concrete), use its return type

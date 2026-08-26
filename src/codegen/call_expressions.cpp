@@ -1279,13 +1279,15 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
   // Direct call to known function
   std::vector<Value*> argValues;
 
-  // Check if this function has captures (needs closure as first arg)
-  auto infoIt = functionInfo.find(calleeName);
-  if (infoIt != functionInfo.end() && !infoIt->second.captures.empty()) {
-    // Find the closure for this function in local scope
-    if (auto* varRef =
-            dynamic_cast<const VariableReferenceAST*>(expr.getCallee())) {
-      if (AllocaInst* closureAlloca = findVariable(varRef->getName())) {
+  // Check if this function has captures (needs closure as first arg). Both
+  // the closure info and the environment are keyed by the callee's symbol,
+  // which is what the declaration was emitted under.
+  if (auto* varRef =
+          dynamic_cast<const VariableReferenceAST*>(expr.getCallee())) {
+    std::string symbolName = varRef->getMangledName();
+    auto infoIt = functionInfo.find(symbolName);
+    if (infoIt != functionInfo.end() && !infoIt->second.captures.empty()) {
+      if (AllocaInst* closureAlloca = findVariable(symbolName)) {
         argValues.push_back(closureAlloca);
       } else {
         logAndThrowError("Cannot find closure for function with captures: " +

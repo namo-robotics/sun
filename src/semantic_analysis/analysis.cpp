@@ -1832,10 +1832,10 @@ void SemanticAnalyzer::registerClassShape(
     PrototypeAST& proto =
         const_cast<PrototypeAST&>(methodDecl.function->getProto());
     applyFunctionInfoToProto(proto, methodInfo);
-    auto& method = classType->addMethod(
-        proto.getName(), methodInfo.returnType, methodInfo.paramTypes,
-        methodDecl.isConstructor, proto.getTypeParameterNames(),
-        proto.canThrow());
+    auto& method =
+        classType->addMethod(proto.getName(), methodInfo.returnType,
+                             methodInfo.paramTypes, methodDecl.isConstructor,
+                             proto.getTypeParameterNames(), proto.canThrow());
     method.visibility = methodVisibility(*methodDecl.function);
     method.isConst = methodDecl.isConst;
   }
@@ -3043,9 +3043,9 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
             // No calleeTakesPack here: the specialization's parameter list
             // already includes the pack's elements, so the ordinary
             // exact-arity check below is the right one.
-            packArgTypes = splitPackArgTypes(
-                genericFunc->AST->getProto(), argTypes, varRef.getName(),
-                callExpr.getLocation());
+            packArgTypes =
+                splitPackArgTypes(genericFunc->AST->getProto(), argTypes,
+                                  varRef.getName(), callExpr.getLocation());
           }
           SpecializedFunctionInfo specialized = requireGenericSpecialization(
               *genericFunc, typeArgs, varRef.getName(), callExpr.getLocation(),
@@ -3137,9 +3137,8 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
             std::static_pointer_cast<sun::ClassType>(objectType);
         // Point the call at the specialization, under the name given where
         // it was instantiated (pack suffix included).
-        if (auto specialized =
-                instantiateGenericMethod(mutableClassType, methodName,
-                                         typeArgPtrs, packArgTypes)) {
+        if (auto specialized = instantiateGenericMethod(
+                mutableClassType, methodName, typeArgPtrs, packArgTypes)) {
           memberAccess.setQualifiedName(
               specialized->getProto().getQualifiedName());
         }

@@ -355,8 +355,7 @@ std::pair<Function*, llvm::StructType*> CodegenVisitor::codegen(
   // every one of them.
   std::vector<std::string> argNames = proto.getAllParamNames();
   std::vector<sun::TypePtr> paramTypes = proto.getAllParamTypes();
-  if (!proto.hasResolvedParamTypes() ||
-      paramTypes.size() != argNames.size()) {
+  if (!proto.hasResolvedParamTypes() || paramTypes.size() != argNames.size()) {
     logAndThrowError(
         "Function parameter types not resolved by semantic analysis: " +
         proto.getName());
@@ -490,7 +489,8 @@ FuncDeclResult CodegenVisitor::declareFuncSignature(PrototypeAST& proto) {
     // Record closure info for this function (so we know how to call it later)
     FunctionClosureInfo closureInfo;
     closureInfo.captures = captures;
-    functionInfo[proto.getName()] = closureInfo;
+    // Keyed by the emitted symbol, the same name call sites resolve to.
+    functionInfo[proto.getMangledName()] = closureInfo;
   }
 
   // The semantic analyzer should have already inferred and set the return type
@@ -581,7 +581,10 @@ Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
           proto.getName());
     }
     resultPtr = createEnvClosure(envType, proto);
-    scopes.back().variables[proto.getName()] = cast<AllocaInst>(resultPtr);
+    // Keyed by the emitted symbol: a specialization's callers name it by its
+    // mangled name, never by the template's.
+    scopes.back().variables[proto.getMangledName()] =
+        cast<AllocaInst>(resultPtr);
   } else {
     resultPtr = func;
   }

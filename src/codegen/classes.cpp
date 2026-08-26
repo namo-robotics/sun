@@ -564,7 +564,8 @@ void CodegenVisitor::generateMethodBody(const FunctionAST& methodFunc,
   // their types resolved by semantic analysis).
   const std::vector<std::string> paramNames = proto.getAllParamNames();
   const std::vector<sun::TypePtr> paramTypes = proto.getAllParamTypes();
-  if (!proto.hasResolvedParamTypes() || paramTypes.size() != paramNames.size()) {
+  if (!proto.hasResolvedParamTypes() ||
+      paramTypes.size() != paramNames.size()) {
     logAndThrowError(
         "Method parameter types not resolved by semantic analysis: " +
         mangledName);
@@ -662,8 +663,7 @@ Value* CodegenVisitor::codegen(const MemberAccessAST& expr) {
 
     // Semantic analysis took this from the member's own declaration, so it
     // names the symbol that declaration emitted, library-hash scope included
-    const std::string qualifiedName =
-        expr.getQualifiedName().mangled();
+    const std::string qualifiedName = expr.getQualifiedName().mangled();
 
     // Check for global variable in this module
     GlobalVariable* gv = module->getGlobalVariable(qualifiedName);

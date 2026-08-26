@@ -192,9 +192,8 @@ Value* CodegenVisitor::tryCodegenAddress(const ExprAST& expr) {
       // mod.global: the module is compile-time only, so the storage is the
       // global the member's declaration emitted
       if (llvm::GlobalVariable* gv =
-              moduleMemberGlobal(
-                  *memberAccess.getObject(),
-                  memberAccess.getQualifiedName().mangled())) {
+              moduleMemberGlobal(*memberAccess.getObject(),
+                                 memberAccess.getQualifiedName().mangled())) {
         return gv;
       }
 

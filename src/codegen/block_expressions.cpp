@@ -96,13 +96,15 @@ Value* CodegenVisitor::codegen(const BlockExprAST& block) {
         ctx.builder->SetInsertPoint(currentBlock);
       }
 
-      // For nested named functions with closures, store the env pointer
-      // in local scope so calls can pass it as the first argument
+      // For nested named functions with closures, store the env pointer in
+      // local scope so calls can pass it as the first argument. Keyed by the
+      // symbol the function is emitted under — a specialization is called by
+      // its mangled name, never by the template's.
       const auto& proto = funcAST.getProto();
       if (!scopes.empty() && !proto.getName().empty() && proto.hasClosure()) {
         // funcVal is an env pointer - store it in scope
         if (funcVal) {
-          scopes.back().variables[proto.getName()] =
+          scopes.back().variables[proto.getMangledName()] =
               llvm::cast<llvm::AllocaInst>(funcVal);
         }
       }

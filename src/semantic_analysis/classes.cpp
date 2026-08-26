@@ -509,7 +509,7 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
   // type args (e.g., Unique<Point>) need codegen since they don't exist in
   // the library bitcode.
   auto specializedAST = std::make_shared<ClassDefinitionAST>(
-      mangledName,                 // e.g., "Vec_i32" instead of "Vec"
+      mangledName,                   // e.g., "Vec_i32" instead of "Vec"
       std::vector<TypeParameter>{},  // empty - no longer generic
       std::move(interfacesClone), std::move(fieldsClone),
       std::move(methodsClone),  // cloned methods
@@ -839,9 +839,10 @@ SemanticAnalyzer::instantiateGenericFunction(
     // - Store type bindings for nested generic call resolution
     PrototypeAST& clonedProto =
         const_cast<PrototypeAST&>(clonedFunc->getProto());
-    clonedProto.setName(mangledName);
-    // The specialization's own name, so nested functions declared in this body
-    // are qualified under it (e.g. outer_i32 rather than outer)
+    // The qualified name is the specialization's identity: it is the symbol
+    // codegen emits and calls, and it qualifies nested functions declared in
+    // this body (e.g. outer_i32 rather than outer). The prototype's plain name
+    // stays the one written in the source.
     clonedProto.setQualifiedName(specializedName);
 
     // Build and store type parameter bindings (e.g., T -> i32)
@@ -1085,9 +1086,8 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
 
   PrototypeAST& clonedProto = const_cast<PrototypeAST&>(clonedFunc->getProto());
 
-  // Name the specialization here, where it is made; call sites copy this
-  // name rather than spelling one of their own.
-  clonedProto.setName(mangledName);
+  // Name the specialization here, where it is made; call sites copy this name
+  // rather than spelling one of their own.
   clonedProto.setQualifiedName(specializedName);
 
   // Store type bindings on the prototype
