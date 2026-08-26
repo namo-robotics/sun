@@ -354,8 +354,10 @@ message Prototype {
   repeated FunctionArg args = 3;
   optional TypeAnnotation return_type = 4;
   repeated Capture captures = 5;
+  // The trailing `args...` value pack: its name, and the annotation after its
+  // colon in `args...: _params_of<T>`.
   optional string variadic_param_name = 6;
-  optional TypeAnnotation variadic_constraint = 7;
+  optional TypeAnnotation variadic_type_annotation = 7;
   repeated string ref_captures = 8;  // Declared [ref x, ...] capture list
   optional Position location = 9;    // Source span of the signature
   bool c_variadic = 11;             // C-style trailing `...`

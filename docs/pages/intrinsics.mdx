@@ -42,6 +42,27 @@ _init<Point>(mem, 3.0, 4.0);
   For non-class types, `_init` is a no-op since primitives don't have constructors.
 </Callout>
 
+### `_params_of<T>`
+
+Names the parameter list a value pack stands for. It appears only after the
+colon of an `args...` pack in a parameter list, never as a type of its own:
+
+```sun
+function make<T>(args...: _params_of<T>) raw_ptr<T> {
+    var size: i64 = _sizeof<T>();
+    var memory: raw_ptr<i8> = unsafe { _malloc(size); };
+    _init<T>(memory, args...);
+    return memory;
+}
+```
+
+For a class, `_params_of<T>` is the parameters of `T`'s `init` — any overload
+the call's arguments match, so `make<Point>(3, 4)` and `make<Point>(9)` each
+select their own. For a lambda, it is the parameters that lambda takes. For
+anything else the pack is accepted and left unchecked.
+
+See [Value Packs](/generics#value-packs) for the full rules.
+
 ### `_load<T>(ptr, index)`
 
 Loads an element of type `T` from `ptr` at the given element index. Equivalent to `ptr[index]` in C.
@@ -423,6 +444,7 @@ class Vec<T> {
 |-----------|------------|---------|-------------|
 | `_sizeof<T>` | none | `i64` | Byte size of type T |
 | `_init<T>` | `ptr, args...` | `void` | Construct T at ptr |
+| `_params_of<T>` | none | — | The parameter list an `args...` pack stands for |
 | `_load<T>` | `ptr, index` | `T` | Load element at index |
 | `_store<T>` | `ptr, index, value` | `void` | Store element at index |
 | `_ptr_as_raw<T>` | `ptr<T>` | `raw_ptr<T>` | Get raw pointer without ownership transfer |

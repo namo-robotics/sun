@@ -231,7 +231,9 @@ void SemanticAnalyzer::collectFunctionSignature(FunctionAST& func) {
   // Skip lambdas and anonymous functions
   if (proto.getName().empty()) return;
 
-  if (proto.isGeneric()) {
+  // A pack makes a function a template even with no type parameters: its
+  // arity comes from the call, so it is emitted once per argument tuple.
+  if (proto.isTemplate()) {
     registerGenericFunctionInCurrentScope(func);
     return;
   }

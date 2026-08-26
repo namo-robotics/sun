@@ -298,6 +298,11 @@ class Parser {
   // the way parseTypeAnnotation does, so diagnostics can point at it.
   TypeConstraint parseTypeConstraint(const std::string& paramName);
 
+  // The trailing value pack in a parameter list: `args...`, or
+  // `args...: _params_of<T>`. Called with the name already consumed and '...'
+  // current. A pack ends the parameter list, so the caller stops after this.
+  VariadicParam parseVariadicParam(std::string name);
+
   // Type parsing. parseTypeAnnotation stamps the source span; the Impl
   // variant holds the grammar and leaves the span unset.
   TypeAnnotation parseTypeAnnotation();

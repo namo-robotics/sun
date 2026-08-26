@@ -636,8 +636,8 @@ Value* CodegenVisitor::codegenModuleFunctionCall(
     const std::string& funcName, const MemberAccessAST& memberAccess) {
   // Use resolved name from semantic analysis (includes library hash prefix)
   std::string qualifiedName;
-  if (memberAccess.hasResolvedQualifiedName()) {
-    qualifiedName = memberAccess.getResolvedQualifiedName();
+  if (memberAccess.hasQualifiedName()) {
+    qualifiedName = memberAccess.getQualifiedName().mangled();
   } else {
     qualifiedName =
         mangleModulePath(moduleType->getModulePath()) + "_" + funcName;
@@ -802,30 +802,16 @@ Value* CodegenVisitor::codegenClassMethodCall(
   // e.g., allocator.create<Point>(3, 4)
   if (memberAccess && memberAccess->hasResolvedTypeArgs() &&
       method->isGeneric()) {
-    // Type arguments must be resolved by semantic analysis
-    if (!memberAccess->hasResolvedTypeArgs()) {
+    // Call exactly what semantic analysis instantiated. Codegen never spells
+    // the name itself: it would have to reproduce the type arguments and the
+    // pack suffix, and any drift makes the call reach for a missing symbol.
+    if (!memberAccess->hasQualifiedName()) {
       logAndThrowError(
-          "Generic method type arguments not resolved by semantic analysis: " +
+          "Generic method specialization not recorded by semantic analysis: " +
           methodName);
       return nullptr;
     }
-    const std::vector<sun::TypePtr>& typeArgs =
-        memberAccess->getResolvedTypeArgs();
-
-    // Build the specialized mangled name. Must match instantiateGenericMethod:
-    // type args, then (for variadic _init_args methods) a suffix keyed on the
-    // actual variadic argument types.
-    std::string baseMangledName = classType->getMangledMethodName(methodName);
-    std::string mangledName = baseMangledName;
-    for (const auto& typeArg : typeArgs) {
-      mangledName += "_" + typeArg->toString();
-    }
-    {
-      std::string hashPrefix =
-          sun::QualifiedName::extractHashPrefix(classType->getMangledName());
-      mangledName += sun::QualifiedName::buildVariadicArgSuffix(
-          memberAccess->getResolvedVariadicArgTypes(), hashPrefix);
-    }
+    std::string mangledName = memberAccess->getQualifiedName().mangled();
 
     // Look up the specialized method function
     Function* specializedFunc = module->getFunction(mangledName);
@@ -1293,13 +1279,15 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
   // Direct call to known function
   std::vector<Value*> argValues;
 
-  // Check if this function has captures (needs closure as first arg)
-  auto infoIt = functionInfo.find(calleeName);
-  if (infoIt != functionInfo.end() && !infoIt->second.captures.empty()) {
-    // Find the closure for this function in local scope
-    if (auto* varRef =
-            dynamic_cast<const VariableReferenceAST*>(expr.getCallee())) {
-      if (AllocaInst* closureAlloca = findVariable(varRef->getName())) {
+  // Check if this function has captures (needs closure as first arg). Both
+  // the closure info and the environment are keyed by the callee's symbol,
+  // which is what the declaration was emitted under.
+  if (auto* varRef =
+          dynamic_cast<const VariableReferenceAST*>(expr.getCallee())) {
+    std::string symbolName = varRef->getMangledName();
+    auto infoIt = functionInfo.find(symbolName);
+    if (infoIt != functionInfo.end() && !infoIt->second.captures.empty()) {
+      if (AllocaInst* closureAlloca = findVariable(symbolName)) {
         argValues.push_back(closureAlloca);
       } else {
         logAndThrowError("Cannot find closure for function with captures: " +

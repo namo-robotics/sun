@@ -769,7 +769,7 @@ std::string BorrowChecker::fieldPath(const ExprAST& expr) const {
   if (expr.getType() != ASTNodeType::MEMBER_ACCESS) return "";
 
   const auto& access = static_cast<const MemberAccessAST&>(expr);
-  if (access.isBoundMethodRef() || access.hasResolvedQualifiedName()) return "";
+  if (access.isBoundMethodRef() || access.hasQualifiedName()) return "";
 
   const ExprAST* object = access.getObject();
   if (!object) return "";
@@ -997,10 +997,13 @@ void BorrowChecker::checkFunctionDef(const FunctionAST& func) {
   const auto& proto = func.getProto();
   const std::string& funcName = proto.getName();
 
-  // Generic templates are analyzed with unbound type parameters; codegen only
-  // emits their specializations (analyzed clones with concrete types), so those
-  // are what must be checked (move marks must land on the emitted AST).
-  if (proto.isGeneric() && !func.getSpecializations().empty()) {
+  // Templates are analyzed with unbound type parameters; codegen only emits
+  // their specializations (analyzed clones with concrete types), so those are
+  // what must be checked (move marks must land on the emitted AST).
+  // A pack template is skipped even with no specializations: its body holds an
+  // unexpanded `args...` that only a specialization gives meaning to.
+  if (proto.isTemplate() &&
+      (!func.getSpecializations().empty() || proto.hasVariadicParam())) {
     for (const auto& [name, specialized] : func.getSpecializations()) {
       if (specialized) checkFunctionDef(*specialized);
     }

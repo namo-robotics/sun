@@ -129,12 +129,12 @@ std::optional<Declaration> findDeclarationOf(
     const ExprAST& node);
 
 // The member behind `object.member`: a module's item (the analyzer records
-// which module's in `resolvedQualifiedName`), or a field, method or variant
+// which module's in `qualifiedName`), or a field, method or variant
 // of the object's type. A match pattern's object carries no type, so a bare
 // name there is looked up as a type.
 std::optional<Declaration> findMemberDeclaration(
     const BlockExprAST& program, const ExprAST& object,
-    const std::string& member, const std::string& resolvedQualifiedName);
+    const std::string& member, const std::string& qualifiedName);
 
 // The nearest enclosing function or lambda declaring `name` as a parameter
 std::optional<Declaration> findParameter(

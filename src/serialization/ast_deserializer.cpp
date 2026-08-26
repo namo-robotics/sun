@@ -152,20 +152,18 @@ std::unique_ptr<PrototypeAST> ASTDeserializer::deserializePrototype(
     returnType = deserializeTypeAnnotation(proto.return_type());
   }
 
-  std::optional<std::string> variadicParam;
+  std::optional<VariadicParam> variadicParam;
   if (proto.has_variadic_param_name()) {
-    variadicParam = proto.variadic_param_name();
-  }
-
-  std::optional<TypeAnnotation> variadicConstraint;
-  if (proto.has_variadic_constraint()) {
-    variadicConstraint = deserializeTypeAnnotation(proto.variadic_constraint());
+    variadicParam.emplace(proto.variadic_param_name());
+    if (proto.has_variadic_type_annotation()) {
+      variadicParam->typeAnnotation =
+          deserializeTypeAnnotation(proto.variadic_type_annotation());
+    }
   }
 
   auto result = std::make_unique<PrototypeAST>(
       proto.name(), std::move(args), std::move(returnType),
-      toTypeParameters(proto), std::move(variadicParam),
-      std::move(variadicConstraint));
+      toTypeParameters(proto), std::move(variadicParam));
 
   // Restore captures
   std::vector<Capture> captures;

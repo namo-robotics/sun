@@ -13,15 +13,7 @@ using sun::unwrapRef;
 
 namespace {
 
-// "i32, ref Vec<i32>" — for call diagnostics.
-std::string formatTypeList(const std::vector<sun::TypePtr>& types) {
-  std::string out;
-  for (size_t i = 0; i < types.size(); ++i) {
-    if (i > 0) out += ", ";
-    out += types[i] ? types[i]->toDisplayString() : "unknown";
-  }
-  return out;
-}
+using sun::formatTypeList;
 
 // "\n  - trim()\n  - trim(ref HeapAllocator)" — the candidate list shown
 // after "No matching overload".
@@ -480,14 +472,15 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       applyFunctionInfoToProto(proto, funcInfo);
       proto.setQualifiedName(funcInfo.qualifiedName);
 
-      // Register generic functions for later instantiation
-      if (proto.isGeneric() && !currentClass) {
+      // Register templates for later instantiation. A pack makes a function a
+      // template even with no type parameters: its arity comes from the call.
+      if (proto.isTemplate() && !currentClass) {
         registerGenericFunctionInCurrentScope(func);
       }
 
-      // Only register non-generic functions in the normal function table.
-      // Generic functions are looked up via genericFunctions table instead.
-      if (!proto.isGeneric()) {
+      // Only register non-template functions in the normal function table.
+      // Templates are looked up via the genericFunctions table instead.
+      if (!proto.isTemplate()) {
         registerFunctionInCurrentScope(funcInfo.qualifiedName.baseName,
                                        funcInfo);
       }
@@ -1839,10 +1832,10 @@ void SemanticAnalyzer::registerClassShape(
     PrototypeAST& proto =
         const_cast<PrototypeAST&>(methodDecl.function->getProto());
     applyFunctionInfoToProto(proto, methodInfo);
-    auto& method = classType->addMethod(
-        proto.getName(), methodInfo.returnType, methodInfo.paramTypes,
-        methodDecl.isConstructor, proto.getTypeParameterNames(),
-        proto.canThrow());
+    auto& method =
+        classType->addMethod(proto.getName(), methodInfo.returnType,
+                             methodInfo.paramTypes, methodDecl.isConstructor,
+                             proto.getTypeParameterNames(), proto.canThrow());
     method.visibility = methodVisibility(*methodDecl.function);
     method.isConst = methodDecl.isConst;
   }
@@ -2184,7 +2177,7 @@ void SemanticAnalyzer::analyzeModuleGlobalAssignment(
 
   // The declaration's own qualified name is the symbol codegen emitted the
   // global under, so that is what the write is pointed at
-  assign.setResolvedQualifiedName(target.qualifiedName.mangled());
+  assign.setQualifiedName(target.qualifiedName);
 
   sun::TypePtr expectedType = unwrapRef(target.type);
   analyzeExpr(const_cast<ExprAST&>(*assign.getValue()), expectedType);
@@ -2216,8 +2209,7 @@ const FunctionInfo* SemanticAnalyzer::resolveModuleQualifiedCall(
 
   checkExternCallAllowed(*match.functionInfo, memberAccess.getMemberName(),
                          memberAccess.getLocation());
-  memberAccess.setResolvedQualifiedName(
-      match.functionInfo->qualifiedName.mangled());
+  memberAccess.setQualifiedName(match.functionInfo->qualifiedName);
   return match.functionInfo;
 }
 
@@ -2313,6 +2305,11 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
     if (func.isCExtern()) validateExternSignature(func);
     return;
   }
+
+  // A pack's arity and types come from the call site, so a template body
+  // holding one has nothing concrete to check yet. Each specialization is
+  // analyzed on instantiation (instantiateGenericFunction/Method).
+  if (proto.hasVariadicParam()) return;
 
   // Sun has no va_arg, so C varargs are only meaningful on an extern
   // declaration where the callee is C code.
@@ -3022,18 +3019,37 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
         // constructor call (stack-allocated)
         varRef.setResolvedType(classType);
       } else if (genericFunc) {
+        // Inference reads the fixed parameters only — it stops at
+        // genericInfo.params — so a call filling a pack still says what T is
+        // from its leading arguments: `spawn(f, 1, 2)`.
         auto typeArgs = sun::generics::inferGenericTypeArguments(
             *genericFunc, argTypes, varRef.getName(), callExpr.getLocation());
-        if (std::any_of(typeArgs.begin(), typeArgs.end(),
-                        sun::generics::mentionsTypeParameter)) {
+        if (templateStillAbstract(*genericFunc, typeArgs)) {
           // In a template body the arguments are still type parameters; the
           // specialization is made when the enclosing generic is
-          // instantiated. Until then the call has the substituted signature.
+          // instantiated. Until then the call has the substituted signature —
+          // which lists the fixed parameters only, so a pack callee's extra
+          // arguments must not be counted against it yet.
+          if (genericFunc->AST &&
+              genericFunc->AST->getProto().hasVariadicParam()) {
+            calleeTakesPack = true;
+          }
           varRef.setResolvedType(
               genericFunctionSignature(*genericFunc, typeArgs));
         } else {
+          std::optional<std::vector<sun::TypePtr>> packArgTypes;
+          if (genericFunc->AST &&
+              genericFunc->AST->getProto().hasVariadicParam()) {
+            // No calleeTakesPack here: the specialization's parameter list
+            // already includes the pack's elements, so the ordinary
+            // exact-arity check below is the right one.
+            packArgTypes =
+                splitPackArgTypes(genericFunc->AST->getProto(), argTypes,
+                                  varRef.getName(), callExpr.getLocation());
+          }
           SpecializedFunctionInfo specialized = requireGenericSpecialization(
-              *genericFunc, typeArgs, varRef.getName(), callExpr.getLocation());
+              *genericFunc, typeArgs, varRef.getName(), callExpr.getLocation(),
+              packArgTypes);
           resolvedFunc = specialized.asFunctionInfo();
           varRef.setQualifiedName(specialized.qualifiedName);
           varRef.setResolvedType(specialized.functionType());
@@ -3095,14 +3111,14 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
           static_cast<const sun::ClassType*>(objectType.get());
       const std::string& methodName = memberAccess.getMemberName();
 
-      // Generic method with an _init_args<T> variadic pack (e.g.
+      // Generic method ending in an `args...` pack (e.g.
       // allocator.create<Point>(...)): specialize HERE, where the actual call
       // argument types are known, so overloaded constructors resolve and the
-      // specialization is keyed (mangled) by the variadic arg types. The
+      // specialization is keyed (mangled) by the pack's arg types. The
       // inferType trigger defers variadic methods to this path.
       FunctionAST* genericMethod = findGenericMethodAST(classType, methodName);
       bool variadicMethod =
-          genericMethod && genericMethod->getProto().hasVariadicConstraint();
+          genericMethod && genericMethod->getProto().hasVariadicParam();
       if (variadicMethod && memberAccess.hasTypeArguments()) {
         calleeTakesPack = true;
         std::vector<sun::TypePtr> typeArgPtrs;
@@ -3110,14 +3126,22 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
           typeArgPtrs.push_back(typeAnnotationToType(*ta));
         }
         memberAccess.setResolvedTypeArgs(typeArgPtrs);
-        // create<T>(args...) has no fixed params, so all call args are
-        // variadic.
-        memberAccess.setResolvedVariadicArgTypes(argTypes);
+        // Only what is left after the method's fixed parameters fills the
+        // pack; `create<T>(args...)` has none, but `(x: i32, args...)` does.
+        std::vector<sun::TypePtr> packArgTypes =
+            *splitPackArgTypes(genericMethod->getProto(), argTypes, methodName,
+                               memberAccess.getLocation());
+        memberAccess.setResolvedVariadicArgTypes(packArgTypes);
 
         auto mutableClassType =
             std::static_pointer_cast<sun::ClassType>(objectType);
-        instantiateGenericMethod(mutableClassType, methodName, typeArgPtrs,
-                                 argTypes);
+        // Point the call at the specialization, under the name given where
+        // it was instantiated (pack suffix included).
+        if (auto specialized = instantiateGenericMethod(
+                mutableClassType, methodName, typeArgPtrs, packArgTypes)) {
+          memberAccess.setQualifiedName(
+              specialized->getProto().getQualifiedName());
+        }
 
         const sun::ClassMethod* method = accessibleMethod(
             *classType, methodName, memberAccess.getLocation());
@@ -3601,23 +3625,43 @@ void SemanticAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
   // Store the generic function AST on the call node for codegen
   genericCall.setGenericFunctionAST(genFuncInfo->AST);
 
+  // The callee's own signature, which says whether it ends in a pack.
+  const PrototypeAST* calleeProto =
+      genFuncInfo->AST ? &genFuncInfo->AST->getProto() : nullptr;
+  bool calleeTakesPack = calleeProto && calleeProto->hasVariadicParam();
+
   // A call may name only the leading type parameters — `f<i32>(x)` for
   // `f<T, U>` — and leave the rest to the arguments, as a call with no type
-  // arguments does. That needs the argument types first.
+  // arguments does. That needs the argument types first, and so does a pack:
+  // its element types are what the specialization is keyed on.
   bool argsAnalyzed = false;
-  if (genericCall.getResolvedTypeArgs().size() <
-      genFuncInfo->typeParameters.size()) {
-    std::vector<sun::TypePtr> argTypes;
+  std::vector<sun::TypePtr> argTypes;
+  if (calleeTakesPack || genericCall.getResolvedTypeArgs().size() <
+                             genFuncInfo->typeParameters.size()) {
     for (const auto& arg : args) {
       analyzeExpr(const_cast<ExprAST&>(*arg));
+    }
+    // One template forwarding its own pack into another: `g<T>(args...)`.
+    if (calleeTakesPack) expandPackArguments(genericCall.getArgsMutable());
+    for (const auto& arg : args) {
       argTypes.push_back(arg->getResolvedType());
     }
     argsAnalyzed = true;
-    std::vector<sun::TypePtr> given = genericCall.getResolvedTypeArgs();
-    genericCall.setResolvedTypeArgs(sun::generics::inferGenericTypeArguments(
-        *genFuncInfo, argTypes, funcName, genericCall.getLocation(), given));
+    if (genericCall.getResolvedTypeArgs().size() <
+        genFuncInfo->typeParameters.size()) {
+      std::vector<sun::TypePtr> given = genericCall.getResolvedTypeArgs();
+      genericCall.setResolvedTypeArgs(sun::generics::inferGenericTypeArguments(
+          *genFuncInfo, argTypes, funcName, genericCall.getLocation(), given));
+    }
   }
   const auto& typeArgs = genericCall.getResolvedTypeArgs();
+
+  // Everything past the fixed parameters fills the pack.
+  std::optional<std::vector<sun::TypePtr>> packArgTypes;
+  if (calleeTakesPack) {
+    packArgTypes = splitPackArgTypes(*calleeProto, argTypes, funcName,
+                                     genericCall.getLocation());
+  }
 
   // Try to get expected parameter types for array literal type propagation
   // Only instantiate if all type arguments are concrete (not type parameters)
@@ -3625,11 +3669,13 @@ void SemanticAnalyzer::analyzeGenericFunctionCall(GenericCallAST& genericCall) {
   // we can't create a real specialization yet - it will be created when
   // the outer generic function is instantiated with concrete types.
   std::vector<sun::TypePtr> expectedParamTypes;
-  bool allConcrete = std::none_of(typeArgs.begin(), typeArgs.end(),
-                                  sun::generics::mentionsTypeParameter);
+  bool allConcrete = !templateStillAbstract(*genFuncInfo, typeArgs);
   if (allConcrete) {
-    SpecializedFunctionInfo specializedFunc = requireGenericSpecialization(
-        *genFuncInfo, typeArgs, funcName, genericCall.getLocation());
+    SpecializedFunctionInfo specializedFunc =
+        requireGenericSpecialization(*genFuncInfo, typeArgs, funcName,
+                                     genericCall.getLocation(), packArgTypes);
+    // Fixed parameters followed by the pack's elements, so the checks below
+    // line up positionally with the expanded argument list.
     expectedParamTypes = specializedFunc.paramTypes;
     // Record the name so codegen calls exactly what was instantiated
     genericCall.setSpecializationName(specializedFunc.qualifiedName);

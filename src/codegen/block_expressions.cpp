@@ -44,11 +44,11 @@ void CodegenVisitor::declareBlockSignatures(const BlockExprAST& block) {
     auto& funcAST = static_cast<FunctionAST&>(*expr);
     const PrototypeAST& proto = funcAST.getProto();
 
-    // A generic function has no signature of its own — it is emitted as one
-    // function per specialization. Declare those, so a call site earlier in
-    // the block (a generic class method above the helper it calls, one generic
-    // function calling another) finds the symbol.
-    if (proto.isGeneric()) {
+    // A template has no signature of its own — it is emitted as one function
+    // per specialization. Declare those, so a call site earlier in the block
+    // (a generic class method above the helper it calls, one generic function
+    // calling another) finds the symbol.
+    if (proto.isTemplate()) {
       for (const auto& [mangledName, specializedAST] :
            funcAST.getSpecializations()) {
         if (specializedAST) forwardDeclareFunction(specializedAST->getProto());
@@ -96,13 +96,15 @@ Value* CodegenVisitor::codegen(const BlockExprAST& block) {
         ctx.builder->SetInsertPoint(currentBlock);
       }
 
-      // For nested named functions with closures, store the env pointer
-      // in local scope so calls can pass it as the first argument
+      // For nested named functions with closures, store the env pointer in
+      // local scope so calls can pass it as the first argument. Keyed by the
+      // symbol the function is emitted under — a specialization is called by
+      // its mangled name, never by the template's.
       const auto& proto = funcAST.getProto();
       if (!scopes.empty() && !proto.getName().empty() && proto.hasClosure()) {
         // funcVal is an env pointer - store it in scope
         if (funcVal) {
-          scopes.back().variables[proto.getName()] =
+          scopes.back().variables[proto.getMangledName()] =
               llvm::cast<llvm::AllocaInst>(funcVal);
         }
       }

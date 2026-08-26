@@ -55,10 +55,10 @@ class MemberAssignmentAST : public ExprAST {
 
   // Resolved symbol name for a write to a module global (set by semantic
   // analysis); empty for an ordinary field write.
-  void setResolvedQualifiedName(std::string name) const {
-    memberAnalysis().resolvedQualifiedName = std::move(name);
+  void setQualifiedName(sun::QualifiedName name) const {
+    memberAnalysis().qualifiedName = std::move(name);
   }
-  const std::string& getResolvedQualifiedName() const {
-    return memberAnalysis().resolvedQualifiedName;
+  const sun::QualifiedName& getQualifiedName() const {
+    return memberAnalysis().qualifiedName;
   }
 };

@@ -626,6 +626,16 @@ class ReferenceType : public Type {
   }
 };
 
+// "i32, ref Vec<i32>" — a list of types as it reads in a diagnostic.
+inline std::string formatTypeList(const std::vector<TypePtr>& types) {
+  std::string out;
+  for (size_t i = 0; i < types.size(); ++i) {
+    if (i > 0) out += ", ";
+    out += types[i] ? types[i]->toDisplayString() : "unknown";
+  }
+  return out;
+}
+
 // Helper: unwrap reference types (ref(T) -> T, otherwise unchanged)
 // References should behave like values, transparently dereferenced
 inline TypePtr unwrapRef(TypePtr type) {

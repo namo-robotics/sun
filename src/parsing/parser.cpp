@@ -422,8 +422,7 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
                          "Expected '(' in function literal");
 
   std::vector<std::pair<std::string, TypeAnnotation>> args;
-  std::optional<std::string> variadicParamName;
-  std::optional<TypeAnnotation> variadicConstraint;
+  std::optional<VariadicParam> variadicParam;
 
   getNextToken();  // eat '('
   if (curTok.kind != TokenKind::PAREN_CLOSE) {
@@ -431,18 +430,9 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
       std::string argName = curTok.getIdentifier().value();
       getNextToken();  // eat identifier
 
-      // Check for variadic parameter: args... or args...: _init_args<T>
+      // A value pack ends the parameter list: args... or args...: _params_of<T>
       if (curTok.kind == TokenKind::ELLIPSIS) {
-        variadicParamName = argName;
-        getNextToken();  // eat '...'
-
-        // Check for optional constraint: args...: _init_args<T>
-        if (curTok.kind == TokenKind::COLON) {
-          getNextToken();  // eat ':'
-          variadicConstraint = parseTypeAnnotation();
-        }
-
-        // Variadic param must be last - break out of loop
+        variadicParam = parseVariadicParam(std::move(argName));
         break;
       }
 
@@ -527,7 +517,7 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
 
   auto proto = std::make_unique<PrototypeAST>(
       name, std::move(args), std::move(retType), std::move(typeParameters),
-      std::move(variadicParamName), std::move(variadicConstraint));
+      std::move(variadicParam));
   proto->setLocation(std::move(protoLoc));
   if (isLambda) {
     return finishNode(
@@ -1149,7 +1139,7 @@ bool Parser::isTypeToken(TokenKind kind) {
     case TokenKind::REF:
     case TokenKind::CONST:
     case TokenKind::IDENTIFIER:            // User-defined class types
-    case TokenKind::INTRINSIC_IDENTIFIER:  // Intrinsic types like _init_args
+    case TokenKind::INTRINSIC_IDENTIFIER:  // Intrinsic types like _params_of
       return true;
     default:
       return false;
@@ -1175,6 +1165,21 @@ TypeConstraint Parser::parseTypeConstraint(const std::string& paramName) {
 
   start.setEnd(prevTok_.end.line, prevTok_.end.column, prevTok_.end.offset);
   return TypeConstraint(std::move(name), std::move(start));
+}
+
+// Parse the trailing value pack in a parameter list: `args...`, or
+// `args...: _params_of<T>`. The name is already consumed and '...' is current.
+// Shared by function literals, prototypes and method declarations, so a pack
+// written on any of them means the same thing.
+VariadicParam Parser::parseVariadicParam(std::string name) {
+  getNextToken();  // eat '...'
+
+  std::optional<TypeAnnotation> constraint;
+  if (curTok.kind == TokenKind::COLON) {
+    getNextToken();  // eat ':'
+    constraint = parseTypeAnnotation();
+  }
+  return VariadicParam(std::move(name), std::move(constraint));
 }
 
 // Parse a generic parameter list: <T>, <T, U>, <T: _Numeric>, <F: _Lambda>.
@@ -1447,7 +1452,7 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
       case TokenKind::IDENTIFIER:
       case TokenKind::INTRINSIC_IDENTIFIER:
         // User-defined type (class name) or intrinsic type constraint (like
-        // _init_args<T>)
+        // _params_of<T>)
         type.baseName = curTok.getIdentifier().value();
         break;
       default:
@@ -1721,8 +1726,7 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
     return proto;
   }
 
-  std::optional<std::string> variadicParamName;
-  std::optional<TypeAnnotation> variadicConstraint;
+  std::optional<VariadicParam> variadicParam;
 
   bool cVariadic = false;
 
@@ -1744,18 +1748,9 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
     std::string argName = curTok.getIdentifier().value();
     getNextToken();  // eat identifier
 
-    // Check for variadic parameter: args... or args...: _init_args<T>
+    // A value pack ends the parameter list: args... or args...: _params_of<T>
     if (curTok.kind == TokenKind::ELLIPSIS) {
-      variadicParamName = argName;
-      getNextToken();  // eat '...'
-
-      // Check for optional constraint: args...: _init_args<T>
-      if (curTok.kind == TokenKind::COLON) {
-        getNextToken();  // eat ':'
-        variadicConstraint = parseTypeAnnotation();
-      }
-
-      // Variadic param must be last - break out of loop
+      variadicParam = parseVariadicParam(std::move(argName));
       break;
     }
 
@@ -1794,7 +1789,7 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
 
   auto proto = std::make_unique<PrototypeAST>(
       fnName, std::move(args), std::move(retType), std::move(typeParameters),
-      std::move(variadicParamName), std::move(variadicConstraint));
+      std::move(variadicParam));
   proto->setCVariadic(cVariadic);
   start.setEnd(prevTok_.end.line, prevTok_.end.column, prevTok_.end.offset);
   proto->setLocation(std::move(start));
@@ -3734,8 +3729,7 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
                              "Expected '(' in method declaration");
 
       std::vector<std::pair<std::string, TypeAnnotation>> args;
-      std::optional<std::string> variadicParamName;
-      std::optional<TypeAnnotation> variadicConstraint;
+      std::optional<VariadicParam> variadicParam;
       getNextToken();  // eat '('
 
       if (curTok.kind != TokenKind::PAREN_CLOSE) {
@@ -3743,18 +3737,9 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
           std::string argName = curTok.getIdentifier().value();
           getNextToken();  // eat identifier
 
-          // Check for variadic parameter: args... or args...: _init_args<T>
+          // A value pack ends the list: args... or args...: _params_of<T>
           if (curTok.kind == TokenKind::ELLIPSIS) {
-            variadicParamName = argName;
-            getNextToken();  // eat '...'
-
-            // Check for optional constraint: args...: _init_args<T>
-            if (curTok.kind == TokenKind::COLON) {
-              getNextToken();  // eat ':'
-              variadicConstraint = parseTypeAnnotation();
-            }
-
-            // Variadic param must be last - break out of loop
+            variadicParam = parseVariadicParam(std::move(argName));
             break;
           }
 
@@ -3813,8 +3798,7 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
 
       auto proto = std::make_unique<PrototypeAST>(
           funcName, std::move(args), std::move(retType),
-          std::move(typeParameters), std::move(variadicParamName),
-          std::move(variadicConstraint));
+          std::move(typeParameters), std::move(variadicParam));
       proto->setLocation(std::move(protoLoc));
       proto->setConstMethod(isConstMethod);
       auto func = finishNode(

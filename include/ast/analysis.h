@@ -37,6 +37,9 @@ struct PrototypeAnalysis {
   bool resolvedParamTypesSet = false;
   sun::TypePtr resolvedReturnType;
   std::vector<sun::TypePtr> resolvedVariadicTypes;
+  // Distinguishes a specialization whose pack turned out to be empty from a
+  // template whose pack is not resolved yet — both hold no types.
+  bool resolvedVariadicTypesSet = false;
   std::vector<std::pair<std::string, sun::TypePtr>> typeBindings;
 
   PrototypeAnalysis() = default;
@@ -94,12 +97,16 @@ struct QualifiedNameExprAnalysis : public ExprAnalysis {
 /// Analysis data for MemberAccessAST
 struct MemberAccessAnalysis : public ExprAnalysis {
   std::vector<sun::TypePtr> resolvedTypeArgs;
-  // For a generic method call whose param is a variadic pack (_init_args<T>),
+  // For a generic method call whose last param is an `args...` pack,
   // the resolved types of the actual variadic arguments. Used to key the
   // specialization (mangled name) so different call arities/types get distinct
   // specializations.
   std::vector<sun::TypePtr> resolvedVariadicArgTypes;
-  std::string resolvedQualifiedName;
+  // The symbol this access denotes, when it denotes one: a module's function
+  // or variable, or the specialization the analyzer instantiated for a
+  // generic call. Codegen emits a call to exactly this name rather than
+  // rebuilding it. Empty for an ordinary field or method access.
+  sun::QualifiedName qualifiedName;
   // True when this member access is a method used in value position (bound
   // method reference); its resolved type is then a LambdaType.
   bool isBoundMethodRef = false;

@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "ast/ast_fwd.h"
+#include "ast/type_annotation.h"
 #include "ast/type_constraint.h"
 #include "semantic_analysis/types.h"
 
@@ -105,6 +106,43 @@ inline std::vector<std::string> typeParameterNames(
   for (const auto& p : params) names.push_back(p.name);
   return names;
 }
+
+// The trailing value pack in a parameter list, as written at the end of the
+// parentheses: a name, and the type annotation after its colon.
+//
+//   args...                  name "args", anything the call supplies
+//   args...: _params_of<T>   the parameters T's `init` takes, or, when T is a
+//                            lambda, the parameters that lambda takes
+//
+// The annotation sits where an ordinary parameter's type sits, but it stands
+// for a whole parameter list rather than one type, and the call's arguments
+// are checked against it. It is not a constraint in the `<T: _Numeric>` sense:
+// it does not narrow which types are allowed, it says where the pack's
+// parameters come from.
+//
+// A pack is not a type. It stands for however many arguments the call passes,
+// so a declaration holding one is a template: it is monomorphized once per
+// argument tuple, and the pack's elements become ordinary positional
+// parameters named `args.0`, `args.1`, … in that specialization.
+struct VariadicParam {
+  std::string name;
+  std::optional<TypeAnnotation> typeAnnotation;
+
+  VariadicParam() = default;
+  explicit VariadicParam(std::string n,
+                         std::optional<TypeAnnotation> annot = std::nullopt)
+      : name(std::move(n)), typeAnnotation(std::move(annot)) {}
+
+  bool hasTypeAnnotation() const { return typeAnnotation.has_value(); }
+
+  // The element the pack materializes as at index i, e.g. `args.0`. Codegen
+  // names the specialization's parameters this way and semantic analysis
+  // rewrites `args...` into references to exactly these names, so the two
+  // sides must agree here and nowhere else.
+  std::string elementName(size_t i) const {
+    return name + "." + std::to_string(i);
+  }
+};
 
 // How a lambda takes hold of a variable from the enclosing scope. These are
 // the three mutually exclusive ways; whether the binding is writable inside

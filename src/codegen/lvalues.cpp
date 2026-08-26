@@ -193,7 +193,7 @@ Value* CodegenVisitor::tryCodegenAddress(const ExprAST& expr) {
       // global the member's declaration emitted
       if (llvm::GlobalVariable* gv =
               moduleMemberGlobal(*memberAccess.getObject(),
-                                 memberAccess.getResolvedQualifiedName())) {
+                                 memberAccess.getQualifiedName().mangled())) {
         return gv;
       }
 

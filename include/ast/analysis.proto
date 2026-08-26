@@ -44,7 +44,7 @@ message QualifiedNameExprAnalysis {
 // Analysis for MemberAccessAST nodes
 message MemberAccessAnalysis {
   repeated string resolved_type_args = 1;  // Type signatures
-  string resolved_qualified_name = 2;
+  string qualified_name = 2;
 }
 
 // Analysis for GenericCallAST nodes

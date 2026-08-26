@@ -178,6 +178,29 @@ struct QualifiedName {
       const std::vector<TypePtr>& variadicArgTypes,
       const std::string& hashPrefix = "");
 
+  // Name one specialization of a generic function or method. The template's
+  // scope and module are the specialization's too; only the base name grows,
+  // by the type arguments and then the pack's argument types when the
+  // template ends in one — "make_vec_i32", "create_Point$v$$i32$i32".
+  //
+  // The single place this name is built. Semantic analysis names each
+  // specialization here and records the result on the call, and codegen calls
+  // that name; the type arguments are the specialization's identity, so it
+  // carries no overload suffix of its own.
+  static QualifiedName specializationOf(
+      const QualifiedName& templateName, const std::vector<TypePtr>& typeArgs,
+      const std::vector<TypePtr>& packArgTypes = {});
+
+  // The name of `member` declared inside this one — the enclosing name
+  // becomes a scope segment, as a class does for its methods.
+  QualifiedName memberNamed(const std::string& member) const {
+    QualifiedName result = *this;
+    result.scopePath.push_back(result.baseName);
+    result.baseName = member;
+    result.paramSuffix.clear();
+    return result;
+  }
+
   // Set param suffix from resolved param types.
   // Automatically derives hash prefix from this name's scope path.
   void setParamSuffix(const std::vector<TypePtr>& paramTypes) {

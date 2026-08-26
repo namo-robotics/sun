@@ -445,12 +445,48 @@ class SemanticAnalyzer : public AccessContext {
       const std::string &name, std::optional<Position> loc = std::nullopt);
 
   /**
+   * Bring a specialization's `args...` pack into scope for body analysis: the
+   * pack itself, so `args...` can be expanded, and one variable per element
+   * under the name codegen gives that parameter.
+   */
+  void declareVariadicPack(const PrototypeAST &proto);
+
+  /**
+   * A call's argument types, divided into the callee's fixed parameters and
+   * the remainder that fills its `args...` pack. Returns the pack's share, or
+   * nullopt when the callee declares no pack. Errors when the call does not
+   * even cover the fixed parameters.
+   */
+  std::optional<std::vector<sun::TypePtr>> splitPackArgTypes(
+      const PrototypeAST &proto, const std::vector<sun::TypePtr> &argTypes,
+      const std::string &displayName, std::optional<Position> loc);
+
+  /**
+   * Record a specialization's pack element types on its cloned prototype and
+   * check them against the pack's declared type annotation. `_params_of<C>`
+   * for a class C means C must have a matching `init` overload; for a lambda,
+   * that lambda's parameters must match. Any other annotation is recorded and
+   * left unchecked. Call inside the type parameter scope, so the `T` in
+   * `_params_of<T>` resolves.
+   */
+  void applyVariadicParamTypes(
+      PrototypeAST &clonedProto, const PrototypeAST &proto,
+      const std::vector<sun::TypePtr> &variadicArgTypes,
+      std::optional<Position> loc);
+
+  /**
    * Monomorphize a generic function for the given type arguments, reusing the
    * cached specialization when there is one. Empty when it cannot be built.
+   * variadicArgTypes carries the types filling an `args...` pack at the call
+   * site; like the method path, they drive the specialization's arity and its
+   * mangled name, and `std::nullopt` defers a pack-bearing template until a
+   * call site supplies them.
    */
   std::optional<SpecializedFunctionInfo> instantiateGenericFunction(
       const GenericFunctionInfo &genericInfo,
-      const std::vector<sun::TypePtr> &typeArgs);
+      const std::vector<sun::TypePtr> &typeArgs,
+      const std::optional<std::vector<sun::TypePtr>> &variadicArgTypes =
+          std::nullopt);
 
   /**
    * Type-argument inference itself is sun::generics
@@ -463,20 +499,31 @@ class SemanticAnalyzer : public AccessContext {
       const std::vector<sun::TypePtr> &typeArgs);
 
   /**
+   * True when a call cannot be specialized yet because the template's type
+   * arguments are still type parameters. Usually that shows in typeArgs, but
+   * a pack-only template has none of its own and may still borrow a type
+   * parameter from an enclosing generic through `args...: _params_of<T>`.
+   */
+  bool templateStillAbstract(const GenericFunctionInfo &genericInfo,
+                             const std::vector<sun::TypePtr> &typeArgs);
+
+  /**
    * Instantiate for a call site: same as instantiateGenericFunction, but a
    * failure is the call's error rather than an empty optional to unpack.
    */
   SpecializedFunctionInfo requireGenericSpecialization(
       const GenericFunctionInfo &genericInfo,
       const std::vector<sun::TypePtr> &typeArgs, const std::string &displayName,
-      std::optional<Position> loc);
+      std::optional<Position> loc,
+      const std::optional<std::vector<sun::TypePtr>> &variadicArgTypes =
+          std::nullopt);
 
   /**
    * Instantiates a generic method on a class with specific type arguments.
    * Stores the specialization on the generic method's FunctionAST.
    * Returns the specialized FunctionAST for codegen lookup.
    * variadicArgTypes carries the resolved types of the actual variadic
-   * arguments at the call site (for methods with an _init_args<T> pack). When
+   * arguments at the call site (for a method ending in a pack). When
    * the method is variadic, these drive the specialization's arity, its init
    * overload selection, and its mangled name. `std::nullopt` means "no call
    * info available" (e.g. from type inference): a variadic method is then not

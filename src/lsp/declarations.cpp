@@ -437,7 +437,7 @@ std::optional<Declaration> findLocalDeclaration(
 
 std::optional<Declaration> findMemberDeclaration(
     const BlockExprAST& program, const ExprAST& object,
-    const std::string& member, const std::string& resolvedQualifiedName) {
+    const std::string& member, const std::string& qualifiedName) {
   const sun::Type* objectType = stripReference(object.getResolvedType().get());
   if (!objectType) {
     // A match pattern's object is never typed: `Shape.Circle(r)` names the
@@ -455,8 +455,8 @@ std::optional<Declaration> findMemberDeclaration(
   }
   if (objectType->getKind() == sun::Type::Kind::Module) {
     // `m.f`: the analyzer recorded which module's `f` was meant
-    if (const ExprAST* decl = findDeclarationByMangledName(
-            program, member, resolvedQualifiedName)) {
+    if (const ExprAST* decl =
+            findDeclarationByMangledName(program, member, qualifiedName)) {
       return declarationOf(*decl);
     }
     return std::nullopt;
@@ -507,7 +507,7 @@ std::optional<Declaration> findDeclarationOf(
       if (!access.getObject()) return std::nullopt;
       return findMemberDeclaration(program, *access.getObject(),
                                    access.getMemberName(),
-                                   access.getResolvedQualifiedName());
+                                   access.getQualifiedName().mangled());
     }
     case ASTNodeType::MEMBER_ASSIGNMENT: {
       const auto& assignment = static_cast<const MemberAssignmentAST&>(node);
@@ -584,7 +584,8 @@ void forEachAnnotation(const ExprAST& node, const AnnotationFn& fn) {
   auto visitProto = [&](const PrototypeAST& proto) {
     for (const auto& arg : proto.getArgs()) fn(arg.second);
     if (proto.hasReturnType()) fn(*proto.getReturnType());
-    if (proto.hasVariadicConstraint()) fn(*proto.getVariadicConstraint());
+    if (proto.hasVariadicTypeAnnotation())
+      fn(proto.getVariadicTypeAnnotation());
   };
 
   switch (node.getType()) {
@@ -734,8 +735,7 @@ std::optional<Declaration> parameterUnder(const ExprAST& owner, int offset,
   const PrototypeAST* proto = prototypeOf(owner);
   if (!proto) return std::nullopt;
   std::vector<std::string> names = proto->getArgNames();
-  if (proto->hasVariadicParam())
-    names.push_back(*proto->getVariadicParamName());
+  if (proto->hasVariadicParam()) names.push_back(proto->getVariadicParamName());
   for (const auto& name : names) {
     std::optional<Position> range = parameterRange(owner, name, source);
     if (range && spanContains(*range, offset)) {

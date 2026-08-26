@@ -154,6 +154,87 @@ error — the compiler has no idea what `T` will be. A trait constraint such as
 `_Numeric` says which types are allowed, not what members they carry, so it does
 not open up member access either. Only an interface does.
 
+### Value Packs
+
+A parameter list can end in a **pack**: one name standing for however many
+arguments the call supplies. Write it as a name followed by `...`:
+
+```sun
+function make<T>(args...: _params_of<T>) raw_ptr<T> {
+    var size: i64 = _sizeof<T>();
+    var memory: raw_ptr<i8> = unsafe { _malloc(size); };
+    _init<T>(memory, args...);
+    return memory;
+}
+```
+
+`args...` at the call passes the whole pack along, in order. It may only appear
+in a call's argument list.
+
+The pack is not a type, and there is no way to ask how long it is or to index
+it. It is monomorphized: each distinct tuple of argument types gets its own
+compiled function. That is what lets one call site pick one constructor and
+another pick a different one:
+
+```sun
+class Point {
+    var x: i32;
+    var y: i32;
+    function init(x: i32, y: i32) { this.x = x; this.y = y; }
+    function init(v: i32) { this.x = v; this.y = v; }
+}
+
+var a = make<Point>(3, 4);   // selects init(i32, i32)
+var b = make<Point>(9);      // selects init(i32) — a separate function
+```
+
+A pack must come last, and ordinary parameters may precede it. Everything past
+those parameters fills the pack:
+
+```sun
+function scaled<T>(factor: i32, args...: _params_of<T>) i32 { ... }
+
+scaled<Point>(2, 3, 4);   // factor = 2, pack = (3, 4)
+```
+
+The annotation after the colon says what parameter list the pack stands for.
+`_params_of<T>` reads it off `T`: for a class, the parameters of its `init`
+(any overload may match); for a lambda, the parameters that lambda takes. The
+call's arguments are checked against it.
+
+```sun
+function apply<F: _Lambda>(f: F, args...: _params_of<F>) i32 {
+    return f(args...);
+}
+
+function main() i32 {
+    var add = lambda (a: i32, b: i32) i32 { return a + b; };
+    return apply(add, 3, 4);   // 7 — F is inferred from `add`
+}
+```
+
+The annotation is optional. `args...` on its own accepts whatever the call
+passes, and so does `_params_of<T>` for a `T` that is neither a class nor a
+lambda.
+
+A pack makes a declaration a template on its own, whether or not it also has
+type parameters — its arity comes from the call, so there is one compiled
+function per argument tuple either way. So a pack is fine wherever the type it
+names is in scope, including one borrowed from an enclosing generic:
+
+```sun
+function outer<T>() i32 {
+    function build(args...: _params_of<T>) i32 { ... }
+    return build(3, 4) + build(9);
+}
+```
+
+<Callout type="info">
+  A pack on a **class method** still needs its type argument written out —
+  `alloc.create<Point>(3, 4)`, never `alloc.create(3, 4)`. Free functions infer
+  it from their fixed arguments.
+</Callout>
+
 ### Generic Functions with Type Checking
 
 Combine generic functions with `_is<T>` for type-specific behavior:

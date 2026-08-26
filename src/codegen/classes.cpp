@@ -443,11 +443,8 @@ Function* CodegenVisitor::declareMethodFromAST(
         mangledName);
     return nullptr;
   }
-  for (const auto& sunType : proto.getResolvedParamTypes()) {
-    paramTypes.push_back(typeResolver.resolve(sunType));
-  }
-  // Add variadic params if present (from _init_args<T> expansion)
-  for (const auto& sunType : proto.getResolvedVariadicTypes()) {
+  // The fixed parameters, then the elements of any `args...` pack
+  for (const auto& sunType : proto.getAllParamTypes()) {
     paramTypes.push_back(typeResolver.resolve(sunType));
   }
 
@@ -481,21 +478,9 @@ Function* CodegenVisitor::declareMethodFromAST(
   argIt->setName("closure");
   ++argIt;
 
-  for (const auto& [argName, argType] : proto.getArgs()) {
-    // Skip variadic param - it's handled below with indexed names
-    if (proto.hasVariadicParam() && argName == *proto.getVariadicParamName())
-      continue;
+  for (const auto& argName : proto.getAllParamNames()) {
     argIt->setName(argName);
     ++argIt;
-  }
-
-  // Name variadic params with indexed names (e.g., "args.0", "args.1")
-  if (proto.hasVariadicParam() && proto.hasResolvedVariadicTypes()) {
-    const std::string& variadicName = *proto.getVariadicParamName();
-    for (size_t i = 0; i < proto.getResolvedVariadicTypes().size(); ++i) {
-      argIt->setName(variadicName + "." + std::to_string(i));
-      ++argIt;
-    }
   }
 
   return func;
@@ -574,46 +559,34 @@ void CodegenVisitor::generateMethodBody(const FunctionAST& methodFunc,
   auto argIt = func->arg_begin();
   ++argIt;  // Skip closure
 
-  // Use resolved param types if available (for specialized generic classes)
-  const auto& protoArgs = proto.getArgs();
-  const auto& resolvedTypes = proto.getResolvedParamTypes();
-  bool hasResolved = proto.hasResolvedParamTypes();
+  // The fixed parameters, then the elements of any `args...` pack — the same
+  // order the signature was declared in (specialized generic classes have
+  // their types resolved by semantic analysis).
+  const std::vector<std::string> paramNames = proto.getAllParamNames();
+  const std::vector<sun::TypePtr> paramTypes = proto.getAllParamTypes();
+  if (!proto.hasResolvedParamTypes() ||
+      paramTypes.size() != paramNames.size()) {
+    logAndThrowError(
+        "Method parameter types not resolved by semantic analysis: " +
+        mangledName);
+    return;
+  }
+  const size_t fixedCount = proto.getArgs().size();
 
-  for (size_t i = 0; i < protoArgs.size(); ++i) {
-    const auto& [argName, argType] = protoArgs[i];
-    // Skip variadic param - it's handled below with indexed names
-    if (proto.hasVariadicParam() && argName == *proto.getVariadicParamName())
-      continue;
-    if (!hasResolved || i >= resolvedTypes.size()) {
-      logAndThrowError(
-          "Method parameter type not resolved by semantic analysis: " +
-          mangledName + " param " + argName);
-      return;
-    }
-    llvm::Type* argLLVMType = typeResolver.resolve(resolvedTypes[i]);
+  for (size_t i = 0; i < paramNames.size(); ++i) {
+    const std::string& argName = paramNames[i];
+    llvm::Type* argLLVMType = typeResolver.resolve(paramTypes[i]);
 
     AllocaInst* alloca =
         ctx.builder->CreateAlloca(argLLVMType, nullptr, argName);
     ctx.builder->CreateStore(&*argIt, alloca);
     scopes.back().variables[argName] = alloca;
-    debugDeclareParam(alloca, argName, proto, static_cast<unsigned>(i),
-                      /*argNoBase=*/2);
-    ++argIt;
-  }
-
-  // Store variadic params with indexed names (e.g., "args.0", "args.1")
-  if (proto.hasVariadicParam() && proto.hasResolvedVariadicTypes()) {
-    const std::string& variadicName = *proto.getVariadicParamName();
-    const auto& variadicTypes = proto.getResolvedVariadicTypes();
-    for (size_t i = 0; i < variadicTypes.size(); ++i) {
-      std::string indexedName = variadicName + "." + std::to_string(i);
-      llvm::Type* argLLVMType = typeResolver.resolve(variadicTypes[i]);
-      AllocaInst* alloca =
-          ctx.builder->CreateAlloca(argLLVMType, nullptr, indexedName);
-      ctx.builder->CreateStore(&*argIt, alloca);
-      scopes.back().variables[indexedName] = alloca;
-      ++argIt;
+    // A pack element has no annotation in the source to point a debug entry at
+    if (i < fixedCount) {
+      debugDeclareParam(alloca, argName, proto, static_cast<unsigned>(i),
+                        /*argNoBase=*/2);
     }
+    ++argIt;
   }
 
   // Generate the method body
@@ -690,7 +663,7 @@ Value* CodegenVisitor::codegen(const MemberAccessAST& expr) {
 
     // Semantic analysis took this from the member's own declaration, so it
     // names the symbol that declaration emitted, library-hash scope included
-    const std::string& qualifiedName = expr.getResolvedQualifiedName();
+    const std::string qualifiedName = expr.getQualifiedName().mangled();
 
     // Check for global variable in this module
     GlobalVariable* gv = module->getGlobalVariable(qualifiedName);
@@ -942,7 +915,7 @@ Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
   // mod.global = value: the module is compile-time only, so this writes the
   // global directly
   if (GlobalVariable* gv = moduleMemberGlobal(
-          *expr.getObject(), expr.getResolvedQualifiedName())) {
+          *expr.getObject(), expr.getQualifiedName().mangled())) {
     Value* value = codegen(*expr.getValue());
     if (!value) return nullptr;
     assignToVariableSlot(gv, value,
@@ -1323,21 +1296,17 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
           funcName);
       return nullptr;
     }
-    const std::vector<sun::TypePtr>& resolvedTypeArgs =
-        expr.getResolvedTypeArgs();
-
-    // Prefer the name semantic analysis recorded when it instantiated the
-    // template; only fall back to rebuilding it from the template's mangled
-    // name (which includes enclosing function context, e.g. outer_i32_inner).
-    std::string mangledName;
-    if (expr.hasSpecializationName()) {
-      mangledName = expr.getSpecializationName().mangled();
-    } else {
-      mangledName = genericFuncAST->getProto().getMangledName();
-      for (const auto& typeArg : resolvedTypeArgs) {
-        mangledName += "_" + typeArg->toString();
-      }
+    // Call exactly what semantic analysis instantiated. Rebuilding the name
+    // here would mean reproducing the template's own mangled name (which
+    // carries enclosing function context, e.g. outer_i32_inner) plus any pack
+    // suffix, and any drift makes the call reach for a missing symbol.
+    if (!expr.hasSpecializationName()) {
+      logAndThrowError(
+          "Generic call specialization not recorded by semantic analysis: " +
+          funcName);
+      return nullptr;
     }
+    std::string mangledName = expr.getSpecializationName().mangled();
 
     // The specialized function should already exist - it was generated when
     // we processed the generic function definition via codegenFunc
@@ -1365,7 +1334,8 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
     bool canThrow = specializedFunc->hasFnAttribute("sun.canthrow");
     if (auto specialization = genericFuncAST->getSpecialization(mangledName)) {
       const PrototypeAST& specProto = specialization->getProto();
-      specParamTypes = specProto.getResolvedParamTypes();
+      // A pack's elements are parameters too, after the fixed ones
+      specParamTypes = specProto.getAllParamTypes();
       // The specialization may still be a forward declaration here, in which
       // case it carries no attribute yet — its prototype is the authority.
       canThrow = canThrow || (specProto.hasReturnType() &&

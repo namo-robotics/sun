@@ -109,4 +109,21 @@ std::string QualifiedName::buildVariadicArgSuffix(
   return result;
 }
 
+QualifiedName QualifiedName::specializationOf(
+    const QualifiedName& templateName, const std::vector<TypePtr>& typeArgs,
+    const std::vector<TypePtr>& packArgTypes) {
+  QualifiedName result = templateName;
+  for (const auto& typeArg : typeArgs) {
+    result.baseName += "_" + typeArg->toString();
+  }
+  // A pack's element types are part of the specialization's identity too, so
+  // two call sites at different arities get two functions rather than
+  // colliding on whichever was instantiated first.
+  result.baseName +=
+      buildVariadicArgSuffix(packArgTypes, templateName.getHashPrefix());
+  // The type arguments already tell the specializations apart.
+  result.paramSuffix.clear();
+  return result;
+}
+
 }  // namespace sun

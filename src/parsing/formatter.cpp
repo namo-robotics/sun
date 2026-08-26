@@ -240,11 +240,11 @@ class Formatter {
     }
     if (p.hasVariadicParam()) {
       if (!first) out_ += ", ";
-      out_ += *p.getVariadicParamName();
+      out_ += p.getVariadicParamName();
       out_ += "...";
-      if (p.hasVariadicConstraint()) {
+      if (p.hasVariadicTypeAnnotation()) {
         out_ += ": ";
-        printType(*p.getVariadicConstraint());
+        printType(p.getVariadicTypeAnnotation());
       }
     }
     if (p.isCVariadic()) {
