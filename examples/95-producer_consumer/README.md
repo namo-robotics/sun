@@ -15,12 +15,8 @@ accident — every extra owner is a visible `clone()`.
 so a thread body does not have to be a closure over the surrounding frame.
 That is why `produce` and `consume` are plain lambdas at global scope taking a
 `Shared<Queue<i64>>` parameter: each `spawn(produce, queue.clone())` hands one
-clone to one thread, and `main` cannot use that clone afterwards.
-
-Inside each body, `var q = queue;` moves the parameter into a local. That is
-what releases the clone when the thread ends — a by-value parameter left alone
-is nobody's to drop, which is what lets `Vec<T>.push(value: T)` store its
-parameter rather than dropping it.
+clone to one thread, `main` cannot use that clone afterwards, and the thread
+releases it when it finishes.
 
 Capturing still works: `spawn(lambda [ref q] () i32 { … })` borrows `q` for
 one thread. But two threads cannot borrow the same handle mutably — the second

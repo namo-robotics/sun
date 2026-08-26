@@ -13,16 +13,12 @@ function take_one(q: const ref Shared<Queue<i64>>) Option<i64> {
 // The two thread bodies, as lambdas at global scope. Each takes the handle it
 // works through as a parameter rather than capturing one: spawn moves its
 // arguments into the thread, so the handle is the thread's from the moment it
-// starts. A global lambda captures nothing at all — globals are read directly
-// — so the same one can be spawned as often as you like.
-//
-// `var q = queue;` moves the parameter into a local the body owns, which is
-// what releases the clone when the thread ends. A by-value parameter left
-// alone is nobody's to drop.
+// starts, and is released when the thread ends. A global lambda captures
+// nothing at all — globals are read directly — so the same one can be spawned
+// as often as you like.
 
 // Push ten squares onto the queue.
-var produce = lambda (queue: Shared<Queue<i64>>) i32 {
-  var q = queue;
+var produce = lambda (q: Shared<Queue<i64>>) i32 {
   var i: i64 = 1;
   while (i <= 10) {
     // The lock is held just long enough to push: the guard is released at
@@ -36,8 +32,7 @@ var produce = lambda (queue: Shared<Queue<i64>>) i32 {
 
 // The consumer knows how many items to expect, so it stops after ten rather
 // than needing the producer to tell it when to stop.
-var consume = lambda (queue: Shared<Queue<i64>>) i32 {
-  var q = queue;
+var consume = lambda (q: Shared<Queue<i64>>) i32 {
   var received: i64 = 0;
   var total: i64 = 0;
 

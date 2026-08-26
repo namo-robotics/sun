@@ -586,6 +586,7 @@ void CodegenVisitor::generateMethodBody(const FunctionAST& methodFunc,
       debugDeclareParam(alloca, argName, proto, static_cast<unsigned>(i),
                         /*argNoBase=*/2);
     }
+    trackOwnedParam(alloca, argName, paramTypes[i]);
     ++argIt;
   }
 

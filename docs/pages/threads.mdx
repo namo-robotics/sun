@@ -63,15 +63,12 @@ function main() i32 {
 }
 ```
 
-A class or payload enum argument moves, so the thread owns it and the spawner
-cannot use it again. Bind it to a local in the body to say the thread should
-release it when it finishes — a by-value parameter left alone is nobody's to
-drop:
+A class or payload enum argument moves, so the thread owns it — the spawner
+cannot use it again, and the thread releases it when it finishes:
 
 ```sun
 var consume = lambda (r: Report) i32 {
-    var owned = r;        // the thread owns it, and drops it at the end
-    return owned.rows;
+    return r.rows;        // r is the thread's, and is dropped when it ends
 };
 ```
 
@@ -258,10 +255,9 @@ class Counter {
     public function init() { this.n = 0; }
 }
 
-// One body, spawned twice. `var h = handle;` makes the clone this thread's,
-// so it is released when the thread ends.
-var bump = lambda (handle: Shared<Counter>) i32 {
-    var h = handle;
+// One body, spawned twice. The clone is this thread's, and released when
+// the thread ends.
+var bump = lambda (h: Shared<Counter>) i32 {
     var i: i64 = 0;
     while (i < 100000) {
         var g = h.lock();

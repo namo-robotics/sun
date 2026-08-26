@@ -886,6 +886,18 @@ class CodegenVisitor {
     return result;
   }
 
+  // A by-value compound parameter arrives moved: the caller gave up its
+  // ownership at the call, so this frame is the one that drops it. Passing it
+  // on — into another call, a field, a container slot, a return — marks the
+  // slot deinited, so this only decides what happens when the body keeps it
+  // to the end. A `ref T` parameter is a borrow and answers false here.
+  void trackOwnedParam(llvm::Value* alloca, const std::string& name,
+                       const sun::TypePtr& type) {
+    if (alloca && sun::typeNeedsDrop(type)) {
+      trackClassAllocation(alloca, name, type);
+    }
+  }
+
   // Mark a class allocation as moved/deinited (don't auto-deinit at scope exit)
   void markClassAllocationAsDeinited(llvm::Value* alloca) {
     for (auto& scope : scopes) {

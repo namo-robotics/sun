@@ -7,8 +7,7 @@
 // the reference count is right there in the source.
 //
 // Usage:
-//   var bump = lambda (handle: Shared<Counter>) i32 {
-//     var h = handle;
+//   var bump = lambda (h: Shared<Counter>) i32 {
 //     var g = h.lock();
 //     g.get().n = g.get().n + 1;
 //     return 0;

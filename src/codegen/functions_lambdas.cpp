@@ -628,12 +628,14 @@ Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
       argIdx++;
       continue;
     }
+    std::string argName = arg.getName().str();
     AllocaInst* alloca =
-        createEntryBlockAlloca(func, arg.getName().str(), arg.getType());
+        createEntryBlockAlloca(func, argName, arg.getType());
     ctx.builder->CreateStore(&arg, alloca);
-    scope.variables[std::string(arg.getName())] = alloca;
-    debugDeclareParam(alloca, arg.getName().str(), proto,
+    scope.variables[argName] = alloca;
+    debugDeclareParam(alloca, argName, proto,
                       hasClosureArg ? argIdx - 1 : argIdx);
+    trackOwnedParam(alloca, argName, proto.paramTypeNamed(argName));
     argIdx++;
   }
 
@@ -815,11 +817,13 @@ llvm::Value* CodegenVisitor::codegenLambda(LambdaAST& lambdaAst) {
       argIdx++;
       continue;
     }
+    std::string argName = arg.getName().str();
     AllocaInst* alloca =
-        createEntryBlockAlloca(func, arg.getName().str(), arg.getType());
+        createEntryBlockAlloca(func, argName, arg.getType());
     ctx.builder->CreateStore(&arg, alloca);
-    scope.variables[std::string(arg.getName())] = alloca;
-    debugDeclareParam(alloca, arg.getName().str(), proto, argIdx - 1);
+    scope.variables[argName] = alloca;
+    debugDeclareParam(alloca, argName, proto, argIdx - 1);
+    trackOwnedParam(alloca, argName, proto.paramTypeNamed(argName));
     argIdx++;
   }
 
