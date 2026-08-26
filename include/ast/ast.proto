@@ -335,10 +335,22 @@ message FunctionArg {
   TypeAnnotation type = 2;
 }
 
+// One generic type parameter: a name, and optionally a constraint the type
+// argument must satisfy (a built-in trait, an interface, or `lambda`).
+// Mirrors the TypeParameter/TypeConstraint pair in include/ast/. Only the
+// constraint's name travels — its source span, like a TypeAnnotation's, is
+// local to the file it was parsed from.
+message TypeParameter {
+  string name = 1;
+  optional string constraint = 2;
+}
+
 // Function prototype (signature)
 message Prototype {
   string name = 1;
-  repeated string type_parameters = 2;  // Generic type params: T, U, etc.
+  // Superseded by type_params; still read so bundles built before
+  // constraints existed keep loading.
+  repeated string type_parameters = 2 [deprecated = true];
   repeated FunctionArg args = 3;
   optional TypeAnnotation return_type = 4;
   repeated Capture captures = 5;
@@ -354,6 +366,7 @@ message Prototype {
   repeated string const_ref_captures = 15;
   // Capture list entries written without `ref`: the closure owns them
   repeated string owned_captures = 16;
+  repeated TypeParameter type_params = 17;  // <T, U: _Numeric>
 }
 
 message FunctionDef {
@@ -471,7 +484,7 @@ message ImplementedInterface {
 
 message ClassDef {
   string name = 1;
-  repeated string type_parameters = 2;
+  repeated string type_parameters = 2 [deprecated = true];  // see type_params
   repeated ImplementedInterface implemented_interfaces = 3;
   repeated ClassField fields = 4;
   repeated ClassMethod methods = 5;
@@ -480,6 +493,7 @@ message ClassDef {
   Visibility visibility = 8;
   string doc = 9;  // Comment written above the class
   optional Position location = 10;  // Declaration span (bundle exports only)
+  repeated TypeParameter type_params = 11;  // <T, U: _Numeric>
 }
 
 // Interface field declaration
@@ -500,12 +514,13 @@ message InterfaceMethod {
 
 message InterfaceDef {
   string name = 1;
-  repeated string type_parameters = 2;
+  repeated string type_parameters = 2 [deprecated = true];  // see type_params
   repeated InterfaceField fields = 3;
   repeated InterfaceMethod methods = 4;
   Visibility visibility = 5;
   string doc = 6;  // Comment written above the interface
   optional Position location = 7;  // Declaration span (bundle exports only)
+  repeated TypeParameter type_params = 8;  // <T, U: _Numeric>
 }
 
 // Enum variant declaration
@@ -520,10 +535,11 @@ message EnumVariant {
 message EnumDef {
   string name = 1;
   repeated EnumVariant variants = 2;
-  repeated string type_parameters = 3;  // generic enums: enum Option<T>
+  repeated string type_parameters = 3 [deprecated = true];  // see type_params
   Visibility visibility = 4;
   string doc = 5;  // Comment written above the enum
   optional Position location = 6;  // Declaration span (bundle exports only)
+  repeated TypeParameter type_params = 7;  // <T, U: _Numeric>
 }
 
 message ThisExpr {

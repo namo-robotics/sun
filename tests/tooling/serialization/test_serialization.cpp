@@ -1093,7 +1093,8 @@ TEST(Tooling_Serialization, GenericEnumTypeParamsRoundtrip) {
   variants.push_back({"None", 1, Position{}, {}});
   auto ast = std::make_unique<EnumDefinitionAST>("Option", std::move(variants),
                                                  /*precompiled=*/false,
-                                                 std::vector<std::string>{"T"});
+                                                 std::vector<TypeParameter>{
+                                                     TypeParameter("T")});
 
   ASTSerializer serializer;
   std::string data = serializer.serializeToString(*ast);
@@ -1106,9 +1107,56 @@ TEST(Tooling_Serialization, GenericEnumTypeParamsRoundtrip) {
   auto* enumDef = static_cast<EnumDefinitionAST*>(restored.get());
   EXPECT_TRUE(enumDef->isGeneric());
   ASSERT_EQ(enumDef->getTypeParameters().size(), 1u);
-  EXPECT_EQ(enumDef->getTypeParameters()[0], "T");
+  EXPECT_EQ(enumDef->getTypeParameters()[0].name, "T");
   const auto* some = enumDef->getVariant("Some");
   ASSERT_NE(some, nullptr);
   ASSERT_EQ(some->payloadTypes.size(), 1u);
   EXPECT_EQ(some->payloadTypes[0].baseName, "T");
+}
+
+// Constraints must survive the wire: ExprAST::clone() is serialize followed by
+// deserialize, and generic instantiation clones, so a constraint lost here
+// would vanish from every specialization without any error.
+TEST(Tooling_Serialization, TypeParameterConstraintRoundtrip) {
+  std::vector<EnumVariantDecl> variants;
+  variants.push_back({"Some", 0, Position{}, {}});
+  variants.back().payloadTypes.push_back(TypeAnnotation("T"));
+  variants.push_back({"None", 1, Position{}, {}});
+  auto ast = std::make_unique<EnumDefinitionAST>(
+      "Maybe", std::move(variants), /*precompiled=*/false,
+      std::vector<TypeParameter>{
+          TypeParameter("T", TypeConstraint("_Numeric"))});
+
+  ASTSerializer serializer;
+  std::string data = serializer.serializeToString(*ast);
+
+  ASTDeserializer deserializer;
+  auto restored = deserializer.deserializeFromString(data);
+
+  ASSERT_NE(restored, nullptr);
+  auto* enumDef = static_cast<EnumDefinitionAST*>(restored.get());
+  ASSERT_EQ(enumDef->getTypeParameters().size(), 1u);
+  EXPECT_EQ(enumDef->getTypeParameters()[0].name, "T");
+  ASSERT_TRUE(enumDef->getTypeParameters()[0].constraint.has_value());
+  EXPECT_EQ(enumDef->getTypeParameters()[0].constraint->name, "_Numeric");
+}
+
+// An unconstrained parameter round-trips as unconstrained, not as one
+// carrying an empty constraint.
+TEST(Tooling_Serialization, UnconstrainedTypeParameterStaysUnconstrained) {
+  std::vector<EnumVariantDecl> variants;
+  variants.push_back({"None", 0, Position{}, {}});
+  auto ast = std::make_unique<EnumDefinitionAST>(
+      "Plain", std::move(variants), /*precompiled=*/false,
+      std::vector<TypeParameter>{TypeParameter("T")});
+
+  ASTSerializer serializer;
+  ASTDeserializer deserializer;
+  auto restored =
+      deserializer.deserializeFromString(serializer.serializeToString(*ast));
+
+  ASSERT_NE(restored, nullptr);
+  auto* enumDef = static_cast<EnumDefinitionAST*>(restored.get());
+  ASSERT_EQ(enumDef->getTypeParameters().size(), 1u);
+  EXPECT_FALSE(enumDef->getTypeParameters()[0].constraint.has_value());
 }

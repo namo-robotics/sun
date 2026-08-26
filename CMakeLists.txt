@@ -135,6 +135,7 @@ add_library(sun_lib
     src/semantic_analysis/interfaces.cpp
     src/semantic_analysis/type_conversion.cpp
     src/semantic_analysis/type_inference.cpp
+    src/semantic_analysis/type_traits.cpp
     src/semantic_analysis/captures.cpp
     src/semantic_analysis/analysis.cpp
     src/semantic_analysis/analysis_utils.cpp

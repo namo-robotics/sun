@@ -4,7 +4,42 @@
 
 #include "semantic_analysis/packed_layout.h"
 #include "semantic_analysis/semantic_analyzer.h"
+#include "semantic_analysis/type_traits.h"
 #include "support/error.h"
+
+// -------------------------------------------------------------------
+// Generic type parameter constraints
+// -------------------------------------------------------------------
+
+void SemanticAnalyzer::checkTypeParameterConstraints(
+    const std::vector<TypeParameter>& typeParams,
+    const std::vector<sun::TypePtr>& typeArgs, const std::string& what,
+    const std::string& name, std::optional<Position> loc) {
+  for (size_t i = 0; i < typeParams.size() && i < typeArgs.size(); ++i) {
+    const auto& constraint = typeParams[i].constraint;
+    if (!constraint) continue;
+
+    // Inside a template body the argument is still a type parameter; the
+    // real check happens when the enclosing generic is specialized.
+    const sun::TypePtr& arg = typeArgs[i];
+    if (!arg || arg->isTypeParameter()) continue;
+
+    if (!sun::traits::satisfies(arg, constraint->name)) {
+      // Point at the constraint itself when it carries a span; a declaration
+      // parsed from a bundle has none, so fall back to the caller's location.
+      std::optional<Position> at =
+          constraint->span.endOffset.has_value()
+              ? std::optional<Position>(constraint->span)
+              : loc;
+      logAndThrowError("type argument '" + arg->toDisplayString() +
+                           "' does not satisfy constraint '" +
+                           constraint->toString() + "' on type parameter '" +
+                           typeParams[i].name + "' of " + what + " '" + name +
+                           "'",
+                       at);
+    }
+  }
+}
 
 // -------------------------------------------------------------------
 // Class support
@@ -180,6 +215,8 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
                      std::to_string(genericClassInfo->typeParameters.size()) +
                      " type arguments, got " + std::to_string(typeArgs.size()));
   }
+  checkTypeParameterConstraints(genericClassInfo->typeParameters, typeArgs,
+                                "generic class", baseName);
 
   // Construct the specialized QualifiedName from the generic's qualified name
   // with type arguments mangled into the base name
@@ -285,7 +322,8 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
 
   // Push a scope for class-level type parameter bindings
   enterClassScope(specializedQName);
-  addTypeParameterBindings(genericClassInfo->typeParameters, typeArgs);
+  addTypeParameterBindings(typeParameterNames(genericClassInfo->typeParameters),
+                           typeArgs);
 
   // Layout is a property of the generic definition, so every specialization
   // inherits it. Must precede the first getStructType(), which memoizes.
@@ -398,7 +436,7 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
     if (!astOnlyMode) {
       auto& method = specializedClass->addMethod(
           proto.getName(), returnType, paramTypes, methodClone.isConstructor,
-          proto.getTypeParameters(), proto.canThrow());
+          proto.getTypeParameterNames(), proto.canThrow());
       method.visibility = methodVisibility(*methodClone.function);
       method.isConst = methodClone.isConst;
     }
@@ -415,7 +453,8 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
     for (size_t i = 0;
          i < genericClassInfo->typeParameters.size() && i < typeArgs.size();
          ++i) {
-      bindings.emplace_back(genericClassInfo->typeParameters[i], typeArgs[i]);
+      bindings.emplace_back(genericClassInfo->typeParameters[i].name,
+                            typeArgs[i]);
     }
     clonedProto.setTypeBindings(std::move(bindings));
 
@@ -444,7 +483,7 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
   if (genericClassInfo->AST->isPrecompiled() && !needsPass2) {
     // Create specialized AST even for precompiled classes
     auto specializedAST = std::make_shared<ClassDefinitionAST>(
-        mangledName, std::vector<std::string>{}, std::move(interfacesClone),
+        mangledName, std::vector<TypeParameter>{}, std::move(interfacesClone),
         std::move(fieldsClone), std::move(methodsClone),
         genericClassInfo->AST->isPrecompiled());
     specializedAST->setIsPacked(genericClassInfo->AST->isPacked());
@@ -471,7 +510,7 @@ std::shared_ptr<sun::ClassType> SemanticAnalyzer::instantiateGenericClass(
   // the library bitcode.
   auto specializedAST = std::make_shared<ClassDefinitionAST>(
       mangledName,                 // e.g., "Vec_i32" instead of "Vec"
-      std::vector<std::string>{},  // empty - no longer generic
+      std::vector<TypeParameter>{},  // empty - no longer generic
       std::move(interfacesClone), std::move(fieldsClone),
       std::move(methodsClone),  // cloned methods
       false);                   // NOT precompiled - needs codegen
@@ -538,7 +577,8 @@ void SemanticAnalyzer::analyzeDeferredSpecializations() {
     ScopeSwitchGuard definitionScope(*this, definitionScopeOf(*d.genericInfo));
 
     enterClassScope(d.specializedClass->getQualifiedName());
-    addTypeParameterBindings(d.genericInfo->typeParameters, d.typeArgs);
+    addTypeParameterBindings(typeParameterNames(d.genericInfo->typeParameters),
+                             d.typeArgs);
     auto savedClass = currentClass;
     setCurrentClass(d.specializedClass);
 
@@ -591,7 +631,7 @@ SemanticAnalyzer::instantiateGenericFunction(
   std::string funcName = genericInfo.qualifiedName.empty()
                              ? proto.getMangledName()
                              : genericInfo.qualifiedName.mangled();
-  const auto& typeParams = proto.getTypeParameters();
+  std::vector<std::string> typeParams = proto.getTypeParameterNames();
 
   // Generate mangled name for cache lookup
   std::string mangledName = funcName;
@@ -621,6 +661,9 @@ SemanticAnalyzer::instantiateGenericFunction(
                      std::to_string(typeParams.size()) +
                      " type arguments, got " + std::to_string(typeArgs.size()));
   }
+  checkTypeParameterConstraints(proto.getTypeParameters(), typeArgs,
+                                "generic function", funcName,
+                                proto.getLocation());
 
   // Enter scope and bind type parameters
   // Analyze the body in the scope the template was declared in (a module,
@@ -870,6 +913,9 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
         genericMethodAST->getLocation());
     return nullptr;
   }
+  checkTypeParameterConstraints(methodTypeParams, methodTypeArgs,
+                                "generic method", methodName,
+                                genericMethodAST->getLocation());
 
   // Set up scopes for type substitution:
   // 1. Class-level type parameters (if specialized generic class)
@@ -882,7 +928,8 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
   if (classType->isSpecialized()) {
     auto* genericInfo = lookupGenericClassOf(*classType);
     if (genericInfo) {
-      const auto& classTypeParams = genericInfo->typeParameters;
+      std::vector<std::string> classTypeParams =
+          typeParameterNames(genericInfo->typeParameters);
       const auto& classTypeArgs = classType->getTypeArguments();
       for (size_t i = 0; i < classTypeParams.size() && i < classTypeArgs.size();
            ++i) {
@@ -894,7 +941,7 @@ std::shared_ptr<FunctionAST> SemanticAnalyzer::instantiateGenericMethod(
 
   // Add method-level type parameter bindings
   for (size_t i = 0; i < methodTypeParams.size(); ++i) {
-    allTypeParams.push_back(methodTypeParams[i]);
+    allTypeParams.push_back(methodTypeParams[i].name);
     allTypeArgs.push_back(methodTypeArgs[i]);
   }
 

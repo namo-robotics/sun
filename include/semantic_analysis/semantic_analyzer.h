@@ -428,6 +428,23 @@ class SemanticAnalyzer : public AccessContext {
       const std::string &name) const;
 
   /**
+   * Check each type argument against its parameter's constraint, if it has
+   * one, and report the first violation. Call it at every instantiation
+   * point, right after the arity check.
+   *
+   * Only concrete arguments are checked: inside an uninstantiated template
+   * body a type argument is still a type parameter, and the constraint is
+   * checked later, when the enclosing generic is specialized for real.
+   *
+   * `what` and `name` name the thing being instantiated, e.g.
+   * ("generic function", "spawn").
+   */
+  void checkTypeParameterConstraints(
+      const std::vector<TypeParameter> &typeParams,
+      const std::vector<sun::TypePtr> &typeArgs, const std::string &what,
+      const std::string &name, std::optional<Position> loc = std::nullopt);
+
+  /**
    * Monomorphize a generic function for the given type arguments, reusing the
    * cached specialization when there is one. Empty when it cannot be built.
    */

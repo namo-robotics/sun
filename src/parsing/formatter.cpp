@@ -213,17 +213,21 @@ class Formatter {
     }
   }
 
+  // `<T, U: _Numeric>`, or nothing at all when the declaration is not generic.
+  void printTypeParams(const std::vector<TypeParameter>& typeParams) {
+    if (typeParams.empty()) return;
+    out_ += '<';
+    for (size_t i = 0; i < typeParams.size(); ++i) {
+      if (i) out_ += ", ";
+      out_ += typeParams[i].toString();
+    }
+    out_ += '>';
+  }
+
   void printProtoSig(const PrototypeAST& p) {
     out_ += p.getName();
     const auto& typeParams = p.getTypeParameters();
-    if (!typeParams.empty()) {
-      out_ += '<';
-      for (size_t i = 0; i < typeParams.size(); ++i) {
-        if (i) out_ += ", ";
-        out_ += typeParams[i];
-      }
-      out_ += '>';
-    }
+    printTypeParams(typeParams);
     out_ += '(';
     const auto& args = p.getArgs();
     bool first = true;
@@ -325,14 +329,7 @@ class Formatter {
     out_ += ' ';
     out_ += c.getName();
     const auto& typeParams = c.getTypeParameters();
-    if (!typeParams.empty()) {
-      out_ += '<';
-      for (size_t i = 0; i < typeParams.size(); ++i) {
-        if (i) out_ += ", ";
-        out_ += typeParams[i];
-      }
-      out_ += '>';
-    }
+    printTypeParams(typeParams);
     const auto& ifaces = c.getImplementedInterfaces();
     if (!ifaces.empty()) {
       out_ += " implements ";
@@ -411,14 +408,7 @@ class Formatter {
     out_ += "interface ";
     out_ += n.getName();
     const auto& typeParams = n.getTypeParameters();
-    if (!typeParams.empty()) {
-      out_ += '<';
-      for (size_t i = 0; i < typeParams.size(); ++i) {
-        if (i) out_ += ", ";
-        out_ += typeParams[i];
-      }
-      out_ += '>';
-    }
+    printTypeParams(typeParams);
     out_ += " {\n";
     ++indent_;
     int savedLast = lastLine_;
@@ -497,14 +487,7 @@ class Formatter {
     out_ += "enum ";
     out_ += n.getName();
     const auto& typeParams = n.getTypeParameters();
-    if (!typeParams.empty()) {
-      out_ += '<';
-      for (size_t i = 0; i < typeParams.size(); ++i) {
-        if (i) out_ += ", ";
-        out_ += typeParams[i];
-      }
-      out_ += '>';
-    }
+    printTypeParams(typeParams);
     const auto& variants = n.getVariants();
     if (!isMultiLine(n.getLocation())) {
       out_ += " { ";

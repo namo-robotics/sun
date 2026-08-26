@@ -85,6 +85,8 @@ SemanticAnalyzer::instantiateGenericInterface(
                      std::to_string(genericInfo->typeParameters.size()) +
                      " type arguments, got " + std::to_string(typeArgs.size()));
   }
+  checkTypeParameterConstraints(genericInfo->typeParameters, typeArgs,
+                                "generic interface", baseName);
 
   // Create the specialized interface type
   auto specializedInterface =
@@ -99,7 +101,8 @@ SemanticAnalyzer::instantiateGenericInterface(
     // result is registered in the requesting scope below
     ScopeSwitchGuard definitionScope(*this, definitionScopeOf(*genericInfo));
     // Push a scope for type parameter bindings
-    enterTypeParamScope(genericInfo->typeParameters, typeArgs);
+    enterTypeParamScope(typeParameterNames(genericInfo->typeParameters),
+                        typeArgs);
 
     // Add fields with substituted types
     for (const auto& field : genericInfo->AST->getFields()) {
@@ -134,7 +137,7 @@ SemanticAnalyzer::instantiateGenericInterface(
       // parameters)
       auto& method = specializedInterface->addMethod(
           proto.getName(), returnType, paramTypes, methodDecl.hasDefaultImpl,
-          proto.getTypeParameters());
+          proto.getTypeParameterNames());
       method.visibility = methodVisibility(*methodDecl.function);
       method.isConst = methodDecl.isConst;
     }

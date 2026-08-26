@@ -222,9 +222,11 @@ std::vector<TypePtr> inferGenericTypeArguments(
   for (size_t i = 0; i < genericInfo.params.size() && i < argTypes.size();
        ++i) {
     bindTypeParameters(genericInfo.params[i].second, argTypes[i],
-                       genericInfo.typeParameters, bindings);
+                       typeParameterNames(genericInfo.typeParameters),
+                       bindings);
   }
-  return completeTypeArguments(genericInfo.typeParameters, bindings,
+  return completeTypeArguments(typeParameterNames(genericInfo.typeParameters),
+                               bindings,
                                explicitTypeArgs, "generic function",
                                displayName, loc);
 }
@@ -248,7 +250,8 @@ std::vector<TypePtr> inferMethodTypeArguments(
 sun::TypePtr SemanticAnalyzer::genericFunctionSignature(
     const GenericFunctionInfo& genericInfo,
     const std::vector<sun::TypePtr>& typeArgs) {
-  enterTypeParamScope(genericInfo.typeParameters, typeArgs);
+  enterTypeParamScope(typeParameterNames(genericInfo.typeParameters),
+                      typeArgs);
   std::vector<sun::TypePtr> paramTypes;
   for (const auto& [name, annot] : genericInfo.params) {
     paramTypes.push_back(substituteTypeParameters(typeAnnotationToType(annot)));

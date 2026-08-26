@@ -97,12 +97,12 @@ std::string annotationText(const TypeAnnotation& annotation,
   return text.empty() ? annotation.toString() : text;
 }
 
-std::string renderTypeParameters(const std::vector<std::string>& params) {
+std::string renderTypeParameters(const std::vector<TypeParameter>& params) {
   if (params.empty()) return "";
   std::string out = "<";
   for (size_t i = 0; i < params.size(); ++i) {
     if (i > 0) out += ", ";
-    out += params[i];
+    out += params[i].toString();
   }
   return out + ">";
 }

@@ -70,6 +70,90 @@ var n = b.twice(21);      // U = i32
 var m = b.as<i32>(ms);    // R = i32 as written, U = i64 from ms
 ```
 
+### Constraints
+
+A type parameter can require something of the type it stands for. Write the
+requirement after a colon:
+
+```sun
+function twice<T: _Numeric>(x: T) T { return x + x; }
+
+function main() i32 {
+    return twice<i32>(21);   // 42
+    // twice<bool>(true) is rejected: bool is not numeric
+}
+```
+
+The constraint is checked wherever the generic is used with a real type:
+
+```
+type argument 'bool' does not satisfy constraint '_Numeric' on type parameter 'T' of generic function 'twice'
+```
+
+Two kinds of requirement can appear after the colon: a built-in trait, or the
+name of an interface the type argument must implement. The built-in traits are:
+
+| Trait | Satisfied by |
+| --- | --- |
+| `_Integer` | `i8`–`i64`, `u8`–`u64` |
+| `_Signed` | `i8`–`i64` |
+| `_Unsigned` | `u8`–`u64` |
+| `_Float` | `f32`, `f64` |
+| `_Numeric` | `_Integer` and `_Float` |
+| `_Primitive` | `_Numeric` and `bool` |
+| `_Lambda` | any closure type |
+
+Constraints work on every generic declaration, not only functions:
+
+```sun
+class Box<T: _Numeric> { var v: T; }
+enum Maybe<T: _Numeric> { Some(T), None }
+interface IStore<T: _Numeric> { public function get() T; }
+function run<F: _Lambda>(f: F) i32 { ... }
+```
+
+Only some parameters need constraining — `<T, U: _Numeric>` leaves `T` open.
+
+A constraint and `_is<T>` ask the same question and use the same vocabulary;
+the difference is where the question is asked. A constraint states a
+requirement in the signature, so a bad type argument is rejected at the call.
+`_is<T>` asks in the body, so the function can branch on what it was given:
+
+```sun
+function describe<T: _Numeric>(x: T) i32 {
+    if (_is<_Float>(x)) { return 2; }   // T is numeric for sure...
+    return 1;                            // ...but which kind is a body question
+}
+```
+
+An interface constraint also says what the body may do with the value. Whatever
+`T` turns out to be, it implements the interface, so the interface's methods and
+fields are reachable on a value of type `T`:
+
+```sun
+interface IShape { public function area() i32; }
+
+class Square implements IShape {
+    var side: i32;
+    public function init(s: i32) { this.side = s; }
+    public function area() i32 { return this.side * this.side; }
+}
+
+function measure<T: IShape>(s: ref T) i32 {
+    return s.area();      // IShape promised this method
+}
+
+function main() i32 {
+    var sq = Square(6);
+    return measure(sq);   // 36
+}
+```
+
+Without a constraint there is nothing to go on, and reaching for a member is an
+error — the compiler has no idea what `T` will be. A trait constraint such as
+`_Numeric` says which types are allowed, not what members they carry, so it does
+not open up member access either. Only an interface does.
+
 ### Generic Functions with Type Checking
 
 Combine generic functions with `_is<T>` for type-specific behavior:

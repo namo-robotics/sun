@@ -16,6 +16,30 @@ static std::vector<std::string> toStringVector(const Repeated& field) {
   return std::vector<std::string>(field.begin(), field.end());
 }
 
+// Type parameters, from whichever field the bundle carries them in. Bundles
+// written before constraints existed only have the plain-string field, so a
+// stale one still loads — with every parameter unconstrained.
+template <typename Owner>
+static std::vector<TypeParameter> toTypeParameters(const Owner& owner) {
+  std::vector<TypeParameter> params;
+  if (owner.type_params_size() > 0) {
+    params.reserve(owner.type_params_size());
+    for (const auto& tp : owner.type_params()) {
+      params.emplace_back(
+          tp.name(), tp.has_constraint()
+                         ? std::optional<TypeConstraint>(
+                               TypeConstraint(tp.constraint()))
+                         : std::nullopt);
+    }
+    return params;
+  }
+  params.reserve(owner.type_parameters_size());
+  for (const auto& name : owner.type_parameters()) {
+    params.emplace_back(name);
+  }
+  return params;
+}
+
 Position ASTDeserializer::deserializePosition(const ast::Position& pos) const {
   Position result;
   result.line = pos.line();
@@ -140,7 +164,7 @@ std::unique_ptr<PrototypeAST> ASTDeserializer::deserializePrototype(
 
   auto result = std::make_unique<PrototypeAST>(
       proto.name(), std::move(args), std::move(returnType),
-      toStringVector(proto.type_parameters()), std::move(variadicParam),
+      toTypeParameters(proto), std::move(variadicParam),
       std::move(variadicConstraint));
 
   // Restore captures
@@ -821,8 +845,8 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
   // particular changes layout, so losing it would silently corrupt memory;
   // losing visibility would make every bundled item private.
   auto classDef = std::make_unique<ClassDefinitionAST>(
-      proto.name(), toStringVector(proto.type_parameters()),
-      std::move(interfaces), std::move(fields), std::move(methods));
+      proto.name(), toTypeParameters(proto), std::move(interfaces),
+      std::move(fields), std::move(methods));
   classDef->setIsPartial(proto.is_partial());
   classDef->setIsPacked(proto.is_packed());
   classDef->setVisibility(fromProto(proto.visibility()));
@@ -848,7 +872,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeInterfaceDef(
   }
 
   auto iface = std::make_unique<InterfaceDefinitionAST>(
-      proto.name(), toStringVector(proto.type_parameters()), std::move(fields),
+      proto.name(), toTypeParameters(proto), std::move(fields),
       std::move(methods));
   iface->setVisibility(fromProto(proto.visibility()));
   iface->setDoc(proto.doc());
@@ -873,7 +897,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeEnumDef(
   }
   auto enumDef = std::make_unique<EnumDefinitionAST>(
       proto.name(), std::move(variants), /*precompiled=*/false,
-      toStringVector(proto.type_parameters()));
+      toTypeParameters(proto));
   enumDef->setVisibility(fromProto(proto.visibility()));
   enumDef->setDoc(proto.doc());
   return enumDef;
