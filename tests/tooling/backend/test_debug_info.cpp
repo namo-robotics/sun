@@ -324,7 +324,10 @@ TEST(Tooling_Backend_DebugInfo, gdb_breaks_reads_args_and_steps) {
       "gdb --batch -q -ex 'break add' -ex run -ex 'info args' "
       "-ex next -ex 'print sum' " +
       binary + " > " + outPath + " 2>&1";
-  ASSERT_EQ(WEXITSTATUS(std::system(cmd.c_str())), 0);
+  // Through a variable: macOS's WEXITSTATUS takes its argument's address
+  // (union-wait heritage), so it rejects an rvalue.
+  int rc = std::system(cmd.c_str());
+  ASSERT_EQ(WEXITSTATUS(rc), 0);
 
   std::string out = readFile(outPath);
   EXPECT_NE(out.find("Breakpoint 1, add (a=3, b=4)"), std::string::npos) << out;
@@ -356,7 +359,10 @@ function main() i32 { return sununiqadd(3, 4); }
       "-ex 'break sununiqadd' -ex run -ex 'info args' -ex 'print a + b' "
       "--args build/sun -g " +
       srcPath + " > " + outPath + " 2>&1";
-  ASSERT_EQ(WEXITSTATUS(std::system(cmd.c_str())), 0);
+  // Through a variable: macOS's WEXITSTATUS takes its argument's address
+  // (union-wait heritage), so it rejects an rvalue.
+  int rc = std::system(cmd.c_str());
+  ASSERT_EQ(WEXITSTATUS(rc), 0);
 
   std::string out = readFile(outPath);
   EXPECT_NE(out.find("Breakpoint 1, sununiqadd (a=3, b=4)"), std::string::npos)
@@ -380,7 +386,10 @@ TEST(Tooling_Backend_DebugInfo, lldb_breaks_reads_variables_and_steps) {
                     " -o 'breakpoint set --name add' -o run"
                     " -o 'frame variable' -o next -o 'print sum' " +
                     binary + " > " + outPath + " 2>&1";
-  ASSERT_EQ(WEXITSTATUS(std::system(cmd.c_str())), 0);
+  // Through a variable: macOS's WEXITSTATUS takes its argument's address
+  // (union-wait heritage), so it rejects an rvalue.
+  int rc = std::system(cmd.c_str());
+  ASSERT_EQ(WEXITSTATUS(rc), 0);
 
   std::string out = readFile(outPath);
   EXPECT_NE(out.find("a = 3"), std::string::npos) << out;
