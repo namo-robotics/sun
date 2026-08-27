@@ -532,6 +532,9 @@ bool isStaticBinary(const std::string& path) {
 }  // namespace
 
 TEST(Ffi_Abi_StaticLink, host_static_binary_has_no_dynamic_dependencies) {
+  if (llvm::Triple(llvm::sys::getDefaultTargetTriple()).isOSDarwin()) {
+    GTEST_SKIP() << "macOS has no fully static binaries";
+  }
   auto driver = Driver::createForAOT("static_host_module");
   driver->compileString("function main() i32 { return 42; }");
 

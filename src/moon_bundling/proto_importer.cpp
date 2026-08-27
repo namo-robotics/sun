@@ -33,6 +33,7 @@
 
 #include <google/protobuf/compiler/importer.h>
 #include <google/protobuf/descriptor.h>
+#include <google/protobuf/descriptor.pb.h>
 #include <llvm/Support/SHA256.h>
 
 #include <cctype>
@@ -57,20 +58,45 @@ using FD = pb::FieldDescriptor;
   throw SunError(SunError::Kind::Compile, "proto import: " + message);
 }
 
+// Descriptor accessors returned `const std::string&` before protobuf 23 and
+// return a string_view since; copying through std::string serves both
+// generations. It also keeps the concatenations below in plain-string land —
+// with LLVM headers in the precompiled header, a string_view operand would
+// otherwise select llvm::Twine's operator+ and fail to convert back.
+template <typename NameLike>
+std::string asString(const NameLike& name) {
+  return std::string(name);
+}
+
 // ---------------------------------------------------------------------------
 // Diagnostics: proto parse errors surface as one Sun compile error
 // ---------------------------------------------------------------------------
 
 class ErrorCollector : public pbc::MultiFileErrorCollector {
  public:
+  // The virtual this collector implements was renamed in protobuf 22
+  // (AddError taking std::string became RecordError taking string_view).
+  // An undefined version macro means a post-stubs protobuf, i.e. new API.
+#if !defined(GOOGLE_PROTOBUF_VERSION) || GOOGLE_PROTOBUF_VERSION >= 4022000
+  void RecordError(absl::string_view filename, int line, int column,
+                   absl::string_view message) override {
+    record(asString(filename), line, column, asString(message));
+  }
+#else
   void AddError(const std::string& filename, int line, int column,
                 const std::string& message) override {
+    record(filename, line, column, message);
+  }
+#endif
+  bool hasErrors() const { return !errors_.empty(); }
+
+  void record(const std::string& filename, int line, int column,
+              const std::string& message) {
     std::ostringstream os;
     os << filename << ":" << (line + 1) << ":" << (column + 1) << ": "
        << message;
     errors_.push_back(os.str());
   }
-  bool hasErrors() const { return !errors_.empty(); }
   std::string joined() const {
     std::string out;
     for (const auto& e : errors_) {
@@ -184,12 +210,16 @@ std::vector<const pb::Descriptor*> messagesInDependencyOrder(
 class SchemaValidator {
  public:
   static void validate(const pb::FileDescriptor* file) {
-    if (file->syntax() != pb::FileDescriptor::SYNTAX_PROTO3) {
-      fail("'" + file->name() +
+    // FileDescriptor::syntax() was removed in newer protobuf; the
+    // serialized descriptor carries the same fact on every version.
+    pb::FileDescriptorProto fileProto;
+    file->CopyTo(&fileProto);
+    if (fileProto.syntax() != "proto3") {
+      fail("'" + asString(file->name()) +
            "' must use syntax = \"proto3\" (proto2 is not supported)");
     }
     if (file->extension_count() > 0) {
-      fail("extensions are not supported ('" + file->name() + "')");
+      fail("extensions are not supported ('" + asString(file->name()) + "')");
     }
     for (const pb::Descriptor* d : allMessages(file)) {
       for (int i = 0; i < d->field_count(); ++i) validateField(d->field(i));
@@ -200,10 +230,10 @@ class SchemaValidator {
  private:
   static void validateField(const FD* f) {
     if (f->type() == FD::TYPE_GROUP) {
-      fail("groups are not supported (field '" + f->full_name() + "')");
+      fail("groups are not supported (field '" + asString(f->full_name()) + "')");
     }
     if (f->is_map() && !isSupportedMapKey(f->message_type()->map_key())) {
-      fail("unsupported map key type on field '" + f->full_name() +
+      fail("unsupported map key type on field '" + asString(f->full_name()) +
            "' (integer and string keys are supported)");
     }
   }
@@ -241,8 +271,9 @@ class SchemaValidator {
           if (f->type() != FD::TYPE_MESSAGE || f->is_repeated()) continue;
           const pb::Descriptor* sub = f->message_type();
           if (sub == root) {
-            fail("message '" + root->full_name() +
-                 "' embeds itself by value (through field '" + f->full_name() +
+            fail("message '" + asString(root->full_name()) +
+                 "' embeds itself by value (through field '" +
+                 asString(f->full_name()) +
                  "'); recursive messages are not supported");
           }
           if (visited.insert(sub).second) dfs.push_back(sub);
@@ -260,26 +291,26 @@ class TypeMapper {
  public:
   // Sun identifier for a (possibly nested) message: Outer_Inner
   static std::string messageName(const pb::Descriptor* d) {
-    std::string name = d->name();
+    std::string name = asString(d->name());
     for (const pb::Descriptor* p = d->containing_type(); p;
          p = p->containing_type()) {
-      name = p->name() + "_" + name;
+      name = asString(p->name()) + "_" + name;
     }
     return name;
   }
 
   static std::string enumName(const pb::EnumDescriptor* e) {
-    std::string name = e->name();
+    std::string name = asString(e->name());
     for (const pb::Descriptor* p = e->containing_type(); p;
          p = p->containing_type()) {
-      name = p->name() + "_" + name;
+      name = asString(p->name()) + "_" + name;
     }
     return name;
   }
 
   // Synthesized payload enum for a oneof: <Msg>_<oneof>
   static std::string oneofEnumName(const pb::OneofDescriptor* o) {
-    return messageName(o->containing_type()) + "_" + o->name();
+    return messageName(o->containing_type()) + "_" + asString(o->name());
   }
 
   // Variant name for a oneof member: snake_case field → CamelCase
@@ -459,9 +490,9 @@ class TypeMapper {
   // the first declared)
   static std::string zeroVariant(const pb::EnumDescriptor* e) {
     for (int i = 0; i < e->value_count(); ++i) {
-      if (e->value(i)->number() == 0) return e->value(i)->name();
+      if (e->value(i)->number() == 0) return asString(e->value(i)->name());
     }
-    return e->value(0)->name();
+    return asString(e->value(0)->name());
   }
 
  private:
@@ -515,7 +546,7 @@ void emitEnum(Writer& w, const pb::EnumDescriptor* e) {
   w.open("public enum " + name + " {");
   for (int i = 0; i < e->value_count(); ++i) {
     std::string sep = (i + 1 < e->value_count()) ? "," : "";
-    w.line(e->value(i)->name() + sep);
+    w.line(asString(e->value(i)->name()) + sep);
   }
   w.close();
   w.line();
@@ -525,7 +556,7 @@ void emitEnum(Writer& w, const pb::EnumDescriptor* e) {
   w.open("return match v {");
   for (int i = 0; i < e->value_count(); ++i) {
     std::string sep = (i + 1 < e->value_count()) ? "," : "";
-    w.line(name + "." + e->value(i)->name() + " => " +
+    w.line(name + "." + asString(e->value(i)->name()) + " => " +
            std::to_string(e->value(i)->number()) + sep);
   }
   w.close("};");
@@ -536,7 +567,7 @@ void emitEnum(Writer& w, const pb::EnumDescriptor* e) {
          " {");
   for (int i = 0; i < e->value_count(); ++i) {
     w.line("if (v == " + std::to_string(e->value(i)->number()) + ") { return " +
-           name + "." + e->value(i)->name() + "; }");
+           name + "." + asString(e->value(i)->name()) + "; }");
   }
   w.line("return " + name + "." + T::zeroVariant(e) + ";");
   w.close();
@@ -606,10 +637,12 @@ class MessageGenerator {
 
   void emitFields() {
     forEachPlainField([&](const FD* f) {
-      w_.line("public var " + f->name() + ": " + T::fieldType(f) + ";");
+      w_.line("public var " + asString(f->name()) + ": " + T::fieldType(f) +
+              ";");
     });
     forEachOneof([&](const pb::OneofDescriptor* o) {
-      w_.line("public var " + o->name() + ": " + T::oneofEnumName(o) + ";");
+      w_.line("public var " + asString(o->name()) + ": " +
+              T::oneofEnumName(o) + ";");
     });
     w_.line("public var unknown_fields: Vec<u8>;");
     w_.line("var alloc_: HeapAllocator;");
@@ -631,10 +664,11 @@ class MessageGenerator {
       } else {
         init = T::zeroValue(f);
       }
-      w_.line("this." + f->name() + " = " + init + ";");
+      w_.line("this." + asString(f->name()) + " = " + init + ";");
     });
     forEachOneof([&](const pb::OneofDescriptor* o) {
-      w_.line("this." + o->name() + " = " + T::oneofEnumName(o) + ".NotSet;");
+      w_.line("this." + asString(o->name()) + " = " + T::oneofEnumName(o) +
+              ".NotSet;");
     });
     w_.line("this.unknown_fields = Vec<u8>(alloc, 4);");
     w_.close();
@@ -651,7 +685,7 @@ class MessageGenerator {
   }
 
   void emitEncodeField(const FD* f) {
-    std::string fld = "this." + f->name();
+    std::string fld = "this." + asString(f->name());
     int number = f->number();
     if (f->is_map()) {
       // Each entry is a length-delimited message { 1: key, 2: value }
@@ -704,7 +738,7 @@ class MessageGenerator {
   // Whichever variant is set is written
   void emitEncodeOneof(const pb::OneofDescriptor* o) {
     std::string en = T::oneofEnumName(o);
-    w_.open("match this." + o->name() + " {");
+    w_.open("match this." + asString(o->name()) + " {");
     for (int j = 0; j < o->field_count(); ++j) {
       const FD* f = o->field(j);
       w_.open(en + "." + T::oneofVariantName(f) + "(v) => {");
@@ -758,9 +792,10 @@ class MessageGenerator {
   }
 
   void emitDecodeField(const FD* f) {
-    std::string fld = "msg." + f->name();
+    std::string fld = "msg." + asString(f->name());
     if (const pb::OneofDescriptor* o = f->real_containing_oneof()) {
-      w_.line("msg." + o->name() + " = " + T::oneofEnumName(o) + "." +
+      w_.line("msg." + asString(o->name()) + " = " + T::oneofEnumName(o) +
+              "." +
               T::oneofVariantName(f) + "(" + T::readExpr(f) + ");");
     } else if (f->is_map()) {
       emitDecodeMapEntry(f, fld);
@@ -868,7 +903,7 @@ void emitFile(Writer& w, const pb::FileDescriptor* file,
   w.line("// sha256: " + sha256Hex(sourceText));
   w.line();
 
-  std::string pkg = file->package();
+  std::string pkg = asString(file->package());
   if (!pkg.empty()) w.open("public module " + pkg + " {");
   // `using` inside the module: merged ASTs order modules before other
   // top-level statements, so a file-level `using` would bind too late for
@@ -876,7 +911,7 @@ void emitFile(Writer& w, const pb::FileDescriptor* file,
   w.line("using sun;");
   std::set<std::string> importedPkgs;
   for (int i = 0; i < file->dependency_count(); ++i) {
-    const std::string& dpkg = file->dependency(i)->package();
+    std::string dpkg = asString(file->dependency(i)->package());
     if (!dpkg.empty() && dpkg != pkg && importedPkgs.insert(dpkg).second) {
       w.line("using " + dpkg + ";");
     }
@@ -959,14 +994,14 @@ SynthesizedProtoModule ProtoImporter::import(
     if (tree.VirtualFileToDiskFile(f->name(), &diskPath)) {
       emitFile(w, f, diskPath, readFile(diskPath));
     } else {
-      emitFile(w, f, f->name(), f->name());
+      emitFile(w, f, asString(f->name()), asString(f->name()));
     }
   }
 
   SynthesizedProtoModule out;
   out.sunSource = w.str();
   out.pseudoPath = "<proto:" + protoPath + ">";
-  out.moduleName = file->package();
+  out.moduleName = asString(file->package());
   return out;
 }
 

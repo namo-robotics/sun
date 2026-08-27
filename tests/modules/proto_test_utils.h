@@ -150,9 +150,18 @@ class LibprotobufSchema {
 
  private:
   struct Collector : google::protobuf::compiler::MultiFileErrorCollector {
+    // The virtual was renamed in protobuf 22 (AddError taking std::string
+    // became RecordError taking string_view).
+#if !defined(GOOGLE_PROTOBUF_VERSION) || GOOGLE_PROTOBUF_VERSION >= 4022000
+    void RecordError(absl::string_view, int, int,
+                     absl::string_view m) override {
+      messages.append(m.data(), m.size());
+    }
+#else
     void AddError(const std::string&, int, int, const std::string& m) override {
       messages += m;
     }
+#endif
     std::string messages;
   };
   google::protobuf::compiler::DiskSourceTree tree_;

@@ -407,7 +407,13 @@ TEST(Ffi_Link, loads_library_given_as_an_explicit_path) {
   if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
 
   sun::LinkOptions opts;
+  // The host's shared-library extension: CMake builds the fixture as .dylib
+  // on macOS and .so elsewhere.
+#ifdef __APPLE__
+  opts.libraries = {ffiTestLibDir() + "/libsun_ffi_testlib.dylib"};
+#else
   opts.libraries = {ffiTestLibDir() + "/libsun_ffi_testlib.so"};
+#endif
   auto failed = sun::loadDynamicLibraries(opts);
   EXPECT_TRUE(failed.empty());
 }
