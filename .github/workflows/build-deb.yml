@@ -40,10 +40,7 @@ jobs:
             libzstd-dev \
             devscripts \
             debhelper \
-            build-essential \
-            protobuf-compiler \
-            libprotobuf-dev \
-            libprotoc-dev
+            build-essential
 
       - name: Set up ccache
         uses: hendrikmuhs/ccache-action@v1.2.23

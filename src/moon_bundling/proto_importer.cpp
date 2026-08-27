@@ -68,6 +68,14 @@ std::string asString(const NameLike& name) {
   return std::string(name);
 }
 
+// Whether the field was written `optional` in proto3. Such a field is the
+// sole member of a synthetic oneof, which every protobuf generation can
+// report — has_optional_keyword() itself was removed in newer versions.
+bool isProto3Optional(const pb::FieldDescriptor* f) {
+  return f->containing_oneof() != nullptr &&
+         f->real_containing_oneof() == nullptr;
+}
+
 // ---------------------------------------------------------------------------
 // Diagnostics: proto parse errors surface as one Sun compile error
 // ---------------------------------------------------------------------------
@@ -372,7 +380,7 @@ class TypeMapper {
              elementType(entry->map_value()) + ">";
     }
     if (f->is_repeated()) return "Vec<" + elementType(f) + ">";
-    if (f->has_optional_keyword()) return "Option<" + elementType(f) + ">";
+    if (isProto3Optional(f)) return "Option<" + elementType(f) + ">";
     return elementType(f);
   }
 
@@ -659,7 +667,7 @@ class MessageGenerator {
         init = T::fieldType(f) + "(alloc, 8)";
       } else if (f->is_repeated()) {
         init = T::fieldType(f) + "(alloc, 4)";
-      } else if (f->has_optional_keyword()) {
+      } else if (isProto3Optional(f)) {
         init = "Option.None";
       } else {
         init = T::zeroValue(f);
@@ -703,7 +711,7 @@ class MessageGenerator {
       w_.line("proto_write_bytes(buf, body);");
       w_.close();
       w_.close();
-    } else if (f->has_optional_keyword()) {
+    } else if (isProto3Optional(f)) {
       // Explicit presence: written whenever set, even if zero
       w_.open("match " + fld + " {");
       w_.open("Option.Some(v) => {");
@@ -799,7 +807,7 @@ class MessageGenerator {
               T::oneofVariantName(f) + "(" + T::readExpr(f) + ");");
     } else if (f->is_map()) {
       emitDecodeMapEntry(f, fld);
-    } else if (f->has_optional_keyword()) {
+    } else if (isProto3Optional(f)) {
       w_.line(fld + " = Option.Some(" + T::readExpr(f) + ");");
     } else if (f->is_repeated() && T::isPackable(f)) {
       // Accept both packed (wire 2) and unpacked encodings

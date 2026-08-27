@@ -97,10 +97,12 @@ cd sun
 ./build.sh
 ```
 
-On Linux this expects clang, LLVM 20 dev packages, protobuf (`libprotoc-dev`),
-Ninja and lld. On a Mac, install the dependencies with Homebrew first —
-`brew install llvm@20 protobuf ninja ccache` — and `./build.sh` picks up
-Homebrew's LLVM by itself.
+On Linux this expects clang, LLVM 20 dev packages, Ninja and lld. On a Mac,
+install the dependencies with Homebrew first — `brew install llvm@20 ninja
+ccache` — and `./build.sh` picks up Homebrew's LLVM by itself. Protobuf is
+built into the compiler from a pinned source release (so every platform
+compiles the same version); building offline instead needs `libprotoc-dev`
+and `-DSUN_BUNDLED_PROTOBUF=OFF`.
 
 ### macOS
 
