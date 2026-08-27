@@ -1,6 +1,8 @@
 // Tests that a constructor's first write to a field drops nothing: the field
 // has never held a value, so no deinit runs on its zeroed storage. Every
-// later write to the same field still drops what it replaces.
+// later write to the same field still drops what it replaces — and a write
+// where the compiler cannot tell which of the two it is, because only some of
+// the paths reaching it assigned the field, is rejected.
 
 #include <gtest/gtest.h>
 
@@ -121,6 +123,8 @@ TEST(MemorySafety_Drops_FieldInit, a_later_write_still_drops_what_it_replaces) {
   EXPECT_EQ(value, 2);
 }
 
+// A second write is fine when the field is known to hold a value already:
+// there is no doubt about what it replaces.
 TEST(MemorySafety_Drops_FieldInit, a_second_write_inside_init_drops_the_first) {
   auto value = executeString(withPreamble(R"(
     class Holder {
@@ -139,6 +143,29 @@ TEST(MemorySafety_Drops_FieldInit, a_second_write_inside_init_drops_the_first) {
     }
   )"));
   EXPECT_EQ(value, 2);
+}
+
+// The same class of write is fine for a field that owns nothing: writing a
+// number again releases nothing, so there is no rule to break.
+TEST(MemorySafety_Drops_FieldInit, a_scalar_field_may_be_written_again) {
+  auto value = executeString(withPreamble(R"(
+    class Counter {
+      var total: i32;
+      function init(n: i32) {
+        this.total = 0;
+        for (var i: i32 = 0; i < n; i = i + 1) {
+          this.total = this.total + i;
+        }
+      }
+      function get_total() i32 { return this.total; }
+    }
+
+    function main() i32 {
+      var c = Counter(4);
+      return c.get_total();
+    }
+  )"));
+  EXPECT_EQ(value, 6);
 }
 
 TEST(MemorySafety_Drops_FieldInit, each_branch_of_a_choice_is_a_first_write) {
@@ -169,8 +196,8 @@ TEST(MemorySafety_Drops_FieldInit, each_branch_of_a_choice_is_a_first_write) {
 }
 
 TEST(MemorySafety_Drops_FieldInit,
-     a_write_after_a_branch_that_may_have_written) {
-  auto value = executeString(withPreamble(R"(
+     a_write_after_a_branch_that_may_have_written_is_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(withPreamble(R"(
     class Holder {
       var r: Res;
       function init(flag: bool) {
@@ -181,15 +208,9 @@ TEST(MemorySafety_Drops_FieldInit,
       }
     }
 
-    function main() i32 {
-      if (true) {
-        var h = Holder(true);
-      }
-      return deinits;
-    }
-  )"));
-  // Res(1) is replaced, Res(2) drops at scope exit
-  EXPECT_EQ(value, 2);
+    function main() i32 { var h = Holder(true); return deinits; }
+  )")),
+                                "cannot tell whether field 'r' already holds");
 }
 
 TEST(MemorySafety_Drops_FieldInit,
@@ -266,6 +287,8 @@ TEST(MemorySafety_Drops_FieldInit,
   EXPECT_EQ(value, 2);
 }
 
+// A write before the loop settles the question: every pass through the body
+// replaces a value that is certainly there.
 TEST(MemorySafety_Drops_FieldInit, a_write_in_a_loop_replaces_and_drops) {
   auto value = executeString(withPreamble(R"(
     class Holder {
@@ -293,8 +316,28 @@ TEST(MemorySafety_Drops_FieldInit, a_write_in_a_loop_replaces_and_drops) {
   EXPECT_EQ(value, 3);
 }
 
+// Without that first write, the body's own write cannot tell whether it is
+// the first pass or a later one.
+TEST(MemorySafety_Drops_FieldInit, a_write_only_inside_a_loop_is_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(withPreamble(R"(
+    class Holder {
+      var r: Res;
+      function init() {
+        var i: i32 = 0;
+        while (i < 3) {
+          this.r = Res(i);
+          i = i + 1;
+        }
+      }
+    }
+
+    function main() i32 { var h = Holder(); return deinits; }
+  )")),
+                                "cannot tell whether field 'r' already holds");
+}
+
 TEST(MemorySafety_Drops_FieldInit,
-     a_method_that_fills_the_fields_drops_nothing) {
+     a_method_may_give_a_field_its_first_value) {
   auto value = executeString(withPreamble(R"(
     class Holder {
       var r: Res;
@@ -313,10 +356,12 @@ TEST(MemorySafety_Drops_FieldInit,
       return deinits;
     }
   )"));
-  // fill's write lands on a field that has never held a value. Its body alone
-  // cannot say so, so the storage is checked at run time, found all zero, and
-  // nothing is dropped. One drop, at scope exit.
-  EXPECT_EQ(value, 1);
+  // A method's write always replaces and drops, whoever calls it. During
+  // construction the field is still all zero, the state an owning deinit
+  // treats as nothing to release — this Res counts unconditionally, so the
+  // call on the zeroed storage is visible here: one for it, one at scope
+  // exit.
+  EXPECT_EQ(value, 2);
 }
 
 TEST(MemorySafety_Drops_FieldInit,
@@ -325,6 +370,7 @@ TEST(MemorySafety_Drops_FieldInit,
     class Holder {
       var r: Res;
       function init() {
+        this.r = Res(1);
         this.fill();
       }
       function fill() void {
@@ -340,9 +386,10 @@ TEST(MemorySafety_Drops_FieldInit,
       return deinits;
     }
   )"));
-  // The same write, reached with the field live: the run-time check finds
-  // something there and drops it. Then the drop at scope exit.
-  EXPECT_EQ(value, 2);
+  // The field is settled before fill is ever called, so fill's write always
+  // replaces: Res(1) inside init, Res(7) on the later call, and the last
+  // value at scope exit.
+  EXPECT_EQ(value, 3);
 }
 
 TEST(MemorySafety_Drops_FieldInit,
@@ -386,4 +433,128 @@ TEST(MemorySafety_Drops_FieldInit, generic_class_first_write_drops_nothing) {
     }
   )"));
   EXPECT_EQ(value, 1);
+}
+
+// A throw can leave a try block part-way through, so a catch clause cannot
+// tell whether the block already gave the field its value.
+TEST(MemorySafety_Drops_FieldInit, a_catch_that_reassigns_the_field_is_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(withPreamble(R"(
+    class Boom implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "boom"; }
+    }
+
+    function boom(f: bool) void, IError { if (f) { throw Boom(); } }
+
+    class Holder {
+      var r: Res;
+      function init(f: bool) {
+        try { this.r = Res(1); boom(f); } catch (e: Boom) { this.r = Res(2); }
+      }
+    }
+
+    function main() i32 { var h = Holder(true); return deinits; }
+  )")),
+                                "cannot tell whether field 'r' already holds");
+}
+
+// Settling the field before the try leaves nothing in doubt: both the try and
+// the catch replace a value that is certainly there.
+TEST(MemorySafety_Drops_FieldInit, a_field_settled_before_a_try_is_certain) {
+  auto value = executeString(withPreamble(R"(
+    class Boom implements IError {
+      function init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "boom"; }
+    }
+
+    function boom(f: bool) void, IError { if (f) { throw Boom(); } }
+
+    class Holder {
+      var r: Res;
+      function init(f: bool) {
+        this.r = Res(0);
+        try { boom(f); this.r = Res(1); } catch (e: Boom) { this.r = Res(2); }
+      }
+    }
+
+    function main() i32 {
+      if (true) {
+        var h = Holder(true);
+      }
+      return deinits;
+    }
+  )"));
+  // Res(0) replaced in the catch, then Res(2) at scope exit
+  EXPECT_EQ(value, 2);
+}
+
+// The walk goes into the methods a constructor hands work to. One that calls
+// itself round again cannot be followed, so the object has to be whole first.
+TEST(MemorySafety_Drops_FieldInit, a_self_recursive_filler_is_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(withPreamble(R"(
+    class Holder {
+      var r: Res;
+      function init() {
+        this.fill(2);
+      }
+      function fill(n: i32) void {
+        if (n > 0) { this.fill(n - 1); }
+        this.r = Res(n);
+      }
+    }
+
+    function main() i32 { var h = Holder(); return deinits; }
+  )")),
+                                "Cannot call method 'fill'");
+}
+
+// A method may still assign fields that own nothing on the constructor's
+// behalf — a write to a number releases nothing, so both callers agree on
+// what it means.
+TEST(MemorySafety_Drops_FieldInit, a_method_may_settle_scalar_fields) {
+  auto value = executeString(withPreamble(R"(
+    class Shape {
+      var width: i32;
+      var height: i32;
+      function init(w: i32, h: i32) {
+        this.resize(w, h);
+      }
+      function resize(w: i32, h: i32) void {
+        this.width = w;
+        this.height = h;
+      }
+      function area() i32 { return this.width * this.height; }
+    }
+
+    function main() i32 {
+      var s = Shape(3, 4);
+      return s.area();
+    }
+  )"));
+  EXPECT_EQ(value, 12);
+}
+
+// Constructors are checked after every method body is analyzed, so what the
+// walk finds inside a helper does not depend on declaration order: a bound
+// method reference is reported as one even when the helper is declared after
+// the constructor.
+TEST(MemorySafety_Drops_FieldInit,
+     helper_diagnostics_do_not_depend_on_declaration_order) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(withPreamble(R"(
+    class Holder {
+      var r: Res;
+      function init() { this.fill(); }
+      function fill() void {
+        var cb = this.tick;
+        this.r = Res(1);
+        cb();
+      }
+      function tick() void { }
+    }
+
+    function main() i32 { var h = Holder(); return deinits; }
+  )")),
+                                "Cannot take a reference to method 'tick'");
 }

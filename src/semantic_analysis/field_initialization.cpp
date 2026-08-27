@@ -1,28 +1,37 @@
 // field_initialization.cpp — What is initialized where inside a constructor
 //
-// The walk carries two views of the fields at each point in a body:
+// The walk carries one view of the object: where each field stands at this
+// point in the body.
 //
-//   - the fields assigned on EVERY path that reaches here. Reading a field,
-//     or calling a method that reads one, is allowed only once this covers
-//     the field in question. Branches intersect, and a loop body contributes
-//     nothing, since it may run no times at all.
-//   - the fields assigned on SOME path that reaches here. A write to one of
-//     these may have to drop what is there. Branches union, and a loop body
-//     is seeded with everything it writes, since it may run again.
+//   Uninitialized — no path reaching here has assigned it
+//   Initialized   — every path reaching here has assigned it
+//   Unknown       — some paths have and some have not
 //
-// Between them the two answer what a write does to the value that was there:
-// in neither set, the write starts the field's life and drops nothing; in
-// both, it replaces a value and drops it; in one but not the other, the walk
-// cannot tell, and codegen decides at run time by looking at the storage.
+// A choice — the arms of an `if`, a ternary, a `match`, a `try` and its
+// `catch` clauses — walks each alternative from the state before the choice
+// and merges the ends: where the alternatives agree the answer stands, where
+// they disagree it becomes Unknown. A loop is walked until its state settles,
+// so a write in the body sees what a second pass would see as well as a first.
 //
-// A constructor may hand the work to its own methods. Each such method is
-// walked the same way to learn what it assigns and what it needs assigned
-// before it runs; the call then discharges the constructor's obligation for
-// the fields the method always assigns.
+// Three things are errors: reading a field, or the object as a whole, before
+// it is Initialized; writing a field that is Unknown, because the write can
+// neither start the field's life nor drop what it replaces; and reaching the
+// end of a path with a field still not Initialized.
+//
+// A constructor may hand work to its own methods, including giving fields
+// their first values. The walk follows the call into the method's body with
+// the state as it stands at the call, so reads in there are checked against
+// what is actually assigned, and what the method assigns counts for the
+// constructor. A method's write always replaces and drops, whoever calls it:
+// before a field's first value the storage is all zero, the state an owning
+// deinit must treat as nothing to release, so the drop is a no-op there.
+// Lambdas are not walked at all — they run later, not here, and making one
+// that touches `this` already requires the whole object.
 
 #include "semantic_analysis/field_initialization.h"
 
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -43,41 +52,50 @@ bool isThis(const ExprAST* expr) {
 }
 
 /**
- * Keeps only the names that are in both sets.
+ * Does `this` appear anywhere inside this expression?
  */
-void intersectInto(std::set<std::string>& target,
-                   const std::set<std::string>& other) {
-  for (auto it = target.begin(); it != target.end();) {
-    it = other.count(*it) ? std::next(it) : target.erase(it);
+bool usesThis(const ExprAST& expr) {
+  if (expr.getType() == ASTNodeType::THIS) return true;
+  bool found = false;
+  forEachChild(expr, [&found](const ExprAST& child) {
+    if (!found) found = usesThis(child);
+  });
+  return found;
+}
+
+/**
+ * Where a field stands at a point in the walk.
+ */
+enum class FieldStatus { Uninitialized, Initialized, Unknown };
+
+using FieldStates = std::map<std::string, FieldStatus>;
+
+/**
+ * Folds the state at the end of one alternative into the state that follows a
+ * choice: where the two agree the answer stands, where they disagree nothing
+ * is known any more.
+ */
+void mergeInto(FieldStates& target, const FieldStates& other) {
+  for (auto& [name, status] : target) {
+    auto found = other.find(name);
+    if (found == other.end() || found->second != status) {
+      status = FieldStatus::Unknown;
+    }
   }
 }
 
 /**
- * What one method of the class does to the fields, seen from a caller that
- * does not know which of them hold values yet.
- */
-struct MethodSummary {
-  // Assigned on every path through the method
-  std::set<std::string> assigns;
-  // Assigned on some path through the method
-  std::set<std::string> mayAssign;
-  // Must already hold a value when the method is called
-  std::set<std::string> needs;
-};
-
-class BodyWalk;
-
-/**
- * The fields and methods of one class, and the summaries worked out for the
- * methods a constructor hands work to.
+ * The fields and methods of one class.
  */
 class ClassInitInfo {
  public:
   ClassInitInfo(const ClassType& classType,
                 const std::vector<ClassMethodDecl>& methods)
       : classType_(classType), methods_(methods) {
-    for (const auto& field : classType.getFields())
+    for (const auto& field : classType.getFields()) {
       allFields_.insert(field.name);
+      if (typeNeedsDrop(field.type)) owningFields_.insert(field.name);
+    }
   }
 
   const ClassType& classType() const { return classType_; }
@@ -86,40 +104,44 @@ class ClassInitInfo {
     return allFields_.count(name) != 0;
   }
 
+  // True when the field holds something that has to be released, so writing
+  // it again would have to drop what was there. A field holding a number
+  // releases nothing, so it is never in doubt.
+  bool fieldOwns(const std::string& name) const {
+    return owningFields_.count(name) != 0;
+  }
+
   /**
-   * What calling this method of the class does to the fields. A method the
-   * class does not declare here, or one that calls itself round again, is
-   * taken to need everything and to promise nothing.
+   * The body of one of the class's own methods, or null when the class does
+   * not declare it or carries only its signature, as a precompiled bundle
+   * does.
    */
-  const MethodSummary& summaryOf(const std::string& methodName);
+  const FunctionAST* methodBody(const std::string& name) const {
+    for (const auto& method : methods_) {
+      if (method.function && method.function->getProto().getName() == name &&
+          method.function->hasBody()) {
+        return method.function.get();
+      }
+    }
+    return nullptr;
+  }
 
  private:
   const ClassType& classType_;
   const std::vector<ClassMethodDecl>& methods_;
   std::set<std::string> allFields_;
-  std::map<std::string, MethodSummary> summaries_;
-  std::set<std::string> inProgress_;
-
-  /**
-   * A summary that assumes the worst: the method needs every field to hold a
-   * value already, and may write to any of them.
-   */
-  MethodSummary unknownSummary() const { return {{}, allFields_, allFields_}; }
+  std::set<std::string> owningFields_;
 };
 
 /**
- * Walks one body in source order, tagging each write to a field and either
- * reporting what the body may not do (a constructor) or noting what it needs
- * from its caller (a method a constructor hands work to).
+ * Walks a constructor body in source order, tagging each write to a field and
+ * reporting what the body may not do.
  */
 class BodyWalk {
  public:
-  BodyWalk(ClassInitInfo& info, bool isConstructor)
-      : info_(info), isConstructor_(isConstructor) {
-    if (!isConstructor) {
-      // A method cannot see what its caller assigned, so every field may
-      // already hold a value and none is guaranteed to
-      assignedOnSomePath_ = info.allFields();
+  explicit BodyWalk(ClassInitInfo& info) : info_(info) {
+    for (const auto& name : info.allFields()) {
+      states_[name] = FieldStatus::Uninitialized;
     }
   }
 
@@ -129,65 +151,81 @@ class BodyWalk {
   void walk(const ExprAST& expr);
 
   /**
-   * Reports the fields still unassigned where a constructor body ends.
+   * Reports the fields still without a value where a constructor body ends.
    * Nothing is reported when control cannot get there.
    */
   void requireEveryFieldAtEnd(const ExprAST& body, std::optional<Position> loc);
 
-  /**
-   * What the walk learned, for a method a constructor hands work to.
-   */
-  MethodSummary summary() const {
-    return {assignedOnEveryPath_, assignedOnSomePath_, needs_};
-  }
-
  private:
   ClassInitInfo& info_;
-  bool isConstructor_;
-  // Fields assigned on every path to the current point
-  std::set<std::string> assignedOnEveryPath_;
-  // Fields assigned on some path to the current point
-  std::set<std::string> assignedOnSomePath_;
-  // Fields this body needs its caller to have assigned already
-  std::set<std::string> needs_;
+  // Where every field stands at the current point
+  FieldStates states_;
+  // Methods being walked further up the call chain, so a cycle is not
+  // followed round again
+  std::set<std::string> inProgress_;
+  // True while the walk is inside the body of a method the constructor
+  // called. Such a body also runs after construction, on whole objects, so
+  // its writes must mean the same thing there as here.
+  bool inMethodBody_ = false;
 
   std::string className() const { return info_.classType().getDisplayName(); }
 
-  /**
-   * The name of a field the object is still missing, or an empty string once
-   * every field has a value.
-   */
-  std::string firstUnassignedField() const;
+  FieldStatus statusOf(const std::string& field) const {
+    auto found = states_.find(field);
+    return found == states_.end() ? FieldStatus::Unknown : found->second;
+  }
 
   /**
-   * Records that the body reaches a field's value here. In a constructor
-   * that is an error unless the field has one; in a method it becomes
-   * something the caller has to have done.
+   * The name of a field that does not certainly hold a value, or an empty
+   * string once every field does.
+   */
+  std::string firstFieldWithoutValue() const;
+
+  /**
+   * Records that the body reaches a field's value here, which is an error
+   * unless the field certainly has one.
    */
   void noteFieldRead(const std::string& field, const std::string& what,
                      std::optional<Position> loc);
 
   /**
-   * Records that the body reaches the whole object here — every field it has
-   * not assigned itself needs a value.
+   * Records that the body reaches the whole object here, which needs every
+   * field to hold a value.
    */
   void noteObjectUse(const std::string& what, std::optional<Position> loc);
 
   /**
-   * Handles `this.method(...)`: what the method needs, and what it assigns
-   * on the caller's behalf.
+   * Tags one write to a field and moves the field to Initialized.
+   */
+  void walkFieldWrite(const MemberAssignmentAST& assign,
+                      const std::string& field);
+
+  /**
+   * Handles `this.method(...)` by walking the method's own body from here.
    */
   void walkCallOnThis(const CallExprAST& call, const std::string& methodName);
+
+  /**
+   * Reports a write to a field that only some of the paths reaching it have
+   * assigned, so whether it holds a value is not known.
+   */
+  void rejectUncertainAssignment(const std::string& field,
+                                 std::optional<Position> loc);
 
   void walkChildren(const ExprAST& expr);
 
   /**
-   * Walks the alternatives of a choice — the arms of an `if`, a ternary, a
-   * `match`, or a `try` and its `catch` clauses. Each starts from the state
-   * before the choice. A null entry stands for a path that runs nothing, as
-   * an `if` without an `else` has.
+   * Walks the alternatives of a choice — the arms of an `if`, a ternary or a
+   * `match`. Each starts from the state before the choice. A null entry
+   * stands for a path that runs nothing, as an `if` without an `else` has.
    */
   void walkBranches(const std::vector<const ExprAST*>& branches);
+
+  /**
+   * Walks a `try` and its `catch` clauses. A throw can leave the try block
+   * part-way through, so a clause finds whatever it had assigned by then.
+   */
+  void walkTryCatch(const TryCatchExprAST& tryCatch);
 
   /**
    * Walks a loop: `once` runs before the first test, `body` and `then` may
@@ -197,52 +235,22 @@ class BodyWalk {
                 const ExprAST* then);
 
   /**
-   * Treats every field written anywhere inside as assigned on some path.
-   * Used for a body that can run more than once, and for a `try` block, which
-   * a `catch` clause may pick up part-way through.
+   * Gives up on every field written anywhere inside, for a `try` block that a
+   * `catch` clause may pick up part-way through.
    */
-  void noteEveryWrittenField(const ExprAST& expr);
+  void forgetEveryWrittenField(const ExprAST& expr);
 };
 
-const MethodSummary& ClassInitInfo::summaryOf(const std::string& methodName) {
-  auto found = summaries_.find(methodName);
-  if (found != summaries_.end()) return found->second;
-
-  const FunctionAST* body = nullptr;
-  for (const auto& method : methods_) {
-    if (method.function &&
-        method.function->getProto().getName() == methodName &&
-        method.function->hasBody()) {
-      body = method.function.get();
-      break;
-    }
-  }
-  // A method whose body is not here, or one already being walked further up
-  // the chain, tells us nothing we can lean on
-  if (!body || !inProgress_.insert(methodName).second) {
-    return summaries_.emplace(methodName, unknownSummary()).first->second;
-  }
-
-  BodyWalk walk(*this, /*isConstructor=*/false);
-  walk.walk(body->getBody());
-  inProgress_.erase(methodName);
-  return summaries_.emplace(methodName, walk.summary()).first->second;
-}
-
-std::string BodyWalk::firstUnassignedField() const {
+std::string BodyWalk::firstFieldWithoutValue() const {
   for (const auto& field : info_.classType().getFields()) {
-    if (!assignedOnEveryPath_.count(field.name)) return field.name;
+    if (statusOf(field.name) != FieldStatus::Initialized) return field.name;
   }
   return "";
 }
 
 void BodyWalk::noteFieldRead(const std::string& field, const std::string& what,
                              std::optional<Position> loc) {
-  if (assignedOnEveryPath_.count(field)) return;
-  if (!isConstructor_) {
-    needs_.insert(field);
-    return;
-  }
+  if (statusOf(field) == FieldStatus::Initialized) return;
   logAndThrowError("Field '" + field + "' of '" + className() + "' is " + what +
                        " before it is assigned. A constructor assigns a field "
                        "before reading it back",
@@ -251,14 +259,8 @@ void BodyWalk::noteFieldRead(const std::string& field, const std::string& what,
 
 void BodyWalk::noteObjectUse(const std::string& what,
                              std::optional<Position> loc) {
-  std::string missing = firstUnassignedField();
+  std::string missing = firstFieldWithoutValue();
   if (missing.empty()) return;
-  if (!isConstructor_) {
-    for (const auto& field : info_.allFields()) {
-      if (!assignedOnEveryPath_.count(field)) needs_.insert(field);
-    }
-    return;
-  }
   logAndThrowError("Cannot " + what + " in the constructor of '" + className() +
                        "' while field '" + missing +
                        "' has no value yet. A constructor assigns every field, "
@@ -267,30 +269,79 @@ void BodyWalk::noteObjectUse(const std::string& what,
                    loc);
 }
 
+void BodyWalk::rejectUncertainAssignment(const std::string& field,
+                                         std::optional<Position> loc) {
+  logAndThrowError(
+      "Constructor of '" + className() + "' cannot tell whether field '" +
+          field +
+          "' already holds a value here: some paths reaching this write "
+          "assigned it and some did not, so the write can neither start its "
+          "life nor drop what it replaces. Assign the field on every path "
+          "before this write, or on none of them: give each branch its own "
+          "assignment, or settle the value in a local and assign it once",
+      loc);
+}
+
+void BodyWalk::walkFieldWrite(const MemberAssignmentAST& assign,
+                              const std::string& field) {
+  // The value is produced before the store, so it is walked first
+  walk(*assign.getValue());
+
+  FieldStatus status = statusOf(field);
+
+  if (!info_.fieldOwns(field)) {
+    // Nothing to release either way, so the tag does not matter
+    assign.setFieldWriteKind(FieldWriteKind::ReplacesValue);
+  } else if (inMethodBody_) {
+    // A method's write means one thing for every caller: it replaces what
+    // the field holds and drops it. During construction, before the field's
+    // first value, the storage is all zero — the state an owning deinit must
+    // treat as nothing to release — so the same write is safe to come first,
+    // and it discharges the constructor's obligation.
+    assign.setFieldWriteKind(FieldWriteKind::ReplacesValue);
+  } else if (status == FieldStatus::Unknown) {
+    rejectUncertainAssignment(field, assign.getLocation());
+  } else if (status == FieldStatus::Uninitialized) {
+    assign.setFieldWriteKind(FieldWriteKind::StartsLife);
+  } else {
+    assign.setFieldWriteKind(FieldWriteKind::ReplacesValue);
+  }
+
+  states_[field] = FieldStatus::Initialized;
+}
+
 void BodyWalk::walkCallOnThis(const CallExprAST& call,
                               const std::string& methodName) {
   for (const auto& arg : call.getArgs()) {
     if (arg) walk(*arg);
   }
 
-  // Once the object is whole this is an ordinary call, and the method is an
-  // ordinary method: nothing to work out, nothing to tag
-  if (firstUnassignedField().empty()) return;
+  // Once the object is whole this is an ordinary call on an ordinary method:
+  // nothing left to check, and its writes replace values that are there
+  if (firstFieldWithoutValue().empty()) return;
 
-  const MethodSummary& summary = info_.summaryOf(methodName);
-  for (const auto& field : summary.needs) {
-    noteFieldRead(field, "read by method '" + methodName + "'",
-                  call.getLocation());
+  // Not whole yet: follow the call and walk the method's body with the state
+  // as it stands here. A body that is not here (a precompiled bundle carries
+  // signatures only), or one already being walked further up the chain,
+  // cannot be followed — it could reach anything, so it needs the whole
+  // object.
+  const FunctionAST* body = info_.methodBody(methodName);
+  if (!body || !inProgress_.insert(methodName).second) {
+    noteObjectUse("call method '" + methodName + "'", call.getLocation());
+    return;
   }
-  assignedOnEveryPath_.insert(summary.assigns.begin(), summary.assigns.end());
-  assignedOnSomePath_.insert(summary.mayAssign.begin(),
-                             summary.mayAssign.end());
+
+  bool wasInMethod = inMethodBody_;
+  inMethodBody_ = true;
+  walk(body->getBody());
+  inMethodBody_ = wasInMethod;
+  inProgress_.erase(methodName);
 }
 
 void BodyWalk::requireEveryFieldAtEnd(const ExprAST& body,
                                       std::optional<Position> loc) {
   if (exprDiverges(body)) return;
-  std::string missing = firstUnassignedField();
+  std::string missing = firstFieldWithoutValue();
   if (missing.empty()) return;
   logAndThrowError(
       "Constructor of '" + className() + "' can finish with field '" + missing +
@@ -304,32 +355,55 @@ void BodyWalk::walkChildren(const ExprAST& expr) {
 }
 
 void BodyWalk::walkBranches(const std::vector<const ExprAST*>& branches) {
-  std::set<std::string> everyBefore = assignedOnEveryPath_;
-  std::set<std::string> someBefore = assignedOnSomePath_;
-  std::set<std::string> someAfter = assignedOnSomePath_;
-  std::set<std::string> everyAfter;
-  bool anyFallsThrough = false;
+  FieldStates before = states_;
+  std::optional<FieldStates> after;
 
   for (const ExprAST* branch : branches) {
-    assignedOnEveryPath_ = everyBefore;
-    assignedOnSomePath_ = someBefore;
-    // A branch that returns or throws never reaches the code after the
-    // choice, so neither what it assigned nor what it left behind counts
+    states_ = before;
     if (branch) {
       walk(*branch);
+      // A branch that returns or throws never reaches the code after the
+      // choice, so where it left the fields does not count
       if (exprDiverges(*branch)) continue;
     }
-    someAfter.insert(assignedOnSomePath_.begin(), assignedOnSomePath_.end());
-    if (!anyFallsThrough) {
-      everyAfter = assignedOnEveryPath_;
-      anyFallsThrough = true;
+    if (after) {
+      mergeInto(*after, states_);
     } else {
-      intersectInto(everyAfter, assignedOnEveryPath_);
+      after = states_;
     }
   }
 
-  assignedOnSomePath_ = std::move(someAfter);
-  assignedOnEveryPath_ = anyFallsThrough ? std::move(everyAfter) : everyBefore;
+  states_ = after ? std::move(*after) : std::move(before);
+}
+
+void BodyWalk::walkTryCatch(const TryCatchExprAST& tryCatch) {
+  FieldStates before = states_;
+
+  states_ = before;
+  walk(tryCatch.getTryBlock());
+  std::optional<FieldStates> after;
+  if (!exprDiverges(tryCatch.getTryBlock())) after = states_;
+
+  // A throw can leave the try block part-way through, so a clause picks up
+  // with whatever the block had assigned by then
+  states_ = before;
+  forgetEveryWrittenField(tryCatch.getTryBlock());
+  FieldStates atCatch = std::move(states_);
+
+  for (const auto& clause : tryCatch.getCatchClauses()) {
+    states_ = atCatch;
+    if (clause.body) {
+      walk(*clause.body);
+      if (exprDiverges(*clause.body)) continue;
+    }
+    if (after) {
+      mergeInto(*after, states_);
+    } else {
+      after = states_;
+    }
+  }
+
+  states_ = after ? std::move(*after) : std::move(before);
 }
 
 void BodyWalk::walkLoop(const std::vector<const ExprAST*>& once,
@@ -338,43 +412,55 @@ void BodyWalk::walkLoop(const std::vector<const ExprAST*>& once,
     if (expr) walk(*expr);
   }
   if (!body) return;
-  // The body may run no times at all, so nothing it assigns is guaranteed
-  // afterwards; it may also run again, so no write in it starts a field's life
-  std::set<std::string> guaranteed = assignedOnEveryPath_;
-  noteEveryWrittenField(*body);
-  walk(*body);
-  if (then) walk(*then);
-  assignedOnEveryPath_ = std::move(guaranteed);
+
+  // The body may run any number of times, including none, so it is walked
+  // until the state at the top of the loop stops moving: the pass after the
+  // first is what tells a write in the body that an earlier pass may already
+  // have made it. Merging only ever gives up certainty, so this settles at
+  // once for a field the loop cannot change and after one more round for the
+  // rest.
+  FieldStates atLoopTop = states_;
+  for (int round = 0; round < 4; ++round) {
+    states_ = atLoopTop;
+    walk(*body);
+    if (then) walk(*then);
+
+    FieldStates settled = atLoopTop;
+    mergeInto(settled, states_);
+    if (settled == atLoopTop) break;
+    atLoopTop = std::move(settled);
+  }
+  states_ = std::move(atLoopTop);
 }
 
-void BodyWalk::noteEveryWrittenField(const ExprAST& expr) {
+void BodyWalk::forgetEveryWrittenField(const ExprAST& expr) {
   if (expr.getType() == ASTNodeType::MEMBER_ASSIGNMENT) {
     const auto& assign = static_cast<const MemberAssignmentAST&>(expr);
-    if (isThis(assign.getObject())) {
-      assignedOnSomePath_.insert(assign.getMemberName());
+    if (isThis(assign.getObject()) && info_.isField(assign.getMemberName())) {
+      FieldStatus& status = states_[assign.getMemberName()];
+      // A write can only ever give a field a value, so one that certainly has
+      // one still does
+      if (status == FieldStatus::Uninitialized) status = FieldStatus::Unknown;
     }
   }
-  forEachChild(expr,
-               [this](const ExprAST& child) { noteEveryWrittenField(child); });
+  forEachChild(
+      expr, [this](const ExprAST& child) { forgetEveryWrittenField(child); });
 }
 
 void BodyWalk::walk(const ExprAST& expr) {
+  // Once every field holds a value the constructor is in its second phase,
+  // and the rest of the body behaves like any method body: every read is
+  // fine, and every write replaces and drops — the meaning a write carries
+  // unless this walk says otherwise. Nothing can un-assign a field, so there
+  // is nothing left to check or tag.
+  if (firstFieldWithoutValue().empty()) return;
+
   switch (expr.getType()) {
     case ASTNodeType::MEMBER_ASSIGNMENT: {
       const auto& assign = static_cast<const MemberAssignmentAST&>(expr);
       const std::string& field = assign.getMemberName();
       if (isThis(assign.getObject()) && info_.isField(field)) {
-        // The value is produced before the store, so it is walked first
-        walk(*assign.getValue());
-        if (!assignedOnSomePath_.count(field)) {
-          assign.setFieldWriteKind(FieldWriteKind::StartsLife);
-        } else if (assignedOnEveryPath_.count(field)) {
-          assign.setFieldWriteKind(FieldWriteKind::ReplacesValue);
-        } else {
-          assign.setFieldWriteKind(FieldWriteKind::MayReplaceValue);
-        }
-        assignedOnSomePath_.insert(field);
-        assignedOnEveryPath_.insert(field);
+        walkFieldWrite(assign, field);
         return;
       }
       break;
@@ -412,8 +498,9 @@ void BodyWalk::walk(const ExprAST& expr) {
     case ASTNodeType::RETURN: {
       const auto& ret = static_cast<const ReturnExprAST&>(expr);
       if (ret.getValue()) walk(*ret.getValue());
-      if (!isConstructor_) return;
-      std::string missing = firstUnassignedField();
+      // Only the constructor's own returns owe the whole object
+      if (inMethodBody_) return;
+      std::string missing = firstFieldWithoutValue();
       if (!missing.empty()) {
         logAndThrowError("Constructor of '" + className() +
                              "' returns with field '" + missing +
@@ -445,15 +532,7 @@ void BodyWalk::walk(const ExprAST& expr) {
       return;
     }
     case ASTNodeType::TRY_CATCH: {
-      const auto& tryCatch = static_cast<const TryCatchExprAST&>(expr);
-      // A throw can leave the try block part-way through, so a catch clause
-      // may find fields the try block assigned
-      noteEveryWrittenField(tryCatch.getTryBlock());
-      std::vector<const ExprAST*> paths{&tryCatch.getTryBlock()};
-      for (const auto& clause : tryCatch.getCatchClauses()) {
-        paths.push_back(clause.body.get());
-      }
-      walkBranches(paths);
+      walkTryCatch(static_cast<const TryCatchExprAST&>(expr));
       return;
     }
     case ASTNodeType::WHILE_LOOP: {
@@ -473,11 +552,17 @@ void BodyWalk::walk(const ExprAST& expr) {
       return;
     }
     case ASTNodeType::LAMBDA:
-    case ASTNodeType::FUNCTION:
-      // A body that is called later, perhaps many times: no write in it
-      // starts a field's life
-      noteEveryWrittenField(expr);
-      break;
+    case ASTNodeType::FUNCTION: {
+      // A lambda runs later, not here, so its body is not part of this walk.
+      // Making one that touches the object is itself a use of `this`, so it
+      // needs the object whole — and then every write in it replaces a value,
+      // which is what a write means unless this walk says otherwise.
+      if (usesThis(expr)) {
+        noteObjectUse("capture 'this' in a lambda or nested function",
+                      expr.getLocation());
+      }
+      return;
+    }
     default:
       break;
   }
@@ -491,7 +576,7 @@ void checkFieldInitialization(const FunctionAST& constructor,
                               const std::vector<ClassMethodDecl>& methods) {
   if (!constructor.hasBody()) return;
   ClassInitInfo info(classType, methods);
-  BodyWalk walk(info, /*isConstructor=*/true);
+  BodyWalk walk(info);
   walk.walk(constructor.getBody());
   walk.requireEveryFieldAtEnd(constructor.getBody(), constructor.getLocation());
 }

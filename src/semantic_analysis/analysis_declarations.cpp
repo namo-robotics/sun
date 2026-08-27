@@ -165,11 +165,16 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
     proto.setQualifiedName(
         sun::QualifiedName(methodScopePath, proto.getName()));
     analyzeFunction(*methodDecl.function);
-    // A constructor assigns every field before the object may be used, and
-    // its first write to a field drops nothing. A precompiled class carries
-    // signatures without bodies; its constructors were checked when the
-    // bundle was built.
-    if (methodDecl.isConstructor && !classDef.isPrecompiled()) {
+  }
+
+  // PASS 3: check constructors, now that every method body is analyzed — the
+  // walk follows constructor calls into helper bodies, and what it finds
+  // there (a bound method reference, say) is only marked once the helper has
+  // been analyzed. A precompiled class carries signatures without bodies; its
+  // constructors were checked when the bundle was built.
+  if (!classDef.isPrecompiled()) {
+    for (const auto& methodDecl : classDef.getMethods()) {
+      if (!methodDecl.isConstructor) continue;
       sun::checkFieldInitialization(*methodDecl.function, *classType,
                                     classDef.getMethods());
     }

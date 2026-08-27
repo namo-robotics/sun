@@ -12,11 +12,19 @@
 // function entry. Leaving a scope drops what it still owns, innermost first,
 // in reverse order of acquisition. Moving a value out marks it so its drop
 // becomes a no-op.
+//
+// A move inside one arm of a branch is a move on that path only, so the paths
+// beside it still own the value. Such a value gets a drop flag: a boolean in
+// the frame saying whether this function still owns it, set where it became
+// owned, cleared where the move happens, and read by the drop. The flag sits
+// beside the value, never inside it, so class layout is untouched. Moves that
+// are not inside a branch stay a compile-time decision costing nothing.
 
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Value.h>
+#include <llvm/IR/ValueHandle.h>
 
 #include <map>
 #include <set>
@@ -55,6 +63,20 @@ struct ClassAllocation {
   std::string varName;  // Variable name (for debugging)
   bool moved;           // If true, ownership transferred - don't drop
   sun::TypePtr type;    // Class or payload-enum type
+
+  // Set once the value turns out to be moved inside a branch, so whether this
+  // frame still owns it is only known at run time: an i1 slot the drop reads.
+  // Null while moved-ness is the same on every path.
+  llvm::AllocaInst* dropFlag = nullptr;
+
+  // Where the value became owned, so a drop flag can be set there if one is
+  // ever needed: an instruction to insert after, or the block to insert at the
+  // top of. Weak, because it is only consulted if a branch move shows up.
+  llvm::WeakTrackingVH ownedAt;
+
+  // How many branch arms were open when the value became owned. A move nested
+  // deeper than this happens on some paths only.
+  unsigned branchDepth = 0;
 };
 
 /**
@@ -88,6 +110,29 @@ class ScopeManager {
 
   ScopeManager(const ScopeManager&) = delete;
   ScopeManager& operator=(const ScopeManager&) = delete;
+
+  // ---------------------------------------------------------------
+  // Branch arms
+  // ---------------------------------------------------------------
+
+  /**
+   * Marks the code emitted while it is alive as one arm of a branch: a side of
+   * an if/else, a match arm, a loop body, a try or catch block, the right side
+   * of `and`/`or`. A value moved inside an arm is moved on that path only, so
+   * it is given a drop flag and the paths beside it still drop it.
+   */
+  class BranchArm {
+   public:
+    explicit BranchArm(ScopeManager& scopes) : scopes_(scopes) {
+      ++scopes_.branchDepth_;
+    }
+    ~BranchArm() { --scopes_.branchDepth_; }
+    BranchArm(const BranchArm&) = delete;
+    BranchArm& operator=(const BranchArm&) = delete;
+
+   private:
+    ScopeManager& scopes_;
+  };
 
   // ---------------------------------------------------------------
   // The stack itself
@@ -191,7 +236,9 @@ class ScopeManager {
     }
   }
 
-  // Mark a class allocation as moved/deinited (don't auto-drop at scope exit)
+  // Mark a class allocation as moved/deinited (don't auto-drop at scope exit).
+  // Inside a branch arm the value is only moved on this path, so it also gets
+  // a drop flag and its drop becomes a run-time decision.
   void markClassAllocationAsDeinited(llvm::Value* alloca);
 
   // Mark an owned allocation as moved (ownership transferred, don't free)
@@ -222,15 +269,6 @@ class ScopeManager {
   void emitDropInPlace(const sun::TypePtr& type, llvm::Value* ptr,
                        const std::string& name = "drop");
 
-  // As emitDropInPlace, but only when the storage at `ptr` is not all zero.
-  // Used where the compiler cannot tell whether a place holds a value yet:
-  // all-zero is what a field holds before anything is written to it, and what
-  // a moved-from value is left in, and an owning type has to treat that state
-  // as nothing to release. Skipping the drop is what a well-behaved deinit
-  // would do anyway.
-  void emitDropUnlessZeroed(const sun::TypePtr& type, llvm::Value* ptr,
-                            const std::string& name = "drop");
-
   // Call classType's deinit() on receiver if it defines one (declares the
   // external on demand).
   void emitDeinitCall(const sun::ClassType* classType, llvm::Value* receiver);
@@ -258,9 +296,21 @@ class ScopeManager {
   void emitEnumDrop(sun::EnumType& enumType, llvm::Value* storagePtr);
 
  private:
+  // Give `alloc` a drop flag if it has none: an i1 slot that starts false in
+  // the entry block and is set where the value became owned, so it is true
+  // exactly when this frame still owns the value.
+  void ensureDropFlag(ClassAllocation& alloc);
+
+  // Drop `alloc` only if its drop flag says this frame still owns it, then
+  // clear the flag.
+  void emitFlaggedDrop(const ClassAllocation& alloc);
+
   CodegenState& state_;
   CodegenVisitor& gen_;
   CodegenContext& ctx;
 
   std::vector<CodegenScope> scopes_;
+
+  // How many branch arms are currently open (see BranchArm)
+  unsigned branchDepth_ = 0;
 };

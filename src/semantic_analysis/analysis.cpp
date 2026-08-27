@@ -539,9 +539,13 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
     // Analyze extension method bodies
     for (const auto& methodDecl : classDef.getMethods()) {
       analyzeFunction(*methodDecl.function);
-      // An extension may add another constructor, which owes the class every
-      // field like any other
-      if (methodDecl.isConstructor && !classDef.isPrecompiled()) {
+    }
+    // The parser rejects constructors in a partial class, so this is only a
+    // backstop — and like the primary path it runs after every body is
+    // analyzed, since the walk follows calls into them
+    if (!classDef.isPrecompiled()) {
+      for (const auto& methodDecl : classDef.getMethods()) {
+        if (!methodDecl.isConstructor) continue;
         sun::checkFieldInitialization(*methodDecl.function, *existingClass,
                                       classDef.getMethods());
       }

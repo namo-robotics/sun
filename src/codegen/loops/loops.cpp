@@ -62,20 +62,27 @@ Value* LoopGenerator::codegen(const ForExprAST& expr) {
 
   // Per-iteration scope: owners declared in the body are dropped at the
   // back-edge (and by break/continue), not once after the loop
-  scopes().push(expr.getBody()->getLocation());
+  {
+    // The body is one arm of a branch (it may not run). Defence in depth
+    // rather than a fix: checkLoopBody already rejects moving anything
+    // declared outside the body, and a value declared inside it records the
+    // body's own depth, so a move there stays a compile-time decision.
+    ScopeManager::BranchArm arm(scopes());
+    scopes().push(expr.getBody()->getLocation());
 
-  // Push loop context for break/continue (continue goes to step, break goes to
-  // after)
-  loopStack.push_back({stepBB, afterBB, scopes().size() - 1});
+    // Push loop context for break/continue (continue goes to step, break goes
+    // to after)
+    loopStack.push_back({stepBB, afterBB, scopes().size() - 1});
 
-  // Emit the body of the loop.
-  codegen(*expr.getBody());
+    // Emit the body of the loop.
+    codegen(*expr.getBody());
 
-  // Pop loop context
-  loopStack.pop_back();
+    // Pop loop context
+    loopStack.pop_back();
 
-  // Emits this iteration's drops unless the block already terminated
-  scopes().pop();
+    // Emits this iteration's drops unless the block already terminated
+    scopes().pop();
+  }
 
   // Only emit branch to step if current block has no terminator (break/continue
   // didn't execute)
@@ -144,20 +151,25 @@ Value* LoopGenerator::codegen(const WhileExprAST& expr) {
 
   // Per-iteration scope: owners declared in the body are dropped at the
   // back-edge (and by break/continue), not leaked into the enclosing scope
-  scopes().push(expr.getBody()->getLocation());
+  {
+    // The body is one arm of a branch (it may not run) — see the note in the
+    // for-loop above for why this is defence in depth
+    ScopeManager::BranchArm arm(scopes());
+    scopes().push(expr.getBody()->getLocation());
 
-  // Push loop context for break/continue (continue goes to cond, break goes to
-  // after)
-  loopStack.push_back({condBB, afterBB, scopes().size() - 1});
+    // Push loop context for break/continue (continue goes to cond, break goes
+    // to after)
+    loopStack.push_back({condBB, afterBB, scopes().size() - 1});
 
-  // Emit the body of the loop.
-  codegen(*expr.getBody());
+    // Emit the body of the loop.
+    codegen(*expr.getBody());
 
-  // Pop loop context
-  loopStack.pop_back();
+    // Pop loop context
+    loopStack.pop_back();
 
-  // Emits this iteration's drops unless the block already terminated
-  scopes().pop();
+    // Emits this iteration's drops unless the block already terminated
+    scopes().pop();
+  }
 
   // Only emit branch to condition if current block has no terminator
   // (break/continue didn't execute)
@@ -361,21 +373,26 @@ Value* LoopGenerator::codegen(const ForInExprAST& expr) {
 
   // Per-iteration scope: owners declared in the body are dropped at the
   // back-edge (and by break/continue)
-  scopes().push(expr.getBody()->getLocation());
-  loopStack.push_back({condBB, afterBB, scopes().size() - 1});
+  {
+    // The body is one arm of a branch (it may not run) — see the note in the
+    // for-loop above for why this is defence in depth
+    ScopeManager::BranchArm arm(scopes());
+    scopes().push(expr.getBody()->getLocation());
+    loopStack.push_back({condBB, afterBB, scopes().size() - 1});
 
-  Value* payloadPtr = ctx.builder->CreateStructGEP(someTy, nextAlloca,
-                                                   payloadIdx, "forin.payload");
-  Value* payload = ctx.builder->CreateLoad(someTy->getElementType(payloadIdx),
-                                           payloadPtr, "forin.elem");
-  ctx.builder->CreateStore(payload, loopVarAlloca);
+    Value* payloadPtr = ctx.builder->CreateStructGEP(
+        someTy, nextAlloca, payloadIdx, "forin.payload");
+    Value* payload = ctx.builder->CreateLoad(someTy->getElementType(payloadIdx),
+                                             payloadPtr, "forin.elem");
+    ctx.builder->CreateStore(payload, loopVarAlloca);
 
-  codegen(*expr.getBody());
+    codegen(*expr.getBody());
 
-  loopStack.pop_back();
+    loopStack.pop_back();
 
-  // Emits this iteration's drops unless the block already terminated
-  scopes().pop();
+    // Emits this iteration's drops unless the block already terminated
+    scopes().pop();
+  }
 
   if (!ctx.builder->GetInsertBlock()->getTerminator()) {
     ctx.builder->CreateBr(condBB);

@@ -964,14 +964,10 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
 
   // What becomes of the value the field held, as semantic analysis worked it
   // out: a constructor's first write to a field lands on storage that has
-  // never held a value and releases nothing, a write where the compiler
-  // cannot tell looks at the storage first, and every other write drops.
+  // never held a value and releases nothing, and every other write drops.
   auto dropOverwrittenValue = [&]() {
     switch (expr.fieldWriteKind()) {
       case sun::FieldWriteKind::StartsLife:
-        return;
-      case sun::FieldWriteKind::MayReplaceValue:
-        scopes().emitDropUnlessZeroed(field->type, fieldPtr, memberName);
         return;
       case sun::FieldWriteKind::ReplacesValue:
         scopes().emitDropInPlace(field->type, fieldPtr, memberName);
