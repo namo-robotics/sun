@@ -3,51 +3,12 @@
 #include "ast.h"
 #include "codegen/codegen.h"
 #include "codegen/codegen_visitor.h"
+#include "codegen/support/scalar_ops.h"
 #include "semantic_analysis/semantic_scope.h"
 
 using namespace llvm;
 
-// Look up an LLVM Function for a class method by name.
-// Uses getMangledMethodName (with paramSuffix) first, falls back to plain
-// "TypeName_methodName" for legacy/simple cases.
-Function* CodegenVisitor::findClassMethod(
-    const std::shared_ptr<sun::ClassType>& classType,
-    const std::string& typeName, const std::string& methodName) {
-  if (classType) {
-    if (auto* m = classType->getMethod(methodName)) {
-      std::string mangled =
-          classType->getMangledMethodName(methodName, m->paramTypes);
-      if (auto* f = module->getFunction(mangled)) return f;
-    }
-  }
-  // Fallback: try without paramSuffix
-  return module->getFunction(typeName + "_" + methodName);
-}
-
-// Look up a method function by mangled name, declaring an external with the
-// closure ABI signature (ptr closure, params...) if not yet in the module.
-// Externals are resolved from the defining module at link/JIT time
-// (imported/precompiled classes).
-Function* CodegenVisitor::getOrDeclareMethodFunction(
-    const std::string& mangledName, const std::vector<sun::TypePtr>& paramTypes,
-    const sun::TypePtr& returnType, bool canThrow) {
-  if (Function* existing = module->getFunction(mangledName)) return existing;
-
-  std::vector<llvm::Type*> llvmParams;
-  llvmParams.push_back(PointerType::getUnqual(ctx.getContext()));  // closure
-  for (const auto& pt : paramTypes) {
-    llvmParams.push_back(typeResolver.resolve(pt));
-  }
-  llvm::Type* retTy = returnType ? typeResolver.resolveForReturn(returnType)
-                                 : Type::getVoidTy(ctx.getContext());
-  FunctionType* funcType = FunctionType::get(retTy, llvmParams, false);
-  Function* func = Function::Create(funcType, Function::ExternalLinkage,
-                                    mangledName, module);
-  if (canThrow) {
-    func->addFnAttr("sun.canthrow");
-  }
-  return func;
-}
+namespace ops = sun::codegen::ops;
 
 // -------------------------------------------------------------------
 // Helper for unwrapping error union from call results
@@ -64,7 +25,7 @@ Value* CodegenVisitor::applyMoveSemantics(Value* argVal,
   // Whatever tracked the source (a constructor temporary, a local) no longer
   // owns it: the value moves to the destination. Its own drop is also made a
   // no-op below (zeroed / tag-poisoned) for sources not tracked here.
-  markClassAllocationAsDeinited(argVal);
+  scopes.markClassAllocationAsDeinited(argVal);
 
   // Payload enums move by loading the storage and poisoning the source tag
   // (never memset: tag 0 is a real variant); a later drop of the source is
@@ -108,115 +69,6 @@ Value* CodegenVisitor::applyMoveSemantics(Value* argVal,
 
 // -------------------------------------------------------------------
 // Helper: Create interface fat pointer { data_ptr, vtable_ptr }
-// -------------------------------------------------------------------
-
-GlobalVariable* CodegenVisitor::getOrCreateInterfaceVtable(
-    sun::ClassType* classType, sun::InterfaceType* ifaceType) {
-  std::string className = classType->getMangledName();
-  std::string interfaceName = ifaceType->getName();
-
-  auto it = vtableGlobals.find({className, interfaceName});
-  if (it != vtableGlobals.end()) return it->second;
-
-  auto* ptrTy = PointerType::getUnqual(ctx.getContext());
-
-  // Build one function pointer per non-generic interface method (declaration
-  // order). Methods not present in this module are declared as externals and
-  // resolved from the class's defining module at link/JIT time.
-  std::vector<Constant*> vtableEntries;
-  bool hasVtableMethods = false;
-  for (const auto& m : ifaceType->getMethods()) {
-    if (m.isGeneric()) continue;
-    hasVtableMethods = true;
-
-    std::string mangled = classType->getMangledMethodName(m.name, m.paramTypes);
-    vtableEntries.push_back(getOrDeclareMethodFunction(
-        mangled, m.paramTypes, m.returnType, /*canThrow=*/false));
-  }
-
-  if (!hasVtableMethods) return nullptr;
-
-  std::string vtableTypeName = className + "_" + interfaceName + "_vtable_t";
-  std::vector<llvm::Type*> slotTypes(vtableEntries.size(), ptrTy);
-  llvm::StructType* vtableType =
-      llvm::StructType::create(ctx.getContext(), slotTypes, vtableTypeName);
-
-  std::string vtableName = className + "_" + interfaceName + "_vtable";
-  Constant* vtableInit = ConstantStruct::get(vtableType, vtableEntries);
-  auto* vtableGlobal =
-      new GlobalVariable(*module, vtableType, /*isConstant=*/true,
-                         GlobalValue::InternalLinkage, vtableInit, vtableName);
-
-  vtableGlobals[{className, interfaceName}] = vtableGlobal;
-  return vtableGlobal;
-}
-
-Value* CodegenVisitor::createInterfaceFatPointer(
-    Value* objectPtr, sun::ClassType* classType,
-    sun::InterfaceType* ifaceType) {
-  // Look up (or build) the vtable for this (class, interface) pair.
-  GlobalVariable* vtableGlobal =
-      getOrCreateInterfaceVtable(classType, ifaceType);
-  if (!vtableGlobal) {
-    logAndThrowError("Vtable not found for class " +
-                     classType->getDisplayName() + " implementing interface " +
-                     ifaceType->getName());
-    return nullptr;
-  }
-
-  // Create the fat pointer struct { ptr data, ptr vtable }
-  llvm::StructType* fatPtrType =
-      sun::InterfaceType::getFatPointerType(ctx.getContext());
-  Value* fatPtr = UndefValue::get(fatPtrType);
-
-  // Insert the data pointer (element 0)
-  fatPtr = ctx.builder->CreateInsertValue(fatPtr, objectPtr, 0, "fat.data");
-
-  // Insert the vtable pointer (element 1)
-  fatPtr =
-      ctx.builder->CreateInsertValue(fatPtr, vtableGlobal, 1, "fat.vtable");
-
-  return fatPtr;
-}
-
-// -------------------------------------------------------------------
-// Helper: Convert class to interface fat pointer if needed
-// -------------------------------------------------------------------
-
-// -------------------------------------------------------------------
-// Helper: Prepare class argument for ref Interface parameter
-// Creates fat pointer on stack and returns pointer to it
-// -------------------------------------------------------------------
-
-Value* CodegenVisitor::prepareClassForRefInterface(Value* classPtr,
-                                                   sun::TypePtr argType,
-                                                   sun::TypePtr paramType) {
-  // Check if conversion is needed: param is ref Interface and arg is class
-  auto* refType = sun::tryGetType<sun::ReferenceType>(paramType);
-  if (!refType) return nullptr;  // Not a ref param
-
-  auto* ifaceType =
-      sun::tryGetType<sun::InterfaceType>(refType->getReferencedType());
-  if (!ifaceType) return nullptr;  // Not ref Interface
-
-  auto* classType = sun::tryGetType<sun::ClassType>(argType);
-  if (!classType) return nullptr;  // Arg is not a class
-
-  // Create interface fat pointer value
-  Value* fatPtr = createInterfaceFatPointer(classPtr, classType, ifaceType);
-
-  // Allocate space on stack for the fat pointer and store it there
-  // ref Interface expects a pointer to the fat pointer
-  llvm::Type* fatPtrType = ifaceType->getFatPointerType(ctx.getContext());
-  AllocaInst* fatPtrAlloca =
-      ctx.builder->CreateAlloca(fatPtrType, nullptr, "iface.ref.tmp");
-  ctx.builder->CreateStore(fatPtr, fatPtrAlloca);
-  return fatPtrAlloca;
-}
-
-// -------------------------------------------------------------------
-// Helper: Load closure struct for lambda-typed parameters
-// Lambda literals codegen to an alloca; params take the closure by value
 // -------------------------------------------------------------------
 
 Value* CodegenVisitor::loadClosureForLambdaParam(Value* argVal,
@@ -305,26 +157,8 @@ Value* CodegenVisitor::loadIfRef(Value* value, const sun::TypePtr& type) {
 Value* CodegenVisitor::widenNumericIfNeeded(Value* argVal,
                                             const sun::TypePtr& paramType,
                                             const sun::TypePtr& sourceType) {
-  if (!paramType) {
-    return argVal;
-  }
-
-  llvm::Type* expectedType = typeResolver.resolve(paramType);
-
-  // Integer widening: smaller int -> larger int
-  if (argVal->getType()->isIntegerTy() && expectedType->isIntegerTy()) {
-    unsigned argBits = argVal->getType()->getIntegerBitWidth();
-    unsigned paramBits = expectedType->getIntegerBitWidth();
-    if (argBits < paramBits) {
-      return extendInt(argVal, expectedType, sourceType);
-    }
-  }
-  // Float widening: f32 -> f64
-  else if (argVal->getType()->isFloatTy() && expectedType->isDoubleTy()) {
-    return ctx.builder->CreateFPExt(argVal, expectedType, "widen");
-  }
-
-  return argVal;
+  return ops::widenNumericIfNeeded(*ctx.builder, typeResolver, argVal,
+                                   paramType, sourceType);
 }
 
 // -------------------------------------------------------------------
@@ -365,20 +199,6 @@ Value* CodegenVisitor::coerceStaticPtrToRawPtr(Value* argVal,
 }
 
 // -------------------------------------------------------------------
-// Helper: resolve a call target, translating renamed externs
-// -------------------------------------------------------------------
-
-Function* CodegenVisitor::lookupCallTarget(const std::string& name) {
-  // A renamed extern is declared under its C symbol, not the Sun-side name
-  // the call site resolved to.
-  const std::string& symbol = externC.symbolFor(name);
-  if (symbol != name) {
-    if (Function* f = module->getFunction(symbol)) return f;
-  }
-  return module->getFunction(name);
-}
-
-// -------------------------------------------------------------------
 // Helper: Materialize struct return value to caller's stack
 // -------------------------------------------------------------------
 
@@ -391,7 +211,7 @@ Value* CodegenVisitor::emitMarshalledExternCall(
       func, preparedArgs,
       [&](llvm::FunctionType* fnTy, Value* callee,
           llvm::ArrayRef<Value*> callArgs) {
-        return emitPossiblyThrowingCall(
+        return errors.emitPossiblyThrowingCall(
             fnTy, callee, std::vector<Value*>(callArgs.begin(), callArgs.end()),
             func->hasFnAttribute("sun.canthrow"), "calltmp");
       });
@@ -522,7 +342,7 @@ Value* CodegenVisitor::prepareRefArgument(const ExprAST* argExpr,
       // Track for cleanup - caller owns the temporary
       auto classTypePtr = sun::tryGetTypePtr<sun::ClassType>(argSunType);
       if (classTypePtr) {
-        trackClassAllocation(tempAlloca, "ref.temp", classTypePtr);
+        scopes.trackClassAllocation(tempAlloca, "ref.temp", classTypePtr);
       }
 
       return tempAlloca;
@@ -620,7 +440,7 @@ Value* CodegenVisitor::codegenModuleFunctionCall(
   }
 
   // Get or declare the function
-  Function* func = lookupCallTarget(qualifiedName);
+  Function* func = functions.lookupCallTarget(qualifiedName);
   if (!func) {
     logAndThrowError("Unknown function: " + qualifiedName);
     return nullptr;
@@ -649,7 +469,7 @@ Value* CodegenVisitor::codegenModuleFunctionCall(
   }
 
   Value* result =
-      emitPossiblyThrowingCall(func->getFunctionType(), func, argValues,
+      errors.emitPossiblyThrowingCall(func->getFunctionType(), func, argValues,
                                func->hasFnAttribute("sun.canthrow"), "calltmp");
   return materializeStructReturn(result);
 }
@@ -733,7 +553,7 @@ Value* CodegenVisitor::codegenInterfaceMethodCall(
   // marked as throwing (InterfaceMethod carries no canThrow), so this does not
   // route through a local landing pad — a limitation only for throwing methods
   // invoked via an interface value, which the stdlib/tests don't exercise.
-  Value* result = emitPossiblyThrowingCall(funcType, funcPtr, argValues,
+  Value* result = errors.emitPossiblyThrowingCall(funcType, funcPtr, argValues,
                                            /*canThrow=*/false, "iface.call");
   return materializeStructReturn(result);
 }
@@ -814,7 +634,7 @@ Value* CodegenVisitor::codegenClassMethodCall(
       return nullptr;
     }
 
-    Value* result = emitPossiblyThrowingCall(specializedFunc->getFunctionType(),
+    Value* result = errors.emitPossiblyThrowingCall(specializedFunc->getFunctionType(),
                                              specializedFunc, argValues,
                                              method->canThrow, "method.call");
     return materializeStructReturn(result);
@@ -844,11 +664,11 @@ Value* CodegenVisitor::codegenClassMethodCall(
 
   // If this is an explicit deinit() call, mark as already deinited
   if (methodName == "deinit") {
-    markClassAllocationAsDeinited(objectPtr);
+    scopes.markClassAllocationAsDeinited(objectPtr);
   }
 
   Value* result =
-      emitPossiblyThrowingCall(methodFunc->getFunctionType(), methodFunc,
+      errors.emitPossiblyThrowingCall(methodFunc->getFunctionType(), methodFunc,
                                argValues, method->canThrow, "method.call");
   return materializeStructReturn(result);
 }
@@ -869,7 +689,7 @@ Value* CodegenVisitor::codegenMethodCall(const CallExprAST& expr,
   // `t.join()` on a Thread<Res> — resolves the same way but is a call.
   if (auto* memberClass = sun::tryGetType<sun::ClassType>(memberAccess)) {
     if (!objectType || objectType->isModule()) {
-      return codegenStackClassInstance(expr, methodName, *memberClass);
+      return classes.codegenStackClassInstance(expr, methodName, *memberClass);
     }
   }
 
@@ -960,7 +780,7 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
   // Check if this is a method call (MemberAccessAST as callee)
   if (auto* memberAccess =
           dynamic_cast<const MemberAccessAST*>(expr.getCallee())) {
-    return trackCallTemporary(codegenMethodCall(expr, *memberAccess),
+    return scopes.trackCallTemporary(codegenMethodCall(expr, *memberAccess),
                               expr.getResolvedType());
   }
 
@@ -969,15 +789,15 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
     calleeName = varRef->getName();
 
     // Check for built-in functions (bypass type system)
-    if (isBuiltinFunction(calleeName)) {
-      return codegenBuiltin(calleeName, expr);
+    if (intrinsics.isBuiltinFunction(calleeName)) {
+      return intrinsics.codegenBuiltin(calleeName, expr);
     }
 
     // Check if this is a stack-allocated class constructor call:
     // ClassName(args...)
     if (auto* calleeClass =
             sun::tryGetType<sun::ClassType>(*expr.getCallee())) {
-      return codegenStackClassInstance(expr, calleeName, *calleeClass);
+      return classes.codegenStackClassInstance(expr, calleeName, *calleeClass);
     }
   } else if (auto* qualName =
                  dynamic_cast<const QualifiedNameAST*>(expr.getCallee())) {
@@ -1020,7 +840,7 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
     }
   }
 
-  return trackCallTemporary(result, expr.getResolvedType());
+  return scopes.trackCallTemporary(result, expr.getResolvedType());
 }
 
 // -------------------------------------------------------------------
@@ -1069,7 +889,7 @@ bool CodegenVisitor::emitCallArguments(
       case sun::ArgConversion::ClassToRefInterface: {
         Value* classPtr = prepareRefArgument(argExpr, argSunType);
         if (!classPtr) return false;
-        argVal = prepareClassForRefInterface(
+        argVal = classes.prepareClassForRefInterface(
             classPtr, sun::unwrapRef(argSunType), paramType);
         break;
       }
@@ -1080,7 +900,7 @@ bool CodegenVisitor::emitCallArguments(
         auto* classType =
             static_cast<sun::ClassType*>(sun::unwrapRef(argSunType).get());
         auto* ifaceType = static_cast<sun::InterfaceType*>(paramType.get());
-        argVal = createInterfaceFatPointer(argVal, classType, ifaceType);
+        argVal = classes.createInterfaceFatPointer(argVal, classType, ifaceType);
         break;
       }
 
@@ -1217,12 +1037,12 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
           dynamic_cast<const VariableReferenceAST*>(expr.getCallee())) {
     // Use qualified name from semantic analysis (handles using imports)
     std::string resolvedName = varRef->getMangledName();
-    func = lookupCallTarget(resolvedName);
+    func = functions.lookupCallTarget(resolvedName);
   } else if (auto* qualName =
                  dynamic_cast<const QualifiedNameAST*>(expr.getCallee())) {
     // Qualified name - use the mangled name (calleeName already has :: replaced
     // with _)
-    func = lookupCallTarget(calleeName);
+    func = functions.lookupCallTarget(calleeName);
   }
 
   if (!func) {
@@ -1248,7 +1068,7 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
     }
 
     // Indirect call through function pointer
-    return emitPossiblyThrowingCall(llvmFuncType, funcPtrVal, argValues,
+    return errors.emitPossiblyThrowingCall(llvmFuncType, funcPtrVal, argValues,
                                     funcType.canThrow(), "calltmp");
   }
 
@@ -1261,9 +1081,9 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
   if (auto* varRef =
           dynamic_cast<const VariableReferenceAST*>(expr.getCallee())) {
     std::string symbolName = varRef->getMangledName();
-    auto infoIt = functionInfo.find(symbolName);
-    if (infoIt != functionInfo.end() && !infoIt->second.captures.empty()) {
-      if (AllocaInst* closureAlloca = findVariable(symbolName)) {
+    const FunctionClosureInfo* info = functions.closureInfo(symbolName);
+    if (info && !info->captures.empty()) {
+      if (AllocaInst* closureAlloca = scopes.findVariable(symbolName)) {
         argValues.push_back(closureAlloca);
       } else {
         logAndThrowError("Cannot find closure for function with captures: " +
@@ -1292,7 +1112,7 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
   // block it must be `invoke`d so its exception routes to the local landing
   // pad. Exceptions now propagate natively — no error-union unwrapping.
   bool canThrow = func->hasFnAttribute("sun.canthrow") || funcType.canThrow();
-  Value* callResult = emitPossiblyThrowingCall(func->getFunctionType(), func,
+  Value* callResult = errors.emitPossiblyThrowingCall(func->getFunctionType(), func,
                                                argValues, canThrow, "calltmp");
 
   // Handle struct return values (classes returned by value)
@@ -1317,7 +1137,7 @@ Value* CodegenVisitor::codegenLambdaCall(const CallExprAST& expr,
   if (auto* varRef =
           dynamic_cast<const VariableReferenceAST*>(expr.getCallee())) {
     // Check local variable (alloca)
-    if (AllocaInst* alloca = findVariable(varRef->getName())) {
+    if (AllocaInst* alloca = scopes.findVariable(varRef->getName())) {
       closurePtr = alloca;
     }
     // Check global variable
@@ -1364,7 +1184,7 @@ Value* CodegenVisitor::codegenLambdaCall(const CallExprAST& expr,
   // Indirect call through the extracted function pointer. Throwing lambdas
   // (', IError') are invoked so exceptions route to a local landing pad
   // inside try blocks.
-  Value* result = emitPossiblyThrowingCall(llvmFuncType, funcPtr, argValues,
+  Value* result = errors.emitPossiblyThrowingCall(llvmFuncType, funcPtr, argValues,
                                            lambdaType.canThrow(), "calltmp");
 
   // Materialize struct return values for addressability

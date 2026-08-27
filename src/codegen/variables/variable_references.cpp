@@ -3,8 +3,12 @@
 #include "ast.h"
 #include "codegen/codegen.h"
 #include "codegen/codegen_visitor.h"
+#include "codegen/support/struct_access.h"
+#include "codegen/variables/variable_generator.h"
 
 using namespace llvm;
+
+namespace layout = sun::codegen::layout;
 
 // -------------------------------------------------------------------
 // Reference helper
@@ -20,9 +24,9 @@ static bool isDirectAlias(AllocaInst* alloca, llvm::Type* referencedType) {
 // Local variable loading
 // -------------------------------------------------------------------
 
-llvm::LoadInst* CodegenVisitor::createLoadForLocalVar(
+llvm::LoadInst* VariableGenerator::createLoadForLocalVar(
     const std::string& varName) {
-  AllocaInst* alloca = findVariable(varName);
+  AllocaInst* alloca = scopes().findVariable(varName);
   if (alloca) {
     return ctx.builder->CreateLoad(alloca->getAllocatedType(), alloca,
                                    varName.c_str());
@@ -34,7 +38,7 @@ llvm::LoadInst* CodegenVisitor::createLoadForLocalVar(
 // Global variable loading
 // -------------------------------------------------------------------
 
-llvm::LoadInst* CodegenVisitor::createLoadForGlobalVar(
+llvm::LoadInst* VariableGenerator::createLoadForGlobalVar(
     const std::string& varName) {
   GlobalVariable* globalVar = module->getGlobalVariable(varName);
   if (globalVar) {
@@ -48,12 +52,12 @@ llvm::LoadInst* CodegenVisitor::createLoadForGlobalVar(
 // Reference variable loading
 // -------------------------------------------------------------------
 
-llvm::Value* CodegenVisitor::createLoadForRef(
+llvm::Value* VariableGenerator::createLoadForRef(
     const std::string& varName, const sun::ReferenceType& refType) {
   llvm::Type* referencedLLVMType =
       typeResolver.resolve(refType.getReferencedType());
 
-  AllocaInst* alloca = findVariable(varName);
+  AllocaInst* alloca = scopes().findVariable(varName);
   if (alloca) {
     if (isDirectAlias(alloca, referencedLLVMType)) {
       // Direct alias - just load from the alloca (same as target variable)
@@ -71,13 +75,13 @@ llvm::Value* CodegenVisitor::createLoadForRef(
   return nullptr;
 }
 
-void CodegenVisitor::createStoreForRef(const std::string& varName,
+void VariableGenerator::createStoreForRef(const std::string& varName,
                                        const sun::ReferenceType& refType,
                                        llvm::Value* value) {
   llvm::Type* referencedLLVMType =
       typeResolver.resolve(refType.getReferencedType());
 
-  AllocaInst* alloca = findVariable(varName);
+  AllocaInst* alloca = scopes().findVariable(varName);
   if (!alloca) {
     logAndThrowError("Reference variable not found: " + varName);
   }
@@ -98,7 +102,7 @@ void CodegenVisitor::createStoreForRef(const std::string& varName,
 // Variable reference codegen
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
+Value* VariableGenerator::codegen(const VariableReferenceAST& expr) {
   // Check if this variable is a reference type
   sun::TypePtr varType = expr.getResolvedType();
 
@@ -116,7 +120,7 @@ Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
     // For references to arrays, we need to return a pointer to the fat struct
     // The alloca holds the pointer value - load it to get the actual pointer
     if (refType->getReferencedType()->isArray()) {
-      AllocaInst* alloca = findVariable(expr.getName());
+      AllocaInst* alloca = scopes().findVariable(expr.getName());
       if (alloca) {
         // Load the pointer from the alloca - this gives us ptr to fat struct
         // IndexExprAST will then load the fat struct through this pointer
@@ -133,8 +137,8 @@ Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
     // alloca.
     if (refType->getReferencedType()->isClass() ||
         refType->getReferencedType()->isInterface() ||
-        isPayloadEnum(refType->getReferencedType())) {
-      AllocaInst* alloca = findVariable(expr.getName());
+        CodegenVisitor::isPayloadEnum(refType->getReferencedType())) {
+      AllocaInst* alloca = scopes().findVariable(expr.getName());
       if (alloca) {
         llvm::Type* ptrType = llvm::PointerType::getUnqual(ctx.getContext());
         return ctx.builder->CreateLoad(ptrType, alloca,
@@ -152,7 +156,7 @@ Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
   // For array types, load the fat struct value
   // Arrays are now represented as { ptr data, i32 ndims, ptr dims }
   if (varType && varType->isArray()) {
-    AllocaInst* alloca = findVariable(expr.getName());
+    AllocaInst* alloca = scopes().findVariable(expr.getName());
     if (alloca) {
       llvm::StructType* fatType =
           sun::ArrayType::getArrayStructType(ctx.getContext());
@@ -166,7 +170,7 @@ Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
       return ctx.builder->CreateLoad(fatType, gv, expr.getName() + ".fat");
     }
     // [ref arr] capture: the slot address points at the original fat struct
-    if (Value* addr = createCaptureSlotAddress(expr.getName())) {
+    if (Value* addr = functionGen().createCaptureSlotAddress(expr.getName())) {
       llvm::StructType* fatType =
           sun::ArrayType::getArrayStructType(ctx.getContext());
       return ctx.builder->CreateLoad(fatType, addr, expr.getName() + ".fat");
@@ -181,8 +185,8 @@ Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
   // bindings (compound match payloads) yield the borrowed slot's address
   // instead.
   if (varType &&
-      (varType->isClass() || isPayloadEnum(varType))) {
-    if (Value* addr = compoundStorageAddress(expr.getName())) {
+      (varType->isClass() || CodegenVisitor::isPayloadEnum(varType))) {
+    if (Value* addr = scopes().compoundStorageAddress(expr.getName())) {
       return addr;
     }
     // Check for global class variables
@@ -195,7 +199,7 @@ Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
       return gv;
     }
     // [ref c] capture: the slot address is the original object pointer
-    if (Value* addr = createCaptureSlotAddress(expr.getName())) {
+    if (Value* addr = functionGen().createCaptureSlotAddress(expr.getName())) {
       return addr;
     }
     // Fall through to error if not found
@@ -205,7 +209,7 @@ Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
   // Interface method dispatch expects a pointer to the fat struct { ptr, ptr }
   // so it can load and extract data/vtable pointers
   if (varType && varType->isInterface()) {
-    if (Value* addr = compoundStorageAddress(expr.getName())) {
+    if (Value* addr = scopes().compoundStorageAddress(expr.getName())) {
       return addr;
     }
     GlobalVariable* gv = module->getGlobalVariable(expr.getName());
@@ -216,7 +220,7 @@ Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
       return gv;
     }
     // [ref i] capture: the slot address is the original fat pointer address
-    if (Value* addr = createCaptureSlotAddress(expr.getName())) {
+    if (Value* addr = functionGen().createCaptureSlotAddress(expr.getName())) {
       return addr;
     }
     // Fall through to error if not found
@@ -226,7 +230,7 @@ Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
   llvm::LoadInst* loadVarInst = createLoadForLocalVar(expr.getName());
   if (loadVarInst) return loadVarInst;
 
-  Value* cv = createLoadVarFromClosure(expr.getName());
+  Value* cv = functionGen().createLoadVarFromClosure(expr.getName());
   if (cv) return cv;
 
   // Use qualified name for module-qualified globals
@@ -249,7 +253,7 @@ Value* CodegenVisitor::codegen(const VariableReferenceAST& expr) {
 // Variable assignment codegen
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegen(const VariableAssignmentAST& expr) {
+Value* VariableGenerator::codegen(const VariableAssignmentAST& expr) {
   // Named functions cannot be assigned to variables - only lambdas can
   if (expr.getValue()->isFunction()) {
     logAndThrowError(
@@ -265,7 +269,7 @@ Value* CodegenVisitor::codegen(const VariableAssignmentAST& expr) {
     savedBlock = ctx.builder->GetInsertBlock();
   }
 
-  AllocaInst* alloca = findVariable(expr.getName());
+  AllocaInst* alloca = scopes().findVariable(expr.getName());
   if (alloca) {
     // Check if this is a reference type
     sun::TypePtr varType = expr.getResolvedType();
@@ -297,7 +301,7 @@ Value* CodegenVisitor::codegen(const VariableAssignmentAST& expr) {
   // that is the original variable's storage, and for an owned capture it is
   // the closure's own; an implicit by-value capture is rejected in semantic
   // analysis before reaching here.
-  if (Value* slotAddr = createCaptureSlotAddress(expr.getName())) {
+  if (Value* slotAddr = functionGen().createCaptureSlotAddress(expr.getName())) {
     Value* value = codegen(*expr.getValue());
     if (isLambdaLiteral && savedBlock) {
       ctx.builder->SetInsertPoint(savedBlock);
@@ -346,19 +350,20 @@ Value* CodegenVisitor::codegen(const VariableAssignmentAST& expr) {
 // the source is MOVED in: applyMoveSemantics loads the struct and invalidates
 // the source so its own drop is a no-op. The borrow checker already rejects
 // later uses of the source.
-void CodegenVisitor::assignToVariableSlot(Value* slot, Value* value,
+void VariableGenerator::assignToVariableSlot(Value* slot, Value* value,
                                           const sun::TypePtr& varType,
                                           const std::string& name) {
   bool compound =
       varType &&
-      (varType->isClass() || isPayloadEnum(varType)) &&
+      (varType->isClass() || CodegenVisitor::isPayloadEnum(varType)) &&
       value->getType()->isPointerTy();
   if (compound) {
     // Self-assignment would drop the object and then copy from the corpse;
     // it has no effect, so emit nothing.
     if (value == slot) return;
-    emitDropInPlace(varType, slot, name);
-    value = applyMoveSemantics(value, varType);
+    scopes().emitDropInPlace(varType, slot, name);
+    value = gen_.applyMoveSemantics(value, varType);
   }
-  storeIntoSlot(slot, value, varType);
+  layout::storeIntoSlot(*ctx.builder, module->getDataLayout(), slot, value,
+                        varType);
 }

@@ -5,7 +5,8 @@
 // - _futex_wait, _futex_wake (Linux futex syscalls)
 
 #include "codegen/codegen_visitor.h"
-#include "codegen/thread_utils.h"
+#include "codegen/intrinsics/intrinsics_generator.h"
+#include "codegen/intrinsics/thread_utils.h"
 #include "support/error.h"
 
 using namespace llvm;
@@ -14,7 +15,7 @@ using namespace llvm;
 // Atomic intrinsics: _atomic_cmpxchg_i32, _atomic_store_i32, _atomic_load_i32
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegenAtomicCmpxchgI32Intrinsic(
+Value* IntrinsicsGenerator::codegenAtomicCmpxchgI32Intrinsic(
     const CallExprAST& expr) {
   // _atomic_cmpxchg_i32(ptr, expected, desired) -> old_value
   // Returns the old value. Success if old == expected.
@@ -46,7 +47,7 @@ Value* CodegenVisitor::codegenAtomicCmpxchgI32Intrinsic(
   return ctx.builder->CreateExtractValue(result, 0, "cmpxchg.old");
 }
 
-Value* CodegenVisitor::codegenAtomicStoreI32Intrinsic(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenAtomicStoreI32Intrinsic(const CallExprAST& expr) {
   // _atomic_store_i32(ptr, value) -> void
   // Performs an atomic store with release ordering
   const auto& args = expr.getArgs();
@@ -71,7 +72,7 @@ Value* CodegenVisitor::codegenAtomicStoreI32Intrinsic(const CallExprAST& expr) {
   return llvm::ConstantInt::get(i32Ty, 0);
 }
 
-Value* CodegenVisitor::codegenAtomicLoadI32Intrinsic(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenAtomicLoadI32Intrinsic(const CallExprAST& expr) {
   // _atomic_load_i32(ptr) -> i32
   // Performs an atomic load with acquire ordering
   const auto& args = expr.getArgs();
@@ -92,7 +93,7 @@ Value* CodegenVisitor::codegenAtomicLoadI32Intrinsic(const CallExprAST& expr) {
   return load;
 }
 
-Value* CodegenVisitor::codegenAtomicFetchOpI32Intrinsic(const CallExprAST& expr,
+Value* IntrinsicsGenerator::codegenAtomicFetchOpI32Intrinsic(const CallExprAST& expr,
                                                         bool subtract) {
   // _atomic_fetch_add_i32(ptr, delta) / _atomic_fetch_sub_i32(ptr, delta)
   // Both return the value from before the operation, which is what a
@@ -124,7 +125,7 @@ Value* CodegenVisitor::codegenAtomicFetchOpI32Intrinsic(const CallExprAST& expr,
 // Futex intrinsics: _futex_wait, _futex_wake
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegenFutexWaitIntrinsic(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenFutexWaitIntrinsic(const CallExprAST& expr) {
   // _futex_wait(ptr, expected) -> void
   // Blocks if *ptr == expected, until woken by _futex_wake
   const auto& args = expr.getArgs();
@@ -149,7 +150,7 @@ Value* CodegenVisitor::codegenFutexWaitIntrinsic(const CallExprAST& expr) {
   return llvm::ConstantInt::get(i32Ty, 0);
 }
 
-Value* CodegenVisitor::codegenFutexWakeIntrinsic(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenFutexWakeIntrinsic(const CallExprAST& expr) {
   // _futex_wake(ptr) -> void
   // Wakes one thread waiting on the futex at ptr
   const auto& args = expr.getArgs();

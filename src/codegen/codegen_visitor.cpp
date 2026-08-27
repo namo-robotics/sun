@@ -5,10 +5,13 @@
 #include <cstdint>
 
 #include "codegen/codegen.h"
+#include "codegen/support/scalar_ops.h"
 
 static ExitOnError ExitOnErr;
 
 using namespace llvm;
+
+namespace ops = sun::codegen::ops;
 
 // -------------------------------------------------------------------
 // Expression dispatch
@@ -37,19 +40,19 @@ Value* CodegenVisitor::codegenExpression(const ExprAST& expr) {
     case ASTNodeType::STRING_LITERAL:
       return codegen(static_cast<const StringLiteralAST&>(expr));
     case ASTNodeType::STRUCT_LITERAL:
-      return codegen(static_cast<const StructLiteralAST&>(expr));
+      return classes.codegen(static_cast<const StructLiteralAST&>(expr));
     case ASTNodeType::ARRAY_LITERAL:
       return codegen(static_cast<const ArrayLiteralAST&>(expr));
     case ASTNodeType::INDEX:
       return codegen(static_cast<const IndexAST&>(expr));
     case ASTNodeType::VARIABLE_CREATION:
-      return codegen(static_cast<const VariableCreationAST&>(expr));
+      return variables.codegen(static_cast<const VariableCreationAST&>(expr));
     case ASTNodeType::VARIABLE_REFERENCE:
-      return codegen(static_cast<const VariableReferenceAST&>(expr));
+      return variables.codegen(static_cast<const VariableReferenceAST&>(expr));
     case ASTNodeType::VARIABLE_ASSIGNMENT:
-      return codegen(static_cast<const VariableAssignmentAST&>(expr));
+      return variables.codegen(static_cast<const VariableAssignmentAST&>(expr));
     case ASTNodeType::REFERENCE_CREATION:
-      return codegen(static_cast<const ReferenceCreationAST&>(expr));
+      return variables.codegen(static_cast<const ReferenceCreationAST&>(expr));
     case ASTNodeType::UNARY:
       return codegen(static_cast<const UnaryExprAST&>(expr));
     case ASTNodeType::BINARY:
@@ -63,29 +66,29 @@ Value* CodegenVisitor::codegenExpression(const ExprAST& expr) {
     case ASTNodeType::MATCH:
       return codegen(static_cast<const MatchExprAST&>(expr));
     case ASTNodeType::FOR_LOOP:
-      return codegen(static_cast<const ForExprAST&>(expr));
+      return loops.codegen(static_cast<const ForExprAST&>(expr));
     case ASTNodeType::FOR_IN_LOOP:
-      return codegen(static_cast<const ForInExprAST&>(expr));
+      return loops.codegen(static_cast<const ForInExprAST&>(expr));
     case ASTNodeType::WHILE_LOOP:
-      return codegen(static_cast<const WhileExprAST&>(expr));
+      return loops.codegen(static_cast<const WhileExprAST&>(expr));
     case ASTNodeType::BLOCK:
       return codegen(static_cast<const BlockExprAST&>(expr));
     case ASTNodeType::INDEXED_ASSIGNMENT:
       return codegen(static_cast<const IndexedAssignmentAST&>(expr));
     case ASTNodeType::COMPOUND_ASSIGNMENT:
-      return codegen(static_cast<const CompoundAssignmentAST&>(expr));
+      return variables.codegen(static_cast<const CompoundAssignmentAST&>(expr));
     case ASTNodeType::FUNCTION:
-      return codegenFunc(
+      return functions_.codegenFunc(
           const_cast<FunctionAST&>(static_cast<const FunctionAST&>(expr)));
     case ASTNodeType::LAMBDA:
-      return codegenLambda(
+      return functions_.codegenLambda(
           const_cast<LambdaAST&>(static_cast<const LambdaAST&>(expr)));
     case ASTNodeType::RETURN:
-      return codegen(static_cast<const ReturnExprAST&>(expr));
+      return functions_.codegen(static_cast<const ReturnExprAST&>(expr));
     case ASTNodeType::BREAK_STMT:
-      return codegen(static_cast<const BreakAST&>(expr));
+      return loops.codegen(static_cast<const BreakAST&>(expr));
     case ASTNodeType::CONTINUE_STMT:
-      return codegen(static_cast<const ContinueAST&>(expr));
+      return loops.codegen(static_cast<const ContinueAST&>(expr));
     case ASTNodeType::IMPORT:
       // Import statements should never reach codegen (parser errors on them)
       return ConstantFP::get(ctx.getContext(), APFloat(0.0));
@@ -103,25 +106,25 @@ Value* CodegenVisitor::codegenExpression(const ExprAST& expr) {
       return ConstantFP::get(ctx.getContext(), APFloat(0.0));
     }
     case ASTNodeType::CLASS_DEFINITION:
-      return codegen(static_cast<const ClassDefinitionAST&>(expr));
+      return classes.codegen(static_cast<const ClassDefinitionAST&>(expr));
     case ASTNodeType::INTERFACE_DEFINITION:
-      return codegen(static_cast<const InterfaceDefinitionAST&>(expr));
+      return classes.codegen(static_cast<const InterfaceDefinitionAST&>(expr));
     case ASTNodeType::ENUM_DEFINITION:
-      return codegen(static_cast<const EnumDefinitionAST&>(expr));
+      return classes.codegen(static_cast<const EnumDefinitionAST&>(expr));
     case ASTNodeType::THIS:
-      return codegen(static_cast<const ThisExprAST&>(expr));
+      return classes.codegen(static_cast<const ThisExprAST&>(expr));
     case ASTNodeType::MEMBER_ACCESS:
-      return codegen(static_cast<const MemberAccessAST&>(expr));
+      return classes.codegen(static_cast<const MemberAccessAST&>(expr));
     case ASTNodeType::MEMBER_ASSIGNMENT:
-      return codegen(static_cast<const MemberAssignmentAST&>(expr));
+      return classes.codegen(static_cast<const MemberAssignmentAST&>(expr));
     case ASTNodeType::TRY_CATCH:
-      return codegen(static_cast<const TryCatchExprAST&>(expr));
+      return errors.codegen(static_cast<const TryCatchExprAST&>(expr));
     case ASTNodeType::THROW:
-      return codegen(static_cast<const ThrowExprAST&>(expr));
+      return errors.codegen(static_cast<const ThrowExprAST&>(expr));
     case ASTNodeType::UNSAFE_BLOCK:
-      return codegen(static_cast<const UnsafeBlockAST&>(expr));
+      return errors.codegen(static_cast<const UnsafeBlockAST&>(expr));
     case ASTNodeType::GENERIC_CALL:
-      return codegen(static_cast<const GenericCallAST&>(expr));
+      return classes.codegen(static_cast<const GenericCallAST&>(expr));
     case ASTNodeType::PACK_EXPANSION: {
       // Pack expansion (args...) cannot be used as a standalone expression
       // It must be used in a call argument position to expand variadic args
@@ -291,20 +294,12 @@ static bool isUnsignedExpr(const ExprAST& expr) {
 
 Value* CodegenVisitor::extendInt(Value* value, llvm::Type* destTy,
                                  const sun::TypePtr& sourceType) {
-  auto srcType = sun::unwrapRef(sourceType);
-  return srcType && srcType->isUnsigned()
-             ? ctx.builder->CreateZExt(value, destTy, "widen")
-             : ctx.builder->CreateSExt(value, destTy, "widen");
+  return ops::extendInt(*ctx.builder, value, destTy, sourceType);
 }
 
 Value* CodegenVisitor::createIntDivRem(Value* L, Value* R, bool isModulo,
                                        bool isUnsigned) {
-  if (isModulo) {
-    return isUnsigned ? ctx.builder->CreateURem(L, R, "modtmp")
-                      : ctx.builder->CreateSRem(L, R, "modtmp");
-  }
-  return isUnsigned ? ctx.builder->CreateUDiv(L, R, "divtmp")
-                    : ctx.builder->CreateSDiv(L, R, "divtmp");
+  return ops::createIntDivRem(*ctx.builder, L, R, isModulo, isUnsigned);
 }
 
 // Bring two scalar operands to a common type (int and float widening);
@@ -375,7 +370,7 @@ Value* CodegenVisitor::emitBinaryOp(TokenKind op, Value* L, Value* R,
     case TokenKind::SLASH: {
       if (isInteger && currentFunctionCanError) {
         // Safe division: check for zero and return error if so
-        return codegenSafeDivision(L, R, /*isModulo=*/false, unsignedOp);
+        return errors.codegenSafeDivision(L, R, /*isModulo=*/false, unsignedOp);
       }
       if (!isInteger) return ctx.builder->CreateFDiv(L, R, "divtmp");
       return createIntDivRem(L, R, /*isModulo=*/false, unsignedOp);
@@ -386,7 +381,7 @@ Value* CodegenVisitor::emitBinaryOp(TokenKind op, Value* L, Value* R,
       }
       if (currentFunctionCanError) {
         // Safe modulo: check for zero and return error if so
-        return codegenSafeDivision(L, R, /*isModulo=*/true, unsignedOp);
+        return errors.codegenSafeDivision(L, R, /*isModulo=*/true, unsignedOp);
       }
       return createIntDivRem(L, R, /*isModulo=*/true, unsignedOp);
     }
@@ -510,6 +505,91 @@ Value* CodegenVisitor::codegen(const BinaryExprAST& expr) {
       return emitBinaryOp(expr.getOp().kind, L, R, unsignedOp,
                           expr.getLocation());
   }
+}
+
+// Short-circuit logical operators (and, or)
+// 'and' evaluates to: LHS ? RHS : false
+// 'or' evaluates to: LHS ? true : RHS
+Value* CodegenVisitor::codegenLogicalOp(const BinaryExprAST& expr) {
+  bool isAnd = (expr.getOp().kind == TokenKind::AND);
+
+  // Evaluate LHS
+  Value* L = codegen(*expr.getLHS());
+  if (!L) return nullptr;
+
+  // Convert LHS to bool (i1) if not already
+  if (!L->getType()->isIntegerTy(1)) {
+    if (L->getType()->isFloatingPointTy()) {
+      L = ctx.builder->CreateFCmpONE(L, ConstantFP::get(L->getType(), 0.0),
+                                     "tobool");
+    } else if (L->getType()->isIntegerTy()) {
+      L = ctx.builder->CreateICmpNE(L, ConstantInt::get(L->getType(), 0),
+                                    "tobool");
+    } else {
+      logAndThrowError("Logical operator requires boolean-compatible operand",
+                       expr.getLocation());
+    }
+  }
+
+  Function* TheFunction = ctx.builder->GetInsertBlock()->getParent();
+
+  // For 'and': if LHS is false, result is false (don't evaluate RHS)
+  // For 'or': if LHS is true, result is true (don't evaluate RHS)
+  BasicBlock* EvalRhsBB = BasicBlock::Create(
+      ctx.getContext(), isAnd ? "and.rhs" : "or.rhs", TheFunction);
+  BasicBlock* MergeBB = BasicBlock::Create(
+      ctx.getContext(), isAnd ? "and.end" : "or.end", TheFunction);
+
+  // Remember the block where LHS was evaluated (for PHI)
+  BasicBlock* LhsBB = ctx.builder->GetInsertBlock();
+
+  // For 'and': branch to RHS evaluation if LHS is true, otherwise short-circuit
+  // to merge For 'or': branch to RHS evaluation if LHS is false, otherwise
+  // short-circuit to merge
+  if (isAnd) {
+    ctx.builder->CreateCondBr(L, EvalRhsBB, MergeBB);
+  } else {
+    ctx.builder->CreateCondBr(L, MergeBB, EvalRhsBB);
+  }
+
+  // Evaluate RHS
+  ctx.builder->SetInsertPoint(EvalRhsBB);
+  Value* R = codegen(*expr.getRHS());
+  if (!R) return nullptr;
+
+  // Convert RHS to bool (i1) if not already
+  if (!R->getType()->isIntegerTy(1)) {
+    if (R->getType()->isFloatingPointTy()) {
+      R = ctx.builder->CreateFCmpONE(R, ConstantFP::get(R->getType(), 0.0),
+                                     "tobool");
+    } else if (R->getType()->isIntegerTy()) {
+      R = ctx.builder->CreateICmpNE(R, ConstantInt::get(R->getType(), 0),
+                                    "tobool");
+    } else {
+      logAndThrowError("Logical operator requires boolean-compatible operand",
+                       expr.getLocation());
+    }
+  }
+
+  // Branch to merge block after evaluating RHS
+  ctx.builder->CreateBr(MergeBB);
+
+  // Update RhsBB (codegen of RHS might have changed the current block)
+  BasicBlock* RhsBB = ctx.builder->GetInsertBlock();
+
+  // Emit merge block with PHI node
+  ctx.builder->SetInsertPoint(MergeBB);
+  PHINode* PN = ctx.builder->CreatePHI(Type::getInt1Ty(ctx.getContext()), 2,
+                                       isAnd ? "and.result" : "or.result");
+
+  // For 'and': short-circuit value is false, evaluated value is RHS
+  // For 'or': short-circuit value is true, evaluated value is RHS
+  Value* ShortCircuitVal = isAnd ? ConstantInt::getFalse(ctx.getContext())
+                                 : ConstantInt::getTrue(ctx.getContext());
+  PN->addIncoming(ShortCircuitVal, LhsBB);
+  PN->addIncoming(R, RhsBB);
+
+  return PN;
 }
 
 Value* CodegenVisitor::codegen(const UnaryExprAST& expr) {

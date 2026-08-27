@@ -6,63 +6,18 @@
 #include "ast.h"
 #include "codegen/codegen.h"
 #include "codegen/codegen_visitor.h"
+#include "codegen/support/scalar_ops.h"
+#include "codegen/support/struct_access.h"
+#include "codegen/variables/variable_generator.h"
 #include "semantic_analysis/packed_layout.h"
 
 using namespace llvm;
 
+namespace layout = sun::codegen::layout;
+namespace ops = sun::codegen::ops;
+
 // -------------------------------------------------------------------
 // Field pointer helper
-// -------------------------------------------------------------------
-
-Value* CodegenVisitor::getFieldPtr(sun::ClassType* classType, Value* objectPtr,
-                                   const sun::ClassField& field,
-                                   const std::string& name) {
-  llvm::StructType* structType = classType->getStructType(ctx.getContext());
-  return ctx.builder->CreateStructGEP(structType, objectPtr, field.index, name);
-}
-
-// -------------------------------------------------------------------
-// Field access alignment
-// -------------------------------------------------------------------
-
-llvm::Align CodegenVisitor::fieldAlign(const sun::ClassType* owner,
-                                       llvm::Type* fieldTy) {
-  return sun::packed::fieldAlign(owner, fieldTy, module->getDataLayout());
-}
-
-// Write a value into a storage slot.
-//
-// codegen of a class-valued expression yields the object's ADDRESS, not the
-// struct itself. Storing that address would write a pointer over the object's
-// leading bytes — and it fits silently, because a two-word class is exactly
-// pointer-sized, so the mistake surfaces as corrupted fields rather than as a
-// verifier error. Every site that writes a class into storage goes through
-// here so the copy cannot be forgotten again.
-//
-// `owner` is the class the slot belongs to when the slot is one of its
-// fields; a packed owner drops the alignment to 1. Pass nullptr for a
-// standalone slot such as a local variable.
-void CodegenVisitor::storeIntoSlot(llvm::Value* dest, llvm::Value* value,
-                                   const sun::TypePtr& slotType,
-                                   const sun::ClassType* owner) {
-  if (slotType && slotType->isClass() && value->getType()->isPointerTy()) {
-    const auto* classType = static_cast<const sun::ClassType*>(slotType.get());
-    llvm::StructType* structTy = classType->getStructType(ctx.getContext());
-    llvm::Align align = fieldAlign(owner, structTy);
-    ctx.builder->CreateMemCpy(
-        dest, align, value, align,
-        module->getDataLayout().getTypeAllocSize(structTy));
-    return;
-  }
-  ctx.builder->CreateAlignedStore(value, dest,
-                                  fieldAlign(owner, value->getType()));
-}
-
-llvm::Align CodegenVisitor::lvalueAlign(const ExprAST& target,
-                                        llvm::Type* slotTy) {
-  return sun::packed::lvalueAlign(target, slotTy, module->getDataLayout());
-}
-
 // -------------------------------------------------------------------
 // Object pointer resolution for member access/assignment
 // -------------------------------------------------------------------
@@ -71,7 +26,7 @@ llvm::Align CodegenVisitor::lvalueAlign(const ExprAST& target,
 // Applies the generic-`this` fixup and unwraps raw_ptr/static_ptr/ref to
 // class. Returns {nullptr, nullptr} when the object is not class-shaped
 // (caller decides whether that is an error).
-std::pair<Value*, sun::ClassType*> CodegenVisitor::codegenObjectPtr(
+std::pair<Value*, sun::ClassType*> VariableGenerator::codegenObjectPtr(
     const ExprAST& object) {
   Value* objectPtr = codegen(object);
   if (!objectPtr) return {nullptr, nullptr};
@@ -79,9 +34,9 @@ std::pair<Value*, sun::ClassType*> CodegenVisitor::codegenObjectPtr(
   sun::TypePtr objectType = object.getResolvedType();
 
   // For generic method bodies, 'this' may have a type parameter type; use the
-  // specialized currentClass instead
-  if (dynamic_cast<const ThisExprAST*>(&object) && currentClass) {
-    objectType = currentClass;
+  // specialized state_.frame.currentClass instead
+  if (dynamic_cast<const ThisExprAST*>(&object) && state_.frame.currentClass) {
+    objectType = state_.frame.currentClass;
   }
 
   // Pointer-to-class: the pointer value is already the object pointer
@@ -109,7 +64,7 @@ std::pair<Value*, sun::ClassType*> CodegenVisitor::codegenObjectPtr(
 // expression has no addressable slot (class __index__ targets, slices,
 // closure captures, temporaries, modules). Never spills values to temp
 // allocas - every returned pointer is the genuine storage location.
-Value* CodegenVisitor::tryCodegenAddress(const ExprAST& expr) {
+Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
   // Expressions that are already the referent's address: a call or index that
   // borrows, and the wrappers a body puts around one. codegenExpression skips
   // the read-through that codegen() would otherwise apply.
@@ -119,7 +74,7 @@ Value* CodegenVisitor::tryCodegenAddress(const ExprAST& expr) {
       case ASTNodeType::CALL:
       case ASTNodeType::INDEX:
       case ASTNodeType::GENERIC_CALL:  // _to_ref<T>(ptr)
-        return codegenExpression(expr);
+        return gen_.codegenExpression(expr);
       case ASTNodeType::PAREN_EXPR:
         return tryCodegenAddress(
             *static_cast<const ParenExprAST&>(expr).getInner());
@@ -143,7 +98,7 @@ Value* CodegenVisitor::tryCodegenAddress(const ExprAST& expr) {
       // out as a storage address
       if (varType && varType->isModule()) return nullptr;
 
-      AllocaInst* alloca = findVariable(varRef.getName());
+      AllocaInst* alloca = scopes().findVariable(varRef.getName());
       if (alloca) {
         if (varType && varType->isReference()) {
           // Ref variable: the referent's address. Mirrors
@@ -160,7 +115,7 @@ Value* CodegenVisitor::tryCodegenAddress(const ExprAST& expr) {
               varRef.getName() + ".ptr");
         }
         // Compound match-payload bindings hold the borrowed slot's address
-        return compoundStorageAddress(varRef.getName());
+        return scopes().compoundStorageAddress(varRef.getName());
       }
 
       // [ref x] captures have a genuine storage address (the pointer stored
@@ -171,7 +126,7 @@ Value* CodegenVisitor::tryCodegenAddress(const ExprAST& expr) {
         bool byRef = false;
         bool owned = false;
         Value* slotAddr =
-            createCaptureSlotAddress(varRef.getName(), nullptr, &byRef, &owned);
+            functionGen().createCaptureSlotAddress(varRef.getName(), nullptr, &byRef, &owned);
         if (slotAddr && (byRef || owned)) return slotAddr;
       }
 
@@ -192,7 +147,7 @@ Value* CodegenVisitor::tryCodegenAddress(const ExprAST& expr) {
       // mod.global: the module is compile-time only, so the storage is the
       // global the member's declaration emitted
       if (llvm::GlobalVariable* gv =
-              moduleMemberGlobal(*memberAccess.getObject(),
+              classes().moduleMemberGlobal(*memberAccess.getObject(),
                                  memberAccess.getQualifiedName().mangled())) {
         return gv;
       }
@@ -204,7 +159,7 @@ Value* CodegenVisitor::tryCodegenAddress(const ExprAST& expr) {
           classType->getField(memberAccess.getMemberName());
       if (!field) return nullptr;
 
-      return getFieldPtr(classType, objectPtr, *field,
+      return layout::fieldPtr(*ctx.builder, classType, objectPtr, *field,
                          memberAccess.getMemberName() + ".addr");
     }
 
@@ -215,11 +170,11 @@ Value* CodegenVisitor::tryCodegenAddress(const ExprAST& expr) {
       // dispatch to the method protocol instead
       if (baseType && baseType->isClass()) return nullptr;
       if (indexExpr.hasSlices()) return nullptr;
-      return codegenIndexElementPtr(indexExpr);
+      return gen_.codegenIndexElementPtr(indexExpr);
     }
 
     case ASTNodeType::THIS: {
-      AllocaInst* thisAlloca = findVariable("this");
+      AllocaInst* thisAlloca = scopes().findVariable("this");
       if (!thisAlloca) return nullptr;
       return ctx.builder->CreateLoad(
           llvm::PointerType::getUnqual(ctx.getContext()), thisAlloca, "this");
@@ -234,7 +189,7 @@ Value* CodegenVisitor::tryCodegenAddress(const ExprAST& expr) {
 // two storage slots at runtime, so the address is a phi of the branches'
 // addresses. Only the borrow-binding paths ask for this; every other lvalue
 // use goes through tryCodegenAddress, which leaves a conditional alone.
-Value* CodegenVisitor::codegenBorrowAddress(const ExprAST& expr) {
+Value* VariableGenerator::codegenBorrowAddress(const ExprAST& expr) {
   if (expr.getType() != ASTNodeType::TERNARY) return tryCodegenAddress(expr);
 
   const auto& ternary = static_cast<const TernaryExprAST&>(expr);
@@ -282,7 +237,7 @@ Value* CodegenVisitor::codegenBorrowAddress(const ExprAST& expr) {
   return phi;
 }
 
-Value* CodegenVisitor::codegenAddress(const ExprAST& expr) {
+Value* VariableGenerator::codegenAddress(const ExprAST& expr) {
   Value* addr = tryCodegenAddress(expr);
   if (!addr) {
     logAndThrowError(
@@ -299,7 +254,7 @@ Value* CodegenVisitor::codegenAddress(const ExprAST& expr) {
 
 // Apply `cur op rhs` for a compound assignment and coerce the result back to
 // the slot's type if operand unification widened it
-Value* CodegenVisitor::emitCompoundOpValue(const CompoundAssignmentAST& expr,
+Value* VariableGenerator::emitCompoundOpValue(const CompoundAssignmentAST& expr,
                                            Value* cur, llvm::Type* slotTy,
                                            const sun::TypePtr& slotSunType) {
   Value* rhs = codegen(*expr.getValue());
@@ -308,9 +263,9 @@ Value* CodegenVisitor::emitCompoundOpValue(const CompoundAssignmentAST& expr,
   const Position& loc = expr.getLocation();
   bool unsignedOp = slotSunType && slotSunType->isUnsigned();
 
-  unifyBinaryOperands(cur, rhs, slotSunType, expr.getValue()->getResolvedType(),
+  gen_.unifyBinaryOperands(cur, rhs, slotSunType, expr.getValue()->getResolvedType(),
                       loc);
-  Value* result = emitBinaryOp(expr.binaryOpKind(), cur, rhs, unsignedOp, loc);
+  Value* result = gen_.emitBinaryOp(expr.binaryOpKind(), cur, rhs, unsignedOp, loc);
   if (!result) return nullptr;
 
   if (result->getType() != slotTy) {
@@ -318,7 +273,7 @@ Value* CodegenVisitor::emitCompoundOpValue(const CompoundAssignmentAST& expr,
       result =
           result->getType()->getIntegerBitWidth() > slotTy->getIntegerBitWidth()
               ? ctx.builder->CreateTrunc(result, slotTy, "compound.trunc")
-              : extendInt(result, slotTy, slotSunType);
+              : ops::extendInt(*ctx.builder, result, slotTy, slotSunType);
     } else if (result->getType()->isDoubleTy() && slotTy->isFloatTy()) {
       result = ctx.builder->CreateFPTrunc(result, slotTy, "compound.trunc");
     } else if (result->getType()->isFloatTy() && slotTy->isDoubleTy()) {
@@ -330,7 +285,7 @@ Value* CodegenVisitor::emitCompoundOpValue(const CompoundAssignmentAST& expr,
   return result;
 }
 
-Value* CodegenVisitor::codegen(const CompoundAssignmentAST& expr) {
+Value* VariableGenerator::codegen(const CompoundAssignmentAST& expr) {
   const ExprAST& target = *expr.getTarget();
   const Position& loc = expr.getLocation();
 
@@ -346,20 +301,21 @@ Value* CodegenVisitor::codegen(const CompoundAssignmentAST& expr) {
       auto* classType = static_cast<sun::ClassType*>(baseType.get());
       Value* objPtr = codegen(*indexExpr.getTarget());
       if (!objPtr) return nullptr;
-      llvm::AllocaInst* idxArr = boxIndicesToArrayRef(indexExpr);
+      llvm::AllocaInst* idxArr = gen_.boxIndicesToArrayRef(indexExpr);
       if (!idxArr) return nullptr;
 
-      Value* cur = emitClassIndexCall(objPtr, idxArr, classType);
+      Value* cur = gen_.emitClassIndexCall(objPtr, idxArr, classType);
       if (!cur) return nullptr;
       Value* result = emitCompoundOpValue(expr, cur, slotTy, slotSunType);
       if (!result) return nullptr;
-      return emitClassSetIndexCall(objPtr, idxArr, result, classType);
+      return gen_.emitClassSetIndexCall(objPtr, idxArr, result, classType);
     }
   }
 
   // Addressable targets: address once -> load -> op -> store
   if (Value* addr = tryCodegenAddress(target)) {
-    llvm::Align align = lvalueAlign(target, slotTy);
+    llvm::Align align =
+        layout::lvalueAlign(target, slotTy, module->getDataLayout());
     Value* cur =
         ctx.builder->CreateAlignedLoad(slotTy, addr, align, "compound.cur");
     Value* result = emitCompoundOpValue(expr, cur, slotTy, slotSunType);

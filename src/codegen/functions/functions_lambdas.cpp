@@ -3,6 +3,7 @@
 #include "ast.h"
 #include "codegen/codegen.h"
 #include "codegen/codegen_visitor.h"
+#include "codegen/functions/function_generator.h"
 
 using namespace llvm;
 
@@ -17,7 +18,7 @@ using namespace llvm;
 // closure. valueTypeOut receives the capture's value type; byRefOut whether
 // the capture was declared [ref name]; ownedOut whether it was listed without
 // `ref`, which makes the slot the value's own storage rather than a copy.
-llvm::Value* CodegenVisitor::createCaptureSlotAddress(const std::string& name,
+llvm::Value* FunctionGenerator::createCaptureSlotAddress(const std::string& name,
                                                       llvm::Type** valueTypeOut,
                                                       bool* byRefOut,
                                                       bool* ownedOut) {
@@ -77,7 +78,7 @@ llvm::Value* CodegenVisitor::createCaptureSlotAddress(const std::string& name,
   return nullptr;
 }
 
-llvm::LoadInst* CodegenVisitor::createLoadVarFromClosure(
+llvm::LoadInst* FunctionGenerator::createLoadVarFromClosure(
     const std::string& name) {
   llvm::Type* valueType = nullptr;
   llvm::Value* addr = createCaptureSlotAddress(name, &valueType);
@@ -89,11 +90,11 @@ llvm::LoadInst* CodegenVisitor::createLoadVarFromClosure(
 // by-value captures, the referent's address for by-ref captures. Owned
 // captures of compound values do not come through here — they move, which
 // fillCaptureSlots handles.
-llvm::Value* CodegenVisitor::computeCaptureInitValue(const Capture& cap) {
+llvm::Value* FunctionGenerator::computeCaptureInitValue(const Capture& cap) {
   const std::string& varName = cap.name;
 
   if (cap.kind == CaptureKind::Borrow) {
-    if (AllocaInst* alloca = findVariable(varName)) {
+    if (AllocaInst* alloca = scopes().findVariable(varName)) {
       // Ref-typed variables hold a pointer; flatten so the env points at the
       // referent, not the ref cell (mirror tryCodegenAddress)
       if (cap.type && cap.type->isReference()) {
@@ -132,7 +133,7 @@ llvm::Value* CodegenVisitor::computeCaptureInitValue(const Capture& cap) {
   return capturedValue;
 }
 
-llvm::StructType* CodegenVisitor::createEnvTypeForFunc(
+llvm::StructType* FunctionGenerator::createEnvTypeForFunc(
     const PrototypeAST& proto) {
   std::vector<llvm::Type*> capturedTypes;
   for (const auto& cap : proto.getCaptures()) {
@@ -145,7 +146,7 @@ llvm::StructType* CodegenVisitor::createEnvTypeForFunc(
                             proto.getName() + ".env");
 }
 
-llvm::StructType* CodegenVisitor::createFatTypeForFunc(
+llvm::StructType* FunctionGenerator::createFatTypeForFunc(
     Function* func, llvm::StructType* envType, const PrototypeAST& proto) {
   if (!func) {
     logAndThrowError("null function passed to createFatTypeForFunc");
@@ -163,7 +164,7 @@ llvm::StructType* CodegenVisitor::createFatTypeForFunc(
                             proto.getName() + ".fat");
 }
 
-llvm::Value* CodegenVisitor::createFatClosure(Function* func,
+llvm::Value* FunctionGenerator::createFatClosure(Function* func,
                                               StructType* fatType,
                                               StructType* envType,
                                               const PrototypeAST& proto) {
@@ -198,7 +199,7 @@ llvm::Value* CodegenVisitor::createFatClosure(Function* func,
 }
 
 // Create just an env struct for named functions with captures (no fat pointer)
-llvm::Value* CodegenVisitor::createEnvClosure(StructType* envType,
+llvm::Value* FunctionGenerator::createEnvClosure(StructType* envType,
                                               const PrototypeAST& proto) {
   Function* parentFunc = ctx.builder->GetInsertBlock()->getParent();
   if (!parentFunc) {
@@ -233,7 +234,7 @@ llvm::Value* CodegenVisitor::createEnvClosure(StructType* envType,
 // block building the closure need not dominate. Entry-block addresses
 // dominate the whole function. For the same reason an owned slot is zeroed up
 // front, so a path that never reaches the closure still drops something inert.
-bool CodegenVisitor::fillCaptureSlots(StructType* envType,
+bool FunctionGenerator::fillCaptureSlots(StructType* envType,
                                       llvm::Value* envAlloca,
                                       const PrototypeAST& proto,
                                       IRBuilder<>& entryBuilder) {
@@ -271,7 +272,7 @@ bool CodegenVisitor::fillCaptureSlots(StructType* envType,
 
     // Compounds are carried by address, so the source is the variable's
     // storage; applyMoveSemantics loads it and invalidates the source.
-    Value* sourceAddr = findVariable(cap.name);
+    Value* sourceAddr = scopes().findVariable(cap.name);
     if (!sourceAddr) sourceAddr = createCaptureSlotAddress(cap.name);
     if (!sourceAddr) {
       logAndThrowError("Cannot move variable into closure: " + cap.name);
@@ -283,7 +284,7 @@ bool CodegenVisitor::fillCaptureSlots(StructType* envType,
 
     // Register the drop as soon as the slot owns something, so a capture
     // whose neighbour's initializer unwinds is still released.
-    trackClassAllocation(fieldPtr, "env." + cap.name, cap.type);
+    scopes().trackClassAllocation(fieldPtr, "env." + cap.name, cap.type);
   }
   return true;
 }
@@ -292,7 +293,7 @@ bool CodegenVisitor::fillCaptureSlots(StructType* envType,
 // Prototype codegen
 // -------------------------------------------------------------------
 
-std::pair<Function*, llvm::StructType*> CodegenVisitor::codegen(
+std::pair<Function*, llvm::StructType*> FunctionGenerator::codegen(
     const PrototypeAST& proto, llvm::StructType* envType, bool isLambda,
     llvm::Type* returnType) {
   // The qualified name semantic analysis gave it. An anonymous lambda has
@@ -405,13 +406,77 @@ std::pair<Function*, llvm::StructType*> CodegenVisitor::codegen(
   return {func, typeResolver.getClosureType()};
 }
 
+// Declare one function signature without a body. The definition later in the
+// block fills it in (codegen(PrototypeAST) reuses a matching declaration).
+void FunctionGenerator::forwardDeclareFunction(const PrototypeAST& proto) {
+  if (proto.getName().empty()) return;
+  if (proto.hasClosure()) return;
+
+  std::string funcName = proto.getMangledName();
+  if (module->getFunction(funcName)) return;
+
+  // Build LLVM function type from resolved semantic types
+  if (!proto.hasResolvedReturnType() || !proto.hasResolvedParamTypes()) return;
+
+  llvm::Type* retType =
+      typeResolver.resolveForReturn(proto.getResolvedReturnType());
+  std::vector<llvm::Type*> paramTypes;
+  for (const auto& sunType : proto.getResolvedParamTypes()) {
+    paramTypes.push_back(typeResolver.resolve(sunType));
+  }
+  llvm::FunctionType* funcType =
+      llvm::FunctionType::get(retType, paramTypes, false);
+  llvm::Function::Create(funcType, llvm::Function::ExternalLinkage, funcName,
+                         module);
+}
+
+// Pre-pass over a block: declare everything it defines before any body is
+// emitted, so a call may name something defined further down — mutual
+// recursion between functions, a method calling one of a class below it, a
+// generic helper declared after its caller.
+void FunctionGenerator::declareBlockSignatures(const BlockExprAST& block) {
+  for (const auto& expr : block.getBody()) {
+    if (expr->getType() == ASTNodeType::CLASS_DEFINITION) {
+      classes().declareBlockClassMethods(static_cast<const ClassDefinitionAST&>(*expr));
+      continue;
+    }
+    if (!expr->isFunction()) continue;
+    auto& funcAST = static_cast<FunctionAST&>(*expr);
+    const PrototypeAST& proto = funcAST.getProto();
+
+    // A template has no signature of its own — it is emitted as one function
+    // per specialization. Declare those, so a call site earlier in the block
+    // (a generic class method above the helper it calls, one generic function
+    // calling another) finds the symbol.
+    if (proto.isTemplate()) {
+      for (const auto& [mangledName, specializedAST] :
+           funcAST.getSpecializations()) {
+        if (specializedAST) forwardDeclareFunction(specializedAST->getProto());
+      }
+      continue;
+    }
+
+    // C externs declare under their raw C symbol, not a mangled name, so
+    // they can be called before their declaration appears in the file.
+    // `declare` forward declarations are skipped: the real definition later
+    // in the block supplies the mangled symbol.
+    if (funcAST.isCExtern()) {
+      codegenExternFunc(funcAST);
+      continue;
+    }
+    if (funcAST.isExtern()) continue;
+
+    forwardDeclareFunction(proto);
+  }
+}
+
 // -------------------------------------------------------------------
 // Generic function codegen
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegenGenericFunc(FunctionAST& funcAst) {
-  // Save current insertion point - specialization codegen will change it
-  saveInsertPoint();
+Value* FunctionGenerator::codegenGenericFunc(FunctionAST& funcAst) {
+  // Specialization codegen moves the insert point; put it back on the way out
+  CodegenState::InsertPointGuard here(state_);
 
   // Generate all specializations that were created during semantic analysis
   for (const auto& [mangledName, specializedAST] :
@@ -425,9 +490,6 @@ Value* CodegenVisitor::codegenGenericFunc(FunctionAST& funcAst) {
     codegenFunc(*specializedAST);
   }
 
-  // Restore insertion point so caller can continue
-  restoreInsertPoint();
-
   return nullptr;
 }
 
@@ -435,7 +497,7 @@ Value* CodegenVisitor::codegenGenericFunc(FunctionAST& funcAst) {
 // Extern function codegen
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegenExternFunc(FunctionAST& funcAst) {
+Value* FunctionGenerator::codegenExternFunc(FunctionAST& funcAst) {
   const PrototypeAST& proto = funcAst.getProto();
 
   // Resolve the signature's Sun types. Everything after this — the C symbol,
@@ -472,16 +534,16 @@ Value* CodegenVisitor::codegenExternFunc(FunctionAST& funcAst) {
   // codegenFunc sends every bodyless function here, and a `declare` forward
   // declaration keeps normal Sun mangling.
   if (funcAst.isCExtern()) {
-    externC.mapSunName(proto.getMangledName(), proto.getLinkName());
+    externC().mapSunName(proto.getMangledName(), proto.getLinkName());
   }
-  return externC.declare(proto, returnType, paramTypes);
+  return externC().declare(proto, returnType, paramTypes);
 }
 
 // -------------------------------------------------------------------
 // Function signature declaration
 // -------------------------------------------------------------------
 
-FuncDeclResult CodegenVisitor::declareFuncSignature(PrototypeAST& proto) {
+FuncDeclResult FunctionGenerator::declareFuncSignature(PrototypeAST& proto) {
   // Use captures already set by semantic analyzer
   std::vector<Capture> captures = proto.getCaptures();
 
@@ -490,7 +552,7 @@ FuncDeclResult CodegenVisitor::declareFuncSignature(PrototypeAST& proto) {
     FunctionClosureInfo closureInfo;
     closureInfo.captures = captures;
     // Keyed by the emitted symbol, the same name call sites resolve to.
-    functionInfo[proto.getMangledName()] = closureInfo;
+    functions().noteClosureInfo(proto.getMangledName(), closureInfo);
   }
 
   // The semantic analyzer should have already inferred and set the return type
@@ -539,7 +601,7 @@ FuncDeclResult CodegenVisitor::declareFuncSignature(PrototypeAST& proto) {
 // Function codegen
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
+Value* FunctionGenerator::codegenFunc(FunctionAST& funcAst) {
   if (funcAst.shouldSkipCodegen()) return nullptr;
 
   if (funcAst.getProto().isTemplate()) {
@@ -572,7 +634,7 @@ Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
   // Always push a scope for function arguments (even for top-level)
 
   Value* resultPtr = nullptr;
-  bool isGlobalScope = scopes.empty();
+  bool isGlobalScope = scopes().empty();
 
   if (proto.hasClosure()) {
     if (isGlobalScope) {
@@ -583,7 +645,7 @@ Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
     resultPtr = createEnvClosure(envType, proto);
     // Keyed by the emitted symbol: a specialization's callers name it by its
     // mangled name, never by the template's.
-    scopes.back().variables[proto.getMangledName()] =
+    scopes().back().variables[proto.getMangledName()] =
         cast<AllocaInst>(resultPtr);
   } else {
     resultPtr = func;
@@ -615,7 +677,7 @@ Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
   debugInfo.enterFunction(*ctx.builder, func, proto.getName(),
                           proto.getLocation());
 
-  auto& scope = pushScope();
+  auto& scope = scopes().push();
   scope.isFunctionBoundary = true;  // Mark as function entry scope
 
   // Arguments - skip the closure pointer if present (named functions have it
@@ -635,28 +697,23 @@ Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
     scope.variables[argName] = alloca;
     debugDeclareParam(alloca, argName, proto,
                       hasClosureArg ? argIdx - 1 : argIdx);
-    trackOwnedParam(alloca, argName, proto.paramTypeNamed(argName));
+    scopes().trackOwnedParam(alloca, argName, proto.paramTypeNamed(argName));
     argIdx++;
   }
 
-  // Set error handling context for this function
-  bool savedCanError = currentFunctionCanError;
-  llvm::Type* savedValueType = currentFunctionValueType;
-  bool savedReturnsRef = currentFunctionReturnsRef;
-  currentFunctionCanError = canError;
-  currentFunctionValueType = canError ? valueType : nullptr;
-  currentFunctionReturnsRef =
-      proto.hasReturnType() && proto.getReturnType()->isReference();
-
-  // Generate body — may recursively create many other functions
+  // Generate body — may recursively create many other functions().
   // The body value is used for implicit return if the body doesn't explicitly
-  // return
-  Value* bodyValue = codegen(funcAst.getBody());
+  // return. The guard puts the enclosing function's return contract back.
+  Value* bodyValue;
+  {
+    CodegenState::ReturnGuard returns(state_);
+    currentFunctionCanError = canError;
+    currentFunctionValueType = canError ? valueType : nullptr;
+    currentFunctionReturnsRef =
+        proto.hasReturnType() && proto.getReturnType()->isReference();
 
-  // Restore error handling context
-  currentFunctionCanError = savedCanError;
-  currentFunctionValueType = savedValueType;
-  currentFunctionReturnsRef = savedReturnsRef;
+    bodyValue = codegen(funcAst.getBody());
+  }
 
   // Pop closure context if we pushed one
   if (proto.hasClosure()) {
@@ -667,7 +724,7 @@ Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
   llvm::BasicBlock* currentBlock = ctx.builder->GetInsertBlock();
   if (!currentBlock->getTerminator()) {
     // Emit scope cleanup before implicit return (deinit classes, free ptrs)
-    emitScopeCleanup();
+    scopes().emitScopeCleanup();
 
     Type* retType = func->getReturnType();
     if (retType->isVoidTy()) {
@@ -706,13 +763,13 @@ Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
   // Track user-defined functions for IR filtering (exclude precompiled library
   // code)
   if (!funcAst.isPrecompiled()) {
-    userDefinedFunctions.insert(func->getName().str());
+    functions().noteUserDefined(func->getName().str());
   }
 
   // Run the optimizer on the function.
   // ctx.fpm->run(*func, *ctx.fam);
 
-  popScope();
+  scopes().pop();
 
   return resultPtr;
 }
@@ -721,9 +778,9 @@ Value* CodegenVisitor::codegenFunc(FunctionAST& funcAst) {
 // Lambda codegen (for LambdaAST)
 // -------------------------------------------------------------------
 
-llvm::Value* CodegenVisitor::codegenLambda(LambdaAST& lambdaAst) {
-  // Save current insertion point - lambda codegen will change it
-  saveInsertPoint();
+llvm::Value* FunctionGenerator::codegenLambda(LambdaAST& lambdaAst) {
+  // Lambda codegen moves the insert point; put it back on the way out
+  CodegenState::InsertPointGuard here(state_);
 
   // Get a mutable reference to the prototype to set captures
   PrototypeAST& proto = const_cast<PrototypeAST&>(lambdaAst.getProto());
@@ -765,7 +822,7 @@ llvm::Value* CodegenVisitor::codegenLambda(LambdaAST& lambdaAst) {
   }
 
   Value* resultPtr = nullptr;
-  if (scopes.empty()) {
+  if (scopes().empty()) {
     if (proto.hasClosure()) {
       logAndThrowError(
           "Lambdas at global scope with local captures are not supported");
@@ -806,7 +863,7 @@ llvm::Value* CodegenVisitor::codegenLambda(LambdaAST& lambdaAst) {
 
   debugInfo.enterFunction(*ctx.builder, func, "lambda", proto.getLocation());
 
-  auto& scope = pushScope();
+  auto& scope = scopes().push();
   scope.isFunctionBoundary = true;
 
   // Arguments - skip the closure pointer (lambdas always have it)
@@ -823,26 +880,21 @@ llvm::Value* CodegenVisitor::codegenLambda(LambdaAST& lambdaAst) {
     ctx.builder->CreateStore(&arg, alloca);
     scope.variables[argName] = alloca;
     debugDeclareParam(alloca, argName, proto, argIdx - 1);
-    trackOwnedParam(alloca, argName, proto.paramTypeNamed(argName));
+    scopes().trackOwnedParam(alloca, argName, proto.paramTypeNamed(argName));
     argIdx++;
   }
 
-  // Set error handling context for this function
-  bool savedCanError = currentFunctionCanError;
-  llvm::Type* savedValueType = currentFunctionValueType;
-  bool savedReturnsRef = currentFunctionReturnsRef;
-  currentFunctionCanError = canError;
-  currentFunctionValueType = canError ? valueType : nullptr;
-  currentFunctionReturnsRef =
-      proto.hasReturnType() && proto.getReturnType()->isReference();
+  // Generate body; the guard puts the enclosing function's contract back
+  Value* bodyValue;
+  {
+    CodegenState::ReturnGuard returns(state_);
+    currentFunctionCanError = canError;
+    currentFunctionValueType = canError ? valueType : nullptr;
+    currentFunctionReturnsRef =
+        proto.hasReturnType() && proto.getReturnType()->isReference();
 
-  // Generate body
-  Value* bodyValue = codegen(lambdaAst.getBody());
-
-  // Restore error handling context
-  currentFunctionCanError = savedCanError;
-  currentFunctionValueType = savedValueType;
-  currentFunctionReturnsRef = savedReturnsRef;
+    bodyValue = codegen(lambdaAst.getBody());
+  }
 
   // Pop closure context if we pushed one
   if (proto.hasClosure()) {
@@ -853,7 +905,7 @@ llvm::Value* CodegenVisitor::codegenLambda(LambdaAST& lambdaAst) {
   llvm::BasicBlock* currentBlock = ctx.builder->GetInsertBlock();
   if (!currentBlock->getTerminator()) {
     // Emit scope cleanup before implicit return (deinit classes, free ptrs)
-    emitScopeCleanup();
+    scopes().emitScopeCleanup();
 
     llvm::Type* funcRetType = func->getReturnType();
     if (funcRetType->isVoidTy()) {
@@ -879,10 +931,8 @@ llvm::Value* CodegenVisitor::codegenLambda(LambdaAST& lambdaAst) {
     return nullptr;
   }
 
-  popScope();
+  scopes().pop();
 
-  // Restore insertion point so caller can continue generating code
-  restoreInsertPoint();
   // The lambda's debug location must not leak into the enclosing function
   debugInfo.clearLocation(*ctx.builder);
 

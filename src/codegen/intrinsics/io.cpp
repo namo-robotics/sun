@@ -7,6 +7,7 @@
 #include "ast.h"
 #include "codegen/codegen.h"
 #include "codegen/codegen_visitor.h"
+#include "codegen/intrinsics/intrinsics_generator.h"
 #include "codegen/intrinsics/libc.h"
 
 using namespace llvm;
@@ -189,7 +190,7 @@ static Function* getOrCreateFileReadHelper(llvm::Module* module,
 // -------------------------------------------------------------------
 
 // file_open(path: string, flags: i32) -> i32
-Value* CodegenVisitor::codegenFileOpen(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenFileOpen(const CallExprAST& expr) {
   if (expr.getArgs().size() != 2) {
     logAndThrowError(
         "file_open expects 2 arguments: (path: string, flags: i32)");
@@ -218,7 +219,7 @@ Value* CodegenVisitor::codegenFileOpen(const CallExprAST& expr) {
 }
 
 // file_close(fd: i32) -> i32
-Value* CodegenVisitor::codegenFileClose(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenFileClose(const CallExprAST& expr) {
   if (expr.getArgs().size() != 1) {
     logAndThrowError("file_close expects 1 argument: (fd: i32)");
     return nullptr;
@@ -237,7 +238,7 @@ Value* CodegenVisitor::codegenFileClose(const CallExprAST& expr) {
 }
 
 // file_write(fd: i32, data: string) -> i32
-Value* CodegenVisitor::codegenFileWrite(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenFileWrite(const CallExprAST& expr) {
   if (expr.getArgs().size() != 2) {
     logAndThrowError("file_write expects 2 arguments: (fd: i32, data: string)");
     return nullptr;
@@ -264,7 +265,7 @@ Value* CodegenVisitor::codegenFileWrite(const CallExprAST& expr) {
 }
 
 // file_read(fd: i32, count: i32) -> string
-Value* CodegenVisitor::codegenFileRead(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenFileRead(const CallExprAST& expr) {
   if (expr.getArgs().size() != 2) {
     logAndThrowError("file_read expects 2 arguments: (fd: i32, count: i32)");
     return nullptr;
@@ -390,7 +391,7 @@ static Function* getOrCreateReadHelper(llvm::Module* module,
 // -------------------------------------------------------------------
 
 // __lseek(fd: i32, offset: i64, whence: i32) -> i64
-Value* CodegenVisitor::codegenLseek(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenLseek(const CallExprAST& expr) {
   if (expr.getArgs().size() != 3) {
     logAndThrowError(
         "__lseek expects 3 arguments: (fd: i32, offset: i64, whence: i32)");
@@ -420,7 +421,7 @@ Value* CodegenVisitor::codegenLseek(const CallExprAST& expr) {
 }
 
 // __fstat(fd: i32, stat_buf: raw_ptr<i8>) -> i32
-Value* CodegenVisitor::codegenFstat(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenFstat(const CallExprAST& expr) {
   if (expr.getArgs().size() != 2) {
     logAndThrowError(
         "__fstat expects 2 arguments: (fd: i32, stat_buf: raw_ptr<i8>)");
@@ -442,7 +443,7 @@ Value* CodegenVisitor::codegenFstat(const CallExprAST& expr) {
 }
 
 // __fsync(fd: i32) -> i32
-Value* CodegenVisitor::codegenFsync(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenFsync(const CallExprAST& expr) {
   if (expr.getArgs().size() != 1) {
     logAndThrowError("__fsync expects 1 argument: (fd: i32)");
     return nullptr;
@@ -461,7 +462,7 @@ Value* CodegenVisitor::codegenFsync(const CallExprAST& expr) {
 }
 
 // __ftruncate(fd: i32, length: i64) -> i32
-Value* CodegenVisitor::codegenFtruncate(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenFtruncate(const CallExprAST& expr) {
   if (expr.getArgs().size() != 2) {
     logAndThrowError("__ftruncate expects 2 arguments: (fd: i32, length: i64)");
     return nullptr;
@@ -485,7 +486,7 @@ Value* CodegenVisitor::codegenFtruncate(const CallExprAST& expr) {
 }
 
 // __unlink(path: static_ptr<u8>) -> i32
-Value* CodegenVisitor::codegenUnlink(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenUnlink(const CallExprAST& expr) {
   if (expr.getArgs().size() != 1) {
     logAndThrowError("__unlink expects 1 argument: (path: static_ptr<u8>)");
     return nullptr;
@@ -505,7 +506,7 @@ Value* CodegenVisitor::codegenUnlink(const CallExprAST& expr) {
 }
 
 // __rename(old_path: static_ptr<u8>, new_path: static_ptr<u8>) -> i32
-Value* CodegenVisitor::codegenRename(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenRename(const CallExprAST& expr) {
   if (expr.getArgs().size() != 2) {
     logAndThrowError(
         "__rename expects 2 arguments: (old_path, new_path: static_ptr<u8>)");
@@ -531,7 +532,7 @@ Value* CodegenVisitor::codegenRename(const CallExprAST& expr) {
 }
 
 // __mkdir(path: static_ptr<u8>, mode: i32) -> i32
-Value* CodegenVisitor::codegenMkdir(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenMkdir(const CallExprAST& expr) {
   if (expr.getArgs().size() != 2) {
     logAndThrowError(
         "__mkdir expects 2 arguments: (path: static_ptr<u8>, mode: i32)");
@@ -557,7 +558,7 @@ Value* CodegenVisitor::codegenMkdir(const CallExprAST& expr) {
 }
 
 // __rmdir(path: static_ptr<u8>) -> i32
-Value* CodegenVisitor::codegenRmdir(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenRmdir(const CallExprAST& expr) {
   if (expr.getArgs().size() != 1) {
     logAndThrowError("__rmdir expects 1 argument: (path: static_ptr<u8>)");
     return nullptr;
@@ -577,7 +578,7 @@ Value* CodegenVisitor::codegenRmdir(const CallExprAST& expr) {
 }
 
 // __write(fd: i32, buf: raw_ptr<u8>, len: i64) -> i64
-Value* CodegenVisitor::codegenWrite(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenWrite(const CallExprAST& expr) {
   if (expr.getArgs().size() != 3) {
     logAndThrowError(
         "__write expects 3 arguments: (fd: i32, buf: raw_ptr<u8>, len: i64)");
@@ -604,7 +605,7 @@ Value* CodegenVisitor::codegenWrite(const CallExprAST& expr) {
 }
 
 // __read(fd: i32, buf: raw_ptr<u8>, len: i64) -> i64
-Value* CodegenVisitor::codegenRead(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenRead(const CallExprAST& expr) {
   if (expr.getArgs().size() != 3) {
     logAndThrowError(
         "__read expects 3 arguments: (fd: i32, buf: raw_ptr<u8>, len: i64)");

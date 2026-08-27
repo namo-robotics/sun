@@ -1,209 +1,164 @@
 // src/codegen/intrinsics/builtins.cpp - Builtin intrinsic dispatch
 //
-// The single registry of intrinsic names (isBuiltinFunction) and the
-// dispatcher (codegenBuiltin) routing each name to its codegen method in
-// the sibling files here (print.cpp, io.cpp, network.cpp, memory.cpp,
-// atomic.cpp, generic.cpp).
+// One table maps every built-in name to the method that emits it. Recognising
+// a name and lowering it are the same lookup, so the two can never drift
+// apart. The methods themselves live in the sibling files here (print.cpp,
+// io.cpp, network.cpp, memory.cpp, atomic.cpp, bits.cpp).
+
+#include <functional>
+#include <map>
 
 #include "ast.h"
 #include "codegen/codegen_visitor.h"
+#include "codegen/intrinsics/intrinsics_generator.h"
 
 using namespace llvm;
 
-// -------------------------------------------------------------------
-// Built-in functions
-// -------------------------------------------------------------------
+namespace {
 
-bool CodegenVisitor::isBuiltinFunction(const std::string& name) {
-  return name == "_print_i32" || name == "_print_i64" || name == "_print_f64" ||
-         name == "_print_newline" || name == "_println_str" ||
-         name == "_print_bytes" || name == "_print_char" ||
-         name == "__file_open" || name == "__file_close" ||
-         name == "__file_write" || name == "__file_read" || name == "__lseek" ||
-         name == "__fstat" || name == "__fsync" || name == "__ftruncate" ||
-         name == "__unlink" || name == "__rename" || name == "__mkdir" ||
-         name == "__rmdir" || name == "__write" || name == "__read" ||
-         // Network socket intrinsics
-         name == "__socket" || name == "__bind" || name == "__listen" ||
-         name == "__accept" || name == "__connect" || name == "__send" ||
-         name == "__recv" || name == "__shutdown" || name == "__setsockopt" ||
-         name == "__getsockopt" ||
-         // High-level IPv4 socket intrinsics
-         name == "__bind_ipv4" || name == "__connect_ipv4" ||
-         name == "__accept_fd" ||
-         // Pointer intrinsics
-         name == "_load_i64" || name == "_store_i64" ||
-         // Memory allocation intrinsics
-         name == "_malloc" || name == "_free" || name == "_memcpy" ||
-         name == "_memset" || name == "_ptr_offset" ||
-         // Atomic intrinsics
-         name == "_atomic_cmpxchg_i32" || name == "_atomic_store_i32" ||
-         name == "_atomic_load_i32" || name == "_atomic_fetch_add_i32" ||
-         name == "_atomic_fetch_sub_i32" ||
-         // Futex intrinsics
-         name == "_futex_wait" || name == "_futex_wake" ||
-         // Bit intrinsics
-         name == "_mul_hi_u64" || name == "_ctlz_u64" || name == "_cttz_u64";
+// What emitting one built-in takes: the generator to emit through, and the
+// call being lowered.
+using BuiltinEmitter =
+    std::function<Value*(IntrinsicsGenerator&, const CallExprAST&)>;
+
+// Most built-ins are a plain forward to one method; a few need an extra
+// argument or a second call, so the table holds callables rather than
+// member-function pointers.
+const std::map<std::string, BuiltinEmitter>& builtinTable() {
+  static const std::map<std::string, BuiltinEmitter> table = {
+      // Print built-ins
+      {"_print_i32",
+       [](auto& g, const auto& e) { return g.codegenPrintI32(e); }},
+      {"_print_i64",
+       [](auto& g, const auto& e) { return g.codegenPrintI64(e); }},
+      {"_print_f64",
+       [](auto& g, const auto& e) { return g.codegenPrintF64(e); }},
+      {"_print_newline",
+       [](auto& g, const auto&) { return g.codegenPrintNewline(); }},
+      {"_println_str",
+       [](auto& g, const auto& e) {
+         Value* result = g.codegenPrintString(e);
+         g.codegenPrintNewline();
+         return result;
+       }},
+      {"_print_char",
+       [](auto& g, const auto& e) { return g.codegenPrintChar(e); }},
+      {"_print_bytes",
+       [](auto& g, const auto& e) { return g.codegenPrintBytes(e); }},
+
+      // File I/O built-ins
+      {"__file_open",
+       [](auto& g, const auto& e) { return g.codegenFileOpen(e); }},
+      {"__file_close",
+       [](auto& g, const auto& e) { return g.codegenFileClose(e); }},
+      {"__file_write",
+       [](auto& g, const auto& e) { return g.codegenFileWrite(e); }},
+      {"__file_read",
+       [](auto& g, const auto& e) { return g.codegenFileRead(e); }},
+      {"__lseek", [](auto& g, const auto& e) { return g.codegenLseek(e); }},
+      {"__fstat", [](auto& g, const auto& e) { return g.codegenFstat(e); }},
+      {"__fsync", [](auto& g, const auto& e) { return g.codegenFsync(e); }},
+      {"__ftruncate",
+       [](auto& g, const auto& e) { return g.codegenFtruncate(e); }},
+      {"__unlink", [](auto& g, const auto& e) { return g.codegenUnlink(e); }},
+      {"__rename", [](auto& g, const auto& e) { return g.codegenRename(e); }},
+      {"__mkdir", [](auto& g, const auto& e) { return g.codegenMkdir(e); }},
+      {"__rmdir", [](auto& g, const auto& e) { return g.codegenRmdir(e); }},
+      {"__write", [](auto& g, const auto& e) { return g.codegenWrite(e); }},
+      {"__read", [](auto& g, const auto& e) { return g.codegenRead(e); }},
+
+      // Pointer intrinsics
+      {"_load_i64",
+       [](auto& g, const auto& e) { return g.codegenLoadI64Intrinsic(e); }},
+      {"_store_i64",
+       [](auto& g, const auto& e) { return g.codegenStoreI64Intrinsic(e); }},
+
+      // Memory allocation intrinsics
+      {"_malloc",
+       [](auto& g, const auto& e) { return g.codegenMallocIntrinsic(e); }},
+      {"_free",
+       [](auto& g, const auto& e) { return g.codegenFreeIntrinsic(e); }},
+      {"_memcpy",
+       [](auto& g, const auto& e) { return g.codegenMemcpyIntrinsic(e); }},
+      {"_memset",
+       [](auto& g, const auto& e) { return g.codegenMemsetIntrinsic(e); }},
+      {"_ptr_offset",
+       [](auto& g, const auto& e) { return g.codegenPtrOffsetIntrinsic(e); }},
+
+      // Atomic intrinsics
+      {"_atomic_cmpxchg_i32",
+       [](auto& g, const auto& e) {
+         return g.codegenAtomicCmpxchgI32Intrinsic(e);
+       }},
+      {"_atomic_store_i32",
+       [](auto& g, const auto& e) {
+         return g.codegenAtomicStoreI32Intrinsic(e);
+       }},
+      {"_atomic_load_i32",
+       [](auto& g, const auto& e) {
+         return g.codegenAtomicLoadI32Intrinsic(e);
+       }},
+      {"_atomic_fetch_add_i32",
+       [](auto& g, const auto& e) {
+         return g.codegenAtomicFetchOpI32Intrinsic(e, /*subtract=*/false);
+       }},
+      {"_atomic_fetch_sub_i32",
+       [](auto& g, const auto& e) {
+         return g.codegenAtomicFetchOpI32Intrinsic(e, /*subtract=*/true);
+       }},
+
+      // Bit intrinsics
+      {"_mul_hi_u64",
+       [](auto& g, const auto& e) { return g.codegenMulHiU64Intrinsic(e); }},
+      {"_ctlz_u64",
+       [](auto& g, const auto& e) {
+         return g.codegenCountZerosIntrinsic(e, /*leading=*/true);
+       }},
+      {"_cttz_u64",
+       [](auto& g, const auto& e) {
+         return g.codegenCountZerosIntrinsic(e, /*leading=*/false);
+       }},
+
+      // Futex intrinsics
+      {"_futex_wait",
+       [](auto& g, const auto& e) { return g.codegenFutexWaitIntrinsic(e); }},
+      {"_futex_wake",
+       [](auto& g, const auto& e) { return g.codegenFutexWakeIntrinsic(e); }},
+
+      // Network socket intrinsics
+      {"__socket", [](auto& g, const auto& e) { return g.codegenSocket(e); }},
+      {"__bind", [](auto& g, const auto& e) { return g.codegenBind(e); }},
+      {"__listen", [](auto& g, const auto& e) { return g.codegenListen(e); }},
+      {"__accept", [](auto& g, const auto& e) { return g.codegenAccept(e); }},
+      {"__connect", [](auto& g, const auto& e) { return g.codegenConnect(e); }},
+      {"__send", [](auto& g, const auto& e) { return g.codegenSend(e); }},
+      {"__recv", [](auto& g, const auto& e) { return g.codegenRecv(e); }},
+      {"__shutdown",
+       [](auto& g, const auto& e) { return g.codegenShutdown(e); }},
+      {"__setsockopt",
+       [](auto& g, const auto& e) { return g.codegenSetSockOpt(e); }},
+      {"__getsockopt",
+       [](auto& g, const auto& e) { return g.codegenGetSockOpt(e); }},
+
+      // High-level IPv4 socket intrinsics
+      {"__bind_ipv4",
+       [](auto& g, const auto& e) { return g.codegenBindIPv4(e); }},
+      {"__connect_ipv4",
+       [](auto& g, const auto& e) { return g.codegenConnectIPv4(e); }},
+      {"__accept_fd",
+       [](auto& g, const auto& e) { return g.codegenAcceptFd(e); }},
+  };
+  return table;
 }
 
-Value* CodegenVisitor::codegenBuiltin(const std::string& name,
-                                      const CallExprAST& expr) {
-  if (name == "_print_i32") {
-    return codegenPrintI32(expr);
-  }
-  if (name == "_print_i64") {
-    return codegenPrintI64(expr);
-  }
-  if (name == "_print_f64") {
-    return codegenPrintF64(expr);
-  }
-  if (name == "_print_newline") {
-    return codegenPrintNewline();
-  }
-  if (name == "_println_str") {
-    Value* result = codegenPrintString(expr);
-    codegenPrintNewline();
-    return result;
-  }
-  if (name == "_print_char") {
-    return codegenPrintChar(expr);
-  }
-  if (name == "_print_bytes") {
-    return codegenPrintBytes(expr);
-  }
-  if (name == "__file_open") {
-    return codegenFileOpen(expr);
-  }
-  if (name == "__file_close") {
-    return codegenFileClose(expr);
-  }
-  if (name == "__file_write") {
-    return codegenFileWrite(expr);
-  }
-  if (name == "__file_read") {
-    return codegenFileRead(expr);
-  }
-  if (name == "__lseek") {
-    return codegenLseek(expr);
-  }
-  if (name == "__fstat") {
-    return codegenFstat(expr);
-  }
-  if (name == "__fsync") {
-    return codegenFsync(expr);
-  }
-  if (name == "__ftruncate") {
-    return codegenFtruncate(expr);
-  }
-  if (name == "__unlink") {
-    return codegenUnlink(expr);
-  }
-  if (name == "__rename") {
-    return codegenRename(expr);
-  }
-  if (name == "__mkdir") {
-    return codegenMkdir(expr);
-  }
-  if (name == "__rmdir") {
-    return codegenRmdir(expr);
-  }
-  if (name == "__write") {
-    return codegenWrite(expr);
-  }
-  if (name == "__read") {
-    return codegenRead(expr);
-  }
-  // Pointer intrinsics
-  if (name == "_load_i64") {
-    return codegenLoadI64Intrinsic(expr);
-  }
-  if (name == "_store_i64") {
-    return codegenStoreI64Intrinsic(expr);
-  }
-  // Memory allocation intrinsics
-  if (name == "_malloc") {
-    return codegenMallocIntrinsic(expr);
-  }
-  if (name == "_free") {
-    return codegenFreeIntrinsic(expr);
-  }
-  if (name == "_memcpy") {
-    return codegenMemcpyIntrinsic(expr);
-  }
-  if (name == "_memset") {
-    return codegenMemsetIntrinsic(expr);
-  }
-  if (name == "_ptr_offset") {
-    return codegenPtrOffsetIntrinsic(expr);
-  }
-  // Atomic intrinsics
-  if (name == "_atomic_cmpxchg_i32") {
-    return codegenAtomicCmpxchgI32Intrinsic(expr);
-  }
-  if (name == "_atomic_store_i32") {
-    return codegenAtomicStoreI32Intrinsic(expr);
-  }
-  if (name == "_atomic_load_i32") {
-    return codegenAtomicLoadI32Intrinsic(expr);
-  }
-  if (name == "_atomic_fetch_add_i32" || name == "_atomic_fetch_sub_i32") {
-    return codegenAtomicFetchOpI32Intrinsic(
-        expr, /*subtract=*/name == "_atomic_fetch_sub_i32");
-  }
-  // Bit intrinsics
-  if (name == "_mul_hi_u64") {
-    return codegenMulHiU64Intrinsic(expr);
-  }
-  if (name == "_ctlz_u64" || name == "_cttz_u64") {
-    return codegenCountZerosIntrinsic(expr, name == "_ctlz_u64");
-  }
-  // Futex intrinsics
-  if (name == "_futex_wait") {
-    return codegenFutexWaitIntrinsic(expr);
-  }
-  if (name == "_futex_wake") {
-    return codegenFutexWakeIntrinsic(expr);
-  }
-  // Network socket intrinsics
-  if (name == "__socket") {
-    return codegenSocket(expr);
-  }
-  if (name == "__bind") {
-    return codegenBind(expr);
-  }
-  if (name == "__listen") {
-    return codegenListen(expr);
-  }
-  if (name == "__accept") {
-    return codegenAccept(expr);
-  }
-  if (name == "__connect") {
-    return codegenConnect(expr);
-  }
-  if (name == "__send") {
-    return codegenSend(expr);
-  }
-  if (name == "__recv") {
-    return codegenRecv(expr);
-  }
-  if (name == "__shutdown") {
-    return codegenShutdown(expr);
-  }
-  if (name == "__setsockopt") {
-    return codegenSetSockOpt(expr);
-  }
-  if (name == "__getsockopt") {
-    return codegenGetSockOpt(expr);
-  }
-  // High-level IPv4 socket intrinsics
-  if (name == "__bind_ipv4") {
-    return codegenBindIPv4(expr);
-  }
-  if (name == "__connect_ipv4") {
-    return codegenConnectIPv4(expr);
-  }
-  if (name == "__accept_fd") {
-    return codegenAcceptFd(expr);
-  }
-  return nullptr;
+}  // namespace
+
+bool IntrinsicsGenerator::isBuiltinFunction(const std::string& name) {
+  return builtinTable().count(name) > 0;
+}
+
+Value* IntrinsicsGenerator::codegenBuiltin(const std::string& name,
+                                           const CallExprAST& expr) {
+  auto it = builtinTable().find(name);
+  return it == builtinTable().end() ? nullptr : it->second(*this, expr);
 }

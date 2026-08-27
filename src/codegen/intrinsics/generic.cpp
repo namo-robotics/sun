@@ -6,6 +6,7 @@
 
 #include "codegen/codegen_visitor.h"
 #include "codegen/intrinsics/intrinsics.h"
+#include "codegen/intrinsics/intrinsics_generator.h"
 #include "support/error.h"
 
 using namespace llvm;
@@ -15,7 +16,7 @@ using namespace llvm;
 // Called from codegen(GenericCallAST) for _sizeof, _own, _init, _load, _store
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegenSizeofIntrinsic(sun::TypePtr targetType) {
+Value* IntrinsicsGenerator::codegenSizeofIntrinsic(sun::TypePtr targetType) {
   // _sizeof<T>() returns the byte size of type T as i64
   if (!targetType) {
     logAndThrowError("Type argument not resolved for _sizeof<T>");
@@ -29,7 +30,7 @@ Value* CodegenVisitor::codegenSizeofIntrinsic(sun::TypePtr targetType) {
   return llvm::ConstantInt::get(llvm::Type::getInt64Ty(ctx.getContext()), size);
 }
 
-Value* CodegenVisitor::codegenInitIntrinsic(
+Value* IntrinsicsGenerator::codegenInitIntrinsic(
     sun::TypePtr targetType,
     const std::vector<std::unique_ptr<ExprAST>>& args) {
   // _init<T>(ptr, args...) constructs T at ptr with forwarded arguments
@@ -74,7 +75,7 @@ Value* CodegenVisitor::codegenInitIntrinsic(
 
   // Look up the constructor (init method) that is compatible with the argument
   // types.
-  ConstructorLookup ctor = lookupConstructor(classType, argTypes);
+  ClassGenerator::ConstructorLookup ctor = gen_.classGenerator().lookupConstructor(classType, argTypes);
 
   std::vector<Value*> ctorArgs;
   // Slot 0 is the method closure; patched below once the ctor is resolved.
@@ -98,7 +99,7 @@ Value* CodegenVisitor::codegenInitIntrinsic(
     // tracking released) to match the calling convention without copying.
     if (argType && argType->isCompound() && argVal->getType()->isPointerTy() &&
         !paramIsRef) {
-      argVal = applyMoveSemantics(argVal, argType);
+      argVal = gen_.applyMoveSemantics(argVal, argType);
     }
 
     ctorArgs.push_back(argVal);
@@ -130,14 +131,14 @@ Value* CodegenVisitor::codegenInitIntrinsic(
   }
 
   if (ctorFunc) {
-    ctorArgs[0] = materializeMethodClosure(ctorFunc, rawPtr, "init.closure");
+    ctorArgs[0] = gen_.materializeMethodClosure(ctorFunc, rawPtr, "init.closure");
     ctx.builder->CreateCall(ctorFunc, ctorArgs);
   }
 
   return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
 }
 
-Value* CodegenVisitor::codegenLoadIntrinsic(
+Value* IntrinsicsGenerator::codegenLoadIntrinsic(
     sun::TypePtr targetType,
     const std::vector<std::unique_ptr<ExprAST>>& args) {
   // _load<T>(ptr, index) loads element T at ptr[index]
@@ -163,14 +164,14 @@ Value* CodegenVisitor::codegenLoadIntrinsic(
 
   // For class and payload-enum types, return the pointer to the element
   // (compounds are addressable; the consumer moves or borrows from it)
-  if (targetType->isClass() || isPayloadEnum(targetType)) {
+  if (targetType->isClass() || CodegenVisitor::isPayloadEnum(targetType)) {
     return elemPtr;
   }
 
   return ctx.builder->CreateLoad(elemType, elemPtr, "elem.val");
 }
 
-Value* CodegenVisitor::codegenStoreIntrinsic(
+Value* IntrinsicsGenerator::codegenStoreIntrinsic(
     sun::TypePtr targetType,
     const std::vector<std::unique_ptr<ExprAST>>& args) {
   // _store<T>(ptr, index, value) stores value at ptr[index]
@@ -199,10 +200,10 @@ Value* CodegenVisitor::codegenStoreIntrinsic(
   // already a struct value (e.g. from a by-value parameter). An addressable
   // source MOVES into the slot (never an implicit copy): it is invalidated
   // and its drop tracking released.
-  if (targetType->isClass() || isPayloadEnum(targetType)) {
+  if (targetType->isClass() || CodegenVisitor::isPayloadEnum(targetType)) {
     llvm::Value* structVal = value;
     if (value->getType()->isPointerTy()) {
-      structVal = applyMoveSemantics(value, targetType);
+      structVal = gen_.applyMoveSemantics(value, targetType);
     }
     ctx.builder->CreateStore(structVal, elemPtr);
     return structVal;
@@ -222,7 +223,7 @@ Value* CodegenVisitor::codegenStoreIntrinsic(
   return value;
 }
 
-Value* CodegenVisitor::codegenPtrAsRawIntrinsic(
+Value* IntrinsicsGenerator::codegenPtrAsRawIntrinsic(
     const std::vector<std::unique_ptr<ExprAST>>& args) {
   // _ptr_as_raw<T>(ptr<T>) returns raw_ptr<T> without transferring ownership
   // Like unique_ptr::get() - returns the underlying pointer
@@ -240,7 +241,7 @@ Value* CodegenVisitor::codegenPtrAsRawIntrinsic(
   return ownedPtr;
 }
 
-Value* CodegenVisitor::codegenAddressOfIntrinsic(
+Value* IntrinsicsGenerator::codegenAddressOfIntrinsic(
     const std::vector<std::unique_ptr<ExprAST>>& args) {
   // _address_of<T>(ref T) returns raw_ptr<T> - the address of the argument
   // Works on any lvalue: variables, fields, array elements, etc.
@@ -251,7 +252,7 @@ Value* CodegenVisitor::codegenAddressOfIntrinsic(
 
   const ExprAST* argExpr = args[0].get();
 
-  Value* addr = tryCodegenAddress(*argExpr);
+  Value* addr = gen_.tryCodegenAddress(*argExpr);
   if (!addr) {
     logAndThrowError(
         "_address_of<T>() requires an addressable expression (variable, "
@@ -261,7 +262,7 @@ Value* CodegenVisitor::codegenAddressOfIntrinsic(
   return addr;
 }
 
-Value* CodegenVisitor::codegenToRefIntrinsic(
+Value* IntrinsicsGenerator::codegenToRefIntrinsic(
     const std::vector<std::unique_ptr<ExprAST>>& args) {
   // _to_ref<T>(raw_ptr<T>) -> ref T
   // Converts a raw pointer to a reference (unsafe operation)
@@ -283,7 +284,7 @@ Value* CodegenVisitor::codegenToRefIntrinsic(
   return ptrVal;
 }
 
-Value* CodegenVisitor::codegenIsIntrinsic(
+Value* IntrinsicsGenerator::codegenIsIntrinsic(
     const std::string& targetName,
     const std::vector<std::unique_ptr<ExprAST>>& args) {
   // _is<T>(value) - compile-time type check, folded to a constant here.
@@ -307,7 +308,7 @@ Value* CodegenVisitor::codegenIsIntrinsic(
                                 result ? 1 : 0);
 }
 
-Value* CodegenVisitor::codegenDeinitIntrinsic(
+Value* IntrinsicsGenerator::codegenDeinitIntrinsic(
     sun::TypePtr typeArg, const std::vector<std::unique_ptr<ExprAST>>& args) {
   // _deinit<T>(raw_ptr<T>) - call T.deinit() on the pointee if T is a class
   // with a deinit method, then recursively deinit class fields. No-op for
@@ -321,19 +322,19 @@ Value* CodegenVisitor::codegenDeinitIntrinsic(
   if (!ptr) return nullptr;
 
   if (auto* classType = sun::tryGetType<sun::ClassType>(typeArg)) {
-    emitDeinitCall(classType, ptr);
+    scopes().emitDeinitCall(classType, ptr);
 
     // Recursively deinit class fields that have deinit methods
-    emitFieldDeinit(ptr, classType, "deinit.intrinsic");
+    scopes().emitFieldDeinit(ptr, classType, "deinit.intrinsic");
   } else if (typeArg && typeArg->isEnum()) {
     // Payload enums with owning payloads drop through their drop function
-    emitEnumDrop(static_cast<sun::EnumType&>(*typeArg), ptr);
+    scopes().emitEnumDrop(static_cast<sun::EnumType&>(*typeArg), ptr);
   }
 
   return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
 }
 
-Value* CodegenVisitor::codegenConvertIntrinsic(
+Value* IntrinsicsGenerator::codegenConvertIntrinsic(
     sun::TypePtr targetType,
     const std::vector<std::unique_ptr<ExprAST>>& args) {
   // _convert<T>(value) - explicit numeric conversion. Integers truncate or
@@ -391,7 +392,7 @@ Value* CodegenVisitor::codegenConvertIntrinsic(
   return nullptr;
 }
 
-Value* CodegenVisitor::codegenBitcastIntrinsic(
+Value* IntrinsicsGenerator::codegenBitcastIntrinsic(
     sun::TypePtr targetType,
     const std::vector<std::unique_ptr<ExprAST>>& args) {
   // _bitcast<T>(value) - reinterpret the bits of a same-size numeric value

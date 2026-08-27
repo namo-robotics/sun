@@ -3,14 +3,15 @@
 #include "ast.h"
 #include "codegen/codegen.h"
 #include "codegen/codegen_visitor.h"
+#include "codegen/loops/loop_generator.h"
 
 using namespace llvm;
 
-Value* CodegenVisitor::codegen(const ForExprAST& expr) {
+Value* LoopGenerator::codegen(const ForExprAST& expr) {
   Function* func = ctx.builder->GetInsertBlock()->getParent();
 
   // Enter a new scope for loop variables
-  pushScope(expr.getLocation());
+  scopes().push(expr.getLocation());
 
   // Emit the initialization code (can be var declaration or assignment)
   if (expr.getInit()) {
@@ -61,11 +62,11 @@ Value* CodegenVisitor::codegen(const ForExprAST& expr) {
 
   // Per-iteration scope: owners declared in the body are dropped at the
   // back-edge (and by break/continue), not once after the loop
-  pushScope(expr.getBody()->getLocation());
+  scopes().push(expr.getBody()->getLocation());
 
   // Push loop context for break/continue (continue goes to step, break goes to
   // after)
-  loopStack.push_back({stepBB, afterBB, scopes.size() - 1});
+  loopStack.push_back({stepBB, afterBB, scopes().size() - 1});
 
   // Emit the body of the loop.
   codegen(*expr.getBody());
@@ -74,7 +75,7 @@ Value* CodegenVisitor::codegen(const ForExprAST& expr) {
   loopStack.pop_back();
 
   // Emits this iteration's drops unless the block already terminated
-  popScope();
+  scopes().pop();
 
   // Only emit branch to step if current block has no terminator (break/continue
   // didn't execute)
@@ -97,13 +98,13 @@ Value* CodegenVisitor::codegen(const ForExprAST& expr) {
   ctx.builder->SetInsertPoint(afterBB);
 
   // Pop the loop scope
-  popScope();
+  scopes().pop();
 
   // for expr always returns 0.0.
   return Constant::getNullValue(Type::getDoubleTy(ctx.getContext()));
 }
 
-Value* CodegenVisitor::codegen(const WhileExprAST& expr) {
+Value* LoopGenerator::codegen(const WhileExprAST& expr) {
   Function* func = ctx.builder->GetInsertBlock()->getParent();
 
   // Create basic blocks for the loop structure
@@ -143,11 +144,11 @@ Value* CodegenVisitor::codegen(const WhileExprAST& expr) {
 
   // Per-iteration scope: owners declared in the body are dropped at the
   // back-edge (and by break/continue), not leaked into the enclosing scope
-  pushScope(expr.getBody()->getLocation());
+  scopes().push(expr.getBody()->getLocation());
 
   // Push loop context for break/continue (continue goes to cond, break goes to
   // after)
-  loopStack.push_back({condBB, afterBB, scopes.size() - 1});
+  loopStack.push_back({condBB, afterBB, scopes().size() - 1});
 
   // Emit the body of the loop.
   codegen(*expr.getBody());
@@ -156,7 +157,7 @@ Value* CodegenVisitor::codegen(const WhileExprAST& expr) {
   loopStack.pop_back();
 
   // Emits this iteration's drops unless the block already terminated
-  popScope();
+  scopes().pop();
 
   // Only emit branch to condition if current block has no terminator
   // (break/continue didn't execute)
@@ -171,14 +172,14 @@ Value* CodegenVisitor::codegen(const WhileExprAST& expr) {
   return Constant::getNullValue(Type::getDoubleTy(ctx.getContext()));
 }
 
-Value* CodegenVisitor::codegen(const BreakAST& expr) {
+Value* LoopGenerator::codegen(const BreakAST& expr) {
   if (loopStack.empty()) {
     logAndThrowError("'break' statement not within a loop");
     return nullptr;
   }
 
   // Drop owners in all scopes being jumped out of (down to the loop body)
-  emitCleanupToDepth(loopStack.back().cleanupDepth);
+  scopes().emitCleanupToDepth(loopStack.back().cleanupDepth);
 
   // Jump to the break target (the block after the loop)
   ctx.builder->CreateBr(loopStack.back().breakBlock);
@@ -187,14 +188,14 @@ Value* CodegenVisitor::codegen(const BreakAST& expr) {
   return Constant::getNullValue(Type::getDoubleTy(ctx.getContext()));
 }
 
-Value* CodegenVisitor::codegen(const ContinueAST& expr) {
+Value* LoopGenerator::codegen(const ContinueAST& expr) {
   if (loopStack.empty()) {
     logAndThrowError("'continue' statement not within a loop");
     return nullptr;
   }
 
   // Drop owners in all scopes being jumped out of (down to the loop body)
-  emitCleanupToDepth(loopStack.back().cleanupDepth);
+  scopes().emitCleanupToDepth(loopStack.back().cleanupDepth);
 
   // Jump to the continue target (condition for while, step for for)
   ctx.builder->CreateBr(loopStack.back().continueBlock);
@@ -203,11 +204,11 @@ Value* CodegenVisitor::codegen(const ContinueAST& expr) {
   return Constant::getNullValue(Type::getDoubleTy(ctx.getContext()));
 }
 
-Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
+Value* LoopGenerator::codegen(const ForInExprAST& expr) {
   Function* func = ctx.builder->GetInsertBlock()->getParent();
 
   // Enter a new scope for loop variables
-  pushScope(expr.getLocation());
+  scopes().push(expr.getLocation());
 
   // Evaluate the iterable expression to get the container/iterator. The
   // iterator protocol is next(ref Container) -> Option<T>: loop until None.
@@ -242,14 +243,14 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
   // The iterable is either the iterator itself (has next()) or a container
   // whose iter() produces one
   Function* nextFunc =
-      findClassMethod(iterableClassType, iterableTypeName, "next");
+      functions().findClassMethod(iterableClassType, iterableTypeName, "next");
 
   Value* iteratorObj = iterableObj;
   std::shared_ptr<sun::ClassType> iteratorClassType = iterableClassType;
 
   if (!nextFunc) {
     Function* iterFunc =
-        findClassMethod(iterableClassType, iterableTypeName, "iter");
+        functions().findClassMethod(iterableClassType, iterableTypeName, "iter");
     if (!iterFunc) {
       logAndThrowError("for-in loop: " + iterableTypeName +
                        " must have a next() method or an iter() method");
@@ -281,7 +282,7 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
       logAndThrowError("iter() must return a class type with a next() method");
       return nullptr;
     }
-    nextFunc = findClassMethod(iteratorClassType,
+    nextFunc = functions().findClassMethod(iteratorClassType,
                                iteratorClassType->getMangledName(), "next");
     if (!nextFunc) {
       logAndThrowError("Iterator returned by iter() must have next() method");
@@ -317,7 +318,7 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
   Type* llvmLoopVarType = typeResolver.resolve(loopVarType);
   AllocaInst* loopVarAlloca =
       createEntryBlockAlloca(func, expr.getLoopVar(), llvmLoopVarType);
-  scopes.back().variables[expr.getLoopVar()] = loopVarAlloca;
+  scopes().back().variables[expr.getLoopVar()] = loopVarAlloca;
   debugDeclareLocal(loopVarAlloca, expr.getLoopVar(), loopVarType,
                     expr.getLocation());
 
@@ -360,8 +361,8 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
 
   // Per-iteration scope: owners declared in the body are dropped at the
   // back-edge (and by break/continue)
-  pushScope(expr.getBody()->getLocation());
-  loopStack.push_back({condBB, afterBB, scopes.size() - 1});
+  scopes().push(expr.getBody()->getLocation());
+  loopStack.push_back({condBB, afterBB, scopes().size() - 1});
 
   Value* payloadPtr = ctx.builder->CreateStructGEP(someTy, nextAlloca,
                                                    payloadIdx, "forin.payload");
@@ -374,7 +375,7 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
   loopStack.pop_back();
 
   // Emits this iteration's drops unless the block already terminated
-  popScope();
+  scopes().pop();
 
   if (!ctx.builder->GetInsertBlock()->getTerminator()) {
     ctx.builder->CreateBr(condBB);
@@ -383,7 +384,7 @@ Value* CodegenVisitor::codegen(const ForInExprAST& expr) {
   ctx.builder->SetInsertPoint(afterBB);
 
   // Pop the loop scope (emits cleanup for loop-scoped owners in afterBB)
-  popScope();
+  scopes().pop();
 
   // for-in expr always returns 0.0
   return Constant::getNullValue(Type::getDoubleTy(ctx.getContext()));

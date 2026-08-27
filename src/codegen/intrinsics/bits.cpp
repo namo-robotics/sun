@@ -9,11 +9,12 @@
 #include <llvm/IR/Intrinsics.h>
 
 #include "codegen/codegen_visitor.h"
+#include "codegen/intrinsics/intrinsics_generator.h"
 #include "support/error.h"
 
 using namespace llvm;
 
-Value* CodegenVisitor::codegenMulHiU64Intrinsic(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenMulHiU64Intrinsic(const CallExprAST& expr) {
   const auto& args = expr.getArgs();
   if (args.size() != 2) {
     logAndThrowError("_mul_hi_u64 expects 2 arguments: (a, b)");
@@ -35,7 +36,7 @@ Value* CodegenVisitor::codegenMulHiU64Intrinsic(const CallExprAST& expr) {
   return ctx.builder->CreateTrunc(shifted, i64Ty, "mulhi");
 }
 
-Value* CodegenVisitor::codegenCountZerosIntrinsic(const CallExprAST& expr,
+Value* IntrinsicsGenerator::codegenCountZerosIntrinsic(const CallExprAST& expr,
                                                   bool leading) {
   const char* name = leading ? "_ctlz_u64" : "_cttz_u64";
   const auto& args = expr.getArgs();

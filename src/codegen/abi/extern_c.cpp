@@ -1,6 +1,6 @@
 // extern_c.cpp — The `extern "C"` boundary. See extern_c.h.
 
-#include "codegen/extern_c.h"
+#include "codegen/abi/extern_c.h"
 
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/IRBuilder.h>

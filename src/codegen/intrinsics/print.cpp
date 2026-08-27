@@ -7,6 +7,7 @@
 #include "ast.h"
 #include "codegen/codegen.h"
 #include "codegen/codegen_visitor.h"
+#include "codegen/intrinsics/intrinsics_generator.h"
 #include "codegen/intrinsics/libc.h"
 
 using namespace llvm;
@@ -296,7 +297,7 @@ static Function* getOrCreatePrintStringHelper(llvm::Module* module,
 // -------------------------------------------------------------------
 
 // Emit call to __sun_print_i32 helper
-Value* CodegenVisitor::codegenPrintI32(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenPrintI32(const CallExprAST& expr) {
   if (expr.getArgs().size() != 1) {
     logAndThrowError("print_i32 expects exactly 1 argument");
     return nullptr;
@@ -315,7 +316,7 @@ Value* CodegenVisitor::codegenPrintI32(const CallExprAST& expr) {
 }
 
 // Emit call to __sun_print_i64 helper (reuses i32 approach)
-Value* CodegenVisitor::codegenPrintI64(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenPrintI64(const CallExprAST& expr) {
   if (expr.getArgs().size() != 1) {
     logAndThrowError("print_i64 expects exactly 1 argument");
     return nullptr;
@@ -334,7 +335,7 @@ Value* CodegenVisitor::codegenPrintI64(const CallExprAST& expr) {
 }
 
 // Emit call to print f64 (simplified: prints integer part only for now)
-Value* CodegenVisitor::codegenPrintF64(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenPrintF64(const CallExprAST& expr) {
   if (expr.getArgs().size() != 1) {
     logAndThrowError("print_f64 expects exactly 1 argument");
     return nullptr;
@@ -352,7 +353,7 @@ Value* CodegenVisitor::codegenPrintF64(const CallExprAST& expr) {
 }
 
 // Emit call to __sun_print_newline helper
-Value* CodegenVisitor::codegenPrintNewline() {
+Value* IntrinsicsGenerator::codegenPrintNewline() {
   LLVMContext& llvmCtx = ctx.getContext();
   Function* helper = getOrCreatePrintNewlineHelper(module, llvmCtx);
   return ctx.builder->CreateCall(helper, {});
@@ -361,7 +362,7 @@ Value* CodegenVisitor::codegenPrintNewline() {
 // Emit call to __sun_print_string helper
 // Supports two overloads:
 //   println(str: static_ptr<u8>) - string literals (fat pointer struct)
-Value* CodegenVisitor::codegenPrintString(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenPrintString(const CallExprAST& expr) {
   if (expr.getArgs().size() != 1) {
     logAndThrowError("println expects exactly 1 argument");
     return nullptr;
@@ -457,7 +458,7 @@ static Function* getOrCreatePrintCharHelper(llvm::Module* module,
 }
 
 // _print_char(c: char) -> void
-Value* CodegenVisitor::codegenPrintChar(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenPrintChar(const CallExprAST& expr) {
   if (expr.getArgs().size() != 1) {
     logAndThrowError("_print_char expects 1 argument: (c: char)");
     return nullptr;
@@ -471,7 +472,7 @@ Value* CodegenVisitor::codegenPrintChar(const CallExprAST& expr) {
 
 // Emit code to write raw bytes to stdout
 // _print_bytes(ptr: raw_ptr<i8>, len: i64) -> void
-Value* CodegenVisitor::codegenPrintBytes(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenPrintBytes(const CallExprAST& expr) {
   if (expr.getArgs().size() != 2) {
     logAndThrowError(
         "_print_bytes expects 2 arguments: (ptr: raw_ptr<i8>, len: i64)");
