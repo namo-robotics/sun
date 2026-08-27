@@ -356,15 +356,15 @@ inline bool compileToExecutable(llvm::Module& module,
   }
 
   // On Mach-O the linker leaves debug info in the object file, writing only
-  // a debug map that points back at it. Bundle it into a .dSYM while the
-  // object still exists; without dsymutil the object itself must survive or
-  // the debug info is gone.
+  // a debug map that points back at it. Keep the object, so a debugger's
+  // debug-map path always works, and bundle a .dSYM besides when dsymutil
+  // is available — deleting the object would leave the executable with a
+  // map pointing at nothing.
   bool hasDebugInfo = module.getModuleFlag("Debug Info Version") != nullptr;
   if (hasDebugInfo && effectiveLinkTriple(linkOpts.targetTriple).isOSDarwin()) {
+    keepObjectFile = true;
     if (haveTool("dsymutil")) {
       std::system(("dsymutil " + shellQuote(outputPath)).c_str());
-    } else {
-      keepObjectFile = true;
     }
   }
 
