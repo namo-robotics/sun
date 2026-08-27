@@ -231,7 +231,13 @@ Value* ErrorGenerator::codegen(const TryCatchExprAST& expr) {
   scopes().push(expr.getTryBlock().getLocation());
   tryStack.push_back({lpadBB, dispatchBB, excPhi, scopes().size() - 1});
 
-  Value* tryResult = codegen(expr.getTryBlock());
+  // One arm of a branch: an exception can leave the body part-way through, so
+  // a move in here is a move on this path only
+  Value* tryResult = nullptr;
+  {
+    ScopeManager::BranchArm arm(scopes());
+    tryResult = codegen(expr.getTryBlock());
+  }
 
   tryStack.pop_back();
   scopes().pop();
@@ -303,6 +309,8 @@ Value* ErrorGenerator::codegen(const TryCatchExprAST& expr) {
 
     // ---- body ----
     ctx.builder->SetInsertPoint(bodyBBs[i]);
+    // One arm of a branch, alongside the try body and the other clauses
+    ScopeManager::BranchArm arm(scopes());
     scopes().push(clause.body->getLocation());
     if (!clause.bindingName.empty()) {
       IRBuilder<> tmpBuilder(&func->getEntryBlock(),

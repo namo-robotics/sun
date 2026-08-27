@@ -46,9 +46,13 @@ Value* CodegenVisitor::codegen(const IfExprAST& expr) {
   ctx.builder->SetInsertPoint(ThenBB);
 
   // Push scope for then block (variables declared here are local to this block)
-  scopes.push(expr.getThen()->getLocation());
-  Value* ThenV = codegen(*expr.getThen());
-  scopes.pop();
+  Value* ThenV = nullptr;
+  {
+    ScopeManager::BranchArm arm(scopes);
+    scopes.push(expr.getThen()->getLocation());
+    ThenV = codegen(*expr.getThen());
+    scopes.pop();
+  }
 
   // Check if the Then block was terminated (e.g., by a return statement)
   bool thenTerminated =
@@ -74,9 +78,12 @@ Value* CodegenVisitor::codegen(const IfExprAST& expr) {
 
     // Push scope for else block (variables declared here are local to this
     // block)
-    scopes.push(expr.getElse()->getLocation());
-    ElseV = codegen(*expr.getElse());
-    scopes.pop();
+    {
+      ScopeManager::BranchArm arm(scopes);
+      scopes.push(expr.getElse()->getLocation());
+      ElseV = codegen(*expr.getElse());
+      scopes.pop();
+    }
 
     elseTerminated = ctx.builder->GetInsertBlock()->getTerminator() != nullptr;
 
@@ -154,7 +161,11 @@ Value* CodegenVisitor::codegen(const TernaryExprAST& expr) {
   sun::TypePtr resultType = expr.getResolvedType();
 
   ctx.builder->SetInsertPoint(ThenBB);
-  Value* ThenV = codegen(*expr.getThen());
+  Value* ThenV = nullptr;
+  {
+    ScopeManager::BranchArm arm(scopes);
+    ThenV = codegen(*expr.getThen());
+  }
   bool thenTerminated =
       ctx.builder->GetInsertBlock()->getTerminator() != nullptr;
   if (!thenTerminated) {
@@ -169,7 +180,11 @@ Value* CodegenVisitor::codegen(const TernaryExprAST& expr) {
 
   TheFunction->insert(TheFunction->end(), ElseBB);
   ctx.builder->SetInsertPoint(ElseBB);
-  Value* ElseV = codegen(*expr.getElse());
+  Value* ElseV = nullptr;
+  {
+    ScopeManager::BranchArm arm(scopes);
+    ElseV = codegen(*expr.getElse());
+  }
   bool elseTerminated =
       ctx.builder->GetInsertBlock()->getTerminator() != nullptr;
   if (!elseTerminated) {

@@ -558,3 +558,24 @@ TEST(MemorySafety_Drops_Enums,
   )"));
   EXPECT_EQ(value, 121);
 }
+
+// A payload enum moved on only some paths out of a branch: the paths that did
+// not move it still own the payload and must drop it (issue #146).
+TEST(MemorySafety_Drops_Enums, conditional_move_drops_payload_on_other_path) {
+  auto value = executeString(withPreamble(R"(
+    function sink(h: Holder) void { }
+
+    function maybe_move(take: bool) void {
+      var h = Holder.Hold(Owner(1));
+      if (take) { sink(h); }
+    }
+
+    function main() i32 {
+      maybe_move(true);
+      var afterTaken = counter;
+      maybe_move(false);
+      return afterTaken * 10 + (counter - afterTaken);
+    }
+  )"));
+  EXPECT_EQ(value, 11);
+}

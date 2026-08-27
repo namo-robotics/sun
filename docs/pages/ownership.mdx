@@ -108,6 +108,35 @@ before freeing. What the check buys is that a `deinit` doing something
 unconditional — counting, logging, releasing a lock — is not called at all for
 storage that never held a value.
 
+### Moving on Only Some Paths
+
+A branch can move a value on one path and leave it alone on another. The paths
+that did not move it still own it, so it is dropped where they end.
+
+```sun
+function maybe(take: bool) void {
+    var r = Res(1);
+    if (take) { sink(r); }   // moved here, still owned on the other path
+}                            // dropped here when `take` was false
+```
+
+Either way exactly one owner is left, so `deinit` runs exactly once. After the
+`if`, `r` counts as moved whichever way the branch went, so nothing may read it
+— see the rule above.
+
+Whether the value was moved depends on the path taken, so the compiler cannot
+always answer it while compiling. When it cannot, it puts a flag beside the
+value — in the stack frame, never inside the class, so layout is untouched —
+that records whether this call still owns it, and the drop reads the flag. Only
+values with a genuinely path-dependent move get one: a move on every path, or
+on none, stays a decision made while compiling and costs nothing at run time.
+
+Note the two questions are different. The flag answers "does this call still
+own this local", which is why it can live in the frame. The run-time check
+under [Writing to a Field](#writing-to-a-field) answers "does this object's
+field hold anything", which has to survive across calls and travel with the
+object, so it reads the storage instead.
+
 See [Constructors](/classes#constructors) for the rule that makes the first
 answer possible: every field is assigned before the object may be used.
 

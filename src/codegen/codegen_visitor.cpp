@@ -552,9 +552,14 @@ Value* CodegenVisitor::codegenLogicalOp(const BinaryExprAST& expr) {
     ctx.builder->CreateCondBr(L, MergeBB, EvalRhsBB);
   }
 
-  // Evaluate RHS
+  // Evaluate RHS. Short-circuiting makes this one arm of a branch: a move in
+  // here happens only when the left side let control through.
   ctx.builder->SetInsertPoint(EvalRhsBB);
-  Value* R = codegen(*expr.getRHS());
+  Value* R = nullptr;
+  {
+    ScopeManager::BranchArm arm(scopes);
+    R = codegen(*expr.getRHS());
+  }
   if (!R) return nullptr;
 
   // Convert RHS to bool (i1) if not already

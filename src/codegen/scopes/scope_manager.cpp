@@ -88,19 +88,83 @@ void ScopeManager::trackClassAllocation(Value* alloca, const std::string& name,
       }
     }
   }
-  scopes_.back().classAllocations.push_back(
-      {alloca, name, false, std::move(type)});
+  ClassAllocation entry{alloca, name, false, std::move(type)};
+  // Remember this point: if a branch later moves the value on some paths only,
+  // its drop flag is set here, where the value became owned.
+  if (BasicBlock* here = ctx.builder->GetInsertBlock()) {
+    entry.ownedAt = here->empty() ? static_cast<Value*>(here)
+                                  : static_cast<Value*>(&here->back());
+  }
+  entry.branchDepth = branchDepth_;
+  scopes_.back().classAllocations.push_back(std::move(entry));
 }
 
 void ScopeManager::markClassAllocationAsDeinited(Value* alloca) {
   for (auto& scope : scopes_) {
     for (auto& alloc : scope.classAllocations) {
-      if (alloc.alloca == alloca) {
-        alloc.moved = true;
-        return;
+      if (alloc.alloca != alloca) continue;
+      // A move nested inside a branch is a move on this path only: the paths
+      // beside it still own the value, so the drop becomes a run-time answer.
+      if (branchDepth_ > alloc.branchDepth) ensureDropFlag(alloc);
+      if (alloc.dropFlag) {
+        ctx.builder->CreateStore(ConstantInt::getFalse(ctx.getContext()),
+                                 alloc.dropFlag);
       }
+      alloc.moved = true;
+      return;
     }
   }
+}
+
+void ScopeManager::ensureDropFlag(ClassAllocation& alloc) {
+  if (alloc.dropFlag) return;
+
+  // Where the value became owned. Nothing left to anchor to means the code
+  // that took ownership is gone, so leave the decision static.
+  Value* anchor = alloc.ownedAt;
+  auto* anchorInst = dyn_cast_or_null<Instruction>(anchor);
+  BasicBlock* anchorBlock =
+      anchorInst ? anchorInst->getParent() : dyn_cast_or_null<BasicBlock>(anchor);
+  if (!anchorBlock || !anchorBlock->getParent()) return;
+
+  llvm::Type* boolTy = llvm::Type::getInt1Ty(ctx.getContext());
+  Function* func = anchorBlock->getParent();
+
+  // The flag sits beside the value in the frame, never inside it, so class
+  // layout is untouched. False on entry, so a path that never reached the
+  // point of ownership never drops.
+  IRBuilder<> entry(&func->getEntryBlock(), func->getEntryBlock().begin());
+  alloc.dropFlag = entry.CreateAlloca(boolTy, nullptr, alloc.varName + ".owned");
+  entry.CreateStore(ConstantInt::getFalse(ctx.getContext()), alloc.dropFlag);
+
+  // True from the point of ownership on. This sits inside the loop body when
+  // the value is created per iteration, so each iteration starts owning it.
+  IRBuilder<> owned(anchorBlock, anchorInst
+                                     ? std::next(anchorInst->getIterator())
+                                     : anchorBlock->begin());
+  owned.CreateStore(ConstantInt::getTrue(ctx.getContext()), alloc.dropFlag);
+}
+
+void ScopeManager::emitFlaggedDrop(const ClassAllocation& alloc) {
+  Function* parent = ctx.builder->GetInsertBlock()->getParent();
+  Value* owned =
+      ctx.builder->CreateLoad(llvm::Type::getInt1Ty(ctx.getContext()),
+                              alloc.dropFlag, alloc.varName + ".is_owned");
+
+  BasicBlock* dropBlock =
+      BasicBlock::Create(ctx.getContext(), alloc.varName + ".drop", parent);
+  BasicBlock* afterBlock =
+      BasicBlock::Create(ctx.getContext(), alloc.varName + ".dropped", parent);
+  ctx.builder->CreateCondBr(owned, dropBlock, afterBlock);
+
+  ctx.builder->SetInsertPoint(dropBlock);
+  emitDropInPlace(alloc.type, alloc.alloca, alloc.varName);
+  // Given up here, so a later cleanup on this path finds nothing to do
+  ctx.builder->CreateStore(ConstantInt::getFalse(ctx.getContext()),
+                           alloc.dropFlag);
+  ctx.builder->CreateBr(afterBlock);
+
+  ctx.builder->SetInsertPoint(afterBlock);
 }
 
 void ScopeManager::markAsMoved(const std::string& name) {
@@ -116,8 +180,9 @@ void ScopeManager::markAsMoved(const std::string& name) {
 
 bool ScopeManager::hasLiveOwners(size_t depth) const {
   for (size_t i = depth; i < scopes_.size(); ++i) {
+    // A drop flag means ownership is a run-time answer, so assume it is owned
     for (const auto& a : scopes_[i].classAllocations)
-      if (!a.moved) return true;
+      if (!a.moved || a.dropFlag) return true;
     for (const auto& a : scopes_[i].ownedAllocations)
       if (!a.moved) return true;
   }
@@ -291,11 +356,15 @@ void ScopeManager::emitCleanupForScope(CodegenScope& scope) {
   // First, cleanup class allocations (call deinit methods)
   auto& currentClassScope = scope.classAllocations;
 
-  // Drop all non-moved allocations in reverse order (LIFO)
+  // Drop all non-moved allocations in reverse order (LIFO). One that carries a
+  // drop flag was moved on some paths only, so its flag decides at run time.
   if (!currentClassScope.empty()) {
     for (auto it = currentClassScope.rbegin(); it != currentClassScope.rend();
          ++it) {
-      if (!it->moved && it->alloca && it->type) {
+      if (!it->alloca || !it->type) continue;
+      if (it->dropFlag) {
+        emitFlaggedDrop(*it);
+      } else if (!it->moved) {
         emitDropInPlace(it->type, it->alloca, it->varName);
       }
     }

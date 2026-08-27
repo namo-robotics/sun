@@ -46,7 +46,11 @@ Value* CodegenVisitor::codegen(const MatchExprAST& expr) {
     if (arm.isWildcard) {
       // Wildcard arm: always matches, no condition needed
       // Just generate the body and branch to merge
-      Value* bodyVal = codegen(*arm.body);
+      Value* bodyVal = nullptr;
+      {
+        ScopeManager::BranchArm branchArm(scopes);
+        bodyVal = codegen(*arm.body);
+      }
 
       // Check if this block was terminated (e.g., by return)
       bool terminated =
@@ -130,7 +134,11 @@ Value* CodegenVisitor::codegen(const MatchExprAST& expr) {
 
     // Generate arm body
     ctx.builder->SetInsertPoint(ArmBB);
-    Value* bodyVal = codegen(*arm.body);
+    Value* bodyVal = nullptr;
+    {
+      ScopeManager::BranchArm branchArm(scopes);
+      bodyVal = codegen(*arm.body);
+    }
 
     // Check if this block was terminated (e.g., by return)
     bool terminated = ctx.builder->GetInsertBlock()->getTerminator() != nullptr;

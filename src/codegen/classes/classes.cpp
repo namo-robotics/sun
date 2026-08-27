@@ -971,6 +971,7 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
       case sun::FieldWriteKind::StartsLife:
         return;
       case sun::FieldWriteKind::MayReplaceValue:
+        fprintf(stderr, "MAYREPLACE %s.%s\n", classType->getDisplayName().c_str(), memberName.c_str());
         scopes().emitDropUnlessZeroed(field->type, fieldPtr, memberName);
         return;
       case sun::FieldWriteKind::ReplacesValue:
