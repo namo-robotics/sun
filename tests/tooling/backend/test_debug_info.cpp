@@ -380,8 +380,11 @@ TEST(Tooling_Backend_DebugInfo, lldb_breaks_reads_variables_and_steps) {
   // DEBUGINFOD_URLS= : lldb otherwise blocks on unreachable symbol servers.
   // disable-aslr false: sandboxes may deny the personality() syscall lldb
   // uses to turn ASLR off in the debuggee.
+  // `timeout` is GNU coreutils and absent on macOS, so it guards the run
+  // only where it exists (mac lldb has no debuginfod to hang on).
+  std::string guard = haveTool("timeout") ? "timeout 120 " : "";
   std::string outPath = ::testing::TempDir() + "sun_debug_info_lldb.out";
-  std::string cmd = "timeout 120 env DEBUGINFOD_URLS= " + lldb +
+  std::string cmd = guard + "env DEBUGINFOD_URLS= " + lldb +
                     " -b -o 'settings set target.disable-aslr false'"
                     " -o 'breakpoint set --name add' -o run"
                     " -o 'frame variable' -o next -o 'print sum' " +
