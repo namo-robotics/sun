@@ -6,7 +6,7 @@
 #include <llvm/IR/Type.h>
 
 #include "codegen/codegen_visitor.h"
-#include "codegen/error_generator.h"
+#include "codegen/errors/error_generator.h"
 
 using namespace llvm;
 

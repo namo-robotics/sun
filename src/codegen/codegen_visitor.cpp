@@ -5,7 +5,7 @@
 #include <cstdint>
 
 #include "codegen/codegen.h"
-#include "codegen/scalar_ops.h"
+#include "codegen/support/scalar_ops.h"
 
 static ExitOnError ExitOnErr;
 

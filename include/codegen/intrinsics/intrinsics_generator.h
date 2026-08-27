@@ -24,7 +24,7 @@
 
 #include "ast.h"
 #include "codegen/codegen_state.h"
-#include "codegen/thread_utils.h"
+#include "codegen/intrinsics/thread_utils.h"
 #include "semantic_analysis/argument_conversion.h"
 #include "semantic_analysis/types.h"
 

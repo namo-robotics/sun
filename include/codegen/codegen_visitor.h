@@ -21,14 +21,12 @@
 //
 // What is left here is the walk itself: the node dispatch, and the expression
 // kinds that belong to no component in particular — literals, operators,
-// calls, indexing and match. Its implementation is split by topic across
-// src/codegen/: codegen_visitor.cpp (dispatch, literals, operators),
-// call_expressions.cpp, arrays.cpp, match_expressions.cpp,
-// if_expressions.cpp, block_expressions.cpp, enums.cpp.
+// calls, indexing and match. Its implementation is codegen_visitor.cpp
+// (dispatch, literals, operators) plus src/codegen/expressions/.
 //
 // Rules that need no codegen state live outside the class so other passes can
-// reach the same answers: sun::codegen::ops (scalar_ops.h) and
-// sun::codegen::layout (struct_access.h).
+// reach the same answers: sun::codegen::ops (support/scalar_ops.h) and
+// sun::codegen::layout (support/struct_access.h).
 
 #include <llvm/IR/Function.h>
 #include <llvm/IR/IRBuilder.h>
@@ -41,21 +39,21 @@
 #include <set>
 #include <type_traits>
 
-#include "ast.h"                        // Pure AST header with ASTNodeType
-#include "codegen/class_generator.h"     // Classes, interfaces, enums
-#include "codegen/codegen.h"             // CodegenContext
-#include "codegen/codegen_state.h"       // Shared state for one codegen run
-#include "codegen/error_generator.h"     // throw, try/catch, unwinding calls
-#include "codegen/extern_c.h"            // The extern "C" boundary
-#include "codegen/function_generator.h"  // Functions, lambdas, closures
-#include "codegen/function_registry.h"   // Function lookup and conventions
+#include "ast.h"                                      // Pure AST header with ASTNodeType
+#include "codegen/abi/extern_c.h"                     // The extern "C" boundary
+#include "codegen/classes/class_generator.h"          // Classes, interfaces, enums
+#include "codegen/codegen.h"                          // CodegenContext
+#include "codegen/codegen_state.h"                    // Shared state for one codegen run
+#include "codegen/errors/error_generator.h"           // throw, try/catch, unwinding calls
+#include "codegen/functions/function_generator.h"     // Functions, lambdas, closures
+#include "codegen/functions/function_registry.h"      // Function lookup and conventions
 #include "codegen/intrinsics/intrinsics_generator.h"  // Intrinsics, built-ins
-#include "codegen/loop_generator.h"      // Loops and their jumps
-#include "codegen/scope_manager.h"       // Scope stack and drop emission
-#include "codegen/type_checks.h"         // requireType / tryGetType helpers
-#include "codegen/variable_generator.h"  // Variables, lvalues and globals
-#include "semantic_analysis/types.h"     // Type system
-#include "support/error.h"               // Error handling
+#include "codegen/loops/loop_generator.h"             // Loops and their jumps
+#include "codegen/scopes/scope_manager.h"             // Scope stack and drop emission
+#include "codegen/support/type_checks.h"              // requireType / tryGetType helpers
+#include "codegen/variables/variable_generator.h"     // Variables, lvalues and globals
+#include "semantic_analysis/types.h"                  // Type system
+#include "support/error.h"                            // Error handling
 
 // Convert a condition value to i1 (non-zero test for numeric conditions)
 llvm::Value* coerceCondToBool(CodegenContext& ctx, llvm::Value* condV);

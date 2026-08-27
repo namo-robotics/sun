@@ -3,7 +3,7 @@
 #include "ast.h"
 #include "codegen/codegen.h"
 #include "codegen/codegen_visitor.h"
-#include "codegen/scalar_ops.h"
+#include "codegen/support/scalar_ops.h"
 #include "semantic_analysis/semantic_scope.h"
 
 using namespace llvm;

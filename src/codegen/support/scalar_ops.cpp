@@ -1,7 +1,7 @@
 // scalar_ops.cpp — Scalar conversions that hold no codegen state
 // (see scalar_ops.h)
 
-#include "codegen/scalar_ops.h"
+#include "codegen/support/scalar_ops.h"
 
 namespace sun::codegen::ops {
 

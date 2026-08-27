@@ -4,7 +4,7 @@
 // name": a renamed extern, a class method under its mangled name, and a
 // method the module has not been given yet.
 
-#include "codegen/function_registry.h"
+#include "codegen/functions/function_registry.h"
 
 using namespace llvm;
 

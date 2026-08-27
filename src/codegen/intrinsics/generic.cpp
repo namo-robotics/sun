@@ -5,8 +5,8 @@
 // - _ptr_as_raw<T>, _address_of<T>, _to_ref<T>, _is<T>
 
 #include "codegen/codegen_visitor.h"
-#include "codegen/intrinsics/intrinsics_generator.h"
 #include "codegen/intrinsics/intrinsics.h"
+#include "codegen/intrinsics/intrinsics_generator.h"
 #include "support/error.h"
 
 using namespace llvm;

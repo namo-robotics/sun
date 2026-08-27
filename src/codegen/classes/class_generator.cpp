@@ -3,7 +3,7 @@
 // Forwarders that cannot be inline in the header, because they need the full
 // definition of CodegenVisitor and the header is included by it.
 
-#include "codegen/class_generator.h"
+#include "codegen/classes/class_generator.h"
 
 #include "codegen/codegen_visitor.h"
 

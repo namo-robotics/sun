@@ -3,8 +3,8 @@
 #include "ast.h"
 #include "codegen/codegen.h"
 #include "codegen/codegen_visitor.h"
-#include "codegen/struct_access.h"
-#include "codegen/variable_generator.h"
+#include "codegen/support/struct_access.h"
+#include "codegen/variables/variable_generator.h"
 
 using namespace llvm;
 

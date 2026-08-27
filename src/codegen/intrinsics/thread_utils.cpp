@@ -4,7 +4,7 @@
 // primitive Mutex builds on has no libc wrapper, so it goes through libc's
 // syscall() with a per-target syscall number.
 
-#include "codegen/thread_utils.h"
+#include "codegen/intrinsics/thread_utils.h"
 
 #include <llvm/TargetParser/Triple.h>
 

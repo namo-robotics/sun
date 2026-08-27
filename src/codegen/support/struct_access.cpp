@@ -1,6 +1,6 @@
 // struct_access.cpp — Reading and writing class fields (see struct_access.h)
 
-#include "codegen/struct_access.h"
+#include "codegen/support/struct_access.h"
 
 #include "semantic_analysis/packed_layout.h"
 

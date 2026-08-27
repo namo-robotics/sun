@@ -5,7 +5,7 @@
 // per (class, interface) pair. See class_generator.h.
 
 #include "ast.h"
-#include "codegen/class_generator.h"
+#include "codegen/classes/class_generator.h"
 #include "codegen/codegen_visitor.h"
 
 using namespace llvm;

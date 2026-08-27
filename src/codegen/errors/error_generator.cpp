@@ -3,7 +3,7 @@
 // One forwarder that cannot be inline in the header, because it needs the
 // full definition of CodegenVisitor and the header is included by it.
 
-#include "codegen/error_generator.h"
+#include "codegen/errors/error_generator.h"
 
 #include "codegen/codegen_visitor.h"
 

@@ -3,7 +3,7 @@
 #include "ast.h"
 #include "codegen/codegen.h"
 #include "codegen/codegen_visitor.h"
-#include "codegen/function_generator.h"
+#include "codegen/functions/function_generator.h"
 
 using namespace llvm;
 

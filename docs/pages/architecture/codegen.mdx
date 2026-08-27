@@ -29,9 +29,9 @@ This is the same shape the semantic analyzer uses with `SemanticContext`.
 | `IntrinsicsGenerator` | Compiler intrinsics and libc built-ins |
 
 Rules that need no codegen state are free functions instead, so other passes can
-reach the same answers: `sun::codegen::ops` (`scalar_ops.h`) for scalar widening
-and coercion, and `sun::codegen::layout` (`struct_access.h`) for field addresses,
-alignment and slot writes.
+reach the same answers: `sun::codegen::ops` (`support/scalar_ops.h`) for scalar
+widening and coercion, and `sun::codegen::layout` (`support/struct_access.h`) for
+field addresses, alignment and slot writes.
 
 ## Key Conventions
 
@@ -59,36 +59,26 @@ alignment and slot writes.
 
 ## Source Layout
 
-Sources under `src/codegen/` are grouped by topic. A component's header names
-the files that implement it.
+`include/codegen/` and `src/codegen/` share one layout: a folder per component,
+holding both its header and the sources that implement it.
 
-| File | Responsibility |
-|------|----------------|
-| `codegen_visitor.cpp` | Node dispatch, literals, unary and binary operators |
-| `scope_manager.cpp` | The scope stack, and the drop code it emits |
-| `function_registry.cpp` | Finding a function by name |
-| `classes.cpp` | Class and interface definitions, members, method bodies |
-| `interfaces.cpp` | Interface dispatch: vtables and fat pointers |
-| `functions_lambdas.cpp` | Functions, lambdas and their closures |
-| `return_statements.cpp` | Return value handling |
-| `variable_creation.cpp` | Variable declarations and global initialization |
-| `variable_references.cpp` | Variable loads and assignments |
-| `lvalues.cpp` | Storage addresses, compound assignment |
-| `call_expressions.cpp` | Function calls, method calls, argument lowering |
-| `arrays.cpp` | Array literals and indexing |
-| `if_expressions.cpp` | Conditionals and ternary expressions |
-| `match_expressions.cpp` | Pattern matching (`match` expressions) |
-| `enums.cpp` | Payload enum construction and destructuring |
-| `loops.cpp` | `for`, `while` and `for-in` loops |
-| `error_handling.cpp` | `try`/`catch`/`throw` |
-| `block_expressions.cpp` | Block scoping |
-| `intrinsics/` | Compiler intrinsics and libc built-ins, by area |
-| `abi/` | C ABI classification, per target |
-| `threads.cpp`, `thread_utils.cpp` | The thread trampoline behind stdlib `spawn` |
+| Folder | Holds |
+|--------|-------|
+| *(top level)* | `codegen_visitor`, `codegen_state`, `llvm_type_resolver`, `debug_info_builder` |
+| `scopes/` | The scope stack and the drop code it emits |
+| `classes/` | Class and interface definitions, members, method bodies, enums, vtables |
+| `functions/` | Functions, lambdas, closures, returns, the function registry |
+| `variables/` | Declarations, loads, assignments, lvalues, global initialization |
+| `expressions/` | Calls, arrays and indexing, conditionals, match, blocks |
+| `loops/` | `for`, `while` and `for-in`, and the jumps out of them |
+| `errors/` | `try`/`catch`/`throw` and unwinding calls |
+| `support/` | Helpers holding no codegen state: type checks, scalar ops, field access |
+| `abi/` | The C boundary: per-target ABI classification and the extern "C" emitter |
+| `intrinsics/` | Compiler intrinsics and libc built-ins, by area, plus thread support |
 
-The `*_generator.cpp` files hold only the forwarders a component uses to reach
-the rest of codegen; they cannot be inline in the headers, because those are
-included by `codegen_visitor.h`.
+Each component's `*_generator.cpp` holds only the forwarders it uses to reach
+the rest of codegen; those cannot be inline in the headers, because the headers
+are included by `codegen_visitor.h`.
 
 ## Adding a New Expression Type
 

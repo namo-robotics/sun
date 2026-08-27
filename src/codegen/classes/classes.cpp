@@ -4,12 +4,12 @@
 #include <cstdint>
 
 #include "ast.h"
+#include "codegen/classes/class_generator.h"
 #include "codegen/codegen.h"
-#include "codegen/class_generator.h"
 #include "codegen/codegen_visitor.h"
-#include "codegen/scalar_ops.h"
-#include "codegen/struct_access.h"
 #include "codegen/intrinsics/intrinsics.h"
+#include "codegen/support/scalar_ops.h"
+#include "codegen/support/struct_access.h"
 #include "parsing/parser.h"
 #include "semantic_analysis/semantic_scope.h"
 

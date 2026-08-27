@@ -5,7 +5,7 @@
 // synthesized drop function for a payload enum, and free() for heap
 // allocations. See scope_manager.h.
 
-#include "codegen/scope_manager.h"
+#include "codegen/scopes/scope_manager.h"
 
 #include "codegen/codegen_visitor.h"
 #include "semantic_analysis/packed_layout.h"

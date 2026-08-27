@@ -25,8 +25,8 @@
 #include <string>
 #include <vector>
 
+#include "codegen/abi/extern_c.h"
 #include "codegen/codegen_state.h"
-#include "codegen/extern_c.h"
 #include "semantic_analysis/types.h"
 
 class Capture;

@@ -6,7 +6,7 @@
 
 #include "codegen/codegen_visitor.h"
 #include "codegen/intrinsics/intrinsics_generator.h"
-#include "codegen/thread_utils.h"
+#include "codegen/intrinsics/thread_utils.h"
 #include "support/error.h"
 
 using namespace llvm;
