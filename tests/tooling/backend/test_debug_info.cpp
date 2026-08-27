@@ -327,7 +327,9 @@ TEST(Tooling_Backend_DebugInfo, gdb_breaks_reads_args_and_steps) {
   // Through a variable: macOS's WEXITSTATUS takes its argument's address
   // (union-wait heritage), so it rejects an rvalue.
   int rc = std::system(cmd.c_str());
-  ASSERT_EQ(WEXITSTATUS(rc), 0);
+  // The transcript in the failure message: a nonzero exit alone (a command
+  // erroring in batch mode, the debuggee failing to launch) says nothing.
+  ASSERT_EQ(WEXITSTATUS(rc), 0) << readFile(outPath);
 
   std::string out = readFile(outPath);
   EXPECT_NE(out.find("Breakpoint 1, add (a=3, b=4)"), std::string::npos) << out;
@@ -362,7 +364,9 @@ function main() i32 { return sununiqadd(3, 4); }
   // Through a variable: macOS's WEXITSTATUS takes its argument's address
   // (union-wait heritage), so it rejects an rvalue.
   int rc = std::system(cmd.c_str());
-  ASSERT_EQ(WEXITSTATUS(rc), 0);
+  // The transcript in the failure message: a nonzero exit alone (a command
+  // erroring in batch mode, the debuggee failing to launch) says nothing.
+  ASSERT_EQ(WEXITSTATUS(rc), 0) << readFile(outPath);
 
   std::string out = readFile(outPath);
   EXPECT_NE(out.find("Breakpoint 1, sununiqadd (a=3, b=4)"), std::string::npos)
@@ -392,7 +396,9 @@ TEST(Tooling_Backend_DebugInfo, lldb_breaks_reads_variables_and_steps) {
   // Through a variable: macOS's WEXITSTATUS takes its argument's address
   // (union-wait heritage), so it rejects an rvalue.
   int rc = std::system(cmd.c_str());
-  ASSERT_EQ(WEXITSTATUS(rc), 0);
+  // The transcript in the failure message: a nonzero exit alone (a command
+  // erroring in batch mode, the debuggee failing to launch) says nothing.
+  ASSERT_EQ(WEXITSTATUS(rc), 0) << readFile(outPath);
 
   std::string out = readFile(outPath);
   EXPECT_NE(out.find("a = 3"), std::string::npos) << out;
