@@ -210,11 +210,6 @@ class BorrowChecker {
   void checkLoopBody(const ExprAST* body,
                      const std::vector<std::string>& loopVars = {});
 
-  // True if control never falls out of `expr` (it ends in return/throw, or
-  // is an if whose branches all diverge). Moves made on a diverging path do
-  // not flow into the code after it.
-  static bool exprDiverges(const ExprAST& expr);
-
   // Reference-typed parameters of the current function: name -> true when
   // the parameter is `ref T` (mutable), false for `const ref T`
   std::unordered_map<std::string, bool> refTypedParams_;

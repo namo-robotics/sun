@@ -18,6 +18,24 @@
 // These encapsulate all metadata added to AST nodes during analysis passes.
 // ============================================================================
 
+namespace sun {
+
+/**
+ * What a write to a field does to whatever the field held before it.
+ */
+enum class FieldWriteKind {
+  // The field holds a value: drop it before storing the new one
+  ReplacesValue,
+  // It may hold one, and the walk cannot tell which: check the storage for
+  // the all-zero state at run time, and drop only if it holds something
+  MayReplaceValue,
+  // It cannot hold one yet — this write starts its life, so nothing is
+  // dropped
+  StartsLife,
+};
+
+}  // namespace sun
+
 /// Base analysis data for all expression nodes
 struct ExprAnalysis {
   sun::TypePtr resolvedType;  // Type determined by semantic analyzer
@@ -110,6 +128,10 @@ struct MemberAccessAnalysis : public ExprAnalysis {
   // True when this member access is a method used in value position (bound
   // method reference); its resolved type is then a LambdaType.
   bool isBoundMethodRef = false;
+  // For a field write: what happens to the value the field held before it.
+  // Decided by checkFieldInitialization; anywhere it has not looked, a write
+  // replaces a live value, which is the safe reading.
+  sun::FieldWriteKind fieldWrite = sun::FieldWriteKind::ReplacesValue;
 
   MemberAccessAnalysis() = default;
   MemberAccessAnalysis(const MemberAccessAnalysis&) = default;

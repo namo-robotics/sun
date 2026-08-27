@@ -51,6 +51,15 @@ During the deep walk, a few things are happening at once:
   `sun::conversions::classifyArgument`; codegen only carries the tags out.
 - **Capture detection** — lambdas are scanned for references to outer
   variables so codegen can build their closure environments.
+- **Field initialization** — each constructor is walked once more
+  (`checkFieldInitialization`, `field_initialization.cpp`) to enforce the
+  two-phase rule and to tag every `this.field = value` with what becomes of
+  the value that was there. The walk carries the fields assigned on *every*
+  path and on *some* path; between them a write starts a field's life, or
+  replaces a value, or lands somewhere the walk cannot tell, where codegen
+  checks the storage at run time. A method the constructor calls is walked
+  the same way for a summary of what it assigns and what it needs assigned
+  already.
 
 ## Generics
 
@@ -118,3 +127,4 @@ The analyzer's source is split by concern under `src/semantic_analysis/`:
 | `scope_variables.cpp` / `scope_lookup.cpp` | The scope tree |
 | `classes.cpp`, `interfaces.cpp`, `enums.cpp` | Per-construct analysis and generic instantiation |
 | `captures.cpp` | Closure captures |
+| `field_initialization.cpp` | The two-phase constructor rule, and what each field write drops |

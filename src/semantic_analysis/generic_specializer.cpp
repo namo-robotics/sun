@@ -4,6 +4,7 @@
 
 #include <algorithm>
 
+#include "semantic_analysis/field_initialization.h"
 #include "semantic_analysis/generic_type_arguments.h"
 #include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/semantic_analyzer.h"
@@ -437,6 +438,14 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
       // empty). This analyzes the CLONED method, not the shared generic one
       sema_.analyzeMethodWithBindings(*methodFunc, specializedClass, {}, {});
     }
+    // Each specialization's constructors are checked against its own fields:
+    // what a field's type turns out to be is only known here
+    for (const auto& methodClone : specializedAST->getMethods()) {
+      if (!methodClone.isConstructor) continue;
+      if (methodClone.function->getProto().isGeneric()) continue;
+      checkFieldInitialization(*methodClone.function, *specializedClass,
+                               specializedAST->getMethods());
+    }
   }
 
   if (deferBodies) {
@@ -477,6 +486,12 @@ void GenericSpecializer::analyzeDeferredSpecializations() {
       FunctionAST* methodFunc = methodClone.function.get();
       if (methodFunc->getProto().isGeneric()) continue;
       sema_.analyzeMethodWithBindings(*methodFunc, d.specializedClass, {}, {});
+    }
+    for (const auto& methodClone : d.specializedAST->getMethods()) {
+      if (!methodClone.isConstructor) continue;
+      if (methodClone.function->getProto().isGeneric()) continue;
+      checkFieldInitialization(*methodClone.function, *d.specializedClass,
+                               d.specializedAST->getMethods());
     }
 
     ctx_.setCurrentClass(savedClass);

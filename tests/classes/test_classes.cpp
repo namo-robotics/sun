@@ -54,7 +54,10 @@ TEST(Classes, new_class_instance) {
     class Point {
       var x: i32;
       var y: i32;
-      function init() {}
+      function init() {
+          this.x = 0;
+          this.y = 0;
+      }
     }
 
     function main() i32 {

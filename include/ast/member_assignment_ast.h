@@ -61,4 +61,14 @@ class MemberAssignmentAST : public ExprAST {
   const sun::QualifiedName& getQualifiedName() const {
     return memberAnalysis().qualifiedName;
   }
+
+  // What becomes of the value the field held before this write: it is
+  // dropped, dropped only if the storage is not all zero, or not dropped at
+  // all because the field has never held a value. Set by semantic analysis.
+  void setFieldWriteKind(sun::FieldWriteKind kind) const {
+    memberAnalysis().fieldWrite = kind;
+  }
+  sun::FieldWriteKind fieldWriteKind() const {
+    return memberAnalysis().fieldWrite;
+  }
 };

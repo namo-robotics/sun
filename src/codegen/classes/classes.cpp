@@ -962,14 +962,30 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
   Value* fieldPtr =
       layout::fieldPtr(*ctx.builder, classType, objectPtr, *field, memberName + ".ptr");
 
+  // What becomes of the value the field held, as semantic analysis worked it
+  // out: a constructor's first write to a field lands on storage that has
+  // never held a value and releases nothing, a write where the compiler
+  // cannot tell looks at the storage first, and every other write drops.
+  auto dropOverwrittenValue = [&]() {
+    switch (expr.fieldWriteKind()) {
+      case sun::FieldWriteKind::StartsLife:
+        return;
+      case sun::FieldWriteKind::MayReplaceValue:
+        scopes().emitDropUnlessZeroed(field->type, fieldPtr, memberName);
+        return;
+      case sun::FieldWriteKind::ReplacesValue:
+        scopes().emitDropInPlace(field->type, fieldPtr, memberName);
+        return;
+    }
+  };
+
   // Payload-enum fields: the value arrives as a storage pointer. Drop the
-  // overwritten field first (a no-op on freshly zeroed storage: tag 0 with
-  // zeroed payloads drops cleanly), then MOVE the source in — never an
-  // implicit copy.
+  // overwritten field first, then MOVE the source in — never an implicit
+  // copy.
   if (CodegenVisitor::isPayloadEnum(field->type)) {
     Value* structVal = value;
     if (value->getType()->isPointerTy()) {
-      scopes().emitDropInPlace(field->type, fieldPtr, memberName);
+      dropOverwrittenValue();
       structVal = gen_.applyMoveSemantics(value, field->type);
     }
     ctx.builder->CreateStore(structVal, fieldPtr);
@@ -977,8 +993,8 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
   }
 
   // Handle class-typed fields: the source instance MOVES into the field.
-  // The overwritten field value is dropped first (a no-op on freshly
-  // zeroed storage), then the source is copied in and invalidated.
+  // The overwritten field value is dropped first, then the source is copied
+  // in and invalidated.
   if (auto* fieldClassType = sun::tryGetType<sun::ClassType>(field->type)) {
     llvm::StructType* fieldStructType =
         fieldClassType->getStructType(ctx.getContext());
@@ -986,7 +1002,7 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
     uint64_t structSize = DL.getTypeAllocSize(fieldStructType);
 
     // Drop whatever the field currently holds
-    scopes().emitDropInPlace(field->type, fieldPtr, memberName);
+    dropOverwrittenValue();
 
     // value is a pointer to the source class instance
     // fieldPtr is a pointer to the embedded struct in the parent class

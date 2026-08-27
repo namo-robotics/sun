@@ -4,6 +4,7 @@
 // One handler per AST node kind, called from the dispatcher in
 // analysis.cpp.
 
+#include "semantic_analysis/field_initialization.h"
 #include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/semantic_analyzer.h"
 #include "support/error.h"
@@ -164,6 +165,14 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
     proto.setQualifiedName(
         sun::QualifiedName(methodScopePath, proto.getName()));
     analyzeFunction(*methodDecl.function);
+    // A constructor assigns every field before the object may be used, and
+    // its first write to a field drops nothing. A precompiled class carries
+    // signatures without bodies; its constructors were checked when the
+    // bundle was built.
+    if (methodDecl.isConstructor && !classDef.isPrecompiled()) {
+      sun::checkFieldInitialization(*methodDecl.function, *classType,
+                                    classDef.getMethods());
+    }
   }
 
   // Validate interface implementations
