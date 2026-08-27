@@ -535,3 +535,26 @@ TEST(MemorySafety_Drops_FieldInit, a_method_may_settle_scalar_fields) {
   )"));
   EXPECT_EQ(value, 12);
 }
+
+// Constructors are checked after every method body is analyzed, so what the
+// walk finds inside a helper does not depend on declaration order: a bound
+// method reference is reported as one even when the helper is declared after
+// the constructor.
+TEST(MemorySafety_Drops_FieldInit,
+     helper_diagnostics_do_not_depend_on_declaration_order) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(withPreamble(R"(
+    class Holder {
+      var r: Res;
+      function init() { this.fill(); }
+      function fill() void {
+        var cb = this.tick;
+        this.r = Res(1);
+        cb();
+      }
+      function tick() void { }
+    }
+
+    function main() i32 { var h = Holder(); return deinits; }
+  )")),
+                                "Cannot take a reference to method 'tick'");
+}
