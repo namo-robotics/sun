@@ -21,14 +21,13 @@
 namespace sun {
 
 /**
- * What a write to a field does to whatever the field held before it.
+ * What a write to a field does to whatever the field held before it. The
+ * field-initialization walk proves which one holds for every write — there is
+ * no run-time case.
  */
 enum class FieldWriteKind {
   // The field holds a value: drop it before storing the new one
   ReplacesValue,
-  // It may hold one, and the walk cannot tell which: check the storage for
-  // the all-zero state at run time, and drop only if it holds something
-  MayReplaceValue,
   // It cannot hold one yet — this write starts its life, so nothing is
   // dropped
   StartsLife,

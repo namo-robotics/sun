@@ -269,19 +269,6 @@ class ScopeManager {
   void emitDropInPlace(const sun::TypePtr& type, llvm::Value* ptr,
                        const std::string& name = "drop");
 
-  // As emitDropInPlace, but only when the storage at `ptr` is not all zero.
-  // This answers "does this object's field hold anything", which has to
-  // survive across calls and travel with the object, so it reads the storage
-  // rather than a frame-local flag. (Whether *this frame* still owns a local
-  // is the drop flag's job instead — see the header comment.)
-  // Used where the compiler cannot tell whether a place holds a value yet:
-  // all-zero is what a field holds before anything is written to it, and what
-  // a moved-from value is left in, and an owning type has to treat that state
-  // as nothing to release. Skipping the drop is what a well-behaved deinit
-  // would do anyway.
-  void emitDropUnlessZeroed(const sun::TypePtr& type, llvm::Value* ptr,
-                            const std::string& name = "drop");
-
   // Call classType's deinit() on receiver if it defines one (declares the
   // external on demand).
   void emitDeinitCall(const sun::ClassType* classType, llvm::Value* receiver);
