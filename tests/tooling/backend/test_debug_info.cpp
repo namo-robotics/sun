@@ -386,11 +386,17 @@ TEST(Tooling_Backend_DebugInfo, lldb_breaks_reads_variables_and_steps) {
   // uses to turn ASLR off in the debuggee.
   // `timeout` is GNU coreutils and absent on macOS, so it guards the run
   // only where it exists (mac lldb has no debuginfod to hang on).
+  // --shlib scopes the breakpoint to our binary: --name matches across
+  // every loaded module, and on macOS libobjc has an `add` of its own that
+  // fires during process startup, long before main.
   std::string guard = haveTool("timeout") ? "timeout 120 " : "";
+  std::string module =
+      std::filesystem::path(binary).filename().string();
   std::string outPath = ::testing::TempDir() + "sun_debug_info_lldb.out";
   std::string cmd = guard + "env DEBUGINFOD_URLS= " + lldb +
                     " -b -o 'settings set target.disable-aslr false'"
-                    " -o 'breakpoint set --name add' -o run"
+                    " -o 'breakpoint set --name add --shlib " + module +
+                    "' -o run"
                     " -o 'frame variable' -o next -o 'print sum' " +
                     binary + " > " + outPath + " 2>&1";
   // Through a variable: macOS's WEXITSTATUS takes its argument's address
