@@ -73,12 +73,30 @@ void SemanticAnalyzer::analyze(ExprAST& expr) { analyzeExpr(expr); }
 // Borrow targets
 // -------------------------------------------------------------------
 
+void SemanticAnalyzer::rejectBorrowOfByValueCapture(const ExprAST& target,
+                                                    const Position& loc) {
+  if (target.getType() != ASTNodeType::VARIABLE_REFERENCE) return;
+  const auto& varRef = static_cast<const VariableReferenceAST&>(target);
+  VariableInfo* varInfo = ctx_.lookupVariable(varRef.getName());
+  if (!varInfo || varInfo->captureKind != CaptureKind::ByValue) return;
+  const std::string& name = varRef.getName();
+  logAndThrowError(
+      "Cannot borrow '" + name +
+          "': the lambda captures it by value, so the reference would alias "
+          "the closure's private copy, not the original. Capture it with "
+          "'lambda [ref " +
+          name + "]' to share the original, or 'lambda [const ref " + name +
+          "]' to read it",
+      loc);
+}
+
 void SemanticAnalyzer::validateBorrowTarget(const ExprAST& target,
                                             const Position& loc) {
   if (!isBorrowableLvalue(target)) {
     logAndThrowError(
         "Reference target must be a variable, field, or array element", loc);
   }
+  rejectBorrowOfByValueCapture(target, loc);
   if (target.getType() == ASTNodeType::TERNARY) {
     const auto& ternary = static_cast<const TernaryExprAST&>(target);
     validateBorrowTarget(*ternary.getThen(), loc);

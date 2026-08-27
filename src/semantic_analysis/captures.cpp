@@ -3,156 +3,47 @@
 
 #include <set>
 
+#include "ast/ast_children.h"
 #include "semantic_analysis/semantic_analyzer.h"
 
 // -------------------------------------------------------------------
 // Free variable collection
 // -------------------------------------------------------------------
 
+// Names the expression uses that nothing inside it declares.
+//
+// Most nodes are just a shape to walk through, so `forEachChild` — the
+// enumerator that already knows every node's children — supplies the default.
+// Only the handful of nodes that mention a name, or that declare one their
+// children can see, need their own case here. Anything left out of both is
+// silently treated as capturing nothing, which is how a lambda ends up
+// looking for a local among the module's globals.
 std::set<std::string> SemanticAnalyzer::collectFreeVariables(
     const ExprAST& expr, const std::set<std::string>& bound) {
   std::set<std::string> free;
 
-  switch (expr.getType()) {
-    case ASTNodeType::NUMBER:
-    case ASTNodeType::STRING_LITERAL:
-    case ASTNodeType::CHAR_LITERAL:
-    case ASTNodeType::NULL_LITERAL:
-    case ASTNodeType::BOOL_LITERAL:
-      break;
+  auto collectFrom = [&](const ExprAST& child,
+                         const std::set<std::string>& childBound) {
+    auto childFree = collectFreeVariables(child, childBound);
+    free.insert(childFree.begin(), childFree.end());
+  };
 
+  switch (expr.getType()) {
     case ASTNodeType::VARIABLE_REFERENCE: {
       const auto& varRef = static_cast<const VariableReferenceAST&>(expr);
-      if (bound.find(varRef.getName()) == bound.end()) {
+      if (!bound.count(varRef.getName())) {
         free.insert(varRef.getName());
       }
       break;
     }
 
-    case ASTNodeType::VARIABLE_CREATION: {
-      const auto& varCreate = static_cast<const VariableCreationAST&>(expr);
-      auto valueFree = collectFreeVariables(*varCreate.getValue(), bound);
-      free.insert(valueFree.begin(), valueFree.end());
-      break;
-    }
-
     case ASTNodeType::VARIABLE_ASSIGNMENT: {
       const auto& varAssign = static_cast<const VariableAssignmentAST&>(expr);
-      // The variable name might be free if not bound
-      if (bound.find(varAssign.getName()) == bound.end()) {
+      // Writing to a name uses it just as reading does
+      if (!bound.count(varAssign.getName())) {
         free.insert(varAssign.getName());
       }
-      auto valueFree = collectFreeVariables(*varAssign.getValue(), bound);
-      free.insert(valueFree.begin(), valueFree.end());
-      break;
-    }
-
-    case ASTNodeType::BINARY: {
-      const auto& binExpr = static_cast<const BinaryExprAST&>(expr);
-      auto lhsFree = collectFreeVariables(*binExpr.getLHS(), bound);
-      auto rhsFree = collectFreeVariables(*binExpr.getRHS(), bound);
-      free.insert(lhsFree.begin(), lhsFree.end());
-      free.insert(rhsFree.begin(), rhsFree.end());
-      break;
-    }
-
-    case ASTNodeType::UNARY: {
-      const auto& unaryExpr = static_cast<const UnaryExprAST&>(expr);
-      auto operandFree = collectFreeVariables(*unaryExpr.getOperand(), bound);
-      free.insert(operandFree.begin(), operandFree.end());
-      break;
-    }
-
-    case ASTNodeType::CALL: {
-      const auto& callExpr = static_cast<const CallExprAST&>(expr);
-      // Collect free variables from the callee expression
-      auto calleeFree = collectFreeVariables(*callExpr.getCallee(), bound);
-      free.insert(calleeFree.begin(), calleeFree.end());
-      // Collect free variables from arguments
-      for (const auto& arg : callExpr.getArgs()) {
-        auto argFree = collectFreeVariables(*arg, bound);
-        free.insert(argFree.begin(), argFree.end());
-      }
-      break;
-    }
-
-    case ASTNodeType::IF: {
-      const auto& ifExpr = static_cast<const IfExprAST&>(expr);
-      auto condFree = collectFreeVariables(*ifExpr.getCond(), bound);
-      auto thenFree = collectFreeVariables(*ifExpr.getThen(), bound);
-      free.insert(condFree.begin(), condFree.end());
-      free.insert(thenFree.begin(), thenFree.end());
-      if (ifExpr.getElse()) {
-        auto elseFree = collectFreeVariables(*ifExpr.getElse(), bound);
-        free.insert(elseFree.begin(), elseFree.end());
-      }
-      break;
-    }
-
-    case ASTNodeType::TERNARY: {
-      const auto& ternary = static_cast<const TernaryExprAST&>(expr);
-      auto condFree = collectFreeVariables(*ternary.getCond(), bound);
-      auto thenFree = collectFreeVariables(*ternary.getThen(), bound);
-      auto elseFree = collectFreeVariables(*ternary.getElse(), bound);
-      free.insert(condFree.begin(), condFree.end());
-      free.insert(thenFree.begin(), thenFree.end());
-      free.insert(elseFree.begin(), elseFree.end());
-      break;
-    }
-
-    case ASTNodeType::MATCH: {
-      const auto& matchExpr = static_cast<const MatchExprAST&>(expr);
-      auto discFree = collectFreeVariables(*matchExpr.getDiscriminant(), bound);
-      free.insert(discFree.begin(), discFree.end());
-      for (const auto& arm : matchExpr.getArms()) {
-        if (arm.pattern) {
-          auto patternFree = collectFreeVariables(*arm.pattern, bound);
-          free.insert(patternFree.begin(), patternFree.end());
-        }
-        auto bodyFree = collectFreeVariables(*arm.body, bound);
-        free.insert(bodyFree.begin(), bodyFree.end());
-      }
-      break;
-    }
-
-    case ASTNodeType::FOR_LOOP: {
-      const auto& forExpr = static_cast<const ForExprAST&>(expr);
-      if (forExpr.getInit()) {
-        auto initFree = collectFreeVariables(*forExpr.getInit(), bound);
-        free.insert(initFree.begin(), initFree.end());
-      }
-      if (forExpr.getCondition()) {
-        auto condFree = collectFreeVariables(*forExpr.getCondition(), bound);
-        free.insert(condFree.begin(), condFree.end());
-      }
-      if (forExpr.getIncrement()) {
-        auto incrFree = collectFreeVariables(*forExpr.getIncrement(), bound);
-        free.insert(incrFree.begin(), incrFree.end());
-      }
-      auto bodyFree = collectFreeVariables(*forExpr.getBody(), bound);
-      free.insert(bodyFree.begin(), bodyFree.end());
-      break;
-    }
-
-    case ASTNodeType::FOR_IN_LOOP: {
-      const auto& forInExpr = static_cast<const ForInExprAST&>(expr);
-      // Iterable expression can have free variables
-      auto iterableFree = collectFreeVariables(*forInExpr.getIterable(), bound);
-      free.insert(iterableFree.begin(), iterableFree.end());
-      // Loop variable is bound in the body
-      std::set<std::string> bodyBound = bound;
-      bodyBound.insert(forInExpr.getLoopVar());
-      auto bodyFree = collectFreeVariables(*forInExpr.getBody(), bodyBound);
-      free.insert(bodyFree.begin(), bodyFree.end());
-      break;
-    }
-
-    case ASTNodeType::WHILE_LOOP: {
-      const auto& whileExpr = static_cast<const WhileExprAST&>(expr);
-      auto condFree = collectFreeVariables(*whileExpr.getCondition(), bound);
-      auto bodyFree = collectFreeVariables(*whileExpr.getBody(), bound);
-      free.insert(condFree.begin(), condFree.end());
-      free.insert(bodyFree.begin(), bodyFree.end());
+      collectFrom(*varAssign.getValue(), bound);
       break;
     }
 
@@ -163,9 +54,47 @@ std::set<std::string> SemanticAnalyzer::collectFreeVariables(
       break;
     }
 
-    case ASTNodeType::FUNCTION:
-      // Functions define their own scope - handled separately
+    case ASTNodeType::FOR_LOOP: {
+      const auto& forExpr = static_cast<const ForExprAST&>(expr);
+      std::set<std::string> innerBound = bound;
+      if (forExpr.getInit()) {
+        collectFrom(*forExpr.getInit(), bound);
+        // A loop counter declared in the header is visible to the rest of it
+        if (forExpr.getInit()->getType() == ASTNodeType::VARIABLE_CREATION) {
+          innerBound.insert(
+              static_cast<const VariableCreationAST&>(*forExpr.getInit())
+                  .getName());
+        }
+      }
+      if (forExpr.getCondition())
+        collectFrom(*forExpr.getCondition(), innerBound);
+      if (forExpr.getIncrement())
+        collectFrom(*forExpr.getIncrement(), innerBound);
+      collectFrom(*forExpr.getBody(), innerBound);
       break;
+    }
+
+    case ASTNodeType::FOR_IN_LOOP: {
+      const auto& forInExpr = static_cast<const ForInExprAST&>(expr);
+      collectFrom(*forInExpr.getIterable(), bound);
+      // The loop variable is declared by the loop, not captured from outside
+      std::set<std::string> bodyBound = bound;
+      bodyBound.insert(forInExpr.getLoopVar());
+      collectFrom(*forInExpr.getBody(), bodyBound);
+      break;
+    }
+
+    case ASTNodeType::TRY_CATCH: {
+      const auto& tryCatch = static_cast<const TryCatchExprAST&>(expr);
+      collectFrom(tryCatch.getTryBlock(), bound);
+      for (const auto& clause : tryCatch.getCatchClauses()) {
+        // The caught error is declared by the clause
+        std::set<std::string> clauseBound = bound;
+        clauseBound.insert(clause.bindingName);
+        collectFrom(*clause.body, clauseBound);
+      }
+      break;
+    }
 
     case ASTNodeType::LAMBDA: {
       // A nested lambda's free variables (minus its own params) are free in
@@ -182,67 +111,19 @@ std::set<std::string> SemanticAnalyzer::collectFreeVariables(
       break;
     }
 
-    case ASTNodeType::MEMBER_ACCESS: {
-      const auto& access = static_cast<const MemberAccessAST&>(expr);
-      auto objectFree = collectFreeVariables(*access.getObject(), bound);
-      free.insert(objectFree.begin(), objectFree.end());
+    // Definitions carry their own scope and cannot reach an enclosing local
+    case ASTNodeType::FUNCTION:
+    case ASTNodeType::CLASS_DEFINITION:
+    case ASTNodeType::INTERFACE_DEFINITION:
+    case ASTNodeType::ENUM_DEFINITION:
+    case ASTNodeType::MODULE:
+    case ASTNodeType::MOON_SCOPE:
+    case ASTNodeType::IMPORT_SCOPE:
       break;
-    }
-
-    case ASTNodeType::MEMBER_ASSIGNMENT: {
-      const auto& assignment = static_cast<const MemberAssignmentAST&>(expr);
-      auto objectFree = collectFreeVariables(*assignment.getObject(), bound);
-      free.insert(objectFree.begin(), objectFree.end());
-      auto valueFree = collectFreeVariables(*assignment.getValue(), bound);
-      free.insert(valueFree.begin(), valueFree.end());
-      break;
-    }
-
-    case ASTNodeType::INDEX: {
-      const auto& indexExpr = static_cast<const IndexAST&>(expr);
-      auto targetFree = collectFreeVariables(*indexExpr.getTarget(), bound);
-      free.insert(targetFree.begin(), targetFree.end());
-      for (const auto& slice : indexExpr.getIndices()) {
-        if (slice->getStart()) {
-          auto f = collectFreeVariables(*slice->getStart(), bound);
-          free.insert(f.begin(), f.end());
-        }
-        if (slice->getEnd()) {
-          auto f = collectFreeVariables(*slice->getEnd(), bound);
-          free.insert(f.begin(), f.end());
-        }
-      }
-      break;
-    }
-
-    case ASTNodeType::INDEXED_ASSIGNMENT: {
-      const auto& assignment = static_cast<const IndexedAssignmentAST&>(expr);
-      auto targetFree = collectFreeVariables(*assignment.getTarget(), bound);
-      free.insert(targetFree.begin(), targetFree.end());
-      auto valueFree = collectFreeVariables(*assignment.getValue(), bound);
-      free.insert(valueFree.begin(), valueFree.end());
-      break;
-    }
-
-    case ASTNodeType::COMPOUND_ASSIGNMENT: {
-      const auto& assignment = static_cast<const CompoundAssignmentAST&>(expr);
-      auto targetFree = collectFreeVariables(*assignment.getTarget(), bound);
-      free.insert(targetFree.begin(), targetFree.end());
-      auto valueFree = collectFreeVariables(*assignment.getValue(), bound);
-      free.insert(valueFree.begin(), valueFree.end());
-      break;
-    }
-
-    case ASTNodeType::RETURN: {
-      const auto& returnExpr = static_cast<const ReturnExprAST&>(expr);
-      if (returnExpr.hasValue()) {
-        auto valueFree = collectFreeVariables(*returnExpr.getValue(), bound);
-        free.insert(valueFree.begin(), valueFree.end());
-      }
-      break;
-    }
 
     default:
+      forEachChild(expr,
+                   [&](const ExprAST& child) { collectFrom(child, bound); });
       break;
   }
 

@@ -184,6 +184,10 @@ void SemanticAnalyzer::checkArgumentPlaces(
   for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
     if (!args[i] || !paramTypes[i]) continue;
     sun::TypePtr argType = args[i]->getResolvedType();
+    // Any reference parameter borrows its argument, const or not
+    if (paramTypes[i]->isReference()) {
+      rejectBorrowOfByValueCapture(*args[i], loc);
+    }
     if (sun::isMutableRef(paramTypes[i])) {
       // A reference argument is checked by assignability (const ref never
       // becomes ref); a place argument is borrowed here
