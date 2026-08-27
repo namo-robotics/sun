@@ -22,6 +22,7 @@ TEST(MemorySafety_LinkedList, two_nodes_linked) {
 
         function init(v: i32) {
             this.value = v;
+            this.next = null;
         }
 
         function get_value() i32 {
@@ -58,6 +59,7 @@ TEST(MemorySafety_LinkedList, three_nodes_chain) {
 
         function init(v: i32) {
             this.value = v;
+            this.next = null;
         }
 
         function get_value() i32 {
@@ -105,6 +107,7 @@ TEST(MemorySafety_LinkedList, modify_through_pointer) {
 
         function init(v: i32) {
             this.value = v;
+            this.next = null;
         }
 
         function get_value() i32 {
@@ -153,6 +156,7 @@ TEST(MemorySafety_LinkedList, access_deep_chain) {
 
         function init(v: i32) {
             this.value = v;
+            this.next = null;
         }
 
         function get_value() i32 {

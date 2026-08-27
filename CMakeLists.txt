@@ -124,6 +124,7 @@ add_library(sun_lib
     src/ast/prototype_ast.cpp
     src/ast/call_expr_ast.cpp
     src/ast/ast_children.cpp
+    src/ast/control_flow.cpp
     # Semantic analysis
     src/semantic_analysis/qualified_name.cpp
     src/semantic_analysis/semantic_context.cpp
@@ -137,6 +138,7 @@ add_library(sun_lib
     src/semantic_analysis/type_inferer.cpp
     src/semantic_analysis/type_traits.cpp
     src/semantic_analysis/captures.cpp
+    src/semantic_analysis/field_initialization.cpp
     src/semantic_analysis/analysis.cpp
     src/semantic_analysis/analysis_declarations.cpp
     src/semantic_analysis/analysis_control_flow.cpp

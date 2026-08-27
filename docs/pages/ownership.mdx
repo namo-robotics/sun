@@ -69,6 +69,48 @@ error: use of moved variable 'p1'. Ownership was transferred in a previous assig
 
 This prevents use-after-move bugs at compile time.
 
+### Writing to a Field
+
+Assigning to a field moves the new value in and drops the value the field held
+before, so the old one is released exactly once. A constructor's first write to
+a field is the exception: the field has never held a value at that point, so
+there is nothing to release and nothing is dropped.
+
+```sun
+class Holder {
+    var res: Res;
+
+    function init() {
+        this.res = Res(1);   // starts the field's life — nothing dropped
+        this.res = Res(2);   // replaces Res(1), which is dropped here
+    }
+
+    function replace(r: Res) void {
+        this.res = r;        // replaces what the field holds, dropping it
+    }
+}
+```
+
+The compiler decides this per write, and there are three answers. A write
+starts the field's life when the field cannot hold a value yet on any path
+that reaches it, and drops nothing. A write to a field that holds one on every
+such path drops it. In between — a write inside a loop, which runs again with
+the field live, or a write in a method the constructor hands the work to,
+which the same method may make again later on a live field — the compiler
+cannot tell, so the storage is checked at run time and dropped only if it
+holds something.
+
+That check reads the all-zero state as "nothing to release", which is what an
+owning type has to treat it as anyway: it is the state a moved-from value is
+left in, and the state a field is in before anything is written to it. A
+`deinit` must still be a no-op there, the way `Unique<T>` checks its pointer
+before freeing. What the check buys is that a `deinit` doing something
+unconditional — counting, logging, releasing a lock — is not called at all for
+storage that never held a value.
+
+See [Constructors](/classes#constructors) for the rule that makes the first
+answer possible: every field is assigned before the object may be used.
+
 ### Returning Classes from Functions
 
 Functions can return class instances, transferring ownership to the caller:

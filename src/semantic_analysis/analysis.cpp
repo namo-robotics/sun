@@ -4,6 +4,7 @@
 #include <unordered_set>
 
 #include "codegen/intrinsics/intrinsics.h"
+#include "semantic_analysis/field_initialization.h"
 #include "semantic_analysis/generic_type_arguments.h"
 #include "semantic_analysis/item_refs.h"
 #include "semantic_analysis/semantic_analyzer.h"
@@ -538,6 +539,12 @@ void SemanticAnalyzer::analyzePartialClass(ClassDefinitionAST& classDef,
     // Analyze extension method bodies
     for (const auto& methodDecl : classDef.getMethods()) {
       analyzeFunction(*methodDecl.function);
+      // An extension may add another constructor, which owes the class every
+      // field like any other
+      if (methodDecl.isConstructor && !classDef.isPrecompiled()) {
+        sun::checkFieldInitialization(*methodDecl.function, *existingClass,
+                                      classDef.getMethods());
+      }
     }
 
     ctx_.exitScope();  // Class scope

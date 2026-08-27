@@ -234,6 +234,52 @@ void ScopeManager::emitDropInPlace(const sun::TypePtr& type, Value* ptr,
   }
 }
 
+void ScopeManager::emitDropUnlessZeroed(const sun::TypePtr& type, Value* ptr,
+                                        const std::string& name) {
+  if (!type || !ptr) return;
+  llvm::Type* storage = type->toLLVMType(ctx.getContext());
+  if (!storage) return;
+  const DataLayout& DL = state_.module->getDataLayout();
+  uint64_t size = DL.getTypeAllocSize(storage);
+  if (size == 0) return;
+
+  // Compare the storage against a run of zero bytes
+  llvm::Type* byteArray =
+      llvm::ArrayType::get(llvm::Type::getInt8Ty(ctx.getContext()), size);
+  auto* zeros = new GlobalVariable(
+      *state_.module, byteArray, /*isConstant=*/true, GlobalValue::PrivateLinkage,
+      llvm::ConstantAggregateZero::get(byteArray), name + ".zeroes");
+  zeros->setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
+
+  llvm::PointerType* bytePtr = PointerType::getUnqual(ctx.getContext());
+  FunctionCallee memcmpFn = state_.module->getOrInsertFunction(
+      "memcmp", FunctionType::get(Type::getInt32Ty(ctx.getContext()),
+                                  {bytePtr, bytePtr,
+                                   Type::getInt64Ty(ctx.getContext())},
+                                  false));
+  Value* difference = ctx.builder->CreateCall(
+      memcmpFn,
+      {ptr, zeros,
+       ConstantInt::get(Type::getInt64Ty(ctx.getContext()), size)},
+      name + ".cmp");
+  Value* holdsSomething = ctx.builder->CreateICmpNE(
+      difference, ConstantInt::get(Type::getInt32Ty(ctx.getContext()), 0),
+      name + ".live");
+
+  Function* parent = ctx.builder->GetInsertBlock()->getParent();
+  BasicBlock* dropBlock =
+      BasicBlock::Create(ctx.getContext(), name + ".drop", parent);
+  BasicBlock* afterBlock =
+      BasicBlock::Create(ctx.getContext(), name + ".dropped", parent);
+  ctx.builder->CreateCondBr(holdsSomething, dropBlock, afterBlock);
+
+  ctx.builder->SetInsertPoint(dropBlock);
+  emitDropInPlace(type, ptr, name);
+  ctx.builder->CreateBr(afterBlock);
+
+  ctx.builder->SetInsertPoint(afterBlock);
+}
+
 void ScopeManager::emitCleanupToDepth(size_t depth) {
   if (scopes_.empty()) return;
   for (size_t i = scopes_.size(); i-- > depth;) {

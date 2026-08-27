@@ -216,6 +216,66 @@ class Box<T> implements IIterator<T, Box<T>> {
 
 See [Interfaces](/interfaces) for more details on interface definitions.
 
+## Constructors
+
+A constructor runs in two phases. The first lasts until every field has a
+value. All the body may do there is give the fields their values — reading a
+field that has none yet, or handing `this` to anything else, is rejected,
+because the object is not a whole value yet. The second phase begins once
+every field is assigned, and the body may do anything a method can.
+
+```sun
+class Account {
+    var owner: i32;
+    var balance: i64;
+
+    function init(owner: i32) {
+        this.owner = owner;
+        this.balance = 0;
+        this.audit();       // fine: every field has a value by here
+    }
+
+    function audit() void { ... }
+}
+```
+
+A constructor must leave every field assigned, on every path out of it — the
+same rule a [struct literal](#struct-literals-classes-without-init) follows by
+having to name every field. A field left out would silently be zero, and that
+is exactly the bug the rule exists to prevent:
+
+```sun
+class Broken {
+    var owner: i32;
+    var balance: i64;
+
+    function init(owner: i32) {
+        this.owner = owner;
+    }   // ❌ ERROR: constructor of 'Broken' can finish with field 'balance'
+        //    unassigned
+}
+```
+
+A constructor may hand the work to the object's own methods, and what they
+assign counts towards the obligation. Such a method may only read fields that
+already have a value:
+
+```sun
+class Buffer {
+    var data: Vec<u8>;
+    var length: i64;
+
+    function init(alloc: ref HeapAllocator) {
+        this.fill(alloc);   // assigns both fields, so the object is whole
+    }
+
+    function fill(alloc: ref HeapAllocator) void {
+        this.data = Vec<u8>(alloc, 16);
+        this.length = 0;
+    }
+}
+```
+
 ## Creating Instances
 
 ### Stack Allocation (Value Types)

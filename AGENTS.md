@@ -50,6 +50,7 @@ One predicate per rule, so there is one place to change and one place to look:
 - Argument conversions: `sun::conversions::classifyArgument` decides, codegen only switches on the tag. Add one by extending the enum, the classifier, and `emitCallArguments` — never by comparing Sun types in codegen.
 - Generic bodies resolve names at their definition site: templates record `definitionScope`, and `instantiateGeneric*` switches `currentScope` to it before analyzing the body.
 - Iteration is stdlib, not builtin (`stdlib/iterator.sun`). Sema requires `next` to take exactly `ref <the iterated type>`; codegen passes the iterable's address, so anything else is UB.
+- Constructors run in two phases: a constructor assigns every field (on its own or through the class's own methods, whose summaries discharge the obligation) before `this` may be read or passed on, and it may not finish with a field unassigned. `checkFieldInitialization` (`field_initialization.cpp`) enforces it, and tags each field write with a `FieldWriteKind`: `StartsLife` drops nothing, `ReplacesValue` drops, `MayReplaceValue` checks the storage for all-zero at run time (`emitDropUnlessZeroed`) and drops only if it holds something. Codegen only switches on the tag. A `deinit` must still be a no-op on all-zero storage — that is what the run-time check assumes.
 
 ## Memory Allocation
 
@@ -66,3 +67,4 @@ One predicate per rule, so there is one place to change and one place to look:
 - Sun DOES NOT ALLOW IMPLICIT COPIES.
 - Every function, class, interface and method gets a block comment saying what it is for, in concise plain English. This includes `.sun` files and C++ files. Keep other comments minimal.
 - Use plain English with minimal jargon, in docs and comments alike. Both target a public audience of open-source software engineers; avoid acronyms except widely known ones.
+- Keep comments concise, plain-english, and for a general audience of engineers.
