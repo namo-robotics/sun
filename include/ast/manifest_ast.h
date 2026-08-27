@@ -31,21 +31,37 @@ struct ManifestArchiveDependency {
   std::string path;
 };
 
+// Dependencies that only apply when compiling for one operating system,
+// from a `target: { <os>: { ... } }` block. The manifest never decides the
+// target — --target (or the host) does, at compile time; a block simply says
+// which sources belong to builds for that OS. This is how the stdlib carries
+// target_linux.sun and target_darwin.sun in one manifest.
+struct ManifestTargetBlock {
+  std::string os;  // "linux", "macos" or "windows"
+  std::vector<ManifestSunDependency> suns;
+  std::vector<ManifestMoonDependency> moons;
+  std::vector<ManifestProtoDependency> protos;
+  std::vector<ManifestArchiveDependency> archives;
+};
+
 class ManifestAST : public ExprAST {
   std::vector<ManifestSunDependency> suns;
   std::vector<ManifestMoonDependency> moons;
   std::vector<ManifestProtoDependency> protos;
   std::vector<ManifestArchiveDependency> archives;
+  std::vector<ManifestTargetBlock> targets;
 
  public:
   ManifestAST(std::vector<ManifestSunDependency> suns,
               std::vector<ManifestMoonDependency> moons,
               std::vector<ManifestProtoDependency> protos = {},
-              std::vector<ManifestArchiveDependency> archives = {})
+              std::vector<ManifestArchiveDependency> archives = {},
+              std::vector<ManifestTargetBlock> targets = {})
       : suns(std::move(suns)),
         moons(std::move(moons)),
         protos(std::move(protos)),
-        archives(std::move(archives)) {}
+        archives(std::move(archives)),
+        targets(std::move(targets)) {}
 
   ASTNodeType getType() const override { return ASTNodeType::MANIFEST; }
   std::string toString() const override { return "manifest"; }
@@ -57,6 +73,9 @@ class ManifestAST : public ExprAST {
   }
   const std::vector<ManifestArchiveDependency>& getArchives() const {
     return archives;
+  }
+  const std::vector<ManifestTargetBlock>& getTargets() const {
+    return targets;
   }
   std::string dotLabel() const override { return "Manifest"; }
 };

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <llvm/TargetParser/Triple.h>
+
 #include <filesystem>
 #include <memory>
 #include <mutex>
@@ -11,6 +13,24 @@
 #include "moon_bundling/moon.h"
 
 namespace sun {
+
+/// Whether two triples name the same operating system for bundle-matching
+/// purposes. Struct layouts and ABI decisions are baked into a bundle's
+/// bitcode per OS as well as per architecture, so an aarch64-linux bundle
+/// must never stand in for an arm64 macOS target. Apple triples spell the
+/// same system several ways (darwin, macosx), which is why this is not a
+/// plain getOS() comparison; both sides are normalized first because the
+/// common three-part spelling "aarch64-linux-gnu" would otherwise parse with
+/// an unknown OS. Environment (gnu vs musl) is deliberately not compared:
+/// those layouts are compatible.
+inline bool sameOsFamily(const llvm::Triple& rawA, const llvm::Triple& rawB) {
+  llvm::Triple a(llvm::Triple::normalize(rawA.str()));
+  llvm::Triple b(llvm::Triple::normalize(rawB.str()));
+  if (a.isOSDarwin() || b.isOSDarwin()) {
+    return a.isOSDarwin() && b.isOSDarwin();
+  }
+  return a.getOS() == b.getOS();
+}
 
 /// Global cache for precompiled .moon bundles
 /// Thread-safe singleton for discovering and loading precompiled libraries

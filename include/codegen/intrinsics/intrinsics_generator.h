@@ -98,6 +98,9 @@ class IntrinsicsGenerator {
   // Futex intrinsics (in intrinsics.cpp)
   llvm::Value* codegenFutexWaitIntrinsic(const CallExprAST& expr);
   llvm::Value* codegenFutexWakeIntrinsic(const CallExprAST& expr);
+
+  // Target intrinsics (in builtins.cpp)
+  llvm::Value* codegenTargetIsIntrinsic(const CallExprAST& expr);
   // Built-in intrinsics (libc calls; see intrinsics/libc.h). The registry
   // and dispatcher live in src/codegen/intrinsics/builtins.cpp; the codegen
   // methods below live in the per-area files beside it.

@@ -65,16 +65,21 @@ MoonReader* LibraryCache::selectBundle(
   // exact name, and the linker must land on the same file the parser
   // resolved — if that bundle is wrong for the target, the link-time triple
   // check reports it with an actionable error rather than silently
-  // substituting a different file. Architecture match breaks ties (several
+  // substituting a different file. Target match breaks ties (several
   // explicitly registered bundles can accumulate across compilations in one
-  // process).
+  // process), with the operating system weighed alongside the architecture
+  // so an aarch64 Linux bundle never outranks the macOS one on a Mac.
   MoonReader* best = nullptr;
   int bestScore = -1;
   for (auto* reader : candidates) {
-    std::string triple = reader->getTargetTriple();
-    bool archMatch =
-        !triple.empty() && llvm::Triple(triple).getArch() == want.getArch();
-    int score = (pinnedBundles_.count(reader) ? 2 : 0) + (archMatch ? 1 : 0);
+    std::string tripleStr = reader->getTargetTriple();
+    int score = pinnedBundles_.count(reader) ? 4 : 0;
+    if (!tripleStr.empty()) {
+      llvm::Triple triple(tripleStr);
+      bool archMatch = triple.getArch() == want.getArch();
+      if (archMatch) score += 1;
+      if (archMatch && sameOsFamily(triple, want)) score += 1;
+    }
     if (score > bestScore) {
       best = reader;
       bestScore = score;
@@ -101,12 +106,10 @@ void LibraryCache::initFromEnvironment() {
     searchPaths_.push_back("build");
   }
 
-  // System-wide installation paths (Debian package)
-  if (std::filesystem::exists("/usr/lib/sun")) {
-    searchPaths_.push_back("/usr/lib/sun");
-  }
-  if (std::filesystem::exists("/usr/share/sun/stdlib")) {
-    searchPaths_.push_back("/usr/share/sun/stdlib");
+  // System-wide installation paths: next to the compiler binary, then the
+  // Debian and Homebrew prefixes (see SunPath::systemInstallDirs).
+  for (const auto& dir : SunPath::systemInstallDirs()) {
+    searchPaths_.push_back(dir);
   }
 
   initialized_ = true;

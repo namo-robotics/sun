@@ -194,4 +194,19 @@ inline llvm::FunctionCallee syscall(llvm::Module* m) {
   return get(m, "syscall", i64(m), {i64(m)}, /*isVarArg=*/true);
 }
 
+// --- Darwin wait-on-address --------------------------------------------------
+// macOS has no futex; its kernel primitive with the same shape is the ulock
+// pair below (what libc++ builds atomic waits on). Only emitted when the
+// target is Darwin (see thread_utils).
+
+// int __ulock_wait(uint32_t operation, void *addr, uint64_t value,
+//                  uint32_t timeout_us)
+inline llvm::FunctionCallee ulockWait(llvm::Module* m) {
+  return get(m, "__ulock_wait", i32(m), {i32(m), ptr(m), i64(m), i32(m)});
+}
+// int __ulock_wake(uint32_t operation, void *addr, uint64_t wake_value)
+inline llvm::FunctionCallee ulockWake(llvm::Module* m) {
+  return get(m, "__ulock_wake", i32(m), {i32(m), ptr(m), i64(m)});
+}
+
 }  // namespace sun::libc

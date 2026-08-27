@@ -32,5 +32,13 @@ manifest {
         "proto_wire.sun",
         "json.sun",
         "bigint.sun"
-    ]
+    ],
+    target: {
+        linux: {
+            suns: [ "target_linux.sun" ]
+        },
+        macos: {
+            suns: [ "target_darwin.sun" ]
+        }
+    }
 }

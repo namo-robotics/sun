@@ -12,9 +12,9 @@
 
 public module sun {
   public module time {
-    // clockid_t values from asm-generic, the same on every Linux target.
+    // clockid_t values. CLOCK_REALTIME is 0 everywhere; CLOCK_MONOTONIC
+    // differs per OS and lives in target_<os>.sun.
     var CLOCK_REALTIME: i32 = 0;
-    var CLOCK_MONOTONIC: i32 = 1;
 
     var NANOS_PER_SEC: i64 = 1000000000;
 

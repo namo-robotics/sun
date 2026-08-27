@@ -948,6 +948,13 @@ void SemanticContext::registerBuiltinFunctions() {
   registerFunctionInCurrentScope("_cttz_u64",
                                  {Types::UInt64(), {Types::UInt64()}, {}});
 
+  // Target intrinsics
+  // _target_is("macos") - compile-time check of the compilation target's
+  // operating system; codegen folds it to a constant and keeps only the live
+  // side of a branch on it
+  registerFunctionInCurrentScope("_target_is",
+                                 {Types::Bool(), {Types::String()}, {}});
+
   // Futex intrinsics (Linux-specific thread synchronization)
   // _futex_wait(ptr, expected) - block if *ptr == expected
   registerFunctionInCurrentScope(

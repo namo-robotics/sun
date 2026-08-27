@@ -38,6 +38,15 @@ if [[ -f CMakeCache.txt ]]; then
     CACHED_SKIP_STDLIB=$(grep "^SKIP_STDLIB:" CMakeCache.txt 2>/dev/null | cut -d= -f2 || echo "")
 fi
 
+# On a Mac, point CMake at Homebrew's LLVM (Apple ships no LLVMConfig.cmake)
+EXTRA_CMAKE_ARGS=()
+if [[ "$(uname -s)" == "Darwin" ]] && command -v brew >/dev/null 2>&1; then
+    LLVM_PREFIX=$(brew --prefix llvm@20 2>/dev/null || brew --prefix llvm 2>/dev/null || true)
+    if [[ -n "$LLVM_PREFIX" ]]; then
+        EXTRA_CMAKE_ARGS+=("-DLLVM_DIR=$LLVM_PREFIX/lib/cmake/llvm")
+    fi
+fi
+
 # Reconfigure if: no cache, --reconfigure flag, or SKIP_STDLIB changed
 if [[ ! -f CMakeCache.txt ]] || [[ "$RECONFIGURE" == "true" ]] || [[ "$CACHED_SKIP_STDLIB" != "$SKIP_STDLIB" ]]; then
     cmake -G Ninja \
@@ -48,6 +57,7 @@ if [[ ! -f CMakeCache.txt ]] || [[ "$RECONFIGURE" == "true" ]] || [[ "$CACHED_SK
           -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
           -DCMAKE_C_COMPILER_LAUNCHER=ccache \
           -DSKIP_STDLIB=$SKIP_STDLIB \
+          ${EXTRA_CMAKE_ARGS[@]+"${EXTRA_CMAKE_ARGS[@]}"} \
           ..
 fi
 

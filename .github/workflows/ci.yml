@@ -90,3 +90,67 @@ jobs:
             echo "::endgroup::"
           done
           exit $fail
+
+  # Native macOS (Apple Silicon): builds the compiler with Homebrew LLVM and
+  # runs the suite and examples on real hardware — the things the Linux job's
+  # cross-compilation tests cannot execute. tls.moon is skipped here (its
+  # OpenSSL archives are Linux-only for now; see the roadmap's cross-target
+  # archives item).
+  build-and-test-macos:
+    runs-on: macos-latest
+
+    env:
+      CCACHE_SLOPPINESS: pch_defines,time_macros
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: brew install llvm@20 protobuf ninja ccache googletest
+
+      - name: Set up ccache
+        uses: hendrikmuhs/ccache-action@v1.2.23
+        with:
+          key: ci-macos-clang20
+          max-size: 2G
+
+      - name: Configure
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_C_COMPILER="$(brew --prefix llvm@20)/bin/clang" \
+            -DCMAKE_CXX_COMPILER="$(brew --prefix llvm@20)/bin/clang++" \
+            -DLLVM_DIR="$(brew --prefix llvm@20)/lib/cmake/llvm" \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build
+        run: cmake --build build -j4
+
+      - name: Test
+        run: |
+          cd build
+          ctest -j4 --output-on-failure
+        env:
+          SUN_PATH: ${{ github.workspace }}
+
+      - name: Add compiler to PATH
+        run: echo "${GITHUB_WORKSPACE}/build" >> "$GITHUB_PATH"
+
+      - name: Verify examples compile & execute
+        run: |
+          set -euo pipefail
+          fail=0
+          for dir in examples/*/; do
+            [ -f "${dir}build.sh" ] || continue
+            name=$(basename "$dir")
+            echo "::group::${name}"
+            if ( cd "$dir" && bash build.sh && bash test.sh ); then
+              echo "PASS ${name}"
+            else
+              echo "::error::example '${name}' failed to compile or execute"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $fail

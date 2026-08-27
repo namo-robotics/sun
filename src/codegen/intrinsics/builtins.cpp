@@ -11,6 +11,8 @@
 #include "ast.h"
 #include "codegen/codegen_visitor.h"
 #include "codegen/intrinsics/intrinsics_generator.h"
+#include "support/error.h"
+#include "support/target_os.h"
 
 using namespace llvm;
 
@@ -125,6 +127,10 @@ const std::map<std::string, BuiltinEmitter>& builtinTable() {
       {"_futex_wake",
        [](auto& g, const auto& e) { return g.codegenFutexWakeIntrinsic(e); }},
 
+      // Target intrinsics
+      {"_target_is",
+       [](auto& g, const auto& e) { return g.codegenTargetIsIntrinsic(e); }},
+
       // Network socket intrinsics
       {"__socket", [](auto& g, const auto& e) { return g.codegenSocket(e); }},
       {"__bind", [](auto& g, const auto& e) { return g.codegenBind(e); }},
@@ -161,4 +167,36 @@ Value* IntrinsicsGenerator::codegenBuiltin(const std::string& name,
                                            const CallExprAST& expr) {
   auto it = builtinTable().find(name);
   return it == builtinTable().end() ? nullptr : it->second(*this, expr);
+}
+
+Value* IntrinsicsGenerator::codegenTargetIsIntrinsic(const CallExprAST& expr) {
+  // _target_is("macos") -> bool, folded to a constant for the compilation
+  // target. The argument must be a string literal from the known set so a
+  // typo is a compile error rather than a silently false branch. The
+  // if/ternary codegen keeps only the live side of a branch on a constant,
+  // which is what lets per-OS stdlib code declare externs (like Darwin's
+  // __error) that other targets could not link.
+  const auto& args = expr.getArgs();
+  if (args.size() != 1 || args[0]->getType() != ASTNodeType::STRING_LITERAL) {
+    logAndThrowError(
+        "_target_is expects one string literal argument, e.g. "
+        "_target_is(\"macos\")",
+        expr.getLocation());
+    return nullptr;
+  }
+
+  const std::string& name =
+      static_cast<const StringLiteralAST&>(*args[0]).getValue();
+  if (!sun::isKnownTargetOs(name)) {
+    logAndThrowError("_target_is does not know the target '" + name +
+                         "'; it accepts \"linux\", \"macos\" and \"windows\"",
+                     expr.getLocation());
+    return nullptr;
+  }
+
+  auto osName =
+      sun::targetOsName(sun::resolvedTargetTriple(module->getTargetTriple()));
+  bool result = osName && *osName == name;
+  return ConstantInt::get(llvm::Type::getInt1Ty(ctx.getContext()),
+                          result ? 1 : 0);
 }

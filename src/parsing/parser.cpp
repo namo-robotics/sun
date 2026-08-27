@@ -22,6 +22,7 @@
 #include "serialization/ast_deserializer.h"
 #include "support/stage_timer.h"
 #include "support/sun_path.h"
+#include "support/target_os.h"
 
 #define PARSER_TIMER_START(name) \
   auto parser_timer_##name = std::chrono::high_resolution_clock::now()
@@ -2369,6 +2370,7 @@ unique_ptr<ManifestAST> Parser::parseManifest() {
   std::vector<ManifestMoonDependency> moons;
   std::vector<ManifestProtoDependency> protos;
   std::vector<ManifestArchiveDependency> archives;
+  std::vector<ManifestTargetBlock> targets;
 
   while (curTok.kind == TokenKind::IDENTIFIER) {
     auto ident = curTok.getIdentifier().value();
@@ -2386,14 +2388,17 @@ unique_ptr<ManifestAST> Parser::parseManifest() {
       protos = parseManifestProtos();
     } else if (ident == "archives") {
       archives = parseManifestArchives();
+    } else if (ident == "target") {
+      targets = parseManifestTargets();
     } else {
       parsingError("unexpected identifier '" + ident +
-                   "' in manifest; expected 'suns', 'moons', 'protos' or "
-                   "'archives'");
+                   "' in manifest; expected 'suns', 'moons', 'protos', "
+                   "'archives' or 'target'");
     }
 
-    // Entries are newline-separated; a trailing ';' is tolerated
-    if (curTok.kind == TokenKind::SEMI_COLON) {
+    // Sections are newline-separated; a trailing ',' or ';' is tolerated
+    if (curTok.kind == TokenKind::SEMI_COLON ||
+        curTok.kind == TokenKind::COMMA) {
       getNextToken();
     }
   }
@@ -2404,8 +2409,82 @@ unique_ptr<ManifestAST> Parser::parseManifest() {
 
   return finishNode(
       std::make_unique<ManifestAST>(std::move(suns), std::move(moons),
-                                    std::move(protos), std::move(archives)),
+                                    std::move(protos), std::move(archives),
+                                    std::move(targets)),
       start);
+}
+
+// Parse the target-conditional block:
+//   target: {
+//     macos: { suns: [ "target_darwin.sun" ] }
+//     linux: { suns: [ "target_linux.sun" ] }
+//   }
+// Each inner block takes the same sections as the manifest itself and its
+// entries only apply when compiling for that OS. The names are the
+// _target_is vocabulary: "linux", "macos", "windows".
+std::vector<ManifestTargetBlock> Parser::parseManifestTargets() {
+  expectCurrentTokenKind(TokenKind::BRACE_OPEN, "expected '{' after 'target:'");
+  getNextToken();  // eat '{'
+
+  std::vector<ManifestTargetBlock> targets;
+
+  while (curTok.kind == TokenKind::IDENTIFIER) {
+    ManifestTargetBlock block;
+    block.os = curTok.getIdentifier().value();
+    if (!sun::isKnownTargetOs(block.os)) {
+      parsingError("unknown target OS '" + block.os +
+                   "' in manifest; expected 'linux', 'macos' or 'windows'");
+    }
+    getNextToken();  // eat OS name
+
+    expectCurrentTokenKind(TokenKind::COLON,
+                           "expected ':' after target OS name");
+    getNextToken();  // eat ':'
+    expectCurrentTokenKind(TokenKind::BRACE_OPEN,
+                           "expected '{' after target OS name");
+    getNextToken();  // eat '{'
+
+    while (curTok.kind == TokenKind::IDENTIFIER) {
+      auto section = curTok.getIdentifier().value();
+      getNextToken();  // eat section name
+      expectCurrentTokenKind(
+          TokenKind::COLON, "expected ':' after '" + section + "' in target");
+      getNextToken();  // eat ':'
+
+      if (section == "suns") {
+        block.suns = parseManifestSuns();
+      } else if (section == "moons") {
+        block.moons = parseManifestMoons();
+      } else if (section == "protos") {
+        block.protos = parseManifestProtos();
+      } else if (section == "archives") {
+        block.archives = parseManifestArchives();
+      } else {
+        parsingError("unexpected identifier '" + section +
+                     "' in target block; expected 'suns', 'moons', 'protos' "
+                     "or 'archives'");
+      }
+
+      if (curTok.kind == TokenKind::SEMI_COLON ||
+          curTok.kind == TokenKind::COMMA) {
+        getNextToken();
+      }
+    }
+
+    expectCurrentTokenKind(TokenKind::BRACE_CLOSE,
+                           "expected '}' at end of target block");
+    getNextToken();  // eat '}'
+    targets.push_back(std::move(block));
+
+    if (curTok.kind == TokenKind::COMMA) {
+      getNextToken();  // eat ','
+    }
+  }
+
+  expectCurrentTokenKind(TokenKind::BRACE_CLOSE,
+                         "expected '}' at end of 'target:' block");
+  getNextToken();  // eat '}'
+  return targets;
 }
 
 // Parse archives array: [ "vendor/libssl.a", ... ]
@@ -2860,11 +2939,14 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
     }
     // Check SUN_PATH directories
     std::filesystem::path resolved = sun::SunPath::resolve(path);
-    // Check system-wide installation paths
+    // Check system-wide installation paths (exe-relative, Debian, Homebrew)
     if (resolved.empty()) {
-      auto sysPath = std::filesystem::path("/usr/lib/sun") / path;
-      if (std::filesystem::exists(sysPath)) {
-        resolved = sysPath;
+      for (const auto& dir : sun::SunPath::systemInstallDirs()) {
+        auto sysPath = dir / path;
+        if (std::filesystem::exists(sysPath)) {
+          resolved = sysPath;
+          break;
+        }
       }
     }
     // Fall back to resolving relative to current file's directory

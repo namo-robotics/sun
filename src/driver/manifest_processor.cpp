@@ -12,6 +12,7 @@
 #include "moon_bundling/moon_cache.h"
 #include "parsing/parser.h"
 #include "support/error.h"
+#include "support/target_os.h"
 #include "support/sun_path.h"
 
 namespace sun {
@@ -118,7 +119,8 @@ std::string ManifestProcessor::resolvePath(const std::string& path,
 }
 
 ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
-                                            const std::string& baseDir) {
+                                            const std::string& baseDir,
+                                            const std::string& targetTriple) {
   ResolvedManifest out;
   out.baseDir = baseDir;
 
@@ -127,42 +129,72 @@ ResolvedManifest ManifestProcessor::process(const ManifestAST& manifest,
   auto configOpt = SunConfig::findFrom(baseDir);
   const SunConfig* config = configOpt ? &*configOpt : nullptr;
 
-  for (const auto& sunDep : manifest.getSuns()) {
-    out.sunFiles.push_back(
-        resolvePath(expandPathVariables(sunDep.path, config), baseDir, config));
-  }
-
-  for (const auto& moonDep : manifest.getMoons()) {
-    std::string resolved =
-        moonDep.url
-            ? MoonCache::fetch(expandPathVariables(*moonDep.url, config),
-                               moonDep.hash)
-                  .string()
-            : resolvePath(expandPathVariables(moonDep.path, config), baseDir,
-                          config);
-    if (moonDep.rename.has_value()) {
-      out.moonImports.emplace_back(resolved, moonDep.rename.value(),
-                                   moonDep.rename.value());
-    } else {
-      out.moonImports.emplace_back(resolved);
+  auto addSuns = [&](const std::vector<ManifestSunDependency>& suns) {
+    for (const auto& sunDep : suns) {
+      out.sunFiles.push_back(resolvePath(
+          expandPathVariables(sunDep.path, config), baseDir, config));
     }
+  };
+  auto addMoons = [&](const std::vector<ManifestMoonDependency>& moons) {
+    for (const auto& moonDep : moons) {
+      std::string resolved =
+          moonDep.url
+              ? MoonCache::fetch(expandPathVariables(*moonDep.url, config),
+                                 moonDep.hash)
+                    .string()
+              : resolvePath(expandPathVariables(moonDep.path, config), baseDir,
+                            config);
+      if (moonDep.rename.has_value()) {
+        out.moonImports.emplace_back(resolved, moonDep.rename.value(),
+                                     moonDep.rename.value());
+      } else {
+        out.moonImports.emplace_back(resolved);
+      }
+    }
+  };
+  auto addProtos = [&](const std::vector<ManifestProtoDependency>& protos) {
+    for (const auto& protoDep : protos) {
+      out.protoFiles.push_back(resolvePath(
+          expandPathVariables(protoDep.path, config), baseDir, config));
+    }
+  };
+  auto addArchives =
+      [&](const std::vector<ManifestArchiveDependency>& archives) {
+        for (const auto& archiveDep : archives) {
+          out.archiveFiles.push_back(resolvePath(
+              expandPathVariables(archiveDep.path, config), baseDir, config));
+        }
+      };
+
+  // Entries from the target block matching the OS being compiled for. The
+  // compilation's --target (host when absent) makes the choice, never the
+  // manifest itself. Target-specific .sun files come before the shared list:
+  // they define the per-OS primitives (constants, errno, socket options)
+  // that the shared files consume, and later files may reference earlier
+  // ones but not the other way round.
+  auto osName = targetOsName(resolvedTargetTriple(targetTriple));
+  for (const auto& block : manifest.getTargets()) {
+    if (!osName || block.os != *osName) continue;
+    addSuns(block.suns);
   }
 
-  for (const auto& protoDep : manifest.getProtos()) {
-    out.protoFiles.push_back(resolvePath(
-        expandPathVariables(protoDep.path, config), baseDir, config));
-  }
+  addSuns(manifest.getSuns());
+  addMoons(manifest.getMoons());
+  addProtos(manifest.getProtos());
+  addArchives(manifest.getArchives());
 
-  for (const auto& archiveDep : manifest.getArchives()) {
-    out.archiveFiles.push_back(resolvePath(
-        expandPathVariables(archiveDep.path, config), baseDir, config));
+  for (const auto& block : manifest.getTargets()) {
+    if (!osName || block.os != *osName) continue;
+    addMoons(block.moons);
+    addProtos(block.protos);
+    addArchives(block.archives);
   }
 
   return out;
 }
 
 std::optional<ResolvedManifest> ManifestProcessor::fromEntrypointFile(
-    const std::string& entrypointPath) {
+    const std::string& entrypointPath, const std::string& targetTriple) {
   std::filesystem::path filePath = std::filesystem::absolute(entrypointPath);
   std::string baseDir = filePath.parent_path().string();
 
@@ -187,7 +219,7 @@ std::optional<ResolvedManifest> ManifestProcessor::fromEntrypointFile(
   if (!manifest) {
     return std::nullopt;
   }
-  return process(*manifest, baseDir);
+  return process(*manifest, baseDir, targetTriple);
 }
 
 }  // namespace sun

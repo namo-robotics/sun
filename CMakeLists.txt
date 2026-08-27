@@ -12,8 +12,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)  # Useful for clang-tidy, IDEs, etc.
 set(CMAKE_PCH_INSTANTIATE_TEMPLATES ON)
 
 # lld links debug binaries much faster than the default bfd linker
-# (clang-only, like the -Xclang PCH flags below — GCC configures still work)
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+# (clang-only, like the -Xclang PCH flags below — GCC configures still work).
+# Not on macOS: Apple's clang has no bundled lld and ld64 is fine.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT APPLE)
     add_link_options(-fuse-ld=lld)
 endif()
 
@@ -240,12 +241,22 @@ target_include_directories(sun_lib
 # on libprotobuf, so they must be static together to avoid two copies of the
 # protobuf runtime).
 find_package(Threads REQUIRED)
-find_library(PROTOBUF_STATIC_LIB NAMES libprotobuf.a)
-find_library(PROTOC_STATIC_LIB NAMES libprotoc.a)
+find_library(PROTOBUF_STATIC_LIB NAMES libprotobuf.a
+             HINTS /opt/homebrew/lib /usr/local/lib)
+find_library(PROTOC_STATIC_LIB NAMES libprotoc.a
+             HINTS /opt/homebrew/lib /usr/local/lib)
 if(PROTOBUF_STATIC_LIB AND PROTOC_STATIC_LIB)
     message(STATUS "Linking protobuf statically: ${PROTOC_STATIC_LIB} ${PROTOBUF_STATIC_LIB}")
     target_include_directories(sun_lib PUBLIC ${Protobuf_INCLUDE_DIRS})
     target_link_libraries(sun_lib PUBLIC LLVM ${PROTOC_STATIC_LIB} ${PROTOBUF_STATIC_LIB} Threads::Threads)
+elseif(APPLE)
+    # The static-link rationale is Debian packaging, which does not apply on
+    # macOS — and Homebrew's static protobuf drags in Abseil archives. Link
+    # the shared libraries there instead.
+    message(STATUS "Linking protobuf dynamically (macOS)")
+    target_include_directories(sun_lib PUBLIC ${Protobuf_INCLUDE_DIRS})
+    target_link_libraries(sun_lib PUBLIC LLVM protobuf::libprotobuf
+                          protobuf::libprotoc Threads::Threads)
 else()
     # libprotoc-dev provides both the headers (compiler/importer.h) and the
     # static archives; without it neither the static nor the shared link works
@@ -347,6 +358,8 @@ if(NOT SKIP_STDLIB)
         ${CMAKE_SOURCE_DIR}/stdlib/proto_wire.sun
         ${CMAKE_SOURCE_DIR}/stdlib/json.sun
         ${CMAKE_SOURCE_DIR}/stdlib/bigint.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/target_linux.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/target_darwin.sun
     )
 
     # Built with -g: debug compiles can step into stdlib; non-debug compiles
@@ -365,7 +378,7 @@ if(NOT SKIP_STDLIB)
     # Cross-compiled stdlib bundles live in per-target directories under the
     # same canonical name (build/<triple>/stdlib.moon). Bundles are resolved
     # by exact name; the metadata's target triple validates the match.
-    set(SUN_CROSS_STDLIB_TARGETS "aarch64-linux-gnu" CACHE STRING
+    set(SUN_CROSS_STDLIB_TARGETS "aarch64-linux-gnu;arm64-apple-darwin" CACHE STRING
         "Triples to build cross stdlib .moon bundles for (empty disables)")
     set(CROSS_MOONS "")
     foreach(cross_triple ${SUN_CROSS_STDLIB_TARGETS})

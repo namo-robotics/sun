@@ -33,10 +33,9 @@ public module sun {
     // which case it is Unknown and is_dir(path) answers the question.
     public enum FileKind { Unknown, File, Dir, Symlink, Other }
 
-    // open(2) flags. Linux's asm-generic set, shared by x86-64 and aarch64.
+    // open(2) flags. O_RDONLY is 0 everywhere; the composable write flags
+    // differ per OS and live in target_<os>.sun.
     var O_RDONLY: i32 = 0;
-    var O_WRONLY_CREAT_TRUNC: i32 = 577;  // 0x241
-    var O_WRONLY_CREAT_APPEND: i32 = 1089;  // 0x441
     var CREATE_MODE: i32 = 420;  // 0644
 
     // Standard descriptors
@@ -501,11 +500,13 @@ public module sun {
       var entries: Vec<DirEntry> = Vec<DirEntry>(alloc, 8);
       var rec: raw_ptr<u8> = unsafe { c_readdir(dir); };
       while (rec != null) {
-        // d_name is a flexible char[] at byte 19 of the record.
-        var name: raw_ptr<u8> = unsafe { _ptr_offset(rec, 19); };
+        // struct dirent's head differs per OS; the two byte offsets that
+        // matter come from target_<os>.sun. d_name is a flexible char[] at
+        // the end of the record's fixed head.
+        var name: raw_ptr<u8> = unsafe { _ptr_offset(rec, DIRENT_NAME_OFFSET); };
         if (not is_dot_entry(name)) {
-          var head: ref Dirent = unsafe { _to_ref<Dirent>(_ptr_as_raw<Dirent>(rec)); };
-          entries.push(DirEntry(from_c_str(alloc, name), kind_of(head.d_type)));
+          var d_type: u8 = unsafe { _load<u8>(rec, DIRENT_TYPE_OFFSET); };
+          entries.push(DirEntry(from_c_str(alloc, name), kind_of(d_type)));
         }
         rec = unsafe { c_readdir(dir); };
       }

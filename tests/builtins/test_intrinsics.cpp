@@ -867,3 +867,68 @@ TEST(Builtins_PrintI64, prints_small_values_unchanged) {
   )"),
             "42-42");
 }
+
+// ============================================================================
+// _target_is Intrinsic Tests - Compile-Time Target Checks
+// ============================================================================
+
+TEST(Builtins_TargetIsIntrinsic, host_jit_matches_exactly_one_os) {
+  // The JIT compiles for the host, so exactly one of the known names holds.
+  auto value = executeString(R"(
+    function main() i32 {
+        var count: i32 = 0;
+        if (_target_is("linux")) { count = count + 1; }
+        if (_target_is("macos")) { count = count + 1; }
+        if (_target_is("windows")) { count = count + 1; }
+        return count;
+    }
+  )");
+  EXPECT_EQ(value, 1);
+}
+
+TEST(Builtins_TargetIsIntrinsic, folded_if_keeps_only_the_live_branch) {
+  // "windows" is known but never the test host, so the else side must run.
+  auto value = executeString(R"(
+    function main() i32 {
+        if (_target_is("windows")) {
+            return 1;
+        } else {
+            return 42;
+        }
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Builtins_TargetIsIntrinsic, folds_in_a_module_level_initializer) {
+  // A module-level var initializer must be a constant; the ternary over a
+  // folded condition has to collapse with no control flow at all.
+  auto value = executeString(R"(
+    var PICKED: i32 = _target_is("windows") ? 1 : 42;
+    function main() i32 {
+        return PICKED;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Builtins_TargetIsIntrinsic, unknown_target_name_is_an_error) {
+  EXPECT_THROW(executeString(R"(
+    function main() i32 {
+        if (_target_is("maos")) { return 1; }
+        return 0;
+    }
+  )"),
+               SunError);
+}
+
+TEST(Builtins_TargetIsIntrinsic, non_literal_argument_is_an_error) {
+  EXPECT_THROW(executeString(R"(
+    function main() i32 {
+        var name = "macos";
+        if (_target_is(name)) { return 1; }
+        return 0;
+    }
+  )"),
+               SunError);
+}

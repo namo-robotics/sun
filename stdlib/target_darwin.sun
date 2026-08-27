@@ -1,0 +1,58 @@
+// stdlib/target_darwin.sun - Everything OS-specific, with macOS's values
+//
+// The macOS counterpart of target_linux.sun: the same names, this OS's
+// values. The manifest's `target:` block includes exactly one of the two per
+// build, chosen by the compilation's --target.
+
+public module sun {
+  // macOS spells the per-thread errno accessor __error.
+  extern "C" function c_errno_location() raw_ptr<i32> as "__error";
+
+  // Where this OS keeps the per-thread errno value.
+  function errno_ptr() raw_ptr<i32> {
+    return unsafe { c_errno_location(); };
+  }
+
+  // setsockopt family. macOS has no MSG_NOSIGNAL — it folds to no flag at
+  // all here — and marks the socket SO_NOSIGPIPE instead (below).
+  public var MSG_NOSIGNAL: i32 = 0;
+  public var SOL_SOCKET: i32 = 65535;  // 0xffff
+  public var SO_REUSEADDR: i32 = 4;
+  var SO_NOSIGPIPE: i32 = 4130;  // 0x1022
+
+  // Mark the socket so a send on a broken connection fails with EPIPE
+  // instead of raising SIGPIPE.
+  function suppress_sigpipe(fd: i32) void {
+    var optval: i32 = 1;
+    unsafe { __setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, _address_of<i32>(optval), 4); };
+  }
+
+  // struct addrinfo: macOS puts ai_canonname before ai_addr, so ai_addr is
+  // the 5th pointer-sized slot (byte 32). The full layout is documented at
+  // the getaddrinfo declaration in sys.sun.
+  var ADDRINFO_ADDR_INDEX: i64 = 4;
+
+  public module io {
+    // open(2) composables: O_CREAT=0x200, O_TRUNC=0x400, O_APPEND=0x8, over
+    // O_WRONLY=1.
+    var O_WRONLY_CREAT_TRUNC: i32 = 1537;  // 0x601
+    var O_WRONLY_CREAT_APPEND: i32 = 521;  // 0x209
+
+    // struct dirent's fixed head: u64 d_ino, u64 d_seekoff, u16 d_reclen,
+    // u16 d_namlen, u8 d_type at byte 20, then the d_name characters.
+    var DIRENT_TYPE_OFFSET: i64 = 20;
+    var DIRENT_NAME_OFFSET: i64 = 21;
+  }
+
+  public module time {
+    // clockid_t: macOS numbers CLOCK_MONOTONIC 6.
+    var CLOCK_MONOTONIC: i32 = 6;
+  }
+
+  public module process {
+    // The job-control signals above 15, where Linux and macOS disagree.
+    public var SIGCHLD: i32 = 20;
+    public var SIGCONT: i32 = 19;
+    public var SIGSTOP: i32 = 17;
+  }
+}

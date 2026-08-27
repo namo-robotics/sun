@@ -1,7 +1,7 @@
-// abi/aapcs64.h — AArch64 AAPCS64 (ELF) argument classification
+// abi/aapcs64.h — AArch64 AAPCS64 argument classification (ELF and Darwin)
 //
 // What the AAPCS64 asks for, and what this module reproduces (all verified
-// against clang's output for aarch64-linux-gnu):
+// against clang's output for aarch64-linux-gnu and arm64-apple-darwin):
 //
 //   struct { int, int }          -> one i64 argument
 //   struct { int, int, int }     -> one [2 x i64] argument
@@ -17,10 +17,16 @@
 // returns i24); and HFA returns stay the literal struct type (Direct) while
 // HFA arguments coerce to [N x float/double].
 //
-// These are aarch64 ELF rules specifically (Darwin deviates) — reach them
-// through abi::lowerCSignature() (abi/c_abi.h), which dispatches on the
-// target triple, rather than including this header outside the ABI layer or
-// its tests.
+// Darwin (Apple arm64) classifies aggregates exactly like ELF. It differs in
+// two ways this module handles: integers narrower than 32 bits must be
+// extended by the caller (signext/zeroext, including on returns), and HFA
+// arguments carry no alignstack attribute. Its remaining deviations — packed
+// stack slots and stack-only anonymous varargs — are placement decisions
+// LLVM's AArch64 backend makes from the triple, not classification.
+//
+// Reach these rules through abi::lowerCSignature() (abi/c_abi.h), which
+// dispatches on the target triple, rather than including this header outside
+// the ABI layer or its tests.
 
 #pragma once
 
@@ -28,15 +34,25 @@
 
 namespace sun::abi::aapcs64 {
 
-/// Classify one type as it would be passed as a parameter.
-ArgLowering lowerArgument(llvm::Type* type, const llvm::DataLayout& dl);
+// Which flavor of AAPCS64 to apply. Aggregate rules are shared; Darwin adds
+// caller-side integer extension and drops the HFA alignstack attribute.
+enum class Variant { Elf, Darwin };
+
+/// Classify one type as it would be passed as a parameter. `isSigned` only
+/// matters for the Darwin variant's small-integer extension.
+ArgLowering lowerArgument(llvm::Type* type, const llvm::DataLayout& dl,
+                          Variant variant = Variant::Elf,
+                          bool isSigned = false);
 
 /// Classify one type as it would be returned.
-ArgLowering lowerReturn(llvm::Type* type, const llvm::DataLayout& dl);
+ArgLowering lowerReturn(llvm::Type* type, const llvm::DataLayout& dl,
+                        Variant variant = Variant::Elf, bool isSigned = false);
 
 /// Classify a whole signature.
 SignatureLowering lowerCSignature(llvm::Type* returnType,
                                   llvm::ArrayRef<llvm::Type*> paramTypes,
-                                  const llvm::DataLayout& dl);
+                                  const llvm::DataLayout& dl,
+                                  Variant variant = Variant::Elf,
+                                  const SignednessInfo* signs = nullptr);
 
 }  // namespace sun::abi::aapcs64

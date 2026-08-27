@@ -16,7 +16,9 @@ public module sun {
   public module process {
     using sun.io;
 
-    // Signal numbers, from Linux's asm-generic set.
+    // Signal numbers. 1 through 15 agree between Linux's asm-generic set and
+    // macOS; the job-control trio above 15 does not and lives in
+    // target_<os>.sun.
     public var SIGHUP: i32 = 1;
     public var SIGINT: i32 = 2;
     public var SIGQUIT: i32 = 3;
@@ -25,9 +27,6 @@ public module sun {
     public var SIGPIPE: i32 = 13;
     public var SIGALRM: i32 = 14;
     public var SIGTERM: i32 = 15;
-    public var SIGCHLD: i32 = 17;
-    public var SIGCONT: i32 = 18;
-    public var SIGSTOP: i32 = 19;
 
     // waitpid options
     public var WNOHANG: i32 = 1;

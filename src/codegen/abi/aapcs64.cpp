@@ -1,5 +1,5 @@
-// abi/aapcs64.cpp — AArch64 AAPCS64 (ELF) argument classification.
-// See abi/aapcs64.h.
+// abi/aapcs64.cpp — AArch64 AAPCS64 argument classification (ELF and
+// Darwin). See abi/aapcs64.h.
 
 #include "codegen/abi/aapcs64.h"
 
@@ -51,8 +51,18 @@ bool isHFA(llvm::Type* type, llvm::Type*& base, unsigned& count) {
   return count >= 1 && count <= 4;
 }
 
+// The extension Darwin requires on an integer narrower than 32 bits: the
+// caller widens arguments and the callee widens returns, so the other side
+// may rely on the upper bits. ELF specifies no such contract and gets None.
+Extend extendFor(llvm::Type* type, Variant variant, bool isSigned) {
+  if (variant != Variant::Darwin) return Extend::None;
+  if (!type || !type->isIntegerTy()) return Extend::None;
+  if (type->getIntegerBitWidth() >= 32) return Extend::None;
+  return isSigned ? Extend::Sign : Extend::Zero;
+}
+
 ArgLowering lowerAggregate(llvm::Type* type, const llvm::DataLayout& dl,
-                           bool isReturn) {
+                           bool isReturn, Variant variant) {
   ArgLowering result;
   result.type = type;
 
@@ -70,12 +80,13 @@ ArgLowering lowerAggregate(llvm::Type* type, const llvm::DataLayout& dl,
     // Returned HFAs keep the literal struct type — clang emits
     // `declare %struct.H @f()` — and LLVM assigns the FP registers itself.
     if (isReturn) return result;  // Direct
-    // As an argument the HFA coerces to one [N x float/double] value, with
-    // alignstack(8) so a spill to the stack stays 8-byte aligned.
+    // As an argument the HFA coerces to one [N x float/double] value. ELF
+    // adds alignstack(8) so a spill to the stack stays 8-byte aligned;
+    // Darwin packs stack slots naturally and carries no such attribute.
     result.kind = ArgKind::Coerced;
     result.pieces.push_back(llvm::ArrayType::get(base, count));
     result.pieceOffsets.push_back(0);
-    result.stackAlign = 8;
+    if (variant == Variant::Elf) result.stackAlign = 8;
     return result;
   }
 
@@ -107,28 +118,41 @@ ArgLowering lowerAggregate(llvm::Type* type, const llvm::DataLayout& dl,
 
 }  // namespace
 
-ArgLowering lowerArgument(llvm::Type* type, const llvm::DataLayout& dl) {
+ArgLowering lowerArgument(llvm::Type* type, const llvm::DataLayout& dl,
+                          Variant variant, bool isSigned) {
   ArgLowering result;
   result.type = type;
-  if (!isAggregate(type)) return result;  // Direct
-  return lowerAggregate(type, dl, /*isReturn=*/false);
+  if (!isAggregate(type)) {
+    result.extend = extendFor(type, variant, isSigned);
+    return result;  // Direct
+  }
+  return lowerAggregate(type, dl, /*isReturn=*/false, variant);
 }
 
-ArgLowering lowerReturn(llvm::Type* type, const llvm::DataLayout& dl) {
+ArgLowering lowerReturn(llvm::Type* type, const llvm::DataLayout& dl,
+                        Variant variant, bool isSigned) {
   ArgLowering result;
   result.type = type;
-  if (!type || type->isVoidTy() || !isAggregate(type)) return result;  // Direct
-  return lowerAggregate(type, dl, /*isReturn=*/true);
+  if (!type || type->isVoidTy() || !isAggregate(type)) {
+    result.extend = extendFor(type, variant, isSigned);
+    return result;  // Direct
+  }
+  return lowerAggregate(type, dl, /*isReturn=*/true, variant);
 }
 
 SignatureLowering lowerCSignature(llvm::Type* returnType,
                                   llvm::ArrayRef<llvm::Type*> paramTypes,
-                                  const llvm::DataLayout& dl) {
+                                  const llvm::DataLayout& dl, Variant variant,
+                                  const SignednessInfo* signs) {
   SignatureLowering lowering;
-  lowering.ret = lowerReturn(returnType, dl);
+  lowering.ret =
+      lowerReturn(returnType, dl, variant, signs && signs->retSigned);
   lowering.params.reserve(paramTypes.size());
-  for (llvm::Type* p : paramTypes) {
-    lowering.params.push_back(lowerArgument(p, dl));
+  for (size_t i = 0; i < paramTypes.size(); ++i) {
+    bool isSigned =
+        signs && i < signs->paramSigned.size() && signs->paramSigned[i];
+    lowering.params.push_back(
+        lowerArgument(paramTypes[i], dl, variant, isSigned));
   }
   return lowering;
 }

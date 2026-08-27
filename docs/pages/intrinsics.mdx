@@ -410,9 +410,36 @@ Number of leading / trailing zero bits in a `u64`; both return 64 for 0.
 var bits: u64 = 64 - _ctlz_u64(x);   // bit length of x
 ```
 
+## Target Intrinsics
+
+### `_target_is(os)`
+
+A compile-time check of the operating system being compiled for. The
+argument must be a string literal from `"linux"`, `"macos"` or `"windows"`
+(anything else is a compile error), and the call folds to a constant for the
+`--target` in effect (the host's OS when compiling natively).
+
+A branch on a folded condition keeps only its live side — dead branches are
+pruned during code generation, not left to an optimizer — so per-OS code may
+call C symbols the other systems' libraries lack:
+
+```sun
+var CLOCK_MONOTONIC: i32 = _target_is("macos") ? 6 : 1;
+
+if (_target_is("macos")) {
+    // only ever compiled into macOS binaries
+}
+```
+
+For whole files of per-OS definitions, prefer the manifest's `target:` block
+(see [Modules](/modules)); `_target_is` is the in-function form of the same
+vocabulary.
+
 ## Futex Intrinsics
 
-Linux-specific thread synchronization primitives. Used by `Mutex` for efficient blocking.
+Wait-on-address primitives, used by `Mutex` for efficient blocking. On Linux
+targets they lower to the `futex` syscall; on macOS targets, to the
+equivalent `__ulock_wait`/`__ulock_wake`.
 
 ### `_futex_wait(ptr, expected)`
 
@@ -431,7 +458,7 @@ _futex_wake(_address_of<i32>(state));  // Wake one waiter
 ```
 
 <Callout type="warning">
-  Atomic and futex intrinsics are **platform-specific** (Linux) and intended for implementing synchronization primitives. Use `Mutex` from the standard library instead.
+  Atomic and futex intrinsics are low-level primitives for implementing synchronization. Use `Mutex` from the standard library instead.
 </Callout>
 
 ## Usage in Standard Library

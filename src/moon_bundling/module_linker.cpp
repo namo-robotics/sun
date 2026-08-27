@@ -4,6 +4,7 @@
 #include <llvm/IR/Function.h>
 #include <llvm/Linker/Linker.h>
 
+#include "moon_bundling/library_cache.h"
 #include "moon_bundling/module_types.h"
 #include "moon_bundling/moon.h"
 #include "semantic_analysis/struct_names.h"
@@ -381,7 +382,8 @@ bool ModuleLinker::linkModuleRecursive(const std::string& moduleKey) {
       !target_.getTargetTriple().empty()) {
     llvm::Triple bundleTriple(metadata->target_triple());
     llvm::Triple targetTriple(target_.getTargetTriple());
-    if (bundleTriple.getArch() != targetTriple.getArch()) {
+    if (bundleTriple.getArch() != targetTriple.getArch() ||
+        !sameOsFamily(bundleTriple, targetTriple)) {
       error_ = "Module '" + moduleKey + "' was compiled for '" +
                metadata->target_triple() + "' but the current target is '" +
                target_.getTargetTriple() +

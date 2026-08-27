@@ -23,17 +23,18 @@
 
 public module sun {
   // -------------------------------------------------------------------
-  // Socket constants (Linux x86_64)
+  // Socket constants
   // -------------------------------------------------------------------
+  // These agree between Linux and macOS. The ones that differ — the
+  // setsockopt family and MSG_NOSIGNAL — live in target_<os>.sun, as does
+  // suppress_sigpipe (how each OS keeps a broken-pipe send from raising
+  // SIGPIPE).
 
   public var AF_INET: i32 = 2;
   public var SOCK_STREAM: i32 = 1;
   public var SHUT_RDWR: i32 = 2;
-  public var MSG_NOSIGNAL: i32 = 16384;
   public var INADDR_ANY: i32 = 0;
   public var INADDR_LOOPBACK: i32 = 16777343;  // 127.0.0.1 in network byte order
-  public var SOL_SOCKET: i32 = 1;
-  public var SO_REUSEADDR: i32 = 2;
 
   // -------------------------------------------------------------------
   // DNS resolution
@@ -56,7 +57,8 @@ public module sun {
       var family: i32 = unsafe { _load<i32>(entry, 1); };  // ai_family @4
       var socktype: i32 = unsafe { _load<i32>(entry, 2); };  // ai_socktype @8
       if (family == AF_INET and socktype == SOCK_STREAM) {
-        var sa: raw_ptr<u8> = unsafe { _load<raw_ptr<u8>>(entry, 3); };  // ai_addr @24
+        // ai_addr sits at a per-OS slot (target_<os>.sun)
+        var sa: raw_ptr<u8> = unsafe { _load<raw_ptr<u8>>(entry, ADDRINFO_ADDR_INDEX); };
         var ip: i32 = unsafe { _load<i32>(sa, 1); };  // sin_addr @4, network order
         unsafe { c_freeaddrinfo(list); };
         return ip;
@@ -91,6 +93,7 @@ public module sun {
         throw Error(sock_fd, "failed to create socket");
       }
       this.fd = sock_fd;
+      suppress_sigpipe(this.fd);
 
       var result: i32 = unsafe { __connect_ipv4(this.fd, INADDR_LOOPBACK, port); };
       if (result < 0) {
@@ -105,6 +108,7 @@ public module sun {
         throw Error(sock_fd, "failed to create socket");
       }
       this.fd = sock_fd;
+      suppress_sigpipe(this.fd);
 
       var result: i32 = unsafe { __connect_ipv4(this.fd, ip, port); };
       if (result < 0) {
@@ -243,6 +247,7 @@ public module sun {
       if (client_fd < 0) {
         throw Error(client_fd, "failed to accept connection");
       }
+      suppress_sigpipe(client_fd);
       var stream = TcpStream();
       stream.fd = client_fd;
       return stream;

@@ -51,6 +51,19 @@ inline std::string shellQuote(const std::string& s) {
   return out;
 }
 
+/// Whether `tool` exists on PATH.
+inline bool haveTool(const std::string& tool) {
+  return std::system(
+             ("command -v " + shellQuote(tool) + " >/dev/null 2>&1").c_str()) ==
+         0;
+}
+
+/// The triple a link is actually for: the explicit --target, or the host.
+inline llvm::Triple effectiveLinkTriple(const std::string& targetTriple) {
+  return llvm::Triple(targetTriple.empty() ? llvm::sys::getDefaultTargetTriple()
+                                           : targetTriple);
+}
+
 /// Pick the link driver for a target. SUN_CC overrides the choice entirely.
 ///
 /// Static links prefer a musl toolchain for the target architecture
@@ -59,6 +72,11 @@ inline std::string shellQuote(const std::string& s) {
 /// NSS modules for name lookups), is MIT-licensed (no LGPL relink obligation
 /// on the embedded binary), and produces roughly half the binary size. When
 /// no musl toolchain is present, the triple's own GCC with -static is used.
+///
+/// A macOS target links with Apple's own `cc` on a Mac; from any other host
+/// there is no driver to pick — linking Mach-O needs the Apple SDK, which
+/// cannot ship with a Linux toolchain — so stop at --emit-obj and link the
+/// object on a Mac.
 ///
 /// Otherwise: host builds use `cc`; cross builds prefer a triple-prefixed
 /// GCC (`aarch64-linux-gnu-gcc`), falling back to `clang --target=<triple>`.
@@ -69,15 +87,13 @@ inline std::string linkerCommandFor(const std::string& targetTriple,
     return env;
   }
 
-  auto haveTool = [](const std::string& tool) {
-    return std::system(("command -v " + shellQuote(tool) + " >/dev/null 2>&1")
-                           .c_str()) == 0;
-  };
+  if (effectiveLinkTriple(targetTriple).isOSDarwin()) {
+    llvm::Triple host(llvm::sys::getDefaultTargetTriple());
+    return host.isOSDarwin() ? "cc" : "";
+  }
 
   if (staticLink) {
-    llvm::Triple triple(targetTriple.empty()
-                            ? llvm::sys::getDefaultTargetTriple()
-                            : targetTriple);
+    llvm::Triple triple = effectiveLinkTriple(targetTriple);
     std::string muslGcc = triple.getArchName().str() + "-linux-musl-gcc";
     if (haveTool(muslGcc)) {
       return muslGcc;
@@ -136,16 +152,19 @@ inline std::vector<std::string> loadDynamicLibraries(const LinkOptions& opts) {
       candidates.push_back("lib" + lib + ".dylib");
 
       // Without a -dev package there is no unversioned libfoo.so symlink,
-      // only libfoo.so.N. The loader will not guess a version, but inside a
-      // directory the user explicitly pointed us at we can.
+      // only libfoo.so.N (macOS: libfoo.N.dylib). The loader will not guess
+      // a version, but inside a directory the user explicitly pointed us at
+      // we can.
       for (const auto& dir : opts.searchPaths) {
         std::error_code ec;
-        std::string prefix = "lib" + lib + ".so.";
+        std::string soPrefix = "lib" + lib + ".so.";
+        std::string dylibPrefix = "lib" + lib + ".";
         for (llvm::sys::fs::directory_iterator it(dir, ec), end;
              it != end && !ec; it.increment(ec)) {
-          llvm::StringRef path(it->path());
-          if (llvm::sys::path::filename(path).starts_with(prefix)) {
-            candidates.push_back(path.str());
+          llvm::StringRef name = llvm::sys::path::filename(it->path());
+          if (name.starts_with(soPrefix) ||
+              (name.starts_with(dylibPrefix) && name.ends_with(".dylib"))) {
+            candidates.push_back(it->path());
           }
         }
       }
@@ -235,17 +254,28 @@ inline bool emitObjectFile(llvm::Module& module, const std::string& outputPath,
 inline bool linkExecutable(const std::string& objectPath,
                            const std::string& outputPath, std::string& errorMsg,
                            const LinkOptions& linkOpts = {}) {
+  llvm::Triple triple = effectiveLinkTriple(linkOpts.targetTriple);
+  bool isDarwin = triple.isOSDarwin();
+
   // Build linker command using a C compiler driver so it handles the C
-  // runtime and startup files. -lstdc++ provides the Itanium C++ ABI runtime
-  // (__cxa_throw, __cxa_allocate_exception, typeinfo, _Unwind_*) that native
-  // exception handling lowers to.
+  // runtime and startup files. The C++ runtime library provides the Itanium
+  // C++ ABI symbols (__cxa_throw, __cxa_allocate_exception, typeinfo,
+  // _Unwind_*) that native exception handling lowers to: libstdc++ on
+  // Linux, libc++ (with libc++abi) on macOS.
   std::string linker =
       linkerCommandFor(linkOpts.targetTriple, linkOpts.staticLink);
   if (linker.empty()) {
-    errorMsg = "no link driver for target '" + linkOpts.targetTriple +
-               "': install " + linkOpts.targetTriple +
-               "-gcc or clang (or set SUN_CC), or stop at --emit-obj and "
-               "link on the target machine";
+    if (isDarwin) {
+      errorMsg = "cannot link for '" + linkOpts.targetTriple +
+                 "' from this machine: Mach-O linking needs Apple's SDK. "
+                 "Stop at --emit-obj and link the object on a Mac (cc -o "
+                 "prog prog.o -lc++), or set SUN_CC to a capable driver";
+    } else {
+      errorMsg = "no link driver for target '" + linkOpts.targetTriple +
+                 "': install " + linkOpts.targetTriple +
+                 "-gcc or clang (or set SUN_CC), or stop at --emit-obj and "
+                 "link on the target machine";
+    }
     return false;
   }
 
@@ -257,13 +287,21 @@ inline bool linkExecutable(const std::string& objectPath,
   // loader, no shared-library dependencies and no glibc version coupling —
   // the deployment shape embedded targets want. Needs the toolchain's static
   // archives (libc.a from libc6-dev, libstdc++.a from libstdc++-dev).
+  // macOS cannot do this at all: Apple ships no static libSystem or crt0.
   if (linkOpts.staticLink) {
+    if (isDarwin) {
+      errorMsg = "fully static binaries are not supported on macOS";
+      return false;
+    }
     cmd += " -static";
   }
 
   // Cross links need the target's root filesystem for libc and crt files.
+  // Apple's driver spells the SDK root -isysroot (and finds it by itself
+  // when none is given).
   if (!linkOpts.sysroot.empty()) {
-    cmd += " --sysroot=" + shellQuote(linkOpts.sysroot);
+    cmd += isDarwin ? " -isysroot " + shellQuote(linkOpts.sysroot)
+                    : " --sysroot=" + shellQuote(linkOpts.sysroot);
   }
 
   // -L before -l: the search paths must be in effect when libraries resolve.
@@ -273,18 +311,20 @@ inline bool linkExecutable(const std::string& objectPath,
   for (const auto& lib : linkOpts.libraries) {
     cmd += " -l" + shellQuote(lib);
   }
-  // Bundle-carried archives go in by path. --start-group/--end-group lets
-  // them resolve each other's symbols regardless of order (libssl needs
-  // libcrypto, and a bundle may carry them either way round).
+  // Bundle-carried archives go in by path. On GNU linkers,
+  // --start-group/--end-group lets them resolve each other's symbols
+  // regardless of order (libssl needs libcrypto, and a bundle may carry them
+  // either way round). Apple's ld64 rejects those flags and resolves
+  // archives iteratively anyway, so there the paths go in plain.
   if (!linkOpts.archives.empty()) {
-    cmd += " -Wl,--start-group";
+    if (!isDarwin) cmd += " -Wl,--start-group";
     for (const auto& archive : linkOpts.archives) {
       cmd += " " + shellQuote(archive);
     }
-    cmd += " -Wl,--end-group";
+    if (!isDarwin) cmd += " -Wl,--end-group";
   }
 
-  cmd += " -lstdc++";
+  cmd += isDarwin ? " -lc++" : " -lstdc++";
 
   int result = std::system(cmd.c_str());
   if (result != 0) {
@@ -313,6 +353,19 @@ inline bool compileToExecutable(llvm::Module& module,
   // Step 2: Link to create executable
   if (!linkExecutable(objectPath, outputPath, errorMsg, linkOpts)) {
     return false;
+  }
+
+  // On Mach-O the linker leaves debug info in the object file, writing only
+  // a debug map that points back at it. Bundle it into a .dSYM while the
+  // object still exists; without dsymutil the object itself must survive or
+  // the debug info is gone.
+  bool hasDebugInfo = module.getModuleFlag("Debug Info Version") != nullptr;
+  if (hasDebugInfo && effectiveLinkTriple(linkOpts.targetTriple).isOSDarwin()) {
+    if (haveTool("dsymutil")) {
+      std::system(("dsymutil " + shellQuote(outputPath)).c_str());
+    } else {
+      keepObjectFile = true;
+    }
   }
 
   // Step 3: Clean up object file if not keeping it

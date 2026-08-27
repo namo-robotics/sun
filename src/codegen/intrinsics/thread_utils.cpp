@@ -1,8 +1,10 @@
 // thread_utils.cpp — Thread support utilities for code generation
 //
-// Threads are pthreads (see include/codegen/intrinsics/libc.h). The futex
-// primitive Mutex builds on has no libc wrapper, so it goes through libc's
-// syscall() with a per-target syscall number.
+// Threads are pthreads (see include/codegen/intrinsics/libc.h). The
+// wait-on-address primitive Mutex builds on differs per OS: Linux's futex
+// has no libc wrapper, so it goes through libc's syscall() with a per-target
+// syscall number; macOS has no futex at all, so there the same intrinsics
+// lower to Darwin's __ulock_wait/__ulock_wake.
 
 #include "codegen/intrinsics/thread_utils.h"
 
@@ -19,8 +21,19 @@ using namespace llvm;
 static constexpr int64_t FUTEX_WAIT = 0;
 static constexpr int64_t FUTEX_WAKE = 1;
 
+// Darwin ulock operation: compare-and-wait on a 32-bit word, the futex
+// equivalent. (ULF_WAKE_ALL, 0x100, would wake every waiter; the intrinsics
+// wake one, matching the futex path.)
+static constexpr uint64_t UL_COMPARE_AND_WAIT = 1;
+
+// Whether this module compiles for an OS that uses ulock instead of futex.
+static bool isDarwinTarget(const llvm::Module* module) {
+  return llvm::Triple(module->getTargetTriple()).isOSDarwin();
+}
+
 // The futex syscall number is the one per-target constant left in thread
 // support — it is data, not assembly, so each Linux target is one table row.
+// Darwin never reaches this: its targets take the ulock path instead.
 static int64_t futexSyscallNumber(const llvm::Module* module) {
   llvm::Triple triple(module->getTargetTriple());
   switch (triple.getArch()) {
@@ -57,6 +70,20 @@ Value* ThreadUtils::emitSyscallFutex(Value* addr, Value* op, Value* val) {
 
 void ThreadUtils::emitSyscallFutexWait(Value* addr, Value* expected) {
   LLVMContext& llvmCtx = ctx.getContext();
+
+  if (isDarwinTarget(module)) {
+    // int __ulock_wait(op, addr, value, timeout_us); timeout 0 waits forever.
+    auto* i32Ty = Type::getInt32Ty(llvmCtx);
+    auto* i64Ty = Type::getInt64Ty(llvmCtx);
+    ctx.builder->CreateCall(
+        sun::libc::ulockWait(module),
+        {ConstantInt::get(i32Ty, UL_COMPARE_AND_WAIT), addr,
+         ctx.builder->CreateZExt(expected, i64Ty, "ulock.expected"),
+         ConstantInt::get(i32Ty, 0)},
+        "ulock_wait_result");
+    return;
+  }
+
   Value* op = ConstantInt::get(Type::getInt64Ty(llvmCtx), FUTEX_WAIT);
   emitSyscallFutex(addr, op, expected);
 }
@@ -64,6 +91,18 @@ void ThreadUtils::emitSyscallFutexWait(Value* addr, Value* expected) {
 void ThreadUtils::emitSyscallFutexWake(Value* addr) {
   LLVMContext& llvmCtx = ctx.getContext();
   auto* i64Ty = Type::getInt64Ty(llvmCtx);
+
+  if (isDarwinTarget(module)) {
+    // int __ulock_wake(op, addr, wake_value); wakes one waiter, like the
+    // futex path below.
+    auto* i32Ty = Type::getInt32Ty(llvmCtx);
+    ctx.builder->CreateCall(sun::libc::ulockWake(module),
+                            {ConstantInt::get(i32Ty, UL_COMPARE_AND_WAIT), addr,
+                             ConstantInt::get(i64Ty, 0)},
+                            "ulock_wake_result");
+    return;
+  }
+
   Value* op = ConstantInt::get(i64Ty, FUTEX_WAKE);
   Value* numWaiters = ConstantInt::get(i64Ty, 1);  // Wake one waiter
   emitSyscallFutex(addr, op, numWaiters);

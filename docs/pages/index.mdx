@@ -97,6 +97,19 @@ cd sun
 ./build.sh
 ```
 
+On Linux this expects clang, LLVM 20 dev packages, protobuf (`libprotoc-dev`),
+Ninja and lld. On a Mac, install the dependencies with Homebrew first —
+`brew install llvm@20 protobuf ninja ccache` — and `./build.sh` picks up
+Homebrew's LLVM by itself.
+
+### macOS
+
+macOS is supported both as a cross-compilation target from Linux
+(`sun --target arm64-apple-darwin --emit-obj`, then link the object on a Mac
+with `cc -o prog prog.o -lc++`) and natively by building the compiler from
+source as above. Fully static binaries do not exist on macOS, so `-c` links
+dynamically there.
+
 ## Quick Start
 
 Create a Sun program:

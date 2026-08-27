@@ -25,6 +25,37 @@ Value* CodegenVisitor::codegen(const IfExprAST& expr) {
 
   CondV = coerceCondToBool(ctx, CondV);
 
+  // A condition that folded to a constant (a _target_is check, or arithmetic
+  // over one) keeps only its live side. This is required, not an
+  // optimization: no optimizer runs on AOT output, and per-OS stdlib code
+  // relies on the dead side's extern calls never being emitted — an emitted
+  // call to a symbol another libc lacks would fail at link. The branch-arm
+  // marking stays so drop-flag decisions match what the borrow checker
+  // assumed for a two-armed if.
+  if (auto* constCond = dyn_cast<ConstantInt>(CondV)) {
+    const ExprAST* live =
+        constCond->isZero() ? expr.getElse() : expr.getThen();
+    if (!live) {
+      // `if (false) { ... }` with no else: nothing to emit.
+      return ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
+    }
+    Value* liveV = nullptr;
+    {
+      ScopeManager::BranchArm arm(scopes);
+      scopes.push(live->getLocation());
+      liveV = codegen(*live);
+      scopes.pop();
+    }
+    if (ctx.builder->GetInsertBlock()->getTerminator() != nullptr) {
+      return nullptr;  // the live side returned or threw
+    }
+    if (!liveV) {
+      logAndThrowError("Failed to generate code for the if's live branch");
+      return nullptr;
+    }
+    return liveV;
+  }
+
   Function* TheFunction = ctx.builder->GetInsertBlock()->getParent();
   bool hasElse = expr.getElse() != nullptr;
 
@@ -142,6 +173,28 @@ Value* CodegenVisitor::codegen(const TernaryExprAST& expr) {
   if (!CondV) return nullptr;
 
   CondV = coerceCondToBool(ctx, CondV);
+
+  // Constant condition: emit only the live arm, with no blocks at all. This
+  // must come before any block machinery — a module-level
+  // `var X: i32 = _target_is("macos") ? 6 : 1;` folds here into the plain
+  // constant a global initializer needs, where there is no current function.
+  if (auto* constCond = dyn_cast<ConstantInt>(CondV)) {
+    const ExprAST* live =
+        constCond->isZero() ? expr.getElse() : expr.getThen();
+    Value* liveV = nullptr;
+    {
+      ScopeManager::BranchArm arm(scopes);
+      liveV = codegen(*live);
+    }
+    if (!liveV) {
+      logAndThrowError("Failed to generate code for the ternary's live arm");
+      return nullptr;
+    }
+    // Widening a constant folds without emitting instructions, so this is
+    // safe at module scope too.
+    return widenNumericIfNeeded(liveV, expr.getResolvedType(),
+                                live->getResolvedType());
+  }
 
   Function* TheFunction = ctx.builder->GetInsertBlock()->getParent();
 
