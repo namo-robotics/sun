@@ -80,12 +80,40 @@ The package includes the standard library and the TLS bundle, installed to
 `/usr/lib/sun`. Releases also carry those bundles as separate downloads — see
 [installing a released bundle](/modules#installing-a-released-bundle).
 
+### macOS (Apple Silicon)
+
+Install Homebrew's LLVM (the package's one dependency), then the installer
+package from the latest dev build:
+
+```bash
+brew install llvm@20
+curl -LO https://github.com/namo-robotics/sun/releases/download/dev/sun-0.dev-arm64-apple-darwin.pkg
+sudo installer -pkg sun-0.dev-arm64-apple-darwin.pkg -target /
+```
+
+This installs `sun`, `sun-lsp` and the standard library under `/usr/local`
+(`/usr/local/lib/sun/stdlib.moon` is on the compiler's bundle search path).
+To update, install the new package over the old one. The TLS bundle is not
+included on macOS yet.
+
+macOS is also a cross-compilation target from Linux: `sun --target
+arm64-apple-darwin --emit-obj`, then link the object on a Mac with `cc -o
+prog prog.o -lc++`. Fully static binaries do not exist on macOS, so `-c`
+links dynamically there.
+
 ### Uninstalling
 
 To uninstall the Debian package:
 
 ```bash
 sudo dpkg -r sun
+```
+
+On macOS, remove the installed files:
+
+```bash
+sudo rm -rf /usr/local/bin/sun /usr/local/bin/sun-lsp /usr/local/lib/sun /usr/local/share/sun
+sudo pkgutil --forget com.namo-robotics.sun
 ```
 
 ### Build from Source
@@ -103,14 +131,6 @@ ccache` — and `./build.sh` picks up Homebrew's LLVM by itself. Protobuf is
 built into the compiler from a pinned source release (so every platform
 compiles the same version); building offline instead needs `libprotoc-dev`
 and `-DSUN_BUNDLED_PROTOBUF=OFF`.
-
-### macOS
-
-macOS is supported both as a cross-compilation target from Linux
-(`sun --target arm64-apple-darwin --emit-obj`, then link the object on a Mac
-with `cc -o prog prog.o -lc++`) and natively by building the compiler from
-source as above. Fully static binaries do not exist on macOS, so `-c` links
-dynamically there.
 
 ## Quick Start
 

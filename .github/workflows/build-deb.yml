@@ -1,4 +1,4 @@
-name: Debian Package
+name: Packages
 
 on:
   push:
@@ -78,6 +78,13 @@ jobs:
 
             A bundle built for another architecture is rejected at link time,
             so take the one matching your target.
+
+            On an Apple Silicon Mac, install the `.pkg` (after `brew install
+            llvm@20`, its one runtime dependency):
+
+            ```bash
+            sudo installer -pkg sun-*-arm64-apple-darwin.pkg -target /
+            ```
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -106,6 +113,13 @@ jobs:
 
             A bundle built for another architecture is rejected at link time,
             so take the one matching your target.
+
+            On an Apple Silicon Mac, install the `.pkg` (after `brew install
+            llvm@20`, its one runtime dependency):
+
+            ```bash
+            sudo installer -pkg sun-*-arm64-apple-darwin.pkg -target /
+            ```
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -185,3 +199,105 @@ jobs:
           EOF
           sun -c --dynamic -o tls_aot tls_test.sun
           ./tls_aot
+
+  # The deb's macOS counterpart: an unsigned .pkg installing to /usr/local
+  # (sudo installer -pkg works without Gatekeeper friction). Like the deb
+  # depends on apt's libllvm20, the binary links Homebrew's LLVM, so
+  # `brew install llvm@20` is the package's one runtime dependency. Only the
+  # .pkg is uploaded from here — the standalone .moon assets (including the
+  # Darwin stdlib bundle) come from the deb job's cross builds.
+  build-pkg-macos:
+    runs-on: macos-latest
+
+    env:
+      CCACHE_SLOPPINESS: pch_defines,time_macros
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # Full history for version detection
+
+      - name: Install dependencies
+        run: brew install llvm@20 ninja ccache
+
+      - name: Set up ccache
+        uses: hendrikmuhs/ccache-action@v1.2.23
+        with:
+          key: pkg-macos
+          max-size: 2G
+
+      - name: Build macOS package
+        run: |
+          chmod +x ./scripts/build-pkg-macos.sh
+          CMAKE_EXTRA_ARGS="-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache" \
+            ./scripts/build-pkg-macos.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sun-pkg-macos-${{ github.sha }}
+          path: dist/*.pkg
+          retention-days: 30
+
+      # No body on either upload: the deb job owns the release notes, and
+      # setting one here would race it.
+      - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.pkg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update dev release
+        if: github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dev
+          name: Development Build
+          prerelease: true
+          files: dist/*.pkg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  test-install-macos:
+    needs: build-pkg-macos
+    runs-on: macos-latest
+    # A fresh runner rather than the build job's workspace: everything the
+    # installed compiler needs has to come from the package plus its one
+    # declared dependency.
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sun-pkg-macos-${{ github.sha }}
+          path: dist/
+
+      - name: Install LLVM 20 runtime
+        run: brew install llvm@20
+
+      - name: Install package
+        run: sudo installer -pkg dist/*.pkg -target /
+
+      - name: Test installation
+        run: |
+          which sun
+          sun --help || true
+          # JIT with the stdlib import. No SUN_PATH: /usr/local/lib/sun is
+          # on the compiler's built-in bundle search path.
+          cat > test.sun << 'PROGRAM'
+          using sun;
+          function main() i32 {
+              println("Hello from Sun!");
+              return 0;
+          }
+          manifest {
+              moons: ["stdlib.moon"]
+          }
+          PROGRAM
+          sun test.sun
+          # AOT: links through Apple's cc with -lc++.
+          sun -c -o test_aot test.sun
+          ./test_aot
