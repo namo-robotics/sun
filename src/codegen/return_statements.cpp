@@ -3,10 +3,11 @@
 #include "ast.h"
 #include "codegen/codegen.h"
 #include "codegen/codegen_visitor.h"
+#include "codegen/function_generator.h"
 
 using namespace llvm;
 
-Value* CodegenVisitor::codegen(const ReturnExprAST& expr) {
+Value* FunctionGenerator::codegen(const ReturnExprAST& expr) {
   llvm::Function* func = ctx.builder->GetInsertBlock()->getParent();
   llvm::Type* retType = func->getReturnType();
 
@@ -14,7 +15,7 @@ Value* CodegenVisitor::codegen(const ReturnExprAST& expr) {
     // Reference returns must return the referent's ADDRESS, not the
     // auto-dereffed value the normal expression path produces
     if (currentFunctionReturnsRef) {
-      Value* addr = tryCodegenAddress(*expr.getValue());
+      Value* addr = gen_.tryCodegenAddress(*expr.getValue());
       if (!addr) {
         // Expressions that are themselves reference-typed codegen directly
         // to the address: _to_ref<T>(ptr), and a call forwarding a borrow.
@@ -32,7 +33,7 @@ Value* CodegenVisitor::codegen(const ReturnExprAST& expr) {
             "expression",
             expr.getLocation());
       }
-      emitScopeCleanup();
+      scopes().emitScopeCleanup();
       ctx.builder->CreateRet(addr);
       return nullptr;
     }
@@ -45,11 +46,11 @@ Value* CodegenVisitor::codegen(const ReturnExprAST& expr) {
     // Move semantics: borrow checker marks expressions as "moved" when
     // ownership transfers (return, assignment, pass-by-value). Skip deinit.
     if (expr.getValue()->isMoved() && retVal) {
-      markClassAllocationAsDeinited(retVal);
+      scopes().markClassAllocationAsDeinited(retVal);
     }
 
     // THEN clean up owned allocations that weren't moved (move semantics)
-    emitScopeCleanup();
+    scopes().emitScopeCleanup();
 
     // A void function may still be written `return <expr>;` when the
     // expression is itself void — `return _thread_join<T>(c);` in a
@@ -86,7 +87,7 @@ Value* CodegenVisitor::codegen(const ReturnExprAST& expr) {
   } else {
     // Void return - clean up and return. A 'void, IError' function returns
     // plain void now (exceptions carry error state, not the return value).
-    emitScopeCleanup();
+    scopes().emitScopeCleanup();
     ctx.builder->CreateRetVoid();
   }
 

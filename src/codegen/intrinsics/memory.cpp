@@ -5,6 +5,7 @@
 // - _malloc, _free (heap allocation via libc)
 
 #include "codegen/codegen_visitor.h"
+#include "codegen/intrinsics/intrinsics_generator.h"
 #include "support/error.h"
 
 using namespace llvm;
@@ -13,7 +14,7 @@ using namespace llvm;
 // Non-generic memory intrinsics: _load_i64, _store_i64, _malloc, _free
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegenLoadI64Intrinsic(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenLoadI64Intrinsic(const CallExprAST& expr) {
   // _load_i64(ptr, index) - load i64 from ptr at element offset index
   const auto& args = expr.getArgs();
   if (args.size() != 2) {
@@ -30,7 +31,7 @@ Value* CodegenVisitor::codegenLoadI64Intrinsic(const CallExprAST& expr) {
   return ctx.builder->CreateLoad(i64Ty, elemPtr, "i64.val");
 }
 
-Value* CodegenVisitor::codegenStoreI64Intrinsic(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenStoreI64Intrinsic(const CallExprAST& expr) {
   // _store_i64(ptr, index, value) - store i64 to ptr at element offset index
   const auto& args = expr.getArgs();
   if (args.size() != 3) {
@@ -49,7 +50,7 @@ Value* CodegenVisitor::codegenStoreI64Intrinsic(const CallExprAST& expr) {
   return value;
 }
 
-Value* CodegenVisitor::codegenMallocIntrinsic(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenMallocIntrinsic(const CallExprAST& expr) {
   // _malloc(size) - allocate size bytes, returns raw_ptr<i8>
   const auto& args = expr.getArgs();
   if (args.size() != 1) {
@@ -71,7 +72,7 @@ Value* CodegenVisitor::codegenMallocIntrinsic(const CallExprAST& expr) {
   return ctx.builder->CreateCall(mallocFunc, {size}, "malloc.result");
 }
 
-Value* CodegenVisitor::codegenFreeIntrinsic(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenFreeIntrinsic(const CallExprAST& expr) {
   // _free(ptr) - free previously allocated memory
   const auto& args = expr.getArgs();
   if (args.size() != 1) {
@@ -93,7 +94,7 @@ Value* CodegenVisitor::codegenFreeIntrinsic(const CallExprAST& expr) {
   return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
 }
 
-Value* CodegenVisitor::codegenMemcpyIntrinsic(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenMemcpyIntrinsic(const CallExprAST& expr) {
   // _memcpy(dst, src, len) - copy len bytes from src to dst
   const auto& args = expr.getArgs();
   if (args.size() != 3) {
@@ -112,7 +113,7 @@ Value* CodegenVisitor::codegenMemcpyIntrinsic(const CallExprAST& expr) {
   return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
 }
 
-Value* CodegenVisitor::codegenMemsetIntrinsic(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenMemsetIntrinsic(const CallExprAST& expr) {
   // _memset(dst, value, len) - set len bytes at dst to value
   const auto& args = expr.getArgs();
   if (args.size() != 3) {
@@ -134,7 +135,7 @@ Value* CodegenVisitor::codegenMemsetIntrinsic(const CallExprAST& expr) {
   return llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.getContext()), 0);
 }
 
-Value* CodegenVisitor::codegenPtrOffsetIntrinsic(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenPtrOffsetIntrinsic(const CallExprAST& expr) {
   // _ptr_offset(ptr, byte_offset) - offset a pointer by byte_offset bytes
   const auto& args = expr.getArgs();
   if (args.size() != 2) {

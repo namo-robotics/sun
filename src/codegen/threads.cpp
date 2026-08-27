@@ -15,6 +15,7 @@
 
 #include "ast.h"
 #include "codegen/codegen_visitor.h"
+#include "codegen/intrinsics/intrinsics_generator.h"
 #include "codegen/intrinsics/libc.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
@@ -30,7 +31,7 @@ using namespace llvm;
 // rather than synthesized here, so there is one definition of the layout and
 // codegen never has to spell the class's name (which carries a library hash
 // once sun.thread arrives through a bundle).
-StructType* CodegenVisitor::getThreadContextStruct(
+StructType* IntrinsicsGenerator::getThreadContextStruct(
     const sun::TypePtr& contextPtrType) {
   auto* pointer = sun::tryGetType<sun::RawPointerType>(contextPtrType);
   auto* contextClass =
@@ -54,7 +55,7 @@ StructType* CodegenVisitor::getThreadContextStruct(
 // Builds the thread context on the heap — it must outlive this frame — moves
 // the arguments into it, and starts the thread. Hands back the context
 // pointer; stdlib `spawn` wraps that in the Thread<T> handle that owns it.
-Value* CodegenVisitor::codegenSpawnIntrinsic(
+Value* IntrinsicsGenerator::codegenSpawnIntrinsic(
     const sun::TypePtr& lambdaSunType, const sun::TypePtr& contextPtrType,
     const std::vector<std::unique_ptr<ExprAST>>& args,
     const std::vector<sun::ArgConversion>& conversions) {
@@ -93,9 +94,9 @@ Value* CodegenVisitor::codegenSpawnIntrinsic(
   // lower them: semantic analysis recorded one conversion each, and a
   // compound argument moves, leaving its source invalidated.
   std::vector<Value*> argValues{lambdaFat};
-  if (!emitCallArguments(args, conversions, lambdaType->getParamTypes(),
-                         lambdaFuncType, argValues, "_spawn",
-                         /*firstArg=*/1)) {
+  if (!gen_.emitCallArguments(args, conversions, lambdaType->getParamTypes(),
+                              lambdaFuncType, argValues, "_spawn",
+                              /*firstArg=*/1)) {
     logAndThrowError("Failed to generate the arguments for _spawn");
   }
 
@@ -174,7 +175,7 @@ Value* CodegenVisitor::codegenSpawnIntrinsic(
 // caller takes over whatever it owns. When nobody reads it — Thread<T>'s
 // deinit joining a handle that was never joined by hand — `dropResultType`
 // says what the slot holds so its deinit still runs.
-Value* CodegenVisitor::codegenThreadJoinIntrinsic(
+Value* IntrinsicsGenerator::codegenThreadJoinIntrinsic(
     const sun::TypePtr& resultType,
     const std::vector<std::unique_ptr<ExprAST>>& args, bool dropResult) {
   LLVMContext& llvmCtx = ctx.getContext();
@@ -210,7 +211,7 @@ Value* CodegenVisitor::codegenThreadJoinIntrinsic(
     result =
         ctx.builder->CreateLoad(resultLLVMType, resultSlotPtr, "join.result");
   } else if (dropResult && sun::typeNeedsDrop(resultType)) {
-    emitDropInPlace(resultType, resultSlotPtr, "join.result");
+    scopes().emitDropInPlace(resultType, resultSlotPtr, "join.result");
   }
 
   // Free the result slot (null for void threads — free(null) is a no-op) and

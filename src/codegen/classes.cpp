@@ -5,12 +5,18 @@
 
 #include "ast.h"
 #include "codegen/codegen.h"
+#include "codegen/class_generator.h"
 #include "codegen/codegen_visitor.h"
+#include "codegen/scalar_ops.h"
+#include "codegen/struct_access.h"
 #include "codegen/intrinsics/intrinsics.h"
 #include "parsing/parser.h"
 #include "semantic_analysis/semantic_scope.h"
 
 using namespace llvm;
+
+namespace layout = sun::codegen::layout;
+namespace ops = sun::codegen::ops;
 
 namespace {
 
@@ -32,15 +38,14 @@ bool specializationIsAbstract(
 // Precompiled class codegen (from linked bitcode)
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegenPrecompiledClass(const ClassDefinitionAST& expr,
+Value* ClassGenerator::codegenPrecompiledClass(const ClassDefinitionAST& expr,
                                                const std::string& className) {
   // Still need to register the class type for type checking
   auto classType = typeRegistry->getClass(className);
   if (classType) {
     // Generate specializations for generic methods on this non-generic
     // precompiled class (e.g., HeapAllocator.create<T>)
-    auto savedClass = currentClass;
-    auto savedThisPtr = thisPtr;
+    CodegenState::ReceiverGuard receiver(state_);
     currentClass = classType;
 
     for (const auto& methodDecl : expr.getMethods()) {
@@ -61,8 +66,6 @@ Value* CodegenVisitor::codegenPrecompiledClass(const ClassDefinitionAST& expr,
       }
     }
 
-    currentClass = savedClass;
-    thisPtr = savedThisPtr;
   }
 
   // If the class is also generic, store the AST for later instantiation
@@ -106,7 +109,7 @@ Value* CodegenVisitor::codegenPrecompiledClass(const ClassDefinitionAST& expr,
 // before the class definition is reached
 // -------------------------------------------------------------------
 
-void CodegenVisitor::declareClassMethods(
+void ClassGenerator::declareClassMethods(
     const ClassDefinitionAST& expr,
     const std::shared_ptr<sun::ClassType>& classType) {
   if (!classType) return;
@@ -147,7 +150,7 @@ void CodegenVisitor::declareClassMethods(
 // Declare the methods of every class a block defines, before any body is
 // emitted, so a method may call one of a class declared further down the file
 // (the same courtesy the function pre-pass extends to free functions).
-void CodegenVisitor::declareBlockClassMethods(const ClassDefinitionAST& expr) {
+void ClassGenerator::declareBlockClassMethods(const ClassDefinitionAST& expr) {
   if (expr.isPrecompiled() || expr.isPartial()) return;
 
   if (expr.isGeneric()) {
@@ -172,7 +175,7 @@ void CodegenVisitor::declareBlockClassMethods(const ClassDefinitionAST& expr) {
 // Class definition codegen
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegen(const ClassDefinitionAST& expr) {
+Value* ClassGenerator::codegen(const ClassDefinitionAST& expr) {
   // Get the class name - check if there's a qualified name via resolved type
   // The semantic analyzer may have qualified the name (e.g., sun_SliceRange)
   std::string className = expr.getName();
@@ -238,8 +241,7 @@ Value* CodegenVisitor::codegen(const ClassDefinitionAST& expr) {
   llvm::StructType* structType = classType->getStructType(ctx.getContext());
 
   // Save current class context
-  auto savedClass = currentClass;
-  auto savedThisPtr = thisPtr;
+  CodegenState::ReceiverGuard receiver(state_);
   currentClass = classType;
 
   // PASS 1: Declare all method functions first (so methods can call each other)
@@ -258,7 +260,7 @@ Value* CodegenVisitor::codegen(const ClassDefinitionAST& expr) {
           generateMethodBody(*specializedAST, specMangledName);
           // Track user-defined method specializations for IR filtering
           if (isUserDefined) {
-            userDefinedFunctions.insert(specMangledName);
+            functions().noteUserDefined(specMangledName);
           }
         }
       }
@@ -278,7 +280,7 @@ Value* CodegenVisitor::codegen(const ClassDefinitionAST& expr) {
     generateMethodBody(methodFunc, mangledName);
     // Track user-defined methods for IR filtering
     if (isUserDefined) {
-      userDefinedFunctions.insert(mangledName);
+      functions().noteUserDefined(mangledName);
     }
   }
 
@@ -411,10 +413,6 @@ Value* CodegenVisitor::codegen(const ClassDefinitionAST& expr) {
     getOrCreateInterfaceVtable(classType.get(), interfaceType.get());
   }
 
-  // Restore class context
-  currentClass = savedClass;
-  thisPtr = savedThisPtr;
-
   // Class definitions return void
   return ConstantFP::get(ctx.getContext(), APFloat(0.0));
 }
@@ -423,7 +421,7 @@ Value* CodegenVisitor::codegen(const ClassDefinitionAST& expr) {
 // Declare a method function from a specialized AST (no body generated)
 // -------------------------------------------------------------------
 
-Function* CodegenVisitor::declareMethodFromAST(
+Function* ClassGenerator::declareMethodFromAST(
     const FunctionAST& specializedAST, const std::string& mangledName) {
   // Skip if already declared
   if (Function* existing = module->getFunction(mangledName)) {
@@ -495,7 +493,7 @@ Function* CodegenVisitor::declareMethodFromAST(
 // method bodies touch the closure arg — bodies must never read field 0
 // (forwarding wrappers pass their own closure through, so the func slot may
 // point at the wrapper rather than the called function).
-void CodegenVisitor::emitMethodPrologueThis(Function* func) {
+void ClassGenerator::emitMethodPrologueThis(Function* func) {
   llvm::StructType* closureTy = typeResolver.getClosureType();
   Value* envSlot = ctx.builder->CreateStructGEP(closureTy, &*func->arg_begin(),
                                                 1, "this.env");
@@ -508,7 +506,7 @@ void CodegenVisitor::emitMethodPrologueThis(Function* func) {
                                     thisAlloca, "this");
 
   // Register 'this' in the current scope so the body can find it
-  scopes.back().variables["this"] = thisAlloca;
+  scopes().back().variables["this"] = thisAlloca;
   debugInfo.declareThisParameter(*ctx.builder, thisAlloca, currentClass);
 }
 
@@ -516,7 +514,7 @@ void CodegenVisitor::emitMethodPrologueThis(Function* func) {
 // Generate a method body for an already-declared function
 // -------------------------------------------------------------------
 
-void CodegenVisitor::generateMethodBody(const FunctionAST& methodFunc,
+void ClassGenerator::generateMethodBody(const FunctionAST& methodFunc,
                                         const std::string& mangledName) {
   const PrototypeAST& proto = methodFunc.getProto();
 
@@ -535,9 +533,7 @@ void CodegenVisitor::generateMethodBody(const FunctionAST& methodFunc,
 
   // Save and set error handling context. With native exceptions a throwing
   // method returns plain T, so the value type is just the return type.
-  bool savedCanError = currentFunctionCanError;
-  llvm::Type* savedValueType = currentFunctionValueType;
-  bool savedReturnsRef = currentFunctionReturnsRef;
+  CodegenState::ReturnGuard returns(state_);
   currentFunctionCanError = canError;
   currentFunctionValueType = canError ? returnType : nullptr;
   currentFunctionReturnsRef =
@@ -551,7 +547,7 @@ void CodegenVisitor::generateMethodBody(const FunctionAST& methodFunc,
                           proto.getLocation());
 
   // Create a new scope for the method
-  pushScope().isFunctionBoundary = true;
+  scopes().push().isFunctionBoundary = true;
 
   emitMethodPrologueThis(func);
 
@@ -580,13 +576,13 @@ void CodegenVisitor::generateMethodBody(const FunctionAST& methodFunc,
     AllocaInst* alloca =
         ctx.builder->CreateAlloca(argLLVMType, nullptr, argName);
     ctx.builder->CreateStore(&*argIt, alloca);
-    scopes.back().variables[argName] = alloca;
+    scopes().back().variables[argName] = alloca;
     // A pack element has no annotation in the source to point a debug entry at
     if (i < fixedCount) {
       debugDeclareParam(alloca, argName, proto, static_cast<unsigned>(i),
                         /*argNoBase=*/2);
     }
-    trackOwnedParam(alloca, argName, paramTypes[i]);
+    scopes().trackOwnedParam(alloca, argName, paramTypes[i]);
     ++argIt;
   }
 
@@ -604,12 +600,7 @@ void CodegenVisitor::generateMethodBody(const FunctionAST& methodFunc,
     }
   }
 
-  popScope();
-
-  // Restore error handling context
-  currentFunctionCanError = savedCanError;
-  currentFunctionValueType = savedValueType;
-  currentFunctionReturnsRef = savedReturnsRef;
+  scopes().pop();
 
   debugInfo.exitFunction(func);
 
@@ -621,7 +612,7 @@ void CodegenVisitor::generateMethodBody(const FunctionAST& methodFunc,
 // 'this' expression codegen
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegen(const ThisExprAST& expr) {
+Value* ClassGenerator::codegen(const ThisExprAST& expr) {
   if (!thisPtr) {
     logAndThrowError("'this' used outside of a class method");
     return nullptr;
@@ -638,7 +629,7 @@ Value* CodegenVisitor::codegen(const ThisExprAST& expr) {
 // name semantic analysis took from the member's own declaration; codegen never
 // rebuilds it from the module path, since only the declaration knows the
 // library-hash scope the symbol was emitted under.
-GlobalVariable* CodegenVisitor::moduleMemberGlobal(const ExprAST& object,
+GlobalVariable* ClassGenerator::moduleMemberGlobal(const ExprAST& object,
                                                    const std::string& symbol) {
   sun::TypePtr objectType = object.getResolvedType();
   if (!objectType || !objectType->isModule() || symbol.empty()) return nullptr;
@@ -649,7 +640,7 @@ GlobalVariable* CodegenVisitor::moduleMemberGlobal(const ExprAST& object,
 // Member access codegen (field read)
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegen(const MemberAccessAST& expr) {
+Value* ClassGenerator::codegen(const MemberAccessAST& expr) {
   const std::string& memberName = expr.getMemberName();
 
   // Handle module member access: mod_x.mod_y or mod_x.var
@@ -729,18 +720,18 @@ Value* CodegenVisitor::codegen(const MemberAccessAST& expr) {
   // Check if it's a field access
   const sun::ClassField* field = classType->getField(memberName);
   if (field) {
-    Value* fieldPtr = getFieldPtr(classType, objectPtr, *field, memberName);
+    Value* fieldPtr = layout::fieldPtr(*ctx.builder, classType, objectPtr, *field, memberName);
 
     // For class-typed and payload-enum fields (embedded structs), return the
     // pointer to the embedded struct (struct values in Sun are pointers)
-    if (field->type->isClass() || isPayloadEnum(field->type)) {
+    if (field->type->isClass() || CodegenVisitor::isPayloadEnum(field->type)) {
       return fieldPtr;
     }
 
     // Load the field value
     llvm::Type* fieldLLVMType = field->type->toLLVMType(ctx.getContext());
     return ctx.builder->CreateAlignedLoad(fieldLLVMType, fieldPtr,
-                                          fieldAlign(classType, fieldLLVMType),
+                                          layout::fieldAlign(classType, fieldLLVMType, module->getDataLayout()),
                                           memberName + ".val");
   }
 
@@ -760,7 +751,7 @@ Value* CodegenVisitor::codegen(const MemberAccessAST& expr) {
 // Produces a closure struct VALUE { methodFn, objectPtr } (lambda ABI)
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegenBoundMethodReference(const MemberAccessAST& expr,
+Value* ClassGenerator::codegenBoundMethodReference(const MemberAccessAST& expr,
                                                    Value* objectPtr,
                                                    sun::ClassType* classType) {
   auto& lambdaType =
@@ -777,7 +768,7 @@ Value* CodegenVisitor::codegenBoundMethodReference(const MemberAccessAST& expr,
     return nullptr;
   }
 
-  Function* methodFunc = getOrDeclareMethodFunction(
+  Function* methodFunc = functions().getOrDeclareMethodFunction(
       classType->getMangledMethodName(methodName, method->paramTypes),
       method->paramTypes, method->returnType, method->canThrow);
 
@@ -788,7 +779,7 @@ Value* CodegenVisitor::codegenBoundMethodReference(const MemberAccessAST& expr,
 // Stack-allocated class instance codegen: ClassName(args...)
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegenStackClassInstance(const CallExprAST& expr,
+Value* ClassGenerator::codegenStackClassInstance(const CallExprAST& expr,
                                                  const std::string& className,
                                                  sun::ClassType& classType) {
   // Get the LLVM struct type for the class
@@ -823,7 +814,7 @@ Value* CodegenVisitor::codegenStackClassInstance(const CallExprAST& expr,
   // Find the constructor; declare an external if the init method exists but
   // isn't in the module yet (precompiled classes linked later)
   Function* candidate =
-      ctor.method ? getOrDeclareMethodFunction(
+      ctor.method ? functions().getOrDeclareMethodFunction(
                         ctor.mangledName, ctor.method->paramTypes,
                         ctor.method->returnType, ctor.method->canThrow)
                   : module->getFunction(ctor.mangledName);
@@ -848,7 +839,7 @@ Value* CodegenVisitor::codegenStackClassInstance(const CallExprAST& expr,
   // deinited here.
   if (!expr.isMoved()) {
     auto classTypePtr = std::make_shared<sun::ClassType>(classType);
-    trackClassAllocation(alloca, "stack.obj", classTypePtr);
+    scopes().trackClassAllocation(alloca, "stack.obj", classTypePtr);
   }
 
   return alloca;
@@ -858,13 +849,14 @@ Value* CodegenVisitor::codegenStackClassInstance(const CallExprAST& expr,
 // Generate constructor argument values, handling ref parameters
 // -------------------------------------------------------------------
 
-std::vector<Value*> CodegenVisitor::generateCtorArgs(
+std::vector<Value*> ClassGenerator::generateCtorArgs(
     llvm::Function* ctorFunc, Value* thisPtr,
     const std::vector<std::unique_ptr<ExprAST>>& args,
     const std::vector<sun::ArgConversion>& conversions,
     const std::vector<sun::TypePtr>& paramTypes) {
   std::vector<Value*> ctorArgs;
-  ctorArgs.push_back(materializeMethodClosure(ctorFunc, thisPtr));
+  ctorArgs.push_back(
+      materializeMethodClosure(ctorFunc, thisPtr, "method.closure"));
   if (!emitCallArguments(args, conversions, paramTypes,
                          ctorFunc->getFunctionType(), ctorArgs, "init")) {
     return {};
@@ -876,7 +868,7 @@ std::vector<Value*> CodegenVisitor::generateCtorArgs(
 // Constructor lookup helpers
 // -------------------------------------------------------------------
 
-CodegenVisitor::ConstructorLookup CodegenVisitor::lookupConstructor(
+ClassGenerator::ConstructorLookup ClassGenerator::lookupConstructor(
     sun::ClassType* classType,
     const std::vector<std::unique_ptr<ExprAST>>& args) {
   // Collect argument types from AST nodes
@@ -888,7 +880,7 @@ CodegenVisitor::ConstructorLookup CodegenVisitor::lookupConstructor(
   return lookupConstructor(classType, argTypes);
 }
 
-CodegenVisitor::ConstructorLookup CodegenVisitor::lookupConstructor(
+ClassGenerator::ConstructorLookup ClassGenerator::lookupConstructor(
     sun::ClassType* classType, const std::vector<sun::TypePtr>& argTypes) {
   ConstructorLookup result;
 
@@ -912,7 +904,7 @@ CodegenVisitor::ConstructorLookup CodegenVisitor::lookupConstructor(
 // Member assignment codegen (field write)
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
+Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
   // mod.global = value: the module is compile-time only, so this writes the
   // global directly
   if (GlobalVariable* gv = moduleMemberGlobal(
@@ -968,17 +960,17 @@ Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
 
   // Generate GEP to access the field
   Value* fieldPtr =
-      getFieldPtr(classType, objectPtr, *field, memberName + ".ptr");
+      layout::fieldPtr(*ctx.builder, classType, objectPtr, *field, memberName + ".ptr");
 
   // Payload-enum fields: the value arrives as a storage pointer. Drop the
   // overwritten field first (a no-op on freshly zeroed storage: tag 0 with
   // zeroed payloads drops cleanly), then MOVE the source in — never an
   // implicit copy.
-  if (isPayloadEnum(field->type)) {
+  if (CodegenVisitor::isPayloadEnum(field->type)) {
     Value* structVal = value;
     if (value->getType()->isPointerTy()) {
-      emitDropInPlace(field->type, fieldPtr, memberName);
-      structVal = applyMoveSemantics(value, field->type);
+      scopes().emitDropInPlace(field->type, fieldPtr, memberName);
+      structVal = gen_.applyMoveSemantics(value, field->type);
     }
     ctx.builder->CreateStore(structVal, fieldPtr);
     return structVal;
@@ -994,7 +986,7 @@ Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
     uint64_t structSize = DL.getTypeAllocSize(fieldStructType);
 
     // Drop whatever the field currently holds
-    emitDropInPlace(field->type, fieldPtr, memberName);
+    scopes().emitDropInPlace(field->type, fieldPtr, memberName);
 
     // value is a pointer to the source class instance
     // fieldPtr is a pointer to the embedded struct in the parent class
@@ -1011,12 +1003,12 @@ Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
     }
     // The destination sits inside the parent, so it inherits the parent's
     // packing, not the field struct's own alignment
-    ctx.builder->CreateMemCpy(fieldPtr, fieldAlign(classType, fieldStructType),
+    ctx.builder->CreateMemCpy(fieldPtr, layout::fieldAlign(classType, fieldStructType, module->getDataLayout()),
                               value, srcAlign, structSize);
     if (sourceIsAddressable) {
       // Move: the field owns the payload now. Release the source's tracking
       // entry and zero it so its own drop is a no-op.
-      markClassAllocationAsDeinited(value);
+      scopes().markClassAllocationAsDeinited(value);
       ctx.builder->CreateMemSet(
           value, ConstantInt::get(Type::getInt8Ty(ctx.getContext()), 0),
           structSize, srcAlign);
@@ -1036,7 +1028,7 @@ Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
         unsigned valueBits = valueType->getIntegerBitWidth();
         unsigned fieldBits = fieldLLVMType->getIntegerBitWidth();
         if (valueBits < fieldBits) {
-          value = extendInt(value, fieldLLVMType,
+          value = ops::extendInt(*ctx.builder, value, fieldLLVMType,
                             expr.getValue()->getResolvedType());
         }
       }
@@ -1053,7 +1045,7 @@ Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
 
   // Store the value
   ctx.builder->CreateAlignedStore(value, fieldPtr,
-                                  fieldAlign(classType, fieldLLVMType));
+                                  layout::fieldAlign(classType, fieldLLVMType, module->getDataLayout()));
 
   // Return the value (like C assignment)
   return value;
@@ -1063,7 +1055,7 @@ Value* CodegenVisitor::codegen(const MemberAssignmentAST& expr) {
 // Interface definition codegen
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegen(const InterfaceDefinitionAST& expr) {
+Value* ClassGenerator::codegen(const InterfaceDefinitionAST& expr) {
   const std::string& interfaceName = expr.getName();
 
   // Skip precompiled interfaces - they come from linked bitcode
@@ -1149,7 +1141,7 @@ Value* CodegenVisitor::codegen(const InterfaceDefinitionAST& expr) {
                             proto.getLocation());
 
     // Create a new scope for the method
-    pushScope().isFunctionBoundary = true;
+    scopes().push().isFunctionBoundary = true;
 
     emitMethodPrologueThis(func);
 
@@ -1173,7 +1165,7 @@ Value* CodegenVisitor::codegen(const InterfaceDefinitionAST& expr) {
       AllocaInst* alloca =
           ctx.builder->CreateAlloca(argLLVMType, nullptr, argName);
       ctx.builder->CreateStore(&*argIt, alloca);
-      scopes.back().variables[argName] = alloca;
+      scopes().back().variables[argName] = alloca;
       debugDeclareParam(alloca, argName, proto, static_cast<unsigned>(paramIdx),
                         /*argNoBase=*/2);
       ++argIt;
@@ -1192,7 +1184,7 @@ Value* CodegenVisitor::codegen(const InterfaceDefinitionAST& expr) {
       }
     }
 
-    popScope();
+    scopes().pop();
     thisPtr = nullptr;
 
     debugInfo.exitFunction(func);
@@ -1209,7 +1201,7 @@ Value* CodegenVisitor::codegen(const InterfaceDefinitionAST& expr) {
 // Enum definition codegen
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegen(const EnumDefinitionAST& expr) {
+Value* ClassGenerator::codegen(const EnumDefinitionAST& expr) {
   // Enum definitions are already fully registered by the semantic analyzer
   // in the TypeRegistry. Payload-free enums are represented as i32 constants
   // emitted inline when variants are referenced.
@@ -1243,7 +1235,7 @@ Value* CodegenVisitor::codegen(const EnumDefinitionAST& expr) {
 // For standalone generic functions (not methods)
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
+Value* ClassGenerator::codegen(const GenericCallAST& expr) {
   const std::string& funcName = expr.getFunctionName();
   const auto& typeArgs = expr.getTypeArguments();
 
@@ -1259,36 +1251,36 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
   // Handle generic intrinsics via switch
   switch (sun::getIntrinsic(funcName)) {
     case sun::Intrinsic::Sizeof:
-      return codegenSizeofIntrinsic(getFirstTypeArg());
+      return intrinsics().codegenSizeofIntrinsic(getFirstTypeArg());
     case sun::Intrinsic::Init:
-      return codegenInitIntrinsic(getFirstTypeArg(), expr.getArgs());
+      return intrinsics().codegenInitIntrinsic(getFirstTypeArg(), expr.getArgs());
     case sun::Intrinsic::Load:
-      return codegenLoadIntrinsic(getFirstTypeArg(), expr.getArgs());
+      return intrinsics().codegenLoadIntrinsic(getFirstTypeArg(), expr.getArgs());
     case sun::Intrinsic::Store:
-      return codegenStoreIntrinsic(getFirstTypeArg(), expr.getArgs());
+      return intrinsics().codegenStoreIntrinsic(getFirstTypeArg(), expr.getArgs());
     case sun::Intrinsic::PtrAsRaw:
-      return codegenPtrAsRawIntrinsic(expr.getArgs());
+      return intrinsics().codegenPtrAsRawIntrinsic(expr.getArgs());
     case sun::Intrinsic::AddressOf:
-      return codegenAddressOfIntrinsic(expr.getArgs());
+      return intrinsics().codegenAddressOfIntrinsic(expr.getArgs());
     case sun::Intrinsic::ToRef:
-      return codegenToRefIntrinsic(expr.getArgs());
+      return intrinsics().codegenToRefIntrinsic(expr.getArgs());
     case sun::Intrinsic::Is:
       // _is<T> uses the type name for type trait checks (e.g., "_Integer")
-      return codegenIsIntrinsic(typeArgs[0]->baseName, expr.getArgs());
+      return intrinsics().codegenIsIntrinsic(typeArgs[0]->baseName, expr.getArgs());
     case sun::Intrinsic::Deinit:
-      return codegenDeinitIntrinsic(getFirstTypeArg(), expr.getArgs());
+      return intrinsics().codegenDeinitIntrinsic(getFirstTypeArg(), expr.getArgs());
     case sun::Intrinsic::Convert:
-      return codegenConvertIntrinsic(getFirstTypeArg(), expr.getArgs());
+      return intrinsics().codegenConvertIntrinsic(getFirstTypeArg(), expr.getArgs());
     case sun::Intrinsic::Bitcast:
-      return codegenBitcastIntrinsic(getFirstTypeArg(), expr.getArgs());
+      return intrinsics().codegenBitcastIntrinsic(getFirstTypeArg(), expr.getArgs());
     case sun::Intrinsic::Spawn:
-      return codegenSpawnIntrinsic(getFirstTypeArg(), expr.getResolvedType(),
+      return intrinsics().codegenSpawnIntrinsic(getFirstTypeArg(), expr.getResolvedType(),
                                    expr.getArgs(), expr.getArgConversions());
     case sun::Intrinsic::ThreadJoin:
-      return codegenThreadJoinIntrinsic(getFirstTypeArg(), expr.getArgs(),
+      return intrinsics().codegenThreadJoinIntrinsic(getFirstTypeArg(), expr.getArgs(),
                                         /*dropResult=*/false);
     case sun::Intrinsic::ThreadJoinDrop:
-      return codegenThreadJoinIntrinsic(getFirstTypeArg(), expr.getArgs(),
+      return intrinsics().codegenThreadJoinIntrinsic(getFirstTypeArg(), expr.getArgs(),
                                         /*dropResult=*/true);
     default:
       break;  // Not a generic intrinsic, continue below
@@ -1333,7 +1325,7 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
     std::vector<Value*> argValues;
 
     // If function has captures, the env was stored in scope during codegenFunc
-    if (AllocaInst* envPtr = findVariable(mangledName)) {
+    if (AllocaInst* envPtr = scopes().findVariable(mangledName)) {
       argValues.push_back(envPtr);
     }
 
@@ -1359,11 +1351,11 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
       return nullptr;
     }
 
-    Value* result = emitPossiblyThrowingCall(specializedFunc->getFunctionType(),
-                                             specializedFunc, argValues,
-                                             canThrow, "generic.call");
-    return trackCallTemporary(materializeStructReturn(result),
-                              expr.getResolvedType());
+    Value* result = gen_.errorGenerator().emitPossiblyThrowingCall(
+        specializedFunc->getFunctionType(), specializedFunc, argValues,
+        canThrow, "generic.call");
+    return scopes().trackCallTemporary(gen_.materializeStructReturn(result),
+                                       expr.getResolvedType());
   }
 
   // Check for generic class constructor: Box<i32>(42)
@@ -1422,7 +1414,7 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
       // Find the constructor; declare an external if the init method exists
       // but isn't in the module yet (class codegen hasn't run)
       Function* candidate =
-          ctor.method ? getOrDeclareMethodFunction(
+          ctor.method ? functions().getOrDeclareMethodFunction(
                             ctor.mangledName, ctor.method->paramTypes,
                             ctor.method->returnType, ctor.method->canThrow)
                       : module->getFunction(ctor.mangledName);
@@ -1453,7 +1445,7 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
       // transferred)
       if (!expr.isMoved()) {
         auto classTypePtr = std::make_shared<sun::ClassType>(*classType);
-        trackClassAllocation(alloca, "stack.obj", classTypePtr);
+        scopes().trackClassAllocation(alloca, "stack.obj", classTypePtr);
       }
 
       return alloca;
@@ -1500,7 +1492,7 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
     // Find the constructor; declare an external if the init method exists
     // but isn't in the module yet
     Function* candidate =
-        ctor.method ? getOrDeclareMethodFunction(
+        ctor.method ? functions().getOrDeclareMethodFunction(
                           ctor.mangledName, ctor.method->paramTypes,
                           ctor.method->returnType, ctor.method->canThrow)
                     : module->getFunction(ctor.mangledName);
@@ -1528,7 +1520,7 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
     // transferred)
     if (!expr.isMoved()) {
       auto classTypePtr = std::make_shared<sun::ClassType>(*fallbackClassType);
-      trackClassAllocation(alloca, "stack.obj", classTypePtr);
+      scopes().trackClassAllocation(alloca, "stack.obj", classTypePtr);
     }
 
     return alloca;
@@ -1547,7 +1539,7 @@ Value* CodegenVisitor::codegen(const GenericCallAST& expr) {
 // named exactly once, and that the values are assignable — so this only has
 // to lay the bytes down. Returns the object's address, like other class-
 // valued expressions.
-Value* CodegenVisitor::codegen(const StructLiteralAST& expr) {
+Value* ClassGenerator::codegen(const StructLiteralAST& expr) {
   auto* classType = &sun::requireType<sun::ClassType>(expr, "struct literal");
   llvm::StructType* structType = classType->getStructType(ctx.getContext());
 
@@ -1564,17 +1556,17 @@ Value* CodegenVisitor::codegen(const StructLiteralAST& expr) {
     if (!value) return nullptr;
 
     sun::TypePtr valueType = field.value->getResolvedType();
-    value = widenNumericIfNeeded(value, classField->type, valueType);
+    value = ops::widenNumericIfNeeded(*ctx.builder, typeResolver, value, classField->type, valueType);
 
     Value* fieldPtr = ctx.builder->CreateStructGEP(
         structType, alloca, classField->index, field.name + ".ptr");
-    storeIntoSlot(fieldPtr, value, classField->type, classType);
+    layout::storeIntoSlot(*ctx.builder, module->getDataLayout(), fieldPtr, value, classField->type, classType);
   }
 
   // Track for deinit at scope exit unless ownership moves to a destination.
   if (!expr.isMoved()) {
     auto classTypePtr = std::make_shared<sun::ClassType>(*classType);
-    trackClassAllocation(alloca, "struct.lit", classTypePtr);
+    scopes().trackClassAllocation(alloca, "struct.lit", classTypePtr);
   }
 
   return alloca;

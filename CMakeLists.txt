@@ -154,12 +154,20 @@ add_library(sun_lib
     # Codegen
     src/codegen/codegen_visitor.cpp
     src/codegen/llvm_type_resolver.cpp
+    src/codegen/scope_manager.cpp
+    src/codegen/function_registry.cpp
+    src/codegen/function_generator.cpp
+    src/codegen/variable_generator.cpp
+    src/codegen/loop_generator.cpp
+    src/codegen/error_generator.cpp
     src/codegen/debug_info_builder.cpp
     src/codegen/functions_lambdas.cpp
     src/codegen/arrays.cpp
     src/codegen/variable_creation.cpp
     src/codegen/variable_references.cpp
     src/codegen/lvalues.cpp
+    src/codegen/scalar_ops.cpp
+    src/codegen/struct_access.cpp
     src/codegen/call_expressions.cpp
     src/codegen/extern_c.cpp
     src/codegen/if_expressions.cpp
@@ -169,12 +177,15 @@ add_library(sun_lib
     src/codegen/return_statements.cpp
     src/codegen/block_expressions.cpp
     src/codegen/classes.cpp
+    src/codegen/class_generator.cpp
+    src/codegen/interfaces.cpp
     src/codegen/error_handling.cpp
     src/codegen/threads.cpp
     src/codegen/thread_utils.cpp
     src/codegen/abi/aapcs64.cpp
     src/codegen/abi/c_abi.cpp
     src/codegen/abi/sysv_x86_64.cpp
+    src/codegen/intrinsics/intrinsics_generator.cpp
     src/codegen/intrinsics/builtins.cpp
     src/codegen/intrinsics/generic.cpp
     src/codegen/intrinsics/io.cpp
@@ -250,8 +261,19 @@ target_precompile_headers(sun_lib PRIVATE
     include/ast.h
     include/codegen/codegen.h
     include/codegen/codegen_visitor.h
+    include/codegen/codegen_state.h
+    include/codegen/scope_manager.h
+    include/codegen/function_registry.h
+    include/codegen/function_generator.h
+    include/codegen/variable_generator.h
+    include/codegen/loop_generator.h
+    include/codegen/error_generator.h
+    include/codegen/class_generator.h
+    include/codegen/scalar_ops.h
+    include/codegen/struct_access.h
     include/parsing/parser.h
     include/codegen/intrinsics/intrinsics.h
+    include/codegen/intrinsics/intrinsics_generator.h
 )
 # clang embeds a timestamp in PCHs by default, which defeats ccache
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")

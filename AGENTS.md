@@ -64,6 +64,22 @@ cd build && ctest -j8 --output-on-failure
 
 ## Codegen Conventions
 
+`CodegenVisitor` walks the AST and dispatches; nine components do the emitting, each with its own header under `include/codegen/` and its own state. They share one `CodegenState` (module, type registry, type resolver, DWARF, and the frame being emitted) by reference and reach each other back through the visitor — the same shape as `SemanticAnalyzer` and `SemanticContext`.
+
+| Component | Owns |
+| --- | --- |
+| `ScopeManager` | the scope stack and every drop it emits |
+| `FunctionRegistry` | calling conventions, provenance, name lookup |
+| `ClassGenerator` | classes, interfaces, enums, generic instantiation |
+| `FunctionGenerator` | functions, lambdas, closures, returns |
+| `VariableGenerator` | variables, lvalues, globals |
+| `LoopGenerator` | loops and the jumps out of them |
+| `ErrorGenerator` | throw, try/catch, calls that may unwind |
+| `IntrinsicsGenerator` | compiler intrinsics and libc built-ins |
+
+Rules needing no codegen state are free functions so other passes reach the same answers: `sun::codegen::ops` (`scalar_ops.h`) and `sun::codegen::layout` (`struct_access.h`).
+
+- A component that emits sub-expressions declares both `codegen(const ExprAST&)` and `codegen(const BlockExprAST&)` forwarders. The block overload is not optional: without it a block binds to the `ExprAST` one, which attaches an expression debug location and changes DWARF output. A deleted template overload turns a missing overload into a compile error rather than infinite recursion.
 - Access LLVM via `ctx.builder` / `ctx.context`.
 - `typeResolver.resolve(type)` for variables; `typeResolver.resolveForReturn(type)` for function returns.
 - Functions returning classes return the struct by value; callers materialize on stack for addressability.

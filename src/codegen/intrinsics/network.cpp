@@ -9,6 +9,7 @@
 // which keeps the emitted IR target-neutral.
 
 #include "codegen/codegen_visitor.h"
+#include "codegen/intrinsics/intrinsics_generator.h"
 #include "codegen/intrinsics/libc.h"
 #include "support/error.h"
 
@@ -116,7 +117,7 @@ static Function* getOrCreateGetSockOptHelper(llvm::Module* module,
 // -------------------------------------------------------------------
 
 // __socket(domain: i32, type: i32, protocol: i32) -> i32
-Value* CodegenVisitor::codegenSocket(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenSocket(const CallExprAST& expr) {
   if (expr.getArgs().size() != 3) {
     logAndThrowError(
         "__socket expects 3 arguments: (domain: i32, type: i32, protocol: "
@@ -148,7 +149,7 @@ Value* CodegenVisitor::codegenSocket(const CallExprAST& expr) {
 }
 
 // __bind(fd: i32, addr: raw_ptr<u8>, addrlen: i32) -> i32
-Value* CodegenVisitor::codegenBind(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenBind(const CallExprAST& expr) {
   if (expr.getArgs().size() != 3) {
     logAndThrowError(
         "__bind expects 3 arguments: (fd: i32, addr: raw_ptr<u8>, addrlen: "
@@ -177,7 +178,7 @@ Value* CodegenVisitor::codegenBind(const CallExprAST& expr) {
 }
 
 // __listen(fd: i32, backlog: i32) -> i32
-Value* CodegenVisitor::codegenListen(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenListen(const CallExprAST& expr) {
   if (expr.getArgs().size() != 2) {
     logAndThrowError("__listen expects 2 arguments: (fd: i32, backlog: i32)");
     return nullptr;
@@ -202,7 +203,7 @@ Value* CodegenVisitor::codegenListen(const CallExprAST& expr) {
 }
 
 // __accept(fd: i32, addr: raw_ptr<u8>, addrlen: raw_ptr<i32>) -> i32
-Value* CodegenVisitor::codegenAccept(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenAccept(const CallExprAST& expr) {
   if (expr.getArgs().size() != 3) {
     logAndThrowError(
         "__accept expects 3 arguments: (fd: i32, addr: raw_ptr<u8>, addrlen: "
@@ -227,7 +228,7 @@ Value* CodegenVisitor::codegenAccept(const CallExprAST& expr) {
 }
 
 // __connect(fd: i32, addr: raw_ptr<u8>, addrlen: i32) -> i32
-Value* CodegenVisitor::codegenConnect(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenConnect(const CallExprAST& expr) {
   if (expr.getArgs().size() != 3) {
     logAndThrowError(
         "__connect expects 3 arguments: (fd: i32, addr: raw_ptr<u8>, addrlen: "
@@ -256,7 +257,7 @@ Value* CodegenVisitor::codegenConnect(const CallExprAST& expr) {
 }
 
 // __send(fd: i32, buf: raw_ptr<u8>, len: i64, flags: i32) -> i64
-Value* CodegenVisitor::codegenSend(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenSend(const CallExprAST& expr) {
   if (expr.getArgs().size() != 4) {
     logAndThrowError(
         "__send expects 4 arguments: (fd: i32, buf: raw_ptr<u8>, len: i64, "
@@ -289,7 +290,7 @@ Value* CodegenVisitor::codegenSend(const CallExprAST& expr) {
 }
 
 // __recv(fd: i32, buf: raw_ptr<u8>, len: i64, flags: i32) -> i64
-Value* CodegenVisitor::codegenRecv(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenRecv(const CallExprAST& expr) {
   if (expr.getArgs().size() != 4) {
     logAndThrowError(
         "__recv expects 4 arguments: (fd: i32, buf: raw_ptr<u8>, len: i64, "
@@ -322,7 +323,7 @@ Value* CodegenVisitor::codegenRecv(const CallExprAST& expr) {
 }
 
 // __shutdown(fd: i32, how: i32) -> i32
-Value* CodegenVisitor::codegenShutdown(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenShutdown(const CallExprAST& expr) {
   if (expr.getArgs().size() != 2) {
     logAndThrowError("__shutdown expects 2 arguments: (fd: i32, how: i32)");
     return nullptr;
@@ -347,7 +348,7 @@ Value* CodegenVisitor::codegenShutdown(const CallExprAST& expr) {
 
 // __setsockopt(fd: i32, level: i32, optname: i32, optval: raw_ptr<u8>, optlen:
 // i32) -> i32
-Value* CodegenVisitor::codegenSetSockOpt(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenSetSockOpt(const CallExprAST& expr) {
   if (expr.getArgs().size() != 5) {
     logAndThrowError(
         "__setsockopt expects 5 arguments: (fd: i32, level: i32, optname: i32, "
@@ -388,7 +389,7 @@ Value* CodegenVisitor::codegenSetSockOpt(const CallExprAST& expr) {
 
 // __getsockopt(fd: i32, level: i32, optname: i32, optval: raw_ptr<u8>, optlen:
 // raw_ptr<i32>) -> i32
-Value* CodegenVisitor::codegenGetSockOpt(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenGetSockOpt(const CallExprAST& expr) {
   if (expr.getArgs().size() != 5) {
     logAndThrowError(
         "__getsockopt expects 5 arguments: (fd: i32, level: i32, optname: i32, "
@@ -526,7 +527,7 @@ static Function* getOrCreateAcceptFdHelper(llvm::Module* module,
 }
 
 // __bind_ipv4(fd: i32, ip: i32, port: i32) -> i32
-Value* CodegenVisitor::codegenBindIPv4(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenBindIPv4(const CallExprAST& expr) {
   if (expr.getArgs().size() != 3) {
     logAndThrowError(
         "__bind_ipv4 expects 3 arguments: (fd: i32, ip: i32, port: i32)");
@@ -556,7 +557,7 @@ Value* CodegenVisitor::codegenBindIPv4(const CallExprAST& expr) {
 }
 
 // __connect_ipv4(fd: i32, ip: i32, port: i32) -> i32
-Value* CodegenVisitor::codegenConnectIPv4(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenConnectIPv4(const CallExprAST& expr) {
   if (expr.getArgs().size() != 3) {
     logAndThrowError(
         "__connect_ipv4 expects 3 arguments: (fd: i32, ip: i32, port: i32)");
@@ -586,7 +587,7 @@ Value* CodegenVisitor::codegenConnectIPv4(const CallExprAST& expr) {
 }
 
 // __accept_fd(fd: i32) -> i32
-Value* CodegenVisitor::codegenAcceptFd(const CallExprAST& expr) {
+Value* IntrinsicsGenerator::codegenAcceptFd(const CallExprAST& expr) {
   if (expr.getArgs().size() != 1) {
     logAndThrowError("__accept_fd expects 1 argument: (fd: i32)");
     return nullptr;

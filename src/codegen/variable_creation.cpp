@@ -3,15 +3,21 @@
 #include "ast.h"
 #include "codegen/codegen.h"
 #include "codegen/codegen_visitor.h"
+#include "codegen/scalar_ops.h"
+#include "codegen/struct_access.h"
+#include "codegen/variable_generator.h"
 #include "codegen/intrinsics/intrinsics.h"
 
 using namespace llvm;
+
+namespace layout = sun::codegen::layout;
+namespace ops = sun::codegen::ops;
 
 // -------------------------------------------------------------------
 // Global variable creation
 // -------------------------------------------------------------------
 
-GlobalVariable* CodegenVisitor::createGlobalVariable(
+GlobalVariable* VariableGenerator::createGlobalVariable(
     const std::string& name, llvm::Type* type, llvm::Constant* initializer) {
   // Create appropriate zero initializer if none provided
   if (!initializer) {
@@ -38,7 +44,7 @@ GlobalVariable* CodegenVisitor::createGlobalVariable(
 // Variable creation codegen
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegen(const VariableCreationAST& expr) {
+Value* VariableGenerator::codegen(const VariableCreationAST& expr) {
   // Get the type from the resolved type set by semantic analyzer
   sun::TypePtr varSunType = expr.getResolvedType();
   if (!varSunType) {
@@ -68,7 +74,7 @@ Value* CodegenVisitor::codegen(const VariableCreationAST& expr) {
   }
 
   // Check if we're creating a global variable and if it already exists
-  if (scopes.empty()) {
+  if (scopes().empty()) {
     if (module->getGlobalVariable(varName)) {
       logAndThrowError("Cannot redeclare global variable: " + varName);
     }
@@ -97,12 +103,12 @@ Value* CodegenVisitor::codegen(const VariableCreationAST& expr) {
   // closure struct)
   llvm::Type* varType = typeResolver.resolve(varSunType);
 
-  if (scopes.empty()) {
+  if (scopes().empty()) {
     // Global arrays need special handling - they can't use stack allocations
     if (varSunType->isArray()) {
       return genGlobalArray(expr);
     }
-    if (isPayloadEnum(varSunType)) {
+    if (CodegenVisitor::isPayloadEnum(varSunType)) {
       logAndThrowError(
           "Global variables of payload-carrying enum types are not yet "
           "supported",
@@ -122,7 +128,7 @@ Value* CodegenVisitor::codegen(const VariableCreationAST& expr) {
 // Lambda variable creation
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::genFunctionVariable(const VariableCreationAST& expr) {
+Value* VariableGenerator::genFunctionVariable(const VariableCreationAST& expr) {
   if (!expr.getValue()->isLambda()) {
     logAndThrowError("Expected lambda literal for lambda type variable: " +
                      expr.getName());
@@ -134,7 +140,7 @@ Value* CodegenVisitor::genFunctionVariable(const VariableCreationAST& expr) {
   // Generate the lambda
   auto& lambdaAst =
       static_cast<LambdaAST&>(const_cast<ExprAST&>(*expr.getValue()));
-  llvm::Value* resultPtr = codegenLambda(lambdaAst);
+  llvm::Value* resultPtr = functionGen().codegenLambda(lambdaAst);
 
   if (!resultPtr) {
     logAndThrowError("Failed to generate lambda: " + varName);
@@ -144,14 +150,14 @@ Value* CodegenVisitor::genFunctionVariable(const VariableCreationAST& expr) {
   // for global)
   llvm::Type* varType = resultPtr->getType();
 
-  if (scopes.empty()) {
+  if (scopes().empty()) {
     // Top-level: use global variable for closure struct
     createGlobalVariable(varName, varType,
                          llvm::dyn_cast<llvm::Constant>(resultPtr));
   } else {
     // Inside a function: resultPtr is already an alloca from createFatClosure
     // that holds the closure struct. Just register it in the scope.
-    auto& scope = scopes.back().variables;
+    auto& scope = scopes().back().variables;
     if (auto* fatAlloca = llvm::dyn_cast<AllocaInst>(resultPtr)) {
       // resultPtr is already an alloca containing the closure struct - use it
       // directly
@@ -181,7 +187,7 @@ Value* CodegenVisitor::genFunctionVariable(const VariableCreationAST& expr) {
 // Local variable creation
 // -------------------------------------------------------------------
 
-llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
+llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
                                          llvm::Type* varType) {
   // A reference variable binds the referent's address rather than reading
   // through it — that is what makes `var r = v.get(i); r = 5;` write into
@@ -194,7 +200,7 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
   if (!value) return nullptr;
 
   // Inside a function: use local alloca
-  auto& scope = scopes.back().variables;
+  auto& scope = scopes().back().variables;
   Function* func = ctx.builder->GetInsertBlock()->getParent();
   sun::TypePtr varSunType = expr.getResolvedType();
 
@@ -202,7 +208,7 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
   // storage: fresh temporaries are adopted, named sources are MOVED (never
   // implicitly copied), and the result is drop-tracked when payloads own
   // heap resources.
-  if (varSunType && isPayloadEnum(varSunType)) {
+  if (varSunType && CodegenVisitor::isPayloadEnum(varSunType)) {
     auto& enumType = static_cast<sun::EnumType&>(*varSunType);
     llvm::StructType* storageTy = typeResolver.getEnumStorageType(enumType);
 
@@ -217,7 +223,7 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
         scope[expr.getName()] = allocaValue;
         debugDeclareLocal(allocaValue, expr.getName(), varSunType,
                           expr.getLocation());
-        trackClassAllocation(allocaValue, expr.getName(), varSunType);
+        scopes().trackClassAllocation(allocaValue, expr.getName(), varSunType);
         return allocaValue;
       }
     }
@@ -228,12 +234,12 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
     if (value->getType()->isPointerTy()) {
       // Move: load the storage and poison the source tag (the new variable
       // owns the payload now)
-      structVal = applyMoveSemantics(value, varSunType);
+      structVal = gen_.applyMoveSemantics(value, varSunType);
     }
     ctx.builder->CreateStore(structVal, alloca);
     scope[expr.getName()] = alloca;
     debugDeclareLocal(alloca, expr.getName(), varSunType, expr.getLocation());
-    trackClassAllocation(alloca, expr.getName(), varSunType);
+    scopes().trackClassAllocation(alloca, expr.getName(), varSunType);
     return alloca;
   }
 
@@ -246,7 +252,7 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
     // Case 1: Class to interface conversion - create fat pointer
     if (auto* classType = sun::tryGetType<sun::ClassType>(valueSunType)) {
       // value is the object pointer (alloca or struct pointer)
-      Value* fatPtr = createInterfaceFatPointer(value, classType, ifaceType);
+      Value* fatPtr = classes().createInterfaceFatPointer(value, classType, ifaceType);
       if (!fatPtr) return nullptr;
 
       // Create alloca for the fat pointer and store it
@@ -291,7 +297,7 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
 
       // Track class allocation for automatic deinit at scope exit
       if (auto classType = sun::tryGetTypePtr<sun::ClassType>(varSunType)) {
-        trackClassAllocation(allocaValue, expr.getName(), classType);
+        scopes().trackClassAllocation(allocaValue, expr.getName(), classType);
       }
       return allocaValue;
     }
@@ -308,7 +314,7 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
 
       // Track class allocation for automatic deinit at scope exit
       if (auto classType = sun::tryGetTypePtr<sun::ClassType>(varSunType)) {
-        trackClassAllocation(alloca, expr.getName(), classType);
+        scopes().trackClassAllocation(alloca, expr.getName(), classType);
       }
       return alloca;
     }
@@ -350,7 +356,7 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
              ConstantInt::get(Type::getInt64Ty(ctx.getContext()), structSize)});
 
         // Track the destination for deinit - it now owns the data
-        trackClassAllocation(alloca, expr.getName(), classType);
+        scopes().trackClassAllocation(alloca, expr.getName(), classType);
         return alloca;
       }
     }
@@ -364,7 +370,7 @@ llvm::Value* CodegenVisitor::genLocalVar(const VariableCreationAST& expr,
       unsigned valueBits = valueType->getIntegerBitWidth();
       unsigned varBits = varType->getIntegerBitWidth();
       if (valueBits < varBits) {
-        value = extendInt(
+        value = ops::extendInt(*ctx.builder, 
             value, varType,
             expr.getValue() ? expr.getValue()->getResolvedType() : nullptr);
       } else if (valueBits > varBits) {
@@ -465,9 +471,9 @@ static llvm::Constant* buildConstantArray(
   return llvm::ConstantArray::get(thisLevelType, constElements);
 }
 
-llvm::Constant* CodegenVisitor::genGlobalArray(
+llvm::Constant* VariableGenerator::genGlobalArray(
     const VariableCreationAST& expr) {
-  assert(scopes.empty() && "genGlobalArray should only be called at top-level");
+  assert(scopes().empty() && "genGlobalArray should only be called at top-level");
 
   auto* arrayType = &sun::requireType<sun::ArrayType>(
       expr, "global array '" + expr.getName() + "'");
@@ -544,9 +550,9 @@ llvm::Constant* CodegenVisitor::genGlobalArray(
 // Global variable creation for constant expressions
 // -------------------------------------------------------------------
 
-llvm::Constant* CodegenVisitor::genGlobalVarForConstantExpr(
+llvm::Constant* VariableGenerator::genGlobalVarForConstantExpr(
     const VariableCreationAST& expr, llvm::Type* varType) {
-  assert(scopes.empty() &&
+  assert(scopes().empty() &&
          "genGlobalVarForConstantExpr should only be called at top-level");
   assert(!varType->isFunctionTy() &&
          "Function types should be handled separately");
@@ -604,206 +610,10 @@ llvm::Constant* CodegenVisitor::genGlobalVarForConstantExpr(
 }
 
 // -------------------------------------------------------------------
-// Scope cleanup for owned allocations
-// -------------------------------------------------------------------
-
-// Helper: emit cleanup code for ptr<T> and raw_ptr<i8> fields in a class
-// instance. Recursively frees pointer fields before the containing object is
-// freed.
-void CodegenVisitor::emitFieldCleanup(llvm::Value* objectPtr,
-                                      const sun::ClassType* classType,
-                                      const std::string& baseName,
-                                      llvm::FunctionCallee freeFunc) {
-  if (!classType) return;
-
-  llvm::StructType* structType = classType->getStructType(ctx.getContext());
-
-  auto* nullPtr = llvm::ConstantPointerNull::get(
-      llvm::PointerType::getUnqual(ctx.getContext()));
-  llvm::Function* currentFunc = ctx.builder->GetInsertBlock()->getParent();
-
-  for (const auto& field : classType->getFields()) {
-    if (field.type->isRawPointer()) {
-      // raw_ptr<T> fields are also freed - used for dynamic data allocations
-      // in classes that manage their own memory
-      llvm::Value* fieldPtr =
-          ctx.builder->CreateStructGEP(structType, objectPtr, field.index,
-                                       baseName + "." + field.name + ".ptr");
-
-      llvm::Type* ptrTy = llvm::PointerType::getUnqual(ctx.getContext());
-      llvm::Align ptrAlign = fieldAlign(classType, ptrTy);
-      llvm::Value* fieldValue = ctx.builder->CreateAlignedLoad(
-          ptrTy, fieldPtr, ptrAlign, baseName + "." + field.name + ".value");
-
-      // Null-check raw_ptr fields too
-      llvm::BasicBlock* freeRawBB = llvm::BasicBlock::Create(
-          ctx.getContext(), baseName + "." + field.name + ".free_raw",
-          currentFunc);
-      llvm::BasicBlock* skipRawBB = llvm::BasicBlock::Create(
-          ctx.getContext(), baseName + "." + field.name + ".skip_raw",
-          currentFunc);
-
-      llvm::Value* isRawNull = ctx.builder->CreateICmpEQ(
-          fieldValue, nullPtr, baseName + "." + field.name + ".raw_is_null");
-      ctx.builder->CreateCondBr(isRawNull, skipRawBB, freeRawBB);
-
-      ctx.builder->SetInsertPoint(freeRawBB);
-      ctx.builder->CreateCall(freeFunc, {fieldValue});
-      ctx.builder->CreateAlignedStore(nullPtr, fieldPtr, ptrAlign);
-      ctx.builder->CreateBr(skipRawBB);
-
-      ctx.builder->SetInsertPoint(skipRawBB);
-    } else if (auto* nestedClass =
-                   sun::tryGetType<sun::ClassType>(field.type)) {
-      // Embedded class field - recursively call deinit on it if it has one
-      // Generate GEP to access the embedded struct field
-      llvm::Value* fieldPtr = ctx.builder->CreateStructGEP(
-          structType, objectPtr, field.index, baseName + "." + field.name);
-
-      // Recursively emit field cleanup and deinit for the nested class
-      emitFieldCleanup(fieldPtr, nestedClass, baseName + "." + field.name,
-                       freeFunc);
-    }
-  }
-}
-
-// Helper: call classType's deinit() on receiver if it defines one
-// (declares the external void deinit(closure*) on demand)
-void CodegenVisitor::emitDeinitCall(const sun::ClassType* classType,
-                                    llvm::Value* receiver) {
-  const sun::ClassMethod* deinitMethod = classType->getMethod("deinit");
-  if (!deinitMethod) return;
-
-  llvm::Function* deinitFunc = getOrDeclareMethodFunction(
-      classType->getMangledMethodName("deinit"), deinitMethod->paramTypes,
-      deinitMethod->returnType, deinitMethod->canThrow);
-  ctx.builder->CreateCall(
-      deinitFunc,
-      {materializeMethodClosure(deinitFunc, receiver, "deinit.closure")});
-}
-
-// Helper: emit deinit calls for class fields that have deinit methods
-// Recursively calls deinit on nested class fields; enum-typed fields with
-// owning payloads are dropped through their synthesized drop function
-void CodegenVisitor::emitFieldDeinit(llvm::Value* objectPtr,
-                                     const sun::ClassType* classType,
-                                     const std::string& baseName) {
-  if (!classType) return;
-
-  llvm::StructType* structType = classType->getStructType(ctx.getContext());
-
-  for (const auto& field : classType->getFields()) {
-    if (auto* nestedClass = sun::tryGetType<sun::ClassType>(field.type)) {
-      // Generate GEP to access the embedded struct field
-      llvm::Value* fieldPtr = ctx.builder->CreateStructGEP(
-          structType, objectPtr, field.index, baseName + "." + field.name);
-
-      emitDeinitCall(nestedClass, fieldPtr);
-
-      // Recursively deinit nested class fields
-      emitFieldDeinit(fieldPtr, nestedClass, baseName + "." + field.name);
-    } else if (field.type->isEnum() && sun::typeNeedsDrop(field.type)) {
-      llvm::Value* fieldPtr = ctx.builder->CreateStructGEP(
-          structType, objectPtr, field.index, baseName + "." + field.name);
-      emitEnumDrop(static_cast<sun::EnumType&>(*field.type), fieldPtr);
-    }
-  }
-}
-
-void CodegenVisitor::emitDropInPlace(const sun::TypePtr& type, llvm::Value* ptr,
-                                     const std::string& name) {
-  if (!type || !ptr) return;
-  if (auto* classType = sun::tryGetType<sun::ClassType>(type)) {
-    emitDeinitCall(classType, ptr);
-    emitFieldDeinit(ptr, classType, name);
-  } else if (type->isEnum()) {
-    emitEnumDrop(static_cast<sun::EnumType&>(*type), ptr);
-  }
-}
-
-void CodegenVisitor::emitScopeCleanup() {
-  emitCleanupToDepth(functionBoundaryDepth());
-}
-
-void CodegenVisitor::emitCleanupToDepth(size_t depth) {
-  if (scopes.empty()) return;
-  for (size_t i = scopes.size(); i-- > depth;) {
-    emitCleanupForScope(scopes[i]);
-  }
-}
-
-void CodegenVisitor::emitCleanupForScope(CodegenScope& scope) {
-  // First, cleanup class allocations (call deinit methods)
-  auto& currentClassScope = scope.classAllocations;
-
-  // Drop all non-moved allocations in reverse order (LIFO)
-  if (!currentClassScope.empty()) {
-    for (auto it = currentClassScope.rbegin(); it != currentClassScope.rend();
-         ++it) {
-      if (!it->moved && it->alloca && it->type) {
-        emitDropInPlace(it->type, it->alloca, it->varName);
-      }
-    }
-  }
-
-  // Then, cleanup owned pointer allocations (ptr<T>)
-  auto& currentScope = scope.ownedAllocations;
-  if (currentScope.empty()) return;
-
-  // Get or declare free function: void free(ptr)
-  llvm::FunctionType* freeType = llvm::FunctionType::get(
-      llvm::Type::getVoidTy(ctx.getContext()),
-      {llvm::PointerType::getUnqual(ctx.getContext())}, false);
-  llvm::FunctionCallee freeFunc = module->getOrInsertFunction("free", freeType);
-
-  auto* ptrTy = llvm::PointerType::getUnqual(ctx.getContext());
-
-  auto* nullPtr = llvm::ConstantPointerNull::get(ptrTy);
-  llvm::Function* currentFunc = ctx.builder->GetInsertBlock()->getParent();
-
-  // Free all non-moved allocations in reverse order (LIFO)
-  for (auto it = currentScope.rbegin(); it != currentScope.rend(); ++it) {
-    if (!it->moved && it->ptrAlloca) {
-      // Load the pointer from the alloca
-      llvm::Value* ptrToFree = ctx.builder->CreateLoad(
-          llvm::PointerType::getUnqual(ctx.getContext()), it->ptrAlloca,
-          it->varName + ".ptr_to_free");
-
-      // Null-check: skip freeing if the pointer is null
-      llvm::BasicBlock* freeBB = llvm::BasicBlock::Create(
-          ctx.getContext(), it->varName + ".cleanup", currentFunc);
-      llvm::BasicBlock* skipBB = llvm::BasicBlock::Create(
-          ctx.getContext(), it->varName + ".skip_cleanup", currentFunc);
-
-      llvm::Value* isNull = ctx.builder->CreateICmpEQ(ptrToFree, nullPtr,
-                                                      it->varName + ".is_null");
-      ctx.builder->CreateCondBr(isNull, skipBB, freeBB);
-
-      ctx.builder->SetInsertPoint(freeBB);
-
-      if (auto* classType = sun::tryGetType<sun::ClassType>(it->pointeeType)) {
-        emitDeinitCall(classType, ptrToFree);
-        // Recursively deinit class fields and free nested ptr<T> fields
-        emitFieldDeinit(ptrToFree, classType, it->varName);
-        emitFieldCleanup(ptrToFree, classType, it->varName, freeFunc);
-      }
-      // Then free the object itself
-      ctx.builder->CreateCall(freeFunc, {ptrToFree});
-
-      // Null out the pointer to prevent double-free
-      ctx.builder->CreateStore(nullPtr, it->ptrAlloca);
-
-      ctx.builder->CreateBr(skipBB);
-      ctx.builder->SetInsertPoint(skipBB);
-    }
-  }
-}
-
-// -------------------------------------------------------------------
 // Reference creation codegen
 // -------------------------------------------------------------------
 
-Value* CodegenVisitor::codegen(const ReferenceCreationAST& expr) {
+Value* VariableGenerator::codegen(const ReferenceCreationAST& expr) {
   sun::TypePtr refSunType = expr.getResolvedType();
   sun::requireType<sun::ReferenceType>(expr, "reference creation");
 
@@ -826,8 +636,8 @@ Value* CodegenVisitor::codegen(const ReferenceCreationAST& expr) {
   AllocaInst* refAlloca = createEntryBlockAlloca(func, refName, ptrType);
   ctx.builder->CreateStore(targetPtr, refAlloca);
 
-  if (!scopes.empty()) {
-    scopes.back().variables[refName] = refAlloca;
+  if (!scopes().empty()) {
+    scopes().back().variables[refName] = refAlloca;
     debugDeclareLocal(refAlloca, refName, refSunType, expr.getLocation());
   }
   return refAlloca;
@@ -837,9 +647,9 @@ Value* CodegenVisitor::codegen(const ReferenceCreationAST& expr) {
 // Global class variable creation
 // -------------------------------------------------------------------
 
-GlobalVariable* CodegenVisitor::genGlobalClassVar(
+GlobalVariable* VariableGenerator::genGlobalClassVar(
     const VariableCreationAST& expr, sun::ClassType& classType) {
-  assert(scopes.empty() &&
+  assert(scopes().empty() &&
          "genGlobalClassVar should only be called at top-level");
 
   // Get the LLVM struct type for the class
@@ -869,9 +679,9 @@ GlobalVariable* CodegenVisitor::genGlobalClassVar(
 // Global variable with runtime initialization (non-class)
 // -------------------------------------------------------------------
 
-GlobalVariable* CodegenVisitor::genGlobalVarWithRuntimeInit(
+GlobalVariable* VariableGenerator::genGlobalVarWithRuntimeInit(
     const VariableCreationAST& expr, llvm::Type* varType) {
-  assert(scopes.empty() &&
+  assert(scopes().empty() &&
          "genGlobalVarWithRuntimeInit should only be called at top-level");
 
   // Create zero-initialized global variable
@@ -921,7 +731,7 @@ static const std::vector<std::unique_ptr<ExprAST>>* constructorArgsForGlobal(
   return nullptr;
 }
 
-void CodegenVisitor::emitStaticInitFunction() {
+void VariableGenerator::emitStaticInitFunction() {
   if (staticInits.empty()) return;
 
   // Create the initialization function: void __sun_static_init()
@@ -936,7 +746,7 @@ void CodegenVisitor::emitStaticInitFunction() {
   debugInfo.clearLocation(*ctx.builder);
 
   // Push a scope for any temporaries needed during init
-  pushScope().isFunctionBoundary = true;
+  scopes().push().isFunctionBoundary = true;
 
   // Generate initialization code for each global variable
   for (const auto& init : staticInits) {
@@ -976,12 +786,13 @@ void CodegenVisitor::emitStaticInitFunction() {
             logAndThrowError("Failed to generate field '" + field.name +
                              "' for global: " + init.varName);
           }
-          value = widenNumericIfNeeded(value, classField->type,
+          value = ops::widenNumericIfNeeded(*ctx.builder, typeResolver, value, classField->type,
                                        field.value->getResolvedType());
 
           Value* fieldPtr = ctx.builder->CreateStructGEP(
               structType, gv, classField->index, field.name + ".ptr");
-          storeIntoSlot(fieldPtr, value, classField->type, classType);
+          layout::storeIntoSlot(*ctx.builder, module->getDataLayout(),
+                                fieldPtr, value, classField->type, classType);
         }
         continue;
       }
@@ -999,7 +810,7 @@ void CodegenVisitor::emitStaticInitFunction() {
         }
         // Moving, not copying: the source is invalidated so only the global
         // drops the value.
-        ctx.builder->CreateStore(applyMoveSemantics(value, init.varType), gv);
+        ctx.builder->CreateStore(gen_.applyMoveSemantics(value, init.varType), gv);
         continue;
       }
 
@@ -1009,12 +820,12 @@ void CodegenVisitor::emitStaticInitFunction() {
       for (const auto& arg : *ctorArgs) {
         argTypes.push_back(arg->getResolvedType());
       }
-      ConstructorLookup ctor = lookupConstructor(classType, argTypes);
+      ClassGenerator::ConstructorLookup ctor = classes().lookupConstructor(classType, argTypes);
 
       // Find the constructor; declare an external if the init method exists
       // but isn't in the module yet
       Function* ctorFunc =
-          ctor.method ? getOrDeclareMethodFunction(
+          ctor.method ? functions().getOrDeclareMethodFunction(
                             ctor.mangledName, ctor.method->paramTypes,
                             ctor.method->returnType, ctor.method->canThrow)
                       : module->getFunction(ctor.mangledName);
@@ -1038,7 +849,7 @@ void CodegenVisitor::emitStaticInitFunction() {
       std::vector<Value*> ctorArgValues;
       // Method closure; the receiver is the global variable
       ctorArgValues.push_back(
-          materializeMethodClosure(ctorFunc, gv, "init.closure"));
+          gen_.materializeMethodClosure(ctorFunc, gv, "init.closure"));
 
       size_t argIdx = 0;
       for (const auto& arg : *ctorArgs) {
@@ -1063,9 +874,9 @@ void CodegenVisitor::emitStaticInitFunction() {
           }
         } else {
           // By-value compound arguments move into the constructor
-          argVal = applyMoveSemantics(argVal, arg->getResolvedType());
+          argVal = gen_.applyMoveSemantics(argVal, arg->getResolvedType());
           argVal =
-              widenNumericIfNeeded(argVal, paramType, arg->getResolvedType());
+              ops::widenNumericIfNeeded(*ctx.builder, typeResolver, argVal, paramType, arg->getResolvedType());
         }
 
         ctorArgValues.push_back(argVal);
@@ -1085,7 +896,7 @@ void CodegenVisitor::emitStaticInitFunction() {
     }
   }
 
-  popScope();
+  scopes().pop();
   ctx.builder->CreateRetVoid();
 
   // Register the init function in llvm.global_ctors
