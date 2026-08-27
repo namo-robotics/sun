@@ -1,16 +1,41 @@
 # Code Generation
 
-The codegen stage walks the analyzed AST with a visitor
-(`codegen_visitor.h`) and emits LLVM IR. It relies entirely on the types and
-annotations stamped by the semantic analyzer — by this point every
-expression already knows its resolved `sun::Type`, and generic
-specializations have been recorded for it to emit as ordinary non-generic
-code.
+The codegen stage walks the analyzed AST and emits LLVM IR. It relies entirely
+on the types and annotations stamped by the semantic analyzer — by this point
+every expression already knows its resolved `sun::Type`, and generic
+specializations have been recorded for it to emit as ordinary non-generic code.
+
+## Structure
+
+`CodegenVisitor` (`codegen_visitor.h`) walks the AST and dispatches. It does
+little emitting of its own: nine components do that work, each with its own
+header under `include/codegen/` and each owning the state it needs.
+
+They all share one `CodegenState` by reference — the module, the type registry,
+the Sun-to-LLVM type resolver, DWARF emission, and the frame currently being
+emitted. Where a component needs another, it reaches back through the visitor.
+This is the same shape the semantic analyzer uses with `SemanticContext`.
+
+| Component | What it owns |
+|-----------|--------------|
+| `CodegenState` | The module, type registry, type resolver, DWARF, current frame |
+| `ScopeManager` | The scope stack, and every drop it has to emit |
+| `FunctionRegistry` | Calling conventions, where each function came from, name lookup |
+| `ClassGenerator` | Classes, interfaces, enums, generic instantiation, vtables |
+| `FunctionGenerator` | Functions, lambdas, closures, returns |
+| `VariableGenerator` | Variables, lvalues, globals |
+| `LoopGenerator` | Loops, and the jumps out of them |
+| `ErrorGenerator` | `throw`, `try`/`catch`, and every call that may unwind |
+| `IntrinsicsGenerator` | Compiler intrinsics and libc built-ins |
+
+Rules that need no codegen state are free functions instead, so other passes can
+reach the same answers: `sun::codegen::ops` (`scalar_ops.h`) for scalar widening
+and coercion, and `sun::codegen::layout` (`struct_access.h`) for field addresses,
+alignment and slot writes.
 
 ## Key Conventions
 
-- LLVM is accessed through a shared context: `ctx.builder` and
-  `ctx.context`.
+- LLVM is accessed through a shared context: `ctx.builder` and `ctx.context`.
 - Sun types map to LLVM types via the type resolver:
   `typeResolver.resolve(type)` for variables and
   `typeResolver.resolveForReturn(type)` for function returns.
@@ -20,44 +45,61 @@ code.
 - Throwing functions (`T, IError`) return plain `T`; errors are native LLVM
   exceptions (`__gxx_personality_v0`, landing pads), so `throw` unwinds and
   `catch` selects a handler by the thrown class's type id.
-- Lambdas use closure structs; named functions use direct calls. Class
-  methods use the closure ABI: arg 0 is a ptr to `{ ptr func, ptr env }`
-  with the receiver in `env`, and `obj.method` in value position is a
-  lambda-typed bound method `{ methodFn, objPtr }`.
+- Lambdas use closure structs; named functions use direct calls. Class methods
+  use the closure ABI: arg 0 is a ptr to `{ ptr func, ptr env }` with the
+  receiver in `env`, and `obj.method` in value position is a lambda-typed bound
+  method `{ methodFn, objPtr }`.
 - Call arguments are never re-examined here. Semantic analysis records an
-  `ArgConversion` per argument on the call node, and every kind of call —
-  plain, module-qualified, generic, method, lambda, interface, constructor,
-  extern "C" — lowers its arguments through one loop, `emitCallArguments`,
-  that switches on those tags (take the address for a borrow, zero the
-  source for a move, build a fat pointer for an interface, extend a number,
-  ...). Codegen does no semantic analysis of its own.
+  `ArgConversion` per argument on the call node, and every kind of call — plain,
+  module-qualified, generic, method, lambda, interface, constructor,
+  extern "C" — lowers its arguments through one loop, `emitCallArguments`, that
+  switches on those tags (take the address for a borrow, zero the source for a
+  move, build a fat pointer for an interface, extend a number, ...). Codegen
+  does no semantic analysis of its own.
 
 ## Source Layout
 
-The code generation is split across multiple files under `src/codegen/` by
-expression type:
+Sources under `src/codegen/` are grouped by topic. A component's header names
+the files that implement it.
 
 | File | Responsibility |
 |------|----------------|
-| `codegen_visitor.cpp` | Main visitor dispatch, module initialization |
-| `functions_lambdas.cpp` | Function/lambda codegen with closure support |
-| `classes.cpp` | Class definitions, constructors, methods |
-| `call_expressions.cpp` | Function calls, method calls |
-| `variable_creation.cpp` | Variable declarations (`var`, `let`) |
-| `variable_references.cpp` | Variable loads, assignments |
-| `if_expressions.cpp` | Conditionals, ternary expressions |
-| `loops.cpp` | `for`, `while`, and `for-in` loops |
-| `match_expressions.cpp` | Pattern matching (`match` expressions) |
-| `block_expressions.cpp` | Block scoping |
+| `codegen_visitor.cpp` | Node dispatch, literals, unary and binary operators |
+| `scope_manager.cpp` | The scope stack, and the drop code it emits |
+| `function_registry.cpp` | Finding a function by name |
+| `classes.cpp` | Class and interface definitions, members, method bodies |
+| `interfaces.cpp` | Interface dispatch: vtables and fat pointers |
+| `functions_lambdas.cpp` | Functions, lambdas and their closures |
 | `return_statements.cpp` | Return value handling |
-| `error_handling.cpp` | `try`/`catch`/`throw` codegen |
+| `variable_creation.cpp` | Variable declarations and global initialization |
+| `variable_references.cpp` | Variable loads and assignments |
+| `lvalues.cpp` | Storage addresses, compound assignment |
+| `call_expressions.cpp` | Function calls, method calls, argument lowering |
 | `arrays.cpp` | Array literals and indexing |
-| `intrinsics.cpp` | Compiler intrinsic codegen (`_sizeof`, `_load`, etc.) |
-| `threads.cpp` | The pthread trampoline behind stdlib `spawn` |
-| `thread_utils.cpp` | Thread utility helpers |
+| `if_expressions.cpp` | Conditionals and ternary expressions |
+| `match_expressions.cpp` | Pattern matching (`match` expressions) |
+| `enums.cpp` | Payload enum construction and destructuring |
+| `loops.cpp` | `for`, `while` and `for-in` loops |
+| `error_handling.cpp` | `try`/`catch`/`throw` |
+| `block_expressions.cpp` | Block scoping |
+| `intrinsics/` | Compiler intrinsics and libc built-ins, by area |
+| `abi/` | C ABI classification, per target |
+| `threads.cpp`, `thread_utils.cpp` | The thread trampoline behind stdlib `spawn` |
+
+The `*_generator.cpp` files hold only the forwarders a component uses to reach
+the rest of codegen; they cannot be inline in the headers, because those are
+included by `codegen_visitor.h`.
 
 ## Adding a New Expression Type
 
 1. Add an `ASTNodeType` enum value and AST class.
-2. Implement a `codegen` method in the appropriate `src/codegen/*.cpp` file.
-3. Update the `codegenExpression()` dispatch switch.
+2. Implement a `codegen` method on the component that owns that kind of node,
+   or on `CodegenVisitor` if it belongs to none.
+3. Update the `codegenExpression()` dispatch switch to route to it.
+
+A component that emits sub-expressions declares two forwarders,
+`codegen(const ExprAST&)` and `codegen(const BlockExprAST&)`. The block overload
+is not optional: without it a block binds to the `ExprAST` one, which attaches an
+expression debug location and changes the DWARF output. A deleted template
+overload alongside them turns a missing overload into a compile error rather than
+infinite recursion.
