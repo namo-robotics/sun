@@ -257,6 +257,14 @@ class SemanticAnalyzer {
   void validateBorrowTarget(const ExprAST &target, const Position &loc);
 
   /**
+   * Throw when `target` names a variable the enclosing lambda picked up
+   * without a capture list. That capture is the closure's own copy, so a
+   * borrow of it would alias the copy rather than the original. Every borrow
+   * site calls this, so the explanation is worded once.
+   */
+  void rejectBorrowOfByValueCapture(const ExprAST &target, const Position &loc);
+
+  /**
    * Constness. A place (`x`, `x.f`, `x[i]`, `this.f`, `a ? x : y`, a call
    * result) cannot be changed when its base is a `const` variable, a
    * `const ref`, or `this` inside a const method. Returns why, or an empty

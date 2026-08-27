@@ -233,6 +233,82 @@ TEST(Lambdas_RefCaptures, byvalue_plain_assignment_rejected) {
 }
 
 // ============================================================================
+// Rejected: borrowing a by-value capture. Every borrow site says the same
+// thing, because the reference would alias the closure's copy rather than
+// the variable outside.
+// ============================================================================
+
+TEST(Lambdas_RefCaptures, borrow_of_byvalue_capture_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      function main() i32 {
+          var x: i32 = 10;
+          var f = lambda () i32 { ref r = x; return r; };
+          return f();
+      }
+    )"),
+                                "the lambda captures it by value");
+}
+
+TEST(Lambdas_RefCaptures, const_borrow_of_byvalue_capture_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      function main() i32 {
+          var x: i32 = 10;
+          var f = lambda () i32 { const ref r = x; return r; };
+          return f();
+      }
+    )"),
+                                "lambda [const ref x]");
+}
+
+TEST(Lambdas_RefCaptures, annotated_borrow_of_byvalue_capture_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      function main() i32 {
+          var x: i32 = 10;
+          var f = lambda () i32 { var r: ref i32 = x; return r; };
+          return f();
+      }
+    )"),
+                                "the lambda captures it by value");
+}
+
+TEST(Lambdas_RefCaptures, byvalue_capture_as_ref_argument_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      function bump(v: ref i32) void { v += 1; }
+      function main() i32 {
+          var x: i32 = 10;
+          var f = lambda () i32 { bump(x); return x; };
+          return f();
+      }
+    )"),
+                                "the lambda captures it by value");
+}
+
+TEST(Lambdas_RefCaptures, byvalue_capture_as_const_ref_argument_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      function peek(v: const ref i32) i32 { return v; }
+      function main() i32 {
+          var x: i32 = 10;
+          var f = lambda () i32 { return peek(x); };
+          return f();
+      }
+    )"),
+                                "the lambda captures it by value");
+}
+
+// The hint the message gives has to actually work
+TEST(Lambdas_RefCaptures, const_ref_capture_passes_as_const_ref_argument) {
+  auto value = executeString(R"(
+      function peek(v: const ref i32) i32 { return v; }
+      function main() i32 {
+          var x: i32 = 10;
+          var f = lambda [const ref x] () i32 { return peek(x); };
+          return f();
+      }
+    )");
+  EXPECT_EQ(value, 10);
+}
+
+// ============================================================================
 // Rejected: by-value capture of compound types
 // ============================================================================
 
