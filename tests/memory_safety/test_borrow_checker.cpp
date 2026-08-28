@@ -984,3 +984,179 @@ TEST(MemorySafety_BorrowChecker, loop_body_that_returns_moves_once) {
   )");
   EXPECT_EQ(value, 7);
 }
+
+// ============================================================================
+// Assigning while borrowed - overwriting a compound value would drop the
+// storage a live borrow points into, so it is rejected; writing through the
+// borrow itself replaces the referent correctly.
+// ============================================================================
+
+TEST(MemorySafety_BorrowChecker, assigning_through_ref_replaces_the_referent) {
+  // Assignment through a ref drops the old referent and moves the new value
+  // in - it must never store the source's address over the referent's bytes
+  auto value = executeString(R"(
+    class Box {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+    }
+    function main() i32 {
+        var b: Box = Box(1);
+        var c: ref Box = b;
+        c = Box(42);
+        return b.v + c.v;
+    };
+  )");
+  EXPECT_EQ(value, 84);
+}
+
+TEST(MemorySafety_BorrowChecker, assigning_to_borrowed_compound_is_error) {
+  // Replacing b would drop the object c still points into
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Box {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+    }
+    function main() i32 {
+        var b: Box = Box(1);
+        var c: ref Box = b;
+        b = Box(2);
+        return c.v;
+    };
+  )"),
+                                "Borrow check failed");
+}
+
+TEST(MemorySafety_BorrowChecker, ref_returning_call_borrows_its_arguments) {
+  // The returned ref could point into either argument, so both stay
+  // borrowed while c lives and neither may be reassigned
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Box {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+    }
+    function pick(a: ref Box, b: ref Box) ref Box {
+        if (a.v > b.v) { return a; } else { return b; }
+    }
+    function main() i32 {
+        var a: Box = Box(1);
+        var b: Box = Box(2);
+        var c: ref Box = pick(a, b);
+        a = Box(3);
+        return c.v;
+    };
+  )"),
+                                "Borrow check failed");
+}
+
+TEST(MemorySafety_BorrowChecker, assigning_through_call_returned_ref_works) {
+  // c binds whichever argument pick chose at run time; assigning through it
+  // replaces that object in place
+  auto value = executeString(R"(
+    class Box {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+    }
+    function pick(a: ref Box, b: ref Box) ref Box {
+        if (a.v > b.v) { return a; } else { return b; }
+    }
+    function main() i32 {
+        var a: Box = Box(1);
+        var b: Box = Box(2);
+        var c: ref Box = pick(a, b);
+        c = Box(9);
+        return a.v + b.v;
+    };
+  )");
+  EXPECT_EQ(value, 10);
+}
+
+// ============================================================================
+// Classes that store references - constructing one takes a loan on each
+// by-ref constructor argument, and the object cannot leave the frame.
+// ============================================================================
+
+TEST(MemorySafety_BorrowChecker, ref_field_class_borrows_ctor_argument) {
+  // t stores a ref into a, so a cannot be moved while t lives
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Inner {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+    }
+    class Holder {
+        public var x: ref Inner;
+        public function init(x: ref Inner) { this.x = x; }
+    }
+    function main() i32 {
+        var a = Inner(1);
+        var b = Inner(2);
+        var t = Holder(a);
+        b = a;
+        return t.x.v;
+    };
+  )"),
+                                "Borrow check failed");
+}
+
+TEST(MemorySafety_BorrowChecker, ref_field_class_reads_through_stored_ref) {
+  // While nothing moves or is replaced, the stored ref reads the original
+  auto value = executeString(R"(
+    class Inner {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+    }
+    class Holder {
+        public var x: ref Inner;
+        public function init(x: ref Inner) { this.x = x; }
+    }
+    function main() i32 {
+        var a = Inner(21);
+        var t = Holder(a);
+        return t.x.v + a.v;
+    };
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(MemorySafety_BorrowChecker, ref_field_class_blocks_second_borrow) {
+  // The construction loan is exclusive, like any mutable borrow
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Inner {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+    }
+    class Holder {
+        public var x: ref Inner;
+        public function init(x: ref Inner) { this.x = x; }
+    }
+    function main() i32 {
+        var a = Inner(1);
+        var t = Holder(a);
+        ref r = a;
+        return r.v;
+    };
+  )"),
+                                "Borrow check failed");
+}
+
+TEST(MemorySafety_BorrowChecker, ref_field_class_cannot_be_returned) {
+  // The stored ref points into this frame, so the object must not escape
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Inner {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+    }
+    class Holder {
+        public var x: ref Inner;
+        public function init(x: ref Inner) { this.x = x; }
+    }
+    function make() Holder {
+        var a = Inner(1);
+        return Holder(a);
+    }
+    function main() i32 {
+        var t = make();
+        return t.x.v;
+    };
+  )"),
+                                "Borrow check failed");
+}

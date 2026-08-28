@@ -6,6 +6,7 @@
 #include <string>
 
 #include "borrow_checker/lifetime.h"
+#include "support/position.h"
 
 namespace sun {
 
@@ -13,20 +14,6 @@ namespace sun {
 enum class BorrowKind {
   Shared,  // Immutable borrow - multiple allowed, no mutation through this ref
   Mutable  // Mutable borrow - exclusive, can mutate through this ref
-};
-
-/// Source location for error reporting
-struct SourceLoc {
-  int line = 0;
-  int column = 0;
-  std::string filename;
-
-  std::string toString() const {
-    if (filename.empty()) {
-      return std::to_string(line) + ":" + std::to_string(column);
-    }
-    return filename + ":" + std::to_string(line) + ":" + std::to_string(column);
-  }
 };
 
 /// Represents an active borrow of a variable
@@ -37,13 +24,13 @@ struct Loan {
   std::string refName;      // The reference variable name (e.g., "r")
   BorrowKind kind;          // Shared or Mutable
   size_t scopeDepth;        // Scope level where borrow was created
-  SourceLoc location;       // Where the borrow occurred (for error messages)
+  Position location;        // Where the borrow occurred (for error messages)
   Lifetime lifetime;        // Lifetime of the borrowed reference
   bool isActive = true;     // False when ref goes out of scope
 
   Loan() = default;
   Loan(std::string borrowed, std::string ref, BorrowKind k, size_t depth,
-       SourceLoc loc, Lifetime lt = Lifetime())
+       Position loc, Lifetime lt = Lifetime())
       : borrowedVar(std::move(borrowed)),
         refName(std::move(ref)),
         kind(k),

@@ -86,16 +86,19 @@ void VariableGenerator::createStoreForRef(const std::string& varName,
     logAndThrowError("Reference variable not found: " + varName);
   }
 
-  if (isDirectAlias(alloca, referencedLLVMType)) {
-    // Direct alias - store directly to the alloca (same as target)
-    ctx.builder->CreateStore(value, alloca);
-  } else {
-    // Indirect reference (to global) - load ptr, then store through it
-    Value* ptr =
-        ctx.builder->CreateLoad(llvm::PointerType::getUnqual(ctx.getContext()),
-                                alloca, varName + ".ptr");
-    ctx.builder->CreateStore(value, ptr);
+  // Resolve the referent's storage, then assign exactly as a direct write to
+  // the referent would: assignToVariableSlot drops the old value and MOVES a
+  // compound source in. A raw store here would write the source's address
+  // over the referent's leading bytes (issue: assigning a String through a
+  // ref String corrupted the referent and double-freed).
+  Value* target = alloca;
+  if (!isDirectAlias(alloca, referencedLLVMType)) {
+    // Indirect reference - the alloca holds the referent's address
+    target = ctx.builder->CreateLoad(
+        llvm::PointerType::getUnqual(ctx.getContext()), alloca,
+        varName + ".ptr");
   }
+  assignToVariableSlot(target, value, refType.getReferencedType(), varName);
 }
 
 // -------------------------------------------------------------------

@@ -218,6 +218,23 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
                          isMutableRef(declaredType), var.getLocation());
       return;
     }
+    // The initializer is itself a ref: a call handing back a borrow of its
+    // inputs, or another ref variable being aliased. Track what the new name
+    // could point into so writes to those variables are rejected while it
+    // lives.
+    const ExprAST* init = var.getValue();
+    while (init->getType() == ASTNodeType::PAREN_EXPR) {
+      init = static_cast<const ParenExprAST&>(*init).getInner();
+    }
+    if (init->getType() == ASTNodeType::CALL) {
+      borrowRefCallInputs(var.getName(),
+                          static_cast<const CallExprAST&>(*init),
+                          isMutableRef(declaredType), var.getLocation());
+    } else if (init->getType() == ASTNodeType::VARIABLE_REFERENCE) {
+      checkBorrowBinding(var.getName(), *init, isMutableRef(declaredType),
+                         var.getLocation());
+      return;
+    }
   }
 
   // Move semantics for temporaries and compound types
@@ -260,8 +277,7 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
         reportError("cannot store reference with local lifetime in variable '" +
                         var.getName() +
                         "' - the referenced value will be destroyed after this "
-                        "statement",
-                    pos.line, pos.column);
+                        "statement", pos);
       }
     }
   }
@@ -283,7 +299,7 @@ void BorrowChecker::checkBorrowTargetIntact(const ExprAST& target,
     reportError("cannot borrow moved field '" + targetPath +
                     "'. It was moved out of its object; assign a value back "
                     "into it first",
-                refPos.line, refPos.column);
+                refPos);
   } else if (targetPath == *targetVarName) {
     checkFieldsIntact(*targetVarName, refPos);
   }
@@ -312,7 +328,8 @@ void BorrowChecker::checkBorrowBinding(const std::string& refName,
   // (ref r = obj.field borrows obj as a whole - conservative but sound)
   const std::string* targetVarName = getBaseVariableName(targetExpr);
   if (!targetVarName) {
-    reportError("reference must be bound to a variable, not a temporary", 0, 0);
+    reportError("reference must be bound to a variable, not a temporary",
+                refPos);
     return;
   }
 
@@ -328,8 +345,7 @@ void BorrowChecker::checkBorrowBinding(const std::string& refName,
     if (targetInfo.sourceBorrowKind == BorrowKind::Shared &&
         kind == BorrowKind::Mutable) {
       reportError("cannot create mutable reference '" + refName +
-                      "' from immutable reference '" + *targetVarName + "'",
-                  refPos.line, refPos.column);
+                      "' from immutable reference '" + *targetVarName + "'", refPos);
       return;
     }
     // Downgrade: if source is immutable, new ref must also be immutable
@@ -344,12 +360,11 @@ void BorrowChecker::checkBorrowBinding(const std::string& refName,
   }
 
   // Attempt to create the borrow
-  SourceLoc loc{refPos.line, refPos.column, ""};
   auto result = state_.addBorrow(targetInfo.actualTarget, refName, kind,
-                                 currentScope_, loc);
+                                 currentScope_, refPos);
 
   if (!result.allowed) {
-    reportConflict(result.errorMessage, refPos.line, refPos.column,
+    reportConflict(result.errorMessage, refPos,
                    result.conflictingLoan);
   } else {
     // Track this reference with its borrow kind
@@ -357,16 +372,81 @@ void BorrowChecker::checkBorrowBinding(const std::string& refName,
   }
 }
 
+// A call that returns a borrow (`longest(a, b)`, `vec.get(i)`) hands back a
+// reference into one of its by-ref inputs. Which one is not knowable here,
+// so binding the result to a name conservatively borrows every named
+// variable passed by ref - the receiver of a method call included. An input
+// that is already a ref (a ref variable or ref parameter) is a reborrow: the
+// loan it made governs the storage, so no new loan is taken.
+void BorrowChecker::borrowRefCallInputs(const std::string& refName,
+                                        const CallExprAST& call,
+                                        bool isMutable, const Position& refPos) {
+  BorrowKind kind = isMutable ? BorrowKind::Mutable : BorrowKind::Shared;
+  bool tracked = false;
+
+  auto borrowInput = [&](const ExprAST& input) {
+    const std::string* base = getBaseVariableName(input);
+    if (!base) return;
+    // Raw pointers are the unsafe escape hatch: storage the checker cannot see
+    if (rawPointerLocals_.count(*base)) return;
+    TypePtr inputType = input.getResolvedType();
+    if (inputType && inputType->isRawPointer()) return;
+
+    auto targetInfo = resolveRefTarget(*base);
+    if (!targetInfo.isRebind) {
+      auto result = state_.addBorrow(targetInfo.actualTarget, refName, kind,
+                                     currentScope_, refPos);
+      if (!result.allowed) {
+        reportConflict(result.errorMessage, refPos,
+                       result.conflictingLoan);
+        return;
+      }
+    }
+    // The name is a live ref either way; writes through it and rebinding
+    // consult this entry. One target suffices - the loans carry the rest.
+    if (!tracked) {
+      refVariables_[refName] = {targetInfo.actualTarget, kind};
+      tracked = true;
+    }
+  };
+
+  // Method receiver: `obj.method(...)` returning ref borrows from obj
+  const ExprAST* callee = call.getCallee();
+  if (callee && callee->getType() == ASTNodeType::MEMBER_ACCESS) {
+    const auto& access = static_cast<const MemberAccessAST&>(*callee);
+    if (access.getObject()) borrowInput(*access.getObject());
+  }
+
+  // Arguments bound to ref parameters
+  std::vector<TypePtr> paramTypes;
+  if (TypePtr calleeType = callee ? callee->getResolvedType() : nullptr) {
+    if (auto* lambdaType = dynamic_cast<const LambdaType*>(calleeType.get())) {
+      paramTypes = lambdaType->getParamTypes();
+    } else if (auto* funcType =
+                   dynamic_cast<const FunctionType*>(calleeType.get())) {
+      paramTypes = funcType->getParamTypes();
+    }
+  }
+  const auto& args = call.getArgs();
+  for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
+    if (!args[i] || !paramTypes[i] || !paramTypes[i]->isReference()) continue;
+    borrowInput(*args[i]);
+  }
+}
+
 // Shared write-side check for assigning to a named variable (plain or
-// compound assignment)
-void BorrowChecker::checkVariableWrite(const std::string& varName) {
+// compound assignment). valueType is the type of the value being written.
+void BorrowChecker::checkVariableWrite(const std::string& varName,
+                                       const TypePtr& valueType,
+                                       const Position& pos) {
   // Check if this is a ref or a regular variable
   auto refIt = refVariables_.find(varName);
   if (refIt != refVariables_.end()) {
     // Assigning through a reference
     auto result = state_.canMutateThroughRef(varName);
     if (!result.allowed) {
-      reportConflict(result.errorMessage, 0, 0, result.conflictingLoan);
+      reportConflict(result.errorMessage, pos,
+                     result.conflictingLoan);
     }
   } else if (refTypedParams_.count(varName)) {
     // This is a reference parameter - assigning through it
@@ -374,12 +454,18 @@ void BorrowChecker::checkVariableWrite(const std::string& varName) {
     // a local borrow entry but do allow mutation
     // TODO: More sophisticated tracking for ref params
   } else {
-    // Direct mutation of a variable
-    // Only check if strict mutation checking is enabled
+    // Direct write to a variable that may be borrowed. Overwriting a
+    // compound value drops the storage every live borrow points into, so it
+    // is rejected while any borrow is active. A scalar write leaves the
+    // storage in place - live borrows simply observe the new value - so it
+    // stays legal (ownership.mdx documents both).
     if constexpr (Config::STRICT_MUTATION_CHECKING) {
-      auto result = state_.canMutateDirectly(varName);
-      if (!result.allowed) {
-        reportConflict(result.errorMessage, 0, 0, result.conflictingLoan);
+      if (valueType && valueType->isCompound()) {
+        auto result = state_.canMutateDirectly(varName);
+        if (!result.allowed) {
+          reportConflict(result.errorMessage, pos,
+                         result.conflictingLoan);
+        }
       }
     }
   }
@@ -421,7 +507,10 @@ void BorrowChecker::checkVariableAssignment(
   movedVariables_.erase(varName);
   clearFieldPaths(varName);
 
-  checkVariableWrite(varName);
+  checkVariableWrite(varName,
+                     assign.getValue() ? assign.getValue()->getResolvedType()
+                                       : nullptr,
+                     assign.getLocation());
 }
 
 void BorrowChecker::checkCompoundAssignment(
@@ -439,7 +528,9 @@ void BorrowChecker::checkCompoundAssignment(
   if (assign.getTarget()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
     checkVariableWrite(
         static_cast<const VariableReferenceAST&>(*assign.getTarget())
-            .getName());
+            .getName(),
+        assign.getTarget()->getResolvedType(),
+        assign.getTarget()->getLocation());
   }
   // Member/indexed targets have no write-side checks today (parity with
   // checkMemberAssignment/checkIndexedAssignment)
@@ -452,8 +543,7 @@ void BorrowChecker::checkVariableReference(const VariableReferenceAST& varRef) {
   if (movedVariables_.count(name)) {
     const auto& pos = varRef.getLocation();
     reportError("use of moved variable '" + name +
-                    "'. Ownership was transferred in a previous assignment.",
-                pos.line, pos.column);
+                    "'. Ownership was transferred in a previous assignment.", pos);
   }
 
   // Using the object as a whole (a by-value move, a borrow, a method call)
@@ -468,7 +558,7 @@ void BorrowChecker::checkVariableReference(const VariableReferenceAST& varRef) {
   if (refIt != refVariables_.end()) {
     auto result = state_.canRead(refIt->second.first, name);
     if (!result.allowed) {
-      reportError(result.errorMessage, 0, 0);
+      reportError(result.errorMessage, varRef.getLocation());
     }
   }
   // Reading a non-ref variable is always allowed
@@ -542,6 +632,36 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
                                   .getMethodForArgs("init", argTypes);
     if (!init) return;
     paramTypes = init->paramTypes;
+
+    // A class that stores references keeps pointing into its by-ref
+    // constructor arguments after the call returns, so the constructed value
+    // holds a loan on each of them - conservatively until scope exit, since
+    // the object can live that long. The loan is what rejects a later move
+    // or replacement of the borrowed variable, and recordMove/
+    // canMutateDirectly report it with this construction site as the note.
+    if (classStoresRefs(calleeType)) {
+      for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
+        if (!args[i] || !paramTypes[i] || !paramTypes[i]->isReference()) {
+          continue;
+        }
+        const std::string* base = getBaseVariableName(*args[i]);
+        if (!base || rawPointerLocals_.count(*base)) continue;
+        auto targetInfo = resolveRefTarget(*base);
+        if (targetInfo.isRebind) continue;  // reborrow: original loan governs
+        const auto& argPos = args[i]->getLocation();
+        std::string holder = "$refholder@" + std::to_string(argPos.line) +
+                             ":" + std::to_string(argPos.column);
+        auto result = state_.addBorrow(
+            targetInfo.actualTarget, holder,
+            isMutableRef(paramTypes[i]) ? BorrowKind::Mutable
+                                        : BorrowKind::Shared,
+            currentScope_, argPos);
+        if (!result.allowed) {
+          reportConflict(result.errorMessage, argPos,
+                         result.conflictingLoan);
+        }
+      }
+    }
   } else {
     // Handle FunctionType (direct calls)
     auto* funcType = dynamic_cast<const FunctionType*>(calleeType.get());
@@ -715,14 +835,13 @@ bool BorrowChecker::checkMoveAllowed(const std::string& name,
     reportError("cannot move out of match binding '" + name +
                     "' — it borrows the matched value's payload; use it in "
                     "place or pass it by ref",
-                pos.line, pos.column);
+                pos);
     return false;
   }
   if (frozenDiscriminants_.count(name)) {
     reportError("cannot move '" + name +
                     "' while it is being matched — its payloads are borrowed "
-                    "by the match arms",
-                pos.line, pos.column);
+                    "by the match arms", pos);
     return false;
   }
   return true;
@@ -796,7 +915,38 @@ const std::string* BorrowChecker::movedFieldOf(const std::string& name) const {
   return nullptr;
 }
 
+// Does this class type hold a reference anywhere in its fields, directly or
+// inside a class-typed field? Such a value is itself borrow-like: it points
+// into storage it does not own.
+bool BorrowChecker::classStoresRefs(const TypePtr& type) const {
+  std::unordered_set<const Type*> visited;
+  return classStoresRefsWalk(type, visited);
+}
+
+bool BorrowChecker::classStoresRefsWalk(
+    const TypePtr& type, std::unordered_set<const Type*>& visited) const {
+  const auto* classType = tryGetType<ClassType>(type);
+  if (!classType || !visited.insert(classType).second) return false;
+  for (const auto& field : classType->getFields()) {
+    if (!field.type) continue;
+    if (field.type->isReference()) return true;
+    if (classStoresRefsWalk(field.type, visited)) return true;
+  }
+  return false;
+}
+
+// Every move funnels through here. Moving a borrowed place would leave the
+// live borrows reading the zeroed husk the move leaves behind, so it is
+// rejected; a loan on the base variable covers its fields too.
 void BorrowChecker::recordMove(const std::string& place, const Position& pos) {
+  std::string base = place.substr(0, place.find('.'));
+  auto loans = state_.getActiveLoans(base);
+  if (!loans.empty()) {
+    std::string why = base == place ? "it is borrowed"
+                                    : "'" + base + "' is borrowed";
+    reportConflict("cannot move out of '" + place + "' because " + why, pos, loans.front());
+    return;  // not marked moved: keep follow-on errors focused on this one
+  }
   movedVariables_.insert(place);
   moveLocations_[place] = pos;
 }
@@ -838,8 +988,7 @@ void BorrowChecker::checkLoopBody(const ExprAST* body,
                     "' is moved inside a loop, so the next iteration would "
                     "use what is already gone. Move it once outside the loop, "
                     "borrow it with 'ref', copy it with clone(), or assign a "
-                    "value back into it before the iteration ends",
-                pos.line, pos.column);
+                    "value back into it before the iteration ends", pos);
     // Reported once: let the rest of the function check against a whole value
     movedVariables_.erase(place);
     moveLocations_.erase(place);
@@ -853,8 +1002,7 @@ bool BorrowChecker::checkFieldsIntact(const std::string& name,
   reportError("cannot use '" + name + "' as a whole: its field '" + *moved +
                   "' was moved out. Assign a value back into " + *moved +
                   " first, or borrow the field with 'ref' instead of moving "
-                  "it",
-              pos.line, pos.column);
+                  "it", pos);
   return false;
 }
 
@@ -927,8 +1075,7 @@ void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
     const auto& pos = ret.getLocation();
     reportError(
         "cannot return a lambda with a capture list - its captured "
-        "environment lives in this frame and dies when the function returns",
-        pos.line, pos.column);
+        "environment lives in this frame and dies when the function returns", pos);
   }
 
   // Check lifetime safety for reference returns
@@ -939,6 +1086,16 @@ void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
   // as moved so its deinit is skipped in the callee. Returning a `ref` only
   // lends the value out, so nothing moves.
   auto retType = value->getResolvedType();
+
+  // A class that stores references must not escape by value, for the same
+  // reason a lambda with a capture list must not: the storage its refs
+  // point into lives in this frame and dies when the function returns
+  if (retType && !retType->isReference() && classStoresRefs(retType)) {
+    const auto& pos = ret.getLocation();
+    reportError(
+        "cannot return a value that stores references - what they point "
+        "into lives in this frame and dies when the function returns", pos);
+  }
   if (retType && retType->isCompound() && !currentFunctionReturnsRef_) {
     // Mark temporaries as moved (ownership transferred to caller)
     if (value->isTemporary()) {
@@ -988,7 +1145,8 @@ void BorrowChecker::checkFunctionDef(const FunctionAST& func) {
     if constexpr (Config::FORBID_REF_RETURNS) {
       if (returnsRef) {
         reportError(
-            "function '" + funcName + "' cannot return a reference type", 0, 0);
+            "function '" + funcName + "' cannot return a reference type",
+            func.getLocation());
       }
     }
   }
@@ -1042,7 +1200,8 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
     // Rule: Return type cannot be a reference (when config enabled)
     if constexpr (Config::FORBID_REF_RETURNS) {
       if (returnsRef) {
-        reportError("lambda cannot return a reference type", 0, 0);
+        reportError("lambda cannot return a reference type",
+                    lambda.getLocation());
       }
     }
   }
@@ -1063,15 +1222,13 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
       continue;
     if (!state_.getActiveLoans(cap.name).empty()) {
       reportError(
-          "cannot move '" + cap.name + "' into the lambda while it is borrowed",
-          pos.line, pos.column);
+          "cannot move '" + cap.name + "' into the lambda while it is borrowed", pos);
       continue;
     }
     if (!checkMoveAllowed(cap.name, pos)) continue;
     if (movedVariables_.count(cap.name)) {
       reportError("use of moved variable '" + cap.name +
-                      "'. Ownership was transferred in a previous assignment.",
-                  pos.line, pos.column);
+                      "'. Ownership was transferred in a previous assignment.", pos);
       continue;
     }
     recordMove(cap.name, pos);
@@ -1095,16 +1252,15 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
     if (aliasesEnclosingCapture) continue;
 
     auto targetInfo = resolveRefTarget(cap.name);
-    SourceLoc loc{pos.line, pos.column, ""};
     std::string refName = "$capture:" + cap.name + "@" +
                           std::to_string(pos.line) + ":" +
                           std::to_string(pos.column);
     auto result =
         state_.addBorrow(targetInfo.actualTarget, refName,
                          cap.isConst ? BorrowKind::Shared : BorrowKind::Mutable,
-                         currentScope_, loc);
+                         currentScope_, pos);
     if (!result.allowed) {
-      reportConflict(result.errorMessage, pos.line, pos.column,
+      reportConflict(result.errorMessage, pos,
                      result.conflictingLoan);
     }
   }
@@ -1128,6 +1284,14 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
   // closure's own value again — that is the point of moving it in.
   for (const auto& cap : proto.getCaptures()) {
     if (cap.kind == CaptureKind::Owned) movedVariables_.erase(cap.name);
+  }
+
+  // Inside the body a by-ref captured name IS the borrow: writing to it
+  // writes through the capture's loan, exactly like a ref parameter.
+  for (const auto& cap : proto.getCaptures()) {
+    if (cap.kind == CaptureKind::Borrow) {
+      refTypedParams_[cap.name] = !cap.isConst;
+    }
   }
 
   // Track reference parameters and their lifetimes
@@ -1172,8 +1336,10 @@ void BorrowChecker::checkClassDef(const ClassDefinitionAST& classDef) {
       if constexpr (Config::FORBID_REF_FIELDS_IN_CLASSES) {
         reportError("class '" + classDef.getName() +
                         "' cannot have reference field '" + field.name +
-                        "' - references cannot be stored in structs",
-                    0, 0);
+                        "' - references cannot be stored in classes; store "
+                        "the value, or pass the reference to the methods "
+                        "that need it",
+                    field.location);
       }
     }
   }
@@ -1212,7 +1378,7 @@ void BorrowChecker::checkMemberAccess(const MemberAccessAST& access) {
     reportError("use of moved field '" + path +
                     "'. It was moved out of its object; assign a value back "
                     "into it before reading it again",
-                pos.line, pos.column);
+                pos);
   }
 }
 
@@ -1334,18 +1500,18 @@ void BorrowChecker::exitFunctionScope() {
   currentFunctionReturnsRef_ = false;
 }
 
-void BorrowChecker::reportError(const std::string& msg, int line, int col) {
+void BorrowChecker::reportError(const std::string& msg, const Position& pos) {
   BorrowError err;
   err.message = msg;
-  err.location = {line, col, ""};
+  err.location = pos;
   errors_.push_back(std::move(err));
 }
 
-void BorrowChecker::reportConflict(const std::string& msg, int line, int col,
+void BorrowChecker::reportConflict(const std::string& msg, const Position& pos,
                                    const Loan& conflict) {
   BorrowError err;
   err.message = msg;
-  err.location = {line, col, ""};
+  err.location = pos;
   if (!conflict.borrowedVar.empty()) {
     err.relatedLocations.push_back(conflict.location);
   }
@@ -1575,13 +1741,13 @@ void BorrowChecker::checkReturnLifetime(const ReturnExprAST& ret) {
     // Check if the local is within this function (would dangle)
     if (exprLifetime.getScopeDepth() >= functionScopeDepth_) {
       const auto& pos = ret.getLocation();
-      reportDanglingRef(exprLifetime.getName(), pos.line, pos.column);
+      reportDanglingRef(exprLifetime.getName(), pos);
     }
   }
 }
 
-void BorrowChecker::reportDanglingRef(const std::string& varName, int line,
-                                      int col) {
+void BorrowChecker::reportDanglingRef(const std::string& varName,
+                                      const Position& pos) {
   std::string msg;
   if (varName == "$temp") {
     msg =
@@ -1591,7 +1757,7 @@ void BorrowChecker::reportDanglingRef(const std::string& varName, int line,
     msg = "cannot return reference to local variable '" + varName +
           "' - it would be a dangling reference after the function returns";
   }
-  reportError(msg, line, col);
+  reportError(msg, pos);
 }
 
 // ============================================================================

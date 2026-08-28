@@ -17,6 +17,49 @@ constexpr const char* yellow = "\033[1;33m";
 constexpr const char* reset = "\033[0m";
 }  // namespace ansi
 
+// Render a diagnostic in the standard compiler format: colored label, blue
+// file:line:column, the message, then the offending source line with a red
+// caret under the column. Shared by SunError and multi-error passes like the
+// borrow checker, so every compiler error looks the same.
+inline std::string formatDiagnostic(const std::string& label,
+                                    const std::string& labelColor,
+                                    const std::string& message,
+                                    const std::optional<Position>& location,
+                                    const std::string& sourceLine,
+                                    const std::string& prevSourceLine) {
+  std::string out = labelColor + label + ansi::reset;
+  if (location) {
+    out += ": " + std::string(ansi::blue) + location->toString() + ansi::reset;
+  }
+  out += ": " + message;
+
+  if (!sourceLine.empty() && location) {
+    out += "\n";
+    // Gutter width: leading space + line number digits + space before |
+    int lineNumWidth = std::to_string(location->line).length();
+    std::string gutter(lineNumWidth + 2, ' ');  // aligns with " N | "
+
+    // Show previous line for context (if available)
+    if (!prevSourceLine.empty() && location->line > 1) {
+      out += " " + std::string(ansi::cyan) +
+             std::to_string(location->line - 1) + ansi::reset + " | " +
+             prevSourceLine + "\n";
+    }
+
+    // Show current line number (in cyan) and source
+    out += " " + std::string(ansi::cyan) + std::to_string(location->line) +
+           ansi::reset + " | " + sourceLine + "\n";
+
+    // Show caret pointing to error column (in red)
+    out += gutter + "| ";
+    if (location->column > 1) {
+      out += std::string(location->column - 1, ' ');
+    }
+    out += std::string(ansi::red) + "^" + ansi::reset;
+  }
+  return out;
+}
+
 // Custom error type for Sun compiler errors
 class SunError : public std::exception {
  public:
@@ -62,41 +105,8 @@ class SunError : public std::exception {
   }
 
   void buildFullMessage() {
-    // Error type in red
-    fullMessage_ = std::string(ansi::red) + kindToString() + ansi::reset;
-    if (location_) {
-      // File path in blue
-      fullMessage_ +=
-          ": " + std::string(ansi::blue) + location_->toString() + ansi::reset;
-    }
-    fullMessage_ += ": " + message_;
-
-    // Add source preview if available
-    if (!sourceLine_.empty() && location_) {
-      fullMessage_ += "\n";
-      // Gutter width: leading space + line number digits + space before |
-      int lineNumWidth = std::to_string(location_->line).length();
-      std::string gutter(lineNumWidth + 2, ' ');  // aligns with " N | "
-
-      // Show previous line for context (if available)
-      if (!prevSourceLine_.empty() && location_->line > 1) {
-        fullMessage_ += " " + std::string(ansi::cyan) +
-                        std::to_string(location_->line - 1) + ansi::reset +
-                        " | " + prevSourceLine_ + "\n";
-      }
-
-      // Show current line number (in cyan) and source
-      fullMessage_ += " " + std::string(ansi::cyan) +
-                      std::to_string(location_->line) + ansi::reset + " | " +
-                      sourceLine_ + "\n";
-
-      // Show caret pointing to error column (in red)
-      fullMessage_ += gutter + "| ";
-      if (location_->column > 1) {
-        fullMessage_ += std::string(location_->column - 1, ' ');
-      }
-      fullMessage_ += std::string(ansi::red) + "^" + ansi::reset;
-    }
+    fullMessage_ = formatDiagnostic(kindToString(), ansi::red, message_,
+                                    location_, sourceLine_, prevSourceLine_);
   }
 
   Kind kind_;

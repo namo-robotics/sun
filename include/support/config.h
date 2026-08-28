@@ -16,7 +16,9 @@ struct Config {
   static constexpr bool REQUIRE_REF_FOR_COMPOUND_PARAMS = false;
 
   /// If true, reference types (ref T) cannot be stored in class fields.
-  /// References are meant for parameter passing, not storage.
+  /// Sun allows them, with tracking: constructing a class that stores refs
+  /// takes a loan on every by-ref constructor argument, and such a value
+  /// cannot be returned from the function that built it.
   static constexpr bool FORBID_REF_FIELDS_IN_CLASSES = false;
 
   /// If true, functions cannot return reference types (ref T).
@@ -32,8 +34,9 @@ struct Config {
   static constexpr bool TREAT_ALL_BORROWS_AS_MUTABLE = true;
 
   /// If true, disallow mutating a variable while it has active borrows
-  /// (Rust-style strict checking). If false, allow mutation (Sun's default).
-  static constexpr bool STRICT_MUTATION_CHECKING = false;
+  /// (Rust-style strict checking). Assigning to a borrowed compound value
+  /// drops the storage every live borrow points into, so this must stay on.
+  static constexpr bool STRICT_MUTATION_CHECKING = true;
 
   // ============================================================
   // Memory Management

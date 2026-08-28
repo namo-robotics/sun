@@ -291,6 +291,10 @@ function main() i32 {
 }
 ```
 
+Assigning to `x` while it is shared-borrowed is fine for a scalar like this
+one; a borrowed *compound* value cannot be replaced at all — see
+[Rule 4](#rule-4-a-borrowed-compound-value-cannot-be-replaced).
+
 Through a `const ref` nothing can be assigned, no mutable `ref` can be taken,
 and only const methods can be called. A `ref T` may be passed or rebound as
 `const ref T`, never the other way round. When a const method returns a borrow
@@ -514,48 +518,102 @@ function main() i32 {
 
 This works because `exitScope()` marks loans as inactive when their defining scope ends.
 
-### Rule 3: References Cannot Be Returned
+### Rule 3: A Returned Reference Borrows the Call's Inputs
 
-Functions cannot return reference types. This eliminates the need for lifetime annotations:
-
-```sun
-// ❌ ERROR: Cannot return a reference
-function getRef(x: ref i32) ref i32 {
-    return x;
-}
-
-// ✓ OK: Return the value (it gets copied)
-function get_value(x: ref i32) i32 {
-    return x;  // Returns the dereferenced value
-}
-```
-
-<Callout type="warning">
-  Attempting to declare a function with a `ref` return type will result in a compile error: "function cannot return a reference type"
-</Callout>
-
-### Rule 4: No References in Classes
-
-Classes cannot have reference-type fields:
+A function may return a reference, but only one that lives in something the
+caller passed in — a `ref` parameter, or the receiver of a method. Which
+input it points into is not knowable at the call site, so binding the result
+to a name conservatively borrows **every** variable the call could hand back
+a reference into:
 
 ```sun
-// ❌ ERROR: Cannot store reference in class
-class Container {
-    var r: ref i32;
+function longest(a: ref String, b: ref String) ref String {
+    if (a.length() > b.length()) { return a; } else { return b; }
 }
 
-// ✓ OK: Store values, not references
-class Container {
-    var value: i32;
+function main() void {
+    var a: String = `.`;
+    var b: String = `..`;
+    var c: ref String = longest(a, b);  // both a and b are borrowed
+    // a = `x`;                         // ❌ ERROR: 'a' is borrowed
+    // b = `y`;                         // ❌ ERROR: 'b' is borrowed
+    c = `z`;                            // ✓ replaces whichever c points at
+    println(c);
 }
 ```
 
-**Error:**
-```
-error: class 'Container' cannot have reference field 'r' - references cannot be stored in structs
+The same applies to container accessors: `var e: ref T = vec.get(i)` borrows
+`vec` until `e` goes out of scope. When you only need the value of a scalar
+element, annotate the scalar type instead — `var e: i32 = vec.get(i)` copies
+it out and takes no borrow.
+
+### Rule 4: A Borrowed Compound Value Cannot Be Replaced
+
+Assigning a new value to a class, payload enum, or interface variable drops
+the old value — including the storage every live borrow points into. So while
+such a variable is borrowed, assigning to it is rejected; assign **through**
+the borrow instead, which correctly drops the old referent and moves the new
+value in:
+
+```sun
+function main() void {
+    var b: String = `..`;
+    var c: ref String = b;
+    // b = `new`;    // ❌ ERROR: cannot assign to 'b' because it is borrowed
+    c = `new`;       // ✓ replaces b through the borrow
+}
 ```
 
-### Rule 5: Use-After-Move Detection
+Scalars are different: overwriting an `i32` leaves its storage in place, so
+assigning to a borrowed scalar stays legal and live borrows simply observe
+the new value:
+
+```sun
+function main() i32 {
+    var x: i32 = 10;
+    ref r = x;
+    x = 20;      // ✓ scalar write; nothing is dropped
+    return r;    // Returns 20
+}
+```
+
+### Rule 5: A Class That Stores References Is Itself a Borrow
+
+A class may have reference-type fields. Such a value points into storage it
+does not own, so it is treated like a borrow: constructing it takes a loan on
+every variable passed by ref to the constructor, and those loans last until
+the enclosing scope ends.
+
+```sun
+class Holder {
+    public var x: ref String;
+    public function init(x: ref String) { this.x = x; }
+}
+
+function main() void {
+    var a: String = `a`;
+    var b: String = `b`;
+    var t = Holder(a);   // t stores a ref into a: a is borrowed
+    // b = a;            // ❌ ERROR: cannot move out of 'a' because it is borrowed
+    // ref r = a;        // ❌ ERROR: 'a' is already borrowed
+    println(t.x);        // ✓ reads through the stored ref
+}
+```
+
+And like a lambda with a capture list, such a value cannot leave the frame
+that built it — what its refs point into dies when the function returns:
+
+```sun
+function make() Holder {
+    var a: String = `dies here`;
+    return Holder(a);   // ❌ ERROR: cannot return a value that stores references
+}
+```
+
+This holds transitively: a class whose field is (or contains) a ref-storing
+class is subject to the same rules.
+
+### Rule 6: Use-After-Move Detection
 
 When a class-typed variable is assigned to another variable, the original is marked as moved and cannot be used:
 
@@ -735,8 +793,8 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
 | Feature | Rust | Sun |
 |---------|------|-----|
 | Explicit lifetimes | Required for complex cases | Never needed |
-| References in structs | Yes (with lifetimes) | No |
-| Return references | Yes (with lifetimes) | No |
+| References in structs | Yes (with lifetimes) | Yes (object borrows its inputs) |
+| Return references | Yes (with lifetimes) | Yes (borrows all by-ref inputs) |
 | Mutable borrow exclusivity | Enforced | Enforced |
 | Shared borrows (`&T`) | Yes | Yes (`const ref T`) |
 | Move semantics | Yes | Yes (for classes) |
@@ -751,8 +809,10 @@ Sun's borrow checker is intentionally simpler than Rust's:
 
 1. **No lifetime annotations** means easier learning curve and cleaner syntax
 2. **Scoped borrows only** eliminates dangling reference bugs
-3. **No ref returns** prevents use-after-free at function boundaries
-4. **No ref fields** avoids complex struct lifetime analysis
+3. **Returned refs borrow every by-ref input** so no lifetime tracking is
+   needed across function boundaries
+4. **Ref-storing classes are borrows** - they lock their inputs for the scope
+   and cannot escape it, so no struct lifetime analysis is needed
 
 ```mermaid
 flowchart LR
@@ -765,8 +825,8 @@ flowchart LR
     
     subgraph "Sun Simplicity"
         S1[Scoped refs only]
-        S2[No ref returns]
-        S3[No ref in structs]
+        S2[Returned refs borrow all inputs]
+        S3[Ref-storing values stay in their scope]
     end
     
     R1 -.->|eliminated by| S1
@@ -818,15 +878,19 @@ function main() i32 {
 }
 ```
 
-### Don't: Try to Store References
+### Don't: Store References When a Value Will Do
+
+A class with ref fields borrows whatever it was built from, which locks
+those variables for the object's whole scope and keeps the object from being
+returned. Store the value unless you really want a view:
 
 ```sun
-// ❌ This won't compile
+// Locks its constructor argument for the scope, cannot be returned
 class Cache {
-    var cached: ref i32;  // Error: refs can't be stored
+    var cached: ref i32;
 }
 
-// ✓ Store values instead
+// ✓ Owns its data, moves freely
 class Cache {
     var cached: i32;
 }
