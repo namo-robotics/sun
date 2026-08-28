@@ -20,10 +20,16 @@ endif
 %:
 	dh $@
 
+# debhelper passes -DFETCHCONTENT_FULLY_DISCONNECTED=ON (Debian archive
+# builds may not touch the network), which would skip downloading the bundled
+# protobuf and break configure. This package builds in CI with network
+# access, so turn it back off; flags here come after debhelper's defaults
+# and win.
 override_dh_auto_configure:
 	dh_auto_configure -- \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DBUILD_TESTING=OFF \
+		-DFETCHCONTENT_FULLY_DISCONNECTED=OFF \
 		$(CCACHE_ARGS)
 
 override_dh_auto_install:
