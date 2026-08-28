@@ -186,10 +186,12 @@ TEST(Stdlib_Collections_LinkedList, get_and_set) {
         ll.push_back(30);
         ll.push_back(40);
         try {
-            var first = ll.get(0);
-            var last = ll.get(3);
+            // Annotating i32 copies the scalar out instead of holding a
+            // borrow of the list, so the later borrows and set() are legal
+            var first: i32 = ll.get(0);
+            var last: i32 = ll.get(3);
             ll.set(1, 99);
-            var modified = ll.get(1);
+            var modified: i32 = ll.get(1);
             return first + last + modified;
         } catch (e: IError) {
             return -1;
@@ -409,12 +411,10 @@ TEST(Stdlib_Collections_LinkedList, list_of_class_objects) {
         list.push_back(Point(3, 4));
         list.push_back(Point(5, 6));
 
-        // Access via get
+        // Access via get. Each borrow is used within its own statement -
+        // binding all three at once would hold three borrows of the list
         try {
-            var p0 = list.get(0);
-            var p1 = list.get(1);
-            var p2 = list.get(2);
-            return p0.sum() + p1.sum() + p2.sum();
+            return list.get(0).sum() + list.get(1).sum() + list.get(2).sum();
         } catch (e: IError) {
             return -1;
         }

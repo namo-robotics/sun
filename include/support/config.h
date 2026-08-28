@@ -32,8 +32,9 @@ struct Config {
   static constexpr bool TREAT_ALL_BORROWS_AS_MUTABLE = true;
 
   /// If true, disallow mutating a variable while it has active borrows
-  /// (Rust-style strict checking). If false, allow mutation (Sun's default).
-  static constexpr bool STRICT_MUTATION_CHECKING = false;
+  /// (Rust-style strict checking). Assigning to a borrowed compound value
+  /// drops the storage every live borrow points into, so this must stay on.
+  static constexpr bool STRICT_MUTATION_CHECKING = true;
 
   // ============================================================
   // Memory Management

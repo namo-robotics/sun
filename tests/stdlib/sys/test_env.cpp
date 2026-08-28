@@ -184,12 +184,11 @@ TEST_F(Stdlib_Sys_Env, args_reads_argc_and_argv_from_main) {
         var a = make_heap_allocator();
         var cli = collect_args(a, argc, argv);
         if (cli.size() != 3) { return 1; }
-        var first = cli.get_unchecked(0);
-        if (not first.equals_literal("prog")) { return 2; }
-        var second = cli.get_unchecked(1);
-        if (not second.equals_literal("alpha")) { return 3; }
-        var third = cli.get_unchecked(2);
-        if (not third.equals_literal("beta")) { return 4; }
+        // Each borrow is used within its own statement - named bindings
+        // would hold three borrows of cli at once
+        if (not cli.get_unchecked(0).equals_literal("prog")) { return 2; }
+        if (not cli.get_unchecked(1).equals_literal("alpha")) { return 3; }
+        if (not cli.get_unchecked(2).equals_literal("beta")) { return 4; }
         return 0;
     }
   )",

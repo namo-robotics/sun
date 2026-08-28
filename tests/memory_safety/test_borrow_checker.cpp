@@ -984,3 +984,88 @@ TEST(MemorySafety_BorrowChecker, loop_body_that_returns_moves_once) {
   )");
   EXPECT_EQ(value, 7);
 }
+
+// ============================================================================
+// Assigning while borrowed - overwriting a compound value would drop the
+// storage a live borrow points into, so it is rejected; writing through the
+// borrow itself replaces the referent correctly.
+// ============================================================================
+
+TEST(MemorySafety_BorrowChecker, assigning_through_ref_replaces_the_referent) {
+  // Assignment through a ref drops the old referent and moves the new value
+  // in - it must never store the source's address over the referent's bytes
+  auto value = executeString(R"(
+    class Box {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+    }
+    function main() i32 {
+        var b: Box = Box(1);
+        var c: ref Box = b;
+        c = Box(42);
+        return b.v + c.v;
+    };
+  )");
+  EXPECT_EQ(value, 84);
+}
+
+TEST(MemorySafety_BorrowChecker, assigning_to_borrowed_compound_is_error) {
+  // Replacing b would drop the object c still points into
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Box {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+    }
+    function main() i32 {
+        var b: Box = Box(1);
+        var c: ref Box = b;
+        b = Box(2);
+        return c.v;
+    };
+  )"),
+                                "Borrow check failed");
+}
+
+TEST(MemorySafety_BorrowChecker, ref_returning_call_borrows_its_arguments) {
+  // The returned ref could point into either argument, so both stay
+  // borrowed while c lives and neither may be reassigned
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Box {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+    }
+    function pick(a: ref Box, b: ref Box) ref Box {
+        if (a.v > b.v) { return a; } else { return b; }
+    }
+    function main() i32 {
+        var a: Box = Box(1);
+        var b: Box = Box(2);
+        var c: ref Box = pick(a, b);
+        a = Box(3);
+        return c.v;
+    };
+  )"),
+                                "Borrow check failed");
+}
+
+TEST(MemorySafety_BorrowChecker, assigning_through_call_returned_ref_works) {
+  // c binds whichever argument pick chose at run time; assigning through it
+  // replaces that object in place
+  auto value = executeString(R"(
+    class Box {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+    }
+    function pick(a: ref Box, b: ref Box) ref Box {
+        if (a.v > b.v) { return a; } else { return b; }
+    }
+    function main() i32 {
+        var a: Box = Box(1);
+        var b: Box = Box(2);
+        var c: ref Box = pick(a, b);
+        c = Box(9);
+        return a.v + b.v;
+    };
+  )");
+  EXPECT_EQ(value, 10);
+}

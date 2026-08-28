@@ -59,6 +59,11 @@ class BorrowChecker {
   // borrow of the lvalue's storage rather than moving a value into r.
   void checkBorrowBinding(const std::string& refName, const ExprAST& targetExpr,
                           bool isMutable, const Position& refPos);
+  // Binding a ref-returning call's result to a name borrows every named
+  // variable the call could hand back a reference into: the receiver and
+  // each argument bound to a ref parameter.
+  void borrowRefCallInputs(const std::string& refName, const CallExprAST& call,
+                           bool isMutable, const Position& refPos);
   void checkBorrowTargetIntact(const ExprAST& target, const Position& refPos);
   void checkVariableAssignment(const VariableAssignmentAST& assign);
   void checkVariableReference(const VariableReferenceAST& varRef);
@@ -79,7 +84,8 @@ class BorrowChecker {
   void checkMemberAssignment(const MemberAssignmentAST& assign);
   void checkIndexedAssignment(const IndexedAssignmentAST& assign);
   void checkCompoundAssignment(const CompoundAssignmentAST& assign);
-  void checkVariableWrite(const std::string& varName);
+  void checkVariableWrite(const std::string& varName, const TypePtr& valueType,
+                          const Position& pos);
   bool isRefCapturingLambdaExpr(const ExprAST& expr) const;
 
   // Protos of the lambdas whose bodies are currently being checked

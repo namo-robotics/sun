@@ -218,6 +218,23 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
                          isMutableRef(declaredType), var.getLocation());
       return;
     }
+    // The initializer is itself a ref: a call handing back a borrow of its
+    // inputs, or another ref variable being aliased. Track what the new name
+    // could point into so writes to those variables are rejected while it
+    // lives.
+    const ExprAST* init = var.getValue();
+    while (init->getType() == ASTNodeType::PAREN_EXPR) {
+      init = static_cast<const ParenExprAST&>(*init).getInner();
+    }
+    if (init->getType() == ASTNodeType::CALL) {
+      borrowRefCallInputs(var.getName(),
+                          static_cast<const CallExprAST&>(*init),
+                          isMutableRef(declaredType), var.getLocation());
+    } else if (init->getType() == ASTNodeType::VARIABLE_REFERENCE) {
+      checkBorrowBinding(var.getName(), *init, isMutableRef(declaredType),
+                         var.getLocation());
+      return;
+    }
   }
 
   // Move semantics for temporaries and compound types
@@ -357,16 +374,82 @@ void BorrowChecker::checkBorrowBinding(const std::string& refName,
   }
 }
 
+// A call that returns a borrow (`longest(a, b)`, `vec.get(i)`) hands back a
+// reference into one of its by-ref inputs. Which one is not knowable here,
+// so binding the result to a name conservatively borrows every named
+// variable passed by ref - the receiver of a method call included. An input
+// that is already a ref (a ref variable or ref parameter) is a reborrow: the
+// loan it made governs the storage, so no new loan is taken.
+void BorrowChecker::borrowRefCallInputs(const std::string& refName,
+                                        const CallExprAST& call,
+                                        bool isMutable, const Position& refPos) {
+  BorrowKind kind = isMutable ? BorrowKind::Mutable : BorrowKind::Shared;
+  SourceLoc loc{refPos.line, refPos.column, ""};
+  bool tracked = false;
+
+  auto borrowInput = [&](const ExprAST& input) {
+    const std::string* base = getBaseVariableName(input);
+    if (!base) return;
+    // Raw pointers are the unsafe escape hatch: storage the checker cannot see
+    if (rawPointerLocals_.count(*base)) return;
+    TypePtr inputType = input.getResolvedType();
+    if (inputType && inputType->isRawPointer()) return;
+
+    auto targetInfo = resolveRefTarget(*base);
+    if (!targetInfo.isRebind) {
+      auto result = state_.addBorrow(targetInfo.actualTarget, refName, kind,
+                                     currentScope_, loc);
+      if (!result.allowed) {
+        reportConflict(result.errorMessage, refPos.line, refPos.column,
+                       result.conflictingLoan);
+        return;
+      }
+    }
+    // The name is a live ref either way; writes through it and rebinding
+    // consult this entry. One target suffices - the loans carry the rest.
+    if (!tracked) {
+      refVariables_[refName] = {targetInfo.actualTarget, kind};
+      tracked = true;
+    }
+  };
+
+  // Method receiver: `obj.method(...)` returning ref borrows from obj
+  const ExprAST* callee = call.getCallee();
+  if (callee && callee->getType() == ASTNodeType::MEMBER_ACCESS) {
+    const auto& access = static_cast<const MemberAccessAST&>(*callee);
+    if (access.getObject()) borrowInput(*access.getObject());
+  }
+
+  // Arguments bound to ref parameters
+  std::vector<TypePtr> paramTypes;
+  if (TypePtr calleeType = callee ? callee->getResolvedType() : nullptr) {
+    if (auto* lambdaType = dynamic_cast<const LambdaType*>(calleeType.get())) {
+      paramTypes = lambdaType->getParamTypes();
+    } else if (auto* funcType =
+                   dynamic_cast<const FunctionType*>(calleeType.get())) {
+      paramTypes = funcType->getParamTypes();
+    }
+  }
+  const auto& args = call.getArgs();
+  for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
+    if (!args[i] || !paramTypes[i] || !paramTypes[i]->isReference()) continue;
+    borrowInput(*args[i]);
+  }
+}
+
 // Shared write-side check for assigning to a named variable (plain or
-// compound assignment)
-void BorrowChecker::checkVariableWrite(const std::string& varName) {
+// compound assignment). valueType is the type of the value being written.
+void BorrowChecker::checkVariableWrite(const std::string& varName,
+                                       const TypePtr& valueType,
+                                       const Position& pos) {
   // Check if this is a ref or a regular variable
   auto refIt = refVariables_.find(varName);
   if (refIt != refVariables_.end()) {
     // Assigning through a reference
     auto result = state_.canMutateThroughRef(varName);
     if (!result.allowed) {
-      reportConflict(result.errorMessage, 0, 0, result.conflictingLoan);
+      reportConflict(result.errorMessage, pos.line, pos.column,
+                     result.conflictingLoan);
     }
   } else if (refTypedParams_.count(varName)) {
     // This is a reference parameter - assigning through it
@@ -374,12 +457,18 @@ void BorrowChecker::checkVariableWrite(const std::string& varName) {
     // a local borrow entry but do allow mutation
     // TODO: More sophisticated tracking for ref params
   } else {
-    // Direct mutation of a variable
-    // Only check if strict mutation checking is enabled
+    // Direct write to a variable that may be borrowed. Overwriting a
+    // compound value drops the storage every live borrow points into, so it
+    // is rejected while any borrow is active. A scalar write leaves the
+    // storage in place - live borrows simply observe the new value - so it
+    // stays legal (ownership.mdx documents both).
     if constexpr (Config::STRICT_MUTATION_CHECKING) {
-      auto result = state_.canMutateDirectly(varName);
-      if (!result.allowed) {
-        reportConflict(result.errorMessage, 0, 0, result.conflictingLoan);
+      if (valueType && valueType->isCompound()) {
+        auto result = state_.canMutateDirectly(varName);
+        if (!result.allowed) {
+          reportConflict(result.errorMessage, pos.line, pos.column,
+                         result.conflictingLoan);
+        }
       }
     }
   }
@@ -421,7 +510,10 @@ void BorrowChecker::checkVariableAssignment(
   movedVariables_.erase(varName);
   clearFieldPaths(varName);
 
-  checkVariableWrite(varName);
+  checkVariableWrite(varName,
+                     assign.getValue() ? assign.getValue()->getResolvedType()
+                                       : nullptr,
+                     assign.getLocation());
 }
 
 void BorrowChecker::checkCompoundAssignment(
@@ -439,7 +531,9 @@ void BorrowChecker::checkCompoundAssignment(
   if (assign.getTarget()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
     checkVariableWrite(
         static_cast<const VariableReferenceAST&>(*assign.getTarget())
-            .getName());
+            .getName(),
+        assign.getTarget()->getResolvedType(),
+        assign.getTarget()->getLocation());
   }
   // Member/indexed targets have no write-side checks today (parity with
   // checkMemberAssignment/checkIndexedAssignment)
@@ -1128,6 +1222,14 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
   // closure's own value again — that is the point of moving it in.
   for (const auto& cap : proto.getCaptures()) {
     if (cap.kind == CaptureKind::Owned) movedVariables_.erase(cap.name);
+  }
+
+  // Inside the body a by-ref captured name IS the borrow: writing to it
+  // writes through the capture's loan, exactly like a ref parameter.
+  for (const auto& cap : proto.getCaptures()) {
+    if (cap.kind == CaptureKind::Borrow) {
+      refTypedParams_[cap.name] = !cap.isConst;
+    }
   }
 
   // Track reference parameters and their lifetimes
