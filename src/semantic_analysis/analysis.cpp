@@ -853,8 +853,7 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
   // specialized classes are active here).
   sun::TypePtr scopeReturnType = proto.getResolvedReturnType();
   if (!scopeReturnType && proto.hasReturnType() && !proto.isGeneric()) {
-    scopeReturnType = types_.substituteTypeParameters(
-        types_.typeAnnotationToType(*proto.getReturnType()));
+    scopeReturnType = types_.typeAnnotationToType(*proto.getReturnType());
   }
 
   // Enter function scope with signature for nested function qualification
@@ -1231,9 +1230,7 @@ void SemanticAnalyzer::analyzeMethodWithBindings(
   const auto& proto = methodFunc.getProto();
   std::vector<sun::TypePtr> substitutedParamTypes;
   for (const auto& [argName, argType] : proto.getArgs()) {
-    sun::TypePtr paramType = types_.typeAnnotationToType(argType);
-    paramType = types_.substituteTypeParameters(paramType);
-    substitutedParamTypes.push_back(paramType);
+    substitutedParamTypes.push_back(types_.typeAnnotationToType(argType));
   }
   std::string methodSig = getFunctionSignature(
       classType->getMangledMethodName(proto.getName()), substitutedParamTypes);
@@ -1243,8 +1240,7 @@ void SemanticAnalyzer::analyzeMethodWithBindings(
   // inference (e.g. `return Option.None;`) has the expected type
   sun::TypePtr methodReturnType;
   if (proto.hasReturnType()) {
-    methodReturnType = types_.substituteTypeParameters(
-        types_.typeAnnotationToType(*proto.getReturnType()));
+    methodReturnType = types_.typeAnnotationToType(*proto.getReturnType());
   }
   // A const method body sees the const view of its return type
   if (proto.isConstMethod())
