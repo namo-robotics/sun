@@ -17,20 +17,13 @@
 namespace sun {
 
 /// A single borrow checking error with source location and optional related
-/// locations
+/// locations. Rendering in the standard compiler format (source line and
+/// caret) is done by the driver, which has the source text at hand.
 struct BorrowError {
   std::string message;
-  SourceLoc location;
-  std::vector<SourceLoc>
+  Position location;
+  std::vector<Position>
       relatedLocations;  // Where conflicting borrows occurred
-
-  std::string format() const {
-    std::string result = location.toString() + ": error: " + message;
-    for (const auto& rel : relatedLocations) {
-      result += "\n  " + rel.toString() + ": note: related borrow here";
-    }
-    return result;
-  }
 };
 
 /// Main borrow checker class
@@ -87,6 +80,10 @@ class BorrowChecker {
   void checkVariableWrite(const std::string& varName, const TypePtr& valueType,
                           const Position& pos);
   bool isRefCapturingLambdaExpr(const ExprAST& expr) const;
+  // Does this class type hold a reference in any field, transitively?
+  bool classStoresRefs(const TypePtr& type) const;
+  bool classStoresRefsWalk(const TypePtr& type,
+                           std::unordered_set<const Type*>& visited) const;
 
   // Protos of the lambdas whose bodies are currently being checked
   // (innermost last) - nested by-ref captures alias their loans
@@ -100,9 +97,10 @@ class BorrowChecker {
   void enterFunctionScope(const std::string& funcName);
   void exitFunctionScope();
 
-  // Error reporting
-  void reportError(const std::string& msg, int line, int col);
-  void reportConflict(const std::string& msg, int line, int col,
+  // Error reporting - positions carry the file path so the driver can
+  // render the standard source-line-and-caret format
+  void reportError(const std::string& msg, const Position& pos);
+  void reportConflict(const std::string& msg, const Position& pos,
                       const Loan& conflict);
 
   // Helper to check if a type is or contains a reference
@@ -245,7 +243,7 @@ class BorrowChecker {
   void checkReturnLifetime(const ReturnExprAST& ret);
 
   /// Report a dangling reference error
-  void reportDanglingRef(const std::string& varName, int line, int col);
+  void reportDanglingRef(const std::string& varName, const Position& pos);
 
   // Scope depth when current function was entered (for lifetime comparison)
   size_t functionScopeDepth_ = 0;

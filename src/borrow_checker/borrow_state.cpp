@@ -10,7 +10,7 @@ namespace sun {
 BorrowCheckResult BorrowState::addBorrow(const std::string& borrowedVar,
                                          const std::string& refName,
                                          BorrowKind kind, size_t scopeDepth,
-                                         const SourceLoc& loc) {
+                                         const Position& loc) {
   auto& varLoans = loans_[borrowedVar];
 
   // Check existing borrows on this variable

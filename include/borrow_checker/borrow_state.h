@@ -27,7 +27,7 @@ class BorrowState {
   /// Returns error if this would violate borrow rules
   BorrowCheckResult addBorrow(const std::string& borrowedVar,
                               const std::string& refName, BorrowKind kind,
-                              size_t scopeDepth, const SourceLoc& loc);
+                              size_t scopeDepth, const Position& loc);
 
   /// Check if we can mutate a variable directly (not through a reference)
   /// Mutation is blocked if there are any active borrows

@@ -16,7 +16,9 @@ struct Config {
   static constexpr bool REQUIRE_REF_FOR_COMPOUND_PARAMS = false;
 
   /// If true, reference types (ref T) cannot be stored in class fields.
-  /// References are meant for parameter passing, not storage.
+  /// Sun allows them, with tracking: constructing a class that stores refs
+  /// takes a loan on every by-ref constructor argument, and such a value
+  /// cannot be returned from the function that built it.
   static constexpr bool FORBID_REF_FIELDS_IN_CLASSES = false;
 
   /// If true, functions cannot return reference types (ref T).

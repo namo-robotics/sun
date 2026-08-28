@@ -1069,3 +1069,94 @@ TEST(MemorySafety_BorrowChecker, assigning_through_call_returned_ref_works) {
   )");
   EXPECT_EQ(value, 10);
 }
+
+// ============================================================================
+// Classes that store references - constructing one takes a loan on each
+// by-ref constructor argument, and the object cannot leave the frame.
+// ============================================================================
+
+TEST(MemorySafety_BorrowChecker, ref_field_class_borrows_ctor_argument) {
+  // t stores a ref into a, so a cannot be moved while t lives
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Inner {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+    }
+    class Holder {
+        public var x: ref Inner;
+        public function init(x: ref Inner) { this.x = x; }
+    }
+    function main() i32 {
+        var a = Inner(1);
+        var b = Inner(2);
+        var t = Holder(a);
+        b = a;
+        return t.x.v;
+    };
+  )"),
+                                "Borrow check failed");
+}
+
+TEST(MemorySafety_BorrowChecker, ref_field_class_reads_through_stored_ref) {
+  // While nothing moves or is replaced, the stored ref reads the original
+  auto value = executeString(R"(
+    class Inner {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+    }
+    class Holder {
+        public var x: ref Inner;
+        public function init(x: ref Inner) { this.x = x; }
+    }
+    function main() i32 {
+        var a = Inner(21);
+        var t = Holder(a);
+        return t.x.v + a.v;
+    };
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(MemorySafety_BorrowChecker, ref_field_class_blocks_second_borrow) {
+  // The construction loan is exclusive, like any mutable borrow
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Inner {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+    }
+    class Holder {
+        public var x: ref Inner;
+        public function init(x: ref Inner) { this.x = x; }
+    }
+    function main() i32 {
+        var a = Inner(1);
+        var t = Holder(a);
+        ref r = a;
+        return r.v;
+    };
+  )"),
+                                "Borrow check failed");
+}
+
+TEST(MemorySafety_BorrowChecker, ref_field_class_cannot_be_returned) {
+  // The stored ref points into this frame, so the object must not escape
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Inner {
+        var v: i32;
+        function init(v: i32) { this.v = v; }
+    }
+    class Holder {
+        public var x: ref Inner;
+        public function init(x: ref Inner) { this.x = x; }
+    }
+    function make() Holder {
+        var a = Inner(1);
+        return Holder(a);
+    }
+    function main() i32 {
+        var t = make();
+        return t.x.v;
+    };
+  )"),
+                                "Borrow check failed");
+}

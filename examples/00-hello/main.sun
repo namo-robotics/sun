@@ -1,29 +1,9 @@
 using sun;
 
-class Test {
-  public var x: ref String;
-  public function init(x: ref String) {
-    this.x = x;
-  }
-}
-
-function longest(a: ref String, b: ref String) ref String {
-  if (a.length() > b.length()) {
-    return a;
-  } else {
-    return b;
-  }
-}
-
 function main() void {
-  var a: String = `a`;
-  var b: String = `b`;
-  var t = Test(a);
-  b = a;
-  println(b);
-  println(t.x); // bad: prints empty string
+  println("Hello, Sun!");
 }
 
 manifest {
-  moons: ["stdlib.moon"]
+    moons: ["stdlib.moon"]
 }
