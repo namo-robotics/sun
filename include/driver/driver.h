@@ -165,6 +165,12 @@ class Driver {
       const std::vector<std::string>& protoFiles = {},
       const std::map<std::string, std::string>& sourceOverrides = {});
 
+  /// Make a static archive named with -l resolvable by the JIT. Shared
+  /// libraries are dlopen'd into the process instead; an archive has to go
+  /// through the JIT's own linker. Throws when the archive cannot be read.
+  /// No effect on an AOT driver, which passes archives to the system linker.
+  void addJITStaticLibrary(const std::string& path);
+
   /// Set moon libraries to preload for single-file compilation modes
   /// (executeString, compileFile, etc.)
   void setMoonImports(std::vector<sun::MoonImport> imports) {

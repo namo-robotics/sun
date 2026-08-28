@@ -193,9 +193,12 @@ sun -lm program.sun                      # JIT
 sun -c -L/opt/lib -lsqlite3 -o app app.sun
 ```
 
-Under the JIT the libraries are loaded into the compiler process; when compiling
-they are passed to the linker. libc and libm are already present in the process,
-so they usually need no flag at all under the JIT.
+When compiling, the libraries are passed to the linker. Under the JIT, a shared
+library (`.so`, `.dylib`) is loaded into the compiler process, and a static
+archive (`lib<name>.a` found in a `-L` directory, or an explicit `.a` path) is
+linked by the JIT itself. When a directory holds both, the shared library wins.
+libc and libm are already present in the process, so they usually need no flag
+at all under the JIT.
 
 <Callout type="info">
   `-L`/`-l` are for native libraries. `--lib-path` and `--moon` are unrelated —

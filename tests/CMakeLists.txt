@@ -63,6 +63,15 @@ set_target_properties(sun_ffi_testlib PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tests
 )
 add_dependencies(sun_tests sun_ffi_testlib)
+
+# Static archive counterpart, for the tests that JIT-load a .a named with -l
+# (issue #133). Position-independent, as any archive meant for the JIT is.
+add_library(sun_ffi_static_testlib STATIC fixtures/ffi_static_testlib.c)
+set_target_properties(sun_ffi_static_testlib PROPERTIES
+    ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tests
+    POSITION_INDEPENDENT_CODE ON
+)
+add_dependencies(sun_tests sun_ffi_static_testlib)
 # Passed as a define rather than a test ENVIRONMENT entry: gtest_discover_tests
 # splits a multi-entry ENVIRONMENT list into separate property arguments.
 target_compile_definitions(sun_tests

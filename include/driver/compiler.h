@@ -1,5 +1,6 @@
 #pragma once
 
+#include <llvm/ADT/StringRef.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
 #include <llvm/MC/TargetRegistry.h>
@@ -119,20 +120,41 @@ inline std::string linkerCommandFor(const std::string& targetTriple,
   return "";
 }
 
+/// What resolving the -l libraries for the JIT produced. Shared libraries
+/// are dlopen'd into this process as a side effect; static archives cannot
+/// be dlopen'd, so their paths come back for the caller to hand to the JIT's
+/// own linker (SunJIT::addStaticLibrary).
+struct NativeLibraries {
+  // Static archives (lib<name>.a) found for -l names with no shared library.
+  std::vector<std::string> archives;
+  // Names with nothing loadable at all. Not necessarily an error: libc and
+  // libm are already resident in this process (and glibc ships their .so as
+  // a linker script, which dlopen cannot open), so their symbols resolve
+  // regardless. Callers should warn rather than abort, and let the JIT
+  // report a genuinely missing symbol.
+  std::vector<std::string> failed;
+};
+
 /// Make libraries named by -l visible to the JIT.
 /// The JIT resolves externs through DynamicLibrarySearchGenerator over the
-/// current process, so a library only has to be dlopen'd into this process
-/// for its symbols to become reachable.
-///
-/// Returns the names that could not be loaded. A name appearing here is NOT
-/// necessarily an error: libc and libm are already resident in this process
-/// (and glibc ships their .so as a linker script, which dlopen cannot open),
-/// so their symbols resolve regardless. Callers should warn rather than
-/// abort, and let the JIT report a genuinely missing symbol.
-inline std::vector<std::string> loadDynamicLibraries(const LinkOptions& opts) {
-  std::vector<std::string> failed;
+/// current process, so a shared library only has to be dlopen'd into this
+/// process for its symbols to become reachable. A name that resolves to a
+/// static archive instead (lib<name>.a in a -L directory, or an explicit .a
+/// path) is returned in `archives` for the JIT to link itself.
+inline NativeLibraries loadNativeLibraries(const LinkOptions& opts) {
+  NativeLibraries result;
 
   for (const auto& lib : opts.libraries) {
+    // An explicit archive path never goes through dlopen; the JIT links it.
+    if (llvm::StringRef(lib).ends_with(".a")) {
+      if (llvm::sys::fs::exists(lib)) {
+        result.archives.push_back(lib);
+      } else {
+        result.failed.push_back(lib);
+      }
+      continue;
+    }
+
     // An explicit path or filename is used as-is; a bare name gets the
     // platform's lib<name>.so decoration and is looked for in -L dirs first,
     // then left to the system loader (LD_LIBRARY_PATH, ldconfig).
@@ -178,11 +200,26 @@ inline std::vector<std::string> loadDynamicLibraries(const LinkOptions& opts) {
         break;
       }
     }
+    if (loaded) continue;
 
-    if (!loaded) failed.push_back(lib);
+    // No shared library anywhere: fall back to a static archive in the -L
+    // directories, matching what the AOT linker would pick up.
+    bool foundArchive = false;
+    if (!looksLikePath) {
+      for (const auto& dir : opts.searchPaths) {
+        std::string archive = dir + "/lib" + lib + ".a";
+        if (llvm::sys::fs::exists(archive)) {
+          result.archives.push_back(archive);
+          foundArchive = true;
+          break;
+        }
+      }
+    }
+
+    if (!foundArchive) result.failed.push_back(lib);
   }
 
-  return failed;
+  return result;
 }
 
 /// Emits an object file from the given LLVM module

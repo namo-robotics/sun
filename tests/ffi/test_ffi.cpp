@@ -368,9 +368,10 @@ TEST(Ffi_Link, shell_quote_neutralises_metacharacters) {
 TEST(Ffi_Link, missing_library_is_reported_not_thrown) {
   sun::LinkOptions opts;
   opts.libraries = {"definitely_not_a_real_library_xyz"};
-  auto failed = sun::loadDynamicLibraries(opts);
-  ASSERT_EQ(failed.size(), 1u);
-  EXPECT_EQ(failed[0], "definitely_not_a_real_library_xyz");
+  auto libs = sun::loadNativeLibraries(opts);
+  ASSERT_EQ(libs.failed.size(), 1u);
+  EXPECT_EQ(libs.failed[0], "definitely_not_a_real_library_xyz");
+  EXPECT_TRUE(libs.archives.empty());
 }
 
 TEST(Ffi_Link, symbols_are_unavailable_before_the_library_is_loaded) {
@@ -389,8 +390,8 @@ TEST(Ffi_Link, loads_library_from_search_path_and_calls_into_it) {
   sun::LinkOptions opts;
   opts.libraries = {"sun_ffi_testlib"};
   opts.searchPaths = {ffiTestLibDir()};
-  auto failed = sun::loadDynamicLibraries(opts);
-  ASSERT_TRUE(failed.empty()) << "could not load sun_ffi_testlib";
+  auto libs = sun::loadNativeLibraries(opts);
+  ASSERT_TRUE(libs.failed.empty()) << "could not load sun_ffi_testlib";
 
   auto value = executeString(R"(
     extern "C" function sun_ffi_triple(x: i32) i32;
@@ -414,8 +415,66 @@ TEST(Ffi_Link, loads_library_given_as_an_explicit_path) {
 #else
   opts.libraries = {ffiTestLibDir() + "/libsun_ffi_testlib.so"};
 #endif
-  auto failed = sun::loadDynamicLibraries(opts);
-  EXPECT_TRUE(failed.empty());
+  auto libs = sun::loadNativeLibraries(opts);
+  EXPECT_TRUE(libs.failed.empty());
+}
+
+TEST(Ffi_Link, finds_static_archive_when_no_shared_library_exists) {
+  // -l resolution falls back to lib<name>.a in the -L directories; the
+  // archive comes back by path instead of being dlopen'd (issue #133).
+  if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
+
+  sun::LinkOptions opts;
+  opts.libraries = {"sun_ffi_static_testlib"};
+  opts.searchPaths = {ffiTestLibDir()};
+  auto libs = sun::loadNativeLibraries(opts);
+  EXPECT_TRUE(libs.failed.empty());
+  ASSERT_EQ(libs.archives.size(), 1u);
+  EXPECT_EQ(libs.archives[0],
+            ffiTestLibDir() + "/libsun_ffi_static_testlib.a");
+}
+
+TEST(Ffi_Link, accepts_static_archive_given_as_an_explicit_path) {
+  if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
+
+  std::string path = ffiTestLibDir() + "/libsun_ffi_static_testlib.a";
+  sun::LinkOptions opts;
+  opts.libraries = {path};
+  auto libs = sun::loadNativeLibraries(opts);
+  EXPECT_TRUE(libs.failed.empty());
+  ASSERT_EQ(libs.archives.size(), 1u);
+  EXPECT_EQ(libs.archives[0], path);
+}
+
+TEST(Ffi_Link, jit_resolves_symbols_from_a_static_archive) {
+  // The end-to-end path for `sun -L. -lslot shim.sun` with libslot.a: the
+  // archive is registered with the JIT's own linker, and calls into it work.
+  if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
+  initTestEnvironment();
+
+  auto driver = Driver::createForJIT();
+  driver->addJITStaticLibrary(ffiTestLibDir() +
+                              "/libsun_ffi_static_testlib.a");
+  auto value = driver->executeString(R"(
+    extern "C" function sun_ffi_slot_set(v: i32) void;
+    extern "C" function sun_ffi_slot_get() i32;
+
+    function main() i32 {
+        unsafe {
+            sun_ffi_slot_set(37);
+            return sun_ffi_slot_get() + 5;
+        };
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Ffi_Link, unreadable_static_archive_is_a_clear_error) {
+  initTestEnvironment();
+  auto driver = Driver::createForJIT();
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      driver->addJITStaticLibrary("/nonexistent/libnothing.a"),
+      "cannot load static archive");
 }
 
 // ============================================================================
@@ -496,7 +555,7 @@ TEST(Ffi_Struct, c_writes_through_a_ref_to_a_sun_object) {
   sun::LinkOptions opts;
   opts.libraries = {"sun_ffi_testlib"};
   opts.searchPaths = {ffiTestLibDir()};
-  ASSERT_TRUE(sun::loadDynamicLibraries(opts).empty());
+  ASSERT_TRUE(sun::loadNativeLibraries(opts).failed.empty());
 
   auto value = executeString(R"(
     class TS { var sec: i64; var nsec: i64; }
@@ -588,7 +647,7 @@ bool loadFfiTestLib() {
   sun::LinkOptions opts;
   opts.libraries = {"sun_ffi_testlib"};
   opts.searchPaths = {ffiTestLibDir()};
-  return sun::loadDynamicLibraries(opts).empty();
+  return sun::loadNativeLibraries(opts).failed.empty();
 }
 
 }  // namespace
