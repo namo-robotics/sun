@@ -436,6 +436,14 @@ void Driver::registerArchivesWithJIT() {
   }
 }
 
+void Driver::addJITStaticLibrary(const std::string& path) {
+  if (!ctx->jit) return;
+  if (auto err = ctx->jit->addStaticLibrary(path)) {
+    logAndThrowError("cannot load static archive '" + path +
+                     "': " + llvm::toString(std::move(err)));
+  }
+}
+
 void Driver::analyzeProgram(BlockExprAST& blockAst, Parser& parser) {
   // Lower the lossless parse tree into the core AST before semantic analysis
   LoweringPass lowering;

@@ -504,20 +504,26 @@ int main(int argc, char* argv[]) {
   }
 
   // JIT execution mode (default)
-  // dlopen any -l libraries into this process first: the JIT resolves extern
-  // symbols by searching the current process, so they have to be loaded
-  // before the module referencing them is materialized.
+  // dlopen any -l shared libraries into this process first: the JIT resolves
+  // extern symbols by searching the current process, so they have to be
+  // loaded before the module referencing them is materialized. A -l name
+  // that resolves to a static archive instead cannot be dlopen'd; it is
+  // registered with the JIT's own linker below, once the JIT exists.
   // A library that fails to load is only a warning: libc/libm are already
   // resident (and glibc's libm.so is a linker script dlopen cannot read), so
   // their symbols resolve anyway. If one is genuinely missing, the JIT
   // reports the unresolved symbol with more precision than a guess here.
-  for (const auto& lib : sun::loadDynamicLibraries(linkOpts)) {
+  auto nativeLibs = sun::loadNativeLibraries(linkOpts);
+  for (const auto& lib : nativeLibs.failed) {
     llvm::errs() << "Warning: could not load library '" << lib
                  << "'; continuing in case its symbols are already present\n";
   }
 
   try {
     auto driver = Driver::createForJIT("main_module", debugInfo);
+    for (const auto& archive : nativeLibs.archives) {
+      driver->addJITStaticLibrary(archive);
+    }
     driver->setDumpIR(emitIR);
     driver->setDumpProtoSun(dumpProtoSun);
     if (debugMode) {
