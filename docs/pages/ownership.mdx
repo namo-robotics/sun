@@ -192,6 +192,11 @@ function main() i32 {
 }
 ```
 
+The caller owns the result even when it ignores it. A call used as a
+statement (`create_point(1, 2);`) produces a temporary that nobody takes,
+and it is dropped — its `deinit` runs — at the end of the enclosing scope,
+the same as a discarded constructor temporary.
+
 ## Constants
 
 A binding declared with `const` instead of `var` never changes: it cannot be
