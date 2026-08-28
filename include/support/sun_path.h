@@ -1,5 +1,7 @@
 #pragma once
 
+#include <llvm/Support/FileSystem.h>
+
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
@@ -81,6 +83,35 @@ class SunPath {
       auto cwd = std::filesystem::current_path().string();
       setenv("SUN_PATH", cwd.c_str(), 0);
     }
+  }
+
+  /// The system-wide directories installed bundles live in, existing ones
+  /// only. Two directories relative to the compiler binary come first, so a
+  /// relocated or Homebrew-prefixed install finds its own bundles; then the
+  /// fixed prefixes the Debian package (/usr) and Homebrew
+  /// (/opt/homebrew, /usr/local — macOS keeps /usr/lib read-only) install
+  /// to.
+  static std::vector<std::filesystem::path> systemInstallDirs() {
+    std::vector<std::filesystem::path> dirs;
+    auto addIfExists = [&](const std::filesystem::path& dir) {
+      if (std::filesystem::exists(dir) &&
+          std::find(dirs.begin(), dirs.end(), dir) == dirs.end()) {
+        dirs.push_back(dir);
+      }
+    };
+
+    std::string exe = llvm::sys::fs::getMainExecutable(
+        "sun", reinterpret_cast<void*>(&SunPath::systemInstallDirs));
+    if (!exe.empty()) {
+      auto prefix = std::filesystem::path(exe).parent_path().parent_path();
+      addIfExists(prefix / "lib" / "sun");
+      addIfExists(prefix / "share" / "sun" / "stdlib");
+    }
+    for (const char* prefix : {"/usr", "/usr/local", "/opt/homebrew"}) {
+      addIfExists(std::filesystem::path(prefix) / "lib" / "sun");
+      addIfExists(std::filesystem::path(prefix) / "share" / "sun" / "stdlib");
+    }
+    return dirs;
   }
 };
 

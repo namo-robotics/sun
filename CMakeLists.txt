@@ -12,8 +12,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)  # Useful for clang-tidy, IDEs, etc.
 set(CMAKE_PCH_INSTANTIATE_TEMPLATES ON)
 
 # lld links debug binaries much faster than the default bfd linker
-# (clang-only, like the -Xclang PCH flags below — GCC configures still work)
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+# (clang-only, like the -Xclang PCH flags below — GCC configures still work).
+# Not on macOS: Apple's clang has no bundled lld and ld64 is fine.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT APPLE)
     add_link_options(-fuse-ld=lld)
 endif()
 
@@ -32,10 +33,42 @@ message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 
 # ------------------------------------------------------------------
-# Find Protobuf (for AST serialization)
+# Protobuf (for AST serialization)
 # ------------------------------------------------------------------
-find_package(Protobuf REQUIRED)
-message(STATUS "Found Protobuf ${Protobuf_VERSION}")
+# Bundled by default: one pinned protobuf, built from source and linked
+# statically, so every platform compiles the same descriptor API and protoc
+# generates code matching the runtime exactly. System protobuf versions
+# drift hard (Homebrew ships the Abseil generation with a different
+# descriptor API than Ubuntu's 3.21), which repeatedly broke the macOS
+# build. 3.21.12 is pinned because it matches Ubuntu 24.04 and is the last
+# generation without the Abseil dependency. -DSUN_BUNDLED_PROTOBUF=OFF
+# restores the system search (useful offline; needs libprotoc-dev).
+option(SUN_BUNDLED_PROTOBUF
+       "Build the pinned protobuf from source instead of using the system's"
+       ON)
+if(SUN_BUNDLED_PROTOBUF)
+    include(FetchContent)
+    set(protobuf_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(protobuf_INSTALL OFF CACHE BOOL "" FORCE)
+    set(protobuf_WITH_ZLIB OFF CACHE BOOL "" FORCE)
+    set(protobuf_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    # Static archives linked into executables must be relocatable.
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+    FetchContent_Declare(protobuf
+        URL https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protobuf-cpp-3.21.12.tar.gz
+        URL_HASH SHA256=4eab9b524aa5913c6fffb20b2a8abf5ef7f95a80bc0701f3a6dbb4c607f73460
+    )
+    # protobuf 3.21 predates C++20 cleanups; build it as C++17 (the standard
+    # Ubuntu builds it with). The ABI is unaffected.
+    set(SUN_SAVED_CXX_STANDARD ${CMAKE_CXX_STANDARD})
+    set(CMAKE_CXX_STANDARD 17)
+    FetchContent_MakeAvailable(protobuf)
+    set(CMAKE_CXX_STANDARD ${SUN_SAVED_CXX_STANDARD})
+    message(STATUS "Using bundled protobuf 3.21.12 (static)")
+else()
+    find_package(Protobuf REQUIRED)
+    message(STATUS "Found system Protobuf ${Protobuf_VERSION}")
+endif()
 
 # ------------------------------------------------------------------
 # Generate Protobuf sources (AST serialization + Moon library)
@@ -240,17 +273,27 @@ target_include_directories(sun_lib
 # on libprotobuf, so they must be static together to avoid two copies of the
 # protobuf runtime).
 find_package(Threads REQUIRED)
-find_library(PROTOBUF_STATIC_LIB NAMES libprotobuf.a)
-find_library(PROTOC_STATIC_LIB NAMES libprotoc.a)
-if(PROTOBUF_STATIC_LIB AND PROTOC_STATIC_LIB)
-    message(STATUS "Linking protobuf statically: ${PROTOC_STATIC_LIB} ${PROTOBUF_STATIC_LIB}")
-    target_include_directories(sun_lib PUBLIC ${Protobuf_INCLUDE_DIRS})
-    target_link_libraries(sun_lib PUBLIC LLVM ${PROTOC_STATIC_LIB} ${PROTOBUF_STATIC_LIB} Threads::Threads)
+if(SUN_BUNDLED_PROTOBUF)
+    # The bundled build's own static targets, carrying their include dirs.
+    target_link_libraries(sun_lib PUBLIC LLVM protobuf::libprotoc
+                          protobuf::libprotobuf Threads::Threads)
 else()
-    # libprotoc-dev provides both the headers (compiler/importer.h) and the
-    # static archives; without it neither the static nor the shared link works
-    message(FATAL_ERROR "libprotoc static archive not found: install libprotoc-dev "
-                        "(alongside libprotobuf-dev) to build the compiler")
+    find_library(PROTOBUF_STATIC_LIB NAMES libprotobuf.a
+                 HINTS /opt/homebrew/lib /usr/local/lib)
+    find_library(PROTOC_STATIC_LIB NAMES libprotoc.a
+                 HINTS /opt/homebrew/lib /usr/local/lib)
+    if(PROTOBUF_STATIC_LIB AND PROTOC_STATIC_LIB)
+        message(STATUS "Linking protobuf statically: ${PROTOC_STATIC_LIB} ${PROTOBUF_STATIC_LIB}")
+        target_include_directories(sun_lib PUBLIC ${Protobuf_INCLUDE_DIRS})
+        target_link_libraries(sun_lib PUBLIC LLVM ${PROTOC_STATIC_LIB} ${PROTOBUF_STATIC_LIB} Threads::Threads)
+    else()
+        # libprotoc-dev provides both the headers (compiler/importer.h) and
+        # the static archives; without it neither the static nor the shared
+        # link works
+        message(FATAL_ERROR "libprotoc static archive not found: install libprotoc-dev "
+                            "(alongside libprotobuf-dev) to build the compiler, "
+                            "or configure with -DSUN_BUNDLED_PROTOBUF=ON")
+    endif()
 endif()
 
 # Ensure the library uses the same definitions/includes as LLVM
@@ -347,6 +390,8 @@ if(NOT SKIP_STDLIB)
         ${CMAKE_SOURCE_DIR}/stdlib/proto_wire.sun
         ${CMAKE_SOURCE_DIR}/stdlib/json.sun
         ${CMAKE_SOURCE_DIR}/stdlib/bigint.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/target_linux.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/target_darwin.sun
     )
 
     # Built with -g: debug compiles can step into stdlib; non-debug compiles
@@ -365,7 +410,7 @@ if(NOT SKIP_STDLIB)
     # Cross-compiled stdlib bundles live in per-target directories under the
     # same canonical name (build/<triple>/stdlib.moon). Bundles are resolved
     # by exact name; the metadata's target triple validates the match.
-    set(SUN_CROSS_STDLIB_TARGETS "aarch64-linux-gnu" CACHE STRING
+    set(SUN_CROSS_STDLIB_TARGETS "aarch64-linux-gnu;arm64-apple-darwin" CACHE STRING
         "Triples to build cross stdlib .moon bundles for (empty disables)")
     set(CROSS_MOONS "")
     foreach(cross_triple ${SUN_CROSS_STDLIB_TARGETS})

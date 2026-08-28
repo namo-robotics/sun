@@ -4,6 +4,8 @@
 // __ftruncate/__unlink/__rename/__mkdir/__rmdir/__write/__read intrinsics.
 // All operations call libc (see include/codegen/intrinsics/libc.h).
 
+#include <llvm/TargetParser/Triple.h>
+
 #include "ast.h"
 #include "codegen/codegen.h"
 #include "codegen/codegen_visitor.h"
@@ -38,18 +40,22 @@ static Function* getOrCreateFileOpenHelper(llvm::Module* module,
   Value* path = &*argIt++;
   Value* userFlags = &*argIt++;
 
-  // Map user flags to open(2) flags. The O_* values are Linux's asm-generic
-  // set, shared by x86-64 and aarch64:
-  //   0 -> O_RDONLY (0)
-  //   1 -> O_WRONLY|O_CREAT|O_TRUNC  (0x241)
-  //   2 -> O_WRONLY|O_CREAT|O_APPEND (0x441)
+  // Map user flags to open(2) flags. The O_* values differ per OS: Linux's
+  // asm-generic set (shared by x86-64 and aarch64) has O_CREAT=0x40,
+  // O_TRUNC=0x200, O_APPEND=0x400; Darwin has O_CREAT=0x200, O_TRUNC=0x400,
+  // O_APPEND=0x8.
+  //   0 -> O_RDONLY
+  //   1 -> O_WRONLY|O_CREAT|O_TRUNC  (Linux 0x241, Darwin 0x601)
+  //   2 -> O_WRONLY|O_CREAT|O_APPEND (Linux 0x441, Darwin 0x209)
+  bool isDarwin = llvm::Triple(module->getTargetTriple()).isOSDarwin();
   Value* isWrite =
       builder.CreateICmpEQ(userFlags, ConstantInt::get(i32Ty, 1), "is_write");
   Value* isAppend =
       builder.CreateICmpEQ(userFlags, ConstantInt::get(i32Ty, 2), "is_append");
   Value* flags = builder.CreateSelect(
-      isWrite, ConstantInt::get(i32Ty, 0x241),
-      builder.CreateSelect(isAppend, ConstantInt::get(i32Ty, 0x441),
+      isWrite, ConstantInt::get(i32Ty, isDarwin ? 0x601 : 0x241),
+      builder.CreateSelect(isAppend,
+                           ConstantInt::get(i32Ty, isDarwin ? 0x209 : 0x441),
                            ConstantInt::get(i32Ty, 0)),
       "open_flags");
 

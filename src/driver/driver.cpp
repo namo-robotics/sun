@@ -395,12 +395,13 @@ void Driver::collectNativeArchives(const std::set<std::string>& linkedModules) {
 }
 
 // Try to load the system shared library matching a bundled archive
-// (libssl.a -> libssl.so / libssl.so.3). The loader's own search path finds
-// it, so no -L is needed.
+// (libssl.a -> libssl.so / libssl.so.3, or the .dylib spellings on macOS).
+// The loader's own search path finds it, so no -L is needed.
 static bool loadSharedCounterpart(const std::filesystem::path& archive) {
   std::string stem = archive.stem().string();  // "libssl"
   if (stem.rfind("lib", 0) != 0) return false;
-  for (const char* suffix : {".so", ".so.3", ".so.1.1"}) {
+  for (const char* suffix : {".so", ".so.3", ".so.1.1", ".dylib", ".3.dylib",
+                             ".1.1.dylib"}) {
     std::string candidate = stem + suffix;
     if (!llvm::sys::DynamicLibrary::LoadLibraryPermanently(candidate.c_str(),
                                                            nullptr)) {
@@ -900,8 +901,10 @@ sun::SunValue Driver::executeFile(const std::string& filename, int argc,
   std::vector<std::string> protoFiles = protoFiles_;
 
   if (const auto* manifest = sun::ManifestProcessor::findManifest(*preAst)) {
-    // Manifest found - collect all dependencies
-    auto resolved = sun::ManifestProcessor::process(*manifest, baseDirPath);
+    // Manifest found - collect all dependencies. The module's triple picks
+    // which target: blocks apply (the host's for JIT execution).
+    auto resolved = sun::ManifestProcessor::process(
+        *manifest, baseDirPath, ctx->mainModule->getTargetTriple());
     sunFiles = std::move(resolved.sunFiles);
     moonImports.insert(moonImports.end(), resolved.moonImports.begin(),
                        resolved.moonImports.end());
@@ -1002,8 +1005,10 @@ void Driver::compileFile(const std::string& filename) {
   std::vector<std::string> protoFiles = protoFiles_;
 
   if (const auto* manifest = sun::ManifestProcessor::findManifest(*preAst)) {
-    // Manifest found - collect all dependencies
-    auto resolved = sun::ManifestProcessor::process(*manifest, baseDirPath);
+    // Manifest found - collect all dependencies. The module's triple picks
+    // which target: blocks apply (the host's for JIT execution).
+    auto resolved = sun::ManifestProcessor::process(
+        *manifest, baseDirPath, ctx->mainModule->getTargetTriple());
     sunFiles = std::move(resolved.sunFiles);
     moonImports.insert(moonImports.end(), resolved.moonImports.begin(),
                        resolved.moonImports.end());

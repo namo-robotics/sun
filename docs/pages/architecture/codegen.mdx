@@ -73,7 +73,7 @@ holding both its header and the sources that implement it.
 | `loops/` | `for`, `while` and `for-in`, and the jumps out of them |
 | `errors/` | `try`/`catch`/`throw` and unwinding calls |
 | `support/` | Helpers holding no codegen state: type checks, scalar ops, field access |
-| `abi/` | The C boundary: per-target ABI classification and the extern "C" emitter |
+| `abi/` | The C boundary: per-target ABI classification (x86-64 SysV; AArch64 AAPCS64, ELF and Darwin variants) and the extern "C" emitter |
 | `intrinsics/` | Compiler intrinsics and libc built-ins, by area, plus thread support |
 
 Each component's `*_generator.cpp` holds only the forwarders it uses to reach

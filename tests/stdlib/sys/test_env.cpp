@@ -134,6 +134,8 @@ TEST_F(Stdlib_Sys_Env, cwd_reports_the_working_directory) {
 }
 
 TEST_F(Stdlib_Sys_Env, set_cwd_changes_and_cwd_reflects_it) {
+  // "/" rather than "/tmp": on macOS /tmp is a symlink to /private/tmp, so
+  // the kernel's idea of the directory would not match the literal.
   auto value = executeStringWithStdlib(R"(
     using sun;
     using sun.env;
@@ -141,9 +143,9 @@ TEST_F(Stdlib_Sys_Env, set_cwd_changes_and_cwd_reflects_it) {
     function main() i32 {
         var a = make_heap_allocator();
         try {
-            set_cwd("/tmp");
+            set_cwd("/");
             var dir = get_cwd(a);
-            if (not dir.equals_literal("/tmp")) { return 1; }
+            if (not dir.equals_literal("/")) { return 1; }
         } catch (e: IError) {
             return 2;
         }
@@ -152,7 +154,7 @@ TEST_F(Stdlib_Sys_Env, set_cwd_changes_and_cwd_reflects_it) {
   )");
   EXPECT_EQ(value, 0);
   // TearDown restores it, but check the change really happened.
-  EXPECT_EQ(std::filesystem::current_path(), std::filesystem::path("/tmp"));
+  EXPECT_EQ(std::filesystem::current_path(), std::filesystem::path("/"));
 }
 
 TEST_F(Stdlib_Sys_Env, set_cwd_to_a_missing_directory_throws) {

@@ -41,7 +41,8 @@ MoonBuildReport MoonBuilder::build(const std::string& entrypoint,
   // ---- Inputs: manifest (if any) + entrypoint itself ----
   MoonBuildReport report;
   report.moonImports = options.extraMoons;
-  if (auto manifest = ManifestProcessor::fromEntrypointFile(entrypoint)) {
+  if (auto manifest = ManifestProcessor::fromEntrypointFile(
+          entrypoint, options.targetTriple)) {
     report.sunFiles = std::move(manifest->sunFiles);
     report.moonImports.insert(report.moonImports.end(),
                               manifest->moonImports.begin(),

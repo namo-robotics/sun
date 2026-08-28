@@ -18,7 +18,10 @@ fs::path freshDir(const std::string& name) {
   fs::path dir = fs::temp_directory_path() / "sun_config_tests" / name;
   fs::remove_all(dir);
   fs::create_directories(dir);
-  return dir;
+  // Canonical, so expected paths match what the config walk produces:
+  // findFrom resolves symlinks, and macOS's temp directory is one
+  // (/var -> /private/var).
+  return fs::canonical(dir);
 }
 
 void writeFile(const fs::path& path, const std::string& content) {

@@ -54,15 +54,19 @@ class ManifestProcessor {
   static std::string expandPathVariables(const std::string& input,
                                          const SunConfig* config = nullptr);
 
-  // Resolve every entry of a manifest against baseDir
+  // Resolve every entry of a manifest against baseDir. `targetTriple` (the
+  // --target value, host when empty) selects which of the manifest's
+  // `target: { <os>: ... }` blocks contribute their entries — the manifest
+  // itself never decides the target, the compilation does.
   static ResolvedManifest process(const ManifestAST& manifest,
-                                  const std::string& baseDir);
+                                  const std::string& baseDir,
+                                  const std::string& targetTriple = "");
 
   // Parse the entrypoint file and resolve its manifest (paths relative to the
   // file's directory). nullopt if the file cannot be read, does not parse, or
   // has no manifest block.
   static std::optional<ResolvedManifest> fromEntrypointFile(
-      const std::string& entrypointPath);
+      const std::string& entrypointPath, const std::string& targetTriple = "");
 };
 
 }  // namespace sun

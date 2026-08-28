@@ -30,6 +30,10 @@ manifest {
     moons: ["lib1.moon", "lib2.moon"]  // Optional: precompiled libraries
     protos: ["schemas/msgs.proto"]     // Optional: protobuf schemas to import
     archives: ["vendor/libfoo.a"]      // Optional: C libraries to carry along
+    target: {                          // Optional: per-OS entries
+        macos: { suns: ["target_darwin.sun"] }
+        linux: { suns: ["target_linux.sun"] }
+    }
 }
 ```
 
@@ -40,9 +44,18 @@ manifest {
 - **archives** — Native static libraries (`.a`) to carry inside the bundle
   being built, so importers link against them without `-l` flags; only
   meaningful with `--emit-moon`. See [C FFI](/c-ffi)
+- **target** — Entries that only apply when compiling for one operating
+  system (`linux`, `macos` or `windows` — the same names `_target_is`
+  accepts). Each block takes the same sections as the manifest itself. The
+  manifest never decides the target: `--target` (or the host, when absent)
+  does, at compile time — the block just says which entries belong to builds
+  for that OS. A block's `suns` are placed **before** the shared list, since
+  per-OS files typically define the primitives shared code consumes; this is
+  how the standard library carries `target_linux.sun` and `target_darwin.sun`
+  in one manifest.
 
-All fields are optional (entries are newline-separated; a trailing `;` is
-tolerated). A minimal program needs only a `main()` function.
+All fields are optional (entries are newline-separated; a trailing `,` or `;`
+is tolerated). A minimal program needs only a `main()` function.
 
 ### Path Resolution
 
@@ -345,10 +358,10 @@ which is searched without any `SUN_PATH` setting.
 Releases carry `stdlib.moon` and `tls.moon` as downloads of their own, for
 dropping next to a compiler you already have.
 
-A bundle's bitcode is compiled for one architecture, and the compiler rejects
-one built for another — so each file is named for its target. Take the one
-matching yours and install it under the canonical name, since manifests
-resolve bundles by exact file name:
+A bundle's bitcode is compiled for one architecture *and* operating system,
+and the compiler rejects one built for another — so each file is named for
+its target. Take the one matching yours and install it under the canonical
+name, since manifests resolve bundles by exact file name:
 
 ```bash
 curl -LO https://github.com/namo-robotics/sun/releases/download/dev/stdlib-x86_64-linux-gnu.moon
@@ -359,11 +372,15 @@ Any directory on `SUN_PATH` — or one passed with `--lib-path`, or listed in a
 `sun-config.json` — works as well as `/usr/lib/sun`.
 
 A bundle for another target goes in a directory named for its triple, which
-is where a cross build looks:
+is where a cross build looks — the same for an aarch64 Linux target or a
+macOS one:
 
 ```bash
 mkdir -p ~/.sun/lib/aarch64-linux-gnu
 cp stdlib-aarch64-linux-gnu.moon ~/.sun/lib/aarch64-linux-gnu/stdlib.moon
+
+mkdir -p ~/.sun/lib/arm64-apple-darwin
+cp stdlib-arm64-apple-darwin.moon ~/.sun/lib/arm64-apple-darwin/stdlib.moon
 ```
 
 Picking the wrong file is not silent — the compiler names both triples:

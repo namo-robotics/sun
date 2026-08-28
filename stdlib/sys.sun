@@ -52,8 +52,9 @@ public module sun {
   // struct addrinfo lays out the same on glibc and musl 64-bit Linux:
   //   ai_flags@0 ai_family@4 ai_socktype@8 ai_protocol@12 (i32 each),
   //   ai_addrlen@16 (u32, padded to 8), ai_addr@24 ai_canonname@32 ai_next@40
-  //   (pointers). Callers walk the result list with _load at those offsets,
-  //   so no struct mirror is needed.
+  //   (pointers). macOS swaps the two middle pointers: ai_canonname@24,
+  //   ai_addr@32, ai_next@40. Callers walk the result list with _load at
+  //   those offsets (guarded by _target_is), so no struct mirror is needed.
 
   extern "C" function c_getaddrinfo(node: raw_ptr<u8>, service: raw_ptr<u8>, hints: raw_ptr<u8>, res: raw_ptr<raw_ptr<u8>>) i32 as "getaddrinfo";
   extern "C" function c_freeaddrinfo(res: raw_ptr<u8>) void as "freeaddrinfo";
@@ -99,14 +100,14 @@ public module sun {
   extern "C" function c_strtod(s: raw_ptr<u8>, end: raw_ptr<u8>) f64 as "strtod";
 
   // --- errno ---------------------------------------------------------------
-
-  // Both glibc and musl export __errno_location for the per-thread errno.
-  extern "C" function c_errno_location() raw_ptr<i32> as "__errno_location";
+  // The extern behind errno differs per OS (glibc/musl __errno_location,
+  // macOS __error); each target_<os>.sun declares its own and wraps it as
+  // errno_ptr().
 
   // The last error a C call reported. Only meaningful right after a call that
   // signalled failure.
   function errno() i32 {
-    return unsafe { _load<i32>(c_errno_location(), 0); };
+    return unsafe { _load<i32>(errno_ptr(), 0); };
   }
 
   // ==========================================================================
@@ -161,13 +162,8 @@ public module sun {
     }
   }
 
-  // The fixed head of struct dirent. d_name is a flexible char[] at byte 19.
-  // 64-bit d_ino/d_off are unconditional on 64-bit Linux (readdir == readdir64)
-  // and identical on glibc and musl.
-  class Dirent {
-    var d_ino: u64;  // @0
-    var d_off: i64;  // @8
-    var d_reclen: u16;  // @16
-    var d_type: u8;  // @18
-  }
+  // struct dirent has no mirror here: its head differs per OS (Linux puts
+  // d_type at byte 18 and d_name at 19; macOS has a u16 d_namlen before a
+  // d_type at 20 and d_name at 21), so sun.io reads the two fields it needs
+  // through _target_is-guarded byte offsets instead.
 }

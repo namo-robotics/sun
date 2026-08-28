@@ -346,10 +346,17 @@ int main(int argc, char* argv[]) {
                     "-c\n";
     return 1;
   }
+  // macOS has no fully static binaries: Apple ships no static libSystem or
+  // startup objects, and its linker rejects -static for executables.
+  bool darwinTarget = sun::effectiveLinkTriple(targetTriple).isOSDarwin();
+  if (sawStatic && darwinTarget) {
+    llvm::errs() << "Error: --static is not supported for macOS targets\n";
+    return 1;
+  }
   // Linking is static by default: one self-contained binary, the deployment
   // shape embedded targets want. --dynamic restores shared-library linking
-  // (needed for .so-only vendor libraries).
-  linkOpts.staticLink = !sawDynamic;
+  // (needed for .so-only vendor libraries). macOS is always dynamic.
+  linkOpts.staticLink = !sawDynamic && !darwinTarget;
 
   // Initialize library cache
   sun::LibraryCache::instance().setTargetTriple(targetTriple);

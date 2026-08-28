@@ -324,7 +324,12 @@ TEST(Tooling_Backend_DebugInfo, gdb_breaks_reads_args_and_steps) {
       "gdb --batch -q -ex 'break add' -ex run -ex 'info args' "
       "-ex next -ex 'print sum' " +
       binary + " > " + outPath + " 2>&1";
-  ASSERT_EQ(WEXITSTATUS(std::system(cmd.c_str())), 0);
+  // Through a variable: macOS's WEXITSTATUS takes its argument's address
+  // (union-wait heritage), so it rejects an rvalue.
+  int rc = std::system(cmd.c_str());
+  // The transcript in the failure message: a nonzero exit alone (a command
+  // erroring in batch mode, the debuggee failing to launch) says nothing.
+  ASSERT_EQ(WEXITSTATUS(rc), 0) << readFile(outPath);
 
   std::string out = readFile(outPath);
   EXPECT_NE(out.find("Breakpoint 1, add (a=3, b=4)"), std::string::npos) << out;
@@ -356,7 +361,12 @@ function main() i32 { return sununiqadd(3, 4); }
       "-ex 'break sununiqadd' -ex run -ex 'info args' -ex 'print a + b' "
       "--args build/sun -g " +
       srcPath + " > " + outPath + " 2>&1";
-  ASSERT_EQ(WEXITSTATUS(std::system(cmd.c_str())), 0);
+  // Through a variable: macOS's WEXITSTATUS takes its argument's address
+  // (union-wait heritage), so it rejects an rvalue.
+  int rc = std::system(cmd.c_str());
+  // The transcript in the failure message: a nonzero exit alone (a command
+  // erroring in batch mode, the debuggee failing to launch) says nothing.
+  ASSERT_EQ(WEXITSTATUS(rc), 0) << readFile(outPath);
 
   std::string out = readFile(outPath);
   EXPECT_NE(out.find("Breakpoint 1, sununiqadd (a=3, b=4)"), std::string::npos)
@@ -374,13 +384,27 @@ TEST(Tooling_Backend_DebugInfo, lldb_breaks_reads_variables_and_steps) {
   // DEBUGINFOD_URLS= : lldb otherwise blocks on unreachable symbol servers.
   // disable-aslr false: sandboxes may deny the personality() syscall lldb
   // uses to turn ASLR off in the debuggee.
+  // `timeout` is GNU coreutils and absent on macOS, so it guards the run
+  // only where it exists (mac lldb has no debuginfod to hang on).
+  // --shlib scopes the breakpoint to our binary: --name matches across
+  // every loaded module, and on macOS libobjc has an `add` of its own that
+  // fires during process startup, long before main.
+  std::string guard = haveTool("timeout") ? "timeout 120 " : "";
+  std::string module =
+      std::filesystem::path(binary).filename().string();
   std::string outPath = ::testing::TempDir() + "sun_debug_info_lldb.out";
-  std::string cmd = "timeout 120 env DEBUGINFOD_URLS= " + lldb +
+  std::string cmd = guard + "env DEBUGINFOD_URLS= " + lldb +
                     " -b -o 'settings set target.disable-aslr false'"
-                    " -o 'breakpoint set --name add' -o run"
+                    " -o 'breakpoint set --name add --shlib " + module +
+                    "' -o run"
                     " -o 'frame variable' -o next -o 'print sum' " +
                     binary + " > " + outPath + " 2>&1";
-  ASSERT_EQ(WEXITSTATUS(std::system(cmd.c_str())), 0);
+  // Through a variable: macOS's WEXITSTATUS takes its argument's address
+  // (union-wait heritage), so it rejects an rvalue.
+  int rc = std::system(cmd.c_str());
+  // The transcript in the failure message: a nonzero exit alone (a command
+  // erroring in batch mode, the debuggee failing to launch) says nothing.
+  ASSERT_EQ(WEXITSTATUS(rc), 0) << readFile(outPath);
 
   std::string out = readFile(outPath);
   EXPECT_NE(out.find("a = 3"), std::string::npos) << out;

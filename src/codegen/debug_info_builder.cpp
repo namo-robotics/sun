@@ -6,6 +6,7 @@
 #include <llvm/IR/DataLayout.h>
 #include <llvm/IR/DebugInfo.h>
 #include <llvm/IR/DerivedTypes.h>
+#include <llvm/TargetParser/Triple.h>
 
 #include <filesystem>
 #include <set>
@@ -23,7 +24,11 @@ DebugInfoBuilder::DebugInfoBuilder(llvm::Module* module, bool enabled)
                           DEBUG_METADATA_VERSION);
   }
   if (!module->getModuleFlag("Dwarf Version")) {
-    module->addModuleFlag(Module::Warning, "Dwarf Version", 5);
+    // DWARF 5 except on Apple targets, whose toolchain (ld64's debug map,
+    // dsymutil, older lldb) is happiest with 4 — the same default clang uses
+    // there.
+    bool darwin = llvm::Triple(module->getTargetTriple()).isOSDarwin();
+    module->addModuleFlag(Module::Warning, "Dwarf Version", darwin ? 4 : 5);
   }
 }
 

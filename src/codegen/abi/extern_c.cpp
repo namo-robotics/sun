@@ -19,6 +19,78 @@ llvm::Triple targetTriple(const llvm::Module* module) {
   return llvm::Triple(triple);
 }
 
+// Which of the signature's integers are signed, read off the Sun-level types
+// the analyzer resolved. Darwin arm64 needs this to pick between signext and
+// zeroext; targets that never extend ignore it.
+abi::SignednessInfo signednessOf(const PrototypeAST& proto) {
+  abi::SignednessInfo signs;
+  if (const sun::TypePtr& ret = proto.getResolvedReturnType()) {
+    signs.retSigned = ret->isIntegral() && ret->isSigned();
+  }
+  for (const sun::TypePtr& param : proto.getResolvedParamTypes()) {
+    signs.paramSigned.push_back(param && param->isIntegral() &&
+                                param->isSigned());
+  }
+  return signs;
+}
+
+// Attach the attributes a lowered signature requires — sret, byval and their
+// alignments, HFA alignstack, and integer extension. Applied to both the
+// declaration and every call site: LLVM lowers a call from the call site's
+// attributes, so a declaration-only sret or signext would silently vanish.
+// `Target` is llvm::Function or llvm::CallBase; both spell the setters the
+// same way.
+template <typename Target>
+void attachLoweringAttributes(Target* target,
+                              const abi::SignatureLowering& lowering,
+                              llvm::LLVMContext& llvmCtx) {
+  unsigned idx = 0;
+
+  auto addAlign = [&](unsigned at, uint64_t align) {
+    target->addParamAttr(at, llvm::Attribute::getWithAlignment(
+                                 llvmCtx, llvm::Align(align ? align : 1)));
+  };
+  auto extension = [](abi::Extend extend) {
+    return extend == abi::Extend::Sign ? llvm::Attribute::SExt
+                                       : llvm::Attribute::ZExt;
+  };
+
+  if (lowering.usesSret()) {
+    target->addParamAttr(idx, llvm::Attribute::getWithStructRetType(
+                                  llvmCtx, lowering.ret.type));
+    addAlign(idx, lowering.ret.align);
+    ++idx;
+  } else if (lowering.ret.extend != abi::Extend::None) {
+    target->addRetAttr(extension(lowering.ret.extend));
+  }
+
+  for (const auto& param : lowering.params) {
+    if (param.isIndirect()) {
+      // SysV spells "in memory" as a byval pointer; AAPCS64 passes a plain
+      // pointer to a caller-made copy, so no attribute there.
+      if (param.indirectByval) {
+        target->addParamAttr(
+            idx, llvm::Attribute::getWithByValType(llvmCtx, param.type));
+        addAlign(idx, param.align);
+      }
+      ++idx;
+    } else if (param.isCoerced()) {
+      for (size_t i = 0; i < param.pieces.size(); ++i, ++idx) {
+        if (param.stackAlign) {
+          target->addParamAttr(idx,
+                               llvm::Attribute::getWithStackAlignment(
+                                   llvmCtx, llvm::Align(param.stackAlign)));
+        }
+      }
+    } else {
+      if (param.extend != abi::Extend::None) {
+        target->addParamAttr(idx, extension(param.extend));
+      }
+      ++idx;
+    }
+  }
+}
+
 }  // namespace
 
 llvm::Function* ExternCEmitter::declare(
@@ -37,9 +109,10 @@ llvm::Function* ExternCEmitter::declare(
     // needsMarshalling() would silently answer no and calls would skip the
     // ABI rewriting the signature was built with.
     if (!lowerings_.count(symbol)) {
+      abi::SignednessInfo signs = signednessOf(proto);
       auto lowering =
           abi::lowerCSignature(targetTriple(module_), returnType, paramTypes,
-                               module_->getDataLayout());
+                               module_->getDataLayout(), &signs);
       llvm::FunctionType* expected = abi::buildLoweredFunctionType(
           lowering, ctx_.getContext(), proto.isCVariadic());
       if (expected != existing->getFunctionType()) {
@@ -59,8 +132,10 @@ llvm::Function* ExternCEmitter::declare(
   // Apply the C ABI to the signature. Scalars and pointers come back
   // unchanged; aggregates are coerced into register-sized pieces or passed
   // through memory. LLVM does none of this on its own.
-  auto lowering = abi::lowerCSignature(targetTriple(module_), returnType,
-                                       paramTypes, module_->getDataLayout());
+  abi::SignednessInfo signs = signednessOf(proto);
+  auto lowering =
+      abi::lowerCSignature(targetTriple(module_), returnType, paramTypes,
+                           module_->getDataLayout(), &signs);
   llvm::FunctionType* funcType = abi::buildLoweredFunctionType(
       lowering, ctx_.getContext(), proto.isCVariadic());
 
@@ -110,42 +185,7 @@ bool ExternCEmitter::needsMarshalling(const llvm::Function* func) const {
 
 void ExternCEmitter::applyAttributes(
     llvm::Function* func, const abi::SignatureLowering& lowering) const {
-  llvm::LLVMContext& llvmCtx = ctx_.getContext();
-  unsigned idx = 0;
-
-  auto addAlign = [&](unsigned at, uint64_t align) {
-    func->addParamAttr(at, llvm::Attribute::getWithAlignment(
-                               llvmCtx, llvm::Align(align ? align : 1)));
-  };
-
-  if (lowering.usesSret()) {
-    func->addParamAttr(
-        idx, llvm::Attribute::getWithStructRetType(llvmCtx, lowering.ret.type));
-    addAlign(idx, lowering.ret.align);
-    ++idx;
-  }
-
-  for (const auto& param : lowering.params) {
-    if (param.isIndirect()) {
-      // SysV spells "in memory" as a byval pointer; AAPCS64 passes a plain
-      // pointer to a caller-made copy, so no attribute there.
-      if (param.indirectByval) {
-        func->addParamAttr(
-            idx, llvm::Attribute::getWithByValType(llvmCtx, param.type));
-        addAlign(idx, param.align);
-      }
-      ++idx;
-    } else if (param.isCoerced()) {
-      for (size_t i = 0; i < param.pieces.size(); ++i, ++idx) {
-        if (param.stackAlign) {
-          func->addParamAttr(idx, llvm::Attribute::getWithStackAlignment(
-                                      llvmCtx, llvm::Align(param.stackAlign)));
-        }
-      }
-    } else {
-      ++idx;
-    }
-  }
+  attachLoweringAttributes(func, lowering, ctx_.getContext());
 }
 
 llvm::AllocaInst* ExternCEmitter::entryAlloca(llvm::Type* type,
@@ -300,6 +340,12 @@ llvm::Value* ExternCEmitter::emitCall(llvm::Function* func,
 
   llvm::Value* result =
       emitCallInsn(func->getFunctionType(), func, loweredArgs);
+
+  // The backend lowers a call from the call site's attributes, not the
+  // declaration's, so the sret/byval/extension story must be retold here.
+  if (auto* callSite = llvm::dyn_cast_or_null<llvm::CallBase>(result)) {
+    attachLoweringAttributes(callSite, *lowering, ctx_.getContext());
+  }
 
   // sret already wrote into our buffer; its address is the Sun-level result.
   if (lowering->usesSret()) return sretSlot;

@@ -363,11 +363,9 @@ TEST_F(Ffi_Abi_CDispatch, unimplemented_targets_are_a_compile_error) {
   EXPECT_THROW(sun::abi::lowerCSignature(
                    llvm::Triple("riscv64-unknown-linux-gnu"), voidTy, {}, dl),
                SunError);
-  // Darwin's AAPCS deviations are not implemented; better to refuse than
-  // miscompile varargs.
-  EXPECT_THROW(sun::abi::lowerCSignature(llvm::Triple("aarch64-apple-darwin"),
-                                         voidTy, {}, dl),
-               SunError);
+  // Apple arm64 has its own AAPCS64 variant — covered in test_darwin_abi.cpp.
+  EXPECT_NO_THROW(sun::abi::lowerCSignature(
+      llvm::Triple("aarch64-apple-darwin"), voidTy, {}, dl));
 }
 
 // ============================================================================
@@ -534,6 +532,9 @@ bool isStaticBinary(const std::string& path) {
 }  // namespace
 
 TEST(Ffi_Abi_StaticLink, host_static_binary_has_no_dynamic_dependencies) {
+  if (llvm::Triple(llvm::sys::getDefaultTargetTriple()).isOSDarwin()) {
+    GTEST_SKIP() << "macOS has no fully static binaries";
+  }
   auto driver = Driver::createForAOT("static_host_module");
   driver->compileString("function main() i32 { return 42; }");
 

@@ -39,6 +39,21 @@ enum class ArgKind {
   Indirect,
 };
 
+// How an integer narrower than 32 bits must be widened at the boundary.
+// Darwin arm64 requires the caller to extend such arguments (and the callee
+// such returns), spelled as the signext/zeroext attributes; ELF leaves the
+// upper bits unspecified and needs neither.
+enum class Extend : uint8_t { None, Zero, Sign };
+
+// Which values in a signature are signed integers, for targets whose rules
+// need to pick between sign- and zero-extension. Parallel to the parameter
+// list. Callers that cannot answer pass nothing and get no extension, which
+// matches every target that ignores signedness.
+struct SignednessInfo {
+  bool retSigned = false;
+  llvm::SmallVector<bool, 8> paramSigned;
+};
+
 struct ArgLowering {
   ArgKind kind = ArgKind::Direct;
   // Coerced: the register piece types (empty for a zero-sized aggregate,
@@ -58,6 +73,9 @@ struct ArgLowering {
   // Coerced: nonzero -> each piece takes alignstack(N), which AAPCS64
   // requires on HFA arguments so stack spills stay 8-byte aligned.
   uint64_t stackAlign = 0;
+  // Direct integer narrower than 32 bits: the widening the target requires,
+  // emitted as signext/zeroext on the declaration and every call site.
+  Extend extend = Extend::None;
 
   bool isDirect() const { return kind == ArgKind::Direct; }
   bool isCoerced() const { return kind == ArgKind::Coerced; }
@@ -73,21 +91,26 @@ struct SignatureLowering {
   bool usesSret() const { return ret.isIndirect(); }
 
   // True when nothing needed rewriting, so the naive signature is already
-  // correct and callers can take their existing fast path.
+  // correct and callers can take their existing fast path. A required
+  // extension counts as rewriting: the call site must carry the attribute.
   bool isTrivial() const {
-    if (!ret.isDirect()) return false;
+    if (!ret.isDirect() || ret.extend != Extend::None) return false;
     for (const auto& p : params)
-      if (!p.isDirect()) return false;
+      if (!p.isDirect() || p.extend != Extend::None) return false;
     return true;
   }
 };
 
 /// Classify a whole signature under the C ABI of `triple`. Throws a
-/// compilation error for targets without implemented rules.
+/// compilation error for targets without implemented rules. `signs` says
+/// which integers are signed, for targets that must pick an extension; null
+/// means "unknown", which only loses the extension attributes such targets
+/// want, so pass it whenever the Sun-level types are at hand.
 SignatureLowering lowerCSignature(const llvm::Triple& triple,
                                   llvm::Type* returnType,
                                   llvm::ArrayRef<llvm::Type*> paramTypes,
-                                  const llvm::DataLayout& dl);
+                                  const llvm::DataLayout& dl,
+                                  const SignednessInfo* signs = nullptr);
 
 /// The LLVM function type implied by a lowering: sret pointer prepended when
 /// needed, coerced parameters expanded in place, indirect ones as pointers.

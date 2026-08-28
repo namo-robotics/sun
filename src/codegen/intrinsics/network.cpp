@@ -8,6 +8,8 @@
 // All socket operations call libc (see include/codegen/intrinsics/libc.h),
 // which keeps the emitted IR target-neutral.
 
+#include <llvm/TargetParser/Triple.h>
+
 #include "codegen/codegen_visitor.h"
 #include "codegen/intrinsics/intrinsics_generator.h"
 #include "codegen/intrinsics/libc.h"
@@ -429,12 +431,15 @@ Value* IntrinsicsGenerator::codegenGetSockOpt(const CallExprAST& expr) {
 // High-level IPv4 socket helpers (build sockaddr_in internally)
 // ===================================================================
 
-// Fill a 16-byte stack sockaddr_in: family/port/addr, rest zeroed. The
-// struct layout (sa_family_t 16-bit at offset 0, port at 2, addr at 4) is
-// identical across Linux targets. Port arrives in host order; sin_port is
-// big-endian, hence the bswap16.
+// Fill a 16-byte stack sockaddr_in: family/port/addr, rest zeroed. Port and
+// addr sit at offsets 2 and 4 everywhere; the first two bytes differ per OS.
+// Linux has a 16-bit sa_family_t at offset 0; Darwin splits them into a
+// one-byte sin_len (the struct size) followed by a one-byte sin_family — a
+// little-endian 16-bit store of AF_INET there would set sin_len=2 and
+// sin_family=0 (AF_UNSPEC), so the bytes are stored individually. Port
+// arrives in host order; sin_port is big-endian, hence the bswap16.
 static Value* buildSockaddrIn(IRBuilder<>& builder, LLVMContext& llvmCtx,
-                              Value* ip, Value* port) {
+                              Value* ip, Value* port, bool isDarwin) {
   auto* i8Ty = Type::getInt8Ty(llvmCtx);
   auto* i16Ty = Type::getInt16Ty(llvmCtx);
   auto* i32Ty = Type::getInt32Ty(llvmCtx);
@@ -443,8 +448,15 @@ static Value* buildSockaddrIn(IRBuilder<>& builder, LLVMContext& llvmCtx,
       builder.CreateAlloca(i8Ty, builder.getInt32(16), "sockaddr");
   builder.CreateMemSet(sockaddr, builder.getInt8(0), 16, MaybeAlign(4));
 
-  // sin_family = AF_INET (2), a 16-bit field
-  builder.CreateStore(builder.getInt16(2), sockaddr);
+  if (isDarwin) {
+    // sin_len = sizeof(sockaddr_in), then sin_family = AF_INET (2)
+    builder.CreateStore(builder.getInt8(16), sockaddr);
+    Value* familyPtr = builder.CreateGEP(i8Ty, sockaddr, builder.getInt32(1));
+    builder.CreateStore(builder.getInt8(2), familyPtr);
+  } else {
+    // sin_family = AF_INET (2), a 16-bit field at offset 0
+    builder.CreateStore(builder.getInt16(2), sockaddr);
+  }
 
   Value* port16 = builder.CreateTrunc(port, i16Ty);
   Value* portHi = builder.CreateLShr(port16, 8);
@@ -482,7 +494,9 @@ static Function* getOrCreateSockaddrCallHelper(llvm::Module* module,
   Value* ip = args++;
   Value* port = args++;
 
-  Value* sockaddr = buildSockaddrIn(builder, llvmCtx, ip, port);
+  Value* sockaddr = buildSockaddrIn(
+      builder, llvmCtx, ip, port,
+      llvm::Triple(module->getTargetTriple()).isOSDarwin());
   Value* result = builder.CreateCall(
       callee, {fd, sockaddr, builder.getInt32(16)}, "result");
   builder.CreateRet(result);

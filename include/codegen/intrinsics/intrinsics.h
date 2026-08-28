@@ -97,6 +97,13 @@ enum class Intrinsic {
   CttzU64,   // _cttz_u64(x) -> u64 (trailing zero bits; 64 for 0)
 
   // =========================================================================
+  // Target intrinsics (compile-time facts about the compilation target)
+  // =========================================================================
+  TargetIs,  // _target_is("macos") -> bool (folds to a constant; branches on
+             // it keep only the live side, so per-OS code costs nothing and
+             // may call externs the other targets lack)
+
+  // =========================================================================
   // File I/O intrinsics (libc calls)
   // =========================================================================
   FileOpen,   // __file_open(path, flags) -> i32
@@ -188,6 +195,9 @@ inline Intrinsic getIntrinsic(const std::string& name) {
   if (name == "_mul_hi_u64") return Intrinsic::MulHiU64;
   if (name == "_ctlz_u64") return Intrinsic::CtlzU64;
   if (name == "_cttz_u64") return Intrinsic::CttzU64;
+
+  // Target intrinsics
+  if (name == "_target_is") return Intrinsic::TargetIs;
 
   // -------------------------------------------------------------------------
   // File I/O intrinsics

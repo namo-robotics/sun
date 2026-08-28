@@ -1,0 +1,55 @@
+// stdlib/target_linux.sun - Everything OS-specific, with Linux's values
+//
+// One file per operating system defines the same names (see
+// target_darwin.sun for the macOS set); the manifest's `target:` block
+// includes exactly one of them per build, chosen by the compilation's
+// --target. Shared stdlib code references these names without caring which
+// OS supplied them.
+
+public module sun {
+  // Both glibc and musl export __errno_location for the per-thread errno.
+  extern "C" function c_errno_location() raw_ptr<i32> as "__errno_location";
+
+  // Where this OS keeps the per-thread errno value.
+  function errno_ptr() raw_ptr<i32> {
+    return unsafe { c_errno_location(); };
+  }
+
+  // MSG_NOSIGNAL on every send already keeps a broken-pipe write from
+  // raising SIGPIPE, so per-socket setup has nothing to do.
+  function suppress_sigpipe(fd: i32) void {
+  }
+
+  // setsockopt family (asm-generic values).
+  public var MSG_NOSIGNAL: i32 = 16384;
+  public var SOL_SOCKET: i32 = 1;
+  public var SO_REUSEADDR: i32 = 2;
+
+  // struct addrinfo: ai_addr is the 4th pointer-sized slot (byte 24). The
+  // full layout is documented at the getaddrinfo declaration in sys.sun.
+  var ADDRINFO_ADDR_INDEX: i64 = 3;
+
+  public module io {
+    // open(2) composables from the asm-generic set: O_CREAT=0x40,
+    // O_TRUNC=0x200, O_APPEND=0x400, over O_WRONLY=1.
+    var O_WRONLY_CREAT_TRUNC: i32 = 577;  // 0x241
+    var O_WRONLY_CREAT_APPEND: i32 = 1089;  // 0x441
+
+    // struct dirent's fixed head: u64 d_ino, i64 d_off, u16 d_reclen,
+    // u8 d_type at byte 18, then the d_name characters.
+    var DIRENT_TYPE_OFFSET: i64 = 18;
+    var DIRENT_NAME_OFFSET: i64 = 19;
+  }
+
+  public module time {
+    // clockid_t from asm-generic, the same on every Linux target.
+    var CLOCK_MONOTONIC: i32 = 1;
+  }
+
+  public module process {
+    // The job-control signals above 15, where Linux and macOS disagree.
+    public var SIGCHLD: i32 = 17;
+    public var SIGCONT: i32 = 18;
+    public var SIGSTOP: i32 = 19;
+  }
+}

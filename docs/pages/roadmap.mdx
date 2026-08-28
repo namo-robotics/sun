@@ -110,7 +110,9 @@ need no linker flags and no OpenSSL on the target. Remaining work:
 - [ ] Fetch remote `.moon` bundles with the native client instead of shelling
       out to `curl`, dropping the package's `curl` dependency
 - [ ] Cross-target archives: `tls.moon` carries x86-64 musl archives, so a
-      cross build needs a per-target bundle the way `stdlib.moon` already does
+      cross build (aarch64 Linux and macOS alike) needs per-target OpenSSL
+      archives — the manifest's `target:` block can now select them, what's
+      missing is fetching/building the archives per target
 - [ ] Revisit the backend behind the same Sun API — a smaller vendored TLS
       library, or a pure-Sun implementation, without changing user code
 
@@ -154,7 +156,18 @@ libprotobuf. Docs: `docs/pages/protobuf.mdx`. Deferred:
 
 ## MacOS Target
 
-- [ ] Compile Sun binaries and moon libries for MacOS.
+Cross-compiling from Linux works and is covered by tests: `--target
+arm64-apple-darwin` produces Mach-O objects and a Darwin `stdlib.moon`
+(Apple AAPCS64 rules, per-OS stdlib sources via the manifest's `target:`
+block, `__ulock` in place of futex). The native-host support — Homebrew
+build, JITLink object layer, macOS search paths and a `macos-latest` CI job
+— is implemented but has not yet run on real hardware:
+
+- [ ] Validate on a Mac: the CI job green, JIT exceptions under JITLink
+      (may need MachOPlatform/ORC runtime), Mutex under contention
+      (`__ulock`), `lldb` stepping with `-g`, and Linux-cross-compiled
+      objects linked and executed natively
+- [ ] A Homebrew formula (or tap) once native builds are validated
 
 ## WebAssembly Target
 

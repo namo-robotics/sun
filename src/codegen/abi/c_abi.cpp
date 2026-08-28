@@ -11,20 +11,23 @@ namespace sun::abi {
 SignatureLowering lowerCSignature(const llvm::Triple& triple,
                                   llvm::Type* returnType,
                                   llvm::ArrayRef<llvm::Type*> paramTypes,
-                                  const llvm::DataLayout& dl) {
+                                  const llvm::DataLayout& dl,
+                                  const SignednessInfo* signs) {
   switch (triple.getArch()) {
     case llvm::Triple::x86_64:
+      // Apple's x86-64 follows the same System V rules as Linux.
       return sysv::lowerCSignature(returnType, paramTypes, dl);
     case llvm::Triple::aarch64:
-      // Darwin deviates from base AAPCS64 (varargs on the stack, packed
-      // arguments); only the ELF rules are implemented.
-      if (triple.isOSDarwin()) break;
-      return aapcs64::lowerCSignature(returnType, paramTypes, dl);
+      return aapcs64::lowerCSignature(returnType, paramTypes, dl,
+                                      triple.isOSDarwin()
+                                          ? aapcs64::Variant::Darwin
+                                          : aapcs64::Variant::Elf,
+                                      signs);
     default:
       break;
   }
   logAndThrowError("no C ABI rules for target '" + triple.str() +
-                   "'; extern \"C\" supports x86_64 and aarch64 (ELF) only");
+                   "'; extern \"C\" supports x86_64 and aarch64 only");
 }
 
 llvm::FunctionType* buildLoweredFunctionType(const SignatureLowering& lowering,

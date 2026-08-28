@@ -368,7 +368,7 @@ manifest {
 }
 ```
 
-The `Mutex` implementation uses atomic compare-and-swap with futex-based blocking for efficient contention handling.
+The `Mutex` implementation uses atomic compare-and-swap with kernel wait-on-address blocking (Linux `futex`, macOS `__ulock_wait`) for efficient contention handling.
 
 | Method | Description |
 |--------|-------------|
@@ -376,7 +376,7 @@ The `Mutex` implementation uses atomic compare-and-swap with futex-based blockin
 | `unlock()` | Release the mutex |
 
 <Callout type="info">
-  `Mutex` uses a fast path (single atomic CAS) for uncontended locks and falls back to futex-based blocking only when contention is detected.
+  `Mutex` uses a fast path (single atomic CAS) for uncontended locks and falls back to kernel wait-on-address blocking only when contention is detected.
 </Callout>
 
 ## Constraints
