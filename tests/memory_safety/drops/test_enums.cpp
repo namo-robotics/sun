@@ -391,6 +391,49 @@ TEST(MemorySafety_Drops_Enums, returned_owning_enum_moves_to_caller) {
   EXPECT_EQ(value, 1);
 }
 
+// A call returning an owning enum used as a statement: nobody takes the
+// result, so the temporary is dropped where it was produced instead of
+// leaking (issue #139).
+TEST(MemorySafety_Drops_Enums, discarded_returned_enum_is_dropped) {
+  auto value = executeString(withPreamble(R"(
+    function make() Holder {
+      return Holder.Hold(Owner(6));
+    }
+
+    function helper() i32 {
+      if (true) {
+        make();
+      }
+      return counter;
+    }
+
+    function main() i32 { return helper(); }
+  )"));
+  EXPECT_EQ(value, 1);
+}
+
+// The taken and the discarded enum result each drop exactly once — tracking
+// the discarded temporary must not double up with the variable that adopts
+// the taken one.
+TEST(MemorySafety_Drops_Enums, taken_and_discarded_enum_results_drop_once) {
+  auto value = executeString(withPreamble(R"(
+    function make() Holder {
+      return Holder.Hold(Owner(6));
+    }
+
+    function helper() i32 {
+      if (true) {
+        var kept = make();
+        make();
+      }
+      return counter;
+    }
+
+    function main() i32 { return helper(); }
+  )"));
+  EXPECT_EQ(value, 2);
+}
+
 TEST(MemorySafety_Drops_Enums, option_of_string_via_stdlib) {
   auto value = executeStringWithStdlib(R"(
     using sun;
