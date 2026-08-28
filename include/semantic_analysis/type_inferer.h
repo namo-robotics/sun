@@ -100,7 +100,8 @@ class TypeInferer {
 
   /**
    * Resolve a written type annotation to a type, instantiating any generic
-   * it names.
+   * it names. The bindings in scope are already applied, so the result must
+   * not be handed to substituteTypeParameters as well — see there.
    */
   sun::TypePtr typeAnnotationToType(const TypeAnnotation &annot);
 
@@ -115,6 +116,15 @@ class TypeInferer {
   /**
    * Replace the type parameters in a type with what they are bound to in
    * scope, recursing through references, arrays, and generic arguments.
+   *
+   * Apply it once, and only to a type that was resolved somewhere else — a
+   * variable's recorded type, a method signature stored on a class. Applying
+   * it to what typeAnnotationToType just returned applies the same bindings
+   * twice, and a second pass is not a no-op: a type parameter reaching this
+   * function is read in whatever bindings are in scope here, which for a type
+   * carried out of another template is a different template's parameter that
+   * happens to share its name. That is how `IIterator<T, Container>` used to
+   * capture the `T` of `Vec<T>` and recurse forever (issue #144).
    */
   sun::TypePtr substituteTypeParameters(sun::TypePtr type);
 

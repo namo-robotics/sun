@@ -1328,7 +1328,6 @@ sun::TypePtr TypeInferer::inferGenericFunctionCallType(
     auto typeParams = typeParameterNames(genFuncInfo->typeParameters);
     ctx_.enterTypeParamScope(typeParams, typeArgs);
     sun::TypePtr returnType = typeAnnotationToType(*genFuncInfo->returnType);
-    returnType = substituteTypeParameters(returnType);
     ctx_.exitScope();
     return returnType;
   }

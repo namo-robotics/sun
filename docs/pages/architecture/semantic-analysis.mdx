@@ -82,6 +82,32 @@ the resulting specialized type is registered back in the requesting scope
 (as a lookup fast path); identity lives in the global `TypeRegistry` and the
 specialization list on the template's AST.
 
+**Type arguments are applied once, by one of two operations.** Resolving a
+written annotation and substituting into an existing type are separate jobs,
+and each applies the bindings in scope a single time. `typeAnnotationToType`
+starts from source syntax — `ref Vec<T>` as the parser produced it — and fills
+in every type parameter as it walks, so what it returns is already final.
+`substituteTypeParameters` starts from a type with no annotation behind it,
+worked out somewhere earlier: a variable's recorded type, a generic method's
+signature stored on its class, the type of a captured value. Applying both to
+one type is not a harmless repeat. Type parameters are told apart by name
+alone, so a `T` that arrived inside a type built for one template, read again
+while a different template's bindings are in scope, becomes that template's
+`T`. `IIterable` names its own first parameter `T`, so
+`class Vec<T> implements IIterable<ref T, Vec<T>>` puts two unrelated `T`s
+within reach of a single lookup.
+
+**A template has a shape of its own, distinct from any specialization.**
+`Vec<T>` with `T` still a type parameter is what the signature
+`count<T>(v: ref Vec<T>)` names before anything calls it. That shape is built
+much like a specialization — its members are resolved, because a template body
+resolves against them — but it is never recorded as one (`abstractShape` in
+`generic_specializer.cpp`). Codegen lays out every specialization recorded on
+a template, and a type parameter has no layout. The same reasoning exempts a
+shape from checks that need a real type: a payload enum's variants go
+unvalidated, since what a `T` may carry is only knowable once `T` is a type.
+Recording and validation both happen when `count<i32>` builds `Vec<i32>`.
+
 ## Access Control
 
 Every declaration record (`FunctionInfo`, `ClassType`, `InterfaceType`,
@@ -120,11 +146,14 @@ The analyzer's source is split by concern under `src/semantic_analysis/`:
 
 | File | Responsibility |
 |------|----------------|
-| `declaration_collection.cpp` | Pass one: registering declared names |
-| `analysis.cpp` | The main expression walk |
-| `type_inference.cpp` | Bottom-up typing |
-| `type_conversion.cpp` | Annotation resolution and type-parameter substitution |
-| `scope_variables.cpp` / `scope_lookup.cpp` | The scope tree |
-| `classes.cpp`, `interfaces.cpp`, `enums.cpp` | Per-construct analysis and generic instantiation |
+| `declaration_collector.cpp` | Pass one: registering declared names |
+| `analysis.cpp`, `analysis_*.cpp` | The main walk, split by what is being walked |
+| `type_inferer.cpp` | Bottom-up typing |
+| `type_annotations.cpp` | Resolving written annotations, and substituting into a resolved type |
+| `semantic_context.cpp` / `scope_lookup.cpp` | The scope tree |
+| `generic_specializer.cpp`, `generic_type_arguments.cpp` | Monomorphization, and inferring type arguments at a call |
+| `interfaces.cpp`, `enums.cpp`, `packed_classes.cpp` | Per-construct analysis |
+| `argument_conversion.cpp`, `type_rules.cpp` | How an argument reaches its parameter, and what is assignable to what |
+| `access_checker.cpp` | Visibility |
 | `captures.cpp` | Closure captures |
 | `field_initialization.cpp` | The two-phase constructor rule, and what each field write drops |

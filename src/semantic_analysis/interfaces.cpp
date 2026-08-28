@@ -24,9 +24,7 @@ void SemanticAnalyzer::inheritInterfaceFields(
       // Convert type arguments, substituting any class type parameters
       std::vector<sun::TypePtr> typeArgs;
       for (const auto& typeArg : ifaceRef.typeArguments) {
-        auto argType = types_.typeAnnotationToType(typeArg);
-        argType = types_.substituteTypeParameters(argType);
-        typeArgs.push_back(argType);
+        typeArgs.push_back(types_.typeAnnotationToType(typeArg));
       }
 
       // Instantiate the generic interface
@@ -89,9 +87,7 @@ void SemanticAnalyzer::validateInterfaceImplementation(
       // Generic interface with type arguments
       std::vector<sun::TypePtr> typeArgs;
       for (const auto& typeArg : ifaceRef.typeArguments) {
-        auto argType = types_.typeAnnotationToType(typeArg);
-        argType = types_.substituteTypeParameters(argType);
-        typeArgs.push_back(argType);
+        typeArgs.push_back(types_.typeAnnotationToType(typeArg));
       }
 
       interfaceType =
