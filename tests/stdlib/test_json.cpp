@@ -18,7 +18,7 @@ std::string withMain(const std::string& body) {
 
 TEST(Stdlib_Json, parse_scalars) {
   auto value = executeStringWithStdlib(withMain(R"(
-    function main() i32, IError {
+    function main() i32 throws IError {
         var alloc = make_heap_allocator();
         if (parse_json(alloc, "null").is_null() == false) { return 1; }
         if (parse_json(alloc, "true").as_bool() == false) { return 2; }
@@ -49,7 +49,7 @@ TEST(Stdlib_Json, parse_scalars) {
 
 TEST(Stdlib_Json, parse_string_escapes) {
   auto value = executeStringWithStdlib(withMain(R"(
-    function main() i32, IError {
+    function main() i32 throws IError {
         var alloc = make_heap_allocator();
         var s = parse_json(alloc, "\"a\\\"b\\\\c\\/d\\n\\t\\r\\b\\f\"");
         var text: ref String = s.as_string();
@@ -83,7 +83,7 @@ TEST(Stdlib_Json, parse_string_escapes) {
 
 TEST(Stdlib_Json, parse_nested_and_access) {
   auto value = executeStringWithStdlib(withMain(R"(
-    function main() i32, IError {
+    function main() i32 throws IError {
         var alloc = make_heap_allocator();
         var doc = parse_json(alloc, "{\"name\": \"sun\", \"tags\": [1, 2.5, true, null, {\"deep\": [[]]}], \"empty\": {}}");
         if (doc.is_object() == false) { return 1; }
@@ -223,7 +223,7 @@ TEST(Stdlib_Json, deep_nesting_is_rejected) {
 
 TEST(Stdlib_Json, deep_but_allowed_nesting) {
   auto value = executeStringWithStdlib(withMain(R"(
-    function main() i32, IError {
+    function main() i32 throws IError {
         var alloc = make_heap_allocator();
         var text = String(alloc, "");
         for (var i: i64 = 0; i < 200; i = i + 1) { text.append_char(91); }
@@ -240,7 +240,7 @@ TEST(Stdlib_Json, deep_but_allowed_nesting) {
 
 TEST(Stdlib_Json, build_and_write_compact) {
   auto value = executeStringWithStdlib(withMain(R"(
-    function main() i32, IError {
+    function main() i32 throws IError {
         var alloc = make_heap_allocator();
         var obj = create_json_object(alloc);
         obj.set(String(alloc, "ok"), Json(true));
@@ -275,10 +275,10 @@ TEST(Stdlib_Json, json_string_copies_a_borrowed_string) {
   auto value = executeStringWithStdlib(withMain(R"(
     class Config {
         var model: String;
-        function init(model: String) { this.model = model; }
+        init(model: String) { this.model = model; }
     }
 
-    function main() i32, IError {
+    function main() i32 throws IError {
         var alloc = make_heap_allocator();
         var cfg = Config(String(alloc, "sun-1"));
         var req = create_json_object(alloc);
@@ -303,7 +303,7 @@ TEST(Stdlib_Json, json_string_copies_a_borrowed_string) {
 
 TEST(Stdlib_Json, json_constructor_takes_ownership_of_string) {
   EXPECT_THROW(executeStringWithStdlib(withMain(R"(
-    function main() i32, IError {
+    function main() i32 throws IError {
         var alloc = make_heap_allocator();
         var s = String(alloc, "moved");
         var req = create_json_object(alloc);
@@ -318,7 +318,7 @@ TEST(Stdlib_Json, json_constructor_takes_ownership_of_string) {
 
 TEST(Stdlib_Json, write_pretty) {
   auto value = executeStringWithStdlib(withMain(R"(
-    function main() i32, IError {
+    function main() i32 throws IError {
         var alloc = make_heap_allocator();
         var doc = parse_json(alloc, "{\"a\":[1,{\"b\":null}],\"c\":{},\"d\":[]}");
         var out = doc.to_pretty_string(alloc, 2);
@@ -342,7 +342,7 @@ TEST(Stdlib_Json, number_formatting) {
         return out.equals_literal(expected);
     }
 
-    function main() i32, IError {
+    function main() i32 throws IError {
         var alloc = make_heap_allocator();
         if (fmt(alloc, Json(0.1), "0.1") == false) { return 1; }
         if (fmt(alloc, Json(5.0), "5.0") == false) { return 2; }
@@ -369,7 +369,7 @@ TEST(Stdlib_Json, number_formatting) {
 
 TEST(Stdlib_Json, round_trip) {
   auto value = executeStringWithStdlib(withMain(R"(
-    function main() i32, IError {
+    function main() i32 throws IError {
         var alloc = make_heap_allocator();
         var text = String(alloc, "{\"name\":\"s\\u00fcn\",\"list\":[1,2.5,-3,true,false,null,\"\\\"\"],\"nested\":{\"a\":{\"b\":[[],{}]}},\"e\":\"\"}");
         var doc = parse_json(alloc, text);
@@ -389,7 +389,7 @@ TEST(Stdlib_Json, round_trip) {
 
 TEST(Stdlib_Json, control_characters_are_escaped_on_write) {
   auto value = executeStringWithStdlib(withMain(R"(
-    function main() i32, IError {
+    function main() i32 throws IError {
         var alloc = make_heap_allocator();
         var s = String(alloc, "a");
         s.append_char(1);
@@ -411,7 +411,7 @@ TEST(Stdlib_Json, control_characters_are_escaped_on_write) {
 
 TEST(Stdlib_Json, iterate_object_members_and_array_items) {
   auto value = executeStringWithStdlib(withMain(R"(
-    function main() i32, IError {
+    function main() i32 throws IError {
         var alloc = make_heap_allocator();
         var doc = parse_json(alloc, "{\"a\": 1, \"b\": 2, \"c\": [10, 20, 30]}");
         var total: i64 = 0;
@@ -440,7 +440,7 @@ TEST(Stdlib_Json, iterate_object_members_and_array_items) {
 // dropping a large document must not double free or crash.
 TEST(Stdlib_Json, large_document_builds_and_drops) {
   auto value = executeStringWithStdlib(withMain(R"(
-    function main() i32, IError {
+    function main() i32 throws IError {
         var alloc = make_heap_allocator();
         var total: i64 = 0;
         for (var round: i64 = 0; round < 3; round = round + 1) {
@@ -486,7 +486,7 @@ TEST(Stdlib_Json, json_value_enum_is_matchable) {
         };
     }
 
-    function main() i32, IError {
+    function main() i32 throws IError {
         var alloc = make_heap_allocator();
         var doc = parse_json(alloc, "[null, true, 1, 1.5, \"s\", [], {}]");
         var sum: i32 = 0;

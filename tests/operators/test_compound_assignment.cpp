@@ -119,7 +119,7 @@ TEST(Operators_CompoundAssignment, this_field_in_method) {
   auto value = executeString(R"(
       class Counter {
           var count: i32;
-          function init() void {
+          init() {
               this.count = 0;
           }
           function add(n: i32) void {
@@ -140,7 +140,7 @@ TEST(Operators_CompoundAssignment, member_target) {
   auto value = executeString(R"(
       class Point {
           var x: i32;
-          function init() void {
+          init() {
               this.x = 5;
           }
       }
@@ -261,7 +261,7 @@ TEST(Operators_CompoundAssignment, class_setindex_target) {
           var slot: i32;
           var gets: i32;
           var sets: i32;
-          function init() void {
+          init() {
               this.slot = 10;
               this.gets = 0;
               this.sets = 0;
@@ -338,7 +338,7 @@ TEST(Operators_CompoundAssignment, greater_equal_split_in_generics) {
   auto value = executeString(R"(
       class Box<T> {
           var v: T;
-          function init(v: T) void {
+          init(v: T) {
               this.v = v;
           }
       }

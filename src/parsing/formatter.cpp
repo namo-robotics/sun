@@ -252,12 +252,16 @@ class Formatter {
       out_ += "...";
     }
     out_ += ')';
-    // Span-less return types are parser-synthesized (init methods get an
+    // Span-less return types are parser-synthesized (init and deinit get an
     // implicit void); only source-spelled types are printed
     if (p.getReturnType().has_value() &&
         p.getReturnType()->span.endOffset.has_value()) {
       out_ += ' ';
       printType(*p.getReturnType());
+    } else if (p.getReturnType().has_value() && p.getReturnType()->canError) {
+      // A throwing constructor spells only the error part:
+      // init(...) throws IError
+      out_ += " throws IError";
     }
   }
 
@@ -385,10 +389,18 @@ class Formatter {
         printType(m.field->type);
         out_ += ';';
       } else {
-        printVisibility(m.method->getVisibility());
-        if (m.method->getProto().isConstMethod()) out_ += "const ";
-        printFunction(*m.method);
-        if (m.method->isExtern()) out_ += ';';
+        const std::string& methodName = m.method->getProto().getName();
+        if (methodName == "init" || methodName == "deinit") {
+          // Constructors and destructors are written bare: init(...) { }
+          printProtoSig(m.method->getProto());
+          out_ += ' ';
+          printBlockML(m.method->getBody());
+        } else {
+          printVisibility(m.method->getVisibility());
+          if (m.method->getProto().isConstMethod()) out_ += "const ";
+          printFunction(*m.method);
+          if (m.method->isExtern()) out_ += ';';
+        }
       }
       lastLine_ = m.endLine;
       emitTrailingComments(m.endLine);

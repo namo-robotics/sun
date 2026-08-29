@@ -307,7 +307,7 @@ class PrototypeAST {
     return analysis_ && !analysis_->typeBindings.empty();
   }
 
-  // Check if this function can throw (declared with ", IError")
+  // Check if this function can throw (declared with "throws IError")
   bool canThrow() const {
     return returnType.has_value() && returnType->canError;
   }

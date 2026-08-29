@@ -17,10 +17,10 @@ const char* kOwnerPreamble = R"(
 
     class Owner {
       var id: i32;
-      function init(id: i32) {
+      init(id: i32) {
         this.id = id;
       }
-      function deinit() void {
+      deinit() {
         if (this.id != 0) {
           counter = counter + 1;
           this.id = 0;
@@ -180,7 +180,7 @@ TEST(MemorySafety_GlobalAssignment, generic_class_global_runs_constructor) {
     class Box<T> {
       var value: T;
       var tag: i32;
-      function init(v: T, tag_: i32) {
+      init(v: T, tag_: i32) {
         this.value = v;
         this.tag = tag_;
       }

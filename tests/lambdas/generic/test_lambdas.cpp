@@ -103,7 +103,7 @@ TEST(Lambdas_Generic, lambda_in_a_generic_class_method) {
   auto value = executeString(R"(
     class Wrapper<T> {
         var v: T;
-        function init(v: T) { this.v = v; }
+        init(v: T) { this.v = v; }
         function mapped() T {
             var f = lambda (x: T) T { return x + x; };
             return f(this.v);

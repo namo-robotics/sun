@@ -38,7 +38,7 @@ TEST(Lambdas_Params, lambda_ref_class_param) {
   auto value = executeString(R"(
     class Counter {
         var count: i32;
-        function init() {
+        init() {
             this.count = 0;
         }
         function bump() void {
@@ -67,7 +67,7 @@ TEST(Lambdas_Params, lambda_ref_class_param_literal) {
   auto value = executeString(R"(
     class Counter {
         var count: i32;
-        function init() {
+        init() {
             this.count = 0;
         }
         function bump() void {
@@ -96,7 +96,7 @@ TEST(Lambdas_Params, method_lambda_param) {
   auto value = executeString(R"(
     class Counter {
         var count: i32;
-        function init() {
+        init() {
             this.count = 0;
         }
         function bump() void {
@@ -106,7 +106,7 @@ TEST(Lambdas_Params, method_lambda_param) {
 
     class Runner {
         var dummy: i32;
-        function init() {
+        init() {
             this.dummy = 0;
         }
         function run_twice(handler: (ref Counter) -> void) i32 {
@@ -131,7 +131,7 @@ TEST(Lambdas_Params, lambda_param_forwarded_between_methods) {
   auto value = executeString(R"(
     class Counter {
         var count: i32;
-        function init() {
+        init() {
             this.count = 0;
         }
         function bump() void {
@@ -141,7 +141,7 @@ TEST(Lambdas_Params, lambda_param_forwarded_between_methods) {
 
     class Runner {
         var dummy: i32;
-        function init() {
+        init() {
             this.dummy = 0;
         }
         function outer(handler: (ref Counter) -> void) i32 {
@@ -165,7 +165,7 @@ TEST(Lambdas_Params, lambda_param_forwarded_between_methods) {
 }
 
 // ============================================================================
-// Throwing lambdas: lambda (args) T, IError { ... }
+// Throwing lambdas: lambda (args) T throws IError { ... }
 // ============================================================================
 
 TEST(Lambdas_Throwing, throw_and_catch) {
@@ -173,7 +173,7 @@ TEST(Lambdas_Throwing, throw_and_catch) {
     using sun;
 
     function main() i32 {
-        var risky = lambda (x: i32) i32, IError {
+        var risky = lambda (x: i32) i32 throws IError {
             if (x < 0) { throw Error(1, "negative"); }
             return x * 2;
         };
@@ -194,7 +194,7 @@ TEST(Lambdas_Throwing, throwing_lambda_as_param) {
   auto value = executeStringWithStdlib(R"(
     using sun;
 
-    function run_guarded(f: (i32) -> i32, IError, x: i32) i32 {
+    function run_guarded(f: (i32) -> i32 throws IError, x: i32) i32 {
         try {
             return f(x);
         } catch (e: IError) {
@@ -203,7 +203,7 @@ TEST(Lambdas_Throwing, throwing_lambda_as_param) {
     }
 
     function main() i32 {
-        var risky = lambda (x: i32) i32, IError {
+        var risky = lambda (x: i32) i32 throws IError {
             if (x < 0) { throw Error(1, "negative"); }
             return x * 2;
         };
@@ -219,7 +219,7 @@ TEST(Lambdas_Throwing, non_throwing_into_throwing_param) {
   auto value = executeStringWithStdlib(R"(
     using sun;
 
-    function run_guarded(f: (i32) -> i32, IError, x: i32) i32 {
+    function run_guarded(f: (i32) -> i32 throws IError, x: i32) i32 {
         try {
             return f(x);
         } catch (e: IError) {
@@ -242,7 +242,7 @@ TEST(Lambdas_Throwing, uncaught_call_rejected) {
     using sun;
 
     function main() i32 {
-        var risky = lambda (x: i32) i32, IError {
+        var risky = lambda (x: i32) i32 throws IError {
             if (x < 0) { throw Error(1, "negative"); }
             return x;
         };

@@ -116,7 +116,7 @@ const char* kProgram = R"(
 class Point {
     var x: i32;
     var y: i32;
-    function init(x: i32, y: i32) { this.x = x; this.y = y; }
+    init(x: i32, y: i32) { this.x = x; this.y = y; }
     const function sum() i32 { return this.x + this.y; }
 }
 
@@ -126,7 +126,7 @@ interface IShape {
 
 class Square implements IShape {
     var side: i32;
-    function init(side: i32) { this.side = side; }
+    init(side: i32) { this.side = side; }
     function area() i32 { return this.side * this.side; }
 }
 
@@ -247,7 +247,7 @@ TEST(Tooling_Lsp_Definition, GenericFunctionBody) {
   std::string source = R"(
 class Pool {
     var n: i32;
-    function init() { this.n = 0; }
+    init() { this.n = 0; }
 }
 function take<T>(p: ref Pool, v: T) T {
     var copy = v;
@@ -270,7 +270,7 @@ TEST(Tooling_Lsp_Definition, GenericClassBody) {
   std::string source = R"(
 class Box<T> {
     var value: T;
-    function init(v: T) { this.value = v; }
+    init(v: T) { this.value = v; }
     function get() T { return this.value; }
 }
 function main() i32 {
@@ -312,11 +312,11 @@ function main() i32 {
 TEST(Tooling_Lsp_Definition, CatchBinding) {
   std::string source = R"(
 class Oops implements IError {
-    function init() {}
+    init() {}
     function code() i32 { return 1; }
     function message() static_ptr<u8> { return "oops"; }
 }
-function risky(x: i32) i32, IError {
+function risky(x: i32) i32 throws IError {
     if (x < 0) { throw Oops(); }
     return x;
 }
@@ -378,7 +378,7 @@ TEST(Tooling_Lsp_Definition, StdlibDeclarations) {
 using sun;
 class Config {
     var n: i64;
-    function init(alloc: ref HeapAllocator) { this.n = 1; }
+    init(alloc: ref HeapAllocator) { this.n = 1; }
 }
 function main() i64 {
     var allocator = make_heap_allocator();

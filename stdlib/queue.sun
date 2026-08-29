@@ -21,7 +21,7 @@ public module sun {
   public class Queue<T> implements IIterable<ref T, Queue<T>> {
     var items: LinkedList<T>;
 
-    public function init(allocator: const ref HeapAllocator) {
+    init(allocator: const ref HeapAllocator) {
       this.items = LinkedList<T>(allocator);
     }
 
@@ -80,7 +80,7 @@ public module sun {
   public class QueueIterator<T> implements IIterator<ref T, Queue<T>> {
     var inner: LinkedListIterator<T>;
 
-    public function init() {
+    init() {
       this.inner = LinkedListIterator<T>();
     }
 

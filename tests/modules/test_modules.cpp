@@ -125,7 +125,7 @@ TEST(Modules, module_with_class_method) {
     public module mymod {
       public class ClassA {
         public var value: i32;
-        public function init(v: i32) {
+        init(v: i32) {
           this.value = v;
         }
         public function foo() i32 {
@@ -151,7 +151,7 @@ TEST(Modules, nested_modules_nested_classes_method_chain) {
     
         public class ClassB {
           public var val: i32;
-          public function init(v: i32) {
+          init(v: i32) {
             this.val = v;
           }
           public function foo() i32 {
@@ -161,7 +161,7 @@ TEST(Modules, nested_modules_nested_classes_method_chain) {
 
         public class ClassA {
           public var b: ClassB;
-          public function init() {
+          init() {
             this.b = ClassB(42);
           }
         }
@@ -344,11 +344,11 @@ TEST(Modules, redeclare_class_errors) {
   EXPECT_THROW(executeString(R"(
     class Foo {
       var x: i32;
-      function init() { this.x = 1; }
+      init() { this.x = 1; }
     }
     class Foo {
       var y: i32;
-      function init() { this.y = 2; }
+      init() { this.y = 2; }
     }
     function main() i32 {
       return 0;
@@ -563,7 +563,7 @@ TEST(Modules, dotted_module_with_class) {
     public module game.entities {
       public class Player {
         public var health: i32;
-        public function init(h: i32) {
+        init(h: i32) {
           this.health = h;
         }
         public function getHealth() i32 {
@@ -736,15 +736,15 @@ TEST(Modules, moon_free_function_throw_is_caught_by_importer) {
   auto moonPath = writeMoonLib("throwlib", R"(
     public module throwlib {
         public class Boom implements IError {
-            public function init() {}
+            init() {}
             public function code() i32 { return 77; }
             public function message() static_ptr<u8> { return "boom"; }
         }
-        public function fail(x: i32) i32, IError {
+        public function fail(x: i32) i32 throws IError {
             if (x > 0) { throw Boom(); }
             return 1;
         }
-        public function nested(x: i32) i32, IError {
+        public function nested(x: i32) i32 throws IError {
             return fail(x);
         }
     }
@@ -810,11 +810,11 @@ TEST(Modules, moon_method_taking_class_by_value) {
         public class Pair {
             public var a: i64;
             public var b: i64;
-            public function init(a: i64, b: i64) { this.a = a; this.b = b; }
+            init(a: i64, b: i64) { this.a = a; this.b = b; }
         }
         public class Sink {
             var total: i64;
-            public function init() { this.total = 0; }
+            init() { this.total = 0; }
             public function take(p: Pair) void { this.total = this.total + p.a + p.b; }
             public function total_of() i64 { return this.total; }
         }
@@ -849,7 +849,7 @@ TEST(Modules, moon_nested_module_class_with_generic_field) {
     public module outer {
       public class Box<T> {
         var v: T;
-        public function init(v: T) { this.v = v; }
+        init(v: T) { this.v = v; }
         public function get() ref T {
           return unsafe { _to_ref<T>(_address_of<T>(this.v)); };
         }
@@ -858,7 +858,7 @@ TEST(Modules, moon_nested_module_class_with_generic_field) {
       public module inner {
         public class Holder {
           var b: Box<i32>;
-          public function init(x: i32) { this.b = Box<i32>(x); }
+          init(x: i32) { this.b = Box<i32>(x); }
           public function value() i32 { return this.b.get(); }
         }
       }
@@ -975,7 +975,7 @@ TEST(Modules, moon_keeps_const_declarations) {
         public const LIMIT: i32 = 40;
         public class Counter {
             var n: i32;
-            public function init(n: i32) { this.n = n; }
+            init(n: i32) { this.n = n; }
             public const function get() i32 { return this.n; }
             public function bump() void { this.n = this.n + 1; }
         }
@@ -1081,7 +1081,7 @@ TEST(Modules, class_typed_module_variable_is_assignable) {
   auto value = executeString(R"(
     class Counter {
       var n: i32;
-      public function init(n: i32) { this.n = n; }
+      init(n: i32) { this.n = n; }
       public function get() i32 { return this.n; }
     }
     module dds {

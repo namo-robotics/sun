@@ -35,8 +35,8 @@ constexpr const char* kPoint = R"(
     class Point {
         var x: i32;
         var y: i32;
-        function init(x: i32, y: i32) { this.x = x; this.y = y; }
-        function init(v: i32) { this.x = v; this.y = v; }
+        init(x: i32, y: i32) { this.x = x; this.y = y; }
+        init(v: i32) { this.x = v; this.y = v; }
         function sum() i32 { return this.x + this.y; }
     }
 )";
@@ -77,7 +77,7 @@ TEST(Functions_Generic_Variadics, arity_selects_init_overload) {
 
 TEST(Functions_Generic_Variadics, empty_pack) {
   auto value = executeString(R"(
-    class Answer { var v: i32; function init() { this.v = 42; } }
+    class Answer { var v: i32; init() { this.v = 42; } }
     function make<T>(args...: _params_of<T>) raw_ptr<T> {
         var size: i64 = _sizeof<T>();
         var memory: raw_ptr<i8> = unsafe { _malloc(size); };
@@ -258,8 +258,8 @@ TEST(Functions_Generic_Variadics, pack_template_survives_a_moon_round_trip) {
           public class Point {
               var x: i32;
               var y: i32;
-              public function init(x: i32, y: i32) { this.x = x; this.y = y; }
-              public function init(v: i32) { this.x = v; this.y = v; }
+              init(x: i32, y: i32) { this.x = x; this.y = y; }
+              init(v: i32) { this.x = v; this.y = v; }
               public function sum() i32 { return this.x + this.y; }
           }
           public function make<T>(args...: _params_of<T>) raw_ptr<T> {
@@ -332,7 +332,7 @@ TEST(Functions_Generic_Variadics, return_type_of_as_a_type_argument) {
   auto value = executeString(R"(
     class Box<T> {
         public var v: T;
-        public function init(v: T) { this.v = v; }
+        init(v: T) { this.v = v; }
     }
     function boxed<F: _Lambda>(f: F, args...: _params_of<F>)
         Box<_return_type_of<F>> {

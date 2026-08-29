@@ -12,19 +12,19 @@ const char* kOwnerPreamble = R"(
     var counter: i32 = 0;
 
     class Owner {
-      function init() {}
-      function deinit() void {
+      init() {}
+      deinit() {
         counter = counter + 1;
       }
     }
 
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function thrower() void, IError {
+    function thrower() void throws IError {
       throw TestError();
     }
 )";
@@ -37,7 +37,7 @@ std::string withPreamble(const std::string& body) {
 
 TEST(MemorySafety_Drops_UnwindCleanup, callee_throw_drops_callers_frame_owner) {
   auto value = executeString(withPreamble(R"(
-    function middle() void, IError {
+    function middle() void throws IError {
       var o = Owner();
       thrower();
     }
@@ -57,12 +57,12 @@ TEST(MemorySafety_Drops_UnwindCleanup, callee_throw_drops_callers_frame_owner) {
 
 TEST(MemorySafety_Drops_UnwindCleanup, unwind_through_two_frames_drops_both) {
   auto value = executeString(withPreamble(R"(
-    function inner() void, IError {
+    function inner() void throws IError {
       var a = Owner();
       thrower();
     }
 
-    function outer() void, IError {
+    function outer() void throws IError {
       var b = Owner();
       inner();
     }
@@ -82,7 +82,7 @@ TEST(MemorySafety_Drops_UnwindCleanup, unwind_through_two_frames_drops_both) {
 TEST(MemorySafety_Drops_UnwindCleanup,
      local_throw_drops_try_scoped_owner_exactly_once) {
   auto value = executeString(withPreamble(R"(
-    function helper() i32, IError {
+    function helper() i32 throws IError {
       try {
         var o = Owner();
         throw TestError();
@@ -109,7 +109,7 @@ TEST(MemorySafety_Drops_UnwindCleanup,
 TEST(MemorySafety_Drops_UnwindCleanup,
      local_throw_from_nested_block_drops_all_left_scopes) {
   auto value = executeString(withPreamble(R"(
-    function helper() i32, IError {
+    function helper() i32 throws IError {
       try {
         var a = Owner();
         if (true) {
@@ -138,7 +138,7 @@ TEST(MemorySafety_Drops_UnwindCleanup,
 TEST(MemorySafety_Drops_UnwindCleanup,
      moved_owner_not_dropped_twice_on_unwind) {
   auto value = executeString(withPreamble(R"(
-    function middle() void, IError {
+    function middle() void throws IError {
       var a = Owner();
       var b = a;
       thrower();
@@ -160,7 +160,7 @@ TEST(MemorySafety_Drops_UnwindCleanup,
 TEST(MemorySafety_Drops_UnwindCleanup,
      owner_declared_after_throwing_call_not_dropped) {
   auto value = executeString(withPreamble(R"(
-    function middle() void, IError {
+    function middle() void throws IError {
       var a = Owner();
       thrower();
       var b = Owner();
@@ -183,7 +183,7 @@ TEST(MemorySafety_Drops_UnwindCleanup,
 TEST(MemorySafety_Drops_UnwindCleanup,
      caught_locally_then_normal_exit_no_extra_drops) {
   auto value = executeString(withPreamble(R"(
-    function helper() i32, IError {
+    function helper() i32 throws IError {
       var outside = Owner();
       try {
         var inside = Owner();
@@ -210,7 +210,7 @@ TEST(MemorySafety_Drops_UnwindCleanup,
 
 TEST(MemorySafety_Drops_UnwindCleanup, no_owners_unwind_still_works) {
   auto value = executeString(withPreamble(R"(
-    function middle() void, IError {
+    function middle() void throws IError {
       thrower();
     }
 
@@ -233,17 +233,17 @@ TEST(MemorySafety_Drops_UnwindCleanup,
 
     class Payload implements IError {
       var errCode: i32;
-      function init(errCode: i32) {
+      init(errCode: i32) {
         this.errCode = errCode;
       }
-      function deinit() void {
+      deinit() {
         counter = counter + 1;
       }
       function code() i32 { return this.errCode; }
       function message() static_ptr<u8> { return "payload error"; }
     }
 
-    function thrower() void, IError {
+    function thrower() void throws IError {
       var p = Payload(7);
       throw p;
     }

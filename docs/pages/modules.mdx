@@ -270,7 +270,7 @@ class Vec2 {
     var x: f64;
     var y: f64;
     
-    function init(x_: f64, y_: f64) {
+    init(x_: f64, y_: f64) {
         this.x = x_;
         this.y = y_;
     }
@@ -501,7 +501,7 @@ public module geometry {
     public class Point {
         var x: f64;                    // private field: `geometry` only
         var y: f64;
-        public function init(x: f64, y: f64) { this.x = x; this.y = y; }
+        init(x: f64, y: f64) { this.x = x; this.y = y; }
         public function norm2() f64 { return square(this.x) + square(this.y); }
     }
 

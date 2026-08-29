@@ -16,7 +16,7 @@
 //   import "stdlib/errors.sun";
 //   using sun;
 //
-//   function pop_front() T, IError {
+//   function pop_front() T throws IError {
 //       if (this.is_empty()) {
 //           throw EmptyError();
 //       }
@@ -33,14 +33,14 @@ public module sun {
     var message_: String;
 
     // Build an error from a code and a literal message.
-    public function init(code: i32, message: static_ptr<u8>) {
+    init(code: i32, message: static_ptr<u8>) {
       this.code_ = code;
       this.message_ = String(message);
     }
 
     // The error keeps its own copy, so the String the caller built can go out
     // of scope (or be thrown past).
-    public function init(code: i32, message: const ref String) {
+    init(code: i32, message: const ref String) {
       var alloc: HeapAllocator = HeapAllocator();
       this.code_ = code;
       this.message_ = message.clone(alloc);
@@ -64,7 +64,7 @@ public module sun {
 
   public class EmptyError implements IError {
     // Build the error reporting that a container held nothing.
-    public function init() {}
+    init() {}
 
     // Always 1.
     public function code() i32 {
@@ -83,7 +83,7 @@ public module sun {
 
   public class NotFoundError implements IError {
     // Build the error reporting that a lookup found nothing.
-    public function init() {}
+    init() {}
 
     // Always 2.
     public function code() i32 {
@@ -104,7 +104,7 @@ public module sun {
     var index_: i64;
 
     // Build the error, recording the index that was out of range.
-    public function init(index: i64) {
+    init(index: i64) {
       this.index_ = index;
     }
 
@@ -130,7 +130,7 @@ public module sun {
 
   public class DivisionByZeroError implements IError {
     // Build the error reporting a divide by zero.
-    public function init() {}
+    init() {}
 
     // Always 4.
     public function code() i32 {
@@ -149,7 +149,7 @@ public module sun {
 
   public class OverflowError implements IError {
     // Build the error reporting that arithmetic went out of range.
-    public function init() {}
+    init() {}
 
     // Always 5.
     public function code() i32 {
@@ -170,13 +170,13 @@ public module sun {
     var message_: String;
 
     // Build the error from a literal explaining what was wrong.
-    public function init(message: static_ptr<u8>) {
+    init(message: static_ptr<u8>) {
       this.message_ = String(message);
     }
 
     // Build the error from a message put together at runtime. The text is
     // copied, so the caller's String can go out of scope.
-    public function init(message: const ref String) {
+    init(message: const ref String) {
       var alloc: HeapAllocator = HeapAllocator();
       this.message_ = message.clone(alloc);
     }
@@ -201,7 +201,7 @@ public module sun {
     var errno_: i32;
 
     // Build the error from the C errno value the failing call left behind.
-    public function init(errno: i32) {
+    init(errno: i32) {
       this.errno_ = errno;
     }
 
@@ -229,7 +229,7 @@ public module sun {
     var size_: i64;
 
     // Build the error, recording how many bytes were asked for.
-    public function init(size: i64) {
+    init(size: i64) {
       this.size_ = size;
     }
 
@@ -255,7 +255,7 @@ public module sun {
 
   public class ConversionError implements IError {
     // Build the error reporting that a value did not fit its new type.
-    public function init() {}
+    init() {}
 
     // Always 9.
     public function code() i32 {

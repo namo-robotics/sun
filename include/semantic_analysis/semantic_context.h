@@ -196,7 +196,7 @@ class SemanticContext : public AccessContext {
   // ---- Throwing, try and unsafe context ----------------------------------
 
   /**
-   * Check if we're currently inside a function declared with ", IError".
+   * Check if we're currently inside a function declared with "throws IError".
    * Traverses parent scopes to find the nearest function scope.
    */
   bool isInThrowingFunction() const;

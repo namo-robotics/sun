@@ -111,7 +111,7 @@ TEST(Enums_Generic, GenericEnumInClassField) {
 
     class Slot {
         var value: Option<i32>;
-        function init() {
+        init() {
             this.value = Option.None;
         }
     }
@@ -225,8 +225,8 @@ TEST(Enums_Generic, DeinitPayloadTypeArgIsError) {
   EXPECT_THROW(executeString(R"(
     class Owner {
       var p: raw_ptr<i8>;
-      function init() { this.p = unsafe { _malloc(8); }; }
-      function deinit() void { unsafe { _free(this.p); }; }
+      init() { this.p = unsafe { _malloc(8); }; }
+      deinit() { unsafe { _free(this.p); }; }
     }
     enum Option<T> { Some(T), None }
     function main() i32 {

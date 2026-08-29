@@ -44,7 +44,7 @@ TEST(Classes_Generic_Specializations, vec_with_custom_class) {
     class Point {
         var x: i32;
         var y: i32;
-        function init(x_: i32, y_: i32) {
+        init(x_: i32, y_: i32) {
             this.x = x_;
             this.y = y_;
         }
@@ -71,7 +71,7 @@ TEST(Classes_Generic_Specializations, generic_method_new_specialization) {
 
     class Counter {
         var count: i32;
-        function init(start: i32) {
+        init(start: i32) {
             this.count = start;
         }
         function get() i32 {
@@ -120,7 +120,7 @@ TEST(Classes_Generic_Specializations, simplified_vec_with_class) {
     class Point {
         var x: i32;
         var y: i32;
-        function init(x_: i32, y_: i32) {
+        init(x_: i32, y_: i32) {
             this.x = x_;
             this.y = y_;
         }
@@ -130,7 +130,7 @@ TEST(Classes_Generic_Specializations, simplified_vec_with_class) {
         var data: raw_ptr<i8>;
         var size_: i64;
 
-        function init() {
+        init() {
             this.size_ = 0;
             this.data = unsafe { _malloc(_sizeof<T>() * 4); };
         }

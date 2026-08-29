@@ -122,7 +122,7 @@ thread outlive the variables it borrows.
 ```sun
 class Worker {
     var t: Thread<i32>;
-    public function init() {
+    init() {
         var x = 3;
         // error: the field could outlive x, which the thread reads
         this.t = spawn(lambda [ref x]() i32 { return x; });
@@ -139,7 +139,7 @@ object joins the thread when it drops:
 ```sun
 class Worker {
     var t: Thread<i32>;
-    public function init(cfg: Config) {
+    init(cfg: Config) {
         this.t = spawn(lambda (c: Config) i32 { return c.limit; }, cfg);
     }
 }   // dropping a Worker joins its thread
@@ -154,8 +154,8 @@ like any other value you own.
 ```sun
 class Report {
     public var rows: i32;
-    public function init(rows: i32) { this.rows = rows; }
-    public function deinit() void { /* release what the report holds */ }
+    init(rows: i32) { this.rows = rows; }
+    deinit() { /* release what the report holds */ }
 }
 
 function main() i32 {
@@ -213,7 +213,7 @@ using sun.thread;
 class Tally {
     public var counter: i64;
     public var m: Mutex;
-    public function init() { this.counter = 0; this.m = Mutex(); }
+    init() { this.counter = 0; this.m = Mutex(); }
 }
 
 function main() i32 {
@@ -251,7 +251,7 @@ number of threads can hold at once:
 ```sun
 class Config {
     public var limit: i32;
-    public function init(limit: i32) { this.limit = limit; }
+    init(limit: i32) { this.limit = limit; }
 }
 
 function main() i32 {
@@ -284,7 +284,7 @@ using sun.thread;
 
 class Counter {
     public var n: i64;
-    public function init() { this.n = 0; }
+    init() { this.n = 0; }
 }
 
 // One body, spawned twice. The clone is this thread's, and released when

@@ -49,7 +49,7 @@ TEST(Classes_Generic, generic_class_with_constructor) {
     class Wrapper<T> {
       var value: T;
 
-      function init(v: T) {
+      init(v: T) {
         this.value = v;
       }
 
@@ -72,7 +72,7 @@ TEST(Classes_Generic, generic_constructor_wrong_argument_count) {
   EXPECT_THROW(executeString(R"(
     class Wrapper<T> {
       var value: T;
-      function init(v: T) { this.value = v; }
+      init(v: T) { this.value = v; }
     }
 
     function main() i32 {
@@ -87,7 +87,7 @@ TEST(Classes_Generic, generic_constructor_wrong_argument_type) {
   EXPECT_THROW(executeString(R"(
     class Wrapper<T> {
       var value: T;
-      function init(v: T) { this.value = v; }
+      init(v: T) { this.value = v; }
     }
 
     function main() i32 {
@@ -107,7 +107,7 @@ TEST(Classes_Generic, generic_instantiation_i32) {
     class Box<T> {
       var value: T;
 
-      function init(v: T) {
+      init(v: T) {
         this.value = v;
       }
 
@@ -129,7 +129,7 @@ TEST(Classes_Generic, generic_instantiation_f64) {
     class Box<T> {
       var value: T;
 
-      function init(v: T) {
+      init(v: T) {
         this.value = v;
       }
 
@@ -156,7 +156,7 @@ TEST(Classes_Generic, multiple_instantiations) {
     class Holder<T> {
       var value: T;
 
-      function init(v: T) {
+      init(v: T) {
         this.value = v;
       }
 
@@ -189,7 +189,7 @@ TEST(Classes_Generic, generic_field_access) {
       var first: T;
       var second: T;
 
-      function init(a: T, b: T) {
+      init(a: T, b: T) {
         this.first = a;
         this.second = b;
       }
@@ -208,7 +208,7 @@ TEST(Classes_Generic, generic_method_returns_field) {
     class Data<T> {
       var value: T;
 
-      function init(v: T) {
+      init(v: T) {
         this.value = v;
       }
 
@@ -239,7 +239,7 @@ TEST(Classes_Generic, generic_type_in_variable_declaration) {
     class Num<T> {
       var val: T;
 
-      function init(v: T) {
+      init(v: T) {
         this.val = v;
       }
 
@@ -266,7 +266,7 @@ TEST(Classes_Generic, two_type_parameters) {
       var first: A;
       var second: B;
 
-      function init(a: A, b: B) {
+      init(a: A, b: B) {
         this.first = a;
         this.second = b;
       }
@@ -294,7 +294,7 @@ TEST(Classes_Generic, mixed_type_parameters) {
       var key: K;
       var value: V;
 
-      function init(k: K, v: V) {
+      init(k: K, v: V) {
         this.key = k;
         this.value = v;
       }
@@ -332,7 +332,7 @@ TEST(Classes_Generic, generic_with_i64) {
     class BigBox<T> {
       var value: T;
 
-      function init(v: T) {
+      init(v: T) {
         this.value = v;
       }
 
@@ -358,7 +358,7 @@ TEST(Classes_Generic, generic_with_bool) {
     class Flag<T> {
       var value: T;
 
-      function init(v: T) {
+      init(v: T) {
         this.value = v;
       }
 
@@ -387,7 +387,7 @@ TEST(Classes_Generic_Scoping, method_body_cannot_see_requesters_locals) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Box<T> {
         var v: T;
-        function init(v: T) { this.v = v; }
+        init(v: T) { this.v = v; }
         function get() T { return this.v + secret; }
     }
     function main() i32 {
@@ -406,7 +406,7 @@ TEST(Classes_Generic_Scoping,
         function bonus() i32 { return 100; }
         public class Thing<T> {
             var v: T;
-            public function init(v: T) { this.v = v; }
+            init(v: T) { this.v = v; }
             public function get() T { return this.v + bonus(); }
         }
     }
@@ -438,7 +438,7 @@ TEST(Classes_Generic_Errors, error_on_unknown_generic_type_name) {
   EXPECT_THROW(executeString(R"(
     class Box<T> {
       var v: T;
-      function init(x: T) { this.v = x; }
+      init(x: T) { this.v = x; }
     }
 
     function main() i32 {
@@ -454,7 +454,7 @@ TEST(Classes_Generic_Errors, error_on_wrong_type_argument_count) {
     class Pair<A, B> {
       var a: A;
       var b: B;
-      function init(x: A, y: B) { this.a = x; this.b = y; }
+      init(x: A, y: B) { this.a = x; this.b = y; }
     }
 
     function main() i32 {

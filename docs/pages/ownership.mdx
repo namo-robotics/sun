@@ -47,7 +47,7 @@ class Point {
     var x: i32;
     var y: i32;
     
-    function init(px: i32, py: i32) {
+    init(px: i32, py: i32) {
         this.x = px;
         this.y = py;
     }
@@ -80,7 +80,7 @@ there is nothing to release and nothing is dropped.
 class Holder {
     var res: Res;
 
-    function init() {
+    init() {
         this.res = Res(1);   // starts the field's life — nothing dropped
     }
 
@@ -95,7 +95,7 @@ and the compiler has to be sure which. A second write is fine when the field
 certainly holds a value by then, because what it replaces is known:
 
 ```sun
-function init() {
+init() {
     this.res = Res(1);   // starts its life
     this.res = Res(2);   // certainly replaces Res(1), which is dropped
 }
@@ -105,7 +105,7 @@ What is rejected is a write the compiler cannot place — where some path
 reaching it assigned the field and some did not:
 
 ```sun
-function init(flag: bool) {
+init(flag: bool) {
     if (flag) { this.res = Res(1); }
     this.res = Res(2);   // ❌ did the branch already assign it?
 }
@@ -115,7 +115,7 @@ Branches are alternatives, so one assignment in each is still one assignment,
 and every path arrives in the same state:
 
 ```sun
-function init(flag: bool) {
+init(flag: bool) {
     if (flag) { this.res = Res(1); } else { this.res = Res(2); }
 }
 ```
@@ -128,7 +128,7 @@ it needs the field settled before the loop, or the value settled in a local and
 assigned once.
 
 ```sun
-function init(n: i32) {
+init(n: i32) {
     var chosen = Res(0);
     for (var i: i32 = 1; i < n; i = i + 1) { chosen = Res(i); }
     this.res = chosen;   // one assignment, whatever the loop did
@@ -592,7 +592,7 @@ the enclosing scope ends.
 ```sun
 class Holder {
     public var x: ref String;
-    public function init(x: ref String) { this.x = x; }
+    init(x: ref String) { this.x = x; }
 }
 
 function main() void {

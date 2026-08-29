@@ -272,7 +272,7 @@ TEST(Builtins_IsIntrinsic, is_class_type) {
     class Point {
         var x: i32;
         var y: i32;
-        function init(px: i32, py: i32) {
+        init(px: i32, py: i32) {
             this.x = px;
             this.y = py;
         }
@@ -303,7 +303,7 @@ TEST(Builtins_IsIntrinsic, is_interface_implemented) {
     
     class Value implements Printable {
         var data: i32;
-        function init(d: i32) {
+        init(d: i32) {
             this.data = d;
         }
         function print() void {
@@ -332,7 +332,7 @@ TEST(Builtins_IsIntrinsic, is_interface_not_implemented) {
     
     class Value {
         var data: i32;
-        function init(d: i32) {
+        init(d: i32) {
             this.data = d;
         }
     }
@@ -387,7 +387,7 @@ TEST(Builtins_IsIntrinsic, is_in_generic_class) {
     class Container<T> {
         var value: T;
         
-        function init(v: T) {
+        init(v: T) {
             this.value = v;
         }
         
@@ -410,7 +410,7 @@ TEST(Builtins_IsIntrinsic, is_in_generic_class_with_non_numeric) {
     class Container<T> {
         var value: T;
         
-        function init(v: T) {
+        init(v: T) {
             this.value = v;
         }
         
@@ -488,7 +488,7 @@ TEST(Builtins_IsIntrinsic, type_narrowing_with_interface) {
     class MyKey implements IHashable {
         var id: i64;
         
-        function init(x: i64) {
+        init(x: i64) {
             this.id = x;
         }
         
@@ -523,7 +523,7 @@ TEST(Builtins_IsIntrinsic, type_narrowing_method_call_in_generic) {
     class Box implements IValue {
         var val: i32;
         
-        function init(v: i32) {
+        init(v: i32) {
             this.val = v;
         }
         
@@ -556,7 +556,7 @@ TEST(Builtins_IsIntrinsic, type_narrowing_else_branch_no_narrow) {
     }
     
     class Bar implements IFoo {
-        function init() {}
+        init() {}
         function foo() i32 { return 42; }
     }
     
@@ -586,7 +586,7 @@ TEST(Builtins_IsIntrinsic, type_narrowing_nested_if) {
     }
     
     class Both implements IA, IB {
-        function init() {}
+        init() {}
         function a() i32 { return 10; }
         function b() i32 { return 20; }
     }
@@ -629,14 +629,14 @@ TEST(Builtins_IsIntrinsic, nested_generic_classes) {
     public module Test {
         public class Inner<T> {
             public var val: T;
-            public function init(v: T) { this.val = v; }
+            init(v: T) { this.val = v; }
             public function get() T { return this.val; }
         }
     }
     
     class Outer<T> {
         public var inner: Test.Inner<T>;
-        public function init(v: T) { this.inner = Test.Inner<T>(v); }
+        init(v: T) { this.inner = Test.Inner<T>(v); }
         public function get() T { return this.inner.get(); }
     }
     
@@ -654,7 +654,7 @@ TEST(Builtins_IsIntrinsic, generic_function_with_captured_param) {
     }
     
     class Doubler implements IMultiplier {
-        function init() {}
+        init() {}
         function multiply(x: i32) i32 { return x * 2; }
     }
     
@@ -683,7 +683,7 @@ TEST(Builtins_IsIntrinsic, generic_function_captures_and_type_narrowing) {
     
     class Number implements IScalable {
         var n: i32;
-        function init(v: i32) { this.n = v; }
+        init(v: i32) { this.n = v; }
         function scale(factor: i32) i32 { return this.n * factor; }
     }
     
@@ -716,13 +716,13 @@ TEST(Builtins_IsIntrinsic, chained_generic_calls_with_different_types) {
     
     class TypeA implements IA {
         var a: i32;
-        function init(v: i32) { this.a = v; }
+        init(v: i32) { this.a = v; }
         function getA() i32 { return this.a; }
     }
     
     class TypeB implements IB {
         var b: i32;
-        function init(v: i32) { this.b = v; }
+        init(v: i32) { this.b = v; }
         function getB() i32 { return this.b; }
     }
     
@@ -762,7 +762,7 @@ TEST(Builtins_IsIntrinsic, nested_generic_function_definition) {
     
     class Wrapper implements IValue {
         var data: i32;
-        function init(d: i32) { this.data = d; }
+        init(d: i32) { this.data = d; }
         function get_value() i32 { return this.data; }
     }
     

@@ -6,7 +6,7 @@ class Point {
   public var x: i32;
   public var y: i32;
 
-  public function init(x_: i32, y_: i32) {
+  init(x_: i32, y_: i32) {
     this.x = x_;
     this.y = y_;
   }

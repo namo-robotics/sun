@@ -3,7 +3,7 @@
 // error_generator.h — throw, try/catch, and calls that may unwind
 //
 // Sun's error unions are native LLVM exceptions: a function declared
-// `, IError` returns a plain T and may unwind. So a call to one is an
+// `throws IError` returns a plain T and may unwind. So a call to one is an
 // `invoke` whenever there is a landing pad to unwind to, and a plain call
 // otherwise — which is the single decision `emitPossiblyThrowingCall` makes
 // for every call site in codegen.

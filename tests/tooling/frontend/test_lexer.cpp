@@ -79,7 +79,7 @@ TEST(Tooling_Frontend_Lexer, EveryKeywordLexesAsItself) {
     // A keyword token carries its spelling as text.
     EXPECT_EQ(lexAll(std::string(*word))[0].text, *word);
   }
-  EXPECT_EQ(count, 54);
+  EXPECT_EQ(count, 55);
 }
 
 // ------------------------------------------------------------------
@@ -379,7 +379,7 @@ TEST(Tooling_Frontend_Lexer, DfaStateCountStaysBounded) {
   // Lex a broad mix of constructs; the state count is bounded by the token
   // grammar, not by the input.
   lexAll(
-      "class C implements I { var a: array<i32>; function f() void, IError {} }"
+      "class C implements I { var a: array<i32>; function f() void throws IError {} }"
       " match x { 1 => y, _ => z } lambda (a) => a >>= 2 & 3 | 4 ^ 5 ~ 6;"
       " `tmpl ${x}` \"str\" 1.5e-3 0 _i /* c */ // c\n"
       " static_ptr<u8> raw_ptr<f64> ... :: -> => != <= >= %= /= *=");

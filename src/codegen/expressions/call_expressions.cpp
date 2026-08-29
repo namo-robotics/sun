@@ -1108,7 +1108,7 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
     return nullptr;
   }
 
-  // A throwing callee ('T, IError') is tagged with "sun.canthrow"; inside a try
+  // A throwing callee ('T throws IError') is tagged with "sun.canthrow"; inside a try
   // block it must be `invoke`d so its exception routes to the local landing
   // pad. Exceptions now propagate natively — no error-union unwrapping.
   bool canThrow = func->hasFnAttribute("sun.canthrow") || funcType.canThrow();
@@ -1182,7 +1182,7 @@ Value* CodegenVisitor::codegenLambdaCall(const CallExprAST& expr,
   }
 
   // Indirect call through the extracted function pointer. Throwing lambdas
-  // (', IError') are invoked so exceptions route to a local landing pad
+  // ('throws IError') are invoked so exceptions route to a local landing pad
   // inside try blocks.
   Value* result = errors.emitPossiblyThrowingCall(llvmFuncType, funcPtr, argValues,
                                            lambdaType.canThrow(), "calltmp");

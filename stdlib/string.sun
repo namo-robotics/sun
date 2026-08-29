@@ -152,7 +152,7 @@ public module sun {
 
     // Takes the view by value: a view is a class, so it moves in rather than
     // being read out of a borrow
-    public function init(mat_view: MatrixView<u8>) {
+    init(mat_view: MatrixView<u8>) {
       this.view = mat_view;
     }
 
@@ -202,7 +202,7 @@ public module sun {
 
     // Build an iterator over a byte range. The caller must keep the bytes alive
     // for as long as the iterator is used.
-    public function init(data: raw_ptr<u8>, len: i64) {
+    init(data: raw_ptr<u8>, len: i64) {
       this.data = data;
       this.len = len;
       this.pos = 0;
@@ -278,7 +278,7 @@ public module sun {
 
     // Construct from string literal
     // Copies bytes from static_ptr<u8> (fat pointer) to heap
-    public function init(alloc: const ref HeapAllocator, literal: static_ptr<u8>) {
+    init(alloc: const ref HeapAllocator, literal: static_ptr<u8>) {
       // Extract data pointer and length from fat pointer struct
       var src_data: raw_ptr<u8> = literal.raw();
       var src_len: i64 = literal.length();
@@ -298,7 +298,7 @@ public module sun {
     // Construct from a string literal without naming an allocator.
     // HeapAllocator is stateless, so a fresh one serves; the buffer keeps its
     // own copy and frees itself through it as usual.
-    public function init(literal: static_ptr<u8>) {
+    init(literal: static_ptr<u8>) {
       var alloc: HeapAllocator = HeapAllocator();
       var src_data: raw_ptr<u8> = literal.raw();
       var src_len: i64 = literal.length();
@@ -317,7 +317,7 @@ public module sun {
     // Construct from ContiguousBuffer with specified length
     // Copies `length` bytes from buffer to a new heap-allocated string
     // Throws IndexOutOfBoundsError if length > buffer.size()
-    public function init(allocator: const ref HeapAllocator, buffer: ref ContiguousBuffer<u8>, length: i64) void, IError {
+    init(allocator: const ref HeapAllocator, buffer: ref ContiguousBuffer<u8>, length: i64) throws IError {
       if (length > buffer.size()) {
         throw IndexOutOfBoundsError(length);
       }
@@ -524,7 +524,7 @@ public module sun {
     }
 
     // Remove and return last byte
-    public function pop() u8, IError {
+    public function pop() u8 throws IError {
       if (this.len == 0) {
         throw EmptyError();
       }
@@ -540,7 +540,7 @@ public module sun {
     }
 
     // Remove byte at index, shifting remaining bytes left
-    public function remove(index: i64) u8, IError {
+    public function remove(index: i64) u8 throws IError {
       if (index < 0) {
         throw IndexOutOfBoundsError(index);
       }
@@ -558,7 +558,7 @@ public module sun {
     }
 
     // Insert byte at index, shifting remaining bytes right
-    public function insert_char(index: i64, ch: u8) void, IError {
+    public function insert_char(index: i64, ch: u8) void throws IError {
       if (index < 0) {
         throw IndexOutOfBoundsError(index);
       }
@@ -927,7 +927,7 @@ public module sun {
 
     // Copy `count` bytes starting at `start` into a new string
     // Throws IndexOutOfBoundsError if the range falls outside the string
-    public const function substr(alloc: const ref HeapAllocator, start: i64, count: i64) String, IError {
+    public const function substr(alloc: const ref HeapAllocator, start: i64, count: i64) String throws IError {
       if (start < 0 or count < 0) {
         throw IndexOutOfBoundsError(start);
       }

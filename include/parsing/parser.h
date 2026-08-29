@@ -269,8 +269,12 @@ class Parser {
   unique_ptr<PrototypeAST> parsePrototype();
   unique_ptr<ExprAST> parseFunctionLiteral(
       const std::string& name = "",
-      std::vector<TypeParameter> typeParameters = {}, bool isLambda = false);
-  unique_ptr<FunctionAST> parseFunction();
+      std::vector<TypeParameter> typeParameters = {}, bool isLambda = false,
+      bool isLifecycleMethod = false);
+  unique_ptr<FunctionAST> parseFunction(bool isClassMethod = false);
+  // Parse a constructor or destructor member: init(args) { } / deinit() { }.
+  // They are written without 'public' or 'function' and are always public.
+  unique_ptr<FunctionAST> parseLifecycleMethod();
   unique_ptr<LambdaAST> parseLambda();
   unique_ptr<PrototypeAST> parseExtern();
   unique_ptr<StructLiteralAST> parseStructLiteral();

@@ -14,7 +14,7 @@ interface HasValue {
 }
 
 class Counter implements Printable, HasValue {
-  function init(v: i32) {
+  init(v: i32) {
     this.value = v;
   }
 
@@ -40,7 +40,7 @@ public module shapes {
     }
     public class Square implements IShape {
         var side: f64;
-        public function init(s: f64) { this.side = s; }
+        init(s: f64) { this.side = s; }
         public function area() f64 { return this.side * this.side; }
     }
 }
@@ -73,7 +73,7 @@ interface Named {
 class Person implements Named {
     // 'name' field is inherited from Named interface
     
-    function init(n: i32) {
+    init(n: i32) {
         this.name = n;
     }
 }
@@ -91,7 +91,7 @@ interface Answerable {
 }
 
 class Thinker implements Answerable {
-  function init() {}
+  init() {}
 }
 
 function main() i32 {
@@ -104,7 +104,7 @@ Classes can override default implementations:
 
 ```sun
 class DeepThinker implements Answerable {
-    function init() {}
+    init() {}
 
     function answer() i32 {
         return 43;  // Override default
@@ -125,7 +125,7 @@ interface Container<T> {
 class Box<T> implements Container<T> {
     var value: T;
 
-    function init(v: T) {
+    init(v: T) {
         this.value = v;
     }
 
@@ -151,7 +151,7 @@ interface Wrapper<T> {
 class IntWrapper implements Wrapper<i32> {
     var value: i32;
 
-    function init(v: i32) {
+    init(v: i32) {
         this.value = v;
     }
 
@@ -173,7 +173,7 @@ interface Mappable<T, U> {
 class Value<T> implements Mappable<T, T> {
     var data: T;
 
-    function init(d: T) {
+    init(d: T) {
         this.data = d;
     }
 
@@ -199,7 +199,7 @@ interface Stoppable {
 class Service implements Runnable, Stoppable {
     var running: bool;
 
-    function init() {
+    init() {
         this.running = false;
     }
 
@@ -230,7 +230,7 @@ class NumberIterator implements IIterator<i32, NumberIterator> {
     var current: i32;
     var max: i32;
 
-    function init(start: i32, end: i32) {
+    init(start: i32, end: i32) {
         this.current = start;
         this.max = end;
     }

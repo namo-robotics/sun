@@ -33,7 +33,7 @@ TEST(Stdlib_BigInt, factorial_and_decimal_round_trip) {
   auto value = executeStringWithStdlib(R"(
     using sun;
 
-    function main() i32, IError {
+    function main() i32 throws IError {
         var alloc = make_heap_allocator();
         var n = BigUint(alloc, 1);
         for (var i: u64 = 2; i <= 30; i = i + 1) { n.mul_small(i); }
@@ -80,7 +80,7 @@ TEST(Stdlib_BigInt, multi_limb_arithmetic) {
         return s.equals_literal(text);
     }
 
-    function main() i32, IError {
+    function main() i32 throws IError {
         var alloc = make_heap_allocator();
         // a = 2^200 + 12345, b = 3^150 + 7
         var a = of(alloc, "1606938044258990275541962092341162602522202993782792835313721");

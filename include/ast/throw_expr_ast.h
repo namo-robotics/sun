@@ -8,7 +8,7 @@
 #include "ast/expr_ast.h"
 
 // Throw expression: throw <expr>
-// Used to throw an error from a function declared with ", IError"
+// Used to throw an error from a function declared with "throws IError"
 class ThrowExprAST : public ExprAST {
   std::unique_ptr<ExprAST> errorExpr;  // The error expression to throw
 

@@ -332,10 +332,10 @@ void SemanticAnalyzer::analyzeTryCatch(TryCatchExprAST& tryCatchExpr) {
 }
 
 void SemanticAnalyzer::analyzeThrowExpr(ThrowExprAST& throwExpr) {
-  // Validate that throw is used inside a function declared with ", IError"
+  // Validate that throw is used inside a function declared with "throws IError"
   if (!ctx_.isInThrowingFunction()) {
     logAndThrowError(
-        "throw can only be used in functions declared with ', IError'",
+        "throw can only be used in functions declared with 'throws IError'",
         throwExpr.getLocation());
   }
 

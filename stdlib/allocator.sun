@@ -42,7 +42,7 @@ public module sun {
   public class HeapAllocator implements IAllocator {
     // Build the default heap allocator. It holds no state, so copies of it are
     // interchangeable.
-    public function init() {
+    init() {
       // No initialization needed for system malloc
     }
 

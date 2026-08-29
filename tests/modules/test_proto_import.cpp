@@ -1022,7 +1022,7 @@ TEST(Modules_ProtoImport, oneof_roundtrips_each_variant) {
   auto value = runWithProto("sun_proto_full2", kFullProto, R"(
     using sun;
     using f;
-    function roundtrip(alloc: ref HeapAllocator, b: ref Bag) i32, IError {
+    function roundtrip(alloc: ref HeapAllocator, b: ref Bag) i32 throws IError {
       var buf = Vec<u8>(alloc, 32);
       b.encode(buf);
       var back = Bag_decode(alloc, buf);

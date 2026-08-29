@@ -659,7 +659,7 @@ TEST(Ffi_StructValue, passes_a_register_class_struct) {
     class Pair {
         var a: i32;
         var b: i32;
-        function init(a: i32, b: i32) { this.a = a; this.b = b; }
+        init(a: i32, b: i32) { this.a = a; this.b = b; }
     }
     extern "C" function sun_ffi_take_pair(p: Pair) i32;
 
@@ -678,7 +678,7 @@ TEST(Ffi_StructValue, passes_a_mixed_integer_and_sse_struct) {
     class Mixed {
         var a: i32;
         var b: f64;
-        function init(a: i32, b: f64) { this.a = a; this.b = b; }
+        init(a: i32, b: f64) { this.a = a; this.b = b; }
     }
     extern "C" function sun_ffi_take_mixed(m: Mixed) i32;
 
@@ -696,7 +696,7 @@ TEST(Ffi_StructValue, passes_a_memory_class_struct_byval) {
   auto value = executeString(R"(
     class Big {
         var a: i32; var b: i32; var c: i32; var d: i32; var e: i32;
-        function init(a: i32, b: i32, c: i32, d: i32, e: i32) {
+        init(a: i32, b: i32, c: i32, d: i32, e: i32) {
             this.a = a; this.b = b; this.c = c; this.d = d; this.e = e;
         }
     }
@@ -716,7 +716,7 @@ TEST(Ffi_StructValue, returns_a_register_class_struct) {
     class Pair {
         var a: i32;
         var b: i32;
-        function init(a: i32, b: i32) { this.a = a; this.b = b; }
+        init(a: i32, b: i32) { this.a = a; this.b = b; }
     }
     extern "C" function sun_ffi_make_pair(a: i32, b: i32) Pair;
 
@@ -738,7 +738,7 @@ TEST(Ffi_StructValue, returns_a_memory_class_struct_via_sret) {
   auto value = executeString(R"(
     class Big {
         var a: i32; var b: i32; var c: i32; var d: i32; var e: i32;
-        function init(a: i32, b: i32, c: i32, d: i32, e: i32) {
+        init(a: i32, b: i32, c: i32, d: i32, e: i32) {
             this.a = a; this.b = b; this.c = c; this.d = d; this.e = e;
         }
     }
@@ -762,7 +762,7 @@ TEST(Ffi_StructValue, struct_followed_by_a_scalar_keeps_argument_order) {
     class Pair {
         var a: i32;
         var b: i32;
-        function init(a: i32, b: i32) { this.a = a; this.b = b; }
+        init(a: i32, b: i32) { this.a = a; this.b = b; }
     }
     extern "C" function sun_ffi_pair_then_int(p: Pair, extra: i32) i32;
 
@@ -782,7 +782,7 @@ TEST(Ffi_StructValue, module_qualified_extern_call_marshals_structs) {
     class Pair {
         public var a: i32;
         public var b: i32;
-        public function init(a: i32, b: i32) { this.a = a; this.b = b; }
+        init(a: i32, b: i32) { this.a = a; this.b = b; }
     }
     public module clib {
       public extern "C" function sun_ffi_take_pair(p: Pair) i32;

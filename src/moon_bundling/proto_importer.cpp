@@ -19,7 +19,7 @@
 //       var <field>: <SunType>; ...
 //       var unknown_fields: Vec<u8>;               // preserved unknown fields
 //       var alloc_: HeapAllocator;
-//       function init(alloc: ref HeapAllocator) { ...zero values... }
+//       init(alloc: ref HeapAllocator) { ...zero values... }
 //       function encode(buf: ref Vec<u8>) void { ... }
 //     }
 //     function <Msg>_decode(alloc: ref HeapAllocator, buf: ref Vec<u8>) <Msg>,
@@ -659,7 +659,7 @@ class MessageGenerator {
 
   // Zero values (proto3 defaults); containers and sub-messages start empty
   void emitInit() {
-    w_.open("public function init(alloc: ref HeapAllocator) {");
+    w_.open("init(alloc: ref HeapAllocator) {");
     w_.line("this.alloc_ = alloc.copy();");
     forEachPlainField([&](const FD* f) {
       std::string init;
@@ -775,7 +775,7 @@ class MessageGenerator {
   void emitDecodeFrom() {
     w_.open("public function " + name_ +
             "_decode_from(alloc: ref HeapAllocator, r: ref ProtoReader) " +
-            name_ + ", IError {");
+            name_ + " throws IError {");
     w_.line("var msg = " + name_ + "(alloc);");
     w_.open("while (r.at_end() == false) {");
     w_.line("var tag: u64 = r.read_tag();");
@@ -861,7 +861,7 @@ class MessageGenerator {
   void emitDecodeHelpers() {
     const std::string sig = "(alloc: ref HeapAllocator, r: ref ProtoReader) ";
     w_.open("public function " + name_ + "_decode_nested" + sig + name_ +
-            ", IError {");
+            " throws IError {");
     w_.line("var end: i64 = r.read_length();");
     w_.line("var old: i64 = r.push_limit(end);");
     w_.line("var msg = " + name_ + "_decode_from(alloc, r);");
@@ -872,14 +872,14 @@ class MessageGenerator {
 
     w_.open("public function " + name_ +
             "_decode(alloc: ref HeapAllocator, buf: ref Vec<u8>) " + name_ +
-            ", IError {");
+            " throws IError {");
     w_.line("var r = ProtoReader(buf);");
     w_.line("return " + name_ + "_decode_from(alloc, r);");
     w_.close();
     w_.line();
 
     w_.open("public function " + name_ + "_decode_delimited" + sig + name_ +
-            ", IError {");
+            " throws IError {");
     w_.line("return " + name_ + "_decode_nested(alloc, r);");
     w_.close();
     w_.line();

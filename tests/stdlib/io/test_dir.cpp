@@ -40,7 +40,7 @@ TEST_F(Stdlib_Io_Dir, read_dir_lists_entries_without_dot_and_dotdot) {
     using sun;
     using sun.io;
 
-    function count(a: ref HeapAllocator) i32, IError {
+    function count(a: ref HeapAllocator) i32 throws IError {
         var entries = read_dir(a, ")" + testDir +
                                        R"(");
         var files: i32 = 0;
@@ -69,7 +69,7 @@ TEST_F(Stdlib_Io_Dir, read_dir_finds_a_named_entry) {
     using sun;
     using sun.io;
 
-    function find(a: ref HeapAllocator) bool, IError {
+    function find(a: ref HeapAllocator) bool throws IError {
         var entries = read_dir(a, ")" + testDir +
                                        R"(");
         for (var e: DirEntry in entries) {
@@ -92,7 +92,7 @@ TEST_F(Stdlib_Io_Dir, read_dir_on_empty_directory) {
     using sun;
     using sun.io;
 
-    function size_of(a: ref HeapAllocator) i64, IError {
+    function size_of(a: ref HeapAllocator) i64 throws IError {
         var entries = read_dir(a, ")" + testDir +
                                        R"(");
         return entries.size();
@@ -157,7 +157,7 @@ TEST_F(Stdlib_Io_Dir, read_dir_accepts_a_runtime_string_path) {
     using sun;
     using sun.io;
 
-    function count(a: ref HeapAllocator) i64, IError {
+    function count(a: ref HeapAllocator) i64 throws IError {
         // A path built at runtime, not a literal
         var dir = String(a, ")" + testDir +
                                        R"(");

@@ -70,7 +70,7 @@ TEST(MemorySafety, value_param_moves) {
   auto value = executeString(R"(
     class Data {
         var value: i32;
-        function init(v: i32) { this.value = v; }
+        init(v: i32) { this.value = v; }
     }
 
     function consume(d: Data) i32 {
@@ -90,7 +90,7 @@ TEST(MemorySafety, pass_temporary_by_value) {
   auto value = executeString(R"(
     class Data {
         var value: i32;
-        function init(v: i32) { this.value = v; }
+        init(v: i32) { this.value = v; }
     }
 
     function consume(d: Data) i32 {
@@ -109,7 +109,7 @@ TEST(MemorySafety, use_after_move_value_param) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Data {
         var value: i32;
-        function init(v: i32) { this.value = v; }
+        init(v: i32) { this.value = v; }
     }
 
     function consume(d: Data) i32 {
@@ -130,7 +130,7 @@ TEST(MemorySafety, method_call_after_move) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Counter {
         var count: i32;
-        function init(n: i32) { this.count = n; }
+        init(n: i32) { this.count = n; }
         function get() i32 { return this.count; }
     }
 
@@ -384,7 +384,7 @@ TEST(MemorySafety, class_ref_field_allowed_when_config_permits) {
       class Holder {
           var r: ref i32;
 
-          function init(self: ref Holder, val: ref i32) {
+          init(self: ref Holder, val: ref i32) {
               this.r = val;
           }
       }
@@ -534,7 +534,7 @@ TEST(MemorySafety_LifetimeInference, ref_return_member_of_param_ok) {
     class Point {
         var x: i32;
         var y: i32;
-        function init(a: i32, b: i32) {
+        init(a: i32, b: i32) {
             this.x = a;
             this.y = b;
         }
@@ -558,7 +558,7 @@ TEST(MemorySafety_LifetimeInference, ref_return_from_this_ok) {
     class Container {
         var value: i32;
         
-        function init(v: i32) {
+        init(v: i32) {
             this.value = v;
         }
         

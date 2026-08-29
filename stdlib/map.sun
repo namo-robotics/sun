@@ -135,7 +135,7 @@ public module sun {
     var size_: i64;  // Number of occupied entries
 
     // Constructor with allocator and capacity
-    public function init(allocator: const ref HeapAllocator, capacity: i64) {
+    init(allocator: const ref HeapAllocator, capacity: i64) {
       this.alloc = allocator.copy();
       this.capacity_ = capacity;
       this.size_ = 0;
@@ -151,7 +151,7 @@ public module sun {
 
     // Destructor - drop live keys/values (buffer memory itself is freed by
     // the ContiguousBuffer/Unique field recursion)
-    function deinit() void {
+    deinit() {
       for (var i: i64 = 0; i < this.capacity_; i = i + 1) {
         if (this.states.get_unchecked(i) == 1) {
           this.drop_key(i);
@@ -237,7 +237,7 @@ public module sun {
     // Borrow the value stored under key; throws if not found. The map keeps
     // ownership, so this hands back a reference — copying the value out would
     // leave two owners of anything it holds. Use remove() to move it out.
-    public const function get(key: K) ref V, IError {
+    public const function get(key: K) ref V throws IError {
       var probe: i64 = this.find_index(key);
       if (probe < 0) {
         throw NotFoundError();
@@ -264,7 +264,7 @@ public module sun {
     }
 
     // Remove key and return its value, throws IError if not found
-    public function remove(key: K) V, IError {
+    public function remove(key: K) V throws IError {
       var probe: i64 = this.find_index(key);
       if (probe < 0) {
         throw NotFoundError();
@@ -422,7 +422,7 @@ public module sun {
     var current: i64;
 
     // Build an iterator positioned before the first bucket.
-    public function init() {
+    init() {
       this.current = 0;
     }
 

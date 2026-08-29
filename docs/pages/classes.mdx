@@ -11,7 +11,7 @@ class Point {
     var x: i32;
     var y: i32;
 
-    function init(px: i32, py: i32) {
+    init(px: i32, py: i32) {
         this.x = px;
         this.y = py;
     }
@@ -25,7 +25,10 @@ class Point {
 ## Key Features
 
 - **Fields**: Declared with `var name: type;` inside the class body
-- **Constructor**: A method named `init` is called automatically during instantiation
+- **Constructor**: `init(args) { }` runs during instantiation. It is written
+  bare — no `public`, no `function`, no return type — and so is the destructor
+  `deinit() { }`; both are always public, and no method may take their names.
+  A constructor that can fail is written `init(args) throws IError { }`.
 - **Methods**: Functions inside the class that can access `this`
 - **Member access**: Use `.` to access fields and call methods
 - **Interfaces**: Classes can implement one or more interfaces
@@ -43,11 +46,8 @@ public module bank {
     public class Account {
         var balance: i64;                       // private
         public var owner: i32;                  // public field
-        function init(owner: i32) {             // private constructor ...
+        init(owner: i32) {                      // always public
             this.owner = owner; this.balance = 0;
-        }
-        public function open(owner: i32) Account {   // ... with a public factory
-            return Account(owner);
         }
         public function deposit(n: i64) void { this.balance = this.balance + n; }
         function audit() bool { return this.balance >= 0; }   // private
@@ -55,9 +55,12 @@ public module bank {
 }
 ```
 
-- `deinit` is invoked by the compiler and is always callable.
-- `init` follows the normal rules, so a private `init` plus a public factory
-  is a supported pattern.
+- `init` and `deinit` take no visibility keyword: constructors are always
+  public, and `deinit` is invoked by the compiler and is always callable.
+- To restrict who can build a class, give `init` a parameter whose type is a
+  module-private class. Code outside the module cannot name that class, so it
+  cannot produce the argument — the standard library's `SharedGuard` uses this
+  to ensure only `lock()` hands out guards.
 - Operator methods (`__index__`, `__setindex__`, `__slice__`) follow the normal
   rules: `v[i]` from outside the module needs a public `__index__`.
 - Struct literals `{ field: value }` name fields directly, so every field
@@ -78,7 +81,7 @@ packed_class Header {
     var length: i32;
     var flags: u8;
 
-    function init() {}
+    init() {}
 }
 ```
 
@@ -129,7 +132,7 @@ already has. Methods on either side can call each other through `this`.
 class Point {
     var x: i32;
     var y: i32;
-    function init(x: i32, y: i32) { this.x = x; this.y = y; }
+    init(x: i32, y: i32) { this.x = x; this.y = y; }
 }
 
 partial class Point {
@@ -150,7 +153,7 @@ class Point implements Printable {
     var x: i32;
     var y: i32;
 
-    function init(px: i32, py: i32) {
+    init(px: i32, py: i32) {
         this.x = px;
         this.y = py;
     }
@@ -178,7 +181,7 @@ interface Runnable {
 class Task implements Named, Runnable {
     // 'name' field comes from Named interface
     
-    function init(n: i32) {
+    init(n: i32) {
         this.name = n;
     }
 
@@ -199,7 +202,7 @@ class Box<T> implements IIterator<T, Box<T>> {
     var value: T;
     var returned: bool;
 
-    function init(v: T) {
+    init(v: T) {
         this.value = v;
         this.returned = false;
     }
@@ -229,7 +232,7 @@ class Account {
     var owner: i32;
     var balance: i64;
 
-    function init(owner: i32) {
+    init(owner: i32) {
         this.owner = owner;
         this.balance = 0;
         this.audit();       // fine: every field has a value by here
@@ -249,7 +252,7 @@ class Broken {
     var owner: i32;
     var balance: i64;
 
-    function init(owner: i32) {
+    init(owner: i32) {
         this.owner = owner;
     }   // ❌ ERROR: constructor of 'Broken' can finish with field 'balance'
         //    unassigned
@@ -265,7 +268,7 @@ class Buffer {
     var data: Vec<u8>;
     var length: i64;
 
-    function init(alloc: ref HeapAllocator) {
+    init(alloc: ref HeapAllocator) {
         this.fill(alloc);   // assigns both fields, so the object is whole
     }
 
@@ -441,7 +444,7 @@ pass one to a `ref` parameter, or call a non-const method on `this`.
 ```sun
 class Counter {
     var n: i32;
-    function init() { this.n = 0; }
+    init() { this.n = 0; }
     public const function get() i32 { return this.n; }
     public function increment() void { this.n = this.n + 1; }
 }
@@ -489,7 +492,7 @@ function main() i32 {
 class Counter {
     var value: i32;
 
-    function init(start: i32) {
+    init(start: i32) {
         this.value = start;
     }
 

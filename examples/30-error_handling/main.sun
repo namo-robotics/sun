@@ -1,9 +1,9 @@
 using sun;
 
 // A function that can fail declares an error type after its return type with
-// the `, IError` suffix, and signals failure with `throw`. The thrown value is
+// the ` throws IError` suffix, and signals failure with `throw`. The thrown value is
 // any class implementing `IError` (the standard library provides several).
-function divide(a: i32, b: i32) i32, IError {
+function divide(a: i32, b: i32) i32 throws IError {
   if (b == 0) {
     throw DivisionByZeroError();
   }

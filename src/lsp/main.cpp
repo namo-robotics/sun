@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/JSON.h>
 #include <llvm/Support/SHA256.h>
@@ -264,6 +265,10 @@ constexpr int String = 18;
 constexpr int Number = 19;
 constexpr int Regexp = 20;
 constexpr int Operator = 21;
+// Custom type for init/deinit: not keywords, not ordinary methods. The
+// VSCode extension registers it (semanticTokenTypes) and maps it to a scope
+// the default themes color distinctly (semanticTokenScopes).
+constexpr int Lifecycle = 22;
 }  // namespace LSPTokenType
 
 // Map TokenKind to LSP semantic token type index (-1 = skip)
@@ -279,6 +284,7 @@ int tokenKindToLSPType(TokenKind kind) {
     case TokenKind::TRY:
     case TokenKind::CATCH:
     case TokenKind::THROW:
+    case TokenKind::THROWS:
     case TokenKind::USING:
     case TokenKind::MANIFEST:
     case TokenKind::MODULE:
@@ -580,16 +586,21 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
     if (lastIdent.valid) {
       if (tok.kind == TokenKind::PAREN_OPEN || tok.kind == TokenKind::LESS) {
         // Previous identifier is a function/method call
-        // Find and update it in tokens
+        // Find and update it in tokens. Constructors and destructors (init /
+        // deinit) get their own token type so they stand apart from both
+        // keywords and ordinary methods.
+        bool isLifecycle =
+            lastIdent.text == "init" || lastIdent.text == "deinit";
         for (auto& t : tokens) {
           if (t.line == lastIdent.line && t.startChar == lastIdent.col) {
-            t.tokenType = LSPTokenType::Function;
+            t.tokenType =
+                isLifecycle ? LSPTokenType::Lifecycle : LSPTokenType::Function;
             break;
           }
         }
-        if (tok.kind == TokenKind::LESS) {
-          angleBracketDepth++;  // Generic call: create<T>()
-        }
+        // A '<' opening a generic argument list is counted by the context
+        // tracking below (prevKind is the identifier); counting it here too
+        // would leave the depth stuck above zero after the closing '>'.
       }
       lastIdent.valid = false;
     }
@@ -616,6 +627,9 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
         angleBracketDepth++;
     } else if (tok.kind == TokenKind::GREATER && angleBracketDepth > 0)
       angleBracketDepth--;
+    else if (tok.kind == TokenKind::RIGHT_SHIFT && angleBracketDepth > 0)
+      // '>>' closing two nested generic lists lexes as one token
+      angleBracketDepth = std::max(0, angleBracketDepth - 2);
     else if (tok.kind == TokenKind::COMMA) {
       afterColon = false;
       afterArrow = false;
@@ -1014,6 +1028,9 @@ int main() {
       tokenTypes.push_back("number");
       tokenTypes.push_back("regexp");
       tokenTypes.push_back("operator");
+      // Custom: constructors and destructors (init/deinit). Declared by the
+      // VSCode extension in contributes.semanticTokenTypes.
+      tokenTypes.push_back("lifecycle");
 
       llvm::json::Array tokenModifiers;
       tokenModifiers.push_back("declaration");

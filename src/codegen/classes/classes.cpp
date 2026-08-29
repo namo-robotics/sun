@@ -459,7 +459,7 @@ Function* ClassGenerator::declareMethodFromAST(
     return nullptr;
   }
 
-  // With native exceptions a throwing method ('T, IError') returns plain T; the
+  // With native exceptions a throwing method ('T throws IError') returns plain T; the
   // marker only means it may unwind.
 
   // Create the function declaration
@@ -528,7 +528,7 @@ void ClassGenerator::generateMethodBody(const FunctionAST& methodFunc,
   // Get return type
   llvm::Type* returnType = func->getReturnType();
 
-  // Check if this method can return errors (declared with ', IError')
+  // Check if this method can return errors (declared with 'throws IError')
   bool canError = proto.hasReturnType() && proto.getReturnType()->canError;
 
   // Save and set error handling context. With native exceptions a throwing
@@ -829,7 +829,12 @@ Value* ClassGenerator::codegenStackClassInstance(const CallExprAST& expr,
 
     std::vector<Value*> ctorArgs = generateCtorArgs(
         ctorFunc, alloca, expr.getArgs(), expr.getArgConversions(), paramTypes);
-    ctx.builder->CreateCall(ctorFunc, ctorArgs);
+    // A throwing constructor unwinds like any other call: inside a try it
+    // must be invoked so the exception reaches the landing pad.
+    bool ctorCanThrow = (ctor.method && ctor.method->canThrow) ||
+                        ctorFunc->hasFnAttribute("sun.canthrow");
+    gen_.errorGenerator().emitPossiblyThrowingCall(ctorFunc, ctorArgs,
+                                                   ctorCanThrow, "");
   }
 
   // Track the temporary for deinit ONLY if not moved (ownership
@@ -1442,7 +1447,12 @@ Value* ClassGenerator::codegen(const GenericCallAST& expr) {
         std::vector<Value*> ctorArgs =
             generateCtorArgs(ctorFunc, alloca, expr.getArgs(),
                              expr.getArgConversions(), paramTypes);
-        ctx.builder->CreateCall(ctorFunc, ctorArgs);
+        // See codegenStackClassInstance: a throwing constructor must be
+        // invoked so its exception reaches the enclosing try's landing pad.
+        bool ctorCanThrow = (ctor.method && ctor.method->canThrow) ||
+                            ctorFunc->hasFnAttribute("sun.canthrow");
+        gen_.errorGenerator().emitPossiblyThrowingCall(ctorFunc, ctorArgs,
+                                                       ctorCanThrow, "");
       } else if (argCount > 0) {
         // Zeroed storage fully describes a class with no constructor, so an
         // argument-free miss is fine. Arguments that reach no constructor
@@ -1520,7 +1530,12 @@ Value* ClassGenerator::codegen(const GenericCallAST& expr) {
       std::vector<Value*> ctorArgs =
           generateCtorArgs(ctorFunc, alloca, expr.getArgs(),
                            expr.getArgConversions(), paramTypes);
-      ctx.builder->CreateCall(ctorFunc, ctorArgs);
+      // See codegenStackClassInstance: a throwing constructor must be
+      // invoked so its exception reaches the enclosing try's landing pad.
+      bool ctorCanThrow = (ctor.method && ctor.method->canThrow) ||
+                          ctorFunc->hasFnAttribute("sun.canthrow");
+      gen_.errorGenerator().emitPossiblyThrowingCall(ctorFunc, ctorArgs,
+                                                     ctorCanThrow, "");
     } else if (argCount > 0) {
       logAndThrowError("No constructor to initialize " +
                            fallbackClassType->getDisplayName() + " with " +

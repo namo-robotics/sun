@@ -208,7 +208,7 @@ TEST(Operators_Char, works_as_a_class_field) {
   auto value = executeString(R"(
       class Token {
           var sigil: char;
-          public function init(sigil: char) { this.sigil = sigil; }
+          init(sigil: char) { this.sigil = sigil; }
           public const function sigil_is(c: char) bool { return this.sigil == c; }
       }
       function main() i32 {

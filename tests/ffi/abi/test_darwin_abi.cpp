@@ -302,7 +302,7 @@ TEST(Ffi_Abi_CrossTargetDarwin, struct_argument_coerces_like_elf) {
   driver->compileString(R"(
     class Triplet {
         var a: i32; var b: i32; var c: i32;
-        function init(a: i32, b: i32, c: i32) {
+        init(a: i32, b: i32, c: i32) {
             this.a = a; this.b = b; this.c = c;
         }
     }

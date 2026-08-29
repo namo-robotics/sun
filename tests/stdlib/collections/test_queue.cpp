@@ -237,8 +237,8 @@ TEST(Stdlib_Collections_Queue, drops_remaining_items) {
 
     class Tracked {
         public var id: i32;
-        public function init(id: i32) { this.id = id; }
-        function deinit() void {
+        init(id: i32) { this.id = id; }
+        deinit() {
             // A moved-from husk is zeroed, and has nothing to release.
             if (this.id != 0) { drops = drops + 1; }
         }
@@ -268,8 +268,8 @@ TEST(Stdlib_Collections_Queue, clear_drops_the_items_it_removes) {
 
     class Tracked {
         public var id: i32;
-        public function init(id: i32) { this.id = id; }
-        function deinit() void {
+        init(id: i32) { this.id = id; }
+        deinit() {
             if (this.id != 0) { drops = drops + 1; }
         }
     }

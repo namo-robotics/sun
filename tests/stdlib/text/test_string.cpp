@@ -764,7 +764,7 @@ TEST(Stdlib_Text_String, substr_and_clone) {
   auto value = executeStringWithStdlib(R"(
     using sun;
 
-    function main() i32, IError {
+    function main() i32 throws IError {
         var alloc = make_heap_allocator();
         var s = String(alloc, "abcdef");
         var mid = s.substr(alloc, 2, 3);

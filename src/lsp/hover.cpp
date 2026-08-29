@@ -19,7 +19,7 @@ namespace {
 
 std::string renderType(const sun::Type& type, const Bindings& bindings);
 
-// `(i32, bool) i32` with `, IError` when the callable may throw
+// `(i32, bool) i32` with ` throws IError` when the callable may throw
 std::string renderCallable(const std::vector<sun::TypePtr>& params,
                            const sun::TypePtr& returnType, bool canThrow,
                            const Bindings& bindings) {
@@ -30,7 +30,7 @@ std::string renderCallable(const std::vector<sun::TypePtr>& params,
   }
   out += ") ";
   out += returnType ? renderType(*returnType, bindings) : "void";
-  if (canThrow) out += ", IError";
+  if (canThrow) out += " throws IError";
   return out;
 }
 
@@ -113,11 +113,18 @@ std::string renderPrototype(const PrototypeAST& proto,
                             const std::string& keyword, const std::string& name,
                             bool isPublic, const std::string& source,
                             const Bindings& bindings) {
+  // Constructors and destructors are spelled bare: no 'public', no
+  // 'function', no return type — only a 'throws IError' when init can fail.
+  bool isLifecycle = name == "init" || name == "deinit";
   std::string out;
-  if (isPublic) out += "public ";
+  if (isPublic && !isLifecycle) out += "public ";
   if (proto.isConstMethod()) out += "const ";
-  out += keyword;
-  if (!name.empty()) out += " " + name;
+  if (!isLifecycle) {
+    out += keyword;
+    if (!name.empty()) out += " " + name;
+  } else {
+    out += name;
+  }
   out += renderTypeParameters(proto.getTypeParameters());
   out += "(";
 
@@ -146,9 +153,11 @@ std::string renderPrototype(const PrototypeAST& proto,
   }
   out += ")";
 
-  if (proto.hasResolvedReturnType()) {
+  if (isLifecycle) {
+    if (proto.canThrow()) out += " throws IError";
+  } else if (proto.hasResolvedReturnType()) {
     out += " " + renderType(*proto.getResolvedReturnType(), bindings);
-    if (proto.canThrow()) out += ", IError";
+    if (proto.canThrow()) out += " throws IError";
   } else if (proto.hasReturnType()) {
     out += " " + annotationText(*proto.getReturnType(), source);
   }

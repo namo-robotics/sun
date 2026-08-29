@@ -165,7 +165,7 @@ TEST(Enums_Payloads, EnumInClassField) {
 
     class Task {
       var state: State;
-      function init() {
+      init() {
         this.state = State.Idle;
       }
     }
@@ -193,7 +193,7 @@ TEST(Enums_Payloads, ClassPayload) {
     class Point {
       var x: i32;
       var y: i32;
-      function init(x_: i32, y_: i32) {
+      init(x_: i32, y_: i32) {
         this.x = x_;
         this.y = y_;
       }
@@ -416,7 +416,7 @@ TEST(Enums_Payloads, WrongArityPatternIsError) {
 TEST(Enums_Payloads, WrongPayloadTypeIsError) {
   EXPECT_THROW(executeString(R"(
     enum Opt { Some(i32), None }
-    class Foo { var x: i32; function init() { this.x = 0; } }
+    class Foo { var x: i32; init() { this.x = 0; } }
     function main() i32 {
       var f = Foo();
       var x = Opt.Some(f);
@@ -529,11 +529,11 @@ TEST(Enums_Payloads, DeinitClassPayloadCompiles) {
   auto value = executeString(R"(
     class Owner {
       var p: raw_ptr<i8>;
-      function init() {
+      init() {
         var size: i64 = 8;
         this.p = unsafe { _malloc(size); };
       }
-      function deinit() void {
+      deinit() {
         if (this.p != null) {
           unsafe { _free(this.p); };
           this.p = null;

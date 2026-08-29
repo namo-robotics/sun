@@ -296,11 +296,11 @@ TEST(Stdlib_Text_Interpolation, allowed_when_sources_declare_sun_string) {
   auto value = executeString(R"(
     public module sun {
       public class HeapAllocator {
-        public function init() {}
+        init() {}
       }
       public class String {
         var len: i64;
-        public function init(alloc: const ref HeapAllocator, literal: static_ptr<u8>) {
+        init(alloc: const ref HeapAllocator, literal: static_ptr<u8>) {
           this.len = literal.length();
         }
         public function append_literal(literal: static_ptr<u8>) void {

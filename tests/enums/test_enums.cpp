@@ -136,7 +136,7 @@ TEST(Enums, EnumInClass) {
     class Object {
       var status: Status;
 
-      function init(s: Status) {
+      init(s: Status) {
         this.status = s;
       }
 

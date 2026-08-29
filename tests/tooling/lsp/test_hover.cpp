@@ -92,7 +92,7 @@ const char* kProgram = R"(
 class Point {
     var x: i32;
     var y: i32;
-    function init(x: i32, y: i32) { this.x = x; this.y = y; }
+    init(x: i32, y: i32) { this.x = x; this.y = y; }
     const function sum() i32 { return this.x + this.y; }
 }
 
@@ -105,7 +105,7 @@ function add(a: i32, b: i32) i32 {
 
 function read(p: const ref Point) i32 { return p.x; }
 
-function mayFail(v: i32) i32, IError { return v; }
+function mayFail(v: i32) i32 throws IError { return v; }
 
 function main() i32 {
     var p = Point(1, 2);
@@ -171,7 +171,7 @@ TEST(Tooling_Lsp_Hover, FunctionSignatureOnName) {
 
 TEST(Tooling_Lsp_Hover, ThrowingFunction) {
   EXPECT_EQ(hoverAt(kProgram, "function mayFail"),
-            "function mayFail(v: i32) i32, IError");
+            "function mayFail(v: i32) i32 throws IError");
 }
 
 TEST(Tooling_Lsp_Hover, ConstMethod) {
@@ -215,7 +215,7 @@ TEST(Tooling_Lsp_Hover, GenericClassInstance) {
   std::string source = R"(
 class Box<T> {
     var value: T;
-    function init(v: T) { this.value = v; }
+    init(v: T) { this.value = v; }
 }
 function main() i32 {
     var b = Box<i32>(7);
@@ -230,7 +230,7 @@ TEST(Tooling_Lsp_Hover, GenericClassBody) {
   std::string source = R"(
 class Box<T> {
     var value: T;
-    function init(v: T) { this.value = v; }
+    init(v: T) { this.value = v; }
     function get() T { return this.value; }
     function peek() ref T { return this.value; }
 }
@@ -287,7 +287,7 @@ TEST(Tooling_Lsp_Hover, UnusedGenericClassShowsAnnotationsOnly) {
   std::string source = R"(
 class Lone<T> {
     var value: T;
-    function init(v: T) { this.value = v; }
+    init(v: T) { this.value = v; }
     function get() T { return this.value; }
 }
 )";
@@ -307,7 +307,7 @@ function add(a: i32, b: i32) i32 { return a + b; }
 class Point {
     // Horizontal position.
     var x: i32;
-    function init() { this.x = 0; }
+    init() { this.x = 0; }
     /// Distance from the origin.
     function len() i32 { return this.x; }
 }
@@ -342,7 +342,7 @@ TEST(Tooling_Lsp_Hover, TypeNamesInAnnotations) {
  * A pool of objects.
  * Hands them out one at a time.
  */
-class Pool { function init() {} }
+class Pool { init() {} }
 // Which end of the pool to take from.
 enum End { Front, Back }
 function use(p: ref Pool, e: End) i32 {
@@ -376,7 +376,7 @@ TEST(Tooling_Lsp_Hover, AttachedDocsSurviveCloning) {
 class Counter {
     // How many so far.
     var count: i32;
-    function init() { this.count = 0; }
+    init() { this.count = 0; }
     // One more.
     function bump() void { this.count = this.count + 1; }
 }
@@ -446,7 +446,7 @@ function main() i32 {
 
 TEST(Tooling_Lsp_Hover, ReferenceBinding) {
   std::string source = R"(
-class Point { var x: i32; function init(v: i32) { this.x = v; } }
+class Point { var x: i32; init(v: i32) { this.x = v; } }
 function main() i32 {
     var p = Point(1);
     ref r = p;

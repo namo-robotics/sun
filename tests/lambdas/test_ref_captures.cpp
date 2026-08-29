@@ -48,7 +48,7 @@ TEST(Lambdas_RefCaptures, class_field_mutation_via_capture) {
   auto value = executeString(R"(
       class Counter {
           var count: i32;
-          function init() void {
+          init() {
               this.count = 0;
           }
       }
@@ -160,7 +160,7 @@ TEST(Lambdas_RefCaptures, const_ref_capture_of_a_class_is_read_only) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       class Point {
           public var x: i32;
-          public function init() { this.x = 1; }
+          init() { this.x = 1; }
       }
       function main() i32 {
           var p = Point();
@@ -316,7 +316,7 @@ TEST(Lambdas_RefCaptures, byvalue_class_capture_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       class Point {
           var x: i32;
-          function init() void {
+          init() {
               this.x = 1;
           }
       }
@@ -348,7 +348,7 @@ TEST(Lambdas_RefCaptures, nested_function_compound_capture_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       class Point {
           var x: i32;
-          function init() void {
+          init() {
               this.x = 1;
           }
       }
@@ -547,7 +547,7 @@ TEST(Lambdas_RefCaptures, owned_class_capture_moves) {
   auto value = executeString(R"(
       class Point {
           public var x: i32;
-          function init(x: i32) { this.x = x; }
+          init(x: i32) { this.x = x; }
       }
       function main() i32 {
           var p = Point(42);
@@ -564,7 +564,7 @@ TEST(Lambdas_RefCaptures, owned_class_capture_leaves_source_moved) {
   EXPECT_THROW(executeString(R"(
       class Point {
           public var x: i32;
-          function init(x: i32) { this.x = x; }
+          init(x: i32) { this.x = x; }
       }
       function main() i32 {
           var p = Point(42);
@@ -581,8 +581,8 @@ TEST(Lambdas_RefCaptures, owned_class_capture_drops_once) {
       var drops: i32 = 0;
       class Res {
           public var v: i32;
-          function init(v: i32) { this.v = v; }
-          function deinit() void { if (this.v != 0) { drops = drops + 1; } }
+          init(v: i32) { this.v = v; }
+          deinit() { if (this.v != 0) { drops = drops + 1; } }
       }
       function main() i32 {
           if (true) {
@@ -601,7 +601,7 @@ TEST(Lambdas_RefCaptures, owned_capture_of_a_ref_is_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       class Point {
           public var x: i32;
-          function init(x: i32) { this.x = x; }
+          init(x: i32) { this.x = x; }
       }
       function read(p: ref Point) i32 {
           var f = lambda [p] () i32 { return p.x; };
@@ -643,7 +643,7 @@ TEST(Lambdas_RefCaptures, owned_capture_while_borrowed_is_rejected) {
   EXPECT_THROW(executeString(R"(
       class Point {
           public var x: i32;
-          function init(x: i32) { this.x = x; }
+          init(x: i32) { this.x = x; }
       }
       function main() i32 {
           var p = Point(1);

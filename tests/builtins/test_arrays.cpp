@@ -81,7 +81,7 @@ TEST(Builtins_Arrays, array_in_class) {
     class Matrix {
         var data: array<i32>;
 
-        function init(d: ref array<i32>) {
+        init(d: ref array<i32>) {
             this.data = d;
         }
 
@@ -105,7 +105,7 @@ TEST(Builtins_Arrays, array_in_class_in_class) {
     class A {
         var data: array<i32>;
 
-        function init(d: ref array<i32>) {
+        init(d: ref array<i32>) {
             this.data = d;
         }
 
@@ -117,7 +117,7 @@ TEST(Builtins_Arrays, array_in_class_in_class) {
     class B {
         var a: A;
 
-        function init(d: ref array<i32>) {
+        init(d: ref array<i32>) {
             this.a = A(d);
         }
 
@@ -151,7 +151,7 @@ TEST(Builtins_Arrays, class_with_array) {
   auto value = executeString(R"(
     class Box {
         var arr: array<i32, 5>; 
-        function init(x: ref array<i32, 5>) {
+        init(x: ref array<i32, 5>) {
             this.arr = x;
         }
     }

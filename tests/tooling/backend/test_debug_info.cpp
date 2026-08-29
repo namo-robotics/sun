@@ -40,7 +40,7 @@ class Point {
   var x: i32;
   var y: i32;
 
-  function init(px: i32, py: i32) {
+  init(px: i32, py: i32) {
     this.x = px;
     this.y = py;
   }

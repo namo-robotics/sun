@@ -28,7 +28,7 @@ public module tls {
     public var headers: String;  // raw header block after the status line
     public var body: String;  // decoded body
 
-    public function init(alloc: ref HeapAllocator) {
+    init(alloc: ref HeapAllocator) {
       this.status = 0;
       this.headers = String(alloc, "");
       this.body = String(alloc, "");
@@ -71,7 +71,7 @@ public module tls {
   }
 
   // Decode a chunked body from raw[start..] into out
-  function decode_chunked(raw: const ref String, start: i64, out: ref String) void, IError {
+  function decode_chunked(raw: const ref String, start: i64, out: ref String) void throws IError {
     var i: i64 = start;
     var n: i64 = raw.length();
     while (i < n) {
@@ -124,7 +124,7 @@ public module tls {
   // Split a raw response into status, header block, and decoded body.
   // Public like http.sun's request parser, so code driving a TlsStream
   // itself can reuse the framing.
-  public function parse_response(alloc: ref HeapAllocator, raw: const ref String, resp: ref HttpClientResponse) void, IError {
+  public function parse_response(alloc: ref HeapAllocator, raw: const ref String, resp: ref HttpClientResponse) void throws IError {
     var n: i64 = raw.length();
     var header_end: i64 = find_header_end(raw);
     if (header_end < 0) {
@@ -190,16 +190,16 @@ public module tls {
   public class HttpsClient {
     var alloc: HeapAllocator;
 
-    public function init(allocator: ref HeapAllocator) {
+    init(allocator: ref HeapAllocator) {
       this.alloc = allocator.copy();
     }
 
     // GET https://host{path} on port 443
-    public function get(host: ref String, path: static_ptr<u8>) HttpClientResponse, IError {
+    public function get(host: ref String, path: static_ptr<u8>) HttpClientResponse throws IError {
       return this.get(host, 443, path);
     }
 
-    public function get(host: ref String, port: i32, path: static_ptr<u8>) HttpClientResponse, IError {
+    public function get(host: ref String, port: i32, path: static_ptr<u8>) HttpClientResponse throws IError {
       var req = String(this.alloc, "GET ");
       req.append(path);
       req.append(" HTTP/1.1");
@@ -210,11 +210,11 @@ public module tls {
     }
 
     // POST a body to https://host{path} on port 443
-    public function post(host: ref String, path: static_ptr<u8>, content_type: static_ptr<u8>, body: const ref String) HttpClientResponse, IError {
+    public function post(host: ref String, path: static_ptr<u8>, content_type: static_ptr<u8>, body: const ref String) HttpClientResponse throws IError {
       return this.post(host, 443, path, content_type, body);
     }
 
-    public function post(host: ref String, port: i32, path: static_ptr<u8>, content_type: static_ptr<u8>, body: const ref String) HttpClientResponse, IError {
+    public function post(host: ref String, port: i32, path: static_ptr<u8>, content_type: static_ptr<u8>, body: const ref String) HttpClientResponse throws IError {
       var req = String(this.alloc, "POST ");
       req.append(path);
       req.append(" HTTP/1.1");
@@ -242,7 +242,7 @@ public module tls {
     }
 
     // Connect, send the request, read to end-of-stream, and parse
-    function exchange(host: ref String, port: i32, request: ref String) HttpClientResponse, IError {
+    function exchange(host: ref String, port: i32, request: ref String) HttpClientResponse throws IError {
       var stream = TlsStream();
       stream.connect(host, port);
       stream.send_string(request);

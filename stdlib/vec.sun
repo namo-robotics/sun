@@ -32,7 +32,7 @@ public module sun {
     var size_: i64;  // Current number of elements
 
     // Constructor with allocator and capacity
-    public function init(allocator: const ref HeapAllocator, capacity: i64) {
+    init(allocator: const ref HeapAllocator, capacity: i64) {
       this.data = ContiguousBuffer<T>(allocator, capacity);
       this.capacity_ = capacity;
       this.size_ = 0;
@@ -40,7 +40,7 @@ public module sun {
 
     // Destructor - drop live elements (the buffer memory itself is freed by
     // the ContiguousBuffer/Unique field recursion)
-    function deinit() void {
+    deinit() {
       this.drop_range(0, this.size_);
     }
 
@@ -78,7 +78,7 @@ public module sun {
     // Borrow the element at index (bounds-checked against size). The Vec keeps
     // ownership, so this hands back a reference: a copy of an element that owns
     // heap memory would be released twice. Use take()/pop() to move one out.
-    public const function get(index: i64) ref T, IError {
+    public const function get(index: i64) ref T throws IError {
       if (index < 0) {
         throw IndexOutOfBoundsError(index);
       }
@@ -95,7 +95,7 @@ public module sun {
 
     // Set element at index (bounds-checked against size).
     // The previous element is dropped before being overwritten.
-    public function set(index: i64, value: T) void, IError {
+    public function set(index: i64, value: T) void throws IError {
       if (index < 0) {
         throw IndexOutOfBoundsError(index);
       }
@@ -143,7 +143,7 @@ public module sun {
     // Move the element at index out of the Vec (bounds-checked). The slot is
     // zeroed so it drops as a no-op; ownership transfers to the caller.
     // Use this instead of get() for element types that own heap memory.
-    public function take(index: i64) T, IError {
+    public function take(index: i64) T throws IError {
       if (index < 0) {
         throw IndexOutOfBoundsError(index);
       }
@@ -219,7 +219,7 @@ public module sun {
     var current: i64;
 
     // Build an iterator positioned before the first element.
-    public function init() {
+    init() {
       this.current = 0;
     }
 

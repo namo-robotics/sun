@@ -219,12 +219,12 @@ The error interface used with the `try`/`catch`/`throw` error handling system.
 
 ```sun
 class DivByZero implements IError {
-    function init() {}
+    init() {}
     function code() i32 { return 1; }
     function message() String { return String("division by zero"); }
 }
 
-function divide(a: i32, b: i32) i32, IError {
+function divide(a: i32, b: i32) i32 throws IError {
     if (b == 0) {
         throw DivByZero();  // any class implementing IError
     }

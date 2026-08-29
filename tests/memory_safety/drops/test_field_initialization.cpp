@@ -19,10 +19,10 @@ const char* kResPreamble = R"(
 
     class Res {
       var v: i32;
-      function init(v: i32) {
+      init(v: i32) {
         this.v = v;
       }
-      function deinit() void {
+      deinit() {
         deinits = deinits + 1;
       }
       function get() i32 {
@@ -41,7 +41,7 @@ TEST(MemorySafety_Drops_FieldInit, first_write_in_init_drops_nothing) {
   auto value = executeString(withPreamble(R"(
     class Holder {
       var r: Res;
-      function init() {
+      init() {
         this.r = Res(7);
       }
     }
@@ -61,7 +61,7 @@ TEST(MemorySafety_Drops_FieldInit, field_taken_from_a_parameter_drops_nothing) {
   auto value = executeString(withPreamble(R"(
     class Holder {
       var r: Res;
-      function init(r: Res) {
+      init(r: Res) {
         this.r = r;
       }
     }
@@ -82,7 +82,7 @@ TEST(MemorySafety_Drops_FieldInit,
     class Pair {
       var a: Res;
       var b: Res;
-      function init() {
+      init() {
         this.a = Res(1);
         this.b = Res(2);
       }
@@ -103,7 +103,7 @@ TEST(MemorySafety_Drops_FieldInit, a_later_write_still_drops_what_it_replaces) {
   auto value = executeString(withPreamble(R"(
     class Holder {
       var r: Res;
-      function init(r: Res) {
+      init(r: Res) {
         this.r = r;
       }
       function replace(r: Res) void {
@@ -129,7 +129,7 @@ TEST(MemorySafety_Drops_FieldInit, a_second_write_inside_init_drops_the_first) {
   auto value = executeString(withPreamble(R"(
     class Holder {
       var r: Res;
-      function init() {
+      init() {
         this.r = Res(1);
         this.r = Res(2);
       }
@@ -151,7 +151,7 @@ TEST(MemorySafety_Drops_FieldInit, a_scalar_field_may_be_written_again) {
   auto value = executeString(withPreamble(R"(
     class Counter {
       var total: i32;
-      function init(n: i32) {
+      init(n: i32) {
         this.total = 0;
         for (var i: i32 = 0; i < n; i = i + 1) {
           this.total = this.total + i;
@@ -172,7 +172,7 @@ TEST(MemorySafety_Drops_FieldInit, each_branch_of_a_choice_is_a_first_write) {
   auto value = executeString(withPreamble(R"(
     class Holder {
       var r: Res;
-      function init(flag: bool) {
+      init(flag: bool) {
         if (flag) {
           this.r = Res(1);
         } else {
@@ -200,7 +200,7 @@ TEST(MemorySafety_Drops_FieldInit,
   EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(withPreamble(R"(
     class Holder {
       var r: Res;
-      function init(flag: bool) {
+      init(flag: bool) {
         if (flag) {
           this.r = Res(1);
         }
@@ -218,7 +218,7 @@ TEST(MemorySafety_Drops_FieldInit,
   auto value = executeString(withPreamble(R"(
     class Holder {
       var r: Res;
-      function init(flag: bool) {
+      init(flag: bool) {
         if (flag) {
           this.r = Res(1);
           return;
@@ -243,7 +243,7 @@ TEST(MemorySafety_Drops_FieldInit, a_method_called_once_the_object_is_whole) {
   auto value = executeString(withPreamble(R"(
     class Holder {
       var r: Res;
-      function init() {
+      init() {
         this.r = Res(1);
         this.refill();
       }
@@ -270,7 +270,7 @@ TEST(MemorySafety_Drops_FieldInit,
     class Holder {
       var a: Res;
       var b: Res;
-      function init() {
+      init() {
         this.a = Res(1);
         this.b = Res(this.a.get() + 1);
       }
@@ -293,7 +293,7 @@ TEST(MemorySafety_Drops_FieldInit, a_write_in_a_loop_replaces_and_drops) {
   auto value = executeString(withPreamble(R"(
     class Holder {
       var r: Res;
-      function init() {
+      init() {
         this.r = Res(0);
         var i: i32 = 1;
         while (i < 3) {
@@ -322,7 +322,7 @@ TEST(MemorySafety_Drops_FieldInit, a_write_only_inside_a_loop_is_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(withPreamble(R"(
     class Holder {
       var r: Res;
-      function init() {
+      init() {
         var i: i32 = 0;
         while (i < 3) {
           this.r = Res(i);
@@ -341,7 +341,7 @@ TEST(MemorySafety_Drops_FieldInit,
   auto value = executeString(withPreamble(R"(
     class Holder {
       var r: Res;
-      function init() {
+      init() {
         this.fill();
       }
       function fill() void {
@@ -369,7 +369,7 @@ TEST(MemorySafety_Drops_FieldInit,
   auto value = executeString(withPreamble(R"(
     class Holder {
       var r: Res;
-      function init() {
+      init() {
         this.r = Res(1);
         this.fill();
       }
@@ -399,7 +399,7 @@ TEST(MemorySafety_Drops_FieldInit,
 
     class Holder {
       var s: Slot;
-      function init() {
+      init() {
         this.s = Slot.Full(Res(7));
       }
     }
@@ -420,7 +420,7 @@ TEST(MemorySafety_Drops_FieldInit, generic_class_first_write_drops_nothing) {
   auto value = executeString(withPreamble(R"(
     class Box<T> {
       var item: T;
-      function init(item: T) {
+      init(item: T) {
         this.item = item;
       }
     }
@@ -440,16 +440,16 @@ TEST(MemorySafety_Drops_FieldInit, generic_class_first_write_drops_nothing) {
 TEST(MemorySafety_Drops_FieldInit, a_catch_that_reassigns_the_field_is_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(withPreamble(R"(
     class Boom implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "boom"; }
     }
 
-    function boom(f: bool) void, IError { if (f) { throw Boom(); } }
+    function boom(f: bool) void throws IError { if (f) { throw Boom(); } }
 
     class Holder {
       var r: Res;
-      function init(f: bool) {
+      init(f: bool) {
         try { this.r = Res(1); boom(f); } catch (e: Boom) { this.r = Res(2); }
       }
     }
@@ -464,16 +464,16 @@ TEST(MemorySafety_Drops_FieldInit, a_catch_that_reassigns_the_field_is_rejected)
 TEST(MemorySafety_Drops_FieldInit, a_field_settled_before_a_try_is_certain) {
   auto value = executeString(withPreamble(R"(
     class Boom implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "boom"; }
     }
 
-    function boom(f: bool) void, IError { if (f) { throw Boom(); } }
+    function boom(f: bool) void throws IError { if (f) { throw Boom(); } }
 
     class Holder {
       var r: Res;
-      function init(f: bool) {
+      init(f: bool) {
         this.r = Res(0);
         try { boom(f); this.r = Res(1); } catch (e: Boom) { this.r = Res(2); }
       }
@@ -496,7 +496,7 @@ TEST(MemorySafety_Drops_FieldInit, a_self_recursive_filler_is_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(withPreamble(R"(
     class Holder {
       var r: Res;
-      function init() {
+      init() {
         this.fill(2);
       }
       function fill(n: i32) void {
@@ -518,7 +518,7 @@ TEST(MemorySafety_Drops_FieldInit, a_method_may_settle_scalar_fields) {
     class Shape {
       var width: i32;
       var height: i32;
-      function init(w: i32, h: i32) {
+      init(w: i32, h: i32) {
         this.resize(w, h);
       }
       function resize(w: i32, h: i32) void {
@@ -545,7 +545,7 @@ TEST(MemorySafety_Drops_FieldInit,
   EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(withPreamble(R"(
     class Holder {
       var r: Res;
-      function init() { this.fill(); }
+      init() { this.fill(); }
       function fill() void {
         var cb = this.tick;
         this.r = Res(1);

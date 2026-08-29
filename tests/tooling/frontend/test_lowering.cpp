@@ -53,7 +53,7 @@ class Point implements IShape {
     var x: i32;
     var y: i32;
 
-    function init(x_: i32, y_: i32) {
+    init(x_: i32, y_: i32) {
         this.x = x_;
         this.y = y_;
     }
@@ -70,7 +70,7 @@ function classify(d: i64) i64 {
     };
 }
 
-function compute(n: i32) i32, IError {
+function compute(n: i32) i32 throws IError {
     if (n < 0) { throw 1; }
     var total: i32 = 0;
     for (var i: i32 = 0; i < n; i = i + 1) {
