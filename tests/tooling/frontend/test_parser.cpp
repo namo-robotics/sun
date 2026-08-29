@@ -50,6 +50,40 @@ TEST(Tooling_Frontend_Parser, ParseIntegerLiteral) {
   EXPECT_EQ(num->getVal(), 42);
 }
 
+TEST(Tooling_Frontend_Parser, ParseSuffixedIntegerLiteral) {
+  auto ast = parseStringToExpr("21u8");
+
+  ASSERT_NE(ast, nullptr);
+  auto* num = dynamic_cast<NumberExprAST*>(ast.get());
+  ASSERT_NE(num, nullptr);
+  EXPECT_TRUE(num->isInteger());
+  EXPECT_EQ(num->getIntVal(), 21);
+  EXPECT_EQ(num->getSuffix(), "u8");
+}
+
+TEST(Tooling_Frontend_Parser, ParseSuffixedFloatLiteral) {
+  auto ast = parseStringToExpr("1.5f32");
+
+  ASSERT_NE(ast, nullptr);
+  auto* num = dynamic_cast<NumberExprAST*>(ast.get());
+  ASSERT_NE(num, nullptr);
+  EXPECT_TRUE(num->isFloat());
+  EXPECT_DOUBLE_EQ(num->getFloatVal(), 1.5);
+  EXPECT_EQ(num->getSuffix(), "f32");
+}
+
+TEST(Tooling_Frontend_Parser, NegatedSuffixedIntegerFoldsIntoLiteral) {
+  // -128i8 must parse as the single i8 value -128, not a negation of 128i8
+  // (which does not fit i8)
+  auto ast = parseStringToExpr("-128i8");
+
+  ASSERT_NE(ast, nullptr);
+  auto* num = dynamic_cast<NumberExprAST*>(ast.get());
+  ASSERT_NE(num, nullptr);
+  EXPECT_EQ(num->getIntVal(), -128);
+  EXPECT_EQ(num->getSuffix(), "i8");
+}
+
 TEST(Tooling_Frontend_Parser, ParseFloatingLiteral) {
   auto ast = parseStringToExpr("3.14159");
 

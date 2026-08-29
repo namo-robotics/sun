@@ -25,6 +25,37 @@ var d: u8 = 255;
 var e: char = 'k';
 ```
 
+## Numeric Literals
+
+An untyped integer literal is an `i32` (`i64` when the value needs the room),
+and an untyped float literal is an `f64`. In a position whose type is already
+known — a variable with an annotation, a field, a `return` — an untyped
+integer literal adopts that type when its value fits.
+
+A **type suffix** names the literal's type directly, which is how a literal
+reaches a function or constructor parameter of a narrower type. Every numeric
+type is a suffix: `i8` through `i64`, `u8` through `u64` on integer literals,
+and `f32`/`f64` on float literals.
+
+```sun
+var sa = SockAddrIn(0u32, 7400u16);   // without suffixes, each argument
+                                      // would need a typed variable
+var flag: u8 = 128u8;
+var offset = -128i8;                  // the minus folds into the literal
+var ratio = 1.5f32;
+```
+
+A value that does not fit its suffix is a compile error, not a silent wrap:
+
+```sun
+var b = 300u8;    // Error: Integer literal 300 cannot be represented as 'u8'
+```
+
+A suffixed literal is an ordinary typed value from then on: it widens where
+any `u8` would (`21u8` passes to a `u16` parameter) and never narrows —
+converting between typed values takes `_convert` or `safe_convert`. A `char`
+never accepts an integer literal, suffixed or not.
+
 ## Characters and Bytes
 
 `char` holds one Unicode scalar value — any code point from `U+0000` to

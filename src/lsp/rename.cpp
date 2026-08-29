@@ -80,12 +80,19 @@ std::optional<SymbolLocation> siteAt(const Rename& rename,
 
 std::string checkNewName(const std::string& newName) {
   if (newName.empty()) return "A name is required";
-  std::istringstream stream(newName);
-  Lexer lexer(stream);
-  Token first = lexer.getNextToken();
-  if (isKeyword(first.kind)) return "'" + newName + "' is a keyword";
-  if (first.kind != TokenKind::IDENTIFIER || first.text != newName ||
-      !lexer.getNextToken().isEof()) {
+  // A name the lexer rejects outright (say 1abc, an invalid literal suffix)
+  // is just as invalid as one that lexes to something other than an
+  // identifier.
+  try {
+    std::istringstream stream(newName);
+    Lexer lexer(stream);
+    Token first = lexer.getNextToken();
+    if (isKeyword(first.kind)) return "'" + newName + "' is a keyword";
+    if (first.kind != TokenKind::IDENTIFIER || first.text != newName ||
+        !lexer.getNextToken().isEof()) {
+      return "'" + newName + "' is not a valid name";
+    }
+  } catch (const std::exception&) {
     return "'" + newName + "' is not a valid name";
   }
   return "";
