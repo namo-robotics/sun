@@ -127,7 +127,8 @@ Capture rules:
 - **Globals** are accessed directly and cannot appear in a capture list.
 - A `[ref x]` capture registers a **mutable borrow** of the variable for as long as the lambda value is in scope, so conflicting `ref`s — including a second lambda capturing the same variable — are rejected.
 - A `[const ref x]` capture registers a **shared borrow** instead, so several lambdas may capture the same variable at once. Everything reached through it is read-only: fields cannot be assigned, and only `const function` methods can be called.
-- A lambda with by-ref captures holds pointers into the enclosing frame, so it **cannot be returned** from the function — the captured variables would be dead when used. Passing it to `spawn` is fine: the thread is joined when its handle's scope ends, while those variables are still alive (see [Threads](/threads)).
+- A lambda with a capture list holds state in the enclosing frame — pointers into it for `[ref …]` captures, the environment itself for owned ones — so it **cannot be returned** from the function or **stored in a field**: the frame it depends on would be gone when the lambda runs. Passing it to `spawn` is fine: the thread is joined when its handle's scope ends, while the frame is still alive — and the handle inherits the restriction, so it cannot be returned or stored in a field either (see [Threads](/threads)).
+- **`this` cannot be captured**, in the list or implicitly. A lambda that needs the object's data reads the fields it needs into locals and captures those, takes them as parameters — or the method itself is bound as the callable (`this.method`, below).
 
 ## Semantic Differences
 
@@ -157,13 +158,13 @@ var double = lambda (x: i32) i32 { return x * 2; };
 println(double(5));  // 10
 
 // Pass a lambda as an argument
-function apply(fn: (i32) i32, x: i32) i32 {
+function apply(fn: (i32) -> i32, x: i32) i32 {
     return fn(x);
 }
 println(apply(double, 3));  // 6
 
 // Return a lambda from a function
-function makeAdder(n: i32) (i32) i32 {
+function makeAdder(n: i32) (i32) -> i32 {
     return lambda (x: i32) i32 { return x + n; };
 }
 var add5 = makeAdder(5);
@@ -172,7 +173,7 @@ println(add5(10));  // 15
 
 ## Bound Methods
 
-Class methods are first-class values: `obj.method` (without parentheses) produces a value of lambda type `(params) ret` that can be stored in variables and passed wherever a lambda is expected. This makes class methods usable as callbacks:
+Class methods are first-class values: `obj.method` (without parentheses) produces a value of lambda type `(params) -> ret` that can be stored in variables and passed wherever a lambda is expected. This makes class methods usable as callbacks:
 
 ```sun
 class Counter {
@@ -184,7 +185,7 @@ class Counter {
     }
 }
 
-function apply(f: (i32) i32, x: i32) i32 {
+function apply(f: (i32) -> i32, x: i32) i32 {
     return f(x);
 }
 
@@ -199,8 +200,8 @@ function main() i32 {
 
 Rules and caveats:
 
-- **The receiver is captured by reference.** Calls through the bound value see and mutate the original object. The bound value must not outlive its receiver.
-- **Overloaded methods** need type context to disambiguate: a type annotation (`var f: (i32) i32 = c.add;`) or a lambda-typed parameter of the called function. Without context, referencing an overloaded method is an error.
+- **The receiver is captured by reference.** Calls through the bound value see and mutate the original object. The bound value must not outlive its receiver, so — like a lambda with a `[ref …]` capture — it cannot be returned or stored in a field, and neither can a thread handle spawned from it.
+- **Overloaded methods** need type context to disambiguate: a type annotation (`var f: (i32) -> i32 = c.add;`) or a lambda-typed parameter of the called function. Without context, referencing an overloaded method is an error.
 - **Generic methods** cannot be referenced as values.
 - **Interface-typed receivers** are not supported: only concrete class methods can be bound.
-- A **non-throwing method** can be bound where a throwing lambda type (`(i32) i32, IError`) is expected; a throwing method requires a throwing lambda type and its calls follow the usual `try`/`, IError` rules.
+- A **non-throwing method** can be bound where a throwing lambda type (`(i32) -> i32, IError`) is expected; a throwing method requires a throwing lambda type and its calls follow the usual `try`/`, IError` rules.

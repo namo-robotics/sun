@@ -113,6 +113,38 @@ That is what makes captures safe: the lambda's captured environment lives in
 the frame that spawned the thread, so the thread must finish while that frame
 is still standing.
 
+For the same reason, the handle of a thread spawned over a capture-list
+lambda — or over a bound method, which holds its receiver by reference — is
+bound to that frame. It can move between locals, and it joins when it drops,
+but it cannot leave: returning it, or storing it in a field, would let the
+thread outlive the variables it borrows.
+
+```sun
+class Worker {
+    var t: Thread<i32>;
+    public function init() {
+        var x = 3;
+        // error: the field could outlive x, which the thread reads
+        this.t = spawn(lambda [ref x]() i32 { return x; });
+    }
+}
+```
+
+A thread that should outlive the frame takes what it needs as `spawn`
+arguments instead of captures. Arguments move into the thread, which owns
+them from then on, so a handle over a capture-free lambda may live anywhere —
+a constructor can start a worker and store the handle in a field, and the
+object joins the thread when it drops:
+
+```sun
+class Worker {
+    var t: Thread<i32>;
+    public function init(cfg: Config) {
+        this.t = spawn(lambda (c: Config) i32 { return c.limit; }, cfg);
+    }
+}   // dropping a Worker joins its thread
+```
+
 ## The Thread's Result
 
 `join()` hands you the value the thread returned, and you own it from then on:

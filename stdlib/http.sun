@@ -203,7 +203,7 @@ public module sun {
     // Accept and handle connections one at a time until stop() is called
     // or the listener fails. A failed connection is dropped; the server
     // keeps running.
-    public function serve(handler: (ref HttpRequest, ref HttpResponse) void) void {
+    public function serve(handler: (ref HttpRequest, ref HttpResponse) -> void) void {
       this.running = true;
       while (this.running) {
         try {
@@ -221,7 +221,7 @@ public module sun {
     }
 
     // Read, parse, dispatch to the handler, and send the response
-    function handle_connection(client: ref TcpStream, handler: (ref HttpRequest, ref HttpResponse) void) void, IError {
+    function handle_connection(client: ref TcpStream, handler: (ref HttpRequest, ref HttpResponse) -> void) void, IError {
       var req = HttpRequest(this.alloc);
       this.read_request(client, req);
 

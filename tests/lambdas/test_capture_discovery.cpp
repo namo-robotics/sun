@@ -156,3 +156,25 @@ TEST(Lambdas_CaptureDiscovery, catch_binding_shadows_an_outer_name) {
     )");
   EXPECT_EQ(value, 109);
 }
+
+// `this` is not a name the discovery walk can find - it is its own node
+// type - so it must be rejected outright: a lambda body compiles as a
+// separate function and cannot reach the enclosing method's receiver.
+// (Before this check, codegen died on an LLVM verifier error instead.)
+TEST(Lambdas_CaptureDiscovery, lambda_cannot_use_this) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+      class Counter {
+          var count: i32;
+          function init() { this.count = 5; }
+          function snapshot() i32 {
+              var f = lambda () i32 { return this.count; };
+              return f();
+          }
+      }
+      function main() i32 {
+          var c = Counter();
+          return c.snapshot();
+      }
+    )"),
+                                "A lambda cannot use 'this'");
+}

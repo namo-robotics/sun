@@ -451,7 +451,7 @@ TEST(Lambdas_RefCaptures, spawn_byref_lambda_via_variable_accepted) {
 
 TEST(Lambdas_RefCaptures, return_byref_lambda_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
-      function make() () i32 {
+      function make() () -> i32 {
           var x: i32 = 5;
           return lambda [ref x] () i32 {
               return x;
@@ -466,7 +466,7 @@ TEST(Lambdas_RefCaptures, return_byref_lambda_rejected) {
 
 TEST(Lambdas_RefCaptures, return_byref_lambda_via_variable_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
-      function make() () i32 {
+      function make() () -> i32 {
           var x: i32 = 5;
           var f = lambda [ref x] () i32 {
               return x;
