@@ -312,6 +312,10 @@ sun::TypePtr TypeInferer::inferType(const ExprAST& expr) {
   switch (expr.getType()) {
     case ASTNodeType::NUMBER: {
       const auto& num = static_cast<const NumberExprAST&>(expr);
+      // A suffixed literal (21u8, 1.5f32) names its own type
+      if (num.hasSuffix()) {
+        return sun::Types::fromString(num.getSuffix());
+      }
       if (num.isInteger()) {
         int64_t val = num.getIntVal();
         // Default to i32 for small integers, i64 for larger ones

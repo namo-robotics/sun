@@ -127,6 +127,12 @@ enum class TokenKind {
   FLOAT,                 // floating-point literal: 3.14, 1e5, 2.0, etc.
   INTRINSIC_IDENTIFIER,  // _name - intrinsic identifiers
   IDENTIFIER,
+  // Suffixed numeric literals: 21u8, 1.5f32. Kept after FLOAT/INTEGER so an
+  // equal-length match ties toward the plain literal (1e5 stays a FLOAT), and
+  // TYPED_FLOAT before TYPED_INTEGER so 1e5f32 reads as a float with an f32
+  // suffix, not an integer with an e5f32 one.
+  TYPED_FLOAT,    // float literal with a type suffix: 1.5f32
+  TYPED_INTEGER,  // integer literal with a type suffix: 21u8
   UNKNOWN,
   COUNT
 };
@@ -211,6 +217,13 @@ static const std::map<TokenKind, std::string> tokenRegexes = {
     {TokenKind::FLOAT,
      "(0|[1-9][0-9]*)(\\.[0-9]+([eE][+-]?[0-9]+)?|[eE][+-]?[0-9]+)"},
     {TokenKind::INTEGER, "0|[1-9][0-9]*"},
+    // Suffixed literals. Deliberately permissive suffix (like CHAR_LITERAL's
+    // body): 21u9 and 0xFF match here and get a real diagnostic while
+    // decoding instead of the generic "unrecognized token".
+    {TokenKind::TYPED_FLOAT,
+     "(0|[1-9][0-9]*)(\\.[0-9]+([eE][+-]?[0-9]+)?|[eE][+-]?[0-9]+)"
+     "[a-zA-Z][a-zA-Z0-9]*"},
+    {TokenKind::TYPED_INTEGER, "(0|[1-9][0-9]*)[a-zA-Z][a-zA-Z0-9]*"},
     {TokenKind::PLUS, "\\+"},
     {TokenKind::MINUS, "-"},
     {TokenKind::STAR, "\\*"},
@@ -439,6 +452,9 @@ struct Token {
   Position end;
   std::string text;
   int precedence = -1;
+  // Type suffix of a TYPED_INTEGER/TYPED_FLOAT literal ("u8", "f32"); empty
+  // for every other kind.
+  std::string suffix;
 
   // Generic factory for simple tokens (uses lookup table).
   // Indexes a flat array rather than searching getTokenInfo()'s std::map:
@@ -489,6 +505,22 @@ struct Token {
     return {TokenKind::FLOAT, num, s, e, std::move(txt)};
   }
 
+  // Factories for suffixed numeric literals (21u8, 1.5f32); the lexer has
+  // already validated the suffix.
+  static Token typedInteger(int64_t num, std::string suffix, const Position& s,
+                            const Position& e, std::string txt) {
+    Token t{TokenKind::TYPED_INTEGER, num, s, e, std::move(txt)};
+    t.suffix = std::move(suffix);
+    return t;
+  }
+
+  static Token typedFloat(double num, std::string suffix, const Position& s,
+                          const Position& e, std::string txt) {
+    Token t{TokenKind::TYPED_FLOAT, num, s, e, std::move(txt)};
+    t.suffix = std::move(suffix);
+    return t;
+  }
+
   static Token stringLiteral(std::string str, const Position& s,
                              const Position& e) {
     return {TokenKind::STRING, std::move(str), s, e, ""};
@@ -528,12 +560,14 @@ struct Token {
   }
 
   std::optional<int64_t> getInteger() const {
-    if (kind == TokenKind::INTEGER) return std::get<int64_t>(value);
+    if (kind == TokenKind::INTEGER || kind == TokenKind::TYPED_INTEGER)
+      return std::get<int64_t>(value);
     return std::nullopt;
   }
 
   std::optional<double> getFloat() const {
-    if (kind == TokenKind::FLOAT) return std::get<double>(value);
+    if (kind == TokenKind::FLOAT || kind == TokenKind::TYPED_FLOAT)
+      return std::get<double>(value);
     return std::nullopt;
   }
 
@@ -580,6 +614,17 @@ class Lexer {
 
   static bool isTokenWhitespace(int c) {
     return c == ' ' || c == '\n' || c == '\t' || c == '\r';
+  }
+
+  // The valid type suffixes of a numeric literal: one per integer type
+  // (21u8), and f32/f64 for floats (1.5f32).
+  static bool isIntegerSuffix(std::string_view s) {
+    return s == "i8" || s == "i16" || s == "i32" || s == "i64" || s == "u8" ||
+           s == "u16" || s == "u32" || s == "u64";
+  }
+
+  static bool isFloatSuffix(std::string_view s) {
+    return s == "f32" || s == "f64";
   }
 
   [[noreturn]] void literalError(const Position& at,
@@ -1023,6 +1068,58 @@ class Lexer {
         std::string text(matched);
         double val = std::strtod(text.c_str(), nullptr);
         return Token::floatNum(val, startPos, endPos, std::move(text));
+      }
+      case TokenKind::TYPED_INTEGER: {
+        // Digits then suffix; the regex admits any word as the suffix so a
+        // bad one gets a real diagnostic here.
+        std::string text(matched);
+        size_t cut = text.find_first_not_of("0123456789");
+        std::string digits = text.substr(0, cut);
+        std::string suffix = text.substr(cut);
+        if (isFloatSuffix(suffix)) {
+          literalError(startPos, "A float suffix needs a float literal; write " +
+                                     digits + ".0" + suffix);
+        }
+        if (!isIntegerSuffix(suffix)) {
+          literalError(startPos,
+                       "Invalid numeric literal suffix '" + suffix +
+                           "' (valid suffixes: i8, i16, i32, i64, u8, u16, "
+                           "u32, u64, f32, f64)");
+        }
+        int64_t val = std::strtoll(digits.c_str(), nullptr, 10);
+        return Token::typedInteger(val, std::move(suffix), startPos, endPos,
+                                   std::move(text));
+      }
+      case TokenKind::TYPED_FLOAT: {
+        // Walk the float grammar (digits, optional fraction, optional
+        // exponent) to find where the suffix starts: in 1e5f32 the body is
+        // 1e5, not 1e5f3.
+        std::string text(matched);
+        auto isDig = [](char c) { return c >= '0' && c <= '9'; };
+        size_t i = 0;
+        while (i < text.size() && isDig(text[i])) ++i;
+        if (i < text.size() && text[i] == '.') {
+          ++i;
+          while (i < text.size() && isDig(text[i])) ++i;
+        }
+        if (i < text.size() && (text[i] == 'e' || text[i] == 'E')) {
+          size_t j = i + 1;
+          if (j < text.size() && (text[j] == '+' || text[j] == '-')) ++j;
+          if (j < text.size() && isDig(text[j])) {
+            i = j;
+            while (i < text.size() && isDig(text[i])) ++i;
+          }
+        }
+        std::string body = text.substr(0, i);
+        std::string suffix = text.substr(i);
+        if (!isFloatSuffix(suffix)) {
+          literalError(startPos,
+                       "Invalid suffix '" + suffix +
+                           "' on a float literal; a float takes f32 or f64");
+        }
+        double val = std::strtod(body.c_str(), nullptr);
+        return Token::typedFloat(val, std::move(suffix), startPos, endPos,
+                                 std::move(text));
       }
       case TokenKind::STRING: {
         // Drop the surrounding quotes and process escape sequences

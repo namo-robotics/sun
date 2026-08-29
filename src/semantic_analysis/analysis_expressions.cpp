@@ -16,6 +16,20 @@ using sun::rules::tryCoerceIntegerLiteral;
 
 void SemanticAnalyzer::analyzeNumberLiteral(ExprAST& expr,
                                             sun::TypePtr expectedType) {
+  // A suffixed literal (21u8, 1.5f32) is already typed: it ignores the
+  // expected type, and an integer value that does not fit its suffix is an
+  // error here. Floats skip the range check — rounding is inherent to them.
+  const auto& num = static_cast<const NumberExprAST&>(expr);
+  if (num.hasSuffix()) {
+    sun::TypePtr suffixType = sun::Types::fromString(num.getSuffix());
+    if (num.isInteger()) {
+      tryCoerceIntegerLiteral(&expr, suffixType, /*throwOnFail=*/true);
+    } else {
+      expr.setResolvedType(suffixType);
+    }
+    return;
+  }
+
   // If we have an expected type, try to use it for integer literals
   if (expectedType && expectedType->isPrimitive()) {
     if (tryCoerceIntegerLiteral(&expr, expectedType, false)) {

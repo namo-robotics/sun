@@ -109,6 +109,8 @@ message NumberExpr {
     int64 int_value = 1;
     double float_value = 2;
   }
+  // Type suffix written on the literal ("u8", "f32"); empty when untyped
+  string suffix = 3;
 }
 
 message StringLiteral {

@@ -38,10 +38,13 @@
 std::unique_ptr<ExprAST> Parser::parseNumberExpr() {
   Position start = captureStart();
   std::unique_ptr<ExprAST> result;
-  if (curTok.kind == TokenKind::INTEGER) {
-    result = std::make_unique<NumberExprAST>(curTok.getInteger().value());
+  if (curTok.kind == TokenKind::INTEGER ||
+      curTok.kind == TokenKind::TYPED_INTEGER) {
+    result = std::make_unique<NumberExprAST>(curTok.getInteger().value(),
+                                             curTok.suffix);
   } else {
-    result = std::make_unique<NumberExprAST>(curTok.getFloat().value());
+    result =
+        std::make_unique<NumberExprAST>(curTok.getFloat().value(), curTok.suffix);
   }
   getNextToken();  // consume the number
   return finishNode(std::move(result), start);
@@ -807,6 +810,17 @@ unique_ptr<ExprAST> Parser::parseUnary() {
     Token opTok = curTok;
     getNextToken();  // eat the operator
 
+    // A minus directly on a suffixed integer literal folds into the literal,
+    // so -128i8 is the i8 value -128 rather than a negation of 128i8 (which
+    // does not fit i8). Untyped literals keep their unary node.
+    if (opTok.kind == TokenKind::MINUS &&
+        curTok.kind == TokenKind::TYPED_INTEGER) {
+      auto folded = std::make_unique<NumberExprAST>(
+          -curTok.getInteger().value(), curTok.suffix);
+      getNextToken();  // consume the number
+      return finishNode(std::move(folded), start);
+    }
+
     auto operand = parseUnary();
     if (!operand) return nullptr;
 
@@ -836,6 +850,8 @@ unique_ptr<ExprAST> Parser::parsePrimary() {
       break;
     case TokenKind::INTEGER:
     case TokenKind::FLOAT:
+    case TokenKind::TYPED_INTEGER:
+    case TokenKind::TYPED_FLOAT:
       base = parseNumberExpr();
       break;
     case TokenKind::STRING:
