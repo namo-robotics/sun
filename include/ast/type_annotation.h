@@ -35,7 +35,7 @@ struct TypeAnnotation {
   // For reference types: `const ref T` (the referent cannot be changed)
   bool constRef = false;
 
-  // Source span (includes the ", IError" suffix when present); not serialized
+  // Source span (includes the "throws IError" suffix when present); not serialized
   Position span{};
 
   TypeAnnotation() = default;
@@ -120,7 +120,7 @@ struct TypeAnnotation {
         result += ", " + std::to_string(dim);
       }
       result += ">";
-      if (canError) result += ", error";
+      if (canError) result += " throws IError";
       return result;
     }
     if (isRawPointer() && elementType) {
@@ -161,11 +161,11 @@ struct TypeAnnotation {
         result += typeArguments[i]->toString();
       }
       result += ">";
-      if (canError) result += ", error";
+      if (canError) result += " throws IError";
       return result;
     }
     std::string result = baseName;
-    if (canError) result += ", error";
+    if (canError) result += " throws IError";
     return result;
   }
 };

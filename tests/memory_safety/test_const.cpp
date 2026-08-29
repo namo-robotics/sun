@@ -28,7 +28,7 @@ TEST(MemorySafety_Const, class_fields_are_readable) {
       class Point {
           var x: i32;
           var y: i32;
-          function init(px: i32, py: i32) { this.x = px; this.y = py; }
+          init(px: i32, py: i32) { this.x = px; this.y = py; }
       }
       function main() i32 {
           const p = Point(3, 4);
@@ -111,7 +111,7 @@ TEST(MemorySafety_Const, field_assignment_is_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       class Point {
           var x: i32;
-          function init() { this.x = 0; }
+          init() { this.x = 0; }
       }
       function main() i32 {
           const p = Point();
@@ -124,8 +124,8 @@ TEST(MemorySafety_Const, field_assignment_is_rejected) {
 
 TEST(MemorySafety_Const, nested_field_assignment_is_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
-      class Inner { var v: i32; function init() { this.v = 0; } }
-      class Outer { var inner: Inner; function init() { this.inner = Inner(); } }
+      class Inner { var v: i32; init() { this.v = 0; } }
+      class Outer { var inner: Inner; init() { this.inner = Inner(); } }
       function main() i32 {
           const o = Outer();
           o.inner.v = 5;
@@ -217,7 +217,7 @@ TEST(MemorySafety_Const, ref_argument_is_rejected) {
 TEST(MemorySafety_Const, ref_argument_of_field_is_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       executeString(R"(
-      class Point { var x: i32; function init() { this.x = 0; } }
+      class Point { var x: i32; init() { this.x = 0; } }
       function bump(x: ref i32) void { x = x + 1; }
       function main() i32 {
           const p = Point();
@@ -230,7 +230,7 @@ TEST(MemorySafety_Const, ref_argument_of_field_is_rejected) {
 
 TEST(MemorySafety_Const, const_ref_of_const_is_allowed) {
   auto value = executeString(R"(
-      class Point { var x: i32; function init(v: i32) { this.x = v; } }
+      class Point { var x: i32; init(v: i32) { this.x = v; } }
       function read(p: const ref Point) i32 { return p.x; }
       function main() i32 {
           const p = Point(21);
@@ -247,7 +247,7 @@ TEST(MemorySafety_Const, const_ref_of_const_is_allowed) {
 
 TEST(MemorySafety_Const, whole_value_move_is_allowed) {
   auto value = executeString(R"(
-      class Point { var x: i32; function init(v: i32) { this.x = v; } }
+      class Point { var x: i32; init(v: i32) { this.x = v; } }
       function take(p: Point) i32 { return p.x; }
       function main() i32 {
           const a = Point(1);
@@ -261,7 +261,7 @@ TEST(MemorySafety_Const, whole_value_move_is_allowed) {
 
 TEST(MemorySafety_Const, returning_const_local_is_allowed) {
   auto value = executeString(R"(
-      class Point { var x: i32; function init(v: i32) { this.x = v; } }
+      class Point { var x: i32; init(v: i32) { this.x = v; } }
       function make() Point {
           const p = Point(5);
           return p;
@@ -277,8 +277,8 @@ TEST(MemorySafety_Const, returning_const_local_is_allowed) {
 TEST(MemorySafety_Const, partial_move_is_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       executeString(R"(
-      class Inner { var v: i32; function init() { this.v = 1; } }
-      class Outer { var inner: Inner; function init() { this.inner = Inner(); } }
+      class Inner { var v: i32; init() { this.v = 1; } }
+      class Outer { var inner: Inner; init() { this.inner = Inner(); } }
       function main() i32 {
           const o = Outer();
           var i = o.inner;
@@ -291,8 +291,8 @@ TEST(MemorySafety_Const, partial_move_is_rejected) {
 TEST(MemorySafety_Const, partial_move_by_argument_is_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       executeString(R"(
-      class Inner { var v: i32; function init() { this.v = 1; } }
-      class Outer { var inner: Inner; function init() { this.inner = Inner(); } }
+      class Inner { var v: i32; init() { this.v = 1; } }
+      class Outer { var inner: Inner; init() { this.inner = Inner(); } }
       function take(i: Inner) i32 { return i.v; }
       function main() i32 {
           const o = Outer();
@@ -304,7 +304,7 @@ TEST(MemorySafety_Const, partial_move_by_argument_is_rejected) {
 
 TEST(MemorySafety_Const, moving_const_global_is_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
-      class Point { var x: i32; function init(v: i32) { this.x = v; } }
+      class Point { var x: i32; init(v: i32) { this.x = v; } }
       const ORIGIN: Point = Point(0);
       function main() i32 {
           var p = ORIGIN;

@@ -30,7 +30,7 @@ TEST(Lambdas_CaptureDiscovery, raw_pointer_used_inside_unsafe_block) {
 
       class Holder {
           public var counter: i64;
-          public function init() { this.counter = 41; }
+          init() { this.counter = 41; }
       }
 
       function main() i32 {
@@ -61,7 +61,7 @@ TEST(Lambdas_CaptureDiscovery, scalar_used_inside_catch_block) {
   auto value = executeStringWithStdlib(R"(
       using sun;
 
-      function boom() i32, IError {
+      function boom() i32 throws IError {
           throw Error(1, "boom");
       }
 
@@ -96,7 +96,7 @@ TEST(Lambdas_CaptureDiscovery, scalar_used_in_a_thrown_error) {
 
       function main() i32 {
           var n: i32 = 8;
-          var f = lambda() i32, IError { throw Error(n, "bad"); };
+          var f = lambda() i32 throws IError { throw Error(n, "bad"); };
           try { return f(); } catch (e: IError) { return e.code(); }
       }
     )");
@@ -142,7 +142,7 @@ TEST(Lambdas_CaptureDiscovery, catch_binding_shadows_an_outer_name) {
   auto value = executeStringWithStdlib(R"(
       using sun;
 
-      function boom() i32, IError {
+      function boom() i32 throws IError {
           throw Error(9, "boom");
       }
 
@@ -165,7 +165,7 @@ TEST(Lambdas_CaptureDiscovery, lambda_cannot_use_this) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       class Counter {
           var count: i32;
-          function init() { this.count = 5; }
+          init() { this.count = 5; }
           function snapshot() i32 {
               var f = lambda () i32 { return this.count; };
               return f();

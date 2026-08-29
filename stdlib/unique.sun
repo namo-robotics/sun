@@ -10,7 +10,7 @@ public module sun {
 
     // Take ownership of a raw pointer. The Unique frees it when it goes out of
     // scope, so the caller must not free it as well.
-    public function init(p: raw_ptr<T>) {
+    init(p: raw_ptr<T>) {
       this.data = p;
     }
 
@@ -31,7 +31,7 @@ public module sun {
     }
 
     // Free the pointed-to memory, unless the pointer is already null.
-    function deinit() void {
+    deinit() {
       if (this.data != null) {
         _deinit<T>(this.data);
         unsafe { _free(this.data); };

@@ -156,7 +156,7 @@ TEST(Functions, ref_class_param_borrows) {
   auto value = executeString(R"(
     class Box {
         var v: i32;
-        function init(v: i32) { this.v = v; }
+        init(v: i32) { this.v = v; }
         function get() i32 { return this.v; }
     }
 
@@ -176,7 +176,7 @@ TEST(Functions, ref_class_param_can_mutate_caller_value) {
   auto value = executeString(R"(
     class Box {
         var v: i32;
-        function init(v: i32) { this.v = v; }
+        init(v: i32) { this.v = v; }
         function bump() void { this.v = this.v + 1; }
         function get() i32 { return this.v; }
     }
@@ -199,7 +199,7 @@ TEST(Functions, returns_class_by_value) {
   auto value = executeString(R"(
     class Box {
         var v: i32;
-        function init(v: i32) { this.v = v; }
+        init(v: i32) { this.v = v; }
         function get() i32 { return this.v; }
     }
 
@@ -219,7 +219,7 @@ TEST(Functions, class_by_value_param_is_a_move) {
   auto value = executeString(R"(
     class Box {
         var v: i32;
-        function init(v: i32) { this.v = v; }
+        init(v: i32) { this.v = v; }
         function get() i32 { return this.v; }
     }
 
@@ -240,7 +240,7 @@ TEST(Functions, use_after_passing_class_by_value_is_error) {
   EXPECT_THROW(executeString(R"(
         class Box {
             var v: i32;
-            function init(v: i32) { this.v = v; }
+            init(v: i32) { this.v = v; }
             function get() i32 { return this.v; }
         }
 

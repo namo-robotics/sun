@@ -9,7 +9,7 @@ interface Drawable {
 class Circle implements Drawable {
   public var radius: f64;
 
-  public function init(r: f64) {
+  init(r: f64) {
     this.radius = r;
   }
 
@@ -22,7 +22,7 @@ class Circle implements Drawable {
 class Square implements Drawable {
   public var side: f64;
 
-  public function init(s: f64) {
+  init(s: f64) {
     this.side = s;
   }
 

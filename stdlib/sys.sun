@@ -125,7 +125,7 @@ public module sun {
     var nsec: i64;
 
     // Build a timespec from whole seconds plus a nanosecond remainder.
-    public function init(sec: i64, nsec: i64) {
+    init(sec: i64, nsec: i64) {
       this.sec = sec;
       this.nsec = nsec;
     }
@@ -147,7 +147,7 @@ public module sun {
     var zone: raw_ptr<u8>;
 
     // Build a zeroed calendar-time struct for a C call to fill in.
-    public function init() {
+    init() {
       this.sec = 0;
       this.min = 0;
       this.hour = 0;

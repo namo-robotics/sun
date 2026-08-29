@@ -40,7 +40,7 @@ public module sun {
 
       // Built only by spawn(): a handle cannot be forged, and there is no way
       // to reach a thread except through the one spawn handed back.
-      function init(ctx: raw_ptr<ThreadContext>) {
+      init(ctx: raw_ptr<ThreadContext>) {
         this.ctx = ctx;
       }
 
@@ -56,7 +56,7 @@ public module sun {
       // Dropping a handle joins the thread it still holds. Nobody is taking
       // the result, so it is dropped where it lies. A moved-from handle is
       // all-zero, which reads as null, so there is nothing left to release.
-      function deinit() void {
+      deinit() {
         if (this.ctx != null) {
           unsafe { _thread_join_drop<T>(this.ctx); };
           this.ctx = null;
@@ -86,7 +86,7 @@ public module sun {
       var state: i32;
 
       // Build an unlocked mutex.
-      public function init() {
+      init() {
         this.state = 0;
       }
 

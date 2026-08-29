@@ -67,10 +67,10 @@ take the host as a `String` and the path as a literal; both have an overload
 taking a port, which defaults to 443.
 
 ```sun
-public function get(host: ref String, path: static_ptr<u8>) HttpClientResponse, IError
-public function get(host: ref String, port: i32, path: static_ptr<u8>) HttpClientResponse, IError
+public function get(host: ref String, path: static_ptr<u8>) HttpClientResponse throws IError
+public function get(host: ref String, port: i32, path: static_ptr<u8>) HttpClientResponse throws IError
 public function post(host: ref String, path: static_ptr<u8>, content_type: static_ptr<u8>,
-                     body: const ref String) HttpClientResponse, IError
+                     body: const ref String) HttpClientResponse throws IError
 ```
 
 The response carries the status, the raw header block, and the decoded body:

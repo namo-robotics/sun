@@ -54,7 +54,7 @@ TEST(Classes, new_class_instance) {
     class Point {
       var x: i32;
       var y: i32;
-      function init() {
+      init() {
           this.x = 0;
           this.y = 0;
       }
@@ -75,14 +75,14 @@ TEST(Classes, class_that_allocates) {
     
     class B {
       var c: i32;
-      function init() {
+      init() {
         this.c = 42;
       }
     }
 
     class A {
       var b: raw_ptr<B>;
-      function init(alloc: ref HeapAllocator) {
+      init(alloc: ref HeapAllocator) {
         this.b = alloc.create<B>();
       }
     }
@@ -105,7 +105,7 @@ TEST(Classes, object_field_access) {
       var x: i32;
       var y: i32;
       
-      function init(px: i32, py: i32) {
+      init(px: i32, py: i32) {
         this.x = px;
         this.y = py;
       }
@@ -128,7 +128,7 @@ TEST(Classes, object_field_read_y) {
       var x: i32;
       var y: i32;
       
-      function init(px: i32, py: i32) {
+      init(px: i32, py: i32) {
         this.x = px;
         this.y = py;
       }
@@ -154,7 +154,7 @@ TEST(Classes, method_call_no_args) {
     class Counter {
       var value: i32;
       
-      function init(v: i32) {
+      init(v: i32) {
         this.value = v;
       }
       
@@ -179,7 +179,7 @@ TEST(Classes, method_call_with_args) {
     class Calculator {
       var base: i32;
       
-      function init(b: i32) {
+      init(b: i32) {
         this.base = b;
       }
       
@@ -204,7 +204,7 @@ TEST(Classes, chained_method_calls) {
     class Value {
       var n: i32;
       
-      function init(x: i32) {
+      init(x: i32) {
         this.n = x;
       }
       
@@ -233,7 +233,7 @@ TEST(Classes, constructor_with_no_args) {
     class Counter {
       var value: i32;
       
-      function init() {
+      init() {
         this.value = 100;
       }
       
@@ -260,7 +260,7 @@ TEST(Classes, constructor_initializes_fields) {
       var y: i32;
       var z: i32;
       
-      function init(px: i32, py: i32, pz: i32) {
+      init(px: i32, py: i32, pz: i32) {
         this.x = px;
         this.y = py;
         this.z = pz;
@@ -288,7 +288,7 @@ TEST(Classes, multiple_methods) {
       var width: i32;
       var height: i32;
       
-      function init(w: i32, h: i32) {
+      init(w: i32, h: i32) {
         this.width = w;
         this.height = h;
       }
@@ -318,7 +318,7 @@ TEST(Classes, multiple_objects_same_class) {
     class Number {
       var value: i32;
       
-      function init(v: i32) {
+      init(v: i32) {
         this.value = v;
       }
       
@@ -347,12 +347,12 @@ TEST(Classes, multiple_classes) {
     
     class First {
       var a: i32;
-      function init(v: i32) { this.a = v; }
+      init(v: i32) { this.a = v; }
     }
     
     class Second {
       var b: i32;
-      function init(v: i32) { this.b = v; }
+      init(v: i32) { this.b = v; }
     }
 
     function main() i32 {
@@ -377,7 +377,7 @@ TEST(Classes, float_fields) {
       var x: f64;
       var y: f64;
       
-      function init(px: f64, py: f64) {
+      init(px: f64, py: f64) {
         this.x = px;
         this.y = py;
       }
@@ -444,7 +444,7 @@ TEST(Classes, constructor_wrong_argument_count) {
     class Point {
         var x: i32;
         var y: i32;
-        function init(x_: i32, y_: i32) {
+        init(x_: i32, y_: i32) {
             this.x = x_;
             this.y = y_;
         }
@@ -456,6 +456,108 @@ TEST(Classes, constructor_wrong_argument_count) {
     }
   )"),
                SunError);
+}
+
+// Constructors and destructors are written bare — 'public' and 'function'
+// are rejected, and no method or interface member may take their names.
+TEST(Classes, init_rejects_function_keyword) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      compileString(R"(
+    class A { var x: i32; function init() { this.x = 1; } }
+    function main() i32 { return 0; }
+  )"),
+      "'init' is the constructor and is always public");
+}
+
+TEST(Classes, deinit_rejects_function_keyword) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      compileString(R"(
+    class A { var x: i32; init() { this.x = 1; } public function deinit() void { this.x = 0; } }
+    function main() i32 { return 0; }
+  )"),
+      "'deinit' is the destructor and is always public");
+}
+
+TEST(Classes, init_rejects_public_keyword) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      compileString(R"(
+    class A { var x: i32; public init() { this.x = 1; } }
+    function main() i32 { return 0; }
+  )"),
+      "'init' is always public; remove the 'public' keyword");
+}
+
+TEST(Classes, init_rejects_const_modifier) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      compileString(R"(
+    class A { var x: i32; const init() { this.x = 1; } }
+    function main() i32 { return 0; }
+  )"),
+      "'init' cannot be a const method");
+}
+
+TEST(Classes, init_rejects_return_type) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      compileString(R"(
+    class A { var x: i32; init() void { this.x = 1; } }
+    function main() i32 { return 0; }
+  )"),
+      "'init' does not declare a return type");
+}
+
+TEST(Classes, deinit_rejects_parameters) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      compileString(R"(
+    class A { var x: i32; init() { this.x = 1; } deinit(fast: bool) { this.x = 0; } }
+    function main() i32 { return 0; }
+  )"),
+      "'deinit' takes no parameters");
+}
+
+TEST(Classes, deinit_cannot_throw) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      compileString(R"(
+    class A { var x: i32; init() { this.x = 1; } deinit() throws IError { this.x = 0; } }
+    function main() i32 { return 0; }
+  )"),
+      "'deinit' cannot throw");
+}
+
+TEST(Classes, interface_cannot_declare_init) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      compileString(R"(
+    interface IThing { function init() void; }
+    function main() i32 { return 0; }
+  )"),
+      "'init' cannot be an interface method");
+}
+
+// A constructor that can fail: init(args) throws IError { }
+TEST(Classes, throwing_constructor) {
+  auto value = executeString(R"(
+    class NegativeError implements IError {
+      init() {}
+      function code() i32 { return 1; }
+      function message() static_ptr<u8> { return "negative"; }
+    }
+    class Guarded {
+        var n: i32;
+        init(n: i32) throws IError {
+            if (n < 0) { throw NegativeError(); }
+            this.n = n;
+        }
+    }
+    function main() i32 {
+        try {
+            var ok = Guarded(5);
+            var bad = Guarded(-1);
+            return 0;
+        } catch (e: IError) {
+            return 5;
+        }
+    }
+  )");
+  EXPECT_EQ(value, 5);
 }
 
 TEST(Classes, class_redefinition_error) {
@@ -492,7 +594,7 @@ TEST(Classes, partial_class_adds_methods) {
     class X {
       var a: i32;
       var b: i32;
-      function init(a_: i32, b_: i32) { this.a = a_; this.b = b_; }
+      init(a_: i32, b_: i32) { this.a = a_; this.b = b_; }
       function get_a() i32 { return this.a; }
     }
 
@@ -514,7 +616,7 @@ TEST(Classes, partial_class_mutual_calls) {
     class X {
       var a: i32;
       var b: i32;
-      function init(a_: i32, b_: i32) { this.a = a_; this.b = b_; }
+      init(a_: i32, b_: i32) { this.a = a_; this.b = b_; }
       function get_a() i32 { return this.a; }
     }
 
@@ -536,7 +638,7 @@ TEST(Classes, partial_class_no_fields_error) {
   // Partial classes cannot define fields
   try {
     executeString(R"(
-      class Foo { var x: i32; function init() { this.x = 0; } }
+      class Foo { var x: i32; init() { this.x = 0; } }
       partial class Foo { var y: i32; }
       function main() i32 { return 0; }
     )");
@@ -552,8 +654,8 @@ TEST(Classes, partial_class_no_constructor_error) {
   // Partial classes cannot define constructors
   try {
     executeString(R"(
-      class Foo { var x: i32; function init() { this.x = 0; } }
-      partial class Foo { function init() { this.x = 1; } }
+      class Foo { var x: i32; init() { this.x = 0; } }
+      partial class Foo { init() { this.x = 1; } }
       function main() i32 { return 0; }
     )");
     FAIL() << "Expected parsing error for constructor in partial class";
@@ -570,7 +672,7 @@ TEST(Classes, partial_class_duplicate_method_error) {
     executeString(R"(
       class Foo { 
         var x: i32; 
-        function init() { this.x = 0; }
+        init() { this.x = 0; }
         function get() i32 { return this.x; }
       }
       partial class Foo { 
@@ -591,7 +693,7 @@ TEST(Classes, partial_class_inline_simple) {
   auto value = executeString(R"(
     class Counter {
       var value: i32;
-      function init(v: i32) { this.value = v; }
+      init(v: i32) { this.value = v; }
       function get() i32 { return this.value; }
     }
     
@@ -620,7 +722,7 @@ TEST(Classes, simple_member_assignment) {
     class Point {
       var x: i32;
       var y: i32;
-      function init() {
+      init() {
         this.x = 0;
         this.y = 0;
       }
@@ -640,12 +742,12 @@ TEST(Classes, nested_member_assignment) {
   auto value = executeString(R"(
     class Inner {
       var value: i32;
-      function init() { this.value = 0; }
+      init() { this.value = 0; }
     }
 
     class Outer {
       var inner: Inner;
-      function init() { this.inner = Inner(); }
+      init() { this.inner = Inner(); }
     }
 
     function main() i32 {
@@ -662,17 +764,17 @@ TEST(Classes, deep_nested_member_assignment) {
   auto value = executeString(R"(
     class Level3 {
       var data: i32;
-      function init() { this.data = 0; }
+      init() { this.data = 0; }
     }
 
     class Level2 {
       var l3: Level3;
-      function init() { this.l3 = Level3(); }
+      init() { this.l3 = Level3(); }
     }
 
     class Level1 {
       var l2: Level2;
-      function init() { this.l2 = Level2(); }
+      init() { this.l2 = Level2(); }
     }
 
     function main() i32 {
@@ -689,13 +791,13 @@ TEST(Classes, this_nested_member_assignment) {
   auto value = executeString(R"(
     class Inner {
       var x: i32;
-      function init() { this.x = 0; }
+      init() { this.x = 0; }
     }
 
     class Container {
       var inner: Inner;
       
-      function init() {
+      init() {
         this.inner = Inner();
       }
       
@@ -722,17 +824,17 @@ TEST(Classes, nested_member_access_as_argument) {
   auto value = executeString(R"(
     class Level3 {
       var data: i32;
-      function init(v: i32) { this.data = v; }
+      init(v: i32) { this.data = v; }
     }
 
     class Level2 {
       var l3: Level3;
-      function init(v: i32) { this.l3 = Level3(v); }
+      init(v: i32) { this.l3 = Level3(v); }
     }
 
     class Level1 {
       var l2: Level2;
-      function init(v: i32) { this.l2 = Level2(v); }
+      init(v: i32) { this.l2 = Level2(v); }
     }
 
     function double_it(x: i32) i32 {
@@ -758,7 +860,7 @@ TEST(Classes, member_access_on_function_return) {
     class Point {
       var x: i32;
       var y: i32;
-      function init(px: i32, py: i32) {
+      init(px: i32, py: i32) {
         this.x = px;
         this.y = py;
       }
@@ -783,7 +885,7 @@ TEST(Classes, member_access_on_constructor) {
     class Point {
       var x: i32;
       var y: i32;
-      function init(px: i32, py: i32) {
+      init(px: i32, py: i32) {
         this.x = px;
         this.y = py;
       }
@@ -804,7 +906,7 @@ TEST(Classes, method_call_on_function_return) {
     class Point {
       var x: i32;
       var y: i32;
-      function init(px: i32, py: i32) {
+      init(px: i32, py: i32) {
         this.x = px;
         this.y = py;
       }
@@ -829,12 +931,12 @@ TEST(Classes, nested_member_access_on_temporary) {
   auto value = executeString(R"(
     class Inner {
       var value: i32;
-      function init(v: i32) { this.value = v; }
+      init(v: i32) { this.value = v; }
     }
 
     class Outer {
       var inner: Inner;
-      function init(v: i32) { this.inner = Inner(v); }
+      init(v: i32) { this.inner = Inner(v); }
     }
 
     function make_outer(v: i32) Outer {
@@ -876,7 +978,7 @@ TEST(Classes, temporary_class_as_ref_argument) {
     class Point {
       var x: i32;
       var y: i32;
-      function init(px: i32, py: i32) {
+      init(px: i32, py: i32) {
         this.x = px;
         this.y = py;
       }
@@ -903,7 +1005,7 @@ TEST(Classes, constructor_as_ref_argument) {
     class Point {
       var x: i32;
       var y: i32;
-      function init(px: i32, py: i32) {
+      init(px: i32, py: i32) {
         this.x = px;
         this.y = py;
       }
@@ -926,12 +1028,12 @@ TEST(Classes, chained_member_access_as_argument) {
   auto value = executeString(R"(
     class Inner {
       var value: i32;
-      function init(v: i32) { this.value = v; }
+      init(v: i32) { this.value = v; }
     }
 
     class Outer {
       var inner: Inner;
-      function init(v: i32) { this.inner = Inner(v); }
+      init(v: i32) { this.inner = Inner(v); }
     }
 
     function make_outer(v: i32) Outer {
@@ -955,12 +1057,12 @@ TEST(Classes, chained_method_and_member_as_argument) {
   auto value = executeString(R"(
     class Data {
       var result: i32;
-      function init(v: i32) { this.result = v; }
+      init(v: i32) { this.result = v; }
     }
 
     class Builder {
       var value: i32;
-      function init(v: i32) { this.value = v; }
+      init(v: i32) { this.value = v; }
       function build() Data {
         return Data(this.value * 2);
       }
@@ -993,8 +1095,8 @@ TEST(Classes, deinit_called_at_implicit_function_exit) {
     var counter: i32 = 0;
 
     class Foo {
-      function init() {}
-      function deinit() void {
+      init() {}
+      deinit() {
         counter = counter + 1;
       }
     }
@@ -1017,8 +1119,8 @@ TEST(Classes, deinit_called_at_explicit_return) {
     var counter: i32 = 0;
 
     class Foo {
-      function init() {}
-      function deinit() void {
+      init() {}
+      deinit() {
         counter = counter + 1;
       }
     }
@@ -1041,8 +1143,8 @@ TEST(Classes, deinit_called_for_multiple_instances) {
     var counter: i32 = 0;
 
     class Foo {
-      function init() {}
-      function deinit() void {
+      init() {}
+      deinit() {
         counter = counter + 1;
       }
     }
@@ -1067,8 +1169,8 @@ TEST(Classes, explicit_deinit_no_double_call) {
     var counter: i32 = 0;
 
     class Foo {
-      function init() {}
-      function deinit() void {
+      init() {}
+      deinit() {
         counter = counter + 1;
       }
     }
@@ -1090,8 +1192,8 @@ TEST(Classes, deinit_called_for_unique_ptr_at_scope_exit) {
 
     class Widget {
       var id: i32;
-      function init(id: i32) { this.id = id; }
-      function deinit() void {
+      init(id: i32) { this.id = id; }
+      deinit() {
         counter = counter + 1;
       }
     }
@@ -1122,8 +1224,8 @@ TEST(Classes, deinit_called_for_class_created_with_allocator) {
 
     class Resource {
       var value: i32;
-      function init(v: i32) { this.value = v; }
-      function deinit() void {
+      init(v: i32) { this.value = v; }
+      deinit() {
         counter = counter + 1;
       }
     }
@@ -1153,7 +1255,7 @@ TEST(Classes, ctor_by_value_class_arg_moves_temporary_and_named) {
 
     class Holder {
       var s: String;
-      function init(s: String) { this.s = s; }
+      init(s: String) { this.s = s; }
       function len() i64 { return this.s.length(); }
     }
 
@@ -1174,7 +1276,7 @@ TEST(Classes, ctor_by_value_class_arg_is_use_after_move) {
 
     class Holder {
       var s: String;
-      function init(s: String) { this.s = s; }
+      init(s: String) { this.s = s; }
     }
 
     function main() i32 {
@@ -1199,7 +1301,7 @@ TEST(Classes, ctor_by_value_enum_arg_moves_payload) {
 
     class Box {
       var v: Value;
-      function init(v: Value) { this.v = v; }
+      init(v: Value) { this.v = v; }
       function size() i64 {
         return match this.v {
           Value.Text(s) => s.length(),
@@ -1229,7 +1331,7 @@ TEST(Classes, ref_return_of_compound_from_free_function_is_not_a_copy) {
 
     class Holder {
       var items: Vec<i64>;
-      function init(items: Vec<i64>) { this.items = items; }
+      init(items: Vec<i64>) { this.items = items; }
     }
 
     function items_of(h: ref Holder) ref Vec<i64> {
@@ -1252,12 +1354,12 @@ TEST(Classes, ref_return_of_compound_from_free_function_is_not_a_copy) {
 TEST(Classes, method_calls_class_declared_below_it) {
   auto value = executeString(R"(
     class First {
-        function init() {}
+        init() {}
         function go() i32 { var s = Second(20); return s.doubled() + helper(); }
     }
     class Second {
         var v: i32;
-        function init(v: i32) { this.v = v; }
+        init(v: i32) { this.v = v; }
         function doubled() i32 { return this.v * 2; }
     }
     function helper() i32 { return 2; }
@@ -1270,12 +1372,12 @@ TEST(Classes, method_calls_generic_class_declared_below_it) {
   auto value = executeString(R"(
     class Node {
         var v: i32;
-        function init(v: i32) { this.v = v; }
+        init(v: i32) { this.v = v; }
         function wrapped() i32 { var w = Wrapper<i32>(this.v); return w.get(); }
     }
     class Wrapper<T> {
         var v: T;
-        function init(v: T) { this.v = v; }
+        init(v: T) { this.v = v; }
         function get() T { return this.v; }
     }
     function main() i32 { var n = Node(42); return n.wrapped(); }
@@ -1291,7 +1393,7 @@ TEST(Classes, extra_argument_to_zero_parameter_method_is_error) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Counter {
         var n: i32;
-        function init() { this.n = 0; }
+        init() { this.n = 0; }
         function bump() void { this.n = this.n + 1; }
     }
     function main() i32 { var c = Counter(); c.bump(5); return c.n; }
@@ -1303,7 +1405,7 @@ TEST(Classes, wrong_argument_count_to_method_lists_overloads) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Counter {
         var n: i32;
-        function init() { this.n = 0; }
+        init() { this.n = 0; }
         function add(x: i32) void { this.n = this.n + x; }
     }
     function main() i32 { var c = Counter(); c.add(1, 2); return c.n; }
@@ -1315,7 +1417,7 @@ TEST(Classes, missing_argument_to_method_is_error) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Counter {
         var n: i32;
-        function init() { this.n = 0; }
+        init() { this.n = 0; }
         function add(x: i32) void { this.n = this.n + x; }
     }
     function main() i32 { var c = Counter(); c.add(); return c.n; }
@@ -1328,7 +1430,7 @@ TEST(Classes, argument_to_zero_parameter_overload_picks_the_other_one) {
   auto value = executeString(R"(
     class Counter {
         var n: i32;
-        function init() { this.n = 0; }
+        init() { this.n = 0; }
         function add() void { this.n = this.n + 1; }
         function add(x: i32) void { this.n = this.n + x; }
     }

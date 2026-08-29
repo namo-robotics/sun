@@ -385,7 +385,7 @@ TEST(Stdlib_Collections_LinkedList, list_of_class_objects) {
         var x: i32;
         var y: i32;
 
-        function init(x_: i32, y_: i32) {
+        init(x_: i32, y_: i32) {
             this.x = x_;
             this.y = y_;
         }
@@ -432,7 +432,7 @@ TEST(Stdlib_Collections_LinkedList, class_objects_push_front_pop) {
         var a: i32;
         var b: i32;
 
-        function init(a_: i32, b_: i32) {
+        init(a_: i32, b_: i32) {
             this.a = a_;
             this.b = b_;
         }
@@ -471,7 +471,7 @@ TEST(Stdlib_Collections_LinkedList, iterate_class_objects) {
     class Weight {
         var value: i32;
 
-        function init(v: i32) {
+        init(v: i32) {
             this.value = v;
         }
 
@@ -545,7 +545,7 @@ TEST(Stdlib_Collections_LinkedList, DISABLED_double_free_via_copy) {
     class ListWrapper {
         var inner: LinkedList<i32>;
 
-        function init(list: LinkedList<i32>) {
+        init(list: LinkedList<i32>) {
             this.inner = list;
         }
 

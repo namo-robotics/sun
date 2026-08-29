@@ -279,6 +279,7 @@ int tokenKindToLSPType(TokenKind kind) {
     case TokenKind::TRY:
     case TokenKind::CATCH:
     case TokenKind::THROW:
+    case TokenKind::THROWS:
     case TokenKind::USING:
     case TokenKind::MANIFEST:
     case TokenKind::MODULE:
@@ -580,10 +581,15 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
     if (lastIdent.valid) {
       if (tok.kind == TokenKind::PAREN_OPEN || tok.kind == TokenKind::LESS) {
         // Previous identifier is a function/method call
-        // Find and update it in tokens
+        // Find and update it in tokens. Constructors and destructors (init /
+        // deinit) are part of the language, so they get keyword coloring to
+        // stand apart from ordinary methods.
+        bool isLifecycle =
+            lastIdent.text == "init" || lastIdent.text == "deinit";
         for (auto& t : tokens) {
           if (t.line == lastIdent.line && t.startChar == lastIdent.col) {
-            t.tokenType = LSPTokenType::Function;
+            t.tokenType =
+                isLifecycle ? LSPTokenType::Keyword : LSPTokenType::Function;
             break;
           }
         }

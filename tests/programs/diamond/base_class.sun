@@ -1,6 +1,6 @@
 // base_class.sun - Shared class imported by left_class and right_class
 class Point {
-  public function init(x: i32, y: i32) {
+  init(x: i32, y: i32) {
     this.x = x;
     this.y = y;
   }

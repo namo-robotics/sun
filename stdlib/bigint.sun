@@ -20,13 +20,13 @@ public module sun {
     var alloc: HeapAllocator;
 
     // Zero
-    public function init(allocator: const ref HeapAllocator) {
+    init(allocator: const ref HeapAllocator) {
       this.alloc = allocator.copy();
       this.limbs = Vec<u64>(allocator, 4);
     }
 
     // From a machine word
-    public function init(allocator: const ref HeapAllocator, value: u64) {
+    init(allocator: const ref HeapAllocator, value: u64) {
       this.alloc = allocator.copy();
       this.limbs = Vec<u64>(allocator, 4);
       if (value != 0) {
@@ -222,7 +222,7 @@ public module sun {
     }
 
     // this = this - other; throws if other is larger
-    public function sub(other: const ref BigUint) void, IError {
+    public function sub(other: const ref BigUint) void throws IError {
       if (this.compare(other) < 0) {
         throw OverflowError();
       }
@@ -402,7 +402,7 @@ public module sun {
 
     // this = this / divisor, returns the remainder. The divisor must fit in
     // 32 bits (enough for decimal digit extraction: 10, 10^9, ...).
-    public function divmod_small(divisor: u32) u32, IError {
+    public function divmod_small(divisor: u32) u32 throws IError {
       if (divisor == 0) {
         throw DivisionByZeroError();
       }

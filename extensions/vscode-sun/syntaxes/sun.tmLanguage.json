@@ -89,8 +89,13 @@
         "keywords": {
             "patterns": [
                 {
+                    "comment": "Constructors and destructors are language syntax, not ordinary methods",
+                    "name": "keyword.other.lifecycle.sun",
+                    "match": "\\b(?:init|deinit)\\b(?=\\s*\\()"
+                },
+                {
                     "name": "keyword.control.sun",
-                    "match": "\\b(?:if|else|for|while|break|continue|match|return|try|catch|throw|import|using|new|extern)\\b"
+                    "match": "\\b(?:if|else|for|while|break|continue|match|return|try|catch|throws|throw|import|using|new|extern)\\b"
                 },
                 {
                     "name": "storage.modifier.sun",

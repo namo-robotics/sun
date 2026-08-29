@@ -27,7 +27,7 @@ TEST(Classes_Packed, removes_trailing_and_interior_padding) {
         var a: u8;
         var b: i32;
         var c: u8;
-        function init() {
+        init() {
             this.a = 0;
             this.b = 0;
             this.c = 0;
@@ -46,7 +46,7 @@ TEST(Classes_Packed, unpacked_equivalent_still_pads) {
         var a: u8;
         var b: i32;
         var c: u8;
-        function init() {
+        init() {
             this.a = 0;
             this.b = 0;
             this.c = 0;
@@ -68,7 +68,7 @@ TEST(Classes_Packed, all_primitive_widths) {
         var d: i64;
         var e: f32;
         var f: f64;
-        function init() {
+        init() {
             this.a = 0;
             this.b = 0;
             this.c = 0;
@@ -88,7 +88,7 @@ TEST(Classes_Packed, single_field_matches_unpacked) {
   auto value = executeString(R"(
     packed_class One {
         var a: i32;
-        function init() {
+        init() {
             this.a = 0;
         }
     }
@@ -109,7 +109,7 @@ TEST(Classes_Packed, field_write_read_roundtrip) {
         var a: u8;
         var b: i32;
         var c: u8;
-        function init() {
+        init() {
             this.a = 0;
             this.b = 0;
             this.c = 0;
@@ -135,7 +135,7 @@ TEST(Classes_Packed, compound_assignment_on_unaligned_field) {
     packed_class P {
         var a: u8;
         var b: i32;
-        function init() {
+        init() {
             this.a = 0;
             this.b = 0;
         }
@@ -156,7 +156,7 @@ TEST(Classes_Packed, constructor_initializes_unaligned_fields) {
     packed_class P {
         var a: u8;
         var b: i32;
-        function init(y: i32) {
+        init(y: i32) {
             this.a = 3;
             this.b = y;
         }
@@ -174,7 +174,7 @@ TEST(Classes_Packed, methods_read_own_unaligned_fields) {
     packed_class P {
         var a: u8;
         var b: i32;
-        function init() {
+        init() {
             this.a = 0;
             this.b = 0;
         }
@@ -198,7 +198,7 @@ TEST(Classes_Packed, passed_by_ref_whole_object) {
     packed_class P {
         var a: u8;
         var b: i32;
-        function init() {
+        init() {
             this.a = 0;
             this.b = 0;
         }
@@ -225,7 +225,7 @@ TEST(Classes_Packed, nested_packed_class_field) {
     packed_class Inner {
         var x: u8;
         var y: i32;
-        function init() {
+        init() {
             this.x = 0;
             this.y = 0;
         }
@@ -233,7 +233,7 @@ TEST(Classes_Packed, nested_packed_class_field) {
     packed_class Outer {
         var tag: u8;
         var inner: Inner;
-        function init() {
+        init() {
             this.tag = 0;
             this.inner = Inner();
         }
@@ -250,7 +250,7 @@ TEST(Classes_Packed, nested_packed_field_roundtrip) {
     packed_class Inner {
         var x: u8;
         var y: i32;
-        function init() {
+        init() {
             this.x = 0;
             this.y = 0;
         }
@@ -258,7 +258,7 @@ TEST(Classes_Packed, nested_packed_field_roundtrip) {
     packed_class Outer {
         var tag: u8;
         var inner: Inner;
-        function init() {
+        init() {
             this.tag = 0;
             this.inner = Inner();
         }
@@ -282,7 +282,7 @@ TEST(Classes_Packed, packed_field_inside_unpacked_class_is_allowed) {
     packed_class Inner {
         var x: u8;
         var y: i32;
-        function init() {
+        init() {
             this.x = 0;
             this.y = 0;
         }
@@ -290,7 +290,7 @@ TEST(Classes_Packed, packed_field_inside_unpacked_class_is_allowed) {
     class Outer {
         var tag: u8;
         var inner: Inner;
-        function init() {
+        init() {
             this.tag = 0;
             this.inner = Inner();
         }
@@ -311,7 +311,7 @@ TEST(Classes_Packed, generic_specialization_stays_packed) {
     packed_class Box<T> {
         var tag: u8;
         var value: T;
-        function init(value: T) {
+        init(value: T) {
             this.tag = 0;
             this.value = value;
         }
@@ -328,7 +328,7 @@ TEST(Classes_Packed, generic_specializations_differ_by_type_arg) {
     packed_class Box<T> {
         var tag: u8;
         var value: T;
-        function init(value: T) {
+        init(value: T) {
             this.tag = 0;
             this.value = value;
         }
@@ -349,7 +349,7 @@ TEST(Classes_Packed, cannot_create_ref_to_packed_field) {
     packed_class P {
         var a: u8;
         var b: i32;
-        function init() {
+        init() {
             this.a = 0;
             this.b = 0;
         }
@@ -368,7 +368,7 @@ TEST(Classes_Packed, cannot_pass_packed_field_to_ref_param) {
     packed_class P {
         var a: u8;
         var b: i32;
-        function init() {
+        init() {
             this.a = 0;
             this.b = 0;
         }
@@ -388,14 +388,14 @@ TEST(Classes_Packed, cannot_ref_field_reached_through_packed_owner) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     packed_class Inner {
         var x: i32;
-        function init() {
+        init() {
             this.x = 0;
         }
     }
     packed_class Outer {
         var tag: u8;
         var inner: Inner;
-        function init() {
+        init() {
             this.tag = 0;
             this.inner = Inner();
         }
@@ -414,7 +414,7 @@ TEST(Classes_Packed, rejects_array_field) {
     packed_class P {
         var a: u8;
         var data: array<i32>;
-        function init() {}
+        init() {}
     }
     function main() i32 { return 0; }
   )"),
@@ -425,14 +425,14 @@ TEST(Classes_Packed, rejects_non_packed_class_field) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Q {
         var x: i32;
-        function init() {
+        init() {
             this.x = 0;
         }
     }
     packed_class P {
         var a: u8;
         var q: Q;
-        function init() {
+        init() {
             this.a = 0;
             this.q = Q();
         }
@@ -483,7 +483,7 @@ TEST(Classes_Packed, field_accesses_are_emitted_with_align_1) {
     packed_class P {
         var a: u8;
         var b: i32;
-        function init() {
+        init() {
             this.a = 0;
             this.b = 0;
         }
@@ -509,7 +509,7 @@ TEST(Classes_Packed, unpacked_field_accesses_keep_natural_alignment) {
     class U {
         var a: u8;
         var b: i32;
-        function init() {
+        init() {
             this.a = 0;
             this.b = 0;
         }

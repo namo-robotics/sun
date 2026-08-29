@@ -573,8 +573,8 @@ FuncDeclResult FunctionGenerator::declareFuncSignature(PrototypeAST& proto) {
                      "Ensure semantic analysis ran before codegen.");
   }
 
-  // With native LLVM exceptions, a throwing function ('T, IError') returns a
-  // plain T — the ', IError' marker only means the function may unwind. We no
+  // With native LLVM exceptions, a throwing function ('T throws IError') returns a
+  // plain T — the 'throws IError' marker only means the function may unwind. We no
   // longer wrap the return type in an error-union struct.
   llvm::Type* valueType = returnType;
 
@@ -731,7 +731,7 @@ Value* FunctionGenerator::codegenFunc(FunctionAST& funcAst) {
       // Void functions get an implicit return
       ctx.builder->CreateRetVoid();
     } else if (canError && !valueType) {
-      // void, IError function: return { i1 = false } to indicate success
+      // void-throws-IError function: return { i1 = false } to indicate success
       Value* successStruct = UndefValue::get(retType);
       successStruct = ctx.builder->CreateInsertValue(
           successStruct, ConstantInt::getFalse(ctx.getContext()), 0);
@@ -803,8 +803,8 @@ llvm::Value* FunctionGenerator::codegenLambda(LambdaAST& lambdaAst) {
     return nullptr;
   }
 
-  // With native LLVM exceptions, a throwing lambda ('T, IError') returns a
-  // plain T — the ', IError' marker only means the lambda may unwind.
+  // With native LLVM exceptions, a throwing lambda ('T throws IError') returns a
+  // plain T — the 'throws IError' marker only means the lambda may unwind.
   llvm::Type* valueType = returnType;
 
   // Create closure env struct type

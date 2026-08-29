@@ -33,7 +33,7 @@ TEST_F(Stdlib_Io_Paths, open_and_write_a_computed_path) {
     using sun;
     using sun.io;
 
-    function run(a: ref HeapAllocator) i32, IError {
+    function run(a: ref HeapAllocator) i32 throws IError {
         var path = String(a, ")" + testDir +
                                        R"(/");
         path.append("computed.txt");
@@ -60,7 +60,7 @@ TEST_F(Stdlib_Io_Paths, whole_file_helpers_take_a_computed_path) {
     using sun;
     using sun.io;
 
-    function run(a: ref HeapAllocator) i32, IError {
+    function run(a: ref HeapAllocator) i32 throws IError {
         var path = String(a, ")" + testDir +
                                        R"(/");
         path.append("round_trip.txt");
@@ -114,7 +114,7 @@ TEST_F(Stdlib_Io_Paths, directory_calls_take_a_computed_path) {
     using sun;
     using sun.io;
 
-    function run(a: ref HeapAllocator) i32, IError {
+    function run(a: ref HeapAllocator) i32 throws IError {
         var dir = String(a, ")" + testDir +
                                        R"(/");
         dir.append("made");
@@ -155,7 +155,7 @@ TEST_F(Stdlib_Io_Paths, literals_still_pick_the_static_ptr_overload) {
     using sun;
     using sun.io;
 
-    function run(a: ref HeapAllocator) i32, IError {
+    function run(a: ref HeapAllocator) i32 throws IError {
         var body = String(a, "literal path");
         write_string(")" + testDir + R"(/literal.txt", body);
         if (not exists(")" + testDir + R"(/literal.txt")) { return -2; }

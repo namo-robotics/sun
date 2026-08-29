@@ -32,7 +32,7 @@ TEST(Operators_Literals, suffixed_constructor_arguments) {
       class Addr {
           var ip: u32;
           var port: u16;
-          function init(ip: u32, port: u16) {
+          init(ip: u32, port: u16) {
               this.ip = ip;
               this.port = port;
           }
@@ -50,7 +50,7 @@ TEST(Operators_Literals, suffixed_method_argument) {
   auto value = executeString(R"(
       class Box {
           var v: u16;
-          function init() { this.v = 0; }
+          init() { this.v = 0; }
           function set(v: u16) void { this.v = v; }
       }
       function main() i32 {

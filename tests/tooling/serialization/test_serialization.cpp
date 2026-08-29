@@ -513,7 +513,7 @@ TEST(Tooling_Serialization, ClassDefinitionRoundtrip) {
       var x: i32;
       var y: i32;
       
-      function init(x: i32, y: i32) {
+      init(x: i32, y: i32) {
         this.x = x;
         this.y = y;
       }
@@ -548,7 +548,7 @@ TEST(Tooling_Serialization, PackedClassModifierRoundtrip) {
       var magic: u8;
       var length: i32;
 
-      function init() {}
+      init() {}
     }
   )");
 
@@ -692,7 +692,7 @@ TEST(Tooling_Serialization, ModuleDefinitionRoundtrip) {
 
 TEST(Tooling_Serialization, TryCatchRoundtrip) {
   auto block = parseCode(R"(
-    function test() i32, IError {
+    function test() i32 throws IError {
       try {
         return 42;
       } catch (e: IError) {

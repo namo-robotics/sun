@@ -718,7 +718,7 @@ function f(throw: i32) i32 { return throw; }
 
 TEST(Tooling_Frontend_Parser_Errors, KeywordAsClassNameIsReserved) {
   std::string what = parseErrorMessage(R"(
-class array { var x: i32; function init() { this.x = 0; } }
+class array { var x: i32; init() { this.x = 0; } }
 )");
   EXPECT_TRUE(what.find("'array' is a reserved word") != std::string::npos)
       << what;
@@ -726,7 +726,7 @@ class array { var x: i32; function init() { this.x = 0; } }
 
 TEST(Tooling_Frontend_Parser_Errors, KeywordAsFieldNameIsReserved) {
   std::string what = parseErrorMessage(R"(
-class P { var match: i32; function init() { this.match = 0; } }
+class P { var match: i32; init() { this.match = 0; } }
 )");
   EXPECT_TRUE(what.find("'match' is a reserved word") != std::string::npos)
       << what;
@@ -925,7 +925,7 @@ TEST(Tooling_Frontend_Parser, InitMethodWithoutReturnType) {
 class Point {
     var x: i32;
     var y: i32;
-    function init(px: i32, py: i32) {
+    init(px: i32, py: i32) {
         this.x = px;
         this.y = py;
     }

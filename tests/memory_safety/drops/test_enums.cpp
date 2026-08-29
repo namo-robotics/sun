@@ -16,10 +16,10 @@ const char* kOwnerPreamble = R"(
 
     class Owner {
       var id: i32;
-      function init(id: i32) {
+      init(id: i32) {
         this.id = id;
       }
-      function deinit() void {
+      deinit() {
         if (this.id != 0) {
           counter = counter + 1;
           this.id = 0;
@@ -264,7 +264,7 @@ TEST(MemorySafety_Drops_Enums, enum_field_in_class_dropped_with_class) {
   auto value = executeString(withPreamble(R"(
     class Box {
       var slot: Holder;
-      function init() {
+      init() {
         this.slot = Holder.Hold(Owner(3));
       }
     }
@@ -286,7 +286,7 @@ TEST(MemorySafety_Drops_Enums, enum_field_assignment_drops_old_payload) {
   auto value = executeString(withPreamble(R"(
     class Box {
       var slot: Holder;
-      function init() {
+      init() {
         this.slot = Holder.Hold(Owner(3));
       }
     }
@@ -333,16 +333,16 @@ TEST(MemorySafety_Drops_Enums, block_scoped_owning_enum_dropped_at_block_exit) {
 TEST(MemorySafety_Drops_Enums, owning_enum_dropped_on_unwind) {
   auto value = executeString(withPreamble(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function thrower() void, IError {
+    function thrower() void throws IError {
       throw TestError();
     }
 
-    function middle() void, IError {
+    function middle() void throws IError {
       var h = Holder.Hold(Owner(1));
       thrower();
     }
@@ -519,11 +519,11 @@ TEST(MemorySafety_Drops_Enums, cross_moon_owning_enum_drops_once) {
           public class Res {
               public var cell: raw_ptr<i32>;
               public var id: i32;
-              public function init(cell: raw_ptr<i32>, id: i32) {
+              init(cell: raw_ptr<i32>, id: i32) {
                   this.cell = cell;
                   this.id = id;
               }
-              function deinit() void {
+              deinit() {
                   if (this.id != 0) {
                       unsafe { _store<i32>(this.cell, 0, _load<i32>(this.cell, 0) + 1); };
                       this.id = 0;
@@ -585,10 +585,10 @@ TEST(MemorySafety_Drops_Enums,
       var a: i64;
       var b: i64;
       var o: Owner;
-      function init() { this.a = 1; this.b = 2; this.o = Owner(3); }
+      init() { this.a = 1; this.b = 2; this.o = Owner(3); }
     }
     enum P { NotSet, Pct(i32), Big(Wide) }
-    class Box { var p: P; function init() { this.p = P.NotSet; } }
+    class Box { var p: P; init() { this.p = P.NotSet; } }
     function main() i32 {
       var local = P.NotSet;
       local = P.Pct(55);

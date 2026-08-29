@@ -24,7 +24,7 @@ public module sun {
 
     // Take ownership of the value. The box starts with one handle: the
     // Shared<T> that built it.
-    public function init(value: T) {
+    init(value: T) {
       this.count = 1;
       this.lock = sun.thread.Mutex();
       this.value = value;
@@ -58,13 +58,26 @@ public module sun {
     }
   }
 
+  // Proof that a guard was handed out by lock(). Constructors are always
+  // public, so the guard instead demands this module-private token: code
+  // outside the module cannot name GuardKey, so it cannot build a guard.
+  class GuardKey {
+    var unused: i8;
+
+    // Nothing to set up; the token's value is that only this module can
+    // make one.
+    init() {
+      this.unused = 0;
+    }
+  }
+
   // Holds the lock for as long as it is alive. Dropping it unlocks, including
   // on an early return or while an exception unwinds past it.
   public class SharedGuard<T> {
     var box: raw_ptr<SharedBox<T>>;
 
     // Only Shared<T>.lock() builds a guard, so a guard always holds the lock.
-    function init(box: raw_ptr<SharedBox<T>>) {
+    init(box: raw_ptr<SharedBox<T>>, key: GuardKey) {
       this.box = box;
     }
 
@@ -74,7 +87,7 @@ public module sun {
       return b.value_ref();
     }
 
-    function deinit() void {
+    deinit() {
       if (this.box != null) {
         var b: ref SharedBox<T> = unsafe { _to_ref<SharedBox<T>>(this.box); };
         b.release_lock();
@@ -94,13 +107,13 @@ public module sun {
     var box: raw_ptr<SharedBox<T>>;
 
     // Take ownership of a value and put it behind a shared, locked box.
-    public function init(allocator: const ref HeapAllocator, value: T) {
+    init(allocator: const ref HeapAllocator, value: T) {
       var a = allocator.copy();
       this.box = a.create<SharedBox<T>>(value);
     }
 
     // Adopt a box the caller has already counted in.
-    function init(box: raw_ptr<SharedBox<T>>) {
+    init(box: raw_ptr<SharedBox<T>>) {
       this.box = box;
     }
 
@@ -115,7 +128,7 @@ public module sun {
     public const function lock() SharedGuard<T> {
       var b: ref SharedBox<T> = unsafe { _to_ref<SharedBox<T>>(this.box); };
       b.acquire();
-      return SharedGuard<T>(this.box);
+      return SharedGuard<T>(this.box, GuardKey());
     }
 
     // Report whether the box has been taken or was never set.
@@ -131,7 +144,7 @@ public module sun {
     }
 
     // Drop one owner. The last one out drops the value and frees the box.
-    function deinit() void {
+    deinit() {
       if (this.box != null) {
         var b: ref SharedBox<T> = unsafe { _to_ref<SharedBox<T>>(this.box); };
         if (b.release() == 1) {

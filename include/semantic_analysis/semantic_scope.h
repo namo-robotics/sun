@@ -315,7 +315,7 @@ struct SpecializedFunctionInfo {
   // call sits relative to the definition.
   sun::QualifiedName qualifiedName;
 
-  // Whether the specialization's signature carries ', IError'
+  // Whether the specialization's signature carries 'throws IError'
   bool canThrow() const {
     return specializedAST && specializedAST->getProto().canThrow();
   }

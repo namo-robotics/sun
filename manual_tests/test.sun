@@ -3,7 +3,7 @@ using sun;
 class Config {
   var line: String;
 
-  function init(alloc: ref HeapAllocator) {
+  init(alloc: ref HeapAllocator) {
     this.line = String(alloc, "test");
   }
 }

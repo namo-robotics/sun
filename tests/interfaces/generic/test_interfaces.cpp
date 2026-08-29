@@ -38,7 +38,7 @@ TEST(Interfaces_Generic, class_implements_generic_interface) {
     }
 
     class IntBox implements IBox<i32> {
-      function init(v: i32) {
+      init(v: i32) {
         this.value = v;
       }
       
@@ -64,7 +64,7 @@ TEST(Interfaces_Generic, generic_class_implements_generic_interface) {
     class Box<T> implements IContainer<T> {
       var item: T;
       
-      function init(v: T) {
+      init(v: T) {
         this.item = v;
       }
       
@@ -92,7 +92,7 @@ TEST(Interfaces_Generic, two_type_parameters) {
       var a: X;
       var b: Y;
       
-      function init(x: X, y: Y) {
+      init(x: X, y: Y) {
         this.a = x;
         this.b = y;
       }
@@ -123,7 +123,7 @@ TEST(Interfaces_Generic, multiple_instantiations) {
     class IntWrapper implements IWrapper<i32> {
       var val: i32;
       
-      function init(v: i32) {
+      init(v: i32) {
         this.val = v;
       }
       
@@ -135,7 +135,7 @@ TEST(Interfaces_Generic, multiple_instantiations) {
     class BoolWrapper implements IWrapper<bool> {
       var val: bool;
       
-      function init(v: bool) {
+      init(v: bool) {
         this.val = v;
       }
       
@@ -163,7 +163,7 @@ TEST(Interfaces_Generic, interface_field_inherited) {
     }
 
     class IntValue implements IValue<i32> {
-      function init(v: i32) {
+      init(v: i32) {
         this.data = v;
       }
       

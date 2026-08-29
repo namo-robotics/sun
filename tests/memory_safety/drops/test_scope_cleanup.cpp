@@ -14,8 +14,8 @@ const char* kOwnerPreamble = R"(
     var counter: i32 = 0;
 
     class Owner {
-      function init() {}
-      function deinit() void {
+      init() {}
+      deinit() {
         counter = counter + 1;
       }
     }
@@ -286,7 +286,7 @@ TEST(MemorySafety_Drops_ScopeCleanup, taken_and_discarded_results_drop_once) {
 TEST(MemorySafety_Drops_ScopeCleanup, discarded_method_result_is_dropped) {
   auto value = executeString(withPreamble(R"(
     class Factory {
-      function init() {}
+      init() {}
       function make() Owner { return Owner(); }
     }
 
@@ -331,8 +331,8 @@ TEST(MemorySafety_Drops_ScopeCleanup, read_only_param_is_still_dropped) {
   auto value = executeString(withPreamble(R"(
     class Boxed {
       public var n: i32;
-      public function init(n: i32) { this.n = n; }
-      public function deinit() void { counter = counter + 1; }
+      init(n: i32) { this.n = n; }
+      deinit() { counter = counter + 1; }
     }
     function read(b: Boxed) i32 { return b.n; }
 
@@ -394,14 +394,14 @@ TEST(MemorySafety_Drops_ScopeCleanup, param_stored_in_a_field_is_dropped_once) {
   auto value = executeString(withPreamble(R"(
     class Tagged {
       public var id: i32;
-      public function init(id: i32) { this.id = id; }
-      public function deinit() void {
+      init(id: i32) { this.id = id; }
+      deinit() {
         if (this.id != 0) { counter = counter + 1; this.id = 0; }
       }
     }
     class Holder {
       public var t: Tagged;
-      public function init(t: Tagged) { this.t = t; }
+      init(t: Tagged) { this.t = t; }
     }
 
     function helper() i32 {
@@ -456,7 +456,7 @@ TEST(MemorySafety_Drops_ScopeCleanup, by_value_lambda_param_is_dropped) {
 TEST(MemorySafety_Drops_ScopeCleanup, by_value_method_param_is_dropped) {
   auto value = executeString(withPreamble(R"(
     class Sink {
-      public function init() {}
+      init() {}
       public function take(o: Owner) i32 { return 0; }
     }
 

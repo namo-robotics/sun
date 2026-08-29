@@ -209,7 +209,7 @@ TEST(Stdlib_Concurrency_Threads, byref_capture_shares_a_class) {
     using sun.thread;
     class Counter {
       public var n: i32;
-      public function init() { this.n = 0; }
+      init() { this.n = 0; }
     }
     function main() i32 {
       var c = Counter();
@@ -232,7 +232,7 @@ TEST(Stdlib_Concurrency_Threads, unjoined_thread_joins_at_scope_exit) {
     using sun.thread;
     class Counter {
       public var n: i32;
-      public function init() { this.n = 0; }
+      init() { this.n = 0; }
     }
     function main() i32 {
       var c = Counter();
@@ -255,7 +255,7 @@ TEST(Stdlib_Concurrency_Threads, unjoined_thread_joins_on_early_return) {
     using sun.thread;
     class Counter {
       public var n: i32;
-      public function init() { this.n = 0; }
+      init() { this.n = 0; }
     }
     function run() i32 {
       var c = Counter();
@@ -332,15 +332,15 @@ TEST(Stdlib_Concurrency_Threads, unjoined_thread_joins_while_unwinding) {
     using sun;
     using sun.thread;
     class Boom implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() String { return String("boom"); }
     }
     class Counter {
       public var n: i32;
-      public function init() { this.n = 0; }
+      init() { this.n = 0; }
     }
-    function fail() i32, IError { throw Boom(); }
+    function fail() i32 throws IError { throw Boom(); }
     function main() i32 {
       var c = Counter();
       try {
@@ -395,7 +395,7 @@ TEST(Stdlib_Concurrency_Threads, threads_share_a_class_by_const_ref) {
     using sun.thread;
     class Config {
       public var limit: i32;
-      public function init(limit: i32) { this.limit = limit; }
+      init(limit: i32) { this.limit = limit; }
     }
     function main() i32 {
       var cfg = Config(20);
@@ -447,8 +447,8 @@ TEST(Stdlib_Concurrency_Threads, joined_class_result_is_owned_by_the_joiner) {
 
     class Res {
       public var v: i32;
-      public function init(v: i32) { this.v = v; }
-      public function deinit() void { dropped = dropped + 1; }
+      init(v: i32) { this.v = v; }
+      deinit() { dropped = dropped + 1; }
     }
 
     function run() i32 {
@@ -474,8 +474,8 @@ TEST(Stdlib_Concurrency_Threads, unjoined_class_result_is_dropped) {
 
     class Res {
       public var v: i32;
-      public function init(v: i32) { this.v = v; }
-      public function deinit() void { dropped = dropped + 1; }
+      init(v: i32) { this.v = v; }
+      deinit() { dropped = dropped + 1; }
     }
 
     function run() void {
@@ -498,13 +498,13 @@ TEST(Stdlib_Concurrency_Threads, class_result_owning_heap_is_released_once) {
     class Buffer {
       public var v: i32;
       public var data: raw_ptr<i8>;
-      public function init(v: i32) {
+      init(v: i32) {
         this.v = v;
         var size: i64 = 8;
         this.data = unsafe { _malloc(size); };
       }
       public function get() i32 { return this.v; }
-      public function deinit() void {
+      deinit() {
         if (this.data != null) {
           unsafe { _free(this.data); };
           this.data = null;
@@ -539,8 +539,8 @@ TEST(Stdlib_Concurrency_Threads, unjoined_enum_result_drops_its_payload) {
 
     class Res {
       public var v: i32;
-      public function init(v: i32) { this.v = v; }
-      public function deinit() void { dropped = dropped + 1; }
+      init(v: i32) { this.v = v; }
+      deinit() { dropped = dropped + 1; }
     }
 
     enum Maybe { Some(Res), Nothing }
@@ -643,8 +643,8 @@ TEST(Stdlib_Concurrency_Threads, class_argument_moves_into_the_thread) {
     var drops: i32 = 0;
     class Res {
       public var v: i32;
-      public function init(v: i32) { this.v = v; }
-      public function deinit() void {
+      init(v: i32) { this.v = v; }
+      deinit() {
         if (this.v != 0) { drops = drops + 1; this.v = 0; }
       }
     }
@@ -672,8 +672,8 @@ TEST(Stdlib_Concurrency_Threads, class_argument_cannot_be_used_after_spawn) {
     using sun.thread;
     class Res {
       public var v: i32;
-      public function init(v: i32) { this.v = v; }
-      public function deinit() void { }
+      init(v: i32) { this.v = v; }
+      deinit() { }
     }
     var take = lambda (r: Res) i32 { var o = r; return o.v; };
     function main() i32 {
@@ -697,7 +697,7 @@ TEST(Stdlib_Concurrency_Threads, ref_capturing_thread_cannot_be_stored_in_a_fiel
     using sun.thread;
     class Worker {
       var t: Thread<i32>;
-      public function init() {
+      init() {
         var x = 3;
         this.t = spawn(lambda [ref x]() i32 { return x; });
       }
@@ -717,7 +717,7 @@ TEST(Stdlib_Concurrency_Threads, owned_capture_thread_cannot_be_stored_in_a_fiel
     using sun.thread;
     class Worker {
       var t: Thread<i32>;
-      public function init() {
+      init() {
         var x = 3;
         this.t = spawn(lambda [x]() i32 { return x; });
       }
@@ -786,7 +786,7 @@ TEST(Stdlib_Concurrency_Threads, capture_free_thread_may_live_in_a_field) {
     using sun.thread;
     class Worker {
       var t: Thread<i32>;
-      public function init() {
+      init() {
         this.t = spawn(lambda () i32 { return 7; });
       }
       public function take() i32 { return this.t.join(); }
@@ -806,7 +806,7 @@ TEST(Stdlib_Concurrency_Threads, bound_method_thread_joined_in_frame_is_fine) {
     using sun.thread;
     class Counter {
       var count: i32;
-      public function init() { this.count = 40; }
+      init() { this.count = 40; }
       public function get(extra: i32) i32 { return this.count + extra; }
     }
     function main() i32 {
@@ -825,7 +825,7 @@ TEST(Stdlib_Concurrency_Threads, bound_method_thread_cannot_be_returned) {
     using sun.thread;
     class Counter {
       var count: i32;
-      public function init() { this.count = 40; }
+      init() { this.count = 40; }
       public function get() i32 { return this.count; }
     }
     function makeThread() Thread<i32> {
@@ -848,7 +848,7 @@ TEST(Stdlib_Concurrency_Threads, method_on_a_thread_reports_to_a_callback) {
     using sun.thread;
     class Job {
       var base: i32;
-      public function init(base: i32) { this.base = base; }
+      init(base: i32) { this.base = base; }
       // The work that runs on the thread.
       public function work() i32 { return this.base * 2; }
       // Run work() on a thread; when it finishes, hand what it returned to

@@ -195,7 +195,7 @@ TEST(Classes_StructLiterals, rejects_literal_for_a_class_with_init) {
   EXPECT_THROW(executeString(R"(
     class P {
       var a: i32;
-      function init(a: i32) { this.a = a; }
+      init(a: i32) { this.a = a; }
     }
     function main() i32 {
       var p: P = { a: 1 };

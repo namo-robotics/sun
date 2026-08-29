@@ -35,7 +35,7 @@ public module sun {
     public var headers: String;  // raw header block after the request line
 
     // Build an empty request. The parser fills in the fields.
-    public function init(alloc: ref HeapAllocator) {
+    init(alloc: ref HeapAllocator) {
       this.method = String(alloc, "");
       this.path = String(alloc, "");
       this.headers = String(alloc, "");
@@ -52,7 +52,7 @@ public module sun {
     public var body: String;
 
     // Build a 200 response with an empty HTML body.
-    public function init(alloc: ref HeapAllocator) {
+    init(alloc: ref HeapAllocator) {
       this.status = 200;
       this.content_type = String(alloc, "text/html");
       this.body = String(alloc, "");
@@ -170,25 +170,25 @@ public module sun {
     var running: bool;
 
     // Build a server with no socket bound yet.
-    public function init(allocator: ref HeapAllocator) {
+    init(allocator: ref HeapAllocator) {
       this.alloc = allocator.copy();
       this.listener = TcpListener();
       this.running = false;
     }
 
     // Close the listening socket.
-    function deinit() void {
+    deinit() {
       this.listener.close();
     }
 
     // Bind to port on all interfaces (0.0.0.0) and start listening
-    public function bind(port: i32) void, IError {
+    public function bind(port: i32) void throws IError {
       this.listener.bind_port(port);
       this.listener.listen(128);
     }
 
     // Bind to 127.0.0.1 only
-    public function bind_loopback(port: i32) void, IError {
+    public function bind_loopback(port: i32) void throws IError {
       this.listener.bind_loopback(port);
       this.listener.listen(128);
     }
@@ -221,7 +221,7 @@ public module sun {
     }
 
     // Read, parse, dispatch to the handler, and send the response
-    function handle_connection(client: ref TcpStream, handler: (ref HttpRequest, ref HttpResponse) -> void) void, IError {
+    function handle_connection(client: ref TcpStream, handler: (ref HttpRequest, ref HttpResponse) -> void) void throws IError {
       var req = HttpRequest(this.alloc);
       this.read_request(client, req);
 
@@ -232,7 +232,7 @@ public module sun {
     }
 
     // Read from the socket until the header terminator (or size cap)
-    function read_request(client: ref TcpStream, req: ref HttpRequest) void, IError {
+    function read_request(client: ref TcpStream, req: ref HttpRequest) void throws IError {
       var chunk = ContiguousBuffer<u8>(this.alloc, 2048);
       var raw = String(this.alloc, "");
       var done: bool = false;
@@ -256,7 +256,7 @@ public module sun {
     }
 
     // Serialize status line, headers, and body
-    public function send_response(client: ref TcpStream, resp: ref HttpResponse) void, IError {
+    public function send_response(client: ref TcpStream, resp: ref HttpResponse) void throws IError {
       var out = String(this.alloc, "HTTP/1.1 ");
       out.append(resp.status);
       out.append_char(b' ');

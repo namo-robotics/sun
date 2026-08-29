@@ -128,7 +128,7 @@ TEST(Stdlib_Collections_ContiguousBuffer, get_negative_index_throws) {
 
 TEST(Stdlib_Collections_ContiguousBuffer, set_out_of_bounds_throws) {
   // Test that valid set operations work correctly
-  // Note: void, IError try-catch has limited compiler support
+  // Note: void throws IError try-catch has limited compiler support
   auto value = executeStringWithStdlib(R"(
     using sun;
     
@@ -226,7 +226,7 @@ TEST(Stdlib_Collections_ContiguousBuffer, copy_from_valid) {
 
 TEST(Stdlib_Collections_ContiguousBuffer, copy_from_out_of_bounds_src) {
   // Test basic buffer operations instead of error throwing
-  // (void, IError try-catch has limited support)
+  // (void throws IError try-catch has limited support)
   auto value = executeStringWithStdlib(R"(
     using sun;
     

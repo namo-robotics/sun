@@ -145,11 +145,34 @@ TEST(Tooling_Fmt, LiteralFidelity) {
 }
 
 TEST(Tooling_Fmt, TypeFidelity) {
-  EXPECT_EQ(fmt("function f(a: ref  Foo, b: raw_ptr<Bar>) i32,  IError {\n"
+  EXPECT_EQ(fmt("function f(a: ref  Foo, b: raw_ptr<Bar>) i32 throws  IError {\n"
                 "throw 1;\n"
                 "}"),
-            "function f(a: ref  Foo, b: raw_ptr<Bar>) i32,  IError {\n"
+            "function f(a: ref  Foo, b: raw_ptr<Bar>) i32 throws  IError {\n"
             "  throw 1;\n"
+            "}\n");
+}
+
+// Constructors and destructors print bare — no 'public function', no return
+// type — and a throwing constructor keeps its 'throws IError'.
+TEST(Tooling_Fmt, LifecycleMethods) {
+  EXPECT_EQ(fmt("class A {\n"
+                "  var x: i32;\n"
+                "  init(v: i32) throws IError {\n"
+                "    this.x = v;\n"
+                "  }\n"
+                "  deinit() {\n"
+                "    this.x = 0;\n"
+                "  }\n"
+                "}"),
+            "class A {\n"
+            "  var x: i32;\n"
+            "  init(v: i32) throws IError {\n"
+            "    this.x = v;\n"
+            "  }\n"
+            "  deinit() {\n"
+            "    this.x = 0;\n"
+            "  }\n"
             "}\n");
 }
 
@@ -292,13 +315,13 @@ TEST(Tooling_Fmt, Idempotence) {
 TEST(Tooling_Fmt, ClassWithFieldsAndMethods) {
   EXPECT_EQ(fmt("class Counter {\n"
                 "var count: i32;\n"
-                "function init(start: i32) { this.count = start; }\n"
+                "init(start: i32) { this.count = start; }\n"
                 "\n"
                 "function get() i32 { return this.count; }\n"
                 "}"),
             "class Counter {\n"
             "  var count: i32;\n"
-            "  function init(start: i32) {\n"
+            "  init(start: i32) {\n"
             "    this.count = start;\n"
             "  }\n"
             "\n"

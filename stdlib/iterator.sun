@@ -20,7 +20,7 @@
 //
 //   class Countdown implements IIterator<i32, Countdown> {
 //     var n: i32;
-//     function init(n: i32) { this.n = n; }
+//     init(n: i32) { this.n = n; }
 //     function next(self: ref Countdown) Option<i32> {
 //       if (this.n == 0) { return Option.None; }
 //       this.n = this.n - 1;

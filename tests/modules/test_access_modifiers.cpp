@@ -26,11 +26,11 @@ const char* kLib = R"(
       public class Box {
           public var v: i32;
           var secret: i32;
-          public function init(v: i32) { this.v = v; this.secret = v * 2; }
+          init(v: i32) { this.v = v; this.secret = v * 2; }
           function hidden() i32 { return this.secret; }
           public function reveal() i32 { return helper() + this.hidden(); }
       }
-      class Hidden { public var x: i32; public function init() { this.x = 1; } }
+      class Hidden { public var x: i32; init() { this.x = 1; } }
       function helper() i32 { return 100; }
       public function make(v: i32) Box { return Box(v); }
       enum Secret { A, B }
@@ -69,7 +69,7 @@ TEST(Modules_AccessModifiers, parser_accepts_public_on_every_item_kind) {
   auto parser = Parser::createStringParser(R"(
     public module a.b {
         public class C { public var x: i32; var y: i32;
-                         public function init() {} function h() void {} }
+                         init() {} function h() void {} }
         public interface I { public var f: i32; public function m() i32;
                              function d() i32 { return 1; } }
         public enum E { A, B }
@@ -126,7 +126,7 @@ TEST(Modules_AccessModifiers, formatter_round_trips_public) {
       "  public class C {\n"
       "    public var x: i32;\n"
       "    var y: i32;\n"
-      "    public function init() {}\n"
+      "    init() {}\n"
       "  }\n"
       "  public interface I {\n"
       "    public function m() i32;\n"
@@ -146,7 +146,7 @@ TEST(Modules_AccessModifiers, serialization_round_trips_visibility) {
   auto parser = Parser::createStringParser(R"(
     public module m {
         public class C { public var x: i32; var y: i32;
-                         public function init() {} function h() void {} }
+                         init() {} function h() void {} }
         enum E { A }
     }
   )");
@@ -182,7 +182,7 @@ TEST(Modules_AccessModifiers, public_api_is_reachable_from_outside) {
 TEST(Modules_AccessModifiers, private_items_reachable_within_module) {
   auto value = executeString(R"(
     public module m {
-        class Node { public var x: i32; public function init(x: i32) { this.x = x; } }
+        class Node { public var x: i32; init(x: i32) { this.x = x; } }
         function helper() i32 { return 5; }
         var counter: i32 = 2;
         enum Kind { A }
@@ -199,7 +199,7 @@ TEST(Modules_AccessModifiers, private_items_reachable_within_module) {
 
 TEST(Modules_AccessModifiers, root_level_items_are_reachable_everywhere) {
   auto value = executeString(R"(
-    class Root { var v: i32; function init(v: i32) { this.v = v; } function get() i32 { return this.v; } }
+    class Root { var v: i32; init(v: i32) { this.v = v; } function get() i32 { return this.v; } }
     function helper() i32 { return 1; }
     public module m {
         public function api() i32 { var r = Root(4); return r.get() + r.v + helper(); }
@@ -213,7 +213,7 @@ TEST(Modules_AccessModifiers, child_module_sees_parent_private_items) {
   auto value = executeString(R"(
     public module a {
         function h() i32 { return 3; }
-        class P { public var x: i32; public function init() { this.x = 4; } }
+        class P { public var x: i32; init() { this.x = 4; } }
         public module b {
             public function f() i32 { var p = P(); return h() + p.x; }
         }
@@ -295,12 +295,14 @@ TEST(Modules_AccessModifiers,
 // Constructors, deinit, operators, struct literals
 // ---------------------------------------------------------------------------
 
-TEST(Modules_AccessModifiers, private_init_with_public_factory) {
+// Constructors carry no visibility keyword and are always public: a public
+// class from another module can be built directly.
+TEST(Modules_AccessModifiers, init_is_always_public) {
   auto value = executeString(R"(
     public module m {
         public class Token {
             public var id: i32;
-            function init(id: i32) { this.id = id; }
+            init(id: i32) { this.id = id; }
             public function make(id: i32) Token { return Token(id); }
         }
         public function issue(id: i32) Token { return Token(id); }
@@ -308,21 +310,20 @@ TEST(Modules_AccessModifiers, private_init_with_public_factory) {
     function main() i32 { var t = m.issue(9); return t.id; }
   )");
   EXPECT_EQ(value, 9);
-  EXPECT_SUN_ERROR_WITH_MESSAGE(
-      compileString(R"(
+  auto direct = executeString(R"(
     public module m {
-        public class Token { public var id: i32; function init(id: i32) { this.id = id; } }
+        public class Token { public var id: i32; init(id: i32) { this.id = id; } }
     }
     function main() i32 { var t = m.Token(9); return t.id; }
-  )"),
-      "'init' is private to class 'Token' in module 'm'");
+  )");
+  EXPECT_EQ(direct, 9);
 }
 
 TEST(Modules_AccessModifiers, deinit_is_always_callable) {
   auto value = executeString(R"(
     public module m {
-        public class R { public var v: i32; public function init() { this.v = 1; }
-                         function deinit() void { this.v = 0; } }
+        public class R { public var v: i32; init() { this.v = 1; }
+                         deinit() { this.v = 0; } }
     }
     function main() i32 { var r = m.R(); r.deinit(); return r.v; }
   )");
@@ -333,7 +334,7 @@ TEST(Modules_AccessModifiers, private_index_operator_denied) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       compileString(R"(
     public module m {
-        public class Arr { public var v: i32; public function init() { this.v = 1; }
+        public class Arr { public var v: i32; init() { this.v = 1; }
                            function __index__(i: i64) i32 { return this.v; } }
     }
     function main() i32 { var a = m.Arr(); return a[0]; }
@@ -368,10 +369,10 @@ TEST(Modules_AccessModifiers, generic_bodies_keep_their_module_context) {
   auto value = executeString(R"(
     public module m {
         function helper() i32 { return 100; }
-        class Node<T> { public var v: T; public function init(v: T) { this.v = v; } }
+        class Node<T> { public var v: T; init(v: T) { this.v = v; } }
         public class Wrap<T> {
             var n: Node<T>;
-            public function init(v: T) { this.n = Node<T>(v); }
+            init(v: T) { this.n = Node<T>(v); }
             public function get() T { return this.n.v + helper(); }
             public function get_as<U>() U { return helper(); }
         }
@@ -396,7 +397,7 @@ TEST(Modules_AccessModifiers,
       compileString(R"(
     public module m {
         public interface IShow { public function show() i32; }
-        public class C implements IShow { public function init() {} function show() i32 { return 1; } }
+        public class C implements IShow { init() {} function show() i32 { return 1; } }
     }
     function main() i32 { return 0; }
   )"),
@@ -408,7 +409,7 @@ TEST(Modules_AccessModifiers,
   auto value = executeString(R"(
     public module m {
         public interface IShow { function show() i32; }
-        public class C implements IShow { public function init() {} public function show() i32 { return 4; } }
+        public class C implements IShow { init() {} public function show() i32 { return 4; } }
         public function make() C { return C(); }
         public function twice(i: ref IShow) i32 { return i.show() * 2; }
     }
@@ -419,7 +420,7 @@ TEST(Modules_AccessModifiers,
       compileString(R"(
     public module m {
         public interface IShow { function show() i32; }
-        public class C implements IShow { public function init() {} public function show() i32 { return 4; } }
+        public class C implements IShow { init() {} public function show() i32 { return 4; } }
         public function make() C { return C(); }
     }
     using m;
@@ -434,7 +435,7 @@ TEST(Modules_AccessModifiers,
   auto value = executeString(R"(
     public module m {
         public interface IHas { public var n: i32; }
-        public class C implements IHas { public function init() { this.n = 6; } }
+        public class C implements IHas { init() { this.n = 6; } }
         public function make() C { return C(); }
     }
     function main() i32 { var c = m.make(); return c.n; }
@@ -467,7 +468,7 @@ TEST(Modules_AccessModifiers,
         function helper() i32 { return 10; }
         public class Counter<T> {
             var n: i32;
-            public function init() { this.n = helper(); }
+            init() { this.n = helper(); }
             public function bump() i32 { this.n = this.n + helper(); return this.n; }
         }
         public function make() Counter<i32> { return Counter<i32>(); }

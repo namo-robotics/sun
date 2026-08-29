@@ -61,14 +61,14 @@ public module sun {
     // Signals, process groups, exit
     // -------------------------------------------------------------------
 
-    public function kill(target: i32, sig: i32) void, IError {
+    public function kill(target: i32, sig: i32) void throws IError {
       if (unsafe { c_kill(target, sig); } != 0) {
         throw Error(errno(), "failed to signal process");
       }
     }
 
     // Put a process in a process group. pid or pgid of 0 means "this one".
-    public function set_pgid(target: i32, pgid: i32) void, IError {
+    public function set_pgid(target: i32, pgid: i32) void throws IError {
       if (unsafe { c_setpgid(target, pgid); } != 0) {
         throw Error(errno(), "failed to set process group");
       }
@@ -76,7 +76,7 @@ public module sun {
 
     // Start a new session, detaching from the controlling terminal.
     // Returns the new session id.
-    public function create_new_session() i32, IError {
+    public function create_new_session() i32 throws IError {
       var sid: i32 = unsafe { c_setsid(); };
       if (sid < 0) {
         throw Error(errno(), "failed to start a new session");
@@ -106,7 +106,7 @@ public module sun {
     // Between fork and exec the child may only call things that are safe in a
     // signal handler — no allocation, no method calls that might allocate. Use
     // Command below unless you have a reason not to.
-    public function fork() i32, IError {
+    public function fork() i32 throws IError {
       var result: i32 = unsafe { c_fork(); };
       if (result < 0) {
         throw Error(errno(), "failed to fork");
@@ -116,7 +116,7 @@ public module sun {
 
     // Replace this process with `cmd`, searching PATH. Only returns on
     // failure.
-    public function exec(cmd: ref Command) void, IError {
+    public function exec(cmd: ref Command) void throws IError {
       var argv: ContiguousBuffer<raw_ptr<u8>> = cmd.build_argv_array();
       unsafe { c_execvp(cmd.program(), argv.raw_data()); };
       throw Error(errno(), "failed to exec");
@@ -126,7 +126,7 @@ public module sun {
     // status; read it with exited / exit_status / is_signaled / get_term_signal.
     // With WNOHANG and no child ready, returns 0 for the pid, so the status
     // is meaningless — use Child.try_wait for that case.
-    public function wait_pid(target: i32, options: i32) i32, IError {
+    public function wait_pid(target: i32, options: i32) i32 throws IError {
       var status: i32 = 0;
       var got: i32 = unsafe {
         c_waitpid(
@@ -168,7 +168,7 @@ public module sun {
       var write_fd_: i32;
 
       // Build a pipe object around two already-open file descriptors.
-      public function init(read_fd: i32, write_fd: i32) {
+      init(read_fd: i32, write_fd: i32) {
         this.read_fd_ = read_fd;
         this.write_fd_ = write_fd;
       }
@@ -201,7 +201,7 @@ public module sun {
     }
 
     // Create a pipe and return its two ends. Throws if the system refuses.
-    public function open_pipe(alloc: ref HeapAllocator) Pipe, IError {
+    public function open_pipe(alloc: ref HeapAllocator) Pipe throws IError {
       var fds: ContiguousBuffer<i32> = ContiguousBuffer<i32>(alloc, 2);
       fds.set_unchecked(0, 0);
       fds.set_unchecked(1, 0);
@@ -214,7 +214,7 @@ public module sun {
     }
 
     // Point `new_fd` at whatever `old_fd` refers to, closing `new_fd` first.
-    public function dup_fd(old_fd: i32, new_fd: i32) void, IError {
+    public function dup_fd(old_fd: i32, new_fd: i32) void throws IError {
       if (unsafe { c_dup2(old_fd, new_fd); } < 0) {
         throw Error(errno(), "failed to duplicate descriptor");
       }
@@ -245,7 +245,7 @@ public module sun {
 
       // Build a command for a program named by a literal. The name also becomes
       // argv[0].
-      public function init(allocator: ref HeapAllocator, program: static_ptr<u8>) {
+      init(allocator: ref HeapAllocator, program: static_ptr<u8>) {
         this.alloc = allocator.copy();
         this.blob = String(allocator, "");
         this.offsets = Vec<i64>(allocator, 4);
@@ -257,7 +257,7 @@ public module sun {
 
       // Build a command for a program named at runtime. The name also becomes
       // argv[0].
-      public function init(allocator: ref HeapAllocator, program: const ref String) {
+      init(allocator: ref HeapAllocator, program: const ref String) {
         this.alloc = allocator.copy();
         this.blob = String(allocator, "");
         this.offsets = Vec<i64>(allocator, 4);
@@ -317,7 +317,7 @@ public module sun {
 
       // Run the program in a new process. The child's end of every pipe is
       // closed here, so reading from Child hits end-of-file when it exits.
-      public function start() Child, IError {
+      public function start() Child throws IError {
         // Everything the child touches is prepared first: after fork it may
         // only call things that are safe in a signal handler.
         var argv: ContiguousBuffer<raw_ptr<u8>> = this.build_argv_array();
@@ -419,13 +419,13 @@ public module sun {
       }
 
       // Run to completion, inheriting the streams. Returns the exit code.
-      public function status() i32, IError {
+      public function status() i32 throws IError {
         var child: Child = this.start();
         return child.wait();
       }
 
       // Run to completion with stdout and stderr captured.
-      public function output() Output, IError {
+      public function output() Output throws IError {
         this.stdout_mode = Stdio.Piped;
         this.stderr_mode = Stdio.Piped;
         var child: Child = this.start();
@@ -445,7 +445,7 @@ public module sun {
 
       // Build a handle to a running child from its pid and pipe descriptors. A
       // descriptor of 0 means that stream was not piped.
-      public function init(child_pid: i32, stdin_fd: i32, stdout_fd: i32, stderr_fd: i32) {
+      init(child_pid: i32, stdin_fd: i32, stdout_fd: i32, stderr_fd: i32) {
         this.pid_ = child_pid;
         this.stdin_fd = stdin_fd;
         this.stdout_fd = stdout_fd;
@@ -475,7 +475,7 @@ public module sun {
 
       // Wait for the child and return its exit code. A child killed by a
       // signal reports 128 + the signal, as a shell does.
-      public function wait() i32, IError {
+      public function wait() i32 throws IError {
         if (this.pid_ <= 0) {
           throw Error(-1, "no child to wait for");
         }
@@ -490,7 +490,7 @@ public module sun {
 
       // The exit code if the child has already finished, None if it is still
       // running.
-      public function try_wait() Option<i32>, IError {
+      public function try_wait() Option<i32> throws IError {
         if (this.pid_ <= 0) {
           return Option.None;
         }
@@ -517,7 +517,7 @@ public module sun {
 
       // Send a signal to the child. Throws if there is no child or the system
       // refuses.
-      public function kill(sig: i32) void, IError {
+      public function kill(sig: i32) void throws IError {
         if (this.pid_ <= 0) {
           throw Error(-1, "no child to signal");
         }
@@ -543,7 +543,7 @@ public module sun {
       // Drain both pipes and wait. Polls rather than draining one then the
       // other: a child that fills the stderr pipe while the parent is stuck
       // reading stdout would deadlock.
-      public function collect(alloc: ref HeapAllocator) Output, IError {
+      public function collect(alloc: ref HeapAllocator) Output throws IError {
         var out: String = String(alloc, "");
         var err: String = String(alloc, "");
         var buf: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 4096);
@@ -613,7 +613,7 @@ public module sun {
       // Releases the pipes this Child still holds. It never waits and never
       // signals: a moved-from Child is all zeroes, and reaping or killing on
       // that would touch a process this object no longer stands for.
-      function deinit() void {
+      deinit() {
         this.close_stdin();
         if (this.stdout_fd > 0) {
           unsafe { c_close(this.stdout_fd); };
@@ -634,7 +634,7 @@ public module sun {
 
       // Build a result from an exit status and the text the child produced. Both
       // Strings move in.
-      public function init(status: i32, out: String, err: String) {
+      init(status: i32, out: String, err: String) {
         this.status_ = status;
         this.out = out;
         this.err = err;

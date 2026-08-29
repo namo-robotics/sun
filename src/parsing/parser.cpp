@@ -323,7 +323,7 @@ unique_ptr<MatchExprAST> Parser::parseMatchExpression() {
 
 // Parse function: function name(args) returnType { body }
 // or: function name<T, U>(args) returnType { body }
-unique_ptr<FunctionAST> Parser::parseFunction() {
+unique_ptr<FunctionAST> Parser::parseFunction(bool isClassMethod) {
   Position start = captureStart();
   getNextToken();  // eat 'function'
 
@@ -333,6 +333,17 @@ unique_ptr<FunctionAST> Parser::parseFunction() {
     throwIdentifierError("Expected function name after 'function'");
 
   std::string funcName = curTok.getIdentifier().value();
+
+  // Constructors and destructors are not methods; they have their own
+  // member syntax without 'public' or 'function', and no other member may
+  // take their names.
+  if (isClassMethod && (funcName == "init" || funcName == "deinit")) {
+    parsingError("'" + funcName + "' is the " +
+                 (funcName == "init" ? std::string("constructor")
+                                     : std::string("destructor")) +
+                 " and is always public; declare it as '" + funcName +
+                 "(...) { ... }' without 'public' or 'function'");
+  }
   getNextToken();  // eat function name
 
   // Parse optional type parameters: function name<T, U>(...)
@@ -343,6 +354,27 @@ unique_ptr<FunctionAST> Parser::parseFunction() {
   return finishNode(
       unique_ptr<FunctionAST>(static_cast<FunctionAST*>(result.release())),
       start);
+}
+
+// Parse a constructor or destructor member: init(args) { } / deinit() { }.
+// Neither takes 'public' or 'function', declares a return type, or has type
+// parameters; both are always public. deinit takes no parameters.
+unique_ptr<FunctionAST> Parser::parseLifecycleMethod() {
+  Position start = captureStart();
+  std::string name = curTok.getIdentifier().value();
+  getNextToken();  // eat 'init' / 'deinit'
+
+  auto result = parseFunctionLiteral(name, {}, /*isLambda=*/false,
+                                     /*isLifecycleMethod=*/true);
+  auto func = finishNode(
+      unique_ptr<FunctionAST>(static_cast<FunctionAST*>(result.release())),
+      start);
+  if (name == "deinit" && (!func->getProto().getArgs().empty() ||
+                           func->getProto().hasVariadicParam())) {
+    parsingError("'deinit' takes no parameters");
+  }
+  func->setVisibility(sun::Visibility::Public);
+  return func;
 }
 
 // Parse lambda: lambda [ref x, const ref y, z] (args) returnType { body }
@@ -420,7 +452,7 @@ unique_ptr<LambdaAST> Parser::parseLambda() {
 // Parse a function literal: (args) returnType { body }
 unique_ptr<ExprAST> Parser::parseFunctionLiteral(
     const std::string& name, std::vector<TypeParameter> typeParameters,
-    bool isLambda) {
+    bool isLambda, bool isLifecycleMethod) {
   Position start = captureStart();
   expectCurrentTokenKind(TokenKind::PAREN_OPEN,
                          "Expected '(' in function literal");
@@ -470,15 +502,34 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
   getNextToken();  // eat ')'
 
   // Check for return type (no arrow, type comes directly after parentheses)
-  // Syntax: function foo(args) ReturnType, IError { ... }
-  // Return type is required for all functions except 'init' methods
+  // Syntax: function foo(args) ReturnType throws IError { ... }
+  // Return type is required for all functions except init and deinit, which
+  // never declare one and implicitly return void.
   std::optional<TypeAnnotation> retType;
-  if (curTok.kind != TokenKind::BRACE_OPEN) {
+  if (isLifecycleMethod) {
+    retType = TypeAnnotation("void");
+    // A constructor that can throw is written: init(args) throws IError { }
+    if (curTok.kind == TokenKind::THROWS) {
+      if (name == "deinit") parsingError("'deinit' cannot throw");
+      getNextToken();  // eat 'throws'
+      bool isErrorType = curTok.kind == TokenKind::IDENTIFIER &&
+                         curTok.getIdentifier() == "IError";
+      if (!isErrorType)
+        parsingError("expected 'IError' after 'throws'");
+      getNextToken();  // eat 'IError'
+      retType->canError = true;
+    }
+    if (curTok.kind != TokenKind::BRACE_OPEN) {
+      parsingError("'" + name +
+                   "' does not declare a return type; write '" + name +
+                   "(...) { ... }'");
+    }
+  } else if (curTok.kind != TokenKind::BRACE_OPEN) {
     retType = parseTypeAnnotation();
 
-    // Check for error union: ", IError"
-    if (curTok.kind == TokenKind::COMMA) {
-      getNextToken();  // eat ','
+    // Check for error union: "throws IError"
+    if (curTok.kind == TokenKind::THROWS) {
+      getNextToken();  // eat 'throws'
       // Only accept 'IError' identifier
       bool isErrorType = false;
       if (curTok.kind == TokenKind::IDENTIFIER) {
@@ -486,22 +537,19 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
         isErrorType = id.has_value() && id.value() == "IError";
       }
       if (!isErrorType) {
-        parsingError("expected 'IError' after ',' in return type");
+        parsingError("expected 'IError' after 'throws'");
       }
       getNextToken();  // eat 'IError'
       if (retType.has_value()) {
         retType->canError = true;
-        // Extend the span over the ", IError" consumed here
+        // Extend the span over the "throws IError" consumed here
         retType->span.setEnd(prevTok_.end.line, prevTok_.end.column,
                              prevTok_.end.offset);
       }
     }
   } else {
-    // No return type specified - only allowed for 'init' methods
-    if (name == "init") {
-      // init methods implicitly return void
-      retType = TypeAnnotation("void");
-    } else if (isLambda) {
+    // No return type specified
+    if (isLambda) {
       parsingError("Return type is required for lambda expression");
     } else {
       parsingError("Return type is required for function '" + name + "'");
@@ -1281,7 +1329,7 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
     return type;
   }
 
-  // Check for lambda type: (param_types) -> return_type[, IError]
+  // Check for lambda type: (param_types) -> return_type [throws IError]
   if (curTok.kind == TokenKind::PAREN_OPEN) {
     type.baseName = "lambda";
     getNextToken();  // eat '('
@@ -1312,22 +1360,16 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
 
     type.returnType = std::make_unique<TypeAnnotation>(parseTypeAnnotation());
 
-    // Throwing lambda type: (params) -> ret, IError. A ',' here is ambiguous
-    // (may belong to an enclosing param list), so only consume it when the
-    // next token is exactly 'IError'.
-    if (curTok.kind == TokenKind::COMMA) {
-      Token commaTok = curTok;
-      Token savedPrev = prevTok_;
-      getNextToken();  // tentatively eat ','
+    // Throwing lambda type: (params) -> ret throws IError
+    if (curTok.kind == TokenKind::THROWS) {
+      getNextToken();  // eat 'throws'
       auto id = curTok.getIdentifier();
-      if (curTok.kind == TokenKind::IDENTIFIER && id.has_value() &&
-          id.value() == "IError") {
-        getNextToken();  // eat 'IError'
-        type.canError = true;
-      } else {
-        pushToken(commaTok);   // not ours - restore the ','
-        prevTok_ = savedPrev;  // keep spans ending at the real last token
+      if (curTok.kind != TokenKind::IDENTIFIER || !id.has_value() ||
+          id.value() != "IError") {
+        parsingError("expected 'IError' after 'throws'");
       }
+      getNextToken();  // eat 'IError'
+      type.canError = true;
     }
 
     return type;
@@ -3314,19 +3356,18 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
   bool canError = false;
   std::string cleanType = typeStr;
 
-  // Check for ", error" or ", IError" suffix (case-insensitive for error part)
-  const std::string errorSuffix1 = ", error";
-  const std::string errorSuffix2 = ", IError";
-  if (cleanType.size() > errorSuffix1.size() &&
-      cleanType.compare(cleanType.size() - errorSuffix1.size(),
-                        errorSuffix1.size(), errorSuffix1) == 0) {
-    canError = true;
-    cleanType = cleanType.substr(0, cleanType.size() - errorSuffix1.size());
-  } else if (cleanType.size() > errorSuffix2.size() &&
-             cleanType.compare(cleanType.size() - errorSuffix2.size(),
-                               errorSuffix2.size(), errorSuffix2) == 0) {
-    canError = true;
-    cleanType = cleanType.substr(0, cleanType.size() - errorSuffix2.size());
+  // Check for an error-union suffix. " throws IError" is the current
+  // spelling; the comma forms are accepted for older serialized strings.
+  for (const std::string& suffix :
+       {std::string(" throws IError"), std::string(", error"),
+        std::string(", IError")}) {
+    if (cleanType.size() > suffix.size() &&
+        cleanType.compare(cleanType.size() - suffix.size(), suffix.size(),
+                          suffix) == 0) {
+      canError = true;
+      cleanType = cleanType.substr(0, cleanType.size() - suffix.size());
+      break;
+    }
   }
 
   // Handle common primitive types
@@ -3702,22 +3743,41 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
 
       fields.push_back(
           {std::move(fieldName), std::move(fieldType), fieldLoc, memberVis});
+    } else if (curTok.kind == TokenKind::IDENTIFIER &&
+               (curTok.getIdentifier() == "init" ||
+                curTok.getIdentifier() == "deinit")) {
+      // Constructor or destructor: init(args) { } / deinit() { }
+      std::string name = curTok.getIdentifier().value();
+      if (memberVis == sun::Visibility::Public)
+        parsingError("'" + name +
+                     "' is always public; remove the 'public' keyword");
+      if (isConstMethod)
+        parsingError("'" + name + "' cannot be a const method");
+
+      auto func = parseLifecycleMethod();
+      if (!func) return nullptr;
+
+      ClassMethodDecl method;
+      method.isConstructor = (name == "init");
+      method.function = std::move(func);
+      method.isConst = false;
+      methods.push_back(std::move(method));
+
+      // Skip optional semicolons after methods
+      while (curTok.kind == TokenKind::SEMI_COLON) getNextToken();
     } else if (curTok.kind == TokenKind::FUNCTION) {
       // Parse method declaration
-      auto func = parseFunction();
+      auto func = parseFunction(/*isClassMethod=*/true);
       if (!func) return nullptr;
       func->setVisibility(memberVis);
       if (memberVis == sun::Visibility::Public || isConstMethod)
         extendSpanStart(*func, memberStart);
 
-      bool isConstructor = (func->getProto().getName() == "init");
-      if (isConstructor && isConstMethod)
-        parsingError("'init' cannot be a const method");
       func->getProtoMut().setConstMethod(isConstMethod);
 
       ClassMethodDecl method;
       method.function = std::move(func);
-      method.isConstructor = isConstructor;
+      method.isConstructor = false;
       method.isConst = isConstMethod;
       methods.push_back(std::move(method));
 
@@ -3725,7 +3785,8 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
       while (curTok.kind == TokenKind::SEMI_COLON) getNextToken();
     } else {
       parsingError(
-          "expected 'var' (field) or 'function' (method) in class body");
+          "expected 'var' (field), 'function' (method), 'init' or 'deinit' "
+          "in class body");
       return nullptr;
     }
   }
@@ -3825,6 +3886,16 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
       }
 
       std::string funcName = curTok.getIdentifier().value();
+
+      // Constructors and destructors belong to classes; an interface method
+      // may not take their names.
+      if (funcName == "init" || funcName == "deinit") {
+        parsingError("'" + funcName +
+                     "' cannot be an interface method; it is reserved for a "
+                     "class's " +
+                     (funcName == "init" ? std::string("constructor")
+                                         : std::string("destructor")));
+      }
       getNextToken();  // eat function name
 
       // Parse optional type parameters: function name<T, U>(...)

@@ -284,7 +284,7 @@ class PrimitiveType : public Type {
 class FunctionType : public Type {
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;
-  bool canThrow_ = false;  // declared with ', IError' — may unwind
+  bool canThrow_ = false;  // declared with 'throws IError' — may unwind
 
  public:
   FunctionType(TypePtr ret, std::vector<TypePtr> params, bool canThrow = false)
@@ -376,7 +376,7 @@ class FunctionType : public Type {
 class LambdaType : public Type {
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;
-  bool canThrow_ = false;  // declared with ', IError' — may unwind
+  bool canThrow_ = false;  // declared with 'throws IError' — may unwind
   // Metadata only — intentionally excluded from equals()/identity so it
   // never disturbs overload resolution. Carries "this lambda holds pointers
   // into an enclosing frame" through variables for spawn/return checks.
@@ -404,7 +404,7 @@ class LambdaType : public Type {
       result += paramTypes[i]->toString();
     }
     result += ") -> " + returnType->toString();
-    if (canThrow_) result += ", IError";
+    if (canThrow_) result += " throws IError";
     return result;
   }
 
@@ -415,7 +415,7 @@ class LambdaType : public Type {
       result += paramTypes[i]->toDisplayString();
     }
     result += ") -> " + returnType->toDisplayString();
-    if (canThrow_) result += ", IError";
+    if (canThrow_) result += " throws IError";
     return result;
   }
 
@@ -708,9 +708,9 @@ class ErrorUnionType : public Type {
     return valueType->toString() + ", error";
   }
 
-  // Spelled the way the source spells it: "i32, IError"
+  // Spelled the way the source spells it: "i32 throws IError"
   std::string toDisplayString() const override {
-    return valueType->toDisplayString() + ", IError";
+    return valueType->toDisplayString() + " throws IError";
   }
 
   bool equals(const Type& other) const override {
@@ -992,7 +992,7 @@ struct ClassMethod {
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;  // Excludes implicit 'this' parameter
   bool isConstructor;               // true if this is the 'init' method
-  bool canThrow = false;            // declared with ', IError' — may unwind
+  bool canThrow = false;            // declared with 'throws IError' — may unwind
   bool isConst = false;             // `const function`: does not change `this`
   sun::Visibility visibility = sun::Visibility::Private;
 

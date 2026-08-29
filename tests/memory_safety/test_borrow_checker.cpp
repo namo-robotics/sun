@@ -151,7 +151,7 @@ TEST(MemorySafety_BorrowChecker, class_without_ref_fields) {
         var x: i32;
         var y: i32;
         
-        function init(x: i32, y: i32) {
+        init(x: i32, y: i32) {
             this.x = x;
             this.y = y;
         };
@@ -236,7 +236,7 @@ TEST(MemorySafety_BorrowChecker, compound_type_by_value_moves) {
     class Point {
         var x: i32;
         var y: i32;
-        function init(x: i32, y: i32) {
+        init(x: i32, y: i32) {
             this.x = x;
             this.y = y;
         }
@@ -260,7 +260,7 @@ TEST(MemorySafety_BorrowChecker, use_after_move_by_value_param) {
     class Point {
         var x: i32;
         var y: i32;
-        function init(x: i32, y: i32) {
+        init(x: i32, y: i32) {
             this.x = x;
             this.y = y;
         }
@@ -284,7 +284,7 @@ TEST(MemorySafety_BorrowChecker, compound_type_with_ref_works) {
   auto value = executeString(R"(
     class Counter {
         var count: i32;
-        function init(n: i32) {
+        init(n: i32) {
             this.count = n;
         }
     }
@@ -311,7 +311,7 @@ TEST(MemorySafety_BorrowChecker, temporary_passed_to_ref_param) {
   auto value = executeString(R"(
     class Wrapper {
         var value: i32;
-        function init(v: i32) {
+        init(v: i32) {
             this.value = v;
         }
     }
@@ -332,10 +332,10 @@ TEST(MemorySafety_BorrowChecker, temporary_passed_to_ref_param_with_deinit) {
   auto value = executeString(R"(
     class Counter {
         var count: i32;
-        function init(n: i32) {
+        init(n: i32) {
             this.count = n;
         }
-        function deinit() void {
+        deinit() {
             // deinit called when temporary is destroyed
         }
     }
@@ -356,7 +356,7 @@ TEST(MemorySafety_BorrowChecker, multiple_temporaries_to_ref_params) {
   auto value = executeString(R"(
     class Num {
         var n: i32;
-        function init(v: i32) {
+        init(v: i32) {
             this.n = v;
         }
     }
@@ -377,7 +377,7 @@ TEST(MemorySafety_BorrowChecker, temporary_with_method_call) {
   auto value = executeString(R"(
     class Box {
         var val: i32;
-        function init(v: i32) {
+        init(v: i32) {
             this.val = v;
         }
         function get() i32 {
@@ -407,7 +407,7 @@ TEST(MemorySafety_BorrowChecker, ref_return_through_match_binding_of_this) {
     using sun;
 
     class OutOfRange implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 3; }
       function message() String { return String("out of range"); }
     }
@@ -420,8 +420,8 @@ TEST(MemorySafety_BorrowChecker, ref_return_through_match_binding_of_this) {
 
     class Holder {
       var v: Value;
-      function init(v: Value) { this.v = v; }
-      function at(i: i64) ref String, IError {
+      init(v: Value) { this.v = v; }
+      function at(i: i64) ref String throws IError {
         match this.v {
           Value.Items(items) => { return items.get(i); },
           Value.Text(s) => { return s; },
@@ -430,14 +430,14 @@ TEST(MemorySafety_BorrowChecker, ref_return_through_match_binding_of_this) {
       }
     }
 
-    function first(h: ref Holder) ref String, IError {
+    function first(h: ref Holder) ref String throws IError {
       match h.v {
         Value.Items(items) => { return items.get(0); },
         _ => { throw OutOfRange(); }
       };
     }
 
-    function main() i32, IError {
+    function main() i32 throws IError {
       var alloc = make_heap_allocator();
       var items = Vec<String>(alloc, 2);
       items.push(String(alloc, "ab"));
@@ -488,7 +488,7 @@ TEST(MemorySafety_BorrowChecker, return_in_catch_does_not_move_on_fallthrough) {
   auto value = executeStringWithStdlib(R"(
     using sun;
 
-    function pick(alloc: ref HeapAllocator, n: i64) Vec<String>, IError {
+    function pick(alloc: ref HeapAllocator, n: i64) Vec<String> throws IError {
       var out = Vec<String>(alloc, 4);
       try {
         if (n == 3) { throw EmptyError(); }
@@ -518,7 +518,7 @@ TEST(MemorySafety_BorrowChecker,
   auto value = executeStringWithStdlib(R"(
     using sun;
 
-    function pick(alloc: ref HeapAllocator, n: i64) Vec<String>, IError {
+    function pick(alloc: ref HeapAllocator, n: i64) Vec<String> throws IError {
       var out = Vec<String>(alloc, 4);
       try {
         if (n == 3) { throw EmptyError(); }
@@ -574,7 +574,7 @@ TEST(MemorySafety_BorrowChecker, error_on_move_in_falling_through_catch) {
 
     function consume(v: Vec<String>) i64 { return v.size(); }
 
-    function f(alloc: ref HeapAllocator, n: i64) Vec<String>, IError {
+    function f(alloc: ref HeapAllocator, n: i64) Vec<String> throws IError {
       var out = Vec<String>(alloc, 4);
       try {
         if (n == 3) { throw EmptyError(); }
@@ -624,7 +624,7 @@ TEST(MemorySafety_BorrowChecker, error_on_move_in_try_block_used_after) {
 
     function consume(v: Vec<String>) i64 { return v.size(); }
 
-    function f(alloc: ref HeapAllocator) Vec<String>, IError {
+    function f(alloc: ref HeapAllocator) Vec<String> throws IError {
       var out = Vec<String>(alloc, 4);
       try {
         var k = consume(out);
@@ -655,14 +655,14 @@ TEST(MemorySafety_BorrowChecker, error_on_use_of_moved_field) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Inner {
         var v: i32;
-        function init(v: i32) { this.v = v; }
-        function deinit() void { }
+        init(v: i32) { this.v = v; }
+        deinit() { }
         function get() i32 { return this.v; }
     }
     class Config {
         var line: Inner;
-        function init() { this.line = Inner(7); }
-        function deinit() void { }
+        init() { this.line = Inner(7); }
+        deinit() { }
     }
 
     function main() i32 {
@@ -679,14 +679,14 @@ TEST(MemorySafety_BorrowChecker, error_on_whole_object_use_after_field_move) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Inner {
         var v: i32;
-        function init(v: i32) { this.v = v; }
-        function deinit() void { }
+        init(v: i32) { this.v = v; }
+        deinit() { }
         function get() i32 { return this.v; }
     }
     class Config {
         var line: Inner;
-        function init() { this.line = Inner(7); }
-        function deinit() void { }
+        init() { this.line = Inner(7); }
+        deinit() { }
     }
 
     function read(c: ref Config) i32 { return c.line.get(); }
@@ -704,14 +704,14 @@ TEST(MemorySafety_BorrowChecker, error_on_borrow_of_moved_field) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Inner {
         var v: i32;
-        function init(v: i32) { this.v = v; }
-        function deinit() void { }
+        init(v: i32) { this.v = v; }
+        deinit() { }
         function get() i32 { return this.v; }
     }
     class Config {
         var line: Inner;
-        function init() { this.line = Inner(7); }
-        function deinit() void { }
+        init() { this.line = Inner(7); }
+        deinit() { }
     }
 
     function main() i32 {
@@ -728,14 +728,14 @@ TEST(MemorySafety_BorrowChecker, error_on_use_of_moved_field_of_this) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Inner {
         var v: i32;
-        function init(v: i32) { this.v = v; }
-        function deinit() void { }
+        init(v: i32) { this.v = v; }
+        deinit() { }
         function get() i32 { return this.v; }
     }
     class Holder {
         var inner: Inner;
-        function init() { this.inner = Inner(9); }
-        function deinit() void { }
+        init() { this.inner = Inner(9); }
+        deinit() { }
         function bad() i32 {
             var taken = this.inner;
             return this.inner.get();   // ERROR: use of moved field
@@ -756,15 +756,15 @@ TEST(MemorySafety_BorrowChecker, sibling_field_and_refill_after_field_move) {
   auto value = executeString(R"(
     class Inner {
         var v: i32;
-        function init(v: i32) { this.v = v; }
-        function deinit() void { }
+        init(v: i32) { this.v = v; }
+        deinit() { }
         function get() i32 { return this.v; }
     }
     class Config {
         var line: Inner;
         var query: Inner;
-        function init() { this.line = Inner(7); this.query = Inner(3); }
-        function deinit() void { }
+        init() { this.line = Inner(7); this.query = Inner(3); }
+        deinit() { }
     }
 
     function main() i32 {
@@ -782,14 +782,14 @@ TEST(MemorySafety_BorrowChecker, borrowing_a_field_does_not_move_it) {
   auto value = executeString(R"(
     class Inner {
         var v: i32;
-        function init(v: i32) { this.v = v; }
-        function deinit() void { }
+        init(v: i32) { this.v = v; }
+        deinit() { }
         function get() i32 { return this.v; }
     }
     class Config {
         var line: Inner;
-        function init() { this.line = Inner(7); }
-        function deinit() void { }
+        init() { this.line = Inner(7); }
+        deinit() { }
     }
 
     function main() i32 {
@@ -813,7 +813,7 @@ TEST(MemorySafety_BorrowChecker, error_on_returning_borrowed_class_by_value) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Cursor {
         var pos: i32;
-        function init(p: i32) { this.pos = p; }
+        init(p: i32) { this.pos = p; }
         function get() i32 { return this.pos; }
     }
 
@@ -834,11 +834,11 @@ TEST(MemorySafety_BorrowChecker, error_on_storing_borrowed_class_in_field) {
   EXPECT_THROW(executeString(R"(
     class Cursor {
         var pos: i32;
-        function init(p: i32) { this.pos = p; }
+        init(p: i32) { this.pos = p; }
     }
     class Holder {
         var cur: Cursor;
-        function init(c: ref Cursor) { this.cur = c; }
+        init(c: ref Cursor) { this.cur = c; }
     }
 
     function main() i32 {
@@ -861,8 +861,8 @@ TEST(MemorySafety_BorrowChecker, error_on_variable_moved_every_iteration) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Inner {
         var v: i32;
-        function init(v: i32) { this.v = v; }
-        function deinit() void { }
+        init(v: i32) { this.v = v; }
+        deinit() { }
         function get() i32 { return this.v; }
     }
 
@@ -883,14 +883,14 @@ TEST(MemorySafety_BorrowChecker, error_on_field_moved_every_iteration) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Inner {
         var v: i32;
-        function init(v: i32) { this.v = v; }
-        function deinit() void { }
+        init(v: i32) { this.v = v; }
+        deinit() { }
         function get() i32 { return this.v; }
     }
     class Config {
         var line: Inner;
-        function init() { this.line = Inner(7); }
-        function deinit() void { }
+        init() { this.line = Inner(7); }
+        deinit() { }
     }
 
     function main() i32 {
@@ -912,8 +912,8 @@ TEST(MemorySafety_BorrowChecker,
   auto value = executeString(R"(
     class Inner {
         var v: i32;
-        function init(v: i32) { this.v = v; }
-        function deinit() void { }
+        init(v: i32) { this.v = v; }
+        deinit() { }
         function get() i32 { return this.v; }
     }
 
@@ -935,14 +935,14 @@ TEST(MemorySafety_BorrowChecker, loop_refills_the_moved_field_before_the_end) {
   auto value = executeString(R"(
     class Inner {
         var v: i32;
-        function init(v: i32) { this.v = v; }
-        function deinit() void { }
+        init(v: i32) { this.v = v; }
+        deinit() { }
         function get() i32 { return this.v; }
     }
     class Config {
         var line: Inner;
-        function init() { this.line = Inner(7); }
-        function deinit() void { }
+        init() { this.line = Inner(7); }
+        deinit() { }
     }
 
     function main() i32 {
@@ -963,14 +963,14 @@ TEST(MemorySafety_BorrowChecker, loop_body_that_returns_moves_once) {
   auto value = executeString(R"(
     class Inner {
         var v: i32;
-        function init(v: i32) { this.v = v; }
-        function deinit() void { }
+        init(v: i32) { this.v = v; }
+        deinit() { }
         function get() i32 { return this.v; }
     }
     class Config {
         var line: Inner;
-        function init() { this.line = Inner(7); }
-        function deinit() void { }
+        init() { this.line = Inner(7); }
+        deinit() { }
     }
 
     function main() i32 {
@@ -997,7 +997,7 @@ TEST(MemorySafety_BorrowChecker, assigning_through_ref_replaces_the_referent) {
   auto value = executeString(R"(
     class Box {
         var v: i32;
-        function init(v: i32) { this.v = v; }
+        init(v: i32) { this.v = v; }
     }
     function main() i32 {
         var b: Box = Box(1);
@@ -1014,7 +1014,7 @@ TEST(MemorySafety_BorrowChecker, assigning_to_borrowed_compound_is_error) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Box {
         var v: i32;
-        function init(v: i32) { this.v = v; }
+        init(v: i32) { this.v = v; }
     }
     function main() i32 {
         var b: Box = Box(1);
@@ -1032,7 +1032,7 @@ TEST(MemorySafety_BorrowChecker, ref_returning_call_borrows_its_arguments) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Box {
         var v: i32;
-        function init(v: i32) { this.v = v; }
+        init(v: i32) { this.v = v; }
     }
     function pick(a: ref Box, b: ref Box) ref Box {
         if (a.v > b.v) { return a; } else { return b; }
@@ -1054,7 +1054,7 @@ TEST(MemorySafety_BorrowChecker, assigning_through_call_returned_ref_works) {
   auto value = executeString(R"(
     class Box {
         var v: i32;
-        function init(v: i32) { this.v = v; }
+        init(v: i32) { this.v = v; }
     }
     function pick(a: ref Box, b: ref Box) ref Box {
         if (a.v > b.v) { return a; } else { return b; }
@@ -1080,11 +1080,11 @@ TEST(MemorySafety_BorrowChecker, ref_field_class_borrows_ctor_argument) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Inner {
         var v: i32;
-        function init(v: i32) { this.v = v; }
+        init(v: i32) { this.v = v; }
     }
     class Holder {
         public var x: ref Inner;
-        public function init(x: ref Inner) { this.x = x; }
+        init(x: ref Inner) { this.x = x; }
     }
     function main() i32 {
         var a = Inner(1);
@@ -1102,11 +1102,11 @@ TEST(MemorySafety_BorrowChecker, ref_field_class_reads_through_stored_ref) {
   auto value = executeString(R"(
     class Inner {
         var v: i32;
-        function init(v: i32) { this.v = v; }
+        init(v: i32) { this.v = v; }
     }
     class Holder {
         public var x: ref Inner;
-        public function init(x: ref Inner) { this.x = x; }
+        init(x: ref Inner) { this.x = x; }
     }
     function main() i32 {
         var a = Inner(21);
@@ -1122,11 +1122,11 @@ TEST(MemorySafety_BorrowChecker, ref_field_class_blocks_second_borrow) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Inner {
         var v: i32;
-        function init(v: i32) { this.v = v; }
+        init(v: i32) { this.v = v; }
     }
     class Holder {
         public var x: ref Inner;
-        public function init(x: ref Inner) { this.x = x; }
+        init(x: ref Inner) { this.x = x; }
     }
     function main() i32 {
         var a = Inner(1);
@@ -1143,11 +1143,11 @@ TEST(MemorySafety_BorrowChecker, ref_field_class_cannot_be_returned) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Inner {
         var v: i32;
-        function init(v: i32) { this.v = v; }
+        init(v: i32) { this.v = v; }
     }
     class Holder {
         public var x: ref Inner;
-        public function init(x: ref Inner) { this.x = x; }
+        init(x: ref Inner) { this.x = x; }
     }
     function make() Holder {
         var a = Inner(1);

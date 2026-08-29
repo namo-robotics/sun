@@ -15,7 +15,7 @@ public module sun {
     var message_: static_ptr<u8>;
 
     // Build a decode error carrying a literal explanation.
-    public function init(message: static_ptr<u8>) {
+    init(message: static_ptr<u8>) {
       this.message_ = message;
     }
 
@@ -183,7 +183,7 @@ public module sun {
 
     // Build a reader over a buffer. The buffer stays borrowed for the reader's
     // whole life, so its bytes cannot move underneath it.
-    public function init(buf: ref Vec<u8>) {
+    init(buf: ref Vec<u8>) {
       this.data = buf.raw_data();
       this.len = buf.size();
       this.pos = 0;
@@ -200,7 +200,7 @@ public module sun {
     }
 
     // Read one byte and step past it. Throws at the end of the buffer.
-    public function read_byte() u8, IError {
+    public function read_byte() u8 throws IError {
       if (this.pos >= this.len) {
         throw ProtoDecodeError("unexpected end of buffer");
       }
@@ -210,7 +210,7 @@ public module sun {
     }
 
     // Read a base-128 varint. Throws on a truncated or over-long encoding.
-    public function read_varint() u64, IError {
+    public function read_varint() u64 throws IError {
       var result: u64 = 0;
       var shift: u64 = 0;
       for (var i: i32 = 0; i < 10; i = i + 1) {
@@ -226,47 +226,47 @@ public module sun {
     }
 
     // Returns the tag key (field << 3 | wire type)
-    public function read_tag() u64, IError {
+    public function read_tag() u64 throws IError {
       return this.read_varint();
     }
 
     // Read an int32 field value.
-    public function read_int32() i32, IError {
+    public function read_int32() i32 throws IError {
       return _convert<i32>(this.read_varint());
     }
 
     // Read an int64 field value.
-    public function read_int64() i64, IError {
+    public function read_int64() i64 throws IError {
       return _convert<i64>(this.read_varint());
     }
 
     // Read a uint32 field value.
-    public function read_uint32() u32, IError {
+    public function read_uint32() u32 throws IError {
       return _convert<u32>(this.read_varint());
     }
 
     // Read a uint64 field value.
-    public function read_uint64() u64, IError {
+    public function read_uint64() u64 throws IError {
       return this.read_varint();
     }
 
     // Read a bool field value. Any non-zero varint counts as true.
-    public function read_bool() bool, IError {
+    public function read_bool() bool throws IError {
       return this.read_varint() != 0;
     }
 
     // Read a zigzag-encoded sint32 field value.
-    public function read_sint32() i32, IError {
+    public function read_sint32() i32 throws IError {
       return _convert<i32>(proto_decode_zigzag64(this.read_varint()));
     }
 
     // Read a zigzag-encoded sint64 field value.
-    public function read_sint64() i64, IError {
+    public function read_sint64() i64 throws IError {
       return proto_decode_zigzag64(this.read_varint());
     }
 
     // Read four bytes as a fixed32 field value, least significant first.
-    public function read_fixed32() u32, IError {
+    public function read_fixed32() u32 throws IError {
       var b0: u32 = _convert<u32>(this.read_byte());
       var b1: u32 = _convert<u32>(this.read_byte());
       var b2: u32 = _convert<u32>(this.read_byte());
@@ -275,7 +275,7 @@ public module sun {
     }
 
     // Read eight bytes as a fixed64 field value, least significant first.
-    public function read_fixed64() u64, IError {
+    public function read_fixed64() u64 throws IError {
       var result: u64 = 0;
       var shift: u64 = 0;
       for (var i: i32 = 0; i < 8; i = i + 1) {
@@ -287,29 +287,29 @@ public module sun {
     }
 
     // Read four bytes as a signed sfixed32 field value.
-    public function read_sfixed32() i32, IError {
+    public function read_sfixed32() i32 throws IError {
       return _convert<i32>(this.read_fixed32());
     }
 
     // Read eight bytes as a signed sfixed64 field value.
-    public function read_sfixed64() i64, IError {
+    public function read_sfixed64() i64 throws IError {
       return _convert<i64>(this.read_fixed64());
     }
 
     // Read four bytes as an IEEE-754 float.
-    public function read_float() f32, IError {
+    public function read_float() f32 throws IError {
       return _bitcast<f32>(this.read_fixed32());
     }
 
     // Read eight bytes as an IEEE-754 double.
-    public function read_double() f64, IError {
+    public function read_double() f64 throws IError {
       return _bitcast<f64>(this.read_fixed64());
     }
 
     // Read a length prefix and return the absolute end position of the
     // delimited region; the caller narrows with push_limit / restores with
     // pop_limit around nested decoding.
-    public function read_length() i64, IError {
+    public function read_length() i64 throws IError {
       var n: i64 = _convert<i64>(this.read_varint());
       if (n < 0) {
         throw ProtoDecodeError("negative length");
@@ -333,7 +333,7 @@ public module sun {
     }
 
     // Read `n` bytes into a fresh Vec<u8>
-    public function read_bytes(alloc: ref HeapAllocator, n: i64) Vec<u8>, IError {
+    public function read_bytes(alloc: ref HeapAllocator, n: i64) Vec<u8> throws IError {
       if (this.pos + n > this.len) {
         throw ProtoDecodeError("length exceeds buffer");
       }
@@ -346,13 +346,13 @@ public module sun {
     }
 
     // Read a length-prefixed byte field
-    public function read_bytes_field(alloc: ref HeapAllocator) Vec<u8>, IError {
+    public function read_bytes_field(alloc: ref HeapAllocator) Vec<u8> throws IError {
       var n: i64 = _convert<i64>(this.read_varint());
       return this.read_bytes(alloc, n);
     }
 
     // Read a length-prefixed string field
-    public function read_string_field(alloc: ref HeapAllocator) String, IError {
+    public function read_string_field(alloc: ref HeapAllocator) String throws IError {
       var n: i64 = _convert<i64>(this.read_varint());
       if (n < 0) {
         throw ProtoDecodeError("negative length");
@@ -370,7 +370,7 @@ public module sun {
 
     // Skip a field of the given wire type, appending its raw tag+payload
     // bytes to `unknown` so an unrecognized field survives re-encoding.
-    public function skip_field(wire_type: i64, tag: u64, unknown: ref Vec<u8>) void, IError {
+    public function skip_field(wire_type: i64, tag: u64, unknown: ref Vec<u8>) void throws IError {
       proto_write_varint(unknown, tag);
       if (wire_type == 0) {
         var v: u64 = this.read_varint();

@@ -44,13 +44,13 @@ public module tls {
     var code_: i32;
     var message_: String;
 
-    public function init(code: i32, message: const ref String) {
+    init(code: i32, message: const ref String) {
       var alloc: HeapAllocator = HeapAllocator();
       this.code_ = code;
       this.message_ = message.clone(alloc);
     }
 
-    public function init(code: i32, message: static_ptr<u8>) {
+    init(code: i32, message: static_ptr<u8>) {
       this.code_ = code;
       this.message_ = String(message);
     }
@@ -90,18 +90,18 @@ public module tls {
     var ctx: raw_ptr<u8>;  // SSL_CTX*
     var ssl: raw_ptr<u8>;  // SSL*
 
-    public function init() {
+    init() {
       this.tcp = TcpStream();
       this.ctx = null;
       this.ssl = null;
     }
 
-    function deinit() void {
+    deinit() {
       this.close();
     }
 
     // Resolve the host, connect, and complete a verified TLS handshake.
-    public function connect(host: ref String, port: i32) void, IError {
+    public function connect(host: ref String, port: i32) void throws IError {
       this.tcp.connect_host(host, port);
 
       var method: raw_ptr<u8> = unsafe { c_tls_client_method(); };
@@ -157,19 +157,19 @@ public module tls {
     }
 
     // Send string data
-    public function send_str(data: static_ptr<u8>) i64, IError {
+    public function send_str(data: static_ptr<u8>) i64 throws IError {
       return this.send_bytes(data.raw(), data.length());
     }
 
     // Send a String's contents. Takes ref (not const ref) because c_str()
     // may append the terminating NUL.
-    public function send_string(data: ref String) i64, IError {
+    public function send_string(data: ref String) i64 throws IError {
       return this.send_bytes(data.c_str(), data.length());
     }
 
     // Send raw bytes; on a blocking socket SSL_write writes everything or
     // fails.
-    public function send_bytes(data: raw_ptr<u8>, len: i64) i64, IError {
+    public function send_bytes(data: raw_ptr<u8>, len: i64) i64 throws IError {
       var result: i32 = unsafe { c_ssl_write(this.ssl, data, _convert<i32>(len)); };
       if (result <= 0) {
         var err_write: String = take_openssl_error("TLS write failed");
@@ -180,7 +180,7 @@ public module tls {
 
     // Receive into a ContiguousBuffer. Returns the byte count, or 0 once
     // the peer has closed the connection.
-    public function recv(buf: ref ContiguousBuffer<u8>) i64, IError {
+    public function recv(buf: ref ContiguousBuffer<u8>) i64 throws IError {
       var result: i32 = unsafe { c_ssl_read(this.ssl, buf.raw_data(), _convert<i32>(buf.size())); };
       if (result > 0) {
         return _convert<i64>(result);

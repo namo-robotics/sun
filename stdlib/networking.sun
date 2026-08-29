@@ -44,7 +44,7 @@ public module sun {
   // order (the shape connect_ip takes). Throws when the name does not resolve
   // or has no IPv4 address. Field offsets are documented at the getaddrinfo
   // declaration in sys.sun.
-  public function resolve_host_ipv4(host: ref String) i32, IError {
+  public function resolve_host_ipv4(host: ref String) i32 throws IError {
     var list: raw_ptr<u8> = null;
     var rc: i32 = unsafe { c_getaddrinfo(host.c_str(), null, null, _address_of<raw_ptr<u8>>(list)); };
     if (rc != 0) {
@@ -77,17 +77,17 @@ public module sun {
     var fd: i32;
 
     // Build a closed socket. Connect or bind it before use.
-    public function init() {
+    init() {
       this.fd = -1;
     }
 
     // Close the socket if it is still open.
-    function deinit() void {
+    deinit() {
       this.close();
     }
 
     // Connect to loopback (127.0.0.1) on port
-    public function connect_local(port: i32) void, IError {
+    public function connect_local(port: i32) void throws IError {
       var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
       if (sock_fd < 0) {
         throw Error(sock_fd, "failed to create socket");
@@ -102,7 +102,7 @@ public module sun {
     }
 
     // Connect to specific IP (in network byte order) and port
-    public function connect_ip(ip: i32, port: i32) void, IError {
+    public function connect_ip(ip: i32, port: i32) void throws IError {
       var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
       if (sock_fd < 0) {
         throw Error(sock_fd, "failed to create socket");
@@ -117,13 +117,13 @@ public module sun {
     }
 
     // Resolve a hostname and connect to its first IPv4 address
-    public function connect_host(host: ref String, port: i32) void, IError {
+    public function connect_host(host: ref String, port: i32) void throws IError {
       var ip: i32 = resolve_host_ipv4(host);
       this.connect_ip(ip, port);
     }
 
     // Send string data
-    public function send_str(data: static_ptr<u8>) i64, IError {
+    public function send_str(data: static_ptr<u8>) i64 throws IError {
       var str_ptr: raw_ptr<u8> = data.raw();
       var len: i64 = data.length();
       var result: i64 = unsafe { __send(this.fd, str_ptr, len, MSG_NOSIGNAL); };
@@ -135,7 +135,7 @@ public module sun {
     }
 
     // Send raw bytes
-    public function send_bytes(data: raw_ptr<u8>, len: i64) i64, IError {
+    public function send_bytes(data: raw_ptr<u8>, len: i64) i64 throws IError {
       var result: i64 = unsafe { __send(this.fd, data, len, MSG_NOSIGNAL); };
       if (result < 0) {
         var err_code: i32 = -1;
@@ -145,12 +145,12 @@ public module sun {
     }
 
     // Send a String's contents
-    public function send_string(data: const ref String) i64, IError {
+    public function send_string(data: const ref String) i64 throws IError {
       return this.send_bytes(data.data.raw_data(), data.length());
     }
 
     // Receive into ContiguousBuffer, returns bytes read
-    public function recv(buf: ref ContiguousBuffer<u8>) i64, IError {
+    public function recv(buf: ref ContiguousBuffer<u8>) i64 throws IError {
       var result: i64 = unsafe { __recv(this.fd, buf.raw_data(), buf.size(), 0); };
       if (result < 0) {
         var err_code: i32 = -1;
@@ -188,12 +188,12 @@ public module sun {
     var fd: i32;
 
     // Build a closed listener. Bind it before use.
-    public function init() {
+    init() {
       this.fd = -1;
     }
 
     // Close the listening socket if it is still open.
-    function deinit() void {
+    deinit() {
       this.close();
     }
 
@@ -204,7 +204,7 @@ public module sun {
     }
 
     // Create and bind to port on all interfaces (0.0.0.0)
-    public function bind_port(port: i32) void, IError {
+    public function bind_port(port: i32) void throws IError {
       var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
       if (sock_fd < 0) {
         throw Error(sock_fd, "failed to create socket");
@@ -219,7 +219,7 @@ public module sun {
     }
 
     // Create and bind to loopback (127.0.0.1) on port
-    public function bind_loopback(port: i32) void, IError {
+    public function bind_loopback(port: i32) void throws IError {
       var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
       if (sock_fd < 0) {
         throw Error(sock_fd, "failed to create socket");
@@ -234,7 +234,7 @@ public module sun {
     }
 
     // Start listening for connections
-    public function listen(backlog: i32) void, IError {
+    public function listen(backlog: i32) void throws IError {
       var result: i32 = unsafe { __listen(this.fd, backlog); };
       if (result < 0) {
         throw Error(result, "failed to listen");
@@ -242,7 +242,7 @@ public module sun {
     }
 
     // Accept a new connection, returns TcpStream
-    public function accept() TcpStream, IError {
+    public function accept() TcpStream throws IError {
       var client_fd: i32 = unsafe { __accept_fd(this.fd); };
       if (client_fd < 0) {
         throw Error(client_fd, "failed to accept connection");

@@ -184,7 +184,7 @@ class MyArray {
     var data: ptr<i32>;
     var len: i64;
     
-    function init(allocator: ref HeapAllocator, size: i64) {
+    init(allocator: ref HeapAllocator, size: i64) {
         this.data = allocator.alloc<i32>(size);
         this.len = size;
     }

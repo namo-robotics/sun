@@ -18,10 +18,10 @@ const char* kOwnerPreamble = R"(
 
     class Owner {
       var id: i32;
-      function init(id: i32) {
+      init(id: i32) {
         this.id = id;
       }
-      function deinit() void {
+      deinit() {
         if (this.id != 0) {
           counter = counter + 1;
           this.id = 0;
@@ -123,7 +123,7 @@ TEST(MemorySafety_Drops_Containers, vec_pop_moves_ownership_no_double_drop) {
 TEST(MemorySafety_Drops_Containers,
      vec_take_transfers_ownership_no_double_drop) {
   auto value = executeStringWithStdlib(withPreamble(R"(
-    function helper() i32, IError {
+    function helper() i32 throws IError {
       var alloc = make_heap_allocator();
       var v = Vec<Owner>(alloc, 4);
       v.push(Owner(1));
@@ -205,7 +205,7 @@ TEST(MemorySafety_Drops_Containers, map_insert_overwrite_drops_old_value) {
 
 TEST(MemorySafety_Drops_Containers, map_remove_moves_value_out) {
   auto value = executeStringWithStdlib(withPreamble(R"(
-    function helper() i32, IError {
+    function helper() i32 throws IError {
       var alloc = make_heap_allocator();
       var m = Map<i64, Owner>(alloc, 8);
       m.insert(1, Owner(10));
@@ -297,7 +297,7 @@ TEST(MemorySafety_Drops_Containers, linked_list_set_drops_old_payload) {
 
 TEST(MemorySafety_Drops_Containers, linked_list_pop_moves_ownership) {
   auto value = executeStringWithStdlib(withPreamble(R"(
-    function helper() i32, IError {
+    function helper() i32 throws IError {
       var alloc = make_heap_allocator();
       var list = LinkedList<Owner>(alloc);
       list.push_back(Owner(1));
@@ -532,7 +532,7 @@ TEST(MemorySafety_Drops_Containers, borrowed_element_is_not_stored_in_a_field) {
     using sun;
     class Holder {
       var s: String;
-      function init(alloc: ref HeapAllocator) { this.s = String(alloc, ""); }
+      init(alloc: ref HeapAllocator) { this.s = String(alloc, ""); }
       public function set_from(v: ref Vec<String>) void {
         this.s = v.get_unchecked(0);
       }
@@ -575,7 +575,7 @@ TEST(MemorySafety_Drops_Containers,
 
     class ByValueIter implements IIterator<String, Vec<String>> {
       var i: i64;
-      public function init() { this.i = 0; }
+      init() { this.i = 0; }
       public function next(v: ref Vec<String>) Option<String> {
         if (this.i >= v.size()) { return Option.None; }
         var e = v.get_unchecked(this.i);
@@ -597,7 +597,7 @@ TEST(MemorySafety_Drops_Containers,
 
     class Bag implements IIterable<String, Bag> {
       var items: Vec<String>;
-      public function init(alloc: ref HeapAllocator) {
+      init(alloc: ref HeapAllocator) {
         this.items = Vec<String>(alloc, 4);
       }
       public function add(s: String) void { this.items.push(s); }
@@ -607,7 +607,7 @@ TEST(MemorySafety_Drops_Containers,
 
     class BagIter implements IIterator<String, Bag> {
       var i: i64;
-      public function init() { this.i = 0; }
+      init() { this.i = 0; }
       public function next(b: ref Bag) Option<String> {
         if (this.i >= b.count()) { return Option.None; }
         var e = b.items.get_unchecked(this.i);
@@ -678,7 +678,7 @@ TEST(MemorySafety_Drops_Containers,
     using sun;
 
     class Draining implements IIterator<String, Vec<String>> {
-      public function init() {}
+      init() {}
       public function next(v: ref Vec<String>) Option<String> {
         return v.pop();
       }

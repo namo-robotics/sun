@@ -298,7 +298,7 @@ TEST(ControlFlow_Ternary, class_branches_pick_field) {
       class Point {
         var x: i32;
         var y: i32;
-        function init(x: i32, y: i32) {
+        init(x: i32, y: i32) {
           this.x = x;
           this.y = y;
         }

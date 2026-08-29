@@ -30,7 +30,7 @@ TEST(MemorySafety_Refs_Annotated, binds_field) {
       class Point {
           var x: i32;
           var y: i32;
-          function init() void {
+          init() {
               this.x = 1;
               this.y = 2;
           }
@@ -61,7 +61,7 @@ TEST(MemorySafety_Refs_Annotated, binds_class_without_moving_it) {
   auto value = executeString(R"(
       class Point {
           var x: i32;
-          function init() void { this.x = 7; }
+          init() { this.x = 7; }
       }
       function main() i32 {
           var p: Point = Point();
@@ -76,7 +76,7 @@ TEST(MemorySafety_Refs_Annotated, binds_field_inside_method) {
   auto value = executeString(R"(
       class Counter {
           var n: i32;
-          function init() void { this.n = 3; }
+          init() { this.n = 3; }
           function bump() void {
               var c: ref i32 = this.n;
               c = c + 1;
@@ -98,7 +98,7 @@ TEST(MemorySafety_Refs_Annotated, binds_string_field) {
       using sun;
       public class Holder {
           public var a: String;
-          public function init(alloc: ref HeapAllocator) {
+          init(alloc: ref HeapAllocator) {
               this.a = String(alloc, "one");
           }
       }
@@ -139,7 +139,7 @@ TEST(MemorySafety_Refs_Annotated, class_index_target_is_error) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       class Box {
           var slot: i32;
-          function init() void { this.slot = 1; }
+          init() { this.slot = 1; }
           function __index__(indices: ref array<i64>) i32 {
               return this.slot;
           }
@@ -158,7 +158,7 @@ TEST(MemorySafety_Refs_Annotated, borrowing_a_moved_field_is_error) {
       using sun;
       public class Holder {
           public var a: String;
-          public function init(alloc: ref HeapAllocator) {
+          init(alloc: ref HeapAllocator) {
               this.a = String(alloc, "one");
           }
       }
@@ -183,7 +183,7 @@ TEST(MemorySafety_Refs_Annotated, conditional_binds_chosen_field) {
           var a: i32;
           var b: i32;
           var flag: bool;
-          function init() void {
+          init() {
               this.a = 1;
               this.b = 2;
               this.flag = false;
@@ -233,7 +233,7 @@ TEST(MemorySafety_Refs_Annotated, conditional_ref_statement) {
       class Pair {
           var a: i32;
           var b: i32;
-          function init() void {
+          init() {
               this.a = 4;
               this.b = 8;
           }

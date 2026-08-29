@@ -34,7 +34,7 @@ public module sun {
 
     // Build a parse error with an explanation and the byte offset it happened at.
     // An offset of -1 means the error was not tied to a position.
-    public function init(message: static_ptr<u8>, offset: i64) {
+    init(message: static_ptr<u8>, offset: i64) {
       this.message_ = message;
       this.offset_ = offset;
     }
@@ -75,7 +75,7 @@ public module sun {
     var value: Json;
 
     // Build a member. Both the key and the value move in.
-    public function init(key: String, value: Json) {
+    init(key: String, value: Json) {
       this.key = key;
       this.value = value;
     }
@@ -87,34 +87,34 @@ public module sun {
     public var value: JsonValue;
 
     // null
-    public function init() {
+    init() {
       this.value = JsonValue.Null;
     }
 
     // Build a node around an already-built value.
-    public function init(v: JsonValue) {
+    init(v: JsonValue) {
       this.value = v;
     }
 
     // Build a JSON true or false.
-    public function init(b: bool) {
+    init(b: bool) {
       this.value = JsonValue.Bool(b);
     }
 
     // Build a JSON integer.
-    public function init(n: i64) {
+    init(n: i64) {
       this.value = JsonValue.Int(n);
     }
 
     // Build a JSON floating-point number.
-    public function init(x: f64) {
+    init(x: f64) {
       this.value = JsonValue.Float(x);
     }
 
     // Takes ownership of the string: s is moved into the node and cannot be
     // used afterwards. To keep the original, pass a borrow to
     // create_json_string(alloc, ref s), which stores a copy.
-    public function init(s: String) {
+    init(s: String) {
       this.value = JsonValue.String(s);
     }
 
@@ -191,7 +191,7 @@ public module sun {
     // Readers
     // ------------------------------------------------------------------------
 
-    public function as_bool() bool, IError {
+    public function as_bool() bool throws IError {
       match this.value {
         JsonValue.Bool(b) => {
           return b;
@@ -203,7 +203,7 @@ public module sun {
     }
 
     // Int, or a Float with an integral value
-    public function as_i64() i64, IError {
+    public function as_i64() i64 throws IError {
       match this.value {
         JsonValue.Int(n) => {
           return n;
@@ -225,7 +225,7 @@ public module sun {
     }
 
     // Int or Float, as f64
-    public function as_f64() f64, IError {
+    public function as_f64() f64 throws IError {
       match this.value {
         JsonValue.Int(n) => {
           return _convert<f64>(n);
@@ -241,7 +241,7 @@ public module sun {
 
     // Borrow the string this node holds. Throws if it is not a string; the node
     // keeps ownership of the text.
-    public function as_string() ref String, IError {
+    public function as_string() ref String throws IError {
       match this.value {
         JsonValue.String(s) => {
           return s;
@@ -262,7 +262,7 @@ public module sun {
     }
 
     // Array item by index
-    public function at(i: i64) ref Json, IError {
+    public function at(i: i64) ref Json throws IError {
       match this.value {
         JsonValue.Array(items) => {
           if (i < 0 or i >= items.size()) {
@@ -277,7 +277,7 @@ public module sun {
     }
 
     // Object member value by key
-    public function get(key: static_ptr<u8>) ref Json, IError {
+    public function get(key: static_ptr<u8>) ref Json throws IError {
       match this.value {
         JsonValue.Object(members) => {
           for (var i: i64 = 0; i < members.size(); i = i + 1) {
@@ -295,7 +295,7 @@ public module sun {
 
     // Borrow the value stored under a key built at runtime. Throws if this is not
     // an object or the key is absent.
-    public function get(key: const ref String) ref Json, IError {
+    public function get(key: const ref String) ref Json throws IError {
       match this.value {
         JsonValue.Object(members) => {
           for (var i: i64 = 0; i < members.size(); i = i + 1) {
@@ -330,7 +330,7 @@ public module sun {
     }
 
     // Object member key by position (insertion order)
-    public function key_at(i: i64) ref String, IError {
+    public function key_at(i: i64) ref String throws IError {
       match this.value {
         JsonValue.Object(members) => {
           if (i < 0 or i >= members.size()) {
@@ -345,7 +345,7 @@ public module sun {
     }
 
     // Object member value by position (insertion order)
-    public function value_at(i: i64) ref Json, IError {
+    public function value_at(i: i64) ref Json throws IError {
       match this.value {
         JsonValue.Object(members) => {
           if (i < 0 or i >= members.size()) {
@@ -364,7 +364,7 @@ public module sun {
     // ------------------------------------------------------------------------
 
     // Append an item to an array
-    public function push(item: Json) void, IError {
+    public function push(item: Json) void throws IError {
       match this.value {
         JsonValue.Array(items) => {
           items.push(item);
@@ -377,7 +377,7 @@ public module sun {
 
     // Set an object member: replaces the value of an existing key (the old
     // value is dropped) or appends a new member.
-    public function set(key: String, value: Json) void, IError {
+    public function set(key: String, value: Json) void throws IError {
       match this.value {
         JsonValue.Object(members) => {
           var index: i64 = -1;
@@ -597,7 +597,7 @@ public module sun {
     var alloc: HeapAllocator;
 
     // Build a parser positioned at the start of the text.
-    function init(alloc: ref HeapAllocator) {
+    init(alloc: ref HeapAllocator) {
       this.pos = 0;
       this.depth = 0;
       this.alloc = alloc.copy();
@@ -624,7 +624,7 @@ public module sun {
     }
 
     // Consume `literal` at pos or fail
-    function expect_literal(text: const ref String, literal: static_ptr<u8>, what: static_ptr<u8>) void, IError {
+    function expect_literal(text: const ref String, literal: static_ptr<u8>, what: static_ptr<u8>) void throws IError {
       var data: raw_ptr<u8> = literal.raw();
       var n: i64 = literal.length();
       var start: i64 = this.pos;
@@ -638,7 +638,7 @@ public module sun {
     }
 
     // Parse whatever JSON value starts at the current position.
-    function parse_value(text: const ref String) Json, IError {
+    function parse_value(text: const ref String) Json throws IError {
       var ch: i64 = this.peek(text);
       if (ch == b'{') {
         return this.parse_object(text);
@@ -673,7 +673,7 @@ public module sun {
     // Count one level deeper into an array or object, throwing once the nesting
     // limit is passed. This is what stops a deeply nested document from running
     // the stack out.
-    function enter(text: const ref String) void, IError {
+    function enter(text: const ref String) void throws IError {
       this.depth = this.depth + 1;
       if (this.depth > JSON_MAX_DEPTH) {
         throw JsonError("JSON nesting too deep", this.pos);
@@ -681,7 +681,7 @@ public module sun {
     }
 
     // Parse an array, from its '[' through its ']'.
-    function parse_array(text: const ref String) Json, IError {
+    function parse_array(text: const ref String) Json throws IError {
       this.enter(text);
       this.pos = this.pos + 1;  // '['
       var items = Vec<Json>(this.alloc, 4);
@@ -712,7 +712,7 @@ public module sun {
     }
 
     // Parse an object, from its '{' through its '}'.
-    function parse_object(text: const ref String) Json, IError {
+    function parse_object(text: const ref String) Json throws IError {
       this.enter(text);
       this.pos = this.pos + 1;  // '{'
       var members = Vec<JsonMember>(this.alloc, 4);
@@ -754,7 +754,7 @@ public module sun {
     }
 
     // Read one hex digit and step past it. Throws on anything else.
-    function parse_hex_digit(text: const ref String) i64, IError {
+    function parse_hex_digit(text: const ref String) i64 throws IError {
       var ch: i64 = this.peek(text);
       this.pos = this.pos + 1;
       if (ch >= b'0' and ch <= b'9') {
@@ -770,7 +770,7 @@ public module sun {
     }
 
     // Read the four hex digits of a \u escape as a code point.
-    function parse_hex4(text: const ref String) i64, IError {
+    function parse_hex4(text: const ref String) i64 throws IError {
       var code: i64 = 0;
       for (var i: i64 = 0; i < 4; i = i + 1) {
         code = code * 16 + this.parse_hex_digit(text);
@@ -785,7 +785,7 @@ public module sun {
     }
 
     // Parse a quoted string starting at pos, decoding escapes into UTF-8
-    function parse_string(text: const ref String) String, IError {
+    function parse_string(text: const ref String) String throws IError {
       var start: i64 = this.pos;
       this.pos = this.pos + 1;  // opening '"'
       var out = String(this.alloc, "");
@@ -868,7 +868,7 @@ public module sun {
     }
 
     // number = [-] int [frac] [exp]; int = 0 | [1-9][0-9]*
-    function parse_number(text: const ref String) Json, IError {
+    function parse_number(text: const ref String) Json throws IError {
       var start: i64 = this.pos;
       if (this.peek(text) == b'-') {
         this.pos = this.pos + 1;
@@ -929,7 +929,7 @@ public module sun {
 
   // Parse a complete JSON text. Trailing whitespace is allowed, anything else
   // after the value is an error.
-  public function parse_json(alloc: ref HeapAllocator, text: const ref String) Json, IError {
+  public function parse_json(alloc: ref HeapAllocator, text: const ref String) Json throws IError {
     var parser = JsonParser(alloc);
     parser.skip_whitespace(text);
     var value: Json = parser.parse_value(text);
@@ -941,7 +941,7 @@ public module sun {
   }
 
   // Parse a JSON literal into a tree. Throws JsonError on malformed text.
-  public function parse_json(alloc: ref HeapAllocator, text: static_ptr<u8>) Json, IError {
+  public function parse_json(alloc: ref HeapAllocator, text: static_ptr<u8>) Json throws IError {
     var owned = String(alloc, text);
     return parse_json(alloc, owned);
   }

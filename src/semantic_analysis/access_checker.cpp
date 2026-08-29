@@ -75,8 +75,11 @@ std::string cleanTypeName(std::string name) {
 
 }  // namespace
 
+// Constructors and destructors are always public: they are declared without
+// a visibility keyword, and scope exit must be able to run deinit anywhere.
 Visibility methodVisibility(const FunctionAST& method) {
-  if (method.getProto().getName() == "deinit") return Visibility::Public;
+  const std::string& name = method.getProto().getName();
+  if (name == "init" || name == "deinit") return Visibility::Public;
   return method.getVisibility();
 }
 

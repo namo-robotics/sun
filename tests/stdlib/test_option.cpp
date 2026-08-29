@@ -164,7 +164,7 @@ TEST(Stdlib_Option, InterfacePayloadOption) {
     }
     class Num implements IValue {
       var n: i32;
-      function init(v: i32) { this.n = v; }
+      init(v: i32) { this.n = v; }
       function get() i32 { return this.n; }
     }
 

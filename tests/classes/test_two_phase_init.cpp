@@ -12,7 +12,7 @@ namespace {
 const char* kResPreamble = R"(
     class Res {
       var v: i32;
-      function init(v: i32) {
+      init(v: i32) {
         this.v = v;
       }
       function get() i32 {
@@ -33,7 +33,7 @@ TEST(Classes_TwoPhaseInit, field_left_unassigned_is_rejected) {
   EXPECT_THROW(executeString(withPreamble(R"(
     class Holder {
       var r: Res;
-      function init() { }
+      init() { }
     }
 
     function main() i32 {
@@ -49,7 +49,7 @@ TEST(Classes_TwoPhaseInit, one_of_two_fields_unassigned_is_rejected) {
     class Holder {
       var a: Res;
       var b: Res;
-      function init() {
+      init() {
         this.a = Res(1);
       }
     }
@@ -66,7 +66,7 @@ TEST(Classes_TwoPhaseInit, assigned_on_only_one_branch_is_rejected) {
   EXPECT_THROW(executeString(withPreamble(R"(
     class Holder {
       var r: Res;
-      function init(flag: bool) {
+      init(flag: bool) {
         if (flag) {
           this.r = Res(1);
         }
@@ -85,7 +85,7 @@ TEST(Classes_TwoPhaseInit, assigned_on_both_branches_is_accepted) {
   auto value = executeString(withPreamble(R"(
     class Holder {
       var r: Res;
-      function init(flag: bool) {
+      init(flag: bool) {
         if (flag) {
           this.r = Res(1);
         } else {
@@ -108,7 +108,7 @@ TEST(Classes_TwoPhaseInit, assigned_only_in_a_loop_is_rejected) {
   EXPECT_THROW(executeString(withPreamble(R"(
     class Holder {
       var r: Res;
-      function init(n: i32) {
+      init(n: i32) {
         var i: i32 = 0;
         while (i < n) {
           this.r = Res(i);
@@ -129,7 +129,7 @@ TEST(Classes_TwoPhaseInit, returning_before_a_field_is_assigned_is_rejected) {
   EXPECT_THROW(executeString(withPreamble(R"(
     class Holder {
       var r: Res;
-      function init(flag: bool) {
+      init(flag: bool) {
         if (flag) {
           return;
         }
@@ -152,7 +152,7 @@ TEST(Classes_TwoPhaseInit, reading_a_field_before_it_is_assigned_is_rejected) {
     class Holder {
       var n: Res;
       var r: Res;
-      function init() {
+      init() {
         this.n = Res(this.r.get());
         this.r = Res(1);
       }
@@ -171,7 +171,7 @@ TEST(Classes_TwoPhaseInit, reading_a_field_after_assigning_it_is_accepted) {
     class Holder {
       var a: Res;
       var b: Res;
-      function init() {
+      init() {
         this.a = Res(7);
         this.b = Res(this.a.get() + 1);
       }
@@ -192,7 +192,7 @@ TEST(Classes_TwoPhaseInit, a_method_may_assign_the_fields) {
   auto value = executeString(withPreamble(R"(
     class Holder {
       var r: Res;
-      function init() {
+      init() {
         this.fill();
       }
       function fill() void {
@@ -214,7 +214,7 @@ TEST(Classes_TwoPhaseInit, several_methods_may_finish_the_job_between_them) {
     class Holder {
       var a: Res;
       var b: Res;
-      function init() {
+      init() {
         this.fill_a();
         this.fill_b();
       }
@@ -236,7 +236,7 @@ TEST(Classes_TwoPhaseInit, a_method_that_leaves_a_field_unassigned) {
     class Holder {
       var a: Res;
       var b: Res;
-      function init() {
+      init() {
         this.fill_a();
       }
       function fill_a() void { this.a = Res(3); }
@@ -255,7 +255,7 @@ TEST(Classes_TwoPhaseInit, a_method_that_reads_a_field_with_no_value_yet) {
     class Holder {
       var a: Res;
       var b: Res;
-      function init() {
+      init() {
         this.copy_a_into_b();
         this.a = Res(1);
       }
@@ -275,7 +275,7 @@ TEST(Classes_TwoPhaseInit, a_method_may_read_a_field_the_constructor_assigned) {
     class Holder {
       var a: Res;
       var b: Res;
-      function init() {
+      init() {
         this.a = Res(5);
         this.double_a_into_b();
       }
@@ -295,7 +295,7 @@ TEST(Classes_TwoPhaseInit, a_method_assigning_on_only_one_branch) {
   EXPECT_THROW(executeString(withPreamble(R"(
     class Holder {
       var r: Res;
-      function init(flag: bool) {
+      init(flag: bool) {
         this.maybe_fill(flag);
       }
       function maybe_fill(flag: bool) void {
@@ -317,7 +317,7 @@ TEST(Classes_TwoPhaseInit, calling_a_method_once_the_object_is_whole) {
   auto value = executeString(withPreamble(R"(
     class Holder {
       var r: Res;
-      function init() {
+      init() {
         this.r = Res(1);
         this.bump();
       }
@@ -339,7 +339,7 @@ TEST(Classes_TwoPhaseInit, passing_this_before_the_object_is_whole) {
   EXPECT_THROW(executeString(withPreamble(R"(
     class Holder {
       var r: Res;
-      function init() {
+      init() {
         take(this);
         this.r = Res(1);
       }

@@ -17,7 +17,7 @@ TEST(MemorySafety_Refs_Targets, ref_to_field_read) {
   auto value = executeString(R"(
       class Point {
           var x: i32;
-          function init() void {
+          init() {
               this.x = 42;
           }
       }
@@ -34,7 +34,7 @@ TEST(MemorySafety_Refs_Targets, ref_to_field_write_through) {
   auto value = executeString(R"(
       class Point {
           var x: i32;
-          function init() void {
+          init() {
               this.x = 1;
           }
       }
@@ -95,7 +95,7 @@ TEST(MemorySafety_Refs_Targets, class_index_target_is_error) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       class Box {
           var slot: i32;
-          function init() void {
+          init() {
               this.slot = 1;
           }
           function __index__(indices: ref array<i64>) i32 {
@@ -130,7 +130,7 @@ TEST(MemorySafety_Refs_Targets, ref_arg_field_mutation_visible) {
   auto value = executeString(R"(
       class Point {
           var x: i32;
-          function init() void {
+          init() {
               this.x = 1;
           }
       }

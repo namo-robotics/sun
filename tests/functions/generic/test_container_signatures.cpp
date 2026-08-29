@@ -129,7 +129,7 @@ TEST(Functions_Generic_ContainerSignatures, self_referential_interface) {
     }
 
     class CellPeeker<T> implements IPeeker<ref T, Cell<T>> {
-        function init() {}
+        init() {}
         function peek(container: ref Cell<T>) ref T {
             return container.value;
         }
@@ -137,7 +137,7 @@ TEST(Functions_Generic_ContainerSignatures, self_referential_interface) {
 
     class Cell<T> implements IPeekable<ref T, Cell<T>> {
         var value: T;
-        function init(v: T) { this.value = v; }
+        init(v: T) { this.value = v; }
         function peeker() IPeeker<ref T, Cell<T>> {
             return CellPeeker<T>();
         }

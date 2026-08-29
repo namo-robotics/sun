@@ -426,7 +426,7 @@ TEST(ControlFlow_Match, method_ending_in_fully_terminating_match) {
     using sun;
 
     class NotANumber implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 7; }
       function message() String { return String("not a number"); }
     }
@@ -439,8 +439,8 @@ TEST(ControlFlow_Match, method_ending_in_fully_terminating_match) {
 
     class Holder {
       var v: Value;
-      function init(v: Value) { this.v = v; }
-      function as_f64() f64, IError {
+      init(v: Value) { this.v = v; }
+      function as_f64() f64 throws IError {
         match this.v {
           Value.Int(x) => { return _convert<f64>(x); },
           Value.Float(x) => { return x; },
@@ -477,7 +477,7 @@ TEST(ControlFlow_Match, statement_arms_with_void_calls) {
 
     class Holder {
       var v: Value;
-      function init(v: Value) { this.v = v; }
+      init(v: Value) { this.v = v; }
       function push(x: i64) void {
         match this.v {
           Value.Items(items) => { items.push(x); },

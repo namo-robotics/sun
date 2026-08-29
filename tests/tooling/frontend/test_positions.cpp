@@ -260,13 +260,13 @@ TEST(Tooling_Frontend_TypeSpans, GenericsAndArrays) {
 }
 
 TEST(Tooling_Frontend_TypeSpans, ErrorUnionReturnType) {
-  std::string src = "function divide(a: i32, b: i32) i32, IError { throw 1; }";
+  std::string src = "function divide(a: i32, b: i32) i32 throws IError { throw 1; }";
   auto block = parseSource(src);
   auto* fn = static_cast<FunctionAST*>(block->getBody()[0].get());
   const auto& ret = fn->getProto().getReturnType();
   ASSERT_TRUE(ret.has_value());
   EXPECT_TRUE(ret->canError);
-  EXPECT_EQ(spanText(src, ret->span), "i32, IError");
+  EXPECT_EQ(spanText(src, ret->span), "i32 throws IError");
 }
 
 TEST(Tooling_Frontend_TypeSpans, PlainReturnType) {
@@ -291,13 +291,13 @@ TEST(Tooling_Frontend_TypeSpans, LambdaTypeBacktrackedComma) {
 }
 
 TEST(Tooling_Frontend_TypeSpans, ThrowingLambdaType) {
-  std::string src = "function g(cb: (i32) -> i32, IError) void {}";
+  std::string src = "function g(cb: (i32) -> i32 throws IError) void {}";
   auto block = parseSource(src);
   auto* fn = static_cast<FunctionAST*>(block->getBody()[0].get());
   const auto& args = fn->getProto().getArgs();
   ASSERT_EQ(args.size(), 1u);
   EXPECT_TRUE(args[0].second.canError);
-  EXPECT_EQ(spanText(src, args[0].second.span), "(i32) -> i32, IError");
+  EXPECT_EQ(spanText(src, args[0].second.span), "(i32) -> i32 throws IError");
 }
 
 TEST(Tooling_Frontend_TypeSpans, FnType) {

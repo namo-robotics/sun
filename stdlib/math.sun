@@ -78,7 +78,7 @@ public module sun {
   // dropped (truncated toward zero), as _convert does.
   //
   //   var t: i32 = safe_convert<i32>(ms);   // ms: i64
-  public function safe_convert<T, U>(x: U) T, IError {
+  public function safe_convert<T, U>(x: U) T throws IError {
     var zero: T = _convert<T>(0);
     if (_is<_Integer>(x) and _is<_Integer>(zero)) {
       var y: T = _convert<T>(x);

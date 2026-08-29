@@ -14,7 +14,7 @@ TEST(Lambdas_BoundMethods, pass_method_as_callback) {
   auto value = executeString(R"(
     class Counter {
         var count: i32;
-        function init() { this.count = 0; }
+        init() { this.count = 0; }
         function add(amount: i32) i32 {
             this.count = this.count + amount;
             return this.count;
@@ -37,7 +37,7 @@ TEST(Lambdas_BoundMethods, receiver_mutated_through_callback) {
   auto value = executeString(R"(
     class Counter {
         var count: i32;
-        function init() { this.count = 0; }
+        init() { this.count = 0; }
         function add(amount: i32) i32 {
             this.count = this.count + amount;
             return this.count;
@@ -62,7 +62,7 @@ TEST(Lambdas_BoundMethods, stored_in_var_then_called) {
   auto value = executeString(R"(
     class Counter {
         var count: i32;
-        function init() { this.count = 0; }
+        init() { this.count = 0; }
         function add(amount: i32) i32 {
             this.count = this.count + amount;
             return this.count;
@@ -84,7 +84,7 @@ TEST(Lambdas_BoundMethods, stored_with_type_annotation) {
   auto value = executeString(R"(
     class Counter {
         var count: i32;
-        function init() { this.count = 0; }
+        init() { this.count = 0; }
         function add(amount: i32) i32 {
             this.count = this.count + amount;
             return this.count;
@@ -108,7 +108,7 @@ TEST(Lambdas_BoundMethods, this_method_as_callback) {
 
     class Machine {
         var total: i32;
-        function init() { this.total = 0; }
+        init() { this.total = 0; }
         function step(x: i32) i32 {
             this.total = this.total + x;
             return this.total;
@@ -130,7 +130,7 @@ TEST(Lambdas_BoundMethods, ref_receiver) {
   auto value = executeString(R"(
     class Counter {
         var count: i32;
-        function init() { this.count = 0; }
+        init() { this.count = 0; }
         function add(amount: i32) i32 {
             this.count = this.count + amount;
             return this.count;
@@ -159,7 +159,7 @@ TEST(Lambdas_BoundMethods, overload_picked_by_annotation) {
   auto value = executeString(R"(
     class Calc {
         var last: i32;
-        function init() { this.last = 0; }
+        init() { this.last = 0; }
         function add(x: i32) i32 {
             this.last = this.last + x;
             return this.last;
@@ -182,7 +182,7 @@ TEST(Lambdas_BoundMethods, overload_picked_by_param_context) {
   auto value = executeString(R"(
     class Calc {
         var last: i32;
-        function init() { this.last = 0; }
+        init() { this.last = 0; }
         function add(x: i32) i32 {
             this.last = this.last + x;
             return this.last;
@@ -207,7 +207,7 @@ TEST(Lambdas_BoundMethods, overload_picked_by_param_context) {
 TEST(Lambdas_BoundMethods, ambiguous_overload_without_context) {
   EXPECT_THROW(executeString(R"(
     class Calc {
-        function init() {}
+        init() {}
         function add(x: i32) i32 { return x; }
         function add(x: f64) i32 { return 0; }
     }
@@ -224,7 +224,7 @@ TEST(Lambdas_BoundMethods, ambiguous_overload_without_context) {
 TEST(Lambdas_BoundMethods, generic_method_reference_rejected) {
   EXPECT_THROW(executeString(R"(
     class Box {
-        function init() {}
+        init() {}
         function unwrap<T>(x: T) T { return x; }
     }
 
@@ -243,8 +243,8 @@ TEST(Lambdas_BoundMethods, throwing_method_into_throwing_param) {
 
     class Parser {
         var errors: i32;
-        function init() { this.errors = 0; }
-        function parse(x: i32) i32, IError {
+        init() { this.errors = 0; }
+        function parse(x: i32) i32 throws IError {
             if (x < 0) {
                 this.errors = this.errors + 1;
                 throw Error(1, "negative");
@@ -253,7 +253,7 @@ TEST(Lambdas_BoundMethods, throwing_method_into_throwing_param) {
         }
     }
 
-    function run_guarded(f: (i32) -> i32, IError, x: i32) i32 {
+    function run_guarded(f: (i32) -> i32 throws IError, x: i32) i32 {
         try {
             return f(x);
         } catch (e: IError) {
@@ -276,11 +276,11 @@ TEST(Lambdas_BoundMethods, nonthrowing_method_into_throwing_param) {
     using sun;
 
     class Doubler {
-        function init() {}
+        init() {}
         function twice(x: i32) i32 { return x * 2; }
     }
 
-    function run_guarded(f: (i32) -> i32, IError, x: i32) i32 {
+    function run_guarded(f: (i32) -> i32 throws IError, x: i32) i32 {
         try {
             return f(x);
         } catch (e: IError) {
@@ -301,8 +301,8 @@ TEST(Lambdas_BoundMethods, stored_throwing_method_uncaught_rejected) {
     using sun;
 
     class Parser {
-        function init() {}
-        function parse(x: i32) i32, IError {
+        init() {}
+        function parse(x: i32) i32 throws IError {
             if (x < 0) { throw Error(1, "negative"); }
             return x;
         }
@@ -311,7 +311,7 @@ TEST(Lambdas_BoundMethods, stored_throwing_method_uncaught_rejected) {
     function main() i32 {
         var p = Parser();
         var f = p.parse;
-        return f(1);   // call outside try / ', IError' context
+        return f(1);   // call outside try / ' throws IError' context
     }
   )"),
                SunError);
@@ -321,7 +321,7 @@ TEST(Lambdas_BoundMethods, bound_method_call_in_loop) {
   auto value = executeString(R"(
     class Counter {
         var count: i32;
-        function init() { this.count = 0; }
+        init() { this.count = 0; }
         function add(amount: i32) i32 {
             this.count = this.count + amount;
             return this.count;
@@ -369,7 +369,7 @@ TEST(Lambdas_BoundMethods, deinit_runs_once_with_bound_method) {
         var data: raw_ptr<u8>;
         var hits: i32;
 
-        function init(allocator: ref HeapAllocator) {
+        init(allocator: ref HeapAllocator) {
             this.alloc = allocator.copy();
             this.data = this.alloc.alloc_raw(4);
             this.hits = 0;
@@ -380,7 +380,7 @@ TEST(Lambdas_BoundMethods, deinit_runs_once_with_bound_method) {
             return this.hits;
         }
 
-        function deinit() void {
+        deinit() {
             unsafe { _free(this.data); };
         }
     }

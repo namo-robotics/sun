@@ -21,7 +21,7 @@ public module sun {
 
     // Build a range from all four fields. The compiler emits this shape
     // directly, so the field order here is part of the slicing ABI.
-    public function init(start_: i64, end_: i64, has_start_: bool, has_end_: bool) {
+    init(start_: i64, end_: i64, has_start_: bool, has_end_: bool) {
       this.start = start_;
       this.end = end_;
       this.has_start = has_start_;

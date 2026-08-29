@@ -62,7 +62,7 @@ TEST(Builtins_StaticPtr, length_of_a_class_field) {
   auto value = executeString(R"(
     class Named {
       var name: static_ptr<u8>;
-      function init() { this.name = "wxyz"; }
+      init() { this.name = "wxyz"; }
       function name_length() i64 { return this.name.length(); }
     }
     function main() i32 {
@@ -76,7 +76,7 @@ TEST(Builtins_StaticPtr, length_of_a_class_field) {
 TEST(Builtins_StaticPtr, length_of_a_method_result) {
   auto value = executeString(R"(
     class Boom implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 9; }
       function message() static_ptr<u8> { return "boom"; }
     }

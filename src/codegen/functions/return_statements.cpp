@@ -85,7 +85,7 @@ Value* FunctionGenerator::codegen(const ReturnExprAST& expr) {
 
     ctx.builder->CreateRet(retVal);
   } else {
-    // Void return - clean up and return. A 'void, IError' function returns
+    // Void return - clean up and return. A 'void throws IError' function returns
     // plain void now (exceptions carry error state, not the return value).
     scopes().emitScopeCleanup();
     ctx.builder->CreateRetVoid();

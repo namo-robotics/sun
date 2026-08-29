@@ -66,7 +66,7 @@ TEST(Interfaces, class_implements_interface) {
     class SimpleCounter implements Counter {
       var value: i32;
       
-      function init() {
+      init() {
         this.value = 0;
       }
 
@@ -90,7 +90,7 @@ TEST(Interfaces, interface_field_inherited) {
     }
 
     class ValueHolder implements HasValue {
-      function init(v: i32) {
+      init(v: i32) {
         this.value = v;
       }
       
@@ -116,7 +116,7 @@ TEST(Interfaces, default_method_used) {
     }
 
     class Thinker implements Answerable {
-      function init() {
+      init() {
       }
     }
 
@@ -137,7 +137,7 @@ TEST(Interfaces, override_default_method) {
     }
 
     class SmartThinker implements Answerable {
-      function init() {
+      init() {
       }
       
       function answer() i32 {
@@ -168,7 +168,7 @@ TEST(Interfaces, multiple_interfaces) {
     }
 
     class Point implements HasX, HasY {
-      function init(px: i32, py: i32) {
+      init(px: i32, py: i32) {
         this.x = px;
         this.y = py;
       }
@@ -197,7 +197,7 @@ TEST(Interfaces, multiple_interfaces_with_methods) {
     }
 
     class Calculator implements Adder, Multiplier {
-      function init() {
+      init() {
       }
       
       function add(a: i32, b: i32) i32 {
@@ -232,7 +232,7 @@ TEST(Interfaces, interface_default_uses_field) {
     }
 
     class MyCounter implements Incrementable {
-      function init(start: i32) {
+      init(start: i32) {
         this.counter = start;
       }
     }
@@ -258,7 +258,7 @@ TEST(Interfaces, class_own_plus_interface_fields) {
     class Entity implements HasId {
       var name_length: i32;
       
-      function init(id: i32, len: i32) {
+      init(id: i32, len: i32) {
         this.id = id;
         this.name_length = len;
       }
@@ -287,14 +287,14 @@ TEST(Interfaces_Iterator, implements_iiterator) {
     using sun;
 
     class DummyContainer {
-      function init() {}
+      init() {}
     }
 
     class RangeIterator implements IIterator<i32, DummyContainer> {
       var current: i32;
       var end: i32;
 
-      function init(start: i32, end: i32) {
+      init(start: i32, end: i32) {
         this.current = start;
         this.end = end;
       }
@@ -332,7 +332,7 @@ TEST(Interfaces_Iterator, generic_implements_iiterator) {
     using sun;
 
     class DummyContainer {
-      function init() {}
+      init() {}
     }
 
     class ArrayIterator<T> implements IIterator<T, DummyContainer> {
@@ -340,7 +340,7 @@ TEST(Interfaces_Iterator, generic_implements_iiterator) {
       var index: i32;
       var size: i32;
 
-      function init(arr: ref array<T>, sz: i32) {
+      init(arr: ref array<T>, sz: i32) {
         this.items = arr;
         this.index = 0;
         this.size = sz;
@@ -382,12 +382,12 @@ TEST(Interfaces_Iterator, covariant_iter_is_static_only) {
       using sun;
 
       class Range implements IIterable<i32, Range> {
-          function init() {}
+          init() {}
           function iter() RangeIterator { return RangeIterator(); }
       }
 
       class RangeIterator implements IIterator<i32, Range> {
-          function init() {}
+          init() {}
           function next(r: ref Range) Option<i32> { return Option.None; }
       }
 
@@ -407,7 +407,7 @@ TEST(Interfaces_Iterator, generic_class_conformance_is_checked) {
       using sun;
 
       class Wrong<T> implements IIterator<T, Wrong<T>> {
-        function init() {}
+        init() {}
         function next(w: ref Wrong<T>) T { return 0; }
       }
 
@@ -426,7 +426,7 @@ TEST(Interfaces_Iterator, missing_next_is_error) {
       using sun;
 
       class Broken implements IIterator<i32, Broken> {
-        function init() {}
+        init() {}
       }
       function main() i32 { return 0; }
     )");
@@ -440,7 +440,7 @@ TEST(Interfaces_Iterator, wrong_next_signature_is_error) {
       using sun;
 
       class Broken implements IIterator<i32, Broken> {
-        function init() {}
+        init() {}
         function next(c: ref Broken) i32 { return 0; }
       }
       function main() i32 { return 0; }
@@ -486,7 +486,7 @@ TEST(Interfaces_DynamicDispatch, basic_interface_variable_dispatch) {
     }
     class Square implements IShape {
       var side: i32;
-      function init(s: i32) {
+      init(s: i32) {
         this.side = s;
       }
       function area() i32 {
@@ -509,7 +509,7 @@ TEST(Interfaces_DynamicDispatch, interface_param_dispatch) {
     }
     class Circle implements IShape {
       var radius: i32;
-      function init(r: i32) {
+      init(r: i32) {
         this.radius = r;
       }
       function area() i32 {
@@ -535,13 +535,13 @@ TEST(Interfaces_DynamicDispatch, multiple_classes_same_interface) {
     }
     class Square implements IShape {
       var side: i32;
-      function init(s: i32) { this.side = s; }
+      init(s: i32) { this.side = s; }
       function area() i32 { return this.side * this.side; }
     }
     class Rectangle implements IShape {
       var width: i32;
       var height: i32;
-      function init(w: i32, h: i32) { this.width = w; this.height = h; }
+      init(w: i32, h: i32) { this.width = w; this.height = h; }
       function area() i32 { return this.width * this.height; }
     }
     function get_area(s: ref IShape) i32 {
@@ -566,7 +566,7 @@ TEST(Interfaces_DynamicDispatch, interface_with_multiple_methods) {
     class Counter implements ICounter {
       var val: i32;
       var id: i32;
-      function init(v: i32, n: i32) { this.val = v; this.id = n; }
+      init(v: i32, n: i32) { this.val = v; this.id = n; }
       function value() i32 { return this.val; }
       function name() i32 { return this.id; }
     }
@@ -591,7 +591,7 @@ TEST(Interfaces_DynamicDispatch, interface_with_default_method_override) {
     }
     class CustomGreeter implements IGreeter {
       var bonus: i32;
-      function init(b: i32) { this.bonus = b; }
+      init(b: i32) { this.bonus = b; }
       function greet() i32 {
         return 100 + this.bonus;
       }
@@ -616,7 +616,7 @@ TEST(Interfaces_DynamicDispatch, interface_with_default_method_no_override) {
       }
     }
     class DefaultGreeter implements IGreeter {
-      function init() {}
+      init() {}
     }
     function get_greeting(g: ref IGreeter) i32 {
       return g.greet();
@@ -637,7 +637,7 @@ TEST(Interfaces_DynamicDispatch, generic_interface_dispatch) {
     }
     class IntBox implements IBox<i32> {
       var val: i32;
-      function init(v: i32) { this.val = v; }
+      init(v: i32) { this.val = v; }
       function get() i32 { return this.val; }
     }
     function unbox(b: ref IBox<i32>) i32 {
@@ -660,7 +660,7 @@ TEST(Interfaces_DynamicDispatch, generic_method_dispatch_not_supported) {
         function create<T>() T;
       }
       class IntFactory implements IFactory {
-        function init() {}
+        init() {}
         function create<T>() T {
           return 0;
         }
@@ -686,12 +686,12 @@ TEST(Interfaces_DynamicDispatch, for_in_over_vec_of_interfaces) {
     }
     class NumA implements IValue {
       var n: i32;
-      function init(v: i32) { this.n = v; }
+      init(v: i32) { this.n = v; }
       function get() i32 { return this.n; }
     }
     class NumB implements IValue {
       var n: i32;
-      function init(v: i32) { this.n = v; }
+      init(v: i32) { this.n = v; }
       function get() i32 { return this.n * 2; }
     }
     function main() i32 {
@@ -715,7 +715,7 @@ TEST(Interfaces_DynamicDispatch, extra_argument_to_interface_method_is_error) {
     interface IShape { function area() i32; }
     class Square implements IShape {
         var s: i32;
-        function init(s: i32) { this.s = s; }
+        init(s: i32) { this.s = s; }
         function area() i32 { return this.s * this.s; }
     }
     function main() i32 {
@@ -736,7 +736,7 @@ TEST(Interfaces, borrowed_class_passes_to_interface_parameters) {
     interface IShape { function area() i32; }
     class Sq implements IShape {
       var s: i32;
-      function init(s: i32) { this.s = s; }
+      init(s: i32) { this.s = s; }
       function area() i32 { return this.s * this.s; }
     }
     function measure(sh: IShape) i32 { return sh.area(); }

@@ -20,7 +20,7 @@ TEST(MemorySafety_LinkedList, two_nodes_linked) {
         var value: i32;
         var next: raw_ptr<Node>;
 
-        function init(v: i32) {
+        init(v: i32) {
             this.value = v;
             this.next = null;
         }
@@ -57,7 +57,7 @@ TEST(MemorySafety_LinkedList, three_nodes_chain) {
         var value: i32;
         var next: raw_ptr<Node>;
 
-        function init(v: i32) {
+        init(v: i32) {
             this.value = v;
             this.next = null;
         }
@@ -105,7 +105,7 @@ TEST(MemorySafety_LinkedList, modify_through_pointer) {
         var value: i32;
         var next: raw_ptr<Node>;
 
-        function init(v: i32) {
+        init(v: i32) {
             this.value = v;
             this.next = null;
         }
@@ -154,7 +154,7 @@ TEST(MemorySafety_LinkedList, access_deep_chain) {
         var value: i32;
         var next: raw_ptr<Node>;
 
-        function init(v: i32) {
+        init(v: i32) {
             this.value = v;
             this.next = null;
         }
@@ -199,7 +199,7 @@ TEST(MemorySafety_LinkedList, null_terminated_list) {
         var value: i32;
         var next: raw_ptr<Node>;
 
-        function init(v: i32) {
+        init(v: i32) {
             this.value = v;
             this.next = null;
         }
@@ -255,7 +255,7 @@ TEST(MemorySafety_LinkedList, while_loop_traversal) {
         var value: i32;
         var next: raw_ptr<Node>;
 
-        function init(v: i32) {
+        init(v: i32) {
             this.value = v;
             this.next = null;
         }
@@ -311,7 +311,7 @@ TEST(MemorySafety_LinkedList, list_class_with_methods) {
         var value: i32;
         var next: raw_ptr<Node>;
 
-        function init(v: i32) {
+        init(v: i32) {
             this.value = v;
             this.next = null;
         }
@@ -341,7 +341,7 @@ TEST(MemorySafety_LinkedList, list_class_with_methods) {
         var head: raw_ptr<Node>;
         var tail: raw_ptr<Node>;
 
-        function init() {
+        init() {
             this.head = null;
             this.tail = null;
         }

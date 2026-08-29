@@ -29,12 +29,12 @@ TEST(Errors, basic_function_call) {
 TEST(Errors, throw_basic) {
   auto value = executeString(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function mayThrow(x: i32) i32, IError {
+    function mayThrow(x: i32) i32 throws IError {
       if (x < 0) {
         throw TestError();
       }
@@ -55,12 +55,12 @@ TEST(Errors, throw_basic) {
 TEST(Errors, throw_triggers_catch) {
   auto value = executeString(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function mayThrow(x: i32) i32, IError {
+    function mayThrow(x: i32) i32 throws IError {
       if (x < 0) {
         throw TestError();
       }
@@ -81,12 +81,12 @@ TEST(Errors, throw_triggers_catch) {
 TEST(Errors, try_catch_success_path) {
   auto value = executeString(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function compute(a: i32, b: i32) i32, IError {
+    function compute(a: i32, b: i32) i32 throws IError {
       if (b == 0) {
         throw TestError();
       }
@@ -110,12 +110,12 @@ TEST(Errors, try_catch_success_path) {
 TEST(Errors, catch_binding_code_is_usable) {
   auto value = executeString(R"(
     class MyError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 7; }
       function message() static_ptr<u8> { return "boom"; }
     }
 
-    function mayThrow(x: i32) i32, IError {
+    function mayThrow(x: i32) i32 throws IError {
       if (x < 0) {
         throw MyError();
       }
@@ -138,17 +138,17 @@ TEST(Errors, catch_binding_dispatches_to_concrete_type) {
   // dynamic dispatch picks the right override.
   auto value = executeString(R"(
     class ErrA implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 10; }
       function message() static_ptr<u8> { return "a"; }
     }
     class ErrB implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 20; }
       function message() static_ptr<u8> { return "b"; }
     }
 
-    function pick(x: i32) i32, IError {
+    function pick(x: i32) i32 throws IError {
       if (x == 1) { throw ErrA(); }
       throw ErrB();
     }
@@ -171,17 +171,17 @@ TEST(Errors, catch_binding_dispatches_to_concrete_type) {
 namespace {
 constexpr const char* kTypedErrors = R"(
     class ErrA implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "a"; }
     }
     class ErrB implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 2; }
       function message() static_ptr<u8> { return "b"; }
     }
     class ErrC implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 3; }
       function message() static_ptr<u8> { return "c"; }
     }
@@ -190,7 +190,7 @@ constexpr const char* kTypedErrors = R"(
 
 TEST(Errors, typed_catch_selects_matching_clause) {
   auto value = executeString(std::string(kTypedErrors) + R"(
-    function pick(x: i32) i32, IError {
+    function pick(x: i32) i32 throws IError {
       if (x == 1) { throw ErrA(); }
       throw ErrB();
     }
@@ -211,7 +211,7 @@ TEST(Errors, typed_catch_selects_matching_clause) {
 
 TEST(Errors, typed_catch_falls_through_to_ierror) {
   auto value = executeString(std::string(kTypedErrors) + R"(
-    function pick() i32, IError { throw ErrC(); }
+    function pick() i32 throws IError { throw ErrC(); }
     function main() i32 {
       try {
         return pick();
@@ -233,12 +233,12 @@ TEST(Errors, typed_catch_concrete_binding_reads_field) {
   auto value = executeString(R"(
     class BoundsErr implements IError {
       var idx_: i64;
-      function init(i: i64) { this.idx_ = i; }
+      init(i: i64) { this.idx_ = i; }
       function code() i32 { return 3; }
       function message() static_ptr<u8> { return "oob"; }
       function idx() i64 { return this.idx_; }
     }
-    function may(x: i64) i64, IError {
+    function may(x: i64) i64 throws IError {
       if (x < 0) { throw BoundsErr(77); }
       return x;
     }
@@ -258,7 +258,7 @@ TEST(Errors, typed_catch_unmatched_rethrows_to_outer) {
   // Inner try catches only ErrA; a thrown ErrB has no match and rethrows to the
   // enclosing try, which catches it.
   auto value = executeString(std::string(kTypedErrors) + R"(
-    function pick(x: i32) i32, IError {
+    function pick(x: i32) i32 throws IError {
       if (x == 1) { throw ErrA(); }
       throw ErrB();
     }
@@ -280,12 +280,12 @@ TEST(Errors, typed_catch_unmatched_rethrows_to_outer) {
 TEST(Errors, try_catch_error_path) {
   auto value = executeString(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function compute(a: i32, b: i32) i32, IError {
+    function compute(a: i32, b: i32) i32 throws IError {
       if (b == 0) {
         throw TestError();
       }
@@ -310,19 +310,19 @@ TEST(Errors, try_catch_error_path) {
 TEST(Errors, nested_try_catch) {
   auto value = executeString(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function inner(x: i32) i32, IError {
+    function inner(x: i32) i32 throws IError {
       if (x == 0) {
         throw TestError();
       }
       return x;
     }
 
-    function outer(x: i32) i32, IError {
+    function outer(x: i32) i32 throws IError {
       var result = inner(x);
       return result * 2;
     }
@@ -341,19 +341,19 @@ TEST(Errors, nested_try_catch) {
 TEST(Errors, nested_error_propagation) {
   auto value = executeString(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function inner(x: i32) i32, IError {
+    function inner(x: i32) i32 throws IError {
       if (x == 0) {
         throw TestError();
       }
       return x;
     }
 
-    function outer(x: i32) i32, IError {
+    function outer(x: i32) i32 throws IError {
       var result = inner(x);
       return result * 2;
     }
@@ -372,12 +372,12 @@ TEST(Errors, nested_error_propagation) {
 TEST(Errors, pass_mayThrow_to_function) {
   auto value = executeString(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function mayThrow(x: i32) i32, IError {
+    function mayThrow(x: i32) i32 throws IError {
       if (x < 0) {
         throw TestError();
       }
@@ -402,12 +402,12 @@ TEST(Errors, pass_mayThrow_to_function) {
 TEST(Errors, pass_mayThrow_success) {
   auto value = executeString(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function mayThrow(x: i32) i32, IError {
+    function mayThrow(x: i32) i32 throws IError {
       if (x < 0) {
         throw TestError();
       }
@@ -436,12 +436,12 @@ TEST(Errors, pass_mayThrow_success) {
 TEST(Errors, safe_divide_success) {
   auto value = executeString(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function safeDivide(a: i32, b: i32) i32, IError {
+    function safeDivide(a: i32, b: i32) i32 throws IError {
       if (b == 0) {
         throw TestError();
       }
@@ -462,12 +462,12 @@ TEST(Errors, safe_divide_success) {
 TEST(Errors, safe_divide_by_zero) {
   auto value = executeString(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function safeDivide(a: i32, b: i32) i32, IError {
+    function safeDivide(a: i32, b: i32) i32 throws IError {
       if (b == 0) {
         throw TestError();
       }
@@ -488,7 +488,7 @@ TEST(Errors, safe_divide_by_zero) {
 TEST(Errors, auto_safe_division_success) {
   // Functions declared with IError automatically check for division by zero
   auto value = executeString(R"(
-    function divide(a: i32, b: i32) i32, IError {
+    function divide(a: i32, b: i32) i32 throws IError {
       return a / b;
     }
 
@@ -506,7 +506,7 @@ TEST(Errors, auto_safe_division_success) {
 TEST(Errors, auto_safe_division_by_zero) {
   // Functions declared with IError automatically check for division by zero
   auto value = executeString(R"(
-    function divide(a: i32, b: i32) i32, IError {
+    function divide(a: i32, b: i32) i32 throws IError {
       return a / b;
     }
 
@@ -528,12 +528,12 @@ TEST(Errors, auto_safe_division_by_zero) {
 TEST(Errors, try_catch_with_computation) {
   auto value = executeString(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function compute(x: i32) i32, IError {
+    function compute(x: i32) i32 throws IError {
       if (x < 0) {
         throw TestError();
       }
@@ -555,19 +555,19 @@ TEST(Errors, try_catch_with_computation) {
 TEST(Errors, try_catch_with_multiple_calls) {
   auto value = executeString(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function add(a: i32, b: i32) i32, IError {
+    function add(a: i32, b: i32) i32 throws IError {
       if (a < 0) {
         throw TestError();
       }
       return a + b;
     }
 
-    function mul(a: i32, b: i32) i32, IError {
+    function mul(a: i32, b: i32) i32 throws IError {
       if (b < 0) {
         throw TestError();
       }
@@ -589,12 +589,12 @@ TEST(Errors, try_catch_with_multiple_calls) {
 TEST(Errors, try_catch_with_variable_args) {
   auto value = executeString(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function combine(a: i32, b: i32, c: i32) i32, IError {
+    function combine(a: i32, b: i32, c: i32) i32 throws IError {
       if (a < 0) {
         throw TestError();
       }
@@ -622,12 +622,12 @@ TEST(Errors, try_catch_with_variable_args) {
 TEST(Errors, catch_returns_different_value) {
   auto value = executeString(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function mayFail(x: i32) i32, IError {
+    function mayFail(x: i32) i32 throws IError {
       if (x == 0) {
         throw TestError();
       }
@@ -648,12 +648,12 @@ TEST(Errors, catch_returns_different_value) {
 TEST(Errors, success_returns_original_value) {
   auto value = executeString(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function mayFail(x: i32) i32, IError {
+    function mayFail(x: i32) i32 throws IError {
       if (x == 0) {
         throw TestError();
       }
@@ -678,12 +678,12 @@ TEST(Errors, success_returns_original_value) {
 TEST(Errors, multiple_throw_conditions) {
   auto value = executeString(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function validate(x: i32) i32, IError {
+    function validate(x: i32) i32 throws IError {
       if (x < 0) {
         throw TestError();
       }
@@ -707,12 +707,12 @@ TEST(Errors, multiple_throw_conditions) {
 TEST(Errors, first_condition_throws) {
   auto value = executeString(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function validate(x: i32) i32, IError {
+    function validate(x: i32) i32 throws IError {
       if (x < 0) {
         throw TestError();
       }
@@ -736,12 +736,12 @@ TEST(Errors, first_condition_throws) {
 TEST(Errors, second_condition_throws) {
   auto value = executeString(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function validate(x: i32) i32, IError {
+    function validate(x: i32) i32 throws IError {
       if (x < 0) {
         throw TestError();
       }
@@ -769,12 +769,12 @@ TEST(Errors, second_condition_throws) {
 TEST(Errors, throw_inside_for_loop) {
   auto value = executeString(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function mayThrow(x: i32) i32, IError {
+    function mayThrow(x: i32) i32 throws IError {
       if (x == 5) {
         throw TestError();
       }
@@ -800,12 +800,12 @@ TEST(Errors, throw_inside_for_loop) {
 TEST(Errors, throw_inside_while_loop) {
   auto value = executeString(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function mayThrow(x: i32) i32, IError {
+    function mayThrow(x: i32) i32 throws IError {
       if (x == 5) {
         throw TestError();
       }
@@ -833,12 +833,12 @@ TEST(Errors, throw_inside_while_loop) {
 TEST(Errors, for_loop_completes_without_throw) {
   auto value = executeString(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function mayThrow(x: i32) i32, IError {
+    function mayThrow(x: i32) i32 throws IError {
       if (x < 0) {
         throw TestError();
       }
@@ -864,12 +864,12 @@ TEST(Errors, for_loop_completes_without_throw) {
 TEST(Errors, while_loop_completes_without_throw) {
   auto value = executeString(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function mayThrow(x: i32) i32, IError {
+    function mayThrow(x: i32) i32 throws IError {
       if (x < 0) {
         throw TestError();
       }
@@ -897,12 +897,12 @@ TEST(Errors, while_loop_completes_without_throw) {
 TEST(Errors, throw_inside_nested_for_loops) {
   auto value = executeString(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function mayThrow(x: i32, y: i32) i32, IError {
+    function mayThrow(x: i32, y: i32) i32 throws IError {
       if (x == 2) {
         if (y == 3) {
           throw TestError();
@@ -932,12 +932,12 @@ TEST(Errors, throw_inside_nested_for_loops) {
 TEST(Errors, throw_inside_for_loop_with_break) {
   auto value = executeString(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function mayThrow(x: i32) i32, IError {
+    function mayThrow(x: i32) i32 throws IError {
       if (x == 8) {
         throw TestError();
       }
@@ -967,12 +967,12 @@ TEST(Errors, throw_inside_for_loop_with_break) {
 TEST(Errors, throw_inside_while_loop_with_continue) {
   auto value = executeString(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function mayThrow(x: i32) i32, IError {
+    function mayThrow(x: i32) i32 throws IError {
       if (x == 10) {
         throw TestError();
       }
@@ -1003,12 +1003,12 @@ TEST(Errors, throw_inside_while_loop_with_continue) {
 TEST(Errors, throw_after_loop_iteration) {
   auto value = executeString(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function process(x: i32) i32, IError {
+    function process(x: i32) i32 throws IError {
       if (x > 20) {
         throw TestError();
       }
@@ -1034,12 +1034,12 @@ TEST(Errors, throw_after_loop_iteration) {
 TEST(Errors, throw_after_loop_exceeds_limit) {
   auto value = executeString(R"(
     class TestError implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "test error"; }
     }
 
-    function process(x: i32) i32, IError {
+    function process(x: i32) i32 throws IError {
       if (x > 20) {
         throw TestError();
       }
@@ -1070,7 +1070,7 @@ TEST(Errors, error_carries_a_computed_string_message) {
   auto value = executeStringWithStdlib(R"(
     using sun;
 
-    function boom(path: ref String) void, IError {
+    function boom(path: ref String) void throws IError {
       throw Error(-7, path);
     }
 
@@ -1098,7 +1098,7 @@ TEST(Errors, computed_error_message_survives_the_string_it_came_from) {
 
     // The String is built, moved into the Error and dropped here; only the
     // Error's copy is left for the caller to read.
-    function make(a: ref HeapAllocator) void, IError {
+    function make(a: ref HeapAllocator) void throws IError {
       var msg = String(a, "gone");
       msg.append(" by now");
       throw Error(3, msg);
@@ -1155,7 +1155,7 @@ TEST(Errors, without_stdlib_message_stays_literal_only) {
   // registered static_ptr<u8> message contract.
   auto value = executeString(R"(
     class Boom implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 9; }
       function message() static_ptr<u8> { return "boom"; }
     }
@@ -1174,12 +1174,12 @@ TEST(Errors, throw_and_catch_work_without_stdlib) {
   // literal message with nothing imported.
   auto value = executeString(R"(
     class Boom implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 9; }
       function message() static_ptr<u8> { return "boom"; }
     }
 
-    function fail() i32, IError {
+    function fail() i32 throws IError {
       throw Boom();
     }
 
@@ -1202,7 +1202,7 @@ TEST(Errors, argument_mismatch_on_a_method_names_the_method) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
         class Counter {
           var n: i32;
-          function init() { this.n = 0; }
+          init() { this.n = 0; }
           function add(step: i32) void { this.n = this.n + step; }
         }
 
@@ -1219,8 +1219,8 @@ TEST(Errors, no_matching_constructor_lists_the_candidates) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
         class Pair {
           var a: i32;
-          function init(a: i32) { this.a = a; }
-          function init(a: i32, b: i32) { this.a = a + b; }
+          init(a: i32) { this.a = a; }
+          init(a: i32, b: i32) { this.a = a + b; }
         }
 
         function main() i32 {

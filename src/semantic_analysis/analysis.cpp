@@ -2069,7 +2069,7 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
 
   // Check for error propagation: calling a throwing function or lambda
   // requires either being inside a try block or being in a function declared
-  // with ", IError"
+  // with "throws IError"
   bool calleeThrows = resolvedFunc && resolvedFunc->canThrow;
   if (!calleeThrows) {
     sun::TypePtr calleeType = callExpr.getCallee()->getResolvedType();

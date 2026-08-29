@@ -29,7 +29,7 @@ public module sun {
     var prev: raw_ptr<LinkedListNode<T>>;
 
     // Build a detached node that owns the given value.
-    public function init(v: T) {
+    init(v: T) {
       this.value = v;
       this.next = null;
       this.prev = null;
@@ -98,7 +98,7 @@ public module sun {
     var size_: i64;
 
     // Constructor with allocator
-    public function init(allocator: const ref HeapAllocator) {
+    init(allocator: const ref HeapAllocator) {
       this.alloc = allocator.copy();
       this.head = null;
       this.tail = null;
@@ -106,7 +106,7 @@ public module sun {
     }
 
     // Destructor - free all nodes
-    function deinit() void {
+    deinit() {
       this.clear();
     }
 
@@ -143,7 +143,7 @@ public module sun {
     }
 
     // Remove and return the last element
-    public function pop_back() T, IError {
+    public function pop_back() T throws IError {
       if (this.tail == null) {
         throw EmptyError();
       }
@@ -161,7 +161,7 @@ public module sun {
     }
 
     // Remove and return the first element
-    public function pop_front() T, IError {
+    public function pop_front() T throws IError {
       if (this.head == null) {
         throw EmptyError();
       }
@@ -181,7 +181,7 @@ public module sun {
     // Borrow the element at index (traverses from nearest end). The list keeps
     // ownership, so this hands back a reference; use remove()/pop_*() to move
     // an element out.
-    public const function get(index: i64) ref T, IError {
+    public const function get(index: i64) ref T throws IError {
       if (index < 0) {
         throw NotFoundError();
       }
@@ -193,7 +193,7 @@ public module sun {
     }
 
     // Set element at index
-    public function set(index: i64, value: T) void, IError {
+    public function set(index: i64, value: T) void throws IError {
       if (index < 0) {
         throw NotFoundError();
       }
@@ -205,7 +205,7 @@ public module sun {
     }
 
     // Remove element at index and return its value
-    public function remove(index: i64) T, IError {
+    public function remove(index: i64) T throws IError {
       if (index < 0) {
         throw NotFoundError();
       }
@@ -318,7 +318,7 @@ public module sun {
     var started: bool;
 
     // Build an iterator positioned before the first node.
-    public function init() {
+    init() {
       this.current = null;
       this.started = false;
     }

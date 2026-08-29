@@ -19,12 +19,12 @@ TEST(MemorySafety_Allocator, variadic_method_local_allocator) {
     class Point {
         var x: i32;
         var y: i32;
-        function init(x: i32, y: i32) { this.x = x; this.y = y; }
+        init(x: i32, y: i32) { this.x = x; this.y = y; }
         function sum() i32 { return this.x + this.y; }
     }
 
     class MyAllocator {
-        function init() {}
+        init() {}
         function create<T>(args...: _params_of<T>) raw_ptr<T> {
             var size: i64 = _sizeof<T>();
             var memory: raw_ptr<i8> = unsafe { _malloc(size); };
@@ -54,7 +54,7 @@ TEST(MemorySafety_Allocator, heap_allocator_create_simple_class) {
         var x: i32;
         var y: i32;
         
-        function init(x: i32, y: i32) {
+        init(x: i32, y: i32) {
             this.x = x;
             this.y = y;
         }
@@ -81,7 +81,7 @@ TEST(MemorySafety_Allocator, heap_allocator_create_generic_class) {
     class Box<T> {
         var value: T;
         
-        function init(v: T) {
+        init(v: T) {
             this.value = v;
         }
         
@@ -109,7 +109,7 @@ TEST(MemorySafety_Allocator, unique_ptr_automatic_cleanup) {
         var x: i32;
         var y: i32;
         
-        function init(x: i32, y: i32) {
+        init(x: i32, y: i32) {
             this.x = x;
             this.y = y;
         }
@@ -138,7 +138,7 @@ TEST(MemorySafety_Allocator, multiple_heap_allocations) {
     class Counter {
         var value: i32;
         
-        function init(v: i32) {
+        init(v: i32) {
             this.value = v;
         }
     }
@@ -166,7 +166,7 @@ TEST(MemorySafety_Allocator, allocator_as_parameter) {
         var x: i32;
         var y: i32;
         
-        function init(x: i32, y: i32) {
+        init(x: i32, y: i32) {
             this.x = x;
             this.y = y;
         }
@@ -212,7 +212,7 @@ TEST(MemorySafety_Allocator, sizeof_intrinsic_class) {
     class Point {
         var x: i32;
         var y: i32;
-        function init() {
+        init() {
             this.x = 0;
             this.y = 0;
         }
@@ -234,7 +234,7 @@ TEST(MemorySafety_Allocator, init_intrinsic_with_allocator) {
         var x: i32;
         var y: i32;
         
-        function init(x: i32, y: i32) {
+        init(x: i32, y: i32) {
             this.x = x;
             this.y = y;
         }
@@ -266,8 +266,8 @@ TEST(MemorySafety_Allocator, create_selects_init_overload_by_args) {
     class Point {
         var x: i32;
         var y: i32;
-        function init(x: i32, y: i32) { this.x = x; this.y = y; }
-        function init(v: i32) { this.x = v; this.y = v; }
+        init(x: i32, y: i32) { this.x = x; this.y = y; }
+        init(v: i32) { this.x = v; this.y = v; }
     }
 
     function main() i32 {
@@ -287,8 +287,8 @@ TEST(MemorySafety_Allocator, create_single_arg_init_overload) {
     class Point {
         var x: i32;
         var y: i32;
-        function init(x: i32, y: i32) { this.x = x; this.y = y; }
-        function init(v: i32) { this.x = v; this.y = v; }
+        init(x: i32, y: i32) { this.x = x; this.y = y; }
+        init(v: i32) { this.x = v; this.y = v; }
     }
 
     function main() i32 {
@@ -308,7 +308,7 @@ TEST(MemorySafety_Allocator, create_no_matching_init_overload_errors) {
     class Point {
         var x: i32;
         var y: i32;
-        function init(x: i32, y: i32) { this.x = x; this.y = y; }
+        init(x: i32, y: i32) { this.x = x; this.y = y; }
     }
 
     function main() i32 {
@@ -331,7 +331,7 @@ TEST(MemorySafety_Allocator, create_unique_basic) {
     class Point {
         var x: i32;
         var y: i32;
-        function init(x: i32, y: i32) { this.x = x; this.y = y; }
+        init(x: i32, y: i32) { this.x = x; this.y = y; }
         function sum() i32 { return this.x + this.y; }
     }
 
@@ -351,8 +351,8 @@ TEST(MemorySafety_Allocator, create_unique_overloaded_init) {
     class Point {
         var x: i32;
         var y: i32;
-        function init(v: i32) { this.x = v; this.y = v; }
-        function init(x: i32, y: i32) { this.x = x; this.y = y; }
+        init(v: i32) { this.x = v; this.y = v; }
+        init(x: i32, y: i32) { this.x = x; this.y = y; }
     }
 
     function main() i32 {
@@ -375,8 +375,8 @@ TEST(MemorySafety_Allocator, create_unique_deinit_called_once) {
 
     class Resource {
       var value: i32;
-      function init(v: i32) { this.value = v; }
-      function deinit() void { counter = counter + 1; }
+      init(v: i32) { this.value = v; }
+      deinit() { counter = counter + 1; }
     }
 
     function helper() i32 {
@@ -403,8 +403,8 @@ TEST(MemorySafety_Allocator, create_unique_returned_from_function) {
 
     class Resource {
       var value: i32;
-      function init(v: i32) { this.value = v; }
-      function deinit() void { counter = counter + 1; }
+      init(v: i32) { this.value = v; }
+      deinit() { counter = counter + 1; }
     }
 
     function make(alloc: ref HeapAllocator, v: i32) Unique<Resource> {
@@ -442,12 +442,12 @@ TEST(MemorySafety_Allocator, method_fixed_params_precede_the_pack) {
     class Point {
         var x: i32;
         var y: i32;
-        function init(x: i32, y: i32) { this.x = x; this.y = y; }
+        init(x: i32, y: i32) { this.x = x; this.y = y; }
         function sum() i32 { return this.x + this.y; }
     }
 
     class TaggedAllocator {
-        function init() {}
+        init() {}
         function create<T>(tag: i32, args...: _params_of<T>) i32 {
             var size: i64 = _sizeof<T>();
             var memory: raw_ptr<i8> = unsafe { _malloc(size); };
@@ -470,11 +470,11 @@ TEST(MemorySafety_Allocator, method_too_few_arguments_for_fixed_params) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Point {
         var x: i32;
-        function init(x: i32) { this.x = x; }
+        init(x: i32) { this.x = x; }
     }
 
     class TaggedAllocator {
-        function init() {}
+        init() {}
         function create<T>(tag: i32, args...: _params_of<T>) i32 { return tag; }
     }
 

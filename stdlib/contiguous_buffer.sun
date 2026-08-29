@@ -23,10 +23,11 @@ public module sun {
   public class ContiguousBuffer<T> implements IIterable<ref T, ContiguousBuffer<T>> {
     var data: Unique<u8>;  // Element storage (owned, auto-freed)
     var alloc: HeapAllocator;  // Allocator (stored via copy)
+    var alloc: HeapAllocator;  // Allocator (stored via copy)
     var size_: i64;  // Number of elements (fixed after init)
 
     // Constructor with allocator and size
-    public function init(allocator: const ref HeapAllocator, size: i64) {
+    init(allocator: const ref HeapAllocator, size: i64) {
       this.alloc = allocator.copy();
       this.size_ = size;
       this.data = Unique<u8>(this.alloc.alloc_raw(size * _sizeof<T>()));
@@ -39,7 +40,7 @@ public module sun {
     // Borrow element at index (bounds-checked). The buffer keeps ownership, so
     // this hands back a reference — copying the element out would leave two
     // owners of anything it holds.
-    public const function get(index: i64) ref T, IError {
+    public const function get(index: i64) ref T throws IError {
       if (index < 0) {
         throw IndexOutOfBoundsError(index);
       }
@@ -50,7 +51,7 @@ public module sun {
     }
 
     // Set element at index (bounds-checked)
-    public function set(index: i64, value: T) void, IError {
+    public function set(index: i64, value: T) void throws IError {
       if (index < 0) {
         throw IndexOutOfBoundsError(index);
       }
@@ -120,7 +121,7 @@ public module sun {
     }
 
     // Write elements from another buffer into this buffer (bounds-checked)
-    public function write_from(source: const ref ContiguousBuffer<T>, src_offset: i64, dst_offset: i64, count: i64) void, IError {
+    public function write_from(source: const ref ContiguousBuffer<T>, src_offset: i64, dst_offset: i64, count: i64) void throws IError {
       // Validate source bounds
       if (src_offset < 0) {
         throw IndexOutOfBoundsError(src_offset);
@@ -181,7 +182,7 @@ public module sun {
     }
 
     // Borrow first element (bounds-checked)
-    public const function first() ref T, IError {
+    public const function first() ref T throws IError {
       if (this.size_ == 0) {
         throw IndexOutOfBoundsError(0);
       }
@@ -189,7 +190,7 @@ public module sun {
     }
 
     // Borrow last element (bounds-checked)
-    public const function last() ref T, IError {
+    public const function last() ref T throws IError {
       if (this.size_ == 0) {
         throw IndexOutOfBoundsError(0);
       }
@@ -230,7 +231,7 @@ public module sun {
     var current: i64;
 
     // Build an iterator positioned before the first element.
-    public function init() {
+    init() {
       this.current = 0;
     }
 

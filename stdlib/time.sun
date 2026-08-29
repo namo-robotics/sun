@@ -26,7 +26,7 @@ public module sun {
 
       // Build a duration, carrying any whole seconds out of the nanosecond part.
       // A negative result is clamped to zero.
-      public function init(secs: i64, nanos: i64) {
+      init(secs: i64, nanos: i64) {
         var extra: i64 = nanos / NANOS_PER_SEC;
         this.secs = secs + extra;
         this.nanos = nanos - extra * NANOS_PER_SEC;
@@ -95,7 +95,7 @@ public module sun {
       var nanos: i64;
 
       // Build an instant from a raw monotonic clock reading.
-      public function init(secs: i64, nanos: i64) {
+      init(secs: i64, nanos: i64) {
         this.secs = secs;
         this.nanos = nanos;
       }
@@ -164,7 +164,7 @@ public module sun {
 
       // Build a calendar time from its date and clock fields. Weekday, day of year
       // and UTC offset start at zero; the conversion functions fill them in.
-      public function init(year: i32, month: i32, day: i32, hour: i32, minute: i32, second: i32) {
+      init(year: i32, month: i32, day: i32, hour: i32, minute: i32, second: i32) {
         this.year = year;
         this.month = month;
         this.day = day;

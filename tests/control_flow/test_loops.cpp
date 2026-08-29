@@ -741,7 +741,7 @@ TEST(ControlFlow_ForInLoops, basic_iterator_sum) {
       var current: i32;
       var end: i32;
 
-      function init(start: i32, stop: i32) {
+      init(start: i32, stop: i32) {
         this.current = start;
         this.end = stop;
       }
@@ -776,7 +776,7 @@ TEST(ControlFlow_ForInLoops, empty_iterator) {
       var current: i32;
       var end: i32;
 
-      function init(start: i32, stop: i32) {
+      init(start: i32, stop: i32) {
         this.current = start;
         this.end = stop;
       }
@@ -811,7 +811,7 @@ TEST(ControlFlow_ForInLoops, single_element) {
       var value: i32;
       var done: bool;
 
-      function init(v: i32) {
+      init(v: i32) {
         this.value = v;
         this.done = false;
       }
@@ -856,7 +856,7 @@ TEST(ControlFlow_ForInLoops, nested_forin) {
       var current: i32;
       var end: i32;
 
-      function init(start: i32, stop: i32) {
+      init(start: i32, stop: i32) {
         this.current = start;
         this.end = stop;
       }
@@ -896,7 +896,7 @@ TEST(ControlFlow_ForInLoops, break_in_forin) {
       var current: i32;
       var end: i32;
 
-      function init(start: i32, stop: i32) {
+      init(start: i32, stop: i32) {
         this.current = start;
         this.end = stop;
       }
@@ -932,7 +932,7 @@ TEST(ControlFlow_ForInLoops, continue_in_forin) {
       var current: i32;
       var end: i32;
 
-      function init(start: i32, stop: i32) {
+      init(start: i32, stop: i32) {
         this.current = start;
         this.end = stop;
       }
@@ -974,7 +974,7 @@ TEST(ControlFlow_ForInLoops, error_class_without_iterator_interface) {
         var current: i32;
         var end: i32;
 
-        function init(start: i32, stop: i32) {
+        init(start: i32, stop: i32) {
           this.current = start;
           this.end = stop;
         }
@@ -1009,7 +1009,7 @@ TEST(ControlFlow_ForInLoops, error_loop_var_type_mismatch) {
 
       class Once implements IIterator<i32, Once> {
         var done: bool;
-        function init() { this.done = false; }
+        init() { this.done = false; }
         function next(self: ref Once) Option<i32> {
           if (this.done) { return Option.None; }
           this.done = true;
@@ -1036,7 +1036,7 @@ TEST(ControlFlow_ForInLoops, error_next_not_returning_option) {
       using sun;
 
       class Bare implements IIterator<i32, Bare> {
-        function init() {}
+        init() {}
         function next(self: ref Bare) i32 { return 1; }
       }
 
@@ -1058,13 +1058,13 @@ TEST(ControlFlow_ForInLoops, iterable_with_separate_iterator) {
     class Range implements IIterable<i32, Range> {
         var start: i32;
         var end: i32;
-        function init(s: i32, e: i32) { this.start = s; this.end = e; }
+        init(s: i32, e: i32) { this.start = s; this.end = e; }
         function iter() RangeIterator { return RangeIterator(this.start); }
     }
 
     class RangeIterator implements IIterator<i32, Range> {
         var cur: i32;
-        function init(s: i32) { this.cur = s; }
+        init(s: i32) { this.cur = s; }
         function next(r: ref Range) Option<i32> {
             if (this.cur >= r.end) { return Option.None; }
             this.cur = this.cur + 1;
@@ -1088,10 +1088,10 @@ TEST(ControlFlow_ForInLoops, error_next_container_type_mismatch) {
     executeStringWithStdlib(R"(
       using sun;
 
-      class Other { function init() {} }
+      class Other { init() {} }
 
       class BadIter implements IIterator<i32, Other> {
-        function init() {}
+        init() {}
         function next(o: ref Other) Option<i32> { return Option.None; }
       }
 
@@ -1109,15 +1109,15 @@ TEST(ControlFlow_ForInLoops, error_iter_returns_mismatched_iterator) {
     executeStringWithStdlib(R"(
       using sun;
 
-      class Other { function init() {} }
+      class Other { init() {} }
 
       class BadIter implements IIterator<i32, Other> {
-        function init() {}
+        init() {}
         function next(o: ref Other) Option<i32> { return Option.None; }
       }
 
       class Small<T> implements IIterable<T, Small<T>> {
-        function init() {}
+        init() {}
         function iter() BadIter { return BadIter(); }
       }
 
@@ -1136,7 +1136,7 @@ TEST(ControlFlow_ForInLoops, error_next_without_container_param) {
       using sun;
 
       class NoArg implements IIterator<i32, NoArg> {
-        function init() {}
+        init() {}
         function next() Option<i32> { return Option.None; }
       }
 
@@ -1156,7 +1156,7 @@ TEST(ControlFlow_ForInLoops, error_class_without_iterable_interface) {
 
       class FakeIterator implements IIterator<i32, FakeIterator> {
         var done: bool;
-        function init() { this.done = false; }
+        init() { this.done = false; }
         function next(self: ref FakeIterator) Option<i32> {
           if (this.done) { return Option.None; }
           this.done = true;
@@ -1165,7 +1165,7 @@ TEST(ControlFlow_ForInLoops, error_class_without_iterable_interface) {
       }
 
       class NotIterable {
-        function init() {}
+        init() {}
         function iter() FakeIterator {
           return FakeIterator();
         }

@@ -377,7 +377,7 @@ TEST(Ffi_Abi_CrossTarget, aarch64_extern_ir_uses_aapcs64_lowering) {
   driver->compileString(R"(
     class Triplet {
         var a: i32; var b: i32; var c: i32;
-        function init(a: i32, b: i32, c: i32) {
+        init(a: i32, b: i32, c: i32) {
             this.a = a; this.b = b; this.c = c;
         }
     }
@@ -494,7 +494,7 @@ TEST(Ffi_Abi_CrossTarget, extern_struct_call_runs_under_qemu) {
     class Pair {
         var a: i32;
         var b: i32;
-        function init(a: i32, b: i32) { this.a = a; this.b = b; }
+        init(a: i32, b: i32) { this.a = a; this.b = b; }
     }
     extern "C" function take_pair(p: Pair) i32;
 
@@ -617,11 +617,11 @@ bool haveAarch64MuslToolchain() {
 // genuinely depends on the toolchain shipping a musl-built libstdc++.
 constexpr const char* kThrowingProgram = R"(
     class DivByZero implements IError {
-      function init() {}
+      init() {}
       function code() i32 { return 1; }
       function message() static_ptr<u8> { return "division by zero"; }
     }
-    function divide(a: i32, b: i32) i32, IError {
+    function divide(a: i32, b: i32) i32 throws IError {
         if (b == 0) { throw DivByZero(); }
         return a / b;
     }

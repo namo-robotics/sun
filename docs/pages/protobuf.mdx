@@ -98,8 +98,8 @@ Every message class also has:
 
 Decoding is a free function per message (Sun has no static methods):
 
-- `M_decode(alloc: ref HeapAllocator, buf: ref Vec<u8>) M, IError`
-- `M_decode_delimited(alloc: ref HeapAllocator, r: ref ProtoReader) M, IError`
+- `M_decode(alloc: ref HeapAllocator, buf: ref Vec<u8>) M throws IError`
+- `M_decode_delimited(alloc: ref HeapAllocator, r: ref ProtoReader) M throws IError`
   reads one length-prefixed message from a stream reader (`ProtoReader(buf)`,
   from the stdlib's `proto_wire` module).
 

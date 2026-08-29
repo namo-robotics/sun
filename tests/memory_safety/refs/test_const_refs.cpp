@@ -26,7 +26,7 @@ TEST(MemorySafety_Refs_ConstRefs, statement_form_reads_target) {
 
 TEST(MemorySafety_Refs_ConstRefs, annotated_form_reads_field) {
   auto value = executeString(R"(
-      class Point { var x: i32; function init(v: i32) { this.x = v; } }
+      class Point { var x: i32; init(v: i32) { this.x = v; } }
       function main() i32 {
           var p = Point(7);
           var r: const ref i32 = p.x;
@@ -41,7 +41,7 @@ TEST(MemorySafety_Refs_ConstRefs, parameter_reads_class) {
       class Point {
           var x: i32;
           var y: i32;
-          function init(a: i32, b: i32) { this.x = a; this.y = b; }
+          init(a: i32, b: i32) { this.x = a; this.y = b; }
           const function sum() i32 { return this.x + this.y; }
       }
       function total(p: const ref Point) i32 { return p.sum() + p.x; }
@@ -57,7 +57,7 @@ TEST(MemorySafety_Refs_ConstRefs, generic_const_ref_parameter) {
   auto value = executeString(R"(
       class Box<T> {
           var v: T;
-          function init(v: T) { this.v = v; }
+          init(v: T) { this.v = v; }
           const function get() T { return this.v; }
       }
       function first<T>(b: const ref Box<T>) T { return b.get(); }
@@ -118,7 +118,7 @@ TEST(MemorySafety_Refs_ConstRefs, assignment_through_parameter_is_rejected) {
 TEST(MemorySafety_Refs_ConstRefs, field_write_through_parameter_is_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       executeString(R"(
-      class Point { var x: i32; function init() { this.x = 0; } }
+      class Point { var x: i32; init() { this.x = 0; } }
       function set(p: const ref Point) void { p.x = 2; }
       function main() i32 {
           var p = Point();
@@ -135,7 +135,7 @@ TEST(MemorySafety_Refs_ConstRefs,
       executeString(R"(
       class Counter {
           var n: i32;
-          function init() { this.n = 0; }
+          init() { this.n = 0; }
           function bump() void { this.n = this.n + 1; }
       }
       function poke(c: const ref Counter) void { c.bump(); }
@@ -201,7 +201,7 @@ TEST(MemorySafety_Refs_ConstRefs, ref_result_reads_through_const_receiver) {
   auto value = executeString(R"(
       class Cell {
           var v: i32;
-          function init(v: i32) { this.v = v; }
+          init(v: i32) { this.v = v; }
           const function get() ref i32 { return this.v; }
       }
       function main() i32 {
@@ -217,7 +217,7 @@ TEST(MemorySafety_Refs_ConstRefs, ref_result_cannot_bind_mutable_ref) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       class Cell {
           var v: i32;
-          function init(v: i32) { this.v = v; }
+          init(v: i32) { this.v = v; }
           const function get() ref i32 { return this.v; }
       }
       function main() i32 {
@@ -233,10 +233,10 @@ TEST(MemorySafety_Refs_ConstRefs, ref_result_cannot_bind_mutable_ref) {
 TEST(MemorySafety_Refs_ConstRefs, ref_result_cannot_be_written_through) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       executeString(R"(
-      class Inner { var x: i32; function init() { this.x = 0; } }
+      class Inner { var x: i32; init() { this.x = 0; } }
       class Cell {
           var inner: Inner;
-          function init() { this.inner = Inner(); }
+          init() { this.inner = Inner(); }
           const function get() ref Inner { return this.inner; }
       }
       function main() i32 {
@@ -252,7 +252,7 @@ TEST(MemorySafety_Refs_ConstRefs, ref_result_stays_mutable_on_var_receiver) {
   auto value = executeString(R"(
       class Cell {
           var v: i32;
-          function init(v: i32) { this.v = v; }
+          init(v: i32) { this.v = v; }
           const function get() ref i32 { return this.v; }
       }
       function main() i32 {

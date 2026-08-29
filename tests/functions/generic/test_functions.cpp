@@ -216,7 +216,7 @@ TEST(Functions_Generic, called_from_generic_class_method_defined_above_it) {
   auto value = executeString(R"(
     class Box<T> {
         var v: T;
-        function init(v: T) { this.v = v; }
+        init(v: T) { this.v = v; }
         function get() T { return helper<T>(this.v); }
     }
     function helper<T>(x: T) T { return x + x; }
@@ -232,7 +232,7 @@ TEST(Functions_Generic, called_from_class_method_defined_above_it) {
   auto value = executeString(R"(
     class Plain {
         var n: i32;
-        function init(n: i32) { this.n = n; }
+        init(n: i32) { this.n = n; }
         function get() i32 { return helper<i32>(this.n); }
     }
     function helper<T>(x: T) T { return x + x; }
@@ -281,11 +281,11 @@ TEST(Functions_Generic, mutually_ordered_specializations_share_one_symbol) {
 TEST(Functions_Generic, throwing_generic_is_catchable) {
   auto value = executeString(R"(
     class Boom implements IError {
-        function init() {}
+        init() {}
         function code() i32 { return 1; }
         function message() static_ptr<u8> { return "boom"; }
     }
-    function risky<T>(x: T) i32, IError { throw Boom(); }
+    function risky<T>(x: T) i32 throws IError { throw Boom(); }
     function main() i32 {
         try { return risky<i32>(1); } catch (e: IError) { return 42; }
     }
@@ -296,18 +296,18 @@ TEST(Functions_Generic, throwing_generic_is_catchable) {
 TEST(Functions_Generic, throwing_generic_is_catchable_from_class_method) {
   auto value = executeString(R"(
     class Boom implements IError {
-        function init() {}
+        init() {}
         function code() i32 { return 1; }
         function message() static_ptr<u8> { return "boom"; }
     }
     class Box<T> {
         var v: T;
-        function init(v: T) { this.v = v; }
+        init(v: T) { this.v = v; }
         function get() i32 {
             try { return risky<T>(this.v); } catch (e: IError) { return 42; }
         }
     }
-    function risky<T>(x: T) i32, IError { throw Boom(); }
+    function risky<T>(x: T) i32 throws IError { throw Boom(); }
     function main() i32 { var b = Box<i32>(1); return b.get(); }
   )");
   EXPECT_EQ(value, 42);
@@ -333,7 +333,7 @@ TEST(Functions_Generic, ref_type_parameter_from_generic_class_method) {
     function bump<T>(x: ref T) i32 { return 42; }
     class Box<T> {
         var v: T;
-        function init(v: T) { this.v = v; }
+        init(v: T) { this.v = v; }
         function get() i32 { var local: T = this.v; return bump<T>(local); }
     }
     function main() i32 { var b = Box<i32>(1); return b.get(); }
@@ -345,7 +345,7 @@ TEST(Functions_Generic, parameter_naming_a_generic_class) {
   auto value = executeString(R"(
     class Pair<A> {
         var a: A;
-        function init(a: A) { this.a = a; }
+        init(a: A) { this.a = a; }
         function get() A { return this.a; }
     }
     function unwrap<T>(p: ref Pair<T>) T { return p.get(); }
@@ -380,7 +380,7 @@ TEST(Functions_Generic, nested_module_qualified_call_from_generic_method) {
     }
     class Box<T> {
         var v: T;
-        function init(v: T) { this.v = v; }
+        init(v: T) { this.v = v; }
         function get() T { return a.b.pick<T>(this.v, this.v); }
     }
     function main() i32 {
@@ -416,7 +416,7 @@ TEST(Functions_Generic, type_argument_inferred_through_ref_parameter) {
   auto value = executeString(R"(
     class Point {
         var x: i32;
-        function init(x: i32) { this.x = x; }
+        init(x: i32) { this.x = x; }
         function get() i32 { return this.x; }
     }
     function peek<T>(v: ref T) i32 { return 42; }
@@ -432,7 +432,7 @@ TEST(Functions_Generic, type_argument_inferred_from_generic_class_argument) {
   auto value = executeString(R"(
     class Pair<A> {
         var a: A;
-        function init(a: A) { this.a = a; }
+        init(a: A) { this.a = a; }
         function get() A { return this.a; }
     }
     function unwrap<T>(p: ref Pair<T>) T { return p.get(); }

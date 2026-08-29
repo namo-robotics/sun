@@ -50,6 +50,7 @@ enum class TokenKind {
   TRY,       // try keyword for error handling
   CATCH,     // catch keyword for exception handling
   THROW,     // throw keyword for throwing exceptions
+  THROWS,    // throws keyword marking a signature that may throw
   UNSAFE,    // unsafe keyword for unsafe blocks
   // Type keywords (must come before IDENTIFIER for priority)
   STATIC_PTR,       // static_ptr (pointer to immortal static data)
@@ -172,6 +173,7 @@ static const std::map<TokenKind, std::string> tokenRegexes = {
     {TokenKind::LAMBDA, "lambda"},
     {TokenKind::TRY, "try"},
     {TokenKind::CATCH, "catch"},
+    {TokenKind::THROWS, "throws"},  // Must come before throw
     {TokenKind::THROW, "throw"},
     {TokenKind::UNSAFE, "unsafe"},
     {TokenKind::FAT_ARROW, "=>"},
@@ -366,6 +368,7 @@ inline const std::map<TokenKind, TokenInfo>& getTokenInfo() {
       {TokenKind::LAMBDA, {"lambda"}},
       {TokenKind::TRY, {"try"}},
       {TokenKind::CATCH, {"catch"}},
+      {TokenKind::THROWS, {"throws"}},
       {TokenKind::THROW, {"throw"}},
       {TokenKind::UNSAFE, {"unsafe"}},
       {TokenKind::STATIC_PTR, {"static_ptr"}},

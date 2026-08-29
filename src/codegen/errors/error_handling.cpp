@@ -102,7 +102,7 @@ void ErrorGenerator::emitCxaThrowAndUnreachable(Value* excPtr) {
 Value* ErrorGenerator::codegen(const ThrowExprAST& expr) {
   if (!currentFunctionCanError()) {
     logAndThrowError(
-        "throw can only be used in functions declared with ', IError'");
+        "throw can only be used in functions declared with 'throws IError'");
     return nullptr;
   }
 

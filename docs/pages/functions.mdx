@@ -178,7 +178,7 @@ Class methods are first-class values: `obj.method` (without parentheses) produce
 ```sun
 class Counter {
     var count: i32;
-    function init() { this.count = 0; }
+    init() { this.count = 0; }
     function add(amount: i32) i32 {
         this.count = this.count + amount;
         return this.count;
@@ -204,4 +204,4 @@ Rules and caveats:
 - **Overloaded methods** need type context to disambiguate: a type annotation (`var f: (i32) -> i32 = c.add;`) or a lambda-typed parameter of the called function. Without context, referencing an overloaded method is an error.
 - **Generic methods** cannot be referenced as values.
 - **Interface-typed receivers** are not supported: only concrete class methods can be bound.
-- A **non-throwing method** can be bound where a throwing lambda type (`(i32) -> i32, IError`) is expected; a throwing method requires a throwing lambda type and its calls follow the usual `try`/`, IError` rules.
+- A **non-throwing method** can be bound where a throwing lambda type (`(i32) -> i32 throws IError`) is expected; a throwing method requires a throwing lambda type and its calls follow the usual `try`/`throws IError` rules.

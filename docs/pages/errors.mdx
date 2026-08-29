@@ -23,7 +23,7 @@ class, it can carry whatever fields and extra methods you need:
 ```sun
 class ParseError implements IError {
     var line_: i32;
-    function init(line: i32) { this.line_ = line; }
+    init(line: i32) { this.line_ = line; }
     function code() i32 { return 1; }
     function message() String { return String("bad input"); }
     function line() i32 { return this.line_; }
@@ -38,16 +38,19 @@ built at runtime, and keeps its own copy.
 
 ## Throwing Functions
 
-A function that can fail declares it with the `, IError` suffix after its
+A function that can fail declares it with the `throws IError` suffix after its
 return type, and raises an error with `throw`. `throw` takes an error object,
 never a bare number:
 
 ```sun
-function divide(a: i32, b: i32) i32, IError {
+function divide(a: i32, b: i32) i32 throws IError {
     if (b == 0) { throw DivisionByZeroError(); }
     return a / b;
 }
 ```
+
+A constructor can fail too: it has no return type, so the suffix stands
+alone — `init(args) throws IError { }`.
 
 A function without the suffix cannot throw. Calling a throwing function is
 only allowed from inside a `try` block or from another throwing function, so
@@ -56,7 +59,7 @@ can never escape unnoticed:
 
 ```sun
 // Propagates: no try needed, the error keeps unwinding to the caller.
-function half_of_quotient(a: i32, b: i32) i32, IError {
+function half_of_quotient(a: i32, b: i32) i32 throws IError {
     return divide(a, b) / 2;
 }
 ```
@@ -115,7 +118,7 @@ that is never caught terminates the program.
 
 ## Best Practices
 
-1. **Handle or declare**: wrap the call in `try`, or add `, IError` to your own
+1. **Handle or declare**: wrap the call in `try`, or add `throws IError` to your own
    signature and let the caller decide.
 2. **Catch what you can handle**: use a typed `catch` for the errors you have a
    real answer for, and let the rest propagate.

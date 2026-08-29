@@ -60,7 +60,7 @@ methods work the same way:
 ```sun
 class Box<T> {
     var v: T;
-    function init(v: T) { this.v = v; }
+    init(v: T) { this.v = v; }
     function twice<U>(x: U) U { return x + x; }
     function as<R, U>(x: U) R { return _convert<R>(x); }
 }
@@ -135,7 +135,7 @@ interface IShape { public function area() i32; }
 
 class Square implements IShape {
     var side: i32;
-    public function init(s: i32) { this.side = s; }
+    init(s: i32) { this.side = s; }
     public function area() i32 { return this.side * this.side; }
 }
 
@@ -180,8 +180,8 @@ another pick a different one:
 class Point {
     var x: i32;
     var y: i32;
-    function init(x: i32, y: i32) { this.x = x; this.y = y; }
-    function init(v: i32) { this.x = v; this.y = v; }
+    init(x: i32, y: i32) { this.x = x; this.y = y; }
+    init(v: i32) { this.x = v; this.y = v; }
 }
 
 var a = make<Point>(3, 4);   // selects init(i32, i32)
@@ -279,7 +279,7 @@ function main() i32 {
 class Box<T> {
   var value: T;
 
-  function init(v: T) {
+  init(v: T) {
     this.value = v;
   }
 
@@ -313,7 +313,7 @@ class Pair<A, B> {
     var first: A;
     var second: B;
 
-    function init(a: A, b: B) {
+    init(a: A, b: B) {
         this.first = a;
         this.second = b;
     }
@@ -345,7 +345,7 @@ class Container<T> implements IIterator<T, Container<T>> {
     var index: i32;
     var size: i32;
 
-    function init(arr: ref array<T>, sz: i32) {
+    init(arr: ref array<T>, sz: i32) {
         this.items = arr;
         this.index = 0;
         this.size = sz;

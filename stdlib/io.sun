@@ -61,7 +61,7 @@ public module sun {
       var revents: i16;
 
       // Build a poll record for one descriptor and the events to watch for.
-      public function init(fd: i32, events: i16) {
+      init(fd: i32, events: i16) {
         this.fd = fd;
         this.events = events;
         this.revents = 0;
@@ -93,22 +93,22 @@ public module sun {
       var fd: i32;
 
       // Build a File that holds no descriptor. Open or adopt one before use.
-      public function init() {
+      init() {
         this.fd = 0;
       }
 
       // Open a file with the specified mode
-      public function open(path: static_ptr<u8>, mode: FileMode) void, IError {
+      public function open(path: static_ptr<u8>, mode: FileMode) void throws IError {
         this.open_cstr(path.raw(), mode);
       }
 
       // Open a file named at runtime. Throws if the system refuses.
-      public function open(path: ref String, mode: FileMode) void, IError {
+      public function open(path: ref String, mode: FileMode) void throws IError {
         this.open_cstr(path.c_str(), mode);
       }
 
       // Open a file named by a C string. The one place the open syscall is made.
-      function open_cstr(path: raw_ptr<u8>, mode: FileMode) void, IError {
+      function open_cstr(path: raw_ptr<u8>, mode: FileMode) void throws IError {
         var result: i32 = unsafe { c_open(path, open_flags(mode), CREATE_MODE); };
         if (result < 0) {
           throw Error(errno(), "failed to open file");
@@ -135,7 +135,7 @@ public module sun {
       }
 
       // Read the rest of the file into a String
-      public function read_all(alloc: ref HeapAllocator) String, IError {
+      public function read_all(alloc: ref HeapAllocator) String throws IError {
         var out: String = String(alloc, "");
         var chunk: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 4096);
         var n: i64 = unsafe { c_read(this.fd, chunk.raw_data(), 4096); };
@@ -181,7 +181,7 @@ public module sun {
       }
 
       // Flush file data to disk
-      public function sync() void, IError {
+      public function sync() void throws IError {
         var result: i32 = unsafe { c_fsync(this.fd); };
         if (result < 0) {
           throw Error(errno(), "failed to sync file");
@@ -189,7 +189,7 @@ public module sun {
       }
 
       // Truncate or extend file to specified length
-      public function truncate(length: i64) void, IError {
+      public function truncate(length: i64) void throws IError {
         var result: i32 = unsafe { c_ftruncate(this.fd, length); };
         if (result < 0) {
           throw Error(errno(), "failed to truncate file");
@@ -215,7 +215,7 @@ public module sun {
       }
 
       // Close the descriptor if the File still holds one.
-      function deinit() void {
+      deinit() {
         this.close();
       }
     }
@@ -224,7 +224,7 @@ public module sun {
     // Whole-file helpers
     // -------------------------------------------------------------------
 
-    public function read_to_string(alloc: ref HeapAllocator, path: static_ptr<u8>) String, IError {
+    public function read_to_string(alloc: ref HeapAllocator, path: static_ptr<u8>) String throws IError {
       var f: File = File();
       f.open(path, FileMode.Read);
       var text: String = f.read_all(alloc);
@@ -233,7 +233,7 @@ public module sun {
     }
 
     // Read a whole file named at runtime into a new String.
-    public function read_to_string(alloc: ref HeapAllocator, path: ref String) String, IError {
+    public function read_to_string(alloc: ref HeapAllocator, path: ref String) String throws IError {
       var f: File = File();
       f.open(path, FileMode.Read);
       var text: String = f.read_all(alloc);
@@ -242,7 +242,7 @@ public module sun {
     }
 
     // Write a String over a file named by a literal, replacing what was there.
-    public function write_string(path: static_ptr<u8>, contents: ref String) void, IError {
+    public function write_string(path: static_ptr<u8>, contents: ref String) void throws IError {
       var f: File = File();
       f.open(path, FileMode.Write);
       if (f.write(contents) < 0) {
@@ -252,7 +252,7 @@ public module sun {
     }
 
     // Write a String over a file named at runtime, replacing what was there.
-    public function write_string(path: ref String, contents: ref String) void, IError {
+    public function write_string(path: ref String, contents: ref String) void throws IError {
       var f: File = File();
       f.open(path, FileMode.Write);
       if (f.write(contents) < 0) {
@@ -265,7 +265,7 @@ public module sun {
     // Paths
     // -------------------------------------------------------------------
 
-    function remove_file_cstr(path: raw_ptr<u8>) void, IError {
+    function remove_file_cstr(path: raw_ptr<u8>) void throws IError {
       var result: i32 = unsafe { c_unlink(path); };
       if (result < 0) {
         throw Error(errno(), "failed to remove file");
@@ -273,18 +273,18 @@ public module sun {
     }
 
     // Remove a file
-    public function remove_file(path: static_ptr<u8>) void, IError {
+    public function remove_file(path: static_ptr<u8>) void throws IError {
       remove_file_cstr(path.raw());
     }
 
     // Delete a file named at runtime. Throws if it cannot be removed.
-    public function remove_file(path: ref String) void, IError {
+    public function remove_file(path: ref String) void throws IError {
       remove_file_cstr(path.c_str());
     }
 
     // Rename a file, both paths as C strings. The one place the rename syscall is
     // made.
-    function rename_file_cstr(old_path: raw_ptr<u8>, new_path: raw_ptr<u8>) void, IError {
+    function rename_file_cstr(old_path: raw_ptr<u8>, new_path: raw_ptr<u8>) void throws IError {
       var result: i32 = unsafe { c_rename(old_path, new_path); };
       if (result < 0) {
         throw Error(errno(), "failed to rename file");
@@ -292,28 +292,28 @@ public module sun {
     }
 
     // Rename or move a file
-    public function rename_file(old_path: static_ptr<u8>, new_path: static_ptr<u8>) void, IError {
+    public function rename_file(old_path: static_ptr<u8>, new_path: static_ptr<u8>) void throws IError {
       rename_file_cstr(old_path.raw(), new_path.raw());
     }
 
     // Rename a file from a literal path to one built at runtime.
-    public function rename_file(old_path: static_ptr<u8>, new_path: ref String) void, IError {
+    public function rename_file(old_path: static_ptr<u8>, new_path: ref String) void throws IError {
       rename_file_cstr(old_path.raw(), new_path.c_str());
     }
 
     // Rename a file from a path built at runtime to a literal one.
-    public function rename_file(old_path: ref String, new_path: static_ptr<u8>) void, IError {
+    public function rename_file(old_path: ref String, new_path: static_ptr<u8>) void throws IError {
       rename_file_cstr(old_path.c_str(), new_path.raw());
     }
 
     // Rename a file, both paths built at runtime.
-    public function rename_file(old_path: ref String, new_path: ref String) void, IError {
+    public function rename_file(old_path: ref String, new_path: ref String) void throws IError {
       rename_file_cstr(old_path.c_str(), new_path.c_str());
     }
 
     // Create a directory named by a C string. The one place the mkdir syscall is
     // made.
-    function make_dir_cstr(path: raw_ptr<u8>, mode: i32) void, IError {
+    function make_dir_cstr(path: raw_ptr<u8>, mode: i32) void throws IError {
       var result: i32 = unsafe { c_mkdir(path, mode); };
       if (result < 0) {
         throw Error(errno(), "failed to create directory");
@@ -321,18 +321,18 @@ public module sun {
     }
 
     // Create a directory with the specified mode (e.g. 0755 = 493)
-    public function make_dir(path: static_ptr<u8>, mode: i32) void, IError {
+    public function make_dir(path: static_ptr<u8>, mode: i32) void throws IError {
       make_dir_cstr(path.raw(), mode);
     }
 
     // Create a directory named at runtime, with the given permission bits.
-    public function make_dir(path: ref String, mode: i32) void, IError {
+    public function make_dir(path: ref String, mode: i32) void throws IError {
       make_dir_cstr(path.c_str(), mode);
     }
 
     // Remove a directory named by a C string. The one place the rmdir syscall is
     // made.
-    function remove_dir_cstr(path: raw_ptr<u8>) void, IError {
+    function remove_dir_cstr(path: raw_ptr<u8>) void throws IError {
       var result: i32 = unsafe { c_rmdir(path); };
       if (result < 0) {
         throw Error(errno(), "failed to remove directory");
@@ -340,12 +340,12 @@ public module sun {
     }
 
     // Remove an empty directory
-    public function remove_dir(path: static_ptr<u8>) void, IError {
+    public function remove_dir(path: static_ptr<u8>) void throws IError {
       remove_dir_cstr(path.raw());
     }
 
     // Remove a directory named at runtime. It must already be empty.
-    public function remove_dir(path: ref String) void, IError {
+    public function remove_dir(path: ref String) void throws IError {
       remove_dir_cstr(path.c_str());
     }
 
@@ -402,7 +402,7 @@ public module sun {
 
     // The size in bytes of the file at a literal path. Throws if it cannot be
     // opened.
-    public function get_file_size(path: static_ptr<u8>) i64, IError {
+    public function get_file_size(path: static_ptr<u8>) i64 throws IError {
       var f: File = File();
       f.open(path, FileMode.Read);
       var size: i64 = f.seek(0, Whence.End);
@@ -414,7 +414,7 @@ public module sun {
     }
 
     // The size in bytes of the file at a path built at runtime.
-    public function get_file_size(path: ref String) i64, IError {
+    public function get_file_size(path: ref String) i64 throws IError {
       var f: File = File();
       f.open(path, FileMode.Read);
       var size: i64 = f.seek(0, Whence.End);
@@ -436,7 +436,7 @@ public module sun {
       var kind_: FileKind;
 
       // Build a directory entry. The name moves in.
-      public function init(name: String, kind: FileKind) {
+      init(name: String, kind: FileKind) {
         this.name_ = name;
         this.kind_ = kind;
       }
@@ -491,7 +491,7 @@ public module sun {
 
     // List a directory. "." and ".." are left out; the order is whatever the
     // filesystem gives, not sorted.
-    function read_dir_cstr(alloc: ref HeapAllocator, path: raw_ptr<u8>) Vec<DirEntry>, IError {
+    function read_dir_cstr(alloc: ref HeapAllocator, path: raw_ptr<u8>) Vec<DirEntry> throws IError {
       var dir: raw_ptr<u8> = unsafe { c_opendir(path); };
       if (dir == null) {
         throw Error(errno(), "failed to open directory");
@@ -517,12 +517,12 @@ public module sun {
 
     // List the entries of a directory at a literal path. '.' and '..' are left
     // out.
-    public function read_dir(alloc: ref HeapAllocator, path: static_ptr<u8>) Vec<DirEntry>, IError {
+    public function read_dir(alloc: ref HeapAllocator, path: static_ptr<u8>) Vec<DirEntry> throws IError {
       return read_dir_cstr(alloc, path.raw());
     }
 
     // List the entries of a directory at a path built at runtime.
-    public function read_dir(alloc: ref HeapAllocator, path: ref String) Vec<DirEntry>, IError {
+    public function read_dir(alloc: ref HeapAllocator, path: ref String) Vec<DirEntry> throws IError {
       return read_dir_cstr(alloc, path.c_str());
     }
 
@@ -565,7 +565,7 @@ public module sun {
       var fds: Vec<PollFd>;
 
       // Build an empty poller. Add descriptors before waiting.
-      public function init(alloc: ref HeapAllocator) {
+      init(alloc: ref HeapAllocator) {
         this.fds = Vec<PollFd>(alloc, 4);
       }
 
@@ -601,7 +601,7 @@ public module sun {
 
       // Blocks until something is ready, the timeout expires, or a signal
       // arrives. -1 waits forever. Returns how many descriptors are ready.
-      public function wait(timeout_ms: i32) i32, IError {
+      public function wait(timeout_ms: i32) i32 throws IError {
         if (this.fds.size() == 0) {
           return 0;
         }
