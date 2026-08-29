@@ -89,8 +89,8 @@
         "keywords": {
             "patterns": [
                 {
-                    "comment": "Constructors and destructors are language syntax, not ordinary methods",
-                    "name": "keyword.other.lifecycle.sun",
+                    "comment": "Constructors and destructors get their own color. The scope borrows string.regexp, which the default themes color red and Sun otherwise never uses; the semantic token type 'lifecycle' maps to the same scope.",
+                    "name": "string.regexp.lifecycle.sun",
                     "match": "\\b(?:init|deinit)\\b(?=\\s*\\()"
                 },
                 {

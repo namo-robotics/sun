@@ -57,6 +57,22 @@
                 "path": "./syntaxes/sun.tmLanguage.json"
             }
         ],
+        "semanticTokenTypes": [
+            {
+                "id": "lifecycle",
+                "superType": "method",
+                "description": "Constructors and destructors (init/deinit)"
+            }
+        ],
+        "semanticTokenScopes": [
+            {
+                "scopes": {
+                    "lifecycle": [
+                        "string.regexp.lifecycle.sun"
+                    ]
+                }
+            }
+        ],
         "configuration": {
             "title": "Sun",
             "properties": {
