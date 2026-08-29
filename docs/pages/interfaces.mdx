@@ -177,7 +177,7 @@ class Value<T> implements Mappable<T, T> {
         this.data = d;
     }
 
-    function map(f: fn(T) T) T {
+    function map(f: (T) -> T) T {
         return f(this.data);
     }
 }

@@ -427,7 +427,7 @@ A method accessed without parentheses (`obj.method`) is a first-class value of l
 
 ```sun
 var c = Counter();
-var tick = c.increment;   // type: () void
+var tick = c.increment;   // type: () -> void
 tick();                   // increments c
 ```
 

@@ -1367,8 +1367,13 @@ void SemanticAnalyzer::maybeResolveBoundMethodRef(MemberAccessAST& memberAccess,
   checkMethodReceiver(*memberAccess.getObject(), memberName, chosen->isConst,
                       chosen->isConstructor, memberAccess.getLocation());
 
-  memberAccess.setResolvedType(sun::Types::Lambda(
-      chosen->returnType, chosen->paramTypes, chosen->canThrow));
+  auto boundType = sun::Types::Lambda(chosen->returnType, chosen->paramTypes,
+                                      chosen->canThrow);
+  // A bound method holds its receiver by reference, so the value is bound
+  // to the frame the receiver lives in - the same escape rules as a lambda
+  // with a `[ref ...]` capture list apply to it.
+  static_cast<sun::LambdaType*>(boundType.get())->setHasRefCaptures(true);
+  memberAccess.setResolvedType(std::move(boundType));
   memberAccess.setIsBoundMethodRef(true);
 }
 

@@ -1243,7 +1243,7 @@ TypeAnnotation Parser::parseTypeAnnotation() {
 TypeAnnotation Parser::parseTypeAnnotationImpl() {
   TypeAnnotation type;
 
-  // Check for function type: _(param_types) return_type (named function)
+  // Check for function type: _(param_types) -> return_type (named function)
   if (curTok.kind == TokenKind::UNDERSCORE) {
     type.baseName = "fn";
     getNextToken();  // eat '_'
@@ -1271,12 +1271,17 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
                            "expected ')' in function type");
     getNextToken();  // eat ')'
 
+    expectCurrentTokenKind(TokenKind::ARROW,
+                           "expected '->' before the return type of a "
+                           "function type: _(i32) -> i32");
+    getNextToken();  // eat '->'
+
     type.returnType = std::make_unique<TypeAnnotation>(parseTypeAnnotation());
 
     return type;
   }
 
-  // Check for lambda type: (param_types) return_type[, IError]
+  // Check for lambda type: (param_types) -> return_type[, IError]
   if (curTok.kind == TokenKind::PAREN_OPEN) {
     type.baseName = "lambda";
     getNextToken();  // eat '('
@@ -1300,9 +1305,14 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
                            "expected ')' in lambda type");
     getNextToken();  // eat ')'
 
+    expectCurrentTokenKind(TokenKind::ARROW,
+                           "expected '->' before the return type of a "
+                           "lambda type: (i32) -> i32");
+    getNextToken();  // eat '->'
+
     type.returnType = std::make_unique<TypeAnnotation>(parseTypeAnnotation());
 
-    // Throwing lambda type: (params) ret, IError. A ',' here is ambiguous
+    // Throwing lambda type: (params) -> ret, IError. A ',' here is ambiguous
     // (may belong to an enclosing param list), so only consume it when the
     // next token is exactly 'IError'.
     if (curTok.kind == TokenKind::COMMA) {

@@ -278,7 +278,7 @@ TEST(EndToEnd_Programs, func_reassign3) {
 
 TEST(EndToEnd_Programs, func_pass) {
   auto value = executeString(R"(
-    var apply = lambda (f: (i32) i32, x: i32) i32 {
+    var apply = lambda (f: (i32) -> i32, x: i32) i32 {
         return f(x);
     };
 
@@ -295,7 +295,7 @@ TEST(EndToEnd_Programs, func_pass) {
 
 TEST(EndToEnd_Programs, pass_named_function) {
   auto value = executeString(R"(
-    var apply = lambda (f: _(i32) i32, x: i32) i32 {
+    var apply = lambda (f: _(i32) -> i32, x: i32) i32 {
         return f(x);
     };
 
@@ -312,7 +312,7 @@ function double(n: i32) i32 {
 
 TEST(EndToEnd_Programs, func_return) {
   auto value = executeString(R"(
-    var f = lambda () () i32 {
+    var f = lambda () () -> i32 {
         var g = lambda () i32 {
             return 2;
         };

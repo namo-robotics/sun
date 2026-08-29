@@ -200,8 +200,34 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const FunctionAST& func) {
   return captures;
 }
 
+// The first `this` inside the expression, if any. `this` is its own node
+// type, so free-variable collection never sees it as a name.
+static const ExprAST* findThisUse(const ExprAST& expr) {
+  if (expr.getType() == ASTNodeType::THIS) return &expr;
+  const ExprAST* found = nullptr;
+  forEachChild(expr, [&found](const ExprAST& child) {
+    if (!found) found = findThisUse(child);
+  });
+  return found;
+}
+
 std::vector<Capture> SemanticAnalyzer::buildCaptures(const LambdaAST& lambda) {
   const PrototypeAST& proto = lambda.getProto();
+
+  // A lambda body compiles as its own function and cannot reach the
+  // enclosing method's receiver, and `this` cannot be named in a capture
+  // list: the receiver is a borrow of the whole object. To run a method on
+  // a thread or a callback, bind it as a value (`this.poll`) instead.
+  for (const auto& stmt : lambda.getBody().getBody()) {
+    const ExprAST* thisUse = stmt ? findThisUse(*stmt) : nullptr;
+    if (thisUse) {
+      logAndThrowError(
+          "A lambda cannot use 'this'. Read the fields it needs into local "
+          "variables and capture those, pass them as arguments, or use a "
+          "bound method ('this.method') as the callable instead",
+          thisUse->getLocation());
+    }
+  }
 
   // Collect bound variables (lambda parameters)
   std::set<std::string> boundVars;

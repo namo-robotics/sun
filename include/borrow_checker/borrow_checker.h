@@ -80,6 +80,11 @@ class BorrowChecker {
   void checkVariableWrite(const std::string& varName, const TypePtr& valueType,
                           const Position& pos);
   bool isRefCapturingLambdaExpr(const ExprAST& expr) const;
+  // A value that must not leave this frame: a call result built from a
+  // lambda with a capture list (spawn stores that lambda inside the Thread
+  // handle it returns), or a local such a result was moved into. See
+  // frameBoundVars_.
+  bool isFrameBoundExpr(const ExprAST& expr) const;
   // Does this class type hold a reference in any field, transitively?
   bool classStoresRefs(const TypePtr& type) const;
   bool classStoresRefsWalk(const TypePtr& type,
@@ -146,6 +151,15 @@ class BorrowChecker {
   // Track which variables have been moved (for move semantics)
   // varName -> true if ownership was transferred
   std::unordered_set<std::string> movedVariables_;
+
+  // Locals holding a value a capture-list lambda was moved into (a Thread
+  // handle from spawn over a `[ref x]` or `[x]` lambda). The lambda's
+  // environment lives in this frame, so the value may move between locals
+  // and be dropped here, but must not escape: not returned, not stored into
+  // a field. The lambda's own capture loans pin the borrowed variables
+  // until scope exit; this set is what keeps the value from outliving them.
+  // (Escape through a container element is not tracked yet.)
+  std::unordered_set<std::string> frameBoundVars_;
 
   // Compound match-payload bindings currently in scope. They BORROW the
   // matched value's payload slot in place: moving them (var creation,

@@ -684,3 +684,185 @@ TEST(Stdlib_Concurrency_Threads, class_argument_cannot_be_used_after_spawn) {
   )"),
                                 "Borrow check failed");
 }
+
+// ============================================================================
+// A thread over borrowed locals must not outlive the frame it borrows from
+// ============================================================================
+
+// The handle spawn returns keeps the lambda - and so its pointers into this
+// frame - alive until the join. Storing it in a field would let the object
+// carry it past the frame's death, so that is rejected.
+TEST(Stdlib_Concurrency_Threads, ref_capturing_thread_cannot_be_stored_in_a_field) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
+    using sun.thread;
+    class Worker {
+      var t: Thread<i32>;
+      public function init() {
+        var x = 3;
+        this.t = spawn(lambda [ref x]() i32 { return x; });
+      }
+    }
+    function main() i32 {
+      var w = Worker();
+      return 0;
+    }
+  )"),
+                                "Borrow check failed");
+}
+
+// An owned capture pins the thread to the frame just as a borrow does: the
+// closure's environment - where the owned value lives - is frame storage.
+TEST(Stdlib_Concurrency_Threads, owned_capture_thread_cannot_be_stored_in_a_field) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
+    using sun.thread;
+    class Worker {
+      var t: Thread<i32>;
+      public function init() {
+        var x = 3;
+        this.t = spawn(lambda [x]() i32 { return x; });
+      }
+    }
+    function main() i32 {
+      var w = Worker();
+      return 0;
+    }
+  )"),
+                                "Borrow check failed");
+}
+
+// Returning the handle is the same escape without the object in between.
+TEST(Stdlib_Concurrency_Threads, ref_capturing_thread_cannot_be_returned) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
+    using sun.thread;
+    function makeThread() Thread<i32> {
+      var x = 3;
+      return spawn(lambda [ref x]() i32 { return x; });
+    }
+    function main() i32 {
+      var t = makeThread();
+      return t.join();
+    }
+  )"),
+                                "Borrow check failed");
+}
+
+// Passing the handle through a local first changes nothing: the local is
+// frame-bound too.
+TEST(Stdlib_Concurrency_Threads,
+     ref_capturing_thread_cannot_be_returned_via_a_variable) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
+    using sun.thread;
+    function makeThread() Thread<i32> {
+      var x = 3;
+      var t = spawn(lambda [ref x]() i32 { return x; });
+      return t;
+    }
+    function main() i32 {
+      var t = makeThread();
+      return t.join();
+    }
+  )"),
+                                "Borrow check failed");
+}
+
+// The legitimate scoped use is untouched: borrow, spawn, join, all in one
+// frame.
+TEST(Stdlib_Concurrency_Threads, ref_capturing_thread_joined_in_frame_is_fine) {
+  auto value = executeStringWithStdlib(R"(
+    using sun.thread;
+    function main() i32 {
+      var x = 40;
+      var t = spawn(lambda [ref x]() i32 { return x + 2; });
+      return t.join();
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// A thread with no captures owns everything it touches, so a constructor may
+// start it and store the handle in a field: the object joins it on drop.
+TEST(Stdlib_Concurrency_Threads, capture_free_thread_may_live_in_a_field) {
+  auto value = executeStringWithStdlib(R"(
+    using sun.thread;
+    class Worker {
+      var t: Thread<i32>;
+      public function init() {
+        this.t = spawn(lambda () i32 { return 7; });
+      }
+      public function take() i32 { return this.t.join(); }
+    }
+    function main() i32 {
+      var w = Worker();
+      return w.take() + 35;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// A bound method holds its receiver by reference, so spawning it works in
+// the receiver's frame - and, like any borrowing thread, no further.
+TEST(Stdlib_Concurrency_Threads, bound_method_thread_joined_in_frame_is_fine) {
+  auto value = executeStringWithStdlib(R"(
+    using sun.thread;
+    class Counter {
+      var count: i32;
+      public function init() { this.count = 40; }
+      public function get(extra: i32) i32 { return this.count + extra; }
+    }
+    function main() i32 {
+      var c = Counter();
+      var t = spawn(c.get, 2);
+      return t.join();
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// A thread over a bound method points into the receiver, so the handle must
+// not leave the receiver's frame either.
+TEST(Stdlib_Concurrency_Threads, bound_method_thread_cannot_be_returned) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
+    using sun.thread;
+    class Counter {
+      var count: i32;
+      public function init() { this.count = 40; }
+      public function get() i32 { return this.count; }
+    }
+    function makeThread() Thread<i32> {
+      var c = Counter();
+      return spawn(c.get);
+    }
+    function main() i32 {
+      var t = makeThread();
+      return t.join();
+    }
+  )"),
+                                "Borrow check failed");
+}
+
+// A class runs its own method on a thread and hands the result to a caller-
+// supplied callback once the thread is done: bind the method (`this.work`)
+// as the thread body, join, then call the lambda the caller passed in.
+TEST(Stdlib_Concurrency_Threads, method_on_a_thread_reports_to_a_callback) {
+  auto value = executeStringWithStdlib(R"(
+    using sun.thread;
+    class Job {
+      var base: i32;
+      public function init(base: i32) { this.base = base; }
+      // The work that runs on the thread.
+      public function work() i32 { return this.base * 2; }
+      // Run work() on a thread; when it finishes, hand what it returned to
+      // the callback and pass the callback's answer on.
+      public function runThen(callback: (i32) -> i32) i32 {
+        var t = spawn(this.work);
+        var result = t.join();
+        return callback(result);
+      }
+    }
+    function main() i32 {
+      var j = Job(20);
+      return j.runThen(lambda (r: i32) i32 { return r + 2; });
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
