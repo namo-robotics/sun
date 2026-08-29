@@ -34,12 +34,15 @@ may throw, and its return type (used to infer types in `return` position).
 During the deep walk, a few things are happening at once:
 
 - **Type inference** — the type of every expression is computed bottom-up
-  (a literal is an `i32`, a call has its callee's return type, and so on).
+  (an untyped literal is an `i32`, a suffixed literal like `21u8` names its
+  own type, a call has its callee's return type, and so on).
 - **Expected-type propagation** — types also flow *top-down* where context
   determines them: a variable's annotation shapes its initializer, a
   function's return type shapes its `return` expressions, a parameter type
-  shapes its argument. This is how integer literals adopt the right width and
-  how `Option.None` learns its type arguments.
+  shapes its argument. This is how untyped integer literals adopt the right
+  width and how `Option.None` learns its type arguments. A suffixed literal
+  arrives already typed and ignores the expected type; its value is
+  range-checked against the suffix instead.
 - **Checking** — assignments, arguments, and operators are verified for
   compatibility; overloads are resolved against the actual argument types;
   calls to throwing functions must sit inside `try` or a throwing function;

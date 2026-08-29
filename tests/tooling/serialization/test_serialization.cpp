@@ -59,6 +59,23 @@ TEST(Tooling_Serialization, NumberFloatRoundtrip) {
   EXPECT_DOUBLE_EQ(num->getFloatVal(), 3.14159);
 }
 
+TEST(Tooling_Serialization, NumberSuffixRoundtrip) {
+  auto ast = std::make_unique<NumberExprAST>(static_cast<int64_t>(21), "u8");
+
+  ASTSerializer serializer;
+  std::string data = serializer.serializeToString(*ast);
+
+  ASTDeserializer deserializer;
+  auto restored = deserializer.deserializeFromString(data);
+
+  ASSERT_NE(restored, nullptr);
+  ASSERT_EQ(restored->getType(), ASTNodeType::NUMBER);
+  auto* num = static_cast<NumberExprAST*>(restored.get());
+  EXPECT_TRUE(num->isInteger());
+  EXPECT_EQ(num->getIntVal(), 21);
+  EXPECT_EQ(num->getSuffix(), "u8");
+}
+
 TEST(Tooling_Serialization, StringLiteralRoundtrip) {
   auto ast = std::make_unique<StringLiteralAST>("hello world");
 

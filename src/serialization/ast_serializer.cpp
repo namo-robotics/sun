@@ -372,6 +372,9 @@ void ASTSerializer::serializeNumber(const NumberExprAST& expr,
   } else {
     num->set_float_value(expr.getFloatVal());
   }
+  if (expr.hasSuffix()) {
+    num->set_suffix(expr.getSuffix());
+  }
 }
 
 void ASTSerializer::serializeCharLiteral(const CharLiteralAST& expr,

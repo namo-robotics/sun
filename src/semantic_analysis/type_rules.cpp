@@ -75,6 +75,13 @@ bool tryCoerceIntegerLiteral(ExprAST* expr, sun::TypePtr targetType,
   const auto& numLit = static_cast<const NumberExprAST&>(*expr);
   if (!numLit.isInteger()) return false;
 
+  // A suffixed literal (21u8) is typed: it never adapts to another type. Its
+  // own suffix type still goes through the range check below.
+  if (numLit.hasSuffix() &&
+      !targetType->equals(*sun::Types::fromString(numLit.getSuffix()))) {
+    return false;
+  }
+
   int64_t val = numLit.getIntVal();
   const auto* primType =
       static_cast<const sun::PrimitiveType*>(targetType.get());
@@ -157,8 +164,13 @@ void coerceBinaryLiteralOperands(const BinaryExprAST& binExpr,
   const ExprAST* rhs = binExpr.getRHS();
   if (!lhs || !rhs) return;
 
-  bool lhsIsLiteral = lhs->getType() == ASTNodeType::NUMBER;
-  bool rhsIsLiteral = rhs->getType() == ASTNodeType::NUMBER;
+  // A suffixed literal (21u8) is a typed operand, not a followable literal
+  auto isUntypedLiteral = [](const ExprAST* e) {
+    return e->getType() == ASTNodeType::NUMBER &&
+           !static_cast<const NumberExprAST&>(*e).hasSuffix();
+  };
+  bool lhsIsLiteral = isUntypedLiteral(lhs);
+  bool rhsIsLiteral = isUntypedLiteral(rhs);
   if (!lhsIsLiteral && !rhsIsLiteral) return;
 
   // A comparison's expected type describes its bool result, not its operands

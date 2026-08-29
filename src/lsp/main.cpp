@@ -328,6 +328,8 @@ int tokenKindToLSPType(TokenKind kind) {
 
     case TokenKind::INTEGER:
     case TokenKind::FLOAT:
+    case TokenKind::TYPED_INTEGER:
+    case TokenKind::TYPED_FLOAT:
       return LSPTokenType::Number;
 
     case TokenKind::STRING:
