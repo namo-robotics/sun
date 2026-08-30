@@ -1,8 +1,13 @@
 name: CI
 
+# The Packages and Docs workflows wait for this one: they trigger on its
+# completion and check it concluded successfully. Version tags run the full
+# suite here too, so a tagged release cannot ship untested.
 on:
   push:
     branches: [main]
+    tags:
+      - 'v[0-9]*'
   pull_request:
     branches: [main]
 

@@ -1,18 +1,30 @@
 name: Packages
 
+# Runs only after CI passes, so a package is never published from a commit
+# whose tests failed. CI itself runs on pushes to main and on version tags
+# (v0, v1, v2, ...); this workflow picks up the ones that succeeded and
+# builds the same commit CI tested. Pull request runs are skipped — nothing
+# is published from a branch.
 on:
-  push:
-    branches:
-      - main
-    tags:
-      - 'v[0-9]*'  # Sequential version tags: v0, v1, v2, ...
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
   contents: write
 
+env:
+  # The commit CI tested. On a workflow_run event github.sha points at the
+  # default branch's head instead, which is the wrong commit for a tag.
+  BUILD_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
 jobs:
   build-deb:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
     runs-on: ubuntu-24.04
 
     env:
@@ -26,7 +38,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          fetch-depth: 0  # Full history for version detection
+          ref: ${{ env.BUILD_SHA }}
+          fetch-depth: 0  # Full history and tags for version detection
+
+      # The build scripts read the version from an exact-match tag on HEAD,
+      # so ask git the same question rather than the event payload: under
+      # workflow_run there is no refs/tags ref to test.
+      - name: Detect release tag
+        id: release
+        run: |
+          tag=$(git describe --tags --exact-match HEAD 2>/dev/null || true)
+          case "$tag" in
+            v[0-9]*) echo "tag=$tag" >> "$GITHUB_OUTPUT" ;;
+            *)       echo "tag=" >> "$GITHUB_OUTPUT" ;;
+          esac
 
       - name: Install LLVM 20 and build dependencies
         run: |
@@ -56,14 +81,17 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sun-deb-package-${{ github.sha }}
+          name: sun-deb-package-${{ env.BUILD_SHA }}
           path: dist/*
           retention-days: 30
 
       - name: Upload to release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: steps.release.outputs.tag != ''
         uses: softprops/action-gh-release@v2
         with:
+          # Named explicitly: the action would otherwise fall back to
+          # github.ref, which under workflow_run is the default branch.
+          tag_name: ${{ steps.release.outputs.tag }}
           files: dist/*
           body: |
             The `.deb` and the `.pkg` each install the compiler and both
@@ -94,7 +122,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update dev release
-        if: github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
+        if: steps.release.outputs.tag == ''
         uses: softprops/action-gh-release@v2
         with:
           tag_name: dev
@@ -104,7 +132,7 @@ jobs:
           body: |
             Latest development build from main branch.
 
-            Commit: ${{ github.sha }}
+            Commit: ${{ env.BUILD_SHA }}
 
             The `.deb` and the `.pkg` each install the compiler and both
             bundles. The `.moon` files are the same bundles on their own, for
@@ -145,7 +173,7 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          name: sun-deb-package-${{ github.sha }}
+          name: sun-deb-package-${{ env.BUILD_SHA }}
           path: dist/
 
       - name: Install LLVM 20 runtime
@@ -218,6 +246,10 @@ jobs:
   # needs Darwin OpenSSL archives, which only this runner can build); the
   # Darwin stdlib bundle still comes from the deb job's cross builds.
   build-pkg-macos:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
     runs-on: macos-latest
 
     env:
@@ -227,7 +259,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          fetch-depth: 0  # Full history for version detection
+          ref: ${{ env.BUILD_SHA }}
+          fetch-depth: 0  # Full history and tags for version detection
+
+      # The build scripts read the version from an exact-match tag on HEAD,
+      # so ask git the same question rather than the event payload: under
+      # workflow_run there is no refs/tags ref to test.
+      - name: Detect release tag
+        id: release
+        run: |
+          tag=$(git describe --tags --exact-match HEAD 2>/dev/null || true)
+          case "$tag" in
+            v[0-9]*) echo "tag=$tag" >> "$GITHUB_OUTPUT" ;;
+            *)       echo "tag=" >> "$GITHUB_OUTPUT" ;;
+          esac
 
       - name: Install dependencies
         run: brew install llvm@20 ninja ccache
@@ -257,7 +302,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sun-pkg-macos-${{ github.sha }}
+          name: sun-pkg-macos-${{ env.BUILD_SHA }}
           path: |
             dist/*.pkg
             dist/*.moon
@@ -266,9 +311,12 @@ jobs:
       # No body on either upload: the deb job owns the release notes, and
       # setting one here would race it.
       - name: Upload to release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: steps.release.outputs.tag != ''
         uses: softprops/action-gh-release@v2
         with:
+          # Named explicitly: the action would otherwise fall back to
+          # github.ref, which under workflow_run is the default branch.
+          tag_name: ${{ steps.release.outputs.tag }}
           files: |
             dist/*.pkg
             dist/*.moon
@@ -276,7 +324,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update dev release
-        if: github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
+        if: steps.release.outputs.tag == ''
         uses: softprops/action-gh-release@v2
         with:
           tag_name: dev
@@ -299,7 +347,7 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          name: sun-pkg-macos-${{ github.sha }}
+          name: sun-pkg-macos-${{ env.BUILD_SHA }}
           path: dist/
 
       - name: Install LLVM 20 runtime

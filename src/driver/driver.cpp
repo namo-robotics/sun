@@ -394,14 +394,14 @@ void Driver::collectNativeArchives(const std::set<std::string>& linkedModules) {
       linkedModules, archiveTempDir_);
 }
 
+#ifndef __APPLE__
 // Try to load the system shared library matching a bundled archive
-// (libssl.a -> libssl.so / libssl.so.3, or the .dylib spellings on macOS).
-// The loader's own search path finds it, so no -L is needed.
+// (libssl.a -> libssl.so / libssl.so.3). The loader's own search path
+// finds it, so no -L is needed.
 static bool loadSharedCounterpart(const std::filesystem::path& archive) {
   std::string stem = archive.stem().string();  // "libssl"
   if (stem.rfind("lib", 0) != 0) return false;
-  for (const char* suffix : {".so", ".so.3", ".so.1.1", ".dylib", ".3.dylib",
-                             ".1.1.dylib"}) {
+  for (const char* suffix : {".so", ".so.3", ".so.1.1"}) {
     std::string candidate = stem + suffix;
     if (!llvm::sys::DynamicLibrary::LoadLibraryPermanently(candidate.c_str(),
                                                            nullptr)) {
@@ -410,6 +410,7 @@ static bool loadSharedCounterpart(const std::filesystem::path& archive) {
   }
   return false;
 }
+#endif
 
 void Driver::registerArchivesWithJIT() {
   if (!ctx->jit || nativeArchivePaths_.empty()) return;
@@ -419,6 +420,13 @@ void Driver::registerArchivesWithJIT() {
   // poorly, and a development machine running the JIT normally has them.
   // AOT linking always uses the bundled archives, so shipped binaries stay
   // self-contained either way.
+  //
+  // Never on macOS: the system's unversioned libssl.dylib / libcrypto.dylib
+  // are Apple compatibility stubs that print "loading libcrypto in an unsafe
+  // way" and abort the whole process the moment they are opened, and no real
+  // OpenSSL ships with the OS. The bundled archives are the only safe source
+  // there.
+#ifndef __APPLE__
   bool allShared = true;
   for (const auto& archive : nativeArchivePaths_) {
     if (!loadSharedCounterpart(archive)) {
@@ -427,6 +435,7 @@ void Driver::registerArchivesWithJIT() {
     }
   }
   if (allShared) return;
+#endif
 
   for (const auto& archive : nativeArchivePaths_) {
     if (auto err = ctx->jit->addStaticLibrary(archive)) {
