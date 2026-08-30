@@ -947,6 +947,14 @@ void SemanticContext::registerBuiltinFunctions() {
                                  {Types::UInt64(), {Types::UInt64()}, {}});
   registerFunctionInCurrentScope("_cttz_u64",
                                  {Types::UInt64(), {Types::UInt64()}, {}});
+  // _bswap_u16/u32/u64(x) - the same value with its bytes in the opposite
+  // order, the primitive under the byte-order helpers in std
+  registerFunctionInCurrentScope("_bswap_u16",
+                                 {Types::UInt16(), {Types::UInt16()}, {}});
+  registerFunctionInCurrentScope("_bswap_u32",
+                                 {Types::UInt32(), {Types::UInt32()}, {}});
+  registerFunctionInCurrentScope("_bswap_u64",
+                                 {Types::UInt64(), {Types::UInt64()}, {}});
 
   // Target intrinsics
   // _target_is("macos") - compile-time check of the compilation target's

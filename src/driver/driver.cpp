@@ -1,6 +1,7 @@
 #include "driver/driver.h"
 
 #include <llvm/IR/DebugInfo.h>
+#include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Support/DynamicLibrary.h>
@@ -36,8 +37,10 @@ using llvm::orc::ThreadSafeModule;
 /// can't reach (references through vtables/globals are preserved).
 static void stripUnreachableForJIT(llvm::Module& module) {
   for (auto& F : module) {
-    if (!F.isDeclaration() && F.getName() != "main" &&
-        F.getName() != "__sun_static_init") {
+    // Global initializers need no exemption: they are internal already, and
+    // llvm.global_ctors (appending linkage, never discarded) keeps them and
+    // everything they call alive through GlobalDCE.
+    if (!F.isDeclaration() && F.getName() != "main") {
       F.setLinkage(llvm::GlobalValue::InternalLinkage);
     }
   }
@@ -60,6 +63,49 @@ static void stripUnreachableForJIT(llvm::Module& module) {
   llvm::ModulePassManager mpm;
   mpm.addPass(llvm::GlobalDCEPass());
   mpm.run(module, mam);
+}
+
+/// Make a module's global initializers callable under the JIT. They are
+/// internal functions registered in llvm.global_ctors — one per linked module,
+/// uniquified by the IR linker — and the JIT resolves symbols by name, which
+/// cannot reach an internal function. So wrap every ctor entry in a single
+/// external runner for the driver to look up and call before main, in the
+/// same order the AOT init_array would use. Returns false when the module has
+/// no constructors and there is nothing to run.
+static bool wrapStaticCtorsForJIT(llvm::Module& module) {
+  auto* ctors = module.getGlobalVariable("llvm.global_ctors");
+  if (!ctors || !ctors->hasInitializer()) return false;
+  auto* entries =
+      llvm::dyn_cast<llvm::ConstantArray>(ctors->getInitializer());
+  if (!entries) return false;
+
+  // Each entry is { i32 priority, ptr function, ptr data }. Lower priority
+  // runs first; entries with equal priority keep their link order.
+  std::vector<std::pair<uint64_t, llvm::Function*>> fns;
+  for (auto& op : entries->operands()) {
+    auto* entry = llvm::cast<llvm::ConstantStruct>(op.get());
+    auto* fn = llvm::dyn_cast<llvm::Function>(
+        entry->getOperand(1)->stripPointerCasts());
+    if (!fn || fn->isDeclaration()) continue;
+    uint64_t priority =
+        llvm::cast<llvm::ConstantInt>(entry->getOperand(0))->getZExtValue();
+    fns.push_back({priority, fn});
+  }
+  if (fns.empty()) return false;
+  std::stable_sort(fns.begin(), fns.end(),
+                   [](const auto& a, const auto& b) { return a.first < b.first; });
+
+  auto* runnerType = llvm::FunctionType::get(
+      llvm::Type::getVoidTy(module.getContext()), false);
+  auto* runner =
+      llvm::Function::Create(runnerType, llvm::GlobalValue::ExternalLinkage,
+                             "__sun_run_static_ctors", module);
+  auto* entry =
+      llvm::BasicBlock::Create(module.getContext(), "entry", runner);
+  llvm::IRBuilder<> builder(entry);
+  for (const auto& [priority, fn] : fns) builder.CreateCall(fn);
+  builder.CreateRetVoid();
+  return true;
 }
 
 /// Check if stdlib.moon is included in moon imports
@@ -250,9 +296,20 @@ void Driver::printReachableIR() {
     collectReachableFunctions(mainFunc, reachable);
   }
 
-  // Also check __sun_static_init for global initializers
-  if (auto* initFunc = ctx->mainModule->getFunction("__sun_static_init")) {
-    collectReachableFunctions(initFunc, reachable);
+  // Global initializers are reachable through llvm.global_ctors, not main
+  if (auto* ctors = ctx->mainModule->getGlobalVariable("llvm.global_ctors")) {
+    if (ctors->hasInitializer()) {
+      if (auto* entries =
+              llvm::dyn_cast<llvm::ConstantArray>(ctors->getInitializer())) {
+        for (auto& op : entries->operands()) {
+          auto* entry = llvm::cast<llvm::ConstantStruct>(op.get());
+          if (auto* fn = llvm::dyn_cast<llvm::Function>(
+                  entry->getOperand(1)->stripPointerCasts())) {
+            collectReachableFunctions(fn, reachable);
+          }
+        }
+      }
+    }
   }
 
   // Print reachable functions (sorted by name for stable output)
@@ -733,6 +790,7 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
   // Clone the module into the new context
   auto moduleClone = llvm::CloneModule(*ctx->mainModule);
   stripUnreachableForJIT(*moduleClone);
+  bool hasStaticCtors = wrapStaticCtorsForJIT(*moduleClone);
 
   // Add the cloned module to JIT with its own context
   // Archives carried by imported bundles resolve like linked libraries
@@ -742,13 +800,12 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
   ExitOnErr(ctx->jit->addModule(
       ThreadSafeModule(std::move(moduleClone), std::move(anonContext)), RT));
 
-  // Run static constructors if present (handles global var initialization)
-  if (auto initSym = ctx->jit->lookup("__sun_static_init")) {
-    void (*initFP)() = initSym->getAddress().toPtr<void (*)()>();
+  // Run global initializers (the program's and every linked bundle's) before
+  // main, the way the AOT init_array would
+  if (hasStaticCtors) {
+    auto initSym = ExitOnErr(ctx->jit->lookup("__sun_run_static_ctors"));
+    void (*initFP)() = initSym.getAddress().toPtr<void (*)()>();
     initFP();
-  } else {
-    // Consume and ignore the "symbol not found" error
-    llvm::consumeError(initSym.takeError());
   }
 
   // Lookup and execute with appropriate type
@@ -1278,6 +1335,7 @@ sun::SunValue Driver::executeFiles(
   auto anonContext = std::make_unique<llvm::LLVMContext>();
   auto moduleClone = llvm::CloneModule(*ctx->mainModule);
   stripUnreachableForJIT(*moduleClone);
+  bool hasStaticCtors = wrapStaticCtorsForJIT(*moduleClone);
 
   // Archives carried by imported bundles resolve like linked libraries
   registerArchivesWithJIT();
@@ -1289,12 +1347,11 @@ sun::SunValue Driver::executeFiles(
                                                       std::move(anonContext)),
                           RT));
 
-  // Run static init
-  if (auto initSym = ctx->jit->lookup("__sun_static_init")) {
-    void (*initFP)() = initSym->getAddress().toPtr<void (*)()>();
+  // Run global initializers before main
+  if (hasStaticCtors) {
+    auto initSym = ExitOnErr(ctx->jit->lookup("__sun_run_static_ctors"));
+    void (*initFP)() = initSym.getAddress().toPtr<void (*)()>();
     initFP();
-  } else {
-    llvm::consumeError(initSym.takeError());
   }
 
   // Execute main

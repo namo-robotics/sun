@@ -951,6 +951,44 @@ check (see [Intrinsics](/intrinsics#_convertt)).
 
 `math.sun` also defines `I64_MAX`, `I64_MIN`, `F64_MAX`, `F64_MIN_POSITIVE` (smallest normal) and `F64_EPSILON`.
 
+## Byte order
+
+A binary wire format fixes the order the bytes of a number appear in, and that
+order is often not the one the machine uses. `stdlib/byte_order.sun` (module
+`std.byte_order`) converts between the two, for 16-, 32- and 64-bit unsigned
+integers.
+
+`swap_bytes_u16`, `swap_bytes_u32` and `swap_bytes_u64` reverse the bytes
+unconditionally:
+
+```sun
+using std.byte_order;
+
+var swapped: u32 = swap_bytes_u32(305419896);   // 0x12345678 -> 0x78563412
+```
+
+The `to_`/`from_` pairs name the order the wire uses, and do nothing when it
+already matches the machine's. Big-endian is what network protocols call
+network byte order, so `to_big_endian_u16` is the `htons` of C, and
+`from_big_endian_u32` is its `ntohl`:
+
+```sun
+var wire: u16 = to_big_endian_u16(port);      // host -> network order
+var port: u16 = from_big_endian_u16(wire);    // network -> host order
+
+var little: u32 = to_little_endian_u32(n);    // for a little-endian format
+var n: u32 = from_little_endian_u32(little);
+```
+
+There are twelve in all: `to_big_endian_u16/u32/u64`,
+`from_big_endian_u16/u32/u64`, and the same four for little-endian. Unlike C,
+the 64-bit conversions are there too.
+
+Every processor Sun targets is little-endian, so the big-endian conversions
+reverse the bytes and the little-endian ones compile to nothing. Each reversal
+is the `_bswap_u16` / `_bswap_u32` / `_bswap_u64` intrinsic
+(see [Intrinsics](/intrinsics#bit-intrinsics)), a single instruction.
+
 ## Json
 
 `json.sun` parses JSON text into an owned tree and writes it back, compact or

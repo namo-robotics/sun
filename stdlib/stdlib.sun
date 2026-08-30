@@ -10,6 +10,7 @@ manifest {
         "sys.sun",
         "option.sun",
         "math.sun",
+        "byte_order.sun",
         "iterator.sun",
         "slice.sun",
         "contiguous_buffer.sun",

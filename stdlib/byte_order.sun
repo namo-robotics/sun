@@ -1,0 +1,103 @@
+// stdlib/byte_order.sun - Reading and writing integers in a chosen byte order
+//
+// A binary wire format fixes the order the bytes of a number appear in, and
+// that order is often not the one the machine uses. These helpers convert
+// between the two. `swap_bytes_*` reverses the bytes unconditionally; the
+// `to_*`/`from_*` pairs name the wire's order and do nothing when it already
+// matches the machine's.
+//
+// Every processor Sun targets is little-endian, so the big-endian
+// conversions reverse and the little-endian ones are free. Should a
+// big-endian target ever be added, these twelve functions are the only place
+// that has to learn about it.
+
+public module std {
+  public module byte_order {
+    // ========================================================================
+    // Unconditional byte reversal
+    // ========================================================================
+
+    // Return the value with its two bytes in the opposite order.
+    public function swap_bytes_u16(value: u16) u16 {
+      return _bswap_u16(value);
+    }
+
+    // Return the value with its four bytes in the opposite order.
+    public function swap_bytes_u32(value: u32) u32 {
+      return _bswap_u32(value);
+    }
+
+    // Return the value with its eight bytes in the opposite order.
+    public function swap_bytes_u64(value: u64) u64 {
+      return _bswap_u64(value);
+    }
+
+    // ========================================================================
+    // Big-endian wire order, which network protocols call network byte order
+    // ========================================================================
+
+    // Convert a number the machine holds into its big-endian form.
+    public function to_big_endian_u16(value: u16) u16 {
+      return _bswap_u16(value);
+    }
+
+    // Convert a number the machine holds into its big-endian form.
+    public function to_big_endian_u32(value: u32) u32 {
+      return _bswap_u32(value);
+    }
+
+    // Convert a number the machine holds into its big-endian form.
+    public function to_big_endian_u64(value: u64) u64 {
+      return _bswap_u64(value);
+    }
+
+    // Read a big-endian number back into the machine's own order.
+    public function from_big_endian_u16(value: u16) u16 {
+      return _bswap_u16(value);
+    }
+
+    // Read a big-endian number back into the machine's own order.
+    public function from_big_endian_u32(value: u32) u32 {
+      return _bswap_u32(value);
+    }
+
+    // Read a big-endian number back into the machine's own order.
+    public function from_big_endian_u64(value: u64) u64 {
+      return _bswap_u64(value);
+    }
+
+    // ========================================================================
+    // Little-endian wire order, which the machine already uses
+    // ========================================================================
+
+    // Convert a number the machine holds into its little-endian form.
+    public function to_little_endian_u16(value: u16) u16 {
+      return value;
+    }
+
+    // Convert a number the machine holds into its little-endian form.
+    public function to_little_endian_u32(value: u32) u32 {
+      return value;
+    }
+
+    // Convert a number the machine holds into its little-endian form.
+    public function to_little_endian_u64(value: u64) u64 {
+      return value;
+    }
+
+    // Read a little-endian number back into the machine's own order.
+    public function from_little_endian_u16(value: u16) u16 {
+      return value;
+    }
+
+    // Read a little-endian number back into the machine's own order.
+    public function from_little_endian_u32(value: u32) u32 {
+      return value;
+    }
+
+    // Read a little-endian number back into the machine's own order.
+    public function from_little_endian_u64(value: u64) u64 {
+      return value;
+    }
+  }  // module byte_order
+}  // module std

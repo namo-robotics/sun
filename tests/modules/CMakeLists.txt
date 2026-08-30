@@ -4,5 +4,6 @@ target_sources(sun_tests PRIVATE
     test_modules.cpp
     test_moon_cache.cpp
     test_proto_import.cpp
+    test_stdlib_sources.cpp
     test_sun_config.cpp
 )

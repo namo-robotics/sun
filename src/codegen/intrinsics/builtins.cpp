@@ -120,6 +120,18 @@ const std::map<std::string, BuiltinEmitter>& builtinTable() {
        [](auto& g, const auto& e) {
          return g.codegenCountZerosIntrinsic(e, /*leading=*/false);
        }},
+      {"_bswap_u16",
+       [](auto& g, const auto& e) {
+         return g.codegenBswapIntrinsic(e, /*bitWidth=*/16);
+       }},
+      {"_bswap_u32",
+       [](auto& g, const auto& e) {
+         return g.codegenBswapIntrinsic(e, /*bitWidth=*/32);
+       }},
+      {"_bswap_u64",
+       [](auto& g, const auto& e) {
+         return g.codegenBswapIntrinsic(e, /*bitWidth=*/64);
+       }},
 
       // Futex intrinsics
       {"_futex_wait",
