@@ -110,7 +110,11 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Install dependencies
-        run: brew install llvm@20 ninja ccache googletest
+        # openssl@3 is for the JIT only. macOS ships no usable OpenSSL, and
+        # a static one cannot be linked into the JIT reliably, so the TLS
+        # tests resolve against this shared build. AOT and the packages
+        # still use the static archives the bundle carries.
+        run: brew install llvm@20 ninja ccache googletest openssl@3
 
       - name: Set up ccache
         uses: hendrikmuhs/ccache-action@v1.2.23

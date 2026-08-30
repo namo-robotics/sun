@@ -7,6 +7,14 @@ programs that do not speak TLS carry none of it. The bundle wraps OpenSSL and
 **embeds its own static copy** of it, so a program using TLS needs no linker
 flags and no OpenSSL installed on the machine it runs on.
 
+<Callout type="info">
+  That applies to compiled programs — `sun -c program.sun`. Running one
+  straight from source needs a shared OpenSSL the JIT can resolve against,
+  which Linux already has; on macOS, install one with `brew install
+  openssl@3`. See [carrying the C library
+  along](/c-ffi#carrying-the-c-library-along) for why.
+</Callout>
+
 ```sun
 using sun;
 using tls;
