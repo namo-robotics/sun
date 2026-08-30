@@ -394,15 +394,34 @@ void Driver::collectNativeArchives(const std::set<std::string>& linkedModules) {
       linkedModules, archiveTempDir_);
 }
 
-#ifndef __APPLE__
-// Try to load the system shared library matching a bundled archive
-// (libssl.a -> libssl.so / libssl.so.3). The loader's own search path
-// finds it, so no -L is needed.
+// Try to load a shared library holding the same code as a bundled archive
+// (libssl.a -> libssl.so.3, or libssl.3.dylib on macOS).
+//
+// On Linux the loader's own search path finds these, so a bare name is
+// enough. macOS needs full paths: Apple ships no usable OpenSSL, and the
+// bare names resolve to /usr/lib/libssl.dylib and libcrypto.dylib, which
+// are compatibility stubs that print "loading libcrypto in an unsafe way"
+// and abort the whole process the moment they are opened. Homebrew's and
+// MacPorts' builds are the real thing, and sit outside the search path.
 static bool loadSharedCounterpart(const std::filesystem::path& archive) {
   std::string stem = archive.stem().string();  // "libssl"
   if (stem.rfind("lib", 0) != 0) return false;
+
+  std::vector<std::string> candidates;
+#ifdef __APPLE__
+  for (const char* dir : {"/opt/homebrew/opt/openssl@3/lib/",
+                          "/usr/local/opt/openssl@3/lib/", "/opt/local/lib/"}) {
+    for (const char* suffix : {".3.dylib", ".dylib"}) {
+      candidates.push_back(dir + stem + suffix);
+    }
+  }
+#else
   for (const char* suffix : {".so", ".so.3", ".so.1.1"}) {
-    std::string candidate = stem + suffix;
+    candidates.push_back(stem + suffix);
+  }
+#endif
+
+  for (const auto& candidate : candidates) {
     if (!llvm::sys::DynamicLibrary::LoadLibraryPermanently(candidate.c_str(),
                                                            nullptr)) {
       return true;
@@ -410,23 +429,14 @@ static bool loadSharedCounterpart(const std::filesystem::path& archive) {
   }
   return false;
 }
-#endif
 
 void Driver::registerArchivesWithJIT() {
   if (!ctx->jit || nativeArchivePaths_.empty()) return;
 
-  // Prefer the system's shared libraries when they are all present: the
-  // JIT's RTDyld linker handles large static archives (OpenSSL's especially)
-  // poorly, and a development machine running the JIT normally has them.
-  // AOT linking always uses the bundled archives, so shipped binaries stay
-  // self-contained either way.
-  //
-  // Never on macOS: the system's unversioned libssl.dylib / libcrypto.dylib
-  // are Apple compatibility stubs that print "loading libcrypto in an unsafe
-  // way" and abort the whole process the moment they are opened, and no real
-  // OpenSSL ships with the OS. The bundled archives are the only safe source
-  // there.
-#ifndef __APPLE__
+  // Prefer shared libraries whenever all of them are present. AOT linking
+  // always uses the bundled archives, so shipped binaries stay
+  // self-contained either way; this only decides what the JIT resolves
+  // against.
   bool allShared = true;
   for (const auto& archive : nativeArchivePaths_) {
     if (!loadSharedCounterpart(archive)) {
@@ -435,6 +445,20 @@ void Driver::registerArchivesWithJIT() {
     }
   }
   if (allShared) return;
+
+  // Falling back to the bundle's own archives. This is a poor substitute:
+  // a static library expects a real link, and the JIT can only resolve what
+  // the running process already exports. One symbol it cannot find poisons
+  // every archive member that needs it — glibc's `atexit`, for instance,
+  // lives in libc_nonshared.a and is invisible to dlsym — and the failure
+  // surfaces far away as "failed to materialize" errors naming unrelated
+  // symbols. Say where it came from so that is not a mystery.
+  llvm::errs() << "Warning: no shared library found for the archives this "
+                  "program's bundles carry. Linking them into the JIT "
+                  "instead, which may not resolve every symbol; compiling "
+                  "with -c always uses the archives and is unaffected.\n";
+#ifdef __APPLE__
+  llvm::errs() << "  For TLS, `brew install openssl@3` supplies one.\n";
 #endif
 
   for (const auto& archive : nativeArchivePaths_) {

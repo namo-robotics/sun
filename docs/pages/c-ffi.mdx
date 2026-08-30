@@ -292,9 +292,15 @@ have to be self-contained (an archive referencing a library you do not ship
 fails at link time) and built for the target Sun links for — the musl
 toolchain, for the static default.
 
-When running under the JIT, Sun prefers the system's shared library of the
-same name if it is installed, because the JIT's linker handles large static
-archives poorly; compiled programs always use the carried archives.
+Compiled programs always use the carried archives. The JIT cannot: it
+resolves symbols out of the running process, while a static library expects
+a real link, and a single symbol it cannot find takes down every archive
+member that needs it. So `sun program.sun` looks for a shared build of the
+same library instead — on Linux the loader finds `libssl.so.3` and its
+siblings by name, and on macOS, which ships no usable OpenSSL of its own,
+Sun looks inside Homebrew's and MacPorts' prefixes. Without one installed, a
+program that uses the bundle has to be compiled with `-c` rather than run
+directly; Sun says so instead of failing obscurely.
 
 ## Limitations
 
