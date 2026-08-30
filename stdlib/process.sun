@@ -174,17 +174,17 @@ public module sun {
       }
 
       // The descriptor to read from.
-      public function read_fd() i32 {
+      public method read_fd() i32 {
         return this.read_fd_;
       }
 
       // The descriptor to write to.
-      public function write_fd() i32 {
+      public method write_fd() i32 {
         return this.write_fd_;
       }
 
       // Close the read end. Closing twice is harmless.
-      public function close_read() void {
+      public method close_read() void {
         if (this.read_fd_ > 0) {
           unsafe { c_close(this.read_fd_); };
           this.read_fd_ = 0;
@@ -192,7 +192,7 @@ public module sun {
       }
 
       // Close the write end. Closing twice is harmless.
-      public function close_write() void {
+      public method close_write() void {
         if (this.write_fd_ > 0) {
           unsafe { c_close(this.write_fd_); };
           this.write_fd_ = 0;
@@ -268,42 +268,42 @@ public module sun {
       }
 
       // Append one argument. The program itself is argv[0].
-      public function add_arg(value: static_ptr<u8>) void {
+      public method add_arg(value: static_ptr<u8>) void {
         this.offsets.push(this.blob.length());
         this.blob.append(value);
         this.blob.append_char(b'\0');
       }
 
       // Append one argument built at runtime. The text is copied in.
-      public function add_arg(value: const ref String) void {
+      public method add_arg(value: const ref String) void {
         this.offsets.push(this.blob.length());
         this.blob.append(value);
         this.blob.append_char(b'\0');
       }
 
       // Choose where the child's standard input comes from.
-      public function set_stdin(mode: Stdio) void {
+      public method set_stdin(mode: Stdio) void {
         this.stdin_mode = mode;
       }
 
       // Choose where the child's standard output goes.
-      public function set_stdout(mode: Stdio) void {
+      public method set_stdout(mode: Stdio) void {
         this.stdout_mode = mode;
       }
 
       // Choose where the child's standard error goes.
-      public function set_stderr(mode: Stdio) void {
+      public method set_stderr(mode: Stdio) void {
         this.stderr_mode = mode;
       }
 
       // The program name as a C string.
-      public function program() raw_ptr<u8> {
+      public method program() raw_ptr<u8> {
         return this.blob.c_str();
       }
 
       // A NUL-terminated char** for execvp. Built from one base pointer, so
       // it stays valid as long as the blob is not appended to.
-      public function build_argv_array() ContiguousBuffer<raw_ptr<u8>> {
+      public method build_argv_array() ContiguousBuffer<raw_ptr<u8>> {
         var count: i64 = this.offsets.size();
         var argv: ContiguousBuffer<raw_ptr<u8>> = ContiguousBuffer<raw_ptr<u8>>(this.alloc, count + 1);
         var base: raw_ptr<u8> = this.blob.c_str();
@@ -317,7 +317,7 @@ public module sun {
 
       // Run the program in a new process. The child's end of every pipe is
       // closed here, so reading from Child hits end-of-file when it exits.
-      public function start() Child throws IError {
+      public method start() Child throws IError {
         // Everything the child touches is prepared first: after fork it may
         // only call things that are safe in a signal handler.
         var argv: ContiguousBuffer<raw_ptr<u8>> = this.build_argv_array();
@@ -419,13 +419,13 @@ public module sun {
       }
 
       // Run to completion, inheriting the streams. Returns the exit code.
-      public function status() i32 throws IError {
+      public method status() i32 throws IError {
         var child: Child = this.start();
         return child.wait();
       }
 
       // Run to completion with stdout and stderr captured.
-      public function output() Output throws IError {
+      public method output() Output throws IError {
         this.stdout_mode = Stdio.Piped;
         this.stderr_mode = Stdio.Piped;
         var child: Child = this.start();
@@ -453,12 +453,12 @@ public module sun {
       }
 
       // The child's process id.
-      public function id() i32 {
+      public method id() i32 {
         return this.pid_;
       }
 
       // Write to the child's stdin. Requires stdin(Stdio.Piped).
-      public function write_stdin(data: ref String) i64 {
+      public method write_stdin(data: ref String) i64 {
         if (this.stdin_fd <= 0) {
           return -1;
         }
@@ -466,7 +466,7 @@ public module sun {
       }
 
       // Close the child's stdin, so a program reading to end-of-input stops.
-      public function close_stdin() void {
+      public method close_stdin() void {
         if (this.stdin_fd > 0) {
           unsafe { c_close(this.stdin_fd); };
           this.stdin_fd = 0;
@@ -475,7 +475,7 @@ public module sun {
 
       // Wait for the child and return its exit code. A child killed by a
       // signal reports 128 + the signal, as a shell does.
-      public function wait() i32 throws IError {
+      public method wait() i32 throws IError {
         if (this.pid_ <= 0) {
           throw Error(-1, "no child to wait for");
         }
@@ -490,7 +490,7 @@ public module sun {
 
       // The exit code if the child has already finished, None if it is still
       // running.
-      public function try_wait() Option<i32> throws IError {
+      public method try_wait() Option<i32> throws IError {
         if (this.pid_ <= 0) {
           return Option.None;
         }
@@ -517,7 +517,7 @@ public module sun {
 
       // Send a signal to the child. Throws if there is no child or the system
       // refuses.
-      public function kill(sig: i32) void throws IError {
+      public method kill(sig: i32) void throws IError {
         if (this.pid_ <= 0) {
           throw Error(-1, "no child to signal");
         }
@@ -527,14 +527,14 @@ public module sun {
       }
 
       // Hand the stdout pipe over. The Child stops owning it.
-      public function take_stdout() i32 {
+      public method take_stdout() i32 {
         var fd: i32 = this.stdout_fd;
         this.stdout_fd = 0;
         return fd;
       }
 
       // Hand the stderr pipe over. The Child stops owning it.
-      public function take_stderr() i32 {
+      public method take_stderr() i32 {
         var fd: i32 = this.stderr_fd;
         this.stderr_fd = 0;
         return fd;
@@ -543,7 +543,7 @@ public module sun {
       // Drain both pipes and wait. Polls rather than draining one then the
       // other: a child that fills the stderr pipe while the parent is stuck
       // reading stdout would deadlock.
-      public function collect(alloc: ref HeapAllocator) Output throws IError {
+      public method collect(alloc: ref HeapAllocator) Output throws IError {
         var out: String = String(alloc, "");
         var err: String = String(alloc, "");
         var buf: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 4096);
@@ -641,17 +641,17 @@ public module sun {
       }
 
       // The child's exit status.
-      public function status() i32 {
+      public method status() i32 {
         return this.status_;
       }
 
       // Borrowed: the Output keeps them.
-      public function stdout() ref String {
+      public method stdout() ref String {
         return unsafe { _to_ref<String>(_address_of<String>(this.out)); };
       }
 
       // Everything the child wrote to standard error, borrowed.
-      public function stderr() ref String {
+      public method stderr() ref String {
         return unsafe { _to_ref<String>(_address_of<String>(this.err)); };
       }
     }

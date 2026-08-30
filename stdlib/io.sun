@@ -98,17 +98,17 @@ public module sun {
       }
 
       // Open a file with the specified mode
-      public function open(path: static_ptr<u8>, mode: FileMode) void throws IError {
+      public method open(path: static_ptr<u8>, mode: FileMode) void throws IError {
         this.open_cstr(path.raw(), mode);
       }
 
       // Open a file named at runtime. Throws if the system refuses.
-      public function open(path: ref String, mode: FileMode) void throws IError {
+      public method open(path: ref String, mode: FileMode) void throws IError {
         this.open_cstr(path.c_str(), mode);
       }
 
       // Open a file named by a C string. The one place the open syscall is made.
-      function open_cstr(path: raw_ptr<u8>, mode: FileMode) void throws IError {
+      method open_cstr(path: raw_ptr<u8>, mode: FileMode) void throws IError {
         var result: i32 = unsafe { c_open(path, open_flags(mode), CREATE_MODE); };
         if (result < 0) {
           throw Error(errno(), "failed to open file");
@@ -117,25 +117,25 @@ public module sun {
       }
 
       // Adopt an already-open descriptor. The File owns it from here.
-      public function adopt(fd: i32) void {
+      public method adopt(fd: i32) void {
         this.close();
         this.fd = fd;
       }
 
       // Write string data to the file
       // Returns number of bytes written, or negative on error
-      public function write(data: static_ptr<u8>) i64 {
+      public method write(data: static_ptr<u8>) i64 {
         return unsafe { c_write(this.fd, data.raw(), data.length()); };
       }
 
       // Write a String's bytes. Returns how many bytes went out, or a negative
       // value on failure.
-      public function write(data: ref String) i64 {
+      public method write(data: ref String) i64 {
         return unsafe { c_write(this.fd, data.c_str(), data.length()); };
       }
 
       // Read the rest of the file into a String
-      public function read_all(alloc: ref HeapAllocator) String throws IError {
+      public method read_all(alloc: ref HeapAllocator) String throws IError {
         var out: String = String(alloc, "");
         var chunk: ContiguousBuffer<u8> = ContiguousBuffer<u8>(alloc, 4096);
         var n: i64 = unsafe { c_read(this.fd, chunk.raw_data(), 4096); };
@@ -152,7 +152,7 @@ public module sun {
       }
 
       // Close the file. Safe to call more than once.
-      public function close() void {
+      public method close() void {
         if (this.fd > 0) {
           unsafe { c_close(this.fd); };
           this.fd = 0;
@@ -160,28 +160,28 @@ public module sun {
       }
 
       // Report whether this File still holds a descriptor.
-      public function is_open() bool {
+      public method is_open() bool {
         return this.fd > 0;
       }
 
       // The underlying descriptor. The File still owns it.
-      public function get_fd() i32 {
+      public method get_fd() i32 {
         return this.fd;
       }
 
       // Seek to a position in the file
       // Returns the new offset from the beginning of the file
-      public function seek(offset: i64, whence: Whence) i64 {
+      public method seek(offset: i64, whence: Whence) i64 {
         return unsafe { c_lseek(this.fd, offset, convert_whence(whence)); };
       }
 
       // The current read/write offset from the start of the file.
-      public function tell() i64 {
+      public method tell() i64 {
         return this.seek(0, Whence.Current);
       }
 
       // Flush file data to disk
-      public function sync() void throws IError {
+      public method sync() void throws IError {
         var result: i32 = unsafe { c_fsync(this.fd); };
         if (result < 0) {
           throw Error(errno(), "failed to sync file");
@@ -189,7 +189,7 @@ public module sun {
       }
 
       // Truncate or extend file to specified length
-      public function truncate(length: i64) void throws IError {
+      public method truncate(length: i64) void throws IError {
         var result: i32 = unsafe { c_ftruncate(this.fd, length); };
         if (result < 0) {
           throw Error(errno(), "failed to truncate file");
@@ -197,7 +197,7 @@ public module sun {
       }
 
       // Get file size by seeking to end and back
-      public function size() i64 {
+      public method size() i64 {
         var current: i64 = this.tell();
         var end_pos: i64 = this.seek(0, Whence.End);
         this.seek(current, Whence.Start);
@@ -205,12 +205,12 @@ public module sun {
       }
 
       // Write raw bytes to file
-      public function write_bytes(buf: raw_ptr<u8>, len: i64) i64 {
+      public method write_bytes(buf: raw_ptr<u8>, len: i64) i64 {
         return unsafe { c_write(this.fd, buf, len); };
       }
 
       // Read raw bytes into provided buffer
-      public function read_into(buf: raw_ptr<u8>, len: i64) i64 {
+      public method read_into(buf: raw_ptr<u8>, len: i64) i64 {
         return unsafe { c_read(this.fd, buf, len); };
       }
 
@@ -442,22 +442,22 @@ public module sun {
       }
 
       // Borrowed: the entry keeps the name.
-      public function name() ref String {
+      public method name() ref String {
         return unsafe { _to_ref<String>(_address_of<String>(this.name_)); };
       }
 
       // Whether the entry is a file, a directory, or something else.
-      public function kind() FileKind {
+      public method kind() FileKind {
         return this.kind_;
       }
 
       // Report whether this entry is a directory.
-      public function is_dir() bool {
+      public method is_dir() bool {
         return this.kind_ == FileKind.Dir;
       }
 
       // Report whether this entry is an ordinary file.
-      public function is_file() bool {
+      public method is_file() bool {
         return this.kind_ == FileKind.File;
       }
     }
@@ -570,38 +570,38 @@ public module sun {
       }
 
       // Watch for an arbitrary combination of the POLL* bits.
-      public function add(fd: i32, events: i16) void {
+      public method add(fd: i32, events: i16) void {
         this.fds.push(PollFd(fd, events));
       }
 
       // Watch for readable data (or the peer hanging up).
-      public function add_read(fd: i32) void {
+      public method add_read(fd: i32) void {
         this.fds.push(PollFd(fd, POLLIN));
       }
 
       // Watch for room to write.
-      public function add_write(fd: i32) void {
+      public method add_write(fd: i32) void {
         this.fds.push(PollFd(fd, POLLOUT));
       }
 
       // Watch a descriptor for both readable data and room to write.
-      public function add_read_write(fd: i32) void {
+      public method add_read_write(fd: i32) void {
         this.fds.push(PollFd(fd, POLLIN | POLLOUT));
       }
 
       // Forget every descriptor. Positions restart from zero after this.
-      public function clear() void {
+      public method clear() void {
         this.fds.clear();
       }
 
       // How many descriptors are being watched.
-      public function count() i64 {
+      public method count() i64 {
         return this.fds.size();
       }
 
       // Blocks until something is ready, the timeout expires, or a signal
       // arrives. -1 waits forever. Returns how many descriptors are ready.
-      public function wait(timeout_ms: i32) i32 throws IError {
+      public method wait(timeout_ms: i32) i32 throws IError {
         if (this.fds.size() == 0) {
           return 0;
         }
@@ -619,32 +619,32 @@ public module sun {
       }
 
       // The descriptor added i-th.
-      public function fd_at(i: i64) i32 {
+      public method fd_at(i: i64) i32 {
         return this.fds.get_unchecked(i).fd;
       }
 
       // The raw POLL* bits the system reported for the descriptor added i-th.
-      public function revents(i: i64) i16 {
+      public method revents(i: i64) i16 {
         return this.fds.get_unchecked(i).revents;
       }
 
       // Report whether the descriptor added i-th has data to read.
-      public function is_readable(i: i64) bool {
+      public method is_readable(i: i64) bool {
         return (this.revents(i) & POLLIN) != 0;
       }
 
       // Report whether the descriptor added i-th has room to write.
-      public function is_writable(i: i64) bool {
+      public method is_writable(i: i64) bool {
         return (this.revents(i) & POLLOUT) != 0;
       }
 
       // The peer closed its end. Any buffered bytes are still readable.
-      public function is_hup(i: i64) bool {
+      public method is_hup(i: i64) bool {
         return (this.revents(i) & POLLHUP) != 0;
       }
 
       // Report whether the system flagged an error on the descriptor added i-th.
-      public function is_error(i: i64) bool {
+      public method is_error(i: i64) bool {
         return (this.revents(i) & POLLERR) != 0;
       }
     }

@@ -196,7 +196,7 @@ TEST(ControlFlow_Conditionals, branch_returns_class_by_value) {
     class Box {
         var v: i32;
         init(v: i32) { this.v = v; }
-        function get() i32 { return this.v; }
+        method get() i32 { return this.v; }
     }
 
     function pick(n: i32) Box {

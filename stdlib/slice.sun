@@ -30,7 +30,7 @@ public module sun {
 
     // Return the index this range starts at, or 0 when the slice left the
     // start blank.
-    public const function get_start() i64 {
+    public const method get_start() i64 {
       if (this.has_start) {
         return this.start;
       }
@@ -39,7 +39,7 @@ public module sun {
 
     // Return the index this range stops before, or the dimension's size when
     // the slice left the end blank.
-    public const function get_end(dim_size: i64) i64 {
+    public const method get_end(dim_size: i64) i64 {
       if (this.has_end) {
         return this.end;
       }
@@ -47,7 +47,7 @@ public module sun {
     }
 
     // Report whether this range covers a whole dimension, as a bare ':' does.
-    public const function is_full_range() bool {
+    public const method is_full_range() bool {
       if (this.has_start) {
         return false;
       }
@@ -59,7 +59,7 @@ public module sun {
 
     // Return how many elements this range selects out of a dimension of the
     // given size.
-    public const function compute_size(dim_size: i64) i64 {
+    public const method compute_size(dim_size: i64) i64 {
       var s: i64 = this.get_start();
       var e: i64 = this.get_end(dim_size);
       return e - s;

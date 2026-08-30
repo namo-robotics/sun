@@ -217,7 +217,7 @@ TEST(Functions_Generic, called_from_generic_class_method_defined_above_it) {
     class Box<T> {
         var v: T;
         init(v: T) { this.v = v; }
-        function get() T { return helper<T>(this.v); }
+        method get() T { return helper<T>(this.v); }
     }
     function helper<T>(x: T) T { return x + x; }
     function main() i32 {
@@ -233,7 +233,7 @@ TEST(Functions_Generic, called_from_class_method_defined_above_it) {
     class Plain {
         var n: i32;
         init(n: i32) { this.n = n; }
-        function get() i32 { return helper<i32>(this.n); }
+        method get() i32 { return helper<i32>(this.n); }
     }
     function helper<T>(x: T) T { return x + x; }
     function main() i32 {
@@ -282,8 +282,8 @@ TEST(Functions_Generic, throwing_generic_is_catchable) {
   auto value = executeString(R"(
     class Boom implements IError {
         init() {}
-        function code() i32 { return 1; }
-        function message() static_ptr<u8> { return "boom"; }
+        method code() i32 { return 1; }
+        method message() static_ptr<u8> { return "boom"; }
     }
     function risky<T>(x: T) i32 throws IError { throw Boom(); }
     function main() i32 {
@@ -297,13 +297,13 @@ TEST(Functions_Generic, throwing_generic_is_catchable_from_class_method) {
   auto value = executeString(R"(
     class Boom implements IError {
         init() {}
-        function code() i32 { return 1; }
-        function message() static_ptr<u8> { return "boom"; }
+        method code() i32 { return 1; }
+        method message() static_ptr<u8> { return "boom"; }
     }
     class Box<T> {
         var v: T;
         init(v: T) { this.v = v; }
-        function get() i32 {
+        method get() i32 {
             try { return risky<T>(this.v); } catch (e: IError) { return 42; }
         }
     }
@@ -334,7 +334,7 @@ TEST(Functions_Generic, ref_type_parameter_from_generic_class_method) {
     class Box<T> {
         var v: T;
         init(v: T) { this.v = v; }
-        function get() i32 { var local: T = this.v; return bump<T>(local); }
+        method get() i32 { var local: T = this.v; return bump<T>(local); }
     }
     function main() i32 { var b = Box<i32>(1); return b.get(); }
   )");
@@ -346,7 +346,7 @@ TEST(Functions_Generic, parameter_naming_a_generic_class) {
     class Pair<A> {
         var a: A;
         init(a: A) { this.a = a; }
-        function get() A { return this.a; }
+        method get() A { return this.a; }
     }
     function unwrap<T>(p: ref Pair<T>) T { return p.get(); }
     function main() i32 {
@@ -381,7 +381,7 @@ TEST(Functions_Generic, nested_module_qualified_call_from_generic_method) {
     class Box<T> {
         var v: T;
         init(v: T) { this.v = v; }
-        function get() T { return a.b.pick<T>(this.v, this.v); }
+        method get() T { return a.b.pick<T>(this.v, this.v); }
     }
     function main() i32 {
         var box = Box<i32>(20);
@@ -417,7 +417,7 @@ TEST(Functions_Generic, type_argument_inferred_through_ref_parameter) {
     class Point {
         var x: i32;
         init(x: i32) { this.x = x; }
-        function get() i32 { return this.x; }
+        method get() i32 { return this.x; }
     }
     function peek<T>(v: ref T) i32 { return 42; }
     function main() i32 {
@@ -433,7 +433,7 @@ TEST(Functions_Generic, type_argument_inferred_from_generic_class_argument) {
     class Pair<A> {
         var a: A;
         init(a: A) { this.a = a; }
-        function get() A { return this.a; }
+        method get() A { return this.a; }
     }
     function unwrap<T>(p: ref Pair<T>) T { return p.get(); }
     function main() i32 {

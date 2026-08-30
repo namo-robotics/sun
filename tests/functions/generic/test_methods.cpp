@@ -11,7 +11,7 @@
 TEST(Functions_Generic_Methods, generic_identity_method) {
   auto value = executeString(R"(
     class Util {
-      function identity<T>(x: T) T {
+      method identity<T>(x: T) T {
         return x;
       }
     }
@@ -31,10 +31,10 @@ TEST(Functions_Generic_Methods, generic_class_with_generic_method) {
     }
 
     class Test<T> {
-      function returnX<U>(x: U, y: T) U {
+      method returnX<U>(x: U, y: T) U {
         return x;
       }
-      function returnY<U>(x: U, y: T) T {
+      method returnY<U>(x: U, y: T) T {
         return foo<T>(y);
       }
     }
@@ -56,7 +56,7 @@ TEST(Functions_Generic_Methods, type_argument_inferred_from_argument) {
   auto value = executeString(R"(
     class Conv {
       init() {}
-      function twice<U>(x: U) U { return x + x; }
+      method twice<U>(x: U) U { return x + x; }
     }
     function main() i32 {
         var c = Conv();
@@ -70,7 +70,7 @@ TEST(Functions_Generic_Methods, leading_type_arguments_given_rest_inferred) {
   auto value = executeString(R"(
     class Conv {
       init() {}
-      function as<R, U>(x: U) R { return _convert<R>(x); }
+      method as<R, U>(x: U) R { return _convert<R>(x); }
     }
     function main() i32 {
         var c = Conv();
@@ -86,8 +86,8 @@ TEST(Functions_Generic_Methods, inference_on_generic_class_method) {
     class Box<T> {
       var v: T;
       init(v: T) { this.v = v; }
-      function as<R, U>(x: U) R { return _convert<R>(x); }
-      function twice<U>(x: U) U { return x + x; }
+      method as<R, U>(x: U) R { return _convert<R>(x); }
+      method twice<U>(x: U) U { return x + x; }
     }
     function main() i32 {
         var b = Box<i64>(1);
@@ -102,7 +102,7 @@ TEST(Functions_Generic_Methods, given_type_argument_wins_over_argument_type) {
   auto value = executeString(R"(
     class W {
       init() {}
-      function width<A, B>(a: A, b: B) i64 { return _sizeof<A>() * 10 + _sizeof<B>(); }
+      method width<A, B>(a: A, b: B) i64 { return _sizeof<A>() * 10 + _sizeof<B>(); }
     }
     function main() i64 {
         var w = W();
@@ -121,7 +121,7 @@ TEST(Functions_Generic_Methods, inference_through_ref_parameter) {
     }
     class Reader {
       init() {}
-      function size_of<U>(p: ref U) i64 { return _sizeof<U>(); }
+      method size_of<U>(p: ref U) i64 { return _sizeof<U>(); }
     }
     function main() i64 {
         var r = Reader();
@@ -137,8 +137,8 @@ TEST(Functions_Generic_Methods, inference_inside_generic_class_body) {
     class Box<T> {
       var v: T;
       init(v: T) { this.v = v; }
-      function twice<U>(x: U) U { return x + x; }
-      function doubled() T { return this.twice(this.v); }
+      method twice<U>(x: U) U { return x + x; }
+      method doubled() T { return this.twice(this.v); }
     }
     function main() i32 {
         var b = Box<i32>(21);
@@ -153,7 +153,7 @@ TEST(Functions_Generic_Methods, uninferable_type_argument_is_error) {
       executeString(R"(
     class F {
       init() {}
-      function make<T>() T { return _convert<T>(0); }
+      method make<T>() T { return _convert<T>(0); }
     }
     function main() i32 { var f = F(); return f.make(); }
   )"),
@@ -164,7 +164,7 @@ TEST(Functions_Generic_Methods, partial_type_arguments_uninferable_is_error) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class F {
       init() {}
-      function make<T, U>(n: T) U { return _convert<U>(n); }
+      method make<T, U>(n: T) U { return _convert<U>(n); }
     }
     function main() i32 { var f = F(); return f.make<i32>(1); }
   )"),
@@ -176,7 +176,7 @@ TEST(Functions_Generic_Methods, argument_mismatching_given_type_is_error) {
     class Point { var x: i32; init(x: i32) { this.x = x; } }
     class F {
       init() {}
-      function keep<T>(x: ref T) i32 { return 1; }
+      method keep<T>(x: ref T) i32 { return 1; }
     }
     function main() i32 {
         var f = F();
@@ -194,7 +194,7 @@ TEST(Functions_Generic_Methods, normal_method_calls_generic_function) {
     }
 
     class Matrix<T> {
-      function set(idx: i32, value: T) void {
+      method set(idx: i32, value: T) void {
           foo<T>(value);
       }
     }

@@ -215,7 +215,7 @@ class RangeIterator implements IIterator<i32, RangeIterator> {
         this.end = stop;
     }
 
-    function next(self: ref RangeIterator) Option<i32> {
+    method next(self: ref RangeIterator) Option<i32> {
         if (this.current >= this.end) {
             return Option.None;
         }

@@ -16,17 +16,17 @@ public module sun {
 
     // Safe dereference - returns a reference to the underlying value
     // Caller should check is_null() first if pointer validity is uncertain
-    public const function get() ref T {
+    public const method get() ref T {
       return unsafe { _to_ref<T>(this.data); };
     }
 
     // Get the raw pointer (for low-level operations like _free or null checks)
-    public const function get_raw() raw_ptr<T> {
+    public const method get_raw() raw_ptr<T> {
       return this.data;
     }
 
     // Report whether the pointer has been taken or was never set.
-    public const function is_null() bool {
+    public const method is_null() bool {
       return this.data == null;
     }
 

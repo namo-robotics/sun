@@ -12,7 +12,7 @@ class Point {
   }
 
   // Manhattan distance to another point. Class arguments are passed by ref.
-  public function manhattan(other: ref Point) i32 {
+  public method manhattan(other: ref Point) i32 {
     var dx = this.x - other.x;
     if (dx < 0) {
       dx = -dx;

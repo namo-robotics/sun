@@ -4,7 +4,7 @@ class Point {
     this.x = x;
     this.y = y;
   }
-  public function sum() i32 {
+  public method sum() i32 {
     return this.x + this.y;
   }
   public var x: i32;

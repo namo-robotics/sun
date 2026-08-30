@@ -36,7 +36,7 @@ Fixed-size array types (`array<i32, 4>`, `array<f64, 2, 3>`) exist and their
 dimensions are part of the type.
 
 - [ ] Compile-time evaluation of constant expressions (`const` variables,
-      `const ref` and `const function` exist; a `const` global is still
+      `const ref` and `const method` exist; a `const` global is still
       initialised at runtime)
 - [ ] Const generics: `array<T, const N>`
 
@@ -91,7 +91,7 @@ community-supplyable now that FFI has landed.
       whose struct has the same layout on every architecture)
 - [ ] Buffered stdin; `sun.io.read_line` reads a byte at a time so it cannot
       swallow input a child process is about to read
-- [ ] `String.c_str()` as a `const function`: it writes the terminating NUL on
+- [ ] `String.c_str()` as a `const method`: it writes the terminating NUL on
       demand, so every path-taking function (`sun.io`, `sun.env`,
       `sun.process`) still takes `ref String`. Keeping the NUL as an invariant
       of the buffer would let them take `const ref String`. TLS is in the same

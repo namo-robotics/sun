@@ -333,8 +333,8 @@ TEST(Stdlib_Concurrency_Threads, unjoined_thread_joins_while_unwinding) {
     using sun.thread;
     class Boom implements IError {
       init() {}
-      function code() i32 { return 1; }
-      function message() String { return String("boom"); }
+      method code() i32 { return 1; }
+      method message() String { return String("boom"); }
     }
     class Counter {
       public var n: i32;
@@ -503,7 +503,7 @@ TEST(Stdlib_Concurrency_Threads, class_result_owning_heap_is_released_once) {
         var size: i64 = 8;
         this.data = unsafe { _malloc(size); };
       }
-      public function get() i32 { return this.v; }
+      public method get() i32 { return this.v; }
       deinit() {
         if (this.data != null) {
           unsafe { _free(this.data); };
@@ -789,7 +789,7 @@ TEST(Stdlib_Concurrency_Threads, capture_free_thread_may_live_in_a_field) {
       init() {
         this.t = spawn(lambda () i32 { return 7; });
       }
-      public function take() i32 { return this.t.join(); }
+      public method take() i32 { return this.t.join(); }
     }
     function main() i32 {
       var w = Worker();
@@ -807,7 +807,7 @@ TEST(Stdlib_Concurrency_Threads, bound_method_thread_joined_in_frame_is_fine) {
     class Counter {
       var count: i32;
       init() { this.count = 40; }
-      public function get(extra: i32) i32 { return this.count + extra; }
+      public method get(extra: i32) i32 { return this.count + extra; }
     }
     function main() i32 {
       var c = Counter();
@@ -826,7 +826,7 @@ TEST(Stdlib_Concurrency_Threads, bound_method_thread_cannot_be_returned) {
     class Counter {
       var count: i32;
       init() { this.count = 40; }
-      public function get() i32 { return this.count; }
+      public method get() i32 { return this.count; }
     }
     function makeThread() Thread<i32> {
       var c = Counter();
@@ -850,10 +850,10 @@ TEST(Stdlib_Concurrency_Threads, method_on_a_thread_reports_to_a_callback) {
       var base: i32;
       init(base: i32) { this.base = base; }
       // The work that runs on the thread.
-      public function work() i32 { return this.base * 2; }
+      public method work() i32 { return this.base * 2; }
       // Run work() on a thread; when it finishes, hand what it returned to
       // the callback and pass the callback's answer on.
-      public function runThen(callback: (i32) -> i32) i32 {
+      public method runThen(callback: (i32) -> i32) i32 {
         var t = spawn(this.work);
         var result = t.join();
         return callback(result);

@@ -189,8 +189,8 @@ TEST(Stdlib_Concurrency_Shared, the_guard_unlocks_while_unwinding) {
     using sun;
     class Boom implements IError {
       init() {}
-      function code() i32 { return 1; }
-      function message() String { return String("boom"); }
+      method code() i32 { return 1; }
+      method message() String { return String("boom"); }
     }
     class Counter { public var n: i32; init() { this.n = 0; } }
     function fail(s: const ref Shared<Counter>) i32 throws IError {
@@ -213,7 +213,7 @@ TEST(Stdlib_Concurrency_Shared, the_guard_unlocks_while_unwinding) {
   EXPECT_EQ(value, 7);
 }
 
-// lock() is a const function, so a read-only handle can still reach the value
+// lock() is a const method, so a read-only handle can still reach the value
 TEST(Stdlib_Concurrency_Shared, lock_works_through_a_const_ref_handle) {
   auto value = executeStringWithStdlib(R"(
     using sun;

@@ -37,7 +37,7 @@ constexpr const char* kPoint = R"(
         var y: i32;
         init(x: i32, y: i32) { this.x = x; this.y = y; }
         init(v: i32) { this.x = v; this.y = v; }
-        function sum() i32 { return this.x + this.y; }
+        method sum() i32 { return this.x + this.y; }
     }
 )";
 
@@ -260,7 +260,7 @@ TEST(Functions_Generic_Variadics, pack_template_survives_a_moon_round_trip) {
               var y: i32;
               init(x: i32, y: i32) { this.x = x; this.y = y; }
               init(v: i32) { this.x = v; this.y = v; }
-              public function sum() i32 { return this.x + this.y; }
+              public method sum() i32 { return this.x + this.y; }
           }
           public function make<T>(args...: _params_of<T>) raw_ptr<T> {
               var size: i64 = _sizeof<T>();

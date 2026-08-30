@@ -104,7 +104,7 @@ TEST(Lambdas_Generic, lambda_in_a_generic_class_method) {
     class Wrapper<T> {
         var v: T;
         init(v: T) { this.v = v; }
-        function mapped() T {
+        method mapped() T {
             var f = lambda (x: T) T { return x + x; };
             return f(this.v);
         }

@@ -170,17 +170,17 @@ class Point {
     var x: i32;
     var y: i32;
     init(x: i32, y: i32) { this.x = x; this.y = y; }
-    const function sum() i32 { return this.x + this.y; }
+    const method sum() i32 { return this.x + this.y; }
 }
 
 interface IShape {
-    function area() i32;
+    method area() i32;
 }
 
 class Square implements IShape {
     var side: i32;
     init(side: i32) { this.side = side; }
-    function area() i32 { return this.side * this.side; }
+    method area() i32 { return this.side * this.side; }
 }
 
 class Pair {
@@ -350,7 +350,7 @@ TEST(Tooling_Lsp_References, GenericClassBody) {
 class Box<T> {
     var value: T;
     init(v: T) { this.value = v; }
-    function get() T { return this.value; }
+    method get() T { return this.value; }
 }
 function main() i32 {
     var b = Box<i32>(7);
@@ -401,8 +401,8 @@ TEST(Tooling_Lsp_References, CatchBinding) {
   std::string source = R"(
 class Oops implements IError {
     init() {}
-    function code() i32 { return 1; }
-    function message() static_ptr<u8> { return "oops"; }
+    method code() i32 { return 1; }
+    method message() static_ptr<u8> { return "oops"; }
 }
 function risky(x: i32) i32 throws IError {
     if (x < 0) { throw Oops(); }

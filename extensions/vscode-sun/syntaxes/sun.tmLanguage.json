@@ -102,6 +102,11 @@
                     "match": "\\b(?:module|function|packed_class|class|partial|interface|enum|var|const|ref|raw_ptr|static_ptr|declare|public)\\b"
                 },
                 {
+                    "comment": "`method` is a keyword only where it declares a member, so a field or variable named `method` keeps its own colour",
+                    "name": "storage.modifier.sun",
+                    "match": "\\bmethod(?=\\s+[A-Za-z_])"
+                },
+                {
                     "name": "constant.language.sun",
                     "match": "\\b(?:true|false|null)\\b"
                 }

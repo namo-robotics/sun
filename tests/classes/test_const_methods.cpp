@@ -1,4 +1,4 @@
-// tests/classes/test_const_methods.cpp - `const function` methods: `this` is
+// tests/classes/test_const_methods.cpp - `const method` methods: `this` is
 // immutable inside, and only they may be called on a constant receiver.
 
 #include <gtest/gtest.h>
@@ -13,9 +13,9 @@ const char* kCounter = R"(
       class Counter {
           var n: i32;
           init(n: i32) { this.n = n; }
-          public const function get() i32 { return this.n; }
-          const function is_zero() bool { return this.n == 0; }
-          function bump() void { this.n = this.n + 1; }
+          public const method get() i32 { return this.n; }
+          const method is_zero() bool { return this.n == 0; }
+          method bump() void { this.n = this.n + 1; }
       }
 )";
 
@@ -53,8 +53,8 @@ TEST(Classes_ConstMethods, const_method_calls_const_method_on_this) {
           var a: i32;
           var b: i32;
           init(a: i32, b: i32) { this.a = a; this.b = b; }
-          const function sum() i32 { return this.a + this.b; }
-          const function doubled() i32 { return this.sum() * 2; }
+          const method sum() i32 { return this.a + this.b; }
+          const method doubled() i32 { return this.sum() * 2; }
       }
       function main() i32 {
           const p = Pair(3, 4);
@@ -102,7 +102,7 @@ TEST(Classes_ConstMethods, field_store_in_const_method_is_rejected) {
       class Counter {
           var n: i32;
           init() { this.n = 0; }
-          const function reset() void { this.n = 0; }
+          const method reset() void { this.n = 0; }
       }
       function main() i32 {
           var c = Counter();
@@ -119,8 +119,8 @@ TEST(Classes_ConstMethods, non_const_call_on_this_in_const_method_is_rejected) {
       class Counter {
           var n: i32;
           init() { this.n = 0; }
-          function bump() void { this.n = this.n + 1; }
-          const function poke() void { this.bump(); }
+          method bump() void { this.n = this.n + 1; }
+          const method poke() void { this.bump(); }
       }
       function main() i32 {
           var c = Counter();
@@ -138,7 +138,7 @@ TEST(Classes_ConstMethods, mutating_field_object_in_const_method_is_rejected) {
       class Bag {
           var items: Vec<i32>;
           init(alloc: ref HeapAllocator) { this.items = Vec<i32>(alloc, 4); }
-          const function add(x: i32) void { this.items.push(x); }
+          const method add(x: i32) void { this.items.push(x); }
       }
       function main() i32 {
           var allocator = make_heap_allocator();
@@ -156,7 +156,7 @@ TEST(Classes_ConstMethods, mutable_ref_of_field_in_const_method_is_rejected) {
       class Counter {
           var n: i32;
           init() { this.n = 0; }
-          const function poke() void { ref r = this.n; r = 1; }
+          const method poke() void { ref r = this.n; r = 1; }
       }
       function main() i32 {
           var c = Counter();
@@ -174,7 +174,7 @@ TEST(Classes_ConstMethods, ref_argument_of_field_in_const_method_is_rejected) {
       class Counter {
           var n: i32;
           init() { this.n = 0; }
-          const function poke() void { bump(this.n); }
+          const method poke() void { bump(this.n); }
       }
       function main() i32 {
           var c = Counter();
@@ -191,7 +191,7 @@ TEST(Classes_ConstMethods, const_method_may_read_and_borrow_const) {
       class Counter {
           var n: i32;
           init(n: i32) { this.n = n; }
-          const function twice() i32 {
+          const method twice() i32 {
               const ref r = this.n;
               return peek(this.n) + r;
           }
@@ -236,7 +236,8 @@ TEST(Classes_ConstMethods, const_free_function_is_rejected) {
       const function f() i32 { return 1; }
       function main() i32 { return f(); }
     )"),
-      "'const function' is only allowed on class and interface methods");
+      "'const' before a function is only allowed on class and interface "
+      "methods, which are declared with 'method'");
 }
 
 TEST(Classes_ConstMethods, public_const_order) {
@@ -244,7 +245,7 @@ TEST(Classes_ConstMethods, public_const_order) {
       public class Counter {
           var n: i32;
           init(n: i32) { this.n = n; }
-          public const function get() i32 { return this.n; }
+          public const method get() i32 { return this.n; }
       }
       function main() i32 {
           const c = Counter(5);
@@ -290,12 +291,12 @@ TEST(Classes_ConstMethods,
 TEST(Classes_ConstMethods, interface_const_method_through_const_ref) {
   auto value = executeString(R"(
       interface IShape {
-          const function area() i32;
+          const method area() i32;
       }
       class Square implements IShape {
           var side: i32;
           init(s: i32) { this.side = s; }
-          const function area() i32 { return this.side * this.side; }
+          const method area() i32 { return this.side * this.side; }
       }
       function measure(s: const ref IShape) i32 { return s.area(); }
       function main() i32 {
@@ -309,28 +310,28 @@ TEST(Classes_ConstMethods, interface_const_method_through_const_ref) {
 TEST(Classes_ConstMethods, interface_const_method_needs_const_implementation) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       interface IShape {
-          const function area() i32;
+          const method area() i32;
       }
       class Square implements IShape {
           var side: i32;
           init(s: i32) { this.side = s; }
-          function area() i32 { return this.side * this.side; }
+          method area() i32 { return this.side * this.side; }
       }
       function main() i32 { return 0; }
     )"),
                                 "implements const member 'IShape.area' and "
-                                "must be declared 'const function'");
+                                "must be declared 'const method'");
 }
 
 TEST(Classes_ConstMethods, class_may_add_const_beyond_interface) {
   auto value = executeString(R"(
       interface IShape {
-          function area() i32;
+          method area() i32;
       }
       class Square implements IShape {
           var side: i32;
           init(s: i32) { this.side = s; }
-          const function area() i32 { return this.side * this.side; }
+          const method area() i32 { return this.side * this.side; }
       }
       function main() i32 {
           const sq = Square(3);
@@ -345,12 +346,12 @@ TEST(Classes_ConstMethods,
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       executeString(R"(
       interface IShape {
-          function grow() void;
+          method grow() void;
       }
       class Square implements IShape {
           var side: i32;
           init(s: i32) { this.side = s; }
-          function grow() void { this.side = this.side + 1; }
+          method grow() void { this.side = this.side + 1; }
       }
       function poke(s: const ref IShape) void { s.grow(); }
       function main() i32 {
@@ -371,8 +372,8 @@ TEST(Classes_ConstMethods, generic_class_keeps_const) {
       class Box<T> {
           var v: T;
           init(v: T) { this.v = v; }
-          const function get() T { return this.v; }
-          function set(v: T) void { this.v = v; }
+          const method get() T { return this.v; }
+          method set(v: T) void { this.v = v; }
       }
       function main() i32 {
           const b = Box<i32>(42);
@@ -386,8 +387,8 @@ TEST(Classes_ConstMethods, generic_class_keeps_const) {
       class Box<T> {
           var v: T;
           init(v: T) { this.v = v; }
-          const function get() T { return this.v; }
-          function set(v: T) void { this.v = v; }
+          const method get() T { return this.v; }
+          method set(v: T) void { this.v = v; }
       }
       function main() i32 {
           const b = Box<i32>(42);
@@ -404,7 +405,7 @@ TEST(Classes_ConstMethods, generic_const_method_body_is_checked) {
       class Box<T> {
           var v: T;
           init(v: T) { this.v = v; }
-          const function set(v: T) void { this.v = v; }
+          const method set(v: T) void { this.v = v; }
       }
       function main() i32 {
           var b = Box<i32>(42);
@@ -540,7 +541,7 @@ TEST(Classes_ConstMethods, user_const_method_returning_option_ref) {
       class Cell {
           var v: i32;
           init(v: i32) { this.v = v; }
-          const function peek() Maybe<ref i32> { return Maybe.Some(this.v); }
+          const method peek() Maybe<ref i32> { return Maybe.Some(this.v); }
       }
       function main() i32 {
           const c = Cell(21);
@@ -556,7 +557,7 @@ TEST(Classes_ConstMethods, user_const_method_returning_option_ref) {
       class Cell {
           var v: i32;
           init(v: i32) { this.v = v; }
-          const function peek() Maybe<ref i32> { return Maybe.Some(this.v); }
+          const method peek() Maybe<ref i32> { return Maybe.Some(this.v); }
       }
       function main() i32 {
           const c = Cell(21);

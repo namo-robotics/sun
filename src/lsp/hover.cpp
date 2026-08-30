@@ -114,7 +114,7 @@ std::string renderPrototype(const PrototypeAST& proto,
                             bool isPublic, const std::string& source,
                             const Bindings& bindings) {
   // Constructors and destructors are spelled bare: no 'public', no
-  // 'function', no return type — only a 'throws IError' when init can fail.
+  // 'method', no return type — only a 'throws IError' when init can fail.
   bool isLifecycle = name == "init" || name == "deinit";
   std::string out;
   if (isPublic && !isLifecycle) out += "public ";
@@ -309,9 +309,18 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
 
     case ASTNodeType::FUNCTION: {
       const auto& fn = static_cast<const FunctionAST&>(node);
+      // A function declared inside a class or interface is a method, and is
+      // spelled with the 'method' keyword
+      bool isMethod =
+          target.chain.size() > 1 &&
+          (target.chain[target.chain.size() - 2]->getType() ==
+               ASTNodeType::CLASS_DEFINITION ||
+           target.chain[target.chain.size() - 2]->getType() ==
+               ASTNodeType::INTERFACE_DEFINITION);
       return Hover{
-          renderPrototype(fn.getProto(), "function", fn.getProto().getName(),
-                          fn.isPublic(), source, bindings),
+          renderPrototype(fn.getProto(), isMethod ? "method" : "function",
+                          fn.getProto().getName(), fn.isPublic(), source,
+                          bindings),
           fn.getProto().getDoc(), range};
     }
     case ASTNodeType::LAMBDA: {

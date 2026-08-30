@@ -209,7 +209,7 @@ TEST(Operators_Char, works_as_a_class_field) {
       class Token {
           var sigil: char;
           init(sigil: char) { this.sigil = sigil; }
-          public const function sigil_is(c: char) bool { return this.sigil == c; }
+          public const method sigil_is(c: char) bool { return this.sigil == c; }
       }
       function main() i32 {
           var t = Token('$');

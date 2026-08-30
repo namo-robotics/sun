@@ -20,7 +20,7 @@ TEST(Interfaces_Generic, simple_generic_interface_definition) {
 TEST(Interfaces_Generic, generic_interface_with_method) {
   auto value = executeString(R"(
     interface IContainer<T> {
-      function get() T;
+      method get() T;
     }
 
     function main() i32 {
@@ -34,7 +34,7 @@ TEST(Interfaces_Generic, class_implements_generic_interface) {
   auto value = executeString(R"(
     interface IBox<T> {
       var value: T;
-      function get() T;
+      method get() T;
     }
 
     class IntBox implements IBox<i32> {
@@ -42,7 +42,7 @@ TEST(Interfaces_Generic, class_implements_generic_interface) {
         this.value = v;
       }
       
-      function get() i32 {
+      method get() i32 {
         return this.value;
       }
     }
@@ -58,7 +58,7 @@ TEST(Interfaces_Generic, class_implements_generic_interface) {
 TEST(Interfaces_Generic, generic_class_implements_generic_interface) {
   auto value = executeString(R"(
     interface IContainer<T> {
-      function get() T;
+      method get() T;
     }
 
     class Box<T> implements IContainer<T> {
@@ -68,7 +68,7 @@ TEST(Interfaces_Generic, generic_class_implements_generic_interface) {
         this.item = v;
       }
       
-      function get() T {
+      method get() T {
         return this.item;
       }
     }
@@ -84,8 +84,8 @@ TEST(Interfaces_Generic, generic_class_implements_generic_interface) {
 TEST(Interfaces_Generic, two_type_parameters) {
   auto value = executeString(R"(
     interface IPair<A, B> {
-      function first() A;
-      function second() B;
+      method first() A;
+      method second() B;
     }
 
     class Pair<X, Y> implements IPair<X, Y> {
@@ -97,11 +97,11 @@ TEST(Interfaces_Generic, two_type_parameters) {
         this.b = y;
       }
       
-      function first() X {
+      method first() X {
         return this.a;
       }
       
-      function second() Y {
+      method second() Y {
         return this.b;
       }
     }
@@ -117,7 +117,7 @@ TEST(Interfaces_Generic, two_type_parameters) {
 TEST(Interfaces_Generic, multiple_instantiations) {
   auto value = executeString(R"(
     interface IWrapper<T> {
-      function unwrap() T;
+      method unwrap() T;
     }
 
     class IntWrapper implements IWrapper<i32> {
@@ -127,7 +127,7 @@ TEST(Interfaces_Generic, multiple_instantiations) {
         this.val = v;
       }
       
-      function unwrap() i32 {
+      method unwrap() i32 {
         return this.val;
       }
     }
@@ -139,7 +139,7 @@ TEST(Interfaces_Generic, multiple_instantiations) {
         this.val = v;
       }
       
-      function unwrap() bool {
+      method unwrap() bool {
         return this.val;
       }
     }
@@ -167,7 +167,7 @@ TEST(Interfaces_Generic, interface_field_inherited) {
         this.data = v;
       }
       
-      function get() i32 {
+      method get() i32 {
         return this.data;
       }
     }

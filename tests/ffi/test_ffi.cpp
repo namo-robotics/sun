@@ -155,7 +155,7 @@ TEST(Ffi, extern_rejects_types_with_no_c_spelling) {
   // closures — none has a C equivalent, so they must error rather than
   // silently miscompile.
   EXPECT_THROW(executeString(R"(
-    interface I { function m() i32; }
+    interface I { method m() i32; }
     extern function f(p: I) i32;
     function main() i32 { return 0; }
   )"),

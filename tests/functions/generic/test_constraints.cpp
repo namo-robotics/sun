@@ -84,11 +84,11 @@ TEST(Functions_Generic_Constraints, signed_accepts_signed) {
 
 TEST(Functions_Generic_Constraints, interface_accepts_implementor) {
   auto value = executeString(R"(
-    interface IShape { public function area() i32; }
+    interface IShape { public method area() i32; }
     class Square implements IShape {
       var side: i32;
       init(s: i32) { this.side = s; }
-      public function area() i32 { return this.side * this.side; }
+      public method area() i32 { return this.side * this.side; }
     }
     function tag<T: IShape>(s: ref T) i32 { return 6; }
     function main() i32 { var sq = Square(3); return tag(sq); }
@@ -99,7 +99,7 @@ TEST(Functions_Generic_Constraints, interface_accepts_implementor) {
 TEST(Functions_Generic_Constraints, interface_rejects_non_implementor) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       executeString(R"(
-    interface IShape { public function area() i32; }
+    interface IShape { public method area() i32; }
     class Dot { init() {} }
     function tag<T: IShape>(s: ref T) i32 { return 0; }
     function main() i32 { var d = Dot(); return tag(d); }
@@ -164,11 +164,11 @@ TEST(Functions_Generic_Constraints, is_lambda_trait_is_false_for_a_number) {
 // before any specialization exists.
 TEST(Functions_Generic_Constraints, interface_method_callable_in_body) {
   auto value = executeString(R"(
-    interface IShape { public function area() i32; }
+    interface IShape { public method area() i32; }
     class Square implements IShape {
       var side: i32;
       init(s: i32) { this.side = s; }
-      public function area() i32 { return this.side * this.side; }
+      public method area() i32 { return this.side * this.side; }
     }
     function measure<T: IShape>(s: ref T) i32 { return s.area(); }
     function main() i32 { var sq = Square(6); return measure(sq); }
@@ -191,16 +191,16 @@ TEST(Functions_Generic_Constraints, interface_field_readable_in_body) {
 
 TEST(Functions_Generic_Constraints, interface_constraint_on_generic_class_body) {
   auto value = executeString(R"(
-    interface IShape { public function area() i32; }
+    interface IShape { public method area() i32; }
     class Square implements IShape {
       var side: i32;
       init(s: i32) { this.side = s; }
-      public function area() i32 { return this.side * this.side; }
+      public method area() i32 { return this.side * this.side; }
     }
     class Holder<T: IShape> {
       var item: T;
       init(i: T) { this.item = i; }
-      public function measure() i32 { return this.item.area(); }
+      public method measure() i32 { return this.item.area(); }
     }
     function main() i32 {
       var h = Holder<Square>(Square(5));
@@ -212,15 +212,15 @@ TEST(Functions_Generic_Constraints, interface_constraint_on_generic_class_body) 
 
 TEST(Functions_Generic_Constraints, interface_constraint_on_generic_method) {
   auto value = executeString(R"(
-    interface IShape { public function area() i32; }
+    interface IShape { public method area() i32; }
     class Square implements IShape {
       var side: i32;
       init(s: i32) { this.side = s; }
-      public function area() i32 { return this.side * this.side; }
+      public method area() i32 { return this.side * this.side; }
     }
     class Ruler {
       init() {}
-      public function measure<T: IShape>(s: ref T) i32 { return s.area(); }
+      public method measure<T: IShape>(s: ref T) i32 { return s.area(); }
     }
     function main() i32 {
       var r = Ruler();
@@ -236,11 +236,11 @@ TEST(Functions_Generic_Constraints, interface_constraint_on_generic_method) {
 TEST(Functions_Generic_Constraints, member_not_on_the_constraint_is_an_error) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       executeString(R"(
-    interface IShape { public function area() i32; }
+    interface IShape { public method area() i32; }
     class Square implements IShape {
       var side: i32;
       init(s: i32) { this.side = s; }
-      public function area() i32 { return this.side * this.side; }
+      public method area() i32 { return this.side * this.side; }
     }
     function measure<T: IShape>(s: ref T) i32 { return s.perimeter(); }
     function main() i32 { var sq = Square(6); return measure(sq); }
@@ -305,7 +305,7 @@ TEST(Functions_Generic_Constraints, generic_class_constraint_accepts) {
     class Box<T: _Numeric> {
       var value: T;
       init(v: T) { this.value = v; }
-      public function get() T { return this.value; }
+      public method get() T { return this.value; }
     }
     function main() i32 { var b = Box<i32>(12); return b.get(); }
   )");
@@ -329,7 +329,7 @@ TEST(Functions_Generic_Constraints, generic_method_constraint_rejects) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class F {
       init() {}
-      public function make<T: _Numeric>() i32 { return 0; }
+      public method make<T: _Numeric>() i32 { return 0; }
     }
     function main() i32 { var f = F(); return f.make<bool>(); }
   )"),

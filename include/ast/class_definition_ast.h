@@ -27,7 +27,7 @@ struct ClassFieldDecl {
 struct ClassMethodDecl {
   std::unique_ptr<FunctionAST> function;
   bool isConstructor;    // true if method name is "init"
-  bool isConst = false;  // `const function`: does not mutate `this`
+  bool isConst = false;  // `const method`: does not mutate `this`
   sun::Visibility visibility() const { return function->getVisibility(); }
 };
 

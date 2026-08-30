@@ -161,12 +161,12 @@ public module sun {
     }
 
     // Drop the key stored at bucket probe (no-op for non-owning key types)
-    function drop_key(probe: i64) void {
+    method drop_key(probe: i64) void {
       unsafe { _deinit<K>(_ptr_offset(this.keys.raw_data(), probe * _sizeof<K>())); };
     }
 
     // Drop the value stored at bucket probe (no-op for non-owning value types)
-    function drop_value(probe: i64) void {
+    method drop_value(probe: i64) void {
       unsafe { _deinit<V>(_ptr_offset(this.values.raw_data(), probe * _sizeof<V>())); };
     }
 
@@ -175,7 +175,7 @@ public module sun {
     // ========================================================================
 
     // Insert or update a key-value pair
-    public function insert(key: K, value: V) void {
+    public method insert(key: K, value: V) void {
       // Check load factor and grow if needed (> 70%)
       var threshold: i64 = (this.capacity_ * 7) / 10;
       if (this.size_ >= threshold) {
@@ -237,7 +237,7 @@ public module sun {
     // Borrow the value stored under key; throws if not found. The map keeps
     // ownership, so this hands back a reference — copying the value out would
     // leave two owners of anything it holds. Use remove() to move it out.
-    public const function get(key: K) ref V throws IError {
+    public const method get(key: K) ref V throws IError {
       var probe: i64 = this.find_index(key);
       if (probe < 0) {
         throw NotFoundError();
@@ -246,7 +246,7 @@ public module sun {
     }
 
     // Borrow the value stored under key; None if not present
-    public const function find(key: K) Option<ref V> {
+    public const method find(key: K) Option<ref V> {
       var probe: i64 = this.find_index(key);
       if (probe < 0) {
         return Option.None;
@@ -255,7 +255,7 @@ public module sun {
     }
 
     // Borrow the value stored under key, or the caller's default when absent
-    public const function get_or_default(key: K, default_value: ref V) ref V {
+    public const method get_or_default(key: K, default_value: ref V) ref V {
       var probe: i64 = this.find_index(key);
       if (probe < 0) {
         return default_value;
@@ -264,7 +264,7 @@ public module sun {
     }
 
     // Remove key and return its value, throws IError if not found
-    public function remove(key: K) V throws IError {
+    public method remove(key: K) V throws IError {
       var probe: i64 = this.find_index(key);
       if (probe < 0) {
         throw NotFoundError();
@@ -278,27 +278,27 @@ public module sun {
     }
 
     // Check if key exists
-    public const function contains(key: K) bool {
+    public const method contains(key: K) bool {
       return this.find_index(key) >= 0;
     }
 
     // Get number of elements
-    public const function size() i64 {
+    public const method size() i64 {
       return this.size_;
     }
 
     // Get bucket count
-    public const function capacity() i64 {
+    public const method capacity() i64 {
       return this.capacity_;
     }
 
     // Check if map is empty
-    public const function is_empty() bool {
+    public const method is_empty() bool {
       return this.size_ == 0;
     }
 
     // Clear all entries. Live keys/values are dropped.
-    public function clear() void {
+    public method clear() void {
       for (var i: i64 = 0; i < this.capacity_; i = i + 1) {
         if (this.states.get_unchecked(i) == 1) {
           this.drop_key(i);
@@ -319,22 +319,22 @@ public module sun {
     // ========================================================================
 
     // True if bucket i holds a live entry
-    public const function is_bucket_occupied(i: i64) bool {
+    public const method is_bucket_occupied(i: i64) bool {
       return this.states.get_unchecked(i) == 1;
     }
 
     // Borrow the key stored in bucket i (must be occupied)
-    public const function get_bucket_key(i: i64) ref K {
+    public const method get_bucket_key(i: i64) ref K {
       return unsafe { _to_ref<K>(_ptr_as_raw<K>(_ptr_offset(this.keys.raw_data(), i * _sizeof<K>()))); };
     }
 
     // Borrow the value stored in bucket i (must be occupied)
-    public const function get_bucket_value(i: i64) ref V {
+    public const method get_bucket_value(i: i64) ref V {
       return unsafe { _to_ref<V>(_ptr_as_raw<V>(_ptr_offset(this.values.raw_data(), i * _sizeof<V>()))); };
     }
 
     // Compare the key stored in bucket probe against `key` in place
-    const function key_at_equals(probe: i64, key: const ref K) bool {
+    const method key_at_equals(probe: i64, key: const ref K) bool {
       var slot: raw_ptr<K> = unsafe { _ptr_as_raw<K>(_ptr_offset(this.keys.raw_data(), probe * _sizeof<K>())); };
       return unsafe { compare_map_keys(_to_ref<K>(slot), key); };
     }
@@ -342,7 +342,7 @@ public module sun {
     // Find index of key, returns -1 if not found. The key is borrowed for
     // the comparisons and dropped when this call ends (String keys own their
     // buffer; the bucket keeps its own copy).
-    const function find_index(key: K) i64 {
+    const method find_index(key: K) i64 {
       var hash: i64 = hash_map_key(key);
       var start: i64 = compute_mod(hash, this.capacity_);
 
@@ -368,7 +368,7 @@ public module sun {
     }
 
     // Grow capacity and rehash all entries
-    function grow() void {
+    method grow() void {
       // Move old buffers out of this (move semantics: old_* now owns the data,
       // this.keys/values/states are zeroed to prevent double-free)
       var old_keys = this.keys;
@@ -409,7 +409,7 @@ public module sun {
     // ========================================================================
 
     // Return iterator over values
-    public const function iter() MapIterator<K, V> {
+    public const method iter() MapIterator<K, V> {
       return MapIterator<K, V>();
     }
   }
@@ -428,7 +428,7 @@ public module sun {
 
     // Value in the next occupied slot, or None once the map is exhausted
     // Values are borrowed: the map still owns them.
-    public function next(map: ref Map<K, V>) Option<ref V> {
+    public method next(map: ref Map<K, V>) Option<ref V> {
       var capacity: i64 = map.capacity();
       while (this.current < capacity) {
         var state: i8 = map.states.get_unchecked(this.current);

@@ -37,32 +37,32 @@ public module sun {
       }
 
       // Whole seconds, with the nanosecond remainder dropped.
-      public const function as_secs() i64 {
+      public const method as_secs() i64 {
         return this.secs;
       }
 
       // The whole duration in milliseconds.
-      public const function as_millis() i64 {
+      public const method as_millis() i64 {
         return this.secs * 1000 + this.nanos / 1000000;
       }
 
       // The whole duration in microseconds.
-      public const function as_micros() i64 {
+      public const method as_micros() i64 {
         return this.secs * 1000000 + this.nanos / 1000;
       }
 
       // The whole duration in nanoseconds.
-      public const function as_nanos() i64 {
+      public const method as_nanos() i64 {
         return this.secs * NANOS_PER_SEC + this.nanos;
       }
 
       // The whole duration in seconds, including the fraction.
-      public const function as_secs_f64() f64 {
+      public const method as_secs_f64() f64 {
         return _convert<f64>(this.secs) + _convert<f64>(this.nanos) / 1000000000.0;
       }
 
       // The nanosecond remainder, on top of as_secs().
-      public const function subsec_nanos() i64 {
+      public const method subsec_nanos() i64 {
         return this.nanos;
       }
     }
@@ -101,14 +101,14 @@ public module sun {
       }
 
       // How long since this Instant was taken.
-      public const function elapsed() Duration {
+      public const method elapsed() Duration {
         var current: Instant = now();
         return current.since(this);
       }
 
       // How long from `earlier` to this Instant. Zero if this is the earlier
       // of the two.
-      public const function since(earlier: const ref Instant) Duration {
+      public const method since(earlier: const ref Instant) Duration {
         var ds: i64 = this.secs - earlier.secs;
         var dn: i64 = this.nanos - earlier.nanos;
         if (dn < 0) {

@@ -6,7 +6,7 @@ Interfaces define contracts that classes can implement.
 
 ```sun
 interface Printable {
-  function print() void;
+  method print() void;
 }
 
 interface HasValue {
@@ -18,7 +18,7 @@ class Counter implements Printable, HasValue {
     this.value = v;
   }
 
-  function print() void {
+  method print() void {
     println(this.value);
   }
 }
@@ -35,28 +35,28 @@ a class keep the visibility they were declared with on the interface.
 ```sun
 public module shapes {
     public interface IShape {
-        public function area() f64;
-        function debug_id() i32 { return 0; }   // module-internal default
+        public method area() f64;
+        method debug_id() i32 { return 0; }   // module-internal default
     }
     public class Square implements IShape {
         var side: f64;
         init(s: f64) { this.side = s; }
-        public function area() f64 { return this.side * this.side; }
+        public method area() f64 { return this.side * this.side; }
     }
 }
 ```
 
 ## Const Methods
 
-An interface member declared `const function` promises not to change the
+An interface member declared `const method` promises not to change the
 object, so it can be called through a `const ref` to the interface. Every
-implementation must then be a `const function` too (see
+implementation must then be a `const method` too (see
 [Const Methods](/classes#const-methods)). A class may declare extra const
 methods the interface does not require.
 
 ```sun
 interface IShape {
-    const function area() f64;
+    const method area() f64;
 }
 function measure(s: const ref IShape) f64 { return s.area(); }
 ```
@@ -85,7 +85,7 @@ Interfaces can provide default method implementations:
 
 ```sun
 interface Answerable {
-  function answer() i32 {
+  method answer() i32 {
     return 42;
   }
 }
@@ -106,7 +106,7 @@ Classes can override default implementations:
 class DeepThinker implements Answerable {
     init() {}
 
-    function answer() i32 {
+    method answer() i32 {
         return 43;  // Override default
     }
 }
@@ -118,8 +118,8 @@ Interfaces can have type parameters, allowing generic contracts:
 
 ```sun
 interface Container<T> {
-    function get() T;
-    function set(value: T) void;
+    method get() T;
+    method set(value: T) void;
 }
 
 class Box<T> implements Container<T> {
@@ -129,11 +129,11 @@ class Box<T> implements Container<T> {
         this.value = v;
     }
 
-    function get() T {
+    method get() T {
         return this.value;
     }
 
-    function set(v: T) void {
+    method set(v: T) void {
         this.value = v;
     }
 }
@@ -145,7 +145,7 @@ A non-generic class can implement a generic interface with a specific type:
 
 ```sun
 interface Wrapper<T> {
-    function unwrap() T;
+    method unwrap() T;
 }
 
 class IntWrapper implements Wrapper<i32> {
@@ -155,7 +155,7 @@ class IntWrapper implements Wrapper<i32> {
         this.value = v;
     }
 
-    function unwrap() i32 {
+    method unwrap() i32 {
         return this.value;
     }
 }
@@ -167,7 +167,7 @@ When a generic class implements a generic interface, the type parameters flow th
 
 ```sun
 interface Mappable<T, U> {
-    function map(f: fn(T) U) U;
+    method map(f: fn(T) U) U;
 }
 
 class Value<T> implements Mappable<T, T> {
@@ -177,7 +177,7 @@ class Value<T> implements Mappable<T, T> {
         this.data = d;
     }
 
-    function map(f: (T) -> T) T {
+    method map(f: (T) -> T) T {
         return f(this.data);
     }
 }
@@ -189,11 +189,11 @@ Classes can implement multiple interfaces:
 
 ```sun
 interface Runnable {
-    function run() void;
+    method run() void;
 }
 
 interface Stoppable {
-    function stop() void;
+    method stop() void;
 }
 
 class Service implements Runnable, Stoppable {
@@ -203,11 +203,11 @@ class Service implements Runnable, Stoppable {
         this.running = false;
     }
 
-    function run() void {
+    method run() void {
         this.running = true;
     }
 
-    function stop() void {
+    method stop() void {
         this.running = false;
     }
 }
@@ -235,7 +235,7 @@ class NumberIterator implements IIterator<i32, NumberIterator> {
         this.max = end;
     }
 
-    function next(self: ref NumberIterator) Option<i32> {
+    method next(self: ref NumberIterator) Option<i32> {
         if (this.current >= this.max) {
             return Option.None;
         }

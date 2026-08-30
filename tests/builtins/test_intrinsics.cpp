@@ -298,7 +298,7 @@ TEST(Builtins_IsIntrinsic, is_class_type) {
 TEST(Builtins_IsIntrinsic, is_interface_implemented) {
   auto value = executeString(R"(
     interface Printable {
-        function print() void;
+        method print() void;
     }
     
     class Value implements Printable {
@@ -306,7 +306,7 @@ TEST(Builtins_IsIntrinsic, is_interface_implemented) {
         init(d: i32) {
             this.data = d;
         }
-        function print() void {
+        method print() void {
             // no-op
         }
     }
@@ -327,7 +327,7 @@ TEST(Builtins_IsIntrinsic, is_interface_implemented) {
 TEST(Builtins_IsIntrinsic, is_interface_not_implemented) {
   auto value = executeString(R"(
     interface Printable {
-        function print() void;
+        method print() void;
     }
     
     class Value {
@@ -391,7 +391,7 @@ TEST(Builtins_IsIntrinsic, is_in_generic_class) {
             this.value = v;
         }
         
-        function isNumeric() bool {
+        method isNumeric() bool {
             return _is<_Numeric>(this.value);
         }
     }
@@ -414,7 +414,7 @@ TEST(Builtins_IsIntrinsic, is_in_generic_class_with_non_numeric) {
             this.value = v;
         }
         
-        function isNumeric() bool {
+        method isNumeric() bool {
             return _is<_Numeric>(this.value);
         }
     }
@@ -460,11 +460,11 @@ TEST(Builtins_IsIntrinsic, branch_on_type_in_generic) {
 TEST(Builtins_IsIntrinsic, minimal_narrowing) {
   auto value = executeString(R"(
     interface IFoo {
-        function foo() i64;
+        method foo() i64;
     }
     
     class Foo implements IFoo {
-        function foo() i64 {
+        method foo() i64 {
             return 42;
         }
     }
@@ -482,7 +482,7 @@ TEST(Builtins_IsIntrinsic, minimal_narrowing) {
 TEST(Builtins_IsIntrinsic, type_narrowing_with_interface) {
   auto value = executeString(R"(
     interface IHashable {
-        function hash() i64;
+        method hash() i64;
     }
     
     class MyKey implements IHashable {
@@ -492,7 +492,7 @@ TEST(Builtins_IsIntrinsic, type_narrowing_with_interface) {
             this.id = x;
         }
         
-        function hash() i64 {
+        method hash() i64 {
             return this.id * 31;
         }
     }
@@ -517,7 +517,7 @@ TEST(Builtins_IsIntrinsic, type_narrowing_with_interface) {
 TEST(Builtins_IsIntrinsic, type_narrowing_method_call_in_generic) {
   auto value = executeString(R"(
     interface IValue {
-        function get_value() i32;
+        method get_value() i32;
     }
     
     class Box implements IValue {
@@ -527,7 +527,7 @@ TEST(Builtins_IsIntrinsic, type_narrowing_method_call_in_generic) {
             this.val = v;
         }
         
-        function get_value() i32 {
+        method get_value() i32 {
             return this.val;
         }
     }
@@ -552,12 +552,12 @@ TEST(Builtins_IsIntrinsic, type_narrowing_else_branch_no_narrow) {
   // This just ensures analysis handles else correctly
   auto value = executeString(R"(
     interface IFoo {
-        function foo() i32;
+        method foo() i32;
     }
     
     class Bar implements IFoo {
         init() {}
-        function foo() i32 { return 42; }
+        method foo() i32 { return 42; }
     }
     
     function check<T>(x: ref T) i32 {
@@ -578,17 +578,17 @@ TEST(Builtins_IsIntrinsic, type_narrowing_else_branch_no_narrow) {
 TEST(Builtins_IsIntrinsic, type_narrowing_nested_if) {
   auto value = executeString(R"(
     interface IA {
-        function a() i32;
+        method a() i32;
     }
     
     interface IB {
-        function b() i32;
+        method b() i32;
     }
     
     class Both implements IA, IB {
         init() {}
-        function a() i32 { return 10; }
-        function b() i32 { return 20; }
+        method a() i32 { return 10; }
+        method b() i32 { return 20; }
     }
     
     function combine<T>(x: ref T) i32 {
@@ -630,14 +630,14 @@ TEST(Builtins_IsIntrinsic, nested_generic_classes) {
         public class Inner<T> {
             public var val: T;
             init(v: T) { this.val = v; }
-            public function get() T { return this.val; }
+            public method get() T { return this.val; }
         }
     }
     
     class Outer<T> {
         public var inner: Test.Inner<T>;
         init(v: T) { this.inner = Test.Inner<T>(v); }
-        public function get() T { return this.inner.get(); }
+        public method get() T { return this.inner.get(); }
     }
     
     function main() i32 { var o = Outer<i32>(42); return o.get(); }
@@ -650,12 +650,12 @@ TEST(Builtins_IsIntrinsic, generic_function_with_captured_param) {
   // The parameter is captured for use with interface method call
   auto value = executeString(R"(
     interface IMultiplier {
-        function multiply(x: i32) i32;
+        method multiply(x: i32) i32;
     }
     
     class Doubler implements IMultiplier {
         init() {}
-        function multiply(x: i32) i32 { return x * 2; }
+        method multiply(x: i32) i32 { return x * 2; }
     }
     
     function applyMultiplier<T>(m: ref T, value: i32) i32 {
@@ -678,13 +678,13 @@ TEST(Builtins_IsIntrinsic, generic_function_captures_and_type_narrowing) {
   // Generic function with captured variable and type narrowing
   auto value = executeString(R"(
     interface IScalable {
-        function scale(factor: i32) i32;
+        method scale(factor: i32) i32;
     }
     
     class Number implements IScalable {
         var n: i32;
         init(v: i32) { this.n = v; }
-        function scale(factor: i32) i32 { return this.n * factor; }
+        method scale(factor: i32) i32 { return this.n * factor; }
     }
     
     function processWithFactor<T>(x: ref T, factor: i32) i32 {
@@ -707,23 +707,23 @@ TEST(Builtins_IsIntrinsic, chained_generic_calls_with_different_types) {
   // Multiple generic functions with different type parameters
   auto value = executeString(R"(
     interface IA {
-        function getA() i32;
+        method getA() i32;
     }
     
     interface IB {
-        function getB() i32;
+        method getB() i32;
     }
     
     class TypeA implements IA {
         var a: i32;
         init(v: i32) { this.a = v; }
-        function getA() i32 { return this.a; }
+        method getA() i32 { return this.a; }
     }
     
     class TypeB implements IB {
         var b: i32;
         init(v: i32) { this.b = v; }
-        function getB() i32 { return this.b; }
+        method getB() i32 { return this.b; }
     }
     
     function extractA<T>(x: ref T) i32 {
@@ -757,13 +757,13 @@ TEST(Builtins_IsIntrinsic, nested_generic_function_definition) {
   // Generic function defined inside another generic function
   auto value = executeString(R"(
     interface IValue {
-        function get_value() i32;
+        method get_value() i32;
     }
     
     class Wrapper implements IValue {
         var data: i32;
         init(d: i32) { this.data = d; }
-        function get_value() i32 { return this.data; }
+        method get_value() i32 { return this.data; }
     }
     
     function outer<T>(x: ref T, multiplier: i32) i32 {

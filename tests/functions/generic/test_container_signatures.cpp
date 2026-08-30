@@ -121,16 +121,16 @@ TEST(Functions_Generic_ContainerSignatures, uncalled_vec_signature_resolves) {
 TEST(Functions_Generic_ContainerSignatures, self_referential_interface) {
   auto value = executeString(R"(
     interface IPeeker<T, Container> {
-        function peek(container: ref Container) T;
+        method peek(container: ref Container) T;
     }
 
     interface IPeekable<T, Self> {
-        function peeker() IPeeker<T, Self>;
+        method peeker() IPeeker<T, Self>;
     }
 
     class CellPeeker<T> implements IPeeker<ref T, Cell<T>> {
         init() {}
-        function peek(container: ref Cell<T>) ref T {
+        method peek(container: ref Cell<T>) ref T {
             return container.value;
         }
     }
@@ -138,7 +138,7 @@ TEST(Functions_Generic_ContainerSignatures, self_referential_interface) {
     class Cell<T> implements IPeekable<ref T, Cell<T>> {
         var value: T;
         init(v: T) { this.value = v; }
-        function peeker() IPeeker<ref T, Cell<T>> {
+        method peeker() IPeeker<ref T, Cell<T>> {
             return CellPeeker<T>();
         }
     }

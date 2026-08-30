@@ -26,7 +26,7 @@ const char* kOwnerPreamble = R"(
           this.id = 0;
         }
       }
-      function get_id() i32 {
+      method get_id() i32 {
         return this.id;
       }
     }
@@ -184,8 +184,8 @@ TEST(MemorySafety_GlobalAssignment, generic_class_global_runs_constructor) {
         this.value = v;
         this.tag = tag_;
       }
-      function get() T { return this.value; }
-      function get_tag() i32 { return this.tag; }
+      method get() T { return this.value; }
+      method get_tag() i32 { return this.tag; }
     }
 
     var b: Box<i32> = Box<i32>(41, 1);

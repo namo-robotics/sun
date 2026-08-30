@@ -41,7 +41,7 @@ TEST(Lambdas_Params, lambda_ref_class_param) {
         init() {
             this.count = 0;
         }
-        function bump() void {
+        method bump() void {
             this.count = this.count + 1;
         }
     }
@@ -70,7 +70,7 @@ TEST(Lambdas_Params, lambda_ref_class_param_literal) {
         init() {
             this.count = 0;
         }
-        function bump() void {
+        method bump() void {
             this.count = this.count + 1;
         }
     }
@@ -99,7 +99,7 @@ TEST(Lambdas_Params, method_lambda_param) {
         init() {
             this.count = 0;
         }
-        function bump() void {
+        method bump() void {
             this.count = this.count + 1;
         }
     }
@@ -109,7 +109,7 @@ TEST(Lambdas_Params, method_lambda_param) {
         init() {
             this.dummy = 0;
         }
-        function run_twice(handler: (ref Counter) -> void) i32 {
+        method run_twice(handler: (ref Counter) -> void) i32 {
             var c = Counter();
             handler(c);
             handler(c);
@@ -134,7 +134,7 @@ TEST(Lambdas_Params, lambda_param_forwarded_between_methods) {
         init() {
             this.count = 0;
         }
-        function bump() void {
+        method bump() void {
             this.count = this.count + 1;
         }
     }
@@ -144,10 +144,10 @@ TEST(Lambdas_Params, lambda_param_forwarded_between_methods) {
         init() {
             this.dummy = 0;
         }
-        function outer(handler: (ref Counter) -> void) i32 {
+        method outer(handler: (ref Counter) -> void) i32 {
             return this.inner(handler);
         }
-        function inner(handler: (ref Counter) -> void) i32 {
+        method inner(handler: (ref Counter) -> void) i32 {
             var c = Counter();
             handler(c);
             return c.count;

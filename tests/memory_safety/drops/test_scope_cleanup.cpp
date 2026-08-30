@@ -287,7 +287,7 @@ TEST(MemorySafety_Drops_ScopeCleanup, discarded_method_result_is_dropped) {
   auto value = executeString(withPreamble(R"(
     class Factory {
       init() {}
-      function make() Owner { return Owner(); }
+      method make() Owner { return Owner(); }
     }
 
     function helper() i32 {
@@ -457,7 +457,7 @@ TEST(MemorySafety_Drops_ScopeCleanup, by_value_method_param_is_dropped) {
   auto value = executeString(withPreamble(R"(
     class Sink {
       init() {}
-      public function take(o: Owner) i32 { return 0; }
+      public method take(o: Owner) i32 { return 0; }
     }
 
     function helper() i32 {

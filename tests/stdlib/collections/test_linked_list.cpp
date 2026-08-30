@@ -390,15 +390,15 @@ TEST(Stdlib_Collections_LinkedList, list_of_class_objects) {
             this.y = y_;
         }
 
-        function getX() i32 {
+        method getX() i32 {
             return this.x;
         }
 
-        function getY() i32 {
+        method getY() i32 {
             return this.y;
         }
 
-        function sum() i32 {
+        method sum() i32 {
             return this.x + this.y;
         }
     }
@@ -437,7 +437,7 @@ TEST(Stdlib_Collections_LinkedList, class_objects_push_front_pop) {
             this.b = b_;
         }
 
-        function product() i32 {
+        method product() i32 {
             return this.a * this.b;
         }
     }
@@ -475,7 +475,7 @@ TEST(Stdlib_Collections_LinkedList, iterate_class_objects) {
             this.value = v;
         }
 
-        function get_value() i32 {
+        method get_value() i32 {
             return this.value;
         }
     }
@@ -549,7 +549,7 @@ TEST(Stdlib_Collections_LinkedList, DISABLED_double_free_via_copy) {
             this.inner = list;
         }
 
-        function getSize() i64 {
+        method getSize() i64 {
             return this.inner.size();
         }
     }

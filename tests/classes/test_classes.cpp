@@ -31,7 +31,7 @@ TEST(Classes, class_with_method) {
     class Counter {
       var value: i32;
 
-      function get() i32 {
+      method get() i32 {
         return this.value;
       }
     }
@@ -158,7 +158,7 @@ TEST(Classes, method_call_no_args) {
         this.value = v;
       }
       
-      function get() i32 {
+      method get() i32 {
         return this.value;
       }
     }
@@ -183,7 +183,7 @@ TEST(Classes, method_call_with_args) {
         this.base = b;
       }
       
-      function add(x: i32) i32 {
+      method add(x: i32) i32 {
         return this.base + x;
       }
     }
@@ -208,7 +208,7 @@ TEST(Classes, chained_method_calls) {
         this.n = x;
       }
       
-      function double() i32 {
+      method double() i32 {
         return this.n * 2;
       }
     }
@@ -237,7 +237,7 @@ TEST(Classes, constructor_with_no_args) {
         this.value = 100;
       }
       
-      function get() i32 {
+      method get() i32 {
         return this.value;
       }
     }
@@ -293,11 +293,11 @@ TEST(Classes, multiple_methods) {
         this.height = h;
       }
       
-      function area() i32 {
+      method area() i32 {
         return this.width * this.height;
       }
       
-      function perimeter() i32 {
+      method perimeter() i32 {
         return 2 * this.width + 2 * this.height;
       }
     }
@@ -322,7 +322,7 @@ TEST(Classes, multiple_objects_same_class) {
         this.value = v;
       }
       
-      function get() i32 {
+      method get() i32 {
         return this.value;
       }
     }
@@ -463,7 +463,7 @@ TEST(Classes, constructor_wrong_argument_count) {
 TEST(Classes, init_rejects_function_keyword) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       compileString(R"(
-    class A { var x: i32; function init() { this.x = 1; } }
+    class A { var x: i32; method init() { this.x = 1; } }
     function main() i32 { return 0; }
   )"),
       "'init' is the constructor and is always public");
@@ -472,7 +472,7 @@ TEST(Classes, init_rejects_function_keyword) {
 TEST(Classes, deinit_rejects_function_keyword) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       compileString(R"(
-    class A { var x: i32; init() { this.x = 1; } public function deinit() void { this.x = 0; } }
+    class A { var x: i32; init() { this.x = 1; } public method deinit() void { this.x = 0; } }
     function main() i32 { return 0; }
   )"),
       "'deinit' is the destructor and is always public");
@@ -526,7 +526,7 @@ TEST(Classes, deinit_cannot_throw) {
 TEST(Classes, interface_cannot_declare_init) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       compileString(R"(
-    interface IThing { function init() void; }
+    interface IThing { method init() void; }
     function main() i32 { return 0; }
   )"),
       "'init' cannot be an interface method");
@@ -537,8 +537,8 @@ TEST(Classes, throwing_constructor) {
   auto value = executeString(R"(
     class NegativeError implements IError {
       init() {}
-      function code() i32 { return 1; }
-      function message() static_ptr<u8> { return "negative"; }
+      method code() i32 { return 1; }
+      method message() static_ptr<u8> { return "negative"; }
     }
     class Guarded {
         var n: i32;
@@ -595,11 +595,11 @@ TEST(Classes, partial_class_adds_methods) {
       var a: i32;
       var b: i32;
       init(a_: i32, b_: i32) { this.a = a_; this.b = b_; }
-      function get_a() i32 { return this.a; }
+      method get_a() i32 { return this.a; }
     }
 
     partial class X {
-      function get_b() i32 { return this.b; }
+      method get_b() i32 { return this.b; }
     }
 
     function main() i32 {
@@ -617,13 +617,13 @@ TEST(Classes, partial_class_mutual_calls) {
       var a: i32;
       var b: i32;
       init(a_: i32, b_: i32) { this.a = a_; this.b = b_; }
-      function get_a() i32 { return this.a; }
+      method get_a() i32 { return this.a; }
     }
 
     partial class X {
-      function get_b() i32 { return this.b; }
-      function sum() i32 { return this.get_a() + this.get_b(); }
-      function double_b() i32 { return this.get_b() * 2; }
+      method get_b() i32 { return this.b; }
+      method sum() i32 { return this.get_a() + this.get_b(); }
+      method double_b() i32 { return this.get_b() * 2; }
     }
 
     function main() i32 {
@@ -673,10 +673,10 @@ TEST(Classes, partial_class_duplicate_method_error) {
       class Foo { 
         var x: i32; 
         init() { this.x = 0; }
-        function get() i32 { return this.x; }
+        method get() i32 { return this.x; }
       }
       partial class Foo { 
-        function get() i32 { return this.x + 1; }
+        method get() i32 { return this.x + 1; }
       }
       function main() i32 { return 0; }
     )");
@@ -694,12 +694,12 @@ TEST(Classes, partial_class_inline_simple) {
     class Counter {
       var value: i32;
       init(v: i32) { this.value = v; }
-      function get() i32 { return this.value; }
+      method get() i32 { return this.value; }
     }
     
     partial class Counter {
-      function increment() void { this.value = this.value + 1; }
-      function add(n: i32) void { this.value = this.value + n; }
+      method increment() void { this.value = this.value + 1; }
+      method add(n: i32) void { this.value = this.value + n; }
     }
     
     function main() i32 {
@@ -801,11 +801,11 @@ TEST(Classes, this_nested_member_assignment) {
         this.inner = Inner();
       }
       
-      function setInnerValue(v: i32) void {
+      method setInnerValue(v: i32) void {
         this.inner.x = v;
       }
       
-      function getInnerValue() i32 {
+      method getInnerValue() i32 {
         return this.inner.x;
       }
     }
@@ -910,7 +910,7 @@ TEST(Classes, method_call_on_function_return) {
         this.x = px;
         this.y = py;
       }
-      function sum() i32 {
+      method sum() i32 {
         return this.x + this.y;
       }
     }
@@ -1063,7 +1063,7 @@ TEST(Classes, chained_method_and_member_as_argument) {
     class Builder {
       var value: i32;
       init(v: i32) { this.value = v; }
-      function build() Data {
+      method build() Data {
         return Data(this.value * 2);
       }
     }
@@ -1256,7 +1256,7 @@ TEST(Classes, ctor_by_value_class_arg_moves_temporary_and_named) {
     class Holder {
       var s: String;
       init(s: String) { this.s = s; }
-      function len() i64 { return this.s.length(); }
+      method len() i64 { return this.s.length(); }
     }
 
     function main() i32 {
@@ -1302,7 +1302,7 @@ TEST(Classes, ctor_by_value_enum_arg_moves_payload) {
     class Box {
       var v: Value;
       init(v: Value) { this.v = v; }
-      function size() i64 {
+      method size() i64 {
         return match this.v {
           Value.Text(s) => s.length(),
           Value.Num(n) => n,
@@ -1355,12 +1355,12 @@ TEST(Classes, method_calls_class_declared_below_it) {
   auto value = executeString(R"(
     class First {
         init() {}
-        function go() i32 { var s = Second(20); return s.doubled() + helper(); }
+        method go() i32 { var s = Second(20); return s.doubled() + helper(); }
     }
     class Second {
         var v: i32;
         init(v: i32) { this.v = v; }
-        function doubled() i32 { return this.v * 2; }
+        method doubled() i32 { return this.v * 2; }
     }
     function helper() i32 { return 2; }
     function main() i32 { var f = First(); return f.go(); }
@@ -1373,12 +1373,12 @@ TEST(Classes, method_calls_generic_class_declared_below_it) {
     class Node {
         var v: i32;
         init(v: i32) { this.v = v; }
-        function wrapped() i32 { var w = Wrapper<i32>(this.v); return w.get(); }
+        method wrapped() i32 { var w = Wrapper<i32>(this.v); return w.get(); }
     }
     class Wrapper<T> {
         var v: T;
         init(v: T) { this.v = v; }
-        function get() T { return this.v; }
+        method get() T { return this.v; }
     }
     function main() i32 { var n = Node(42); return n.wrapped(); }
   )");
@@ -1394,7 +1394,7 @@ TEST(Classes, extra_argument_to_zero_parameter_method_is_error) {
     class Counter {
         var n: i32;
         init() { this.n = 0; }
-        function bump() void { this.n = this.n + 1; }
+        method bump() void { this.n = this.n + 1; }
     }
     function main() i32 { var c = Counter(); c.bump(5); return c.n; }
   )"),
@@ -1406,7 +1406,7 @@ TEST(Classes, wrong_argument_count_to_method_lists_overloads) {
     class Counter {
         var n: i32;
         init() { this.n = 0; }
-        function add(x: i32) void { this.n = this.n + x; }
+        method add(x: i32) void { this.n = this.n + x; }
     }
     function main() i32 { var c = Counter(); c.add(1, 2); return c.n; }
   )"),
@@ -1418,7 +1418,7 @@ TEST(Classes, missing_argument_to_method_is_error) {
     class Counter {
         var n: i32;
         init() { this.n = 0; }
-        function add(x: i32) void { this.n = this.n + x; }
+        method add(x: i32) void { this.n = this.n + x; }
     }
     function main() i32 { var c = Counter(); c.add(); return c.n; }
   )"),
@@ -1431,10 +1431,56 @@ TEST(Classes, argument_to_zero_parameter_overload_picks_the_other_one) {
     class Counter {
         var n: i32;
         init() { this.n = 0; }
-        function add() void { this.n = this.n + 1; }
-        function add(x: i32) void { this.n = this.n + x; }
+        method add() void { this.n = this.n + 1; }
+        method add(x: i32) void { this.n = this.n + x; }
     }
     function main() i32 { var c = Counter(); c.add(); c.add(41); return c.n; }
   )");
   EXPECT_EQ(value, 42);
+}
+
+// ============================================================================
+// The `method` keyword
+// ============================================================================
+
+TEST(Classes, function_in_a_class_body_is_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Counter {
+        var n: i32;
+        init() { this.n = 0; }
+        function bump() void { this.n = this.n + 1; }
+    }
+    function main() i32 { var c = Counter(); c.bump(); return c.n; }
+  )"),
+                                "a class method is declared with 'method', "
+                                "not 'function'");
+}
+
+TEST(Classes, function_in_an_interface_body_is_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    interface IShape {
+        function area() i32;
+    }
+    function main() i32 { return 0; }
+  )"),
+                                "an interface method is declared with "
+                                "'method', not 'function'");
+}
+
+// `method` is a keyword only where a member starts, so ordinary names may
+// still be `method`.
+TEST(Classes, method_is_usable_as_a_name) {
+  auto value = executeString(R"(
+    class Request {
+        var method: i32;
+        init(method: i32) { this.method = method; }
+        method get_method() i32 { return this.method; }
+    }
+    function main() i32 {
+        var method: i32 = 1;
+        var r = Request(41);
+        return r.get_method() + r.method - method;
+    }
+  )");
+  EXPECT_EQ(value, 81);
 }

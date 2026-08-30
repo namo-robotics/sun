@@ -47,7 +47,7 @@ public module sun {
       // Wait for the thread to finish, and take what it returned. The result
       // is yours from then on, and dropped at the end of your scope like any
       // other value you own.
-      public function join() T {
+      public method join() T {
         var c = this.ctx;
         this.ctx = null;
         return unsafe { _thread_join<T>(c); };
@@ -91,7 +91,7 @@ public module sun {
       }
 
       // Acquire the lock. Blocks until the lock is available.
-      public function lock() void {
+      public method lock() void {
         // Fast path: try to acquire uncontended lock (0 -> 1)
         var old = unsafe { _atomic_cmpxchg_i32(_address_of<i32>(this.state), 0, 1); };
         if (old == 0) {
@@ -104,7 +104,7 @@ public module sun {
       }
 
       // Slow path for lock acquisition with futex waiting
-      function lock_slow() void {
+      method lock_slow() void {
         // Spin a few times before blocking (helps on short critical sections)
         var spin_count = 0;
         while (spin_count < 100) {
@@ -139,7 +139,7 @@ public module sun {
       }
 
       // Release the lock. Must only be called by the thread holding the lock.
-      public function unlock() void {
+      public method unlock() void {
         // Get the old state and set to 0 (unlocked)
         var old = unsafe { _atomic_cmpxchg_i32(_address_of<i32>(this.state), 1, 0); };
 

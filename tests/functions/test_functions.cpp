@@ -157,7 +157,7 @@ TEST(Functions, ref_class_param_borrows) {
     class Box {
         var v: i32;
         init(v: i32) { this.v = v; }
-        function get() i32 { return this.v; }
+        method get() i32 { return this.v; }
     }
 
     function peek(b: ref Box) i32 {
@@ -177,8 +177,8 @@ TEST(Functions, ref_class_param_can_mutate_caller_value) {
     class Box {
         var v: i32;
         init(v: i32) { this.v = v; }
-        function bump() void { this.v = this.v + 1; }
-        function get() i32 { return this.v; }
+        method bump() void { this.v = this.v + 1; }
+        method get() i32 { return this.v; }
     }
 
     function bump_twice(b: ref Box) void {
@@ -200,7 +200,7 @@ TEST(Functions, returns_class_by_value) {
     class Box {
         var v: i32;
         init(v: i32) { this.v = v; }
-        function get() i32 { return this.v; }
+        method get() i32 { return this.v; }
     }
 
     function make(n: i32) Box {
@@ -220,7 +220,7 @@ TEST(Functions, class_by_value_param_is_a_move) {
     class Box {
         var v: i32;
         init(v: i32) { this.v = v; }
-        function get() i32 { return this.v; }
+        method get() i32 { return this.v; }
     }
 
     function eat(b: Box) i32 {
@@ -241,7 +241,7 @@ TEST(Functions, use_after_passing_class_by_value_is_error) {
         class Box {
             var v: i32;
             init(v: i32) { this.v = v; }
-            function get() i32 { return this.v; }
+            method get() i32 { return this.v; }
         }
 
         function eat(b: Box) i32 {

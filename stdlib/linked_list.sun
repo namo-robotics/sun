@@ -36,53 +36,53 @@ public module sun {
     }
 
     // Borrow the stored value; the node keeps ownership
-    public const function get_value() ref T {
+    public const method get_value() ref T {
       return unsafe { _to_ref<T>(_address_of<T>(this.value)); };
     }
 
     // Move the stored value out. The move zeroes the slot, so the node's own
     // drop is a no-op. Only for callers that are freeing or reusing the node.
-    public function take_value() T {
+    public method take_value() T {
       var value: T = this.value;
       return value;
     }
 
     // Overwrite the stored value without dropping the old one. Only safe on a
     // slot that was already moved out of.
-    public function set_value(v: T) void {
+    public method set_value(v: T) void {
       this.value = v;
     }
 
     // Replace the stored value, dropping the old one first (no-op for
     // non-owning types)
-    public function replace_value(v: T) void {
+    public method replace_value(v: T) void {
       unsafe { _deinit<T>(_address_of<T>(this.value)); };
       this.value = v;
     }
 
     // Drop the stored value in place (used when freeing nodes that still own
     // their payload)
-    function drop_value() void {
+    method drop_value() void {
       unsafe { _deinit<T>(_address_of<T>(this.value)); };
     }
 
     // The node after this one, or null at the tail.
-    public const function get_next() raw_ptr<LinkedListNode<T>> {
+    public const method get_next() raw_ptr<LinkedListNode<T>> {
       return this.next;
     }
 
     // The node before this one, or null at the head.
-    public const function get_prev() raw_ptr<LinkedListNode<T>> {
+    public const method get_prev() raw_ptr<LinkedListNode<T>> {
       return this.prev;
     }
 
     // Point this node at its successor. Does not touch the other node's links.
-    public function set_next(n: raw_ptr<LinkedListNode<T>>) void {
+    public method set_next(n: raw_ptr<LinkedListNode<T>>) void {
       this.next = n;
     }
 
     // Point this node at its predecessor. Does not touch the other node's links.
-    public function set_prev(p: raw_ptr<LinkedListNode<T>>) void {
+    public method set_prev(p: raw_ptr<LinkedListNode<T>>) void {
       this.prev = p;
     }
   }
@@ -115,7 +115,7 @@ public module sun {
     // ========================================================================
 
     // Append element to the back
-    public function push_back(value: T) void {
+    public method push_back(value: T) void {
       var node: raw_ptr<LinkedListNode<T>> = this.alloc.create<LinkedListNode<T>>(value);
       if (this.tail != null) {
         unsafe { this.tail.set_next(node); };
@@ -129,7 +129,7 @@ public module sun {
     }
 
     // Prepend element to the front
-    public function push_front(value: T) void {
+    public method push_front(value: T) void {
       var node: raw_ptr<LinkedListNode<T>> = this.alloc.create<LinkedListNode<T>>(value);
       if (this.head != null) {
         unsafe { this.head.set_prev(node); };
@@ -143,7 +143,7 @@ public module sun {
     }
 
     // Remove and return the last element
-    public function pop_back() T throws IError {
+    public method pop_back() T throws IError {
       if (this.tail == null) {
         throw EmptyError();
       }
@@ -161,7 +161,7 @@ public module sun {
     }
 
     // Remove and return the first element
-    public function pop_front() T throws IError {
+    public method pop_front() T throws IError {
       if (this.head == null) {
         throw EmptyError();
       }
@@ -181,7 +181,7 @@ public module sun {
     // Borrow the element at index (traverses from nearest end). The list keeps
     // ownership, so this hands back a reference; use remove()/pop_*() to move
     // an element out.
-    public const function get(index: i64) ref T throws IError {
+    public const method get(index: i64) ref T throws IError {
       if (index < 0) {
         throw NotFoundError();
       }
@@ -193,7 +193,7 @@ public module sun {
     }
 
     // Set element at index
-    public function set(index: i64, value: T) void throws IError {
+    public method set(index: i64, value: T) void throws IError {
       if (index < 0) {
         throw NotFoundError();
       }
@@ -205,7 +205,7 @@ public module sun {
     }
 
     // Remove element at index and return its value
-    public function remove(index: i64) T throws IError {
+    public method remove(index: i64) T throws IError {
       if (index < 0) {
         throw NotFoundError();
       }
@@ -221,7 +221,7 @@ public module sun {
     }
 
     // Borrow the first element; None when empty
-    public const function first() Option<ref T> {
+    public const method first() Option<ref T> {
       if (this.head == null) {
         return Option.None;
       }
@@ -229,7 +229,7 @@ public module sun {
     }
 
     // Borrow the last element; None when empty
-    public const function last() Option<ref T> {
+    public const method last() Option<ref T> {
       if (this.tail == null) {
         return Option.None;
       }
@@ -237,18 +237,18 @@ public module sun {
     }
 
     // Get current size
-    public const function size() i64 {
+    public const method size() i64 {
       return this.size_;
     }
 
     // Check if empty
-    public const function is_empty() bool {
+    public const method is_empty() bool {
       return this.size_ == 0;
     }
 
     // Remove all elements and free nodes. Node payloads still owned by the
     // list are dropped.
-    public function clear() void {
+    public method clear() void {
       var curr: raw_ptr<LinkedListNode<T>> = this.head;
       while (curr != null) {
         var next: raw_ptr<LinkedListNode<T>> = unsafe { curr.get_next(); };
@@ -266,7 +266,7 @@ public module sun {
     // ========================================================================
 
     // Get node at index, traversing from nearest end
-    const function find_node_at(index: i64) raw_ptr<LinkedListNode<T>> {
+    const method find_node_at(index: i64) raw_ptr<LinkedListNode<T>> {
       if (index < this.size_ / 2) {
         // Traverse from head
         var node: raw_ptr<LinkedListNode<T>> = this.head;
@@ -284,7 +284,7 @@ public module sun {
     }
 
     // Unlink a node from the list (does not free or adjust size)
-    function unlink_node(node: raw_ptr<LinkedListNode<T>>) void {
+    method unlink_node(node: raw_ptr<LinkedListNode<T>>) void {
       var prev: raw_ptr<LinkedListNode<T>> = unsafe { node.get_prev(); };
       var next: raw_ptr<LinkedListNode<T>> = unsafe { node.get_next(); };
       if (prev != null) {
@@ -304,7 +304,7 @@ public module sun {
     // ========================================================================
 
     // Return iterator over elements
-    public const function iter() LinkedListIterator<T> {
+    public const method iter() LinkedListIterator<T> {
       return LinkedListIterator<T>();
     }
   }
@@ -325,7 +325,7 @@ public module sun {
 
     // Next element, or None once the list is exhausted. Elements are
     // borrowed: the list still owns them.
-    public function next(list: ref LinkedList<T>) Option<ref T> {
+    public method next(list: ref LinkedList<T>) Option<ref T> {
       if (this.started == false) {
         this.current = list.head;
         this.started = true;

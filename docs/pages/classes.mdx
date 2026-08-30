@@ -16,7 +16,7 @@ class Point {
         this.y = py;
     }
 
-    function magnitude_squared() i32 {
+    method magnitude_squared() i32 {
         return this.x * this.x + this.y * this.y;
     }
 }
@@ -26,10 +26,11 @@ class Point {
 
 - **Fields**: Declared with `var name: type;` inside the class body
 - **Constructor**: `init(args) { }` runs during instantiation. It is written
-  bare — no `public`, no `function`, no return type — and so is the destructor
+  bare — no `public`, no `method`, no return type — and so is the destructor
   `deinit() { }`; both are always public, and no method may take their names.
   A constructor that can fail is written `init(args) throws IError { }`.
-- **Methods**: Functions inside the class that can access `this`
+- **Methods**: Declared with the `method` keyword inside the class body; a
+  method can access `this`
 - **Member access**: Use `.` to access fields and call methods
 - **Interfaces**: Classes can implement one or more interfaces
 - **Visibility**: Fields and methods are private by default; mark the API `public`
@@ -49,8 +50,8 @@ public module bank {
         init(owner: i32) {                      // always public
             this.owner = owner; this.balance = 0;
         }
-        public function deposit(n: i64) void { this.balance = this.balance + n; }
-        function audit() bool { return this.balance >= 0; }   // private
+        public method deposit(n: i64) void { this.balance = this.balance + n; }
+        method audit() bool { return this.balance >= 0; }   // private
     }
 }
 ```
@@ -136,7 +137,7 @@ class Point {
 }
 
 partial class Point {
-    function sum() i32 { return this.x + this.y; }
+    method sum() i32 { return this.x + this.y; }
 }
 ```
 
@@ -146,7 +147,7 @@ Classes can implement interfaces using the `implements` keyword:
 
 ```sun
 interface Printable {
-    function print() void;
+    method print() void;
 }
 
 class Point implements Printable {
@@ -158,7 +159,7 @@ class Point implements Printable {
         this.y = py;
     }
 
-    function print() void {
+    method print() void {
         println(this.x);
         println(this.y);
     }
@@ -175,7 +176,7 @@ interface Named {
 }
 
 interface Runnable {
-    function run() void;
+    method run() void;
 }
 
 class Task implements Named, Runnable {
@@ -185,7 +186,7 @@ class Task implements Named, Runnable {
         this.name = n;
     }
 
-    function run() void {
+    method run() void {
         println(this.name);
     }
 }
@@ -207,7 +208,7 @@ class Box<T> implements IIterator<T, Box<T>> {
         this.returned = false;
     }
 
-    function next(self: ref Box<T>) Option<T> {
+    method next(self: ref Box<T>) Option<T> {
         if (this.returned) {
             return Option.None;
         }
@@ -238,7 +239,7 @@ class Account {
         this.audit();       // fine: every field has a value by here
     }
 
-    function audit() void { ... }
+    method audit() void { ... }
 }
 ```
 
@@ -272,7 +273,7 @@ class Buffer {
         this.fill(alloc);   // assigns both fields, so the object is whole
     }
 
-    function fill(alloc: ref HeapAllocator) void {
+    method fill(alloc: ref HeapAllocator) void {
         this.data = Vec<u8>(alloc, 16);
         this.length = 0;
     }
@@ -436,8 +437,8 @@ tick();                   // increments c
 
 ## Const Methods
 
-A method that does not change its object is declared `const function`. The
-modifier sits where `public` does (`public const function`). Inside it,
+A method that does not change its object is declared `const method`. The
+modifier sits where `public` does (`public const method`). Inside it,
 `this` is immutable: the body cannot assign to a field, take a `ref` to one,
 pass one to a `ref` parameter, or call a non-const method on `this`.
 
@@ -445,8 +446,8 @@ pass one to a `ref` parameter, or call a non-const method on `this`.
 class Counter {
     var n: i32;
     init() { this.n = 0; }
-    public const function get() i32 { return this.n; }
-    public function increment() void { this.n = this.n + 1; }
+    public const method get() i32 { return this.n; }
+    public method increment() void { this.n = this.n + 1; }
 }
 ```
 
@@ -459,8 +460,8 @@ c.get();          // ✓ OK
 c.increment();    // ❌ ERROR: cannot call non-const method 'increment' on constant 'c'
 ```
 
-A const method may still hand out a borrow of its object (`function get(i) ref T`,
-`function first() Option<ref T>`). Seen through a constant receiver every
+A const method may still hand out a borrow of its object (`method get(i) ref T`,
+`method first() Option<ref T>`). Seen through a constant receiver every
 `ref` in the result becomes `const ref` — `const ref T`, `Option<const ref T>`
 — so the element can be read but not changed, while a `var` receiver gets the
 writable borrow the signature declares. Inside the method the body is checked
@@ -468,7 +469,7 @@ against that same read-only view, which is what lets it return a borrow of the
 immutable `this`. `init` is never const, and a bound method value
 (`c.increment`) follows the same rule as a call.
 
-An interface method declared `const function` must be implemented by a const
+An interface method declared `const method` must be implemented by a const
 method; a class may mark further methods const on its own.
 
 ## Returning Objects from Functions
@@ -496,11 +497,11 @@ class Counter {
         this.value = start;
     }
 
-    function increment() void {
+    method increment() void {
         this.value = this.value + 1;
     }
 
-    function get() i32 {
+    method get() i32 {
         return this.value;
     }
 }

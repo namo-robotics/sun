@@ -323,26 +323,29 @@ unique_ptr<MatchExprAST> Parser::parseMatchExpression() {
 
 // Parse function: function name(args) returnType { body }
 // or: function name<T, U>(args) returnType { body }
+// A class method is spelled the same way but opens with 'method'.
 unique_ptr<FunctionAST> Parser::parseFunction(bool isClassMethod) {
   Position start = captureStart();
-  getNextToken();  // eat 'function'
+  getNextToken();  // eat 'function' / 'method'
 
   // Allow both regular identifiers and intrinsic identifiers (e.g., __index__)
   if (curTok.kind != TokenKind::IDENTIFIER &&
       curTok.kind != TokenKind::INTRINSIC_IDENTIFIER)
-    throwIdentifierError("Expected function name after 'function'");
+    throwIdentifierError(isClassMethod
+                             ? "Expected method name after 'method'"
+                             : "Expected function name after 'function'");
 
   std::string funcName = curTok.getIdentifier().value();
 
   // Constructors and destructors are not methods; they have their own
-  // member syntax without 'public' or 'function', and no other member may
+  // member syntax without 'public' or 'method', and no other member may
   // take their names.
   if (isClassMethod && (funcName == "init" || funcName == "deinit")) {
     parsingError("'" + funcName + "' is the " +
                  (funcName == "init" ? std::string("constructor")
                                      : std::string("destructor")) +
                  " and is always public; declare it as '" + funcName +
-                 "(...) { ... }' without 'public' or 'function'");
+                 "(...) { ... }' without 'public' or 'method'");
   }
   getNextToken();  // eat function name
 
@@ -357,7 +360,7 @@ unique_ptr<FunctionAST> Parser::parseFunction(bool isClassMethod) {
 }
 
 // Parse a constructor or destructor member: init(args) { } / deinit() { }.
-// Neither takes 'public' or 'function', declares a return type, or has type
+// Neither takes 'public' or 'method', declares a return type, or has type
 // parameters; both are always public. deinit takes no parameters.
 unique_ptr<FunctionAST> Parser::parseLifecycleMethod() {
   Position start = captureStart();
@@ -736,7 +739,8 @@ unique_ptr<ExprAST> Parser::parseConstStatement() {
       return parseVarStatement();
     case TokenKind::FUNCTION:
       parsingError(
-          "'const function' is only allowed on class and interface methods");
+          "'const' before a function is only allowed on class and interface "
+          "methods, which are declared with 'method'");
     default:
       throwIdentifierError("expected a variable name or 'ref' after 'const'");
   }
@@ -1913,6 +1917,13 @@ bool Parser::parsePublic() {
   if (curTok.kind == TokenKind::PUBLIC)
     parsingError("duplicate 'public' modifier");
   return true;
+}
+
+// True when the current token is the contextual `method` keyword. It is not a
+// reserved word, so `var method: String;` and `req.method` keep working.
+bool Parser::atMethodKeyword() const {
+  return curTok.kind == TokenKind::IDENTIFIER &&
+         curTok.getIdentifier() == "method";
 }
 
 bool Parser::parseConstModifier() {
@@ -3765,7 +3776,7 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
 
       // Skip optional semicolons after methods
       while (curTok.kind == TokenKind::SEMI_COLON) getNextToken();
-    } else if (curTok.kind == TokenKind::FUNCTION) {
+    } else if (atMethodKeyword()) {
       // Parse method declaration
       auto func = parseFunction(/*isClassMethod=*/true);
       if (!func) return nullptr;
@@ -3783,10 +3794,12 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
 
       // Skip optional semicolons after methods
       while (curTok.kind == TokenKind::SEMI_COLON) getNextToken();
+    } else if (curTok.kind == TokenKind::FUNCTION) {
+      parsingError("a class method is declared with 'method', not 'function'");
+      return nullptr;
     } else {
       parsingError(
-          "expected 'var' (field), 'function' (method), 'init' or 'deinit' "
-          "in class body");
+          "expected 'var' (field), 'method', 'init' or 'deinit' in class body");
       return nullptr;
     }
   }
@@ -3868,15 +3881,14 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
 
       fields.push_back(
           {std::move(fieldName), std::move(fieldType), fieldLoc, memberVis});
-    } else if (curTok.kind == TokenKind::FUNCTION) {
+    } else if (atMethodKeyword()) {
       // Parse method declaration (may have default implementation)
       // Interface methods can be:
-      // 1. Just a signature: function name(args) returnType;
-      // 2. Full method with default impl: function name(args) returnType { body
-      // }
+      // 1. Just a signature: method name(args) returnType;
+      // 2. Full method with default impl: method name(args) returnType { body }
 
       Position methodStart = captureStart();
-      getNextToken();  // eat 'function'
+      getNextToken();  // eat 'method'
 
       // Allow both regular identifiers and intrinsic identifiers
       if (curTok.kind != TokenKind::IDENTIFIER &&
@@ -3896,9 +3908,9 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
                      (funcName == "init" ? std::string("constructor")
                                          : std::string("destructor")));
       }
-      getNextToken();  // eat function name
+      getNextToken();  // eat method name
 
-      // Parse optional type parameters: function name<T, U>(...)
+      // Parse optional type parameters: method name<T, U>(...)
       std::vector<TypeParameter> typeParameters = parseTypeParameterList();
 
       expectCurrentTokenKind(TokenKind::PAREN_OPEN,
@@ -3992,9 +4004,12 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
 
       // Skip optional semicolons after methods
       while (curTok.kind == TokenKind::SEMI_COLON) getNextToken();
-    } else {
+    } else if (curTok.kind == TokenKind::FUNCTION) {
       parsingError(
-          "expected 'var' (field) or 'function' (method) in interface body");
+          "an interface method is declared with 'method', not 'function'");
+      return nullptr;
+    } else {
+      parsingError("expected 'var' (field) or 'method' in interface body");
       return nullptr;
     }
   }

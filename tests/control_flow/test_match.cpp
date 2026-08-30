@@ -427,8 +427,8 @@ TEST(ControlFlow_Match, method_ending_in_fully_terminating_match) {
 
     class NotANumber implements IError {
       init() {}
-      function code() i32 { return 7; }
-      function message() String { return String("not a number"); }
+      method code() i32 { return 7; }
+      method message() String { return String("not a number"); }
     }
 
     enum Value {
@@ -440,7 +440,7 @@ TEST(ControlFlow_Match, method_ending_in_fully_terminating_match) {
     class Holder {
       var v: Value;
       init(v: Value) { this.v = v; }
-      function as_f64() f64 throws IError {
+      method as_f64() f64 throws IError {
         match this.v {
           Value.Int(x) => { return _convert<f64>(x); },
           Value.Float(x) => { return x; },
@@ -478,13 +478,13 @@ TEST(ControlFlow_Match, statement_arms_with_void_calls) {
     class Holder {
       var v: Value;
       init(v: Value) { this.v = v; }
-      function push(x: i64) void {
+      method push(x: i64) void {
         match this.v {
           Value.Items(items) => { items.push(x); },
           Value.Empty => { }
         };
       }
-      function count() i64 {
+      method count() i64 {
         return match this.v {
           Value.Items(items) => items.size(),
           Value.Empty => 0

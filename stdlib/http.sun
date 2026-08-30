@@ -59,24 +59,24 @@ public module sun {
     }
 
     // Set the status code sent on the response line.
-    public function set_status(code: i32) void {
+    public method set_status(code: i32) void {
       this.status = code;
     }
 
     // Replace the Content-Type header value.
-    public function set_content_type(ct: static_ptr<u8>) void {
+    public method set_content_type(ct: static_ptr<u8>) void {
       this.content_type.clear();
       this.content_type.append(ct);
     }
 
     // Replace the body with a literal.
-    public function set_body(content: static_ptr<u8>) void {
+    public method set_body(content: static_ptr<u8>) void {
       this.body.clear();
       this.body.append(content);
     }
 
     // Replace the body with text built at runtime. The String is copied in.
-    public function set_body_string(content: const ref String) void {
+    public method set_body_string(content: const ref String) void {
       this.body.clear();
       this.body.append(content);
     }
@@ -182,20 +182,20 @@ public module sun {
     }
 
     // Bind to port on all interfaces (0.0.0.0) and start listening
-    public function bind(port: i32) void throws IError {
+    public method bind(port: i32) void throws IError {
       this.listener.bind_port(port);
       this.listener.listen(128);
     }
 
     // Bind to 127.0.0.1 only
-    public function bind_loopback(port: i32) void throws IError {
+    public method bind_loopback(port: i32) void throws IError {
       this.listener.bind_loopback(port);
       this.listener.listen(128);
     }
 
     // Ask the serve loop to finish and close the listening socket. Safe to call
     // from a request handler.
-    public function stop() void {
+    public method stop() void {
       this.running = false;
       this.listener.close();
     }
@@ -203,7 +203,7 @@ public module sun {
     // Accept and handle connections one at a time until stop() is called
     // or the listener fails. A failed connection is dropped; the server
     // keeps running.
-    public function serve(handler: (ref HttpRequest, ref HttpResponse) -> void) void {
+    public method serve(handler: (ref HttpRequest, ref HttpResponse) -> void) void {
       this.running = true;
       while (this.running) {
         try {
@@ -221,7 +221,7 @@ public module sun {
     }
 
     // Read, parse, dispatch to the handler, and send the response
-    function handle_connection(client: ref TcpStream, handler: (ref HttpRequest, ref HttpResponse) -> void) void throws IError {
+    method handle_connection(client: ref TcpStream, handler: (ref HttpRequest, ref HttpResponse) -> void) void throws IError {
       var req = HttpRequest(this.alloc);
       this.read_request(client, req);
 
@@ -232,7 +232,7 @@ public module sun {
     }
 
     // Read from the socket until the header terminator (or size cap)
-    function read_request(client: ref TcpStream, req: ref HttpRequest) void throws IError {
+    method read_request(client: ref TcpStream, req: ref HttpRequest) void throws IError {
       var chunk = ContiguousBuffer<u8>(this.alloc, 2048);
       var raw = String(this.alloc, "");
       var done: bool = false;
@@ -256,7 +256,7 @@ public module sun {
     }
 
     // Serialize status line, headers, and body
-    public function send_response(client: ref TcpStream, resp: ref HttpResponse) void throws IError {
+    public method send_response(client: ref TcpStream, resp: ref HttpResponse) void throws IError {
       var out = String(this.alloc, "HTTP/1.1 ");
       out.append(resp.status);
       out.append_char(b' ');

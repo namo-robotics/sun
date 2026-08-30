@@ -85,7 +85,7 @@ TEST(Builtins_Arrays, array_in_class) {
             this.data = d;
         }
 
-        function shape() array<i64> {
+        method shape() array<i64> {
             return this.data.shape();
         }
     }
@@ -109,7 +109,7 @@ TEST(Builtins_Arrays, array_in_class_in_class) {
             this.data = d;
         }
 
-        function shape() array<i64> {
+        method shape() array<i64> {
             return this.data.shape();
         }
     }
@@ -121,7 +121,7 @@ TEST(Builtins_Arrays, array_in_class_in_class) {
             this.a = A(d);
         }
 
-        function shape() array<i64> {
+        method shape() array<i64> {
             return this.a.shape();
         }
     }

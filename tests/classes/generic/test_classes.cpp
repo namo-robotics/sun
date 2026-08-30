@@ -32,7 +32,7 @@ TEST(Classes_Generic, generic_class_with_method) {
     class Container<T> {
       var data: T;
 
-      function get() T {
+      method get() T {
         return this.data;
       }
     }
@@ -53,7 +53,7 @@ TEST(Classes_Generic, generic_class_with_constructor) {
         this.value = v;
       }
 
-      function get() T {
+      method get() T {
         return this.value;
       }
     }
@@ -111,7 +111,7 @@ TEST(Classes_Generic, generic_instantiation_i32) {
         this.value = v;
       }
 
-      function get() T {
+      method get() T {
         return this.value;
       }
     }
@@ -133,7 +133,7 @@ TEST(Classes_Generic, generic_instantiation_f64) {
         this.value = v;
       }
 
-      function get() T {
+      method get() T {
         return this.value;
       }
     }
@@ -160,7 +160,7 @@ TEST(Classes_Generic, multiple_instantiations) {
         this.value = v;
       }
 
-      function get() T {
+      method get() T {
         return this.value;
       }
     }
@@ -212,11 +212,11 @@ TEST(Classes_Generic, generic_method_returns_field) {
         this.value = v;
       }
 
-      function get_value() T {
+      method get_value() T {
         return this.value;
       }
 
-      function set_value(v: T) void {
+      method set_value(v: T) void {
         this.value = v;
       }
     }
@@ -243,7 +243,7 @@ TEST(Classes_Generic, generic_type_in_variable_declaration) {
         this.val = v;
       }
 
-      function get() T {
+      method get() T {
         return this.val;
       }
     }
@@ -271,11 +271,11 @@ TEST(Classes_Generic, two_type_parameters) {
         this.second = b;
       }
 
-      function getFirst() A {
+      method getFirst() A {
         return this.first;
       }
 
-      function getSecond() B {
+      method getSecond() B {
         return this.second;
       }
     }
@@ -299,11 +299,11 @@ TEST(Classes_Generic, mixed_type_parameters) {
         this.value = v;
       }
 
-      function getKey() K {
+      method getKey() K {
         return this.key;
       }
 
-      function get_value() V {
+      method get_value() V {
         return this.value;
       }
     }
@@ -336,7 +336,7 @@ TEST(Classes_Generic, generic_with_i64) {
         this.value = v;
       }
 
-      function get() T {
+      method get() T {
         return this.value;
       }
     }
@@ -362,7 +362,7 @@ TEST(Classes_Generic, generic_with_bool) {
         this.value = v;
       }
 
-      function get() T {
+      method get() T {
         return this.value;
       }
     }
@@ -388,7 +388,7 @@ TEST(Classes_Generic_Scoping, method_body_cannot_see_requesters_locals) {
     class Box<T> {
         var v: T;
         init(v: T) { this.v = v; }
-        function get() T { return this.v + secret; }
+        method get() T { return this.v + secret; }
     }
     function main() i32 {
         var secret: i32 = 5;
@@ -407,7 +407,7 @@ TEST(Classes_Generic_Scoping,
         public class Thing<T> {
             var v: T;
             init(v: T) { this.v = v; }
-            public function get() T { return this.v + bonus(); }
+            public method get() T { return this.v + bonus(); }
         }
     }
     public module app {

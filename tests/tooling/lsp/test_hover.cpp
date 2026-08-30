@@ -93,7 +93,7 @@ class Point {
     var x: i32;
     var y: i32;
     init(x: i32, y: i32) { this.x = x; this.y = y; }
-    const function sum() i32 { return this.x + this.y; }
+    const method sum() i32 { return this.x + this.y; }
 }
 
 function add(a: i32, b: i32) i32 {
@@ -175,8 +175,7 @@ TEST(Tooling_Lsp_Hover, ThrowingFunction) {
 }
 
 TEST(Tooling_Lsp_Hover, ConstMethod) {
-  EXPECT_EQ(hoverAt(kProgram, "const function sum"),
-            "const function sum() i32");
+  EXPECT_EQ(hoverAt(kProgram, "const method sum"), "const method sum() i32");
 }
 
 TEST(Tooling_Lsp_Hover, ConstRefParameter) {
@@ -231,8 +230,8 @@ TEST(Tooling_Lsp_Hover, GenericClassBody) {
 class Box<T> {
     var value: T;
     init(v: T) { this.value = v; }
-    function get() T { return this.value; }
-    function peek() ref T { return this.value; }
+    method get() T { return this.value; }
+    method peek() ref T { return this.value; }
 }
 function main() i32 {
     var b = Box<i32>(7);
@@ -245,8 +244,8 @@ function main() i32 {
   EXPECT_EQ(hoverAt(source, "value; }", false, 1), "value: T");
   EXPECT_EQ(hoverAt(source, "this.value = v"), "this: Box<T>");
   EXPECT_EQ(hoverAt(source, "v; }"), "v: T");
-  EXPECT_EQ(hoverAt(source, "function get"), "function get() T");
-  EXPECT_EQ(hoverAt(source, "function peek"), "function peek() ref T");
+  EXPECT_EQ(hoverAt(source, "method get"), "method get() T");
+  EXPECT_EQ(hoverAt(source, "method peek"), "method peek() ref T");
   EXPECT_EQ(hoverAt(source, "value: T;"), "var value: T");
   EXPECT_EQ(hoverAt(source, "class Box"), "class Box<T>");
 }
@@ -288,12 +287,12 @@ TEST(Tooling_Lsp_Hover, UnusedGenericClassShowsAnnotationsOnly) {
 class Lone<T> {
     var value: T;
     init(v: T) { this.value = v; }
-    function get() T { return this.value; }
+    method get() T { return this.value; }
 }
 )";
   EXPECT_EQ(hoverAt(source, "class Lone"), "class Lone<T>");
   EXPECT_EQ(hoverAt(source, "value: T;"), "var value: T");
-  EXPECT_EQ(hoverAt(source, "function get"), "function get() T");
+  EXPECT_EQ(hoverAt(source, "method get"), "method get() T");
   EXPECT_FALSE(hoverAt(source, "value; }"));
 }
 
@@ -309,7 +308,7 @@ class Point {
     var x: i32;
     init() { this.x = 0; }
     /// Distance from the origin.
-    function len() i32 { return this.x; }
+    method len() i32 { return this.x; }
 }
 
 // Not attached: a blank line follows.
@@ -327,7 +326,7 @@ function main() i32 {
   EXPECT_EQ(docAt(source, "class Point"), "A point on the plane.");
   EXPECT_EQ(docAt(source, "Point();"), "A point on the plane.");
   EXPECT_EQ(docAt(source, "x: i32;"), "Horizontal position.");
-  EXPECT_EQ(docAt(source, "function len"), "Distance from the origin.");
+  EXPECT_EQ(docAt(source, "method len"), "Distance from the origin.");
   EXPECT_EQ(docAt(source, "len() +"), "Distance from the origin.");
   EXPECT_EQ(docAt(source, "x;\n}"), "Horizontal position.");
   EXPECT_EQ(docAt(source, "var total"), "The running total.");
@@ -378,7 +377,7 @@ class Counter {
     var count: i32;
     init() { this.count = 0; }
     // One more.
-    function bump() void { this.count = this.count + 1; }
+    method bump() void { this.count = this.count + 1; }
 }
 // Which way to go.
 enum Direction {

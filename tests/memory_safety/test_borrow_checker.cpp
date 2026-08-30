@@ -156,7 +156,7 @@ TEST(MemorySafety_BorrowChecker, class_without_ref_fields) {
             this.y = y;
         };
         
-        function sum() i32 {
+        method sum() i32 {
             return this.x + this.y;
         };
     };
@@ -380,7 +380,7 @@ TEST(MemorySafety_BorrowChecker, temporary_with_method_call) {
         init(v: i32) {
             this.val = v;
         }
-        function get() i32 {
+        method get() i32 {
             return this.val;
         }
     }
@@ -408,8 +408,8 @@ TEST(MemorySafety_BorrowChecker, ref_return_through_match_binding_of_this) {
 
     class OutOfRange implements IError {
       init() {}
-      function code() i32 { return 3; }
-      function message() String { return String("out of range"); }
+      method code() i32 { return 3; }
+      method message() String { return String("out of range"); }
     }
 
     enum Value {
@@ -421,7 +421,7 @@ TEST(MemorySafety_BorrowChecker, ref_return_through_match_binding_of_this) {
     class Holder {
       var v: Value;
       init(v: Value) { this.v = v; }
-      function at(i: i64) ref String throws IError {
+      method at(i: i64) ref String throws IError {
         match this.v {
           Value.Items(items) => { return items.get(i); },
           Value.Text(s) => { return s; },
@@ -657,7 +657,7 @@ TEST(MemorySafety_BorrowChecker, error_on_use_of_moved_field) {
         var v: i32;
         init(v: i32) { this.v = v; }
         deinit() { }
-        function get() i32 { return this.v; }
+        method get() i32 { return this.v; }
     }
     class Config {
         var line: Inner;
@@ -681,7 +681,7 @@ TEST(MemorySafety_BorrowChecker, error_on_whole_object_use_after_field_move) {
         var v: i32;
         init(v: i32) { this.v = v; }
         deinit() { }
-        function get() i32 { return this.v; }
+        method get() i32 { return this.v; }
     }
     class Config {
         var line: Inner;
@@ -706,7 +706,7 @@ TEST(MemorySafety_BorrowChecker, error_on_borrow_of_moved_field) {
         var v: i32;
         init(v: i32) { this.v = v; }
         deinit() { }
-        function get() i32 { return this.v; }
+        method get() i32 { return this.v; }
     }
     class Config {
         var line: Inner;
@@ -730,13 +730,13 @@ TEST(MemorySafety_BorrowChecker, error_on_use_of_moved_field_of_this) {
         var v: i32;
         init(v: i32) { this.v = v; }
         deinit() { }
-        function get() i32 { return this.v; }
+        method get() i32 { return this.v; }
     }
     class Holder {
         var inner: Inner;
         init() { this.inner = Inner(9); }
         deinit() { }
-        function bad() i32 {
+        method bad() i32 {
             var taken = this.inner;
             return this.inner.get();   // ERROR: use of moved field
         }
@@ -758,7 +758,7 @@ TEST(MemorySafety_BorrowChecker, sibling_field_and_refill_after_field_move) {
         var v: i32;
         init(v: i32) { this.v = v; }
         deinit() { }
-        function get() i32 { return this.v; }
+        method get() i32 { return this.v; }
     }
     class Config {
         var line: Inner;
@@ -784,7 +784,7 @@ TEST(MemorySafety_BorrowChecker, borrowing_a_field_does_not_move_it) {
         var v: i32;
         init(v: i32) { this.v = v; }
         deinit() { }
-        function get() i32 { return this.v; }
+        method get() i32 { return this.v; }
     }
     class Config {
         var line: Inner;
@@ -814,7 +814,7 @@ TEST(MemorySafety_BorrowChecker, error_on_returning_borrowed_class_by_value) {
     class Cursor {
         var pos: i32;
         init(p: i32) { this.pos = p; }
-        function get() i32 { return this.pos; }
+        method get() i32 { return this.pos; }
     }
 
     function snapshot(c: ref Cursor) Cursor {
@@ -863,7 +863,7 @@ TEST(MemorySafety_BorrowChecker, error_on_variable_moved_every_iteration) {
         var v: i32;
         init(v: i32) { this.v = v; }
         deinit() { }
-        function get() i32 { return this.v; }
+        method get() i32 { return this.v; }
     }
 
     function main() i32 {
@@ -885,7 +885,7 @@ TEST(MemorySafety_BorrowChecker, error_on_field_moved_every_iteration) {
         var v: i32;
         init(v: i32) { this.v = v; }
         deinit() { }
-        function get() i32 { return this.v; }
+        method get() i32 { return this.v; }
     }
     class Config {
         var line: Inner;
@@ -914,7 +914,7 @@ TEST(MemorySafety_BorrowChecker,
         var v: i32;
         init(v: i32) { this.v = v; }
         deinit() { }
-        function get() i32 { return this.v; }
+        method get() i32 { return this.v; }
     }
 
     function consume(i: Inner) i32 { return i.get(); }
@@ -937,7 +937,7 @@ TEST(MemorySafety_BorrowChecker, loop_refills_the_moved_field_before_the_end) {
         var v: i32;
         init(v: i32) { this.v = v; }
         deinit() { }
-        function get() i32 { return this.v; }
+        method get() i32 { return this.v; }
     }
     class Config {
         var line: Inner;
@@ -965,7 +965,7 @@ TEST(MemorySafety_BorrowChecker, loop_body_that_returns_moves_once) {
         var v: i32;
         init(v: i32) { this.v = v; }
         deinit() { }
-        function get() i32 { return this.v; }
+        method get() i32 { return this.v; }
     }
     class Config {
         var line: Inner;

@@ -15,7 +15,7 @@ TEST(Lambdas_BoundMethods, pass_method_as_callback) {
     class Counter {
         var count: i32;
         init() { this.count = 0; }
-        function add(amount: i32) i32 {
+        method add(amount: i32) i32 {
             this.count = this.count + amount;
             return this.count;
         }
@@ -38,7 +38,7 @@ TEST(Lambdas_BoundMethods, receiver_mutated_through_callback) {
     class Counter {
         var count: i32;
         init() { this.count = 0; }
-        function add(amount: i32) i32 {
+        method add(amount: i32) i32 {
             this.count = this.count + amount;
             return this.count;
         }
@@ -63,7 +63,7 @@ TEST(Lambdas_BoundMethods, stored_in_var_then_called) {
     class Counter {
         var count: i32;
         init() { this.count = 0; }
-        function add(amount: i32) i32 {
+        method add(amount: i32) i32 {
             this.count = this.count + amount;
             return this.count;
         }
@@ -85,7 +85,7 @@ TEST(Lambdas_BoundMethods, stored_with_type_annotation) {
     class Counter {
         var count: i32;
         init() { this.count = 0; }
-        function add(amount: i32) i32 {
+        method add(amount: i32) i32 {
             this.count = this.count + amount;
             return this.count;
         }
@@ -109,11 +109,11 @@ TEST(Lambdas_BoundMethods, this_method_as_callback) {
     class Machine {
         var total: i32;
         init() { this.total = 0; }
-        function step(x: i32) i32 {
+        method step(x: i32) i32 {
             this.total = this.total + x;
             return this.total;
         }
-        function run() i32 {
+        method run() i32 {
             return apply(this.step, 11);
         }
     }
@@ -131,7 +131,7 @@ TEST(Lambdas_BoundMethods, ref_receiver) {
     class Counter {
         var count: i32;
         init() { this.count = 0; }
-        function add(amount: i32) i32 {
+        method add(amount: i32) i32 {
             this.count = this.count + amount;
             return this.count;
         }
@@ -160,11 +160,11 @@ TEST(Lambdas_BoundMethods, overload_picked_by_annotation) {
     class Calc {
         var last: i32;
         init() { this.last = 0; }
-        function add(x: i32) i32 {
+        method add(x: i32) i32 {
             this.last = this.last + x;
             return this.last;
         }
-        function add(x: f64) i32 {
+        method add(x: f64) i32 {
             return 999;
         }
     }
@@ -183,11 +183,11 @@ TEST(Lambdas_BoundMethods, overload_picked_by_param_context) {
     class Calc {
         var last: i32;
         init() { this.last = 0; }
-        function add(x: i32) i32 {
+        method add(x: i32) i32 {
             this.last = this.last + x;
             return this.last;
         }
-        function add(x: f64) i32 {
+        method add(x: f64) i32 {
             return 999;
         }
     }
@@ -208,8 +208,8 @@ TEST(Lambdas_BoundMethods, ambiguous_overload_without_context) {
   EXPECT_THROW(executeString(R"(
     class Calc {
         init() {}
-        function add(x: i32) i32 { return x; }
-        function add(x: f64) i32 { return 0; }
+        method add(x: i32) i32 { return x; }
+        method add(x: f64) i32 { return 0; }
     }
 
     function main() i32 {
@@ -225,7 +225,7 @@ TEST(Lambdas_BoundMethods, generic_method_reference_rejected) {
   EXPECT_THROW(executeString(R"(
     class Box {
         init() {}
-        function unwrap<T>(x: T) T { return x; }
+        method unwrap<T>(x: T) T { return x; }
     }
 
     function main() i32 {
@@ -244,7 +244,7 @@ TEST(Lambdas_BoundMethods, throwing_method_into_throwing_param) {
     class Parser {
         var errors: i32;
         init() { this.errors = 0; }
-        function parse(x: i32) i32 throws IError {
+        method parse(x: i32) i32 throws IError {
             if (x < 0) {
                 this.errors = this.errors + 1;
                 throw Error(1, "negative");
@@ -277,7 +277,7 @@ TEST(Lambdas_BoundMethods, nonthrowing_method_into_throwing_param) {
 
     class Doubler {
         init() {}
-        function twice(x: i32) i32 { return x * 2; }
+        method twice(x: i32) i32 { return x * 2; }
     }
 
     function run_guarded(f: (i32) -> i32 throws IError, x: i32) i32 {
@@ -302,7 +302,7 @@ TEST(Lambdas_BoundMethods, stored_throwing_method_uncaught_rejected) {
 
     class Parser {
         init() {}
-        function parse(x: i32) i32 throws IError {
+        method parse(x: i32) i32 throws IError {
             if (x < 0) { throw Error(1, "negative"); }
             return x;
         }
@@ -322,7 +322,7 @@ TEST(Lambdas_BoundMethods, bound_method_call_in_loop) {
     class Counter {
         var count: i32;
         init() { this.count = 0; }
-        function add(amount: i32) i32 {
+        method add(amount: i32) i32 {
             this.count = this.count + amount;
             return this.count;
         }
@@ -375,7 +375,7 @@ TEST(Lambdas_BoundMethods, deinit_runs_once_with_bound_method) {
             this.hits = 0;
         }
 
-        function hit(x: i32) i32 {
+        method hit(x: i32) i32 {
             this.hits = this.hits + x;
             return this.hits;
         }

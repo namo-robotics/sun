@@ -77,7 +77,7 @@ TEST(MemorySafety_Refs_Annotated, binds_field_inside_method) {
       class Counter {
           var n: i32;
           init() { this.n = 3; }
-          function bump() void {
+          method bump() void {
               var c: ref i32 = this.n;
               c = c + 1;
           }
@@ -140,7 +140,7 @@ TEST(MemorySafety_Refs_Annotated, class_index_target_is_error) {
       class Box {
           var slot: i32;
           init() { this.slot = 1; }
-          function __index__(indices: ref array<i64>) i32 {
+          method __index__(indices: ref array<i64>) i32 {
               return this.slot;
           }
       }

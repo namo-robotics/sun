@@ -26,13 +26,13 @@ public module sun {
     }
 
     // Add to the back of the queue. The value moves in.
-    public function push(value: T) void {
+    public method push(value: T) void {
       this.items.push_back(value);
     }
 
     // Take the front item; None when the queue is empty. Ownership moves to
     // the caller.
-    public function pop() Option<T> {
+    public method pop() Option<T> {
       if (this.items.is_empty()) {
         return Option.None;
       }
@@ -44,35 +44,35 @@ public module sun {
     }
 
     // Borrow the front item without taking it; None when empty.
-    public const function peek() Option<ref T> {
+    public const method peek() Option<ref T> {
       return this.items.first();
     }
 
     // Borrow the item that was added most recently; None when empty.
-    public const function peek_back() Option<ref T> {
+    public const method peek_back() Option<ref T> {
       return this.items.last();
     }
 
-    public const function size() i64 {
+    public const method size() i64 {
       return this.items.size();
     }
 
-    public const function is_empty() bool {
+    public const method is_empty() bool {
       return this.items.is_empty();
     }
 
     // Drop every item still queued.
-    public function clear() void {
+    public method clear() void {
       this.items.clear();
     }
 
     // The backing list, for QueueIterator. Private to the module.
-    function items_ref() ref LinkedList<T> {
+    method items_ref() ref LinkedList<T> {
       return this.items;
     }
 
     // Walk the queue front to back without taking anything out.
-    public function iter() QueueIterator<T> {
+    public method iter() QueueIterator<T> {
       return QueueIterator<T>();
     }
   }
@@ -86,7 +86,7 @@ public module sun {
 
     // Next item, or None once the queue is exhausted. Items are borrowed: the
     // queue still owns them.
-    public function next(queue: ref Queue<T>) Option<ref T> {
+    public method next(queue: ref Queue<T>) Option<ref T> {
       return this.inner.next(queue.items_ref());
     }
   }

@@ -40,7 +40,7 @@ public module sun {
     // Borrow element at index (bounds-checked). The buffer keeps ownership, so
     // this hands back a reference — copying the element out would leave two
     // owners of anything it holds.
-    public const function get(index: i64) ref T throws IError {
+    public const method get(index: i64) ref T throws IError {
       if (index < 0) {
         throw IndexOutOfBoundsError(index);
       }
@@ -51,7 +51,7 @@ public module sun {
     }
 
     // Set element at index (bounds-checked)
-    public function set(index: i64, value: T) void throws IError {
+    public method set(index: i64, value: T) void throws IError {
       if (index < 0) {
         throw IndexOutOfBoundsError(index);
       }
@@ -66,13 +66,13 @@ public module sun {
     // ========================================================================
 
     // Borrow element at index (no bounds check)
-    public const function get_unchecked(index: i64) ref T {
+    public const method get_unchecked(index: i64) ref T {
       return unsafe { _to_ref<T>(_ptr_as_raw<T>(_ptr_offset(this.data.get_raw(), index * _sizeof<T>()))); };
     }
 
     // Move the element at index out of the buffer, leaving the slot zeroed so
     // it drops as a no-op. Only for callers that are giving up the slot.
-    public function take_unchecked(index: i64) T {
+    public method take_unchecked(index: i64) T {
       var value: T = unsafe { _load<T>(this.data.get_raw(), index); };
       unsafe {
         _memset(
@@ -85,7 +85,7 @@ public module sun {
     }
 
     // Set element at index (no bounds check)
-    public function set_unchecked(index: i64, value: T) void {
+    public method set_unchecked(index: i64, value: T) void {
       unsafe { _store<T>(this.data.get_raw(), index, value); };
     }
 
@@ -94,17 +94,17 @@ public module sun {
     // ========================================================================
 
     // Get buffer size
-    public const function size() i64 {
+    public const method size() i64 {
       return this.size_;
     }
 
     // Check if buffer is empty
-    public const function is_empty() bool {
+    public const method is_empty() bool {
       return this.size_ == 0;
     }
 
     // Create a deep copy of this buffer
-    public const function clone() ContiguousBuffer<T> {
+    public const method clone() ContiguousBuffer<T> {
       var copy: ContiguousBuffer<T> = ContiguousBuffer<T>(this.alloc, this.size_);
       var byte_count: i64 = this.size_ * _sizeof<T>();
       unsafe {
@@ -114,14 +114,14 @@ public module sun {
     }
 
     // Fill entire buffer with value
-    public function fill(value: T) void {
+    public method fill(value: T) void {
       for (var i: i64 = 0; i < this.size_; i = i + 1) {
         unsafe { _store<T>(this.data.get_raw(), i, value); };
       }
     }
 
     // Write elements from another buffer into this buffer (bounds-checked)
-    public function write_from(source: const ref ContiguousBuffer<T>, src_offset: i64, dst_offset: i64, count: i64) void throws IError {
+    public method write_from(source: const ref ContiguousBuffer<T>, src_offset: i64, dst_offset: i64, count: i64) void throws IError {
       // Validate source bounds
       if (src_offset < 0) {
         throw IndexOutOfBoundsError(src_offset);
@@ -152,13 +152,13 @@ public module sun {
     }
 
     // Get raw data pointer (escape hatch for interop)
-    public const function raw_data() raw_ptr<u8> {
+    public const method raw_data() raw_ptr<u8> {
       return this.data.get_raw();
     }
 
     // Resize buffer to new size, preserving min(old_size, new_size) elements
     // New elements (if growing) are uninitialized
-    public function resize_to(new_size: i64) void {
+    public method resize_to(new_size: i64) void {
       if (new_size == this.size_) {
         return;
       }
@@ -182,7 +182,7 @@ public module sun {
     }
 
     // Borrow first element (bounds-checked)
-    public const function first() ref T throws IError {
+    public const method first() ref T throws IError {
       if (this.size_ == 0) {
         throw IndexOutOfBoundsError(0);
       }
@@ -190,7 +190,7 @@ public module sun {
     }
 
     // Borrow last element (bounds-checked)
-    public const function last() ref T throws IError {
+    public const method last() ref T throws IError {
       if (this.size_ == 0) {
         throw IndexOutOfBoundsError(0);
       }
@@ -203,13 +203,13 @@ public module sun {
 
     // Operator overload for indexing: buf[i] calls __index__([i])
     // Note: Uses unchecked access for performance; use get() for bounds checking
-    public const function __index__(indices: const ref array<i64>) ref T {
+    public const method __index__(indices: const ref array<i64>) ref T {
       return this.get_unchecked(indices[0]);
     }
 
     // Operator overload for indexed assignment: buf[i] = val calls __setindex__([i], val)
     // Note: Uses unchecked access for performance; use set() for bounds checking
-    public function __setindex__(indices: const ref array<i64>, value: T) void {
+    public method __setindex__(indices: const ref array<i64>, value: T) void {
       this.set_unchecked(indices[0], value);
     }
 
@@ -218,7 +218,7 @@ public module sun {
     // ========================================================================
 
     // Return iterator over elements
-    public const function iter() ContiguousBufferIterator<T> {
+    public const method iter() ContiguousBufferIterator<T> {
       return ContiguousBufferIterator<T>();
     }
   }
@@ -237,7 +237,7 @@ public module sun {
 
     // Next element, or None once the buffer is exhausted. Elements are
     // borrowed: the buffer still owns them.
-    public function next(buf: ref ContiguousBuffer<T>) Option<ref T> {
+    public method next(buf: ref ContiguousBuffer<T>) Option<ref T> {
       if (this.current >= buf.size()) {
         return Option.None;
       }

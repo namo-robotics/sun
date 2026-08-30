@@ -122,7 +122,7 @@ TEST(Operators_CompoundAssignment, this_field_in_method) {
           init() {
               this.count = 0;
           }
-          function add(n: i32) void {
+          method add(n: i32) void {
               this.count += n;
           }
       }
@@ -266,11 +266,11 @@ TEST(Operators_CompoundAssignment, class_setindex_target) {
               this.gets = 0;
               this.sets = 0;
           }
-          function __index__(indices: ref array<i64>) i32 {
+          method __index__(indices: ref array<i64>) i32 {
               this.gets += 1;
               return this.slot;
           }
-          function __setindex__(indices: ref array<i64>, value: i32) void {
+          method __setindex__(indices: ref array<i64>, value: i32) void {
               this.sets += 1;
               this.slot = value;
           }

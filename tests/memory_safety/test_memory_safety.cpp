@@ -131,7 +131,7 @@ TEST(MemorySafety, method_call_after_move) {
     class Counter {
         var count: i32;
         init(n: i32) { this.count = n; }
-        function get() i32 { return this.count; }
+        method get() i32 { return this.count; }
     }
 
     function take_counter(c: Counter) i32 {
@@ -538,7 +538,7 @@ TEST(MemorySafety_LifetimeInference, ref_return_member_of_param_ok) {
             this.x = a;
             this.y = b;
         }
-        function get_x() ref i32 {
+        method get_x() ref i32 {
             return this.x;
         }
     }
@@ -562,7 +562,7 @@ TEST(MemorySafety_LifetimeInference, ref_return_from_this_ok) {
             this.value = v;
         }
         
-        function get_and_inc() ref i32 {
+        method get_and_inc() ref i32 {
             this.value = this.value + 1;
             return this.value;
         }

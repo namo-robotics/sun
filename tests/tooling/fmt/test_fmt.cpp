@@ -317,7 +317,7 @@ TEST(Tooling_Fmt, ClassWithFieldsAndMethods) {
                 "var count: i32;\n"
                 "init(start: i32) { this.count = start; }\n"
                 "\n"
-                "function get() i32 { return this.count; }\n"
+                "method get() i32 { return this.count; }\n"
                 "}"),
             "class Counter {\n"
             "  var count: i32;\n"
@@ -325,7 +325,7 @@ TEST(Tooling_Fmt, ClassWithFieldsAndMethods) {
             "    this.count = start;\n"
             "  }\n"
             "\n"
-            "  function get() i32 {\n"
+            "  method get() i32 {\n"
             "    return this.count;\n"
             "  }\n"
             "}\n");
@@ -341,20 +341,20 @@ TEST(Tooling_Fmt, GenericClassImplements) {
 }
 
 TEST(Tooling_Fmt, PartialClass) {
-  EXPECT_EQ(fmt("partial class X {\nfunction m() void {}\n}"),
+  EXPECT_EQ(fmt("partial class X {\nmethod m() void {}\n}"),
             "partial class X {\n"
-            "  function m() void {}\n"
+            "  method m() void {}\n"
             "}\n");
 }
 
 TEST(Tooling_Fmt, InterfaceSignatureAndDefault) {
   EXPECT_EQ(fmt("interface IAllocator {\n"
-                "function alloc(size: i64) raw_ptr<u8>;\n"
-                "function zero() i32 { return 0; }\n"
+                "method alloc(size: i64) raw_ptr<u8>;\n"
+                "method zero() i32 { return 0; }\n"
                 "}"),
             "interface IAllocator {\n"
-            "  function alloc(size: i64) raw_ptr<u8>;\n"
-            "  function zero() i32 {\n"
+            "  method alloc(size: i64) raw_ptr<u8>;\n"
+            "  method zero() i32 {\n"
             "    return 0;\n"
             "  }\n"
             "}\n");
@@ -498,26 +498,26 @@ TEST(Tooling_Fmt, RefCreationAndConst) {
 TEST(Tooling_Fmt, ConstMethodsAndLoops) {
   EXPECT_EQ(fmt("class C {\n"
                 "var n: i32;\n"
-                "public const function get() i32 { return this.n; }\n"
-                "const function zero() bool { return this.n == 0; }\n"
+                "public const method get() i32 { return this.n; }\n"
+                "const method zero() bool { return this.n == 0; }\n"
                 "}\n"
                 "interface I {\n"
-                "const function get() i32;\n"
+                "const method get() i32;\n"
                 "}\n"
                 "function f(v: ref Vec<i32>) void {\n"
                 "for (const x: i32 in v) { }\n"
                 "}"),
             "class C {\n"
             "  var n: i32;\n"
-            "  public const function get() i32 {\n"
+            "  public const method get() i32 {\n"
             "    return this.n;\n"
             "  }\n"
-            "  const function zero() bool {\n"
+            "  const method zero() bool {\n"
             "    return this.n == 0;\n"
             "  }\n"
             "}\n"
             "interface I {\n"
-            "  const function get() i32;\n"
+            "  const method get() i32;\n"
             "}\n"
             "function f(v: ref Vec<i32>) void {\n"
             "  for (const x: i32 in v) {}\n"
@@ -699,9 +699,9 @@ TEST(Tooling_Fmt, TypeParameterConstraintOnEnum) {
 }
 
 TEST(Tooling_Fmt, TypeParameterConstraintOnInterface) {
-  EXPECT_EQ(fmt("interface IBox<T:_Numeric>{public function get()T;}"),
+  EXPECT_EQ(fmt("interface IBox<T:_Numeric>{public method get()T;}"),
             "interface IBox<T: _Numeric> {\n"
-            "  public function get() T;\n"
+            "  public method get() T;\n"
             "}\n");
 }
 
