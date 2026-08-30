@@ -147,7 +147,8 @@ Value* ErrorGenerator::codegen(const ThrowExprAST& expr) {
     ctx.builder->CreateStore(objVal, objSlot);
 
     auto ierror = typeRegistry()->getInterface("IError");
-    Value* fat = gen_.classGenerator().createInterfaceFatPointer(objSlot, classType, ierror.get());
+    Value* fat = gen_.classGenerator().createInterfaceFatPointer(
+        objSlot, classType, ierror.get());
     storeAt(exc, fatOffset, fat);
 
     // The exception buffer now owns the object copy: the stack original must
@@ -156,8 +157,9 @@ Value* ErrorGenerator::codegen(const ThrowExprAST& expr) {
 
     // Control permanently leaves every scope down to the catch (or the
     // function): drop live owners before unwinding.
-    scopes().emitCleanupToDepth(tryStack.empty() ? scopes().functionBoundaryDepth()
-                                        : tryStack.back().scopeDepth);
+    scopes().emitCleanupToDepth(tryStack.empty()
+                                    ? scopes().functionBoundaryDepth()
+                                    : tryStack.back().scopeDepth);
 
     emitCxaThrowAndUnreachable(exc);
   } else {
@@ -184,8 +186,9 @@ Value* ErrorGenerator::codegen(const ThrowExprAST& expr) {
     // Drop live owners in every scope being left before unwinding (the
     // rethrown error object itself lives in its exception buffer, not in a
     // tracked scope allocation).
-    scopes().emitCleanupToDepth(tryStack.empty() ? scopes().functionBoundaryDepth()
-                                        : tryStack.back().scopeDepth);
+    scopes().emitCleanupToDepth(tryStack.empty()
+                                    ? scopes().functionBoundaryDepth()
+                                    : tryStack.back().scopeDepth);
 
     emitCxaThrowAndUnreachable(exc);
   }
@@ -370,8 +373,9 @@ Value* ErrorGenerator::codegen(const TryCatchExprAST& expr) {
     ctx.builder->SetInsertPoint(nomatchBB);
     // Control leaves every scope between here and the outer handler (or the
     // function): drop live owners before rethrowing.
-    scopes().emitCleanupToDepth(tryStack.empty() ? scopes().functionBoundaryDepth()
-                                        : tryStack.back().scopeDepth);
+    scopes().emitCleanupToDepth(tryStack.empty()
+                                    ? scopes().functionBoundaryDepth()
+                                    : tryStack.back().scopeDepth);
     FunctionCallee rethrow = getCxaRethrow();
     if (!tryStack.empty()) {
       ensurePersonality(func);
