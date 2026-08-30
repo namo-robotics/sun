@@ -1,12 +1,15 @@
 name: Docs
 
+# Publishes only after CI passes on main, so the site never documents a
+# commit whose tests failed. workflow_run carries no path filter, so this
+# rebuilds on every green main push rather than only on docs changes —
+# a rebuild of unchanged content republishes the same site harmlessly,
+# whereas a missed filter would leave the site stale.
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
-    paths:
-      - 'docs/**'
-      - 'examples/**'
-      - '.github/workflows/docs.yml'
   workflow_dispatch:
 
 permissions:
@@ -20,6 +23,10 @@ concurrency:
 
 jobs:
   build:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -27,6 +34,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          # The commit CI tested; on a workflow_run event the default
+          # checkout would take the default branch's head instead.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
