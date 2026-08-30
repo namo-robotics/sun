@@ -735,9 +735,14 @@ void VariableGenerator::emitStaticInitFunction() {
   if (staticInits.empty()) return;
 
   // Create the initialization function: void __sun_static_init()
+  // Internal linkage, on purpose: a .moon bundle carries its own copy of this
+  // function, and linking it into a program that also has one must keep both.
+  // With internal linkage the IR linker renames one instead of silently
+  // replacing the other; llvm.global_ctors (below) is the shared merge point
+  // that runs every copy.
   FunctionType* initFuncType =
       FunctionType::get(Type::getVoidTy(ctx.getContext()), false);
-  Function* initFunc = Function::Create(initFuncType, Function::ExternalLinkage,
+  Function* initFunc = Function::Create(initFuncType, Function::InternalLinkage,
                                         "__sun_static_init", module);
 
   BasicBlock* entryBB = BasicBlock::Create(ctx.getContext(), "entry", initFunc);

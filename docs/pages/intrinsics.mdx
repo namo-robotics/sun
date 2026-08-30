@@ -496,6 +496,19 @@ Number of leading / trailing zero bits in a `u64`; both return 64 for 0.
 var bits: u64 = 64 - _ctlz_u64(x);   // bit length of x
 ```
 
+### `_bswap_u16(x)` / `_bswap_u32(x)` / `_bswap_u64(x)`
+
+The value with its bytes in the opposite order. Each lowers to a single
+instruction on every target Sun supports.
+
+```sun
+var swapped: u32 = _bswap_u32(305419896);   // 0x12345678 -> 0x78563412
+```
+
+Most code should reach for
+[`std.byte_order`](/stdlib#byte-order) instead, whose helpers say which order
+the bytes are going to or coming from.
+
 ## Target Intrinsics
 
 ### `_target_is(os)`
@@ -704,6 +717,9 @@ class Vec<T> {
 | `_mul_hi_u64` | `a: u64, b: u64` | `u64` | High 64 bits of the 128-bit product |
 | `_ctlz_u64` | `x: u64` | `u64` | Leading zero bits (64 for 0) |
 | `_cttz_u64` | `x: u64` | `u64` | Trailing zero bits (64 for 0) |
+| `_bswap_u16` | `x: u16` | `u16` | The value with its bytes reversed |
+| `_bswap_u32` | `x: u32` | `u32` | The value with its bytes reversed |
+| `_bswap_u64` | `x: u64` | `u64` | The value with its bytes reversed |
 | `_futex_wait` | `ptr, expected` | `void` | Block until woken |
 | `_futex_wake` | `ptr` | `void` | Wake one blocked thread |
 | `_target_is` | `os: string literal` | `bool` | Compile-time check of the target OS |

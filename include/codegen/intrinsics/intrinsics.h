@@ -96,6 +96,9 @@ enum class Intrinsic {
   MulHiU64,  // _mul_hi_u64(a, b) -> u64 (high 64 bits of the 128-bit product)
   CtlzU64,   // _ctlz_u64(x) -> u64 (leading zero bits; 64 for 0)
   CttzU64,   // _cttz_u64(x) -> u64 (trailing zero bits; 64 for 0)
+  BswapU16,  // _bswap_u16(x) -> u16 (bytes reversed)
+  BswapU32,  // _bswap_u32(x) -> u32 (bytes reversed)
+  BswapU64,  // _bswap_u64(x) -> u64 (bytes reversed)
 
   // =========================================================================
   // Target intrinsics (compile-time facts about the compilation target)
@@ -197,6 +200,9 @@ inline Intrinsic getIntrinsic(const std::string& name) {
   if (name == "_mul_hi_u64") return Intrinsic::MulHiU64;
   if (name == "_ctlz_u64") return Intrinsic::CtlzU64;
   if (name == "_cttz_u64") return Intrinsic::CttzU64;
+  if (name == "_bswap_u16") return Intrinsic::BswapU16;
+  if (name == "_bswap_u32") return Intrinsic::BswapU32;
+  if (name == "_bswap_u64") return Intrinsic::BswapU64;
 
   // Target intrinsics
   if (name == "_target_is") return Intrinsic::TargetIs;

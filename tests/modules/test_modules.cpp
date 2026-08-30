@@ -766,6 +766,44 @@ TEST(Modules, moon_free_function_throw_is_caught_by_importer) {
   EXPECT_EQ(value, 1078);
 }
 
+// A .moon carrying a module-level class variable and a program with one of
+// its own must both run their initializers. Each module's init function is
+// internal and registered in llvm.global_ctors; when the two were a single
+// external "__sun_static_init", linking the bundle silently replaced the
+// program's and left its global zeroed.
+TEST(Modules, moon_and_program_global_initializers_both_run) {
+  initTestEnvironment();
+  auto moonPath = writeMoonLib("globlib", R"(
+    public module globlib {
+        public class LibCounter {
+            var total: i32;
+            init(start: i32) { this.total = start; }
+            public method bump() i32 { this.total = this.total + 1; return this.total; }
+        }
+        var lib_counter: LibCounter = LibCounter(100);
+        public function bump_lib() i32 { return lib_counter.bump(); }
+    }
+  )");
+
+  auto driver = Driver::createForJIT("moon_global_main");
+  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  auto value = driver->executeString(R"(
+    using globlib;
+
+    class AppCounter {
+        var total: i32;
+        init(start: i32) { this.total = start; }
+        public method bump() i32 { this.total = this.total + 1; return this.total; }
+    }
+    var app_counter: AppCounter = AppCounter(1000);
+
+    function main() i32 {
+        return bump_lib() + app_counter.bump();
+    }
+  )");
+  EXPECT_EQ(value, 1102);
+}
+
 // A manifest can name a moon by url; it is fetched into the moon cache
 // (file:// keeps the test offline) and imported from there.
 TEST(Modules, manifest_moon_url_is_fetched_and_imported) {

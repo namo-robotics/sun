@@ -86,6 +86,9 @@ class IntrinsicsGenerator {
   llvm::Value* codegenMulHiU64Intrinsic(const CallExprAST& expr);
   llvm::Value* codegenCountZerosIntrinsic(const CallExprAST& expr,
                                           bool leading);
+  // Shared by _bswap_u16, _bswap_u32 and _bswap_u64
+  llvm::Value* codegenBswapIntrinsic(const CallExprAST& expr,
+                                     unsigned bitWidth);
 
   // Atomic intrinsics (in intrinsics.cpp)
   llvm::Value* codegenAtomicCmpxchgI32Intrinsic(const CallExprAST& expr);
