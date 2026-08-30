@@ -380,6 +380,7 @@ if(NOT SKIP_STDLIB)
         ${CMAKE_SOURCE_DIR}/stdlib/thread.sun
         ${CMAKE_SOURCE_DIR}/stdlib/shared.sun
         ${CMAKE_SOURCE_DIR}/stdlib/math.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/byte_order.sun
         ${CMAKE_SOURCE_DIR}/stdlib/networking.sun
         ${CMAKE_SOURCE_DIR}/stdlib/io.sun
         ${CMAKE_SOURCE_DIR}/stdlib/env.sun
