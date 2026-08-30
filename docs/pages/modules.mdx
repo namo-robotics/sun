@@ -275,11 +275,11 @@ class Vec2 {
         this.y = y_;
     }
     
-    function add(other: ref Vec2) Vec2 {
+    method add(other: ref Vec2) Vec2 {
         return Vec2(this.x + other.x, this.y + other.y);
     }
     
-    function length() f64 {
+    method length() f64 {
         return _sqrt(this.x * this.x + this.y * this.y);
     }
 }
@@ -503,7 +503,7 @@ public module geometry {
         var x: f64;                    // private field: `geometry` only
         var y: f64;
         init(x: f64, y: f64) { this.x = x; this.y = y; }
-        public function norm2() f64 { return square(this.x) + square(this.y); }
+        public method norm2() f64 { return square(this.x) + square(this.y); }
     }
 
     module internal {                  // private nested module

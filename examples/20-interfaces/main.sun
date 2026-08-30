@@ -3,7 +3,7 @@ using sun;
 // An interface declares behaviour that classes can implement. Functions can
 // accept `ref Interface` and dispatch dynamically to the concrete type.
 interface Drawable {
-  public function draw() void;
+  public method draw() void;
 }
 
 class Circle implements Drawable {
@@ -13,7 +13,7 @@ class Circle implements Drawable {
     this.radius = r;
   }
 
-  public function draw() void {
+  public method draw() void {
     println("Drawing circle with radius:");
     println(this.radius);
   }
@@ -26,7 +26,7 @@ class Square implements Drawable {
     this.side = s;
   }
 
-  public function draw() void {
+  public method draw() void {
     println("Drawing square with side:");
     println(this.side);
   }

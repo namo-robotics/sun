@@ -25,7 +25,7 @@ const char* kOwnerPreamble = R"(
           this.id = 0;
         }
       }
-      function get_id() i32 {
+      method get_id() i32 {
         return this.id;
       }
     }
@@ -334,8 +334,8 @@ TEST(MemorySafety_Drops_Enums, owning_enum_dropped_on_unwind) {
   auto value = executeString(withPreamble(R"(
     class TestError implements IError {
       init() {}
-      function code() i32 { return 1; }
-      function message() static_ptr<u8> { return "test error"; }
+      method code() i32 { return 1; }
+      method message() static_ptr<u8> { return "test error"; }
     }
 
     function thrower() void throws IError {
@@ -529,7 +529,7 @@ TEST(MemorySafety_Drops_Enums, cross_moon_owning_enum_drops_once) {
                       this.id = 0;
                   }
               }
-              public function get_id() i32 { return this.id; }
+              public method get_id() i32 { return this.id; }
           }
 
           public enum Maybe { Got(Res), Nope }

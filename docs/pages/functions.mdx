@@ -17,6 +17,10 @@ function main() i32 {
 }
 ```
 
+A method of a class or interface is written the same way but opens with
+`method` instead (see [Classes](/classes)); `function` declares free functions
+only.
+
 A parameter declared `ref T` borrows the caller's value and may change it;
 one declared `const ref T` borrows it for reading only. A constant, or a
 value already borrowed with `const ref`, can only be passed to the second
@@ -126,7 +130,7 @@ Capture rules:
 - **Compound types** (classes, interfaces, arrays) must be captured with `[ref …]` or `[const ref …]` — copying them into a closure would silently break aliasing.
 - **Globals** are accessed directly and cannot appear in a capture list.
 - A `[ref x]` capture registers a **mutable borrow** of the variable for as long as the lambda value is in scope, so conflicting `ref`s — including a second lambda capturing the same variable — are rejected.
-- A `[const ref x]` capture registers a **shared borrow** instead, so several lambdas may capture the same variable at once. Everything reached through it is read-only: fields cannot be assigned, and only `const function` methods can be called.
+- A `[const ref x]` capture registers a **shared borrow** instead, so several lambdas may capture the same variable at once. Everything reached through it is read-only: fields cannot be assigned, and only `const method` methods can be called.
 - A lambda with a capture list holds state in the enclosing frame — pointers into it for `[ref …]` captures, the environment itself for owned ones — so it **cannot be returned** from the function or **stored in a field**: the frame it depends on would be gone when the lambda runs. Passing it to `spawn` is fine: the thread is joined when its handle's scope ends, while the frame is still alive — and the handle inherits the restriction, so it cannot be returned or stored in a field either (see [Threads](/threads)).
 - **`this` cannot be captured**, in the list or implicitly. A lambda that needs the object's data reads the fields it needs into locals and captures those, takes them as parameters — or the method itself is bound as the callable (`this.method`, below).
 
@@ -179,7 +183,7 @@ Class methods are first-class values: `obj.method` (without parentheses) produce
 class Counter {
     var count: i32;
     init() { this.count = 0; }
-    function add(amount: i32) i32 {
+    method add(amount: i32) i32 {
         this.count = this.count + amount;
         return this.count;
     }

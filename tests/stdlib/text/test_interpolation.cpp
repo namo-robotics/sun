@@ -303,13 +303,13 @@ TEST(Stdlib_Text_Interpolation, allowed_when_sources_declare_sun_string) {
         init(alloc: const ref HeapAllocator, literal: static_ptr<u8>) {
           this.len = literal.length();
         }
-        public function append_literal(literal: static_ptr<u8>) void {
+        public method append_literal(literal: static_ptr<u8>) void {
           this.len = this.len + literal.length();
         }
-        public function append(value: i64) void {
+        public method append(value: i64) void {
           this.len = this.len + 1;
         }
-        public function length() i64 { return this.len; }
+        public method length() i64 { return this.len; }
       }
     }
 

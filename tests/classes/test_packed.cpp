@@ -178,7 +178,7 @@ TEST(Classes_Packed, methods_read_own_unaligned_fields) {
             this.a = 0;
             this.b = 0;
         }
-        function sum() i32 {
+        method sum() i32 {
             return this.b + this.a;
         }
     }
@@ -445,7 +445,7 @@ TEST(Classes_Packed, rejects_non_packed_class_field) {
 TEST(Classes_Packed, rejects_partial_combined_with_packed) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     partial packed_class P {
-        function f() i32 { return 0; }
+        method f() i32 { return 0; }
     }
     function main() i32 { return 0; }
   )"),

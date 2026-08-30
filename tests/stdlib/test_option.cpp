@@ -160,12 +160,12 @@ TEST(Stdlib_Option, InterfacePayloadOption) {
     using sun;
 
     interface IValue {
-      function get() i32;
+      method get() i32;
     }
     class Num implements IValue {
       var n: i32;
       init(v: i32) { this.n = v; }
-      function get() i32 { return this.n; }
+      method get() i32 { return this.n; }
     }
 
     function main() i32 {

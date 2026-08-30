@@ -263,7 +263,7 @@ function main() i32 {
 ```
 
 Everything reached through a `const ref` capture is read-only: assigning a
-field or calling a method that is not a `const function` is a compile error.
+field or calling a method that is not a `const method` is a compile error.
 
 For two threads that both *write* one value, use `Shared<T>` — see below.
 
@@ -321,7 +321,7 @@ Each thread gets its own handle, moved in as an argument. A capture list works
 too — `spawn(lambda [c1]() i32 { … })` — but passing the handle keeps the body
 independent of the frame that started it, so the same lambda serves both
 threads. Several threads can also share one handle read-only with
-`[const ref s]` and lock through that: `lock()` is a `const function`, because
+`[const ref s]` and lock through that: `lock()` is a `const method`, because
 taking the lock does not change the handle.
 
 ### The guard

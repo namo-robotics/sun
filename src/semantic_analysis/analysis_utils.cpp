@@ -211,7 +211,7 @@ bool SemanticAnalyzer::checkMethodReceiver(const ExprAST& receiver,
   if (why.empty()) return false;
   if (!methodIsConst && !isConstructor) {
     logAndThrowError("Cannot call non-const method '" + name + "' on " + why +
-                         "; declare it 'const function' if it does not "
+                         "; declare it 'const method' if it does not "
                          "change the object",
                      loc);
   }

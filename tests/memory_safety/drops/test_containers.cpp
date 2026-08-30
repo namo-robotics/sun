@@ -27,7 +27,7 @@ const char* kOwnerPreamble = R"(
           this.id = 0;
         }
       }
-      function get_id() i32 {
+      method get_id() i32 {
         return this.id;
       }
     }
@@ -533,7 +533,7 @@ TEST(MemorySafety_Drops_Containers, borrowed_element_is_not_stored_in_a_field) {
     class Holder {
       var s: String;
       init(alloc: ref HeapAllocator) { this.s = String(alloc, ""); }
-      public function set_from(v: ref Vec<String>) void {
+      public method set_from(v: ref Vec<String>) void {
         this.s = v.get_unchecked(0);
       }
     }
@@ -576,7 +576,7 @@ TEST(MemorySafety_Drops_Containers,
     class ByValueIter implements IIterator<String, Vec<String>> {
       var i: i64;
       init() { this.i = 0; }
-      public function next(v: ref Vec<String>) Option<String> {
+      public method next(v: ref Vec<String>) Option<String> {
         if (this.i >= v.size()) { return Option.None; }
         var e = v.get_unchecked(this.i);
         this.i = this.i + 1;
@@ -600,15 +600,15 @@ TEST(MemorySafety_Drops_Containers,
       init(alloc: ref HeapAllocator) {
         this.items = Vec<String>(alloc, 4);
       }
-      public function add(s: String) void { this.items.push(s); }
-      public function count() i64 { return this.items.size(); }
-      public function iter() BagIter { return BagIter(); }
+      public method add(s: String) void { this.items.push(s); }
+      public method count() i64 { return this.items.size(); }
+      public method iter() BagIter { return BagIter(); }
     }
 
     class BagIter implements IIterator<String, Bag> {
       var i: i64;
       init() { this.i = 0; }
-      public function next(b: ref Bag) Option<String> {
+      public method next(b: ref Bag) Option<String> {
         if (this.i >= b.count()) { return Option.None; }
         var e = b.items.get_unchecked(this.i);
         this.i = this.i + 1;
@@ -679,7 +679,7 @@ TEST(MemorySafety_Drops_Containers,
 
     class Draining implements IIterator<String, Vec<String>> {
       init() {}
-      public function next(v: ref Vec<String>) Option<String> {
+      public method next(v: ref Vec<String>) Option<String> {
         return v.pop();
       }
     }

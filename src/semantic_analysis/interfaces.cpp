@@ -137,7 +137,7 @@ void SemanticAnalyzer::validateInterfaceImplementation(
               "method '" + interfaceMethod.name + "' of class '" +
                   classType->getDisplayName() + "' implements const member '" +
                   interfaceDisplayName + "." + interfaceMethod.name +
-                  "' and must be declared 'const function'",
+                  "' and must be declared 'const method'",
               classDef.getLocation());
         }
         // Verify return type matches. A class return where the interface

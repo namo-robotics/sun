@@ -12,8 +12,8 @@ An error is a class that implements the builtin `IError` interface:
 
 ```sun
 interface IError {
-    function code() i32;
-    function message() String;
+    method code() i32;
+    method message() String;
 }
 ```
 
@@ -24,9 +24,9 @@ class, it can carry whatever fields and extra methods you need:
 class ParseError implements IError {
     var line_: i32;
     init(line: i32) { this.line_ = line; }
-    function code() i32 { return 1; }
-    function message() String { return String("bad input"); }
-    function line() i32 { return this.line_; }
+    method code() i32 { return 1; }
+    method message() String { return String("bad input"); }
+    method line() i32 { return this.line_; }
 }
 ```
 

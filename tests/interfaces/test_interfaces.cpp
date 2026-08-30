@@ -15,7 +15,7 @@
 TEST(Interfaces, simple_interface_definition) {
   auto value = executeString(R"(
     interface Printable {
-      function print() void;
+      method print() void;
     }
 
     function main() i32 {
@@ -41,7 +41,7 @@ TEST(Interfaces, interface_with_field) {
 TEST(Interfaces, interface_with_default_implementation) {
   auto value = executeString(R"(
     interface Greeter {
-      function greet() i32 {
+      method greet() i32 {
         return 42;
       }
     }
@@ -60,7 +60,7 @@ TEST(Interfaces, interface_with_default_implementation) {
 TEST(Interfaces, class_implements_interface) {
   auto value = executeString(R"(
     interface Counter {
-      function count() i32;
+      method count() i32;
     }
 
     class SimpleCounter implements Counter {
@@ -70,7 +70,7 @@ TEST(Interfaces, class_implements_interface) {
         this.value = 0;
       }
 
-      function count() i32 {
+      method count() i32 {
         return this.value;
       }
     }
@@ -94,7 +94,7 @@ TEST(Interfaces, interface_field_inherited) {
         this.value = v;
       }
       
-      function get() i32 {
+      method get() i32 {
         return this.value;
       }
     }
@@ -110,7 +110,7 @@ TEST(Interfaces, interface_field_inherited) {
 TEST(Interfaces, default_method_used) {
   auto value = executeString(R"(
     interface Answerable {
-      function answer() i32 {
+      method answer() i32 {
         return 42;
       }
     }
@@ -131,7 +131,7 @@ TEST(Interfaces, default_method_used) {
 TEST(Interfaces, override_default_method) {
   auto value = executeString(R"(
     interface Answerable {
-      function answer() i32 {
+      method answer() i32 {
         return 42;
       }
     }
@@ -140,7 +140,7 @@ TEST(Interfaces, override_default_method) {
       init() {
       }
       
-      function answer() i32 {
+      method answer() i32 {
         return 100;
       }
     }
@@ -173,7 +173,7 @@ TEST(Interfaces, multiple_interfaces) {
         this.y = py;
       }
       
-      function sum() i32 {
+      method sum() i32 {
         return this.x + this.y;
       }
     }
@@ -189,22 +189,22 @@ TEST(Interfaces, multiple_interfaces) {
 TEST(Interfaces, multiple_interfaces_with_methods) {
   auto value = executeString(R"(
     interface Adder {
-      function add(a: i32, b: i32) i32;
+      method add(a: i32, b: i32) i32;
     }
 
     interface Multiplier {
-      function mult(a: i32, b: i32) i32;
+      method mult(a: i32, b: i32) i32;
     }
 
     class Calculator implements Adder, Multiplier {
       init() {
       }
       
-      function add(a: i32, b: i32) i32 {
+      method add(a: i32, b: i32) i32 {
         return a + b;
       }
       
-      function mult(a: i32, b: i32) i32 {
+      method mult(a: i32, b: i32) i32 {
         return a * b;
       }
     }
@@ -226,7 +226,7 @@ TEST(Interfaces, interface_default_uses_field) {
     interface Incrementable {
       var counter: i32;
       
-      function increment() i32 {
+      method increment() i32 {
         return this.counter + 1;
       }
     }
@@ -263,7 +263,7 @@ TEST(Interfaces, class_own_plus_interface_fields) {
         this.name_length = len;
       }
       
-      function total() i32 {
+      method total() i32 {
         return this.id + this.name_length;
       }
     }
@@ -299,7 +299,7 @@ TEST(Interfaces_Iterator, implements_iiterator) {
         this.end = end;
       }
 
-      function next(c: ref DummyContainer) Option<i32> {
+      method next(c: ref DummyContainer) Option<i32> {
         if (this.current >= this.end) {
           return Option.None;
         }
@@ -346,7 +346,7 @@ TEST(Interfaces_Iterator, generic_implements_iiterator) {
         this.size = sz;
       }
 
-      function next(c: ref DummyContainer) Option<T> {
+      method next(c: ref DummyContainer) Option<T> {
         if (this.index >= this.size) {
           return Option.None;
         }
@@ -383,12 +383,12 @@ TEST(Interfaces_Iterator, covariant_iter_is_static_only) {
 
       class Range implements IIterable<i32, Range> {
           init() {}
-          function iter() RangeIterator { return RangeIterator(); }
+          method iter() RangeIterator { return RangeIterator(); }
       }
 
       class RangeIterator implements IIterator<i32, Range> {
           init() {}
-          function next(r: ref Range) Option<i32> { return Option.None; }
+          method next(r: ref Range) Option<i32> { return Option.None; }
       }
 
       function main() i32 {
@@ -408,7 +408,7 @@ TEST(Interfaces_Iterator, generic_class_conformance_is_checked) {
 
       class Wrong<T> implements IIterator<T, Wrong<T>> {
         init() {}
-        function next(w: ref Wrong<T>) T { return 0; }
+        method next(w: ref Wrong<T>) T { return 0; }
       }
 
       function main() i32 {
@@ -441,7 +441,7 @@ TEST(Interfaces_Iterator, wrong_next_signature_is_error) {
 
       class Broken implements IIterator<i32, Broken> {
         init() {}
-        function next(c: ref Broken) i32 { return 0; }
+        method next(c: ref Broken) i32 { return 0; }
       }
       function main() i32 { return 0; }
     )");
@@ -456,7 +456,7 @@ TEST(Interfaces_Builtin, cannot_redefine_IError_interface) {
   EXPECT_ANY_THROW({
     executeString(R"(
       interface IError {
-        function code() i32;
+        method code() i32;
       }
       function main() i32 { return 0; }
     )");
@@ -482,14 +482,14 @@ TEST(Interfaces_DynamicDispatch, basic_interface_variable_dispatch) {
   // Assign class to interface-typed variable and call method
   auto value = executeString(R"(
     interface IShape {
-      function area() i32;
+      method area() i32;
     }
     class Square implements IShape {
       var side: i32;
       init(s: i32) {
         this.side = s;
       }
-      function area() i32 {
+      method area() i32 {
         return this.side * this.side;
       }
     }
@@ -505,14 +505,14 @@ TEST(Interfaces_DynamicDispatch, interface_param_dispatch) {
   // Pass class to function taking interface parameter
   auto value = executeString(R"(
     interface IShape {
-      function area() i32;
+      method area() i32;
     }
     class Circle implements IShape {
       var radius: i32;
       init(r: i32) {
         this.radius = r;
       }
-      function area() i32 {
+      method area() i32 {
         return this.radius * this.radius * 3;
       }
     }
@@ -531,18 +531,18 @@ TEST(Interfaces_DynamicDispatch, multiple_classes_same_interface) {
   // Different classes implementing same interface
   auto value = executeString(R"(
     interface IShape {
-      function area() i32;
+      method area() i32;
     }
     class Square implements IShape {
       var side: i32;
       init(s: i32) { this.side = s; }
-      function area() i32 { return this.side * this.side; }
+      method area() i32 { return this.side * this.side; }
     }
     class Rectangle implements IShape {
       var width: i32;
       var height: i32;
       init(w: i32, h: i32) { this.width = w; this.height = h; }
-      function area() i32 { return this.width * this.height; }
+      method area() i32 { return this.width * this.height; }
     }
     function get_area(s: ref IShape) i32 {
       return s.area();
@@ -560,15 +560,15 @@ TEST(Interfaces_DynamicDispatch, interface_with_multiple_methods) {
   // Interface with multiple non-generic methods
   auto value = executeString(R"(
     interface ICounter {
-      function value() i32;
-      function name() i32;
+      method value() i32;
+      method name() i32;
     }
     class Counter implements ICounter {
       var val: i32;
       var id: i32;
       init(v: i32, n: i32) { this.val = v; this.id = n; }
-      function value() i32 { return this.val; }
-      function name() i32 { return this.id; }
+      method value() i32 { return this.val; }
+      method name() i32 { return this.id; }
     }
     function sum_info(c: ref ICounter) i32 {
       return c.value() + c.name();
@@ -585,14 +585,14 @@ TEST(Interfaces_DynamicDispatch, interface_with_default_method_override) {
   // Class overrides default method - vtable should use class method
   auto value = executeString(R"(
     interface IGreeter {
-      function greet() i32 {
+      method greet() i32 {
         return 42;
       }
     }
     class CustomGreeter implements IGreeter {
       var bonus: i32;
       init(b: i32) { this.bonus = b; }
-      function greet() i32 {
+      method greet() i32 {
         return 100 + this.bonus;
       }
     }
@@ -611,7 +611,7 @@ TEST(Interfaces_DynamicDispatch, interface_with_default_method_no_override) {
   // Class uses default method - vtable should point to wrapper
   auto value = executeString(R"(
     interface IGreeter {
-      function greet() i32 {
+      method greet() i32 {
         return 42;
       }
     }
@@ -633,12 +633,12 @@ TEST(Interfaces_DynamicDispatch, generic_interface_dispatch) {
   // Dynamic dispatch on a generic interface (interface has type parameter)
   auto value = executeString(R"(
     interface IBox<T> {
-      function get() T;
+      method get() T;
     }
     class IntBox implements IBox<i32> {
       var val: i32;
       init(v: i32) { this.val = v; }
-      function get() i32 { return this.val; }
+      method get() i32 { return this.val; }
     }
     function unbox(b: ref IBox<i32>) i32 {
       return b.get();
@@ -657,11 +657,11 @@ TEST(Interfaces_DynamicDispatch, generic_method_dispatch_not_supported) {
   EXPECT_ANY_THROW({
     executeString(R"(
       interface IFactory {
-        function create<T>() T;
+        method create<T>() T;
       }
       class IntFactory implements IFactory {
         init() {}
-        function create<T>() T {
+        method create<T>() T {
           return 0;
         }
       }
@@ -682,17 +682,17 @@ TEST(Interfaces_DynamicDispatch, for_in_over_vec_of_interfaces) {
     using sun;
     
     interface IValue {
-      function get() i32;
+      method get() i32;
     }
     class NumA implements IValue {
       var n: i32;
       init(v: i32) { this.n = v; }
-      function get() i32 { return this.n; }
+      method get() i32 { return this.n; }
     }
     class NumB implements IValue {
       var n: i32;
       init(v: i32) { this.n = v; }
-      function get() i32 { return this.n * 2; }
+      method get() i32 { return this.n * 2; }
     }
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -712,11 +712,11 @@ TEST(Interfaces_DynamicDispatch, for_in_over_vec_of_interfaces) {
 }
 TEST(Interfaces_DynamicDispatch, extra_argument_to_interface_method_is_error) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
-    interface IShape { function area() i32; }
+    interface IShape { method area() i32; }
     class Square implements IShape {
         var s: i32;
         init(s: i32) { this.s = s; }
-        function area() i32 { return this.s * this.s; }
+        method area() i32 { return this.s * this.s; }
     }
     function main() i32 {
         var q = Square(2);
@@ -733,11 +733,11 @@ TEST(Interfaces_DynamicDispatch, extra_argument_to_interface_method_is_error) {
 
 TEST(Interfaces, borrowed_class_passes_to_interface_parameters) {
   auto value = executeString(R"(
-    interface IShape { function area() i32; }
+    interface IShape { method area() i32; }
     class Sq implements IShape {
       var s: i32;
       init(s: i32) { this.s = s; }
-      function area() i32 { return this.s * this.s; }
+      method area() i32 { return this.s * this.s; }
     }
     function measure(sh: IShape) i32 { return sh.area(); }
     function measure_ref(sh: ref IShape) i32 { return sh.area(); }

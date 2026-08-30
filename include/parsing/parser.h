@@ -273,7 +273,7 @@ class Parser {
       bool isLifecycleMethod = false);
   unique_ptr<FunctionAST> parseFunction(bool isClassMethod = false);
   // Parse a constructor or destructor member: init(args) { } / deinit() { }.
-  // They are written without 'public' or 'function' and are always public.
+  // They are written without 'public' or 'method' and are always public.
   unique_ptr<FunctionAST> parseLifecycleMethod();
   unique_ptr<LambdaAST> parseLambda();
   unique_ptr<PrototypeAST> parseExtern();
@@ -290,6 +290,10 @@ class Parser {
   bool parsePublic();
   // Consumes an optional `const` before a class/interface member.
   bool parseConstModifier();
+  // True when the current token is the contextual `method` keyword. `method`
+  // only starts a member of a class or interface; everywhere else it is an
+  // ordinary identifier, so a field or variable may still be called `method`.
+  bool atMethodKeyword() const;
   unique_ptr<ExprAST> parseStatementList();
 
   // `<T, U: _Numeric>` after a function, class, interface or enum name.

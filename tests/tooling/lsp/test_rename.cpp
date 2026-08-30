@@ -192,29 +192,29 @@ class Point {
     var x: i32;
     var y: i32;
     init(x: i32, y: i32) { this.x = x; this.y = y; }
-    const function sum() i32 { return this.x + this.y; }
+    const method sum() i32 { return this.x + this.y; }
 }
 
 interface IShape {
-    function area() i32;
+    method area() i32;
 }
 
 class Square implements IShape {
     var side: i32;
     init(side: i32) { this.side = side; }
-    function area() i32 { return this.side * this.side; }
+    method area() i32 { return this.side * this.side; }
 }
 
 class Circle implements IShape {
     var r: i32;
     init(r: i32) { this.r = r; }
-    function area() i32 { return this.r * this.r * 3; }
+    method area() i32 { return this.r * this.r * 3; }
 }
 
 class Field {
     var w: i32;
     init(w: i32) { this.w = w; }
-    function area() i32 { return this.w * this.w; }
+    method area() i32 { return this.w * this.w; }
 }
 
 class Pair {
@@ -347,8 +347,8 @@ TEST(Tooling_Lsp_Rename, BuiltinInterfaceMemberRefused) {
   std::string source = R"(
 class Oops implements IError {
     init() {}
-    function code() i32 { return 1; }
-    function message() static_ptr<u8> { return "oops"; }
+    method code() i32 { return 1; }
+    method message() static_ptr<u8> { return "oops"; }
 }
 function main() i32 {
     var e = Oops();
@@ -441,7 +441,7 @@ TEST(Tooling_Lsp_Rename, GenericClassBody) {
 class Box<T> {
     var value: T;
     init(v: T) { this.value = v; }
-    function get() T { return this.value; }
+    method get() T { return this.value; }
 }
 function main() i32 {
     var b = Box<i32>(7);
@@ -526,7 +526,7 @@ class Counter {
 }
 class CounterIter implements IIterator<i64, Counter> {
     init() {}
-    function next(container: ref Counter) Option<i64> {
+    method next(container: ref Counter) Option<i64> {
         container.n = container.n + 1;
         return Option.Some(container.n);
     }

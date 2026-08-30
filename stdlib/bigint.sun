@@ -35,7 +35,7 @@ public module sun {
     }
 
     // Independent copy
-    public const function clone() BigUint {
+    public const method clone() BigUint {
       var out = BigUint(this.alloc);
       out.limbs.reserve(this.limbs.size());
       for (var i: i64 = 0; i < this.limbs.size(); i = i + 1) {
@@ -45,12 +45,12 @@ public module sun {
     }
 
     // Number of limbs in use
-    public const function limb_count() i64 {
+    public const method limb_count() i64 {
       return this.limbs.size();
     }
 
     // Limb i (little-endian); 0 beyond the top
-    public const function limb(i: i64) u64 {
+    public const method limb(i: i64) u64 {
       if (i < 0 or i >= this.limbs.size()) {
         return 0;
       }
@@ -58,12 +58,12 @@ public module sun {
     }
 
     // Report whether the value is zero. Zero is stored as an empty limb list.
-    public const function is_zero() bool {
+    public const method is_zero() bool {
       return this.limbs.size() == 0;
     }
 
     // Bits needed to represent the value (0 for zero)
-    public const function bit_length() i64 {
+    public const method bit_length() i64 {
       var n: i64 = this.limbs.size();
       if (n == 0) {
         return 0;
@@ -73,12 +73,12 @@ public module sun {
     }
 
     // Low 64 bits
-    public const function low_u64() u64 {
+    public const method low_u64() u64 {
       return this.limb(0);
     }
 
     // The value as u64, or None if it does not fit
-    public const function to_u64() Option<u64> {
+    public const method to_u64() Option<u64> {
       if (this.limbs.size() > 1) {
         return Option.None;
       }
@@ -86,12 +86,12 @@ public module sun {
     }
 
     // Set to zero
-    public function clear() void {
+    public method clear() void {
       this.limbs.clear();
     }
 
     // Set from a machine word
-    public function set_u64(value: u64) void {
+    public method set_u64(value: u64) void {
       this.limbs.clear();
       if (value != 0) {
         this.limbs.push(value);
@@ -99,7 +99,7 @@ public module sun {
     }
 
     // Copy the value of another number
-    public function assign(other: const ref BigUint) void {
+    public method assign(other: const ref BigUint) void {
       this.limbs.clear();
       for (var i: i64 = 0; i < other.limbs.size(); i = i + 1) {
         this.limbs.push(other.limbs.get_unchecked(i));
@@ -107,7 +107,7 @@ public module sun {
     }
 
     // Drop leading zero limbs
-    function trim() void {
+    method trim() void {
       while (this.limbs.size() > 0) {
         var top: u64 = this.limbs.get_unchecked(this.limbs.size() - 1);
         if (top != 0) {
@@ -122,7 +122,7 @@ public module sun {
     // ------------------------------------------------------------------------
 
     // -1, 0 or 1
-    public const function compare(other: const ref BigUint) i64 {
+    public const method compare(other: const ref BigUint) i64 {
       var n: i64 = this.limbs.size();
       var m: i64 = other.limbs.size();
       if (n != m) {
@@ -147,13 +147,13 @@ public module sun {
     }
 
     // Report whether two big integers hold the same value.
-    public const function equals(other: const ref BigUint) bool {
+    public const method equals(other: const ref BigUint) bool {
       return this.compare(other) == 0;
     }
 
     // Compare against a single 64-bit value: -1 if this is smaller, 0 if equal,
     // 1 if larger.
-    public const function compare_u64(value: u64) i64 {
+    public const method compare_u64(value: u64) i64 {
       if (this.limbs.size() > 1) {
         return 1;
       }
@@ -171,7 +171,7 @@ public module sun {
     // Addition and subtraction
     // ------------------------------------------------------------------------
 
-    public function add_small(value: u64) void {
+    public method add_small(value: u64) void {
       var carry: u64 = value;
       var i: i64 = 0;
       while (carry != 0) {
@@ -192,7 +192,7 @@ public module sun {
     }
 
     // Add another big integer into this one, in place.
-    public function add(other: const ref BigUint) void {
+    public method add(other: const ref BigUint) void {
       var n: i64 = other.limbs.size();
       while (this.limbs.size() < n) {
         this.limbs.push(0);
@@ -222,7 +222,7 @@ public module sun {
     }
 
     // this = this - other; throws if other is larger
-    public function sub(other: const ref BigUint) void throws IError {
+    public method sub(other: const ref BigUint) void throws IError {
       if (this.compare(other) < 0) {
         throw OverflowError();
       }
@@ -249,7 +249,7 @@ public module sun {
     // Multiplication and shifts
     // ------------------------------------------------------------------------
 
-    public function mul_small(value: u64) void {
+    public method mul_small(value: u64) void {
       if (value == 0) {
         this.limbs.clear();
         return;
@@ -272,7 +272,7 @@ public module sun {
     }
 
     // this = this * other
-    public function mul(other: const ref BigUint) void {
+    public method mul(other: const ref BigUint) void {
       if (this.is_zero() or other.is_zero()) {
         this.limbs.clear();
         return;
@@ -323,7 +323,7 @@ public module sun {
     }
 
     // Multiply by 10^n
-    public function mul_pow10(n: i64) void {
+    public method mul_pow10(n: i64) void {
       var remaining: i64 = n;
       while (remaining >= 18) {
         this.mul_small(1000000000000000000);
@@ -340,7 +340,7 @@ public module sun {
     }
 
     // this = this << bits
-    public function shl(bits: i64) void {
+    public method shl(bits: i64) void {
       if (this.is_zero() or bits <= 0) {
         return;
       }
@@ -368,7 +368,7 @@ public module sun {
     }
 
     // this = this >> bits
-    public function shr(bits: i64) void {
+    public method shr(bits: i64) void {
       if (this.is_zero() or bits <= 0) {
         return;
       }
@@ -402,7 +402,7 @@ public module sun {
 
     // this = this / divisor, returns the remainder. The divisor must fit in
     // 32 bits (enough for decimal digit extraction: 10, 10^9, ...).
-    public function divmod_small(divisor: u32) u32 throws IError {
+    public method divmod_small(divisor: u32) u32 throws IError {
       if (divisor == 0) {
         throw DivisionByZeroError();
       }
@@ -430,7 +430,7 @@ public module sun {
     // ------------------------------------------------------------------------
 
     // Append the decimal digits of the value
-    public const function append_decimal(out: ref String) void {
+    public const method append_decimal(out: ref String) void {
       if (this.is_zero()) {
         out.append_char(b'0');
         return;
@@ -465,7 +465,7 @@ public module sun {
 
     // Set from decimal digits; false (and the value left as zero) if the text
     // is empty or has a non-digit
-    public function set_decimal(text: const ref String) bool {
+    public method set_decimal(text: const ref String) bool {
       this.limbs.clear();
       if (text.length() == 0) {
         return false;

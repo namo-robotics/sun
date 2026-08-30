@@ -128,7 +128,7 @@ TEST(Modules, module_with_class_method) {
         init(v: i32) {
           this.value = v;
         }
-        public function foo() i32 {
+        public method foo() i32 {
           return this.value * 2;
         }
       }
@@ -154,7 +154,7 @@ TEST(Modules, nested_modules_nested_classes_method_chain) {
           init(v: i32) {
             this.val = v;
           }
-          public function foo() i32 {
+          public method foo() i32 {
             return this.val;
           }
         }
@@ -361,10 +361,10 @@ TEST(Modules, redeclare_interface_errors) {
   // Defining two interfaces with same name is an error
   EXPECT_THROW(executeString(R"(
     interface IFoo {
-      function bar() i32;
+      method bar() i32;
     }
     interface IFoo {
-      function baz() i32;
+      method baz() i32;
     }
     function main() i32 {
       return 0;
@@ -566,7 +566,7 @@ TEST(Modules, dotted_module_with_class) {
         init(h: i32) {
           this.health = h;
         }
-        public function getHealth() i32 {
+        public method getHealth() i32 {
           return this.health;
         }
       }
@@ -737,8 +737,8 @@ TEST(Modules, moon_free_function_throw_is_caught_by_importer) {
     public module throwlib {
         public class Boom implements IError {
             init() {}
-            public function code() i32 { return 77; }
-            public function message() static_ptr<u8> { return "boom"; }
+            public method code() i32 { return 77; }
+            public method message() static_ptr<u8> { return "boom"; }
         }
         public function fail(x: i32) i32 throws IError {
             if (x > 0) { throw Boom(); }
@@ -815,8 +815,8 @@ TEST(Modules, moon_method_taking_class_by_value) {
         public class Sink {
             var total: i64;
             init() { this.total = 0; }
-            public function take(p: Pair) void { this.total = this.total + p.a + p.b; }
-            public function total_of() i64 { return this.total; }
+            public method take(p: Pair) void { this.total = this.total + p.a + p.b; }
+            public method total_of() i64 { return this.total; }
         }
         public function sum(p: Pair) i64 { return p.a + p.b; }
     }
@@ -850,7 +850,7 @@ TEST(Modules, moon_nested_module_class_with_generic_field) {
       public class Box<T> {
         var v: T;
         init(v: T) { this.v = v; }
-        public function get() ref T {
+        public method get() ref T {
           return unsafe { _to_ref<T>(_address_of<T>(this.v)); };
         }
       }
@@ -859,7 +859,7 @@ TEST(Modules, moon_nested_module_class_with_generic_field) {
         public class Holder {
           var b: Box<i32>;
           init(x: i32) { this.b = Box<i32>(x); }
-          public function value() i32 { return this.b.get(); }
+          public method value() i32 { return this.b.get(); }
         }
       }
     }
@@ -966,7 +966,7 @@ TEST(Modules, moon_private_module_variable_is_hidden) {
 }
 
 // `const` survives a .moon round trip: a constant global stays constant for
-// the importer, a `const ref` parameter keeps its kind, and a `const function`
+// the importer, a `const ref` parameter keeps its kind, and a `const method`
 // may still be called on a constant receiver.
 TEST(Modules, moon_keeps_const_declarations) {
   initTestEnvironment();
@@ -976,8 +976,8 @@ TEST(Modules, moon_keeps_const_declarations) {
         public class Counter {
             var n: i32;
             init(n: i32) { this.n = n; }
-            public const function get() i32 { return this.n; }
-            public function bump() void { this.n = this.n + 1; }
+            public const method get() i32 { return this.n; }
+            public method bump() void { this.n = this.n + 1; }
         }
         public function peek(c: const ref Counter) i32 { return c.get(); }
     }
@@ -1082,7 +1082,7 @@ TEST(Modules, class_typed_module_variable_is_assignable) {
     class Counter {
       var n: i32;
       init(n: i32) { this.n = n; }
-      public function get() i32 { return this.n; }
+      public method get() i32 { return this.n; }
     }
     module dds {
       public var c: Counter = Counter(1);

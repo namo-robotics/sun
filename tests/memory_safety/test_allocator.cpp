@@ -20,12 +20,12 @@ TEST(MemorySafety_Allocator, variadic_method_local_allocator) {
         var x: i32;
         var y: i32;
         init(x: i32, y: i32) { this.x = x; this.y = y; }
-        function sum() i32 { return this.x + this.y; }
+        method sum() i32 { return this.x + this.y; }
     }
 
     class MyAllocator {
         init() {}
-        function create<T>(args...: _params_of<T>) raw_ptr<T> {
+        method create<T>(args...: _params_of<T>) raw_ptr<T> {
             var size: i64 = _sizeof<T>();
             var memory: raw_ptr<i8> = unsafe { _malloc(size); };
             _init<T>(memory, args...);
@@ -59,7 +59,7 @@ TEST(MemorySafety_Allocator, heap_allocator_create_simple_class) {
             this.y = y;
         }
         
-        function sum() i32 {
+        method sum() i32 {
             return this.x + this.y;
         }
     }
@@ -85,7 +85,7 @@ TEST(MemorySafety_Allocator, heap_allocator_create_generic_class) {
             this.value = v;
         }
         
-        function get() T {
+        method get() T {
             return this.value;
         }
     }
@@ -239,7 +239,7 @@ TEST(MemorySafety_Allocator, init_intrinsic_with_allocator) {
             this.y = y;
         }
         
-        function sum() i32 {
+        method sum() i32 {
             return this.x + this.y;
         }
     }
@@ -332,7 +332,7 @@ TEST(MemorySafety_Allocator, create_unique_basic) {
         var x: i32;
         var y: i32;
         init(x: i32, y: i32) { this.x = x; this.y = y; }
-        function sum() i32 { return this.x + this.y; }
+        method sum() i32 { return this.x + this.y; }
     }
 
     function main() i32 {
@@ -443,12 +443,12 @@ TEST(MemorySafety_Allocator, method_fixed_params_precede_the_pack) {
         var x: i32;
         var y: i32;
         init(x: i32, y: i32) { this.x = x; this.y = y; }
-        function sum() i32 { return this.x + this.y; }
+        method sum() i32 { return this.x + this.y; }
     }
 
     class TaggedAllocator {
         init() {}
-        function create<T>(tag: i32, args...: _params_of<T>) i32 {
+        method create<T>(tag: i32, args...: _params_of<T>) i32 {
             var size: i64 = _sizeof<T>();
             var memory: raw_ptr<i8> = unsafe { _malloc(size); };
             _init<T>(memory, args...);
@@ -475,7 +475,7 @@ TEST(MemorySafety_Allocator, method_too_few_arguments_for_fixed_params) {
 
     class TaggedAllocator {
         init() {}
-        function create<T>(tag: i32, args...: _params_of<T>) i32 { return tag; }
+        method create<T>(tag: i32, args...: _params_of<T>) i32 { return tag; }
     }
 
     function main() i32 {

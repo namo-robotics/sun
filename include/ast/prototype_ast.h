@@ -32,7 +32,7 @@ class PrototypeAST {
   std::vector<std::string> ownedCaptureNames;
   std::optional<VariadicParam> variadicParam_;  // Trailing `args...` pack
   bool cVariadic_ = false;    // C-style trailing `...` (extern declarations)
-  bool constMethod_ = false;  // `const function`: `this` is immutable
+  bool constMethod_ = false;  // `const method`: `this` is immutable
   std::optional<std::string> linkName_;  // `as "c_symbol"` override
   Position location_;                    // Source span of the signature
   std::string doc_;  // Comment written above the declaration

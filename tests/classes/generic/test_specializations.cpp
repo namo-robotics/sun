@@ -74,7 +74,7 @@ TEST(Classes_Generic_Specializations, generic_method_new_specialization) {
         init(start: i32) {
             this.count = start;
         }
-        function get() i32 {
+        method get() i32 {
             return this.count;
         }
     }
@@ -135,16 +135,16 @@ TEST(Classes_Generic_Specializations, simplified_vec_with_class) {
             this.data = unsafe { _malloc(_sizeof<T>() * 4); };
         }
 
-        function push(value: ref T) void {
+        method push(value: ref T) void {
             unsafe { _store<T>(this.data, this.size_, value); };
             this.size_ = this.size_ + 1;
         }
 
-        function get(index: i64) T {
+        method get(index: i64) T {
             return unsafe { _load<T>(this.data, index); };
         }
 
-        function size() i64 {
+        method size() i64 {
             return this.size_;
         }
     }

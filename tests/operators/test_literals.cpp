@@ -51,7 +51,7 @@ TEST(Operators_Literals, suffixed_method_argument) {
       class Box {
           var v: u16;
           init() { this.v = 0; }
-          function set(v: u16) void { this.v = v; }
+          method set(v: u16) void { this.v = v; }
       }
       function main() i32 {
           var b = Box();

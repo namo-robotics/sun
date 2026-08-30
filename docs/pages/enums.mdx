@@ -96,15 +96,15 @@ class Task {
         this.status = TaskStatus.Pending;
     }
 
-    function start() void {
+    method start() void {
         this.status = TaskStatus.InProgress;
     }
 
-    function complete() void {
+    method complete() void {
         this.status = TaskStatus.Done;
     }
 
-    function is_done() bool {
+    method is_done() bool {
         return this.status == TaskStatus.Done;
     }
 }

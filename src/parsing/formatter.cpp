@@ -265,7 +265,9 @@ class Formatter {
     }
   }
 
-  void printFunction(const FunctionAST& f) {
+  // `asMethod` prints the class/interface member keyword instead of
+  // 'function'; the rest of the signature is spelled the same way.
+  void printFunction(const FunctionAST& f, bool asMethod = false) {
     if (f.isExtern()) {
       // Bodyless functions are `extern` or `declare` forward declarations
       if (f.isCExtern()) {
@@ -283,7 +285,7 @@ class Formatter {
       }
       return;  // ';' comes from needsSemicolon
     }
-    out_ += "function ";
+    out_ += asMethod ? "method " : "function ";
     printProtoSig(f.getProto());
     out_ += ' ';
     printBlockML(f.getBody());
@@ -398,7 +400,7 @@ class Formatter {
         } else {
           printVisibility(m.method->getVisibility());
           if (m.method->getProto().isConstMethod()) out_ += "const ";
-          printFunction(*m.method);
+          printFunction(*m.method, /*asMethod=*/true);
           if (m.method->isExtern()) out_ += ';';
         }
       }
@@ -461,13 +463,13 @@ class Formatter {
         printVisibility(m.method->visibility());
         if (m.method->isConst) out_ += "const ";
         // Signature-only method (the parser synthesizes an empty body)
-        out_ += "function ";
+        out_ += "method ";
         printProtoSig(m.method->function->getProto());
         out_ += ';';
       } else {
         printVisibility(m.method->visibility());
         if (m.method->isConst) out_ += "const ";
-        printFunction(*m.method->function);
+        printFunction(*m.method->function, /*asMethod=*/true);
       }
       lastLine_ = m.endLine;
       emitTrailingComments(m.endLine);

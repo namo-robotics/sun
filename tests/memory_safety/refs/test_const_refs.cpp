@@ -42,7 +42,7 @@ TEST(MemorySafety_Refs_ConstRefs, parameter_reads_class) {
           var x: i32;
           var y: i32;
           init(a: i32, b: i32) { this.x = a; this.y = b; }
-          const function sum() i32 { return this.x + this.y; }
+          const method sum() i32 { return this.x + this.y; }
       }
       function total(p: const ref Point) i32 { return p.sum() + p.x; }
       function main() i32 {
@@ -58,7 +58,7 @@ TEST(MemorySafety_Refs_ConstRefs, generic_const_ref_parameter) {
       class Box<T> {
           var v: T;
           init(v: T) { this.v = v; }
-          const function get() T { return this.v; }
+          const method get() T { return this.v; }
       }
       function first<T>(b: const ref Box<T>) T { return b.get(); }
       function main() i32 {
@@ -136,7 +136,7 @@ TEST(MemorySafety_Refs_ConstRefs,
       class Counter {
           var n: i32;
           init() { this.n = 0; }
-          function bump() void { this.n = this.n + 1; }
+          method bump() void { this.n = this.n + 1; }
       }
       function poke(c: const ref Counter) void { c.bump(); }
       function main() i32 {
@@ -202,7 +202,7 @@ TEST(MemorySafety_Refs_ConstRefs, ref_result_reads_through_const_receiver) {
       class Cell {
           var v: i32;
           init(v: i32) { this.v = v; }
-          const function get() ref i32 { return this.v; }
+          const method get() ref i32 { return this.v; }
       }
       function main() i32 {
           const c = Cell(21);
@@ -218,7 +218,7 @@ TEST(MemorySafety_Refs_ConstRefs, ref_result_cannot_bind_mutable_ref) {
       class Cell {
           var v: i32;
           init(v: i32) { this.v = v; }
-          const function get() ref i32 { return this.v; }
+          const method get() ref i32 { return this.v; }
       }
       function main() i32 {
           const c = Cell(21);
@@ -237,7 +237,7 @@ TEST(MemorySafety_Refs_ConstRefs, ref_result_cannot_be_written_through) {
       class Cell {
           var inner: Inner;
           init() { this.inner = Inner(); }
-          const function get() ref Inner { return this.inner; }
+          const method get() ref Inner { return this.inner; }
       }
       function main() i32 {
           const c = Cell();
@@ -253,7 +253,7 @@ TEST(MemorySafety_Refs_ConstRefs, ref_result_stays_mutable_on_var_receiver) {
       class Cell {
           var v: i32;
           init(v: i32) { this.v = v; }
-          const function get() ref i32 { return this.v; }
+          const method get() ref i32 { return this.v; }
       }
       function main() i32 {
           var c = Cell(1);

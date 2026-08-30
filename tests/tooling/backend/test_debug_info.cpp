@@ -45,7 +45,7 @@ class Point {
     this.y = py;
   }
 
-  function magsq() i32 {
+  method magsq() i32 {
     return this.x * this.x + this.y * this.y;
   }
 }

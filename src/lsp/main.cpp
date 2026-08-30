@@ -654,7 +654,17 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
                            afterClass || afterInterface ||
                            angleBracketDepth > 0;
 
-      if (afterClass) {
+      // `method` is a keyword only where a class or interface member starts,
+      // so a field named `method` or a `req.method` access stays an
+      // identifier. The name after it is the method's.
+      if (tok.text == "method" &&
+          (prevKind == TokenKind::BRACE_OPEN ||
+           prevKind == TokenKind::BRACE_CLOSE ||
+           prevKind == TokenKind::SEMI_COLON ||
+           prevKind == TokenKind::PUBLIC || prevKind == TokenKind::CONST)) {
+        tokenType = LSPTokenType::Keyword;
+        afterFunction = true;
+      } else if (afterClass) {
         tokenType = LSPTokenType::Class;
         afterClass = false;
       } else if (afterInterface) {

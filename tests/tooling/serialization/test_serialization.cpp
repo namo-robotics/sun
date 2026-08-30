@@ -518,7 +518,7 @@ TEST(Tooling_Serialization, ClassDefinitionRoundtrip) {
         this.y = y;
       }
       
-      function getX() i32 {
+      method getX() i32 {
         return this.x;
       }
     }
@@ -578,7 +578,7 @@ TEST(Tooling_Serialization, PackedClassModifierRoundtrip) {
 TEST(Tooling_Serialization, PartialClassModifierRoundtrip) {
   auto block = parseCode(R"(
     partial class Extra {
-      function helper() i32 { return 1; }
+      method helper() i32 { return 1; }
     }
   )");
 
@@ -602,7 +602,7 @@ TEST(Tooling_Serialization, PartialClassModifierRoundtrip) {
 TEST(Tooling_Serialization, InterfaceDefinitionRoundtrip) {
   auto block = parseCode(R"(
     interface Printable {
-      function print() i32;
+      method print() i32;
     }
   )");
 

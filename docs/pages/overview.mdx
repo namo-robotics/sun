@@ -2,7 +2,7 @@
 
 import { Callout } from 'nextra/components'
 
-Sun uses a C-style syntax with explicit type annotations and modern features. Functions are declared with the `function` keyword, types follow variable names after a colon, and blocks are delimited by curly braces. The language prioritizes readability and unambiguity — there are no lossy implicit conversions (a number only widens on its own), no operator overloading, and no macros.
+Sun uses a C-style syntax with explicit type annotations and modern features. Functions are declared with the `function` keyword and the methods of a class or interface with `method`, types follow variable names after a colon, and blocks are delimited by curly braces. The language prioritizes readability and unambiguity — there are no lossy implicit conversions (a number only widens on its own), no operator overloading, and no macros.
 
 ## Identifier Naming
 
@@ -37,7 +37,9 @@ cannot be used as an identifier`.
 | Other | `unsafe` |
 
 A few words only have meaning in one position and remain usable as names:
-`in` (in a `for` loop) and `as` (in an `extern` declaration).
+`in` (in a `for` loop), `as` (in an `extern` declaration) and `method` (at the
+start of a class or interface member), so a field may still be called
+`method`.
 
 ```sun
 var partial = 1;   // ❌ ERROR: 'partial' is a reserved word

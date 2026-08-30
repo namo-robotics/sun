@@ -87,7 +87,7 @@ public module sun {
     }
 
     // Connect to loopback (127.0.0.1) on port
-    public function connect_local(port: i32) void throws IError {
+    public method connect_local(port: i32) void throws IError {
       var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
       if (sock_fd < 0) {
         throw Error(sock_fd, "failed to create socket");
@@ -102,7 +102,7 @@ public module sun {
     }
 
     // Connect to specific IP (in network byte order) and port
-    public function connect_ip(ip: i32, port: i32) void throws IError {
+    public method connect_ip(ip: i32, port: i32) void throws IError {
       var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
       if (sock_fd < 0) {
         throw Error(sock_fd, "failed to create socket");
@@ -117,13 +117,13 @@ public module sun {
     }
 
     // Resolve a hostname and connect to its first IPv4 address
-    public function connect_host(host: ref String, port: i32) void throws IError {
+    public method connect_host(host: ref String, port: i32) void throws IError {
       var ip: i32 = resolve_host_ipv4(host);
       this.connect_ip(ip, port);
     }
 
     // Send string data
-    public function send_str(data: static_ptr<u8>) i64 throws IError {
+    public method send_str(data: static_ptr<u8>) i64 throws IError {
       var str_ptr: raw_ptr<u8> = data.raw();
       var len: i64 = data.length();
       var result: i64 = unsafe { __send(this.fd, str_ptr, len, MSG_NOSIGNAL); };
@@ -135,7 +135,7 @@ public module sun {
     }
 
     // Send raw bytes
-    public function send_bytes(data: raw_ptr<u8>, len: i64) i64 throws IError {
+    public method send_bytes(data: raw_ptr<u8>, len: i64) i64 throws IError {
       var result: i64 = unsafe { __send(this.fd, data, len, MSG_NOSIGNAL); };
       if (result < 0) {
         var err_code: i32 = -1;
@@ -145,12 +145,12 @@ public module sun {
     }
 
     // Send a String's contents
-    public function send_string(data: const ref String) i64 throws IError {
+    public method send_string(data: const ref String) i64 throws IError {
       return this.send_bytes(data.data.raw_data(), data.length());
     }
 
     // Receive into ContiguousBuffer, returns bytes read
-    public function recv(buf: ref ContiguousBuffer<u8>) i64 throws IError {
+    public method recv(buf: ref ContiguousBuffer<u8>) i64 throws IError {
       var result: i64 = unsafe { __recv(this.fd, buf.raw_data(), buf.size(), 0); };
       if (result < 0) {
         var err_code: i32 = -1;
@@ -160,7 +160,7 @@ public module sun {
     }
 
     // Close the connection
-    public function close() void {
+    public method close() void {
       if (this.fd >= 0) {
         unsafe { __shutdown(this.fd, SHUT_RDWR); };
         unsafe { c_close(this.fd); };
@@ -169,13 +169,13 @@ public module sun {
     }
 
     // Report whether the socket still holds a live file descriptor.
-    public function is_open() bool {
+    public method is_open() bool {
       return this.fd >= 0;
     }
 
     // The underlying file descriptor, for code that needs to poll or hand it to
     // a C call.
-    public function get_fd() i32 {
+    public method get_fd() i32 {
       return this.fd;
     }
   }
@@ -198,13 +198,13 @@ public module sun {
     }
 
     // Allow rebinding the port immediately after a restart
-    public function enable_reuse_addr() void {
+    public method enable_reuse_addr() void {
       var optval: i32 = 1;
       unsafe { __setsockopt(this.fd, SOL_SOCKET, SO_REUSEADDR, _address_of<i32>(optval), 4); };
     }
 
     // Create and bind to port on all interfaces (0.0.0.0)
-    public function bind_port(port: i32) void throws IError {
+    public method bind_port(port: i32) void throws IError {
       var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
       if (sock_fd < 0) {
         throw Error(sock_fd, "failed to create socket");
@@ -219,7 +219,7 @@ public module sun {
     }
 
     // Create and bind to loopback (127.0.0.1) on port
-    public function bind_loopback(port: i32) void throws IError {
+    public method bind_loopback(port: i32) void throws IError {
       var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
       if (sock_fd < 0) {
         throw Error(sock_fd, "failed to create socket");
@@ -234,7 +234,7 @@ public module sun {
     }
 
     // Start listening for connections
-    public function listen(backlog: i32) void throws IError {
+    public method listen(backlog: i32) void throws IError {
       var result: i32 = unsafe { __listen(this.fd, backlog); };
       if (result < 0) {
         throw Error(result, "failed to listen");
@@ -242,7 +242,7 @@ public module sun {
     }
 
     // Accept a new connection, returns TcpStream
-    public function accept() TcpStream throws IError {
+    public method accept() TcpStream throws IError {
       var client_fd: i32 = unsafe { __accept_fd(this.fd); };
       if (client_fd < 0) {
         throw Error(client_fd, "failed to accept connection");
@@ -254,7 +254,7 @@ public module sun {
     }
 
     // Close the listener
-    public function close() void {
+    public method close() void {
       if (this.fd >= 0) {
         unsafe { __shutdown(this.fd, SHUT_RDWR); };
         unsafe { c_close(this.fd); };
@@ -263,12 +263,12 @@ public module sun {
     }
 
     // Report whether the listener still holds a live file descriptor.
-    public function is_open() bool {
+    public method is_open() bool {
       return this.fd >= 0;
     }
 
     // The underlying file descriptor, for polling or C calls.
-    public function get_fd() i32 {
+    public method get_fd() i32 {
       return this.fd;
     }
   }

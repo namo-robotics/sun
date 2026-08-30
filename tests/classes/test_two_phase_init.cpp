@@ -15,7 +15,7 @@ const char* kResPreamble = R"(
       init(v: i32) {
         this.v = v;
       }
-      function get() i32 {
+      method get() i32 {
         return this.v;
       }
     }
@@ -92,7 +92,7 @@ TEST(Classes_TwoPhaseInit, assigned_on_both_branches_is_accepted) {
           this.r = Res(2);
         }
       }
-      function get() i32 { return this.r.get(); }
+      method get() i32 { return this.r.get(); }
     }
 
     function main() i32 {
@@ -175,7 +175,7 @@ TEST(Classes_TwoPhaseInit, reading_a_field_after_assigning_it_is_accepted) {
         this.a = Res(7);
         this.b = Res(this.a.get() + 1);
       }
-      function get() i32 { return this.b.get(); }
+      method get() i32 { return this.b.get(); }
     }
 
     function main() i32 {
@@ -195,10 +195,10 @@ TEST(Classes_TwoPhaseInit, a_method_may_assign_the_fields) {
       init() {
         this.fill();
       }
-      function fill() void {
+      method fill() void {
         this.r = Res(7);
       }
-      function get() i32 { return this.r.get(); }
+      method get() i32 { return this.r.get(); }
     }
 
     function main() i32 {
@@ -218,9 +218,9 @@ TEST(Classes_TwoPhaseInit, several_methods_may_finish_the_job_between_them) {
         this.fill_a();
         this.fill_b();
       }
-      function fill_a() void { this.a = Res(3); }
-      function fill_b() void { this.b = Res(4); }
-      function sum() i32 { return this.a.get() + this.b.get(); }
+      method fill_a() void { this.a = Res(3); }
+      method fill_b() void { this.b = Res(4); }
+      method sum() i32 { return this.a.get() + this.b.get(); }
     }
 
     function main() i32 {
@@ -239,7 +239,7 @@ TEST(Classes_TwoPhaseInit, a_method_that_leaves_a_field_unassigned) {
       init() {
         this.fill_a();
       }
-      function fill_a() void { this.a = Res(3); }
+      method fill_a() void { this.a = Res(3); }
     }
 
     function main() i32 {
@@ -259,7 +259,7 @@ TEST(Classes_TwoPhaseInit, a_method_that_reads_a_field_with_no_value_yet) {
         this.copy_a_into_b();
         this.a = Res(1);
       }
-      function copy_a_into_b() void { this.b = Res(this.a.get()); }
+      method copy_a_into_b() void { this.b = Res(this.a.get()); }
     }
 
     function main() i32 {
@@ -279,8 +279,8 @@ TEST(Classes_TwoPhaseInit, a_method_may_read_a_field_the_constructor_assigned) {
         this.a = Res(5);
         this.double_a_into_b();
       }
-      function double_a_into_b() void { this.b = Res(this.a.get() * 2); }
-      function get() i32 { return this.b.get(); }
+      method double_a_into_b() void { this.b = Res(this.a.get() * 2); }
+      method get() i32 { return this.b.get(); }
     }
 
     function main() i32 {
@@ -298,7 +298,7 @@ TEST(Classes_TwoPhaseInit, a_method_assigning_on_only_one_branch) {
       init(flag: bool) {
         this.maybe_fill(flag);
       }
-      function maybe_fill(flag: bool) void {
+      method maybe_fill(flag: bool) void {
         if (flag) {
           this.r = Res(1);
         }
@@ -321,10 +321,10 @@ TEST(Classes_TwoPhaseInit, calling_a_method_once_the_object_is_whole) {
         this.r = Res(1);
         this.bump();
       }
-      function bump() void {
+      method bump() void {
         this.r = Res(this.r.get() + 1);
       }
-      function get() i32 { return this.r.get(); }
+      method get() i32 { return this.r.get(); }
     }
 
     function main() i32 {

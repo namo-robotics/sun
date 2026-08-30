@@ -25,7 +25,7 @@ const char* kResPreamble = R"(
       deinit() {
         deinits = deinits + 1;
       }
-      function get() i32 {
+      method get() i32 {
         return this.v;
       }
     }
@@ -106,7 +106,7 @@ TEST(MemorySafety_Drops_FieldInit, a_later_write_still_drops_what_it_replaces) {
       init(r: Res) {
         this.r = r;
       }
-      function replace(r: Res) void {
+      method replace(r: Res) void {
         this.r = r;
       }
     }
@@ -157,7 +157,7 @@ TEST(MemorySafety_Drops_FieldInit, a_scalar_field_may_be_written_again) {
           this.total = this.total + i;
         }
       }
-      function get_total() i32 { return this.total; }
+      method get_total() i32 { return this.total; }
     }
 
     function main() i32 {
@@ -247,7 +247,7 @@ TEST(MemorySafety_Drops_FieldInit, a_method_called_once_the_object_is_whole) {
         this.r = Res(1);
         this.refill();
       }
-      function refill() void {
+      method refill() void {
         this.r = Res(2);
       }
     }
@@ -344,7 +344,7 @@ TEST(MemorySafety_Drops_FieldInit,
       init() {
         this.fill();
       }
-      function fill() void {
+      method fill() void {
         this.r = Res(7);
       }
     }
@@ -373,7 +373,7 @@ TEST(MemorySafety_Drops_FieldInit,
         this.r = Res(1);
         this.fill();
       }
-      function fill() void {
+      method fill() void {
         this.r = Res(7);
       }
     }
@@ -441,8 +441,8 @@ TEST(MemorySafety_Drops_FieldInit, a_catch_that_reassigns_the_field_is_rejected)
   EXPECT_SUN_ERROR_WITH_MESSAGE(compileString(withPreamble(R"(
     class Boom implements IError {
       init() {}
-      function code() i32 { return 1; }
-      function message() static_ptr<u8> { return "boom"; }
+      method code() i32 { return 1; }
+      method message() static_ptr<u8> { return "boom"; }
     }
 
     function boom(f: bool) void throws IError { if (f) { throw Boom(); } }
@@ -465,8 +465,8 @@ TEST(MemorySafety_Drops_FieldInit, a_field_settled_before_a_try_is_certain) {
   auto value = executeString(withPreamble(R"(
     class Boom implements IError {
       init() {}
-      function code() i32 { return 1; }
-      function message() static_ptr<u8> { return "boom"; }
+      method code() i32 { return 1; }
+      method message() static_ptr<u8> { return "boom"; }
     }
 
     function boom(f: bool) void throws IError { if (f) { throw Boom(); } }
@@ -499,7 +499,7 @@ TEST(MemorySafety_Drops_FieldInit, a_self_recursive_filler_is_rejected) {
       init() {
         this.fill(2);
       }
-      function fill(n: i32) void {
+      method fill(n: i32) void {
         if (n > 0) { this.fill(n - 1); }
         this.r = Res(n);
       }
@@ -521,11 +521,11 @@ TEST(MemorySafety_Drops_FieldInit, a_method_may_settle_scalar_fields) {
       init(w: i32, h: i32) {
         this.resize(w, h);
       }
-      function resize(w: i32, h: i32) void {
+      method resize(w: i32, h: i32) void {
         this.width = w;
         this.height = h;
       }
-      function area() i32 { return this.width * this.height; }
+      method area() i32 { return this.width * this.height; }
     }
 
     function main() i32 {
@@ -546,12 +546,12 @@ TEST(MemorySafety_Drops_FieldInit,
     class Holder {
       var r: Res;
       init() { this.fill(); }
-      function fill() void {
+      method fill() void {
         var cb = this.tick;
         this.r = Res(1);
         cb();
       }
-      function tick() void { }
+      method tick() void { }
     }
 
     function main() i32 { var h = Holder(); return deinits; }

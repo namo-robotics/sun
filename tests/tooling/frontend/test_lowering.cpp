@@ -45,8 +45,8 @@ using sun;
 enum Color { Red, Green, Blue }
 
 interface IShape {
-    function area() i32;
-    function describe() i32 { return 0; }
+    method area() i32;
+    method describe() i32 { return 0; }
 }
 
 class Point implements IShape {
@@ -58,7 +58,7 @@ class Point implements IShape {
         this.y = y_;
     }
 
-    function area() i32 {
+    method area() i32 {
         return this.x * this.y;
     }
 }

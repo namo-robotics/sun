@@ -16,23 +16,23 @@ public module sun {
   public interface IAllocator {
     // Allocate an array of count elements of type T
     // Returns raw_ptr<T> - caller is responsible for freeing
-    public function alloc<T>(count: i64) raw_ptr<T>;
+    public method alloc<T>(count: i64) raw_ptr<T>;
 
     // Low-level raw allocation - returns raw_ptr<u8>
-    public function alloc_raw(size: i64) raw_ptr<u8>;
+    public method alloc_raw(size: i64) raw_ptr<u8>;
 
     // Free previously allocated memory (typed version)
-    public function dealloc<T>(p: raw_ptr<T>, count: i64) void;
+    public method dealloc<T>(p: raw_ptr<T>, count: i64) void;
 
     // Free previously allocated memory (raw bytes)
-    public function dealloc_raw(p: raw_ptr<u8>, size: i64) void;
+    public method dealloc_raw(p: raw_ptr<u8>, size: i64) void;
 
     // Create a single instance of T, calling its constructor
     // Returns raw_ptr<T> - caller manages lifetime
-    public function create<T>(args...: _params_of<T>) raw_ptr<T>;
+    public method create<T>(args...: _params_of<T>) raw_ptr<T>;
 
     // Create a single instance of T owned by a Unique<T> (freed on scope exit)
-    public function create_unique<T>(args...: _params_of<T>) Unique<T>;
+    public method create_unique<T>(args...: _params_of<T>) Unique<T>;
   }
 
   /**
@@ -47,29 +47,29 @@ public module sun {
     }
 
     // Allocate array of count elements, returns typed raw pointer
-    public function alloc<T>(count: i64) raw_ptr<T> {
+    public method alloc<T>(count: i64) raw_ptr<T> {
       var size: i64 = count * _sizeof<T>();
       return unsafe { _malloc(size); };
     }
 
     // Low-level raw byte allocation
-    public function alloc_raw(size: i64) raw_ptr<u8> {
+    public method alloc_raw(size: i64) raw_ptr<u8> {
       return unsafe { _malloc(size); };
     }
 
     // Free typed memory allocated with alloc<T>
-    public function dealloc<T>(p: raw_ptr<T>, count: i64) void {
+    public method dealloc<T>(p: raw_ptr<T>, count: i64) void {
       unsafe { _free(p); };
     }
 
     // Free raw bytes allocated with alloc_raw
-    public function dealloc_raw(p: raw_ptr<u8>, size: i64) void {
+    public method dealloc_raw(p: raw_ptr<u8>, size: i64) void {
       unsafe { _free(p); };
     }
 
     // Create a single instance of T
     // Allocates memory, calls T's constructor, returns raw_ptr<T>
-    public function create<T>(args...: _params_of<T>) raw_ptr<T> {
+    public method create<T>(args...: _params_of<T>) raw_ptr<T> {
       var size: i64 = _sizeof<T>();
       var memory: raw_ptr<u8> = this.alloc_raw(size);
       _init<T>(memory, args...);
@@ -78,13 +78,13 @@ public module sun {
 
     // Create a single instance of T wrapped in Unique<T>
     // Preferred over create<T> when the object has a single owner
-    public function create_unique<T>(args...: _params_of<T>) Unique<T> {
+    public method create_unique<T>(args...: _params_of<T>) Unique<T> {
       return Unique<T>(this.create<T>(args...));
     }
 
     // Create a copy of this allocator
     // Since HeapAllocator has no state, this just returns a new instance
-    public const function copy() HeapAllocator {
+    public const method copy() HeapAllocator {
       return HeapAllocator();
     }
   }

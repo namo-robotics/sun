@@ -192,11 +192,11 @@ For class types, `_is<T>` can check interface implementation:
 
 ```sun
 interface IHashable {
-    function hash() i64;
+    method hash() i64;
 }
 
 class MyKey implements IHashable {
-    function hash() i64 { return 42; }
+    method hash() i64 { return 42; }
 }
 
 function example(key: MyKey) bool {
@@ -497,15 +497,15 @@ class Vec<T> {
     cap: i64;
     alloc: HeapAllocator;
 
-    function get(index: i64) T {
+    method get(index: i64) T {
         return _load<T>(this.data, index);
     }
 
-    function set(index: i64, value: T) void {
+    method set(index: i64, value: T) void {
         _store<T>(this.data, index, value);
     }
 
-    function push(value: T) void {
+    method push(value: T) void {
         if (this.len >= this.cap) {
             this.grow();
         }
@@ -513,7 +513,7 @@ class Vec<T> {
         this.len = this.len + 1;
     }
 
-    function grow() void {
+    method grow() void {
         var newCap = this.cap * 2;
         var newData = this.alloc.alloc_raw(newCap * _sizeof<T>());
         // Copy old data to new buffer...

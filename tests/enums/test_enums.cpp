@@ -140,7 +140,7 @@ TEST(Enums, EnumInClass) {
         this.status = s;
       }
 
-      function isActive() i32 {
+      method isActive() i32 {
         if (this.status == Status.Active) {
           return 1;
         }

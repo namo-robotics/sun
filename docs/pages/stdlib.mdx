@@ -805,10 +805,10 @@ The iteration protocol lives in `iterator.sun` and is what `for-in` drives:
 
 ```sun
 interface IIterator<T, Container> {
-    function next(container: ref Container) Option<T>;
+    method next(container: ref Container) Option<T>;
 }
 interface IIterable<T, Self> {
-    function iter() IIterator<T, Self>;
+    method iter() IIterator<T, Self>;
 }
 ```
 
@@ -824,7 +824,7 @@ class Countdown implements IIterator<i32, Countdown> {
     var n: i32;
     init(n: i32) { this.n = n; }
 
-    function next(self: ref Countdown) Option<i32> {
+    method next(self: ref Countdown) Option<i32> {
         if (this.n == 0) { return Option.None; }
         this.n = this.n - 1;
         return Option.Some(this.n + 1);
@@ -863,13 +863,13 @@ class Range implements IIterable<i32, Range> {
     var start: i32;
     var end: i32;
     init(s: i32, e: i32) { this.start = s; this.end = e; }
-    function iter() RangeIterator { return RangeIterator(this.start); }
+    method iter() RangeIterator { return RangeIterator(this.start); }
 }
 
 class RangeIterator implements IIterator<i32, Range> {
     var cur: i32;
     init(s: i32) { this.cur = s; }
-    function next(r: ref Range) Option<i32> {
+    method next(r: ref Range) Option<i32> {
         if (this.cur >= r.end) { return Option.None; }
         this.cur = this.cur + 1;
         return Option.Some(this.cur - 1);

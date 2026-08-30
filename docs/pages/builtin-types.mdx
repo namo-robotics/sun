@@ -220,8 +220,8 @@ The error interface used with the `try`/`catch`/`throw` error handling system.
 ```sun
 class DivByZero implements IError {
     init() {}
-    function code() i32 { return 1; }
-    function message() String { return String("division by zero"); }
+    method code() i32 { return 1; }
+    method message() String { return String("division by zero"); }
 }
 
 function divide(a: i32, b: i32) i32 throws IError {
@@ -259,6 +259,6 @@ Attempting to define a class or interface with this name will result in a compil
 ```sun
 // ❌ ERROR: Cannot redefine builtin interface 'IError'
 interface IError {
-    function code() i32;
+    method code() i32;
 }
 ```

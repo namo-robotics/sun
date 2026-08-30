@@ -166,7 +166,7 @@ TEST(Lambdas_CaptureDiscovery, lambda_cannot_use_this) {
       class Counter {
           var count: i32;
           init() { this.count = 5; }
-          function snapshot() i32 {
+          method snapshot() i32 {
               var f = lambda () i32 { return this.count; };
               return f();
           }

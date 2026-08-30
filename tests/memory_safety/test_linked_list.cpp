@@ -25,15 +25,15 @@ TEST(MemorySafety_LinkedList, two_nodes_linked) {
             this.next = null;
         }
 
-        function get_value() i32 {
+        method get_value() i32 {
             return this.value;
         }
 
-        function set_next(n: raw_ptr<Node>) void {
+        method set_next(n: raw_ptr<Node>) void {
             this.next = n;
         }
 
-        function get_next() raw_ptr<Node> {
+        method get_next() raw_ptr<Node> {
             return this.next;
         }
     }
@@ -62,15 +62,15 @@ TEST(MemorySafety_LinkedList, three_nodes_chain) {
             this.next = null;
         }
 
-        function get_value() i32 {
+        method get_value() i32 {
             return this.value;
         }
 
-        function set_next(n: raw_ptr<Node>) void {
+        method set_next(n: raw_ptr<Node>) void {
             this.next = n;
         }
 
-        function get_next() raw_ptr<Node> {
+        method get_next() raw_ptr<Node> {
             return this.next;
         }
     }
@@ -110,19 +110,19 @@ TEST(MemorySafety_LinkedList, modify_through_pointer) {
             this.next = null;
         }
 
-        function get_value() i32 {
+        method get_value() i32 {
             return this.value;
         }
 
-        function set_value(v: i32) void {
+        method set_value(v: i32) void {
             this.value = v;
         }
 
-        function set_next(n: raw_ptr<Node>) void {
+        method set_next(n: raw_ptr<Node>) void {
             this.next = n;
         }
 
-        function get_next() raw_ptr<Node> {
+        method get_next() raw_ptr<Node> {
             return this.next;
         }
     }
@@ -159,15 +159,15 @@ TEST(MemorySafety_LinkedList, access_deep_chain) {
             this.next = null;
         }
 
-        function get_value() i32 {
+        method get_value() i32 {
             return this.value;
         }
 
-        function set_next(n: raw_ptr<Node>) void {
+        method set_next(n: raw_ptr<Node>) void {
             this.next = n;
         }
 
-        function get_next() raw_ptr<Node> {
+        method get_next() raw_ptr<Node> {
             return this.next;
         }
     }
@@ -204,19 +204,19 @@ TEST(MemorySafety_LinkedList, null_terminated_list) {
             this.next = null;
         }
 
-        function get_value() i32 {
+        method get_value() i32 {
             return this.value;
         }
 
-        function set_next(n: raw_ptr<Node>) void {
+        method set_next(n: raw_ptr<Node>) void {
             this.next = n;
         }
 
-        function get_next() raw_ptr<Node> {
+        method get_next() raw_ptr<Node> {
             return this.next;
         }
 
-        function hasNext() bool {
+        method hasNext() bool {
             return this.next != null;
         }
     }
@@ -260,19 +260,19 @@ TEST(MemorySafety_LinkedList, while_loop_traversal) {
             this.next = null;
         }
 
-        function get_value() i32 {
+        method get_value() i32 {
             return this.value;
         }
 
-        function set_next(n: raw_ptr<Node>) void {
+        method set_next(n: raw_ptr<Node>) void {
             this.next = n;
         }
 
-        function get_next() raw_ptr<Node> {
+        method get_next() raw_ptr<Node> {
             return this.next;
         }
 
-        function hasNext() bool {
+        method hasNext() bool {
             return this.next != null;
         }
     }
@@ -316,19 +316,19 @@ TEST(MemorySafety_LinkedList, list_class_with_methods) {
             this.next = null;
         }
 
-        function get_value() i32 {
+        method get_value() i32 {
             return this.value;
         }
 
-        function set_next(n: raw_ptr<Node>) void {
+        method set_next(n: raw_ptr<Node>) void {
             this.next = n;
         }
 
-        function get_next() raw_ptr<Node> {
+        method get_next() raw_ptr<Node> {
             return this.next;
         }
 
-        function hasNext() bool {
+        method hasNext() bool {
             return this.next != null;
         }
     }
@@ -346,7 +346,7 @@ TEST(MemorySafety_LinkedList, list_class_with_methods) {
             this.tail = null;
         }
 
-        function append(alloc: ref HeapAllocator, v: i32) void {
+        method append(alloc: ref HeapAllocator, v: i32) void {
             if (this.tail != null) {
                 // Append to existing list - create node and link via tail
                 unsafe { this.tail.set_next(createNode(alloc, v)); };
@@ -358,7 +358,7 @@ TEST(MemorySafety_LinkedList, list_class_with_methods) {
             }
         }
 
-        function sum() i32 {
+        method sum() i32 {
             var total = 0;
             var curr: raw_ptr<Node> = this.head;
             while (curr != null) {

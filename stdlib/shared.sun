@@ -31,29 +31,29 @@ public module sun {
     }
 
     // Count one more handle in.
-    function retain() void {
+    method retain() void {
       unsafe { _atomic_fetch_add_i32(_address_of<i32>(this.count), 1); };
     }
 
     // Count one handle out. Returns the count from before the decrement, so
     // a result of 1 means the caller was the last owner.
-    function release() i32 {
+    method release() i32 {
       return unsafe { _atomic_fetch_sub_i32(_address_of<i32>(this.count), 1); };
     }
 
-    function count_now() i32 {
+    method count_now() i32 {
       return unsafe { _atomic_load_i32(_address_of<i32>(this.count)); };
     }
 
-    function acquire() void {
+    method acquire() void {
       this.lock.lock();
     }
 
-    function release_lock() void {
+    method release_lock() void {
       this.lock.unlock();
     }
 
-    function value_ref() ref T {
+    method value_ref() ref T {
       return this.value;
     }
   }
@@ -82,7 +82,7 @@ public module sun {
     }
 
     // The shared value. Nobody else can reach it while this guard is alive.
-    public function get() ref T {
+    public method get() ref T {
       var b: ref SharedBox<T> = unsafe { _to_ref<SharedBox<T>>(this.box); };
       return b.value_ref();
     }
@@ -100,7 +100,7 @@ public module sun {
   //
   // Every method reaches the box through a `ref` bound from _to_ref rather
   // than calling straight through `this.box`. That is deliberate: inside a
-  // const function `this.box` is an immutable place, so a method called on it
+  // const method `this.box` is an immutable place, so a method called on it
   // would either be rejected or come back as a read-only view. A mutable
   // borrow re-grants mutability, and the mutex is what makes the write safe.
   public class Shared<T> {
@@ -118,27 +118,27 @@ public module sun {
     }
 
     // Another owner of the same value.
-    public const function clone() Shared<T> {
+    public const method clone() Shared<T> {
       var b: ref SharedBox<T> = unsafe { _to_ref<SharedBox<T>>(this.box); };
       b.retain();
       return Shared<T>(this.box);
     }
 
     // Wait for the lock, then hand back a guard that holds it.
-    public const function lock() SharedGuard<T> {
+    public const method lock() SharedGuard<T> {
       var b: ref SharedBox<T> = unsafe { _to_ref<SharedBox<T>>(this.box); };
       b.acquire();
       return SharedGuard<T>(this.box, GuardKey());
     }
 
     // Report whether the box has been taken or was never set.
-    public const function is_null() bool {
+    public const method is_null() bool {
       return this.box == null;
     }
 
     // How many owners there are right now. For tests and diagnostics: by the
     // time you read it, another thread may have cloned or dropped.
-    public const function count() i32 {
+    public const method count() i32 {
       var b: ref SharedBox<T> = unsafe { _to_ref<SharedBox<T>>(this.box); };
       return b.count_now();
     }

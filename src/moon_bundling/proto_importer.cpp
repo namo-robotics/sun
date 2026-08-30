@@ -20,7 +20,7 @@
 //       var unknown_fields: Vec<u8>;               // preserved unknown fields
 //       var alloc_: HeapAllocator;
 //       init(alloc: ref HeapAllocator) { ...zero values... }
-//       function encode(buf: ref Vec<u8>) void { ... }
+//       method encode(buf: ref Vec<u8>) void { ... }
 //     }
 //     function <Msg>_decode(alloc: ref HeapAllocator, buf: ref Vec<u8>) <Msg>,
 //     IError
@@ -684,7 +684,7 @@ class MessageGenerator {
   }
 
   void emitEncode() {
-    w_.open("public function encode(buf: ref Vec<u8>) void {");
+    w_.open("public method encode(buf: ref Vec<u8>) void {");
     forEachPlainField([&](const FD* f) { emitEncodeField(f); });
     forEachOneof([&](const pb::OneofDescriptor* o) { emitEncodeOneof(o); });
     w_.line("proto_append_raw(buf, this.unknown_fields);");
@@ -760,13 +760,13 @@ class MessageGenerator {
 
   // Length-prefixed forms: embedded sub-message and stream framing
   void emitEncodeNested() {
-    w_.open("public function encode_nested(buf: ref Vec<u8>) void {");
+    w_.open("public method encode_nested(buf: ref Vec<u8>) void {");
     w_.line("var body = Vec<u8>(this.alloc_, 16);");
     w_.line("this.encode(body);");
     w_.line("proto_write_bytes(buf, body);");
     w_.close();
     w_.line();
-    w_.open("public function encode_delimited(buf: ref Vec<u8>) void {");
+    w_.open("public method encode_delimited(buf: ref Vec<u8>) void {");
     w_.line("this.encode_nested(buf);");
     w_.close();
   }

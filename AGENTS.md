@@ -65,6 +65,7 @@ One predicate per rule, so there is one place to change and one place to look:
 - Run all commands from the workspace root. Create any temp files in `${workspaceRoot}/tmp`.
 - Do not use `git` commands except for `git diff`.
 - Sun minimizes and discourages alternative syntaxes that do the same thing.
+- Class and interface methods are declared with `method`; `function` declares free functions only.
 - Sun DOES NOT ALLOW IMPLICIT COPIES.
 - Every function, class, interface and method gets a block comment saying what it is for, in concise plain English. This includes `.sun` files and C++ files. Keep other comments minimal.
 - Use plain English with minimal jargon, in docs and comments alike. Both target a public audience of open-source software engineers; avoid acronyms except widely known ones.

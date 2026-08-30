@@ -195,11 +195,11 @@ public module tls {
     }
 
     // GET https://host{path} on port 443
-    public function get(host: ref String, path: static_ptr<u8>) HttpClientResponse throws IError {
+    public method get(host: ref String, path: static_ptr<u8>) HttpClientResponse throws IError {
       return this.get(host, 443, path);
     }
 
-    public function get(host: ref String, port: i32, path: static_ptr<u8>) HttpClientResponse throws IError {
+    public method get(host: ref String, port: i32, path: static_ptr<u8>) HttpClientResponse throws IError {
       var req = String(this.alloc, "GET ");
       req.append(path);
       req.append(" HTTP/1.1");
@@ -210,11 +210,11 @@ public module tls {
     }
 
     // POST a body to https://host{path} on port 443
-    public function post(host: ref String, path: static_ptr<u8>, content_type: static_ptr<u8>, body: const ref String) HttpClientResponse throws IError {
+    public method post(host: ref String, path: static_ptr<u8>, content_type: static_ptr<u8>, body: const ref String) HttpClientResponse throws IError {
       return this.post(host, 443, path, content_type, body);
     }
 
-    public function post(host: ref String, port: i32, path: static_ptr<u8>, content_type: static_ptr<u8>, body: const ref String) HttpClientResponse throws IError {
+    public method post(host: ref String, port: i32, path: static_ptr<u8>, content_type: static_ptr<u8>, body: const ref String) HttpClientResponse throws IError {
       var req = String(this.alloc, "POST ");
       req.append(path);
       req.append(" HTTP/1.1");
@@ -231,7 +231,7 @@ public module tls {
       return this.exchange(host, port, req);
     }
 
-    function append_common_headers(req: ref String, host: ref String) void {
+    method append_common_headers(req: ref String, host: ref String) void {
       req.append("Host: ");
       req.append(host);
       append_crlf(req);
@@ -242,7 +242,7 @@ public module tls {
     }
 
     // Connect, send the request, read to end-of-stream, and parse
-    function exchange(host: ref String, port: i32, request: ref String) HttpClientResponse throws IError {
+    method exchange(host: ref String, port: i32, request: ref String) HttpClientResponse throws IError {
       var stream = TlsStream();
       stream.connect(host, port);
       stream.send_string(request);

@@ -618,8 +618,8 @@ bool haveAarch64MuslToolchain() {
 constexpr const char* kThrowingProgram = R"(
     class DivByZero implements IError {
       init() {}
-      function code() i32 { return 1; }
-      function message() static_ptr<u8> { return "division by zero"; }
+      method code() i32 { return 1; }
+      method message() static_ptr<u8> { return "division by zero"; }
     }
     function divide(a: i32, b: i32) i32 throws IError {
         if (b == 0) { throw DivByZero(); }

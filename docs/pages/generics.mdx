@@ -61,8 +61,8 @@ methods work the same way:
 class Box<T> {
     var v: T;
     init(v: T) { this.v = v; }
-    function twice<U>(x: U) U { return x + x; }
-    function as<R, U>(x: U) R { return _convert<R>(x); }
+    method twice<U>(x: U) U { return x + x; }
+    method as<R, U>(x: U) R { return _convert<R>(x); }
 }
 
 var b = Box<i64>(1);
@@ -108,7 +108,7 @@ Constraints work on every generic declaration, not only functions:
 ```sun
 class Box<T: _Numeric> { var v: T; }
 enum Maybe<T: _Numeric> { Some(T), None }
-interface IStore<T: _Numeric> { public function get() T; }
+interface IStore<T: _Numeric> { public method get() T; }
 function run<F: _Lambda>(f: F) i32 { ... }
 ```
 
@@ -131,12 +131,12 @@ An interface constraint also says what the body may do with the value. Whatever
 fields are reachable on a value of type `T`:
 
 ```sun
-interface IShape { public function area() i32; }
+interface IShape { public method area() i32; }
 
 class Square implements IShape {
     var side: i32;
     init(s: i32) { this.side = s; }
-    public function area() i32 { return this.side * this.side; }
+    public method area() i32 { return this.side * this.side; }
 }
 
 function measure<T: IShape>(s: ref T) i32 {
@@ -283,7 +283,7 @@ class Box<T> {
     this.value = v;
   }
 
-  function get() T {
+  method get() T {
     return this.value;
   }
 }
@@ -318,11 +318,11 @@ class Pair<A, B> {
         this.second = b;
     }
 
-    function getFirst() A {
+    method getFirst() A {
         return this.first;
     }
 
-    function getSecond() B {
+    method getSecond() B {
         return this.second;
     }
 }
@@ -351,7 +351,7 @@ class Container<T> implements IIterator<T, Container<T>> {
         this.size = sz;
     }
 
-    function next(self: ref Container<T>) Option<T> {
+    method next(self: ref Container<T>) Option<T> {
         if (this.index >= this.size) {
             return Option.None;
         }

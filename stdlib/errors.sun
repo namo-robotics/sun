@@ -16,7 +16,7 @@
 //   import "stdlib/errors.sun";
 //   using sun;
 //
-//   function pop_front() T throws IError {
+//   method pop_front() T throws IError {
 //       if (this.is_empty()) {
 //           throw EmptyError();
 //       }
@@ -47,12 +47,12 @@ public module sun {
     }
 
     // The numeric code this error was built with.
-    public function code() i32 {
+    public method code() i32 {
       return this.code_;
     }
 
     // A fresh copy of the message text, owned by the caller.
-    public function message() String {
+    public method message() String {
       var alloc: HeapAllocator = HeapAllocator();
       return this.message_.clone(alloc);
     }
@@ -67,12 +67,12 @@ public module sun {
     init() {}
 
     // Always 1.
-    public function code() i32 {
+    public method code() i32 {
       return 1;
     }
 
     // Fixed text: the container is empty.
-    public function message() String {
+    public method message() String {
       return String("container is empty");
     }
   }
@@ -86,12 +86,12 @@ public module sun {
     init() {}
 
     // Always 2.
-    public function code() i32 {
+    public method code() i32 {
       return 2;
     }
 
     // Fixed text: the element was not found.
-    public function message() String {
+    public method message() String {
       return String("element not found");
     }
   }
@@ -109,17 +109,17 @@ public module sun {
     }
 
     // Always 3.
-    public function code() i32 {
+    public method code() i32 {
       return 3;
     }
 
     // Fixed text: the index was out of bounds.
-    public function message() String {
+    public method message() String {
       return String("index out of bounds");
     }
 
     // The offending index, for a caller that wants to report it.
-    public function index() i64 {
+    public method index() i64 {
       return this.index_;
     }
   }
@@ -133,12 +133,12 @@ public module sun {
     init() {}
 
     // Always 4.
-    public function code() i32 {
+    public method code() i32 {
       return 4;
     }
 
     // Fixed text: division by zero.
-    public function message() String {
+    public method message() String {
       return String("division by zero");
     }
   }
@@ -152,12 +152,12 @@ public module sun {
     init() {}
 
     // Always 5.
-    public function code() i32 {
+    public method code() i32 {
       return 5;
     }
 
     // Fixed text: arithmetic overflow.
-    public function message() String {
+    public method message() String {
       return String("arithmetic overflow");
     }
   }
@@ -182,12 +182,12 @@ public module sun {
     }
 
     // Always 6.
-    public function code() i32 {
+    public method code() i32 {
       return 6;
     }
 
     // A fresh copy of the explanation, owned by the caller.
-    public function message() String {
+    public method message() String {
       var alloc: HeapAllocator = HeapAllocator();
       return this.message_.clone(alloc);
     }
@@ -206,17 +206,17 @@ public module sun {
     }
 
     // The errno value, passed straight through.
-    public function code() i32 {
+    public method code() i32 {
       return this.errno_;
     }
 
     // Fixed text: an I/O call failed.
-    public function message() String {
+    public method message() String {
       return String("I/O error");
     }
 
     // The errno value, under a name that says where it came from.
-    public function errno() i32 {
+    public method errno() i32 {
       return this.errno_;
     }
   }
@@ -234,17 +234,17 @@ public module sun {
     }
 
     // Always 7.
-    public function code() i32 {
+    public method code() i32 {
       return 7;
     }
 
     // Fixed text: the allocator could not satisfy the request.
-    public function message() String {
+    public method message() String {
       return String("memory allocation failed");
     }
 
     // How many bytes the failed request asked for.
-    public function requested_size() i64 {
+    public method requested_size() i64 {
       return this.size_;
     }
   }
@@ -258,12 +258,12 @@ public module sun {
     init() {}
 
     // Always 9.
-    public function code() i32 {
+    public method code() i32 {
       return 9;
     }
 
     // Fixed text: the value was out of range for the target type.
-    public function message() String {
+    public method message() String {
       return String("value out of range for the target type");
     }
   }
