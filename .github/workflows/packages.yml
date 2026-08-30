@@ -1,13 +1,17 @@
 name: Packages
 
-# Runs only after CI passes, so a package is never published from a commit
-# whose tests failed. CI itself runs on pushes to main and on version tags
-# (v0, v1, v2, ...); this workflow picks up the ones that succeeded and
-# builds the same commit CI tested. Pull request runs are skipped — nothing
-# is published from a branch.
+# Runs only after BuildAndTest passes, so a package is never published from a
+# commit whose tests failed. That workflow runs on pushes to main and on
+# version tags (v0, v1, v2, ...); this one picks up the runs that succeeded
+# and builds the same commit they tested. Pull request runs are skipped —
+# nothing is published from a branch.
+#
+# The trigger matches the other workflow by its `name:` field, not its file
+# name, so renaming it there means renaming it here too — otherwise this
+# workflow simply stops running, with nothing to see in the Actions tab.
 on:
   workflow_run:
-    workflows: [CI]
+    workflows: [BuildAndTest]
     types: [completed]
   workflow_dispatch:
 
@@ -15,8 +19,8 @@ permissions:
   contents: write
 
 env:
-  # The commit CI tested. On a workflow_run event github.sha points at the
-  # default branch's head instead, which is the wrong commit for a tag.
+  # The commit BuildAndTest tested. On a workflow_run event github.sha points
+  # at the default branch's head instead, which is the wrong commit for a tag.
   BUILD_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
 jobs:

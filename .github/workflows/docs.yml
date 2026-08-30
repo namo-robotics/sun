@@ -1,13 +1,17 @@
 name: Docs
 
-# Publishes only after CI passes on main, so the site never documents a
-# commit whose tests failed. workflow_run carries no path filter, so this
-# rebuilds on every green main push rather than only on docs changes —
+# Publishes only after BuildAndTest passes on main, so the site never
+# documents a commit whose tests failed. workflow_run carries no path filter,
+# so this rebuilds on every green main push rather than only on docs changes —
 # a rebuild of unchanged content republishes the same site harmlessly,
 # whereas a missed filter would leave the site stale.
+#
+# The trigger matches the other workflow by its `name:` field, not its file
+# name, so renaming it there means renaming it here too — otherwise this
+# workflow simply stops running, with nothing to see in the Actions tab.
 on:
   workflow_run:
-    workflows: [CI]
+    workflows: [BuildAndTest]
     types: [completed]
     branches: [main]
   workflow_dispatch:
