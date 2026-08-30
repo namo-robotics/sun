@@ -5,6 +5,8 @@ signal failure with `throw`. Errors are real exceptions: a `throw` unwinds the
 stack to the nearest matching `catch`. Any class implementing `IError` can be
 thrown — here the standard library's `DivisionByZeroError`.
 
+## Build and run
+
 ```bash
 ./build.sh
 ./main

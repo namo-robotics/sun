@@ -45,6 +45,8 @@ expanded before path resolution, so a variable can hold a relative directory —
 which keeps a manifest portable when libraries live in a different place on
 each machine.
 
+## Build and run
+
 ```bash
 ./build.sh
 ./main

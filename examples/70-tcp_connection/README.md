@@ -4,6 +4,8 @@ A raw TCP client/server built on the standard library's `TcpListener` and
 `TcpStream`. The `listener` binds to `127.0.0.1:8080` and prints whatever it
 receives; the `talker` connects and sends a message.
 
+## Build and run
+
 Build both executables:
 
 ```bash

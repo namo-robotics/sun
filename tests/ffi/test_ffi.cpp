@@ -314,6 +314,28 @@ TEST(Ffi, extern_symbol_rename_with_abi_and_pointer) {
   EXPECT_EQ(value, 6);
 }
 
+TEST(Ffi, bitcast_hands_any_pointer_to_a_void_star_parameter) {
+  // A C function taking `void*` is declared once, as raw_ptr<u8>; callers
+  // retype whatever pointer they have with _bitcast.
+  auto value = executeString(R"(
+    extern "C" function c_strlen(s: raw_ptr<u8>) i64 as "strlen";
+
+    packed_class Bytes {
+        var a: u8;
+        var b: u8;
+        var terminator: u8;
+        init() { this.a = 104; this.b = 105; this.terminator = 0; }
+    }
+
+    function main() i32 {
+        var b = Bytes();
+        var p = _bitcast<raw_ptr<u8>>(_address_of<Bytes>(b));
+        unsafe { return _convert<i32>(c_strlen(p)); };
+    }
+  )");
+  EXPECT_EQ(value, 2);
+}
+
 TEST(Ffi, renamed_extern_does_not_bind_its_c_name) {
   // Only the Sun-side name is in scope; the C symbol is not introduced.
   EXPECT_THROW(executeString(R"(
