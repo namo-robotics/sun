@@ -1138,7 +1138,8 @@ static std::unique_ptr<BlockExprAST> mergeASTs(
   // First add merged modules (so they're defined before using statements)
   for (const auto& modName : moduleOrder) {
     auto& contents = moduleContents[modName];
-    auto modBody = std::make_unique<BlockExprAST>(std::move(contents));
+    auto modBody =
+        std::make_unique<BlockExprAST>(std::move(contents), BlockKind::Module);
     auto mergedMod = std::make_unique<ModuleAST>(modName, std::move(modBody));
     mergedBody.push_back(std::move(mergedMod));
   }
@@ -1148,7 +1149,8 @@ static std::unique_ptr<BlockExprAST> mergeASTs(
     mergedBody.push_back(std::move(stmt));
   }
 
-  return std::make_unique<BlockExprAST>(std::move(mergedBody));
+  return std::make_unique<BlockExprAST>(std::move(mergedBody),
+                                        BlockKind::Module);
 }
 
 void Driver::parseSynthesizedProtoModules(

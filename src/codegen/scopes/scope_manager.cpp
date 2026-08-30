@@ -167,8 +167,8 @@ void ScopeManager::emitFlaggedDrop(const ClassAllocation& alloc) {
   ctx.builder->SetInsertPoint(afterBlock);
 }
 
-bool ScopeManager::releaseBlockResult(Value* result) {
-  if (!result || scopes_.empty()) return false;
+std::optional<std::string> ScopeManager::releaseBlockResult(Value* result) {
+  if (!result || scopes_.empty()) return std::nullopt;
   for (auto& alloc : scopes_.back().classAllocations) {
     if (alloc.alloca != result || alloc.moved) continue;
     // The block always reaches its own last statement, so ownership leaves it
@@ -178,9 +178,9 @@ bool ScopeManager::releaseBlockResult(Value* result) {
                                alloc.dropFlag);
     }
     alloc.moved = true;
-    return true;
+    return alloc.varName;
   }
-  return false;
+  return std::nullopt;
 }
 
 void ScopeManager::markAsMoved(const std::string& name) {

@@ -55,7 +55,8 @@ class ErrorGenerator {
   llvm::Value* codegen(const TryCatchExprAST& expr);
   llvm::Value* codegen(const ThrowExprAST& expr);
 
-  // Unsafe blocks carry no codegen meaning; the body is emitted as written
+  // The body is emitted as written, in a scope of its own; the block's value
+  // is handed out to the enclosing scope. Safety checks are done in sema.
   llvm::Value* codegen(const UnsafeBlockAST& expr);
 
   /**

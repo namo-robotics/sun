@@ -27,6 +27,7 @@
 #include <llvm/IR/ValueHandle.h>
 
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -209,10 +210,12 @@ class ScopeManager {
 
   // A block used as a value hands its result to the enclosing expression, and
   // ownership goes with it — the block's own scope must not drop it. Marks the
-  // result moved out of the innermost scope, and answers whether that scope
-  // owned it, so the caller can re-track it in the scope that owns it now.
-  // Call this after generating the body and before popping its scope.
-  bool releaseBlockResult(llvm::Value* result);
+  // result moved out of the innermost scope and hands back the name it was
+  // tracked under, so the caller can re-track it in the scope that owns it now
+  // without losing the name its drop blocks are labelled with. Nothing means
+  // that scope did not own it and there is nothing to hand on. Call this after
+  // generating the body and before popping its scope.
+  std::optional<std::string> releaseBlockResult(llvm::Value* result);
 
   // A call that hands back a compound by value hands back something the
   // caller now owns. `var x = f();` adopts the very same slot and

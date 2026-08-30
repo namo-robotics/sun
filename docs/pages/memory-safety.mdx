@@ -741,6 +741,19 @@ A block may hold several statements; the last one is its value. Names declared
 inside stay inside, like any other block body — but the value leaves, and
 ownership of it leaves too, so `var s = unsafe { make(); };` keeps its string.
 
+A `return` inside the block returns from the enclosing **function** — there is
+no block-local return — which is what makes `unsafe { return c_abs(x); };` the
+usual way to wrap a C call. It also means a block that always leaves the
+function never produces a value, so binding one is rejected:
+
+```sun
+var x = unsafe { return 0; };   // ❌ ERROR: the block never produces a value
+var y = unsafe {
+    if (tooBig) { return 0; }   // ✓ conditional early exit; y binds otherwise
+    c_abs(n);
+};
+```
+
 ### What requires a block
 
 Three things:

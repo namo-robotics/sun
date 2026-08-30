@@ -29,6 +29,7 @@ TEST(Functions_Generic, generic_function_with_two_type_params) {
         } if (y == 3.14) {
             return -x;
         }
+        return x;
     }
 
     function main() i32 {

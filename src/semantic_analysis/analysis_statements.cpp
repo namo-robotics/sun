@@ -37,6 +37,20 @@ void SemanticAnalyzer::analyzeVariableCreation(VariableCreationAST& varCreate) {
   analyzeExpr(const_cast<ExprAST&>(*varCreate.getValue()), declaredType);
   sun::TypePtr rhsType = varCreate.getValue()->getResolvedType();
 
+  // A block that always leaves the function — `var x = unsafe { return 0; };`
+  // — never produces a value, so there is nothing to bind and the binding
+  // itself would be dead code. GNU C draws the same line for its statement
+  // expressions.
+  if (varCreate.getValue()->getType() == ASTNodeType::UNSAFE_BLOCK &&
+      sun::rules::alwaysExits(*varCreate.getValue())) {
+    logAndThrowError(
+        "Cannot bind '" + varCreate.getName() +
+            "' to this unsafe block: it always leaves the function through a "
+            "`return` or `throw`, so it never produces a value. Move the "
+            "`return` out of the block.",
+        varCreate.getLocation());
+  }
+
   // Determine the final variable type
   // `var r: ref T = <lvalue>` borrows the lvalue's storage - the same
   // implicit borrow a `ref T` parameter takes at a call site. An RHS that

@@ -586,7 +586,8 @@ void ClassGenerator::generateMethodBody(const FunctionAST& methodFunc,
     ++argIt;
   }
 
-  // Generate the method body
+  // Generate the method body. A method's return value comes only from
+  // explicit return statements, so the body is in statement position.
   codegen(methodFunc.getBody());
 
   // Add implicit return if no explicit return. A non-void body whose last
@@ -1189,7 +1190,7 @@ Value* ClassGenerator::codegen(const InterfaceDefinitionAST& expr) {
       ++paramIdx;
     }
 
-    // Generate the method body
+    // Generate the method body (statement position, as in codegenMethod)
     codegen(methodFunc.getBody());
 
     // Add implicit return if no explicit return (see codegenMethod)

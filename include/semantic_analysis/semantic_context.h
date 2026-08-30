@@ -219,6 +219,21 @@ class SemanticContext : public AccessContext {
   /** Leave an unsafe block (decrements the unsafe depth counter). */
   void exitUnsafeBlock();
 
+  /**
+   * Are we analyzing the stubs a moon import carries? A stub keeps only its
+   * signature — the body is stripped to an empty block — so checks about what
+   * a body does (such as returning on every path) do not apply there.
+   */
+  bool isInMoonScope() const { return moonScopeDepth_ > 0; }
+
+  /** Enter a moon import's stub scope. */
+  void enterMoonScope() { ++moonScopeDepth_; }
+
+  /** Leave a moon import's stub scope. */
+  void exitMoonScope() {
+    if (moonScopeDepth_ > 0) --moonScopeDepth_;
+  }
+
   // ---- Variables ---------------------------------------------------------
 
   /** Record a variable in the current scope under the given type. */
@@ -507,4 +522,7 @@ class SemanticContext : public AccessContext {
   // Locations of the expressions being analyzed (innermost last), so denials
   // raised inside lookups can still point at source.
   std::vector<const Position *> locationStack_;
+
+  // How many MoonScopeAST wrappers we are inside (see isInMoonScope)
+  int moonScopeDepth_ = 0;
 };
