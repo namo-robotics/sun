@@ -351,8 +351,9 @@ manifest {
 ```
 
 The Debian package installs `stdlib.moon` and `tls.moon` to `/usr/lib/sun`,
-and the macOS package installs them to `/usr/local/lib/sun`; both directories
-are searched without any `SUN_PATH` setting.
+and Homebrew installs them to `$(brew --prefix)/lib/sun` on macOS. Both are
+searched without any `SUN_PATH` setting, as is `lib/sun` beside whatever
+directory the running `sun` binary sits in.
 
 ### Installing a Released Bundle
 

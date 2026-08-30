@@ -1,0 +1,60 @@
+# The Homebrew formula for the Sun compiler. It is generated: the Packages
+# workflow in namo-robotics/sun renders this from homebrew/sun.rb.in with the
+# url, version and checksum of the build it just published, then pushes the
+# result to the namo-robotics/homebrew-sun tap. So the formula always names
+# the newest download, and changes belong in the template.
+class Sun < Formula
+  desc "Compiled language with Rust-style memory safety and an LLVM backend"
+  homepage "https://namo-robotics.github.io/sun/"
+  url "@URL@"
+  version "@VERSION@"
+  sha256 "@SHA256@"
+  license "MIT"
+
+  # The compiler is a prebuilt Apple Silicon binary. Its only non-system
+  # dependency is Homebrew's libLLVM.dylib, which it loads by absolute path
+  # from llvm@20's opt prefix.
+  depends_on "llvm@20"
+  depends_on arch: :arm64
+  depends_on :macos
+
+  def install
+    bin.install "bin/sun", "bin/sun-lsp"
+    # The compiler looks for bundles in ../lib/sun and ../share/sun/stdlib
+    # relative to its own binary, so a Cellar install finds these with no
+    # SUN_PATH set.
+    (lib/"sun").install Dir["lib/sun/*.moon"]
+    (share/"sun/stdlib").install Dir["share/sun/stdlib/*.sun"]
+  end
+
+  def caveats
+    <<~EOS
+      The standard library and the TLS bundle are installed to
+      #{lib}/sun. Import them from a program's manifest:
+
+          manifest {
+              moons: ["stdlib.moon", "tls.moon"]
+          }
+    EOS
+  end
+
+  # Runs a hello world through the JIT and then as a compiled binary, which
+  # together prove the compiler finds its bundles and can link through cc.
+  test do
+    (testpath/"hello.sun").write <<~SUN
+      using sun;
+
+      function main() i32 {
+          println("Hello from Sun!");
+          return 0;
+      }
+
+      manifest {
+          moons: ["stdlib.moon"]
+      }
+    SUN
+    assert_match "Hello from Sun!", shell_output("#{bin}/sun hello.sun")
+    system bin/"sun", "-c", "-o", "hello", "hello.sun"
+    assert_match "Hello from Sun!", shell_output("./hello")
+  end
+end

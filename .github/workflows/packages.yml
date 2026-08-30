@@ -94,29 +94,30 @@ jobs:
           tag_name: ${{ steps.release.outputs.tag }}
           files: dist/*
           body: |
-            The `.deb` and the `.pkg` each install the compiler and both
-            bundles. The `.moon` files are the same bundles on their own, for
-            dropping next to an existing compiler; each is named for the
-            target it was built for. Install one under its canonical name in
-            a bundle search directory:
+            The `.deb` installs the compiler and both bundles on Linux; on
+            macOS that is what `brew install namo-robotics/sun/sun` installs,
+            from the `.tar.gz` here. The `.moon` files are the same bundles on
+            their own, for dropping next to an existing compiler; each is
+            named for the target it was built for. Install one under its
+            canonical name in a bundle search directory:
 
             ```bash
             # Linux
             mv stdlib-x86_64-linux-gnu.moon /usr/lib/sun/stdlib.moon
             mv tls-x86_64-linux-gnu.moon    /usr/lib/sun/tls.moon
             # macOS
-            mv stdlib-arm64-apple-darwin.moon /usr/local/lib/sun/stdlib.moon
-            mv tls-arm64-apple-darwin.moon    /usr/local/lib/sun/tls.moon
+            mv stdlib-arm64-apple-darwin.moon "$(brew --prefix)/lib/sun/stdlib.moon"
+            mv tls-arm64-apple-darwin.moon    "$(brew --prefix)/lib/sun/tls.moon"
             ```
 
             A bundle built for another architecture is rejected at link time,
             so take the one matching your target.
 
-            On an Apple Silicon Mac, install the `.pkg` (after `brew install
-            llvm@20`, its one runtime dependency):
+            On an Apple Silicon Mac, Homebrew is the whole install — it
+            pulls in `llvm@20`, the compiler's one runtime dependency:
 
             ```bash
-            sudo installer -pkg sun-*-arm64-apple-darwin.pkg -target /
+            brew install namo-robotics/sun/sun
             ```
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -134,29 +135,30 @@ jobs:
 
             Commit: ${{ env.BUILD_SHA }}
 
-            The `.deb` and the `.pkg` each install the compiler and both
-            bundles. The `.moon` files are the same bundles on their own, for
-            dropping next to an existing compiler; each is named for the
-            target it was built for. Install one under its canonical name in
-            a bundle search directory:
+            The `.deb` installs the compiler and both bundles on Linux; on
+            macOS that is what `brew install namo-robotics/sun/sun` installs,
+            from the `.tar.gz` here. The `.moon` files are the same bundles on
+            their own, for dropping next to an existing compiler; each is
+            named for the target it was built for. Install one under its
+            canonical name in a bundle search directory:
 
             ```bash
             # Linux
             mv stdlib-x86_64-linux-gnu.moon /usr/lib/sun/stdlib.moon
             mv tls-x86_64-linux-gnu.moon    /usr/lib/sun/tls.moon
             # macOS
-            mv stdlib-arm64-apple-darwin.moon /usr/local/lib/sun/stdlib.moon
-            mv tls-arm64-apple-darwin.moon    /usr/local/lib/sun/tls.moon
+            mv stdlib-arm64-apple-darwin.moon "$(brew --prefix)/lib/sun/stdlib.moon"
+            mv tls-arm64-apple-darwin.moon    "$(brew --prefix)/lib/sun/tls.moon"
             ```
 
             A bundle built for another architecture is rejected at link time,
             so take the one matching your target.
 
-            On an Apple Silicon Mac, install the `.pkg` (after `brew install
-            llvm@20`, its one runtime dependency):
+            On an Apple Silicon Mac, Homebrew is the whole install — it
+            pulls in `llvm@20`, the compiler's one runtime dependency:
 
             ```bash
-            sudo installer -pkg sun-*-arm64-apple-darwin.pkg -target /
+            brew install namo-robotics/sun/sun
             ```
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -238,14 +240,14 @@ jobs:
           sun -c --dynamic -o tls_aot tls_test.sun
           ./tls_aot
 
-  # The deb's macOS counterpart: an unsigned .pkg installing to /usr/local
-  # (sudo installer -pkg works without Gatekeeper friction). Like the deb
-  # depends on apt's libllvm20, the binary links Homebrew's LLVM, so
-  # `brew install llvm@20` is the package's one runtime dependency. This job
-  # uploads the .pkg and the standalone tls-arm64-apple-darwin.moon (tls
-  # needs Darwin OpenSSL archives, which only this runner can build); the
-  # Darwin stdlib bundle still comes from the deb job's cross builds.
-  build-pkg-macos:
+  # The deb's macOS counterpart: a tarball of the same files, which the
+  # Homebrew formula unpacks. Like the deb depends on apt's libllvm20, the
+  # binary links Homebrew's LLVM, so `brew install llvm@20` is its one
+  # runtime dependency. This job uploads the tarball and the standalone
+  # tls-arm64-apple-darwin.moon (tls needs Darwin OpenSSL archives, which
+  # only this runner can build); the Darwin stdlib bundle still comes from
+  # the deb job's cross builds.
+  build-macos:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
@@ -280,7 +282,7 @@ jobs:
       - name: Set up ccache
         uses: hendrikmuhs/ccache-action@v1.2.23
         with:
-          key: pkg-macos
+          key: build-macos
           max-size: 2G
 
       - name: Cache static OpenSSL archives
@@ -293,18 +295,18 @@ jobs:
         # tls.moon embeds these. The script exits fast on a cache hit.
         run: ./scripts/build-openssl-macos.sh
 
-      - name: Build macOS package
+      - name: Build macOS release
         run: |
-          chmod +x ./scripts/build-pkg-macos.sh
+          chmod +x ./scripts/build-macos.sh
           CMAKE_EXTRA_ARGS="-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache" \
-            ./scripts/build-pkg-macos.sh
+            ./scripts/build-macos.sh
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sun-pkg-macos-${{ env.BUILD_SHA }}
+          name: sun-macos-${{ env.BUILD_SHA }}
           path: |
-            dist/*.pkg
+            dist/*.tar.gz
             dist/*.moon
           retention-days: 30
 
@@ -318,7 +320,7 @@ jobs:
           # github.ref, which under workflow_run is the default branch.
           tag_name: ${{ steps.release.outputs.tag }}
           files: |
-            dist/*.pkg
+            dist/*.tar.gz
             dist/*.moon
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -331,37 +333,43 @@ jobs:
           name: Development Build
           prerelease: true
           files: |
-            dist/*.pkg
+            dist/*.tar.gz
             dist/*.moon
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   test-install-macos:
-    needs: build-pkg-macos
+    needs: build-macos
     runs-on: macos-latest
     # A fresh runner rather than the build job's workspace: everything the
-    # installed compiler needs has to come from the package plus its one
+    # installed compiler needs has to come from the tarball plus its one
     # declared dependency.
 
     steps:
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          name: sun-pkg-macos-${{ env.BUILD_SHA }}
+          name: sun-macos-${{ env.BUILD_SHA }}
           path: dist/
 
       - name: Install LLVM 20 runtime
         run: brew install llvm@20
 
-      - name: Install package
-        run: sudo installer -pkg dist/*.pkg -target /
+      # Unpacked into a prefix of its own, the way the formula installs it
+      # into the Cellar. Nothing goes anywhere system-wide, so the only thing
+      # that can find the bundles is the compiler's search of ../lib/sun
+      # relative to its own binary.
+      - name: Install the tarball
+        run: |
+          mkdir -p "$HOME/cellar"
+          tar -xzf dist/*.tar.gz -C "$HOME/cellar"
+          echo "$HOME/cellar/bin" >> "$GITHUB_PATH"
 
       - name: Test installation
         run: |
           which sun
           sun --help || true
-          # JIT with the stdlib import. No SUN_PATH: /usr/local/lib/sun is
-          # on the compiler's built-in bundle search path.
+          # JIT with the stdlib import, and no SUN_PATH.
           cat > test.sun << 'PROGRAM'
           using sun;
           function main() i32 {
@@ -404,3 +412,79 @@ jobs:
           PROGRAM
           sun -c -o tls_aot tls_test.sun
           ./tls_aot
+
+  # Points the Homebrew tap at the build that just passed its install test.
+  # A formula has to carry a checksum and the rolling dev tarball's changes on
+  # every push, so the formula is re-rendered from homebrew/sun.rb.in and
+  # pushed each time rather than edited by hand in the tap.
+  update-tap:
+    needs: [build-macos, test-install-macos]
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.BUILD_SHA }}
+          fetch-depth: 0  # Full history and tags for version detection
+
+      # Writing to another repository needs a token of its own; the built-in
+      # GITHUB_TOKEN is scoped to this one. Without the secret the job says so
+      # and stops, leaving the tap on the formula it already has.
+      - name: Check for tap token
+        id: tap
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+        run: |
+          if [ -n "$TAP_TOKEN" ]; then
+            echo "have=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "have=no" >> "$GITHUB_OUTPUT"
+            echo "::warning::TAP_TOKEN is not set; namo-robotics/homebrew-sun was left unchanged"
+          fi
+
+      - name: Download artifact
+        if: steps.tap.outputs.have == 'yes'
+        uses: actions/download-artifact@v4
+        with:
+          name: sun-macos-${{ env.BUILD_SHA }}
+          path: dist/
+
+      - name: Render formula
+        if: steps.tap.outputs.have == 'yes'
+        run: |
+          tarball=$(ls dist/sun-*-arm64-apple-darwin.tar.gz)
+          sha=$(sha256sum "$tarball" | cut -d' ' -f1)
+          tag=$(git describe --tags --exact-match HEAD 2>/dev/null || true)
+          case "$tag" in
+            v[0-9]*)
+              version="${tag#v}"
+              release="$tag"
+              ;;
+            *)
+              # A dev build keeps its 0.dev file name but gets a unique
+              # formula version: Homebrew names its download cache after the
+              # version, so a new file under the old version would be served
+              # from a stale cache and fail its checksum.
+              version="0.dev.$(date -u +%Y%m%d%H%M%S)"
+              release="dev"
+              ;;
+          esac
+          url="https://github.com/${{ github.repository }}/releases/download/$release/$(basename "$tarball")"
+          sed -e "s|@URL@|$url|" -e "s|@VERSION@|$version|" -e "s|@SHA256@|$sha|" \
+            homebrew/sun.rb.in > sun.rb
+          echo "version=$version" >> "$GITHUB_ENV"
+          cat sun.rb
+
+      - name: Push to the tap
+        if: steps.tap.outputs.have == 'yes'
+        env:
+          GH_TOKEN: ${{ secrets.TAP_TOKEN }}
+        run: |
+          repo=namo-robotics/homebrew-sun
+          # Replacing a file through the API needs the blob it replaces.
+          blob=$(gh api "repos/$repo/contents/Formula/sun.rb" --jq .sha 2>/dev/null || true)
+          gh api -X PUT "repos/$repo/contents/Formula/sun.rb" \
+            -f message="sun $version" \
+            -f content="$(base64 -w0 sun.rb)" \
+            ${blob:+-f sha="$blob"}

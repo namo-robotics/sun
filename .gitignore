@@ -19,6 +19,7 @@ debian/debhelper-build-stamp
 obj-*/
 dist/
 build-tmp/
+build-macos/
 *.deb
 *.buildinfo
 *.changes

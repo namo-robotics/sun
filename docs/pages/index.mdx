@@ -82,19 +82,20 @@ The package includes the standard library and the TLS bundle, installed to
 
 ### macOS (Apple Silicon)
 
-Install Homebrew's LLVM (the package's one dependency), then the installer
-package from the latest dev build:
+Install with Homebrew:
 
 ```bash
-brew install llvm@20
-curl -LO https://github.com/namo-robotics/sun/releases/download/dev/sun-0.dev-arm64-apple-darwin.pkg
-sudo installer -pkg sun-0.dev-arm64-apple-darwin.pkg -target /
+brew install namo-robotics/sun/sun
 ```
 
-This installs `sun`, `sun-lsp` and the standard library under `/usr/local`
-(`/usr/local/lib/sun/stdlib.moon` is on the compiler's bundle search path).
-To update, install the new package over the old one. The TLS bundle is not
-included on macOS yet.
+That installs `sun`, `sun-lsp`, the standard library and the TLS bundle, and
+pulls in `llvm@20` — the compiler's one runtime dependency. Update with
+`brew update && brew upgrade sun`.
+
+Releases also carry the same files as `sun-<version>-arm64-apple-darwin.tar.gz`,
+which is what the formula unpacks. Unpacked anywhere, the compiler finds its
+bundles in `lib/sun` next to its own `bin` directory, so no `SUN_PATH` is
+needed — but `llvm@20` still has to come from Homebrew.
 
 macOS is also a cross-compilation target from Linux: `sun --target
 arm64-apple-darwin --emit-obj`, then link the object on a Mac with `cc -o
@@ -109,11 +110,10 @@ To uninstall the Debian package:
 sudo dpkg -r sun
 ```
 
-On macOS, remove the installed files:
+To uninstall on macOS:
 
 ```bash
-sudo rm -rf /usr/local/bin/sun /usr/local/bin/sun-lsp /usr/local/lib/sun /usr/local/share/sun
-sudo pkgutil --forget com.namo-robotics.sun
+brew uninstall sun
 ```
 
 ### Build from Source
