@@ -17,7 +17,7 @@
 // (stdlib only pre-declares Vec<i8/i32/i64/f32/f64>)
 TEST(Classes_Generic_Specializations, vec_new_primitive_specialization) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -39,7 +39,7 @@ TEST(Classes_Generic_Specializations, vec_new_primitive_specialization) {
 // class type - full functionality (push/get) may have limitations
 TEST(Classes_Generic_Specializations, vec_with_custom_class) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class Point {
         var x: i32;
@@ -67,7 +67,7 @@ TEST(Classes_Generic_Specializations, vec_with_custom_class) {
 // Test using allocator.create<T>() with a custom class type
 TEST(Classes_Generic_Specializations, generic_method_new_specialization) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class Counter {
         var count: i32;
@@ -96,7 +96,7 @@ TEST(Classes_Generic_Specializations, generic_method_new_specialization) {
 // (stdlib only pre-declares Map<i64, i32> and Map<i64, i64>)
 TEST(Classes_Generic_Specializations, map_new_key_value_specialization) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();

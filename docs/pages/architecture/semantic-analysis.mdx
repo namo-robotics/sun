@@ -130,7 +130,7 @@ Enforcement lives in two places:
   (`AccessFilter` in `semantic_scope.h`, used by `lookupInChain`,
   `lookupFunction`, `resolveNameWithUsings`, `findSymbolInModule`, ...). The
   analyzer implements `AccessContext`, which tells lookups which module is
-  asking and reports a denial ("`helper` is private to module `sun`") when
+  asking and reports a denial ("`helper` is private to module `std`") when
   the only candidates were private.
 - **Class / interface members** are resolved on the type
   (`SemanticAnalyzer::accessibleField / accessibleMethod`), which check the

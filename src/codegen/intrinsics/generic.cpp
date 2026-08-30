@@ -343,7 +343,7 @@ Value* IntrinsicsGenerator::codegenConvertIntrinsic(
   // narrowing, since assignments never narrow implicitly.
   //
   // char joins as an integer-only party: a char converts to and from the
-  // integer types (unchecked, like every other narrowing here — sun.char_of
+  // integer types (unchecked, like every other narrowing here — std.char_of
   // is the checked form), but never to or from a float or a bool.
   if (args.size() != 1) {
     logAndThrowError("_convert<T>() requires exactly 1 argument");

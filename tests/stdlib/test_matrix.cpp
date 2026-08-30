@@ -10,7 +10,7 @@
 // Basic Matrix construction and element access
 TEST(Stdlib_Matrix, simple_matrix) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -26,7 +26,7 @@ TEST(Stdlib_Matrix, simple_matrix) {
 // Test matrix dimensions
 TEST(Stdlib_Matrix, matrix_ndims_and_size) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -56,7 +56,7 @@ TEST(Stdlib_Matrix, parse_slice_syntax) {
 // Test Matrix bracket indexing syntax: M[i, j]
 TEST(Stdlib_Matrix, bracket_index_syntax) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -74,7 +74,7 @@ TEST(Stdlib_Matrix, bracket_index_syntax) {
 // Test Matrix bracket indexing with multiple dimensions
 TEST(Stdlib_Matrix, bracket_index_2d) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -95,7 +95,7 @@ TEST(Stdlib_Matrix, bracket_index_2d) {
 // Test SliceRange class construction
 TEST(Stdlib_Matrix, slice_range_construction) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         // Create a slice range representing [2:5]
@@ -119,7 +119,7 @@ TEST(Stdlib_Matrix, slice_range_construction) {
 // Test SliceRange with open-ended ranges
 TEST(Stdlib_Matrix, slice_range_open_ends) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         // Slice [:5] - from start to 5
@@ -167,7 +167,7 @@ TEST(Stdlib_Matrix, slice_syntax_compiles) {
 // Test basic 1D matrix slicing
 TEST(Stdlib_Matrix, slice_1d_basic) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -189,7 +189,7 @@ TEST(Stdlib_Matrix, slice_1d_basic) {
 // Test sliced matrix view values
 TEST(Stdlib_Matrix, slice_1d_values) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -217,7 +217,7 @@ TEST(Stdlib_Matrix, slice_1d_values) {
 // Test slice from start (0:n)
 TEST(Stdlib_Matrix, slice_1d_from_start) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -244,7 +244,7 @@ TEST(Stdlib_Matrix, slice_1d_from_start) {
 // Test slice to end (n:size)
 TEST(Stdlib_Matrix, slice_1d_to_end) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -270,7 +270,7 @@ TEST(Stdlib_Matrix, slice_1d_to_end) {
 // Using matrix after creating view is use-after-move error
 TEST(Stdlib_Matrix, DISABLED_slice_1d_use_matrix_after_view_error) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -297,7 +297,7 @@ TEST(Stdlib_Matrix, DISABLED_slice_1d_use_matrix_after_view_error) {
 // View can be modified and read - view owns the data after move
 TEST(Stdlib_Matrix, slice_1d_modify_through_view) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -327,7 +327,7 @@ TEST(Stdlib_Matrix, slice_1d_modify_through_view) {
 // Accessing original matrix after view creation is use-after-move error
 TEST(Stdlib_Matrix, DISABLED_access_matrix_after_view_is_error) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -352,7 +352,7 @@ TEST(Stdlib_Matrix, DISABLED_access_matrix_after_view_is_error) {
 // Using matrix after creating view is use-after-move error
 TEST(Stdlib_Matrix, DISABLED_use_after_view) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -377,7 +377,7 @@ TEST(Stdlib_Matrix, DISABLED_use_after_view) {
 // error
 TEST(Stdlib_Matrix, DISABLED_use_matrix_after_view_is_move_error) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -403,7 +403,7 @@ TEST(Stdlib_Matrix, DISABLED_use_matrix_after_view_is_move_error) {
 // Creating multiple views from same matrix should fail on second view
 TEST(Stdlib_Matrix, DISABLED_second_view_after_move_is_error) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -428,7 +428,7 @@ TEST(Stdlib_Matrix, DISABLED_second_view_after_move_is_error) {
 // View of a view should work (view owns the data it received)
 TEST(Stdlib_Matrix, DISABLED_view_of_view_is_valid) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -457,7 +457,7 @@ TEST(Stdlib_Matrix, DISABLED_view_of_view_is_valid) {
 // Using first view after creating second view from it is use-after-move error
 TEST(Stdlib_Matrix, use_view1_after_view2_is_error) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();

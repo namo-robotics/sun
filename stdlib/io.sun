@@ -1,7 +1,7 @@
 // stdlib/io.sun - Files, directories and descriptor polling
 //
 // Usage:
-//   using sun.io;
+//   using std.io;
 //
 //   var f = File();
 //   try {
@@ -16,7 +16,7 @@
 // is — and as a `ref String` for a path put together at runtime. Both feed the
 // same private worker, which talks to C through a raw NUL-terminated pointer.
 
-public module sun {
+public module std {
   public module io {
     // How to open a file.
     //   Read   — the file must exist
@@ -648,5 +648,5 @@ public module sun {
         return (this.revents(i) & POLLERR) != 0;
       }
     }
-  }  // module sun.io
+  }  // module std.io
 }

@@ -6,7 +6,7 @@
 //
 // Wire types: 0 = varint, 1 = 64-bit, 2 = length-delimited, 5 = 32-bit.
 
-public module sun {
+public module std {
   // ==========================================================================
   // Errors
   // ==========================================================================
@@ -415,4 +415,4 @@ public module sun {
   public function proto_read_tag_wire_type(tag: u64) i64 {
     return _convert<i64>(tag & 7);
   }
-}  // module sun
+}  // module std

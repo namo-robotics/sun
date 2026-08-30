@@ -10,7 +10,7 @@
 #include "ast/expr_ast.h"
 
 // Template string literal: `Hello ${name}!`. Preserved by the parser for a
-// lossless parse tree; the lowering pass desugars it into sun.String append
+// lossless parse tree; the lowering pass desugars it into std.String append
 // calls before semantic analysis, so it never reaches the borrow checker or
 // codegen.
 class InterpolatedStringAST : public ExprAST {

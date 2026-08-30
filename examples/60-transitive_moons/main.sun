@@ -1,9 +1,9 @@
-using sun;
+using std;
 
 function main() void {
   println(moon1.moon1());
 }
 
 manifest {
-    moons: ["stdlib.moon", "moon1.moon"]
+    libraries: ["stdlib.moon", "moon1.moon"]
 }

@@ -11,7 +11,7 @@ namespace {
 
 // Each check returns a distinct code so a failure points at the assertion.
 std::string withMain(const std::string& body) {
-  return std::string("using sun;\n") + body;
+  return std::string("using std;\n") + body;
 }
 
 }  // namespace

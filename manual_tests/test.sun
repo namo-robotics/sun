@@ -1,4 +1,4 @@
-using sun;
+using std;
 
 class Config {
   var line: String;
@@ -17,5 +17,5 @@ function main() i32 {
 }
 
 manifest {
-  moons: ["stdlib.moon"]
+  libraries: ["stdlib.moon"]
 }

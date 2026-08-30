@@ -14,7 +14,7 @@
 
 TEST(MemorySafety_Pointers, pass_static_ptr_to_function) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function foo(p: static_ptr<u8>) void {
         println(p);
     };

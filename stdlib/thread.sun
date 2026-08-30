@@ -1,7 +1,7 @@
 // stdlib/thread.sun - OS threads and the lock that guards what they share
 //
 // Usage:
-//   using sun.thread;
+//   using std.thread;
 //
 //   var t = spawn(lambda (n: i32) i32 { return n * 2; }, 21);
 //   var answer = t.join();   // 42
@@ -14,7 +14,7 @@
 // A thread never outlives the scope that spawned it: the handle spawn hands
 // back owns the running thread, and dropping it joins.
 
-public module sun {
+public module std {
   public module thread {
     // What a running thread and whoever joins it share. spawn fills in the
     // code pointer, the environment and the result slot; the OS writes the
@@ -155,4 +155,4 @@ public module sun {
       }
     }
   }  // module thread
-}  // module sun
+}  // module std

@@ -4,7 +4,7 @@
 // All stdlib modules are listed here.
 
 manifest {
-    suns: [
+    source_files: [
         "allocator.sun",
         "unique.sun",
         "sys.sun",
@@ -35,10 +35,10 @@ manifest {
     ],
     target: {
         linux: {
-            suns: [ "target_linux.sun" ]
+            source_files: [ "target_linux.sun" ]
         },
         macos: {
-            suns: [ "target_darwin.sun" ]
+            source_files: [ "target_darwin.sun" ]
         }
     }
 }

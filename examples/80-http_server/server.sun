@@ -1,5 +1,5 @@
 // HTTP server: serves a small webpage on http://127.0.0.1:8080
-using sun;
+using std;
 
 function main() i32 {
   var alloc = make_heap_allocator();
@@ -26,5 +26,5 @@ function main() i32 {
 }
 
 manifest {
-    moons: ["stdlib.moon"]
+    libraries: ["stdlib.moon"]
 }

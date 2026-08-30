@@ -14,7 +14,7 @@
 
 TEST(Stdlib_Collections_Vec, create_empty_vec) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -27,7 +27,7 @@ TEST(Stdlib_Collections_Vec, create_empty_vec) {
 
 TEST(Stdlib_Collections_Vec, push_and_size) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -43,7 +43,7 @@ TEST(Stdlib_Collections_Vec, push_and_size) {
 
 TEST(Stdlib_Collections_Vec, push_and_get) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -59,7 +59,7 @@ TEST(Stdlib_Collections_Vec, push_and_get) {
 
 TEST(Stdlib_Collections_Vec, set_element) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -75,7 +75,7 @@ TEST(Stdlib_Collections_Vec, set_element) {
 
 TEST(Stdlib_Collections_Vec, pop_element) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -96,7 +96,7 @@ TEST(Stdlib_Collections_Vec, pop_element) {
 
 TEST(Stdlib_Collections_Vec, pop_empty_is_none) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -114,7 +114,7 @@ TEST(Stdlib_Collections_Vec, pop_empty_is_none) {
 
 TEST(Stdlib_Collections_Vec, is_empty) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -130,7 +130,7 @@ TEST(Stdlib_Collections_Vec, is_empty) {
 
 TEST(Stdlib_Collections_Vec, clear) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -147,7 +147,7 @@ TEST(Stdlib_Collections_Vec, clear) {
 
 TEST(Stdlib_Collections_Vec, capacity) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -161,7 +161,7 @@ TEST(Stdlib_Collections_Vec, capacity) {
 
 TEST(Stdlib_Collections_Vec, auto_grow) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -178,7 +178,7 @@ TEST(Stdlib_Collections_Vec, auto_grow) {
 
 TEST(Stdlib_Collections_Vec, auto_grow_values_preserved) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -196,7 +196,7 @@ TEST(Stdlib_Collections_Vec, auto_grow_values_preserved) {
 
 TEST(Stdlib_Collections_Vec, first_and_last) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -221,7 +221,7 @@ TEST(Stdlib_Collections_Vec, first_and_last) {
 
 TEST(Stdlib_Collections_Vec, i32_type) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -236,7 +236,7 @@ TEST(Stdlib_Collections_Vec, i32_type) {
 
 TEST(Stdlib_Collections_Vec, iteration) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -258,7 +258,7 @@ TEST(Stdlib_Collections_Vec, iteration) {
 
 TEST(Stdlib_Collections_Vec, index_operator) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();

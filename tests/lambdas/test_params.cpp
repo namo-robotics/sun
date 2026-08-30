@@ -170,7 +170,7 @@ TEST(Lambdas_Params, lambda_param_forwarded_between_methods) {
 
 TEST(Lambdas_Throwing, throw_and_catch) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var risky = lambda (x: i32) i32 throws IError {
@@ -192,7 +192,7 @@ TEST(Lambdas_Throwing, throw_and_catch) {
 
 TEST(Lambdas_Throwing, throwing_lambda_as_param) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function run_guarded(f: (i32) -> i32 throws IError, x: i32) i32 {
         try {
@@ -217,7 +217,7 @@ TEST(Lambdas_Throwing, throwing_lambda_as_param) {
 
 TEST(Lambdas_Throwing, non_throwing_into_throwing_param) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function run_guarded(f: (i32) -> i32 throws IError, x: i32) i32 {
         try {
@@ -239,7 +239,7 @@ TEST(Lambdas_Throwing, non_throwing_into_throwing_param) {
 
 TEST(Lambdas_Throwing, uncaught_call_rejected) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var risky = lambda (x: i32) i32 throws IError {
@@ -254,7 +254,7 @@ TEST(Lambdas_Throwing, uncaught_call_rejected) {
 
 TEST(Lambdas_Throwing, throw_in_non_throwing_lambda_rejected) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var bad = lambda (x: i32) i32 {

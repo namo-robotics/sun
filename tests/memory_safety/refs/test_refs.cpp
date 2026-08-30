@@ -407,7 +407,7 @@ TEST(MemorySafety_Refs, string_assigned_through_ref_replaces_and_frees_once) {
   // Regression: storing through a ref String used to write the source's
   // address over the String's bytes, printing garbage and double-freeing
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function main() i64 {
         var b: String = `..`;
         var c: ref String = b;

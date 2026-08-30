@@ -12,7 +12,7 @@ namespace {
 // on moved-from (zeroed) storage — Sun's move semantics zero the source, so
 // owning types must treat the all-zero state as "nothing to release".
 const char* kOwnerPreamble = R"(
-    using sun;
+    using std;
 
     var counter: i32 = 0;
 
@@ -325,7 +325,7 @@ TEST(MemorySafety_Drops_Containers, linked_list_pop_moves_ownership) {
 
 TEST(MemorySafety_Drops_Containers, vec_of_string_no_crash) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -353,7 +353,7 @@ TEST(MemorySafety_Drops_Containers, vec_of_string_no_crash) {
 
 TEST(MemorySafety_Drops_Containers, vec_get_borrows_owning_element) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -377,7 +377,7 @@ TEST(MemorySafety_Drops_Containers, vec_get_borrows_owning_element) {
 TEST(MemorySafety_Drops_Containers,
      vec_index_and_peeks_borrow_owning_elements) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -397,7 +397,7 @@ TEST(MemorySafety_Drops_Containers,
 
 TEST(MemorySafety_Drops_Containers, map_and_list_peeks_borrow_owning_values) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -422,7 +422,7 @@ TEST(MemorySafety_Drops_Containers, map_and_list_peeks_borrow_owning_values) {
 TEST(MemorySafety_Drops_Containers,
      writing_through_a_borrow_hits_the_container) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -444,7 +444,7 @@ TEST(MemorySafety_Drops_Containers,
 // take()/pop() still move the element out, leaving the slot to drop as a no-op
 TEST(MemorySafety_Drops_Containers, take_moves_the_element_out) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -477,7 +477,7 @@ TEST(MemorySafety_Drops_Containers, take_moves_the_element_out) {
 TEST(MemorySafety_Drops_Containers,
      borrowed_element_is_not_assignable_to_a_value) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function main() i32 {
       var alloc = make_heap_allocator();
       var v = Vec<String>(alloc, 4);
@@ -492,7 +492,7 @@ TEST(MemorySafety_Drops_Containers,
 TEST(MemorySafety_Drops_Containers,
      borrowed_element_is_not_a_by_value_argument) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function by_value(s: String) i64 { return s.length(); }
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -506,7 +506,7 @@ TEST(MemorySafety_Drops_Containers,
 
 TEST(MemorySafety_Drops_Containers, borrowed_element_is_not_returned_by_value) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function grab(v: ref Vec<String>) String { return v.get_unchecked(0); }
     function main() i32 { return 0; }
   )"),
@@ -518,7 +518,7 @@ TEST(MemorySafety_Drops_Containers, borrowed_element_is_not_returned_by_value) {
 TEST(MemorySafety_Drops_Containers,
      borrowed_element_is_not_an_owning_enum_payload) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function grab(v: ref Vec<String>) Option<String> {
       return Option.Some(v.get_unchecked(0));
     }
@@ -529,7 +529,7 @@ TEST(MemorySafety_Drops_Containers,
 
 TEST(MemorySafety_Drops_Containers, borrowed_element_is_not_stored_in_a_field) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun;
+    using std;
     class Holder {
       var s: String;
       init(alloc: ref HeapAllocator) { this.s = String(alloc, ""); }
@@ -545,7 +545,7 @@ TEST(MemorySafety_Drops_Containers, borrowed_element_is_not_stored_in_a_field) {
 // Non-owning types are unaffected: reading one out of a borrow is a real copy
 TEST(MemorySafety_Drops_Containers, borrowed_scalar_copies_out_normally) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function by_value(n: i32) i32 { return n + 1; }
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -571,7 +571,7 @@ TEST(MemorySafety_Drops_Containers, borrowed_scalar_copies_out_normally) {
 TEST(MemorySafety_Drops_Containers,
      by_value_iterator_over_owning_elements_is_rejected) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class ByValueIter implements IIterator<String, Vec<String>> {
       var i: i64;
@@ -593,7 +593,7 @@ TEST(MemorySafety_Drops_Containers,
 TEST(MemorySafety_Drops_Containers,
      by_value_iterable_of_owning_elements_is_rejected) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class Bag implements IIterable<String, Bag> {
       var items: Vec<String>;
@@ -632,7 +632,7 @@ TEST(MemorySafety_Drops_Containers,
 TEST(MemorySafety_Drops_Containers,
      owning_the_loop_element_of_an_owning_vec_is_rejected) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function main() i32 {
       var alloc = make_heap_allocator();
       var v = Vec<String>(alloc, 4);
@@ -652,7 +652,7 @@ TEST(MemorySafety_Drops_Containers,
 // and re-binding it without an annotation is just a second borrow
 TEST(MemorySafety_Drops_Containers, for_in_over_owning_vec_binds_a_borrow) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function main() i32 {
       var alloc = make_heap_allocator();
       var v = Vec<String>(alloc, 4);
@@ -675,7 +675,7 @@ TEST(MemorySafety_Drops_Containers, for_in_over_owning_vec_binds_a_borrow) {
 TEST(MemorySafety_Drops_Containers,
      draining_iterator_may_yield_owning_elements_by_value) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class Draining implements IIterator<String, Vec<String>> {
       init() {}

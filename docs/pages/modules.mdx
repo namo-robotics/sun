@@ -10,15 +10,15 @@ Sun uses a **manifest-based** module system where programs declare their depende
 Every Sun program has an **entrypoint file** containing a `manifest` block that declares all dependencies:
 
 ```sun filename="main.sun"
-using sun;
+using std;
 
 function main() void {
     println("Hello!");
 }
 
 manifest {
-    suns: ["utils.sun", "math.sun"]   // Source files to compile together
-    moons: ["stdlib.moon"]             // Precompiled libraries to link
+    source_files: ["utils.sun", "math.sun"]  // Source files to compile together
+    libraries: ["stdlib.moon"]               // Precompiled libraries to link
 }
 ```
 
@@ -26,19 +26,19 @@ manifest {
 
 ```sun
 manifest {
-    suns: ["file1.sun", "file2.sun"]   // Optional: additional source files
-    moons: ["lib1.moon", "lib2.moon"]  // Optional: precompiled libraries
-    protos: ["schemas/msgs.proto"]     // Optional: protobuf schemas to import
-    archives: ["vendor/libfoo.a"]      // Optional: C libraries to carry along
-    target: {                          // Optional: per-OS entries
-        macos: { suns: ["target_darwin.sun"] }
-        linux: { suns: ["target_linux.sun"] }
+    source_files: ["file1.sun", "file2.sun"]  // Optional: additional source files
+    libraries: ["lib1.moon", "lib2.moon"]     // Optional: precompiled libraries
+    protos: ["schemas/msgs.proto"]            // Optional: protobuf schemas to import
+    archives: ["vendor/libfoo.a"]             // Optional: C libraries to carry along
+    target: {                                 // Optional: per-OS entries
+        macos: { source_files: ["target_darwin.sun"] }
+        linux: { source_files: ["target_linux.sun"] }
     }
 }
 ```
 
-- **suns** — Source files (`.sun`) to parse and merge with the entrypoint
-- **moons** — Precompiled library bundles (`.moon`) to link
+- **source_files** — Source files (`.sun`) to parse and merge with the entrypoint
+- **libraries** — Precompiled library bundles (`.moon`) to link
 - **protos** — Protobuf schemas (`.proto`) compiled into message classes; see
   [Protobuf](/protobuf)
 - **archives** — Native static libraries (`.a`) to carry inside the bundle
@@ -49,7 +49,7 @@ manifest {
   accepts). Each block takes the same sections as the manifest itself. The
   manifest never decides the target: `--target` (or the host, when absent)
   does, at compile time — the block just says which entries belong to builds
-  for that OS. A block's `suns` are placed **before** the shared list, since
+  for that OS. A block's `source_files` are placed **before** the shared list, since
   per-OS files typically define the primitives shared code consumes; this is
   how the standard library carries `target_linux.sun` and `target_darwin.sun`
   in one manifest.
@@ -78,10 +78,10 @@ sun myprogram.sun   # Can find stdlib.moon in SUN_PATH
 When you run `sun main.sun`:
 
 1. **Parse entrypoint** — Parse `main.sun` and extract the manifest
-2. **Parse dependencies** — Parse all files listed in `suns`; synthesize a
+2. **Parse dependencies** — Parse all files listed in `source_files`; synthesize a
    module of message classes for each schema in `protos`
 3. **Merge ASTs** — Combine all parsed ASTs into a single merged AST
-4. **Load moons** — Load type stubs and compiled code from `moons`
+4. **Load libraries** — Load type stubs and compiled code from `libraries`
 5. **Semantic analysis** — Analyze the merged AST with moon type information
 6. **Code generation** — Generate LLVM IR for the merged AST
 7. **Link** — Link with moon compiled code
@@ -100,7 +100,7 @@ When you run `sun main.sun`:
 Declare moon dependencies in your manifest:
 
 ```sun
-using sun;
+using std;
 
 function main() i32 {
     var allocator = make_heap_allocator();
@@ -110,7 +110,7 @@ function main() i32 {
 }
 
 manifest {
-    moons: ["stdlib.moon"]
+    libraries: ["stdlib.moon"]
 }
 ```
 
@@ -120,7 +120,7 @@ A moon entry can point at a URL instead of a local path:
 
 ```sun
 manifest {
-    moons: [{ url: "https://example.com/libs/mylib.moon" }]
+    libraries: [{ url: "https://example.com/libs/mylib.moon" }]
 }
 ```
 
@@ -134,7 +134,7 @@ hex SHA-256 of the file (as printed by `sha256sum`):
 
 ```sun
 manifest {
-    moons: [{
+    libraries: [{
         url: "https://example.com/libs/mylib.moon",
         hash: "c2e6500466f386836814c860fffcd6fe3dc3f236230746ac977c07c82290613e"
     }]
@@ -164,7 +164,7 @@ URL, which returns the file itself when asked for `application/octet-stream`
 
 ```sun
 manifest {
-    moons: [{ url: "https://api.github.com/repos/OWNER/REPO/releases/assets/ASSET_ID" }]
+    libraries: [{ url: "https://api.github.com/repos/OWNER/REPO/releases/assets/ASSET_ID" }]
 }
 ```
 
@@ -182,7 +182,7 @@ public module mylib {
 }
 
 manifest {
-    suns: ["vec2.sun", "utils.sun"]
+    source_files: ["vec2.sun", "utils.sun"]
 }
 ```
 
@@ -191,7 +191,7 @@ sun --emit-moon -o mylib.moon mylib.sun
 ```
 
 The compiler:
-1. Parses the entrypoint and all files listed in `suns`
+1. Parses the entrypoint and all files listed in `source_files`
 2. Merges them into a single AST
 3. Compiles and serializes the code and type information
 4. Packages everything into `mylib.moon`
@@ -202,7 +202,7 @@ Sun's standard library is built from `stdlib/stdlib.sun`:
 
 ```sun filename="stdlib/stdlib.sun"
 manifest {
-    suns: [
+    source_files: [
         "allocator.sun", "unique.sun", "errors.sun", "sys.sun", "option.sun",
         "math.sun", "iterator.sun", "slice.sun", "contiguous_buffer.sun",
         "vec.sun", "matrix.sun", "string.sun", "print.sun", "map.sun",
@@ -217,10 +217,10 @@ manifest {
 |--------|----------|
 | `allocator.sun` | Memory allocators (`HeapAllocator`, `IAllocator` interface) |
 | `bigint.sun` | Arbitrary-precision `BigUint` |
-| `env.sun` | `sun.env` — environment variables, working directory, `args` |
+| `env.sun` | `std.env` — environment variables, working directory, `args` |
 | `errors.sun` | Standard error types (`EmptyError`, `NotFoundError`, etc.) |
 | `http.sun` | HTTP/1.1 server (`HttpServer`); the client is in `tls.moon` |
-| `io.sun` | `sun.io` — files, directories, `Poller` |
+| `io.sun` | `std.io` — files, directories, `Poller` |
 | `iterator.sun` | Iteration protocol (`IIterator<T, Container>`, `IIterable<T, Self>`) |
 | `json.sun` | `Json` parsing and serialization |
 | `linked_list.sun` | Doubly-linked list `LinkedList<T>` |
@@ -230,11 +230,11 @@ manifest {
 | `networking.sun` | TCP sockets (`TcpStream`, `TcpListener`) and DNS |
 | `option.sun` | `Option<T>` and `Result<T, E>` payload enums |
 | `print.sun` | Overloaded `print`/`println`/`eprint`/`eprintln` |
-| `process.sun` | `sun.process` — `Command`, signals, raw fork/exec |
+| `process.sun` | `std.process` — `Command`, signals, raw fork/exec |
 | `proto_wire.sun` | Protobuf wire format |
 | `string.sun` | `String` and `StringView` classes |
 | `sys.sun` | The stdlib's private `extern "C"` declarations |
-| `time.sun` | `sun.time` — `Duration`, `Instant`, `DateTime` |
+| `time.sun` | `std.time` — `Duration`, `Instant`, `DateTime` |
 | `unique.sun` | `Unique<T>` smart pointer with automatic cleanup |
 | `vec.sun` | Generic growable array `Vec<T>` |
 
@@ -252,7 +252,7 @@ library, so programs that do not speak TLS carry none of it:
 
 ```sun
 manifest {
-    moons: ["stdlib.moon", "tls.moon"]
+    libraries: ["stdlib.moon", "tls.moon"]
 }
 ```
 
@@ -299,7 +299,7 @@ function clamp(val: f64, min: f64, max: f64) f64 {
 **mylib/mylib.sun**
 ```sun
 manifest {
-    suns: ["vec2.sun", "utils.sun"]
+    source_files: ["vec2.sun", "utils.sun"]
 }
 ```
 
@@ -320,7 +320,7 @@ function main() i32 {
 }
 
 manifest {
-    moons: ["mylib.moon"]
+    libraries: ["mylib.moon"]
 }
 ```
 
@@ -333,7 +333,7 @@ cp mylib.moon myproject/libs/
 
 ```sun
 manifest {
-    moons: ["libs/mylib.moon"]
+    libraries: ["libs/mylib.moon"]
 }
 ```
 
@@ -346,7 +346,7 @@ export SUN_PATH=~/.sun/lib
 
 ```sun
 manifest {
-    moons: ["mylib.moon"]   // Found via SUN_PATH
+    libraries: ["mylib.moon"]   // Found via SUN_PATH
 }
 ```
 
@@ -415,7 +415,7 @@ Symbols inside a module are mangled with the module name prefix (e.g., `math_squ
 Use `using` to import all symbols from a module:
 
 ```sun
-using sun;   // Import all symbols from the sun module
+using std;   // Import all symbols from the sun module
 
 function main() i32 {
     var allocator = make_heap_allocator();  // No qualification needed
@@ -425,7 +425,7 @@ function main() i32 {
 }
 
 manifest {
-    moons: ["stdlib.moon"]
+    libraries: ["stdlib.moon"]
 }
 ```
 
@@ -492,7 +492,7 @@ no `private` keyword — an item is private simply by not being marked `public`.
 
 Privacy is scoped to the **module**: a private item is reachable from anywhere
 inside the module that declares it, including nested (child) modules, and from
-nowhere else. Files are not a boundary — every opening of `module sun { ... }`
+nowhere else. Files are not a boundary — every opening of `module std { ... }`
 across the stdlib's files is one module.
 
 ```sun

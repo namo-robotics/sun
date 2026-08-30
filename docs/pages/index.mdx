@@ -1,24 +1,51 @@
 # Sun Programming Language
 
-Sun is a general-purpose programming language designed particularly with the needs
-of robotics and AI in mind. It provides Rust-style memory safety while retaining a familiar syntax and classic concepts such as classes and interfaces.
-Sun optimizes for both performance and **intelligibility** for human programmers as well as AI coding agents.
-Sun additionally aims to improve software distribution in robotics applications by making it easier to package and distribute portable,
+Sun is a general-purpose systems programming language designed particularly for the needs
+of robotics and AI. It provides Rust-style memory safety, a familiar syntax, and classic concepts such as classes and interfaces.
+The design optimizes for performance and intelligibility, for human programmers as well as AI coding agents.
+Sun additionally aims to improve software distribution, especially in robotics applications, by making it easier to package and distribute portable,
 systems-level software modules.
+
+import HelloSource from '../generated/00-hello.source.mdx'
+
+## Hello World
+
+<HelloSource />
+
+Run directly with JIT:
+
+```bash
+sun main.sun
+Hello, Sun!
+```
+
+Or compile to a native executable:
+
+```bash
+sun -c -o main main.sun
+./main
+Hello, Sun!
+```
+
+This is [`examples/00-hello/`](https://github.com/namo-robotics/sun/tree/main/examples/00-hello),
+compiled and run in CI — the source above is read straight from that folder.
 
 ## Design Goals
 
 - **Fast**: Systems-level performance without runtime overhead
+- **Memory safe**: No undefined behavior via Rust-style borrow checking
+- **Readable**: Straightforward for humans (and AI agents) to read and understand
+- **Unambiguous**: Sun minimizes alternative syntaxes and hidden control flow such as operator and constructor overloading. 
+    There are no hidden memory allocations, no implicit copies of compound values, and no macros.
+- **Modular**: Sun makes it simple to package and distribute pre-compiled modules (called *moon libraries*).
+  Source files and dependencies are declared in a *manifest* block, directly in the source code, making the Sun compiler its own build system. Sun can
+  download dependencies directly from your private GitHub and other platforms, making a centralized package manager unnecessary (though one could still be useful for hosting "trusted" packages.)
 - **Designed for Robotics**: Robotics software typically involves dozens to
     hundreds of processes that run across one or more compute nodes and communicate over a [DDS](https://en.wikipedia.org/wiki/Data_Distribution_Service) using
     some kind of pub-sub middleware (e.g. [ROS](https://www.ros.org/)). The standard message serialization format is `protobuf`,
     which Sun provides built-in support for. A custom DDS and middleware are on the roadmap.
 - **Designed for AI**: NumPy-like N-D matrices and linear algebra are provided in the standard library.
   Built-in support for hardware accelerators/GPUs using LLVM Offload is on the roadmap.
-- **Memory safe**: No undefined behavior via Rust-style borrow checking
-- **Readable**: Straightforward for humans (and AIs!) to read and understand
-- **Unambiguous**: Minimizes alternative syntaxes and hidden control flow such as operator and constructor overloading. No hidden memory allocation. Absolutely no macros!
-- **Modular**: Simple to package and distribute pre-compiled modules.
 
 import { Callout } from 'nextra/components'
 
@@ -26,37 +53,7 @@ import { Callout } from 'nextra/components'
   These are _goals_ and not claims about the language's current capabilities.
 </Callout>
 
-## Hello World
 
-Here's a minimal hello-world program:
-
-```sun filename="hello.sun"
-using sun;
-
-function main() void {
-    println("Hello, Sun!");
-}
-
-manifest {
-    moons: ["stdlib.moon"]
-}
-```
-
-Run directly with JIT:
-
-```bash
-export SUN_PATH=/path/to/sun/build
-sun hello.sun
-Hello, Sun!
-```
-
-Or compile to a native executable:
-
-```bash
-sun -c -o hello hello.sun
-./hello
-Hello, Sun!
-```
 
 ## Installation
 
@@ -69,16 +66,8 @@ curl -LO https://github.com/namo-robotics/sun/releases/download/dev/sun_0.dev_am
 sudo apt install ./sun_0.dev_amd64.deb
 ```
 
-Use `apt` rather than `dpkg -i` so the dependencies are pulled in: `sun -c` links
-through the system C compiler, so it needs `gcc`, `libc6-dev` and the libstdc++
-development files. On releases without LLVM 20 in the archive, add
-[apt.llvm.org](https://apt.llvm.org/) first so `libllvm20` can be found.
-
-To update, download and install the new package.
-
-The package includes the standard library and the TLS bundle, installed to
-`/usr/lib/sun`. Releases also carry those bundles as separate downloads — see
-[installing a released bundle](/modules#installing-a-released-bundle).
+The package installs `sun` and `sun-lsp` to `/usr/bin` and includes 
+bundled libraries installed to `/usr/lib/sun`. To update, download and install the new package.
 
 ### macOS (Apple Silicon)
 
@@ -92,22 +81,13 @@ That installs `sun`, `sun-lsp`, the standard library and the TLS bundle, and
 pulls in `llvm@20` — the compiler's one runtime dependency. Update with
 `brew update && brew upgrade sun`.
 
-Releases also carry the same files as `sun-<version>-arm64-apple-darwin.tar.gz`,
-which is what the formula unpacks. Unpacked anywhere, the compiler finds its
-bundles in `lib/sun` next to its own `bin` directory, so no `SUN_PATH` is
-needed — but `llvm@20` still has to come from Homebrew.
-
-macOS is also a cross-compilation target from Linux: `sun --target
-arm64-apple-darwin --emit-obj`, then link the object on a Mac with `cc -o
-prog prog.o -lc++`. Fully static binaries do not exist on macOS, so `-c`
-links dynamically there.
-
 ### Uninstalling
 
 To uninstall the Debian package:
 
 ```bash
-sudo dpkg -r sun
+sudo apt remove sun
+sudo apt autoremove
 ```
 
 To uninstall on macOS:
@@ -134,136 +114,169 @@ and `-DSUN_BUNDLED_PROTOBUF=OFF`.
 
 ## Quick Start
 
-Create a Sun program:
-
-```sun filename="hello.sun"
-using sun;
-
-function main() i32 {
-    println("Hello, Sun!");
-    return 0;
-}
-
-manifest {
-    moons: ["stdlib.moon"]
-}
-```
+The rest of this page works through the `main.sun` program from
+[Hello World](#hello-world) above.
 
 ### JIT Execution
 
-Set `SUN_PATH` to the directory containing `stdlib.moon`:
+To compile and run a Sun program in one go, with just-in-time (JIT) compilation,
+pass the `sun` compiler a single `.sun` file containing a `manifest` block:
 
 ```bash
-export SUN_PATH=/path/to/sun/build
-sun hello.sun
+sun main.sun
 Hello, Sun!
 ```
 
 ### Compile to native executable
 
 ```bash
-sun -c -o hello hello.sun
-Compiling: hello.sun -> hello
-Successfully compiled to: hello
-./hello 
+sun -c -o main main.sun
+Compiling: main.sun -> main
+Successfully compiled to: main
+./main
 Hello, Sun!
-```
-
-### Inspect generated LLVM IR
-
-```bash
-$ sun --emit-ir -c hello.sun 
-Compiling: hello.sun -> hello
-; LLVM IR (reachable from main):
-define void @"$340e67ad$_sun_println"(%static_ptr_struct %s) {
-entry:
-  %s1 = alloca %static_ptr_struct, align 8
-  store %static_ptr_struct %s, ptr %s1, align 8
-  %s2 = load %static_ptr_struct, ptr %s1, align 8
-  %str.data = extractvalue %static_ptr_struct %s2, 0
-  call void @__sun_print_string(ptr %str.data)
-  call void @__sun_print_newline()
-  ret void
-}
-
-define internal void @__sun_print_newline() {
-entry:
-  %0 = alloca i8, align 1
-  store i8 10, ptr %0, align 1
-  %syscall_write = call i64 asm sideeffect "syscall", "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}"(i64 1, i32 1, ptr %0, i64 1)
-  ret void
-}
-
-define internal void @__sun_print_string(ptr %0) {
-entry:
-  %1 = alloca i64, align 8
-  store i64 0, ptr %1, align 4
-  br label %strlen_loop
-
-strlen_loop:                                      ; preds = %strlen_loop, %entry
-  %2 = load i64, ptr %1, align 4
-  %3 = getelementptr i8, ptr %0, i64 %2
-  %4 = load i8, ptr %3, align 1
-  %5 = icmp eq i8 %4, 0
-  %6 = add i64 %2, 1
-  store i64 %6, ptr %1, align 4
-  br i1 %5, label %write, label %strlen_loop
-
-write:                                            ; preds = %strlen_loop
-  %7 = load i64, ptr %1, align 4
-  %8 = sub i64 %7, 1
-  %syscall_write = call i64 asm sideeffect "syscall", "={rax},{rax},{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}"(i64 1, i32 1, ptr %0, i64 %8)
-  ret void
-}
-
-define void @main() {
-entry:
-  call void @"$340e67ad$_sun_println"(%static_ptr_struct { ptr @str, i64 11 })
-  ret void
-}
-
-Successfully compiled to: hello
 ```
 
 ### Debug Mode
 
-Use `--debug` to generate debugging artifacts in a `<filename>_debug/` folder:
+Use `--debug` to generate artifacts for debugging the compiler itself:
 
 ```bash
-sun --debug hello.sun
-Debug output folder: hello_debug/
-  Generated: hello_debug/ast.dot
-  Generated: hello_debug/scope_tree.html
-  Generated: hello_debug/ir.ll
+sun --debug main.sun
 Hello, Sun!
+Debug output folder: main_debug/
+  Generated: main_debug/ast.dot
+  Generated: main_debug/scope_tree.html
+  Generated: main_debug/ir.ll
 ```
 
 This creates:
 - `ast.dot` — GraphViz visualization of the AST
-- `ir.ll` — Full LLVM IR output  
+- `ir.ll` — the LLVM IR for the program's own code
 - `scope_tree.html` — HTML visualization of semantic scopes
+
+The IR keeps only what this file compiled to; the stdlib it calls into is
+filtered out:
+
+```llvm filename="main_debug/ir.ll"
+; LLVM IR (user-defined only)
+; Generated in debug mode - library and imported symbols filtered out
+
+@str = private unnamed_addr constant [12 x i8] c"Hello, Sun!\00", align 1
+define void @main() {
+entry:
+  call void @"$5b663db4$_std_println$static_ptr_u8_"(%static_ptr_struct { ptr @str, i64 11 })
+  ret void
+}
+```
+
+The `$5b663db4$` prefix on `println` marks it as coming from a library bundle;
+the hash keys the bundle, so two moons can define the same name without
+colliding.
 
 Visualize the AST:
 ```bash
-dot -Tpng hello_debug/ast.dot -o ast.png
+dot -Tpng main_debug/ast.dot -o ast.png
 ```
 
 ## Manifests
 
-Sun programs declare their dependencies using a `manifest` block:
+Sun programs and libraries declare their dependencies using a `manifest` block, written in
+the source file itself:
 
 ```sun
 manifest {
-    suns: ["utils.sun", "math.sun"]    // Source files to compile together
-    moons: ["stdlib.moon"]              // Precompiled libraries to link
+    source_files: ["utils.sun", "math.sun"]  // All source files except for the one containing this manifest block
+    libraries: [
+        "stdlib.moon",                       // Found via SUN_PATH
+        {                                    // Fetched once, then cached
+            url: "https://example.com/libs/mylib.moon",
+            hash: "c2e6500466f386836814c860fffcd6fe3dc3f236230746ac977c07c82290613e" // Optional
+        }
+    ]
+    target: { // Target-specific files
+        linux: {
+            source_files: ["platform_linux.sun"]
+            archives: ["vendor/libfoo-linux.a"]
+        }
+        macos: {
+            source_files: ["platform_macos.sun"]
+            archives: ["vendor/libfoo-macos.a"]
+        }
+    }
 }
 ```
 
-Paths are resolved relative to the source file, then via `SUN_PATH`.
+Paths are resolved relative to the source file, then via `SUN_PATH`. A library
+given as a `url` is downloaded with `curl` on first use and reused from the
+cache afterwards; the optional `hash` is the bundle's SHA-256, and a file that
+does not match it is rejected. A `target` block takes the same sections as the
+manifest itself and applies only when compiling for that operating system —
+the manifest never picks the target, `--target` (or the host) does. `archives`
+are static C libraries carried inside a bundle built with `--emit-moon`, so
+whoever imports it links them without needing `-l` flags.
+
+### Path variables
+
+A manifest entry can name a directory with `$NAME`, so the manifest stays
+portable when a dependency sits somewhere different on each machine:
+
+```sun
+manifest {
+    libraries: ["stdlib.moon", "$LIBS/mathlib.moon"]
+}
+```
+
+Give the value on the command line with `--path-var`, or let it fall back to
+a plain environment variable:
+
+```bash
+sun --path-var LIBS=libs main.sun
+LIBS=libs sun main.sun
+```
+
+Committing the value to a [Sun config](#sun-config) instead means nobody has
+to remember the flag. A variable defined nowhere is a compile error naming
+the ways to define it.
+
+[Modules and Manifests](/modules) covers private GitHub assets, `rename`, and
+the rest.
+
+## Sun Config
+
+A `sun-config.json` file records the settings a project would otherwise pass
+on every `sun` invocation. The compiler looks for one beside the entrypoint
+and in every folder above it:
+
+```json filename="sun-config.json"
+{
+    "sunPath": ["../../build"],
+    "pathVariables": { "LIBS": "libs" },
+    "root": true
+}
+```
+
+Those three keys are the whole file — anything else is an error:
+
+- **`sunPath`** — extra directories to search for `.moon` libraries, on top
+  of `SUN_PATH` and the install location
+- **`pathVariables`** — values for the `$NAME` variables a manifest uses
+- **`root`** — `true` stops the upward search at this file, keeping a project
+  self-contained
+
+Every config from the entrypoint's folder upwards is merged: the nearest
+definition of a variable wins, search directories are tried nearest-first,
+and a relative path resolves against the folder of the file that declares it.
+So a workspace root can set shared values once while a subfolder overrides
+only what is local to it.
+
+A config wins over `--path-var` and over the environment, which is the
+opposite of the usual precedence — a checked-in file is meant to be the
+project's answer, not something a stray shell variable can quietly change.
 
 ## Moons
 
-**Moons** (`.moon` files) are precompiled library bundles containing compiled code and type information. Create a moon from an entry point with a manifest:
+**Moons** (`.moon` files) are precompiled library bundles containing compiled code and type information. Create a moon from any `.sun` file containing a manifest:
 
 ```sun filename="mylib.sun"
 public module mylib {
@@ -271,7 +284,7 @@ public module mylib {
 }
 
 manifest {
-    suns: ["utils.sun", "math.sun"]
+    source_files: ["utils.sun", "math.sun"]
 }
 ```
 
@@ -279,12 +292,16 @@ manifest {
 sun --emit-moon -o mylib.moon mylib.sun
 ```
 
-Sun is designed to work with **Moon**, a safety-critical package manager (coming soon) that will provide:
+A moon is linked into whatever imports it, so a compiled program carries the
+moons it uses — nothing to install beside the binary, and nothing to load at
+run time.
 
-- **Exact matching**: Dependencies are pinned to the exact hash of the binary and compiler version — every change is a breaking change
-- **Verified builds**: Reproducible compilation with cryptographic verification
-- **Trusted sources**: Security auditing based on verified, trustworthy package sources
-- **Static bundling**: No dynamic linkage — moons and binaries include all dependencies in a single file
+C libraries follow the same preference: `sun -c` links statically by default,
+preferring musl where it is installed, and produces one self-contained
+executable. Dynamic linkage is still available — `--dynamic` links against
+shared objects, which vendor SDKs shipped only as `.so` files need, and macOS
+targets are always dynamic because Apple ships no static libSystem. See
+[C FFI](/c-ffi) for the details.
 
 ## Quick Links
 

@@ -155,7 +155,7 @@ Value* CodegenVisitor::codegenExpression(const ExprAST& expr) {
       return ConstantFP::get(ctx.getContext(), APFloat(0.0));
     }
     case ASTNodeType::QUALIFIED_NAME: {
-      // Qualified name lookup (e.g., sun.Vec)
+      // Qualified name lookup (e.g., std.Vec)
       const auto& qn = static_cast<const QualifiedNameAST&>(expr);
       std::string fullName = qn.getFullName();
       std::string mangledName = qn.getMangledName();

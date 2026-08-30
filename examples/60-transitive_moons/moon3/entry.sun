@@ -5,6 +5,6 @@ public module moon3 {
 }
 
 manifest {
-    suns: []
-    moons: []
+    source_files: []
+    libraries: []
 }

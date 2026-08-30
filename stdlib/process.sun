@@ -1,7 +1,7 @@
 // stdlib/process.sun - Process identity, signals, and running child processes
 //
 // Usage:
-//   using sun.process;
+//   using std.process;
 //
 //   var cmd = Command(alloc, "/bin/sh");
 //   cmd.add_arg("-c");
@@ -12,9 +12,9 @@
 // The raw POSIX calls (fork, exec, pipes, waitpid) are here too, for programs
 // that need to drive the fork themselves.
 
-public module sun {
+public module std {
   public module process {
-    using sun.io;
+    using std.io;
 
     // Signal numbers. 1 through 15 agree between Linux's asm-generic set and
     // macOS; the job-control trio above 15 does not and lives in
@@ -655,5 +655,5 @@ public module sun {
         return unsafe { _to_ref<String>(_address_of<String>(this.err)); };
       }
     }
-  }  // module sun.process
+  }  // module std.process
 }

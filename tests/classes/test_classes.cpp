@@ -49,7 +49,7 @@ TEST(Classes, class_with_method) {
 
 TEST(Classes, new_class_instance) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     class Point {
       var x: i32;
@@ -71,7 +71,7 @@ TEST(Classes, new_class_instance) {
 
 TEST(Classes, class_that_allocates) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     class B {
       var c: i32;
@@ -99,7 +99,7 @@ TEST(Classes, class_that_allocates) {
 
 TEST(Classes, object_field_access) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     class Point {
       var x: i32;
@@ -122,7 +122,7 @@ TEST(Classes, object_field_access) {
 
 TEST(Classes, object_field_read_y) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     class Point {
       var x: i32;
@@ -149,7 +149,7 @@ TEST(Classes, object_field_read_y) {
 
 TEST(Classes, method_call_no_args) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     class Counter {
       var value: i32;
@@ -174,7 +174,7 @@ TEST(Classes, method_call_no_args) {
 
 TEST(Classes, method_call_with_args) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     class Calculator {
       var base: i32;
@@ -199,7 +199,7 @@ TEST(Classes, method_call_with_args) {
 
 TEST(Classes, chained_method_calls) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     class Value {
       var n: i32;
@@ -228,7 +228,7 @@ TEST(Classes, chained_method_calls) {
 
 TEST(Classes, constructor_with_no_args) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     class Counter {
       var value: i32;
@@ -253,7 +253,7 @@ TEST(Classes, constructor_with_no_args) {
 
 TEST(Classes, constructor_initializes_fields) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     class Point3D {
       var x: i32;
@@ -282,7 +282,7 @@ TEST(Classes, constructor_initializes_fields) {
 
 TEST(Classes, multiple_methods) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     class Box {
       var width: i32;
@@ -313,7 +313,7 @@ TEST(Classes, multiple_methods) {
 
 TEST(Classes, multiple_objects_same_class) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     class Number {
       var value: i32;
@@ -343,7 +343,7 @@ TEST(Classes, multiple_objects_same_class) {
 
 TEST(Classes, multiple_classes) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     class First {
       var a: i32;
@@ -371,7 +371,7 @@ TEST(Classes, multiple_classes) {
 
 TEST(Classes, float_fields) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     class PointF {
       var x: f64;
@@ -1187,7 +1187,7 @@ TEST(Classes, explicit_deinit_no_double_call) {
 
 TEST(Classes, deinit_called_for_unique_ptr_at_scope_exit) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     var counter: i32 = 0;
 
     class Widget {
@@ -1219,7 +1219,7 @@ TEST(Classes, deinit_called_for_unique_ptr_at_scope_exit) {
 
 TEST(Classes, deinit_called_for_class_created_with_allocator) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     var counter: i32 = 0;
 
     class Resource {
@@ -1251,7 +1251,7 @@ TEST(Classes, deinit_called_for_class_created_with_allocator) {
 // exactly like by-value arguments to any other call.
 TEST(Classes, ctor_by_value_class_arg_moves_temporary_and_named) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class Holder {
       var s: String;
@@ -1272,7 +1272,7 @@ TEST(Classes, ctor_by_value_class_arg_moves_temporary_and_named) {
 
 TEST(Classes, ctor_by_value_class_arg_is_use_after_move) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class Holder {
       var s: String;
@@ -1291,7 +1291,7 @@ TEST(Classes, ctor_by_value_class_arg_is_use_after_move) {
 
 TEST(Classes, ctor_by_value_enum_arg_moves_payload) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     enum Value {
       Empty,
@@ -1327,7 +1327,7 @@ TEST(Classes, ctor_by_value_enum_arg_moves_payload) {
 // itself, not a copy: reads see it and mutations through it stick.
 TEST(Classes, ref_return_of_compound_from_free_function_is_not_a_copy) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class Holder {
       var items: Vec<i64>;

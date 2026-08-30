@@ -11,9 +11,9 @@ libprotobuf dependency in the compiled program.
 ```sun filename="main.sun"
 manifest {
     protos: ["schemas/telemetry.proto"]
-    moons: ["stdlib.moon"]
+    libraries: ["stdlib.moon"]
 }
-using sun;
+using std;
 using namo.telemetry;      // the proto `package`
 
 function main() i32 {

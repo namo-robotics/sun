@@ -423,7 +423,7 @@ TEST(ControlFlow_Match, NoMatchContinuesExecution) {
 // throws has no fall-through; codegen must still terminate the tail block.
 TEST(ControlFlow_Match, method_ending_in_fully_terminating_match) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class NotANumber implements IError {
       init() {}
@@ -468,7 +468,7 @@ TEST(ControlFlow_Match, method_ending_in_fully_terminating_match) {
 // A match arm whose body is a void statement contributes no value.
 TEST(ControlFlow_Match, statement_arms_with_void_calls) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     enum Value {
       Items(Vec<i64>),

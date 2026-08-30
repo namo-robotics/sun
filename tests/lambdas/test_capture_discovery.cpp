@@ -26,7 +26,7 @@ TEST(Lambdas_CaptureDiscovery, scalar_used_inside_unsafe_block) {
 
 TEST(Lambdas_CaptureDiscovery, raw_pointer_used_inside_unsafe_block) {
   auto value = executeStringWithStdlib(R"(
-      using sun;
+      using std;
 
       class Holder {
           public var counter: i64;
@@ -59,7 +59,7 @@ TEST(Lambdas_CaptureDiscovery, scalar_used_inside_try_block) {
 
 TEST(Lambdas_CaptureDiscovery, scalar_used_inside_catch_block) {
   auto value = executeStringWithStdlib(R"(
-      using sun;
+      using std;
 
       function boom() i32 throws IError {
           throw Error(1, "boom");
@@ -92,7 +92,7 @@ TEST(Lambdas_CaptureDiscovery, scalar_used_inside_array_literal) {
 
 TEST(Lambdas_CaptureDiscovery, scalar_used_in_a_thrown_error) {
   auto value = executeStringWithStdlib(R"(
-      using sun;
+      using std;
 
       function main() i32 {
           var n: i32 = 8;
@@ -105,7 +105,7 @@ TEST(Lambdas_CaptureDiscovery, scalar_used_in_a_thrown_error) {
 
 TEST(Lambdas_CaptureDiscovery, scalar_used_in_a_string_interpolation) {
   auto value = executeStringWithStdlib(R"(
-      using sun;
+      using std;
 
       function main() i32 {
           var n: i32 = 3;
@@ -140,7 +140,7 @@ TEST(Lambdas_CaptureDiscovery, loop_counter_shadows_an_outer_name) {
 
 TEST(Lambdas_CaptureDiscovery, catch_binding_shadows_an_outer_name) {
   auto value = executeStringWithStdlib(R"(
-      using sun;
+      using std;
 
       function boom() i32 throws IError {
           throw Error(9, "boom");

@@ -93,7 +93,7 @@ TEST(MemorySafety_GlobalAssignment, use_after_move_into_global_rejected) {
 TEST(MemorySafety_GlobalAssignment,
      string_global_assignment_transfers_ownership) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     var g: String = String(make_heap_allocator(), "");
 
     function replace() void {
@@ -119,7 +119,7 @@ TEST(MemorySafety_GlobalAssignment,
 TEST(MemorySafety_GlobalAssignment,
      string_global_queue_pop_keeps_buffers_distinct) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     var g_queue: String = String(make_heap_allocator(), "");
 
     function append(q: ref String, s: ref String) void {
@@ -199,7 +199,7 @@ TEST(MemorySafety_GlobalAssignment, generic_class_global_runs_constructor) {
 
 TEST(MemorySafety_GlobalAssignment, vec_global_is_constructed) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     var alloc: HeapAllocator = HeapAllocator();
     var v: Vec<i64> = Vec<i64>(alloc, 8);
 
@@ -217,7 +217,7 @@ TEST(MemorySafety_GlobalAssignment, vec_global_is_constructed) {
 // crashed with a divide-by-zero on the first insert.
 TEST(MemorySafety_GlobalAssignment, map_global_is_constructed) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     var alloc: HeapAllocator = HeapAllocator();
     var m: Map<String, i32> = Map<String, i32>(alloc, 64);
 
@@ -243,7 +243,7 @@ TEST(MemorySafety_GlobalAssignment, map_global_is_constructed) {
 // returned value by move rather than staying zeroed.
 TEST(MemorySafety_GlobalAssignment, global_initialized_from_factory_call) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     var alloc: HeapAllocator = HeapAllocator();
 
     function make() Vec<i64> {
@@ -266,7 +266,7 @@ TEST(MemorySafety_GlobalAssignment, global_initialized_from_factory_call) {
 // in module storage, not in a function's scope.
 TEST(MemorySafety_GlobalAssignment, constructor_takes_global_by_ref) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     var alloc: HeapAllocator = HeapAllocator();
 
     function main() i64 {

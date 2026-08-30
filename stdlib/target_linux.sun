@@ -6,7 +6,7 @@
 // --target. Shared stdlib code references these names without caring which
 // OS supplied them.
 
-public module sun {
+public module std {
   // Both glibc and musl export __errno_location for the per-thread errno.
   extern "C" function c_errno_location() raw_ptr<i32> as "__errno_location";
 

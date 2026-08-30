@@ -4,7 +4,7 @@
 //   or, adopting an existing pointer:
 //        var ptr = allocator.create<Point>(3, 4);
 //        var p = Unique<Point>(ptr);
-public module sun {
+public module std {
   public class Unique<T> {
     var data: raw_ptr<T>;
 
@@ -46,4 +46,4 @@ public module sun {
 
   // Unique specializations for common types
   public declare Unique_i8 = Unique<i8>;
-}  // module sun
+}  // module std

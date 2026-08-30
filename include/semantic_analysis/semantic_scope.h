@@ -152,9 +152,9 @@ enum class ScopeType {
 // Alias import from a using statement (legacy — being replaced by
 // ImportBinding)
 struct UsingImport {
-  std::string namespacePath;  // "sun" or "sun.nested"
+  std::string namespacePath;  // "std" or "std.nested"
   std::string target;         // "Vec" for specific, "*" for wildcard
-  bool isWildcard;            // true if target == "*" (using sun;)
+  bool isWildcard;            // true if target == "*" (using std;)
 
   UsingImport(std::string nsPath, std::string t)
       : namespacePath(std::move(nsPath)),
@@ -170,7 +170,7 @@ struct ImportBinding {
   std::string localName;  // How the symbol is referred to locally ("Vec")
   SemanticScopeBase* sourceScope;  // Pointer to the scope it was imported from
   std::string sourceName;          // Name in the source scope ("Vec")
-  bool isWildcard;  // true for "using sun;" (localName/sourceName unused)
+  bool isWildcard;  // true for "using std;" (localName/sourceName unused)
 
   ImportBinding() : sourceScope(nullptr), isWildcard(false) {}
   ImportBinding(std::string local, SemanticScopeBase* src, std::string srcName)

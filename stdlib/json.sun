@@ -5,7 +5,7 @@
 // text is an integer that fits, Float(f64) otherwise.
 //
 // Usage:
-//   using sun;
+//   using std;
 //
 //   var alloc = make_heap_allocator();
 //   var doc = parse_json(alloc, "{\"name\": \"sun\", \"tags\": [1, 2.5]}");
@@ -21,7 +21,7 @@
 // move their String/Json arguments in, so the caller cannot use them after
 // the call. To keep a String, store a copy with create_json_string(alloc, ref s).
 
-public module sun {
+public module std {
   // ==========================================================================
   // Errors
   // ==========================================================================
@@ -779,7 +779,7 @@ public module sun {
     }
 
     // The UTF-8 encoder lives in string.sun; privacy is module-scoped and
-    // both files are `module sun`, so push_code is reachable here.
+    // both files are `module std`, so push_code is reachable here.
     method append_utf8(out: ref String, code: i64) void {
       out.push_code(code);
     }
@@ -952,4 +952,4 @@ public module sun {
 
   public declare Vec_Json = Vec<Json>;
   public declare Vec_JsonMember = Vec<JsonMember>;
-}  // module sun
+}  // module std

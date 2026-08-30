@@ -469,9 +469,9 @@ TEST(Ffi_Abi_CrossTargetDarwin, stdlib_program_compiles_to_a_macho_object) {
   driver->setMoonImports(
       {{std::filesystem::absolute(stdlibMoon).string(), {}}});
   driver->compileString(R"(
-    using sun;
-    using sun.io;
-    using sun.time;
+    using std;
+    using std.io;
+    using std.time;
 
     function main() i32 {
         var alloc = make_heap_allocator();

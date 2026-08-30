@@ -15,7 +15,7 @@ std::string QualifiedName::canonicalTypeString(const TypePtr& type,
         static_cast<const ClassType*>(type.get())->getMangledName();
     // Strip hash prefix only if it matches our library's hash. A generic
     // specialization carries its type arguments' names inline
-    // (Vec_$hash$_sun_String), so every occurrence goes, not just the leading
+    // (Vec_$hash$_std_String), so every occurrence goes, not just the leading
     // one — the library mangled those names before its symbols were prefixed.
     if (!hashPrefix.empty()) {
       for (size_t at = typeMangledName.find(hashPrefix);

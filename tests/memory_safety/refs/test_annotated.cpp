@@ -95,7 +95,7 @@ TEST(MemorySafety_Refs_Annotated, binds_field_inside_method) {
 // stored String intact, so the object still owns (and drops) it once.
 TEST(MemorySafety_Refs_Annotated, binds_string_field) {
   auto value = executeStringWithStdlib(R"(
-      using sun;
+      using std;
       public class Holder {
           public var a: String;
           init(alloc: ref HeapAllocator) {
@@ -114,7 +114,7 @@ TEST(MemorySafety_Refs_Annotated, binds_string_field) {
 
 TEST(MemorySafety_Refs_Annotated, temporary_target_is_error) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
-      using sun;
+      using std;
       function main() i32 {
           var alloc = make_heap_allocator();
           var r: ref String = String(alloc, "temp");
@@ -155,7 +155,7 @@ TEST(MemorySafety_Refs_Annotated, class_index_target_is_error) {
 
 TEST(MemorySafety_Refs_Annotated, borrowing_a_moved_field_is_error) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
-      using sun;
+      using std;
       public class Holder {
           public var a: String;
           init(alloc: ref HeapAllocator) {
@@ -214,7 +214,7 @@ TEST(MemorySafety_Refs_Annotated, conditional_writes_through_to_chosen_slot) {
 
 TEST(MemorySafety_Refs_Annotated, conditional_binds_distinct_classes) {
   auto value = executeStringWithStdlib(R"(
-      using sun;
+      using std;
       function main() i64 {
           var alloc = make_heap_allocator();
           var s1 = String(alloc, "aaa");

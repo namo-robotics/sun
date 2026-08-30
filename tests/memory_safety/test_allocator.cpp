@@ -48,7 +48,7 @@ TEST(MemorySafety_Allocator, variadic_method_local_allocator) {
 
 TEST(MemorySafety_Allocator, heap_allocator_create_simple_class) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     class Point {
         var x: i32;
@@ -76,7 +76,7 @@ TEST(MemorySafety_Allocator, heap_allocator_create_simple_class) {
 
 TEST(MemorySafety_Allocator, heap_allocator_create_generic_class) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     class Box<T> {
         var value: T;
@@ -103,7 +103,7 @@ TEST(MemorySafety_Allocator, heap_allocator_create_generic_class) {
 TEST(MemorySafety_Allocator, unique_ptr_automatic_cleanup) {
   // Unique<T> wraps allocator.create<T>() result for automatic cleanup
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     class Point {
         var x: i32;
@@ -133,7 +133,7 @@ TEST(MemorySafety_Allocator, unique_ptr_automatic_cleanup) {
 
 TEST(MemorySafety_Allocator, multiple_heap_allocations) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     class Counter {
         var value: i32;
@@ -160,7 +160,7 @@ TEST(MemorySafety_Allocator, multiple_heap_allocations) {
 
 TEST(MemorySafety_Allocator, allocator_as_parameter) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     class Point {
         var x: i32;
@@ -228,7 +228,7 @@ TEST(MemorySafety_Allocator, sizeof_intrinsic_class) {
 TEST(MemorySafety_Allocator, init_intrinsic_with_allocator) {
   // Test _init<T> with allocator-allocated memory
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     class Point {
         var x: i32;
@@ -261,7 +261,7 @@ TEST(MemorySafety_Allocator, create_selects_init_overload_by_args) {
   // The same create<Point> specialization site is used with two different
   // arities; each must select the matching init overload.
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class Point {
         var x: i32;
@@ -282,7 +282,7 @@ TEST(MemorySafety_Allocator, create_selects_init_overload_by_args) {
 
 TEST(MemorySafety_Allocator, create_single_arg_init_overload) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class Point {
         var x: i32;
@@ -303,7 +303,7 @@ TEST(MemorySafety_Allocator, create_single_arg_init_overload) {
 TEST(MemorySafety_Allocator, create_no_matching_init_overload_errors) {
   // No 3-arg init exists; this must be a clean semantic error, not a crash.
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class Point {
         var x: i32;
@@ -326,7 +326,7 @@ TEST(MemorySafety_Allocator, create_no_matching_init_overload_errors) {
 
 TEST(MemorySafety_Allocator, create_unique_basic) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class Point {
         var x: i32;
@@ -346,7 +346,7 @@ TEST(MemorySafety_Allocator, create_unique_basic) {
 
 TEST(MemorySafety_Allocator, create_unique_overloaded_init) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class Point {
         var x: i32;
@@ -369,7 +369,7 @@ TEST(MemorySafety_Allocator, create_unique_deinit_called_once) {
   // Returning Unique<T> by value from create_unique must move, not copy:
   // exactly one deinit per object, no double free.
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     var counter: i32 = 0;
 
@@ -397,7 +397,7 @@ TEST(MemorySafety_Allocator, create_unique_deinit_called_once) {
 
 TEST(MemorySafety_Allocator, create_unique_returned_from_function) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     var counter: i32 = 0;
 

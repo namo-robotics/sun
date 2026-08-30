@@ -4,7 +4,7 @@
 // a handler lambda that inspects the request and fills in the response.
 //
 // Usage:
-//   using sun;
+//   using std;
 //
 //   function main() i32 {
 //       var alloc = make_heap_allocator();
@@ -21,7 +21,7 @@
 //       return 0;
 //   }
 
-public module sun {
+public module std {
   // Cap on total request header size
   public var HTTP_MAX_REQUEST: i64 = 65536;
 
@@ -275,4 +275,4 @@ public module sun {
       client.send_string(out);
     }
   }
-}  // module sun
+}  // module std

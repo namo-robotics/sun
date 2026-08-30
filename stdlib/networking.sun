@@ -3,7 +3,7 @@
 // Provides TCP client and server abstractions using high-level IPv4 intrinsics.
 //
 // Usage:
-//   using sun;
+//   using std;
 //
 //   // TCP Server (for HTTP, prefer HttpServer from http.sun)
 //   var listener = TcpListener();
@@ -21,7 +21,7 @@
 //   stream.send_str("ping");
 //   stream.close();
 
-public module sun {
+public module std {
   // -------------------------------------------------------------------
   // Socket constants
   // -------------------------------------------------------------------
@@ -272,4 +272,4 @@ public module sun {
       return this.fd;
     }
   }
-}  // module sun
+}  // module std

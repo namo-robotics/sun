@@ -8,7 +8,7 @@ namespace sun {
 
 /// Download cache for .moon bundles referenced by URL in a manifest:
 ///
-///   manifest { moons: [{ url: "https://example.com/lib.moon" }] }
+///   manifest { libraries: [{ url: "https://example.com/lib.moon" }] }
 ///
 /// Bundles are downloaded once with the system curl binary and stored under
 /// the cache directory, keyed by the URL. A cached bundle is reused forever,

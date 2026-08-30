@@ -1,6 +1,6 @@
-using sun;
-using sun.thread;
-using sun.time;
+using std;
+using std.thread;
+using std.time;
 
 // Take the front item, if there is one. The lock is held for exactly as long
 // as this function runs: the guard is released when `g` goes out of scope at
@@ -75,5 +75,5 @@ function main() i32 {
 }
 
 manifest {
-    moons: ["stdlib.moon"]
+    libraries: ["stdlib.moon"]
 }

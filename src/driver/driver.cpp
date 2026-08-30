@@ -73,15 +73,15 @@ static bool hasStdlibImport(const std::vector<sun::MoonImport>& moonImports) {
   return false;
 }
 
-/// Does this block declare `class String` directly inside `module sun`?
-/// Interpolation desugars to `sun.String` and `sun.HeapAllocator`, so the
+/// Does this block declare `class String` directly inside `module std`?
+/// Interpolation desugars to `std.String` and `std.HeapAllocator`, so the
 /// stdlib's own sources satisfy it without importing stdlib.moon — which
 /// they cannot do, being that library.
 static bool declaresStdlibString(const BlockExprAST& block) {
   for (const auto& stmt : block.getBody()) {
     if (!stmt || stmt->getType() != ASTNodeType::MODULE) continue;
     const auto& module = static_cast<const ModuleAST&>(*stmt);
-    if (module.getName() != "sun") continue;
+    if (module.getName() != "std") continue;
     for (const auto& member : module.getBody().getBody()) {
       if (!member || member->getType() != ASTNodeType::CLASS_DEFINITION) {
         continue;
@@ -182,7 +182,7 @@ void Driver::dumpUserDefinedIR(llvm::raw_ostream& OS) {
     // Skip internal symbols starting with _
     if (name[0] == '_') continue;
     // Skip library module globals (vtables, etc.)
-    if (name.rfind("sun_", 0) == 0) continue;
+    if (name.rfind("std_", 0) == 0) continue;
     // Skip prefixed symbols (from moon imports)
     if (name.rfind("$", 0) == 0) continue;
     gv.print(OS);
@@ -485,7 +485,7 @@ void Driver::analyzeProgram(BlockExprAST& blockAst, Parser& parser) {
     lowering.run(blockAst);
   }
 
-  // Interpolation desugars to sun.String / sun.HeapAllocator, so those types
+  // Interpolation desugars to std.String / std.HeapAllocator, so those types
   // have to come from somewhere: an imported stdlib.moon, or — when
   // compiling the standard library itself — its own sources.
   if ((parser.usesStringInterpolation() || lowering.usedInterpolation()) &&
@@ -649,6 +649,10 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
       if (retType->isVoidTy()) {
         // Wrap void main() to return i32 0
         mainFunc->setName("__sun_main_void");
+        // The user-defined set is keyed by name, so the program's own body
+        // would drop out of an IR dump under its new name — leaving the dump
+        // showing only the wrapper, calling a function that isn't there.
+        codegenVisitor->noteUserDefinedFunction("__sun_main_void");
         llvm::FunctionType* wrapperType = llvm::FunctionType::get(
             llvm::Type::getInt32Ty(ctx->mainModule->getContext()),
             mainFunc->getFunctionType()->params(), false);

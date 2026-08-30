@@ -1,7 +1,7 @@
 // stdlib/time.sun - Durations, clocks, sleeping and calendar dates
 //
 // Usage:
-//   using sun.time;
+//   using std.time;
 //
 //   var start = now();
 //   sleep(create_duration_millis(50));
@@ -10,7 +10,7 @@
 //   var today = convert_to_utc(read_unix_time());
 //   println(format(alloc, today, "%Y-%m-%d"));
 
-public module sun {
+public module std {
   public module time {
     // clockid_t values. CLOCK_REALTIME is 0 everywhere; CLOCK_MONOTONIC
     // differs per OS and lives in target_<os>.sun.
@@ -249,5 +249,5 @@ public module sun {
       }
       return from_c_str(alloc, buf.raw_data());
     }
-  }  // module sun.time
+  }  // module std.time
 }

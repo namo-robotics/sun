@@ -38,7 +38,7 @@ void LoweringPass::lowerSlot(std::unique_ptr<ExprAST>& slot) {
     slot = static_cast<ParenExprAST&>(*slot).takeInner();
   }
 
-  // Desugar template strings into sun.String append calls
+  // Desugar template strings into std.String append calls
   if (slot && slot->getType() == ASTNodeType::INTERPOLATED_STRING) {
     usedInterpolation_ = true;
     slot = InterpolatedStringParser::desugar(

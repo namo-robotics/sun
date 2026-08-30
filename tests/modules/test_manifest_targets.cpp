@@ -38,13 +38,13 @@ fs::path writeTargetedManifest(const std::string& name) {
   writeFile(dir / "darwin_only.sun", "public module m {}\n");
   writeFile(dir / "main.sun",
             "manifest {\n"
-            "    suns: [ \"shared.sun\" ],\n"
+            "    source_files: [ \"shared.sun\" ],\n"
             "    target: {\n"
             "        linux: {\n"
-            "            suns: [ \"linux_only.sun\" ]\n"
+            "            source_files: [ \"linux_only.sun\" ]\n"
             "        },\n"
             "        macos: {\n"
-            "            suns: [ \"darwin_only.sun\" ]\n"
+            "            source_files: [ \"darwin_only.sun\" ]\n"
             "        }\n"
             "    }\n"
             "}\n"
@@ -111,7 +111,7 @@ TEST(Modules_ManifestTargets, unknown_os_name_is_a_parse_error) {
   auto parser = Parser::createStringParser(
       "manifest {\n"
       "    target: {\n"
-      "        maos: { suns: [ \"x.sun\" ] }\n"
+      "        maos: { source_files: [ \"x.sun\" ] }\n"
       "    }\n"
       "}\n");
   EXPECT_THROW(parser.parseProgram(), SunError);
@@ -122,7 +122,7 @@ TEST(Modules_ManifestTargets, target_blocks_may_carry_archives) {
   writeFile(dir / "libmac.a", "not a real archive\n");
   writeFile(dir / "main.sun",
             "manifest {\n"
-            "    suns: [],\n"
+            "    source_files: [],\n"
             "    target: {\n"
             "        macos: {\n"
             "            archives: [ \"libmac.a\" ]\n"

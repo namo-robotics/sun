@@ -17,7 +17,7 @@
 //     Option.Some(v) => println(v),   // 1
 //     Option.None => {},
 //   };
-public module sun {
+public module std {
   public class Queue<T> implements IIterable<ref T, Queue<T>> {
     var items: LinkedList<T>;
 
@@ -100,4 +100,4 @@ public module sun {
 
   public declare QueueIterator_i32 = QueueIterator<i32>;
   public declare QueueIterator_i64 = QueueIterator<i64>;
-}  // module sun
+}  // module std

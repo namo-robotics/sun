@@ -12,7 +12,7 @@
 
 TEST(Stdlib_Collections_Queue, empty_queue) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -28,7 +28,7 @@ TEST(Stdlib_Collections_Queue, empty_queue) {
 
 TEST(Stdlib_Collections_Queue, push_grows_the_queue) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -45,7 +45,7 @@ TEST(Stdlib_Collections_Queue, push_grows_the_queue) {
 // The whole point of the type: what goes in first comes out first.
 TEST(Stdlib_Collections_Queue, pops_in_the_order_pushed) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -69,7 +69,7 @@ TEST(Stdlib_Collections_Queue, pops_in_the_order_pushed) {
 
 TEST(Stdlib_Collections_Queue, pop_on_empty_is_none) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -87,7 +87,7 @@ TEST(Stdlib_Collections_Queue, pop_on_empty_is_none) {
 
 TEST(Stdlib_Collections_Queue, push_and_pop_interleaved) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -121,7 +121,7 @@ TEST(Stdlib_Collections_Queue, push_and_pop_interleaved) {
 
 TEST(Stdlib_Collections_Queue, peek_borrows_the_front_without_removing_it) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -143,7 +143,7 @@ TEST(Stdlib_Collections_Queue, peek_borrows_the_front_without_removing_it) {
 
 TEST(Stdlib_Collections_Queue, peek_back_is_the_most_recent_push) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -163,7 +163,7 @@ TEST(Stdlib_Collections_Queue, peek_back_is_the_most_recent_push) {
 
 TEST(Stdlib_Collections_Queue, peek_on_empty_is_none) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -185,7 +185,7 @@ TEST(Stdlib_Collections_Queue, peek_on_empty_is_none) {
 
 TEST(Stdlib_Collections_Queue, clear_empties_the_queue) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -204,7 +204,7 @@ TEST(Stdlib_Collections_Queue, clear_empties_the_queue) {
 
 TEST(Stdlib_Collections_Queue, iterates_front_to_back) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -231,7 +231,7 @@ TEST(Stdlib_Collections_Queue, iterates_front_to_back) {
 // The queue owns what it holds: items still queued are dropped with it.
 TEST(Stdlib_Collections_Queue, drops_remaining_items) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     var drops: i32 = 0;
 
@@ -262,7 +262,7 @@ TEST(Stdlib_Collections_Queue, drops_remaining_items) {
 
 TEST(Stdlib_Collections_Queue, clear_drops_the_items_it_removes) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     var drops: i32 = 0;
 

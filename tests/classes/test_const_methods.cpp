@@ -134,7 +134,7 @@ TEST(Classes_ConstMethods, non_const_call_on_this_in_const_method_is_rejected) {
 TEST(Classes_ConstMethods, mutating_field_object_in_const_method_is_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       executeStringWithStdlib(R"(
-      using sun;
+      using std;
       class Bag {
           var items: Vec<i32>;
           init(alloc: ref HeapAllocator) { this.items = Vec<i32>(alloc, 4); }
@@ -422,7 +422,7 @@ TEST(Classes_ConstMethods, generic_const_method_body_is_checked) {
 
 TEST(Classes_ConstMethods, const_vec_reads) {
   auto value = executeStringWithStdlib(R"(
-      using sun;
+      using std;
       function total(v: const ref Vec<i32>) i32 {
           var sum: i32 = 0;
           var i: i64 = 0;
@@ -449,7 +449,7 @@ TEST(Classes_ConstMethods, const_vec_reads) {
 TEST(Classes_ConstMethods, const_vec_cannot_push_or_set) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       executeStringWithStdlib(R"(
-      using sun;
+      using std;
       function main() i32 {
           var allocator = make_heap_allocator();
           var v = Vec<i32>(allocator, 4);
@@ -462,7 +462,7 @@ TEST(Classes_ConstMethods, const_vec_cannot_push_or_set) {
 
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       executeStringWithStdlib(R"(
-      using sun;
+      using std;
       function main() i32 {
           var allocator = make_heap_allocator();
           var v = Vec<i32>(allocator, 4);
@@ -479,7 +479,7 @@ TEST(Classes_ConstMethods, const_vec_cannot_push_or_set) {
 // inside a payload enum, is `const ref` when the receiver is constant.
 TEST(Classes_ConstMethods, peek_accessors_are_const_views) {
   auto value = executeStringWithStdlib(R"(
-      using sun;
+      using std;
       function main() i32 {
           var allocator = make_heap_allocator();
           var v = Vec<i32>(allocator, 4);
@@ -503,7 +503,7 @@ TEST(Classes_ConstMethods, peek_accessors_are_const_views) {
 
   // Through a constant receiver the peeked element is read-only ...
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
-      using sun;
+      using std;
       function main() i32 {
           var allocator = make_heap_allocator();
           var v = Vec<i32>(allocator, 4);
@@ -520,7 +520,7 @@ TEST(Classes_ConstMethods, peek_accessors_are_const_views) {
 
   // ... while a mutable receiver still hands out a writable borrow
   auto written = executeStringWithStdlib(R"(
-      using sun;
+      using std;
       function main() i32 {
           var allocator = make_heap_allocator();
           var v = Vec<i32>(allocator, 4);
@@ -570,7 +570,7 @@ TEST(Classes_ConstMethods, user_const_method_returning_option_ref) {
 
 TEST(Classes_ConstMethods, const_map_reads) {
   auto value = executeStringWithStdlib(R"(
-      using sun;
+      using std;
       function main() i32 {
           var allocator = make_heap_allocator();
           var m = Map<i64, i32>(allocator, 8);

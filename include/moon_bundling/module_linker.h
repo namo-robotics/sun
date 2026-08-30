@@ -39,7 +39,7 @@ class ModuleLinker {
 
   /// Register available modules with module name remapping (aliasing)
   /// This enables using multiple versions of the same library by remapping
-  /// module names at link time (e.g., "sun" -> "sun_v1")
+  /// module names at link time (e.g., "std" -> "std_v1")
   /// @param moonImport Moon import configuration with optional remapping
   void registerAvailableModulesWithRemap(const MoonImport& moonImport);
 
@@ -74,7 +74,7 @@ class ModuleLinker {
       const std::unordered_map<std::string, std::string>& moduleRemap);
 
   /// Remap a symbol name by replacing module names according to remap config
-  /// e.g., "$hash$_sun_Vec_push" -> "$hash$_sun_v1_Vec_push"
+  /// e.g., "$hash$_std_Vec_push" -> "$hash$_std_v1_Vec_push"
   std::string remapSymbolName(
       const std::string& symbol,
       const std::unordered_map<std::string, std::string>& moduleRemap) const;

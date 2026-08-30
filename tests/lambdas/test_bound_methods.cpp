@@ -239,7 +239,7 @@ TEST(Lambdas_BoundMethods, generic_method_reference_rejected) {
 
 TEST(Lambdas_BoundMethods, throwing_method_into_throwing_param) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class Parser {
         var errors: i32;
@@ -273,7 +273,7 @@ TEST(Lambdas_BoundMethods, throwing_method_into_throwing_param) {
 
 TEST(Lambdas_BoundMethods, nonthrowing_method_into_throwing_param) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class Doubler {
         init() {}
@@ -298,7 +298,7 @@ TEST(Lambdas_BoundMethods, nonthrowing_method_into_throwing_param) {
 
 TEST(Lambdas_BoundMethods, stored_throwing_method_uncaught_rejected) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class Parser {
         init() {}
@@ -344,7 +344,7 @@ TEST(Lambdas_BoundMethods, bound_method_call_in_loop) {
 
 TEST(Lambdas_BoundMethods, stdlib_class_method_as_value) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function apply(f: (i32) -> void) void {
         f(42);
@@ -362,7 +362,7 @@ TEST(Lambdas_BoundMethods, stdlib_class_method_as_value) {
 
 TEST(Lambdas_BoundMethods, deinit_runs_once_with_bound_method) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class Tracker {
         var alloc: HeapAllocator;

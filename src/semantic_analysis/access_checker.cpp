@@ -60,8 +60,8 @@ namespace sun::access {
 
 namespace {
 
-// Display name without library-hash prefixes ("$hash$.sun.Vec<i32>" ->
-// "sun.Vec<i32>")
+// Display name without library-hash prefixes ("$hash$.std.Vec<i32>" ->
+// "std.Vec<i32>")
 std::string cleanTypeName(std::string name) {
   while (!name.empty() && name.front() == '$') {
     size_t close = name.find('$', 1);

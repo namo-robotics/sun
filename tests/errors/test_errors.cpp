@@ -1068,7 +1068,7 @@ TEST(Errors, throw_after_loop_exceeds_limit) {
 
 TEST(Errors, error_carries_a_computed_string_message) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function boom(path: ref String) void throws IError {
       throw Error(-7, path);
@@ -1094,7 +1094,7 @@ TEST(Errors, error_carries_a_computed_string_message) {
 
 TEST(Errors, computed_error_message_survives_the_string_it_came_from) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     // The String is built, moved into the Error and dropped here; only the
     // Error's copy is left for the caller to read.
@@ -1123,7 +1123,7 @@ TEST(Errors, computed_error_message_survives_the_string_it_came_from) {
 
 TEST(Errors, error_still_takes_a_literal_message) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
       var e: Error = Error(5, "plain literal");
@@ -1136,7 +1136,7 @@ TEST(Errors, error_still_takes_a_literal_message) {
 
 TEST(Errors, message_returns_an_independent_clone_each_time) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
       var e: Error = Error(1, "abc");

@@ -4,7 +4,7 @@
 // against the hostname; a bad certificate throws rather than returning a
 // response.
 
-using sun;
+using std;
 using tls;
 
 function main() i32 {
@@ -38,5 +38,5 @@ function main() i32 {
 }
 
 manifest {
-    moons: ["stdlib.moon", "tls.moon"]
+    libraries: ["stdlib.moon", "tls.moon"]
 }

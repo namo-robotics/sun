@@ -25,8 +25,8 @@ class Stdlib_Sys_Command : public ::testing::Test {
 
 TEST_F(Stdlib_Sys_Command, output_captures_stdout_and_status) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.process;
+    using std;
+    using std.process;
 
     function main() i32 {
         var a = make_heap_allocator();
@@ -49,8 +49,8 @@ TEST_F(Stdlib_Sys_Command, output_captures_stdout_and_status) {
 
 TEST_F(Stdlib_Sys_Command, non_zero_exit_is_reported) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.process;
+    using std;
+    using std.process;
 
     function main() i32 {
         var a = make_heap_allocator();
@@ -69,8 +69,8 @@ TEST_F(Stdlib_Sys_Command, non_zero_exit_is_reported) {
 
 TEST_F(Stdlib_Sys_Command, stderr_is_captured_separately) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.process;
+    using std;
+    using std.process;
 
     function main() i32 {
         var a = make_heap_allocator();
@@ -94,8 +94,8 @@ TEST_F(Stdlib_Sys_Command, large_output_does_not_deadlock) {
   // Well past one pipe buffer (64 KiB on Linux). Draining stdout to the end
   // before touching stderr would wedge here.
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.process;
+    using std;
+    using std.process;
 
     function main() i32 {
         var a = make_heap_allocator();
@@ -117,8 +117,8 @@ TEST_F(Stdlib_Sys_Command, large_output_does_not_deadlock) {
 
 TEST_F(Stdlib_Sys_Command, arguments_are_passed_separately_not_reparsed) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.process;
+    using std;
+    using std.process;
 
     function main() i32 {
         var a = make_heap_allocator();
@@ -143,8 +143,8 @@ TEST_F(Stdlib_Sys_Command, arguments_are_passed_separately_not_reparsed) {
 
 TEST_F(Stdlib_Sys_Command, string_arguments_are_accepted) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.process;
+    using std;
+    using std.process;
 
     function main() i32 {
         var a = make_heap_allocator();
@@ -168,8 +168,8 @@ TEST_F(Stdlib_Sys_Command, string_arguments_are_accepted) {
 
 TEST_F(Stdlib_Sys_Command, status_runs_with_inherited_streams) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.process;
+    using std;
+    using std.process;
 
     function main() i32 {
         var a = make_heap_allocator();
@@ -188,8 +188,8 @@ TEST_F(Stdlib_Sys_Command, status_runs_with_inherited_streams) {
 
 TEST_F(Stdlib_Sys_Command, start_then_wait_gives_the_exit_code) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.process;
+    using std;
+    using std.process;
 
     function main() i32 {
         var a = make_heap_allocator();
@@ -210,8 +210,8 @@ TEST_F(Stdlib_Sys_Command, start_then_wait_gives_the_exit_code) {
 
 TEST_F(Stdlib_Sys_Command, child_stdin_can_be_written) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.process;
+    using std;
+    using std.process;
 
     function main() i32 {
         var a = make_heap_allocator();
@@ -239,8 +239,8 @@ TEST_F(Stdlib_Sys_Command, child_stdin_can_be_written) {
 
 TEST_F(Stdlib_Sys_Command, a_signalled_child_reports_128_plus_the_signal) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.process;
+    using std;
+    using std.process;
 
     function main() i32 {
         var a = make_heap_allocator();
@@ -261,8 +261,8 @@ TEST_F(Stdlib_Sys_Command, a_signalled_child_reports_128_plus_the_signal) {
 
 TEST_F(Stdlib_Sys_Command, missing_program_exits_127) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.process;
+    using std;
+    using std.process;
 
     function main() i32 {
         var a = make_heap_allocator();

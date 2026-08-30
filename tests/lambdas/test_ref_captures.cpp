@@ -418,7 +418,7 @@ TEST(Lambdas_RefCaptures, nested_byref_of_byvalue_rejected) {
 // by-ref capture cannot outlive what it points at
 TEST(Lambdas_RefCaptures, spawn_byref_lambda_accepted) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
       function main() i32 {
           var x: i32 = 0;
           var t = spawn(lambda [ref x] () i32 {
@@ -434,7 +434,7 @@ TEST(Lambdas_RefCaptures, spawn_byref_lambda_accepted) {
 
 TEST(Lambdas_RefCaptures, spawn_byref_lambda_via_variable_accepted) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
       function main() i32 {
           var x: i32 = 0;
           var f = lambda [ref x] () i32 {

@@ -7,7 +7,7 @@
 //
 // Usage:
 //   import "stdlib/contiguous_buffer.sun";
-//   using sun;
+//   using std;
 //   
 //   var allocator = make_heap_allocator();
 //   var buf = ContiguousBuffer<i32>(allocator, 10);
@@ -19,7 +19,7 @@
 // ContiguousBuffer<T> - Fixed-size Bounds-checked Array
 // ============================================================================
 
-public module sun {
+public module std {
   public class ContiguousBuffer<T> implements IIterable<ref T, ContiguousBuffer<T>> {
     var data: Unique<u8>;  // Element storage (owned, auto-freed)
     var alloc: HeapAllocator;  // Allocator (stored via copy)
@@ -264,4 +264,4 @@ public module sun {
   public declare ContiguousBufferIterator_i64 = ContiguousBufferIterator<i64>;
   public declare ContiguousBufferIterator_f32 = ContiguousBufferIterator<f32>;
   public declare ContiguousBufferIterator_f64 = ContiguousBufferIterator<f64>;
-}  // module sun
+}  // module std

@@ -1,12 +1,12 @@
 # Threads
 
 OS threads and the lock that guards what they share live in the standard
-library's `sun.thread` module, so a threaded program starts with:
+library's `std.thread` module, so a threaded program starts with:
 
 ```sun
-using sun.thread;
+using std.thread;
 
-manifest { moons: ["stdlib.moon"] }
+manifest { libraries: ["stdlib.moon"] }
 ```
 
 import { Callout } from 'nextra/components'
@@ -207,8 +207,8 @@ Both the thread and the parent then work on the same value, so guard it with a
 `Mutex`:
 
 ```sun
-using sun;
-using sun.thread;
+using std;
+using std.thread;
 
 class Tally {
     public var counter: i64;
@@ -238,7 +238,7 @@ function main() i32 {
     return 0;
 }
 
-manifest { moons: ["stdlib.moon"] }
+manifest { libraries: ["stdlib.moon"] }
 ```
 
 ### Sharing one value with several threads
@@ -279,8 +279,8 @@ Because Sun never copies implicitly, every extra owner is a visible `clone()`,
 so you can see the count change in the source.
 
 ```sun
-using sun;
-using sun.thread;
+using std;
+using std.thread;
 
 class Counter {
     public var n: i64;
@@ -314,7 +314,7 @@ function main() i32 {
     return 0;
 }
 
-manifest { moons: ["stdlib.moon"] }
+manifest { libraries: ["stdlib.moon"] }
 ```
 
 Each thread gets its own handle, moved in as an argument. A capture list works
@@ -380,10 +380,10 @@ function main() i32 {
 
 ## Synchronization with Mutex
 
-For shared mutable state between threads, use `Mutex` from `sun.thread`:
+For shared mutable state between threads, use `Mutex` from `std.thread`:
 
 ```sun
-using sun.thread;
+using std.thread;
 
 function main() i32 {
     var m = Mutex();
@@ -396,7 +396,7 @@ function main() i32 {
 }
 
 manifest {
-    moons: ["stdlib.moon"]
+    libraries: ["stdlib.moon"]
 }
 ```
 

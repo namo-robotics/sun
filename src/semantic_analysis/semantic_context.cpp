@@ -385,7 +385,7 @@ static std::vector<SemanticScope*> collectAllModuleScopes(
       // path
       for (const auto& binding : s->importBindings) {
         if (!binding.sourceScope || !binding.isWildcard) continue;
-        // scopeName is the simple name like "sun", not the full path with
+        // scopeName is the simple name like "std", not the full path with
         // import prefixes
         if (binding.sourceScope->scopeName == path) {
           addUnique(binding.sourceScope);

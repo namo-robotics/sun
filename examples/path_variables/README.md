@@ -4,13 +4,13 @@ docs-page: modules
 
 # Path Variables
 
-Manifest entries can reference variables with `$NAME` — in `suns`, `moons`
+Manifest entries can reference variables with `$NAME` — in `source_files`, `libraries`
 (paths and urls) and `protos` entries alike. Here the manifest asks for
 `$LIBS/mathlib.moon`:
 
 ```sun
 manifest {
-    moons: ["stdlib.moon", "$LIBS/mathlib.moon"]
+    libraries: ["stdlib.moon", "$LIBS/mathlib.moon"]
 }
 ```
 

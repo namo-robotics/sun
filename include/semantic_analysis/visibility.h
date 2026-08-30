@@ -18,7 +18,7 @@ namespace sun {
 
 enum class Visibility : uint8_t { Private = 0, Public = 1 };
 
-// Module path as segments, e.g. {"$hash$", "sun"}; root = {}. An item's owner
+// Module path as segments, e.g. {"$hash$", "std"}; root = {}. An item's owner
 // is its QualifiedName::owner() (the scope path it was declared in); a
 // private item owned by root is reachable from every context in a
 // compilation — root is a prefix of every path — so internal/synthesized

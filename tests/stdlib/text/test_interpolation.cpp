@@ -14,7 +14,7 @@
 TEST(Stdlib_Text_Interpolation, simple_literal) {
   // Template string with no interpolation should work like a string literal
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -27,7 +27,7 @@ TEST(Stdlib_Text_Interpolation, simple_literal) {
 
 TEST(Stdlib_Text_Interpolation, interpolate_string) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -41,7 +41,7 @@ TEST(Stdlib_Text_Interpolation, interpolate_string) {
 
 TEST(Stdlib_Text_Interpolation, interpolate_integer) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -55,7 +55,7 @@ TEST(Stdlib_Text_Interpolation, interpolate_integer) {
 
 TEST(Stdlib_Text_Interpolation, interpolate_boolean_true) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -69,7 +69,7 @@ TEST(Stdlib_Text_Interpolation, interpolate_boolean_true) {
 
 TEST(Stdlib_Text_Interpolation, interpolate_boolean_false) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -83,7 +83,7 @@ TEST(Stdlib_Text_Interpolation, interpolate_boolean_false) {
 
 TEST(Stdlib_Text_Interpolation, multiple_interpolations) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -98,7 +98,7 @@ TEST(Stdlib_Text_Interpolation, multiple_interpolations) {
 
 TEST(Stdlib_Text_Interpolation, adjacent_interpolations) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -113,7 +113,7 @@ TEST(Stdlib_Text_Interpolation, adjacent_interpolations) {
 
 TEST(Stdlib_Text_Interpolation, interpolate_expression) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -129,7 +129,7 @@ TEST(Stdlib_Text_Interpolation, interpolate_expression) {
 TEST(Stdlib_Text_Interpolation, interpolate_literal_string) {
   // String literal inside interpolation
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -143,7 +143,7 @@ TEST(Stdlib_Text_Interpolation, interpolate_literal_string) {
 TEST(Stdlib_Text_Interpolation, escape_backtick) {
   // Escaped backtick inside template string
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -157,7 +157,7 @@ TEST(Stdlib_Text_Interpolation, escape_backtick) {
 TEST(Stdlib_Text_Interpolation, escape_dollar) {
   // Escaped dollar sign (to prevent interpolation)
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -171,7 +171,7 @@ TEST(Stdlib_Text_Interpolation, escape_dollar) {
 TEST(Stdlib_Text_Interpolation, escape_newline) {
   // Newline escape sequence
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -184,7 +184,7 @@ TEST(Stdlib_Text_Interpolation, escape_newline) {
 
 TEST(Stdlib_Text_Interpolation, empty_template) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -197,7 +197,7 @@ TEST(Stdlib_Text_Interpolation, empty_template) {
 
 TEST(Stdlib_Text_Interpolation, only_interpolation) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -212,7 +212,7 @@ TEST(Stdlib_Text_Interpolation, only_interpolation) {
 TEST(Stdlib_Text_Interpolation, nested_braces_in_expression) {
   // Expression with braces (e.g., array literal)
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -240,7 +240,7 @@ TEST(Stdlib_Text_Interpolation, long_template_content_is_exact) {
   // The desugar reserves the literal bytes up front; this checks the
   // reserved path produces exactly the same bytes as growing would.
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function main() i64 {
         var n: i64 = 42;
         var alloc = make_heap_allocator();
@@ -260,7 +260,7 @@ TEST(Stdlib_Text_Interpolation, returned_from_function_keeps_contents) {
   // owned by nobody. Returning one used to leave the caller with a String of
   // the right length over a freed buffer.
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function label(n: i64) String {
         return `v=${n}`;
     }
@@ -277,7 +277,7 @@ TEST(Stdlib_Text_Interpolation, returned_from_function_keeps_contents) {
 TEST(Stdlib_Text_Interpolation, passed_by_value_keeps_contents) {
   // Same ownership transfer, in argument position
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function take(s: String) i64 {
         if (s.equals_literal("v=7") == false) { return 2; }
         return 0;
@@ -290,11 +290,11 @@ TEST(Stdlib_Text_Interpolation, passed_by_value_keeps_contents) {
 }
 
 TEST(Stdlib_Text_Interpolation, allowed_when_sources_declare_sun_string) {
-  // No stdlib.moon: interpolation needs sun.String and sun.HeapAllocator to
+  // No stdlib.moon: interpolation needs std.String and std.HeapAllocator to
   // exist, and this compilation declares them itself — the situation the
   // standard library's own sources are in.
   auto value = executeString(R"(
-    public module sun {
+    public module std {
       public class HeapAllocator {
         init() {}
       }
@@ -325,7 +325,7 @@ TEST(Stdlib_Text_Interpolation, allowed_when_sources_declare_sun_string) {
 TEST(Stdlib_Text_Interpolation, println_interpolated_direct) {
   // Interpolated string passed directly as a ref String argument
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var x: i32 = 42;
@@ -338,7 +338,7 @@ TEST(Stdlib_Text_Interpolation, println_interpolated_direct) {
 
 TEST(Stdlib_Text_Interpolation, print_interpolated_direct) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var x: i64 = 7;
@@ -353,7 +353,7 @@ TEST(Stdlib_Text_Interpolation, print_interpolated_direct) {
 TEST(Stdlib_Text_Interpolation, println_interpolated_twice) {
   // Back-to-back interpolated temporaries stress repeated temp cleanup
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var a: i64 = 1;
@@ -367,7 +367,7 @@ TEST(Stdlib_Text_Interpolation, println_interpolated_twice) {
 }
 
 TEST(Stdlib_Text_Interpolation, works_without_using_sun) {
-  // String interpolation should work with just stdlib, no 'using sun;' needed
+  // String interpolation should work with just stdlib, no 'using std;' needed
   auto value = executeStringWithStdlib(R"(
     function main() i64 {
         var s = `Hello`;
@@ -379,7 +379,7 @@ TEST(Stdlib_Text_Interpolation, works_without_using_sun) {
 
 TEST(Stdlib_Text_Interpolation, interpolate_float) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i64 {
         var ratio: f64 = 0.25;

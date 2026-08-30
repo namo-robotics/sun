@@ -5,7 +5,7 @@
 //
 // The scopePath is a vector of path segments (module names, class names, etc.).
 // For moon imports, the library content hash is encoded as a scope segment
-// (e.g., {"$abc123$", "sun", "submodule"}).
+// (e.g., {"$abc123$", "std", "submodule"}).
 //
 // All name mangling logic is centralized here:
 // - extractHashPrefix: get "$hash$_" prefix from a mangled name

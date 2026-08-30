@@ -50,7 +50,7 @@ enum class Intrinsic {
 
   // Thread intrinsics. The pthread trampoline is built per lambda signature,
   // which cannot be written in Sun (pthread_create wants ptr(*)(ptr), Sun
-  // lambdas use the fat-pointer ABI), so stdlib sun.thread forwards to these.
+  // lambdas use the fat-pointer ABI), so stdlib std.thread forwards to these.
   Spawn,           // _spawn<F>(fn, args...) -> raw_ptr<ThreadContext>
   ThreadJoin,      // _thread_join<T>(ctx) -> T (takes the thread's result)
   ThreadJoinDrop,  // _thread_join_drop<T>(ctx) -> void (drops it instead)

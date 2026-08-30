@@ -90,7 +90,7 @@ class TlsServer {
 // negative marker when connecting failed.
 std::string fetchProgram(int port) {
   return R"(
-    using sun;
+    using std;
     using tls;
 
     function main() i64 {
@@ -117,7 +117,7 @@ std::string fetchProgram(int port) {
 TEST(Stdlib_Tls, parses_status_headers_and_body) {
   if (tlsMoonImports().empty()) GTEST_SKIP() << "tls.moon not built";
   auto value = executeWithTls(R"(
-    using sun;
+    using std;
     using tls;
 
     function main() i64 {
@@ -141,7 +141,7 @@ TEST(Stdlib_Tls, parses_status_headers_and_body) {
 TEST(Stdlib_Tls, decodes_chunked_body) {
   if (tlsMoonImports().empty()) GTEST_SKIP() << "tls.moon not built";
   auto value = executeWithTls(R"(
-    using sun;
+    using std;
     using tls;
 
     function main() i64 {
@@ -164,7 +164,7 @@ TEST(Stdlib_Tls, decodes_chunked_body) {
 TEST(Stdlib_Tls, rejects_response_without_header_terminator) {
   if (tlsMoonImports().empty()) GTEST_SKIP() << "tls.moon not built";
   auto value = executeWithTls(R"(
-    using sun;
+    using std;
     using tls;
 
     function main() i64 {
@@ -188,7 +188,7 @@ TEST(Stdlib_Tls, rejects_response_without_header_terminator) {
 
 TEST(Stdlib_Networking, resolves_localhost_to_loopback) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function main() i64 {
         var alloc = make_heap_allocator();
         var host = String(alloc, "localhost");
@@ -206,7 +206,7 @@ TEST(Stdlib_Networking, resolves_localhost_to_loopback) {
 
 TEST(Stdlib_Networking, unresolvable_host_throws) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function main() i64 {
         var alloc = make_heap_allocator();
         var host = String(alloc, "no-such-host.invalid");

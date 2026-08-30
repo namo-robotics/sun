@@ -4,12 +4,12 @@
 // programs that do not use TLS never depend on OpenSSL.
 
 manifest {
-    suns: [
+    source_files: [
         "openssl.sun",
         "tls_stream.sun",
         "https_client.sun"
     ]
-    moons: ["stdlib.moon"]
+    libraries: ["stdlib.moon"]
     target: {
         linux: {
             archives: ["$OPENSSL_LIBS_LINUX/libssl.a", "$OPENSSL_LIBS_LINUX/libcrypto.a"]

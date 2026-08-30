@@ -648,7 +648,7 @@ GenericSpecializer::instantiateGenericFunction(
   std::vector<std::string> typeParams = proto.getTypeParameterNames();
   // How the template is named in diagnostics below — as it was written, not
   // as it is emitted, so a stdlib template arriving through a bundle reads as
-  // `sun.thread.spawn` rather than `$ce09fa07$_sun_thread_spawn`.
+  // `std.thread.spawn` rather than `$ce09fa07$_std_thread_spawn`.
   const std::string funcName = genericInfo.qualifiedName.empty()
                                    ? proto.getMangledName()
                                    : genericInfo.qualifiedName.display();
@@ -1190,7 +1190,7 @@ std::shared_ptr<sun::EnumType> GenericSpecializer::instantiateGenericEnum(
   }
 
   // Mangle from the template's registered name, not the spelling the caller
-  // used: `sun.Option<i32>` and `Option<i32>` name the same specialization
+  // used: `std.Option<i32>` and `Option<i32>` name the same specialization
   // (generic classes derive their name the same way).
   const std::string& templateName = genericInfo->qualifiedName.baseName.empty()
                                         ? baseName

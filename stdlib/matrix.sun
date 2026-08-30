@@ -6,7 +6,7 @@
 // Usage:
 //   import "stdlib/allocator.sun";
 //   import "stdlib/matrix.sun";
-//   using sun;
+//   using std;
 //   
 //   var allocator = make_heap_allocator();
 //   var shape: array<i64, 2> = [10, 10];
@@ -22,7 +22,7 @@
 //   // var row = m[0, :];      // First row as view
 //   // var sub = m[1:5, 2:8];  // Submatrix view
 
-public module sun {
+public module std {
   // Interface for types that support indexed access and slicing
   // Any class implementing this interface can use bracket indexing syntax
   // NOTE: Generic interfaces not yet supported, so this is just documentation
@@ -229,4 +229,4 @@ public module sun {
   public declare Matrix_u8 = Matrix<u8>;
   public declare Matrix_f32 = Matrix<f32>;
   public declare Matrix_f64 = Matrix<f64>;
-}  // module sun
+}  // module std

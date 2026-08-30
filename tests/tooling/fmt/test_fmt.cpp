@@ -398,8 +398,8 @@ TEST(Tooling_Fmt, TryCatchThrow) {
 }
 
 TEST(Tooling_Fmt, DottedModule) {
-  EXPECT_EQ(fmt("module sun.io {\nfunction f() void {}\n}"),
-            "module sun.io {\n"
+  EXPECT_EQ(fmt("module std.io {\nfunction f() void {}\n}"),
+            "module std.io {\n"
             "  function f() void {}\n"
             "}\n");
 }
@@ -414,13 +414,13 @@ TEST(Tooling_Fmt, NestedModulesStayNested) {
 }
 
 TEST(Tooling_Fmt, UsingAndDeclare) {
-  EXPECT_EQ(fmt("using sun;\n"
-                "using sun.Vec;\n"
+  EXPECT_EQ(fmt("using std;\n"
+                "using std.Vec;\n"
                 "declare Vec_i32 = Vec<i32>;\n"
                 "declare function isOdd(n: i32) bool;\n"
                 "extern function _malloc(size: i64) raw_ptr<u8>;\n"),
-            "using sun;\n"
-            "using sun.Vec;\n"
+            "using std;\n"
+            "using std.Vec;\n"
             "declare Vec_i32 = Vec<i32>;\n"
             "declare function isOdd(n: i32) bool;\n"
             "extern function _malloc(size: i64) raw_ptr<u8>;\n");

@@ -13,8 +13,8 @@
 class UsingAST : public ExprAST {
   std::vector<std::string> namespacePath;  // The namespace path
   std::string target;    // The specific symbol name, or "*" for module import
-                         // (using sun;)
-  bool isModuleImport_;  // true for "using sun;" (imports whole module)
+                         // (using std;)
+  bool isModuleImport_;  // true for "using std;" (imports whole module)
 
  public:
   UsingAST(std::vector<std::string> nsPath, std::string targetName)

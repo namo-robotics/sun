@@ -1,9 +1,9 @@
-using sun;
+using std;
 
 function main() void {
   println("Hello, Sun!");
 }
 
 manifest {
-    moons: ["stdlib.moon"]
+    libraries: ["stdlib.moon"]
 }

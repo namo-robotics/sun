@@ -436,7 +436,7 @@ TEST(MemorySafety_Drops_Enums, taken_and_discarded_enum_results_drop_once) {
 
 TEST(MemorySafety_Drops_Enums, option_of_string_via_stdlib) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -456,7 +456,7 @@ TEST(MemorySafety_Drops_Enums, option_of_string_via_stdlib) {
 
 TEST(MemorySafety_Drops_Enums, vec_of_option_of_owner_drops_elements) {
   auto value = executeStringWithStdlib(withPreamble(R"(
-    using sun;
+    using std;
 
     function helper() i32 {
       var alloc = make_heap_allocator();

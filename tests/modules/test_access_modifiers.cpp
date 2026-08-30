@@ -522,7 +522,7 @@ TEST(Modules_AccessModifiers, moon_rejects_private_root_module) {
 TEST(Modules_AccessModifiers, stdlib_internals_are_private) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       compileString(R"(
-    using sun;
+    using std;
     function main() i32 {
         var allocator = make_heap_allocator();
         var v = Vec<i32>(allocator, 4);
@@ -530,5 +530,5 @@ TEST(Modules_AccessModifiers, stdlib_internals_are_private) {
     }
   )",
                     /*includeStdlib=*/true),
-      "'size_' is private to class 'sun.Vec<i32>' in module 'sun'");
+      "'size_' is private to class 'std.Vec<i32>' in module 'std'");
 }

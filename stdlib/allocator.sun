@@ -10,7 +10,7 @@
 // _sizeof<T>() i64 - size of type T in bytes
 // _init<T>(ptr, args...) - call T's constructor at ptr
 
-public module sun {
+public module std {
   // Interface for memory allocators
   // All allocators must implement this interface
   public interface IAllocator {
@@ -91,11 +91,11 @@ public module sun {
 
   // Factory function to create a heap allocator
   // Usage: import "stdlib/allocator.sun"; 
-  //        using sun;
+  //        using std;
   //        var allocator = make_heap_allocator();
   //        var p = allocator.create_unique<Point>(3, 4);
   //        // p.deinit() called automatically at scope exit
   public function make_heap_allocator() HeapAllocator {
     return HeapAllocator();
   }
-}  // module sun
+}  // module std

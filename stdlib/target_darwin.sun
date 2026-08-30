@@ -4,7 +4,7 @@
 // values. The manifest's `target:` block includes exactly one of the two per
 // build, chosen by the compilation's --target.
 
-public module sun {
+public module std {
   // macOS spells the per-thread errno accessor __error.
   extern "C" function c_errno_location() raw_ptr<i32> as "__error";
 

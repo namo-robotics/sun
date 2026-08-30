@@ -5,6 +5,6 @@ public module mathlib {
 }
 
 manifest {
-    suns: []
-    moons: []
+    source_files: []
+    libraries: []
 }

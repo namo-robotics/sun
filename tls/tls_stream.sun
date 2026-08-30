@@ -7,7 +7,7 @@
 // connect(). SNI is always sent.
 //
 // Usage:
-//   using sun;
+//   using std;
 //   using tls;
 //
 //   var stream = TlsStream();
@@ -19,7 +19,7 @@
 //   stream.close();
 
 public module tls {
-  using sun;
+  using std;
 
   // SSL_CTX_set_verify mode
   var SSL_VERIFY_PEER: i32 = 1;

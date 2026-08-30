@@ -142,7 +142,7 @@ class SemanticContext : public AccessContext {
 
   /**
    * Get the fully qualified name for a symbol in current scope.
-   * e.g., inside "module sun { }", qualifyName("Vec") returns "sun_Vec".
+   * e.g., inside "module std { }", qualifyName("Vec") returns "sun_Vec".
    */
   std::string qualifyNameInCurrentModule(const std::string &name) const;
 
@@ -154,7 +154,7 @@ class SemanticContext : public AccessContext {
 
   /**
    * Traverse childModules from global scope to find a module by dot-separated
-   * path (e.g., "sun" or "sun.collections"). Returns nullptr if not found.
+   * path (e.g., "std" or "std.collections"). Returns nullptr if not found.
    */
   SemanticScope *lookupModuleScope(const std::string &dotPath) const;
 

@@ -193,7 +193,7 @@ function main() i32 {
 
 ## For-In Loop
 
-The `for-in` loop iterates over objects that implement `IIterator<T, Container>` (or `IIterable<T, Self>`, whose `iter()` produces one). These interfaces come from the standard library (`using sun;`). The iterator's `next` method receives a reference to the container being iterated and returns `Option<T>`; the loop ends at `Option.None`. The loop variable's type must match `T`:
+The `for-in` loop iterates over objects that implement `IIterator<T, Container>` (or `IIterable<T, Self>`, whose `iter()` produces one). These interfaces come from the standard library (`using std;`). The iterator's `next` method receives a reference to the container being iterated and returns `Option<T>`; the loop ends at `Option.None`. The loop variable's type must match `T`:
 
 ```sun
 for (var element: Type in iterable) {
@@ -204,7 +204,7 @@ for (var element: Type in iterable) {
 **Basic example** - sum using a self-iterating pattern:
 
 ```sun
-using sun;
+using std;
 
 class RangeIterator implements IIterator<i32, RangeIterator> {
     var current: i32;

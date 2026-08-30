@@ -3,7 +3,7 @@
 //
 // A moon import prefixes every symbol with the bundle's content hash, so a
 // stdlib class is called "$724e4cc5$_sun_Vec" internally. Diagnostics must
-// print the display name ("sun.Vec<u8>") instead — see issue #135.
+// print the display name ("std.Vec<u8>") instead — see issue #135.
 
 #include <gtest/gtest.h>
 
@@ -40,7 +40,7 @@ void expectNames(const std::string& message, const std::string& expected) {
 
 TEST(Tooling_Diagnostics_TypeNames, lambda_capture_of_moon_class) {
   std::string message = errorFor(R"(
-    using sun;
+    using std;
     function main() i32 {
       var alloc = make_heap_allocator();
       var v = Vec<u8>(alloc, 16);
@@ -48,12 +48,12 @@ TEST(Tooling_Diagnostics_TypeNames, lambda_capture_of_moon_class) {
       return 0;
     }
   )");
-  expectNames(message, "compound type 'sun.Vec<u8>'");
+  expectNames(message, "compound type 'std.Vec<u8>'");
 }
 
 TEST(Tooling_Diagnostics_TypeNames, assignment_mismatch) {
   std::string message = errorFor(R"(
-    using sun;
+    using std;
     function main() i32 {
       var alloc = make_heap_allocator();
       var v = Vec<u8>(alloc, 16);
@@ -61,12 +61,12 @@ TEST(Tooling_Diagnostics_TypeNames, assignment_mismatch) {
       return 0;
     }
   )");
-  expectNames(message, "value of type 'sun.Vec<u8>'");
+  expectNames(message, "value of type 'std.Vec<u8>'");
 }
 
 TEST(Tooling_Diagnostics_TypeNames, unknown_member_on_moon_class) {
   std::string message = errorFor(R"(
-    using sun;
+    using std;
     function main() i32 {
       var alloc = make_heap_allocator();
       var v = Vec<u8>(alloc, 16);
@@ -74,37 +74,37 @@ TEST(Tooling_Diagnostics_TypeNames, unknown_member_on_moon_class) {
       return 0;
     }
   )");
-  expectNames(message, "on class 'sun.Vec<u8>'");
+  expectNames(message, "on class 'std.Vec<u8>'");
 }
 
 TEST(Tooling_Diagnostics_TypeNames, constructor_argument_list) {
   std::string message = errorFor(R"(
-    using sun;
+    using std;
     function main() i32 {
       var alloc = make_heap_allocator();
       var v = Vec<u8>(alloc, "not a size");
       return 0;
     }
   )");
-  expectNames(message, "No matching constructor for 'sun.Vec<u8>'");
+  expectNames(message, "No matching constructor for 'std.Vec<u8>'");
   // Pointer types are spelled the way the source spells them, too
   expectNames(message, "static_ptr<u8>");
 }
 
 TEST(Tooling_Diagnostics_TypeNames, catch_type_must_implement_ierror) {
   std::string message = errorFor(R"(
-    using sun;
+    using std;
     function main() i32 {
       try { var z = 1; } catch (e: Vec<u8>) { return 1; }
       return 0;
     }
   )");
-  expectNames(message, "got 'sun.Vec<u8>'");
+  expectNames(message, "got 'std.Vec<u8>'");
 }
 
 TEST(Tooling_Diagnostics_TypeNames, ternary_branch_mismatch) {
   std::string message = errorFor(R"(
-    using sun;
+    using std;
     function main() i32 {
       var alloc = make_heap_allocator();
       var v = Vec<u8>(alloc, 16);
@@ -113,17 +113,17 @@ TEST(Tooling_Diagnostics_TypeNames, ternary_branch_mismatch) {
       return 0;
     }
   )");
-  expectNames(message, "'sun.Vec<u8>' vs 'String'");
+  expectNames(message, "'std.Vec<u8>' vs 'String'");
 }
 
 TEST(Tooling_Diagnostics_TypeNames, enum_payload_mismatch) {
   std::string message = errorFor(R"(
-    using sun;
+    using std;
     enum E { A(Vec<u8>), B }
     function main() i32 {
       var e = E.A(1);
       return 0;
     }
   )");
-  expectNames(message, "expected 'sun.Vec<u8>'");
+  expectNames(message, "expected 'std.Vec<u8>'");
 }
