@@ -3,11 +3,12 @@ set -euo pipefail
 
 # Build a macOS installer package (.pkg) for the Sun compiler — the deb's
 # counterpart. Installs under /usr/local (bin/sun, bin/sun-lsp,
-# lib/sun/stdlib.moon, share/sun/stdlib), which the compiler's bundle search
-# already covers. The binary links Homebrew's LLVM the way the deb links
-# apt's libllvm20, so `brew install llvm@20` is the package's one runtime
-# dependency. tls.moon is not included yet: its OpenSSL archives are
-# Linux-only for now (see the roadmap's cross-target archives item).
+# lib/sun/{stdlib,tls}.moon, share/sun/stdlib), which the compiler's bundle
+# search already covers. The binary links Homebrew's LLVM the way the deb
+# links apt's libllvm20, so `brew install llvm@20` is the package's one
+# runtime dependency. The tls bundle carries its own static OpenSSL, built
+# by scripts/build-openssl-macos.sh; the bundle is also published on its
+# own as dist/tls-<triple>.moon.
 #
 # Usage: ./scripts/build-pkg-macos.sh
 
@@ -38,6 +39,14 @@ fi
 ARCH=$(uname -m)  # arm64 on Apple Silicon
 log "Building version $VERSION for $ARCH"
 
+# ---- Static OpenSSL for tls.moon -------------------------------------------
+# The pkg ships tls.moon, which embeds these archives. The script exits fast
+# when they are already built (a restored CI cache).
+if [[ ! -f third_party/openssl/arm64-apple-darwin/libssl.a ||
+      ! -f third_party/openssl/arm64-apple-darwin/libcrypto.a ]]; then
+    ./scripts/build-openssl-macos.sh
+fi
+
 # ---- Release build ---------------------------------------------------------
 BUILD_DIR=build-pkg
 cmake -B "$BUILD_DIR" -G Ninja \
@@ -56,6 +65,9 @@ install -d "$STAGE/bin" "$STAGE/lib/sun" "$STAGE/share/sun/stdlib"
 install -m 755 "$BUILD_DIR/sun" "$STAGE/bin/sun"
 install -m 755 "$BUILD_DIR/sun-lsp" "$STAGE/bin/sun-lsp"
 install -m 644 "$BUILD_DIR/stdlib.moon" "$STAGE/lib/sun/stdlib.moon"
+# Fails loudly if the bundle was not built — a pkg without TLS support must
+# never ship silently.
+install -m 644 "$BUILD_DIR/tls.moon" "$STAGE/lib/sun/tls.moon"
 install -m 644 stdlib/*.sun "$STAGE/share/sun/stdlib/"
 
 # ---- Build the installer ---------------------------------------------------
@@ -69,3 +81,8 @@ pkgbuild \
     --ownership recommended \
     "$PKG"
 log "built $PKG"
+
+# The tls bundle on its own, for dropping next to an existing compiler —
+# named like the deb job's cross bundles (stdlib-arm64-apple-darwin.moon).
+cp "$BUILD_DIR/tls.moon" "dist/tls-$ARCH-apple-darwin.moon"
+log "built dist/tls-$ARCH-apple-darwin.moon"

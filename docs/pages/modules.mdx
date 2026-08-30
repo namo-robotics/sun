@@ -351,7 +351,8 @@ manifest {
 ```
 
 The Debian package installs `stdlib.moon` and `tls.moon` to `/usr/lib/sun`,
-which is searched without any `SUN_PATH` setting.
+and the macOS package installs them to `/usr/local/lib/sun`; both directories
+are searched without any `SUN_PATH` setting.
 
 ### Installing a Released Bundle
 

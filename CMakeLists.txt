@@ -433,11 +433,20 @@ if(NOT SKIP_STDLIB)
     # --------------------------------------------------------------
     # tls.moon — TLS client support, bundled separately from the stdlib
     # --------------------------------------------------------------
-    # The bundle carries static OpenSSL archives (see the manifest's `libs:`),
-    # so programs using TLS need no -lssl/-lcrypto and no OpenSSL installed.
-    # Build the archives once with scripts/fetch-openssl.sh; without them
-    # tls.moon is skipped rather than failing the build.
-    set(SUN_OPENSSL_DIR ${CMAKE_SOURCE_DIR}/third_party/openssl/x86_64-linux-musl
+    # The bundle carries static OpenSSL archives (see the manifest's
+    # `archives:`), so programs using TLS need no -lssl/-lcrypto and no
+    # OpenSSL installed. Build the archives once with the platform's script;
+    # without them tls.moon is skipped rather than failing the build. Unlike
+    # the stdlib, tls.moon is built for the host only: a cross bundle would
+    # need that target's OpenSSL archives on this machine.
+    if(APPLE)
+        set(SUN_OPENSSL_DEFAULT_DIR ${CMAKE_SOURCE_DIR}/third_party/openssl/arm64-apple-darwin)
+        set(SUN_OPENSSL_HINT "Run ./scripts/build-openssl-macos.sh to enable TLS support.")
+    else()
+        set(SUN_OPENSSL_DEFAULT_DIR ${CMAKE_SOURCE_DIR}/third_party/openssl/x86_64-linux-musl)
+        set(SUN_OPENSSL_HINT "Run ./scripts/fetch-openssl.sh to enable TLS support.")
+    endif()
+    set(SUN_OPENSSL_DIR ${SUN_OPENSSL_DEFAULT_DIR}
         CACHE PATH "Directory holding the static libssl.a/libcrypto.a for tls.moon")
 
     if(EXISTS ${SUN_OPENSSL_DIR}/libssl.a AND EXISTS ${SUN_OPENSSL_DIR}/libcrypto.a)
@@ -450,7 +459,8 @@ if(NOT SKIP_STDLIB)
             ${CMAKE_SOURCE_DIR}/tls/https_client.sun
         )
 
-        # sun-config.json at the repo root supplies $OPENSSL_LIBS; --lib-path
+        # sun-config.json at the repo root supplies the $OPENSSL_LIBS_*
+        # path variables the manifest's target blocks use; --lib-path
         # points at this build directory, which need not be <source>/build.
         add_custom_command(
             OUTPUT ${TLS_MOON}
@@ -468,7 +478,7 @@ if(NOT SKIP_STDLIB)
     else()
         message(STATUS
             "tls.moon skipped: no static OpenSSL in ${SUN_OPENSSL_DIR}. "
-            "Run ./scripts/fetch-openssl.sh to enable TLS support.")
+            "${SUN_OPENSSL_HINT}")
     endif()
 endif()
 

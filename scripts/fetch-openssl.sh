@@ -8,7 +8,8 @@ set -euo pipefail
 # archives which are musl-built (Sun links statically through the musl
 # toolchain by default) and self-contained (no outside zstd, brotli or
 # jitterentropy). Alpine's openssl-libs-static is both, so we take it from
-# there rather than compiling OpenSSL ourselves.
+# there rather than compiling OpenSSL ourselves. The macOS counterpart is
+# scripts/build-openssl-macos.sh.
 #
 # Output: third_party/openssl/x86_64-linux-musl/lib{ssl,crypto}.a
 #

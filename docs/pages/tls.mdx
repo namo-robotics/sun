@@ -130,26 +130,42 @@ supported yet.
 ## Building the bundle
 
 `tls.moon` embeds `libssl.a` and `libcrypto.a`, which the repository does not
-carry. Fetch them once:
+carry. Build them once with the script for your platform, then build as
+usual:
 
 ```bash
-./scripts/fetch-openssl.sh
+./scripts/fetch-openssl.sh          # Linux
+./scripts/build-openssl-macos.sh    # macOS (Apple Silicon)
 ./build.sh
 ```
 
-The script takes Alpine's `openssl-libs-static` package: Alpine is
-musl-based, matching the toolchain Sun links static binaries with, and builds
-OpenSSL without the optional compression and jitter-entropy backends, so the
-archives depend on nothing outside themselves. Without them the build skips
+On Linux the archives come from Alpine's `openssl-libs-static` package:
+Alpine is musl-based, matching the toolchain Sun links static binaries with,
+and builds OpenSSL without the optional compression and jitter-entropy
+backends, so the archives depend on nothing outside themselves. On macOS
+there is no such package, so the script compiles a pinned OpenSSL release
+with the same self-containment rule. Without the archives the build skips
 `tls.moon` and says so.
 
-The manifest names the archives, and the bundle carries them:
+On macOS the archives look for trusted certificates in `/etc/ssl`, where
+stock macOS keeps its CA bundle (`/etc/ssl/cert.pem`), so verification works
+with no setup; `SSL_CERT_FILE` still overrides the store on both platforms.
+
+The manifest names the archives per operating system, and the bundle carries
+the set matching the compilation target:
 
 ```sun
 manifest {
     suns: ["openssl.sun", "tls_stream.sun", "https_client.sun"]
     moons: ["stdlib.moon"]
-    archives: ["$OPENSSL_LIBS/libssl.a", "$OPENSSL_LIBS/libcrypto.a"]
+    target: {
+        linux: {
+            archives: ["$OPENSSL_LIBS_LINUX/libssl.a", "$OPENSSL_LIBS_LINUX/libcrypto.a"]
+        }
+        macos: {
+            archives: ["$OPENSSL_LIBS_MACOS/libssl.a", "$OPENSSL_LIBS_MACOS/libcrypto.a"]
+        }
+    }
 }
 ```
 

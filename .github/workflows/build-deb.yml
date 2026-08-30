@@ -66,14 +66,19 @@ jobs:
         with:
           files: dist/*
           body: |
-            The `.deb` installs the compiler and both bundles. The `.moon`
-            files are the same bundles on their own, for dropping next to an
-            existing compiler; each is named for the target it was built for.
-            Install one under its canonical name in a bundle search directory:
+            The `.deb` and the `.pkg` each install the compiler and both
+            bundles. The `.moon` files are the same bundles on their own, for
+            dropping next to an existing compiler; each is named for the
+            target it was built for. Install one under its canonical name in
+            a bundle search directory:
 
             ```bash
+            # Linux
             mv stdlib-x86_64-linux-gnu.moon /usr/lib/sun/stdlib.moon
             mv tls-x86_64-linux-gnu.moon    /usr/lib/sun/tls.moon
+            # macOS
+            mv stdlib-arm64-apple-darwin.moon /usr/local/lib/sun/stdlib.moon
+            mv tls-arm64-apple-darwin.moon    /usr/local/lib/sun/tls.moon
             ```
 
             A bundle built for another architecture is rejected at link time,
@@ -101,14 +106,19 @@ jobs:
 
             Commit: ${{ github.sha }}
 
-            The `.deb` installs the compiler and both bundles. The `.moon`
-            files are the same bundles on their own, for dropping next to an
-            existing compiler; each is named for the target it was built for.
-            Install one under its canonical name in a bundle search directory:
+            The `.deb` and the `.pkg` each install the compiler and both
+            bundles. The `.moon` files are the same bundles on their own, for
+            dropping next to an existing compiler; each is named for the
+            target it was built for. Install one under its canonical name in
+            a bundle search directory:
 
             ```bash
+            # Linux
             mv stdlib-x86_64-linux-gnu.moon /usr/lib/sun/stdlib.moon
             mv tls-x86_64-linux-gnu.moon    /usr/lib/sun/tls.moon
+            # macOS
+            mv stdlib-arm64-apple-darwin.moon /usr/local/lib/sun/stdlib.moon
+            mv tls-arm64-apple-darwin.moon    /usr/local/lib/sun/tls.moon
             ```
 
             A bundle built for another architecture is rejected at link time,
@@ -203,9 +213,10 @@ jobs:
   # The deb's macOS counterpart: an unsigned .pkg installing to /usr/local
   # (sudo installer -pkg works without Gatekeeper friction). Like the deb
   # depends on apt's libllvm20, the binary links Homebrew's LLVM, so
-  # `brew install llvm@20` is the package's one runtime dependency. Only the
-  # .pkg is uploaded from here — the standalone .moon assets (including the
-  # Darwin stdlib bundle) come from the deb job's cross builds.
+  # `brew install llvm@20` is the package's one runtime dependency. This job
+  # uploads the .pkg and the standalone tls-arm64-apple-darwin.moon (tls
+  # needs Darwin OpenSSL archives, which only this runner can build); the
+  # Darwin stdlib bundle still comes from the deb job's cross builds.
   build-pkg-macos:
     runs-on: macos-latest
 
@@ -227,6 +238,16 @@ jobs:
           key: pkg-macos
           max-size: 2G
 
+      - name: Cache static OpenSSL archives
+        uses: actions/cache@v4
+        with:
+          path: third_party/openssl
+          key: openssl-macos-${{ hashFiles('scripts/build-openssl-macos.sh') }}
+
+      - name: Build static OpenSSL
+        # tls.moon embeds these. The script exits fast on a cache hit.
+        run: ./scripts/build-openssl-macos.sh
+
       - name: Build macOS package
         run: |
           chmod +x ./scripts/build-pkg-macos.sh
@@ -237,7 +258,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sun-pkg-macos-${{ github.sha }}
-          path: dist/*.pkg
+          path: |
+            dist/*.pkg
+            dist/*.moon
           retention-days: 30
 
       # No body on either upload: the deb job owns the release notes, and
@@ -246,7 +269,9 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.pkg
+          files: |
+            dist/*.pkg
+            dist/*.moon
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -257,7 +282,9 @@ jobs:
           tag_name: dev
           name: Development Build
           prerelease: true
-          files: dist/*.pkg
+          files: |
+            dist/*.pkg
+            dist/*.moon
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -301,3 +328,31 @@ jobs:
           # AOT: links through Apple's cc with -lc++.
           sun -c -o test_aot test.sun
           ./test_aot
+          # TLS: tls.moon carries its own static OpenSSL, so this needs no
+          # libssl installed and no linker flags. A real fetch also proves
+          # certificate verification finds the CA bundle stock macOS ships
+          # at /etc/ssl/cert.pem.
+          cat > tls_test.sun << 'PROGRAM'
+          using sun;
+          using tls;
+          function main() i32 {
+              var alloc = make_heap_allocator();
+              var client = HttpsClient(alloc);
+              var host = String(alloc, "example.com");
+              try {
+                  var resp = client.get(host, "/");
+                  println(resp.status);
+                  if (resp.status == 200) { return 0; }
+                  return 1;
+              } catch (e: IError) {
+                  var msg = e.message();
+                  println(msg);
+                  return 2;
+              }
+          }
+          manifest {
+              moons: ["stdlib.moon", "tls.moon"]
+          }
+          PROGRAM
+          sun -c -o tls_aot tls_test.sun
+          ./tls_aot

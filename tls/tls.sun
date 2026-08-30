@@ -10,5 +10,12 @@ manifest {
         "https_client.sun"
     ]
     moons: ["stdlib.moon"]
-    archives: ["$OPENSSL_LIBS/libssl.a", "$OPENSSL_LIBS/libcrypto.a"]
+    target: {
+        linux: {
+            archives: ["$OPENSSL_LIBS_LINUX/libssl.a", "$OPENSSL_LIBS_LINUX/libcrypto.a"]
+        }
+        macos: {
+            archives: ["$OPENSSL_LIBS_MACOS/libssl.a", "$OPENSSL_LIBS_MACOS/libcrypto.a"]
+        }
+    }
 }

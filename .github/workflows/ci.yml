@@ -93,9 +93,7 @@ jobs:
 
   # Native macOS (Apple Silicon): builds the compiler with Homebrew LLVM and
   # runs the suite and examples on real hardware — the things the Linux job's
-  # cross-compilation tests cannot execute. tls.moon is skipped here (its
-  # OpenSSL archives are Linux-only for now; see the roadmap's cross-target
-  # archives item).
+  # cross-compilation tests cannot execute.
   build-and-test-macos:
     runs-on: macos-latest
 
@@ -115,6 +113,18 @@ jobs:
           key: ci-macos-clang20
           max-size: 2G
 
+      - name: Cache static OpenSSL archives
+        uses: actions/cache@v4
+        with:
+          path: third_party/openssl
+          key: openssl-macos-${{ hashFiles('scripts/build-openssl-macos.sh') }}
+
+      - name: Build static OpenSSL
+        # tls.moon embeds these; without them CMake skips the bundle and the
+        # TLS tests and the https_client example have nothing to link against.
+        # The script exits fast when the cache already holds the archives.
+        run: ./scripts/build-openssl-macos.sh
+
       - name: Configure
         run: |
           cmake -B build -G Ninja \
@@ -126,6 +136,11 @@ jobs:
 
       - name: Build
         run: cmake --build build -j4
+
+      - name: Check tls.moon was built
+        # The example skips itself when the bundle is missing; without this
+        # a failed OpenSSL build would look like a pass.
+        run: test -f build/tls.moon
 
       - name: Test
         run: |
