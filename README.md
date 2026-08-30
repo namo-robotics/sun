@@ -5,11 +5,11 @@
 <h1 align="center">The Sun Programming Language</h1>
 
 <p align="center">
-  <a href="https://github.com/namo-robotics/sun/actions/workflows/ci.yml">
-    <img src="https://github.com/namo-robotics/sun/actions/workflows/ci.yml/badge.svg" alt="CI">
+  <a href="https://github.com/namo-robotics/sun/actions/workflows/build-and-test.yml">
+    <img src="https://github.com/namo-robotics/sun/actions/workflows/build-and-test.yml/badge.svg" alt="Build&Test">
   </a>
-  <a href="https://github.com/namo-robotics/sun/actions/workflows/build-deb.yml">
-    <img src="https://github.com/namo-robotics/sun/actions/workflows/build-deb.yml/badge.svg" alt="Debian Package">
+  <a href="https://github.com/namo-robotics/sun/actions/workflows/packages.yml">
+    <img src="https://github.com/namo-robotics/sun/actions/workflows/packages.yml/badge.svg" alt="Packages">
   </a>
   <a href="https://github.com/namo-robotics/sun/actions/workflows/docs.yml">
     <img src="https://github.com/namo-robotics/sun/actions/workflows/docs.yml/badge.svg" alt="Docs">
