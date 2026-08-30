@@ -148,8 +148,10 @@ public module std {
       if (this.box != null) {
         var b: ref SharedBox<T> = unsafe { _to_ref<SharedBox<T>>(this.box); };
         if (b.release() == 1) {
-          _deinit<SharedBox<T>>(this.box);
-          unsafe { _free(this.box); };
+          unsafe {
+            _deinit<SharedBox<T>>(this.box);
+            _free(this.box);
+          };
         }
         this.box = null;
       }

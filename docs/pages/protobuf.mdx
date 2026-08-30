@@ -109,7 +109,7 @@ Malformed input (truncated buffers, over-long varints, bad lengths) throws a
 ## Ownership
 
 Message classes follow the language's ownership rules — see
-[Ownership](/ownership). Fields hold their values, `Vec`/`Map`/`String` fields
+[Memory Safety](/memory-safety). Fields hold their values, `Vec`/`Map`/`String` fields
 own their contents, and assigning a compound field moves the source. Match
 bindings over `optional` and `oneof` payloads borrow in place:
 

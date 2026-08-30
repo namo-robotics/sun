@@ -63,6 +63,7 @@ enum class Intrinsic {
   Malloc,     // _malloc(size) -> raw_ptr<i8>
   Free,       // _free(ptr) -> void
   Memcpy,     // _memcpy(dst, src, len) -> void
+  Memset,     // _memset(dst, value, len) -> void
   PtrOffset,  // _ptr_offset(ptr, byte_offset) -> raw_ptr
 
   // =========================================================================
@@ -165,6 +166,7 @@ inline Intrinsic getIntrinsic(const std::string& name) {
   if (name == "_malloc") return Intrinsic::Malloc;
   if (name == "_free") return Intrinsic::Free;
   if (name == "_memcpy") return Intrinsic::Memcpy;
+  if (name == "_memset") return Intrinsic::Memset;
   if (name == "_ptr_offset") return Intrinsic::PtrOffset;
 
   // -------------------------------------------------------------------------
@@ -260,6 +262,82 @@ inline bool isGenericIntrinsic(Intrinsic i) {
 // Check if a name is any intrinsic
 inline bool isIntrinsic(const std::string& name) {
   return getIntrinsic(name) != Intrinsic::None;
+}
+
+// Does this intrinsic have to be written inside an `unsafe { }` block?
+//
+// The line is whether it reads or writes memory nothing has checked: through a
+// raw pointer, or across the boundary into libc and the kernel. Intrinsics that
+// only compute — a size, a type check, an address, a numeric conversion — are
+// safe, and so are the print intrinsics, which the standard library treats as
+// ordinary output. Semantic analysis is the one place this is applied, for
+// generic and non-generic intrinsics alike.
+inline bool requiresUnsafeBlock(Intrinsic i) {
+  switch (i) {
+    // Reads and writes through a raw pointer
+    case Intrinsic::Load:
+    case Intrinsic::Store:
+    case Intrinsic::ToRef:
+    case Intrinsic::Init:
+    case Intrinsic::Deinit:
+    case Intrinsic::LoadI64:
+    case Intrinsic::StoreI64:
+    case Intrinsic::Memcpy:
+    case Intrinsic::Memset:
+    case Intrinsic::PtrOffset:
+    // Untracked heap memory
+    case Intrinsic::Malloc:
+    case Intrinsic::Free:
+    // Cross-thread reads and writes the borrow checker cannot see
+    case Intrinsic::Spawn:
+    case Intrinsic::ThreadJoin:
+    case Intrinsic::ThreadJoinDrop:
+    case Intrinsic::AtomicCmpxchgI32:
+    case Intrinsic::AtomicStoreI32:
+    case Intrinsic::AtomicLoadI32:
+    case Intrinsic::AtomicFetchAddI32:
+    case Intrinsic::AtomicFetchSubI32:
+    case Intrinsic::FutexWait:
+    case Intrinsic::FutexWake:
+    // libc and the kernel, with their contracts and none of Sun's
+    case Intrinsic::FileOpen:
+    case Intrinsic::FileClose:
+    case Intrinsic::FileWrite:
+    case Intrinsic::FileRead:
+    case Intrinsic::Lseek:
+    case Intrinsic::Fstat:
+    case Intrinsic::Fsync:
+    case Intrinsic::Ftruncate:
+    case Intrinsic::Unlink:
+    case Intrinsic::Rename:
+    case Intrinsic::Mkdir:
+    case Intrinsic::Rmdir:
+    case Intrinsic::Write:
+    case Intrinsic::Read:
+    case Intrinsic::Socket:
+    case Intrinsic::Bind:
+    case Intrinsic::Listen:
+    case Intrinsic::Accept:
+    case Intrinsic::Connect:
+    case Intrinsic::Send:
+    case Intrinsic::Recv:
+    case Intrinsic::Shutdown:
+    case Intrinsic::SetSockOpt:
+    case Intrinsic::GetSockOpt:
+      return true;
+    default:
+      return false;
+  }
+}
+
+inline bool requiresUnsafeBlock(const std::string& name) {
+  // The IPv4 shorthands dispatch by name rather than through the enum, so name
+  // them here; they reach the same libc calls as __bind, __connect and __accept.
+  if (name == "__bind_ipv4" || name == "__connect_ipv4" ||
+      name == "__accept_fd") {
+    return true;
+  }
+  return requiresUnsafeBlock(getIntrinsic(name));
 }
 
 }  // namespace sun

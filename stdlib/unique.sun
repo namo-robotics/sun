@@ -33,8 +33,10 @@ public module std {
     // Free the pointed-to memory, unless the pointer is already null.
     deinit() {
       if (this.data != null) {
-        _deinit<T>(this.data);
-        unsafe { _free(this.data); };
+        unsafe {
+          _deinit<T>(this.data);
+          _free(this.data);
+        };
         this.data = null;
       }
     }

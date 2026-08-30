@@ -366,6 +366,15 @@ class SemanticAnalyzer {
                               const Position &loc) const;
 
   /**
+   * The same rule for intrinsics: those that read or write unchecked memory
+   * are gated on `unsafe`. `sun::requiresUnsafeBlock` decides which, and this
+   * is where it is applied — for generic and non-generic intrinsics alike.
+   * Throws if `name` is one of them and the call site is not inside a block.
+   */
+  void checkRequiresUnsafeBlock(const std::string &name,
+                                   const Position &loc) const;
+
+  /**
    * Check `mod.name = value`: the target must be a visible, assignable
    * module-level variable, and the value must fit its type. Also records the
    * global's symbol name on the node for codegen.

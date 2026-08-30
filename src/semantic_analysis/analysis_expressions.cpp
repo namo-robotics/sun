@@ -254,6 +254,7 @@ void SemanticAnalyzer::analyzeGenericCallExpr(GenericCallAST& genericCall) {
   auto* genFuncInfo = ctx_.lookupGenericFunction(lookupName);
 
   if (isIntrinsicCall) {
+    checkRequiresUnsafeBlock(funcName, genericCall.getLocation());
     analyzeIntrinsicCall(genericCall);
   } else if (genericClassInfo) {
     analyzeGenericClassConstruction(genericCall);

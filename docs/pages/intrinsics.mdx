@@ -9,7 +9,7 @@ Compiler intrinsics are low-level functions built directly into the Sun compiler
 </Callout>
 
 Most of them belong inside an `unsafe` block, and the compiler rejects several
-of them outside one. [Unsafe Blocks](/ownership#unsafe-blocks) has the rules and
+of them outside one. [Unsafe Blocks](/memory-safety#unsafe-blocks) has the rules and
 the semicolon placement the two forms need.
 
 ## Generic Intrinsics
@@ -316,7 +316,7 @@ _memset(_ptr_offset(newData, this.len * _sizeof<T>()), 0, added);
 ```
 
 These move bytes, not values. Copying a compound value this way would leave two
-owners of one buffer — see [Ownership](/ownership).
+owners of one buffer — see [Memory Safety](/memory-safety).
 
 ### `_ptr_offset(ptr, byte_offset)`
 
