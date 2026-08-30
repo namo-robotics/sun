@@ -1,7 +1,8 @@
 {
     "sunPath": ["build"],
     "pathVariables": {
-        "OPENSSL_LIBS": "third_party/openssl/x86_64-linux-musl"
+        "OPENSSL_LIBS_LINUX": "third_party/openssl/x86_64-linux-musl",
+        "OPENSSL_LIBS_MACOS": "third_party/openssl/arm64-apple-darwin"
     },
     "root": true
 }

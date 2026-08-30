@@ -7,7 +7,7 @@ DIR=$(dirname "$0")
 cd "$DIR"
 
 if [ ! -f ../../build/tls.moon ]; then
-  echo "SKIP: ../../build/tls.moon not built — run ./scripts/fetch-openssl.sh"
+  echo "SKIP: ../../build/tls.moon not built — run ./scripts/fetch-openssl.sh (Linux) or ./scripts/build-openssl-macos.sh (macOS)"
   exit 0
 fi
 

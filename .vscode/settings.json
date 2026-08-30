@@ -92,4 +92,5 @@
     // Allow gutter breakpoints in .sun files (cppdbg only whitelists
     // C-family languages by default)
     "debug.allowBreakpointsEverywhere": true,
+    "chat.utilitySmallModel": "claude-opus-5"
 }

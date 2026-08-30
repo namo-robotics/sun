@@ -109,10 +109,13 @@ need no linker flags and no OpenSSL on the target. Remaining work:
 - [ ] Redirect following and connection reuse in `HttpsClient`
 - [ ] Fetch remote `.moon` bundles with the native client instead of shelling
       out to `curl`, dropping the package's `curl` dependency
-- [ ] Cross-target archives: `tls.moon` carries x86-64 musl archives, so a
-      cross build (aarch64 Linux and macOS alike) needs per-target OpenSSL
-      archives — the manifest's `target:` block can now select them, what's
-      missing is fetching/building the archives per target
+- [ ] Cross-target archives: `tls.moon` is built natively per platform —
+      x86-64 musl archives on Linux (`scripts/fetch-openssl.sh`), arm64
+      Darwin archives on macOS (`scripts/build-openssl-macos.sh`), each
+      selected by the manifest's `target:` block. What's missing is archives
+      for *cross* builds (an aarch64 Linux target, or a Darwin `tls.moon`
+      built from a Linux host) — the `target:` block also selects per OS
+      only, not per architecture
 - [ ] Revisit the backend behind the same Sun API — a smaller vendored TLS
       library, or a pure-Sun implementation, without changing user code
 
