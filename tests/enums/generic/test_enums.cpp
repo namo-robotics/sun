@@ -221,21 +221,30 @@ TEST(Enums_Generic, SpecializationExhaustivenessEnforced) {
                std::exception);
 }
 
-TEST(Enums_Generic, DeinitPayloadTypeArgIsError) {
-  EXPECT_THROW(executeString(R"(
+// A payload enum owns its payload: constructing a variant moves the class in
+// and invalidates the source, so the value is released once, by the enum.
+TEST(Enums_Generic, OwningPayloadIsDroppedExactlyOnce) {
+  auto value = executeString(R"(
+    var drops: i32 = 0;
+
     class Owner {
       var p: raw_ptr<i8>;
-      init() { this.p = unsafe { _malloc(8); }; }
-      deinit() { unsafe { _free(this.p); }; }
+      init() { var n: i64 = 8; this.p = unsafe { _malloc(n); }; }
+      deinit() { unsafe { _free(this.p); }; drops = drops + 1; }
     }
     enum Option<T> { Some(T), None }
-    function main() i32 {
+
+    function consume() void {
       var o = Owner();
       var x = Option.Some(o);
-      return 0;
     }
-  )"),
-               std::exception);
+
+    function main() i32 {
+      consume();
+      return drops;
+    }
+  )");
+  EXPECT_EQ(value, 1);
 }
 
 // ============================================================================

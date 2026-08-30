@@ -18,7 +18,11 @@ manifest {
 import { Callout } from 'nextra/components'
 
 <Callout type="info">
-  Set `SUN_PATH` to the directory containing `stdlib.moon`. When building from source, this is the `build/` directory.
+  An installed compiler finds `stdlib.moon` on its own — the Homebrew and Debian
+  packages put it where the compiler already looks. `SUN_PATH` is only needed
+  when you built from source, where it points at the `build/` directory:
+  `export SUN_PATH=/path/to/sun/build`. See
+  [Path Resolution](/modules#path-resolution) for every place that is searched.
 </Callout>
 
 ## HeapAllocator

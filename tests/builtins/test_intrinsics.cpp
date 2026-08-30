@@ -1013,3 +1013,36 @@ TEST(Builtins_BitcastIntrinsic, a_class_target_is_an_error) {
   )"),
                SunError);
 }
+
+// ============================================================================
+// _malloc Intrinsic Tests
+// ============================================================================
+
+// malloc takes a 64-bit size, but an untyped integer literal is i32, so the
+// argument has to be widened before the call.
+TEST(Builtins_MallocIntrinsic, integer_literal_size) {
+  auto value = executeString(R"(
+    function main() i32 {
+        var mem = unsafe { _malloc(1024); };
+        unsafe { _store_i64(mem, 0, 21); };
+        var v: i64 = unsafe { _load_i64(mem, 0); };
+        unsafe { _free(mem); };
+        return _convert<i32>(v);
+    }
+  )");
+  EXPECT_EQ(value, 21);
+}
+
+TEST(Builtins_MallocIntrinsic, i64_variable_size) {
+  auto value = executeString(R"(
+    function main() i32 {
+        var size: i64 = 16;
+        var mem = unsafe { _malloc(size); };
+        unsafe { _store_i64(mem, 0, 22); };
+        var v: i64 = unsafe { _load_i64(mem, 0); };
+        unsafe { _free(mem); };
+        return _convert<i32>(v);
+    }
+  )");
+  EXPECT_EQ(value, 22);
+}

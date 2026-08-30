@@ -16,7 +16,9 @@ function main() i32 {
 <Callout type="warning">
   Calling an extern requires an `unsafe` block. C code is outside everything the
   type system and borrow checker guarantee, so the boundary is marked the same
-  way the equivalent intrinsics (`_malloc`, `_free`) already are.
+  way the equivalent intrinsics (`_malloc`, `_free`) already are. See
+  [Unsafe Blocks](/ownership#unsafe-blocks) for the two forms the block takes
+  and where the semicolons go.
 </Callout>
 
 ## Declaring

@@ -205,8 +205,53 @@ _print_bytes(bytes, n);
 
 Passing a `static_ptr<T>` where a `raw_ptr<T>` is expected narrows it to `raw()` automatically, so a string literal can be handed straight to a C function (see [C FFI](/c-ffi#strings)).
 
+## Reference Types
+
+A reference borrows a value instead of owning it. Sun never implicitly copies a
+class, payload enum or interface, so a reference is how one of those is read or
+modified in place — as a parameter, a local, or a return type.
+
+### `ref T` - Mutable Borrow
+
+Exclusive access to an existing value. Writing through the reference writes the
+original. Only one `ref` to a value may be alive at a time.
+
+```sun
+function increment(x: ref i32) void {
+    x = x + 1;
+}
+
+function main() i32 {
+    var count: i32 = 0;
+    increment(count);          // count is now 1
+    ref r = count;             // statement form, no annotation needed
+    var s: ref i32 = count;    // ❌ ERROR: count is already borrowed
+    return r;
+}
+```
+
+### `const ref T` - Shared Borrow
+
+Read-only access. Several `const ref`s to one value may be alive at once, and a
+mutable `ref` cannot coexist with any of them. Through a `const ref` nothing can
+be assigned and only `const` methods can be called.
+
+```sun
+function total(v: const ref Vec<i32>) i64 {
+    return v.size();     // ✓ size() is a const method
+    // v.push(1);        // ❌ ERROR: cannot call non-const method 'push'
+}
+```
+
+`const` always leads: it is `const ref T`, never `ref const T`. A `ref T` may be
+passed or rebound as `const ref T`, never the other way round.
+
 <Callout type="info">
-  Classes in Sun are value types. Use `ref` to pass references to functions without copying.
+  A reference is a borrow, not a pointer: it always names live storage, it
+  cannot be null, and it cannot be stored past the lifetime of what it borrows.
+  Where a by-value `T` is expected and `T` is compound, a `ref T` is rejected —
+  reading the value out of the borrow would leave two owners of one buffer.
+  [Memory Safety](/ownership#references) has the full rules.
 </Callout>
 
 ## Builtin Interfaces

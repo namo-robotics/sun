@@ -64,6 +64,13 @@ Value* IntrinsicsGenerator::codegenMallocIntrinsic(const CallExprAST& expr) {
   // Get or declare libc malloc: void* malloc(size_t)
   auto* i8PtrTy = llvm::PointerType::getUnqual(ctx.getContext());
   auto* i64Ty = llvm::Type::getInt64Ty(ctx.getContext());
+
+  // malloc takes a 64-bit size, so widen a narrower argument. An untyped
+  // integer literal such as `_malloc(1024)` arrives as i32.
+  if (!size->getType()->isIntegerTy(64)) {
+    size = ctx.builder->CreateSExtOrTrunc(size, i64Ty, "malloc.size");
+  }
+
   llvm::FunctionType* mallocType =
       llvm::FunctionType::get(i8PtrTy, {i64Ty}, false);
   llvm::FunctionCallee mallocFunc =

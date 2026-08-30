@@ -1,6 +1,6 @@
-# Ownership and Borrowing
+# Memory Safety
 
-Sun implements a **simplified Rust-style ownership system** that provides memory safety guarantees without requiring explicit lifetime annotations.
+Sun implements a **simplified Rust-style ownership system** that provides memory safety guarantees without requiring explicit lifetime annotations. This page covers ownership and moves, references and borrowing, the rules the borrow checker enforces, and the `unsafe` block that steps outside them.
 
 import { Callout } from 'nextra/components'
 
@@ -717,6 +717,64 @@ function main() i32 {
 <Callout type="info">
   When you pass a variable to a function expecting a `ref` parameter, the borrow lasts only for the duration of the function call.
 </Callout>
+
+---
+
+## Unsafe Blocks
+
+A few operations sit outside what any of this can prove — calling into C,
+reading through a raw pointer, touching a word atomically. Sun does not forbid
+them; it asks you to write them inside an `unsafe` block, so the places where
+the compiler stopped proving things are visible in the source.
+
+An `unsafe` block is an **expression**, so it appears in both of the places an
+expression can, and **every statement inside the braces keeps its own
+semicolon**. This is the part that is easy to get wrong:
+
+```sun
+unsafe { _free(mem); };            // statement: ends the call, then the statement
+var mem = unsafe { _malloc(n); };  // value: the block is the last expression
+var mem = unsafe { _malloc(n) };   // ❌ ERROR: expected ';' after expression statement
+```
+
+A block may hold several statements; the last one is its value.
+
+The compiler rejects these outside a block: calling an `extern "C"` function,
+reading a field through a `raw_ptr<T>` where `T` is a class, `_malloc`, `_free`,
+`_load_i64`, `_store_i64`, the `_atomic_*` and `_futex_*` intrinsics, and the
+`__`-prefixed syscall intrinsics. The other raw-memory intrinsics — `_load<T>`,
+`_store<T>`, `_to_ref<T>`, `_memcpy`, `_ptr_offset` — are just as unchecked, and
+the standard library writes every one of them inside `unsafe { }` too. See
+[Compiler Intrinsics](/intrinsics) and [C FFI](/c-ffi).
+
+### What it does not turn off
+
+`unsafe` is a narrow permission, not a mode. **The borrow checker still runs**,
+values still move rather than copy, and type checking, visibility and constness
+are unchanged:
+
+```sun
+var b = Box(1);
+unsafe {
+    var r: ref Box = b;
+    var r2: ref Box = b;   // ❌ ERROR: cannot borrow 'b' as mutable
+};                         //    because it is already borrowed
+```
+
+It is also lexical: calling a safe Sun function from inside a block does not
+make that function's body unsafe — which is the point of a safe wrapper. A
+lambda body is checked on its own, so the block goes inside the lambda:
+
+```sun
+var g = lambda(x: i32) i32 { return unsafe { c_abs(x); }; };
+```
+
+The useful pattern is to keep `unsafe` small and behind a safe signature, so
+callers get a checked API and there is one place to audit. That is how the
+standard library is built: `Vec<T>`, `String` and `Unique<T>` are safe types
+whose bodies hold the raw loads and stores. A safe wrapper is a claim, and the
+claim is yours — the compiler checks that the block is there, not that what is
+inside it is correct.
 
 ---
 

@@ -8,6 +8,10 @@ Compiler intrinsics are low-level functions built directly into the Sun compiler
   Intrinsics are **unsafe** operations intended for implementing standard library primitives like `Vec<T>` and `Map<K,V>`. Most user code should use the standard library instead.
 </Callout>
 
+Most of them belong inside an `unsafe` block, and the compiler rejects several
+of them outside one. [Unsafe Blocks](/ownership#unsafe-blocks) has the rules and
+the semicolon placement the two forms need.
+
 ## Generic Intrinsics
 
 These intrinsics require a type parameter `<T>`.
@@ -30,7 +34,7 @@ Constructs an instance of type `T` at the memory location pointed to by `ptr`, f
 
 ```sun
 // Allocate raw memory for a Point
-var mem = _malloc(_sizeof<Point>());
+var mem = unsafe { _malloc(_sizeof<Point>()); };
 
 // Construct Point at that location
 _init<Point>(mem, 3.0, 4.0);
@@ -41,6 +45,21 @@ _init<Point>(mem, 3.0, 4.0);
 <Callout type="info">
   For non-class types, `_init` is a no-op since primitives don't have constructors.
 </Callout>
+
+### `_deinit<T>(ptr)`
+
+The counterpart of `_init<T>`: runs `T`'s `deinit` on the value at `ptr`, then
+drops any of its fields that own something. For a payload enum it drops through
+the active variant. For anything that owns nothing it is a no-op, so a
+container can call it on every element without asking what `T` is.
+
+```sun
+// Release element i, then reuse its slot
+_deinit<T>(_ptr_as_raw<T>(_ptr_offset(this.data, i * _sizeof<T>())));
+```
+
+It releases the value without freeing the storage, which is what a container
+that manages its own buffer needs.
 
 ### `_params_of<T>`
 
@@ -264,10 +283,10 @@ These intrinsics operate on specific, fixed types.
 
 ### `_malloc(size)`
 
-Allocates `size` bytes of heap memory and returns a `raw_ptr<i8>`. This is a direct wrapper around the C library's `malloc`.
+Allocates `size` bytes of heap memory and returns a `raw_ptr<i8>`. This is a direct wrapper around the C library's `malloc`. Only usable inside an `unsafe` block.
 
 ```sun
-var mem = _malloc(1024);  // Allocate 1024 bytes
+var mem = unsafe { _malloc(1024); };  // Allocate 1024 bytes
 ```
 
 <Callout type="error">
@@ -276,12 +295,37 @@ var mem = _malloc(1024);  // Allocate 1024 bytes
 
 ### `_free(ptr)`
 
-Frees memory previously allocated with `_malloc`. Direct wrapper around C's `free`.
+Frees memory previously allocated with `_malloc`. Direct wrapper around C's `free`. Only usable inside an `unsafe` block.
 
 ```sun
-var mem = _malloc(1024);
+var mem = unsafe { _malloc(1024); };
 // ... use memory ...
-_free(mem);
+unsafe { _free(mem); };
+```
+
+### `_memcpy(dst, src, len)` and `_memset(dst, value, len)`
+
+Copy `len` bytes from `src` to `dst`, and set `len` bytes at `dst` to a single
+byte value. Both take raw pointers and a byte count, and both lower to LLVM's
+own memory intrinsics rather than a libc call. The regions must not overlap.
+
+```sun
+// Grow a buffer: move the old bytes across, then zero the new tail
+_memcpy(newData, oldData, this.len * _sizeof<T>());
+_memset(_ptr_offset(newData, this.len * _sizeof<T>()), 0, added);
+```
+
+These move bytes, not values. Copying a compound value this way would leave two
+owners of one buffer — see [Ownership](/ownership).
+
+### `_ptr_offset(ptr, byte_offset)`
+
+Advances a pointer by a number of **bytes** and returns the result. Unlike
+`_load<T>`/`_store<T>`, which index in elements, this is plain byte arithmetic,
+so an element offset is written out as `index * _sizeof<T>()`.
+
+```sun
+var slot = _ptr_offset(this.data, index * _sizeof<T>());
 ```
 
 ### `_address_of<T>(ref T)`
@@ -301,9 +345,10 @@ var ptr = _address_of<i32>(x);  // raw_ptr<i32> to x's memory
 
 The reverse of `_address_of`: turns a `raw_ptr<T>` into a `ref T` so the
 pointed-to value can be read, borrowed or assigned through like any reference.
-Must be used inside `unsafe { }`. The borrow checker gives the reference the
-lifetime of the pointer, so the pointer must stay valid for as long as the
-reference is used.
+Nothing checks that the pointer is non-null or still points at a live `T`, so
+write it inside `unsafe { }` — the standard library does so at every use. The
+borrow checker gives the reference the lifetime of the pointer, so the pointer
+must stay valid for as long as the reference is used.
 
 ```sun
 var x: i32 = 1;
@@ -314,18 +359,18 @@ r = 2;   // x is now 2
 
 ### `_load_i64(ptr, index)`
 
-Loads an `i64` from `ptr` at element offset `index`. A non-generic version of `_load<i64>`.
+Loads an `i64` from `ptr` at element offset `index`. A non-generic version of `_load<i64>`. Only usable inside an `unsafe` block.
 
 ```sun
-var value = _load_i64(data, 0);  // Load first i64
+var value = unsafe { _load_i64(data, 0); };  // Load first i64
 ```
 
 ### `_store_i64(ptr, index, value)`
 
-Stores an `i64` value at `ptr[index]`. A non-generic version of `_store<i64>`.
+Stores an `i64` value at `ptr[index]`. A non-generic version of `_store<i64>`. Only usable inside an `unsafe` block.
 
 ```sun
-_store_i64(data, 0, 42);  // Store 42 at first position
+unsafe { _store_i64(data, 0, 42); };  // Store 42 at first position
 ```
 
 ## Print Intrinsics
@@ -347,6 +392,16 @@ Prints an `f64` value to stdout (no newline).
 ### `_print_newline()`
 
 Prints a newline character to stdout.
+
+### `_print_char(c)`
+
+Prints a single `char` to stdout, encoded as UTF-8. A `char` holds a Unicode
+scalar value, so one call may write between one and four bytes (see
+[Characters and Bytes](/builtin-types#characters-and-bytes)).
+
+```sun
+_print_char('é');   // writes two bytes
+```
 
 ### `_print_bytes(ptr, len)`
 
@@ -486,6 +541,85 @@ _futex_wake(_address_of<i32>(state));  // Wake one waiter
   Atomic and futex intrinsics are low-level primitives for implementing synchronization. Use `Mutex` from the standard library instead.
 </Callout>
 
+## File Intrinsics
+
+Thin wrappers over the C library's file calls, spelled with two leading
+underscores. They exist so `std.io` can be written in Sun without an `extern`
+declaration per platform; user code should use `std.io` instead.
+
+Every one of these needs an `unsafe` block. They keep libc's conventions: file
+descriptors are `i32`, and a failure comes back as a negative value rather than
+a thrown error.
+
+| Intrinsic | Returns | Description |
+|-----------|---------|-------------|
+| `__file_open(path: static_ptr<u8>, flags: i32)` | `i32` | Open `path`, returning a file descriptor |
+| `__file_close(fd: i32)` | `i32` | Close a descriptor |
+| `__file_write(fd: i32, data: static_ptr<u8>)` | `i32` | Write a string to `fd` |
+| `__file_read(fd: i32, count: i32)` | `raw_ptr<i8>` | Read `count` bytes into a freshly allocated buffer |
+| `__write(fd: i32, buf: raw_ptr<u8>, len: i64)` | `i64` | Write `len` bytes from `buf` |
+| `__read(fd: i32, buf: raw_ptr<u8>, len: i64)` | `i64` | Read up to `len` bytes into `buf` |
+| `__lseek(fd: i32, offset: i64, whence: i32)` | `i64` | Move the file position; `whence` is 0 (set), 1 (current) or 2 (end) |
+| `__fstat(fd: i32, stat_buf: raw_ptr<i8>)` | `i32` | Fill a libc `struct stat` at `stat_buf` |
+| `__fsync(fd: i32)` | `i32` | Flush written data to the device |
+| `__ftruncate(fd: i32, length: i64)` | `i32` | Truncate or extend the file to `length` |
+| `__unlink(path: static_ptr<u8>)` | `i32` | Remove a file |
+| `__rename(old_path, new_path: static_ptr<u8>)` | `i32` | Rename or move a file |
+| `__mkdir(path: static_ptr<u8>, mode: i32)` | `i32` | Create a directory with the given permission bits |
+| `__rmdir(path: static_ptr<u8>)` | `i32` | Remove an empty directory |
+
+```sun
+// Read a whole descriptor into a caller-owned buffer
+var got: i64 = unsafe { __read(fd, buffer, capacity); };
+if (got < 0) { /* -errno */ }
+```
+
+`__file_read` allocates the buffer it returns, so the caller frees it with
+`_free`. `__read` writes into a buffer you already own, which is what
+`std.io` uses.
+
+## Socket Intrinsics
+
+The same arrangement for the C library's socket calls, used by `std.net`. An
+address is a pointer to a libc `sockaddr` — Sun has no struct for it, so it is
+passed as `raw_ptr<u8>` with its length. A failure is a negative errno.
+
+| Intrinsic | Returns | Description |
+|-----------|---------|-------------|
+| `__socket(domain: i32, type: i32, protocol: i32)` | `i32` | Create a socket. `domain` is 1 (Unix), 2 (IPv4) or 10 (IPv6); `type` is 1 (stream) or 2 (datagram); `protocol` is usually 0 |
+| `__bind(fd: i32, addr: raw_ptr<u8>, addrlen: i32)` | `i32` | Bind to a local address |
+| `__listen(fd: i32, backlog: i32)` | `i32` | Start listening, with room for `backlog` pending connections |
+| `__accept(fd: i32, addr: raw_ptr<u8>, addrlen: i32)` | `i32` | Accept a connection, returning a new descriptor |
+| `__connect(fd: i32, addr: raw_ptr<u8>, addrlen: i32)` | `i32` | Connect to a remote address |
+| `__send(fd: i32, buf: raw_ptr<u8>, len: i64, flags: i32)` | `i64` | Send bytes, returning the count sent |
+| `__recv(fd: i32, buf: raw_ptr<u8>, len: i64, flags: i32)` | `i64` | Receive bytes, returning the count received |
+| `__shutdown(fd: i32, how: i32)` | `i32` | Half-close: 0 (read), 1 (write) or 2 (both) |
+| `__setsockopt(fd, level, optname: i32, optval: raw_ptr<u8>, optlen: i32)` | `i32` | Set a socket option — `SOL_SOCKET` is level 1, `SO_REUSEADDR` option 2 |
+| `__getsockopt(fd, level, optname: i32, optval: raw_ptr<u8>, optlen: raw_ptr<i32>)` | `i32` | Read a socket option; `optlen` is read and written |
+
+### IPv4 shorthands
+
+Building a `sockaddr_in` by hand means knowing a layout that differs between
+Linux and macOS, and getting the port into network byte order. Three intrinsics
+do that part, taking the address and port as plain integers:
+
+| Intrinsic | Returns | Description |
+|-----------|---------|-------------|
+| `__bind_ipv4(fd: i32, ip: i32, port: i32)` | `i32` | Bind to an IPv4 address |
+| `__connect_ipv4(fd: i32, ip: i32, port: i32)` | `i32` | Connect to an IPv4 address |
+| `__accept_fd(fd: i32)` | `i32` | Accept, discarding the peer's address |
+
+The compiler lays out the `sockaddr_in` for the target operating system and
+byte-swaps `port` into network order. `ip` is already in network order — 0 for
+"any address", which is what a server binds to:
+
+```sun
+var fd: i32 = unsafe { __socket(2, 1, 0); };            // AF_INET, SOCK_STREAM
+var rc: i32 = unsafe { __bind_ipv4(fd, 0, 8080); };     // 0.0.0.0:8080
+unsafe { __listen(fd, 16); };
+var client: i32 = unsafe { __accept_fd(fd); };
+```
+
 ## Usage in Standard Library
 
 The standard library uses intrinsics to implement generic containers. Here's a simplified example of how `Vec<T>` might use them:
@@ -498,26 +632,28 @@ class Vec<T> {
     alloc: HeapAllocator;
 
     method get(index: i64) T {
-        return _load<T>(this.data, index);
+        return unsafe { _load<T>(this.data, index); };
     }
 
     method set(index: i64, value: T) void {
-        _store<T>(this.data, index, value);
+        unsafe { _store<T>(this.data, index, value); };
     }
 
     method push(value: T) void {
         if (this.len >= this.cap) {
             this.grow();
         }
-        _store<T>(this.data, this.len, value);
+        unsafe { _store<T>(this.data, this.len, value); };
         this.len = this.len + 1;
     }
 
     method grow() void {
         var newCap = this.cap * 2;
         var newData = this.alloc.alloc_raw(newCap * _sizeof<T>());
-        // Copy old data to new buffer...
-        _free(this.data);
+        unsafe {
+            _memcpy(newData, this.data, this.len * _sizeof<T>());
+            _free(this.data);
+        };
         this.data = newData;
         this.cap = newCap;
     }
@@ -530,6 +666,7 @@ class Vec<T> {
 |-----------|------------|---------|-------------|
 | `_sizeof<T>` | none | `i64` | Byte size of type T |
 | `_init<T>` | `ptr, args...` | `void` | Construct T at ptr |
+| `_deinit<T>` | `ptr` | `void` | Release the T at ptr without freeing the storage |
 | `_params_of<T>` | none | — | The parameter list an `args...` pack stands for |
 | `_load<T>` | `ptr, index` | `T` | Load element at index |
 | `_store<T>` | `ptr, index, value` | `void` | Store element at index |
@@ -541,11 +678,15 @@ class Vec<T> {
 | `_to_ref<T>` | `raw_ptr<T>` | `ref T` | Reference the pointed-to value (unsafe) |
 | `_malloc` | `size: i64` | `raw_ptr<i8>` | Allocate heap memory |
 | `_free` | `ptr` | `void` | Free heap memory |
+| `_memcpy` | `dst, src, len: i64` | `void` | Copy len bytes between non-overlapping regions |
+| `_memset` | `dst, value, len: i64` | `void` | Set len bytes at dst to one byte value |
+| `_ptr_offset` | `ptr, byte_offset: i64` | `raw_ptr` | Advance a pointer by a byte count |
 | `_load_i64` | `ptr, index` | `i64` | Load i64 at index |
 | `_store_i64` | `ptr, index, value` | `void` | Store i64 at index |
 | `_print_i32` | `value: i32` | `void` | Print i32 to stdout |
 | `_print_i64` | `value: i64` | `void` | Print i64 to stdout |
 | `_print_f64` | `value: f64` | `void` | Print f64 to stdout |
+| `_print_char` | `c: char` | `void` | Print a char as UTF-8 |
 | `_print_newline` | none | `void` | Print newline |
 | `_print_bytes` | `ptr, len` | `void` | Print bytes to stdout |
 | `_println_str` | `static_ptr<u8>` | `void` | Print string with newline |
@@ -559,3 +700,6 @@ class Vec<T> {
 | `_cttz_u64` | `x: u64` | `u64` | Trailing zero bits (64 for 0) |
 | `_futex_wait` | `ptr, expected` | `void` | Block until woken |
 | `_futex_wake` | `ptr` | `void` | Wake one blocked thread |
+| `_target_is` | `os: string literal` | `bool` | Compile-time check of the target OS |
+
+The `__`-prefixed file and socket intrinsics have tables of their own above.
