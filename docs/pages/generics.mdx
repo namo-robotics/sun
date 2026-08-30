@@ -163,7 +163,7 @@ arguments the call supplies. Write it as a name followed by `...`:
 function make<T>(args...: _params_of<T>) raw_ptr<T> {
     var size: i64 = _sizeof<T>();
     var memory: raw_ptr<i8> = unsafe { _malloc(size); };
-    _init<T>(memory, args...);
+    unsafe { _init<T>(memory, args...); };
     return memory;
 }
 ```

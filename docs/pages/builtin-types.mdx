@@ -182,7 +182,7 @@ A non-owning raw pointer for low-level memory operations.
 ```sun
 var raw: raw_ptr<i32> = allocator.alloc<i32>(10);
 // Manual memory management required
-_free(raw);
+unsafe { _free(raw); };
 ```
 
 ### `static_ptr<T>` - Static Pointer

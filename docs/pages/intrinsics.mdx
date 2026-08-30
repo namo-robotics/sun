@@ -8,9 +8,11 @@ Compiler intrinsics are low-level functions built directly into the Sun compiler
   Intrinsics are **unsafe** operations intended for implementing standard library primitives like `Vec<T>` and `Map<K,V>`. Most user code should use the standard library instead.
 </Callout>
 
-Most of them belong inside an `unsafe` block, and the compiler rejects several
-of them outside one. [Unsafe Blocks](/memory-safety#unsafe-blocks) has the rules and
-the semicolon placement the two forms need.
+An intrinsic that reads or writes memory nothing has checked must be written
+inside an `unsafe` block; one that only computes — a size, a type check, an
+address, a numeric conversion — may be used anywhere.
+[Unsafe Blocks](/memory-safety#unsafe-blocks) lists which is which, and where
+the semicolons go in the two forms the block takes.
 
 ## Generic Intrinsics
 
@@ -37,7 +39,7 @@ Constructs an instance of type `T` at the memory location pointed to by `ptr`, f
 var mem = unsafe { _malloc(_sizeof<Point>()); };
 
 // Construct Point at that location
-_init<Point>(mem, 3.0, 4.0);
+unsafe { _init<Point>(mem, 3.0, 4.0); };
 
 // mem now points to an initialized Point
 ```
@@ -55,7 +57,9 @@ container can call it on every element without asking what `T` is.
 
 ```sun
 // Release element i, then reuse its slot
-_deinit<T>(_ptr_as_raw<T>(_ptr_offset(this.data, i * _sizeof<T>())));
+unsafe {
+    _deinit<T>(_ptr_as_raw<T>(_ptr_offset(this.data, i * _sizeof<T>())));
+};
 ```
 
 It releases the value without freeing the storage, which is what a container
@@ -70,7 +74,7 @@ colon of an `args...` pack in a parameter list, never as a type of its own:
 function make<T>(args...: _params_of<T>) raw_ptr<T> {
     var size: i64 = _sizeof<T>();
     var memory: raw_ptr<i8> = unsafe { _malloc(size); };
-    _init<T>(memory, args...);
+    unsafe { _init<T>(memory, args...); };
     return memory;
 }
 ```
@@ -122,7 +126,7 @@ Loads an element of type `T` from `ptr` at the given element index. Equivalent t
 
 ```sun
 // Assuming data points to an array of i32
-var value = _load<i32>(data, 5);  // Load data[5]
+var value = unsafe { _load<i32>(data, 5); };  // Load data[5]
 ```
 
 ### `_store<T>(ptr, index, value)`
@@ -131,7 +135,7 @@ Stores `value` of type `T` at `ptr[index]`.
 
 ```sun
 // Store 42 at data[5]
-_store<i32>(data, 5, 42);
+unsafe { _store<i32>(data, 5, 42); };
 ```
 
 ### `_ptr_as_raw<T>(ptr<T>)`
@@ -311,8 +315,10 @@ own memory intrinsics rather than a libc call. The regions must not overlap.
 
 ```sun
 // Grow a buffer: move the old bytes across, then zero the new tail
-_memcpy(newData, oldData, this.len * _sizeof<T>());
-_memset(_ptr_offset(newData, this.len * _sizeof<T>()), 0, added);
+unsafe {
+    _memcpy(newData, oldData, this.len * _sizeof<T>());
+    _memset(_ptr_offset(newData, this.len * _sizeof<T>()), 0, added);
+};
 ```
 
 These move bytes, not values. Copying a compound value this way would leave two
@@ -325,7 +331,7 @@ Advances a pointer by a number of **bytes** and returns the result. Unlike
 so an element offset is written out as `index * _sizeof<T>()`.
 
 ```sun
-var slot = _ptr_offset(this.data, index * _sizeof<T>());
+var slot = unsafe { _ptr_offset(this.data, index * _sizeof<T>()); };
 ```
 
 ### `_address_of<T>(ref T)`
@@ -434,7 +440,7 @@ Atomic compare-and-exchange on an `i32`. If the value at `ptr` equals `expected`
 
 ```sun
 var state: i32 = 0;
-var old = _atomic_cmpxchg_i32(_address_of<i32>(state), 0, 1);
+var old = unsafe { _atomic_cmpxchg_i32(_address_of<i32>(state), 0, 1); };
 // If state was 0, it's now 1. old == 0
 ```
 
@@ -443,7 +449,7 @@ var old = _atomic_cmpxchg_i32(_address_of<i32>(state), 0, 1);
 Atomically stores `value` at the memory location `ptr`.
 
 ```sun
-_atomic_store_i32(_address_of<i32>(state), 0);  // Reset to 0
+unsafe { _atomic_store_i32(_address_of<i32>(state), 0); };  // Reset to 0
 ```
 
 ### `_atomic_load_i32(ptr)`
@@ -451,7 +457,7 @@ _atomic_store_i32(_address_of<i32>(state), 0);  // Reset to 0
 Atomically loads the `i32` value at `ptr`.
 
 ```sun
-var current = _atomic_load_i32(_address_of<i32>(state));
+var current = unsafe { _atomic_load_i32(_address_of<i32>(state)); };
 ```
 
 ### `_atomic_fetch_add_i32(ptr, delta)` / `_atomic_fetch_sub_i32(ptr, delta)`
@@ -462,10 +468,10 @@ decrement was the last owner, so exactly one caller runs the cleanup.
 
 ```sun
 // One more owner
-_atomic_fetch_add_i32(_address_of<i32>(count), 1);
+unsafe { _atomic_fetch_add_i32(_address_of<i32>(count), 1); };
 
 // One fewer. was == 1 means this was the last handle.
-var was = _atomic_fetch_sub_i32(_address_of<i32>(count), 1);
+var was = unsafe { _atomic_fetch_sub_i32(_address_of<i32>(count), 1); };
 ```
 
 ## Bit Intrinsics
@@ -526,7 +532,7 @@ equivalent `__ulock_wait`/`__ulock_wake`.
 Blocks the calling thread if the value at `ptr` equals `expected`. The thread sleeps until woken by `_futex_wake`.
 
 ```sun
-_futex_wait(_address_of<i32>(state), 2);  // Sleep if state == 2
+unsafe { _futex_wait(_address_of<i32>(state), 2); };  // Sleep if state == 2
 ```
 
 ### `_futex_wake(ptr)`
@@ -534,7 +540,7 @@ _futex_wait(_address_of<i32>(state), 2);  // Sleep if state == 2
 Wakes one thread blocked on `_futex_wait` at the given address.
 
 ```sun
-_futex_wake(_address_of<i32>(state));  // Wake one waiter
+unsafe { _futex_wake(_address_of<i32>(state)); };  // Wake one waiter
 ```
 
 <Callout type="warning">

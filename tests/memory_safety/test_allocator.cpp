@@ -28,7 +28,7 @@ TEST(MemorySafety_Allocator, variadic_method_local_allocator) {
         method create<T>(args...: _params_of<T>) raw_ptr<T> {
             var size: i64 = _sizeof<T>();
             var memory: raw_ptr<i8> = unsafe { _malloc(size); };
-            _init<T>(memory, args...);
+            unsafe { _init<T>(memory, args...); };
             return memory;
         }
     }
@@ -451,7 +451,7 @@ TEST(MemorySafety_Allocator, method_fixed_params_precede_the_pack) {
         method create<T>(tag: i32, args...: _params_of<T>) i32 {
             var size: i64 = _sizeof<T>();
             var memory: raw_ptr<i8> = unsafe { _malloc(size); };
-            _init<T>(memory, args...);
+            unsafe { _init<T>(memory, args...); };
             var total = unsafe { _to_ref<T>(memory).sum(); };
             unsafe { _free(memory); };
             return tag * 100 + total;

@@ -191,12 +191,12 @@ class MyArray {
     
     // Called for arr[i]
     method __index__(indices: ref array<i64>) i32 {
-        return _load<i32>(this.data, indices[0]);
+        return unsafe { _load<i32>(this.data, indices[0]); };
     }
     
     // Called for arr[i] = value
     method __setindex__(indices: ref array<i64>, value: i32) void {
-        _store<i32>(this.data, indices[0], value);
+        unsafe { _store<i32>(this.data, indices[0], value); };
     }
 }
 

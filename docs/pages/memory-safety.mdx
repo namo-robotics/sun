@@ -737,15 +737,29 @@ var mem = unsafe { _malloc(n); };  // value: the block is the last expression
 var mem = unsafe { _malloc(n) };   // ❌ ERROR: expected ';' after expression statement
 ```
 
-A block may hold several statements; the last one is its value.
+A block may hold several statements; the last one is its value. Names declared
+inside stay inside, like any other block body — but the value leaves, and
+ownership of it leaves too, so `var s = unsafe { make(); };` keeps its string.
 
-The compiler rejects these outside a block: calling an `extern "C"` function,
-reading a field through a `raw_ptr<T>` where `T` is a class, `_malloc`, `_free`,
-`_load_i64`, `_store_i64`, the `_atomic_*` and `_futex_*` intrinsics, and the
-`__`-prefixed syscall intrinsics. The other raw-memory intrinsics — `_load<T>`,
-`_store<T>`, `_to_ref<T>`, `_memcpy`, `_ptr_offset` — are just as unchecked, and
-the standard library writes every one of them inside `unsafe { }` too. See
-[Compiler Intrinsics](/intrinsics) and [C FFI](/c-ffi).
+### What requires a block
+
+Three things:
+
+- **Calling an `extern "C"` function.** C is outside everything Sun proves.
+  See [C FFI](/c-ffi).
+- **Reading a field through a `raw_ptr<T>`** where `T` is a class. Nothing says
+  the pointer is non-null, aligned, or still pointing at a live `T`.
+- **An intrinsic that reads or writes memory nothing has checked** — through a
+  raw pointer (`_load<T>`, `_store<T>`, `_to_ref<T>`, `_init<T>`, `_deinit<T>`,
+  `_load_i64`, `_store_i64`, `_memcpy`, `_memset`, `_ptr_offset`), on the heap
+  (`_malloc`, `_free`), across threads (`_spawn`, `_thread_join*`, the
+  `_atomic_*` and `_futex_*` intrinsics), or across the boundary into libc and
+  the kernel (every `__`-prefixed file and socket intrinsic).
+
+An intrinsic that only *computes* needs no block: `_sizeof<T>`, `_is<T>`,
+`_address_of<T>`, `_ptr_as_raw<T>`, `_convert<T>`, `_bitcast<T>`,
+`_target_is`, the print intrinsics and the bit intrinsics. Taking an address is
+safe; reading through it is not. See [Compiler Intrinsics](/intrinsics).
 
 ### What it does not turn off
 

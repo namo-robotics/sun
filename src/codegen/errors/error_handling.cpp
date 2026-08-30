@@ -201,7 +201,15 @@ Value* ErrorGenerator::codegen(const ThrowExprAST& expr) {
 Value* ErrorGenerator::codegen(const UnsafeBlockAST& expr) {
   scopes().push(expr.getBody().getLocation());
   Value* result = codegen(expr.getBody());
+  // `var s = unsafe { make(); };` — the value leaves with the block, so
+  // ownership moves out to the scope the block sits in rather than being
+  // dropped on the way past.
+  bool ownedHere = scopes().releaseBlockResult(result);
   scopes().pop();
+  if (ownedHere) {
+    scopes().trackClassAllocation(result, "unsafe.result",
+                                  expr.getResolvedType());
+  }
   return result;
 }
 
