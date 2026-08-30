@@ -71,6 +71,26 @@ TEST(Stdlib_ByteOrder, swap_and_endian_helpers) {
   EXPECT_EQ(value, 0);
 }
 
+// The helpers are also reachable by their full name, without importing the
+// submodule — the same path through the real stdlib bundle that
+// Modules.moon_nested_module_is_reachable_by_qualified_name covers for a
+// bundle built on the spot.
+TEST(Stdlib_ByteOrder, reachable_by_qualified_name) {
+  auto value = executeStringWithStdlib(R"(
+    function main() i32 {
+        var a: u16 = 4660;         // 0x1234
+        var b: u32 = 305419896;    // 0x12345678
+        if (std.byte_order.swap_bytes_u16(a) != 13330) { return 1; }
+        if (std.byte_order.to_big_endian_u32(b) != 2018915346) { return 2; }
+        if (std.byte_order.from_big_endian_u32(std.byte_order.to_big_endian_u32(b)) != b) {
+            return 3;
+        }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
+}
+
 // A two-byte length and a four-byte value written big-endian, then read back
 // out of the bytes, the way a binary wire format uses these helpers.
 TEST(Stdlib_ByteOrder, round_trip_through_a_byte_buffer) {

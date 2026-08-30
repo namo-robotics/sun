@@ -766,6 +766,58 @@ TEST(Modules, moon_free_function_throw_is_caught_by_importer) {
   EXPECT_EQ(value, 1078);
 }
 
+// A module nested inside another must survive the trip through a .moon: both
+// reachable by its full name through its parent, and importable on its own.
+// A stale bundle makes a missing submodule look like a name-resolution bug
+// ("Unknown member 'inner' in module '$hash$.outer'"), so this pins the
+// behaviour the error would otherwise be blamed on.
+TEST(Modules, moon_nested_module_is_reachable_by_qualified_name) {
+  initTestEnvironment();
+  auto moonPath = writeMoonLib("nestedlib", R"(
+    public module outer {
+        public function top() i32 { return 1; }
+
+        public module inner {
+            public function nested() i32 { return 2; }
+        }
+    }
+  )");
+
+  auto driver = Driver::createForJIT("moon_nested_qualified_main");
+  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  auto value = driver->executeString(R"(
+    using outer;
+
+    function main() i32 {
+        return outer.top() * 10 + outer.inner.nested();
+    }
+  )");
+  EXPECT_EQ(value, 12);
+}
+
+// The same nested module, imported directly so its functions need no prefix.
+TEST(Modules, moon_nested_module_can_be_imported_on_its_own) {
+  initTestEnvironment();
+  auto moonPath = writeMoonLib("nestedlib2", R"(
+    public module outer2 {
+        public module inner {
+            public function nested() i32 { return 2; }
+        }
+    }
+  )");
+
+  auto driver = Driver::createForJIT("moon_nested_using_main");
+  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  auto value = driver->executeString(R"(
+    using outer2.inner;
+
+    function main() i32 {
+        return nested();
+    }
+  )");
+  EXPECT_EQ(value, 2);
+}
+
 // A .moon carrying a module-level class variable and a program with one of
 // its own must both run their initializers. Each module's init function is
 // internal and registered in llvm.global_ctors; when the two were a single
