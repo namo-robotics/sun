@@ -5,6 +5,9 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Type.h>
 
+#include <optional>
+#include <string>
+
 #include "codegen/codegen_visitor.h"
 #include "codegen/errors/error_generator.h"
 
@@ -198,20 +201,21 @@ Value* ErrorGenerator::codegen(const ThrowExprAST& expr) {
 
 // Codegen for unsafe block: unsafe { ... }
 // The body is a scope like any other block body, so names declared inside stay
-// inside and owners are dropped on the way out. Its value is the last
-// statement's, which is produced before the scope is popped. The safety checks
-// themselves are done in semantic analysis.
+// inside and owners are dropped on the way out. The safety checks themselves
+// are done in semantic analysis.
+//
+// The block's value is always handed out to the enclosing scope, under the
+// name it was tracked with (which is what its drop blocks are labelled with).
+// A consumer such as `var s = unsafe { make(); };` adopts the slot from
+// there; a discarded value is dropped when the enclosing scope ends, exactly
+// like any other unconsumed call temporary.
 Value* ErrorGenerator::codegen(const UnsafeBlockAST& expr) {
   scopes().push(expr.getBody().getLocation());
   Value* result = codegen(expr.getBody());
-  // `var s = unsafe { make(); };` — the value leaves with the block, so
-  // ownership moves out to the scope the block sits in rather than being
-  // dropped on the way past.
-  bool ownedHere = scopes().releaseBlockResult(result);
+  std::optional<std::string> name = scopes().releaseBlockResult(result);
   scopes().pop();
-  if (ownedHere) {
-    scopes().trackClassAllocation(result, "unsafe.result",
-                                  expr.getResolvedType());
+  if (name) {
+    scopes().trackClassAllocation(result, *name, expr.getResolvedType());
   }
   return result;
 }
@@ -258,8 +262,9 @@ Value* ErrorGenerator::codegen(const TryCatchExprAST& expr) {
   tryStack.pop_back();
   scopes().pop();
 
-  // Fallthrough of the try body (no exception): branch to merge, carrying the
-  // try block's value so `try { expr }` can be used as an expression.
+  // Fallthrough of the try body (no exception): branch to merge. A try-catch
+  // is a statement — a `try` body is not a value-producing block kind — so
+  // the carried value only keeps the PHI well-formed.
   std::vector<std::pair<Value*, BasicBlock*>> results;
   if (!ctx.builder->GetInsertBlock()->getTerminator()) {
     BasicBlock* tryEndBB = ctx.builder->GetInsertBlock();

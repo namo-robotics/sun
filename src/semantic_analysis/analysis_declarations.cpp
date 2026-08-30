@@ -431,10 +431,14 @@ void SemanticAnalyzer::analyzeMoonScope(ExprAST& expr) {
   if (!contentHash.empty()) {
     ctx_.enterModuleScope(contentHash);
   }
-  // Analyze contained ModuleAST nodes
+  // Analyze contained ModuleAST nodes. These are stubs — signatures whose
+  // bodies were stripped when the moon was built — so body-shape checks are
+  // off while we are in here.
+  ctx_.enterMoonScope();
   for (const auto& bodyExpr : moonScope.getBody().getBody()) {
     analyzeExpr(*bodyExpr);
   }
+  ctx_.exitMoonScope();
   if (!contentHash.empty()) {
     ctx_.exitScope();
   }

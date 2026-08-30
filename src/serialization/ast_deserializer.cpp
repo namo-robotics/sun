@@ -383,6 +383,9 @@ std::unique_ptr<BlockExprAST> ASTDeserializer::deserializeBlockExpr(
     body.push_back(deserialize(stmt));
   }
   auto block = std::make_unique<BlockExprAST>(std::move(body));
+  if (proto.has_block_kind()) {
+    block->setKind(static_cast<BlockKind>(proto.block_kind()));
+  }
   if (proto.has_location()) {
     block->setLocation(deserializePosition(proto.location()));
   }

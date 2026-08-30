@@ -21,6 +21,26 @@ A method of a class or interface is written the same way but opens with
 `method` instead (see [Classes](/classes)); `function` declares free functions
 only.
 
+**There are no implicit returns.** A function whose signature promises a value
+must leave through an explicit `return` (or a `throw`) on every path — a
+trailing expression is not a return, and a body that can fall off the end is a
+compile error:
+
+```sun
+function f() i32 { 42; }             // ❌ ERROR: can reach the end without a value
+
+function g(c: bool) i32 {
+    if (c) { return 1; }             // ❌ ERROR: falls through when c is false
+}
+
+function h(c: bool) i32 {
+    if (c) { return 1; } else { return 2; }   // ✓ every path returns
+}
+```
+
+The same rule applies to methods and lambdas. C and C++ merely warn here and
+leave the fall-through as undefined behavior; Sun rejects it outright.
+
 A parameter declared `ref T` borrows the caller's value and may change it;
 one declared `const ref T` borrows it for reading only. A constant, or a
 value already borrowed with `const ref`, can only be passed to the second

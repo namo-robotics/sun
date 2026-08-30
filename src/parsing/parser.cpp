@@ -124,7 +124,7 @@ unique_ptr<IfExprAST> Parser::parseIfStatement() {
   expectCurrentTokenKind(TokenKind::BRACE_OPEN,
                          "expected '{' after if condition");
 
-  auto ThenBlock = parseBlock();
+  auto ThenBlock = parseBlock(BlockKind::If);
   if (!ThenBlock) return nullptr;
 
   // Body kept as a block for losslessness; LoweringPass normalizes it
@@ -143,7 +143,7 @@ unique_ptr<IfExprAST> Parser::parseIfStatement() {
       // Require curly braces for else block
       expectCurrentTokenKind(TokenKind::BRACE_OPEN, "expected '{' after else");
 
-      auto ElseBlock = parseBlock();
+      auto ElseBlock = parseBlock(BlockKind::If);
       if (!ElseBlock) return nullptr;
       Else = std::move(ElseBlock);
     }
@@ -286,7 +286,7 @@ unique_ptr<MatchExprAST> Parser::parseMatchExpression() {
     // Check if body is a block
     std::unique_ptr<ExprAST> body;
     if (curTok.kind == TokenKind::BRACE_OPEN) {
-      body = parseBlock();
+      body = parseBlock(BlockKind::MatchArm);
     } else {
       body = parseExpression();
     }
@@ -567,7 +567,7 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
   expectCurrentTokenKind(TokenKind::BRACE_OPEN,
                          "Expected '{' to start function body");
 
-  auto body = parseBlock();
+  auto body = parseBlock(BlockKind::Function);
   if (!body) return nullptr;
 
   auto proto = std::make_unique<PrototypeAST>(
@@ -1866,7 +1866,7 @@ std::unique_ptr<PrototypeAST> Parser::parsePrototype() {
   return proto;
 }
 
-unique_ptr<BlockExprAST> Parser::parseBlock(bool itemLevel) {
+unique_ptr<BlockExprAST> Parser::parseBlock(BlockKind kind, bool itemLevel) {
   Position start = captureStart();
   std::vector<unique_ptr<ExprAST>> body;
 
@@ -1890,7 +1890,8 @@ unique_ptr<BlockExprAST> Parser::parseBlock(bool itemLevel) {
 
   getNextToken();  // eat }
 
-  return finishNode(std::make_unique<BlockExprAST>(std::move(body)), start);
+  return finishNode(std::make_unique<BlockExprAST>(std::move(body), kind),
+                    start);
 }
 
 unique_ptr<BlockExprAST> Parser::parseProgram() {
@@ -1908,7 +1909,9 @@ unique_ptr<BlockExprAST> Parser::parseProgram() {
     // consumption
   }
 
-  return finishNode(std::make_unique<BlockExprAST>(std::move(body)), start);
+  return finishNode(
+      std::make_unique<BlockExprAST>(std::move(body), BlockKind::Module),
+      start);
 }
 
 bool Parser::parsePublic() {
@@ -2238,7 +2241,7 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
           expectCurrentTokenKind(TokenKind::BRACE_OPEN,
                                  "Expected '{' for for-in body");
 
-          auto bodyBlock = parseBlock();
+          auto bodyBlock = parseBlock(BlockKind::Loop);
           if (!bodyBlock) return nullptr;
 
           // Body kept as a block; LoweringPass normalizes it
@@ -2323,7 +2326,7 @@ unique_ptr<ExprAST> Parser::parseForLoop() {
   expectCurrentTokenKind(TokenKind::BRACE_OPEN,
                          "Expected '{' for for-loop body");
 
-  auto bodyBlock = parseBlock();
+  auto bodyBlock = parseBlock(BlockKind::Loop);
   if (!bodyBlock) return nullptr;
 
   // Body kept as a block; LoweringPass normalizes it
@@ -2353,7 +2356,7 @@ unique_ptr<WhileExprAST> Parser::parseWhileLoop() {
   expectCurrentTokenKind(TokenKind::BRACE_OPEN,
                          "Expected '{' for while-loop body");
 
-  auto bodyBlock = parseBlock();
+  auto bodyBlock = parseBlock(BlockKind::Loop);
   if (!bodyBlock) return nullptr;
 
   // Body kept as a block; LoweringPass normalizes it
@@ -2878,7 +2881,7 @@ unique_ptr<ModuleAST> Parser::parseModuleDecl() {
   expectCurrentTokenKind(TokenKind::BRACE_OPEN,
                          "expected '{' after module name");
 
-  auto body = parseBlock(/*itemLevel=*/true);
+  auto body = parseBlock(BlockKind::Module, /*itemLevel=*/true);
   if (!body) return nullptr;
 
   // Build nested modules from innermost to outermost
@@ -2893,7 +2896,8 @@ unique_ptr<ModuleAST> Parser::parseModuleDecl() {
     // Wrap current result in a new block containing just this module
     std::vector<std::unique_ptr<ExprAST>> stmts;
     stmts.push_back(std::move(result));
-    auto wrapperBody = std::make_unique<BlockExprAST>(std::move(stmts));
+    auto wrapperBody =
+        std::make_unique<BlockExprAST>(std::move(stmts), BlockKind::Module);
     result = finishNode(
         std::make_unique<ModuleAST>(std::move(*it), std::move(wrapperBody)),
         start);
@@ -3194,14 +3198,16 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
         std::string seg;
         while (std::getline(ss, seg, '.')) segs.push_back(seg);
       }
-      auto nsBody = std::make_unique<BlockExprAST>(std::move(stubs));
+      auto nsBody =
+          std::make_unique<BlockExprAST>(std::move(stubs), BlockKind::Module);
       std::unique_ptr<ExprAST> current;
       for (size_t i = segs.size(); i-- > 0;) {
         std::unique_ptr<BlockExprAST> body;
         if (current) {
           std::vector<std::unique_ptr<ExprAST>> one;
           one.push_back(std::move(current));
-          body = std::make_unique<BlockExprAST>(std::move(one));
+          body =
+              std::make_unique<BlockExprAST>(std::move(one), BlockKind::Module);
         } else {
           body = std::move(nsBody);
         }
@@ -3234,7 +3240,8 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
   }
 
   // Wrap everything in a MoonScopeAST
-  auto body = std::make_unique<BlockExprAST>(std::move(allModuleASTs));
+  auto body =
+      std::make_unique<BlockExprAST>(std::move(allModuleASTs), BlockKind::Module);
   return std::make_unique<MoonScopeAST>(contentHash, primaryModuleName, alias,
                                         resolvedStr, std::move(body));
 }
@@ -3970,7 +3977,7 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
 
       if (curTok.kind == TokenKind::BRACE_OPEN) {
         // Has default implementation
-        body = parseBlock();
+        body = parseBlock(BlockKind::Function);
         if (!body) return nullptr;
         hasDefaultImpl = true;
       } else if (curTok.kind == TokenKind::SEMI_COLON) {
@@ -3978,7 +3985,7 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
         getNextToken();  // eat ';'
         // Create an empty body
         body = std::make_unique<BlockExprAST>(
-            std::vector<std::unique_ptr<ExprAST>>());
+            std::vector<std::unique_ptr<ExprAST>>(), BlockKind::Function);
         hasDefaultImpl = false;
       } else {
         parsingError("Expected '{' or ';' after method signature in interface");
@@ -4135,7 +4142,7 @@ unique_ptr<ExprAST> Parser::parseUnsafeBlock() {
     return nullptr;
   }
 
-  auto body = parseBlock();
+  auto body = parseBlock(BlockKind::Unsafe);
   if (!body) {
     parsingError("expected block after 'unsafe'");
     return nullptr;
@@ -4150,7 +4157,7 @@ unique_ptr<ExprAST> Parser::parseTryCatch() {
   // Parse try block - we're already at '{' ('try' was consumed by the caller,
   // which re-stamps the span to include it)
   Position start = captureStart();
-  auto tryBlock = parseBlock();
+  auto tryBlock = parseBlock(BlockKind::Try);
   if (!tryBlock) {
     parsingError("expected block after 'try'");
     return nullptr;
@@ -4202,7 +4209,7 @@ unique_ptr<ExprAST> Parser::parseTryCatch() {
       return nullptr;
     }
 
-    catchClause.body = parseBlock();
+    catchClause.body = parseBlock(BlockKind::Catch);
     if (!catchClause.body) return nullptr;
 
     catchClauses.push_back(std::move(catchClause));

@@ -326,9 +326,9 @@ void SemanticAnalyzer::analyzeTryCatch(TryCatchExprAST& tryCatchExpr) {
     ctx_.exitScope();
   }
 
-  // The result type is the type of the try block
-  sun::TypePtr resultType = types_.inferType(tryCatchExpr.getTryBlock());
-  tryCatchExpr.setResolvedType(resultType ? resultType : sun::Types::Void());
+  // A try-catch is a statement, not a value: code that wants a value out of
+  // one returns from inside the try (see the block-kind rule on BlockKind)
+  tryCatchExpr.setResolvedType(sun::Types::Void());
 }
 
 void SemanticAnalyzer::analyzeThrowExpr(ThrowExprAST& throwExpr) {

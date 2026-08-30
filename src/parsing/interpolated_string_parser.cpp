@@ -208,6 +208,9 @@ std::unique_ptr<BlockExprAST> InterpolatedStringParser::desugar(
     InterpolatedStringAST& node) {
   const Position& loc = node.getLocation();
   auto block = std::make_unique<BlockExprAST>();
+  // A Value block: the one block kind with no syntax, so the lowering can
+  // hand back the built String as the block's value
+  block->setKind(BlockKind::Value);
   block->setLocation(loc);
 
   // var interp_alloc_ = std.HeapAllocator();

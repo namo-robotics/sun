@@ -702,9 +702,7 @@ Value* FunctionGenerator::codegenFunc(FunctionAST& funcAst) {
   }
 
   // Generate body — may recursively create many other functions().
-  // The body value is used for implicit return if the body doesn't explicitly
-  // return. The guard puts the enclosing function's return contract back.
-  Value* bodyValue;
+  // The guard puts the enclosing function's return contract back.
   {
     CodegenState::ReturnGuard returns(state_);
     currentFunctionCanError = canError;
@@ -712,7 +710,7 @@ Value* FunctionGenerator::codegenFunc(FunctionAST& funcAst) {
     currentFunctionReturnsRef =
         proto.hasReturnType() && proto.getReturnType()->isReference();
 
-    bodyValue = codegen(funcAst.getBody());
+    codegen(funcAst.getBody());
   }
 
   // Pop closure context if we pushed one
@@ -736,20 +734,10 @@ Value* FunctionGenerator::codegenFunc(FunctionAST& funcAst) {
       successStruct = ctx.builder->CreateInsertValue(
           successStruct, ConstantInt::getFalse(ctx.getContext()), 0);
       ctx.builder->CreateRet(successStruct);
-    } else if (bodyValue && bodyValue->getType() == retType) {
-      // Non-void functions: use the body's value as implicit return
-      ctx.builder->CreateRet(bodyValue);
-    } else if (canError && bodyValue && bodyValue->getType() == valueType) {
-      // Error-returning function: wrap success value in error union
-      Value* successStruct = UndefValue::get(retType);
-      successStruct = ctx.builder->CreateInsertValue(
-          successStruct, ConstantInt::getFalse(ctx.getContext()), 0);
-      successStruct =
-          ctx.builder->CreateInsertValue(successStruct, bodyValue, 1);
-      ctx.builder->CreateRet(successStruct);
     } else {
-      // No usable body value - create unreachable
-      // (semantic analyzer should catch missing returns)
+      // Sun has no implicit returns and sema proved every path of a
+      // value-returning body exits, so a fall-through tail is unreachable
+      // (e.g. a body ending in a match whose arms all return)
       ctx.builder->CreateUnreachable();
     }
   }
@@ -885,7 +873,6 @@ llvm::Value* FunctionGenerator::codegenLambda(LambdaAST& lambdaAst) {
   }
 
   // Generate body; the guard puts the enclosing function's contract back
-  Value* bodyValue;
   {
     CodegenState::ReturnGuard returns(state_);
     currentFunctionCanError = canError;
@@ -893,7 +880,7 @@ llvm::Value* FunctionGenerator::codegenLambda(LambdaAST& lambdaAst) {
     currentFunctionReturnsRef =
         proto.hasReturnType() && proto.getReturnType()->isReference();
 
-    bodyValue = codegen(lambdaAst.getBody());
+    codegen(lambdaAst.getBody());
   }
 
   // Pop closure context if we pushed one
@@ -910,16 +897,16 @@ llvm::Value* FunctionGenerator::codegenLambda(LambdaAST& lambdaAst) {
     llvm::Type* funcRetType = func->getReturnType();
     if (funcRetType->isVoidTy()) {
       ctx.builder->CreateRetVoid();
-    } else if (bodyValue && bodyValue->getType() == funcRetType) {
-      ctx.builder->CreateRet(bodyValue);
-    } else if (bodyValue && bodyValue->getType()->isPointerTy() &&
-               funcRetType->isStructTy()) {
-      // Body produced a pointer to a struct value (e.g. class return)
-      Value* loaded =
-          ctx.builder->CreateLoad(funcRetType, bodyValue, "load.ret");
-      ctx.builder->CreateRet(loaded);
+    } else if (canError && !valueType) {
+      // void-throws-IError lambda: return { i1 = false } to indicate success
+      Value* successStruct = llvm::UndefValue::get(funcRetType);
+      successStruct = ctx.builder->CreateInsertValue(
+          successStruct, ConstantInt::getFalse(ctx.getContext()), 0);
+      ctx.builder->CreateRet(successStruct);
     } else {
-      ctx.builder->CreateRet(llvm::UndefValue::get(funcRetType));
+      // As for named functions: no implicit returns, so a fall-through tail
+      // of a value-returning lambda is unreachable
+      ctx.builder->CreateUnreachable();
     }
   }
 

@@ -502,8 +502,14 @@ sun::TypePtr TypeInferer::inferType(const ExprAST& expr) {
         return returnType;
       }
 
-      // No return found - use last expression's type (expression-block
-      // semantics) This enables patterns like: var x = { ...; value };
+      // No return found. Only a match arm's body, an unsafe block's body,
+      // and the compiler's own syntaxless Value blocks evaluate to their
+      // last statement. Every other kind is a statement body: its trailing
+      // expression is not a value, so a `try` body no longer types its
+      // enclosing try-catch.
+      if (!block.producesValue()) {
+        return sun::Types::Void();
+      }
       const auto& lastExpr = *block.getBody().back();
       return inferType(lastExpr);
     }
@@ -650,12 +656,11 @@ sun::TypePtr TypeInferer::inferType(const ExprAST& expr) {
       // Compound assignment is a statement
       return sun::Types::Void();
 
-    case ASTNodeType::TRY_CATCH: {
-      const auto& tryCatchExpr = static_cast<const TryCatchExprAST&>(expr);
-      // The type of a try-catch is the type of the try block
-      // (catch block should return the same type or be noreturn)
-      return inferType(tryCatchExpr.getTryBlock());
-    }
+    case ASTNodeType::TRY_CATCH:
+      // A try-catch is a statement: a `try` body is not one of the block
+      // kinds that produce a value, so there is nothing to bind or return.
+      // Code that wants a value out of a try returns from inside it.
+      return sun::Types::Void();
 
     case ASTNodeType::UNSAFE_BLOCK: {
       const auto& unsafeBlock = static_cast<const UnsafeBlockAST&>(expr);

@@ -1175,3 +1175,110 @@ TEST(Builtins_UnsafeScope, owning_value_survives_the_block) {
   )");
   EXPECT_EQ(value, 6);
 }
+
+// A discarded block value behaves exactly like any other unconsumed call
+// temporary: it lives to the end of the enclosing scope and is dropped there
+// exactly once — not leaked, not dropped twice, not dropped early.
+TEST(Builtins_UnsafeScope, discarded_value_drops_once_at_scope_end) {
+  auto value = executeString(R"(
+    var drops: i32 = 0;
+
+    class Owner {
+      var p: raw_ptr<i8>;
+      init() { var n: i64 = 8; this.p = unsafe { _malloc(n); }; }
+      deinit() { unsafe { _free(this.p); }; drops = drops + 1; }
+    }
+
+    function make() Owner { return Owner(); }
+
+    function discard_block() void { unsafe { make(); }; }
+    function discard_bare() void { make(); }
+
+    function main() i32 {
+      discard_block();
+      var a: i32 = drops;   // 1: dropped when discard_block's scope ended
+      drops = 0;
+      discard_bare();
+      return a * 10 + drops;   // same timing as a bare discarded call
+    }
+  )");
+  EXPECT_EQ(value, 11);
+}
+
+// ============================================================================
+// No Implicit Returns
+// ============================================================================
+
+// A function whose signature promises a value must leave through an explicit
+// return (or throw) on every path; the trailing expression is not a return.
+TEST(Builtins_NoImplicitReturns, trailing_expression_is_not_a_return) {
+  EXPECT_THROW(executeString(R"(
+    function f() i32 { 42; }
+    function main() i32 { return f(); }
+  )"),
+               SunError);
+}
+
+TEST(Builtins_NoImplicitReturns, if_without_else_can_fall_through) {
+  EXPECT_THROW(executeString(R"(
+    function f(c: bool) i32 {
+        if (c) { return 1; }
+    }
+    function main() i32 { return f(true); }
+  )"),
+               SunError);
+}
+
+TEST(Builtins_NoImplicitReturns, if_else_returning_on_both_paths_is_enough) {
+  auto value = executeString(R"(
+    function f(c: bool) i32 {
+        if (c) { return 1; } else { return 2; }
+    }
+    function main() i32 { return f(false); }
+  )");
+  EXPECT_EQ(value, 2);
+}
+
+TEST(Builtins_NoImplicitReturns, exhaustive_match_returning_everywhere) {
+  auto value = executeString(R"(
+    enum Kind { A, B }
+    function f(k: Kind) i32 {
+        match k {
+            Kind.A => { return 1; },
+            Kind.B => { return 2; }
+        };
+    }
+    function main() i32 { return f(Kind.B); }
+  )");
+  EXPECT_EQ(value, 2);
+}
+
+// Binding a block that always leaves the function is rejected: the block
+// never produces a value, so the binding would be dead code.
+TEST(Builtins_NoImplicitReturns, binding_an_always_exiting_block_is_an_error) {
+  EXPECT_THROW(executeString(R"(
+    function f() i32 {
+        var x = unsafe { return 0; };
+        return 1;
+    }
+    function main() i32 { return f(); }
+  )"),
+               SunError);
+}
+
+// A conditional early exit inside the block is fine: on the other path the
+// block still produces its value.
+TEST(Builtins_NoImplicitReturns, conditional_exit_inside_bound_block_is_fine) {
+  auto value = executeString(R"(
+    extern "C" function c_abs(x: i32) i32 as "abs";
+    function f(c: bool) i32 {
+        var x = unsafe {
+            if (c) { return 0; }
+            c_abs(-7);
+        };
+        return x;
+    }
+    function main() i32 { return f(false); }
+  )");
+  EXPECT_EQ(value, 7);
+}

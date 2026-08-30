@@ -827,6 +827,24 @@ void SemanticAnalyzer::validateExternSignature(FunctionAST& func) {
   }
 }
 
+// Sun has no implicit returns: a function whose signature promises a value
+// must leave through an explicit `return` (or a throw) on every path. Checked
+// after the body is analyzed, so match discriminants carry their types.
+static void checkAllPathsReturn(const PrototypeAST& proto,
+                                const BlockExprAST& body,
+                                const sun::TypePtr& returnType,
+                                const Position& loc) {
+  if (!returnType || returnType->isVoid()) return;
+  if (sun::rules::alwaysExits(body)) return;
+  const std::string name =
+      proto.getName().empty() ? "lambda" : "'" + proto.getName() + "'";
+  logAndThrowError(
+      "Function " + name + " can reach the end of its body without a value: " +
+          "it must end in a `return` (or a throw) on every path. Sun has no "
+          "implicit returns.",
+      loc);
+}
+
 void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
   PrototypeAST& proto = const_cast<PrototypeAST&>(func.getProto());
 
@@ -922,6 +940,13 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
   // Analyze the function body
   analyzeBlock(const_cast<BlockExprAST&>(func.getBody()));
 
+  // No implicit returns: a non-void signature must be met by an explicit
+  // return (or throw) on every path. Moon stubs carry no body to check.
+  if (!ctx_.isInMoonScope()) {
+    checkAllPathsReturn(proto, func.getBody(), scopeReturnType,
+                        func.getLocation());
+  }
+
   ctx_.exitScope();
 }
 
@@ -986,6 +1011,10 @@ void SemanticAnalyzer::analyzeLambda(LambdaAST& lambda) {
 
   // Analyze the lambda body
   analyzeBlock(const_cast<BlockExprAST&>(lambda.getBody()));
+
+  // Same rule as named functions: no implicit returns
+  checkAllPathsReturn(proto, lambda.getBody(), proto.getResolvedReturnType(),
+                      lambda.getLocation());
 
   ctx_.exitScope();
 }

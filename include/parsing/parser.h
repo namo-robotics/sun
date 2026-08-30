@@ -283,7 +283,9 @@ class Parser {
   unique_ptr<BreakAST> parseBreak();
   unique_ptr<ContinueAST> parseContinue();
   unique_ptr<BlockExprAST> parseString(const std::string& source);
-  unique_ptr<BlockExprAST> parseBlock(bool itemLevel = false);
+  // Every block records what construct it is the body of (see BlockKind);
+  // only a match arm's or an unsafe block's body evaluates to a value.
+  unique_ptr<BlockExprAST> parseBlock(BlockKind kind, bool itemLevel = false);
   unique_ptr<ExprAST> parseStatement();
   unique_ptr<ExprAST> parseStatementCore();
   // Consumes an optional `public`; errors on a duplicate.

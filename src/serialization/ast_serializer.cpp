@@ -104,6 +104,7 @@ ast::Program ASTSerializer::serializeProgram(const BlockExprAST& root) const {
 
 void ASTSerializer::serializeBlockInto(const BlockExprAST& block,
                                        ast::BlockExpr* proto) const {
+  proto->set_block_kind(static_cast<uint32_t>(block.getKind()));
   for (const auto& stmt : block.getBody()) {
     *proto->add_body() = serialize(*stmt);
   }

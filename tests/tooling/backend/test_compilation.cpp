@@ -20,7 +20,7 @@ void compileString(const std::string& source) {
 TEST(Tooling_Backend_Compilation, main_returns_i32) {
   EXPECT_NO_THROW(compileString(R"(
     function main() i32 {
-        0;
+        return 0;
     };
   )"));
 }
@@ -30,7 +30,7 @@ TEST(Tooling_Backend_Compilation, main_returns_i32_with_computation) {
     function main() i32 {
         var x: i32 = 10;
         var y: i32 = 20;
-        x + y;
+        return x + y;
     };
   )"));
 }
@@ -38,11 +38,11 @@ TEST(Tooling_Backend_Compilation, main_returns_i32_with_computation) {
 TEST(Tooling_Backend_Compilation, main_returns_i32_with_functions) {
   EXPECT_NO_THROW(compileString(R"(
 function add(a: i32, b: i32) i32 {
-        a + b;
+        return a + b;
     };
 
     function main() i32 {
-        add(1, 2);
+        return add(1, 2);
     };
   )"));
 }
@@ -52,7 +52,7 @@ function add(a: i32, b: i32) i32 {
 TEST(Tooling_Backend_Compilation, main_returns_f64_fails) {
   EXPECT_THROW(compileString(R"(
         function main() f64 {
-            3.14;
+            return 3.14;
         };
       )"),
                SunError);
@@ -61,7 +61,7 @@ TEST(Tooling_Backend_Compilation, main_returns_f64_fails) {
 TEST(Tooling_Backend_Compilation, main_returns_f32_fails) {
   EXPECT_THROW(compileString(R"(
         function main() f32 {
-            3.14;
+            return 3.14;
         };
       )"),
                SunError);
@@ -70,7 +70,7 @@ TEST(Tooling_Backend_Compilation, main_returns_f32_fails) {
 TEST(Tooling_Backend_Compilation, main_returns_i64_fails) {
   EXPECT_THROW(compileString(R"(
         function main() i64 {
-            42;
+            return 42;
         };
       )"),
                SunError);
@@ -99,7 +99,7 @@ TEST(Tooling_Backend_Compilation, error_message_contains_type_info) {
   try {
     compileString(R"(
       function main() f64 {
-          3.14;
+          return 3.14;
       };
     )");
     FAIL() << "Expected SunError";

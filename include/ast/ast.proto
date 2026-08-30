@@ -264,6 +264,10 @@ message PackExpansion {
 message BlockExpr {
   repeated ASTNode body = 1;
   optional Position location = 2;  // Span of the braces
+  // Which construct this block is the body of; values mirror the C++
+  // BlockKind enum (0 = Anonymous). Decides whether the block may evaluate
+  // to its last statement.
+  optional uint32 block_kind = 3;
 }
 
 message IfExpr {
