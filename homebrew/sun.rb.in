@@ -33,7 +33,7 @@ class Sun < Formula
       #{lib}/sun. Import them from a program's manifest:
 
           manifest {
-              moons: ["stdlib.moon", "tls.moon"]
+              libraries: ["stdlib.moon", "tls.moon"]
           }
     EOS
   end
@@ -42,7 +42,7 @@ class Sun < Formula
   # together prove the compiler finds its bundles and can link through cc.
   test do
     (testpath/"hello.sun").write <<~SUN
-      using sun;
+      using std;
 
       function main() i32 {
           println("Hello from Sun!");
@@ -50,7 +50,7 @@ class Sun < Formula
       }
 
       manifest {
-          moons: ["stdlib.moon"]
+          libraries: ["stdlib.moon"]
       }
     SUN
     assert_match "Hello from Sun!", shell_output("#{bin}/sun hello.sun")

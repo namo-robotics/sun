@@ -18,7 +18,7 @@
 
 TEST(Stdlib_Concurrency_Shared, one_handle_starts_at_one) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     class Res { public var v: i32; init(v: i32) { this.v = v; } }
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -31,7 +31,7 @@ TEST(Stdlib_Concurrency_Shared, one_handle_starts_at_one) {
 
 TEST(Stdlib_Concurrency_Shared, clone_raises_and_scope_exit_lowers_the_count) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     class Res { public var v: i32; init(v: i32) { this.v = v; } }
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -49,7 +49,7 @@ TEST(Stdlib_Concurrency_Shared, clone_raises_and_scope_exit_lowers_the_count) {
 
 TEST(Stdlib_Concurrency_Shared, value_drops_only_when_the_last_handle_goes) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     var drops: i32 = 0;
     class Res {
       public var v: i32;
@@ -74,7 +74,7 @@ TEST(Stdlib_Concurrency_Shared, value_drops_only_when_the_last_handle_goes) {
 
 TEST(Stdlib_Concurrency_Shared, a_clone_keeps_the_value_alive) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     class Res { public var v: i32; init(v: i32) { this.v = v; } }
     function hand_out(alloc: const ref HeapAllocator) Shared<Res> {
       var s = Shared<Res>(alloc, Res(9));
@@ -92,7 +92,7 @@ TEST(Stdlib_Concurrency_Shared, a_clone_keeps_the_value_alive) {
 
 TEST(Stdlib_Concurrency_Shared, binding_a_handle_to_a_new_name_moves_it) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     class Res { public var v: i32; init(v: i32) { this.v = v; } }
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -106,7 +106,7 @@ TEST(Stdlib_Concurrency_Shared, binding_a_handle_to_a_new_name_moves_it) {
 
 TEST(Stdlib_Concurrency_Shared, moved_handle_cannot_be_used) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun;
+    using std;
     class Res { public var v: i32; init(v: i32) { this.v = v; } }
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -122,7 +122,7 @@ TEST(Stdlib_Concurrency_Shared, moved_handle_cannot_be_used) {
 // handle happens to be last
 TEST(Stdlib_Concurrency_Shared, an_owning_value_is_released_once) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function main() i32 {
       var alloc = make_heap_allocator();
       var total: i64 = 0;
@@ -149,7 +149,7 @@ TEST(Stdlib_Concurrency_Shared, an_owning_value_is_released_once) {
 
 TEST(Stdlib_Concurrency_Shared, write_through_the_guard_and_read_it_back) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     class Counter { public var n: i32; init() { this.n = 0; } }
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -168,7 +168,7 @@ TEST(Stdlib_Concurrency_Shared, write_through_the_guard_and_read_it_back) {
 // Dropping the guard unlocks, so a second lock in the same function proceeds
 TEST(Stdlib_Concurrency_Shared, the_guard_unlocks_at_scope_exit) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     class Counter { public var n: i32; init() { this.n = 0; } }
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -186,7 +186,7 @@ TEST(Stdlib_Concurrency_Shared, the_guard_unlocks_at_scope_exit) {
 // Unwinding past a guard releases the lock on the way out
 TEST(Stdlib_Concurrency_Shared, the_guard_unlocks_while_unwinding) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     class Boom implements IError {
       init() {}
       method code() i32 { return 1; }
@@ -216,7 +216,7 @@ TEST(Stdlib_Concurrency_Shared, the_guard_unlocks_while_unwinding) {
 // lock() is a const method, so a read-only handle can still reach the value
 TEST(Stdlib_Concurrency_Shared, lock_works_through_a_const_ref_handle) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     class Counter { public var n: i32; init() { this.n = 0; } }
     function bump(s: const ref Shared<Counter>) void {
       var g = s.lock();
@@ -242,8 +242,8 @@ TEST(Stdlib_Concurrency_Shared, lock_works_through_a_const_ref_handle) {
 // its own clone, moved in through the capture list.
 TEST(Stdlib_Concurrency_Shared, two_threads_write_one_value) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.thread;
+    using std;
+    using std.thread;
     class Counter { public var n: i64; init() { this.n = 0; } }
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -271,8 +271,8 @@ TEST(Stdlib_Concurrency_Shared, two_threads_write_one_value) {
 
 TEST(Stdlib_Concurrency_Shared, four_threads_write_one_value) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.thread;
+    using std;
+    using std.thread;
     class Counter { public var n: i64; init() { this.n = 0; } }
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -315,8 +315,8 @@ TEST(Stdlib_Concurrency_Shared, four_threads_write_one_value) {
 // Several threads may also share one handle read-only and lock through it
 TEST(Stdlib_Concurrency_Shared, threads_share_one_handle_by_const_ref) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.thread;
+    using std;
+    using std.thread;
     class Counter { public var n: i64; init() { this.n = 0; } }
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -346,8 +346,8 @@ TEST(Stdlib_Concurrency_Shared, threads_share_one_handle_by_const_ref) {
 TEST(Stdlib_Concurrency_Shared,
      an_unjoined_thread_finishes_before_its_clone_drops) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.thread;
+    using std;
+    using std.thread;
     class Counter { public var n: i64; init() { this.n = 0; } }
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -373,7 +373,7 @@ TEST(Stdlib_Concurrency_Shared,
 
 TEST(Stdlib_Concurrency_Shared, there_is_no_accessor_other_than_lock) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun;
+    using std;
     class Counter { public var n: i32; init() { this.n = 0; } }
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -387,7 +387,7 @@ TEST(Stdlib_Concurrency_Shared, there_is_no_accessor_other_than_lock) {
 // A guard cannot be conjured up, only handed out by lock()
 TEST(Stdlib_Concurrency_Shared, a_guard_cannot_be_built_by_hand) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun;
+    using std;
     class Counter { public var n: i32; init() { this.n = 0; } }
     function main() i32 {
       var g = SharedGuard<Counter>(null);

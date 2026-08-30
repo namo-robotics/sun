@@ -268,7 +268,7 @@ TEST_F(Stdlib_Io_File, file_read_returns_content) {
 }
 
 // ============================================================================
-// The sun.io File class
+// The std.io File class
 // ============================================================================
 // The tests above drive the __file_* intrinsics directly. These go through
 // stdlib/io.sun, where every path is taken as a static_ptr<u8> (a literal) or
@@ -277,8 +277,8 @@ TEST_F(Stdlib_Io_File, file_read_returns_content) {
 TEST_F(Stdlib_Io_File, sun_io_file_literal_path_round_trip) {
   std::string path = testFile("literal.txt");
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.io;
+    using std;
+    using std.io;
 
     function main() i32 {
         var a = make_heap_allocator();
@@ -304,8 +304,8 @@ TEST_F(Stdlib_Io_File, sun_io_file_literal_path_round_trip) {
 TEST_F(Stdlib_Io_File, sun_io_file_runtime_string_path) {
   std::string path = testFile("runtime.txt");
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.io;
+    using std;
+    using std.io;
 
     function main() i32 {
         var a = make_heap_allocator();
@@ -336,8 +336,8 @@ TEST_F(Stdlib_Io_File, sun_io_file_seek_and_size) {
   writeFileContents(path, "0123456789");
 
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.io;
+    using std;
+    using std.io;
 
     function main() i32 {
         try {
@@ -364,8 +364,8 @@ TEST_F(Stdlib_Io_File, sun_io_append_mode_keeps_existing_content) {
   writeFileContents(path, "first;");
 
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.io;
+    using std;
+    using std.io;
 
     function main() i32 {
         try {
@@ -385,8 +385,8 @@ TEST_F(Stdlib_Io_File, sun_io_append_mode_keeps_existing_content) {
 
 TEST_F(Stdlib_Io_File, sun_io_open_missing_file_throws) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.io;
+    using std;
+    using std.io;
 
     function main() i32 {
         var f = File();
@@ -407,8 +407,8 @@ TEST_F(Stdlib_Io_File, sun_io_remove_rename_and_directories) {
   writeFileContents(path, "x");
 
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.io;
+    using std;
+    using std.io;
 
     function main() i32 {
         try {

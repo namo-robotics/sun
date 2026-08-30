@@ -1,4 +1,4 @@
-// tests/stdlib/sys/test_env.cpp - sun.env
+// tests/stdlib/sys/test_env.cpp - std.env
 //
 // These run in the gtest process, so anything they change about the
 // environment or the working directory is this process's. The fixture puts it
@@ -33,8 +33,8 @@ class Stdlib_Sys_Env : public ::testing::Test {
 
 TEST_F(Stdlib_Sys_Env, get_returns_none_when_unset) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.env;
+    using std;
+    using std.env;
 
     function main() i32 {
         var a = make_heap_allocator();
@@ -52,8 +52,8 @@ TEST_F(Stdlib_Sys_Env, get_reads_a_variable_set_from_outside) {
   setenv(varName.c_str(), "from-outside", 1);
 
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.env;
+    using std;
+    using std.env;
 
     function main() i32 {
         var a = make_heap_allocator();
@@ -71,8 +71,8 @@ TEST_F(Stdlib_Sys_Env, get_reads_a_variable_set_from_outside) {
 
 TEST_F(Stdlib_Sys_Env, set_get_remove_round_trip) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.env;
+    using std;
+    using std.env;
 
     function main() i32 {
         var a = make_heap_allocator();
@@ -112,8 +112,8 @@ TEST_F(Stdlib_Sys_Env, set_get_remove_round_trip) {
 TEST_F(Stdlib_Sys_Env, cwd_reports_the_working_directory) {
   auto value =
       executeStringWithStdlib(R"(
-    using sun;
-    using sun.env;
+    using std;
+    using std.env;
 
     function main() i32 {
         var a = make_heap_allocator();
@@ -137,8 +137,8 @@ TEST_F(Stdlib_Sys_Env, set_cwd_changes_and_cwd_reflects_it) {
   // "/" rather than "/tmp": on macOS /tmp is a symlink to /private/tmp, so
   // the kernel's idea of the directory would not match the literal.
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.env;
+    using std;
+    using std.env;
 
     function main() i32 {
         var a = make_heap_allocator();
@@ -159,8 +159,8 @@ TEST_F(Stdlib_Sys_Env, set_cwd_changes_and_cwd_reflects_it) {
 
 TEST_F(Stdlib_Sys_Env, set_cwd_to_a_missing_directory_throws) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.env;
+    using std;
+    using std.env;
 
     function main() i32 {
         try {
@@ -177,8 +177,8 @@ TEST_F(Stdlib_Sys_Env, set_cwd_to_a_missing_directory_throws) {
 TEST_F(Stdlib_Sys_Env, args_reads_argc_and_argv_from_main) {
   const char* argv[] = {"prog", "alpha", "beta", nullptr};
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.env;
+    using std;
+    using std.env;
 
     function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
         var a = make_heap_allocator();
@@ -198,8 +198,8 @@ TEST_F(Stdlib_Sys_Env, args_reads_argc_and_argv_from_main) {
 
 TEST_F(Stdlib_Sys_Env, args_with_no_arguments_is_empty) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.env;
+    using std;
+    using std.env;
 
     function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
         var a = make_heap_allocator();

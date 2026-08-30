@@ -27,7 +27,7 @@ elsewhere (for example a local build at `build/sun-lsp`).
 | `sun.lsp.path` | Path to the `sun-lsp` executable. Defaults to `sun-lsp` on `PATH`. Relative paths resolve against the workspace folder. |
 | `sun.sunPath` | Extra directories added to `SUN_PATH` for module resolution. Defaults to the workspace folder. |
 | `sun.entrypoints` | Entrypoint files containing a `manifest` block. When set, replaces automatic manifest discovery. |
-| `sun.pathVariables` | Path variables for manifest entries, e.g. `{"LIBS": "libs"}` for `moons: ["$LIBS/mathlib.moon"]`. Equivalent to the compiler's `--path-var` flag; relative values resolve against the entrypoint's directory. |
+| `sun.pathVariables` | Path variables for manifest entries, e.g. `{"LIBS": "libs"}` for `libraries: ["$LIBS/mathlib.moon"]`. Equivalent to the compiler's `--path-var` flag; relative values resolve against the entrypoint's directory. |
 
 A folder can also hold a `sun-config.json` defining `sunPath` and
 `pathVariables` for the entrypoints in and below it. Both the compiler and

@@ -1388,14 +1388,14 @@ Value* ClassGenerator::codegen(const GenericCallAST& expr) {
       expr.getResolvedTypeArgs();
 
   // Get the mangled class name - use resolved type if available to handle
-  // qualified names from using imports (e.g., Unique -> sun_Unique)
+  // qualified names from using imports (e.g., Unique -> std_Unique)
   std::string baseName = funcName;
   if (auto* resolvedClass = sun::tryGetType<sun::ClassType>(expr)) {
     baseName = resolvedClass->getMangledName();
     // Strip any trailing template params that may already be in the name
     size_t parenPos = baseName.find('_');
     // Actually the ClassType name should already be the full mangled name
-    // e.g., "sun_Unique_Point" - so we can use it directly
+    // e.g., "std_Unique_Point" - so we can use it directly
     auto classType = typeRegistry->getClass(baseName);
     if (classType) {
       // Create a stack-allocated instance and call constructor

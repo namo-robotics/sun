@@ -208,7 +208,7 @@ TEST(MemorySafety_BorrowChecker, while_loop_borrow) {
 
 TEST(MemorySafety_BorrowChecker, error_on_string_use_after_move) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function consume(s: ref String) void {
     }
@@ -404,7 +404,7 @@ TEST(MemorySafety_BorrowChecker, temporary_with_method_call) {
 // the discriminant is `this` or a ref parameter.
 TEST(MemorySafety_BorrowChecker, ref_return_through_match_binding_of_this) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class OutOfRange implements IError {
       init() {}
@@ -453,7 +453,7 @@ TEST(MemorySafety_BorrowChecker, ref_return_through_match_binding_of_this) {
 TEST(MemorySafety_BorrowChecker,
      ref_return_through_match_binding_of_local_is_dangling) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     enum Value {
       Items(Vec<String>),
@@ -486,7 +486,7 @@ TEST(MemorySafety_BorrowChecker,
 
 TEST(MemorySafety_BorrowChecker, return_in_catch_does_not_move_on_fallthrough) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function pick(alloc: ref HeapAllocator, n: i64) Vec<String> throws IError {
       var out = Vec<String>(alloc, 4);
@@ -516,7 +516,7 @@ TEST(MemorySafety_BorrowChecker, return_in_catch_does_not_move_on_fallthrough) {
 TEST(MemorySafety_BorrowChecker,
      catch_clauses_are_alternatives_not_a_sequence) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function pick(alloc: ref HeapAllocator, n: i64) Vec<String> throws IError {
       var out = Vec<String>(alloc, 4);
@@ -546,7 +546,7 @@ TEST(MemorySafety_BorrowChecker,
 TEST(MemorySafety_BorrowChecker,
      return_in_match_arm_does_not_move_on_fallthrough) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function pick(alloc: ref HeapAllocator, o: Option<i64>) Vec<String> {
       var out = Vec<String>(alloc, 4);
@@ -570,7 +570,7 @@ TEST(MemorySafety_BorrowChecker, error_on_move_in_falling_through_catch) {
   // The catch clause moves and does NOT diverge, so the later use is a
   // genuine use-after-move and must still be rejected.
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function consume(v: Vec<String>) i64 { return v.size(); }
 
@@ -594,7 +594,7 @@ TEST(MemorySafety_BorrowChecker, error_on_move_in_falling_through_catch) {
 
 TEST(MemorySafety_BorrowChecker, error_on_move_in_falling_through_match_arm) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function consume(v: Vec<String>) i64 { return v.size(); }
 
@@ -620,7 +620,7 @@ TEST(MemorySafety_BorrowChecker, error_on_move_in_try_block_used_after) {
   // A move inside the try block is on the normal path and still propagates
   // into the catch clauses and past the try/catch.
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function consume(v: Vec<String>) i64 { return v.size(); }
 

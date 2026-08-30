@@ -31,7 +31,7 @@ TEST(Stdlib_BigInt_BitIntrinsics, mul_hi_ctlz_cttz) {
 
 TEST(Stdlib_BigInt, factorial_and_decimal_round_trip) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 throws IError {
         var alloc = make_heap_allocator();
@@ -65,7 +65,7 @@ TEST(Stdlib_BigInt, factorial_and_decimal_round_trip) {
 
 TEST(Stdlib_BigInt, multi_limb_arithmetic) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function of(alloc: ref HeapAllocator, text: static_ptr<u8>) BigUint {
         var s = String(alloc, text);

@@ -1,5 +1,5 @@
 // Talker: connects and sends a message
-using sun;
+using std;
 
 function main() i32 {
   var stream = TcpStream();
@@ -14,5 +14,5 @@ function main() i32 {
 }
 
 manifest {
-    moons: ["stdlib.moon"]
+    libraries: ["stdlib.moon"]
 }

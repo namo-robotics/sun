@@ -196,7 +196,7 @@ TEST(Tooling_Backend_DebugInfo, moon_bundle_carries_debug_info_into_g_compile) {
   auto driver = Driver::createForAOT("moon_debug_test", "", /*debugInfo=*/true);
   driver->setMoonImports(imports);
   driver->compileString(R"(
-using sun;
+using std;
 function main() i32 {
   println("hi");
   return 0;
@@ -223,7 +223,7 @@ TEST(Tooling_Backend_DebugInfo, moon_debug_info_stripped_from_non_g_compile) {
   auto driver = Driver::createForAOT("moon_strip_test");
   driver->setMoonImports(imports);
   driver->compileString(R"(
-using sun;
+using std;
 function main() i32 {
   println("hi");
   return 0;

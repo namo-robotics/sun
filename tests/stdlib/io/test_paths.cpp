@@ -1,6 +1,6 @@
 // tests/stdlib/io/test_paths.cpp - Paths built at runtime
 //
-// Every sun.io entry point that takes a path takes it either as a
+// Every std.io entry point that takes a path takes it either as a
 // static_ptr<u8> (what a string literal is) or as a `ref String`, so a path
 // assembled from an environment variable, a hash or a session id needs no
 // escape hatch (issue #84).
@@ -30,8 +30,8 @@ class Stdlib_Io_Paths : public ::testing::Test {
 
 TEST_F(Stdlib_Io_Paths, open_and_write_a_computed_path) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.io;
+    using std;
+    using std.io;
 
     function run(a: ref HeapAllocator) i32 throws IError {
         var path = String(a, ")" + testDir +
@@ -57,8 +57,8 @@ TEST_F(Stdlib_Io_Paths, open_and_write_a_computed_path) {
 
 TEST_F(Stdlib_Io_Paths, whole_file_helpers_take_a_computed_path) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.io;
+    using std;
+    using std.io;
 
     function run(a: ref HeapAllocator) i32 throws IError {
         var path = String(a, ")" + testDir +
@@ -84,8 +84,8 @@ TEST_F(Stdlib_Io_Paths, metadata_queries_take_a_computed_path) {
   std::ofstream(testDir + "/there.txt") << "x";
 
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.io;
+    using std;
+    using std.io;
 
     function main() i32 {
         var a = make_heap_allocator();
@@ -111,8 +111,8 @@ TEST_F(Stdlib_Io_Paths, metadata_queries_take_a_computed_path) {
 
 TEST_F(Stdlib_Io_Paths, directory_calls_take_a_computed_path) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.io;
+    using std;
+    using std.io;
 
     function run(a: ref HeapAllocator) i32 throws IError {
         var dir = String(a, ")" + testDir +
@@ -152,8 +152,8 @@ TEST_F(Stdlib_Io_Paths, directory_calls_take_a_computed_path) {
 
 TEST_F(Stdlib_Io_Paths, literals_still_pick_the_static_ptr_overload) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.io;
+    using std;
+    using std.io;
 
     function run(a: ref HeapAllocator) i32 throws IError {
         var body = String(a, "literal path");

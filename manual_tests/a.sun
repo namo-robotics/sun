@@ -1,4 +1,4 @@
-public module sun {
+public module std {
   public function a() i32 {
     return 1;
   }

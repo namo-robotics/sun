@@ -13,7 +13,7 @@
 
 TEST(Stdlib_Collections_LinkedList, empty_list) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -33,7 +33,7 @@ TEST(Stdlib_Collections_LinkedList, empty_list) {
 
 TEST(Stdlib_Collections_LinkedList, push_back) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -52,7 +52,7 @@ TEST(Stdlib_Collections_LinkedList, push_back) {
 
 TEST(Stdlib_Collections_LinkedList, push_front) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -76,7 +76,7 @@ TEST(Stdlib_Collections_LinkedList, push_front) {
 
 TEST(Stdlib_Collections_LinkedList, pop_front) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -98,7 +98,7 @@ TEST(Stdlib_Collections_LinkedList, pop_front) {
 
 TEST(Stdlib_Collections_LinkedList, pop_back) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -120,7 +120,7 @@ TEST(Stdlib_Collections_LinkedList, pop_back) {
 
 TEST(Stdlib_Collections_LinkedList, pop_empty_throws) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -144,7 +144,7 @@ TEST(Stdlib_Collections_LinkedList, pop_empty_throws) {
 
 TEST(Stdlib_Collections_LinkedList, drain_list) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -176,7 +176,7 @@ TEST(Stdlib_Collections_LinkedList, drain_list) {
 
 TEST(Stdlib_Collections_LinkedList, get_and_set) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -204,7 +204,7 @@ TEST(Stdlib_Collections_LinkedList, get_and_set) {
 
 TEST(Stdlib_Collections_LinkedList, get_out_of_bounds) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -227,7 +227,7 @@ TEST(Stdlib_Collections_LinkedList, get_out_of_bounds) {
 
 TEST(Stdlib_Collections_LinkedList, remove_nodes) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -258,7 +258,7 @@ TEST(Stdlib_Collections_LinkedList, remove_nodes) {
 
 TEST(Stdlib_Collections_LinkedList, clear_and_reuse) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -282,7 +282,7 @@ TEST(Stdlib_Collections_LinkedList, clear_and_reuse) {
 
 TEST(Stdlib_Collections_LinkedList, for_in_iteration) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -308,7 +308,7 @@ TEST(Stdlib_Collections_LinkedList, for_in_iteration) {
 
 TEST(Stdlib_Collections_LinkedList, iterate_empty) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -329,7 +329,7 @@ TEST(Stdlib_Collections_LinkedList, iterate_empty) {
 
 TEST(Stdlib_Collections_LinkedList, mixed_push_front_back) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -353,7 +353,7 @@ TEST(Stdlib_Collections_LinkedList, mixed_push_front_back) {
 
 TEST(Stdlib_Collections_LinkedList, i64_type) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -379,7 +379,7 @@ TEST(Stdlib_Collections_LinkedList, i64_type) {
 
 TEST(Stdlib_Collections_LinkedList, list_of_class_objects) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class Point {
         var x: i32;
@@ -426,7 +426,7 @@ TEST(Stdlib_Collections_LinkedList, list_of_class_objects) {
 
 TEST(Stdlib_Collections_LinkedList, class_objects_push_front_pop) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class Pair {
         var a: i32;
@@ -466,7 +466,7 @@ TEST(Stdlib_Collections_LinkedList, class_objects_push_front_pop) {
 
 TEST(Stdlib_Collections_LinkedList, iterate_class_objects) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class Weight {
         var value: i32;
@@ -512,7 +512,7 @@ TEST(Stdlib_Collections_LinkedList, DISABLED_use_after_free_stale_raw_ptr) {
   // The stale raw_ptr reads freed memory. In practice this may return
   // the old value (memory not yet reclaimed) or garbage.
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -540,7 +540,7 @@ TEST(Stdlib_Collections_LinkedList, DISABLED_double_free_via_copy) {
   // This test crashes with "free(): invalid pointer" — confirmed double-free.
   // Disabled because it aborts the test process.
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class ListWrapper {
         var inner: LinkedList<i32>;

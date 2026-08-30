@@ -13,7 +13,7 @@
 // Generated shape (proto3):
 //
 //   module <package> {
-//     using sun;
+//     using std;
 //     enum <Enum> { A, B, ... }                    // proto enums
 //     class <Msg> {
 //       var <field>: <SunType>; ...
@@ -916,7 +916,7 @@ void emitFile(Writer& w, const pb::FileDescriptor* file,
   // `using` inside the module: merged ASTs order modules before other
   // top-level statements, so a file-level `using` would bind too late for
   // the class shapes. Imported packages are brought into scope the same way.
-  w.line("using sun;");
+  w.line("using std;");
   std::set<std::string> importedPkgs;
   for (int i = 0; i < file->dependency_count(); ++i) {
     std::string dpkg = asString(file->dependency(i)->package());

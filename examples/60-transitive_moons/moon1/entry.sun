@@ -5,6 +5,6 @@ public module moon1 {
 }
 
 manifest {
-    suns: []
-    moons: [{ path: "moon2.moon"}]
+    source_files: []
+    libraries: [{ path: "moon2.moon"}]
 }

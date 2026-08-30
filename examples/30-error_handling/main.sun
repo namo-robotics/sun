@@ -1,4 +1,4 @@
-using sun;
+using std;
 
 // A function that can fail declares an error type after its return type with
 // the ` throws IError` suffix, and signals failure with `throw`. The thrown value is
@@ -31,5 +31,5 @@ function main() i32 {
 }
 
 manifest {
-    moons: ["stdlib.moon"]
+    libraries: ["stdlib.moon"]
 }

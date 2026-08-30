@@ -10,7 +10,7 @@ Include `stdlib.moon` in your manifest:
 
 ```sun
 manifest {
-    moons: ["stdlib.moon"]
+    libraries: ["stdlib.moon"]
 }
 ```
 
@@ -19,7 +19,7 @@ manifest {
 Use `Matrix<T>(allocator, shape)` to create a matrix with the specified dimensions:
 
 ```sun
-using sun;
+using std;
 
 function main() i32 {
     var allocator = make_heap_allocator();
@@ -37,7 +37,7 @@ function main() i32 {
 }
 
 manifest {
-    moons: ["stdlib.moon"]
+    libraries: ["stdlib.moon"]
 }
 ```
 
@@ -46,7 +46,7 @@ manifest {
 Access elements using comma-separated indices in brackets:
 
 ```sun
-using sun;
+using std;
 
 function main() i32 {
     var allocator = make_heap_allocator();
@@ -64,14 +64,14 @@ function main() i32 {
 }
 
 manifest {
-    moons: ["stdlib.moon"]
+    libraries: ["stdlib.moon"]
 }
 ```
 
 For 1D matrices:
 
 ```sun
-using sun;
+using std;
 
 function main() i32 {
     var allocator = make_heap_allocator();
@@ -212,7 +212,7 @@ function main() i32 {
 ## Complete Example
 
 ```sun
-using sun;
+using std;
 
 function main() i32 {
     var allocator = make_heap_allocator();
@@ -239,7 +239,7 @@ function main() i32 {
 }
 
 manifest {
-    moons: ["stdlib.moon"]
+    libraries: ["stdlib.moon"]
 }
 ```
 
@@ -248,7 +248,7 @@ manifest {
 `Matrix<T>` uses an owning pointer (`ptr<T>`) for its data, which is automatically freed when the matrix goes out of scope. The allocator is only used during construction.
 
 ```sun
-using sun;
+using std;
 
 function createMatrix() i32 {
     var allocator = make_heap_allocator();
@@ -261,6 +261,6 @@ function createMatrix() i32 {
 }
 
 manifest {
-    moons: ["stdlib.moon"]
+    libraries: ["stdlib.moon"]
 }
 ```

@@ -88,7 +88,7 @@ thread.
 The trampoline `pthread_create` needs is built per lambda signature, which
 cannot be written in Sun — `pthread_create` wants a `ptr(*)(ptr)`, and Sun
 lambdas use the fat-pointer ABI — so this is the one part of threading the
-compiler still does. Everything else is [`sun.thread`](/threads).
+compiler still does. Everything else is [`std.thread`](/threads).
 
 ### `_thread_join<T>(ctx)` and `_thread_join_drop<T>(ctx)`
 

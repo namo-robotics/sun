@@ -18,7 +18,7 @@
 
 TEST(Functions_Generic_ContainerSignatures, vec_parameter) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function count<T>(v: ref Vec<T>) i64 {
         return v.size();
@@ -37,7 +37,7 @@ TEST(Functions_Generic_ContainerSignatures, vec_parameter) {
 
 TEST(Functions_Generic_ContainerSignatures, vec_return_type_and_local) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function build<T>(allocator: ref HeapAllocator, first: T) Vec<T> {
         var v = Vec<T>(allocator, 2);
@@ -56,7 +56,7 @@ TEST(Functions_Generic_ContainerSignatures, vec_return_type_and_local) {
 
 TEST(Functions_Generic_ContainerSignatures, linked_list_parameter) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function count<T>(l: ref LinkedList<T>) i64 {
         return l.size();
@@ -76,7 +76,7 @@ TEST(Functions_Generic_ContainerSignatures, linked_list_parameter) {
 
 TEST(Functions_Generic_ContainerSignatures, map_parameter_two_type_params) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function count<K, V>(m: ref Map<K, V>) i64 {
         return m.size();
@@ -97,7 +97,7 @@ TEST(Functions_Generic_ContainerSignatures, map_parameter_two_type_params) {
 // the signature alone has to be enough.
 TEST(Functions_Generic_ContainerSignatures, uncalled_vec_signature_resolves) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function never_called<T>(v: ref Vec<T>) i32 {
         return 0;

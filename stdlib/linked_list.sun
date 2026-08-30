@@ -6,7 +6,7 @@
 //
 // Usage:
 //   import "stdlib/linked_list.sun";
-//   using sun;
+//   using std;
 //
 //   var allocator = make_heap_allocator();
 //   var list = LinkedList<i32>(allocator);
@@ -22,7 +22,7 @@
 // LinkedListNode<T> - Doubly-linked node
 // ============================================================================
 
-public module sun {
+public module std {
   public class LinkedListNode<T> {
     var value: T;
     var next: raw_ptr<LinkedListNode<T>>;
@@ -351,4 +351,4 @@ public module sun {
 
   public declare LinkedListIterator_i32 = LinkedListIterator<i32>;
   public declare LinkedListIterator_i64 = LinkedListIterator<i64>;
-}  // module sun
+}  // module std

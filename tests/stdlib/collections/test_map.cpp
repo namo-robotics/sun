@@ -14,7 +14,7 @@
 
 TEST(Stdlib_Collections_Map, create_empty_map) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -27,7 +27,7 @@ TEST(Stdlib_Collections_Map, create_empty_map) {
 
 TEST(Stdlib_Collections_Map, insert_and_get) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -41,7 +41,7 @@ TEST(Stdlib_Collections_Map, insert_and_get) {
 
 TEST(Stdlib_Collections_Map, insert_multiple_and_get) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -57,7 +57,7 @@ TEST(Stdlib_Collections_Map, insert_multiple_and_get) {
 
 TEST(Stdlib_Collections_Map, update_existing_key) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -72,7 +72,7 @@ TEST(Stdlib_Collections_Map, update_existing_key) {
 
 TEST(Stdlib_Collections_Map, contains_key) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -94,7 +94,7 @@ TEST(Stdlib_Collections_Map, contains_key) {
 
 TEST(Stdlib_Collections_Map, size_tracking) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -120,7 +120,7 @@ TEST(Stdlib_Collections_Map, size_tracking) {
 
 TEST(Stdlib_Collections_Map, get_or_default_found) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -135,7 +135,7 @@ TEST(Stdlib_Collections_Map, get_or_default_found) {
 
 TEST(Stdlib_Collections_Map, get_or_default_not_found) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -154,7 +154,7 @@ TEST(Stdlib_Collections_Map, get_or_default_not_found) {
 
 TEST(Stdlib_Collections_Map, remove_existing) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -175,7 +175,7 @@ TEST(Stdlib_Collections_Map, remove_existing) {
 
 TEST(Stdlib_Collections_Map, remove_then_contains) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -194,7 +194,7 @@ TEST(Stdlib_Collections_Map, remove_then_contains) {
 
 TEST(Stdlib_Collections_Map, remove_and_reinsert) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -214,7 +214,7 @@ TEST(Stdlib_Collections_Map, remove_and_reinsert) {
 
 TEST(Stdlib_Collections_Map, clear) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -241,7 +241,7 @@ TEST(Stdlib_Collections_Map, clear) {
 TEST(Stdlib_Collections_Map, auto_grow) {
   // Insert more than initial capacity (16) to trigger resize
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -268,7 +268,7 @@ TEST(Stdlib_Collections_Map, auto_grow) {
 TEST(Stdlib_Collections_Map, many_elements) {
   // Insert 100 elements
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -296,7 +296,7 @@ TEST(Stdlib_Collections_Map, many_elements) {
 
 TEST(Stdlib_Collections_Map, custom_capacity) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -317,7 +317,7 @@ TEST(Stdlib_Collections_Map, custom_capacity) {
 
 TEST(Stdlib_Collections_Map, get_missing_key_throws) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -337,7 +337,7 @@ TEST(Stdlib_Collections_Map, get_missing_key_throws) {
 
 TEST(Stdlib_Collections_Map, remove_missing_key_throws) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -362,7 +362,7 @@ TEST(Stdlib_Collections_Map, remove_missing_key_throws) {
 TEST(Stdlib_Collections_Map, hash_collision_handling) {
   // Insert keys that might collide in small table
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -385,7 +385,7 @@ TEST(Stdlib_Collections_Map, hash_collision_handling) {
 
 TEST(Stdlib_Collections_Map, iteration_sum_values) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -406,7 +406,7 @@ TEST(Stdlib_Collections_Map, iteration_sum_values) {
 
 TEST(Stdlib_Collections_Map, iteration_empty_map) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();

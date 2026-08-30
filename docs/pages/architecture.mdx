@@ -20,7 +20,7 @@ Source → Lexer → Parser → AST → Manifest Processing → Merged AST → S
 
 1. **Lexer** — Tokenize source file
 2. **Parser** — Build AST from tokens
-3. **Manifest Processing** — Extract manifest, parse additional `suns`, load `moons`
+3. **Manifest Processing** — Extract manifest, parse additional `source_files`, load `libraries`
 4. **AST Merging** — Combine all parsed ASTs into a single merged AST
 5. **Semantic Analysis** — Type inference, scope resolution, capture detection
 6. **Borrow Checking** — Ownership and lifetime analysis
@@ -122,7 +122,7 @@ flowchart TB
     end
 
     subgraph Manifest["Manifest Processing"]
-        MAN["Extract Manifest<br/>suns, moons"]
+        MAN["Extract Manifest<br/>source_files, libraries"]
         DEPS["Parse Dependencies<br/>Additional .sun files"]
         MOON["Load Moons<br/>Precompiled libraries"]
         MERGE["Merge ASTs<br/>Single unified AST"]

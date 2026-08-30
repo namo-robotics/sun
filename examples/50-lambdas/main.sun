@@ -1,4 +1,4 @@
-using sun;
+using std;
 
 function main() i32 {
   var multiplier: i32 = 10;
@@ -18,5 +18,5 @@ function main() i32 {
 }
 
 manifest {
-    moons: ["stdlib.moon"]
+    libraries: ["stdlib.moon"]
 }

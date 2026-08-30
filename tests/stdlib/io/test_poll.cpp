@@ -10,8 +10,8 @@
 
 TEST(Stdlib_Io_Poll, empty_poller_returns_zero) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.io;
+    using std;
+    using std.io;
 
     function main() i32 {
         var a = make_heap_allocator();
@@ -25,9 +25,9 @@ TEST(Stdlib_Io_Poll, empty_poller_returns_zero) {
 
 TEST(Stdlib_Io_Poll, pipe_becomes_readable_after_a_write) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.io;
-    using sun.process;
+    using std;
+    using std.io;
+    using std.process;
 
     function main() i32 {
         var a = make_heap_allocator();
@@ -60,9 +60,9 @@ TEST(Stdlib_Io_Poll, pipe_becomes_readable_after_a_write) {
 
 TEST(Stdlib_Io_Poll, hangup_is_reported_when_the_writer_closes) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.io;
-    using sun.process;
+    using std;
+    using std.io;
+    using std.process;
 
     function main() i32 {
         var a = make_heap_allocator();
@@ -86,9 +86,9 @@ TEST(Stdlib_Io_Poll, hangup_is_reported_when_the_writer_closes) {
 
 TEST(Stdlib_Io_Poll, watches_several_descriptors_by_position) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.io;
-    using sun.process;
+    using std;
+    using std.io;
+    using std.process;
 
     function main() i32 {
         var a = make_heap_allocator();

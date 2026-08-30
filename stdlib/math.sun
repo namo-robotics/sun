@@ -1,5 +1,5 @@
 // math.sun - Generic math utility functions and numeric limits
-public module sun {
+public module std {
   // Numeric limits
   public var I64_MAX: i64 = 9223372036854775807;
   public var I64_MIN: i64 = -9223372036854775807 - 1;

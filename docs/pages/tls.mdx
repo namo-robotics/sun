@@ -16,7 +16,7 @@ flags and no OpenSSL installed on the machine it runs on.
 </Callout>
 
 ```sun
-using sun;
+using std;
 using tls;
 
 function main() i32 {
@@ -37,7 +37,7 @@ function main() i32 {
 }
 
 manifest {
-    moons: ["stdlib.moon", "tls.moon"]
+    libraries: ["stdlib.moon", "tls.moon"]
 }
 ```
 
@@ -124,7 +124,7 @@ Name resolution is in the standard library, not the TLS bundle, so plain TCP
 can use it too:
 
 ```sun
-using sun;
+using std;
 
 var stream = TcpStream();
 stream.connect_host(host, 8080);          // resolve, then connect
@@ -164,8 +164,8 @@ the set matching the compilation target:
 
 ```sun
 manifest {
-    suns: ["openssl.sun", "tls_stream.sun", "https_client.sun"]
-    moons: ["stdlib.moon"]
+    source_files: ["openssl.sun", "tls_stream.sun", "https_client.sun"]
+    libraries: ["stdlib.moon"]
     target: {
         linux: {
             archives: ["$OPENSSL_LIBS_LINUX/libssl.a", "$OPENSSL_LIBS_LINUX/libcrypto.a"]

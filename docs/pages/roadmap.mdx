@@ -79,8 +79,8 @@ ecosystem is made of.
 
 ## Library Expansion
 
-Roughly 5,000 lines of stdlib today. Files and directories (`sun.io`),
-environment (`sun.env`), processes (`sun.process`) and clocks (`sun.time`) all
+Roughly 5,000 lines of stdlib today. Files and directories (`std.io`),
+environment (`std.env`), processes (`std.process`) and clocks (`std.time`) all
 exist. Every item below is something a first-day user hits. Most are
 community-supplyable now that FFI has landed.
 
@@ -89,11 +89,11 @@ community-supplyable now that FFI has landed.
       listing every environment variable
 - [ ] File metadata beyond exists/size, via `statx` (the one stat-family call
       whose struct has the same layout on every architecture)
-- [ ] Buffered stdin; `sun.io.read_line` reads a byte at a time so it cannot
+- [ ] Buffered stdin; `std.io.read_line` reads a byte at a time so it cannot
       swallow input a child process is about to read
 - [ ] `String.c_str()` as a `const method`: it writes the terminating NUL on
-      demand, so every path-taking function (`sun.io`, `sun.env`,
-      `sun.process`) still takes `ref String`. Keeping the NUL as an invariant
+      demand, so every path-taking function (`std.io`, `std.env`,
+      `std.process`) still takes `ref String`. Keeping the NUL as an invariant
       of the buffer would let them take `const ref String`. TLS is in the same
       position: `TlsStream.connect` and `HttpsClient.get` take the host as
       `ref String` for exactly this reason

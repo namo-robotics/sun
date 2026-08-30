@@ -375,7 +375,7 @@ TEST(Tooling_Lsp_Definition, MergedFiles) {
 TEST(Tooling_Lsp_Definition, StdlibDeclarations) {
   if (getStdlibMoonImports().empty()) GTEST_SKIP() << "stdlib.moon not built";
   std::string source = R"(
-using sun;
+using std;
 class Config {
     var n: i64;
     init(alloc: ref HeapAllocator) { this.n = 1; }

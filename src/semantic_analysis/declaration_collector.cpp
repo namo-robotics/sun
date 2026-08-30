@@ -388,12 +388,12 @@ void DeclarationCollector::registerClassShape(
 
   // The builtin IError predates all source, so it is registered with
   // message() returning static_ptr<u8> — the only string type that exists at
-  // that point. The stdlib upgrades the contract: once sun.String is known,
+  // that point. The stdlib upgrades the contract: once std.String is known,
   // IError.message() returns an owned String clone, and every implementation
   // compiled after this line must match that signature.
   if (ctx_.types() && qualifiedClass.baseName == "String" &&
       !qualifiedClass.owner().empty() &&
-      qualifiedClass.owner().back() == "sun") {
+      qualifiedClass.owner().back() == "std") {
     if (auto ierror = ctx_.types()->getInterface("IError")) {
       ierror->setMethodReturnType("message", classType);
     }

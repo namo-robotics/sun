@@ -1,7 +1,7 @@
 // tests/tooling/frontend/test_lowering.cpp — LoweringPass tests
 //
 // The lowering pass strips ParenExprAST, desugars InterpolatedStringAST into
-// sun.String append calls (stamping real source locations), and leaves all
+// std.String append calls (stamping real source locations), and leaves all
 // core AST nodes untouched.
 
 #include <gtest/gtest.h>
@@ -40,7 +40,7 @@ int countNodes(ExprAST& node, ASTNodeType type) {
 // The corpus exercises every child-bearing statement/expression kind so the
 // traversal is proven not to drop or reorder children.
 const char* kCorpus = R"(
-using sun;
+using std;
 
 enum Color { Red, Green, Blue }
 

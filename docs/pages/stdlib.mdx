@@ -1,9 +1,9 @@
 # Standard Library
 
-The Sun standard library is distributed as a precompiled `stdlib.moon` file. Include it in your manifest and import the `sun` namespace:
+The Sun standard library is distributed as a precompiled `stdlib.moon` file. Include it in your manifest and import the `std` namespace:
 
 ```sun
-using sun;
+using std;
 
 function main() void {
     var allocator = make_heap_allocator();
@@ -11,7 +11,7 @@ function main() void {
 }
 
 manifest {
-    moons: ["stdlib.moon"]
+    libraries: ["stdlib.moon"]
 }
 ```
 
@@ -68,7 +68,7 @@ p.is_null();   // Check if null
 
 The shared-ownership counterpart to `Unique<T>`: `Unique` has one owner,
 `Shared` has as many as you like, and it is safe to hand to several threads.
-The value lives in a heap box next to a `sun.thread.Mutex` and an atomic count of the live
+The value lives in a heap box next to a `std.thread.Mutex` and an atomic count of the live
 handles. `clone()` adds an owner, and the last handle to go drops the value and
 frees the box.
 
@@ -249,7 +249,7 @@ and yield `char`. See [Characters and Bytes](/builtin-types#characters-and-bytes
 
 The terminator `c_str()` writes sits past the length, so the string itself is
 unchanged. `from_c_str(alloc, p)` is the other direction — it copies a
-NUL-terminated C string into an owned `String`, which is how `sun.env.get` and
+NUL-terminated C string into an owned `String`, which is how `std.env.get` and
 `read_dir` hand back text from libc.
 
 ```sun
@@ -299,7 +299,7 @@ println(view.length());  // 5
 
 ### Character helpers
 
-Free functions in `sun` for moving between `char` and code points.
+Free functions in `std` for moving between `char` and code points.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
@@ -384,12 +384,12 @@ See [Matrices](/matrices) for detailed documentation.
 
 ## Threads
 
-`stdlib/thread.sun` (module `sun.thread`). `spawn` starts an OS thread and
+`stdlib/thread.sun` (module `std.thread`). `spawn` starts an OS thread and
 hands back a handle that joins when it is dropped, so a thread never outlives
 the scope that started it.
 
 ```sun
-using sun.thread;
+using std.thread;
 
 var t = spawn(lambda (n: i32) i32 { return n * 2; }, 21);
 var answer = t.join();   // 42
@@ -424,13 +424,13 @@ See [Threads](/threads) for the whole picture.
 
 ## File I/O
 
-`stdlib/io.sun` (module `sun.io`). Every path is taken two ways: as a
+`stdlib/io.sun` (module `std.io`). Every path is taken two ways: as a
 `static_ptr<u8>` — what a string literal is — and as a `ref String` for a path
 put together at runtime.
 
 ```sun
-using sun;
-using sun.io;
+using std;
+using std.io;
 
 var f = File();
 try {
@@ -556,10 +556,10 @@ reallocates it.
 
 ## Environment
 
-`stdlib/env.sun` (module `sun.env`).
+`stdlib/env.sun` (module `std.env`).
 
 ```sun
-using sun.env;
+using std.env;
 
 var home = match get(alloc, "HOME") {
     Option.Some(p) => p,
@@ -602,11 +602,11 @@ Listing *every* environment variable needs the `environ` global, and Sun has no
 
 ## Processes
 
-`stdlib/process.sun` (module `sun.process`). `Command` covers running a program;
+`stdlib/process.sun` (module `std.process`). `Command` covers running a program;
 the raw POSIX calls are there for programs that drive the fork themselves.
 
 ```sun
-using sun.process;
+using std.process;
 
 var cmd = Command(alloc, "/bin/sh");
 cmd.add_arg("-c");
@@ -679,10 +679,10 @@ written to that rule; hand-rolled forks have to be too.
 
 ## Time
 
-`stdlib/time.sun` (module `sun.time`).
+`stdlib/time.sun` (module `std.time`).
 
 ```sun
-using sun.time;
+using std.time;
 
 var start = now();
 sleep(create_duration_millis(50));
@@ -720,7 +720,7 @@ TCP sockets and hostname resolution, from `networking.sun`. For TLS and
 HTTPS see [TLS & HTTPS](/tls).
 
 ```sun
-using sun;
+using std;
 
 // Client
 var stream = TcpStream();

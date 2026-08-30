@@ -2,13 +2,13 @@
 //
 // Usage:
 //   import "print.sun";
-//   using sun;
+//   using std;
 //   print(42);              // prints "42"
 //   println(100);           // prints "100\n"
 //   println("Hello");       // prints "Hello\n"
 //   println(`x = ${x}`);    // prints interpolated string with newline
 
-public module sun {
+public module std {
   // ---- print (no newline) ----
 
   public function print(value: i32) void {

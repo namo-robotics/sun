@@ -427,7 +427,7 @@ TEST(Classes_Generic_Scoping,
 // ============================================================================
 
 TEST(Classes_Generic_Errors, error_on_generic_type_not_in_scope) {
-  // `using sun;` outside the module block does not reach inside it, so Vec is
+  // `using std;` outside the module block does not reach inside it, so Vec is
   // not visible where the return type is written. Uses the file path because
   // the single-string path scopes top-level `using` differently.
   EXPECT_THROW(compileFileWithStdlib("tests/programs/using_outside_module.sun"),
@@ -468,7 +468,7 @@ TEST(Classes_Generic_Errors, error_on_wrong_type_argument_count) {
 TEST(Classes_Generic_Errors, using_inside_module_resolves_generic) {
   auto value = executeStringWithStdlib(R"(
     public module namo {
-      using sun;
+      using std;
 
       public function make(a: ref HeapAllocator) Vec<String> {
         var v = Vec<String>(a, 4);
@@ -477,7 +477,7 @@ TEST(Classes_Generic_Errors, using_inside_module_resolves_generic) {
       }
     }
 
-    using sun;
+    using std;
 
     function main() i32 {
       var alloc = make_heap_allocator();

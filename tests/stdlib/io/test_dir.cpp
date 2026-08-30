@@ -37,8 +37,8 @@ TEST_F(Stdlib_Io_Dir, read_dir_lists_entries_without_dot_and_dotdot) {
   std::filesystem::create_directories(testDir + "/sub");
 
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.io;
+    using std;
+    using std.io;
 
     function count(a: ref HeapAllocator) i32 throws IError {
         var entries = read_dir(a, ")" + testDir +
@@ -66,8 +66,8 @@ TEST_F(Stdlib_Io_Dir, read_dir_finds_a_named_entry) {
   writeFile("needle.txt", "x");
 
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.io;
+    using std;
+    using std.io;
 
     function find(a: ref HeapAllocator) bool throws IError {
         var entries = read_dir(a, ")" + testDir +
@@ -89,8 +89,8 @@ TEST_F(Stdlib_Io_Dir, read_dir_finds_a_named_entry) {
 
 TEST_F(Stdlib_Io_Dir, read_dir_on_empty_directory) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.io;
+    using std;
+    using std.io;
 
     function size_of(a: ref HeapAllocator) i64 throws IError {
         var entries = read_dir(a, ")" + testDir +
@@ -108,8 +108,8 @@ TEST_F(Stdlib_Io_Dir, read_dir_on_empty_directory) {
 
 TEST_F(Stdlib_Io_Dir, read_dir_on_missing_directory_throws) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.io;
+    using std;
+    using std.io;
 
     function main() i32 {
         var a = make_heap_allocator();
@@ -130,8 +130,8 @@ TEST_F(Stdlib_Io_Dir, metadata_predicates) {
   std::filesystem::create_directories(testDir + "/adir");
 
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.io;
+    using std;
+    using std.io;
 
     function main() i32 {
         if (not exists(")" + testDir + R"(/file.txt")) { return 1; }
@@ -154,8 +154,8 @@ TEST_F(Stdlib_Io_Dir, read_dir_accepts_a_runtime_string_path) {
   writeFile("only.txt", "x");
 
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.io;
+    using std;
+    using std.io;
 
     function count(a: ref HeapAllocator) i64 throws IError {
         // A path built at runtime, not a literal

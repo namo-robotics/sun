@@ -424,7 +424,7 @@ TEST(Tooling_Lsp_Hover, StdlibDocComments) {
   // Declarations from the stdlib bundle are documented from the source
   // files the bundle was built from
   std::string source = R"(
-using sun;
+using std;
 function take(a: ref HeapAllocator) i32 { return 0; }
 function main() i32 {
     var allocator = make_heap_allocator();
@@ -537,7 +537,7 @@ TEST(Tooling_Lsp_Hover, MergedFilesUseInMemoryOverride) {
 TEST(Tooling_Lsp_Hover, StdlibVecAndLoopVariable) {
   if (getStdlibMoonImports().empty()) GTEST_SKIP() << "stdlib.moon not built";
   std::string source = R"(
-using sun;
+using std;
 function main() i64 {
     var allocator = make_heap_allocator();
     var v = Vec<i64>(allocator, 8);

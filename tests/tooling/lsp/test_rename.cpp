@@ -519,7 +519,7 @@ TEST(Tooling_Lsp_Rename, StdlibInterfaceMemberRefused) {
   // The member group of `next` reaches the stdlib's IIterator, whose own
   // uses cannot be edited, so the rename is refused
   std::string source = R"(
-using sun;
+using std;
 class Counter {
     var n: i64;
     init() { this.n = 0; }
@@ -552,7 +552,7 @@ function main() i64 {
 TEST(Tooling_Lsp_Rename, LibrarySymbolRefused) {
   if (getStdlibMoonImports().empty()) GTEST_SKIP() << "stdlib.moon not built";
   std::string source = R"(
-using sun;
+using std;
 function main() i64 {
     var allocator = make_heap_allocator();
     var v = Vec<i64>(allocator, 8);

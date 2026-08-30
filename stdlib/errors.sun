@@ -14,7 +14,7 @@
 //
 // Usage:
 //   import "stdlib/errors.sun";
-//   using sun;
+//   using std;
 //
 //   method pop_front() T throws IError {
 //       if (this.is_empty()) {
@@ -23,7 +23,7 @@
 //       // ...
 //   }
 
-public module sun {
+public module std {
   // ============================================================================
   // Generic Error - base error with custom message
   // ============================================================================
@@ -267,4 +267,4 @@ public module sun {
       return String("value out of range for the target type");
     }
   }
-}  // module sun
+}  // module std

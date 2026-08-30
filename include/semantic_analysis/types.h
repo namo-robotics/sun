@@ -1067,7 +1067,7 @@ class ScopeMethodTable {
 // Generic classes have type parameters (e.g., class List<T>)
 // Specialized classes have type arguments (e.g., List<i32>)
 class ClassType : public Type {
-  std::string mangledName;  // Fully qualified name (e.g., "$hash$_sun_Vec")
+  std::string mangledName;  // Fully qualified name (e.g., "$hash$_std_Vec")
   std::string
       baseName_;  // User-written base name (e.g., "Unique") for error messages
   sun::QualifiedName qualifiedName_;  // Structured qualified name for scoping
@@ -1126,7 +1126,7 @@ class ClassType : public Type {
   bool hasQualifiedName() const { return !qualifiedName_.baseName.empty(); }
 
   // Get user-friendly display name for error messages
-  // For specialized classes: "Vec<i32>" or "sun.Vec<i32>"
+  // For specialized classes: "Vec<i32>" or "std.Vec<i32>"
   // For non-specialized: baseName or name with underscores converted to dots
   std::string getDisplayName() const {
     // Prefer the structured name: QualifiedName::display() spells the scope
@@ -1832,7 +1832,7 @@ using EnumTypePtr = std::shared_ptr<EnumType>;
 // Enums are represented as i32 values, with variants as named constants
 // Example: enum Color { Red, Green, Blue }
 class EnumType : public Type {
-  std::string mangledName_;  // Mangled name (e.g., "$hash$_sun_Color")
+  std::string mangledName_;  // Mangled name (e.g., "$hash$_std_Color")
   std::string baseName_;     // User-written base name (e.g., "Color")
   std::vector<EnumVariant> variants;
   std::string genericBase_;           // e.g. "Option" for Option_i32

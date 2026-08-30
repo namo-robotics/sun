@@ -735,7 +735,7 @@ TEST(ControlFlow_ForInLoops, basic_iterator_sum) {
   // Test basic for-in loop with IIterator<T, Self> where the iterator is its
   // own "container"
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class RangeIterator implements IIterator<i32, RangeIterator> {
       var current: i32;
@@ -770,7 +770,7 @@ TEST(ControlFlow_ForInLoops, basic_iterator_sum) {
 
 TEST(ControlFlow_ForInLoops, empty_iterator) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class RangeIterator implements IIterator<i32, RangeIterator> {
       var current: i32;
@@ -805,7 +805,7 @@ TEST(ControlFlow_ForInLoops, empty_iterator) {
 
 TEST(ControlFlow_ForInLoops, single_element) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class SingleIterator implements IIterator<i32, SingleIterator> {
       var value: i32;
@@ -850,7 +850,7 @@ TEST(ControlFlow_ForInLoops, variable_named_in) {
 
 TEST(ControlFlow_ForInLoops, nested_forin) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class RangeIterator implements IIterator<i32, RangeIterator> {
       var current: i32;
@@ -890,7 +890,7 @@ TEST(ControlFlow_ForInLoops, nested_forin) {
 
 TEST(ControlFlow_ForInLoops, break_in_forin) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class RangeIterator implements IIterator<i32, RangeIterator> {
       var current: i32;
@@ -926,7 +926,7 @@ TEST(ControlFlow_ForInLoops, break_in_forin) {
 
 TEST(ControlFlow_ForInLoops, continue_in_forin) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class RangeIterator implements IIterator<i32, RangeIterator> {
       var current: i32;
@@ -968,7 +968,7 @@ TEST(ControlFlow_ForInLoops, error_class_without_iterator_interface) {
   // Class that has a next() method but doesn't implement IIterator
   EXPECT_ANY_THROW({
     executeStringWithStdlib(R"(
-      using sun;
+      using std;
 
       class NotAnIterator {
         var current: i32;
@@ -1005,7 +1005,7 @@ TEST(ControlFlow_ForInLoops, error_loop_var_type_mismatch) {
   // The loop variable annotation must match the iterator's element type
   EXPECT_ANY_THROW({
     executeStringWithStdlib(R"(
-      using sun;
+      using std;
 
       class Once implements IIterator<i32, Once> {
         var done: bool;
@@ -1033,7 +1033,7 @@ TEST(ControlFlow_ForInLoops, error_next_not_returning_option) {
   // next() must return Option<T>
   EXPECT_ANY_THROW({
     executeStringWithStdlib(R"(
-      using sun;
+      using std;
 
       class Bare implements IIterator<i32, Bare> {
         init() {}
@@ -1053,7 +1053,7 @@ TEST(ControlFlow_ForInLoops, iterable_with_separate_iterator) {
   // IIterable whose iter() returns a concrete iterator class; next() takes the
   // container by ref
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class Range implements IIterable<i32, Range> {
         var start: i32;
@@ -1086,7 +1086,7 @@ TEST(ControlFlow_ForInLoops, error_next_container_type_mismatch) {
   // any other parameter type would reinterpret memory
   EXPECT_ANY_THROW({
     executeStringWithStdlib(R"(
-      using sun;
+      using std;
 
       class Other { init() {} }
 
@@ -1107,7 +1107,7 @@ TEST(ControlFlow_ForInLoops, error_iter_returns_mismatched_iterator) {
   // A generic IIterable whose iter() returns an iterator over another type
   EXPECT_ANY_THROW({
     executeStringWithStdlib(R"(
-      using sun;
+      using std;
 
       class Other { init() {} }
 
@@ -1133,7 +1133,7 @@ TEST(ControlFlow_ForInLoops, error_iter_returns_mismatched_iterator) {
 TEST(ControlFlow_ForInLoops, error_next_without_container_param) {
   EXPECT_ANY_THROW({
     executeStringWithStdlib(R"(
-      using sun;
+      using std;
 
       class NoArg implements IIterator<i32, NoArg> {
         init() {}
@@ -1152,7 +1152,7 @@ TEST(ControlFlow_ForInLoops, error_class_without_iterable_interface) {
   // Class that has iter() method but doesn't implement IIterable
   EXPECT_ANY_THROW({
     executeStringWithStdlib(R"(
-      using sun;
+      using std;
 
       class FakeIterator implements IIterator<i32, FakeIterator> {
         var done: bool;

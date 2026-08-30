@@ -68,12 +68,12 @@ compilation.
 Sun does not discover the arguments on its own, so anything that wants them has
 to be handed `argc` and `argv` from `main`. Reading `/proc/self/cmdline` would
 work for a compiled binary but not under the JIT, where the running process is
-the compiler and its argv is the compiler's. `sun.env.args` turns the pair into
+the compiler and its argv is the compiler's. `std.env.args` turns the pair into
 a `Vec<String>`:
 
 ```sun
-using sun;
-using sun.env;
+using std;
+using std.env;
 
 function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
     var alloc = make_heap_allocator();

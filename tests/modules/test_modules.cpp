@@ -77,7 +77,7 @@ TEST(Modules, module_with_using_specific) {
 
 TEST(Modules, parse_using_wildcard) {
   auto parser = Parser::createStringParser(R"(
-    using sun;
+    using std;
   )");
   auto ast = parser.parseProgram();
   ASSERT_NE(ast, nullptr);
@@ -86,12 +86,12 @@ TEST(Modules, parse_using_wildcard) {
 
   auto* usingNode = static_cast<const UsingAST*>(ast->getBody()[0].get());
   EXPECT_TRUE(usingNode->isModuleImport());
-  EXPECT_EQ(usingNode->getNamespacePathString(), "sun");
+  EXPECT_EQ(usingNode->getNamespacePathString(), "std");
 }
 
 TEST(Modules, parse_using_specific_symbol) {
   auto parser = Parser::createStringParser(R"(
-    using sun.Vec;
+    using std.Vec;
   )");
   auto ast = parser.parseProgram();
   ASSERT_NE(ast, nullptr);
@@ -100,13 +100,13 @@ TEST(Modules, parse_using_specific_symbol) {
 
   auto* usingNode = static_cast<const UsingAST*>(ast->getBody()[0].get());
   EXPECT_FALSE(usingNode->isModuleImport());
-  EXPECT_EQ(usingNode->getNamespacePathString(), "sun");
+  EXPECT_EQ(usingNode->getNamespacePathString(), "std");
   EXPECT_EQ(usingNode->getTarget(), "Vec");
 }
 
 TEST(Modules, parse_using_nested_module) {
   auto parser = Parser::createStringParser(R"(
-    using sun.matrix.types;
+    using std.matrix.types;
   )");
   auto ast = parser.parseProgram();
   ASSERT_NE(ast, nullptr);
@@ -115,7 +115,7 @@ TEST(Modules, parse_using_nested_module) {
 
   auto* usingNode = static_cast<const UsingAST*>(ast->getBody()[0].get());
   EXPECT_FALSE(usingNode->isModuleImport());
-  EXPECT_EQ(usingNode->getNamespacePathString(), "sun.matrix");
+  EXPECT_EQ(usingNode->getNamespacePathString(), "std.matrix");
   EXPECT_EQ(usingNode->getTarget(), "types");
 }
 
@@ -302,20 +302,20 @@ TEST(Modules, nested_module_ambiguity) {
 TEST(Modules, extend_existing_module) {
   // Adding new functions to an existing module (declared earlier) works
   auto value = executeString(R"(
-    public module sun {
+    public module std {
       public function foo() i32 {
         return 1;
       }
     }
     
-    public module sun {
+    public module std {
       public function bar() i32 {
         return 2;
       }
     }
 
     function main() i32 {
-        return sun.foo() + sun.bar();
+        return std.foo() + std.bar();
     }
   )");
   EXPECT_EQ(value, 3);
@@ -542,16 +542,16 @@ TEST(Modules, dotted_module_name_with_using) {
 TEST(Modules, dotted_module_merges_with_explicit_nesting) {
   // Dotted syntax and explicit nesting should merge into same module scope
   auto value = executeString(R"(
-    public module sun.io {
+    public module std.io {
       public function read() i32 { return 1; }
     }
-    public module sun {
+    public module std {
       public module io {
         public function write() i32 { return 2; }
       }
     }
     function main() i32 {
-      return sun.io.read() + sun.io.write();
+      return std.io.read() + std.io.write();
     }
   )");
   EXPECT_EQ(value, 3);
@@ -674,7 +674,7 @@ TEST(Modules, module_qualified_call_into_moon_library) {
   // function's own qualified name rather than being rebuilt from the path.
   auto value = executeStringWithStdlib(R"(
     function main() i32 {
-      sun.println("ok");
+      std.println("ok");
       return 0;
     }
   )");
@@ -785,7 +785,7 @@ TEST(Modules, manifest_moon_url_is_fetched_and_imported) {
   fs::path mainFile = dir / "main.sun";
   {
     std::ofstream out(mainFile);
-    out << "manifest { moons: [{ url: \"file://" +
+    out << "manifest { libraries: [{ url: \"file://" +
                fs::absolute(moonPath).string() +
                "\" }] }\n"
                "using urllib;\n"

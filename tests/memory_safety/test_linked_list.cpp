@@ -14,7 +14,7 @@
 
 TEST(MemorySafety_LinkedList, two_nodes_linked) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class Node {
         var value: i32;
@@ -51,7 +51,7 @@ TEST(MemorySafety_LinkedList, two_nodes_linked) {
 
 TEST(MemorySafety_LinkedList, three_nodes_chain) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class Node {
         var value: i32;
@@ -99,7 +99,7 @@ TEST(MemorySafety_LinkedList, three_nodes_chain) {
 
 TEST(MemorySafety_LinkedList, modify_through_pointer) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class Node {
         var value: i32;
@@ -148,7 +148,7 @@ TEST(MemorySafety_LinkedList, modify_through_pointer) {
 
 TEST(MemorySafety_LinkedList, access_deep_chain) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class Node {
         var value: i32;
@@ -193,7 +193,7 @@ TEST(MemorySafety_LinkedList, access_deep_chain) {
 
 TEST(MemorySafety_LinkedList, null_terminated_list) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class Node {
         var value: i32;
@@ -249,7 +249,7 @@ TEST(MemorySafety_LinkedList, null_terminated_list) {
 
 TEST(MemorySafety_LinkedList, while_loop_traversal) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class Node {
         var value: i32;
@@ -305,7 +305,7 @@ TEST(MemorySafety_LinkedList, while_loop_traversal) {
 
 TEST(MemorySafety_LinkedList, list_class_with_methods) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class Node {
         var value: i32;

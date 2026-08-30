@@ -284,7 +284,7 @@ TEST(Interfaces_Iterator, implements_iiterator) {
   // Implementing IIterator<T, Container> - uses a dummy container
   // The iterator stores all state internally, so the container ref is unused
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class DummyContainer {
       init() {}
@@ -329,7 +329,7 @@ TEST(Interfaces_Iterator, implements_iiterator) {
 TEST(Interfaces_Iterator, generic_implements_iiterator) {
   // Generic class implementing IIterator<T, Container>
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     class DummyContainer {
       init() {}
@@ -379,7 +379,7 @@ TEST(Interfaces_Iterator, covariant_iter_is_static_only) {
   // cannot be dispatched through a fat pointer, so conversion is rejected
   EXPECT_ANY_THROW({
     executeStringWithStdlib(R"(
-      using sun;
+      using std;
 
       class Range implements IIterable<i32, Range> {
           init() {}
@@ -404,7 +404,7 @@ TEST(Interfaces_Iterator, generic_class_conformance_is_checked) {
   // Generic specializations validate their interfaces like other classes
   EXPECT_ANY_THROW({
     executeStringWithStdlib(R"(
-      using sun;
+      using std;
 
       class Wrong<T> implements IIterator<T, Wrong<T>> {
         init() {}
@@ -423,7 +423,7 @@ TEST(Interfaces_Iterator, missing_next_is_error) {
   // A class claiming IIterator without next() is rejected
   EXPECT_ANY_THROW({
     executeStringWithStdlib(R"(
-      using sun;
+      using std;
 
       class Broken implements IIterator<i32, Broken> {
         init() {}
@@ -437,7 +437,7 @@ TEST(Interfaces_Iterator, wrong_next_signature_is_error) {
   // next() must return Option<T>
   EXPECT_ANY_THROW({
     executeStringWithStdlib(R"(
-      using sun;
+      using std;
 
       class Broken implements IIterator<i32, Broken> {
         init() {}
@@ -679,7 +679,7 @@ TEST(Interfaces_DynamicDispatch, generic_method_dispatch_not_supported) {
 TEST(Interfaces_DynamicDispatch, for_in_over_vec_of_interfaces) {
   // Iterate over a Vec of interface-typed objects with for-in
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     interface IValue {
       method get() i32;

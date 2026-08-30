@@ -14,19 +14,19 @@
 //   };
 //   var alloc = make_heap_allocator();
 //   var s = Shared<Counter>(alloc, Counter());
-//   var t = sun.thread.spawn(bump, s.clone());
-public module sun {
+//   var t = std.thread.spawn(bump, s.clone());
+public module std {
   // The heap payload: one per Shared "family". Not named by user code.
   class SharedBox<T> {
     var count: i32;  // Live handles; the one that sees 1 was the last
-    var lock: sun.thread.Mutex;
+    var lock: std.thread.Mutex;
     var value: T;
 
     // Take ownership of the value. The box starts with one handle: the
     // Shared<T> that built it.
     init(value: T) {
       this.count = 1;
-      this.lock = sun.thread.Mutex();
+      this.lock = std.thread.Mutex();
       this.value = value;
     }
 
@@ -162,4 +162,4 @@ public module sun {
 
   public declare SharedGuard_i32 = SharedGuard<i32>;
   public declare Shared_i32 = Shared<i32>;
-}  // module sun
+}  // module std

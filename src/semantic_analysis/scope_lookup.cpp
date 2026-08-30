@@ -20,8 +20,8 @@ using sun::rules::isAssignableTo;
 
 namespace {
 
-// A module-qualified name split at its last dot: "sun.io.File" names the
-// symbol "File" in module "sun.io". Falsy when the name carries no module.
+// A module-qualified name split at its last dot: "std.io.File" names the
+// symbol "File" in module "std.io". Falsy when the name carries no module.
 // Purely syntactic — finding the module is the caller's step, since callers
 // differ on what an unknown module should mean.
 struct DottedName {
@@ -206,7 +206,7 @@ std::shared_ptr<sun::ClassType> SemanticScopeBase::lookupClass(
 // -------------------------------------------------------------------
 const GenericClassInfo* SemanticScopeBase::lookupGenericClass(
     const std::string& name) const {
-  // Handle module-qualified names like "Test.Inner" or "sun.Vec"
+  // Handle module-qualified names like "Test.Inner" or "std.Vec"
   if (auto dotted = splitDotted(name)) {
     if (auto* modScope = lookupModuleScope(dotted.modulePath)) {
       if (auto* found = modScope->findGenericClass(dotted.symbol)) return found;
@@ -250,7 +250,7 @@ std::shared_ptr<sun::InterfaceType> SemanticScopeBase::lookupInterface(
 // -------------------------------------------------------------------
 const GenericInterfaceInfo* SemanticScopeBase::lookupGenericInterface(
     const std::string& name) const {
-  // Handle module-qualified names like "Test.Inner" or "sun.IIterator"
+  // Handle module-qualified names like "Test.Inner" or "std.IIterator"
   if (auto dotted = splitDotted(name)) {
     if (auto* modScope = lookupModuleScope(dotted.modulePath)) {
       if (auto* found = modScope->findGenericInterface(dotted.symbol)) {
@@ -799,7 +799,7 @@ static std::vector<SemanticScopeBase*> collectAllModuleScopes(
 
 sun::QualifiedName SemanticScopeBase::resolveNameWithUsings(
     const std::string& name) const {
-  // Handle qualified (dotted) names like "sun.String"
+  // Handle qualified (dotted) names like "std.String"
   if (auto dotted = splitDotted(name)) {
     if (auto* modScope = lookupModuleScope(dotted.modulePath)) {
       AccessFilter qualifiedFilter(this);

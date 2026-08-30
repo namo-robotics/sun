@@ -13,7 +13,7 @@
 
 TEST(Stdlib_Text_String, construct_from_literal) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -26,7 +26,7 @@ TEST(Stdlib_Text_String, construct_from_literal) {
 
 TEST(Stdlib_Text_String, construct_empty) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -39,7 +39,7 @@ TEST(Stdlib_Text_String, construct_empty) {
 
 TEST(Stdlib_Text_String, construct_from_buffer) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -77,7 +77,7 @@ TEST(Stdlib_Text_String, construct_from_buffer) {
 
 TEST(Stdlib_Text_String, at_access) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -94,7 +94,7 @@ TEST(Stdlib_Text_String, at_access) {
 
 TEST(Stdlib_Text_String, set_at_modify) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -114,7 +114,7 @@ TEST(Stdlib_Text_String, set_at_modify) {
 
 TEST(Stdlib_Text_String, equals_literal_true) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -130,7 +130,7 @@ TEST(Stdlib_Text_String, equals_literal_true) {
 
 TEST(Stdlib_Text_String, equals_literal_false_content) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -146,7 +146,7 @@ TEST(Stdlib_Text_String, equals_literal_false_content) {
 
 TEST(Stdlib_Text_String, equals_literal_false_length) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -166,7 +166,7 @@ TEST(Stdlib_Text_String, equals_literal_false_length) {
 
 TEST(Stdlib_Text_String, append_char) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -180,7 +180,7 @@ TEST(Stdlib_Text_String, append_char) {
 
 TEST(Stdlib_Text_String, append_char_content) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -196,7 +196,7 @@ TEST(Stdlib_Text_String, append_char_content) {
 
 TEST(Stdlib_Text_String, append_literal) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -209,7 +209,7 @@ TEST(Stdlib_Text_String, append_literal) {
 }
 TEST(Stdlib_Text_String, append_string) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -228,7 +228,7 @@ TEST(Stdlib_Text_String, append_string) {
 
 TEST(Stdlib_Text_String, slice_basic) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -242,7 +242,7 @@ TEST(Stdlib_Text_String, slice_basic) {
 
 TEST(Stdlib_Text_String, slice_middle) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -256,7 +256,7 @@ TEST(Stdlib_Text_String, slice_middle) {
 
 TEST(Stdlib_Text_String, slice_content) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -273,7 +273,7 @@ TEST(Stdlib_Text_String, slice_content) {
 
 TEST(Stdlib_Text_String, slice_equals_literal) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -294,7 +294,7 @@ TEST(Stdlib_Text_String, slice_equals_literal) {
 
 TEST(Stdlib_Text_String, initial_capacity) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -312,7 +312,7 @@ TEST(Stdlib_Text_String, initial_capacity) {
 // Test clear()
 TEST(Stdlib_Text_String, clear) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -327,7 +327,7 @@ TEST(Stdlib_Text_String, clear) {
 // Test append_i64 with positive number
 TEST(Stdlib_Text_String, append_i64_positive) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -343,7 +343,7 @@ TEST(Stdlib_Text_String, append_i64_positive) {
 // Test append_i64 with negative number
 TEST(Stdlib_Text_String, append_i64_negative) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -359,7 +359,7 @@ TEST(Stdlib_Text_String, append_i64_negative) {
 // Test append_i64 with zero
 TEST(Stdlib_Text_String, append_i64_zero) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -375,7 +375,7 @@ TEST(Stdlib_Text_String, append_i64_zero) {
 // Test append_hex
 TEST(Stdlib_Text_String, append_hex) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -391,7 +391,7 @@ TEST(Stdlib_Text_String, append_hex) {
 // Test append_bool
 TEST(Stdlib_Text_String, append_bool_true) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -407,7 +407,7 @@ TEST(Stdlib_Text_String, append_bool_true) {
 // Test append_bool false
 TEST(Stdlib_Text_String, append_bool_false) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -423,7 +423,7 @@ TEST(Stdlib_Text_String, append_bool_false) {
 // Test find_char
 TEST(Stdlib_Text_String, find_char) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -440,7 +440,7 @@ TEST(Stdlib_Text_String, find_char) {
 // Test find_char not found
 TEST(Stdlib_Text_String, find_char_not_found) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -457,7 +457,7 @@ TEST(Stdlib_Text_String, find_char_not_found) {
 // Test starts_with
 TEST(Stdlib_Text_String, starts_with) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -472,7 +472,7 @@ TEST(Stdlib_Text_String, starts_with) {
 // Test ends_with
 TEST(Stdlib_Text_String, ends_with) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -487,7 +487,7 @@ TEST(Stdlib_Text_String, ends_with) {
 // Test reverse
 TEST(Stdlib_Text_String, reverse) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -503,7 +503,7 @@ TEST(Stdlib_Text_String, reverse) {
 // Test dynamic growth beyond initial capacity
 TEST(Stdlib_Text_String, growth_beyond_initial_capacity) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -523,7 +523,7 @@ TEST(Stdlib_Text_String, growth_beyond_initial_capacity) {
 
 TEST(Stdlib_Text_String, literal_escape_newline_tab) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -539,7 +539,7 @@ TEST(Stdlib_Text_String, literal_escape_newline_tab) {
 
 TEST(Stdlib_Text_String, literal_escape_crlf) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -555,7 +555,7 @@ TEST(Stdlib_Text_String, literal_escape_crlf) {
 
 TEST(Stdlib_Text_String, literal_escape_quote_and_backslash) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -572,7 +572,7 @@ TEST(Stdlib_Text_String, literal_escape_quote_and_backslash) {
 
 TEST(Stdlib_Text_String, literal_unknown_escape_preserved) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -593,7 +593,7 @@ TEST(Stdlib_Text_String, literal_unknown_escape_preserved) {
 
 TEST(Stdlib_Text_String, append_f64_shortest_round_trip) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function check(alloc: ref HeapAllocator, x: f64, expected: static_ptr<u8>) bool {
         var s = String(alloc, "");
@@ -624,7 +624,7 @@ TEST(Stdlib_Text_String, append_f64_shortest_round_trip) {
 
 TEST(Stdlib_Text_String, parse_i64_and_parse_f64) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function int_or(alloc: ref HeapAllocator, text: static_ptr<u8>, fallback: i64) i64 {
         var s = String(alloc, text);
@@ -673,7 +673,7 @@ TEST(Stdlib_Text_String, parse_i64_and_parse_f64) {
 
 TEST(Stdlib_Text_String, to_lower_and_to_upper) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -696,7 +696,7 @@ TEST(Stdlib_Text_String, to_lower_and_to_upper) {
 
 TEST(Stdlib_Text_String, trim_variants) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -727,7 +727,7 @@ TEST(Stdlib_Text_String, trim_variants) {
 
 TEST(Stdlib_Text_String, find_and_contains) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function index_of(s: ref String, needle: static_ptr<u8>) i64 {
         return match s.find(needle) {
@@ -762,7 +762,7 @@ TEST(Stdlib_Text_String, find_and_contains) {
 
 TEST(Stdlib_Text_String, substr_and_clone) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 throws IError {
         var alloc = make_heap_allocator();
@@ -790,7 +790,7 @@ TEST(Stdlib_Text_String, substr_and_clone) {
 
 TEST(Stdlib_Text_String, split_on_byte_and_string) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -823,7 +823,7 @@ TEST(Stdlib_Text_String, split_on_byte_and_string) {
 
 TEST(Stdlib_Text_String, split_nonempty_skips_empty_pieces) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -861,7 +861,7 @@ TEST(Stdlib_Text_String, split_nonempty_skips_empty_pieces) {
 // separator and empty subject cases are pinned here.
 TEST(Stdlib_Text_String, split_edge_cases) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -889,7 +889,7 @@ TEST(Stdlib_Text_String, split_edge_cases) {
 
 TEST(Stdlib_Text_String, split_whitespace_collapses_runs) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -916,7 +916,7 @@ TEST(Stdlib_Text_String, split_whitespace_collapses_runs) {
 
 TEST(Stdlib_Text_String, join_parts) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -939,7 +939,7 @@ TEST(Stdlib_Text_String, join_parts) {
 
 TEST(Stdlib_Text_String, replace_literal_and_string) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -993,7 +993,7 @@ TEST(Stdlib_Text_String, replace_literal_and_string) {
 
 TEST(Stdlib_Text_String, c_str_terminates_without_changing_the_string) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -1017,7 +1017,7 @@ TEST(Stdlib_Text_String, c_str_terminates_without_changing_the_string) {
 
 TEST(Stdlib_Text_String, from_c_str_copies_the_bytes) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -1036,7 +1036,7 @@ TEST(Stdlib_Text_String, from_c_str_copies_the_bytes) {
 
 TEST(Stdlib_Text_String, from_c_str_handles_empty_and_null) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -1057,7 +1057,7 @@ TEST(Stdlib_Text_String, from_c_str_handles_empty_and_null) {
 
 TEST(Stdlib_Text_String, push_encodes_utf8) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -1080,7 +1080,7 @@ TEST(Stdlib_Text_String, push_encodes_utf8) {
 
 TEST(Stdlib_Text_String, char_count_counts_scalars_not_bytes) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -1095,7 +1095,7 @@ TEST(Stdlib_Text_String, char_count_counts_scalars_not_bytes) {
 
 TEST(Stdlib_Text_String, chars_round_trips_through_push) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -1114,7 +1114,7 @@ TEST(Stdlib_Text_String, chars_round_trips_through_push) {
 
 TEST(Stdlib_Text_String, chars_yields_the_scalar_values) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -1137,7 +1137,7 @@ TEST(Stdlib_Text_String, chars_yields_the_scalar_values) {
 // one U+FFFD and the scan moves on.
 TEST(Stdlib_Text_String, chars_replaces_malformed_bytes) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -1161,7 +1161,7 @@ TEST(Stdlib_Text_String, chars_replaces_malformed_bytes) {
 
 TEST(Stdlib_Text_String, find_returns_the_byte_index_of_a_char) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -1183,7 +1183,7 @@ TEST(Stdlib_Text_String, find_returns_the_byte_index_of_a_char) {
 
 TEST(Stdlib_Text_String, char_of_rejects_non_scalar_values) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var ok = match char_of(65) { Option.Some(c) => c == 'A', Option.None => false };
@@ -1201,7 +1201,7 @@ TEST(Stdlib_Text_String, char_of_rejects_non_scalar_values) {
 
 TEST(Stdlib_Text_String, interpolating_a_char_writes_utf8) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var alloc = make_heap_allocator();

@@ -20,7 +20,7 @@ static const char* kBuildRequest = R"(
 )";
 
 TEST(Stdlib_Http, parse_request_method_and_path) {
-  std::string source = std::string("using sun;\n") + kBuildRequest + R"(
+  std::string source = std::string("using std;\n") + kBuildRequest + R"(
     function main() i64 {
         var alloc = make_heap_allocator();
         var raw = build_request(alloc);
@@ -36,7 +36,7 @@ TEST(Stdlib_Http, parse_request_method_and_path) {
 }
 
 TEST(Stdlib_Http, find_header_end) {
-  std::string source = std::string("using sun;\n") + kBuildRequest + R"(
+  std::string source = std::string("using std;\n") + kBuildRequest + R"(
     function main() i64 {
         var alloc = make_heap_allocator();
         var complete = build_request(alloc);
@@ -54,7 +54,7 @@ TEST(Stdlib_Http, find_header_end) {
 // must not match, and the index returned is the start of the run.
 TEST(Stdlib_Http, find_header_end_returns_the_run_start) {
   std::string source = R"(
-    using sun;
+    using std;
 
     function main() i64 {
         var alloc = make_heap_allocator();
@@ -86,7 +86,7 @@ TEST(Stdlib_Http, find_header_end_returns_the_run_start) {
 
 TEST(Stdlib_Http, response_defaults_and_setters) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i64 {
         var alloc = make_heap_allocator();
@@ -109,7 +109,7 @@ TEST(Stdlib_Http, response_defaults_and_setters) {
 
 TEST(Stdlib_Http, status_reason_phrases) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i64 {
         var alloc = make_heap_allocator();
@@ -134,7 +134,7 @@ TEST(Stdlib_Http, server_handler_lambda_compiles) {
   // Full serve() loop needs a live socket; this verifies the lambda-based
   // API wires up (bind to port 0 is skipped - just construct and stop).
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i64 {
         var alloc = make_heap_allocator();

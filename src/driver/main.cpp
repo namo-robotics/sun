@@ -52,8 +52,8 @@ static void printUsage(const char* programName) {
   llvm::errs() << "  --debug           Generate debug output (ast.dot, ir.ll) "
                   "in <input>_debug/\n";
   llvm::errs() << "  --emit-moon       Compile to .moon precompiled library\n";
-  llvm::errs() << "                    Use manifest { suns: [...] } to specify "
-                  "files to include\n";
+  llvm::errs() << "                    Use manifest { source_files: [...] } "
+                  "to specify files to include\n";
   llvm::errs() << "  --lib-path <dir>  Add directory to .moon library search "
                   "path\n";
   llvm::errs() << "  -l<name>          Link against native library <name> "
@@ -71,7 +71,7 @@ static void printUsage(const char* programName) {
                   "environment variable)\n";
   llvm::errs() << "  --path-var NAME=<dir>\n";
   llvm::errs() << "                    Define $NAME for manifest entries, "
-                  "e.g. suns: [\"$NAME/util.sun\"]\n";
+                  "e.g. source_files: [\"$NAME/util.sun\"]\n";
   llvm::errs() << "                    (undefined names fall back to the "
                   "environment)\n";
   llvm::errs() << "  -h, --help        Show this help message\n";
@@ -363,8 +363,8 @@ int main(int argc, char* argv[]) {
   sun::LibraryCache::instance().initFromEnvironment();
   for (const auto& libPath : libPaths) {
     sun::LibraryCache::instance().addSearchPath(libPath);
-    // Manifest `moons:` entries resolve through SunPath, so --lib-path has to
-    // reach it too, not just the bundle cache.
+    // Manifest `libraries:` entries resolve through SunPath, so --lib-path
+    // has to reach it too, not just the bundle cache.
     sun::SunPath::addSearchPath(libPath);
   }
 

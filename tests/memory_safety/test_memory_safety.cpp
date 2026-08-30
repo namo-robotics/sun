@@ -15,7 +15,7 @@
 // Simplest case: move to another variable, then use original
 TEST(MemorySafety, use_after_move_simple) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
-    using sun;
+    using std;
       
       function main() i64 {
           var allocator = make_heap_allocator();
@@ -30,7 +30,7 @@ TEST(MemorySafety, use_after_move_simple) {
 // Move then access field directly
 TEST(MemorySafety, use_after_move_field_access) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
-    using sun;
+    using std;
       
       function main() i64 {
           var allocator = make_heap_allocator();
@@ -49,7 +49,7 @@ TEST(MemorySafety, use_after_move_field_access) {
 // Pass by ref doesn't move
 TEST(MemorySafety, ref_param_no_move) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function get_len(s: ref String) i64 {
         return s.length();
@@ -154,7 +154,7 @@ TEST(MemorySafety, method_call_after_move) {
 // Double move should fail on second move
 TEST(MemorySafety, double_move) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
-    using sun;
+    using std;
       
       function main() i64 {
           var allocator = make_heap_allocator();
@@ -174,7 +174,7 @@ TEST(MemorySafety, double_move) {
 // Using the moved-to variable is fine
 TEST(MemorySafety, use_moved_to_variable) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -223,7 +223,7 @@ TEST(MemorySafety, ref_scope_ends) {
 // Matrix move then use is error
 TEST(MemorySafety, matrix_use_after_move) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
-    using sun;
+    using std;
       
       function main() i64 {
           var allocator = make_heap_allocator();
@@ -239,7 +239,7 @@ TEST(MemorySafety, matrix_use_after_move) {
 // Matrix ref borrow is fine
 TEST(MemorySafety, matrix_ref_borrow) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function get_size(m: ref Matrix<i64>) i64 {
         return m.size();
@@ -259,7 +259,7 @@ TEST(MemorySafety, matrix_ref_borrow) {
 // Matrix ref borrow is fine
 TEST(MemorySafety, matrix_okay) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -278,7 +278,7 @@ TEST(MemorySafety, matrix_okay) {
 // Allocator move then use is error
 TEST(MemorySafety, allocator_use_after_move) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
-    using sun;
+    using std;
       
       function main() i64 {
           var a = make_heap_allocator();
@@ -293,7 +293,7 @@ TEST(MemorySafety, allocator_use_after_move) {
 // Use allocator.copy() to get a new allocator
 TEST(MemorySafety, allocator_copy_valid) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var a = make_heap_allocator();
@@ -415,7 +415,7 @@ TEST(MemorySafety, raw_ptr_null_assignment) {
 // raw_ptr null check pattern
 TEST(MemorySafety, raw_ptr_null_check_pattern) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -482,7 +482,7 @@ TEST(MemorySafety, nested_borrow_sequential) {
 // Creating string and using it locally is fine (no return by value needed)
 TEST(MemorySafety, owned_value_local_use) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var alloc = make_heap_allocator();

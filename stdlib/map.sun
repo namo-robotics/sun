@@ -6,7 +6,7 @@
 //
 // Usage:
 //   import "stdlib/map.sun";
-//   using sun;
+//   using std;
 //   
 //   var allocator = make_heap_allocator();
 //   var m = Map<i64, i32>(allocator);
@@ -22,7 +22,7 @@
 //   // Iteration over values
 //   for (var v: i32 in m) { ... }
 
-public module sun {
+public module std {
   // Entry states for open addressing
   // 0 = EMPTY (never used)
   // 1 = OCCUPIED (has key-value)
@@ -455,4 +455,4 @@ public module sun {
   // MapIterator specializations
   public declare MapIterator_i64_i32 = MapIterator<i64, i32>;
   public declare MapIterator_i64_i64 = MapIterator<i64, i64>;
-}  // module sun
+}  // module std

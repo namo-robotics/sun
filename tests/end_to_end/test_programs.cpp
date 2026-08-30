@@ -329,7 +329,7 @@ TEST(EndToEnd_Programs, func_return) {
 
 TEST(EndToEnd_Programs, print_i32_overload) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function main() i32 {
         print(42);
         return 100;
@@ -340,7 +340,7 @@ TEST(EndToEnd_Programs, print_i32_overload) {
 
 TEST(EndToEnd_Programs, println_i32_overload) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function main() i32 {
         println(123);
         println(-456);
@@ -352,7 +352,7 @@ TEST(EndToEnd_Programs, println_i32_overload) {
 
 TEST(EndToEnd_Programs, print_multiple) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function main() i32 {
         var x: i32 = 10;
         print(x);
@@ -367,7 +367,7 @@ TEST(EndToEnd_Programs, print_multiple) {
 
 TEST(EndToEnd_Programs, print_overload_dispatch) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function main() i32 {
         var a: i32 = 1;
         var b: i64 = 2;
@@ -386,7 +386,7 @@ TEST(EndToEnd_Programs, print_overload_dispatch) {
 
 TEST(EndToEnd_Programs, print_overload_unsigned) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function main() i32 {
         var a: u32 = 7;
         var b: u64 = 9;
@@ -400,7 +400,7 @@ TEST(EndToEnd_Programs, print_overload_unsigned) {
 
 TEST(EndToEnd_Programs, println_no_args) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function main() i32 {
         print(1);
         println();
@@ -413,7 +413,7 @@ TEST(EndToEnd_Programs, println_no_args) {
 
 TEST(EndToEnd_Programs, println_string_class) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function main() i32 {
         var allocator = make_heap_allocator();
         var s = String(allocator, "hi");
@@ -427,7 +427,7 @@ TEST(EndToEnd_Programs, println_string_class) {
 
 TEST(EndToEnd_Programs, hello_world) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function main() i32 {
         println("hello world");
         return 0;
@@ -438,7 +438,7 @@ TEST(EndToEnd_Programs, hello_world) {
 
 TEST(EndToEnd_Programs, string_variable) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function main() i32 {
         var greeting: static_ptr<u8> = "Hello, Sun!";
         println(greeting);
@@ -553,7 +553,7 @@ TEST(EndToEnd_Programs, raw_ptr_type_parsing) {
 TEST(EndToEnd_Programs, main_void_return) {
   // Test that function main() void works (return type is now required)
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function main() void {
         println("Hello from void main!");
     };
@@ -565,7 +565,7 @@ TEST(EndToEnd_Programs, main_void_return) {
 TEST(EndToEnd_Programs, main_explicit_void_return) {
   // Test that function main() void works explicitly
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function main() void {
         println("Explicit void return");
     };

@@ -1,4 +1,4 @@
-// tests/stdlib/sys/test_time.cpp - sun.time
+// tests/stdlib/sys/test_time.cpp - std.time
 //
 // Timing assertions are lower bounds only. A loaded CI machine can stall for
 // an arbitrarily long time, so an upper bound would be a flake generator.
@@ -13,8 +13,8 @@
 
 TEST(Stdlib_Sys_Time, duration_conversions) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.time;
+    using std;
+    using std.time;
 
     function main() i32 {
         var d = create_duration_millis(1500);
@@ -36,8 +36,8 @@ TEST(Stdlib_Sys_Time, duration_conversions) {
 
 TEST(Stdlib_Sys_Time, monotonic_clock_does_not_go_backwards) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.time;
+    using std;
+    using std.time;
 
     function main() i32 {
         var first = now();
@@ -54,8 +54,8 @@ TEST(Stdlib_Sys_Time, monotonic_clock_does_not_go_backwards) {
 
 TEST(Stdlib_Sys_Time, sleep_waits_at_least_the_requested_time) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.time;
+    using std;
+    using std.time;
 
     function main() i32 {
         var start = now();
@@ -71,8 +71,8 @@ TEST(Stdlib_Sys_Time, sleep_waits_at_least_the_requested_time) {
 TEST(Stdlib_Sys_Time, unix_time_agrees_with_the_host_clock) {
   auto before = static_cast<int64_t>(std::time(nullptr));
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.time;
+    using std;
+    using std.time;
 
     function main() i64 {
         return read_unix_time();
@@ -85,8 +85,8 @@ TEST(Stdlib_Sys_Time, unix_time_agrees_with_the_host_clock) {
 
 TEST(Stdlib_Sys_Time, unix_time_millis_is_consistent_with_seconds) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.time;
+    using std;
+    using std.time;
 
     function main() i32 {
         var secs = read_unix_time();
@@ -103,8 +103,8 @@ TEST(Stdlib_Sys_Time, unix_time_millis_is_consistent_with_seconds) {
 TEST(Stdlib_Sys_Time, utc_breaks_a_fixed_timestamp_into_calendar_fields) {
   // 1700000000 = 2023-11-14 22:13:20 UTC, a Tuesday.
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.time;
+    using std;
+    using std.time;
 
     function main() i32 {
         var d = convert_to_utc(1700000000);
@@ -124,8 +124,8 @@ TEST(Stdlib_Sys_Time, utc_breaks_a_fixed_timestamp_into_calendar_fields) {
 
 TEST(Stdlib_Sys_Time, to_unix_utc_round_trips) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.time;
+    using std;
+    using std.time;
 
     function main() i32 {
         var stamp: i64 = 1700000000;
@@ -141,8 +141,8 @@ TEST(Stdlib_Sys_Time, to_unix_utc_round_trips) {
 
 TEST(Stdlib_Sys_Time, format_renders_a_fixed_timestamp) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.time;
+    using std;
+    using std.time;
 
     function main() i32 {
         var a = make_heap_allocator();
@@ -162,8 +162,8 @@ TEST(Stdlib_Sys_Time, local_uses_the_timezone) {
   setenv("TZ", "UTC", 1);
   tzset();
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.time;
+    using std;
+    using std.time;
 
     function main() i32 {
         var d = convert_to_local(1700000000);

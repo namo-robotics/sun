@@ -64,7 +64,7 @@ TEST(MemorySafety_Const, global_const_is_readable) {
 
 TEST(MemorySafety_Const, for_in_const_binding_reads_elements) {
   auto value = executeStringWithStdlib(R"(
-      using sun;
+      using std;
       function main() i32 {
           var allocator = make_heap_allocator();
           var v = Vec<i32>(allocator, 4);
@@ -159,7 +159,7 @@ TEST(MemorySafety_Const, global_assignment_is_rejected) {
 
 TEST(MemorySafety_Const, for_in_const_binding_is_not_assignable) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
-      using sun;
+      using std;
       function main() i32 {
           var allocator = make_heap_allocator();
           var v = Vec<i32>(allocator, 4);
@@ -374,7 +374,7 @@ TEST(MemorySafety_Const, mutable_ref_while_const_ref_is_rejected) {
 
 TEST(MemorySafety_Const, const_string_reads_and_prints) {
   auto value = executeStringWithStdlib(R"(
-      using sun;
+      using std;
       function main() i32 {
           var allocator = make_heap_allocator();
           const s = String(allocator, "hello");
@@ -390,7 +390,7 @@ TEST(MemorySafety_Const, const_string_reads_and_prints) {
 TEST(MemorySafety_Const, const_string_cannot_be_appended) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       executeStringWithStdlib(R"(
-      using sun;
+      using std;
       function main() i32 {
           var allocator = make_heap_allocator();
           const s = String(allocator, "hello");

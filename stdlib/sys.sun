@@ -17,7 +17,7 @@
 // or the extern declaration is rejected. `open` is C-variadic there, so it is
 // C-variadic here.
 
-public module sun {
+public module std {
   // --- file descriptors ----------------------------------------------------
 
   extern "C" function c_open(path: raw_ptr<u8>, flags: i32, ...) i32 as "open";
@@ -116,7 +116,7 @@ public module sun {
   // A Sun class lays out in declaration order with natural padding, which is
   // C's layout. Only structs whose layout is the same on every target we build
   // for belong here — `struct stat` is not one of them (its field order and
-  // padding differ between x86-64 and aarch64 glibc), which is why sun.io
+  // padding differ between x86-64 and aarch64 glibc), which is why std.io
   // answers metadata questions with access/opendir/lseek instead.
 
   // struct timespec — { i64, i64 } on every 64-bit Linux.
@@ -164,6 +164,6 @@ public module sun {
 
   // struct dirent has no mirror here: its head differs per OS (Linux puts
   // d_type at byte 18 and d_name at 19; macOS has a u16 d_namlen before a
-  // d_type at 20 and d_name at 21), so sun.io reads the two fields it needs
+  // d_type at 20 and d_name at 21), so std.io reads the two fields it needs
   // through _target_is-guarded byte offsets instead.
 }

@@ -761,10 +761,10 @@ unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
                       idLoc);
   }
 
-  // Note: We don't parse dot-based qualified names (like sun.Vec) here.
+  // Note: We don't parse dot-based qualified names (like std.Vec) here.
   // In expression context, dots are member access (handled by postfix parsing).
-  // For module-qualified types, use type annotations: var x: sun.Vec<T>
-  // For module symbols, use: using sun; then refer to them unqualified
+  // For module-qualified types, use type annotations: var x: std.Vec<T>
+  // For module symbols, use: using std; then refer to them unqualified
 
   // Check for generic function call: create<Type>(args...)
   if (curTok.kind == TokenKind::LESS) {
@@ -2434,8 +2434,8 @@ std::unique_ptr<PrototypeAST> Parser::parseExtern() {
 
 // Parse manifest block:
 // manifest {
-//   suns = [ "file.sun", { path = "other.sun", hash = "abc" } ]
-//   moons = ( "lib.moon", { path = "x.moon", hash = "def", rename = "y" } )
+//   source_files = [ "file.sun", { path = "other.sun", hash = "abc" } ]
+//   libraries = ( "lib.moon", { path = "x.moon", hash = "def", rename = "y" } )
 // }
 unique_ptr<ManifestAST> Parser::parseManifest() {
   Position start = captureStart();
@@ -2459,9 +2459,9 @@ unique_ptr<ManifestAST> Parser::parseManifest() {
                            "expected ':' after '" + ident + "' in manifest");
     getNextToken();  // eat ':'
 
-    if (ident == "suns") {
+    if (ident == "source_files") {
       suns = parseManifestSuns();
-    } else if (ident == "moons") {
+    } else if (ident == "libraries") {
       moons = parseManifestMoons();
     } else if (ident == "protos") {
       protos = parseManifestProtos();
@@ -2471,8 +2471,8 @@ unique_ptr<ManifestAST> Parser::parseManifest() {
       targets = parseManifestTargets();
     } else {
       parsingError("unexpected identifier '" + ident +
-                   "' in manifest; expected 'suns', 'moons', 'protos', "
-                   "'archives' or 'target'");
+                   "' in manifest; expected 'source_files', 'libraries', "
+                   "'protos', 'archives' or 'target'");
     }
 
     // Sections are newline-separated; a trailing ',' or ';' is tolerated
@@ -2495,8 +2495,8 @@ unique_ptr<ManifestAST> Parser::parseManifest() {
 
 // Parse the target-conditional block:
 //   target: {
-//     macos: { suns: [ "target_darwin.sun" ] }
-//     linux: { suns: [ "target_linux.sun" ] }
+//     macos: { source_files: [ "target_darwin.sun" ] }
+//     linux: { source_files: [ "target_linux.sun" ] }
 //   }
 // Each inner block takes the same sections as the manifest itself and its
 // entries only apply when compiling for that OS. The names are the
@@ -2530,9 +2530,9 @@ std::vector<ManifestTargetBlock> Parser::parseManifestTargets() {
           TokenKind::COLON, "expected ':' after '" + section + "' in target");
       getNextToken();  // eat ':'
 
-      if (section == "suns") {
+      if (section == "source_files") {
         block.suns = parseManifestSuns();
-      } else if (section == "moons") {
+      } else if (section == "libraries") {
         block.moons = parseManifestMoons();
       } else if (section == "protos") {
         block.protos = parseManifestProtos();
@@ -2540,8 +2540,8 @@ std::vector<ManifestTargetBlock> Parser::parseManifestTargets() {
         block.archives = parseManifestArchives();
       } else {
         parsingError("unexpected identifier '" + section +
-                     "' in target block; expected 'suns', 'moons', 'protos' "
-                     "or 'archives'");
+                     "' in target block; expected 'source_files', "
+                     "'libraries', 'protos' or 'archives'");
       }
 
       if (curTok.kind == TokenKind::SEMI_COLON ||
@@ -2620,9 +2620,10 @@ std::vector<ManifestProtoDependency> Parser::parseManifestProtos() {
   return protos;
 }
 
-// Parse suns array: [ "file.sun", { path: "other.sun", hash: "abc" } ]
+// Parse source_files array: [ "file.sun", { path: "other.sun", hash: "abc" } ]
 std::vector<ManifestSunDependency> Parser::parseManifestSuns() {
-  expectCurrentTokenKind(TokenKind::BRACKET_OPEN, "expected '[' after 'suns:'");
+  expectCurrentTokenKind(TokenKind::BRACKET_OPEN,
+                         "expected '[' after 'source_files:'");
   getNextToken();  // eat '['
 
   std::vector<ManifestSunDependency> suns;
@@ -2690,12 +2691,12 @@ std::vector<ManifestSunDependency> Parser::parseManifestSuns() {
   return suns;
 }
 
-// Parse moons array: [ "lib.moon", { path: "x.moon", hash: "def", rename:
+// Parse libraries array: [ "lib.moon", { path: "x.moon", hash: "def", rename:
 // "y" }, { url: "https://example.com/lib.moon" } ]
 // A struct entry needs exactly one of 'path' or 'url'.
 std::vector<ManifestMoonDependency> Parser::parseManifestMoons() {
   expectCurrentTokenKind(TokenKind::BRACKET_OPEN,
-                         "expected '[' after 'moons:'");
+                         "expected '[' after 'libraries:'");
   getNextToken();  // eat '['
 
   std::vector<ManifestMoonDependency> moons;
@@ -2852,7 +2853,7 @@ unique_ptr<ExprAST> Parser::parseDeclareStatement() {
 
 // Parse module declaration: module Name { declarations... }
 // Supports dotted names as shorthand for nested modules:
-//   module sun.io { } expands to module sun { module io { } }
+//   module std.io { } expands to module std { module io { } }
 // Supports both 'module' (preferred) and 'namespace' (legacy) keywords
 unique_ptr<ModuleAST> Parser::parseModuleDecl() {
   Position start = captureStart();
@@ -2860,7 +2861,7 @@ unique_ptr<ModuleAST> Parser::parseModuleDecl() {
 
   expectCurrentTokenKind(TokenKind::IDENTIFIER, "expected module name");
 
-  // Collect dotted module path (e.g., "sun.io" becomes ["sun", "io"])
+  // Collect dotted module path (e.g., "std.io" becomes ["std", "io"])
   std::vector<std::string> names;
   names.push_back(curTok.getIdentifier().value());
   getNextToken();  // eat first module name
@@ -2902,8 +2903,8 @@ unique_ptr<ModuleAST> Parser::parseModuleDecl() {
 }
 
 // Parse using statement with dot-based syntax:
-//   using sun;           -> import all from sun
-//   using sun.Vec;       -> import specific symbol Vec from sun
+//   using std;           -> import all from std
+//   using std.Vec;       -> import specific symbol Vec from std
 unique_ptr<UsingAST> Parser::parseUsingStatement() {
   Position start = captureStart();
   getNextToken();  // eat 'using'
@@ -2920,7 +2921,7 @@ unique_ptr<UsingAST> Parser::parseUsingStatement() {
 
   // Check what follows: ';' or '.'
   if (curTok.kind == TokenKind::SEMI_COLON) {
-    // Simple form: "using sun;" means import all from sun
+    // Simple form: "using std;" means import all from std
     namespacePath.push_back(std::move(firstName));
     target = "*";
     getNextToken();  // eat ';'
@@ -2929,7 +2930,7 @@ unique_ptr<UsingAST> Parser::parseUsingStatement() {
         start);
   }
 
-  // Dot-based path: using sun.Vec; or using sun.nested.Vec;
+  // Dot-based path: using std.Vec; or using std.nested.Vec;
   if (curTok.kind == TokenKind::DOT) {
     namespacePath.push_back(std::move(firstName));
 
@@ -2941,10 +2942,10 @@ unique_ptr<UsingAST> Parser::parseUsingStatement() {
         getNextToken();  // eat identifier
 
         if (curTok.kind == TokenKind::DOT) {
-          // More path components: sun.nested.deeper
+          // More path components: std.nested.deeper
           namespacePath.push_back(std::move(part));
         } else {
-          // Final target: "using sun.Vec;"
+          // Final target: "using std.Vec;"
           target = std::move(part);
           break;
         }
@@ -3067,7 +3068,7 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
 
   // Map module_name -> list of stubs (empty key = global scope).
   // Ordered, so a module is always emitted before the modules nested inside
-  // it ("sun" sorts before "sun.io"). The declaration pre-pass registers a
+  // it ("std" sorts before "std.io"). The declaration pre-pass registers a
   // module's types as it reaches it, so a nested module's class shape can
   // only name a generic from its parent if the parent came first.
   std::map<std::string, std::vector<std::unique_ptr<ExprAST>>> moduleStubs;

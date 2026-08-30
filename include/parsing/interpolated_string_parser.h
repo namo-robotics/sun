@@ -22,8 +22,8 @@ class Parser;
 // parseToAst: `Hello ${name}!` -> InterpolatedStringAST (kept in parse tree)
 // desugar (called by LoweringPass):
 // {
-//   var interp_alloc_ = sun.HeapAllocator();
-//   var interp_result_ = sun.String(interp_alloc_, "");
+//   var interp_alloc_ = std.HeapAllocator();
+//   var interp_result_ = std.String(interp_alloc_, "");
 //   interp_result_.append_literal("Hello ");
 //   interp_result_.append(name);
 //   interp_result_.append_literal("!");

@@ -193,7 +193,7 @@ class IntrinsicsGenerator {
       const std::vector<std::unique_ptr<ExprAST>>& args, bool dropResult);
 
   /**
-   * The LLVM layout of sun.thread.ThreadContext, read off the raw_ptr type
+   * The LLVM layout of std.thread.ThreadContext, read off the raw_ptr type
    * semantic analysis resolved rather than synthesized here, so there is one
    * definition of it and codegen never spells the class's name.
    */

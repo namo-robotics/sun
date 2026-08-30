@@ -286,7 +286,7 @@ const ExprAST* findTypeDefinition(const BlockExprAST& program,
       qualified = cls.isSpecialized() ? cls.getGenericQualifiedName()
                                       : cls.getQualifiedName();
       // The generic's base name may be a mangled symbol (a bundle's
-      // `$hash$_sun_Vec`); the qualified name keeps the plain spelling
+      // `$hash$_std_Vec`); the qualified name keeps the plain spelling
       if (!qualified.empty()) {
         name = qualified.baseName;
       } else if (cls.isSpecialized() && !cls.getBaseGenericName().empty()) {

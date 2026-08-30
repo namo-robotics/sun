@@ -6,7 +6,7 @@
 // connection reuse.
 //
 // Usage:
-//   using sun;
+//   using std;
 //   using tls;
 //
 //   var alloc = make_heap_allocator();
@@ -17,7 +17,7 @@
 //   println(resp.body);
 
 public module tls {
-  using sun;
+  using std;
 
   // -------------------------------------------------------------------
   // HttpClientResponse - parsed response

@@ -731,7 +731,7 @@ sun::TypePtr TypeInferer::inferModuleMemberType(
   SymbolMatch match = ctx_.findSymbolInModule(modPath, memberName);
   if (match) {
     // Name the access after the declaration it resolved to — e.g.
-    // "$d9b854ae$_sun_make_heap_allocator" for sun.make_heap_allocator.
+    // "$d9b854ae$_std_make_heap_allocator" for std.make_heap_allocator.
     // Each declaration was given its name when it was declared, and
     // codegen emits it under that name; rebuilding one from the module
     // path here would drop a function's overload suffix and name a symbol
@@ -1232,13 +1232,13 @@ sun::TypePtr TypeInferer::inferIntrinsicCallType(
     return typeArgs.empty() ? nullptr : typeArgs[0];
   }
   // _spawn hands back the context it allocated. The type is the stdlib's own
-  // ThreadContext, which only exists when sun.thread has been loaded — and
-  // _spawn is only ever written inside sun.thread, so it always has.
+  // ThreadContext, which only exists when std.thread has been loaded — and
+  // _spawn is only ever written inside std.thread, so it always has.
   if (funcName == "_spawn") {
-    auto context = ctx_.scope()->lookupClass("sun.thread.ThreadContext");
+    auto context = ctx_.scope()->lookupClass("std.thread.ThreadContext");
     if (!context) {
       logAndThrowError(
-          "_spawn requires the standard library's sun.thread module",
+          "_spawn requires the standard library's std.thread module",
           genericCall.getLocation());
     }
     return sun::Types::RawPointer(context);

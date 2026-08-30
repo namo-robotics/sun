@@ -9,7 +9,7 @@
 //   _thread_join<T>(ctx)    wait, take the result
 //   _thread_join_drop<T>(ctx)  wait, drop the result nobody claimed
 //
-// The context's layout is sun.thread.ThreadContext, declared in Sun, so this
+// The context's layout is std.thread.ThreadContext, declared in Sun, so this
 // file and the standard library cannot drift apart. All thread plumbing goes
 // through libc (see intrinsics/libc.h), so the emitted IR is target-neutral.
 
@@ -30,7 +30,7 @@ using namespace llvm;
 // stdlib/thread.sun. Read off the type semantic analysis already resolved
 // rather than synthesized here, so there is one definition of the layout and
 // codegen never has to spell the class's name (which carries a library hash
-// once sun.thread arrives through a bundle).
+// once std.thread arrives through a bundle).
 StructType* IntrinsicsGenerator::getThreadContextStruct(
     const sun::TypePtr& contextPtrType) {
   auto* pointer = sun::tryGetType<sun::RawPointerType>(contextPtrType);
@@ -42,7 +42,7 @@ StructType* IntrinsicsGenerator::getThreadContextStruct(
   if (!contextType || contextType->getNumElements() != 5) {
     logAndThrowError(
         "the thread intrinsics take a raw_ptr<ThreadContext>, and "
-        "sun.thread.ThreadContext must keep the five fields the compiler "
+        "std.thread.ThreadContext must keep the five fields the compiler "
         "writes into it");
   }
   return contextType;

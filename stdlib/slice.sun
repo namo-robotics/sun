@@ -12,7 +12,7 @@
 // When has_start=false, start should be treated as 0 (beginning of dimension).
 // When has_end=false, end should be treated as dimension size (end of dimension).
 
-public module sun {
+public module std {
   public class SliceRange {
     public var start: i64;  // Start index (ignored if has_start=false)
     public var end: i64;  // End index, exclusive (ignored if has_end=false)
@@ -90,4 +90,4 @@ public module sun {
     var zero: i64 = 0;
     return SliceRange(zero, end, false, true);
   }
-}  // module sun
+}  // module std

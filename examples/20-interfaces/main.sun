@@ -1,4 +1,4 @@
-using sun;
+using std;
 
 // An interface declares behaviour that classes can implement. Functions can
 // accept `ref Interface` and dispatch dynamically to the concrete type.
@@ -47,5 +47,5 @@ function main() i32 {
 }
 
 manifest {
-    moons: ["stdlib.moon"]
+    libraries: ["stdlib.moon"]
 }

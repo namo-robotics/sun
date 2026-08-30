@@ -1,5 +1,5 @@
 // Simple math library for testing sunlib
-public module sun {
+public module std {
   // Return the sum of two 32-bit integers.
   public function add(a: i32, b: i32) i32 {
     return a + b;
@@ -9,4 +9,4 @@ public module sun {
   public function multiply(a: i32, b: i32) i32 {
     return a * b;
   }
-}  // module sun
+}  // module std

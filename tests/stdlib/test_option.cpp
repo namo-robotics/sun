@@ -11,7 +11,7 @@
 
 TEST(Stdlib_Option, OptionFromStdlib) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var a = Option.Some(40);
@@ -32,7 +32,7 @@ TEST(Stdlib_Option, OptionFromStdlib) {
 
 TEST(Stdlib_Option, ResultFromStdlib) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function parse_positive(x: i32) Result<i32, i32> {
         if (x < 0) { return Result.Err(-1); }
@@ -63,7 +63,7 @@ TEST(Stdlib_Option, ResultFromStdlib) {
 // find() borrows the stored value: the map still owns it
 TEST(Stdlib_Option, MapFind) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -85,7 +85,7 @@ TEST(Stdlib_Option, MapFind) {
 
 TEST(Stdlib_Option, StringFindChar) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i64 {
         var allocator = make_heap_allocator();
@@ -111,7 +111,7 @@ TEST(Stdlib_Option, StringFindChar) {
 // first()/last() borrow the element: the Vec still owns it
 TEST(Stdlib_Option, VecFirstLast) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -139,7 +139,7 @@ TEST(Stdlib_Option, VecFirstLast) {
 // A new user specialization of a stdlib generic whose methods return Option
 TEST(Stdlib_Option, NewVecSpecializationWithOption) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -157,7 +157,7 @@ TEST(Stdlib_Option, NewVecSpecializationWithOption) {
 // Interface payloads: Vec<IValue>.first() yields Option<IValue>
 TEST(Stdlib_Option, InterfacePayloadOption) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     interface IValue {
       method get() i32;
@@ -187,7 +187,7 @@ TEST(Stdlib_Option, InterfacePayloadOption) {
 
 TEST(Stdlib_Option, LinkedListFirstLast) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -214,7 +214,7 @@ TEST(Stdlib_Option, LinkedListFirstLast) {
 
 TEST(Stdlib_Option, VecPop) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -233,7 +233,7 @@ TEST(Stdlib_Option, VecPop) {
 // Iterators are driven by next() -> Option<T>; the sequence ends at None
 TEST(Stdlib_Option, IteratorNextReturnsOption) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -262,7 +262,7 @@ TEST(Stdlib_Option, IteratorNextReturnsOption) {
 // for-in over every stdlib container goes through next() -> Option<T>
 TEST(Stdlib_Option, ForInOverStdlibContainers) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();
@@ -292,7 +292,7 @@ TEST(Stdlib_Option, ForInOverStdlibContainers) {
 // for-in over an empty container never enters the body
 TEST(Stdlib_Option, ForInOverEmptyContainer) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
 
     function main() i32 {
         var allocator = make_heap_allocator();

@@ -164,6 +164,12 @@ class CodegenVisitor {
     return functions.userDefined();
   }
 
+  /// Record a function as user-written, so an IR dump keeps it. The set is
+  /// keyed by name, so a pass that renames a function has to say so.
+  void noteUserDefinedFunction(const std::string& name) {
+    functions.noteUserDefined(name);
+  }
+
   // ---------------------------------------------------------------
   // The components, for each other
   // ---------------------------------------------------------------

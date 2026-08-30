@@ -203,13 +203,13 @@ jobs:
           sun --help || true
           # Test with stdlib import (stdlib.moon installed to /usr/lib/sun/)
           cat > test.sun << 'EOF'
-          using sun;
+          using std;
           function main() i32 {
               println("Hello from Sun!");
               return 0;
           }
           manifest {
-              moons: ["stdlib.moon"]
+              libraries: ["stdlib.moon"]
           }
           EOF
           export SUN_PATH=/usr/lib/sun
@@ -220,7 +220,7 @@ jobs:
           # TLS: tls.moon carries its own static OpenSSL, so this needs no
           # libssl installed and no linker flags.
           cat > tls_test.sun << 'EOF'
-          using sun;
+          using std;
           using tls;
           function main() i32 {
               var alloc = make_heap_allocator();
@@ -238,7 +238,7 @@ jobs:
               }
           }
           manifest {
-              moons: ["stdlib.moon", "tls.moon"]
+              libraries: ["stdlib.moon", "tls.moon"]
           }
           EOF
           sun -c --dynamic -o tls_aot tls_test.sun
@@ -375,13 +375,13 @@ jobs:
           sun --help || true
           # JIT with the stdlib import, and no SUN_PATH.
           cat > test.sun << 'PROGRAM'
-          using sun;
+          using std;
           function main() i32 {
               println("Hello from Sun!");
               return 0;
           }
           manifest {
-              moons: ["stdlib.moon"]
+              libraries: ["stdlib.moon"]
           }
           PROGRAM
           sun test.sun
@@ -393,7 +393,7 @@ jobs:
           # certificate verification finds the CA bundle stock macOS ships
           # at /etc/ssl/cert.pem.
           cat > tls_test.sun << 'PROGRAM'
-          using sun;
+          using std;
           using tls;
           function main() i32 {
               var alloc = make_heap_allocator();
@@ -411,7 +411,7 @@ jobs:
               }
           }
           manifest {
-              moons: ["stdlib.moon", "tls.moon"]
+              libraries: ["stdlib.moon", "tls.moon"]
           }
           PROGRAM
           sun -c -o tls_aot tls_test.sun

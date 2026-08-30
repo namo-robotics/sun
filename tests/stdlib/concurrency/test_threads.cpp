@@ -1,7 +1,7 @@
 // tests/stdlib/concurrency/test_threads.cpp - Tests for OS threads
 //
 // `spawn` and `Thread<T>` are stdlib/thread.sun, not compiler builtins, so
-// every source here loads the standard library and says `using sun.thread;`.
+// every source here loads the standard library and says `using std.thread;`.
 // What is still the compiler's is the pthread trampoline behind the _spawn /
 // _thread_join intrinsics.
 
@@ -21,7 +21,7 @@
 TEST(Stdlib_Concurrency_Threads, parse_spawn_lambda) {
   // Just verify it compiles without runtime execution
   EXPECT_NO_THROW(compileStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function main() i32 {
       var t = spawn(lambda() i32 { return 42; });
       return 0;
@@ -31,7 +31,7 @@ TEST(Stdlib_Concurrency_Threads, parse_spawn_lambda) {
 
 TEST(Stdlib_Concurrency_Threads, parse_spawn_with_captures) {
   EXPECT_NO_THROW(compileStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function main() i32 {
       var x: i32 = 10;
       var t = spawn(lambda() i32 { return x + 1; });
@@ -48,7 +48,7 @@ TEST(Stdlib_Concurrency_Threads, parse_spawn_with_captures) {
 // `<F: _Lambda>` constraint rather than a rule of its own.
 TEST(Stdlib_Concurrency_Threads, spawn_requires_lambda) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(compileStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function main() i32 {
       var x: i32 = 42;
       var t = spawn(x);
@@ -62,7 +62,7 @@ TEST(Stdlib_Concurrency_Threads, spawn_requires_lambda) {
 // stands for exactly the parameters the lambda declares.
 TEST(Stdlib_Concurrency_Threads, spawn_missing_argument_is_an_error) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(compileStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function main() i32 {
       var t = spawn(lambda(x: i32) i32 { return x; });
       return 0;
@@ -73,7 +73,7 @@ TEST(Stdlib_Concurrency_Threads, spawn_missing_argument_is_an_error) {
 
 TEST(Stdlib_Concurrency_Threads, spawn_extra_argument_is_an_error) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(compileStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function main() i32 {
       var t = spawn(lambda() i32 { return 1; }, 5);
       return 0;
@@ -86,7 +86,7 @@ TEST(Stdlib_Concurrency_Threads, spawn_extra_argument_is_an_error) {
 // than only inferred from what spawn returned.
 TEST(Stdlib_Concurrency_Threads, thread_handle_can_be_written_as_a_type) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function main() i32 {
       var t: Thread<i32> = spawn(lambda() i32 { return 42; });
       return t.join();
@@ -101,7 +101,7 @@ TEST(Stdlib_Concurrency_Threads, thread_handle_can_be_written_as_a_type) {
 
 TEST(Stdlib_Concurrency_Threads, thread_type_inferred) {
   EXPECT_NO_THROW(compileStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function main() i32 {
       var t = spawn(lambda() i64 { return 100; });
       // t should be inferred as Thread<i64>
@@ -116,7 +116,7 @@ TEST(Stdlib_Concurrency_Threads, thread_type_inferred) {
 
 TEST(Stdlib_Concurrency_Threads, spawn_and_join_basic) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function main() i32 {
       var t = spawn(lambda() i32 { return 42; });
       return t.join();
@@ -127,7 +127,7 @@ TEST(Stdlib_Concurrency_Threads, spawn_and_join_basic) {
 
 TEST(Stdlib_Concurrency_Threads, spawn_with_captured_value) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function main() i32 {
       var x: i32 = 10;
       var t = spawn(lambda() i32 { return x * 2; });
@@ -140,7 +140,7 @@ TEST(Stdlib_Concurrency_Threads, spawn_with_captured_value) {
 // Issue #99: a void lambda has no result slot; join returns nothing
 TEST(Stdlib_Concurrency_Threads, spawn_void_lambda_and_join) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function main() i32 {
       var t = spawn(lambda() void { });
       t.join();
@@ -152,7 +152,7 @@ TEST(Stdlib_Concurrency_Threads, spawn_void_lambda_and_join) {
 
 TEST(Stdlib_Concurrency_Threads, spawn_void_lambda_without_join_compiles) {
   EXPECT_NO_THROW(compileStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function main() i32 {
       spawn(lambda() void { });
       return 0;
@@ -163,7 +163,7 @@ TEST(Stdlib_Concurrency_Threads, spawn_void_lambda_without_join_compiles) {
 // Issue #99: a lambda held in a variable arrives as a fat struct value
 TEST(Stdlib_Concurrency_Threads, spawn_lambda_variable) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function main() i32 {
       var f = lambda() i32 { return 7; };
       var t = spawn(f);
@@ -175,7 +175,7 @@ TEST(Stdlib_Concurrency_Threads, spawn_lambda_variable) {
 
 TEST(Stdlib_Concurrency_Threads, spawn_lambda_variable_with_capture) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function main() i32 {
       var x: i32 = 10;
       var f = lambda() i32 { return x * 2; };
@@ -188,7 +188,7 @@ TEST(Stdlib_Concurrency_Threads, spawn_lambda_variable_with_capture) {
 
 TEST(Stdlib_Concurrency_Threads, multiple_threads) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function main() i32 {
       var t1 = spawn(lambda() i32 { return 10; });
       var t2 = spawn(lambda() i32 { return 20; });
@@ -206,7 +206,7 @@ TEST(Stdlib_Concurrency_Threads, multiple_threads) {
 // The thread writes through the capture; the parent reads it after joining
 TEST(Stdlib_Concurrency_Threads, byref_capture_shares_a_class) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     class Counter {
       public var n: i32;
       init() { this.n = 0; }
@@ -229,7 +229,7 @@ TEST(Stdlib_Concurrency_Threads, byref_capture_shares_a_class) {
 // its writes are complete and its captures were alive throughout
 TEST(Stdlib_Concurrency_Threads, unjoined_thread_joins_at_scope_exit) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     class Counter {
       public var n: i32;
       init() { this.n = 0; }
@@ -252,7 +252,7 @@ TEST(Stdlib_Concurrency_Threads, unjoined_thread_joins_at_scope_exit) {
 // A return between spawn and join leaves the scope, so the join happens there
 TEST(Stdlib_Concurrency_Threads, unjoined_thread_joins_on_early_return) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     class Counter {
       public var n: i32;
       init() { this.n = 0; }
@@ -276,7 +276,7 @@ TEST(Stdlib_Concurrency_Threads, unjoined_thread_joins_on_early_return) {
 // Joining by hand leaves nothing for the scope exit to join
 TEST(Stdlib_Concurrency_Threads, explicit_join_is_not_repeated_at_scope_exit) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function main() i32 {
       var x: i32 = 1;
       var t = spawn(lambda [ref x]() i32 { x = 2; return 40; });
@@ -291,7 +291,7 @@ TEST(Stdlib_Concurrency_Threads, explicit_join_is_not_repeated_at_scope_exit) {
 // so exactly one name still joins the thread
 TEST(Stdlib_Concurrency_Threads, handle_moves_to_a_new_variable) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function main() i32 {
       var t = spawn(lambda() i32 { return 11; });
       var t2 = t;
@@ -303,7 +303,7 @@ TEST(Stdlib_Concurrency_Threads, handle_moves_to_a_new_variable) {
 
 TEST(Stdlib_Concurrency_Threads, moved_handle_cannot_be_joined) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function main() i32 {
       var t = spawn(lambda() i32 { return 11; });
       var t2 = t;
@@ -316,7 +316,7 @@ TEST(Stdlib_Concurrency_Threads, moved_handle_cannot_be_joined) {
 // Overwriting a handle joins the thread it held first
 TEST(Stdlib_Concurrency_Threads, reassigned_handle_joins_previous_thread) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function main() i32 {
       var t = spawn(lambda() i32 { return 1; });
       t = spawn(lambda() i32 { return 2; });
@@ -329,8 +329,8 @@ TEST(Stdlib_Concurrency_Threads, reassigned_handle_joins_previous_thread) {
 // An exception unwinding out of the scope joins the thread on its way past
 TEST(Stdlib_Concurrency_Threads, unjoined_thread_joins_while_unwinding) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.thread;
+    using std;
+    using std.thread;
     class Boom implements IError {
       init() {}
       method code() i32 { return 1; }
@@ -363,7 +363,7 @@ TEST(Stdlib_Concurrency_Threads, unjoined_thread_joins_while_unwinding) {
 // cannot yet share one object they both write (issue #122 follow-up)
 TEST(Stdlib_Concurrency_Threads, two_threads_cannot_capture_one_ref) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function main() i32 {
       var x: i32 = 0;
       var t1 = spawn(lambda [ref x]() i32 { x = 1; return 0; });
@@ -378,7 +378,7 @@ TEST(Stdlib_Concurrency_Threads, two_threads_cannot_capture_one_ref) {
 // threads can hold one at once
 TEST(Stdlib_Concurrency_Threads, two_threads_can_capture_one_const_ref) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function main() i32 {
       var x: i32 = 0;
       var t1 = spawn(lambda [const ref x]() i32 { return x + 1; });
@@ -392,7 +392,7 @@ TEST(Stdlib_Concurrency_Threads, two_threads_can_capture_one_const_ref) {
 // A class is shared read-only the same way
 TEST(Stdlib_Concurrency_Threads, threads_share_a_class_by_const_ref) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     class Config {
       public var limit: i32;
       init(limit: i32) { this.limit = limit; }
@@ -410,7 +410,7 @@ TEST(Stdlib_Concurrency_Threads, threads_share_a_class_by_const_ref) {
 // The capture is read-only even though the variable is not
 TEST(Stdlib_Concurrency_Threads, const_ref_capture_cannot_be_written) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function main() i32 {
       var x: i32 = 0;
       var t = spawn(lambda [const ref x]() i32 { x = 1; return 0; });
@@ -423,7 +423,7 @@ TEST(Stdlib_Concurrency_Threads, const_ref_capture_cannot_be_written) {
 // A shared capture and a mutable one still conflict
 TEST(Stdlib_Concurrency_Threads, const_ref_and_ref_captures_conflict) {
   EXPECT_THROW(executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function main() i32 {
       var x: i32 = 0;
       var t1 = spawn(lambda [ref x]() i32 { x = 1; return 0; });
@@ -442,7 +442,7 @@ TEST(Stdlib_Concurrency_Threads, const_ref_and_ref_captures_conflict) {
 // they point at. The joiner owns what it took, and drops it once.
 TEST(Stdlib_Concurrency_Threads, joined_class_result_is_owned_by_the_joiner) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     var dropped: i32 = 0;
 
     class Res {
@@ -469,7 +469,7 @@ TEST(Stdlib_Concurrency_Threads, joined_class_result_is_owned_by_the_joiner) {
 // runs there rather than the result being freed as raw bytes
 TEST(Stdlib_Concurrency_Threads, unjoined_class_result_is_dropped) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     var dropped: i32 = 0;
 
     class Res {
@@ -494,7 +494,7 @@ TEST(Stdlib_Concurrency_Threads, unjoined_class_result_is_dropped) {
 // free, whether the result is taken or dropped at scope exit
 TEST(Stdlib_Concurrency_Threads, class_result_owning_heap_is_released_once) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     class Buffer {
       public var v: i32;
       public var data: raw_ptr<i8>;
@@ -534,7 +534,7 @@ TEST(Stdlib_Concurrency_Threads, class_result_owning_heap_is_released_once) {
 // An unjoined thread whose result is a payload enum drops the payload too
 TEST(Stdlib_Concurrency_Threads, unjoined_enum_result_drops_its_payload) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     var dropped: i32 = 0;
 
     class Res {
@@ -566,7 +566,7 @@ TEST(Stdlib_Concurrency_Threads, unjoined_enum_result_drops_its_payload) {
 
 TEST(Stdlib_Concurrency_Threads, spawn_forwards_one_argument) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function main() i32 {
       var t = spawn(lambda (n: i32) i32 { return n * 2; }, 21);
       return t.join();
@@ -577,7 +577,7 @@ TEST(Stdlib_Concurrency_Threads, spawn_forwards_one_argument) {
 
 TEST(Stdlib_Concurrency_Threads, spawn_forwards_several_arguments) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function main() i32 {
       var t = spawn(lambda (a: i32, b: i64, c: bool) i32 {
         if (c) { return a + _convert<i32>(b); }
@@ -592,7 +592,7 @@ TEST(Stdlib_Concurrency_Threads, spawn_forwards_several_arguments) {
 // A narrower literal widens to the parameter, the same as at any other call.
 TEST(Stdlib_Concurrency_Threads, spawn_widens_a_narrow_argument) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function main() i32 {
       var t = spawn(lambda (n: i64) i64 { return n * 2; }, 21);
       return _convert<i32>(t.join());
@@ -605,7 +605,7 @@ TEST(Stdlib_Concurrency_Threads, spawn_widens_a_narrow_argument) {
 // different arguments each time — nothing about it is per-thread.
 TEST(Stdlib_Concurrency_Threads, one_lambda_spawned_twice) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function main() i32 {
       var work = lambda (n: i32) i32 { return n * 2; };
       var a = spawn(work, 20);
@@ -620,7 +620,7 @@ TEST(Stdlib_Concurrency_Threads, one_lambda_spawned_twice) {
 // natural way to write a thread body that takes what it needs as arguments.
 TEST(Stdlib_Concurrency_Threads, spawn_a_global_lambda) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     var work = lambda (n: i32) i32 { return n * 2; };
     function main() i32 {
       var t = spawn(work, 21);
@@ -639,7 +639,7 @@ TEST(Stdlib_Concurrency_Threads, spawn_a_global_lambda) {
 // a by-value parameter left alone is nobody's to drop.
 TEST(Stdlib_Concurrency_Threads, class_argument_moves_into_the_thread) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     var drops: i32 = 0;
     class Res {
       public var v: i32;
@@ -669,7 +669,7 @@ TEST(Stdlib_Concurrency_Threads, class_argument_moves_into_the_thread) {
 // What the thread took over cannot be used by the spawner afterwards.
 TEST(Stdlib_Concurrency_Threads, class_argument_cannot_be_used_after_spawn) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     class Res {
       public var v: i32;
       init(v: i32) { this.v = v; }
@@ -694,7 +694,7 @@ TEST(Stdlib_Concurrency_Threads, class_argument_cannot_be_used_after_spawn) {
 // carry it past the frame's death, so that is rejected.
 TEST(Stdlib_Concurrency_Threads, ref_capturing_thread_cannot_be_stored_in_a_field) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     class Worker {
       var t: Thread<i32>;
       init() {
@@ -714,7 +714,7 @@ TEST(Stdlib_Concurrency_Threads, ref_capturing_thread_cannot_be_stored_in_a_fiel
 // closure's environment - where the owned value lives - is frame storage.
 TEST(Stdlib_Concurrency_Threads, owned_capture_thread_cannot_be_stored_in_a_field) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     class Worker {
       var t: Thread<i32>;
       init() {
@@ -733,7 +733,7 @@ TEST(Stdlib_Concurrency_Threads, owned_capture_thread_cannot_be_stored_in_a_fiel
 // Returning the handle is the same escape without the object in between.
 TEST(Stdlib_Concurrency_Threads, ref_capturing_thread_cannot_be_returned) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function makeThread() Thread<i32> {
       var x = 3;
       return spawn(lambda [ref x]() i32 { return x; });
@@ -751,7 +751,7 @@ TEST(Stdlib_Concurrency_Threads, ref_capturing_thread_cannot_be_returned) {
 TEST(Stdlib_Concurrency_Threads,
      ref_capturing_thread_cannot_be_returned_via_a_variable) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function makeThread() Thread<i32> {
       var x = 3;
       var t = spawn(lambda [ref x]() i32 { return x; });
@@ -769,7 +769,7 @@ TEST(Stdlib_Concurrency_Threads,
 // frame.
 TEST(Stdlib_Concurrency_Threads, ref_capturing_thread_joined_in_frame_is_fine) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     function main() i32 {
       var x = 40;
       var t = spawn(lambda [ref x]() i32 { return x + 2; });
@@ -783,7 +783,7 @@ TEST(Stdlib_Concurrency_Threads, ref_capturing_thread_joined_in_frame_is_fine) {
 // start it and store the handle in a field: the object joins it on drop.
 TEST(Stdlib_Concurrency_Threads, capture_free_thread_may_live_in_a_field) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     class Worker {
       var t: Thread<i32>;
       init() {
@@ -803,7 +803,7 @@ TEST(Stdlib_Concurrency_Threads, capture_free_thread_may_live_in_a_field) {
 // the receiver's frame - and, like any borrowing thread, no further.
 TEST(Stdlib_Concurrency_Threads, bound_method_thread_joined_in_frame_is_fine) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     class Counter {
       var count: i32;
       init() { this.count = 40; }
@@ -822,7 +822,7 @@ TEST(Stdlib_Concurrency_Threads, bound_method_thread_joined_in_frame_is_fine) {
 // not leave the receiver's frame either.
 TEST(Stdlib_Concurrency_Threads, bound_method_thread_cannot_be_returned) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     class Counter {
       var count: i32;
       init() { this.count = 40; }
@@ -845,7 +845,7 @@ TEST(Stdlib_Concurrency_Threads, bound_method_thread_cannot_be_returned) {
 // as the thread body, join, then call the lambda the caller passed in.
 TEST(Stdlib_Concurrency_Threads, method_on_a_thread_reports_to_a_callback) {
   auto value = executeStringWithStdlib(R"(
-    using sun.thread;
+    using std.thread;
     class Job {
       var base: i32;
       init(base: i32) { this.base = base; }

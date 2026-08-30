@@ -28,7 +28,7 @@
 //     }
 //   }
 
-public module sun {
+public module std {
   public interface IIterator<T, Container> {
     // Hand back the next item, or None once the container is exhausted. The
     // container is passed by reference because the loop lowering supplies its

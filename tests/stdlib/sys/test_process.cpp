@@ -13,8 +13,8 @@
 
 TEST(Stdlib_Sys_Process, ids_match_the_host_process) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.process;
+    using std;
+    using std.process;
 
     function main() i32 {
         return pid();
@@ -25,8 +25,8 @@ TEST(Stdlib_Sys_Process, ids_match_the_host_process) {
 
 TEST(Stdlib_Sys_Process, parent_pid_and_uids_are_plausible) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.process;
+    using std;
+    using std.process;
 
     function main() i32 {
         if (parent_pid() <= 0) { return 1; }
@@ -41,9 +41,9 @@ TEST(Stdlib_Sys_Process, parent_pid_and_uids_are_plausible) {
 
 TEST(Stdlib_Sys_Process, pipe_round_trips_bytes) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.io;
-    using sun.process;
+    using std;
+    using std.io;
+    using std.process;
 
     function main() i32 {
         var a = make_heap_allocator();
@@ -73,8 +73,8 @@ TEST(Stdlib_Sys_Process, wait_status_decoding) {
   // The bit layout is fixed by waitpid(2): low 7 bits the signal, next 8 the
   // exit code.
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.process;
+    using std;
+    using std.process;
 
     function main() i32 {
         // exit(3): status 0x0300
@@ -98,9 +98,9 @@ TEST(Stdlib_Sys_Process, wait_status_decoding) {
 
 TEST(Stdlib_Sys_Process, dup_fd_redirects_a_descriptor) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
-    using sun.io;
-    using sun.process;
+    using std;
+    using std.io;
+    using std.process;
 
     function main() i32 {
         var a = make_heap_allocator();

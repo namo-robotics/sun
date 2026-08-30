@@ -3,12 +3,12 @@
 //
 // Module aliasing allows using multiple versions of the same library by
 // remapping their module names at link time. For example:
-//   --moon stdlib-v1.moon:sun=sun_v1 --moon stdlib-v2.moon:sun=sun_v2
+//   --moon stdlib-v1.moon:std=std_v1 --moon stdlib-v2.moon:std=std_v2
 //
-// This remaps all symbols from module "sun" to "sun_v1" or "sun_v2",
+// This remaps all symbols from module "std" to "std_v1" or "std_v2",
 // allowing code to use both versions:
-//   using sun_v1;  // Use old API
-//   using sun_v2;  // Use new API
+//   using std_v1;  // Use old API
+//   using std_v2;  // Use new API
 
 #pragma once
 
@@ -24,7 +24,7 @@ struct MoonImport {
   std::string path;
 
   /// Module name remapping: original_name -> aliased_name
-  /// Example: {"sun" -> "sun_v1"} remaps sun::Vec to sun_v1::Vec
+  /// Example: {"std" -> "std_v1"} remaps std.Vec to std_v1.Vec
   std::unordered_map<std::string, std::string> moduleRemap;
 
   /// Create a MoonImport with no remapping

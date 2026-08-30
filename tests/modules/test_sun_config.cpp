@@ -37,7 +37,7 @@ TEST(Modules_SunConfig, config_variables_override_cli_and_environment) {
   writeFile(dir / "sun-config.json",
             "{ \"pathVariables\": { \"LIBS\": \"conflibs\" } }\n");
   writeFile(dir / "main.sun",
-            "manifest { moons: [\"$LIBS/lib.moon\"] }\n"
+            "manifest { libraries: [\"$LIBS/lib.moon\"] }\n"
             "function main() i32 { return 0; }\n");
 
   sun::ManifestProcessor::setPathVariable("LIBS", "/from-cli");
@@ -58,7 +58,7 @@ TEST(Modules_SunConfig, config_is_found_in_a_parent_folder) {
   writeFile(dir / "sun-config.json",
             "{ \"pathVariables\": { \"SHARED\": \"common\" } }\n");
   writeFile(dir / "src" / "main.sun",
-            "manifest { suns: [\"$SHARED/util.sun\"] }\n"
+            "manifest { source_files: [\"$SHARED/util.sun\"] }\n"
             "function main() i32 { return 0; }\n");
 
   auto resolved = sun::ManifestProcessor::fromEntrypointFile(
@@ -76,7 +76,7 @@ TEST(Modules_SunConfig, config_sun_path_resolves_manifest_entries) {
   writeFile(dir / "sun-config.json", "{ \"sunPath\": [\"deps\"] }\n");
   writeFile(dir / "deps" / "util.moon", "not a real bundle\n");
   writeFile(dir / "main.sun",
-            "manifest { moons: [\"util.moon\"] }\n"
+            "manifest { libraries: [\"util.moon\"] }\n"
             "function main() i32 { return 0; }\n");
 
   auto resolved =
@@ -135,7 +135,7 @@ TEST(Modules_SunConfig, malformed_config_is_an_error) {
   fs::path dir = freshDir("malformed");
   writeFile(dir / "sun-config.json", "{ not json\n");
   writeFile(dir / "main.sun",
-            "manifest { moons: [\"lib.moon\"] }\n"
+            "manifest { libraries: [\"lib.moon\"] }\n"
             "function main() i32 { return 0; }\n");
 
   EXPECT_THROW(

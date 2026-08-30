@@ -6,7 +6,7 @@
 // occasional big-number work, not for cryptographic throughput.
 //
 // Usage:
-//   using sun;
+//   using std;
 //
 //   var alloc = make_heap_allocator();
 //   var n = BigUint(alloc, 1);
@@ -14,7 +14,7 @@
 //   var text = String(alloc, "");
 //   n.append_decimal(text);            // 265252859812191058636308480000000
 
-public module sun {
+public module std {
   public class BigUint {
     var limbs: Vec<u64>;
     var alloc: HeapAllocator;
@@ -489,4 +489,4 @@ public module sun {
 
   public declare Vec_u64 = Vec<u64>;
   public declare Vec_u32 = Vec<u32>;
-}  // module sun
+}  // module std

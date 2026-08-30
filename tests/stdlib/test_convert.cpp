@@ -9,7 +9,7 @@
 // Runs `body` inside main with the stdlib loaded. `body` must return an i32:
 // the converted value on success, or -1 if the conversion threw.
 static sun::SunValue runConvert(const std::string& body) {
-  return executeStringWithStdlib("using sun;\nfunction main() i32 {\n" + body +
+  return executeStringWithStdlib("using std;\nfunction main() i32 {\n" + body +
                                  "\n}");
 }
 

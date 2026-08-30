@@ -6,7 +6,7 @@
 // Usage:
 //   import "stdlib/allocator.sun";
 //   import "stdlib/string.sun";
-//   using sun;
+//   using std;
 //   
 //   var allocator = make_heap_allocator();
 //   var s = String(allocator, "Hello");
@@ -24,7 +24,7 @@
 //   s.replace("hello", "goodbye");
 //   var words = s.split(allocator, 32);   // on ' '
 
-public module sun {
+public module std {
   // Number formatting/parsing goes through c_snprintf / c_strtod in sys.sun.
 
   // Space, tab, newline, carriage return, vertical tab, form feed
@@ -1338,4 +1338,4 @@ public module sun {
     }
     return out;
   }
-}  // module sun
+}  // module std

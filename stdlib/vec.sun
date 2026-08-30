@@ -6,7 +6,7 @@
 //
 // Usage:
 //   import "stdlib/vec.sun";
-//   using sun;
+//   using std;
 //   
 //   var allocator = make_heap_allocator();
 //   var v = Vec<i32>(allocator);
@@ -25,7 +25,7 @@
 // Vec<T> - Dynamic Growable Array
 // ============================================================================
 
-public module sun {
+public module std {
   public class Vec<T> implements IIterable<ref T, Vec<T>> {
     var data: ContiguousBuffer<T>;  // Element storage (bounds-checked, auto-freed)
     var capacity_: i64;  // Allocated capacity
@@ -252,4 +252,4 @@ public module sun {
   public declare VecIterator_i64 = VecIterator<i64>;
   public declare VecIterator_f32 = VecIterator<f32>;
   public declare VecIterator_f64 = VecIterator<f64>;
-}  // module sun
+}  // module std

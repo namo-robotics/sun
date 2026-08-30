@@ -1,4 +1,4 @@
-using sun;
+using std;
 using mathlib;
 
 function main() void {
@@ -6,5 +6,5 @@ function main() void {
 }
 
 manifest {
-    moons: ["stdlib.moon", "$LIBS/mathlib.moon"]
+    libraries: ["stdlib.moon", "$LIBS/mathlib.moon"]
 }

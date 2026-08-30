@@ -5,7 +5,7 @@ TLS connection, sends an HTTP/1.1 request and parses the response, decoding
 either a `Content-Length` or a chunked body.
 
 ```sun
-using sun;
+using std;
 using tls;
 
 var client = HttpsClient(alloc);

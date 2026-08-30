@@ -706,7 +706,7 @@ TEST(Ffi_Abi_StaticLink, cross_musl_stdlib_binary_runs_under_qemu) {
   driver->setMoonImports(
       {sun::MoonImport("build/aarch64-linux-gnu/stdlib.moon")});
   driver->compileString(R"(
-    using sun;
+    using std;
     function main() i32 {
         println("hello from musl");
         return 42;

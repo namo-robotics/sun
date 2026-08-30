@@ -11,7 +11,7 @@
 
 // Qualified name expression: Module.name or Namespace::name
 class QualifiedNameAST : public ExprAST {
-  std::vector<std::string> parts;  // ["sun", "Vec"] for sun.Vec
+  std::vector<std::string> parts;  // ["std", "Vec"] for std.Vec
 
  protected:
   // Override to allocate QualifiedNameExprAnalysis instead of base ExprAnalysis
@@ -46,7 +46,7 @@ class QualifiedNameAST : public ExprAST {
   // Get the final name (last part)
   const std::string& getName() const { return parts.back(); }
 
-  // Get fully qualified name as string with dot separator (e.g., "sun.Vec")
+  // Get fully qualified name as string with dot separator (e.g., "std.Vec")
   std::string getFullName() const {
     std::string result;
     for (size_t i = 0; i < parts.size(); ++i) {

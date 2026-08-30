@@ -58,8 +58,8 @@ TEST(Modules_ProtoImport, manifest_entries_tolerate_trailing_semicolons) {
   const auto* manifest = parseManifest(R"(
     manifest {
       protos: ["a.proto"];
-      moons: ["stdlib.moon"];
-      suns: ["helper.sun"];
+      libraries: ["stdlib.moon"];
+      source_files: ["helper.sun"];
     }
     function main() i32 { return 0; }
   )",
@@ -74,9 +74,9 @@ TEST(Modules_ProtoImport, manifest_protos_mixed_with_other_keys) {
   std::unique_ptr<BlockExprAST> ast;
   const auto* manifest = parseManifest(R"(
     manifest {
-      suns: ["helper.sun"]
+      source_files: ["helper.sun"]
       protos: ["a.proto"]
-      moons: ["stdlib.moon"]
+      libraries: ["stdlib.moon"]
     }
     function main() i32 { return 0; }
   )",
@@ -118,7 +118,7 @@ TEST(Modules_ProtoImport, manifest_moon_url_parses) {
   std::unique_ptr<BlockExprAST> ast;
   const auto* manifest = parseManifest(R"(
     manifest {
-      moons: [{ url: "https://example.com/libs/mylib.moon", hash: "abc123", rename: "ml" }]
+      libraries: [{ url: "https://example.com/libs/mylib.moon", hash: "abc123", rename: "ml" }]
     }
     function main() i32 { return 0; }
   )",
@@ -141,7 +141,7 @@ TEST(Modules_ProtoImport, manifest_moon_url_and_path_conflict) {
         std::unique_ptr<BlockExprAST> ast;
         parseManifest(R"(
           manifest {
-            moons: [{ path: "a.moon", url: "https://example.com/a.moon" }]
+            libraries: [{ path: "a.moon", url: "https://example.com/a.moon" }]
           }
           function main() i32 { return 0; }
         )",
@@ -155,7 +155,7 @@ TEST(Modules_ProtoImport, manifest_moon_requires_path_or_url) {
       {
         std::unique_ptr<BlockExprAST> ast;
         parseManifest(R"(
-          manifest { moons: [{ hash: "abc" }] }
+          manifest { libraries: [{ hash: "abc" }] }
           function main() i32 { return 0; }
         )",
                       ast);
@@ -261,8 +261,8 @@ TEST(Modules_ProtoImport, manifest_path_variables_expand_in_all_entry_kinds) {
   {
     std::ofstream out(dir / "main.sun");
     out << "manifest {\n"
-           "  suns: [\"$TESTLIBS/helper.sun\"]\n"
-           "  moons: [\"$TESTLIBS/lib.moon\"]\n"
+           "  source_files: [\"$TESTLIBS/helper.sun\"]\n"
+           "  libraries: [\"$TESTLIBS/lib.moon\"]\n"
            "  protos: [\"$TESTLIBS/t.proto\"]\n"
            "}\n"
            "function main() i32 { return 0; }\n";
@@ -291,7 +291,7 @@ TEST(Modules_ProtoImport, manifest_path_variable_falls_back_to_environment) {
   fs::create_directories(dir);
   {
     std::ofstream out(dir / "main.sun");
-    out << "manifest { moons: [\"$SUN_TEST_ENV_LIBS/lib.moon\"] }\n"
+    out << "manifest { libraries: [\"$SUN_TEST_ENV_LIBS/lib.moon\"] }\n"
            "function main() i32 { return 0; }\n";
   }
 
@@ -312,7 +312,7 @@ TEST(Modules_ProtoImport, manifest_undefined_path_variable_is_an_error) {
   fs::create_directories(dir);
   {
     std::ofstream out(dir / "main.sun");
-    out << "manifest { suns: [\"$SUN_TEST_NO_SUCH_VAR/x.sun\"] }\n"
+    out << "manifest { source_files: [\"$SUN_TEST_NO_SUCH_VAR/x.sun\"] }\n"
            "function main() i32 { return 0; }\n";
   }
 
@@ -345,7 +345,7 @@ TEST(Modules_ProtoImport, manifest_processor_returns_nullopt_without_manifest) {
 
 TEST(Modules_ProtoImport, wire_varint_roundtrip_small_and_multibyte) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function main() i32 {
       var alloc = make_heap_allocator();
       var buf = Vec<u8>(alloc, 16);
@@ -379,7 +379,7 @@ TEST(Modules_ProtoImport, wire_varint_roundtrip_small_and_multibyte) {
 
 TEST(Modules_ProtoImport, wire_negative_int32_is_ten_bytes_and_roundtrips) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function main() i32 {
       var alloc = make_heap_allocator();
       var buf = Vec<u8>(alloc, 16);
@@ -398,7 +398,7 @@ TEST(Modules_ProtoImport, wire_negative_int32_is_ten_bytes_and_roundtrips) {
 
 TEST(Modules_ProtoImport, wire_zigzag_sint_roundtrip) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function main() i32 {
       var alloc = make_heap_allocator();
       var buf = Vec<u8>(alloc, 16);
@@ -430,7 +430,7 @@ TEST(Modules_ProtoImport, wire_zigzag_sint_roundtrip) {
 
 TEST(Modules_ProtoImport, wire_fixed_and_float_roundtrip) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function main() i32 {
       var alloc = make_heap_allocator();
       var buf = Vec<u8>(alloc, 32);
@@ -467,7 +467,7 @@ TEST(Modules_ProtoImport, wire_fixed_and_float_roundtrip) {
 
 TEST(Modules_ProtoImport, wire_string_and_bytes_roundtrip) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function main() i32 {
       var alloc = make_heap_allocator();
       var buf = Vec<u8>(alloc, 32);
@@ -498,7 +498,7 @@ TEST(Modules_ProtoImport, wire_string_and_bytes_roundtrip) {
 
 TEST(Modules_ProtoImport, wire_tags_limits_and_skip_unknown) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function main() i32 {
       var alloc = make_heap_allocator();
       var buf = Vec<u8>(alloc, 32);
@@ -538,7 +538,7 @@ TEST(Modules_ProtoImport, wire_tags_limits_and_skip_unknown) {
 
 TEST(Modules_ProtoImport, wire_truncated_input_throws) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function main() i32 {
       var alloc = make_heap_allocator();
       var buf = Vec<u8>(alloc, 4);
@@ -558,7 +558,7 @@ TEST(Modules_ProtoImport, wire_truncated_input_throws) {
 
 TEST(Modules_ProtoImport, map_string_keys) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     function main() i32 {
       var alloc = make_heap_allocator();
       var m = Map<String, i32>(alloc, 8);
@@ -608,7 +608,7 @@ message Status {
 
 TEST(Modules_ProtoImport, message_roundtrip_all_field_kinds) {
   auto value = runWithProto("sun_proto_rt1", kTelemetryProto, R"(
-    using sun;
+    using std;
     using t;
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -662,7 +662,7 @@ TEST(Modules_ProtoImport, message_roundtrip_all_field_kinds) {
 
 TEST(Modules_ProtoImport, zero_values_encode_to_empty_and_decode_defaults) {
   auto value = runWithProto("sun_proto_rt2", kTelemetryProto, R"(
-    using sun;
+    using std;
     using t;
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -688,7 +688,7 @@ TEST(Modules_ProtoImport, zero_values_encode_to_empty_and_decode_defaults) {
 
 TEST(Modules_ProtoImport, unknown_fields_survive_reencode) {
   auto value = runWithProto("sun_proto_rt3", kTelemetryProto, R"(
-    using sun;
+    using std;
     using t;
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -723,7 +723,7 @@ TEST(Modules_ProtoImport, unknown_fields_survive_reencode) {
 
 TEST(Modules_ProtoImport, unpacked_repeated_scalars_decode) {
   auto value = runWithProto("sun_proto_rt4", kTelemetryProto, R"(
-    using sun;
+    using std;
     using t;
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -748,7 +748,7 @@ TEST(Modules_ProtoImport, unpacked_repeated_scalars_decode) {
 
 TEST(Modules_ProtoImport, unknown_enum_value_maps_to_zero_variant) {
   auto value = runWithProto("sun_proto_rt5", kTelemetryProto, R"(
-    using sun;
+    using std;
     using t;
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -766,7 +766,7 @@ TEST(Modules_ProtoImport, unknown_enum_value_maps_to_zero_variant) {
 
 TEST(Modules_ProtoImport, truncated_message_throws_decode_error) {
   auto value = runWithProto("sun_proto_rt6", kTelemetryProto, R"(
-    using sun;
+    using std;
     using t;
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -797,7 +797,7 @@ TEST(Modules_ProtoImport, nested_message_types_flatten_with_underscore) {
     }
   )",
                             R"(
-    using sun;
+    using std;
     using n;
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -824,7 +824,7 @@ TEST(Modules_ProtoImport, nested_message_types_flatten_with_underscore) {
 
 TEST(Modules_ProtoImport, delimited_stream_framing) {
   auto value = runWithProto("sun_proto_rt8", kTelemetryProto, R"(
-    using sun;
+    using std;
     using t;
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -914,7 +914,7 @@ namespace {
 std::string sunEncodedStatusBytes(ProtoProject& project) {
   fs::path outFile = project.file("bytes.bin");
   project.setProgram(
-      "using sun;\nusing t;\n"
+      "using std;\nusing t;\n"
       "function main() i32 {\n"
       "  var alloc = make_heap_allocator();\n"
       "  var st = Status(alloc);\n"
@@ -987,7 +987,7 @@ message Bag {
 
 TEST(Modules_ProtoImport, optional_fields_track_presence) {
   auto value = runWithProto("sun_proto_full1", kFullProto, R"(
-    using sun;
+    using std;
     using f;
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -1020,7 +1020,7 @@ TEST(Modules_ProtoImport, optional_fields_track_presence) {
 
 TEST(Modules_ProtoImport, oneof_roundtrips_each_variant) {
   auto value = runWithProto("sun_proto_full2", kFullProto, R"(
-    using sun;
+    using std;
     using f;
     function roundtrip(alloc: ref HeapAllocator, b: ref Bag) i32 throws IError {
       var buf = Vec<u8>(alloc, 32);
@@ -1056,7 +1056,7 @@ TEST(Modules_ProtoImport, oneof_roundtrips_each_variant) {
 
 TEST(Modules_ProtoImport, oneof_last_field_on_wire_wins) {
   auto value = runWithProto("sun_proto_full3", kFullProto, R"(
-    using sun;
+    using std;
     using f;
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -1083,7 +1083,7 @@ TEST(Modules_ProtoImport, oneof_last_field_on_wire_wins) {
 
 TEST(Modules_ProtoImport, maps_with_string_keys_and_message_values) {
   auto value = runWithProto("sun_proto_full4", kFullProto, R"(
-    using sun;
+    using std;
     using f;
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -1125,7 +1125,7 @@ TEST(Modules_ProtoImport, proto_imports_generate_dependency_modules) {
           "string what = 3; }\n")
       // Only the importing schema is listed; common.proto comes in through it
       .setProgram(R"(
-        using sun;
+        using std;
         using app;
         using common;
         function main() i32 {
@@ -1154,7 +1154,7 @@ TEST(Modules_ProtoImport, libprotobuf_parses_optional_oneof_map_encoding) {
   fs::path outFile = project.file("bytes.bin");
   project.addSchema("t.proto", kFullProto)
       .setProgram(
-          "using sun;\nusing f;\n"
+          "using std;\nusing f;\n"
           "function main() i32 {\n"
           "  var alloc = make_heap_allocator();\n"
           "  var b = Bag(alloc);\n"
@@ -1209,7 +1209,7 @@ TEST(Modules_ProtoImport, moon_exports_proto_messages_to_importers) {
   auto driver = Driver::createForJIT("proto_moon_app");
   driver->setMoonImports(imports);
   auto value = driver->executeString(R"(
-    using sun;
+    using std;
     using t;
     function main() i32 {
       var alloc = make_heap_allocator();
@@ -1241,7 +1241,7 @@ TEST(Modules_ProtoImport, moon_import_plus_same_proto_is_a_collision_error) {
   fs::path moonPath = project.buildMoon("telemetry_lib");
   // Same schema listed again in a program that already imports the moon
   project.setProgram(
-      "using sun;\nusing t;\n"
+      "using std;\nusing t;\n"
       "function main() i32 { var alloc = make_heap_allocator(); "
       "var s = Status(alloc); return 0; }\n");
   try {
@@ -1267,7 +1267,7 @@ TEST(Modules_ProtoImport, moon_exports_nested_dotted_package_modules) {
   auto app = Driver::createForJIT("proto_moon_nested");
   app->setMoonImports(imports);
   auto value = app->executeString(R"(
-    using sun;
+    using std;
     using namo.telemetry;
     function main() i32 {
       var alloc = make_heap_allocator();

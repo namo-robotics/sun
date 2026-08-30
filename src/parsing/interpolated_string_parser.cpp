@@ -210,18 +210,18 @@ std::unique_ptr<BlockExprAST> InterpolatedStringParser::desugar(
   auto block = std::make_unique<BlockExprAST>();
   block->setLocation(loc);
 
-  // var interp_alloc_ = sun.HeapAllocator();
+  // var interp_alloc_ = std.HeapAllocator();
   auto allocCall = makeCall(
-      makeMemberAccess(makeVarRef("sun", loc), "HeapAllocator", loc), {}, loc);
+      makeMemberAccess(makeVarRef("std", loc), "HeapAllocator", loc), {}, loc);
   block->addExpression(
       makeVarCreate("interp_alloc_", std::move(allocCall), loc));
 
-  // var interp_result_ = sun.String(interp_alloc_, "");
+  // var interp_result_ = std.String(interp_alloc_, "");
   std::vector<std::unique_ptr<ExprAST>> stringArgs;
   stringArgs.push_back(makeVarRef("interp_alloc_", loc));
   stringArgs.push_back(makeStringLiteral("", loc));
   auto stringCall =
-      makeCall(makeMemberAccess(makeVarRef("sun", loc), "String", loc),
+      makeCall(makeMemberAccess(makeVarRef("std", loc), "String", loc),
                std::move(stringArgs), loc);
   block->addExpression(
       makeVarCreate("interp_result_", std::move(stringCall), loc));

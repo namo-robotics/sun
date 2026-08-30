@@ -15,7 +15,7 @@
 
 TEST(Stdlib_Collections_ContiguousBuffer, basic_allocation_and_size) {
   auto value = executeStringWithReachableIR(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var alloc = make_heap_allocator();
@@ -29,7 +29,7 @@ TEST(Stdlib_Collections_ContiguousBuffer, basic_allocation_and_size) {
 
 TEST(Stdlib_Collections_ContiguousBuffer, empty_buffer) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -45,7 +45,7 @@ TEST(Stdlib_Collections_ContiguousBuffer, empty_buffer) {
 
 TEST(Stdlib_Collections_ContiguousBuffer, non_empty_buffer) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -65,7 +65,7 @@ TEST(Stdlib_Collections_ContiguousBuffer, non_empty_buffer) {
 
 TEST(Stdlib_Collections_ContiguousBuffer, get_set_valid_index) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -92,7 +92,7 @@ TEST(Stdlib_Collections_ContiguousBuffer, get_set_valid_index) {
 
 TEST(Stdlib_Collections_ContiguousBuffer, get_out_of_bounds_throws) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -110,7 +110,7 @@ TEST(Stdlib_Collections_ContiguousBuffer, get_out_of_bounds_throws) {
 
 TEST(Stdlib_Collections_ContiguousBuffer, get_negative_index_throws) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -130,7 +130,7 @@ TEST(Stdlib_Collections_ContiguousBuffer, set_out_of_bounds_throws) {
   // Test that valid set operations work correctly
   // Note: void throws IError try-catch has limited compiler support
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -151,7 +151,7 @@ TEST(Stdlib_Collections_ContiguousBuffer, set_out_of_bounds_throws) {
 
 TEST(Stdlib_Collections_ContiguousBuffer, get_set_unchecked) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -171,7 +171,7 @@ TEST(Stdlib_Collections_ContiguousBuffer, get_set_unchecked) {
 
 TEST(Stdlib_Collections_ContiguousBuffer, fill_buffer) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -195,7 +195,7 @@ TEST(Stdlib_Collections_ContiguousBuffer, fill_buffer) {
 TEST(Stdlib_Collections_ContiguousBuffer, copy_from_valid) {
   // Test that copy_from works correctly using unchecked version
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -228,7 +228,7 @@ TEST(Stdlib_Collections_ContiguousBuffer, copy_from_out_of_bounds_src) {
   // Test basic buffer operations instead of error throwing
   // (void throws IError try-catch has limited support)
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -254,7 +254,7 @@ TEST(Stdlib_Collections_ContiguousBuffer, copy_from_out_of_bounds_src) {
 TEST(Stdlib_Collections_ContiguousBuffer, copy_from_out_of_bounds_dst) {
   // Test buffer allocation with different sizes
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -281,7 +281,7 @@ TEST(Stdlib_Collections_ContiguousBuffer, copy_from_out_of_bounds_dst) {
 
 TEST(Stdlib_Collections_ContiguousBuffer, first_and_last) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -307,7 +307,7 @@ TEST(Stdlib_Collections_ContiguousBuffer, first_and_last) {
 
 TEST(Stdlib_Collections_ContiguousBuffer, first_on_empty_throws) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -325,7 +325,7 @@ TEST(Stdlib_Collections_ContiguousBuffer, first_on_empty_throws) {
 
 TEST(Stdlib_Collections_ContiguousBuffer, last_on_empty_throws) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -347,7 +347,7 @@ TEST(Stdlib_Collections_ContiguousBuffer, last_on_empty_throws) {
 
 TEST(Stdlib_Collections_ContiguousBuffer, index_operator) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -367,7 +367,7 @@ TEST(Stdlib_Collections_ContiguousBuffer, index_operator) {
 
 TEST(Stdlib_Collections_ContiguousBuffer, iterator_sum) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -393,7 +393,7 @@ TEST(Stdlib_Collections_ContiguousBuffer, iterator_sum) {
 
 TEST(Stdlib_Collections_ContiguousBuffer, f64_buffer) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var alloc = make_heap_allocator();
@@ -411,7 +411,7 @@ TEST(Stdlib_Collections_ContiguousBuffer, f64_buffer) {
 
 TEST(Stdlib_Collections_ContiguousBuffer, i64_buffer) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i64 {
         var alloc = make_heap_allocator();
@@ -442,7 +442,7 @@ TEST(Stdlib_Collections_ContiguousBuffer, i64_buffer) {
 
 TEST(Stdlib_Collections_ContiguousBuffer, raw_data_not_null) {
   auto value = executeStringWithStdlib(R"(
-    using sun;
+    using std;
     
     function main() i32 {
         var alloc = make_heap_allocator();
