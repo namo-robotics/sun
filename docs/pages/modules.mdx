@@ -61,12 +61,22 @@ is tolerated). A minimal program needs only a `main()` function.
 
 Paths in the manifest are resolved in order:
 
-1. **Relative to the entrypoint file** — First, check if the path exists relative to the directory containing the entrypoint
-2. **Via SUN_PATH** — If not found, search in the `SUN_PATH` environment variable
+1. **Relative to the entrypoint file** — the directory containing the entrypoint
+2. **A `sun-config.json`** — any `sunPath` directories from the config files
+   above the entrypoint (see [Sun Config](/#sun-config))
+3. **`--lib-path`** — directories given on the command line
+4. **`SUN_PATH`** — directories in the `SUN_PATH` environment variable
+5. **The install location** — `/usr/lib/sun` from the Debian package,
+   `$(brew --prefix)/lib/sun` from Homebrew, and `lib/sun` beside the running
+   `sun` binary
+
+An installed compiler finds `stdlib.moon` through step 5 with no setup, so
+`SUN_PATH` is for a build you have not installed — a source checkout, or a
+bundle you dropped somewhere of your own:
 
 ```bash
 export SUN_PATH=/path/to/sun/build
-sun myprogram.sun   # Can find stdlib.moon in SUN_PATH
+sun myprogram.sun   # Finds build/stdlib.moon
 ```
 
 ### Path Variables

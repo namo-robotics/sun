@@ -650,6 +650,20 @@ void SemanticAnalyzer::analyzeStructLiteral(StructLiteralAST& literal,
   literal.setResolvedType(expectedType);
 }
 
+// An intrinsic that reads or writes unchecked memory has to be written inside
+// an `unsafe { }` block. `sun::requiresUnsafeBlock` decides which ones; this is
+// the only place it is applied, for generic and non-generic intrinsics alike.
+void SemanticAnalyzer::checkRequiresUnsafeBlock(const std::string& name,
+                                                   const Position& loc) const {
+  if (ctx_.isInUnsafeBlock() || !sun::requiresUnsafeBlock(name)) return;
+  logAndThrowError(
+      "'" + name +
+          "' reads or writes memory nothing has checked, so it can only be "
+          "used in an unsafe block. Wrap the call in `unsafe { ... }`, or "
+          "expose it through a safe Sun wrapper.",
+      loc);
+}
+
 void SemanticAnalyzer::checkExternCallAllowed(const FunctionInfo& info,
                                               const std::string& displayName,
                                               const Position& loc) const {
@@ -1727,45 +1741,14 @@ std::vector<sun::TypePtr> SemanticAnalyzer::analyzeCallArguments(
 
 void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
                                    sun::TypePtr expectedType) {
-  // Check for unsafe intrinsic calls (non-generic)
-  // Generic intrinsics (_load<T>, _store<T>, _address_of<T>) are checked in
-  // type_inference.cpp
-  static const std::unordered_set<std::string> unsafeIntrinsics = {
-      "_malloc",
-      "_free",
-      "_load_i64",
-      "_store_i64",
-      "_atomic_cmpxchg_i32",
-      "_atomic_store_i32",
-      "_atomic_load_i32",
-      "_atomic_fetch_add_i32",
-      "_atomic_fetch_sub_i32",
-      "_futex_wait",
-      "_futex_wake",
-      "__file_open",
-      "__file_close",
-      "__file_write",
-      "__file_read",
-      "__lseek",
-      "__fstat",
-      "__fsync",
-      "__ftruncate",
-      "__unlink",
-      "__rename",
-      "__mkdir",
-      "__rmdir",
-      "__write",
-      "__read"};
-
+  // Non-generic intrinsics. The generic ones (_load<T>, _to_ref<T>, ...) are a
+  // GenericCallAST and go through analyzeGenericCallExpr, which applies the
+  // same predicate.
   auto calleeASTType = callExpr.getCallee()->getType();
   if (calleeASTType == ASTNodeType::VARIABLE_REFERENCE) {
     const auto& varRef =
         static_cast<const VariableReferenceAST&>(*callExpr.getCallee());
-    const std::string& funcName = varRef.getName();
-    if (unsafeIntrinsics.count(funcName) && !ctx_.isInUnsafeBlock()) {
-      logAndThrowError("'" + funcName + "' can only be used in an unsafe block",
-                       callExpr.getLocation());
-    }
+    checkRequiresUnsafeBlock(varRef.getName(), callExpr.getLocation());
   }
 
   // Enum variant construction: EnumName.Variant(args...) for concrete and

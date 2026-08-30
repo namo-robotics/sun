@@ -24,7 +24,7 @@ only.
 A parameter declared `ref T` borrows the caller's value and may change it;
 one declared `const ref T` borrows it for reading only. A constant, or a
 value already borrowed with `const ref`, can only be passed to the second
-kind. See [Constant references](/ownership#constant-references).
+kind. See [Constant references](/memory-safety#constant-references).
 
 ```sun
 function total(v: const ref Vec<i32>) i32 {

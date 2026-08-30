@@ -1013,3 +1013,165 @@ TEST(Builtins_BitcastIntrinsic, a_class_target_is_an_error) {
   )"),
                SunError);
 }
+
+// ============================================================================
+// _malloc Intrinsic Tests
+// ============================================================================
+
+// malloc takes a 64-bit size, but an untyped integer literal is i32, so the
+// argument has to be widened before the call.
+TEST(Builtins_MallocIntrinsic, integer_literal_size) {
+  auto value = executeString(R"(
+    function main() i32 {
+        var mem = unsafe { _malloc(1024); };
+        unsafe { _store_i64(mem, 0, 21); };
+        var v: i64 = unsafe { _load_i64(mem, 0); };
+        unsafe { _free(mem); };
+        return _convert<i32>(v);
+    }
+  )");
+  EXPECT_EQ(value, 21);
+}
+
+TEST(Builtins_MallocIntrinsic, i64_variable_size) {
+  auto value = executeString(R"(
+    function main() i32 {
+        var size: i64 = 16;
+        var mem = unsafe { _malloc(size); };
+        unsafe { _store_i64(mem, 0, 22); };
+        var v: i64 = unsafe { _load_i64(mem, 0); };
+        unsafe { _free(mem); };
+        return _convert<i32>(v);
+    }
+  )");
+  EXPECT_EQ(value, 22);
+}
+
+// ============================================================================
+// Unsafe Block Requirement
+// ============================================================================
+
+// An intrinsic that reads or writes unchecked memory is rejected outside an
+// unsafe block, generic and non-generic alike.
+TEST(Builtins_UnsafeRequirement, generic_load_outside_unsafe_is_an_error) {
+  EXPECT_THROW(executeString(R"(
+    function main() i32 {
+        var n: i64 = 8;
+        var mem = unsafe { _malloc(n); };
+        var v: i32 = _load<i32>(mem, 0);
+        unsafe { _free(mem); };
+        return v;
+    }
+  )"),
+               SunError);
+}
+
+TEST(Builtins_UnsafeRequirement, generic_store_outside_unsafe_is_an_error) {
+  EXPECT_THROW(executeString(R"(
+    function main() i32 {
+        var n: i64 = 8;
+        var mem = unsafe { _malloc(n); };
+        _store<i32>(mem, 0, 1);
+        return 0;
+    }
+  )"),
+               SunError);
+}
+
+TEST(Builtins_UnsafeRequirement, to_ref_outside_unsafe_is_an_error) {
+  EXPECT_THROW(executeString(R"(
+    function main() i32 {
+        var x: i32 = 1;
+        var p: raw_ptr<i32> = _address_of<i32>(x);
+        var r: ref i32 = _to_ref<i32>(p);
+        return r;
+    }
+  )"),
+               SunError);
+}
+
+TEST(Builtins_UnsafeRequirement, ptr_offset_outside_unsafe_is_an_error) {
+  EXPECT_THROW(executeString(R"(
+    function main() i32 {
+        var n: i64 = 8;
+        var mem = unsafe { _malloc(n); };
+        var p = _ptr_offset(mem, 4);
+        return 0;
+    }
+  )"),
+               SunError);
+}
+
+// Intrinsics that only compute stay usable anywhere.
+TEST(Builtins_UnsafeRequirement, computing_intrinsics_need_no_block) {
+  auto value = executeString(R"(
+    function main() i32 {
+        var x: i32 = 7;
+        var size: i64 = _sizeof<i32>();
+        var p: raw_ptr<i32> = _address_of<i32>(x);
+        var ok: bool = _is<_Integer>(x);
+        if (not ok) { return 0; }
+        return _convert<i32>(size) + x;
+    }
+  )");
+  EXPECT_EQ(value, 11);
+}
+
+// The block is lexical: a safe wrapper's body is checked on its own, so
+// calling it from outside a block is fine.
+TEST(Builtins_UnsafeRequirement, safe_wrapper_is_callable_without_a_block) {
+  auto value = executeString(R"(
+    function read_first(p: raw_ptr<i32>) i32 {
+        return unsafe { _load<i32>(p, 0); };
+    }
+    function main() i32 {
+        var x: i32 = 9;
+        return read_first(_address_of<i32>(x));
+    }
+  )");
+  EXPECT_EQ(value, 9);
+}
+
+// ============================================================================
+// Unsafe Block Scoping
+// ============================================================================
+
+// The body is a scope like any other block body: names declared inside stay
+// inside.
+TEST(Builtins_UnsafeScope, name_declared_inside_does_not_escape) {
+  EXPECT_THROW(executeString(R"(
+    function main() i32 {
+        unsafe { var inner: i32 = 7; };
+        return inner;
+    }
+  )"),
+               std::exception);
+}
+
+// But the block's value does leave, and ownership leaves with it — the value
+// is not dropped on the way out.
+TEST(Builtins_UnsafeScope, owning_value_survives_the_block) {
+  auto value = executeString(R"(
+    var drops: i32 = 0;
+
+    class Owner {
+      var p: raw_ptr<i8>;
+      init() { var n: i64 = 8; this.p = unsafe { _malloc(n); }; }
+      deinit() { unsafe { _free(this.p); }; drops = drops + 1; }
+      method tag() i32 { return 5; }
+    }
+
+    function make() Owner { return Owner(); }
+
+    function use() i32 {
+      var o = unsafe { make(); };
+      return o.tag();     // still alive here
+    }
+
+    function main() i32 {
+      var t: i32 = use();
+      return t + drops;   // 5 + dropped exactly once
+    }
+  )");
+  EXPECT_EQ(value, 6);
+}

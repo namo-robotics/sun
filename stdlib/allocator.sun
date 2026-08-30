@@ -72,7 +72,7 @@ public module std {
     public method create<T>(args...: _params_of<T>) raw_ptr<T> {
       var size: i64 = _sizeof<T>();
       var memory: raw_ptr<u8> = this.alloc_raw(size);
-      _init<T>(memory, args...);
+      unsafe { _init<T>(memory, args...); };
       return memory;
     }
 

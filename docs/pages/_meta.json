@@ -11,7 +11,7 @@
   "interfaces": "Interfaces",
   "generics": "Generics",
   "errors": "Error Handling",
-  "ownership": "Ownership & Borrowing",
+  "memory-safety": "Memory Safety",
   "threads": "Threads",
   "matrices": "Matrices",
   "modules": "Modules & Namespaces",

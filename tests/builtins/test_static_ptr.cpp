@@ -117,7 +117,7 @@ TEST(Builtins_StaticPtr, raw_is_a_raw_ptr_to_the_bytes) {
     function main() i32 {
       var s: static_ptr<u8> = "A";
       var p: raw_ptr<u8> = s.raw();
-      return _convert<i32>(_load<u8>(p, 0));
+      return _convert<i32>(unsafe { _load<u8>(p, 0); });
     }
   )");
   EXPECT_EQ(value, 65);

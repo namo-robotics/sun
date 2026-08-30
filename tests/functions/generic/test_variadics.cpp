@@ -25,7 +25,7 @@ constexpr const char* kMake = R"(
     function make<T>(args...: _params_of<T>) raw_ptr<T> {
         var size: i64 = _sizeof<T>();
         var memory: raw_ptr<i8> = unsafe { _malloc(size); };
-        _init<T>(memory, args...);
+        unsafe { _init<T>(memory, args...); };
         return memory;
     }
 )";
@@ -81,7 +81,7 @@ TEST(Functions_Generic_Variadics, empty_pack) {
     function make<T>(args...: _params_of<T>) raw_ptr<T> {
         var size: i64 = _sizeof<T>();
         var memory: raw_ptr<i8> = unsafe { _malloc(size); };
-        _init<T>(memory, args...);
+        unsafe { _init<T>(memory, args...); };
         return memory;
     }
     function main() i32 {
@@ -265,7 +265,7 @@ TEST(Functions_Generic_Variadics, pack_template_survives_a_moon_round_trip) {
           public function make<T>(args...: _params_of<T>) raw_ptr<T> {
               var size: i64 = _sizeof<T>();
               var memory: raw_ptr<i8> = unsafe { _malloc(size); };
-              _init<T>(memory, args...);
+              unsafe { _init<T>(memory, args...); };
               return memory;
           }
       }

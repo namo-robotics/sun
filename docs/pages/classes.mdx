@@ -362,7 +362,7 @@ function main() i32 {
     var result = p.magnitude_squared();  // 25
     
     // Manual cleanup required for raw_ptr
-    _free(p);
+    unsafe { _free(p); };
     
     return result;
 }

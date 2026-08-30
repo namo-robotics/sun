@@ -41,6 +41,17 @@ A few words only have meaning in one position and remain usable as names:
 start of a class or interface member), so a field may still be called
 `method`.
 
+Three of these carry syntax that is easy to miss:
+
+- `lambda [ref x, const ref y](…) …` — a **capture list** in brackets after
+  `lambda` borrows the named variables instead of copying them. Compound values
+  can only be captured this way. See [Captures](/functions#captures).
+- `unsafe { … }` is an **expression**, so it can produce a value:
+  `var p = unsafe { _malloc(n); };`. See
+  [Unsafe Blocks](/memory-safety#unsafe-blocks).
+- `packed_class` declares a class with no padding between fields, for binary
+  layouts and C structs. See [Packed Classes](/classes#packed-classes).
+
 ```sun
 var partial = 1;   // ❌ ERROR: 'partial' is a reserved word
 var in: i32 = 5;   // ✓ OK: `in` is only a keyword inside `for (...)`
@@ -71,7 +82,7 @@ var flag: bool = true;
 
 A value that never changes is declared with `const` instead. It can be read,
 borrowed with `const ref`, and moved, but never assigned to or changed in
-place. See [Constants](/ownership#constants).
+place. See [Constants](/memory-safety#constants).
 
 ```sun
 const MAX_RETRIES: i32 = 3;

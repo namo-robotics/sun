@@ -194,10 +194,23 @@ Value* ErrorGenerator::codegen(const ThrowExprAST& expr) {
 }
 
 // Codegen for unsafe block: unsafe { ... }
-// Simply generates code for the body - safety checks are done at semantic
-// analysis
+// The body is a scope like any other block body, so names declared inside stay
+// inside and owners are dropped on the way out. Its value is the last
+// statement's, which is produced before the scope is popped. The safety checks
+// themselves are done in semantic analysis.
 Value* ErrorGenerator::codegen(const UnsafeBlockAST& expr) {
-  return codegen(expr.getBody());
+  scopes().push(expr.getBody().getLocation());
+  Value* result = codegen(expr.getBody());
+  // `var s = unsafe { make(); };` — the value leaves with the block, so
+  // ownership moves out to the scope the block sits in rather than being
+  // dropped on the way past.
+  bool ownedHere = scopes().releaseBlockResult(result);
+  scopes().pop();
+  if (ownedHere) {
+    scopes().trackClassAllocation(result, "unsafe.result",
+                                  expr.getResolvedType());
+  }
+  return result;
 }
 
 // Codegen for try-catch: try { ... } catch (e: A) { ... } catch (e: IError) {}

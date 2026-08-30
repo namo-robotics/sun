@@ -336,9 +336,9 @@ TEST(Ffi_Abi_CrossTargetDarwin, dead_target_branch_emits_no_extern_call) {
     function read_errno() i32 {
         unsafe {
             if (_target_is("macos")) {
-                return _load<i32>(c_errno_darwin(), 0);
+                return unsafe { _load<i32>(c_errno_darwin(), 0); };
             } else {
-                return _load<i32>(c_errno_linux(), 0);
+                return unsafe { _load<i32>(c_errno_linux(), 0); };
             }
         };
     }

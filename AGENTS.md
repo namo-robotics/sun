@@ -8,7 +8,7 @@ Lexer → Parser → AST → SemanticAnalyzer → BorrowChecker → CodegenVisit
 
 `include/` and `src/` share one layout, grouped by stage: `support/`, `driver/`, `parsing/`, `ast/`, `semantic_analysis/`, `borrow_checker/`, `codegen/`, `serialization/`, `moon_bundling/`, `lsp/`, `debug/`. Inside `codegen/` there is a folder per component — `scopes/`, `classes/`, `functions/`, `variables/`, `expressions/`, `loops/`, `errors/`, `support/`, `abi/`, `intrinsics/` — each holding both its header and the sources that implement it. A header and its sources always sit in the same relative directory under `include/` and `src/`. Includes are spelled relative to `include/` (`#include "codegen/scopes/scope_manager.h"`). Sources are listed explicitly in `CMakeLists.txt` (`add_library(sun_lib …)`), so a new `.cpp` must be added there.
 
-The language itself is documented in `docs/pages/` — read the page for the area you are changing rather than rediscovering the rules. `ownership.mdx`, `classes.mdx`, `generics.mdx`, `modules.mdx` (visibility), `builtin-types.mdx`, `errors.mdx`, `interfaces.mdx`, `enums.mdx`, `match.mdx`, `threads.mdx`, `c-ffi.mdx`, `intrinsics.mdx`, `stdlib.mdx`. Compiler internals live in `docs/pages/architecture/`. Keep those pages current when you change what they describe.
+The language itself is documented in `docs/pages/` — read the page for the area you are changing rather than rediscovering the rules. `memory-safety.mdx`, `classes.mdx`, `generics.mdx`, `modules.mdx` (visibility), `builtin-types.mdx`, `errors.mdx`, `interfaces.mdx`, `enums.mdx`, `match.mdx`, `threads.mdx`, `c-ffi.mdx`, `intrinsics.mdx`, `stdlib.mdx`. Compiler internals live in `docs/pages/architecture/`. Keep those pages current when you change what they describe.
 
 ## Build & Test
 
@@ -34,7 +34,7 @@ EXPECT_NO_THROW(compileFile("tests/programs/example.sun"));
 
 ## Ownership: No Implicit Copies
 
-**Sun NEVER implicitly copies a compound value (class, payload enum, interface).** Every by-value transfer is a move. `docs/pages/ownership.mdx` has the rules; these are the invariants the compiler must not break:
+**Sun NEVER implicitly copies a compound value (class, payload enum, interface).** Every by-value transfer is a move. `docs/pages/memory-safety.mdx` has the rules; these are the invariants the compiler must not break:
 
 - Codegen invalidates the moved-from source (`applyMoveSemantics`: memset classes to zero, poison enum tag to -1) so its own drop is a no-op. **Owning types must treat the all-zero state as "nothing to release"** — null-check pointers in `deinit`, like `Unique<T>`.
 - A borrow cannot be laundered back into an owner: where a by-value `T` is expected and `T` is compound, a `ref T` is rejected (`typeCopiesByRead` in `types.h`, applied by `isAssignableTo` and by the copy of that rule in `scope_lookup.cpp` used for overload resolution). Reading `T` out of the borrow would give the copy and the borrowed value the same buffer.

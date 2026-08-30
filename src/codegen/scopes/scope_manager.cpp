@@ -167,6 +167,22 @@ void ScopeManager::emitFlaggedDrop(const ClassAllocation& alloc) {
   ctx.builder->SetInsertPoint(afterBlock);
 }
 
+bool ScopeManager::releaseBlockResult(Value* result) {
+  if (!result || scopes_.empty()) return false;
+  for (auto& alloc : scopes_.back().classAllocations) {
+    if (alloc.alloca != result || alloc.moved) continue;
+    // The block always reaches its own last statement, so ownership leaves it
+    // on every path and the decision stays static in the scope that gets it.
+    if (alloc.dropFlag) {
+      ctx.builder->CreateStore(ConstantInt::getFalse(ctx.getContext()),
+                               alloc.dropFlag);
+    }
+    alloc.moved = true;
+    return true;
+  }
+  return false;
+}
+
 void ScopeManager::markAsMoved(const std::string& name) {
   for (auto& scope : scopes_) {
     for (auto& alloc : scope.ownedAllocations) {
