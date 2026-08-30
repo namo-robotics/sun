@@ -5,6 +5,8 @@ the accept loop and all HTTP framing (request parsing, status line,
 `Content-Length`); the handler lambda only inspects `HttpRequest` and fills
 in `HttpResponse`.
 
+## Build and run
+
 Build:
 
 ```bash

@@ -932,3 +932,84 @@ TEST(Builtins_TargetIsIntrinsic, non_literal_argument_is_an_error) {
   )"),
                SunError);
 }
+
+// ============================================================================
+// _bitcast<T> Intrinsic Tests - Same-Size Reinterpretation
+// ============================================================================
+
+TEST(Builtins_BitcastIntrinsic, round_trips_a_float_through_its_bits) {
+  auto value = executeString(R"(
+    function main() i32 {
+        var bits: u64 = _bitcast<u64>(1.0);
+        var back: f64 = _bitcast<f64>(bits);
+        if (back == 1.0) { return 42; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Builtins_BitcastIntrinsic, retypes_a_raw_pointer_and_back) {
+  auto value = executeString(R"(
+    function main() i32 {
+        var x: i32 = 42;
+        var p: raw_ptr<i32> = _address_of<i32>(x);
+        var bytes: raw_ptr<u8> = _bitcast<raw_ptr<u8>>(p);
+        var back: raw_ptr<i32> = _bitcast<raw_ptr<i32>>(bytes);
+        unsafe { return _load<i32>(back, 0); };
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Builtins_BitcastIntrinsic, reads_a_class_back_out_of_a_byte_pointer) {
+  auto value = executeString(R"(
+    class Point {
+        var x: i32;
+        var y: i32;
+        init(a: i32, b: i32) { this.x = a; this.y = b; }
+    }
+    function main() i32 {
+        var p = Point(3, 4);
+        var bytes = _bitcast<raw_ptr<u8>>(_address_of<Point>(p));
+        var back = _bitcast<raw_ptr<Point>>(bytes);
+        var r: ref Point = unsafe { _to_ref<Point>(back); };
+        return r.x * 10 + r.y;
+    }
+  )");
+  EXPECT_EQ(value, 34);
+}
+
+TEST(Builtins_BitcastIntrinsic, pointer_to_number_is_an_error) {
+  EXPECT_THROW(executeString(R"(
+    function main() i32 {
+        var x: i32 = 1;
+        var n: u64 = _bitcast<u64>(_address_of<i32>(x));
+        return 0;
+    }
+  )"),
+               SunError);
+}
+
+TEST(Builtins_BitcastIntrinsic, number_to_pointer_is_an_error) {
+  EXPECT_THROW(executeString(R"(
+    function main() i32 {
+        var n: u64 = 4096;
+        var p = _bitcast<raw_ptr<u8>>(n);
+        return 0;
+    }
+  )"),
+               SunError);
+}
+
+TEST(Builtins_BitcastIntrinsic, a_class_target_is_an_error) {
+  EXPECT_THROW(executeString(R"(
+    class Point { var x: i32; init(a: i32) { this.x = a; } }
+    function main() i32 {
+        var n: i64 = 1;
+        var p = _bitcast<Point>(n);
+        return 0;
+    }
+  )"),
+               SunError);
+}

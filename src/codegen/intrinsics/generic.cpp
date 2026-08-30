@@ -395,14 +395,39 @@ Value* IntrinsicsGenerator::codegenConvertIntrinsic(
 Value* IntrinsicsGenerator::codegenBitcastIntrinsic(
     sun::TypePtr targetType,
     const std::vector<std::unique_ptr<ExprAST>>& args) {
-  // _bitcast<T>(value) - reinterpret the bits of a same-size numeric value
-  // (f32 <-> u32/i32, f64 <-> u64/i64). Used by binary wire formats.
+  // _bitcast<T>(value) - reinterpret a value's bits as a same-size type T.
+  //
+  // Two shapes, and a bitcast never mixes them:
+  //   numeric -> numeric      f32 <-> u32/i32, f64 <-> u64/i64. Used by
+  //                           binary wire formats to read and write floats.
+  //   raw_ptr<A> -> raw_ptr<B>  the pointer cast C spells `(B*)p`. Needed to
+  //                           hand a pointer to any type to a C function that
+  //                           takes `void*` (declared `raw_ptr<u8>` in Sun),
+  //                           and to read a byte buffer as a packed header.
+  //
+  // The cast only renames the pointer; reading through the result still needs
+  // an unsafe block, and it is on the writer to have pointed at bytes that
+  // really are a B.
   if (args.size() != 1) {
     logAndThrowError("_bitcast<T>() requires exactly 1 argument");
     return nullptr;
   }
-  if (!targetType || !targetType->isNumeric()) {
-    logAndThrowError("_bitcast<T>: T must be a numeric type");
+  bool targetIsPointer = targetType && targetType->isRawPointer();
+  if (!targetType || (!targetType->isNumeric() && !targetIsPointer)) {
+    logAndThrowError("_bitcast<T>: T must be a numeric type or a raw_ptr");
+    return nullptr;
+  }
+  sun::TypePtr srcType = args[0]->getResolvedType();
+  if (srcType && srcType->isRawPointer() != targetIsPointer) {
+    std::string hint =
+        srcType->isStaticPointer()
+            ? "; take the data pointer out of the static_ptr with '.raw()' "
+              "first"
+            : "; a bitcast is numeric to numeric or raw_ptr to raw_ptr, never "
+              "one to the other";
+    logAndThrowError("_bitcast<T>: cannot reinterpret '" +
+                     srcType->toDisplayString() + "' as '" +
+                     targetType->toDisplayString() + "'" + hint);
     return nullptr;
   }
   llvm::Value* v = codegen(*args[0]);
@@ -413,6 +438,7 @@ Value* IntrinsicsGenerator::codegenBitcastIntrinsic(
     logAndThrowError("_bitcast<T>: source and target sizes differ");
     return nullptr;
   }
+  // Pointers are opaque in LLVM, so a pointer cast is already a no-op here.
   if (v->getType() == dstTy) return v;
   return ctx.builder->CreateBitCast(v, dstTy, "bitcast");
 }

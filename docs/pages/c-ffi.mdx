@@ -76,6 +76,26 @@ Types with no C spelling — arrays and slices (fat pointers), interfaces (vtabl
 pairs), lambdas (closures) — are rejected at the declaration rather than
 miscompiled.
 
+### Pointers
+
+C's `void*` is `raw_ptr<u8>` in Sun. A pointer to any other type retypes to it
+with `_bitcast`, so the function is declared once rather than once per argument
+type:
+
+```sun
+extern "C" function c_setsockopt(fd: i32, level: i32, opt: i32, val: raw_ptr<u8>, len: i32) i32 as "setsockopt";
+
+function set_reuse_addr(fd: i32) i32 {
+    var on: i32 = 1;
+    var p = _bitcast<raw_ptr<u8>>(_address_of<i32>(on));
+    unsafe { return c_setsockopt(fd, 1, 2, p, 4); };
+}
+```
+
+The same cast reads bytes back as a header — see
+[`_bitcast<T>`](/intrinsics#_bitcastt) for the rules. The cast itself only renames
+the pointer; reading through it needs `unsafe`.
+
 ### Strings
 
 A string literal is a `static_ptr<u8>`, a `{ pointer, length }` pair. Passing one

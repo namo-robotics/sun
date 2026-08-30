@@ -9,14 +9,21 @@
 //    left off the Examples page; instead the named handwritten page imports
 //    the partial (modules.mdx imports generated/path_variables.mdx). Such
 //    folders carry no numeric prefix — they hold no slot on the Examples
-//    page — and their READMEs use no headings above level four (####), since
-//    the host page owns the heading.
+//    page — and the host page owns the heading, so the README's title is
+//    dropped and everything under it sits two levels deeper.
 //
 // Each example is rendered from its README.md (the prose the docs show) plus
 // every .sun source file found in the folder, read verbatim so the docs can
 // never drift from the code CI compiles and runs. The README is the single
 // source of truth for prose, and the source list is discovered by globbing
 // *.sun.
+//
+// A README is written as an intro, then `## ` sections — by convention a
+// single `## Build and run` holding the commands. The source is spliced in
+// between the two, so a reader on the docs site meets the program before the
+// commands that build it. Those sections are pushed down to sit alongside the
+// generated `Source` heading, which is one level deeper on the Examples page
+// than in a partial.
 //
 // Run automatically via the `predev` / `prebuild` npm scripts. CWD is docs/.
 
@@ -78,14 +85,50 @@ function loadExamples() {
     })
 }
 
-// Split the README into its H1 title and the remaining body.
+// Walk the lines of a markdown document, reporting for each whether it sits
+// inside a fenced code block. A `# ...` line inside a fence is shell output or
+// a comment, never a heading.
+function* markdownLines(markdown) {
+  let fence = null
+  for (const line of markdown.split('\n')) {
+    const marker = line.match(/^\s*(```+|~~~+)/)
+    if (fence) {
+      if (marker && marker[1].startsWith(fence)) fence = null
+      yield { line, inFence: true }
+    } else if (marker) {
+      fence = marker[1]
+      yield { line, inFence: true }
+    } else {
+      yield { line, inFence: false }
+    }
+  }
+}
+
+// Push every heading `by` levels deeper, so a README's `## Build and run`
+// nests under the heading the example is rendered with.
+function shiftHeadings(markdown, by) {
+  const out = []
+  for (const { line, inFence } of markdownLines(markdown)) {
+    const heading = inFence ? null : line.match(/^(#{1,6})(\s+.*)$/)
+    out.push(heading ? '#'.repeat(Math.min(heading[1].length + by, 6)) + heading[2] : line)
+  }
+  return out.join('\n')
+}
+
+// Split the README into its H1 title, the intro prose under it, and the `## `
+// sections that follow — the source is spliced between the last two.
 function splitReadme(readme) {
-  const lines = readme.split('\n')
-  const i = lines.findIndex((l) => /^#\s+/.test(l))
-  if (i === -1) return { title: null, body: readme.trim() }
-  const title = lines[i].replace(/^#\s+/, '').trim()
-  const body = lines.slice(i + 1).join('\n').trim()
-  return { title, body }
+  const lines = [...markdownLines(readme)]
+  const titleAt = lines.findIndex(({ line, inFence }) => !inFence && /^#\s+/.test(line))
+  const title = titleAt === -1 ? null : lines[titleAt].line.replace(/^#\s+/, '').trim()
+
+  const rest = lines.slice(titleAt + 1)
+  const sectionsAt = rest.findIndex(({ line, inFence }) => !inFence && /^##\s+/.test(line))
+  const take = (from, to) =>
+    rest.slice(from, to).map(({ line }) => line).join('\n').trim()
+
+  if (sectionsAt === -1) return { title, intro: take(0), sections: '' }
+  return { title, intro: take(0, sectionsAt), sections: take(sectionsAt) }
 }
 
 // A `Source` heading at the given level, followed by every .sun file verbatim.
@@ -100,28 +143,33 @@ function renderSources(dir, level) {
   return parts
 }
 
+// The body of one example: its intro prose, then the source, then the README's
+// own sections at `level` — the same level the `Source` heading is given.
+function renderBody({ dir, readme }, level) {
+  const { intro, sections } = splitReadme(readme)
+  const parts = []
+  if (intro) parts.push(intro, '')
+  parts.push(...renderSources(dir, level))
+  if (sections) parts.push(shiftHeadings(sections, level - 2), '')
+  return parts
+}
+
 // A section of the Examples page: the README title becomes a level-2 heading
 // so it nests under the page's `# Examples`.
-function renderExample({ dir, readme }) {
-  const { title, body } = splitReadme(readme)
-  const parts = [`## ${title}`, '']
-  if (body) parts.push(body, '')
-  parts.push(...renderSources(dir, 3))
-  return parts.join('\n')
+function renderExample(example) {
+  return [`## ${splitReadme(example.readme).title}`, '', ...renderBody(example, 3)].join('\n')
 }
 
 // A partial for a handwritten page to import. The host page owns the heading,
 // so the README's H1 is dropped and `Source` sits at level 4.
-function renderPartial({ dir, readme }) {
-  const name = basename(dir)
-  const { body } = splitReadme(readme)
+function renderPartial(example) {
+  const name = basename(example.dir)
   const parts = [
     `{/* AUTO-GENERATED by docs/scripts/gen-examples.mjs from examples/${name}/. */}`,
     '{/* Do not edit by hand — edit the program in that folder instead. */}',
     '',
   ]
-  if (body) parts.push(body, '')
-  parts.push(...renderSources(dir, 4))
+  parts.push(...renderBody(example, 4))
   return parts.join('\n')
 }
 

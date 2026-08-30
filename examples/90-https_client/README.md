@@ -19,7 +19,13 @@ system CA store and the certificate must match the hostname, otherwise
 instead.
 
 `tls.moon` carries its own static OpenSSL, so nothing here needs `-lssl`,
-`-lcrypto`, or OpenSSL installed on the machine:
+`-lcrypto`, or OpenSSL installed on the machine.
+
+## Build and run
+
+Building it yourself requires the bundle, which the normal build produces
+once `./scripts/fetch-openssl.sh` (Linux) or `./scripts/build-openssl-macos.sh`
+(macOS) has supplied the archives.
 
 ```bash
 ./build.sh
@@ -30,7 +36,3 @@ otool -L client   # macOS: system libraries only, no OpenSSL
 
 On Linux the binary is fully static; macOS binaries always link the system
 libraries, but no OpenSSL among them — it is inside the binary.
-
-Building it yourself requires the bundle, which the normal build produces
-once `./scripts/fetch-openssl.sh` (Linux) or `./scripts/build-openssl-macos.sh`
-(macOS) has supplied the archives.

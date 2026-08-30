@@ -36,6 +36,8 @@ own alongside the items, read under the same lock — otherwise the producer
 could add one more between the consumer's "is it empty?" and "is it done?"
 questions.
 
+## Build and run
+
 ```bash
 ./build.sh
 ./main

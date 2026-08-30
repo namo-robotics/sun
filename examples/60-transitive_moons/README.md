@@ -15,6 +15,8 @@ graph LR
 
 The compiled `moon1.moon` file contains the bitcode of `moon2` and `moon3`.
 
+## Build and run
+
 ```bash
 ./build.sh
 ./main

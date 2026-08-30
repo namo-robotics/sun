@@ -233,6 +233,31 @@ var bits: u64 = _bitcast<u64>(1.0);   // 0x3FF0000000000000
 var back: f64 = _bitcast<f64>(bits);  // 1.0
 ```
 
+It also retypes a raw pointer — `raw_ptr<A>` to `raw_ptr<B>`, the cast C writes
+as `(B*)p`. This is how a pointer to anything reaches a C function that takes
+`void*`, which Sun declares as `raw_ptr<u8>`, and how a byte buffer is read as a
+header:
+
+```sun
+extern "C" function c_send(fd: i32, buf: raw_ptr<u8>, n: i64, flags: i32) i64 as "send";
+
+packed_class Header {
+    var kind: u16;
+    var length: u16;
+    init(k: u16, n: u16) { this.kind = k; this.length = n; }
+}
+
+function send_header(fd: i32, h: ref Header) i64 {
+    var bytes = _bitcast<raw_ptr<u8>>(_address_of<Header>(h));
+    unsafe { return c_send(fd, bytes, _sizeof<Header>(), 0); };
+}
+```
+
+A bitcast is numeric to numeric or pointer to pointer, never one to the other,
+and never to or from a class, enum or interface. Retyping a pointer only renames
+it: reading through the result still needs an `unsafe` block, and it is on you to
+have pointed at bytes that really are a `B`.
+
 ## Non-Generic Intrinsics
 
 These intrinsics operate on specific, fixed types.
@@ -511,7 +536,7 @@ class Vec<T> {
 | `_ptr_as_raw<T>` | `ptr<T>` | `raw_ptr<T>` | Get raw pointer without ownership transfer |
 | `_is<T>` | `value` | `bool` | Compile-time type check |
 | `_convert<T>` | `value` | `T` | Unchecked numeric conversion (truncate, extend, int ↔ float) |
-| `_bitcast<T>` | `value` | `T` | Reinterpret bits as a same-size numeric type |
+| `_bitcast<T>` | `value` | `T` | Reinterpret bits as a same-size numeric type, or retype a `raw_ptr` |
 | `_address_of<T>` | `ref T` | `raw_ptr<T>` | Get pointer to referenced memory |
 | `_to_ref<T>` | `raw_ptr<T>` | `ref T` | Reference the pointed-to value (unsafe) |
 | `_malloc` | `size: i64` | `raw_ptr<i8>` | Allocate heap memory |
