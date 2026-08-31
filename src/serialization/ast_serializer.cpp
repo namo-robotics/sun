@@ -65,6 +65,10 @@ ast::TypeAnnotation ASTSerializer::serializeTypeAnnotation(
   proto.set_can_error(type.canError);
   proto.set_const_ref(type.constRef);
   proto.set_ref_env(type.refEnv);
+  proto.set_lifetime_name(type.lifetimeName);
+  for (const auto& lifetime : type.lifetimeArguments) {
+    proto.add_lifetime_arguments(lifetime);
+  }
   return proto;
 }
 
@@ -123,6 +127,10 @@ ast::Prototype ASTSerializer::serializePrototype(
     auto* out = result.add_type_params();
     out->set_name(tp.name);
     if (tp.constraint) out->set_constraint(tp.constraint->name);
+  }
+
+  for (const auto& lp : proto.getLifetimeParameters()) {
+    result.add_lifetime_params(lp.name);
   }
 
   for (const auto& [name, type] : proto.getArgs()) {
@@ -773,6 +781,10 @@ void ASTSerializer::serializeClassDef(const ClassDefinitionAST& expr,
     if (tp.constraint) out->set_constraint(tp.constraint->name);
   }
 
+  for (const auto& lp : expr.getLifetimeParameters()) {
+    cls->add_lifetime_params(lp.name);
+  }
+
   for (const auto& iface : expr.getImplementedInterfaces()) {
     auto* ifaceProto = cls->add_implemented_interfaces();
     ifaceProto->set_name(iface.name);
@@ -807,6 +819,10 @@ void ASTSerializer::serializeInterfaceDef(const InterfaceDefinitionAST& expr,
     auto* out = iface->add_type_params();
     out->set_name(tp.name);
     if (tp.constraint) out->set_constraint(tp.constraint->name);
+  }
+
+  for (const auto& lp : expr.getLifetimeParameters()) {
+    iface->add_lifetime_params(lp.name);
   }
 
   for (const auto& field : expr.getFields()) {

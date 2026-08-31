@@ -342,6 +342,16 @@ void DeclarationCollector::registerClassShape(
   std::string mangledClassName = qualifiedClass.mangled();
   if (!preRegisteredClassShapes_.insert(mangledClassName).second) return;
 
+  // The class's declared lifetimes must be visible before any signature
+  // that applies them ('ref Bus<'this>') resolves
+  {
+    std::vector<std::string> lifetimeNames;
+    for (const auto& lp : classDef.getLifetimeParameters()) {
+      lifetimeNames.push_back(lp.name);
+    }
+    classType->setLifetimeParams(std::move(lifetimeNames));
+  }
+
   // Fields
   for (const auto& field : classDef.getFields()) {
     if (classType->hasField(field.name)) {

@@ -213,21 +213,31 @@ class Formatter {
     }
   }
 
-  // `<T, U: _Numeric>`, or nothing at all when the declaration is not generic.
-  void printTypeParams(const std::vector<TypeParameter>& typeParams) {
-    if (typeParams.empty()) return;
+  // `<'a, T, U: _Numeric>`, or nothing at all when the declaration has no
+  // parameters. Lifetimes come first, as they are written.
+  void printTypeParams(const std::vector<TypeParameter>& typeParams,
+                       const std::vector<LifetimeParameter>& lifetimes = {}) {
+    if (typeParams.empty() && lifetimes.empty()) return;
     out_ += '<';
-    for (size_t i = 0; i < typeParams.size(); ++i) {
-      if (i) out_ += ", ";
-      out_ += typeParams[i].toString();
+    bool first = true;
+    for (const auto& lifetime : lifetimes) {
+      if (!first) out_ += ", ";
+      out_ += lifetime.toString();
+      first = false;
+    }
+    for (const auto& typeParam : typeParams) {
+      if (!first) out_ += ", ";
+      out_ += typeParam.toString();
+      first = false;
     }
     out_ += '>';
   }
 
-  void printProtoSig(const PrototypeAST& p) {
+  void printProtoSig(const PrototypeAST& p, bool includeParameters = true) {
     out_ += p.getName();
-    const auto& typeParams = p.getTypeParameters();
-    printTypeParams(typeParams);
+    if (includeParameters) {
+      printTypeParams(p.getTypeParameters(), p.getLifetimeParameters());
+    }
     out_ += '(';
     const auto& args = p.getArgs();
     bool first = true;
@@ -334,8 +344,7 @@ class Formatter {
     out_ += c.classKeyword();
     out_ += ' ';
     out_ += c.getName();
-    const auto& typeParams = c.getTypeParameters();
-    printTypeParams(typeParams);
+    printTypeParams(c.getTypeParameters(), c.getLifetimeParameters());
     const auto& ifaces = c.getImplementedInterfaces();
     if (!ifaces.empty()) {
       out_ += " implements ";
@@ -421,8 +430,7 @@ class Formatter {
   void printInterface(const InterfaceDefinitionAST& n) {
     out_ += "interface ";
     out_ += n.getName();
-    const auto& typeParams = n.getTypeParameters();
-    printTypeParams(typeParams);
+    printTypeParams(n.getTypeParameters(), n.getLifetimeParameters());
     out_ += " {\n";
     ++indent_;
     int savedLast = lastLine_;
@@ -631,7 +639,10 @@ class Formatter {
   }
 
   void printLambda(const LambdaAST& l) {
-    out_ += "lambda ";
+    out_ += "lambda";
+    printTypeParams(l.getProto().getTypeParameters(),
+                    l.getProto().getLifetimeParameters());
+    out_ += ' ';
     const auto& caps = l.getProto().getRefCaptureNames();
     const auto& owned = l.getProto().getOwnedCaptureNames();
     if (!caps.empty() || !owned.empty()) {
@@ -648,7 +659,7 @@ class Formatter {
       }
       out_ += "] ";
     }
-    printProtoSig(l.getProto());  // lambda protos have an empty name
+    printProtoSig(l.getProto(), false);  // lambda prototypes have no name
     out_ += ' ';
     printBlockAuto(l.getBody());
   }

@@ -183,6 +183,31 @@ class Value<T> implements Mappable<T, T> {
 }
 ```
 
+## Lifetimes in Interface Methods
+
+An interface method may tie a parameter to the receiver with the builtin
+`'this` lifetime, exactly as a class method does — and the tie is part of
+the contract. An implementing class must repeat the interface's lifetime
+names verbatim; dropping or renaming one is a conformance error, since a
+caller dispatching through the interface sees only the interface's
+signature:
+
+```sun
+interface ISink {
+    public method accept(cb: <'this>(i32) -> i32) void;
+}
+
+class Holder implements ISink {
+    var cb: <'_>(i32) -> i32;
+    /* must say <'this> here too - a plain <'_> is rejected */
+    public method accept(cb: <'this>(i32) -> i32) void { this.cb = cb; }
+}
+```
+
+Call sites are then checked against the implementing object's real scope,
+the same as for classes (see
+[Memory Safety](/memory-safety#named-lifetimes-relate-two-positions-of-one-signature)).
+
 ## Multiple Interfaces
 
 Classes can implement multiple interfaces:

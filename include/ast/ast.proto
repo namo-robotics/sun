@@ -376,6 +376,7 @@ message Prototype {
   // Capture list entries written without `ref`: the closure owns them
   repeated string owned_captures = 16;
   repeated TypeParameter type_params = 17;  // <T, U: _Numeric>
+  repeated string lifetime_params = 18;     // <'a, T> declares 'a
 }
 
 message FunctionDef {
@@ -499,6 +500,7 @@ message ClassDef {
   string doc = 9;  // Comment written above the class
   optional Position location = 10;  // Declaration span (bundle exports only)
   repeated TypeParameter type_params = 11;  // <T, U: _Numeric>
+  repeated string lifetime_params = 12;     // class Bus<'a, 'b>
 }
 
 // Interface field declaration
@@ -526,6 +528,7 @@ message InterfaceDef {
   string doc = 6;  // Comment written above the interface
   optional Position location = 7;  // Declaration span (bundle exports only)
   repeated TypeParameter type_params = 8;  // <T, U: _Numeric>
+  repeated string lifetime_params = 9;     // interface ISink<'a>
 }
 
 // Enum variant declaration

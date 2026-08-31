@@ -427,13 +427,43 @@ function main() i32 {
 
 ## Methods as Values
 
-A method accessed without parentheses (`obj.method`) is a first-class value of lambda type: it can be stored in a variable or passed as a callback. The receiver is captured by reference, so the value carries the `[ref]` type marker and calls through it mutate the original object. See [Bound Methods](/functions#bound-methods) for the full rules.
+A method accessed without parentheses (`obj.method`) is a first-class value of lambda type: it can be stored in a variable or passed as a callback. The receiver is captured by reference, so the value carries the `<'_>` type marker and calls through it mutate the original object. See [Bound Methods](/functions#bound-methods) for the full rules.
 
 ```sun
 var c = Counter();
-var tick = c.increment;   // type: [ref]() -> void
+var tick = c.increment;   // type: <'_>() -> void
 tick();                   // increments c
 ```
+
+## Lifetime Parameters
+
+A class whose fields hold `<'_>` lambdas or references may declare
+**lifetime parameters** — Rust-style leading-apostrophe names in the angle
+brackets — to say which frame those fields are tied to. Methods use the
+declared names in their signatures, and other signatures bind the class's
+slot with a type application:
+
+```sun
+class Bus<'a> {
+    var cb: <'a>(i32) -> i32;    // stored callbacks must outlive 'a
+    public method subscribe(cb: <'a>(i32) -> i32) void { this.cb = cb; }
+}
+
+class Node {
+    /* a bus whose slot is bound to this node's lifetime */
+    public method attach(bus: ref Bus<'this>) void {
+        bus.subscribe(this.onMsg);
+    }
+}
+```
+
+Inside any class or interface member the builtin **`'this`** names the
+receiver's lifetime without declaring anything — a field may even be typed
+`<'this>(…) -> …`, meaning "whatever is stored here outlives this
+object". Lifetimes never change a class's layout, code, or generic
+instantiations: `Bus<'a>` is one class, and construction sites write plain
+`Bus()`. The checking rules live in
+[Memory Safety](/memory-safety#named-lifetimes-relate-two-positions-of-one-signature).
 
 ## Const Methods
 

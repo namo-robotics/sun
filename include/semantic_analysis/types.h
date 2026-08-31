@@ -377,12 +377,17 @@ class LambdaType : public Type {
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;
   bool canThrow_ = false;  // declared with 'throws IError' — may unwind
-  // Part of the type's identity: '[ref]() -> T' in source. True when the
+  // Part of the type's identity: `<'_>() -> T` in source. True when the
   // lambda carries a captured environment that lives in a stack frame
   // (capture lists, bound methods). A plain '() -> T' is reserved for
   // environment-free lambdas, so this is what keeps a frame-bound lambda
   // from laundering through an annotation-typed parameter or field.
   bool hasRefCaptures_ = false;
+  // Metadata, NOT identity: the lifetime name written on this position
+  // ('<'a>(i32) -> i32'), empty when elided. Names only mean something
+  // relative to one signature's lifetime list, so equals(), toString() and
+  // mangling ignore them - '<'a>' and '<'b>' are one type.
+  std::string lifetimeName_;
 
  public:
   LambdaType(TypePtr ret, std::vector<TypePtr> params, bool canThrow = false)
@@ -398,9 +403,12 @@ class LambdaType : public Type {
   bool canThrow() const { return canThrow_; }
   bool hasRefCaptures() const { return hasRefCaptures_; }
   void setHasRefCaptures(bool v) { hasRefCaptures_ = v; }
+  const std::string& getLifetimeName() const { return lifetimeName_; }
+  void setLifetimeName(std::string name) { lifetimeName_ = std::move(name); }
+
 
   std::string toString() const override {
-    std::string result = hasRefCaptures_ ? "[ref](" : "(";
+    std::string result = hasRefCaptures_ ? "<'_>(" : "(";
     for (size_t i = 0; i < paramTypes.size(); ++i) {
       if (i > 0) result += ", ";
       result += paramTypes[i]->toString();
@@ -411,7 +419,7 @@ class LambdaType : public Type {
   }
 
   std::string toDisplayString() const override {
-    std::string result = hasRefCaptures_ ? "[ref](" : "(";
+    std::string result = hasRefCaptures_ ? "<'_>(" : "(";
     for (size_t i = 0; i < paramTypes.size(); ++i) {
       if (i > 0) result += ", ";
       result += paramTypes[i]->toDisplayString();
@@ -435,9 +443,9 @@ class LambdaType : public Type {
     return false;
   }
 
-  // Same signature ignoring throwing-ness and the [ref] marker. Used by the
+  // Same signature ignoring throwing-ness and the lifetime marker. Used by the
   // bound-method overload chooser, which picks a method by shape before the
-  // chosen value is flagged [ref]; assignability does the rejecting later.
+  // chosen value is flagged as frame-bound; assignability rejects it later.
   bool equalsIgnoringThrow(const LambdaType& other) const {
     if (!returnType->equals(*other.returnType)) return false;
     if (paramTypes.size() != other.paramTypes.size()) return false;
@@ -450,7 +458,7 @@ class LambdaType : public Type {
   // Can a by-value 'from' argument bind to a parameter of this type?
   // Same signature, and each marker only widens: a non-throwing lambda may
   // go where a throwing one is expected, and an environment-free lambda may
-  // go where a '[ref]' one is expected — never the other way around.
+  // go where a '<'_>' one is expected — never the other way around.
   bool acceptsValueOf(const LambdaType& from) const {
     if (!equalsIgnoringThrow(from)) return false;
     if (!canThrow_ && from.canThrow_) return false;
@@ -622,10 +630,27 @@ class NullPointerType : public Type {
 class ReferenceType : public Type {
   TypePtr referencedType;  // The type being referenced
   bool mutable_;           // true = mutable ref, false = immutable ref
+  // Metadata, NOT identity: the lifetime name written on this position
+  // ('ref 'a Bus'), empty when elided. Ignored by equals() and toString(),
+  // exactly like LambdaType's - see the comment there.
+  std::string lifetimeName_;
+  std::vector<std::string> classLifetimeArgs_;
 
  public:
   explicit ReferenceType(TypePtr referenced, bool isMutable = true)
       : referencedType(std::move(referenced)), mutable_(isMutable) {}
+
+  const std::string& getLifetimeName() const { return lifetimeName_; }
+  void setLifetimeName(std::string name) { lifetimeName_ = std::move(name); }
+  // Lifetime arguments applied to the referent's class ('ref Bus<'this>'):
+  // positionally binding the class's declared lifetimes. Metadata like
+  // lifetimeName_ - never part of the type's identity.
+  const std::vector<std::string>& getClassLifetimeArgs() const {
+    return classLifetimeArgs_;
+  }
+  void setClassLifetimeArgs(std::vector<std::string> args) {
+    classLifetimeArgs_ = std::move(args);
+  }
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::Reference;
@@ -1102,10 +1127,22 @@ class ClassType : public Type {
   std::vector<std::string>
       staticOnlyInterfaces;  // Implemented, but not convertible to (see below)
   bool isPacked_ = false;    // "packed class": lay fields out with no padding
+  // Lifetime names the class DECLARES ('class Bus<'a>'). Declarations only,
+  // never bindings, so sharing one ClassType per class stays sound; the
+  // borrow checker uses them to entangle a method's named parameters with
+  // the receiver at call sites.
+  std::vector<std::string> lifetimeParams_;
   mutable llvm::StructType* cachedLLVMType = nullptr;
 
  public:
   sun::Visibility visibility = sun::Visibility::Private;
+
+  const std::vector<std::string>& getLifetimeParams() const {
+    return lifetimeParams_;
+  }
+  void setLifetimeParams(std::vector<std::string> names) {
+    lifetimeParams_ = std::move(names);
+  }
 
   ClassType(std::string className) : mangledName(std::move(className)) {}
 
@@ -1387,7 +1424,7 @@ class ClassType : public Type {
         }
 
         // Lambda widening: non-throwing where throwing is expected, and
-        // environment-free where '[ref]' is expected
+        // environment-free where '<'_>' is expected
         if (method.paramTypes[i]->isLambda() && argTypes[i]->isLambda()) {
           auto* paramL =
               static_cast<const LambdaType*>(method.paramTypes[i].get());
@@ -1584,9 +1621,19 @@ class InterfaceType : public Type {
   ScopeMethodTable
       methodTable_;  // Indexed method table for default implementations
   sun::QualifiedName qualifiedName_;
+  // Lifetime names the interface DECLARES ('interface ISink<'a>').
+  // Declarations only, never bindings - see ClassType::lifetimeParams_.
+  std::vector<std::string> lifetimeParams_;
 
  public:
   sun::Visibility visibility = sun::Visibility::Private;
+
+  const std::vector<std::string>& getLifetimeParams() const {
+    return lifetimeParams_;
+  }
+  void setLifetimeParams(std::vector<std::string> names) {
+    lifetimeParams_ = std::move(names);
+  }
 
   InterfaceType(std::string interfaceName) : name(std::move(interfaceName)) {}
 
@@ -2543,7 +2590,7 @@ inline bool typeNeedsDrop(const TypePtr& type) {
 }
 
 // True if a value of this type may carry a lambda environment that lives in
-// a stack frame: a '[ref]' lambda, or anything that can transitively hold
+// a stack frame: a '<'_>' lambda, or anything that can transitively hold
 // one — a class through its fields or generic type arguments (containers
 // hide elements behind raw storage, so the arguments must count), a payload
 // enum, an array. Such a value must not outlive the frame it was built in.
@@ -2603,6 +2650,42 @@ inline bool typeIsFrameCarrying(const TypePtr& type) {
 // backed by the borrowed storage. Borrow it with `ref` instead, or copy it
 // explicitly with a clone method. Unbound type parameters answer true; the
 // specialization is checked with the concrete type in hand.
+// A copy of the type with every lifetime NAME stripped, recursively.
+// Lifetime names are relative to one signature's lifetime list; a type that
+// crosses into another namespace - a generic type-parameter binding, whose
+// specialization is shared by every caller - must not carry them along.
+// The <'_> marker itself is identity and stays.
+inline TypePtr eraseLifetimeNames(const TypePtr& type) {
+  if (!type) return type;
+  if (auto* lt = dynamic_cast<const LambdaType*>(type.get())) {
+    bool named = !lt->getLifetimeName().empty();
+    std::vector<TypePtr> params;
+    bool changed = named;
+    for (const auto& param : lt->getParamTypes()) {
+      auto stripped = eraseLifetimeNames(param);
+      changed = changed || stripped != param;
+      params.push_back(std::move(stripped));
+    }
+    auto ret = eraseLifetimeNames(lt->getReturnType());
+    changed = changed || ret != lt->getReturnType();
+    if (!changed) return type;
+    auto result = Types::Lambda(ret, std::move(params), lt->canThrow());
+    static_cast<LambdaType*>(result.get())
+        ->setHasRefCaptures(lt->hasRefCaptures());
+    return result;
+  }
+  if (auto* rt = dynamic_cast<const ReferenceType*>(type.get())) {
+    if (rt->getLifetimeName().empty() && rt->getClassLifetimeArgs().empty()) {
+      auto referent = eraseLifetimeNames(rt->getReferencedType());
+      if (referent == rt->getReferencedType()) return type;
+      return Types::Reference(referent, rt->isMutable());
+    }
+    return Types::Reference(eraseLifetimeNames(rt->getReferencedType()),
+                            rt->isMutable());
+  }
+  return type;
+}
+
 inline bool typeCopiesByRead(const Type* type) {
   return type && (!type->isCompound() || type->isArray());
 }

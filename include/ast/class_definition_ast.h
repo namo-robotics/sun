@@ -44,6 +44,10 @@ class ClassDefinitionAST : public ExprAST {
   std::string name;  // Source name as written by user (for error messages)
   std::vector<TypeParameter>
       typeParameters;  // Generic type parameters: <T, U: Trait>
+  // Lifetime parameters: class Bus<'a, 'b>. Kept apart from typeParameters
+  // so generic machinery never sees lifetimes (they are erased, and never
+  // mint a specialization).
+  std::vector<LifetimeParameter> lifetimeParameters;
   std::vector<ImplementedInterfaceAST>
       implementedInterfaces;  // Interfaces with type args
   std::vector<ClassFieldDecl> fields;
@@ -131,6 +135,12 @@ class ClassDefinitionAST : public ExprAST {
   bool hasQualifiedName() const {
     return analysis_ &&
            !static_cast<ClassAnalysis&>(*analysis_).qualifiedName.empty();
+  }
+  void setLifetimeParameters(std::vector<LifetimeParameter> params) {
+    lifetimeParameters = std::move(params);
+  }
+  const std::vector<LifetimeParameter>& getLifetimeParameters() const {
+    return lifetimeParameters;
   }
   const std::vector<TypeParameter>& getTypeParameters() const {
     return typeParameters;

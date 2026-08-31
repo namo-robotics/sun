@@ -1,5 +1,6 @@
 // analysis.cpp — Main analysis entry points for semantic analyzer
 
+#include <algorithm>
 #include <set>
 #include <unordered_set>
 
@@ -845,24 +846,118 @@ static void checkAllPathsReturn(const PrototypeAST& proto,
       loc);
 }
 
-// A '[ref]' lambda type cannot be a return type. Which frame the returned
-// value's environment lives in cannot be told apart from the frame that is
-// dying, so returning one is never provably safe.
+// An anonymous `<'_>` lambda type cannot be a return type: which frame the
+// returned value's environment lives in cannot be told apart from the frame
+// that is dying. A NAMED lifetime unpins it - 'function pick<'a>(...)
+// <'a>() -> i32' ties the result to frames the caller can see - so
+// declarations that bind their own lifetimes pass allowNamed.
 void SemanticAnalyzer::rejectRefEnvReturnType(
-    const std::optional<TypeAnnotation>& returnType, const Position& location) {
+    const std::optional<TypeAnnotation>& returnType, const Position& location,
+    bool allowNamed) {
   if (returnType && returnType->refEnv) {
+    if (allowNamed && !returnType->lifetimeName.empty() &&
+        returnType->lifetimeName != "_") {
+      return;
+    }
+    if (!returnType->lifetimeName.empty() &&
+        returnType->lifetimeName != "_") {
+      logAndThrowError(
+          "a named frame-bound return type requires a lifetime available "
+          "in this declaration",
+          location);
+    }
     logAndThrowError(
-        "a '[ref]' lambda type cannot be a return type - its captured "
+        "an anonymous <'_> lambda type cannot be a return type - its captured "
         "environment lives in a stack frame that dies when the function "
-        "returns",
+        "returns. Name the frame with a lifetime to allow it: "
+        "function f<'a>(x: <'a>() -> i32) <'a>() -> i32",
         location);
   }
+}
+
+// Reject any lifetime name in the annotation that is not usable here: a
+// name is usable when an enclosing function, lambda, class or interface
+// declared it; the builtin 'this is usable only inside class and interface
+// members.
+void SemanticAnalyzer::checkAnnotationLifetimes(const TypeAnnotation& annot,
+                                                const Position& location) {
+  auto checkName = [&](const std::string& name) {
+    if (name == "_") return;
+    if (name == "this") {
+      if (!allowThisLifetime_) {
+        logAndThrowError(
+            "the 'this lifetime is only usable inside class and interface "
+            "members - it names the receiver's lifetime",
+            location);
+      }
+      return;
+    }
+    if (std::find(activeLifetimeNames_.begin(), activeLifetimeNames_.end(),
+                  name) == activeLifetimeNames_.end()) {
+      logAndThrowError("use of undeclared lifetime '" + name +
+                           ". Declare it on a function or lambda (function f<'" +
+                           name + "> or lambda<'" + name +
+                           ">), or on the class (class C<'" + name + ">)",
+                       location);
+    }
+  };
+  if (!annot.lifetimeName.empty()) checkName(annot.lifetimeName);
+  for (const auto& name : annot.lifetimeArguments) checkName(name);
+  if (annot.elementType) checkAnnotationLifetimes(*annot.elementType, location);
+  for (const auto& param : annot.paramTypes) {
+    checkAnnotationLifetimes(*param, location);
+  }
+  if (annot.returnType) checkAnnotationLifetimes(*annot.returnType, location);
+  for (const auto& typeArg : annot.typeArguments) {
+    checkAnnotationLifetimes(*typeArg, location);
+  }
+}
+
+// A signature's own lifetime list must have distinct names that do not
+// shadow the enclosing class's, and every lifetime its annotations mention
+// must be declared.
+void SemanticAnalyzer::checkSignatureLifetimes(const PrototypeAST& proto,
+                                               const Position& location) {
+  for (const auto& lp : proto.getLifetimeParameters()) {
+    if (std::count_if(proto.getLifetimeParameters().begin(),
+                      proto.getLifetimeParameters().end(),
+                      [&](const LifetimeParameter& other) {
+                        return other.name == lp.name;
+                      }) > 1) {
+      logAndThrowError("duplicate lifetime parameter '" + lp.name,
+                       lp.span);
+    }
+    if (std::find(activeLifetimeNames_.begin(), activeLifetimeNames_.end(),
+                  lp.name) != activeLifetimeNames_.end()) {
+      logAndThrowError("lifetime '" + lp.name +
+                           " is already declared by an enclosing declaration",
+                       lp.span);
+    }
+  }
+  size_t mark = activeLifetimeNames_.size();
+  for (const auto& lp : proto.getLifetimeParameters()) {
+    activeLifetimeNames_.push_back(lp.name);
+  }
+  for (const auto& [argName, argType] : proto.getArgs()) {
+    checkAnnotationLifetimes(argType, location);
+  }
+  if (proto.hasReturnType()) {
+    checkAnnotationLifetimes(*proto.getReturnType(), location);
+  }
+  activeLifetimeNames_.resize(mark);
 }
 
 void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
   PrototypeAST& proto = const_cast<PrototypeAST&>(func.getProto());
 
-  rejectRefEnvReturnType(proto.getReturnType(), func.getLocation());
+  rejectRefEnvReturnType(proto.getReturnType(), func.getLocation(),
+                         /*allowNamed=*/true);
+
+  // Lifetime names in the signature must be declared; 'this needs a class
+  bool savedAllowThis = allowThisLifetime_;
+  allowThisLifetime_ = ctx_.getCurrentClass() != nullptr;
+  checkSignatureLifetimes(proto, func.getLocation());
+  allowThisLifetime_ = savedAllowThis;
 
   // For extern functions (no body), just validate and return
   if (func.isExtern()) {
@@ -953,8 +1048,17 @@ void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
     }
   }
 
-  // Analyze the function body
+  // Analyze the function body. The signature's lifetime names stay active
+  // so annotations inside the body (locals, lambdas) can use them.
+  size_t lifetimeMark = activeLifetimeNames_.size();
+  for (const auto& lp : proto.getLifetimeParameters()) {
+    activeLifetimeNames_.push_back(lp.name);
+  }
+  bool savedAllowThisForBody = allowThisLifetime_;
+  allowThisLifetime_ = ctx_.getCurrentClass() != nullptr;
   analyzeBlock(const_cast<BlockExprAST&>(func.getBody()));
+  allowThisLifetime_ = savedAllowThisForBody;
+  activeLifetimeNames_.resize(lifetimeMark);
 
   // No implicit returns: a non-void signature must be met by an explicit
   // return (or throw) on every path. Moon stubs carry no body to check.
@@ -1025,8 +1129,14 @@ void SemanticAnalyzer::analyzeLambda(LambdaAST& lambda) {
     }
   }
 
-  // Analyze the lambda body
+  // Keep the lambda's lifetime binders active for annotations nested in
+  // its body, just as a named function does.
+  size_t lifetimeMark = activeLifetimeNames_.size();
+  for (const auto& lp : proto.getLifetimeParameters()) {
+    activeLifetimeNames_.push_back(lp.name);
+  }
   analyzeBlock(const_cast<BlockExprAST&>(lambda.getBody()));
+  activeLifetimeNames_.resize(lifetimeMark);
 
   // Same rule as named functions: no implicit returns
   checkAllPathsReturn(proto, lambda.getBody(), proto.getResolvedReturnType(),

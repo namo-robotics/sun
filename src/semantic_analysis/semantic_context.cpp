@@ -1251,7 +1251,10 @@ void SemanticContext::addTypeParameterBindings(
     const std::vector<sun::TypePtr>& args) {
   auto& scope = *currentScope_;
   for (size_t i = 0; i < params.size() && i < args.size(); ++i) {
-    scope.typeParameters[params[i]] = args[i];
+    // Lifetime names are relative to the signature that wrote the type
+    // argument; the specialization the binding builds is shared by every
+    // caller, so the names must not leak into it
+    scope.typeParameters[params[i]] = sun::eraseLifetimeNames(args[i]);
   }
 }
 

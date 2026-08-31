@@ -98,18 +98,73 @@ class BorrowChecker {
   // True when the named place outlives this frame: `this`, a ref
   // parameter's referent, or a global (any name this frame did not declare)
   bool nameOutlivesFrame(const std::string& base) const;
+  // The scope depth the named storage was declared at, resolving ref
+  // aliases to their ultimate target. Names that outlive the frame -
+  // `this`, ref parameters, globals - rank as 0: outer than every local.
+  size_t lookupDeclDepth(const std::string& name) const;
+  // The scope depth a frame-sourced value's environment is pinned to: the
+  // deepest declaration among a capture list's borrowed variables, a bound
+  // method's receiver's declaration, or a tracked local's recorded bound.
+  // An environment that only depends on storage outliving the frame ranks
+  // as functionScopeDepth_, valid anywhere in the frame.
+  size_t inferEnvDepth(const ExprAST& expr) const;
+  // A frame-sourced environment pinned at envDepth is entering the named
+  // frame-local destination. Rejects the store when the destination's scope
+  // outlives the environment's - it would hold a dangling environment once
+  // the inner scope ends. Returns true when the store is allowed.
+  bool checkFrameStoreDepth(const std::string& destBase, size_t envDepth,
+                            const Position& pos);
+  // A lifetime as the caller-side checker sees it. Concrete: pinned to a
+  // scope depth of this frame (deeper dies sooner). Symbolic: one of the
+  // current signature's named lifetimes - valid in some ancestor frame the
+  // name stands for. Outlives: outlives this frame with no name relating
+  // it to anything (the elided, trusted case - today's semantics).
+  struct LifetimeValue {
+    enum class Kind { Outlives, Concrete, Symbolic };
+    Kind kind = Kind::Outlives;
+    size_t depth = 0;      // Concrete: declaration/environment scope depth
+    std::string name;      // Symbolic: the signature lifetime's name
+    std::string described; // the variable it came from, for messages
+  };
+  // Does a value with lifetime src provably live at least as long as
+  // storage with lifetime dst?
+  static bool lifetimeValueOutlives(const LifetimeValue& src,
+                                    const LifetimeValue& dst);
+  // The lifetime of the captured environment an expression's value
+  // carries: concrete for frame-sourced values, symbolic for named
+  // parameters and calls composed of them, outlives for everything else.
+  LifetimeValue inferEnvLifetimeValue(const ExprAST& expr) const;
+  // The lifetime of the storage a call argument lets the callee write
+  // into: the referent's declaration for a local, symbolic for a named
+  // ref parameter, outlives for an elided one.
+  LifetimeValue inferDestLifetimeValue(const ExprAST& arg) const;
+  // The same, for a plain name (an assignment target).
+  LifetimeValue destLifetimeValueForName(const std::string& base) const;
+  // Enforce a callee's named-lifetime relations at one call: bind each
+  // name to its contributing arguments, require every source to outlive
+  // every destination sharing the name, and mark caller-local
+  // destinations frame-bound at the sources' depth.
+  void checkNamedLifetimesAtCall(const CallExprAST& call,
+                                 const std::vector<TypePtr>& paramTypes);
+
   // A frame-sourced lambda is being stored into the named destination:
-  // reject if the destination outlives the frame, otherwise mark the
+  // reject if the destination outlives the frame or was declared in an
+  // outer scope than the lambda's environment, otherwise mark the
   // destination frame-bound so the carrier cannot cross a call boundary
   void noteFrameSourcedLambdaStore(const std::string& destBase,
-                                   const Position& pos);
-  // Apply noteFrameSourcedLambdaStore to every place a call could keep a
-  // frame-sourced by-value lambda argument: the receiver and each
-  // by-mutable-ref argument
-  void checkFrameSourcedLambdaArgs(const CallExprAST& call,
-                                   const std::vector<TypePtr>& paramTypes);
+                                   size_t envDepth, const Position& pos);
+  // A ref-storing class value is landing in the named destination (a fresh
+  // construction, or a holder local moved in). Rejects a destination that
+  // outlives what the value borrows, and records the destination's own
+  // bound so later moves keep the whole journey in check.
+  void trackRefHolderStore(const std::string& destName, size_t destDepth,
+                           const ExprAST& value, const Position& pos);
+  // Conservatively relate callbacks whose generic parameters lost lifetime
+  // names to every receiver and mutable-ref destination the callee can keep.
+  void checkErasedLifetimeLambdaArgs(
+      const CallExprAST& call, const std::vector<TypePtr>& paramTypes);
   // Does this type point into storage it does not own - a reference in any
-  // field, transitively, or a '[ref]' lambda environment it can carry?
+  // field, transitively, or a '<'_>' lambda environment it can carry?
   bool classStoresRefs(const TypePtr& type) const;
   bool classStoresRefsWalk(const TypePtr& type,
                            std::unordered_set<const Type*>& visited) const;
@@ -185,26 +240,42 @@ class BorrowChecker {
   // a global - and nothing in the parameter type says so). The lambda's own
   // capture loans pin the borrowed variables until scope exit; this set is
   // what keeps the value from outliving them. Lambdas themselves carry the
-  // frame binding in their `[ref]` type, but the type does not say WHICH
+  // frame binding in their `<'_>` type, but the type does not say WHICH
   // frame - so lambda-typed locals sourced from THIS frame are tracked in
   // frameSourcedLambdas_ below, and objects such a lambda was stored into
   // land here, keeping the carrier from crossing a call boundary either.
-  std::unordered_set<std::string> frameBoundVars_;
+  // The mapped value is the scope depth the buried environment is pinned
+  // to: the carrier must not land in storage declared in an outer scope.
+  std::unordered_map<std::string, size_t> frameBoundVars_;
 
   // Lambda-typed locals whose captured environment provably lives in THIS
   // frame: assigned from a capture-list literal, or from a bound method of
-  // a frame-local receiver. A `[ref]` value received as a parameter is NOT
+  // a frame-local receiver. A `<'_>` value received as a parameter is NOT
   // here - its environment lives in some ancestor frame, which outlives
   // this one, so it may be stored anywhere its type allows. A frame-sourced
   // one must not reach a destination that outlives the frame: not a field
-  // of `this`, not an object behind a ref parameter, not a global.
-  std::unordered_set<std::string> frameSourcedLambdas_;
+  // of `this`, not an object behind a ref parameter, not a global. The
+  // mapped value is the environment's pinned scope depth, as above.
+  std::unordered_map<std::string, size_t> frameSourcedLambdas_;
 
   // Every name that names storage owned by this frame: declared locals,
   // by-value parameters and loop variables. What is NOT here outlives the
   // frame - `this`, ref parameters, globals - and must not be handed a
   // frame-sourced lambda.
   std::unordered_set<std::string> frameLocalNames_;
+
+  // The scope depth each frame-local name was declared at. This is what
+  // relates two locals from different scopes: a value pinned to an inner
+  // scope must not be stored into a name declared in an outer one, even
+  // though both live in the same frame (issue #178).
+  std::unordered_map<std::string, size_t> declDepths_;
+
+  // Locals holding a ref-storing class value, mapped to the deepest
+  // declaration among the variables the value borrows. The holder - and
+  // every local it later moves into - must not be declared in an outer
+  // scope than that bound, or it would keep the borrowed storage's address
+  // past its death (issue #178, Rule 5's sub-frame gap).
+  std::unordered_map<std::string, size_t> refHolderBounds_;
 
   // Compound match-payload bindings currently in scope. They BORROW the
   // matched value's payload slot in place: moving them (var creation,
@@ -276,6 +347,27 @@ class BorrowChecker {
   // Reference-typed parameters of the current function: name -> true when
   // the parameter is `ref T` (mutable), false for `const ref T`
   std::unordered_map<std::string, bool> refTypedParams_;
+
+  // Named lifetimes of the current function's own parameters, from the
+  // signature's annotations: a lambda param's environment name
+  // ('cb: <'a>(i32) -> i32') and a ref param's referent name
+  // ('dst: ref 'a Holder'). Empty-name params are simply absent.
+  std::unordered_map<std::string, std::string> paramEnvNames_;
+  std::unordered_map<std::string, std::string> refParamNames_;
+  // Class-slot bindings of ref parameters ('bus: ref Bus<'this>' binds
+  // Bus's declared lifetimes, positionally, to our signature's names)
+  std::unordered_map<std::string, std::vector<std::string>>
+      refParamClassBindings_;
+
+  // The current function's declared return lifetime, from a
+  // '<'a>(...) -> ...' return annotation; empty when the return type
+  // is not a named frame-bound lambda.
+  std::string returnLifetimeName_;
+
+  // The lifetime names declared by the class whose methods are being
+  // checked ('class Bus<'a>'): values bound to them may enter fields of
+  // `this`, because the class's contract makes them outlive its objects.
+  std::vector<std::string> activeClassLifetimes_;
 
   // Locals declared as raw_ptr<T>. What they point at is storage the checker
   // cannot see (raw pointers are the unsafe escape hatch), so a reference

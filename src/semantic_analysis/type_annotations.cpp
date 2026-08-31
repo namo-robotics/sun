@@ -106,10 +106,13 @@ sun::TypePtr TypeInferer::substituteTypeParameters(sun::TypePtr type) {
     if (changed) {
       auto substituted =
           sun::Types::Lambda(newRet, std::move(newParams), lt->canThrow());
-      // The [ref] marker is part of the type's identity and must survive
-      // substitution, or spawn<F>'s specializations would lose it
+      // The <'_> marker is part of the type's identity and must survive
+      // substitution, or spawn<F>'s specializations would lose it; the
+      // lifetime metadata rides along with it
       static_cast<sun::LambdaType*>(substituted.get())
           ->setHasRefCaptures(lt->hasRefCaptures());
+      static_cast<sun::LambdaType*>(substituted.get())
+          ->setLifetimeName(lt->getLifetimeName());
       return substituted;
     }
     return type;
@@ -239,14 +242,39 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
     }
     sun::TypePtr referencedType = typeAnnotationToType(*annot.elementType);
     if (!referencedType) return nullptr;
-    return sun::Types::Reference(referencedType, /*isMutable=*/!annot.constRef);
+    auto refType =
+        sun::Types::Reference(referencedType, /*isMutable=*/!annot.constRef);
+    // A named lifetime on the position ('ref 'a Bus') rides along as
+    // metadata for the borrow checker; it is not part of the type. So do
+    // the class application's lifetime arguments ('ref Bus<'this>'), which
+    // must match the class's declared lifetimes one for one.
+    static_cast<sun::ReferenceType*>(refType.get())
+        ->setLifetimeName(annot.lifetimeName);
+    if (!annot.elementType->lifetimeArguments.empty()) {
+      auto* referentClass = sun::tryGetType<sun::ClassType>(referencedType);
+      size_t declared =
+          referentClass ? referentClass->getLifetimeParams().size() : 0;
+      if (annot.elementType->lifetimeArguments.size() != declared) {
+        logAndThrowError(
+            "'" + annot.elementType->baseName + "' declares " +
+                std::to_string(declared) + " lifetime parameter(s), but " +
+                std::to_string(annot.elementType->lifetimeArguments.size()) +
+                " are applied here",
+            annot.span);
+      }
+      static_cast<sun::ReferenceType*>(refType.get())
+          ->setClassLifetimeArgs(annot.elementType->lifetimeArguments);
+    }
+    return refType;
   }
 
   // Function types: _() {} (named function, direct call)
   if (annot.isFunction()) {
-    if (annot.returnType && annot.returnType->refEnv) {
+    if (annot.returnType && annot.returnType->refEnv &&
+        (annot.returnType->lifetimeName.empty() ||
+         annot.returnType->lifetimeName == "_")) {
       logAndThrowError(
-          "a '[ref]' lambda type cannot be a return type - its captured "
+          "an anonymous <'_> lambda type cannot be a return type - its captured "
           "environment lives in a stack frame that dies when the function "
           "returns",
           annot.span);
@@ -263,9 +291,11 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
 
   // Lambda types: () {} (anonymous function, fat pointer call)
   if (annot.isLambda()) {
-    if (annot.returnType && annot.returnType->refEnv) {
+    if (annot.returnType && annot.returnType->refEnv &&
+        (annot.returnType->lifetimeName.empty() ||
+         annot.returnType->lifetimeName == "_")) {
       logAndThrowError(
-          "a '[ref]' lambda type cannot be a return type - its captured "
+          "an anonymous <'_> lambda type cannot be a return type - its captured "
           "environment lives in a stack frame that dies when the function "
           "returns",
           annot.span);
@@ -281,10 +311,13 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
         annot.canError || (annot.returnType && annot.returnType->canError);
     auto lambdaType =
         sun::Types::Lambda(retType, std::move(paramTypes), canThrow);
-    // '[ref](…) -> …' admits lambdas whose captured environment lives in a
-    // stack frame; a plain annotation admits only environment-free lambdas
+    // `<'_>(…) -> …` admits lambdas whose captured environment lives in a
+    // stack frame; a plain annotation admits only environment-free lambdas.
+    // A named lifetime ('<'a>') rides along as borrow-checker metadata.
     static_cast<sun::LambdaType*>(lambdaType.get())
         ->setHasRefCaptures(annot.refEnv);
+    static_cast<sun::LambdaType*>(lambdaType.get())
+        ->setLifetimeName(annot.lifetimeName);
     return lambdaType;
   }
 

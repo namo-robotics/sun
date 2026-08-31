@@ -729,14 +729,14 @@ std::filesystem::path writeMoonLib(const std::string& name,
 
 }  // namespace
 
-// The '[ref]' marker on a lambda-typed parameter must survive the trip
+// The '<'_>' marker on a lambda-typed parameter must survive the trip
 // through a .moon: had serialization dropped it, the imported signature
 // would read as a clean lambda type and reject the capturing argument.
 TEST(Modules, moon_ref_lambda_param_survives_round_trip) {
   initTestEnvironment();
   auto moonPath = writeMoonLib("reflambda", R"(
     public module reflambda {
-        public function apply(f: [ref](i32) -> i32, x: i32) i32 {
+        public function apply(f: <'_>(i32) -> i32, x: i32) i32 {
             return f(x);
         }
     }
@@ -750,6 +750,71 @@ TEST(Modules, moon_ref_lambda_param_survives_round_trip) {
     function main() i32 {
         var base = 40;
         return apply(lambda [ref base](n: i32) i32 { return base + n; }, 2);
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// A lifetime name on a bundled signature must survive the trip through a
+// .moon: the importer re-validates signatures, so a dropped declaration
+// would make the parameter's '<'a>' an undeclared-lifetime error.
+TEST(Modules, moon_lifetime_param_survives_round_trip) {
+  initTestEnvironment();
+  auto moonPath = writeMoonLib("lifetimelambda", R"(
+    public module lifetimelambda {
+        public function apply<'a>(f: <'a>(i32) -> i32, x: i32) i32 {
+            return f(x);
+        }
+    }
+  )");
+
+  auto driver = Driver::createForJIT("moon_lifetime_main");
+  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  auto value = driver->executeString(R"(
+    using lifetimelambda;
+
+    function main() i32 {
+        var base = 40;
+        return apply(lambda [ref base](n: i32) i32 { return base + n; }, 2);
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// A class's declared lifetimes survive the trip too: the imported Bus<'a>
+// still lets a method bind its slot with 'ref Bus<'this>', and the checker
+// still relates the scopes at call sites.
+TEST(Modules, moon_class_lifetime_survives_round_trip) {
+  initTestEnvironment();
+  auto moonPath = writeMoonLib("lifetimebus", R"(
+    public module lifetimebus {
+        public class Bus<'a> {
+            var cb: <'a>(i32) -> i32;
+            init() { this.cb = lambda (x: i32) i32 { return x; }; }
+            public method subscribe(cb: <'a>(i32) -> i32) void { this.cb = cb; return; }
+            public method publish(x: i32) i32 { var f = this.cb; return f(x); }
+        }
+    }
+  )");
+
+  auto driver = Driver::createForJIT("moon_class_lifetime_main");
+  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  auto value = driver->executeString(R"(
+    using lifetimebus;
+
+    class Node {
+        var total: i32;
+        init() { this.total = 0; }
+        public method onMsg(x: i32) i32 { this.total = this.total + x; return this.total; }
+        public method attach(bus: ref Bus<'this>) void { bus.subscribe(this.onMsg); return; }
+    }
+    function main() i32 {
+        var n = Node();
+        var bus = Bus();
+        n.attach(bus);
+        bus.publish(40);
+        bus.publish(2);
+        return n.total;
     }
   )");
   EXPECT_EQ(value, 42);

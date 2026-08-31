@@ -441,6 +441,22 @@ TEST(Tooling_Fmt, LambdaAndCaptures) {
             "}\n");
 }
 
+TEST(Tooling_Fmt, LambdaLifetimeParametersBeforeCaptures) {
+  EXPECT_EQ(
+      fmt("function f() void {\n"
+          "var n=0;\n"
+          "var store=lambda<'a>[ref n](cb: <'a>() -> i32, box: ref 'a Box) "
+          "void { n += 1; return; };\n"
+          "return;\n"
+          "}"),
+      "function f() void {\n"
+      "  var n = 0;\n"
+      "  var store = lambda<'a> [ref n] (cb: <'a>() -> i32, box: ref 'a "
+      "Box) void { n += 1; return; };\n"
+      "  return;\n"
+      "}\n");
+}
+
 TEST(Tooling_Fmt, UnsafeBlockInlineAndMultiline) {
   EXPECT_EQ(fmt("function f(fd: i32) i32 {\n"
                 "return unsafe { __file_read(fd, 1); };\n"

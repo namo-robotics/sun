@@ -116,9 +116,28 @@ function main() i32 {
 }
 ```
 
+A lambda may declare lifetime parameters immediately after the keyword. The
+names scope over its parameter and return types and over annotations in its
+body, just as they do for a named function:
+
+```sun
+var store = lambda<'a>(
+    cb: <'a>(i32) -> i32,
+    dst: ref 'a Holder
+) void {
+    dst.set(cb);
+    return;
+};
+```
+
+At every call, the compiler requires the callback environment to outlive the
+destination associated with the same name. An optional capture list follows
+the binder: `lambda<'a> [ref count](...) ...`. Lambda literals may declare
+lifetimes, but they do not declare type parameters.
+
 ## Captures
 
-A lambda may use variables from its enclosing scope. By default they are **captured by value** — the lambda gets a private, read-only copy. To mutate a captured variable (or to capture a class, interface, or array at all), declare it in a bracketed **by-reference capture list** after the `lambda` keyword:
+A lambda may use variables from its enclosing scope. By default they are **captured by value** — the lambda gets a private, read-only copy. To mutate a captured variable (or to capture a class, interface, or array at all), declare it in a bracketed **by-reference capture list** after the `lambda` keyword (and its lifetime binder, when present):
 
 ```sun
 function main() i32 {
@@ -151,7 +170,7 @@ Capture rules:
 - **Globals** are accessed directly and cannot appear in a capture list.
 - A `[ref x]` capture registers a **mutable borrow** of the variable for as long as the lambda value is in scope, so conflicting `ref`s — including a second lambda capturing the same variable — are rejected.
 - A `[const ref x]` capture registers a **shared borrow** instead, so several lambdas may capture the same variable at once. Everything reached through it is read-only: fields cannot be assigned, and only `const method` methods can be called.
-- A lambda with a capture list holds state in the enclosing frame — pointers into it for `[ref …]` captures, the environment itself for owned ones — and this shows in its **type**: it is a `[ref](…) -> …` lambda, not a plain `(…) -> …` one (see [Lambda Types](#lambda-types)). It **cannot be returned** from the function: the frame it depends on would be gone when the lambda runs. Passing it to `spawn` is fine: the thread is joined when its handle's scope ends, while the frame is still alive — and the handle inherits the restriction, so it cannot be returned, stored in a field, or passed by value (see [Threads](/threads)).
+- A lambda with a capture list holds state in the enclosing frame — pointers into it for `[ref …]` captures, the environment itself for owned ones — and this shows in its **type**: it is a `<'_>(…) -> …` lambda, not a plain `(…) -> …` one (see [Lambda Types](#lambda-types)). It **cannot be returned** from the function: the frame it depends on would be gone when the lambda runs. Passing it to `spawn` is fine: the thread is joined when its handle's scope ends, while the frame is still alive — and the handle inherits the restriction, so it cannot be returned, stored in a field, or passed by value (see [Threads](/threads)).
 - **`this` cannot be captured**, in the list or implicitly. A lambda that needs the object's data reads the fields it needs into locals and captures those, takes them as parameters — or the method itself is bound as the callable (`this.method`, below).
 
 ## Semantic Differences
@@ -174,42 +193,89 @@ import { Callout } from 'nextra/components'
 
 ## Lambda Types
 
-A lambda type annotation is written with arrow syntax: `(i32) -> i32`, with an
-optional `throws IError` suffix for lambdas that may throw. That plain form is
-reserved for **environment-free** lambdas — ones with no capture list and no
-bound receiver. A lambda that carries a captured environment living in a stack
-frame — a `[ref x]` or owned `[x]` capture list, or a bound method — has the
-type **`[ref](i32) -> i32`** instead, echoing the capture-list brackets on the
-literal:
+A lambda type annotation uses arrow syntax: `(i32) -> i32`, with an optional
+`throws IError` suffix. The plain form accepts only **environment-free**
+lambdas: values with no capture list and no bound receiver. A lambda with a
+capture list, or a bound method, carries an environment in a stack frame and
+has the type **`<'_>(i32) -> i32`**:
 
 ```sun
-function apply(f: [ref](i32) -> i32, x: i32) i32 {
-    return f(x);      // a received [ref] lambda may be called, and even
-}                     // stored - its environment outlives this frame
-
-function main() i32 {
-    var base = 40;
-    return apply(lambda [ref base] (n: i32) i32 { return base + n; }, 2);
+function apply(cb: <'_>(i32) -> i32, dst: ref Holder) i32 {
+    dst.bump();
+    return cb(1);      // cb may be called, but its lifetime is unrelated to dst
 }
 ```
 
-The marker only widens one way: an environment-free lambda is accepted
-wherever a `[ref]` one is expected, never the reverse. And because a `[ref]`
-value may point into a stack frame, the type is barred from the places that
-outlive one: it cannot be a **return type**, and a **global** cannot have a
-`[ref]` type — nor any type that transitively contains one, such as a class
-with a `[ref]` field or a `Vec<[ref]() -> i32>`. A class holding a `[ref]`
-field is itself bound to the frame, like a class that stores references (see
-[Memory Safety](/memory-safety)).
+`'_` is a true anonymous lifetime. Every occurrence is fresh and relates to
+nothing else in the signature. That is useful for callbacks that are only
+called: unlike the retired `[ref]` spelling, the compiler does not guess that
+the callback might be stored into every `ref` argument or receiver.
 
-One more distinction matters: a `[ref]` lambda built in the *current* frame
-(a capture-list literal, or a bound method of a local variable) may only be
-stored into frame-local objects, which then inherit its restrictions — not
-into a field of `this` or an object behind a `ref` parameter, which outlive
-the frame. A `[ref]` lambda received *as a parameter* came from an older
-frame, so a callee may store it — that is what makes a `subscribe(cb)`
-method possible. The full rules live in
-[Memory Safety](/memory-safety).
+The marker widens one way: an environment-free lambda is accepted wherever a
+`<'_>` lambda is expected, never the reverse. A frame-bound lambda type may
+be used for parameters, locals, fields, and generic arguments. It cannot be an
+anonymous **return type**, and a **global** cannot have it. The restriction is
+transitive, so a class with a frame-bound lambda field and a
+`Vec<<'_>() -> i32>` are frame-bound too.
+
+Inside a callee, an anonymous callback may be called, forwarded to another
+anonymous parameter, or kept in local storage that dies before the call
+returns. It cannot be stored into `this`, a `ref` argument, or any other
+destination that may outlive the call: `'_` makes no promise that its
+environment lives that long. A callback-storing API must name that
+relationship.
+
+## Named Lifetimes
+
+A lifetime name is a Rust-style leading-apostrophe name declared in angle
+brackets. Reusing the name in a signature says those positions refer to the
+same frame. A free function that stores a callback into a destination writes
+the relationship explicitly:
+
+```sun
+/* wire may keep cb inside dst, so both positions carry 'a */
+function wire<'a>(cb: <'a>(i32) -> i32, dst: ref 'a Holder) void {
+    dst.set(cb);
+}
+
+var h = Holder();
+if (true) {
+    var n = Node(1);
+    wire(n.onMsg, h);   // ❌ ERROR: n dies before h
+}
+```
+
+Inside a class or interface member, the builtin **`'this`** names the
+receiver's lifetime. A method that stores its argument in a field uses it on
+the parameter:
+
+```sun
+class Holder {
+    var cb: <'_>(i32) -> i32;
+    public method set(cb: <'this>(i32) -> i32) void {
+        this.cb = cb;
+    }
+}
+```
+
+`'this` needs no declaration and is only legal in members. Classes can also
+declare lifetime slots (`class Bus<'a>`), which callers bind through types
+such as `ref Bus<'this>`. Call sites never write function lifetime
+arguments; the compiler infers their concrete scopes from the values passed.
+
+A declared lifetime may also appear on a **return type**, because it tells the
+caller which input frame the result depends on:
+
+```sun
+function pick<'a>(x: <'a>() -> i32, y: <'a>() -> i32, first: bool) <'a>() -> i32 {
+    if (first) { return x; }
+    return y;
+}
+```
+
+The result remains pinned to the contributing arguments at the call site. An
+anonymous `<'_>` return is rejected because it names no input frame. See
+[Memory Safety](/memory-safety) for the complete storage and scope rules.
 
 ## First-Class Lambdas
 
@@ -236,7 +302,7 @@ println(add5(10));  // 15
 
 ## Bound Methods
 
-Class methods are first-class values: `obj.method` (without parentheses) produces a value of lambda type `[ref](params) -> ret` — it holds its receiver by reference, so it carries the `[ref]` marker — that can be stored in variables and passed wherever a `[ref]` lambda is expected. This makes class methods usable as callbacks:
+Class methods are first-class values: `obj.method` (without parentheses) produces a value of lambda type `<'_>(params) -> ret` — it holds its receiver by reference, so it carries the `<'_>` marker — that can be stored in variables and passed wherever a `<'_>` lambda is expected. This makes class methods usable as callbacks:
 
 ```sun
 class Counter {
@@ -248,7 +314,7 @@ class Counter {
     }
 }
 
-function apply(f: [ref](i32) -> i32, x: i32) i32 {
+function apply(f: <'_>(i32) -> i32, x: i32) i32 {
     return f(x);
 }
 
@@ -263,8 +329,8 @@ function main() i32 {
 
 Rules and caveats:
 
-- **The receiver is captured by reference.** Calls through the bound value see and mutate the original object. The bound value must not outlive its receiver, so — like a lambda with a `[ref …]` capture — its type is `[ref](…) -> …` and it cannot be returned, and neither can a thread handle spawned from it.
-- **Overloaded methods** need type context to disambiguate: a type annotation (`var f: [ref](i32) -> i32 = c.add;`) or a lambda-typed parameter of the called function. Without context, referencing an overloaded method is an error.
+- **The receiver is captured by reference.** Calls through the bound value see and mutate the original object. The bound value must not outlive its receiver, so — like a lambda with a `[ref …]` capture — its type is `<'_>(…) -> …` and it cannot be returned, and neither can a thread handle spawned from it.
+- **Overloaded methods** need type context to disambiguate: a type annotation (`var f: <'_>(i32) -> i32 = c.add;`) or a lambda-typed parameter of the called function. Without context, referencing an overloaded method is an error.
 - **Generic methods** cannot be referenced as values.
 - **Interface-typed receivers** are not supported: only concrete class methods can be bound.
-- A **non-throwing method** can be bound where a throwing lambda type (`[ref](i32) -> i32 throws IError`) is expected; a throwing method requires a throwing lambda type and its calls follow the usual `try`/`throws IError` rules.
+- A **non-throwing method** can be bound where a throwing lambda type (`<'_>(i32) -> i32 throws IError`) is expected; a throwing method requires a throwing lambda type and its calls follow the usual `try`/`throws IError` rules.

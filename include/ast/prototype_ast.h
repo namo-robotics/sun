@@ -20,6 +20,10 @@
 class PrototypeAST {
   std::string Name;  // Source name as written by user (for error messages)
   std::vector<TypeParameter> typeParameters;  // Generic type params: <T, U: X>
+  // Lifetime params: <'a, T> declares 'a. Kept apart from typeParameters so
+  // generic arity, inference and specialization never see lifetimes - they
+  // are erased before codegen and never mint a specialization.
+  std::vector<LifetimeParameter> lifetimeParameters;
   std::vector<std::pair<std::string, TypeAnnotation>> args;
   std::optional<TypeAnnotation> returnType;
   std::vector<Capture> captures;
@@ -133,6 +137,14 @@ class PrototypeAST {
   }
   bool hasQualifiedName() const {
     return analysis_ && !analysis_->qualifiedName.empty();
+  }
+
+  // Lifetime parameter support
+  void setLifetimeParameters(std::vector<LifetimeParameter> params) {
+    lifetimeParameters = std::move(params);
+  }
+  const std::vector<LifetimeParameter>& getLifetimeParameters() const {
+    return lifetimeParameters;
   }
 
   // Generic method support

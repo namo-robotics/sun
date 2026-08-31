@@ -306,7 +306,7 @@ bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
   }
 
   // Lambda widening: a non-throwing lambda is accepted where a throwing one
-  // is expected, and an environment-free lambda where a '[ref]' one is
+  // is expected, and an environment-free lambda where a '<'_>' one is
   // expected — never the reverse in either direction
   if (to->isLambda() && from->isLambda()) {
     auto* toL = static_cast<const sun::LambdaType*>(to.get());
@@ -326,7 +326,7 @@ bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
 
   // Class-to-interface assignability:
   // Class C can be assigned to interface I if C implements I.
-  // A frame-carrying class (one that can hold a '[ref]' lambda) never
+  // A frame-carrying class (one that can hold a '<'_>' lambda) never
   // converts by value: the interface type would erase the frame binding,
   // letting the value escape the frame its lambda environment lives in.
   if (to->isInterface() && from->isClass()) {

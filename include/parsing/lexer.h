@@ -134,6 +134,7 @@ enum class TokenKind {
   // suffix, not an integer with an e5f32 one.
   TYPED_FLOAT,    // float literal with a type suffix: 1.5f32
   TYPED_INTEGER,  // integer literal with a type suffix: 21u8
+  LIFETIME,       // lifetime name 'a (leading apostrophe, no closing quote)
   UNKNOWN,
   COUNT
 };
@@ -536,6 +537,13 @@ struct Token {
     return {k, value, s, e, std::move(txt)};
   }
 
+  // Lifetime name factory; `name` carries the bare name without the
+  // apostrophe ('a lexes as LIFETIME with name "a").
+  static Token lifetime(std::string name, const Position& s,
+                        const Position& e) {
+    return {TokenKind::LIFETIME, name, s, e, "'" + std::move(name)};
+  }
+
   // Comment token factory (COMMENT or BLOCK_COMMENT); text is the raw
   // comment including delimiters
   static Token comment(TokenKind k, std::string txt, const Position& s,
@@ -571,6 +579,12 @@ struct Token {
   std::optional<double> getFloat() const {
     if (kind == TokenKind::FLOAT || kind == TokenKind::TYPED_FLOAT)
       return std::get<double>(value);
+    return std::nullopt;
+  }
+
+  // Bare name of a lifetime token ('a yields "a").
+  std::optional<std::string> getLifetimeName() const {
+    if (kind == TokenKind::LIFETIME) return std::get<std::string>(value);
     return std::nullopt;
   }
 
@@ -994,6 +1008,32 @@ class Lexer {
     if (off >= size) {
       commitPosition(line, col, off);
       return Token::eof(currentPos);
+    }
+
+    // A leading apostrophe is either a lifetime name ('a) or a character
+    // literal ('a', '\n'). The two cannot share the regex table: the
+    // character-literal pattern runs to the NEXT apostrophe anywhere in the
+    // input, so longest-match would swallow "'a>(... '" whole. Decided by
+    // hand instead: an apostrophe followed by a name with no closing quote
+    // right after it is a lifetime; everything else falls through to the
+    // table, which owns character literals and their diagnostics.
+    if (data[off] == '\'' && off + 1 < size &&
+        (std::isalpha(static_cast<unsigned char>(data[off + 1])) ||
+         data[off + 1] == '_')) {
+      int nameEnd = off + 1;
+      while (nameEnd < size &&
+             (std::isalnum(static_cast<unsigned char>(data[nameEnd])) ||
+              data[nameEnd] == '_')) {
+        ++nameEnd;
+      }
+      if (nameEnd >= size || data[nameEnd] != '\'') {
+        std::string name(data + off + 1,
+                         static_cast<size_t>(nameEnd - off - 1));
+        Position startPos{line, col, off};
+        Position endPos{line, col + (nameEnd - off), nameEnd};
+        commitPosition(line, col + (nameEnd - off), nameEnd);
+        return Token::lifetime(std::move(name), startPos, endPos);
+      }
     }
 
     // Longest match wins; ties go to the lowest TokenKind index, which the DFA

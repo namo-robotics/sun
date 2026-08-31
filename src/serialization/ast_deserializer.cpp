@@ -19,6 +19,19 @@ static std::vector<std::string> toStringVector(const Repeated& field) {
 // Type parameters, from whichever field the bundle carries them in. Bundles
 // written before constraints existed only have the plain-string field, so a
 // stale one still loads — with every parameter unconstrained.
+// Lifetime parameters, from the names the bundle carries. Bundles written
+// before lifetimes existed have none, which reads back as fully elided.
+template <typename Owner>
+static std::vector<LifetimeParameter> toLifetimeParameters(
+    const Owner& owner) {
+  std::vector<LifetimeParameter> params;
+  params.reserve(owner.lifetime_params_size());
+  for (const auto& name : owner.lifetime_params()) {
+    params.emplace_back(name);
+  }
+  return params;
+}
+
 template <typename Owner>
 static std::vector<TypeParameter> toTypeParameters(const Owner& owner) {
   std::vector<TypeParameter> params;
@@ -101,6 +114,13 @@ TypeAnnotation ASTDeserializer::deserializeTypeAnnotation(
   result.canError = type.can_error();
   result.constRef = type.const_ref();
   result.refEnv = type.ref_env();
+  result.lifetimeName = type.lifetime_name();
+  if (result.refEnv && result.lifetimeName.empty()) {
+    result.lifetimeName = "_";
+  }
+  for (const auto& lifetime : type.lifetime_arguments()) {
+    result.lifetimeArguments.push_back(lifetime);
+  }
   return result;
 }
 
@@ -165,6 +185,7 @@ std::unique_ptr<PrototypeAST> ASTDeserializer::deserializePrototype(
   auto result = std::make_unique<PrototypeAST>(
       proto.name(), std::move(args), std::move(returnType),
       toTypeParameters(proto), std::move(variadicParam));
+  result->setLifetimeParameters(toLifetimeParameters(proto));
 
   // Restore captures
   std::vector<Capture> captures;
@@ -841,6 +862,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeClassDef(
   auto classDef = std::make_unique<ClassDefinitionAST>(
       proto.name(), toTypeParameters(proto), std::move(interfaces),
       std::move(fields), std::move(methods));
+  classDef->setLifetimeParameters(toLifetimeParameters(proto));
   classDef->setIsPartial(proto.is_partial());
   classDef->setIsPacked(proto.is_packed());
   classDef->setVisibility(fromProto(proto.visibility()));
@@ -868,6 +890,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeInterfaceDef(
   auto iface = std::make_unique<InterfaceDefinitionAST>(
       proto.name(), toTypeParameters(proto), std::move(fields),
       std::move(methods));
+  iface->setLifetimeParameters(toLifetimeParameters(proto));
   iface->setVisibility(fromProto(proto.visibility()));
   iface->setDoc(proto.doc());
   return iface;

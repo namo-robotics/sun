@@ -182,6 +182,24 @@ void SemanticAnalyzer::validateInterfaceImplementation(
                   " parameters",
               classDef.getLocation());
         } else {
+          // Lifetime relations are part of the contract: a caller
+          // dispatching through the interface sees only the interface's
+          // names, so the implementation must promise the same ties.
+          // Names match verbatim - 'this is 'this, and declared names
+          // match by spelling.
+          auto lifetimeContractOf = [](const sun::TypePtr& t) -> std::string {
+            if (auto* lt = sun::tryGetType<sun::LambdaType>(t)) {
+              return lt->getLifetimeName();
+            }
+            if (auto* rt = sun::tryGetType<sun::ReferenceType>(t)) {
+              std::string contract = rt->getLifetimeName();
+              for (const auto& applied : rt->getClassLifetimeArgs()) {
+                contract += "<" + applied + ">";
+              }
+              return contract;
+            }
+            return "";
+          };
           // Verify each parameter type matches
           for (size_t i = 0; i < classMethodInfo->paramTypes.size(); ++i) {
             if (!classMethodInfo->paramTypes[i]->equals(
@@ -194,6 +212,17 @@ void SemanticAnalyzer::validateInterfaceImplementation(
                       "' but interface '" + interfaceDisplayName +
                       "' requires type '" +
                       interfaceMethod.paramTypes[i]->toDisplayString() + "'",
+                  classDef.getLocation());
+            }
+            if (lifetimeContractOf(classMethodInfo->paramTypes[i]) !=
+                lifetimeContractOf(interfaceMethod.paramTypes[i])) {
+              logAndThrowError(
+                  "Class '" + classType->getDisplayName() + "' method '" +
+                      interfaceMethod.name + "' parameter " +
+                      std::to_string(i + 1) +
+                      " does not declare the lifetime the interface '" +
+                      interfaceDisplayName + "' requires - the names must "
+                      "match the interface's exactly",
                   classDef.getLocation());
             }
           }

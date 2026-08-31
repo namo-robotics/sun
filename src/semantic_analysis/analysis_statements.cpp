@@ -18,6 +18,8 @@ void SemanticAnalyzer::analyzeVariableCreation(VariableCreationAST& varCreate) {
   // Determine type first (before analyzing value, for array literals)
   sun::TypePtr declaredType;
   if (varCreate.hasTypeAnnotation()) {
+    checkAnnotationLifetimes(*varCreate.getTypeAnnotation(),
+                             varCreate.getLocation());
     declaredType = types_.typeAnnotationToType(*varCreate.getTypeAnnotation());
     // For array literals with explicit type annotation, set the type before
     // analysis
@@ -115,7 +117,7 @@ void SemanticAnalyzer::analyzeVariableCreation(VariableCreationAST& varCreate) {
   validateTypeParameter(type, varCreate);
 
   // A global outlives every stack frame, so it cannot have a type that may
-  // point into one: a '[ref]' lambda, or anything that transitively holds
+  // point into one: a '<'_>' lambda, or anything that transitively holds
   // one (a class, enum, container instantiation or array of them).
   if (ctx_.isAtModuleLevel() && sun::typeIsFrameCarrying(type)) {
     logAndThrowError(

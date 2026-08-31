@@ -5,7 +5,7 @@ Sun implements a **simplified Rust-style ownership system** that provides memory
 import { Callout } from 'nextra/components'
 
 <Callout type="info">
-  Unlike Rust, Sun does not require explicit lifetime annotations (`'a`, `'b`). References are scoped and cannot escape their defining context, which eliminates the need for lifetime tracking.
+  Sun is inference-first: most code never writes a lifetime. References are scoped and cannot escape their defining context. Optional Rust-style lifetime names (`'a`, `'this`) exist for one purpose — relating two positions of one signature, so a callee that stores one argument into another can say so (see [Named Lifetimes](#named-lifetimes-relate-two-positions-of-one-signature)).
 </Callout>
 
 ## Overview
@@ -587,7 +587,21 @@ function main() i32 {
 A class may have reference-type fields. Such a value points into storage it
 does not own, so it is treated like a borrow: constructing it takes a loan on
 every variable passed by ref to the constructor, and those loans last until
-the enclosing scope ends.
+the enclosing scope ends. The value must also never be held by a variable
+declared in an outer scope than what it borrows — the holder would keep the
+borrowed storage's address past its death:
+
+```sun
+var a = Inner(1);
+var h = Holder(a);       // ✓ h and a live equally long
+if (true) {
+    var b = Inner(2);
+    h = Holder(b);       // ❌ ERROR: h outlives b, the stored ref would dangle
+}
+```
+
+The bound follows the value when it moves: a holder built in an inner scope
+may move outward exactly as far as the outermost variable it borrows.
 
 ```sun
 class Holder {
@@ -618,50 +632,118 @@ function make() Holder {
 This holds transitively: a class whose field is (or contains) a ref-storing
 class is subject to the same rules.
 
-### Rule 5b: A `[ref]` Lambda Type Is Bound to a Stack Frame
+### Rule 5b: An Anonymous Lambda Lifetime Is Frame-Bound
 
 A lambda that carries a captured environment — a `[ref x]` or owned `[x]`
 capture list, or a bound method holding its receiver — has the type
-`[ref](…) -> …`, while a plain `(…) -> …` annotation admits only
-environment-free lambdas (an environment-free lambda widens into a `[ref]`
+`<'_>(…) -> …`, while a plain `(…) -> …` annotation admits only
+environment-free lambdas (an environment-free lambda widens into a `<'_>`
 parameter, never the reverse). Because the type says the value may point into
 a stack frame, the compiler bars it from everything that outlives one:
 
 ```sun
-function make() [ref]() -> i32 { ... }   // ❌ ERROR: [ref] cannot be a return type
-var g: [ref]() -> i32 = ...;             // ❌ ERROR: a global would outlive the frame
+function make() <'_>() -> i32 { ... }   // ❌ ERROR: <'_> cannot be a return type
+var g: <'_>() -> i32 = ...;             // ❌ ERROR: a global would outlive the frame
 ```
 
-The property is transitive, exactly like Rule 5: a class with a `[ref]`
-field, an enum with a `[ref]` payload, or a container instantiated over a
-`[ref]` lambda type (`Vec<[ref]() -> i32>`) is frame-bound as a whole — it
+The property is transitive, exactly like Rule 5: a class with a `<'_>`
+field, an enum with a `<'_>` payload, or a container instantiated over a
+`<'_>` lambda type (`Vec<<'_>() -> i32>`) is frame-bound as a whole — it
 works freely inside the frame, but cannot be returned, become a global, or
 convert to an interface (which would erase the marker from the type).
 
-The type says the value points into *a* frame, but not *which*, so one more
-rule tells the frames apart. A `[ref]` value built in the **current** frame
-— a capture-list literal, or a bound method of a local — may only be stored
-where the current frame owns the storage: a local object, which then
-becomes frame-bound itself. Storing it into a field of `this`, or into an
-object reached through a `ref` parameter, would let a callee smuggle its
-own frame's environment up into a caller's object, so both are rejected. A
-`[ref]` value received **as a parameter** has an environment in an ancestor
-frame that outlives this one, which is exactly what lets a method store a
-caller-supplied callback in a field:
+`'_` is a fresh anonymous lifetime, unrelated to every other position in
+the signature. At a call, the checker therefore makes no guess that an
+anonymous callback might flow into a receiver or `ref` argument. Inside the
+callee, the same lack of a relationship means the callback cannot be stored
+into storage that may outlive the call:
 
 ```sun
 class Bus {
-    var cb: [ref]() -> i32;
-    public method subscribe(cb: [ref]() -> i32) void {
-        this.cb = cb;      // ✓ cb comes from an older frame than this call
+    var cb: <'_>() -> i32;
+
+    public method invoke(cb: <'_>() -> i32) i32 {
+        return cb();       // ✓ calling does not retain the callback
     }
-    public method arm() void {
-        var x = 3;
-        // ❌ ERROR: the lambda's environment dies with this call
-        this.cb = lambda [ref x]() i32 { return x; };
+
+    public method badSubscribe(cb: <'_>() -> i32) void {
+        this.cb = cb;      // ❌ nothing says cb outlives this object
+    }
+
+    public method subscribe(cb: <'this>() -> i32) void {
+        this.cb = cb;      // ✓ the signature promises cb outlives this
     }
 }
 ```
+
+An anonymous callback may still be assigned to a local declared in the same or
+a narrower scope, or forwarded to another anonymous callback parameter. Those
+destinations cannot outlive the call. A storing free function names both the
+callback and destination with the same declared lifetime; a storing member
+usually uses `'this`.
+
+Within one frame, the destination must also not be declared in an outer
+scope than the environment — an inner scope's locals die at its closing
+brace, while the destination lives on:
+
+```sun
+var bus = Bus();
+if (true) {
+    var n = Node();
+    bus.subscribe(n.onMsg);   // ❌ ERROR: bus outlives n
+}
+// ✓ legal when bus and n are declared in the same scope
+```
+
+Two names declared in the **same** scope are not ordered by this rule: they
+drop in reverse declaration order at the scope's end, and the checker does
+not chase which of two siblings dies first. Keep a callback and its bus in
+the order that lets the bus drop first, or drop the bus explicitly.
+
+### Named Lifetimes Relate Two Positions of One Signature
+
+The rules above stop at a function boundary: a helper that stores one
+argument into another is invisible at its call sites. A **lifetime name**
+makes the entanglement part of the signature, so every call is checked
+against the arguments' real scopes. Lifetimes are declared in the angle
+brackets with a leading apostrophe (`function wire<'a>`, `class Bus<'a>`);
+inside class and interface members the builtin `'this` names the receiver's
+lifetime and needs no declaration:
+
+```sun
+class Bus<'a> {
+    var cb: <'a>(i32) -> i32;    // stored callbacks must outlive 'a
+    public method subscribe(cb: <'a>(i32) -> i32) void { this.cb = cb; }
+    public method publish(x: i32) i32 { var f = this.cb; return f(x); }
+}
+
+class Node {
+    public method onMsg(x: i32) i32 { ... }
+    /* Bus<'this> binds the bus's slot to this node's lifetime: the bus may
+       only store things this node outlives */
+    public method attach(bus: ref Bus<'this>) void {
+        bus.subscribe(this.onMsg);   // ✓ the signature carries the proof
+    }
+}
+
+var bus = Bus();
+if (true) {
+    var n = Node();
+    n.attach(bus);      // ❌ ERROR: n dies before bus, and attach's
+}                       //    signature says the bus may keep n's method
+bus.publish(1);
+```
+
+Call sites never write lifetime arguments — the compiler binds each name to
+the concrete scopes of the arguments and requires every environment flowing
+into a name to outlive every destination sharing it. A callee, in turn, may
+only store a named parameter where the destination's declared lifetime is
+the same name (its own class's declared lifetimes count for fields of
+`this`), so one caller lifetime can never launder into another. Interfaces
+state the same contracts, and an implementing class must repeat the
+interface's names exactly. Each `<'_>` occurrence remains unrelated to the others; only a repeated
+declared name creates a relationship. An anonymous return stays banned because
+it names no input frame.
 
 Some values are frame-bound without their type showing it: the handle
 `spawn` returns for a thread over a capture-list lambda hides that lambda

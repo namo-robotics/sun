@@ -58,6 +58,33 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
                         methodDecl.function->getLocation());
   }
 
+  // Lifetime declarations must be distinct, and every lifetime a field
+  // names must be the builtin 'this or declared on the class
+  for (const auto& lp : classDef.getLifetimeParameters()) {
+    if (std::count_if(classDef.getLifetimeParameters().begin(),
+                      classDef.getLifetimeParameters().end(),
+                      [&](const LifetimeParameter& other) {
+                        return other.name == lp.name;
+                      }) > 1) {
+      logAndThrowError("duplicate lifetime parameter '" + lp.name +
+                           " on class '" + baseName + "'",
+                       lp.span);
+    }
+  }
+  {
+    size_t mark = activeLifetimeNames_.size();
+    for (const auto& lp : classDef.getLifetimeParameters()) {
+      activeLifetimeNames_.push_back(lp.name);
+    }
+    bool savedAllowThis = allowThisLifetime_;
+    allowThisLifetime_ = true;
+    for (const auto& field : classDef.getFields()) {
+      checkAnnotationLifetimes(field.type, field.location);
+    }
+    allowThisLifetime_ = savedAllowThis;
+    activeLifetimeNames_.resize(mark);
+  }
+
   // Register in generic class table if this is a generic class or has
   // generic methods (needed for instantiateGenericMethod to find the def)
   if (classDef.isGeneric() || classDef.hasGenericMethods()) {
@@ -81,6 +108,13 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
   // Layout must be decided before any getStructType() call memoizes it
   classType->setPacked(classDef.isPacked());
   classType->visibility = classDef.getVisibility();
+  {
+    std::vector<std::string> lifetimeNames;
+    for (const auto& lp : classDef.getLifetimeParameters()) {
+      lifetimeNames.push_back(lp.name);
+    }
+    classType->setLifetimeParams(std::move(lifetimeNames));
+  }
 
   // Register the class BEFORE processing fields to allow self-referential
   // types (e.g., var next: raw_ptr<Node> inside class Node)
@@ -137,6 +171,12 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
   // Enter a Class scope to contain all method scopes in the tree
   ctx_.enterClassScope(qualifiedClass);
 
+  // The class's lifetime names are usable in every member signature
+  size_t classLifetimeMark = activeLifetimeNames_.size();
+  for (const auto& lp : classDef.getLifetimeParameters()) {
+    activeLifetimeNames_.push_back(lp.name);
+  }
+
   // PASS 1: Make the (already registered) method signatures resolvable
   // by mangled name inside the class scope
   for (const auto& methodDecl : classDef.getMethods()) {
@@ -183,6 +223,7 @@ void SemanticAnalyzer::analyzeClassDefinition(ClassDefinitionAST& classDef) {
   // Validate interface implementations
   validateInterfaceImplementation(classDef, classType);
 
+  activeLifetimeNames_.resize(classLifetimeMark);
   ctx_.exitScope();  // Class scope
 
   // Restore old class context
@@ -244,6 +285,34 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
                         methodDecl.function->getLocation());
   }
 
+  // Lifetime declarations must be distinct, and every lifetime a member
+  // names must be the builtin 'this or declared on the interface
+  for (const auto& lp : interfaceDef.getLifetimeParameters()) {
+    if (std::count_if(interfaceDef.getLifetimeParameters().begin(),
+                      interfaceDef.getLifetimeParameters().end(),
+                      [&](const LifetimeParameter& other) {
+                        return other.name == lp.name;
+                      }) > 1) {
+      logAndThrowError("duplicate lifetime parameter '" + lp.name +
+                           " on interface '" + interfaceDef.getName() + "'",
+                       lp.span);
+    }
+  }
+  size_t interfaceLifetimeMark = activeLifetimeNames_.size();
+  for (const auto& lp : interfaceDef.getLifetimeParameters()) {
+    activeLifetimeNames_.push_back(lp.name);
+  }
+  bool savedAllowThisForInterface = allowThisLifetime_;
+  allowThisLifetime_ = true;
+  for (const auto& field : interfaceDef.getFields()) {
+    checkAnnotationLifetimes(field.type, field.location);
+  }
+  for (const auto& methodDecl : interfaceDef.getMethods()) {
+    checkSignatureLifetimes(methodDecl.function->getProto(),
+                            methodDecl.function->getLocation());
+  }
+  allowThisLifetime_ = savedAllowThisForInterface;
+
   // Handle generic interfaces differently
   if (interfaceDef.isGeneric()) {
     // Register as generic interface template for later instantiation
@@ -262,11 +331,19 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
     ctx_.registerInterface(interfaceDef.getName(), interfaceType);
 
     interfaceDef.setResolvedType(sun::Types::Void());
+    activeLifetimeNames_.resize(interfaceLifetimeMark);
     return;
   }
 
   // Non-generic interface: create the interface type directly
   auto interfaceType = ctx_.types()->getInterface(interfaceName);
+  {
+    std::vector<std::string> lifetimeNames;
+    for (const auto& lp : interfaceDef.getLifetimeParameters()) {
+      lifetimeNames.push_back(lp.name);
+    }
+    interfaceType->setLifetimeParams(std::move(lifetimeNames));
+  }
   // Store the user-written base name for error messages
   if (interfaceName != interfaceDef.getName()) {
     interfaceType->setBaseName(interfaceDef.getName());
@@ -331,6 +408,7 @@ void SemanticAnalyzer::analyzeInterfaceDefinition(
   // Track symbol for redefinition detection
   declarations_.noteDeclared(interfaceName);
 
+  activeLifetimeNames_.resize(interfaceLifetimeMark);
   interfaceDef.setResolvedType(sun::Types::Void());
 }
 
@@ -368,7 +446,13 @@ void SemanticAnalyzer::analyzeFunctionDefinition(FunctionAST& func) {
 void SemanticAnalyzer::analyzeLambdaExpr(LambdaAST& lambda) {
   PrototypeAST& proto = const_cast<PrototypeAST&>(lambda.getProto());
 
-  rejectRefEnvReturnType(proto.getReturnType(), lambda.getLocation());
+  rejectRefEnvReturnType(
+      proto.getReturnType(), lambda.getLocation(),
+      /*allowNamed=*/true);
+
+  // A lambda's own binders and any enclosing binders are both in scope for
+  // its signature.
+  checkSignatureLifetimes(proto, lambda.getLocation());
 
   // Get lambda signature info (pure computation)
   FunctionInfo lambdaInfo = getLambdaInfo(lambda);

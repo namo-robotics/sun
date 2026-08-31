@@ -1,6 +1,6 @@
 // tests/lambdas/generic/test_lambdas.cpp - Lambdas in generic contexts
 //
-// Sun has no generic lambdas: a lambda cannot declare type parameters
+// Sun lambda literals may declare lifetime parameters, but not type parameters
 // (see the parse-error test at the bottom). What this file covers is the
 // feature that does exist - lambdas written inside a generic function or
 // class, where the enclosing type parameter is in scope.
@@ -119,7 +119,7 @@ TEST(Lambdas_Generic, lambda_in_a_generic_class_method) {
 }
 
 TEST(Lambdas_Generic, lambda_type_parameters_are_rejected) {
-  // Lambdas have no type parameter list; `lambda <T> (...)` is a parse error.
+  // Lambdas accept lifetime binders, but `lambda <T> (...) ` is still a parse error.
   EXPECT_THROW(executeString(R"(
         function main() i32 {
             var f = lambda <T> (x: T) T { return x; };
