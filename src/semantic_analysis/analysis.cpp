@@ -846,7 +846,7 @@ static void checkAllPathsReturn(const PrototypeAST& proto,
       loc);
 }
 
-// A bare '[ref]' lambda type cannot be a return type: which frame the
+// An anonymous `<'_>` lambda type cannot be a return type: which frame the
 // returned value's environment lives in cannot be told apart from the frame
 // that is dying. A NAMED lifetime unpins it - 'function pick<'a>(...)
 // <'a>() -> i32' ties the result to frames the caller can see - so
@@ -856,16 +856,20 @@ void SemanticAnalyzer::rejectRefEnvReturnType(
     const std::optional<TypeAnnotation>& returnType, const Position& location,
     bool allowNamed) {
   if (returnType && returnType->refEnv) {
-    if (allowNamed && !returnType->lifetimeName.empty()) return;
-    if (!returnType->lifetimeName.empty()) {
+    if (allowNamed && !returnType->lifetimeName.empty() &&
+        returnType->lifetimeName != "_") {
+      return;
+    }
+    if (!returnType->lifetimeName.empty() &&
+        returnType->lifetimeName != "_") {
       logAndThrowError(
-          "a '[ref]' lambda type cannot be a lambda's return type, even "
+          "a frame-bound lambda type cannot be a lambda's return type, even "
           "with a lifetime name - only named functions and methods declare "
           "lifetimes",
           location);
     }
     logAndThrowError(
-        "a '[ref]' lambda type cannot be a return type - its captured "
+        "an anonymous <'_> lambda type cannot be a return type - its captured "
         "environment lives in a stack frame that dies when the function "
         "returns. Name the frame with a lifetime to allow it: "
         "function f<'a>(x: <'a>() -> i32) <'a>() -> i32",
@@ -879,6 +883,7 @@ void SemanticAnalyzer::rejectRefEnvReturnType(
 void SemanticAnalyzer::checkAnnotationLifetimes(const TypeAnnotation& annot,
                                                 const Position& location) {
   auto checkName = [&](const std::string& name) {
+    if (name == "_") return;
     if (name == "this") {
       if (!allowThisLifetime_) {
         logAndThrowError(

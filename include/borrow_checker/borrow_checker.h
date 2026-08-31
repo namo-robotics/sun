@@ -159,13 +159,12 @@ class BorrowChecker {
   // bound so later moves keep the whole journey in check.
   void trackRefHolderStore(const std::string& destName, size_t destDepth,
                            const ExprAST& value, const Position& pos);
-  // Apply noteFrameSourcedLambdaStore to every place a call could keep a
-  // frame-sourced by-value lambda argument: the receiver and each
-  // by-mutable-ref argument
-  void checkFrameSourcedLambdaArgs(const CallExprAST& call,
-                                   const std::vector<TypePtr>& paramTypes);
+  // Conservatively relate callbacks whose generic parameters lost lifetime
+  // names to every receiver and mutable-ref destination the callee can keep.
+  void checkErasedLifetimeLambdaArgs(
+      const CallExprAST& call, const std::vector<TypePtr>& paramTypes);
   // Does this type point into storage it does not own - a reference in any
-  // field, transitively, or a '[ref]' lambda environment it can carry?
+  // field, transitively, or a '<'_>' lambda environment it can carry?
   bool classStoresRefs(const TypePtr& type) const;
   bool classStoresRefsWalk(const TypePtr& type,
                            std::unordered_set<const Type*>& visited) const;
@@ -241,7 +240,7 @@ class BorrowChecker {
   // a global - and nothing in the parameter type says so). The lambda's own
   // capture loans pin the borrowed variables until scope exit; this set is
   // what keeps the value from outliving them. Lambdas themselves carry the
-  // frame binding in their `[ref]` type, but the type does not say WHICH
+  // frame binding in their `<'_>` type, but the type does not say WHICH
   // frame - so lambda-typed locals sourced from THIS frame are tracked in
   // frameSourcedLambdas_ below, and objects such a lambda was stored into
   // land here, keeping the carrier from crossing a call boundary either.
@@ -251,7 +250,7 @@ class BorrowChecker {
 
   // Lambda-typed locals whose captured environment provably lives in THIS
   // frame: assigned from a capture-list literal, or from a bound method of
-  // a frame-local receiver. A `[ref]` value received as a parameter is NOT
+  // a frame-local receiver. A `<'_>` value received as a parameter is NOT
   // here - its environment lives in some ancestor frame, which outlives
   // this one, so it may be stored anywhere its type allows. A frame-sourced
   // one must not reach a destination that outlives the frame: not a field

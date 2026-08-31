@@ -377,7 +377,7 @@ class LambdaType : public Type {
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;
   bool canThrow_ = false;  // declared with 'throws IError' — may unwind
-  // Part of the type's identity: '[ref]() -> T' in source. True when the
+  // Part of the type's identity: `<'_>() -> T` in source. True when the
   // lambda carries a captured environment that lives in a stack frame
   // (capture lists, bound methods). A plain '() -> T' is reserved for
   // environment-free lambdas, so this is what keeps a frame-bound lambda
@@ -408,7 +408,7 @@ class LambdaType : public Type {
 
 
   std::string toString() const override {
-    std::string result = hasRefCaptures_ ? "[ref](" : "(";
+    std::string result = hasRefCaptures_ ? "<'_>(" : "(";
     for (size_t i = 0; i < paramTypes.size(); ++i) {
       if (i > 0) result += ", ";
       result += paramTypes[i]->toString();
@@ -419,7 +419,7 @@ class LambdaType : public Type {
   }
 
   std::string toDisplayString() const override {
-    std::string result = hasRefCaptures_ ? "[ref](" : "(";
+    std::string result = hasRefCaptures_ ? "<'_>(" : "(";
     for (size_t i = 0; i < paramTypes.size(); ++i) {
       if (i > 0) result += ", ";
       result += paramTypes[i]->toDisplayString();
@@ -443,9 +443,9 @@ class LambdaType : public Type {
     return false;
   }
 
-  // Same signature ignoring throwing-ness and the [ref] marker. Used by the
+  // Same signature ignoring throwing-ness and the lifetime marker. Used by the
   // bound-method overload chooser, which picks a method by shape before the
-  // chosen value is flagged [ref]; assignability does the rejecting later.
+  // chosen value is flagged as frame-bound; assignability rejects it later.
   bool equalsIgnoringThrow(const LambdaType& other) const {
     if (!returnType->equals(*other.returnType)) return false;
     if (paramTypes.size() != other.paramTypes.size()) return false;
@@ -458,7 +458,7 @@ class LambdaType : public Type {
   // Can a by-value 'from' argument bind to a parameter of this type?
   // Same signature, and each marker only widens: a non-throwing lambda may
   // go where a throwing one is expected, and an environment-free lambda may
-  // go where a '[ref]' one is expected — never the other way around.
+  // go where a '<'_>' one is expected — never the other way around.
   bool acceptsValueOf(const LambdaType& from) const {
     if (!equalsIgnoringThrow(from)) return false;
     if (!canThrow_ && from.canThrow_) return false;
@@ -1424,7 +1424,7 @@ class ClassType : public Type {
         }
 
         // Lambda widening: non-throwing where throwing is expected, and
-        // environment-free where '[ref]' is expected
+        // environment-free where '<'_>' is expected
         if (method.paramTypes[i]->isLambda() && argTypes[i]->isLambda()) {
           auto* paramL =
               static_cast<const LambdaType*>(method.paramTypes[i].get());
@@ -2590,7 +2590,7 @@ inline bool typeNeedsDrop(const TypePtr& type) {
 }
 
 // True if a value of this type may carry a lambda environment that lives in
-// a stack frame: a '[ref]' lambda, or anything that can transitively hold
+// a stack frame: a '<'_>' lambda, or anything that can transitively hold
 // one — a class through its fields or generic type arguments (containers
 // hide elements behind raw storage, so the arguments must count), a payload
 // enum, an array. Such a value must not outlive the frame it was built in.
@@ -2654,7 +2654,7 @@ inline bool typeIsFrameCarrying(const TypePtr& type) {
 // Lifetime names are relative to one signature's lifetime list; a type that
 // crosses into another namespace - a generic type-parameter binding, whose
 // specialization is shared by every caller - must not carry them along.
-// The [ref] marker itself is identity and stays.
+// The <'_> marker itself is identity and stays.
 inline TypePtr eraseLifetimeNames(const TypePtr& type) {
   if (!type) return type;
   if (auto* lt = dynamic_cast<const LambdaType*>(type.get())) {

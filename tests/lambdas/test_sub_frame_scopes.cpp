@@ -1,6 +1,6 @@
 // tests/lambdas/test_sub_frame_scopes.cpp - Sub-frame scope tracking
 //
-// The frame rules make a '[ref]' lambda's environment safe at frame
+// The frame rules make a '<'_>' lambda's environment safe at frame
 // granularity; these tests cover the finer grain (issue #178): a value
 // pinned to an inner scope must not be stored into a destination declared
 // in an outer one, even though both live in the same frame. Covers the
@@ -19,9 +19,9 @@
 TEST(Lambdas_SubFrameScopes, outer_bus_rejects_inner_scoped_bound_method) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Bus {
-        var cb: [ref]() -> i32;
+        var cb: <'_>() -> i32;
         init() { this.cb = lambda () i32 { return 0; }; }
-        public method subscribe(cb: [ref]() -> i32) void { this.cb = cb; return; }
+        public method subscribe(cb: <'this>() -> i32) void { this.cb = cb; return; }
         public method publish() i32 { var f = this.cb; return f(); }
     }
     class Node {
@@ -45,9 +45,9 @@ TEST(Lambdas_SubFrameScopes, outer_bus_rejects_inner_scoped_bound_method) {
 TEST(Lambdas_SubFrameScopes, outer_bus_rejects_inner_scoped_capture) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Bus {
-        var cb: [ref]() -> i32;
+        var cb: <'_>() -> i32;
         init() { this.cb = lambda () i32 { return 0; }; }
-        public method subscribe(cb: [ref]() -> i32) void { this.cb = cb; return; }
+        public method subscribe(cb: <'this>() -> i32) void { this.cb = cb; return; }
     }
     function main() i32 {
         var bus = Bus();
@@ -65,7 +65,7 @@ TEST(Lambdas_SubFrameScopes, outer_bus_rejects_inner_scoped_capture) {
 TEST(Lambdas_SubFrameScopes, outer_lambda_var_rejects_inner_scoped_capture) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     function main() i32 {
-        var f: [ref]() -> i32 = lambda () i32 { return 0; };
+        var f: <'_>() -> i32 = lambda () i32 { return 0; };
         if (true) {
             var x = 3;
             f = lambda [ref x]() i32 { return x; };
@@ -80,9 +80,9 @@ TEST(Lambdas_SubFrameScopes, outer_lambda_var_rejects_inner_scoped_capture) {
 TEST(Lambdas_SubFrameScopes, outer_bus_rejects_loop_local_bound_method) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Bus {
-        var cb: [ref]() -> i32;
+        var cb: <'_>() -> i32;
         init() { this.cb = lambda () i32 { return 0; }; }
-        public method subscribe(cb: [ref]() -> i32) void { this.cb = cb; return; }
+        public method subscribe(cb: <'this>() -> i32) void { this.cb = cb; return; }
     }
     class Node {
         var v: i32;
@@ -111,9 +111,9 @@ TEST(Lambdas_SubFrameScopes, outer_bus_rejects_loop_local_bound_method) {
 TEST(Lambdas_SubFrameScopes, same_scope_subscribe_inside_block_accepted) {
   auto value = executeString(R"(
     class Bus {
-        var cb: [ref](i32) -> i32;
+        var cb: <'_>(i32) -> i32;
         init() { this.cb = lambda (x: i32) i32 { return x; }; }
-        public method subscribe(cb: [ref](i32) -> i32) void { this.cb = cb; return; }
+        public method subscribe(cb: <'this>(i32) -> i32) void { this.cb = cb; return; }
         public method publish(x: i32) i32 { var f = this.cb; return f(x); }
     }
     class Node {
@@ -140,9 +140,9 @@ TEST(Lambdas_SubFrameScopes, same_scope_subscribe_inside_block_accepted) {
 TEST(Lambdas_SubFrameScopes, inner_bus_accepts_outer_scoped_handler) {
   auto value = executeString(R"(
     class Bus {
-        var cb: [ref](i32) -> i32;
+        var cb: <'_>(i32) -> i32;
         init() { this.cb = lambda (x: i32) i32 { return x; }; }
-        public method subscribe(cb: [ref](i32) -> i32) void { this.cb = cb; return; }
+        public method subscribe(cb: <'this>(i32) -> i32) void { this.cb = cb; return; }
         public method publish(x: i32) i32 { var f = this.cb; return f(x); }
     }
     class Node {
@@ -169,9 +169,9 @@ TEST(Lambdas_SubFrameScopes, inner_bus_accepts_outer_scoped_handler) {
 TEST(Lambdas_SubFrameScopes, branch_position_does_not_pin_outer_names) {
   auto value = executeString(R"(
     class Bus {
-        var cb: [ref](i32) -> i32;
+        var cb: <'_>(i32) -> i32;
         init() { this.cb = lambda (x: i32) i32 { return x; }; }
-        public method subscribe(cb: [ref](i32) -> i32) void { this.cb = cb; return; }
+        public method subscribe(cb: <'this>(i32) -> i32) void { this.cb = cb; return; }
         public method publish(x: i32) i32 { var f = this.cb; return f(x); }
     }
     class Node {
@@ -191,12 +191,12 @@ TEST(Lambdas_SubFrameScopes, branch_position_does_not_pin_outer_names) {
   EXPECT_EQ(value, 42);
 }
 
-// Same-scope reassignment of a '[ref]' local keeps working.
+// Same-scope reassignment of a '<'_>' local keeps working.
 TEST(Lambdas_SubFrameScopes, outer_lambda_var_accepts_same_scope_capture) {
   auto value = executeString(R"(
     function main() i32 {
         var x = 42;
-        var f: [ref]() -> i32 = lambda () i32 { return 0; };
+        var f: <'_>() -> i32 = lambda () i32 { return 0; };
         f = lambda [ref x]() i32 { return x; };
         return f();
     }

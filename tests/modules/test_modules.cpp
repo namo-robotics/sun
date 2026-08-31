@@ -729,14 +729,14 @@ std::filesystem::path writeMoonLib(const std::string& name,
 
 }  // namespace
 
-// The '[ref]' marker on a lambda-typed parameter must survive the trip
+// The '<'_>' marker on a lambda-typed parameter must survive the trip
 // through a .moon: had serialization dropped it, the imported signature
 // would read as a clean lambda type and reject the capturing argument.
 TEST(Modules, moon_ref_lambda_param_survives_round_trip) {
   initTestEnvironment();
   auto moonPath = writeMoonLib("reflambda", R"(
     public module reflambda {
-        public function apply(f: [ref](i32) -> i32, x: i32) i32 {
+        public function apply(f: <'_>(i32) -> i32, x: i32) i32 {
             return f(x);
         }
     }

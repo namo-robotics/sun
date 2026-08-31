@@ -115,6 +115,9 @@ TypeAnnotation ASTDeserializer::deserializeTypeAnnotation(
   result.constRef = type.const_ref();
   result.refEnv = type.ref_env();
   result.lifetimeName = type.lifetime_name();
+  if (result.refEnv && result.lifetimeName.empty()) {
+    result.lifetimeName = "_";
+  }
   for (const auto& lifetime : type.lifetime_arguments()) {
     result.lifetimeArguments.push_back(lifetime);
   }

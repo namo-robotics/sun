@@ -19,7 +19,7 @@ namespace {
 // outlive the receiver via the builtin 'this.
 constexpr const char* kHolder = R"(
     class Holder {
-        var cb: [ref](i32) -> i32;
+        var cb: <'_>(i32) -> i32;
         init() { this.cb = lambda (x: i32) i32 { return x; }; }
         public method set(cb: <'this>(i32) -> i32) void { this.cb = cb; return; }
         public method call(x: i32) i32 { var f = this.cb; return f(x); }
@@ -194,7 +194,7 @@ TEST(Lambdas_LifetimeChecking, attach_accepts_compatible_scopes) {
 TEST(Lambdas_LifetimeChecking, method_lifetime_cannot_enter_this_field) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Keeper {
-        var cb: [ref]() -> i32;
+        var cb: <'_>() -> i32;
         init() { this.cb = lambda () i32 { return 0; }; }
         public method keep<'a>(cb: <'a>() -> i32) void { this.cb = cb; return; }
     }
@@ -237,7 +237,7 @@ TEST(Lambdas_LifetimeChecking, named_return_result_cannot_escape_scope) {
         return y;
     }
     function main() i32 {
-        var f: [ref]() -> i32 = lambda () i32 { return 0; };
+        var f: <'_>() -> i32 = lambda () i32 { return 0; };
         if (true) {
             var a = 40;
             var b = 2;
@@ -263,10 +263,10 @@ TEST(Lambdas_LifetimeChecking, named_return_rejects_local_capture) {
                                 "Borrow check failed");
 }
 
-// A bare '[ref]' return stays banned; the error suggests naming the frame.
+// A bare '<'_>' return stays banned; the error suggests naming the frame.
 TEST(Lambdas_LifetimeChecking, bare_ref_return_still_banned) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
-    function make() [ref]() -> i32 {
+    function make() <'_>() -> i32 {
         return lambda () i32 { return 0; };
     }
     function main() i32 { return 0; }
@@ -351,7 +351,7 @@ TEST(Lambdas_LifetimeChecking, interface_this_param_enforced_at_call) {
         public method accept(cb: <'this>(i32) -> i32) void;
     }
     class Holder implements ISink {
-        var cb: [ref](i32) -> i32;
+        var cb: <'_>(i32) -> i32;
         init() { this.cb = lambda (x: i32) i32 { return x; }; }
         public method accept(cb: <'this>(i32) -> i32) void { this.cb = cb; return; }
     }
@@ -382,7 +382,7 @@ TEST(Lambdas_LifetimeChecking, interface_lifetime_conformance_required) {
     class Loose implements ISink {
         var x: i32;
         init() { this.x = 0; }
-        public method accept(cb: [ref](i32) -> i32) void { return; }
+        public method accept(cb: <'_>(i32) -> i32) void { return; }
     }
     function main() i32 { return 0; }
   )"),

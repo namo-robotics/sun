@@ -111,6 +111,53 @@ TEST(Lambdas_LifetimeSyntax, char_literals_unaffected) {
   EXPECT_EQ(value, 42);
 }
 
+// An anonymous callback parameter may be called without being related to an
+// unrelated ref argument. This is the false positive the old marker caused.
+TEST(Lambdas_LifetimeSyntax, anonymous_lifetime_does_not_tie_arguments) {
+  auto value = executeString(R"(
+    class Holder {
+        var count: i32;
+        init() { this.count = 0; }
+        public method bump() void { this.count = this.count + 1; return; }
+    }
+    class Node {
+        var value: i32;
+        init(value: i32) { this.value = value; }
+        public method onMsg(x: i32) i32 { return this.value + x; }
+    }
+    function apply(cb: <'_>(i32) -> i32, dst: ref Holder) i32 {
+        dst.bump();
+        return cb(1);
+    }
+    function main() i32 {
+        var h = Holder();
+        if (true) {
+            var n = Node(41);
+            return apply(n.onMsg, h);
+        }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// An anonymous lifetime promises no relationship to the receiver, so a
+// callback-storing method must name the receiver lifetime explicitly.
+TEST(Lambdas_LifetimeSyntax, anonymous_lifetime_store_rejected) {
+  EXPECT_THROW(executeString(R"(
+    class Holder {
+        var cb: <'_>() -> i32;
+        init() { this.cb = lambda () i32 { return 0; }; }
+        public method subscribe(cb: <'_>() -> i32) void {
+            this.cb = cb;
+            return;
+        }
+    }
+    function main() i32 { return 0; }
+  )"),
+               SunError);
+}
+
 // ============================================================================
 // Rejected spellings and names
 // ============================================================================
@@ -131,6 +178,15 @@ TEST(Lambdas_LifetimeSyntax, this_lifetime_outside_class_rejected) {
     function main() i32 { return 0; }
   )"),
                                 "only usable inside class and interface");
+}
+
+// The anonymous lifetime is builtin and cannot be declared.
+TEST(Lambdas_LifetimeSyntax, declaring_anonymous_lifetime_rejected) {
+  EXPECT_THROW(executeString(R"(
+    function f<'_>(g: <'_>() -> i32) i32 { return g(); }
+    function main() i32 { return 0; }
+  )"),
+               SunError);
 }
 
 // 'this is builtin and cannot be declared.
@@ -173,15 +229,15 @@ TEST(Lambdas_LifetimeSyntax, lifetime_after_type_param_rejected) {
                SunError);
 }
 
-// The retired spelling '[ref 'a]' points at the current one.
+// The retired `[ref]` spelling points at the current one.
 TEST(Lambdas_LifetimeSyntax, bracket_lifetime_spelling_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
-    function take<'a>(f: [ref 'a](i32) -> i32, x: i32) i32 {
+    function take(f: [ref](i32) -> i32, x: i32) i32 {
         return f(x);
     }
     function main() i32 { return 0; }
   )"),
-                                "without the '[ref]' marker");
+                                "replaced by lifetime annotations");
 }
 
 // A '<'a>' marker straight after a generic argument list lexes as '<<';

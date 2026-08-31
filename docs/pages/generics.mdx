@@ -271,9 +271,9 @@ function main() i32 {
   Since Sun uses monomorphization, each instantiation of a generic function compiles to specialized code with dead branches eliminated by LLVM.
 </Callout>
 
-Lambda types instantiate generics like any other type, and the `[ref]`
-marker is part of the type: `Box<() -> i32>` and `Box<[ref]() -> i32>` are
-two distinct instantiations. One instantiated over a `[ref]` lambda type is
+Lambda types instantiate generics like any other type, and the `<'_>`
+marker is part of the type: `Box<() -> i32>` and `Box<<'_>() -> i32>` are
+two distinct instantiations. One instantiated over a `<'_>` lambda type is
 frame-carrying as a whole — it works freely inside the frame that built it,
 but cannot be returned or become a global (see
 [Memory Safety](/memory-safety)).

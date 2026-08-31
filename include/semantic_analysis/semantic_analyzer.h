@@ -136,7 +136,7 @@ class SemanticAnalyzer {
   // itself only picks which one to run.
 
   /**
-   * Reject a '[ref]' lambda type in return position: its captured
+   * Reject a '<'_>' lambda type in return position: its captured
    * environment lives in a stack frame that dies when the function returns.
    */
   void rejectRefEnvReturnType(const std::optional<TypeAnnotation> &returnType,

@@ -29,7 +29,7 @@ message TypeAnnotation {
   repeated uint64 array_dimensions = 6;         // For arrays: array<T, 5, 3>
   bool can_error = 7;                           // Error union: T, IError
   bool const_ref = 8;                           // `const ref T`
-  bool ref_env = 9;                             // `[ref]() -> T` lambda type
+  bool ref_env = 9;                             // `<'_>() -> T` lambda type
   string lifetime_name = 10;                    // `<'a>` / `ref 'a T`
   repeated string lifetime_arguments = 11;      // `Bus<'a>` application
 }

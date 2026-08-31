@@ -35,13 +35,13 @@ struct TypeAnnotation {
   // For reference types: `const ref T` (the referent cannot be changed)
   bool constRef = false;
 
-  // For lambda types: `[ref]() -> T` admits lambdas that carry a captured
+  // For lambda types: `<'_>() -> T` admits lambdas that carry a captured
   // environment living in a stack frame; a plain `() -> T` is reserved for
   // environment-free lambdas
   bool refEnv = false;
 
-  // Named lifetime on a `<'a>` lambda type or a `ref 'a T` reference;
-  // empty when elided (bare `[ref]` / `ref T`, today's anonymous lifetime)
+  // Lifetime on a `<'a>` lambda type or a `ref 'a T` reference. The name
+  // "_" is a fresh anonymous lambda lifetime; empty means an elided `ref T`.
   std::string lifetimeName;
 
   // Lifetime arguments applied to a class type: Bus<'a> (written before any
@@ -165,7 +165,7 @@ struct TypeAnnotation {
     }
     if (isLambda()) {
       std::string result =
-          refEnv ? (lifetimeName.empty() ? "[ref](" : "<'" + lifetimeName + ">(")
+          refEnv ? "<'" + (lifetimeName.empty() ? "_" : lifetimeName) + ">("
                  : "(";
       for (size_t i = 0; i < paramTypes.size(); ++i) {
         if (i > 0) result += ", ";

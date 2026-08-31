@@ -198,8 +198,8 @@ interface ISink {
 }
 
 class Holder implements ISink {
-    var cb: [ref](i32) -> i32;
-    /* must say <'this> here too - a plain [ref] is rejected */
+    var cb: <'_>(i32) -> i32;
+    /* must say <'this> here too - a plain <'_> is rejected */
     public method accept(cb: <'this>(i32) -> i32) void { this.cb = cb; }
 }
 ```

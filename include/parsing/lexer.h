@@ -1018,7 +1018,8 @@ class Lexer {
     // right after it is a lifetime; everything else falls through to the
     // table, which owns character literals and their diagnostics.
     if (data[off] == '\'' && off + 1 < size &&
-        std::isalpha(static_cast<unsigned char>(data[off + 1]))) {
+        (std::isalpha(static_cast<unsigned char>(data[off + 1])) ||
+         data[off + 1] == '_')) {
       int nameEnd = off + 1;
       while (nameEnd < size &&
              (std::isalnum(static_cast<unsigned char>(data[nameEnd])) ||

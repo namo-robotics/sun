@@ -714,7 +714,7 @@ void BorrowChecker::reportFrameBoundEscapeThroughCall(const Position& pos) {
 // was moved into) must not cross a call boundary by value: nothing in the
 // parameter's type says the value is frame-bound, so the callee could keep
 // it - in a field, a container element, a global - past this frame's death.
-// A '[ref]' lambda itself may cross: its parameter type carries the frame
+// A '<'_>' lambda itself may cross: its parameter type carries the frame
 // binding, and the callee is checked under the same rules. An argument with
 // no resolved parameter type is treated as by-value, conservatively.
 void BorrowChecker::forbidFrameBoundByValueArgs(
@@ -732,35 +732,53 @@ void BorrowChecker::forbidFrameBoundByValueArgs(
   }
 }
 
-// A frame-sourced lambda passed by value may be kept by the callee - but
-// only somewhere the callee can reach: its receiver, or an argument passed
-// by mutable ref. Each such destination must die with this frame (else the
-// lambda would dangle), and becomes frame-bound when it does. This is what
-// keeps a callee from storing OUR locals' environment up into a caller's
-// object; storing a caller-sourced callback stays legal because parameters
-// are never frame-sourced.
-void BorrowChecker::checkFrameSourcedLambdaArgs(
+// A lambda passed through a parameter with erased lifetime metadata might be
+// kept by the callee. Generic specialization deliberately erases names that
+// belong to another signature, so conservatively treat the receiver and each
+// mutable ref argument as a possible destination. Concrete frame lifetimes pin
+// accepted local destinations; symbolic lifetimes must outlive each possible
+// destination just as an explicit named relationship would require.
+void BorrowChecker::checkErasedLifetimeLambdaArgs(
     const CallExprAST& call, const std::vector<TypePtr>& paramTypes) {
   const auto& args = call.getArgs();
-  bool hasFrameSourced = false;
-  size_t envDepth = functionScopeDepth_;
+  std::vector<std::pair<LifetimeValue, Position>> sources;
   for (size_t i = 0; i < args.size(); ++i) {
     if (!args[i]) continue;
     if (i < paramTypes.size() && paramTypes[i]) {
       if (paramTypes[i]->isReference()) continue;
-      // A parameter with a NAMED lifetime says exactly where its value may
-      // go; checkNamedLifetimesAtCall enforces that, so the blanket rule
-      // stands down for it
+      // Explicit lifetimes are handled by the named-lifetime checker or by
+      // the callee's anonymous-lifetime store checks.
       if (auto* lt = tryGetType<LambdaType>(paramTypes[i])) {
         if (!lt->getLifetimeName().empty()) continue;
       }
     }
-    if (isFrameSourcedLambdaExpr(*args[i])) {
-      hasFrameSourced = true;
-      envDepth = std::max(envDepth, inferEnvDepth(*args[i]));
+    TypePtr argType = args[i]->getResolvedType();
+    auto* argLambda = tryGetType<LambdaType>(argType);
+    if (!argLambda || !argLambda->hasRefCaptures()) continue;
+    LifetimeValue source = inferEnvLifetimeValue(*args[i]);
+    if (source.kind != LifetimeValue::Kind::Outlives) {
+      sources.emplace_back(std::move(source), args[i]->getLocation());
     }
   }
-  if (!hasFrameSourced) return;
+  if (sources.empty()) return;
+
+  auto checkDestination = [&](const std::string& base, const Position& pos) {
+    LifetimeValue destination = destLifetimeValueForName(base);
+    for (const auto& [source, sourcePos] : sources) {
+      if (source.kind == LifetimeValue::Kind::Concrete) {
+        noteFrameSourcedLambdaStore(base, source.depth, pos);
+        continue;
+      }
+      if (lifetimeValueOutlives(source, destination)) continue;
+      reportError(
+          "cannot pass this callback to the call - its erased generic "
+          "parameter may store it in '" +
+              base + "', but lifetime '" + source.name +
+              "' does not provably outlive that destination. Give the "
+              "callback and destination the same named lifetime",
+          sourcePos);
+    }
+  };
 
   // The receiver. A receiver with no named base is a temporary that dies
   // with the statement, which cannot outlive the lambda's environment.
@@ -770,17 +788,15 @@ void BorrowChecker::checkFrameSourcedLambdaArgs(
     const std::string* base = access.getObject()
                                   ? getBaseVariableName(*access.getObject())
                                   : nullptr;
-    if (base) noteFrameSourcedLambdaStore(*base, envDepth, call.getLocation());
+    if (base) checkDestination(*base, call.getLocation());
   }
 
-  // Arguments passed by mutable ref (a const ref cannot be written)
+  // Arguments passed by mutable ref (a const ref cannot be written).
   for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
     if (!args[i] || !paramTypes[i] || !paramTypes[i]->isReference()) continue;
     if (!isMutableRef(paramTypes[i])) continue;
     const std::string* base = getBaseVariableName(*args[i]);
-    if (base) {
-      noteFrameSourcedLambdaStore(*base, envDepth, args[i]->getLocation());
-    }
+    if (base) checkDestination(*base, args[i]->getLocation());
   }
 }
 
@@ -886,7 +902,7 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
     // checks. (Move semantics for lambda-callee arguments are a
     // pre-existing gap, left as they are.)
     forbidFrameBoundByValueArgs(call, lambdaCallee->getParamTypes());
-    checkFrameSourcedLambdaArgs(call, lambdaCallee->getParamTypes());
+    checkErasedLifetimeLambdaArgs(call, lambdaCallee->getParamTypes());
     checkNamedLifetimesAtCall(call, lambdaCallee->getParamTypes());
     return;
   } else {
@@ -894,7 +910,7 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
   }
 
   forbidFrameBoundByValueArgs(call, paramTypes);
-  checkFrameSourcedLambdaArgs(call, paramTypes);
+  checkErasedLifetimeLambdaArgs(call, paramTypes);
   checkNamedLifetimesAtCall(call, paramTypes);
 
   for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
@@ -1144,9 +1160,9 @@ const std::string* BorrowChecker::movedFieldOf(const std::string& name) const {
 }
 
 // Does this type point into storage it does not own? Either a class holding
-// a reference anywhere in its fields, or any type that can carry a '[ref]'
-// lambda's captured environment (a [ref] field, a container instantiated
-// over a [ref] lambda type, a payload enum holding one). Such a value is
+// a reference anywhere in its fields, or any type that can carry a '<'_>'
+// lambda's captured environment (a <'_> field, a container instantiated
+// over a <'_> lambda type, a payload enum holding one). Such a value is
 // itself borrow-like and must not leave the frame.
 bool BorrowChecker::classStoresRefs(const TypePtr& type) const {
   if (sun::typeIsFrameCarrying(type)) return true;
@@ -1343,14 +1359,14 @@ void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
   // lends the value out, so nothing moves.
   auto retType = value->getResolvedType();
 
-  // A value that stores references, or carries a '[ref]' lambda's captured
+  // A value that stores references, or carries a '<'_>' lambda's captured
   // environment, must not escape by value: what it points into lives in
   // this frame and dies when the function returns
   if (!returnMatchesNamedLifetime && retType && !retType->isReference() &&
       classStoresRefs(retType)) {
     const auto& pos = ret.getLocation();
     reportError(
-        "cannot return a value that stores references or a '[ref]' lambda - "
+        "cannot return a value that stores references or a '<'_>' lambda - "
         "what it points into lives in this frame and dies when the function "
         "returns", pos);
   }
@@ -1497,7 +1513,7 @@ bool BorrowChecker::isFrameBoundExpr(const ExprAST& expr) const {
     }
     return false;
   }
-  // An explicitly instantiated call (Box<[ref]() -> i32>(...)) is the same
+  // An explicitly instantiated call (Box<<'_>() -> i32>(...)) is the same
   // shape as a plain call for this purpose
   if (e->getType() == ASTNodeType::GENERIC_CALL) {
     const auto& gcall = static_cast<const GenericCallAST&>(*e);
@@ -1521,9 +1537,9 @@ bool BorrowChecker::isFrameBoundExpr(const ExprAST& expr) const {
 // A lambda whose captured environment provably lives in THIS frame: a
 // capture-list literal (its environment is built here), a bound method of a
 // frame-local receiver (the receiver dies with this frame), or a local one
-// of those was assigned to. A '[ref]' value received as a parameter is NOT
+// of those was assigned to. A '<'_>' value received as a parameter is NOT
 // frame-sourced: its environment lives in an ancestor frame that outlives
-// this one, which is what lets a callee store a caller's callback.
+// this one, so the callee may call it or keep it in frame-local storage.
 bool BorrowChecker::isFrameSourcedLambdaExpr(const ExprAST& expr) const {
   const ExprAST* e = &expr;
   while (e->getType() == ASTNodeType::PAREN_EXPR) {
@@ -1936,7 +1952,10 @@ void BorrowChecker::checkNamedLifetimesAtCall(
   for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
     if (!args[i] || !paramTypes[i]) continue;
     if (auto* lt = tryGetType<LambdaType>(paramTypes[i])) {
-      if (!lt->hasRefCaptures() || lt->getLifetimeName().empty()) continue;
+      if (!lt->hasRefCaptures() || lt->getLifetimeName().empty() ||
+          lt->getLifetimeName() == "_") {
+        continue;
+      }
       const std::string& name = lt->getLifetimeName();
       sources[name].push_back(
           {inferEnvLifetimeValue(*args[i]), args[i]->getLocation(), i});
@@ -2474,9 +2493,9 @@ void BorrowChecker::checkMemberAssignment(const MemberAssignmentAST& assign) {
     // A field lets the value outlive this frame with its object, so a
     // value-tracked frame-bound compound is rejected: a Thread handle from
     // spawn, or a local one was moved into. This is what keeps
-    // `this.t = spawn(lambda [ref x] ...)` from outliving x. A '[ref]'
+    // `this.t = spawn(lambda [ref x] ...)` from outliving x. A '<'_>'
     // lambda itself is type-tracked instead: sema only lets it into a
-    // '[ref]' field, which makes the whole class frame-carrying
+    // '<'_>' field, which makes the whole class frame-carrying
     // (classStoresRefs), so the object cannot leave the frame either.
     if (isFrameBoundExpr(*assign.getValue())) {
       reportError(
@@ -2487,7 +2506,7 @@ void BorrowChecker::checkMemberAssignment(const MemberAssignmentAST& assign) {
           assign.getLocation());
     }
 
-    // A frame-sourced '[ref]' lambda may enter a field only when the object
+    // A frame-sourced '<'_>' lambda may enter a field only when the object
     // dies with this frame; the object then carries the frame binding. A
     // field of `this` or of an object behind a ref parameter outlives it.
     if (isFrameSourcedLambdaExpr(*assign.getValue()) && assign.getObject()) {
@@ -2577,7 +2596,7 @@ void BorrowChecker::checkIndexedAssignment(const IndexedAssignmentAST& assign) {
           assign.getLocation());
     }
 
-    // A frame-sourced '[ref]' lambda entering an element: same rule as a
+    // A frame-sourced '<'_>' lambda entering an element: same rule as a
     // field store - the container must die with this frame
     if (isFrameSourcedLambdaExpr(*assign.getValue()) && assign.getTarget()) {
       const std::string* base = getBaseVariableName(*assign.getTarget());

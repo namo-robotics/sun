@@ -56,7 +56,7 @@ std::string QualifiedName::canonicalTypeString(const TypePtr& type,
 
   if (type->isLambda()) {
     auto* lamType = static_cast<const LambdaType*>(type.get());
-    std::string result = lamType->hasRefCaptures() ? "[ref](" : "(";
+    std::string result = lamType->hasRefCaptures() ? "<'_>(" : "(";
     const auto& params = lamType->getParamTypes();
     for (size_t i = 0; i < params.size(); ++i) {
       if (i > 0) result += ", ";

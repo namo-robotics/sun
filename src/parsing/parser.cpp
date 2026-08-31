@@ -788,7 +788,7 @@ unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
     getNextToken();  // eat '<'
 
     // Try to parse type arguments (one or more separated by commas). A
-    // lambda type argument starts with '(', '[ref](' or '<'a>(', which a
+    // lambda type argument starts with '(', '<'_>(' or '<'a>(', which a
     // comparison's right operand can also start with, so a failed type
     // parse falls through to the backtrack below rather than reporting an
     // error here.
@@ -1300,6 +1300,14 @@ std::vector<TypeParameter> Parser::parseTypeParameterList(
           "'this is a builtin lifetime and cannot be declared; use it "
           "directly in a class member signature");
     }
+    if (name == "_") {
+      parsingError(
+          "'_ is the anonymous lifetime and cannot be declared; use it "
+          "directly on a lambda type: <'_>(i32) -> i32");
+    }
+    if (name[0] == '_') {
+      parsingError("lifetime names starting with '_' are reserved");
+    }
     lifetimesOut->emplace_back(std::move(name), std::move(span));
     sawLifetime = true;
     getNextToken();  // eat lifetime name
@@ -1393,47 +1401,30 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
     return type;
   }
 
-  // A '[ref]' marker introduces an anonymous frame-bound lambda type:
-  // [ref](i32) -> i32. It admits lambdas that carry a captured environment
-  // living in a stack frame (capture lists, bound methods); a plain
-  // '(...) -> ...' type is reserved for environment-free lambdas. A NAMED
-  // frame is spelled with the lifetime alone: <'a>(i32) -> i32.
+  // A lifetime marker introduces a frame-bound lambda type - one whose
+  // value carries a captured environment living in a stack frame (capture
+  // lists, bound methods). <'a>(i32) -> i32 names the frame; <'_>(i32) ->
+  // i32 is a fresh anonymous lifetime related to nothing else. A plain
+  // '(...) -> ...' type is reserved for environment-free lambdas.
   bool refEnvMarker = false;
   std::string refEnvLifetime;
   if (curTok.kind == TokenKind::BRACKET_OPEN) {
-    getNextToken();  // eat '['
-    expectCurrentTokenKind(
-        TokenKind::REF, "expected 'ref' after '[' in a lambda type: "
-                        "[ref](i32) -> i32");
-    getNextToken();  // eat 'ref'
-    if (curTok.kind == TokenKind::LIFETIME) {
-      parsingError(
-          "a named lifetime on a lambda type is written <'" +
-          curTok.getLifetimeName().value() + ">(i32) -> i32, without the "
-          "'[ref]' marker");
-    }
-    expectCurrentTokenKind(
-        TokenKind::BRACKET_CLOSE, "expected ']' after '[ref' in a lambda "
-                                  "type: [ref](i32) -> i32");
-    getNextToken();  // eat ']'
-    expectCurrentTokenKind(
-        TokenKind::PAREN_OPEN, "expected a lambda type after '[ref]': "
-                               "[ref](i32) -> i32");
-    refEnvMarker = true;
+    parsingError(
+        "a frame-bound lambda type is written <'_>(i32) -> i32 (or with a "
+        "named lifetime, <'a>(i32) -> i32); the '[ref]' marker was "
+        "replaced by lifetime annotations");
   } else if (curTok.kind == TokenKind::LESS) {
-    // <'a>(i32) -> i32: a frame-bound lambda type whose frame the
-    // signature names. No type annotation otherwise begins with '<'.
     getNextToken();  // eat '<'
     expectCurrentTokenKind(
         TokenKind::LIFETIME, "expected a lifetime after '<' in a lambda "
-                             "type: <'a>(i32) -> i32");
+                             "type: <'_>(i32) -> i32");
     refEnvLifetime = curTok.getLifetimeName().value();
     getNextToken();  // eat lifetime name
     consumeGreater(
-        "expected '>' after the lifetime in a lambda type: <'a>(i32) -> i32");
+        "expected '>' after the lifetime in a lambda type: <'_>(i32) -> i32");
     expectCurrentTokenKind(
-        TokenKind::PAREN_OPEN, "expected a lambda type after '<'a>': "
-                               "<'a>(i32) -> i32");
+        TokenKind::PAREN_OPEN, "expected a lambda type after the lifetime: "
+                               "<'_>(i32) -> i32");
     refEnvMarker = true;
   }
 
@@ -1549,6 +1540,10 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
     // An optional lifetime names the referent's frame: ref 'a Bus
     if (curTok.kind == TokenKind::LIFETIME) {
       type.lifetimeName = curTok.getLifetimeName().value();
+      if (type.lifetimeName == "_") {
+        parsingError(
+            "a plain 'ref T' is already anonymous; write it without '_");
+      }
       getNextToken();  // eat lifetime name
     }
 
@@ -1667,6 +1662,11 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
       getNextToken();  // eat '<'
 
       while (curTok.kind == TokenKind::LIFETIME) {
+        if (curTok.getLifetimeName().value() == "_") {
+          parsingError(
+              "the anonymous lifetime cannot be applied to a class; omit "
+              "the lifetime arguments instead");
+        }
         type.lifetimeArguments.push_back(curTok.getLifetimeName().value());
         getNextToken();  // eat lifetime name
         if (curTok.kind == TokenKind::COMMA) {
@@ -3523,14 +3523,18 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
     }
   }
 
-  // A '[ref]' prefix marks a frame-bound lambda type. Strip it and mark the
-  // parsed result. (Lambda type strings have no full grammar here; the marker
-  // must still round-trip rather than corrupt the fallback below.)
-  if (cleanType.size() > 6 && cleanType.substr(0, 6) == "[ref](") {
-    std::string inner = cleanType.substr(5);
+  // A `<'_>` prefix marks a frame-bound lambda type in canonical type
+  // strings. Keep reading `[ref]` so existing Moon bundles remain usable.
+  bool anonymousLambda =
+      cleanType.size() > 5 && cleanType.substr(0, 5) == "<'_>(";
+  bool legacyRefLambda =
+      cleanType.size() > 6 && cleanType.substr(0, 6) == "[ref](";
+  if (anonymousLambda || legacyRefLambda) {
+    std::string inner = cleanType.substr(anonymousLambda ? 4 : 5);
     if (canError) inner += " throws IError";
     TypeAnnotation result = parseTypeFromString(inner);
     result.refEnv = true;
+    result.lifetimeName = "_";
     return result;
   }
 

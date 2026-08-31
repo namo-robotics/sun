@@ -106,7 +106,7 @@ sun::TypePtr TypeInferer::substituteTypeParameters(sun::TypePtr type) {
     if (changed) {
       auto substituted =
           sun::Types::Lambda(newRet, std::move(newParams), lt->canThrow());
-      // The [ref] marker is part of the type's identity and must survive
+      // The <'_> marker is part of the type's identity and must survive
       // substitution, or spawn<F>'s specializations would lose it; the
       // lifetime metadata rides along with it
       static_cast<sun::LambdaType*>(substituted.get())
@@ -271,9 +271,10 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
   // Function types: _() {} (named function, direct call)
   if (annot.isFunction()) {
     if (annot.returnType && annot.returnType->refEnv &&
-        annot.returnType->lifetimeName.empty()) {
+        (annot.returnType->lifetimeName.empty() ||
+         annot.returnType->lifetimeName == "_")) {
       logAndThrowError(
-          "a '[ref]' lambda type cannot be a return type - its captured "
+          "an anonymous <'_> lambda type cannot be a return type - its captured "
           "environment lives in a stack frame that dies when the function "
           "returns",
           annot.span);
@@ -291,9 +292,10 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
   // Lambda types: () {} (anonymous function, fat pointer call)
   if (annot.isLambda()) {
     if (annot.returnType && annot.returnType->refEnv &&
-        annot.returnType->lifetimeName.empty()) {
+        (annot.returnType->lifetimeName.empty() ||
+         annot.returnType->lifetimeName == "_")) {
       logAndThrowError(
-          "a '[ref]' lambda type cannot be a return type - its captured "
+          "an anonymous <'_> lambda type cannot be a return type - its captured "
           "environment lives in a stack frame that dies when the function "
           "returns",
           annot.span);
@@ -309,7 +311,7 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
         annot.canError || (annot.returnType && annot.returnType->canError);
     auto lambdaType =
         sun::Types::Lambda(retType, std::move(paramTypes), canThrow);
-    // '[ref](…) -> …' admits lambdas whose captured environment lives in a
+    // `<'_>(…) -> …` admits lambdas whose captured environment lives in a
     // stack frame; a plain annotation admits only environment-free lambdas.
     // A named lifetime ('<'a>') rides along as borrow-checker metadata.
     static_cast<sun::LambdaType*>(lambdaType.get())
