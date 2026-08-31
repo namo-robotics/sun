@@ -3,7 +3,9 @@
 
 #include "borrow_checker/borrow_checker.h"
 
+#include <algorithm>
 #include <cassert>
+#include <map>
 #include <optional>
 
 #include "ast/control_flow.h"
@@ -24,6 +26,8 @@ std::vector<BorrowError> BorrowChecker::check(const BlockExprAST& program) {
   frameBoundVars_.clear();
   frameSourcedLambdas_.clear();
   frameLocalNames_.clear();
+  declDepths_.clear();
+  refHolderBounds_.clear();
   refTypedParams_.clear();
   rawPointerLocals_.clear();
   functionScopeDepth_ = 0;
@@ -165,12 +169,20 @@ void BorrowChecker::checkExpr(const ExprAST& expr) {
       // unknown, every compound argument is a place the callee could keep
       // it, so each must die with this frame
       if (hasFrameSourcedLambda) {
+        size_t envDepth = functionScopeDepth_;
+        for (const auto& arg : gcall.getArgs()) {
+          if (arg && isFrameSourcedLambdaExpr(*arg)) {
+            envDepth = std::max(envDepth, inferEnvDepth(*arg));
+          }
+        }
         for (const auto& arg : gcall.getArgs()) {
           if (!arg || isFrameSourcedLambdaExpr(*arg)) continue;
           auto argType = arg->getResolvedType();
           if (!argType || !argType->isCompound()) continue;
           const std::string* base = getBaseVariableName(*arg);
-          if (base) noteFrameSourcedLambdaStore(*base, arg->getLocation());
+          if (base) {
+            noteFrameSourcedLambdaStore(*base, envDepth, arg->getLocation());
+          }
         }
       }
       break;
@@ -219,21 +231,31 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
   clearFieldPaths(var.getName());
   noteLoopLocal(var.getName());
   frameLocalNames_.insert(var.getName());
+  declDepths_[var.getName()] = currentScope_;
 
   // The new name holds a frame-bound value (see frameBoundVars_) when its
   // initializer is one: a spawn over a capture-list lambda, or another
-  // frame-bound local moved in.
+  // frame-bound local moved in. A fresh declaration is always at least as
+  // deep as its initializer's environment, so no depth check is needed.
   if (var.getValue() && isFrameBoundExpr(*var.getValue())) {
-    frameBoundVars_.insert(var.getName());
+    frameBoundVars_[var.getName()] = inferEnvDepth(*var.getValue());
   } else {
     frameBoundVars_.erase(var.getName());
   }
 
   // A lambda-typed local sourced from this frame (see frameSourcedLambdas_)
   if (var.getValue() && isFrameSourcedLambdaExpr(*var.getValue())) {
-    frameSourcedLambdas_.insert(var.getName());
+    frameSourcedLambdas_[var.getName()] = inferEnvDepth(*var.getValue());
   } else {
     frameSourcedLambdas_.erase(var.getName());
+  }
+
+  // A ref-storing class value landing in a fresh name records the deepest
+  // declaration it borrows, so later moves toward outer scopes are checked.
+  refHolderBounds_.erase(var.getName());
+  if (var.getValue()) {
+    trackRefHolderStore(var.getName(), currentScope_, *var.getValue(),
+                        var.getLocation());
   }
 
   // Remember raw_ptr<T> locals; see rawPointerLocals_. The annotation is read
@@ -521,24 +543,68 @@ void BorrowChecker::checkVariableAssignment(
   if (assign.getValue()) {
     checkExpr(*assign.getValue());
     if (isFrameBoundExpr(*assign.getValue())) {
+      size_t envDepth = inferEnvDepth(*assign.getValue());
       // A module-level global (marked with a qualified name by sema)
       // outlives this frame, so a frame-bound value cannot be stored there
-      if (!assign.getQualifiedName().empty()) {
+      if (!assign.getQualifiedName().empty() || nameOutlivesFrame(varName)) {
         reportError(
-            "cannot assign this value to the global '" + varName +
+            "cannot assign this value to '" + varName +
                 "' - it holds a lambda whose captured environment lives in "
-                "this frame, and the global outlives it. Give the lambda "
-                "its data as arguments instead of captures",
+                "this frame, and '" + varName + "' outlives it. Give the "
+                "lambda its data as arguments instead of captures",
             assign.getLocation());
+      } else if (checkFrameStoreDepth(varName, envDepth,
+                                      assign.getLocation())) {
+        // A frame-bound value (see frameBoundVars_) keeps its restriction
+        // when reassigned to another local
+        auto [it, inserted] = frameBoundVars_.try_emplace(varName, envDepth);
+        if (!inserted) it->second = std::max(it->second, envDepth);
       }
-      // A frame-bound value (see frameBoundVars_) keeps its restriction
-      // when reassigned to another local
-      frameBoundVars_.insert(varName);
     }
-    // A frame-sourced lambda keeps its restriction through reassignment too
+    // A frame-sourced lambda keeps its restriction through reassignment
+    // too. A destination that outlives the frame, or that was declared in
+    // an outer scope than the environment, would dangle.
     if (isFrameSourcedLambdaExpr(*assign.getValue())) {
-      frameSourcedLambdas_.insert(varName);
+      size_t envDepth = inferEnvDepth(*assign.getValue());
+      if (nameOutlivesFrame(varName)) {
+        reportError(
+            "cannot store this lambda in '" + varName +
+                "' - its captured environment lives in this frame, and '" +
+                varName + "' outlives it. Give the lambda its data as "
+                "arguments instead of captures",
+            assign.getLocation());
+      } else if (checkFrameStoreDepth(varName, envDepth,
+                                      assign.getLocation())) {
+        auto [it, inserted] =
+            frameSourcedLambdas_.try_emplace(varName, envDepth);
+        if (!inserted) it->second = std::max(it->second, envDepth);
+      }
     }
+    // A value whose type names a lifetime, written through a name that
+    // outlives the frame (a ref parameter): the destination must carry
+    // the same name - see the field-store rule in checkMemberAssignment
+    if (!isFrameSourcedLambdaExpr(*assign.getValue())) {
+      LifetimeValue env = inferEnvLifetimeValue(*assign.getValue());
+      if (env.kind == LifetimeValue::Kind::Symbolic &&
+          nameOutlivesFrame(varName)) {
+        LifetimeValue dst = destLifetimeValueForName(varName);
+        if (!lifetimeValueOutlives(env, dst)) {
+          reportError(
+              "cannot store this value in '" + varName +
+                  "' - its type ties it to lifetime '" + env.name +
+                  ", and nothing says '" + varName + "' dies first. Give "
+                  "the destination the same lifetime",
+              assign.getLocation());
+        }
+      }
+    }
+
+    // A ref-storing class value must not land in a holder declared in an
+    // outer scope than what it borrows (issue #178, Rule 5's gap).
+    trackRefHolderStore(
+        varName,
+        nameOutlivesFrame(varName) ? 0 : lookupDeclDepth(varName),
+        *assign.getValue(), assign.getLocation());
   }
 
   // Move semantics: if assigning from a compound-typed variable, mark source as
@@ -677,15 +743,21 @@ void BorrowChecker::checkFrameSourcedLambdaArgs(
     const CallExprAST& call, const std::vector<TypePtr>& paramTypes) {
   const auto& args = call.getArgs();
   bool hasFrameSourced = false;
+  size_t envDepth = functionScopeDepth_;
   for (size_t i = 0; i < args.size(); ++i) {
     if (!args[i]) continue;
-    if (i < paramTypes.size() && paramTypes[i] &&
-        paramTypes[i]->isReference()) {
-      continue;
+    if (i < paramTypes.size() && paramTypes[i]) {
+      if (paramTypes[i]->isReference()) continue;
+      // A parameter with a NAMED lifetime says exactly where its value may
+      // go; checkNamedLifetimesAtCall enforces that, so the blanket rule
+      // stands down for it
+      if (auto* lt = tryGetType<LambdaType>(paramTypes[i])) {
+        if (!lt->getLifetimeName().empty()) continue;
+      }
     }
     if (isFrameSourcedLambdaExpr(*args[i])) {
       hasFrameSourced = true;
-      break;
+      envDepth = std::max(envDepth, inferEnvDepth(*args[i]));
     }
   }
   if (!hasFrameSourced) return;
@@ -698,7 +770,7 @@ void BorrowChecker::checkFrameSourcedLambdaArgs(
     const std::string* base = access.getObject()
                                   ? getBaseVariableName(*access.getObject())
                                   : nullptr;
-    if (base) noteFrameSourcedLambdaStore(*base, call.getLocation());
+    if (base) noteFrameSourcedLambdaStore(*base, envDepth, call.getLocation());
   }
 
   // Arguments passed by mutable ref (a const ref cannot be written)
@@ -706,7 +778,9 @@ void BorrowChecker::checkFrameSourcedLambdaArgs(
     if (!args[i] || !paramTypes[i] || !paramTypes[i]->isReference()) continue;
     if (!isMutableRef(paramTypes[i])) continue;
     const std::string* base = getBaseVariableName(*args[i]);
-    if (base) noteFrameSourcedLambdaStore(*base, args[i]->getLocation());
+    if (base) {
+      noteFrameSourcedLambdaStore(*base, envDepth, args[i]->getLocation());
+    }
   }
 }
 
@@ -813,6 +887,7 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
     // pre-existing gap, left as they are.)
     forbidFrameBoundByValueArgs(call, lambdaCallee->getParamTypes());
     checkFrameSourcedLambdaArgs(call, lambdaCallee->getParamTypes());
+    checkNamedLifetimesAtCall(call, lambdaCallee->getParamTypes());
     return;
   } else {
     return;
@@ -820,6 +895,7 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
 
   forbidFrameBoundByValueArgs(call, paramTypes);
   checkFrameSourcedLambdaArgs(call, paramTypes);
+  checkNamedLifetimesAtCall(call, paramTypes);
 
   for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
     const auto& arg = args[i];
@@ -1119,6 +1195,7 @@ void BorrowChecker::checkLoopBody(const ExprAST* body,
   for (const auto& v : loopVars) {
     loopLocals_.back().insert(v);
     frameLocalNames_.insert(v);
+    declDepths_[v] = currentScope_;
   }
 
   checkExpr(*body);
@@ -1227,9 +1304,19 @@ void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
   // Check the return value expression
   checkExpr(*value);
 
+  // A '<'a>' return type unpins the ban: a value whose environment is
+  // symbolically that same lifetime is exactly what the signature promises
+  bool returnMatchesNamedLifetime = false;
+  if (!returnLifetimeName_.empty()) {
+    LifetimeValue env = inferEnvLifetimeValue(*value);
+    returnMatchesNamedLifetime =
+        env.kind == LifetimeValue::Kind::Symbolic &&
+        env.name == returnLifetimeName_;
+  }
+
   // A lambda whose environment is bound to this frame must not escape through
   // return — whether it borrows from the frame or owns a value the frame drops
-  if (isRefCapturingLambdaExpr(*value)) {
+  if (!returnMatchesNamedLifetime && isRefCapturingLambdaExpr(*value)) {
     const auto& pos = ret.getLocation();
     reportError(
         "cannot return a lambda with a capture list - its captured "
@@ -1239,7 +1326,7 @@ void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
   // The same escape one step removed: a value such a lambda was moved into
   // (a Thread handle from spawn) is bound to this frame just as the lambda
   // is - what it captured dies when the function returns
-  if (isFrameBoundExpr(*value)) {
+  if (!returnMatchesNamedLifetime && isFrameBoundExpr(*value)) {
     reportError(
         "cannot return this value - it holds a lambda whose captured "
         "environment lives in this frame and dies when the function returns. "
@@ -1259,7 +1346,8 @@ void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
   // A value that stores references, or carries a '[ref]' lambda's captured
   // environment, must not escape by value: what it points into lives in
   // this frame and dies when the function returns
-  if (retType && !retType->isReference() && classStoresRefs(retType)) {
+  if (!returnMatchesNamedLifetime && retType && !retType->isReference() &&
+      classStoresRefs(retType)) {
     const auto& pos = ret.getLocation();
     reportError(
         "cannot return a value that stores references or a '[ref]' lambda - "
@@ -1336,7 +1424,25 @@ void BorrowChecker::checkFunctionDef(const FunctionAST& func) {
       state_.setLifetime(argName, paramLt);
     } else {
       frameLocalNames_.insert(argName);
+      declDepths_[argName] = currentScope_;
     }
+    // Record the signature's named lifetimes for call-site, store and
+    // return checks
+    if (argType.isLambda() && argType.refEnv && !argType.lifetimeName.empty()) {
+      paramEnvNames_[argName] = argType.lifetimeName;
+    }
+    if (argType.isReference() && !argType.lifetimeName.empty()) {
+      refParamNames_[argName] = argType.lifetimeName;
+    }
+    if (argType.isReference() && argType.elementType &&
+        !argType.elementType->lifetimeArguments.empty()) {
+      refParamClassBindings_[argName] =
+          argType.elementType->lifetimeArguments;
+    }
+  }
+  if (proto.hasReturnType() && proto.getReturnType()->isLambda() &&
+      proto.getReturnType()->refEnv) {
+    returnLifetimeName_ = proto.getReturnType()->lifetimeName;
   }
 
   // Check the function body (skip for extern declarations)
@@ -1441,6 +1547,15 @@ bool BorrowChecker::isFrameSourcedLambdaExpr(const ExprAST& expr) const {
       return base && !nameOutlivesFrame(*base);
     }
   }
+  // A call returning a named '<'a>' lambda is frame-sourced exactly
+  // when the arguments bound to 'a pin it to this frame
+  if (e->getType() == ASTNodeType::CALL) {
+    auto type = e->getResolvedType();
+    if (type && type->isLambda() &&
+        static_cast<const sun::LambdaType*>(type.get())->hasRefCaptures()) {
+      return inferEnvLifetimeValue(*e).kind == LifetimeValue::Kind::Concrete;
+    }
+  }
   return false;
 }
 
@@ -1455,11 +1570,144 @@ bool BorrowChecker::nameOutlivesFrame(const std::string& base) const {
   return frameLocalNames_.count(target) == 0;
 }
 
+// The declaration depth of the named storage. Ref aliases resolve to their
+// ultimate target; anything that outlives the frame ranks as 0.
+size_t BorrowChecker::lookupDeclDepth(const std::string& name) const {
+  if (name == "this") return 0;
+  auto info = resolveRefTarget(name);
+  if (info.isRefParam || info.actualTarget == "this") return 0;
+  auto it = declDepths_.find(info.actualTarget);
+  return it != declDepths_.end() ? it->second : 0;
+}
+
+// The scope depth a frame-sourced value's environment is pinned to. A
+// capture-list literal is pinned to the deepest declaration among its
+// borrowed variables (owned captures move in and add no dependency); a
+// bound method to its receiver's declaration; a tracked local to its
+// recorded bound. functionScopeDepth_ means "valid anywhere in the frame".
+size_t BorrowChecker::inferEnvDepth(const ExprAST& expr) const {
+  const ExprAST* e = &expr;
+  while (e->getType() == ASTNodeType::PAREN_EXPR) {
+    e = static_cast<const ParenExprAST&>(*e).getInner();
+  }
+  switch (e->getType()) {
+    case ASTNodeType::LAMBDA: {
+      size_t depth = functionScopeDepth_;
+      for (const auto& cap :
+           static_cast<const LambdaAST&>(*e).getProto().getCaptures()) {
+        if (cap.kind != CaptureKind::Borrow) continue;
+        depth = std::max(depth, lookupDeclDepth(cap.name));
+      }
+      return depth;
+    }
+    case ASTNodeType::VARIABLE_REFERENCE: {
+      const std::string& name =
+          static_cast<const VariableReferenceAST&>(*e).getName();
+      if (auto it = frameSourcedLambdas_.find(name);
+          it != frameSourcedLambdas_.end()) {
+        return std::max(functionScopeDepth_, it->second);
+      }
+      if (auto it = frameBoundVars_.find(name); it != frameBoundVars_.end()) {
+        return std::max(functionScopeDepth_, it->second);
+      }
+      return functionScopeDepth_;
+    }
+    case ASTNodeType::MEMBER_ACCESS: {
+      // A bound method's environment is its receiver
+      const auto& access = static_cast<const MemberAccessAST&>(*e);
+      const std::string* base = access.getObject()
+                                    ? getBaseVariableName(*access.getObject())
+                                    : nullptr;
+      return base ? std::max(functionScopeDepth_, lookupDeclDepth(*base))
+                  : functionScopeDepth_;
+    }
+    case ASTNodeType::ARRAY_LITERAL: {
+      size_t depth = functionScopeDepth_;
+      for (const auto& elem :
+           static_cast<const ArrayLiteralAST&>(*e).getElements()) {
+        if (!elem) continue;
+        if (isFrameBoundExpr(*elem) || isFrameSourcedLambdaExpr(*elem)) {
+          depth = std::max(depth, inferEnvDepth(*elem));
+        }
+      }
+      return depth;
+    }
+    case ASTNodeType::STRUCT_LITERAL: {
+      size_t depth = functionScopeDepth_;
+      for (const auto& field :
+           static_cast<const StructLiteralAST&>(*e).getFields()) {
+        if (!field.value) continue;
+        if (isFrameBoundExpr(*field.value) ||
+            isFrameSourcedLambdaExpr(*field.value)) {
+          depth = std::max(depth, inferEnvDepth(*field.value));
+        }
+      }
+      return depth;
+    }
+    case ASTNodeType::CALL: {
+      // A call returning a named '<'a>' lambda: the environment's
+      // bound was computed from the arguments tied to 'a
+      TypePtr resultType = e->getResolvedType();
+      if (resultType && resultType->isLambda()) {
+        LifetimeValue env = inferEnvLifetimeValue(*e);
+        return env.kind == LifetimeValue::Kind::Concrete
+                   ? std::max(functionScopeDepth_, env.depth)
+                   : functionScopeDepth_;
+      }
+      // A compound result built from a capture-list lambda (spawn):
+      // pinned wherever the buried environments are
+      size_t depth = functionScopeDepth_;
+      for (const auto& arg : static_cast<const CallExprAST&>(*e).getArgs()) {
+        if (arg && isRefCapturingLambdaExpr(*arg)) {
+          depth = std::max(depth, inferEnvDepth(*arg));
+        }
+      }
+      return depth;
+    }
+    case ASTNodeType::GENERIC_CALL: {
+      size_t depth = functionScopeDepth_;
+      for (const auto& arg :
+           static_cast<const GenericCallAST&>(*e).getArgs()) {
+        if (arg && isRefCapturingLambdaExpr(*arg)) {
+          depth = std::max(depth, inferEnvDepth(*arg));
+        }
+      }
+      return depth;
+    }
+    default:
+      return functionScopeDepth_;
+  }
+}
+
+// A frame-sourced environment pinned at envDepth is entering the named
+// frame-local destination. A destination declared in an outer scope
+// outlives the environment, so the store would dangle once the inner scope
+// ends - the sub-frame hole of issue #178.
+bool BorrowChecker::checkFrameStoreDepth(const std::string& destBase,
+                                         size_t envDepth,
+                                         const Position& pos) {
+  size_t destDepth = lookupDeclDepth(destBase);
+  if (destDepth == 0) return true;  // outlives the frame: callers reject it
+  if (destDepth < envDepth) {
+    reportError(
+        "cannot store this lambda in '" + destBase + "' - '" + destBase +
+            "' is declared in an outer scope and outlives the lambda's "
+            "captured environment. Declare '" + destBase +
+            "' alongside what the lambda captures, or give the lambda its "
+            "data as arguments instead of captures",
+        pos);
+    return false;
+  }
+  return true;
+}
+
 // A frame-sourced lambda is entering the named destination. A destination
-// that outlives the frame would let the lambda dangle, so it is rejected; a
-// frame-local one becomes frame-bound itself, so the carrier object cannot
+// that outlives the frame - or that is declared in an outer scope than the
+// lambda's environment - would let the lambda dangle, so it is rejected; an
+// accepted one becomes frame-bound itself, so the carrier object cannot
 // cross a call boundary and smuggle the lambda onward.
 void BorrowChecker::noteFrameSourcedLambdaStore(const std::string& destBase,
+                                                size_t envDepth,
                                                 const Position& pos) {
   if (nameOutlivesFrame(destBase)) {
     reportError(
@@ -1470,7 +1718,506 @@ void BorrowChecker::noteFrameSourcedLambdaStore(const std::string& destBase,
         pos);
     return;
   }
-  frameBoundVars_.insert(resolveRefTarget(destBase).actualTarget);
+  if (!checkFrameStoreDepth(destBase, envDepth, pos)) return;
+  const std::string target = resolveRefTarget(destBase).actualTarget;
+  auto [it, inserted] = frameBoundVars_.try_emplace(target, envDepth);
+  if (!inserted) it->second = std::max(it->second, envDepth);
+}
+
+// A source value provably lives at least as long as the destination when
+// it outlives the frame entirely, when both carry the same signature
+// lifetime, or when both are pinned to scopes of this frame and the
+// source's scope encloses the destination's. A symbolic source outlives
+// any frame-local destination (signature lifetimes name ancestor frames),
+// but never an unrelated symbolic or elided destination.
+bool BorrowChecker::lifetimeValueOutlives(const LifetimeValue& src,
+                                          const LifetimeValue& dst) {
+  if (src.kind == LifetimeValue::Kind::Outlives) return true;
+  if (dst.kind == LifetimeValue::Kind::Concrete) {
+    return src.kind == LifetimeValue::Kind::Symbolic || src.depth <= dst.depth;
+  }
+  if (dst.kind == LifetimeValue::Kind::Symbolic) {
+    return src.kind == LifetimeValue::Kind::Symbolic && src.name == dst.name;
+  }
+  return false;  // dst outlives the frame; src is frame-pinned or unrelated
+}
+
+// The lifetime of the captured environment an expression's value carries.
+BorrowChecker::LifetimeValue BorrowChecker::inferEnvLifetimeValue(
+    const ExprAST& expr) const {
+  const ExprAST* e = &expr;
+  while (e->getType() == ASTNodeType::PAREN_EXPR) {
+    e = static_cast<const ParenExprAST&>(*e).getInner();
+  }
+
+  if (e->getType() == ASTNodeType::VARIABLE_REFERENCE) {
+    const std::string& name =
+        static_cast<const VariableReferenceAST&>(*e).getName();
+    if (frameSourcedLambdas_.count(name) || frameBoundVars_.count(name)) {
+      return {LifetimeValue::Kind::Concrete, inferEnvDepth(*e), "", name};
+    }
+    // A value that carries a named lifetime in its type - a parameter, or
+    // a local it was copied into - stays symbolic
+    TypePtr type = e->getResolvedType();
+    if (auto* lt = tryGetType<LambdaType>(type)) {
+      if (lt->hasRefCaptures() && !lt->getLifetimeName().empty()) {
+        return {LifetimeValue::Kind::Symbolic, 0, lt->getLifetimeName(), name};
+      }
+      if (lt->hasRefCaptures()) {
+        return {LifetimeValue::Kind::Outlives, 0, "", name};
+      }
+    }
+    return {LifetimeValue::Kind::Outlives, 0, "", name};
+  }
+
+  if (e->getType() == ASTNodeType::LAMBDA) {
+    return {LifetimeValue::Kind::Concrete, inferEnvDepth(*e), "", "lambda"};
+  }
+
+  if (e->getType() == ASTNodeType::MEMBER_ACCESS) {
+    // A bound method's environment is its receiver
+    TypePtr type = e->getResolvedType();
+    auto* lt = tryGetType<LambdaType>(type);
+    if (!lt || !lt->hasRefCaptures()) {
+      return {LifetimeValue::Kind::Outlives, 0, "", ""};
+    }
+    const auto& access = static_cast<const MemberAccessAST&>(*e);
+    const std::string* base = access.getObject()
+                                  ? getBaseVariableName(*access.getObject())
+                                  : nullptr;
+    if (!base) return {LifetimeValue::Kind::Outlives, 0, "", ""};
+    if (*base == "this" || resolveRefTarget(*base).actualTarget == "this") {
+      return {LifetimeValue::Kind::Symbolic, 0, "this", *base};
+    }
+    auto info = resolveRefTarget(*base);
+    if (info.isRefParam) {
+      std::string paramName = info.actualTarget.rfind("param:", 0) == 0
+                                  ? info.actualTarget.substr(6)
+                                  : *base;
+      auto it = refParamNames_.find(paramName);
+      if (it != refParamNames_.end()) {
+        return {LifetimeValue::Kind::Symbolic, 0, it->second, *base};
+      }
+      return {LifetimeValue::Kind::Outlives, 0, "", *base};
+    }
+    if (declDepths_.count(info.actualTarget)) {
+      return {LifetimeValue::Kind::Concrete, inferEnvDepth(*e), "", *base};
+    }
+    return {LifetimeValue::Kind::Outlives, 0, "", *base};
+  }
+
+  if (e->getType() == ASTNodeType::CALL) {
+    // A call returning a named '<'a>' lambda takes the shortest
+    // lifetime among the arguments the signature ties to 'a
+    const auto& call = static_cast<const CallExprAST&>(*e);
+    TypePtr resultType = call.getResolvedType();
+    auto* resultLambda = tryGetType<LambdaType>(resultType);
+    if (!resultLambda || !resultLambda->hasRefCaptures()) {
+      return {LifetimeValue::Kind::Outlives, 0, "", ""};
+    }
+    const std::string& retName = resultLambda->getLifetimeName();
+    if (retName.empty()) {
+      return {LifetimeValue::Kind::Outlives, 0, "", ""};
+    }
+    std::vector<TypePtr> paramTypes;
+    TypePtr calleeType =
+        call.getCallee() ? call.getCallee()->getResolvedType() : nullptr;
+    if (auto* ft = tryGetType<FunctionType>(calleeType)) {
+      paramTypes = ft->getParamTypes();
+    } else if (auto* clt = tryGetType<LambdaType>(calleeType)) {
+      paramTypes = clt->getParamTypes();
+    }
+    const auto& args = call.getArgs();
+    bool haveConcrete = false, haveSymbolic = false, mixedSymbolic = false;
+    size_t maxDepth = functionScopeDepth_;
+    std::string symbolicName;
+    auto addContribution = [&](const LifetimeValue& v) {
+      if (v.kind == LifetimeValue::Kind::Concrete) {
+        haveConcrete = true;
+        maxDepth = std::max(maxDepth, v.depth);
+      } else if (v.kind == LifetimeValue::Kind::Symbolic) {
+        if (haveSymbolic && symbolicName != v.name) mixedSymbolic = true;
+        haveSymbolic = true;
+        symbolicName = v.name;
+      }
+    };
+    for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
+      if (!args[i] || !paramTypes[i]) continue;
+      if (auto* plt = tryGetType<LambdaType>(paramTypes[i])) {
+        if (plt->getLifetimeName() == retName) {
+          addContribution(inferEnvLifetimeValue(*args[i]));
+        }
+      } else if (auto* prt = tryGetType<ReferenceType>(paramTypes[i])) {
+        if (prt->getLifetimeName() == retName) {
+          addContribution(inferDestLifetimeValue(*args[i]));
+        }
+      }
+    }
+    if (haveConcrete) {
+      return {LifetimeValue::Kind::Concrete, maxDepth, "", "call result"};
+    }
+    if (haveSymbolic && !mixedSymbolic) {
+      return {LifetimeValue::Kind::Symbolic, 0, symbolicName, "call result"};
+    }
+    if (haveSymbolic) {
+      // Unrelated signature lifetimes met: restrict to the current scope
+      return {LifetimeValue::Kind::Concrete, currentScope_, "", "call result"};
+    }
+    return {LifetimeValue::Kind::Outlives, 0, "", "call result"};
+  }
+
+  if (isFrameSourcedLambdaExpr(*e)) {
+    return {LifetimeValue::Kind::Concrete, inferEnvDepth(*e), "", ""};
+  }
+  return {LifetimeValue::Kind::Outlives, 0, "", ""};
+}
+
+// The lifetime of the storage behind a plain name the callee (or this
+// frame) may write into.
+BorrowChecker::LifetimeValue BorrowChecker::destLifetimeValueForName(
+    const std::string& base) const {
+  if (base == "this") {
+    return {LifetimeValue::Kind::Symbolic, 0, "this", base};
+  }
+  if (rawPointerLocals_.count(base)) {
+    // Raw pointers are the unsafe escape hatch: nothing is rejected
+    return {LifetimeValue::Kind::Concrete, static_cast<size_t>(-1), "", base};
+  }
+  auto info = resolveRefTarget(base);
+  if (info.actualTarget == "this") {
+    return {LifetimeValue::Kind::Symbolic, 0, "this", base};
+  }
+  if (info.isRefParam) {
+    std::string paramName = info.actualTarget.rfind("param:", 0) == 0
+                                ? info.actualTarget.substr(6)
+                                : base;
+    auto it = refParamNames_.find(paramName);
+    if (it != refParamNames_.end()) {
+      return {LifetimeValue::Kind::Symbolic, 0, it->second, base};
+    }
+    return {LifetimeValue::Kind::Outlives, 0, "", base};
+  }
+  auto it = declDepths_.find(info.actualTarget);
+  if (it != declDepths_.end()) {
+    return {LifetimeValue::Kind::Concrete, it->second, "", base};
+  }
+  return {LifetimeValue::Kind::Outlives, 0, "", base};  // a global
+}
+
+// The lifetime of the storage a call argument lets the callee write into.
+BorrowChecker::LifetimeValue BorrowChecker::inferDestLifetimeValue(
+    const ExprAST& arg) const {
+  const std::string* base = getBaseVariableName(arg);
+  if (!base) {
+    // A temporary dies with the statement; anything outlives it
+    return {LifetimeValue::Kind::Concrete, currentScope_, "", "a temporary"};
+  }
+  return destLifetimeValueForName(*base);
+}
+
+// Enforce a callee's named-lifetime relations at one call. Each name binds
+// the arguments the signature tags with it: '<'a>' lambda parameters
+// contribute environments (sources), 'ref 'a T' parameters contribute the
+// storage the callee may write into (destinations), and the receiver joins
+// the builtin 'this. Every source must outlive every destination sharing
+// its name - this is what closes issue #178's cross-function hole: the
+// entanglement inside the callee is visible here as the shared name.
+void BorrowChecker::checkNamedLifetimesAtCall(
+    const CallExprAST& call, const std::vector<TypePtr>& paramTypes) {
+  const auto& args = call.getArgs();
+  struct Entry {
+    LifetimeValue value;
+    Position pos;
+    size_t argIndex;
+  };
+  std::map<std::string, std::vector<Entry>> sources, dests;
+  bool usesThis = false;
+
+  for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
+    if (!args[i] || !paramTypes[i]) continue;
+    if (auto* lt = tryGetType<LambdaType>(paramTypes[i])) {
+      if (!lt->hasRefCaptures() || lt->getLifetimeName().empty()) continue;
+      const std::string& name = lt->getLifetimeName();
+      sources[name].push_back(
+          {inferEnvLifetimeValue(*args[i]), args[i]->getLocation(), i});
+      if (name == "this") usesThis = true;
+    } else if (auto* rt = tryGetType<ReferenceType>(paramTypes[i])) {
+      // Names this argument binds: the ref position's own name
+      // ('dst: ref 'a Holder') and each class-application binding
+      // ('bus: ref Bus<'this>' binds Bus's slot to 'this)
+      if (rt->getLifetimeName().empty() &&
+          rt->getClassLifetimeArgs().empty()) {
+        continue;
+      }
+      const std::string* base = getBaseVariableName(*args[i]);
+      // When the argument is our own ref parameter carrying slot bindings
+      // ('bus: ref Bus<'a>'), the callee's slot k stands for OUR name for
+      // slot k, not for the referent's frame
+      const std::vector<std::string>* argBindings = nullptr;
+      if (base) {
+        auto info = resolveRefTarget(*base);
+        std::string paramName = info.actualTarget.rfind("param:", 0) == 0
+                                    ? info.actualTarget.substr(6)
+                                    : *base;
+        auto bindIt = refParamClassBindings_.find(paramName);
+        if (info.isRefParam && bindIt != refParamClassBindings_.end()) {
+          argBindings = &bindIt->second;
+        }
+      }
+      auto addCarriedSource = [&](const std::string& name) {
+        // The referent may already carry a frame environment: that carried
+        // bound is a source the other destinations must accommodate
+        if (!base) return;
+        auto bit = frameBoundVars_.find(resolveRefTarget(*base).actualTarget);
+        if (bit != frameBoundVars_.end()) {
+          sources[name].push_back(
+              {{LifetimeValue::Kind::Concrete, bit->second, "", *base},
+               args[i]->getLocation(),
+               i});
+        }
+      };
+      if (!rt->getLifetimeName().empty()) {
+        const std::string& name = rt->getLifetimeName();
+        dests[name].push_back(
+            {inferDestLifetimeValue(*args[i]), args[i]->getLocation(), i});
+        addCarriedSource(name);
+        if (name == "this") usesThis = true;
+      }
+      const auto& slotNames = rt->getClassLifetimeArgs();
+      for (size_t k = 0; k < slotNames.size(); ++k) {
+        const std::string& name = slotNames[k];
+        LifetimeValue dest = inferDestLifetimeValue(*args[i]);
+        if (argBindings && k < argBindings->size() && base) {
+          dest = {LifetimeValue::Kind::Symbolic, 0, (*argBindings)[k], *base};
+        }
+        dests[name].push_back({dest, args[i]->getLocation(), i});
+        addCarriedSource(name);
+        if (name == "this") usesThis = true;
+      }
+    }
+  }
+  if (sources.empty() && dests.empty()) return;
+
+  // The receiver joins the builtin 'this, and every name its CLASS
+  // declares: a 'class Bus<'a>' object is a carrier for values bound to
+  // 'a (its fields may store them), so an 'a-named argument must outlive
+  // the receiver too.
+  const ExprAST* callee = call.getCallee();
+  const ExprAST* receiver = nullptr;
+  if (callee && callee->getType() == ASTNodeType::MEMBER_ACCESS) {
+    receiver = static_cast<const MemberAccessAST&>(*callee).getObject();
+  }
+  if (receiver) {
+    std::vector<std::string> receiverNames;
+    if (usesThis) receiverNames.push_back("this");
+    TypePtr receiverType = receiver->getResolvedType();
+    if (auto* rrt = tryGetType<ReferenceType>(receiverType)) {
+      receiverType = rrt->getReferencedType();
+    }
+    if (auto* rct = tryGetType<ClassType>(receiverType)) {
+      for (const auto& className : rct->getLifetimeParams()) {
+        if (sources.count(className) || dests.count(className)) {
+          receiverNames.push_back(className);
+        }
+      }
+    }
+    if (auto* rit = tryGetType<InterfaceType>(receiverType)) {
+      for (const auto& ifaceName : rit->getLifetimeParams()) {
+        if (sources.count(ifaceName) || dests.count(ifaceName)) {
+          receiverNames.push_back(ifaceName);
+        }
+      }
+    }
+    const std::string* receiverBase = getBaseVariableName(*receiver);
+    // A receiver that is our own ref parameter with class-slot bindings
+    // ('bus: ref Bus<'this>') stands for those bindings: storing under the
+    // class's 'a means storing under what WE bound it to
+    const std::vector<std::string>* receiverBindings = nullptr;
+    std::vector<std::string> receiverClassNames;
+    if (receiverBase) {
+      auto info = resolveRefTarget(*receiverBase);
+      std::string paramName = info.actualTarget.rfind("param:", 0) == 0
+                                  ? info.actualTarget.substr(6)
+                                  : *receiverBase;
+      auto bindIt = refParamClassBindings_.find(paramName);
+      if (info.isRefParam && bindIt != refParamClassBindings_.end()) {
+        receiverBindings = &bindIt->second;
+        TypePtr receiverType = receiver->getResolvedType();
+        if (auto* rrt = tryGetType<ReferenceType>(receiverType)) {
+          receiverType = rrt->getReferencedType();
+        }
+        if (auto* rct = tryGetType<ClassType>(receiverType)) {
+          receiverClassNames = rct->getLifetimeParams();
+        }
+      }
+    }
+    for (const auto& name : receiverNames) {
+      LifetimeValue dest = inferDestLifetimeValue(*receiver);
+      if (receiverBindings && name != "this") {
+        for (size_t k = 0; k < receiverClassNames.size() &&
+                           k < receiverBindings->size();
+             ++k) {
+          if (receiverClassNames[k] == name) {
+            dest = {LifetimeValue::Kind::Symbolic, 0, (*receiverBindings)[k],
+                    *receiverBase};
+          }
+        }
+      }
+      dests[name].push_back(
+          {dest, call.getLocation(), static_cast<size_t>(-1)});
+      if (receiverBase) {
+        auto bit =
+            frameBoundVars_.find(resolveRefTarget(*receiverBase).actualTarget);
+        if (bit != frameBoundVars_.end()) {
+          sources[name].push_back(
+              {{LifetimeValue::Kind::Concrete, bit->second, "", *receiverBase},
+               call.getLocation(),
+               static_cast<size_t>(-1)});
+        }
+      }
+    }
+  }
+
+  // Wherever 'this is a destination, the receiver itself is a potential
+  // source: the callee can form a bound method of `this` (environment =
+  // the receiver) and store it there
+  if (receiver && dests.count("this")) {
+    sources["this"].push_back({inferDestLifetimeValue(*receiver),
+                               call.getLocation(), static_cast<size_t>(-1)});
+  }
+
+  for (const auto& [name, srcEntries] : sources) {
+    auto dit = dests.find(name);
+    if (dit == dests.end()) continue;
+    for (const auto& src : srcEntries) {
+      for (const auto& dst : dit->second) {
+        if (src.argIndex == dst.argIndex) continue;
+        if (lifetimeValueOutlives(src.value, dst.value)) continue;
+        std::string srcName = src.value.described.empty()
+                                  ? "this argument"
+                                  : "'" + src.value.described + "'";
+        std::string dstName = dst.value.described.empty()
+                                  ? "the destination"
+                                  : "'" + dst.value.described + "'";
+        reportError(
+            "cannot make this call: the signature ties " + srcName + " and " +
+                dstName + " together through lifetime '" + name + ", but " +
+                srcName + "'s captured environment does not provably "
+                "outlive " + dstName + ". Declare them in the same scope, "
+                "or give the lambda its data as arguments instead of "
+                "captures",
+            src.pos);
+      }
+    }
+  }
+
+  // A frame-local destination that received a frame-pinned environment is
+  // frame-bound from here on, at the environment's depth. A destination's
+  // own contribution (the same argument as source and destination - the
+  // receiver's implicit 'this source, a carried bound) marks nothing: a
+  // value cannot pin itself.
+  for (const auto& [name, dstEntries] : dests) {
+    auto sit = sources.find(name);
+    if (sit == sources.end()) continue;
+    for (const auto& dst : dstEntries) {
+      if (dst.value.kind != LifetimeValue::Kind::Concrete) continue;
+      if (dst.value.described.empty()) continue;
+      size_t maxSourceDepth = 0;
+      bool haveConcreteSource = false;
+      for (const auto& src : sit->second) {
+        if (src.argIndex == dst.argIndex) continue;
+        if (src.value.kind == LifetimeValue::Kind::Concrete) {
+          haveConcreteSource = true;
+          maxSourceDepth = std::max(maxSourceDepth, src.value.depth);
+        }
+      }
+      if (!haveConcreteSource) continue;
+      const std::string target =
+          resolveRefTarget(dst.value.described).actualTarget;
+      // Temporaries and raw pointers resolve to nothing frame-local and
+      // fall out here
+      if (!frameLocalNames_.count(target)) continue;
+      auto [it, inserted] = frameBoundVars_.try_emplace(target, maxSourceDepth);
+      if (!inserted) it->second = std::max(it->second, maxSourceDepth);
+    }
+  }
+}
+
+// A ref-storing class value is landing in the named destination: a fresh
+// construction records the deepest declaration among the variables it
+// borrows, and a holder local moving between names carries its bound along.
+// A destination declared in an outer scope than the bound would keep the
+// borrowed storage's address past its death, so it is rejected. destDepth
+// of 0 means the destination outlives the frame.
+void BorrowChecker::trackRefHolderStore(const std::string& destName,
+                                        size_t destDepth, const ExprAST& value,
+                                        const Position& pos) {
+  const ExprAST* e = &value;
+  while (e->getType() == ASTNodeType::PAREN_EXPR) {
+    e = static_cast<const ParenExprAST&>(*e).getInner();
+  }
+
+  // A holder local moved into another name: the bound travels with it
+  if (e->getType() == ASTNodeType::VARIABLE_REFERENCE) {
+    TypePtr valueType = e->getResolvedType();
+    if (!valueType || !valueType->isCompound() || valueType->isReference()) {
+      return;  // a borrow or a scalar read relocates nothing
+    }
+    auto it = refHolderBounds_.find(
+        static_cast<const VariableReferenceAST&>(*e).getName());
+    if (it == refHolderBounds_.end()) return;
+    size_t bound = it->second;
+    if (destDepth < bound) {
+      reportError(
+          "cannot store this value in '" + destName + "' - it borrows a "
+          "variable declared in an inner scope, which dies before '" +
+              destName + "' does. Declare '" + destName +
+              "' alongside what the value borrows",
+          pos);
+      return;
+    }
+    auto [dit, inserted] = refHolderBounds_.try_emplace(destName, bound);
+    if (!inserted) dit->second = std::max(dit->second, bound);
+    return;
+  }
+
+  // A fresh construction of a class that stores references
+  if (e->getType() != ASTNodeType::CALL) return;
+  const auto& call = static_cast<const CallExprAST&>(*e);
+  TypePtr calleeType =
+      call.getCallee() ? call.getCallee()->getResolvedType() : nullptr;
+  if (!calleeType || !calleeType->isClass() || !classStoresRefs(calleeType)) {
+    return;
+  }
+  const auto& args = call.getArgs();
+  std::vector<TypePtr> argTypes;
+  for (const auto& arg : args) {
+    argTypes.push_back(arg ? arg->getResolvedType() : nullptr);
+  }
+  const ClassMethod* init = static_cast<const ClassType&>(*calleeType)
+                                .getMethodForArgs("init", argTypes);
+  if (!init) return;
+  const auto& paramTypes = init->paramTypes;
+
+  size_t bound = functionScopeDepth_;
+  for (size_t i = 0; i < args.size() && i < paramTypes.size(); ++i) {
+    if (!args[i] || !paramTypes[i] || !paramTypes[i]->isReference()) continue;
+    const std::string* base = getBaseVariableName(*args[i]);
+    if (!base || rawPointerLocals_.count(*base)) continue;
+    size_t targetDepth = lookupDeclDepth(*base);
+    if (targetDepth > destDepth) {
+      reportError(
+          "cannot store this value in '" + destName + "' - it borrows '" +
+              *base + "', which is declared in an inner scope and dies "
+              "before '" + destName + "' does. Declare '" + destName +
+              "' alongside '" + *base + "'",
+          pos);
+      continue;
+    }
+    bound = std::max(bound, targetDepth);
+  }
+  auto [dit, inserted] = refHolderBounds_.try_emplace(destName, bound);
+  if (!inserted) dit->second = std::max(dit->second, bound);
 }
 
 void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
@@ -1561,7 +2308,15 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
   frameSourcedLambdas_.clear();
   auto savedFrameLocalNames = frameLocalNames_;
   frameLocalNames_.clear();
+  auto savedDeclDepths = declDepths_;
+  declDepths_.clear();
+  auto savedRefHolderBounds = refHolderBounds_;
+  refHolderBounds_.clear();
   auto savedRefTypedParams = refTypedParams_;
+  auto savedParamEnvNames = paramEnvNames_;
+  auto savedRefParamNames = refParamNames_;
+  auto savedRefParamClassBindings = refParamClassBindings_;
+  auto savedReturnLifetimeName = returnLifetimeName_;
   auto savedParamLifetimes = paramLifetimes_;
   auto savedFunctionScopeDepth = functionScopeDepth_;
   auto savedReturnsRef = currentFunctionReturnsRef_;
@@ -1597,6 +2352,7 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
       state_.setLifetime(argName, paramLt);
     } else {
       frameLocalNames_.insert(argName);
+      declDepths_[argName] = currentScope_;
     }
   }
 
@@ -1616,7 +2372,13 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
   frameBoundVars_ = std::move(savedFrameBoundVars);
   frameSourcedLambdas_ = std::move(savedFrameSourcedLambdas);
   frameLocalNames_ = std::move(savedFrameLocalNames);
+  declDepths_ = std::move(savedDeclDepths);
+  refHolderBounds_ = std::move(savedRefHolderBounds);
   refTypedParams_ = std::move(savedRefTypedParams);
+  paramEnvNames_ = std::move(savedParamEnvNames);
+  refParamNames_ = std::move(savedRefParamNames);
+  refParamClassBindings_ = std::move(savedRefParamClassBindings);
+  returnLifetimeName_ = std::move(savedReturnLifetimeName);
   paramLifetimes_ = std::move(savedParamLifetimes);
   functionScopeDepth_ = savedFunctionScopeDepth;
   currentFunctionReturnsRef_ = savedReturnsRef;
@@ -1624,6 +2386,14 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
 }
 
 void BorrowChecker::checkClassDef(const ClassDefinitionAST& classDef) {
+  // The class's declared lifetimes govern what its methods may store into
+  // 'this' fields (see checkMemberAssignment)
+  auto savedClassLifetimes = activeClassLifetimes_;
+  activeClassLifetimes_.clear();
+  for (const auto& lp : classDef.getLifetimeParameters()) {
+    activeClassLifetimes_.push_back(lp.name);
+  }
+
   // Check for reference-type fields
   bool hasRefFields = false;
   for (const auto& field : classDef.getFields()) {
@@ -1658,6 +2428,8 @@ void BorrowChecker::checkClassDef(const ClassDefinitionAST& classDef) {
   for (const auto& [name, specializedClass] : classDef.getSpecializations()) {
     checkClassDef(*specializedClass);
   }
+
+  activeClassLifetimes_ = std::move(savedClassLifetimes);
 }
 
 void BorrowChecker::checkMemberAccess(const MemberAccessAST& access) {
@@ -1721,7 +2493,44 @@ void BorrowChecker::checkMemberAssignment(const MemberAssignmentAST& assign) {
     if (isFrameSourcedLambdaExpr(*assign.getValue()) && assign.getObject()) {
       const std::string* base = getBaseVariableName(*assign.getObject());
       if (base) {
-        noteFrameSourcedLambdaStore(*base, assign.getLocation());
+        noteFrameSourcedLambdaStore(*base, inferEnvDepth(*assign.getValue()),
+                                    assign.getLocation());
+      }
+    }
+
+    // A value whose type NAMES a lifetime ('cb: <'a>(...)') may enter
+    // a destination that outlives the frame only when the destination's
+    // own lifetime is the same name - 'this-named values into the
+    // receiver, 'a-named values into a 'ref 'a' parameter's referent.
+    // Cross-name stores are how a callee would launder one caller
+    // lifetime into another, so they are rejected here, in the callee.
+    if (assign.getObject() &&
+        !isFrameSourcedLambdaExpr(*assign.getValue())) {
+      LifetimeValue env = inferEnvLifetimeValue(*assign.getValue());
+      if (env.kind == LifetimeValue::Kind::Symbolic) {
+        const std::string* base = getBaseVariableName(*assign.getObject());
+        // A name the enclosing class declares may enter the receiver's own
+        // fields: the class's contract is that such values outlive its
+        // objects, and call sites enforce it via the receiver's class.
+        bool classOwnedName =
+            std::find(activeClassLifetimes_.begin(),
+                      activeClassLifetimes_.end(),
+                      env.name) != activeClassLifetimes_.end();
+        bool storesIntoThis =
+            base && (*base == "this" ||
+                     resolveRefTarget(*base).actualTarget == "this");
+        if (base && nameOutlivesFrame(*base) &&
+            !(classOwnedName && storesIntoThis)) {
+          LifetimeValue dst = inferDestLifetimeValue(*assign.getObject());
+          if (!lifetimeValueOutlives(env, dst)) {
+            reportError(
+                "cannot store this value in a field of '" + *base +
+                    "' - its type ties it to lifetime '" + env.name +
+                    ", and nothing says '" + *base + "' dies first. Give "
+                    "the destination the same lifetime, or use 'this",
+                assign.getLocation());
+          }
+        }
       }
     }
 
@@ -1773,7 +2582,8 @@ void BorrowChecker::checkIndexedAssignment(const IndexedAssignmentAST& assign) {
     if (isFrameSourcedLambdaExpr(*assign.getValue()) && assign.getTarget()) {
       const std::string* base = getBaseVariableName(*assign.getTarget());
       if (base) {
-        noteFrameSourcedLambdaStore(*base, assign.getLocation());
+        noteFrameSourcedLambdaStore(*base, inferEnvDepth(*assign.getValue()),
+                                    assign.getLocation());
       }
     }
 
@@ -1832,6 +2642,10 @@ void BorrowChecker::enterFunctionScope(const std::string& funcName) {
   refTypedParams_.clear();
   rawPointerLocals_.clear();
   paramLifetimes_.clear();
+  paramEnvNames_.clear();
+  refParamNames_.clear();
+  refParamClassBindings_.clear();
+  returnLifetimeName_.clear();
 }
 
 void BorrowChecker::exitFunctionScope() {
@@ -1841,9 +2655,15 @@ void BorrowChecker::exitFunctionScope() {
   frameBoundVars_.clear();
   frameSourcedLambdas_.clear();
   frameLocalNames_.clear();
+  declDepths_.clear();
+  refHolderBounds_.clear();
   refTypedParams_.clear();
   rawPointerLocals_.clear();
   paramLifetimes_.clear();
+  paramEnvNames_.clear();
+  refParamNames_.clear();
+  refParamClassBindings_.clear();
+  returnLifetimeName_.clear();
   currentFunction_.clear();
   functionScopeDepth_ = 0;
   currentFunctionReturnsRef_ = false;
@@ -1979,7 +2799,10 @@ Lifetime BorrowChecker::inferExprLifetime(const ExprAST& expr) {
         if (target.substr(0, 6) == "param:") {
           return Lifetime::param(target.substr(6));
         }
-        return Lifetime::local(target, currentScope_);
+        auto declIt = declDepths_.find(target);
+        return Lifetime::local(
+            target, declIt != declDepths_.end() ? declIt->second
+                                                : currentScope_);
       }
 
       // Check if it's a ref-typed function parameter
@@ -1994,8 +2817,11 @@ Lifetime BorrowChecker::inferExprLifetime(const ExprAST& expr) {
         return *storedLt;
       }
 
-      // Local variable - bound to current scope
-      return Lifetime::local(name, currentScope_);
+      // Local variable - bound to the scope it was declared in
+      auto declIt = declDepths_.find(name);
+      return Lifetime::local(name, declIt != declDepths_.end()
+                                       ? declIt->second
+                                       : currentScope_);
     }
 
     case ASTNodeType::MEMBER_ACCESS: {

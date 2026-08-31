@@ -30,6 +30,8 @@ message TypeAnnotation {
   bool can_error = 7;                           // Error union: T, IError
   bool const_ref = 8;                           // `const ref T`
   bool ref_env = 9;                             // `[ref]() -> T` lambda type
+  string lifetime_name = 10;                    // `<'a>` / `ref 'a T`
+  repeated string lifetime_arguments = 11;      // `Bus<'a>` application
 }
 
 // How a lambda takes hold of a variable (mirrors CaptureKind in ast_common.h)

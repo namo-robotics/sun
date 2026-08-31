@@ -383,6 +383,11 @@ class LambdaType : public Type {
   // environment-free lambdas, so this is what keeps a frame-bound lambda
   // from laundering through an annotation-typed parameter or field.
   bool hasRefCaptures_ = false;
+  // Metadata, NOT identity: the lifetime name written on this position
+  // ('<'a>(i32) -> i32'), empty when elided. Names only mean something
+  // relative to one signature's lifetime list, so equals(), toString() and
+  // mangling ignore them - '<'a>' and '<'b>' are one type.
+  std::string lifetimeName_;
 
  public:
   LambdaType(TypePtr ret, std::vector<TypePtr> params, bool canThrow = false)
@@ -398,6 +403,9 @@ class LambdaType : public Type {
   bool canThrow() const { return canThrow_; }
   bool hasRefCaptures() const { return hasRefCaptures_; }
   void setHasRefCaptures(bool v) { hasRefCaptures_ = v; }
+  const std::string& getLifetimeName() const { return lifetimeName_; }
+  void setLifetimeName(std::string name) { lifetimeName_ = std::move(name); }
+
 
   std::string toString() const override {
     std::string result = hasRefCaptures_ ? "[ref](" : "(";
@@ -622,10 +630,27 @@ class NullPointerType : public Type {
 class ReferenceType : public Type {
   TypePtr referencedType;  // The type being referenced
   bool mutable_;           // true = mutable ref, false = immutable ref
+  // Metadata, NOT identity: the lifetime name written on this position
+  // ('ref 'a Bus'), empty when elided. Ignored by equals() and toString(),
+  // exactly like LambdaType's - see the comment there.
+  std::string lifetimeName_;
+  std::vector<std::string> classLifetimeArgs_;
 
  public:
   explicit ReferenceType(TypePtr referenced, bool isMutable = true)
       : referencedType(std::move(referenced)), mutable_(isMutable) {}
+
+  const std::string& getLifetimeName() const { return lifetimeName_; }
+  void setLifetimeName(std::string name) { lifetimeName_ = std::move(name); }
+  // Lifetime arguments applied to the referent's class ('ref Bus<'this>'):
+  // positionally binding the class's declared lifetimes. Metadata like
+  // lifetimeName_ - never part of the type's identity.
+  const std::vector<std::string>& getClassLifetimeArgs() const {
+    return classLifetimeArgs_;
+  }
+  void setClassLifetimeArgs(std::vector<std::string> args) {
+    classLifetimeArgs_ = std::move(args);
+  }
 
   // The kind every value of this class carries; TypeCheck<T> keys off it
   static constexpr Kind StaticKind = Kind::Reference;
@@ -1102,10 +1127,22 @@ class ClassType : public Type {
   std::vector<std::string>
       staticOnlyInterfaces;  // Implemented, but not convertible to (see below)
   bool isPacked_ = false;    // "packed class": lay fields out with no padding
+  // Lifetime names the class DECLARES ('class Bus<'a>'). Declarations only,
+  // never bindings, so sharing one ClassType per class stays sound; the
+  // borrow checker uses them to entangle a method's named parameters with
+  // the receiver at call sites.
+  std::vector<std::string> lifetimeParams_;
   mutable llvm::StructType* cachedLLVMType = nullptr;
 
  public:
   sun::Visibility visibility = sun::Visibility::Private;
+
+  const std::vector<std::string>& getLifetimeParams() const {
+    return lifetimeParams_;
+  }
+  void setLifetimeParams(std::vector<std::string> names) {
+    lifetimeParams_ = std::move(names);
+  }
 
   ClassType(std::string className) : mangledName(std::move(className)) {}
 
@@ -1584,9 +1621,19 @@ class InterfaceType : public Type {
   ScopeMethodTable
       methodTable_;  // Indexed method table for default implementations
   sun::QualifiedName qualifiedName_;
+  // Lifetime names the interface DECLARES ('interface ISink<'a>').
+  // Declarations only, never bindings - see ClassType::lifetimeParams_.
+  std::vector<std::string> lifetimeParams_;
 
  public:
   sun::Visibility visibility = sun::Visibility::Private;
+
+  const std::vector<std::string>& getLifetimeParams() const {
+    return lifetimeParams_;
+  }
+  void setLifetimeParams(std::vector<std::string> names) {
+    lifetimeParams_ = std::move(names);
+  }
 
   InterfaceType(std::string interfaceName) : name(std::move(interfaceName)) {}
 
@@ -2603,6 +2650,42 @@ inline bool typeIsFrameCarrying(const TypePtr& type) {
 // backed by the borrowed storage. Borrow it with `ref` instead, or copy it
 // explicitly with a clone method. Unbound type parameters answer true; the
 // specialization is checked with the concrete type in hand.
+// A copy of the type with every lifetime NAME stripped, recursively.
+// Lifetime names are relative to one signature's lifetime list; a type that
+// crosses into another namespace - a generic type-parameter binding, whose
+// specialization is shared by every caller - must not carry them along.
+// The [ref] marker itself is identity and stays.
+inline TypePtr eraseLifetimeNames(const TypePtr& type) {
+  if (!type) return type;
+  if (auto* lt = dynamic_cast<const LambdaType*>(type.get())) {
+    bool named = !lt->getLifetimeName().empty();
+    std::vector<TypePtr> params;
+    bool changed = named;
+    for (const auto& param : lt->getParamTypes()) {
+      auto stripped = eraseLifetimeNames(param);
+      changed = changed || stripped != param;
+      params.push_back(std::move(stripped));
+    }
+    auto ret = eraseLifetimeNames(lt->getReturnType());
+    changed = changed || ret != lt->getReturnType();
+    if (!changed) return type;
+    auto result = Types::Lambda(ret, std::move(params), lt->canThrow());
+    static_cast<LambdaType*>(result.get())
+        ->setHasRefCaptures(lt->hasRefCaptures());
+    return result;
+  }
+  if (auto* rt = dynamic_cast<const ReferenceType*>(type.get())) {
+    if (rt->getLifetimeName().empty() && rt->getClassLifetimeArgs().empty()) {
+      auto referent = eraseLifetimeNames(rt->getReferencedType());
+      if (referent == rt->getReferencedType()) return type;
+      return Types::Reference(referent, rt->isMutable());
+    }
+    return Types::Reference(eraseLifetimeNames(rt->getReferencedType()),
+                            rt->isMutable());
+  }
+  return type;
+}
+
 inline bool typeCopiesByRead(const Type* type) {
   return type && (!type->isCompound() || type->isArray());
 }

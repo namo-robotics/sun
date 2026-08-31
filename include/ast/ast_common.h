@@ -96,6 +96,32 @@ struct TypeParameter {
   }
 };
 
+// One lifetime parameter, as written between the angle brackets with a
+// leading apostrophe, before any type parameters:
+//
+//   <'a>        function pick<'a>(...)
+//   <'a, T>     class Pair<'a, T> { ... }
+//
+// A lifetime names the stack frame a `<'a>` lambda's environment or a
+// `ref 'a T` referent lives in, so two positions in one signature can be
+// declared to share it. Lifetimes are erased before codegen: they never
+// distinguish types, mangled names, or generic specializations.
+struct LifetimeParameter {
+  std::string name;
+  Position span;
+
+  LifetimeParameter() = default;
+  explicit LifetimeParameter(std::string n, Position s = {})
+      : name(std::move(n)), span(std::move(s)) {}
+
+  bool operator==(const LifetimeParameter& other) const {
+    return name == other.name;
+  }
+
+  // `'a` — how the parameter reads in source.
+  std::string toString() const { return "'" + name; }
+};
+
 // The names alone, for the many places that only care what a parameter is
 // called (substitution, mangling, scope registration).
 inline std::vector<std::string> typeParameterNames(

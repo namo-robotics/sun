@@ -177,6 +177,16 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
           genericClassInfo->qualifiedName);
     }
 
+    // The generic's declared lifetimes carry to every specialization -
+    // the borrow checker entangles named arguments with receivers by them
+    {
+      std::vector<std::string> lifetimeNames;
+      for (const auto& lp : genericClassInfo->AST->getLifetimeParameters()) {
+        lifetimeNames.push_back(lp.name);
+      }
+      specializedClass->setLifetimeParams(std::move(lifetimeNames));
+    }
+
     // Register the specialized class so methods can reference it
     ctx_.registerClass(specializedQName.baseName, specializedClass);
 
@@ -358,6 +368,8 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
         mangledName, std::vector<TypeParameter>{}, std::move(interfacesClone),
         std::move(fieldsClone), std::move(methodsClone),
         genericClassInfo->AST->isPrecompiled());
+    specializedAST->setLifetimeParameters(
+        genericClassInfo->AST->getLifetimeParameters());
     specializedAST->setIsPacked(genericClassInfo->AST->isPacked());
     specializedAST->setVisibility(genericClassInfo->AST->getVisibility());
 
@@ -386,6 +398,10 @@ std::shared_ptr<sun::ClassType> GenericSpecializer::instantiateGenericClass(
       std::move(interfacesClone), std::move(fieldsClone),
       std::move(methodsClone),  // cloned methods
       false);                   // NOT precompiled - needs codegen
+  // Lifetime declarations are erased from specialization keys but stay on
+  // the specialized definition: the borrow checker reads them per class
+  specializedAST->setLifetimeParameters(
+      genericClassInfo->AST->getLifetimeParameters());
   specializedAST->setIsPacked(genericClassInfo->AST->isPacked());
   specializedAST->setVisibility(genericClassInfo->AST->getVisibility());
   specializedAST->setLocation(genericClassInfo->AST->getLocation());

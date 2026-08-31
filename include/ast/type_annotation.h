@@ -40,6 +40,14 @@ struct TypeAnnotation {
   // environment-free lambdas
   bool refEnv = false;
 
+  // Named lifetime on a `<'a>` lambda type or a `ref 'a T` reference;
+  // empty when elided (bare `[ref]` / `ref T`, today's anonymous lifetime)
+  std::string lifetimeName;
+
+  // Lifetime arguments applied to a class type: Bus<'a> (written before any
+  // type arguments); empty for an unannotated application
+  std::vector<std::string> lifetimeArguments;
+
   // Source span (includes the "throws IError" suffix when present); not serialized
   Position span{};
 
@@ -51,6 +59,8 @@ struct TypeAnnotation {
         canError(other.canError),
         constRef(other.constRef),
         refEnv(other.refEnv),
+        lifetimeName(other.lifetimeName),
+        lifetimeArguments(other.lifetimeArguments),
         span(other.span) {
     if (other.elementType) {
       elementType = std::make_unique<TypeAnnotation>(*other.elementType);
@@ -72,6 +82,8 @@ struct TypeAnnotation {
       canError = other.canError;
       constRef = other.constRef;
       refEnv = other.refEnv;
+      lifetimeName = other.lifetimeName;
+      lifetimeArguments = other.lifetimeArguments;
       span = other.span;
       if (other.elementType) {
         elementType = std::make_unique<TypeAnnotation>(*other.elementType);
@@ -137,8 +149,9 @@ struct TypeAnnotation {
       return "static_ptr(" + elementType->toString() + ")";
     }
     if (isReference() && elementType) {
-      return std::string(constRef ? "const ref(" : "ref(") +
-             elementType->toString() + ")";
+      std::string result = constRef ? "const ref" : "ref";
+      if (!lifetimeName.empty()) result += " '" + lifetimeName;
+      return result + "(" + elementType->toString() + ")";
     }
     if (isFunction()) {
       std::string result = "_(";
@@ -151,7 +164,9 @@ struct TypeAnnotation {
       return result;
     }
     if (isLambda()) {
-      std::string result = refEnv ? "[ref](" : "(";
+      std::string result =
+          refEnv ? (lifetimeName.empty() ? "[ref](" : "<'" + lifetimeName + ">(")
+                 : "(";
       for (size_t i = 0; i < paramTypes.size(); ++i) {
         if (i > 0) result += ", ";
         result += paramTypes[i]->toString();
@@ -161,12 +176,19 @@ struct TypeAnnotation {
       if (canError) result += " throws IError";
       return result;
     }
-    // Generic types: ClassName<T, U>
-    if (!typeArguments.empty()) {
+    // Generic types: ClassName<'a, T> (lifetime arguments come first)
+    if (!typeArguments.empty() || !lifetimeArguments.empty()) {
       std::string result = baseName + "<";
-      for (size_t i = 0; i < typeArguments.size(); ++i) {
-        if (i > 0) result += ", ";
-        result += typeArguments[i]->toString();
+      bool first = true;
+      for (const auto& lifetime : lifetimeArguments) {
+        if (!first) result += ", ";
+        result += "'" + lifetime;
+        first = false;
+      }
+      for (const auto& typeArg : typeArguments) {
+        if (!first) result += ", ";
+        result += typeArg->toString();
+        first = false;
       }
       result += ">";
       if (canError) result += " throws IError";

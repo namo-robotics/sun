@@ -211,6 +211,51 @@ frame, so a callee may store it — that is what makes a `subscribe(cb)`
 method possible. The full rules live in
 [Memory Safety](/memory-safety).
 
+## Named Lifetimes
+
+A bare `[ref]` says the value points into *some* stack frame, without saying
+which. A **lifetime name** — a Rust-style leading-apostrophe name declared in
+the angle brackets — gives that frame a name, so two positions in one
+signature can be declared to mean the *same* frame. That is what lets a
+function say "I store this argument into that one" and have every call site
+checked against the arguments' real scopes:
+
+```sun
+/* wire keeps cb inside dst, and says so: both carry 'a */
+function wire<'a>(cb: <'a>(i32) -> i32, dst: ref 'a Holder) void {
+    dst.set(cb);
+}
+
+var h = Holder();
+if (true) {
+    var n = Node(1);
+    wire(n.onMsg, h);   // ❌ ERROR: n dies before h, and the signature
+}                       //    says cb may end up inside dst
+```
+
+Inside a class or interface member, the builtin **`'this`** names the
+receiver's lifetime — `method set(cb: <'this>(i32) -> i32)` demands the
+callback outlive the object it is stored in. `'this` never needs declaring
+and is only legal in members.
+
+A named `[ref]` may also be a **return type** — the one thing a bare `[ref]`
+can never be — because the name pins the result to frames the caller can
+see:
+
+```sun
+function pick<'a>(x: <'a>() -> i32, y: <'a>() -> i32, first: bool) <'a>() -> i32 {
+    if (first) { return x; }
+    return y;            // ✓ both inputs carry 'a, so the result does too
+}
+```
+
+The result behaves like any frame-pinned value at the call site: usable
+where the arguments' environments are alive, and no further out. Everything
+elided keeps its old meaning: a bare `[ref]` parameter is still trusted the
+way it always was, and annotations are only needed where two lifetimes must
+be related. Classes declare lifetimes too (`class Bus<'a>`) — see
+[Classes](/classes) and [Memory Safety](/memory-safety).
+
 ## First-Class Lambdas
 
 Lambdas are first-class values—they can be assigned to variables, passed as arguments, and returned from functions (named functions are not, but class methods are—see [Bound Methods](#bound-methods)):

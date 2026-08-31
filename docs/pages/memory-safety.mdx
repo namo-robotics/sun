@@ -5,7 +5,7 @@ Sun implements a **simplified Rust-style ownership system** that provides memory
 import { Callout } from 'nextra/components'
 
 <Callout type="info">
-  Unlike Rust, Sun does not require explicit lifetime annotations (`'a`, `'b`). References are scoped and cannot escape their defining context, which eliminates the need for lifetime tracking.
+  Sun is inference-first: most code never writes a lifetime. References are scoped and cannot escape their defining context. Optional Rust-style lifetime names (`'a`, `'this`) exist for one purpose — relating two positions of one signature, so a callee that stores one argument into another can say so (see [Named Lifetimes](#named-lifetimes-relate-two-positions-of-one-signature)).
 </Callout>
 
 ## Overview
@@ -587,7 +587,21 @@ function main() i32 {
 A class may have reference-type fields. Such a value points into storage it
 does not own, so it is treated like a borrow: constructing it takes a loan on
 every variable passed by ref to the constructor, and those loans last until
-the enclosing scope ends.
+the enclosing scope ends. The value must also never be held by a variable
+declared in an outer scope than what it borrows — the holder would keep the
+borrowed storage's address past its death:
+
+```sun
+var a = Inner(1);
+var h = Holder(a);       // ✓ h and a live equally long
+if (true) {
+    var b = Inner(2);
+    h = Holder(b);       // ❌ ERROR: h outlives b, the stored ref would dangle
+}
+```
+
+The bound follows the value when it moves: a holder built in an inner scope
+may move outward exactly as far as the outermost variable it borrows.
 
 ```sun
 class Holder {
@@ -662,6 +676,68 @@ class Bus {
     }
 }
 ```
+
+Within one frame, the destination must also not be declared in an outer
+scope than the environment — an inner scope's locals die at its closing
+brace, while the destination lives on:
+
+```sun
+var bus = Bus();
+if (true) {
+    var n = Node();
+    bus.subscribe(n.onMsg);   // ❌ ERROR: bus outlives n
+}
+// ✓ legal when bus and n are declared in the same scope
+```
+
+Two names declared in the **same** scope are not ordered by this rule: they
+drop in reverse declaration order at the scope's end, and the checker does
+not chase which of two siblings dies first. Keep a callback and its bus in
+the order that lets the bus drop first, or drop the bus explicitly.
+
+### Named Lifetimes Relate Two Positions of One Signature
+
+The rules above stop at a function boundary: a helper that stores one
+argument into another is invisible at its call sites. A **lifetime name**
+makes the entanglement part of the signature, so every call is checked
+against the arguments' real scopes. Lifetimes are declared in the angle
+brackets with a leading apostrophe (`function wire<'a>`, `class Bus<'a>`);
+inside class and interface members the builtin `'this` names the receiver's
+lifetime and needs no declaration:
+
+```sun
+class Bus<'a> {
+    var cb: <'a>(i32) -> i32;    // stored callbacks must outlive 'a
+    public method subscribe(cb: <'a>(i32) -> i32) void { this.cb = cb; }
+    public method publish(x: i32) i32 { var f = this.cb; return f(x); }
+}
+
+class Node {
+    public method onMsg(x: i32) i32 { ... }
+    /* Bus<'this> binds the bus's slot to this node's lifetime: the bus may
+       only store things this node outlives */
+    public method attach(bus: ref Bus<'this>) void {
+        bus.subscribe(this.onMsg);   // ✓ the signature carries the proof
+    }
+}
+
+var bus = Bus();
+if (true) {
+    var n = Node();
+    n.attach(bus);      // ❌ ERROR: n dies before bus, and attach's
+}                       //    signature says the bus may keep n's method
+bus.publish(1);
+```
+
+Call sites never write lifetime arguments — the compiler binds each name to
+the concrete scopes of the arguments and requires every environment flowing
+into a name to outlive every destination sharing it. A callee, in turn, may
+only store a named parameter where the destination's declared lifetime is
+the same name (its own class's declared lifetimes count for fields of
+`this`), so one caller lifetime can never launder into another. Interfaces
+state the same contracts, and an implementing class must repeat the
+interface's names exactly. Everything elided keeps its pre-lifetime
+meaning; a bare `[ref]` return stays banned, since it names no frame.
 
 Some values are frame-bound without their type showing it: the handle
 `spawn` returns for a thread over a capture-list lambda hides that lambda

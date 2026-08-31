@@ -18,6 +18,8 @@ void SemanticAnalyzer::analyzeVariableCreation(VariableCreationAST& varCreate) {
   // Determine type first (before analyzing value, for array literals)
   sun::TypePtr declaredType;
   if (varCreate.hasTypeAnnotation()) {
+    checkAnnotationLifetimes(*varCreate.getTypeAnnotation(),
+                             varCreate.getLocation());
     declaredType = types_.typeAnnotationToType(*varCreate.getTypeAnnotation());
     // For array literals with explicit type annotation, set the type before
     // analysis

@@ -36,6 +36,9 @@ class InterfaceDefinitionAST : public ExprAST {
   std::string name;  // Source name as written by user (for error messages)
   std::vector<TypeParameter>
       typeParameters;  // Generic type parameters: <T, U: Trait>
+  // Lifetime parameters: interface ISink<'a>. Kept apart from
+  // typeParameters; see ClassDefinitionAST.
+  std::vector<LifetimeParameter> lifetimeParameters;
   std::vector<InterfaceFieldDecl> fields;
   std::vector<InterfaceMethodDecl> methods;
   std::string doc_;  // Comment written above the interface
@@ -101,6 +104,12 @@ class InterfaceDefinitionAST : public ExprAST {
   bool hasQualifiedName() const {
     return analysis_ &&
            !static_cast<InterfaceAnalysis&>(*analysis_).qualifiedName.empty();
+  }
+  void setLifetimeParameters(std::vector<LifetimeParameter> params) {
+    lifetimeParameters = std::move(params);
+  }
+  const std::vector<LifetimeParameter>& getLifetimeParameters() const {
+    return lifetimeParameters;
   }
   const std::vector<TypeParameter>& getTypeParameters() const {
     return typeParameters;

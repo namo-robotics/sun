@@ -148,6 +148,19 @@ class Parser {
     parsingError(msg);
   }
 
+  // Helper: when the current token is '<<' (lexed as one shift token),
+  // split it into two '<' so a '<'a>' lambda-type marker can open right
+  // after a generic argument list: Box<<'a>() -> i32>.
+  void splitLessIfShift() {
+    if (curTok.kind != TokenKind::LEFT_SHIFT) return;
+    Position mid = curTok.start;
+    mid.column += 1;
+    mid.offset += 1;
+    Token remainder = Token::make(TokenKind::LESS, mid, curTok.end);
+    curTok = Token::make(TokenKind::LESS, curTok.start, mid);
+    pushToken(remainder);
+  }
+
   // Helper: check if current token starts with '>' (for lookahead)
   bool isGreater() const {
     return curTok.kind == TokenKind::GREATER ||
@@ -270,7 +283,8 @@ class Parser {
   unique_ptr<ExprAST> parseFunctionLiteral(
       const std::string& name = "",
       std::vector<TypeParameter> typeParameters = {}, bool isLambda = false,
-      bool isLifecycleMethod = false);
+      bool isLifecycleMethod = false,
+      std::vector<LifetimeParameter> lifetimeParameters = {});
   unique_ptr<FunctionAST> parseFunction(bool isClassMethod = false);
   // Parse a constructor or destructor member: init(args) { } / deinit() { }.
   // They are written without 'public' or 'method' and are always public.
@@ -298,11 +312,14 @@ class Parser {
   bool atMethodKeyword() const;
   unique_ptr<ExprAST> parseStatementList();
 
-  // `<T, U: _Numeric>` after a function, class, interface or enum name.
-  // Returns empty when there is no '<' — the declaration is not generic.
-  // Each parameter may carry one constraint the type argument must satisfy:
-  // a built-in trait such as `_Numeric`, or an interface name.
-  std::vector<TypeParameter> parseTypeParameterList();
+  // `<T, U: _Numeric>` or `<'a, T>` after a function, class, interface or
+  // enum name. Returns empty when there is no '<' — the declaration is not
+  // generic. Each parameter may carry one constraint the type argument must
+  // satisfy: a built-in trait such as `_Numeric`, or an interface name.
+  // Lifetime parameters come first and land in lifetimesOut; passing
+  // nullptr rejects them for declarations that do not accept lifetimes.
+  std::vector<TypeParameter> parseTypeParameterList(
+      std::vector<LifetimeParameter>* lifetimesOut = nullptr);
 
   // The constraint after the colon in `<T: _Numeric>`. Stamps the source span
   // the way parseTypeAnnotation does, so diagnostics can point at it.

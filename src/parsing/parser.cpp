@@ -349,11 +349,14 @@ unique_ptr<FunctionAST> Parser::parseFunction(bool isClassMethod) {
   }
   getNextToken();  // eat function name
 
-  // Parse optional type parameters: function name<T, U>(...)
-  std::vector<TypeParameter> typeParameters = parseTypeParameterList();
+  // Parse optional type parameters: function name<'a, T>(...)
+  std::vector<LifetimeParameter> lifetimeParameters;
+  std::vector<TypeParameter> typeParameters =
+      parseTypeParameterList(&lifetimeParameters);
 
-  auto result =
-      parseFunctionLiteral(funcName, std::move(typeParameters), false);
+  auto result = parseFunctionLiteral(funcName, std::move(typeParameters),
+                                     false, false,
+                                     std::move(lifetimeParameters));
   return finishNode(
       unique_ptr<FunctionAST>(static_cast<FunctionAST*>(result.release())),
       start);
@@ -455,7 +458,8 @@ unique_ptr<LambdaAST> Parser::parseLambda() {
 // Parse a function literal: (args) returnType { body }
 unique_ptr<ExprAST> Parser::parseFunctionLiteral(
     const std::string& name, std::vector<TypeParameter> typeParameters,
-    bool isLambda, bool isLifecycleMethod) {
+    bool isLambda, bool isLifecycleMethod,
+    std::vector<LifetimeParameter> lifetimeParameters) {
   Position start = captureStart();
   expectCurrentTokenKind(TokenKind::PAREN_OPEN,
                          "Expected '(' in function literal");
@@ -573,6 +577,7 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
   auto proto = std::make_unique<PrototypeAST>(
       name, std::move(args), std::move(retType), std::move(typeParameters),
       std::move(variadicParam));
+  proto->setLifetimeParameters(std::move(lifetimeParameters));
   proto->setLocation(std::move(protoLoc));
   if (isLambda) {
     return finishNode(
@@ -766,8 +771,12 @@ unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
   // For module-qualified types, use type annotations: var x: std.Vec<T>
   // For module symbols, use: using std; then refer to them unqualified
 
-  // Check for generic function call: create<Type>(args...)
-  if (curTok.kind == TokenKind::LESS) {
+  // Check for generic function call: create<Type>(args...). A '<<' can be
+  // the argument list opening straight onto a '<'a>' lambda type
+  // (Box<<'a>() -> i32>(f)); the backtrack below restores it as a shift
+  // when the type parse fails.
+  if (curTok.kind == TokenKind::LESS ||
+      curTok.kind == TokenKind::LEFT_SHIFT) {
     // Could be a generic call or a comparison - use backtracking to decide
     // Save parser state for backtracking
     Token savedCurTok = curTok;
@@ -775,17 +784,20 @@ unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
     auto savedLexerPos = lexer.getPosition();
     auto savedTokenStack = tokenStack;
 
+    splitLessIfShift();
     getNextToken();  // eat '<'
 
     // Try to parse type arguments (one or more separated by commas). A
-    // lambda type argument starts with '(' or '[ref](', which a comparison's
-    // right operand can also start with, so a failed type parse falls
-    // through to the backtrack below rather than reporting an error here.
+    // lambda type argument starts with '(', '[ref](' or '<'a>(', which a
+    // comparison's right operand can also start with, so a failed type
+    // parse falls through to the backtrack below rather than reporting an
+    // error here.
     bool typeArgsParsed = false;
     std::vector<std::unique_ptr<TypeAnnotation>> typeArgs;
     if (isTypeToken(curTok.kind) || curTok.kind == TokenKind::IDENTIFIER ||
         curTok.kind == TokenKind::PAREN_OPEN ||
-        curTok.kind == TokenKind::BRACKET_OPEN) {
+        curTok.kind == TokenKind::BRACKET_OPEN ||
+        curTok.kind == TokenKind::LESS) {
       try {
         auto typeArg = parseTypeAnnotation();
         typeArgs.push_back(
@@ -797,7 +809,8 @@ unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
           if (!isTypeToken(curTok.kind) &&
               curTok.kind != TokenKind::IDENTIFIER &&
               curTok.kind != TokenKind::PAREN_OPEN &&
-              curTok.kind != TokenKind::BRACKET_OPEN) {
+              curTok.kind != TokenKind::BRACKET_OPEN &&
+              curTok.kind != TokenKind::LESS) {
             break;  // Not a type arg after comma, not a generic call
           }
           auto nextTypeArg = parseTypeAnnotation();
@@ -1263,13 +1276,40 @@ VariadicParam Parser::parseVariadicParam(std::string name) {
   return VariadicParam(std::move(name), std::move(constraint));
 }
 
-// Parse a generic parameter list: <T>, <T, U>, <T: _Numeric>, <F: _Lambda>.
+// Parse a generic parameter list: <T>, <T, U>, <T: _Numeric>, <'a, T>.
 // Shared by functions, classes, interfaces and interface methods, so a
-// constraint written on any of them means the same thing.
-std::vector<TypeParameter> Parser::parseTypeParameterList() {
+// constraint written on any of them means the same thing. Lifetime
+// parameters ('a) come first and land in lifetimesOut; a caller that
+// passes nullptr does not accept them.
+std::vector<TypeParameter> Parser::parseTypeParameterList(
+    std::vector<LifetimeParameter>* lifetimesOut) {
   std::vector<TypeParameter> typeParameters;
   if (curTok.kind != TokenKind::LESS) return typeParameters;
   getNextToken();  // eat '<'
+
+  bool sawLifetime = false;
+  while (curTok.kind == TokenKind::LIFETIME) {
+    if (!lifetimesOut) {
+      parsingError("lifetime parameters are not supported here");
+    }
+    Position span = captureStart();
+    span.setEnd(curTok.end.line, curTok.end.column, curTok.end.offset);
+    std::string name = curTok.getLifetimeName().value();
+    if (name == "this") {
+      parsingError(
+          "'this is a builtin lifetime and cannot be declared; use it "
+          "directly in a class member signature");
+    }
+    lifetimesOut->emplace_back(std::move(name), std::move(span));
+    sawLifetime = true;
+    getNextToken();  // eat lifetime name
+
+    if (curTok.kind == TokenKind::COMMA) {
+      getNextToken();  // eat ','
+    } else {
+      break;
+    }
+  }
 
   while (curTok.kind == TokenKind::IDENTIFIER) {
     TypeParameter param(curTok.getIdentifier().value());
@@ -1289,7 +1329,12 @@ std::vector<TypeParameter> Parser::parseTypeParameterList() {
     }
   }
 
-  if (typeParameters.empty()) {
+  if (curTok.kind == TokenKind::LIFETIME) {
+    parsingError(
+        "lifetime parameters come before type parameters: <'a, T>");
+  }
+
+  if (typeParameters.empty() && !sawLifetime) {
     throwIdentifierError("expected type parameter name after '<'");
   }
 
@@ -1348,17 +1393,25 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
     return type;
   }
 
-  // A '[ref]' marker introduces a frame-bound lambda type: [ref](i32) -> i32.
-  // It admits lambdas that carry a captured environment living in a stack
-  // frame (capture lists, bound methods); a plain '(...) -> ...' type is
-  // reserved for environment-free lambdas.
+  // A '[ref]' marker introduces an anonymous frame-bound lambda type:
+  // [ref](i32) -> i32. It admits lambdas that carry a captured environment
+  // living in a stack frame (capture lists, bound methods); a plain
+  // '(...) -> ...' type is reserved for environment-free lambdas. A NAMED
+  // frame is spelled with the lifetime alone: <'a>(i32) -> i32.
   bool refEnvMarker = false;
+  std::string refEnvLifetime;
   if (curTok.kind == TokenKind::BRACKET_OPEN) {
     getNextToken();  // eat '['
     expectCurrentTokenKind(
         TokenKind::REF, "expected 'ref' after '[' in a lambda type: "
                         "[ref](i32) -> i32");
     getNextToken();  // eat 'ref'
+    if (curTok.kind == TokenKind::LIFETIME) {
+      parsingError(
+          "a named lifetime on a lambda type is written <'" +
+          curTok.getLifetimeName().value() + ">(i32) -> i32, without the "
+          "'[ref]' marker");
+    }
     expectCurrentTokenKind(
         TokenKind::BRACKET_CLOSE, "expected ']' after '[ref' in a lambda "
                                   "type: [ref](i32) -> i32");
@@ -1367,12 +1420,28 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
         TokenKind::PAREN_OPEN, "expected a lambda type after '[ref]': "
                                "[ref](i32) -> i32");
     refEnvMarker = true;
+  } else if (curTok.kind == TokenKind::LESS) {
+    // <'a>(i32) -> i32: a frame-bound lambda type whose frame the
+    // signature names. No type annotation otherwise begins with '<'.
+    getNextToken();  // eat '<'
+    expectCurrentTokenKind(
+        TokenKind::LIFETIME, "expected a lifetime after '<' in a lambda "
+                             "type: <'a>(i32) -> i32");
+    refEnvLifetime = curTok.getLifetimeName().value();
+    getNextToken();  // eat lifetime name
+    consumeGreater(
+        "expected '>' after the lifetime in a lambda type: <'a>(i32) -> i32");
+    expectCurrentTokenKind(
+        TokenKind::PAREN_OPEN, "expected a lambda type after '<'a>': "
+                               "<'a>(i32) -> i32");
+    refEnvMarker = true;
   }
 
   // Check for lambda type: (param_types) -> return_type [throws IError]
   if (curTok.kind == TokenKind::PAREN_OPEN) {
     type.baseName = "lambda";
     type.refEnv = refEnvMarker;
+    type.lifetimeName = std::move(refEnvLifetime);
     getNextToken();  // eat '('
 
     // Parse parameter types
@@ -1476,6 +1545,12 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
     // ref type - reference type with implicit dereferencing
     type.baseName = "ref";
     getNextToken();  // eat 'ref'
+
+    // An optional lifetime names the referent's frame: ref 'a Bus
+    if (curTok.kind == TokenKind::LIFETIME) {
+      type.lifetimeName = curTok.getLifetimeName().value();
+      getNextToken();  // eat lifetime name
+    }
 
     // Parse referenced type directly (no parentheses)
     type.elementType = std::make_unique<TypeAnnotation>(parseTypeAnnotation());
@@ -1583,20 +1658,42 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
       getNextToken();  // eat identifier
     }
 
-    // Check for generic type arguments: ClassName<T, U, ...>
+    // Check for generic type arguments: ClassName<'a, T, ...> (lifetime
+    // arguments come first and never distinguish instantiations). A '<<'
+    // here is the argument list opening straight onto a '<'a>' lambda
+    // type (Box<<'a>() -> i32>), so it splits into two '<'.
+    splitLessIfShift();
     if (curTok.kind == TokenKind::LESS) {
       getNextToken();  // eat '<'
 
-      // Parse comma-separated list of type arguments
-      while (true) {
-        auto typeArg = parseTypeAnnotation();
-        type.typeArguments.push_back(
-            std::make_unique<TypeAnnotation>(std::move(typeArg)));
-
+      while (curTok.kind == TokenKind::LIFETIME) {
+        type.lifetimeArguments.push_back(curTok.getLifetimeName().value());
+        getNextToken();  // eat lifetime name
         if (curTok.kind == TokenKind::COMMA) {
           getNextToken();  // eat ','
         } else {
           break;
+        }
+      }
+
+      // Parse comma-separated list of type arguments (absent for an
+      // application of lifetimes alone, e.g. Bus<'a>)
+      if (curTok.kind != TokenKind::GREATER &&
+          curTok.kind != TokenKind::RIGHT_SHIFT) {
+        while (true) {
+          if (curTok.kind == TokenKind::LIFETIME) {
+            parsingError(
+                "lifetime arguments come before type arguments: <'a, T>");
+          }
+          auto typeArg = parseTypeAnnotation();
+          type.typeArguments.push_back(
+              std::make_unique<TypeAnnotation>(std::move(typeArg)));
+
+          if (curTok.kind == TokenKind::COMMA) {
+            getNextToken();  // eat ','
+          } else {
+            break;
+          }
         }
       }
 
@@ -3718,8 +3815,10 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
   std::string className = curTok.getIdentifier().value();
   getNextToken();  // eat class name
 
-  // Parse optional type parameters: class Name<T, U, ...>
-  std::vector<TypeParameter> typeParameters = parseTypeParameterList();
+  // Parse optional type parameters: class Name<'a, T, ...>
+  std::vector<LifetimeParameter> lifetimeParameters;
+  std::vector<TypeParameter> typeParameters =
+      parseTypeParameterList(&lifetimeParameters);
 
   // Parse optional implements clause
   std::vector<ImplementedInterfaceAST> implementedInterfaces;
@@ -3864,11 +3963,12 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
                          "expected '}' at end of class definition");
   getNextToken();  // eat '}'
 
-  return finishNode(std::make_unique<ClassDefinitionAST>(
-                        std::move(className), std::move(typeParameters),
-                        std::move(implementedInterfaces), std::move(fields),
-                        std::move(methods)),
-                    start);
+  auto classDef = std::make_unique<ClassDefinitionAST>(
+      std::move(className), std::move(typeParameters),
+      std::move(implementedInterfaces), std::move(fields),
+      std::move(methods));
+  classDef->setLifetimeParameters(std::move(lifetimeParameters));
+  return finishNode(std::move(classDef), start);
 }
 
 // Parse interface definition: interface InterfaceName<T, U> { fields and
@@ -3883,8 +3983,10 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
   std::string interfaceName = curTok.getIdentifier().value();
   getNextToken();  // eat interface name
 
-  // Parse optional type parameters: interface Name<T, U, ...>
-  std::vector<TypeParameter> typeParameters = parseTypeParameterList();
+  // Parse optional type parameters: interface Name<'a, T, ...>
+  std::vector<LifetimeParameter> lifetimeParameters;
+  std::vector<TypeParameter> typeParameters =
+      parseTypeParameterList(&lifetimeParameters);
 
   if (curTok.kind != TokenKind::BRACE_OPEN) {
     parsingError("expected '{' after interface name");
@@ -3966,8 +4068,10 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
       }
       getNextToken();  // eat method name
 
-      // Parse optional type parameters: method name<T, U>(...)
-      std::vector<TypeParameter> typeParameters = parseTypeParameterList();
+      // Parse optional type parameters: method name<'a, T>(...)
+      std::vector<LifetimeParameter> lifetimeParameters;
+      std::vector<TypeParameter> typeParameters =
+          parseTypeParameterList(&lifetimeParameters);
 
       expectCurrentTokenKind(TokenKind::PAREN_OPEN,
                              "Expected '(' in method declaration");
@@ -4043,6 +4147,7 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
       auto proto = std::make_unique<PrototypeAST>(
           funcName, std::move(args), std::move(retType),
           std::move(typeParameters), std::move(variadicParam));
+      proto->setLifetimeParameters(std::move(lifetimeParameters));
       proto->setLocation(std::move(protoLoc));
       proto->setConstMethod(isConstMethod);
       auto func = finishNode(
@@ -4074,10 +4179,11 @@ unique_ptr<InterfaceDefinitionAST> Parser::parseInterfaceDefinition() {
                          "expected '}' at end of interface definition");
   getNextToken();  // eat '}'
 
-  return finishNode(std::make_unique<InterfaceDefinitionAST>(
-                        std::move(interfaceName), std::move(typeParameters),
-                        std::move(fields), std::move(methods)),
-                    start);
+  auto interfaceDef = std::make_unique<InterfaceDefinitionAST>(
+      std::move(interfaceName), std::move(typeParameters), std::move(fields),
+      std::move(methods));
+  interfaceDef->setLifetimeParameters(std::move(lifetimeParameters));
+  return finishNode(std::move(interfaceDef), start);
 }
 
 // Parse enum definition: enum Name { Variant1, Variant2, ... }

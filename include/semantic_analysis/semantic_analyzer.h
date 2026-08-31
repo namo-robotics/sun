@@ -140,7 +140,34 @@ class SemanticAnalyzer {
    * environment lives in a stack frame that dies when the function returns.
    */
   void rejectRefEnvReturnType(const std::optional<TypeAnnotation> &returnType,
-                              const Position &location);
+                              const Position &location,
+                              bool allowNamed = false);
+
+  // Lifetime names usable at the current analysis point: the enclosing
+  // class or interface's declared lifetimes, plus the enclosing function's
+  // while its signature and body are analyzed. The builtin 'this is not
+  // stored here - allowThisLifetime_ below governs it.
+  std::vector<std::string> activeLifetimeNames_;
+
+  // True while class or interface members are analyzed - the only places
+  // the builtin 'this lifetime may appear.
+  bool allowThisLifetime_ = false;
+
+  /**
+   * Reject any lifetime name the annotation uses (recursively, through
+   * element, parameter, return and argument positions) that is neither an
+   * active declared name nor the builtin 'this where 'this is legal.
+   */
+  void checkAnnotationLifetimes(const TypeAnnotation &annot,
+                                const Position &location);
+
+  /**
+   * Validate a signature's lifetime declarations (no duplicates, no
+   * collision with the enclosing class's names) and every lifetime name
+   * its parameter and return annotations use.
+   */
+  void checkSignatureLifetimes(const PrototypeAST &proto,
+                               const Position &location);
 
   // Declarations (analysis_declarations.cpp)
   void analyzeClassDefinition(ClassDefinitionAST &classDef);
