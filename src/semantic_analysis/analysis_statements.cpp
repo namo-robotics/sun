@@ -114,6 +114,18 @@ void SemanticAnalyzer::analyzeVariableCreation(VariableCreationAST& varCreate) {
 
   validateTypeParameter(type, varCreate);
 
+  // A global outlives every stack frame, so it cannot have a type that may
+  // point into one: a '[ref]' lambda, or anything that transitively holds
+  // one (a class, enum, container instantiation or array of them).
+  if (ctx_.isAtModuleLevel() && sun::typeIsFrameCarrying(type)) {
+    logAndThrowError(
+        "a module-level variable cannot have the frame-carrying type '" +
+            type->toDisplayString() +
+            "' - it can hold a lambda whose captured environment lives in a "
+            "stack frame, and the global would outlive that frame",
+        varCreate.getLocation());
+  }
+
   // Note: Move semantics tracking is handled by the borrow checker
   ctx_.declareVariable(varCreate.getName(), type, /*isParam=*/false,
                        varCreate.isConst());

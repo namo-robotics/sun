@@ -56,7 +56,7 @@ std::string QualifiedName::canonicalTypeString(const TypePtr& type,
 
   if (type->isLambda()) {
     auto* lamType = static_cast<const LambdaType*>(type.get());
-    std::string result = "(";
+    std::string result = lamType->hasRefCaptures() ? "[ref](" : "(";
     const auto& params = lamType->getParamTypes();
     for (size_t i = 0; i < params.size(); ++i) {
       if (i > 0) result += ", ";
@@ -83,7 +83,7 @@ std::string QualifiedName::buildParamSuffix(
     // Sanitize: replace special chars that may cause issues in symbol names
     for (char& c : typeStr) {
       if (c == '<' || c == '>' || c == ',' || c == '(' || c == ')') c = '_';
-      if (c == ' ') c = '_';
+      if (c == '[' || c == ']' || c == ' ') c = '_';
     }
     result += typeStr;
   }
@@ -102,7 +102,7 @@ std::string QualifiedName::buildVariadicArgSuffix(
     // Sanitize: replace special chars that may cause issues in symbol names
     for (char& c : typeStr) {
       if (c == '<' || c == '>' || c == ',' || c == '(' || c == ')') c = '_';
-      if (c == ' ') c = '_';
+      if (c == '[' || c == ']' || c == ' ') c = '_';
     }
     result += typeStr;
   }

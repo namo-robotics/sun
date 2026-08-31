@@ -368,6 +368,8 @@ void SemanticAnalyzer::analyzeFunctionDefinition(FunctionAST& func) {
 void SemanticAnalyzer::analyzeLambdaExpr(LambdaAST& lambda) {
   PrototypeAST& proto = const_cast<PrototypeAST&>(lambda.getProto());
 
+  rejectRefEnvReturnType(proto.getReturnType(), lambda.getLocation());
+
   // Get lambda signature info (pure computation)
   FunctionInfo lambdaInfo = getLambdaInfo(lambda);
 

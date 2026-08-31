@@ -100,6 +100,7 @@ TypeAnnotation ASTDeserializer::deserializeTypeAnnotation(
 
   result.canError = type.can_error();
   result.constRef = type.const_ref();
+  result.refEnv = type.ref_env();
   return result;
 }
 

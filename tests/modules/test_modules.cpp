@@ -729,6 +729,57 @@ std::filesystem::path writeMoonLib(const std::string& name,
 
 }  // namespace
 
+// The '[ref]' marker on a lambda-typed parameter must survive the trip
+// through a .moon: had serialization dropped it, the imported signature
+// would read as a clean lambda type and reject the capturing argument.
+TEST(Modules, moon_ref_lambda_param_survives_round_trip) {
+  initTestEnvironment();
+  auto moonPath = writeMoonLib("reflambda", R"(
+    public module reflambda {
+        public function apply(f: [ref](i32) -> i32, x: i32) i32 {
+            return f(x);
+        }
+    }
+  )");
+
+  auto driver = Driver::createForJIT("moon_ref_lambda_main");
+  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  auto value = driver->executeString(R"(
+    using reflambda;
+
+    function main() i32 {
+        var base = 40;
+        return apply(lambda [ref base](n: i32) i32 { return base + n; }, 2);
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// The reverse holds too: a clean lambda parameter stays clean through a
+// .moon and keeps rejecting capturing arguments.
+TEST(Modules, moon_clean_lambda_param_still_rejects_captures) {
+  initTestEnvironment();
+  auto moonPath = writeMoonLib("cleanlambda", R"(
+    public module cleanlambda {
+        public function apply(f: (i32) -> i32, x: i32) i32 {
+            return f(x);
+        }
+    }
+  )");
+
+  auto driver = Driver::createForJIT("moon_clean_lambda_main");
+  driver->setMoonImports({sun::MoonImport(moonPath.string())});
+  EXPECT_THROW(driver->executeString(R"(
+    using cleanlambda;
+
+    function main() i32 {
+        var base = 40;
+        return apply(lambda [ref base](n: i32) i32 { return base + n; }, 2);
+    }
+  )"),
+               SunError);
+}
+
 // A throwing free function in a .moon must be invoked (not called) inside a
 // try block, or its exception skips the local catch and terminates.
 TEST(Modules, moon_free_function_throw_is_caught_by_importer) {

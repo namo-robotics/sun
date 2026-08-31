@@ -777,24 +777,39 @@ unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
 
     getNextToken();  // eat '<'
 
-    // Try to parse type arguments (one or more separated by commas)
-    bool isGenericCall = false;
-    if (isTypeToken(curTok.kind) || curTok.kind == TokenKind::IDENTIFIER) {
-      std::vector<std::unique_ptr<TypeAnnotation>> typeArgs;
-      auto typeArg = parseTypeAnnotation();
-      typeArgs.push_back(std::make_unique<TypeAnnotation>(std::move(typeArg)));
-
-      // Parse additional type arguments separated by commas
-      while (curTok.kind == TokenKind::COMMA) {
-        getNextToken();  // eat ','
-        if (!isTypeToken(curTok.kind) && curTok.kind != TokenKind::IDENTIFIER) {
-          break;  // Not a type arg after comma, not a generic call
-        }
-        auto nextTypeArg = parseTypeAnnotation();
+    // Try to parse type arguments (one or more separated by commas). A
+    // lambda type argument starts with '(' or '[ref](', which a comparison's
+    // right operand can also start with, so a failed type parse falls
+    // through to the backtrack below rather than reporting an error here.
+    bool typeArgsParsed = false;
+    std::vector<std::unique_ptr<TypeAnnotation>> typeArgs;
+    if (isTypeToken(curTok.kind) || curTok.kind == TokenKind::IDENTIFIER ||
+        curTok.kind == TokenKind::PAREN_OPEN ||
+        curTok.kind == TokenKind::BRACKET_OPEN) {
+      try {
+        auto typeArg = parseTypeAnnotation();
         typeArgs.push_back(
-            std::make_unique<TypeAnnotation>(std::move(nextTypeArg)));
-      }
+            std::make_unique<TypeAnnotation>(std::move(typeArg)));
 
+        // Parse additional type arguments separated by commas
+        while (curTok.kind == TokenKind::COMMA) {
+          getNextToken();  // eat ','
+          if (!isTypeToken(curTok.kind) &&
+              curTok.kind != TokenKind::IDENTIFIER &&
+              curTok.kind != TokenKind::PAREN_OPEN &&
+              curTok.kind != TokenKind::BRACKET_OPEN) {
+            break;  // Not a type arg after comma, not a generic call
+          }
+          auto nextTypeArg = parseTypeAnnotation();
+          typeArgs.push_back(
+              std::make_unique<TypeAnnotation>(std::move(nextTypeArg)));
+        }
+        typeArgsParsed = true;
+      } catch (const SunError&) {
+        typeArgsParsed = false;  // not types: treat the '<' as a comparison
+      }
+    }
+    if (typeArgsParsed) {
       // Handle '>' or '>>' (for nested generics)
       if (isGreater()) {
         // Consume '>' (splits '>>', '>=', '>>=' if needed)
@@ -1333,9 +1348,31 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
     return type;
   }
 
+  // A '[ref]' marker introduces a frame-bound lambda type: [ref](i32) -> i32.
+  // It admits lambdas that carry a captured environment living in a stack
+  // frame (capture lists, bound methods); a plain '(...) -> ...' type is
+  // reserved for environment-free lambdas.
+  bool refEnvMarker = false;
+  if (curTok.kind == TokenKind::BRACKET_OPEN) {
+    getNextToken();  // eat '['
+    expectCurrentTokenKind(
+        TokenKind::REF, "expected 'ref' after '[' in a lambda type: "
+                        "[ref](i32) -> i32");
+    getNextToken();  // eat 'ref'
+    expectCurrentTokenKind(
+        TokenKind::BRACKET_CLOSE, "expected ']' after '[ref' in a lambda "
+                                  "type: [ref](i32) -> i32");
+    getNextToken();  // eat ']'
+    expectCurrentTokenKind(
+        TokenKind::PAREN_OPEN, "expected a lambda type after '[ref]': "
+                               "[ref](i32) -> i32");
+    refEnvMarker = true;
+  }
+
   // Check for lambda type: (param_types) -> return_type [throws IError]
   if (curTok.kind == TokenKind::PAREN_OPEN) {
     type.baseName = "lambda";
+    type.refEnv = refEnvMarker;
     getNextToken();  // eat '('
 
     // Parse parameter types
@@ -3387,6 +3424,17 @@ TypeAnnotation Parser::parseTypeFromString(const std::string& typeStr) {
       cleanType = cleanType.substr(0, cleanType.size() - suffix.size());
       break;
     }
+  }
+
+  // A '[ref]' prefix marks a frame-bound lambda type. Strip it and mark the
+  // parsed result. (Lambda type strings have no full grammar here; the marker
+  // must still round-trip rather than corrupt the fallback below.)
+  if (cleanType.size() > 6 && cleanType.substr(0, 6) == "[ref](") {
+    std::string inner = cleanType.substr(5);
+    if (canError) inner += " throws IError";
+    TypeAnnotation result = parseTypeFromString(inner);
+    result.refEnv = true;
+    return result;
   }
 
   // Handle common primitive types

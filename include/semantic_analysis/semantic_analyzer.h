@@ -33,6 +33,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "ast/type_annotation.h"
 #include "semantic_analysis/access_checker.h"
 #include "semantic_analysis/declaration_collector.h"
 #include "semantic_analysis/generic_specializer.h"
@@ -133,6 +134,13 @@ class SemanticAnalyzer {
   // analyzeExpr dispatches one of these per AST node kind. Each resolves its
   // node's type, checks it, and records what codegen needs; the dispatcher
   // itself only picks which one to run.
+
+  /**
+   * Reject a '[ref]' lambda type in return position: its captured
+   * environment lives in a stack frame that dies when the function returns.
+   */
+  void rejectRefEnvReturnType(const std::optional<TypeAnnotation> &returnType,
+                              const Position &location);
 
   // Declarations (analysis_declarations.cpp)
   void analyzeClassDefinition(ClassDefinitionAST &classDef);

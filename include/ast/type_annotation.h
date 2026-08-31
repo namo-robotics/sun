@@ -35,6 +35,11 @@ struct TypeAnnotation {
   // For reference types: `const ref T` (the referent cannot be changed)
   bool constRef = false;
 
+  // For lambda types: `[ref]() -> T` admits lambdas that carry a captured
+  // environment living in a stack frame; a plain `() -> T` is reserved for
+  // environment-free lambdas
+  bool refEnv = false;
+
   // Source span (includes the "throws IError" suffix when present); not serialized
   Position span{};
 
@@ -45,6 +50,7 @@ struct TypeAnnotation {
         arrayDimensions(other.arrayDimensions),
         canError(other.canError),
         constRef(other.constRef),
+        refEnv(other.refEnv),
         span(other.span) {
     if (other.elementType) {
       elementType = std::make_unique<TypeAnnotation>(*other.elementType);
@@ -65,6 +71,7 @@ struct TypeAnnotation {
       arrayDimensions = other.arrayDimensions;
       canError = other.canError;
       constRef = other.constRef;
+      refEnv = other.refEnv;
       span = other.span;
       if (other.elementType) {
         elementType = std::make_unique<TypeAnnotation>(*other.elementType);
@@ -144,13 +151,14 @@ struct TypeAnnotation {
       return result;
     }
     if (isLambda()) {
-      std::string result = "(";
+      std::string result = refEnv ? "[ref](" : "(";
       for (size_t i = 0; i < paramTypes.size(); ++i) {
         if (i > 0) result += ", ";
         result += paramTypes[i]->toString();
       }
       result += ") -> ";
       result += returnType ? returnType->toString() : "void";
+      if (canError) result += " throws IError";
       return result;
     }
     // Generic types: ClassName<T, U>

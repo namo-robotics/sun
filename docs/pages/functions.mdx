@@ -151,7 +151,7 @@ Capture rules:
 - **Globals** are accessed directly and cannot appear in a capture list.
 - A `[ref x]` capture registers a **mutable borrow** of the variable for as long as the lambda value is in scope, so conflicting `ref`s — including a second lambda capturing the same variable — are rejected.
 - A `[const ref x]` capture registers a **shared borrow** instead, so several lambdas may capture the same variable at once. Everything reached through it is read-only: fields cannot be assigned, and only `const method` methods can be called.
-- A lambda with a capture list holds state in the enclosing frame — pointers into it for `[ref …]` captures, the environment itself for owned ones — so it **cannot be returned** from the function or **stored in a field**: the frame it depends on would be gone when the lambda runs. Passing it to `spawn` is fine: the thread is joined when its handle's scope ends, while the frame is still alive — and the handle inherits the restriction, so it cannot be returned or stored in a field either (see [Threads](/threads)).
+- A lambda with a capture list holds state in the enclosing frame — pointers into it for `[ref …]` captures, the environment itself for owned ones — and this shows in its **type**: it is a `[ref](…) -> …` lambda, not a plain `(…) -> …` one (see [Lambda Types](#lambda-types)). It **cannot be returned** from the function: the frame it depends on would be gone when the lambda runs. Passing it to `spawn` is fine: the thread is joined when its handle's scope ends, while the frame is still alive — and the handle inherits the restriction, so it cannot be returned, stored in a field, or passed by value (see [Threads](/threads)).
 - **`this` cannot be captured**, in the list or implicitly. A lambda that needs the object's data reads the fields it needs into locals and captures those, takes them as parameters — or the method itself is bound as the callable (`this.method`, below).
 
 ## Semantic Differences
@@ -171,6 +171,45 @@ import { Callout } from 'nextra/components'
   - Use `function` for named, top-level operations called directly
   - Use `lambda` for callbacks, higher-order function arguments, or when you need to store/pass functions
 </Callout>
+
+## Lambda Types
+
+A lambda type annotation is written with arrow syntax: `(i32) -> i32`, with an
+optional `throws IError` suffix for lambdas that may throw. That plain form is
+reserved for **environment-free** lambdas — ones with no capture list and no
+bound receiver. A lambda that carries a captured environment living in a stack
+frame — a `[ref x]` or owned `[x]` capture list, or a bound method — has the
+type **`[ref](i32) -> i32`** instead, echoing the capture-list brackets on the
+literal:
+
+```sun
+function apply(f: [ref](i32) -> i32, x: i32) i32 {
+    return f(x);      // a received [ref] lambda may be called, and even
+}                     // stored - its environment outlives this frame
+
+function main() i32 {
+    var base = 40;
+    return apply(lambda [ref base] (n: i32) i32 { return base + n; }, 2);
+}
+```
+
+The marker only widens one way: an environment-free lambda is accepted
+wherever a `[ref]` one is expected, never the reverse. And because a `[ref]`
+value may point into a stack frame, the type is barred from the places that
+outlive one: it cannot be a **return type**, and a **global** cannot have a
+`[ref]` type — nor any type that transitively contains one, such as a class
+with a `[ref]` field or a `Vec<[ref]() -> i32>`. A class holding a `[ref]`
+field is itself bound to the frame, like a class that stores references (see
+[Memory Safety](/memory-safety)).
+
+One more distinction matters: a `[ref]` lambda built in the *current* frame
+(a capture-list literal, or a bound method of a local variable) may only be
+stored into frame-local objects, which then inherit its restrictions — not
+into a field of `this` or an object behind a `ref` parameter, which outlive
+the frame. A `[ref]` lambda received *as a parameter* came from an older
+frame, so a callee may store it — that is what makes a `subscribe(cb)`
+method possible. The full rules live in
+[Memory Safety](/memory-safety).
 
 ## First-Class Lambdas
 
@@ -197,7 +236,7 @@ println(add5(10));  // 15
 
 ## Bound Methods
 
-Class methods are first-class values: `obj.method` (without parentheses) produces a value of lambda type `(params) -> ret` that can be stored in variables and passed wherever a lambda is expected. This makes class methods usable as callbacks:
+Class methods are first-class values: `obj.method` (without parentheses) produces a value of lambda type `[ref](params) -> ret` — it holds its receiver by reference, so it carries the `[ref]` marker — that can be stored in variables and passed wherever a `[ref]` lambda is expected. This makes class methods usable as callbacks:
 
 ```sun
 class Counter {
@@ -209,7 +248,7 @@ class Counter {
     }
 }
 
-function apply(f: (i32) -> i32, x: i32) i32 {
+function apply(f: [ref](i32) -> i32, x: i32) i32 {
     return f(x);
 }
 
@@ -224,8 +263,8 @@ function main() i32 {
 
 Rules and caveats:
 
-- **The receiver is captured by reference.** Calls through the bound value see and mutate the original object. The bound value must not outlive its receiver, so — like a lambda with a `[ref …]` capture — it cannot be returned or stored in a field, and neither can a thread handle spawned from it.
-- **Overloaded methods** need type context to disambiguate: a type annotation (`var f: (i32) -> i32 = c.add;`) or a lambda-typed parameter of the called function. Without context, referencing an overloaded method is an error.
+- **The receiver is captured by reference.** Calls through the bound value see and mutate the original object. The bound value must not outlive its receiver, so — like a lambda with a `[ref …]` capture — its type is `[ref](…) -> …` and it cannot be returned, and neither can a thread handle spawned from it.
+- **Overloaded methods** need type context to disambiguate: a type annotation (`var f: [ref](i32) -> i32 = c.add;`) or a lambda-typed parameter of the called function. Without context, referencing an overloaded method is an error.
 - **Generic methods** cannot be referenced as values.
 - **Interface-typed receivers** are not supported: only concrete class methods can be bound.
-- A **non-throwing method** can be bound where a throwing lambda type (`(i32) -> i32 throws IError`) is expected; a throwing method requires a throwing lambda type and its calls follow the usual `try`/`throws IError` rules.
+- A **non-throwing method** can be bound where a throwing lambda type (`[ref](i32) -> i32 throws IError`) is expected; a throwing method requires a throwing lambda type and its calls follow the usual `try`/`throws IError` rules.

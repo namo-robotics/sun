@@ -866,3 +866,197 @@ TEST(Stdlib_Concurrency_Threads, method_on_a_thread_reports_to_a_callback) {
   )");
   EXPECT_EQ(value, 42);
 }
+
+// ============================================================================
+// A frame-bound handle must not cross a call boundary by value (issue #160)
+// ============================================================================
+
+// The issue's reproduction: a container element was the one unchecked
+// escape route. The push itself is now rejected - the callee could keep the
+// handle past this frame's death, and nothing in its parameter type says so.
+TEST(Stdlib_Concurrency_Threads, frame_bound_handle_cannot_be_pushed_into_a_vec) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
+    using std;
+    using std.thread;
+    function makeThreads(alloc: const ref HeapAllocator) Vec<Thread<i32>> {
+      var x = 3;
+      var v = Vec<Thread<i32>>(alloc, 4);
+      v.push(spawn(lambda [ref x]() i32 { return x; }));
+      return v;
+    }
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var v = makeThreads(alloc);
+      match (v.pop()) {
+        Option.Some(t) => { return t.join(); },
+        Option.None => { return -1; },
+      };
+      return 0;
+    }
+  )"),
+                                "Borrow check failed");
+}
+
+// Handles over capture-free lambdas own everything they touch, so a pool of
+// them may live in a container and leave the frame with it.
+TEST(Stdlib_Concurrency_Threads, capture_free_handles_may_leave_in_a_vec) {
+  auto value = executeStringWithStdlib(R"(
+    using std;
+    using std.thread;
+    function makeThreads(alloc: const ref HeapAllocator) Vec<Thread<i32>> {
+      var v = Vec<Thread<i32>>(alloc, 4);
+      v.push(spawn(lambda () i32 { return 20; }));
+      v.push(spawn(lambda () i32 { return 22; }));
+      return v;
+    }
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var v = makeThreads(alloc);
+      var total = 0;
+      match (v.pop()) {
+        Option.Some(t) => { total = total + t.join(); },
+        Option.None => { return -1; },
+      };
+      match (v.pop()) {
+        Option.Some(t) => { total = total + t.join(); },
+        Option.None => { return -1; },
+      };
+      return total;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// The same rejection for a plain free function: the borrow checker cannot
+// see what the callee does with a by-value argument, so a frame-bound one
+// must stay in this frame.
+TEST(Stdlib_Concurrency_Threads, frame_bound_handle_cannot_pass_by_value) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
+    using std.thread;
+    function consume(t: Thread<i32>) i32 {
+      return t.join();
+    }
+    function main() i32 {
+      var x = 3;
+      var t = spawn(lambda [ref x]() i32 { return x; });
+      return consume(t);
+    }
+  )"),
+                                "Borrow check failed");
+}
+
+// Passing by ref stays legal: a borrow cannot be kept by the callee.
+TEST(Stdlib_Concurrency_Threads, frame_bound_handle_may_pass_by_ref) {
+  auto value = executeStringWithStdlib(R"(
+    using std.thread;
+    function ticket(t: ref Thread<i32>) i32 {
+      return 2;
+    }
+    function main() i32 {
+      var x = 40;
+      var t = spawn(lambda [ref x]() i32 { return x; });
+      var extra = ticket(t);
+      return t.join() + extra;
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// A constructor is a call like any other: the new object could carry the
+// handle anywhere.
+TEST(Stdlib_Concurrency_Threads, frame_bound_handle_cannot_enter_a_constructor) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
+    using std.thread;
+    class Box {
+      var t: Thread<i32>;
+      init(t: Thread<i32>) { this.t = t; }
+    }
+    function main() i32 {
+      var x = 3;
+      var t = spawn(lambda [ref x]() i32 { return x; });
+      var b = Box(t);
+      return 0;
+    }
+  )"),
+                                "Borrow check failed");
+}
+
+// An enum payload is a by-value parameter too: wrapping the handle would
+// let the enum value smuggle it onward.
+TEST(Stdlib_Concurrency_Threads, frame_bound_handle_cannot_enter_an_enum_payload) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
+    using std;
+    using std.thread;
+    function main() i32 {
+      var x = 3;
+      var t = spawn(lambda [ref x]() i32 { return x; });
+      var o = Option.Some(t);
+      return 0;
+    }
+  )"),
+                                "Borrow check failed");
+}
+
+// A call through a lambda value is covered as well.
+TEST(Stdlib_Concurrency_Threads, frame_bound_handle_cannot_pass_to_a_lambda) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
+    using std.thread;
+    function main() i32 {
+      var x = 3;
+      var sink = lambda (t: Thread<i32>) i32 { return t.join(); };
+      var t = spawn(lambda [ref x]() i32 { return x; });
+      return sink(t);
+    }
+  )"),
+                                "Borrow check failed");
+}
+
+// An indexed slot is a container element by another name.
+TEST(Stdlib_Concurrency_Threads, frame_bound_handle_cannot_enter_an_indexed_slot) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
+    using std.thread;
+    function main() i32 {
+      var x = 3;
+      var arr = [spawn(lambda () i32 { return 0; })];
+      arr[0] = spawn(lambda [ref x]() i32 { return x; });
+      return 0;
+    }
+  )"),
+                                "Borrow check failed");
+}
+
+// An array literal built from a frame-bound handle is frame-bound as a
+// whole, so it cannot be returned either.
+TEST(Stdlib_Concurrency_Threads, array_literal_with_frame_bound_handle_cannot_return) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
+    using std.thread;
+    function make() array<Thread<i32>, 1> {
+      var x = 3;
+      var a = [spawn(lambda [ref x]() i32 { return x; })];
+      return a;
+    }
+    function main() i32 {
+      return 0;
+    }
+  )"),
+                                "Borrow check failed");
+}
+
+// A module-level global outlives every frame, so a frame-bound handle
+// cannot be parked there even though its type is clean.
+TEST(Stdlib_Concurrency_Threads, frame_bound_handle_cannot_be_assigned_to_a_global) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
+    using std.thread;
+    var gt = spawn(lambda () i32 { return 0; });
+    function park() void {
+      var x = 3;
+      gt = spawn(lambda [ref x]() i32 { return x; });
+      return;
+    }
+    function main() i32 {
+      park();
+      return 0;
+    }
+  )"),
+                                "Borrow check failed");
+}

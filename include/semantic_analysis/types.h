@@ -377,9 +377,11 @@ class LambdaType : public Type {
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;
   bool canThrow_ = false;  // declared with 'throws IError' — may unwind
-  // Metadata only — intentionally excluded from equals()/identity so it
-  // never disturbs overload resolution. Carries "this lambda holds pointers
-  // into an enclosing frame" through variables for spawn/return checks.
+  // Part of the type's identity: '[ref]() -> T' in source. True when the
+  // lambda carries a captured environment that lives in a stack frame
+  // (capture lists, bound methods). A plain '() -> T' is reserved for
+  // environment-free lambdas, so this is what keeps a frame-bound lambda
+  // from laundering through an annotation-typed parameter or field.
   bool hasRefCaptures_ = false;
 
  public:
@@ -398,7 +400,7 @@ class LambdaType : public Type {
   void setHasRefCaptures(bool v) { hasRefCaptures_ = v; }
 
   std::string toString() const override {
-    std::string result = "(";
+    std::string result = hasRefCaptures_ ? "[ref](" : "(";
     for (size_t i = 0; i < paramTypes.size(); ++i) {
       if (i > 0) result += ", ";
       result += paramTypes[i]->toString();
@@ -409,7 +411,7 @@ class LambdaType : public Type {
   }
 
   std::string toDisplayString() const override {
-    std::string result = "(";
+    std::string result = hasRefCaptures_ ? "[ref](" : "(";
     for (size_t i = 0; i < paramTypes.size(); ++i) {
       if (i > 0) result += ", ";
       result += paramTypes[i]->toDisplayString();
@@ -422,6 +424,7 @@ class LambdaType : public Type {
   bool equals(const Type& other) const override {
     if (auto* l = dynamic_cast<const LambdaType*>(&other)) {
       if (canThrow_ != l->canThrow_) return false;
+      if (hasRefCaptures_ != l->hasRefCaptures_) return false;
       if (!returnType->equals(*l->returnType)) return false;
       if (paramTypes.size() != l->paramTypes.size()) return false;
       for (size_t i = 0; i < paramTypes.size(); ++i) {
@@ -432,14 +435,26 @@ class LambdaType : public Type {
     return false;
   }
 
-  // Same signature ignoring throwing-ness: a non-throwing lambda may be
-  // passed where a throwing one is expected (but not vice versa)
+  // Same signature ignoring throwing-ness and the [ref] marker. Used by the
+  // bound-method overload chooser, which picks a method by shape before the
+  // chosen value is flagged [ref]; assignability does the rejecting later.
   bool equalsIgnoringThrow(const LambdaType& other) const {
     if (!returnType->equals(*other.returnType)) return false;
     if (paramTypes.size() != other.paramTypes.size()) return false;
     for (size_t i = 0; i < paramTypes.size(); ++i) {
       if (!paramTypes[i]->equals(*other.paramTypes[i])) return false;
     }
+    return true;
+  }
+
+  // Can a by-value 'from' argument bind to a parameter of this type?
+  // Same signature, and each marker only widens: a non-throwing lambda may
+  // go where a throwing one is expected, and an environment-free lambda may
+  // go where a '[ref]' one is expected — never the other way around.
+  bool acceptsValueOf(const LambdaType& from) const {
+    if (!equalsIgnoringThrow(from)) return false;
+    if (!canThrow_ && from.canThrow_) return false;
+    if (!hasRefCaptures_ && from.hasRefCaptures_) return false;
     return true;
   }
 
@@ -1371,13 +1386,13 @@ class ClassType : public Type {
           continue;
         }
 
-        // Non-throwing lambda argument for a throwing lambda parameter
+        // Lambda widening: non-throwing where throwing is expected, and
+        // environment-free where '[ref]' is expected
         if (method.paramTypes[i]->isLambda() && argTypes[i]->isLambda()) {
           auto* paramL =
               static_cast<const LambdaType*>(method.paramTypes[i].get());
           auto* argL = static_cast<const LambdaType*>(argTypes[i].get());
-          if (paramL->canThrow() && !argL->canThrow() &&
-              argL->equalsIgnoringThrow(*paramL)) {
+          if (paramL->acceptsValueOf(*argL)) {
             continue;
           }
         }
@@ -2525,6 +2540,60 @@ inline bool typeNeedsDrop(const Type* type) {
 
 inline bool typeNeedsDrop(const TypePtr& type) {
   return typeNeedsDrop(type.get());
+}
+
+// True if a value of this type may carry a lambda environment that lives in
+// a stack frame: a '[ref]' lambda, or anything that can transitively hold
+// one — a class through its fields or generic type arguments (containers
+// hide elements behind raw storage, so the arguments must count), a payload
+// enum, an array. Such a value must not outlive the frame it was built in.
+// References are the sibling case, tracked by the borrow checker's
+// class-stores-refs walk.
+inline bool typeIsFrameCarryingImpl(const Type* type,
+                                    std::unordered_set<const Type*>& visited) {
+  if (!type || !visited.insert(type).second) return false;
+  if (type->isLambda()) {
+    return static_cast<const LambdaType*>(type)->hasRefCaptures();
+  }
+  if (type->isClass()) {
+    auto* c = static_cast<const ClassType*>(type);
+    for (const auto& field : c->getFields()) {
+      if (field.type && typeIsFrameCarryingImpl(field.type.get(), visited)) {
+        return true;
+      }
+    }
+    for (const auto& arg : c->getTypeArguments()) {
+      if (arg && typeIsFrameCarryingImpl(arg.get(), visited)) return true;
+    }
+    return false;
+  }
+  if (type->isEnum()) {
+    auto* e = static_cast<const EnumType*>(type);
+    for (const auto& v : e->getVariants()) {
+      for (const auto& pt : v.payloadTypes) {
+        if (pt && typeIsFrameCarryingImpl(pt.get(), visited)) return true;
+      }
+    }
+    for (const auto& arg : e->getGenericArgs()) {
+      if (arg && typeIsFrameCarryingImpl(arg.get(), visited)) return true;
+    }
+    return false;
+  }
+  if (type->isArray()) {
+    auto* a = static_cast<const ArrayType*>(type);
+    return a->getElementType() &&
+           typeIsFrameCarryingImpl(a->getElementType().get(), visited);
+  }
+  return false;
+}
+
+inline bool typeIsFrameCarrying(const Type* type) {
+  std::unordered_set<const Type*> visited;
+  return typeIsFrameCarryingImpl(type, visited);
+}
+
+inline bool typeIsFrameCarrying(const TypePtr& type) {
+  return typeIsFrameCarrying(type.get());
 }
 
 // True if a read can honestly duplicate a value of this type. Scalars can:

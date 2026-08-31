@@ -305,12 +305,13 @@ bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
     }
   }
 
-  // Non-throwing lambda is accepted where a throwing lambda is expected
+  // Lambda widening: a non-throwing lambda is accepted where a throwing one
+  // is expected, and an environment-free lambda where a '[ref]' one is
+  // expected — never the reverse in either direction
   if (to->isLambda() && from->isLambda()) {
     auto* toL = static_cast<const sun::LambdaType*>(to.get());
     auto* fromL = static_cast<const sun::LambdaType*>(from.get());
-    return toL->canThrow() && !fromL->canThrow() &&
-           fromL->equalsIgnoringThrow(*toL);
+    return toL->acceptsValueOf(*fromL);
   }
 
   // Unwrap reference types and check inner compatibility. A const borrow
@@ -324,8 +325,12 @@ bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
   }
 
   // Class-to-interface assignability:
-  // Class C can be assigned to interface I if C implements I
+  // Class C can be assigned to interface I if C implements I.
+  // A frame-carrying class (one that can hold a '[ref]' lambda) never
+  // converts by value: the interface type would erase the frame binding,
+  // letting the value escape the frame its lambda environment lives in.
   if (to->isInterface() && from->isClass()) {
+    if (sun::typeIsFrameCarrying(from)) return false;
     auto* ifaceType = static_cast<const sun::InterfaceType*>(to.get());
     auto* classType = static_cast<const sun::ClassType*>(from.get());
     return classType->convertibleToInterface(ifaceType->getName());
@@ -348,6 +353,9 @@ bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
     auto* fromRef = static_cast<const sun::ReferenceType*>(from.get());
     sun::TypePtr innerFrom = fromRef->getReferencedType();
     if (innerFrom && innerFrom->isClass()) {
+      // Same frame-carrying ban as the by-value conversion above: the
+      // resulting interface value would erase the frame binding
+      if (sun::typeIsFrameCarrying(innerFrom)) return false;
       auto* ifaceType = static_cast<const sun::InterfaceType*>(to.get());
       auto* classType = static_cast<const sun::ClassType*>(innerFrom.get());
       return classType->convertibleToInterface(ifaceType->getName());
