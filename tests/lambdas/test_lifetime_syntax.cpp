@@ -95,6 +95,59 @@ TEST(Lambdas_LifetimeSyntax, ref_lifetime_and_this_param_accepted) {
   EXPECT_EQ(value, 42);
 }
 
+// A lambda may bind a lifetime for relationships among its arguments. The
+// binder appears before its optional capture list.
+TEST(Lambdas_LifetimeSyntax, lambda_lifetime_parameter_with_capture) {
+  auto value = executeString(R"(
+    class Box {
+        var f: <'this>() -> i32;
+        init() { this.f = lambda () i32 { return 0; }; }
+        public method set(f: <'this>() -> i32) void {
+            this.f = f;
+            return;
+        }
+        public method call() i32 {
+            var callback = this.f;
+            return callback();
+        }
+    }
+    function main() i32 {
+        var kept = 42;
+        var box = Box();
+        var touched = 0;
+        var store = lambda<'a> [ref touched](
+            f: <'a>() -> i32,
+            destination: ref 'a Box
+        ) void {
+            var forwarded: <'a>() -> i32 = f;
+            destination.set(forwarded);
+            touched = touched + 1;
+            return;
+        };
+        store(lambda [ref kept]() i32 { return kept; }, box);
+        return box.call();
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// A lambda's lifetime binder may connect a callback argument to its result.
+TEST(Lambdas_LifetimeSyntax, lambda_lifetime_parameter_on_return) {
+  auto value = executeString(R"(
+    function main() i32 {
+        var kept = 42;
+        var identity = lambda<'a>(
+            f: <'a>() -> i32
+        ) <'a>() -> i32 {
+            return f;
+        };
+        var selected = identity(lambda [ref kept]() i32 { return kept; });
+        return selected();
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
 // The apostrophe token must not disturb character literals around it.
 TEST(Lambdas_LifetimeSyntax, char_literals_unaffected) {
   auto value = executeString(R"(
@@ -161,6 +214,20 @@ TEST(Lambdas_LifetimeSyntax, anonymous_lifetime_store_rejected) {
 // ============================================================================
 // Rejected spellings and names
 // ============================================================================
+
+
+// A lambda lifetime binder follows the same duplicate-name rule as a function.
+TEST(Lambdas_LifetimeSyntax, duplicate_lambda_lifetime_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    function main() i32 {
+        var f = lambda<'a, 'a>(g: <'a>() -> i32) i32 {
+            return g();
+        };
+        return 0;
+    }
+  )"),
+                                "duplicate lifetime parameter");
+}
 
 // A lifetime nobody declared is an error, not an implicit parameter.
 TEST(Lambdas_LifetimeSyntax, undeclared_lifetime_rejected) {

@@ -446,10 +446,12 @@ void SemanticAnalyzer::analyzeFunctionDefinition(FunctionAST& func) {
 void SemanticAnalyzer::analyzeLambdaExpr(LambdaAST& lambda) {
   PrototypeAST& proto = const_cast<PrototypeAST&>(lambda.getProto());
 
-  rejectRefEnvReturnType(proto.getReturnType(), lambda.getLocation());
+  rejectRefEnvReturnType(
+      proto.getReturnType(), lambda.getLocation(),
+      /*allowNamed=*/true);
 
-  // Lambdas declare no lifetimes of their own; their annotations may use
-  // the enclosing declaration's
+  // A lambda's own binders and any enclosing binders are both in scope for
+  // its signature.
   checkSignatureLifetimes(proto, lambda.getLocation());
 
   // Get lambda signature info (pure computation)

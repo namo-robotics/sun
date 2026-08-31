@@ -275,6 +275,41 @@ TEST(Lambdas_LifetimeChecking, bare_ref_return_still_banned) {
 }
 
 // ============================================================================
+// Lambda literal lifetime binders
+// ============================================================================
+
+// A lambda's own lifetime relationship is enforced at every invocation.
+TEST(Lambdas_LifetimeChecking,
+     lambda_lifetime_rejects_inner_source_for_outer_destination) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Box {
+        var f: <'this>() -> i32;
+        init() { this.f = lambda () i32 { return 0; }; }
+        public method set(f: <'this>() -> i32) void {
+            this.f = f;
+            return;
+        }
+    }
+    function main() i32 {
+        var box = Box();
+        var store = lambda<'a>(
+            f: <'a>() -> i32,
+            destination: ref 'a Box
+        ) void {
+            destination.set(f);
+            return;
+        };
+        if (true) {
+            var dead = 42;
+            store(lambda [ref dead]() i32 { return dead; }, box);
+        }
+        return 0;
+    }
+  )"),
+                                "Borrow check failed");
+}
+
+// ============================================================================
 // Class journeys and 'this fields
 // ============================================================================
 

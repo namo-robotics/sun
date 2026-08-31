@@ -383,7 +383,7 @@ unique_ptr<FunctionAST> Parser::parseLifecycleMethod() {
   return func;
 }
 
-// Parse lambda: lambda [ref x, const ref y, z] (args) returnType { body }
+// Parse lambda: lambda<'a> [ref x, const ref y, z] (args) returnType { body }
 // An entry that says `ref` borrows: `[ref x]` mutably, `[const ref x]`
 // read-only. An entry that says neither is owned by the closure — a compound
 // value moves in, a scalar copies. Names left out of the list entirely are
@@ -391,6 +391,14 @@ unique_ptr<FunctionAST> Parser::parseLifecycleMethod() {
 unique_ptr<LambdaAST> Parser::parseLambda() {
   Position lambdaLoc = captureStart();
   getNextToken();  // eat 'lambda'
+
+  std::vector<LifetimeParameter> lifetimeParameters;
+  auto typeParameters = parseTypeParameterList(&lifetimeParameters);
+  if (!typeParameters.empty()) {
+    parsingError(
+        "lambda literals may declare lifetime parameters, but not type "
+        "parameters");
+  }
 
   // Optional capture list: [ ([const] ref)? IDENT (, ...)* ]
   std::vector<std::string> refCaptureNames;
@@ -438,7 +446,8 @@ unique_ptr<LambdaAST> Parser::parseLambda() {
     getNextToken();  // eat ']'
   }
 
-  auto result = parseFunctionLiteral("", {}, true);  // anonymous function
+  auto result = parseFunctionLiteral("", {}, true, false,
+                                     std::move(lifetimeParameters));
   auto lambda =
       unique_ptr<LambdaAST>(static_cast<LambdaAST*>(result.release()));
   lambda = finishNode(std::move(lambda), std::move(lambdaLoc));

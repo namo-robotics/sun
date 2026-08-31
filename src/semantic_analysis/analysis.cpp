@@ -850,8 +850,7 @@ static void checkAllPathsReturn(const PrototypeAST& proto,
 // returned value's environment lives in cannot be told apart from the frame
 // that is dying. A NAMED lifetime unpins it - 'function pick<'a>(...)
 // <'a>() -> i32' ties the result to frames the caller can see - so
-// declarations that may name lifetimes (functions and methods, not lambda
-// literals) pass allowNamed.
+// declarations that bind their own lifetimes pass allowNamed.
 void SemanticAnalyzer::rejectRefEnvReturnType(
     const std::optional<TypeAnnotation>& returnType, const Position& location,
     bool allowNamed) {
@@ -863,9 +862,8 @@ void SemanticAnalyzer::rejectRefEnvReturnType(
     if (!returnType->lifetimeName.empty() &&
         returnType->lifetimeName != "_") {
       logAndThrowError(
-          "a frame-bound lambda type cannot be a lambda's return type, even "
-          "with a lifetime name - only named functions and methods declare "
-          "lifetimes",
+          "a named frame-bound return type requires a lifetime available "
+          "in this declaration",
           location);
     }
     logAndThrowError(
@@ -878,8 +876,9 @@ void SemanticAnalyzer::rejectRefEnvReturnType(
 }
 
 // Reject any lifetime name in the annotation that is not usable here: a
-// name is usable when an enclosing function, class or interface declared
-// it; the builtin 'this is usable only inside class and interface members.
+// name is usable when an enclosing function, lambda, class or interface
+// declared it; the builtin 'this is usable only inside class and interface
+// members.
 void SemanticAnalyzer::checkAnnotationLifetimes(const TypeAnnotation& annot,
                                                 const Position& location) {
   auto checkName = [&](const std::string& name) {
@@ -896,8 +895,9 @@ void SemanticAnalyzer::checkAnnotationLifetimes(const TypeAnnotation& annot,
     if (std::find(activeLifetimeNames_.begin(), activeLifetimeNames_.end(),
                   name) == activeLifetimeNames_.end()) {
       logAndThrowError("use of undeclared lifetime '" + name +
-                           ". Declare it on the function (function f<'" +
-                           name + ">) or the class (class C<'" + name + ">)",
+                           ". Declare it on a function or lambda (function f<'" +
+                           name + "> or lambda<'" + name +
+                           ">), or on the class (class C<'" + name + ">)",
                        location);
     }
   };
@@ -930,7 +930,7 @@ void SemanticAnalyzer::checkSignatureLifetimes(const PrototypeAST& proto,
     if (std::find(activeLifetimeNames_.begin(), activeLifetimeNames_.end(),
                   lp.name) != activeLifetimeNames_.end()) {
       logAndThrowError("lifetime '" + lp.name +
-                           " is already declared by the enclosing class",
+                           " is already declared by an enclosing declaration",
                        lp.span);
     }
   }
@@ -1129,8 +1129,14 @@ void SemanticAnalyzer::analyzeLambda(LambdaAST& lambda) {
     }
   }
 
-  // Analyze the lambda body
+  // Keep the lambda's lifetime binders active for annotations nested in
+  // its body, just as a named function does.
+  size_t lifetimeMark = activeLifetimeNames_.size();
+  for (const auto& lp : proto.getLifetimeParameters()) {
+    activeLifetimeNames_.push_back(lp.name);
+  }
   analyzeBlock(const_cast<BlockExprAST&>(lambda.getBody()));
+  activeLifetimeNames_.resize(lifetimeMark);
 
   // Same rule as named functions: no implicit returns
   checkAllPathsReturn(proto, lambda.getBody(), proto.getResolvedReturnType(),

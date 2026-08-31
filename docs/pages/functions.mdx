@@ -116,9 +116,28 @@ function main() i32 {
 }
 ```
 
+A lambda may declare lifetime parameters immediately after the keyword. The
+names scope over its parameter and return types and over annotations in its
+body, just as they do for a named function:
+
+```sun
+var store = lambda<'a>(
+    cb: <'a>(i32) -> i32,
+    dst: ref 'a Holder
+) void {
+    dst.set(cb);
+    return;
+};
+```
+
+At every call, the compiler requires the callback environment to outlive the
+destination associated with the same name. An optional capture list follows
+the binder: `lambda<'a> [ref count](...) ...`. Lambda literals may declare
+lifetimes, but they do not declare type parameters.
+
 ## Captures
 
-A lambda may use variables from its enclosing scope. By default they are **captured by value** — the lambda gets a private, read-only copy. To mutate a captured variable (or to capture a class, interface, or array at all), declare it in a bracketed **by-reference capture list** after the `lambda` keyword:
+A lambda may use variables from its enclosing scope. By default they are **captured by value** — the lambda gets a private, read-only copy. To mutate a captured variable (or to capture a class, interface, or array at all), declare it in a bracketed **by-reference capture list** after the `lambda` keyword (and its lifetime binder, when present):
 
 ```sun
 function main() i32 {

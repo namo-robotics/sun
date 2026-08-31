@@ -233,9 +233,11 @@ class Formatter {
     out_ += '>';
   }
 
-  void printProtoSig(const PrototypeAST& p) {
+  void printProtoSig(const PrototypeAST& p, bool includeParameters = true) {
     out_ += p.getName();
-    printTypeParams(p.getTypeParameters(), p.getLifetimeParameters());
+    if (includeParameters) {
+      printTypeParams(p.getTypeParameters(), p.getLifetimeParameters());
+    }
     out_ += '(';
     const auto& args = p.getArgs();
     bool first = true;
@@ -637,7 +639,10 @@ class Formatter {
   }
 
   void printLambda(const LambdaAST& l) {
-    out_ += "lambda ";
+    out_ += "lambda";
+    printTypeParams(l.getProto().getTypeParameters(),
+                    l.getProto().getLifetimeParameters());
+    out_ += ' ';
     const auto& caps = l.getProto().getRefCaptureNames();
     const auto& owned = l.getProto().getOwnedCaptureNames();
     if (!caps.empty() || !owned.empty()) {
@@ -654,7 +659,7 @@ class Formatter {
       }
       out_ += "] ";
     }
-    printProtoSig(l.getProto());  // lambda protos have an empty name
+    printProtoSig(l.getProto(), false);  // lambda prototypes have no name
     out_ += ' ';
     printBlockAuto(l.getBody());
   }

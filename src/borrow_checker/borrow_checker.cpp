@@ -2373,6 +2373,22 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
       frameLocalNames_.insert(argName);
       declDepths_[argName] = currentScope_;
     }
+    if (argType.isLambda() && argType.refEnv &&
+        !argType.lifetimeName.empty()) {
+      paramEnvNames_[argName] = argType.lifetimeName;
+    }
+    if (argType.isReference() && !argType.lifetimeName.empty()) {
+      refParamNames_[argName] = argType.lifetimeName;
+    }
+    if (argType.isReference() && argType.elementType &&
+        !argType.elementType->lifetimeArguments.empty()) {
+      refParamClassBindings_[argName] =
+          argType.elementType->lifetimeArguments;
+    }
+  }
+  if (proto.hasReturnType() && proto.getReturnType()->isLambda() &&
+      proto.getReturnType()->refEnv) {
+    returnLifetimeName_ = proto.getReturnType()->lifetimeName;
   }
 
   // Check the lambda body (lambdas always have a body)
