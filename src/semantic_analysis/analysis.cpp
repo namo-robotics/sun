@@ -845,8 +845,24 @@ static void checkAllPathsReturn(const PrototypeAST& proto,
       loc);
 }
 
+// A '[ref]' lambda type cannot be a return type. Which frame the returned
+// value's environment lives in cannot be told apart from the frame that is
+// dying, so returning one is never provably safe.
+void SemanticAnalyzer::rejectRefEnvReturnType(
+    const std::optional<TypeAnnotation>& returnType, const Position& location) {
+  if (returnType && returnType->refEnv) {
+    logAndThrowError(
+        "a '[ref]' lambda type cannot be a return type - its captured "
+        "environment lives in a stack frame that dies when the function "
+        "returns",
+        location);
+  }
+}
+
 void SemanticAnalyzer::analyzeFunction(FunctionAST& func) {
   PrototypeAST& proto = const_cast<PrototypeAST&>(func.getProto());
+
+  rejectRefEnvReturnType(proto.getReturnType(), func.getLocation());
 
   // For extern functions (no body), just validate and return
   if (func.isExtern()) {

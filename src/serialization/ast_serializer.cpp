@@ -64,6 +64,7 @@ ast::TypeAnnotation ASTSerializer::serializeTypeAnnotation(
 
   proto.set_can_error(type.canError);
   proto.set_const_ref(type.constRef);
+  proto.set_ref_env(type.refEnv);
   return proto;
 }
 

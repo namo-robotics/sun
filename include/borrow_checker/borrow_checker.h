@@ -82,10 +82,34 @@ class BorrowChecker {
   bool isRefCapturingLambdaExpr(const ExprAST& expr) const;
   // A value that must not leave this frame: a call result built from a
   // lambda with a capture list (spawn stores that lambda inside the Thread
-  // handle it returns), or a local such a result was moved into. See
-  // frameBoundVars_.
+  // handle it returns), a local such a result was moved into, or a literal
+  // holding one. See frameBoundVars_.
   bool isFrameBoundExpr(const ExprAST& expr) const;
-  // Does this class type hold a reference in any field, transitively?
+  // Reject frame-bound arguments bound to by-value parameters: the callee
+  // could keep them past this frame's death, and nothing in the parameter
+  // type says so.
+  void forbidFrameBoundByValueArgs(const CallExprAST& call,
+                                   const std::vector<TypePtr>& paramTypes);
+  void reportFrameBoundEscapeThroughCall(const Position& pos);
+  // A lambda value whose captured environment provably lives in THIS frame:
+  // a capture-list literal, a bound method of a frame-local receiver, or a
+  // local one of those was assigned to. See frameSourcedLambdas_.
+  bool isFrameSourcedLambdaExpr(const ExprAST& expr) const;
+  // True when the named place outlives this frame: `this`, a ref
+  // parameter's referent, or a global (any name this frame did not declare)
+  bool nameOutlivesFrame(const std::string& base) const;
+  // A frame-sourced lambda is being stored into the named destination:
+  // reject if the destination outlives the frame, otherwise mark the
+  // destination frame-bound so the carrier cannot cross a call boundary
+  void noteFrameSourcedLambdaStore(const std::string& destBase,
+                                   const Position& pos);
+  // Apply noteFrameSourcedLambdaStore to every place a call could keep a
+  // frame-sourced by-value lambda argument: the receiver and each
+  // by-mutable-ref argument
+  void checkFrameSourcedLambdaArgs(const CallExprAST& call,
+                                   const std::vector<TypePtr>& paramTypes);
+  // Does this type point into storage it does not own - a reference in any
+  // field, transitively, or a '[ref]' lambda environment it can carry?
   bool classStoresRefs(const TypePtr& type) const;
   bool classStoresRefsWalk(const TypePtr& type,
                            std::unordered_set<const Type*>& visited) const;
@@ -156,10 +180,31 @@ class BorrowChecker {
   // handle from spawn over a `[ref x]` or `[x]` lambda). The lambda's
   // environment lives in this frame, so the value may move between locals
   // and be dropped here, but must not escape: not returned, not stored into
-  // a field. The lambda's own capture loans pin the borrowed variables
-  // until scope exit; this set is what keeps the value from outliving them.
-  // (Escape through a container element is not tracked yet.)
+  // a field, an indexed slot or a global, and not passed to a by-value
+  // parameter (the callee could keep it - in a field, a container element,
+  // a global - and nothing in the parameter type says so). The lambda's own
+  // capture loans pin the borrowed variables until scope exit; this set is
+  // what keeps the value from outliving them. Lambdas themselves carry the
+  // frame binding in their `[ref]` type, but the type does not say WHICH
+  // frame - so lambda-typed locals sourced from THIS frame are tracked in
+  // frameSourcedLambdas_ below, and objects such a lambda was stored into
+  // land here, keeping the carrier from crossing a call boundary either.
   std::unordered_set<std::string> frameBoundVars_;
+
+  // Lambda-typed locals whose captured environment provably lives in THIS
+  // frame: assigned from a capture-list literal, or from a bound method of
+  // a frame-local receiver. A `[ref]` value received as a parameter is NOT
+  // here - its environment lives in some ancestor frame, which outlives
+  // this one, so it may be stored anywhere its type allows. A frame-sourced
+  // one must not reach a destination that outlives the frame: not a field
+  // of `this`, not an object behind a ref parameter, not a global.
+  std::unordered_set<std::string> frameSourcedLambdas_;
+
+  // Every name that names storage owned by this frame: declared locals,
+  // by-value parameters and loop variables. What is NOT here outlives the
+  // frame - `this`, ref parameters, globals - and must not be handed a
+  // frame-sourced lambda.
+  std::unordered_set<std::string> frameLocalNames_;
 
   // Compound match-payload bindings currently in scope. They BORROW the
   // matched value's payload slot in place: moving them (var creation,

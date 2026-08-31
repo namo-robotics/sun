@@ -618,6 +618,60 @@ function make() Holder {
 This holds transitively: a class whose field is (or contains) a ref-storing
 class is subject to the same rules.
 
+### Rule 5b: A `[ref]` Lambda Type Is Bound to a Stack Frame
+
+A lambda that carries a captured environment — a `[ref x]` or owned `[x]`
+capture list, or a bound method holding its receiver — has the type
+`[ref](…) -> …`, while a plain `(…) -> …` annotation admits only
+environment-free lambdas (an environment-free lambda widens into a `[ref]`
+parameter, never the reverse). Because the type says the value may point into
+a stack frame, the compiler bars it from everything that outlives one:
+
+```sun
+function make() [ref]() -> i32 { ... }   // ❌ ERROR: [ref] cannot be a return type
+var g: [ref]() -> i32 = ...;             // ❌ ERROR: a global would outlive the frame
+```
+
+The property is transitive, exactly like Rule 5: a class with a `[ref]`
+field, an enum with a `[ref]` payload, or a container instantiated over a
+`[ref]` lambda type (`Vec<[ref]() -> i32>`) is frame-bound as a whole — it
+works freely inside the frame, but cannot be returned, become a global, or
+convert to an interface (which would erase the marker from the type).
+
+The type says the value points into *a* frame, but not *which*, so one more
+rule tells the frames apart. A `[ref]` value built in the **current** frame
+— a capture-list literal, or a bound method of a local — may only be stored
+where the current frame owns the storage: a local object, which then
+becomes frame-bound itself. Storing it into a field of `this`, or into an
+object reached through a `ref` parameter, would let a callee smuggle its
+own frame's environment up into a caller's object, so both are rejected. A
+`[ref]` value received **as a parameter** has an environment in an ancestor
+frame that outlives this one, which is exactly what lets a method store a
+caller-supplied callback in a field:
+
+```sun
+class Bus {
+    var cb: [ref]() -> i32;
+    public method subscribe(cb: [ref]() -> i32) void {
+        this.cb = cb;      // ✓ cb comes from an older frame than this call
+    }
+    public method arm() void {
+        var x = 3;
+        // ❌ ERROR: the lambda's environment dies with this call
+        this.cb = lambda [ref x]() i32 { return x; };
+    }
+}
+```
+
+Some values are frame-bound without their type showing it: the handle
+`spawn` returns for a thread over a capture-list lambda hides that lambda
+behind runtime storage. Such a value is tracked per frame instead, and since
+a callee cannot be checked against what its parameter type does not say, a
+frame-bound value **may not be passed to any by-value parameter** — nor
+stored in a field, an indexed slot, or a global. Pass it by `ref`, or give
+the lambda its data as `spawn` arguments instead of captures (see
+[Threads](/threads)).
+
 ### Rule 6: Use-After-Move Detection
 
 When a class-typed variable is assigned to another variable, the original is marked as moved and cannot be used:

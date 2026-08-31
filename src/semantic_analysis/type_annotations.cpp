@@ -104,7 +104,13 @@ sun::TypePtr TypeInferer::substituteTypeParameters(sun::TypePtr type) {
       if (newParam != param) changed = true;
     }
     if (changed) {
-      return sun::Types::Lambda(newRet, std::move(newParams), lt->canThrow());
+      auto substituted =
+          sun::Types::Lambda(newRet, std::move(newParams), lt->canThrow());
+      // The [ref] marker is part of the type's identity and must survive
+      // substitution, or spawn<F>'s specializations would lose it
+      static_cast<sun::LambdaType*>(substituted.get())
+          ->setHasRefCaptures(lt->hasRefCaptures());
+      return substituted;
     }
     return type;
   }
@@ -238,6 +244,13 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
 
   // Function types: _() {} (named function, direct call)
   if (annot.isFunction()) {
+    if (annot.returnType && annot.returnType->refEnv) {
+      logAndThrowError(
+          "a '[ref]' lambda type cannot be a return type - its captured "
+          "environment lives in a stack frame that dies when the function "
+          "returns",
+          annot.span);
+    }
     std::vector<sun::TypePtr> paramTypes;
     for (const auto& param : annot.paramTypes) {
       paramTypes.push_back(typeAnnotationToType(*param));
@@ -250,6 +263,13 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
 
   // Lambda types: () {} (anonymous function, fat pointer call)
   if (annot.isLambda()) {
+    if (annot.returnType && annot.returnType->refEnv) {
+      logAndThrowError(
+          "a '[ref]' lambda type cannot be a return type - its captured "
+          "environment lives in a stack frame that dies when the function "
+          "returns",
+          annot.span);
+    }
     std::vector<sun::TypePtr> paramTypes;
     for (const auto& param : annot.paramTypes) {
       paramTypes.push_back(typeAnnotationToType(*param));
@@ -259,7 +279,13 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
                                : sun::Types::Void();
     bool canThrow =
         annot.canError || (annot.returnType && annot.returnType->canError);
-    return sun::Types::Lambda(retType, std::move(paramTypes), canThrow);
+    auto lambdaType =
+        sun::Types::Lambda(retType, std::move(paramTypes), canThrow);
+    // '[ref](…) -> …' admits lambdas whose captured environment lives in a
+    // stack frame; a plain annotation admits only environment-free lambdas
+    static_cast<sun::LambdaType*>(lambdaType.get())
+        ->setHasRefCaptures(annot.refEnv);
+    return lambdaType;
   }
 
   // Array types: array<T, N> or array<T, M, N> or array<T> (unsized)

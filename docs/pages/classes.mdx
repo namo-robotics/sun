@@ -427,11 +427,11 @@ function main() i32 {
 
 ## Methods as Values
 
-A method accessed without parentheses (`obj.method`) is a first-class value of lambda type: it can be stored in a variable or passed as a callback. The receiver is captured by reference, so calls through the value mutate the original object. See [Bound Methods](/functions#bound-methods) for the full rules.
+A method accessed without parentheses (`obj.method`) is a first-class value of lambda type: it can be stored in a variable or passed as a callback. The receiver is captured by reference, so the value carries the `[ref]` type marker and calls through it mutate the original object. See [Bound Methods](/functions#bound-methods) for the full rules.
 
 ```sun
 var c = Counter();
-var tick = c.increment;   // type: () -> void
+var tick = c.increment;   // type: [ref]() -> void
 tick();                   // increments c
 ```
 

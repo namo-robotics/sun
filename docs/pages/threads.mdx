@@ -116,8 +116,11 @@ is still standing.
 For the same reason, the handle of a thread spawned over a capture-list
 lambda — or over a bound method, which holds its receiver by reference — is
 bound to that frame. It can move between locals, and it joins when it drops,
-but it cannot leave: returning it, or storing it in a field, would let the
-thread outlive the variables it borrows.
+but it cannot leave: returning it, storing it in a field, a container
+element, an indexed slot or a global, or passing it to a by-value parameter
+(the callee could keep it, and nothing in the parameter's type says the
+handle is frame-bound) would let the thread outlive the variables it
+borrows. Passing it by `ref` is fine — a borrow cannot be kept.
 
 ```sun
 class Worker {
