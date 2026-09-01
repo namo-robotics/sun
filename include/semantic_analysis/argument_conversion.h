@@ -18,14 +18,16 @@
 namespace sun {
 
 enum class ArgConversion : uint8_t {
-  PassValue,    // the value as it is: scalars, arrays, pointers, interface and
+  PassValue,    // the value as it is: scalars, arrays, pointers and
                 // lambda values (and anything read out of a borrow)
-  Move,         // a class or payload enum by value: the source is invalidated
+  Move,         // an owning compound by value: the source is invalidated
   Borrow,       // a `ref T` parameter: the argument's address
   RawPtrAsRef,  // raw_ptr<T> to `ref T`: the pointer is the address
-  ClassToInterface,     // a class to an interface it implements: fat pointer
-  ClassToRefInterface,  // a class to `ref Interface`: a fat pointer spilled
-                        // to the stack, its address passed
+  ClassToInterface,          // an owned class to an owning interface
+  BorrowedClassToInterface,  // a borrowed class to an interface parameter:
+                             // fat pointer with a no-op drop slot
+  ClassToRefInterface,       // a class to `ref Interface`: a fat pointer
+                             // spilled to the stack, its address passed
   WidenNumeric,         // a narrower integer or float to a wider parameter
   StaticToRawPtr,       // static_ptr<T> to raw_ptr<T>: its data pointer
   DerefRawPtr,          // raw_ptr<T> to a primitive T: the pointee is loaded

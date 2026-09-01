@@ -274,8 +274,8 @@ class ScopeManager {
   // Emit cleanup for a single scope's allocations (LIFO), without popping it
   void emitCleanupForScope(CodegenScope& scope);
 
-  // Drop whatever value of `type` lives at `ptr`, in place: class deinit +
-  // field recursion, or the enum drop function. No-op for other types.
+  // Drop whatever value of `type` lives at `ptr`, in place: class recursion,
+  // interface vtable drop glue, or the enum drop function.
   void emitDropInPlace(const sun::TypePtr& type, llvm::Value* ptr,
                        const std::string& name = "drop");
 
@@ -300,6 +300,11 @@ class ScopeManager {
   // drops each owning payload, then poisons the tag so a second drop is a
   // no-op. Returns nullptr when the enum needs no drop code.
   llvm::Function* getOrCreateEnumDropFunction(sun::EnumType& enumType);
+
+  // Drops the concrete owner held by an interface fat pointer, then clears
+  // both fields so a later drop is a no-op.
+  void emitInterfaceDrop(sun::InterfaceType& interfaceType,
+                         llvm::Value* storagePtr);
 
   // Emit a drop of the payload-enum storage at `storagePtr` (no-op when the
   // enum needs no drop code)

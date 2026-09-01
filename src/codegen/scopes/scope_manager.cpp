@@ -296,6 +296,11 @@ void ScopeManager::emitFieldDeinit(Value* objectPtr,
 
       // Recursively deinit nested class fields
       emitFieldDeinit(fieldPtr, nestedClass, baseName + "." + field.name);
+    } else if (auto* interfaceType =
+                   sun::tryGetType<sun::InterfaceType>(field.type)) {
+      Value* fieldPtr = ctx.builder->CreateStructGEP(
+          structType, objectPtr, field.index, baseName + "." + field.name);
+      emitInterfaceDrop(*interfaceType, fieldPtr);
     } else if (field.type->isEnum() && sun::typeNeedsDrop(field.type)) {
       Value* fieldPtr = ctx.builder->CreateStructGEP(
           structType, objectPtr, field.index, baseName + "." + field.name);
@@ -304,12 +309,58 @@ void ScopeManager::emitFieldDeinit(Value* objectPtr,
   }
 }
 
+/**
+ * Drops the erased concrete owner referenced by an interface value.
+ */
+void ScopeManager::emitInterfaceDrop(sun::InterfaceType& interfaceType,
+                                     Value* storagePtr) {
+  StructType* fatType = interfaceType.getFatPointerType(ctx.getContext());
+  Value* fat = ctx.builder->CreateLoad(fatType, storagePtr, "iface.drop.fat");
+  Value* data = ctx.builder->CreateExtractValue(fat, 0, "iface.drop.data");
+  Value* vtable =
+      ctx.builder->CreateExtractValue(fat, 1, "iface.drop.vtable");
+
+  auto* ptrTy = PointerType::getUnqual(ctx.getContext());
+  auto* nullPtr = ConstantPointerNull::get(ptrTy);
+  Value* isEmpty = ctx.builder->CreateOr(
+      ctx.builder->CreateICmpEQ(data, nullPtr),
+      ctx.builder->CreateICmpEQ(vtable, nullPtr), "iface.drop.empty");
+
+  Function* parent = ctx.builder->GetInsertBlock()->getParent();
+  BasicBlock* dropBlock =
+      BasicBlock::Create(ctx.getContext(), "iface.drop", parent);
+  BasicBlock* doneBlock =
+      BasicBlock::Create(ctx.getContext(), "iface.dropped", parent);
+  ctx.builder->CreateCondBr(isEmpty, doneBlock, dropBlock);
+
+  ctx.builder->SetInsertPoint(dropBlock);
+  unsigned dropIndex = 0;
+  for (const auto& method : interfaceType.getMethods()) {
+    if (!method.isGeneric()) ++dropIndex;
+  }
+  Value* dropSlot = ctx.builder->CreateGEP(
+      ptrTy, vtable,
+      ConstantInt::get(Type::getInt32Ty(ctx.getContext()), dropIndex),
+      "iface.drop.slot");
+  Value* drop = ctx.builder->CreateLoad(ptrTy, dropSlot, "iface.drop.fn");
+  FunctionType* dropType = FunctionType::get(
+      Type::getVoidTy(ctx.getContext()), {ptrTy}, false);
+  ctx.builder->CreateCall(dropType, drop, {data});
+  ctx.builder->CreateStore(Constant::getNullValue(fatType), storagePtr);
+  ctx.builder->CreateBr(doneBlock);
+
+  ctx.builder->SetInsertPoint(doneBlock);
+}
+
 void ScopeManager::emitDropInPlace(const sun::TypePtr& type, Value* ptr,
                                    const std::string& name) {
   if (!type || !ptr) return;
   if (auto* classType = sun::tryGetType<sun::ClassType>(type)) {
     emitDeinitCall(classType, ptr);
     emitFieldDeinit(ptr, classType, name);
+  } else if (auto* interfaceType =
+                 sun::tryGetType<sun::InterfaceType>(type)) {
+    emitInterfaceDrop(*interfaceType, ptr);
   } else if (type->isEnum()) {
     emitEnumDrop(static_cast<sun::EnumType&>(*type), ptr);
   }

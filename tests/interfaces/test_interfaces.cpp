@@ -501,6 +501,74 @@ TEST(Interfaces_DynamicDispatch, basic_interface_variable_dispatch) {
   EXPECT_EQ(value, 25);
 }
 
+TEST(Interfaces_DynamicDispatch, interface_typed_field_dispatch) {
+  auto value = executeString(R"(
+    interface IClickHandler {
+      public method onClick(id: i32) i32;
+    }
+
+    class Counter implements IClickHandler {
+      var total: i32;
+      init() { this.total = 0; }
+      public method onClick(id: i32) i32 {
+        this.total = this.total + id;
+        return this.total;
+      }
+    }
+
+    class Button {
+      var handler: IClickHandler;
+      init() { this.handler = Counter(); }
+      public method click(id: i32) i32 {
+        return this.handler.onClick(id);
+      }
+    }
+
+    function main() i32 {
+      var b = Button();
+      b.click(20);
+      return b.click(22);
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Interfaces_DynamicDispatch, interface_field_drops_erased_owners) {
+  auto value = executeString(R"(
+    var dropped: i32 = 0;
+
+    interface IClickHandler {
+      method onClick(id: i32) i32;
+    }
+
+    class TrackedHandler implements IClickHandler {
+      var weight: i32;
+      init(weight: i32) { this.weight = weight; }
+      method onClick(id: i32) i32 { return id; }
+      deinit() { dropped = dropped + this.weight; }
+    }
+
+    class Button {
+      var handler: IClickHandler;
+      init() { this.handler = TrackedHandler(1); }
+      method replace(next: IClickHandler) void {
+        this.handler = next;
+      }
+    }
+
+    function exercise() void {
+      var button = Button();
+      button.replace(TrackedHandler(10));
+    }
+
+    function main() i32 {
+      exercise();
+      return dropped;
+    }
+  )");
+  EXPECT_EQ(value, 11);
+}
+
 TEST(Interfaces_DynamicDispatch, interface_param_dispatch) {
   // Pass class to function taking interface parameter
   auto value = executeString(R"(

@@ -162,9 +162,9 @@ Value* IntrinsicsGenerator::codegenLoadIntrinsic(
   llvm::Value* elemPtr =
       ctx.builder->CreateGEP(elemType, rawPtr, index, "elem.ptr");
 
-  // For class and payload-enum types, return the pointer to the element
-  // (compounds are addressable; the consumer moves or borrows from it)
-  if (targetType->isClass() || CodegenVisitor::isPayloadEnum(targetType)) {
+  // Compound elements stay addressable so the consumer can move or borrow.
+  if (targetType->isClass() || targetType->isInterface() ||
+      CodegenVisitor::isPayloadEnum(targetType)) {
     return elemPtr;
   }
 
@@ -196,24 +196,13 @@ Value* IntrinsicsGenerator::codegenStoreIntrinsic(
   llvm::Value* elemPtr =
       ctx.builder->CreateGEP(elemType, rawPtr, index, "elem.ptr");
 
-  // For class and payload-enum types, value may be a pointer (alloca) or
-  // already a struct value (e.g. from a by-value parameter). An addressable
-  // source MOVES into the slot (never an implicit copy): it is invalidated
-  // and its drop tracking released.
-  if (targetType->isClass() || CodegenVisitor::isPayloadEnum(targetType)) {
+  // Compound values may arrive by address or as a by-value parameter. An
+  // addressable source moves into the slot and is invalidated.
+  if (targetType->isClass() || targetType->isInterface() ||
+      CodegenVisitor::isPayloadEnum(targetType)) {
     llvm::Value* structVal = value;
     if (value->getType()->isPointerTy()) {
       structVal = gen_.applyMoveSemantics(value, targetType);
-    }
-    ctx.builder->CreateStore(structVal, elemPtr);
-    return structVal;
-  }
-
-  // For interface types (fat pointer struct), same handling as class types
-  if (targetType->isInterface()) {
-    llvm::Value* structVal = value;
-    if (value->getType()->isPointerTy()) {
-      structVal = ctx.builder->CreateLoad(elemType, value, "iface.val");
     }
     ctx.builder->CreateStore(structVal, elemPtr);
     return structVal;

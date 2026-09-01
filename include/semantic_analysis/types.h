@@ -1786,9 +1786,9 @@ class InterfaceType : public Type {
     return false;
   }
 
-  // Interfaces are represented as fat pointers: { ptr data, ptr vtable }
-  // This enables dynamic dispatch by storing both the object pointer
-  // and a pointer to the implementing class's vtable.
+  // Interfaces are represented as fat pointers: { ptr data, ptr vtable }.
+  // The vtable contains method pointers followed by concrete drop glue (or a
+  // no-op for a borrow), so an owning interface remains two pointers.
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
     return getFatPointerType(ctx);
   }
@@ -2563,6 +2563,9 @@ inline bool typeNeedsDropImpl(const Type* type,
     }
     return false;
   }
+  // A by-value interface owns its erased concrete implementation. Its vtable
+  // supplies the concrete drop routine; ref Interface values remain borrows.
+  if (type->isInterface()) return true;
   if (type->isEnum()) {
     auto* e = static_cast<const EnumType*>(type);
     for (const auto& v : e->getVariants()) {
