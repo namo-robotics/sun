@@ -5,6 +5,7 @@
 #include <unordered_set>
 
 #include "codegen/intrinsics/intrinsics.h"
+#include "semantic_analysis/c_abi_types.h"
 #include "semantic_analysis/field_initialization.h"
 #include "semantic_analysis/generic_type_arguments.h"
 #include "semantic_analysis/item_refs.h"
@@ -207,6 +208,10 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
       sun::QualifiedName resolved =
           ctx_.resolveNameWithUsings(varRef.getName());
       varRef.setQualifiedName(resolved);
+      if (VariableInfo* info = ctx_.lookupVariable(varRef.getName())) {
+        checkExternVariableAccessAllowed(*info, resolved.display(),
+                                         varRef.getLocation());
+      }
       break;
     }
 
@@ -706,6 +711,18 @@ void SemanticAnalyzer::checkExternCallAllowed(const FunctionInfo& info,
       loc);
 }
 
+void SemanticAnalyzer::checkExternVariableAccessAllowed(
+    const VariableInfo& info, const std::string& displayName,
+    const Position& loc) const {
+  if (!info.isCExtern || ctx_.isInUnsafeBlock()) return;
+  logAndThrowError(
+      "Accessing extern variable '" + displayName +
+          "' requires an unsafe block: C-owned storage is outside the borrow "
+          "checker's guarantees. Wrap the access in `unsafe { ... }`, or "
+          "expose it through a safe Sun wrapper.",
+      loc);
+}
+
 // `mod.name = value`. A module is a namespace rather than an object, so the
 // target is the module's own variable: it must exist, be visible, be
 // assignable, and take the value's type. Codegen writes the global directly.
@@ -730,6 +747,7 @@ void SemanticAnalyzer::analyzeModuleGlobalAssignment(
   const VariableInfo& target = *match.variableInfo;
   // display() names the declaring module without any library-hash scope
   std::string full = target.qualifiedName.display();
+  checkExternVariableAccessAllowed(target, full, assign.getLocation());
   if (target.isConst) {
     logAndThrowError("Cannot assign to constant '" + full +
                          "'; declare it with 'var' if it must change",
@@ -795,30 +813,6 @@ void SemanticAnalyzer::validateExternSignature(FunctionAST& func) {
     return t ? t->toDisplayString() : std::string("<unresolved>");
   };
 
-  // What codegen can lower to a C-compatible signature:
-  //  - primitives, which map 1:1
-  //  - raw_ptr<T>, a bare pointer
-  //  - ref T, which also lowers to a bare pointer and so *is* C's `T*`.
-  //    Class layout already matches C (declaration order, natural padding),
-  //    so `ref SomeClass` is exactly `struct SomeClass*`.
-  //  - classes by value, via per-target C ABI classification (see abi/c_abi.h)
-  // Still excluded are the types with no C spelling at all: arrays and slices
-  // (fat pointers), interfaces (vtable pairs), lambdas (closures), and
-  // error unions.
-  // Payload enums have a Sun-private tagged-union layout with no C ABI
-  // classification yet; only payload-free (i32) enums cross the C boundary.
-  auto isCStyleEnum = [](const sun::TypePtr& t) {
-    return t->isEnum() &&
-           !static_cast<const sun::EnumType*>(t.get())->hasPayload();
-  };
-  auto isCallbackParam = [&](const sun::TypePtr& t) {
-    return t && !t->isVoid() &&
-           (t->isPrimitive() || t->isRawPointer() || t->isReference() ||
-            isCStyleEnum(t));
-  };
-  auto isCallbackReturn = [&](const sun::TypePtr& t) {
-    return t && (t->isPrimitive() || t->isRawPointer() || isCStyleEnum(t));
-  };
   auto validateCallback = [&](const sun::FunctionType& callback,
                               const std::string& paramName) {
     if (callback.canThrow()) {
@@ -826,30 +820,19 @@ void SemanticAnalyzer::validateExternSignature(FunctionAST& func) {
                        func.getLocation());
     }
     for (const auto& callbackParam : callback.getParamTypes()) {
-      if (!isCallbackParam(callbackParam)) {
+      if (!sun::c_abi::isCallbackParameter(callbackParam)) {
         logAndThrowError("C callback parameter '" + paramName +
                              "' has unsupported callback argument type '" +
                              describe(callbackParam) + "'",
                          func.getLocation());
       }
     }
-    if (!isCallbackReturn(callback.getReturnType())) {
+    if (!sun::c_abi::isCallbackReturn(callback.getReturnType())) {
       logAndThrowError("C callback parameter '" + paramName +
                            "' has unsupported callback return type '" +
                            describe(callback.getReturnType()) + "'",
                        func.getLocation());
     }
-  };
-  auto isABISafeParam = [&](const sun::TypePtr& t) {
-    return t && (t->isPrimitive() || t->isRawPointer() || t->isReference() ||
-                 t->isClass() || t->isFunction() || isCStyleEnum(t));
-  };
-  // Returns allow the same, minus `ref`: Sun's ref return has auto-deref
-  // semantics that do not correspond to anything C returns. Use raw_ptr<T>
-  // for a returned pointer.
-  auto isABISafeReturn = [&](const sun::TypePtr& t) {
-    return t && (t->isPrimitive() || t->isRawPointer() || t->isClass() ||
-                 isCStyleEnum(t));
   };
 
   if (proto.hasResolvedParamTypes()) {
@@ -864,7 +847,7 @@ void SemanticAnalyzer::validateExternSignature(FunctionAST& func) {
       if (auto* callback = sun::tryGetType<sun::FunctionType>(params[i])) {
         validateCallback(*callback, proto.getArgs()[i].first);
       }
-      if (!isABISafeParam(params[i])) {
+      if (!sun::c_abi::isValue(params[i])) {
         logAndThrowError(
             "Parameter '" + proto.getArgs()[i].first +
                 "' of extern function '" + proto.getName() + "' has type '" +
@@ -878,7 +861,7 @@ void SemanticAnalyzer::validateExternSignature(FunctionAST& func) {
   }
 
   if (proto.hasResolvedReturnType() &&
-      !isABISafeReturn(proto.getResolvedReturnType())) {
+      !sun::c_abi::isReturn(proto.getResolvedReturnType())) {
     logAndThrowError(
         "Extern function '" + proto.getName() + "' returns '" +
             describe(proto.getResolvedReturnType()) +

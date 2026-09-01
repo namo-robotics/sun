@@ -103,6 +103,11 @@ llvm::Function* ExternCEmitter::declare(
   }
 
   const std::string& symbol = proto.getLinkName();
+  if (llvm::GlobalValue* named = module_->getNamedValue(symbol);
+      named && !llvm::isa<llvm::Function>(named)) {
+    logAndThrowError("C symbol '" + symbol +
+                     "' was already declared as a global variable");
+  }
   if (llvm::Function* existing = module_->getFunction(symbol)) {
     // The function may have been created by another path (linked .moon
     // bitcode, a prior declaration). Without a registered lowering,
@@ -159,6 +164,38 @@ llvm::Function* ExternCEmitter::declare(
   }
 
   return func;
+}
+
+llvm::GlobalVariable* ExternCEmitter::declareGlobal(
+    const VariableCreationAST& variable, llvm::Type* valueType) {
+  const std::string& symbol = variable.getLinkName();
+  mapSunName(variable.getMangledName(), symbol);
+
+  if (llvm::GlobalValue* named = module_->getNamedValue(symbol)) {
+    auto* existing = llvm::dyn_cast<llvm::GlobalVariable>(named);
+    if (!existing) {
+      logAndThrowError("C symbol '" + symbol +
+                       "' was already declared as a function");
+    }
+    if (existing->getValueType() != valueType) {
+      logAndThrowError("extern C global '" + symbol +
+                       "' has conflicting declared types");
+    }
+    if (existing->hasInitializer()) {
+      logAndThrowError("extern C global '" + symbol +
+                       "' collides with a global definition");
+    }
+    existing->setMetadata(
+        "sun.cabi", llvm::MDNode::get(ctx_.getContext(), {}));
+    return existing;
+  }
+
+  auto* global = new llvm::GlobalVariable(
+      *module_, valueType, /*isConstant=*/false,
+      llvm::GlobalValue::ExternalLinkage, /*Initializer=*/nullptr, symbol);
+  global->setMetadata("sun.cabi",
+                      llvm::MDNode::get(ctx_.getContext(), {}));
+  return global;
 }
 
 void ExternCEmitter::mapSunName(const std::string& sunName,

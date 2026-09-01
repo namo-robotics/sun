@@ -7,6 +7,18 @@
 // OS supplied them.
 
 public module std {
+  /*
+   * Native null-terminated environment vector.
+   */
+  extern "C" var c_environ: raw_ptr<raw_ptr<u8>> as "environ";
+
+  /*
+   * Return this platform's current environment vector.
+   */
+  function environment_ptr() raw_ptr<raw_ptr<u8>> {
+    return unsafe { c_environ; };
+  }
+
   // Both glibc and musl export __errno_location for the per-thread errno.
   extern "C" function c_errno_location() raw_ptr<i32> as "__errno_location";
 
@@ -17,8 +29,7 @@ public module std {
 
   // MSG_NOSIGNAL on every send already keeps a broken-pipe write from
   // raising SIGPIPE, so per-socket setup has nothing to do.
-  function suppress_sigpipe(fd: i32) void {
-  }
+  function suppress_sigpipe(fd: i32) void {}
 
   // setsockopt family (asm-generic values).
   public var MSG_NOSIGNAL: i32 = 16384;

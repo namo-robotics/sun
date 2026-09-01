@@ -294,7 +294,8 @@ class Parser {
   // ordinary expressions when no lambda signature follows.
   bool isLambdaLiteralStart();
   unique_ptr<LambdaAST> parseLambda();
-  unique_ptr<PrototypeAST> parseExtern();
+  // Parse an extern function or extern variable declaration.
+  unique_ptr<ExprAST> parseExtern();
   unique_ptr<StructLiteralAST> parseStructLiteral();
   unique_ptr<ExprAST> parseForLoop();  // Returns ForExprAST or ForInExprAST
   unique_ptr<WhileExprAST> parseWhileLoop();

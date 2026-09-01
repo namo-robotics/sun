@@ -1211,3 +1211,24 @@ TEST(Tooling_Serialization, UnconstrainedTypeParameterStaysUnconstrained) {
   ASSERT_EQ(enumDef->getTypeParameters().size(), 1u);
   EXPECT_FALSE(enumDef->getTypeParameters()[0].constraint.has_value());
 }
+
+TEST(Tooling_Serialization, ExternGlobalMetadataRoundtrip) {
+  auto ast = parseCode(
+      "public extern \"C\" var local_name: raw_ptr<u8> as \"native_name\";");
+  ASTSerializer serializer;
+  ASTDeserializer deserializer;
+  auto restored =
+      deserializer.deserializeFromString(serializer.serializeToString(*ast));
+
+  ASSERT_NE(restored, nullptr);
+  auto* block = static_cast<BlockExprAST*>(restored.get());
+  ASSERT_EQ(block->getBody().size(), 1u);
+  auto* variable =
+      dynamic_cast<VariableCreationAST*>(block->getBody()[0].get());
+  ASSERT_NE(variable, nullptr);
+  EXPECT_TRUE(variable->isCExtern());
+  EXPECT_TRUE(variable->hasExplicitCAbi());
+  EXPECT_FALSE(variable->hasValue());
+  EXPECT_EQ(variable->getLinkName(), "native_name");
+  EXPECT_EQ(variable->getVisibility(), sun::Visibility::Public);
+}

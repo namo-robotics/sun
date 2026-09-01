@@ -491,7 +491,8 @@ void SemanticAnalyzer::analyzeModuleDefinition(ModuleAST& nsDecl) {
       if (auto type = varCreate.getResolvedType()) {
         ctx_.registerModuleVariable(
             varCreate.getName(), qualifiedName.mangled(), type,
-            varCreate.getVisibility(), varCreate.isConst());
+            varCreate.getVisibility(), varCreate.isConst(),
+            varCreate.isCExtern());
       }
     } else if (bodyExpr->getType() == ASTNodeType::REFERENCE_CREATION) {
       analyzeExpr(*bodyExpr);

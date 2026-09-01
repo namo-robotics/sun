@@ -5,6 +5,19 @@
 // build, chosen by the compilation's --target.
 
 public module std {
+  /*
+   * Darwin returns the address of its environment-vector slot.
+   */
+  extern "C" function c_ns_get_environ() raw_ptr<raw_ptr<raw_ptr<u8>>> as "_NSGetEnviron";
+
+  /*
+   * Return this platform's current environment vector.
+   */
+  function environment_ptr() raw_ptr<raw_ptr<u8>> {
+    var slot: raw_ptr<raw_ptr<raw_ptr<u8>>> = unsafe { c_ns_get_environ(); };
+    return unsafe { _load<raw_ptr<raw_ptr<u8>>>(slot, 0); };
+  }
+
   // macOS spells the per-thread errno accessor __error.
   extern "C" function c_errno_location() raw_ptr<i32> as "__error";
 

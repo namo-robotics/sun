@@ -78,6 +78,7 @@ void applySymbolPrefix(llvm::Module& module, const std::string& prefix) {
 
   for (auto& global : module.globals()) {
     if (!global.hasName() || global.getName().empty()) continue;
+    if (global.getMetadata("sun.cabi")) continue;
     std::string originalName = global.getName().str();
     if (!shouldSkipRename(originalName)) {
       global.setName(prefix + "_" + originalName);

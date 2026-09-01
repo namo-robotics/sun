@@ -980,6 +980,149 @@ TEST(Ffi_StructValue, predeclared_function_still_registers_marshalling) {
 }
 
 // ============================================================================
+// Extern C globals
+// ============================================================================
+
+TEST(Ffi, extern_global_requires_unsafe) {
+  EXPECT_THROW(executeString(R"(
+    extern "C" var native_value: i32 as "optind";
+    function main() i32 { return native_value; }
+  )"),
+               std::exception);
+}
+
+TEST(Ffi, extern_global_emits_exact_symbol_after_use) {
+  auto driver = Driver::createForAOT("extern_global_ir");
+  driver->compileString(R"(
+    function main() i32 {
+      unsafe {
+        native_value = 12;
+        return native_value;
+      };
+    }
+    public extern "C" var native_value: i32 as "sun_exact_native";
+  )");
+
+  llvm::GlobalVariable* global =
+      driver->getModule().getGlobalVariable("sun_exact_native");
+  ASSERT_NE(global, nullptr);
+  EXPECT_TRUE(global->isDeclaration());
+  EXPECT_NE(global->getMetadata("sun.cabi"), nullptr);
+  EXPECT_EQ(driver->getModule().getGlobalVariable("native_value"), nullptr);
+}
+
+TEST(Ffi_Link, extern_globals_read_write_pointer_and_struct) {
+  if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
+  sun::LinkOptions opts;
+  opts.libraries = {"sun_ffi_testlib"};
+  opts.searchPaths = {ffiTestLibDir()};
+  auto libs = sun::loadNativeLibraries(opts);
+  ASSERT_TRUE(libs.failed.empty());
+
+  auto value = executeString(R"(
+    class Pair {
+      var a: i32;
+      var b: i32;
+    }
+
+    extern "C" var value: i32 as "sun_ffi_global_value";
+    extern "C" var pointer: raw_ptr<i32> as "sun_ffi_global_pointer";
+    extern "C" var pair: Pair as "sun_ffi_global_pair";
+
+    function main() i32 {
+      unsafe {
+        value = value + 3;
+        pair.a = pair.a + 1;
+        return value + _load<i32>(pointer, 0) + pair.a * 10 + pair.b;
+      };
+    }
+  )");
+  EXPECT_EQ(value, 20 + 20 + 50 + 5);
+}
+
+TEST(Ffi_Link, compatible_native_global_redeclarations_are_idempotent) {
+  if (ffiTestLibDir().empty()) GTEST_SKIP() << "testlib dir unknown";
+  sun::LinkOptions opts;
+  opts.libraries = {"sun_ffi_testlib"};
+  opts.searchPaths = {ffiTestLibDir()};
+  auto libs = sun::loadNativeLibraries(opts);
+  ASSERT_TRUE(libs.failed.empty());
+
+  auto value = executeString(R"(
+    extern "C" var first: i32 as "sun_ffi_global_value";
+    extern "C" var second: i32 as "sun_ffi_global_value";
+    function main() i32 {
+      unsafe {
+        first = 23;
+        return second;
+      };
+    }
+  )");
+  EXPECT_EQ(value, 23);
+}
+
+TEST(Ffi, conflicting_native_global_redeclarations_fail) {
+  EXPECT_THROW(Driver::createForAOT("extern_global_conflict")->compileString(R"(
+    extern "C" var first: i32 as "same_native";
+    extern "C" var second: i64 as "same_native";
+    function main() i32 { return 0; }
+  )"),
+               std::exception);
+}
+
+TEST(Ffi, extern_global_derived_and_compound_access_require_unsafe) {
+  EXPECT_THROW(Driver::createForAOT("extern_global_field_safety")->compileString(R"(
+    class Pair {
+      var first: i32;
+      var second: i32;
+    }
+    extern "C" var pair: Pair as "native_pair";
+    function main() i32 { return pair.first; }
+  )"),
+               std::exception);
+
+  EXPECT_THROW(Driver::createForAOT("extern_global_compound_safety")->compileString(R"(
+    extern "C" var value: i32 as "native_value";
+    function main() i32 {
+      value += 1;
+      return 0;
+    }
+  )"),
+               std::exception);
+}
+
+TEST(Ffi, private_extern_global_is_not_visible_outside_its_module) {
+  EXPECT_THROW(Driver::createForAOT("extern_global_visibility")->compileString(R"(
+    public module wrapper {
+      extern "C" var hidden: i32 as "native_hidden";
+    }
+    function main() i32 {
+      unsafe { return wrapper.hidden; };
+    }
+  )"),
+               std::exception);
+}
+
+TEST(Ffi, native_function_and_global_kind_collision_fails) {
+  EXPECT_THROW(Driver::createForAOT("extern_global_kind_collision")->compileString(R"(
+    extern "C" var storage: i32 as "same_native_kind";
+    extern "C" function operation() i32 as "same_native_kind";
+    function main() i32 { return 0; }
+  )"),
+               std::exception);
+}
+
+TEST(Ffi, native_global_and_sun_definition_collision_fails) {
+  EXPECT_THROW(Driver::createForAOT("extern_global_definition_collision")
+                   ->compileString(R"(
+    var defined: i32 = 1;
+    extern "C" var imported: i32 as "defined";
+    function main() i32 { return defined; }
+  )"),
+               std::exception);
+}
+
+// ============================================================================
 // Externs inside a .moon bundle
 // ============================================================================
 
@@ -999,9 +1142,15 @@ TEST(Ffi, extern_symbol_survives_moon_bundling) {
       public module cwrap {
           // Private: users of the bundle get the wrapper, not the C symbol.
           extern "C" function c_labs(x: i64) i64 as "labs";
+          extern "C" var c_option_index: i32 as "optind";
+          public extern "C" var native_option_index: i32 as "optind";
 
           public function magnitude(x: i64) i64 {
               return unsafe { c_labs(x); };
+          }
+
+          public function option_index() i32 {
+              return unsafe { c_option_index; };
           }
       }
     )";
@@ -1016,6 +1165,10 @@ TEST(Ffi, extern_symbol_survives_moon_bundling) {
   llvm::Function* labs = libDriver->getModule().getFunction("labs");
   ASSERT_NE(labs, nullptr);
   EXPECT_TRUE(labs->hasFnAttribute("sun.cabi"));
+  llvm::GlobalVariable* optind =
+      libDriver->getModule().getGlobalVariable("optind");
+  ASSERT_NE(optind, nullptr);
+  EXPECT_NE(optind->getMetadata("sun.cabi"), nullptr);
 
   sun::MoonWriter writer;
   writer.addModule(libDriver->getModule(), *metadata);
@@ -1028,7 +1181,9 @@ TEST(Ffi, extern_symbol_survives_moon_bundling) {
     using cwrap;
 
     function main() i64 {
-        return magnitude(-91);
+        unsafe {
+            return magnitude(-91) + native_option_index - option_index();
+        };
     }
   )");
   EXPECT_EQ(value, 91);

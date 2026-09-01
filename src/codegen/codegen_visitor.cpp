@@ -167,7 +167,8 @@ Value* CodegenVisitor::codegenExpression(const ExprAST& expr) {
       }
 
       // Try to find as a global variable
-      GlobalVariable* gv = module->getGlobalVariable(mangledName);
+      const std::string& globalName = externC.symbolFor(mangledName);
+      GlobalVariable* gv = module->getGlobalVariable(globalName);
       if (gv) {
         return ctx.builder->CreateLoad(gv->getValueType(), gv,
                                        mangledName + ".val");

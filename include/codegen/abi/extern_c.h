@@ -21,6 +21,7 @@
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/STLFunctionalExtras.h>
 #include <llvm/IR/Function.h>
+#include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Value.h>
 
@@ -33,6 +34,7 @@
 #include "semantic_analysis/types.h"
 
 class PrototypeAST;
+class VariableCreationAST;
 
 namespace sun::cabi {
 
@@ -58,6 +60,11 @@ class ExternCEmitter {
   /// (`abs.1`) that no longer matches the C symbol.
   llvm::Function* declare(const PrototypeAST& proto, llvm::Type* returnType,
                           llvm::ArrayRef<llvm::Type*> paramTypes);
+
+  /// Declare storage owned by a native C global. Compatible repeated
+  /// declarations return the same LLVM global.
+  llvm::GlobalVariable* declareGlobal(const VariableCreationAST& variable,
+                                      llvm::Type* valueType);
 
   /// Record that a Sun-side name resolves to `symbol`. Call sites resolve
   /// through the module-scoped mangled name, which the C symbol never

@@ -197,6 +197,9 @@ message VariableCreation {
   Visibility visibility = 4;  // module-level globals only
   bool is_const = 5;          // `const x = ...`
   string doc = 6;             // Comment written above the declaration
+  bool is_c_extern = 7;       // Declared with extern var
+  optional string link_name = 8;  // Native symbol from an as clause
+  bool explicit_c_abi = 9;  // Source spelled the optional "C" ABI
 }
 
 message VariableAssignment {

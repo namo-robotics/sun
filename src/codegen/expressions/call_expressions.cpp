@@ -1049,8 +1049,8 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
     // A stored pointer shadows a same-named function symbol.
     std::string resolvedName = varRef->getMangledName();
     bool stored = scopes.findVariable(varRef->getName()) ||
-                  module->getGlobalVariable(resolvedName) ||
-                  module->getGlobalVariable(varRef->getName());
+                  variables.globalForSunName(resolvedName) ||
+                  variables.globalForSunName(varRef->getName());
     if (!stored) func = functions.lookupCallTarget(resolvedName);
   } else if (auto* qualName =
                  dynamic_cast<const QualifiedNameAST*>(expr.getCallee())) {
@@ -1137,7 +1137,7 @@ Value* CodegenVisitor::codegenLambdaCall(const CallExprAST& expr,
     }
     // Check global variable
     else if (GlobalVariable* gv =
-                 module->getGlobalVariable(varRef->getName())) {
+                 variables.globalForSunName(varRef->getMangledName())) {
       closurePtr = gv;
     }
   }

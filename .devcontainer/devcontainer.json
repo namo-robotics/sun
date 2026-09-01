@@ -53,7 +53,8 @@
 				"MermaidChart.vscode-mermaid-chart",
 				"ms-vscode.cmake-tools",
 				"llvm-vs-code-extensions.vscode-clangd",
-				"Anthropic.claude-code"
+				"Anthropic.claude-code",
+				"openai.chatgpt"
 			]
 		}
 	}

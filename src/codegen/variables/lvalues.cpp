@@ -132,10 +132,14 @@ Value* VariableGenerator::tryCodegenAddress(const ExprAST& expr) {
 
       // Globals: mangled name first (module-qualified), then plain
       if (GlobalVariable* gv =
-              module->getGlobalVariable(varRef.getMangledName())) {
+              globalForSunName(varRef.getMangledName())) {
+        if (varType && varType->isReference()) {
+          return ctx.builder->CreateLoad(
+              gv->getValueType(), gv, varRef.getName() + ".ref.ptr");
+        }
         return gv;
       }
-      if (GlobalVariable* gv = module->getGlobalVariable(varRef.getName())) {
+      if (GlobalVariable* gv = globalForSunName(varRef.getName())) {
         return gv;
       }
       return nullptr;

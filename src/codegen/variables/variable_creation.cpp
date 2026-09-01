@@ -44,6 +44,16 @@ GlobalVariable* VariableGenerator::createGlobalVariable(
 // Variable creation codegen
 // -------------------------------------------------------------------
 
+void VariableGenerator::declareBlockExternGlobals(const BlockExprAST& block) {
+  for (const auto& node : block.getBody()) {
+    if (node->getType() != ASTNodeType::VARIABLE_CREATION) continue;
+    const auto& variable = static_cast<const VariableCreationAST&>(*node);
+    if (!variable.isCExtern()) continue;
+    llvm::Type* type = typeResolver.resolve(variable.getResolvedType());
+    gen_.externCEmitter().declareGlobal(variable, type);
+  }
+}
+
 Value* VariableGenerator::codegen(const VariableCreationAST& expr) {
   // Get the type from the resolved type set by semantic analyzer
   sun::TypePtr varSunType = expr.getResolvedType();
@@ -59,6 +69,11 @@ Value* VariableGenerator::codegen(const VariableCreationAST& expr) {
 
   // Use qualified name from semantic analysis
   std::string varName = expr.getMangledName();
+
+  if (expr.isCExtern()) {
+    return gen_.externCEmitter().declareGlobal(
+        expr, typeResolver.resolve(varSunType));
+  }
 
   // A global imported from a .moon is defined in the bundle's bitcode, which
   // is linked in. Declare it so references resolve; defining it here would

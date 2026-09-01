@@ -2365,19 +2365,18 @@ unique_ptr<ExprAST> Parser::parseStatementCore() {
       return parseContinue();  // returns ContinueAST
     case TokenKind::EXTERN: {
       if (!atItemLevel_) {
-        parsingError(
-            "function declarations are only allowed at module scope; move "
-            "the declaration to module scope or use a lambda");
+        parsingError("extern declarations are only allowed at module scope");
       }
-      // External function declaration: extern function name(args) ret;
-      Position start = captureStart();
-      auto proto = parseExtern();
-      if (curTok.kind == TokenKind::SEMI_COLON)
-        getNextToken();  // eat optional semicolon
-      // Wrap prototype in a FunctionAST with no body (nullptr)
-      auto fn = std::make_unique<FunctionAST>(std::move(proto), nullptr);
-      fn->setCExtern(true);  // C ABI — distinguishes from `declare function`
-      return finishNode(std::move(fn), start);
+      auto decl = parseExtern();
+      if (decl && decl->getType() == ASTNodeType::VARIABLE_CREATION) {
+        expectCurrentTokenKind(
+            TokenKind::SEMI_COLON,
+            "expected ';' after extern variable declaration");
+        getNextToken();
+      } else if (curTok.kind == TokenKind::SEMI_COLON) {
+        getNextToken();  // extern function semicolons remain optional
+      }
+      return decl;
     }
     case TokenKind::FUNCTION: {
       if (!atItemLevel_) {
@@ -2680,48 +2679,76 @@ unique_ptr<ContinueAST> Parser::parseContinue() {
   return finishNode(std::make_unique<ContinueAST>(), start);
 }
 
-std::unique_ptr<PrototypeAST> Parser::parseExtern() {
+std::unique_ptr<ExprAST> Parser::parseExtern() {
+  Position start = captureStart();
   getNextToken();  // eat 'extern'
 
-  // Optional ABI string: extern "C" function ...
-  // Only the C ABI exists today; naming it is allowed so the intent is
-  // explicit and so other ABIs can be added without a syntax change.
+  // Only the C ABI exists today. The spelling is optional.
+  bool explicitCAbi = false;
   if (curTok.kind == TokenKind::STRING) {
+    explicitCAbi = true;
     std::string abi = curTok.getString().value();
     if (abi != "C") {
       parsingError("unsupported extern ABI '" + abi + "'; expected \"C\"");
     }
-    getNextToken();  // eat ABI string
+    getNextToken();
   }
 
-  // Expect 'function' keyword
-  if (curTok.kind != TokenKind::FUNCTION) {
-    parsingError("expected 'function' after 'extern'");
-    return nullptr;
-  }
-  getNextToken();  // eat 'function'
-
-  auto proto = parsePrototype();
-
-  // Optional symbol rename: ... as "c_symbol".
-  // `as` is matched contextually rather than reserved as a keyword, so
-  // existing code may still use it as an identifier.
-  if (proto && curTok.kind == TokenKind::IDENTIFIER &&
-      curTok.getIdentifier().value() == "as") {
-    getNextToken();  // eat 'as'
+  auto parseLinkName = [&]() -> std::optional<std::string> {
+    if (curTok.kind != TokenKind::IDENTIFIER ||
+        curTok.getIdentifier().value() != "as") {
+      return std::nullopt;
+    }
+    getNextToken();
     if (curTok.kind != TokenKind::STRING) {
       parsingError("expected a string literal C symbol name after 'as'");
-      return proto;
+      return std::nullopt;
     }
     std::string symbol = curTok.getString().value();
     if (symbol.empty()) {
       parsingError("C symbol name after 'as' cannot be empty");
     }
-    proto->setLinkName(std::move(symbol));
-    getNextToken();  // eat symbol string
+    getNextToken();
+    return symbol;
+  };
+
+  if (curTok.kind == TokenKind::FUNCTION) {
+    getNextToken();
+    auto proto = parsePrototype();
+    if (proto) {
+      if (auto symbol = parseLinkName()) {
+        proto->setLinkName(std::move(*symbol));
+      }
+    }
+    auto fn = std::make_unique<FunctionAST>(std::move(proto), nullptr);
+    fn->setCExtern(true);
+    return finishNode(std::move(fn), start);
   }
 
-  return proto;
+  if (curTok.kind == TokenKind::VAR) {
+    getNextToken();
+    expectCurrentTokenKind(TokenKind::IDENTIFIER,
+                           "expected identifier after 'extern var'");
+    std::string name = curTok.getIdentifier().value();
+    getNextToken();
+    expectCurrentTokenKind(
+        TokenKind::COLON,
+        "extern variable '" + name + "' requires an explicit type");
+    getNextToken();
+    TypeAnnotation type = parseTypeAnnotation();
+    auto var = std::make_unique<VariableCreationAST>(
+        name, nullptr, std::optional<TypeAnnotation>(std::move(type)));
+    var->setCExtern(true);
+    var->setExplicitCAbi(explicitCAbi);
+    if (auto symbol = parseLinkName()) var->setLinkName(std::move(*symbol));
+    if (curTok.kind == TokenKind::EQUAL) {
+      parsingError("extern variable '" + name + "' cannot have an initializer");
+    }
+    return finishNode(std::move(var), start);
+  }
+
+  parsingError("expected 'function' or 'var' after 'extern'");
+  return nullptr;
 }
 
 // Parse manifest block:

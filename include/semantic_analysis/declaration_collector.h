@@ -71,6 +71,9 @@ class DeclarationCollector {
    */
   void registerPrecompiledModuleVariable(VariableCreationAST &varCreate);
 
+  /** Register one C extern global before any function body is analyzed. */
+  void collectExternVariable(VariableCreationAST &varCreate);
+
   /** Bind a `using` declaration in the current scope (idempotent). */
   void registerUsing(UsingAST &usingDecl);
 

@@ -43,6 +43,31 @@ public module libc {
 using libc;
 ```
 
+### Global variables
+
+A module-level C global is declared with `extern var`. It has an explicit type,
+no initializer, and may be public or private like any other module item:
+
+```sun
+public extern "C" var c_environ: raw_ptr<raw_ptr<u8>> as "environ";
+
+function first_entry() raw_ptr<u8> {
+    unsafe { return _load<raw_ptr<u8>>(c_environ, 0); };
+}
+```
+
+Reading, writing, borrowing, indexing, or taking a field through an extern
+global requires `unsafe`, because native code owns the storage. Declarations
+are hoisted, and `as "symbol"` remains the exact native ABI name through
+`.moon` bundling. Compatible declarations of the same C symbol are
+idempotent; conflicting types, a function/global kind mismatch, or a collision
+with a Sun definition is an error.
+
+Supported global types are non-void primitives, payload-free enums,
+`raw_ptr<T>`, `ref T`, by-value classes, and valid non-throwing C function
+pointers. Arrays, slices, interfaces, lambdas, error unions, payload enums, and
+`static_ptr` have no supported C global representation.
+
 ### Renaming a symbol
 
 `as "symbol"` binds a Sun-side name to a different C symbol. Useful when the C

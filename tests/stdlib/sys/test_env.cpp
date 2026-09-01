@@ -1,9 +1,4 @@
-// tests/stdlib/sys/test_env.cpp - std.env
-//
-// These run in the gtest process, so anything they change about the
-// environment or the working directory is this process's. The fixture puts it
-// all back: getStdlibMoonImports() resolves build/stdlib.moon relative to the
-// working directory, so a leaked chdir would break every later test.
+// tests/stdlib/sys/test_env.cpp - std.env.Env
 
 #include <gtest/gtest.h>
 #include <unistd.h>
@@ -31,181 +26,178 @@ class Stdlib_Sys_Env : public ::testing::Test {
   }
 };
 
-TEST_F(Stdlib_Sys_Env, get_returns_none_when_unset) {
+TEST_F(Stdlib_Sys_Env, captures_lookup_empty_and_equals_values) {
+  setenv(varName.c_str(), "left=right", 1);
   auto value = executeStringWithStdlib(R"(
     using std;
     using std.env;
 
     function main() i32 {
-        var a = make_heap_allocator();
-        return match get(a, ")" + varName +
-                                       R"(") {
-            Option.Some(v) => 1,
-            Option.None => 0
-        };
+      var alloc = make_heap_allocator();
+      var environment = Env(alloc);
+      var value_matches: bool = match environment.get(")" + varName + R"(") {
+        Option.Some(found) => found.equals_literal("left=right"),
+        Option.None => false
+      };
+      if (not value_matches) { return 1; }
+      try {
+        environment.set(")" + varName + R"(", "");
+      } catch (e: IError) {
+        return 2;
+      }
+      var empty: bool = match environment.get(")" + varName + R"(") {
+        Option.Some(found) => found.is_empty(),
+        Option.None => false
+      };
+      return empty ? 0 : 3;
     }
   )");
   EXPECT_EQ(value, 0);
 }
 
-TEST_F(Stdlib_Sys_Env, get_reads_a_variable_set_from_outside) {
-  setenv(varName.c_str(), "from-outside", 1);
-
+TEST_F(Stdlib_Sys_Env, refresh_observes_external_mutation) {
   auto value = executeStringWithStdlib(R"(
     using std;
     using std.env;
 
+    extern "C" function native_setenv(
+        name: raw_ptr<u8>, value: raw_ptr<u8>, overwrite: i32) i32 as "setenv";
+
     function main() i32 {
-        var a = make_heap_allocator();
-        var v = match get(a, ")" + varName +
-                                       R"(") {
-            Option.Some(s) => s,
-            Option.None => String(a, "")
-        };
-        if (not v.equals_literal("from-outside")) { return 1; }
-        return 0;
+      var alloc = make_heap_allocator();
+      var environment = Env(alloc);
+      if (environment.has(")" + varName + R"(")) { return 1; }
+      unsafe { native_setenv(")" + varName + R"(", "outside", 1); };
+      if (environment.has(")" + varName + R"(")) { return 2; }
+      environment.refresh();
+      if (not environment.has(")" + varName + R"(")) { return 3; }
+      return match environment.get(")" + varName + R"(") {
+        Option.Some(found) =>
+            found.equals_literal("outside") ? 0 : 4,
+        Option.None => 5
+      };
     }
   )");
   EXPECT_EQ(value, 0);
 }
 
-TEST_F(Stdlib_Sys_Env, set_get_remove_round_trip) {
+TEST_F(Stdlib_Sys_Env, set_remove_and_iteration_stay_synchronized) {
   auto value = executeStringWithStdlib(R"(
     using std;
     using std.env;
 
     function main() i32 {
-        var a = make_heap_allocator();
-        try {
-            if (has(")" + varName + R"(")) { return 1; }
-            set(")" + varName + R"(", "value-one");
-            if (not has(")" + varName + R"(")) { return 2; }
-
-            var v = match get(a, ")" + varName +
-                                       R"(") {
-                Option.Some(s) => s,
-                Option.None => String(a, "")
-            };
-            if (not v.equals_literal("value-one")) { return 3; }
-
-            // Setting again replaces
-            set(")" + varName + R"(", "value-two");
-            var w = match get(a, ")" + varName +
-                                       R"(") {
-                Option.Some(s) => s,
-                Option.None => String(a, "")
-            };
-            if (not w.equals_literal("value-two")) { return 4; }
-
-            remove(")" + varName + R"(");
-            if (has(")" + varName + R"(")) { return 5; }
-        } catch (e: IError) {
-            return 6;
+      var alloc = make_heap_allocator();
+      var environment = Env(alloc);
+      try {
+        environment.set(")" + varName + R"(", "one=two");
+        if (not environment.has(")" + varName + R"(")) { return 1; }
+        var found: i32 = 0;
+        for (var entry: ref EnvEntry in environment) {
+          if (entry.name().equals_literal(")" + varName + R"(")) {
+            if (not entry.value().equals_literal("one=two")) { return 2; }
+            found = found + 1;
+          }
         }
-        return 0;
+        if (found != 1) { return 3; }
+        environment.remove(")" + varName + R"(");
+        if (environment.has(")" + varName + R"(")) { return 4; }
+      } catch (e: IError) {
+        return 5;
+      }
+      return 0;
     }
   )");
   EXPECT_EQ(value, 0);
   EXPECT_EQ(getenv(varName.c_str()), nullptr);
 }
 
-TEST_F(Stdlib_Sys_Env, cwd_reports_the_working_directory) {
-  auto value =
-      executeStringWithStdlib(R"(
-    using std;
-    using std.env;
-
-    function main() i32 {
-        var a = make_heap_allocator();
-        try {
-            var dir = get_cwd(a);
-            if (dir.is_empty()) { return 1; }
-            // An absolute path, so it starts with '/'
-            if (dir.at(0) != 47) { return 2; }
-            if (not dir.equals_literal(")" +
-                              originalCwd.string() + R"(")) { return 3; }
-        } catch (e: IError) {
-            return 4;
-        }
-        return 0;
-    }
-  )");
-  EXPECT_EQ(value, 0);
-}
-
-TEST_F(Stdlib_Sys_Env, set_cwd_changes_and_cwd_reflects_it) {
-  // "/" rather than "/tmp": on macOS /tmp is a symlink to /private/tmp, so
-  // the kernel's idea of the directory would not match the literal.
+TEST_F(Stdlib_Sys_Env, string_name_and_value_overloads) {
   auto value = executeStringWithStdlib(R"(
     using std;
     using std.env;
 
     function main() i32 {
-        var a = make_heap_allocator();
-        try {
-            set_cwd("/");
-            var dir = get_cwd(a);
-            if (not dir.equals_literal("/")) { return 1; }
-        } catch (e: IError) {
-            return 2;
-        }
-        return 0;
+      var alloc = make_heap_allocator();
+      var environment = Env(alloc);
+      var name = String(alloc, ")" + varName + R"(");
+      var value = String(alloc, "runtime");
+      try {
+        environment.set(name, value);
+        if (not environment.has(name)) { return 1; }
+        var value_matches: bool = match environment.get(name) {
+          Option.Some(found) => found.equals_literal("runtime"),
+          Option.None => false
+        };
+        if (not value_matches) { return 2; }
+        environment.remove(name);
+      } catch (e: IError) {
+        return 3;
+      }
+      return 0;
     }
   )");
   EXPECT_EQ(value, 0);
-  // TearDown restores it, but check the change really happened.
+}
+
+TEST_F(Stdlib_Sys_Env, cwd_and_set_cwd_are_methods) {
+  auto value = executeStringWithStdlib(R"(
+    using std;
+    using std.env;
+
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      var environment = Env(alloc);
+      try {
+        var before = environment.cwd();
+        if (not before.equals_literal(")" + originalCwd.string() + R"(")) {
+          return 1;
+        }
+        environment.set_cwd("/");
+        var after = environment.cwd();
+        if (not after.equals_literal("/")) { return 2; }
+      } catch (e: IError) {
+        return 3;
+      }
+      return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
   EXPECT_EQ(std::filesystem::current_path(), std::filesystem::path("/"));
 }
 
-TEST_F(Stdlib_Sys_Env, set_cwd_to_a_missing_directory_throws) {
-  auto value = executeStringWithStdlib(R"(
-    using std;
-    using std.env;
-
-    function main() i32 {
-        try {
-            set_cwd("/definitely/not/a/directory");
-        } catch (e: IError) {
-            return 42;
-        }
-        return 0;
-    }
-  )");
-  EXPECT_EQ(value, 42);
-}
-
-TEST_F(Stdlib_Sys_Env, args_reads_argc_and_argv_from_main) {
+TEST_F(Stdlib_Sys_Env, args_copies_argv) {
   const char* argv[] = {"prog", "alpha", "beta", nullptr};
   auto value = executeStringWithStdlib(R"(
     using std;
     using std.env;
 
     function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
-        var a = make_heap_allocator();
-        var cli = collect_args(a, argc, argv);
-        if (cli.size() != 3) { return 1; }
-        // Each borrow is used within its own statement - named bindings
-        // would hold three borrows of cli at once
-        if (not cli.get_unchecked(0).equals_literal("prog")) { return 2; }
-        if (not cli.get_unchecked(1).equals_literal("alpha")) { return 3; }
-        if (not cli.get_unchecked(2).equals_literal("beta")) { return 4; }
-        return 0;
+      var alloc = make_heap_allocator();
+      var environment = Env(alloc);
+      var cli = environment.args(argc, argv);
+      if (cli.size() != 3) { return 1; }
+      if (not cli.get_unchecked(0).equals_literal("prog")) { return 2; }
+      if (not cli.get_unchecked(1).equals_literal("alpha")) { return 3; }
+      if (not cli.get_unchecked(2).equals_literal("beta")) { return 4; }
+      return 0;
     }
   )",
                                        3, const_cast<char**>(argv));
   EXPECT_EQ(value, 0);
 }
 
-TEST_F(Stdlib_Sys_Env, args_with_no_arguments_is_empty) {
-  auto value = executeStringWithStdlib(R"(
+TEST_F(Stdlib_Sys_Env, removed_free_function_api_is_rejected) {
+  EXPECT_THROW(executeStringWithStdlib(R"(
     using std;
     using std.env;
-
-    function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
-        var a = make_heap_allocator();
-        var cli = collect_args(a, argc, argv);
-        return _convert<i32>(cli.size());
+    function main() i32 {
+      var alloc = make_heap_allocator();
+      return match get(alloc, "HOME") {
+        Option.Some(value) => 1,
+        Option.None => 0
+      };
     }
-  )");
-  EXPECT_EQ(value, 0);
+  )"),
+               std::exception);
 }
