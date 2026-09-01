@@ -25,7 +25,7 @@ TEST(Lambdas_Generic, lambda_body_uses_the_type_parameter) {
 
 TEST(Lambdas_Generic, lambda_param_typed_with_the_type_parameter) {
   auto value = executeString(R"(
-    function apply<T>(x: T, f: (T) -> T) T {
+    function apply<T>(x: T, f: (T) => T) T {
         return f(x);
     }
 

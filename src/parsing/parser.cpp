@@ -912,7 +912,7 @@ unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
 
   // Check for generic function call: create<Type>(args...). A '<<' can be
   // the argument list opening straight onto a '<'a>' lambda type
-  // (Box<<'a>() -> i32>(f)); the backtrack below restores it as a shift
+  // (Box<<'a>() => i32>(f)); the backtrack below restores it as a shift
   // when the type parse fails.
   if (curTok.kind == TokenKind::LESS ||
       curTok.kind == TokenKind::LEFT_SHIFT) {
@@ -1440,7 +1440,7 @@ std::vector<TypeParameter> Parser::parseTypeParameterList(
     if (name == "_") {
       parsingError(
           "'_ is the anonymous lifetime and cannot be declared; use it "
-          "directly on a lambda type: <'_>(i32) -> i32");
+          "directly on a lambda type: <'_>(i32) => i32");
     }
     if (name[0] == '_') {
       parsingError("lifetime names starting with '_' are reserved");
@@ -1540,32 +1540,32 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
 
   // A lifetime marker introduces a frame-bound lambda type - one whose
   // value carries a captured environment living in a stack frame (capture
-  // lists, bound methods). <'a>(i32) -> i32 names the frame; <'_>(i32) ->
+  // lists, bound methods). <'a>(i32) => i32 names the frame; <'_>(i32) =>
   // i32 is a fresh anonymous lifetime related to nothing else. A plain
-  // '(...) -> ...' type is reserved for environment-free lambdas.
+  // '(...) => ...' type is reserved for environment-free lambdas.
   bool refEnvMarker = false;
   std::string refEnvLifetime;
   if (curTok.kind == TokenKind::BRACKET_OPEN) {
     parsingError(
-        "a frame-bound lambda type is written <'_>(i32) -> i32 (or with a "
-        "named lifetime, <'a>(i32) -> i32); the '[ref]' marker was "
+        "a frame-bound lambda type is written <'_>(i32) => i32 (or with a "
+        "named lifetime, <'a>(i32) => i32); the '[ref]' marker was "
         "replaced by lifetime annotations");
   } else if (curTok.kind == TokenKind::LESS) {
     getNextToken();  // eat '<'
     expectCurrentTokenKind(
         TokenKind::LIFETIME, "expected a lifetime after '<' in a lambda "
-                             "type: <'_>(i32) -> i32");
+                             "type: <'_>(i32) => i32");
     refEnvLifetime = curTok.getLifetimeName().value();
     getNextToken();  // eat lifetime name
     consumeGreater(
-        "expected '>' after the lifetime in a lambda type: <'_>(i32) -> i32");
+        "expected '>' after the lifetime in a lambda type: <'_>(i32) => i32");
     expectCurrentTokenKind(
         TokenKind::PAREN_OPEN, "expected a lambda type after the lifetime: "
-                               "<'_>(i32) -> i32");
+                               "<'_>(i32) => i32");
     refEnvMarker = true;
   }
 
-  // Check for lambda type: (param_types) -> return_type [throws IError]
+  // Check for lambda type: (param_types) => return_type [throws IError]
   if (curTok.kind == TokenKind::PAREN_OPEN) {
     type.baseName = "lambda";
     type.refEnv = refEnvMarker;
@@ -1591,14 +1591,14 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
                            "expected ')' in lambda type");
     getNextToken();  // eat ')'
 
-    expectCurrentTokenKind(TokenKind::ARROW,
-                           "expected '->' before the return type of a "
-                           "lambda type: (i32) -> i32");
-    getNextToken();  // eat '->'
+    expectCurrentTokenKind(TokenKind::FAT_ARROW,
+                           "expected '=>' before the return type of a "
+                           "lambda type: (i32) => i32");
+    getNextToken();  // eat '=>'
 
     type.returnType = std::make_unique<TypeAnnotation>(parseTypeAnnotation());
 
-    // Throwing lambda type: (params) -> ret throws IError
+    // Throwing lambda type: (params) => ret throws IError
     if (curTok.kind == TokenKind::THROWS) {
       getNextToken();  // eat 'throws'
       auto id = curTok.getIdentifier();
@@ -1793,7 +1793,7 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
     // Check for generic type arguments: ClassName<'a, T, ...> (lifetime
     // arguments come first and never distinguish instantiations). A '<<'
     // here is the argument list opening straight onto a '<'a>' lambda
-    // type (Box<<'a>() -> i32>), so it splits into two '<'.
+    // type (Box<<'a>() => i32>), so it splits into two '<'.
     splitLessIfShift();
     if (curTok.kind == TokenKind::LESS) {
       getNextToken();  // eat '<'

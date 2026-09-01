@@ -445,13 +445,13 @@ TEST(Tooling_Fmt, LambdaLifetimeParametersBeforeCaptures) {
   EXPECT_EQ(
       fmt("function f() void {\n"
           "var n=0;\n"
-          "var store=<'a> [ref n](cb: <'a>() -> i32, box: ref 'a Box) => "
+          "var store=<'a> [ref n](cb: <'a>() => i32, box: ref 'a Box) => "
           "void { n += 1; return; };\n"
           "return;\n"
           "}"),
       "function f() void {\n"
       "  var n = 0;\n"
-      "  var store = <'a> [ref n](cb: <'a>() -> i32, box: ref 'a "
+      "  var store = <'a> [ref n](cb: <'a>() => i32, box: ref 'a "
       "Box) => void { n += 1; return; };\n"
       "  return;\n"
       "}\n");
@@ -464,7 +464,7 @@ TEST(Tooling_Fmt, LambdaCanonicalPrefixes) {
           "var plain=()=>i32{return 1;};\n"
           "var owned=[n]()=>i32{return n;};\n"
           "var shared=[const ref n]()=>i32{return n;};\n"
-          "var lifetime=<'a>(cb: <'a>() -> i32)=><'a>() -> i32{return cb;};\n"
+          "var lifetime=<'a>(cb: <'a>() => i32)=><'a>() => i32{return cb;};\n"
           "return;\n"
           "}"),
       "function f() void {\n"
@@ -472,7 +472,7 @@ TEST(Tooling_Fmt, LambdaCanonicalPrefixes) {
       "  var plain = () => i32 { return 1; };\n"
       "  var owned = [n]() => i32 { return n; };\n"
       "  var shared = [const ref n]() => i32 { return n; };\n"
-      "  var lifetime = <'a>(cb: <'a>() -> i32) => <'a>() -> i32 { return "
+      "  var lifetime = <'a>(cb: <'a>() => i32) => <'a>() => i32 { return "
       "cb; };\n"
       "  return;\n"
       "}\n");

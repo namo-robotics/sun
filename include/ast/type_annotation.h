@@ -18,7 +18,7 @@ struct TypeAnnotation {
   std::unique_ptr<TypeAnnotation>
       elementType;  // For ptr/ref/array: element type
 
-  // For function/lambda types: (param1, param2) -> returnType
+  // Callable types: _(param1) -> returnType or (param1) => returnType
   std::vector<std::unique_ptr<TypeAnnotation>>
       paramTypes;                              // Parameter types for fn type
   std::unique_ptr<TypeAnnotation> returnType;  // Return type for fn type
@@ -35,8 +35,8 @@ struct TypeAnnotation {
   // For reference types: `const ref T` (the referent cannot be changed)
   bool constRef = false;
 
-  // For lambda types: `<'_>() -> T` admits lambdas that carry a captured
-  // environment living in a stack frame; a plain `() -> T` is reserved for
+  // For lambda types: `<'_>() => T` admits lambdas that carry a captured
+  // environment living in a stack frame; a plain `() => T` is reserved for
   // environment-free lambdas
   bool refEnv = false;
 
@@ -124,7 +124,7 @@ struct TypeAnnotation {
   }  // _() -> {} named function type
   bool isLambda() const {
     return baseName == "lambda";
-  }  // () -> {} anonymous function type
+  }  // () => {} anonymous function type
   bool isArray() const {
     return baseName == "array";
   }  // array<T, N> fixed-size array
@@ -171,7 +171,7 @@ struct TypeAnnotation {
         if (i > 0) result += ", ";
         result += paramTypes[i]->toString();
       }
-      result += ") -> ";
+      result += ") => ";
       result += returnType ? returnType->toString() : "void";
       if (canError) result += " throws IError";
       return result;

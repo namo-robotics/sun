@@ -137,7 +137,7 @@ TEST(Functions_Generic_Constraints, lambda_rejects_a_number) {
 // both positions: at a signature, and in a body.
 TEST(Functions_Generic_Constraints, is_lambda_trait_is_true_for_a_closure) {
   auto value = executeString(R"(
-    function check(f: (i32) -> i32) bool { return _is<_Lambda>(f); }
+    function check(f: (i32) => i32) bool { return _is<_Lambda>(f); }
     function main() i32 {
       var g = (x: i32) => i32 { return x; };
       if (check(g)) { return 1; }

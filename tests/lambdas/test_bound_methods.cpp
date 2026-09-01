@@ -21,7 +21,7 @@ TEST(Lambdas_BoundMethods, pass_method_as_callback) {
         }
     }
 
-    function apply(f: <'_>(i32) -> i32, x: i32) i32 {
+    function apply(f: <'_>(i32) => i32, x: i32) i32 {
         return f(x);
     }
 
@@ -44,7 +44,7 @@ TEST(Lambdas_BoundMethods, receiver_mutated_through_callback) {
         }
     }
 
-    function apply(f: <'_>(i32) -> i32, x: i32) i32 {
+    function apply(f: <'_>(i32) => i32, x: i32) i32 {
         return f(x);
     }
 
@@ -93,7 +93,7 @@ TEST(Lambdas_BoundMethods, stored_with_type_annotation) {
 
     function main() i32 {
         var c = Counter();
-        var f: <'_>(i32) -> i32 = c.add;
+        var f: <'_>(i32) => i32 = c.add;
         return f(9);
     }
   )");
@@ -102,7 +102,7 @@ TEST(Lambdas_BoundMethods, stored_with_type_annotation) {
 
 TEST(Lambdas_BoundMethods, this_method_as_callback) {
   auto value = executeString(R"(
-    function apply(f: <'_>(i32) -> i32, x: i32) i32 {
+    function apply(f: <'_>(i32) => i32, x: i32) i32 {
         return f(x);
     }
 
@@ -137,7 +137,7 @@ TEST(Lambdas_BoundMethods, ref_receiver) {
         }
     }
 
-    function apply(f: <'_>(i32) -> i32, x: i32) i32 {
+    function apply(f: <'_>(i32) => i32, x: i32) i32 {
         return f(x);
     }
 
@@ -171,7 +171,7 @@ TEST(Lambdas_BoundMethods, overload_picked_by_annotation) {
 
     function main() i32 {
         var c = Calc();
-        var f: <'_>(i32) -> i32 = c.add;
+        var f: <'_>(i32) => i32 = c.add;
         return f(7);
     }
   )");
@@ -192,7 +192,7 @@ TEST(Lambdas_BoundMethods, overload_picked_by_param_context) {
         }
     }
 
-    function apply(f: <'_>(i32) -> i32, x: i32) i32 {
+    function apply(f: <'_>(i32) => i32, x: i32) i32 {
         return f(x);
     }
 
@@ -253,7 +253,7 @@ TEST(Lambdas_BoundMethods, throwing_method_into_throwing_param) {
         }
     }
 
-    function run_guarded(f: <'_>(i32) -> i32 throws IError, x: i32) i32 {
+    function run_guarded(f: <'_>(i32) => i32 throws IError, x: i32) i32 {
         try {
             return f(x);
         } catch (e: IError) {
@@ -280,7 +280,7 @@ TEST(Lambdas_BoundMethods, nonthrowing_method_into_throwing_param) {
         method twice(x: i32) i32 { return x * 2; }
     }
 
-    function run_guarded(f: <'_>(i32) -> i32 throws IError, x: i32) i32 {
+    function run_guarded(f: <'_>(i32) => i32 throws IError, x: i32) i32 {
         try {
             return f(x);
         } catch (e: IError) {
@@ -346,7 +346,7 @@ TEST(Lambdas_BoundMethods, stdlib_class_method_as_value) {
   auto value = executeStringWithStdlib(R"(
     using std;
 
-    function apply(f: <'_>(i32) -> void) void {
+    function apply(f: <'_>(i32) => void) void {
         f(42);
     }
 
@@ -385,7 +385,7 @@ TEST(Lambdas_BoundMethods, deinit_runs_once_with_bound_method) {
         }
     }
 
-    function apply(f: <'_>(i32) -> i32, x: i32) i32 {
+    function apply(f: <'_>(i32) => i32, x: i32) i32 {
         return f(x);
     }
 

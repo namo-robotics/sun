@@ -372,19 +372,19 @@ class FunctionType : public Type {
 };
 
 // Lambda type for anonymous functions (fat pointer call, returnable)
-// Type annotation: () -> {}
+// Type annotation: () => {}
 class LambdaType : public Type {
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;
   bool canThrow_ = false;  // declared with 'throws IError' — may unwind
-  // Part of the type's identity: `<'_>() -> T` in source. True when the
+  // Part of the type's identity: `<'_>() => T` in source. True when the
   // lambda carries a captured environment that lives in a stack frame
-  // (capture lists, bound methods). A plain '() -> T' is reserved for
+  // (capture lists, bound methods). A plain '() => T' is reserved for
   // environment-free lambdas, so this is what keeps a frame-bound lambda
   // from laundering through an annotation-typed parameter or field.
   bool hasRefCaptures_ = false;
   // Metadata, NOT identity: the lifetime name written on this position
-  // ('<'a>(i32) -> i32'), empty when elided. Names only mean something
+  // ('<'a>(i32) => i32'), empty when elided. Names only mean something
   // relative to one signature's lifetime list, so equals(), toString() and
   // mangling ignore them - '<'a>' and '<'b>' are one type.
   std::string lifetimeName_;
@@ -413,7 +413,7 @@ class LambdaType : public Type {
       if (i > 0) result += ", ";
       result += paramTypes[i]->toString();
     }
-    result += ") -> " + returnType->toString();
+    result += ") => " + returnType->toString();
     if (canThrow_) result += " throws IError";
     return result;
   }
@@ -424,7 +424,7 @@ class LambdaType : public Type {
       if (i > 0) result += ", ";
       result += paramTypes[i]->toDisplayString();
     }
-    result += ") -> " + returnType->toDisplayString();
+    result += ") => " + returnType->toDisplayString();
     if (canThrow_) result += " throws IError";
     return result;
   }
@@ -2119,7 +2119,7 @@ class Types {
                                           std::move(paramTypes), canThrow);
   }
 
-  // Create a lambda type: () -> {} (anonymous function, fat pointer call)
+  // Create a lambda type: () => {} (anonymous function, fat pointer call)
   static TypePtr Lambda(TypePtr returnType, std::vector<TypePtr> paramTypes,
                         bool canThrow = false) {
     return std::make_shared<LambdaType>(std::move(returnType),

@@ -281,23 +281,23 @@ TEST(Tooling_Frontend_TypeSpans, PlainReturnType) {
 TEST(Tooling_Frontend_TypeSpans, LambdaTypeBacktrackedComma) {
   // The ',' after the lambda type is tentatively eaten (IError check) and
   // pushed back; the span must not include it.
-  std::string src = "function g(cb: (i32) -> i32, x: i32) void {}";
+  std::string src = "function g(cb: (i32) => i32, x: i32) void {}";
   auto block = parseSource(src);
   auto* fn = static_cast<FunctionAST*>(block->getBody()[0].get());
   const auto& args = fn->getProto().getArgs();
   ASSERT_EQ(args.size(), 2u);
-  EXPECT_EQ(spanText(src, args[0].second.span), "(i32) -> i32");
+  EXPECT_EQ(spanText(src, args[0].second.span), "(i32) => i32");
   EXPECT_EQ(spanText(src, args[1].second.span), "i32");
 }
 
 TEST(Tooling_Frontend_TypeSpans, ThrowingLambdaType) {
-  std::string src = "function g(cb: (i32) -> i32 throws IError) void {}";
+  std::string src = "function g(cb: (i32) => i32 throws IError) void {}";
   auto block = parseSource(src);
   auto* fn = static_cast<FunctionAST*>(block->getBody()[0].get());
   const auto& args = fn->getProto().getArgs();
   ASSERT_EQ(args.size(), 1u);
   EXPECT_TRUE(args[0].second.canError);
-  EXPECT_EQ(spanText(src, args[0].second.span), "(i32) -> i32 throws IError");
+  EXPECT_EQ(spanText(src, args[0].second.span), "(i32) => i32 throws IError");
 }
 
 TEST(Tooling_Frontend_TypeSpans, FnType) {

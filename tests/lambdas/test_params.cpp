@@ -9,7 +9,7 @@
 
 TEST(Lambdas_Params, lambda_param_by_value) {
   auto value = executeString(R"(
-    function apply_twice(f: (i32) -> i32, x: i32) i32 {
+    function apply_twice(f: (i32) => i32, x: i32) i32 {
         return f(f(x));
     }
 
@@ -23,7 +23,7 @@ TEST(Lambdas_Params, lambda_param_by_value) {
 
 TEST(Lambdas_Params, lambda_literal_argument) {
   auto value = executeString(R"(
-    function apply_twice(f: (i32) -> i32, x: i32) i32 {
+    function apply_twice(f: (i32) => i32, x: i32) i32 {
         return f(f(x));
     }
 
@@ -46,7 +46,7 @@ TEST(Lambdas_Params, lambda_ref_class_param) {
         }
     }
 
-    function with_counter(handler: (ref Counter) -> void) i32 {
+    function with_counter(handler: (ref Counter) => void) i32 {
         var c = Counter();
         handler(c);
         handler(c);
@@ -75,7 +75,7 @@ TEST(Lambdas_Params, lambda_ref_class_param_literal) {
         }
     }
 
-    function with_counter(handler: (ref Counter) -> void) i32 {
+    function with_counter(handler: (ref Counter) => void) i32 {
         var c = Counter();
         handler(c);
         handler(c);
@@ -109,7 +109,7 @@ TEST(Lambdas_Params, method_lambda_param) {
         init() {
             this.dummy = 0;
         }
-        method run_twice(handler: (ref Counter) -> void) i32 {
+        method run_twice(handler: (ref Counter) => void) i32 {
             var c = Counter();
             handler(c);
             handler(c);
@@ -144,10 +144,10 @@ TEST(Lambdas_Params, lambda_param_forwarded_between_methods) {
         init() {
             this.dummy = 0;
         }
-        method outer(handler: (ref Counter) -> void) i32 {
+        method outer(handler: (ref Counter) => void) i32 {
             return this.inner(handler);
         }
-        method inner(handler: (ref Counter) -> void) i32 {
+        method inner(handler: (ref Counter) => void) i32 {
             var c = Counter();
             handler(c);
             return c.count;
@@ -194,7 +194,7 @@ TEST(Lambdas_Throwing, throwing_lambda_as_param) {
   auto value = executeStringWithStdlib(R"(
     using std;
 
-    function run_guarded(f: (i32) -> i32 throws IError, x: i32) i32 {
+    function run_guarded(f: (i32) => i32 throws IError, x: i32) i32 {
         try {
             return f(x);
         } catch (e: IError) {
@@ -219,7 +219,7 @@ TEST(Lambdas_Throwing, non_throwing_into_throwing_param) {
   auto value = executeStringWithStdlib(R"(
     using std;
 
-    function run_guarded(f: (i32) -> i32 throws IError, x: i32) i32 {
+    function run_guarded(f: (i32) => i32 throws IError, x: i32) i32 {
         try {
             return f(x);
         } catch (e: IError) {

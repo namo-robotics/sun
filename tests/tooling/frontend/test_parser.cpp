@@ -256,7 +256,7 @@ TEST(Tooling_Frontend_Parser, ParseLambda) {
 
 TEST(Tooling_Frontend_Parser, ParseLambdaWithCallableParameter) {
   auto block = parseString(
-      "var f = (cb: (i32) -> i32) => i32 { return cb(1); };");
+      "var f = (cb: (i32) => i32) => i32 { return cb(1); };");
   ASSERT_NE(block, nullptr);
   const auto* varCreation =
       dynamic_cast<const VariableCreationAST*>(block->getBody()[0].get());
@@ -266,6 +266,8 @@ TEST(Tooling_Frontend_Parser, ParseLambdaWithCallableParameter) {
   ASSERT_NE(lambda, nullptr);
   ASSERT_EQ(lambda->getProto().getArgs().size(), 1u);
   EXPECT_TRUE(lambda->getProto().getArgs()[0].second.isLambda());
+  EXPECT_EQ(lambda->getProto().getArgs()[0].second.toString(),
+            "(i32) => i32");
 }
 
 TEST(Tooling_Frontend_Parser, LambdaIsValidIdentifier) {
@@ -717,6 +719,17 @@ static std::string parseErrorMessage(const std::string& src) {
   }
   ADD_FAILURE() << "expected a parse error";
   return "";
+}
+
+TEST(Tooling_Frontend_Parser_Errors, LegacyLambdaTypeArrowIsRejected) {
+  std::string what = parseErrorMessage(R"(
+function apply(f: (i32) -> i32, x: i32) i32 {
+    return f(x);
+}
+)");
+  EXPECT_TRUE(what.find("expected '=>' before the return type") !=
+              std::string::npos)
+      << what;
 }
 
 TEST(Tooling_Frontend_Parser_Errors, MissingLambdaFatArrow) {

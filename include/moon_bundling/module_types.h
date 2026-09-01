@@ -17,6 +17,7 @@ class ModuleTypeResolver {
   ///   "i32" -> PrimitiveType(Int32)
   ///   "f64" -> PrimitiveType(Float64)
   ///   "(i32, i32) -> i32" -> FunctionType
+  ///   "(i32, i32) => i32" -> LambdaType
   ///   "ptr<Point>" -> PointerType
   /// @param sig The type signature string
   /// @return Parsed type, or nullptr if invalid
@@ -40,7 +41,7 @@ class ModuleTypeResolver {
   /// Check if we're at a specific character
   static bool match(const std::string& sig, size_t& pos, char c);
 
-  /// Parse function type: (params) -> return
+  /// Parse callable type: (params) followed by -> or =>
   static TypePtr parseFunctionType(const std::string& sig, size_t& pos);
 
   /// Parse generic type: Name<T1, T2>

@@ -278,7 +278,7 @@ TEST(EndToEnd_Programs, func_reassign3) {
 
 TEST(EndToEnd_Programs, func_pass) {
   auto value = executeString(R"(
-    var apply = (f: (i32) -> i32, x: i32) => i32 {
+    var apply = (f: (i32) => i32, x: i32) => i32 {
         return f(x);
     };
 
@@ -312,7 +312,7 @@ function double(n: i32) i32 {
 
 TEST(EndToEnd_Programs, func_return) {
   auto value = executeString(R"(
-    var f = () => () -> i32 {
+    var f = () => () => i32 {
         var g = () => i32 {
             return 2;
         };

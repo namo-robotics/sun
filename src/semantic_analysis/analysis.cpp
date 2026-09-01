@@ -849,7 +849,7 @@ static void checkAllPathsReturn(const PrototypeAST& proto,
 // An anonymous `<'_>` lambda type cannot be a return type: which frame the
 // returned value's environment lives in cannot be told apart from the frame
 // that is dying. A NAMED lifetime unpins it - 'function pick<'a>(...)
-// <'a>() -> i32' ties the result to frames the caller can see - so
+// <'a>() => i32' ties the result to frames the caller can see - so
 // declarations that bind their own lifetimes pass allowNamed.
 void SemanticAnalyzer::rejectRefEnvReturnType(
     const std::optional<TypeAnnotation>& returnType, const Position& location,
@@ -870,7 +870,7 @@ void SemanticAnalyzer::rejectRefEnvReturnType(
         "an anonymous <'_> lambda type cannot be a return type - its captured "
         "environment lives in a stack frame that dies when the function "
         "returns. Name the frame with a lifetime to allow it: "
-        "function f<'a>(x: <'a>() -> i32) <'a>() -> i32",
+        "function f<'a>(x: <'a>() => i32) <'a>() => i32",
         location);
   }
 }

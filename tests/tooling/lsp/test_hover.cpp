@@ -191,12 +191,12 @@ TEST(Tooling_Lsp_Hover, FunctionCallee) {
 TEST(Tooling_Lsp_Hover, LambdaTypeUsesArrowSyntax) {
   const char* source = R"(
 class Holder {
-    var callback: <'_>() -> i32;
+    var callback: <'_>() => i32;
     init() { this.callback = () => i32 { return 0; }; }
-    public method set(cb: <'this>() -> i32) void { this.callback = cb; }
+    public method set(cb: <'this>() => i32) void { this.callback = cb; }
 }
 
-function apply(f: (i32) -> i32 throws IError) i32 throws IError {
+function apply(f: (i32) => i32 throws IError) i32 throws IError {
     return f(1);
 }
 
@@ -205,9 +205,9 @@ function main() i32 {
     return 0;
 }
 )";
-  EXPECT_EQ(hoverAt(source, "callback: <'_>"), "var callback: <'_>() -> i32");
-  EXPECT_EQ(hoverAt(source, "cb;"), "cb: <'this>() -> i32");
-  EXPECT_EQ(hoverAt(source, "f(1)"), "f: (i32) -> i32 throws IError");
+  EXPECT_EQ(hoverAt(source, "callback: <'_>"), "var callback: <'_>() => i32");
+  EXPECT_EQ(hoverAt(source, "cb;"), "cb: <'this>() => i32");
+  EXPECT_EQ(hoverAt(source, "f(1)"), "f: (i32) => i32 throws IError");
 }
 
 TEST(Tooling_Lsp_Hover, ClassHeaderAndField) {

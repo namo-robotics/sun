@@ -272,7 +272,7 @@ function main() i32 {
 </Callout>
 
 Lambda types instantiate generics like any other type, and the `<'_>`
-marker is part of the type: `Box<() -> i32>` and `Box<<'_>() -> i32>` are
+marker is part of the type: `Box<() => i32>` and `Box<<'_>() => i32>` are
 two distinct instantiations. One instantiated over a `<'_>` lambda type is
 frame-carrying as a whole — it works freely inside the frame that built it,
 but cannot be returned or become a global (see
@@ -281,7 +281,7 @@ but cannot be returned or become a global (see
 Lifetime parameters share the angle brackets, written first
 (`function pick<'a, T>`), but they are not type parameters: they never
 distinguish types, never mint a specialization, and never appear in
-mangled names. `<'a>() -> i32` and `<'b>() -> i32` are one type,
+mangled names. `<'a>() => i32` and `<'b>() => i32` are one type,
 and an explicit instantiation names only the type arguments
 (`combine<i32>(...)` — lifetime arguments are always inferred).
 

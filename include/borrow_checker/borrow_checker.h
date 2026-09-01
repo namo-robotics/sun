@@ -358,7 +358,7 @@ class BorrowChecker {
 
   // Named lifetimes of the current function's own parameters, from the
   // signature's annotations: a lambda param's environment name
-  // ('cb: <'a>(i32) -> i32') and a ref param's referent name
+  // ('cb: <'a>(i32) => i32') and a ref param's referent name
   // ('dst: ref 'a Holder'). Empty-name params are simply absent.
   std::unordered_map<std::string, std::string> paramEnvNames_;
   std::unordered_map<std::string, std::string> refParamNames_;
@@ -368,7 +368,7 @@ class BorrowChecker {
       refParamClassBindings_;
 
   // The current function's declared return lifetime, from a
-  // '<'a>(...) -> ...' return annotation; empty when the return type
+  // '<'a>(...) => ...' return annotation; empty when the return type
   // is not a named frame-bound lambda.
   std::string returnLifetimeName_;
 

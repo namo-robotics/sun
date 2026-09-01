@@ -311,7 +311,7 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
         annot.canError || (annot.returnType && annot.returnType->canError);
     auto lambdaType =
         sun::Types::Lambda(retType, std::move(paramTypes), canThrow);
-    // `<'_>(…) -> …` admits lambdas whose captured environment lives in a
+    // `<'_>(…) => …` admits lambdas whose captured environment lives in a
     // stack frame; a plain annotation admits only environment-free lambdas.
     // A named lifetime ('<'a>') rides along as borrow-checker metadata.
     static_cast<sun::LambdaType*>(lambdaType.get())
