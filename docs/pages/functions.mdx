@@ -104,6 +104,11 @@ using std.env;
 function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
     var alloc = make_heap_allocator();
     var cli = collect_args(alloc, argc, argv);
+    for (var arg: String in cli) { println(arg); }
+    return 0;
+}
+```
+
 ## Function Pointers
 
 A named function is also a first-class, non-null function pointer. Its type is
@@ -156,12 +161,6 @@ var parse_int: function (i32) i32 = parse;
 A bare overloaded name without type context is ambiguous. Generic functions
 must still be called with a specialization and cannot currently be taken as
 bare function pointers.
-
-    for (var arg: String in cli) { println(arg); }
-    return 0;
-}
-```
-
 
 ## Lambdas
 
