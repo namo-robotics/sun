@@ -255,24 +255,22 @@ TEST(Tooling_Frontend_Parser, ParseLambda) {
 }
 
 TEST(Tooling_Frontend_Parser, ParseLambdaWithCallableParameter) {
-  auto block = parseString(
-      "var f = (cb: (i32) => i32) => i32 { return cb(1); };");
+  auto block =
+      parseString("var f = (cb: (i32) => i32) => i32 { return cb(1); };");
   ASSERT_NE(block, nullptr);
   const auto* varCreation =
       dynamic_cast<const VariableCreationAST*>(block->getBody()[0].get());
   ASSERT_NE(varCreation, nullptr);
-  const auto* lambda =
-      dynamic_cast<const LambdaAST*>(varCreation->getValue());
+  const auto* lambda = dynamic_cast<const LambdaAST*>(varCreation->getValue());
   ASSERT_NE(lambda, nullptr);
   ASSERT_EQ(lambda->getProto().getArgs().size(), 1u);
   EXPECT_TRUE(lambda->getProto().getArgs()[0].second.isLambda());
-  EXPECT_EQ(lambda->getProto().getArgs()[0].second.toString(),
-            "(i32) => i32");
+  EXPECT_EQ(lambda->getProto().getArgs()[0].second.toString(), "(i32) => i32");
 }
 
 TEST(Tooling_Frontend_Parser, LambdaIsValidIdentifier) {
-  auto block = parseString(
-      "function lambda(lambda: i32) i32 { return lambda; }");
+  auto block =
+      parseString("function lambda(lambda: i32) i32 { return lambda; }");
   ASSERT_NE(block, nullptr);
   const auto* function =
       dynamic_cast<const FunctionAST*>(block->getBody()[0].get());
@@ -328,6 +326,23 @@ TEST(Tooling_Frontend_Parser, ParseFunction) {
   EXPECT_EQ(func->getProto().getName(), "foo");
   ASSERT_EQ(func->getProto().getArgNames().size(), 1);
   EXPECT_EQ(func->getProto().getArgNames()[0], "x");
+}
+TEST(Tooling_Frontend_Parser, ParseFunctionPointerType) {
+  auto block = parseString(
+      "function use(callback: function (i32, bool) i64 throws IError) void {}");
+  ASSERT_NE(block, nullptr);
+  const auto* function =
+      dynamic_cast<const FunctionAST*>(block->getBody()[0].get());
+  ASSERT_NE(function, nullptr);
+  const auto& type = function->getProto().getArgs()[0].second;
+  EXPECT_TRUE(type.isFunction());
+  ASSERT_EQ(type.paramTypes.size(), 2u);
+  EXPECT_EQ(type.paramTypes[0]->baseName, "i32");
+  EXPECT_EQ(type.paramTypes[1]->baseName, "bool");
+  ASSERT_NE(type.returnType, nullptr);
+  EXPECT_EQ(type.returnType->baseName, "i64");
+  EXPECT_TRUE(type.canError);
+  EXPECT_EQ(type.toString(), "function (i32, bool) i64 throws IError");
 }
 
 TEST(Tooling_Frontend_Parser, IfExpression) {
@@ -640,10 +655,6 @@ TEST(Tooling_Frontend_Parser_Errors, MissingClosingBrace) {
           parseString(R"(
 function test() i32 {
     return 1;
-
-function main() i32 {
-    return 0;
-}
 )");
         } catch (const SunError& e) {
           // Print error to stdout for test explorer visibility

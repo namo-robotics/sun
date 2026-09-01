@@ -344,7 +344,7 @@ TEST(Lambdas_RefCaptures, byvalue_array_capture_rejected) {
                                 "capture it by reference with");
 }
 
-TEST(Lambdas_RefCaptures, nested_function_compound_capture_rejected) {
+TEST(Lambdas_RefCaptures, nested_function_declaration_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       class Point {
           var x: i32;
@@ -360,7 +360,7 @@ TEST(Lambdas_RefCaptures, nested_function_compound_capture_rejected) {
           return inner();
       }
     )"),
-                                "use a lambda with a [ref p] capture list");
+                                "only allowed at module scope");
 }
 
 // ============================================================================

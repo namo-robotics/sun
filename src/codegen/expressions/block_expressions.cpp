@@ -27,24 +27,11 @@ Value* CodegenVisitor::codegen(const BlockExprAST& block) {
       auto currentBlock = ctx.builder->GetInsertBlock();
 
       auto& funcAST = static_cast<FunctionAST&>(*expr);
-      Value* funcVal = functions_.codegenFunc(funcAST);
+      functions_.codegenFunc(funcAST);
 
-      // Restore!
+      // Function emission changes the builder's insertion point.
       if (currentBlock) {
         ctx.builder->SetInsertPoint(currentBlock);
-      }
-
-      // For nested named functions with closures, store the env pointer in
-      // local scope so calls can pass it as the first argument. Keyed by the
-      // symbol the function is emitted under — a specialization is called by
-      // its mangled name, never by the template's.
-      const auto& proto = funcAST.getProto();
-      if (!scopes.empty() && !proto.getName().empty() && proto.hasClosure()) {
-        // funcVal is an env pointer - store it in scope
-        if (funcVal) {
-          scopes.back().variables[proto.getMangledName()] =
-              llvm::cast<llvm::AllocaInst>(funcVal);
-        }
       }
 
       continue;

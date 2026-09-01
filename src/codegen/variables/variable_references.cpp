@@ -76,8 +76,8 @@ llvm::Value* VariableGenerator::createLoadForRef(
 }
 
 void VariableGenerator::createStoreForRef(const std::string& varName,
-                                       const sun::ReferenceType& refType,
-                                       llvm::Value* value) {
+                                          const sun::ReferenceType& refType,
+                                          llvm::Value* value) {
   llvm::Type* referencedLLVMType =
       typeResolver.resolve(refType.getReferencedType());
 
@@ -94,9 +94,9 @@ void VariableGenerator::createStoreForRef(const std::string& varName,
   Value* target = alloca;
   if (!isDirectAlias(alloca, referencedLLVMType)) {
     // Indirect reference - the alloca holds the referent's address
-    target = ctx.builder->CreateLoad(
-        llvm::PointerType::getUnqual(ctx.getContext()), alloca,
-        varName + ".ptr");
+    target =
+        ctx.builder->CreateLoad(llvm::PointerType::getUnqual(ctx.getContext()),
+                                alloca, varName + ".ptr");
   }
   assignToVariableSlot(target, value, refType.getReferencedType(), varName);
 }
@@ -243,7 +243,7 @@ Value* VariableGenerator::codegen(const VariableReferenceAST& expr) {
   // Check for named functions using qualified name from semantic analysis
   // The qualified name handles using imports (e.g., hash_i64 -> sun_hash_i64)
   const std::string& funcName = expr.getMangledName();
-  if (Function* func = module->getFunction(funcName)) {
+  if (Function* func = functions().lookupCallTarget(funcName)) {
     return func;
   }
 
@@ -258,13 +258,6 @@ Value* VariableGenerator::codegen(const VariableReferenceAST& expr) {
 // -------------------------------------------------------------------
 
 Value* VariableGenerator::codegen(const VariableAssignmentAST& expr) {
-  // Named functions cannot be assigned to variables - only lambdas can
-  if (expr.getValue()->isFunction()) {
-    logAndThrowError(
-        "Cannot assign a named function to a variable. Use a lambda instead: " +
-        expr.getName());
-  }
-
   // Check if the value is a lambda literal - need special handling
   bool isLambdaLiteral = expr.getValue()->isLambda();
   BasicBlock* savedBlock = nullptr;
@@ -305,7 +298,8 @@ Value* VariableGenerator::codegen(const VariableAssignmentAST& expr) {
   // that is the original variable's storage, and for an owned capture it is
   // the closure's own; an implicit by-value capture is rejected in semantic
   // analysis before reaching here.
-  if (Value* slotAddr = functionGen().createCaptureSlotAddress(expr.getName())) {
+  if (Value* slotAddr =
+          functionGen().createCaptureSlotAddress(expr.getName())) {
     Value* value = codegen(*expr.getValue());
     if (isLambdaLiteral && savedBlock) {
       ctx.builder->SetInsertPoint(savedBlock);
@@ -355,8 +349,8 @@ Value* VariableGenerator::codegen(const VariableAssignmentAST& expr) {
 // the source so its own drop is a no-op. The borrow checker already rejects
 // later uses of the source.
 void VariableGenerator::assignToVariableSlot(Value* slot, Value* value,
-                                          const sun::TypePtr& varType,
-                                          const std::string& name) {
+                                             const sun::TypePtr& varType,
+                                             const std::string& name) {
   bool compound =
       varType &&
       (varType->isClass() || CodegenVisitor::isPayloadEnum(varType)) &&

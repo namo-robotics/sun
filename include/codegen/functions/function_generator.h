@@ -2,14 +2,9 @@
 
 // function_generator.h — Functions, lambdas, closures and returns
 //
-// A named function that captures nothing is called directly. Anything that
-// captures — a lambda, a nested named function — carries an environment, and
-// the two shapes differ: a lambda is a fat { fn, env } value that can be
-// passed around, while a named function takes its environment as a hidden
-// argument. Both are built here, along with the capture slots themselves.
-//
-// A capture list entry that says `ref` borrows; one that says neither is
-// owned by the closure, so a compound moves into the environment and the
+// Named functions are thin pointers. Lambdas and bound methods use a fat
+// { fn, env } value. A capture list entry that says `ref` borrows; otherwise it
+// is owned by the closure, so a compound moves into the environment and the
 // scope that built it drops it.
 //
 // Returns live here too, because what a return must do is decided by the
@@ -41,8 +36,7 @@ class ScopeManager;
 struct ClosureContext {
   llvm::StructType* fatType;  // Only used for lambdas
   llvm::StructType* envType;
-  llvm::Value* envOrFatPtr;  // Either env* (named functions) or fat* (lambdas)
-  bool isDirectEnv;          // true: envOrFatPtr is env*, false: it's fat*
+  llvm::Value* fatPtr;
   std::vector<Capture> captures;
   std::map<std::string, unsigned> captureIndex;
   std::map<std::string, llvm::Type*> captureTypes;
@@ -140,7 +134,7 @@ class FunctionGenerator {
   bool& currentFunctionReturnsRef;
   llvm::Type*& currentFunctionValueType;
 
-  // Closure environments for the nested function compilations in flight
+  // Closure environments for lambda compilations in flight
   std::vector<ClosureContext> closureStack;
 
   // Counter for generating unique names for anonymous lambdas
@@ -154,11 +148,8 @@ class FunctionGenerator {
   llvm::StructType* createFatTypeForFunc(llvm::Function* func,
                                          llvm::StructType* envType,
                                          const PrototypeAST& proto);
-  llvm::Value* createFatClosure(llvm::Function* func,
-                                llvm::StructType* fatType,
+  llvm::Value* createFatClosure(llvm::Function* func, llvm::StructType* fatType,
                                 llvm::StructType* envType,
-                                const PrototypeAST& proto);
-  llvm::Value* createEnvClosure(llvm::StructType* envType,
                                 const PrototypeAST& proto);
 
   // Fill a closure environment's capture slots. Owned captures of compound

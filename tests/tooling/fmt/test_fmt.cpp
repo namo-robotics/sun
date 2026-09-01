@@ -145,12 +145,13 @@ TEST(Tooling_Fmt, LiteralFidelity) {
 }
 
 TEST(Tooling_Fmt, TypeFidelity) {
-  EXPECT_EQ(fmt("function f(a: ref  Foo, b: raw_ptr<Bar>) i32 throws  IError {\n"
-                "throw 1;\n"
-                "}"),
-            "function f(a: ref  Foo, b: raw_ptr<Bar>) i32 throws  IError {\n"
-            "  throw 1;\n"
-            "}\n");
+  EXPECT_EQ(
+      fmt("function f(a: ref  Foo, b: raw_ptr<Bar>) i32 throws  IError {\n"
+          "throw 1;\n"
+          "}"),
+      "function f(a: ref  Foo, b: raw_ptr<Bar>) i32 throws  IError {\n"
+      "  throw 1;\n"
+      "}\n");
 }
 
 // Constructors and destructors print bare — no 'public function', no return
@@ -441,20 +442,29 @@ TEST(Tooling_Fmt, LambdaAndCaptures) {
             "}\n");
 }
 
-TEST(Tooling_Fmt, LambdaLifetimeParametersBeforeCaptures) {
+TEST(Tooling_Fmt, FunctionPointerType) {
   EXPECT_EQ(
-      fmt("function f() void {\n"
-          "var n=0;\n"
-          "var store=<'a> [ref n](cb: <'a>() => i32, box: ref 'a Box) => "
-          "void { n += 1; return; };\n"
-          "return;\n"
-          "}"),
-      "function f() void {\n"
-      "  var n = 0;\n"
-      "  var store = <'a> [ref n](cb: <'a>() => i32, box: ref 'a "
-      "Box) => void { n += 1; return; };\n"
-      "  return;\n"
-      "}\n");
+      fmt("function apply(cb:function(i32,bool)i64 throws IError)void{}"),
+      "function apply(cb: function (i32, bool) i64 throws IError) void {}\n");
+  EXPECT_EQ(fmt("function choose()function(i32)i32{return double;}"),
+            "function choose() function (i32) i32 {\n"
+            "  return double;\n"
+            "}\n");
+}
+
+TEST(Tooling_Fmt, LambdaLifetimeParametersBeforeCaptures) {
+  EXPECT_EQ(fmt("function f() void {\n"
+                "var n=0;\n"
+                "var store=<'a> [ref n](cb: <'a>() => i32, box: ref 'a Box) => "
+                "void { n += 1; return; };\n"
+                "return;\n"
+                "}"),
+            "function f() void {\n"
+            "  var n = 0;\n"
+            "  var store = <'a> [ref n](cb: <'a>() => i32, box: ref 'a "
+            "Box) => void { n += 1; return; };\n"
+            "  return;\n"
+            "}\n");
 }
 
 TEST(Tooling_Fmt, LambdaCanonicalPrefixes) {

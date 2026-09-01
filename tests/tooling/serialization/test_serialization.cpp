@@ -8,6 +8,7 @@
 #include <string>
 
 #include "ast.h"
+#include "moon_bundling/module_types.h"
 #include "parsing/lexer.h"
 #include "parsing/parser.h"
 #include "serialization/ast_deserializer.h"
@@ -951,6 +952,40 @@ TEST(Tooling_Serialization, ReferenceTypeAnnotation) {
   ASSERT_NE(restored, nullptr);
   EXPECT_EQ(restored->getType(), ASTNodeType::BLOCK);
 }
+TEST(Tooling_Serialization, FunctionPointerTypeAnnotationRoundtrip) {
+  auto block = parseCode(R"(
+    function use(callback: function (i32, bool) i64 throws IError) void {}
+  )");
+  ASSERT_NE(block, nullptr);
+
+  ASTSerializer serializer;
+  std::string data = serializer.serializeToString(*block);
+  ASTDeserializer deserializer;
+  auto restored = deserializer.deserializeFromString(data);
+
+  ASSERT_NE(restored, nullptr);
+  auto* restoredBlock = static_cast<BlockExprAST*>(restored.get());
+  auto* function = static_cast<FunctionAST*>(restoredBlock->getBody()[0].get());
+  const auto& type = function->getProto().getArgs()[0].second;
+  EXPECT_TRUE(type.isFunction());
+  EXPECT_TRUE(type.canError);
+  EXPECT_EQ(type.toString(), "function (i32, bool) i64 throws IError");
+}
+
+TEST(Tooling_Serialization, ModuleFunctionPointerTypeSyntax) {
+  auto current = sun::ModuleTypeResolver::parseTypeSignature(
+      "function (i32, bool) i64 throws IError");
+  ASSERT_NE(current, nullptr);
+  ASSERT_EQ(current->getKind(), sun::Type::Kind::Function);
+  EXPECT_EQ(current->toString(), "function (i32, bool) i64 throws IError");
+}
+
+TEST(Tooling_Serialization, ModuleLegacyFunctionPointerTypeCompatibility) {
+  auto legacy = sun::ModuleTypeResolver::parseTypeSignature("(i32) -> i32");
+  ASSERT_NE(legacy, nullptr);
+  ASSERT_EQ(legacy->getKind(), sun::Type::Kind::Function);
+  EXPECT_EQ(legacy->toString(), "function (i32) i32");
+}
 
 // =============================================================================
 // Edge Cases
@@ -1108,10 +1143,9 @@ TEST(Tooling_Serialization, GenericEnumTypeParamsRoundtrip) {
   variants.push_back({"Some", 0, Position{}, {}});
   variants.back().payloadTypes.push_back(TypeAnnotation("T"));
   variants.push_back({"None", 1, Position{}, {}});
-  auto ast = std::make_unique<EnumDefinitionAST>("Option", std::move(variants),
-                                                 /*precompiled=*/false,
-                                                 std::vector<TypeParameter>{
-                                                     TypeParameter("T")});
+  auto ast = std::make_unique<EnumDefinitionAST>(
+      "Option", std::move(variants),
+      /*precompiled=*/false, std::vector<TypeParameter>{TypeParameter("T")});
 
   ASTSerializer serializer;
   std::string data = serializer.serializeToString(*ast);

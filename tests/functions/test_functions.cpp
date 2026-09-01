@@ -405,3 +405,222 @@ TEST(Functions, returning_a_void_call_stops_the_function) {
   )");
   EXPECT_EQ(value, 1);
 }
+// -------------------------------------------------------------------
+// First-class function pointers
+// -------------------------------------------------------------------
+
+TEST(Functions, function_pointers_can_be_inferred_annotated_and_reassigned) {
+  auto value = executeString(R"(
+    function increment(x: i32) i32 { return x + 1; }
+    function double(x: i32) i32 { return x * 2; }
+    function apply(callback: function (i32) i32, x: i32) i32 {
+        return callback(x);
+    }
+
+    function main() i32 {
+        var inferred = increment;
+        var callback: function (i32) i32 = inferred;
+        callback = double;
+        return apply(callback, 21);
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Functions, function_pointers_work_in_globals_and_fields) {
+  auto value = executeString(R"(
+    function add_one(x: i32) i32 { return x + 1; }
+    function times_two(x: i32) i32 { return x * 2; }
+
+    var global_callback: function (i32) i32 = add_one;
+
+    class Handler {
+        var callback: function (i32) i32;
+        init(callback: function (i32) i32) { this.callback = callback; }
+        method call(x: i32) i32 { return this.callback(x); }
+    }
+
+    function main() i32 {
+        var handler = Handler(times_two);
+        return handler.call(global_callback(20));
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Functions, function_pointers_can_be_returned_and_called_immediately) {
+  auto value = executeString(R"(
+    function add_one(x: i32) i32 { return x + 1; }
+    function times_two(x: i32) i32 { return x * 2; }
+
+    function choose(double_it: bool) function (i32) i32 {
+        if (double_it) { return times_two; }
+        return add_one;
+    }
+
+    function main() i32 { return choose(true)(21); }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Functions, expected_pointer_type_selects_an_overload) {
+  auto value = executeString(R"(
+    function select(x: i32) i32 { return x * 2; }
+    function select(x: f64) i32 { return 7; }
+
+    function main() i32 {
+        var callback: function (i32) i32 = select;
+        return callback(21);
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Functions, overloaded_function_value_without_context_is_ambiguous) {
+  EXPECT_THROW(executeString(R"(
+    function select(x: i32) i32 { return x; }
+    function select(x: f64) i32 { return 0; }
+    function main() i32 {
+        var callback = select;
+        return callback(1);
+    }
+  )"),
+               SunError);
+}
+
+TEST(Functions, nonthrowing_pointer_widens_to_throwing_pointer) {
+  auto value = executeString(R"(
+    function double(x: i32) i32 { return x * 2; }
+
+    function invoke(callback: function (i32) i32 throws IError,
+                    x: i32) i32 throws IError {
+        return callback(x);
+    }
+
+    function main() i32 {
+        try {
+            return invoke(double, 21);
+        } catch (error: IError) {
+            return -1;
+        }
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Functions, throwing_pointer_propagates_indirect_exceptions) {
+  auto value = executeString(R"(
+    class CallbackError implements IError {
+        init() {}
+        method code() i32 { return 1; }
+        method message() static_ptr<u8> { return "callback failed"; }
+    }
+
+    function fail(x: i32) i32 throws IError { throw CallbackError(); }
+
+    function main() i32 {
+        var callback: function (i32) i32 throws IError = fail;
+        try {
+            return callback(1);
+        } catch (error: IError) {
+            return 42;
+        }
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Functions, throwing_pointer_does_not_narrow) {
+  EXPECT_THROW(executeString(R"(
+    class CallbackError implements IError {
+        init() {}
+        method code() i32 { return 1; }
+        method message() static_ptr<u8> { return "callback failed"; }
+    }
+    function fail(x: i32) i32 throws IError { throw CallbackError(); }
+    function main() i32 {
+        var callback: function (i32) i32 = fail;
+        return callback(1);
+    }
+  )"),
+               SunError);
+}
+
+TEST(Functions, indirect_throwing_call_requires_error_handling) {
+  EXPECT_THROW(executeString(R"(
+    class CallbackError implements IError {
+        init() {}
+        method code() i32 { return 1; }
+        method message() static_ptr<u8> { return "callback failed"; }
+    }
+    function fail(x: i32) i32 throws IError { throw CallbackError(); }
+    function main() i32 {
+        var callback: function (i32) i32 throws IError = fail;
+        return callback(1);
+    }
+  )"),
+               SunError);
+}
+
+TEST(Functions, legacy_pointer_annotation_has_a_migration_diagnostic) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
+    function main() i32 {
+        var callback: _(i32) -> i32;
+        return 0;
+    }
+  )"),
+      "function pointer types use 'function (i32) i32'");
+}
+
+TEST(Functions, nested_function_declarations_are_rejected) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    function main() i32 {
+        function helper() i32 { return 42; }
+        return helper();
+    }
+  )"),
+                                "only allowed at module scope");
+
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    function main() i32 {
+        if (true) {
+            declare function helper<T>(x: T) i32;
+        }
+        return 0;
+    }
+  )"),
+                                "only allowed at module scope");
+
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Holder {
+        init() { extern function helper(x: i32) i32; }
+        method run() i32 { return 0; }
+    }
+    function main() i32 { return 0; }
+  )"),
+                                "only allowed at module scope");
+
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Holder {
+        init() {}
+        method run() i32 {
+            function helper() i32 { return 42; }
+            return helper();
+        }
+    }
+    function main() i32 { return 0; }
+  )"),
+                                "only allowed at module scope");
+
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    function main() i32 {
+        var callback = () => i32 {
+            function helper() i32 { return 42; }
+            return helper();
+        };
+        return callback();
+    }
+  )"),
+                                "only allowed at module scope");
+}

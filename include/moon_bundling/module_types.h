@@ -16,7 +16,7 @@ class ModuleTypeResolver {
   /// Examples:
   ///   "i32" -> PrimitiveType(Int32)
   ///   "f64" -> PrimitiveType(Float64)
-  ///   "(i32, i32) -> i32" -> FunctionType
+  ///   "function (i32, i32) i32" -> FunctionType
   ///   "(i32, i32) => i32" -> LambdaType
   ///   "ptr<Point>" -> PointerType
   /// @param sig The type signature string
@@ -41,8 +41,9 @@ class ModuleTypeResolver {
   /// Check if we're at a specific character
   static bool match(const std::string& sig, size_t& pos, char c);
 
-  /// Parse callable type: (params) followed by -> or =>
-  static TypePtr parseFunctionType(const std::string& sig, size_t& pos);
+  /// Parse a callable type. Legacy bundles may use a thin or fat arrow.
+  static TypePtr parseFunctionType(const std::string& sig, size_t& pos,
+                                   bool functionKeyword = false);
 
   /// Parse generic type: Name<T1, T2>
   static TypePtr parseGenericType(const std::string& name,

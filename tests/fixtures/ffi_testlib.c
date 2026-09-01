@@ -15,7 +15,26 @@ int sun_ffi_count_bytes(const unsigned char* s) {
   return n;
 }
 
-struct SunFfiTS { long long sec; long long nsec; };
+typedef int (*SunFfiCallback)(int);
+
+static SunFfiCallback sun_ffi_stored_callback;
+
+int sun_ffi_call_callback(SunFfiCallback callback, int value) {
+  return callback(value);
+}
+
+void sun_ffi_store_callback(SunFfiCallback callback) {
+  sun_ffi_stored_callback = callback;
+}
+
+int sun_ffi_call_stored_callback(int value) {
+  return sun_ffi_stored_callback ? sun_ffi_stored_callback(value) : -1;
+}
+
+struct SunFfiTS {
+  long long sec;
+  long long nsec;
+};
 
 void sun_ffi_fill(struct SunFfiTS* t) {
   t->sec = 7;
@@ -23,15 +42,20 @@ void sun_ffi_fill(struct SunFfiTS* t) {
 }
 
 // By-value struct cases, one per System V classification outcome.
-struct SunFfiPair { int a, b; };                  // 8B  -> one INTEGER reg
-struct SunFfiMixed { int a; double b; };          // 16B -> INTEGER + SSE
-struct SunFfiBig { int a, b, c, d, e; };          // 20B -> MEMORY (byval/sret)
+struct SunFfiPair {
+  int a, b;
+};  // 8B  -> one INTEGER reg
+struct SunFfiMixed {
+  int a;
+  double b;
+};  // 16B -> INTEGER + SSE
+struct SunFfiBig {
+  int a, b, c, d, e;
+};  // 20B -> MEMORY (byval/sret)
 
 int sun_ffi_take_pair(struct SunFfiPair p) { return p.a * 100 + p.b; }
 int sun_ffi_take_mixed(struct SunFfiMixed m) { return m.a + (int)m.b; }
-int sun_ffi_take_big(struct SunFfiBig b) {
-  return b.a + b.b + b.c + b.d + b.e;
-}
+int sun_ffi_take_big(struct SunFfiBig b) { return b.a + b.b + b.c + b.d + b.e; }
 struct SunFfiPair sun_ffi_make_pair(int a, int b) {
   struct SunFfiPair p = {a, b};
   return p;

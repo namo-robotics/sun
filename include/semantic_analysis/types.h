@@ -145,7 +145,7 @@ enum class TypeProjection : uint8_t {
 // Type parameter (used in generic class/function definitions)
 // Represents a type variable like T, U, V in class List<T>
 class TypeParameterType : public Type {
-  std::string name;  // Parameter name: T, U, etc. (F$ret when projected)
+  std::string name;   // Parameter name: T, U, etc. (F$ret when projected)
   std::string base_;  // The parameter the projection applies to
   TypeProjection projection_ = TypeProjection::None;
   // What `<T: Trait>` promised about whatever T stands for. Metadata only —
@@ -279,8 +279,8 @@ class PrimitiveType : public Type {
   }
 };
 
-// Function type for named functions (direct call, not returnable)
-// Type annotation: _() -> {}
+// A non-null, one-word pointer to a module-scope function.
+// Type annotation: function (Args) Result
 class FunctionType : public Type {
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;
@@ -298,34 +298,35 @@ class FunctionType : public Type {
   const TypePtr& getReturnType() const { return returnType; }
   const std::vector<TypePtr>& getParamTypes() const { return paramTypes; }
 
-  // Whether calls to this function may throw (unwind). Metadata only —
-  // intentionally excluded from equals()/identity so it never disturbs
-  // overload resolution.
+  // Whether calls through this pointer may throw.
   bool canThrow() const { return canThrow_; }
   void setCanThrow(bool v) { canThrow_ = v; }
 
   std::string toString() const override {
-    std::string result = "(";
+    std::string result = "function (";
     for (size_t i = 0; i < paramTypes.size(); ++i) {
       if (i > 0) result += ", ";
       result += paramTypes[i]->toString();
     }
-    result += ") -> " + returnType->toString();
+    result += ") " + returnType->toString();
+    if (canThrow_) result += " throws IError";
     return result;
   }
 
   std::string toDisplayString() const override {
-    std::string result = "(";
+    std::string result = "function (";
     for (size_t i = 0; i < paramTypes.size(); ++i) {
       if (i > 0) result += ", ";
       result += paramTypes[i]->toDisplayString();
     }
-    result += ") -> " + returnType->toDisplayString();
+    result += ") " + returnType->toDisplayString();
+    if (canThrow_) result += " throws IError";
     return result;
   }
 
   bool equals(const Type& other) const override {
     if (auto* f = dynamic_cast<const FunctionType*>(&other)) {
+      if (canThrow_ != f->canThrow_) return false;
       if (!returnType->equals(*f->returnType)) return false;
       if (paramTypes.size() != f->paramTypes.size()) return false;
       for (size_t i = 0; i < paramTypes.size(); ++i) {
@@ -336,19 +337,14 @@ class FunctionType : public Type {
     return false;
   }
 
-  // Returns the LLVM FunctionType (not a pointer)
+  // Function values use LLVM's opaque pointer representation.
   llvm::Type* toLLVMType(llvm::LLVMContext& ctx) const override {
-    std::vector<llvm::Type*> llvmParams;
-    for (const auto& p : paramTypes) {
-      llvmParams.push_back(p->toLLVMType(ctx));
-    }
-    return llvm::FunctionType::get(returnType->toLLVMType(ctx), llvmParams,
-                                   false);
+    return llvm::PointerType::getUnqual(ctx);
   }
 
   // Returns a pointer to the function type (for function pointer variables)
   llvm::Type* toPointerType(llvm::LLVMContext& ctx) const {
-    return llvm::PointerType::getUnqual(toLLVMType(ctx));
+    return toLLVMType(ctx);
   }
 
   // Get the raw LLVM FunctionType (for indirect calls)
@@ -405,7 +401,6 @@ class LambdaType : public Type {
   void setHasRefCaptures(bool v) { hasRefCaptures_ = v; }
   const std::string& getLifetimeName() const { return lifetimeName_; }
   void setLifetimeName(std::string name) { lifetimeName_ = std::move(name); }
-
 
   std::string toString() const override {
     std::string result = hasRefCaptures_ ? "<'_>(" : "(";
@@ -1032,8 +1027,8 @@ struct ClassMethod {
   TypePtr returnType;
   std::vector<TypePtr> paramTypes;  // Excludes implicit 'this' parameter
   bool isConstructor;               // true if this is the 'init' method
-  bool canThrow = false;            // declared with 'throws IError' — may unwind
-  bool isConst = false;             // `const function`: does not change `this`
+  bool canThrow = false;  // declared with 'throws IError' — may unwind
+  bool isConst = false;   // `const function`: does not change `this`
   sun::Visibility visibility = sun::Visibility::Private;
 
   bool isGeneric() const { return !typeParameters.empty(); }
@@ -2112,7 +2107,7 @@ class Types {
   // data
   static TypePtr String() { return StaticPointer(UInt8()); }
 
-  // Create a function type: _() -> {} (named function, direct call)
+  // Create a function-pointer type: function () T
   static TypePtr Function(TypePtr returnType, std::vector<TypePtr> paramTypes,
                           bool canThrow = false) {
     return std::make_shared<FunctionType>(std::move(returnType),

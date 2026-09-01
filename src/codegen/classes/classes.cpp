@@ -65,7 +65,6 @@ Value* ClassGenerator::codegenPrecompiledClass(const ClassDefinitionAST& expr,
         }
       }
     }
-
   }
 
   // If the class is also generic, store the AST for later instantiation
@@ -459,8 +458,8 @@ Function* ClassGenerator::declareMethodFromAST(
     return nullptr;
   }
 
-  // With native exceptions a throwing method ('T throws IError') returns plain T; the
-  // marker only means it may unwind.
+  // With native exceptions a throwing method ('T throws IError') returns plain
+  // T; the marker only means it may unwind.
 
   // Create the function declaration
   FunctionType* funcType = FunctionType::get(returnType, paramTypes, false);
@@ -671,7 +670,7 @@ Value* ClassGenerator::codegen(const MemberAccessAST& expr) {
     }
 
     // Check for function in this module
-    if (Function* func = module->getFunction(qualifiedName)) {
+    if (Function* func = functions().lookupCallTarget(qualifiedName)) {
       return func;
     }
 
@@ -721,7 +720,8 @@ Value* ClassGenerator::codegen(const MemberAccessAST& expr) {
   // Check if it's a field access
   const sun::ClassField* field = classType->getField(memberName);
   if (field) {
-    Value* fieldPtr = layout::fieldPtr(*ctx.builder, classType, objectPtr, *field, memberName);
+    Value* fieldPtr = layout::fieldPtr(*ctx.builder, classType, objectPtr,
+                                       *field, memberName);
 
     // For class-typed and payload-enum fields (embedded structs), return the
     // pointer to the embedded struct (struct values in Sun are pointers)
@@ -731,9 +731,10 @@ Value* ClassGenerator::codegen(const MemberAccessAST& expr) {
 
     // Load the field value
     llvm::Type* fieldLLVMType = field->type->toLLVMType(ctx.getContext());
-    return ctx.builder->CreateAlignedLoad(fieldLLVMType, fieldPtr,
-                                          layout::fieldAlign(classType, fieldLLVMType, module->getDataLayout()),
-                                          memberName + ".val");
+    return ctx.builder->CreateAlignedLoad(
+        fieldLLVMType, fieldPtr,
+        layout::fieldAlign(classType, fieldLLVMType, module->getDataLayout()),
+        memberName + ".val");
   }
 
   // Bound method reference: a method in value position materializes the
@@ -965,8 +966,8 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
   }
 
   // Generate GEP to access the field
-  Value* fieldPtr =
-      layout::fieldPtr(*ctx.builder, classType, objectPtr, *field, memberName + ".ptr");
+  Value* fieldPtr = layout::fieldPtr(*ctx.builder, classType, objectPtr, *field,
+                                     memberName + ".ptr");
 
   // What becomes of the value the field held, as semantic analysis worked it
   // out: a constructor's first write to a field lands on storage that has
@@ -1021,8 +1022,10 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
     }
     // The destination sits inside the parent, so it inherits the parent's
     // packing, not the field struct's own alignment
-    ctx.builder->CreateMemCpy(fieldPtr, layout::fieldAlign(classType, fieldStructType, module->getDataLayout()),
-                              value, srcAlign, structSize);
+    ctx.builder->CreateMemCpy(
+        fieldPtr,
+        layout::fieldAlign(classType, fieldStructType, module->getDataLayout()),
+        value, srcAlign, structSize);
     if (sourceIsAddressable) {
       // Move: the field owns the payload now. Release the source's tracking
       // entry and zero it so its own drop is a no-op.
@@ -1047,7 +1050,7 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
         unsigned fieldBits = fieldLLVMType->getIntegerBitWidth();
         if (valueBits < fieldBits) {
           value = ops::extendInt(*ctx.builder, value, fieldLLVMType,
-                            expr.getValue()->getResolvedType());
+                                 expr.getValue()->getResolvedType());
         }
       }
       // Float widening
@@ -1062,8 +1065,9 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
   }
 
   // Store the value
-  ctx.builder->CreateAlignedStore(value, fieldPtr,
-                                  layout::fieldAlign(classType, fieldLLVMType, module->getDataLayout()));
+  ctx.builder->CreateAlignedStore(
+      value, fieldPtr,
+      layout::fieldAlign(classType, fieldLLVMType, module->getDataLayout()));
 
   // Return the value (like C assignment)
   return value;
@@ -1271,11 +1275,14 @@ Value* ClassGenerator::codegen(const GenericCallAST& expr) {
     case sun::Intrinsic::Sizeof:
       return intrinsics().codegenSizeofIntrinsic(getFirstTypeArg());
     case sun::Intrinsic::Init:
-      return intrinsics().codegenInitIntrinsic(getFirstTypeArg(), expr.getArgs());
+      return intrinsics().codegenInitIntrinsic(getFirstTypeArg(),
+                                               expr.getArgs());
     case sun::Intrinsic::Load:
-      return intrinsics().codegenLoadIntrinsic(getFirstTypeArg(), expr.getArgs());
+      return intrinsics().codegenLoadIntrinsic(getFirstTypeArg(),
+                                               expr.getArgs());
     case sun::Intrinsic::Store:
-      return intrinsics().codegenStoreIntrinsic(getFirstTypeArg(), expr.getArgs());
+      return intrinsics().codegenStoreIntrinsic(getFirstTypeArg(),
+                                                expr.getArgs());
     case sun::Intrinsic::PtrAsRaw:
       return intrinsics().codegenPtrAsRawIntrinsic(expr.getArgs());
     case sun::Intrinsic::AddressOf:
@@ -1284,22 +1291,29 @@ Value* ClassGenerator::codegen(const GenericCallAST& expr) {
       return intrinsics().codegenToRefIntrinsic(expr.getArgs());
     case sun::Intrinsic::Is:
       // _is<T> uses the type name for type trait checks (e.g., "_Integer")
-      return intrinsics().codegenIsIntrinsic(typeArgs[0]->baseName, expr.getArgs());
+      return intrinsics().codegenIsIntrinsic(typeArgs[0]->baseName,
+                                             expr.getArgs());
     case sun::Intrinsic::Deinit:
-      return intrinsics().codegenDeinitIntrinsic(getFirstTypeArg(), expr.getArgs());
+      return intrinsics().codegenDeinitIntrinsic(getFirstTypeArg(),
+                                                 expr.getArgs());
     case sun::Intrinsic::Convert:
-      return intrinsics().codegenConvertIntrinsic(getFirstTypeArg(), expr.getArgs());
+      return intrinsics().codegenConvertIntrinsic(getFirstTypeArg(),
+                                                  expr.getArgs());
     case sun::Intrinsic::Bitcast:
-      return intrinsics().codegenBitcastIntrinsic(getFirstTypeArg(), expr.getArgs());
+      return intrinsics().codegenBitcastIntrinsic(getFirstTypeArg(),
+                                                  expr.getArgs());
     case sun::Intrinsic::Spawn:
-      return intrinsics().codegenSpawnIntrinsic(getFirstTypeArg(), expr.getResolvedType(),
-                                   expr.getArgs(), expr.getArgConversions());
+      return intrinsics().codegenSpawnIntrinsic(
+          getFirstTypeArg(), expr.getResolvedType(), expr.getArgs(),
+          expr.getArgConversions());
     case sun::Intrinsic::ThreadJoin:
-      return intrinsics().codegenThreadJoinIntrinsic(getFirstTypeArg(), expr.getArgs(),
-                                        /*dropResult=*/false);
+      return intrinsics().codegenThreadJoinIntrinsic(getFirstTypeArg(),
+                                                     expr.getArgs(),
+                                                     /*dropResult=*/false);
     case sun::Intrinsic::ThreadJoinDrop:
-      return intrinsics().codegenThreadJoinIntrinsic(getFirstTypeArg(), expr.getArgs(),
-                                        /*dropResult=*/true);
+      return intrinsics().codegenThreadJoinIntrinsic(getFirstTypeArg(),
+                                                     expr.getArgs(),
+                                                     /*dropResult=*/true);
     default:
       break;  // Not a generic intrinsic, continue below
   }
@@ -1584,11 +1598,13 @@ Value* ClassGenerator::codegen(const StructLiteralAST& expr) {
     if (!value) return nullptr;
 
     sun::TypePtr valueType = field.value->getResolvedType();
-    value = ops::widenNumericIfNeeded(*ctx.builder, typeResolver, value, classField->type, valueType);
+    value = ops::widenNumericIfNeeded(*ctx.builder, typeResolver, value,
+                                      classField->type, valueType);
 
     Value* fieldPtr = ctx.builder->CreateStructGEP(
         structType, alloca, classField->index, field.name + ".ptr");
-    layout::storeIntoSlot(*ctx.builder, module->getDataLayout(), fieldPtr, value, classField->type, classType);
+    layout::storeIntoSlot(*ctx.builder, module->getDataLayout(), fieldPtr,
+                          value, classField->type, classType);
   }
 
   // Track for deinit at scope exit unless ownership moves to a destination.

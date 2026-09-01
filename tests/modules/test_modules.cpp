@@ -75,6 +75,60 @@ TEST(Modules, module_with_using_specific) {
   EXPECT_EQ(value, 9);
 }
 
+TEST(Modules, module_qualified_function_can_be_stored_as_a_pointer) {
+  auto value = executeString(R"(
+    public module math {
+      public function double(x: i32) i32 { return x * 2; }
+    }
+
+    function main() i32 {
+      var callback: function (i32) i32 = math.double;
+      return callback(21);
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Modules, expected_pointer_type_selects_qualified_function_overload) {
+  auto value = executeString(R"(
+    public module math {
+      public function convert(x: i32) i32 { return x * 2; }
+      public function convert(x: f64) i32 { return 42; }
+    }
+
+    function main() i32 {
+      var callback: function (f64) i32 = math.convert;
+      return callback(14.0);
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Modules, imported_function_can_be_stored_as_a_pointer) {
+  auto value = executeString(R"(
+    public module math {
+      public function double(x: i32) i32 { return x * 2; }
+    }
+    using math;
+
+    function main() i32 {
+      var callback = double;
+      return callback(21);
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Modules, nested_module_can_contain_a_function_declaration) {
+  auto value = executeString(R"(
+    public module outer.inner {
+      public function answer() i32 { return 42; }
+    }
+    function main() i32 { return outer.inner.answer(); }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
 TEST(Modules, parse_using_wildcard) {
   auto parser = Parser::createStringParser(R"(
     using std;

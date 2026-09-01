@@ -159,16 +159,15 @@ TEST(Functions_Generic_Variadics, pack_without_type_parameters) {
   EXPECT_EQ(value, 25);
 }
 
-// The same, but borrowing T from an enclosing generic: `build` can only be
-// defined once `outer` is specialized.
-TEST(Functions_Generic_Variadics, pack_borrows_enclosing_type_parameter) {
+// A module-level pack helper names its type parameter explicitly.
+TEST(Functions_Generic_Variadics, pack_uses_explicit_type_parameter) {
   auto value = executeString(source(R"(
+    function build<T>(args...: _params_of<T>) i32 {
+        var p = make<T>(args...);
+        return unsafe { p.sum(); };
+    }
     function outer<T>() i32 {
-        function build(args...: _params_of<T>) i32 {
-            var p = make<T>(args...);
-            return unsafe { p.sum(); };
-        }
-        return build(3, 4) + build(9);
+        return build<T>(3, 4) + build<T>(9);
     }
     function main() i32 { return outer<Point>(); }
   )"));

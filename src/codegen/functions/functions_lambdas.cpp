@@ -18,10 +18,9 @@ using namespace llvm;
 // closure. valueTypeOut receives the capture's value type; byRefOut whether
 // the capture was declared [ref name]; ownedOut whether it was listed without
 // `ref`, which makes the slot the value's own storage rather than a copy.
-llvm::Value* FunctionGenerator::createCaptureSlotAddress(const std::string& name,
-                                                      llvm::Type** valueTypeOut,
-                                                      bool* byRefOut,
-                                                      bool* ownedOut) {
+llvm::Value* FunctionGenerator::createCaptureSlotAddress(
+    const std::string& name, llvm::Type** valueTypeOut, bool* byRefOut,
+    bool* ownedOut) {
   // Search from innermost -> outermost closure
   for (auto it = closureStack.rbegin(); it != closureStack.rend(); ++it) {
     auto& closure = *it;
@@ -34,20 +33,11 @@ llvm::Value* FunctionGenerator::createCaptureSlotAddress(const std::string& name
     unsigned envFieldIndex = captureIt->second;  // index inside env struct
     llvm::Value* envPtr;
 
-    if (closure.isDirectEnv) {
-      // Named function with captures: envOrFatPtr is directly the env*
-      envPtr = closure.envOrFatPtr;
-    } else {
-      // Lambda: envOrFatPtr is fat* = { func*, env* }, extract env*
-      llvm::Value* envPtrPtr = ctx.builder->CreateStructGEP(
-          closure.fatType,      // %closure struct type
-          closure.envOrFatPtr,  // Value* of type %closure*
-          1,                    // field index 1 = env*
-          name + ".env.ptr.ptr");
-      envPtr =
-          ctx.builder->CreateLoad(llvm::PointerType::getUnqual(closure.envType),
-                                  envPtrPtr, name + ".env.ptr");
-    }
+    llvm::Value* envPtrPtr = ctx.builder->CreateStructGEP(
+        closure.fatType, closure.fatPtr, 1, name + ".env.ptr.ptr");
+    envPtr =
+        ctx.builder->CreateLoad(llvm::PointerType::getUnqual(closure.envType),
+                                envPtrPtr, name + ".env.ptr");
 
     // GEP into the env struct to get the capture slot
     llvm::Value* slotPtr = ctx.builder->CreateStructGEP(
@@ -165,9 +155,9 @@ llvm::StructType* FunctionGenerator::createFatTypeForFunc(
 }
 
 llvm::Value* FunctionGenerator::createFatClosure(Function* func,
-                                              StructType* fatType,
-                                              StructType* envType,
-                                              const PrototypeAST& proto) {
+                                                 StructType* fatType,
+                                                 StructType* envType,
+                                                 const PrototypeAST& proto) {
   Function* parentFunc = ctx.builder->GetInsertBlock()->getParent();
   if (!parentFunc) {
     logAndThrowError("createFatClosure: no current function");
@@ -198,27 +188,6 @@ llvm::Value* FunctionGenerator::createFatClosure(Function* func,
   return fatAlloca;  // now returns %closure*
 }
 
-// Create just an env struct for named functions with captures (no fat pointer)
-llvm::Value* FunctionGenerator::createEnvClosure(StructType* envType,
-                                              const PrototypeAST& proto) {
-  Function* parentFunc = ctx.builder->GetInsertBlock()->getParent();
-  if (!parentFunc) {
-    logAndThrowError("createEnvClosure: no current function");
-    return nullptr;
-  }
-
-  IRBuilder<> entryBuilder(&parentFunc->getEntryBlock(),
-                           parentFunc->getEntryBlock().begin());
-
-  AllocaInst* envAlloca =
-      entryBuilder.CreateAlloca(envType, nullptr, proto.getName() + ".env");
-
-  if (!fillCaptureSlots(envType, envAlloca, proto, entryBuilder))
-    return nullptr;
-
-  return envAlloca;  // returns %env*
-}
-
 // Fill in a closure environment's capture slots.
 //
 // A borrowed capture stores the referent's address and a by-value scalar
@@ -235,9 +204,9 @@ llvm::Value* FunctionGenerator::createEnvClosure(StructType* envType,
 // dominate the whole function. For the same reason an owned slot is zeroed up
 // front, so a path that never reaches the closure still drops something inert.
 bool FunctionGenerator::fillCaptureSlots(StructType* envType,
-                                      llvm::Value* envAlloca,
-                                      const PrototypeAST& proto,
-                                      IRBuilder<>& entryBuilder) {
+                                         llvm::Value* envAlloca,
+                                         const PrototypeAST& proto,
+                                         IRBuilder<>& entryBuilder) {
   const DataLayout& DL = module->getDataLayout();
 
   for (size_t i = 0; i < proto.getCaptures().size(); ++i) {
@@ -333,22 +302,15 @@ std::pair<Function*, llvm::StructType*> FunctionGenerator::codegen(
     }
   }
 
-  // Lambdas always use closure calling convention (fat pointer as first arg)
-  // Named functions with captures use direct env pointer as first arg
-  bool needsClosureArg = isLambda || proto.hasClosure();
-  bool useFatPointer = isLambda;  // Only lambdas need fat pointer
+  // Lambdas use their fat pointer as a hidden first argument.
+  bool needsClosureArg = isLambda;
 
   // Build the arg types for the function
   std::vector<Type*> argTypes;
 
-  // Add closure/env pointer as first arg if needed
+  // Add the lambda fat pointer as the first argument when needed.
   if (needsClosureArg) {
-    if (useFatPointer) {
-      argTypes.push_back(PointerType::getUnqual(typeResolver.getClosureType()));
-    } else {
-      // Named function with captures: use env* directly
-      argTypes.push_back(PointerType::getUnqual(envType));
-    }
+    argTypes.push_back(PointerType::getUnqual(typeResolver.getClosureType()));
   }
 
   // Append the user-visible args from proto: the fixed parameters, then the
@@ -395,7 +357,7 @@ std::pair<Function*, llvm::StructType*> FunctionGenerator::codegen(
   unsigned argIdx = 0;
   for (auto& arg : func->args()) {
     if (needsClosureArg && argIdx == 0) {
-      arg.setName(useFatPointer ? "fat" : "env");
+      arg.setName("fat");
     } else {
       unsigned userArgIdx = needsClosureArg ? argIdx - 1 : argIdx;
       arg.setName(argNames[userArgIdx]);
@@ -410,7 +372,6 @@ std::pair<Function*, llvm::StructType*> FunctionGenerator::codegen(
 // block fills it in (codegen(PrototypeAST) reuses a matching declaration).
 void FunctionGenerator::forwardDeclareFunction(const PrototypeAST& proto) {
   if (proto.getName().empty()) return;
-  if (proto.hasClosure()) return;
 
   std::string funcName = proto.getMangledName();
   if (module->getFunction(funcName)) return;
@@ -437,7 +398,8 @@ void FunctionGenerator::forwardDeclareFunction(const PrototypeAST& proto) {
 void FunctionGenerator::declareBlockSignatures(const BlockExprAST& block) {
   for (const auto& expr : block.getBody()) {
     if (expr->getType() == ASTNodeType::CLASS_DEFINITION) {
-      classes().declareBlockClassMethods(static_cast<const ClassDefinitionAST&>(*expr));
+      classes().declareBlockClassMethods(
+          static_cast<const ClassDefinitionAST&>(*expr));
       continue;
     }
     if (!expr->isFunction()) continue;
@@ -544,17 +506,6 @@ Value* FunctionGenerator::codegenExternFunc(FunctionAST& funcAst) {
 // -------------------------------------------------------------------
 
 FuncDeclResult FunctionGenerator::declareFuncSignature(PrototypeAST& proto) {
-  // Use captures already set by semantic analyzer
-  std::vector<Capture> captures = proto.getCaptures();
-
-  if (proto.hasClosure()) {
-    // Record closure info for this function (so we know how to call it later)
-    FunctionClosureInfo closureInfo;
-    closureInfo.captures = captures;
-    // Keyed by the emitted symbol, the same name call sites resolve to.
-    functions().noteClosureInfo(proto.getMangledName(), closureInfo);
-  }
-
   // The semantic analyzer should have already inferred and set the return type
   // on the prototype. Error if no return type is available.
   llvm::Type* returnType = nullptr;
@@ -573,17 +524,14 @@ FuncDeclResult FunctionGenerator::declareFuncSignature(PrototypeAST& proto) {
                      "Ensure semantic analysis ran before codegen.");
   }
 
-  // With native LLVM exceptions, a throwing function ('T throws IError') returns a
-  // plain T — the 'throws IError' marker only means the function may unwind. We no
-  // longer wrap the return type in an error-union struct.
+  // With native LLVM exceptions, a throwing function ('T throws IError')
+  // returns a plain T — the 'throws IError' marker only means the function may
+  // unwind. We no longer wrap the return type in an error-union struct.
   llvm::Type* valueType = returnType;
-
-  // Create closure env struct type
-  auto envType = createEnvTypeForFunc(proto);
 
   // Generate the function with the correct return type
   auto [func, fatType] =
-      codegen(proto, envType, /*isLambda=*/false, returnType);
+      codegen(proto, nullptr, /*isLambda=*/false, returnType);
   if (!func) {
     logAndThrowError("Failed to create function: " + proto.getName());
   }
@@ -594,7 +542,7 @@ FuncDeclResult FunctionGenerator::declareFuncSignature(PrototypeAST& proto) {
     func->addFnAttr("sun.canthrow");
   }
 
-  return {func, fatType, envType, returnType, valueType, canError};
+  return {func, fatType, nullptr, returnType, valueType, canError};
 }
 
 // -------------------------------------------------------------------
@@ -625,47 +573,10 @@ Value* FunctionGenerator::codegenFunc(FunctionAST& funcAst) {
   if (!decl.func) return nullptr;
 
   auto* func = decl.func;
-  auto* fatType = decl.fatType;
-  auto* envType = decl.envType;
-  auto* returnType = decl.returnType;
   auto* valueType = decl.valueType;
   bool canError = decl.canError;
 
-  // Always push a scope for function arguments (even for top-level)
-
-  Value* resultPtr = nullptr;
-  bool isGlobalScope = scopes().empty();
-
-  if (proto.hasClosure()) {
-    if (isGlobalScope) {
-      logAndThrowError(
-          "Global named functions with captures are not supported: " +
-          proto.getName());
-    }
-    resultPtr = createEnvClosure(envType, proto);
-    // Keyed by the emitted symbol: a specialization's callers name it by its
-    // mangled name, never by the template's.
-    scopes().back().variables[proto.getMangledName()] =
-        cast<AllocaInst>(resultPtr);
-  } else {
-    resultPtr = func;
-  }
-
-  if (proto.hasClosure()) {
-    Value* firstArg = &*func->arg_begin();
-    ClosureContext closureCtx;
-    closureCtx.fatType = fatType;
-    closureCtx.envType = envType;
-    closureCtx.envOrFatPtr = firstArg;
-    closureCtx.isDirectEnv = true;
-    closureCtx.captures = proto.getCaptures();
-    for (size_t i = 0; i < proto.getCaptures().size(); i++) {
-      const auto& cap = proto.getCaptures()[i];
-      closureCtx.captureIndex[cap.name] = i;
-      closureCtx.captureTypes[cap.name] = typeResolver.resolve(cap.type);
-    }
-    closureStack.push_back(closureCtx);
-  }
+  Value* resultPtr = func;
 
   // Create entry block — **this** is where we ultimately want to keep
   // inserting
@@ -680,23 +591,13 @@ Value* FunctionGenerator::codegenFunc(FunctionAST& funcAst) {
   auto& scope = scopes().push();
   scope.isFunctionBoundary = true;  // Mark as function entry scope
 
-  // Arguments - skip the closure pointer if present (named functions have it
-  // when they have captures)
-  bool hasClosureArg = proto.hasClosure();
   unsigned argIdx = 0;
   for (auto& arg : func->args()) {
-    if (hasClosureArg && argIdx == 0) {
-      // Skip closure pointer - it's handled via closureStack
-      argIdx++;
-      continue;
-    }
     std::string argName = arg.getName().str();
-    AllocaInst* alloca =
-        createEntryBlockAlloca(func, argName, arg.getType());
+    AllocaInst* alloca = createEntryBlockAlloca(func, argName, arg.getType());
     ctx.builder->CreateStore(&arg, alloca);
     scope.variables[argName] = alloca;
-    debugDeclareParam(alloca, argName, proto,
-                      hasClosureArg ? argIdx - 1 : argIdx);
+    debugDeclareParam(alloca, argName, proto, argIdx);
     scopes().trackOwnedParam(alloca, argName, proto.paramTypeNamed(argName));
     argIdx++;
   }
@@ -711,11 +612,6 @@ Value* FunctionGenerator::codegenFunc(FunctionAST& funcAst) {
         proto.hasReturnType() && proto.getReturnType()->isReference();
 
     codegen(funcAst.getBody());
-  }
-
-  // Pop closure context if we pushed one
-  if (proto.hasClosure()) {
-    closureStack.pop_back();
   }
 
   // Check if the current basic block needs a terminator
@@ -791,8 +687,8 @@ llvm::Value* FunctionGenerator::codegenLambda(LambdaAST& lambdaAst) {
     return nullptr;
   }
 
-  // With native LLVM exceptions, a throwing lambda ('T throws IError') returns a
-  // plain T — the 'throws IError' marker only means the lambda may unwind.
+  // With native LLVM exceptions, a throwing lambda ('T throws IError') returns
+  // a plain T — the 'throws IError' marker only means the lambda may unwind.
   llvm::Type* valueType = returnType;
 
   // Create closure env struct type
@@ -834,8 +730,7 @@ llvm::Value* FunctionGenerator::codegenLambda(LambdaAST& lambdaAst) {
     ClosureContext closureCtx;
     closureCtx.fatType = fatType;
     closureCtx.envType = envType;
-    closureCtx.envOrFatPtr = firstArg;
-    closureCtx.isDirectEnv = false;  // Lambdas use fat pointer
+    closureCtx.fatPtr = firstArg;
     closureCtx.captures = proto.getCaptures();
     for (size_t i = 0; i < proto.getCaptures().size(); i++) {
       const auto& cap = proto.getCaptures()[i];
@@ -863,8 +758,7 @@ llvm::Value* FunctionGenerator::codegenLambda(LambdaAST& lambdaAst) {
       continue;
     }
     std::string argName = arg.getName().str();
-    AllocaInst* alloca =
-        createEntryBlockAlloca(func, argName, arg.getType());
+    AllocaInst* alloca = createEntryBlockAlloca(func, argName, arg.getType());
     ctx.builder->CreateStore(&arg, alloca);
     scope.variables[argName] = alloca;
     debugDeclareParam(alloca, argName, proto, argIdx - 1);

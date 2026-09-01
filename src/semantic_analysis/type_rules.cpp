@@ -250,6 +250,21 @@ bool isAssignableTo(const sun::TypePtr& from, const sun::TypePtr& to) {
   if (from->equals(*to)) return true;
 
   // A static_ptr narrows to a raw_ptr of the same pointee (the data pointer
+  // A non-throwing pointer may widen to the same throwing signature. The
+  // reverse would let an indirect call bypass normal error handling.
+  if (from->isFunction() && to->isFunction()) {
+    const auto& source = static_cast<const sun::FunctionType&>(*from);
+    const auto& target = static_cast<const sun::FunctionType&>(*to);
+    if (source.canThrow() && !target.canThrow()) return false;
+    if (!source.getReturnType()->equals(*target.getReturnType())) return false;
+    if (source.getParamTypes().size() != target.getParamTypes().size())
+      return false;
+    for (size_t i = 0; i < source.getParamTypes().size(); ++i) {
+      if (!source.getParamTypes()[i]->equals(*target.getParamTypes()[i]))
+        return false;
+    }
+    return true;
+  }
   // is extracted). The reverse never holds: a raw_ptr carries no length and
   // no promise the bytes are immortal, so it cannot become a static_ptr.
   if (from->isStaticPointer() && to->isRawPointer()) {
