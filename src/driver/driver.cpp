@@ -614,26 +614,9 @@ sun::SunValue Driver::runPipeline(std::unique_ptr<BlockExprAST> blockAst,
     borrowErrors = borrowChecker.check(*blockAst);
   }
   if (!borrowErrors.empty()) {
-    // Render each error in the standard compiler format (source line and
-    // caret), with a note under it for each related borrow location
-    for (const auto& err : borrowErrors) {
-      auto [line, prev] =
-          SourceManager::instance().getLineWithContext(err.location);
-      std::cerr << formatDiagnostic("Borrow Error", ansi::red, err.message,
-                                    err.location, line, prev)
-                << "\n";
-      for (const auto& rel : err.relatedLocations) {
-        auto [relLine, relPrev] =
-            SourceManager::instance().getLineWithContext(rel);
-        std::cerr << formatDiagnostic("Note", ansi::cyan,
-                                      "related borrow here", rel, relLine,
-                                      relPrev)
-                  << "\n";
-      }
-    }
-    throw SunError(SunError::Kind::Semantic,
-                   "Borrow check failed with " +
-                       std::to_string(borrowErrors.size()) + " error(s)");
+    // One error carrying every borrow error and related borrow: whoever
+    // catches it renders them all, each at its own place in the source
+    throw sun::buildBorrowCheckError(borrowErrors);
   }
 
   // Register precompiled modules for lazy linking

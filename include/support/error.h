@@ -4,6 +4,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "support/position.h"
 #include "support/source_manager.h"
@@ -60,14 +61,30 @@ inline std::string formatDiagnostic(const std::string& label,
   return out;
 }
 
+// Another place an error points at. A pass that finds several problems at once
+// (the borrow checker) reports the first as the error itself and lists the rest
+// here, together with any location that explains it, so an editor can mark
+// every one of them instead of only the first.
+struct RelatedDiagnostic {
+  enum class Level {
+    Error,  // A problem in its own right
+    Note    // Context for the problem, such as a conflicting borrow
+  };
+
+  std::string message;
+  Position location;
+  Level level = Level::Error;
+};
+
 // Custom error type for Sun compiler errors
 class SunError : public std::exception {
  public:
   enum class Kind {
-    Compile,  // General compilation error
-    Parse,    // Parsing error
-    Type,     // Type checking error
-    Semantic  // Semantic analysis error
+    Compile,   // General compilation error
+    Parse,     // Parsing error
+    Type,      // Type checking error
+    Semantic,  // Semantic analysis error
+    Borrow     // Borrow checking error
   };
 
   SunError(Kind kind, const std::string& message,
@@ -89,6 +106,18 @@ class SunError : public std::exception {
   const std::optional<Position>& getLocation() const { return location_; }
   const std::string& getSourceLine() const { return sourceLine_; }
 
+  // Record another place this error points at. It joins the printed message,
+  // rendered like any other diagnostic.
+  void addRelated(const std::string& message, const Position& location,
+                  RelatedDiagnostic::Level level) {
+    related_.push_back({message, location, level});
+    buildFullMessage();
+  }
+  const std::vector<RelatedDiagnostic>& getRelated() const { return related_; }
+
+  // What the error is called when printed, such as "Parse Error"
+  std::string getLabel() const { return kindToString(); }
+
  private:
   std::string kindToString() const {
     switch (kind_) {
@@ -100,6 +129,8 @@ class SunError : public std::exception {
         return "Type Error";
       case Kind::Semantic:
         return "Semantic Error";
+      case Kind::Borrow:
+        return "Borrow check failed";
     }
     return "Error";
   }
@@ -107,6 +138,16 @@ class SunError : public std::exception {
   void buildFullMessage() {
     fullMessage_ = formatDiagnostic(kindToString(), ansi::red, message_,
                                     location_, sourceLine_, prevSourceLine_);
+    for (const auto& related : related_) {
+      bool isNote = related.level == RelatedDiagnostic::Level::Note;
+      auto [line, prevLine] =
+          SourceManager::instance().getLineWithContext(related.location);
+      fullMessage_ +=
+          "\n" + formatDiagnostic(isNote ? "Note" : kindToString(),
+                                  isNote ? ansi::cyan : ansi::red,
+                                  related.message, related.location, line,
+                                  prevLine);
+    }
   }
 
   Kind kind_;
@@ -115,6 +156,7 @@ class SunError : public std::exception {
   std::string sourceLine_;
   std::string prevSourceLine_;
   std::string fullMessage_;
+  std::vector<RelatedDiagnostic> related_;
 };
 
 // Unified error handling - throws SunError and does not return

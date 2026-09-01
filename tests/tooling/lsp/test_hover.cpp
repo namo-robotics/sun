@@ -148,7 +148,7 @@ TEST(Tooling_Lsp_Hover, MethodCallResult) {
 }
 
 TEST(Tooling_Lsp_Hover, MethodCallee) {
-  EXPECT_EQ(hoverAt(kProgram, "sum();"), "sum: () i32");
+  EXPECT_EQ(hoverAt(kProgram, "sum();"), "sum: () -> i32");
 }
 
 TEST(Tooling_Lsp_Hover, FunctionSignatureOnKeyword) {
@@ -183,7 +183,31 @@ TEST(Tooling_Lsp_Hover, ConstRefParameter) {
 }
 
 TEST(Tooling_Lsp_Hover, FunctionCallee) {
-  EXPECT_EQ(hoverAt(kProgram, "add(1, 2)"), "add: (i32, i32) i32");
+  EXPECT_EQ(hoverAt(kProgram, "add(1, 2)"), "add: (i32, i32) -> i32");
+}
+
+// Types of callables are written with the arrow, as an annotation would be,
+// and a lambda that carries captures keeps the lifetime it is bound to
+TEST(Tooling_Lsp_Hover, LambdaTypeUsesArrowSyntax) {
+  const char* source = R"(
+class Holder {
+    var callback: <'_>() -> i32;
+    init() { this.callback = lambda () i32 { return 0; }; }
+    public method set(cb: <'this>() -> i32) void { this.callback = cb; }
+}
+
+function apply(f: (i32) -> i32 throws IError) i32 throws IError {
+    return f(1);
+}
+
+function main() i32 {
+    var h = Holder();
+    return 0;
+}
+)";
+  EXPECT_EQ(hoverAt(source, "callback: <'_>"), "var callback: <'_>() -> i32");
+  EXPECT_EQ(hoverAt(source, "cb;"), "cb: <'this>() -> i32");
+  EXPECT_EQ(hoverAt(source, "f(1)"), "f: (i32) -> i32 throws IError");
 }
 
 TEST(Tooling_Lsp_Hover, ClassHeaderAndField) {
