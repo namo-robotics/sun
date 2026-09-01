@@ -19,20 +19,20 @@ namespace {
 
 std::string renderType(const sun::Type& type, const Bindings& bindings);
 
-// `(i32, bool) -> i32` with ` throws IError` when the callable may throw.
+// Named function types use `->`; lambda types use `=>`.
 // This is type position, where Sun writes the arrow; a declaration's own
 // signature is arrowless and rendered by renderPrototype instead. `prefix`
 // carries a lambda's lifetime marker, such as `<'_>`.
 std::string renderCallable(const std::string& prefix,
                            const std::vector<sun::TypePtr>& params,
                            const sun::TypePtr& returnType, bool canThrow,
-                           const Bindings& bindings) {
+                           bool fatArrow, const Bindings& bindings) {
   std::string out = prefix + "(";
   for (size_t i = 0; i < params.size(); ++i) {
     if (i > 0) out += ", ";
     out += params[i] ? renderType(*params[i], bindings) : "?";
   }
-  out += ") -> ";
+  out += fatArrow ? ") => " : ") -> ";
   out += returnType ? renderType(*returnType, bindings) : "void";
   if (canThrow) out += " throws IError";
   return out;
@@ -64,7 +64,7 @@ std::string renderType(const sun::Type& type, const Bindings& bindings) {
     case sun::Type::Kind::Function: {
       const auto& fn = static_cast<const sun::FunctionType&>(type);
       return renderCallable("", fn.getParamTypes(), fn.getReturnType(),
-                            fn.canThrow(), bindings);
+                            fn.canThrow(), false, bindings);
     }
     case sun::Type::Kind::Lambda: {
       const auto& lambda = static_cast<const sun::LambdaType&>(type);
@@ -76,7 +76,7 @@ std::string renderType(const sun::Type& type, const Bindings& bindings) {
         prefix = "<'" + (name.empty() ? "_" : name) + ">";
       }
       return renderCallable(prefix, lambda.getParamTypes(),
-                            lambda.getReturnType(), lambda.canThrow(),
+                            lambda.getReturnType(), lambda.canThrow(), true,
                             bindings);
     }
     case sun::Type::Kind::Reference: {

@@ -19,9 +19,9 @@ namespace {
 // outlive the receiver via the builtin 'this.
 constexpr const char* kHolder = R"(
     class Holder {
-        var cb: <'_>(i32) -> i32;
+        var cb: <'_>(i32) => i32;
         init() { this.cb = (x: i32) => i32 { return x; }; }
-        public method set(cb: <'this>(i32) -> i32) void { this.cb = cb; return; }
+        public method set(cb: <'this>(i32) => i32) void { this.cb = cb; return; }
         public method call(x: i32) i32 { var f = this.cb; return f(x); }
     }
     class Node {
@@ -75,7 +75,7 @@ TEST(Lambdas_LifetimeChecking, this_param_accepts_same_scope_handler) {
 TEST(Lambdas_LifetimeChecking, wire_rejects_inner_source_outer_dest) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       executeString(std::string(kHolder) + R"(
-    function wire<'a>(cb: <'a>(i32) -> i32, dst: ref 'a Holder) void {
+    function wire<'a>(cb: <'a>(i32) => i32, dst: ref 'a Holder) void {
         dst.set(cb);
         return;
     }
@@ -94,7 +94,7 @@ TEST(Lambdas_LifetimeChecking, wire_rejects_inner_source_outer_dest) {
 // The same wiring with compatible scopes runs.
 TEST(Lambdas_LifetimeChecking, wire_accepts_outliving_source) {
   auto value = executeString(std::string(kHolder) + R"(
-    function wire<'a>(cb: <'a>(i32) -> i32, dst: ref 'a Holder) void {
+    function wire<'a>(cb: <'a>(i32) => i32, dst: ref 'a Holder) void {
         dst.set(cb);
         return;
     }
@@ -115,7 +115,7 @@ TEST(Lambdas_LifetimeChecking, wire_accepts_outliving_source) {
 TEST(Lambdas_LifetimeChecking, cross_name_store_rejected_in_callee) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(
       executeString(std::string(kHolder) + R"(
-    function evil<'a, 'b>(cb: <'a>(i32) -> i32, dst: ref 'b Holder) void {
+    function evil<'a, 'b>(cb: <'a>(i32) => i32, dst: ref 'b Holder) void {
         dst.set(cb);
         return;
     }
@@ -133,9 +133,9 @@ TEST(Lambdas_LifetimeChecking, cross_name_store_rejected_in_callee) {
 TEST(Lambdas_LifetimeChecking, attach_rejects_inner_node_outer_bus) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Bus<'a> {
-        var cb: <'a>(i32) -> i32;
+        var cb: <'a>(i32) => i32;
         init() { this.cb = (x: i32) => i32 { return x; }; }
-        public method subscribe(cb: <'a>(i32) -> i32) void { this.cb = cb; return; }
+        public method subscribe(cb: <'a>(i32) => i32) void { this.cb = cb; return; }
         public method publish(x: i32) i32 { var f = this.cb; return f(x); }
     }
     class Node {
@@ -161,9 +161,9 @@ TEST(Lambdas_LifetimeChecking, attach_rejects_inner_node_outer_bus) {
 TEST(Lambdas_LifetimeChecking, attach_accepts_compatible_scopes) {
   auto value = executeString(R"(
     class Bus<'a> {
-        var cb: <'a>(i32) -> i32;
+        var cb: <'a>(i32) => i32;
         init() { this.cb = (x: i32) => i32 { return x; }; }
-        public method subscribe(cb: <'a>(i32) -> i32) void { this.cb = cb; return; }
+        public method subscribe(cb: <'a>(i32) => i32) void { this.cb = cb; return; }
         public method publish(x: i32) i32 { var f = this.cb; return f(x); }
     }
     class Node {
@@ -194,9 +194,9 @@ TEST(Lambdas_LifetimeChecking, attach_accepts_compatible_scopes) {
 TEST(Lambdas_LifetimeChecking, method_lifetime_cannot_enter_this_field) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Keeper {
-        var cb: <'_>() -> i32;
+        var cb: <'_>() => i32;
         init() { this.cb = () => i32 { return 0; }; }
-        public method keep<'a>(cb: <'a>() -> i32) void { this.cb = cb; return; }
+        public method keep<'a>(cb: <'a>() => i32) void { this.cb = cb; return; }
     }
     function main() i32 { return 0; }
   )"),
@@ -211,7 +211,7 @@ TEST(Lambdas_LifetimeChecking, method_lifetime_cannot_enter_this_field) {
 // result inside the frame.
 TEST(Lambdas_LifetimeChecking, named_return_selects_and_runs) {
   auto value = executeString(R"(
-    function pick<'a>(x: <'a>() -> i32, y: <'a>() -> i32, first: bool) <'a>() -> i32 {
+    function pick<'a>(x: <'a>() => i32, y: <'a>() => i32, first: bool) <'a>() => i32 {
         if (first) { return x; }
         return y;
     }
@@ -232,12 +232,12 @@ TEST(Lambdas_LifetimeChecking, named_return_selects_and_runs) {
 // outer variable is the sub-frame escape again.
 TEST(Lambdas_LifetimeChecking, named_return_result_cannot_escape_scope) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
-    function pick<'a>(x: <'a>() -> i32, y: <'a>() -> i32, first: bool) <'a>() -> i32 {
+    function pick<'a>(x: <'a>() => i32, y: <'a>() => i32, first: bool) <'a>() => i32 {
         if (first) { return x; }
         return y;
     }
     function main() i32 {
-        var f: <'_>() -> i32 = () => i32 { return 0; };
+        var f: <'_>() => i32 = () => i32 { return 0; };
         if (true) {
             var a = 40;
             var b = 2;
@@ -254,7 +254,7 @@ TEST(Lambdas_LifetimeChecking, named_return_result_cannot_escape_scope) {
 // over its own locals is still the classic escape.
 TEST(Lambdas_LifetimeChecking, named_return_rejects_local_capture) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
-    function bad<'a>(x: <'a>() -> i32) <'a>() -> i32 {
+    function bad<'a>(x: <'a>() => i32) <'a>() => i32 {
         var z = 7;
         return [ref z]() => i32 { return z; };
     }
@@ -266,7 +266,7 @@ TEST(Lambdas_LifetimeChecking, named_return_rejects_local_capture) {
 // A bare '<'_>' return stays banned; the error suggests naming the frame.
 TEST(Lambdas_LifetimeChecking, bare_ref_return_still_banned) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
-    function make() <'_>() -> i32 {
+    function make() <'_>() => i32 {
         return () => i32 { return 0; };
     }
     function main() i32 { return 0; }
@@ -283,9 +283,9 @@ TEST(Lambdas_LifetimeChecking,
      lambda_lifetime_rejects_inner_source_for_outer_destination) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Box {
-        var f: <'this>() -> i32;
+        var f: <'this>() => i32;
         init() { this.f = () => i32 { return 0; }; }
-        public method set(f: <'this>() -> i32) void {
+        public method set(f: <'this>() => i32) void {
             this.f = f;
             return;
         }
@@ -293,7 +293,7 @@ TEST(Lambdas_LifetimeChecking,
     function main() i32 {
         var box = Box();
         var store = <'a>(
-            f: <'a>() -> i32,
+            f: <'a>() => i32,
             destination: ref 'a Box
         ) => void {
             destination.set(f);
@@ -318,9 +318,9 @@ TEST(Lambdas_LifetimeChecking,
 TEST(Lambdas_LifetimeChecking, this_field_class_stores_and_fires) {
   auto value = executeString(R"(
     class Keeper {
-        var cb: <'this>(i32) -> i32;
+        var cb: <'this>(i32) => i32;
         init() { this.cb = (x: i32) => i32 { return x; }; }
-        public method keep(cb: <'this>(i32) -> i32) void { this.cb = cb; return; }
+        public method keep(cb: <'this>(i32) => i32) void { this.cb = cb; return; }
         public method fire(x: i32) i32 { var f = this.cb; return f(x); }
     }
     class Node {
@@ -383,12 +383,12 @@ TEST(Lambdas_LifetimeChecking, carrier_journey_within_env_scope_accepted) {
 TEST(Lambdas_LifetimeChecking, interface_this_param_enforced_at_call) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     interface ISink {
-        public method accept(cb: <'this>(i32) -> i32) void;
+        public method accept(cb: <'this>(i32) => i32) void;
     }
     class Holder implements ISink {
-        var cb: <'_>(i32) -> i32;
+        var cb: <'_>(i32) => i32;
         init() { this.cb = (x: i32) => i32 { return x; }; }
-        public method accept(cb: <'this>(i32) -> i32) void { this.cb = cb; return; }
+        public method accept(cb: <'this>(i32) => i32) void { this.cb = cb; return; }
     }
     class Node {
         var v: i32;
@@ -412,12 +412,12 @@ TEST(Lambdas_LifetimeChecking, interface_this_param_enforced_at_call) {
 TEST(Lambdas_LifetimeChecking, interface_lifetime_conformance_required) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     interface ISink {
-        public method accept(cb: <'this>(i32) -> i32) void;
+        public method accept(cb: <'this>(i32) => i32) void;
     }
     class Loose implements ISink {
         var x: i32;
         init() { this.x = 0; }
-        public method accept(cb: <'_>(i32) -> i32) void { return; }
+        public method accept(cb: <'_>(i32) => i32) void { return; }
     }
     function main() i32 { return 0; }
   )"),
@@ -429,10 +429,10 @@ TEST(Lambdas_LifetimeChecking, interface_lifetime_conformance_required) {
 TEST(Lambdas_LifetimeChecking, generic_class_specialization_keeps_lifetimes) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Pair<'a, T> {
-        var cb: <'a>(T) -> T;
+        var cb: <'a>(T) => T;
         var seed: T;
         init(seed: T) { this.seed = seed; this.cb = (x: T) => T { return x; }; }
-        public method subscribe(cb: <'a>(T) -> T) void { this.cb = cb; return; }
+        public method subscribe(cb: <'a>(T) => T) void { this.cb = cb; return; }
         public method fire() T { var f = this.cb; return f(this.seed); }
     }
     class Node {
@@ -456,10 +456,10 @@ TEST(Lambdas_LifetimeChecking, generic_class_specialization_keeps_lifetimes) {
 TEST(Lambdas_LifetimeChecking, generic_class_with_lifetime_runs) {
   auto value = executeString(R"(
     class Pair<'a, T> {
-        var cb: <'a>(T) -> T;
+        var cb: <'a>(T) => T;
         var seed: T;
         init(seed: T) { this.seed = seed; this.cb = (x: T) => T { return x; }; }
-        public method subscribe(cb: <'a>(T) -> T) void { this.cb = cb; return; }
+        public method subscribe(cb: <'a>(T) => T) void { this.cb = cb; return; }
         public method fire() T { var f = this.cb; return f(this.seed); }
     }
     class Node {

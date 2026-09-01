@@ -431,7 +431,7 @@ A method accessed without parentheses (`obj.method`) is a first-class value of l
 
 ```sun
 var c = Counter();
-var tick = c.increment;   // type: <'_>() -> void
+var tick = c.increment;   // type: <'_>() => void
 tick();                   // increments c
 ```
 
@@ -445,8 +445,8 @@ slot with a type application:
 
 ```sun
 class Bus<'a> {
-    var cb: <'a>(i32) -> i32;    // stored callbacks must outlive 'a
-    public method subscribe(cb: <'a>(i32) -> i32) void { this.cb = cb; }
+    var cb: <'a>(i32) => i32;    // stored callbacks must outlive 'a
+    public method subscribe(cb: <'a>(i32) => i32) void { this.cb = cb; }
 }
 
 class Node {
@@ -459,7 +459,7 @@ class Node {
 
 Inside any class or interface member the builtin **`'this`** names the
 receiver's lifetime without declaring anything — a field may even be typed
-`<'this>(…) -> …`, meaning "whatever is stored here outlives this
+`<'this>(…) => …`, meaning "whatever is stored here outlives this
 object". Lifetimes never change a class's layout, code, or generic
 instantiations: `Bus<'a>` is one class, and construction sites write plain
 `Bus()`. The checking rules live in

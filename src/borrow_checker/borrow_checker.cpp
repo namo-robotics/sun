@@ -1515,7 +1515,7 @@ bool BorrowChecker::isFrameBoundExpr(const ExprAST& expr) const {
     }
     return false;
   }
-  // An explicitly instantiated call (Box<<'_>() -> i32>(...)) is the same
+  // An explicitly instantiated call (Box<<'_>() => i32>(...)) is the same
   // shape as a plain call for this purpose
   if (e->getType() == ASTNodeType::GENERIC_CALL) {
     const auto& gcall = static_cast<const GenericCallAST&>(*e);

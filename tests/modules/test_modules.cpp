@@ -736,7 +736,7 @@ TEST(Modules, moon_ref_lambda_param_survives_round_trip) {
   initTestEnvironment();
   auto moonPath = writeMoonLib("reflambda", R"(
     public module reflambda {
-        public function apply(f: <'_>(i32) -> i32, x: i32) i32 {
+        public function apply(f: <'_>(i32) => i32, x: i32) i32 {
             return f(x);
         }
     }
@@ -762,7 +762,7 @@ TEST(Modules, moon_lifetime_param_survives_round_trip) {
   initTestEnvironment();
   auto moonPath = writeMoonLib("lifetimelambda", R"(
     public module lifetimelambda {
-        public function apply<'a>(f: <'a>(i32) -> i32, x: i32) i32 {
+        public function apply<'a>(f: <'a>(i32) => i32, x: i32) i32 {
             return f(x);
         }
     }
@@ -789,9 +789,9 @@ TEST(Modules, moon_class_lifetime_survives_round_trip) {
   auto moonPath = writeMoonLib("lifetimebus", R"(
     public module lifetimebus {
         public class Bus<'a> {
-            var cb: <'a>(i32) -> i32;
+            var cb: <'a>(i32) => i32;
             init() { this.cb = (x: i32) => i32 { return x; }; }
-            public method subscribe(cb: <'a>(i32) -> i32) void { this.cb = cb; return; }
+            public method subscribe(cb: <'a>(i32) => i32) void { this.cb = cb; return; }
             public method publish(x: i32) i32 { var f = this.cb; return f(x); }
         }
     }
@@ -826,7 +826,7 @@ TEST(Modules, moon_clean_lambda_param_still_rejects_captures) {
   initTestEnvironment();
   auto moonPath = writeMoonLib("cleanlambda", R"(
     public module cleanlambda {
-        public function apply(f: (i32) -> i32, x: i32) i32 {
+        public function apply(f: (i32) => i32, x: i32) i32 {
             return f(x);
         }
     }

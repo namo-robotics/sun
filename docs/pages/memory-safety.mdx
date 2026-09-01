@@ -636,19 +636,19 @@ class is subject to the same rules.
 
 A lambda that carries a captured environment — a `[ref x]` or owned `[x]`
 capture list, or a bound method holding its receiver — has the type
-`<'_>(…) -> …`, while a plain `(…) -> …` annotation admits only
+`<'_>(…) => …`, while a plain `(…) => …` annotation admits only
 environment-free lambdas (an environment-free lambda widens into a `<'_>`
 parameter, never the reverse). Because the type says the value may point into
 a stack frame, the compiler bars it from everything that outlives one:
 
 ```sun
-function make() <'_>() -> i32 { ... }   // ❌ ERROR: <'_> cannot be a return type
-var g: <'_>() -> i32 = ...;             // ❌ ERROR: a global would outlive the frame
+function make() <'_>() => i32 { ... }   // ❌ ERROR: <'_> cannot be a return type
+var g: <'_>() => i32 = ...;             // ❌ ERROR: a global would outlive the frame
 ```
 
 The property is transitive, exactly like Rule 5: a class with a `<'_>`
 field, an enum with a `<'_>` payload, or a container instantiated over a
-`<'_>` lambda type (`Vec<<'_>() -> i32>`) is frame-bound as a whole — it
+`<'_>` lambda type (`Vec<<'_>() => i32>`) is frame-bound as a whole — it
 works freely inside the frame, but cannot be returned, become a global, or
 convert to an interface (which would erase the marker from the type).
 
@@ -660,17 +660,17 @@ into storage that may outlive the call:
 
 ```sun
 class Bus {
-    var cb: <'_>() -> i32;
+    var cb: <'_>() => i32;
 
-    public method invoke(cb: <'_>() -> i32) i32 {
+    public method invoke(cb: <'_>() => i32) i32 {
         return cb();       // ✓ calling does not retain the callback
     }
 
-    public method badSubscribe(cb: <'_>() -> i32) void {
+    public method badSubscribe(cb: <'_>() => i32) void {
         this.cb = cb;      // ❌ nothing says cb outlives this object
     }
 
-    public method subscribe(cb: <'this>() -> i32) void {
+    public method subscribe(cb: <'this>() => i32) void {
         this.cb = cb;      // ✓ the signature promises cb outlives this
     }
 }
@@ -712,8 +712,8 @@ lifetime and needs no declaration:
 
 ```sun
 class Bus<'a> {
-    var cb: <'a>(i32) -> i32;    // stored callbacks must outlive 'a
-    public method subscribe(cb: <'a>(i32) -> i32) void { this.cb = cb; }
+    var cb: <'a>(i32) => i32;    // stored callbacks must outlive 'a
+    public method subscribe(cb: <'a>(i32) => i32) void { this.cb = cb; }
     public method publish(x: i32) i32 { var f = this.cb; return f(x); }
 }
 

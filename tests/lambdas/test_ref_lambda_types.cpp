@@ -1,7 +1,7 @@
 // tests/lambdas/test_ref_lambda_types.cpp - The '<'_>' lambda type marker
 //
-// A plain '(i32) -> i32' annotation is reserved for environment-free
-// lambdas; '<'_>(i32) -> i32' admits lambdas that carry a captured
+// A plain '(i32) => i32' annotation is reserved for environment-free
+// lambdas; '<'_>(i32) => i32' admits lambdas that carry a captured
 // environment living in a stack frame (capture lists, bound methods).
 // Covers: assignability in both directions, the return-position and global
 // bans, transitivity through fields and container instantiations, and the
@@ -19,7 +19,7 @@
 // annotation promises an environment-free value the callee may keep.
 TEST(Lambdas_RefLambdaTypes, capturing_lambda_rejected_by_clean_param) {
   EXPECT_THROW(executeString(R"(
-    function apply(f: () -> i32) i32 {
+    function apply(f: () => i32) i32 {
         return f();
     }
     function main() i32 {
@@ -35,7 +35,7 @@ TEST(Lambdas_RefLambdaTypes, capturing_lambda_rejected_by_clean_param) {
 TEST(Lambdas_RefLambdaTypes,
      capturing_lambda_cannot_launder_through_clean_param) {
   EXPECT_THROW(executeString(R"(
-    function launder(f: () -> i32) () -> i32 {
+    function launder(f: () => i32) () => i32 {
         return f;
     }
     function main() i32 {
@@ -61,7 +61,7 @@ TEST(Lambdas_RefLambdaTypes, bound_method_rejected_by_clean_annotation) {
     }
     function main() i32 {
         var c = Counter();
-        var f: (i32) -> i32 = c.add;
+        var f: (i32) => i32 = c.add;
         return f(1);
     }
   )"),
@@ -75,7 +75,7 @@ TEST(Lambdas_RefLambdaTypes,
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     function main() i32 {
         var x = 3;
-        var f: () -> i32 = [x]() => i32 { return x; };
+        var f: () => i32 = [x]() => i32 { return x; };
         return f();
     }
   )"),
@@ -86,11 +86,11 @@ TEST(Lambdas_RefLambdaTypes,
 // '<'_>' one is accepted.
 TEST(Lambdas_RefLambdaTypes, clean_lambda_widens_into_ref_param) {
   auto value = executeString(R"(
-    function apply(f: <'_>(i32) -> i32, x: i32) i32 {
+    function apply(f: <'_>(i32) => i32, x: i32) i32 {
         return f(x);
     }
     function main() i32 {
-        var f: <'_>() -> i32 = () => i32 { return 40; };
+        var f: <'_>() => i32 = () => i32 { return 40; };
         return f() + apply((n: i32) => i32 { return n; }, 2);
     }
   )");
@@ -109,7 +109,7 @@ TEST(Lambdas_RefLambdaTypes, ref_param_accepts_and_calls_capturing_values) {
             return this.count;
         }
     }
-    function apply(f: <'_>(i32) -> i32, x: i32) i32 {
+    function apply(f: <'_>(i32) => i32, x: i32) i32 {
         return f(x);
     }
     function main() i32 {
@@ -128,7 +128,7 @@ TEST(Lambdas_RefLambdaTypes, ref_param_accepts_and_calls_capturing_values) {
 TEST(Lambdas_RefLambdaTypes, ref_and_throws_widen_together) {
   auto value = executeStringWithStdlib(R"(
     using std;
-    function run_guarded(f: <'_>(i32) -> i32 throws IError, x: i32) i32 {
+    function run_guarded(f: <'_>(i32) => i32 throws IError, x: i32) i32 {
         try {
             return f(x);
         } catch (e: IError) {
@@ -149,7 +149,7 @@ TEST(Lambdas_RefLambdaTypes, ref_and_throws_widen_together) {
 
 TEST(Lambdas_RefLambdaTypes, ref_lambda_type_banned_in_return_position) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
-    function make() <'_>() -> i32 {
+    function make() <'_>() => i32 {
         var x = 3;
         return [ref x]() => i32 { return x; };
     }
@@ -162,7 +162,7 @@ TEST(Lambdas_RefLambdaTypes, ref_lambda_type_banned_in_return_position) {
 
 TEST(Lambdas_RefLambdaTypes, ref_lambda_type_banned_in_nested_return_position) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
-    function take(f: () -> <'_>() -> i32) i32 {
+    function take(f: () => <'_>() => i32) i32 {
         return 0;
     }
     function main() i32 {
@@ -176,7 +176,7 @@ TEST(Lambdas_RefLambdaTypes, ref_lambda_type_banned_in_nested_return_position) {
 // when the value stored today happens to be environment-free.
 TEST(Lambdas_RefLambdaTypes, global_cannot_have_ref_lambda_type) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
-    var g: <'_>() -> i32 = () => i32 { return 0; };
+    var g: <'_>() => i32 = () => i32 { return 0; };
     function main() i32 {
         return 0;
     }
@@ -192,8 +192,8 @@ TEST(Lambdas_RefLambdaTypes, global_cannot_have_ref_lambda_type) {
 TEST(Lambdas_RefLambdaTypes, class_with_ref_field_works_in_frame) {
   auto value = executeString(R"(
     class Holder {
-        var f: <'_>() -> i32;
-        init(f: <'this>() -> i32) { this.f = f; }
+        var f: <'_>() => i32;
+        init(f: <'this>() => i32) { this.f = f; }
         method call() i32 { var g = this.f; return g(); }
     }
     function main() i32 {
@@ -210,8 +210,8 @@ TEST(Lambdas_RefLambdaTypes, class_with_ref_field_works_in_frame) {
 TEST(Lambdas_RefLambdaTypes, class_with_ref_field_cannot_be_returned) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Holder {
-        var f: <'_>() -> i32;
-        init(f: <'this>() -> i32) { this.f = f; }
+        var f: <'_>() => i32;
+        init(f: <'this>() => i32) { this.f = f; }
     }
     function make() Holder {
         var x = 3;
@@ -232,8 +232,8 @@ TEST(Lambdas_RefLambdaTypes, frame_carrying_class_cannot_become_interface) {
         method call() i32;
     }
     class Holder {
-        var f: <'_>() -> i32;
-        init(f: <'this>() -> i32) { this.f = f; }
+        var f: <'_>() => i32;
+        init(f: <'this>() => i32) { this.f = f; }
         public method call() i32 { var g = this.f; return g(); }
     }
     function main() i32 {
@@ -250,7 +250,7 @@ TEST(Lambdas_RefLambdaTypes, frame_carrying_class_cannot_become_interface) {
 TEST(Lambdas_RefLambdaTypes, global_cannot_have_frame_carrying_class_type) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Holder {
-        var f: <'_>() -> i32;
+        var f: <'_>() => i32;
         init() { this.f = () => i32 { return 0; }; }
     }
     var g = Holder();
@@ -274,7 +274,7 @@ TEST(Lambdas_RefLambdaTypes, generic_class_over_ref_lambda_works_in_frame) {
     }
     function main() i32 {
         var a = 40;
-        var b = Box<<'_>() -> i32>([ref a]() => i32 { return a + 2; });
+        var b = Box<<'_>() => i32>([ref a]() => i32 { return a + 2; });
         return b.call();
     }
   )");
@@ -295,13 +295,13 @@ TEST(Lambdas_RefLambdaTypes,
             return callback();
         }
     }
-    function store<'a>(f: <'a>() -> i32,
-                       box: ref Box<<'_>() -> i32>) void {
+    function store<'a>(f: <'a>() => i32,
+                       box: ref Box<<'_>() => i32>) void {
         box.set(f);
         return;
     }
     function main() i32 {
-        var box = Box<<'_>() -> i32>(() => i32 { return 0; });
+        var box = Box<<'_>() => i32>(() => i32 { return 0; });
         if (true) {
             var dead = 42;
             store([ref dead]() => i32 { return dead; }, box);
@@ -326,14 +326,14 @@ TEST(Lambdas_RefLambdaTypes,
             return callback();
         }
     }
-    function store<'a>(f: <'a>() -> i32,
-                       box: ref 'a Box<<'_>() -> i32>) void {
+    function store<'a>(f: <'a>() => i32,
+                       box: ref 'a Box<<'_>() => i32>) void {
         box.set(f);
         return;
     }
     function main() i32 {
         var kept = 42;
-        var box = Box<<'_>() -> i32>(() => i32 { return 0; });
+        var box = Box<<'_>() => i32>(() => i32 { return 0; });
         store([ref kept]() => i32 { return kept; }, box);
         return box.call();
     }
@@ -350,9 +350,9 @@ TEST(Lambdas_RefLambdaTypes, generic_class_over_ref_lambda_cannot_be_returned) {
         var f: T;
         init(f: T) { this.f = f; }
     }
-    function make() Box<<'_>() -> i32> {
+    function make() Box<<'_>() => i32> {
         var x = 3;
-        return Box<<'_>() -> i32>([ref x]() => i32 { return x; });
+        return Box<<'_>() => i32>([ref x]() => i32 { return x; });
     }
     function main() i32 {
         return 0;
@@ -372,9 +372,9 @@ TEST(Lambdas_RefLambdaTypes, generic_class_over_ref_lambda_cannot_be_returned) {
 TEST(Lambdas_RefLambdaTypes, local_capture_cannot_enter_ref_param_object) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Bus {
-        var cb: <'_>() -> i32;
+        var cb: <'_>() => i32;
         init() { this.cb = () => i32 { return 0; }; }
-        public method subscribe(cb: <'this>() -> i32) void { this.cb = cb; return; }
+        public method subscribe(cb: <'this>() => i32) void { this.cb = cb; return; }
     }
     function evil(bus: ref Bus) void {
         var x = 42;
@@ -394,9 +394,9 @@ TEST(Lambdas_RefLambdaTypes, local_capture_cannot_enter_ref_param_object) {
 TEST(Lambdas_RefLambdaTypes, local_bound_method_cannot_enter_ref_param_object) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Bus {
-        var cb: <'_>() -> i32;
+        var cb: <'_>() => i32;
         init() { this.cb = () => i32 { return 0; }; }
-        public method subscribe(cb: <'this>() -> i32) void { this.cb = cb; return; }
+        public method subscribe(cb: <'this>() => i32) void { this.cb = cb; return; }
     }
     class Node {
         var v: i32;
@@ -422,7 +422,7 @@ TEST(Lambdas_RefLambdaTypes, local_bound_method_cannot_enter_ref_param_object) {
 TEST(Lambdas_RefLambdaTypes, method_local_capture_cannot_enter_this_field) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Bus {
-        var cb: <'_>() -> i32;
+        var cb: <'_>() => i32;
         init() { this.cb = () => i32 { return 0; }; }
         public method arm() void {
             var x = 3;
@@ -444,9 +444,9 @@ TEST(Lambdas_RefLambdaTypes, method_local_capture_cannot_enter_this_field) {
 TEST(Lambdas_RefLambdaTypes, local_bus_subscribes_local_bound_method) {
   auto value = executeString(R"(
     class Bus {
-        var cb: <'_>(i32) -> i32;
+        var cb: <'_>(i32) => i32;
         init() { this.cb = (x: i32) => i32 { return x; }; }
-        public method subscribe(cb: <'this>(i32) -> i32) void { this.cb = cb; return; }
+        public method subscribe(cb: <'this>(i32) => i32) void { this.cb = cb; return; }
         public method publish(x: i32) i32 { var f = this.cb; return f(x); }
     }
     class Handler {
@@ -474,9 +474,9 @@ TEST(Lambdas_RefLambdaTypes, local_bus_subscribes_local_bound_method) {
 TEST(Lambdas_RefLambdaTypes, object_subscribes_its_own_method_via_ref_param) {
   auto value = executeString(R"(
     class Bus<'a> {
-        var cb: <'a>(i32) -> i32;
+        var cb: <'a>(i32) => i32;
         init() { this.cb = (x: i32) => i32 { return x; }; }
-        public method subscribe(cb: <'a>(i32) -> i32) void { this.cb = cb; return; }
+        public method subscribe(cb: <'a>(i32) => i32) void { this.cb = cb; return; }
         public method publish(x: i32) i32 { var f = this.cb; return f(x); }
     }
     class Node {
@@ -504,9 +504,9 @@ TEST(Lambdas_RefLambdaTypes,
      carrier_of_frame_sourced_lambda_cannot_pass_by_value) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Bus {
-        var cb: <'_>() -> i32;
+        var cb: <'_>() => i32;
         init() { this.cb = () => i32 { return 0; }; }
-        public method subscribe(cb: <'this>() -> i32) void { this.cb = cb; return; }
+        public method subscribe(cb: <'this>() => i32) void { this.cb = cb; return; }
     }
     function consume(b: Bus) void { return; }
     function main() i32 {
@@ -531,8 +531,8 @@ TEST(Lambdas_RefLambdaTypes, clean_and_ref_instantiations_coexist) {
     }
     function main() i32 {
         var a = 20;
-        var bound = Box<<'_>() -> i32>([ref a]() => i32 { return a + 2; });
-        var clean = Box<() -> i32>(() => i32 { return 20; });
+        var bound = Box<<'_>() => i32>([ref a]() => i32 { return a + 2; });
+        var clean = Box<() => i32>(() => i32 { return 20; });
         return bound.call() + clean.call();
     }
   )");
@@ -542,13 +542,13 @@ TEST(Lambdas_RefLambdaTypes, clean_and_ref_instantiations_coexist) {
 TEST(Lambdas_RefLambdaTypes, callback_must_outlive_box) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Box {
-        var f: <'_>() -> i32;
+        var f: <'_>() => i32;
 
-        init(f: <'this>() -> i32) {
+        init(f: <'this>() => i32) {
             this.f = f;
         }
 
-        public method set(f: <'this>() -> i32) void {
+        public method set(f: <'this>() => i32) void {
             this.f = f;
             return;
         }
@@ -560,7 +560,7 @@ TEST(Lambdas_RefLambdaTypes, callback_must_outlive_box) {
     }
 
     function store<'a>(
-        f: <'a>() -> i32,
+        f: <'a>() => i32,
         box: ref 'a Box
     ) void {
         box.set(f);

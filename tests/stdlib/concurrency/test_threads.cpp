@@ -853,7 +853,7 @@ TEST(Stdlib_Concurrency_Threads, method_on_a_thread_reports_to_a_callback) {
       public method work() i32 { return this.base * 2; }
       // Run work() on a thread; when it finishes, hand what it returned to
       // the callback and pass the callback's answer on.
-      public method runThen(callback: (i32) -> i32) i32 {
+      public method runThen(callback: (i32) => i32) i32 {
         var t = spawn(this.work);
         var result = t.join();
         return callback(result);

@@ -177,7 +177,7 @@ class Value<T> implements Mappable<T, T> {
         this.data = d;
     }
 
-    method map(f: (T) -> T) T {
+    method map(f: (T) => T) T {
         return f(this.data);
     }
 }
@@ -194,13 +194,13 @@ signature:
 
 ```sun
 interface ISink {
-    public method accept(cb: <'this>(i32) -> i32) void;
+    public method accept(cb: <'this>(i32) => i32) void;
 }
 
 class Holder implements ISink {
-    var cb: <'_>(i32) -> i32;
+    var cb: <'_>(i32) => i32;
     /* must say <'this> here too - a plain <'_> is rejected */
-    public method accept(cb: <'this>(i32) -> i32) void { this.cb = cb; }
+    public method accept(cb: <'this>(i32) => i32) void { this.cb = cb; }
 }
 ```
 

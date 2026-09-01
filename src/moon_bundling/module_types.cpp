@@ -116,10 +116,15 @@ TypePtr ModuleTypeResolver::parseFunctionType(const std::string& sig,
     return nullptr;
   }
 
-  // Expect '->'
+  // A thin arrow is a named function type; a fat arrow is a lambda type.
   skipWhitespace(sig, pos);
+  bool isLambda = false;
   if (pos + 1 < sig.size() && sig[pos] == '-' && sig[pos + 1] == '>') {
     pos += 2;
+  } else if (pos + 1 < sig.size() && sig[pos] == '=' &&
+             sig[pos + 1] == '>') {
+    pos += 2;
+    isLambda = true;
   } else {
     return nullptr;
   }
@@ -131,6 +136,8 @@ TypePtr ModuleTypeResolver::parseFunctionType(const std::string& sig,
     returnType = std::make_shared<PrimitiveType>(Type::Kind::Void);
   }
 
+  if (isLambda)
+    return std::make_shared<LambdaType>(returnType, std::move(paramTypes));
   return std::make_shared<FunctionType>(returnType, std::move(paramTypes));
 }
 

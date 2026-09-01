@@ -150,7 +150,7 @@ class Parser {
 
   // Helper: when the current token is '<<' (lexed as one shift token),
   // split it into two '<' so a '<'a>' lambda-type marker can open right
-  // after a generic argument list: Box<<'a>() -> i32>.
+  // after a generic argument list: Box<<'a>() => i32>.
   void splitLessIfShift() {
     if (curTok.kind != TokenKind::LEFT_SHIFT) return;
     Position mid = curTok.start;
