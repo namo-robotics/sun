@@ -18,7 +18,7 @@ on a new OS thread:
 
 ```sun
 function main() i32 {
-    var t = spawn(lambda() i32 { return 42; });
+    var t = spawn(() => i32 { return 42; });
     return t.join();  // Wait for thread, returns 42
 }
 ```
@@ -43,7 +43,7 @@ Give the thread what it should work on as arguments, and they **move** into it:
 
 ```sun
 function main() i32 {
-    var t = spawn(lambda (a: i32, b: i32) i32 { return a + b; }, 40, 2);
+    var t = spawn((a: i32, b: i32) => i32 { return a + b; }, 40, 2);
     return t.join();  // 42
 }
 ```
@@ -54,7 +54,7 @@ one at global scope, which captures nothing and can be spawned as often as you
 like:
 
 ```sun
-var work = lambda (n: i32) i32 { return n * 2; };
+var work = (n: i32) => i32 { return n * 2; };
 
 function main() i32 {
     var a = spawn(work, 20);
@@ -67,7 +67,7 @@ A class or payload enum argument moves, so the thread owns it — the spawner
 cannot use it again, and the thread releases it when it finishes:
 
 ```sun
-var consume = lambda (r: Report) i32 {
+var consume = (r: Report) => i32 {
     return r.rows;        // r is the thread's, and is dropped when it ends
 };
 ```
@@ -85,7 +85,7 @@ type of the spawned lambda.
 
 ```sun
 function main() i32 {
-    var t: Thread<i64> = spawn(lambda() i64 { return 100; });
+    var t: Thread<i64> = spawn(() => i64 { return 100; });
     var result: i64 = t.join();
     return 0;
 }
@@ -103,7 +103,7 @@ ran.
 function main() i32 {
     var x: i32 = 0;
     if (true) {
-        var t = spawn(lambda [ref x]() i32 { x = 7; return 0; });
+        var t = spawn([ref x]() => i32 { x = 7; return 0; });
     }   // t is dropped here, which joins the thread
     return x;  // 7 — the thread has finished
 }
@@ -128,7 +128,7 @@ class Worker {
     init() {
         var x = 3;
         // error: the field could outlive x, which the thread reads
-        this.t = spawn(lambda [ref x]() i32 { return x; });
+        this.t = spawn([ref x]() => i32 { return x; });
     }
 }
 ```
@@ -143,7 +143,7 @@ object joins the thread when it drops:
 class Worker {
     var t: Thread<i32>;
     init(cfg: Config) {
-        this.t = spawn(lambda (c: Config) i32 { return c.limit; }, cfg);
+        this.t = spawn((c: Config) => i32 { return c.limit; }, cfg);
     }
 }   // dropping a Worker joins its thread
 ```
@@ -162,7 +162,7 @@ class Report {
 }
 
 function main() i32 {
-    var t = spawn(lambda() Report { return Report(12); });
+    var t = spawn(() => Report { return Report(12); });
     var r = t.join();  // r owns the report
     return r.rows;     // r is dropped here
 }
@@ -180,7 +180,7 @@ mutate:
 ```sun
 function main() i32 {
     var x: i32 = 10;
-    var t = spawn(lambda() i32 { return x * 2; });
+    var t = spawn(() => i32 { return x * 2; });
     return t.join();  // Returns 20
 }
 ```
@@ -194,7 +194,7 @@ so it may change it, and it is dropped when the closure's scope ends:
 ```sun
 function main() i32 {
     var p = Point(3, 4);
-    var t = spawn(lambda [p]() i32 {
+    var t = spawn([p]() => i32 {
         return p.x + p.y;   // the thread owns p now
     });
     // p cannot be used here any more — it was moved into the lambda
@@ -205,7 +205,7 @@ function main() i32 {
 A compound value is never picked up implicitly; you have to say which one you
 meant.
 
-To share state with the thread, capture it by reference with `lambda [ref x]`.
+To share state with the thread, capture it by reference with `[ref x]() => ...`.
 Both the thread and the parent then work on the same value, so guard it with a
 `Mutex`:
 
@@ -221,7 +221,7 @@ class Tally {
 
 function main() i32 {
     var s = Tally();
-    var t = spawn(lambda [ref s]() i64 {
+    var t = spawn([ref s]() => i64 {
         var i: i64 = 0;
         while (i < 100000) {
             s.m.lock(); s.counter = s.counter + 1; s.m.unlock();
@@ -259,8 +259,8 @@ class Config {
 
 function main() i32 {
     var cfg = Config(20);
-    var t1 = spawn(lambda [const ref cfg]() i32 { return cfg.limit; });
-    var t2 = spawn(lambda [const ref cfg]() i32 { return cfg.limit; });
+    var t1 = spawn([const ref cfg]() => i32 { return cfg.limit; });
+    var t2 = spawn([const ref cfg]() => i32 { return cfg.limit; });
     return t1.join() + t2.join();  // 40
 }
 ```
@@ -292,7 +292,7 @@ class Counter {
 
 // One body, spawned twice. The clone is this thread's, and released when
 // the thread ends.
-var bump = lambda (h: Shared<Counter>) i32 {
+var bump = (h: Shared<Counter>) => i32 {
     var i: i64 = 0;
     while (i < 100000) {
         var g = h.lock();
@@ -321,7 +321,7 @@ manifest { libraries: ["stdlib.moon"] }
 ```
 
 Each thread gets its own handle, moved in as an argument. A capture list works
-too — `spawn(lambda [c1]() i32 { … })` — but passing the handle keeps the body
+too — `spawn([c1]() => i32 { … })` — but passing the handle keeps the body
 independent of the frame that started it, so the same lambda serves both
 threads. Several threads can also share one handle read-only with
 `[const ref s]` and lock through that: `lock()` is a `const method`, because
@@ -362,7 +362,7 @@ handle joins the thread it held first.
 
 ```sun
 function main() i32 {
-    var t = spawn(lambda() i32 { return 11; });
+    var t = spawn(() => i32 { return 11; });
     var t2 = t;
     return t2.join();  // t has been moved out of; t.join() would not compile
 }
@@ -374,9 +374,9 @@ You can spawn multiple threads and join them independently:
 
 ```sun
 function main() i32 {
-    var t1 = spawn(lambda() i32 { return 10; });
-    var t2 = spawn(lambda() i32 { return 20; });
-    var t3 = spawn(lambda() i32 { return 30; });
+    var t1 = spawn(() => i32 { return 10; });
+    var t2 = spawn(() => i32 { return 20; });
+    var t3 = spawn(() => i32 { return 30; });
     return t1.join() + t2.join() + t3.join();  // 60
 }
 ```
@@ -431,7 +431,7 @@ The `Mutex` implementation uses atomic compare-and-swap with kernel wait-on-addr
 ```sun
 function main() i32 {
     // Compute two independent values in parallel
-    var t1 = spawn(lambda() i32 {
+    var t1 = spawn(() => i32 {
         var sum: i32 = 0;
         for (var i: i32 = 0; i < 1000; i = i + 1) {
             sum = sum + i;
@@ -439,7 +439,7 @@ function main() i32 {
         return sum;
     });
 
-    var t2 = spawn(lambda() i32 {
+    var t2 = spawn(() => i32 {
         var product: i32 = 1;
         for (var i: i32 = 1; i < 10; i = i + 1) {
             product = product * i;

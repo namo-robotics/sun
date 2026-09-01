@@ -14,7 +14,7 @@ TEST(Lambdas_Params, lambda_param_by_value) {
     }
 
     function main() i32 {
-        var add3 = lambda (x: i32) i32 { return x + 3; };
+        var add3 = (x: i32) => i32 { return x + 3; };
         return apply_twice(add3, 10);
     }
   )");
@@ -28,7 +28,7 @@ TEST(Lambdas_Params, lambda_literal_argument) {
     }
 
     function main() i32 {
-        return apply_twice(lambda (x: i32) i32 { return x * 2; }, 5);
+        return apply_twice((x: i32) => i32 { return x * 2; }, 5);
     }
   )");
   EXPECT_EQ(value, 20);
@@ -54,7 +54,7 @@ TEST(Lambdas_Params, lambda_ref_class_param) {
     }
 
     function main() i32 {
-        var h = lambda (c: ref Counter) void {
+        var h = (c: ref Counter) => void {
             c.bump();
         };
         return with_counter(h);
@@ -84,7 +84,7 @@ TEST(Lambdas_Params, lambda_ref_class_param_literal) {
     }
 
     function main() i32 {
-        return with_counter(lambda (c: ref Counter) void {
+        return with_counter((c: ref Counter) => void {
             c.bump();
         });
     }
@@ -119,7 +119,7 @@ TEST(Lambdas_Params, method_lambda_param) {
 
     function main() i32 {
         var r = Runner();
-        return r.run_twice(lambda (c: ref Counter) void {
+        return r.run_twice((c: ref Counter) => void {
             c.bump();
         });
     }
@@ -156,7 +156,7 @@ TEST(Lambdas_Params, lambda_param_forwarded_between_methods) {
 
     function main() i32 {
         var r = Runner();
-        return r.outer(lambda (c: ref Counter) void {
+        return r.outer((c: ref Counter) => void {
             c.bump();
         });
     }
@@ -165,7 +165,7 @@ TEST(Lambdas_Params, lambda_param_forwarded_between_methods) {
 }
 
 // ============================================================================
-// Throwing lambdas: lambda (args) T throws IError { ... }
+// Throwing lambdas: (args) => T throws IError { ... }
 // ============================================================================
 
 TEST(Lambdas_Throwing, throw_and_catch) {
@@ -173,7 +173,7 @@ TEST(Lambdas_Throwing, throw_and_catch) {
     using std;
 
     function main() i32 {
-        var risky = lambda (x: i32) i32 throws IError {
+        var risky = (x: i32) => i32 throws IError {
             if (x < 0) { throw Error(1, "negative"); }
             return x * 2;
         };
@@ -203,7 +203,7 @@ TEST(Lambdas_Throwing, throwing_lambda_as_param) {
     }
 
     function main() i32 {
-        var risky = lambda (x: i32) i32 throws IError {
+        var risky = (x: i32) => i32 throws IError {
             if (x < 0) { throw Error(1, "negative"); }
             return x * 2;
         };
@@ -228,7 +228,7 @@ TEST(Lambdas_Throwing, non_throwing_into_throwing_param) {
     }
 
     function main() i32 {
-        var safe = lambda (x: i32) i32 {
+        var safe = (x: i32) => i32 {
             return x + 100;
         };
         return run_guarded(safe, 1);
@@ -242,7 +242,7 @@ TEST(Lambdas_Throwing, uncaught_call_rejected) {
     using std;
 
     function main() i32 {
-        var risky = lambda (x: i32) i32 throws IError {
+        var risky = (x: i32) => i32 throws IError {
             if (x < 0) { throw Error(1, "negative"); }
             return x;
         };
@@ -257,7 +257,7 @@ TEST(Lambdas_Throwing, throw_in_non_throwing_lambda_rejected) {
     using std;
 
     function main() i32 {
-        var bad = lambda (x: i32) i32 {
+        var bad = (x: i32) => i32 {
             throw Error(1, "boom");
         };
         return bad(1);
@@ -269,7 +269,7 @@ TEST(Lambdas_Throwing, throw_in_non_throwing_lambda_rejected) {
 TEST(Lambdas_Params, extra_argument_to_zero_parameter_lambda_is_error) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     function main() i32 {
-        var f = lambda() i32 { return 3; };
+        var f = () => i32 { return 3; };
         return f(9);
     }
   )"),

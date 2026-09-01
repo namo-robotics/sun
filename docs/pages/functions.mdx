@@ -106,25 +106,25 @@ function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
 
 ## Lambdas
 
-Lambdas are anonymous functions created with the `lambda` keyword. They must be assigned to a variable or used immediately:
+Lambdas are anonymous functions written with a parameter list and fat arrow. No keyword precedes the parameter list; `lambda` is an ordinary identifier. A literal must be assigned to a variable or used immediately:
 
 ```sun
 function main() i32 {
-    var square = lambda (x: i32) i32 { return x * x; };
+    var square = (x: i32) => i32 { return x * x; };
     println(square(5));  // 25
     return 0;
 }
 ```
 
-A lambda may declare lifetime parameters immediately after the keyword. The
+A lambda may declare lifetime parameters before its parameter list. The
 names scope over its parameter and return types and over annotations in its
 body, just as they do for a named function:
 
 ```sun
-var store = lambda<'a>(
+var store = <'a>(
     cb: <'a>(i32) -> i32,
     dst: ref 'a Holder
-) void {
+) => void {
     dst.set(cb);
     return;
 };
@@ -132,17 +132,17 @@ var store = lambda<'a>(
 
 At every call, the compiler requires the callback environment to outlive the
 destination associated with the same name. An optional capture list follows
-the binder: `lambda<'a> [ref count](...) ...`. Lambda literals may declare
+the binder: `<'a> [ref count](...) => ...`. Lambda literals may declare
 lifetimes, but they do not declare type parameters.
 
 ## Captures
 
-A lambda may use variables from its enclosing scope. By default they are **captured by value** — the lambda gets a private, read-only copy. To mutate a captured variable (or to capture a class, interface, or array at all), declare it in a bracketed **by-reference capture list** after the `lambda` keyword (and its lifetime binder, when present):
+A lambda may use variables from its enclosing scope. By default they are **captured by value** — the lambda gets a private, read-only copy. To mutate a captured variable (or to capture a class, interface, or array at all), declare it in a bracketed **by-reference capture list** before the parameter list (and after its lifetime binder, when present):
 
 ```sun
 function main() i32 {
     var count: i32 = 0;
-    var tick = lambda [ref count] () void {
+    var tick = [ref count]() => void {
         count += 1;       // mutates the original
     };
     tick();
@@ -156,7 +156,7 @@ A capture the lambda only reads is written `[const ref x]`. It borrows the varia
 ```sun
 function main() i32 {
     var limit: i32 = 10;
-    var under = lambda [const ref limit] () bool {
+    var under = [const ref limit]() => bool {
         return limit > 5;     // reading is fine; limit = 5 would not compile
     };
     return under() ? 1 : 0;
@@ -188,7 +188,7 @@ import { Callout } from 'nextra/components'
 <Callout type="info">
   **When to use which:**
   - Use `function` for named, top-level operations called directly
-  - Use `lambda` for callbacks, higher-order function arguments, or when you need to store/pass functions
+  - Use a lambda literal for callbacks, higher-order function arguments, or when you need to store/pass functions
 </Callout>
 
 ## Lambda Types
@@ -283,7 +283,7 @@ Lambdas are first-class values—they can be assigned to variables, passed as ar
 
 ```sun
 // Assign a lambda to a variable
-var double = lambda (x: i32) i32 { return x * 2; };
+var double = (x: i32) => i32 { return x * 2; };
 println(double(5));  // 10
 
 // Pass a lambda as an argument
@@ -294,7 +294,7 @@ println(apply(double, 3));  // 6
 
 // Return a lambda from a function
 function makeAdder(n: i32) (i32) -> i32 {
-    return lambda (x: i32) i32 { return x + n; };
+    return (x: i32) => i32 { return x + n; };
 }
 var add5 = makeAdder(5);
 println(add5(10));  // 15

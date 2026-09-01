@@ -48,6 +48,13 @@ std::vector<TokenKind> kindsOf(const std::string& source,
 // Reserved words
 // ------------------------------------------------------------------
 
+TEST(Tooling_Frontend_Lexer, LambdaWordLexesAsIdentifier) {
+  auto tokens = lexAll("lambda");
+  ASSERT_EQ(tokens.size(), 2u);
+  EXPECT_EQ(tokens[0].kind, TokenKind::IDENTIFIER);
+  EXPECT_EQ(tokens[0].getIdentifier(), "lambda");
+}
+
 TEST(Tooling_Frontend_Lexer, KeywordSpellingCoversWordTokensOnly) {
   EXPECT_EQ(getKeywordSpelling(TokenKind::PARTIAL), "partial");
   EXPECT_EQ(getKeywordSpelling(TokenKind::PACKED_CLASS), "packed_class");
@@ -79,7 +86,7 @@ TEST(Tooling_Frontend_Lexer, EveryKeywordLexesAsItself) {
     // A keyword token carries its spelling as text.
     EXPECT_EQ(lexAll(std::string(*word))[0].text, *word);
   }
-  EXPECT_EQ(count, 55);
+  EXPECT_EQ(count, 54);
 }
 
 // ------------------------------------------------------------------
@@ -380,7 +387,7 @@ TEST(Tooling_Frontend_Lexer, DfaStateCountStaysBounded) {
   // grammar, not by the input.
   lexAll(
       "class C implements I { var a: array<i32>; function f() void throws IError {} }"
-      " match x { 1 => y, _ => z } lambda (a) => a >>= 2 & 3 | 4 ^ 5 ~ 6;"
+      " match x { 1 => y, _ => z } var lambda = (a: i32) => i32 { return a; }; a >>= 2 & 3 | 4 ^ 5 ~ 6;"
       " `tmpl ${x}` \"str\" 1.5e-3 0 _i /* c */ // c\n"
       " static_ptr<u8> raw_ptr<f64> ... :: -> => != <= >= %= /= *=");
   EXPECT_LT(Lexer::getTokenDFA().stateCount(), 4000);

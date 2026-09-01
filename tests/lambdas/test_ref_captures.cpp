@@ -1,5 +1,5 @@
 // tests/lambdas/test_ref_captures.cpp - Tests for lambda by-reference capture
-// lists: lambda [ref x] (params) ret { body }
+// lists: [ref x](params) => ret { body }
 
 #include <gtest/gtest.h>
 
@@ -19,7 +19,7 @@ TEST(Lambdas_RefCaptures, scalar_mutation_visible) {
   auto value = executeString(R"(
       function main() i32 {
           var x: i32 = 10;
-          var addFive = lambda [ref x] () void {
+          var addFive = [ref x]() => void {
               x += 5;
           };
           addFive();
@@ -34,7 +34,7 @@ TEST(Lambdas_RefCaptures, scalar_plain_assignment_visible) {
   auto value = executeString(R"(
       function main() i32 {
           var x: i32 = 1;
-          var setNine = lambda [ref x] () void {
+          var setNine = [ref x]() => void {
               x = 9;
           };
           setNine();
@@ -54,7 +54,7 @@ TEST(Lambdas_RefCaptures, class_field_mutation_via_capture) {
       }
       function main() i32 {
           var c: Counter = Counter();
-          var tick = lambda [ref c] () void {
+          var tick = [ref c]() => void {
               c.count += 1;
           };
           tick();
@@ -70,7 +70,7 @@ TEST(Lambdas_RefCaptures, array_element_write_via_capture) {
   auto value = executeString(R"(
       function main() i32 {
           var arr: array<i32, 3> = [1, 2, 3];
-          var bump = lambda [ref arr] () void {
+          var bump = [ref arr]() => void {
               arr[1] += 10;
           };
           bump();
@@ -84,8 +84,8 @@ TEST(Lambdas_RefCaptures, nested_byref_of_byref) {
   auto value = executeString(R"(
       function main() i32 {
           var x: i32 = 1;
-          var outer = lambda [ref x] () void {
-              var inner = lambda [ref x] () void {
+          var outer = [ref x]() => void {
+              var inner = [ref x]() => void {
                   x += 100;
               };
               inner();
@@ -104,7 +104,7 @@ TEST(Lambdas_RefCaptures, byref_capture_as_ref_argument) {
       }
       function main() i32 {
           var x: i32 = 1;
-          var callBump = lambda [ref x] () void {
+          var callBump = [ref x]() => void {
               bump(x);
           };
           callBump();
@@ -118,7 +118,7 @@ TEST(Lambdas_RefCaptures, read_only_byvalue_still_works) {
   auto value = executeString(R"(
       function main() i32 {
           var x: i32 = 40;
-          var addTwo = lambda () i32 {
+          var addTwo = () => i32 {
               return x + 2;
           };
           return addTwo();
@@ -128,14 +128,14 @@ TEST(Lambdas_RefCaptures, read_only_byvalue_still_works) {
 }
 
 // ============================================================================
-// Read-only captures: lambda [const ref x]
+// Read-only captures: [const ref x]()
 // ============================================================================
 
 TEST(Lambdas_RefCaptures, const_ref_capture_reads_the_original) {
   auto value = executeString(R"(
       function main() i32 {
           var x: i32 = 10;
-          var read = lambda [const ref x] () i32 { return x; };
+          var read = [const ref x]() => i32 { return x; };
           x = 42;
           return read();
       }
@@ -148,8 +148,8 @@ TEST(Lambdas_RefCaptures, two_const_ref_captures_of_one_variable) {
   auto value = executeString(R"(
       function main() i32 {
           var x: i32 = 20;
-          var a = lambda [const ref x] () i32 { return x; };
-          var b = lambda [const ref x] () i32 { return x + 2; };
+          var a = [const ref x]() => i32 { return x; };
+          var b = [const ref x]() => i32 { return x + 2; };
           return a() + b();
       }
     )");
@@ -164,7 +164,7 @@ TEST(Lambdas_RefCaptures, const_ref_capture_of_a_class_is_read_only) {
       }
       function main() i32 {
           var p = Point();
-          var f = lambda [const ref p] () i32 {
+          var f = [const ref p]() => i32 {
               p.x = 5;
               return p.x;
           };
@@ -178,7 +178,7 @@ TEST(Lambdas_RefCaptures, const_ref_capture_cannot_be_assigned) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       function main() i32 {
           var x: i32 = 1;
-          var f = lambda [const ref x] () i32 {
+          var f = [const ref x]() => i32 {
               x = 2;
               return x;
           };
@@ -192,7 +192,7 @@ TEST(Lambdas_RefCaptures, const_without_ref_is_a_parse_error) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       function main() i32 {
           var x: i32 = 1;
-          var f = lambda [const x] () i32 { return x; };
+          var f = [const x]() => i32 { return x; };
           return f();
       }
     )"),
@@ -208,21 +208,21 @@ TEST(Lambdas_RefCaptures, byvalue_mutation_rejected_with_hint) {
       executeString(R"(
       function main() i32 {
           var x: i32 = 10;
-          var f = lambda () void {
+          var f = () => void {
               x += 5;
           };
           f();
           return x;
       }
     )"),
-      "capture it by reference with 'lambda [ref x]'");
+      "capture it by reference with '[ref x]() => ...'");
 }
 
 TEST(Lambdas_RefCaptures, byvalue_plain_assignment_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       function main() i32 {
           var x: i32 = 10;
-          var f = lambda () void {
+          var f = () => void {
               x = 15;
           };
           f();
@@ -242,7 +242,7 @@ TEST(Lambdas_RefCaptures, borrow_of_byvalue_capture_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       function main() i32 {
           var x: i32 = 10;
-          var f = lambda () i32 { ref r = x; return r; };
+          var f = () => i32 { ref r = x; return r; };
           return f();
       }
     )"),
@@ -253,18 +253,18 @@ TEST(Lambdas_RefCaptures, const_borrow_of_byvalue_capture_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       function main() i32 {
           var x: i32 = 10;
-          var f = lambda () i32 { const ref r = x; return r; };
+          var f = () => i32 { const ref r = x; return r; };
           return f();
       }
     )"),
-                                "lambda [const ref x]");
+                                "[const ref x]() => ...");
 }
 
 TEST(Lambdas_RefCaptures, annotated_borrow_of_byvalue_capture_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       function main() i32 {
           var x: i32 = 10;
-          var f = lambda () i32 { var r: ref i32 = x; return r; };
+          var f = () => i32 { var r: ref i32 = x; return r; };
           return f();
       }
     )"),
@@ -276,7 +276,7 @@ TEST(Lambdas_RefCaptures, byvalue_capture_as_ref_argument_rejected) {
       function bump(v: ref i32) void { v += 1; }
       function main() i32 {
           var x: i32 = 10;
-          var f = lambda () i32 { bump(x); return x; };
+          var f = () => i32 { bump(x); return x; };
           return f();
       }
     )"),
@@ -288,7 +288,7 @@ TEST(Lambdas_RefCaptures, byvalue_capture_as_const_ref_argument_rejected) {
       function peek(v: const ref i32) i32 { return v; }
       function main() i32 {
           var x: i32 = 10;
-          var f = lambda () i32 { return peek(x); };
+          var f = () => i32 { return peek(x); };
           return f();
       }
     )"),
@@ -301,7 +301,7 @@ TEST(Lambdas_RefCaptures, const_ref_capture_passes_as_const_ref_argument) {
       function peek(v: const ref i32) i32 { return v; }
       function main() i32 {
           var x: i32 = 10;
-          var f = lambda [const ref x] () i32 { return peek(x); };
+          var f = [const ref x]() => i32 { return peek(x); };
           return f();
       }
     )");
@@ -322,7 +322,7 @@ TEST(Lambdas_RefCaptures, byvalue_class_capture_rejected) {
       }
       function main() i32 {
           var p: Point = Point();
-          var f = lambda () i32 {
+          var f = () => i32 {
               return p.x;
           };
           return f();
@@ -335,7 +335,7 @@ TEST(Lambdas_RefCaptures, byvalue_array_capture_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       function main() i32 {
           var arr: array<i32, 2> = [1, 2];
-          var f = lambda () i32 {
+          var f = () => i32 {
               return arr[0];
           };
           return f();
@@ -371,7 +371,7 @@ TEST(Lambdas_RefCaptures, unknown_name_in_capture_list) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       function main() i32 {
           var x: i32 = 1;
-          var f = lambda [ref nosuch] () i32 {
+          var f = [ref nosuch]() => i32 {
               return x;
           };
           return f();
@@ -384,7 +384,7 @@ TEST(Lambdas_RefCaptures, global_in_capture_list_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       var g: i32 = 1;
       function main() i32 {
-          var f = lambda [ref g] () i32 {
+          var f = [ref g]() => i32 {
               return g;
           };
           return f();
@@ -397,8 +397,8 @@ TEST(Lambdas_RefCaptures, nested_byref_of_byvalue_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       function main() i32 {
           var x: i32 = 1;
-          var outer = lambda () i32 {
-              var inner = lambda [ref x] () void {
+          var outer = () => i32 {
+              var inner = [ref x]() => void {
                   x += 1;
               };
               inner();
@@ -421,7 +421,7 @@ TEST(Lambdas_RefCaptures, spawn_byref_lambda_accepted) {
     using std.thread;
       function main() i32 {
           var x: i32 = 0;
-          var t = spawn(lambda [ref x] () i32 {
+          var t = spawn([ref x]() => i32 {
               x = 7;
               return 0;
           });
@@ -437,7 +437,7 @@ TEST(Lambdas_RefCaptures, spawn_byref_lambda_via_variable_accepted) {
     using std.thread;
       function main() i32 {
           var x: i32 = 0;
-          var f = lambda [ref x] () i32 {
+          var f = [ref x]() => i32 {
               x = 9;
               return 0;
           };
@@ -453,7 +453,7 @@ TEST(Lambdas_RefCaptures, return_byref_lambda_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       function make() () -> i32 {
           var x: i32 = 5;
-          return lambda [ref x] () i32 {
+          return [ref x]() => i32 {
               return x;
           };
       }
@@ -468,7 +468,7 @@ TEST(Lambdas_RefCaptures, return_byref_lambda_via_variable_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       function make() () -> i32 {
           var x: i32 = 5;
-          var f = lambda [ref x] () i32 {
+          var f = [ref x]() => i32 {
               return x;
           };
           return f;
@@ -484,7 +484,7 @@ TEST(Lambdas_RefCaptures, ref_conflict_while_captured) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       function main() i32 {
           var x: i32 = 1;
-          var f = lambda [ref x] () void {
+          var f = [ref x]() => void {
               x += 1;
           };
           ref r = x;
@@ -499,7 +499,7 @@ TEST(Lambdas_RefCaptures, ref_conflict_while_captured) {
 // ============================================================================
 
 TEST(Lambdas_RefCaptures, capture_list_names_on_proto) {
-  std::istringstream ss("lambda [ref a, ref b] () void { a += b; }");
+  std::istringstream ss("[ref a, ref b]() => void { a += b; }");
   Parser parser(ss);
   parser.getNextToken();
   auto expr = parser.parseExpression();
@@ -522,7 +522,7 @@ TEST(Lambdas_RefCaptures, owned_scalar_capture_copies) {
   auto value = executeString(R"(
       function main() i32 {
           var x: i32 = 1;
-          var f = lambda [x] () i32 { return x + 41; };
+          var f = [x]() => i32 { return x + 41; };
           return f();
       }
     )");
@@ -534,7 +534,7 @@ TEST(Lambdas_RefCaptures, owned_scalar_capture_is_mutable_inside) {
   auto value = executeString(R"(
       function main() i32 {
           var x: i32 = 1;
-          var f = lambda [x] () i32 { x = x + 1; return x; };
+          var f = [x]() => i32 { x = x + 1; return x; };
           var a = f();
           return a * 10 + x;
       }
@@ -551,7 +551,7 @@ TEST(Lambdas_RefCaptures, owned_class_capture_moves) {
       }
       function main() i32 {
           var p = Point(42);
-          var f = lambda [p] () i32 { return p.x; };
+          var f = [p]() => i32 { return p.x; };
           return f();
       }
     )");
@@ -568,7 +568,7 @@ TEST(Lambdas_RefCaptures, owned_class_capture_leaves_source_moved) {
       }
       function main() i32 {
           var p = Point(42);
-          var f = lambda [p] () i32 { return p.x; };
+          var f = [p]() => i32 { return p.x; };
           return p.x;
       }
     )"),
@@ -587,7 +587,7 @@ TEST(Lambdas_RefCaptures, owned_class_capture_drops_once) {
       function main() i32 {
           if (true) {
               var r = Res(7);
-              var f = lambda [r] () i32 { return r.v; };
+              var f = [r]() => i32 { return r.v; };
               var used = f();
           }
           return drops;
@@ -604,7 +604,7 @@ TEST(Lambdas_RefCaptures, owned_capture_of_a_ref_is_rejected) {
           init(x: i32) { this.x = x; }
       }
       function read(p: ref Point) i32 {
-          var f = lambda [p] () i32 { return p.x; };
+          var f = [p]() => i32 { return p.x; };
           return f();
       }
       function main() i32 {
@@ -619,7 +619,7 @@ TEST(Lambdas_RefCaptures, capture_named_twice_is_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       function main() i32 {
           var x: i32 = 1;
-          var f = lambda [ref x, x] () i32 { return x; };
+          var f = [ref x, x]() => i32 { return x; };
           return f();
       }
     )"),
@@ -630,7 +630,7 @@ TEST(Lambdas_RefCaptures, owned_capture_unused_in_body_is_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       function main() i32 {
           var x: i32 = 1;
-          var f = lambda [x] () i32 { return 1; };
+          var f = [x]() => i32 { return 1; };
           return f();
       }
     )"),
@@ -648,7 +648,7 @@ TEST(Lambdas_RefCaptures, owned_capture_while_borrowed_is_rejected) {
       function main() i32 {
           var p = Point(1);
           var r: ref Point = p;
-          var f = lambda [p] () i32 { return p.x; };
+          var f = [p]() => i32 { return p.x; };
           return r.x;
       }
     )"),

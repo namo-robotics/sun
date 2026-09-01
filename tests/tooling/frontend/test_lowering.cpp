@@ -83,7 +83,7 @@ function compute(n: i32) i32 throws IError {
     var arr = [1, 2, 3];
     var first: i32 = arr[0];
     arr[1] = first > 0 ? -first : ~first;
-    var f = lambda (a: i32) i32 { return a * 2; };
+    var f = (a: i32) => i32 { return a * 2; };
     return f(total);
 }
 

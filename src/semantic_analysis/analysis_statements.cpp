@@ -164,8 +164,8 @@ void SemanticAnalyzer::analyzeVariableAssignment(
   if (varInfo && varInfo->captureKind == CaptureKind::ByValue) {
     logAndThrowError("Cannot mutate by-value captured variable '" +
                          varAssign.getName() +
-                         "': capture it by reference with 'lambda [ref " +
-                         varAssign.getName() + "]'",
+                         "': capture it by reference with '[ref " +
+                         varAssign.getName() + "]() => ...'",
                      varAssign.getLocation());
   }
   sun::TypePtr expectedTargetType = nullptr;
@@ -214,8 +214,8 @@ void SemanticAnalyzer::analyzeCompoundAssignment(
     if (varInfo && varInfo->captureKind == CaptureKind::ByValue) {
       logAndThrowError("Cannot mutate by-value captured variable '" +
                            varRef.getName() +
-                           "': capture it by reference with 'lambda [ref " +
-                           varRef.getName() + "]'",
+                           "': capture it by reference with '[ref " +
+                           varRef.getName() + "]() => ...'",
                        compound.getLocation());
     }
   }

@@ -4,7 +4,7 @@ function main() i32 {
   var multiplier: i32 = 10;
 
   // A lambda captures `multiplier` from the enclosing scope by closure.
-  var scale = lambda (x: i32) i32 {
+  var scale = (x: i32) => i32 {
     return x * multiplier;
   };
 

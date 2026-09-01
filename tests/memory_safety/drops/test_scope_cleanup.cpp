@@ -440,7 +440,7 @@ TEST(MemorySafety_Drops_ScopeCleanup, ref_param_is_not_dropped_by_the_callee) {
 TEST(MemorySafety_Drops_ScopeCleanup, by_value_lambda_param_is_dropped) {
   auto value = executeString(withPreamble(R"(
     function helper() i32 {
-      var take = lambda (o: Owner) i32 { return 0; };
+      var take = (o: Owner) => i32 { return 0; };
       if (true) {
         var n = take(Owner());
       }

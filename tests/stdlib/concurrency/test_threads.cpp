@@ -23,7 +23,7 @@ TEST(Stdlib_Concurrency_Threads, parse_spawn_lambda) {
   EXPECT_NO_THROW(compileStringWithStdlib(R"(
     using std.thread;
     function main() i32 {
-      var t = spawn(lambda() i32 { return 42; });
+      var t = spawn(() => i32 { return 42; });
       return 0;
     }
   )"));
@@ -34,7 +34,7 @@ TEST(Stdlib_Concurrency_Threads, parse_spawn_with_captures) {
     using std.thread;
     function main() i32 {
       var x: i32 = 10;
-      var t = spawn(lambda() i32 { return x + 1; });
+      var t = spawn(() => i32 { return x + 1; });
       return 0;
     }
   )"));
@@ -64,7 +64,7 @@ TEST(Stdlib_Concurrency_Threads, spawn_missing_argument_is_an_error) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(compileStringWithStdlib(R"(
     using std.thread;
     function main() i32 {
-      var t = spawn(lambda(x: i32) i32 { return x; });
+      var t = spawn((x: i32) => i32 { return x; });
       return 0;
     }
   )"),
@@ -75,7 +75,7 @@ TEST(Stdlib_Concurrency_Threads, spawn_extra_argument_is_an_error) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(compileStringWithStdlib(R"(
     using std.thread;
     function main() i32 {
-      var t = spawn(lambda() i32 { return 1; }, 5);
+      var t = spawn(() => i32 { return 1; }, 5);
       return 0;
     }
   )"),
@@ -88,7 +88,7 @@ TEST(Stdlib_Concurrency_Threads, thread_handle_can_be_written_as_a_type) {
   auto value = executeStringWithStdlib(R"(
     using std.thread;
     function main() i32 {
-      var t: Thread<i32> = spawn(lambda() i32 { return 42; });
+      var t: Thread<i32> = spawn(() => i32 { return 42; });
       return t.join();
     }
   )");
@@ -103,7 +103,7 @@ TEST(Stdlib_Concurrency_Threads, thread_type_inferred) {
   EXPECT_NO_THROW(compileStringWithStdlib(R"(
     using std.thread;
     function main() i32 {
-      var t = spawn(lambda() i64 { return 100; });
+      var t = spawn(() => i64 { return 100; });
       // t should be inferred as Thread<i64>
       return 0;
     }
@@ -118,7 +118,7 @@ TEST(Stdlib_Concurrency_Threads, spawn_and_join_basic) {
   auto value = executeStringWithStdlib(R"(
     using std.thread;
     function main() i32 {
-      var t = spawn(lambda() i32 { return 42; });
+      var t = spawn(() => i32 { return 42; });
       return t.join();
     }
   )");
@@ -130,7 +130,7 @@ TEST(Stdlib_Concurrency_Threads, spawn_with_captured_value) {
     using std.thread;
     function main() i32 {
       var x: i32 = 10;
-      var t = spawn(lambda() i32 { return x * 2; });
+      var t = spawn(() => i32 { return x * 2; });
       return t.join();
     }
   )");
@@ -142,7 +142,7 @@ TEST(Stdlib_Concurrency_Threads, spawn_void_lambda_and_join) {
   auto value = executeStringWithStdlib(R"(
     using std.thread;
     function main() i32 {
-      var t = spawn(lambda() void { });
+      var t = spawn(() => void { });
       t.join();
       return 42;
     }
@@ -154,7 +154,7 @@ TEST(Stdlib_Concurrency_Threads, spawn_void_lambda_without_join_compiles) {
   EXPECT_NO_THROW(compileStringWithStdlib(R"(
     using std.thread;
     function main() i32 {
-      spawn(lambda() void { });
+      spawn(() => void { });
       return 0;
     }
   )"));
@@ -165,7 +165,7 @@ TEST(Stdlib_Concurrency_Threads, spawn_lambda_variable) {
   auto value = executeStringWithStdlib(R"(
     using std.thread;
     function main() i32 {
-      var f = lambda() i32 { return 7; };
+      var f = () => i32 { return 7; };
       var t = spawn(f);
       return t.join() * 6;
     }
@@ -178,7 +178,7 @@ TEST(Stdlib_Concurrency_Threads, spawn_lambda_variable_with_capture) {
     using std.thread;
     function main() i32 {
       var x: i32 = 10;
-      var f = lambda() i32 { return x * 2; };
+      var f = () => i32 { return x * 2; };
       var t = spawn(f);
       return t.join() + 1;
     }
@@ -190,9 +190,9 @@ TEST(Stdlib_Concurrency_Threads, multiple_threads) {
   auto value = executeStringWithStdlib(R"(
     using std.thread;
     function main() i32 {
-      var t1 = spawn(lambda() i32 { return 10; });
-      var t2 = spawn(lambda() i32 { return 20; });
-      var t3 = spawn(lambda() i32 { return 30; });
+      var t1 = spawn(() => i32 { return 10; });
+      var t2 = spawn(() => i32 { return 20; });
+      var t3 = spawn(() => i32 { return 30; });
       return t1.join() + t2.join() + t3.join();
     }
   )");
@@ -213,7 +213,7 @@ TEST(Stdlib_Concurrency_Threads, byref_capture_shares_a_class) {
     }
     function main() i32 {
       var c = Counter();
-      var t = spawn(lambda [ref c]() i32 {
+      var t = spawn([ref c]() => i32 {
         var i: i32 = 0;
         while (i < 1000) { c.n = c.n + 1; i = i + 1; }
         return 0;
@@ -237,7 +237,7 @@ TEST(Stdlib_Concurrency_Threads, unjoined_thread_joins_at_scope_exit) {
     function main() i32 {
       var c = Counter();
       if (true) {
-        var t = spawn(lambda [ref c]() i32 {
+        var t = spawn([ref c]() => i32 {
           var i: i32 = 0;
           while (i < 100000) { c.n = c.n + 1; i = i + 1; }
           return 0;
@@ -259,7 +259,7 @@ TEST(Stdlib_Concurrency_Threads, unjoined_thread_joins_on_early_return) {
     }
     function run() i32 {
       var c = Counter();
-      var t = spawn(lambda [ref c]() i32 {
+      var t = spawn([ref c]() => i32 {
         var i: i32 = 0;
         while (i < 100000) { c.n = c.n + 1; i = i + 1; }
         return 0;
@@ -279,7 +279,7 @@ TEST(Stdlib_Concurrency_Threads, explicit_join_is_not_repeated_at_scope_exit) {
     using std.thread;
     function main() i32 {
       var x: i32 = 1;
-      var t = spawn(lambda [ref x]() i32 { x = 2; return 40; });
+      var t = spawn([ref x]() => i32 { x = 2; return 40; });
       var r = t.join();
       return r + x;
     }
@@ -293,7 +293,7 @@ TEST(Stdlib_Concurrency_Threads, handle_moves_to_a_new_variable) {
   auto value = executeStringWithStdlib(R"(
     using std.thread;
     function main() i32 {
-      var t = spawn(lambda() i32 { return 11; });
+      var t = spawn(() => i32 { return 11; });
       var t2 = t;
       return t2.join();
     }
@@ -305,7 +305,7 @@ TEST(Stdlib_Concurrency_Threads, moved_handle_cannot_be_joined) {
   EXPECT_THROW(executeStringWithStdlib(R"(
     using std.thread;
     function main() i32 {
-      var t = spawn(lambda() i32 { return 11; });
+      var t = spawn(() => i32 { return 11; });
       var t2 = t;
       return t.join();
     }
@@ -318,8 +318,8 @@ TEST(Stdlib_Concurrency_Threads, reassigned_handle_joins_previous_thread) {
   auto value = executeStringWithStdlib(R"(
     using std.thread;
     function main() i32 {
-      var t = spawn(lambda() i32 { return 1; });
-      t = spawn(lambda() i32 { return 2; });
+      var t = spawn(() => i32 { return 1; });
+      t = spawn(() => i32 { return 2; });
       return t.join();
     }
   )");
@@ -344,7 +344,7 @@ TEST(Stdlib_Concurrency_Threads, unjoined_thread_joins_while_unwinding) {
     function main() i32 {
       var c = Counter();
       try {
-        var t = spawn(lambda [ref c]() i32 {
+        var t = spawn([ref c]() => i32 {
           var i: i32 = 0;
           while (i < 100000) { c.n = c.n + 1; i = i + 1; }
           return 0;
@@ -366,8 +366,8 @@ TEST(Stdlib_Concurrency_Threads, two_threads_cannot_capture_one_ref) {
     using std.thread;
     function main() i32 {
       var x: i32 = 0;
-      var t1 = spawn(lambda [ref x]() i32 { x = 1; return 0; });
-      var t2 = spawn(lambda [ref x]() i32 { x = 2; return 0; });
+      var t1 = spawn([ref x]() => i32 { x = 1; return 0; });
+      var t2 = spawn([ref x]() => i32 { x = 2; return 0; });
       return t1.join() + t2.join();
     }
   )"),
@@ -381,8 +381,8 @@ TEST(Stdlib_Concurrency_Threads, two_threads_can_capture_one_const_ref) {
     using std.thread;
     function main() i32 {
       var x: i32 = 0;
-      var t1 = spawn(lambda [const ref x]() i32 { return x + 1; });
-      var t2 = spawn(lambda [const ref x]() i32 { return x + 2; });
+      var t1 = spawn([const ref x]() => i32 { return x + 1; });
+      var t2 = spawn([const ref x]() => i32 { return x + 2; });
       return t1.join() + t2.join();
     }
   )");
@@ -399,8 +399,8 @@ TEST(Stdlib_Concurrency_Threads, threads_share_a_class_by_const_ref) {
     }
     function main() i32 {
       var cfg = Config(20);
-      var t1 = spawn(lambda [const ref cfg]() i32 { return cfg.limit; });
-      var t2 = spawn(lambda [const ref cfg]() i32 { return cfg.limit; });
+      var t1 = spawn([const ref cfg]() => i32 { return cfg.limit; });
+      var t2 = spawn([const ref cfg]() => i32 { return cfg.limit; });
       return t1.join() + t2.join();
     }
   )");
@@ -413,7 +413,7 @@ TEST(Stdlib_Concurrency_Threads, const_ref_capture_cannot_be_written) {
     using std.thread;
     function main() i32 {
       var x: i32 = 0;
-      var t = spawn(lambda [const ref x]() i32 { x = 1; return 0; });
+      var t = spawn([const ref x]() => i32 { x = 1; return 0; });
       return t.join();
     }
   )"),
@@ -426,8 +426,8 @@ TEST(Stdlib_Concurrency_Threads, const_ref_and_ref_captures_conflict) {
     using std.thread;
     function main() i32 {
       var x: i32 = 0;
-      var t1 = spawn(lambda [ref x]() i32 { x = 1; return 0; });
-      var t2 = spawn(lambda [const ref x]() i32 { return x; });
+      var t1 = spawn([ref x]() => i32 { x = 1; return 0; });
+      var t2 = spawn([const ref x]() => i32 { return x; });
       return t1.join() + t2.join();
     }
   )"),
@@ -452,7 +452,7 @@ TEST(Stdlib_Concurrency_Threads, joined_class_result_is_owned_by_the_joiner) {
     }
 
     function run() i32 {
-      var t = spawn(lambda() Res { return Res(7); });
+      var t = spawn(() => Res { return Res(7); });
       var r = t.join();
       return r.v;
     }
@@ -479,7 +479,7 @@ TEST(Stdlib_Concurrency_Threads, unjoined_class_result_is_dropped) {
     }
 
     function run() void {
-      var t = spawn(lambda() Res { return Res(7); });
+      var t = spawn(() => Res { return Res(7); });
     }
 
     function main() i32 {
@@ -513,13 +513,13 @@ TEST(Stdlib_Concurrency_Threads, class_result_owning_heap_is_released_once) {
     }
 
     function taken() i32 {
-      var t = spawn(lambda() Buffer { return Buffer(9); });
+      var t = spawn(() => Buffer { return Buffer(9); });
       var b = t.join();
       return b.get();
     }
 
     function dropped_at_scope_exit() void {
-      var t = spawn(lambda() Buffer { return Buffer(4); });
+      var t = spawn(() => Buffer { return Buffer(4); });
     }
 
     function main() i32 {
@@ -546,7 +546,7 @@ TEST(Stdlib_Concurrency_Threads, unjoined_enum_result_drops_its_payload) {
     enum Maybe { Some(Res), Nothing }
 
     function run() void {
-      var t = spawn(lambda() Maybe { return Maybe.Some(Res(7)); });
+      var t = spawn(() => Maybe { return Maybe.Some(Res(7)); });
     }
 
     function main() i32 {
@@ -568,7 +568,7 @@ TEST(Stdlib_Concurrency_Threads, spawn_forwards_one_argument) {
   auto value = executeStringWithStdlib(R"(
     using std.thread;
     function main() i32 {
-      var t = spawn(lambda (n: i32) i32 { return n * 2; }, 21);
+      var t = spawn((n: i32) => i32 { return n * 2; }, 21);
       return t.join();
     }
   )");
@@ -579,7 +579,7 @@ TEST(Stdlib_Concurrency_Threads, spawn_forwards_several_arguments) {
   auto value = executeStringWithStdlib(R"(
     using std.thread;
     function main() i32 {
-      var t = spawn(lambda (a: i32, b: i64, c: bool) i32 {
+      var t = spawn((a: i32, b: i64, c: bool) => i32 {
         if (c) { return a + _convert<i32>(b); }
         return 0;
       }, 40, 2, true);
@@ -594,7 +594,7 @@ TEST(Stdlib_Concurrency_Threads, spawn_widens_a_narrow_argument) {
   auto value = executeStringWithStdlib(R"(
     using std.thread;
     function main() i32 {
-      var t = spawn(lambda (n: i64) i64 { return n * 2; }, 21);
+      var t = spawn((n: i64) => i64 { return n * 2; }, 21);
       return _convert<i32>(t.join());
     }
   )");
@@ -607,7 +607,7 @@ TEST(Stdlib_Concurrency_Threads, one_lambda_spawned_twice) {
   auto value = executeStringWithStdlib(R"(
     using std.thread;
     function main() i32 {
-      var work = lambda (n: i32) i32 { return n * 2; };
+      var work = (n: i32) => i32 { return n * 2; };
       var a = spawn(work, 20);
       var b = spawn(work, 1);
       return a.join() + b.join();
@@ -621,7 +621,7 @@ TEST(Stdlib_Concurrency_Threads, one_lambda_spawned_twice) {
 TEST(Stdlib_Concurrency_Threads, spawn_a_global_lambda) {
   auto value = executeStringWithStdlib(R"(
     using std.thread;
-    var work = lambda (n: i32) i32 { return n * 2; };
+    var work = (n: i32) => i32 { return n * 2; };
     function main() i32 {
       var t = spawn(work, 21);
       return t.join();
@@ -648,7 +648,7 @@ TEST(Stdlib_Concurrency_Threads, class_argument_moves_into_the_thread) {
         if (this.v != 0) { drops = drops + 1; this.v = 0; }
       }
     }
-    var take = lambda (r: Res) i32 {
+    var take = (r: Res) => i32 {
       var owned = r;
       return owned.v;
     };
@@ -675,7 +675,7 @@ TEST(Stdlib_Concurrency_Threads, class_argument_cannot_be_used_after_spawn) {
       init(v: i32) { this.v = v; }
       deinit() { }
     }
-    var take = lambda (r: Res) i32 { var o = r; return o.v; };
+    var take = (r: Res) => i32 { var o = r; return o.v; };
     function main() i32 {
       var r = Res(42);
       var t = spawn(take, r);
@@ -699,7 +699,7 @@ TEST(Stdlib_Concurrency_Threads, ref_capturing_thread_cannot_be_stored_in_a_fiel
       var t: Thread<i32>;
       init() {
         var x = 3;
-        this.t = spawn(lambda [ref x]() i32 { return x; });
+        this.t = spawn([ref x]() => i32 { return x; });
       }
     }
     function main() i32 {
@@ -719,7 +719,7 @@ TEST(Stdlib_Concurrency_Threads, owned_capture_thread_cannot_be_stored_in_a_fiel
       var t: Thread<i32>;
       init() {
         var x = 3;
-        this.t = spawn(lambda [x]() i32 { return x; });
+        this.t = spawn([x]() => i32 { return x; });
       }
     }
     function main() i32 {
@@ -736,7 +736,7 @@ TEST(Stdlib_Concurrency_Threads, ref_capturing_thread_cannot_be_returned) {
     using std.thread;
     function makeThread() Thread<i32> {
       var x = 3;
-      return spawn(lambda [ref x]() i32 { return x; });
+      return spawn([ref x]() => i32 { return x; });
     }
     function main() i32 {
       var t = makeThread();
@@ -754,7 +754,7 @@ TEST(Stdlib_Concurrency_Threads,
     using std.thread;
     function makeThread() Thread<i32> {
       var x = 3;
-      var t = spawn(lambda [ref x]() i32 { return x; });
+      var t = spawn([ref x]() => i32 { return x; });
       return t;
     }
     function main() i32 {
@@ -772,7 +772,7 @@ TEST(Stdlib_Concurrency_Threads, ref_capturing_thread_joined_in_frame_is_fine) {
     using std.thread;
     function main() i32 {
       var x = 40;
-      var t = spawn(lambda [ref x]() i32 { return x + 2; });
+      var t = spawn([ref x]() => i32 { return x + 2; });
       return t.join();
     }
   )");
@@ -787,7 +787,7 @@ TEST(Stdlib_Concurrency_Threads, capture_free_thread_may_live_in_a_field) {
     class Worker {
       var t: Thread<i32>;
       init() {
-        this.t = spawn(lambda () i32 { return 7; });
+        this.t = spawn(() => i32 { return 7; });
       }
       public method take() i32 { return this.t.join(); }
     }
@@ -861,7 +861,7 @@ TEST(Stdlib_Concurrency_Threads, method_on_a_thread_reports_to_a_callback) {
     }
     function main() i32 {
       var j = Job(20);
-      return j.runThen(lambda (r: i32) i32 { return r + 2; });
+      return j.runThen((r: i32) => i32 { return r + 2; });
     }
   )");
   EXPECT_EQ(value, 42);
@@ -881,7 +881,7 @@ TEST(Stdlib_Concurrency_Threads, frame_bound_handle_cannot_be_pushed_into_a_vec)
     function makeThreads(alloc: const ref HeapAllocator) Vec<Thread<i32>> {
       var x = 3;
       var v = Vec<Thread<i32>>(alloc, 4);
-      v.push(spawn(lambda [ref x]() i32 { return x; }));
+      v.push(spawn([ref x]() => i32 { return x; }));
       return v;
     }
     function main() i32 {
@@ -905,8 +905,8 @@ TEST(Stdlib_Concurrency_Threads, capture_free_handles_may_leave_in_a_vec) {
     using std.thread;
     function makeThreads(alloc: const ref HeapAllocator) Vec<Thread<i32>> {
       var v = Vec<Thread<i32>>(alloc, 4);
-      v.push(spawn(lambda () i32 { return 20; }));
-      v.push(spawn(lambda () i32 { return 22; }));
+      v.push(spawn(() => i32 { return 20; }));
+      v.push(spawn(() => i32 { return 22; }));
       return v;
     }
     function main() i32 {
@@ -938,7 +938,7 @@ TEST(Stdlib_Concurrency_Threads, frame_bound_handle_cannot_pass_by_value) {
     }
     function main() i32 {
       var x = 3;
-      var t = spawn(lambda [ref x]() i32 { return x; });
+      var t = spawn([ref x]() => i32 { return x; });
       return consume(t);
     }
   )"),
@@ -954,7 +954,7 @@ TEST(Stdlib_Concurrency_Threads, frame_bound_handle_may_pass_by_ref) {
     }
     function main() i32 {
       var x = 40;
-      var t = spawn(lambda [ref x]() i32 { return x; });
+      var t = spawn([ref x]() => i32 { return x; });
       var extra = ticket(t);
       return t.join() + extra;
     }
@@ -973,7 +973,7 @@ TEST(Stdlib_Concurrency_Threads, frame_bound_handle_cannot_enter_a_constructor) 
     }
     function main() i32 {
       var x = 3;
-      var t = spawn(lambda [ref x]() i32 { return x; });
+      var t = spawn([ref x]() => i32 { return x; });
       var b = Box(t);
       return 0;
     }
@@ -989,7 +989,7 @@ TEST(Stdlib_Concurrency_Threads, frame_bound_handle_cannot_enter_an_enum_payload
     using std.thread;
     function main() i32 {
       var x = 3;
-      var t = spawn(lambda [ref x]() i32 { return x; });
+      var t = spawn([ref x]() => i32 { return x; });
       var o = Option.Some(t);
       return 0;
     }
@@ -1003,8 +1003,8 @@ TEST(Stdlib_Concurrency_Threads, frame_bound_handle_cannot_pass_to_a_lambda) {
     using std.thread;
     function main() i32 {
       var x = 3;
-      var sink = lambda (t: Thread<i32>) i32 { return t.join(); };
-      var t = spawn(lambda [ref x]() i32 { return x; });
+      var sink = (t: Thread<i32>) => i32 { return t.join(); };
+      var t = spawn([ref x]() => i32 { return x; });
       return sink(t);
     }
   )"),
@@ -1017,8 +1017,8 @@ TEST(Stdlib_Concurrency_Threads, frame_bound_handle_cannot_enter_an_indexed_slot
     using std.thread;
     function main() i32 {
       var x = 3;
-      var arr = [spawn(lambda () i32 { return 0; })];
-      arr[0] = spawn(lambda [ref x]() i32 { return x; });
+      var arr = [spawn(() => i32 { return 0; })];
+      arr[0] = spawn([ref x]() => i32 { return x; });
       return 0;
     }
   )"),
@@ -1032,7 +1032,7 @@ TEST(Stdlib_Concurrency_Threads, array_literal_with_frame_bound_handle_cannot_re
     using std.thread;
     function make() array<Thread<i32>, 1> {
       var x = 3;
-      var a = [spawn(lambda [ref x]() i32 { return x; })];
+      var a = [spawn([ref x]() => i32 { return x; })];
       return a;
     }
     function main() i32 {
@@ -1047,10 +1047,10 @@ TEST(Stdlib_Concurrency_Threads, array_literal_with_frame_bound_handle_cannot_re
 TEST(Stdlib_Concurrency_Threads, frame_bound_handle_cannot_be_assigned_to_a_global) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeStringWithStdlib(R"(
     using std.thread;
-    var gt = spawn(lambda () i32 { return 0; });
+    var gt = spawn(() => i32 { return 0; });
     function park() void {
       var x = 3;
-      gt = spawn(lambda [ref x]() i32 { return x; });
+      gt = spawn([ref x]() => i32 { return x; });
       return;
     }
     function main() i32 {

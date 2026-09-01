@@ -2508,7 +2508,7 @@ void BorrowChecker::checkMemberAssignment(const MemberAssignmentAST& assign) {
     // A field lets the value outlive this frame with its object, so a
     // value-tracked frame-bound compound is rejected: a Thread handle from
     // spawn, or a local one was moved into. This is what keeps
-    // `this.t = spawn(lambda [ref x] ...)` from outliving x. A '<'_>'
+    // `this.t = spawn([ref x]() => ...)` from outliving x. A '<'_>'
     // lambda itself is type-tracked instead: sema only lets it into a
     // '<'_>' field, which makes the whole class frame-carrying
     // (classStoresRefs), so the object cannot leave the frame either.

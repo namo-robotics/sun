@@ -385,7 +385,7 @@ TEST(Tooling_Lsp_References, Lambda) {
   std::string source = R"(
 function main() i32 {
     var base = 10;
-    var f = lambda (delta: i32) i32 { return base + delta; };
+    var f = (delta: i32) => i32 { return base + delta; };
     return f(1) + f(2);
 }
 )";
@@ -394,7 +394,7 @@ function main() i32 {
   EXPECT_TRUE(refersTo(source, "base + delta", true,
                        {{"base = 10"}, {"base + delta"}}));
   EXPECT_TRUE(
-      refersTo(source, "f(1)", true, {{"f = lambda"}, {"f(1)"}, {"f(2)"}}));
+      refersTo(source, "f(1)", true, {{"f = (delta: i32)"}, {"f(1)"}, {"f(2)"}}));
 }
 
 TEST(Tooling_Lsp_References, CatchBinding) {

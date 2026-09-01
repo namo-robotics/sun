@@ -18,7 +18,7 @@ function take_one(q: const ref Shared<Queue<i64>>) Option<i64> {
 // as often as you like.
 
 // Push ten squares onto the queue.
-var produce = lambda (q: Shared<Queue<i64>>) i32 {
+var produce = (q: Shared<Queue<i64>>) => i32 {
   var i: i64 = 1;
   while (i <= 10) {
     // The lock is held just long enough to push: the guard is released at
@@ -32,7 +32,7 @@ var produce = lambda (q: Shared<Queue<i64>>) i32 {
 
 // The consumer knows how many items to expect, so it stops after ten rather
 // than needing the producer to tell it when to stop.
-var consume = lambda (q: Shared<Queue<i64>>) i32 {
+var consume = (q: Shared<Queue<i64>>) => i32 {
   var received: i64 = 0;
   var total: i64 = 0;
 

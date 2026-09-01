@@ -634,7 +634,7 @@ TEST(MemorySafety_LifetimeInference, ref_return_array_element_ok) {
 TEST(MemorySafety_LifetimeInference, lambda_ref_return_local_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       function main() i32 {
-          var bad_lambda = lambda () ref i32 {
+          var bad_lambda = () => ref i32 {
               var x: i32 = 5;
               return x;  // ERROR: local would dangle
           };

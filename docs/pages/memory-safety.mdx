@@ -779,7 +779,7 @@ that says neither gives the value to the closure:
 ```sun
 function main() i32 {
     var p = Point(1, 2);
-    var f = lambda [p] () i32 { return p.x; };   // p moves into the closure
+    var f = [p]() => i32 { return p.x; };   // p moves into the closure
 
     return p.x;           // ❌ ERROR: use of moved variable
 }
@@ -929,7 +929,7 @@ make that function's body unsafe — which is the point of a safe wrapper. A
 lambda body is checked on its own, so the block goes inside the lambda:
 
 ```sun
-var g = lambda(x: i32) i32 { return unsafe { c_abs(x); }; };
+var g = (x: i32) => i32 { return unsafe { c_abs(x); }; };
 ```
 
 The useful pattern is to keep `unsafe` small and behind a safe signature, so

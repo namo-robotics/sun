@@ -192,7 +192,7 @@ TEST(Tooling_Lsp_Hover, LambdaTypeUsesArrowSyntax) {
   const char* source = R"(
 class Holder {
     var callback: <'_>() -> i32;
-    init() { this.callback = lambda () i32 { return 0; }; }
+    init() { this.callback = () => i32 { return 0; }; }
     public method set(cb: <'this>() -> i32) void { this.callback = cb; }
 }
 

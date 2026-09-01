@@ -17,7 +17,7 @@ TEST(Lambdas_CaptureDiscovery, scalar_used_inside_unsafe_block) {
   auto value = executeString(R"(
       function main() i32 {
           var n: i32 = 7;
-          var f = lambda() i32 { unsafe { return n; }; };
+          var f = () => i32 { unsafe { return n; }; };
           return f();
       }
     )");
@@ -37,7 +37,7 @@ TEST(Lambdas_CaptureDiscovery, raw_pointer_used_inside_unsafe_block) {
           var alloc = make_heap_allocator();
           var sp: raw_ptr<Holder> = alloc.create<Holder>();
           unsafe { sp.counter = 42; };
-          var f = lambda() i64 { unsafe { return sp.counter; }; };
+          var f = () => i64 { unsafe { return sp.counter; }; };
           var result = f();
           unsafe { _free(sp); };
           return _convert<i32>(result);
@@ -50,7 +50,7 @@ TEST(Lambdas_CaptureDiscovery, scalar_used_inside_try_block) {
   auto value = executeString(R"(
       function main() i32 {
           var n: i32 = 5;
-          var f = lambda() i32 { try { return n; } catch (e: IError) { return 0; } };
+          var f = () => i32 { try { return n; } catch (e: IError) { return 0; } };
           return f();
       }
     )");
@@ -67,7 +67,7 @@ TEST(Lambdas_CaptureDiscovery, scalar_used_inside_catch_block) {
 
       function main() i32 {
           var n: i32 = 6;
-          var f = lambda() i32 {
+          var f = () => i32 {
               try { return boom(); } catch (e: IError) { return n; }
           };
           return f();
@@ -80,7 +80,7 @@ TEST(Lambdas_CaptureDiscovery, scalar_used_inside_array_literal) {
   auto value = executeString(R"(
       function main() i32 {
           var n: i32 = 4;
-          var f = lambda() i32 {
+          var f = () => i32 {
               var a = [n, n + 1, n + 2];
               return a[2];
           };
@@ -96,7 +96,7 @@ TEST(Lambdas_CaptureDiscovery, scalar_used_in_a_thrown_error) {
 
       function main() i32 {
           var n: i32 = 8;
-          var f = lambda() i32 throws IError { throw Error(n, "bad"); };
+          var f = () => i32 throws IError { throw Error(n, "bad"); };
           try { return f(); } catch (e: IError) { return e.code(); }
       }
     )");
@@ -109,7 +109,7 @@ TEST(Lambdas_CaptureDiscovery, scalar_used_in_a_string_interpolation) {
 
       function main() i32 {
           var n: i32 = 3;
-          var f = lambda() i32 {
+          var f = () => i32 {
               var s = `n is ${n}`;
               return _convert<i32>(s.length());
           };
@@ -127,7 +127,7 @@ TEST(Lambdas_CaptureDiscovery, loop_counter_shadows_an_outer_name) {
   auto value = executeString(R"(
       function main() i32 {
           var i: i32 = 100;
-          var f = lambda() i32 {
+          var f = () => i32 {
               var total: i32 = 0;
               for (var i: i32 = 0; i < 4; i += 1) { total += i; }
               return total;
@@ -148,7 +148,7 @@ TEST(Lambdas_CaptureDiscovery, catch_binding_shadows_an_outer_name) {
 
       function main() i32 {
           var e: i32 = 100;
-          var f = lambda() i32 {
+          var f = () => i32 {
               try { return boom(); } catch (e: IError) { return e.code(); }
           };
           return f() + e;
@@ -167,7 +167,7 @@ TEST(Lambdas_CaptureDiscovery, lambda_cannot_use_this) {
           var count: i32;
           init() { this.count = 5; }
           method snapshot() i32 {
-              var f = lambda () i32 { return this.count; };
+              var f = () => i32 { return this.count; };
               return f();
           }
       }

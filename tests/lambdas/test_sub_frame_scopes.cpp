@@ -20,7 +20,7 @@ TEST(Lambdas_SubFrameScopes, outer_bus_rejects_inner_scoped_bound_method) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Bus {
         var cb: <'_>() -> i32;
-        init() { this.cb = lambda () i32 { return 0; }; }
+        init() { this.cb = () => i32 { return 0; }; }
         public method subscribe(cb: <'this>() -> i32) void { this.cb = cb; return; }
         public method publish() i32 { var f = this.cb; return f(); }
     }
@@ -46,14 +46,14 @@ TEST(Lambdas_SubFrameScopes, outer_bus_rejects_inner_scoped_capture) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Bus {
         var cb: <'_>() -> i32;
-        init() { this.cb = lambda () i32 { return 0; }; }
+        init() { this.cb = () => i32 { return 0; }; }
         public method subscribe(cb: <'this>() -> i32) void { this.cb = cb; return; }
     }
     function main() i32 {
         var bus = Bus();
         if (true) {
             var x = 42;
-            bus.subscribe(lambda [ref x]() i32 { return x; });
+            bus.subscribe([ref x]() => i32 { return x; });
         }
         return 0;
     }
@@ -65,10 +65,10 @@ TEST(Lambdas_SubFrameScopes, outer_bus_rejects_inner_scoped_capture) {
 TEST(Lambdas_SubFrameScopes, outer_lambda_var_rejects_inner_scoped_capture) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     function main() i32 {
-        var f: <'_>() -> i32 = lambda () i32 { return 0; };
+        var f: <'_>() -> i32 = () => i32 { return 0; };
         if (true) {
             var x = 3;
-            f = lambda [ref x]() i32 { return x; };
+            f = [ref x]() => i32 { return x; };
         }
         return f();
     }
@@ -81,7 +81,7 @@ TEST(Lambdas_SubFrameScopes, outer_bus_rejects_loop_local_bound_method) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Bus {
         var cb: <'_>() -> i32;
-        init() { this.cb = lambda () i32 { return 0; }; }
+        init() { this.cb = () => i32 { return 0; }; }
         public method subscribe(cb: <'this>() -> i32) void { this.cb = cb; return; }
     }
     class Node {
@@ -112,7 +112,7 @@ TEST(Lambdas_SubFrameScopes, same_scope_subscribe_inside_block_accepted) {
   auto value = executeString(R"(
     class Bus {
         var cb: <'_>(i32) -> i32;
-        init() { this.cb = lambda (x: i32) i32 { return x; }; }
+        init() { this.cb = (x: i32) => i32 { return x; }; }
         public method subscribe(cb: <'this>(i32) -> i32) void { this.cb = cb; return; }
         public method publish(x: i32) i32 { var f = this.cb; return f(x); }
     }
@@ -141,7 +141,7 @@ TEST(Lambdas_SubFrameScopes, inner_bus_accepts_outer_scoped_handler) {
   auto value = executeString(R"(
     class Bus {
         var cb: <'_>(i32) -> i32;
-        init() { this.cb = lambda (x: i32) i32 { return x; }; }
+        init() { this.cb = (x: i32) => i32 { return x; }; }
         public method subscribe(cb: <'this>(i32) -> i32) void { this.cb = cb; return; }
         public method publish(x: i32) i32 { var f = this.cb; return f(x); }
     }
@@ -170,7 +170,7 @@ TEST(Lambdas_SubFrameScopes, branch_position_does_not_pin_outer_names) {
   auto value = executeString(R"(
     class Bus {
         var cb: <'_>(i32) -> i32;
-        init() { this.cb = lambda (x: i32) i32 { return x; }; }
+        init() { this.cb = (x: i32) => i32 { return x; }; }
         public method subscribe(cb: <'this>(i32) -> i32) void { this.cb = cb; return; }
         public method publish(x: i32) i32 { var f = this.cb; return f(x); }
     }
@@ -196,8 +196,8 @@ TEST(Lambdas_SubFrameScopes, outer_lambda_var_accepts_same_scope_capture) {
   auto value = executeString(R"(
     function main() i32 {
         var x = 42;
-        var f: <'_>() -> i32 = lambda () i32 { return 0; };
-        f = lambda [ref x]() i32 { return x; };
+        var f: <'_>() -> i32 = () => i32 { return 0; };
+        f = [ref x]() => i32 { return x; };
         return f();
     }
   )");

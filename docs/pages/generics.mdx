@@ -208,7 +208,7 @@ function apply<F: _Lambda>(f: F, args...: _params_of<F>) i32 {
 }
 
 function main() i32 {
-    var add = lambda (a: i32, b: i32) i32 { return a + b; };
+    var add = (a: i32, b: i32) => i32 { return a + b; };
     return apply(add, 3, 4);   // 7 — F is inferred from `add`
 }
 ```

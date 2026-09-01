@@ -234,7 +234,7 @@ TEST(Tooling_Frontend_Parser, LexerRegex) {
 // ------------------------------------------------------------------
 
 TEST(Tooling_Frontend_Parser, ParseLambda) {
-  std::string src = "var f = lambda (x: i32) i32 { x+1; };";
+  std::string src = "var f = (x: i32) => i32 { x+1; };";
   auto block = parseString(src);
   ASSERT_NE(block, nullptr);
   // The function is wrapped in an anonymous top-level expr
@@ -252,6 +252,64 @@ TEST(Tooling_Frontend_Parser, ParseLambda) {
   EXPECT_EQ(innerLambda->getProto().getName(), "");
   ASSERT_EQ(innerLambda->getProto().getArgNames().size(), 1);
   EXPECT_EQ(innerLambda->getProto().getArgNames()[0], "x");
+}
+
+TEST(Tooling_Frontend_Parser, ParseLambdaWithCallableParameter) {
+  auto block = parseString(
+      "var f = (cb: (i32) -> i32) => i32 { return cb(1); };");
+  ASSERT_NE(block, nullptr);
+  const auto* varCreation =
+      dynamic_cast<const VariableCreationAST*>(block->getBody()[0].get());
+  ASSERT_NE(varCreation, nullptr);
+  const auto* lambda =
+      dynamic_cast<const LambdaAST*>(varCreation->getValue());
+  ASSERT_NE(lambda, nullptr);
+  ASSERT_EQ(lambda->getProto().getArgs().size(), 1u);
+  EXPECT_TRUE(lambda->getProto().getArgs()[0].second.isLambda());
+}
+
+TEST(Tooling_Frontend_Parser, LambdaIsValidIdentifier) {
+  auto block = parseString(
+      "function lambda(lambda: i32) i32 { return lambda; }");
+  ASSERT_NE(block, nullptr);
+  const auto* function =
+      dynamic_cast<const FunctionAST*>(block->getBody()[0].get());
+  ASSERT_NE(function, nullptr);
+  EXPECT_EQ(function->getProto().getName(), "lambda");
+  ASSERT_EQ(function->getProto().getArgNames().size(), 1u);
+  EXPECT_EQ(function->getProto().getArgNames()[0], "lambda");
+}
+
+TEST(Tooling_Frontend_Parser, ParenthesizedTernaryIsNotLambda) {
+  auto block = parseString("var x = (true ? 1 : 2);");
+  ASSERT_NE(block, nullptr);
+  const auto* varCreation =
+      dynamic_cast<const VariableCreationAST*>(block->getBody()[0].get());
+  ASSERT_NE(varCreation, nullptr);
+  EXPECT_EQ(varCreation->getValue()->getType(), ASTNodeType::PAREN_EXPR);
+}
+
+TEST(Tooling_Frontend_Parser, ArrayCallShapeIsNotLambda) {
+  auto block = parseString("var x = [1]();");
+  ASSERT_NE(block, nullptr);
+  const auto* varCreation =
+      dynamic_cast<const VariableCreationAST*>(block->getBody()[0].get());
+  ASSERT_NE(varCreation, nullptr);
+  EXPECT_EQ(varCreation->getValue()->getType(), ASTNodeType::CALL);
+}
+
+TEST(Tooling_Frontend_Parser, MatchArmCanContainLambda) {
+  auto block = parseString(R"(
+var f = match true {
+    true => (x: i32) => i32 { return x; },
+    false => (x: i32) => i32 { return x + 1; }
+};
+)");
+  ASSERT_NE(block, nullptr);
+  const auto* varCreation =
+      dynamic_cast<const VariableCreationAST*>(block->getBody()[0].get());
+  ASSERT_NE(varCreation, nullptr);
+  EXPECT_EQ(varCreation->getValue()->getType(), ASTNodeType::MATCH);
 }
 
 TEST(Tooling_Frontend_Parser, ParseFunction) {
@@ -304,21 +362,21 @@ TEST(Tooling_Frontend_Parser, IfExpression) {
 
 TEST(Tooling_Frontend_Parser, Fib) {
   auto ast = parseString(
-      "var fib = lambda (x: i32) i32 { if (x < 3) { 1; } else { "
+      "var fib = (x: i32) => i32 { if (x < 3) { 1; } else { "
       "fib(x-1)+fib(x-2); } };");
   ASSERT_NE(ast, nullptr);
 }
 
 TEST(Tooling_Frontend_Parser, ParseNestedFunction) {
   auto ast = parseString(
-      "var f = lambda (x: i32) i32 { var g = lambda (y: i32) i32 { y; }; g(x); "
+      "var f = (x: i32) => i32 { var g = (y: i32) => i32 { y; }; g(x); "
       "};");
   ASSERT_NE(ast, nullptr);
 }
 
 TEST(Tooling_Frontend_Parser, ParseCloser) {
   auto ast = parseString(
-      "var outer = 42; var closure = lambda () i32 { outer; }; closure();");
+      "var outer = 42; var closure = () => i32 { outer; }; closure();");
   ASSERT_NE(ast, nullptr);
 }
 
@@ -326,10 +384,10 @@ TEST(Tooling_Frontend_Parser, ParseCloser) {
 // Named functions vs Lambdas
 // ------------------------------------------------------------------
 
-// Lambda: var f = () i32 { ... }
+// Lambda: var f = () => i32 { ... }
 // The function should have an EMPTY name (it's a lambda assigned to variable f)
 TEST(Tooling_Frontend_Parser, ParseLambdaAssignedToVariable) {
-  std::string src = "var f = lambda () i32 { 42; };";
+  std::string src = "var f = () => i32 { 42; };";
   auto block = parseString(src);
   ASSERT_NE(block, nullptr);
 
@@ -370,9 +428,9 @@ TEST(Tooling_Frontend_Parser, ParseNamedFunctionAssignedToVariable) {
       << "Named function should have name 'f'";
 }
 
-// Lambda with parameters: var add = (x: i32, y: i32) i32 { x + y; };
+// Lambda with parameters: var add = (x: i32, y: i32) => i32 { x + y; };
 TEST(Tooling_Frontend_Parser, ParseLambdaWithParameters) {
-  std::string src = "var add = lambda (x: i32, y: i32) i32 { x + y; };";
+  std::string src = "var add = (x: i32, y: i32) => i32 { x + y; };";
   auto block = parseString(src);
   ASSERT_NE(block, nullptr);
 
@@ -661,6 +719,28 @@ static std::string parseErrorMessage(const std::string& src) {
   return "";
 }
 
+TEST(Tooling_Frontend_Parser_Errors, MissingLambdaFatArrow) {
+  std::string what = parseErrorMessage(R"(
+function main() i32 {
+    var f = (x: i32) i32 { return x; };
+    return f(1);
+}
+)");
+  EXPECT_TRUE(what.find("expected '=>' after lambda parameters") !=
+              std::string::npos)
+      << what;
+}
+
+TEST(Tooling_Frontend_Parser_Errors, LegacyLambdaLiteralIsRejected) {
+  EXPECT_THROW(parseString(R"(
+function main() i32 {
+    var f = lambda (x: i32) i32 { return x; };
+    return f(1);
+}
+)"),
+               SunError);
+}
+
 TEST(Tooling_Frontend_Parser_Errors, DoubleAmpersandSuggestsAnd) {
   std::string what = parseErrorMessage(R"(
 function main() i32 {
@@ -902,7 +982,7 @@ TEST(Tooling_Frontend_Parser_Errors, MissingReturnTypeLambda) {
         try {
           parseString(R"(
 function main() i32 {
-    var f = lambda (x: i32) { return x + 1; };
+    var f = (x: i32) => { return x + 1; };
     return f(1);
 }
 )");

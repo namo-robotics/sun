@@ -12,7 +12,7 @@
 TEST(Lambdas_Generic, lambda_body_uses_the_type_parameter) {
   auto value = executeString(R"(
     function apply<T>(x: T) T {
-        var f = lambda (v: T) T { return v; };
+        var f = (v: T) => T { return v; };
         return f(x);
     }
 
@@ -30,7 +30,7 @@ TEST(Lambdas_Generic, lambda_param_typed_with_the_type_parameter) {
     }
 
     function main() i32 {
-        return apply<i32>(5, lambda (v: i32) i32 { return v * 3; });
+        return apply<i32>(5, (v: i32) => i32 { return v * 3; });
     }
   )");
   EXPECT_EQ(value, 15);
@@ -39,7 +39,7 @@ TEST(Lambdas_Generic, lambda_param_typed_with_the_type_parameter) {
 TEST(Lambdas_Generic, lambda_captures_a_generic_value_by_ref) {
   auto value = executeString(R"(
     function add_k<T>(x: T, k: T) T {
-        var f = lambda [ref k] (v: T) T { return v + k; };
+        var f = [ref k](v: T) => T { return v + k; };
         return f(x);
     }
 
@@ -53,7 +53,7 @@ TEST(Lambdas_Generic, lambda_captures_a_generic_value_by_ref) {
 TEST(Lambdas_Generic, lambda_closes_over_the_generic_parameter) {
   auto value = executeString(R"(
     function outer<T>(x: T) T {
-        var f = lambda [ref x] () T { return x; };
+        var f = [ref x]() => T { return x; };
         return f();
     }
 
@@ -67,8 +67,8 @@ TEST(Lambdas_Generic, lambda_closes_over_the_generic_parameter) {
 TEST(Lambdas_Generic, lambda_calls_another_lambda_in_the_same_body) {
   auto value = executeString(R"(
     function build<T>(x: T) T {
-        var f = lambda (v: T) T { return v; };
-        var g = lambda (v: T) T { return f(v); };
+        var f = (v: T) => T { return v; };
+        var g = (v: T) => T { return f(v); };
         return g(x);
     }
 
@@ -83,7 +83,7 @@ TEST(Lambdas_Generic, each_specialization_gets_its_own_lambda) {
   // twice<i32> and twice<f64> instantiate the same lambda at two types.
   auto value = executeString(R"(
     function twice<T>(x: T) T {
-        var f = lambda (v: T) T { return v + v; };
+        var f = (v: T) => T { return v + v; };
         return f(x);
     }
 
@@ -105,7 +105,7 @@ TEST(Lambdas_Generic, lambda_in_a_generic_class_method) {
         var v: T;
         init(v: T) { this.v = v; }
         method mapped() T {
-            var f = lambda (x: T) T { return x + x; };
+            var f = (x: T) => T { return x + x; };
             return f(this.v);
         }
     }
@@ -119,10 +119,10 @@ TEST(Lambdas_Generic, lambda_in_a_generic_class_method) {
 }
 
 TEST(Lambdas_Generic, lambda_type_parameters_are_rejected) {
-  // Lambdas accept lifetime binders, but `lambda <T> (...) ` is still a parse error.
+  // Lambdas accept lifetime binders, but a type parameter binder is rejected.
   EXPECT_THROW(executeString(R"(
         function main() i32 {
-            var f = lambda <T> (x: T) T { return x; };
+            var f = <T>(x: T) => T { return x; };
             return 0;
         }
       )"),

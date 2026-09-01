@@ -300,13 +300,13 @@ TEST(Tooling_Lsp_Definition, Lambda) {
   std::string source = R"(
 function main() i32 {
     var base = 10;
-    var f = lambda (delta: i32) i32 { return base + delta; };
+    var f = (delta: i32) => i32 { return base + delta; };
     return f(1);
 }
 )";
   EXPECT_TRUE(definedAt(source, "delta; }", "delta: i32"));
   EXPECT_TRUE(definedAt(source, "base + delta", "base = 10"));
-  EXPECT_TRUE(definedAt(source, "f(1)", "f = lambda"));
+  EXPECT_TRUE(definedAt(source, "f(1)", "f = (delta: i32)"));
 }
 
 TEST(Tooling_Lsp_Definition, CatchBinding) {
