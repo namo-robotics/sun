@@ -24,7 +24,7 @@ TEST(Lambdas_LifetimeSyntax, function_lifetime_param_accepted) {
     }
     function main() i32 {
         var b = 40;
-        return take(lambda [ref b](n: i32) i32 { return b + n; }, 2);
+        return take([ref b](n: i32) => i32 { return b + n; }, 2);
     }
   )");
   EXPECT_EQ(value, 42);
@@ -40,7 +40,7 @@ TEST(Lambdas_LifetimeSyntax, mixed_lifetime_and_type_params_accepted) {
     }
     function main() i32 {
         var b = 40;
-        return combine<i32>(lambda [ref b](n: i32) i32 { return b + n; }, 2);
+        return combine<i32>([ref b](n: i32) => i32 { return b + n; }, 2);
     }
   )");
   EXPECT_EQ(value, 42);
@@ -52,7 +52,7 @@ TEST(Lambdas_LifetimeSyntax, class_lifetime_and_this_application_accepted) {
   auto value = executeString(R"(
     class Bus<'a> {
         var cb: <'a>(i32) -> i32;
-        init() { this.cb = lambda (x: i32) i32 { return x; }; }
+        init() { this.cb = (x: i32) => i32 { return x; }; }
         public method subscribe(cb: <'a>(i32) -> i32) void { this.cb = cb; return; }
         public method publish(x: i32) i32 { var f = this.cb; return f(x); }
     }
@@ -88,7 +88,7 @@ TEST(Lambdas_LifetimeSyntax, ref_lifetime_and_this_param_accepted) {
     function main() i32 {
         var c = Counter();
         var two = 2;
-        var viaThis = c.feed(lambda [ref two](n: i32) i32 { return n + two; });
+        var viaThis = c.feed([ref two](n: i32) => i32 { return n + two; });
         return bump(c, viaThis - c.count);
     }
   )");
@@ -101,7 +101,7 @@ TEST(Lambdas_LifetimeSyntax, lambda_lifetime_parameter_with_capture) {
   auto value = executeString(R"(
     class Box {
         var f: <'this>() -> i32;
-        init() { this.f = lambda () i32 { return 0; }; }
+        init() { this.f = () => i32 { return 0; }; }
         public method set(f: <'this>() -> i32) void {
             this.f = f;
             return;
@@ -115,16 +115,16 @@ TEST(Lambdas_LifetimeSyntax, lambda_lifetime_parameter_with_capture) {
         var kept = 42;
         var box = Box();
         var touched = 0;
-        var store = lambda<'a> [ref touched](
+        var store = <'a> [ref touched](
             f: <'a>() -> i32,
             destination: ref 'a Box
-        ) void {
+        ) => void {
             var forwarded: <'a>() -> i32 = f;
             destination.set(forwarded);
             touched = touched + 1;
             return;
         };
-        store(lambda [ref kept]() i32 { return kept; }, box);
+        store([ref kept]() => i32 { return kept; }, box);
         return box.call();
     }
   )");
@@ -136,12 +136,12 @@ TEST(Lambdas_LifetimeSyntax, lambda_lifetime_parameter_on_return) {
   auto value = executeString(R"(
     function main() i32 {
         var kept = 42;
-        var identity = lambda<'a>(
+        var identity = <'a>(
             f: <'a>() -> i32
-        ) <'a>() -> i32 {
+        ) => <'a>() -> i32 {
             return f;
         };
-        var selected = identity(lambda [ref kept]() i32 { return kept; });
+        var selected = identity([ref kept]() => i32 { return kept; });
         return selected();
     }
   )");
@@ -158,7 +158,7 @@ TEST(Lambdas_LifetimeSyntax, char_literals_unaffected) {
     }
     function main() i32 {
         var c: char = 'a';
-        return classify(lambda () char { return c; });
+        return classify(() => char { return c; });
     }
   )");
   EXPECT_EQ(value, 42);
@@ -200,7 +200,7 @@ TEST(Lambdas_LifetimeSyntax, anonymous_lifetime_store_rejected) {
   EXPECT_THROW(executeString(R"(
     class Holder {
         var cb: <'_>() -> i32;
-        init() { this.cb = lambda () i32 { return 0; }; }
+        init() { this.cb = () => i32 { return 0; }; }
         public method subscribe(cb: <'_>() -> i32) void {
             this.cb = cb;
             return;
@@ -220,7 +220,7 @@ TEST(Lambdas_LifetimeSyntax, anonymous_lifetime_store_rejected) {
 TEST(Lambdas_LifetimeSyntax, duplicate_lambda_lifetime_rejected) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     function main() i32 {
-        var f = lambda<'a, 'a>(g: <'a>() -> i32) i32 {
+        var f = <'a, 'a>(g: <'a>() -> i32) => i32 {
             return g();
         };
         return 0;
@@ -322,7 +322,7 @@ TEST(Lambdas_LifetimeSyntax, named_lambda_type_as_generic_argument) {
     }
     function main() i32 {
         var x = 42;
-        return stash(lambda [ref x]() i32 { return x; });
+        return stash([ref x]() => i32 { return x; });
     }
   )");
   EXPECT_EQ(value, 42);

@@ -27,7 +27,7 @@ cannot be used as an identifier`.
 
 | Group | Words |
 |-------|-------|
-| Declarations | `var`, `const`, `function`, `lambda`, `class`, `packed_class`, `partial`, `interface`, `enum`, `implements`, `public`, `def`, `declare`, `extern` |
+| Declarations | `var`, `const`, `function`, `class`, `packed_class`, `partial`, `interface`, `enum`, `implements`, `public`, `def`, `declare`, `extern` |
 | Modules | `manifest`, `module`, `using` |
 | Control flow | `if`, `else`, `match`, `for`, `while`, `break`, `continue`, `return` |
 | Errors | `try`, `catch`, `throw`, `throws` |
@@ -43,8 +43,8 @@ start of a class or interface member), so a field may still be called
 
 Three of these carry syntax that is easy to miss:
 
-- `lambda [ref x, const ref y](…) …` — a **capture list** in brackets after
-  `lambda` borrows the named variables instead of copying them. Compound values
+- `[ref x, const ref y](…) => …` — a **capture list** in brackets before the parameter list
+  borrows the named variables instead of copying them. Compound values
   can only be captured this way. See [Captures](/functions#captures).
 - `unsafe { … }` is an **expression**, so it can produce a value:
   `var p = unsafe { _malloc(n); };`. See

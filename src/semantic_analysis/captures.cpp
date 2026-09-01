@@ -306,13 +306,11 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const LambdaAST& lambda) {
           sun::unwrapRef(varInfo->type)->isCompound()) {
         logAndThrowError("Cannot capture '" + var + "' of compound type '" +
                              varInfo->type->toDisplayString() +
-                             "' by value; capture it by reference with "
-                             "'lambda [ref " +
-                             var + "]', read it with 'lambda [const ref " +
+                             "' by value; capture it by reference with '[ref " +
                              var +
-                             "]', or move it into the lambda with "
-                             "'lambda [" +
-                             var + "]'",
+                             "]() => ...', read it with '[const ref " + var +
+                             "]() => ...', or move it into the lambda with '[" +
+                             var + "]() => ...'",
                          lambda.getLocation());
       }
       // An owned capture of a borrow would launder the borrow into a value
@@ -320,8 +318,8 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const LambdaAST& lambda) {
         logAndThrowError(
             "Cannot move '" + var +
                 "' into the lambda: it is a reference, so the value belongs to "
-                "someone else. Capture it with 'lambda [ref " +
-                var + "]' or 'lambda [const ref " + var + "]'",
+                "someone else. Capture it with '[ref " + var +
+                "]() => ...' or '[const ref " + var + "]() => ...'",
             lambda.getLocation());
       }
       // A constant stays constant inside the lambda, however it is captured;

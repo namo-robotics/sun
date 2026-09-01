@@ -322,7 +322,7 @@ TEST(MemorySafety_Const, by_ref_capture_can_read_but_not_write) {
   auto value = executeString(R"(
       function main() i32 {
           const c: i32 = 20;
-          var get = lambda [ref c] () i32 { return c + 1; };
+          var get = [ref c]() => i32 { return c + 1; };
           return get() + c;
       }
     )");
@@ -331,7 +331,7 @@ TEST(MemorySafety_Const, by_ref_capture_can_read_but_not_write) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
       function main() i32 {
           const c: i32 = 20;
-          var set = lambda [ref c] () void { c = 1; };
+          var set = [ref c]() => void { c = 1; };
           set();
           return c;
       }

@@ -233,7 +233,8 @@ class Formatter {
     out_ += '>';
   }
 
-  void printProtoSig(const PrototypeAST& p, bool includeParameters = true) {
+  void printProtoSig(const PrototypeAST& p, bool includeParameters = true,
+                     bool includeReturnType = true) {
     out_ += p.getName();
     if (includeParameters) {
       printTypeParams(p.getTypeParameters(), p.getLifetimeParameters());
@@ -264,11 +265,12 @@ class Formatter {
     out_ += ')';
     // Span-less return types are parser-synthesized (init and deinit get an
     // implicit void); only source-spelled types are printed
-    if (p.getReturnType().has_value() &&
+    if (includeReturnType && p.getReturnType().has_value() &&
         p.getReturnType()->span.endOffset.has_value()) {
       out_ += ' ';
       printType(*p.getReturnType());
-    } else if (p.getReturnType().has_value() && p.getReturnType()->canError) {
+    } else if (includeReturnType && p.getReturnType().has_value() &&
+               p.getReturnType()->canError) {
       // A throwing constructor spells only the error part:
       // init(...) throws IError
       out_ += " throws IError";
@@ -639,13 +641,12 @@ class Formatter {
   }
 
   void printLambda(const LambdaAST& l) {
-    out_ += "lambda";
     printTypeParams(l.getProto().getTypeParameters(),
                     l.getProto().getLifetimeParameters());
-    out_ += ' ';
     const auto& caps = l.getProto().getRefCaptureNames();
     const auto& owned = l.getProto().getOwnedCaptureNames();
     if (!caps.empty() || !owned.empty()) {
+      if (!l.getProto().getLifetimeParameters().empty()) out_ += ' ';
       out_ += "[";
       for (size_t i = 0; i < caps.size(); ++i) {
         if (i) out_ += ", ";
@@ -657,9 +658,12 @@ class Formatter {
         if (i || !caps.empty()) out_ += ", ";
         out_ += owned[i];
       }
-      out_ += "] ";
+      out_ += "]";
     }
-    printProtoSig(l.getProto(), false);  // lambda prototypes have no name
+    // Lambda prototypes have no name. Their return type follows the fat arrow.
+    printProtoSig(l.getProto(), false, false);
+    out_ += " => ";
+    printType(*l.getProto().getReturnType());
     out_ += ' ';
     printBlockAuto(l.getBody());
   }

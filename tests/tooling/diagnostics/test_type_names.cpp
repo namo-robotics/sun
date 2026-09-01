@@ -44,7 +44,7 @@ TEST(Tooling_Diagnostics_TypeNames, lambda_capture_of_moon_class) {
     function main() i32 {
       var alloc = make_heap_allocator();
       var v = Vec<u8>(alloc, 16);
-      var t = spawn(lambda() i64 { return v.length(); });
+      var t = spawn(() => i64 { return v.length(); });
       return 0;
     }
   )");

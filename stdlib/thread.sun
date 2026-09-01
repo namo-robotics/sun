@@ -3,7 +3,7 @@
 // Usage:
 //   using std.thread;
 //
-//   var t = spawn(lambda (n: i32) i32 { return n * 2; }, 21);
+//   var t = spawn((n: i32) => i32 { return n * 2; }, 21);
 //   var answer = t.join();   // 42
 //
 //   var m = Mutex();

@@ -289,6 +289,10 @@ class Parser {
   // Parse a constructor or destructor member: init(args) { } / deinit() { }.
   // They are written without 'public' or 'method' and are always public.
   unique_ptr<FunctionAST> parseLifecycleMethod();
+  // True when the current token begins a fat-arrow lambda. The check restores
+  // all parser state before returning, so parentheses and array literals stay
+  // ordinary expressions when no lambda signature follows.
+  bool isLambdaLiteralStart();
   unique_ptr<LambdaAST> parseLambda();
   unique_ptr<PrototypeAST> parseExtern();
   unique_ptr<StructLiteralAST> parseStructLiteral();

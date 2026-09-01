@@ -320,7 +320,7 @@ TEST(Operators_CompoundAssignment, byref_captured_variable) {
   auto value = executeString(R"(
       function main() i32 {
           var x: i32 = 10;
-          var addFive = lambda [ref x] () void {
+          var addFive = [ref x]() => void {
               x += 5;
           };
           addFive();

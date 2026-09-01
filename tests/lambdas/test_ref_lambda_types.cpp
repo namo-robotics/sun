@@ -24,7 +24,7 @@ TEST(Lambdas_RefLambdaTypes, capturing_lambda_rejected_by_clean_param) {
     }
     function main() i32 {
         var x = 3;
-        return apply(lambda [ref x]() i32 { return x; });
+        return apply([ref x]() => i32 { return x; });
     }
   )"),
                SunError);
@@ -40,7 +40,7 @@ TEST(Lambdas_RefLambdaTypes,
     }
     function main() i32 {
         var x = 3;
-        var f = launder(lambda [ref x]() i32 { return x; });
+        var f = launder([ref x]() => i32 { return x; });
         return f();
     }
   )"),
@@ -75,7 +75,7 @@ TEST(Lambdas_RefLambdaTypes,
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     function main() i32 {
         var x = 3;
-        var f: () -> i32 = lambda [x]() i32 { return x; };
+        var f: () -> i32 = [x]() => i32 { return x; };
         return f();
     }
   )"),
@@ -90,8 +90,8 @@ TEST(Lambdas_RefLambdaTypes, clean_lambda_widens_into_ref_param) {
         return f(x);
     }
     function main() i32 {
-        var f: <'_>() -> i32 = lambda () i32 { return 40; };
-        return f() + apply(lambda (n: i32) i32 { return n; }, 2);
+        var f: <'_>() -> i32 = () => i32 { return 40; };
+        return f() + apply((n: i32) => i32 { return n; }, 2);
     }
   )");
   EXPECT_EQ(value, 42);
@@ -116,7 +116,7 @@ TEST(Lambdas_RefLambdaTypes, ref_param_accepts_and_calls_capturing_values) {
         var c = Counter();
         var base = 30;
         apply(c.add, 5);
-        var viaCapture = apply(lambda [ref base](n: i32) i32 { return base + n; }, 2);
+        var viaCapture = apply([ref base](n: i32) => i32 { return base + n; }, 2);
         return viaCapture + c.count + 2;
     }
   )");
@@ -137,7 +137,7 @@ TEST(Lambdas_RefLambdaTypes, ref_and_throws_widen_together) {
     }
     function main() i32 {
         var k = 40;
-        return run_guarded(lambda [ref k](n: i32) i32 { return k + n; }, 2);
+        return run_guarded([ref k](n: i32) => i32 { return k + n; }, 2);
     }
   )");
   EXPECT_EQ(value, 42);
@@ -151,7 +151,7 @@ TEST(Lambdas_RefLambdaTypes, ref_lambda_type_banned_in_return_position) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     function make() <'_>() -> i32 {
         var x = 3;
-        return lambda [ref x]() i32 { return x; };
+        return [ref x]() => i32 { return x; };
     }
     function main() i32 {
         return 0;
@@ -176,7 +176,7 @@ TEST(Lambdas_RefLambdaTypes, ref_lambda_type_banned_in_nested_return_position) {
 // when the value stored today happens to be environment-free.
 TEST(Lambdas_RefLambdaTypes, global_cannot_have_ref_lambda_type) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
-    var g: <'_>() -> i32 = lambda () i32 { return 0; };
+    var g: <'_>() -> i32 = () => i32 { return 0; };
     function main() i32 {
         return 0;
     }
@@ -198,7 +198,7 @@ TEST(Lambdas_RefLambdaTypes, class_with_ref_field_works_in_frame) {
     }
     function main() i32 {
         var x = 42;
-        var h = Holder(lambda [ref x]() i32 { return x; });
+        var h = Holder([ref x]() => i32 { return x; });
         return h.call();
     }
   )");
@@ -215,7 +215,7 @@ TEST(Lambdas_RefLambdaTypes, class_with_ref_field_cannot_be_returned) {
     }
     function make() Holder {
         var x = 3;
-        return Holder(lambda [ref x]() i32 { return x; });
+        return Holder([ref x]() => i32 { return x; });
     }
     function main() i32 {
         return 0;
@@ -238,7 +238,7 @@ TEST(Lambdas_RefLambdaTypes, frame_carrying_class_cannot_become_interface) {
     }
     function main() i32 {
         var x = 3;
-        var h = Holder(lambda [ref x]() i32 { return x; });
+        var h = Holder([ref x]() => i32 { return x; });
         var i: ICallable = h;
         return i.call();
     }
@@ -251,7 +251,7 @@ TEST(Lambdas_RefLambdaTypes, global_cannot_have_frame_carrying_class_type) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Holder {
         var f: <'_>() -> i32;
-        init() { this.f = lambda () i32 { return 0; }; }
+        init() { this.f = () => i32 { return 0; }; }
     }
     var g = Holder();
     function main() i32 {
@@ -274,7 +274,7 @@ TEST(Lambdas_RefLambdaTypes, generic_class_over_ref_lambda_works_in_frame) {
     }
     function main() i32 {
         var a = 40;
-        var b = Box<<'_>() -> i32>(lambda [ref a]() i32 { return a + 2; });
+        var b = Box<<'_>() -> i32>([ref a]() => i32 { return a + 2; });
         return b.call();
     }
   )");
@@ -301,10 +301,10 @@ TEST(Lambdas_RefLambdaTypes,
         return;
     }
     function main() i32 {
-        var box = Box<<'_>() -> i32>(lambda () i32 { return 0; });
+        var box = Box<<'_>() -> i32>(() => i32 { return 0; });
         if (true) {
             var dead = 42;
-            store(lambda [ref dead]() i32 { return dead; }, box);
+            store([ref dead]() => i32 { return dead; }, box);
         }
         return box.call();
     }
@@ -333,8 +333,8 @@ TEST(Lambdas_RefLambdaTypes,
     }
     function main() i32 {
         var kept = 42;
-        var box = Box<<'_>() -> i32>(lambda () i32 { return 0; });
-        store(lambda [ref kept]() i32 { return kept; }, box);
+        var box = Box<<'_>() -> i32>(() => i32 { return 0; });
+        store([ref kept]() => i32 { return kept; }, box);
         return box.call();
     }
   )");
@@ -352,7 +352,7 @@ TEST(Lambdas_RefLambdaTypes, generic_class_over_ref_lambda_cannot_be_returned) {
     }
     function make() Box<<'_>() -> i32> {
         var x = 3;
-        return Box<<'_>() -> i32>(lambda [ref x]() i32 { return x; });
+        return Box<<'_>() -> i32>([ref x]() => i32 { return x; });
     }
     function main() i32 {
         return 0;
@@ -373,12 +373,12 @@ TEST(Lambdas_RefLambdaTypes, local_capture_cannot_enter_ref_param_object) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Bus {
         var cb: <'_>() -> i32;
-        init() { this.cb = lambda () i32 { return 0; }; }
+        init() { this.cb = () => i32 { return 0; }; }
         public method subscribe(cb: <'this>() -> i32) void { this.cb = cb; return; }
     }
     function evil(bus: ref Bus) void {
         var x = 42;
-        bus.subscribe(lambda [ref x]() i32 { return x; });
+        bus.subscribe([ref x]() => i32 { return x; });
         return;
     }
     function main() i32 {
@@ -395,7 +395,7 @@ TEST(Lambdas_RefLambdaTypes, local_bound_method_cannot_enter_ref_param_object) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Bus {
         var cb: <'_>() -> i32;
-        init() { this.cb = lambda () i32 { return 0; }; }
+        init() { this.cb = () => i32 { return 0; }; }
         public method subscribe(cb: <'this>() -> i32) void { this.cb = cb; return; }
     }
     class Node {
@@ -423,10 +423,10 @@ TEST(Lambdas_RefLambdaTypes, method_local_capture_cannot_enter_this_field) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Bus {
         var cb: <'_>() -> i32;
-        init() { this.cb = lambda () i32 { return 0; }; }
+        init() { this.cb = () => i32 { return 0; }; }
         public method arm() void {
             var x = 3;
-            this.cb = lambda [ref x]() i32 { return x; };
+            this.cb = [ref x]() => i32 { return x; };
             return;
         }
     }
@@ -445,7 +445,7 @@ TEST(Lambdas_RefLambdaTypes, local_bus_subscribes_local_bound_method) {
   auto value = executeString(R"(
     class Bus {
         var cb: <'_>(i32) -> i32;
-        init() { this.cb = lambda (x: i32) i32 { return x; }; }
+        init() { this.cb = (x: i32) => i32 { return x; }; }
         public method subscribe(cb: <'this>(i32) -> i32) void { this.cb = cb; return; }
         public method publish(x: i32) i32 { var f = this.cb; return f(x); }
     }
@@ -475,7 +475,7 @@ TEST(Lambdas_RefLambdaTypes, object_subscribes_its_own_method_via_ref_param) {
   auto value = executeString(R"(
     class Bus<'a> {
         var cb: <'a>(i32) -> i32;
-        init() { this.cb = lambda (x: i32) i32 { return x; }; }
+        init() { this.cb = (x: i32) => i32 { return x; }; }
         public method subscribe(cb: <'a>(i32) -> i32) void { this.cb = cb; return; }
         public method publish(x: i32) i32 { var f = this.cb; return f(x); }
     }
@@ -505,14 +505,14 @@ TEST(Lambdas_RefLambdaTypes,
   EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
     class Bus {
         var cb: <'_>() -> i32;
-        init() { this.cb = lambda () i32 { return 0; }; }
+        init() { this.cb = () => i32 { return 0; }; }
         public method subscribe(cb: <'this>() -> i32) void { this.cb = cb; return; }
     }
     function consume(b: Bus) void { return; }
     function main() i32 {
         var x = 3;
         var bus = Bus();
-        bus.subscribe(lambda [ref x]() i32 { return x; });
+        bus.subscribe([ref x]() => i32 { return x; });
         consume(bus);
         return 0;
     }
@@ -531,8 +531,8 @@ TEST(Lambdas_RefLambdaTypes, clean_and_ref_instantiations_coexist) {
     }
     function main() i32 {
         var a = 20;
-        var bound = Box<<'_>() -> i32>(lambda [ref a]() i32 { return a + 2; });
-        var clean = Box<() -> i32>(lambda () i32 { return 20; });
+        var bound = Box<<'_>() -> i32>([ref a]() => i32 { return a + 2; });
+        var clean = Box<() -> i32>(() => i32 { return 20; });
         return bound.call() + clean.call();
     }
   )");
@@ -568,11 +568,11 @@ TEST(Lambdas_RefLambdaTypes, callback_must_outlive_box) {
     }
 
     function main() i32 {
-        var box = Box(lambda () i32 { return 0; });
+        var box = Box(() => i32 { return 0; });
 
         if (true) {
             var dead = 42;
-            store(lambda [ref dead]() i32 { return dead; }, box);
+            store([ref dead]() => i32 { return dead; }, box);
             // Rejected: `dead` dies before `box`.
         }
 

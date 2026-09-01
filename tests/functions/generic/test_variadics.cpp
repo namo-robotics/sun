@@ -187,8 +187,8 @@ TEST(Functions_Generic_Variadics, type_argument_inferred_from_fixed_arg) {
         return f(args...);
     }
     function main() i32 {
-        var add = lambda (a: i32, b: i32) i32 { return a + b; };
-        var neg = lambda (a: i32) i32 { return 0 - a; };
+        var add = (a: i32, b: i32) => i32 { return a + b; };
+        var neg = (a: i32) => i32 { return 0 - a; };
         return apply(add, 3, 4) + apply(neg, 5);
     }
   )");
@@ -213,7 +213,7 @@ TEST(Functions_Generic_Variadics, lambda_params_arity_mismatch_is_an_error) {
         return f(args...);
     }
     function main() i32 {
-        var add = lambda (a: i32, b: i32) i32 { return a + b; };
+        var add = (a: i32, b: i32) => i32 { return a + b; };
         return apply(add, 3);
     }
   )"),
@@ -301,8 +301,8 @@ TEST(Functions_Generic_Variadics, return_type_of_follows_the_lambda) {
         return f(args...);
     }
     function main() i32 {
-        var add = lambda (a: i32, b: i32) i32 { return a + b; };
-        var one = lambda (a: i32) i32 { return a; };
+        var add = (a: i32, b: i32) => i32 { return a + b; };
+        var one = (a: i32) => i32 { return a; };
         return run(add, 40, 2) - run(one, 1) + 1;
     }
   )");
@@ -317,8 +317,8 @@ TEST(Functions_Generic_Variadics, return_type_of_differs_per_specialization) {
         return f(args...);
     }
     function main() i32 {
-        var small = lambda (a: i32) i32 { return a; };
-        var wide = lambda (a: i64) i64 { return a * 2; };
+        var small = (a: i32) => i32 { return a; };
+        var wide = (a: i64) => i64 { return a * 2; };
         var w: i64 = run(wide, 20);
         return run(small, 2) + _convert<i32>(w);
     }
@@ -339,7 +339,7 @@ TEST(Functions_Generic_Variadics, return_type_of_as_a_type_argument) {
         return Box<_return_type_of<F>>(f(args...));
     }
     function main() i32 {
-        var add = lambda (a: i32, b: i32) i32 { return a + b; };
+        var add = (a: i32, b: i32) => i32 { return a + b; };
         var b = boxed(add, 40, 2);
         return b.v;
     }
@@ -356,7 +356,7 @@ TEST(Functions_Generic_Variadics, return_type_of_a_void_lambda_is_void) {
         return f(args...);
     }
     function main() i32 {
-        var bump = lambda (n: i32) void { counter = counter + n; };
+        var bump = (n: i32) => void { counter = counter + n; };
         run(bump, 40);
         run(bump, 2);
         return counter;

@@ -18,7 +18,7 @@ That is why `produce` and `consume` are plain lambdas at global scope taking a
 clone to one thread, `main` cannot use that clone afterwards, and the thread
 releases it when it finishes.
 
-Capturing still works: `spawn(lambda [ref q] () i32 { … })` borrows `q` for
+Capturing still works: `spawn([ref q]() => i32 { … })` borrows `q` for
 one thread. But two threads cannot borrow the same handle mutably — the second
 is rejected with *cannot borrow 'q' as mutable because it is already borrowed*
 — so passing each thread its own clone is both simpler and what makes two of

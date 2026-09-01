@@ -428,15 +428,15 @@ TEST(Tooling_Fmt, UsingAndDeclare) {
 
 TEST(Tooling_Fmt, LambdaAndCaptures) {
   EXPECT_EQ(fmt("function f() i32 {\n"
-                "var add = lambda (x: i32) i32 { return x + 3; };\n"
+                "var add = (x: i32) => i32 { return x + 3; };\n"
                 "var n: i32 = 1;\n"
-                "var bump = lambda [ref n] () void { n += 1; };\n"
+                "var bump = [ref n]() => void { n += 1; };\n"
                 "return add(1);\n"
                 "}"),
             "function f() i32 {\n"
-            "  var add = lambda (x: i32) i32 { return x + 3; };\n"
+            "  var add = (x: i32) => i32 { return x + 3; };\n"
             "  var n: i32 = 1;\n"
-            "  var bump = lambda [ref n] () void { n += 1; };\n"
+            "  var bump = [ref n]() => void { n += 1; };\n"
             "  return add(1);\n"
             "}\n");
 }
@@ -445,14 +445,35 @@ TEST(Tooling_Fmt, LambdaLifetimeParametersBeforeCaptures) {
   EXPECT_EQ(
       fmt("function f() void {\n"
           "var n=0;\n"
-          "var store=lambda<'a>[ref n](cb: <'a>() -> i32, box: ref 'a Box) "
+          "var store=<'a> [ref n](cb: <'a>() -> i32, box: ref 'a Box) => "
           "void { n += 1; return; };\n"
           "return;\n"
           "}"),
       "function f() void {\n"
       "  var n = 0;\n"
-      "  var store = lambda<'a> [ref n] (cb: <'a>() -> i32, box: ref 'a "
-      "Box) void { n += 1; return; };\n"
+      "  var store = <'a> [ref n](cb: <'a>() -> i32, box: ref 'a "
+      "Box) => void { n += 1; return; };\n"
+      "  return;\n"
+      "}\n");
+}
+
+TEST(Tooling_Fmt, LambdaCanonicalPrefixes) {
+  EXPECT_EQ(
+      fmt("function f() void {\n"
+          "var n=1;\n"
+          "var plain=()=>i32{return 1;};\n"
+          "var owned=[n]()=>i32{return n;};\n"
+          "var shared=[const ref n]()=>i32{return n;};\n"
+          "var lifetime=<'a>(cb: <'a>() -> i32)=><'a>() -> i32{return cb;};\n"
+          "return;\n"
+          "}"),
+      "function f() void {\n"
+      "  var n = 1;\n"
+      "  var plain = () => i32 { return 1; };\n"
+      "  var owned = [n]() => i32 { return n; };\n"
+      "  var shared = [const ref n]() => i32 { return n; };\n"
+      "  var lifetime = <'a>(cb: <'a>() -> i32) => <'a>() -> i32 { return "
+      "cb; };\n"
       "  return;\n"
       "}\n");
 }

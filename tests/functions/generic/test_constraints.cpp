@@ -116,7 +116,7 @@ TEST(Functions_Generic_Constraints, lambda_accepts_a_closure) {
   auto value = executeString(R"(
     function takes<F: _Lambda>(f: F) i32 { return 37; }
     function main() i32 {
-      var g = lambda (x: i32) i32 { return x + 1; };
+      var g = (x: i32) => i32 { return x + 1; };
       return takes(g);
     }
   )");
@@ -139,7 +139,7 @@ TEST(Functions_Generic_Constraints, is_lambda_trait_is_true_for_a_closure) {
   auto value = executeString(R"(
     function check(f: (i32) -> i32) bool { return _is<_Lambda>(f); }
     function main() i32 {
-      var g = lambda (x: i32) i32 { return x; };
+      var g = (x: i32) => i32 { return x; };
       if (check(g)) { return 1; }
       return 0;
     }

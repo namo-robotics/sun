@@ -46,7 +46,6 @@ enum class TokenKind {
   CONTINUE,  // continue keyword for loop control
   RETURN,
   FUNCTION,  // function keyword
-  LAMBDA,    // lambda keyword
   TRY,       // try keyword for error handling
   CATCH,     // catch keyword for exception handling
   THROW,     // throw keyword for throwing exceptions
@@ -171,7 +170,6 @@ static const std::map<TokenKind, std::string> tokenRegexes = {
     {TokenKind::BREAK, "break"},
     {TokenKind::CONTINUE, "continue"},
     {TokenKind::FUNCTION, "function"},
-    {TokenKind::LAMBDA, "lambda"},
     {TokenKind::TRY, "try"},
     {TokenKind::CATCH, "catch"},
     {TokenKind::THROWS, "throws"},  // Must come before throw
@@ -366,7 +364,6 @@ inline const std::map<TokenKind, TokenInfo>& getTokenInfo() {
       {TokenKind::CONTINUE, {"continue"}},
       {TokenKind::RETURN, {"return"}},
       {TokenKind::FUNCTION, {"function"}},
-      {TokenKind::LAMBDA, {"lambda"}},
       {TokenKind::TRY, {"try"}},
       {TokenKind::CATCH, {"catch"}},
       {TokenKind::THROWS, {"throws"}},

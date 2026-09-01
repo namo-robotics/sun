@@ -395,7 +395,7 @@ the scope that started it.
 ```sun
 using std.thread;
 
-var t = spawn(lambda (n: i32) i32 { return n * 2; }, 21);
+var t = spawn((n: i32) => i32 { return n * 2; }, 21);
 var answer = t.join();   // 42
 ```
 
@@ -765,7 +765,7 @@ the response.
 ```sun
 var server = HttpServer(alloc);
 server.bind(8080);
-server.serve(lambda (req: ref HttpRequest, resp: ref HttpResponse) void {
+server.serve((req: ref HttpRequest, resp: ref HttpResponse) => void {
     if (req.path.equals_literal("/")) {
         resp.set_body("<h1>Hello</h1>");
     } else {

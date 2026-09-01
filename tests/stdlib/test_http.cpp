@@ -141,7 +141,7 @@ TEST(Stdlib_Http, server_handler_lambda_compiles) {
         var server = HttpServer(alloc);
         var req = HttpRequest(alloc);
         var resp = HttpResponse(alloc);
-        var handler = lambda (r: ref HttpRequest, w: ref HttpResponse) void {
+        var handler = (r: ref HttpRequest, w: ref HttpResponse) => void {
             w.set_status(404);
         };
         handler(req, resp);

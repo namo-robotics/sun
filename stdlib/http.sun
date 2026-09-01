@@ -10,7 +10,7 @@
 //       var alloc = make_heap_allocator();
 //       var server = HttpServer(alloc);
 //       server.bind(8080);
-//       server.serve(lambda (req: ref HttpRequest, resp: ref HttpResponse) void {
+//       server.serve((req: ref HttpRequest, resp: ref HttpResponse) => void {
 //           if (req.path.equals_literal("/")) {
 //               resp.set_body("<h1>Hello from Sun!</h1>");
 //           } else {

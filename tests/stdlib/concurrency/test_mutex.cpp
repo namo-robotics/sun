@@ -207,7 +207,7 @@ TEST(Stdlib_Concurrency_Mutex, mutex_two_threads_sequential) {
     }
 
     function main() i32 {
-      var t1 = spawn(lambda() i32 {
+      var t1 = spawn(() => i32 {
         var i: i32 = 0;
         while (i < 100) {
           increment();
@@ -216,7 +216,7 @@ TEST(Stdlib_Concurrency_Mutex, mutex_two_threads_sequential) {
         return 0;
       });
       
-      var t2 = spawn(lambda() i32 {
+      var t2 = spawn(() => i32 {
         var i: i32 = 0;
         while (i < 100) {
           increment();
@@ -243,7 +243,7 @@ TEST(Stdlib_Concurrency_Mutex, mutex_three_threads) {
     var mutex: Mutex = Mutex();
 
     function main() i32 {
-      var t1 = spawn(lambda() i32 {
+      var t1 = spawn(() => i32 {
         var i: i32 = 0;
         while (i < 50) {
           mutex.lock();
@@ -254,7 +254,7 @@ TEST(Stdlib_Concurrency_Mutex, mutex_three_threads) {
         return 0;
       });
       
-      var t2 = spawn(lambda() i32 {
+      var t2 = spawn(() => i32 {
         var i: i32 = 0;
         while (i < 50) {
           mutex.lock();
@@ -265,7 +265,7 @@ TEST(Stdlib_Concurrency_Mutex, mutex_three_threads) {
         return 0;
       });
       
-      var t3 = spawn(lambda() i32 {
+      var t3 = spawn(() => i32 {
         var i: i32 = 0;
         while (i < 50) {
           mutex.lock();
@@ -299,7 +299,7 @@ TEST(Stdlib_Concurrency_Mutex, mutex_prevents_races) {
       var mutex: Mutex = Mutex();
 
       function main() i32 {
-        var t1 = spawn(lambda() i32 {
+        var t1 = spawn(() => i32 {
           var i: i32 = 0;
           while (i < 1000) {
             mutex.lock();
@@ -310,7 +310,7 @@ TEST(Stdlib_Concurrency_Mutex, mutex_prevents_races) {
           return 0;
         });
         
-        var t2 = spawn(lambda() i32 {
+        var t2 = spawn(() => i32 {
           var i: i32 = 0;
           while (i < 1000) {
             mutex.lock();

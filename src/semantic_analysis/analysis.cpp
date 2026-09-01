@@ -86,9 +86,9 @@ void SemanticAnalyzer::rejectBorrowOfByValueCapture(const ExprAST& target,
       "Cannot borrow '" + name +
           "': the lambda captures it by value, so the reference would alias "
           "the closure's private copy, not the original. Capture it with "
-          "'lambda [ref " +
-          name + "]' to share the original, or 'lambda [const ref " + name +
-          "]' to read it",
+          "'[ref " +
+          name + "]() => ...' to share the original, or '[const ref " + name +
+          "]() => ...' to read it",
       loc);
 }
 
@@ -895,9 +895,10 @@ void SemanticAnalyzer::checkAnnotationLifetimes(const TypeAnnotation& annot,
     if (std::find(activeLifetimeNames_.begin(), activeLifetimeNames_.end(),
                   name) == activeLifetimeNames_.end()) {
       logAndThrowError("use of undeclared lifetime '" + name +
-                           ". Declare it on a function or lambda (function f<'" +
-                           name + "> or lambda<'" + name +
-                           ">), or on the class (class C<'" + name + ">)",
+                           ". Declare it on a function (function f<'" + name +
+                           ">) or lambda literal (<'" + name +
+                           ">(...) => ...), or on the class (class C<'" + name +
+                           ">)",
                        location);
     }
   };

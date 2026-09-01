@@ -383,14 +383,136 @@ unique_ptr<FunctionAST> Parser::parseLifecycleMethod() {
   return func;
 }
 
-// Parse lambda: lambda<'a> [ref x, const ref y, z] (args) returnType { body }
+// Return whether the current token begins a lambda literal. Parenthesized
+// expressions and array literals share the same opening tokens, so this uses
+// structural lookahead and restores the lexer and parser state before
+// returning.
+bool Parser::isLambdaLiteralStart() {
+  if (curTok.kind != TokenKind::PAREN_OPEN &&
+      curTok.kind != TokenKind::BRACKET_OPEN &&
+      curTok.kind != TokenKind::LESS) {
+    return false;
+  }
+
+  Token savedCurTok = curTok;
+  Token savedPrevTok = prevTok_;
+  auto savedLexerPos = lexer.getPosition();
+  auto savedTokenStack = tokenStack;
+
+  auto restore = [&]() {
+    curTok = savedCurTok;
+    prevTok_ = savedPrevTok;
+    lexer.setPosition(savedLexerPos);
+    tokenStack = savedTokenStack;
+  };
+
+  bool startsDirectlyWithParameters =
+      savedCurTok.kind == TokenKind::PAREN_OPEN;
+  bool hasExplicitPrefix = false;
+
+  // Optional lifetime binder: <'a, 'b>
+  if (curTok.kind == TokenKind::LESS) {
+    hasExplicitPrefix = true;
+    getNextToken();  // eat '<'
+    while (curTok.kind != TokenKind::GREATER &&
+           curTok.kind != TokenKind::TOK_EOF) {
+      getNextToken();
+    }
+    if (curTok.kind != TokenKind::GREATER) {
+      restore();
+      return true;
+    }
+    getNextToken();  // eat '>'
+  }
+
+  // Optional capture list. Validate its small grammar so a numeric array
+  // followed by a call, such as [1](), remains an array expression.
+  if (curTok.kind == TokenKind::BRACKET_OPEN) {
+    bool validCaptureList = true;
+    bool hasCapture = false;
+    getNextToken();  // eat '['
+    while (curTok.kind != TokenKind::BRACKET_CLOSE &&
+           curTok.kind != TokenKind::TOK_EOF) {
+      bool isConst = curTok.kind == TokenKind::CONST;
+      if (isConst) {
+        getNextToken();
+        if (curTok.kind != TokenKind::REF) {
+          validCaptureList = false;
+          break;
+        }
+      }
+      if (curTok.kind == TokenKind::REF) getNextToken();
+      if (curTok.kind != TokenKind::IDENTIFIER) {
+        validCaptureList = false;
+        break;
+      }
+      hasCapture = true;
+      getNextToken();
+      if (curTok.kind == TokenKind::COMMA) {
+        getNextToken();
+      } else if (curTok.kind != TokenKind::BRACKET_CLOSE) {
+        validCaptureList = false;
+        break;
+      }
+    }
+
+    if (!validCaptureList) {
+      int depth = 1;
+      while (depth > 0 && curTok.kind != TokenKind::TOK_EOF) {
+        if (curTok.kind == TokenKind::BRACKET_OPEN) ++depth;
+        if (curTok.kind == TokenKind::BRACKET_CLOSE) --depth;
+        getNextToken();
+      }
+    } else if (curTok.kind == TokenKind::BRACKET_CLOSE) {
+      getNextToken();
+    }
+
+    if (curTok.kind != TokenKind::PAREN_OPEN) {
+      restore();
+      return hasExplicitPrefix;
+    }
+    hasExplicitPrefix =
+        hasExplicitPrefix || (validCaptureList && hasCapture);
+  }
+
+  if (curTok.kind != TokenKind::PAREN_OPEN) {
+    restore();
+    return hasExplicitPrefix;
+  }
+
+  getNextToken();  // eat '('
+  bool emptyParameters =
+      startsDirectlyWithParameters && curTok.kind == TokenKind::PAREN_CLOSE;
+  bool typedParameters = false;
+  if ((startsDirectlyWithParameters || hasExplicitPrefix) &&
+      curTok.kind == TokenKind::IDENTIFIER) {
+    getNextToken();
+    typedParameters = curTok.kind == TokenKind::COLON ||
+                      curTok.kind == TokenKind::ELLIPSIS;
+  }
+
+  // Find the closing parenthesis while allowing callable types in parameter
+  // annotations, such as cb: (i32) -> i32.
+  int depth = 1;
+  while (depth > 0 && curTok.kind != TokenKind::TOK_EOF) {
+    if (curTok.kind == TokenKind::PAREN_OPEN) ++depth;
+    if (curTok.kind == TokenKind::PAREN_CLOSE) --depth;
+    getNextToken();
+  }
+  bool hasFatArrow = depth == 0 && curTok.kind == TokenKind::FAT_ARROW;
+
+  restore();
+  return hasExplicitPrefix || emptyParameters || typedParameters ||
+         hasFatArrow;
+}
+
+// Parse lambda: <'a> [ref x, const ref y, z](args) => returnType { body }
 // An entry that says `ref` borrows: `[ref x]` mutably, `[const ref x]`
 // read-only. An entry that says neither is owned by the closure — a compound
 // value moves in, a scalar copies. Names left out of the list entirely are
 // captured by value, and compound types may not be.
 unique_ptr<LambdaAST> Parser::parseLambda() {
   Position lambdaLoc = captureStart();
-  getNextToken();  // eat 'lambda'
 
   std::vector<LifetimeParameter> lifetimeParameters;
   auto typeParameters = parseTypeParameterList(&lifetimeParameters);
@@ -517,8 +639,16 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
 
   getNextToken();  // eat ')'
 
-  // Check for return type (no arrow, type comes directly after parentheses)
+  if (isLambda) {
+    expectCurrentTokenKind(TokenKind::FAT_ARROW,
+                           "expected '=>' after lambda parameters");
+    getNextToken();  // eat '=>'
+  }
+
+  // Check for return type. Named functions place it directly after their
+  // parameters; lambda literals put it after the fat arrow.
   // Syntax: function foo(args) ReturnType throws IError { ... }
+  //         (args) => ReturnType throws IError { ... }
   // Return type is required for all functions except init and deinit, which
   // never declare one and implicitly return void.
   std::optional<TypeAnnotation> retType;
@@ -985,10 +1115,8 @@ unique_ptr<ExprAST> Parser::parsePrimary() {
     }
     case TokenKind::FUNCTION:
       parsingError(
-          "'function' cannot be used as an expression; use 'lambda' instead");
-      break;
-    case TokenKind::LAMBDA:
-      base = parseLambda();
+          "'function' cannot be used as an expression; use a fat-arrow lambda "
+          "such as '() => i32 { return 0; }' instead");
       break;
     case TokenKind::TRY: {
       // try { ... } catch (e: IError) { ... } syntax
@@ -1834,12 +1962,14 @@ unique_ptr<ExprAST> Parser::parseAssignmentOrExpression() {
 }
 
 unique_ptr<ExprAST> Parser::parseExpression() {
-  // Only lambda can be used as an expression, not function
+  // Named functions are declarations. Lambdas are the function form that can
+  // appear in expression position.
   if (curTok.kind == TokenKind::FUNCTION) {
     parsingError(
-        "'function' cannot be used as an expression; use 'lambda' instead");
+        "'function' cannot be used as an expression; use a fat-arrow lambda "
+        "such as '() => i32 { return 0; }' instead");
   }
-  if (curTok.kind == TokenKind::LAMBDA) {
+  if (isLambdaLiteralStart()) {
     return parseLambda();
   }
 

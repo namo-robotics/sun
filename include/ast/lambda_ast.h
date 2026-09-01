@@ -25,13 +25,41 @@ class LambdaAST : public ExprAST {
     if (Body) Body->forEachChildSlot(fn);
   }
   std::string toString() const override {
-    std::string result = "lambda(";
+    std::string result;
+    const auto& lifetimes = Proto->getLifetimeParameters();
+    if (!lifetimes.empty()) {
+      result += "<";
+      for (size_t i = 0; i < lifetimes.size(); ++i) {
+        if (i > 0) result += ", ";
+        result += lifetimes[i].toString();
+      }
+      result += ">";
+    }
+
+    const auto& refs = Proto->getRefCaptureNames();
+    const auto& owned = Proto->getOwnedCaptureNames();
+    if (!refs.empty() || !owned.empty()) {
+      if (!lifetimes.empty()) result += " ";
+      result += "[";
+      for (size_t i = 0; i < refs.size(); ++i) {
+        if (i > 0) result += ", ";
+        if (Proto->isConstRefCapture(refs[i])) result += "const ";
+        result += "ref " + refs[i];
+      }
+      for (size_t i = 0; i < owned.size(); ++i) {
+        if (i > 0 || !refs.empty()) result += ", ";
+        result += owned[i];
+      }
+      result += "]";
+    }
+
+    result += "(";
     const auto& args = Proto->getArgs();
     for (size_t i = 0; i < args.size(); ++i) {
       if (i > 0) result += ", ";
       result += args[i].first + ": " + args[i].second.toString();
     }
-    result += ")";
+    result += ") =>";
     if (Proto->hasReturnType())
       result += " " + Proto->getReturnType()->toString();
     if (Body) result += " " + Body->toString();

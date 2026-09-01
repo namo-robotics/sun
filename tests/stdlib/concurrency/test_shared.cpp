@@ -250,12 +250,12 @@ TEST(Stdlib_Concurrency_Shared, two_threads_write_one_value) {
       var s = Shared<Counter>(alloc, Counter());
       var c1 = s.clone();
       var c2 = s.clone();
-      var t1 = spawn(lambda [c1]() i32 {
+      var t1 = spawn([c1]() => i32 {
         var i: i64 = 0;
         while (i < 20000) { var g = c1.lock(); g.get().n = g.get().n + 1; i = i + 1; }
         return 0;
       });
-      var t2 = spawn(lambda [c2]() i32 {
+      var t2 = spawn([c2]() => i32 {
         var i: i64 = 0;
         while (i < 20000) { var g = c2.lock(); g.get().n = g.get().n + 1; i = i + 1; }
         return 0;
@@ -281,22 +281,22 @@ TEST(Stdlib_Concurrency_Shared, four_threads_write_one_value) {
       var c2 = s.clone();
       var c3 = s.clone();
       var c4 = s.clone();
-      var t1 = spawn(lambda [c1]() i32 {
+      var t1 = spawn([c1]() => i32 {
         var i: i64 = 0;
         while (i < 5000) { var g = c1.lock(); g.get().n = g.get().n + 1; i = i + 1; }
         return 0;
       });
-      var t2 = spawn(lambda [c2]() i32 {
+      var t2 = spawn([c2]() => i32 {
         var i: i64 = 0;
         while (i < 5000) { var g = c2.lock(); g.get().n = g.get().n + 1; i = i + 1; }
         return 0;
       });
-      var t3 = spawn(lambda [c3]() i32 {
+      var t3 = spawn([c3]() => i32 {
         var i: i64 = 0;
         while (i < 5000) { var g = c3.lock(); g.get().n = g.get().n + 1; i = i + 1; }
         return 0;
       });
-      var t4 = spawn(lambda [c4]() i32 {
+      var t4 = spawn([c4]() => i32 {
         var i: i64 = 0;
         while (i < 5000) { var g = c4.lock(); g.get().n = g.get().n + 1; i = i + 1; }
         return 0;
@@ -321,12 +321,12 @@ TEST(Stdlib_Concurrency_Shared, threads_share_one_handle_by_const_ref) {
     function main() i32 {
       var alloc = make_heap_allocator();
       var s = Shared<Counter>(alloc, Counter());
-      var t1 = spawn(lambda [const ref s]() i32 {
+      var t1 = spawn([const ref s]() => i32 {
         var i: i64 = 0;
         while (i < 20000) { var g = s.lock(); g.get().n = g.get().n + 1; i = i + 1; }
         return 0;
       });
-      var t2 = spawn(lambda [const ref s]() i32 {
+      var t2 = spawn([const ref s]() => i32 {
         var i: i64 = 0;
         while (i < 20000) { var g = s.lock(); g.get().n = g.get().n + 1; i = i + 1; }
         return 0;
@@ -354,7 +354,7 @@ TEST(Stdlib_Concurrency_Shared,
       var s = Shared<Counter>(alloc, Counter());
       if (true) {
         var c = s.clone();
-        var t = spawn(lambda [c]() i32 {
+        var t = spawn([c]() => i32 {
           var i: i64 = 0;
           while (i < 50000) { var g = c.lock(); g.get().n = g.get().n + 1; i = i + 1; }
           return 0;

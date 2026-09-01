@@ -749,7 +749,7 @@ TEST(Modules, moon_ref_lambda_param_survives_round_trip) {
 
     function main() i32 {
         var base = 40;
-        return apply(lambda [ref base](n: i32) i32 { return base + n; }, 2);
+        return apply([ref base](n: i32) => i32 { return base + n; }, 2);
     }
   )");
   EXPECT_EQ(value, 42);
@@ -775,7 +775,7 @@ TEST(Modules, moon_lifetime_param_survives_round_trip) {
 
     function main() i32 {
         var base = 40;
-        return apply(lambda [ref base](n: i32) i32 { return base + n; }, 2);
+        return apply([ref base](n: i32) => i32 { return base + n; }, 2);
     }
   )");
   EXPECT_EQ(value, 42);
@@ -790,7 +790,7 @@ TEST(Modules, moon_class_lifetime_survives_round_trip) {
     public module lifetimebus {
         public class Bus<'a> {
             var cb: <'a>(i32) -> i32;
-            init() { this.cb = lambda (x: i32) i32 { return x; }; }
+            init() { this.cb = (x: i32) => i32 { return x; }; }
             public method subscribe(cb: <'a>(i32) -> i32) void { this.cb = cb; return; }
             public method publish(x: i32) i32 { var f = this.cb; return f(x); }
         }
@@ -839,7 +839,7 @@ TEST(Modules, moon_clean_lambda_param_still_rejects_captures) {
 
     function main() i32 {
         var base = 40;
-        return apply(lambda [ref base](n: i32) i32 { return base + n; }, 2);
+        return apply([ref base](n: i32) => i32 { return base + n; }, 2);
     }
   )"),
                SunError);
