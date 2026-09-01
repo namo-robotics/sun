@@ -7,7 +7,8 @@
 //   classes     the struct layout, each method's signature and body, and the
 //               method closure ABI that gives every method its receiver
 //   interfaces  the vtables behind dynamic dispatch, and the fat pointer
-//               { data, vtable } a class becomes when it is used as one
+//               { data, vtable } a class becomes when it is used as one; an
+//               owning conversion moves the class into stable heap storage
 //   enums       the definition itself; the payload machinery lives in
 //               enums.cpp and the drop glue in scope_manager.cpp
 //   generics    each specialization semantic analysis asked for, emitted
@@ -135,11 +136,17 @@ class ClassGenerator {
   // Interface dispatch
   // ---------------------------------------------------------------
 
-  // Creates a fat pointer { data_ptr, vtable_ptr } for passing a class
-  // instance to an interface-typed parameter.
+  // Creates a borrowed fat pointer { data_ptr, vtable_ptr }. The concrete
+  // object remains in its current owner's storage.
   llvm::Value* createInterfaceFatPointer(llvm::Value* objectPtr,
                                          sun::ClassType* classType,
                                          sun::InterfaceType* ifaceType);
+
+  // Moves a concrete class into heap storage and creates an owning interface
+  // fat pointer. The vtable's final slot drops and frees that erased object.
+  llvm::Value* createOwnedInterfaceFatPointer(
+      llvm::Value* objectPtr, sun::ClassType* classType,
+      sun::InterfaceType* ifaceType);
 
   // Returns the vtable global for a (class, interface) pair, building it on
   // demand if the class was not codegen'd in this module (e.g. an stdlib error
@@ -178,10 +185,22 @@ class ClassGenerator {
   std::map<std::string, const ClassDefinitionAST*> genericClassASTs;
 
   // Vtable globals for interface dispatch, keyed by (class, interface).
-  // Each holds function pointers for the interface's methods in declaration
-  // order.
+  // Each holds method pointers in declaration order, then the concrete drop
+  // routine in its final slot.
   std::map<std::pair<std::string, std::string>, llvm::GlobalVariable*>
       vtableGlobals;
+
+  // Borrowed interface vtables share method slots with owning vtables but end
+  // in a no-op drop routine.
+  std::map<std::pair<std::string, std::string>, llvm::GlobalVariable*>
+      borrowedVtableGlobals;
+
+  llvm::GlobalVariable* getOrCreateBorrowedInterfaceVtable(
+      sun::ClassType* classType, sun::InterfaceType* ifaceType);
+
+  // Emits the type-specific routine that destroys and frees an erased object.
+  llvm::Function* getOrCreateInterfaceDropFunction(
+      sun::ClassType* classType);
 
   // Declare every method of one class (no bodies)
   void declareClassMethods(const ClassDefinitionAST& expr,

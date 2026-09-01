@@ -41,6 +41,16 @@ Value* CodegenVisitor::applyMoveSemantics(Value* argVal,
     return structVal;
   }
 
+  // Interface values move their two-pointer owner handle as one value. Clearing
+  // the source makes any later scope drop a no-op.
+  if (argSunType->isInterface()) {
+    StructType* fatType =
+        sun::InterfaceType::getFatPointerType(ctx.getContext());
+    Value* fat = ctx.builder->CreateLoad(fatType, argVal, "move.interface");
+    ctx.builder->CreateStore(Constant::getNullValue(fatType), argVal);
+    return fat;
+  }
+
   // Only apply move semantics to class types that are pointers (addressable)
   auto* classType = sun::tryGetType<sun::ClassType>(argSunType);
   if (!classType) return argVal;
@@ -232,18 +242,19 @@ Value* CodegenVisitor::materializeStructReturn(Value* callResult) {
     return callResult;
   }
 
-  // Check that it's not a well-known internal struct type
-  // (closure, static_ptr, interface_fat, array_struct)
+  // Non-owning internal structs stay as values. An owning interface return is
+  // materialized so normal compound move and drop tracking can address it.
   if (structType->hasName()) {
     StringRef name = structType->getName();
     for (const auto& info : sun::StructNames::All) {
       if (name == info.name) {
+        if (name == sun::StructNames::InterfaceFat) break;
         return callResult;
       }
     }
   }
 
-  // This is a compound type (class) returned by value
+  // This is an owning compound type returned by value.
   // Store it to the caller's stack and return a pointer for addressability
   Function* currentFunc = ctx.builder->GetInsertBlock()->getParent();
   AllocaInst* resultAlloca =
@@ -905,6 +916,17 @@ bool CodegenVisitor::emitCallArguments(
       }
 
       case sun::ArgConversion::ClassToInterface: {
+        argVal = codegen(*argExpr);
+        if (!argVal) return false;
+        auto* classType =
+            static_cast<sun::ClassType*>(sun::unwrapRef(argSunType).get());
+        auto* ifaceType = static_cast<sun::InterfaceType*>(paramType.get());
+        argVal = classes.createOwnedInterfaceFatPointer(
+            argVal, classType, ifaceType);
+        break;
+      }
+
+      case sun::ArgConversion::BorrowedClassToInterface: {
         argVal = codegen(*argExpr);
         if (!argVal) return false;
         auto* classType =

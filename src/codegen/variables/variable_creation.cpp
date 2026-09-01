@@ -257,40 +257,36 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
     sun::TypePtr valueSunType =
         sun::unwrapRef(expr.getValue()->getResolvedType());
 
-    // Case 1: Class to interface conversion - create fat pointer
+    // A concrete value is moved into stable storage owned by the interface.
     if (auto* classType = sun::tryGetType<sun::ClassType>(valueSunType)) {
-      // value is the object pointer (alloca or struct pointer)
-      Value* fatPtr =
-          classes().createInterfaceFatPointer(value, classType, ifaceType);
+      Value* fatPtr = classes().createOwnedInterfaceFatPointer(
+          value, classType, ifaceType);
       if (!fatPtr) return nullptr;
 
-      // Create alloca for the fat pointer and store it
       AllocaInst* alloca =
           createEntryBlockAlloca(func, expr.getName(), fatPtr->getType());
       ctx.builder->CreateStore(fatPtr, alloca);
       scope[expr.getName()] = alloca;
       debugDeclareLocal(alloca, expr.getName(), varSunType, expr.getLocation());
+      scopes().trackClassAllocation(alloca, expr.getName(), varSunType);
       return fatPtr;
     }
 
-    // Case 2: Interface to interface (already a fat pointer)
-    // Value may be a pointer (from materialized struct return) or struct value
+    // An interface source transfers its existing erased owner.
     if (valueSunType && valueSunType->isInterface()) {
       llvm::StructType* fatPtrType =
           sun::InterfaceType::getFatPointerType(ctx.getContext());
       Value* fatPtrVal = value;
-
-      // If value is a pointer, load the fat pointer struct
       if (value->getType()->isPointerTy()) {
-        fatPtrVal = ctx.builder->CreateLoad(fatPtrType, value, "iface.load");
+        fatPtrVal = gen_.applyMoveSemantics(value, valueSunType);
       }
 
-      // Create alloca for the fat pointer and store it
       AllocaInst* alloca =
           createEntryBlockAlloca(func, expr.getName(), fatPtrType);
       ctx.builder->CreateStore(fatPtrVal, alloca);
       scope[expr.getName()] = alloca;
       debugDeclareLocal(alloca, expr.getName(), varSunType, expr.getLocation());
+      scopes().trackClassAllocation(alloca, expr.getName(), varSunType);
       return fatPtrVal;
     }
   }

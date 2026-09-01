@@ -47,7 +47,8 @@ bool isPayloadEnum(const TypePtr& type) {
 // by read get this far, checked by isAssignableTo).
 ArgConversion byValue(const TypePtr& argType) {
   if (argType->isReference()) return ArgConversion::PassValue;
-  if (argType->isClass() || isPayloadEnum(argType)) return ArgConversion::Move;
+  if (argType->isClass() || argType->isInterface() || isPayloadEnum(argType))
+    return ArgConversion::Move;
   return ArgConversion::PassValue;
 }
 
@@ -65,6 +66,8 @@ const char* toString(ArgConversion conversion) {
       return "raw pointer as reference";
     case ArgConversion::ClassToInterface:
       return "class to interface";
+    case ArgConversion::BorrowedClassToInterface:
+      return "borrowed class to interface";
     case ArgConversion::ClassToRefInterface:
       return "class to ref interface";
     case ArgConversion::WidenNumeric:
@@ -115,7 +118,9 @@ std::optional<ArgConversion> classifyArgument(const TypePtr& argType,
   }
 
   if (paramType->isInterface() && value && value->isClass()) {
-    return ArgConversion::ClassToInterface;
+    return argType->isReference()
+               ? ArgConversion::BorrowedClassToInterface
+               : ArgConversion::ClassToInterface;
   }
 
   if (argType->isStaticPointer() && paramType->isRawPointer()) {

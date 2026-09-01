@@ -726,9 +726,11 @@ Value* ClassGenerator::codegen(const MemberAccessAST& expr) {
     Value* fieldPtr = layout::fieldPtr(*ctx.builder, classType, objectPtr,
                                        *field, memberName);
 
-    // For class-typed and payload-enum fields (embedded structs), return the
-    // pointer to the embedded struct (struct values in Sun are pointers)
-    if (field->type->isClass() || CodegenVisitor::isPayloadEnum(field->type)) {
+    // For compound fields carried by address, return their storage pointer.
+    // Interface dispatch loads its fat pointer from that address, just as it
+    // does for interface locals, parameters and globals.
+    if (field->type->isClass() || field->type->isInterface() ||
+        CodegenVisitor::isPayloadEnum(field->type)) {
       return fieldPtr;
     }
 
@@ -984,6 +986,32 @@ Value* ClassGenerator::codegen(const MemberAssignmentAST& expr) {
         return;
     }
   };
+
+  // Interface fields own the complete { data, vtable } value. A concrete
+  // source moves into a stable erased box; an interface source transfers its
+  // existing owner and is cleared.
+  if (auto* fieldInterfaceType =
+          sun::tryGetType<sun::InterfaceType>(field->type)) {
+    if (value == fieldPtr) return value;
+
+    Value* fatPtrValue = value;
+    sun::TypePtr sourceType = sun::unwrapRef(valueSunType);
+    if (auto* sourceClassType = sun::tryGetType<sun::ClassType>(sourceType)) {
+      fatPtrValue = createOwnedInterfaceFatPointer(
+          value, sourceClassType, fieldInterfaceType);
+      if (!fatPtrValue) return nullptr;
+    } else if (sourceType && sourceType->isInterface() &&
+               value->getType()->isPointerTy()) {
+      fatPtrValue = gen_.applyMoveSemantics(value, sourceType);
+    }
+
+    dropOverwrittenValue();
+    ctx.builder->CreateAlignedStore(
+        fatPtrValue, fieldPtr,
+        layout::fieldAlign(classType, fieldLLVMType,
+                           module->getDataLayout()));
+    return fatPtrValue;
+  }
 
   // Payload-enum fields: the value arrives as a storage pointer. Drop the
   // overwritten field first, then MOVE the source in — never an implicit

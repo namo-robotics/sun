@@ -357,8 +357,8 @@ Value* VariableGenerator::codegen(const VariableAssignmentAST& expr) {
   logAndThrowError("Unknown variable name in assignment: " + expr.getName());
 }
 
-// Compound values reach here as an address (codegen of a class or payload-enum
-// expression yields the object's storage, not the struct). Storing that address
+// Compound values reach here as an address (class, interface, or payload-enum
+// expressions yield their storage, not the struct). Storing that address
 // would write a pointer over the object's leading bytes — silently, since a
 // two-word class is exactly pointer-sized. Instead the overwritten value is
 // dropped (it reaches the end of its life here, exactly as at scope exit) and
@@ -370,7 +370,8 @@ void VariableGenerator::assignToVariableSlot(Value* slot, Value* value,
                                              const std::string& name) {
   bool compound =
       varType &&
-      (varType->isClass() || CodegenVisitor::isPayloadEnum(varType)) &&
+      (varType->isClass() || varType->isInterface() ||
+       CodegenVisitor::isPayloadEnum(varType)) &&
       value->getType()->isPointerTy();
   if (compound) {
     // Self-assignment would drop the object and then copy from the corpse;

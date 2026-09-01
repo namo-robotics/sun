@@ -79,6 +79,30 @@ class Person implements Named {
 }
 ```
 
+A class can also store an interface value and dispatch through the stored
+implementation:
+
+```sun
+interface Handler {
+    method handle(value: i32) i32;
+}
+
+class Doubler implements Handler {
+    init() {}
+    method handle(value: i32) i32 { return value * 2; }
+}
+
+class Service {
+    var handler: Handler;
+    init() { this.handler = Doubler(); }
+    method run(value: i32) i32 { return this.handler.handle(value); }
+}
+```
+
+Assigning `Doubler()` moves the concrete value into the interface field. The
+implementation stays alive for dynamic dispatch and is dropped when the field
+is replaced or when its owning `Service` is dropped.
+
 ## Default Implementations
 
 Interfaces can provide default method implementations:
