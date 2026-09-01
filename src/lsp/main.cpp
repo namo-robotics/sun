@@ -726,6 +726,73 @@ std::vector<int> computeSemanticTokens(const std::string& source) {
   return data;
 }
 
+// Add one diagnostic for a message and the place it points at. A location in
+// this document is marked where it happened; one in another file (a manifest
+// sibling, or a library body instantiated from a bundle) is shown at the top
+// of this document, naming where it came from.
+void appendDiagnostic(llvm::json::Array& diagnostics,
+                      const OpenDocument& document, const std::string& message,
+                      const std::optional<Position>& location, int severity,
+                      const std::string& knownSourceLine = "") {
+  bool isFromCurrentFile = true;
+  if (location && location->filePath) {
+    isFromCurrentFile =
+        normalizePath(*location->filePath) == normalizePath(document.path);
+  }
+
+  llvm::json::Object diagnostic;
+  diagnostic["severity"] = severity;
+  diagnostic["source"] = "sun";
+
+  if (!isFromCurrentFile) {
+    diagnostic["range"] = makeRange(0, 0, 0, 1);
+    diagnostic["message"] = *location->filePath + ":" +
+                            std::to_string(location->line) + ": " + message;
+    diagnostics.push_back(std::move(diagnostic));
+    return;
+  }
+
+  int startLine = 0;
+  int startCharacter = 0;
+  int endLine = 0;
+  int endCharacter = 1;
+
+  if (location) {
+    startLine = std::max(0, location->line - 1);
+    startCharacter = std::max(0, location->column - 1);
+
+    // Use end position if available, otherwise calculate from source
+    if (location->hasEnd()) {
+      endLine = std::max(0, *location->endLine - 1);
+      endCharacter = std::max(0, *location->endColumn - 1);
+    } else {
+      endLine = startLine;
+      // Span the word at the column, so the squiggle covers the whole name
+      std::string sourceLine = knownSourceLine;
+      if (sourceLine.empty()) {
+        sourceLine = SourceManager::instance().getLine(*location);
+      }
+      int tokenLength = 1;
+      if (!sourceLine.empty() &&
+          startCharacter < static_cast<int>(sourceLine.size())) {
+        size_t pos = static_cast<size_t>(startCharacter);
+        while (pos < sourceLine.size() &&
+               (std::isalnum(static_cast<unsigned char>(sourceLine[pos])) ||
+                sourceLine[pos] == '_')) {
+          pos++;
+        }
+        tokenLength = std::max(1, static_cast<int>(pos) - startCharacter);
+      }
+      endCharacter = startCharacter + tokenLength;
+    }
+  }
+
+  diagnostic["range"] =
+      makeRange(startLine, startCharacter, endLine, endCharacter);
+  diagnostic["message"] = message;
+  diagnostics.push_back(std::move(diagnostic));
+}
+
 llvm::json::Array analyzeDiagnostics(const OpenDocument& document) {
   // Compute content hash for caching
   // Include entrypoint info in hash to invalidate when context changes
@@ -768,68 +835,21 @@ llvm::json::Array analyzeDiagnostics(const OpenDocument& document) {
       driver->compileString(document.text, document.path);
     }
   } catch (const SunError& error) {
-    int startLine = 0;
-    int startCharacter = 0;
-    int endLine = 0;
-    int endCharacter = 1;
-
-    // Check if error is from current file or has no file info
-    bool isFromCurrentFile = true;
-    if (error.getLocation() && error.getLocation()->filePath) {
-      const std::string& errorFile = *error.getLocation()->filePath;
-      isFromCurrentFile =
-          normalizePath(errorFile) == normalizePath(document.path);
+    // An editor shows no label of its own, so the borrow checker's — the one
+    // label that names the pass rather than repeating "error" — leads the
+    // message
+    std::string message = error.getMessage();
+    if (error.getKind() == SunError::Kind::Borrow) {
+      message = error.getLabel() + ": " + message;
     }
-
-    if (isFromCurrentFile) {
-      if (error.getLocation()) {
-        const Position& location = *error.getLocation();
-        startLine = std::max(0, location.line - 1);
-        startCharacter = std::max(0, location.column - 1);
-
-        // Use end position if available, otherwise calculate from source
-        if (location.hasEnd()) {
-          endLine = std::max(0, *location.endLine - 1);
-          endCharacter = std::max(0, *location.endColumn - 1);
-        } else {
-          endLine = startLine;
-          // Calculate token length from source line as fallback
-          const std::string& sourceLine = error.getSourceLine();
-          int tokenLength = 1;
-          if (!sourceLine.empty() &&
-              startCharacter < static_cast<int>(sourceLine.size())) {
-            size_t pos = static_cast<size_t>(startCharacter);
-            while (pos < sourceLine.size() &&
-                   (std::isalnum(static_cast<unsigned char>(sourceLine[pos])) ||
-                    sourceLine[pos] == '_')) {
-              pos++;
-            }
-            tokenLength = std::max(1, static_cast<int>(pos) - startCharacter);
-          }
-          endCharacter = startCharacter + tokenLength;
-        }
-      }
-
-      llvm::json::Object diagnostic;
-      diagnostic["range"] =
-          makeRange(startLine, startCharacter, endLine, endCharacter);
-      diagnostic["severity"] = 1;
-      diagnostic["source"] = "sun";
-      diagnostic["message"] = error.getMessage();
-      diagnostics.push_back(std::move(diagnostic));
-    } else {
-      // An error in another file (a manifest sibling, or a library body
-      // instantiated from a bundle) is shown at the top of this document,
-      // naming where it came from
-      const Position& location = *error.getLocation();
-      llvm::json::Object diagnostic;
-      diagnostic["range"] = makeRange(0, 0, 0, 1);
-      diagnostic["severity"] = 1;
-      diagnostic["source"] = "sun";
-      diagnostic["message"] = *location.filePath + ":" +
-                              std::to_string(location.line) + ": " +
-                              error.getMessage();
-      diagnostics.push_back(std::move(diagnostic));
+    appendDiagnostic(diagnostics, document, message, error.getLocation(),
+                     /*severity=*/1, error.getSourceLine());
+    // A pass that finds several problems at once (the borrow checker) lists
+    // the rest on the error, each with its own place in the source
+    for (const auto& related : error.getRelated()) {
+      int severity = related.level == RelatedDiagnostic::Level::Error ? 1 : 3;
+      appendDiagnostic(diagnostics, document, related.message, related.location,
+                       severity);
     }
   } catch (const std::exception& error) {
     llvm::json::Object diagnostic;

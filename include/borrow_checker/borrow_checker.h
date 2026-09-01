@@ -13,6 +13,7 @@
 #include "borrow_checker/borrow_state.h"
 #include "borrow_checker/loan.h"
 #include "semantic_analysis/types.h"
+#include "support/error.h"
 
 namespace sun {
 
@@ -25,6 +26,13 @@ struct BorrowError {
   std::vector<Position>
       relatedLocations;  // Where conflicting borrows occurred
 };
+
+/// Turn the borrow errors of one compilation into the single error the driver
+/// throws. The first error gives the message and location; every other error
+/// and related borrow rides along as a related diagnostic, so printing the
+/// error shows them all with carets and a tool catching it (the language
+/// server) can point at each one in the source. Requires a non-empty list.
+SunError buildBorrowCheckError(const std::vector<BorrowError>& errors);
 
 /// Main borrow checker class
 /// Validates reference safety by tracking borrows across the AST

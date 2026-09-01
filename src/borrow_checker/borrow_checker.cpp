@@ -291,8 +291,7 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
       init = static_cast<const ParenExprAST&>(*init).getInner();
     }
     if (init->getType() == ASTNodeType::CALL) {
-      borrowRefCallInputs(var.getName(),
-                          static_cast<const CallExprAST&>(*init),
+      borrowRefCallInputs(var.getName(), static_cast<const CallExprAST&>(*init),
                           isMutableRef(declaredType), var.getLocation());
     } else if (init->getType() == ASTNodeType::VARIABLE_REFERENCE) {
       checkBorrowBinding(var.getName(), *init, isMutableRef(declaredType),
@@ -341,7 +340,8 @@ void BorrowChecker::checkVariableCreation(const VariableCreationAST& var) {
         reportError("cannot store reference with local lifetime in variable '" +
                         var.getName() +
                         "' - the referenced value will be destroyed after this "
-                        "statement", pos);
+                        "statement",
+                    pos);
       }
     }
   }
@@ -409,7 +409,8 @@ void BorrowChecker::checkBorrowBinding(const std::string& refName,
     if (targetInfo.sourceBorrowKind == BorrowKind::Shared &&
         kind == BorrowKind::Mutable) {
       reportError("cannot create mutable reference '" + refName +
-                      "' from immutable reference '" + *targetVarName + "'", refPos);
+                      "' from immutable reference '" + *targetVarName + "'",
+                  refPos);
       return;
     }
     // Downgrade: if source is immutable, new ref must also be immutable
@@ -428,8 +429,7 @@ void BorrowChecker::checkBorrowBinding(const std::string& refName,
                                  currentScope_, refPos);
 
   if (!result.allowed) {
-    reportConflict(result.errorMessage, refPos,
-                   result.conflictingLoan);
+    reportConflict(result.errorMessage, refPos, result.conflictingLoan);
   } else {
     // Track this reference with its borrow kind
     refVariables_[refName] = {targetInfo.actualTarget, kind};
@@ -443,8 +443,8 @@ void BorrowChecker::checkBorrowBinding(const std::string& refName,
 // that is already a ref (a ref variable or ref parameter) is a reborrow: the
 // loan it made governs the storage, so no new loan is taken.
 void BorrowChecker::borrowRefCallInputs(const std::string& refName,
-                                        const CallExprAST& call,
-                                        bool isMutable, const Position& refPos) {
+                                        const CallExprAST& call, bool isMutable,
+                                        const Position& refPos) {
   BorrowKind kind = isMutable ? BorrowKind::Mutable : BorrowKind::Shared;
   bool tracked = false;
 
@@ -461,8 +461,7 @@ void BorrowChecker::borrowRefCallInputs(const std::string& refName,
       auto result = state_.addBorrow(targetInfo.actualTarget, refName, kind,
                                      currentScope_, refPos);
       if (!result.allowed) {
-        reportConflict(result.errorMessage, refPos,
-                       result.conflictingLoan);
+        reportConflict(result.errorMessage, refPos, result.conflictingLoan);
         return;
       }
     }
@@ -509,8 +508,7 @@ void BorrowChecker::checkVariableWrite(const std::string& varName,
     // Assigning through a reference
     auto result = state_.canMutateThroughRef(varName);
     if (!result.allowed) {
-      reportConflict(result.errorMessage, pos,
-                     result.conflictingLoan);
+      reportConflict(result.errorMessage, pos, result.conflictingLoan);
     }
   } else if (refTypedParams_.count(varName)) {
     // This is a reference parameter - assigning through it
@@ -527,8 +525,7 @@ void BorrowChecker::checkVariableWrite(const std::string& varName,
       if (valueType && valueType->isCompound()) {
         auto result = state_.canMutateDirectly(varName);
         if (!result.allowed) {
-          reportConflict(result.errorMessage, pos,
-                         result.conflictingLoan);
+          reportConflict(result.errorMessage, pos, result.conflictingLoan);
         }
       }
     }
@@ -550,7 +547,9 @@ void BorrowChecker::checkVariableAssignment(
         reportError(
             "cannot assign this value to '" + varName +
                 "' - it holds a lambda whose captured environment lives in "
-                "this frame, and '" + varName + "' outlives it. Give the "
+                "this frame, and '" +
+                varName +
+                "' outlives it. Give the "
                 "lambda its data as arguments instead of captures",
             assign.getLocation());
       } else if (checkFrameStoreDepth(varName, envDepth,
@@ -570,7 +569,8 @@ void BorrowChecker::checkVariableAssignment(
         reportError(
             "cannot store this lambda in '" + varName +
                 "' - its captured environment lives in this frame, and '" +
-                varName + "' outlives it. Give the lambda its data as "
+                varName +
+                "' outlives it. Give the lambda its data as "
                 "arguments instead of captures",
             assign.getLocation());
       } else if (checkFrameStoreDepth(varName, envDepth,
@@ -589,12 +589,12 @@ void BorrowChecker::checkVariableAssignment(
           nameOutlivesFrame(varName)) {
         LifetimeValue dst = destLifetimeValueForName(varName);
         if (!lifetimeValueOutlives(env, dst)) {
-          reportError(
-              "cannot store this value in '" + varName +
-                  "' - its type ties it to lifetime '" + env.name +
-                  ", and nothing says '" + varName + "' dies first. Give "
-                  "the destination the same lifetime",
-              assign.getLocation());
+          reportError("cannot store this value in '" + varName +
+                          "' - its type ties it to lifetime '" + env.name +
+                          ", and nothing says '" + varName +
+                          "' dies first. Give "
+                          "the destination the same lifetime",
+                      assign.getLocation());
         }
       }
     }
@@ -602,8 +602,7 @@ void BorrowChecker::checkVariableAssignment(
     // A ref-storing class value must not land in a holder declared in an
     // outer scope than what it borrows (issue #178, Rule 5's gap).
     trackRefHolderStore(
-        varName,
-        nameOutlivesFrame(varName) ? 0 : lookupDeclDepth(varName),
+        varName, nameOutlivesFrame(varName) ? 0 : lookupDeclDepth(varName),
         *assign.getValue(), assign.getLocation());
   }
 
@@ -634,10 +633,10 @@ void BorrowChecker::checkVariableAssignment(
   movedVariables_.erase(varName);
   clearFieldPaths(varName);
 
-  checkVariableWrite(varName,
-                     assign.getValue() ? assign.getValue()->getResolvedType()
-                                       : nullptr,
-                     assign.getLocation());
+  checkVariableWrite(
+      varName,
+      assign.getValue() ? assign.getValue()->getResolvedType() : nullptr,
+      assign.getLocation());
 }
 
 void BorrowChecker::checkCompoundAssignment(
@@ -654,8 +653,7 @@ void BorrowChecker::checkCompoundAssignment(
   // ... and written
   if (assign.getTarget()->getType() == ASTNodeType::VARIABLE_REFERENCE) {
     checkVariableWrite(
-        static_cast<const VariableReferenceAST&>(*assign.getTarget())
-            .getName(),
+        static_cast<const VariableReferenceAST&>(*assign.getTarget()).getName(),
         assign.getTarget()->getResolvedType(),
         assign.getTarget()->getLocation());
   }
@@ -670,7 +668,8 @@ void BorrowChecker::checkVariableReference(const VariableReferenceAST& varRef) {
   if (movedVariables_.count(name)) {
     const auto& pos = varRef.getLocation();
     reportError("use of moved variable '" + name +
-                    "'. Ownership was transferred in a previous assignment.", pos);
+                    "'. Ownership was transferred in a previous assignment.",
+                pos);
   }
 
   // Using the object as a whole (a by-value move, a borrow, a method call)
@@ -785,9 +784,8 @@ void BorrowChecker::checkErasedLifetimeLambdaArgs(
   const ExprAST* callee = call.getCallee();
   if (callee && callee->getType() == ASTNodeType::MEMBER_ACCESS) {
     const auto& access = static_cast<const MemberAccessAST&>(*callee);
-    const std::string* base = access.getObject()
-                                  ? getBaseVariableName(*access.getObject())
-                                  : nullptr;
+    const std::string* base =
+        access.getObject() ? getBaseVariableName(*access.getObject()) : nullptr;
     if (base) checkDestination(*base, call.getLocation());
   }
 
@@ -879,16 +877,15 @@ void BorrowChecker::checkCallExpr(const CallExprAST& call) {
         auto targetInfo = resolveRefTarget(*base);
         if (targetInfo.isRebind) continue;  // reborrow: original loan governs
         const auto& argPos = args[i]->getLocation();
-        std::string holder = "$refholder@" + std::to_string(argPos.line) +
-                             ":" + std::to_string(argPos.column);
-        auto result = state_.addBorrow(
-            targetInfo.actualTarget, holder,
-            isMutableRef(paramTypes[i]) ? BorrowKind::Mutable
-                                        : BorrowKind::Shared,
-            currentScope_, argPos);
+        std::string holder = "$refholder@" + std::to_string(argPos.line) + ":" +
+                             std::to_string(argPos.column);
+        auto result =
+            state_.addBorrow(targetInfo.actualTarget, holder,
+                             isMutableRef(paramTypes[i]) ? BorrowKind::Mutable
+                                                         : BorrowKind::Shared,
+                             currentScope_, argPos);
         if (!result.allowed) {
-          reportConflict(result.errorMessage, argPos,
-                         result.conflictingLoan);
+          reportConflict(result.errorMessage, argPos, result.conflictingLoan);
         }
       }
     }
@@ -1085,7 +1082,8 @@ bool BorrowChecker::checkMoveAllowed(const std::string& name,
   if (frozenDiscriminants_.count(name)) {
     reportError("cannot move '" + name +
                     "' while it is being matched — its payloads are borrowed "
-                    "by the match arms", pos);
+                    "by the match arms",
+                pos);
     return false;
   }
   return true;
@@ -1189,9 +1187,10 @@ void BorrowChecker::recordMove(const std::string& place, const Position& pos) {
   std::string base = place.substr(0, place.find('.'));
   auto loans = state_.getActiveLoans(base);
   if (!loans.empty()) {
-    std::string why = base == place ? "it is borrowed"
-                                    : "'" + base + "' is borrowed";
-    reportConflict("cannot move out of '" + place + "' because " + why, pos, loans.front());
+    std::string why =
+        base == place ? "it is borrowed" : "'" + base + "' is borrowed";
+    reportConflict("cannot move out of '" + place + "' because " + why, pos,
+                   loans.front());
     return;  // not marked moved: keep follow-on errors focused on this one
   }
   movedVariables_.insert(place);
@@ -1239,7 +1238,8 @@ void BorrowChecker::checkLoopBody(const ExprAST* body,
                     "' is moved inside a loop, so the next iteration would "
                     "use what is already gone. Move it once outside the loop, "
                     "borrow it with 'ref', copy it with clone(), or assign a "
-                    "value back into it before the iteration ends", pos);
+                    "value back into it before the iteration ends",
+                pos);
     // Reported once: let the rest of the function check against a whole value
     movedVariables_.erase(place);
     moveLocations_.erase(place);
@@ -1253,7 +1253,8 @@ bool BorrowChecker::checkFieldsIntact(const std::string& name,
   reportError("cannot use '" + name + "' as a whole: its field '" + *moved +
                   "' was moved out. Assign a value back into " + *moved +
                   " first, or borrow the field with 'ref' instead of moving "
-                  "it", pos);
+                  "it",
+              pos);
   return false;
 }
 
@@ -1325,9 +1326,8 @@ void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
   bool returnMatchesNamedLifetime = false;
   if (!returnLifetimeName_.empty()) {
     LifetimeValue env = inferEnvLifetimeValue(*value);
-    returnMatchesNamedLifetime =
-        env.kind == LifetimeValue::Kind::Symbolic &&
-        env.name == returnLifetimeName_;
+    returnMatchesNamedLifetime = env.kind == LifetimeValue::Kind::Symbolic &&
+                                 env.name == returnLifetimeName_;
   }
 
   // A lambda whose environment is bound to this frame must not escape through
@@ -1336,7 +1336,8 @@ void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
     const auto& pos = ret.getLocation();
     reportError(
         "cannot return a lambda with a capture list - its captured "
-        "environment lives in this frame and dies when the function returns", pos);
+        "environment lives in this frame and dies when the function returns",
+        pos);
   }
 
   // The same escape one step removed: a value such a lambda was moved into
@@ -1347,7 +1348,8 @@ void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
         "cannot return this value - it holds a lambda whose captured "
         "environment lives in this frame and dies when the function returns. "
         "Use it in this scope, or give the lambda its data as arguments "
-        "instead of captures", ret.getLocation());
+        "instead of captures",
+        ret.getLocation());
   }
 
   // Check lifetime safety for reference returns
@@ -1368,7 +1370,8 @@ void BorrowChecker::checkReturnStmt(const ReturnExprAST& ret) {
     reportError(
         "cannot return a value that stores references or a '<'_>' lambda - "
         "what it points into lives in this frame and dies when the function "
-        "returns", pos);
+        "returns",
+        pos);
   }
   if (retType && retType->isCompound() && !currentFunctionReturnsRef_) {
     // Mark temporaries as moved (ownership transferred to caller)
@@ -1452,8 +1455,7 @@ void BorrowChecker::checkFunctionDef(const FunctionAST& func) {
     }
     if (argType.isReference() && argType.elementType &&
         !argType.elementType->lifetimeArguments.empty()) {
-      refParamClassBindings_[argName] =
-          argType.elementType->lifetimeArguments;
+      refParamClassBindings_[argName] = argType.elementType->lifetimeArguments;
     }
   }
   if (proto.hasReturnType() && proto.getReturnType()->isLambda() &&
@@ -1500,8 +1502,8 @@ bool BorrowChecker::isFrameBoundExpr(const ExprAST& expr) const {
   // A literal holding a frame-bound element is frame-bound as a whole
   // (checkExpr never descends into literals, so recurse here)
   if (e->getType() == ASTNodeType::ARRAY_LITERAL) {
-    for (const auto& elem : static_cast<const ArrayLiteralAST&>(*e)
-                                .getElements()) {
+    for (const auto& elem :
+         static_cast<const ArrayLiteralAST&>(*e).getElements()) {
       if (elem && isFrameBoundExpr(*elem)) return true;
     }
     return false;
@@ -1557,9 +1559,9 @@ bool BorrowChecker::isFrameSourcedLambdaExpr(const ExprAST& expr) const {
     if (type && type->isLambda() &&
         static_cast<const sun::LambdaType*>(type.get())->hasRefCaptures()) {
       const auto& access = static_cast<const MemberAccessAST&>(*e);
-      const std::string* base =
-          access.getObject() ? getBaseVariableName(*access.getObject())
-                             : nullptr;
+      const std::string* base = access.getObject()
+                                    ? getBaseVariableName(*access.getObject())
+                                    : nullptr;
       return base && !nameOutlivesFrame(*base);
     }
   }
@@ -1682,8 +1684,7 @@ size_t BorrowChecker::inferEnvDepth(const ExprAST& expr) const {
     }
     case ASTNodeType::GENERIC_CALL: {
       size_t depth = functionScopeDepth_;
-      for (const auto& arg :
-           static_cast<const GenericCallAST&>(*e).getArgs()) {
+      for (const auto& arg : static_cast<const GenericCallAST&>(*e).getArgs()) {
         if (arg && isRefCapturingLambdaExpr(*arg)) {
           depth = std::max(depth, inferEnvDepth(*arg));
         }
@@ -1700,8 +1701,7 @@ size_t BorrowChecker::inferEnvDepth(const ExprAST& expr) const {
 // outlives the environment, so the store would dangle once the inner scope
 // ends - the sub-frame hole of issue #178.
 bool BorrowChecker::checkFrameStoreDepth(const std::string& destBase,
-                                         size_t envDepth,
-                                         const Position& pos) {
+                                         size_t envDepth, const Position& pos) {
   size_t destDepth = lookupDeclDepth(destBase);
   if (destDepth == 0) return true;  // outlives the frame: callers reject it
   if (destDepth < envDepth) {
@@ -1726,12 +1726,12 @@ void BorrowChecker::noteFrameSourcedLambdaStore(const std::string& destBase,
                                                 size_t envDepth,
                                                 const Position& pos) {
   if (nameOutlivesFrame(destBase)) {
-    reportError(
-        "cannot store this lambda in '" + destBase +
-            "' - its captured environment lives in this frame, and '" +
-            destBase + "' outlives it. Give the lambda its data as "
-            "arguments instead of captures",
-        pos);
+    reportError("cannot store this lambda in '" + destBase +
+                    "' - its captured environment lives in this frame, and '" +
+                    destBase +
+                    "' outlives it. Give the lambda its data as "
+                    "arguments instead of captures",
+                pos);
     return;
   }
   if (!checkFrameStoreDepth(destBase, envDepth, pos)) return;
@@ -1798,9 +1798,8 @@ BorrowChecker::LifetimeValue BorrowChecker::inferEnvLifetimeValue(
       return {LifetimeValue::Kind::Outlives, 0, "", ""};
     }
     const auto& access = static_cast<const MemberAccessAST&>(*e);
-    const std::string* base = access.getObject()
-                                  ? getBaseVariableName(*access.getObject())
-                                  : nullptr;
+    const std::string* base =
+        access.getObject() ? getBaseVariableName(*access.getObject()) : nullptr;
     if (!base) return {LifetimeValue::Kind::Outlives, 0, "", ""};
     if (*base == "this" || resolveRefTarget(*base).actualTarget == "this") {
       return {LifetimeValue::Kind::Symbolic, 0, "this", *base};
@@ -1964,8 +1963,7 @@ void BorrowChecker::checkNamedLifetimesAtCall(
       // Names this argument binds: the ref position's own name
       // ('dst: ref 'a Holder') and each class-application binding
       // ('bus: ref Bus<'this>' binds Bus's slot to 'this)
-      if (rt->getLifetimeName().empty() &&
-          rt->getClassLifetimeArgs().empty()) {
+      if (rt->getLifetimeName().empty() && rt->getClassLifetimeArgs().empty()) {
         continue;
       }
       const std::string* base = getBaseVariableName(*args[i]);
@@ -2073,8 +2071,8 @@ void BorrowChecker::checkNamedLifetimesAtCall(
     for (const auto& name : receiverNames) {
       LifetimeValue dest = inferDestLifetimeValue(*receiver);
       if (receiverBindings && name != "this") {
-        for (size_t k = 0; k < receiverClassNames.size() &&
-                           k < receiverBindings->size();
+        for (size_t k = 0;
+             k < receiverClassNames.size() && k < receiverBindings->size();
              ++k) {
           if (receiverClassNames[k] == name) {
             dest = {LifetimeValue::Kind::Symbolic, 0, (*receiverBindings)[k],
@@ -2188,8 +2186,9 @@ void BorrowChecker::trackRefHolderStore(const std::string& destName,
     size_t bound = it->second;
     if (destDepth < bound) {
       reportError(
-          "cannot store this value in '" + destName + "' - it borrows a "
-          "variable declared in an inner scope, which dies before '" +
+          "cannot store this value in '" + destName +
+              "' - it borrows a "
+              "variable declared in an inner scope, which dies before '" +
               destName + "' does. Declare '" + destName +
               "' alongside what the value borrows",
           pos);
@@ -2225,12 +2224,13 @@ void BorrowChecker::trackRefHolderStore(const std::string& destName,
     if (!base || rawPointerLocals_.count(*base)) continue;
     size_t targetDepth = lookupDeclDepth(*base);
     if (targetDepth > destDepth) {
-      reportError(
-          "cannot store this value in '" + destName + "' - it borrows '" +
-              *base + "', which is declared in an inner scope and dies "
-              "before '" + destName + "' does. Declare '" + destName +
-              "' alongside '" + *base + "'",
-          pos);
+      reportError("cannot store this value in '" + destName +
+                      "' - it borrows '" + *base +
+                      "', which is declared in an inner scope and dies "
+                      "before '" +
+                      destName + "' does. Declare '" + destName +
+                      "' alongside '" + *base + "'",
+                  pos);
       continue;
     }
     bound = std::max(bound, targetDepth);
@@ -2273,13 +2273,15 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
       continue;
     if (!state_.getActiveLoans(cap.name).empty()) {
       reportError(
-          "cannot move '" + cap.name + "' into the lambda while it is borrowed", pos);
+          "cannot move '" + cap.name + "' into the lambda while it is borrowed",
+          pos);
       continue;
     }
     if (!checkMoveAllowed(cap.name, pos)) continue;
     if (movedVariables_.count(cap.name)) {
       reportError("use of moved variable '" + cap.name +
-                      "'. Ownership was transferred in a previous assignment.", pos);
+                      "'. Ownership was transferred in a previous assignment.",
+                  pos);
       continue;
     }
     recordMove(cap.name, pos);
@@ -2311,8 +2313,7 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
                          cap.isConst ? BorrowKind::Shared : BorrowKind::Mutable,
                          currentScope_, pos);
     if (!result.allowed) {
-      reportConflict(result.errorMessage, pos,
-                     result.conflictingLoan);
+      reportConflict(result.errorMessage, pos, result.conflictingLoan);
     }
   }
 
@@ -2373,8 +2374,7 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
       frameLocalNames_.insert(argName);
       declDepths_[argName] = currentScope_;
     }
-    if (argType.isLambda() && argType.refEnv &&
-        !argType.lifetimeName.empty()) {
+    if (argType.isLambda() && argType.refEnv && !argType.lifetimeName.empty()) {
       paramEnvNames_[argName] = argType.lifetimeName;
     }
     if (argType.isReference() && !argType.lifetimeName.empty()) {
@@ -2382,8 +2382,7 @@ void BorrowChecker::checkLambdaDef(const LambdaAST& lambda) {
     }
     if (argType.isReference() && argType.elementType &&
         !argType.elementType->lifetimeArguments.empty()) {
-      refParamClassBindings_[argName] =
-          argType.elementType->lifetimeArguments;
+      refParamClassBindings_[argName] = argType.elementType->lifetimeArguments;
     }
   }
   if (proto.hasReturnType() && proto.getReturnType()->isLambda() &&
@@ -2539,8 +2538,7 @@ void BorrowChecker::checkMemberAssignment(const MemberAssignmentAST& assign) {
     // receiver, 'a-named values into a 'ref 'a' parameter's referent.
     // Cross-name stores are how a callee would launder one caller
     // lifetime into another, so they are rejected here, in the callee.
-    if (assign.getObject() &&
-        !isFrameSourcedLambdaExpr(*assign.getValue())) {
+    if (assign.getObject() && !isFrameSourcedLambdaExpr(*assign.getValue())) {
       LifetimeValue env = inferEnvLifetimeValue(*assign.getValue());
       if (env.kind == LifetimeValue::Kind::Symbolic) {
         const std::string* base = getBaseVariableName(*assign.getObject());
@@ -2552,18 +2550,18 @@ void BorrowChecker::checkMemberAssignment(const MemberAssignmentAST& assign) {
                       activeClassLifetimes_.end(),
                       env.name) != activeClassLifetimes_.end();
         bool storesIntoThis =
-            base && (*base == "this" ||
-                     resolveRefTarget(*base).actualTarget == "this");
+            base &&
+            (*base == "this" || resolveRefTarget(*base).actualTarget == "this");
         if (base && nameOutlivesFrame(*base) &&
             !(classOwnedName && storesIntoThis)) {
           LifetimeValue dst = inferDestLifetimeValue(*assign.getObject());
           if (!lifetimeValueOutlives(env, dst)) {
-            reportError(
-                "cannot store this value in a field of '" + *base +
-                    "' - its type ties it to lifetime '" + env.name +
-                    ", and nothing says '" + *base + "' dies first. Give "
-                    "the destination the same lifetime, or use 'this",
-                assign.getLocation());
+            reportError("cannot store this value in a field of '" + *base +
+                            "' - its type ties it to lifetime '" + env.name +
+                            ", and nothing says '" + *base +
+                            "' dies first. Give "
+                            "the destination the same lifetime, or use 'this",
+                        assign.getLocation());
           }
         }
       }
@@ -2835,9 +2833,9 @@ Lifetime BorrowChecker::inferExprLifetime(const ExprAST& expr) {
           return Lifetime::param(target.substr(6));
         }
         auto declIt = declDepths_.find(target);
-        return Lifetime::local(
-            target, declIt != declDepths_.end() ? declIt->second
-                                                : currentScope_);
+        return Lifetime::local(target, declIt != declDepths_.end()
+                                           ? declIt->second
+                                           : currentScope_);
       }
 
       // Check if it's a ref-typed function parameter
@@ -2854,9 +2852,8 @@ Lifetime BorrowChecker::inferExprLifetime(const ExprAST& expr) {
 
       // Local variable - bound to the scope it was declared in
       auto declIt = declDepths_.find(name);
-      return Lifetime::local(name, declIt != declDepths_.end()
-                                       ? declIt->second
-                                       : currentScope_);
+      return Lifetime::local(
+          name, declIt != declDepths_.end() ? declIt->second : currentScope_);
     }
 
     case ASTNodeType::MEMBER_ACCESS: {
@@ -3071,6 +3068,29 @@ Lifetime BorrowChecker::inferCallReturnLifetime(const CallExprAST& call) {
   // (tied to the arguments' lifetimes, which the caller controls)
   // For simplicity, we treat it as having param lifetime
   return Lifetime::param("$call_return");
+}
+
+SunError buildBorrowCheckError(const std::vector<BorrowError>& errors) {
+  assert(!errors.empty() && "no borrow errors to report");
+
+  const BorrowError& first = errors.front();
+  auto [sourceLine, prevLine] =
+      SourceManager::instance().getLineWithContext(first.location);
+  SunError error(SunError::Kind::Borrow, first.message, first.location,
+                 sourceLine, prevLine);
+  auto addRelatedBorrows = [&error](const BorrowError& err) {
+    for (const auto& related : err.relatedLocations) {
+      error.addRelated("related borrow here", related,
+                       RelatedDiagnostic::Level::Note);
+    }
+  };
+  addRelatedBorrows(first);
+  for (size_t i = 1; i < errors.size(); ++i) {
+    error.addRelated(errors[i].message, errors[i].location,
+                     RelatedDiagnostic::Level::Error);
+    addRelatedBorrows(errors[i]);
+  }
+  return error;
 }
 
 }  // namespace sun

@@ -19,16 +19,20 @@ namespace {
 
 std::string renderType(const sun::Type& type, const Bindings& bindings);
 
-// `(i32, bool) i32` with ` throws IError` when the callable may throw
-std::string renderCallable(const std::vector<sun::TypePtr>& params,
+// `(i32, bool) -> i32` with ` throws IError` when the callable may throw.
+// This is type position, where Sun writes the arrow; a declaration's own
+// signature is arrowless and rendered by renderPrototype instead. `prefix`
+// carries a lambda's lifetime marker, such as `<'_>`.
+std::string renderCallable(const std::string& prefix,
+                           const std::vector<sun::TypePtr>& params,
                            const sun::TypePtr& returnType, bool canThrow,
                            const Bindings& bindings) {
-  std::string out = "(";
+  std::string out = prefix + "(";
   for (size_t i = 0; i < params.size(); ++i) {
     if (i > 0) out += ", ";
     out += params[i] ? renderType(*params[i], bindings) : "?";
   }
-  out += ") ";
+  out += ") -> ";
   out += returnType ? renderType(*returnType, bindings) : "void";
   if (canThrow) out += " throws IError";
   return out;
@@ -59,13 +63,21 @@ std::string renderType(const sun::Type& type, const Bindings& bindings) {
   switch (type.getKind()) {
     case sun::Type::Kind::Function: {
       const auto& fn = static_cast<const sun::FunctionType&>(type);
-      return renderCallable(fn.getParamTypes(), fn.getReturnType(),
+      return renderCallable("", fn.getParamTypes(), fn.getReturnType(),
                             fn.canThrow(), bindings);
     }
     case sun::Type::Kind::Lambda: {
       const auto& lambda = static_cast<const sun::LambdaType&>(type);
-      return renderCallable(lambda.getParamTypes(), lambda.getReturnType(),
-                            lambda.canThrow(), bindings);
+      // A lambda that carries a captured environment is written with the
+      // lifetime it is bound to, by name when the signature gave it one
+      std::string prefix;
+      if (lambda.hasRefCaptures()) {
+        const std::string& name = lambda.getLifetimeName();
+        prefix = "<'" + (name.empty() ? "_" : name) + ">";
+      }
+      return renderCallable(prefix, lambda.getParamTypes(),
+                            lambda.getReturnType(), lambda.canThrow(),
+                            bindings);
     }
     case sun::Type::Kind::Reference: {
       const auto& ref = static_cast<const sun::ReferenceType&>(type);
