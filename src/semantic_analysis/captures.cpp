@@ -153,53 +153,6 @@ std::set<std::string> SemanticAnalyzer::collectFreeVariablesInBlock(
   return free;
 }
 
-// -------------------------------------------------------------------
-// Build captures for a function
-// -------------------------------------------------------------------
-
-std::vector<Capture> SemanticAnalyzer::buildCaptures(const FunctionAST& func) {
-  // Extern functions have no body, so no captures
-  if (func.isExtern()) {
-    return {};
-  }
-
-  const PrototypeAST& proto = func.getProto();
-
-  // Collect bound variables (function parameters)
-  std::set<std::string> boundVars;
-  for (const auto& arg : proto.getArgNames()) {
-    boundVars.insert(arg);
-  }
-
-  std::set<std::string> freeVars =
-      collectFreeVariablesInBlock(func.getBody(), boundVars);
-
-  std::vector<Capture> captures;
-  for (const auto& var : freeVars) {
-    // Look up the variable's type
-    VariableInfo* varInfo = ctx_.lookupVariable(var);
-    if (varInfo && varInfo->type) {
-      if (varInfo->isGlobal) {
-        continue;  // Skip global variables - they don't need to be captured
-      }
-      // Compound types are copied into the env struct - a broken aliasing
-      // model. Nested named functions have no capture list, so they cannot
-      // capture compound types at all.
-      if (sun::unwrapRef(varInfo->type)->isCompound()) {
-        logAndThrowError("Cannot capture '" + var + "' of compound type '" +
-                             varInfo->type->toDisplayString() +
-                             "' by value in a nested function; use a lambda "
-                             "with a [ref " +
-                             var + "] capture list instead",
-                         func.getLocation());
-      }
-      captures.push_back({var, varInfo->type});
-    }
-  }
-
-  return captures;
-}
-
 // The first `this` inside the expression, if any. `this` is its own node
 // type, so free-variable collection never sees it as a name.
 static const ExprAST* findThisUse(const ExprAST& expr) {
@@ -307,8 +260,8 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const LambdaAST& lambda) {
         logAndThrowError("Cannot capture '" + var + "' of compound type '" +
                              varInfo->type->toDisplayString() +
                              "' by value; capture it by reference with '[ref " +
+                             var + "]() => ...', read it with '[const ref " +
                              var +
-                             "]() => ...', read it with '[const ref " + var +
                              "]() => ...', or move it into the lambda with '[" +
                              var + "]() => ...'",
                          lambda.getLocation());
@@ -318,8 +271,8 @@ std::vector<Capture> SemanticAnalyzer::buildCaptures(const LambdaAST& lambda) {
         logAndThrowError(
             "Cannot move '" + var +
                 "' into the lambda: it is a reference, so the value belongs to "
-                "someone else. Capture it with '[ref " + var +
-                "]() => ...' or '[const ref " + var + "]() => ...'",
+                "someone else. Capture it with '[ref " +
+                var + "]() => ...' or '[const ref " + var + "]() => ...'",
             lambda.getLocation());
       }
       // A constant stays constant inside the lambda, however it is captured;

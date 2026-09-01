@@ -43,8 +43,8 @@ std::unique_ptr<ExprAST> Parser::parseNumberExpr() {
     result = std::make_unique<NumberExprAST>(curTok.getInteger().value(),
                                              curTok.suffix);
   } else {
-    result =
-        std::make_unique<NumberExprAST>(curTok.getFloat().value(), curTok.suffix);
+    result = std::make_unique<NumberExprAST>(curTok.getFloat().value(),
+                                             curTok.suffix);
   }
   getNextToken();  // consume the number
   return finishNode(std::move(result), start);
@@ -354,9 +354,8 @@ unique_ptr<FunctionAST> Parser::parseFunction(bool isClassMethod) {
   std::vector<TypeParameter> typeParameters =
       parseTypeParameterList(&lifetimeParameters);
 
-  auto result = parseFunctionLiteral(funcName, std::move(typeParameters),
-                                     false, false,
-                                     std::move(lifetimeParameters));
+  auto result = parseFunctionLiteral(funcName, std::move(typeParameters), false,
+                                     false, std::move(lifetimeParameters));
   return finishNode(
       unique_ptr<FunctionAST>(static_cast<FunctionAST*>(result.release())),
       start);
@@ -406,8 +405,7 @@ bool Parser::isLambdaLiteralStart() {
     tokenStack = savedTokenStack;
   };
 
-  bool startsDirectlyWithParameters =
-      savedCurTok.kind == TokenKind::PAREN_OPEN;
+  bool startsDirectlyWithParameters = savedCurTok.kind == TokenKind::PAREN_OPEN;
   bool hasExplicitPrefix = false;
 
   // Optional lifetime binder: <'a, 'b>
@@ -471,8 +469,7 @@ bool Parser::isLambdaLiteralStart() {
       restore();
       return hasExplicitPrefix;
     }
-    hasExplicitPrefix =
-        hasExplicitPrefix || (validCaptureList && hasCapture);
+    hasExplicitPrefix = hasExplicitPrefix || (validCaptureList && hasCapture);
   }
 
   if (curTok.kind != TokenKind::PAREN_OPEN) {
@@ -487,8 +484,8 @@ bool Parser::isLambdaLiteralStart() {
   if ((startsDirectlyWithParameters || hasExplicitPrefix) &&
       curTok.kind == TokenKind::IDENTIFIER) {
     getNextToken();
-    typedParameters = curTok.kind == TokenKind::COLON ||
-                      curTok.kind == TokenKind::ELLIPSIS;
+    typedParameters =
+        curTok.kind == TokenKind::COLON || curTok.kind == TokenKind::ELLIPSIS;
   }
 
   // Find the closing parenthesis while allowing callable types in parameter
@@ -502,8 +499,7 @@ bool Parser::isLambdaLiteralStart() {
   bool hasFatArrow = depth == 0 && curTok.kind == TokenKind::FAT_ARROW;
 
   restore();
-  return hasExplicitPrefix || emptyParameters || typedParameters ||
-         hasFatArrow;
+  return hasExplicitPrefix || emptyParameters || typedParameters || hasFatArrow;
 }
 
 // Parse lambda: <'a> [ref x, const ref y, z](args) => returnType { body }
@@ -568,8 +564,8 @@ unique_ptr<LambdaAST> Parser::parseLambda() {
     getNextToken();  // eat ']'
   }
 
-  auto result = parseFunctionLiteral("", {}, true, false,
-                                     std::move(lifetimeParameters));
+  auto result =
+      parseFunctionLiteral("", {}, true, false, std::move(lifetimeParameters));
   auto lambda =
       unique_ptr<LambdaAST>(static_cast<LambdaAST*>(result.release()));
   lambda = finishNode(std::move(lambda), std::move(lambdaLoc));
@@ -660,15 +656,13 @@ unique_ptr<ExprAST> Parser::parseFunctionLiteral(
       getNextToken();  // eat 'throws'
       bool isErrorType = curTok.kind == TokenKind::IDENTIFIER &&
                          curTok.getIdentifier() == "IError";
-      if (!isErrorType)
-        parsingError("expected 'IError' after 'throws'");
+      if (!isErrorType) parsingError("expected 'IError' after 'throws'");
       getNextToken();  // eat 'IError'
       retType->canError = true;
     }
     if (curTok.kind != TokenKind::BRACE_OPEN) {
-      parsingError("'" + name +
-                   "' does not declare a return type; write '" + name +
-                   "(...) { ... }'");
+      parsingError("'" + name + "' does not declare a return type; write '" +
+                   name + "(...) { ... }'");
     }
   } else if (curTok.kind != TokenKind::BRACE_OPEN) {
     retType = parseTypeAnnotation();
@@ -914,8 +908,7 @@ unique_ptr<ExprAST> Parser::parseIdentifierExpr() {
   // the argument list opening straight onto a '<'a>' lambda type
   // (Box<<'a>() => i32>(f)); the backtrack below restores it as a shift
   // when the type parse fails.
-  if (curTok.kind == TokenKind::LESS ||
-      curTok.kind == TokenKind::LEFT_SHIFT) {
+  if (curTok.kind == TokenKind::LESS || curTok.kind == TokenKind::LEFT_SHIFT) {
     // Could be a generic call or a comparison - use backtracking to decide
     // Save parser state for backtracking
     Token savedCurTok = curTok;
@@ -1369,6 +1362,7 @@ bool Parser::isTypeToken(TokenKind kind) {
     case TokenKind::STATIC_PTR:
     case TokenKind::REF:
     case TokenKind::CONST:
+    case TokenKind::FUNCTION:
     case TokenKind::IDENTIFIER:            // User-defined class types
     case TokenKind::INTRINSIC_IDENTIFIER:  // Intrinsic types like _params_of
       return true;
@@ -1475,8 +1469,7 @@ std::vector<TypeParameter> Parser::parseTypeParameterList(
   }
 
   if (curTok.kind == TokenKind::LIFETIME) {
-    parsingError(
-        "lifetime parameters come before type parameters: <'a, T>");
+    parsingError("lifetime parameters come before type parameters: <'a, T>");
   }
 
   if (typeParameters.empty() && !sawLifetime) {
@@ -1487,8 +1480,7 @@ std::vector<TypeParameter> Parser::parseTypeParameterList(
   return typeParameters;
 }
 
-// Parse type annotation: i32, f64, matrix(i32, 2, 3), _(param_types)
-// return_type (function), (param_types) return_type (lambda)
+// Parse a type annotation, including function and lambda callable types.
 TypeAnnotation Parser::parseTypeAnnotation() {
   Position start = captureStart();
   TypeAnnotation type = parseTypeAnnotationImpl();
@@ -1498,15 +1490,22 @@ TypeAnnotation Parser::parseTypeAnnotation() {
 }
 
 TypeAnnotation Parser::parseTypeAnnotationImpl() {
+  // Give the retired spelling a focused migration diagnostic.
+  if (curTok.kind == TokenKind::UNDERSCORE) {
+    parsingError(
+        "function pointer types use 'function (i32) i32'; the "
+        "'_(i32) -> i32' syntax was removed");
+  }
+
   TypeAnnotation type;
 
-  // Check for function type: _(param_types) -> return_type (named function)
-  if (curTok.kind == TokenKind::UNDERSCORE) {
+  // A named function value is a thin, non-null function pointer.
+  if (curTok.kind == TokenKind::FUNCTION) {
     type.baseName = "fn";
-    getNextToken();  // eat '_'
+    getNextToken();  // eat 'function'
 
     expectCurrentTokenKind(TokenKind::PAREN_OPEN,
-                           "expected '(' after '_' in function type");
+                           "expected '(' after 'function' in function type");
     getNextToken();  // eat '('
 
     // Parse parameter types
@@ -1516,11 +1515,8 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
         type.paramTypes.push_back(
             std::make_unique<TypeAnnotation>(std::move(paramType)));
 
-        if (curTok.kind == TokenKind::COMMA) {
-          getNextToken();  // eat ','
-        } else {
-          break;
-        }
+        if (curTok.kind != TokenKind::COMMA) break;
+        getNextToken();  // eat ','
       }
     }
 
@@ -1528,12 +1524,21 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
                            "expected ')' in function type");
     getNextToken();  // eat ')'
 
-    expectCurrentTokenKind(TokenKind::ARROW,
-                           "expected '->' before the return type of a "
-                           "function type: _(i32) -> i32");
-    getNextToken();  // eat '->'
+    if (!isTypeToken(curTok.kind) && curTok.kind != TokenKind::PAREN_OPEN &&
+        curTok.kind != TokenKind::UNDERSCORE) {
+      parsingError("expected return type after function pointer parameters");
+    }
 
     type.returnType = std::make_unique<TypeAnnotation>(parseTypeAnnotation());
+
+    if (curTok.kind == TokenKind::THROWS) {
+      getNextToken();  // eat 'throws'
+      bool isErrorType = curTok.kind == TokenKind::IDENTIFIER &&
+                         curTok.getIdentifier() == "IError";
+      if (!isErrorType) parsingError("expected 'IError' after 'throws'");
+      getNextToken();  // eat 'IError'
+      type.canError = true;
+    }
 
     return type;
   }
@@ -1552,16 +1557,16 @@ TypeAnnotation Parser::parseTypeAnnotationImpl() {
         "replaced by lifetime annotations");
   } else if (curTok.kind == TokenKind::LESS) {
     getNextToken();  // eat '<'
-    expectCurrentTokenKind(
-        TokenKind::LIFETIME, "expected a lifetime after '<' in a lambda "
-                             "type: <'_>(i32) => i32");
+    expectCurrentTokenKind(TokenKind::LIFETIME,
+                           "expected a lifetime after '<' in a lambda "
+                           "type: <'_>(i32) => i32");
     refEnvLifetime = curTok.getLifetimeName().value();
     getNextToken();  // eat lifetime name
     consumeGreater(
         "expected '>' after the lifetime in a lambda type: <'_>(i32) => i32");
-    expectCurrentTokenKind(
-        TokenKind::PAREN_OPEN, "expected a lambda type after the lifetime: "
-                               "<'_>(i32) => i32");
+    expectCurrentTokenKind(TokenKind::PAREN_OPEN,
+                           "expected a lambda type after the lifetime: "
+                           "<'_>(i32) => i32");
     refEnvMarker = true;
   }
 
@@ -2359,6 +2364,11 @@ unique_ptr<ExprAST> Parser::parseStatementCore() {
     case TokenKind::CONTINUE:
       return parseContinue();  // returns ContinueAST
     case TokenKind::EXTERN: {
+      if (!atItemLevel_) {
+        parsingError(
+            "function declarations are only allowed at module scope; move "
+            "the declaration to module scope or use a lambda");
+      }
       // External function declaration: extern function name(args) ret;
       Position start = captureStart();
       auto proto = parseExtern();
@@ -2370,6 +2380,12 @@ unique_ptr<ExprAST> Parser::parseStatementCore() {
       return finishNode(std::move(fn), start);
     }
     case TokenKind::FUNCTION: {
+      if (!atItemLevel_) {
+        parsingError(
+            "function declarations are only allowed at module scope; move "
+            "the declaration to module scope and pass captured values as "
+            "parameters, or use a lambda");
+      }
       // Function definitions don't need trailing semicolons
       auto func = parseFunction();
       while (curTok.kind == TokenKind::SEMI_COLON)
@@ -2762,11 +2778,10 @@ unique_ptr<ManifestAST> Parser::parseManifest() {
                          "expected '}' at end of manifest block");
   getNextToken();  // eat '}'
 
-  return finishNode(
-      std::make_unique<ManifestAST>(std::move(suns), std::move(moons),
-                                    std::move(protos), std::move(archives),
-                                    std::move(targets)),
-      start);
+  return finishNode(std::make_unique<ManifestAST>(
+                        std::move(suns), std::move(moons), std::move(protos),
+                        std::move(archives), std::move(targets)),
+                    start);
 }
 
 // Parse the target-conditional block:
@@ -2802,8 +2817,8 @@ std::vector<ManifestTargetBlock> Parser::parseManifestTargets() {
     while (curTok.kind == TokenKind::IDENTIFIER) {
       auto section = curTok.getIdentifier().value();
       getNextToken();  // eat section name
-      expectCurrentTokenKind(
-          TokenKind::COLON, "expected ':' after '" + section + "' in target");
+      expectCurrentTokenKind(TokenKind::COLON,
+                             "expected ':' after '" + section + "' in target");
       getNextToken();  // eat ':'
 
       if (section == "source_files") {
@@ -3057,6 +3072,11 @@ unique_ptr<ExprAST> Parser::parseDeclareStatement() {
   // Check for forward function declaration: declare function name(args)
   // RetType;
   if (curTok.kind == TokenKind::FUNCTION) {
+    if (!atItemLevel_) {
+      parsingError(
+          "function declarations are only allowed at module scope; move "
+          "the declaration to module scope or use a lambda");
+    }
     getNextToken();  // eat 'function'
     auto proto = parsePrototype();
     if (curTok.kind != TokenKind::SEMI_COLON) {
@@ -3513,8 +3533,8 @@ std::unique_ptr<MoonScopeAST> Parser::collectMoonImport(
   }
 
   // Wrap everything in a MoonScopeAST
-  auto body =
-      std::make_unique<BlockExprAST>(std::move(allModuleASTs), BlockKind::Module);
+  auto body = std::make_unique<BlockExprAST>(std::move(allModuleASTs),
+                                             BlockKind::Module);
   return std::make_unique<MoonScopeAST>(contentHash, primaryModuleName, alias,
                                         resolvedStr, std::move(body));
 }
@@ -4108,8 +4128,7 @@ unique_ptr<ClassDefinitionAST> Parser::parseClassDefinition() {
 
   auto classDef = std::make_unique<ClassDefinitionAST>(
       std::move(className), std::move(typeParameters),
-      std::move(implementedInterfaces), std::move(fields),
-      std::move(methods));
+      std::move(implementedInterfaces), std::move(fields), std::move(methods));
   classDef->setLifetimeParameters(std::move(lifetimeParameters));
   return finishNode(std::move(classDef), start);
 }

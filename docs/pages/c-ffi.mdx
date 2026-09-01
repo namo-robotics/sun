@@ -65,6 +65,7 @@ Only the Sun-side name (`c_strlen`) comes into scope; the C name does not.
 |---|-----|
 | `int`, `long`, `char`, `float`, `double` | `i32`, `i64`, `i8`, `f32`, `f64` |
 | `T*`, `void*` | `raw_ptr<T>`, `raw_ptr<u8>` |
+| `R (*)(Args)` | `function (Args) R` |
 | `struct T*` | `ref T` |
 | `struct T` (by value) | `T` |
 | `struct T` (returned) | `T` |
@@ -97,6 +98,62 @@ function set_reuse_addr(fd: i32) i32 {
 The same cast reads bytes back as a header — see
 [`_bitcast<T>`](/intrinsics#_bitcastt) for the rules. The cast itself only renames
 the pointer; reading through it needs `unsafe`.
+### Callbacks
+
+An extern may accept a named Sun function as a C function pointer:
+
+```c
+typedef int (*callback_t)(int);
+int call_callback(callback_t callback, int value);
+```
+
+```sun
+extern "C" function call_callback(
+    callback: function (i32) i32,
+    value: i32
+) i32;
+
+function double(value: i32) i32 { return value * 2; }
+
+function main() i32 {
+    unsafe { return call_callback(double, 21); };
+}
+```
+
+The declared pointer signature must match exactly and must not throw. Callback
+parameters may be primitives, payload-free enums, `raw_ptr<T>`, or `ref T`.
+The return may be a primitive, a payload-free enum, or `raw_ptr<T>`. The
+compiler rejects throwing callbacks, lambdas, bound methods, by-value classes,
+interfaces, payload enums, error unions, callbacks returning another function
+pointer, and extern functions that return a function pointer. Aggregate extern
+parameters and returns remain supported for ordinary direct calls; they are
+only excluded from callback signatures.
+
+Function pointers are non-null. Sun does not add nullable pointers, casts, or
+function-to-lambda conversions at this boundary.
+
+<Callout type="warning">
+  Registering a callback is `unsafe`. C may retain the pointer indefinitely, so
+  only a module function may cross this boundary; it has no captured Sun frame
+  to expire. The call into C and every later action exposed through the C API
+  remain outside the borrow checker's guarantees.
+</Callout>
+
+C callback APIs commonly carry a separate userdata pointer. Spell it
+`raw_ptr<u8>` on both the registration function and the callback, and recover
+the concrete pointer explicitly inside `unsafe` code:
+
+```sun
+extern "C" function register_callback(
+    callback: function (raw_ptr<u8>, i32) void,
+    userdata: raw_ptr<u8>
+) void;
+```
+
+A callback may run on a thread created by C. Sun does not insert locks or move
+the callback onto the registering thread; shared state requires manual
+synchronization appropriate for that C API.
+
 
 ### Strings
 

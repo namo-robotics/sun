@@ -753,8 +753,7 @@ TEST(Builtins_IsIntrinsic, chained_generic_calls_with_different_types) {
   EXPECT_EQ(value, 42);
 }
 
-TEST(Builtins_IsIntrinsic, nested_generic_function_definition) {
-  // Generic function defined inside another generic function
+TEST(Builtins_IsIntrinsic, module_generic_helper_definition) {
   auto value = executeString(R"(
     interface IValue {
         method get_value() i32;
@@ -765,17 +764,15 @@ TEST(Builtins_IsIntrinsic, nested_generic_function_definition) {
         init(d: i32) { this.data = d; }
         method get_value() i32 { return this.data; }
     }
+
+    function inner<U>(y: ref U) i32 {
+        if (_is<IValue>(y)) {
+            return y.get_value();
+        }
+        return 0;
+    }
     
     function outer<T>(x: ref T, multiplier: i32) i32 {
-        // Define a generic function inside another generic function
-        function inner<U>(y: ref U) i32 {
-            if (_is<IValue>(y)) {
-                return y.get_value();
-            }
-            return 0;
-        }
-        
-        // Call the inner generic function with the outer's type parameter
         return inner<T>(x) * multiplier;
     }
     

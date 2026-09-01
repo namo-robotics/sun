@@ -188,6 +188,36 @@ void SemanticAnalyzer::analyzeMemberAccess(MemberAccessAST& memberAccess,
     // Analyze the object expression (only if not enum access)
     analyzeExpr(const_cast<ExprAST&>(*memberAccess.getObject()));
   }
+
+  // A module-qualified function name can denote an overload set. Select the
+  // member from the expected function-pointer signature before ordinary type
+  // inference falls back to the first overload.
+  sun::TypePtr objectType = memberAccess.getObject()->getResolvedType();
+  if (objectType && objectType->isModule() && expectedType &&
+      expectedType->isFunction()) {
+    const auto* moduleType =
+        static_cast<const sun::ModuleType*>(objectType.get());
+    const auto* expectedFunction =
+        static_cast<const sun::FunctionType*>(expectedType.get());
+    SymbolMatch match = ctx_.findSymbolInModule(
+        moduleType->getModulePath(), memberAccess.getMemberName(),
+        SymbolKind::Function, &expectedFunction->getParamTypes());
+    if (match && match.functionInfo) {
+      sun::TypePtr candidate = sun::Types::Function(
+          match.functionInfo->returnType, match.functionInfo->paramTypes,
+          match.functionInfo->canThrow);
+      if (sun::rules::isAssignableTo(candidate, expectedType)) {
+        memberAccess.setQualifiedName(match.functionInfo->qualifiedName);
+        memberAccess.setResolvedType(candidate);
+        return;
+      }
+    }
+    logAndThrowError("No overload of '" + memberAccess.getMemberName() +
+                         "' matches expected type '" +
+                         expectedType->toDisplayString() + "'",
+                     memberAccess.getLocation());
+  }
+
   memberAccess.setResolvedType(types_.inferType(memberAccess));
   // A method in value position becomes a bound method reference with
   // lambda type (call-position callees don't route through this case).

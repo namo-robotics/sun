@@ -468,9 +468,9 @@ Value* CodegenVisitor::codegenModuleFunctionCall(
     return nullptr;
   }
 
-  Value* result =
-      errors.emitPossiblyThrowingCall(func->getFunctionType(), func, argValues,
-                               func->hasFnAttribute("sun.canthrow"), "calltmp");
+  Value* result = errors.emitPossiblyThrowingCall(
+      func->getFunctionType(), func, argValues,
+      func->hasFnAttribute("sun.canthrow"), "calltmp");
   return materializeStructReturn(result);
 }
 
@@ -553,8 +553,9 @@ Value* CodegenVisitor::codegenInterfaceMethodCall(
   // marked as throwing (InterfaceMethod carries no canThrow), so this does not
   // route through a local landing pad — a limitation only for throwing methods
   // invoked via an interface value, which the stdlib/tests don't exercise.
-  Value* result = errors.emitPossiblyThrowingCall(funcType, funcPtr, argValues,
-                                           /*canThrow=*/false, "iface.call");
+  Value* result =
+      errors.emitPossiblyThrowingCall(funcType, funcPtr, argValues,
+                                      /*canThrow=*/false, "iface.call");
   return materializeStructReturn(result);
 }
 
@@ -634,9 +635,9 @@ Value* CodegenVisitor::codegenClassMethodCall(
       return nullptr;
     }
 
-    Value* result = errors.emitPossiblyThrowingCall(specializedFunc->getFunctionType(),
-                                             specializedFunc, argValues,
-                                             method->canThrow, "method.call");
+    Value* result = errors.emitPossiblyThrowingCall(
+        specializedFunc->getFunctionType(), specializedFunc, argValues,
+        method->canThrow, "method.call");
     return materializeStructReturn(result);
   }
 
@@ -667,9 +668,9 @@ Value* CodegenVisitor::codegenClassMethodCall(
     scopes.markClassAllocationAsDeinited(objectPtr);
   }
 
-  Value* result =
-      errors.emitPossiblyThrowingCall(methodFunc->getFunctionType(), methodFunc,
-                               argValues, method->canThrow, "method.call");
+  Value* result = errors.emitPossiblyThrowingCall(
+      methodFunc->getFunctionType(), methodFunc, argValues, method->canThrow,
+      "method.call");
   return materializeStructReturn(result);
 }
 
@@ -780,8 +781,17 @@ Value* CodegenVisitor::codegen(const CallExprAST& expr) {
   // Check if this is a method call (MemberAccessAST as callee)
   if (auto* memberAccess =
           dynamic_cast<const MemberAccessAST*>(expr.getCallee())) {
-    return scopes.trackCallTemporary(codegenMethodCall(expr, *memberAccess),
-                              expr.getResolvedType());
+    sun::TypePtr ownerType =
+        sun::unwrapRef(memberAccess->getObject()->getResolvedType());
+    auto* ownerClass = sun::tryGetType<sun::ClassType>(ownerType);
+    const sun::ClassField* field =
+        ownerClass ? ownerClass->getField(memberAccess->getMemberName())
+                   : nullptr;
+    if (!field || !field->type || !field->type->isCallable()) {
+      return scopes.trackCallTemporary(codegenMethodCall(expr, *memberAccess),
+                                       expr.getResolvedType());
+    }
+    calleeName = memberAccess->getMemberName();
   }
 
   if (auto* varRef =
@@ -900,7 +910,8 @@ bool CodegenVisitor::emitCallArguments(
         auto* classType =
             static_cast<sun::ClassType*>(sun::unwrapRef(argSunType).get());
         auto* ifaceType = static_cast<sun::InterfaceType*>(paramType.get());
-        argVal = classes.createInterfaceFatPointer(argVal, classType, ifaceType);
+        argVal =
+            classes.createInterfaceFatPointer(argVal, classType, ifaceType);
         break;
       }
 
@@ -1035,9 +1046,12 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
   // Check if callee is a variable reference
   if (auto* varRef =
           dynamic_cast<const VariableReferenceAST*>(expr.getCallee())) {
-    // Use qualified name from semantic analysis (handles using imports)
+    // A stored pointer shadows a same-named function symbol.
     std::string resolvedName = varRef->getMangledName();
-    func = functions.lookupCallTarget(resolvedName);
+    bool stored = scopes.findVariable(varRef->getName()) ||
+                  module->getGlobalVariable(resolvedName) ||
+                  module->getGlobalVariable(varRef->getName());
+    if (!stored) func = functions.lookupCallTarget(resolvedName);
   } else if (auto* qualName =
                  dynamic_cast<const QualifiedNameAST*>(expr.getCallee())) {
     // Qualified name - use the mangled name (calleeName already has :: replaced
@@ -1046,9 +1060,8 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
   }
 
   if (!func) {
-    // Function not found in module - this happens when calling a function
-    // passed as a parameter (e.g., `apply(f: _(i32) i32, x: i32) { return f(x);
-    // }`) Load the function pointer from the variable
+    // A parameter, local, field, returned value, or other expression is an
+    // indirect call through the one-word function pointer.
     Value* funcPtrVal = codegen(*expr.getCallee());
     if (!funcPtrVal) {
       logAndThrowError("Failed to get function pointer for: " + calleeName);
@@ -1069,29 +1082,11 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
 
     // Indirect call through function pointer
     return errors.emitPossiblyThrowingCall(llvmFuncType, funcPtrVal, argValues,
-                                    funcType.canThrow(), "calltmp");
+                                           funcType.canThrow(), "calltmp");
   }
 
   // Direct call to known function
   std::vector<Value*> argValues;
-
-  // Check if this function has captures (needs closure as first arg). Both
-  // the closure info and the environment are keyed by the callee's symbol,
-  // which is what the declaration was emitted under.
-  if (auto* varRef =
-          dynamic_cast<const VariableReferenceAST*>(expr.getCallee())) {
-    std::string symbolName = varRef->getMangledName();
-    const FunctionClosureInfo* info = functions.closureInfo(symbolName);
-    if (info && !info->captures.empty()) {
-      if (AllocaInst* closureAlloca = scopes.findVariable(symbolName)) {
-        argValues.push_back(closureAlloca);
-      } else {
-        logAndThrowError("Cannot find closure for function with captures: " +
-                         calleeName);
-        return nullptr;
-      }
-    }
-  }
 
   // Get parameter types from the function type
   const auto& paramTypes = funcType.getParamTypes();
@@ -1108,12 +1103,12 @@ Value* CodegenVisitor::codegenFunctionCall(const CallExprAST& expr,
     return nullptr;
   }
 
-  // A throwing callee ('T throws IError') is tagged with "sun.canthrow"; inside a try
-  // block it must be `invoke`d so its exception routes to the local landing
-  // pad. Exceptions now propagate natively — no error-union unwrapping.
+  // A throwing callee ('T throws IError') is tagged with "sun.canthrow"; inside
+  // a try block it must be `invoke`d so its exception routes to the local
+  // landing pad. Exceptions now propagate natively — no error-union unwrapping.
   bool canThrow = func->hasFnAttribute("sun.canthrow") || funcType.canThrow();
-  Value* callResult = errors.emitPossiblyThrowingCall(func->getFunctionType(), func,
-                                               argValues, canThrow, "calltmp");
+  Value* callResult = errors.emitPossiblyThrowingCall(
+      func->getFunctionType(), func, argValues, canThrow, "calltmp");
 
   // Handle struct return values (classes returned by value)
   return materializeStructReturn(callResult);
@@ -1184,8 +1179,8 @@ Value* CodegenVisitor::codegenLambdaCall(const CallExprAST& expr,
   // Indirect call through the extracted function pointer. Throwing lambdas
   // ('throws IError') are invoked so exceptions route to a local landing pad
   // inside try blocks.
-  Value* result = errors.emitPossiblyThrowingCall(llvmFuncType, funcPtr, argValues,
-                                           lambdaType.canThrow(), "calltmp");
+  Value* result = errors.emitPossiblyThrowingCall(
+      llvmFuncType, funcPtr, argValues, lambdaType.canThrow(), "calltmp");
 
   // Materialize struct return values for addressability
   return materializeStructReturn(result);

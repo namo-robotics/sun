@@ -173,6 +173,36 @@ void SemanticAnalyzer::analyzeExpr(ExprAST& expr, sun::TypePtr expectedType) {
 
     case ASTNodeType::VARIABLE_REFERENCE: {
       auto& varRef = static_cast<VariableReferenceAST&>(expr);
+
+      // An expected function-pointer type selects one overload without
+      // changing ordinary call-site overload resolution.
+      if (expectedType && expectedType->isFunction() &&
+          !ctx_.lookupVariable(varRef.getName())) {
+        sun::QualifiedName resolved =
+            ctx_.resolveNameWithUsings(varRef.getName());
+        std::vector<FunctionInfo> matches;
+        for (const auto& candidate : ctx_.getAllFunctions(resolved.baseName)) {
+          auto candidateType = sun::Types::Function(
+              candidate.returnType, candidate.paramTypes, candidate.canThrow);
+          if (isAssignableTo(candidateType, expectedType)) {
+            matches.push_back(candidate);
+          }
+        }
+        if (matches.size() == 1) {
+          const FunctionInfo& match = matches.front();
+          expr.setResolvedType(sun::Types::Function(
+              match.returnType, match.paramTypes, match.canThrow));
+          varRef.setQualifiedName(match.qualifiedName);
+          break;
+        }
+        if (!ctx_.getAllFunctions(resolved.baseName).empty()) {
+          logAndThrowError("No overload of '" + varRef.getName() +
+                               "' matches expected type '" +
+                               expectedType->toDisplayString() + "'",
+                           varRef.getLocation());
+        }
+      }
+
       expr.setResolvedType(types_.inferType(expr));
       sun::QualifiedName resolved =
           ctx_.resolveNameWithUsings(varRef.getName());
@@ -403,8 +433,7 @@ FunctionInfo SemanticAnalyzer::getFunctionInfo(FunctionAST& func) {
     validateNotReserved(proto.getName(), "Function name", func.getLocation());
   }
 
-  // Build captures using current scope information
-  std::vector<Capture> captures = buildCaptures(func);
+  std::vector<Capture> captures;
 
   // Validate and resolve parameter types. Only C externs may take objects by
   // value; see validateAndResolveParamTypes.
@@ -655,7 +684,7 @@ void SemanticAnalyzer::analyzeStructLiteral(StructLiteralAST& literal,
 // an `unsafe { }` block. `sun::requiresUnsafeBlock` decides which ones; this is
 // the only place it is applied, for generic and non-generic intrinsics alike.
 void SemanticAnalyzer::checkRequiresUnsafeBlock(const std::string& name,
-                                                   const Position& loc) const {
+                                                const Position& loc) const {
   if (ctx_.isInUnsafeBlock() || !sun::requiresUnsafeBlock(name)) return;
   logAndThrowError(
       "'" + name +
@@ -782,9 +811,38 @@ void SemanticAnalyzer::validateExternSignature(FunctionAST& func) {
     return t->isEnum() &&
            !static_cast<const sun::EnumType*>(t.get())->hasPayload();
   };
+  auto isCallbackParam = [&](const sun::TypePtr& t) {
+    return t && !t->isVoid() &&
+           (t->isPrimitive() || t->isRawPointer() || t->isReference() ||
+            isCStyleEnum(t));
+  };
+  auto isCallbackReturn = [&](const sun::TypePtr& t) {
+    return t && (t->isPrimitive() || t->isRawPointer() || isCStyleEnum(t));
+  };
+  auto validateCallback = [&](const sun::FunctionType& callback,
+                              const std::string& paramName) {
+    if (callback.canThrow()) {
+      logAndThrowError("C callback parameter '" + paramName + "' cannot throw",
+                       func.getLocation());
+    }
+    for (const auto& callbackParam : callback.getParamTypes()) {
+      if (!isCallbackParam(callbackParam)) {
+        logAndThrowError("C callback parameter '" + paramName +
+                             "' has unsupported callback argument type '" +
+                             describe(callbackParam) + "'",
+                         func.getLocation());
+      }
+    }
+    if (!isCallbackReturn(callback.getReturnType())) {
+      logAndThrowError("C callback parameter '" + paramName +
+                           "' has unsupported callback return type '" +
+                           describe(callback.getReturnType()) + "'",
+                       func.getLocation());
+    }
+  };
   auto isABISafeParam = [&](const sun::TypePtr& t) {
     return t && (t->isPrimitive() || t->isRawPointer() || t->isReference() ||
-                 t->isClass() || isCStyleEnum(t));
+                 t->isClass() || t->isFunction() || isCStyleEnum(t));
   };
   // Returns allow the same, minus `ref`: Sun's ref return has auto-deref
   // semantics that do not correspond to anything C returns. Use raw_ptr<T>
@@ -803,6 +861,9 @@ void SemanticAnalyzer::validateExternSignature(FunctionAST& func) {
                              "' cannot be void",
                          func.getLocation());
       }
+      if (auto* callback = sun::tryGetType<sun::FunctionType>(params[i])) {
+        validateCallback(*callback, proto.getArgs()[i].first);
+      }
       if (!isABISafeParam(params[i])) {
         logAndThrowError(
             "Parameter '" + proto.getArgs()[i].first +
@@ -810,7 +871,7 @@ void SemanticAnalyzer::validateExternSignature(FunctionAST& func) {
                 describe(params[i]) +
                 "', which has no C equivalent. Extern parameters must be a "
                 "primitive, an enum, raw_ptr<T>, ref T (which is C's T*), or "
-                "a class (passed by value per the C ABI).",
+                "a class or function pointer.",
             func.getLocation());
       }
     }
@@ -859,8 +920,7 @@ void SemanticAnalyzer::rejectRefEnvReturnType(
         returnType->lifetimeName != "_") {
       return;
     }
-    if (!returnType->lifetimeName.empty() &&
-        returnType->lifetimeName != "_") {
+    if (!returnType->lifetimeName.empty() && returnType->lifetimeName != "_") {
       logAndThrowError(
           "a named frame-bound return type requires a lifetime available "
           "in this declaration",
@@ -925,8 +985,7 @@ void SemanticAnalyzer::checkSignatureLifetimes(const PrototypeAST& proto,
                       [&](const LifetimeParameter& other) {
                         return other.name == lp.name;
                       }) > 1) {
-      logAndThrowError("duplicate lifetime parameter '" + lp.name,
-                       lp.span);
+      logAndThrowError("duplicate lifetime parameter '" + lp.name, lp.span);
     }
     if (std::find(activeLifetimeNames_.begin(), activeLifetimeNames_.end(),
                   lp.name) != activeLifetimeNames_.end()) {
@@ -1701,7 +1760,11 @@ SemanticAnalyzer::CalleeResolution SemanticAnalyzer::resolveCallee(
           generics_.findGenericMethodAST(classType, methodName);
       bool variadicMethod =
           genericMethod && genericMethod->getProto().hasVariadicParam();
-      if (variadicMethod && memberAccess.hasTypeArguments()) {
+      const sun::ClassField* callableField = classType->getField(methodName);
+      if (callableField && callableField->type &&
+          callableField->type->isCallable()) {
+        memberAccess.setResolvedType(callableField->type);
+      } else if (variadicMethod && memberAccess.hasTypeArguments()) {
         calleeTakesPack = true;
         std::vector<sun::TypePtr> typeArgPtrs;
         for (const auto& ta : memberAccess.getTypeArguments()) {
@@ -1786,8 +1849,8 @@ SemanticAnalyzer::CalleeResolution SemanticAnalyzer::resolveCallee(
                    memberAccess, objectType, argTypes)) {
       // Module-qualified call: the overload is chosen from the argument
       // types here. types_.inferType() alone would only see the first overload.
-      memberAccess.setResolvedType(
-          sun::Types::Function(modFunc->returnType, modFunc->paramTypes));
+      memberAccess.setResolvedType(sun::Types::Function(
+          modFunc->returnType, modFunc->paramTypes, modFunc->canThrow));
     } else if (auto* staticPtr = types_.asNonClassStaticPtr(objectType)) {
       // static_ptr<T> builtin methods: length(), raw()
       memberAccess.setResolvedType(types_.inferStaticPtrMethodType(
@@ -1869,16 +1932,19 @@ std::vector<sun::TypePtr> SemanticAnalyzer::analyzeCallArguments(
     }
   }
 
-  // Analyze arguments FIRST (before callee) to get types for overload
-  // resolution. Member-access args get the expected param type so an
-  // overloaded bound method reference can be disambiguated (kept narrow to
-  // avoid changing literal coercion or free-function overload resolution).
+  // Analyze arguments before the callee. Passing the provisional parameter
+  // type lets callable values select an overload and still supplies the
+  // existing array-literal and bound-method hints.
   for (size_t i = 0; i < callExpr.getArgs().size(); ++i) {
     const auto& arg = callExpr.getArgs()[i];
-    sun::TypePtr expected = (arg->getType() == ASTNodeType::MEMBER_ACCESS &&
-                             i < expectedParamTypes.size())
-                                ? expectedParamTypes[i]
-                                : nullptr;
+    sun::TypePtr expected;
+    if (i < expectedParamTypes.size()) {
+      const auto& paramType = expectedParamTypes[i];
+      if (arg->getType() == ASTNodeType::MEMBER_ACCESS ||
+          (paramType && (paramType->isFunction() || paramType->isLambda()))) {
+        expected = paramType;
+      }
+    }
     analyzeExpr(const_cast<ExprAST&>(*arg), expected);
   }
 
@@ -2212,7 +2278,9 @@ void SemanticAnalyzer::analyzeCall(CallExprAST& callExpr,
   bool calleeThrows = resolvedFunc && resolvedFunc->canThrow;
   if (!calleeThrows) {
     sun::TypePtr calleeType = callExpr.getCallee()->getResolvedType();
-    if (calleeType && calleeType->isLambda()) {
+    if (auto* function = sun::tryGetType<sun::FunctionType>(calleeType)) {
+      calleeThrows = function->canThrow();
+    } else if (calleeType && calleeType->isLambda()) {
       calleeThrows =
           static_cast<const sun::LambdaType*>(calleeType.get())->canThrow();
     }

@@ -9,7 +9,7 @@
 #include "support/position.h"
 
 // Type annotation structure for parsed type info
-// Supports: i32, f64, bool, void, ptr<T>, ref T, fn, lambda
+// Supports: i32, f64, bool, void, ptr<T>, ref T, function, lambda
 // Generic types: ClassName<T, U> for class instantiation
 // Array types: array<T, N> or array<T, M, N> for fixed-size arrays
 // Error union types: T, error (value or error)
@@ -18,7 +18,7 @@ struct TypeAnnotation {
   std::unique_ptr<TypeAnnotation>
       elementType;  // For ptr/ref/array: element type
 
-  // Callable types: _(param1) -> returnType or (param1) => returnType
+  // Callable types: function (param1) returnType or (param1) => returnType
   std::vector<std::unique_ptr<TypeAnnotation>>
       paramTypes;                              // Parameter types for fn type
   std::unique_ptr<TypeAnnotation> returnType;  // Return type for fn type
@@ -48,7 +48,8 @@ struct TypeAnnotation {
   // type arguments); empty for an unannotated application
   std::vector<std::string> lifetimeArguments;
 
-  // Source span (includes the "throws IError" suffix when present); not serialized
+  // Source span (includes the "throws IError" suffix when present); not
+  // serialized
   Position span{};
 
   TypeAnnotation() = default;
@@ -121,7 +122,7 @@ struct TypeAnnotation {
   bool isConstReference() const { return isReference() && constRef; }
   bool isFunction() const {
     return baseName == "fn";
-  }  // _() -> {} named function type
+  }  // function () T thin function-pointer type
   bool isLambda() const {
     return baseName == "lambda";
   }  // () => {} anonymous function type
@@ -154,13 +155,14 @@ struct TypeAnnotation {
       return result + "(" + elementType->toString() + ")";
     }
     if (isFunction()) {
-      std::string result = "_(";
+      std::string result = "function (";
       for (size_t i = 0; i < paramTypes.size(); ++i) {
         if (i > 0) result += ", ";
         result += paramTypes[i]->toString();
       }
-      result += ") -> ";
+      result += ") ";
       result += returnType ? returnType->toString() : "void";
+      if (canError) result += " throws IError";
       return result;
     }
     if (isLambda()) {

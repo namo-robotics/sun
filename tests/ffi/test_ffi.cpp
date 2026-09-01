@@ -452,8 +452,7 @@ TEST(Ffi_Link, finds_static_archive_when_no_shared_library_exists) {
   auto libs = sun::loadNativeLibraries(opts);
   EXPECT_TRUE(libs.failed.empty());
   ASSERT_EQ(libs.archives.size(), 1u);
-  EXPECT_EQ(libs.archives[0],
-            ffiTestLibDir() + "/libsun_ffi_static_testlib.a");
+  EXPECT_EQ(libs.archives[0], ffiTestLibDir() + "/libsun_ffi_static_testlib.a");
 }
 
 TEST(Ffi_Link, accepts_static_archive_given_as_an_explicit_path) {
@@ -475,8 +474,7 @@ TEST(Ffi_Link, jit_resolves_symbols_from_a_static_archive) {
   initTestEnvironment();
 
   auto driver = Driver::createForJIT();
-  driver->addJITStaticLibrary(ffiTestLibDir() +
-                              "/libsun_ffi_static_testlib.a");
+  driver->addJITStaticLibrary(ffiTestLibDir() + "/libsun_ffi_static_testlib.a");
   auto value = driver->executeString(R"(
     extern "C" function sun_ffi_slot_set(v: i32) void;
     extern "C" function sun_ffi_slot_get() i32;
@@ -673,6 +671,134 @@ bool loadFfiTestLib() {
 }
 
 }  // namespace
+
+// ============================================================================
+// Function pointers across the C boundary
+// ============================================================================
+
+TEST(Ffi_Callbacks, calls_a_sun_function_immediately) {
+  if (!loadFfiTestLib()) GTEST_SKIP() << "fixture library unavailable";
+  auto value = executeString(R"(
+    extern "C" function sun_ffi_call_callback(
+        callback: function (i32) i32, value: i32) i32;
+
+    function double(value: i32) i32 { return value * 2; }
+
+    function main() i32 {
+        unsafe { return sun_ffi_call_callback(double, 21); };
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Ffi_Callbacks, c_can_call_a_stored_function_after_registration_returns) {
+  if (!loadFfiTestLib()) GTEST_SKIP() << "fixture library unavailable";
+  auto value = executeString(R"(
+    extern "C" function sun_ffi_store_callback(
+        callback: function (i32) i32) void;
+    extern "C" function sun_ffi_call_stored_callback(value: i32) i32;
+
+    function add_two(value: i32) i32 { return value + 2; }
+
+    function register_callback() void {
+        unsafe { sun_ffi_store_callback(add_two); };
+    }
+
+    function main() i32 {
+        register_callback();
+        unsafe { return sun_ffi_call_stored_callback(40); };
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+TEST(Ffi_Callbacks, rejects_mismatched_lambda_bound_and_null_values) {
+  EXPECT_THROW(executeString(R"(
+    extern "C" function register_callback(
+        callback: function (i32) i32) void;
+    function wrong(value: i64) i32 { return 0; }
+    function main() i32 {
+        unsafe { register_callback(wrong); };
+        return 0;
+    }
+  )"),
+               SunError);
+
+  EXPECT_THROW(executeString(R"(
+    extern "C" function register_callback(
+        callback: function (i32) i32) void;
+    function main() i32 {
+        unsafe { register_callback((x: i32) => i32 { return x; }); };
+        return 0;
+    }
+  )"),
+               SunError);
+
+  EXPECT_THROW(executeString(R"(
+    class Handler {
+        init() {}
+        method call(value: i32) i32 { return value; }
+    }
+    extern "C" function register_callback(
+        callback: function (i32) i32) void;
+    function main() i32 {
+        var handler = Handler();
+        unsafe { register_callback(handler.call); };
+        return 0;
+    }
+  )"),
+               SunError);
+
+  EXPECT_THROW(executeString(R"(
+    extern "C" function register_callback(
+        callback: function (i32) i32) void;
+    function main() i32 {
+        unsafe { register_callback(null); };
+        return 0;
+    }
+  )"),
+               SunError);
+}
+
+TEST(Ffi_Callbacks, rejects_throwing_and_unsupported_callback_signatures) {
+  EXPECT_THROW(executeString(R"(
+    extern "C" function register_callback(
+        callback: function (i32) i32 throws IError) void;
+    function main() i32 { return 0; }
+  )"),
+               SunError);
+
+  EXPECT_THROW(executeString(R"(
+    class Box { var value: i32; init(value: i32) { this.value = value; } }
+    extern "C" function register_callback(
+        callback: function (Box) i32) void;
+    function main() i32 { return 0; }
+  )"),
+               SunError);
+
+  EXPECT_THROW(executeString(R"(
+    enum Result { Value(i32), Empty }
+    extern "C" function register_callback(
+        callback: function (i32) Result) void;
+    function main() i32 { return 0; }
+  )"),
+               SunError);
+
+  EXPECT_THROW(executeString(R"(
+    extern "C" function register_callback(
+        callback: function (i32) function (i32) i32) void;
+    function main() i32 { return 0; }
+  )"),
+               SunError);
+}
+
+TEST(Ffi_Callbacks, rejects_function_pointer_returns_from_c) {
+  EXPECT_THROW(executeString(R"(
+    extern "C" function get_callback() function (i32) i32;
+    function main() i32 { return 0; }
+  )"),
+               SunError);
+}
 
 TEST(Ffi_StructValue, passes_a_register_class_struct) {
   // struct { int, int } travels in one integer register.

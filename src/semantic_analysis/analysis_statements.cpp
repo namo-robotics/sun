@@ -28,13 +28,6 @@ void SemanticAnalyzer::analyzeVariableCreation(VariableCreationAST& varCreate) {
     }
   }
 
-  // Named functions cannot be assigned to variables - only lambdas
-  if (varCreate.getValue()->isFunction()) {
-    logAndThrowError("Cannot assign a named function to variable '" +
-                         varCreate.getName() + "'. Use a lambda instead.",
-                     varCreate.getLocation());
-  }
-
   // Analyze the value expression, passing declared type as expected type
   analyzeExpr(const_cast<ExprAST&>(*varCreate.getValue()), declaredType);
   sun::TypePtr rhsType = varCreate.getValue()->getResolvedType();
@@ -137,13 +130,6 @@ void SemanticAnalyzer::analyzeVariableCreation(VariableCreationAST& varCreate) {
 
 void SemanticAnalyzer::analyzeVariableAssignment(
     VariableAssignmentAST& varAssign) {
-  // Named functions cannot be assigned to variables - only lambdas
-  if (varAssign.getValue()->isFunction()) {
-    logAndThrowError("Cannot assign a named function to variable '" +
-                         varAssign.getName() + "'. Use a lambda instead.",
-                     varAssign.getLocation());
-  }
-
   // Look up the variable's type first for expected type propagation
   VariableInfo* varInfo = ctx_.lookupVariable(varAssign.getName());
   // A module-level global is emitted under its mangled name; record it so

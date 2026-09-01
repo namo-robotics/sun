@@ -2,11 +2,9 @@
 
 // function_registry.h — Which functions exist, and how to call them
 //
-// Codegen keeps three books on functions, all of them plain bookkeeping over
+// Codegen keeps two books on functions, both plain bookkeeping over
 // the module being built:
 //
-//   what calling convention a function uses  — a named function that captures
-//       nothing is called directly; one that captures takes a closure argument
 //   which functions came from precompiled bitcode  — so a declaration made by
 //       codegen is never mistaken for one a .moon bundle already supplied
 //   which functions the user wrote  — so an IR dump can leave library code out
@@ -19,7 +17,6 @@
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Module.h>
 
-#include <map>
 #include <memory>
 #include <set>
 #include <string>
@@ -28,17 +25,6 @@
 #include "codegen/abi/extern_c.h"
 #include "codegen/codegen_state.h"
 #include "semantic_analysis/types.h"
-
-class Capture;
-
-/**
- * How a function is called: the variables it captures, in order, and whether
- * it uses the closure calling convention at all.
- */
-struct FunctionClosureInfo {
-  std::vector<Capture> captures;  // Names of captured variables in order
-  bool hasClosure;  // Whether this function uses closure calling convention
-};
 
 /**
  * The registry of functions in the module being built: their calling
@@ -51,22 +37,6 @@ class FunctionRegistry {
 
   FunctionRegistry(const FunctionRegistry&) = delete;
   FunctionRegistry& operator=(const FunctionRegistry&) = delete;
-
-  // ---------------------------------------------------------------
-  // Calling conventions
-  // ---------------------------------------------------------------
-
-  // Record how a named function must be called
-  void noteClosureInfo(const std::string& mangledName,
-                       FunctionClosureInfo info) {
-    closureInfo_[mangledName] = std::move(info);
-  }
-
-  // How to call `name`, or nullptr if it was never recorded
-  const FunctionClosureInfo* closureInfo(const std::string& name) const {
-    auto it = closureInfo_.find(name);
-    return it == closureInfo_.end() ? nullptr : &it->second;
-  }
 
   // ---------------------------------------------------------------
   // Where functions came from
@@ -125,9 +95,6 @@ class FunctionRegistry {
  private:
   CodegenState& state_;
   sun::cabi::ExternCEmitter& externC_;
-
-  // Mangled name -> how that function must be called
-  std::map<std::string, FunctionClosureInfo> closureInfo_;
 
   // Declared from precompiled bitcode before codegen started
   std::set<std::string> precompiled_;

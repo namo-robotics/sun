@@ -88,7 +88,7 @@ sun::TypePtr TypeInferer::substituteTypeParameters(sun::TypePtr type) {
       if (newParam != param) changed = true;
     }
     if (changed) {
-      return sun::Types::Function(newRet, std::move(newParams));
+      return sun::Types::Function(newRet, std::move(newParams), ft->canThrow());
     }
     return type;
   }
@@ -268,13 +268,14 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
     return refType;
   }
 
-  // Function types: _() {} (named function, direct call)
+  // Function-pointer types: function (Types) ReturnType
   if (annot.isFunction()) {
     if (annot.returnType && annot.returnType->refEnv &&
         (annot.returnType->lifetimeName.empty() ||
          annot.returnType->lifetimeName == "_")) {
       logAndThrowError(
-          "an anonymous <'_> lambda type cannot be a return type - its captured "
+          "an anonymous <'_> lambda type cannot be a return type - its "
+          "captured "
           "environment lives in a stack frame that dies when the function "
           "returns",
           annot.span);
@@ -286,7 +287,7 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
     sun::TypePtr retType = annot.returnType
                                ? typeAnnotationToType(*annot.returnType)
                                : sun::Types::Void();
-    return sun::Types::Function(retType, std::move(paramTypes));
+    return sun::Types::Function(retType, std::move(paramTypes), annot.canError);
   }
 
   // Lambda types: () {} (anonymous function, fat pointer call)
@@ -295,7 +296,8 @@ sun::TypePtr TypeInferer::typeAnnotationToType(const TypeAnnotation& annot) {
         (annot.returnType->lifetimeName.empty() ||
          annot.returnType->lifetimeName == "_")) {
       logAndThrowError(
-          "an anonymous <'_> lambda type cannot be a return type - its captured "
+          "an anonymous <'_> lambda type cannot be a return type - its "
+          "captured "
           "environment lives in a stack frame that dies when the function "
           "returns",
           annot.span);

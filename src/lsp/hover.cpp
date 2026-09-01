@@ -19,10 +19,8 @@ namespace {
 
 std::string renderType(const sun::Type& type, const Bindings& bindings);
 
-// Named function types use `->`; lambda types use `=>`.
-// This is type position, where Sun writes the arrow; a declaration's own
-// signature is arrowless and rendered by renderPrototype instead. `prefix`
-// carries a lambda's lifetime marker, such as `<'_>`.
+// Render a function pointer or lambda. `prefix` carries either the
+// `function ` keyword or a lambda lifetime marker such as `<'_>`.
 std::string renderCallable(const std::string& prefix,
                            const std::vector<sun::TypePtr>& params,
                            const sun::TypePtr& returnType, bool canThrow,
@@ -32,7 +30,7 @@ std::string renderCallable(const std::string& prefix,
     if (i > 0) out += ", ";
     out += params[i] ? renderType(*params[i], bindings) : "?";
   }
-  out += fatArrow ? ") => " : ") -> ";
+  out += fatArrow ? ") => " : ") ";
   out += returnType ? renderType(*returnType, bindings) : "void";
   if (canThrow) out += " throws IError";
   return out;
@@ -63,7 +61,7 @@ std::string renderType(const sun::Type& type, const Bindings& bindings) {
   switch (type.getKind()) {
     case sun::Type::Kind::Function: {
       const auto& fn = static_cast<const sun::FunctionType&>(type);
-      return renderCallable("", fn.getParamTypes(), fn.getReturnType(),
+      return renderCallable("function ", fn.getParamTypes(), fn.getReturnType(),
                             fn.canThrow(), false, bindings);
     }
     case sun::Type::Kind::Lambda: {
@@ -323,12 +321,11 @@ std::optional<Hover> hoverNode(const Target& target, int offset,
       const auto& fn = static_cast<const FunctionAST&>(node);
       // A function declared inside a class or interface is a method, and is
       // spelled with the 'method' keyword
-      bool isMethod =
-          target.chain.size() > 1 &&
-          (target.chain[target.chain.size() - 2]->getType() ==
-               ASTNodeType::CLASS_DEFINITION ||
-           target.chain[target.chain.size() - 2]->getType() ==
-               ASTNodeType::INTERFACE_DEFINITION);
+      bool isMethod = target.chain.size() > 1 &&
+                      (target.chain[target.chain.size() - 2]->getType() ==
+                           ASTNodeType::CLASS_DEFINITION ||
+                       target.chain[target.chain.size() - 2]->getType() ==
+                           ASTNodeType::INTERFACE_DEFINITION);
       return Hover{
           renderPrototype(fn.getProto(), isMethod ? "method" : "function",
                           fn.getProto().getName(), fn.isPublic(), source,

@@ -54,67 +54,61 @@ TEST(Functions_Generic, two_specializations) {
   EXPECT_EQ(value, 12);
 }
 
-TEST(Functions_Generic, generic_function_with_capture) {
+TEST(Functions_Generic, module_helper_takes_former_capture) {
   auto value = executeString(R"(
+    function add<T>(v: T, x: T) T {
+        return v + x;
+    }
     function main() i32 {
         var x = 10;
-        function add<T>(v: T) T {
-            return v + x;
-        }
-        return add<i32>(5);
+        return add<i32>(5, x);
     }
   )");
   EXPECT_EQ(value, 15);
 }
 
-TEST(Functions_Generic, generic_function_capture_multiple_calls) {
-  // Two calls to same specialization - capture remains unchanged
-  // Note: Modifying captured variables between calls has a separate bug
-  // that affects both generic and non-generic closures
+TEST(Functions_Generic, module_helper_can_be_called_multiple_times) {
   auto value = executeString(R"(
+    function add<T>(v: T, x: T) T {
+        return v + x;
+    }
     function main() i32 {
         var x = 1;
-        function add<T>(v: T) T {
-            return v + x;
-        }
-        var a = add<i32>(10);
-        var b = add<i32>(20);
+        var a = add<i32>(10, x);
+        var b = add<i32>(20, x);
         return a + b;
     }
   )");
-  // a = 10 + 1 = 11, b = 20 + 1 = 21, total = 32
   EXPECT_EQ(value, 32);
 }
 
-TEST(Functions_Generic, nested_generic_function) {
+TEST(Functions_Generic, module_generic_helpers_can_call_each_other) {
   auto value = executeString(R"(
+    function inner<T>(y: T) T {
+        return y + y;
+    }
+    function outer<T>(x: T) T {
+        return x + inner<T>(x);
+    }
     function main() i32 {
-        function outer<T>(x: T) T {
-            function inner<U>(y: U) U {
-                return y + y;
-            }
-            return x + inner<T>(x);
-        }
         return outer<i32>(5);
     }
   )");
-  // inner(5) = 5+5 = 10, outer = 5 + 10 = 15
   EXPECT_EQ(value, 15);
 }
 
-TEST(Functions_Generic, inner_generic_function_with_capture) {
+TEST(Functions_Generic, module_helper_receives_outer_value_explicitly) {
   auto value = executeString(R"(
+    function inner<T>(y: T, x: T) T {
+        return y + x;
+    }
+    function outer<T>(x: T) T {
+        return inner<T>(3, x);
+    }
     function main() i32 {
-        function outer<T>(x: T) T {
-            function inner<U>(y: U) U {
-                return y + x;
-            }
-            return inner<i8>(3);
-        }
         return outer<i32>(5);
     }
   )");
-  // inner(3) = 3+5 = 8, outer = 8
   EXPECT_EQ(value, 8);
 }
 // ============================================================================
@@ -194,15 +188,15 @@ TEST(Functions_Generic, module_private_helper_reachable_from_two_requesters) {
   EXPECT_EQ(value, 21 + 22);
 }
 
-TEST(Functions_Generic, nested_generic_with_capture_two_outer_specializations) {
+TEST(Functions_Generic, module_helpers_support_multiple_specializations) {
   auto value = executeString(R"(
+    function inner<T>(v: T, base: T) T { return v + base; }
     function outer<T>(base: T) T {
-        function inner<U>(v: U) U { return v + base; }
-        return inner<T>(base) + inner<T>(base);
+        return inner<T>(base, base) + inner<T>(base, base);
     }
     function main() i32 {
-        var a: i32 = outer<i32>(3);     // 12
-        var b: i64 = outer<i64>(5);     // 20
+        var a: i32 = outer<i32>(3);
+        var b: i64 = outer<i64>(5);
         return a + b;
     }
   )");

@@ -38,7 +38,7 @@ TypePtr ModuleTypeResolver::parseType(const std::string& sig, size_t& pos) {
 
   // Function type: (params) -> return
   if (sig[pos] == '(') {
-    return parseFunctionType(sig, pos);
+    return parseFunctionType(sig, pos, /*functionKeyword=*/false);
   }
 
   // Identifier (primitive type or class name)
@@ -56,6 +56,12 @@ TypePtr ModuleTypeResolver::parseType(const std::string& sig, size_t& pos) {
     auto referenced = parseType(sig, pos);
     if (!referenced || !match(sig, pos, ')')) return nullptr;
     return std::make_shared<ReferenceType>(referenced, /*isMutable=*/false);
+  }
+
+  // Current bundles use the same spelling as source. The parser below also
+  // accepts old thin-arrow strings when no keyword was present.
+  if (name == "function") {
+    return parseFunctionType(sig, pos, /*functionKeyword=*/true);
   }
 
   // Check for primitive types
@@ -87,7 +93,8 @@ TypePtr ModuleTypeResolver::parseType(const std::string& sig, size_t& pos) {
 }
 
 TypePtr ModuleTypeResolver::parseFunctionType(const std::string& sig,
-                                              size_t& pos) {
+                                              size_t& pos,
+                                              bool functionKeyword) {
   // Expect '('
   if (!match(sig, pos, '(')) {
     return nullptr;
@@ -116,13 +123,15 @@ TypePtr ModuleTypeResolver::parseFunctionType(const std::string& sig,
     return nullptr;
   }
 
-  // A thin arrow is a named function type; a fat arrow is a lambda type.
+  // Old bundles used a thin arrow for function pointers. Lambda metadata
+  // continues to use a fat arrow.
   skipWhitespace(sig, pos);
   bool isLambda = false;
-  if (pos + 1 < sig.size() && sig[pos] == '-' && sig[pos + 1] == '>') {
+  if (functionKeyword) {
+    // The return type follows directly.
+  } else if (pos + 1 < sig.size() && sig[pos] == '-' && sig[pos + 1] == '>') {
     pos += 2;
-  } else if (pos + 1 < sig.size() && sig[pos] == '=' &&
-             sig[pos + 1] == '>') {
+  } else if (pos + 1 < sig.size() && sig[pos] == '=' && sig[pos + 1] == '>') {
     pos += 2;
     isLambda = true;
   } else {
@@ -136,9 +145,21 @@ TypePtr ModuleTypeResolver::parseFunctionType(const std::string& sig,
     returnType = std::make_shared<PrimitiveType>(Type::Kind::Void);
   }
 
+  bool canThrow = false;
+  size_t beforeSuffix = pos;
+  std::string suffix = parseIdentifier(sig, pos);
+  if (suffix == "throws") {
+    if (parseIdentifier(sig, pos) != "IError") return nullptr;
+    canThrow = true;
+  } else {
+    pos = beforeSuffix;
+  }
+
   if (isLambda)
-    return std::make_shared<LambdaType>(returnType, std::move(paramTypes));
-  return std::make_shared<FunctionType>(returnType, std::move(paramTypes));
+    return std::make_shared<LambdaType>(returnType, std::move(paramTypes),
+                                        canThrow);
+  return std::make_shared<FunctionType>(returnType, std::move(paramTypes),
+                                        canThrow);
 }
 
 TypePtr ModuleTypeResolver::parseGenericType(const std::string& name,

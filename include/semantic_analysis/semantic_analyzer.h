@@ -407,7 +407,7 @@ class SemanticAnalyzer {
    * Throws if `name` is one of them and the call site is not inside a block.
    */
   void checkRequiresUnsafeBlock(const std::string &name,
-                                   const Position &loc) const;
+                                const Position &loc) const;
 
   /**
    * Check `mod.name = value`: the target must be a visible, assignable
@@ -430,9 +430,6 @@ class SemanticAnalyzer {
    */
   std::set<std::string> collectFreeVariablesInBlock(
       const BlockExprAST &block, std::set<std::string> bound);
-
-  /** The captures a nested function needs, from its free variables. */
-  std::vector<Capture> buildCaptures(const FunctionAST &func);
 
   /**
    * The same for a lambda, marking the ones its `[ref x]` list asks to

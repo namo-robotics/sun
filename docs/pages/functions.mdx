@@ -4,7 +4,8 @@ Sun supports both named functions and anonymous lambda expressions.
 
 ## Named Functions
 
-Functions are defined using the `function` keyword. They are hoisted and available throughout their scope:
+Functions are defined using the `function` keyword. They are hoisted and
+available throughout their module:
 
 ```sun
 function add(a: i32, b: i32) i32 {
@@ -17,9 +18,14 @@ function main() i32 {
 }
 ```
 
-A method of a class or interface is written the same way but opens with
-`method` instead (see [Classes](/classes)); `function` declares free functions
-only.
+A function declaration must be a direct child of the program root or a
+`module`, including a nested module. A function, method, constructor, lambda,
+or control-flow block cannot contain another function declaration. Move the
+helper to module scope and pass its state as explicit parameters, or use a
+lambda when lexical capture is required.
+
+A method of a class or interface opens with `method` instead (see
+[Classes](/classes)); `function` declares free functions only.
 
 **There are no implicit returns.** A function whose signature promises a value
 must leave through an explicit `return` (or a `throw`) on every path — a
@@ -98,6 +104,59 @@ using std.env;
 function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
     var alloc = make_heap_allocator();
     var cli = collect_args(alloc, argc, argv);
+## Function Pointers
+
+A named function is also a first-class, non-null function pointer. Its type is
+written with `function`, followed by a type-only parameter list and its return
+type:
+
+```sun
+function double(x: i32) i32 { return x * 2; }
+
+function apply(callback: function (i32) i32, value: i32) i32 {
+    return callback(value);
+}
+
+function choose() function (i32) i32 {
+    return double;
+}
+
+var callback: function (i32) i32 = double;
+callback = choose();
+var answer = callback(21);
+```
+
+Function pointers can be stored in locals, globals, fields, and enum payloads,
+and can be passed and returned. They occupy one word and copy like a primitive
+value. A pointer has no environment: lambdas and bound methods remain distinct
+lambda values and do not convert to function pointers.
+
+Parameter names are not allowed inside a function-pointer type. A throwing
+pointer adds the usual suffix:
+
+```sun
+var risky: function (i32) i32 throws IError = may_fail;
+```
+
+Throwingness is part of the type. A non-throwing function pointer widens to a
+throwing pointer with the same parameter and return types; the reverse
+conversion is rejected. Calling a throwing pointer requires `try` or an
+enclosing `throws IError`, just like a direct throwing call.
+
+An overloaded function name needs an expected pointer type so the compiler can
+select one signature:
+
+```sun
+function parse(value: i32) i32 { return value; }
+function parse(value: f64) i32 { return 0; }
+
+var parse_int: function (i32) i32 = parse;
+```
+
+A bare overloaded name without type context is ambiguous. Generic functions
+must still be called with a specialization and cannot currently be taken as
+bare function pointers.
+
     for (var arg: String in cli) { println(arg); }
     return 0;
 }
@@ -178,24 +237,24 @@ Capture rules:
 | Aspect | `function` | `lambda` |
 |--------|-----------|----------|
 | Name | Required, becomes the function's identity | Anonymous (empty name internally) |
-| Declaration | Top-level or nested statement | Expression (must assign to variable) |
-| First-class | No—cannot be assigned or passed | Yes—can be assigned, passed, returned |
-| Recursion | Can call itself by name | Must reference the variable it's assigned to |
-| Hoisting | Available throughout scope | Only after assignment |
+| Declaration | Direct child of the root or a module | Expression |
+| First-class | Yes, as a non-null environment-free pointer | Yes, with an optional captured environment |
+| Recursion | Can call itself by name | Must reference the variable it is assigned to |
+| Hoisting | Available throughout its module | Only after assignment |
 
 import { Callout } from 'nextra/components'
 
 <Callout type="info">
   **When to use which:**
-  - Use `function` for named, top-level operations called directly
-  - Use a lambda literal for callbacks, higher-order function arguments, or when you need to store/pass functions
+  - Use `function` for named operations that need no captured environment
+  - Use a lambda when the callable needs lexical captures or a bound receiver
 </Callout>
 
 ## Lambda Types
 
 A lambda type annotation uses the fat arrow: `(i32) => i32`, with an optional
-`throws IError` suffix. The distinct named-function type `_(i32) -> i32`
-keeps its thin arrow.
+`throws IError` suffix. It is distinct from the environment-free
+`function (i32) i32` pointer type.
 
 The plain form accepts only **environment-free** lambdas: values with no capture
 list and no bound receiver. A lambda with a capture list, or a bound method,
@@ -282,7 +341,9 @@ anonymous `<'_>` return is rejected because it names no input frame. See
 
 ## First-Class Lambdas
 
-Lambdas are first-class values—they can be assigned to variables, passed as arguments, and returned from functions (named functions are not, but class methods are—see [Bound Methods](#bound-methods)):
+Lambdas are first-class values: they can be assigned to variables, passed as
+arguments, and returned from functions when their captured environment permits
+it:
 
 ```sun
 // Assign a lambda to a variable

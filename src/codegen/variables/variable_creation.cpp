@@ -82,13 +82,6 @@ Value* VariableGenerator::codegen(const VariableCreationAST& expr) {
 
   bool isLambdaType = varSunType->isLambda();
 
-  // Only lambda literals can be assigned to variables (not named functions)
-  if (expr.getValue()->isFunction()) {
-    logAndThrowError(
-        "Cannot assign a named function to a variable. Use a lambda instead: " +
-        varName);
-  }
-
   // If the value is a lambda literal, generate it and store its pointer
   if (expr.getValue()->isLambda()) {
     if (!isLambdaType) {
@@ -188,7 +181,7 @@ Value* VariableGenerator::genFunctionVariable(const VariableCreationAST& expr) {
 // -------------------------------------------------------------------
 
 llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
-                                         llvm::Type* varType) {
+                                            llvm::Type* varType) {
   // A reference variable binds the referent's address rather than reading
   // through it — that is what makes `var r = v.get(i); r = 5;` write into
   // the Vec. codegen() would read instead (see loadIfRef).
@@ -252,7 +245,8 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
     // Case 1: Class to interface conversion - create fat pointer
     if (auto* classType = sun::tryGetType<sun::ClassType>(valueSunType)) {
       // value is the object pointer (alloca or struct pointer)
-      Value* fatPtr = classes().createInterfaceFatPointer(value, classType, ifaceType);
+      Value* fatPtr =
+          classes().createInterfaceFatPointer(value, classType, ifaceType);
       if (!fatPtr) return nullptr;
 
       // Create alloca for the fat pointer and store it
@@ -370,8 +364,8 @@ llvm::Value* VariableGenerator::genLocalVar(const VariableCreationAST& expr,
       unsigned valueBits = valueType->getIntegerBitWidth();
       unsigned varBits = varType->getIntegerBitWidth();
       if (valueBits < varBits) {
-        value = ops::extendInt(*ctx.builder, 
-            value, varType,
+        value = ops::extendInt(
+            *ctx.builder, value, varType,
             expr.getValue() ? expr.getValue()->getResolvedType() : nullptr);
       } else if (valueBits > varBits) {
         value = ctx.builder->CreateTrunc(value, varType, "trunc");
@@ -473,7 +467,8 @@ static llvm::Constant* buildConstantArray(
 
 llvm::Constant* VariableGenerator::genGlobalArray(
     const VariableCreationAST& expr) {
-  assert(scopes().empty() && "genGlobalArray should only be called at top-level");
+  assert(scopes().empty() &&
+         "genGlobalArray should only be called at top-level");
 
   auto* arrayType = &sun::requireType<sun::ArrayType>(
       expr, "global array '" + expr.getName() + "'");
@@ -791,13 +786,14 @@ void VariableGenerator::emitStaticInitFunction() {
             logAndThrowError("Failed to generate field '" + field.name +
                              "' for global: " + init.varName);
           }
-          value = ops::widenNumericIfNeeded(*ctx.builder, typeResolver, value, classField->type,
-                                       field.value->getResolvedType());
+          value = ops::widenNumericIfNeeded(*ctx.builder, typeResolver, value,
+                                            classField->type,
+                                            field.value->getResolvedType());
 
           Value* fieldPtr = ctx.builder->CreateStructGEP(
               structType, gv, classField->index, field.name + ".ptr");
-          layout::storeIntoSlot(*ctx.builder, module->getDataLayout(),
-                                fieldPtr, value, classField->type, classType);
+          layout::storeIntoSlot(*ctx.builder, module->getDataLayout(), fieldPtr,
+                                value, classField->type, classType);
         }
         continue;
       }
@@ -815,7 +811,8 @@ void VariableGenerator::emitStaticInitFunction() {
         }
         // Moving, not copying: the source is invalidated so only the global
         // drops the value.
-        ctx.builder->CreateStore(gen_.applyMoveSemantics(value, init.varType), gv);
+        ctx.builder->CreateStore(gen_.applyMoveSemantics(value, init.varType),
+                                 gv);
         continue;
       }
 
@@ -825,7 +822,8 @@ void VariableGenerator::emitStaticInitFunction() {
       for (const auto& arg : *ctorArgs) {
         argTypes.push_back(arg->getResolvedType());
       }
-      ClassGenerator::ConstructorLookup ctor = classes().lookupConstructor(classType, argTypes);
+      ClassGenerator::ConstructorLookup ctor =
+          classes().lookupConstructor(classType, argTypes);
 
       // Find the constructor; declare an external if the init method exists
       // but isn't in the module yet
@@ -880,8 +878,8 @@ void VariableGenerator::emitStaticInitFunction() {
         } else {
           // By-value compound arguments move into the constructor
           argVal = gen_.applyMoveSemantics(argVal, arg->getResolvedType());
-          argVal =
-              ops::widenNumericIfNeeded(*ctx.builder, typeResolver, argVal, paramType, arg->getResolvedType());
+          argVal = ops::widenNumericIfNeeded(*ctx.builder, typeResolver, argVal,
+                                             paramType, arg->getResolvedType());
         }
 
         ctorArgValues.push_back(argVal);

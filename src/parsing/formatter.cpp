@@ -206,6 +206,21 @@ class Formatter {
   // --- types & prototypes ---------------------------------------------------
 
   void printType(const TypeAnnotation& t) {
+    if (t.isFunction()) {
+      out_ += "function (";
+      for (size_t i = 0; i < t.paramTypes.size(); ++i) {
+        if (i) out_ += ", ";
+        printType(*t.paramTypes[i]);
+      }
+      out_ += ") ";
+      if (t.returnType) {
+        printType(*t.returnType);
+      } else {
+        out_ += "void";
+      }
+      if (t.canError) out_ += " throws IError";
+      return;
+    }
     if (t.span.endOffset.has_value()) {
       out_ += slice(t.span);
     } else {

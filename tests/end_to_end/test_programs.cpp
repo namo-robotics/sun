@@ -83,14 +83,15 @@ TEST(EndToEnd_Programs, square_func) {
   EXPECT_EQ(value, 4);
 }
 
-TEST(EndToEnd_Programs, square_func_with_closure) {
+TEST(EndToEnd_Programs, square_module_helper_with_explicit_state) {
   auto value = executeString(R"(
+    function square(x: i32, offset: i32) i32 {
+        return x * x + offset;
+    }
+
     function main() i32 {
         var a: i32 = 1;
-        function square(x: i32) i32 {
-            return x*x + a;
-        };
-        return square(2);
+        return square(2, a);
     };
   )");
   EXPECT_EQ(value, 5);
@@ -295,7 +296,7 @@ TEST(EndToEnd_Programs, func_pass) {
 
 TEST(EndToEnd_Programs, pass_named_function) {
   auto value = executeString(R"(
-    var apply = (f: _(i32) -> i32, x: i32) => i32 {
+    var apply = (f: function (i32) i32, x: i32) => i32 {
         return f(x);
     };
 

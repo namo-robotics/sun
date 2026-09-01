@@ -148,7 +148,7 @@ TEST(Tooling_Lsp_Hover, MethodCallResult) {
 }
 
 TEST(Tooling_Lsp_Hover, MethodCallee) {
-  EXPECT_EQ(hoverAt(kProgram, "sum();"), "sum: () -> i32");
+  EXPECT_EQ(hoverAt(kProgram, "sum();"), "sum: function () i32");
 }
 
 TEST(Tooling_Lsp_Hover, FunctionSignatureOnKeyword) {
@@ -183,11 +183,23 @@ TEST(Tooling_Lsp_Hover, ConstRefParameter) {
 }
 
 TEST(Tooling_Lsp_Hover, FunctionCallee) {
-  EXPECT_EQ(hoverAt(kProgram, "add(1, 2)"), "add: (i32, i32) -> i32");
+  EXPECT_EQ(hoverAt(kProgram, "add(1, 2)"), "add: function (i32, i32) i32");
 }
 
-// Types of callables are written with the arrow, as an annotation would be,
-// and a lambda that carries captures keeps the lifetime it is bound to
+TEST(Tooling_Lsp_Hover, FunctionPointerVariableUsesFunctionSyntax) {
+  const char* source = R"(
+function fail(x: i32) i32 throws IError { return x; }
+function main() i32 {
+    var callback: function (i32) i32 throws IError = fail;
+    return 0;
+}
+)";
+  EXPECT_EQ(hoverAt(source, "var callback"),
+            "var callback: function (i32) i32 throws IError");
+}
+
+// Lambda types retain arrow syntax, and a lambda that carries captures keeps
+// the lifetime it is bound to.
 TEST(Tooling_Lsp_Hover, LambdaTypeUsesArrowSyntax) {
   const char* source = R"(
 class Holder {
