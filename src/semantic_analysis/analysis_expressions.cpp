@@ -193,6 +193,18 @@ void SemanticAnalyzer::analyzeMemberAccess(MemberAccessAST& memberAccess,
   // member from the expected function-pointer signature before ordinary type
   // inference falls back to the first overload.
   sun::TypePtr objectType = memberAccess.getObject()->getResolvedType();
+  if (objectType && objectType->isModule()) {
+    const auto* moduleType =
+        static_cast<const sun::ModuleType*>(objectType.get());
+    SymbolMatch match = ctx_.findSymbolInModule(
+        moduleType->getModulePath(), memberAccess.getMemberName(),
+        SymbolKind::Variable);
+    if (match && match.variableInfo) {
+      checkExternVariableAccessAllowed(*match.variableInfo, match.display(),
+                                       memberAccess.getLocation());
+      memberAccess.setQualifiedName(match.variableInfo->qualifiedName);
+    }
+  }
   if (objectType && objectType->isModule() && expectedType &&
       expectedType->isFunction()) {
     const auto* moduleType =
@@ -230,6 +242,8 @@ void SemanticAnalyzer::analyzeQualifiedName(QualifiedNameAST& qualName) {
   // Look up in namespaced variables first
   VariableInfo* varInfo = ctx_.lookupQualifiedVariable(fullName);
   if (varInfo) {
+    checkExternVariableAccessAllowed(*varInfo, fullName,
+                                     qualName.getLocation());
     // Set resolved mangled name from the variable's qualified name
     if (!varInfo->qualifiedName.empty()) {
       qualName.setResolvedMangledName(varInfo->qualifiedName.mangled());

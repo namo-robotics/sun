@@ -519,6 +519,9 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeVariableCreation(
   auto var = std::make_unique<VariableCreationAST>(
       proto.name(), std::move(value), std::move(typeAnnotation),
       proto.is_const());
+  var->setCExtern(proto.is_c_extern());
+  var->setExplicitCAbi(proto.explicit_c_abi());
+  if (proto.has_link_name()) var->setLinkName(proto.link_name());
   var->setVisibility(fromProto(proto.visibility()));
   var->setDoc(proto.doc());
   return var;

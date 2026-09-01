@@ -19,6 +19,12 @@ It makes two passes over the merged AST:
    node is checked against its context and stamped with a resolved
    `sun::Type`.
 
+C extern globals join functions in declaration collection, so a function may
+use one before its source declaration. Their `VariableInfo` records
+`isCExtern`; bare, imported, and module-qualified reads and writes all consult
+that one flag and require `unsafe`. `c_abi_types.h` supplies the shared
+C-layout predicate used by extern function parameters and globals.
+
 ## Scope Tree
 
 All name resolution happens against a **scope tree** that mirrors the

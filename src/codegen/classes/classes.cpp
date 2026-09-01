@@ -633,7 +633,8 @@ GlobalVariable* ClassGenerator::moduleMemberGlobal(const ExprAST& object,
                                                    const std::string& symbol) {
   sun::TypePtr objectType = object.getResolvedType();
   if (!objectType || !objectType->isModule() || symbol.empty()) return nullptr;
-  return module->getGlobalVariable(symbol);
+  const std::string& nativeSymbol = gen_.externCEmitter().symbolFor(symbol);
+  return module->getGlobalVariable(nativeSymbol);
 }
 
 // -------------------------------------------------------------------
@@ -658,7 +659,9 @@ Value* ClassGenerator::codegen(const MemberAccessAST& expr) {
     const std::string qualifiedName = expr.getQualifiedName().mangled();
 
     // Check for global variable in this module
-    GlobalVariable* gv = module->getGlobalVariable(qualifiedName);
+    const std::string& globalName =
+        gen_.externCEmitter().symbolFor(qualifiedName);
+    GlobalVariable* gv = module->getGlobalVariable(globalName);
     if (gv) {
       sun::TypePtr varType = expr.getResolvedType();
       // Classes and interfaces return the pointer, not a load

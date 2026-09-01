@@ -53,6 +53,11 @@ struct SunFfiBig {
   int a, b, c, d, e;
 };  // 20B -> MEMORY (byval/sret)
 
+/* Mutable globals used to test extern variable declarations. */
+int sun_ffi_global_value = 17;
+int* sun_ffi_global_pointer = &sun_ffi_global_value;
+struct SunFfiPair sun_ffi_global_pair = {4, 5};
+
 int sun_ffi_take_pair(struct SunFfiPair p) { return p.a * 100 + p.b; }
 int sun_ffi_take_mixed(struct SunFfiMixed m) { return m.a + (int)m.b; }
 int sun_ffi_take_big(struct SunFfiBig b) { return b.a + b.b + b.c + b.d + b.e; }

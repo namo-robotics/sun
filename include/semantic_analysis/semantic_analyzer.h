@@ -401,6 +401,13 @@ class SemanticAnalyzer {
                               const Position &loc) const;
 
   /**
+   * Reject access to C-owned global storage outside an unsafe block.
+   */
+  void checkExternVariableAccessAllowed(const VariableInfo &info,
+                                        const std::string &displayName,
+                                        const Position &loc) const;
+
+  /**
    * The same rule for intrinsics: those that read or write unchecked memory
    * are gated on `unsafe`. `sun::requiresUnsafeBlock` decides which, and this
    * is where it is applied — for generic and non-generic intrinsics alike.

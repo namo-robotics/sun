@@ -73,6 +73,12 @@ class VariableGenerator {
       const std::string& name, llvm::Type* type,
       llvm::Constant* initializer = nullptr);
 
+  /** Declare every extern global in a block before emitting its bodies. */
+  void declareBlockExternGlobals(const BlockExprAST& block);
+
+  /** Find a global after translating its resolved Sun name to a C symbol. */
+  llvm::GlobalVariable* globalForSunName(const std::string& name) const;
+
   /**
    * Emits the static initialization function for the globals that could not
    * be constant-initialized. Call after all top-level codegen, before main.

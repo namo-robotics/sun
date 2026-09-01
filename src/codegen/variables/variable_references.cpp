@@ -38,9 +38,15 @@ llvm::LoadInst* VariableGenerator::createLoadForLocalVar(
 // Global variable loading
 // -------------------------------------------------------------------
 
+llvm::GlobalVariable* VariableGenerator::globalForSunName(
+    const std::string& name) const {
+  const std::string& symbol = gen_.externCEmitter().symbolFor(name);
+  return module->getGlobalVariable(symbol);
+}
+
 llvm::LoadInst* VariableGenerator::createLoadForGlobalVar(
     const std::string& varName) {
-  GlobalVariable* globalVar = module->getGlobalVariable(varName);
+  GlobalVariable* globalVar = globalForSunName(varName);
   if (globalVar) {
     return ctx.builder->CreateLoad(globalVar->getValueType(), globalVar,
                                    varName.c_str());
@@ -120,6 +126,21 @@ Value* VariableGenerator::codegen(const VariableReferenceAST& expr) {
   if (varType && varType->isReference()) {
     const auto* refType = static_cast<const sun::ReferenceType*>(varType.get());
 
+    // A global reference stores the native pointer in global storage.
+    if (GlobalVariable* global = globalForSunName(expr.getMangledName())) {
+      Value* pointer = ctx.builder->CreateLoad(
+          global->getValueType(), global, expr.getName() + ".ref.ptr");
+      sun::TypePtr referenced = refType->getReferencedType();
+      if (referenced->isArray() || referenced->isClass() ||
+          referenced->isInterface() ||
+          CodegenVisitor::isPayloadEnum(referenced)) {
+        return pointer;
+      }
+      llvm::Type* referencedType = typeResolver.resolve(referenced);
+      return ctx.builder->CreateLoad(referencedType, pointer,
+                                     expr.getName() + ".deref");
+    }
+
     // For references to arrays, we need to return a pointer to the fat struct
     // The alloca holds the pointer value - load it to get the actual pointer
     if (refType->getReferencedType()->isArray()) {
@@ -193,10 +214,8 @@ Value* VariableGenerator::codegen(const VariableReferenceAST& expr) {
       return addr;
     }
     // Check for global class variables
-    GlobalVariable* gv = module->getGlobalVariable(expr.getName());
-    if (!gv) {
-      gv = module->getGlobalVariable(expr.getMangledName());
-    }
+    GlobalVariable* gv = globalForSunName(expr.getMangledName());
+    if (!gv) gv = globalForSunName(expr.getName());
     if (gv) {
       // Return the global variable pointer directly (same semantics as alloca)
       return gv;
@@ -215,10 +234,8 @@ Value* VariableGenerator::codegen(const VariableReferenceAST& expr) {
     if (Value* addr = scopes().compoundStorageAddress(expr.getName())) {
       return addr;
     }
-    GlobalVariable* gv = module->getGlobalVariable(expr.getName());
-    if (!gv) {
-      gv = module->getGlobalVariable(expr.getMangledName());
-    }
+    GlobalVariable* gv = globalForSunName(expr.getMangledName());
+    if (!gv) gv = globalForSunName(expr.getName());
     if (gv) {
       return gv;
     }
@@ -320,8 +337,8 @@ Value* VariableGenerator::codegen(const VariableAssignmentAST& expr) {
 
   // Check for global variable: mangled name first (module-qualified), then
   // the name as written (root-level globals)
-  GlobalVariable* gv = module->getGlobalVariable(expr.getMangledName());
-  if (!gv) gv = module->getGlobalVariable(expr.getName());
+  GlobalVariable* gv = globalForSunName(expr.getMangledName());
+  if (!gv) gv = globalForSunName(expr.getName());
   if (gv) {
     Value* value = codegen(*expr.getValue());
     if (isLambdaLiteral && savedBlock) {

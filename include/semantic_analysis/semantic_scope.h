@@ -28,6 +28,7 @@ struct VariableInfo {
   bool isConst = false;  // `const x`: the binding and its value never change
   sun::QualifiedName qualifiedName;  // Full qualified name (empty for locals)
   sun::Visibility visibility = sun::Visibility::Private;  // globals only
+  bool isCExtern = false;  // Native code owns this global's storage
 };
 
 // Information about a declared function

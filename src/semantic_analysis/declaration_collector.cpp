@@ -176,7 +176,17 @@ void DeclarationCollector::collectDeclarations(BlockExprAST& block) {
   // Sub-pass B: Register functions (signatures only, no body analysis).
   // Types are now available for parameter/return type resolution.
   for (const auto& expr : block.getBody()) {
-    // Skip precompiled nodes (from .moon libs)
+    if (expr->getType() == ASTNodeType::VARIABLE_CREATION) {
+      auto& variable = static_cast<VariableCreationAST&>(*expr);
+      if (variable.isCExtern()) {
+        collectExternVariable(variable);
+      } else if (variable.isPrecompiled()) {
+        registerPrecompiledModuleVariable(variable);
+      }
+      continue;
+    }
+
+    // Other precompiled declarations were registered in sub-pass A.
     if (expr->isPrecompiled()) continue;
 
     switch (expr->getType()) {
@@ -276,6 +286,43 @@ void DeclarationCollector::collectFunctionSignature(FunctionAST& func) {
   ctx_.registerFunctionInCurrentScope(qualifiedName.baseName, info);
 }
 
+void DeclarationCollector::collectExternVariable(
+    VariableCreationAST& varCreate) {
+  if (!varCreate.hasTypeAnnotation()) {
+    logAndThrowError("Extern variable '" + varCreate.getName() +
+                         "' requires an explicit type",
+                     varCreate.getLocation());
+  }
+
+  sun::TypePtr type =
+      sema_.types().typeAnnotationToType(*varCreate.getTypeAnnotation());
+  sun::QualifiedName qualified =
+      varCreate.hasQualifiedName()
+          ? varCreate.getQualifiedName()
+          : ctx_.makeQualifiedName(varCreate.getName());
+  varCreate.setQualifiedName(qualified);
+  varCreate.setResolvedType(type);
+
+  auto found = ctx_.scope()->variables.find(varCreate.getName());
+  if (found != ctx_.scope()->variables.end()) {
+    if (!found->second.isCExtern || !found->second.type ||
+        !type || !found->second.type->equals(*type)) {
+      logAndThrowError("Conflicting declaration of extern variable '" +
+                           varCreate.getName() + "'",
+                       varCreate.getLocation());
+    }
+    return;
+  }
+
+  VariableInfo info{type, true, false, false};
+  info.visibility = varCreate.getVisibility();
+  info.qualifiedName = qualified;
+  info.isCExtern = true;
+  ctx_.scope()->variables[varCreate.getName()] = info;
+  ctx_.registerModuleVariable(varCreate.getName(), qualified.mangled(), type,
+                              varCreate.getVisibility(), false, true);
+}
+
 void DeclarationCollector::registerPrecompiledModuleVariable(
     VariableCreationAST& varCreate) {
   sun::TypePtr type;
@@ -296,6 +343,7 @@ void DeclarationCollector::registerPrecompiledModuleVariable(
   VariableInfo info{type, true, false, false};
   info.visibility = varCreate.getVisibility();
   info.isConst = varCreate.isConst();
+  info.isCExtern = varCreate.isCExtern();
   info.qualifiedName = varCreate.getQualifiedName();
   ctx_.scope()->variables[name] = info;
 
@@ -303,7 +351,7 @@ void DeclarationCollector::registerPrecompiledModuleVariable(
   // the one registered, since that is the symbol the bundle defines.
   ctx_.registerModuleVariable(name, varCreate.getQualifiedName().mangled(),
                               type, varCreate.getVisibility(),
-                              varCreate.isConst());
+                              varCreate.isConst(), varCreate.isCExtern());
 }
 
 void DeclarationCollector::registerUsing(UsingAST& usingDecl) {

@@ -773,3 +773,9 @@ TEST(Tooling_Fmt, CharAndByteLiteralsRoundTrip) {
   EXPECT_EQ(fmt(src), src);
   EXPECT_EQ(fmt(fmt(src)), src);  // idempotent
 }
+
+TEST(Tooling_Fmt, ExternGlobalsPreserveAbiVisibilityAndLinkName) {
+  EXPECT_EQ(fmt("public extern \"C\" var value:raw_ptr<i32> as \"C_name\";"),
+            "public extern \"C\" var value: raw_ptr<i32> as \"C_name\";\n");
+  EXPECT_EQ(fmt("extern var value:i32;"), "extern var value: i32;\n");
+}

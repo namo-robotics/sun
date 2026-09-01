@@ -250,7 +250,8 @@ class SemanticContext : public AccessContext {
   void registerModuleVariable(const std::string &baseName,
                               const std::string &qualifiedName,
                               sun::TypePtr type, sun::Visibility visibility,
-                              bool isConst = false);
+                              bool isConst = false,
+                              bool isCExtern = false);
 
   /**
    * Find a variable by its dotted name (`a.b.x`). An undotted name is an

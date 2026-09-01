@@ -49,6 +49,11 @@ field addresses, alignment and slot writes.
   use the closure ABI: arg 0 is a ptr to `{ ptr func, ptr env }` with the
   receiver in `env`, and `obj.method` in value position is a lambda-typed bound
   method `{ methodFn, objPtr }`.
+- C extern globals are emitted as external-linkage LLVM globals with no
+  initializer. `ExternCEmitter` owns the resolved Sun-name to native-symbol
+  map used by loads, assignments, lvalues, module members, and function-pointer
+  calls. A `sun.cabi` metadata tag keeps the native name unchanged when
+  `.moon` bundling prefixes or remaps Sun symbols.
 - Call arguments are never re-examined here. Semantic analysis records an
   `ArgConversion` per argument on the call node, and every kind of call — plain,
   module-qualified, generic, method, lambda, interface, constructor,

@@ -1228,3 +1228,49 @@ public const ref r = x;
               std::string::npos)
       << what;
 }
+
+TEST(Tooling_Frontend_Parser, ExternGlobalMetadata) {
+  auto ast = parseString(
+      "public extern \"C\" var local_name: raw_ptr<u8> as \"native_name\";");
+  ASSERT_EQ(ast->getBody().size(), 1u);
+  auto* variable =
+      dynamic_cast<VariableCreationAST*>(ast->getBody()[0].get());
+  ASSERT_NE(variable, nullptr);
+  EXPECT_TRUE(variable->isCExtern());
+  EXPECT_TRUE(variable->hasExplicitCAbi());
+  EXPECT_FALSE(variable->hasValue());
+  EXPECT_TRUE(variable->hasTypeAnnotation());
+  EXPECT_EQ(variable->getLinkName(), "native_name");
+  EXPECT_EQ(variable->getVisibility(), sun::Visibility::Public);
+}
+
+TEST(Tooling_Frontend_Parser, ExternGlobalAllowsImplicitCAbi) {
+  auto ast = parseString("extern var value: i32;");
+  auto* variable =
+      dynamic_cast<VariableCreationAST*>(ast->getBody()[0].get());
+  ASSERT_NE(variable, nullptr);
+  EXPECT_TRUE(variable->isCExtern());
+  EXPECT_FALSE(variable->hasExplicitCAbi());
+  EXPECT_EQ(variable->getLinkName(), "value");
+}
+
+TEST(Tooling_Frontend_Parser_Errors, ExternGlobalRequiresType) {
+  std::string what = parseErrorMessage("extern var value;");
+  EXPECT_NE(what.find("requires an explicit type"), std::string::npos) << what;
+}
+
+TEST(Tooling_Frontend_Parser_Errors, ExternGlobalRejectsInitializer) {
+  std::string what = parseErrorMessage("extern var value: i32 = 1;");
+  EXPECT_NE(what.find("cannot have an initializer"), std::string::npos) << what;
+}
+
+TEST(Tooling_Frontend_Parser_Errors, ExternGlobalRequiresModuleScope) {
+  std::string what = parseErrorMessage(R"(
+function main() i32 {
+  extern var value: i32;
+  return 0;
+}
+)");
+  EXPECT_NE(what.find("only allowed at module scope"), std::string::npos)
+      << what;
+}

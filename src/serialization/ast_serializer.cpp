@@ -470,6 +470,9 @@ void ASTSerializer::serializeVariableCreation(const VariableCreationAST& expr,
   var->set_name(expr.getName());
   var->set_visibility(toProto(expr.getVisibility()));
   var->set_is_const(expr.isConst());
+  var->set_is_c_extern(expr.isCExtern());
+  var->set_explicit_c_abi(expr.hasExplicitCAbi());
+  if (expr.hasLinkName()) var->set_link_name(expr.getLinkName());
   var->set_doc(expr.getDoc());
   if (expr.getValue()) {
     *var->mutable_value() = serialize(*expr.getValue());

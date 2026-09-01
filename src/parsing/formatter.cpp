@@ -734,7 +734,15 @@ class Formatter {
 
       case ASTNodeType::VARIABLE_CREATION: {
         const auto& n = static_cast<const VariableCreationAST&>(e);
-        out_ += n.isConst() ? "const " : "var ";
+        if (n.isCExtern()) {
+          // Preserve the optional ABI spelling from the source span.
+          std::string s = stripPublic(slice(n.getLocation()));
+          bool explicitAbi = n.hasExplicitCAbi() ||
+                             s.rfind("extern \"C\"", 0) == 0;
+          out_ += explicitAbi ? "extern \"C\" var " : "extern var ";
+        } else {
+          out_ += n.isConst() ? "const " : "var ";
+        }
         out_ += n.getName();
         if (n.hasTypeAnnotation()) {
           out_ += ": ";
@@ -743,6 +751,9 @@ class Formatter {
         if (n.getValue()) {
           out_ += " = ";
           printExpr(*n.getValue());
+        }
+        if (n.hasLinkName()) {
+          out_ += " as \"" + n.getLinkName() + '"';
         }
         break;
       }

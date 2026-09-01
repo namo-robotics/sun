@@ -253,8 +253,8 @@ and yield `char`. See [Characters and Bytes](/builtin-types#characters-and-bytes
 
 The terminator `c_str()` writes sits past the length, so the string itself is
 unchanged. `from_c_str(alloc, p)` is the other direction — it copies a
-NUL-terminated C string into an owned `String`, which is how `std.env.get` and
-`read_dir` hand back text from libc.
+NUL-terminated C string into an owned `String`, which is how `Env` and
+`read_dir` keep text returned by libc.
 
 ```sun
 var path = String(alloc, "/tmp/");
@@ -560,49 +560,55 @@ reallocates it.
 
 ## Environment
 
-`stdlib/env.sun` (module `std.env`).
+`Env` in module `std.env` owns a snapshot of the process environment. It
+copies entries in native order, preserves duplicate names, splits each entry
+at its first `=`, and is directly iterable as borrowed `EnvEntry` values.
 
 ```sun
+using std;
 using std.env;
 
-var home = match get(alloc, "HOME") {
-    Option.Some(p) => p,
-    Option.None => String(alloc, "/")
+var environment = Env(alloc);
+match environment.get("HOME") {
+    Option.Some(value) => { println(value); },
+    Option.None => { }
 };
 
-try { set("LANG", "C"); } catch (e: IError) { }
-var here = get_cwd(alloc);
+for (var entry: ref EnvEntry in environment) {
+    println(entry.name());
+}
+
+try { environment.set("LANG", "C"); } catch (e: IError) { }
+var here = environment.cwd();
 ```
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `get` | `(alloc: ref HeapAllocator, name: Name) Option<String>` | `None` if unset |
-| `has` | `(name: Name) bool` | Set at all, whatever the value |
-| `set` | `(name: Name, value: Name) void throws IError` | Replaces any existing value |
-| `remove` | `(name: Name) void throws IError` | Removing an unset variable is fine |
-| `cwd` | `(alloc: ref HeapAllocator) String throws IError` | Working directory |
-| `set_cwd` | `(path: Name) void throws IError` | Process-wide, and it persists |
-| `args` | `(alloc: ref HeapAllocator, argc: i32, argv: raw_ptr<raw_ptr<i8>>) Vec<String>` | `argv[0]` first |
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `get` | `(name: Name) Option<ref String>` | First matching entry, or `None` |
+| `has` | `(name: Name) bool` | Whether the snapshot contains the name |
+| `set` | `(name: Name, value: Name) void throws IError` | Mutate libc, then refresh |
+| `remove` | `(name: Name) void throws IError` | Mutate libc, then refresh |
+| `refresh` | `() void` | Observe changes made outside this `Env` |
+| `size` / `is_empty` | `() i64` / `() bool` | Snapshot size |
+| `iter` | `() EnvIterator` | Borrow entries in native order |
+| `cwd` | `() String throws IError` | Working directory |
+| `set_cwd` | `(path: Name) void throws IError` | Change it process-wide |
+| `args` | `(argc, argv) Vec<String>` | Copy argv, with `argv[0]` first |
 
-`Name` stands for the two overloads each of these has: `static_ptr<u8>` (a
-literal) and `ref String` (a name or value built at runtime). `set` has all
-four combinations.
-
-`args` takes `argc` and `argv` from `main` rather than discovering them. Under
-the JIT the running process is the compiler, so its own argv is not the
-script's — see [Entry point](/functions#entry-point).
+`Name` means either `static_ptr<u8>` or `ref String`; `set` provides all
+four combinations. A snapshot is not automatically live: external changes
+appear after `refresh()`, while its own `set` and `remove` refresh
+automatically.
 
 ```sun
 function main(argc: i32, argv: raw_ptr<raw_ptr<i8>>) i32 {
     var alloc = make_heap_allocator();
-    var cli = collect_args(alloc, argc, argv);
-    for (var s: String in cli) { println(s); }
+    var environment = Env(alloc);
+    var cli = environment.args(argc, argv);
+    for (var s: ref String in cli) { println(s); }
     return 0;
 }
 ```
-
-Listing *every* environment variable needs the `environ` global, and Sun has no
-`extern` global declaration yet.
 
 ## Processes
 

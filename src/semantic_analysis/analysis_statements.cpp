@@ -5,6 +5,7 @@
 // analysis.cpp.
 
 #include "semantic_analysis/semantic_analyzer.h"
+#include "semantic_analysis/c_abi_types.h"
 #include "semantic_analysis/type_rules.h"
 #include "support/error.h"
 
@@ -14,6 +15,35 @@ using sun::rules::isBorrowableLvalue;
 using sun::rules::tryCoerceIntegerLiteral;
 
 void SemanticAnalyzer::analyzeVariableCreation(VariableCreationAST& varCreate) {
+  if (varCreate.isCExtern()) {
+    if (!ctx_.isAtModuleLevel()) {
+      logAndThrowError("Extern variables are only allowed at module scope",
+                       varCreate.getLocation());
+    }
+    if (!varCreate.hasTypeAnnotation()) {
+      logAndThrowError("Extern variable '" + varCreate.getName() +
+                           "' requires an explicit type",
+                       varCreate.getLocation());
+    }
+    if (varCreate.hasValue()) {
+      logAndThrowError("Extern variable '" + varCreate.getName() +
+                           "' cannot have an initializer",
+                       varCreate.getLocation());
+    }
+    sun::TypePtr type = varCreate.getResolvedType();
+    if (!type) {
+      type = types_.typeAnnotationToType(*varCreate.getTypeAnnotation());
+      varCreate.setResolvedType(type);
+    }
+    if (!sun::c_abi::isValue(type)) {
+      logAndThrowError("Extern variable '" + varCreate.getName() +
+                           "' has type '" + type->toDisplayString() +
+                           "', which has no C equivalent",
+                       varCreate.getLocation());
+    }
+    return;
+  }
+
   auto varName = varCreate.getName();
   // Determine type first (before analyzing value, for array literals)
   sun::TypePtr declaredType;
@@ -136,6 +166,10 @@ void SemanticAnalyzer::analyzeVariableAssignment(
   // codegen can find the symbol (locals keep the name as written).
   if (varInfo && varInfo->isGlobal) {
     varAssign.setQualifiedName(ctx_.resolveNameWithUsings(varAssign.getName()));
+  }
+  if (varInfo) {
+    checkExternVariableAccessAllowed(*varInfo, varAssign.getName(),
+                                     varAssign.getLocation());
   }
   if (varInfo && varInfo->isConst) {
     logAndThrowError("Cannot assign to constant '" + varAssign.getName() +

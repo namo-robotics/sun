@@ -1049,10 +1049,12 @@ void SemanticContext::registerModuleVariable(const std::string& baseName,
                                              const std::string& qualifiedName,
                                              sun::TypePtr type,
                                              sun::Visibility visibility,
-                                             bool isConst) {
+                                             bool isConst,
+                                             bool isCExtern) {
   VariableInfo info{type, true, false};
   info.visibility = visibility;
   info.isConst = isConst;
+  info.isCExtern = isCExtern;
   info.qualifiedName = makeQualifiedName(baseName);
   // Store with qualified name for codegen lookup
   rootScope_->namespacedVariables[qualifiedName] = info;
@@ -1066,6 +1068,7 @@ void SemanticContext::registerModuleVariable(const std::string& baseName,
       it != currentScope_->variables.end()) {
     it->second.visibility = visibility;
     it->second.isConst = isConst;
+    it->second.isCExtern = isCExtern;
     if (it->second.qualifiedName.empty())
       it->second.qualifiedName = info.qualifiedName;
   }

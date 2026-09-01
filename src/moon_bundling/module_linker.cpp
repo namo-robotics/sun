@@ -452,6 +452,7 @@ bool ModuleLinker::linkModuleRecursive(const std::string& moduleKey) {
     // Rename globals
     for (auto& global : libModule->globals()) {
       if (global.hasName() && !global.getName().empty()) {
+        if (global.getMetadata("sun.cabi")) continue;
         std::string oldName = global.getName().str();
         std::string newName = remapSymbolName(oldName, remap);
         if (newName != oldName) {
