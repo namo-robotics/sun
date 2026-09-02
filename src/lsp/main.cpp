@@ -187,6 +187,11 @@ class EntrypointManager {
     EntrypointConfig config;
     config.entrypointPath = entrypointPath.string();
     config.sunFiles = std::move(resolved->sunFiles);
+    // The editor always analyzes test code too: tests and their test_files
+    // helpers get diagnostics/hover like any other source.
+    config.sunFiles.insert(config.sunFiles.end(),
+                           resolved->testSunFiles.begin(),
+                           resolved->testSunFiles.end());
     config.moonImports = std::move(resolved->moonImports);
     config.protoFiles = std::move(resolved->protoFiles);
 
@@ -295,6 +300,7 @@ int tokenKindToLSPType(TokenKind kind) {
     case TokenKind::VAR:
     case TokenKind::CONST:
     case TokenKind::FUNCTION:
+    case TokenKind::TEST_FUNCTION:
     case TokenKind::CLASS:
     case TokenKind::PACKED_CLASS:
     case TokenKind::PARTIAL:

@@ -1,0 +1,10 @@
+using std;
+
+// A test-only file, listed under `test_files:` in the manifest. It is
+// loaded only when compiling tests, and it reopens `module distance` so its
+// tests reach the module's private items too.
+module distance {
+  test_function midpointOfEqualPointsIsThatPoint() {
+    std.test.assert_eq(distance.midpoint(4, 4), 4);
+  }
+}

@@ -378,6 +378,7 @@ if(NOT SKIP_STDLIB)
         ${CMAKE_SOURCE_DIR}/stdlib/linked_list.sun
         ${CMAKE_SOURCE_DIR}/stdlib/queue.sun
         ${CMAKE_SOURCE_DIR}/stdlib/thread.sun
+        ${CMAKE_SOURCE_DIR}/stdlib/test.sun
         ${CMAKE_SOURCE_DIR}/stdlib/shared.sun
         ${CMAKE_SOURCE_DIR}/stdlib/math.sun
         ${CMAKE_SOURCE_DIR}/stdlib/byte_order.sun

@@ -23,6 +23,7 @@ manifest {
         "linked_list.sun",
         "queue.sun",
         "thread.sun",
+        "test.sun",
         "shared.sun",
         "io.sun",
         "env.sun",

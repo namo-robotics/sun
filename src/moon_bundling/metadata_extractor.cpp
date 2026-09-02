@@ -208,8 +208,10 @@ void extractFromStatements(const std::vector<std::unique_ptr<ExprAST>>& stmts,
                             serializer, moduleDir);
     }
 
-    // Extract functions
-    if (stmt->getType() == ASTNodeType::FUNCTION) {
+    // Extract functions. Tests never ship in a bundle: they are unreachable
+    // from importers and would only bloat it.
+    if (stmt->getType() == ASTNodeType::FUNCTION &&
+        !static_cast<const FunctionAST&>(*stmt).isTest()) {
       extractFunction(static_cast<const FunctionAST&>(*stmt),
                       collector.forModule(modulePath), serializer);
     }

@@ -93,7 +93,7 @@ but unlike it, it is a type in its own right and goes wherever a type
 annotation goes. `F` must be a lambda or a function type.
 
 ```sun
-public function spawn<F: _Lambda>(fn: F, args...: _params_of<F>)
+public function spawn<F: _Callable>(fn: F, args...: _params_of<F>)
     Thread<_return_type_of<F>> {
     return Thread<_return_type_of<F>>(unsafe { _spawn<F>(fn, args...); });
 }
@@ -105,10 +105,11 @@ a call says what `F` is — and it is resolved when the call is specialized.
 ### `_spawn<F>(fn, args...)`
 
 Starts an OS thread running `fn` with `args`, and returns the
-`raw_ptr<ThreadContext>` it allocated for it. The arguments move into the
-thread.
+`raw_ptr<ThreadContext>` it allocated for it. `fn` is a lambda or a named
+function passed as a value; it must not be able to throw (the thread cannot
+hand an unwinding error back). The arguments move into the thread.
 
-The trampoline `pthread_create` needs is built per lambda signature, which
+The trampoline `pthread_create` needs is built per callee signature, which
 cannot be written in Sun — `pthread_create` wants a `ptr(*)(ptr)`, and Sun
 lambdas use the fat-pointer ABI — so this is the one part of threading the
 compiler still does. Everything else is [`std.thread`](/threads).
@@ -182,6 +183,9 @@ Type traits are pseudo-types that categorize primitives:
 | `_Float` | `f32`, `f64` |
 | `_Numeric` | All integers and floats |
 | `_Primitive` | All numeric types plus `bool` |
+| `_Lambda` | Any closure type |
+| `_Function` | A named-function value (`function (Args) Result`) |
+| `_Callable` | `_Lambda` and `_Function` |
 
 #### Use in Generic Code
 

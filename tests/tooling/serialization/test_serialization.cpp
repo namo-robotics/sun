@@ -504,6 +504,34 @@ TEST(Tooling_Serialization, FunctionDefinitionRoundtrip) {
   EXPECT_EQ(restored->getType(), ASTNodeType::BLOCK);
 }
 
+// The test flag must survive the roundtrip: clone() is a serialization
+// roundtrip, so losing it would leak a test into production builds.
+TEST(Tooling_Serialization, TestFunctionFlagRoundtrip) {
+  auto block = parseCode(R"(
+    test_function checksAddition() {
+      return;
+    }
+  )");
+  ASSERT_NE(block, nullptr);
+  ASSERT_EQ(block->getBody().size(), 1u);
+  auto* original = dynamic_cast<FunctionAST*>(block->getBody()[0].get());
+  ASSERT_NE(original, nullptr);
+  ASSERT_TRUE(original->isTest());
+
+  ASTSerializer serializer;
+  ASTDeserializer deserializer;
+  auto restored =
+      deserializer.deserializeFromString(serializer.serializeToString(*block));
+
+  ASSERT_NE(restored, nullptr);
+  auto* restoredBlock = static_cast<BlockExprAST*>(restored.get());
+  ASSERT_EQ(restoredBlock->getBody().size(), 1u);
+  auto* func = dynamic_cast<FunctionAST*>(restoredBlock->getBody()[0].get());
+  ASSERT_NE(func, nullptr);
+  EXPECT_TRUE(func->isTest());
+  EXPECT_EQ(func->getProto().getName(), "checksAddition");
+}
+
 // =============================================================================
 // Class/Interface Tests
 // =============================================================================

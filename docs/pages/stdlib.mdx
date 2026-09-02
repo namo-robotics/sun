@@ -1166,6 +1166,23 @@ errors carry the byte offset of the problem in `offset()`. When writing,
 `Float` values keep a `.0` or exponent so they read back as `Float`, and
 non-finite floats become `null`.
 
+## Testing: std.test
+
+The assertions and runner support behind `test_function` — see
+[Testing](/testing) for the full feature. What user code calls directly:
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `assert(cond)` / `assert(cond, msg)` | `(bool[, static_ptr<u8>]) void throws IError` | Throw `AssertionError` when false |
+| `assert_eq(expected, actual)` | overloaded per primitive, plus `(const ref String, const ref String)` | Throw when the values differ, showing both |
+| `assert_ne(a, b)` | overloaded per primitive | Throw when the values are equal |
+| `fail(msg)` | `(static_ptr<u8>) void throws IError` | Fail unconditionally |
+
+`AssertionError` (code 10) implements `IError`. The remaining items —
+`TestResult`, `run_one`, `report`, `finish`, `wants_sequential` — exist for
+the compiler's synthesized test runner; `--debug` writes that runner's source
+to `<input>_debug/test_runner.sun` if you want to see how they fit together.
+
 ## Error Types
 
 All error types implement `IError` with `code() i32` and `message() String`

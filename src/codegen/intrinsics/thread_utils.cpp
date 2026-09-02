@@ -119,14 +119,16 @@ Function* ThreadUtils::getOrCreateThreadTrampoline(FunctionType* lambdaFuncType,
                                                    StructType* argsType) {
   LLVMContext& llvmCtx = ctx.getContext();
 
-  // Two spawns of same-typed lambdas share one trampoline. The argument
+  // Two spawns of same-typed callees share one trampoline. The argument
   // struct is part of that sameness: two lambdas can agree on their return
-  // type and still take different arguments.
+  // type and still take different arguments. A null fatType means the callee
+  // is a named-function value: a bare pointer with no environment.
   std::string key;
   raw_string_ostream keyStream(key);
   lambdaFuncType->print(keyStream);
   resultLLVMType->print(keyStream);
   if (argsType) argsType->print(keyStream);
+  keyStream << (fatType ? "/fat" : "/bare");
   if (auto it = trampolineCache.find(keyStream.str());
       it != trampolineCache.end()) {
     return it->second;
@@ -148,22 +150,28 @@ Function* ThreadUtils::getOrCreateThreadTrampoline(FunctionType* lambdaFuncType,
   Value* funcFieldPtr =
       builder.CreateStructGEP(contextType, contextPtr, 0, "ctx.func_ptr");
   Value* lambdaFunc = builder.CreateLoad(ptrTy, funcFieldPtr, "lambda.func");
-  Value* envFieldPtr =
-      builder.CreateStructGEP(contextType, contextPtr, 1, "ctx.env_ptr");
-  Value* lambdaEnv = builder.CreateLoad(ptrTy, envFieldPtr, "lambda.env");
 
-  // Rebuild the fat pointer; the lambda calling convention expects a pointer
-  // to the fat struct as its argument.
-  Value* fat = UndefValue::get(fatType);
-  fat = builder.CreateInsertValue(fat, lambdaFunc, 0, "fat.func");
-  fat = builder.CreateInsertValue(fat, lambdaEnv, 1, "fat.env");
-  AllocaInst* fatAlloca = builder.CreateAlloca(fatType, nullptr, "fat.alloca");
-  builder.CreateStore(fat, fatAlloca);
+  std::vector<Value*> callArgs;
+  if (fatType) {
+    Value* envFieldPtr =
+        builder.CreateStructGEP(contextType, contextPtr, 1, "ctx.env_ptr");
+    Value* lambdaEnv = builder.CreateLoad(ptrTy, envFieldPtr, "lambda.env");
 
-  // The arguments spawn moved into the context, in the order the lambda
+    // Rebuild the fat pointer; the lambda calling convention expects a
+    // pointer to the fat struct as its argument. A named function has no
+    // environment and is called straight through the loaded pointer.
+    Value* fat = UndefValue::get(fatType);
+    fat = builder.CreateInsertValue(fat, lambdaFunc, 0, "fat.func");
+    fat = builder.CreateInsertValue(fat, lambdaEnv, 1, "fat.env");
+    AllocaInst* fatAlloca =
+        builder.CreateAlloca(fatType, nullptr, "fat.alloca");
+    builder.CreateStore(fat, fatAlloca);
+    callArgs.push_back(fatAlloca);
+  }
+
+  // The arguments spawn moved into the context, in the order the callee
   // declares them. Each was stored as the very value an ordinary call would
   // have passed, so reading it back needs no conversion.
-  std::vector<Value*> callArgs{fatAlloca};
   Value* argsBlob = nullptr;
   if (argsType) {
     Value* argsFieldPtr =

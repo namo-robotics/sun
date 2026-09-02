@@ -102,6 +102,8 @@ name of an interface the type argument must implement. The built-in traits are:
 | `_Numeric` | `_Integer` and `_Float` |
 | `_Primitive` | `_Numeric` and `bool` |
 | `_Lambda` | any closure type |
+| `_Function` | a named-function value (`function (Args) Result`) |
+| `_Callable` | `_Lambda` and `_Function` |
 
 Constraints work on every generic declaration, not only functions:
 

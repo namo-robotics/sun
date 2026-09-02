@@ -586,21 +586,25 @@ void GenericSpecializer::applyVariadicParamTypes(
     return;
   }
 
-  // `_params_of<F>` for a lambda: the parameters that lambda takes. There is
-  // only one parameter list, so a mismatch is an error rather than a failed
-  // overload match.
+  // `_params_of<F>` for a lambda or named-function value: the parameters it
+  // takes. There is only one parameter list, so a mismatch is an error
+  // rather than a failed overload match.
+  const std::vector<sun::TypePtr>* params = nullptr;
   if (target->isLambda()) {
-    const auto& params =
-        static_cast<sun::LambdaType*>(target.get())->getParamTypes();
-    bool matches = params.size() == variadicArgTypes.size();
-    for (size_t i = 0; matches && i < params.size(); ++i) {
-      matches = isAssignableTo(variadicArgTypes[i], params[i]);
+    params = &static_cast<sun::LambdaType*>(target.get())->getParamTypes();
+  } else if (target->isFunction()) {
+    params = &static_cast<sun::FunctionType*>(target.get())->getParamTypes();
+  }
+  if (params) {
+    bool matches = params->size() == variadicArgTypes.size();
+    for (size_t i = 0; matches && i < params->size(); ++i) {
+      matches = isAssignableTo(variadicArgTypes[i], (*params)[i]);
     }
     if (!matches) {
       logAndThrowError("Pack '" + proto.getVariadicParamName() +
                            "' fills the parameters of " +
                            target->toDisplayString() + ", which takes (" +
-                           sun::formatTypeList(params) + "); got " + got,
+                           sun::formatTypeList(*params) + "); got " + got,
                        loc);
     }
   }

@@ -312,8 +312,13 @@ class Formatter {
       }
       return;  // ';' comes from needsSemicolon
     }
-    out_ += asMethod ? "method " : "function ";
-    printProtoSig(f.getProto());
+    out_ += asMethod  ? "method "
+            : f.isTest() ? "test_function "
+                         : "function ";
+    // A test's whole return signature (void, throws IError) is synthesized,
+    // never spelled in source, so printing any of it would not re-parse.
+    printProtoSig(f.getProto(), /*includeParameters=*/true,
+                  /*includeReturnType=*/!f.isTest());
     out_ += ' ';
     printBlockML(f.getBody());
   }

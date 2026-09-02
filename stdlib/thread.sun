@@ -69,7 +69,9 @@ public module std {
     // The arguments move into the thread, which owns them from the moment it
     // starts — so a thread body can be an ordinary lambda taking what it
     // works on, rather than a closure that had to capture it.
-    public function spawn<F: _Lambda>(fn: F, args...: _params_of<F>)
+    // `fn` may be a lambda or a named function passed as a value; it must
+    // not throw — catch inside it and carry any failure in the result.
+    public function spawn<F: _Callable>(fn: F, args...: _params_of<F>)
         Thread<_return_type_of<F>> {
       return Thread<_return_type_of<F>>(unsafe { _spawn<F>(fn, args...); });
     }

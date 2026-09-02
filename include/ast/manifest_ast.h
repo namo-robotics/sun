@@ -42,6 +42,8 @@ struct ManifestTargetBlock {
   std::vector<ManifestMoonDependency> moons;
   std::vector<ManifestProtoDependency> protos;
   std::vector<ManifestArchiveDependency> archives;
+  // Test-only sources; loaded only when compiling the test binary.
+  std::vector<ManifestSunDependency> testSuns;
 };
 
 class ManifestAST : public ExprAST {
@@ -50,18 +52,22 @@ class ManifestAST : public ExprAST {
   std::vector<ManifestProtoDependency> protos;
   std::vector<ManifestArchiveDependency> archives;
   std::vector<ManifestTargetBlock> targets;
+  // `test_files:` entries — test-only sources, loaded only for test builds.
+  std::vector<ManifestSunDependency> testSuns;
 
  public:
   ManifestAST(std::vector<ManifestSunDependency> suns,
               std::vector<ManifestMoonDependency> moons,
               std::vector<ManifestProtoDependency> protos = {},
               std::vector<ManifestArchiveDependency> archives = {},
-              std::vector<ManifestTargetBlock> targets = {})
+              std::vector<ManifestTargetBlock> targets = {},
+              std::vector<ManifestSunDependency> testSuns = {})
       : suns(std::move(suns)),
         moons(std::move(moons)),
         protos(std::move(protos)),
         archives(std::move(archives)),
-        targets(std::move(targets)) {}
+        targets(std::move(targets)),
+        testSuns(std::move(testSuns)) {}
 
   ASTNodeType getType() const override { return ASTNodeType::MANIFEST; }
   std::string toString() const override { return "manifest"; }
@@ -76,6 +82,9 @@ class ManifestAST : public ExprAST {
   }
   const std::vector<ManifestTargetBlock>& getTargets() const {
     return targets;
+  }
+  const std::vector<ManifestSunDependency>& getTestSuns() const {
+    return testSuns;
   }
   std::string dotLabel() const override { return "Manifest"; }
 };

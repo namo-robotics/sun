@@ -16,6 +16,7 @@ class FunctionAST : public ExprAST {
   std::unique_ptr<PrototypeAST> Proto;
   std::unique_ptr<BlockExprAST> Body;
   bool CAbi = false;
+  bool IsTest = false;
 
  protected:
   // Override to allocate FunctionAnalysis instead of base ExprAnalysis
@@ -44,7 +45,8 @@ class FunctionAST : public ExprAST {
   }
   std::string toString() const override {
     std::string result = std::string(isPublic() ? "public " : "") +
-                         "function " + Proto->getName() + "(";
+                         (IsTest ? "test_function " : "function ") +
+                         Proto->getName() + "(";
     const auto& args = Proto->getArgs();
     for (size_t i = 0; i < args.size(); ++i) {
       if (i > 0) result += ", ";
@@ -82,6 +84,11 @@ class FunctionAST : public ExprAST {
   // two must not be conflated even though both are bodyless.
   bool isCExtern() const { return CAbi; }
   void setCExtern(bool v) { CAbi = v; }
+
+  // True for `test_function` declarations. Test functions are compiled only
+  // into the test binary; production builds and .moon bundles strip them.
+  bool isTest() const { return IsTest; }
+  void setIsTest(bool v) { IsTest = v; }
   bool hasBody() const { return Body != nullptr; }
   bool hasNonEmptyBody() const { return Body && !Body->getBody().empty(); }
 
@@ -110,7 +117,9 @@ class FunctionAST : public ExprAST {
   }
 
   std::string dotLabel() const override {
-    std::string label = "function \n" + Proto->getName();
+    std::string label =
+        std::string(IsTest ? "test_function \n" : "function \n") +
+        Proto->getName();
     if (Proto->hasReturnType())
       label += " -> " + Proto->getReturnType()->toString();
     return label;

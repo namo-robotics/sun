@@ -1,0 +1,8 @@
+// Test-only file for testing_example.sun; loaded only in test builds.
+using std;
+
+module arithmetic {
+  test_function quadruples() {
+    std.test.assert_eq(arithmetic.quadruple(1), 4);
+  }
+}

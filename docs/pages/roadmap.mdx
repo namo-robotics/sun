@@ -63,13 +63,13 @@ a VS Code extension in `extensions/vscode-sun`. Autocomplete is the gap.
 
 ## Testing
 
-There is no `sun test`; the suites under `tests/` are GoogleTest in C++. Users
-cannot write tests in Sun, which suppresses exactly the library-writing that an
-ecosystem is made of.
-
-- [ ] `sun test` runner
-- [ ] Test declarations in `.sun` source
-- [ ] Assertion builtins with useful failure output
+- [x] `sun test` runner (also emitted as a second `<output>_test` binary by
+      `-c`; tests run in parallel by default, `--test-sequential` opts out)
+- [x] Test declarations in `.sun` source (`test_function`, manifest
+      `test_files:`)
+- [x] Assertion builtins with useful failure output (`std.test`)
+- [ ] Test filtering (`sun test --filter geometry.*`)
+- [ ] A thread pool for very large suites (today: one thread per test)
 
 ## Error Handling Improvements
 
@@ -129,6 +129,18 @@ need no linker flags and no OpenSSL on the target. Remaining work:
 
 ## Language Odds and Ends
 
+- [ ] Qualified generic calls (`std.thread.spawn(...)`) do not infer their
+      type arguments (#192), and an explicit function-type argument
+      (`spawn<function (i32) i32>(...)`) fails to instantiate (#193) — only
+      unqualified calls with inference work. The synthesized test runner
+      works around this by calling `spawn` unqualified
+- [ ] Generic overloads that differ only in their constraint (one name, same
+      parameter shape, `<F: _Lambda>` vs `<F: _Function>`) — registration is
+      keyed by name, so the second silently replaces the first (#194);
+      `spawn` uses the union trait `_Callable` instead
+- [ ] Interpolating an unbound type parameter (`${x}` where `x: T`) in a
+      generic body fails at template analysis (#195); `std.test.assert_eq`
+      is per-primitive overloads until then
 - [ ] Interface inheritance (`src/semantic_analysis/scope_variables.cpp:876`)
 - [ ] Explicit enum values: `Red = 1` (`src/parsing/parser.cpp:3904`)
 - [ ] More sophisticated borrow tracking for ref params

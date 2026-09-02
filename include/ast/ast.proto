@@ -395,6 +395,9 @@ message FunctionDef {
   // Span of the whole declaration, for functions stored without a node
   // wrapper: class and interface methods, and .moon bundle exports
   optional Position location = 7;
+  // A `test_function`. Without this a clone or bundle roundtrip would hand
+  // back an ordinary function, and the test would leak into production builds.
+  bool is_test = 8;
 }
 
 message LambdaExpr {

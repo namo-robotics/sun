@@ -25,6 +25,9 @@ struct ResolvedManifest {
   std::vector<MoonImport> moonImports;  // resolved .moon imports
   std::vector<std::string> protoFiles;  // resolved .proto paths
   std::vector<std::string> archiveFiles;  // resolved native .a archives
+  // resolved `test_files:` paths; merged into the source set only when
+  // compiling the test binary, never for production builds
+  std::vector<std::string> testSunFiles;
   std::string baseDir;  // directory the paths were resolved in
 };
 

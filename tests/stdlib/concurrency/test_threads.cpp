@@ -45,8 +45,8 @@ TEST(Stdlib_Concurrency_Threads, parse_spawn_with_captures) {
 // ============================================================================
 
 // `spawn` is an ordinary generic function now, so what it will accept is its
-// `<F: _Lambda>` constraint rather than a rule of its own.
-TEST(Stdlib_Concurrency_Threads, spawn_requires_lambda) {
+// `<F: _Callable>` constraint rather than a rule of its own.
+TEST(Stdlib_Concurrency_Threads, spawn_requires_a_callable) {
   EXPECT_SUN_ERROR_WITH_MESSAGE(compileStringWithStdlib(R"(
     using std.thread;
     function main() i32 {
@@ -55,7 +55,89 @@ TEST(Stdlib_Concurrency_Threads, spawn_requires_lambda) {
       return 0;
     }
   )"),
-                                "does not satisfy constraint '_Lambda'");
+                                "does not satisfy constraint '_Callable'");
+}
+
+// A named function is a callable value and spawns like a lambda.
+TEST(Stdlib_Concurrency_Threads, spawn_accepts_a_named_function) {
+  auto value = executeStringWithStdlib(R"(
+    using std.thread;
+
+    function double_it(n: i32) i32 {
+        return n * 2;
+    }
+
+    function main() i32 {
+        var t = spawn(double_it, 21);
+        return t.join();
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// A function-pointer value rides through spawn's argument pack like any
+// other one-word value — this is exactly how the test runner passes each
+// test to std.test.run_one.
+TEST(Stdlib_Concurrency_Threads, spawn_passes_function_pointer_arguments) {
+  auto value = executeStringWithStdlib(R"(
+    using std.thread;
+
+    function double_it(n: i32) i32 {
+        return n * 2;
+    }
+
+    function apply(f: function (i32) i32, n: i32) i32 {
+        return f(n);
+    }
+
+    function main() i32 {
+        var t = spawn(apply, double_it, 21);
+        return t.join();
+    }
+  )");
+  EXPECT_EQ(value, 42);
+}
+
+// The thread trampoline has no unwind handling, so anything that could
+// throw across the spawn boundary is rejected up front — lambdas and named
+// functions alike.
+TEST(Stdlib_Concurrency_Threads, spawn_rejects_a_throwing_function) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(compileStringWithStdlib(R"(
+    using std;
+    using std.thread;
+
+    function explode() void throws IError {
+        throw Error(1, "boom");
+    }
+
+    function main() i32 {
+        var t = spawn(explode);
+        return 0;
+    }
+  )"),
+                                "a spawned function must not throw");
+}
+
+// _is answers the same question the constraint asks: a named-function value
+// is _Function and _Callable, but not _Lambda.
+TEST(Stdlib_Concurrency_Threads, function_values_satisfy_function_traits) {
+  auto value = executeString(R"(
+    function double_it(n: i32) i32 {
+        return n * 2;
+    }
+
+    function main() i32 {
+        var f: function (i32) i32 = double_it;
+        var l = (n: i32) => i32 { return n; };
+        if (_is<_Function>(f) == false) { return 1; }
+        if (_is<_Callable>(f) == false) { return 2; }
+        if (_is<_Lambda>(f)) { return 3; }
+        if (_is<_Function>(l)) { return 4; }
+        if (_is<_Callable>(l) == false) { return 5; }
+        return 0;
+    }
+  )");
+  EXPECT_EQ(value, 0);
 }
 
 // A lambda with parameters is fine; leaving them unfilled is not. The pack

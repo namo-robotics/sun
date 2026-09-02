@@ -714,6 +714,7 @@ std::unique_ptr<ExprAST> ASTDeserializer::deserializeFunction(
   auto func =
       std::make_unique<FunctionAST>(std::move(prototype), std::move(body));
   func->setCExtern(proto.is_c_extern());
+  func->setIsTest(proto.is_test());
   func->setVisibility(fromProto(proto.visibility()));
   return func;
 }

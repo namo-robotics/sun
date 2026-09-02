@@ -49,8 +49,10 @@ static void printUsage(const char* programName) {
   llvm::errs() << "  --dump-proto-sun  Print the Sun source synthesized from "
                   "manifest protos\n";
   llvm::errs() << "  -g                Emit DWARF debug info (for gdb/lldb)\n";
-  llvm::errs() << "  --debug           Generate debug output (ast.dot, ir.ll) "
-                  "in <input>_debug/\n";
+  llvm::errs() << "  --debug           Generate debug output (ast.dot, ir.ll, "
+                  "test_runner.sun) in <input>_debug/\n";
+  llvm::errs() << "  --no-test         Do not also compile the test binary "
+                  "when the program has tests\n";
   llvm::errs() << "  --emit-moon       Compile to .moon precompiled library\n";
   llvm::errs() << "                    Use manifest { source_files: [...] } "
                   "to specify files to include\n";
@@ -82,6 +84,10 @@ static void printUsage(const char* programName) {
                   "searched recursively\n";
   llvm::errs() << "                    (--check: exit 1 if formatting would "
                   "change a file)\n";
+  llvm::errs() << "  test [--test-sequential] <script.sun> [-- args...]\n";
+  llvm::errs() << "                    JIT-run the program's test functions "
+                  "(parallel by default);\n";
+  llvm::errs() << "                    exit 0 when every test passes\n";
   llvm::errs() << "\nArguments after the script file (or after --) are passed "
                   "to main(argc, argv).\n";
   llvm::errs() << "\nsun-config.json files in the entrypoint's folder and "
@@ -228,9 +234,120 @@ static int runFmt(int argc, char* argv[]) {
   return 0;
 }
 
+// `sun test <entrypoint>`: compile with tests enabled and JIT-run the
+// synthesized runner. Arguments after the file (and anything after --) are
+// forwarded to the runner's main; --test-sequential is the one it reads.
+static int runTest(int argc, char* argv[]) {
+  std::string inputFile;
+  std::vector<sun::MoonImport> moonImports;
+  std::vector<std::string> libPaths;
+  std::vector<char*> forwarded;
+  bool debugMode = false;
+  bool debugInfo = false;
+  bool emitIR = false;
+
+  int i = 0;
+  for (; i < argc; ++i) {
+    std::string arg = argv[i];
+    if (arg == "--") {
+      ++i;
+      break;
+    } else if (arg == "--test-sequential") {
+      forwarded.push_back(argv[i]);
+    } else if (arg == "--debug") {
+      debugMode = true;
+    } else if (arg == "-g") {
+      debugInfo = true;
+    } else if (arg == "--emit-ir") {
+      emitIR = true;
+    } else if (arg == "--lib-path" && i + 1 < argc) {
+      libPaths.push_back(argv[++i]);
+    } else if (arg == "--moon" && i + 1 < argc) {
+      auto moonImport = sun::parseMoonImportSpec(argv[++i]);
+      if (!moonImport) {
+        llvm::errs() << "Invalid --moon format: " << argv[i] << "\n";
+        llvm::errs() << "Expected: path.moon or path.moon:module=alias\n";
+        return 1;
+      }
+      moonImports.push_back(std::move(*moonImport));
+    } else if (arg == "--path-var" && i + 1 < argc) {
+      std::string spec = argv[++i];
+      auto eq = spec.find('=');
+      if (eq == std::string::npos || eq == 0) {
+        llvm::errs() << "Invalid --path-var format: " << spec << "\n";
+        llvm::errs() << "Expected: NAME=<dir>\n";
+        return 1;
+      }
+      sun::ManifestProcessor::setPathVariable(spec.substr(0, eq),
+                                              spec.substr(eq + 1));
+    } else if (arg[0] == '-') {
+      llvm::errs() << "Unknown option for 'sun test': " << arg << "\n";
+      llvm::errs() << "Usage: sun test [--test-sequential] [--debug] [-g] "
+                      "[--emit-ir] [--moon <spec>] [--lib-path <dir>] "
+                      "<script.sun> [-- args...]\n";
+      return 1;
+    } else if (inputFile.empty()) {
+      inputFile = arg;
+    } else {
+      llvm::errs() << "'sun test' takes one entrypoint file\n";
+      return 1;
+    }
+  }
+  for (; i < argc; ++i) forwarded.push_back(argv[i]);
+
+  if (inputFile.empty()) {
+    llvm::errs() << "Usage: sun test [--test-sequential] <script.sun> "
+                    "[-- args...]\n";
+    return 1;
+  }
+
+  sun::LibraryCache::instance().initFromEnvironment();
+  for (const auto& libPath : libPaths) {
+    sun::LibraryCache::instance().addSearchPath(libPath);
+    sun::SunPath::addSearchPath(libPath);
+  }
+
+  // The runner reads its flags from main(argc, argv), argv[0] being the
+  // entrypoint file, same as ordinary JIT execution.
+  std::vector<char*> programArgv;
+  programArgv.push_back(const_cast<char*>(inputFile.c_str()));
+  int programArgc = 1;
+  for (char* forwardedArg : forwarded) {
+    programArgv.push_back(forwardedArg);
+    programArgc++;
+  }
+  programArgv.push_back(nullptr);
+
+  try {
+    auto driver = Driver::createForJIT("main_module", debugInfo);
+    driver->setTestHandling(Driver::TestHandling::Compile);
+    driver->setDumpIR(emitIR);
+    if (debugMode) {
+      driver->setDebugMode(true, inputFile);
+    }
+    driver->setMoonImports(std::move(moonImports));
+    auto result =
+        driver->executeFile(inputFile, programArgc, programArgv.data());
+    // The runner returns 0 when every test passed, 1 otherwise
+    if (auto* code = std::get_if<int32_t>(&result)) {
+      return *code;
+    }
+  } catch (const SunError& e) {
+    std::cerr << e.what() << std::endl;
+    return 1;
+  } catch (const std::exception& e) {
+    std::cerr << "Error: " << e.what() << std::endl;
+    return 1;
+  }
+  return 0;
+}
+
 int main(int argc, char* argv[]) {
   if (argc >= 2 && std::string(argv[1]) == "fmt") {
     return runFmt(argc - 2, argv + 2);
+  }
+  if (argc >= 2 && std::string(argv[1]) == "test") {
+    return runTest(argc - 2, argv + 2);
   }
 
   // Parse command-line arguments
@@ -249,6 +366,7 @@ int main(int argc, char* argv[]) {
   bool debugMode = false;
   bool debugInfo = false;
   bool dumpProtoSun = false;
+  bool noTest = false;
   int programArgStart = -1;  // Index where program arguments start
 
   for (int i = 1; i < argc; ++i) {
@@ -284,6 +402,8 @@ int main(int argc, char* argv[]) {
       debugInfo = true;
     } else if (arg == "--debug") {
       debugMode = true;
+    } else if (arg == "--no-test") {
+      noTest = true;
     } else if (arg == "--lib-path" && i + 1 < argc) {
       libPaths.push_back(argv[++i]);
     } else if (arg == "-l" && i + 1 < argc) {
@@ -339,6 +459,11 @@ int main(int argc, char* argv[]) {
   }
   if (sawStatic && sawDynamic) {
     llvm::errs() << "Error: --static and --dynamic are mutually exclusive\n";
+    return 1;
+  }
+  if (noTest && (!compileMode || emitObjOnly)) {
+    llvm::errs() << "Error: --no-test only applies when linking an "
+                    "executable; use it with -c\n";
     return 1;
   }
   if (sawStatic && (!compileMode || emitObjOnly)) {
@@ -449,6 +574,11 @@ int main(int argc, char* argv[]) {
     // Compilation mode: generate executable without JIT
     llvm::outs() << "Compiling: " << inputFile << " -> " << outputFile << "\n";
 
+    linkOpts.targetTriple = targetTriple;
+    // The production link appends its bundles' archives below; the test
+    // binary links from this untouched copy plus its own bundles.
+    const sun::LinkOptions baseLinkOpts = linkOpts;
+
     try {
       auto driver =
           Driver::createForAOT("main_module", targetTriple, debugInfo);
@@ -469,14 +599,22 @@ int main(int argc, char* argv[]) {
         driver->printUserDefinedIR();
       }
 
+      bool buildTests =
+          driver->programHasTests() && !noTest && !emitObjOnly;
+      // A program of only tests has no main; that is fine, the test binary
+      // is the deliverable. Without tests a missing main stays a link error.
+      bool hasMain = driver->getModule().getFunction("main") != nullptr;
+      bool emitProduction = hasMain || !buildTests;
+
       // Emit executable
       std::string errorMsg;
-      bool success;
-      if (emitObjOnly) {
+      bool success = true;
+      if (!emitProduction) {
+        llvm::outs() << "No main() found; emitting only the test binary\n";
+      } else if (emitObjOnly) {
         success =
             sun::emitObjectFile(driver->getModule(), outputFile, errorMsg);
       } else {
-        linkOpts.targetTriple = targetTriple;
         // Imported bundles may carry their own static libraries; link those
         // too, so a program using such a bundle needs no -l flags.
         const auto& bundled = driver->getNativeArchivePaths();
@@ -491,8 +629,48 @@ int main(int argc, char* argv[]) {
         llvm::errs() << "Compilation failed: " << errorMsg << "\n";
         return 1;
       }
+      if (emitProduction) {
+        llvm::outs() << "Successfully compiled to: " << outputFile << "\n";
+      }
 
-      llvm::outs() << "Successfully compiled to: " << outputFile << "\n";
+      // A program with tests also gets a test binary, so `sun -c` leaves
+      // both artifacts behind. --no-test skips this second compile entirely.
+      if (buildTests) {
+        std::string testOutput = outputFile + "_test";
+        auto testDriver =
+            Driver::createForAOT("test_module", targetTriple, debugInfo);
+        if (debugMode) {
+          // Separate folder (<input>_test_debug/) so the production build's
+          // artifacts survive; this one also carries test_runner.sun.
+          std::filesystem::path inputPath(inputFile);
+          testDriver->setDebugMode(
+              true, (inputPath.parent_path() /
+                     (inputPath.stem().string() + "_test.sun"))
+                        .string());
+        }
+        testDriver->setMoonImports(moonImports);
+        testDriver->setTestHandling(Driver::TestHandling::Compile);
+
+        if (inputFiles.size() > 1) {
+          testDriver->compileFiles(inputFiles, moonImports);
+        } else {
+          testDriver->compileFile(inputFile);
+        }
+
+        sun::LinkOptions testLinkOpts = baseLinkOpts;
+        const auto& testBundled = testDriver->getNativeArchivePaths();
+        testLinkOpts.archives.insert(testLinkOpts.archives.end(),
+                                     testBundled.begin(), testBundled.end());
+        if (!sun::compileToExecutable(testDriver->getModule(), testOutput,
+                                      errorMsg,
+                                      /*keepObjectFile=*/false,
+                                      testLinkOpts)) {
+          llvm::errs() << "Test compilation failed: " << errorMsg << "\n";
+          return 1;
+        }
+        llvm::outs() << "Successfully compiled test binary to: " << testOutput
+                     << "\n";
+      }
       return 0;
     } catch (const SunError& e) {
       std::cerr << e.what() << std::endl;
