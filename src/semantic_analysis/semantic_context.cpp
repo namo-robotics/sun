@@ -1037,6 +1037,28 @@ void SemanticContext::registerBuiltinFunctions() {
   // __accept_fd(fd) -> new_fd
   registerFunctionInCurrentScope("__accept_fd",
                                  {Types::Int32(), {Types::Int32()}, {}});
+  // __sendto_ipv4(fd, buf, len, flags, ip, port) -> bytes_sent
+  registerFunctionInCurrentScope(
+      "__sendto_ipv4",
+      {Types::Int64(),
+       {Types::Int32(), Types::RawPointer(Types::UInt8()), Types::Int64(),
+        Types::Int32(), Types::Int32(), Types::Int32()},
+       {}});
+  // __recvfrom_ipv4(fd, buf, len, flags, out_ip, out_port) -> bytes_received
+  registerFunctionInCurrentScope(
+      "__recvfrom_ipv4",
+      {Types::Int64(),
+       {Types::Int32(), Types::RawPointer(Types::UInt8()), Types::Int64(),
+        Types::Int32(), Types::RawPointer(Types::Int32()),
+        Types::RawPointer(Types::Int32())},
+       {}});
+  // __getsockname_ipv4(fd, out_ip, out_port) -> result
+  registerFunctionInCurrentScope(
+      "__getsockname_ipv4",
+      {Types::Int32(),
+       {Types::Int32(), Types::RawPointer(Types::Int32()),
+        Types::RawPointer(Types::Int32())},
+       {}});
 }
 
 // -------------------------------------------------------------------

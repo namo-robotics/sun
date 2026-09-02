@@ -49,6 +49,19 @@ namespace sun {
 //
 //   __getsockopt(fd, level, optname, optval, optlen) -> i32
 //     Get socket option.
+//
+// High-level IPv4 shorthands (the compiler builds and parses sockaddr_in, so
+// Sun code never sees the struct; ip crosses in network byte order, port in
+// host order):
+//   __sendto_ipv4(fd, buf, len, flags, ip, port) -> i64
+//     Send one datagram to an IPv4 address. Returns bytes sent, or -1.
+//
+//   __recvfrom_ipv4(fd, buf, len, flags, out_ip, out_port) -> i64
+//     Receive one datagram, writing the sender's address through the two
+//     out-pointers. Returns bytes received, or -1.
+//
+//   __getsockname_ipv4(fd, out_ip, out_port) -> i32
+//     Report the socket's own bound address through the two out-pointers.
 
 // Socket address constants (for stdlib wrappers)
 // AF_INET = 2, AF_INET6 = 10, AF_UNIX = 1

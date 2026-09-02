@@ -1,0 +1,16 @@
+// Sender: sends one datagram to the receiver
+using std;
+
+function main() i32 {
+  var socket = UdpSocket();
+  socket.bind(ipv4_any(), 0);  // port 0: the OS picks a free port
+  socket.send_str_to("Hello from sender!", ipv4_loopback(), 9090);
+  println("Datagram sent");
+
+  socket.close();
+  return 0;
+}
+
+manifest {
+    libraries: ["stdlib.moon"]
+}

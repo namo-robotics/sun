@@ -666,7 +666,7 @@ passed as `raw_ptr<u8>` with its length. A failure is a negative errno.
 ### IPv4 shorthands
 
 Building a `sockaddr_in` by hand means knowing a layout that differs between
-Linux and macOS, and getting the port into network byte order. Three intrinsics
+Linux and macOS, and getting the port into network byte order. These intrinsics
 do that part, taking the address and port as plain integers:
 
 | Intrinsic | Returns | Description |
@@ -674,10 +674,14 @@ do that part, taking the address and port as plain integers:
 | `__bind_ipv4(fd: i32, ip: i32, port: i32)` | `i32` | Bind to an IPv4 address |
 | `__connect_ipv4(fd: i32, ip: i32, port: i32)` | `i32` | Connect to an IPv4 address |
 | `__accept_fd(fd: i32)` | `i32` | Accept, discarding the peer's address |
+| `__sendto_ipv4(fd: i32, buf: raw_ptr<u8>, len: i64, flags: i32, ip: i32, port: i32)` | `i64` | Send one datagram to an IPv4 address, returning the count sent |
+| `__recvfrom_ipv4(fd: i32, buf: raw_ptr<u8>, len: i64, flags: i32, out_ip: raw_ptr<i32>, out_port: raw_ptr<i32>)` | `i64` | Receive one datagram, writing the sender's address and port through the out-pointers |
+| `__getsockname_ipv4(fd: i32, out_ip: raw_ptr<i32>, out_port: raw_ptr<i32>)` | `i32` | Report the socket's own bound address and port through the out-pointers |
 
 The compiler lays out the `sockaddr_in` for the target operating system and
-byte-swaps `port` into network order. `ip` is already in network order — 0 for
-"any address", which is what a server binds to:
+byte-swaps ports into network order. An `ip` is always in network order — 0 for
+"any address", which is what a server binds to — while ports cross the boundary
+in host order, both directions:
 
 ```sun
 var fd: i32 = unsafe { __socket(2, 1, 0); };            // AF_INET, SOCK_STREAM

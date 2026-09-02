@@ -1,6 +1,6 @@
 // stdlib/networking.sun - Network socket wrapper over __socket* intrinsics
 //
-// Provides TCP client and server abstractions using high-level IPv4 intrinsics.
+// Provides TCP and UDP abstractions using high-level IPv4 intrinsics.
 //
 // Usage:
 //   using std;
@@ -20,6 +20,15 @@
 //   stream.connect_local(8080);
 //   stream.send_str("ping");
 //   stream.close();
+//
+//   // UDP
+//   var socket = UdpSocket();
+//   socket.bind(ipv4_any(), 0);            // port 0: the OS picks one
+//   var port: i32 = socket.local_port();   // read the picked port back
+//   socket.send_str_to("ping", ipv4_loopback(), 9000);
+//   var buf = ContiguousBuffer<u8>(alloc, 1024);
+//   var datagram = socket.recv_from(buf);  // who sent what
+//   socket.close();
 
 public module std {
   // -------------------------------------------------------------------
@@ -32,9 +41,11 @@ public module std {
 
   public var AF_INET: i32 = 2;
   public var SOCK_STREAM: i32 = 1;
+  public var SOCK_DGRAM: i32 = 2;
   public var SHUT_RDWR: i32 = 2;
   public var INADDR_ANY: i32 = 0;
   public var INADDR_LOOPBACK: i32 = 16777343;  // 127.0.0.1 in network byte order
+  public var IPPROTO_IP: i32 = 0;
   var F_GETFL: i32 = 3;
   var F_SETFL: i32 = 4;
 
@@ -99,6 +110,108 @@ public module std {
   }
 
   // -------------------------------------------------------------------
+  // Ipv4Addr - readable IPv4 addresses
+  // -------------------------------------------------------------------
+
+  // An IPv4 address, held in the network byte order the socket intrinsics
+  // take, so nobody has to remember that 127.0.0.1 is 16777343.
+  public class Ipv4Addr {
+    var net: i32;  // the four octets, network byte order
+
+    // Build an address from its four dotted-quad octets, first octet first:
+    // Ipv4Addr(192, 168, 1, 10) is 192.168.1.10.
+    init(a: i32, b: i32, c: i32, d: i32) {
+      // On our little-endian targets, network byte order keeps the first
+      // octet in the lowest byte (byte_order.sun documents this assumption).
+      this.net = (a & 255) | ((b & 255) << 8) | ((c & 255) << 16) | ((d & 255) << 24);
+    }
+
+    // The address as the network-byte-order integer the intrinsics take.
+    public const method to_network_i32() i32 {
+      return this.net;
+    }
+
+    // One octet of the dotted-quad form; index 0 is the first octet.
+    public const method octet(index: i64) i32 {
+      var shift: i32 = _convert<i32>(index) * 8;
+      return (this.net >> shift) & 255;
+    }
+
+    // An independent copy of this address.
+    public const method clone() Ipv4Addr {
+      return ipv4_from_network(this.net);
+    }
+
+    // Format as dotted-quad text, e.g. "192.168.1.10".
+    public const method to_string(alloc: const ref HeapAllocator) String {
+      var text: String = String(alloc, "");
+      text.append(this.octet(0));
+      text.append_char(46);  // '.'
+      text.append(this.octet(1));
+      text.append_char(46);
+      text.append(this.octet(2));
+      text.append_char(46);
+      text.append(this.octet(3));
+      return text;
+    }
+  }
+
+  // The wildcard address 0.0.0.0, for binding on every interface.
+  public function ipv4_any() Ipv4Addr {
+    return Ipv4Addr(0, 0, 0, 0);
+  }
+
+  // The loopback address 127.0.0.1.
+  public function ipv4_loopback() Ipv4Addr {
+    return Ipv4Addr(127, 0, 0, 1);
+  }
+
+  // Wrap an address already in network byte order — the shape resolve_host_ipv4
+  // returns and the intrinsics take.
+  public function ipv4_from_network(net: i32) Ipv4Addr {
+    var addr = Ipv4Addr(0, 0, 0, 0);
+    addr.net = net;
+    return addr;
+  }
+
+  // Parse dotted-quad text like "239.255.0.1". Throws unless the text is
+  // exactly four octets in the range 0-255, separated by dots.
+  public function parse_ipv4(text: const ref String) Ipv4Addr throws IError {
+    var net: i32 = 0;
+    var octet_value: i32 = 0;
+    var digits: i32 = 0;
+    var parts: i32 = 0;
+    var i: i64 = 0;
+    var n: i64 = text.length();
+    while (i < n) {
+      var ch: i32 = _convert<i32>(text.at(i));
+      if (ch >= 48 and ch <= 57) {  // '0'..'9'
+        octet_value = octet_value * 10 + (ch - 48);
+        digits = digits + 1;
+        if (digits > 3 or octet_value > 255) {
+          throw Error(-1, "malformed IPv4 address");
+        }
+      } else if (ch == 46) {  // '.'
+        if (digits == 0 or parts == 3) {
+          throw Error(-1, "malformed IPv4 address");
+        }
+        net = net | (octet_value << (parts * 8));
+        parts = parts + 1;
+        octet_value = 0;
+        digits = 0;
+      } else {
+        throw Error(-1, "malformed IPv4 address");
+      }
+      i = i + 1;
+    }
+    if (digits == 0 or parts != 3) {
+      throw Error(-1, "malformed IPv4 address");
+    }
+    net = net | (octet_value << 24);
+    return ipv4_from_network(net);
+  }
+
+  // -------------------------------------------------------------------
   // TcpStream - TCP connection (client or accepted)
   // -------------------------------------------------------------------
 
@@ -153,6 +266,11 @@ public module std {
     public method connect_host(host: ref String, port: i32) void throws IError {
       var ip: i32 = resolve_host_ipv4(host);
       this.connect_ip(ip, port);
+    }
+
+    // Connect to an Ipv4Addr and port
+    public method connect_addr(addr: const ref Ipv4Addr, port: i32) void throws IError {
+      this.connect_ip(addr.to_network_i32(), port);
     }
 
     // Send string data
@@ -275,6 +393,23 @@ public module std {
       }
     }
 
+    // Create and bind to an Ipv4Addr and port
+    public method bind_addr(addr: const ref Ipv4Addr, port: i32) void throws IError {
+      var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_STREAM, 0); };
+      if (sock_fd < 0) {
+        var err_code: i32 = errno();
+        throw Error(err_code, "failed to create socket");
+      }
+      this.fd = sock_fd;
+      this.enable_reuse_addr();
+
+      var result: i32 = unsafe { __bind_ipv4(this.fd, addr.to_network_i32(), port); };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        throw Error(err_code, "failed to bind socket");
+      }
+    }
+
     // Start listening for connections
     public method listen(backlog: i32) void throws IError {
       var result: i32 = unsafe { __listen(this.fd, backlog); };
@@ -312,6 +447,268 @@ public module std {
     }
 
     // Report whether the listener still holds a live file descriptor.
+    public method is_open() bool {
+      return this.fd >= 0;
+    }
+
+    // The underlying file descriptor, for polling or C calls.
+    public method get_fd() i32 {
+      return this.fd;
+    }
+  }
+
+  // -------------------------------------------------------------------
+  // UdpSocket - connectionless datagram socket
+  // -------------------------------------------------------------------
+
+  // struct timeval as setsockopt(SO_RCVTIMEO) reads it. Linux is {i64, i64};
+  // Darwin is {i64 sec, i32 usec, 4 bytes pad} — the same 16 bytes, and on a
+  // little-endian target (all of ours; see byte_order.sun) an i64 store of a
+  // usec value below one million puts the right bytes in Darwin's i32 slot
+  // and zeros in its padding.
+  class CTimeval {
+    var sec: i64;
+    var usec: i64;
+
+    // Build a timeval from whole seconds and leftover microseconds.
+    init(sec: i64, usec: i64) {
+      this.sec = sec;
+      this.usec = usec;
+    }
+  }
+
+  // struct ip_mreq: the multicast group to join and the local interface to
+  // join it on, both network byte order. Identical layout on Linux and macOS.
+  class IpMreq {
+    var group: i32;
+    var iface: i32;
+
+    // Build a membership request from two network-byte-order addresses.
+    init(group: i32, iface: i32) {
+      this.group = group;
+      this.iface = iface;
+    }
+  }
+
+  // One received datagram: how many bytes landed in the caller's buffer, and
+  // who sent them.
+  public class UdpDatagram {
+    var len_: i64;
+    var ip_: i32;  // sender address, network byte order
+    var port_: i32;  // sender port, host order
+
+    // Build a datagram record from recv_from's results.
+    init(len: i64, ip: i32, port: i32) {
+      this.len_ = len;
+      this.ip_ = ip;
+      this.port_ = port;
+    }
+
+    // How many bytes the datagram carried into the buffer.
+    public const method length() i64 {
+      return this.len_;
+    }
+
+    // The sender's port.
+    public const method port() i32 {
+      return this.port_;
+    }
+
+    // The sender's address.
+    public const method addr() Ipv4Addr {
+      return ipv4_from_network(this.ip_);
+    }
+  }
+
+  // A UDP socket: connectionless send and receive, with multicast and
+  // receive-timeout support. bind() creates the descriptor, so it always
+  // comes first; a send-only socket binds port 0 and lets the OS pick.
+  public class UdpSocket {
+    var fd: i32;
+
+    // Build a closed socket. Bind it before use.
+    init() {
+      this.fd = -1;
+    }
+
+    // Close the socket if it is still open.
+    deinit() {
+      this.close();
+    }
+
+    // Allow rebinding the port immediately after a restart
+    public method enable_reuse_addr() void {
+      var optval: i32 = 1;
+      unsafe { __setsockopt(this.fd, SOL_SOCKET, SO_REUSEADDR, _address_of<i32>(optval), 4); };
+    }
+
+    // Create the datagram socket and bind it to addr:port. Port 0 asks the
+    // OS for a free port; read the choice back with local_port().
+    public method bind(addr: const ref Ipv4Addr, port: i32) void throws IError {
+      var sock_fd: i32 = unsafe { __socket(AF_INET, SOCK_DGRAM, 0); };
+      if (sock_fd < 0) {
+        var err_code: i32 = errno();
+        throw Error(err_code, "failed to create socket");
+      }
+      this.fd = sock_fd;
+      suppress_sigpipe(this.fd);
+      this.enable_reuse_addr();
+
+      var result: i32 = unsafe { __bind_ipv4(this.fd, addr.to_network_i32(), port); };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        throw Error(err_code, "failed to bind socket");
+      }
+    }
+
+    // Send one datagram of len bytes to addr:port. Returns bytes sent.
+    public method send_to(data: raw_ptr<u8>, len: i64, addr: const ref Ipv4Addr, port: i32) i64 throws IError {
+      var result: i64 = unsafe { __sendto_ipv4(this.fd, data, len, MSG_NOSIGNAL, addr.to_network_i32(), port); };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        throw Error(err_code, "send failed");
+      }
+      return result;
+    }
+
+    // Send string data as one datagram
+    public method send_str_to(data: static_ptr<u8>, addr: const ref Ipv4Addr, port: i32) i64 throws IError {
+      return this.send_to(data.raw(), data.length(), addr, port);
+    }
+
+    // Receive one datagram into the buffer, reporting its size and sender.
+    // A datagram longer than the buffer is cut to fit; the rest is dropped.
+    public method recv_from(buf: ref ContiguousBuffer<u8>) UdpDatagram throws IError {
+      var sender_ip: i32 = 0;
+      var sender_port: i32 = 0;
+      var result: i64 = unsafe {
+        __recvfrom_ipv4(this.fd, buf.raw_data(), buf.size(), 0,
+                        _address_of<i32>(sender_ip), _address_of<i32>(sender_port));
+      };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        throw Error(err_code, "recv failed");
+      }
+      return UdpDatagram(result, sender_ip, sender_port);
+    }
+
+    // Join a multicast group on the interface with the given address; use
+    // ipv4_any() to let the OS pick the interface. The socket then receives
+    // datagrams sent to the group on its bound port.
+    public method join_multicast(group: const ref Ipv4Addr, iface: const ref Ipv4Addr) void throws IError {
+      var request = IpMreq(group.to_network_i32(), iface.to_network_i32());
+      var result: i32 = unsafe {
+        __setsockopt(this.fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, _address_of<IpMreq>(request), 8);
+      };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        throw Error(err_code, "failed to join multicast group");
+      }
+    }
+
+    // Leave a multicast group joined with the same group and interface.
+    public method leave_multicast(group: const ref Ipv4Addr, iface: const ref Ipv4Addr) void throws IError {
+      var request = IpMreq(group.to_network_i32(), iface.to_network_i32());
+      var result: i32 = unsafe {
+        __setsockopt(this.fd, IPPROTO_IP, IP_DROP_MEMBERSHIP, _address_of<IpMreq>(request), 8);
+      };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        throw Error(err_code, "failed to leave multicast group");
+      }
+    }
+
+    // How many router hops outgoing multicast datagrams may cross. The
+    // default of 1 keeps them on the local network.
+    public method set_multicast_ttl(ttl: i32) void throws IError {
+      // Both OSes accept a one-byte value; macOS insists on it.
+      var value: u8 = _convert<u8>(ttl & 255);
+      var result: i32 = unsafe {
+        __setsockopt(this.fd, IPPROTO_IP, IP_MULTICAST_TTL, _address_of<u8>(value), 1);
+      };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        throw Error(err_code, "failed to set multicast TTL");
+      }
+    }
+
+    // Whether this host's own multicast sends loop back to local listeners.
+    public method set_multicast_loop(enabled: bool) void throws IError {
+      var value: u8 = 0;
+      if (enabled) {
+        value = 1;
+      }
+      var result: i32 = unsafe {
+        __setsockopt(this.fd, IPPROTO_IP, IP_MULTICAST_LOOP, _address_of<u8>(value), 1);
+      };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        throw Error(err_code, "failed to set multicast loopback");
+      }
+    }
+
+    // Make a blocking recv_from give up after the timeout, throwing an error
+    // for which is_would_block(e.code()) is true.
+    public method set_recv_timeout(timeout: const ref std.time.Duration) void throws IError {
+      var micros: i64 = timeout.as_micros();
+      if (micros == 0 and timeout.as_nanos() > 0) {
+        micros = 1;  // a zero timeval would mean "wait forever"
+      }
+      var secs: i64 = micros / 1000000;
+      var tv = CTimeval(secs, micros - secs * 1000000);
+      var result: i32 = unsafe {
+        __setsockopt(this.fd, SOL_SOCKET, SO_RCVTIMEO, _address_of<CTimeval>(tv), 16);
+      };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        throw Error(err_code, "failed to set receive timeout");
+      }
+    }
+
+    // The port the socket is actually bound to — the answer after binding
+    // port 0.
+    public method local_port() i32 throws IError {
+      var ip: i32 = 0;
+      var port: i32 = 0;
+      var result: i32 = unsafe {
+        __getsockname_ipv4(this.fd, _address_of<i32>(ip), _address_of<i32>(port));
+      };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        throw Error(err_code, "failed to read socket address");
+      }
+      return port;
+    }
+
+    // The address the socket is bound to.
+    public method local_addr() Ipv4Addr throws IError {
+      var ip: i32 = 0;
+      var port: i32 = 0;
+      var result: i32 = unsafe {
+        __getsockname_ipv4(this.fd, _address_of<i32>(ip), _address_of<i32>(port));
+      };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        throw Error(err_code, "failed to read socket address");
+      }
+      return ipv4_from_network(ip);
+    }
+
+    // Change whether operations on this socket wait for readiness.
+    public method set_nonblocking(enabled: bool) void throws IError {
+      set_fd_nonblocking(this.fd, enabled);
+    }
+
+    // Close the socket. UDP has no connection to shut down, so this just
+    // releases the descriptor.
+    public method close() void {
+      if (this.fd >= 0) {
+        unsafe { c_close(this.fd); };
+        this.fd = -1;
+      }
+    }
+
+    // Report whether the socket still holds a live file descriptor.
     public method is_open() bool {
       return this.fd >= 0;
     }

@@ -1,0 +1,29 @@
+// Receiver: binds a UDP port and prints one datagram and its sender
+using std;
+
+function main() i32 {
+  var socket = UdpSocket();
+  socket.bind(ipv4_loopback(), 9090);
+  println("Waiting on 127.0.0.1:9090...");
+
+  var alloc = make_heap_allocator();
+  var buf = ContiguousBuffer<u8>(alloc, 256);
+  var datagram = socket.recv_from(buf);
+
+  try {
+    var text = String(alloc, buf, datagram.length());
+    println(text);
+  } catch (e: IError) {
+    println("Failed to create string");
+  }
+  var from = datagram.addr();
+  println("From address:");
+  println(from.to_string(alloc));
+
+  socket.close();
+  return 0;
+}
+
+manifest {
+    libraries: ["stdlib.moon"]
+}

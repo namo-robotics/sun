@@ -35,7 +35,14 @@ public module std {
   public var MSG_NOSIGNAL: i32 = 0;
   public var SOL_SOCKET: i32 = 65535;  // 0xffff
   public var SO_REUSEADDR: i32 = 4;
+  public var SO_RCVTIMEO: i32 = 4102;  // 0x1006
   var SO_NOSIGPIPE: i32 = 4130;  // 0x1022
+
+  // IPPROTO_IP-level options for IPv4 multicast.
+  public var IP_MULTICAST_TTL: i32 = 10;
+  public var IP_MULTICAST_LOOP: i32 = 11;
+  public var IP_ADD_MEMBERSHIP: i32 = 12;
+  public var IP_DROP_MEMBERSHIP: i32 = 13;
 
   // Mark the socket so a send on a broken connection fails with EPIPE
   // instead of raising SIGPIPE.

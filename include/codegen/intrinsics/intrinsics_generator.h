@@ -162,6 +162,9 @@ class IntrinsicsGenerator {
   llvm::Value* codegenBindIPv4(const CallExprAST& expr);
   llvm::Value* codegenConnectIPv4(const CallExprAST& expr);
   llvm::Value* codegenAcceptFd(const CallExprAST& expr);
+  llvm::Value* codegenSendToIPv4(const CallExprAST& expr);
+  llvm::Value* codegenRecvFromIPv4(const CallExprAST& expr);
+  llvm::Value* codegenGetSockNameIPv4(const CallExprAST& expr);
 
   // -------------------------------------------------------------------
   // Thread support (uses ThreadUtils for syscalls and types)

@@ -9,6 +9,7 @@ target_sources(sun_tests PRIVATE
     test_networking.cpp
     test_option.cpp
     test_tls.cpp
+    test_udp.cpp
 )
 
 add_subdirectory(collections)
