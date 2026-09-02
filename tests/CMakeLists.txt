@@ -13,8 +13,10 @@ endif()
 
 # One binary for every suite. Sources come from the group subdirectories
 # below; nothing is listed here. Suite names mirror the directory path
-# (e.g. tests/stdlib/collections/test_vec.cpp -> Stdlib_Collections_Vec),
-# so --gtest_filter="Stdlib_*" selects a whole group.
+# (e.g. tests/functions/generic/test_constraints.cpp ->
+# Functions_Generic_Constraints), so --gtest_filter="Functions_*" selects a
+# whole group. The stdlib's own tests are Sun code (stdlib/*_tests.sun) and
+# run as the stdlib_sun_tests entry below, not through this binary.
 add_executable(sun_tests)
 
 # Must come after add_executable: target_sources() needs the target to exist.
@@ -32,7 +34,6 @@ add_subdirectory(lambdas)
 add_subdirectory(memory_safety)
 add_subdirectory(modules)
 add_subdirectory(operators)
-add_subdirectory(stdlib)
 add_subdirectory(tooling)
 
 target_link_libraries(sun_tests
@@ -61,6 +62,16 @@ if(NOT SKIP_STDLIB)
     add_test(NAME stdlib_sun_tests
              COMMAND ${STDLIB_TEST_BIN}_test --test-sequential
              WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+    # The tls bundle's Sun test suite (tls/*_tests.sun), built the same way
+    # when the static OpenSSL archives are present. Sequential too: the
+    # handshake tests point SSL_CERT_FILE, a process-wide setting, at a
+    # throwaway certificate.
+    if(SUN_HAVE_OPENSSL)
+        add_test(NAME tls_sun_tests
+                 COMMAND ${TLS_TEST_BIN}_test --test-sequential
+                 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    endif()
 endif()
 
 # Shared library for the C FFI tests. Its symbols are deliberately absent

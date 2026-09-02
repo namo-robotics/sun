@@ -9,6 +9,9 @@ manifest {
         "tls_stream.sun",
         "https_client.sun"
     ]
+    test_files: [
+        "https_client_tests.sun"
+    ]
     libraries: ["stdlib.moon"]
     target: {
         linux: {

@@ -51,6 +51,7 @@ manifest {
         "math_tests.sun",
         "matrix_tests.sun",
         "mutex_tests.sun",
+        "networking_tests.sun",
         "option_tests.sun",
         "process_tests.sun",
         "queue_tests.sun",

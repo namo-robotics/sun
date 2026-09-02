@@ -133,6 +133,36 @@ TEST(Functions_Generic_Constraints, lambda_rejects_a_number) {
       "parameter 'F' of generic function 'takes'");
 }
 
+// -------------------------------------------------------------------
+// The _Callable constraint: lambdas and named functions alike
+// -------------------------------------------------------------------
+
+// Called the way spawn calls its callee: through the pack its parameters
+// describe. (A direct `f()` on a parameter of type F is not typed yet; only
+// the `f(args...)` shape is.)
+TEST(Functions_Generic_Constraints, callable_accepts_a_named_function) {
+  auto value = executeString(R"(
+    function run<F: _Callable>(f: F, args...: _params_of<F>) i32 {
+      return f(args...);
+    }
+    function seven() i32 { return 7; }
+    function main() i32 {
+      var lambda = (n: i32) => i32 { return n + 20; };
+      return run(seven) + run(lambda, 10);
+    }
+  )");
+  EXPECT_EQ(value, 37);
+}
+
+TEST(Functions_Generic_Constraints, callable_rejects_a_number) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(
+      executeString(R"(
+    function run<F: _Callable>(f: F) i32 { return 0; }
+    function main() i32 { return run(42); }
+  )"),
+      "does not satisfy constraint '_Callable'");
+}
+
 // A constraint and `_is<T>` share one vocabulary, so `_Lambda` is a trait in
 // both positions: at a signature, and in a body.
 TEST(Functions_Generic_Constraints, is_lambda_trait_is_true_for_a_closure) {

@@ -1,7 +1,6 @@
 // stdlib/mutex_tests.sun - Tests for thread.sun (Mutex).
-// Replaces the Mutex behavior tests (single- and multi-threaded) of the C++
-// suite Stdlib_Concurrency_Mutex; the atomic/futex intrinsic tests and the
-// compile-only tests stay in tests/stdlib/concurrency/test_mutex.cpp.
+// The atomic and futex intrinsics it is built from are tested in
+// tests/builtins/test_atomics.cpp.
 
 using std;
 using std.thread;

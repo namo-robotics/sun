@@ -1,7 +1,6 @@
 // stdlib/bigint_tests.sun - Tests for bigint.sun (BigUint).
-// Replaces the C++ suite Stdlib_BigInt; the bare-intrinsic suite
-// Stdlib_BigInt_BitIntrinsics (_mul_hi_u64/_ctlz_u64/_cttz_u64) stays in
-// tests/stdlib/test_bigint.cpp.
+// The bare intrinsics BigUint builds on (_mul_hi_u64/_ctlz_u64/_cttz_u64)
+// are tested in tests/builtins/test_intrinsics.cpp.
 
 using std;
 

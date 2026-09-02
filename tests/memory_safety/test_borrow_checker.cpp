@@ -1160,3 +1160,26 @@ TEST(MemorySafety_BorrowChecker, ref_field_class_cannot_be_returned) {
   )"),
                                 "Borrow check failed");
 }
+
+// A constructor argument taken by value is moved like any other by-value
+// argument: the caller's name is dead afterwards. Sun never copies a compound
+// value, so the wrapper and the caller can never both own it.
+TEST(MemorySafety_BorrowChecker, constructor_argument_by_value_moves) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Res {
+        public var v: i32;
+        init(v: i32) { this.v = v; }
+        deinit() { }
+    }
+    class Wrapper {
+        var inner: Res;
+        init(inner: Res) { this.inner = inner; }
+    }
+    function main() i32 {
+        var r = Res(3);
+        var w = Wrapper(r);
+        return r.v;
+    };
+  )"),
+                                "Borrow check failed");
+}

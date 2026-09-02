@@ -219,6 +219,43 @@ TEST(Functions_Generic_Variadics, lambda_params_arity_mismatch_is_an_error) {
                                 "which takes (i32, i32); got (i32)");
 }
 
+// The pack stands for exactly the parameters the lambda declares, so a
+// surplus argument is as wrong as a missing one.
+TEST(Functions_Generic_Variadics, pack_extra_argument_is_an_error) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    function apply<F: _Lambda>(f: F, args...: _params_of<F>) i32 {
+        return f(args...);
+    }
+    function main() i32 {
+        var one = () => i32 { return 1; };
+        return apply(one, 5);
+    }
+  )"),
+                                "which takes (); got (i32)");
+}
+
+// A compound value forwarded through a pack is a by-value argument like any
+// other: it moves, and the caller cannot use it afterwards.
+TEST(Functions_Generic_Variadics, pack_argument_by_value_moves_the_source) {
+  EXPECT_SUN_ERROR_WITH_MESSAGE(executeString(R"(
+    class Res {
+        public var v: i32;
+        init(v: i32) { this.v = v; }
+        deinit() { }
+    }
+    function apply<F: _Lambda>(f: F, args...: _params_of<F>) i32 {
+        return f(args...);
+    }
+    function main() i32 {
+        var take = (r: Res) => i32 { var owned = r; return owned.v; };
+        var r = Res(42);
+        var got = apply(take, r);
+        return r.v;
+    }
+  )"),
+                                "Borrow check failed");
+}
+
 // An unannotated pack takes whatever the call passes; so does an annotation
 // naming something that is neither a class nor a lambda. Both are recorded
 // and left unchecked.

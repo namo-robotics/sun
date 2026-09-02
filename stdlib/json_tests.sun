@@ -1,7 +1,7 @@
 // stdlib/json_tests.sun - Tests for json.sun: parsing, access, building,
-// writing. Replaces the C++ suite Stdlib_Json; the compile-time
-// use-after-move test json_constructor_takes_ownership_of_string stays in
-// tests/stdlib/test_json.cpp.
+// writing. That a String passed to Json(s) is moved in is the ordinary
+// constructor-argument rule, tested in
+// tests/memory_safety/test_borrow_checker.cpp.
 
 using std;
 

@@ -12,6 +12,7 @@
 
 #include "ast/manifest_ast.h"
 #include "driver/compiler.h"
+#include "driver/depfile.h"
 #include "driver/driver.h"
 #include "driver/manifest_processor.h"
 #include "driver/sun_config.h"
@@ -54,6 +55,10 @@ static void printUsage(const char* programName) {
                   "test_runner.sun) in <input>_debug/\n";
   llvm::errs() << "  --no-test         Do not also compile the test binary "
                   "when the program has tests\n";
+  llvm::errs() << "  --depfile <file>  Write a Make-format dependency file "
+                  "naming every input each\n";
+  llvm::errs() << "                    artifact was built from (for Ninja "
+                  "or Make; use with -c or --emit-moon)\n";
   llvm::errs() << "  --emit-moon       Compile to .moon precompiled library\n";
   llvm::errs() << "                    Use manifest { source_files: [...] } "
                   "to specify files to include\n";
@@ -449,6 +454,7 @@ struct CompileJob {
   bool debugInfo = false;
   bool dumpProtoSun = false;
   bool noTest = false;
+  sun::Depfile* depfile = nullptr;  // records output -> inputs when given
 };
 
 // Compile the job's test binary: tests kept, the runner synthesized, linked
@@ -497,6 +503,9 @@ static int compileTestBinary(const CompileJob& job) {
   }
   llvm::outs() << "Successfully compiled test binary to: " << testOutput
                << "\n";
+  if (job.depfile) {
+    job.depfile->addOutput(testOutput, testDriver->getInputFiles());
+  }
   return 0;
 }
 
@@ -564,6 +573,9 @@ static int runCompile(const CompileJob& job) {
     }
     if (emitProduction) {
       llvm::outs() << "Successfully compiled to: " << job.outputFile << "\n";
+      if (job.depfile) {
+        job.depfile->addOutput(job.outputFile, driver->getInputFiles());
+      }
     }
 
     // A program with tests also gets a test binary, so `sun -c` leaves
@@ -581,12 +593,15 @@ static int runCompile(const CompileJob& job) {
   }
 }
 
-// Build a .moon bundle from an entrypoint with a manifest.
+// Build a .moon bundle from an entrypoint with a manifest. With a depfile,
+// records the bundle's inputs: its sources, the bundles it imports, its
+// proto schemas and the native archives it carries.
 static int buildMoonArtifact(const std::string& entrypoint,
                              const std::filesystem::path& outputPath,
                              const std::string& targetTriple, bool debugInfo,
                              bool dumpProtoSun,
-                             const std::vector<sun::MoonImport>& extraMoons) {
+                             const std::vector<sun::MoonImport>& extraMoons,
+                             sun::Depfile* depfile) {
   llvm::outs() << "Creating moon: " << outputPath.string() << "\n";
   try {
     sun::MoonBuildOptions options;
@@ -605,6 +620,15 @@ static int buildMoonArtifact(const std::string& entrypoint,
       llvm::outs() << "  Moon import: " << m.path << "\n";
     }
     llvm::outs() << "Successfully created: " << outputPath.string() << "\n";
+    if (depfile) {
+      std::vector<std::string> inputs = report.sunFiles;
+      for (const auto& m : report.moonImports) inputs.push_back(m.path);
+      inputs.insert(inputs.end(), report.protoFiles.begin(),
+                    report.protoFiles.end());
+      inputs.insert(inputs.end(), report.archiveFiles.begin(),
+                    report.archiveFiles.end());
+      depfile->addOutput(outputPath.string(), inputs);
+    }
     return 0;
   } catch (const SunError& e) {
     llvm::errs() << "Error: " << e.what() << "\n";
@@ -645,8 +669,8 @@ static int runConfigCompile(const sun::SunConfig& config,
         moonPath += ".moon";
       }
       if (buildMoonArtifact(entry.path, moonPath, job.targetTriple,
-                            job.debugInfo, job.dumpProtoSun,
-                            job.moonImports) != 0) {
+                            job.debugInfo, job.dumpProtoSun, job.moonImports,
+                            job.depfile) != 0) {
         return 1;
       }
       if (job.noTest) {
@@ -704,6 +728,7 @@ int main(int argc, char* argv[]) {
   bool debugInfo = false;
   bool dumpProtoSun = false;
   bool noTest = false;
+  std::string depfilePath;
   int programArgStart = -1;  // Index where program arguments start
 
   for (int i = 1; i < argc; ++i) {
@@ -741,6 +766,8 @@ int main(int argc, char* argv[]) {
       debugMode = true;
     } else if (arg == "--no-test") {
       noTest = true;
+    } else if (arg == "--depfile" && i + 1 < argc) {
+      depfilePath = argv[++i];
     } else if (arg == "--lib-path" && i + 1 < argc) {
       libPaths.push_back(argv[++i]);
     } else if (arg == "-l" && i + 1 < argc) {
@@ -808,6 +835,24 @@ int main(int argc, char* argv[]) {
                     "-c\n";
     return 1;
   }
+  if (!depfilePath.empty() && !compileMode && !emitMoon) {
+    llvm::errs() << "Error: --depfile describes built artifacts; use it "
+                    "with -c or --emit-moon\n";
+    return 1;
+  }
+  // The depfile is written once every artifact has been built, so the rules
+  // it holds describe a build that actually succeeded.
+  sun::Depfile depfile;
+  auto finish = [&](int rc) {
+    if (rc != 0 || depfilePath.empty()) return rc;
+    try {
+      depfile.write(depfilePath);
+    } catch (const SunError& e) {
+      std::cerr << e.what() << std::endl;
+      return 1;
+    }
+    return 0;
+  };
   // macOS has no fully static binaries: Apple ships no static libSystem or
   // startup objects, and its linker rejects -static for executables.
   bool darwinTarget = sun::effectiveLinkTriple(targetTriple).isOSDarwin();
@@ -858,8 +903,9 @@ int main(int argc, char* argv[]) {
     std::filesystem::path outputPath =
         outputFile.empty() ? sun::MoonBuilder::defaultOutputPath(entrypoint)
                            : std::filesystem::path(outputFile);
-    return buildMoonArtifact(entrypoint, outputPath, targetTriple, debugInfo,
-                             dumpProtoSun, moonImports);
+    return finish(buildMoonArtifact(
+        entrypoint, outputPath, targetTriple, debugInfo, dumpProtoSun,
+        moonImports, depfilePath.empty() ? nullptr : &depfile));
   }
 
   // Normal compilation/execution modes
@@ -932,16 +978,20 @@ int main(int argc, char* argv[]) {
     job.debugInfo = debugInfo;
     job.dumpProtoSun = dumpProtoSun;
     job.noTest = noTest;
+    job.depfile = depfilePath.empty() ? nullptr : &depfile;
 
     if (configInput) {
       try {
-        return runConfigCompile(loadConfigInput(inputFiles[0]), job);
+        // The config names the outputs, so every artifact depends on it too
+        depfile.addSharedInput(
+            std::filesystem::absolute(inputFiles[0]).string());
+        return finish(runConfigCompile(loadConfigInput(inputFiles[0]), job));
       } catch (const SunError& e) {
         std::cerr << e.what() << std::endl;
         return 1;
       }
     }
-    return runCompile(job);
+    return finish(runCompile(job));
   }
 
   // JIT execution mode (default)

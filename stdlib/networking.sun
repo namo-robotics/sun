@@ -439,6 +439,21 @@ public module std {
       set_fd_nonblocking(this.fd, enabled);
     }
 
+    // The port the listener is actually bound to — the answer after binding
+    // port 0 and letting the OS pick.
+    public method local_port() i32 throws IError {
+      var ip: i32 = 0;
+      var port: i32 = 0;
+      var result: i32 = unsafe {
+        __getsockname_ipv4(this.fd, _address_of<i32>(ip), _address_of<i32>(port));
+      };
+      if (result < 0) {
+        var err_code: i32 = errno();
+        throw Error(err_code, "failed to read socket address");
+      }
+      return port;
+    }
+
     // Close the listener
     public method close() void {
       if (this.fd >= 0) {

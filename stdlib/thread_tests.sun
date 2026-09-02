@@ -1,7 +1,8 @@
 // stdlib/thread_tests.sun - Tests for thread.sun (spawn and Thread<T>).
-// Replaces the runtime tests of the C++ suite Stdlib_Concurrency_Threads;
-// the parse/sema/borrow-check negatives and compile-only tests stay in
-// tests/stdlib/concurrency/test_threads.cpp.
+// The compile-time rules around spawn live with the language tests: the
+// frame-bound handle rules in tests/lambdas/test_frame_bound_handles.cpp,
+// the _Callable constraint and pack checks in tests/functions/generic/, and
+// the no-throw rule in tests/builtins/test_intrinsics.cpp.
 
 using std;
 using std.thread;

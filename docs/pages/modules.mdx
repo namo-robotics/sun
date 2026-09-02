@@ -209,6 +209,24 @@ The compiler:
 3. Compiles and serializes the code and type information
 4. Packages everything into `mylib.moon`
 
+### Telling a build system what was read
+
+A build system reruns a command when one of its known inputs changes, but
+only the compiler knows which files a manifest pulled in. `--depfile`
+writes that list in the Make format Ninja and Make read back, one rule per
+artifact built, so nothing has to be listed by hand:
+
+```bash
+sun --emit-moon --depfile mylib.d -o mylib.moon mylib.sun
+sun -c --depfile app.d -o app app.sun        # rules for app and app_test
+sun -c --depfile all.d sun-config.json       # every entrypoint's artifacts
+```
+
+Each rule names the entrypoint, every `source_files:` and `test_files:`
+entry that went in, the bundles imported, the proto schemas and the native
+archives. With CMake, pass the same path as the custom command's `DEPFILE`;
+Sun's own `CMakeLists.txt` builds the standard library this way.
+
 ### The Standard Library
 
 Sun's standard library is built from `stdlib/stdlib.sun`:
